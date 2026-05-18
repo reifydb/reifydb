@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::utf8::Utf8Container, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct TextReverse;
+pub struct TextReverse {
+	info: RoutineInfo,
+}
 
 impl Default for TextReverse {
 	fn default() -> Self {
@@ -20,31 +18,36 @@ impl Default for TextReverse {
 
 impl TextReverse {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("text::reverse"),
+		}
 	}
 }
 
-impl ScalarFunction for TextReverse {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl<'a> Routine<FunctionContext<'a>> for TextReverse {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
 
-		if columns.len() != 1 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 1 {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let column = columns.first().unwrap();
+		let column = &args[0];
+		let (data, bitvec) = column.unwrap_option();
+		let row_count = data.len();
 
-		match &column.data() {
-			ColumnData::Utf8 {
+		match data {
+			ColumnBuffer::Utf8 {
 				container,
 				max_bytes,
 			} => {
@@ -52,19 +55,28 @@ impl ScalarFunction for TextReverse {
 
 				for i in 0..row_count {
 					if container.is_defined(i) {
-						let reversed: String = container[i].chars().rev().collect();
+						let reversed: String =
+							container.get(i).unwrap().chars().rev().collect();
 						result_data.push(reversed);
 					} else {
 						result_data.push(String::new());
 					}
 				}
 
-				Ok(ColumnData::Utf8 {
+				let result_col_data = ColumnBuffer::Utf8 {
 					container: Utf8Container::new(result_data),
 					max_bytes: *max_bytes,
-				})
+				};
+				let final_data = match bitvec {
+					Some(bv) => ColumnBuffer::Option {
+						inner: Box::new(result_col_data),
+						bitvec: bv.clone(),
+					},
+					None => result_col_data,
+				};
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
-			other => Err(ScalarFunctionError::InvalidArgumentType {
+			other => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Utf8],
@@ -72,8 +84,10 @@ impl ScalarFunction for TextReverse {
 			}),
 		}
 	}
+}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Utf8
+impl Function for TextReverse {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

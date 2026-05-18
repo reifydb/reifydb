@@ -35,28 +35,29 @@ pub struct SinkToCreate {
 impl CatalogStore {
 	pub(crate) fn create_sink(txn: &mut AdminTransaction, to_create: SinkToCreate) -> Result<Sink> {
 		let namespace_id = to_create.namespace;
-
-		// Check if sink already exists
-		if let Some(_sink) = CatalogStore::find_sink_by_name(
-			&mut Transaction::Admin(&mut *txn),
-			namespace_id,
-			to_create.name.text(),
-		)? {
-			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
-			return Err(CatalogError::AlreadyExists {
-				kind: CatalogObjectKind::Sink,
-				namespace: namespace.name().to_string(),
-				name: to_create.name.text().to_string(),
-				fragment: to_create.name.clone(),
-			}
-			.into());
-		}
+		Self::reject_existing_sink(txn, namespace_id, &to_create.name)?;
 
 		let sink_id = next_sink_id(txn)?;
 		Self::store_sink(txn, sink_id, namespace_id, &to_create)?;
 		Self::link_sink_to_namespace(txn, namespace_id, sink_id, to_create.name.text())?;
-
 		Self::get_sink(&mut Transaction::Admin(&mut *txn), sink_id)
+	}
+
+	#[inline]
+	fn reject_existing_sink(txn: &mut AdminTransaction, namespace_id: NamespaceId, name: &Fragment) -> Result<()> {
+		if CatalogStore::find_sink_by_name(&mut Transaction::Admin(&mut *txn), namespace_id, name.text())?
+			.is_none()
+		{
+			return Ok(());
+		}
+		let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
+		Err(CatalogError::AlreadyExists {
+			kind: CatalogObjectKind::Sink,
+			namespace: namespace.name().to_string(),
+			name: name.text().to_string(),
+			fragment: name.clone(),
+		}
+		.into())
 	}
 
 	fn store_sink(
@@ -129,7 +130,7 @@ pub mod tests {
 
 		let result = CatalogStore::create_sink(&mut txn, to_create.clone()).unwrap();
 		assert_eq!(result.id, SinkId(1));
-		assert_eq!(result.namespace, NamespaceId(1025));
+		assert_eq!(result.namespace, NamespaceId(16385));
 		assert_eq!(result.name, "test_sink");
 		assert_eq!(result.connector, "kafka");
 		assert_eq!(result.config, vec![("key".to_string(), "value".to_string())]);

@@ -1,15 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # EXTEND Operator Example
-//!
-//! Demonstrates the EXTEND operator in ReifyDB's RQL:
-//! - Adding new columns while preserving existing ones
-//! - Computing derived columns from existing data
-//! - Comparing EXTEND vs MAP behavior
-//!
-//! Run with: `make rql-extend` or `cargo run --bin rql-extend`
-
 use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;

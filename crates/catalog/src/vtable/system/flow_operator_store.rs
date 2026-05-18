@@ -1,16 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{
-	collections::HashMap,
-	path::PathBuf,
-	sync::{Arc, RwLock},
-};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use reifydb_core::event::{EventListener, flow::FlowOperatorLoadedEvent};
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_type::value::constraint::TypeConstraint;
 
-/// Information about a single column definition in an operator
 #[derive(Clone, Debug)]
 pub struct SystemOperatorColumnInfo {
 	pub name: String,
@@ -18,7 +14,6 @@ pub struct SystemOperatorColumnInfo {
 	pub description: String,
 }
 
-/// Cached information about a loaded flow operator
 #[derive(Clone, Debug)]
 pub struct SystemFlowOperatorInfo {
 	pub operator: String,
@@ -29,10 +24,8 @@ pub struct SystemFlowOperatorInfo {
 	pub output_columns: Vec<SystemOperatorColumnInfo>,
 }
 
-/// Thread-safe in-memory store for flow operator information
 #[derive(Clone)]
 pub struct SystemFlowOperatorStore {
-	// Key: operator
 	operators: Arc<RwLock<HashMap<String, SystemFlowOperatorInfo>>>,
 }
 
@@ -50,15 +43,14 @@ impl SystemFlowOperatorStore {
 	}
 
 	pub fn add(&self, info: SystemFlowOperatorInfo) {
-		self.operators.write().unwrap().insert(info.operator.clone(), info);
+		self.operators.write().insert(info.operator.clone(), info);
 	}
 
 	pub fn list(&self) -> Vec<SystemFlowOperatorInfo> {
-		self.operators.read().unwrap().values().cloned().collect()
+		self.operators.read().values().cloned().collect()
 	}
 }
 
-/// Event listener that maintains the flow operator store
 pub struct SystemFlowOperatorEventListener {
 	store: SystemFlowOperatorStore,
 }

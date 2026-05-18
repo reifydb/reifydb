@@ -14,7 +14,7 @@ use crate::{
 		OperationType::{Create, Delete},
 		TransactionalMigrationChanges,
 	},
-	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
+	transaction::admin::AdminTransaction,
 };
 
 impl CatalogTrackMigrationChangeOperations for AdminTransaction {
@@ -83,39 +83,5 @@ impl TransactionalMigrationChanges for AdminTransaction {
 		self.changes.migration.iter().rev().any(|change| {
 			change.op == Delete && change.pre.as_ref().map(|m| m.name == name).unwrap_or(false)
 		})
-	}
-}
-
-impl CatalogTrackMigrationChangeOperations for SubscriptionTransaction {
-	fn track_migration_created(&mut self, migration: Migration) -> Result<()> {
-		self.inner.track_migration_created(migration)
-	}
-
-	fn track_migration_deleted(&mut self, migration: Migration) -> Result<()> {
-		self.inner.track_migration_deleted(migration)
-	}
-}
-
-impl CatalogTrackMigrationEventChangeOperations for SubscriptionTransaction {
-	fn track_migration_event_created(&mut self, event: MigrationEvent) -> Result<()> {
-		self.inner.track_migration_event_created(event)
-	}
-}
-
-impl TransactionalMigrationChanges for SubscriptionTransaction {
-	fn find_migration(&self, id: MigrationId) -> Option<&Migration> {
-		self.inner.find_migration(id)
-	}
-
-	fn find_migration_by_name(&self, name: &str) -> Option<&Migration> {
-		self.inner.find_migration_by_name(name)
-	}
-
-	fn is_migration_deleted(&self, id: MigrationId) -> bool {
-		self.inner.is_migration_deleted(id)
-	}
-
-	fn is_migration_deleted_by_name(&self, name: &str) -> bool {
-		self.inner.is_migration_deleted_by_name(name)
 	}
 }

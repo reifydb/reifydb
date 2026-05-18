@@ -1,0 +1,49 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Dropping ONLY the current version of an operator-state key while
+# historical versions remain must promote the next-newest historical
+# entry into current. Memory and SQLite must agree.
+#
+# Setup: V1 and V3 in __historical, V5 in __current.
+# Drop only V5.
+# Expected: current=V3, historical=[V1] on both backends.
+
+set 1=v1 version=1 created=1000
+set 1=v3 version=3 created=1000
+set 1=v5 version=5 created=1000
+---
+ok
+ok
+ok
+
+count_current
+count_historical
+---
+current: 1
+historical: 2
+
+versions 1
+---
+v5 created=1000 updated=1000 value="v5"
+v3 created=1000 updated=1000 value="v3"
+v1 created=1000 updated=1000 value="v1"
+
+drop_version 1 version=5
+---
+ok
+
+count_current
+count_historical
+---
+current: 1
+historical: 1
+
+versions 1
+---
+v3 created=1000 updated=1000 value="v3"
+v1 created=1000 updated=1000 value="v1"
+
+visible 1
+---
+created=1000 updated=1000 value="v3"

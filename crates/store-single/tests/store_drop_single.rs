@@ -1,219 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{error::Error as StdError, fmt::Write, path::Path};
+use std::path::Path;
 
-use reifydb_core::{
-	delta::Delta,
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
-	},
-	event::EventBus,
-	interface::store::{
-		SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
-		SingleVersionRangeRev, SingleVersionRow,
-	},
-	util::encoding::{
-		binary::decode_binary,
-		format::{Formatter, raw::Raw},
-	},
-};
-use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem};
-use reifydb_store_single::{
-	config::{HotConfig, SingleStoreConfig},
-	hot::tier::HotTier,
-	store::StandardSingleStore,
-};
-use reifydb_testing::{
-	tempdir::temp_dir,
-	testscript,
-	testscript::{command::Command, runner::run_path},
-};
-use reifydb_type::cow_vec;
+use reifydb_store_single::{buffer::tier::SingleBufferTier, config::PersistentConfig};
+use reifydb_testing::{tempdir::temp_dir, testscript::runner::run_path};
 use test_each_file::test_each_path;
 
+mod common;
+use common::Runner;
+
 test_each_path! { in "crates/store-single/tests/scripts/drop" as store_drop_single_memory => test_memory }
-test_each_path! { in "crates/store-single/tests/scripts/drop" as store_drop_single_sqlite => test_sqlite }
+test_each_path! { in "crates/store-single/tests/scripts/drop" as store_drop_single_sqlite_unbuffered => test_sqlite_unbuffered }
 
 fn test_memory(path: &Path) {
-	let storage = HotTier::memory();
+	let storage = SingleBufferTier::memory();
 	run_path(&mut Runner::new(storage), path).expect("test failed")
 }
 
-fn test_sqlite(path: &Path) {
-	temp_dir(|_db_path| {
-		let storage = HotTier::sqlite_in_memory();
-		run_path(&mut Runner::new(storage), path)
-	})
-	.expect("test failed")
-}
-
-/// Runs drop tests for single-version store.
-pub struct Runner {
-	store: StandardSingleStore,
-}
-
-impl Runner {
-	fn new(storage: HotTier) -> Self {
-		let store = StandardSingleStore::new(SingleStoreConfig {
-			hot: Some(HotConfig {
-				storage,
-			}),
-			event_bus: EventBus::new(&ActorSystem::new(
-				SharedRuntimeConfig::default().actor_system_config(),
-			)),
-		})
-		.unwrap();
-		Self {
-			store,
-		}
-	}
-}
-
-impl testscript::runner::Runner for Runner {
-	fn run(&mut self, command: &Command) -> Result<String, Box<dyn StdError>> {
-		let mut output = String::new();
-		match command.name.as_str() {
-			// get KEY
-			"get" => {
-				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
-				args.reject_rest()?;
-				let value: Option<SingleVersionRow> = self.store.get(&key)?.into();
-				let value = value.map(|sv| sv.row.to_vec());
-				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
-			}
-			// contains KEY
-			"contains" => {
-				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
-				args.reject_rest()?;
-				let contains = self.store.contains(&key)?;
-				writeln!(output, "{} => {}", Raw::key(&key), contains)?;
-			}
-
-			// scan [reverse=BOOL]
-			"scan" => {
-				let mut args = command.consume_args();
-				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-				args.reject_rest()?;
-
-				if !reverse {
-					let batch = SingleVersionRange::range(&self.store, EncodedKeyRange::all())?;
-					print(&mut output, batch.items.into_iter())
-				} else {
-					let batch =
-						SingleVersionRangeRev::range_rev(&self.store, EncodedKeyRange::all())?;
-					print(&mut output, batch.items.into_iter())
-				};
-			}
-			// range RANGE [reverse=BOOL]
-			"range" => {
-				let mut args = command.consume_args();
-				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-				let range = EncodedKeyRange::parse(
-					args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."),
-				);
-				args.reject_rest()?;
-
-				if !reverse {
-					let batch = SingleVersionRange::range(&self.store, range)?;
-					print(&mut output, batch.items.into_iter())
-				} else {
-					let batch = SingleVersionRangeRev::range_rev(&self.store, range)?;
-					print(&mut output, batch.items.into_iter())
-				};
-			}
-
-			// prefix PREFIX [reverse=BOOL]
-			"prefix" => {
-				let mut args = command.consume_args();
-				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-				let prefix =
-					EncodedKey(decode_binary(&args.next_pos().ok_or("prefix not given")?.value));
-				args.reject_rest()?;
-
-				if !reverse {
-					let batch = SingleVersionRange::prefix(&self.store, &prefix)?;
-					print(&mut output, batch.items.into_iter())
-				} else {
-					let batch = SingleVersionRangeRev::prefix_rev(&self.store, &prefix)?;
-					print(&mut output, batch.items.into_iter())
-				};
-			}
-
-			// set KEY=VALUE
-			"set" => {
-				let mut args = command.consume_args();
-				let kv = args.next_key().ok_or("key=value not given")?.clone();
-				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let row = EncodedRow(decode_binary(&kv.value));
-				args.reject_rest()?;
-
-				self.store.commit(cow_vec![
-					(Delta::Set {
-						key,
-						row
-					})
-				])?
-			}
-
-			// remove KEY
-			"remove" => {
-				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
-				args.reject_rest()?;
-
-				self.store.commit(cow_vec![
-					(Delta::Remove {
-						key
-					})
-				])?
-			}
-
-			// unset KEY=VALUE
-			"unset" => {
-				let mut args = command.consume_args();
-				let kv = args.next_key().ok_or("key=value not given")?.clone();
-				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let row = EncodedRow(decode_binary(&kv.value));
-				args.reject_rest()?;
-
-				self.store.commit(cow_vec![
-					(Delta::Unset {
-						key,
-						row
-					})
-				])?
-			}
-
-			// drop KEY
-			"drop" => {
-				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
-				args.reject_rest()?;
-
-				self.store.commit(cow_vec![
-					(Delta::Drop {
-						key,
-						up_to_version: None,
-						keep_last_versions: None,
-					})
-				])?
-			}
-
-			name => {
-				return Err(format!("invalid command {name}").into());
-			}
-		}
-		Ok(output)
-	}
-}
-
-fn print<I: Iterator<Item = SingleVersionRow>>(output: &mut String, iter: I) {
-	for item in iter {
-		let fmtkv = Raw::key_value(&item.key, item.row.as_slice());
-		writeln!(output, "{fmtkv}").unwrap();
-	}
+fn test_sqlite_unbuffered(path: &Path) {
+	temp_dir(|_db_path| run_path(&mut Runner::sqlite_unbuffered(PersistentConfig::sqlite_in_memory()), path))
+		.expect("test failed")
 }

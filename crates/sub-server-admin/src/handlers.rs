@@ -1,16 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! HTTP endpoint handler for the admin server.
-//!
-//! This module provides handler for:
-//! - `/health` - Health check
-//! - `/v1/auth/*` - Authentication endpoints
-//! - `/v1/config` - Configuration endpoints
-//! - `/v1/execute` - Query execution
-//! - `/v1/metrics` - System metrics
-//! - Static file serving for the admin UI
-
 use axum::{
 	Json,
 	body::Body,
@@ -18,18 +8,18 @@ use axum::{
 	http::{Response, StatusCode, header},
 	response::IntoResponse,
 };
+use reifydb_core::actors::admin::{AdminExecuteResponse, AdminLoginResponse, AdminMessage};
+use reifydb_runtime::actor::reply::reply_channel;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{assets, state::AdminState};
 
-/// Login request body.
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
 	pub token: String,
 }
 
-/// Login response.
 #[derive(Debug, Serialize)]
 pub struct LoginResponse {
 	pub success: bool,
@@ -37,50 +27,65 @@ pub struct LoginResponse {
 	pub session_token: Option<String>,
 }
 
-/// Auth status response.
 #[derive(Debug, Serialize)]
 pub struct AuthStatusResponse {
 	pub auth_required: bool,
 	pub authenticated: bool,
 }
 
-/// Handle login request.
 pub async fn handle_login(State(state): State<AdminState>, Json(request): Json<LoginRequest>) -> impl IntoResponse {
-	if !state.auth_required() {
-		return (
+	let (reply, receiver) = reply_channel();
+	let (actor_ref, _handle) = state.spawn_actor();
+	actor_ref
+		.send(AdminMessage::Login {
+			token: request.token,
+			reply,
+		})
+		.ok();
+
+	let response = receiver.recv().await.unwrap();
+
+	match response {
+		AdminLoginResponse::AuthNotRequired => (
 			StatusCode::OK,
 			Json(LoginResponse {
 				success: true,
 				message: Some("Auth not required".to_string()),
 				session_token: None,
 			}),
-		);
-	}
-
-	if state.auth_token() == Some(&request.token) {
-		// TODO: Generate proper session token
-		(
+		),
+		AdminLoginResponse::Success {
+			session_token,
+		} => (
 			StatusCode::OK,
 			Json(LoginResponse {
 				success: true,
 				message: None,
-				session_token: Some("temp_session_token".to_string()),
+				session_token: Some(session_token),
 			}),
-		)
-	} else {
-		(
+		),
+		AdminLoginResponse::InvalidToken => (
 			StatusCode::BAD_REQUEST,
 			Json(LoginResponse {
 				success: false,
 				message: Some("Invalid token".to_string()),
 				session_token: None,
 			}),
-		)
+		),
 	}
 }
 
-/// Handle logout request.
-pub async fn handle_logout() -> impl IntoResponse {
+pub async fn handle_logout(State(state): State<AdminState>) -> impl IntoResponse {
+	let (reply, receiver) = reply_channel();
+	let (actor_ref, _handle) = state.spawn_actor();
+	actor_ref
+		.send(AdminMessage::Logout {
+			reply,
+		})
+		.ok();
+
+	let _response = receiver.recv().await.unwrap();
+
 	(
 		StatusCode::OK,
 		Json(json!({
@@ -90,38 +95,69 @@ pub async fn handle_logout() -> impl IntoResponse {
 	)
 }
 
-/// Get authentication status.
 pub async fn handle_auth_status(State(state): State<AdminState>) -> impl IntoResponse {
+	let (reply, receiver) = reply_channel();
+	let (actor_ref, _handle) = state.spawn_actor();
+	actor_ref
+		.send(AdminMessage::AuthStatus {
+			reply,
+		})
+		.ok();
+
+	let response = receiver.recv().await.unwrap();
+
 	(
 		StatusCode::OK,
 		Json(AuthStatusResponse {
-			auth_required: state.auth_required(),
-			// TODO: Check actual auth status from session
-			authenticated: !state.auth_required(),
+			auth_required: response.auth_required,
+			authenticated: response.authenticated,
 		}),
 	)
 }
 
-/// Execute request body.
 #[derive(Debug, Deserialize)]
 pub struct ExecuteRequest {
 	pub query: String,
 }
 
-/// Execute a query (placeholder).
-pub async fn handle_execute(
-	State(_state): State<AdminState>,
-	Json(request): Json<ExecuteRequest>,
-) -> impl IntoResponse {
-	// TODO: Execute query using the engine
-	(
-		StatusCode::OK,
-		Json(json!({
-			"success": true,
-			"message": "Query execution not yet implemented",
-			"query": request.query
-		})),
-	)
+pub async fn handle_execute(State(state): State<AdminState>, Json(request): Json<ExecuteRequest>) -> impl IntoResponse {
+	let (reply, receiver) = reply_channel();
+	let (actor_ref, _handle) = state.spawn_actor();
+	actor_ref
+		.send(AdminMessage::Execute {
+			query: request.query.clone(),
+			reply,
+		})
+		.ok();
+
+	let response = receiver.recv().await.unwrap();
+
+	match response {
+		AdminExecuteResponse::Success {
+			message,
+		} => (
+			StatusCode::OK,
+			Json(json!({
+				"success": true,
+				"message": message
+			})),
+		),
+		AdminExecuteResponse::NotImplemented => (
+			StatusCode::OK,
+			Json(json!({
+				"success": true,
+				"message": "Query execution not yet implemented",
+				"query": request.query
+			})),
+		),
+		AdminExecuteResponse::Error(err) => (
+			StatusCode::INTERNAL_SERVER_ERROR,
+			Json(json!({
+				"success": false,
+				"message": err
+			})),
+		),
+	}
 }
 
 const FALLBACK_HTML: &str = r#"<!DOCTYPE html>
@@ -141,7 +177,6 @@ const FALLBACK_HTML: &str = r#"<!DOCTYPE html>
 </body>
 </html>"#;
 
-/// Serve the index.html file.
 pub async fn serve_index() -> impl IntoResponse {
 	if let Some(file) = assets::get_embedded_file("index.html") {
 		Response::builder()
@@ -158,10 +193,7 @@ pub async fn serve_index() -> impl IntoResponse {
 	}
 }
 
-/// Serve static assets.
 pub async fn serve_static(Path(path): Path<String>) -> impl IntoResponse {
-	// The router extracts path without "assets/" prefix (e.g., "index.js")
-	// but the manifest stores files with full path (e.g., "assets/index.js")
 	let clean_path = path.strip_prefix('/').unwrap_or(&path);
 	let full_path = format!("assets/{}", clean_path);
 

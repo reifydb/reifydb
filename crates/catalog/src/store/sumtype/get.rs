@@ -40,10 +40,10 @@ pub mod tests {
 		create_event(&mut txn, "namespace_two", "event_two", vec![]);
 		create_event(&mut txn, "namespace_three", "event_three", vec![]);
 
-		let result = CatalogStore::get_sumtype(&mut Transaction::Admin(&mut txn), SumTypeId(1026)).unwrap();
+		let result = CatalogStore::get_sumtype(&mut Transaction::Admin(&mut txn), SumTypeId(16386)).unwrap();
 
-		assert_eq!(result.id, SumTypeId(1026));
-		assert_eq!(result.namespace, NamespaceId(1027));
+		assert_eq!(result.id, SumTypeId(16386));
+		assert_eq!(result.namespace, NamespaceId(16387));
 		assert_eq!(result.name, "event_two");
 	}
 

@@ -271,6 +271,10 @@ export class BlobValue implements Value {
         return null;
     }
 
+    toJSON(): string | null {
+        return this.bytes === undefined ? null : this.toHex()!;
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,

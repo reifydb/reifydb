@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Transform extension points (native, FFI, WASM)
-
 pub mod context;
 #[cfg(reifydb_target = "native")]
 pub mod ffi;
@@ -15,7 +13,6 @@ pub mod wasm_loader;
 use reifydb_core::value::column::columns::Columns;
 use reifydb_type::Result;
 
-/// A stateless Columns → Columns transformation.
 pub trait Transform: Send + Sync {
 	fn apply(&self, ctx: &context::TransformContext, input: Columns) -> Result<Columns>;
 }

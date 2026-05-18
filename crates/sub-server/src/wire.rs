@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Wire format types for the WebSocket and HTTP protocol layers.
-//!
-//! Parameters are encoded in the following wire format:
-//! - Positional: `[{"type":"Int2","value":"1234"}, ...]`
-//! - Named: `{"key": {"type":"Int2","value":"1234"}, ...}`
-//!
-//! These types deserialize that format and convert it to the internal [`Params`] type.
-
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_type::{
@@ -27,7 +19,6 @@ use reifydb_type::{
 };
 use serde::{Deserialize, Serialize};
 
-/// Wire format for a single typed value: `{"type": "Int2", "value": "1234"}`
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WireValue {
 	#[serde(rename = "type")]
@@ -35,11 +26,6 @@ pub struct WireValue {
 	pub value: String,
 }
 
-/// Wire format for query parameters.
-///
-/// Either positional or named:
-/// - Positional: `[{"type":"Int2","value":"1234"}, ...]`
-/// - Named: `{"key": {"type":"Int2","value":"1234"}, ...}`
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum WireParams {

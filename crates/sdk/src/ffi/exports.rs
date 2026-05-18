@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-// Redesigned FFI exports that work with static metadata
-
 use std::{collections::HashMap, ffi::c_void, ptr, slice};
 
 use postcard::from_bytes;
@@ -20,10 +18,9 @@ use reifydb_type::value::Value;
 
 use crate::{
 	ffi::wrapper::{OperatorWrapper, create_vtable},
-	operator::{FFIOperatorWithMetadata, column::OperatorColumn},
+	operator::{FFIOperatorWithMetadata, column::operator::OperatorColumn},
 };
 
-/// Convert a static string to a BufferFFI
 fn str_to_buffer(s: &'static str) -> BufferFFI {
 	BufferFFI {
 		ptr: s.as_ptr(),
@@ -32,7 +29,6 @@ fn str_to_buffer(s: &'static str) -> BufferFFI {
 	}
 }
 
-/// Convert operator column definitions to FFI representation
 fn columns_to_ffi(columns: &'static [OperatorColumn]) -> OperatorColumnsFFI {
 	if columns.is_empty() {
 		return OperatorColumnsFFI::empty();
@@ -41,7 +37,7 @@ fn columns_to_ffi(columns: &'static [OperatorColumn]) -> OperatorColumnsFFI {
 	let ffi_columns: Vec<OperatorColumnFFI> = columns
 		.iter()
 		.map(|c| {
-			let ffi_type = c.field_type.to_ffi();
+			let ffi_type = c.type_constraint.to_ffi();
 			OperatorColumnFFI {
 				name: str_to_buffer(c.name),
 				base_type: ffi_type.base_type,
@@ -85,9 +81,7 @@ pub unsafe extern "C" fn create_operator_instance<O: FFIOperatorWithMetadata>(
 	config_len: usize,
 	operator_id: u64,
 ) -> *mut c_void {
-	// Deserialize configuration from postcard if provided
 	let config = if config_ptr.is_null() || config_len == 0 {
-		// No configuration provided, use empty HashMap
 		HashMap::new()
 	} else {
 		// SAFETY: caller guarantees config_ptr is valid for config_len bytes
@@ -104,7 +98,6 @@ pub unsafe extern "C" fn create_operator_instance<O: FFIOperatorWithMetadata>(
 		}
 	};
 
-	// Create operator with ID and config
 	let operator = match O::new(FlowNodeId(operator_id), &config) {
 		Ok(op) => op,
 		Err(e) => {
@@ -113,23 +106,10 @@ pub unsafe extern "C" fn create_operator_instance<O: FFIOperatorWithMetadata>(
 		}
 	};
 
-	// Wrap in FFI wrapper
 	let wrapper = Box::new(OperatorWrapper::new(operator));
 	Box::into_raw(wrapper) as *mut c_void
 }
 
-/// Returns the operator magic number
-///
-/// FFI operator libraries must export this function as `ffi_operator_magic`
-/// to be recognized as valid operators by the loader.
-///
-/// # Example
-/// ```ignore
-/// #[unsafe(no_mangle)]
-/// pub extern "C" fn ffi_operator_magic() -> u32 {
-///     reifydb_flow_operator_sdk::ffi::exports::operator_magic()
-/// }
-/// ```
 pub extern "C" fn operator_magic() -> u32 {
 	OPERATOR_MAGIC
 }

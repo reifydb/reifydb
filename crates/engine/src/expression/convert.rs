@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::catalog::property::ColumnSaturationPolicy;
+use reifydb_core::interface::catalog::property::ColumnSaturationStrategy;
 use reifydb_type::{
 	Result,
 	error::TypeError,
@@ -36,7 +36,7 @@ impl Convert for &EvalContext<'_> {
 	{
 		let fragment = fragment.into();
 		match &self.saturation_policy() {
-			ColumnSaturationPolicy::Error => from
+			ColumnSaturationStrategy::Error => from
 				.checked_convert()
 				.ok_or_else(|| {
 					if From::get_type().is_integer() && To::get_type().is_floating_point() {
@@ -57,7 +57,7 @@ impl Convert for &EvalContext<'_> {
 					.into()
 				})
 				.map(Some),
-			ColumnSaturationPolicy::None => match from.checked_convert() {
+			ColumnSaturationStrategy::None => match from.checked_convert() {
 				None => Ok(None),
 				Some(value) => Ok(Some(value)),
 			},

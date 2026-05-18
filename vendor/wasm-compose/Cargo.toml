@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.82.0"
 name = "wasm-compose"
-version = "0.245.1"
+version = "0.246.2"
 authors = ["Peter Huene <peter@huene.dev>"]
 build = false
 autolib = false
@@ -27,6 +27,21 @@ documentation = "https://docs.rs/wasm-compose"
 readme = "README.md"
 license = "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT"
 repository = "https://github.com/bytecodealliance/wasm-tools/tree/main/crates/wasm-compose"
+
+[features]
+default = [
+    "yaml",
+    "serde",
+]
+serde = [
+    "dep:serde",
+    "dep:serde_derive",
+    "indexmap/serde",
+]
+yaml = [
+    "dep:serde_yaml2",
+    "serde",
+]
 
 [lib]
 name = "wasm_compose"
@@ -43,15 +58,9 @@ default-features = false
 [dependencies.heck]
 version = "0.5.0"
 
-[dependencies.im-rc]
-version = "15.1.0"
-
 [dependencies.indexmap]
 version = "2.13.0"
-features = [
-    "std",
-    "serde",
-]
+features = ["std"]
 default-features = false
 
 [dependencies.log]
@@ -62,20 +71,26 @@ version = "0.6.2"
 
 [dependencies.serde]
 version = "1.0.166"
-features = ["alloc"]
+features = [
+    "alloc",
+    "std",
+]
+optional = true
 default-features = false
 
 [dependencies.serde_derive]
 version = "1.0.166"
+optional = true
 
-[dependencies.serde_yaml]
-version = "0.9.22"
+[dependencies.serde_yaml2]
+version = "0.1.3"
+optional = true
 
 [dependencies.smallvec]
 version = "1.10.0"
 
 [dependencies.wasm-encoder]
-version = "0.245.1"
+version = "0.246.2"
 features = [
     "std",
     "wasmparser",
@@ -84,7 +99,7 @@ features = [
 default-features = false
 
 [dependencies.wasmparser]
-version = "0.245.1"
+version = "0.246.2"
 features = [
     "simd",
     "std",
@@ -95,7 +110,7 @@ features = [
 default-features = false
 
 [dependencies.wat]
-version = "1.245.1"
+version = "1.246.2"
 features = ["component-model"]
 default-features = false
 
@@ -106,12 +121,12 @@ version = "0.3.0"
 version = "1.2.1"
 
 [dev-dependencies.wasmprinter]
-version = "0.245.1"
+version = "0.246.2"
 features = ["component-model"]
 default-features = false
 
 [dev-dependencies.wit-component]
-version = "0.245.1"
+version = "0.246.2"
 
 [lints.clippy]
 clone_on_copy = "warn"

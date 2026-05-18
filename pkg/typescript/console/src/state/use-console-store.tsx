@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 import { createContext, useContext, useReducer, type Dispatch, type ReactNode } from 'react';
-import { consoleReducer, initialConsoleState, type ConsoleState, type ConsoleAction } from './console-store';
+import { console_reducer, initial_console_state, type ConsoleState, type ConsoleAction } from './console-store';
 
 interface ConsoleContextValue {
   state: ConsoleState;
@@ -13,13 +13,13 @@ const ConsoleContext = createContext<ConsoleContextValue | null>(null);
 
 interface ConsoleProviderProps {
   children: ReactNode;
-  initialCode?: string;
+  initial_code?: string;
 }
 
-export function ConsoleProvider({ children, initialCode }: ConsoleProviderProps) {
-  const [state, dispatch] = useReducer(consoleReducer, {
-    ...initialConsoleState,
-    code: initialCode ?? '',
+export function ConsoleProvider({ children, initial_code }: ConsoleProviderProps) {
+  const [state, dispatch] = useReducer(console_reducer, {
+    ...initial_console_state,
+    code: initial_code ?? '',
   });
 
   return (

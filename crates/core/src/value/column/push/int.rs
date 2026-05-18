@@ -3,25 +3,25 @@
 
 use reifydb_type::{storage::DataBitVec, value::int::Int};
 
-use crate::value::column::{ColumnData, push::Push};
+use crate::value::column::{ColumnBuffer, push::Push};
 
-impl Push<Int> for ColumnData {
+impl Push<Int> for ColumnBuffer {
 	fn push(&mut self, value: Int) {
 		match self {
-			ColumnData::Int {
+			ColumnBuffer::Int {
 				container,
 				..
 			} => {
 				container.push(value);
 			}
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner,
 				bitvec,
 			} => {
 				inner.push(value);
 				DataBitVec::push(bitvec, true);
 			}
-			_ => unreachable!("Push<Int> for ColumnData with incompatible type"),
+			_ => unreachable!("Push<Int> for ColumnBuffer with incompatible type"),
 		}
 	}
 }

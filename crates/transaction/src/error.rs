@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_core::common::CommitVersion;
 use reifydb_type::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
@@ -40,6 +41,12 @@ pub enum TransactionError {
 	RaftProposeFailed {
 		message: String,
 	},
+
+	#[error("Snapshot version {} evicted by GC; cutoff is {}", version.0, cutoff.0)]
+	SnapshotVersionEvicted {
+		version: CommitVersion,
+		cutoff: CommitVersion,
+	},
 }
 
 impl IntoDiagnostic for TransactionError {
@@ -47,7 +54,7 @@ impl IntoDiagnostic for TransactionError {
 		match self {
 			TransactionError::Conflict => Diagnostic {
 				code: "TXN_001".to_string(),
-				statement: None,
+				rql: None,
 				message: "Transaction conflict detected - another transaction modified the same data".to_string(),
 				column: None,
 				fragment: Fragment::None,
@@ -60,7 +67,7 @@ impl IntoDiagnostic for TransactionError {
 
 			TransactionError::RolledBack => Diagnostic {
 				code: "TXN_002".to_string(),
-				statement: None,
+				rql: None,
 				message: "Transaction rolled back and cannot be committed".to_string(),
 				column: None,
 				fragment: Fragment::None,
@@ -73,7 +80,7 @@ impl IntoDiagnostic for TransactionError {
 
 			TransactionError::TooLarge => Diagnostic {
 				code: "TXN_003".to_string(),
-				statement: None,
+				rql: None,
 				message: "Transaction contains too many writes and exceeds size limits".to_string(),
 				column: None,
 				fragment: Fragment::None,
@@ -86,7 +93,7 @@ impl IntoDiagnostic for TransactionError {
 
 			TransactionError::TooOld => Diagnostic {
 				code: "TXN_004".to_string(),
-				statement: None,
+				rql: None,
 				message: "Transaction open too long - the conflict history for this read snapshot has been evicted".to_string(),
 				column: None,
 				fragment: Fragment::None,
@@ -99,7 +106,7 @@ impl IntoDiagnostic for TransactionError {
 
 			TransactionError::AlreadyCommitted => Diagnostic {
 				code: "TXN_008".to_string(),
-				statement: None,
+				rql: None,
 				message: "Transaction was already committed".to_string(),
 				column: None,
 				fragment: Fragment::None,
@@ -112,7 +119,7 @@ impl IntoDiagnostic for TransactionError {
 
 			TransactionError::AlreadyRolledBack => Diagnostic {
 				code: "TXN_009".to_string(),
-				statement: None,
+				rql: None,
 				message: "Transaction was already rolled back".to_string(),
 				column: None,
 				fragment: Fragment::None,
@@ -125,7 +132,7 @@ impl IntoDiagnostic for TransactionError {
 
 			TransactionError::KeyOutOfScope { key } => Diagnostic {
 				code: "TXN_010".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Key '{}' is not in the transaction's declared key scope", key),
 				column: None,
 				fragment: Fragment::None,
@@ -141,7 +148,7 @@ impl IntoDiagnostic for TransactionError {
 
 			TransactionError::Poisoned { cause } => Diagnostic {
 				code: "TXN_011".to_string(),
-				statement: None,
+				rql: None,
 				message: "Transaction was poisoned by a prior error".to_string(),
 				column: None,
 				fragment: Fragment::None,
@@ -154,12 +161,31 @@ impl IntoDiagnostic for TransactionError {
 
 			TransactionError::RaftProposeFailed { message } => Diagnostic {
 				code: "TXN_012".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Raft proposal failed: {message}"),
 				column: None,
 				fragment: Fragment::None,
 				label: None,
 				help: Some("The write could not be replicated. Retry or check cluster health.".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			TransactionError::SnapshotVersionEvicted { version, cutoff } => Diagnostic {
+				code: "TXN_013".to_string(),
+				rql: None,
+				message: format!(
+					"Snapshot version {} evicted by historical GC; current cutoff is {}",
+					version.0, cutoff.0
+				),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: Some(
+					"Acquire the hydration lease against a more recent version, or subscribe with WITH { hydration: { enabled: false } }."
+						.to_string(),
+				),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

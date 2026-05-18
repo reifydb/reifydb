@@ -8,6 +8,7 @@ use crate::{
 		identifier::UnresolvedShapeIdentifier,
 		parse::Parser,
 	},
+	bump::BumpFragment,
 	diagnostic::AstError,
 	token::{
 		keyword::Keyword,
@@ -24,7 +25,6 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_from(&mut self) -> Result<AstFrom<'bump>> {
 		let token = self.consume_keyword(Keyword::From)?;
 
-		// Check token type first
 		let is_inline = if let Ok(current) = self.current() {
 			current.is_operator(OpenBracket)
 		} else {
@@ -37,7 +37,6 @@ impl<'bump> Parser<'bump> {
 				list: self.parse_static()?,
 			})
 		} else {
-			// Check if this is a variable or identifier
 			let current = self.current()?;
 			match current.kind {
 				TokenKind::Variable => {
@@ -68,11 +67,13 @@ impl<'bump> Parser<'bump> {
 				}
 			}
 
-			// Get the first identifier (with hyphen support)
-			let first_identifier = self.parse_identifier_with_hyphens()?;
+			let mut segments = vec![self.parse_identifier_with_hyphens()?];
+			while !self.is_eof() && self.current_expect_operator(Operator::DoubleColon).is_ok() {
+				self.consume_operator(Operator::DoubleColon)?;
+				segments.push(self.parse_identifier_with_hyphens()?);
+			}
 
-			// Check if this is a generator function call: identifier { ... }
-			let is_generatortion = if !self.is_eof() {
+			let is_generator = if !self.is_eof() {
 				if let Ok(current) = self.current() {
 					current.is_operator(OpenCurly)
 				} else {
@@ -82,35 +83,36 @@ impl<'bump> Parser<'bump> {
 				false
 			};
 
-			if is_generatortion {
-				// Parse as generator function
-				let function_name = first_identifier;
+			if is_generator {
+				let function_name = if segments.len() == 1 {
+					segments.into_iter().next().unwrap().into_fragment()
+				} else {
+					let combined = segments
+						.iter()
+						.map(|s| s.fragment().text())
+						.collect::<Vec<_>>()
+						.join("::");
+					let first = segments[0].fragment();
+					let line = first.line();
+					let column = first.column();
+					BumpFragment::Statement {
+						text: self.bump().alloc_str(&combined),
+						offset: 0,
+						source_end: 0,
+						line,
+						column,
+					}
+				};
 				let (nodes, _has_braces) = self.parse_expressions(true, false, None)?;
 
 				return Ok(AstFrom::Generator(AstGenerator {
 					token,
-					name: function_name.into_fragment(),
+					name: function_name,
 					nodes,
 				}));
 			}
 
-			// Check if there's a double-colon following (namespace separator)
-			let has_double_colon = if !self.is_eof() {
-				if let Ok(current) = self.current() {
-					current.is_operator(Operator::DoubleColon)
-				} else {
-					false
-				}
-			} else {
-				false
-			};
-
-			let source = if has_double_colon {
-				let mut segments = vec![first_identifier];
-				while !self.is_eof() && self.current_expect_operator(Operator::DoubleColon).is_ok() {
-					self.consume_operator(Operator::DoubleColon)?;
-					segments.push(self.parse_identifier_with_hyphens()?);
-				}
+			let source = {
 				let name = segments.pop().unwrap().into_fragment();
 				let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 
@@ -122,19 +124,8 @@ impl<'bump> Parser<'bump> {
 				}
 
 				source
-			} else {
-				let mut source =
-					UnresolvedShapeIdentifier::new(vec![], first_identifier.into_fragment());
-
-				if !self.is_eof() && self.current()?.is_identifier() {
-					let alias_token = self.consume(TokenKind::Identifier)?;
-					source = source.with_alias(alias_token.fragment);
-				}
-
-				source
 			};
 
-			// Check for index directive using USING keyword
 			let index_name = if !self.is_eof() {
 				if let Ok(current) = self.current() {
 					if current.is_keyword(Keyword::Using) {
@@ -166,7 +157,6 @@ impl<'bump> Parser<'bump> {
 		loop {
 			self.skip_new_line()?;
 
-			// Check if we've reached the closing bracket
 			let should_break = if let Ok(current) = self.current() {
 				current.is_operator(CloseBracket)
 			} else {
@@ -521,7 +511,7 @@ pub mod tests {
 	#[test]
 	fn test_from_generator_simple() {
 		let bump = Bump::new();
-		let source = "FROM generate_series { start: 1, end: 100 }";
+		let source = "FROM series::generate { start: 1, end: 100 }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
@@ -532,7 +522,7 @@ pub mod tests {
 
 		match from {
 			AstFrom::Generator(generator) => {
-				assert_eq!(generator.name.text(), "generate_series");
+				assert_eq!(generator.name.text(), "series::generate");
 				assert_eq!(generator.nodes.len(), 2);
 
 				let first_param = generator.nodes[0].as_infix();

@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::error::diagnostic::catalog::{
-	dictionary_not_found, namespace_not_found, ringbuffer_not_found, series_not_found, sumtype_not_found,
-	table_not_found, view_not_found,
+	dictionary_not_found, handler_not_found, namespace_not_found, procedure_not_found, ringbuffer_not_found,
+	series_not_found, sumtype_not_found, table_not_found, test_not_found, view_not_found,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, return_error};
@@ -56,7 +56,7 @@ impl<'bump> Compiler<'bump> {
 			let ns_fragment = if let Some(n) = drop.table.namespace.first() {
 				self.interner.intern_fragment(n).with_text(&ns_name)
 			} else {
-				Fragment::internal("default".to_string())
+				Fragment::internal("default")
 			};
 			return_error!(namespace_not_found(ns_fragment, &ns_name));
 		};
@@ -65,7 +65,7 @@ impl<'bump> Compiler<'bump> {
 		let ns_fragment = if let Some(n) = drop.table.namespace.first() {
 			self.interner.intern_fragment(n).with_text(namespace.name())
 		} else {
-			Fragment::internal(namespace.name().to_string())
+			Fragment::internal(namespace.name())
 		};
 
 		match self.catalog.find_table_by_name(rx, namespace.id(), drop.table.name.text())? {
@@ -100,7 +100,7 @@ impl<'bump> Compiler<'bump> {
 			let ns_fragment = if let Some(n) = drop.view.namespace.first() {
 				self.interner.intern_fragment(n).with_text(&ns_name)
 			} else {
-				Fragment::internal("default".to_string())
+				Fragment::internal("default")
 			};
 			return_error!(namespace_not_found(ns_fragment, &ns_name));
 		};
@@ -109,7 +109,7 @@ impl<'bump> Compiler<'bump> {
 		let ns_fragment = if let Some(n) = drop.view.namespace.first() {
 			self.interner.intern_fragment(n).with_text(namespace.name())
 		} else {
-			Fragment::internal(namespace.name().to_string())
+			Fragment::internal(namespace.name())
 		};
 
 		match self.catalog.find_view_by_name(rx, namespace.id(), drop.view.name.text())? {
@@ -144,7 +144,7 @@ impl<'bump> Compiler<'bump> {
 			let ns_fragment = if let Some(n) = drop.ringbuffer.namespace.first() {
 				self.interner.intern_fragment(n).with_text(&ns_name)
 			} else {
-				Fragment::internal("default".to_string())
+				Fragment::internal("default")
 			};
 			return_error!(namespace_not_found(ns_fragment, &ns_name));
 		};
@@ -153,7 +153,7 @@ impl<'bump> Compiler<'bump> {
 		let ns_fragment = if let Some(n) = drop.ringbuffer.namespace.first() {
 			self.interner.intern_fragment(n).with_text(namespace.name())
 		} else {
-			Fragment::internal(namespace.name().to_string())
+			Fragment::internal(namespace.name())
 		};
 
 		match self.catalog.find_ringbuffer_by_name(rx, namespace.id(), drop.ringbuffer.name.text())? {
@@ -192,7 +192,7 @@ impl<'bump> Compiler<'bump> {
 			let ns_fragment = if let Some(n) = drop.dictionary.namespace.first() {
 				self.interner.intern_fragment(n).with_text(&ns_name)
 			} else {
-				Fragment::internal("default".to_string())
+				Fragment::internal("default")
 			};
 			return_error!(namespace_not_found(ns_fragment, &ns_name));
 		};
@@ -201,7 +201,7 @@ impl<'bump> Compiler<'bump> {
 		let ns_fragment = if let Some(n) = drop.dictionary.namespace.first() {
 			self.interner.intern_fragment(n).with_text(namespace.name())
 		} else {
-			Fragment::internal(namespace.name().to_string())
+			Fragment::internal(namespace.name())
 		};
 
 		match self.catalog.find_dictionary_by_name(rx, namespace.id(), drop.dictionary.name.text())? {
@@ -240,7 +240,7 @@ impl<'bump> Compiler<'bump> {
 			let ns_fragment = if let Some(n) = drop.sumtype.namespace.first() {
 				self.interner.intern_fragment(n).with_text(&ns_name)
 			} else {
-				Fragment::internal("default".to_string())
+				Fragment::internal("default")
 			};
 			return_error!(namespace_not_found(ns_fragment, &ns_name));
 		};
@@ -249,7 +249,7 @@ impl<'bump> Compiler<'bump> {
 		let ns_fragment = if let Some(n) = drop.sumtype.namespace.first() {
 			self.interner.intern_fragment(n).with_text(namespace.name())
 		} else {
-			Fragment::internal(namespace.name().to_string())
+			Fragment::internal(namespace.name())
 		};
 
 		match self.catalog.find_sumtype_by_name(rx, namespace.id(), drop.sumtype.name.text())? {
@@ -284,8 +284,6 @@ impl<'bump> Compiler<'bump> {
 	) -> Result<PhysicalPlan<'bump>> {
 		let subscription_name = self.interner.intern_fragment(&drop.identifier);
 
-		// Subscriptions are looked up by ID at execution time, not by name in a namespace.
-		// We pass the name through and let the VM handler resolve it.
 		Ok(PhysicalPlan::DropSubscription(nodes::DropSubscriptionNode {
 			subscription_name,
 			if_exists: drop.if_exists,
@@ -304,7 +302,7 @@ impl<'bump> Compiler<'bump> {
 			let ns_fragment = if let Some(n) = drop.series.namespace.first() {
 				self.interner.intern_fragment(n).with_text(&ns_name)
 			} else {
-				Fragment::internal("default".to_string())
+				Fragment::internal("default")
 			};
 			return_error!(namespace_not_found(ns_fragment, &ns_name));
 		};
@@ -313,7 +311,7 @@ impl<'bump> Compiler<'bump> {
 		let ns_fragment = if let Some(n) = drop.series.namespace.first() {
 			self.interner.intern_fragment(n).with_text(namespace.name())
 		} else {
-			Fragment::internal(namespace.name().to_string())
+			Fragment::internal(namespace.name())
 		};
 
 		match self.catalog.find_series_by_name(rx, namespace.id(), drop.series.name.text())? {
@@ -348,7 +346,7 @@ impl<'bump> Compiler<'bump> {
 			let ns_fragment = if let Some(n) = drop.source.namespace.first() {
 				self.interner.intern_fragment(n).with_text(&ns_name)
 			} else {
-				Fragment::internal("default".to_string())
+				Fragment::internal("default")
 			};
 			return_error!(namespace_not_found(ns_fragment, &ns_name));
 		};
@@ -359,6 +357,52 @@ impl<'bump> Compiler<'bump> {
 			name: self.interner.intern_fragment(&drop.source.name),
 			cascade: drop.cascade,
 		}))
+	}
+
+	pub(crate) fn compile_drop_procedure(
+		&mut self,
+		rx: &mut Transaction<'_>,
+		drop: logical::DropProcedureNode<'_>,
+	) -> Result<PhysicalPlan<'bump>> {
+		let ns_segments: Vec<&str> = drop.procedure.namespace.iter().map(|n| n.text()).collect();
+		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
+			let ns_name = ns_segments.join("::");
+			let ns_fragment = if let Some(n) = drop.procedure.namespace.first() {
+				self.interner.intern_fragment(n).with_text(&ns_name)
+			} else {
+				Fragment::internal("default")
+			};
+			return_error!(namespace_not_found(ns_fragment, &ns_name));
+		};
+
+		let procedure_name = self.interner.intern_fragment(&drop.procedure.name);
+		let ns_fragment = if let Some(n) = drop.procedure.namespace.first() {
+			self.interner.intern_fragment(n).with_text(namespace.name())
+		} else {
+			Fragment::internal(namespace.name())
+		};
+
+		match self.catalog.find_procedure_by_name(rx, namespace.id(), drop.procedure.name.text())? {
+			Some(def) => Ok(PhysicalPlan::DropProcedure(nodes::DropProcedureNode {
+				namespace_name: ns_fragment,
+				procedure_name,
+				procedure_id: Some(def.id()),
+				if_exists: drop.if_exists,
+			})),
+			None if drop.if_exists => Ok(PhysicalPlan::DropProcedure(nodes::DropProcedureNode {
+				namespace_name: ns_fragment,
+				procedure_name,
+				procedure_id: None,
+				if_exists: true,
+			})),
+			None => {
+				return_error!(procedure_not_found(
+					procedure_name,
+					namespace.name(),
+					drop.procedure.name.text()
+				));
+			}
+		}
 	}
 
 	pub(crate) fn compile_drop_sink(
@@ -372,7 +416,7 @@ impl<'bump> Compiler<'bump> {
 			let ns_fragment = if let Some(n) = drop.sink.namespace.first() {
 				self.interner.intern_fragment(n).with_text(&ns_name)
 			} else {
-				Fragment::internal("default".to_string())
+				Fragment::internal("default")
 			};
 			return_error!(namespace_not_found(ns_fragment, &ns_name));
 		};
@@ -383,5 +427,124 @@ impl<'bump> Compiler<'bump> {
 			name: self.interner.intern_fragment(&drop.sink.name),
 			cascade: drop.cascade,
 		}))
+	}
+
+	pub(crate) fn compile_drop_handler(
+		&mut self,
+		rx: &mut Transaction<'_>,
+		drop: logical::DropHandlerNode<'_>,
+	) -> Result<PhysicalPlan<'bump>> {
+		let ns_segments: Vec<&str> = drop.handler.namespace.iter().map(|n| n.text()).collect();
+		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
+			let ns_name = ns_segments.join("::");
+			let ns_fragment = if let Some(n) = drop.handler.namespace.first() {
+				self.interner.intern_fragment(n).with_text(&ns_name)
+			} else {
+				Fragment::internal("default")
+			};
+			return_error!(namespace_not_found(ns_fragment, &ns_name));
+		};
+
+		let handler_name = self.interner.intern_fragment(&drop.handler.name);
+		let ns_fragment = if let Some(n) = drop.handler.namespace.first() {
+			self.interner.intern_fragment(n).with_text(namespace.name())
+		} else {
+			Fragment::internal(namespace.name())
+		};
+
+		let procedure_opt =
+			self.catalog.find_procedure_by_name(rx, namespace.id(), drop.handler.name.text())?;
+		let handler_opt = self.catalog.find_handler_by_name(rx, namespace.id(), drop.handler.name.text())?;
+
+		match (procedure_opt, handler_opt) {
+			(procedure, handler) if procedure.is_some() || handler.is_some() => {
+				Ok(PhysicalPlan::DropHandler(nodes::DropHandlerNode {
+					namespace_name: ns_fragment,
+					handler_name,
+					procedure_id: procedure.map(|p| p.id()),
+					handler_id: handler.map(|h| h.id),
+					if_exists: drop.if_exists,
+				}))
+			}
+			_ if drop.if_exists => Ok(PhysicalPlan::DropHandler(nodes::DropHandlerNode {
+				namespace_name: ns_fragment,
+				handler_name,
+				procedure_id: None,
+				handler_id: None,
+				if_exists: true,
+			})),
+			_ => {
+				return_error!(handler_not_found(
+					handler_name,
+					namespace.name(),
+					drop.handler.name.text()
+				));
+			}
+		}
+	}
+
+	pub(crate) fn compile_drop_binding(
+		&mut self,
+		rx: &mut Transaction<'_>,
+		drop: logical::DropBindingNode<'_>,
+	) -> Result<PhysicalPlan<'bump>> {
+		let ns_segments: Vec<&str> = drop.binding.namespace.iter().map(|n| n.text()).collect();
+		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
+			let ns_name = ns_segments.join("::");
+			let ns_fragment = if let Some(n) = drop.binding.namespace.first() {
+				self.interner.intern_fragment(n).with_text(&ns_name)
+			} else {
+				Fragment::internal("default")
+			};
+			return_error!(namespace_not_found(ns_fragment, &ns_name));
+		};
+
+		Ok(PhysicalPlan::DropBinding(nodes::DropBindingNode {
+			namespace,
+			name: self.interner.intern_fragment(&drop.binding.name),
+			if_exists: drop.if_exists,
+		}))
+	}
+
+	pub(crate) fn compile_drop_test(
+		&mut self,
+		rx: &mut Transaction<'_>,
+		drop: logical::DropTestNode<'_>,
+	) -> Result<PhysicalPlan<'bump>> {
+		let ns_segments: Vec<&str> = drop.test.namespace.iter().map(|n| n.text()).collect();
+		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
+			let ns_name = ns_segments.join("::");
+			let ns_fragment = if let Some(n) = drop.test.namespace.first() {
+				self.interner.intern_fragment(n).with_text(&ns_name)
+			} else {
+				Fragment::internal("default")
+			};
+			return_error!(namespace_not_found(ns_fragment, &ns_name));
+		};
+
+		let test_name = self.interner.intern_fragment(&drop.test.name);
+		let ns_fragment = if let Some(n) = drop.test.namespace.first() {
+			self.interner.intern_fragment(n).with_text(namespace.name())
+		} else {
+			Fragment::internal(namespace.name())
+		};
+
+		match self.catalog.find_test_by_name(rx, namespace.id(), drop.test.name.text())? {
+			Some(def) => Ok(PhysicalPlan::DropTest(nodes::DropTestNode {
+				namespace_name: ns_fragment,
+				test_name,
+				test_id: Some(def.id),
+				if_exists: drop.if_exists,
+			})),
+			None if drop.if_exists => Ok(PhysicalPlan::DropTest(nodes::DropTestNode {
+				namespace_name: ns_fragment,
+				test_name,
+				test_id: None,
+				if_exists: true,
+			})),
+			None => {
+				return_error!(test_not_found(test_name, namespace.name(), drop.test.name.text()));
+			}
+		}
 	}
 }

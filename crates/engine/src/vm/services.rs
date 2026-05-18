@@ -10,50 +10,42 @@ use reifydb_catalog::{
 };
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_extension::transform::registry::Transforms;
-use reifydb_metric::metric::MetricReader;
+use reifydb_metric::storage::metric::MetricReader;
 use reifydb_routine::{
-	function::{default_functions, registry::Functions},
-	procedure::{Procedure, registry::Procedures},
+	function::default_native_functions,
+	procedure::default_native_procedures,
+	routine::{Procedure, registry::Routines},
 };
 use reifydb_rql::compiler::Compiler;
-use reifydb_runtime::context::RuntimeContext;
+use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_store_single::SingleStore;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::sumtype::VariantRef;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(reifydb_single_threaded))]
 use crate::remote::RemoteRegistry;
 
-/// Configuration bundle for engine services.
-///
-/// Groups the shared extension registries and runtime context that flow through
-/// `StandardEngine::new` -> `Executor::new` -> `Services::new`.
 pub struct EngineConfig {
 	pub runtime_context: RuntimeContext,
-	pub functions: Functions,
-	pub procedures: Procedures,
+	pub routines: Routines,
 	pub transforms: Transforms,
 	pub ioc: IocContainer,
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(not(reifydb_single_threaded))]
 	pub remote_registry: Option<RemoteRegistry>,
 }
 
-/// Services is a container for shared resources used throughout the execution engine.
-///
-/// This struct provides a single location for all the shared resources that the VM,
-/// query operators, and other components need access to.
 pub struct Services {
 	pub catalog: Catalog,
 	pub runtime_context: RuntimeContext,
 	pub compiler: Compiler,
-	pub functions: Functions,
-	pub procedures: Procedures,
+	pub routines: Routines,
 	pub transforms: Transforms,
 	pub flow_operator_store: SystemFlowOperatorStore,
 	pub virtual_table_registry: UserVTableRegistry,
 	pub stats_reader: MetricReader<SingleStore>,
 	pub ioc: IocContainer,
 	pub auth_registry: AuthenticationRegistry,
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(not(reifydb_single_threaded))]
 	pub remote_registry: Option<RemoteRegistry>,
 }
 
@@ -69,39 +61,43 @@ impl Services {
 			compiler: Compiler::new(catalog.clone()),
 			catalog,
 			runtime_context: config.runtime_context,
-			functions: config.functions,
-			procedures: config.procedures,
+			routines: config.routines,
 			transforms: config.transforms,
 			flow_operator_store,
 			virtual_table_registry: UserVTableRegistry::new(),
 			stats_reader,
 			ioc: config.ioc,
 			auth_registry,
-			#[cfg(not(target_arch = "wasm32"))]
+			#[cfg(not(reifydb_single_threaded))]
 			remote_registry: config.remote_registry,
 		}
 	}
 
-	pub fn get_handlers(&self, variant: VariantRef) -> Vec<Box<dyn Procedure>> {
-		self.procedures.get_handlers(&self.catalog.materialized, variant)
+	pub fn get_handlers(&self, txn: &mut Transaction<'_>, variant: VariantRef) -> Vec<Arc<dyn Procedure>> {
+		self.routines.get_handlers(&self.catalog, txn, variant)
 	}
 
-	pub fn get_procedure(&self, name: &str) -> Option<Box<dyn Procedure>> {
-		self.procedures.get_procedure(name)
+	pub fn get_procedure(&self, name: &str) -> Option<Arc<dyn Procedure>> {
+		self.routines.get_procedure(name)
 	}
 
 	#[allow(dead_code)]
 	pub fn testing() -> Arc<Self> {
 		let store = SingleStore::testing_memory();
+
+		let routines_builder = Routines::builder();
+		let routines_builder = default_native_functions(routines_builder);
+		let routines_builder = default_native_procedures(routines_builder);
+		let routines = routines_builder.configure();
+
 		let mut services = Self::new(
 			Catalog::testing(),
 			EngineConfig {
-				runtime_context: RuntimeContext::default(),
-				functions: default_functions().configure(),
-				procedures: Procedures::empty(),
+				runtime_context: RuntimeContext::with_clock(Clock::Real),
+				routines,
 				transforms: Transforms::empty(),
 				ioc: IocContainer::new(),
-				#[cfg(not(target_arch = "wasm32"))]
+				#[cfg(not(reifydb_single_threaded))]
 				remote_registry: None,
 			},
 			SystemFlowOperatorStore::new(),

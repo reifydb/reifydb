@@ -9,28 +9,29 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::interface::cdc::CdcConsumerId;
-use reifydb_runtime::actor::system::{ActorHandle, ActorSystem};
+use reifydb_core::{actors::cdc::CdcPollHandle, interface::cdc::CdcConsumerId};
+use reifydb_runtime::actor::system::ActorSystem;
 use reifydb_type::Result;
 
 use super::{
-	actor::{PollActor, PollActorConfig, PollMsg},
+	actor::{PollActor, PollActorConfig},
 	consumer::{CdcConsume, CdcConsumer},
 	host::CdcHost,
+	watermark::CdcConsumerWatermark,
 };
 use crate::storage::CdcStore;
 
-/// Configuration for a CDC poll consumer
 #[derive(Debug, Clone)]
 pub struct PollConsumerConfig {
-	/// Unique identifier for this consumer
 	pub consumer_id: CdcConsumerId,
-	/// Thread name for the poll worker
+
 	pub thread_name: String,
-	/// How often to poll for new CDC events
+
 	pub poll_interval: Duration,
-	/// Maximum batch size for fetching CDC events (None = unbounded)
+
 	pub max_batch_size: Option<u64>,
+
+	pub consumer_watermark: Option<CdcConsumerWatermark>,
 }
 
 impl PollConsumerConfig {
@@ -45,14 +46,16 @@ impl PollConsumerConfig {
 			thread_name: thread_name.into(),
 			poll_interval,
 			max_batch_size,
+			consumer_watermark: None,
 		}
+	}
+
+	pub fn with_consumer_watermark(mut self, watermark: CdcConsumerWatermark) -> Self {
+		self.consumer_watermark = Some(watermark);
+		self
 	}
 }
 
-/// Poll-based CDC consumer backed by an actor.
-///
-/// Implements the `CdcConsumer` trait for start/stop lifecycle management.
-/// Internally uses `PollActor` for the actual polling logic.
 pub struct PollConsumer<H: CdcHost, C: CdcConsume + Send + 'static> {
 	config: PollConsumerConfig,
 	host: Option<H>,
@@ -60,8 +63,8 @@ pub struct PollConsumer<H: CdcHost, C: CdcConsume + Send + 'static> {
 	store: Option<CdcStore>,
 	running: Arc<AtomicBool>,
 	actor_system: ActorSystem,
-	/// Handle to the poll actor - must be joined on stop for proper cleanup
-	handle: Option<ActorHandle<PollMsg>>,
+
+	handle: Option<CdcPollHandle>,
 }
 
 impl<H: CdcHost, C: CdcConsume + Send + 'static> PollConsumer<H, C> {
@@ -82,45 +85,42 @@ impl<H: CdcHost, C: CdcConsume + Send + 'static> PollConsumer<H, C> {
 			handle: None,
 		}
 	}
+
+	fn take_resources(&mut self) -> (H, C, CdcStore) {
+		let host = self.host.take().expect("host already consumed");
+		let consumer = self.consumer.take().expect("consumer already consumed");
+		let store = self.store.take().expect("store already consumed");
+		(host, consumer, store)
+	}
+
+	fn build_actor_config(&self) -> PollActorConfig {
+		PollActorConfig {
+			consumer_id: self.config.consumer_id.clone(),
+			poll_interval: self.config.poll_interval,
+			max_batch_size: self.config.max_batch_size,
+		}
+	}
 }
 
 impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> CdcConsumer for PollConsumer<H, C> {
 	fn start(&mut self) -> Result<()> {
 		if self.running.swap(true, Ordering::AcqRel) {
-			return Ok(()); // Already running
+			return Ok(());
 		}
-
-		let host = self.host.take().expect("host already consumed");
-		let consumer = self.consumer.take().expect("consumer already consumed");
-		let store = self.store.take().expect("store already consumed");
-
-		let actor_config = PollActorConfig {
-			consumer_id: self.config.consumer_id.clone(),
-			poll_interval: self.config.poll_interval,
-			max_batch_size: self.config.max_batch_size,
-		};
-
-		let actor = PollActor::new(actor_config, host, consumer, store);
-
-		// Use the shared actor system instead of creating a new one
-		let handle = self.actor_system.spawn(&self.config.thread_name, actor);
-		self.handle = Some(handle);
-
+		let (host, consumer, store) = self.take_resources();
+		let watermark = self.config.consumer_watermark.clone();
+		let actor = PollActor::new(self.build_actor_config(), host, consumer, store, watermark);
+		self.handle = Some(self.actor_system.spawn_system(&self.config.thread_name, actor));
 		Ok(())
 	}
 
 	fn stop(&mut self) -> Result<()> {
 		if !self.running.swap(false, Ordering::AcqRel) {
-			return Ok(()); // Already stopped
+			return Ok(());
 		}
 
-		// Signal the actor system to shutdown - this will trigger cancellation
-		// which the actor checks before each poll
 		self.actor_system.shutdown();
 
-		// Join the poll actor thread to ensure proper cleanup
-		// This ensures the PollActor (and its consumer)
-		// are dropped cleanly before we return
 		if let Some(handle) = self.handle.take() {
 			let _ = handle.join();
 		}

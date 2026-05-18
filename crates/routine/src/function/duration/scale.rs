@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct DurationScale;
+pub struct DurationScale {
+	info: RoutineInfo,
+}
 
 impl Default for DurationScale {
 	fn default() -> Self {
@@ -20,63 +18,72 @@ impl Default for DurationScale {
 
 impl DurationScale {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("duration::scale"),
+		}
 	}
 }
 
-fn extract_i64(data: &ColumnData, i: usize) -> Option<i64> {
+fn extract_i64(data: &ColumnBuffer, i: usize) -> Option<i64> {
 	match data {
-		ColumnData::Int1(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Int2(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Int4(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Int8(c) => c.get(i).copied(),
-		ColumnData::Int16(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Uint1(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Uint2(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Uint4(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Uint8(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Uint16(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Int4(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Int8(c) => c.get(i).copied(),
+		ColumnBuffer::Int16(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint8(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint16(c) => c.get(i).map(|&v| v as i64),
 		_ => None,
 	}
 }
 
-fn is_integer_type(data: &ColumnData) -> bool {
+fn is_integer_type(data: &ColumnBuffer) -> bool {
 	matches!(
 		data,
-		ColumnData::Int1(_)
-			| ColumnData::Int2(_) | ColumnData::Int4(_)
-			| ColumnData::Int8(_) | ColumnData::Int16(_)
-			| ColumnData::Uint1(_)
-			| ColumnData::Uint2(_)
-			| ColumnData::Uint4(_)
-			| ColumnData::Uint8(_)
-			| ColumnData::Uint16(_)
+		ColumnBuffer::Int1(_)
+			| ColumnBuffer::Int2(_)
+			| ColumnBuffer::Int4(_)
+			| ColumnBuffer::Int8(_)
+			| ColumnBuffer::Int16(_)
+			| ColumnBuffer::Uint1(_)
+			| ColumnBuffer::Uint2(_)
+			| ColumnBuffer::Uint4(_)
+			| ColumnBuffer::Uint8(_)
+			| ColumnBuffer::Uint16(_)
 	)
 }
 
-impl ScalarFunction for DurationScale {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+impl<'a> Routine<FunctionContext<'a>> for DurationScale {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		if columns.len() != 2 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Duration
+	}
+
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 2 {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let dur_col = columns.first().unwrap();
-		let scalar_col = columns.get(1).unwrap();
+		let dur_col = &args[0];
+		let scalar_col = &args[1];
 
-		match dur_col.data() {
-			ColumnData::Duration(dur_container) => {
-				if !is_integer_type(scalar_col.data()) {
-					return Err(ScalarFunctionError::InvalidArgumentType {
+		let (dur_data, dur_bv) = dur_col.unwrap_option();
+		let (scalar_data, scalar_bv) = scalar_col.unwrap_option();
+
+		match dur_data {
+			ColumnBuffer::Duration(dur_container) => {
+				if !is_integer_type(scalar_data) {
+					return Err(RoutineError::FunctionInvalidArgumentType {
 						function: ctx.fragment.clone(),
 						argument_index: 1,
 						expected: vec![
@@ -91,14 +98,15 @@ impl ScalarFunction for DurationScale {
 							Type::Uint8,
 							Type::Uint16,
 						],
-						actual: scalar_col.data().get_type(),
+						actual: scalar_data.get_type(),
 					});
 				}
 
+				let row_count = dur_data.len();
 				let mut container = TemporalContainer::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (dur_container.get(i), extract_i64(scalar_col.data(), i)) {
+					match (dur_container.get(i), extract_i64(scalar_data, i)) {
 						(Some(dur), Some(scalar)) => {
 							container.push(*dur * scalar);
 						}
@@ -106,9 +114,21 @@ impl ScalarFunction for DurationScale {
 					}
 				}
 
-				Ok(ColumnData::Duration(container))
+				let mut result_data = ColumnBuffer::Duration(container);
+				if let Some(bv) = dur_bv {
+					result_data = ColumnBuffer::Option {
+						inner: Box::new(result_data),
+						bitvec: bv.clone(),
+					};
+				} else if let Some(bv) = scalar_bv {
+					result_data = ColumnBuffer::Option {
+						inner: Box::new(result_data),
+						bitvec: bv.clone(),
+					};
+				}
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 			}
-			other => Err(ScalarFunctionError::InvalidArgumentType {
+			other => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Duration],
@@ -116,8 +136,10 @@ impl ScalarFunction for DurationScale {
 			}),
 		}
 	}
+}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Duration
+impl Function for DurationScale {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

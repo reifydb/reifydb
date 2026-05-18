@@ -1,15 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Inversion-of-control container used to register and resolve long-lived services by Rust type.
+//!
+//! `IocContainer` is a thread-safe map from `TypeId` to a type-erased value. Crates register implementations at startup
+//! (storage backends, evaluators, the event bus, the catalog) and resolve them by type later, which lets the same
+//! wiring code support both the in-process embedded runtime and the multi-tenant server runtime without threading every
+//! dependency through the call stack.
+//!
+//! Invariant: only one value per `TypeId` is registered. Registering twice silently overwrites the previous value;
+//! consumers should treat the container as immutable after startup wiring is complete.
+
 pub mod resolve_arc;
 pub mod resolve_rc;
 
 use std::{
 	any::{Any, TypeId, type_name},
 	collections::HashMap,
-	sync::{Arc, RwLock},
+	sync::Arc,
 };
 
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_type::Result;
 
 use crate::internal_error;
@@ -30,7 +41,6 @@ impl BoxedValue {
 	}
 }
 
-/// Lightweight IoC container for dependency injection
 pub struct IocContainer {
 	dependencies: Arc<RwLock<HashMap<TypeId, BoxedValue>>>,
 }
@@ -43,26 +53,28 @@ impl IocContainer {
 	}
 
 	pub fn register<T: Clone + Any + Send + Sync + 'static>(self, service: T) -> Self {
-		self.dependencies.write().unwrap().insert(TypeId::of::<T>(), BoxedValue::new(service));
+		self.dependencies.write().insert(TypeId::of::<T>(), BoxedValue::new(service));
 		self
 	}
 
-	/// Register a service from a reference (for late registration after construction)
 	pub fn register_service<T: Clone + Any + Send + Sync + 'static>(&self, service: T) {
-		self.dependencies.write().unwrap().insert(TypeId::of::<T>(), BoxedValue::new(service));
+		self.dependencies.write().insert(TypeId::of::<T>(), BoxedValue::new(service));
 	}
 
 	pub fn clear(&self) {
-		self.dependencies.write().unwrap().clear();
+		self.dependencies.write().clear();
 	}
 
 	pub fn resolve<T: Clone + Any + Send + Sync + 'static>(&self) -> Result<T> {
 		self.dependencies
 			.read()
-			.unwrap()
 			.get(&TypeId::of::<T>())
 			.and_then(|boxed| boxed.value::<T>())
 			.ok_or_else(|| internal_error!("Type {} not registered in IoC container", type_name::<T>()))
+	}
+
+	pub fn try_resolve<T: Clone + Any + Send + Sync + 'static>(&self) -> Option<T> {
+		self.dependencies.read().get(&TypeId::of::<T>()).and_then(|boxed| boxed.value::<T>())
 	}
 }
 

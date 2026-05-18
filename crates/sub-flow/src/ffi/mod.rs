@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Host runtime for FFI operators
-//!
-//! This module provides the host-side implementation for FFI operator integration,
-//! including type marshalling, memory management, and callback implementations.
+//! Host-side FFI for flow operators. Provides the callback functions guest extensions invoke (catalog reads, value
+//! marshalling, error reporting) and the per-call context that wraps the engine services available to a guest
+//! operator. The shape of these symbols is fixed by `reifydb-abi`; the implementation lives here.
 
 pub mod callbacks;
 pub mod context;

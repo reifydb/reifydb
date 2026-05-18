@@ -15,11 +15,11 @@ use reifydb_sub_server::{
 	interceptor::RequestInterceptorChain,
 	state::{AppState, StateConfig},
 };
+use reifydb_sub_subscription::store::SubscriptionStore;
 use reifydb_type::Result;
 
 use crate::subsystem::GrpcSubsystem;
 
-/// Configurator for the gRPC server subsystem.
 pub struct GrpcConfigurator {
 	bind_addr: Option<String>,
 	admin_bind_addr: Option<String>,
@@ -56,8 +56,6 @@ impl GrpcConfigurator {
 		self
 	}
 
-	/// Set the admin bind address.
-	/// When set, admin operations are served on this separate port.
 	pub fn admin_bind_addr(mut self, addr: impl Into<String>) -> Self {
 		self.admin_bind_addr = Some(addr.into());
 		self
@@ -110,9 +108,7 @@ impl GrpcConfigurator {
 #[derive(Clone, Debug)]
 pub struct GrpcConfig {
 	pub bind_addr: Option<String>,
-	/// Address to bind the admin gRPC server to.
-	/// When set, admin operations are only available on this port.
-	/// When not set, admin operations are not available.
+
 	pub admin_bind_addr: Option<String>,
 	pub max_connections: usize,
 	pub query_timeout: Duration,
@@ -175,6 +171,7 @@ impl SubsystemFactory for GrpcSubsystemFactory {
 			runtime.clock().clone(),
 			runtime.rng().clone(),
 		);
+		let subscription_store = ioc.resolve::<Arc<SubscriptionStore>>().ok();
 		let subsystem = GrpcSubsystem::new(
 			config.bind_addr.clone(),
 			config.admin_bind_addr.clone(),
@@ -182,6 +179,7 @@ impl SubsystemFactory for GrpcSubsystemFactory {
 			runtime,
 			config.poll_interval,
 			config.poll_batch_size,
+			subscription_store,
 		);
 
 		Ok(Box::new(subsystem))

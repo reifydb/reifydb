@@ -17,7 +17,6 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_update(&mut self) -> Result<AstUpdate<'bump>> {
 		let token = self.consume_keyword(Keyword::Update)?;
 
-		// 1. Parse target (REQUIRED) - namespace.table or just table
 		if self.is_eof() || !matches!(self.current()?.kind, TokenKind::Identifier | TokenKind::Keyword(_)) {
 			return Err(RqlError::UpdateMissingAssignmentsBlock {
 				fragment: token.fragment.to_owned(),
@@ -34,7 +33,6 @@ impl<'bump> Parser<'bump> {
 			UnresolvedShapeIdentifier::new(vec![], segments.remove(0).into_fragment())
 		};
 
-		// 2. Parse assignments block { name: 'value', ... } - REQUIRED
 		if self.is_eof() || !self.current()?.is_operator(Operator::OpenCurly) {
 			return Err(RqlError::UpdateMissingAssignmentsBlock {
 				fragment: token.fragment.to_owned(),
@@ -49,7 +47,6 @@ impl<'bump> Parser<'bump> {
 			.into());
 		}
 
-		// 3. Parse FILTER clause - REQUIRED
 		if self.is_eof() || !self.current()?.is_keyword(Keyword::Filter) {
 			return Err(RqlError::UpdateMissingFilterClause {
 				fragment: token.fragment.to_owned(),

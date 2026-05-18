@@ -13,7 +13,6 @@ impl CatalogStore {
 	pub(crate) fn list_views_all(rx: &mut Transaction<'_>) -> Result<Vec<View>> {
 		let mut result = Vec::new();
 
-		// Collect view IDs first to avoid holding stream borrow
 		let mut view_ids = Vec::new();
 		{
 			let stream = rx.range(ViewKey::full_scan(), 1024)?;
@@ -27,7 +26,6 @@ impl CatalogStore {
 			}
 		}
 
-		// Now fetch each view using the find_view method which handles all storage kinds
 		for view_id in view_ids {
 			if let Some(view) = Self::find_view(rx, view_id)? {
 				result.push(view);

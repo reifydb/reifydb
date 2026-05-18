@@ -11,24 +11,18 @@ pub mod keyed;
 pub mod raw;
 pub mod row;
 pub mod single;
-#[cfg(test)]
 pub mod test_utils;
 pub mod utils;
 pub mod window;
 
 use reifydb_core::key::{EncodableKey, flow_node_state::FlowNodeStateKey};
 
-/// Iterator wrapper for state entries
-///
-/// Wraps a MultiVersionBatch and provides an iterator over decoded state keys.
-/// The batch is eagerly decoded during construction for efficiency.
 pub struct StateIterator {
 	items: Vec<(EncodedKey, EncodedRow)>,
 	position: usize,
 }
 
 impl StateIterator {
-	/// Create a new StateIterator from a MultiVersionBatch
 	pub fn new(batch: MultiVersionBatch) -> Self {
 		let items = batch
 			.items
@@ -48,7 +42,6 @@ impl StateIterator {
 		}
 	}
 
-	/// Create a new StateIterator from pre-decoded items
 	pub fn from_items(items: Vec<(EncodedKey, EncodedRow)>) -> Self {
 		Self {
 			items,

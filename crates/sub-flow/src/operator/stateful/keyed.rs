@@ -13,46 +13,36 @@ use reifydb_type::{
 use super::utils;
 use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTransaction};
 
-/// Operator with multiple keyed state values (for aggregations, grouping, etc.)
-/// Extends TransformOperator directly and uses utility functions for state management
 pub trait KeyedStateful: RawStatefulOperator {
-	/// Get or create the layout for state rows
 	fn layout(&self) -> RowShape;
 
-	/// RowShape for keys - defines the types of the key components
 	fn key_types(&self) -> &[Type];
 
-	/// Create EncodedKey from Values
 	fn encode_key(&self, key_values: &[Value]) -> EncodedKey {
-		// Use keycode encoding for order-preserving keys
 		let mut serializer = KeySerializer::new();
 
 		for value in key_values.iter() {
 			serializer.extend_value(value);
 		}
 
-		EncodedKey::new(serializer.finish())
+		serializer.finish()
 	}
 
-	/// Create a new state encoded with default values
 	fn create_state(&self) -> EncodedRow {
 		let layout = self.layout();
 		layout.allocate()
 	}
 
-	/// Load state for a specific key
 	fn load_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> Result<EncodedRow> {
 		let key = self.encode_key(key_values);
 		utils::load_or_create_row(self.id(), txn, &key, &self.layout())
 	}
 
-	/// Save state for a specific key
 	fn save_state(&self, txn: &mut FlowTransaction, key_values: &[Value], row: EncodedRow) -> Result<()> {
 		let key = self.encode_key(key_values);
 		utils::save_row(self.id(), txn, &key, row)
 	}
 
-	/// Update state for a key with a function
 	fn update_state<F>(&self, txn: &mut FlowTransaction, key_values: &[Value], f: F) -> Result<EncodedRow>
 	where
 		F: FnOnce(&RowShape, &mut EncodedRow) -> Result<()>,
@@ -64,7 +54,6 @@ pub trait KeyedStateful: RawStatefulOperator {
 		Ok(row)
 	}
 
-	/// Remove state for a key
 	fn remove_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> Result<()> {
 		let key = self.encode_key(key_values);
 		utils::state_remove(self.id(), txn, &key)
@@ -75,6 +64,7 @@ pub trait KeyedStateful: RawStatefulOperator {
 pub mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
+	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_type::value::{Value, r#type::Type};
 
@@ -125,8 +115,13 @@ pub mod tests {
 	#[test]
 	fn test_load_save_state() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
 		let key = vec![Value::Int4(100), Value::Utf8("key1".to_string())];
 
@@ -147,8 +142,13 @@ pub mod tests {
 	#[test]
 	fn test_update_state() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
 		let key = vec![Value::Int4(200), Value::Utf8("update_key".to_string())];
 
@@ -172,8 +172,13 @@ pub mod tests {
 	#[test]
 	fn test_remove_state() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
 		let key = vec![Value::Int4(300), Value::Utf8("remove_key".to_string())];
 
@@ -193,8 +198,13 @@ pub mod tests {
 	#[test]
 	fn test_multiple_keys() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
 
 		// Create multiple keys with different states

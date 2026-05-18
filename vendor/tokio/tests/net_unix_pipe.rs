@@ -8,8 +8,8 @@ use tokio_test::{assert_err, assert_ok, assert_pending, assert_ready_ok};
 
 use std::fs::File;
 use std::io;
+use std::os::fd::AsFd;
 use std::os::unix::fs::OpenOptionsExt;
-use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 
 /// Helper struct which will clean up temporary files once dropped.
@@ -277,8 +277,8 @@ async fn from_file_detects_wrong_access_mode() -> io::Result<()> {
     Ok(())
 }
 
-fn is_nonblocking<T: AsRawFd>(fd: &T) -> io::Result<bool> {
-    let flags = nix::fcntl::fcntl(fd.as_raw_fd(), nix::fcntl::F_GETFL)?;
+fn is_nonblocking<T: AsFd>(fd: &T) -> io::Result<bool> {
+    let flags = nix::fcntl::fcntl(fd.as_fd(), nix::fcntl::F_GETFL)?;
     Ok((flags & libc::O_NONBLOCK) != 0)
 }
 
@@ -541,6 +541,108 @@ async fn anon_pipe_into_blocking_fd() -> std::io::Result<()> {
 
     assert!(!is_nonblocking(&tx_fd)?);
     assert!(!is_nonblocking(&rx_fd)?);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn try_io_writable() -> std::io::Result<()> {
+    let (tx, _rx) = pipe::pipe()?;
+
+    // Give the runtime some time to update bookkeeping.
+    tokio::task::yield_now().await;
+
+    {
+        let mut called = false;
+        let _ = tx.try_io(|| {
+            called = true;
+            Ok(())
+        });
+        assert!(
+            called,
+            "closure should have been called, since socket should still be marked as writable"
+        );
+    }
+    {
+        let mut called = false;
+        let _ = tx.try_io(|| {
+            called = true;
+            io::Result::<()>::Err(io::ErrorKind::WouldBlock.into())
+        });
+        assert!(
+            called,
+            "closure should have been called, since socket should still be marked as writable"
+        );
+    }
+
+    {
+        let mut called = false;
+        let _ = tx.try_io(|| {
+            called = true;
+            Ok(())
+        });
+        assert!(!called, "closure should not have been called, since socket writable state should have been cleared");
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn try_io_readable() -> io::Result<()> {
+    let (mut tx, rx) = pipe::pipe()?;
+
+    // Give the runtime some time to update bookkeeping.
+    tokio::task::yield_now().await;
+
+    {
+        let mut called = false;
+        let _ = rx.try_io(|| {
+            called = true;
+            Ok(())
+        });
+        assert!(
+            !called,
+            "closure should not have been called, since socket should not be readable"
+        );
+    }
+
+    // Make `a` readable by writing to `b`.
+    // Give the runtime some time to update bookkeeping.
+    tx.write_all(&[0]).await?;
+    tokio::task::yield_now().await;
+
+    {
+        let mut called = false;
+        let _ = rx.try_io(|| {
+            called = true;
+            Ok(())
+        });
+        assert!(
+            called,
+            "closure should have been called, since socket should have data available to read"
+        );
+    }
+
+    {
+        let mut called = false;
+        let _ = rx.try_io(|| {
+            called = true;
+            io::Result::<()>::Err(io::ErrorKind::WouldBlock.into())
+        });
+        assert!(
+            called,
+            "closure should have been called, since socket should have data available to read"
+        );
+    }
+
+    {
+        let mut called = false;
+        let _ = rx.try_io(|| {
+            called = true;
+            Ok(())
+        });
+        assert!(!called, "closure should not have been called, since socket readable state should have been cleared");
+    }
 
     Ok(())
 }

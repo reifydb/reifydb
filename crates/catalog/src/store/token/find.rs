@@ -11,7 +11,6 @@ use crate::{
 };
 
 impl CatalogStore {
-	/// Find a token by its value using constant-time comparison.
 	pub(crate) fn find_token_by_value(rx: &mut Transaction<'_>, value: &str) -> Result<Option<Token>> {
 		let stream = rx.range(TokenKey::full_scan(), 1024)?;
 

@@ -44,10 +44,8 @@ impl CatalogStore {
 	pub(crate) fn list_column_properties_all(rx: &mut Transaction<'_>) -> Result<Vec<ColumnProperty>> {
 		let mut result = Vec::new();
 
-		// Get all columns from tables and views
 		let columns = CatalogStore::list_columns_all(rx)?;
 
-		// For each column, get its policies
 		for info in columns {
 			let policies = CatalogStore::list_column_properties(rx, info.column.id)?;
 			result.extend(policies);
@@ -62,7 +60,7 @@ pub mod tests {
 	use reifydb_core::interface::catalog::{
 		column::ColumnIndex,
 		id::{ColumnId, TableId},
-		property::{ColumnPropertyKind, ColumnSaturationPolicy},
+		property::{ColumnPropertyKind, ColumnSaturationStrategy},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -84,7 +82,7 @@ pub mod tests {
 				shape_name: "test_table".to_string(),
 				column: "with_policy".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int2),
-				properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationPolicy::None)],
+				properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationStrategy::None)],
 				index: ColumnIndex(0),
 				auto_increment: false,
 				dictionary_id: None,
@@ -92,13 +90,16 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let column = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(8193)).unwrap();
+		let column = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(16385)).unwrap();
 
 		let properties =
 			CatalogStore::list_column_properties(&mut Transaction::Admin(&mut txn), column.id).unwrap();
 
 		assert_eq!(properties.len(), 1);
 		assert_eq!(properties[0].column, column.id);
-		assert!(matches!(properties[0].property, ColumnPropertyKind::Saturation(ColumnSaturationPolicy::None)));
+		assert!(matches!(
+			properties[0].property,
+			ColumnPropertyKind::Saturation(ColumnSaturationStrategy::None)
+		));
 	}
 }

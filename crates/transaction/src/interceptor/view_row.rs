@@ -7,19 +7,19 @@ use reifydb_type::{Result, value::row_number::RowNumber};
 use super::WithInterceptors;
 use crate::interceptor::chain::InterceptorChain;
 
-// PRE INSERT
 pub struct ViewRowPreInsertContext<'a> {
 	pub view: &'a View,
-	pub rn: RowNumber,
-	pub row: EncodedRow,
+	pub ids: &'a [RowNumber],
+	pub rows: &'a mut [EncodedRow],
 }
 
 impl<'a> ViewRowPreInsertContext<'a> {
-	pub fn new(view: &'a View, rn: RowNumber, row: EncodedRow) -> Self {
+	pub fn new(view: &'a View, ids: &'a [RowNumber], rows: &'a mut [EncodedRow]) -> Self {
+		assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
 		Self {
 			view,
-			rn,
-			row,
+			ids,
+			rows,
 		}
 	}
 }
@@ -29,11 +29,13 @@ pub trait ViewRowPreInsertInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn ViewRowPreInsertInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: ViewRowPreInsertContext) -> Result<EncodedRow> {
+	pub fn execute(&self, mut ctx: ViewRowPreInsertContext) -> Result<()> {
+		let original_len = ctx.rows.len();
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
+			assert_eq!(ctx.rows.len(), original_len, "pre_insert interceptor changed row count");
 		}
-		Ok(ctx.row)
+		Ok(())
 	}
 }
 
@@ -82,19 +84,19 @@ where
 	ClosureViewRowPreInsertInterceptor::new(f)
 }
 
-// POST INSERT
 pub struct ViewRowPostInsertContext<'a> {
 	pub view: &'a View,
-	pub id: RowNumber,
-	pub row: &'a EncodedRow,
+	pub ids: &'a [RowNumber],
+	pub rows: &'a [EncodedRow],
 }
 
 impl<'a> ViewRowPostInsertContext<'a> {
-	pub fn new(view: &'a View, id: RowNumber, row: &'a EncodedRow) -> Self {
+	pub fn new(view: &'a View, ids: &'a [RowNumber], rows: &'a [EncodedRow]) -> Self {
+		assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
 		Self {
 			view,
-			id,
-			row,
+			ids,
+			rows,
 		}
 	}
 }
@@ -157,19 +159,19 @@ where
 	ClosureViewRowPostInsertInterceptor::new(f)
 }
 
-// PRE UPDATE
 pub struct ViewRowPreUpdateContext<'a> {
 	pub view: &'a View,
-	pub id: RowNumber,
-	pub row: EncodedRow,
+	pub ids: &'a [RowNumber],
+	pub rows: &'a mut [EncodedRow],
 }
 
 impl<'a> ViewRowPreUpdateContext<'a> {
-	pub fn new(view: &'a View, id: RowNumber, row: EncodedRow) -> Self {
+	pub fn new(view: &'a View, ids: &'a [RowNumber], rows: &'a mut [EncodedRow]) -> Self {
+		assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
 		Self {
 			view,
-			id,
-			row,
+			ids,
+			rows,
 		}
 	}
 }
@@ -179,11 +181,13 @@ pub trait ViewRowPreUpdateInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn ViewRowPreUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: ViewRowPreUpdateContext) -> Result<EncodedRow> {
+	pub fn execute(&self, mut ctx: ViewRowPreUpdateContext) -> Result<()> {
+		let original_len = ctx.rows.len();
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
+			assert_eq!(ctx.rows.len(), original_len, "pre_update interceptor changed row count");
 		}
-		Ok(ctx.row)
+		Ok(())
 	}
 }
 
@@ -232,21 +236,22 @@ where
 	ClosureViewRowPreUpdateInterceptor::new(f)
 }
 
-// POST UPDATE
 pub struct ViewRowPostUpdateContext<'a> {
 	pub view: &'a View,
-	pub id: RowNumber,
-	pub post: &'a EncodedRow,
-	pub pre: &'a EncodedRow,
+	pub ids: &'a [RowNumber],
+	pub posts: &'a [EncodedRow],
+	pub pres: &'a [EncodedRow],
 }
 
 impl<'a> ViewRowPostUpdateContext<'a> {
-	pub fn new(view: &'a View, id: RowNumber, post: &'a EncodedRow, pre: &'a EncodedRow) -> Self {
+	pub fn new(view: &'a View, ids: &'a [RowNumber], posts: &'a [EncodedRow], pres: &'a [EncodedRow]) -> Self {
+		assert_eq!(ids.len(), posts.len(), "ids/posts length mismatch");
+		assert_eq!(ids.len(), pres.len(), "ids/pres length mismatch");
 		Self {
 			view,
-			id,
-			post,
-			pre,
+			ids,
+			posts,
+			pres,
 		}
 	}
 }
@@ -309,17 +314,16 @@ where
 	ClosureViewRowPostUpdateInterceptor::new(f)
 }
 
-// PRE DELETE
 pub struct ViewRowPreDeleteContext<'a> {
 	pub view: &'a View,
-	pub id: RowNumber,
+	pub ids: &'a [RowNumber],
 }
 
 impl<'a> ViewRowPreDeleteContext<'a> {
-	pub fn new(view: &'a View, id: RowNumber) -> Self {
+	pub fn new(view: &'a View, ids: &'a [RowNumber]) -> Self {
 		Self {
 			view,
-			id,
+			ids,
 		}
 	}
 }
@@ -382,19 +386,19 @@ where
 	ClosureViewRowPreDeleteInterceptor::new(f)
 }
 
-// POST DELETE
 pub struct ViewRowPostDeleteContext<'a> {
 	pub view: &'a View,
-	pub id: RowNumber,
-	pub deleted_row: &'a EncodedRow,
+	pub ids: &'a [RowNumber],
+	pub deleted_rows: &'a [EncodedRow],
 }
 
 impl<'a> ViewRowPostDeleteContext<'a> {
-	pub fn new(view: &'a View, id: RowNumber, deleted_row: &'a EncodedRow) -> Self {
+	pub fn new(view: &'a View, ids: &'a [RowNumber], deleted_rows: &'a [EncodedRow]) -> Self {
+		assert_eq!(ids.len(), deleted_rows.len(), "ids/deleted_rows length mismatch");
 		Self {
 			view,
-			id,
-			deleted_row,
+			ids,
+			deleted_rows,
 		}
 	}
 }
@@ -457,63 +461,62 @@ where
 	ClosureViewRowPostDeleteInterceptor::new(f)
 }
 
-/// Helper struct for executing view interceptors via static methods.
 pub struct ViewRowInterceptor;
 
 impl ViewRowInterceptor {
 	pub fn pre_insert(
 		txn: &mut impl WithInterceptors,
 		view: &View,
-		rn: RowNumber,
-		row: EncodedRow,
-	) -> Result<EncodedRow> {
-		let ctx = ViewRowPreInsertContext::new(view, rn, row);
+		ids: &[RowNumber],
+		rows: &mut [EncodedRow],
+	) -> Result<()> {
+		let ctx = ViewRowPreInsertContext::new(view, ids, rows);
 		txn.view_row_pre_insert_interceptors().execute(ctx)
 	}
 
 	pub fn post_insert(
 		txn: &mut impl WithInterceptors,
 		view: &View,
-		id: RowNumber,
-		row: &EncodedRow,
+		ids: &[RowNumber],
+		rows: &[EncodedRow],
 	) -> Result<()> {
-		let ctx = ViewRowPostInsertContext::new(view, id, row);
+		let ctx = ViewRowPostInsertContext::new(view, ids, rows);
 		txn.view_row_post_insert_interceptors().execute(ctx)
 	}
 
 	pub fn pre_update(
 		txn: &mut impl WithInterceptors,
 		view: &View,
-		id: RowNumber,
-		row: EncodedRow,
-	) -> Result<EncodedRow> {
-		let ctx = ViewRowPreUpdateContext::new(view, id, row);
+		ids: &[RowNumber],
+		rows: &mut [EncodedRow],
+	) -> Result<()> {
+		let ctx = ViewRowPreUpdateContext::new(view, ids, rows);
 		txn.view_row_pre_update_interceptors().execute(ctx)
 	}
 
 	pub fn post_update(
 		txn: &mut impl WithInterceptors,
 		view: &View,
-		id: RowNumber,
-		post: &EncodedRow,
-		pre: &EncodedRow,
+		ids: &[RowNumber],
+		posts: &[EncodedRow],
+		pres: &[EncodedRow],
 	) -> Result<()> {
-		let ctx = ViewRowPostUpdateContext::new(view, id, post, pre);
+		let ctx = ViewRowPostUpdateContext::new(view, ids, posts, pres);
 		txn.view_row_post_update_interceptors().execute(ctx)
 	}
 
-	pub fn pre_delete(txn: &mut impl WithInterceptors, view: &View, id: RowNumber) -> Result<()> {
-		let ctx = ViewRowPreDeleteContext::new(view, id);
+	pub fn pre_delete(txn: &mut impl WithInterceptors, view: &View, ids: &[RowNumber]) -> Result<()> {
+		let ctx = ViewRowPreDeleteContext::new(view, ids);
 		txn.view_row_pre_delete_interceptors().execute(ctx)
 	}
 
 	pub fn post_delete(
 		txn: &mut impl WithInterceptors,
 		view: &View,
-		id: RowNumber,
-		deleted_row: &EncodedRow,
+		ids: &[RowNumber],
+		deleted_rows: &[EncodedRow],
 	) -> Result<()> {
-		let ctx = ViewRowPostDeleteContext::new(view, id, deleted_row);
+		let ctx = ViewRowPostDeleteContext::new(view, ids, deleted_rows);
 		txn.view_row_post_delete_interceptors().execute(ctx)
 	}
 }

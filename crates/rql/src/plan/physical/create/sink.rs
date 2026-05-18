@@ -20,14 +20,13 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		create: logical::CreateSinkNode<'_>,
 	) -> Result<PhysicalPlan<'bump>> {
-		// Resolve sink namespace
 		let ns_segments: Vec<&str> = create.name.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_fragment = if let Some(n) = create.name.namespace.first() {
 				let interned = self.interner.intern_fragment(n);
 				interned.with_text(ns_segments.join("::"))
 			} else {
-				Fragment::internal("default".to_string())
+				Fragment::internal("default")
 			};
 			return Err(CatalogError::NotFound {
 				kind: CatalogObjectKind::Namespace,
@@ -38,14 +37,13 @@ impl<'bump> Compiler<'bump> {
 			.into());
 		};
 
-		// Resolve source namespace
 		let source_ns_segments: Vec<&str> = create.source.namespace.iter().map(|n| n.text()).collect();
 		let Some(source_namespace) = self.catalog.find_namespace_by_segments(rx, &source_ns_segments)? else {
 			let ns_fragment = if let Some(n) = create.source.namespace.first() {
 				let interned = self.interner.intern_fragment(n);
 				interned.with_text(source_ns_segments.join("::"))
 			} else {
-				Fragment::internal("default".to_string())
+				Fragment::internal("default")
 			};
 			return Err(CatalogError::NotFound {
 				kind: CatalogObjectKind::Namespace,
@@ -56,7 +54,6 @@ impl<'bump> Compiler<'bump> {
 			.into());
 		};
 
-		// Resolve config pairs
 		let config = create
 			.config
 			.iter()

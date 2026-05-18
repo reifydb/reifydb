@@ -81,7 +81,7 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 		_ => {
 			return Err(Error(Box::new(Diagnostic {
 				code: "CA_026".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("unknown view kind: {}", kind_raw),
 				fragment: Fragment::None,
 				label: Some("invalid view kind value".to_string()),
@@ -95,7 +95,7 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 	};
 
 	let storage_kind = view::SHAPE.get_u8(row, view::STORAGE_KIND);
-	let underlying_object_id = view::SHAPE.get_u64(row, view::UNDERLYING_PRIMITIVE_ID);
+	let underlying_shape_id = view::SHAPE.get_u64(row, view::UNDERLYING_SHAPE_ID);
 
 	Ok(match storage_kind {
 		x if x == ViewStorageKind::Table as u8 => View::Table(TableView {
@@ -105,7 +105,7 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 			kind,
 			columns,
 			primary_key,
-			underlying: TableId(underlying_object_id),
+			underlying: TableId(underlying_shape_id),
 		}),
 		x if x == ViewStorageKind::RingBuffer as u8 => {
 			let capacity = view::SHAPE.get_u64(row, view::CAPACITY);
@@ -117,7 +117,7 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 				kind,
 				columns,
 				primary_key,
-				underlying: RingBufferId(underlying_object_id),
+				underlying: RingBufferId(underlying_shape_id),
 				capacity,
 				propagate_evictions,
 			})
@@ -140,12 +140,12 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 				kind,
 				columns,
 				primary_key,
-				underlying: SeriesId(underlying_object_id),
+				underlying: SeriesId(underlying_shape_id),
 				key,
 				tag,
 			})
 		}
-		// Default to table for backwards compat during transition (storage_kind=0 from old data)
+
 		_ => View::Table(TableView {
 			id,
 			name,
@@ -153,7 +153,7 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 			kind,
 			columns,
 			primary_key,
-			underlying: TableId(underlying_object_id),
+			underlying: TableId(underlying_shape_id),
 		}),
 	})
 }
@@ -183,13 +183,13 @@ pub mod tests {
 
 		let result = CatalogStore::find_view_by_name(
 			&mut Transaction::Admin(&mut txn),
-			NamespaceId(1027),
+			NamespaceId(16387),
 			"view_two",
 		)
 		.unwrap()
 		.unwrap();
-		assert_eq!(result.id(), ViewId(1026));
-		assert_eq!(result.namespace(), NamespaceId(1027));
+		assert_eq!(result.id(), ViewId(16386));
+		assert_eq!(result.namespace(), NamespaceId(16387));
 		assert_eq!(result.name(), "view_two");
 	}
 
@@ -199,7 +199,7 @@ pub mod tests {
 
 		let result = CatalogStore::find_view_by_name(
 			&mut Transaction::Admin(&mut txn),
-			NamespaceId(1025),
+			NamespaceId(16385),
 			"some_view",
 		)
 		.unwrap();
@@ -220,7 +220,7 @@ pub mod tests {
 
 		let result = CatalogStore::find_view_by_name(
 			&mut Transaction::Admin(&mut txn),
-			NamespaceId(1025),
+			NamespaceId(16385),
 			"view_four_two",
 		)
 		.unwrap();

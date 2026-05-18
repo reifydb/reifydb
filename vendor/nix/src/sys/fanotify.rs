@@ -11,7 +11,7 @@
 //! [fanotify(7)](https://man7.org/linux/man-pages/man7/fanotify.7.html).
 
 use crate::errno::Errno;
-use crate::fcntl::{at_rawfd, OFlag};
+use crate::fcntl::OFlag;
 use crate::unistd::{close, read, write};
 use crate::{NixPath, Result};
 use std::marker::PhantomData;
@@ -20,8 +20,8 @@ use std::os::unix::io::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd, RawFd};
 use std::ptr;
 
 libc_bitflags! {
-    /// Mask for defining which events shall be listened with
-    /// [`fanotify_mark`](fn.fanotify_mark.html) and for querying notifications.
+    /// Mask for defining which events shall be listened with [`Fanotify::mark()`]
+    /// and for querying notifications.
     pub struct MaskFlags: u64 {
         /// File was accessed.
         FAN_ACCESS;
@@ -80,7 +80,7 @@ libc_bitflags! {
 }
 
 libc_bitflags! {
-    /// Configuration options for [`fanotify_init`](fn.fanotify_init.html).
+    /// Configuration options for [`Fanotify::init()`].
     pub struct InitFlags: libc::c_uint {
         /// Close-on-exec flag set on the file descriptor.
         FAN_CLOEXEC;
@@ -96,9 +96,22 @@ libc_bitflags! {
         /// final data.
         FAN_CLASS_PRE_CONTENT;
 
-        /// Remove the limit of 16384 events for the event queue.
+        /// Remove the limit on the number of events in the event queue.
+        ///
+        /// Prior to Linux kernel 5.13, this limit was hardcoded to 16384. After
+        /// 5.13, one can change it via file `/proc/sys/fs/fanotify/max_queued_events`.
+        ///
+        /// See `fanotify(7)` for details about this limit. Use of this flag
+        /// requires the `CAP_SYS_ADMIN` capability.
         FAN_UNLIMITED_QUEUE;
-        /// Remove the limit of 8192 marks.
+        /// Remove the limit on the number of fanotify marks per user.
+        ///
+        /// Prior to Linux kernel 5.13, this limit was hardcoded to 8192 (per
+        /// group, not per user). After 5.13, one can change it via file
+        /// `/proc/sys/fs/fanotify/max_user_marks`.
+        ///
+        /// See `fanotify(7)` for details about this limit. Use of this flag
+        /// requires the `CAP_SYS_ADMIN` capability.
         FAN_UNLIMITED_MARKS;
 
         /// Make `FanotifyEvent::pid` return pidfd. Since Linux 5.15.
@@ -149,7 +162,7 @@ impl From<EventFFlags> for OFlag {
 }
 
 libc_bitflags! {
-    /// Configuration options for [`fanotify_mark`](fn.fanotify_mark.html).
+    /// Configuration options for [`Fanotify::mark()`].
     pub struct MarkFlags: libc::c_uint {
         /// Add the events to the marks.
         FAN_MARK_ADD;
@@ -185,8 +198,8 @@ libc_bitflags! {
 /// Compile version number of fanotify API.
 pub const FANOTIFY_METADATA_VERSION: u8 = libc::FANOTIFY_METADATA_VERSION;
 
-/// Abstract over `libc::fanotify_event_metadata`, which represents an event
-/// received via `Fanotify::read_events`.
+/// Abstract over [`libc::fanotify_event_metadata`], which represents an event
+/// received via [`Fanotify::read_events`].
 // Is not Clone due to fd field, to avoid use-after-close scenarios.
 #[derive(Debug, Eq, Hash, PartialEq)]
 #[repr(transparent)]
@@ -216,7 +229,7 @@ impl FanotifyEvent {
     /// The file descriptor of the event. If the value is `None` when reading
     /// from the fanotify group, this event is to notify that a group queue
     /// overflow occured.
-    pub fn fd(&self) -> Option<BorrowedFd> {
+    pub fn fd(&self) -> Option<BorrowedFd<'_>> {
         if self.0.fd == libc::FAN_NOFD {
             None
         } else {
@@ -236,6 +249,9 @@ impl FanotifyEvent {
 
 impl Drop for FanotifyEvent {
     fn drop(&mut self) {
+        if self.0.fd == libc::FAN_NOFD {
+            return;
+        }
         let e = close(self.0.fd);
         if !std::thread::panicking() && e == Err(Errno::EBADF) {
             panic!("Closing an invalid file descriptor!");
@@ -265,7 +281,7 @@ impl<'a> FanotifyResponse<'a> {
 }
 
 libc_bitflags! {
-    /// Response to be wrapped in `FanotifyResponse` and sent to the `Fanotify`
+    /// Response to be wrapped in [`FanotifyResponse`] and sent to the [`Fanotify`]
     /// group to allow or deny an event.
     pub struct Response: u32 {
         /// Allow the event.
@@ -301,35 +317,23 @@ impl Fanotify {
     }
 
     /// Add, remove, or modify an fanotify mark on a filesystem object.
-    /// If `dirfd` is `None`, `AT_FDCWD` is used.
     ///
     /// Returns a Result containing either `()` on success or errno otherwise.
     ///
     /// For more information, see [fanotify_mark(2)](https://man7.org/linux/man-pages/man7/fanotify_mark.2.html).
-    pub fn mark<P: ?Sized + NixPath>(
+    pub fn mark<Fd: std::os::fd::AsFd, P: ?Sized + NixPath>(
         &self,
         flags: MarkFlags,
         mask: MaskFlags,
-        dirfd: Option<RawFd>,
+        dirfd: Fd,
         path: Option<&P>,
     ) -> Result<()> {
-        fn with_opt_nix_path<P, T, F>(p: Option<&P>, f: F) -> Result<T>
-        where
-            P: ?Sized + NixPath,
-            F: FnOnce(*const libc::c_char) -> T,
-        {
-            match p {
-                Some(path) => path.with_nix_path(|p_str| f(p_str.as_ptr())),
-                None => Ok(f(std::ptr::null())),
-            }
-        }
-
-        let res = with_opt_nix_path(path, |p| unsafe {
+        let res = crate::with_opt_nix_path(path, |p| unsafe {
             libc::fanotify_mark(
                 self.fd.as_raw_fd(),
                 flags.bits(),
                 mask.bits(),
-                at_rawfd(dirfd),
+                dirfd.as_fd().as_raw_fd(),
                 p,
             )
         })?;
@@ -357,7 +361,7 @@ impl Fanotify {
         let mut events = Vec::new();
         let mut offset = 0;
 
-        let nread = read(self.fd.as_raw_fd(), &mut buffer)?;
+        let nread = read(&self.fd, &mut buffer)?;
 
         while (nread - offset) >= metadata_size {
             let metadata = unsafe {
@@ -412,5 +416,31 @@ impl FromRawFd for Fanotify {
 impl AsFd for Fanotify {
     fn as_fd(&'_ self) -> BorrowedFd<'_> {
         self.fd.as_fd()
+    }
+}
+
+impl AsRawFd for Fanotify {
+    fn as_raw_fd(&self) -> RawFd
+    {
+        self.fd.as_raw_fd()
+    }
+}
+
+impl From<Fanotify> for OwnedFd {
+    fn from(value: Fanotify) -> Self {
+        value.fd
+    }
+}
+
+impl Fanotify {
+    /// Constructs a `Fanotify` wrapping an existing `OwnedFd`.
+    ///
+    /// # Safety
+    ///
+    /// `OwnedFd` is a valid `Fanotify`.
+    pub unsafe fn from_owned_fd(fd: OwnedFd) -> Self {
+        Self {
+            fd
+        }
     }
 }

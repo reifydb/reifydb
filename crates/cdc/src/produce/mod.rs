@@ -1,15 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! CDC Production module.
-//!
-//! This module provides the infrastructure for generating Change Data Capture events
-//! from database commits. It is designed to be independent of the MVCC storage layer,
-//! using traits for version resolution.
-//!
-//! Key components:
-//! - `CdcProducerActor`: Actor-based CDC producer with periodic cleanup
-//! - `CdcProducerEventListener`: Listens to PostCommitEvent and forwards to producer actor
+//! Producer side of the CDC stream. The transaction layer hands committed deltas here at commit time; the producer
+//! encodes them into CDC records, persists them to storage, and advances the publisher watermark so consumers can
+//! observe the new commit boundary. Decoding lives next to producing so the round-trip is symmetric.
 
 pub(crate) mod decode;
 pub mod producer;
+pub mod watermark;

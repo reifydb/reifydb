@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Typed in-process event bus connecting the workspace's actors and subsystems.
+//!
+//! The `Event` trait marks any `Send + Sync + Clone + 'static` value that can be published; `EventListener<E>`
+//! registers a callback for one event type. Listener lists are keyed on Rust `TypeId`, so dispatch is purely by static
+//! type identity. Submodules group the standard event families: lifecycle (startup and shutdown), transaction, store,
+//! row, flow, procedure, and metric.
+//!
+//! Invariant: dispatch keys on Rust `TypeId`, not on type name. Two distinct types with the same name in different
+//! crates dispatch to disjoint listener lists; renaming an event type in one crate without renaming it in publishers
+//! and subscribers silently breaks delivery without a compile error at the bus call sites.
+
 use std::{
 	any::{Any, TypeId},
 	collections::HashMap,
@@ -22,6 +33,7 @@ pub mod lifecycle;
 pub mod r#macro;
 pub mod metric;
 pub mod procedure;
+pub mod row;
 pub mod store;
 pub mod transaction;
 
@@ -85,7 +97,7 @@ struct EventEnvelope {
 	event: Box<dyn Any + Send>,
 }
 
-enum EventBusMsg {
+enum EventBusMessage {
 	Emit(EventEnvelope),
 	Register {
 		installer: EventListenerInstaller,
@@ -97,7 +109,7 @@ struct EventBusActor;
 
 impl Actor for EventBusActor {
 	type State = HashMap<TypeId, Box<dyn EventListenerList>>;
-	type Message = EventBusMsg;
+	type Message = EventBusMessage;
 
 	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
 		HashMap::new()
@@ -105,17 +117,17 @@ impl Actor for EventBusActor {
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
 		match msg {
-			EventBusMsg::Emit(envelope) => {
+			EventBusMessage::Emit(envelope) => {
 				if let Some(list) = state.get(&envelope.type_id) {
 					list.on_any(envelope.event);
 				}
 			}
-			EventBusMsg::Register {
+			EventBusMessage::Register {
 				installer,
 			} => {
 				installer(state);
 			}
-			EventBusMsg::WaitForCompletion(tx) => {
+			EventBusMessage::WaitForCompletion(tx) => {
 				let _ = tx.send(());
 			}
 		}
@@ -125,13 +137,13 @@ impl Actor for EventBusActor {
 
 #[derive(Clone)]
 pub struct EventBus {
-	actor_ref: ActorRef<EventBusMsg>,
+	actor_ref: ActorRef<EventBusMessage>,
 	_actor_system: ActorSystem,
 }
 
 impl EventBus {
 	pub fn new(actor_system: &ActorSystem) -> Self {
-		let handle = actor_system.spawn("event-bus", EventBusActor);
+		let handle = actor_system.spawn_system("event-bus", EventBusActor);
 		Self {
 			actor_ref: handle.actor_ref().clone(),
 			_actor_system: actor_system.clone(),
@@ -151,7 +163,7 @@ impl EventBus {
 			list.as_any_mut().downcast_mut::<EventListenerListImpl<E>>().unwrap().add(listener);
 		});
 
-		let _ = self.actor_ref.send(EventBusMsg::Register {
+		let _ = self.actor_ref.send(EventBusMessage::Register {
 			installer,
 		});
 	}
@@ -161,7 +173,7 @@ impl EventBus {
 		E: Event,
 	{
 		let type_id = TypeId::of::<E>();
-		let _ = self.actor_ref.send(EventBusMsg::Emit(EventEnvelope {
+		let _ = self.actor_ref.send(EventBusMessage::Emit(EventEnvelope {
 			type_id,
 			event: event.into_any(),
 		}));
@@ -169,7 +181,7 @@ impl EventBus {
 
 	pub fn wait_for_completion(&self) {
 		let (tx, rx) = sync::mpsc::channel();
-		let _ = self.actor_ref.send(EventBusMsg::WaitForCompletion(tx));
+		let _ = self.actor_ref.send(EventBusMessage::WaitForCompletion(tx));
 		let _ = rx.recv();
 	}
 }
@@ -181,12 +193,17 @@ pub mod tests {
 		thread,
 	};
 
-	use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem};
+	use reifydb_runtime::{
+		actor::system::ActorSystem,
+		context::clock::Clock,
+		pool::{PoolConfig, Pools},
+	};
 
 	use crate::event::{Event, EventBus, EventListener};
 
 	fn test_actor_system() -> ActorSystem {
-		ActorSystem::new(SharedRuntimeConfig::default().actor_system_config())
+		let pools = Pools::new(PoolConfig::default());
+		ActorSystem::new(pools, Clock::Real)
 	}
 
 	define_event! {

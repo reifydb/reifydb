@@ -11,7 +11,6 @@ use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn drop_role(txn: &mut AdminTransaction, role: RoleId) -> Result<()> {
-		// Remove associated granted-role entries that reference this role
 		{
 			let range = GrantedRoleKey::full_scan();
 			let mut stream = txn.range(range, 1024)?;

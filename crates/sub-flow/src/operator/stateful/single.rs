@@ -6,36 +6,28 @@ use reifydb_type::Result;
 use super::utils;
 use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTransaction};
 
-/// Operator with a single state value (like counters, running sums, etc.)
-/// Extends TransformOperator directly and uses utility functions for state management
 pub trait SingleStateful: RawStatefulOperator {
-	/// Get or create the layout for state rows
 	fn layout(&self) -> RowShape;
 
-	/// Key for the single state - default is empty
 	fn key(&self) -> EncodedKey {
 		utils::empty_key()
 	}
 
-	/// Create a new state encoded with default values
 	fn create_state(&self) -> EncodedRow {
 		let layout = self.layout();
 		layout.allocate()
 	}
 
-	/// Load the operator's single state encoded
 	fn load_state(&self, txn: &mut FlowTransaction) -> Result<EncodedRow> {
 		let key = self.key();
 		utils::load_or_create_row(self.id(), txn, &key, &self.layout())
 	}
 
-	/// Save the operator's single state encoded
 	fn save_state(&self, txn: &mut FlowTransaction, row: EncodedRow) -> Result<()> {
 		let key = self.key();
 		utils::save_row(self.id(), txn, &key, row)
 	}
 
-	/// Update state with a function
 	fn update_state<F>(&self, txn: &mut FlowTransaction, f: F) -> Result<EncodedRow>
 	where
 		F: FnOnce(&RowShape, &mut EncodedRow) -> Result<()>,
@@ -47,7 +39,6 @@ pub trait SingleStateful: RawStatefulOperator {
 		Ok(row)
 	}
 
-	/// Clear state
 	fn clear_state(&self, txn: &mut FlowTransaction) -> Result<()> {
 		let key = self.key();
 		utils::state_remove(self.id(), txn, &key)
@@ -58,6 +49,7 @@ pub trait SingleStateful: RawStatefulOperator {
 pub mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
+	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 
 	use super::*;
@@ -91,8 +83,13 @@ pub mod tests {
 	#[test]
 	fn test_load_save_state() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Initially should create new state
@@ -112,8 +109,13 @@ pub mod tests {
 	#[test]
 	fn test_update_state() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Update state with a function
@@ -135,8 +137,13 @@ pub mod tests {
 	#[test]
 	fn test_clear_state() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create and modify state
@@ -158,8 +165,13 @@ pub mod tests {
 	#[test]
 	fn test_multiple_operators_isolated() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let operator1 = TestOperator::simple(FlowNodeId(1));
 		let operator2 = TestOperator::simple(FlowNodeId(2));
 
@@ -191,8 +203,13 @@ pub mod tests {
 	#[test]
 	fn test_counter_simulation() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let operator = TestOperator::new(FlowNodeId(1));
 
 		// Simulate a counter incrementing

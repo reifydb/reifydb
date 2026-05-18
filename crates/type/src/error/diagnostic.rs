@@ -129,16 +129,13 @@ impl IntoDiagnostic for TypeError {
 					}
 					(_, OperandCategory::Uuid) => {
 						notes.push("To convert UUIDs to boolean, use comparison operators like: uuid == '...'".to_string());
-						if matches!(&operator, LogicalOp::Xor) {
-							// no extra note
-						}
 						notes.push("UUID types include Uuid4 and Uuid7".to_string());
 					}
 				}
 
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					column: None,
 					fragment,
@@ -227,7 +224,7 @@ impl IntoDiagnostic for TypeError {
 
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					column: None,
 					fragment,
@@ -243,7 +240,7 @@ impl IntoDiagnostic for TypeError {
 				let label = Some(format!("cannot cast {} of type {} to {}", fragment.text(), from, to));
 				Diagnostic {
 					code: "CAST_001".to_string(),
-					statement: None,
+					rql: None,
 					message: format!("unsupported cast from {} to {}", from, to),
 					fragment,
 					label,
@@ -266,7 +263,7 @@ impl IntoDiagnostic for TypeError {
 				let label = Some(format!("failed to cast to {}", target));
 				Diagnostic {
 					code: "CAST_002".to_string(),
-					statement: None,
+					rql: None,
 					message: format!("failed to cast to {}", target),
 					fragment,
 					label,
@@ -286,7 +283,7 @@ impl IntoDiagnostic for TypeError {
 				let label = Some(format!("failed to cast to {}", target));
 				Diagnostic {
 					code: "CAST_003".to_string(),
-					statement: None,
+					rql: None,
 					message: format!("failed to cast to {}", target),
 					fragment,
 					label,
@@ -302,7 +299,7 @@ impl IntoDiagnostic for TypeError {
 				let label = Some("failed to cast to bool".to_string());
 				Diagnostic {
 					code: "CAST_004".to_string(),
-					statement: None,
+					rql: None,
 					message: "failed to cast to bool".to_string(),
 					fragment,
 					label,
@@ -322,7 +319,7 @@ impl IntoDiagnostic for TypeError {
 				let label = Some(format!("failed to cast to {}", target));
 				Diagnostic {
 					code: "CAST_005".to_string(),
-					statement: None,
+					rql: None,
 					message: format!("failed to cast to {}", target),
 					fragment,
 					label,
@@ -338,7 +335,7 @@ impl IntoDiagnostic for TypeError {
 				let label = Some("failed to cast BLOB to UTF8".to_string());
 				Diagnostic {
 					code: "CAST_006".to_string(),
-					statement: None,
+					rql: None,
 					message: "failed to cast BLOB to UTF8".to_string(),
 					fragment,
 					label,
@@ -412,7 +409,7 @@ impl IntoDiagnostic for TypeError {
 
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					column: None,
 					fragment,
@@ -460,7 +457,7 @@ impl IntoDiagnostic for TypeError {
 
 				Diagnostic {
 					code: "NUMBER_001".to_string(),
-					statement: None,
+					rql: None,
 					message: "invalid number format".to_string(),
 					fragment,
 					label,
@@ -507,7 +504,7 @@ impl IntoDiagnostic for TypeError {
 
 				Diagnostic {
 					code: "NUMBER_002".to_string(),
-					statement: None,
+					rql: None,
 					message: "number out of range".to_string(),
 					fragment,
 					label,
@@ -521,7 +518,7 @@ impl IntoDiagnostic for TypeError {
 
 			TypeError::NanNotAllowed => Diagnostic {
 				code: "NUMBER_003".to_string(),
-				statement: None,
+				rql: None,
 				message: "NaN not allowed".to_string(),
 				fragment: Fragment::None,
 				label: Some("NaN (Not a Number) values are not permitted".to_string()),
@@ -565,7 +562,7 @@ impl IntoDiagnostic for TypeError {
 
 				Diagnostic {
 					code: "NUMBER_004".to_string(),
-					statement: None,
+					rql: None,
 					message: "too large for precise float conversion".to_string(),
 					fragment,
 					label,
@@ -588,7 +585,7 @@ impl IntoDiagnostic for TypeError {
 				let label = Some(format!("scale ({}) cannot be greater than precision ({})", scale, precision));
 				Diagnostic {
 					code: "NUMBER_005".to_string(),
-					statement: None,
+					rql: None,
 					message: "decimal scale exceeds precision".to_string(),
 					fragment,
 					label,
@@ -609,7 +606,7 @@ impl IntoDiagnostic for TypeError {
 				let label = Some(format!("precision ({}) must be at least 1", precision));
 				Diagnostic {
 					code: "NUMBER_006".to_string(),
-					statement: None,
+					rql: None,
 					message: "invalid decimal precision".to_string(),
 					fragment: Fragment::None,
 					label,
@@ -629,7 +626,7 @@ impl IntoDiagnostic for TypeError {
 				let label = Some(format!("expected 'true' or 'false', found '{}'", value));
 				Diagnostic {
 					code: "BOOLEAN_001".to_string(),
-					statement: None,
+					rql: None,
 					message: "invalid boolean format".to_string(),
 					fragment,
 					label,
@@ -643,7 +640,7 @@ impl IntoDiagnostic for TypeError {
 
 			TypeError::EmptyBooleanValue { fragment } => Diagnostic {
 				code: "BOOLEAN_002".to_string(),
-				statement: None,
+				rql: None,
 				message: "empty boolean value".to_string(),
 				fragment,
 				label: Some("boolean value cannot be empty".to_string()),
@@ -660,7 +657,7 @@ impl IntoDiagnostic for TypeError {
 					Some(format!("number '{}' cannot be cast to boolean, only 1 or 0 are allowed", value));
 				Diagnostic {
 					code: "BOOLEAN_003".to_string(),
-					statement: None,
+					rql: None,
 					message: "invalid boolean".to_string(),
 					fragment,
 					label,
@@ -909,7 +906,7 @@ impl IntoDiagnostic for TypeError {
 
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					fragment,
 					label,
@@ -925,7 +922,7 @@ impl IntoDiagnostic for TypeError {
 				let label = Some(format!("'{}' is not a valid UUID v4", fragment.text()));
 				Diagnostic {
 					code: "UUID_001".to_string(),
-					statement: None,
+					rql: None,
 					message: "invalid UUID v4 format".to_string(),
 					fragment,
 					label,
@@ -945,7 +942,7 @@ impl IntoDiagnostic for TypeError {
 				let label = Some(format!("'{}' is not a valid UUID v7", fragment.text()));
 				Diagnostic {
 					code: "UUID_002".to_string(),
-					statement: None,
+					rql: None,
 					message: "invalid UUID v7 format".to_string(),
 					fragment,
 					label,
@@ -996,7 +993,7 @@ impl IntoDiagnostic for TypeError {
 
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					column: None,
 					fragment,
@@ -1010,7 +1007,7 @@ impl IntoDiagnostic for TypeError {
 
 			TypeError::SerdeDeserialize { message } => Diagnostic {
 				code: "SERDE_001".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Serde deserialization error: {}", message),
 				column: None,
 				fragment: Fragment::None,
@@ -1023,7 +1020,7 @@ impl IntoDiagnostic for TypeError {
 
 			TypeError::SerdeSerialize { message } => Diagnostic {
 				code: "SERDE_002".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Serde serialization error: {}", message),
 				column: None,
 				fragment: Fragment::None,
@@ -1036,7 +1033,7 @@ impl IntoDiagnostic for TypeError {
 
 			TypeError::SerdeKeycode { message } => Diagnostic {
 				code: "SERDE_003".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Keycode serialization error: {}", message),
 				column: None,
 				fragment: Fragment::None,
@@ -1049,7 +1046,7 @@ impl IntoDiagnostic for TypeError {
 
 			TypeError::ArrayConversion { message } => Diagnostic {
 				code: "CONV_001".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Array conversion error: {}", message),
 				column: None,
 				fragment: Fragment::None,
@@ -1062,7 +1059,7 @@ impl IntoDiagnostic for TypeError {
 
 			TypeError::Utf8Conversion { message } => Diagnostic {
 				code: "CONV_002".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("UTF-8 conversion error: {}", message),
 				column: None,
 				fragment: Fragment::None,
@@ -1075,7 +1072,7 @@ impl IntoDiagnostic for TypeError {
 
 			TypeError::IntegerConversion { message } => Diagnostic {
 				code: "CONV_003".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("Integer conversion error: {}", message),
 				column: None,
 				fragment: Fragment::None,
@@ -1102,7 +1099,7 @@ impl IntoDiagnostic for TypeError {
 
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					column: None,
 					fragment: Fragment::None,
@@ -1132,7 +1129,7 @@ impl IntoDiagnostic for TypeError {
 
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					column: None,
 					fragment: Fragment::None,
@@ -1150,7 +1147,7 @@ impl IntoDiagnostic for TypeError {
 				max_value,
 			} => Diagnostic {
 				code: "DICT_001".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("dictionary entry ID {} exceeds maximum {} for type {}", value, max_value, id_type),
 				column: None,
 				fragment: Fragment::None,
@@ -1175,7 +1172,7 @@ impl IntoDiagnostic for TypeError {
 
 				Diagnostic {
 					code: "ASSERT".to_string(),
-					statement: None,
+					rql: None,
 					message,
 					fragment,
 					label,
@@ -1246,7 +1243,7 @@ impl IntoDiagnostic for TypeError {
 
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					column: None,
 					fragment,
@@ -1326,7 +1323,7 @@ impl IntoDiagnostic for TypeError {
 
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					column: None,
 					fragment,
@@ -1385,6 +1382,17 @@ impl IntoDiagnostic for TypeError {
 						"RUNTIME_008",
 						Some("APPEND can only target Frame variables. Use a new variable name or ensure the target was created by APPEND or FROM".to_string()),
 					),
+					RuntimeErrorKind::AppendColumnMismatch { .. } => (
+						"RUNTIME_011",
+						Some("APPEND requires the new rows to have the same columns as the target.".to_string()),
+					),
+					RuntimeErrorKind::ExpectedSingleColumn { actual } => (
+						"RUNTIME_010",
+						Some(format!(
+							"Expected a single-column value but got {} columns. Use field access to select one column.",
+							actual
+						)),
+					),
 				};
 
 				let notes = match &kind {
@@ -1398,17 +1406,22 @@ impl IntoDiagnostic for TypeError {
 							"Use first() to take the first value from the first column".to_string(),
 						]
 					}
+					RuntimeErrorKind::AppendColumnMismatch { existing, incoming, .. } => vec![
+						format!("existing columns: [{}]", existing.join(", ")),
+						format!("incoming columns: [{}]", incoming.join(", ")),
+					],
 					_ => vec![],
 				};
 
 				let fragment = match &kind {
 					RuntimeErrorKind::UndefinedFunction { name } => Fragment::internal(name.clone()),
+					RuntimeErrorKind::AppendColumnMismatch { fragment, .. } => fragment.clone(),
 					_ => Fragment::None,
 				};
 
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					column: None,
 					fragment,
@@ -1427,11 +1440,16 @@ impl IntoDiagnostic for TypeError {
 						"Check the procedure name and available procedures",
 						"unknown procedure",
 					),
+					ProcedureErrorKind::NoRegisteredImplementation { .. } => (
+						"PROCEDURE_002",
+						"the catalog references a native/FFI/WASM binding that is not loaded in this binary — rebuild with the registration or drop/replace the catalog entry",
+						"native binding not loaded",
+					),
 				};
 
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					column: None,
 					fragment,

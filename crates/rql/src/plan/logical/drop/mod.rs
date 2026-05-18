@@ -5,9 +5,10 @@ use crate::{
 	Result,
 	ast::ast::AstDrop,
 	plan::logical::{
-		Compiler, DropAuthenticationNode, DropDictionaryNode, DropIdentityNode, DropNamespaceNode,
-		DropPolicyNode, DropRingBufferNode, DropRoleNode, DropSeriesNode, DropSinkNode, DropSourceNode,
-		DropSubscriptionNode, DropSumTypeNode, DropTableNode, DropViewNode, LogicalPlan,
+		Compiler, DropAuthenticationNode, DropBindingNode, DropDictionaryNode, DropHandlerNode,
+		DropIdentityNode, DropNamespaceNode, DropPolicyNode, DropProcedureNode, DropRingBufferNode,
+		DropRoleNode, DropSeriesNode, DropSinkNode, DropSourceNode, DropSubscriptionNode, DropSumTypeNode,
+		DropTableNode, DropTestNode, DropViewNode, LogicalPlan,
 	},
 };
 
@@ -81,6 +82,22 @@ impl<'bump> Compiler<'bump> {
 				sink: node.sink,
 				if_exists: node.if_exists,
 				cascade: node.cascade,
+			})),
+			AstDrop::Procedure(node) => Ok(LogicalPlan::DropProcedure(DropProcedureNode {
+				procedure: node.procedure,
+				if_exists: node.if_exists,
+			})),
+			AstDrop::Handler(node) => Ok(LogicalPlan::DropHandler(DropHandlerNode {
+				handler: node.handler,
+				if_exists: node.if_exists,
+			})),
+			AstDrop::Test(node) => Ok(LogicalPlan::DropTest(DropTestNode {
+				test: node.test,
+				if_exists: node.if_exists,
+			})),
+			AstDrop::Binding(node) => Ok(LogicalPlan::DropBinding(DropBindingNode {
+				binding: node.binding,
+				if_exists: node.if_exists,
 			})),
 		}
 	}

@@ -33,24 +33,20 @@ use crate::value::{decimal::Decimal, int::Int, uint::Uint};
 
 impl SafeSub for Int {
 	fn checked_sub(&self, r: &Self) -> Option<Self> {
-		// Int can't overflow since it's arbitrary precision
 		Some(Int::from(&self.0 - &r.0))
 	}
 
 	fn saturating_sub(&self, r: &Self) -> Self {
-		// Int doesn't need saturation since it can't overflow
 		Int::from(&self.0 - &r.0)
 	}
 
 	fn wrapping_sub(&self, r: &Self) -> Self {
-		// Int doesn't wrap since it's arbitrary precision
 		Int::from(&self.0 - &r.0)
 	}
 }
 
 impl SafeSub for Uint {
 	fn checked_sub(&self, r: &Self) -> Option<Self> {
-		// Uint subtraction can result in negative, which becomes 0
 		let result = &self.0 - &r.0;
 		if result < BigInt::from(0) {
 			None
@@ -60,7 +56,6 @@ impl SafeSub for Uint {
 	}
 
 	fn saturating_sub(&self, r: &Self) -> Self {
-		// Saturate at 0 for Uint
 		let result = &self.0 - &r.0;
 		if result < BigInt::from(0) {
 			Uint::from(0u64)
@@ -70,7 +65,6 @@ impl SafeSub for Uint {
 	}
 
 	fn wrapping_sub(&self, r: &Self) -> Self {
-		// For wrapping, negative values wrap to 0
 		let result = &self.0 - &r.0;
 		if result < BigInt::from(0) {
 			Uint::from(0u64)

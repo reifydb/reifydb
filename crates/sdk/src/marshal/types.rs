@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Type-specific unmarshalling functions
-
 use std::{slice::from_raw_parts, str::from_utf8};
 
 use postcard::from_bytes;
@@ -11,11 +9,13 @@ use reifydb_type::value::{
 	Value,
 	blob::Blob,
 	container::{
-		any::AnyContainer, blob::BlobContainer, bool::BoolContainer, identity_id::IdentityIdContainer,
-		number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
+		any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
+		identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
+		utf8::Utf8Container, uuid::UuidContainer,
 	},
 	date::Date,
 	datetime::DateTime,
+	dictionary::DictionaryEntryId,
 	duration::Duration,
 	identity::IdentityId,
 	is::IsNumber,
@@ -51,7 +51,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal numeric data
 	pub(super) fn unmarshal_numeric_data<T: Copy + Default + IsNumber>(
 		&self,
 		ffi: &ColumnDataFFI,
@@ -69,7 +68,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal UTF8 data with offsets
 	pub(super) fn unmarshal_utf8_data(&self, ffi: &ColumnDataFFI) -> Utf8Container {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
@@ -92,7 +90,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal date data
 	pub(super) fn unmarshal_date_data(&self, ffi: &ColumnDataFFI) -> TemporalContainer<Date> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
@@ -111,7 +108,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal datetime data
 	pub(super) fn unmarshal_datetime_data(&self, ffi: &ColumnDataFFI) -> TemporalContainer<DateTime> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
@@ -119,16 +115,14 @@ impl Arena {
 		}
 
 		unsafe {
-			let ptr = ffi.data.ptr as *const i64;
-			let len = ffi.data.len / size_of::<i64>();
+			let ptr = ffi.data.ptr as *const u64;
+			let len = ffi.data.len / size_of::<u64>();
 			let slice = from_raw_parts(ptr, len);
-			let datetimes: Vec<DateTime> =
-				slice.iter().map(|&ts| DateTime::from_timestamp(ts).unwrap_or_default()).collect();
+			let datetimes: Vec<DateTime> = slice.iter().map(|&nanos| DateTime::from_nanos(nanos)).collect();
 			TemporalContainer::new(datetimes)
 		}
 	}
 
-	/// Unmarshal time data
 	pub(super) fn unmarshal_time_data(&self, ffi: &ColumnDataFFI) -> TemporalContainer<Time> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
@@ -147,30 +141,20 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal duration data (deserialize with postcard since Duration has 3 fields)
 	pub(super) fn unmarshal_duration_data(&self, ffi: &ColumnDataFFI) -> TemporalContainer<Duration> {
 		let row_count = ffi.row_count;
-		if ffi.data.is_empty() || ffi.offsets.is_empty() {
+		if ffi.data.is_empty() {
 			return TemporalContainer::new(vec![Duration::default(); row_count]);
 		}
 
 		unsafe {
-			let data = from_raw_parts(ffi.data.ptr, ffi.data.len);
-			let offsets = self.read_offsets(&ffi.offsets);
-
-			let mut durations = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				let start = offsets[i] as usize;
-				let end = offsets[i + 1] as usize;
-				let duration: Duration = from_bytes(&data[start..end]).unwrap_or_default();
-				durations.push(duration);
-			}
-
-			TemporalContainer::new(durations)
+			let ptr = ffi.data.ptr as *const Duration;
+			let len = ffi.data.len / size_of::<Duration>();
+			let slice = from_raw_parts(ptr, len);
+			TemporalContainer::new(slice.to_vec())
 		}
 	}
 
-	/// Unmarshal identity ID data
 	pub(super) fn unmarshal_identity_id_data(&self, ffi: &ColumnDataFFI) -> IdentityIdContainer {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
@@ -184,7 +168,7 @@ impl Arena {
 				.map(|chunk| {
 					let mut arr = [0u8; 16];
 					arr.copy_from_slice(chunk);
-					// IdentityId wraps Uuid7 which wraps StdUuid
+
 					IdentityId(Uuid7(Uuid::from_bytes(arr)))
 				})
 				.collect();
@@ -192,7 +176,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal UUID4 data
 	pub(super) fn unmarshal_uuid4_data(&self, ffi: &ColumnDataFFI) -> UuidContainer<Uuid4> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
@@ -213,7 +196,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal UUID7 data
 	pub(super) fn unmarshal_uuid7_data(&self, ffi: &ColumnDataFFI) -> UuidContainer<Uuid7> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
@@ -234,7 +216,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal blob data with offsets
 	pub(super) fn unmarshal_blob_data(&self, ffi: &ColumnDataFFI) -> BlobContainer {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
@@ -256,7 +237,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal serialized data with offsets
 	pub(super) fn unmarshal_serialized_data<T: Default + Clone + DeserializeOwned + IsNumber>(
 		&self,
 		ffi: &ColumnDataFFI,
@@ -282,7 +262,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal Any data with offsets
 	pub(super) fn unmarshal_any_data(&self, ffi: &ColumnDataFFI) -> AnyContainer {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
@@ -305,7 +284,29 @@ impl Arena {
 		}
 	}
 
-	/// Helper: read offsets array from FFI buffer
+	pub(super) fn unmarshal_dictionary_id_data(&self, ffi: &ColumnDataFFI) -> DictionaryContainer {
+		let row_count = ffi.row_count;
+		if ffi.data.is_empty() || ffi.offsets.is_empty() {
+			return DictionaryContainer::new(vec![DictionaryEntryId::U16(0); row_count]);
+		}
+
+		unsafe {
+			let data = from_raw_parts(ffi.data.ptr, ffi.data.len);
+			let offsets = self.read_offsets(&ffi.offsets);
+
+			let mut entries = Vec::with_capacity(row_count);
+			for i in 0..row_count {
+				let start = offsets[i] as usize;
+				let end = offsets[i + 1] as usize;
+				let entry: DictionaryEntryId =
+					from_bytes(&data[start..end]).unwrap_or(DictionaryEntryId::U16(0));
+				entries.push(entry);
+			}
+
+			DictionaryContainer::new(entries)
+		}
+	}
+
 	pub(super) fn read_offsets(&self, ffi: &BufferFFI) -> Vec<u64> {
 		if ffi.is_empty() {
 			return Vec::new();
@@ -314,6 +315,98 @@ impl Arena {
 			let ptr = ffi.ptr as *const u64;
 			let len = ffi.len / size_of::<u64>();
 			from_raw_parts(ptr, len).to_vec()
+		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::value::column::buffer::ColumnBuffer;
+	use reifydb_type::value::{
+		container::temporal::TemporalContainer, date::Date, datetime::DateTime, duration::Duration, time::Time,
+	};
+
+	use crate::ffi::arena::Arena;
+
+	// Regression: DateTime columns marshal zero-copy as raw u64 nanos; unmarshal
+	// must read them back the same way (not via from_timestamp, which treats the
+	// value as epoch seconds).
+	#[test]
+	fn datetime_column_marshal_unmarshal_roundtrip() {
+		let mut arena = Arena::new();
+		let values = vec![
+			DateTime::from_nanos(0),
+			DateTime::from_nanos(1_700_000_000_000_000_000),
+			DateTime::from_nanos(u64::MAX),
+		];
+		let buf = ColumnBuffer::DateTime(TemporalContainer::new(values.clone()));
+		let ffi = arena.marshal_column_data(&buf);
+		match arena.unmarshal_column_data(&ffi, values.len()) {
+			ColumnBuffer::DateTime(container) => {
+				let got: &[DateTime] = &container;
+				assert_eq!(got, values.as_slice());
+			}
+			_ => panic!("expected DateTime column"),
+		}
+	}
+
+	// Regression: Date columns marshal zero-copy as raw i32 days-since-epoch;
+	// unmarshal must read them back the same way.
+	#[test]
+	fn date_column_marshal_unmarshal_roundtrip() {
+		let mut arena = Arena::new();
+		let values = vec![Date::default(), Date::new(2024, 3, 15).unwrap(), Date::new(1970, 1, 1).unwrap()];
+		let buf = ColumnBuffer::Date(TemporalContainer::new(values.clone()));
+		let ffi = arena.marshal_column_data(&buf);
+		match arena.unmarshal_column_data(&ffi, values.len()) {
+			ColumnBuffer::Date(container) => {
+				let got: &[Date] = &container;
+				assert_eq!(got, values.as_slice());
+			}
+			_ => panic!("expected Date column"),
+		}
+	}
+
+	// Regression: Time columns marshal zero-copy as raw u64 nanos-since-midnight;
+	// unmarshal must read them back the same way.
+	#[test]
+	fn time_column_marshal_unmarshal_roundtrip() {
+		let mut arena = Arena::new();
+		let values = vec![
+			Time::default(),
+			Time::new(14, 30, 45, 123_456_789).unwrap(),
+			Time::new(23, 59, 59, 999_999_999).unwrap(),
+		];
+		let buf = ColumnBuffer::Time(TemporalContainer::new(values.clone()));
+		let ffi = arena.marshal_column_data(&buf);
+		match arena.unmarshal_column_data(&ffi, values.len()) {
+			ColumnBuffer::Time(container) => {
+				let got: &[Time] = &container;
+				assert_eq!(got, values.as_slice());
+			}
+			_ => panic!("expected Time column"),
+		}
+	}
+
+	// Regression: Duration columns marshal zero-copy as raw 16-byte structs;
+	// unmarshal must read them back the same way (not via postcard + offsets,
+	// which the zero-copy marshal does not produce).
+	#[test]
+	fn duration_column_marshal_unmarshal_roundtrip() {
+		let mut arena = Arena::new();
+		let values = vec![
+			Duration::default(),
+			Duration::new(13, 5, 3_600_000_000_000).expect("duration"),
+			Duration::from_seconds(-30).expect("duration"),
+		];
+		let buf = ColumnBuffer::Duration(TemporalContainer::new(values.clone()));
+		let ffi = arena.marshal_column_data(&buf);
+		match arena.unmarshal_column_data(&ffi, values.len()) {
+			ColumnBuffer::Duration(container) => {
+				let got: &[Duration] = &container;
+				assert_eq!(got, values.as_slice());
+			}
+			_ => panic!("expected Duration column"),
 		}
 	}
 }

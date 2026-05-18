@@ -13,29 +13,22 @@ use reifydb_type::Result;
 use super::utils;
 use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTransaction};
 
-/// Window-based state management for time or count-based windowing
-/// Extends TransformOperator directly and uses utility functions for state management
 pub trait WindowStateful: RawStatefulOperator {
-	/// Get or create the layout for state rows
 	fn layout(&self) -> RowShape;
 
-	/// Create a new state encoded with default values
 	fn create_state(&self) -> EncodedRow {
 		let layout = self.layout();
 		layout.allocate()
 	}
 
-	/// Load state for a window
 	fn load_state(&self, txn: &mut FlowTransaction, window_key: &EncodedKey) -> Result<EncodedRow> {
 		utils::load_or_create_row(self.id(), txn, window_key, &self.layout())
 	}
 
-	/// Save state for a window
 	fn save_state(&self, txn: &mut FlowTransaction, window_key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		utils::save_row(self.id(), txn, window_key, row)
 	}
 
-	/// Scan keys within a range without removing them (read-only)
 	fn scan_keys_in_range(&self, txn: &mut FlowTransaction, range: &EncodedKeyRange) -> Result<Vec<EncodedKey>> {
 		let prefixed_range = range.clone().with_prefix(FlowNodeStateKey::new(self.id(), vec![]).encode());
 		let stream = txn.range(prefixed_range, 1024);
@@ -47,8 +40,6 @@ pub trait WindowStateful: RawStatefulOperator {
 		Ok(keys)
 	}
 
-	/// Expire windows within a given range
-	/// The range should be constructed by the caller based on their window ordering semantics
 	fn expire_range(&self, txn: &mut FlowTransaction, range: EncodedKeyRange) -> Result<u32> {
 		let prefixed_range = range.with_prefix(FlowNodeStateKey::new(self.id(), vec![]).encode());
 
@@ -81,6 +72,7 @@ pub mod tests {
 		common::CommitVersion, interface::catalog::flow::FlowNodeId,
 		util::encoding::keycode::serializer::KeySerializer,
 	};
+	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 
 	use super::*;
@@ -92,7 +84,7 @@ pub mod tests {
 		let mut serializer = KeySerializer::with_capacity(16);
 		serializer.extend_bytes(b"w:");
 		serializer.extend_u64(window_id);
-		EncodedKey::new(serializer.finish())
+		serializer.finish()
 	}
 
 	// Extend TestOperator to implement WindowStateful
@@ -130,8 +122,13 @@ pub mod tests {
 	#[test]
 	fn test_load_save_window_state() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let window_key = test_window_key(42);
 
@@ -152,8 +149,13 @@ pub mod tests {
 	#[test]
 	fn test_multiple_windows() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create states for multiple windows
@@ -175,8 +177,13 @@ pub mod tests {
 	#[test]
 	fn test_expire_before() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create windows 0 through 9
@@ -212,8 +219,13 @@ pub mod tests {
 	#[test]
 	fn test_expire_empty_range() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create windows 5 through 9
@@ -241,8 +253,13 @@ pub mod tests {
 	#[test]
 	fn test_expire_all() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create windows 0 through 4
@@ -270,8 +287,13 @@ pub mod tests {
 	#[test]
 	fn test_sliding_window_simulation() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let operator = TestOperator::new(FlowNodeId(1));
 
 		// Simulate a sliding window maintaining last 3 windows

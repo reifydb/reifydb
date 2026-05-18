@@ -1,6 +1,6 @@
 [package]
 name = "cmov"
-version = "0.5.2"
+version = "0.5.3"
 authors = ["RustCrypto Developers"]
 edition = "2024"
 rust-version = "1.85"
@@ -17,8 +17,11 @@ wrappers for the CMOV family of instructions on x86/x86_64 and CSEL on AArch64, 
 portable "best-effort" pure Rust fallback implementation.
 """
 
-[dev-dependencies]
+[target.'cfg(any(unix, windows))'.dev-dependencies]
 proptest = "1.9"
+
+[lints]
+workspace = true
 
 [package.metadata.docs.rs]
 all-features = true

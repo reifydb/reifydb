@@ -1,16 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # Basic Tables Example
-//!
-//! Demonstrates table operations in ReifyDB:
-//! - Creating namespaces and tables
-//! - Working with different data types
-//! - Insert, update, and delete operations
-//! - Querying with filters
-//!
-//! Run with: `make basic-tables` or `cargo run --bin basic-tables`
-
 use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;

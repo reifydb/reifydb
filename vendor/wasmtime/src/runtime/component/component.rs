@@ -437,7 +437,7 @@ impl Component {
         // Assemble the `EngineCode` artifact which is shared by all core wasm
         // modules as well as the final component.
         let types = Arc::new(types);
-        let code = Arc::new(EngineCode::new(code_memory, signatures, types.into()));
+        let code = Arc::new(EngineCode::new(code_memory, signatures, types.into())?);
 
         // Convert all information about static core wasm modules into actual
         // `Module` instances by converting each `CompiledModuleInfo`, the
@@ -482,7 +482,7 @@ impl Component {
         &self.inner.static_modules[idx]
     }
 
-    #[cfg(feature = "profiling")]
+    #[cfg(any(feature = "profiling", feature = "debug"))]
     pub(crate) fn static_modules(&self) -> impl Iterator<Item = &Module> {
         self.inner.static_modules.values()
     }

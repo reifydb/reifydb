@@ -6,7 +6,6 @@ use std::sync::Arc;
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_rql::nodes::RunTestsNode;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::params::Params;
 
 use crate::{
 	Result,
@@ -14,7 +13,7 @@ use crate::{
 	vm::{
 		services::Services,
 		stack::SymbolTable,
-		vm::Vm,
+		vm::{EMPTY_PARAMS, Vm},
 		volcano::query::{QueryContext, QueryNode},
 	},
 };
@@ -42,14 +41,14 @@ impl QueryNode for RunTestsQueryNode {
 		Ok(())
 	}
 
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		if self.executed {
 			return Ok(None);
 		}
 		self.executed = true;
 
-		let mut vm = Vm::new(self.symbols.clone());
-		let columns = run_tests(&mut vm, &self.services, rx, self.node.clone(), &Params::None)?;
+		let mut vm = Vm::from_services(self.symbols.clone(), &self.services, &EMPTY_PARAMS, ctx.identity);
+		let columns = run_tests(&mut vm, &self.services, rx, self.node.clone())?;
 		Ok(Some(columns))
 	}
 

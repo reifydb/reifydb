@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, date::Date, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct DateAdd;
+pub struct DateAdd {
+	info: RoutineInfo,
+}
 
 impl Default for DateAdd {
 	fn default() -> Self {
@@ -20,32 +18,38 @@ impl Default for DateAdd {
 
 impl DateAdd {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("date::add"),
+		}
 	}
 }
 
-impl ScalarFunction for DateAdd {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl<'a> Routine<FunctionContext<'a>> for DateAdd {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Date
+	}
 
-		if columns.len() != 2 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 2 {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let date_col = columns.first().unwrap();
-		let dur_col = columns.get(1).unwrap();
+		let date_col = &args[0];
+		let dur_col = &args[1];
+		let (date_data, date_bitvec) = date_col.unwrap_option();
+		let (dur_data, dur_bitvec) = dur_col.unwrap_option();
+		let row_count = date_data.len();
 
-		match (date_col.data(), dur_col.data()) {
-			(ColumnData::Date(date_container), ColumnData::Duration(dur_container)) => {
+		let result_data = match (date_data, dur_data) {
+			(ColumnBuffer::Date(date_container), ColumnBuffer::Duration(dur_container)) => {
 				let mut container = TemporalContainer::with_capacity(row_count);
 
 				for i in 0..row_count {
@@ -55,18 +59,15 @@ impl ScalarFunction for DateAdd {
 							let mut month = date.month() as i32;
 							let mut day = date.day();
 
-							// Add months component
 							let total_months = month + dur.get_months();
 							year += (total_months - 1).div_euclid(12);
 							month = (total_months - 1).rem_euclid(12) + 1;
 
-							// Clamp day to valid range for the new month
 							let max_day = days_in_month(year, month as u32);
 							if day > max_day {
 								day = max_day;
 							}
 
-							// Convert to days_since_epoch and add days component
 							if let Some(base) = Date::new(year, month as u32, day) {
 								let total_days = base.to_days_since_epoch()
 									+ dur.get_days() + (dur.get_nanos()
@@ -84,25 +85,41 @@ impl ScalarFunction for DateAdd {
 					}
 				}
 
-				Ok(ColumnData::Date(container))
+				ColumnBuffer::Date(container)
 			}
-			(ColumnData::Date(_), other) => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 1,
-				expected: vec![Type::Duration],
-				actual: other.get_type(),
-			}),
-			(other, _) => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 0,
-				expected: vec![Type::Date],
-				actual: other.get_type(),
-			}),
-		}
-	}
+			(ColumnBuffer::Date(_), other) => {
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 1,
+					expected: vec![Type::Duration],
+					actual: other.get_type(),
+				});
+			}
+			(other, _) => {
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 0,
+					expected: vec![Type::Date],
+					actual: other.get_type(),
+				});
+			}
+		};
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Date
+		let final_data = match (date_bitvec, dur_bitvec) {
+			(Some(bv), _) | (_, Some(bv)) => ColumnBuffer::Option {
+				inner: Box::new(result_data),
+				bitvec: bv.clone(),
+			},
+			_ => result_data,
+		};
+
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for DateAdd {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }
 

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::r#type::Type};
@@ -16,9 +16,8 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes all type information
 pub struct SystemTypes {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +30,7 @@ impl Default for SystemTypes {
 impl SystemTypes {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_types_table().clone(),
+			vtable: SystemCatalog::get_system_types_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -50,8 +49,8 @@ impl BaseVTable for SystemTypes {
 
 		const TYPE_COUNT: usize = 27;
 
-		let mut ids = ColumnData::uint1_with_capacity(TYPE_COUNT);
-		let mut names = ColumnData::utf8_with_capacity(TYPE_COUNT);
+		let mut ids = ColumnBuffer::uint1_with_capacity(TYPE_COUNT);
+		let mut names = ColumnBuffer::utf8_with_capacity(TYPE_COUNT);
 
 		for i in 1..=TYPE_COUNT as u8 {
 			let ty = Type::from_u8(i);
@@ -60,14 +59,8 @@ impl BaseVTable for SystemTypes {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: ids,
-			},
-			Column {
-				name: Fragment::internal("name"),
-				data: names,
-			},
+			ColumnWithName::new(Fragment::internal("id"), ids),
+			ColumnWithName::new(Fragment::internal("name"), names),
 		];
 
 		self.exhausted = true;
@@ -76,7 +69,7 @@ impl BaseVTable for SystemTypes {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

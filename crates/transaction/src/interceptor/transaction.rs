@@ -17,23 +17,15 @@ use crate::{
 	interceptor::chain::InterceptorChain,
 };
 
-/// `flow_changes` carries the table-level changes accumulated during the transaction
-/// (input for transactional flow interceptors).
-/// `pending_writes` is populated by interceptors with view writes to be merged
-/// back into the transaction before it commits.
 pub struct PreCommitContext {
-	/// Table changes accumulated during this transaction (input to flow interceptors).
 	pub flow_changes: Vec<Change>,
-	/// View writes produced by flow interceptors to merge back into the transaction.
-	/// `Some(value)` = set the key, `None` = remove the key.
+
 	pub pending_writes: Vec<(EncodedKey, Option<EncodedRow>)>,
-	/// Row shapes created during flow processing, to be persisted at commit time.
+
 	pub pending_shapes: Vec<RowShape>,
-	/// Snapshot of the committing transaction's pending KV writes (read-only base for flow processing).
-	/// `Some(value)` = set the key, `None` = remove the key.
+
 	pub transaction_writes: Vec<(EncodedKey, Option<EncodedRow>)>,
-	/// View-level accumulator entries produced by flow interceptors.
-	/// Used by test infrastructure to feed view diffs back into the change accumulator.
+
 	pub view_entries: Vec<(ShapeId, Diff)>,
 }
 
@@ -68,7 +60,6 @@ impl InterceptorChain<dyn PreCommitInterceptor + Send + Sync> {
 	}
 }
 
-/// Closure wrapper for pre-commit interceptors
 pub struct ClosurePreCommitInterceptor<F>
 where
 	F: Fn(&mut PreCommitContext) -> Result<()> + Send + Sync,
@@ -107,7 +98,6 @@ where
 	}
 }
 
-/// Helper function to create a closure pre-commit interceptor
 pub fn pre_commit<F>(f: F) -> ClosurePreCommitInterceptor<F>
 where
 	F: Fn(&mut PreCommitContext) -> Result<()> + Send + Sync + Clone + 'static,
@@ -151,7 +141,6 @@ impl InterceptorChain<dyn PostCommitInterceptor + Send + Sync> {
 	}
 }
 
-/// Closure wrapper for post-commit interceptors
 pub struct ClosurePostCommitInterceptor<F>
 where
 	F: Fn(&mut PostCommitContext) -> Result<()> + Send + Sync,
@@ -190,7 +179,6 @@ where
 	}
 }
 
-/// Helper function to create a closure post-commit interceptor
 pub fn post_commit<F>(f: F) -> ClosurePostCommitInterceptor<F>
 where
 	F: Fn(&mut PostCommitContext) -> Result<()> + Send + Sync + Clone + 'static,

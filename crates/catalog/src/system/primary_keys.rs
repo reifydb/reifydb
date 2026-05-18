@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::primary_keys::*, vtable::PRIMARY_KEYS};
 
-/// Returns the static definition for the system.primary_keys virtual table
-/// This table exposes information about all primary keys in the database
 pub fn primary_keys() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

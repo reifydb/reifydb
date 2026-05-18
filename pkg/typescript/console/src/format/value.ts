@@ -7,7 +7,7 @@ export interface ValueStyle {
   italic?: boolean;
 }
 
-export function getValueStyle(value: unknown): ValueStyle {
+export function get_value_style(value: unknown): ValueStyle {
   if (value === null || value === undefined) {
     return { color: 'var(--rdb-color-muted)', italic: true };
   }
@@ -50,11 +50,11 @@ export function getValueStyle(value: unknown): ValueStyle {
   }
 }
 
-export function formatValue(value: unknown): string {
+export function format_value(value: unknown): string {
   if (value === null || value === undefined) {
     return 'none';
   }
-  // Duck-type Value objects by checking for .type (same approach as getValueStyle).
+  // Duck-type Value objects by checking for .type (same approach as get_value_style).
   // Handles BigInt-backed types (Int8, Uint8, etc.) that crash JSON.stringify.
   if (typeof value === 'object' && typeof (value as any).type === 'string') {
     return value.toString();

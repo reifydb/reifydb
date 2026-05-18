@@ -1,0 +1,38 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Defect targets:
+#   - stray flush in commit buffer path
+#   - listener writing to persistent directly instead of just queueing
+
+set a=1   version=1
+set b=2   version=2
+set c=3   version=3
+---
+ok
+
+# Without flush, persistent must remain empty
+persistent_get a version=3
+---
+"a" => None
+
+persistent_get b version=3
+---
+"b" => None
+
+persistent_get c version=3
+---
+"c" => None
+
+# Cascade still works because buffer has the data
+get a version=3
+---
+"a" => "1"
+
+get b version=3
+---
+"b" => "2"
+
+get c version=3
+---
+"c" => "3"

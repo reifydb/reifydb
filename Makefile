@@ -12,9 +12,9 @@ TEST_PKG_DIR := ./pkg
 
 # Check if vendor directory exists and set offline flag
 ifneq (,$(wildcard ./vendor))
-    CARGO_OFFLINE := --offline
+    export CARGO_OFFLINE := --offline
 else
-    CARGO_OFFLINE :=
+    export CARGO_OFFLINE :=
 endif
 
 # Load .env file if it exists
@@ -25,6 +25,9 @@ endif
 
 # Default target when just running 'make'
 .DEFAULT_GOAL := help
+
+# Export target directory for sharing artifacts between workspace and external test suites
+export CARGO_TARGET_DIR := $(CURDIR)/target
 
 # =============================================================================
 # Help & Documentation
@@ -48,6 +51,7 @@ help:
 	@printf "  %-25s %s\n" "test" "Full test suite (db + all test-suites + test clients)"
 	@printf "  %-25s %s\n" "test-full" "Same as 'make test'"
 	@printf "  %-25s %s\n" "test-workspace" "Run only workspace tests"
+	@printf "  %-25s %s\n" "test-dst" "Run deterministic simulation tests"
 	@echo ""
 	@echo "  🔧 Test Components"
 	@echo "  ───────────────────────────────────────────────────────────────"
@@ -111,7 +115,7 @@ help:
 # =============================================================================
 
 .PHONY: all
-all: format-check check-code-quality check clean build build-testcontainer test-full push-testcontainer push
+all: format-check check-code-quality check build build-testcontainer test-full push-testcontainer push
 
 .PHONY: check-code-quality
 check-code-quality:
@@ -121,7 +125,8 @@ check-code-quality:
 	@./scripts/check-inline-qualifications.sh
 	@./scripts/check-license-headers.sh
 	@./scripts/check-section-comments.sh
-	@cargo clippy --release -- -D warnings
+	@./scripts/check-em-dashes.sh
+	@cargo clippy --release --workspace -- -D warnings
 
 .PHONY: check
 check:
@@ -162,14 +167,15 @@ push: check
 .PHONY: test test-full test-dev
 test: test-full
 
-test-full: test-workspace test-pkg-rust test-examples test-suite test-external test-pkg-typescript fuzz-regression
+test-full: test-workspace test-dst test-pkg-rust test-examples test-suite test-external test-pkg-typescript fuzz-regression
 	@echo "✅ All tests completed successfully!"
 
-test-dev: test-workspace test-pkg-rust test-examples test-suite-dev
+test-dev: test-workspace test-dst test-pkg-rust test-examples test-suite-dev
 	@echo "🚀 Development tests completed!"
 
 # Include testing sub-makefiles
 include mk/test-workspace.mk
+include mk/test-dst.mk
 include mk/test-suites.mk
 include mk/test-external.mk
 include mk/test-pkg-rust.mk

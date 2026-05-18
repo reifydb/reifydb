@@ -23,9 +23,7 @@ fn reject_query_txn(tx: &Transaction<'_>) -> Result<()> {
 	Ok(())
 }
 
-impl Vm {
-	/// Execute a DML operation that takes params and a read-only reference to the symbol table.
-	/// Used by Delete, Update, InsertRingBuffer, InsertSeries, etc.
+impl<'a> Vm<'a> {
 	pub(crate) fn exec_dml_with_params<F>(
 		&mut self,
 		services: &Arc<Services>,
@@ -39,12 +37,10 @@ impl Vm {
 		reject_query_txn(tx)?;
 		let mut txn = tx.reborrow();
 		let columns = handler(services, &mut txn, params.clone(), &self.symbols)?;
-		self.stack.push(Variable::Columns(columns));
+		self.stack.push(Variable::columns(columns));
 		Ok(())
 	}
 
-	/// Execute a DML operation that takes a mutable reference to the symbol table (no params).
-	/// Used by InsertTable, InsertDictionary.
 	pub(crate) fn exec_dml_with_mut_symbols<F>(
 		&mut self,
 		services: &Arc<Services>,
@@ -57,7 +53,7 @@ impl Vm {
 		reject_query_txn(tx)?;
 		let mut txn = tx.reborrow();
 		let columns = handler(services, &mut txn, &mut self.symbols)?;
-		self.stack.push(Variable::Columns(columns));
+		self.stack.push(Variable::columns(columns));
 		Ok(())
 	}
 }

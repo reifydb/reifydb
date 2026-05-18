@@ -14,7 +14,7 @@ use crate::{
 		OperationType::{Create, Delete},
 		TransactionalTestChanges,
 	},
-	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
+	transaction::admin::AdminTransaction,
 };
 
 impl CatalogTrackTestChangeOperations for AdminTransaction {
@@ -80,33 +80,5 @@ impl TransactionalTestChanges for AdminTransaction {
 					.map(|t| t.namespace == namespace && t.name == name)
 					.unwrap_or(false)
 		})
-	}
-}
-
-impl CatalogTrackTestChangeOperations for SubscriptionTransaction {
-	fn track_test_created(&mut self, test: Test) -> Result<()> {
-		self.inner.track_test_created(test)
-	}
-
-	fn track_test_deleted(&mut self, test: Test) -> Result<()> {
-		self.inner.track_test_deleted(test)
-	}
-}
-
-impl TransactionalTestChanges for SubscriptionTransaction {
-	fn find_test(&self, id: TestId) -> Option<&Test> {
-		self.inner.find_test(id)
-	}
-
-	fn find_test_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Test> {
-		self.inner.find_test_by_name(namespace, name)
-	}
-
-	fn is_test_deleted(&self, id: TestId) -> bool {
-		self.inner.is_test_deleted(id)
-	}
-
-	fn is_test_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
-		self.inner.is_test_deleted_by_name(namespace, name)
 	}
 }

@@ -1,24 +1,23 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the Apache-2.0, see license.md file
 
-ast 'from [
-      {field: 1},
-      {field: 2},
-      {field: 3},
-      {other: true}
-     ]'
+query 'CALL rql::ast("from [ {field: 1}, {field: 2}, {field: 3}, {other: true} ]")'
 ---
-> └── From @ line 1, column 1 — "from"
->     ├── Row (1 fields: field) @ line 2, column 7 — "{"
->     │   ├── Identifier @ line 2, column 8 — "field"
->     │   └── Literal @ line 2, column 15 — "1"
->     ├── Row (1 fields: field) @ line 3, column 7 — "{"
->     │   ├── Identifier @ line 3, column 8 — "field"
->     │   └── Literal @ line 3, column 15 — "2"
->     ├── Row (1 fields: field) @ line 4, column 7 — "{"
->     │   ├── Identifier @ line 4, column 8 — "field"
->     │   └── Literal @ line 4, column 15 — "3"
->     └── Row (1 fields: other) @ line 5, column 7 — "{"
->         ├── Identifier @ line 5, column 8 — "other"
->         └── Literal @ line 5, column 15 — "true"
+> +-------+---------+--------------+---------------------------------------------------+
+> |  idx  |  depth  |     kind     |                      detail                       |
+> +-------+---------+--------------+---------------------------------------------------+
+> |   0   |    0    |     From     |         From @ line 1, column 1 - "from"          |
+> |   1   |    1    |     Row      |  Row (1 fields: field) @ line 1, column 8 - "{"   |
+> |   2   |    2    |  Identifier  |      Identifier @ line 1, column 9 - "field"      |
+> |   3   |    2    |   Literal    |         Literal @ line 1, column 16 - "1"         |
+> |   4   |    1    |     Row      |  Row (1 fields: field) @ line 1, column 20 - "{"  |
+> |   5   |    2    |  Identifier  |     Identifier @ line 1, column 21 - "field"      |
+> |   6   |    2    |   Literal    |         Literal @ line 1, column 28 - "2"         |
+> |   7   |    1    |     Row      |  Row (1 fields: field) @ line 1, column 32 - "{"  |
+> |   8   |    2    |  Identifier  |     Identifier @ line 1, column 33 - "field"      |
+> |   9   |    2    |   Literal    |         Literal @ line 1, column 40 - "3"         |
+> |  10   |    1    |     Row      |  Row (1 fields: other) @ line 1, column 44 - "{"  |
+> |  11   |    2    |  Identifier  |     Identifier @ line 1, column 45 - "other"      |
+> |  12   |    2    |   Literal    |       Literal @ line 1, column 52 - "true"        |
+> +-------+---------+--------------+---------------------------------------------------+
 >

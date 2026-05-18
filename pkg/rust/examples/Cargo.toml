@@ -95,11 +95,6 @@ path = "examples/intercept/01_table_view_interceptors.rs"
 name = "intercept-deferred-view"
 path = "examples/intercept/02_deferred_view_interceptors.rs"
 
-# Subscription examples
-[[bin]]
-name = "subscription-cursor"
-path = "examples/subscription/01_cursor.rs"
-
 # Replication examples (CDC-based primary/replica)
 [[bin]]
 name = "replication-basic"

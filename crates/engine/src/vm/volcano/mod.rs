@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Volcano-style execution: open/next/close iterator pipeline that pulls rows through scans, joins, and other
+//! relational operators a row-at-a-time (or column-batch-at-a-time). Sits alongside the vectorised path; the
+//! planner picks one based on the shape of the query and the cost model.
+
 use reifydb_core::{
 	interface::catalog::dictionary::Dictionary,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::{Value, dictionary::DictionaryEntryId};
@@ -21,10 +25,10 @@ pub(crate) fn decode_dictionary_columns(
 				continue;
 			}
 			let col = &columns[col_idx];
-			let row_count = col.data().len();
-			let mut new_data = ColumnData::with_capacity(dictionary.value_type.clone(), row_count);
+			let row_count = col.len();
+			let mut new_data = ColumnBuffer::with_capacity(dictionary.value_type.clone(), row_count);
 			for row_idx in 0..row_count {
-				let id_value = col.data().get_value(row_idx);
+				let id_value = col.get_value(row_idx);
 				if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
 					match rx.get_from_dictionary(dictionary, entry_id)? {
 						Some(decoded) => new_data.push_value(decoded),
@@ -34,13 +38,27 @@ pub(crate) fn decode_dictionary_columns(
 					new_data.push_value(Value::none());
 				}
 			}
-			columns.columns.make_mut()[col_idx] = Column {
-				name: columns[col_idx].name().clone(),
-				data: new_data,
-			};
+			columns.columns.make_mut()[col_idx] = new_data;
 		}
 	}
 	Ok(())
+}
+
+use query::{QueryContext, QueryNode};
+use reifydb_core::value::column::headers::ColumnHeaders;
+
+pub(crate) struct NoopNode;
+
+impl QueryNode for NoopNode {
+	fn initialize<'a>(&mut self, _: &mut Transaction<'a>, _: &QueryContext) -> Result<()> {
+		Ok(())
+	}
+	fn next<'a>(&mut self, _: &mut Transaction<'a>, _: &mut QueryContext) -> Result<Option<Columns>> {
+		Ok(None)
+	}
+	fn headers(&self) -> Option<ColumnHeaders> {
+		None
+	}
 }
 
 pub mod aggregate;
@@ -64,4 +82,5 @@ pub mod scan;
 pub mod sort;
 pub mod take;
 pub mod top_k;
+pub(crate) mod udf;
 pub mod variable;

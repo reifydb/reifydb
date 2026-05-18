@@ -3,7 +3,7 @@
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::{
-	interface::catalog::{procedure::ProcedureTrigger, sumtype::SumTypeKind},
+	interface::catalog::{procedure::RqlTrigger, sumtype::SumTypeKind},
 	internal_error,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -24,18 +24,16 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		create: logical::CreateProcedureNode<'_>,
 	) -> Result<PhysicalPlan<'bump>> {
-		// Handler-style procedures always have on_event/on_variant set
 		let on_event = create.on_event.expect("handler must have on_event");
 		let on_variant = create.on_variant.expect("handler must have on_variant");
 
-		// Resolve namespace for the handler itself (from the handler name)
 		let handler_ns_segments: Vec<&str> = create.procedure.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &handler_ns_segments)? else {
 			let ns_fragment = if let Some(n) = create.procedure.namespace.first() {
 				let interned = self.interner.intern_fragment(n);
 				interned.with_text(handler_ns_segments.join("::"))
 			} else {
-				Fragment::internal("default".to_string())
+				Fragment::internal("default")
 			};
 			return Err(CatalogError::NotFound {
 				kind: CatalogObjectKind::Namespace,
@@ -46,7 +44,6 @@ impl<'bump> Compiler<'bump> {
 			.into());
 		};
 
-		// Resolve event sumtype namespace
 		let event_ns_segments: Vec<&str> = if on_event.namespace.is_empty() {
 			handler_ns_segments.clone()
 		} else {
@@ -63,19 +60,17 @@ impl<'bump> Compiler<'bump> {
 			.into());
 		};
 
-		// Look up the event sumtype by name
 		let event_name = on_event.name.text();
 		let Some(sumtype) = self.catalog.find_sumtype_by_name(rx, event_ns_def.id(), event_name)? else {
 			return Err(CatalogError::NotFound {
 				kind: CatalogObjectKind::Event,
 				namespace: event_ns_segments.join("::"),
 				name: event_name.to_string(),
-				fragment: Fragment::internal(event_name.to_string()),
+				fragment: Fragment::internal(event_name),
 			}
 			.into());
 		};
 
-		// Verify it's an event type
 		if sumtype.kind != SumTypeKind::Event {
 			return Err(internal_error!(
 				"'{}' is not an EVENT type. Use CREATE EVENT to declare event types.",
@@ -83,7 +78,6 @@ impl<'bump> Compiler<'bump> {
 			));
 		}
 
-		// Find variant by name → get tag
 		let variant_name = on_variant.text().to_lowercase();
 		let Some(variant) = sumtype.variants.iter().find(|v| v.name == variant_name) else {
 			return Err(internal_error!(
@@ -98,7 +92,7 @@ impl<'bump> Compiler<'bump> {
 			name: self.interner.intern_fragment(&create.procedure.name),
 			params: vec![],
 			body_source: create.body_source,
-			trigger: ProcedureTrigger::Event {
+			trigger: RqlTrigger::Event {
 				variant: VariantRef {
 					sumtype_id: sumtype.id,
 					variant_tag: variant.tag,

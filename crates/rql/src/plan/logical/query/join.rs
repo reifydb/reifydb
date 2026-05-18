@@ -16,22 +16,17 @@ use crate::{
 	plan::logical::{
 		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan,
 		LogicalPlan::PrimitiveScan,
-		RemoteScanNode, ShapeScanNode,
+		PipelineNode, RemoteScanNode, ShapeScanNode,
 		resolver::{self, ResolvedSource},
 	},
 };
 
-/// Build expression tree from using clause pairs.
-/// Each pair (expr1, expr2) becomes an equality condition expr1 == expr2.
-/// Pairs are combined using AND or OR based on their connectors.
 fn build_join_expressions(using: AstUsingClause<'_>, alias: &BumpFragment<'_>) -> Result<Vec<Expression>> {
 	let compiler = JoinConditionCompiler::new(Some(alias.to_owned()));
 	let fragment = using.token.fragment.to_owned();
 
-	// Check if any connector is OR (determines the overall combination strategy)
 	let use_or = using.pairs.iter().any(|p| matches!(p.connector, Some(JoinConnector::Or)));
 
-	// Build equality expressions for each pair
 	let mut eq_exprs: Vec<Expression> = Vec::new();
 	for pair in using.pairs {
 		let left_expr = compiler.compile(BumpBox::into_inner(pair.first))?;
@@ -43,14 +38,11 @@ fn build_join_expressions(using: AstUsingClause<'_>, alias: &BumpFragment<'_>) -
 		}));
 	}
 
-	// If only one expression, return it directly
 	if eq_exprs.len() == 1 {
 		return Ok(eq_exprs);
 	}
 
-	// Build the combined expression
 	let combined = if use_or {
-		// OR all expressions together
 		eq_exprs.into_iter()
 			.reduce(|acc, expr| {
 				Expression::Or(OrExpression {
@@ -61,7 +53,6 @@ fn build_join_expressions(using: AstUsingClause<'_>, alias: &BumpFragment<'_>) -
 			})
 			.unwrap()
 	} else {
-		// AND all expressions together (default)
 		eq_exprs.into_iter()
 			.reduce(|acc, expr| {
 				Expression::And(AndExpression {
@@ -83,18 +74,24 @@ impl<'bump> Compiler<'bump> {
 				with,
 				using_clause,
 				alias,
+				ttl,
+				snapshot,
 				rql,
 				..
 			} => {
-				let with = self.compile_join_subquery(&with, &alias, tx)?;
-
-				// Build equality expressions from using clause
+				let with = self.compile_join_subquery(with, &alias, tx)?;
 				let on = build_join_expressions(using_clause, &alias)?;
+				let ttl = match ttl {
+					Some(ast_ttl) => Some(Self::compile_join_ttl(ast_ttl)?),
+					None => None,
+				};
 
 				Ok(LogicalPlan::JoinInner(JoinInnerNode {
 					with,
 					on,
 					alias: Some(alias),
+					ttl,
+					snapshot,
 					rql: rql.to_string(),
 				}))
 			}
@@ -102,18 +99,24 @@ impl<'bump> Compiler<'bump> {
 				with,
 				using_clause,
 				alias,
+				ttl,
+				snapshot,
 				rql,
 				..
 			} => {
-				let with = self.compile_join_subquery(&with, &alias, tx)?;
-
-				// Build equality expressions from using clause
+				let with = self.compile_join_subquery(with, &alias, tx)?;
 				let on = build_join_expressions(using_clause, &alias)?;
+				let ttl = match ttl {
+					Some(ast_ttl) => Some(Self::compile_join_ttl(ast_ttl)?),
+					None => None,
+				};
 
 				Ok(LogicalPlan::JoinLeft(JoinLeftNode {
 					with,
 					on,
 					alias: Some(alias),
+					ttl,
+					snapshot,
 					rql: rql.to_string(),
 				}))
 			}
@@ -121,15 +124,23 @@ impl<'bump> Compiler<'bump> {
 				with,
 				join_type,
 				alias,
+				ttl,
+				snapshot,
 				rql,
 				..
 			} => {
-				let with = self.compile_natural_join_subquery(&with, &alias, tx)?;
+				let with = self.compile_natural_join_subquery(with, &alias, tx)?;
+				let ttl = match ttl {
+					Some(ast_ttl) => Some(Self::compile_join_ttl(ast_ttl)?),
+					None => None,
+				};
 
 				Ok(LogicalPlan::JoinNatural(JoinNaturalNode {
 					with,
 					join_type: join_type.unwrap_or(JoinType::Inner),
 					alias: Some(alias),
+					ttl,
+					snapshot,
 					rql: rql.to_string(),
 				}))
 			}
@@ -138,71 +149,32 @@ impl<'bump> Compiler<'bump> {
 
 	fn compile_join_subquery(
 		&self,
-		with: &AstSubQuery,
+		with: AstSubQuery<'bump>,
 		alias: &BumpFragment<'_>,
 		tx: &mut Transaction<'_>,
 	) -> Result<BumpVec<'bump, LogicalPlan<'bump>>> {
-		let with_ast = with.statement.nodes.first().expect("Empty subquery in join");
-		match with_ast {
-			Ast::From(AstFrom::Source {
-				source,
-				..
-			}) => {
-				let mut unresolved =
-					UnresolvedShapeIdentifier::new(source.namespace.clone(), source.name);
-				unresolved = unresolved.with_alias(*alias);
-
-				let plan = resolve_join_plan(&self.catalog, tx, &unresolved)?;
-				let mut result = BumpVec::with_capacity_in(1, self.bump);
-				result.push(plan);
-				Ok(result)
-			}
-			Ast::Identifier(identifier) => {
-				let mut unresolved = UnresolvedShapeIdentifier::new(vec![], identifier.token.fragment);
-				unresolved = unresolved.with_alias(*alias);
-
-				let plan = resolve_join_plan(&self.catalog, tx, &unresolved)?;
-				let mut result = BumpVec::with_capacity_in(1, self.bump);
-				result.push(plan);
-				Ok(result)
-			}
-			Ast::Infix(AstInfix {
-				left,
-				operator,
-				right,
-				..
-			}) => {
-				assert!(matches!(operator, InfixOperator::AccessTable(_)));
-				let Ast::Identifier(namespace) = &**left else {
-					unreachable!()
-				};
-				let Ast::Identifier(table) = &**right else {
-					unreachable!()
-				};
-
-				let mut unresolved = UnresolvedShapeIdentifier::new(
-					vec![namespace.token.fragment],
-					table.token.fragment,
-				);
-				unresolved = unresolved.with_alias(*alias);
-
-				let plan = resolve_join_plan(&self.catalog, tx, &unresolved)?;
-				let mut result = BumpVec::with_capacity_in(1, self.bump);
-				result.push(plan);
-				Ok(result)
-			}
-			_ => unimplemented!(),
-		}
+		self.compile_join_subquery_nodes(with, alias, tx)
 	}
 
 	fn compile_natural_join_subquery(
 		&self,
-		with: &AstSubQuery,
+		with: AstSubQuery<'bump>,
 		alias: &BumpFragment<'_>,
 		tx: &mut Transaction<'_>,
 	) -> Result<BumpVec<'bump, LogicalPlan<'bump>>> {
-		let with_ast = with.statement.nodes.first().expect("Empty subquery in join");
-		match with_ast {
+		self.compile_join_subquery_nodes(with, alias, tx)
+	}
+
+	fn compile_join_subquery_nodes(
+		&self,
+		with: AstSubQuery<'bump>,
+		alias: &BumpFragment<'_>,
+		tx: &mut Transaction<'_>,
+	) -> Result<BumpVec<'bump, LogicalPlan<'bump>>> {
+		let mut nodes = with.statement.nodes.into_iter();
+		let first = nodes.next().expect("Empty subquery in join");
+
+		let source_plan = match first {
 			Ast::From(AstFrom::Source {
 				source,
 				..
@@ -210,20 +182,12 @@ impl<'bump> Compiler<'bump> {
 				let mut unresolved =
 					UnresolvedShapeIdentifier::new(source.namespace.clone(), source.name);
 				unresolved = unresolved.with_alias(*alias);
-
-				let plan = resolve_join_plan(&self.catalog, tx, &unresolved)?;
-				let mut result = BumpVec::with_capacity_in(1, self.bump);
-				result.push(plan);
-				Ok(result)
+				resolve_join_plan(&self.catalog, tx, &unresolved)?
 			}
 			Ast::Identifier(identifier) => {
 				let mut unresolved = UnresolvedShapeIdentifier::new(vec![], identifier.token.fragment);
 				unresolved = unresolved.with_alias(*alias);
-
-				let plan = resolve_join_plan(&self.catalog, tx, &unresolved)?;
-				let mut result = BumpVec::with_capacity_in(1, self.bump);
-				result.push(plan);
-				Ok(result)
+				resolve_join_plan(&self.catalog, tx, &unresolved)?
 			}
 			Ast::Infix(AstInfix {
 				left,
@@ -232,10 +196,10 @@ impl<'bump> Compiler<'bump> {
 				..
 			}) => {
 				assert!(matches!(operator, InfixOperator::AccessTable(_)));
-				let Ast::Identifier(namespace) = &**left else {
+				let Ast::Identifier(namespace) = &*left else {
 					unreachable!()
 				};
-				let Ast::Identifier(table) = &**right else {
+				let Ast::Identifier(table) = &*right else {
 					unreachable!()
 				};
 
@@ -244,14 +208,28 @@ impl<'bump> Compiler<'bump> {
 					table.token.fragment,
 				);
 				unresolved = unresolved.with_alias(*alias);
-
-				let plan = resolve_join_plan(&self.catalog, tx, &unresolved)?;
-				let mut result = BumpVec::with_capacity_in(1, self.bump);
-				result.push(plan);
-				Ok(result)
+				resolve_join_plan(&self.catalog, tx, &unresolved)?
 			}
 			_ => unimplemented!(),
+		};
+
+		let remaining: Vec<LogicalPlan<'bump>> =
+			nodes.map(|node| self.compile_single(node, tx)).collect::<Result<_>>()?;
+
+		let mut result = BumpVec::with_capacity_in(1, self.bump);
+		if remaining.is_empty() {
+			result.push(source_plan);
+		} else {
+			let mut steps = BumpVec::with_capacity_in(1 + remaining.len(), self.bump);
+			steps.push(source_plan);
+			for plan in remaining {
+				steps.push(plan);
+			}
+			result.push(LogicalPlan::Pipeline(PipelineNode {
+				steps,
+			}));
 		}
+		Ok(result)
 	}
 }
 

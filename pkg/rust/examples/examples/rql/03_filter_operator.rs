@@ -1,16 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # FILTER Operator Example
-//!
-//! Demonstrates the FILTER operator in ReifyDB's RQL:
-//! - Basic comparisons (==, !=, <, >, <=, >=)
-//! - Logical operators (and, or, not)
-//! - Filtering different data types
-//! - Comptokenize filter conditions
-//!
-//! Run with: `make rql-filter` or `cargo run --bin rql-filter`
-
 use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;

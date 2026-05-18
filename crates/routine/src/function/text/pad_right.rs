@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
-
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_type::{
+	util::bitvec::BitVec,
+	value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type},
 };
 
-pub struct TextPadRight;
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
+
+pub struct TextPadRight {
+	info: RoutineInfo,
+}
 
 impl Default for TextPadRight {
 	fn default() -> Self {
@@ -20,38 +21,46 @@ impl Default for TextPadRight {
 
 impl TextPadRight {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("text::pad_right"),
+		}
 	}
 }
 
-impl ScalarFunction for TextPadRight {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl<'a> Routine<FunctionContext<'a>> for TextPadRight {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
 
-		if columns.len() != 3 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 3 {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 3,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let str_col = columns.first().unwrap();
-		let len_col = columns.get(1).unwrap();
-		let pad_col = columns.get(2).unwrap();
+		let str_col = &args[0];
+		let len_col = &args[1];
+		let pad_col = &args[2];
 
-		let pad_data = match pad_col.data() {
-			ColumnData::Utf8 {
+		let (str_data, str_bv) = str_col.unwrap_option();
+		let (len_data, len_bv) = len_col.unwrap_option();
+		let (pad_data, pad_bv) = pad_col.unwrap_option();
+		let row_count = str_data.len();
+
+		let pad_container = match pad_data {
+			ColumnBuffer::Utf8 {
 				container,
 				..
 			} => container,
 			other => {
-				return Err(ScalarFunctionError::InvalidArgumentType {
+				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 2,
 					expected: vec![Type::Utf8],
@@ -60,29 +69,29 @@ impl ScalarFunction for TextPadRight {
 			}
 		};
 
-		match str_col.data() {
-			ColumnData::Utf8 {
+		match str_data {
+			ColumnBuffer::Utf8 {
 				container: str_container,
 				..
 			} => {
 				let mut result_data = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if !str_container.is_defined(i) || !pad_data.is_defined(i) {
+					if !str_container.is_defined(i) || !pad_container.is_defined(i) {
 						result_data.push(String::new());
 						continue;
 					}
 
-					let target_len = match len_col.data() {
-						ColumnData::Int1(c) => c.get(i).map(|&v| v as i64),
-						ColumnData::Int2(c) => c.get(i).map(|&v| v as i64),
-						ColumnData::Int4(c) => c.get(i).map(|&v| v as i64),
-						ColumnData::Int8(c) => c.get(i).copied(),
-						ColumnData::Uint1(c) => c.get(i).map(|&v| v as i64),
-						ColumnData::Uint2(c) => c.get(i).map(|&v| v as i64),
-						ColumnData::Uint4(c) => c.get(i).map(|&v| v as i64),
+					let target_len = match len_data {
+						ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as i64),
+						ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as i64),
+						ColumnBuffer::Int4(c) => c.get(i).map(|&v| v as i64),
+						ColumnBuffer::Int8(c) => c.get(i).copied(),
+						ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i64),
+						ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as i64),
+						ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as i64),
 						_ => {
-							return Err(ScalarFunctionError::InvalidArgumentType {
+							return Err(RoutineError::FunctionInvalidArgumentType {
 								function: ctx.fragment.clone(),
 								argument_index: 1,
 								expected: vec![
@@ -91,15 +100,15 @@ impl ScalarFunction for TextPadRight {
 									Type::Int4,
 									Type::Int8,
 								],
-								actual: len_col.data().get_type(),
+								actual: len_data.get_type(),
 							});
 						}
 					};
 
 					match target_len {
 						Some(n) if n >= 0 => {
-							let s = &str_container[i];
-							let pad_char = &pad_data[i];
+							let s = str_container.get(i).unwrap();
+							let pad_char = pad_container.get(i).unwrap();
 							let char_count = s.chars().count();
 							let target = n as usize;
 
@@ -134,12 +143,29 @@ impl ScalarFunction for TextPadRight {
 					}
 				}
 
-				Ok(ColumnData::Utf8 {
+				let result_col_data = ColumnBuffer::Utf8 {
 					container: Utf8Container::new(result_data),
 					max_bytes: MaxBytes::MAX,
-				})
+				};
+
+				let mut combined_bv: Option<BitVec> = None;
+				for bv in [str_bv, len_bv, pad_bv].into_iter().flatten() {
+					combined_bv = Some(match combined_bv {
+						Some(existing) => existing.and(bv),
+						None => bv.clone(),
+					});
+				}
+
+				let final_data = match combined_bv {
+					Some(bv) => ColumnBuffer::Option {
+						inner: Box::new(result_col_data),
+						bitvec: bv,
+					},
+					None => result_col_data,
+				};
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
-			other => Err(ScalarFunctionError::InvalidArgumentType {
+			other => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Utf8],
@@ -147,8 +173,10 @@ impl ScalarFunction for TextPadRight {
 			}),
 		}
 	}
+}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Utf8
+impl Function for TextPadRight {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

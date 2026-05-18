@@ -15,7 +15,7 @@ use crate::{
 	Result,
 	expression::{
 		compile::compile_expression,
-		context::{CompileContext, EvalSession},
+		context::{CompileContext, EvalContext},
 	},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
@@ -76,7 +76,6 @@ impl QueryNode for NestedLoopJoinNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::join::nested_loop::initialize")]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		let compile_ctx = CompileContext {
-			functions: &ctx.services.functions,
 			symbols: &ctx.symbols,
 		};
 		self.context.compiled =
@@ -104,10 +103,9 @@ impl QueryNode for NestedLoopJoinNode {
 		let right_width = right_columns.len();
 		let left_row_numbers = left_columns.row_numbers.to_vec();
 
-		// Resolve column names with conflict detection
 		let resolved = resolve_column_names(&left_columns, &right_columns, &self.alias, None);
 
-		let session = EvalSession::from_query(ctx);
+		let session = EvalContext::from_query(ctx);
 		let mut result_rows = Vec::new();
 		let mut result_row_numbers: Vec<RowNumber> = Vec::new();
 
@@ -118,7 +116,6 @@ impl QueryNode for NestedLoopJoinNode {
 			for j in 0..right_rows {
 				let right_row = right_columns.get_row(j);
 
-				// Build evaluation columns
 				let eval_columns = build_eval_columns(
 					&left_columns,
 					&right_columns,
@@ -127,7 +124,7 @@ impl QueryNode for NestedLoopJoinNode {
 					&self.alias,
 				);
 
-				let exec_ctx = session.eval_join(Columns::new(eval_columns));
+				let exec_ctx = session.with_eval_join(Columns::new(eval_columns));
 
 				let all_true = self.context.compiled.iter().fold(true, |acc, compiled_expr| {
 					let col = compiled_expr.execute(&exec_ctx).unwrap();
@@ -145,7 +142,6 @@ impl QueryNode for NestedLoopJoinNode {
 				}
 			}
 
-			// Add unmatched left rows with undefined values for right columns
 			if self.mode == NestedLoopMode::Left && !matched {
 				let mut combined = left_row.clone();
 				combined.extend(vec![Value::none(); right_width]);
@@ -156,12 +152,11 @@ impl QueryNode for NestedLoopJoinNode {
 			}
 		}
 
-		// Create columns with conflict-resolved names
 		let names_refs: Vec<&str> = resolved.qualified_names.iter().map(|s| s.as_str()).collect();
 		let columns = if result_row_numbers.is_empty() {
 			Columns::from_rows(&names_refs, &result_rows)
 		} else {
-			Columns::from_rows_with_row_numbers(&names_refs, &result_rows, result_row_numbers)
+			Columns::from_rows(&names_refs, &result_rows).with_row_numbers(result_row_numbers)
 		};
 
 		self.headers = Some(ColumnHeaders::from_columns(&columns));

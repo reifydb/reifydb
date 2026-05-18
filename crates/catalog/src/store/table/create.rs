@@ -4,13 +4,13 @@
 use reifydb_core::{
 	interface::catalog::{
 		column::ColumnIndex,
-		id::{NamespaceId, TableId},
+		id::{ColumnId, NamespaceId, TableId},
 		property::ColumnPropertyKind,
 		shape::ShapeId,
 		table::Table,
 	},
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
-	retention::RetentionPolicy,
+	retention::RetentionStrategy,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{
@@ -23,7 +23,7 @@ use crate::{
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
-		retention_policy::create::create_shape_retention_policy,
+		retention_strategy::create::create_shape_retention_strategy,
 		sequence::system::SystemSequence,
 		table::shape::{table, table_namespace},
 	},
@@ -44,7 +44,8 @@ pub struct TableToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub columns: Vec<TableColumnToCreate>,
-	pub retention_policy: Option<RetentionPolicy>,
+	pub retention_strategy: Option<RetentionStrategy>,
+	pub underlying: bool,
 }
 
 impl CatalogStore {
@@ -70,8 +71,8 @@ impl CatalogStore {
 		Self::store_table(txn, table_id, namespace_id, &to_create)?;
 		Self::link_table_to_namespace(txn, namespace_id, table_id, to_create.name.text())?;
 
-		if let Some(retention_policy) = &to_create.retention_policy {
-			create_shape_retention_policy(txn, ShapeId::Table(table_id), retention_policy)?;
+		if let Some(retention_strategy) = &to_create.retention_strategy {
+			create_shape_retention_strategy(txn, ShapeId::Table(table_id), retention_strategy)?;
 		}
 
 		Self::insert_columns(txn, table_id, to_create)?;
@@ -90,8 +91,16 @@ impl CatalogStore {
 		table::SHAPE.set_u64(&mut row, table::NAMESPACE, namespace);
 		table::SHAPE.set_utf8(&mut row, table::NAME, to_create.name.text());
 
-		// Initialize with no primary key
 		table::SHAPE.set_u64(&mut row, table::PRIMARY_KEY, 0u64);
+		table::SHAPE.set_u8(
+			&mut row,
+			table::UNDERLYING,
+			if to_create.underlying {
+				1
+			} else {
+				0
+			},
+		);
 
 		txn.set(&TableKey::encoded(table), row)?;
 
@@ -112,7 +121,6 @@ impl CatalogStore {
 	}
 
 	fn insert_columns(txn: &mut AdminTransaction, table: TableId, to_create: TableToCreate) -> Result<()> {
-		// Look up namespace name for error messages
 		let namespace_name = Self::find_namespace(&mut Transaction::Admin(&mut *txn), to_create.namespace)?
 			.map(|s| s.name().to_string())
 			.unwrap_or_else(|| format!("namespace_{}", to_create.namespace));
@@ -125,6 +133,57 @@ impl CatalogStore {
 					fragment: Some(column_to_create.fragment.clone()),
 					namespace_name: namespace_name.clone(),
 					shape_name: to_create.name.text().to_string(),
+					column: column_to_create.name.text().to_string(),
+					constraint: column_to_create.constraint.clone(),
+					properties: column_to_create.properties.clone(),
+					index: ColumnIndex(idx as u8),
+					auto_increment: column_to_create.auto_increment,
+					dictionary_id: column_to_create.dictionary_id,
+				},
+			)?;
+		}
+		Ok(())
+	}
+
+	pub(crate) fn create_table_with_id(
+		txn: &mut AdminTransaction,
+		table_id: TableId,
+		to_create: TableToCreate,
+		column_ids: &[ColumnId],
+	) -> Result<Table> {
+		assert_eq!(column_ids.len(), to_create.columns.len(), "column_ids length must match columns length");
+
+		let namespace_id = to_create.namespace;
+
+		Self::store_table(txn, table_id, namespace_id, &to_create)?;
+		Self::link_table_to_namespace(txn, namespace_id, table_id, to_create.name.text())?;
+
+		if let Some(retention_strategy) = &to_create.retention_strategy {
+			create_shape_retention_strategy(txn, ShapeId::Table(table_id), retention_strategy)?;
+		}
+
+		Self::insert_columns_with_ids(txn, table_id, to_create, column_ids)?;
+
+		Self::get_table(&mut Transaction::Admin(&mut *txn), table_id)
+	}
+
+	fn insert_columns_with_ids(
+		txn: &mut AdminTransaction,
+		table: TableId,
+		to_create: TableToCreate,
+		column_ids: &[ColumnId],
+	) -> Result<()> {
+		for (idx, (column_to_create, &col_id)) in
+			to_create.columns.into_iter().zip(column_ids.iter()).enumerate()
+		{
+			Self::create_column_with_id(
+				txn,
+				col_id,
+				table,
+				ColumnToCreate {
+					fragment: Some(column_to_create.fragment.clone()),
+					namespace_name: String::new(),
+					shape_name: String::new(),
 					column: column_to_create.name.text().to_string(),
 					constraint: column_to_create.constraint.clone(),
 					properties: column_to_create.properties.clone(),
@@ -163,13 +222,14 @@ pub mod tests {
 			namespace: test_namespace.id(),
 			name: Fragment::internal("test_table"),
 			columns: vec![],
-			retention_policy: None,
+			retention_strategy: None,
+			underlying: false,
 		};
 
 		// First creation should succeed
 		let result = CatalogStore::create_table(&mut txn, to_create.clone()).unwrap();
-		assert_eq!(result.id, TableId(1025));
-		assert_eq!(result.namespace, NamespaceId(1025));
+		assert_eq!(result.id, TableId(16385));
+		assert_eq!(result.namespace, NamespaceId(16385));
 		assert_eq!(result.name, "test_table");
 
 		let err = CatalogStore::create_table(&mut txn, to_create).unwrap_err();
@@ -185,7 +245,8 @@ pub mod tests {
 			namespace: test_namespace.id(),
 			name: Fragment::internal("test_table"),
 			columns: vec![],
-			retention_policy: None,
+			retention_strategy: None,
+			underlying: false,
 		};
 
 		CatalogStore::create_table(&mut txn, to_create).unwrap();
@@ -194,7 +255,8 @@ pub mod tests {
 			namespace: test_namespace.id(),
 			name: Fragment::internal("another_table"),
 			columns: vec![],
-			retention_policy: None,
+			retention_strategy: None,
+			underlying: false,
 		};
 
 		CatalogStore::create_table(&mut txn, to_create).unwrap();
@@ -208,12 +270,12 @@ pub mod tests {
 
 		let link = &links[1];
 		let row = &link.row;
-		assert_eq!(table_namespace::SHAPE.get_u64(row, table_namespace::ID), 1025);
+		assert_eq!(table_namespace::SHAPE.get_u64(row, table_namespace::ID), 16385);
 		assert_eq!(table_namespace::SHAPE.get_utf8(row, table_namespace::NAME), "test_table");
 
 		let link = &links[0];
 		let row = &link.row;
-		assert_eq!(table_namespace::SHAPE.get_u64(row, table_namespace::ID), 1026);
+		assert_eq!(table_namespace::SHAPE.get_u64(row, table_namespace::ID), 16386);
 		assert_eq!(table_namespace::SHAPE.get_utf8(row, table_namespace::NAME), "another_table");
 	}
 }

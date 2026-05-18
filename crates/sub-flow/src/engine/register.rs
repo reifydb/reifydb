@@ -7,6 +7,7 @@ use postcard::from_bytes;
 use reifydb_core::{
 	interface::catalog::{
 		flow::{FlowId, FlowNodeId},
+		id::ViewId,
 		shape::ShapeId,
 		view::ViewKind,
 	},
@@ -39,7 +40,7 @@ use crate::{
 		extend::ExtendOperator,
 		filter::FilterOperator,
 		gate::GateOperator,
-		join::operator::{JoinOperator, JoinSideConfig},
+		join::operator::{JoinOperator, JoinSideConfig, JoinStateTtl},
 		map::MapOperator,
 		scan::{
 			flow::PrimitiveFlowOperator, ringbuffer::PrimitiveRingBufferOperator,
@@ -47,7 +48,7 @@ use crate::{
 		},
 		sink::{
 			ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator,
-			subscription::SinkSubscriptionOperator, view::SinkTableViewOperator,
+			view::SinkTableViewOperator,
 		},
 		sort::SortOperator,
 		take::TakeOperator,
@@ -57,27 +58,43 @@ use crate::{
 
 impl FlowEngine {
 	#[instrument(name = "flow::register", level = "debug", skip(self, txn), fields(flow_id = ?flow.id))]
-	pub fn register(&mut self, txn: &mut CommandTransaction, flow: FlowDag) -> Result<()> {
+	pub fn register(&mut self, txn: &mut CommandTransaction, flow: Arc<FlowDag>) -> Result<()> {
 		self.register_with_transaction(&mut Transaction::Command(txn), flow)
 	}
 
 	#[instrument(name = "flow::register_with_transaction", level = "debug", skip(self, txn), fields(flow_id = ?flow.id))]
-	pub fn register_with_transaction(&mut self, txn: &mut Transaction<'_>, flow: FlowDag) -> Result<()> {
+	pub fn register_with_transaction(&mut self, txn: &mut Transaction<'_>, flow: Arc<FlowDag>) -> Result<()> {
 		debug_assert!(!self.flows.contains_key(&flow.id), "Flow already registered");
 
+		let mut added: Vec<FlowNodeId> = Vec::new();
 		for node_id in flow.topological_order()? {
 			let node = flow.get_node(&node_id).unwrap();
-			self.add(txn, &flow, node)?;
+			if let Err(err) = self.add(txn, &flow, node) {
+				for id in &added {
+					self.operators.remove(id);
+				}
+				for entries in self.sources.values_mut() {
+					entries.retain(|(fid, _)| *fid != flow.id);
+				}
+				self.sources.retain(|_, v| !v.is_empty());
+				for entries in self.sinks.values_mut() {
+					entries.retain(|(fid, _)| *fid != flow.id);
+				}
+				self.sinks.retain(|_, v| !v.is_empty());
+				return Err(err);
+			}
+			added.push(node_id);
 		}
 
-		self.analyzer.add(flow.clone());
-		self.flows.insert(flow.id, flow);
+		self.analyzer.add((*flow).clone());
+		self.flows.insert(flow.id, flow.clone());
+		self.execution_level_cache.invalidate();
 
 		Ok(())
 	}
 
 	#[instrument(name = "flow::add", level = "debug", skip(self, txn, flow), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?mem::discriminant(&node.ty)))]
-	fn add(&mut self, txn: &mut Transaction<'_>, flow: &FlowDag, node: &FlowNode) -> Result<()> {
+	pub fn add(&mut self, txn: &mut Transaction<'_>, flow: &FlowDag, node: &FlowNode) -> Result<()> {
 		debug_assert!(!self.operators.contains_key(&node.id), "Operator already registered");
 		let node = node.clone();
 
@@ -100,73 +117,7 @@ impl FlowEngine {
 			}
 			SourceView {
 				view,
-			} => {
-				let view = self.catalog.get_view(&mut txn.reborrow(), view)?;
-				self.add_source(flow.id, node.id, ShapeId::view(view.id()));
-
-				// For deferred views, also register the underlying primitive as a source.
-				// Deferred view sinks write to the underlying primitive's key space,
-				// so CDC from upstream deferred view commits uses the underlying ShapeId.
-				if view.kind() == ViewKind::Deferred {
-					self.add_source(flow.id, node.id, view.underlying_id());
-				}
-
-				// For transactional views, also register the underlying table/ringbuffer
-				// sources so the deferred coordinator routes changes correctly. A transactional
-				// view is computed on-the-fly; its changes are never published to CDC. By
-				// registering the view's upstream primitives, the deferred flow is triggered
-				// when the underlying data changes.
-				if view.kind() == ViewKind::Transactional {
-					let mut additional_sources = Vec::new();
-					if let Some(view_flow) = self.catalog.find_flow_by_name(
-						&mut txn.reborrow(),
-						view.namespace(),
-						view.name(),
-					)? {
-						let flow_nodes = self
-							.catalog
-							.list_flow_nodes_by_flow(&mut txn.reborrow(), view_flow.id)?;
-						for flow_node in &flow_nodes {
-							// SourceTable = 1, SourceRingBuffer = 17, SourceSeries = 18
-							if (flow_node.node_type == 1
-								|| flow_node.node_type == 17 || flow_node.node_type == 18)
-								&& let Ok(nt) =
-									from_bytes::<FlowNodeType>(&flow_node.data)
-							{
-								match nt {
-									SourceTable {
-										table: t,
-									} => {
-										additional_sources
-											.push(ShapeId::table(t));
-									}
-									SourceRingBuffer {
-										ringbuffer: rb,
-									} => {
-										additional_sources
-											.push(ShapeId::ringbuffer(rb));
-									}
-									SourceSeries {
-										series: s,
-									} => {
-										additional_sources
-											.push(ShapeId::series(s));
-									}
-									_ => {}
-								}
-							}
-						}
-					}
-					for source in additional_sources {
-						self.add_source(flow.id, node.id, source);
-					}
-				}
-
-				self.operators.insert(
-					node.id,
-					Arc::new(Operators::SourceView(PrimitiveViewOperator::new(node.id, view))),
-				);
-			}
+			} => self.register_source_view(txn, flow, &node, view)?,
 			SourceFlow {
 				flow: source_flow,
 			} => {
@@ -269,29 +220,11 @@ impl FlowEngine {
 				);
 			}
 			SinkSubscription {
-				subscription,
+				..
 			} => {
-				// Guard against race condition: flow may have been deleted during loading
-				if node.inputs.is_empty() {
-					return Err(Error(Box::new(internal!(
-						"SinkSubscription node has no inputs - flow may have been deleted during loading"
-					))));
-				}
-				let parent = self
-					.operators
-					.get(&node.inputs[0])
-					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
-					.clone();
-
-				// Note: Subscriptions use UUID-based IDs and are not added to the sinks map
-				// which uses ShapeId (u64-based). Subscriptions are ephemeral 1:1 mapped.
-				let resolved = self.catalog.resolve_subscription(&mut txn.reborrow(), subscription)?;
-				self.operators.insert(
-					node.id,
-					Arc::new(Operators::SinkSubscription(SinkSubscriptionOperator::new(
-						parent, node.id, resolved,
-					))),
-				);
+				return Err(Error(Box::new(internal!(
+					"SinkSubscription nodes are no longer supported in persistent flows"
+				))));
 			}
 			Filter {
 				conditions,
@@ -307,7 +240,7 @@ impl FlowEngine {
 						parent,
 						node.id,
 						conditions,
-						self.executor.functions.clone(),
+						self.executor.routines.clone(),
 						self.runtime_context.clone(),
 					))),
 				);
@@ -326,7 +259,7 @@ impl FlowEngine {
 						parent,
 						node.id,
 						conditions,
-						self.executor.functions.clone(),
+						self.executor.routines.clone(),
 						self.runtime_context.clone(),
 					))),
 				);
@@ -345,7 +278,7 @@ impl FlowEngine {
 						parent,
 						node.id,
 						expressions,
-						self.executor.functions.clone(),
+						self.executor.routines.clone(),
 						self.runtime_context.clone(),
 					))),
 				);
@@ -394,8 +327,9 @@ impl FlowEngine {
 				left,
 				right,
 				alias,
+				ttl,
+				snapshot,
 			} => {
-				// The join node should have exactly 2 inputs
 				if node.inputs.len() != 2 {
 					return Err(Error(Box::new(internal!("Join node must have exactly 2 inputs"))));
 				}
@@ -415,15 +349,27 @@ impl FlowEngine {
 					.ok_or_else(|| Error(Box::new(internal!("Right parent operator not found"))))?
 					.clone();
 
+				let ttl = match ttl {
+					Some(t) => JoinStateTtl {
+						left_nanos: t.left.as_ref().map(|s| s.duration_nanos),
+						right_nanos: t.right.as_ref().map(|s| s.duration_nanos),
+					},
+					None => JoinStateTtl::default(),
+				};
+
 				self.operators.insert(
 					node.id,
 					Arc::new(Operators::Join(JoinOperator::new(
 						JoinSideConfig {
+							schema: left_parent.output_schema().unwrap_or_default(),
 							parent: left_parent,
 							node: left_node,
 							exprs: left,
 						},
 						JoinSideConfig {
+							schema: right_parent.output_schema().expect(
+								"right side of join must have a statically known schema",
+							),
 							parent: right_parent,
 							node: right_node,
 							exprs: right,
@@ -432,11 +378,14 @@ impl FlowEngine {
 						join_type,
 						alias,
 						self.executor.clone(),
+						ttl,
+						snapshot,
 					))),
 				);
 			}
 			Distinct {
 				expressions,
+				ttl,
 			} => {
 				let parent = self
 					.operators
@@ -449,13 +398,15 @@ impl FlowEngine {
 						parent,
 						node.id,
 						expressions,
-						self.executor.functions.clone(),
+						self.executor.routines.clone(),
 						self.runtime_context.clone(),
+						ttl.map(|t| t.duration_nanos),
 					))),
 				);
 			}
-			Append => {
-				// Append requires at least 2 inputs
+			Append {
+				ttl,
+			} => {
 				if node.inputs.len() < 2 {
 					return Err(Error(Box::new(internal!(
 						"Append node must have at least 2 inputs"
@@ -478,22 +429,28 @@ impl FlowEngine {
 					parents.push(parent);
 				}
 
+				let ttl_nanos = ttl.as_ref().map(|t| t.duration_nanos);
+				let ttl_anchor = ttl.as_ref().map(|t| t.anchor).unwrap_or_default();
+
 				self.operators.insert(
 					node.id,
 					Arc::new(Operators::Append(AppendOperator::new(
 						node.id,
 						parents,
 						node.inputs.clone(),
+						ttl_nanos,
+						ttl_anchor,
 					))),
 				);
 			}
 			Apply {
 				operator,
 				expressions,
+				ttl: _,
 			} => {
 				let config = evaluate_operator_config(
 					expressions.as_slice(),
-					&self.executor.functions,
+					&self.executor.routines,
 					&self.runtime_context,
 				)?;
 
@@ -531,6 +488,7 @@ impl FlowEngine {
 					#[cfg(not(reifydb_target = "native"))]
 					{
 						let _ = operator;
+
 						return Err(Error(Box::new(internal!(
 							"FFI operators are not supported in WASM"
 						))));
@@ -559,7 +517,7 @@ impl FlowEngine {
 					aggregations: aggregations.clone(),
 					ts: ts.clone(),
 					runtime_context: self.runtime_context.clone(),
-					functions: self.executor.functions.clone(),
+					routines: self.executor.routines.clone(),
 				});
 				self.operators.insert(node.id, Arc::new(Operators::Window(operator)));
 			}
@@ -568,7 +526,82 @@ impl FlowEngine {
 		Ok(())
 	}
 
-	fn add_source(&mut self, flow: FlowId, node: FlowNodeId, shape: ShapeId) {
+	#[inline]
+	fn register_source_view(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		flow: &FlowDag,
+		node: &FlowNode,
+		view: ViewId,
+	) -> Result<()> {
+		let view = self.catalog.get_view(&mut txn.reborrow(), view)?;
+		self.add_source(flow.id, node.id, ShapeId::view(view.id()));
+
+		self.add_source(flow.id, node.id, view.underlying_id());
+
+		if view.kind() == ViewKind::Transactional {
+			let current_flow_is_transactional = flow.get_node_ids().any(|nid| {
+				if let Some(n) = flow.get_node(&nid) {
+					let sink_view = match &n.ty {
+						SinkTableView {
+							view,
+							..
+						}
+						| SinkRingBufferView {
+							view,
+							..
+						}
+						| SinkSeriesView {
+							view,
+							..
+						} => Some(view),
+						_ => None,
+					};
+					sink_view
+						.and_then(|v| {
+							self.catalog.find_view(&mut txn.reborrow(), *v).ok().flatten()
+						})
+						.map(|v| v.kind() == ViewKind::Transactional)
+						.unwrap_or(false)
+				} else {
+					false
+				}
+			});
+
+			let current_flow_is_subscription = flow.get_node_ids().any(|nid| {
+				flow.get_node(&nid).map(|n| matches!(n.ty, SinkSubscription { .. })).unwrap_or(false)
+			});
+
+			if !current_flow_is_transactional && !current_flow_is_subscription {
+				let mut additional_sources = Vec::new();
+				if let Some(view_flow) = self.catalog.find_flow_by_name(
+					&mut txn.reborrow(),
+					view.namespace(),
+					view.name(),
+				)? {
+					let flow_nodes = self
+						.catalog
+						.list_flow_nodes_by_flow(&mut txn.reborrow(), view_flow.id)?;
+					for flow_node in &flow_nodes {
+						if let Ok(nt) = from_bytes::<FlowNodeType>(&flow_node.data)
+							&& let Some(shape) = nt.primitive_source_shape_id()
+						{
+							additional_sources.push(shape);
+						}
+					}
+				}
+				for source in additional_sources {
+					self.add_source(flow.id, node.id, source);
+				}
+			}
+		}
+
+		self.operators
+			.insert(node.id, Arc::new(Operators::SourceView(PrimitiveViewOperator::new(node.id, view))));
+		Ok(())
+	}
+
+	pub fn add_source(&mut self, flow: FlowId, node: FlowNodeId, shape: ShapeId) {
 		let nodes = self.sources.entry(shape).or_default();
 
 		let entry = (flow, node);
@@ -577,7 +610,7 @@ impl FlowEngine {
 		}
 	}
 
-	fn add_sink(&mut self, flow: FlowId, node: FlowNodeId, sink: ShapeId) {
+	pub fn add_sink(&mut self, flow: FlowId, node: FlowNodeId, sink: ShapeId) {
 		let nodes = self.sinks.entry(sink).or_default();
 
 		let entry = (flow, node);

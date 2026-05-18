@@ -1,6 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Canonical on-disk and on-wire byte layouts for every primitive value the database stores or transmits.
+//!
+//! There is one submodule per primitive kind: signed and unsigned integers from 8 to 128 bits, IEEE floats, booleans,
+//! variable-length blobs and UTF-8 strings, decimals, the temporal family (date, datetime, time, duration), the UUID
+//! variants, identity and dictionary references, the arbitrary-precision integer wrappers, the typed-row and shape
+//! envelopes, the typed-key encoding, the `any`-tagged variant for heterogeneous columns, and the `undefined` sentinel.
+//! Each submodule supplies the encode and decode routines that take a typed value to the bytes that go to disk,
+//! replication, CDC, and the wire protocol, and back again.
+//!
+//! Invariant: once a primitive's byte layout has shipped, it is the format used by storage, replication, CDC, and the
+//! wire protocol simultaneously. Any change is a coordinated cross-format break that requires a migration; consumers
+//! must continue to round-trip every previously-written byte sequence forever.
+
 pub mod any;
 pub mod blob;
 pub mod boolean;

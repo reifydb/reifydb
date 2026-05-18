@@ -71,9 +71,6 @@ pub use rand_core;
 // Re-exports from rand_core
 pub use rand_core::{CryptoRng, Rng, SeedableRng, TryCryptoRng, TryRng};
 
-#[macro_use]
-mod log_macros;
-
 // Public modules
 pub mod distr;
 pub mod prelude;
@@ -102,6 +99,11 @@ use crate::distr::{Distribution, StandardUniform};
 /// # let _ = rand::Rng::next_u32(&mut rng);
 /// ```
 ///
+/// # Panics
+///
+/// If [`SysRng`] fails to obtain entropy from the OS. This is unlikely
+/// outside of early boot or unusual system conditions.
+///
 /// # Security
 ///
 /// Refer to [`ThreadRng#Security`].
@@ -110,6 +112,7 @@ use crate::distr::{Distribution, StandardUniform};
 /// [`ThreadRng`]: crate::rngs::ThreadRng
 /// [`ThreadRng#Security`]: crate::rngs::ThreadRng#security
 #[cfg(feature = "sys_rng")]
+#[track_caller]
 pub fn make_rng<R: SeedableRng>() -> R {
     #[cfg(feature = "thread_rng")]
     {
@@ -238,7 +241,7 @@ where
 /// let words: Vec<&str> = "Mary had a little lamb".split(' ').collect();
 /// println!("{}", words[rand::random_range(..words.len())]);
 /// ```
-/// Note that the first example can also be achieved (without `collect`'ing
+/// Note that the second example can also be achieved (without `collect`'ing
 /// to a `Vec`) using [`seq::IteratorRandom::choose`].
 #[cfg(feature = "thread_rng")]
 #[inline]

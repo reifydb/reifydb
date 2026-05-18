@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{config::SystemConfig, event::EventBus};
+use std::sync::Arc;
+
+use reifydb_core::{event::EventBus, interface::catalog::config::GetConfig};
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::{clock::Clock, rng::Rng},
 };
+use reifydb_sqlite::{DbPath, SqliteConfig};
 use reifydb_store_multi::{
 	MultiStore,
-	config::{HotConfig as MultiHotConfig, MultiStoreConfig},
-	hot::{
-		sqlite::config::{DbPath, SqliteConfig},
-		storage::HotStorage,
-	},
+	buffer::tier::MultiBufferTier,
+	config::{BufferConfig as MultiBufferConfig, MultiStoreConfig, PersistentConfig as MultiPersistentConfig},
 };
 use reifydb_store_single::{
 	SingleStore,
-	config::{HotConfig as SingleHotConfig, SingleStoreConfig},
-	hot::sqlite::config::SqliteConfig as SingleSqliteConfig,
+	buffer::tier::SingleBufferTier,
+	config::{BufferConfig as SingleBufferConfig, PersistentConfig as SinglePersistentConfig, SingleStoreConfig},
 };
 use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
 
@@ -38,57 +38,62 @@ pub enum StorageFactory {
 }
 
 impl StorageFactory {
-	/// Create the storage.
-	pub(crate) fn create(
+	pub(crate) fn open_multi_buffer(&self) -> MultiBufferTier {
+		MultiBufferTier::memory()
+	}
+
+	pub(crate) fn create_with_multi_buffer(
 		&self,
+		multi_buffer: MultiBufferTier,
 		actor_system: &ActorSystem,
 	) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
 		match self {
-			StorageFactory::Memory => create_memory_store(actor_system),
-			StorageFactory::Sqlite(config) => create_sqlite_store(config.clone(), actor_system),
+			StorageFactory::Memory => create_memory_store_with(multi_buffer, actor_system),
+			StorageFactory::Sqlite(config) => {
+				create_sqlite_store_with(multi_buffer, config.clone(), actor_system)
+			}
 		}
 	}
 }
 
-/// Internal: Create in-memory storage.
-fn create_memory_store(actor_system: &ActorSystem) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
+fn create_memory_store_with(
+	multi_buffer: MultiBufferTier,
+	actor_system: &ActorSystem,
+) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
 	let eventbus = EventBus::new(actor_system);
 
-	// Create multi-version store
-	let multi_storage = HotStorage::memory();
 	let multi_store = MultiStore::standard(MultiStoreConfig {
-		hot: Some(MultiHotConfig {
-			storage: multi_storage,
+		buffer: Some(MultiBufferConfig {
+			storage: multi_buffer,
 		}),
-		warm: None,
-		cold: None,
+		persistent: None,
 		retention: Default::default(),
 		merge_config: Default::default(),
 		event_bus: eventbus.clone(),
 		actor_system: actor_system.clone(),
+		clock: Clock::Real,
 	});
 
-	// Create single-version store
-	let single_storage = reifydb_store_single::hot::tier::HotTier::memory();
 	let single_store = SingleStore::standard(SingleStoreConfig {
-		hot: Some(SingleHotConfig {
-			storage: single_storage,
+		buffer: Some(SingleBufferConfig {
+			storage: SingleBufferTier::memory(),
 		}),
-		event_bus: eventbus.clone(),
+		persistent: None,
+		actor_system: actor_system.clone(),
+		clock: Clock::Real,
 	});
 
 	let transaction_single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 	(multi_store, single_store, transaction_single, eventbus)
 }
 
-/// Internal: Create SQLite storage with the given configuration.
-fn create_sqlite_store(
+fn create_sqlite_store_with(
+	multi_buffer: MultiBufferTier,
 	config: SqliteConfig,
 	actor_system: &ActorSystem,
 ) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
 	let eventbus = EventBus::new(actor_system);
 
-	// Modify config to use multi.db in a directory named after the UUID
 	let multi_path = match &config.path {
 		DbPath::File(p) => DbPath::File(p.with_extension("").join("multi.db")),
 		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("multi.db")),
@@ -99,33 +104,34 @@ fn create_sqlite_store(
 		..config.clone()
 	};
 
-	// Create multi-version store
-	let multi_storage = HotStorage::sqlite(multi_config);
 	let multi_store = MultiStore::standard(MultiStoreConfig {
-		hot: Some(MultiHotConfig {
-			storage: multi_storage,
+		buffer: Some(MultiBufferConfig {
+			storage: multi_buffer,
 		}),
-		warm: None,
-		cold: None,
+		persistent: Some(MultiPersistentConfig::sqlite(multi_config)),
 		retention: Default::default(),
 		merge_config: Default::default(),
 		event_bus: eventbus.clone(),
 		actor_system: actor_system.clone(),
+		clock: Clock::Real,
 	});
 
-	// Create single-version config with single.db in same directory
 	let single_path = match &config.path {
-		DbPath::File(p) => p.with_extension("").join("single.db"),
-		DbPath::Memory(p) => p.with_extension("").join("single.db"),
-		DbPath::Tmpfs(p) => p.with_extension("").join("single.db"),
+		DbPath::File(p) => DbPath::File(p.with_extension("").join("single.db")),
+		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("single.db")),
+		DbPath::Tmpfs(p) => DbPath::Tmpfs(p.with_extension("").join("single.db")),
 	};
-	let single_config = SingleSqliteConfig::new(single_path);
-	let single_storage = reifydb_store_single::hot::tier::HotTier::sqlite(single_config);
+	let single_config = SqliteConfig {
+		path: single_path,
+		..config.clone()
+	};
 	let single_store = SingleStore::standard(SingleStoreConfig {
-		hot: Some(SingleHotConfig {
-			storage: single_storage,
+		buffer: Some(SingleBufferConfig {
+			storage: SingleBufferTier::memory(),
 		}),
-		event_bus: eventbus.clone(),
+		persistent: Some(SinglePersistentConfig::sqlite(single_config)),
+		actor_system: actor_system.clone(),
+		clock: Clock::Real,
 	});
 
 	let transaction_single = SingleTransaction::new(single_store.clone(), eventbus.clone());
@@ -138,17 +144,9 @@ pub(crate) fn transaction(
 	actor_system: ActorSystem,
 	clock: Clock,
 	rng: Rng,
-	system_config: SystemConfig,
+	config: Arc<dyn GetConfig>,
 ) -> (MultiTransaction, SingleTransaction, EventBus) {
-	let multi = MultiTransaction::new(
-		input.0,
-		input.2.clone(),
-		input.3.clone(),
-		actor_system,
-		clock,
-		rng,
-		system_config,
-	)
-	.unwrap();
+	let multi = MultiTransaction::new(input.0, input.2.clone(), input.3.clone(), actor_system, clock, rng, config)
+		.unwrap();
 	(multi, input.2, input.3)
 }

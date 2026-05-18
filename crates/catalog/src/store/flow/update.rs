@@ -10,12 +10,9 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use crate::{CatalogStore, Result, store::flow::shape::flow};
 
 impl CatalogStore {
-	/// Update the name of a flow
 	pub(crate) fn update_flow_name(txn: &mut AdminTransaction, flow_id: FlowId, new_name: String) -> Result<()> {
-		// Get the existing flow
 		let flow = Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 
-		// Update the name field
 		let mut row = flow::SHAPE.allocate();
 		flow::SHAPE.set_u64(&mut row, flow::ID, flow_id.0);
 		flow::SHAPE.set_u64(&mut row, flow::NAMESPACE, flow.namespace.0);
@@ -27,16 +24,13 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	/// Update the status of a flow
 	pub(crate) fn update_flow_status(
 		txn: &mut AdminTransaction,
 		flow_id: FlowId,
 		status: FlowStatus,
 	) -> Result<()> {
-		// Get the existing flow
 		let flow = Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 
-		// Update the status field
 		let mut row = flow::SHAPE.allocate();
 		flow::SHAPE.set_u64(&mut row, flow::ID, flow_id.0);
 		flow::SHAPE.set_u64(&mut row, flow::NAMESPACE, flow.namespace.0);

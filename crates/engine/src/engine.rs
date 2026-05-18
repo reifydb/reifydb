@@ -13,18 +13,23 @@ use std::{
 use reifydb_auth::service::AuthEngine;
 use reifydb_catalog::{
 	catalog::Catalog,
-	materialized::MaterializedCatalog,
+	interceptor::CatalogCacheInterceptor,
 	vtable::{
 		system::flow_operator_store::{SystemFlowOperatorEventListener, SystemFlowOperatorStore},
 		tables::UserVTableDataFunction,
 		user::{UserVTable, UserVTableColumn, registry::UserVTableEntry},
 	},
 };
-use reifydb_cdc::{consume::host::CdcHost, storage::CdcStore};
+use reifydb_cdc::{
+	consume::{host::CdcHost, watermark::CdcConsumerWatermark},
+	produce::watermark::CdcProducerWatermark,
+	storage::CdcStore,
+};
 use reifydb_core::{
 	common::CommitVersion,
 	error::diagnostic::{catalog::namespace_not_found, engine::read_only_rejection},
 	event::{Event, EventBus},
+	execution::ExecutionResult,
 	interface::{
 		WithEventBus,
 		catalog::{
@@ -33,32 +38,37 @@ use reifydb_core::{
 			vtable::{VTable, VTableId},
 		},
 	},
+	metric::ExecutionMetrics,
+	util::ioc::IocContainer,
 };
-use reifydb_metric::metric::MetricReader;
-use reifydb_runtime::actor::system::ActorSystem;
+use reifydb_metric::storage::metric::MetricReader;
+use reifydb_runtime::{
+	actor::{mailbox::ActorRef, system::ActorSystem},
+	context::{clock::Clock, rng::Rng},
+};
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
-	multi::transaction::MultiTransaction,
+	multi::{lease::VersionLeaseGuard, transaction::MultiTransaction},
 	single::SingleTransaction,
-	transaction::{
-		admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
-		subscription::SubscriptionTransaction,
-	},
+	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction},
 };
 use reifydb_type::{
 	error::Error,
 	fragment::Fragment,
 	params::Params,
-	value::{constraint::TypeConstraint, frame::frame::Frame, identity::IdentityId},
+	value::{constraint::TypeConstraint, identity::IdentityId},
 };
 use tracing::instrument;
 
 use crate::{
 	Result,
-	bulk_insert::builder::{BulkInsertBuilder, Trusted, Validated},
-	interceptor::catalog::MaterializedCatalogInterceptor,
-	vm::{Admin, Command, Query, Subscription, executor::Executor, services::EngineConfig},
+	bulk_insert::builder::{BulkInsertBuilder, Unchecked, Validated},
+	vm::{
+		Admin, Command, Query, Subscription,
+		executor::Executor,
+		services::{EngineConfig, Services},
+	},
 };
 
 pub struct StandardEngine(Arc<Inner>);
@@ -83,7 +93,6 @@ impl AuthEngine for StandardEngine {
 	}
 }
 
-// Engine methods (formerly from Engine trait in reifydb-core)
 impl StandardEngine {
 	#[instrument(name = "engine::transaction::begin_command", level = "debug", skip(self))]
 	pub fn begin_command(&self, identity: IdentityId) -> Result<CommandTransaction> {
@@ -94,6 +103,7 @@ impl StandardEngine {
 			self.event_bus.clone(),
 			interceptors,
 			identity,
+			self.executor.runtime_context.clock.clone(),
 		)?;
 		txn.set_executor(Arc::new(self.executor.clone()));
 		Ok(txn)
@@ -108,6 +118,7 @@ impl StandardEngine {
 			self.event_bus.clone(),
 			interceptors,
 			identity,
+			self.executor.runtime_context.clock.clone(),
 		)?;
 		txn.set_executor(Arc::new(self.executor.clone()));
 		Ok(txn)
@@ -120,162 +131,232 @@ impl StandardEngine {
 		Ok(txn)
 	}
 
-	#[instrument(name = "engine::transaction::begin_subscription", level = "debug", skip(self))]
-	pub fn begin_subscription(&self, identity: IdentityId) -> Result<SubscriptionTransaction> {
-		let interceptors = self.interceptors.create();
-		let mut txn = SubscriptionTransaction::new(
-			self.multi.clone(),
-			self.single.clone(),
-			self.event_bus.clone(),
-			interceptors,
-			identity,
-		)?;
-		txn.set_executor(Arc::new(self.executor.clone()));
-		Ok(txn)
+	pub fn clock(&self) -> &Clock {
+		&self.executor.runtime_context.clock
 	}
 
-	#[instrument(name = "engine::admin", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn admin_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
-		self.reject_if_read_only()?;
-		(|| {
-			let mut txn = self.begin_admin(identity)?;
-			let frames = self.executor.admin(
-				&mut txn,
-				Admin {
-					rql,
-					params,
-				},
-			)?;
-			txn.commit()?;
-			Ok(frames)
-		})()
-		.map_err(|mut err: Error| {
-			err.with_statement(rql.to_string());
-			err
-		})
+	pub fn rng(&self) -> &Rng {
+		&self.executor.runtime_context.rng
 	}
 
-	#[instrument(name = "engine::command", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn command_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
-		self.reject_if_read_only()?;
-		(|| {
-			let mut txn = self.begin_command(identity)?;
-			let frames = self.executor.command(
-				&mut txn,
-				Command {
-					rql,
-					params,
-				},
-			)?;
-			txn.commit()?;
-			Ok(frames)
-		})()
-		.map_err(|mut err: Error| {
-			err.with_statement(rql.to_string());
-			err
-		})
+	#[instrument(name = "engine::admin_as", level = "debug", skip(self, params), fields(rql = %rql))]
+	pub fn admin_as(&self, identity: IdentityId, rql: &str, params: Params) -> ExecutionResult {
+		if let Err(e) = self.reject_if_read_only() {
+			return ExecutionResult {
+				frames: vec![],
+				error: Some(e),
+				metrics: ExecutionMetrics::default(),
+			};
+		}
+		let mut txn = match self.begin_admin(identity) {
+			Ok(t) => t,
+			Err(mut e) => {
+				e.with_rql(rql.to_string());
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
+		let mut outcome = self.executor.admin(
+			&mut txn,
+			Admin {
+				rql,
+				params,
+			},
+		);
+		if outcome.is_ok()
+			&& let Err(mut e) = txn.commit()
+		{
+			e.with_rql(rql.to_string());
+			outcome.error = Some(e);
+		}
+		if let Some(ref mut e) = outcome.error {
+			e.with_rql(rql.to_string());
+		}
+		outcome
 	}
 
-	#[instrument(name = "engine::query", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn query_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
-		(|| {
-			let mut txn = self.begin_query(identity)?;
-			self.executor.query(
-				&mut txn,
-				Query {
-					rql,
-					params,
-				},
-			)
-		})()
-		.map_err(|mut err: Error| {
-			err.with_statement(rql.to_string());
-			err
-		})
+	#[instrument(name = "engine::command_as", level = "debug", skip(self, params), fields(rql = %rql))]
+	pub fn command_as(&self, identity: IdentityId, rql: &str, params: Params) -> ExecutionResult {
+		if let Err(e) = self.reject_if_read_only() {
+			return ExecutionResult {
+				frames: vec![],
+				error: Some(e),
+				metrics: ExecutionMetrics::default(),
+			};
+		}
+		let mut txn = match self.begin_command(identity) {
+			Ok(t) => t,
+			Err(mut e) => {
+				e.with_rql(rql.to_string());
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
+		let mut outcome = self.executor.command(
+			&mut txn,
+			Command {
+				rql,
+				params,
+			},
+		);
+		if outcome.is_ok()
+			&& let Err(mut e) = txn.commit()
+		{
+			e.with_rql(rql.to_string());
+			outcome.error = Some(e);
+		}
+		if let Some(ref mut e) = outcome.error {
+			e.with_rql(rql.to_string());
+		}
+		outcome
 	}
 
-	#[instrument(name = "engine::subscription", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn subscription_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
-		self.reject_if_read_only()?;
-		(|| {
-			let mut txn = self.begin_subscription(identity)?;
-			let frames = self.executor.subscription(
-				&mut txn,
-				Subscription {
-					rql,
-					params,
-				},
-			)?;
-			txn.commit()?;
-			Ok(frames)
-		})()
-		.map_err(|mut err: Error| {
-			err.with_statement(rql.to_string());
-			err
-		})
+	#[instrument(name = "engine::query_as", level = "debug", skip(self, params), fields(rql = %rql))]
+	pub fn query_as(&self, identity: IdentityId, rql: &str, params: Params) -> ExecutionResult {
+		let mut txn = match self.begin_query(identity) {
+			Ok(t) => t,
+			Err(mut e) => {
+				e.with_rql(rql.to_string());
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
+		let mut outcome = self.executor.query(
+			&mut txn,
+			Query {
+				rql,
+				params,
+			},
+		);
+		if let Some(ref mut e) = outcome.error {
+			e.with_rql(rql.to_string());
+		}
+		outcome
 	}
 
-	/// Call a procedure by fully-qualified name.
-	#[instrument(name = "engine::procedure", level = "debug", skip(self, params), fields(name = %name))]
-	pub fn procedure_as(&self, identity: IdentityId, name: &str, params: Params) -> Result<Vec<Frame>> {
-		self.reject_if_read_only()?;
-		let mut txn = self.begin_command(identity)?;
-		let frames = self.executor.call_procedure(&mut txn, name, &params)?;
-		txn.commit()?;
-		Ok(frames)
+	#[instrument(name = "engine::query_as_at_version", level = "debug", skip(self, params, lease), fields(rql = %rql, version = %lease.version().0))]
+	pub fn query_as_at_version(
+		&self,
+		identity: IdentityId,
+		rql: &str,
+		params: Params,
+		lease: &VersionLeaseGuard,
+	) -> ExecutionResult {
+		let mut txn = match self.begin_query_at_version(lease, identity) {
+			Ok(t) => t,
+			Err(mut e) => {
+				e.with_rql(rql.to_string());
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
+		let mut outcome = self.executor.query(
+			&mut txn,
+			Query {
+				rql,
+				params,
+			},
+		);
+		if let Some(ref mut e) = outcome.error {
+			e.with_rql(rql.to_string());
+		}
+		outcome
 	}
 
-	/// Register a user-defined virtual table.
-	///
-	/// The virtual table will be available for queries using the given namespace and name.
-	///
-	/// # Arguments
-	///
-	/// * `namespace` - The namespace name (e.g., "default", "my_namespace")
-	/// * `name` - The table name
-	/// * `table` - The virtual table implementation
-	///
-	/// # Returns
-	///
-	/// The assigned `VTableId` on success.
-	///
-	/// # Example
-	///
-	/// ```ignore
-	/// use reifydb_engine::vtable::{UserVTable, UserVTableColumn};
-	/// use reifydb_type::value::r#type::Type;
-	/// use reifydb_core::value::Columns;
-	///
-	/// #[derive(Clone)]
-	/// struct MyTable;
-	///
-	/// impl UserVTable for MyTable {
-	///     fn definition(&self) -> Vec<UserVTableColumn> {
-	///         vec![UserVTableColumn::new("id", Type::Uint8)]
-	///     }
-	///     fn get(&self) -> Columns {
-	///         // Return column-oriented data
-	///         Columns::empty()
-	///     }
-	/// }
-	///
-	/// let id = engine.register_virtual_table("default", "my_table", MyTable)?;
-	/// ```
+	#[instrument(name = "engine::query_in_txn", level = "debug", skip(self, txn, params), fields(rql = %rql))]
+	pub fn query_in_txn(&self, txn: &mut QueryTransaction, rql: &str, params: Params) -> ExecutionResult {
+		let mut outcome = self.executor.query(
+			txn,
+			Query {
+				rql,
+				params,
+			},
+		);
+		if let Some(ref mut e) = outcome.error {
+			e.with_rql(rql.to_string());
+		}
+		outcome
+	}
+
+	#[instrument(name = "engine::subscribe_as", level = "debug", skip(self, params), fields(rql = %rql))]
+	pub fn subscribe_as(&self, identity: IdentityId, rql: &str, params: Params) -> ExecutionResult {
+		let mut txn = match self.begin_query(identity) {
+			Ok(t) => t,
+			Err(mut e) => {
+				e.with_rql(rql.to_string());
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
+		let mut outcome = self.executor.subscription(
+			&mut txn,
+			Subscription {
+				rql,
+				params,
+			},
+		);
+		if let Some(ref mut e) = outcome.error {
+			e.with_rql(rql.to_string());
+		}
+		outcome
+	}
+
+	#[instrument(name = "engine::procedure_as", level = "debug", skip(self, params), fields(name = %name))]
+	pub fn procedure_as(&self, identity: IdentityId, name: &str, params: Params) -> ExecutionResult {
+		if let Err(e) = self.reject_if_read_only() {
+			return ExecutionResult {
+				frames: vec![],
+				error: Some(e),
+				metrics: ExecutionMetrics::default(),
+			};
+		}
+		let mut txn = match self.begin_command(identity) {
+			Ok(t) => t,
+			Err(e) => {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
+		let mut outcome = self.executor.call_procedure(&mut txn, name, &params);
+		if outcome.is_ok()
+			&& let Err(e) = txn.commit()
+		{
+			outcome.error = Some(e);
+		}
+		outcome
+	}
+
 	pub fn register_virtual_table<T: UserVTable>(&self, namespace: &str, name: &str, table: T) -> Result<VTableId> {
-		let catalog = self.materialized_catalog();
+		let catalog = self.catalog();
 
-		// Look up namespace by name (use max u64 to get latest version)
+		let mut qry = self.begin_query(IdentityId::root())?;
 		let ns_def = catalog
-			.find_namespace_by_name(namespace)
+			.find_namespace_by_name(&mut Transaction::Query(&mut qry), namespace)?
 			.ok_or_else(|| Error(Box::new(namespace_not_found(Fragment::None, namespace))))?;
 
-		// Allocate a new table ID
 		let table_id = self.executor.virtual_table_registry.allocate_id();
-		// Convert user column definitions to internal column definitions
-		let table_columns = table.definition();
+
+		let table_columns = table.vtable();
 		let columns = convert_vtable_user_columns_to_columns(&table_columns);
 
-		// Create the table definition
 		let def = Arc::new(VTable {
 			id: table_id,
 			namespace: ns_def.id(),
@@ -283,11 +364,10 @@ impl StandardEngine {
 			columns,
 		});
 
-		// Register in catalog (for resolver lookups)
 		catalog.register_vtable_user(def.clone())?;
-		// Create the data function from the UserVTable trait
+
 		let data_fn: UserVTableDataFunction = Arc::new(move |_params| table.get());
-		// Create and register the entry
+
 		let entry = UserVTableEntry {
 			def: def.clone(),
 			data_fn,
@@ -318,8 +398,8 @@ impl CdcHost for StandardEngine {
 		StandardEngine::wait_for_mark_timeout(self, version, timeout)
 	}
 
-	fn materialized_catalog(&self) -> &MaterializedCatalog {
-		&self.catalog.materialized
+	fn catalog(&self) -> &Catalog {
+		&self.catalog
 	}
 }
 
@@ -361,19 +441,15 @@ impl StandardEngine {
 		let listener = SystemFlowOperatorEventListener::new(flow_operator_store.clone());
 		event_bus.register(listener);
 
-		// Get the metrics store from IoC to create the stats reader
 		let metrics_store = config
 			.ioc
 			.resolve::<SingleStore>()
 			.expect("SingleStore must be registered in IocContainer for metrics");
 		let stats_reader = MetricReader::new(metrics_store);
 
-		// Register MaterializedCatalogInterceptor as a factory function.
-		let materialized = catalog.materialized.clone();
+		let catalog_for_interceptor = catalog.clone();
 		interceptors.add_late(Arc::new(move |interceptors: &mut Interceptors| {
-			interceptors
-				.post_commit
-				.add(Arc::new(MaterializedCatalogInterceptor::new(materialized.clone())));
+			interceptors.post_commit.add(Arc::new(CatalogCacheInterceptor::new(&catalog_for_interceptor)));
 		}));
 
 		let interceptors = Arc::new(interceptors);
@@ -390,33 +466,35 @@ impl StandardEngine {
 		}))
 	}
 
-	/// Create a new set of interceptors from the factory.
 	pub fn create_interceptors(&self) -> Interceptors {
 		self.interceptors.create()
 	}
 
-	/// Register an additional interceptor factory function.
-	///
-	/// The function will be called on every `create()` to augment the base interceptors.
-	/// This is thread-safe and can be called after the engine is constructed (e.g. by subsystems).
 	pub fn add_interceptor_factory(&self, factory: Arc<dyn Fn(&mut Interceptors) + Send + Sync>) {
 		self.interceptors.add_late(factory);
 	}
 
-	/// Begin a query transaction at a specific version.
-	///
-	/// This is used for parallel query execution where multiple tasks need to
-	/// read from the same snapshot (same CommitVersion) for consistency.
-	#[instrument(name = "engine::transaction::begin_query_at_version", level = "debug", skip(self), fields(version = %version.0
+	#[instrument(name = "engine::transaction::begin_query_at_version", level = "debug", skip(self, lease), fields(version = %lease.version().0
     ))]
-	pub fn begin_query_at_version(&self, version: CommitVersion, identity: IdentityId) -> Result<QueryTransaction> {
-		let mut txn = QueryTransaction::new(
-			self.multi.begin_query_at_version(version)?,
-			self.single.clone(),
-			identity,
-		);
+	pub fn begin_query_at_version(
+		&self,
+		lease: &VersionLeaseGuard,
+		identity: IdentityId,
+	) -> Result<QueryTransaction> {
+		let mut txn =
+			QueryTransaction::new(self.multi.begin_query_at_version(lease)?, self.single.clone(), identity);
 		txn.set_executor(Arc::new(self.executor.clone()));
 		Ok(txn)
+	}
+
+	#[instrument(name = "engine::acquire_version_lease", level = "debug", skip(self), fields(version = %version.0))]
+	pub fn acquire_version_lease(&self, version: CommitVersion) -> Result<VersionLeaseGuard> {
+		self.multi.acquire_version_lease(version)
+	}
+
+	#[instrument(name = "engine::acquire_current_snapshot_lease", level = "debug", skip(self))]
+	pub fn acquire_current_snapshot_lease(&self) -> Result<(CommitVersion, VersionLeaseGuard)> {
+		self.multi.acquire_current_snapshot_lease()
 	}
 
 	#[inline]
@@ -429,7 +507,6 @@ impl StandardEngine {
 		self.multi.clone()
 	}
 
-	/// Get the actor system
 	#[inline]
 	pub fn actor_system(&self) -> ActorSystem {
 		self.multi.actor_system()
@@ -451,16 +528,13 @@ impl StandardEngine {
 	}
 
 	#[inline]
-	pub fn materialized_catalog(&self) -> &MaterializedCatalog {
-		&self.catalog.materialized
-	}
-
-	/// Returns a `Catalog` instance for catalog lookups.
-	/// The Catalog provides three-tier lookup methods that check transactional changes,
-	/// then MaterializedCatalog, then fall back to storage.
-	#[inline]
 	pub fn catalog(&self) -> Catalog {
 		self.catalog.clone()
+	}
+
+	#[inline]
+	pub fn services(&self) -> Arc<Services> {
+		self.executor.services().clone()
 	}
 
 	#[inline]
@@ -468,22 +542,21 @@ impl StandardEngine {
 		&self.flow_operator_store
 	}
 
-	/// Get the current version from the transaction manager
 	#[inline]
 	pub fn current_version(&self) -> Result<CommitVersion> {
 		self.multi.current_version()
 	}
 
-	/// Returns the highest version where ALL prior versions have completed.
-	/// This is useful for CDC polling to know the safe upper bound for fetching
-	/// CDC events - all events up to this version are guaranteed to be in storage.
 	#[inline]
 	pub fn done_until(&self) -> CommitVersion {
 		self.multi.done_until()
 	}
 
-	/// Wait for the watermark to reach the given version with a timeout.
-	/// Returns true if the watermark reached the target, false if timeout occurred.
+	#[inline]
+	pub fn query_done_until(&self) -> CommitVersion {
+		self.multi.query_done_until()
+	}
+
 	#[inline]
 	pub fn wait_for_mark_timeout(&self, version: CommitVersion, timeout: Duration) -> bool {
 		self.multi.wait_for_mark_timeout(version, timeout)
@@ -494,22 +567,42 @@ impl StandardEngine {
 		self.executor.clone()
 	}
 
-	/// Get the CDC store from the IoC container.
-	///
-	/// Returns the CdcStore that was registered during engine construction.
-	/// Panics if CdcStore was not registered.
+	#[inline]
+	pub fn ioc(&self) -> &IocContainer {
+		&self.executor.ioc
+	}
+
 	#[inline]
 	pub fn cdc_store(&self) -> CdcStore {
 		self.executor.ioc.resolve::<CdcStore>().expect("CdcStore must be registered")
 	}
 
-	/// Mark this engine as read-only (replica mode).
-	/// Once set, all write-path methods will return ENG_007 immediately.
+	#[inline]
+	pub fn actor<M: 'static>(&self) -> Option<ActorRef<M>>
+	where
+		ActorRef<M>: Send + Sync,
+	{
+		self.executor.ioc.try_resolve::<ActorRef<M>>()
+	}
+
+	#[inline]
+	pub fn cdc_producer_watermark(&self) -> CommitVersion {
+		self.executor
+			.ioc
+			.resolve::<CdcProducerWatermark>()
+			.expect("CdcProducerWatermark must be registered")
+			.get()
+	}
+
+	#[inline]
+	pub fn cdc_consumer_watermark(&self) -> CommitVersion {
+		self.executor.ioc.try_resolve::<CdcConsumerWatermark>().map(|w| w.get()).unwrap_or(CommitVersion(0))
+	}
+
 	pub fn set_read_only(&self) {
 		self.read_only.store(true, Ordering::SeqCst);
 	}
 
-	/// Whether this engine is in read-only (replica) mode.
 	pub fn is_read_only(&self) -> bool {
 		self.read_only.load(Ordering::SeqCst)
 	}
@@ -526,48 +619,19 @@ impl StandardEngine {
 		self.executor.ioc.clear();
 	}
 
-	/// Start a bulk insert operation with full validation.
-	///
-	/// This provides a fluent API for fast bulk inserts that bypasses RQL parsing.
-	/// All inserts within a single builder execute in one transaction.
-	///
-	/// # Example
-	///
-	/// ```ignore
-	/// use reifydb_type::params;
-	///
-	/// engine.bulk_insert(&identity)
-	///     .table("namespace.users")
-	///         .row(params!{ id: 1, name: "Alice" })
-	///         .row(params!{ id: 2, name: "Bob" })
-	///         .done()
-	///     .execute()?;
-	/// ```
 	pub fn bulk_insert<'e>(&'e self, identity: IdentityId) -> BulkInsertBuilder<'e, Validated> {
 		BulkInsertBuilder::new(self, identity)
 	}
 
-	/// Start a bulk insert operation with validation disabled (trusted mode).
-	///
-	/// Use this for pre-validated internal data where constraint validation
-	/// can be skipped for maximum performance.
-	///
-	/// # Safety
-	///
-	/// The caller is responsible for ensuring the data conforms to the
-	/// shape constraints. Invalid data may cause undefined behavior.
-	pub fn bulk_insert_trusted<'e>(&'e self, identity: IdentityId) -> BulkInsertBuilder<'e, Trusted> {
-		BulkInsertBuilder::new_trusted(self, identity)
+	pub fn bulk_insert_unchecked<'e>(&'e self, identity: IdentityId) -> BulkInsertBuilder<'e, Unchecked> {
+		BulkInsertBuilder::new_unchecked(self, identity)
 	}
 }
 
-/// Convert user column definitions to internal Column format.
 fn convert_vtable_user_columns_to_columns(columns: &[UserVTableColumn]) -> Vec<Column> {
 	columns.iter()
 		.enumerate()
 		.map(|(idx, col)| {
-			// Note: For virtual tables, we use unconstrained for all types.
-			// The nullable field is still available for documentation purposes.
 			let constraint = TypeConstraint::unconstrained(col.data_type.clone());
 			Column {
 				id: ColumnId(idx as u64),

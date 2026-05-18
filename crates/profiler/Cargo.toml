@@ -1,0 +1,26 @@
+[package]
+name = "reifydb-profiler"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Always-on database profiler primitives: tracing layer, per-scope capture, dimension interning"
+
+[dependencies]
+reifydb-core = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-type = { workspace = true }
+
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tokio = { workspace = true }
+
+dashmap = { workspace = true }
+serde = { workspace = true }
+once_cell = { workspace = true }
+paste = { workspace = true }
+tdigest = { workspace = true }
+
+[dev-dependencies]
+reifydb-testing = { workspace = true }

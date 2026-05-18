@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! FFI transform dynamic library loader
-
 use std::{
 	collections::HashMap,
 	fs,
 	path::{Path, PathBuf},
-	sync::{OnceLock, RwLock},
+	sync::OnceLock,
 };
 
 use libloading::Symbol;
@@ -15,6 +13,7 @@ use reifydb_abi::transform::{
 	descriptor::TransformDescriptorFFI,
 	types::{TRANSFORM_MAGIC, TransformCreateFnFFI},
 };
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::error::{FFIError, Result as FFIResult};
 
 use super::{
@@ -23,15 +22,12 @@ use super::{
 };
 use crate::loader::ffi::{LibraryCache, buffer_to_string, validate_api_version};
 
-/// Global singleton FFI transform loader
 static GLOBAL_FFI_TRANSFORM_LOADER: OnceLock<RwLock<TransformLoader>> = OnceLock::new();
 
-/// Get the global FFI transform loader
 pub fn ffi_transform_loader() -> &'static RwLock<TransformLoader> {
 	GLOBAL_FFI_TRANSFORM_LOADER.get_or_init(|| RwLock::new(TransformLoader::new()))
 }
 
-/// FFI transform loader for dynamic libraries
 pub struct TransformLoader {
 	cache: LibraryCache,
 	transform_paths: HashMap<String, PathBuf>,
@@ -90,7 +86,6 @@ impl TransformLoader {
 		Ok((name, descriptor.api))
 	}
 
-	/// Register a transform library without instantiating it
 	pub fn register_transform(&mut self, path: &Path) -> FFIResult<Option<LoadedTransformInfo>> {
 		if !self.load_transform_library(path)? {
 			return Ok(None);
@@ -112,7 +107,6 @@ impl TransformLoader {
 		Ok(Some(info))
 	}
 
-	/// Load a transform from a dynamic library
 	pub fn load_transform(&mut self, path: &Path, config: &[u8]) -> FFIResult<Option<NativeTransformFFI>> {
 		if !self.load_transform_library(path)? {
 			return Ok(None);
@@ -138,7 +132,6 @@ impl TransformLoader {
 		Ok(Some(NativeTransformFFI::new(descriptor, instance)))
 	}
 
-	/// Create a transform instance from an already loaded library by name
 	pub fn create_transform_by_name(&mut self, name: &str, config: &[u8]) -> FFIResult<NativeTransformFFI> {
 		let path = self
 			.transform_paths
@@ -150,13 +143,11 @@ impl TransformLoader {
 			.ok_or_else(|| FFIError::Other(format!("Transform library no longer valid: {}", name)))
 	}
 
-	/// Check if a transform name is registered
 	pub fn has_transform(&self, name: &str) -> bool {
 		self.transform_paths.contains_key(name)
 	}
 }
 
-/// Information about a loaded FFI transform
 #[derive(Debug, Clone)]
 pub struct LoadedTransformInfo {
 	pub name: String,
@@ -172,14 +163,12 @@ impl Default for TransformLoader {
 	}
 }
 
-/// Scan a directory for FFI transform shared libraries and register them
-/// onto an existing `TransformsConfigurator`.
 pub fn register_transforms_from_dir(
 	dir: &Path,
 	mut builder: TransformsConfigurator,
 ) -> FFIResult<TransformsConfigurator> {
 	let loader = ffi_transform_loader();
-	let mut loader_guard = loader.write().unwrap();
+	let mut loader_guard = loader.write();
 
 	let mut names = Vec::new();
 
@@ -196,9 +185,7 @@ pub fn register_transforms_from_dir(
 				Ok(Some(info)) => {
 					names.push(info.name);
 				}
-				Ok(None) => {
-					// Not a valid transform library, skip
-				}
+				Ok(None) => {}
 				Err(e) => {
 					eprintln!(
 						"Warning: Failed to register transform from {}: {}",
@@ -216,7 +203,7 @@ pub fn register_transforms_from_dir(
 		let name_clone = name.clone();
 		builder = builder.register(&name, move || {
 			let loader = ffi_transform_loader();
-			let mut loader_guard = loader.write().unwrap();
+			let mut loader_guard = loader.write();
 			loader_guard.create_transform_by_name(&name_clone, &[]).unwrap()
 		});
 	}
@@ -224,8 +211,6 @@ pub fn register_transforms_from_dir(
 	Ok(builder)
 }
 
-/// Scan a directory for FFI transform shared libraries, register them,
-/// and return a `Transforms` registry with factory functions for each.
 pub fn load_transforms_from_dir(dir: &Path) -> FFIResult<Transforms> {
 	Ok(register_transforms_from_dir(dir, Transforms::builder())?.configure())
 }

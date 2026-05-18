@@ -19,8 +19,6 @@ impl CatalogStore {
 		column_id: ColumnId,
 		new_name: &str,
 	) -> Result<()> {
-		// Update column definition (ColumnsKey)
-		// We must rebuild the row since set_utf8 cannot overwrite existing values
 		if let Some(multi) = txn.get(&ColumnsKey::encoded(column_id))? {
 			let old = multi.row;
 			let mut row = column::SHAPE.allocate();
@@ -51,7 +49,6 @@ impl CatalogStore {
 			txn.set(&ColumnsKey::encoded(column_id), row)?;
 		}
 
-		// Update shape-column link (ColumnKey)
 		if let Some(multi) = txn.get(&ColumnKey::encoded(shape, column_id))? {
 			let old = multi.row;
 			let mut row = primitive_column::SHAPE.allocate();

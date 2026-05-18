@@ -6,7 +6,6 @@ use crate::token::{
 	token::{Literal::Text, Token, TokenKind},
 };
 
-/// Scan for a text literal ('...' or "...")
 pub fn scan_text<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let quote = cursor.peek()?;
 	if quote != '\'' && quote != '"' {
@@ -107,7 +106,7 @@ pub mod tests {
 	fn test_text_single_unterminated_fails() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "'not closed");
-		// Should fail or return no text token
+
 		assert!(tokens.is_err() || tokens.unwrap().iter().all(|t| !matches!(t.kind, TokenKind::Literal(Text))));
 	}
 
@@ -115,7 +114,7 @@ pub mod tests {
 	fn test_text_double_unterminated_fails() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "\"not closed");
-		// Should fail or return no text token
+
 		assert!(tokens.is_err() || tokens.unwrap().iter().all(|t| !matches!(t.kind, TokenKind::Literal(Text))));
 	}
 

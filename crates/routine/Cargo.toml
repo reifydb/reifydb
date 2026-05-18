@@ -23,6 +23,7 @@ reifydb-runtime = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 reifydb-wasm = { workspace = true }
+reifydb-wire-format = { workspace = true }
 reifydb-sdk = { workspace = true }
 libloading = { workspace = true }
 thiserror = { workspace = true }

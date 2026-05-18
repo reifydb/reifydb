@@ -1,5 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+
+//! Transactional layer over the storage tier: opens a read or read-write transaction, accumulates deltas, validates
+//! conflicts, and commits atomically. The crate offers two flavours - a multi-version path for OLTP traffic that needs
+//! snapshot isolation, and a single-version path for workloads where versioning would only add overhead - and exposes
+//! both behind a uniform `Transaction` handle that the engine threads through every request.
+//!
+//! Every change recorded inside a transaction is captured as a delta, surfaced through the change accumulator, and
+//! published downstream so CDC consumers, replication, and subscriptions observe the same write set the engine just
+//! committed. Interceptors hook the commit boundary and let policy, audit, and consistency checks run with full
+//! visibility into what is about to be written.
+//!
+//! Invariant: a `TransactionId` is unique system-wide and monotonic via Uuid7; downstream consumers (CDC, replication,
+//! subscriptions) order events by transaction id, so reusing or back-dating an id silently breaks consumer
+//! consistency.
+
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
@@ -28,8 +43,6 @@ pub mod multi;
 pub mod single;
 pub mod transaction;
 
-/// A unique identifier for a transaction using UUIDv7 for time-ordered
-/// uniqueness
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct TransactionId(pub(crate) Uuid7);
@@ -43,12 +56,6 @@ impl Deref for TransactionId {
 }
 
 impl TransactionId {
-	/// Generate a new transaction ID using the infrastructure RNG stream.
-	///
-	/// Uses `rng.infra_bytes_10()` instead of `rng.bytes_10()` so that
-	/// transaction ID generation does not consume from the primary RNG.
-	/// This ensures deterministic test output across runners that create
-	/// different numbers of internal transactions (e.g. gRPC vs embedded).
 	pub fn generate(clock: &Clock, rng: &Rng) -> Self {
 		let millis = clock.now_millis();
 		let random_bytes = rng.infra_bytes_10();

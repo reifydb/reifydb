@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct DateTimeAdd;
+pub struct DateTimeAdd {
+	info: RoutineInfo,
+}
 
 impl Default for DateTimeAdd {
 	fn default() -> Self {
@@ -20,31 +18,38 @@ impl Default for DateTimeAdd {
 
 impl DateTimeAdd {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("datetime::add"),
+		}
 	}
 }
 
-impl ScalarFunction for DateTimeAdd {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+impl<'a> Routine<FunctionContext<'a>> for DateTimeAdd {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		if columns.len() != 2 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::DateTime
+	}
+
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 2 {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let dt_col = columns.first().unwrap();
-		let dur_col = columns.get(1).unwrap();
+		let dt_col = &args[0];
+		let dur_col = &args[1];
+		let (dt_data, dt_bitvec) = dt_col.unwrap_option();
+		let (dur_data, dur_bitvec) = dur_col.unwrap_option();
+		let row_count = dt_data.len();
 
-		match (dt_col.data(), dur_col.data()) {
-			(ColumnData::DateTime(dt_container), ColumnData::Duration(dur_container)) => {
+		let result_data = match (dt_data, dur_data) {
+			(ColumnBuffer::DateTime(dt_container), ColumnBuffer::Duration(dur_container)) => {
 				let mut container = TemporalContainer::with_capacity(row_count);
 
 				for i in 0..row_count {
@@ -52,7 +57,7 @@ impl ScalarFunction for DateTimeAdd {
 						(Some(dt), Some(dur)) => match dt.add_duration(dur) {
 							Ok(result) => container.push(result),
 							Err(err) => {
-								return Err(ScalarFunctionError::ExecutionFailed {
+								return Err(RoutineError::FunctionExecutionFailed {
 									function: ctx.fragment.clone(),
 									reason: format!("{}", err),
 								});
@@ -62,24 +67,40 @@ impl ScalarFunction for DateTimeAdd {
 					}
 				}
 
-				Ok(ColumnData::DateTime(container))
+				ColumnBuffer::DateTime(container)
 			}
-			(ColumnData::DateTime(_), other) => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 1,
-				expected: vec![Type::Duration],
-				actual: other.get_type(),
-			}),
-			(other, _) => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 0,
-				expected: vec![Type::DateTime],
-				actual: other.get_type(),
-			}),
-		}
-	}
+			(ColumnBuffer::DateTime(_), other) => {
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 1,
+					expected: vec![Type::Duration],
+					actual: other.get_type(),
+				});
+			}
+			(other, _) => {
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 0,
+					expected: vec![Type::DateTime],
+					actual: other.get_type(),
+				});
+			}
+		};
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::DateTime
+		let final_data = match (dt_bitvec, dur_bitvec) {
+			(Some(bv), _) | (_, Some(bv)) => ColumnBuffer::Option {
+				inner: Box::new(result_data),
+				bitvec: bv.clone(),
+			},
+			_ => result_data,
+		};
+
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for DateTimeAdd {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

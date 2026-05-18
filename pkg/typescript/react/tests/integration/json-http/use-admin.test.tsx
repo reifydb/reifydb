@@ -3,8 +3,8 @@
 
 import {afterAll, beforeAll, afterEach, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useAdminOne, useAdminMany, ConnectionProvider, getConnection, clearConnection, Shape} from '../../../src';
-import {waitForDatabaseHttp} from '../setup';
+import {useAdminOne, useAdminMany, ConnectionProvider, get_connection, clear_connection, Shape} from '../../../src';
+import {wait_for_database_http} from '../setup';
 // @ts-ignore
 import React from "react";
 
@@ -14,15 +14,15 @@ describe('useAdmin Hooks (JSON HTTP)', () => {
     );
 
     beforeAll(async () => {
-        await waitForDatabaseHttp();
+        await wait_for_database_http();
     }, 30000);
 
     afterEach(async () => {
-        await clearConnection();
+        await clear_connection();
     });
 
     afterAll(async () => {
-        await clearConnection();
+        await clear_connection();
     });
 
     describe('useAdminOne', () => {
@@ -36,11 +36,11 @@ describe('useAdmin Hooks (JSON HTTP)', () => {
                 ), {wrapper}
             );
 
-            expect(result.current.isExecuting).toBe(true);
+            expect(result.current.is_executing).toBe(true);
             expect(result.current.result).toBeUndefined();
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
                 expect(result.current.result).toBeDefined();
             });
 
@@ -61,7 +61,7 @@ describe('useAdmin Hooks (JSON HTTP)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
 
@@ -75,7 +75,7 @@ describe('useAdmin Hooks (JSON HTTP)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.result!.rows[0]).toEqual({num: 1});
@@ -95,7 +95,7 @@ describe('useAdmin Hooks (JSON HTTP)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.result!.rows[0]).toEqual({result: 10});
@@ -122,7 +122,7 @@ describe('useAdmin Hooks (JSON HTTP)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             const person = result.current.result!.rows[0];
@@ -138,7 +138,7 @@ describe('useAdmin Hooks (JSON HTTP)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
                 expect(result.current.error).toBeDefined();
             });
 
@@ -151,7 +151,7 @@ describe('useAdmin Hooks (JSON HTTP)', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.error).toBeUndefined();
@@ -166,18 +166,14 @@ describe('useAdmin Hooks (JSON HTTP)', () => {
                 Shape.object({second: Shape.number()}),
                 Shape.object({third: Shape.number()})
             ] as const;
-            const queries = [
-                `MAP {first: 1}`,
-                `MAP {second: 2}`,
-                `MAP {third: 3}`
-            ];
+            const queries = `OUTPUT MAP {first: 1}; OUTPUT MAP {second: 2}; OUTPUT MAP {third: 3}`;
 
             const {result} = renderHook(() =>
                 useAdminMany(queries, undefined, shapes)
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
                 expect(result.current.results).toBeDefined();
             });
 
@@ -197,7 +193,7 @@ describe('useAdmin Hooks (JSON HTTP)', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.results).toHaveLength(1);
@@ -209,10 +205,7 @@ describe('useAdmin Hooks (JSON HTTP)', () => {
                 Shape.object({first: Shape.number()}),
                 Shape.object({second: Shape.number()})
             ] as const;
-            const queries = [
-                `MAP {first: $x}`,
-                `MAP {second: $y}`
-            ];
+            const queries = `OUTPUT MAP {first: $x}; OUTPUT MAP {second: $y}`;
             const params = {x: 10, y: 20};
 
             const {result} = renderHook(() =>
@@ -220,7 +213,7 @@ describe('useAdmin Hooks (JSON HTTP)', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.results![0].rows[0]).toEqual({first: 10});
@@ -233,17 +226,14 @@ describe('useAdmin Hooks (JSON HTTP)', () => {
                 Shape.object({name: Shape.string()})
             ] as const;
 
-            const queries = [
-                `MAP {value: 100}`,
-                `MAP {name: 'test'}`
-            ];
+            const queries = `OUTPUT MAP {value: 100}; OUTPUT MAP {name: 'test'}`;
 
             const {result} = renderHook(() =>
                 useAdminMany(queries, undefined, shapes)
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.results![0].rows[0]).toEqual({value: 100});
@@ -253,16 +243,16 @@ describe('useAdmin Hooks (JSON HTTP)', () => {
         it('should re-execute when statements change', async () => {
             const {result, rerender} = renderHook(
                 ({queries}) => useAdminMany(queries, undefined, [Shape.object({x: Shape.number()})]),
-                {initialProps: {queries: [`MAP {x: 1}`]}, wrapper}
+                {initialProps: {queries: `MAP {x: 1}`}, wrapper}
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.results).toHaveLength(1);
 
-            rerender({queries: [`MAP {x: 1}`, `MAP {y: 2}`]});
+            rerender({queries: `OUTPUT MAP {x: 1}; OUTPUT MAP {y: 2}`});
 
             await waitFor(() => {
                 expect(result.current.results).toHaveLength(2);
@@ -270,11 +260,7 @@ describe('useAdmin Hooks (JSON HTTP)', () => {
         });
 
         it('should handle mixed success and empty results', async () => {
-            const queries = [
-                `MAP {value: 1}`,
-                `FROM [{x:1}] FILTER x > 10`,
-                `MAP {value: 2}`
-            ];
+            const queries = `OUTPUT MAP {value: 1}; OUTPUT FROM [{x:1}] FILTER x > 10; OUTPUT MAP {value: 2}`;
             const shapes = [
                 Shape.object({value: Shape.number()}),
                 Shape.object({value: Shape.number()}),
@@ -285,7 +271,7 @@ describe('useAdmin Hooks (JSON HTTP)', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.results).toHaveLength(3);
@@ -295,11 +281,7 @@ describe('useAdmin Hooks (JSON HTTP)', () => {
         });
 
         it('should handle errors in one of multiple queries', async () => {
-            const queries = [
-                `MAP {valid: 1}`,
-                'INVALID SYNTAX',
-                `MAP {valid: 2}`
-            ];
+            const queries = `OUTPUT MAP {valid: 1}; OUTPUT INVALID SYNTAX; OUTPUT MAP {valid: 2}`;
             const shapes = [
                 Shape.object({valid: Shape.number()}),
                 Shape.object({valid: Shape.number()}),
@@ -310,7 +292,7 @@ describe('useAdmin Hooks (JSON HTTP)', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.error).toBeDefined();
@@ -325,7 +307,7 @@ describe('useAdmin Hooks (JSON HTTP)', () => {
                 useAdminOne(`MAP {value: 100}`, undefined, shape1)
             , {wrapper});
 
-            const queries2 = [`MAP {x: 200}`, `MAP {y: 300}`];
+            const queries2 = `OUTPUT MAP {x: 200}; OUTPUT MAP {y: 300}`;
             const shapes2 = [
                 Shape.object({x: Shape.number()}),
                 Shape.object({y: Shape.number()})
@@ -335,8 +317,8 @@ describe('useAdmin Hooks (JSON HTTP)', () => {
             , {wrapper});
 
             await waitFor(() => {
-                expect(result1.current.isExecuting).toBe(false);
-                expect(result2.current.isExecuting).toBe(false);
+                expect(result1.current.is_executing).toBe(false);
+                expect(result2.current.is_executing).toBe(false);
             });
 
             expect(result1.current.result!.rows[0]).toEqual({value: 100});
@@ -357,7 +339,7 @@ describe('useAdmin Hooks (JSON HTTP)', () => {
             );
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.result!.rows[0]).toEqual({value: 999});
@@ -365,25 +347,25 @@ describe('useAdmin Hooks (JSON HTTP)', () => {
 
         it('should support config override in hooks', async () => {
             const shape = Shape.object({test: Shape.string()});
-            const overrideConfig = {url: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091', options: {timeoutMs: 2000}};
+            const override_config = {url: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091', options: {timeout_ms: 2000}};
 
             const {result, unmount} = renderHook(() =>
                 useAdminOne(
                     `MAP {test: 'override'}`,
                     undefined,
                     shape,
-                    {connectionConfig: overrideConfig}
+                    {connection_config: override_config}
                 )
             , {wrapper});
 
             await waitFor(() => {
-                expect(result.current.isExecuting).toBe(false);
+                expect(result.current.is_executing).toBe(false);
             });
 
             expect(result.current.result!.rows[0]).toEqual({test: 'override'});
 
             unmount();
-            await clearConnection(overrideConfig);
+            await clear_connection(override_config);
         });
     });
 });

@@ -7,7 +7,7 @@
 /// Fixed-width pairs (12×12=144 arms) use `$fh`, while any pair involving arbitrary-precision
 /// types (81 arms) uses `$ah`. Additional match arms are appended via `$($extra:tt)*`.
 macro_rules! dispatch_arith {
-	// Entry point
+
 	(
 		$left:expr, $right:expr;
 		fixed: $fh:ident, arb: $ah:ident ($ctx:expr, $target:expr, $fragment:expr);
@@ -21,7 +21,7 @@ macro_rules! dispatch_arith {
 		)
 	};
 
-	// Recursive: process one fixed-left type, generating all 15 right-side arms
+
 	(@rows
 		($left:expr, $right:expr) $fh:ident $ah:ident ($ctx:expr, $target:expr, $fragment:expr)
 		[$L:ident $($rest:ident)*]
@@ -34,26 +34,26 @@ macro_rules! dispatch_arith {
 			{$($extra)*}
 			{
 				$($acc)*
-				(ColumnData::$L(l), ColumnData::Float4(r)) => $fh($ctx, l, r, $target, $fragment),
-				(ColumnData::$L(l), ColumnData::Float8(r)) => $fh($ctx, l, r, $target, $fragment),
-				(ColumnData::$L(l), ColumnData::Int1(r)) => $fh($ctx, l, r, $target, $fragment),
-				(ColumnData::$L(l), ColumnData::Int2(r)) => $fh($ctx, l, r, $target, $fragment),
-				(ColumnData::$L(l), ColumnData::Int4(r)) => $fh($ctx, l, r, $target, $fragment),
-				(ColumnData::$L(l), ColumnData::Int8(r)) => $fh($ctx, l, r, $target, $fragment),
-				(ColumnData::$L(l), ColumnData::Int16(r)) => $fh($ctx, l, r, $target, $fragment),
-				(ColumnData::$L(l), ColumnData::Uint1(r)) => $fh($ctx, l, r, $target, $fragment),
-				(ColumnData::$L(l), ColumnData::Uint2(r)) => $fh($ctx, l, r, $target, $fragment),
-				(ColumnData::$L(l), ColumnData::Uint4(r)) => $fh($ctx, l, r, $target, $fragment),
-				(ColumnData::$L(l), ColumnData::Uint8(r)) => $fh($ctx, l, r, $target, $fragment),
-				(ColumnData::$L(l), ColumnData::Uint16(r)) => $fh($ctx, l, r, $target, $fragment),
-				(ColumnData::$L(l), ColumnData::Int { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
-				(ColumnData::$L(l), ColumnData::Uint { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
-				(ColumnData::$L(l), ColumnData::Decimal { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
+				(ColumnBuffer::$L(l), ColumnBuffer::Float4(r)) => $fh($ctx, l, r, $target, $fragment),
+				(ColumnBuffer::$L(l), ColumnBuffer::Float8(r)) => $fh($ctx, l, r, $target, $fragment),
+				(ColumnBuffer::$L(l), ColumnBuffer::Int1(r)) => $fh($ctx, l, r, $target, $fragment),
+				(ColumnBuffer::$L(l), ColumnBuffer::Int2(r)) => $fh($ctx, l, r, $target, $fragment),
+				(ColumnBuffer::$L(l), ColumnBuffer::Int4(r)) => $fh($ctx, l, r, $target, $fragment),
+				(ColumnBuffer::$L(l), ColumnBuffer::Int8(r)) => $fh($ctx, l, r, $target, $fragment),
+				(ColumnBuffer::$L(l), ColumnBuffer::Int16(r)) => $fh($ctx, l, r, $target, $fragment),
+				(ColumnBuffer::$L(l), ColumnBuffer::Uint1(r)) => $fh($ctx, l, r, $target, $fragment),
+				(ColumnBuffer::$L(l), ColumnBuffer::Uint2(r)) => $fh($ctx, l, r, $target, $fragment),
+				(ColumnBuffer::$L(l), ColumnBuffer::Uint4(r)) => $fh($ctx, l, r, $target, $fragment),
+				(ColumnBuffer::$L(l), ColumnBuffer::Uint8(r)) => $fh($ctx, l, r, $target, $fragment),
+				(ColumnBuffer::$L(l), ColumnBuffer::Uint16(r)) => $fh($ctx, l, r, $target, $fragment),
+				(ColumnBuffer::$L(l), ColumnBuffer::Int { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
+				(ColumnBuffer::$L(l), ColumnBuffer::Uint { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
+				(ColumnBuffer::$L(l), ColumnBuffer::Decimal { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
 			}
 		)
 	};
 
-	// Base case: all fixed-left types processed, emit the match with arb-left arms
+
 	(@rows
 		($left:expr, $right:expr) $fh:ident $ah:ident ($ctx:expr, $target:expr, $fragment:expr)
 		[]
@@ -61,59 +61,59 @@ macro_rules! dispatch_arith {
 		{$($acc:tt)*}
 	) => {
 		match ($left, $right) {
-			// Fixed × Fixed + Fixed × Arb (12 × 15 = 180 arms)
+
 			$($acc)*
 
-			// Arb × all (3 × 15 = 45 arms)
-			(ColumnData::Int { container: l, .. }, ColumnData::Float4(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Int { container: l, .. }, ColumnData::Float8(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Int { container: l, .. }, ColumnData::Int1(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Int { container: l, .. }, ColumnData::Int2(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Int { container: l, .. }, ColumnData::Int4(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Int { container: l, .. }, ColumnData::Int8(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Int { container: l, .. }, ColumnData::Int16(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Int { container: l, .. }, ColumnData::Uint1(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Int { container: l, .. }, ColumnData::Uint2(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Int { container: l, .. }, ColumnData::Uint4(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Int { container: l, .. }, ColumnData::Uint8(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Int { container: l, .. }, ColumnData::Uint16(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Int { container: l, .. }, ColumnData::Int { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Int { container: l, .. }, ColumnData::Uint { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Int { container: l, .. }, ColumnData::Decimal { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
 
-			(ColumnData::Uint { container: l, .. }, ColumnData::Float4(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Uint { container: l, .. }, ColumnData::Float8(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Uint { container: l, .. }, ColumnData::Int1(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Uint { container: l, .. }, ColumnData::Int2(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Uint { container: l, .. }, ColumnData::Int4(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Uint { container: l, .. }, ColumnData::Int8(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Uint { container: l, .. }, ColumnData::Int16(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Uint { container: l, .. }, ColumnData::Uint1(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Uint { container: l, .. }, ColumnData::Uint2(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Uint { container: l, .. }, ColumnData::Uint4(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Uint { container: l, .. }, ColumnData::Uint8(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Uint { container: l, .. }, ColumnData::Uint16(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Uint { container: l, .. }, ColumnData::Int { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Uint { container: l, .. }, ColumnData::Uint { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Uint { container: l, .. }, ColumnData::Decimal { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Float4(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Float8(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Int1(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Int2(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Int4(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Int8(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Int16(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint1(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint2(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint4(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint8(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint16(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Int { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Uint { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Int { container: l, .. }, ColumnBuffer::Decimal { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
 
-			(ColumnData::Decimal { container: l, .. }, ColumnData::Float4(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Decimal { container: l, .. }, ColumnData::Float8(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Decimal { container: l, .. }, ColumnData::Int1(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Decimal { container: l, .. }, ColumnData::Int2(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Decimal { container: l, .. }, ColumnData::Int4(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Decimal { container: l, .. }, ColumnData::Int8(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Decimal { container: l, .. }, ColumnData::Int16(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Decimal { container: l, .. }, ColumnData::Uint1(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Decimal { container: l, .. }, ColumnData::Uint2(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Decimal { container: l, .. }, ColumnData::Uint4(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Decimal { container: l, .. }, ColumnData::Uint8(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Decimal { container: l, .. }, ColumnData::Uint16(r)) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Decimal { container: l, .. }, ColumnData::Int { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Decimal { container: l, .. }, ColumnData::Uint { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
-			(ColumnData::Decimal { container: l, .. }, ColumnData::Decimal { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Float4(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Float8(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Int1(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Int2(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Int4(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Int8(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Int16(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint1(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint2(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint4(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint8(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint16(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Int { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Uint { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Uint { container: l, .. }, ColumnBuffer::Decimal { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
 
-			// Additional arms (special cases, undefined handling, error fallback)
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Float4(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Float8(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Int1(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Int2(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Int4(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Int8(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Int16(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint1(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint2(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint4(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint8(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint16(r)) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Int { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Uint { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
+			(ColumnBuffer::Decimal { container: l, .. }, ColumnBuffer::Decimal { container: r, .. }) => $ah($ctx, l, r, $target, $fragment),
+
+
 			$($extra)*
 		}
 	};

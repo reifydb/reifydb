@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{date::Date, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct DateDayOfYear;
+pub struct DateDayOfYear {
+	info: RoutineInfo,
+}
 
 impl Default for DateDayOfYear {
 	fn default() -> Self {
@@ -20,58 +18,83 @@ impl Default for DateDayOfYear {
 
 impl DateDayOfYear {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("date::day_of_year"),
+		}
 	}
 }
 
-impl ScalarFunction for DateDayOfYear {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
-
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
-
-		if columns.len() != 1 {
-			return Err(ScalarFunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 1,
-				actual: columns.len(),
-			});
-		}
-
-		let col = columns.first().unwrap();
-
-		match col.data() {
-			ColumnData::Date(container) => {
-				let mut data = Vec::with_capacity(row_count);
-				let mut bitvec = Vec::with_capacity(row_count);
-
-				for i in 0..row_count {
-					if let Some(date) = container.get(i) {
-						let jan1 = Date::new(date.year(), 1, 1).unwrap();
-						let doy = date.to_days_since_epoch() - jan1.to_days_since_epoch() + 1;
-						data.push(doy);
-						bitvec.push(true);
-					} else {
-						data.push(0);
-						bitvec.push(false);
-					}
-				}
-
-				Ok(ColumnData::int4_with_bitvec(data, bitvec))
-			}
-			other => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 0,
-				expected: vec![Type::Date],
-				actual: other.get_type(),
-			}),
-		}
+impl<'a> Routine<FunctionContext<'a>> for DateDayOfYear {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Int4
+	}
+
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 1 {
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.fragment.clone(),
+				expected: 1,
+				actual: args.len(),
+			});
+		}
+
+		let column = &args[0];
+		let (data, bitvec) = column.unwrap_option();
+		let row_count = data.len();
+
+		let result_data = match data {
+			ColumnBuffer::Date(container) => {
+				let mut result = Vec::with_capacity(row_count);
+				let mut res_bitvec = Vec::with_capacity(row_count);
+
+				for i in 0..row_count {
+					if let Some(date) = container.get(i) {
+						let jan1 = Date::new(date.year(), 1, 1).ok_or_else(|| {
+							RoutineError::FunctionExecutionFailed {
+								function: ctx.fragment.clone(),
+								reason: "failed to construct Jan 1 date".to_string(),
+							}
+						})?;
+						let doy = date.to_days_since_epoch() - jan1.to_days_since_epoch() + 1;
+						result.push(doy);
+						res_bitvec.push(true);
+					} else {
+						result.push(0);
+						res_bitvec.push(false);
+					}
+				}
+
+				ColumnBuffer::int4_with_bitvec(result, res_bitvec)
+			}
+			other => {
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 0,
+					expected: vec![Type::Date],
+					actual: other.get_type(),
+				});
+			}
+		};
+
+		let final_data = if let Some(bv) = bitvec {
+			ColumnBuffer::Option {
+				inner: Box::new(result_data),
+				bitvec: bv.clone(),
+			}
+		} else {
+			result_data
+		};
+
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for DateDayOfYear {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

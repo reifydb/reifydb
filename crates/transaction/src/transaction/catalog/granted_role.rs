@@ -14,7 +14,7 @@ use crate::{
 		TransactionalGrantedRoleChanges,
 	},
 	interceptor::granted_role::{GrantedRolePostCreateContext, GrantedRolePreDeleteContext},
-	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
+	transaction::admin::AdminTransaction,
 };
 
 impl CatalogTrackGrantedRoleChangeOperations for AdminTransaction {
@@ -79,29 +79,5 @@ impl TransactionalGrantedRoleChanges for AdminTransaction {
 					.map(|ir| ir.identity == identity && ir.role_id == role)
 					.unwrap_or(false)
 		})
-	}
-}
-
-impl CatalogTrackGrantedRoleChangeOperations for SubscriptionTransaction {
-	fn track_granted_role_created(&mut self, granted_role: GrantedRole) -> Result<()> {
-		self.inner.track_granted_role_created(granted_role)
-	}
-
-	fn track_granted_role_deleted(&mut self, granted_role: GrantedRole) -> Result<()> {
-		self.inner.track_granted_role_deleted(granted_role)
-	}
-}
-
-impl TransactionalGrantedRoleChanges for SubscriptionTransaction {
-	fn find_granted_role(&self, identity: IdentityId, role: RoleId) -> Option<&GrantedRole> {
-		self.inner.find_granted_role(identity, role)
-	}
-
-	fn find_granted_roles_for_identity(&self, identity: IdentityId) -> Vec<&GrantedRole> {
-		self.inner.find_granted_roles_for_identity(identity)
-	}
-
-	fn is_granted_role_deleted(&self, identity: IdentityId, role: RoleId) -> bool {
-		self.inner.is_granted_role_deleted(identity, role)
 	}
 }

@@ -3,7 +3,7 @@
 
 # Tests that dropped keys can be set and removed again.
 
-# Insert and drop
+# Insert and drop (keeps latest)
 set a=1 version=1
 ---
 ok
@@ -18,11 +18,11 @@ ok
 
 count_versions a
 ---
-"a" => 0 versions
+"a" => 1 versions
 
 contains a version=1
 ---
-"a" => false
+"a" => true
 
 # Set again after drop
 set a=new version=2
@@ -31,7 +31,7 @@ ok
 
 count_versions a
 ---
-"a" => 1 versions
+"a" => 2 versions
 
 contains a version=2
 ---
@@ -64,9 +64,10 @@ drop a
 ---
 ok
 
+# count_versions skips tombstones (v3 is tombstone, v1/v2 historical dropped, v4 remains)
 count_versions a
 ---
-"a" => 0 versions
+"a" => 1 versions
 
 # And set once more
 set a=resurrected version=5
@@ -75,7 +76,7 @@ ok
 
 count_versions a
 ---
-"a" => 1 versions
+"a" => 2 versions
 
 get a version=5
 ---

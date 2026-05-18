@@ -3,8 +3,8 @@
 
 use std::{error::Error, fmt::Write, path::Path, sync::Arc};
 
-use reifydb::{Database, core::util::retry::retry, server};
-use reifydb_client::WsClient;
+use reifydb::{Database, SharedRuntimeConfig, core::util::retry::retry, server};
+use reifydb_client::{WireFormat, WsClient};
 use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
@@ -18,8 +18,11 @@ pub struct WsRunner {
 
 impl WsRunner {
 	pub fn new(runtime: Arc<Runtime>) -> Self {
-		let instance =
-			server::memory().with_ws(|ws| ws.bind_addr("::1:0").admin_bind_addr("::1:0")).build().unwrap();
+		let instance = server::memory()
+			.with_runtime_config(SharedRuntimeConfig::default().seeded(0))
+			.with_ws(|ws| ws.bind_addr("::1:0").admin_bind_addr("::1:0"))
+			.build()
+			.unwrap();
 
 		Self {
 			instance: Some(instance),
@@ -44,7 +47,7 @@ impl testscript::runner::Runner for WsRunner {
 				println!("admin: {rql}");
 
 				let result = self.runtime.block_on(admin_client.admin(&rql, None))?;
-				for frame in result.frames {
+				for frame in result {
 					writeln!(output, "{}", frame).unwrap();
 				}
 			}
@@ -55,7 +58,7 @@ impl testscript::runner::Runner for WsRunner {
 				println!("command: {rql}");
 
 				let result = self.runtime.block_on(client.command(&rql, None))?;
-				for frame in result.frames {
+				for frame in result {
 					writeln!(output, "{}", frame).unwrap();
 				}
 			}
@@ -66,7 +69,7 @@ impl testscript::runner::Runner for WsRunner {
 				println!("query: {rql}");
 
 				let result = self.runtime.block_on(client.query(&rql, None))?;
-				for frame in result.frames {
+				for frame in result {
 					writeln!(output, "{}", frame).unwrap();
 				}
 			}
@@ -91,12 +94,14 @@ impl testscript::runner::Runner for WsRunner {
 		let port = ws.port().unwrap();
 		let admin_port = ws.admin_port().unwrap();
 
-		let mut client = self.runtime.block_on(WsClient::connect(&format!("ws://[::1]:{}", port)))?;
+		let mut client =
+			self.runtime.block_on(WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Json))?;
 		self.runtime.block_on(client.authenticate("mysecrettoken"))?;
 		self.client = Some(client);
 
-		let mut admin_client =
-			self.runtime.block_on(WsClient::connect(&format!("ws://[::1]:{}", admin_port)))?;
+		let mut admin_client = self
+			.runtime
+			.block_on(WsClient::connect(&format!("ws://[::1]:{}", admin_port), WireFormat::Json))?;
 		self.runtime.block_on(admin_client.authenticate("mysecrettoken"))?;
 		self.admin_client = Some(admin_client);
 

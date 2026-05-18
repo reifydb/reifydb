@@ -12,39 +12,40 @@ use crate::{CatalogStore, Result, store::subscription::shape::subscription};
 
 impl CatalogStore {
 	pub(crate) fn list_subscriptions_all(rx: &mut Transaction<'_>) -> Result<Vec<Subscription>> {
-		// First, collect all subscription IDs and metadata
+
 		let mut subscription_data = Vec::new();
 		{
-			let stream = rx.range(SubscriptionKey::full_scan(), 1024)?;
+			let mut stream = rx.range(SubscriptionKey::full_scan(), 1024)?;
 
-			for result_entry in stream {
+			while let Some(result_entry) = stream.next() {
 				let entry = result_entry?;
-				if let Some(key) = Key::decode(&entry.key)
-					&& let Key::Subscription(sub_key) = key
-				{
-					let subscription_id = sub_key.subscription;
+				if let Some(key) = Key::decode(&entry.key) {
+					if let Key::Subscription(sub_key) = key {
+						let subscription_id = sub_key.subscription;
 
-					let acknowledged_version = CommitVersion(
-						subscription::SHAPE
-							.get_u64(&entry.row, subscription::ACKNOWLEDGED_VERSION),
-					);
+						let acknowledged_version =
+							CommitVersion(subscription::SHAPE.get_u64(
+								&entry.row,
+								subscription::ACKNOWLEDGED_VERSION,
+							));
 
-					subscription_data.push((subscription_id, acknowledged_version));
+						subscription_data.push((subscription_id, acknowledged_version));
+					}
 				}
 			}
-		} // stream dropped here, releasing the borrow on rx
+		}
 
-		// Now load columns for each subscription
+
 		let mut result = Vec::new();
 		for (subscription_id, acknowledged_version) in subscription_data {
-			// Load columns (works for all transaction types)
+
 			let columns = Self::list_subscription_columns(rx, subscription_id)?;
 
 			let subscription = Subscription {
 				id: subscription_id,
 				columns,
-				// Subscriptions don't have primary keys (they use UUID v7 as their
-				// identifier)
+
+
 				primary_key: None,
 				acknowledged_version,
 			};

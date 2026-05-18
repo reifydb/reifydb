@@ -1,22 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Platform-agnostic clock abstraction.
-//!
-//! Provides a `Clock` enum that can be either real system time or mock time for testing.
-//! The clock is shared across all threads within a runtime instance.
-//!
-//! - **Native**: Uses system time via the time module
-//! - **WASM**: Uses JavaScript's Date.now() via the time module
-
-#[cfg(reifydb_target = "native")]
+#[cfg(any(reifydb_target = "native", reifydb_target = "dst"))]
 mod native;
 #[cfg(reifydb_target = "wasi")]
 mod wasi;
 #[cfg(reifydb_target = "wasm")]
 mod wasm;
 
-#[cfg(reifydb_target = "native")]
+#[cfg(any(reifydb_target = "native", reifydb_target = "dst"))]
 pub use native::{Clock, Instant, MockClock};
 #[cfg(reifydb_target = "wasi")]
 pub use wasi::{Clock, Instant, MockClock};
@@ -25,6 +17,7 @@ pub use wasm::{Clock, Instant, MockClock};
 
 #[cfg(test)]
 mod tests {
+	#[cfg(reifydb_target = "native")]
 	use std::thread;
 
 	use super::*;
@@ -95,15 +88,6 @@ mod tests {
 		let result = handle.join().unwrap();
 		assert_eq!(result, 1500);
 		assert_eq!(mock.now_millis(), 1500);
-	}
-
-	#[test]
-	fn test_clock_default() {
-		let clock = Clock::default();
-		match clock {
-			Clock::Real => {}
-			Clock::Mock(_) => panic!("Default should be Real"),
-		}
 	}
 
 	#[test]

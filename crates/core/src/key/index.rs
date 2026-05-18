@@ -13,8 +13,6 @@ use crate::{
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
-const VERSION: u8 = 1;
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct IndexKey {
 	pub shape: ShapeId,
@@ -25,22 +23,13 @@ impl EncodableKey for IndexKey {
 	const KIND: KeyKind = KeyKind::Index;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(19);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_shape_id(self.shape)
-			.extend_u64(self.index);
+		let mut serializer = KeySerializer::with_capacity(18);
+		serializer.extend_u8(Self::KIND as u8).extend_shape_id(self.shape).extend_u64(self.index);
 		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
@@ -66,11 +55,6 @@ impl ShapeIndexKeyRange {
 	fn decode_key(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
-
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
 			return None;
@@ -88,14 +72,14 @@ impl EncodableKeyRange for ShapeIndexKeyRange {
 	const KIND: KeyKind = KeyKind::Index;
 
 	fn start(&self) -> Option<EncodedKey> {
-		let mut serializer = KeySerializer::with_capacity(11);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_shape_id(self.shape);
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer.extend_u8(Self::KIND as u8).extend_shape_id(self.shape);
 		Some(serializer.to_encoded_key())
 	}
 
 	fn end(&self) -> Option<EncodedKey> {
-		let mut serializer = KeySerializer::with_capacity(11);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_shape_id(self.shape.prev());
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer.extend_u8(Self::KIND as u8).extend_shape_id(self.shape.prev());
 		Some(serializer.to_encoded_key())
 	}
 
@@ -128,20 +112,20 @@ impl IndexKey {
 
 	pub fn full_scan(shape: impl Into<ShapeId>) -> EncodedKeyRange {
 		let shape = shape.into();
-		EncodedKeyRange::start_end(Some(Self::object_start(shape)), Some(Self::object_end(shape)))
+		EncodedKeyRange::start_end(Some(Self::shape_start(shape)), Some(Self::shape_end(shape)))
 	}
 
-	pub fn object_start(shape: impl Into<ShapeId>) -> EncodedKey {
+	pub fn shape_start(shape: impl Into<ShapeId>) -> EncodedKey {
 		let shape = shape.into();
-		let mut serializer = KeySerializer::with_capacity(11);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_shape_id(shape);
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer.extend_u8(Self::KIND as u8).extend_shape_id(shape);
 		serializer.to_encoded_key()
 	}
 
-	pub fn object_end(shape: impl Into<ShapeId>) -> EncodedKey {
+	pub fn shape_end(shape: impl Into<ShapeId>) -> EncodedKey {
 		let shape = shape.into();
-		let mut serializer = KeySerializer::with_capacity(11);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_shape_id(shape.prev());
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer.extend_u8(Self::KIND as u8).extend_shape_id(shape.prev());
 		serializer.to_encoded_key()
 	}
 }
@@ -159,13 +143,8 @@ pub mod tests {
 		};
 		let encoded = key.encode();
 
-		let expected: Vec<u8> = vec![
-			0xFE, // version
-			0xF3, // kind
-			0x01, // ShapeId type discriminator (Table)
-			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, // shape id bytes
-			0xED, 0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21, 0x0F, // index id bytes
-		];
+		let expected: Vec<u8> =
+			vec![0xF3, 0x01, 0x3F, 0x54, 0x32, 0x00, 0xED, 0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21, 0x0F];
 
 		assert_eq!(encoded.as_slice(), expected);
 

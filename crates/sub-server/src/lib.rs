@@ -1,27 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+
+//! Common infrastructure shared by every server transport - gRPC, HTTP, WebSocket, admin. Owns the dispatch loop
+//! that accepts an authenticated request, looks up the binding, executes it through the engine, and serialises the
+//! result back to the caller. Authentication, format negotiation, response shaping, subscription bookkeeping, and
+//! interceptor hooks all live here so the transport-specific crates only need to handle protocol framing.
+//!
+//! This crate does not bind a socket; protocol-specific crates (`sub-server-grpc`, `sub-server-http`,
+//! `sub-server-ws`, `sub-server-admin`) do that and delegate every per-request decision back here.
+
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
-
-//! Common infrastructure for HTTP and WebSocket server subsystems.
-//!
-//! This crate provides shared types and utilities used by `sub-server-http` and
-//! `sub-server-ws`. It includes:
-//!
-//! - **Authentication**: Identity extraction from headers and tokens
-//! - **Execution**: Async wrappers around synchronous database operations
-//! - **Response**: Frame conversion for JSON serialization
-//! - **Runtime**: Shared tokio runtime management
-//! - **State**: Application state for request handler
-
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
+pub mod actor;
 pub mod auth;
+pub mod binding;
+pub mod dispatch;
 pub mod execute;
+pub mod format;
 pub mod interceptor;
-pub mod remote;
 pub mod response;
 pub mod state;
-pub mod subscribe;
+pub mod subscription;
 pub mod wire;

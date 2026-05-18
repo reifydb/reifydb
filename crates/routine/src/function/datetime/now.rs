@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, datetime::DateTime, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct DateTimeNow;
+pub struct DateTimeNow {
+	info: RoutineInfo,
+}
 
 impl Default for DateTimeNow {
 	fn default() -> Self {
@@ -20,24 +18,31 @@ impl Default for DateTimeNow {
 
 impl DateTimeNow {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("datetime::now"),
+		}
 	}
 }
 
-impl ScalarFunction for DateTimeNow {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
-		let row_count = ctx.row_count;
+impl<'a> Routine<FunctionContext<'a>> for DateTimeNow {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		if !ctx.columns.is_empty() {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::DateTime
+	}
+
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if !args.is_empty() {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 0,
-				actual: ctx.columns.len(),
+				actual: args.len(),
 			});
 		}
+
+		let row_count = args.row_count().max(1);
 
 		let millis = ctx.runtime_context.clock.now_millis();
 		let dt = DateTime::from_timestamp_millis(millis)?;
@@ -47,10 +52,12 @@ impl ScalarFunction for DateTimeNow {
 			container.push(dt);
 		}
 
-		Ok(ColumnData::DateTime(container))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::DateTime(container))]))
 	}
+}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::DateTime
+impl Function for DateTimeNow {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

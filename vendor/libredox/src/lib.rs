@@ -831,8 +831,8 @@ pub mod protocol {
         // Temporary calls for getting process credentials
         GetProcCredentials = 15,
 
-        SetPriority = 16,
-        GetPriority = 17,
+        SetProcPriority = 16,
+        GetProcPriority = 17,
     }
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     #[repr(usize)]
@@ -885,8 +885,8 @@ pub mod protocol {
                 13 => Self::Rename,
                 14 => Self::DisableSetpgid,
                 15 => Self::GetProcCredentials,
-                16 => Self::SetPriority,
-                17 => Self::GetPriority,
+                16 => Self::SetProcPriority,
+                17 => Self::GetProcPriority,
                 _ => return None,
             })
         }

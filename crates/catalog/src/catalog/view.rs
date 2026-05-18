@@ -66,78 +66,44 @@ impl Catalog {
 	pub fn find_view(&self, txn: &mut Transaction<'_>, id: ViewId) -> Result<Option<View>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				// 1. Check MaterializedCatalog
-				if let Some(view) = self.materialized.find_view_at(id, cmd.version()) {
+				if let Some(view) = self.cache.find_view_at(id, cmd.version()) {
 					return Ok(Some(view));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(view) = CatalogStore::find_view(&mut Transaction::Command(&mut *cmd), id)? {
-					warn!("View with ID {:?} found in storage but not in MaterializedCatalog", id);
+					warn!("View with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(view));
 				}
 
 				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(view) = TransactionalViewChanges::find_view(admin, id) {
 					return Ok(Some(view.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalViewChanges::is_view_deleted(admin, id) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
-				if let Some(view) = self.materialized.find_view_at(id, admin.version()) {
+				if let Some(view) = self.cache.find_view_at(id, admin.version()) {
 					return Ok(Some(view));
 				}
 
-				// 4. Fall back to storage as defensive measure
 				if let Some(view) = CatalogStore::find_view(&mut Transaction::Admin(&mut *admin), id)? {
-					warn!("View with ID {:?} found in storage but not in MaterializedCatalog", id);
+					warn!("View with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(view));
 				}
 
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				// 1. Check MaterializedCatalog (skip transactional changes)
-				if let Some(view) = self.materialized.find_view_at(id, qry.version()) {
+				if let Some(view) = self.cache.find_view_at(id, qry.version()) {
 					return Ok(Some(view));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(view) = CatalogStore::find_view(&mut Transaction::Query(&mut *qry), id)? {
-					warn!("View with ID {:?} found in storage but not in MaterializedCatalog", id);
-					return Ok(Some(view));
-				}
-
-				Ok(None)
-			}
-			Transaction::Subscription(sub) => {
-				// 1. Check transactional changes first
-				if let Some(view) = TransactionalViewChanges::find_view(sub, id) {
-					return Ok(Some(view.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalViewChanges::is_view_deleted(sub, id) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(view) = self.materialized.find_view_at(id, sub.version()) {
-					return Ok(Some(view));
-				}
-
-				// 4. Fall back to storage as defensive measure
-				if let Some(view) =
-					CatalogStore::find_view(&mut Transaction::Subscription(&mut *sub), id)?
-				{
-					warn!("View with ID {:?} found in storage but not in MaterializedCatalog", id);
+					warn!("View with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(view));
 				}
 
@@ -158,14 +124,12 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				// 1. Check MaterializedCatalog
-				if let Some(view) = self.materialized.find_view_at(id, rep.version()) {
+				if let Some(view) = self.cache.find_view_at(id, rep.version()) {
 					return Ok(Some(view));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(view) = CatalogStore::find_view(&mut Transaction::Replica(&mut *rep), id)? {
-					warn!("View with ID {:?} found in storage but not in MaterializedCatalog", id);
+					warn!("View with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(view));
 				}
 
@@ -183,21 +147,17 @@ impl Catalog {
 	) -> Result<Option<View>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				// 1. Check MaterializedCatalog
-				if let Some(view) =
-					self.materialized.find_view_by_name_at(namespace, name, cmd.version())
-				{
+				if let Some(view) = self.cache.find_view_by_name_at(namespace, name, cmd.version()) {
 					return Ok(Some(view));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(view) = CatalogStore::find_view_by_name(
 					&mut Transaction::Command(&mut *cmd),
 					namespace,
 					name,
 				)? {
 					warn!(
-						"View '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"View '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(view));
@@ -206,32 +166,26 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(view) = TransactionalViewChanges::find_view_by_name(admin, namespace, name)
 				{
 					return Ok(Some(view.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalViewChanges::is_view_deleted_by_name(admin, namespace, name) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
-				if let Some(view) =
-					self.materialized.find_view_by_name_at(namespace, name, admin.version())
-				{
+				if let Some(view) = self.cache.find_view_by_name_at(namespace, name, admin.version()) {
 					return Ok(Some(view));
 				}
 
-				// 4. Fall back to storage as defensive measure
 				if let Some(view) = CatalogStore::find_view_by_name(
 					&mut Transaction::Admin(&mut *admin),
 					namespace,
 					name,
 				)? {
 					warn!(
-						"View '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"View '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(view));
@@ -240,54 +194,17 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				// 1. Check MaterializedCatalog (skip transactional changes)
-				if let Some(view) =
-					self.materialized.find_view_by_name_at(namespace, name, qry.version())
-				{
+				if let Some(view) = self.cache.find_view_by_name_at(namespace, name, qry.version()) {
 					return Ok(Some(view));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(view) = CatalogStore::find_view_by_name(
 					&mut Transaction::Query(&mut *qry),
 					namespace,
 					name,
 				)? {
 					warn!(
-						"View '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
-						name, namespace
-					);
-					return Ok(Some(view));
-				}
-
-				Ok(None)
-			}
-			Transaction::Subscription(sub) => {
-				// 1. Check transactional changes first
-				if let Some(view) = TransactionalViewChanges::find_view_by_name(sub, namespace, name) {
-					return Ok(Some(view.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalViewChanges::is_view_deleted_by_name(sub, namespace, name) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(view) =
-					self.materialized.find_view_by_name_at(namespace, name, sub.version())
-				{
-					return Ok(Some(view));
-				}
-
-				// 4. Fall back to storage as defensive measure
-				if let Some(view) = CatalogStore::find_view_by_name(
-					&mut Transaction::Subscription(&mut *sub),
-					namespace,
-					name,
-				)? {
-					warn!(
-						"View '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"View '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(view));
@@ -314,21 +231,17 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				// 1. Check MaterializedCatalog
-				if let Some(view) =
-					self.materialized.find_view_by_name_at(namespace, name, rep.version())
-				{
+				if let Some(view) = self.cache.find_view_by_name_at(namespace, name, rep.version()) {
 					return Ok(Some(view));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(view) = CatalogStore::find_view_by_name(
 					&mut Transaction::Replica(&mut *rep),
 					namespace,
 					name,
 				)? {
 					warn!(
-						"View '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"View '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(view));

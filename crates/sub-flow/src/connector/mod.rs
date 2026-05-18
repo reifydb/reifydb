@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Connector registry for source and sink connectors
+//! Source and sink connector registry. Connectors that authoring code defines through `reifydb-sdk` are registered
+//! here at boot, and the runtime instantiates them at flow start using the typed factory closures. Source factories
+//! produce inputs; sink factories accept outputs; both share the same registration and configuration shape.
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -17,10 +19,6 @@ use reifydb_type::value::Value;
 type SourceFactory = Arc<dyn Fn(&HashMap<String, Value>) -> SdkResult<Box<dyn FFISource>> + Send + Sync>;
 type SinkFactory = Arc<dyn Fn(&HashMap<String, Value>) -> SdkResult<Box<dyn FFISink>> + Send + Sync>;
 
-/// Registry for source and sink connectors.
-///
-/// Connector names (e.g., "postgres", "kafka") are resolved against this
-/// registry at `CREATE SOURCE` / `CREATE SINK` time.
 pub struct ConnectorRegistry {
 	sources: HashMap<String, SourceFactory>,
 	sinks: HashMap<String, SinkFactory>,
@@ -34,7 +32,6 @@ impl ConnectorRegistry {
 		}
 	}
 
-	/// Register a native Rust source connector by its metadata name.
 	pub fn register_source<S: FFISource + FFISourceMetadata>(&mut self) {
 		let name = S::NAME.to_string();
 		self.sources.insert(
@@ -46,7 +43,6 @@ impl ConnectorRegistry {
 		);
 	}
 
-	/// Register a native Rust sink connector by its metadata name.
 	pub fn register_sink<S: FFISink + FFISinkMetadata>(&mut self) {
 		let name = S::NAME.to_string();
 		self.sinks.insert(
@@ -58,7 +54,6 @@ impl ConnectorRegistry {
 		);
 	}
 
-	/// Create a source connector instance by name.
 	pub fn create_source(&self, name: &str, config: &HashMap<String, Value>) -> SdkResult<Box<dyn FFISource>> {
 		let factory = self
 			.sources
@@ -67,7 +62,6 @@ impl ConnectorRegistry {
 		factory(config)
 	}
 
-	/// Create a sink connector instance by name.
 	pub fn create_sink(&self, name: &str, config: &HashMap<String, Value>) -> SdkResult<Box<dyn FFISink>> {
 		let factory = self
 			.sinks
@@ -76,12 +70,10 @@ impl ConnectorRegistry {
 		factory(config)
 	}
 
-	/// Check if a source connector is registered.
 	pub fn has_source(&self, name: &str) -> bool {
 		self.sources.contains_key(name)
 	}
 
-	/// Check if a sink connector is registered.
 	pub fn has_sink(&self, name: &str) -> bool {
 		self.sinks.contains_key(name)
 	}
@@ -103,7 +95,7 @@ mod tests {
 			source::{SourceBatch, SourceEmitter, SourceMode},
 		},
 		error::Result,
-		operator::column::OperatorColumn,
+		operator::column::operator::OperatorColumn,
 	};
 
 	use super::*;

@@ -4,94 +4,104 @@
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-//! WASI bridge for ReifyDB test suite.
-//!
-//! Implements a JSON stdin/stdout protocol and runs under wasmtime.
-
 use std::{
 	collections::HashMap,
 	error::Error,
 	fmt::Write as FmtWrite,
+	io,
 	io::{BufRead, Write},
+	sync::Arc,
 };
 
 use reifydb_auth::AuthVersion;
 use reifydb_catalog::{
 	CatalogVersion,
-	bootstrap::{
-		bootstrap_configaults, bootstrap_root_identity, bootstrap_system_procedures, load_materialized_catalog,
-	},
+	bootstrap::{bootstrap_system_objects, load_catalog_cache},
+	cache::CatalogCache,
 	catalog::Catalog,
-	materialized::MaterializedCatalog,
 	system::SystemCatalog,
 };
 use reifydb_cdc::{
 	CdcVersion,
-	produce::producer::{CdcProducerEventListener, spawn_cdc_producer},
+	produce::{
+		producer::{CdcProducerEventListener, spawn_cdc_producer},
+		watermark::CdcProducerWatermark,
+	},
 	storage::CdcStore,
 };
 use reifydb_core::{
 	CoreVersion,
-	config::SystemConfig,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{EngineVersion, engine::StandardEngine, vm::services::EngineConfig};
 use reifydb_extension::transform::registry::Transforms;
-use reifydb_routine::{function::default_functions, procedure::default_procedures};
+use reifydb_routine::{
+	function::default_native_functions, procedure::default_native_procedures, routine::registry::Routines,
+};
 use reifydb_rql::RqlVersion;
-use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, context::RuntimeContext};
+use reifydb_runtime::{
+	SharedRuntime, SharedRuntimeConfig,
+	actor::timers::drain_expired_timers,
+	context::{RuntimeContext, clock::Clock},
+	pool::PoolConfig,
+};
 use reifydb_store_multi::{
 	MultiStore, MultiStoreVersion,
-	config::{HotConfig, MultiStoreConfig},
-	hot::storage::HotStorage,
+	buffer::tier::MultiBufferTier,
+	config::{BufferConfig, MultiStoreConfig},
 };
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::Subsystem;
 use reifydb_sub_flow::{builder::FlowConfig, subsystem::FlowSubsystem};
 use reifydb_transaction::{
-	TransactionVersion,
-	interceptor::factory::InterceptorFactory,
-	multi::transaction::{MultiTransaction, register_oracle_defaults},
+	TransactionVersion, interceptor::factory::InterceptorFactory, multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 };
 use reifydb_type::{params::Params, value::identity::IdentityId};
+use serde_json::{Value as JsonValue, from_str as json_from_str, json, to_writer as json_to_writer};
+
+enum BridgeProfile {
+	Default,
+	Testing,
+}
 
 struct Bridge {
 	engine: StandardEngine,
 	flow_subsystem: FlowSubsystem,
+	profile: BridgeProfile,
 }
 
 impl Bridge {
-	fn new() -> Result<Self, Box<dyn Error>> {
+	fn new(profile: BridgeProfile) -> Result<Self, Box<dyn Error>> {
 		let runtime = SharedRuntime::from_config(
-			SharedRuntimeConfig::default()
-				.async_threads(1)
-				.compute_threads(1)
-				.compute_max_in_flight(8)
-				.deterministic_testing(0),
+			SharedRuntimeConfig::default().seeded(0),
+			PoolConfig {
+				async_threads: 1,
+				system_threads: 1,
+				query_threads: 1,
+			},
 		);
 
 		let actor_system = runtime.actor_system();
 		let eventbus = EventBus::new(&actor_system);
 
 		let multi_store = MultiStore::standard(MultiStoreConfig {
-			hot: Some(HotConfig {
-				storage: HotStorage::memory(),
+			buffer: Some(BufferConfig {
+				storage: MultiBufferTier::memory(),
 			}),
-			warm: None,
-			cold: None,
+			persistent: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus: eventbus.clone(),
 			actor_system: actor_system.clone(),
+			clock: Clock::Real,
 		});
-		let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
-
+		let single_store = SingleStore::testing_memory();
+		// Create transactions
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
-		let system_config = SystemConfig::new();
-		register_oracle_defaults(&system_config);
+		let catalog_cache = CatalogCache::new();
 		let multi = MultiTransaction::new(
 			multi_store.clone(),
 			single.clone(),
@@ -99,26 +109,30 @@ impl Bridge {
 			actor_system.clone(),
 			runtime.clock().clone(),
 			runtime.rng().clone(),
-			system_config.clone(),
+			Arc::new(catalog_cache.clone()),
 		)?;
 
 		let mut ioc = IocContainer::new();
-		let materialized_catalog = MaterializedCatalog::new(system_config);
-		ioc = ioc.register(materialized_catalog.clone());
+		ioc = ioc.register(catalog_cache.clone());
 		ioc = ioc.register(runtime.clone());
 		ioc = ioc.register(single_store.clone());
 
 		let cdc_store = CdcStore::memory();
 		ioc = ioc.register(cdc_store.clone());
 
+		let cdc_producer_watermark = CdcProducerWatermark::new();
+		ioc = ioc.register(cdc_producer_watermark.clone());
+
 		let ioc_ref = ioc.clone();
 
-		load_materialized_catalog(&multi, &single, &materialized_catalog)?;
-		bootstrap_root_identity(&multi, &single, &materialized_catalog, &eventbus)?;
-		bootstrap_configaults(&multi, &single, &materialized_catalog, &eventbus)?;
-		bootstrap_system_procedures(&multi, &single, &materialized_catalog, &eventbus)?;
+		load_catalog_cache(&multi, &single, &catalog_cache)?;
+		bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus)?;
 
-		let procedures = default_procedures().configure();
+		let routines = {
+			let b = Routines::builder();
+			let b = default_native_functions(b);
+			default_native_procedures(b).configure()
+		};
 
 		let eventbus_clone = eventbus.clone();
 		let engine = StandardEngine::new(
@@ -126,11 +140,10 @@ impl Bridge {
 			single.clone(),
 			eventbus,
 			InterceptorFactory::default(),
-			Catalog::new(materialized_catalog),
+			Catalog::new(catalog_cache),
 			EngineConfig {
 				runtime_context: RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
-				functions: default_functions().configure(),
-				procedures,
+				routines,
 				transforms: Transforms::empty(),
 				ioc,
 				#[cfg(not(target_arch = "wasm32"))]
@@ -145,6 +158,8 @@ impl Bridge {
 			multi_store.clone(),
 			engine.clone(),
 			eventbus_clone.clone(),
+			runtime.clock().clone(),
+			cdc_producer_watermark,
 		);
 
 		let cdc_listener =
@@ -154,7 +169,6 @@ impl Bridge {
 
 		let flow_config = FlowConfig {
 			operators_dir: None,
-			num_workers: 1,
 			custom_operators: HashMap::new(),
 			connector_registry: Default::default(),
 		};
@@ -164,29 +178,31 @@ impl Bridge {
 		flow_subsystem.start()?;
 		eprintln!("[WASI] FlowSubsystem started successfully!");
 
-		let mut all_versions = Vec::new();
-		all_versions.push(SystemVersion {
-			name: "reifydb-wasi-bridge".to_string(),
-			version: env!("CARGO_PKG_VERSION").to_string(),
-			description: "ReifyDB WASI Bridge".to_string(),
-			r#type: ComponentType::Package,
-		});
-		all_versions.push(CoreVersion.version());
-		all_versions.push(EngineVersion.version());
-		all_versions.push(CatalogVersion.version());
-		all_versions.push(MultiStoreVersion.version());
-		all_versions.push(SingleStoreVersion.version());
-		all_versions.push(TransactionVersion.version());
-		all_versions.push(AuthVersion.version());
-		all_versions.push(RqlVersion.version());
-		all_versions.push(CdcVersion.version());
-		all_versions.push(flow_subsystem.version());
+		let all_versions = vec![
+			SystemVersion {
+				name: "reifydb-wasi-bridge".to_string(),
+				version: env!("CARGO_PKG_VERSION").to_string(),
+				description: "ReifyDB WASI Bridge".to_string(),
+				r#type: ComponentType::Package,
+			},
+			CoreVersion.version(),
+			EngineVersion.version(),
+			CatalogVersion.version(),
+			MultiStoreVersion.version(),
+			SingleStoreVersion.version(),
+			TransactionVersion.version(),
+			AuthVersion.version(),
+			RqlVersion.version(),
+			CdcVersion.version(),
+			flow_subsystem.version(),
+		];
 
 		ioc_ref.register_service(SystemCatalog::new(all_versions));
 
 		Ok(Bridge {
 			engine,
 			flow_subsystem,
+			profile,
 		})
 	}
 }
@@ -197,15 +213,15 @@ impl Drop for Bridge {
 	}
 }
 
-fn respond(obj: &serde_json::Value) {
-	let mut stdout = std::io::stdout().lock();
-	let _ = serde_json::to_writer(&mut stdout, obj);
+fn respond(obj: &JsonValue) {
+	let mut stdout = io::stdout().lock();
+	let _ = json_to_writer(&mut stdout, obj);
 	let _ = stdout.write_all(b"\n");
 	let _ = stdout.flush();
 }
 
 fn main() {
-	let stdin = std::io::stdin();
+	let stdin = io::stdin();
 	let reader = stdin.lock();
 	let mut bridge: Option<Bridge> = None;
 
@@ -218,112 +234,130 @@ fn main() {
 			continue;
 		}
 
-		let msg: serde_json::Value = match serde_json::from_str(&line) {
+		let msg: JsonValue = match json_from_str(&line) {
 			Ok(v) => v,
 			Err(e) => {
-				respond(&serde_json::json!({"err": format!("invalid JSON: {}", e)}));
+				respond(&json!({"err": format!("invalid JSON: {}", e)}));
 				continue;
 			}
 		};
 
 		// Fire any timers that expired while waiting for input (e.g. CDC poll timers).
-		reifydb_runtime::actor::timers::drain_expired_timers();
+		drain_expired_timers();
 
 		let cmd = msg.get("cmd").and_then(|v| v.as_str()).unwrap_or("");
 
 		match cmd {
-			"new" => match Bridge::new() {
-				Ok(b) => {
-					bridge = Some(b);
-					respond(&serde_json::json!({"ok": "ready"}));
+			"new" => {
+				let profile = match msg.get("profile").and_then(|v| v.as_str()) {
+					Some("testing") => BridgeProfile::Testing,
+					_ => BridgeProfile::Default,
+				};
+				match Bridge::new(profile) {
+					Ok(b) => {
+						bridge = Some(b);
+						respond(&json!({"ok": "ready"}));
+					}
+					Err(e) => {
+						respond(&json!({"err": format!("{}", e)}));
+					}
 				}
-				Err(e) => {
-					respond(&serde_json::json!({"err": format!("{}", e)}));
-				}
-			},
+			}
 			"command" => {
 				let Some(b) = bridge.as_ref() else {
-					respond(&serde_json::json!({"err": "no database instance"}));
+					respond(&json!({"err": "no database instance"}));
 					continue;
 				};
 				let rql = msg.get("rql").and_then(|v| v.as_str()).unwrap_or("");
-				match b.engine.command_as(IdentityId::root(), rql, Params::None) {
-					Ok(frames) => {
+				match b.engine.command_as(IdentityId::root(), rql, Params::None).check() {
+					Ok(result) => {
 						let mut output = String::new();
-						for frame in &frames {
+						for mut frame in result.frames {
+							if matches!(b.profile, BridgeProfile::Testing) {
+								frame.created_at.clear();
+								frame.updated_at.clear();
+							}
 							let _ = writeln!(output, "{}", frame);
 						}
-						respond(&serde_json::json!({"ok": output}));
+						respond(&json!({"ok": output}));
 					}
 					Err(e) => {
-						respond(&serde_json::json!({"err": format!("{}", e)}));
+						respond(&json!({"err": format!("{}", e)}));
 					}
 				}
 			}
 			"admin" => {
 				let Some(b) = bridge.as_ref() else {
-					respond(&serde_json::json!({"err": "no database instance"}));
+					respond(&json!({"err": "no database instance"}));
 					continue;
 				};
 				let rql = msg.get("rql").and_then(|v| v.as_str()).unwrap_or("");
-				match b.engine.admin_as(IdentityId::root(), rql, Params::None) {
-					Ok(frames) => {
+				match b.engine.admin_as(IdentityId::root(), rql, Params::None).check() {
+					Ok(result) => {
 						let mut output = String::new();
-						for frame in &frames {
+						for mut frame in result.frames {
+							if matches!(b.profile, BridgeProfile::Testing) {
+								frame.created_at.clear();
+								frame.updated_at.clear();
+							}
 							let _ = writeln!(output, "{}", frame);
 						}
-						respond(&serde_json::json!({"ok": output}));
+						respond(&json!({"ok": output}));
 					}
 					Err(e) => {
-						respond(&serde_json::json!({"err": format!("{}", e)}));
+						respond(&json!({"err": format!("{}", e)}));
 					}
 				}
 			}
 			"query" => {
 				let Some(b) = bridge.as_ref() else {
-					respond(&serde_json::json!({"err": "no database instance"}));
+					respond(&json!({"err": "no database instance"}));
 					continue;
 				};
 				let rql = msg.get("rql").and_then(|v| v.as_str()).unwrap_or("");
-				match b.engine.query_as(IdentityId::root(), rql, Params::None) {
-					Ok(frames) => {
+				match b.engine.query_as(IdentityId::root(), rql, Params::None).check() {
+					Ok(result) => {
 						let mut output = String::new();
-						for frame in &frames {
+						for mut frame in result.frames {
+							if matches!(b.profile, BridgeProfile::Testing) {
+								frame.created_at.clear();
+								frame.updated_at.clear();
+							}
 							let _ = writeln!(output, "{}", frame);
 						}
-						respond(&serde_json::json!({"ok": output}));
+						respond(&json!({"ok": output}));
 					}
 					Err(e) => {
-						respond(&serde_json::json!({"err": format!("{}", e)}));
+						respond(&json!({"err": format!("{}", e)}));
 					}
 				}
 			}
 			"query_count" => {
 				let Some(b) = bridge.as_ref() else {
-					respond(&serde_json::json!({"err": "no database instance"}));
+					respond(&json!({"err": "no database instance"}));
 					continue;
 				};
 				let rql = msg.get("rql").and_then(|v| v.as_str()).unwrap_or("");
-				match b.engine.query_as(IdentityId::root(), rql, Params::None) {
-					Ok(frames) => {
-						let count: usize = frames
+				match b.engine.query_as(IdentityId::root(), rql, Params::None).check() {
+					Ok(result) => {
+						let count: usize = result
 							.iter()
 							.flat_map(|f| f.columns.first())
 							.map(|c| c.data.len())
 							.sum();
-						respond(&serde_json::json!({"ok": count.to_string()}));
+						respond(&json!({"ok": count.to_string()}));
 					}
 					Err(e) => {
-						respond(&serde_json::json!({"err": format!("{}", e)}));
+						respond(&json!({"err": format!("{}", e)}));
 					}
 				}
 			}
 			"free" => {
 				bridge.take();
-				respond(&serde_json::json!({"ok": "freed"}));
+				respond(&json!({"ok": "freed"}));
 			}
 			other => {
-				respond(&serde_json::json!({"err": format!("unknown command: {}", other)}));
+				respond(&json!({"err": format!("unknown command: {}", other)}));
 			}
 		}
 	}

@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	internal_error,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_type::{fragment::Fragment, value::r#type::Type};
 
@@ -12,15 +12,18 @@ use crate::{
 	vm::{stack::Variable, vm::Vm},
 };
 
-impl Vm {
+impl<'a> Vm<'a> {
 	pub(crate) fn exec_for_init(&mut self, variable_name: &Fragment) -> Result<()> {
 		let columns = match self.stack.pop()? {
-			Variable::Columns(c)
+			Variable::Columns {
+				columns: c,
+				..
+			}
 			| Variable::ForIterator {
 				columns: c,
 				..
 			} => c,
-			Variable::Scalar(_) | Variable::Closure(_) => {
+			Variable::Closure(_) => {
 				return Err(internal_error!("ForInit expects Columns on data stack, got Scalar"));
 			}
 		};
@@ -37,7 +40,6 @@ impl Vm {
 		Ok(())
 	}
 
-	/// Returns true if the loop ended (jump to end_addr), false to continue loop body.
 	pub(crate) fn exec_for_next(&mut self, variable_name: &Fragment, end_addr: usize) -> Result<bool> {
 		let var_name = variable_name.text();
 		let clean_name = var_name.strip_prefix('$').unwrap_or(var_name);
@@ -60,18 +62,18 @@ impl Vm {
 		}
 
 		if columns.len() == 1 {
-			let value = columns.columns[0].data.get_value(index);
+			let value = columns.columns[0].get_value(index);
 			self.symbols.set(clean_name.to_string(), Variable::scalar(value), true)?;
 		} else {
 			let mut row_columns = Vec::new();
-			for col in columns.columns.iter() {
-				let value = col.data.get_value(index);
-				let mut data = ColumnData::none_typed(Type::Boolean, 0);
+			for (name, col) in columns.names.iter().zip(columns.columns.iter()) {
+				let value = col.get_value(index);
+				let mut data = ColumnBuffer::none_typed(Type::Boolean, 0);
 				data.push_value(value);
-				row_columns.push(Column::new(col.name.clone(), data));
+				row_columns.push(ColumnWithName::new(name.clone(), data));
 			}
 			let row_frame = Columns::new(row_columns);
-			self.symbols.set(clean_name.to_string(), Variable::Columns(row_frame), true)?;
+			self.symbols.set(clean_name.to_string(), Variable::columns(row_frame), true)?;
 		}
 
 		self.symbols.reassign(

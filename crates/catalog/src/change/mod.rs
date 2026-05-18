@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Catalog change handlers. When a CDC record describes a catalog mutation, the right handler here decodes the
+//! change, applies it to the materialised catalog view, and surfaces it through the catalog change events the
+//! rest of the workspace listens for. Each catalog object kind has a handler that knows the layout of its rows
+//! and how to fold an insert/update/delete into the materialised state.
+
 use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::cdc::SystemChange,
@@ -8,8 +13,9 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{Result, catalog::Catalog};
+use crate::{Result, catalog::Catalog, error::CatalogChangeError};
 
+mod binding;
 mod column;
 mod config;
 mod dictionary;
@@ -19,20 +25,26 @@ mod handler;
 mod identity;
 mod migration;
 mod namespace;
+mod operator_ttl;
 mod passthrough;
 mod policy;
 mod primary_key;
+mod procedure;
+mod procedure_param;
 mod retention;
 mod ringbuffer;
+mod row_shape;
 mod series;
 mod sink;
 mod source;
 mod sumtype;
 mod table;
+mod ttl;
 mod view;
 
 mod role;
 
+use binding::BindingApplier;
 use column::ColumnApplier;
 use config::ConfigApplier;
 use dictionary::DictionaryApplier;
@@ -42,17 +54,22 @@ use handler::HandlerApplier;
 use identity::IdentityApplier;
 use migration::{MigrationApplier, MigrationEventApplier};
 use namespace::NamespaceApplier;
+use operator_ttl::OperatorTtlApplier;
 use passthrough::PassthroughApplier;
 use policy::PolicyApplier;
 use primary_key::PrimaryKeyApplier;
-use retention::{OperatorRetentionPolicyApplier, ShapeRetentionPolicyApplier};
+use procedure::ProcedureApplier;
+use procedure_param::ProcedureParamApplier;
+use retention::{OperatorRetentionStrategyApplier, ShapeRetentionStrategyApplier};
 use ringbuffer::RingBufferApplier;
 use role::RoleApplier;
+use row_shape::{RowShapeFieldApplier, RowShapeHeaderApplier};
 use series::SeriesApplier;
 use sink::SinkApplier;
 use source::SourceApplier;
 use sumtype::SumTypeApplier;
 use table::TableApplier;
+use ttl::RowTtlApplier;
 use view::ViewApplier;
 
 pub trait CatalogChangeApplier {
@@ -64,10 +81,16 @@ pub trait CatalogChangeApplier {
 pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change: &SystemChange) -> Result<()> {
 	let kind = match Key::kind(change.key()) {
 		Some(k) => k,
-		None => return Ok(()),
+		None => {
+			return Err(CatalogChangeError::UnrecognizedKey {
+				raw: change.key().as_ref().to_vec(),
+			}
+			.into());
+		}
 	};
 
 	match kind {
+		KeyKind::Binding => dispatch::<BindingApplier>(catalog, txn, change),
 		KeyKind::Namespace => dispatch::<NamespaceApplier>(catalog, txn, change),
 		KeyKind::Table => dispatch::<TableApplier>(catalog, txn, change),
 		KeyKind::View => dispatch::<ViewApplier>(catalog, txn, change),
@@ -85,14 +108,23 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 		KeyKind::Sink => dispatch::<SinkApplier>(catalog, txn, change),
 		KeyKind::Migration => dispatch::<MigrationApplier>(catalog, txn, change),
 		KeyKind::MigrationEvent => dispatch::<MigrationEventApplier>(catalog, txn, change),
-		KeyKind::Config => dispatch::<ConfigApplier>(catalog, txn, change),
+		KeyKind::ConfigStorage => dispatch::<ConfigApplier>(catalog, txn, change),
 		KeyKind::Series => dispatch::<SeriesApplier>(catalog, txn, change),
-		KeyKind::ShapeRetentionPolicy => dispatch::<ShapeRetentionPolicyApplier>(catalog, txn, change),
-		KeyKind::OperatorRetentionPolicy => dispatch::<OperatorRetentionPolicyApplier>(catalog, txn, change),
+		KeyKind::ShapeRetentionStrategy => dispatch::<ShapeRetentionStrategyApplier>(catalog, txn, change),
+		KeyKind::OperatorRetentionStrategy => {
+			dispatch::<OperatorRetentionStrategyApplier>(catalog, txn, change)
+		}
+		KeyKind::RowTtl => dispatch::<RowTtlApplier>(catalog, txn, change),
+		KeyKind::OperatorTtl => dispatch::<OperatorTtlApplier>(catalog, txn, change),
+
+		KeyKind::Shape => dispatch::<RowShapeHeaderApplier>(catalog, txn, change),
+		KeyKind::RowShapeField => dispatch::<RowShapeFieldApplier>(catalog, txn, change),
+
+		KeyKind::Procedure => dispatch::<ProcedureApplier>(catalog, txn, change),
+		KeyKind::ProcedureParam => dispatch::<ProcedureParamApplier>(catalog, txn, change),
 
 		KeyKind::Column | KeyKind::Columns => dispatch::<ColumnApplier>(catalog, txn, change),
 
-		// Secondary index keys — write to txn, no materialized catalog action
 		KeyKind::NamespaceTable
 		| KeyKind::NamespaceView
 		| KeyKind::NamespaceFlow
@@ -100,13 +132,14 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 		| KeyKind::NamespaceDictionary
 		| KeyKind::NamespaceSumType
 		| KeyKind::NamespaceHandler
+		| KeyKind::NamespaceBinding
+		| KeyKind::NamespaceProcedure
 		| KeyKind::NamespaceSource
 		| KeyKind::NamespaceSink
 		| KeyKind::NamespaceSeries
 		| KeyKind::VariantHandler
 		| KeyKind::PolicyOp => dispatch::<PassthroughApplier>(catalog, txn, change),
 
-		// All other keys (Row data, etc.) — write to txn, no materialized catalog action
 		_ => dispatch::<PassthroughApplier>(catalog, txn, change),
 	}
 }

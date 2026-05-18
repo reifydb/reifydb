@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -16,9 +16,8 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes CDC consumer checkpoint information
 pub struct SystemCdcConsumers {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +30,7 @@ impl Default for SystemCdcConsumers {
 impl SystemCdcConsumers {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_cdc_consumers_table().clone(),
+			vtable: SystemCatalog::get_system_cdc_consumers_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -50,14 +49,8 @@ impl BaseVTable for SystemCdcConsumers {
 
 		// TODO: Implement CDC consumer state retrieval using the new transaction API
 		let columns = vec![
-			Column {
-				name: Fragment::internal("consumer_id"),
-				data: ColumnData::utf8_with_capacity(0),
-			},
-			Column {
-				name: Fragment::internal("checkpoint"),
-				data: ColumnData::uint8_with_capacity(0),
-			},
+			ColumnWithName::new(Fragment::internal("consumer_id"), ColumnBuffer::utf8_with_capacity(0)),
+			ColumnWithName::new(Fragment::internal("checkpoint"), ColumnBuffer::uint8_with_capacity(0)),
 		];
 
 		self.exhausted = true;
@@ -66,7 +59,7 @@ impl BaseVTable for SystemCdcConsumers {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

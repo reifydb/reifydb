@@ -24,8 +24,8 @@ describe('validateShape', () => {
         });
 
         it('should validate bigint types with bigint or number', () => {
-            const bigintTypes = ['Int8', 'Int16', 'Uint8', 'Uint16'];
-            for (const type of bigintTypes) {
+            const bigint_types = ['Int8', 'Int16', 'Uint8', 'Uint16'];
+            for (const type of bigint_types) {
                 expect(validateShape({kind: 'primitive', type}, BigInt(42))).toBe(true);
                 expect(validateShape({kind: 'primitive', type}, 42)).toBe(true);
             }

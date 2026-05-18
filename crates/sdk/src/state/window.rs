@@ -1,102 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Window-based state management for FFI operators
-//!
-//! This module provides the `FFIWindowStateful` trait for operators that use
-//! time-based or count-based windowing with state.
+use reifydb_core::encoded::key::EncodedKey;
+use serde::{Serialize, de::DeserializeOwned};
 
-use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape};
-
-use super::{FFIRawStatefulOperator, utils};
+use super::FFIRawStatefulOperator;
 use crate::{error::Result, operator::context::OperatorContext};
 
-/// Window-based state management for time or count-based windowing
-///
-/// This trait provides support for operators that partition state into windows,
-/// such as sliding time windows or tumbling count windows. Each window has its own
-/// state entry indexed by a window key.
-///
-/// Window keys should be designed to support efficient expiration. Common patterns:
-/// - Time-based: Use timestamp as part of the key
-/// - Count-based: Use sequence number as part of the key
-/// - Composite: Combine time/count with other dimensions
 pub trait FFIWindowStateful: FFIRawStatefulOperator {
-	/// Get or create the shape for state rows
-	///
-	/// This defines the structure of each window's state.
-	fn shape(&self) -> RowShape;
+	type State: Serialize + DeserializeOwned;
 
-	/// Create a new state encoded with default values
-	///
-	/// Allocates a new window state row based on the shape, initialized with default values.
-	fn create_state(&self) -> EncodedRow {
-		let shape = self.shape();
-		shape.allocate()
+	fn load_state(&self, ctx: &mut OperatorContext, window_key: &EncodedKey) -> Result<Option<Self::State>> {
+		ctx.state().get::<Self::State>(window_key)
 	}
 
-	/// Load state for a window
-	///
-	/// If state for this window doesn't exist, it will be created with default values.
-	///
-	/// # Arguments
-	///
-	/// * `ctx` - The operator context
-	/// * `window_key` - The key identifying the window
-	///
-	/// # Returns
-	///
-	/// The loaded or newly created state for this window
-	fn load_state(&self, ctx: &mut OperatorContext, window_key: &EncodedKey) -> Result<EncodedRow> {
-		utils::load_or_create_row(ctx, window_key, &self.shape())
+	fn save_state(&self, ctx: &mut OperatorContext, window_key: &EncodedKey, value: &Self::State) -> Result<()> {
+		ctx.state().set(window_key, value)
 	}
 
-	/// Save state for a window
-	///
-	/// # Arguments
-	///
-	/// * `ctx` - The operator context
-	/// * `window_key` - The key identifying the window
-	/// * `row` - The state to save
-	fn save_state(&self, ctx: &mut OperatorContext, window_key: &EncodedKey, row: &EncodedRow) -> Result<()> {
-		utils::save_row(ctx, window_key, row)
-	}
-
-	/// Remove state for a window
-	///
-	/// Deletes the state associated with this window.
-	///
-	/// # Arguments
-	///
-	/// * `ctx` - The operator context
-	/// * `window_key` - The key identifying the window
 	fn remove_window(&self, ctx: &mut OperatorContext, window_key: &EncodedKey) -> Result<()> {
-		self.state_remove(ctx, window_key)
-	}
-
-	/// Update state for a window with a function
-	///
-	/// This is a convenience method that loads the current window state,
-	/// applies a transformation function, saves the updated state, and returns
-	/// the new state value.
-	///
-	/// # Arguments
-	///
-	/// * `ctx` - The operator context
-	/// * `window_key` - The key identifying the window
-	/// * `f` - Function that modifies the state. Receives the shape and mutable state row.
-	///
-	/// # Returns
-	///
-	/// The updated state after applying the function
-	fn update_window<F>(&self, ctx: &mut OperatorContext, window_key: &EncodedKey, f: F) -> Result<EncodedRow>
-	where
-		F: FnOnce(&RowShape, &mut EncodedRow) -> Result<()>,
-	{
-		let shape = self.shape();
-		let mut row = self.load_state(ctx, window_key)?;
-		f(&shape, &mut row)?;
-		self.save_state(ctx, window_key, &row)?;
-		Ok(row)
+		ctx.state().remove(window_key)
 	}
 }

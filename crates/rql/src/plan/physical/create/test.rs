@@ -19,14 +19,13 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		create: logical::CreateTestNode<'_>,
 	) -> Result<PhysicalPlan<'bump>> {
-		// Resolve namespace
 		let ns_segments: Vec<&str> = create.test.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace_def) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_fragment = if let Some(n) = create.test.namespace.first() {
 				let interned = self.interner.intern_fragment(n);
 				interned.with_text(ns_segments.join("::"))
 			} else {
-				Fragment::internal("default".to_string())
+				Fragment::internal("default")
 			};
 			return_error!(namespace_not_found(ns_fragment, &ns_segments.join("::")));
 		};

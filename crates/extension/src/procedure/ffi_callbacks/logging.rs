@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Logging callbacks for FFI operators
-//!
-//! Allows FFI operators to emit log messages at various severity levels.
-
 use std::slice;
 
 use tracing::{debug, error, info, trace, warn};
@@ -26,13 +22,11 @@ pub unsafe extern "C" fn host_log_message(operator_id: u64, level: u32, message:
 		return;
 	}
 
-	// Convert message to string using provided length
 	let msg_str = unsafe {
 		let bytes = slice::from_raw_parts(message, message_len);
 		String::from_utf8_lossy(bytes)
 	};
 
-	// Log based on level
 	match level {
 		0 => trace!("FFI Operator[{}]: {}", operator_id, msg_str),
 		1 => debug!("FFI Operator[{}]: {}", operator_id, msg_str),

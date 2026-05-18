@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Raw FFI functions for store access
-
 use std::{ops::Bound, ptr, ptr::null_mut, slice::from_raw_parts};
 
 use reifydb_abi::{
@@ -32,17 +30,15 @@ pub(super) fn raw_store_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<O
 			((*ctx.ctx).callbacks.store.get)(ctx.ctx, key_bytes.as_ptr(), key_bytes.len(), &mut output);
 
 		if result == FFI_OK {
-			// Success - value found
 			if output.ptr.is_null() || output.len == 0 {
 				Ok(None)
 			} else {
 				let value_bytes = from_raw_parts(output.ptr, output.len).to_vec();
-				// Free the buffer allocated by host
+
 				((*ctx.ctx).callbacks.memory.free)(output.ptr as *mut u8, output.len);
 				Ok(Some(EncodedRow(CowVec::new(value_bytes))))
 			}
 		} else if result == FFI_NOT_FOUND {
-			// Key not found
 			Ok(None)
 		} else {
 			Err(FFIError::Other(format!("host_store_get failed with code {}", result)))
@@ -50,7 +46,6 @@ pub(super) fn raw_store_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<O
 	}
 }
 
-/// Check if a key exists in store
 #[instrument(name = "flow::operator::store::raw::contains_key", level = "trace", skip(ctx), fields(
 	key_len = key.as_bytes().len()
 ))]
@@ -74,7 +69,6 @@ pub(super) fn raw_store_contains_key(ctx: &OperatorContext, key: &EncodedKey) ->
 	}
 }
 
-/// Scan all keys with a given prefix
 #[instrument(name = "flow::operator::store::raw::prefix", level = "trace", skip(ctx), fields(
 	prefix_len = prefix.as_bytes().len()
 ))]
@@ -98,12 +92,10 @@ pub(super) fn raw_store_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Re
 	}
 }
 
-/// Bound type constants for FFI
 const BOUND_UNBOUNDED: u8 = 0;
 const BOUND_INCLUDED: u8 = 1;
 const BOUND_EXCLUDED: u8 = 2;
 
-/// Scan all keys within a range
 #[instrument(name = "flow::operator::store::raw::range", level = "trace", skip(ctx, start, end))]
 pub(super) fn raw_store_range(
 	ctx: &OperatorContext,
@@ -144,11 +136,6 @@ pub(super) fn raw_store_range(
 	}
 }
 
-/// Helper to collect all results from a store iterator
-///
-/// # Safety
-/// - iterator must be a valid pointer returned by a store prefix/range call
-/// - ctx must have valid callbacks
 #[instrument(
 	name = "flow::operator::store::collect_iterator",
 	level = "trace",
@@ -182,7 +169,6 @@ pub(super) unsafe fn collect_iterator_results(
 			unsafe { ((*ctx.ctx).callbacks.store.iterator_next)(iterator, &mut key_buf, &mut value_buf) };
 
 		if next_result == FFI_END_OF_ITERATION {
-			// End of iteration
 			break;
 		} else if next_result != FFI_OK {
 			unsafe { ((*ctx.ctx).callbacks.store.iterator_free)(iterator) };
@@ -192,10 +178,9 @@ pub(super) unsafe fn collect_iterator_results(
 			)));
 		}
 
-		// Convert buffers to owned data
 		if !key_buf.ptr.is_null() && key_buf.len > 0 {
 			let key_bytes = unsafe { from_raw_parts(key_buf.ptr, key_buf.len) }.to_vec();
-			let key = EncodedKey(CowVec::new(key_bytes));
+			let key = EncodedKey::new(key_bytes);
 
 			let value = if !value_buf.ptr.is_null() && value_buf.len > 0 {
 				let value_bytes = unsafe { from_raw_parts(value_buf.ptr, value_buf.len) }.to_vec();
@@ -204,7 +189,6 @@ pub(super) unsafe fn collect_iterator_results(
 				EncodedRow(CowVec::new(Vec::new()))
 			};
 
-			// Free buffers allocated by host
 			unsafe { ((*ctx.ctx).callbacks.memory.free)(key_buf.ptr as *mut u8, key_buf.len) };
 			if !value_buf.ptr.is_null() && value_buf.len > 0 {
 				unsafe { ((*ctx.ctx).callbacks.memory.free)(value_buf.ptr as *mut u8, value_buf.len) };

@@ -16,6 +16,7 @@ pub struct Table {
 	pub name: String,
 	pub columns: Vec<Column>,
 	pub primary_key: Option<PrimaryKey>,
+	pub underlying: bool,
 }
 
 impl Table {

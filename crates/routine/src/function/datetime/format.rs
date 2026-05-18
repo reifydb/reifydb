@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, date::Date, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct DateTimeFormat;
+pub struct DateTimeFormat {
+	info: RoutineInfo,
+}
 
 impl Default for DateTimeFormat {
 	fn default() -> Self {
@@ -20,11 +18,12 @@ impl Default for DateTimeFormat {
 
 impl DateTimeFormat {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("datetime::format"),
+		}
 	}
 }
 
-/// Compute day of year from year/month/day
 fn compute_day_of_year(year: i32, month: u32, day: u32) -> u32 {
 	let mut doy = 0u32;
 	for m in 1..month {
@@ -123,89 +122,109 @@ fn format_datetime(
 	Ok(result)
 }
 
-impl ScalarFunction for DateTimeFormat {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
-
-		if columns.len() != 2 {
-			return Err(ScalarFunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 2,
-				actual: columns.len(),
-			});
-		}
-
-		let dt_col = columns.first().unwrap();
-		let fmt_col = columns.get(1).unwrap();
-
-		match (dt_col.data(), fmt_col.data()) {
-			(
-				ColumnData::DateTime(dt_container),
-				ColumnData::Utf8 {
-					container: fmt_container,
-					..
-				},
-			) => {
-				let mut result_data = Vec::with_capacity(row_count);
-
-				for i in 0..row_count {
-					match (dt_container.get(i), fmt_container.is_defined(i)) {
-						(Some(dt), true) => {
-							let fmt_str = &fmt_container[i];
-							match format_datetime(
-								dt.year(),
-								dt.month(),
-								dt.day(),
-								dt.hour(),
-								dt.minute(),
-								dt.second(),
-								dt.nanosecond(),
-								fmt_str,
-							) {
-								Ok(formatted) => {
-									result_data.push(formatted);
-								}
-								Err(reason) => {
-									return Err(
-										ScalarFunctionError::ExecutionFailed {
-											function: ctx.fragment.clone(),
-											reason,
-										},
-									);
-								}
-							}
-						}
-						_ => {
-							result_data.push(String::new());
-						}
-					}
-				}
-
-				Ok(ColumnData::Utf8 {
-					container: Utf8Container::new(result_data),
-					max_bytes: MaxBytes::MAX,
-				})
-			}
-			(ColumnData::DateTime(_), other) => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 1,
-				expected: vec![Type::Utf8],
-				actual: other.get_type(),
-			}),
-			(other, _) => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 0,
-				expected: vec![Type::DateTime],
-				actual: other.get_type(),
-			}),
-		}
+impl<'a> Routine<FunctionContext<'a>> for DateTimeFormat {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Utf8
+	}
+
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 2 {
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.fragment.clone(),
+				expected: 2,
+				actual: args.len(),
+			});
+		}
+
+		let dt_col = &args[0];
+		let fmt_col = &args[1];
+		let (dt_data, dt_bitvec) = dt_col.unwrap_option();
+		let (fmt_data, fmt_bitvec) = fmt_col.unwrap_option();
+		let row_count = dt_data.len();
+
+		let result_data =
+			match (dt_data, fmt_data) {
+				(
+					ColumnBuffer::DateTime(dt_container),
+					ColumnBuffer::Utf8 {
+						container: fmt_container,
+						..
+					},
+				) => {
+					let mut result = Vec::with_capacity(row_count);
+
+					for i in 0..row_count {
+						match (dt_container.get(i), fmt_container.is_defined(i)) {
+							(Some(dt), true) => {
+								let fmt_str = fmt_container.get(i).unwrap();
+								match format_datetime(
+									dt.year(),
+									dt.month(),
+									dt.day(),
+									dt.hour(),
+									dt.minute(),
+									dt.second(),
+									dt.nanosecond(),
+									fmt_str,
+								) {
+									Ok(formatted) => {
+										result.push(formatted);
+									}
+									Err(reason) => {
+										return Err(RoutineError::FunctionExecutionFailed {
+										function: ctx.fragment.clone(),
+										reason,
+									});
+									}
+								}
+							}
+							_ => {
+								result.push(String::new());
+							}
+						}
+					}
+
+					ColumnBuffer::Utf8 {
+						container: Utf8Container::new(result),
+						max_bytes: MaxBytes::MAX,
+					}
+				}
+				(ColumnBuffer::DateTime(_), other) => {
+					return Err(RoutineError::FunctionInvalidArgumentType {
+						function: ctx.fragment.clone(),
+						argument_index: 1,
+						expected: vec![Type::Utf8],
+						actual: other.get_type(),
+					});
+				}
+				(other, _) => {
+					return Err(RoutineError::FunctionInvalidArgumentType {
+						function: ctx.fragment.clone(),
+						argument_index: 0,
+						expected: vec![Type::DateTime],
+						actual: other.get_type(),
+					});
+				}
+			};
+
+		let final_data = match (dt_bitvec, fmt_bitvec) {
+			(Some(bv), _) | (_, Some(bv)) => ColumnBuffer::Option {
+				inner: Box::new(result_data),
+				bitvec: bv.clone(),
+			},
+			_ => result_data,
+		};
+
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for DateTimeFormat {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::internal_error;
+use reifydb_core::{
+	internal_error,
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+};
 use reifydb_type::{
 	error::{RuntimeErrorKind, TypeError},
 	fragment::Fragment,
@@ -13,27 +16,45 @@ use crate::{
 	vm::{stack::Variable, vm::Vm},
 };
 
-impl Vm {
+impl<'a> Vm<'a> {
 	pub(crate) fn exec_load_var(&mut self, fragment: &Fragment) -> Result<()> {
 		let name = strip_dollar_prefix(fragment.text());
 		match self.symbols.get(name) {
-			Some(Variable::Scalar(c)) => {
-				self.stack.push(Variable::Scalar(c.clone()));
+			Some(Variable::Columns {
+				columns: c,
+			}) if c.is_scalar() => {
+				if self.batch_size > 1 {
+					let value = c.scalar_value();
+					let mut data = ColumnBuffer::with_capacity(value.get_type(), self.batch_size);
+					for _ in 0..self.batch_size {
+						data.push_value(value.clone());
+					}
+					let col = ColumnWithName::new(Fragment::internal(name), data);
+					self.stack.push(Variable::columns(Columns::new(vec![col])));
+				} else {
+					self.stack.push(Variable::columns(c.clone()));
+				}
 			}
 			Some(Variable::Closure(c)) => {
 				self.stack.push(Variable::Closure(c.clone()));
 			}
-			Some(Variable::Columns(_)) => {
-				return Err(TypeError::Runtime {
-					kind: RuntimeErrorKind::VariableIsDataframe {
-						name: name.to_string(),
-					},
-					message: format!(
-						"Variable '{}' contains a dataframe and cannot be used directly in scalar expressions",
-						name
-					),
+			Some(Variable::Columns {
+				columns: c,
+			}) => {
+				if self.batch_size > 1 {
+					self.stack.push(Variable::columns(c.clone()));
+				} else {
+					return Err(TypeError::Runtime {
+						kind: RuntimeErrorKind::VariableIsDataframe {
+							name: name.to_string(),
+						},
+						message: format!(
+							"Variable '{}' contains a dataframe and cannot be used directly in scalar expressions",
+							name
+						),
+					}
+					.into());
 				}
-				.into());
 			}
 			Some(Variable::ForIterator {
 				..
@@ -56,7 +77,7 @@ impl Vm {
 	pub(crate) fn exec_store_var(&mut self, fragment: &Fragment) -> Result<()> {
 		let name = strip_dollar_prefix(fragment.text());
 		let value = self.pop_value()?;
-		self.symbols.reassign(name.to_string(), Variable::scalar(value))?;
+		self.symbols.reassign(name.to_string(), Variable::scalar_named(name, value))?;
 		Ok(())
 	}
 
@@ -64,18 +85,18 @@ impl Vm {
 		let name = strip_dollar_prefix(fragment.text());
 		let sv = self.stack.pop()?;
 		let variable = match sv {
-			Variable::Scalar(c) => Variable::Scalar(c),
 			Variable::Closure(c) => Variable::Closure(c),
-			Variable::Columns(c)
+			Variable::Columns {
+				columns: mut c,
+			}
 			| Variable::ForIterator {
-				columns: c,
+				columns: mut c,
 				..
 			} => {
-				if c.len() == 1 && c.row_count() == 1 {
-					Variable::Scalar(c)
-				} else {
-					Variable::Columns(c)
+				if c.is_scalar() {
+					c.names.make_mut()[0] = Fragment::internal(name);
 				}
+				Variable::columns(c)
 			}
 		};
 		self.symbols.set(name.to_string(), variable, true)?;
@@ -86,19 +107,18 @@ impl Vm {
 		let var_name = strip_dollar_prefix(object.text());
 		let field_name = field.text();
 		match self.symbols.get(var_name) {
-			Some(Variable::Columns(columns)) => {
-				let col = columns.columns.iter().find(|c| c.name.text() == field_name);
-				match col {
-					Some(col) => {
-						let value = col.data.get_value(0);
+			Some(Variable::Columns {
+				columns,
+			}) if !columns.is_scalar() => {
+				let col_pos = columns.names.iter().position(|n| n.text() == field_name);
+				match col_pos {
+					Some(pos) => {
+						let value = columns.columns[pos].get_value(0);
 						self.stack.push(Variable::scalar(value));
 					}
 					None => {
-						let available: Vec<String> = columns
-							.columns
-							.iter()
-							.map(|c| c.name.text().to_string())
-							.collect();
+						let available: Vec<String> =
+							columns.names.iter().map(|n| n.text().to_string()).collect();
 						return Err(TypeError::Runtime {
 							kind: RuntimeErrorKind::FieldNotFound {
 								variable: var_name.to_string(),
@@ -114,7 +134,10 @@ impl Vm {
 					}
 				}
 			}
-			Some(Variable::Scalar(_)) | Some(Variable::Closure(_)) => {
+			Some(Variable::Columns {
+				..
+			})
+			| Some(Variable::Closure(_)) => {
 				return Err(TypeError::Runtime {
 					kind: RuntimeErrorKind::FieldNotFound {
 						variable: var_name.to_string(),

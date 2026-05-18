@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, datetime::DateTime, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct TimeNow;
+pub struct TimeNow {
+	info: RoutineInfo,
+}
 
 impl Default for TimeNow {
 	fn default() -> Self {
@@ -20,22 +18,27 @@ impl Default for TimeNow {
 
 impl TimeNow {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("time::now"),
+		}
 	}
 }
 
-impl ScalarFunction for TimeNow {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
-		let row_count = ctx.row_count;
+impl<'a> Routine<FunctionContext<'a>> for TimeNow {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		if !ctx.columns.is_empty() {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Time
+	}
+
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if !args.is_empty() {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 0,
-				actual: ctx.columns.len(),
+				actual: args.len(),
 			});
 		}
 
@@ -43,15 +46,16 @@ impl ScalarFunction for TimeNow {
 		let dt = DateTime::from_timestamp_millis(millis)?;
 		let time = dt.time();
 
-		let mut container = TemporalContainer::with_capacity(row_count);
-		for _ in 0..row_count {
-			container.push(time);
-		}
+		let mut container = TemporalContainer::with_capacity(1);
+		container.push(time);
 
-		Ok(ColumnData::Time(container))
+		let result_data = ColumnBuffer::Time(container);
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 	}
+}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Time
+impl Function for TimeNow {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

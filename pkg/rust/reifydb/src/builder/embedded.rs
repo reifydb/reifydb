@@ -1,28 +1,64 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use reifydb_auth::service::AuthConfigurator;
-use reifydb_core::config::SystemConfig;
+use reifydb_catalog::{bootstrap::read_configs, cache::CatalogCache};
+use reifydb_core::interface::catalog::config::ConfigKey;
 use reifydb_extension::transform::registry::TransformsConfigurator;
-use reifydb_routine::{function::registry::FunctionsConfigurator, procedure::registry::ProceduresConfigurator};
-use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
+use reifydb_routine::routine::registry::RoutinesConfigurator;
+use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, pool::PoolConfig};
+use reifydb_store_multi::buffer::tier::MultiBufferTier;
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
+#[cfg(feature = "sub_profiler")]
+use reifydb_sub_profiler::{builder::ProfilerConfigurator, factory::ProfilerSubsystemFactory};
 #[cfg(feature = "sub_replication")]
-use reifydb_sub_replication::{
-	builder::{ReplicationConfig, ReplicationConfigurator},
-	factory::ReplicationSubsystemFactory,
-};
+use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurator};
+#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
+use reifydb_sub_replication::factory::ReplicationSubsystemFactory;
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
+use reifydb_type::value::Value;
 
-use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
+fn pool_config_from_sources(
+	factory: &StorageFactory,
+	overrides: &[(ConfigKey, Value)],
+) -> Result<(MultiBufferTier, PoolConfig)> {
+	let multi_buffer = factory.open_multi_buffer();
+	let persisted = read_configs(
+		Some(&multi_buffer),
+		None,
+		&[ConfigKey::ThreadsAsync, ConfigKey::ThreadsSystem, ConfigKey::ThreadsQuery],
+	)?;
+
+	let resolve = |key: ConfigKey| -> usize {
+		let value = overrides
+			.iter()
+			.rev()
+			.find(|(k, _)| *k == key)
+			.and_then(|(_, v)| key.accept(v.clone()).ok())
+			.unwrap_or_else(|| persisted[&key].clone());
+		match value {
+			Value::Uint2(v) => v as usize,
+			other => panic!("config key {key} expected Uint2, got {other:?}"),
+		}
+	};
+
+	let pools = PoolConfig {
+		async_threads: resolve(ConfigKey::ThreadsAsync),
+		system_threads: resolve(ConfigKey::ThreadsSystem),
+		query_threads: resolve(ConfigKey::ThreadsQuery),
+	};
+	Ok((multi_buffer, pools))
+}
+
+use super::{DatabaseBuilder, WithInterceptorBuilder, database::CdcBackend, traits::WithSubsystem};
 use crate::{
-	Database, Migration,
+	Database, MigrationSource, Result,
 	api::{StorageFactory, transaction},
 };
 
@@ -32,12 +68,8 @@ pub struct EmbeddedBuilder {
 	runtime_config: Option<SharedRuntimeConfig>,
 	interceptors: InterceptorBuilder,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
-	functions_configurator:
-		Option<Box<dyn FnOnce(FunctionsConfigurator) -> FunctionsConfigurator + Send + 'static>>,
-	procedures_configurator:
-		Option<Box<dyn FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static>>,
-	handlers_configurator:
-		Option<Box<dyn FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static>>,
+	routines_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
+	handlers_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
 	#[cfg(reifydb_target = "native")]
 	procedure_dir: Option<PathBuf>,
 	wasm_procedure_dir: Option<PathBuf>,
@@ -50,7 +82,8 @@ pub struct EmbeddedBuilder {
 	#[cfg(feature = "sub_replication")]
 	replication_factory: Option<Box<dyn SubsystemFactory>>,
 	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
-	migrations: Vec<Migration>,
+	migrations: Option<MigrationSource>,
+	bootstrap_configs: Vec<(ConfigKey, Value)>,
 }
 
 impl EmbeddedBuilder {
@@ -61,8 +94,7 @@ impl EmbeddedBuilder {
 			runtime_config: None,
 			interceptors: InterceptorBuilder::new(),
 			subsystem_factories: Vec::new(),
-			functions_configurator: None,
-			procedures_configurator: None,
+			routines_configurator: None,
 			handlers_configurator: None,
 			#[cfg(reifydb_target = "native")]
 			procedure_dir: None,
@@ -75,7 +107,8 @@ impl EmbeddedBuilder {
 			#[cfg(feature = "sub_replication")]
 			replication_factory: None,
 			auth_configurator: None,
-			migrations: Vec::new(),
+			migrations: None,
+			bootstrap_configs: Vec::new(),
 		}
 	}
 
@@ -96,25 +129,17 @@ impl EmbeddedBuilder {
 		self
 	}
 
-	pub fn with_functions<F>(mut self, configurator: F) -> Self
+	pub fn with_routines<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(FunctionsConfigurator) -> FunctionsConfigurator + Send + 'static,
+		F: FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static,
 	{
-		self.functions_configurator = Some(Box::new(configurator));
-		self
-	}
-
-	pub fn with_procedures<F>(mut self, configurator: F) -> Self
-	where
-		F: FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static,
-	{
-		self.procedures_configurator = Some(Box::new(configurator));
+		self.routines_configurator = Some(Box::new(configurator));
 		self
 	}
 
 	pub fn with_handlers<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static,
+		F: FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static,
 	{
 		self.handlers_configurator = Some(Box::new(configurator));
 		self
@@ -151,46 +176,70 @@ impl EmbeddedBuilder {
 		self
 	}
 
-	pub fn with_migrations(mut self, migrations: Vec<Migration>) -> Self {
-		self.migrations = migrations;
+	pub fn with_migrations(mut self, source: impl Into<MigrationSource>) -> Self {
+		self.migrations = Some(source.into());
 		self
 	}
 
-	pub fn build(self) -> crate::Result<Database> {
-		let runtime = match self.runtime {
-			Some(rt) => rt,
-			None => SharedRuntime::from_config(self.runtime_config.unwrap_or_default()),
+	/// Set a system configuration value applied during bootstrap.
+	///
+	/// Applied on every `build()`, overwriting any previously persisted value.
+	pub fn with_config(mut self, key: ConfigKey, value: Value) -> Self {
+		self.bootstrap_configs.push((key, value));
+		self
+	}
+
+	/// Set multiple system configuration values applied during bootstrap.
+	pub fn with_configs(mut self, configs: impl IntoIterator<Item = (ConfigKey, Value)>) -> Self {
+		self.bootstrap_configs.extend(configs);
+		self
+	}
+
+	pub fn build(self) -> Result<Database> {
+		let (runtime, multi_buffer) = match self.runtime {
+			Some(rt) => (rt, self.storage_factory.open_multi_buffer()),
+			None => {
+				let (multi_buffer, pool_config) =
+					pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
+				let rt = SharedRuntime::from_config(
+					self.runtime_config.unwrap_or_default(),
+					pool_config,
+				);
+				(rt, multi_buffer)
+			}
 		};
 
 		let actor_system = runtime.actor_system().scope();
 		let (multi_store, single_store, transaction_single, eventbus) =
-			self.storage_factory.create(&actor_system);
-		let system_config = SystemConfig::new();
-		crate::config::register_defaults(&system_config);
+			self.storage_factory.create_with_multi_buffer(multi_buffer, &actor_system);
+		let catalog_cache = CatalogCache::new();
 		let (multi, single, eventbus) = transaction(
 			(multi_store.clone(), single_store.clone(), transaction_single, eventbus),
 			actor_system.clone(),
 			runtime.clock().clone(),
 			runtime.rng().clone(),
-			system_config.clone(),
+			Arc::new(catalog_cache.clone()),
 		);
 
-		let mut builder = DatabaseBuilder::new(system_config, multi, single, eventbus)
+		let cdc_backend = match &self.storage_factory {
+			StorageFactory::Memory => CdcBackend::Memory,
+			#[cfg(not(target_arch = "wasm32"))]
+			StorageFactory::Sqlite(config) => CdcBackend::Sqlite(config.clone()),
+		};
+
+		let mut builder = DatabaseBuilder::new(catalog_cache, multi, single, eventbus)
 			.with_interceptor_builder(self.interceptors)
 			.with_runtime(runtime.clone())
 			.with_actor_system(actor_system)
-			.with_stores(multi_store, single_store);
+			.with_stores(multi_store, single_store)
+			.with_cdc_backend(cdc_backend);
 
 		if let Some(configurator) = self.auth_configurator {
 			builder = builder.with_auth(configurator);
 		}
 
-		if let Some(configurator) = self.functions_configurator {
-			builder = builder.with_functions_configurator(configurator);
-		}
-
-		if let Some(configurator) = self.procedures_configurator {
-			builder = builder.with_procedures_configurator(configurator);
+		if let Some(configurator) = self.routines_configurator {
+			builder = builder.with_routines_configurator(configurator);
 		}
 
 		if let Some(configurator) = self.handlers_configurator {
@@ -230,8 +279,15 @@ impl EmbeddedBuilder {
 			builder = builder.add_subsystem_factory(factory);
 		}
 
-		if !self.migrations.is_empty() {
-			builder = builder.with_migrations(self.migrations);
+		if let Some(source) = self.migrations {
+			let migrations = source.resolve()?;
+			if !migrations.is_empty() {
+				builder = builder.with_migrations(migrations);
+			}
+		}
+
+		if !self.bootstrap_configs.is_empty() {
+			builder = builder.with_configs(self.bootstrap_configs);
 		}
 
 		builder.build()
@@ -257,7 +313,16 @@ impl WithSubsystem for EmbeddedBuilder {
 		self
 	}
 
-	#[cfg(feature = "sub_replication")]
+	#[cfg(feature = "sub_profiler")]
+	fn with_profiler<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(ProfilerConfigurator) -> ProfilerConfigurator + Send + 'static,
+	{
+		self.subsystem_factories.push(Box::new(ProfilerSubsystemFactory::with_configurator(configurator)));
+		self
+	}
+
+	#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
 	fn with_replication<F, C>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(ReplicationConfigurator) -> C + Send + 'static,

@@ -14,7 +14,7 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalRingBufferChanges,
 	},
-	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
+	transaction::admin::AdminTransaction,
 };
 
 impl CatalogTrackRingBufferChangeOperations for AdminTransaction {
@@ -100,37 +100,5 @@ impl TransactionalRingBufferChanges for AdminTransaction {
 					.map(|rb| rb.namespace == namespace && rb.name == name)
 					.unwrap_or(false)
 		})
-	}
-}
-
-impl CatalogTrackRingBufferChangeOperations for SubscriptionTransaction {
-	fn track_ringbuffer_created(&mut self, ringbuffer: RingBuffer) -> Result<()> {
-		self.inner.track_ringbuffer_created(ringbuffer)
-	}
-
-	fn track_ringbuffer_updated(&mut self, pre: RingBuffer, post: RingBuffer) -> Result<()> {
-		self.inner.track_ringbuffer_updated(pre, post)
-	}
-
-	fn track_ringbuffer_deleted(&mut self, ringbuffer: RingBuffer) -> Result<()> {
-		self.inner.track_ringbuffer_deleted(ringbuffer)
-	}
-}
-
-impl TransactionalRingBufferChanges for SubscriptionTransaction {
-	fn find_ringbuffer(&self, id: RingBufferId) -> Option<&RingBuffer> {
-		self.inner.find_ringbuffer(id)
-	}
-
-	fn find_ringbuffer_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&RingBuffer> {
-		self.inner.find_ringbuffer_by_name(namespace, name)
-	}
-
-	fn is_ringbuffer_deleted(&self, id: RingBufferId) -> bool {
-		self.inner.is_ringbuffer_deleted(id)
-	}
-
-	fn is_ringbuffer_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
-		self.inner.is_ringbuffer_deleted_by_name(namespace, name)
 	}
 }

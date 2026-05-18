@@ -4,7 +4,7 @@ use std::fmt::Debug;
 use crate::keymap::RepeatCount;
 use crate::line_buffer::{ChangeListener, DeleteListener, Direction, LineBuffer, NoListener};
 use log::debug;
-use unicode_segmentation::UnicodeSegmentation;
+use unicode_segmentation::UnicodeSegmentation as _;
 
 enum Change {
     Begin,
@@ -30,17 +30,15 @@ enum Change {
 impl Change {
     fn undo(&self, line: &mut LineBuffer) {
         match *self {
-            Change::Begin | Change::End => {
-                unreachable!();
-            }
-            Change::Insert { idx, ref text } => {
+            Self::Begin | Self::End => unreachable!(),
+            Self::Insert { idx, ref text } => {
                 line.delete_range(idx..idx + text.len(), &mut NoListener);
             }
-            Change::Delete { idx, ref text } => {
+            Self::Delete { idx, ref text } => {
                 line.insert_str(idx, text, &mut NoListener);
                 line.set_pos(idx + text.len());
             }
-            Change::Replace {
+            Self::Replace {
                 idx,
                 ref old,
                 ref new,
@@ -53,16 +51,14 @@ impl Change {
     #[cfg(test)]
     fn redo(&self, line: &mut LineBuffer) {
         match *self {
-            Change::Begin | Change::End => {
-                unreachable!();
-            }
-            Change::Insert { idx, ref text } => {
+            Self::Begin | Self::End => unreachable!(),
+            Self::Insert { idx, ref text } => {
                 line.insert_str(idx, text, &mut NoListener);
             }
-            Change::Delete { idx, ref text } => {
+            Self::Delete { idx, ref text } => {
                 line.delete_range(idx..idx + text.len(), &mut NoListener);
             }
-            Change::Replace {
+            Self::Replace {
                 idx,
                 ref old,
                 ref new,
@@ -73,7 +69,7 @@ impl Change {
     }
 
     fn insert_seq(&self, indx: usize) -> bool {
-        if let Change::Insert { idx, ref text } = *self {
+        if let Self::Insert { idx, ref text } = *self {
             idx + text.len() == indx
         } else {
             false
@@ -81,7 +77,7 @@ impl Change {
     }
 
     fn delete_seq(&self, indx: usize, len: usize) -> bool {
-        if let Change::Delete { idx, .. } = *self {
+        if let Self::Delete { idx, .. } = *self {
             // delete or backspace
             idx == indx || idx == indx + len
         } else {
@@ -90,7 +86,7 @@ impl Change {
     }
 
     fn replace_seq(&self, indx: usize) -> bool {
-        if let Change::Replace { idx, ref new, .. } = *self {
+        if let Self::Replace { idx, ref new, .. } = *self {
             idx + new.len() == indx
         } else {
             false
@@ -109,8 +105,8 @@ impl Changeset {
     pub(crate) fn new() -> Self {
         Self {
             undo_group_level: 0,
-            undos: Vec::new(),
-            redos: Vec::new(),
+            undos: vec![],
+            redos: vec![],
         }
     }
 
@@ -149,9 +145,9 @@ impl Changeset {
     }
 
     pub(crate) fn insert(&mut self, idx: usize, c: char) {
-        debug!(target: "rustyline", "Changeset::insert({}, {:?})", idx, c);
+        debug!(target: "rustyline", "Changeset::insert({idx}, {c:?})");
         self.redos.clear();
-        if !c.is_alphanumeric() || !self.undos.last().map_or(false, |lc| lc.insert_seq(idx)) {
+        if !c.is_alphanumeric() || !self.undos.last().is_some_and(|lc| lc.insert_seq(idx)) {
             self.undos.push(Self::insert_char(idx, c));
             return;
         }
@@ -170,7 +166,7 @@ impl Changeset {
         idx: usize,
         string: S,
     ) {
-        debug!(target: "rustyline", "Changeset::insert_str({}, {:?})", idx, string);
+        debug!(target: "rustyline", "Changeset::insert_str({idx}, {string:?})");
         self.redos.clear();
         if string.as_ref().is_empty() {
             return;
@@ -182,7 +178,7 @@ impl Changeset {
     }
 
     pub(crate) fn delete<S: AsRef<str> + Into<String> + Debug>(&mut self, indx: usize, string: S) {
-        debug!(target: "rustyline", "Changeset::delete({}, {:?})", indx, string);
+        debug!(target: "rustyline", "Changeset::delete({indx}, {string:?})");
         self.redos.clear();
         if string.as_ref().is_empty() {
             return;
@@ -192,7 +188,7 @@ impl Changeset {
             || !self
                 .undos
                 .last()
-                .map_or(false, |lc| lc.delete_seq(indx, string.as_ref().len()))
+                .is_some_and(|lc| lc.delete_seq(indx, string.as_ref().len()))
         {
             self.undos.push(Change::Delete {
                 idx: indx,
@@ -221,9 +217,10 @@ impl Changeset {
 
     fn single_char(s: &str) -> bool {
         let mut graphemes = s.graphemes(true);
-        graphemes.next().map_or(false, |grapheme| {
-            grapheme.chars().all(char::is_alphanumeric)
-        }) && graphemes.next().is_none()
+        graphemes
+            .next()
+            .is_some_and(|grapheme| grapheme.chars().all(char::is_alphanumeric))
+            && graphemes.next().is_none()
     }
 
     pub(crate) fn replace<S: AsRef<str> + Into<String> + Debug>(
@@ -232,10 +229,10 @@ impl Changeset {
         old_: S,
         new_: S,
     ) {
-        debug!(target: "rustyline", "Changeset::replace({}, {:?}, {:?})", indx, old_, new_);
+        debug!(target: "rustyline", "Changeset::replace({indx}, {old_:?}, {new_:?})");
         self.redos.clear();
 
-        if !self.undos.last().map_or(false, |lc| lc.replace_seq(indx)) {
+        if !self.undos.last().is_some_and(|lc| lc.replace_seq(indx)) {
             self.undos.push(Change::Replace {
                 idx: indx,
                 old: old_.into(),
@@ -277,7 +274,7 @@ impl Changeset {
                     change.undo(line);
                     undone = true;
                 }
-            };
+            }
             self.redos.push(change);
             if waiting_for_begin <= 0 {
                 count += 1;
@@ -290,7 +287,7 @@ impl Changeset {
     }
 
     pub(crate) fn truncate(&mut self, len: usize) {
-        debug!(target: "rustyline", "Changeset::truncate({})", len);
+        debug!(target: "rustyline", "Changeset::truncate({len})");
         self.undos.truncate(len);
     }
 
@@ -310,7 +307,7 @@ impl Changeset {
                     change.redo(line);
                     redone = true;
                 }
-            };
+            }
             self.undos.push(change);
             if waiting_for_end <= 0 {
                 break;

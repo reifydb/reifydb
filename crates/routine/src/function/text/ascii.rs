@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct TextAscii;
+pub struct TextAscii {
+	info: RoutineInfo,
+}
 
 impl Default for TextAscii {
 	fn default() -> Self {
@@ -20,31 +18,36 @@ impl Default for TextAscii {
 
 impl TextAscii {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("text::ascii"),
+		}
 	}
 }
 
-impl ScalarFunction for TextAscii {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl<'a> Routine<FunctionContext<'a>> for TextAscii {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Int4
+	}
 
-		if columns.len() != 1 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 1 {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let column = columns.first().unwrap();
+		let column = &args[0];
+		let (data, bitvec) = column.unwrap_option();
+		let row_count = data.len();
 
-		match &column.data() {
-			ColumnData::Utf8 {
+		match data {
+			ColumnBuffer::Utf8 {
 				container,
 				..
 			} => {
@@ -53,7 +56,7 @@ impl ScalarFunction for TextAscii {
 
 				for i in 0..row_count {
 					if container.is_defined(i) {
-						let s = &container[i];
+						let s = container.get(i).unwrap();
 						let code_point = s.chars().next().map(|c| c as i32).unwrap_or(0);
 						result_data.push(code_point);
 						result_bitvec.push(true);
@@ -63,9 +66,17 @@ impl ScalarFunction for TextAscii {
 					}
 				}
 
-				Ok(ColumnData::int4_with_bitvec(result_data, result_bitvec))
+				let result_data = ColumnBuffer::int4_with_bitvec(result_data, result_bitvec);
+				let final_data = match bitvec {
+					Some(bv) => ColumnBuffer::Option {
+						inner: Box::new(result_data),
+						bitvec: bv.clone(),
+					},
+					None => result_data,
+				};
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
-			other => Err(ScalarFunctionError::InvalidArgumentType {
+			other => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Utf8],
@@ -73,8 +84,10 @@ impl ScalarFunction for TextAscii {
 			}),
 		}
 	}
+}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Int4
+impl Function for TextAscii {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

@@ -19,7 +19,6 @@ pub(crate) fn create_remote_namespace(
 ) -> Result<Columns> {
 	let full_name: String = plan.segments.iter().map(|s| s.text()).collect::<Vec<_>>().join("::");
 
-	// Auto-create parent namespaces (mkdir -p semantics)
 	let mut parent_id = NamespaceId::ROOT;
 	for i in 0..plan.segments.len().saturating_sub(1) {
 		let prefix: String = plan.segments[..=i].iter().map(|s| s.text()).collect::<Vec<_>>().join("::");
@@ -44,7 +43,6 @@ pub(crate) fn create_remote_namespace(
 		}
 	}
 
-	// Create the final (leaf) namespace with grpc
 	if services.catalog.find_namespace_by_name(&mut Transaction::Admin(txn), &full_name)?.is_some()
 		&& plan.if_not_exists
 	{
@@ -93,16 +91,17 @@ pub mod tests {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
 
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE REMOTE NAMESPACE remote_ns WITH { grpc: 'localhost:50051' }",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE REMOTE NAMESPACE remote_ns WITH { grpc: 'localhost:50051' }",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 
 		assert_eq!(frame[0].get_value(0), Value::Utf8("remote_ns".to_string()));
 		assert_eq!(frame[1].get_value(0), Value::Boolean(true));
@@ -114,26 +113,29 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 
 		// First creation
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE REMOTE NAMESPACE remote_ns WITH { grpc: 'localhost:50051' }",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
 		// Second creation with IF NOT EXISTS should not error
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE REMOTE NAMESPACE IF NOT EXISTS remote_ns WITH { grpc: 'localhost:50051' }",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE REMOTE NAMESPACE IF NOT EXISTS remote_ns WITH { grpc: 'localhost:50051' }",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 		assert_eq!(frame[0].get_value(0), Value::Utf8("remote_ns".to_string()));
 		assert_eq!(frame[1].get_value(0), Value::Boolean(false));
 	}
@@ -145,31 +147,34 @@ pub mod tests {
 		let identity = IdentityId::root();
 
 		// Create a remote namespace
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE REMOTE NAMESPACE remote_ns WITH { grpc: 'http://localhost:50051' }",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 		txn.commit().unwrap();
 
 		// Query compiles to RemoteScan; without a RemoteRegistry it returns empty frames
 		let mut qt =
 			QueryTransaction::new(txn.multi.clone().begin_query().unwrap(), txn.single.clone(), identity);
-		let frames = instance
-			.query(
-				&mut qt,
-				Query {
-					rql: "FROM remote_ns::some_table",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
+		let r = instance.query(
+			&mut qt,
+			Query {
+				rql: "FROM remote_ns::some_table",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
 		// Without a remote registry, the RemoteFetchNode produces no data
-		assert!(frames.is_empty() || frames.iter().all(|f| f.columns.is_empty()));
+		assert!(r.is_empty() || r.iter().all(|f| f.columns.is_empty()));
 	}
 
 	#[test]
@@ -177,16 +182,17 @@ pub mod tests {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
 
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE REMOTE NAMESPACE blockchain::protocol WITH { grpc: '10.0.0.5:50051' }",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE REMOTE NAMESPACE blockchain::protocol WITH { grpc: '10.0.0.5:50051' }",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 
 		assert_eq!(frame[0].get_value(0), Value::Utf8("blockchain::protocol".to_string()));
 		assert_eq!(frame[1].get_value(0), Value::Boolean(true));

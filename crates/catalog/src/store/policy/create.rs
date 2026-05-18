@@ -13,7 +13,7 @@ use crate::{
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		policy::shape::{
-			policy::{ENABLED, ID, NAME, SHAPE, TARGET_NAMESPACE, TARGET_OBJECT, TARGET_TYPE},
+			policy::{ENABLED, ID, NAME, SHAPE, TARGET_NAMESPACE, TARGET_SHAPE, TARGET_TYPE},
 			policy_op,
 		},
 		sequence::system::SystemSequence,
@@ -25,7 +25,6 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		to_create: PolicyToCreate,
 	) -> Result<(Policy, Vec<PolicyOperation>)> {
-		// Check duplicate by name if named
 		if let Some(ref name) = to_create.name
 			&& (Self::find_policy_by_name(&mut Transaction::Admin(&mut *txn), name)?).is_some()
 		{
@@ -38,6 +37,18 @@ impl CatalogStore {
 			.into());
 		}
 
+		for op in &to_create.operations {
+			if !to_create.target_type.is_valid_operation(&op.operation) {
+				return Err(CatalogError::PolicyInvalidOperation {
+					target_type: to_create.target_type.as_str(),
+					operation: op.operation.clone(),
+					valid: to_create.target_type.valid_operation_names(),
+					policy_name: to_create.name.clone(),
+				}
+				.into());
+			}
+		}
+
 		let policy_id = SystemSequence::next_policy_id(txn)?;
 
 		let mut row = SHAPE.allocate();
@@ -45,12 +56,11 @@ impl CatalogStore {
 		SHAPE.set_utf8(&mut row, NAME, to_create.name.as_deref().unwrap_or(""));
 		SHAPE.set_utf8(&mut row, TARGET_TYPE, to_create.target_type.as_str());
 		SHAPE.set_utf8(&mut row, TARGET_NAMESPACE, to_create.target_namespace.as_deref().unwrap_or(""));
-		SHAPE.set_utf8(&mut row, TARGET_OBJECT, to_create.target_object.as_deref().unwrap_or(""));
+		SHAPE.set_utf8(&mut row, TARGET_SHAPE, to_create.target_shape.as_deref().unwrap_or(""));
 		SHAPE.set_bool(&mut row, ENABLED, true);
 
 		txn.set(&PolicyKey::encoded(policy_id), row)?;
 
-		// Write operation rows
 		let mut ops = Vec::new();
 		for (i, op) in to_create.operations.iter().enumerate() {
 			let mut op_row = policy_op::SHAPE.allocate();
@@ -72,7 +82,7 @@ impl CatalogStore {
 			name: to_create.name,
 			target_type: to_create.target_type,
 			target_namespace: to_create.target_namespace,
-			target_object: to_create.target_object,
+			target_shape: to_create.target_shape,
 			enabled: true,
 		};
 
@@ -91,21 +101,124 @@ mod tests {
 	fn test_create_policy() {
 		let mut txn = create_test_admin_transaction();
 		let to_create = PolicyToCreate {
-			name: Some("read_only".to_string()),
+			name: Some("insert_gate".to_string()),
 			target_type: PolicyTargetType::Table,
 			target_namespace: None,
-			target_object: None,
+			target_shape: None,
 			operations: vec![PolicyOpToCreate {
-				operation: "SELECT".to_string(),
-				body_source: "ALLOW".to_string(),
+				operation: "insert".to_string(),
+				body_source: "require { true }".to_string(),
 			}],
 		};
 		let (def, ops) = CatalogStore::create_policy(&mut txn, to_create).unwrap();
-		assert_eq!(def.name, Some("read_only".to_string()));
+		assert_eq!(def.name, Some("insert_gate".to_string()));
 		assert_eq!(def.target_type, PolicyTargetType::Table);
 		assert!(def.enabled);
 		assert_eq!(ops.len(), 1);
-		assert_eq!(ops[0].operation, "SELECT");
+		assert_eq!(ops[0].operation, "insert");
+	}
+
+	#[test]
+	fn test_create_policy_rejects_typo_on_crud_operation() {
+		// `select` is a common typo - RQL reads are `FROM`, not `SELECT`.
+		let mut txn = create_test_admin_transaction();
+		let err = CatalogStore::create_policy(
+			&mut txn,
+			PolicyToCreate {
+				name: Some("bad_table".to_string()),
+				target_type: PolicyTargetType::Table,
+				target_namespace: None,
+				target_shape: None,
+				operations: vec![PolicyOpToCreate {
+					operation: "select".to_string(),
+					body_source: "filter { true }".to_string(),
+				}],
+			},
+		)
+		.unwrap_err();
+		assert_eq!(err.diagnostic().code, "CA_086");
+	}
+
+	#[test]
+	fn test_create_policy_rejects_unknown_session_operation() {
+		// `subscribe` is the real-world mistake this validator was added to catch -
+		// the session enforcer dispatches on `subscription`, not `subscribe`.
+		let mut txn = create_test_admin_transaction();
+		let err = CatalogStore::create_policy(
+			&mut txn,
+			PolicyToCreate {
+				name: Some("bad_session".to_string()),
+				target_type: PolicyTargetType::Session,
+				target_namespace: None,
+				target_shape: None,
+				operations: vec![PolicyOpToCreate {
+					operation: "subscribe".to_string(),
+					body_source: "filter { true }".to_string(),
+				}],
+			},
+		)
+		.unwrap_err();
+		assert_eq!(err.diagnostic().code, "CA_086");
+	}
+
+	#[test]
+	fn test_create_policy_rejects_op_on_operationless_target_type() {
+		// Subscription target type currently admits no operations.
+		let mut txn = create_test_admin_transaction();
+		let err = CatalogStore::create_policy(
+			&mut txn,
+			PolicyToCreate {
+				name: Some("bad_sub".to_string()),
+				target_type: PolicyTargetType::Subscription,
+				target_namespace: None,
+				target_shape: None,
+				operations: vec![PolicyOpToCreate {
+					operation: "from".to_string(),
+					body_source: "filter { true }".to_string(),
+				}],
+			},
+		)
+		.unwrap_err();
+		assert_eq!(err.diagnostic().code, "CA_086");
+	}
+
+	#[test]
+	fn test_create_policy_accepts_from_on_view() {
+		let mut txn = create_test_admin_transaction();
+		CatalogStore::create_policy(
+			&mut txn,
+			PolicyToCreate {
+				name: Some("view_from".to_string()),
+				target_type: PolicyTargetType::View,
+				target_namespace: None,
+				target_shape: None,
+				operations: vec![PolicyOpToCreate {
+					operation: "from".to_string(),
+					body_source: "filter { true }".to_string(),
+				}],
+			},
+		)
+		.unwrap();
+	}
+
+	#[test]
+	fn test_create_policy_allows_empty_operations() {
+		// A policy with no operations is meaningless but not malformed - leave that
+		// judgment to a separate validator. This test pins the current behaviour.
+		let mut txn = create_test_admin_transaction();
+		let (def, ops) = CatalogStore::create_policy(
+			&mut txn,
+			PolicyToCreate {
+				name: Some("empty".to_string()),
+				target_type: PolicyTargetType::Table,
+				target_namespace: None,
+				target_shape: None,
+				operations: vec![],
+			},
+		)
+		.unwrap();
+		assert!(def.enabled);
+		assert!(ops.is_empty());
 	}
 
 	#[test]
@@ -117,7 +230,7 @@ mod tests {
 				name: Some("read_only".to_string()),
 				target_type: PolicyTargetType::Table,
 				target_namespace: None,
-				target_object: None,
+				target_shape: None,
 				operations: vec![],
 			},
 		)
@@ -128,7 +241,7 @@ mod tests {
 				name: Some("read_only".to_string()),
 				target_type: PolicyTargetType::Table,
 				target_namespace: None,
-				target_object: None,
+				target_shape: None,
 				operations: vec![],
 			},
 		)

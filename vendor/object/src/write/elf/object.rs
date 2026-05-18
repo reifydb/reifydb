@@ -108,6 +108,21 @@ impl<'a> Object<'a> {
                     sh_flags: u64::from(elf::SHF_ALLOC),
                 },
             ),
+            StandardSection::EhFrame => (
+                &[],
+                &b".eh_frame"[..],
+                if matches!(
+                    self.architecture(),
+                    Architecture::X86_64 | Architecture::X86_64_X32
+                ) {
+                    SectionKind::Elf(elf::SHT_X86_64_UNWIND)
+                } else {
+                    SectionKind::ReadOnlyData
+                },
+                SectionFlags::Elf {
+                    sh_flags: u64::from(elf::SHF_ALLOC),
+                },
+            ),
         }
     }
 
@@ -238,7 +253,10 @@ impl<'a> Object<'a> {
         })
     }
 
-    pub(crate) fn elf_translate_relocation(&mut self, reloc: &mut Relocation) -> Result<()> {
+    pub(crate) fn elf_translate_relocation(
+        &mut self,
+        reloc: &mut RelocationInternal,
+    ) -> Result<()> {
         use RelocationEncoding as E;
         use RelocationKind as K;
 
@@ -503,13 +521,16 @@ impl<'a> Object<'a> {
         Ok(())
     }
 
-    pub(crate) fn elf_adjust_addend(&mut self, _relocation: &mut Relocation) -> Result<bool> {
+    pub(crate) fn elf_adjust_addend(
+        &mut self,
+        _relocation: &mut RelocationInternal,
+    ) -> Result<bool> {
         // Determine whether the addend is stored in the relocation or the data.
         let implicit = !self.elf_has_relocation_addend()?;
         Ok(implicit)
     }
 
-    pub(crate) fn elf_relocation_size(&self, reloc: &Relocation) -> Result<u8> {
+    pub(crate) fn elf_relocation_size(&self, reloc: &RelocationInternal) -> Result<u8> {
         let r_type = if let RelocationFlags::Elf { r_type } = reloc.flags {
             r_type
         } else {

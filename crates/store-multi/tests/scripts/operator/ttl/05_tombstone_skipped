@@ -1,0 +1,33 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Tombstone in __current is skipped by the scanner (value=None has no
+# trailer to read created_at from). The key's stale historical version is
+# NOT reaped by TTL - that's what MVCC compaction handles.
+
+set 1=alive version=1 created=1000
+tombstone 1 version=2
+---
+ok
+ok
+
+count_current
+count_historical
+---
+current: 1
+historical: 1
+
+versions 1
+---
+v2 tombstone
+v1 created=1000 updated=1000 value="alive"
+
+scan_ttl mode=created duration=5000 now=10000
+---
+expired=0 versions_dropped=0
+
+count_current
+count_historical
+---
+current: 1
+historical: 1

@@ -5,13 +5,17 @@ import {Client, HttpClient} from "../../../src";
 import {Shape} from "@reifydb/core";
 
 
-describe('Error', () => {
+describe.each([
+    {format: "frames"},
+    {format: "rbcf"},
+] as const)('Error [$format]', ({format}) => {
     let httpClient: HttpClient;
 
     beforeAll(async () => {
         httpClient = Client.connect_http(process.env.REIFYDB_HTTP_URL, {
-            timeoutMs: 10000,
-            token: process.env.REIFYDB_TOKEN
+            timeout_ms: 10000,
+            token: process.env.REIFYDB_TOKEN,
+            format,
         });
     });
 
@@ -26,7 +30,7 @@ describe('Error', () => {
             ).rejects.toMatchObject({
                 name: 'ReifyError',
                 code: 'CAST_002',
-                statement: "MAP {result: cast(129, int1)};",
+                rql: "MAP {result: cast(129, int1)};",
                 fragment: {
                     Statement: expect.objectContaining({
                         text: "129",
@@ -55,7 +59,7 @@ describe('Error', () => {
             ).rejects.toMatchObject({
                 name: 'ReifyError',
                 code: 'CAST_002',
-                statement: "MAP {result: cast(129, int1)};",
+                rql: "MAP {result: cast(129, int1)};",
                 fragment: {
                     Statement: expect.objectContaining({
                         text: "129",
@@ -85,7 +89,7 @@ describe('Error', () => {
             ).rejects.toMatchObject({
                 name: 'ReifyError',
                 code: 'CAST_002',
-                statement: "MAP {result: cast(129, int1)};",
+                rql: "MAP {result: cast(129, int1)};",
                 fragment: {
                     Statement: expect.objectContaining({
                         text: "129",

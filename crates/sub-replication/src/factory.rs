@@ -27,6 +27,12 @@ impl ReplicationSubsystemFactory {
 			config_fn: Box::new(move || configurator(ReplicationConfigurator).into()),
 		}
 	}
+
+	pub fn from_config(config: ReplicationConfig) -> Self {
+		Self {
+			config_fn: Box::new(move || config),
+		}
+	}
 }
 
 impl SubsystemFactory for ReplicationSubsystemFactory {

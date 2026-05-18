@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -16,9 +16,8 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system policy information
 pub struct SystemPolicies {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +30,7 @@ impl Default for SystemPolicies {
 impl SystemPolicies {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_policies_table().clone(),
+			vtable: SystemCatalog::get_system_policies_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -50,47 +49,29 @@ impl BaseVTable for SystemPolicies {
 
 		let policies = CatalogStore::list_all_policies(txn)?;
 
-		let mut ids = ColumnData::uint8_with_capacity(policies.len());
-		let mut names = ColumnData::utf8_with_capacity(policies.len());
-		let mut target_types = ColumnData::utf8_with_capacity(policies.len());
-		let mut target_namespaces = ColumnData::utf8_with_capacity(policies.len());
-		let mut target_objects = ColumnData::utf8_with_capacity(policies.len());
-		let mut enabled_flags = ColumnData::bool_with_capacity(policies.len());
+		let mut ids = ColumnBuffer::uint8_with_capacity(policies.len());
+		let mut names = ColumnBuffer::utf8_with_capacity(policies.len());
+		let mut target_types = ColumnBuffer::utf8_with_capacity(policies.len());
+		let mut target_namespaces = ColumnBuffer::utf8_with_capacity(policies.len());
+		let mut target_shapes = ColumnBuffer::utf8_with_capacity(policies.len());
+		let mut enabled_flags = ColumnBuffer::bool_with_capacity(policies.len());
 
 		for p in policies {
 			ids.push(p.id);
 			names.push(p.name.as_deref().unwrap_or(""));
 			target_types.push(p.target_type.as_str());
 			target_namespaces.push(p.target_namespace.as_deref().unwrap_or(""));
-			target_objects.push(p.target_object.as_deref().unwrap_or(""));
+			target_shapes.push(p.target_shape.as_deref().unwrap_or(""));
 			enabled_flags.push(p.enabled);
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: ids,
-			},
-			Column {
-				name: Fragment::internal("name"),
-				data: names,
-			},
-			Column {
-				name: Fragment::internal("target_type"),
-				data: target_types,
-			},
-			Column {
-				name: Fragment::internal("target_namespace"),
-				data: target_namespaces,
-			},
-			Column {
-				name: Fragment::internal("target_object"),
-				data: target_objects,
-			},
-			Column {
-				name: Fragment::internal("enabled"),
-				data: enabled_flags,
-			},
+			ColumnWithName::new(Fragment::internal("id"), ids),
+			ColumnWithName::new(Fragment::internal("name"), names),
+			ColumnWithName::new(Fragment::internal("target_type"), target_types),
+			ColumnWithName::new(Fragment::internal("target_namespace"), target_namespaces),
+			ColumnWithName::new(Fragment::internal("target_shape"), target_shapes),
+			ColumnWithName::new(Fragment::internal("enabled"), enabled_flags),
 		];
 
 		self.exhausted = true;
@@ -99,7 +80,7 @@ impl BaseVTable for SystemPolicies {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

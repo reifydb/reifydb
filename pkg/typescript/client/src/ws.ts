@@ -20,99 +20,258 @@ import type {
     QueryResponse,
     Column,
     ErrorResponse,
+    LoginChallengeResult,
     LoginResult,
     LogoutRequest,
     LogoutResponse,
+    ResponseMeta,
     SubscribeRequest,
     SubscribedResponse,
+    SubscriptionConfig,
     UnsubscribeRequest,
     UnsubscribedResponse,
     ChangeMessage,
-    SubscriptionCallbacks
+    SubscriptionCallbacks,
+    BatchSubscribeRequest,
+    BatchSubscribedResponse,
+    BatchUnsubscribeRequest,
+    BatchUnsubscribedResponse,
+    BatchChangeMessage,
+    BatchMemberClosedMessage,
+    BatchClosedMessage,
+    BatchSubscriptionMember,
+    BatchSubscriptionCallbacks,
+    BatchSubscription
 } from "./types";
 import {
+    build_subscription_rql,
     ReifyError
 } from "./types";
-import {encodeParams} from "./encoder";
+import {encode_params} from "./encoder";
+import {rbcf} from "./rbcf";
+import {CONTENT_TYPE_RBCF} from "./content-types";
+
+const enum BinaryKind {
+    Response = 0x00,
+    Change = 0x01,
+    BatchChange = 0x02,
+}
+
+interface BinaryEnvelope {
+    kind: BinaryKind;
+    id: string;
+    meta?: ResponseMeta;
+    rbcf: Uint8Array;
+}
+
+interface BatchBinaryEnvelope {
+    batch_id: string;
+    entries: Array<{ subscription_id: string; rbcf: Uint8Array }>;
+}
+
+// Wire format: `[u8 kind][u32 LE id_len][id UTF-8 bytes][u32 LE meta_len][meta UTF-8 JSON bytes][RBCF payload]`.
+// Must stay in sync with `encode_rbcf_envelope` in
+// `crates/sub-server-ws/src/handler.rs`.
+function decode_envelope(bytes: Uint8Array): BinaryEnvelope | null {
+    if (bytes.length < 5) return null;
+    const kind = bytes[0] as BinaryKind;
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const id_len = view.getUint32(1, true);
+    if (bytes.length < 5 + id_len + 4) return null;
+    const decoder = new TextDecoder("utf-8");
+    const id = decoder.decode(bytes.subarray(5, 5 + id_len));
+
+    const meta_len = view.getUint32(5 + id_len, true);
+    if (bytes.length < 5 + id_len + 4 + meta_len) return null;
+
+    let meta: ResponseMeta | undefined;
+    if (meta_len > 0) {
+        const meta_json = decoder.decode(bytes.subarray(5 + id_len + 4, 5 + id_len + 4 + meta_len));
+        try {
+            meta = JSON.parse(meta_json);
+        } catch (e) {
+            console.error("Failed to parse RBCF metadata", e);
+        }
+    }
+
+    const rbcf = bytes.subarray(5 + id_len + 4 + meta_len);
+    return {kind, id, meta, rbcf};
+}
+
+// Batch wire format (kind = 0x02):
+// `[u8 kind][u32 LE batch_id_len][batch_id][u32 LE num_entries]` then N entries of
+// `[u32 LE sub_id_len][sub_id][u32 LE rbcf_len][rbcf_bytes]`.
+// Must stay in sync with `encode_rbcf_batch_envelope` in
+// `crates/sub-server-ws/src/subscription/registry.rs`.
+function decode_batch_envelope(bytes: Uint8Array): BatchBinaryEnvelope | null {
+    if (bytes.length < 9) return null;
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const decoder = new TextDecoder("utf-8");
+
+    const batch_id_len = view.getUint32(1, true);
+    let offset = 5;
+    if (bytes.length < offset + batch_id_len + 4) return null;
+    const batch_id = decoder.decode(bytes.subarray(offset, offset + batch_id_len));
+    offset += batch_id_len;
+
+    const num_entries = view.getUint32(offset, true);
+    offset += 4;
+
+    const entries: Array<{ subscription_id: string; rbcf: Uint8Array }> = [];
+    for (let i = 0; i < num_entries; i++) {
+        if (bytes.length < offset + 4) return null;
+        const sub_id_len = view.getUint32(offset, true);
+        offset += 4;
+        if (bytes.length < offset + sub_id_len + 4) return null;
+        const subscription_id = decoder.decode(bytes.subarray(offset, offset + sub_id_len));
+        offset += sub_id_len;
+
+        const rbcf_len = view.getUint32(offset, true);
+        offset += 4;
+        if (bytes.length < offset + rbcf_len) return null;
+        const rbcf_bytes = bytes.subarray(offset, offset + rbcf_len);
+        offset += rbcf_len;
+
+        entries.push({subscription_id, rbcf: rbcf_bytes});
+    }
+
+    return {batch_id, entries};
+}
 
 export interface WsClientOptions {
     url: string;
-    timeoutMs?: number;
+    timeout_ms?: number;
     token?: string;
-    maxReconnectAttempts?: number;
-    reconnectDelayMs?: number;
+    max_reconnect_attempts?: number;
+    reconnect_delay_ms?: number;
+    signal?: AbortSignal;
+    /**
+     * Wire format for data frames. Defaults to `"frames"`.
+     *
+     * - `"json"`   — rows-shape JSON: `[[{col: val, ...}, ...], ...]`
+     * - `"frames"` — frames-shape JSON: columnar frames (default)
+     * - `"rbcf"`   — frames-shape binary (RBCF)
+     */
+    format?: "json" | "frames" | "rbcf";
 }
 
 interface SubscriptionState<T = any> {
-    subscriptionId: string;
-    query: string;
+    subscription_id: string;
+    rql: string;
     params?: any;
     shape?: ShapeNode;
     callbacks: SubscriptionCallbacks<T>;
+    config?: SubscriptionConfig;
 }
 
-type ResponsePayload = ErrorResponse | AdminResponse | AuthResponse | CommandResponse | QueryResponse | SubscribedResponse | UnsubscribedResponse | LogoutResponse;
+interface BatchState {
+    batch_id: string;
+    members: BatchSubscriptionMember[];
+    members_by_sub_id: Map<string, SubscriptionState>;
+    batch_callbacks?: BatchSubscriptionCallbacks;
+}
 
-async function createWebSocket(url: string): Promise<WebSocket> {
+type ResponsePayload = ErrorResponse | AdminResponse | AuthResponse | CommandResponse | QueryResponse | SubscribedResponse | UnsubscribedResponse | BatchSubscribedResponse | BatchUnsubscribedResponse | LogoutResponse;
+
+async function create_web_socket(url: string): Promise<WebSocket> {
+    let socket: WebSocket;
     if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
-        return new WebSocket(url);
+        socket = new WebSocket(url);
     } else {
         //@ts-ignore
-        const wsModule = await import("ws");
-        return new wsModule.WebSocket(url);
+        const ws_module = await import("ws");
+        socket = new ws_module.WebSocket(url);
     }
+    // Deliver binary frames as ArrayBuffer so the RBCF envelope parser sees a uniform shape
+    // across the browser native WebSocket and the node `ws` package.
+    try {
+        (socket as any).binaryType = "arraybuffer";
+    } catch {
+        // Some environments disallow setting before open — best effort.
+    }
+    return socket;
+}
+
+interface PendingEntry {
+    type: string;
+    handler: (response: ResponsePayload) => void;
 }
 
 
 export class WsClient {
     private options: WsClientOptions;
-    private nextId: number;
+    private next_id: number;
     private socket: WebSocket;
-    private pending = new Map<string, (response: ResponsePayload) => void>();
-    private reconnectAttempts: number = 0;
-    private shouldReconnect: boolean = true;
-    private isReconnecting: boolean = false;
+    private pending = new Map<string, PendingEntry>();
+    private reconnect_attempts: number = 0;
+    private should_reconnect: boolean = true;
+    private is_reconnecting: boolean = false;
     private subscriptions = new Map<string, SubscriptionState>();
+    private batches = new Map<string, BatchState>();
+    private sub_to_batch = new Map<string, string>();
 
     private constructor(socket: WebSocket, options: WsClientOptions) {
         this.options = options;
-        this.nextId = 1;
+        this.next_id = 1;
         this.socket = socket;
 
-        this.setupSocketHandlers();
+        this.setup_socket_handlers();
     }
 
     static async connect(options: WsClientOptions): Promise<WsClient> {
-        const socket = await createWebSocket(options.url);
+        if (options.signal?.aborted) {
+            throw new Error("AbortError");
+        }
+
+        const socket = await create_web_socket(options.url);
 
         // Wait for connection to open if not already open, with timeout
         if (socket.readyState !== 1) {
-            const connectionTimeoutMs = 30000; // 30 second connection timeout
+            const connection_timeout_ms = 30000; // 30 second connection timeout
             await new Promise<void>((resolve, reject) => {
-                const connectionTimeout = setTimeout(() => {
-                    socket.removeEventListener("open", onOpen);
-                    socket.removeEventListener("error", onError);
+                const connection_timeout = setTimeout(() => {
+                    cleanup();
                     socket.close();
-                    reject(new Error(`WebSocket connection timeout after ${connectionTimeoutMs}ms`));
-                }, connectionTimeoutMs);
+                    reject(new Error(`WebSocket connection timeout after ${connection_timeout_ms}ms`));
+                }, connection_timeout_ms);
 
-                const onOpen = () => {
-                    clearTimeout(connectionTimeout);
-                    socket.removeEventListener("open", onOpen);
-                    socket.removeEventListener("error", onError);
+                const on_abort = () => {
+                    cleanup();
+                    socket.close();
+                    reject(new Error("AbortError"));
+                };
+
+                const on_open = () => {
+                    cleanup();
                     resolve();
                 };
 
-                const onError = () => {
-                    clearTimeout(connectionTimeout);
-                    socket.removeEventListener("open", onOpen);
-                    socket.removeEventListener("error", onError);
+                const on_error = () => {
+                    cleanup();
                     reject(new Error("WebSocket connection failed"));
                 };
 
-                socket.addEventListener("open", onOpen);
-                socket.addEventListener("error", onError);
+                const cleanup = () => {
+                    clearTimeout(connection_timeout);
+                    socket.removeEventListener("open", on_open);
+                    socket.removeEventListener("error", on_error);
+                    if (options.signal) {
+                        options.signal.removeEventListener("abort", on_abort);
+                    }
+                };
+
+                if (options.signal) {
+                    options.signal.addEventListener("abort", on_abort);
+                }
+                
+                socket.addEventListener("open", on_open);
+                socket.addEventListener("error", on_error);
             });
+        }
+
+        if (options.signal?.aborted) {
+            socket.close();
+            throw new Error("AbortError");
         }
 
         if (options.token) {
@@ -123,178 +282,142 @@ export class WsClient {
     }
 
     /**
-     * Execute admin operation(s) with shapes for each statement for proper type inference.
-     * Admin operations support DDL (CREATE TABLE, ALTER, etc.), DML, and queries.
-     * @param statements - Single statement or array of RQL statements
-     * @param params - Parameters for the statements (use null or {} if no params)
-     * @param shapes - Shape for each statement's result
+     * @param rql - RQL string to execute
      */
     async admin<const S extends readonly ShapeNode[]>(
-        statements: string | string[],
+        rql: string,
         params: any,
         shapes: S
     ): Promise<FrameResults<S>> {
-        const id = `req-${this.nextId++}`;
+        const { frames } = await this.admin_with_meta(rql, params, shapes);
+        return frames;
+    }
 
-        // Normalize statements to array
-        const statementArray = Array.isArray(statements) ? statements : [statements];
-        // When multiple array elements, mark each with OUTPUT so results are returned.
-        const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statementArray;
-
-        // Encode params without shape assumptions
-        const encodedParams = params !== undefined && params !== null
-            ? encodeParams(params)
-            : undefined;
-
-        const result = await this.send({
-            id,
-            type: "Admin",
-            payload: {
-                statements: outputStatements,
-                params: encodedParams
-            },
-        });
-
-        // Transform each frame with its corresponding shape
-        const transformedFrames = result.map((frame: any, frameIndex: number) => {
-            const frameShape = shapes[frameIndex];
-            if (!frameShape) {
-                return frame; // No shape for this frame, return as-is
-            }
-            return frame.map((row: any) => this.transformResult(row, frameShape));
-        });
-
-        return transformedFrames as FrameResults<S>;
+    async admin_with_meta<const S extends readonly ShapeNode[]>(
+        rql: string,
+        params: any,
+        shapes: S
+    ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
+        return this.execute("Admin", rql, params, shapes);
     }
 
     /**
-     * Execute command(s) with shapes for each statement for proper type inference
-     * @param statements - Single statement or array of RQL commands
-     * @param params - Parameters for the commands (use null or {} if no params)
-     * @param shapes - Shape for each statement's result
+     * @param rql - RQL string to execute
      */
     async command<const S extends readonly ShapeNode[]>(
-        statements: string | string[],
+        rql: string,
         params: any,
         shapes: S
     ): Promise<FrameResults<S>> {
-        const id = `req-${this.nextId++}`;
+        const { frames } = await this.command_with_meta(rql, params, shapes);
+        return frames;
+    }
 
-        // Normalize statements to array
-        const statementArray = Array.isArray(statements) ? statements : [statements];
-        // When multiple array elements, mark each with OUTPUT so results are returned.
-        const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statementArray;
-
-        // Encode params without shape assumptions
-        const encodedParams = params !== undefined && params !== null
-            ? encodeParams(params)
-            : undefined;
-
-        const result = await this.send({
-            id,
-            type: "Command",
-            payload: {
-                statements: outputStatements,
-                params: encodedParams
-            },
-        });
-
-        // Transform each frame with its corresponding shape
-        const transformedFrames = result.map((frame: any, frameIndex: number) => {
-            const frameShape = shapes[frameIndex];
-            if (!frameShape) {
-                return frame; // No shape for this frame, return as-is
-            }
-            return frame.map((row: any) => this.transformResult(row, frameShape));
-        });
-
-        return transformedFrames as FrameResults<S>;
+    async command_with_meta<const S extends readonly ShapeNode[]>(
+        rql: string,
+        params: any,
+        shapes: S
+    ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
+        return this.execute("Command", rql, params, shapes);
     }
 
 
     /**
-     * Execute query(s) with shapes for each statement for proper type inference
-     * @param statements - Single statement or array of RQL queries
-     * @param params - Parameters for the queries (use null or {} if no params)
-     * @param shapes - Shape for each statement's result
+     * @param rql - RQL string to execute
      */
     async query<const S extends readonly ShapeNode[]>(
-        statements: string | string[],
+        rql: string,
         params: any,
         shapes: S
     ): Promise<FrameResults<S>> {
-        const id = `req-${this.nextId++}`;
+        const { frames } = await this.query_with_meta(rql, params, shapes);
+        return frames;
+    }
 
-        // Normalize statements to array
-        const statementArray = Array.isArray(statements) ? statements : [statements];
-        // When multiple array elements, mark each with OUTPUT so results are returned.
-        const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statementArray;
+    async query_with_meta<const S extends readonly ShapeNode[]>(
+        rql: string,
+        params: any,
+        shapes: S
+    ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
+        return this.execute("Query", rql, params, shapes);
+    }
+
+    private async execute<const S extends readonly ShapeNode[]>(
+        type: "Admin" | "Command" | "Query",
+        rql: string,
+        params: any,
+        shapes: S
+    ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
+        const id = `req-${this.next_id++}`;
 
         // Encode params without shape assumptions
-        const encodedParams = params !== undefined && params !== null
-            ? encodeParams(params)
+        const encoded_params = params !== undefined && params !== null
+            ? encode_params(params)
             : undefined;
 
-        const result = await this.send({
+        const { result, meta } = await this.send_with_meta({
             id,
-            type: "Query",
+            type,
             payload: {
-                statements: outputStatements,
-                params: encodedParams
+                rql,
+                params: encoded_params
             },
-        });
+        } as AdminRequest | CommandRequest | QueryRequest);
 
         // Transform each frame with its corresponding shape
-        const transformedFrames = result.map((frame: any, frameIndex: number) => {
-            const frameShape = shapes[frameIndex];
-            if (!frameShape) {
+        const transformed_frames = result.map((frame: any, frame_index: number) => {
+            const frame_shape = shapes[frame_index];
+            if (!frame_shape) {
                 return frame; // No shape for this frame, return as-is
             }
-            return frame.map((row: any) => this.transformResult(row, frameShape));
+            return frame.map((row: any) => this.transform_result(row, frame_shape));
         });
 
-        return transformedFrames as FrameResults<S>;
+        return { frames: transformed_frames as FrameResults<S>, meta };
     }
 
     async subscribe<T = any>(
-        query: string,
+        rql: string,
         params: any,
         shape: ShapeNode | undefined,
-        callbacks: SubscriptionCallbacks<T>
+        callbacks: SubscriptionCallbacks<T>,
+        config?: SubscriptionConfig
     ): Promise<string> {
-        const id = `sub-${this.nextId++}`;
+        const id = `sub-${this.next_id++}`;
 
+        // Subscriptions always use columnar shape (frames or rbcf) — the change-tracking
+        // protocol reads `_op` from the columnar layout, so rows-shape JSON cannot carry it.
+        const sub_format = this.options.format === "rbcf" ? "rbcf" : "frames";
+        const wire_rql = build_subscription_rql(rql, config);
         const request: SubscribeRequest = {
             id,
             type: "Subscribe",
-            payload: {query}
+            payload: {rql: wire_rql, format: sub_format} as any
         };
 
         return new Promise((resolve, reject) => {
-            this.pending.set(id, (response) => {
-                if (response.type === "Err") {
-                    reject(new ReifyError(response));
-                } else if (response.type === "Subscribed") {
-                    const subscriptionId = response.payload.subscription_id;
+            this.pending.set(id, {
+                type: "Subscribe",
+                handler: (response) => {
+                    if (response.type === "Err") {
+                        reject(new ReifyError(response));
+                    } else if (response.type === "Subscribed") {
+                        const subscription_id = response.payload.subscription_id;
 
-                    // Store subscription state
-                    this.subscriptions.set(subscriptionId, {
-                        subscriptionId,
-                        query,
-                        params,
-                        shape,
-                        callbacks
-                    });
+                        // Store subscription state
+                        this.subscriptions.set(subscription_id, {
+                            subscription_id,
+                            rql,
+                            params,
+                            shape,
+                            callbacks,
+                            config
+                        });
 
-                    resolve(subscriptionId);
-                } else {
-                    reject(new Error("Unexpected response type"));
+                        resolve(subscription_id);
+                    } else {
+                        reject(new Error("Unexpected response type"));
+                    }
                 }
             });
 
@@ -302,24 +425,27 @@ export class WsClient {
         });
     }
 
-    async unsubscribe(subscriptionId: string): Promise<void> {
-        const id = `unsub-${this.nextId++}`;
+    async unsubscribe(subscription_id: string): Promise<void> {
+        const id = `unsub-${this.next_id++}`;
 
         const request: UnsubscribeRequest = {
             id,
             type: "Unsubscribe",
-            payload: {subscription_id: subscriptionId}
+            payload: {subscription_id: subscription_id}
         };
 
         return new Promise((resolve, reject) => {
-            this.pending.set(id, (response) => {
-                if (response.type === "Err") {
-                    reject(new ReifyError(response));
-                } else if (response.type === "Unsubscribed") {
-                    this.subscriptions.delete(subscriptionId);
-                    resolve();
-                } else {
-                    reject(new Error("Unexpected response type"));
+            this.pending.set(id, {
+                type: "Unsubscribe",
+                handler: (response) => {
+                    if (response.type === "Err") {
+                        reject(new ReifyError(response));
+                    } else if (response.type === "Unsubscribed") {
+                        this.subscriptions.delete(subscription_id);
+                        resolve();
+                    } else {
+                        reject(new Error("Unexpected response type"));
+                    }
                 }
             });
 
@@ -327,7 +453,117 @@ export class WsClient {
         });
     }
 
+    async batch_subscribe(
+        members: BatchSubscriptionMember[],
+        batch_callbacks?: BatchSubscriptionCallbacks
+    ): Promise<BatchSubscription> {
+        if (members.length === 0) {
+            throw new Error("batch_subscribe requires at least one member");
+        }
+
+        const id = `batch-sub-${this.next_id++}`;
+        const sub_format = this.options.format === "rbcf" ? "rbcf" : "frames";
+        const request: BatchSubscribeRequest = {
+            id,
+            type: "BatchSubscribe",
+            payload: {
+                queries: members.map(m => build_subscription_rql(m.rql, m.config)),
+                format: sub_format as any
+            }
+        };
+
+        return new Promise((resolve, reject) => {
+            this.pending.set(id, {
+                type: "BatchSubscribe",
+                handler: (response) => {
+                    if (response.type === "Err") {
+                        reject(new ReifyError(response));
+                        return;
+                    }
+                    if (response.type !== "BatchSubscribed") {
+                        reject(new Error("Unexpected response type"));
+                        return;
+                    }
+
+                    const {batch_id, members: member_infos} = response.payload;
+                    const members_by_sub_id = new Map<string, SubscriptionState>();
+                    const subscription_ids: string[] = new Array(members.length);
+
+                    for (const info of member_infos) {
+                        const member = members[info.index];
+                        if (!member) continue;
+                        subscription_ids[info.index] = info.subscription_id;
+                        members_by_sub_id.set(info.subscription_id, {
+                            subscription_id: info.subscription_id,
+                            rql: member.rql,
+                            params: member.params,
+                            shape: member.shape,
+                            callbacks: member.callbacks,
+                            config: member.config
+                        });
+                        this.sub_to_batch.set(info.subscription_id, batch_id);
+                    }
+
+                    this.batches.set(batch_id, {
+                        batch_id,
+                        members,
+                        members_by_sub_id,
+                        batch_callbacks
+                    });
+
+                    resolve({batch_id, subscription_ids});
+                }
+            });
+
+            this.socket.send(JSON.stringify(request));
+        });
+    }
+
+    async batch_unsubscribe(batch_id: string): Promise<void> {
+        const id = `batch-unsub-${this.next_id++}`;
+
+        const request: BatchUnsubscribeRequest = {
+            id,
+            type: "BatchUnsubscribe",
+            payload: {batch_id}
+        };
+
+        return new Promise((resolve, reject) => {
+            this.pending.set(id, {
+                type: "BatchUnsubscribe",
+                handler: (response) => {
+                    if (response.type === "Err") {
+                        reject(new ReifyError(response));
+                    } else if (response.type === "BatchUnsubscribed") {
+                        this.cleanup_batch(batch_id);
+                        resolve();
+                    } else {
+                        reject(new Error("Unexpected response type"));
+                    }
+                }
+            });
+
+            this.socket.send(JSON.stringify(request));
+        });
+    }
+
+    private cleanup_batch(batch_id: string): void {
+        const batch = this.batches.get(batch_id);
+        if (!batch) return;
+        for (const sub_id of batch.members_by_sub_id.keys()) {
+            this.sub_to_batch.delete(sub_id);
+        }
+        this.batches.delete(batch_id);
+    }
+
     async send(req: AdminRequest | CommandRequest | QueryRequest): Promise<any> {
+        const { result } = await this.send_with_meta(req);
+        return result;
+    }
+
+    async send_with_meta(
+        req: AdminRequest | CommandRequest | QueryRequest,
+    ): Promise<{ result: any, meta?: ResponseMeta }> {
         const id = req.id;
 
         if (this.socket.readyState !== 1) {
@@ -344,16 +580,24 @@ export class WsClient {
             });
         }
 
+        req = {
+            ...req,
+            payload: { ...req.payload, format: this.wire_format() },
+        } as AdminRequest | CommandRequest | QueryRequest;
+
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
-            const timeoutMs = this.options.timeoutMs ?? 30_000;
+            const timeout_ms = this.options.timeout_ms ?? 30_000;
             const timeout = setTimeout(() => {
                 this.pending.delete(id);
                 reject(new Error("ReifyDB query timeout"));
-            }, timeoutMs);
+            }, timeout_ms);
 
-            this.pending.set(id, (res) => {
-                clearTimeout(timeout);
-                resolve(res);
+            this.pending.set(id, {
+                type: req.type,
+                handler: (res) => {
+                    clearTimeout(timeout);
+                    resolve(res);
+                }
             });
 
             this.socket.send(JSON.stringify(req));
@@ -368,68 +612,82 @@ export class WsClient {
             throw new Error(`Unexpected response type: ${response.type}`);
         }
 
+        const meta = (response.payload as any).meta as ResponseMeta | undefined;
+
+        // Response shape depends on wire format:
+        // - "json"   → body is `[[{col: val}, ...], ...]` already in rows shape
+        // - "frames" → body is `{frames: [ColumnarFrame, ...]}` needing column→row pivot
+        // - "rbcf"   → handle_binary_message synthesizes `{frames}` so it matches "frames"
+        if (this.wire_format() === "json") {
+            return { result: response.payload.body ?? [], meta };
+        }
         const frames = response.payload.body?.frames || [];
-        return frames.map((frame: any) =>
-            columnsToRows(frame.columns)
-        );
+        return {
+            result: frames.map((frame: any) => columns_to_rows(frame.columns)),
+            meta,
+        };
+    }
+
+    private wire_format(): "json" | "frames" | "rbcf" {
+        return this.options.format ?? "frames";
     }
 
 
-    private transformResult(row: any, resultShape: any): any {
+    private transform_result(row: any, result_shape: any): any {
         // Handle object shape with primitive or value properties
-        if (resultShape && resultShape.kind === 'object' && resultShape.properties) {
-            const transformedRow: any = {};
+        if (result_shape && result_shape.kind === 'object' && result_shape.properties) {
+            const transformed_row: any = {};
             for (const [key, value] of Object.entries(row)) {
-                const propertyShape = resultShape.properties[key];
-                if (propertyShape && propertyShape.kind === 'primitive') {
+                const property_shape = result_shape.properties[key];
+                if (property_shape && property_shape.kind === 'primitive') {
                     // Convert Value objects to primitives for primitive shape properties
                     // Check if it's a Value instance by checking for valueOf method
                     if (value && typeof value === 'object' && typeof (value as any).valueOf === 'function') {
-                        const rawValue = (value as any).valueOf();
-                        transformedRow[key] = this.coerceToPrimitiveType(rawValue, propertyShape.type);
+                        const raw_value = (value as any).valueOf();
+                        transformed_row[key] = this.coerce_to_primitive_type(raw_value, property_shape.type);
                     } else {
-                        transformedRow[key] = this.coerceToPrimitiveType(value, propertyShape.type);
+                        transformed_row[key] = this.coerce_to_primitive_type(value, property_shape.type);
                     }
-                } else if (propertyShape && propertyShape.kind === 'value') {
+                } else if (property_shape && property_shape.kind === 'value') {
                     // Keep Value objects as-is for value shape properties
-                    transformedRow[key] = value;
+                    transformed_row[key] = value;
                 } else {
                     // Recursively transform nested structures
-                    transformedRow[key] = propertyShape ? this.transformResult(value, propertyShape) : value;
+                    transformed_row[key] = property_shape ? this.transform_result(value, property_shape) : value;
                 }
             }
-            return transformedRow;
+            return transformed_row;
         }
 
         // Handle primitive shape transformation
-        if (resultShape && resultShape.kind === 'primitive') {
+        if (result_shape && result_shape.kind === 'primitive') {
             // Single primitive value - extract from Value object if needed
             // Check if it's a Value instance by checking for valueOf method
             if (row && typeof row === 'object' && typeof row.valueOf === 'function') {
-                return this.coerceToPrimitiveType(row.valueOf(), resultShape.type);
+                return this.coerce_to_primitive_type(row.valueOf(), result_shape.type);
             }
-            return this.coerceToPrimitiveType(row, resultShape.type);
+            return this.coerce_to_primitive_type(row, result_shape.type);
         }
 
         // Handle value shape transformation - keep Value objects as-is
-        if (resultShape && resultShape.kind === 'value') {
+        if (result_shape && result_shape.kind === 'value') {
             return row;
         }
 
         // Handle array shape
-        if (resultShape && resultShape.kind === 'array') {
+        if (result_shape && result_shape.kind === 'array') {
             if (Array.isArray(row)) {
-                return row.map((item: any) => this.transformResult(item, resultShape.items));
+                return row.map((item: any) => this.transform_result(item, result_shape.items));
             }
             return row;
         }
 
         // Handle optional shape
-        if (resultShape && resultShape.kind === 'optional') {
+        if (result_shape && result_shape.kind === 'optional') {
             if (row === undefined || row === null) {
                 return undefined;
             }
-            return this.transformResult(row, resultShape.shape);
+            return this.transform_result(row, result_shape.shape);
         }
 
         // Default: return as-is
@@ -441,14 +699,14 @@ export class WsClient {
      * This handles cases where the server returns a smaller integer type
      * but the shape expects a bigint type (Int8, Int16, Uint8, Uint16).
      */
-    private coerceToPrimitiveType(value: any, shapeType: string): any {
+    private coerce_to_primitive_type(value: any, shape_type: string): any {
         if (value === undefined || value === null) {
             return value;
         }
 
         // Bigint types: Int8, Int16, Uint8, Uint16
-        const bigintTypes = ['Int8', 'Int16', 'Uint8', 'Uint16'];
-        if (bigintTypes.includes(shapeType)) {
+        const bigint_types = ['Int8', 'Int16', 'Uint8', 'Uint16'];
+        if (bigint_types.includes(shape_type)) {
             if (typeof value === 'bigint') {
                 return value;
             }
@@ -463,33 +721,36 @@ export class WsClient {
         return value;
     }
 
-    async loginWithPassword(principal: string, password: string): Promise<LoginResult> {
-        return this.login("password", principal, {password});
+    async login_with_password(identity: string, password: string): Promise<LoginResult> {
+        return this.login("password", {identifier: identity, password});
     }
 
-    async loginWithToken(principal: string, token: string): Promise<LoginResult> {
-        return this.login("token", principal, {token});
+    async login_with_token(token: string): Promise<LoginResult> {
+        return this.login("token", {token});
     }
 
-    async login(method: string, principal: string, credentials: Record<string, string>): Promise<LoginResult> {
-        const id = `auth-${this.nextId++}`;
+    async login(method: string, credentials: Record<string, string>): Promise<LoginResult> {
+        const id = `auth-${this.next_id++}`;
 
         const request: AuthRequest = {
             id,
             type: "Auth",
-            payload: {method, principal, credentials}
+            payload: {method, credentials}
         };
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
-            const timeoutMs = this.options.timeoutMs ?? 30_000;
+            const timeout_ms = this.options.timeout_ms ?? 30_000;
             const timeout = setTimeout(() => {
                 this.pending.delete(id);
                 reject(new Error("Login timeout"));
-            }, timeoutMs);
+            }, timeout_ms);
 
-            this.pending.set(id, (res) => {
-                clearTimeout(timeout);
-                resolve(res);
+            this.pending.set(id, {
+                type: "Auth",
+                handler: (res) => {
+                    clearTimeout(timeout);
+                    resolve(res);
+                }
             });
 
             this.socket.send(JSON.stringify(request));
@@ -513,32 +774,86 @@ export class WsClient {
         return {token: payload.token, identity: payload.identity};
     }
 
+    async login_challenge(method: string, credentials: Record<string, string>): Promise<LoginChallengeResult> {
+        const id = `auth-${this.next_id++}`;
+
+        const request: AuthRequest = {
+            id,
+            type: "Auth",
+            payload: {method, credentials}
+        };
+
+        const response = await new Promise<ResponsePayload>((resolve, reject) => {
+            const timeout_ms = this.options.timeout_ms ?? 30_000;
+            const timeout = setTimeout(() => {
+                this.pending.delete(id);
+                reject(new Error("Login timeout"));
+            }, timeout_ms);
+
+            this.pending.set(id, {
+                type: "Auth",
+                handler: (res) => {
+                    clearTimeout(timeout);
+                    resolve(res);
+                }
+            });
+
+            this.socket.send(JSON.stringify(request));
+        });
+
+        if (response.type === "Err") {
+            throw new ReifyError(response);
+        }
+
+        if (response.type !== "Auth") {
+            throw new Error(`Unexpected response type: ${response.type}`);
+        }
+
+        const payload = (response as AuthResponse).payload;
+
+        if (payload.status === "challenge") {
+            if (!payload.challenge_id || !payload.payload?.message || !payload.payload?.nonce) {
+                throw new Error("Malformed challenge response");
+            }
+            return {
+                kind: "challenge",
+                challenge_id: payload.challenge_id,
+                message: payload.payload.message,
+                nonce: payload.payload.nonce,
+            };
+        }
+
+        if (payload.status === "authenticated" && payload.token && payload.identity) {
+            this.options.token = payload.token;
+            return {kind: "authenticated", token: payload.token, identity: payload.identity};
+        }
+
+        throw new Error(`Authentication failed: ${payload.reason ?? "unknown"}`);
+    }
+
     async logout(): Promise<void> {
         if (!this.options.token) {
             return;
         }
 
-        const id = `logout-${this.nextId++}`;
-
-        const request: LogoutRequest = {
-            id,
-            type: "Logout",
-            payload: {}
-        };
+        const id = `logout-${this.next_id++}`;
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
-            const timeoutMs = this.options.timeoutMs ?? 30_000;
+            const timeout_ms = this.options.timeout_ms ?? 30_000;
             const timeout = setTimeout(() => {
                 this.pending.delete(id);
                 reject(new Error("Logout timeout"));
-            }, timeoutMs);
+            }, timeout_ms);
 
-            this.pending.set(id, (res) => {
-                clearTimeout(timeout);
-                resolve(res);
+            this.pending.set(id, {
+                type: "Logout",
+                handler: (res) => {
+                    clearTimeout(timeout);
+                    resolve(res);
+                }
             });
 
-            this.socket.send(JSON.stringify(request));
+            this.socket.send(JSON.stringify({id, type: "Logout"}));
         });
 
         if (response.type === "Err") {
@@ -549,67 +864,69 @@ export class WsClient {
     }
 
     disconnect() {
-        this.shouldReconnect = false;
+        this.should_reconnect = false;
         this.subscriptions.clear();
+        this.batches.clear();
+        this.sub_to_batch.clear();
         this.socket.close();
     }
 
-    private handleDisconnect() {
-        this.rejectAllPendingRequests();
+    private handle_disconnect() {
+        this.reject_all_pending_requests();
 
-        if (!this.shouldReconnect || this.isReconnecting) {
+        if (!this.should_reconnect || this.is_reconnecting) {
             return;
         }
 
-        const maxAttempts = this.options.maxReconnectAttempts ?? 5;
-        if (this.reconnectAttempts >= maxAttempts) {
-            console.error(`Max reconnection attempts (${maxAttempts}) reached`);
+        const max_attempts = this.options.max_reconnect_attempts ?? 5;
+        if (this.reconnect_attempts >= max_attempts) {
+            console.error(`Max reconnection attempts (${max_attempts}) reached`);
             return;
         }
 
-        this.attemptReconnect();
+        this.attempt_reconnect();
     }
 
-    private async attemptReconnect() {
-        this.isReconnecting = true;
-        this.reconnectAttempts++;
+    private async attempt_reconnect() {
+        this.is_reconnecting = true;
+        this.reconnect_attempts++;
 
-        const baseDelay = this.options.reconnectDelayMs ?? 1000;
-        const delay = baseDelay * Math.pow(2, this.reconnectAttempts - 1);
+        const base_delay = this.options.reconnect_delay_ms ?? 1000;
+        const delay = base_delay * Math.pow(2, this.reconnect_attempts - 1);
 
         console.log(`Attempting reconnection in ${delay}ms`);
 
         await new Promise(resolve => setTimeout(resolve, delay));
 
         try {
-            const socket = await createWebSocket(this.options.url);
+            const socket = await create_web_socket(this.options.url);
 
             if (socket.readyState !== 1) {
-                const connectionTimeoutMs = 30000; // 30 second connection timeout
+                const connection_timeout_ms = 30000; // 30 second connection timeout
                 await new Promise<void>((resolve, reject) => {
-                    const connectionTimeout = setTimeout(() => {
-                        socket.removeEventListener("open", onOpen);
-                        socket.removeEventListener("error", onError);
+                    const connection_timeout = setTimeout(() => {
+                        socket.removeEventListener("open", on_open);
+                        socket.removeEventListener("error", on_error);
                         socket.close();
-                        reject(new Error(`WebSocket reconnection timeout after ${connectionTimeoutMs}ms`));
-                    }, connectionTimeoutMs);
+                        reject(new Error(`WebSocket reconnection timeout after ${connection_timeout_ms}ms`));
+                    }, connection_timeout_ms);
 
-                    const onOpen = () => {
-                        clearTimeout(connectionTimeout);
-                        socket.removeEventListener("open", onOpen);
-                        socket.removeEventListener("error", onError);
+                    const on_open = () => {
+                        clearTimeout(connection_timeout);
+                        socket.removeEventListener("open", on_open);
+                        socket.removeEventListener("error", on_error);
                         resolve();
                     };
 
-                    const onError = () => {
-                        clearTimeout(connectionTimeout);
-                        socket.removeEventListener("open", onOpen);
-                        socket.removeEventListener("error", onError);
+                    const on_error = () => {
+                        clearTimeout(connection_timeout);
+                        socket.removeEventListener("open", on_open);
+                        socket.removeEventListener("error", on_error);
                         reject(new Error("WebSocket connection failed"));
                     };
 
-                    socket.addEventListener("open", onOpen);
-                    socket.addEventListener("error", onError);
+                    socket.addEventListener("open", on_open);
+                    socket.addEventListener("error", on_error);
                 });
             }
 
@@ -618,38 +935,57 @@ export class WsClient {
             }
 
             this.socket = socket;
-            this.setupSocketHandlers();
-            this.reconnectAttempts = 0;
-            this.isReconnecting = false;
+            this.setup_socket_handlers();
+            this.reconnect_attempts = 0;
+            this.is_reconnecting = false;
 
             // Re-establish all active subscriptions
-            await this.resubscribeAll();
+            await this.resubscribe_all();
         } catch (error) {
-            this.isReconnecting = false;
-            this.handleDisconnect();
+            this.is_reconnecting = false;
+            this.handle_disconnect();
         }
     }
 
-    private async resubscribeAll(): Promise<void> {
-        const subscriptionsToReestablish = Array.from(this.subscriptions.values());
+    private async resubscribe_all(): Promise<void> {
+        const subscriptions_to_reestablish = Array.from(this.subscriptions.values());
+        const batches_to_reestablish = Array.from(this.batches.values());
 
-        // Clear current subscriptions map (will be repopulated)
+        // Clear state (will be repopulated by re-subscribe calls)
         this.subscriptions.clear();
+        this.batches.clear();
+        this.sub_to_batch.clear();
 
-        for (const state of subscriptionsToReestablish) {
+        for (const state of subscriptions_to_reestablish) {
             try {
                 // Re-subscribe with same parameters
                 // Cast to avoid overload resolution issues in internal call
-                await (this.subscribe as any)(state.query, state.params, state.shape, state.callbacks);
+                await (this.subscribe as any)(state.rql, state.params, state.shape, state.callbacks, state.config);
             } catch (err) {
-                console.error(`Failed to resubscribe to ${state.query}:`, err);
+                console.error(`Failed to resubscribe to ${state.rql}:`, err);
+            }
+        }
+
+        for (const batch of batches_to_reestablish) {
+            try {
+                await this.batch_subscribe(batch.members, batch.batch_callbacks);
+            } catch (err) {
+                console.error(`Failed to re-establish batch subscription:`, err);
             }
         }
     }
 
-    private handleChangeMessage(msg: ChangeMessage): void {
+    private find_subscription_state(subscription_id: string): SubscriptionState | undefined {
+        const single = this.subscriptions.get(subscription_id);
+        if (single) return single;
+        const batch_id = this.sub_to_batch.get(subscription_id);
+        if (!batch_id) return undefined;
+        return this.batches.get(batch_id)?.members_by_sub_id.get(subscription_id);
+    }
+
+    private handle_change_message(msg: ChangeMessage): void {
         const {subscription_id, body} = msg.payload;
-        const state = this.subscriptions.get(subscription_id);
+        const state = this.find_subscription_state(subscription_id);
 
         if (!state) {
             console.error('No state for subscription_id:', subscription_id);
@@ -661,34 +997,34 @@ export class WsClient {
         const frame = frames[0];
 
         // Extract _op column to determine operation type
-        const opColumn = frame.columns.find((c: any) => c.name === "_op");
-        if (!opColumn || opColumn.payload.length === 0) {
-            console.error('Missing or empty _op column:', { opColumn, frame });
+        const op_column = frame.columns.find((c: any) => c.name === "_op");
+        if (!op_column || op_column.payload.length === 0) {
+            console.error('Missing or empty _op column:', { op_column, frame });
             return;
         }
 
-        // Transform frame to rows using existing transformResult logic
-        const rows = this.frameToRows(frame, state.shape);
+        // Transform frame to rows using existing transform_result logic
+        const rows = this.frame_to_rows(frame, state.shape);
 
         // Group rows by operation type (defensive - usually all same type)
         // Process in order to maintain sequential execution
         const batches: Array<{ op: 'INSERT' | 'UPDATE' | 'REMOVE'; rows: any[] }> = [];
 
         for (let i = 0; i < rows.length; i++) {
-            const opValue = parseInt(opColumn.payload[i]);
+            const op_value = parseInt(op_column.payload[i]);
             const operation: 'INSERT' | 'UPDATE' | 'REMOVE' =
-                opValue === 1 ? 'INSERT' :
-                    opValue === 2 ? 'UPDATE' :
-                        opValue === 3 ? 'REMOVE' : 'INSERT';
+                op_value === 1 ? 'INSERT' :
+                    op_value === 2 ? 'UPDATE' :
+                        op_value === 3 ? 'REMOVE' : 'INSERT';
 
             // Remove _op from this row
-            const {_op, ...cleanRow} = rows[i];
+            const {_op, ...clean_row} = rows[i];
 
             // Batch consecutive rows of same operation type
             if (batches.length > 0 && batches[batches.length - 1].op === operation) {
-                batches[batches.length - 1].rows.push(cleanRow);
+                batches[batches.length - 1].rows.push(clean_row);
             } else {
-                batches.push({op: operation, rows: [cleanRow]});
+                batches.push({op: operation, rows: [clean_row]});
             }
         }
 
@@ -696,26 +1032,26 @@ export class WsClient {
         for (const batch of batches) {
             switch (batch.op) {
                 case 'INSERT':
-                    state.callbacks.onInsert?.(batch.rows);
+                    state.callbacks.on_insert?.(batch.rows);
                     break;
                 case 'UPDATE':
-                    state.callbacks.onUpdate?.(batch.rows);
+                    state.callbacks.on_update?.(batch.rows);
                     break;
                 case 'REMOVE':
-                    state.callbacks.onRemove?.(batch.rows);
+                    state.callbacks.on_remove?.(batch.rows);
                     break;
             }
         }
     }
 
-    private frameToRows(frame: any, shape?: ShapeNode): any[] {
+    private frame_to_rows(frame: any, shape?: ShapeNode): any[] {
         // Convert frame columns to array of row objects
         if (!frame.columns || frame.columns.length === 0) return [];
 
-        const rowCount = frame.columns[0].payload.length;
+        const row_count = frame.columns[0].payload.length;
         const rows: any[] = [];
 
-        for (let i = 0; i < rowCount; i++) {
+        for (let i = 0; i < row_count; i++) {
             const row: any = {};
             for (const col of frame.columns) {
                 row[col.name] = decode({type: col.type, value: col.payload[i]});
@@ -725,33 +1061,95 @@ export class WsClient {
 
         // Apply shape transformation if provided
         if (shape) {
-            return rows.map(row => this.transformResult(row, shape));
+            return rows.map(row => this.transform_result(row, shape));
         }
 
         return rows;
     }
 
-    private setupSocketHandlers() {
+    private handle_batch_change(msg: BatchChangeMessage): void {
+        const {entries} = msg.payload;
+        for (const entry of entries) {
+            this.handle_change_message({
+                type: "Change",
+                payload: {
+                    subscription_id: entry.subscription_id,
+                    content_type: entry.content_type,
+                    body: entry.body
+                }
+            });
+        }
+    }
+
+    private handle_batch_member_closed(msg: BatchMemberClosedMessage): void {
+        const {batch_id, subscription_id} = msg.payload;
+        const batch = this.batches.get(batch_id);
+        if (!batch) return;
+        batch.members_by_sub_id.delete(subscription_id);
+        this.sub_to_batch.delete(subscription_id);
+        batch.batch_callbacks?.on_member_closed?.(subscription_id);
+    }
+
+    private handle_batch_closed(msg: BatchClosedMessage): void {
+        const {batch_id} = msg.payload;
+        const batch = this.batches.get(batch_id);
+        if (!batch) return;
+        this.cleanup_batch(batch_id);
+        batch.batch_callbacks?.on_closed?.();
+    }
+
+    private setup_socket_handlers() {
         this.socket.onmessage = (event) => {
-            const msg = JSON.parse(event.data);
+            const data = event.data;
+
+            // Binary path: RBCF envelope [u32 LE id_len][id UTF-8 bytes][RBCF payload].
+            // Only Admin/Command/Query responses arrive as binary; errors and subscription
+            // pushes are always JSON text.
+            if (data instanceof ArrayBuffer) {
+                this.handle_binary_message(new Uint8Array(data));
+                return;
+            }
+            if (typeof data !== "string") {
+                // Node `ws` without binaryType setting — convert Buffer-like to ArrayBuffer.
+                const buf = data as { buffer?: ArrayBuffer; byteOffset?: number; byteLength?: number };
+                if (buf && typeof buf.byteLength === "number" && buf.buffer instanceof ArrayBuffer) {
+                    const u8 = new Uint8Array(buf.buffer, buf.byteOffset ?? 0, buf.byteLength);
+                    this.handle_binary_message(u8);
+                    return;
+                }
+                return;
+            }
+
+            const msg = JSON.parse(data);
 
             // Handle server-initiated messages (no id)
             if (!msg.id) {
-                if (msg.type === "Change") {
-                    this.handleChangeMessage(msg);
+                switch (msg.type) {
+                    case "Change":
+                        this.handle_change_message(msg);
+                        return;
+                    case "BatchChange":
+                        this.handle_batch_change(msg);
+                        return;
+                    case "BatchMemberClosed":
+                        this.handle_batch_member_closed(msg);
+                        return;
+                    case "BatchClosed":
+                        this.handle_batch_closed(msg);
+                        return;
                 }
                 return;
             }
 
             const {id, type, payload} = msg;
 
-            const handler = this.pending.get(id);
-            if (!handler) {
+            const entry = this.pending.get(id);
+            if (!entry) {
                 return;
             }
 
             this.pending.delete(id);
-            handler({id, type, payload});
+            entry.handler({id, type, payload});
         };
 
         this.socket.onerror = (err) => {
@@ -759,11 +1157,11 @@ export class WsClient {
         };
 
         this.socket.onclose = () => {
-            this.handleDisconnect();
+            this.handle_disconnect();
         };
     }
 
-    private rejectAllPendingRequests() {
+    private reject_all_pending_requests() {
         const error: ErrorResponse = {
             id: "connection-error",
             type: "Err",
@@ -776,17 +1174,109 @@ export class WsClient {
             }
         };
 
-        for (const handler of this.pending.values()) {
-            handler(error);
+        for (const entry of this.pending.values()) {
+            entry.handler(error);
         }
         this.pending.clear();
+    }
+
+    private handle_binary_message(bytes: Uint8Array) {
+        if (bytes.length > 0 && bytes[0] === BinaryKind.BatchChange) {
+            this.handle_binary_batch_message(bytes);
+            return;
+        }
+
+        const envelope = decode_envelope(bytes);
+        if (!envelope) return;
+        const {kind, id, rbcf: rbcf_bytes} = envelope;
+
+        let frames: any[];
+        try {
+            frames = rbcf.decode(rbcf_bytes);
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (kind === BinaryKind.Response) {
+                const entry = this.pending.get(id);
+                if (!entry) return;
+                this.pending.delete(id);
+                entry.handler({
+                    id,
+                    type: "Err",
+                    payload: {
+                        diagnostic: { code: "RBCF_DECODE", message: msg, notes: [] }
+                    }
+                } as ErrorResponse);
+            } else {
+                console.error(`Failed to decode RBCF change for subscription ${id}: ${msg}`);
+            }
+            return;
+        }
+
+        if (kind === BinaryKind.Response) {
+            const entry = this.pending.get(id);
+            if (!entry) return;
+            this.pending.delete(id);
+            // Synthesize a response that looks like the JSON path so downstream logic is unchanged.
+            entry.handler({
+                id,
+                type: entry.type,
+                payload: {
+                    content_type: CONTENT_TYPE_RBCF,
+                    body: { frames },
+                    meta: envelope.meta,
+                },
+            } as ResponsePayload);
+            return;
+        }
+
+        if (kind === BinaryKind.Change) {
+            // Feed decoded frames through the same dispatch path as JSON change pushes.
+            this.handle_change_message({
+                type: "Change",
+                payload: {
+                    subscription_id: id,
+                    content_type: CONTENT_TYPE_RBCF,
+                    body: { frames },
+                }
+            });
+        }
+    }
+
+    private handle_binary_batch_message(bytes: Uint8Array) {
+        const envelope = decode_batch_envelope(bytes);
+        if (!envelope) return;
+
+        const batch = this.batches.get(envelope.batch_id);
+
+        for (const entry of envelope.entries) {
+            let frames: any[];
+            try {
+                frames = rbcf.decode(entry.rbcf);
+            } catch (e) {
+                const err = e instanceof Error ? e : new Error(String(e));
+                if (batch?.batch_callbacks?.on_entry_error) {
+                    batch.batch_callbacks.on_entry_error(entry.subscription_id, err);
+                } else {
+                    console.error(`Failed to decode RBCF batch entry for ${entry.subscription_id}: ${err.message}`);
+                }
+                continue;
+            }
+            this.handle_change_message({
+                type: "Change",
+                payload: {
+                    subscription_id: entry.subscription_id,
+                    content_type: CONTENT_TYPE_RBCF,
+                    body: { frames },
+                }
+            });
+        }
     }
 }
 
 
-function columnsToRows(columns: Column[]): Record<string, Value>[] {
-    const rowCount = columns[0]?.payload.length ?? 0;
-    return Array.from({length: rowCount}, (_, i) => {
+function columns_to_rows(columns: Column[]): Record<string, Value>[] {
+    const row_count = columns[0]?.payload.length ?? 0;
+    return Array.from({length: row_count}, (_, i) => {
         const row: Record<string, Value> = {};
         for (const col of columns) {
             row[col.name] = decode({type: col.type, value: col.payload[i]});

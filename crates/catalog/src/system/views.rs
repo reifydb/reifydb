@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::views::*, vtable::VIEWS};
 
-/// Returns the static definition for the system.views virtual table
-/// This table exposes information about all views in the database
 pub fn views() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
@@ -53,9 +51,8 @@ pub fn views() -> Arc<VTable> {
 				Column {
 					id: KIND,
 					name: "kind".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Utf8), /* Will store
-					                                                        * "Deferred" or
-					                                                        * "Transactional" */
+					constraint: TypeConstraint::unconstrained(Type::Utf8),
+
 					properties: vec![],
 					index: ColumnIndex(3),
 					auto_increment: false,

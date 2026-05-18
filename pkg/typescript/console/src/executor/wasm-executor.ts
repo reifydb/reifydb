@@ -14,32 +14,32 @@ export class WasmExecutor implements Executor {
     this.db = db;
   }
 
-  async execute(statement: string): Promise<ExecutionResult> {
-    const trimmed = statement.trim();
+  async execute(rql: string): Promise<ExecutionResult> {
+    const trimmed = rql.trim();
     const query = trimmed.endsWith(';') ? trimmed.slice(0, -1).trim() : trimmed;
 
     if (!query) {
-      return { success: true, data: [], executionTime: 0 };
+      return { success: true, data: [], execution_time: 0 };
     }
 
-    const startTime = performance.now();
+    const start_time = performance.now();
     try {
       const results = await this.db.admin(query);
-      const executionTime = Math.round(performance.now() - startTime);
+      const execution_time = Math.round(performance.now() - start_time);
       return {
         success: true,
         data: Array.isArray(results) ? results : [],
-        executionTime,
+        execution_time,
       };
     } catch (error) {
-      const executionTime = Math.round(performance.now() - startTime);
+      const execution_time = Math.round(performance.now() - start_time);
       let diagnostic: Diagnostic | undefined;
       if (error && typeof error === 'object' && 'code' in error) {
         const e = error as Record<string, unknown>;
         diagnostic = {
           code: String(e.code),
           message: String(e.message ?? ''),
-          statement: e.statement as string | undefined,
+          rql: e.rql as string | undefined,
           fragment: e.fragment as Diagnostic['fragment'],
           label: e.label as string | undefined,
           help: e.help as string | undefined,
@@ -51,7 +51,7 @@ export class WasmExecutor implements Executor {
         success: false,
         error: error instanceof Error ? error.message : String(error),
         diagnostic,
-        executionTime,
+        execution_time,
       };
     }
   }

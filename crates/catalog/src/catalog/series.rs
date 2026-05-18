@@ -5,7 +5,7 @@ use reifydb_core::{
 	encoded::shape::RowShape,
 	interface::catalog::{
 		change::CatalogTrackSeriesChangeOperations,
-		id::{NamespaceId, SeriesId},
+		id::{ColumnId, NamespaceId, SeriesId},
 		property::ColumnPropertyKind,
 		series::{Series, SeriesKey, SeriesMetadata},
 	},
@@ -44,6 +44,7 @@ pub struct SeriesToCreate {
 	pub columns: Vec<SeriesColumnToCreate>,
 	pub tag: Option<SumTypeId>,
 	pub key: SeriesKey,
+	pub underlying: bool,
 }
 
 impl From<SeriesColumnToCreate> for StoreSeriesColumnToCreate {
@@ -67,6 +68,7 @@ impl From<SeriesToCreate> for StoreSeriesToCreate {
 			columns: to_create.columns.into_iter().map(|c| c.into()).collect(),
 			tag: to_create.tag,
 			key: to_create.key,
+			underlying: to_create.underlying,
 		}
 	}
 }
@@ -82,9 +84,6 @@ impl Catalog {
 				CatalogStore::find_series(&mut Transaction::Admin(&mut *admin), id)
 			}
 			Transaction::Query(qry) => CatalogStore::find_series(&mut Transaction::Query(&mut *qry), id),
-			Transaction::Subscription(sub) => {
-				CatalogStore::find_series(&mut Transaction::Subscription(&mut *sub), id)
-			}
 			Transaction::Test(t) => CatalogStore::find_series(&mut Transaction::Admin(&mut *t.inner), id),
 			Transaction::Replica(rep) => {
 				CatalogStore::find_series(&mut Transaction::Replica(&mut *rep), id)
@@ -109,11 +108,6 @@ impl Catalog {
 			Transaction::Query(qry) => {
 				CatalogStore::find_series_by_name(&mut Transaction::Query(&mut *qry), namespace, name)
 			}
-			Transaction::Subscription(sub) => CatalogStore::find_series_by_name(
-				&mut Transaction::Subscription(&mut *sub),
-				namespace,
-				name,
-			),
 			Transaction::Test(t) => CatalogStore::find_series_by_name(
 				&mut Transaction::Admin(&mut *t.inner),
 				namespace,
@@ -138,6 +132,22 @@ impl Catalog {
 	#[instrument(name = "catalog::series::create", level = "debug", skip(self, txn, to_create))]
 	pub fn create_series(&self, txn: &mut AdminTransaction, to_create: SeriesToCreate) -> Result<Series> {
 		let series = CatalogStore::create_series(txn, to_create.into())?;
+		txn.track_series_created(series.clone())?;
+
+		let shape = RowShape::from(series.columns.as_slice());
+		self.get_or_create_row_shape(&mut Transaction::Admin(&mut *txn), shape.fields().to_vec())?;
+
+		Ok(series)
+	}
+
+	pub fn create_series_with_id(
+		&self,
+		txn: &mut AdminTransaction,
+		series_id: SeriesId,
+		to_create: SeriesToCreate,
+		column_ids: &[ColumnId],
+	) -> Result<Series> {
+		let series = CatalogStore::create_series_with_id(txn, series_id, to_create.into(), column_ids)?;
 		txn.track_series_created(series.clone())?;
 
 		let shape = RowShape::from(series.columns.as_slice());

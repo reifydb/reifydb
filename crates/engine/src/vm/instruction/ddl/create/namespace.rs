@@ -19,7 +19,6 @@ pub(crate) fn create_namespace(
 ) -> Result<Columns> {
 	let full_name: String = plan.segments.iter().map(|s| s.text()).collect::<Vec<_>>().join("::");
 
-	// Auto-create parent namespaces (mkdir -p semantics)
 	let mut parent_id = NamespaceId::ROOT;
 	for i in 0..plan.segments.len().saturating_sub(1) {
 		let prefix: String = plan.segments[..=i].iter().map(|s| s.text()).collect::<Vec<_>>().join("::");
@@ -44,7 +43,6 @@ pub(crate) fn create_namespace(
 		}
 	}
 
-	// Create the final (leaf) namespace
 	if let Some(existing) = services.catalog.find_namespace_by_name(&mut Transaction::Admin(txn), &full_name)?
 		&& plan.if_not_exists
 	{
@@ -90,48 +88,49 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 
 		// First creation should succeed
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE NAMESPACE my_shape",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE NAMESPACE my_shape",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 
-		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(16385));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("my_shape".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
 
 		// Creating the same namespace again with `IF NOT EXISTS`
 		// should not error and return the same id
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE NAMESPACE IF NOT EXISTS my_shape",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
-		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE NAMESPACE IF NOT EXISTS my_shape",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
+		assert_eq!(frame[0].get_value(0), Value::Uint8(16385));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("my_shape".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Boolean(false));
 
 		// Creating the same namespace again without `IF NOT EXISTS`
 		// should return error
-		let err = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE NAMESPACE my_shape",
-					params: Params::default(),
-				},
-			)
-			.unwrap_err();
-		assert_eq!(err.diagnostic().code, "CA_001");
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE NAMESPACE my_shape",
+				params: Params::default(),
+			},
+		);
+		assert!(r.is_err());
+		assert_eq!(r.error.unwrap().diagnostic().code, "CA_001");
 	}
 }

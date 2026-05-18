@@ -4,13 +4,17 @@ import {beforeAll, describe, expect, it} from 'vitest';
 import {Client, HttpClient} from "../../../src";
 import {Shape} from "@reifydb/core";
 
-describe('Concurrent requests', () => {
+describe.each([
+    {format: "frames"},
+    {format: "rbcf"},
+] as const)('Concurrent requests [$format]', ({format}) => {
     let httpClient: HttpClient;
 
     beforeAll(async () => {
         httpClient = Client.connect_http(process.env.REIFYDB_HTTP_URL, {
-            timeoutMs: 10000,
-            token: process.env.REIFYDB_TOKEN
+            timeout_ms: 10000,
+            token: process.env.REIFYDB_TOKEN,
+            format,
         });
     });
 

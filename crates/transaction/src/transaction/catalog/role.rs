@@ -14,7 +14,7 @@ use crate::{
 		TransactionalRoleChanges,
 	},
 	interceptor::role::{RolePostCreateContext, RolePostUpdateContext, RolePreDeleteContext, RolePreUpdateContext},
-	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
+	transaction::admin::AdminTransaction,
 };
 
 impl CatalogTrackRoleChangeOperations for AdminTransaction {
@@ -85,37 +85,5 @@ impl TransactionalRoleChanges for AdminTransaction {
 		self.changes.role.iter().rev().any(|change| {
 			change.op == Delete && change.pre.as_ref().map(|r| r.name == name).unwrap_or(false)
 		})
-	}
-}
-
-impl CatalogTrackRoleChangeOperations for SubscriptionTransaction {
-	fn track_role_created(&mut self, role: Role) -> Result<()> {
-		self.inner.track_role_created(role)
-	}
-
-	fn track_role_updated(&mut self, pre: Role, post: Role) -> Result<()> {
-		self.inner.track_role_updated(pre, post)
-	}
-
-	fn track_role_deleted(&mut self, role: Role) -> Result<()> {
-		self.inner.track_role_deleted(role)
-	}
-}
-
-impl TransactionalRoleChanges for SubscriptionTransaction {
-	fn find_role(&self, id: RoleId) -> Option<&Role> {
-		self.inner.find_role(id)
-	}
-
-	fn find_role_by_name(&self, name: &str) -> Option<&Role> {
-		self.inner.find_role_by_name(name)
-	}
-
-	fn is_role_deleted(&self, id: RoleId) -> bool {
-		self.inner.is_role_deleted(id)
-	}
-
-	fn is_role_deleted_by_name(&self, name: &str) -> bool {
-		self.inner.is_role_deleted_by_name(name)
 	}
 }

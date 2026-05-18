@@ -1,89 +1,55 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! HTTP server subsystem implementing the ReifyDB Subsystem trait.
-//!
-//! This module provides `HttpSubsystem` which manages the lifecycle of the
-//! HTTP server, including startup, health monitoring, and graceful shutdown.
-
 use std::{
 	any::Any,
+	io,
 	net::SocketAddr,
 	sync::{
-		Arc, RwLock,
+		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
 };
 
-use axum::serve;
+use axum::{serve, serve::ListenerExt};
 use reifydb_core::{
 	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::{SharedRuntime, sync::rwlock::RwLock};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_sub_server::state::AppState;
-use reifydb_type::{Result, error::Error};
+use reifydb_type::Result;
 use tokio::{net::TcpListener, sync::oneshot};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
-use crate::routes::router;
+use crate::{routes::router, state::HttpServerState};
 
-/// HTTP server subsystem.
-///
-/// Manages an Axum-based HTTP server with support for:
-/// - Graceful startup and shutdown
-/// - Health monitoring
-///
-/// # Example
-///
-/// ```ignore
-/// let state = AppState::new(pool, engine, QueryConfig::default(), RequestInterceptorChain::empty());
-///
-/// let mut http = HttpSubsystem::new(
-///     "0.0.0.0:8090".to_string(),
-///     state,
-/// );
-///
-/// http.start()?;
-/// // Server is now accepting connections
-///
-/// http.shutdown()?;
-/// // Server has gracefully stopped
-/// ```
 pub struct HttpSubsystem {
-	/// Address to bind the server to.
 	bind_addr: Option<String>,
-	/// Address to bind the admin server to.
+
 	admin_bind_addr: Option<String>,
-	/// Actual bound address (available after start).
+
 	actual_addr: RwLock<Option<SocketAddr>>,
-	/// Actual bound address for admin server (available after start).
+
 	admin_actual_addr: RwLock<Option<SocketAddr>>,
-	/// Shared application state.
+
 	state: AppState,
-	/// Flag indicating if the server is running.
+
 	running: Arc<AtomicBool>,
-	/// Channel to send shutdown signal.
+
 	shutdown_tx: Option<oneshot::Sender<()>>,
-	/// Channel to receive shutdown completion.
+
 	shutdown_complete_rx: Option<oneshot::Receiver<()>>,
-	/// Channel to send admin shutdown signal.
+
 	admin_shutdown_tx: Option<oneshot::Sender<()>>,
-	/// Channel to receive admin shutdown completion.
+
 	admin_shutdown_complete_rx: Option<oneshot::Receiver<()>>,
-	/// Shared tokio runtime.
+
 	runtime: SharedRuntime,
 }
 
 impl HttpSubsystem {
-	/// Create a new HTTP subsystem.
-	///
-	/// # Arguments
-	///
-	/// * `bind_addr` - Address and port to bind to (e.g., "0.0.0.0:8090")
-	/// * `state` - Shared application state with engine and config
-	/// * `runtime` - Shared runtime
 	pub fn new(
 		bind_addr: Option<String>,
 		admin_bind_addr: Option<String>,
@@ -105,29 +71,92 @@ impl HttpSubsystem {
 		}
 	}
 
-	/// Get the bind address.
 	pub fn bind_addr(&self) -> Option<&str> {
 		self.bind_addr.as_deref()
 	}
 
-	/// Get the actual bound address (available after start).
 	pub fn local_addr(&self) -> Option<SocketAddr> {
-		*self.actual_addr.read().unwrap()
+		*self.actual_addr.read()
 	}
 
-	/// Get the actual bound port (available after start).
 	pub fn port(&self) -> Option<u16> {
 		self.local_addr().map(|a| a.port())
 	}
 
-	/// Get the actual bound address for the admin server (available after start).
 	pub fn admin_local_addr(&self) -> Option<SocketAddr> {
-		*self.admin_actual_addr.read().unwrap()
+		*self.admin_actual_addr.read()
 	}
 
-	/// Get the actual bound port for the admin server (available after start).
 	pub fn admin_port(&self) -> Option<u16> {
 		self.admin_local_addr().map(|a| a.port())
+	}
+
+	fn spawn_main_server(&mut self) -> Result<()> {
+		let Some(addr) = self.bind_addr.clone() else {
+			self.running.store(true, Ordering::SeqCst);
+			return Ok(());
+		};
+		let listener = self.bind_listener(&addr)?;
+		let actual_addr = local_addr_or_err(&listener)?;
+		*self.actual_addr.write() = Some(actual_addr);
+		info!("HTTP server bound to {}", actual_addr);
+
+		let (shutdown_tx, shutdown_rx) = oneshot::channel();
+		let (complete_tx, complete_rx) = oneshot::channel();
+		let server_state = HttpServerState::new(self.state.clone());
+		let running = self.running.clone();
+		self.runtime.spawn(async move {
+			running.store(true, Ordering::SeqCst);
+			let result = serve_http(listener, server_state, shutdown_rx, "HTTP server").await;
+			if let Err(e) = result {
+				error!("HTTP server error: {}", e);
+			}
+			running.store(false, Ordering::SeqCst);
+			let _ = complete_tx.send(());
+			info!("HTTP server stopped");
+		});
+		self.shutdown_tx = Some(shutdown_tx);
+		self.shutdown_complete_rx = Some(complete_rx);
+		Ok(())
+	}
+
+	fn spawn_admin_server(&mut self) -> Result<()> {
+		let Some(admin_addr) = self.admin_bind_addr.clone() else {
+			return Ok(());
+		};
+		let listener = self.bind_listener(&admin_addr)?;
+		let actual_addr = local_addr_or_err(&listener)?;
+		*self.admin_actual_addr.write() = Some(actual_addr);
+		info!("HTTP admin server bound to {}", actual_addr);
+
+		let (admin_shutdown_tx, admin_shutdown_rx) = oneshot::channel();
+		let (admin_complete_tx, admin_complete_rx) = oneshot::channel();
+		let admin_config = self.state.config().clone().admin_enabled(true);
+		let admin_app_state = self.state.clone_with_config(admin_config);
+		let admin_server_state = HttpServerState::new(admin_app_state);
+		self.runtime.spawn(async move {
+			let result =
+				serve_http(listener, admin_server_state, admin_shutdown_rx, "HTTP admin server").await;
+			if let Err(e) = result {
+				error!("HTTP admin server error: {}", e);
+			}
+			let _ = admin_complete_tx.send(());
+			info!("HTTP admin server stopped");
+		});
+		self.admin_shutdown_tx = Some(admin_shutdown_tx);
+		self.admin_shutdown_complete_rx = Some(admin_complete_rx);
+		Ok(())
+	}
+
+	#[inline]
+	fn bind_listener(&self, addr: &str) -> Result<TcpListener> {
+		self.runtime.block_on(TcpListener::bind(addr)).map_err(|e| {
+			CoreError::SubsystemBindFailed {
+				addr: addr.to_string(),
+				reason: e.to_string(),
+			}
+			.into()
+		})
 	}
 }
 
@@ -151,131 +180,22 @@ impl Subsystem for HttpSubsystem {
 	}
 
 	fn start(&mut self) -> Result<()> {
-		// Idempotent: if already running, return success
 		if self.running.load(Ordering::SeqCst) {
 			return Ok(());
 		}
-
-		let runtime = self.runtime.clone();
-
-		// Bind main listener if configured
-		if let Some(addr) = &self.bind_addr {
-			let addr = addr.clone();
-			let listener = runtime.block_on(TcpListener::bind(&addr)).map_err(|e| {
-				let err: Error = CoreError::SubsystemBindFailed {
-					addr: addr.clone(),
-					reason: e.to_string(),
-				}
-				.into();
-				err
-			})?;
-
-			let actual_addr = listener.local_addr().map_err(|e| {
-				let err: Error = CoreError::SubsystemAddressUnavailable {
-					reason: e.to_string(),
-				}
-				.into();
-				err
-			})?;
-			*self.actual_addr.write().unwrap() = Some(actual_addr);
-			info!("HTTP server bound to {}", actual_addr);
-
-			let (shutdown_tx, shutdown_rx) = oneshot::channel();
-			let (complete_tx, complete_rx) = oneshot::channel();
-
-			let state = self.state.clone();
-			let running = self.running.clone();
-
-			runtime.spawn(async move {
-				// Mark as running
-				running.store(true, Ordering::SeqCst);
-
-				// Create router and serve (admin_enabled is false by default in state)
-				let app = router(state);
-				let server = serve(listener, app).with_graceful_shutdown(async {
-					shutdown_rx.await.ok();
-					info!("HTTP server received shutdown signal");
-				});
-
-				// Run until shutdown
-				if let Err(e) = server.await {
-					error!("HTTP server error: {}", e);
-				}
-
-				// Mark as stopped
-				running.store(false, Ordering::SeqCst);
-				let _ = complete_tx.send(());
-				info!("HTTP server stopped");
-			});
-
-			self.shutdown_tx = Some(shutdown_tx);
-			self.shutdown_complete_rx = Some(complete_rx);
-		} else {
-			// No main listener — mark running synchronously
-			self.running.store(true, Ordering::SeqCst);
-		}
-
-		// Start admin listener if configured
-		if let Some(admin_addr) = &self.admin_bind_addr {
-			let admin_addr = admin_addr.clone();
-			let runtime = self.runtime.clone();
-			let admin_listener = runtime.block_on(TcpListener::bind(&admin_addr)).map_err(|e| {
-				let err: Error = CoreError::SubsystemBindFailed {
-					addr: admin_addr.clone(),
-					reason: e.to_string(),
-				}
-				.into();
-				err
-			})?;
-
-			let admin_actual_addr = admin_listener.local_addr().map_err(|e| {
-				let err: Error = CoreError::SubsystemAddressUnavailable {
-					reason: e.to_string(),
-				}
-				.into();
-				err
-			})?;
-			*self.admin_actual_addr.write().unwrap() = Some(admin_actual_addr);
-			info!("HTTP admin server bound to {}", admin_actual_addr);
-
-			let (admin_shutdown_tx, admin_shutdown_rx) = oneshot::channel();
-			let (admin_complete_tx, admin_complete_rx) = oneshot::channel();
-
-			// Create admin state with admin_enabled = true, preserving interceptors
-			let admin_config = self.state.config().clone().admin_enabled(true);
-			let admin_state = self.state.clone_with_config(admin_config);
-
-			runtime.spawn(async move {
-				let app = router(admin_state);
-				let server = serve(admin_listener, app).with_graceful_shutdown(async {
-					admin_shutdown_rx.await.ok();
-					info!("HTTP admin server received shutdown signal");
-				});
-
-				if let Err(e) = server.await {
-					error!("HTTP admin server error: {}", e);
-				}
-
-				let _ = admin_complete_tx.send(());
-				info!("HTTP admin server stopped");
-			});
-
-			self.admin_shutdown_tx = Some(admin_shutdown_tx);
-			self.admin_shutdown_complete_rx = Some(admin_complete_rx);
-		}
-
+		self.spawn_main_server()?;
+		self.spawn_admin_server()?;
 		Ok(())
 	}
 
 	fn shutdown(&mut self) -> Result<()> {
-		// Shutdown admin server first
 		if let Some(tx) = self.admin_shutdown_tx.take() {
 			let _ = tx.send(());
 		}
 		if let Some(rx) = self.admin_shutdown_complete_rx.take() {
 			let _ = self.runtime.block_on(rx);
 		}
-		// Then shutdown main server
+
 		if let Some(tx) = self.shutdown_tx.take() {
 			let _ = tx.send(());
 		}
@@ -294,7 +214,6 @@ impl Subsystem for HttpSubsystem {
 		if self.running.load(Ordering::SeqCst) {
 			HealthStatus::Healthy
 		} else if self.shutdown_tx.is_some() {
-			// Started but not yet running (startup in progress)
 			HealthStatus::Warning {
 				description: "Starting up".to_string(),
 			}
@@ -312,4 +231,34 @@ impl Subsystem for HttpSubsystem {
 	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
+}
+
+#[inline]
+fn local_addr_or_err(listener: &TcpListener) -> Result<SocketAddr> {
+	listener.local_addr().map_err(|e| {
+		CoreError::SubsystemAddressUnavailable {
+			reason: e.to_string(),
+		}
+		.into()
+	})
+}
+
+async fn serve_http(
+	listener: TcpListener,
+	server_state: HttpServerState,
+	shutdown_rx: oneshot::Receiver<()>,
+	name: &'static str,
+) -> io::Result<()> {
+	let app = router(server_state);
+	let listener = listener.tap_io(|tcp_stream| {
+		if let Err(e) = tcp_stream.set_nodelay(true) {
+			warn!("Failed to set TCP_NODELAY: {e}");
+		}
+	});
+	serve(listener, app)
+		.with_graceful_shutdown(async move {
+			shutdown_rx.await.ok();
+			info!("{} received shutdown signal", name);
+		})
+		.await
 }

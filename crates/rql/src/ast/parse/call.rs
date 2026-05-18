@@ -18,11 +18,10 @@ impl<'bump> Parser<'bump> {
 		let first_ident = self.consume(TokenKind::Identifier)?;
 		let mut namespace_fragments = Vec::new();
 
-		// Parse optional namespace chain: ident::ident::...::ident
 		let mut current = first_ident;
 		while self.current()?.is_operator(Operator::DoubleColon) {
 			namespace_fragments.push(current.fragment);
-			self.advance()?; // consume ::
+			self.advance()?;
 			current = if self.current()?.is_identifier() {
 				self.consume(TokenKind::Identifier)?
 			} else {
@@ -49,15 +48,11 @@ impl<'bump> Parser<'bump> {
 		let first_ident_token = self.consume(TokenKind::Identifier)?;
 		let start_token = first_ident_token;
 
-		// Check if this is a simple function call: identifier(
 		if self.current()?.is_operator(Operator::OpenParen) {
-			// Simple function call like func()
-			let open_paren_token = self.advance()?; // Consume the opening parenthesis
+			let open_paren_token = self.advance()?;
 
 			let arguments = self.parse_tuple_call(open_paren_token)?;
 
-			// Create MaybeQualifiedFunctionIdentifier without
-			// namespaces
 			let function = MaybeQualifiedFunctionIdentifier::new(first_ident_token.fragment);
 
 			return Ok(AstCallFunction {
@@ -67,35 +62,24 @@ impl<'bump> Parser<'bump> {
 			});
 		}
 
-		// Collect namespace chain:
-		// identifier::identifier::...::identifier( The
-		// first_ident_token we consumed is part of the namespace
-		// chain
 		let mut current_ident_token = first_ident_token;
 		let mut namespace_fragments = Vec::new();
 
 		while self.current()?.is_operator(Operator::DoubleColon) {
-			// Add current identifier to namespace chain before
-			// parsing next
 			namespace_fragments.push(current_ident_token.fragment);
 
-			self.advance()?; // consume ::
+			self.advance()?;
 			let next_ident_token = if self.current()?.is_identifier() {
 				self.consume(TokenKind::Identifier)?
 			} else {
 				self.consume_name()?
 			};
 
-			// Check if this is the function name (followed by
-			// opening paren)
 			if self.current()?.is_operator(Operator::OpenParen) {
-				// This is the function name, parse arguments
-				let open_paren_token = self.advance()?; // Consume the opening parenthesis
+				let open_paren_token = self.advance()?;
 
 				let arguments = self.parse_tuple_call(open_paren_token)?;
 
-				// Create MaybeQualifiedFunctionIdentifier with
-				// namespaces
 				let function = MaybeQualifiedFunctionIdentifier::new(next_ident_token.fragment)
 					.with_namespaces(namespace_fragments);
 
@@ -105,15 +89,10 @@ impl<'bump> Parser<'bump> {
 					arguments,
 				});
 			} else {
-				// Continue with next identifier in the chain
 				current_ident_token = next_ident_token;
 			}
 		}
 
-		// If we get here, we have namespace::identifier but no opening
-		// paren This means it's not a function call, so we should not
-		// have called this method This shouldn't happen if lookahead
-		// logic is correct
 		unreachable!("parse_function_call called on non-function call pattern")
 	}
 

@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Real host_rql callback implementation for FFI procedures
-//!
-//! Allows FFI procedures to execute RQL within the current transaction.
-
 use std::{panic, ptr, slice, str};
 
 use postcard::{from_bytes, to_stdvec};
@@ -44,14 +40,12 @@ pub unsafe extern "C" fn host_rql(
 		}
 
 		unsafe {
-			// Reconstruct RQL string
 			let rql_bytes = slice::from_raw_parts(rql_ptr, rql_len);
 			let rql_str = match str::from_utf8(rql_bytes) {
 				Ok(s) => s,
 				Err(_) => return FFI_ERROR_INVALID_UTF8,
 			};
 
-			// Deserialize params
 			let params: Params = if params_ptr.is_null() || params_len == 0 {
 				Params::None
 			} else {
@@ -65,21 +59,27 @@ pub unsafe extern "C" fn host_rql(
 				}
 			};
 
-			// Reconstruct Transaction from context pointer
 			let ctx_ref = &mut *ctx;
 			let tx = &mut *(ctx_ref.txn_ptr as *mut Transaction<'_>);
 
-			// Execute RQL
-			let frames = match tx.rql(rql_str, params) {
-				Ok(f) => f,
-				Err(e) => {
-					error!("host_rql: rql execution failed: {}", e);
-					return FFI_ERROR_INTERNAL;
+			let result = tx.rql(rql_str, params);
+			if let Some(ref e) = result.error {
+				error!("host_rql: rql execution failed: {}", e);
+				let msg = e.to_string();
+				let msg_bytes = msg.as_bytes();
+				let out_ptr = host_alloc(msg_bytes.len());
+				if !out_ptr.is_null() {
+					ptr::copy_nonoverlapping(msg_bytes.as_ptr(), out_ptr, msg_bytes.len());
+					*result_out = BufferFFI {
+						ptr: out_ptr,
+						len: msg_bytes.len(),
+						cap: msg_bytes.len(),
+					};
 				}
-			};
+				return FFI_ERROR_INTERNAL;
+			}
 
-			// Serialize result frames with postcard
-			let result_bytes = match to_stdvec(&frames) {
+			let result_bytes = match to_stdvec(&result.frames) {
 				Ok(b) => b,
 				Err(e) => {
 					error!("host_rql: failed to serialize result: {}", e);
@@ -87,7 +87,6 @@ pub unsafe extern "C" fn host_rql(
 				}
 			};
 
-			// Copy result into output buffer using host_alloc
 			let out_ptr = host_alloc(result_bytes.len());
 			if out_ptr.is_null() && !result_bytes.is_empty() {
 				return FFI_ERROR_INTERNAL;

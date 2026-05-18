@@ -10,12 +10,12 @@ use reifydb_core::{
 		EncodableKey,
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
 	},
-	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
-	value::{Value, row_number::RowNumber, r#type::Type},
+	value::{Value, datetime::DateTime, row_number::RowNumber, r#type::Type},
 };
 use tracing::instrument;
 
@@ -46,7 +46,6 @@ impl SeriesScanNode {
 		variant_tag: Option<u8>,
 		context: Arc<QueryContext>,
 	) -> Result<Self> {
-		// Build headers: key column, optional tag, then data columns
 		let mut columns = vec![Fragment::internal(series.def().key.column())];
 		if series.def().tag.is_some() {
 			columns.push(Fragment::internal("tag"));
@@ -90,7 +89,6 @@ impl QueryNode for SeriesScanNode {
 		let series = self.series.def();
 		let has_tag = series.tag.is_some();
 
-		// Create scan range
 		let range = SeriesRowKeyRange::scan_range(
 			series.id,
 			self.variant_tag,
@@ -102,10 +100,11 @@ impl QueryNode for SeriesScanNode {
 		let mut key_values: Vec<u64> = Vec::new();
 		let mut tags: Vec<u8> = Vec::new();
 		let mut sequences: Vec<u64> = Vec::new();
+		let mut created_at_values: Vec<DateTime> = Vec::new();
+		let mut updated_at_values: Vec<DateTime> = Vec::new();
 		let mut data_rows: Vec<Vec<Value>> = Vec::new();
 		let mut new_last_key = None;
 
-		// Get the shape for decoding series values before borrowing rx for the stream
 		let read_shape = get_or_create_series_shape(&stored_ctx.services.catalog, self.series.def(), rx)?;
 
 		let mut stream = rx.range(range, batch_size as usize)?;
@@ -114,15 +113,15 @@ impl QueryNode for SeriesScanNode {
 		for entry in stream.by_ref() {
 			let entry = entry?;
 
-			// Decode the key to get timestamp and optional tag
 			if let Some(key) = SeriesRowKey::decode(&entry.key) {
 				key_values.push(key.key);
 				sequences.push(key.sequence);
+				created_at_values.push(DateTime::from_nanos(entry.row.created_at_nanos()));
+				updated_at_values.push(DateTime::from_nanos(entry.row.updated_at_nanos()));
 				if has_tag {
 					tags.push(key.variant_tag.unwrap_or(0));
 				}
 
-				// Decode data columns from value using shape
 				let mut values = Vec::with_capacity(series.data_columns().count());
 				for (i, _) in series.data_columns().enumerate() {
 					values.push(read_shape.get_value(&entry.row, i + 1));
@@ -142,7 +141,6 @@ impl QueryNode for SeriesScanNode {
 		if key_values.is_empty() {
 			self.exhausted = true;
 			if self.last_key.is_none() {
-				// Empty series: return empty columns with correct types to preserve shape
 				let key_type = series
 					.columns
 					.iter()
@@ -150,20 +148,20 @@ impl QueryNode for SeriesScanNode {
 					.map(|c| c.constraint.get_type())
 					.unwrap_or(Type::Int8);
 				let mut result_columns = Vec::new();
-				result_columns.push(Column {
+				result_columns.push(ColumnWithName {
 					name: Fragment::internal(series.key.column()),
-					data: ColumnData::none_typed(key_type, 0),
+					data: ColumnBuffer::none_typed(key_type, 0),
 				});
 				if has_tag {
-					result_columns.push(Column {
+					result_columns.push(ColumnWithName {
 						name: Fragment::internal("tag"),
-						data: ColumnData::none_typed(Type::Uint1, 0),
+						data: ColumnBuffer::none_typed(Type::Uint1, 0),
 					});
 				}
 				for col_def in series.data_columns() {
-					result_columns.push(Column {
+					result_columns.push(ColumnWithName {
 						name: Fragment::internal(&col_def.name),
-						data: ColumnData::none_typed(col_def.constraint.get_type(), 0),
+						data: ColumnBuffer::none_typed(col_def.constraint.get_type(), 0),
 					});
 				}
 				return Ok(Some(Columns::new(result_columns)));
@@ -173,24 +171,17 @@ impl QueryNode for SeriesScanNode {
 
 		self.last_key = new_last_key;
 
-		// Build output columns
 		let mut result_columns = Vec::new();
 
-		// Key column
-		result_columns.push(Column {
-			name: Fragment::internal(series.key.column()),
-			data: series.key_column_data(key_values),
-		});
+		result_columns.push(ColumnWithName::new(
+			Fragment::internal(series.key.column()),
+			series.key_column_data(key_values),
+		));
 
-		// Tag column (Uint1) if present
 		if has_tag {
-			result_columns.push(Column {
-				name: Fragment::internal("tag"),
-				data: ColumnData::uint1(tags),
-			});
+			result_columns.push(ColumnWithName::new(Fragment::internal("tag"), ColumnBuffer::uint1(tags)));
 		}
 
-		// Data columns
 		for (col_idx, col_def) in series.data_columns().enumerate() {
 			let col_type = col_def.constraint.get_type();
 			let col_values: Vec<Value> = data_rows
@@ -202,7 +193,12 @@ impl QueryNode for SeriesScanNode {
 		}
 
 		let row_numbers: Vec<RowNumber> = sequences.into_iter().map(RowNumber::from).collect();
-		Ok(Some(Columns::with_row_numbers(result_columns, row_numbers)))
+		Ok(Some(Columns::with_system_columns(
+			result_columns,
+			row_numbers,
+			created_at_values,
+			updated_at_values,
+		)))
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {
@@ -210,7 +206,7 @@ impl QueryNode for SeriesScanNode {
 	}
 }
 
-pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) -> Result<Column> {
+pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) -> Result<ColumnWithName> {
 	let data = match col_type {
 		Type::Boolean => {
 			let vals: Vec<bool> = values
@@ -220,7 +216,7 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 					_ => false,
 				})
 				.collect();
-			ColumnData::bool(vals)
+			ColumnBuffer::bool(vals)
 		}
 		Type::Int1 => {
 			let vals: Vec<i8> = values
@@ -230,7 +226,7 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 					_ => 0,
 				})
 				.collect();
-			ColumnData::int1(vals)
+			ColumnBuffer::int1(vals)
 		}
 		Type::Int2 => {
 			let vals: Vec<i16> = values
@@ -240,7 +236,7 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 					_ => 0,
 				})
 				.collect();
-			ColumnData::int2(vals)
+			ColumnBuffer::int2(vals)
 		}
 		Type::Int4 => {
 			let vals: Vec<i32> = values
@@ -250,7 +246,7 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 					_ => 0,
 				})
 				.collect();
-			ColumnData::int4(vals)
+			ColumnBuffer::int4(vals)
 		}
 		Type::Int8 => {
 			let vals: Vec<i64> = values
@@ -260,7 +256,7 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 					_ => 0,
 				})
 				.collect();
-			ColumnData::int8(vals)
+			ColumnBuffer::int8(vals)
 		}
 		Type::Uint1 => {
 			let vals: Vec<u8> = values
@@ -270,7 +266,7 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 					_ => 0,
 				})
 				.collect();
-			ColumnData::uint1(vals)
+			ColumnBuffer::uint1(vals)
 		}
 		Type::Uint2 => {
 			let vals: Vec<u16> = values
@@ -280,7 +276,7 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 					_ => 0,
 				})
 				.collect();
-			ColumnData::uint2(vals)
+			ColumnBuffer::uint2(vals)
 		}
 		Type::Uint4 => {
 			let vals: Vec<u32> = values
@@ -290,7 +286,7 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 					_ => 0,
 				})
 				.collect();
-			ColumnData::uint4(vals)
+			ColumnBuffer::uint4(vals)
 		}
 		Type::Uint8 => {
 			let vals: Vec<u64> = values
@@ -300,7 +296,7 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 					_ => 0,
 				})
 				.collect();
-			ColumnData::uint8(vals)
+			ColumnBuffer::uint8(vals)
 		}
 		Type::Float4 => {
 			let vals: Vec<f32> = values
@@ -310,7 +306,7 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 					_ => 0.0,
 				})
 				.collect();
-			ColumnData::float4(vals)
+			ColumnBuffer::float4(vals)
 		}
 		Type::Float8 => {
 			let vals: Vec<f64> = values
@@ -320,7 +316,7 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 					_ => 0.0,
 				})
 				.collect();
-			ColumnData::float8(vals)
+			ColumnBuffer::float8(vals)
 		}
 		Type::Utf8 => {
 			let vals: Vec<String> = values
@@ -330,16 +326,15 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 					_ => String::new(),
 				})
 				.collect();
-			ColumnData::utf8(vals)
+			ColumnBuffer::utf8(vals)
 		}
 		_ => {
-			// Fallback: convert to string representation
 			let vals: Vec<String> = values.iter().map(|v| format!("{:?}", v)).collect();
-			ColumnData::utf8(vals)
+			ColumnBuffer::utf8(vals)
 		}
 	};
 
-	Ok(Column {
+	Ok(ColumnWithName {
 		name: Fragment::internal(name),
 		data,
 	})

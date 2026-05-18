@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::dictionaries::*, vtable::DICTIONARIES};
 
-/// Returns the static definition for the system.dictionaries virtual table
-/// This table exposes information about all dictionaries in the database
 pub fn dictionaries() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

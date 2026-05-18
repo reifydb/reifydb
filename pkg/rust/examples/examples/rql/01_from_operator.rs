@@ -1,15 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # FROM Operator Example
-//!
-//! Demonstrates the FROM operator in ReifyDB's RQL:
-//! - Loading data from inline arrays
-//! - Querying data from tables
-//! - The foundation for all query pipelines
-//!
-//! Run with: `make rql-from` or `cargo run --bin rql-from`
-
 use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;

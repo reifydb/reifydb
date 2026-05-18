@@ -15,13 +15,11 @@ use uuid::Uuid;
 
 pub mod parse;
 
-/// A UUID version 4 (random) wrapper type
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Uuid4(pub StdUuid);
 
 impl Uuid4 {
-	/// Generate a new random UUID v4
 	pub fn generate() -> Self {
 		Uuid4(StdUuid::new_v4())
 	}
@@ -72,7 +70,6 @@ impl Display for Uuid4 {
 	}
 }
 
-/// A UUID version 7 (timestamp-based) wrapper type
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Uuid7(pub StdUuid);
@@ -84,7 +81,6 @@ impl Default for Uuid7 {
 }
 
 impl Uuid7 {
-	/// Generate a new timestamp-based UUID v7 using the provided clock and RNG.
 	pub fn generate(clock: &Clock, rng: &Rng) -> Self {
 		let millis = clock.now_millis();
 		let random_bytes = rng.bytes_10();

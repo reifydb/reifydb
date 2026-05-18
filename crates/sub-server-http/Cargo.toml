@@ -18,6 +18,7 @@ reifydb-runtime = { workspace = true }
 reifydb-type = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-sub-server = { workspace = true }
+reifydb-wire-format = { workspace = true }
 
 # HTTP framework
 axum = { workspace = true }
@@ -31,3 +32,6 @@ serde_json = { workspace = true }
 
 # Logging
 tracing = { workspace = true }
+
+[build-dependencies]
+reifydb-build = { workspace = true }

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -16,9 +16,8 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system policy operation information
 pub struct SystemPolicyOperations {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +30,7 @@ impl Default for SystemPolicyOperations {
 impl SystemPolicyOperations {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_policy_operations_table().clone(),
+			vtable: SystemCatalog::get_system_policy_operations_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -50,9 +49,9 @@ impl BaseVTable for SystemPolicyOperations {
 
 		let ops = CatalogStore::list_all_policy_operations(txn)?;
 
-		let mut policy_ids = ColumnData::uint8_with_capacity(ops.len());
-		let mut operations = ColumnData::utf8_with_capacity(ops.len());
-		let mut body_sources = ColumnData::utf8_with_capacity(ops.len());
+		let mut policy_ids = ColumnBuffer::uint8_with_capacity(ops.len());
+		let mut operations = ColumnBuffer::utf8_with_capacity(ops.len());
+		let mut body_sources = ColumnBuffer::utf8_with_capacity(ops.len());
 
 		for op in ops {
 			policy_ids.push(op.policy_id);
@@ -61,18 +60,9 @@ impl BaseVTable for SystemPolicyOperations {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("policy_id"),
-				data: policy_ids,
-			},
-			Column {
-				name: Fragment::internal("operation"),
-				data: operations,
-			},
-			Column {
-				name: Fragment::internal("body_source"),
-				data: body_sources,
-			},
+			ColumnWithName::new(Fragment::internal("policy_id"), policy_ids),
+			ColumnWithName::new(Fragment::internal("operation"), operations),
+			ColumnWithName::new(Fragment::internal("body_source"), body_sources),
 		];
 
 		self.exhausted = true;
@@ -81,7 +71,7 @@ impl BaseVTable for SystemPolicyOperations {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

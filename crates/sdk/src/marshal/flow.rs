@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Flow change marshalling between Rust and FFI types
-
 use std::{
 	ptr,
 	slice::{from_raw_parts, from_raw_parts_mut},
@@ -24,22 +22,21 @@ use reifydb_core::{
 			shape::ShapeId,
 			vtable::VTableId,
 		},
-		change::{Change, ChangeOrigin, Diff},
+		change::{Change, ChangeOrigin, Diff, Diffs},
 	},
 };
-use reifydb_type::value::dictionary::DictionaryId;
+use reifydb_type::value::{datetime::DateTime, dictionary::DictionaryId};
+use tracing::instrument;
 
 use crate::ffi::arena::Arena;
 
 impl Arena {
-	/// Marshal a change to FFI representation
+	#[instrument(name = "flow::marshal::change", level = "trace", skip_all, fields(diff_count = change.diffs.len()))]
 	pub fn marshal_change(&mut self, change: &Change) -> ChangeFFI {
-		// Allocate array for diffs
 		let diffs_count = change.diffs.len();
 		let diffs_ptr = if diffs_count > 0 {
 			let diffs_array = self.alloc(diffs_count * size_of::<DiffFFI>()) as *mut DiffFFI;
 
-			// Marshal each diff
 			unsafe {
 				let diffs_slice = from_raw_parts_mut(diffs_array, diffs_count);
 				for (i, diff) in change.diffs.iter().enumerate() {
@@ -57,10 +54,10 @@ impl Arena {
 			diff_count: diffs_count,
 			diffs: diffs_ptr,
 			version: change.version.0,
+			changed_at: change.changed_at.to_nanos(),
 		}
 	}
 
-	/// Marshal a change origin to FFI representation
 	fn marshal_origin(origin: &ChangeOrigin) -> OriginFFI {
 		match origin {
 			ChangeOrigin::Flow(node_id) => OriginFFI {
@@ -96,11 +93,12 @@ impl Arena {
 		}
 	}
 
-	/// Marshal a single diff using columnar format
+	#[instrument(name = "flow::marshal::diff", level = "trace", skip_all, fields(diff_type = ?diff.kind()))]
 	fn marshal_diff(&mut self, diff: &Diff) -> DiffFFI {
 		match diff {
 			Diff::Insert {
 				post,
+				..
 			} => DiffFFI {
 				diff_type: DiffType::Insert,
 				pre: ColumnsFFI::empty(),
@@ -109,6 +107,7 @@ impl Arena {
 			Diff::Update {
 				pre,
 				post,
+				..
 			} => DiffFFI {
 				diff_type: DiffType::Update,
 				pre: self.marshal_columns(pre),
@@ -116,6 +115,7 @@ impl Arena {
 			},
 			Diff::Remove {
 				pre,
+				..
 			} => DiffFFI {
 				diff_type: DiffType::Remove,
 				pre: self.marshal_columns(pre),
@@ -124,9 +124,8 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal a change from FFI representation
 	pub fn unmarshal_change(&self, ffi: &ChangeFFI) -> Result<Change, String> {
-		let mut diffs = Vec::with_capacity(ffi.diff_count);
+		let mut diffs: Diffs = Diffs::with_capacity(ffi.diff_count);
 
 		if !ffi.diffs.is_null() && ffi.diff_count > 0 {
 			unsafe {
@@ -142,10 +141,10 @@ impl Arena {
 			origin: Self::unmarshal_origin(&ffi.origin)?,
 			diffs,
 			version: CommitVersion(ffi.version),
+			changed_at: DateTime::from_nanos(ffi.changed_at),
 		})
 	}
 
-	/// Unmarshal a change origin from FFI representation
 	fn unmarshal_origin(ffi: &OriginFFI) -> Result<ChangeOrigin, String> {
 		match ffi.origin {
 			0 => Ok(ChangeOrigin::Flow(FlowNodeId(ffi.id))),
@@ -159,7 +158,6 @@ impl Arena {
 		}
 	}
 
-	/// Unmarshal a single diff from columnar FFI format
 	fn unmarshal_diff(&self, ffi: &DiffFFI) -> Result<Diff, String> {
 		match ffi.diff_type {
 			DiffType::Insert => {
@@ -168,9 +166,7 @@ impl Arena {
 				}
 
 				let post = self.unmarshal_columns(&ffi.post);
-				Ok(Diff::Insert {
-					post,
-				})
+				Ok(Diff::insert(post))
 			}
 			DiffType::Update => {
 				if ffi.pre.is_empty() || ffi.post.is_empty() {
@@ -179,10 +175,7 @@ impl Arena {
 
 				let pre = self.unmarshal_columns(&ffi.pre);
 				let post = self.unmarshal_columns(&ffi.post);
-				Ok(Diff::Update {
-					pre,
-					post,
-				})
+				Ok(Diff::update(pre, post))
 			}
 			DiffType::Remove => {
 				if ffi.pre.is_empty() {
@@ -190,9 +183,7 @@ impl Arena {
 				}
 
 				let pre = self.unmarshal_columns(&ffi.pre);
-				Ok(Diff::Remove {
-					pre,
-				})
+				Ok(Diff::remove(pre))
 			}
 		}
 	}

@@ -4,29 +4,29 @@
 /* CSS custom properties for @reifydb/console theming */
 :where(.rdb-console),
 :where(.rdb-snippet) {
-  --rdb-font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
+  --rdb-font-mono: 'Inconsolata', ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
   --rdb-font-size-xs: 0.75rem;
   --rdb-font-size-sm: 0.875rem;
 
-  /* Dark theme (default) */
-  --rdb-color-bg: #1A1A1A;
-  --rdb-color-bg-secondary: #1F1F1F;
-  --rdb-color-bg-elevated: #262626;
-  --rdb-color-bg-tertiary: #151515;
+  /* Dark theme (default) — ClickHouse-inspired */
+  --rdb-color-bg: #000000;
+  --rdb-color-bg-secondary: #141414;
+  --rdb-color-bg-elevated: #1a1a1a;
+  --rdb-color-bg-tertiary: #0a0a0a;
   --rdb-color-primary: #818CF8;
   --rdb-color-primary-hover: #A5B4FC;
-  --rdb-color-text: #F0F0F0;
-  --rdb-color-secondary: #A0A0A0;
-  --rdb-color-muted: #666666;
-  --rdb-color-border: rgba(255, 255, 255, 0.12);
+  --rdb-color-text: #ffffff;
+  --rdb-color-secondary: #a0a0a0;
+  --rdb-color-muted: #585858;
+  --rdb-color-border: rgba(65, 65, 65, 0.8);
   --rdb-color-error: #DC2626;
   --rdb-color-success: #22C55E;
 
   /* Value type colors */
-  --rdb-color-value-string: #22d3ee;
-  --rdb-color-value-number: #22d3ee;
+  --rdb-color-value-string: #818CF8;
+  --rdb-color-value-number: #818CF8;
   --rdb-color-value-boolean: #818CF8;
-  --rdb-color-value-date: #22d3ee;
+  --rdb-color-value-date: #818CF8;
   --rdb-color-value-uuid: #818CF8;
 
   /* Interactive states */
@@ -42,8 +42,8 @@
   --rdb-space-3: 0.75rem;
   --rdb-space-4: 1rem;
 
-  /* Border radius */
-  --rdb-radius: 6px;
+  /* Border radius — sharp geometry */
+  --rdb-radius: 4px;
 
   /* Borders */
   --rdb-border: none;

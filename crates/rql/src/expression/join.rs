@@ -19,10 +19,7 @@ use crate::{
 	},
 };
 
-/// Compiles join conditions with proper alias scoping
-/// The alias (if present) is only valid within the ON clause
 pub struct JoinConditionCompiler {
-	/// The alias for the other side of the join (if any)
 	alias: Option<Fragment>,
 }
 
@@ -33,36 +30,30 @@ impl JoinConditionCompiler {
 		}
 	}
 
-	/// Compile a join condition expression
-	/// This handles the special case where alias.column references are valid
 	pub fn compile(&self, ast: Ast<'_>) -> Result<Expression> {
 		match ast {
-			// Handle alias.column references in join conditions
 			Ast::Infix(ast_infix) if matches!(ast_infix.operator, InfixOperator::AccessTable(_)) => {
 				self.compile_qualified_column(ast_infix)
 			}
-			// For all other expressions, delegate to the transaction compiler
-			// but recursively handle any infix operations that might contain qualified columns
+
 			Ast::Infix(ast_infix) => self.compile_infix(ast_infix),
-			// Handle tuples (parenthesized expressions) - need to recursively compile with
-			// JoinConditionCompiler
+
 			Ast::Tuple(tuple) => {
 				let mut expressions = Vec::with_capacity(tuple.len());
 				for ast in tuple.nodes {
 					expressions.push(self.compile(ast)?);
 				}
-				// If it's a single expression in parentheses, just return that expression
+
 				if expressions.len() == 1 {
 					Ok(expressions.into_iter().next().unwrap())
 				} else {
-					// Multiple expressions in a tuple
 					Ok(Expression::Tuple(TupleExpression {
 						expressions,
 						fragment: tuple.token.fragment.to_owned(),
 					}))
 				}
 			}
-			// Handle prefix operators (!, -, +) - need to recursively compile the inner expression
+
 			Ast::Prefix(prefix) => {
 				let inner = self.compile(BumpBox::into_inner(prefix.node))?;
 				let (fragment, operator) = match prefix.operator {
@@ -86,7 +77,7 @@ impl JoinConditionCompiler {
 					fragment,
 				}))
 			}
-			// All other AST nodes compile normally
+
 			_ => ExpressionCompiler::compile(ast),
 		}
 	}
@@ -101,11 +92,9 @@ impl JoinConditionCompiler {
 			unimplemented!("Expected identifier on right side of column qualification");
 		};
 
-		// Check if this is referencing the join alias
 		if let Some(ref alias) = self.alias
 			&& left.token.fragment.text() == alias.text()
 		{
-			// This is a reference to the right side via alias
 			let column = ColumnIdentifier {
 				shape: ColumnShape::Alias(alias.clone()),
 				name: right.token.fragment.to_owned(),
@@ -115,8 +104,6 @@ impl JoinConditionCompiler {
 			}));
 		}
 
-		// Otherwise, this is an error - we don't support table qualification in the new design
-		// except for the join alias
 		return_error!(unsupported_source_qualification(
 			left.token.fragment.to_owned(),
 			left.token.fragment.text()
@@ -252,10 +239,7 @@ impl JoinConditionCompiler {
 					fragment: token.fragment.to_owned(),
 				}))
 			}
-			_ => {
-				// For any other operators, use the transaction expression compiler
-				ExpressionCompiler::compile(Ast::Infix(ast))
-			}
+			_ => ExpressionCompiler::compile(Ast::Infix(ast)),
 		}
 	}
 }

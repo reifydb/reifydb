@@ -22,7 +22,7 @@ impl CatalogChangeApplier for PrimaryKeyApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let pk = decode_primary_key(row, txn)?;
-		catalog.materialized.set_primary_key(pk.id, txn.version(), Some(pk));
+		catalog.cache.set_primary_key(pk.id, txn.version(), Some(pk));
 		Ok(())
 	}
 
@@ -33,7 +33,7 @@ impl CatalogChangeApplier for PrimaryKeyApplier {
 				kind: KeyKind::PrimaryKey,
 			},
 		)?;
-		catalog.materialized.set_primary_key(id, txn.version(), None);
+		catalog.cache.set_primary_key(id, txn.version(), None);
 		Ok(())
 	}
 }

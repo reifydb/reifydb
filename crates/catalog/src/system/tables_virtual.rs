@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::virtual_tables::*, vtable::VIRTUAL_TABLES};
 
-/// Returns the static definition for the system.virtual_tables virtual table
-/// This table exposes information about all virtual tables (both system and user-defined)
 pub fn virtual_tables() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

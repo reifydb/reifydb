@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_client::{QueryResult, WsClient};
+use reifydb_client::{Frame, WireFormat, WsClient};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 pub async fn execute_query(host: &str, port: u16, token: Option<String>, statements: &str) -> Result<()> {
 	// 1. Connect to server
-	let mut client = WsClient::connect(&format!("ws://{}:{}", host, port))
+	let mut client = WsClient::connect(&format!("ws://{}:{}", host, port), WireFormat::Json)
 		.await
 		.map_err(|e| format!("Failed to connect to WebSocket server: {}", e))?;
 
@@ -43,14 +43,14 @@ pub async fn execute_query(host: &str, port: u16, token: Option<String>, stateme
 	Ok(())
 }
 
-fn print_query_result(result: &QueryResult) {
-	if result.frames.is_empty() {
+fn print_query_result(frames: &[Frame]) {
+	if frames.is_empty() {
 		println!("(no results)");
 		return;
 	}
 
-	for (i, frame) in result.frames.iter().enumerate() {
-		if result.frames.len() > 1 {
+	for (i, frame) in frames.iter().enumerate() {
+		if frames.len() > 1 {
 			println!("--- Frame {} ---", i + 1);
 		}
 		println!("{}", frame);

@@ -3,11 +3,10 @@
 
 use reifydb_type::{error::Diagnostic, fragment::Fragment};
 
-/// Transaction conflict occurred due to concurrent modifications
 pub fn transaction_conflict() -> Diagnostic {
 	Diagnostic {
 		code: "TXN_001".to_string(),
-		statement: None,
+		rql: None,
 		message: "Transaction conflict detected - another transaction modified the same data".to_string(),
 		column: None,
 		fragment: Fragment::None,
@@ -19,11 +18,10 @@ pub fn transaction_conflict() -> Diagnostic {
 	}
 }
 
-/// Transaction was discarded due to rollback or abort
 pub fn transaction_rolled_back() -> Diagnostic {
 	Diagnostic {
 		code: "TXN_002".to_string(),
-		statement: None,
+		rql: None,
 		message: "Transaction rolled back and cannot be committed".to_string(),
 		column: None,
 		fragment: Fragment::None,
@@ -35,11 +33,10 @@ pub fn transaction_rolled_back() -> Diagnostic {
 	}
 }
 
-/// Transaction contains too many writes and exceeds size limits
 pub fn transaction_too_large() -> Diagnostic {
 	Diagnostic {
 		code: "TXN_003".to_string(),
-		statement: None,
+		rql: None,
 		message: "Transaction contains too many writes and exceeds size limits".to_string(),
 		column: None,
 		fragment: Fragment::None,
@@ -51,11 +48,10 @@ pub fn transaction_too_large() -> Diagnostic {
 	}
 }
 
-/// Transaction commit failed for a specific reason
 pub fn commit_failed(reason: String) -> Diagnostic {
 	Diagnostic {
 		code: "TXN_004".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Transaction commit failed: {}", reason),
 		column: None,
 		fragment: Fragment::None,
@@ -67,11 +63,10 @@ pub fn commit_failed(reason: String) -> Diagnostic {
 	}
 }
 
-/// Transaction was already committed
 pub fn transaction_already_committed() -> Diagnostic {
 	Diagnostic {
 		code: "TXN_008".to_string(),
-		statement: None,
+		rql: None,
 		message: "Transaction was already committed".to_string(),
 		column: None,
 		fragment: Fragment::None,
@@ -83,11 +78,10 @@ pub fn transaction_already_committed() -> Diagnostic {
 	}
 }
 
-/// Transaction was already rolled back
 pub fn transaction_already_rolled_back() -> Diagnostic {
 	Diagnostic {
 		code: "TXN_009".to_string(),
-		statement: None,
+		rql: None,
 		message: "Transaction was already rolled back".to_string(),
 		column: None,
 		fragment: Fragment::None,
@@ -99,11 +93,10 @@ pub fn transaction_already_rolled_back() -> Diagnostic {
 	}
 }
 
-/// Attempted to access a key outside the transaction's declared key scope
 pub fn key_out_of_scope(key: String) -> Diagnostic {
 	Diagnostic {
 		code: "TXN_010".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Key '{}' is not in the transaction's declared key scope", key),
 		column: None,
 		fragment: Fragment::None,

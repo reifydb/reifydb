@@ -11,17 +11,13 @@ use crate::{CatalogStore, Result, store::shape::drop::drop_shape_metadata};
 
 impl CatalogStore {
 	pub(crate) fn drop_table(txn: &mut AdminTransaction, table: TableId) -> Result<()> {
-		// First, find the table to get its namespace
 		if let Some(table_def) = Self::find_table(&mut Transaction::Admin(&mut *txn), table)? {
-			// Delete the namespace-table link (secondary index)
 			txn.remove(&NamespaceTableKey::encoded(table_def.namespace, table))?;
 		}
 
-		// Clean up all associated metadata (columns, policies, sequences, pk, retention)
 		let pk_id = Self::get_table_pk_id(&mut Transaction::Admin(&mut *txn), table)?;
 		drop_shape_metadata(txn, ShapeId::Table(table), pk_id)?;
 
-		// Delete the table metadata
 		txn.remove(&TableKey::encoded(table))?;
 
 		Ok(())
@@ -35,7 +31,7 @@ pub mod tests {
 			id::{NamespaceId, TableId},
 			shape::ShapeId,
 		},
-		retention::RetentionPolicy,
+		retention::RetentionStrategy,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -48,7 +44,7 @@ pub mod tests {
 		CatalogStore,
 		store::{
 			namespace::create::NamespaceToCreate,
-			retention_policy::create::create_shape_retention_policy,
+			retention_strategy::create::create_shape_retention_strategy,
 			table::create::{TableColumnToCreate, TableToCreate},
 		},
 		test_utils::{create_table, ensure_test_namespace},
@@ -62,7 +58,7 @@ pub mod tests {
 		let namespace = CatalogStore::create_namespace(
 			&mut txn,
 			NamespaceToCreate {
-				namespace_fragment: Some(Fragment::internal("test_ns".to_string())),
+				namespace_fragment: Some(Fragment::internal("test_ns")),
 				name: "test_ns".to_string(),
 				local_name: "test_ns".to_string(),
 				parent_id: NamespaceId::ROOT,
@@ -79,7 +75,8 @@ pub mod tests {
 				name: Fragment::internal("test_table"),
 				namespace: namespace.id(),
 				columns: vec![],
-				retention_policy: None,
+				retention_strategy: None,
+				underlying: false,
 			},
 		)
 		.unwrap();
@@ -146,16 +143,16 @@ pub mod tests {
 			],
 		);
 
-		// Add retention policy
-		create_shape_retention_policy(&mut txn, ShapeId::Table(table.id), &RetentionPolicy::KeepForever)
+		// Add retention strategy
+		create_shape_retention_strategy(&mut txn, ShapeId::Table(table.id), &RetentionStrategy::KeepForever)
 			.unwrap();
 
 		// Verify columns exist before drop
 		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), table.id).unwrap();
 		assert_eq!(columns.len(), 2);
 
-		// Verify retention policy exists before drop
-		let policy = CatalogStore::find_shape_retention_policy(
+		// Verify retention strategy exists before drop
+		let policy = CatalogStore::find_shape_retention_strategy(
 			&mut Transaction::Admin(&mut txn),
 			ShapeId::Table(table.id),
 		)
@@ -169,8 +166,8 @@ pub mod tests {
 		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), table.id).unwrap();
 		assert!(columns.is_empty());
 
-		// Verify retention policy is cleaned up
-		let policy = CatalogStore::find_shape_retention_policy(
+		// Verify retention strategy is cleaned up
+		let policy = CatalogStore::find_shape_retention_strategy(
 			&mut Transaction::Admin(&mut txn),
 			ShapeId::Table(table.id),
 		)

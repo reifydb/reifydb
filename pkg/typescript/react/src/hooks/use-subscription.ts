@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo } from 'react';
 import { ShapeNode, InferShape } from '@reifydb/core';
+import type { SubscriptionConfig } from '@reifydb/client';
 import {
     useSubscriptionExecutor,
     type SubscriptionExecutorOptions,
@@ -11,20 +12,21 @@ import {
 
 export interface SubscriptionOptions extends SubscriptionExecutorOptions {
     enabled?: boolean;  // Auto-subscribe (default: true)
+    config?: SubscriptionConfig;
 }
 
 export function useSubscription<S extends ShapeNode = any>(
-    query: string,
+    rql: string,
     params?: any,
     shape?: S,
     options?: SubscriptionOptions
 ): {
     data: InferShape<S>[];
     changes: ChangeEvent<InferShape<S>>[];
-    isSubscribed: boolean;
-    isSubscribing: boolean;
+    is_subscribed: boolean;
+    is_subscribing: boolean;
     error: string | undefined;
-    subscriptionId: string | undefined;
+    subscription_id: string | undefined;
 } {
     const {
         state,
@@ -33,24 +35,25 @@ export function useSubscription<S extends ShapeNode = any>(
     } = useSubscriptionExecutor<InferShape<S>>(options);
 
     // Serialize params for stable comparison (objects create new refs each render)
-    const paramsKey = useMemo(() => JSON.stringify(params), [params]);
+    const params_key = useMemo(() => JSON.stringify(params), [params]);
+    const config_key = useMemo(() => JSON.stringify(options?.config), [options?.config]);
 
     useEffect(() => {
         if (options?.enabled === false) return;
 
-        subscribe(query, params, shape);
+        subscribe(rql, params, shape, options?.config);
 
         return () => {
             unsubscribe();
         };
-    }, [query, paramsKey, shape, options?.enabled, subscribe, unsubscribe]);
+    }, [rql, params_key, shape, config_key, options?.enabled, subscribe, unsubscribe]);
 
     return {
         data: state.data,
         changes: state.changes,
-        isSubscribed: state.isSubscribed,
-        isSubscribing: state.isSubscribing,
+        is_subscribed: state.is_subscribed,
+        is_subscribing: state.is_subscribing,
         error: state.error,
-        subscriptionId: state.subscriptionId
+        subscription_id: state.subscription_id
     };
 }

@@ -1,295 +1,167 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! FFI procedure implementation that bridges native shared-library procedures with ReifyDB
+use std::{cell::UnsafeCell, ffi::c_void, ptr};
 
-use std::{
-	cell::RefCell,
-	ffi::c_void,
-	panic::{AssertUnwindSafe, catch_unwind},
-	process::abort,
-	ptr,
-};
-
+use postcard::to_stdvec;
 use reifydb_abi::{
 	callbacks::{
-		catalog::CatalogCallbacks, host::HostCallbacks, log::LogCallbacks, memory::MemoryCallbacks,
-		rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
+		builder::BuilderCallbacks, host::HostCallbacks, log::LogCallbacks, memory::MemoryCallbacks,
+		rql::RqlCallbacks,
 	},
-	constants::FFI_ERROR_INTERNAL,
 	context::context::ContextFFI,
-	data::{buffer::BufferFFI, column::ColumnsFFI},
 	procedure::{descriptor::ProcedureDescriptorFFI, vtable::ProcedureVTableFFI},
 };
 use reifydb_core::value::column::columns::Columns;
-use reifydb_routine::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
-use reifydb_sdk::ffi::arena::Arena;
+use reifydb_routine::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
+use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_sdk::{error::FFIError, ffi::arena::Arena};
 use reifydb_transaction::transaction::Transaction;
-use tracing::{error, instrument};
+use reifydb_type::value::r#type::Type;
+use tracing::instrument;
 
 use super::ffi_callbacks::{logging, memory, rql};
+use crate::{
+	ffi_callbacks::{
+		builder::{
+			BuilderRegistry, host_builder_acquire, host_builder_bitvec_ptr, host_builder_commit,
+			host_builder_data_ptr, host_builder_emit_diff, host_builder_grow, host_builder_offsets_ptr,
+			host_builder_release, with_registry,
+		},
+		panic::call_with_abort_on_panic,
+		single_columns_from_registry,
+	},
+	transform::ffi::stubs,
+};
 
-/// FFI procedure that wraps an external procedure implementation
+thread_local! {
+	static FFI_PROC_ARENA: UnsafeCell<Arena> = UnsafeCell::new(Arena::new());
+}
+
 pub struct NativeProcedureFFI {
-	/// Procedure descriptor from the FFI library
+	info: RoutineInfo,
 	#[allow(dead_code)]
 	descriptor: ProcedureDescriptorFFI,
-	/// Virtual function table for calling FFI functions
 	vtable: ProcedureVTableFFI,
-	/// Pointer to the FFI procedure instance
-	instance: *mut c_void,
-	/// Arena for type conversions
-	arena: RefCell<Arena>,
+
+	instance: Mutex<*mut c_void>,
+
+	builder_registry: BuilderRegistry,
+
+	cached_ctx: UnsafeCell<ContextFFI>,
 }
 
 impl NativeProcedureFFI {
-	/// Create a new FFI procedure
-	pub fn new(descriptor: ProcedureDescriptorFFI, instance: *mut c_void) -> Self {
+	pub fn new(name: impl Into<String>, descriptor: ProcedureDescriptorFFI, instance: *mut c_void) -> Self {
 		let vtable = descriptor.vtable;
+		let name = name.into();
 
 		Self {
+			info: RoutineInfo::new(&name),
 			descriptor,
 			vtable,
-			instance,
-			arena: RefCell::new(Arena::new()),
+			instance: Mutex::new(instance),
+			builder_registry: BuilderRegistry::new(),
+			cached_ctx: UnsafeCell::new(ContextFFI {
+				txn_ptr: ptr::null_mut(),
+				executor_ptr: ptr::null(),
+				operator_id: 0,
+				clock_now_nanos: 0,
+				callbacks: procedure_host_callbacks(),
+			}),
 		}
 	}
 }
 
-// SAFETY: NativeProcedureFFI is only accessed from a single context at a time.
+// SAFETY: the Mutex around `instance` provides single-actor access; that same
 unsafe impl Send for NativeProcedureFFI {}
 unsafe impl Sync for NativeProcedureFFI {}
 
 impl Drop for NativeProcedureFFI {
 	fn drop(&mut self) {
-		if !self.instance.is_null() {
-			unsafe { (self.vtable.destroy)(self.instance) };
+		let instance = *self.instance.lock();
+		if !instance.is_null() {
+			unsafe { (self.vtable.destroy)(instance) };
 		}
 	}
 }
 
-/// Create host callbacks for FFI procedures.
-///
-/// Uses real memory/logging/rql callbacks, and stubs for state/store/catalog
-/// (which are not relevant for procedure execution).
-fn create_procedure_host_callbacks() -> HostCallbacks {
+fn procedure_host_callbacks() -> HostCallbacks {
 	HostCallbacks {
 		memory: MemoryCallbacks {
 			alloc: memory::host_alloc,
 			free: memory::host_free,
 			realloc: memory::host_realloc,
 		},
-		state: stub_state_callbacks(),
+		state: stubs::state(),
 		log: LogCallbacks {
 			message: logging::host_log_message,
 		},
-		store: stub_store_callbacks(),
-		catalog: stub_catalog_callbacks(),
+		store: stubs::store(),
+		catalog: stubs::catalog(),
 		rql: RqlCallbacks {
 			rql: rql::host_rql,
+		},
+		builder: BuilderCallbacks {
+			acquire: host_builder_acquire,
+			data_ptr: host_builder_data_ptr,
+			offsets_ptr: host_builder_offsets_ptr,
+			bitvec_ptr: host_builder_bitvec_ptr,
+			grow: host_builder_grow,
+			commit: host_builder_commit,
+			release: host_builder_release,
+			emit_diff: host_builder_emit_diff,
 		},
 	}
 }
 
-impl Procedure for NativeProcedureFFI {
-	#[instrument(name = "procedure::ffi::call", level = "debug", skip_all)]
-	fn call(&self, ctx: &ProcedureContext, tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError> {
-		let mut arena = self.arena.borrow_mut();
+impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for NativeProcedureFFI {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		// Set thread-local arena for host_alloc
-		memory::set_current_arena(&mut *arena as *mut Arena);
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Any
+	}
 
-		// Serialize params to postcard bytes
+	#[instrument(name = "procedure::ffi::execute", level = "debug", skip_all)]
+	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+		let instance_guard = self.instance.lock();
+		let instance = *instance_guard;
+
 		let params_bytes = to_stdvec(ctx.params).map_err(|e| {
-			ProcedureError::Wrapped(Box::new(
+			RoutineError::Wrapped(Box::new(
 				FFIError::Other(format!("Failed to serialize params: {}", e)).into(),
 			))
 		})?;
 
-		// Build ContextFFI with real callbacks
-		let callbacks = create_procedure_host_callbacks();
-		let mut ctx_ffi = ContextFFI {
-			txn_ptr: tx as *mut Transaction<'_> as *mut c_void,
-			executor_ptr: ptr::null(),
-			operator_id: 0,
-			callbacks,
-		};
+		// SAFETY: single-threaded per call (Mutex held); no live pointers
 
-		let mut ffi_output = ColumnsFFI::empty();
+		FFI_PROC_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
 
-		let result = catch_unwind(AssertUnwindSafe(|| unsafe {
-			(self.vtable.call)(
-				self.instance,
-				&mut ctx_ffi,
-				params_bytes.as_ptr(),
-				params_bytes.len(),
-				&mut ffi_output,
-			)
-		}));
+		let ffi_ctx_ptr = self.cached_ctx.get();
+		unsafe {
+			(*ffi_ctx_ptr).txn_ptr = ctx.tx as *mut Transaction<'_> as *mut c_void;
+			(*ffi_ctx_ptr).clock_now_nanos = ctx.runtime_context.clock.now_nanos();
+		}
 
-		let result_code = match result {
-			Ok(code) => code,
-			Err(panic_info) => {
-				let msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
-					s.to_string()
-				} else if let Some(s) = panic_info.downcast_ref::<String>() {
-					s.clone()
-				} else {
-					"Unknown panic".to_string()
-				};
-				error!("FFI procedure panicked during call: {}", msg);
-				abort();
-			}
-		};
+		let result_code = with_registry(&self.builder_registry, || {
+			call_with_abort_on_panic("procedure::call", || unsafe {
+				(self.vtable.call)(instance, ffi_ctx_ptr, params_bytes.as_ptr(), params_bytes.len())
+			})
+		});
 
 		if result_code != 0 {
-			memory::clear_current_arena();
-			arena.clear();
-			return Err(ProcedureError::Wrapped(Box::new(
+			let _ = self.builder_registry.drain();
+			drop(instance_guard);
+			return Err(RoutineError::Wrapped(Box::new(
 				FFIError::Other(format!("FFI procedure call failed with code: {}", result_code)).into(),
 			)));
 		}
 
-		let columns = arena.unmarshal_columns(&ffi_output);
-
-		memory::clear_current_arena();
-		arena.clear();
+		let columns = single_columns_from_registry(&self.builder_registry);
+		drop(instance_guard);
 
 		Ok(columns)
 	}
 }
-
-use postcard::to_stdvec;
-use reifydb_abi::{
-	catalog::{namespace::NamespaceFFI, table::TableFFI},
-	context::iterators::{StateIteratorFFI, StoreIteratorFFI},
-};
-use reifydb_sdk::error::FFIError;
-
-fn stub_state_callbacks() -> StateCallbacks {
-	StateCallbacks {
-		get: stub_state_get,
-		set: stub_state_set,
-		remove: stub_state_remove,
-		clear: stub_state_clear,
-		prefix: stub_state_prefix,
-		range: stub_state_range,
-		iterator_next: stub_state_iterator_next,
-		iterator_free: stub_state_iterator_free,
-	}
-}
-
-extern "C" fn stub_state_get(_: u64, _: *mut ContextFFI, _: *const u8, _: usize, _: *mut BufferFFI) -> i32 {
-	FFI_ERROR_INTERNAL
-}
-extern "C" fn stub_state_set(_: u64, _: *mut ContextFFI, _: *const u8, _: usize, _: *const u8, _: usize) -> i32 {
-	FFI_ERROR_INTERNAL
-}
-extern "C" fn stub_state_remove(_: u64, _: *mut ContextFFI, _: *const u8, _: usize) -> i32 {
-	FFI_ERROR_INTERNAL
-}
-extern "C" fn stub_state_clear(_: u64, _: *mut ContextFFI) -> i32 {
-	FFI_ERROR_INTERNAL
-}
-extern "C" fn stub_state_prefix(
-	_: u64,
-	_: *mut ContextFFI,
-	_: *const u8,
-	_: usize,
-	_: *mut *mut StateIteratorFFI,
-) -> i32 {
-	FFI_ERROR_INTERNAL
-}
-extern "C" fn stub_state_range(
-	_: u64,
-	_: *mut ContextFFI,
-	_: *const u8,
-	_: usize,
-	_: u8,
-	_: *const u8,
-	_: usize,
-	_: u8,
-	_: *mut *mut StateIteratorFFI,
-) -> i32 {
-	FFI_ERROR_INTERNAL
-}
-extern "C" fn stub_state_iterator_next(_: *mut StateIteratorFFI, _: *mut BufferFFI, _: *mut BufferFFI) -> i32 {
-	FFI_ERROR_INTERNAL
-}
-extern "C" fn stub_state_iterator_free(_: *mut StateIteratorFFI) {}
-
-fn stub_store_callbacks() -> StoreCallbacks {
-	StoreCallbacks {
-		get: stub_store_get,
-		contains_key: stub_store_contains_key,
-		prefix: stub_store_prefix,
-		range: stub_store_range,
-		iterator_next: stub_store_iterator_next,
-		iterator_free: stub_store_iterator_free,
-	}
-}
-
-extern "C" fn stub_store_get(_: *mut ContextFFI, _: *const u8, _: usize, _: *mut BufferFFI) -> i32 {
-	FFI_ERROR_INTERNAL
-}
-extern "C" fn stub_store_contains_key(_: *mut ContextFFI, _: *const u8, _: usize, _: *mut u8) -> i32 {
-	FFI_ERROR_INTERNAL
-}
-extern "C" fn stub_store_prefix(_: *mut ContextFFI, _: *const u8, _: usize, _: *mut *mut StoreIteratorFFI) -> i32 {
-	FFI_ERROR_INTERNAL
-}
-extern "C" fn stub_store_range(
-	_: *mut ContextFFI,
-	_: *const u8,
-	_: usize,
-	_: u8,
-	_: *const u8,
-	_: usize,
-	_: u8,
-	_: *mut *mut StoreIteratorFFI,
-) -> i32 {
-	FFI_ERROR_INTERNAL
-}
-extern "C" fn stub_store_iterator_next(_: *mut StoreIteratorFFI, _: *mut BufferFFI, _: *mut BufferFFI) -> i32 {
-	FFI_ERROR_INTERNAL
-}
-extern "C" fn stub_store_iterator_free(_: *mut StoreIteratorFFI) {}
-
-fn stub_catalog_callbacks() -> CatalogCallbacks {
-	CatalogCallbacks {
-		find_namespace: stub_catalog_find_namespace,
-		find_namespace_by_name: stub_catalog_find_namespace_by_name,
-		find_table: stub_catalog_find_table,
-		find_table_by_name: stub_catalog_find_table_by_name,
-		free_namespace: stub_catalog_free_namespace,
-		free_table: stub_catalog_free_table,
-	}
-}
-
-extern "C" fn stub_catalog_find_namespace(_: *mut ContextFFI, _: u64, _: u64, _: *mut NamespaceFFI) -> i32 {
-	FFI_ERROR_INTERNAL
-}
-extern "C" fn stub_catalog_find_namespace_by_name(
-	_: *mut ContextFFI,
-	_: *const u8,
-	_: usize,
-	_: u64,
-	_: *mut NamespaceFFI,
-) -> i32 {
-	FFI_ERROR_INTERNAL
-}
-extern "C" fn stub_catalog_find_table(_: *mut ContextFFI, _: u64, _: u64, _: *mut TableFFI) -> i32 {
-	FFI_ERROR_INTERNAL
-}
-extern "C" fn stub_catalog_find_table_by_name(
-	_: *mut ContextFFI,
-	_: u64,
-	_: *const u8,
-	_: usize,
-	_: u64,
-	_: *mut TableFFI,
-) -> i32 {
-	FFI_ERROR_INTERNAL
-}
-extern "C" fn stub_catalog_free_namespace(_: *mut NamespaceFFI) {}
-extern "C" fn stub_catalog_free_table(_: *mut TableFFI) {}

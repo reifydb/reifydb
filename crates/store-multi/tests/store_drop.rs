@@ -16,34 +16,28 @@ use reifydb_core::{
 		format::{Formatter, raw::Raw},
 	},
 };
-use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem};
+use reifydb_runtime::{
+	actor::system::ActorSystem,
+	context::clock::Clock,
+	pool::{PoolConfig, Pools},
+};
 use reifydb_store_multi::{
-	config::{HotConfig, MultiStoreConfig},
-	hot::storage::HotStorage,
+	buffer::tier::MultiBufferTier,
+	config::{BufferConfig, MultiStoreConfig},
 	store::StandardMultiStore,
 };
 use reifydb_testing::{
-	tempdir::temp_dir,
 	testscript,
 	testscript::{command::Command, runner::run_path},
 };
-use reifydb_type::cow_vec;
+use reifydb_type::{cow_vec, util::cowvec::CowVec};
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/store-multi/tests/scripts/drop" as store_drop_multi_memory => test_memory }
-test_each_path! { in "crates/store-multi/tests/scripts/drop" as store_drop_multi_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	let storage = HotStorage::memory();
+	let storage = MultiBufferTier::memory();
 	run_path(&mut Runner::new(storage), path).expect("test failed")
-}
-
-fn test_sqlite(path: &Path) {
-	temp_dir(|_db_path| {
-		let storage = HotStorage::sqlite_in_memory();
-		run_path(&mut Runner::new(storage), path)
-	})
-	.expect("test failed")
 }
 
 /// Runs drop tests for multi-version store.
@@ -53,18 +47,19 @@ pub struct Runner {
 }
 
 impl Runner {
-	fn new(storage: HotStorage) -> Self {
-		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+	fn new(storage: MultiBufferTier) -> Self {
+		let pools = Pools::new(PoolConfig::default());
+		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let store = StandardMultiStore::new(MultiStoreConfig {
-			hot: Some(HotConfig {
+			buffer: Some(BufferConfig {
 				storage,
 			}),
-			warm: None,
-			cold: None,
+			persistent: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus: reifydb_core::event::EventBus::new(&actor_system),
 			actor_system,
+			clock: Clock::Real,
 		})
 		.unwrap();
 		Self {
@@ -81,7 +76,8 @@ impl testscript::runner::Runner for Runner {
 			// get KEY [version=VERSION]
 			"get" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
@@ -92,7 +88,8 @@ impl testscript::runner::Runner for Runner {
 			// contains KEY [version=VERSION]
 			"contains" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 				let contains = self.store.contains(&key, version)?;
@@ -150,11 +147,12 @@ impl testscript::runner::Runner for Runner {
 				let mut args = command.consume_args();
 				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
-				let prefix =
-					EncodedKey(decode_binary(&args.next_pos().ok_or("prefix not given")?.value));
+				let prefix = EncodedKey::new(decode_binary(
+					&args.next_pos().ok_or("prefix not given")?.value,
+				));
 				args.reject_rest()?;
 
-				let range = EncodedKeyRange::prefix(&prefix.0);
+				let range = EncodedKeyRange::prefix(prefix.as_slice());
 				if !reverse {
 					let items: Vec<_> = self
 						.store
@@ -174,8 +172,8 @@ impl testscript::runner::Runner for Runner {
 			"set" => {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
-				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let row = EncodedRow(decode_binary(&kv.value));
+				let key = EncodedKey::new(decode_binary(&kv.key.unwrap()));
+				let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					CommitVersion(v)
 				} else {
@@ -198,7 +196,8 @@ impl testscript::runner::Runner for Runner {
 			// remove KEY [version=VERSION]
 			"remove" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					CommitVersion(v)
 				} else {
@@ -221,8 +220,8 @@ impl testscript::runner::Runner for Runner {
 			"unset" => {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
-				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let row = EncodedRow(decode_binary(&kv.value));
+				let key = EncodedKey::new(decode_binary(&kv.key.unwrap()));
+				let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					CommitVersion(v)
 				} else {
@@ -242,12 +241,11 @@ impl testscript::runner::Runner for Runner {
 				)?;
 			}
 
-			// drop KEY [up_to_version=V] [keep_last_versions=N] [version=VERSION]
+			// drop KEY [version=VERSION]
 			"drop" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
-				let up_to_version = args.lookup_parse::<u64>("up_to_version")?.map(CommitVersion);
-				let keep_last_versions = args.lookup_parse::<usize>("keep_last_versions")?;
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					CommitVersion(v)
 				} else {
@@ -260,8 +258,6 @@ impl testscript::runner::Runner for Runner {
 					cow_vec![
 						(Delta::Drop {
 							key,
-							up_to_version,
-							keep_last_versions,
 						})
 					],
 					version,
@@ -275,7 +271,8 @@ impl testscript::runner::Runner for Runner {
 			// count_versions KEY - counts how many versions of a key exist
 			"count_versions" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
 
 				// Count version boundaries: where value changes and is Some

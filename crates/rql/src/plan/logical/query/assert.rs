@@ -20,7 +20,6 @@ impl<'bump> Compiler<'bump> {
 			}
 		});
 
-		// Multi-statement or ASSERT ERROR: use block-based runtime recompilation
 		if let Some(body) = ast.body {
 			return Ok(LogicalPlan::AssertBlock(AssertBlockNode {
 				rql: body,
@@ -29,7 +28,6 @@ impl<'bump> Compiler<'bump> {
 			}));
 		}
 
-		// Single-expression ASSERT (pipeline-compatible)
 		Ok(LogicalPlan::Assert(AssertNode {
 			condition: ExpressionCompiler::compile(BumpBox::into_inner(ast.node.unwrap()))?,
 			message,

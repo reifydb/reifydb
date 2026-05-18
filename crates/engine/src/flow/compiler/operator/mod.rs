@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Operator-specific compilation implementations
-
 pub mod aggregate;
 pub mod append;
 pub mod apply;

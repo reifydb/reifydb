@@ -238,7 +238,10 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 			(Type::Any, Value::Any(inner)) => self.set_any(row, index, inner),
-			(ty, val) => unreachable!("{ty:?}, {val:?}"),
+			(ty, val) => unreachable!(
+				"set_value type mismatch at index {index}: column name={:?} declared_type={ty:?}, value={val:?}",
+				field.name,
+			),
 		}
 	}
 

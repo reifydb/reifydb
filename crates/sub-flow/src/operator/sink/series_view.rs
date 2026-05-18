@@ -3,10 +3,11 @@
 
 use std::sync::Arc;
 
+use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 use reifydb_core::{
-	encoded::shape::RowShape,
+	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	interface::{
-		catalog::{flow::FlowNodeId, id::SeriesId, series::SeriesKey, shape::ShapeId},
+		catalog::{flow::FlowNodeId, id::SeriesId, series::SeriesKey, shape::ShapeId, view::View},
 		change::{Change, ChangeOrigin, Diff},
 		resolved::ResolvedView,
 	},
@@ -14,7 +15,11 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_transaction::interceptor::view_row::ViewRowInterceptor;
-use reifydb_type::{Result, value::row_number::RowNumber};
+use reifydb_type::{
+	Result,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
+use smallvec::smallvec;
 
 use super::{coerce_columns, encode_row_at_index};
 use crate::{Operator, operator::Operators, transaction::FlowTransaction};
@@ -52,6 +57,10 @@ impl Operator for SinkSeriesViewOperator {
 		self.node
 	}
 
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD
+	}
+
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def().clone();
 		let shape: RowShape = view.columns().into();
@@ -61,112 +70,134 @@ impl Operator for SinkSeriesViewOperator {
 			match diff {
 				Diff::Insert {
 					post,
-				} => {
-					let coerced = coerce_columns(post, view.columns())?;
-					let row_count = coerced.row_count();
-					for row_idx in 0..row_count {
-						let row_number = coerced.row_numbers[row_idx];
-						let (_, encoded) =
-							encode_row_at_index(&coerced, row_idx, &shape, row_number);
-
-						let encoded = ViewRowInterceptor::pre_insert(
-							txn, &view, row_number, encoded,
-						)?;
-						let key = RowKey::encoded(object_id, row_number);
-						txn.set(&key, encoded.clone())?;
-						ViewRowInterceptor::post_insert(txn, &view, row_number, &encoded)?;
-					}
-					let version = txn.version();
-					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
-						version,
-						diffs: vec![Diff::Insert {
-							post: coerced,
-						}],
-					});
-				}
+					..
+				} => self.apply_series_view_insert(txn, &view, &shape, object_id, post)?,
 				Diff::Update {
 					pre,
 					post,
-				} => {
-					let coerced_pre = coerce_columns(pre, view.columns())?;
-					let coerced_post = coerce_columns(post, view.columns())?;
-					let row_count = coerced_post.row_count();
-					for row_idx in 0..row_count {
-						let pre_row_number = coerced_pre.row_numbers[row_idx];
-						let post_row_number = coerced_post.row_numbers[row_idx];
-						let (_, pre_encoded) = encode_row_at_index(
-							&coerced_pre,
-							row_idx,
-							&shape,
-							pre_row_number,
-						);
-						let (_, post_encoded) = encode_row_at_index(
-							&coerced_post,
-							row_idx,
-							&shape,
-							post_row_number,
-						);
-
-						let post_encoded = ViewRowInterceptor::pre_update(
-							txn,
-							&view,
-							post_row_number,
-							post_encoded,
-						)?;
-						let pre_key = RowKey::encoded(object_id, pre_row_number);
-						let post_key = RowKey::encoded(object_id, post_row_number);
-						txn.remove(&pre_key)?;
-						txn.set(&post_key, post_encoded.clone())?;
-						ViewRowInterceptor::post_update(
-							txn,
-							&view,
-							post_row_number,
-							&post_encoded,
-							&pre_encoded,
-						)?;
-					}
-					let version = txn.version();
-					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
-						version,
-						diffs: vec![Diff::Update {
-							pre: coerced_pre,
-							post: coerced_post,
-						}],
-					});
-				}
+					..
+				} => self.apply_series_view_update(txn, &view, &shape, object_id, pre, post)?,
 				Diff::Remove {
 					pre,
-				} => {
-					let coerced = coerce_columns(pre, view.columns())?;
-					let row_count = coerced.row_count();
-					for row_idx in 0..row_count {
-						let row_number = coerced.row_numbers[row_idx];
-						let (_, encoded) =
-							encode_row_at_index(&coerced, row_idx, &shape, row_number);
-
-						ViewRowInterceptor::pre_delete(txn, &view, row_number)?;
-						let key = RowKey::encoded(object_id, row_number);
-						txn.remove(&key)?;
-						ViewRowInterceptor::post_delete(txn, &view, row_number, &encoded)?;
-					}
-					let version = txn.version();
-					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
-						version,
-						diffs: vec![Diff::Remove {
-							pre: coerced,
-						}],
-					});
-				}
+					..
+				} => self.apply_series_view_remove(txn, &view, &shape, object_id, pre)?,
 			}
 		}
 
-		Ok(Change::from_flow(self.node, change.version, Vec::new()))
+		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))
+	}
+}
+
+impl SinkSeriesViewOperator {
+	#[inline]
+	fn apply_series_view_insert(
+		&self,
+		txn: &mut FlowTransaction,
+		view: &View,
+		shape: &RowShape,
+		object_id: ShapeId,
+		post: &Arc<Columns>,
+	) -> Result<()> {
+		let coerced = coerce_columns(post, view.columns())?;
+		let row_count = coerced.row_count();
+		let mut ids: Vec<RowNumber> = Vec::with_capacity(row_count);
+		let mut encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
+		for row_idx in 0..row_count {
+			let row_number = coerced.row_numbers[row_idx];
+			let (_, encoded) = encode_row_at_index(&coerced, row_idx, shape, row_number)?;
+			ids.push(row_number);
+			encoded_rows.push(encoded);
+		}
+		ViewRowInterceptor::pre_insert(txn, view, &ids, &mut encoded_rows)?;
+		for (row_number, encoded) in ids.iter().zip(encoded_rows.iter()) {
+			let key = RowKey::encoded(object_id, *row_number);
+			txn.set(&key, encoded.clone())?;
+		}
+		ViewRowInterceptor::post_insert(txn, view, &ids, &encoded_rows)?;
+		emit_view_change(txn, view, Diff::insert(coerced));
+		Ok(())
 	}
 
-	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> Result<Columns> {
-		unreachable!()
+	#[inline]
+	fn apply_series_view_update(
+		&self,
+		txn: &mut FlowTransaction,
+		view: &View,
+		shape: &RowShape,
+		object_id: ShapeId,
+		pre: &Arc<Columns>,
+		post: &Arc<Columns>,
+	) -> Result<()> {
+		let coerced_pre = coerce_columns(pre, view.columns())?;
+		let coerced_post = coerce_columns(post, view.columns())?;
+		let row_count = coerced_post.row_count();
+		let mut post_ids: Vec<RowNumber> = Vec::with_capacity(row_count);
+		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
+		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
+		let mut pre_encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
+		let mut post_encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
+		for row_idx in 0..row_count {
+			let pre_row_number = coerced_pre.row_numbers[row_idx];
+			let post_row_number = coerced_post.row_numbers[row_idx];
+			let (_, pre_encoded) = encode_row_at_index(&coerced_pre, row_idx, shape, pre_row_number)?;
+			let (_, post_encoded) = encode_row_at_index(&coerced_post, row_idx, shape, post_row_number)?;
+
+			post_ids.push(post_row_number);
+			pre_keys.push(RowKey::encoded(object_id, pre_row_number));
+			post_keys.push(RowKey::encoded(object_id, post_row_number));
+			pre_encoded_rows.push(pre_encoded);
+			post_encoded_rows.push(post_encoded);
+		}
+		ViewRowInterceptor::pre_update(txn, view, &post_ids, &mut post_encoded_rows)?;
+		for ((pre_key, post_key), post_encoded) in
+			pre_keys.iter().zip(post_keys.iter()).zip(post_encoded_rows.iter())
+		{
+			txn.remove(pre_key)?;
+			txn.set(post_key, post_encoded.clone())?;
+		}
+		ViewRowInterceptor::post_update(txn, view, &post_ids, &post_encoded_rows, &pre_encoded_rows)?;
+		emit_view_change(txn, view, Diff::update(coerced_pre, coerced_post));
+		Ok(())
 	}
+
+	#[inline]
+	fn apply_series_view_remove(
+		&self,
+		txn: &mut FlowTransaction,
+		view: &View,
+		shape: &RowShape,
+		object_id: ShapeId,
+		pre: &Arc<Columns>,
+	) -> Result<()> {
+		let coerced = coerce_columns(pre, view.columns())?;
+		let row_count = coerced.row_count();
+		let mut ids: Vec<RowNumber> = Vec::with_capacity(row_count);
+		let mut encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
+		for row_idx in 0..row_count {
+			let row_number = coerced.row_numbers[row_idx];
+			let (_, encoded) = encode_row_at_index(&coerced, row_idx, shape, row_number)?;
+			ids.push(row_number);
+			encoded_rows.push(encoded);
+		}
+		ViewRowInterceptor::pre_delete(txn, view, &ids)?;
+		for row_number in ids.iter() {
+			let key = RowKey::encoded(object_id, *row_number);
+			txn.remove(&key)?;
+		}
+		ViewRowInterceptor::post_delete(txn, view, &ids, &encoded_rows)?;
+		emit_view_change(txn, view, Diff::remove(coerced));
+		Ok(())
+	}
+}
+
+#[inline]
+fn emit_view_change(txn: &mut FlowTransaction, view: &View, diff: Diff) {
+	let version = txn.version();
+	let changed_at = DateTime::from_nanos(txn.clock().now_nanos());
+	txn.track_flow_change(Change {
+		origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
+		version,
+		diffs: smallvec![diff],
+		changed_at,
+	});
 }

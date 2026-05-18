@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -16,9 +16,8 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system column information
 pub struct SystemColumnsTable {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +30,7 @@ impl Default for SystemColumnsTable {
 impl SystemColumnsTable {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_columns_table().clone(),
+			vtable: SystemCatalog::get_system_columns_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -70,38 +69,14 @@ impl BaseVTable for SystemColumnsTable {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: ColumnData::uint8(column_ids),
-			},
-			Column {
-				name: Fragment::internal("shape_id"),
-				data: ColumnData::uint8(shape_ids),
-			},
-			Column {
-				name: Fragment::internal("shape_type"),
-				data: ColumnData::uint1(shape_types),
-			},
-			Column {
-				name: Fragment::internal("name"),
-				data: ColumnData::utf8(column_names),
-			},
-			Column {
-				name: Fragment::internal("type"),
-				data: ColumnData::uint1(column_types),
-			},
-			Column {
-				name: Fragment::internal("position"),
-				data: ColumnData::uint1(positions),
-			},
-			Column {
-				name: Fragment::internal("auto_increment"),
-				data: ColumnData::bool(auto_increments),
-			},
-			Column {
-				name: Fragment::internal("dictionary_id"),
-				data: ColumnData::uint8(dictionary_ids),
-			},
+			ColumnWithName::new(Fragment::internal("id"), ColumnBuffer::uint8(column_ids)),
+			ColumnWithName::new(Fragment::internal("shape_id"), ColumnBuffer::uint8(shape_ids)),
+			ColumnWithName::new(Fragment::internal("shape_type"), ColumnBuffer::uint1(shape_types)),
+			ColumnWithName::new(Fragment::internal("name"), ColumnBuffer::utf8(column_names)),
+			ColumnWithName::new(Fragment::internal("type"), ColumnBuffer::uint1(column_types)),
+			ColumnWithName::new(Fragment::internal("position"), ColumnBuffer::uint1(positions)),
+			ColumnWithName::new(Fragment::internal("auto_increment"), ColumnBuffer::bool(auto_increments)),
+			ColumnWithName::new(Fragment::internal("dictionary_id"), ColumnBuffer::uint8(dictionary_ids)),
 		];
 
 		self.exhausted = true;
@@ -110,7 +85,7 @@ impl BaseVTable for SystemColumnsTable {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

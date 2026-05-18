@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::namespaces::*, vtable::NAMESPACES};
 
-/// Returns the static definition for the system.namespaces virtual table
-/// This table exposes information about all namespaces in the database
 pub fn namespaces() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

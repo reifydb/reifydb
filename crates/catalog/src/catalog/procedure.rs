@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::catalog::{
-	change::CatalogTrackProcedureChangeOperations,
-	id::{NamespaceId, ProcedureId},
-	procedure::{Procedure, ProcedureParam, ProcedureTrigger},
+use reifydb_core::{
+	common::CommitVersion,
+	interface::catalog::{
+		change::CatalogTrackProcedureChangeOperations,
+		id::{NamespaceId, ProcedureId},
+		procedure::{Procedure, ProcedureParam, RqlTrigger},
+	},
 };
 use reifydb_transaction::{
 	change::TransactionalProcedureChanges,
@@ -16,10 +19,8 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-use crate::{Result, catalog::Catalog, store::sequence::system::SystemSequence};
+use crate::{CatalogStore, Result, cache::CatalogCache, catalog::Catalog, error::CatalogError};
 
-/// Result of resolving a qualified procedure name.
-/// Distinguishes between locally-defined procedures and those in remote namespaces.
 #[derive(Debug, Clone)]
 pub enum ResolvedProcedure {
 	Local(Procedure),
@@ -27,20 +28,55 @@ pub enum ResolvedProcedure {
 		address: String,
 		token: Option<String>,
 	},
-	/// Test procedure — always local, only callable from test context
+
 	Test(Procedure),
 }
 
-/// Procedure creation specification for the Catalog API.
 #[derive(Debug, Clone)]
-pub struct ProcedureToCreate {
-	pub name: Fragment,
-	pub namespace: NamespaceId,
-	pub params: Vec<ProcedureParam>,
-	pub return_type: Option<TypeConstraint>,
-	pub body: String,
-	pub trigger: ProcedureTrigger,
-	pub is_test: bool,
+pub enum ProcedureToCreate {
+	Rql {
+		name: Fragment,
+		namespace: NamespaceId,
+		params: Vec<ProcedureParam>,
+		return_type: Option<TypeConstraint>,
+		body: String,
+		trigger: RqlTrigger,
+	},
+	Test {
+		name: Fragment,
+		namespace: NamespaceId,
+		params: Vec<ProcedureParam>,
+		return_type: Option<TypeConstraint>,
+		body: String,
+	},
+}
+
+impl ProcedureToCreate {
+	pub fn name(&self) -> &Fragment {
+		match self {
+			ProcedureToCreate::Rql {
+				name,
+				..
+			}
+			| ProcedureToCreate::Test {
+				name,
+				..
+			} => name,
+		}
+	}
+
+	pub fn namespace(&self) -> NamespaceId {
+		match self {
+			ProcedureToCreate::Rql {
+				namespace,
+				..
+			}
+			| ProcedureToCreate::Test {
+				namespace,
+				..
+			} => *namespace,
+		}
+	}
 }
 
 impl Catalog {
@@ -48,73 +84,49 @@ impl Catalog {
 	pub fn find_procedure(&self, txn: &mut Transaction<'_>, id: ProcedureId) -> Result<Option<Procedure>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				if let Some(procedure) = self.materialized.find_procedure_at(id, cmd.version()) {
+				if let Some(procedure) = self.cache.find_procedure_at(id, cmd.version()) {
 					return Ok(Some(procedure));
 				}
 				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(procedure) = TransactionalProcedureChanges::find_procedure(admin, id) {
 					return Ok(Some(procedure.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalProcedureChanges::is_procedure_deleted(admin, id) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
-				if let Some(procedure) = self.materialized.find_procedure_at(id, admin.version()) {
+				if let Some(procedure) = self.cache.find_procedure_at(id, admin.version()) {
 					return Ok(Some(procedure));
 				}
 
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				if let Some(procedure) = self.materialized.find_procedure_at(id, qry.version()) {
+				if let Some(procedure) = self.cache.find_procedure_at(id, qry.version()) {
 					return Ok(Some(procedure));
 				}
-				Ok(None)
-			}
-			Transaction::Subscription(sub) => {
-				// 1. Check transactional changes first
-				if let Some(procedure) = TransactionalProcedureChanges::find_procedure(sub, id) {
-					return Ok(Some(procedure.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalProcedureChanges::is_procedure_deleted(sub, id) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(procedure) = self.materialized.find_procedure_at(id, sub.version()) {
-					return Ok(Some(procedure));
-				}
-
 				Ok(None)
 			}
 			Transaction::Test(t) => {
-				// 1. Check transactional changes first
 				if let Some(procedure) = TransactionalProcedureChanges::find_procedure(t.inner, id) {
 					return Ok(Some(procedure.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalProcedureChanges::is_procedure_deleted(t.inner, id) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
-				if let Some(procedure) = self.materialized.find_procedure_at(id, t.inner.version()) {
+				if let Some(procedure) = self.cache.find_procedure_at(id, t.inner.version()) {
 					return Ok(Some(procedure));
 				}
 
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				if let Some(procedure) = self.materialized.find_procedure_at(id, rep.version()) {
+				if let Some(procedure) = self.cache.find_procedure_at(id, rep.version()) {
 					return Ok(Some(procedure));
 				}
 				Ok(None)
@@ -132,28 +144,25 @@ impl Catalog {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(procedure) =
-					self.materialized.find_procedure_by_name_at(namespace, name, cmd.version())
+					self.cache.find_procedure_by_name_at(namespace, name, cmd.version())
 				{
 					return Ok(Some(procedure));
 				}
 				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(procedure) =
 					TransactionalProcedureChanges::find_procedure_by_name(admin, namespace, name)
 				{
 					return Ok(Some(procedure.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalProcedureChanges::is_procedure_deleted_by_name(admin, namespace, name) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(procedure) =
-					self.materialized.find_procedure_by_name_at(namespace, name, admin.version())
+					self.cache.find_procedure_by_name_at(namespace, name, admin.version())
 				{
 					return Ok(Some(procedure));
 				}
@@ -162,51 +171,26 @@ impl Catalog {
 			}
 			Transaction::Query(qry) => {
 				if let Some(procedure) =
-					self.materialized.find_procedure_by_name_at(namespace, name, qry.version())
+					self.cache.find_procedure_by_name_at(namespace, name, qry.version())
 				{
 					return Ok(Some(procedure));
 				}
-				Ok(None)
-			}
-			Transaction::Subscription(sub) => {
-				// 1. Check transactional changes first
-				if let Some(procedure) =
-					TransactionalProcedureChanges::find_procedure_by_name(sub, namespace, name)
-				{
-					return Ok(Some(procedure.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalProcedureChanges::is_procedure_deleted_by_name(sub, namespace, name) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(procedure) =
-					self.materialized.find_procedure_by_name_at(namespace, name, sub.version())
-				{
-					return Ok(Some(procedure));
-				}
-
 				Ok(None)
 			}
 			Transaction::Test(t) => {
-				// 1. Check transactional changes first
 				if let Some(procedure) =
 					TransactionalProcedureChanges::find_procedure_by_name(t.inner, namespace, name)
 				{
 					return Ok(Some(procedure.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalProcedureChanges::is_procedure_deleted_by_name(t.inner, namespace, name)
 				{
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(procedure) =
-					self.materialized.find_procedure_by_name_at(namespace, name, t.inner.version())
+					self.cache.find_procedure_by_name_at(namespace, name, t.inner.version())
 				{
 					return Ok(Some(procedure));
 				}
@@ -215,7 +199,7 @@ impl Catalog {
 			}
 			Transaction::Replica(rep) => {
 				if let Some(procedure) =
-					self.materialized.find_procedure_by_name_at(namespace, name, rep.version())
+					self.cache.find_procedure_by_name_at(namespace, name, rep.version())
 				{
 					return Ok(Some(procedure));
 				}
@@ -224,15 +208,10 @@ impl Catalog {
 		}
 	}
 
-	/// Splits a `::` qualified name (e.g., `"ns::proc"` or `"a::b::proc"`) into (namespace_path, entity_name).
-	/// Returns `None` if there's no `::` separator (unqualified name).
 	pub fn split_qualified_name(qualified_name: &str) -> Option<(String, &str)> {
 		qualified_name.rsplit_once("::").map(|(ns_part, entity_name)| (ns_part.to_string(), entity_name))
 	}
 
-	/// Convenience: splits "ns::name" into namespace + name, resolves namespace, then calls find_procedure_by_name.
-	/// Returns `ResolvedProcedure::Remote` when the namespace has a `grpc` address, without looking up the
-	/// procedure locally.
 	#[instrument(name = "catalog::procedure::find_by_qualified_name", level = "trace", skip(self, txn))]
 	pub fn find_procedure_by_qualified_name(
 		&self,
@@ -248,7 +227,7 @@ impl Catalog {
 					}));
 				}
 				return Ok(self.find_procedure_by_name(txn, ns.id(), proc_name)?.map(|p| {
-					if p.is_test {
+					if matches!(p, Procedure::Test { .. }) {
 						ResolvedProcedure::Test(p)
 					} else {
 						ResolvedProcedure::Local(p)
@@ -258,7 +237,7 @@ impl Catalog {
 			Ok(None)
 		} else {
 			Ok(self.find_procedure_by_name(txn, NamespaceId::DEFAULT, qualified_name)?.map(|p| {
-				if p.is_test {
+				if matches!(p, Procedure::Test { .. }) {
 					ResolvedProcedure::Test(p)
 				} else {
 					ResolvedProcedure::Local(p)
@@ -275,94 +254,99 @@ impl Catalog {
 	) -> Result<Vec<Procedure>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				Ok(self.materialized.list_procedures_for_variant_at(variant, cmd.version()))
+				Ok(self.cache.list_procedures_for_variant_at(variant, cmd.version()))
 			}
 			Transaction::Admin(admin) => {
-				// Check materialized catalog + transactional additions
 				let mut procedures =
-					self.materialized.list_procedures_for_variant_at(variant, admin.version());
+					self.cache.list_procedures_for_variant_at(variant, admin.version());
 
-				// Also check transactional changes for newly created procedures with event binding
 				for change in &admin.changes.procedure {
 					if let Some(p) = &change.post
-						&& let ProcedureTrigger::Event {
-							variant: v,
-						} = &p.trigger && *v == variant && !procedures
+						&& p.event_variant() == Some(variant) && !procedures
 						.iter()
-						.any(|existing| existing.id == p.id)
+						.any(|existing| existing.id() == p.id())
 					{
 						procedures.push(p.clone());
 					}
 				}
+
+				procedures.retain(|p| !admin.is_procedure_deleted(p.id()));
 
 				Ok(procedures)
 			}
 			Transaction::Query(qry) => {
-				Ok(self.materialized.list_procedures_for_variant_at(variant, qry.version()))
-			}
-			Transaction::Subscription(sub) => {
-				// Check materialized catalog + transactional additions
-				let mut procedures =
-					self.materialized.list_procedures_for_variant_at(variant, sub.version());
-
-				// Also check transactional changes for newly created procedures with event binding
-				for change in &sub.as_admin_mut().changes.procedure {
-					if let Some(p) = &change.post
-						&& let ProcedureTrigger::Event {
-							variant: v,
-						} = &p.trigger && *v == variant && !procedures
-						.iter()
-						.any(|existing| existing.id == p.id)
-					{
-						procedures.push(p.clone());
-					}
-				}
-
-				Ok(procedures)
+				Ok(self.cache.list_procedures_for_variant_at(variant, qry.version()))
 			}
 			Transaction::Test(t) => {
-				// Check materialized catalog + transactional additions
 				let mut procedures =
-					self.materialized.list_procedures_for_variant_at(variant, t.inner.version());
+					self.cache.list_procedures_for_variant_at(variant, t.inner.version());
 
-				// Also check transactional changes for newly created procedures with event binding
 				for change in &t.inner.changes.procedure {
 					if let Some(p) = &change.post
-						&& let ProcedureTrigger::Event {
-							variant: v,
-						} = &p.trigger && *v == variant && !procedures
+						&& p.event_variant() == Some(variant) && !procedures
 						.iter()
-						.any(|existing| existing.id == p.id)
+						.any(|existing| existing.id() == p.id())
 					{
 						procedures.push(p.clone());
 					}
 				}
+
+				procedures.retain(|p| !t.inner.is_procedure_deleted(p.id()));
 
 				Ok(procedures)
 			}
 			Transaction::Replica(rep) => {
-				Ok(self.materialized.list_procedures_for_variant_at(variant, rep.version()))
+				Ok(self.cache.list_procedures_for_variant_at(variant, rep.version()))
 			}
 		}
 	}
 
 	#[instrument(name = "catalog::procedure::create", level = "debug", skip(self, txn, to_create))]
 	pub fn create_procedure(&self, txn: &mut AdminTransaction, to_create: ProcedureToCreate) -> Result<Procedure> {
-		let id = SystemSequence::next_procedure_id(txn)?;
-
-		let procedure = Procedure {
-			id,
-			namespace: to_create.namespace,
-			name: to_create.name.text().to_string(),
-			params: to_create.params,
-			return_type: to_create.return_type,
-			body: to_create.body,
-			trigger: to_create.trigger,
-			is_test: to_create.is_test,
-		};
-
+		let procedure = CatalogStore::create_procedure(txn, to_create)?;
 		txn.track_procedure_created(procedure.clone())?;
-
 		Ok(procedure)
+	}
+
+	pub fn create_procedure_with_id(
+		&self,
+		txn: &mut AdminTransaction,
+		id: ProcedureId,
+		to_create: ProcedureToCreate,
+	) -> Result<Procedure> {
+		let procedure = CatalogStore::create_procedure_with_id(txn, id, to_create)?;
+		txn.track_procedure_created(procedure.clone())?;
+		Ok(procedure)
+	}
+
+	#[instrument(name = "catalog::procedure::drop", level = "debug", skip(self, txn))]
+	pub fn drop_procedure(&self, txn: &mut AdminTransaction, id: ProcedureId) -> Result<()> {
+		let pre = CatalogStore::get_procedure(&mut Transaction::Admin(&mut *txn), id)?;
+		if !pre.is_persistent() {
+			return Err(CatalogError::CannotDropEphemeralProcedure {
+				kind: pre.kind().as_str().to_string(),
+				name: pre.name().to_string(),
+				fragment: Fragment::internal(pre.name()),
+			}
+			.into());
+		}
+		CatalogStore::drop_procedure(txn, id)?;
+		txn.track_procedure_deleted(pre)?;
+		Ok(())
+	}
+
+	pub fn register_ephemeral_procedure(
+		catalog: &CatalogCache,
+		version: CommitVersion,
+		procedure: Procedure,
+	) -> Result<()> {
+		if procedure.is_persistent() {
+			return Err(CatalogError::CannotRegisterPersistentAsEphemeral {
+				kind: procedure.kind().as_str().to_string(),
+			}
+			.into());
+		}
+		catalog.set_procedure(procedure.id(), version, Some(procedure));
+		Ok(())
 	}
 }

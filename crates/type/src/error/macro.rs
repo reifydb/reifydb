@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-/// Macro to create an Error from a diagnostic function call
-///
-/// Usage:
-/// - `error!(diagnostic_function(args))` - Creates an error without fragment
-/// - `error!(diagnostic_function(args), fragment)` - Creates an error with fragment
-///
-/// Expands to: `Error(diagnostic_function(args))` or
-/// `Error(diagnostic_function(args).with_fragment(fragment))`
 #[macro_export]
 macro_rules! error {
 	($diagnostic:expr) => {
@@ -21,18 +13,6 @@ macro_rules! error {
 	}};
 }
 
-/// Macro to return an error from a diagnostic function call
-///
-/// Usage:
-/// - `return_error!(diagnostic_function(args))` - Returns an error without fragment
-/// - `return_error!(diagnostic_function(args), fragment)` - Returns an error with fragment
-///
-/// Expands to: `return Err(Error(diagnostic_function(args)))` or `return
-/// Err(Error(diagnostic_function(args).with_fragment(fragment)))`
-///
-/// Examples:
-/// - `return_error!(TypeError::NanNotAllowed.into_diagnostic())`
-/// - `return_error!(TypeError::NanNotAllowed.into_diagnostic(), fragment)`
 #[macro_export]
 macro_rules! return_error {
 	($diagnostic:expr) => {
@@ -45,18 +25,6 @@ macro_rules! return_error {
 	}};
 }
 
-/// Macro to create an Err(Error()) from a diagnostic function call
-///
-/// Usage:
-/// - `err!(diagnostic_function(args))` - Creates an Err without fragment
-/// - `err!(diagnostic_function(args), fragment)` - Creates an Err with fragment
-///
-/// Expands to: `Err(Error(diagnostic_function(args)))` or
-/// `Err(Error(diagnostic_function(args).with_fragment(fragment)))`
-///
-/// Examples:
-/// - `err!(TypeError::NanNotAllowed.into_diagnostic())`
-/// - `err!(TypeError::NanNotAllowed.into_diagnostic(), fragment)`
 #[macro_export]
 macro_rules! err {
 	($diagnostic:expr) => {

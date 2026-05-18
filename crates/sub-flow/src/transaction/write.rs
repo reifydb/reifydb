@@ -7,16 +7,66 @@ use reifydb_type::Result;
 use super::FlowTransaction;
 
 impl FlowTransaction {
-	/// Set a value, buffering it in pending writes
 	pub fn set(&mut self, key: &EncodedKey, value: EncodedRow) -> Result<()> {
-		self.inner_mut().pending.insert(key.clone(), value);
-		Ok(())
+		match self {
+			Self::Committing {
+				cmd,
+				..
+			} => cmd.set(key, value),
+			_ => {
+				self.inner_mut().pending.insert(key.clone(), value);
+				Ok(())
+			}
+		}
 	}
 
-	/// Remove a key, buffering the deletion in pending operations
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		self.inner_mut().pending.remove(key.clone());
-		Ok(())
+		match self {
+			Self::Committing {
+				cmd,
+				..
+			} => cmd.remove(key),
+			_ => {
+				self.inner_mut().pending.remove(key.clone());
+				Ok(())
+			}
+		}
+	}
+
+	pub fn set_batch(&mut self, keys: &[EncodedKey], values: &[EncodedRow]) -> Result<()> {
+		match self {
+			Self::Committing {
+				cmd,
+				..
+			} => {
+				for (key, value) in keys.iter().zip(values.iter()) {
+					cmd.set(key, value.clone())?;
+				}
+				Ok(())
+			}
+			_ => {
+				self.inner_mut().pending.insert_batch(keys, values);
+				Ok(())
+			}
+		}
+	}
+
+	pub fn remove_batch(&mut self, keys: &[EncodedKey]) -> Result<()> {
+		match self {
+			Self::Committing {
+				cmd,
+				..
+			} => {
+				for key in keys {
+					cmd.remove(key)?;
+				}
+				Ok(())
+			}
+			_ => {
+				self.inner_mut().pending.remove_batch(keys);
+				Ok(())
+			}
+		}
 	}
 }
 
@@ -27,6 +77,7 @@ pub mod tests {
 		common::CommitVersion,
 		encoded::{key::EncodedKey, row::EncodedRow},
 	};
+	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::{interceptor::interceptors::Interceptors, transaction::admin::AdminTransaction};
 	use reifydb_type::util::cowvec::CowVec;
 
@@ -48,8 +99,13 @@ pub mod tests {
 	#[test]
 	fn test_set_buffers_to_pending() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let key = make_key("key1");
 		let value = make_value("value1");
@@ -63,8 +119,13 @@ pub mod tests {
 	#[test]
 	fn test_set_multiple_keys() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		txn.set(&make_key("key1"), make_value("value1")).unwrap();
 		txn.set(&make_key("key2"), make_value("value2")).unwrap();
@@ -78,8 +139,13 @@ pub mod tests {
 	#[test]
 	fn test_set_overwrites_same_key() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let key = make_key("key1");
 		txn.set(&key, make_value("value1")).unwrap();
@@ -92,8 +158,13 @@ pub mod tests {
 	#[test]
 	fn test_remove_buffers_to_pending() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let key = make_key("key1");
 		txn.remove(&key).unwrap();
@@ -105,8 +176,13 @@ pub mod tests {
 	#[test]
 	fn test_remove_multiple_keys() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		txn.remove(&make_key("key1")).unwrap();
 		txn.remove(&make_key("key2")).unwrap();
@@ -120,8 +196,13 @@ pub mod tests {
 	#[test]
 	fn test_set_then_remove() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let key = make_key("key1");
 		txn.set(&key, make_value("value1")).unwrap();
@@ -135,8 +216,13 @@ pub mod tests {
 	#[test]
 	fn test_remove_then_set() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let key = make_key("key1");
 		txn.remove(&key).unwrap();
@@ -150,8 +236,13 @@ pub mod tests {
 	#[test]
 	fn test_writes_not_visible_to_parent() {
 		let mut parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let key = make_key("key1");
 		let value = make_value("value1");
@@ -175,8 +266,13 @@ pub mod tests {
 
 		// Create FlowTransaction and remove the key
 		let parent_version = parent.version();
-		let mut txn =
-			FlowTransaction::deferred(&parent, parent_version, Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			parent_version,
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		txn.remove(&key).unwrap();
 
 		// Parent should still see the value
@@ -186,8 +282,13 @@ pub mod tests {
 	#[test]
 	fn test_mixed_writes_and_removes() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		txn.set(&make_key("write1"), make_value("v1")).unwrap();
 		txn.remove(&make_key("remove1")).unwrap();

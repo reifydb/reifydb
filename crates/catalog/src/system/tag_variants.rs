@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::tag_variants::*, vtable::TAG_VARIANTS};
 
-/// Returns the static definition for the system.tag_variants virtual table
-/// This table exposes variant and field information for all tag sumtypes
 pub fn tag_variants() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

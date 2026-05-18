@@ -10,10 +10,13 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
-use super::ids::{columns::flow_operators::*, vtable::FLOW_OPERATORS};
+use super::ids::{
+	columns::flow_operators::{
+		API, CAP_DELETE, CAP_DROP, CAP_INSERT, CAP_TICK, CAP_UPDATE, LIBRARY_PATH, OPERATOR,
+	},
+	vtable::FLOW_OPERATORS,
+};
 
-/// Returns the static definition for the system.flow_operators virtual table
-/// This table exposes information about loaded FFI operators from shared libraries
 pub fn flow_operators() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
@@ -87,20 +90,11 @@ pub fn flow_operators() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: CAP_PULL,
-					name: "cap_pull".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Boolean),
-					properties: vec![],
-					index: ColumnIndex(7),
-					auto_increment: false,
-					dictionary_id: None,
-				},
-				Column {
 					id: CAP_TICK,
 					name: "cap_tick".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Boolean),
 					properties: vec![],
-					index: ColumnIndex(8),
+					index: ColumnIndex(7),
 					auto_increment: false,
 					dictionary_id: None,
 				},

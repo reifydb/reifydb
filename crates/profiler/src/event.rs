@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
+use std::sync::Arc;
+
+#[allow(unused_imports)]
+use paste as _;
+use reifydb_core::define_event;
+
+use crate::summary::ProfilerSummary;
+
+define_event! {
+
+	pub struct ProfilerScopeClosedEvent {
+		pub summary: Arc<ProfilerSummary>,
+	}
+}
+
+define_event! {
+
+	pub struct ProfilerScopeBatchEvent {
+		pub summary: Arc<ProfilerSummary>,
+	}
+}

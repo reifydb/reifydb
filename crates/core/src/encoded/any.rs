@@ -20,9 +20,6 @@ use uuid::Uuid;
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
-/// Encodes an inner value to a `[type_byte][payload]` byte vector.
-///
-/// Panics for unsupported types (Int, Uint, Decimal, DictionaryId, Any, None, List, Type).
 pub fn encode_value(value: &Value) -> Vec<u8> {
 	match value {
 		Value::Boolean(v) => vec![Type::Boolean.to_u8(), *v as u8],
@@ -151,7 +148,6 @@ pub fn encode_value(value: &Value) -> Vec<u8> {
 	}
 }
 
-/// Decodes bytes produced by `encode_value` back into a `Value`.
 pub fn decode_value(bytes: &[u8]) -> Value {
 	let type_byte = bytes[0];
 	let p = &bytes[1..];

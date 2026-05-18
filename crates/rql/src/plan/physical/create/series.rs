@@ -27,7 +27,7 @@ impl<'bump> Compiler<'bump> {
 				let interned = self.interner.intern_fragment(n);
 				interned.with_text(ns_segments.join("::"))
 			} else {
-				Fragment::internal("default".to_string())
+				Fragment::internal("default")
 			};
 			return_error!(namespace_not_found(ns_fragment, &ns_segments.join("::")));
 		};
@@ -36,11 +36,10 @@ impl<'bump> Compiler<'bump> {
 			let interned = self.interner.intern_fragment(n);
 			interned.with_text(namespace.name())
 		} else {
-			Fragment::internal(namespace.name().to_string())
+			Fragment::internal(namespace.name())
 		};
 		let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
 
-		// Resolve optional tag type
 		let tag = if let Some(tag_ident) = create.tag {
 			let tag_ns_segments: Vec<&str> = if tag_ident.namespace.is_empty() {
 				ns_segments.clone()
@@ -85,6 +84,7 @@ impl<'bump> Compiler<'bump> {
 			columns: create.columns,
 			tag,
 			key: create.key,
+			ttl: create.ttl,
 		}))
 	}
 }

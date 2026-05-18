@@ -3,9 +3,9 @@
 //! Uses Linux and/or POSIX functions to resolve interface names like "eth0"
 //! or "socan1" into device numbers.
 
-use std::fmt;
-use crate::{Error, NixPath, Result};
-use libc::c_uint;
+use std::{ffi::{CStr, CString}, fmt};
+use crate::{errno::Errno, Error, NixPath, Result};
+use libc::{c_uint, IF_NAMESIZE};
 
 #[cfg(not(solarish))]
 /// type alias for InterfaceFlags
@@ -14,7 +14,7 @@ pub type IflagsType = libc::c_int;
 /// type alias for InterfaceFlags
 pub type IflagsType = libc::c_longlong;
 
-/// Resolve an interface into a interface number.
+/// Resolve an interface into an interface number.
 pub fn if_nametoindex<P: ?Sized + NixPath>(name: &P) -> Result<c_uint> {
     let if_index = name
         .with_nix_path(|name| unsafe { libc::if_nametoindex(name.as_ptr()) })?;
@@ -24,6 +24,19 @@ pub fn if_nametoindex<P: ?Sized + NixPath>(name: &P) -> Result<c_uint> {
     } else {
         Ok(if_index)
     }
+}
+
+/// Resolve an interface number into an interface.
+pub fn if_indextoname(index: c_uint) -> Result<CString> {
+    // We need to allocate this anyway, so doing it directly is faster.
+    let mut buf = vec![0u8; IF_NAMESIZE];
+
+    let return_buf = unsafe {
+        libc::if_indextoname(index, buf.as_mut_ptr().cast())
+    };
+
+    Errno::result(return_buf.cast())?;
+    Ok(CStr::from_bytes_until_nul(buf.as_slice()).unwrap().to_owned())
 }
 
 libc_bitflags!(
@@ -38,7 +51,7 @@ libc_bitflags!(
         IFF_BROADCAST as IflagsType;
         /// Internal debugging flag. (see
         /// [`netdevice(7)`](https://man7.org/linux/man-pages/man7/netdevice.7.html))
-        #[cfg(not(target_os = "haiku"))]
+        #[cfg(not(any(target_os = "haiku", target_os = "cygwin")))]
         IFF_DEBUG as IflagsType;
         /// Interface is a loopback interface. (see
         /// [`netdevice(7)`](https://man7.org/linux/man-pages/man7/netdevice.7.html))
@@ -53,7 +66,7 @@ libc_bitflags!(
                   solarish,
                   apple_targets,
                   target_os = "fuchsia",
-                  target_os = "netbsd"))]
+                  target_os = "cygwin"))]
         IFF_NOTRAILERS as IflagsType;
         /// Interface manages own routes.
         #[cfg(any(target_os = "dragonfly"))]
@@ -64,7 +77,8 @@ libc_bitflags!(
                   linux_android,
                   bsd,
                   solarish,
-                  target_os = "fuchsia"))]
+                  target_os = "fuchsia",
+                  target_os = "cygwin"))]
         IFF_RUNNING as IflagsType;
         /// No arp protocol, L2 destination address not set. (see
         /// [`netdevice(7)`](https://man7.org/linux/man-pages/man7/netdevice.7.html))
@@ -74,6 +88,7 @@ libc_bitflags!(
         IFF_PROMISC as IflagsType;
         /// Receive all multicast packets. (see
         /// [`netdevice(7)`](https://man7.org/linux/man-pages/man7/netdevice.7.html))
+        #[cfg(not(target_os = "cygwin"))]
         IFF_ALLMULTI as IflagsType;
         /// Master of a load balancing bundle. (see
         /// [`netdevice(7)`](https://man7.org/linux/man-pages/man7/netdevice.7.html))
@@ -132,7 +147,7 @@ libc_bitflags!(
         #[cfg(solarish)]
         IFF_PRIVATE as IflagsType;
         /// Driver signals L1 up. Volatile.
-        #[cfg(any(target_os = "fuchsia", target_os = "linux"))]
+        #[cfg(any(target_os = "fuchsia", target_os = "linux", target_os = "cygwin"))]
         IFF_LOWER_UP;
         /// Interface is in polling mode.
         #[cfg(any(target_os = "dragonfly"))]
@@ -144,7 +159,7 @@ libc_bitflags!(
         #[cfg(solarish)]
         IFF_NOXMIT as IflagsType;
         /// Driver signals dormant. Volatile.
-        #[cfg(any(target_os = "fuchsia", target_os = "linux"))]
+        #[cfg(any(target_os = "fuchsia", target_os = "linux", target_os = "cygwin"))]
         IFF_DORMANT;
         /// User-requested promisc mode.
         #[cfg(freebsdlike)]

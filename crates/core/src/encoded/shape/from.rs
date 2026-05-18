@@ -5,7 +5,7 @@ use reifydb_type::value::constraint::{Constraint, TypeConstraint};
 
 use crate::{
 	encoded::shape::{RowShape, RowShapeField},
-	interface::catalog::{column::Column, subscription::SubscriptionColumn},
+	interface::catalog::column::Column,
 };
 
 impl From<&Vec<Column>> for RowShape {
@@ -18,9 +18,6 @@ impl From<&[Column]> for RowShape {
 		let fields = value
 			.iter()
 			.map(|col| {
-				// For dictionary columns, the constraint carries Dictionary info with id_type.
-				// Convert to TypeConstraint::dictionary() so the shape uses DictionaryId as base_type,
-				// matching the shape used to encode the data.
 				let constraint = match col.constraint.constraint() {
 					Some(Constraint::Dictionary(dict_id, id_type)) => {
 						TypeConstraint::dictionary(*dict_id, id_type.clone())
@@ -29,21 +26,6 @@ impl From<&[Column]> for RowShape {
 				};
 				RowShapeField::new(col.name.clone(), constraint)
 			})
-			.collect();
-		RowShape::new(fields)
-	}
-}
-
-impl From<&Vec<SubscriptionColumn>> for RowShape {
-	fn from(value: &Vec<SubscriptionColumn>) -> Self {
-		RowShape::from(value.as_slice())
-	}
-}
-impl From<&[SubscriptionColumn]> for RowShape {
-	fn from(value: &[SubscriptionColumn]) -> Self {
-		let fields = value
-			.iter()
-			.map(|col| RowShapeField::new(col.name.clone(), TypeConstraint::unconstrained(col.ty.clone())))
 			.collect();
 		RowShape::new(fields)
 	}

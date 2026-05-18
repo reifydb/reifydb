@@ -12,11 +12,9 @@ use crate::{
 };
 
 pub fn parse_decimal(fragment: Fragment) -> Result<Decimal, Error> {
-	// Fragment is already owned, no conversion needed
 	let fragment_owned = fragment.clone();
 	let raw_value = fragment.text();
 
-	// Fast path: check if we need any string processing
 	let needs_trimming = raw_value.as_bytes().first().is_some_and(|&b| b.is_ascii_whitespace())
 		|| raw_value.as_bytes().last().is_some_and(|&b| b.is_ascii_whitespace());
 	let has_underscores = raw_value.as_bytes().contains(&b'_');

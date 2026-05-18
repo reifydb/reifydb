@@ -12,7 +12,7 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalNamespaceChanges,
 	},
-	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
+	transaction::admin::AdminTransaction,
 };
 
 impl CatalogTrackNamespaceChangeOperations for AdminTransaction {
@@ -81,37 +81,5 @@ impl TransactionalNamespaceChanges for AdminTransaction {
 			.iter()
 			.rev()
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|s| s.name()) == Some(name))
-	}
-}
-
-impl CatalogTrackNamespaceChangeOperations for SubscriptionTransaction {
-	fn track_namespace_created(&mut self, namespace: Namespace) -> Result<()> {
-		self.inner.track_namespace_created(namespace)
-	}
-
-	fn track_namespace_updated(&mut self, pre: Namespace, post: Namespace) -> Result<()> {
-		self.inner.track_namespace_updated(pre, post)
-	}
-
-	fn track_namespace_deleted(&mut self, namespace: Namespace) -> Result<()> {
-		self.inner.track_namespace_deleted(namespace)
-	}
-}
-
-impl TransactionalNamespaceChanges for SubscriptionTransaction {
-	fn find_namespace(&self, id: NamespaceId) -> Option<&Namespace> {
-		self.inner.find_namespace(id)
-	}
-
-	fn find_namespace_by_name(&self, name: &str) -> Option<&Namespace> {
-		self.inner.find_namespace_by_name(name)
-	}
-
-	fn is_namespace_deleted(&self, id: NamespaceId) -> bool {
-		self.inner.is_namespace_deleted(id)
-	}
-
-	fn is_namespace_deleted_by_name(&self, name: &str) -> bool {
-		self.inner.is_namespace_deleted_by_name(name)
 	}
 }

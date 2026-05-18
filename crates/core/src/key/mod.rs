@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use authentication::AuthenticationKey;
+use binding::BindingKey;
 use cdc_consumer::CdcConsumerKey;
 use column::ColumnKey;
 use column_sequence::ColumnSequenceKey;
@@ -17,9 +18,11 @@ use index::IndexKey;
 use index_entry::IndexEntryKey;
 use kind::KeyKind;
 use namespace::NamespaceKey;
+use namespace_binding::NamespaceBindingKey;
 use namespace_dictionary::NamespaceDictionaryKey;
 use namespace_flow::NamespaceFlowKey;
 use namespace_handler::NamespaceHandlerKey;
+use namespace_procedure::NamespaceProcedureKey;
 use namespace_ringbuffer::NamespaceRingBufferKey;
 use namespace_series::NamespaceSeriesKey;
 use namespace_sink::NamespaceSinkKey;
@@ -30,8 +33,10 @@ use namespace_view::NamespaceViewKey;
 use policy::PolicyKey;
 use policy_op::PolicyOpKey;
 use primary_key::PrimaryKeyKey;
+use procedure::ProcedureKey;
+use procedure_param::ProcedureParamKey;
 use property::ColumnPropertyKey;
-use retention_policy::{OperatorRetentionPolicyKey, ShapeRetentionPolicyKey};
+use retention_strategy::{OperatorRetentionStrategyKey, ShapeRetentionStrategyKey};
 use ringbuffer::{RingBufferKey, RingBufferMetadataKey};
 use role::RoleKey;
 use row::RowKey;
@@ -39,9 +44,6 @@ use row_sequence::RowSequenceKey;
 use series::{SeriesKey, SeriesMetadataKey};
 use sink::SinkKey;
 use source::SourceKey;
-use subscription::SubscriptionKey;
-use subscription_column::SubscriptionColumnKey;
-use subscription_row::SubscriptionRowKey;
 use sumtype::SumTypeKey;
 use system_sequence::SystemSequenceKey;
 use system_version::SystemVersionKey;
@@ -56,6 +58,7 @@ use crate::{
 };
 
 pub mod authentication;
+pub mod binding;
 pub mod cdc_consumer;
 pub mod cdc_exclude;
 pub mod column;
@@ -78,9 +81,11 @@ pub mod kind;
 pub mod migration;
 pub mod migration_event;
 pub mod namespace;
+pub mod namespace_binding;
 pub mod namespace_dictionary;
 pub mod namespace_flow;
 pub mod namespace_handler;
+pub mod namespace_procedure;
 pub mod namespace_ringbuffer;
 pub mod namespace_series;
 pub mod namespace_sink;
@@ -88,23 +93,24 @@ pub mod namespace_source;
 pub mod namespace_sumtype;
 pub mod namespace_table;
 pub mod namespace_view;
+pub mod operator_ttl;
 pub mod policy;
 pub mod policy_op;
 pub mod primary_key;
+pub mod procedure;
+pub mod procedure_param;
 pub mod property;
-pub mod retention_policy;
+pub mod retention_strategy;
 pub mod ringbuffer;
 pub mod role;
 pub mod row;
 pub mod row_sequence;
+pub mod row_ttl;
 pub mod series;
 pub mod series_row;
 pub mod shape;
 pub mod sink;
 pub mod source;
-pub mod subscription;
-pub mod subscription_column;
-pub mod subscription_row;
 pub mod sumtype;
 pub mod system_sequence;
 pub mod system_version;
@@ -140,8 +146,8 @@ pub enum Key {
 	RingBuffer(RingBufferKey),
 	RingBufferMetadata(RingBufferMetadataKey),
 	NamespaceRingBuffer(NamespaceRingBufferKey),
-	ShapeRetentionPolicy(ShapeRetentionPolicyKey),
-	OperatorRetentionPolicy(OperatorRetentionPolicyKey),
+	ShapeRetentionStrategy(ShapeRetentionStrategyKey),
+	OperatorRetentionStrategy(OperatorRetentionStrategyKey),
 	Dictionary(DictionaryKey),
 	DictionaryEntry(DictionaryEntryKey),
 	DictionaryEntryIndex(DictionaryEntryIndexKey),
@@ -151,9 +157,6 @@ pub enum Key {
 	NamespaceSumType(NamespaceSumTypeKey),
 	Handler(HandlerKey),
 	NamespaceHandler(NamespaceHandlerKey),
-	Subscription(SubscriptionKey),
-	SubscriptionColumn(SubscriptionColumnKey),
-	SubscriptionRow(SubscriptionRowKey),
 	Series(SeriesKey),
 	SeriesMetadata(SeriesMetadataKey),
 	NamespaceSeries(NamespaceSeriesKey),
@@ -168,6 +171,11 @@ pub enum Key {
 	NamespaceSource(NamespaceSourceKey),
 	Sink(SinkKey),
 	NamespaceSink(NamespaceSinkKey),
+	Procedure(ProcedureKey),
+	NamespaceProcedure(NamespaceProcedureKey),
+	ProcedureParam(ProcedureParamKey),
+	Binding(BindingKey),
+	NamespaceBinding(NamespaceBindingKey),
 }
 
 impl Key {
@@ -198,8 +206,8 @@ impl Key {
 			Key::RingBuffer(key) => key.encode(),
 			Key::RingBufferMetadata(key) => key.encode(),
 			Key::NamespaceRingBuffer(key) => key.encode(),
-			Key::ShapeRetentionPolicy(key) => key.encode(),
-			Key::OperatorRetentionPolicy(key) => key.encode(),
+			Key::ShapeRetentionStrategy(key) => key.encode(),
+			Key::OperatorRetentionStrategy(key) => key.encode(),
 			Key::Dictionary(key) => key.encode(),
 			Key::DictionaryEntry(key) => key.encode(),
 			Key::DictionaryEntryIndex(key) => key.encode(),
@@ -209,9 +217,6 @@ impl Key {
 			Key::NamespaceSumType(key) => key.encode(),
 			Key::Handler(key) => key.encode(),
 			Key::NamespaceHandler(key) => key.encode(),
-			Key::Subscription(key) => key.encode(),
-			Key::SubscriptionColumn(key) => key.encode(),
-			Key::SubscriptionRow(key) => key.encode(),
 			Key::Series(key) => key.encode(),
 			Key::SeriesMetadata(key) => key.encode(),
 			Key::NamespaceSeries(key) => key.encode(),
@@ -226,6 +231,11 @@ impl Key {
 			Key::NamespaceSource(key) => key.encode(),
 			Key::Sink(key) => key.encode(),
 			Key::NamespaceSink(key) => key.encode(),
+			Key::Procedure(key) => key.encode(),
+			Key::NamespaceProcedure(key) => key.encode(),
+			Key::ProcedureParam(key) => key.encode(),
+			Key::Binding(key) => key.encode(),
+			Key::NamespaceBinding(key) => key.encode(),
 		}
 	}
 }
@@ -255,19 +265,19 @@ pub trait EncodableKeyRange {
 impl Key {
 	pub fn kind(key: impl AsRef<[u8]>) -> Option<KeyKind> {
 		let key = key.as_ref();
-		if key.len() < 2 {
+		if key.is_empty() {
 			return None;
 		}
 
-		keycode::deserialize(&key[1..2]).ok()
+		keycode::deserialize(&key[0..1]).ok()
 	}
 
 	pub fn decode(key: &EncodedKey) -> Option<Self> {
-		if key.len() < 2 {
+		if key.is_empty() {
 			return None;
 		}
 
-		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+		let kind: KeyKind = keycode::deserialize(&key[0..1]).ok()?;
 		match kind {
 			KeyKind::CdcConsumer => CdcConsumerKey::decode(key).map(Self::CdcConsumer),
 			KeyKind::Columns => ColumnsKey::decode(key).map(Self::Columns),
@@ -298,20 +308,17 @@ impl Key {
 			KeyKind::NamespaceRingBuffer => {
 				NamespaceRingBufferKey::decode(key).map(Self::NamespaceRingBuffer)
 			}
-			KeyKind::ShapeRetentionPolicy => {
-				ShapeRetentionPolicyKey::decode(key).map(Self::ShapeRetentionPolicy)
+			KeyKind::ShapeRetentionStrategy => {
+				ShapeRetentionStrategyKey::decode(key).map(Self::ShapeRetentionStrategy)
 			}
-			KeyKind::OperatorRetentionPolicy => {
-				OperatorRetentionPolicyKey::decode(key).map(Self::OperatorRetentionPolicy)
+			KeyKind::OperatorRetentionStrategy => {
+				OperatorRetentionStrategyKey::decode(key).map(Self::OperatorRetentionStrategy)
 			}
 			KeyKind::FlowNode
 			| KeyKind::FlowNodeByFlow
 			| KeyKind::FlowEdge
 			| KeyKind::FlowEdgeByFlow
-			| KeyKind::FlowVersion => {
-				// These keys are used directly via EncodableKey trait, not through Key enum
-				None
-			}
+			| KeyKind::FlowVersion => None,
 			KeyKind::Dictionary => DictionaryKey::decode(key).map(Self::Dictionary),
 			KeyKind::DictionaryEntry => DictionaryEntryKey::decode(key).map(Self::DictionaryEntry),
 			KeyKind::DictionaryEntryIndex => {
@@ -325,21 +332,10 @@ impl Key {
 			KeyKind::NamespaceSumType => NamespaceSumTypeKey::decode(key).map(Self::NamespaceSumType),
 			KeyKind::Handler => HandlerKey::decode(key).map(Self::Handler),
 			KeyKind::NamespaceHandler => NamespaceHandlerKey::decode(key).map(Self::NamespaceHandler),
-			KeyKind::VariantHandler => {
-				// VariantHandler keys used directly via EncodableKey trait
-				None
-			}
-			KeyKind::Metric => {
-				// Storage tracker keys are used for internal persistence, not through Key enum
-				None
-			}
-			KeyKind::Subscription => SubscriptionKey::decode(key).map(Self::Subscription),
-			KeyKind::SubscriptionColumn => SubscriptionColumnKey::decode(key).map(Self::SubscriptionColumn),
-			KeyKind::SubscriptionRow => SubscriptionRowKey::decode(key).map(Self::SubscriptionRow),
-			KeyKind::Shape | KeyKind::RowShapeField => {
-				// Shape keys are used directly via EncodableKey trait, not through Key enum
-				None
-			}
+			KeyKind::VariantHandler => None,
+			KeyKind::Metric => None,
+			KeyKind::Subscription | KeyKind::SubscriptionColumn | KeyKind::SubscriptionRow => None,
+			KeyKind::Shape | KeyKind::RowShapeField => None,
 			KeyKind::Series => SeriesKey::decode(key).map(Self::Series),
 			KeyKind::NamespaceSeries => NamespaceSeriesKey::decode(key).map(Self::NamespaceSeries),
 			KeyKind::SeriesMetadata => SeriesMetadataKey::decode(key).map(Self::SeriesMetadata),
@@ -349,23 +345,21 @@ impl Key {
 			KeyKind::GrantedRole => GrantedRoleKey::decode(key).map(Self::GrantedRole),
 			KeyKind::Policy => PolicyKey::decode(key).map(Self::Policy),
 			KeyKind::PolicyOp => PolicyOpKey::decode(key).map(Self::PolicyOp),
-			KeyKind::Migration | KeyKind::MigrationEvent => {
-				// Migration keys are used directly via EncodableKey trait, not through Key enum
-				None
-			}
+			KeyKind::Migration | KeyKind::MigrationEvent => None,
 			KeyKind::Token => TokenKey::decode(key).map(Self::Token),
-			KeyKind::Config => {
-				// Config keys are used directly via EncodableKey trait, not through Key enum
-				None
-			}
+			KeyKind::ConfigStorage => None,
 			KeyKind::Source
 			| KeyKind::NamespaceSource
 			| KeyKind::Sink
 			| KeyKind::NamespaceSink
-			| KeyKind::SourceCheckpoint => {
-				// Source/Sink keys are used directly via EncodableKey trait, not through Key enum
-				None
-			}
+			| KeyKind::SourceCheckpoint => None,
+			KeyKind::RowTtl => None,
+			KeyKind::OperatorTtl => None,
+			KeyKind::Procedure => ProcedureKey::decode(key).map(Self::Procedure),
+			KeyKind::NamespaceProcedure => NamespaceProcedureKey::decode(key).map(Self::NamespaceProcedure),
+			KeyKind::ProcedureParam => ProcedureParamKey::decode(key).map(Self::ProcedureParam),
+			KeyKind::Binding => BindingKey::decode(key).map(Self::Binding),
+			KeyKind::NamespaceBinding => None,
 		}
 	}
 }

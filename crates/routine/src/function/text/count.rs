@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct TextCount;
+pub struct TextCount {
+	info: RoutineInfo,
+}
 
 impl Default for TextCount {
 	fn default() -> Self {
@@ -20,51 +18,64 @@ impl Default for TextCount {
 
 impl TextCount {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("text::count"),
+		}
 	}
 }
 
-impl ScalarFunction for TextCount {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl<'a> Routine<FunctionContext<'a>> for TextCount {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Int4
+	}
 
-		if columns.len() != 1 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 1 {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let column = columns.first().unwrap();
+		let column = &args[0];
+		let (data, bitvec) = column.unwrap_option();
+		let row_count = data.len();
 
-		match &column.data() {
-			ColumnData::Utf8 {
+		match data {
+			ColumnBuffer::Utf8 {
 				container,
 				..
 			} => {
 				let mut result = Vec::with_capacity(row_count);
-				let mut bitvec = Vec::with_capacity(row_count);
+				let mut res_bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
 					if container.is_defined(i) {
-						let text = &container[i];
+						let text = container.get(i).unwrap();
 						result.push(text.chars().count() as i32);
-						bitvec.push(true);
+						res_bitvec.push(true);
 					} else {
 						result.push(0);
-						bitvec.push(false);
+						res_bitvec.push(false);
 					}
 				}
 
-				Ok(ColumnData::int4_with_bitvec(result, bitvec))
+				let result_data = ColumnBuffer::int4_with_bitvec(result, res_bitvec);
+				let final_data = match bitvec {
+					Some(bv) => ColumnBuffer::Option {
+						inner: Box::new(result_data),
+						bitvec: bv.clone(),
+					},
+					None => result_data,
+				};
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
-			other => Err(ScalarFunctionError::InvalidArgumentType {
+			other => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Utf8],
@@ -72,8 +83,10 @@ impl ScalarFunction for TextCount {
 			}),
 		}
 	}
+}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Int4
+impl Function for TextCount {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

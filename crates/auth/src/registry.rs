@@ -34,6 +34,6 @@ impl AuthenticationRegistry {
 
 impl Default for AuthenticationRegistry {
 	fn default() -> Self {
-		Self::new(Clock::default())
+		Self::new(Clock::Real)
 	}
 }

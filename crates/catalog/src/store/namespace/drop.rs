@@ -16,9 +16,6 @@ use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn drop_namespace(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
-		// Cascade-drop all child objects within this namespace
-
-		// Drop all tables
 		{
 			let range = NamespaceTableKey::full_scan(namespace);
 			let mut stream = txn.range(range, 1024)?;
@@ -35,7 +32,6 @@ impl CatalogStore {
 			}
 		}
 
-		// Drop all views
 		{
 			let range = NamespaceViewKey::full_scan(namespace);
 			let mut stream = txn.range(range, 1024)?;
@@ -52,7 +48,6 @@ impl CatalogStore {
 			}
 		}
 
-		// Drop all ringbuffers
 		{
 			let range = NamespaceRingBufferKey::full_scan(namespace);
 			let mut stream = txn.range(range, 1024)?;
@@ -69,7 +64,6 @@ impl CatalogStore {
 			}
 		}
 
-		// Drop all flows
 		{
 			let range = NamespaceFlowKey::full_scan(namespace);
 			let mut stream = txn.range(range, 1024)?;
@@ -86,7 +80,6 @@ impl CatalogStore {
 			}
 		}
 
-		// Drop all dictionaries
 		{
 			let range = NamespaceDictionaryKey::full_scan(namespace);
 			let mut stream = txn.range(range, 1024)?;
@@ -103,7 +96,6 @@ impl CatalogStore {
 			}
 		}
 
-		// Drop all sumtypes
 		{
 			let range = NamespaceSumTypeKey::full_scan(namespace);
 			let mut stream = txn.range(range, 1024)?;
@@ -120,7 +112,6 @@ impl CatalogStore {
 			}
 		}
 
-		// Delete the namespace metadata
 		txn.remove(&NamespaceKey::encoded(namespace))?;
 
 		Ok(())
@@ -147,7 +138,7 @@ pub mod tests {
 		let created = CatalogStore::create_namespace(
 			&mut txn,
 			NamespaceToCreate {
-				namespace_fragment: Some(Fragment::internal("test_ns".to_string())),
+				namespace_fragment: Some(Fragment::internal("test_ns")),
 				name: "test_ns".to_string(),
 				local_name: "test_ns".to_string(),
 				parent_id: NamespaceId::ROOT,

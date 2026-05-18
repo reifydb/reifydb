@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Factory for creating admin subsystem instances.
-
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::SharedRuntime;
@@ -15,13 +13,11 @@ use crate::{
 	subsystem::AdminSubsystem,
 };
 
-/// Factory for creating admin subsystem instances.
 pub struct AdminSubsystemFactory {
 	config_fn: Box<dyn FnOnce() -> AdminConfig + Send>,
 }
 
 impl AdminSubsystemFactory {
-	/// Create a new admin subsystem factory with the given configurator.
 	pub fn new<F>(configurator: F) -> Self
 	where
 		F: FnOnce(AdminConfigurator) -> AdminConfigurator + Send + 'static,
@@ -39,13 +35,18 @@ impl SubsystemFactory for AdminSubsystemFactory {
 
 		let config = (self.config_fn)();
 
-		// Create admin state from config
+		let runtime = config.runtime.as_ref().unwrap_or(&ioc_runtime);
+		let actor_system = runtime.actor_system();
+		let clock = runtime.clock().clone();
+
 		let state = AdminState::new(
 			engine,
 			config.max_connections,
 			config.request_timeout,
 			config.auth_required,
 			config.auth_token.clone(),
+			clock,
+			actor_system,
 		);
 
 		let subsystem =

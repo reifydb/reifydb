@@ -21,7 +21,6 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		dispatch: logical::DispatchNode<'_>,
 	) -> Result<PhysicalPlan<'bump>> {
-		// Resolve namespace
 		let ns_segments: Vec<&str> = dispatch.on_event.namespace.iter().map(|n| n.text()).collect();
 		let ns_name: String = if ns_segments.is_empty() {
 			"default".to_string()
@@ -39,14 +38,13 @@ impl<'bump> Compiler<'bump> {
 			.into());
 		};
 
-		// Look up event sumtype by name
 		let event_name = dispatch.on_event.name.text();
 		let Some(sumtype) = self.catalog.find_sumtype_by_name(rx, namespace.id(), event_name)? else {
 			return Err(CatalogError::NotFound {
 				kind: CatalogObjectKind::Event,
 				namespace: ns_name.clone(),
 				name: event_name.to_string(),
-				fragment: Fragment::internal(event_name.to_string()),
+				fragment: Fragment::internal(event_name),
 			}
 			.into());
 		};
@@ -55,7 +53,6 @@ impl<'bump> Compiler<'bump> {
 			return Err(internal_error!("'{}' is not an EVENT type", event_name));
 		}
 
-		// Convert fields - variant resolved at runtime
 		let fields = dispatch.fields.into_iter().map(|(name, expr)| (name.text().to_string(), expr)).collect();
 
 		Ok(PhysicalPlan::Dispatch(DispatchNode {

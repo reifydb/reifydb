@@ -8,7 +8,6 @@ use crate::{
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
-/// Trait for types that can be converted to a consumer key
 pub trait ToConsumerKey {
 	fn to_consumer_key(&self) -> EncodedKey;
 }
@@ -48,14 +47,12 @@ impl CdcConsumerKey {
 	}
 }
 
-pub const VERSION_BYTE: u8 = 1;
-
 impl EncodableKey for CdcConsumerKey {
 	const KIND: KeyKind = KeyKind::CdcConsumer;
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(VERSION_BYTE).extend_u8(Self::KIND as u8).extend_str(&self.consumer);
+		serializer.extend_u8(Self::KIND as u8).extend_str(&self.consumer);
 		serializer.to_encoded_key()
 	}
 
@@ -64,11 +61,6 @@ impl EncodableKey for CdcConsumerKey {
 		Self: Sized,
 	{
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION_BYTE {
-			return None;
-		}
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
@@ -87,23 +79,19 @@ impl EncodableKey for CdcConsumerKey {
 pub struct CdcConsumerKeyRange;
 
 impl CdcConsumerKeyRange {
-	/// Creates a key range that spans all CDC consumer checkpoint keys
-	///
-	/// Returns an `EncodedKeyRange` that can be used with transaction
-	/// range scan operations to iterate over all registered CDC consumers.
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
 	}
 
 	fn start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION_BYTE).extend_u8(CdcConsumerKey::KIND as u8);
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8(CdcConsumerKey::KIND as u8);
 		serializer.to_encoded_key()
 	}
 
 	fn end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION_BYTE).extend_u8((CdcConsumerKey::KIND as u8).wrapping_sub(1));
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8((CdcConsumerKey::KIND as u8).wrapping_sub(1));
 		serializer.to_encoded_key()
 	}
 }
@@ -129,7 +117,6 @@ pub mod tests {
 
 	#[test]
 	fn test_cdc_consumer_keys_within_range() {
-		// Create several CDC consumer keys
 		let key1 = CdcConsumerKey {
 			consumer: CdcConsumerId::new("consumer-a"),
 		}
@@ -145,10 +132,8 @@ pub mod tests {
 		}
 		.encode();
 
-		// Get the range
 		let range = CdcConsumerKeyRange::full_scan();
 
-		// All CDC consumer keys should fall within the range
 		assert!(range.contains(&key1), "consumer-a key should be in range");
 		assert!(range.contains(&key2), "consumer-b key should be in range");
 		assert!(range.contains(&key3), "consumer-z key should be in range");
@@ -159,7 +144,6 @@ pub mod tests {
 		let flow_id = FlowId(42);
 		let encoded = flow_id.to_consumer_key();
 
-		// Decode and verify it creates the expected consumer key format
 		let decoded = CdcConsumerKey::decode(&encoded).expect("Failed to decode key");
 		assert_eq!(decoded.consumer, CdcConsumerId::new("flow:42"));
 	}

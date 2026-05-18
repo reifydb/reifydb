@@ -1,18 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! WebSocket request types for the protocol layer.
-//!
-//! These types define the JSON message format for WebSocket client-server communication.
-
 use std::collections::HashMap;
 
-use reifydb_sub_server::wire::WireParams;
+use reifydb_sub_server::{format::WireFormat, wire::WireParams};
 use serde::{Deserialize, Serialize};
 
-/// A WebSocket request message.
-///
-/// Each request has a unique `id` that clients use to correlate responses.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Request {
 	pub id: String,
@@ -20,15 +13,6 @@ pub struct Request {
 	pub payload: RequestPayload,
 }
 
-/// The payload of a WebSocket request.
-///
-/// Discriminated by the `type` field in JSON:
-/// - `"Auth"` - Authentication request
-/// - `"Admin"` - Admin operation (DDL + DML + Query)
-/// - `"Command"` - Write command (INSERT, UPDATE, DELETE)
-/// - `"Query"` - Read query (SELECT)
-/// - `"Subscribe"` - Subscribe to real-time changes
-/// - `"Unsubscribe"` - Unsubscribe from a subscription
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]
 pub enum RequestPayload {
@@ -38,23 +22,24 @@ pub enum RequestPayload {
 	Query(QueryRequest),
 	Subscribe(SubscribeRequest),
 	Unsubscribe(UnsubscribeRequest),
+	BatchSubscribe(BatchSubscribeRequest),
+	BatchUnsubscribe(BatchUnsubscribeRequest),
+	Call(CallRequest),
 	Logout,
 }
 
-/// Admin (DDL + DML + Query) request payload.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AdminRequest {
-	/// RQL statements to execute.
-	pub statements: Vec<String>,
-	/// Optional parameters for the statements.
+	pub rql: String,
+
 	pub params: Option<WireParams>,
-	/// Optional response format (e.g., "json" for JSON body passthrough).
-	pub format: Option<String>,
-	/// When true with format="json", return the first element directly instead of an array.
+
+	#[serde(default)]
+	pub format: WireFormat,
+
 	pub unwrap: Option<bool>,
 }
 
-/// Authentication request payload.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthRequest {
 	pub token: Option<String>,
@@ -62,47 +47,59 @@ pub struct AuthRequest {
 	pub credentials: Option<HashMap<String, String>>,
 }
 
-/// Command (write) request payload.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CommandRequest {
-	/// RQL statements to execute.
-	pub statements: Vec<String>,
-	/// Optional parameters for the statements.
+	pub rql: String,
+
 	pub params: Option<WireParams>,
-	/// Optional response format (e.g., "json" for JSON body passthrough).
-	pub format: Option<String>,
-	/// When true with format="json", return the first element directly instead of an array.
+
+	#[serde(default)]
+	pub format: WireFormat,
+
 	pub unwrap: Option<bool>,
 }
 
-/// Query (read) request payload.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct QueryRequest {
-	/// RQL query statements to execute.
-	pub statements: Vec<String>,
-	/// Optional parameters for the queries.
+	pub rql: String,
+
 	pub params: Option<WireParams>,
-	/// Optional response format (e.g., "json" for JSON body passthrough).
-	pub format: Option<String>,
-	/// When true with format="json", return the first element directly instead of an array.
+
+	#[serde(default)]
+	pub format: WireFormat,
+
 	pub unwrap: Option<bool>,
 }
 
-/// Subscribe request payload.
-///
-/// Subscribes to real-time changes from a query. The server will push
-/// Change messages whenever the query results change.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SubscribeRequest {
-	/// RQL query to subscribe to.
-	pub query: String,
+	pub rql: String,
+
+	#[serde(default)]
+	pub format: WireFormat,
 }
 
-/// Unsubscribe request payload.
-///
-/// Stops receiving changes for a previously created subscription.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UnsubscribeRequest {
-	/// The subscription ID returned from a Subscribe response.
 	pub subscription_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BatchSubscribeRequest {
+	pub queries: Vec<String>,
+
+	#[serde(default)]
+	pub format: WireFormat,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BatchUnsubscribeRequest {
+	pub batch_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CallRequest {
+	pub name: String,
+
+	pub params: Option<WireParams>,
 }

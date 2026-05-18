@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_client::GrpcClient;
+use reifydb_client::{GrpcClient, SubscriptionConfig, WireFormat};
 use tokio::runtime::Runtime;
 
 use crate::{
@@ -19,13 +19,17 @@ fn test_subscribe_returns_subscription_id() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port)).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_basic");
 		create_test_table(&client, &table, &[("id", "int4"), ("name", "utf8")]).await.unwrap();
 
-		let sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let sub = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 		assert!(!sub.subscription_id().is_empty(), "Subscription ID should be > 0");
 
 		drop(sub);
@@ -42,13 +46,17 @@ fn test_drop_subscription_cleans_up() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port)).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_unsub");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
-		let sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let sub = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		// Drop subscription should succeed without error
 		drop(sub);
@@ -65,11 +73,12 @@ fn test_subscribe_invalid_query() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port)).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		// Invalid RQL should return an error
-		let result = client.subscribe("INVALID RQL SYNTAX HERE").await;
+		let result = client.subscribe("INVALID RQL SYNTAX HERE", SubscriptionConfig::default()).await;
 		assert!(result.is_err(), "Invalid query should return error");
 	});
 
@@ -84,11 +93,12 @@ fn test_subscribe_nonexistent_table() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port)).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		// Non-existent table should return an error
-		let result = client.subscribe("from nonexistent_table_xyz_12345").await;
+		let result = client.subscribe("from nonexistent_table_xyz_12345", SubscriptionConfig::default()).await;
 		assert!(result.is_err(), "Non-existent table should return error");
 	});
 
@@ -103,13 +113,17 @@ fn test_recv_with_timeout_returns_none_when_empty() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port)).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_try_recv");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
-		let mut sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let mut sub = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		// recv_with_timeout should return None when no changes
 		let result = recv_with_timeout(&mut sub, 500).await;

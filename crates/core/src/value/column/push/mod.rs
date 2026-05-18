@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Typed `Push<T>` trait and its blanket implementations for every primitive `ColumnBuffer` accepts.
+//!
+//! Each submodule (`int`, `uint`, `decimal`, `none`, `uuid`, `value`) implements `Push<T>` for the variants of
+//! `ColumnBuffer` that store `T`. Pushing a value of the wrong type panics rather than silently coercing; correctness
+//! at the column boundary is enforced by the type system at the call site, so a panic here is a planner bug, not a user
+//! error.
+
 use std::fmt::Debug;
 
 use reifydb_type::{
@@ -11,7 +18,7 @@ use reifydb_type::{
 	},
 };
 
-use crate::value::column::ColumnData;
+use crate::value::column::ColumnBuffer;
 
 pub mod decimal;
 pub mod int;
@@ -24,7 +31,7 @@ pub trait Push<T> {
 	fn push(&mut self, value: T);
 }
 
-impl ColumnData {
+impl ColumnBuffer {
 	pub fn push<T>(&mut self, value: T)
 	where
 		Self: Push<T>,
@@ -36,13 +43,13 @@ impl ColumnData {
 
 macro_rules! impl_push {
 	($t:ty, $variant:ident, $factory:ident) => {
-		impl Push<$t> for ColumnData {
+		impl Push<$t> for ColumnBuffer {
 			fn push(&mut self, value: $t) {
 				match self {
-					ColumnData::$variant(container) => {
+					ColumnBuffer::$variant(container) => {
 						container.push(value);
 					}
-					ColumnData::Option {
+					ColumnBuffer::Option {
 						inner,
 						bitvec,
 					} => {
@@ -50,7 +57,7 @@ macro_rules! impl_push {
 						DataBitVec::push(bitvec, true);
 					}
 					other => panic!(
-						"called `push::<{}>()` on EngineColumnData::{:?}",
+						"called `push::<{}>()` on ColumnBuffer::{:?}",
 						stringify!($t),
 						other.get_type()
 					),
@@ -62,25 +69,25 @@ macro_rules! impl_push {
 
 macro_rules! impl_numeric_push {
 	($from:ty, $native_variant:ident, $factory:ident, $default:expr, [$(($variant:ident, $target:ty)),* $(,)?]) => {
-		impl Push<$from> for ColumnData {
+		impl Push<$from> for ColumnBuffer {
 			fn push(&mut self, value: $from) {
 				match self {
 					$(
-						ColumnData::$variant(container) => match <$from as SafeConvert<$target>>::checked_convert(value) {
+						ColumnBuffer::$variant(container) => match <$from as SafeConvert<$target>>::checked_convert(value) {
 							Some(v) => container.push(v),
 							None => container.push_default(),
 						},
 					)*
-					ColumnData::$native_variant(container) => {
+					ColumnBuffer::$native_variant(container) => {
 						container.push(value);
 					}
-					ColumnData::Option { inner, bitvec } => {
+					ColumnBuffer::Option { inner, bitvec } => {
 						inner.push(value);
 						DataBitVec::push(bitvec, true);
 					}
 					other => {
 						panic!(
-							"called `push::<{}>()` on incompatible EngineColumnData::{:?}",
+							"called `push::<{}>()` on incompatible ColumnBuffer::{:?}",
 							stringify!($from),
 							other.get_type()
 						);
@@ -91,20 +98,20 @@ macro_rules! impl_numeric_push {
 	};
 }
 
-impl Push<bool> for ColumnData {
+impl Push<bool> for ColumnBuffer {
 	fn push(&mut self, value: bool) {
 		match self {
-			ColumnData::Bool(container) => {
+			ColumnBuffer::Bool(container) => {
 				container.push(value);
 			}
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner,
 				bitvec,
 			} => {
 				inner.push(value);
 				DataBitVec::push(bitvec, true);
 			}
-			other => panic!("called `push::<bool>()` on EngineColumnData::{:?}", other.get_type()),
+			other => panic!("called `push::<bool>()` on ColumnBuffer::{:?}", other.get_type()),
 		}
 	}
 }
@@ -116,7 +123,6 @@ impl_push!(DateTime, DateTime, datetime);
 impl_push!(Time, Time, time);
 impl_push!(Duration, Duration, duration);
 
-// Signed integer push impls with cross-type SafeConvert
 impl_numeric_push!(
 	i8,
 	Int1,
@@ -217,7 +223,6 @@ impl_numeric_push!(
 	]
 );
 
-// Unsigned integer push impls with cross-type SafeConvert
 impl_numeric_push!(
 	u8,
 	Uint1,
@@ -318,37 +323,37 @@ impl_numeric_push!(
 	]
 );
 
-impl Push<Blob> for ColumnData {
+impl Push<Blob> for ColumnBuffer {
 	fn push(&mut self, value: Blob) {
 		match self {
-			ColumnData::Blob {
+			ColumnBuffer::Blob {
 				container,
 				..
 			} => {
 				container.push(value);
 			}
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner,
 				bitvec,
 			} => {
 				inner.push(value);
 				DataBitVec::push(bitvec, true);
 			}
-			other => panic!("called `push::<Blob>()` on EngineColumnData::{:?}", other.get_type()),
+			other => panic!("called `push::<Blob>()` on ColumnBuffer::{:?}", other.get_type()),
 		}
 	}
 }
 
-impl Push<String> for ColumnData {
+impl Push<String> for ColumnBuffer {
 	fn push(&mut self, value: String) {
 		match self {
-			ColumnData::Utf8 {
+			ColumnBuffer::Utf8 {
 				container,
 				..
 			} => {
 				container.push(value);
 			}
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner,
 				bitvec,
 			} => {
@@ -356,34 +361,31 @@ impl Push<String> for ColumnData {
 				DataBitVec::push(bitvec, true);
 			}
 			other => {
-				panic!("called `push::<String>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `push::<String>()` on ColumnBuffer::{:?}", other.get_type())
 			}
 		}
 	}
 }
 
-impl Push<DictionaryEntryId> for ColumnData {
+impl Push<DictionaryEntryId> for ColumnBuffer {
 	fn push(&mut self, value: DictionaryEntryId) {
 		match self {
-			ColumnData::DictionaryId(container) => {
+			ColumnBuffer::DictionaryId(container) => {
 				container.push(value);
 			}
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner,
 				bitvec,
 			} => {
 				inner.push(value);
 				DataBitVec::push(bitvec, true);
 			}
-			other => panic!(
-				"called `push::<DictionaryEntryId>()` on EngineColumnData::{:?}",
-				other.get_type()
-			),
+			other => panic!("called `push::<DictionaryEntryId>()` on ColumnBuffer::{:?}", other.get_type()),
 		}
 	}
 }
 
-impl Push<&str> for ColumnData {
+impl Push<&str> for ColumnBuffer {
 	fn push(&mut self, value: &str) {
 		self.push(value.to_string());
 	}

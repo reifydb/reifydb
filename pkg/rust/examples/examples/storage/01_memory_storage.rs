@@ -1,15 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # Memory Storage Example
-//!
-//! Demonstrates using ReifyDB with in-memory storage:
-//! - Creating an in-memory database
-//! - Basic CRUD operations
-//! - Data is volatile (lost when program exits)
-//!
-//! Run with: `cargo run --bin storage-memory`
-
 use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! FFI exports for transform libraries
-
 use std::{collections::HashMap, ffi::c_void, ptr, slice};
 
 use postcard::from_bytes;
@@ -18,7 +16,6 @@ use crate::transform::{
 	wrapper::{TransformWrapper, create_transform_vtable},
 };
 
-/// Convert a static string to a BufferFFI
 fn str_to_buffer(s: &'static str) -> BufferFFI {
 	BufferFFI {
 		ptr: s.as_ptr(),
@@ -27,7 +24,6 @@ fn str_to_buffer(s: &'static str) -> BufferFFI {
 	}
 }
 
-/// Create a transform descriptor from a transform type's metadata
 pub fn create_transform_descriptor<T: FFITransformWithMetadata>() -> TransformDescriptorFFI {
 	TransformDescriptorFFI {
 		api: CURRENT_API,
@@ -38,11 +34,9 @@ pub fn create_transform_descriptor<T: FFITransformWithMetadata>() -> TransformDe
 	}
 }
 
-/// Create a transform instance from FFI parameters
-///
 /// # Safety
-/// - config_ptr must be valid for config_len bytes or null
-/// - The returned pointer must be freed by calling the destroy function
+///
+/// - `config_ptr` must either be null or point to `config_len` valid bytes of postcard-encoded config.
 pub unsafe extern "C" fn create_transform_instance<T: FFITransformWithMetadata>(
 	config_ptr: *const u8,
 	config_len: usize,
@@ -72,10 +66,6 @@ pub unsafe extern "C" fn create_transform_instance<T: FFITransformWithMetadata>(
 	Box::into_raw(wrapper) as *mut c_void
 }
 
-/// Returns the transform magic number
-///
-/// FFI transform libraries must export this function as `ffi_transform_magic`
-/// to be recognized as valid transforms by the loader.
 pub extern "C" fn transform_magic() -> u32 {
 	TRANSFORM_MAGIC
 }

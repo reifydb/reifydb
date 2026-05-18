@@ -9,11 +9,13 @@ members = [
     "crates/routine",
     "crates/catalog",
     "crates/cdc",
+    "crates/column",
     "crates/core",
     "crates/engine",
     "crates/extension",
     "crates/metric",
     "crates/policy",
+    "crates/profiler",
     "crates/macro",
     "crates/macro-impl",
     "crates/abi",
@@ -22,15 +24,19 @@ members = [
     "crates/sdk",
     "crates/rql",
     "crates/sql",
-    "crates/store-column",
+    "crates/sqlite",
     "crates/store-multi",
     "crates/store-single",
     "crates/testing",
     "crates/transaction",
     "crates/type",
     "crates/wasm",
+    "crates/wire-format",
     # Subsystem crates
     "crates/sub-api",
+    "crates/sub-column",
+    "crates/sub-metric",
+    "crates/sub-profiler",
     "crates/sub-server-admin",
     "crates/sub-flow",
     "crates/sub-task",
@@ -41,7 +47,9 @@ members = [
     "crates/sub-server-otel",
     "crates/sub-server-ws",
     "crates/sub-replication",
+    "crates/sub-subscription",
     "crates/subscription",
+    "crates/remote-proxy",
     # Binary projects
     "bin/cli",
     "bin/server",
@@ -71,11 +79,13 @@ default-members = [
     "crates/routine",
     "crates/catalog",
     "crates/cdc",
+    "crates/column",
     "crates/core",
     "crates/engine",
     "crates/extension",
     "crates/metric",
     "crates/policy",
+    "crates/profiler",
     "crates/macro",
     "crates/macro-impl",
     "crates/abi",
@@ -83,7 +93,7 @@ default-members = [
     "crates/sdk",
     "crates/rql",
     "crates/sql",
-    "crates/store-column",
+    "crates/sqlite",
     "crates/store-multi",
     "crates/store-single",
     "crates/testing",
@@ -91,8 +101,12 @@ default-members = [
     "crates/type",
     "crates/wasm",
     "crates/sub-raft",
+    "crates/wire-format",
     # Subsystem crates
     "crates/sub-api",
+    "crates/sub-column",
+    "crates/sub-metric",
+    "crates/sub-profiler",
     "crates/sub-server-admin",
     "crates/sub-flow",
     "crates/sub-task",
@@ -103,7 +117,9 @@ default-members = [
     "crates/sub-server-otel",
     "crates/sub-server-ws",
     "crates/sub-replication",
+    "crates/sub-subscription",
     "crates/subscription",
+    "crates/remote-proxy",
     # Binary projects
     "bin/cli",
     "bin/server",
@@ -127,7 +143,7 @@ repository = "https://github.com/reifydb/reifydb"
 readme = "readme.md"
 license = "Apache-2.0"
 
-version = "0.4.7"
+version = "0.5.6"
 rust-version = "1.92.0"
 edition = "2024"
 
@@ -150,64 +166,75 @@ incremental = true
 debug-assertions = true
 overflow-checks = true
 
+[profile.release]
+codegen-units = 256
+strip = true
+
 [workspace.dependencies]
-reifydb = { version = "0.4.7", path = "pkg/rust/reifydb", features = [
-    "sub_flow", "sub_tracing", "sub_server", "sub_server_admin",
+reifydb = { version = "0.5.6", path = "pkg/rust/reifydb", features = [
+    "sub_column", "sub_flow", "sub_tracing", "sub_server", "sub_server_admin",
     "sub_server_grpc", "sub_server_http", "sub_server_ws",
     "sub_server_otel", "sub_replication",
 ] }
-reifydb-derive = { version = "0.4.7", path = "pkg/rust/reifydb-derive" }
-reifydb-build = { version = "0.4.7", path = "crates/build" }
+reifydb-derive = { version = "0.5.6", path = "pkg/rust/reifydb-derive" }
+reifydb-build = { version = "0.5.6", path = "crates/build" }
 
-reifydb-client = { version = "0.4.7", path = "pkg/rust/reifydb-client" }
-reifydb-client-derive = { version = "0.4.7", path = "pkg/rust/reifydb-client-derive" }
+reifydb-client = { version = "0.5.6", path = "pkg/rust/reifydb-client" }
+reifydb-client-derive = { version = "0.5.6", path = "pkg/rust/reifydb-client-derive" }
 
 # Internal crates
-reifydb-auth = { version = "0.4.7", path = "crates/auth" }
-reifydb-routine = { version = "0.4.7", path = "crates/routine" }
-reifydb-catalog = { version = "0.4.7", path = "crates/catalog" }
-reifydb-cdc = { version = "0.4.7", path = "crates/cdc" }
-reifydb-core = { version = "0.4.7", path = "crates/core" }
-reifydb-engine = { version = "0.4.7", path = "crates/engine" }
-reifydb-extension = { version = "0.4.7", path = "crates/extension" }
-reifydb-metric = { version = "0.4.7", path = "crates/metric" }
-reifydb-policy = { version = "0.4.7", path = "crates/policy" }
-reifydb-abi = { version = "0.4.7", path = "crates/abi" }
-reifydb-raft = { version = "0.4.7", path = "crates/raft" }
-reifydb-runtime = { version = "0.4.7", path = "crates/runtime" }
-reifydb-sdk = { version = "0.4.7", path = "crates/sdk" }
-reifydb-rql = { version = "0.4.7", path = "crates/rql" }
-reifydb-sql = { version = "0.4.7", path = "crates/sql" }
-reifydb-store-column = { version = "0.4.7", path = "crates/store-column" }
-reifydb-store-multi = { version = "0.4.7", path = "crates/store-multi" }
-reifydb-store-single = { version = "0.4.7", path = "crates/store-single" }
-reifydb-testing = { version = "0.4.7", path = "crates/testing" }
-reifydb-transaction = { version = "0.4.7", path = "crates/transaction" }
-reifydb-type = { version = "0.4.7", path = "crates/type" }
-reifydb-wasm = { version = "0.4.7", path = "crates/wasm" }
-reifydb-sub-raft = { version = "0.4.7", path = "crates/sub-raft" }
-reifydb-macro = { version = "0.4.7", path = "crates/macro" }
-reifydb-macro-impl = { version = "0.4.7", path = "crates/macro-impl" }
+reifydb-auth = { version = "0.5.6", path = "crates/auth" }
+reifydb-routine = { version = "0.5.6", path = "crates/routine" }
+reifydb-catalog = { version = "0.5.6", path = "crates/catalog" }
+reifydb-cdc = { version = "0.5.6", path = "crates/cdc" }
+reifydb-column = { version = "0.5.6", path = "crates/column" }
+reifydb-core = { version = "0.5.6", path = "crates/core" }
+reifydb-engine = { version = "0.5.6", path = "crates/engine" }
+reifydb-extension = { version = "0.5.6", path = "crates/extension" }
+reifydb-metric = { version = "0.5.6", path = "crates/metric" }
+reifydb-policy = { version = "0.5.6", path = "crates/policy" }
+reifydb-profiler = { version = "0.5.6", path = "crates/profiler" }
+reifydb-abi = { version = "0.5.6", path = "crates/abi" }
+reifydb-runtime = { version = "0.5.6", path = "crates/runtime" }
+reifydb-sdk = { version = "0.5.6", path = "crates/sdk" }
+reifydb-rql = { version = "0.5.6", path = "crates/rql" }
+reifydb-sql = { version = "0.5.6", path = "crates/sql" }
+reifydb-sqlite = { version = "0.5.6", path = "crates/sqlite" }
+reifydb-store-multi = { version = "0.5.6", path = "crates/store-multi" }
+reifydb-store-single = { version = "0.5.6", path = "crates/store-single" }
+reifydb-sub-raft = { version = "0.5.6", path = "crates/sub-raft" }
+reifydb-testing = { version = "0.5.6", path = "crates/testing" }
+reifydb-transaction = { version = "0.5.6", path = "crates/transaction" }
+reifydb-type = { version = "0.5.6", path = "crates/type" }
+reifydb-wasm = { version = "0.5.6", path = "crates/wasm" }
+reifydb-wire-format = { version = "0.5.6", path = "crates/wire-format" }
+reifydb-macro = { version = "0.5.6", path = "crates/macro" }
+reifydb-macro-impl = { version = "0.5.6", path = "crates/macro-impl" }
 
 # Subsystems
-reifydb-sub-api = { version = "0.4.7", path = "crates/sub-api" }
-reifydb-sub-server-admin = { version = "0.4.7", path = "crates/sub-server-admin" }
-reifydb-sub-flow = { version = "0.4.7", path = "crates/sub-flow" }
-reifydb-sub-task = { version = "0.4.7", path = "crates/sub-task" }
-reifydb-sub-tracing = { version = "0.4.7", path = "crates/sub-tracing" }
-reifydb-sub-server = { version = "0.4.7", path = "crates/sub-server" }
-reifydb-sub-server-grpc = { version = "0.4.7", path = "crates/sub-server-grpc" }
-reifydb-sub-server-http = { version = "0.4.7", path = "crates/sub-server-http" }
-reifydb-sub-server-otel = { version = "0.4.7", path = "crates/sub-server-otel" }
-reifydb-sub-server-ws = { version = "0.4.7", path = "crates/sub-server-ws" }
-reifydb-sub-replication = { version = "0.4.7", path = "crates/sub-replication" }
-reifydb-subscription = { version = "0.4.7", path = "crates/subscription" }
+reifydb-sub-api = { version = "0.5.6", path = "crates/sub-api" }
+reifydb-sub-column = { version = "0.5.6", path = "crates/sub-column" }
+reifydb-sub-metric = { version = "0.5.6", path = "crates/sub-metric" }
+reifydb-sub-profiler = { version = "0.5.6", path = "crates/sub-profiler" }
+reifydb-sub-server-admin = { version = "0.5.6", path = "crates/sub-server-admin" }
+reifydb-sub-flow = { version = "0.5.6", path = "crates/sub-flow" }
+reifydb-sub-task = { version = "0.5.6", path = "crates/sub-task" }
+reifydb-sub-tracing = { version = "0.5.6", path = "crates/sub-tracing" }
+reifydb-sub-server = { version = "0.5.6", path = "crates/sub-server" }
+reifydb-sub-server-grpc = { version = "0.5.6", path = "crates/sub-server-grpc" }
+reifydb-sub-server-http = { version = "0.5.6", path = "crates/sub-server-http" }
+reifydb-sub-server-otel = { version = "0.5.6", path = "crates/sub-server-otel" }
+reifydb-sub-server-ws = { version = "0.5.6", path = "crates/sub-server-ws" }
+reifydb-sub-replication = { version = "0.5.6", path = "crates/sub-replication" }
+reifydb-sub-subscription = { version = "0.5.6", path = "crates/sub-subscription" }
+reifydb-remote-proxy = { version = "0.5.6", path = "crates/remote-proxy" }
+reifydb-subscription = { version = "0.5.6", path = "crates/subscription" }
 
 # External dependencies
 
 # Tracing and logging
-tracing = { version = "0.1.43" }
-tracing-subscriber = { version = "0.3.22", features = ["env-filter", "json", "fmt"] }
+tracing = { version = "0.1.44" }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json", "fmt"] }
 
 # OpenTelemetry - compatible versions
 opentelemetry = { version = "0.31", features = ["tracing"] }
@@ -215,42 +242,43 @@ opentelemetry_sdk = { version = "0.31",features = ["tokio", "trace"] }
 opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic", "tracing", "tokio"] }
 tracing-opentelemetry = { version = "0.32" , features = ["default"]}
 
-libc = { version = "0.2.175" }
+libc = { version = "0.2.186" }
 libloading = { version = "0.9" }
-libm = { version = "0.2.8" }
+libm = { version = "0.2.16" }
 
-once_cell = { version = "1.21.3" }
-uuid = { version = "1.19", default-features = false, features = ["v4", "v7", "serde", "std", "js"] }
+once_cell = { version = "1.21.4" }
+uuid = { version = "1.23", default-features = false, features = ["v4", "v7", "serde", "std", "js"] }
 num-bigint = { version = "0.4.6", features = ["serde"] }
-bigdecimal = { version = "0.4.8", features = ["serde"] }
+bigdecimal = { version = "0.4.10", features = ["serde"] }
 num-traits = { version = "0.2.19" }
 rand = { version = "0.10" }
-argon2 = { version = "0.6.0-rc" }
-ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+argon2 = { version = "0.6.0-rc.8" }
+ed25519-dalek = { version = "2.2", features = ["rand_core"] }
 bs58 = { version = "0.5" }
 subtle = { version = "2" }
 
 crossbeam-skiplist = { version = "0.1.3" }
 dashmap = { version = "7.0.0-rc2", features = ["raw-api"] }
-indexmap = { version = "2.11", features = ["serde"] }
-rayon = { version = "1.11.0" }
-bumpalo = { version = "3.19.0", features = ["collections", "boxed"] }
+indexmap = { version = "2.14", features = ["serde"] }
+rayon = { version = "1.12.0" }
+bumpalo = { version = "3.20.2", features = ["collections", "boxed"] }
+smallvec = { version = "1.13", features = ["serde", "const_generics", "union"] }
 parking_lot = {version = "0.12.5"}
-crossbeam-channel = { version = "0.5.13" }
+crossbeam-channel = { version = "0.5.15" }
 
 # Network and server
 num_cpus = { version = "1.17.0" }
 httparse = { version = "1.10.1" }
 
 # Async runtime and networking (tokio stack)
-tokio = { version = "1.50.0", features = ["rt-multi-thread", "net", "sync", "macros", "time", "tracing"] }
+tokio = { version = "1.52.1", features = ["rt-multi-thread", "net", "sync", "macros", "time", "tracing"] }
 tokio-stream = { version = "0.1.18" }
 tokio-tungstenite = { version = "0.29.0" }
 tonic = { version = "0.14.5", default-features = false, features = ["default"] }
 tonic-prost = { version = "0.14.5" }
 prost = { version = "0.14.3" }
 
-axum = { version = "0.8.8" }
+axum = { version = "0.8.9" }
 reqwest = { version = "0.13.2", default-features = false, features = ["json"] }
 tower = { version = "0.5.3", features = ["limit", "timeout"] }
 tower-http = { version = "0.6.8", features = ["trace", "timeout"] }
@@ -258,6 +286,9 @@ futures-util = { version = "0.3.32", features = ["sink"] }
 
 # sqlite
 rusqlite = { version = "0.39.0", features = ["bundled"] }
+
+# compression
+zstd = { version = "0.13" }
 
 # hashing
 xxhash-rust = { version = "0.8.15", features = ["xxh3"] }
@@ -279,21 +310,24 @@ paste = { version = "1.0.15" }
 # load-testing
 hdrhistogram = { version = "7.5.4" }
 
+# streaming quantile estimator
+tdigest = { version = "0.2.3", features = ["use_serde"] }
+
 # WASM runtime
-wasmtime = "43.0.0"
-wasmtime-wasi = "43.0.0"
+wasmtime = "44.0.0"
+wasmtime-wasi = "44.0.0"
 
 # WASM test dependencies
-wast = "245.0.1"
-wat = "1.245.1"
+wast = "247.0.0"
+wat = "1.247.0"
 
 # WASM dependencies
-wasm-bindgen = "0.2.114"
-wasm-bindgen-futures = "0.4.64"
-js-sys = "0.3.91"
-web-sys = "0.3.91"
+wasm-bindgen = "0.2.118"
+wasm-bindgen-futures = "0.4.68"
+js-sys = "0.3.95"
+web-sys = "0.3.95"
 serde-wasm-bindgen = "0.6.5"
 console_error_panic_hook = "0.1.7"
 getrandom = { version = "0.4.2", features = ["wasm_js"] }
-wasm-bindgen-test = "0.3.64"
+wasm-bindgen-test = "0.3.68"
 cfg-if = "1.0.4"

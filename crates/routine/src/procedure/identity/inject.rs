@@ -1,21 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
-use reifydb_transaction::transaction::Transaction;
+use std::sync::LazyLock;
+
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	value::{Value, r#type::Type},
 };
 
-use crate::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
+use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 
-/// Procedure that injects a new identity into the current session.
-///
-/// Takes 1 positional parameter: the IdentityId to inject.
-/// Returns a single-column result containing the IdentityId value;
-/// the VM intercepts this result and updates its identity accordingly.
+static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("identity::inject"));
+
 pub struct IdentityInject;
 
 impl Default for IdentityInject {
@@ -30,13 +28,21 @@ impl IdentityInject {
 	}
 }
 
-impl Procedure for IdentityInject {
-	fn call(&self, ctx: &ProcedureContext, _tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError> {
+impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for IdentityInject {
+	fn info(&self) -> &RoutineInfo {
+		&INFO
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::IdentityId
+	}
+
+	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
 		let identity_id = match ctx.params {
 			Params::Positional(args) if args.len() == 1 => match &args[0] {
 				Value::IdentityId(id) => *id,
 				other => {
-					return Err(ProcedureError::InvalidArgumentType {
+					return Err(RoutineError::ProcedureInvalidArgumentType {
 						procedure: Fragment::internal("identity::inject"),
 						argument_index: 0,
 						expected: vec![Type::IdentityId],
@@ -45,14 +51,14 @@ impl Procedure for IdentityInject {
 				}
 			},
 			Params::Positional(args) => {
-				return Err(ProcedureError::ArityMismatch {
+				return Err(RoutineError::ProcedureArityMismatch {
 					procedure: Fragment::internal("identity::inject"),
 					expected: 1,
 					actual: args.len(),
 				});
 			}
 			_ => {
-				return Err(ProcedureError::ArityMismatch {
+				return Err(RoutineError::ProcedureArityMismatch {
 					procedure: Fragment::internal("identity::inject"),
 					expected: 1,
 					actual: 0,
@@ -60,7 +66,7 @@ impl Procedure for IdentityInject {
 			}
 		};
 
-		let col = Column::new("identity_id", ColumnData::identity_id(vec![identity_id]));
+		let col = ColumnWithName::new("identity_id", ColumnBuffer::identity_id(vec![identity_id]));
 		Ok(Columns::new(vec![col]))
 	}
 }

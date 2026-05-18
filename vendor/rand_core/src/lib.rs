@@ -146,7 +146,7 @@ impl<R> CryptoRng for R where R: TryCryptoRng<Error = Infallible> + ?Sized {}
 /// # Usage
 ///
 /// Often, usage of the infallible trait [`Rng`] or its extension trait
-/// [`rand::Rng`] is preferred to direct usage of `TryRng`.
+/// [`rand::RngExt`] is preferred to direct usage of `TryRng`.
 //
 /// Many implementations of `TryRng` (those with <code>type Error = [Infallible][]</code>)
 /// already implement [`Rng`]; in other cases [`UnwrapErr`] may be used to obtain
@@ -185,7 +185,7 @@ impl<R> CryptoRng for R where R: TryCryptoRng<Error = Infallible> + ?Sized {}
 ///   the subset of this derived from the key).
 /// - [`Eq`] and [`PartialEq`] could be implemented, but are probably not useful.
 ///
-/// [`rand::Rng`]: https://docs.rs/rand/latest/rand/trait.Rng.html
+/// [`rand::RngExt`]: https://docs.rs/rand/latest/rand/trait.RngExt.html
 pub trait TryRng {
     /// The type returned in the event of a RNG error.
     ///

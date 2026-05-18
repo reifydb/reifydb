@@ -7,16 +7,17 @@ use std::{
 };
 
 use reifydb_core::{
+	actors::drop::{DropMessage, DropRequest},
 	common::CommitVersion,
 	delta::Delta,
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
 	},
-	event::metric::{StorageDelete, StorageStatsRecordedEvent, StorageWrite},
+	event::metric::{MultiCommittedEvent, MultiDelete, MultiWrite},
 	interface::store::{
-		MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious,
-		MultiVersionRow, MultiVersionStore,
+		EntryKind, MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet,
+		MultiVersionGetPrevious, MultiVersionRow, MultiVersionStore,
 	},
 };
 use reifydb_type::util::{cowvec::CowVec, hex};
@@ -26,25 +27,23 @@ use super::{
 	StandardMultiStore,
 	router::{classify_key, classify_range, is_single_version_semantics_key},
 	version::{VersionedGetResult, get_at_version},
-	worker::{DropMessage, DropRequest},
 };
 use crate::{
 	Result,
-	tier::{EntryKind, EntryKind::Multi, RangeCursor, TierBatch, TierStorage},
+	buffer::tier::MultiBufferTier,
+	persistent::MultiPersistentTier,
+	tier::{RangeBatch, RangeCursor, TierBatch, TierStorage},
 };
 
-/// Fixed chunk size for internal tier scans.
-/// This is the number of versioned entries fetched per tier per iteration.
-const TIER_SCAN_CHUNK_SIZE: usize = 4096;
+const TIER_SCAN_CHUNK_SIZE: usize = 32;
 
 impl MultiVersionGet for StandardMultiStore {
 	#[instrument(name = "store::multi::get", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref()), version = version.0))]
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
 		let table = classify_key(key);
 
-		// Try hot tier first
-		if let Some(hot) = &self.hot {
-			match get_at_version(hot, table, key.as_ref(), version)? {
+		if let Some(buffer) = &self.buffer {
+			match get_at_version(buffer, table, key.as_ref(), version)? {
 				VersionedGetResult::Value {
 					value,
 					version: v,
@@ -60,27 +59,8 @@ impl MultiVersionGet for StandardMultiStore {
 			}
 		}
 
-		// Try warm tier
-		if let Some(warm) = &self.warm {
-			match get_at_version(warm, table, key.as_ref(), version)? {
-				VersionedGetResult::Value {
-					value,
-					version: v,
-				} => {
-					return Ok(Some(MultiVersionRow {
-						key: key.clone(),
-						row: EncodedRow(value),
-						version: v,
-					}));
-				}
-				VersionedGetResult::Tombstone => return Ok(None),
-				VersionedGetResult::NotFound => {}
-			}
-		}
-
-		// Try cold tier
-		if let Some(cold) = &self.cold {
-			match get_at_version(cold, table, key.as_ref(), version)? {
+		if let Some(persistent) = &self.persistent {
+			match get_at_version(persistent, table, key.as_ref(), version)? {
 				VersionedGetResult::Value {
 					value,
 					version: v,
@@ -110,155 +90,328 @@ impl MultiVersionContains for StandardMultiStore {
 impl MultiVersionCommit for StandardMultiStore {
 	#[instrument(name = "store::multi::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len(), version = version.0))]
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
-		// Get the hot storage tier (warm and cold are placeholders for now)
-		let Some(storage) = &self.hot else {
+		let classified = classify_deltas(&deltas);
+		let drop_batch = build_drop_batch(classified.explicit_drops, &classified.pending_set_keys, version);
+		self.dispatch_drops(drop_batch);
+
+		if let Some(buffer) = &self.buffer {
+			buffer.set(version, classified.batches)?;
+		} else if let Some(persistent) = &self.persistent {
+			persistent.set(version, classified.batches)?;
+		} else {
 			return Ok(());
-		};
-
-		let mut pending_set_keys: HashSet<CowVec<u8>> = HashSet::new();
-		let mut writes: Vec<StorageWrite> = Vec::new();
-		let mut deletes: Vec<StorageDelete> = Vec::new();
-		let mut batches: TierBatch = HashMap::new();
-		let mut explicit_drops: Vec<(EntryKind, EncodedKey, Option<CommitVersion>, Option<usize>)> = Vec::new();
-
-		for delta in deltas.iter() {
-			let key = delta.key();
-
-			let table = classify_key(key);
-			let is_single_version = is_single_version_semantics_key(key);
-
-			match delta {
-				Delta::Set {
-					key,
-					row,
-				} => {
-					if is_single_version {
-						pending_set_keys.insert(key.0.clone());
-					}
-
-					writes.push(StorageWrite {
-						key: key.clone(),
-						value_bytes: row.len() as u64,
-					});
-
-					batches.entry(table).or_default().push((key.0.clone(), Some(row.0.clone())));
-				}
-				Delta::Unset {
-					key,
-					row,
-				} => {
-					deletes.push(StorageDelete {
-						key: key.clone(),
-						value_bytes: row.len() as u64,
-					});
-
-					batches.entry(table).or_default().push((key.0.clone(), None));
-				}
-				Delta::Remove {
-					key,
-				} => {
-					batches.entry(table).or_default().push((key.0.clone(), None));
-				}
-				Delta::Drop {
-					key,
-					up_to_version,
-					keep_last_versions,
-				} => {
-					explicit_drops.push((table, key.clone(), *up_to_version, *keep_last_versions));
-				}
-			}
 		}
 
-		// Process explicit drops now that pending_set_keys is complete
-		let mut drop_batch = Vec::with_capacity(explicit_drops.len() + pending_set_keys.len());
-		for (table, key, up_to_version, keep_last_versions) in explicit_drops {
-			let pending_version = if pending_set_keys.contains(key.as_ref()) {
-				Some(version)
-			} else {
-				None
-			};
-
-			drop_batch.push(DropRequest {
-				table,
-				key: key.0.clone(),
-				up_to_version,
-				keep_last_versions,
-				commit_version: version,
-				pending_version,
-			});
-		}
-
-		// Add implicit drops for single-version-semantics keys
-		for key in pending_set_keys.iter() {
-			let table = classify_key(&EncodedKey(key.clone()));
-			drop_batch.push(DropRequest {
-				table,
-				key: key.clone(),
-				up_to_version: None,
-				keep_last_versions: Some(1),
-				commit_version: version,
-				pending_version: Some(version),
-			});
-		}
-
-		if !drop_batch.is_empty() && self.drop_actor.send_blocking(DropMessage::Batch(drop_batch)).is_err() {
-			warn!("Failed to send drop batch");
-		}
-
-		// Pass version explicitly to storage
-		storage.set(version, batches)?;
-
-		// Emit storage stats event for this commit
-		if !writes.is_empty() || !deletes.is_empty() {
-			self.event_bus.emit(StorageStatsRecordedEvent::new(writes, deletes, vec![], version));
-		}
-
+		self.emit_commit_metrics(classified.writes, classified.deletes, version);
 		Ok(())
 	}
 }
 
-/// Cursor state for multi-version range streaming.
-///
-/// Tracks position in each tier independently, allowing the scan to continue
-/// until enough unique logical keys are collected.
+struct ClassifiedDeltas {
+	pending_set_keys: HashSet<EncodedKey>,
+	writes: Vec<MultiWrite>,
+	deletes: Vec<MultiDelete>,
+	batches: TierBatch,
+	explicit_drops: Vec<(EntryKind, EncodedKey)>,
+}
+
+#[inline]
+fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
+	let mut pending_set_keys: HashSet<EncodedKey> = HashSet::new();
+	let mut writes: Vec<MultiWrite> = Vec::new();
+	let mut deletes: Vec<MultiDelete> = Vec::new();
+	let mut batches: TierBatch = HashMap::new();
+	let mut explicit_drops: Vec<(EntryKind, EncodedKey)> = Vec::new();
+
+	for delta in deltas.iter() {
+		let key = delta.key();
+		let table = classify_key(key);
+		let is_single_version = is_single_version_semantics_key(key);
+
+		match delta {
+			Delta::Set {
+				key,
+				row,
+			} => {
+				if is_single_version {
+					pending_set_keys.insert(key.clone());
+				}
+				writes.push(MultiWrite {
+					key: key.clone(),
+					value_bytes: row.len() as u64,
+				});
+				batches.entry(table).or_default().push((key.clone(), Some(row.0.clone())));
+			}
+			Delta::Unset {
+				key,
+				row,
+			} => {
+				deletes.push(MultiDelete {
+					key: key.clone(),
+					value_bytes: row.len() as u64,
+				});
+				batches.entry(table).or_default().push((key.clone(), None));
+			}
+			Delta::Remove {
+				key,
+			} => {
+				deletes.push(MultiDelete {
+					key: key.clone(),
+					value_bytes: 0,
+				});
+				batches.entry(table).or_default().push((key.clone(), None));
+			}
+			Delta::Drop {
+				key,
+			} => {
+				explicit_drops.push((table, key.clone()));
+			}
+		}
+	}
+
+	ClassifiedDeltas {
+		pending_set_keys,
+		writes,
+		deletes,
+		batches,
+		explicit_drops,
+	}
+}
+
+#[inline]
+fn build_drop_batch(
+	explicit_drops: Vec<(EntryKind, EncodedKey)>,
+	pending_set_keys: &HashSet<EncodedKey>,
+	version: CommitVersion,
+) -> Vec<DropRequest> {
+	let mut drop_batch = Vec::with_capacity(explicit_drops.len() + pending_set_keys.len());
+	for (table, key) in explicit_drops {
+		let pending_version = if pending_set_keys.contains(key.as_ref()) {
+			Some(version)
+		} else {
+			None
+		};
+		drop_batch.push(DropRequest {
+			table,
+			key,
+			commit_version: version,
+			pending_version,
+		});
+	}
+	for key in pending_set_keys.iter() {
+		let encoded = EncodedKey::new(key.to_vec());
+		let table = classify_key(&encoded);
+		drop_batch.push(DropRequest {
+			table,
+			key: encoded,
+			commit_version: version,
+			pending_version: Some(version),
+		});
+	}
+	drop_batch
+}
+
+impl StandardMultiStore {
+	#[inline]
+	fn dispatch_drops(&self, drop_batch: Vec<DropRequest>) {
+		if drop_batch.is_empty() {
+			return;
+		}
+		if let Some(actor) = &self.drop_actor
+			&& actor.send_blocking(DropMessage::Batch(drop_batch)).is_err()
+		{
+			warn!("Failed to send drop batch");
+		}
+	}
+
+	#[inline]
+	fn emit_commit_metrics(&self, writes: Vec<MultiWrite>, deletes: Vec<MultiDelete>, version: CommitVersion) {
+		if writes.is_empty() && deletes.is_empty() {
+			return;
+		}
+		self.event_bus.emit(MultiCommittedEvent::new(writes, deletes, vec![], version));
+	}
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct MultiVersionRangeCursor {
-	/// Cursor for hot tier
-	pub hot: RangeCursor,
-	/// Cursor for warm tier
-	pub warm: RangeCursor,
-	/// Cursor for cold tier
-	pub cold: RangeCursor,
-	/// Whether all tiers are exhausted
+	pub buffer: RangeCursor,
+
+	pub persistent: RangeCursor,
+
 	pub exhausted: bool,
 }
 
 impl MultiVersionRangeCursor {
-	/// Create a new cursor at the start.
 	pub fn new() -> Self {
 		Self::default()
 	}
 
-	/// Check if all tiers are exhausted.
 	pub fn is_exhausted(&self) -> bool {
 		self.exhausted
 	}
 }
 
-/// Parameters shared by tier scan operations (forward and reverse).
-struct TierScanQuery<'a> {
-	table: EntryKind,
-	start: &'a [u8],
-	end: &'a [u8],
+pub struct TierScanQuery<'a> {
+	pub table: EntryKind,
+	pub start: &'a [u8],
+	pub end: &'a [u8],
+	pub version: CommitVersion,
+	pub range: &'a EncodedKeyRange,
+}
+
+pub fn scan_tier_chunk<S: TierStorage>(
+	storage: &S,
+	cursor: &mut RangeCursor,
+	scan: &TierScanQuery,
+	collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+) -> Result<bool> {
+	let batch = storage.range_next(
+		scan.table,
+		cursor,
+		Bound::Included(scan.start),
+		Bound::Included(scan.end),
+		scan.version,
+		TIER_SCAN_CHUNK_SIZE,
+	)?;
+	merge_tier_batch(batch, scan.range, collected)
+}
+
+pub fn scan_tier_chunk_rev<S: TierStorage>(
+	storage: &S,
+	cursor: &mut RangeCursor,
+	scan: &TierScanQuery,
+	collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+) -> Result<bool> {
+	let batch = storage.range_rev_next(
+		scan.table,
+		cursor,
+		Bound::Included(scan.start),
+		Bound::Included(scan.end),
+		scan.version,
+		TIER_SCAN_CHUNK_SIZE,
+	)?;
+	merge_tier_batch(batch, scan.range, collected)
+}
+
+#[inline]
+fn merge_tier_batch(
+	batch: RangeBatch,
+	range: &EncodedKeyRange,
+	collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+) -> Result<bool> {
+	if batch.entries.is_empty() {
+		return Ok(false);
+	}
+
+	for entry in batch.entries {
+		let original_key = entry.key.as_slice().to_vec();
+		let entry_version = entry.version;
+
+		let original_key_encoded = EncodedKey::new(original_key.clone());
+		if !range.contains(&original_key_encoded) {
+			continue;
+		}
+
+		let should_update = match collected.get(&original_key) {
+			None => true,
+			Some((existing_version, _)) => entry_version > *existing_version,
+		};
+
+		if should_update {
+			collected.insert(original_key, (entry_version, entry.value));
+		}
+	}
+
+	Ok(true)
+}
+
+#[inline]
+pub fn collected_to_batch(
+	collected: BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+	has_more: bool,
+) -> MultiVersionBatch {
+	let items: Vec<MultiVersionRow> = collected
+		.into_iter()
+		.filter_map(|(key_bytes, (v, value))| {
+			value.map(|val| MultiVersionRow {
+				key: EncodedKey::new(key_bytes),
+				row: EncodedRow(val),
+				version: v,
+			})
+		})
+		.collect();
+
+	MultiVersionBatch {
+		items,
+		has_more,
+	}
+}
+
+#[inline]
+fn step_all_tiers(
+	buffer: Option<&MultiBufferTier>,
+	buffer_cursor: &mut RangeCursor,
+	persistent: Option<&MultiPersistentTier>,
+	persistent_cursor: &mut RangeCursor,
+	scan: &TierScanQuery,
+	collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+) -> Result<bool> {
+	let mut any_progress = false;
+	if let Some(s) = buffer
+		&& !buffer_cursor.exhausted
+	{
+		any_progress |= scan_tier_chunk(s, buffer_cursor, scan, collected)?;
+	}
+	if let Some(s) = persistent
+		&& !persistent_cursor.exhausted
+	{
+		any_progress |= scan_tier_chunk(s, persistent_cursor, scan, collected)?;
+	}
+	Ok(any_progress)
+}
+
+pub fn scan_tiers_latest(
+	buffer: Option<&MultiBufferTier>,
+	persistent: Option<&MultiPersistentTier>,
+	range: EncodedKeyRange,
 	version: CommitVersion,
-	range: &'a EncodedKeyRange,
+	max_keys: usize,
+) -> Result<MultiVersionBatch> {
+	let table = classify_key_range(&range);
+	let (start, end) = make_range_bounds(&range);
+	let scan = TierScanQuery {
+		table,
+		start: &start,
+		end: &end,
+		version,
+		range: &range,
+	};
+
+	let mut collected: BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
+	let mut buffer_cursor = RangeCursor::default();
+	let mut persistent_cursor = RangeCursor::default();
+	let mut exhausted = false;
+
+	while collected.len() < max_keys {
+		let progress = step_all_tiers(
+			buffer,
+			&mut buffer_cursor,
+			persistent,
+			&mut persistent_cursor,
+			&scan,
+			&mut collected,
+		)?;
+		if !progress {
+			exhausted = true;
+			break;
+		}
+	}
+
+	Ok(collected_to_batch(collected, !exhausted))
 }
 
 impl StandardMultiStore {
-	/// Fetch the next batch of entries, continuing from cursor position.
-	///
-	/// This properly handles high version density by scanning until `batch_size`
-	/// unique logical keys are collected OR all tiers are exhausted.
 	pub fn range_next(
 		&self,
 		cursor: &mut MultiVersionRangeCursor,
@@ -273,6 +426,8 @@ impl StandardMultiStore {
 			});
 		}
 
+		mark_unconfigured_exhausted(self, cursor);
+
 		let table = classify_key_range(&range);
 		let (start, end) = make_range_bounds(&range);
 		let batch_size = batch_size as usize;
@@ -284,58 +439,37 @@ impl StandardMultiStore {
 			range: &range,
 		};
 
-		// Collected entries: logical_key -> (version, value)
 		let mut collected: BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
 
-		// Keep scanning until we have batch_size unique logical keys OR all tiers exhausted
 		while collected.len() < batch_size {
-			let mut any_progress = false;
-
-			// Scan chunk from hot tier
-			if let Some(hot) = &self.hot
-				&& !cursor.hot.exhausted
-			{
-				let progress = Self::scan_tier_chunk(hot, &mut cursor.hot, &scan, &mut collected)?;
-				any_progress |= progress;
-			}
-
-			// Scan chunk from warm tier
-			if let Some(warm) = &self.warm
-				&& !cursor.warm.exhausted
-			{
-				let progress = Self::scan_tier_chunk(warm, &mut cursor.warm, &scan, &mut collected)?;
-				any_progress |= progress;
-			}
-
-			// Scan chunk from cold tier
-			if let Some(cold) = &self.cold
-				&& !cursor.cold.exhausted
-			{
-				let progress = Self::scan_tier_chunk(cold, &mut cursor.cold, &scan, &mut collected)?;
-				any_progress |= progress;
-			}
-
-			if !any_progress {
-				// All tiers exhausted
+			let progress = step_all_tiers(
+				self.buffer.as_ref(),
+				&mut cursor.buffer,
+				self.persistent.as_ref(),
+				&mut cursor.persistent,
+				&scan,
+				&mut collected,
+			)?;
+			if !progress {
 				cursor.exhausted = true;
 				break;
 			}
 		}
 
-		// Convert to MultiVersionRow in sorted key order, filtering out tombstones
+		apply_forward_horizon(cursor, &mut collected);
+
 		let items: Vec<MultiVersionRow> = collected
 			.into_iter()
-			.take(batch_size)
 			.filter_map(|(key_bytes, (v, value))| {
 				value.map(|val| MultiVersionRow {
-					key: EncodedKey(CowVec::new(key_bytes)),
+					key: EncodedKey::new(key_bytes),
 					row: EncodedRow(val),
 					version: v,
 				})
 			})
 			.collect();
 
-		let has_more = items.len() >= batch_size || !cursor.exhausted;
+		let has_more = !cursor.exhausted;
 
 		Ok(MultiVersionBatch {
 			items,
@@ -343,57 +477,6 @@ impl StandardMultiStore {
 		})
 	}
 
-	/// Scan a chunk from a single tier and merge into collected entries.
-	/// Returns true if any entries were processed (i.e., made progress).
-	fn scan_tier_chunk<S: TierStorage>(
-		storage: &S,
-		cursor: &mut RangeCursor,
-		scan: &TierScanQuery,
-		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
-	) -> Result<bool> {
-		let batch = storage.range_next(
-			scan.table,
-			cursor,
-			Bound::Included(scan.start),
-			Bound::Included(scan.end),
-			scan.version,
-			TIER_SCAN_CHUNK_SIZE,
-		)?;
-
-		if batch.entries.is_empty() {
-			return Ok(false);
-		}
-
-		for entry in batch.entries {
-			// Entry key is already the logical key, entry.version is the version
-			let original_key = entry.key.as_slice().to_vec();
-			let entry_version = entry.version;
-
-			// Skip if key is not within the requested logical range
-			let original_key_encoded = EncodedKey(CowVec::new(original_key.clone()));
-			if !scan.range.contains(&original_key_encoded) {
-				continue;
-			}
-
-			// Update if no entry exists or this is a higher version
-			let should_update = match collected.get(&original_key) {
-				None => true,
-				Some((existing_version, _)) => entry_version > *existing_version,
-			};
-
-			if should_update {
-				collected.insert(original_key, (entry_version, entry.value));
-			}
-		}
-
-		Ok(true)
-	}
-
-	/// Create an iterator for forward range queries.
-	///
-	/// This properly handles high version density by scanning until batch_size
-	/// unique logical keys are collected. The iterator yields individual entries
-	/// and maintains cursor state internally.
 	pub fn range(
 		&self,
 		range: EncodedKeyRange,
@@ -411,11 +494,6 @@ impl StandardMultiStore {
 		}
 	}
 
-	/// Create an iterator for reverse range queries.
-	///
-	/// This properly handles high version density by scanning until batch_size
-	/// unique logical keys are collected. The iterator yields individual entries
-	/// in reverse key order and maintains cursor state internally.
 	pub fn range_rev(
 		&self,
 		range: EncodedKeyRange,
@@ -433,10 +511,6 @@ impl StandardMultiStore {
 		}
 	}
 
-	/// Fetch the next batch of entries in reverse order, continuing from cursor position.
-	///
-	/// This properly handles high version density by scanning until `batch_size`
-	/// unique logical keys are collected OR all tiers are exhausted.
 	fn range_rev_next(
 		&self,
 		cursor: &mut MultiVersionRangeCursor,
@@ -451,6 +525,8 @@ impl StandardMultiStore {
 			});
 		}
 
+		mark_unconfigured_exhausted(self, cursor);
+
 		let table = classify_key_range(&range);
 		let (start, end) = make_range_bounds(&range);
 		let batch_size = batch_size as usize;
@@ -462,112 +538,156 @@ impl StandardMultiStore {
 			range: &range,
 		};
 
-		// Collected entries: logical_key -> (version, value)
 		let mut collected: BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
 
-		// Keep scanning until we have batch_size unique logical keys OR all tiers exhausted
 		while collected.len() < batch_size {
 			let mut any_progress = false;
 
-			// Scan chunk from hot tier (reverse)
-			if let Some(hot) = &self.hot
-				&& !cursor.hot.exhausted
+			if let Some(buffer) = &self.buffer
+				&& !cursor.buffer.exhausted
 			{
-				let progress = Self::scan_tier_chunk_rev(hot, &mut cursor.hot, &scan, &mut collected)?;
-				any_progress |= progress;
+				any_progress |= scan_tier_chunk_rev(buffer, &mut cursor.buffer, &scan, &mut collected)?;
 			}
 
-			// Scan chunk from warm tier (reverse)
-			if let Some(warm) = &self.warm
-				&& !cursor.warm.exhausted
+			if let Some(persistent) = &self.persistent
+				&& !cursor.persistent.exhausted
 			{
-				let progress =
-					Self::scan_tier_chunk_rev(warm, &mut cursor.warm, &scan, &mut collected)?;
-				any_progress |= progress;
-			}
-
-			// Scan chunk from cold tier (reverse)
-			if let Some(cold) = &self.cold
-				&& !cursor.cold.exhausted
-			{
-				let progress =
-					Self::scan_tier_chunk_rev(cold, &mut cursor.cold, &scan, &mut collected)?;
-				any_progress |= progress;
+				any_progress |=
+					scan_tier_chunk_rev(persistent, &mut cursor.persistent, &scan, &mut collected)?;
 			}
 
 			if !any_progress {
-				// All tiers exhausted
 				cursor.exhausted = true;
 				break;
 			}
 		}
 
-		// Convert to MultiVersionRow in REVERSE sorted key order, filtering out tombstones
+		apply_reverse_horizon(cursor, &mut collected);
+
 		let items: Vec<MultiVersionRow> = collected
 			.into_iter()
 			.rev()
-			.take(batch_size)
 			.filter_map(|(key_bytes, (v, value))| {
 				value.map(|val| MultiVersionRow {
-					key: EncodedKey(CowVec::new(key_bytes)),
+					key: EncodedKey::new(key_bytes),
 					row: EncodedRow(val),
 					version: v,
 				})
 			})
 			.collect();
 
-		let has_more = items.len() >= batch_size || !cursor.exhausted;
+		let has_more = !cursor.exhausted;
 
 		Ok(MultiVersionBatch {
 			items,
 			has_more,
 		})
 	}
+}
 
-	/// Scan a chunk from a single tier in reverse and merge into collected entries.
-	/// Returns true if any entries were processed (i.e., made progress).
-	fn scan_tier_chunk_rev<S: TierStorage>(
-		storage: &S,
-		cursor: &mut RangeCursor,
-		scan: &TierScanQuery,
-		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
-	) -> Result<bool> {
-		let batch = storage.range_rev_next(
-			scan.table,
-			cursor,
-			Bound::Included(scan.start),
-			Bound::Included(scan.end),
-			scan.version,
-			TIER_SCAN_CHUNK_SIZE,
-		)?;
+fn mark_unconfigured_exhausted(store: &StandardMultiStore, cursor: &mut MultiVersionRangeCursor) {
+	if store.buffer.is_none() {
+		cursor.buffer.exhausted = true;
+	}
+	if store.persistent.is_none() {
+		cursor.persistent.exhausted = true;
+	}
+}
 
-		if batch.entries.is_empty() {
-			return Ok(false);
+fn apply_forward_horizon(
+	cursor: &mut MultiVersionRangeCursor,
+	collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+) {
+	let horizon = forward_horizon(cursor);
+	if let Some(h) = horizon {
+		collected.retain(|k, _| k.as_slice() <= h.as_slice());
+		rewind_over_advanced_forward(cursor, &h);
+	}
+}
+
+fn apply_reverse_horizon(
+	cursor: &mut MultiVersionRangeCursor,
+	collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+) {
+	let horizon = reverse_horizon(cursor);
+	if let Some(h) = horizon {
+		collected.retain(|k, _| k.as_slice() >= h.as_slice());
+		rewind_over_advanced_reverse(cursor, &h);
+	}
+}
+
+fn forward_horizon(cursor: &MultiVersionRangeCursor) -> Option<EncodedKey> {
+	let mut horizon: Option<EncodedKey> = None;
+	for tier in [&cursor.buffer, &cursor.persistent] {
+		if tier.exhausted {
+			continue;
 		}
+		let last = match &tier.last_key {
+			Some(k) => k.clone(),
 
-		for entry in batch.entries {
-			// Entry key is already the logical key, entry.version is the version
-			let original_key = entry.key.as_slice().to_vec();
-			let entry_version = entry.version;
-
-			// Skip if key is not within the requested logical range
-			let original_key_encoded = EncodedKey(CowVec::new(original_key.clone()));
-			if !scan.range.contains(&original_key_encoded) {
-				continue;
+			None => return None,
+		};
+		horizon = Some(match horizon {
+			None => last,
+			Some(prev) => {
+				if last.as_slice() < prev.as_slice() {
+					last
+				} else {
+					prev
+				}
 			}
+		});
+	}
+	horizon
+}
 
-			// Update if no entry exists or this is a higher version
-			let should_update = match collected.get(&original_key) {
-				None => true,
-				Some((existing_version, _)) => entry_version > *existing_version,
-			};
-
-			if should_update {
-				collected.insert(original_key, (entry_version, entry.value));
-			}
+fn reverse_horizon(cursor: &MultiVersionRangeCursor) -> Option<EncodedKey> {
+	let mut horizon: Option<EncodedKey> = None;
+	for tier in [&cursor.buffer, &cursor.persistent] {
+		if tier.exhausted {
+			continue;
 		}
+		let last = match &tier.last_key {
+			Some(k) => k.clone(),
+			None => return None,
+		};
+		horizon = Some(match horizon {
+			None => last,
+			Some(prev) => {
+				if last.as_slice() > prev.as_slice() {
+					last
+				} else {
+					prev
+				}
+			}
+		});
+	}
+	horizon
+}
 
-		Ok(true)
+fn rewind_over_advanced_forward(cursor: &mut MultiVersionRangeCursor, horizon: &EncodedKey) {
+	for tier in [&mut cursor.buffer, &mut cursor.persistent] {
+		if tier.exhausted {
+			continue;
+		}
+		if let Some(last) = &tier.last_key
+			&& last.as_slice() > horizon.as_slice()
+		{
+			tier.last_key = Some(horizon.clone());
+		}
+	}
+}
+
+fn rewind_over_advanced_reverse(cursor: &mut MultiVersionRangeCursor, horizon: &EncodedKey) {
+	for tier in [&mut cursor.buffer, &mut cursor.persistent] {
+		if tier.exhausted {
+			continue;
+		}
+		if let Some(last) = &tier.last_key
+			&& last.as_slice() < horizon.as_slice()
+		{
+			tier.last_key = Some(horizon.clone());
+		}
 	}
 }
 
@@ -581,30 +701,49 @@ impl MultiVersionGetPrevious for StandardMultiStore {
 			return Ok(None);
 		}
 
-		// Hot storage must be available for version lookups
-		let storage = self.hot.as_ref().expect("hot storage required for version lookups");
-
 		let table = classify_key(key);
 		let prev_version = CommitVersion(before_version.0 - 1);
 
-		match get_at_version(storage, table, key.as_ref(), prev_version) {
-			Ok(VersionedGetResult::Value {
-				value,
-				version,
-			}) => Ok(Some(MultiVersionRow {
-				key: key.clone(),
-				row: EncodedRow(CowVec::new(value.to_vec())),
-				version,
-			})),
-			Ok(VersionedGetResult::Tombstone) | Ok(VersionedGetResult::NotFound) => Ok(None),
-			Err(e) => Err(e),
+		if let Some(buffer) = &self.buffer {
+			match get_at_version(buffer, table, key.as_ref(), prev_version)? {
+				VersionedGetResult::Value {
+					value,
+					version,
+				} => {
+					return Ok(Some(MultiVersionRow {
+						key: key.clone(),
+						row: EncodedRow(CowVec::new(value.to_vec())),
+						version,
+					}));
+				}
+				VersionedGetResult::Tombstone => return Ok(None),
+				VersionedGetResult::NotFound => {}
+			}
 		}
+
+		if let Some(persistent) = &self.persistent {
+			match get_at_version(persistent, table, key.as_ref(), prev_version)? {
+				VersionedGetResult::Value {
+					value,
+					version,
+				} => {
+					return Ok(Some(MultiVersionRow {
+						key: key.clone(),
+						row: EncodedRow(CowVec::new(value.to_vec())),
+						version,
+					}));
+				}
+				VersionedGetResult::Tombstone => return Ok(None),
+				VersionedGetResult::NotFound => {}
+			}
+		}
+
+		Ok(None)
 	}
 }
 
 impl MultiVersionStore for StandardMultiStore {}
 
-/// Iterator for forward multi-version range queries.
 pub struct MultiVersionRangeIter {
 	store: StandardMultiStore,
 	cursor: MultiVersionRangeCursor,
@@ -619,24 +758,24 @@ impl Iterator for MultiVersionRangeIter {
 	type Item = Result<MultiVersionRow>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		// If we have items in the current batch, return them
 		if self.current_index < self.current_batch.len() {
 			let item = self.current_batch[self.current_index].clone();
 			self.current_index += 1;
 			return Some(Ok(item));
 		}
 
-		// If cursor is exhausted, we're done
 		if self.cursor.exhausted {
 			return None;
 		}
 
-		// Fetch the next batch
 		match self.store.range_next(&mut self.cursor, self.range.clone(), self.version, self.batch_size as u64)
 		{
 			Ok(batch) => {
 				if batch.items.is_empty() {
-					return None;
+					if self.cursor.exhausted {
+						return None;
+					}
+					return self.next();
 				}
 				self.current_batch = batch.items;
 				self.current_index = 0;
@@ -647,7 +786,6 @@ impl Iterator for MultiVersionRangeIter {
 	}
 }
 
-/// Iterator for reverse multi-version range queries.
 pub struct MultiVersionRangeRevIter {
 	store: StandardMultiStore,
 	cursor: MultiVersionRangeCursor,
@@ -662,19 +800,16 @@ impl Iterator for MultiVersionRangeRevIter {
 	type Item = Result<MultiVersionRow>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		// If we have items in the current batch, return them
 		if self.current_index < self.current_batch.len() {
 			let item = self.current_batch[self.current_index].clone();
 			self.current_index += 1;
 			return Some(Ok(item));
 		}
 
-		// If cursor is exhausted, we're done
 		if self.cursor.exhausted {
 			return None;
 		}
 
-		// Fetch the next batch
 		match self.store.range_rev_next(
 			&mut self.cursor,
 			self.range.clone(),
@@ -683,7 +818,10 @@ impl Iterator for MultiVersionRangeRevIter {
 		) {
 			Ok(batch) => {
 				if batch.items.is_empty() {
-					return None;
+					if self.cursor.exhausted {
+						return None;
+					}
+					return self.next();
 				}
 				self.current_batch = batch.items;
 				self.current_index = 0;
@@ -694,13 +832,10 @@ impl Iterator for MultiVersionRangeRevIter {
 	}
 }
 
-/// Classify a range to determine which table it belongs to.
 fn classify_key_range(range: &EncodedKeyRange) -> EntryKind {
-	classify_range(range).unwrap_or(Multi)
+	classify_range(range).unwrap_or(EntryKind::Multi)
 }
 
-/// Create range bounds from an EncodedKeyRange.
-/// Returns the start and end byte slices for the range query.
 fn make_range_bounds(range: &EncodedKeyRange) -> (Vec<u8>, Vec<u8>) {
 	let start = match &range.start {
 		Bound::Included(key) => key.as_ref().to_vec(),

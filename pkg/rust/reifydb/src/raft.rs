@@ -10,9 +10,7 @@ use std::{
 	},
 };
 
-use reifydb_catalog::{
-	bootstrap::load_materialized_catalog, materialized::MaterializedCatalog, schema::RowSchemaRegistry,
-};
+use reifydb_catalog::{bootstrap::load_catalog_cache, cache::CatalogCache};
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
@@ -53,8 +51,7 @@ impl SubsystemFactory for RaftSubsystemFactory {
 		let single_store = ioc.resolve::<SingleStore>()?;
 		let multi_tx = ioc.resolve::<MultiTransaction>()?;
 		let single_tx = ioc.resolve::<SingleTransaction>()?;
-		let catalog = ioc.resolve::<MaterializedCatalog>()?;
-		let schema = ioc.resolve::<RowSchemaRegistry>()?;
+		let catalog = ioc.resolve::<CatalogCache>()?;
 		let eventbus = ioc.resolve::<EventBus>()?;
 		let runtime = ioc.resolve::<SharedRuntime>()?;
 
@@ -65,7 +62,6 @@ impl SubsystemFactory for RaftSubsystemFactory {
 			multi_tx,
 			single_tx,
 			catalog,
-			schema,
 			eventbus,
 			runtime,
 		)))
@@ -78,8 +74,7 @@ pub struct RaftSubsystem {
 	single_store: SingleStore,
 	multi_tx: MultiTransaction,
 	single_tx: SingleTransaction,
-	catalog: MaterializedCatalog,
-	schema: RowSchemaRegistry,
+	catalog: CatalogCache,
 	eventbus: EventBus,
 	runtime: SharedRuntime,
 	running: Arc<AtomicBool>,
@@ -95,8 +90,7 @@ impl RaftSubsystem {
 		single_store: SingleStore,
 		multi_tx: MultiTransaction,
 		single_tx: SingleTransaction,
-		catalog: MaterializedCatalog,
-		schema: RowSchemaRegistry,
+		catalog: CatalogCache,
 		eventbus: EventBus,
 		runtime: SharedRuntime,
 	) -> Self {
@@ -107,7 +101,6 @@ impl RaftSubsystem {
 			multi_tx,
 			single_tx,
 			catalog,
-			schema,
 			eventbus,
 			runtime,
 			running: Arc::new(AtomicBool::new(false)),
@@ -144,7 +137,6 @@ impl Subsystem for RaftSubsystem {
 		}
 
 		let catalog_for_cb = self.catalog.clone();
-		let schema_for_cb = self.schema.clone();
 		let multi_for_cb = self.multi_tx.clone();
 		let single_for_cb = self.single_tx.clone();
 		let multi_for_ver = self.multi_tx.clone();
@@ -154,13 +146,8 @@ impl Subsystem for RaftSubsystem {
 			self.single_store.clone(),
 			self.eventbus.clone(),
 			move || {
-				if let Err(e) =
-					load_materialized_catalog(&multi_for_cb, &single_for_cb, &catalog_for_cb)
-				{
+				if let Err(e) = load_catalog_cache(&multi_for_cb, &single_for_cb, &catalog_for_cb) {
 					eprintln!("warning: catalog refresh failed: {e:?}");
-				}
-				if let Err(e) = schema_for_cb.reload_from_storage() {
-					eprintln!("warning: schema refresh failed: {e:?}");
 				}
 			},
 			move |version| {

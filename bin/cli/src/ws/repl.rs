@@ -3,8 +3,9 @@
 
 use std::io::{self, Write};
 
-use reifydb_client::{QueryResult, WsClient};
+use reifydb_client::{Frame, WireFormat, WsClient};
 use rustyline::{DefaultEditor, error::ReadlineError};
+use terminal_size::{Width, terminal_size};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -21,7 +22,7 @@ enum DotCommandResult {
 }
 
 pub async fn start_repl(host: &str, port: u16, token: Option<String>) -> Result<()> {
-	let mut client = WsClient::connect(&format!("ws://{}:{}", host, port))
+	let mut client = WsClient::connect(&format!("ws://{}:{}", host, port), WireFormat::Json)
 		.await
 		.map_err(|e| format!("Failed to connect to WebSocket server: {}", e))?;
 
@@ -192,11 +193,10 @@ fn handle_dot_command(
 	}
 }
 
-async fn execute_query(client: &mut WsClient, statement: &str, display_mode: DisplayMode) {
-	// Remove trailing semicolon for execution
-	let statement = statement.trim_end_matches(';').trim();
+async fn execute_query(client: &mut WsClient, rql: &str, display_mode: DisplayMode) {
+	let rql = rql.trim_end_matches(';').trim();
 
-	match client.query(statement, None).await {
+	match client.query(rql, None).await {
 		Ok(result) => {
 			print_query_result(&result, display_mode);
 		}
@@ -206,20 +206,20 @@ async fn execute_query(client: &mut WsClient, statement: &str, display_mode: Dis
 	}
 }
 
-fn print_query_result(result: &QueryResult, display_mode: DisplayMode) {
-	if result.frames.is_empty() {
+fn print_query_result(frames: &[Frame], display_mode: DisplayMode) {
+	if frames.is_empty() {
 		println!("(no results)\n");
 		return;
 	}
 
 	// Get terminal width if in truncate mode
 	let max_width = match display_mode {
-		DisplayMode::Truncate => terminal_size::terminal_size().map(|(terminal_size::Width(w), _)| w as usize),
+		DisplayMode::Truncate => terminal_size().map(|(Width(w), _)| w as usize),
 		DisplayMode::Full => None,
 	};
 
-	for (i, frame) in result.frames.iter().enumerate() {
-		if result.frames.len() > 1 {
+	for (i, frame) in frames.iter().enumerate() {
+		if frames.len() > 1 {
 			println!("--- Frame {} ---", i + 1);
 		}
 
@@ -233,7 +233,7 @@ fn print_query_result(result: &QueryResult, display_mode: DisplayMode) {
 	println!();
 }
 
-fn print_frame_truncated(frame: &reifydb_client::Frame, max_width: usize) {
+fn print_frame_truncated(frame: &Frame, max_width: usize) {
 	use reifydb_client::r#type::util::unicode::UnicodeWidthStr;
 
 	let row_count = frame.first().map_or(0, |c| c.data.len());

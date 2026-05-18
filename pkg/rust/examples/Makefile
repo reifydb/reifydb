@@ -109,11 +109,6 @@ intercept-table-view:
 intercept-deferred-view:
 	RUST_LOG=info cargo run --release --bin intercept-deferred-view
 
-# Subscription Examples
-.PHONY: subscription-cursor
-subscription-cursor:
-	RUST_LOG=info cargo run --release --bin subscription-cursor
-
 # Replication Examples
 .PHONY: replication-basic
 replication-basic:
@@ -123,8 +118,6 @@ replication-basic:
 BASIC_EXAMPLES := basic-hello-world basic-tables basic-enums basic-events-and-handlers
 RQL_EXAMPLES := rql-from rql-map rql-filter rql-sort rql-take rql-aggregate rql-join rql-arithmetic rql-comparison rql-logical
 INTERCEPT_EXAMPLES := intercept-table-view intercept-deferred-view
-SUBSCRIPTION_EXAMPLES := subscription-cursor
-
 # Run all examples in order (by directory, then by filename)
 .PHONY: run-all
 run-all:
@@ -168,22 +161,6 @@ run-all:
 	echo "=== Interceptor Examples ==="; \
 	echo ""; \
 	for example in $(INTERCEPT_EXAMPLES); do \
-		echo "--- Running $$example ---"; \
-		if RUST_LOG=info cargo run --release --bin $$example; then \
-			true; \
-		else \
-			exit_code=$$?; \
-			output=$$(RUST_LOG=info cargo run --release --bin $$example 2>&1); \
-			panic=$$(echo "$$output" | grep -A2 "panicked at" | head -3 || echo "Unknown error"); \
-			[ $$first_error -eq 0 ] && first_error=$$exit_code; \
-			failed_examples="$$failed_examples $$example"; \
-			panic_messages="$$panic_messages\n$$example:\n$$panic\n"; \
-		fi; \
-		echo ""; \
-	done; \
-	echo "=== Subscription Examples ==="; \
-	echo ""; \
-	for example in $(SUBSCRIPTION_EXAMPLES); do \
 		echo "--- Running $$example ---"; \
 		if RUST_LOG=info cargo run --release --bin $$example; then \
 			true; \

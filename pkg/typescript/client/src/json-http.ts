@@ -1,18 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 import type {
+    LoginChallengeResult,
     LoginResult,
+    ResponseMeta,
 } from "./types";
 import {
     ReifyError
 } from "./types";
-import {encodeParams} from "./encoder";
+import {encode_params} from "./encoder";
+import {CONTENT_TYPE_JSON} from "./content-types";
 
 export interface JsonHttpClientOptions {
     url: string;
-    timeoutMs?: number;
+    timeout_ms?: number;
     token?: string;
     unwrap?: boolean;
+}
+
+export interface RequestOptions {
+    signal?: AbortSignal;
 }
 
 export class JsonHttpClient {
@@ -26,25 +33,32 @@ export class JsonHttpClient {
         return new JsonHttpClient(options);
     }
 
-    async loginWithPassword(principal: string, password: string): Promise<LoginResult> {
-        return this.login("password", principal, {password});
+    async login_with_password(identity: string, password: string, req_opts?: RequestOptions): Promise<LoginResult> {
+        return this.login("password", {identifier: identity, password}, req_opts);
     }
 
-    async loginWithToken(principal: string, token: string): Promise<LoginResult> {
-        return this.login("token", principal, {token});
+    async login_with_token(token: string, req_opts?: RequestOptions): Promise<LoginResult> {
+        return this.login("token", {token}, req_opts);
     }
 
-    async login(method: string, principal: string, credentials: Record<string, string>): Promise<LoginResult> {
-        const timeoutMs = this.options.timeoutMs ?? 30_000;
+    async login(method: string, credentials: Record<string, string>, req_opts?: RequestOptions): Promise<LoginResult> {
+        const timeout_ms = this.options.timeout_ms ?? 30_000;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        const timeout = setTimeout(() => controller.abort(), timeout_ms);
+
+        let signal = controller.signal;
+        if (req_opts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, req_opts.signal]);
+        } else if (req_opts?.signal) {
+            req_opts.signal.addEventListener('abort', () => controller.abort());
+        }
 
         try {
             const response = await fetch(`${this.options.url}/v1/authenticate`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({method, principal, credentials}),
-                signal: controller.signal,
+                body: JSON.stringify({method, credentials}),
+                signal,
             });
 
             clearTimeout(timeout);
@@ -59,19 +73,74 @@ export class JsonHttpClient {
             return {token: body.token, identity: body.identity};
         } catch (err: any) {
             clearTimeout(timeout);
-            if (err.name === 'AbortError') throw new Error("Login timeout");
+            if (err.name === 'AbortError') throw new Error("Login timeout or aborted");
             throw err;
         }
     }
 
-    async logout(): Promise<void> {
+    async login_challenge(method: string, credentials: Record<string, string>, req_opts?: RequestOptions): Promise<LoginChallengeResult> {
+        const timeout_ms = this.options.timeout_ms ?? 30_000;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeout_ms);
+
+        let signal = controller.signal;
+        if (req_opts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, req_opts.signal]);
+        } else if (req_opts?.signal) {
+            req_opts.signal.addEventListener('abort', () => controller.abort());
+        }
+
+        try {
+            const response = await fetch(`${this.options.url}/v1/authenticate`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({method, credentials}),
+                signal,
+            });
+
+            clearTimeout(timeout);
+            const body = await response.json();
+
+            if (body.status === "challenge") {
+                if (!body.challenge_id || !body.payload?.message || !body.payload?.nonce) {
+                    throw new Error("Malformed challenge response");
+                }
+                return {
+                    kind: "challenge",
+                    challenge_id: body.challenge_id,
+                    message: body.payload.message,
+                    nonce: body.payload.nonce,
+                };
+            }
+
+            if (body.status === "authenticated" && body.token && body.identity) {
+                this.options = {...this.options, token: body.token};
+                return {kind: "authenticated", token: body.token, identity: body.identity};
+            }
+
+            throw new Error(body.reason || "Authentication failed");
+        } catch (err: any) {
+            clearTimeout(timeout);
+            if (err.name === 'AbortError') throw new Error("Login timeout or aborted");
+            throw err;
+        }
+    }
+
+    async logout(req_opts?: RequestOptions): Promise<void> {
         if (!this.options.token) {
             return;
         }
 
-        const timeoutMs = this.options.timeoutMs ?? 30_000;
+        const timeout_ms = this.options.timeout_ms ?? 30_000;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        const timeout = setTimeout(() => controller.abort(), timeout_ms);
+
+        let signal = controller.signal;
+        if (req_opts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, req_opts.signal]);
+        } else if (req_opts?.signal) {
+            req_opts.signal.addEventListener('abort', () => controller.abort());
+        }
 
         try {
             const response = await fetch(`${this.options.url}/v1/logout`, {
@@ -79,7 +148,7 @@ export class JsonHttpClient {
                 headers: {
                     'Authorization': `Bearer ${this.options.token}`,
                 },
-                signal: controller.signal,
+                signal,
             });
 
             clearTimeout(timeout);
@@ -92,99 +161,150 @@ export class JsonHttpClient {
             this.options = {...this.options, token: undefined};
         } catch (err: any) {
             clearTimeout(timeout);
-            if (err.name === 'AbortError') throw new Error("Logout timeout");
+            if (err.name === 'AbortError') throw new Error("Logout timeout or aborted");
             throw err;
         }
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
     async admin(
-        statements: string | string[],
+        rql: string,
         params?: any,
+        req_opts?: RequestOptions
     ): Promise<any> {
-        const statementArray = Array.isArray(statements) ? statements : [statements];
-        const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statementArray;
-
-        const encodedParams = params !== undefined && params !== null
-            ? encodeParams(params)
-            : undefined;
-
-        return this.send('admin', outputStatements, encodedParams);
+        const { data } = await this.admin_with_meta(rql, params, req_opts);
+        return data;
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
+    async admin_with_meta(
+        rql: string,
+        params?: any,
+        req_opts?: RequestOptions
+    ): Promise<{ data: any, meta?: ResponseMeta }> {
+        return this.execute('admin', rql, params, req_opts);
+    }
+
+    /**
+     * @param rql - RQL string to execute
+     */
     async command(
-        statements: string | string[],
+        rql: string,
         params?: any,
+        req_opts?: RequestOptions
     ): Promise<any> {
-        const statementArray = Array.isArray(statements) ? statements : [statements];
-        const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statementArray;
-
-        const encodedParams = params !== undefined && params !== null
-            ? encodeParams(params)
-            : undefined;
-
-        return this.send('command', outputStatements, encodedParams);
+        const { data } = await this.command_with_meta(rql, params, req_opts);
+        return data;
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
+    async command_with_meta(
+        rql: string,
+        params?: any,
+        req_opts?: RequestOptions
+    ): Promise<{ data: any, meta?: ResponseMeta }> {
+        return this.execute('command', rql, params, req_opts);
+    }
+
+    /**
+     * @param rql - RQL string to execute
+     */
     async query(
-        statements: string | string[],
+        rql: string,
         params?: any,
+        req_opts?: RequestOptions
     ): Promise<any> {
-        const statementArray = Array.isArray(statements) ? statements : [statements];
-        const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statementArray;
-
-        const encodedParams = params !== undefined && params !== null
-            ? encodeParams(params)
-            : undefined;
-
-        return this.send('query', outputStatements, encodedParams);
+        const { data } = await this.query_with_meta(rql, params, req_opts);
+        return data;
     }
 
-    private async send(endpoint: string, statements: string[], params: any): Promise<any> {
-        const timeoutMs = this.options.timeoutMs ?? 30_000;
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    /**
+     * @param rql - RQL string to execute
+     */
+    async query_with_meta(
+        rql: string,
+        params?: any,
+        req_opts?: RequestOptions
+    ): Promise<{ data: any, meta?: ResponseMeta }> {
+        return this.execute('query', rql, params, req_opts);
+    }
 
+    private async execute(
+        endpoint: 'admin' | 'command' | 'query',
+        rql: string,
+        params: any,
+        req_opts?: RequestOptions
+    ): Promise<{ data: any, meta?: ResponseMeta }> {
+        const encoded_params = params !== undefined && params !== null
+            ? encode_params(params)
+            : undefined;
+
+        return this.send(endpoint, rql, encoded_params, req_opts);
+    }
+
+    private async send(
+        endpoint: string,
+        rql: string,
+        params: any,
+        req_opts?: RequestOptions,
+    ): Promise<{ data: any, meta?: ResponseMeta }> {
+        const timeout_ms = this.options.timeout_ms ?? 30_000;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeout_ms);
+
+        let signal = controller.signal;
+        if (req_opts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, req_opts.signal]);
+        } else if (req_opts?.signal) {
+            req_opts.signal.addEventListener('abort', () => controller.abort());
+        }
+
+        // JsonHttpClient with unwrap mode also accepts raw `application/json` passthrough.
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
+            'Accept': `${CONTENT_TYPE_JSON}, application/json`,
         };
 
         if (this.options.token) {
             headers['Authorization'] = `Bearer ${this.options.token}`;
         }
 
-        const body: any = {statements};
+        const body: any = { rql };
         if (params !== undefined) {
             body.params = params;
         }
 
-        const queryParams = new URLSearchParams({format: 'json'});
+        const query_params = new URLSearchParams({format: 'json'});
         if (this.options.unwrap) {
-            queryParams.set('unwrap', 'true');
+            query_params.set('unwrap', 'true');
         }
+        const url = `${this.options.url}/v1/${endpoint}?${query_params}`;
 
         try {
-            const response = await fetch(`${this.options.url}/v1/${endpoint}?${queryParams}`, {
+            const response = await fetch(url, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify(body),
-                signal: controller.signal,
+                signal,
                 credentials: 'include',
             });
 
             clearTimeout(timeout);
 
-            const responseBody = await response.text();
+            const meta = extract_meta(response.headers);
+
+            const response_body = await response.text();
             let parsed: any;
             try {
-                parsed = JSON.parse(responseBody);
+                parsed = JSON.parse(response_body);
             } catch {
-                throw new Error(`Invalid JSON response: ${responseBody}`);
+                throw new Error(`Invalid JSON response: ${response_body}`);
             }
 
             if (!response.ok) {
@@ -195,10 +315,10 @@ export class JsonHttpClient {
                         payload: {diagnostic: parsed.diagnostic}
                     });
                 }
-                throw new Error(parsed.error || `HTTP ${response.status}: ${responseBody}`);
+                throw new Error(parsed.error || `HTTP ${response.status}: ${response_body}`);
             }
 
-            return parsed;
+            return { data: parsed, meta };
         } catch (err: any) {
             clearTimeout(timeout);
             if (err.name === 'AbortError') {
@@ -207,4 +327,11 @@ export class JsonHttpClient {
             throw err;
         }
     }
+}
+
+function extract_meta(headers: Headers | undefined): ResponseMeta | undefined {
+    const fingerprint = headers?.get?.('x-fingerprint');
+    const duration = headers?.get?.('x-duration');
+    if (!fingerprint || !duration) return undefined;
+    return { fingerprint, duration };
 }

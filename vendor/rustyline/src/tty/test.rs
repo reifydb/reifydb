@@ -3,13 +3,13 @@ use std::slice::Iter;
 use std::vec::IntoIter;
 
 use super::{Event, ExternalPrinter, RawMode, RawReader, Renderer, Term};
-use crate::config::{Behavior, BellStyle, ColorMode, Config};
+use crate::config::Config;
 use crate::error::ReadlineError;
 use crate::highlight::Highlighter;
 use crate::keys::KeyEvent;
-use crate::layout::{Layout, Position};
+use crate::layout::{GraphemeClusterMode, Layout, Position, Unit};
 use crate::line_buffer::LineBuffer;
-use crate::{Cmd, Result};
+use crate::{Cmd, Prompt, Result};
 
 pub type Buffer = ();
 pub type KeyMap = ();
@@ -21,7 +21,7 @@ impl RawMode for Mode {
     }
 }
 
-impl<'a> RawReader for Iter<'a, KeyEvent> {
+impl RawReader for Iter<'_, KeyEvent> {
     type Buffer = Buffer;
 
     fn wait_for_input(&mut self, single_esc_abort: bool) -> Result<Event> {
@@ -41,7 +41,7 @@ impl<'a> RawReader for Iter<'a, KeyEvent> {
     }
 
     fn read_pasted_text(&mut self) -> Result<String> {
-        unimplemented!()
+        Ok("pasted".to_owned())
     }
 
     fn find_binding(&self, _: &KeyEvent) -> Option<Cmd> {
@@ -78,7 +78,7 @@ impl RawReader for IntoIter<KeyEvent> {
     }
 
     fn read_pasted_text(&mut self) -> Result<String> {
-        unimplemented!()
+        Ok("pasted".to_owned())
     }
 
     fn find_binding(&self, _: &KeyEvent) -> Option<Cmd> {
@@ -100,12 +100,12 @@ impl Renderer for Sink {
         Ok(())
     }
 
-    fn refresh_line(
+    fn refresh_line<P: Prompt + ?Sized>(
         &mut self,
-        _prompt: &str,
+        _prompt: &P,
         _line: &LineBuffer,
         _hint: Option<&str>,
-        _old_layout: &Layout,
+        _old_layout: Option<&Layout>,
         _new_layout: &Layout,
         _highlighter: Option<&dyn Highlighter>,
     ) -> Result<()> {
@@ -114,7 +114,7 @@ impl Renderer for Sink {
 
     fn calculate_position(&self, s: &str, orig: Position) -> Position {
         let mut pos = orig;
-        pos.col += s.len();
+        pos.col += u16::try_from(s.len()).unwrap();
         pos
     }
 
@@ -134,18 +134,26 @@ impl Renderer for Sink {
         Ok(())
     }
 
+    fn clear_to_eol(&mut self) -> Result<()> {
+        Ok(())
+    }
+
     fn update_size(&mut self) {}
 
-    fn get_columns(&self) -> usize {
+    fn get_columns(&self) -> Unit {
         80
     }
 
-    fn get_rows(&self) -> usize {
+    fn get_rows(&self) -> Unit {
         24
     }
 
     fn colors_enabled(&self) -> bool {
         false
+    }
+
+    fn grapheme_cluster_mode(&self) -> GraphemeClusterMode {
+        GraphemeClusterMode::Unicode
     }
 
     fn move_cursor_at_leftmost(&mut self, _: &mut IntoIter<KeyEvent>) -> Result<()> {
@@ -167,8 +175,6 @@ pub type Terminal = DummyTerminal;
 pub struct DummyTerminal {
     pub keys: Vec<KeyEvent>,
     pub cursor: usize, // cursor position before last command
-    pub color_mode: ColorMode,
-    pub bell_style: BellStyle,
 }
 
 impl Term for DummyTerminal {
@@ -180,19 +186,10 @@ impl Term for DummyTerminal {
     type Reader = IntoIter<KeyEvent>;
     type Writer = Sink;
 
-    fn new(
-        color_mode: ColorMode,
-        _behavior: Behavior,
-        _tab_stop: usize,
-        bell_style: BellStyle,
-        _enable_bracketed_paste: bool,
-        _enable_signals: bool,
-    ) -> Result<DummyTerminal> {
-        Ok(DummyTerminal {
-            keys: Vec::new(),
+    fn new(_config: &Config) -> Result<Self> {
+        Ok(Self {
+            keys: vec![],
             cursor: 0,
-            color_mode,
-            bell_style,
         })
     }
 
@@ -218,16 +215,20 @@ impl Term for DummyTerminal {
 
     // Interactive loop:
 
-    fn enable_raw_mode(&mut self) -> Result<(Mode, KeyMap)> {
+    fn enable_raw_mode(&mut self, _: &Config) -> Result<(Mode, KeyMap)> {
         Ok(((), ()))
     }
 
-    fn create_reader(&self, _: Option<Buffer>, _: &Config, _: KeyMap) -> Self::Reader {
-        self.keys.clone().into_iter()
+    fn create_reader(&self, _: Option<Buffer>, _: &Config, _: KeyMap) -> Result<Self::Reader> {
+        Ok(self.keys.clone().into_iter())
     }
 
-    fn create_writer(&self) -> Sink {
+    fn create_writer(&self, _: &Config) -> Sink {
         Sink::default()
+    }
+
+    fn writeln(&self) -> Result<()> {
+        Ok(())
     }
 
     fn create_external_printer(&mut self) -> Result<DummyExternalPrinter> {
@@ -236,10 +237,6 @@ impl Term for DummyTerminal {
 
     fn set_cursor_visibility(&mut self, _: bool) -> Result<Option<()>> {
         Ok(None)
-    }
-
-    fn writeln(&self) -> Result<()> {
-        Ok(())
     }
 }
 

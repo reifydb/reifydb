@@ -10,13 +10,17 @@ import {
     expectSingleBigIntResult
 } from "./test-helper";
 
-describe('Named Parameters', () => {
+describe.each([
+    {format: "frames"},
+    {format: "rbcf"},
+] as const)('Named Parameters (primitive) [$format]', ({format}) => {
     let httpClient: HttpClient;
 
     beforeAll(async () => {
         httpClient = Client.connect_http(process.env.REIFYDB_HTTP_URL, {
-            timeoutMs: 10000,
-            token: process.env.REIFYDB_TOKEN
+            timeout_ms: 10000,
+            token: process.env.REIFYDB_TOKEN,
+            format,
         });
     });
 

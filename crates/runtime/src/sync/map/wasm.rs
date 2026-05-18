@@ -8,7 +8,6 @@ use std::{
 	sync::{Arc, RwLock},
 };
 
-/// WASM implementation of Map using Arc<RwLock<HashMap>>.
 pub struct MapInner<K, V>
 where
 	K: Eq + Hash,
@@ -17,7 +16,7 @@ where
 }
 
 // SAFETY: The inner Arc<RwLock<HashMap>> is Sync, and we need to explicitly mark this
-// for WASM targets where Sync is not automatically derived.
+
 unsafe impl<K, V> Sync for MapInner<K, V>
 where
 	K: Eq + Hash + Send,
@@ -29,7 +28,6 @@ impl<K, V> MapInner<K, V>
 where
 	K: Eq + Hash,
 {
-	/// Creates a new empty concurrent map.
 	#[inline]
 	pub fn new() -> Self {
 		Self {
@@ -37,8 +35,6 @@ where
 		}
 	}
 
-	/// Gets the value for a key, or inserts it using the provided function if it doesn't exist.
-	/// Returns a clone of the value.
 	#[inline]
 	pub fn get_or_insert_with<F>(&self, key: K, f: F) -> V
 	where
@@ -46,7 +42,6 @@ where
 		V: Clone,
 		K: Clone,
 	{
-		// First try read lock to see if key exists
 		{
 			let map = self.inner.read().unwrap();
 			if let Some(value) = map.get(&key) {
@@ -54,13 +49,11 @@ where
 			}
 		}
 
-		// Key doesn't exist, acquire write lock
 		let mut map = self.inner.write().unwrap();
-		// Check again in case another thread inserted while we were waiting
+
 		map.entry(key).or_insert_with(f).clone()
 	}
 
-	/// Gets a clone of the value associated with the key.
 	#[inline]
 	pub fn get<Q>(&self, key: &Q) -> Option<V>
 	where
@@ -72,7 +65,6 @@ where
 		map.get(key).cloned()
 	}
 
-	/// Returns true if the map contains the specified key.
 	#[inline]
 	pub fn contains_key<Q>(&self, key: &Q) -> bool
 	where
@@ -83,8 +75,6 @@ where
 		map.contains_key(key)
 	}
 
-	/// Applies a closure to the value associated with the key, returning the result.
-	/// Returns None if the key doesn't exist.
 	#[inline]
 	pub fn with_read<Q, R, F>(&self, key: &Q, f: F) -> Option<R>
 	where
@@ -96,13 +86,11 @@ where
 		map.get(key).map(f)
 	}
 
-	/// Inserts a key-value pair into the map.
 	#[inline]
 	pub fn insert(&self, key: K, value: V) {
 		self.inner.write().unwrap().insert(key, value);
 	}
 
-	/// Removes a key from the map, returning the value if it existed.
 	#[inline]
 	pub fn remove<Q>(&self, key: &Q) -> Option<V>
 	where
@@ -112,7 +100,6 @@ where
 		self.inner.write().unwrap().remove(key)
 	}
 
-	/// Returns a vector of all keys in the map.
 	#[inline]
 	pub fn keys(&self) -> Vec<K>
 	where
@@ -121,7 +108,6 @@ where
 		self.inner.read().unwrap().keys().cloned().collect()
 	}
 
-	/// Clears `buf` and fills it with all keys in the map, reusing the buffer's allocation.
 	#[inline]
 	pub fn keys_into(&self, buf: &mut Vec<K>)
 	where
@@ -132,8 +118,6 @@ where
 		buf.extend(map.keys().cloned());
 	}
 
-	/// Applies a closure to the mutable value associated with the key, returning the result.
-	/// Returns None if the key doesn't exist.
 	#[inline]
 	pub fn with_write<Q, R, F>(&self, key: &Q, f: F) -> Option<R>
 	where
@@ -144,7 +128,6 @@ where
 		self.inner.write().unwrap().get_mut(key).map(f)
 	}
 
-	/// Removes all entries from the map.
 	#[inline]
 	pub fn clear(&self) {
 		let mut map = self.inner.write().unwrap();

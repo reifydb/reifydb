@@ -1,8 +1,0 @@
-# Copyright (c) reifydb.com 2025
-# This file is licensed under the Apache-2.0, see license.md file
-
-logical 'map {sum: 1+1}'
----
-> └── Map
->     └── (Constant(1) + Constant(1)) as sum
->

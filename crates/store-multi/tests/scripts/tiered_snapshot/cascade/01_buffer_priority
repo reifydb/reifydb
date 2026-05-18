@@ -1,0 +1,31 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Defect targets:
+#   - cascade order reversed (persistent consulted before buffer)
+#   - cascade merging instead of short-circuiting
+#   - get_at_version on buffer returning NotFound when buffer actually has the value
+
+set k=hot_value   version=1
+flush
+---
+ok
+
+# Force divergence: persistent_set bypasses the actor and writes persistent directly
+persistent_set k=warm_only_value   version=1
+---
+ok
+
+# Cascade returns buffer's value, not persistent's
+get k version=1
+---
+"k" => "hot_value"
+
+# Direct reads confirm divergence is real
+buffer_get k version=1
+---
+"k" => "hot_value"
+
+persistent_get k version=1
+---
+"k" => "warm_only_value"

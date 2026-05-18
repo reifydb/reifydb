@@ -1,41 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Fluent API for fast bulk inserts into sources.
+//! Fast path for inserting many rows at once. Skips the per-row VM dispatch loop, coerces and validates the input
+//! batch up front, and writes directly through the storage commit path so a load of a million rows pays a small
+//! constant overhead rather than a million instruction-dispatch costs.
 //!
-//! This module provides a builder pattern API that bypasses RQL parsing
-//! for maximum insert performance. All inserts within a single builder
-//! execute in one transaction (one request = one transaction).
-//!
-//! # Example
-//!
-//! ```ignore
-//! use reifydb_type::params;
-//!
-//! engine.bulk_insert(&identity)
-//!     .table("namespace::users")
-//!         .row(params!{ id: 1, name: "Alice" })
-//!         .row(params!{ id: 2, name: "Bob" })
-//!         .done()
-//!     .ringbuffer("namespace::events")
-//!         .row(params!{ timestamp: 12345, event_type: "login" })
-//!         .done()
-//!     .execute()?;
-//! ```
+//! Used by ingestion endpoints, replication, and the bulk-load admin tool. Validation here matches the constraints
+//! the per-row INSERT path applies; if the two diverge, bulk-insert can accept rows that single-row INSERT would
+//! reject (or vice versa), which silently produces inconsistent state.
 
 pub mod builder;
 pub mod coerce;
 pub mod primitive;
 pub mod validation;
 
-/// Result of a bulk insert operation
 #[derive(Debug, Clone, Default)]
 pub struct BulkInsertResult {
 	pub tables: Vec<TableInsertResult>,
 	pub ringbuffers: Vec<RingBufferInsertResult>,
+	pub series: Vec<SeriesInsertResult>,
 }
 
-/// Result of inserting into a specific table
 #[derive(Debug, Clone)]
 pub struct TableInsertResult {
 	pub namespace: String,
@@ -43,10 +28,16 @@ pub struct TableInsertResult {
 	pub inserted: u64,
 }
 
-/// Result of inserting into a specific ring buffer
 #[derive(Debug, Clone)]
 pub struct RingBufferInsertResult {
 	pub namespace: String,
 	pub ringbuffer: String,
+	pub inserted: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct SeriesInsertResult {
+	pub namespace: String,
+	pub series: String,
 	pub inserted: u64,
 }

@@ -3,7 +3,10 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders};
+use reifydb_core::{
+	interface::catalog::config::{ConfigKey, GetConfig},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+};
 use reifydb_rql::query::QueryPlan;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{params::Params, value::r#type::Type};
@@ -22,7 +25,7 @@ use crate::{
 	},
 };
 
-impl Vm {
+impl<'a> Vm<'a> {
 	pub(crate) fn exec_query(
 		&mut self,
 		services: &Arc<Services>,
@@ -34,7 +37,7 @@ impl Vm {
 		if let Some(columns) =
 			run_query_plan(services, &mut std_txn, plan.clone(), params.clone(), &mut self.symbols)?
 		{
-			self.stack.push(Variable::Columns(columns));
+			self.stack.push(Variable::columns(columns));
 		}
 		Ok(())
 	}
@@ -51,7 +54,7 @@ pub(crate) fn run_query_plan(
 	let context = Arc::new(QueryContext {
 		services: services.clone(),
 		source: None,
-		batch_size: 1024,
+		batch_size: services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params,
 		symbols: symbols.clone(),
 		identity,
@@ -74,12 +77,12 @@ pub(crate) fn run_query_plan(
 
 	if all_columns.is_none() {
 		let headers = query_node.headers().unwrap_or_else(ColumnHeaders::empty);
-		let empty_columns: Vec<Column> = headers
+		let empty_columns: Vec<ColumnWithName> = headers
 			.columns
 			.into_iter()
-			.map(|name| Column {
+			.map(|name| ColumnWithName {
 				name,
-				data: ColumnData::none_typed(Type::Boolean, 0),
+				data: ColumnBuffer::none_typed(Type::Boolean, 0),
 			})
 			.collect();
 		return Ok(Some(Columns::new(empty_columns)));

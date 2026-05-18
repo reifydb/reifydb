@@ -1,47 +1,109 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::path::PathBuf;
-#[cfg(feature = "sub_server")]
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use reifydb_auth::service::AuthConfigurator;
-use reifydb_core::config::SystemConfig;
-use reifydb_routine::{function::registry::FunctionsConfigurator, procedure::registry::ProceduresConfigurator};
-use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
+use reifydb_catalog::{bootstrap::read_configs, cache::CatalogCache};
+use reifydb_core::interface::catalog::config::ConfigKey;
+#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
+use reifydb_metric::{
+	accumulator::StatementStatsAccumulator,
+	registry::{MetricRegistry, StaticMetricRegistry},
+};
+#[cfg(feature = "sub_profiler")]
+use reifydb_profiler::{
+	event::{ProfilerScopeBatchEvent, ProfilerScopeClosedEvent},
+	intern::DimInterner,
+	layer::ProfilerLayer,
+	sink::{NoopSink, ProfilerSink},
+};
+use reifydb_routine::routine::registry::RoutinesConfigurator;
+#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
+use reifydb_runtime::context::clock::Clock;
+#[cfg(feature = "sub_profiler")]
+use reifydb_runtime::sync::rwlock::RwLock;
+use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, pool::PoolConfig};
+use reifydb_store_multi::buffer::tier::MultiBufferTier;
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
-#[cfg(feature = "sub_replication")]
-use reifydb_sub_replication::{
-	builder::{ReplicationConfig, ReplicationConfigurator},
-	factory::ReplicationSubsystemFactory,
+#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
+use reifydb_sub_metric::{factory::MetricSubsystemFactory, interceptor::RequestMetricsInterceptor};
+#[cfg(feature = "sub_profiler")]
+use reifydb_sub_profiler::{
+	accumulator::ProfilerAccumulator,
+	actor::ProfilerCollectorActor,
+	builder::ProfilerConfigurator,
+	factory::ProfilerSubsystemFactory,
+	listener::{ProfilerScopeBatchListener, ProfilerScopeClosedListener},
+	sink::EventBusSink,
+	subsystem::ProfilerSubsystem,
 };
 #[cfg(feature = "sub_raft")]
 use reifydb_sub_raft::config::RaftConfig;
-#[cfg(feature = "sub_server")]
+#[cfg(feature = "sub_replication")]
+use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurator};
+#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
+use reifydb_sub_replication::factory::ReplicationSubsystemFactory;
+#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_sub_server::interceptor::{RequestInterceptor, RequestInterceptorChain};
-#[cfg(feature = "sub_server_admin")]
+#[cfg(all(feature = "sub_server_admin", not(reifydb_single_threaded)))]
 use reifydb_sub_server_admin::{config::AdminConfigurator, factory::AdminSubsystemFactory};
-#[cfg(feature = "sub_server_grpc")]
+#[cfg(all(feature = "sub_server_grpc", not(reifydb_single_threaded)))]
 use reifydb_sub_server_grpc::factory::{GrpcConfigurator, GrpcSubsystemFactory};
-#[cfg(feature = "sub_server_http")]
+#[cfg(all(feature = "sub_server_http", not(reifydb_single_threaded)))]
 use reifydb_sub_server_http::factory::{HttpConfigurator, HttpSubsystemFactory};
-#[cfg(feature = "sub_server_otel")]
+#[cfg(all(feature = "sub_server_otel", not(reifydb_single_threaded)))]
 use reifydb_sub_server_otel::{config::OtelConfigurator, factory::OtelSubsystemFactory, subsystem::OtelSubsystem};
-#[cfg(feature = "sub_server_ws")]
+#[cfg(all(feature = "sub_server_ws", not(reifydb_single_threaded)))]
 use reifydb_sub_server_ws::factory::{WsConfigurator, WsSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
+use reifydb_type::value::Value;
+#[cfg(feature = "sub_profiler")]
+use tracing_subscriber::filter::LevelFilter;
 
-use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
+fn pool_config_from_sources(
+	factory: &StorageFactory,
+	overrides: &[(ConfigKey, Value)],
+) -> Result<(MultiBufferTier, PoolConfig)> {
+	let multi_buffer = factory.open_multi_buffer();
+	let persisted = read_configs(
+		Some(&multi_buffer),
+		None,
+		&[ConfigKey::ThreadsAsync, ConfigKey::ThreadsSystem, ConfigKey::ThreadsQuery],
+	)?;
+
+	let resolve = |key: ConfigKey| -> usize {
+		let value = overrides
+			.iter()
+			.rev()
+			.find(|(k, _)| *k == key)
+			.and_then(|(_, v)| key.accept(v.clone()).ok())
+			.unwrap_or_else(|| persisted[&key].clone());
+		match value {
+			Value::Uint2(v) => v as usize,
+			other => panic!("config key {key} expected Uint2, got {other:?}"),
+		}
+	};
+
+	let pools = PoolConfig {
+		async_threads: resolve(ConfigKey::ThreadsAsync),
+		system_threads: resolve(ConfigKey::ThreadsSystem),
+		query_threads: resolve(ConfigKey::ThreadsQuery),
+	};
+	Ok((multi_buffer, pools))
+}
+
+use super::{DatabaseBuilder, WithInterceptorBuilder, database::CdcBackend, traits::WithSubsystem};
 use crate::{
-	Database, Migration,
+	Database, MigrationSource, Result,
 	api::{StorageFactory, transaction},
 };
 
-#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
+#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel", not(reifydb_single_threaded)))]
 type OtelTracingConfig = (
 	Box<dyn FnOnce(OtelConfigurator) -> OtelConfigurator + Send + 'static>,
 	Box<dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send + 'static>,
@@ -50,28 +112,29 @@ type OtelTracingConfig = (
 pub struct ServerBuilder {
 	storage_factory: StorageFactory,
 	runtime_config: Option<SharedRuntimeConfig>,
-	migrations: Vec<Migration>,
+	migrations: Option<MigrationSource>,
 	interceptors: InterceptorBuilder,
-	#[cfg(feature = "sub_server")]
+	#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 	request_interceptors: Vec<Arc<dyn RequestInterceptor>>,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
-	functions_configurator:
-		Option<Box<dyn FnOnce(FunctionsConfigurator) -> FunctionsConfigurator + Send + 'static>>,
-	procedures_configurator:
-		Option<Box<dyn FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static>>,
-	handlers_configurator:
-		Option<Box<dyn FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static>>,
+	routines_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
+	handlers_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
 	#[cfg(reifydb_target = "native")]
 	procedure_dir: Option<PathBuf>,
 	#[cfg(feature = "sub_tracing")]
 	tracing_configurator: Option<Box<dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send + 'static>>,
+	#[cfg(feature = "sub_profiler")]
+	profiler_configurator: Option<Box<dyn FnOnce(ProfilerConfigurator) -> ProfilerConfigurator + Send + 'static>>,
 	#[cfg(feature = "sub_flow")]
 	flow_configurator: Option<Box<dyn FnOnce(FlowConfigurator) -> FlowConfigurator + Send + 'static>>,
 	#[cfg(feature = "sub_replication")]
 	replication_factory: Option<Box<dyn SubsystemFactory>>,
-	#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
+	#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel", not(reifydb_single_threaded)))]
 	otel_tracing_config: Option<OtelTracingConfig>,
 	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
+	#[cfg(feature = "sub_replication")]
+	is_replica: bool,
+	bootstrap_configs: Vec<(ConfigKey, Value)>,
 }
 
 impl ServerBuilder {
@@ -79,25 +142,33 @@ impl ServerBuilder {
 		Self {
 			storage_factory,
 			runtime_config: None,
-			migrations: Vec::new(),
+			migrations: None,
 			interceptors: InterceptorBuilder::new(),
-			#[cfg(feature = "sub_server")]
+			#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 			request_interceptors: Vec::new(),
 			subsystem_factories: Vec::new(),
-			functions_configurator: None,
-			procedures_configurator: None,
+			routines_configurator: None,
 			handlers_configurator: None,
 			#[cfg(reifydb_target = "native")]
 			procedure_dir: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_configurator: None,
+			#[cfg(feature = "sub_profiler")]
+			profiler_configurator: None,
 			#[cfg(feature = "sub_flow")]
 			flow_configurator: None,
 			#[cfg(feature = "sub_replication")]
 			replication_factory: None,
-			#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
+			#[cfg(feature = "sub_replication")]
+			is_replica: false,
+			#[cfg(all(
+				feature = "sub_tracing",
+				feature = "sub_server_otel",
+				not(reifydb_single_threaded)
+			))]
 			otel_tracing_config: None,
 			auth_configurator: None,
+			bootstrap_configs: Vec::new(),
 		}
 	}
 
@@ -117,30 +188,36 @@ impl ServerBuilder {
 		self
 	}
 
-	pub fn with_migrations(mut self, migrations: Vec<Migration>) -> Self {
-		self.migrations = migrations;
+	pub fn with_migrations(mut self, source: impl Into<MigrationSource>) -> Self {
+		self.migrations = Some(source.into());
 		self
 	}
 
-	pub fn with_functions<F>(mut self, configurator: F) -> Self
-	where
-		F: FnOnce(FunctionsConfigurator) -> FunctionsConfigurator + Send + 'static,
-	{
-		self.functions_configurator = Some(Box::new(configurator));
+	/// Set a system configuration value applied during bootstrap.
+	///
+	/// Applied on every `build()`, overwriting any previously persisted value.
+	pub fn with_config(mut self, key: ConfigKey, value: Value) -> Self {
+		self.bootstrap_configs.push((key, value));
 		self
 	}
 
-	pub fn with_procedures<F>(mut self, configurator: F) -> Self
+	/// Set multiple system configuration values applied during bootstrap.
+	pub fn with_configs(mut self, configs: impl IntoIterator<Item = (ConfigKey, Value)>) -> Self {
+		self.bootstrap_configs.extend(configs);
+		self
+	}
+
+	pub fn with_routines<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static,
+		F: FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static,
 	{
-		self.procedures_configurator = Some(Box::new(configurator));
+		self.routines_configurator = Some(Box::new(configurator));
 		self
 	}
 
 	pub fn with_handlers<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static,
+		F: FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static,
 	{
 		self.handlers_configurator = Some(Box::new(configurator));
 		self
@@ -153,7 +230,7 @@ impl ServerBuilder {
 	}
 
 	/// Configure and add a gRPC subsystem.
-	#[cfg(feature = "sub_server_grpc")]
+	#[cfg(all(feature = "sub_server_grpc", not(reifydb_single_threaded)))]
 	pub fn with_grpc<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(GrpcConfigurator) -> GrpcConfigurator + Send + 'static,
@@ -164,7 +241,7 @@ impl ServerBuilder {
 	}
 
 	/// Configure and add an HTTP subsystem.
-	#[cfg(feature = "sub_server_http")]
+	#[cfg(all(feature = "sub_server_http", not(reifydb_single_threaded)))]
 	pub fn with_http<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(HttpConfigurator) -> HttpConfigurator + Send + 'static,
@@ -175,7 +252,7 @@ impl ServerBuilder {
 	}
 
 	/// Configure and add a WebSocket subsystem.
-	#[cfg(feature = "sub_server_ws")]
+	#[cfg(all(feature = "sub_server_ws", not(reifydb_single_threaded)))]
 	pub fn with_ws<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(WsConfigurator) -> WsConfigurator + Send + 'static,
@@ -186,7 +263,7 @@ impl ServerBuilder {
 	}
 
 	/// Configure and add an OpenTelemetry subsystem.
-	#[cfg(feature = "sub_server_otel")]
+	#[cfg(all(feature = "sub_server_otel", not(reifydb_single_threaded)))]
 	pub fn with_otel<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(OtelConfigurator) -> OtelConfigurator + Send + 'static,
@@ -219,7 +296,7 @@ impl ServerBuilder {
 	///     )
 	///     .build()?;
 	/// ```
-	#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
+	#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel", not(reifydb_single_threaded)))]
 	pub fn with_tracing_otel<O, F>(mut self, otel_configurator: O, tracing_configurator: F) -> Self
 	where
 		O: FnOnce(OtelConfigurator) -> OtelConfigurator + Send + 'static,
@@ -234,13 +311,12 @@ impl ServerBuilder {
 	///
 	/// Interceptors are called in registration order for `pre_execute`,
 	/// and in reverse order for `post_execute`.
-	#[cfg(feature = "sub_server")]
+	#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 	pub fn with_request_interceptor<I: RequestInterceptor>(mut self, interceptor: I) -> Self {
 		self.request_interceptors.push(Arc::new(interceptor));
 		self
 	}
 
-	/// Configure and add a Raft consensus subsystem.
 	#[cfg(feature = "sub_raft")]
 	pub fn with_raft(mut self, config: RaftConfig) -> Self {
 		let factory = crate::raft::RaftSubsystemFactory::new(config);
@@ -248,7 +324,7 @@ impl ServerBuilder {
 		self
 	}
 
-	#[cfg(feature = "sub_server_admin")]
+	#[cfg(all(feature = "sub_server_admin", not(reifydb_single_threaded)))]
 	pub fn with_admin<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(AdminConfigurator) -> AdminConfigurator + Send + 'static,
@@ -258,49 +334,118 @@ impl ServerBuilder {
 		self
 	}
 
-	pub fn build(self) -> crate::Result<Database> {
+	#[allow(unused_mut)]
+	pub fn build(mut self) -> Result<Database> {
+		let (multi_buffer, pool_config) =
+			pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
+
 		let runtime_config = self.runtime_config.unwrap_or_default();
-		let runtime = SharedRuntime::from_config(runtime_config);
+		let runtime = SharedRuntime::from_config(runtime_config, pool_config);
 
 		let actor_system = runtime.actor_system().scope();
 		let (multi_store, single_store, transaction_single, eventbus) =
-			self.storage_factory.create(&actor_system);
-		let system_config = SystemConfig::new();
-		crate::config::register_defaults(&system_config);
+			self.storage_factory.create_with_multi_buffer(multi_buffer, &actor_system);
+		let catalog_cache = CatalogCache::new();
 		let (multi, single, eventbus) = transaction(
 			(multi_store.clone(), single_store.clone(), transaction_single, eventbus),
 			actor_system.clone(),
 			runtime.clock().clone(),
 			runtime.rng().clone(),
-			system_config.clone(),
+			Arc::new(catalog_cache.clone()),
 		);
 
-		let mut database_builder = DatabaseBuilder::new(system_config, multi, single, eventbus)
+		let cdc_backend = match &self.storage_factory {
+			StorageFactory::Memory => CdcBackend::Memory,
+			#[cfg(not(target_arch = "wasm32"))]
+			StorageFactory::Sqlite(config) => CdcBackend::Sqlite(config.clone()),
+		};
+
+		let mut database_builder = DatabaseBuilder::new(catalog_cache, multi, single, eventbus.clone())
 			.with_interceptor_builder(self.interceptors)
 			.with_runtime(runtime.clone())
-			.with_actor_system(actor_system)
-			.with_stores(multi_store, single_store);
+			.with_actor_system(actor_system.clone())
+			.with_stores(multi_store, single_store)
+			.with_cdc_backend(cdc_backend);
 
-		#[cfg(feature = "sub_server")]
+		#[cfg(feature = "sub_replication")]
+		if self.is_replica {
+			database_builder = database_builder.is_replica();
+		}
+
+		#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 		{
+			let registry = Arc::new(MetricRegistry::new());
+			let static_registry = Arc::new(StaticMetricRegistry::new());
+			let accumulator = Arc::new(StatementStatsAccumulator::new());
+
+			let metrics_interceptor =
+				RequestMetricsInterceptor::new(eventbus.clone(), accumulator.clone(), Clock::Real);
+			self.request_interceptors.push(Arc::new(metrics_interceptor));
+
 			let chain = RequestInterceptorChain::new(self.request_interceptors);
 			database_builder = database_builder.with_request_interceptor_chain(chain);
+
+			let metric_factory = MetricSubsystemFactory::new(registry, static_registry, accumulator);
+			database_builder = database_builder.add_subsystem_factory(Box::new(metric_factory));
 		}
 
 		if let Some(configurator) = self.auth_configurator {
 			database_builder = database_builder.with_auth(configurator);
 		}
 
-		if !self.migrations.is_empty() {
-			database_builder = database_builder.with_migrations(self.migrations);
+		if let Some(source) = self.migrations {
+			let migrations = source.resolve()?;
+			if !migrations.is_empty() {
+				database_builder = database_builder.with_migrations(migrations);
+			}
 		}
 
-		if let Some(configurator) = self.functions_configurator {
-			database_builder = database_builder.with_functions_configurator(configurator);
+		if !self.bootstrap_configs.is_empty() {
+			database_builder = database_builder.with_configs(self.bootstrap_configs);
 		}
 
-		if let Some(configurator) = self.procedures_configurator {
-			database_builder = database_builder.with_procedures_configurator(configurator);
+		#[cfg(feature = "sub_profiler")]
+		#[allow(unused_variables)]
+		let profiler_layer: Option<ProfilerLayer> = if let Some(configurator_fn) = self.profiler_configurator.take() {
+			let cfg = configurator_fn(ProfilerConfigurator::new());
+			let interner = Arc::new(DimInterner::new());
+			let accumulator = Arc::new(RwLock::new(ProfilerAccumulator::new(
+				cfg.accumulator_capacity,
+				cfg.min_calls_for_retention,
+			)));
+			let sink: Arc<dyn ProfilerSink> = if cfg.enabled {
+				let actor =
+					ProfilerCollectorActor::new(Arc::clone(&accumulator), Arc::clone(&interner));
+				let handle = runtime.actor_system().spawn_system("profile-collector", actor);
+				let actor_ref = handle.actor_ref().clone();
+				eventbus.register::<ProfilerScopeClosedEvent, _>(ProfilerScopeClosedListener::new(
+					actor_ref.clone(),
+				));
+				eventbus.register::<ProfilerScopeBatchEvent, _>(ProfilerScopeBatchListener::new(
+					actor_ref,
+				));
+				Arc::new(EventBusSink::new(eventbus.clone()))
+			} else {
+				Arc::new(NoopSink)
+			};
+			let subsystem = ProfilerSubsystem::new(
+				cfg.enabled,
+				cfg.categories,
+				interner,
+				accumulator,
+				sink,
+				runtime.clock().clone(),
+			);
+			let layer = subsystem.layer();
+			database_builder = database_builder
+				.add_subsystem_factory(Box::new(ProfilerSubsystemFactory::with_subsystem(subsystem)));
+			Some(layer)
+		} else {
+			None
+		};
+
+		if let Some(configurator) = self.routines_configurator {
+			database_builder = database_builder.with_routines_configurator(configurator);
 		}
 
 		if let Some(configurator) = self.handlers_configurator {
@@ -312,9 +457,10 @@ impl ServerBuilder {
 			database_builder = database_builder.with_procedure_dir(dir);
 		}
 
-		#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
+		#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel", not(reifydb_single_threaded)))]
 		if let Some((otel_configurator, tracing_configurator)) = self.otel_tracing_config {
 			use reifydb_sub_api::subsystem::Subsystem;
+			use tracing_opentelemetry::layer as otel_layer_fn;
 
 			let otel_config = otel_configurator(OtelConfigurator::new()).configure();
 			let mut otel_subsystem = OtelSubsystem::new(otel_config, runtime.clone());
@@ -323,10 +469,16 @@ impl ServerBuilder {
 			let tracer =
 				otel_subsystem.tracer().expect("Tracer not available after starting OtelSubsystem");
 
+			#[cfg(feature = "sub_profiler")]
+			let profiler_layer_otel = profiler_layer;
 			database_builder = database_builder.with_tracing(move |builder| {
-				let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
-				let builder_with_otel = builder.with_layer(otel_layer);
-				tracing_configurator(builder_with_otel)
+				let otel_layer = otel_layer_fn().with_tracer(tracer);
+				let mut b = builder.with_layer(otel_layer);
+				#[cfg(feature = "sub_profiler")]
+				if let Some(layer) = profiler_layer_otel {
+					b = b.with_layer(layer).with_layer_filter(LevelFilter::TRACE);
+				}
+				tracing_configurator(b)
 			});
 
 			let factory = OtelSubsystemFactory::with_subsystem(otel_subsystem);
@@ -334,18 +486,40 @@ impl ServerBuilder {
 		} else {
 			#[cfg(feature = "sub_tracing")]
 			{
-				let configurator = self.tracing_configurator.unwrap_or_else(|| Box::new(|t| t));
+				let inner = self.tracing_configurator.unwrap_or_else(|| Box::new(|t| t));
+				#[cfg(feature = "sub_profiler")]
+				let configurator: Box<
+					dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send,
+				> = if let Some(layer) = profiler_layer {
+					Box::new(move |t| {
+						inner(t.with_layer(layer).with_layer_filter(LevelFilter::TRACE))
+					})
+				} else {
+					inner
+				};
+				#[cfg(not(feature = "sub_profiler"))]
+				let configurator = inner;
 				database_builder = database_builder.with_tracing(configurator);
 			}
 		}
 
-		#[cfg(not(all(feature = "sub_tracing", feature = "sub_server_otel")))]
+		#[cfg(all(
+			feature = "sub_tracing",
+			not(all(feature = "sub_server_otel", not(reifydb_single_threaded)))
+		))]
 		{
-			#[cfg(feature = "sub_tracing")]
+			let inner = self.tracing_configurator.unwrap_or_else(|| Box::new(|t| t));
+			#[cfg(feature = "sub_profiler")]
+			let configurator: Box<dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send> = if let Some(layer) =
+				profiler_layer
 			{
-				let configurator = self.tracing_configurator.unwrap_or_else(|| Box::new(|t| t));
-				database_builder = database_builder.with_tracing(configurator);
-			}
+				Box::new(move |t| inner(t.with_layer(layer).with_layer_filter(LevelFilter::TRACE)))
+			} else {
+				inner
+			};
+			#[cfg(not(feature = "sub_profiler"))]
+			let configurator = inner;
+			database_builder = database_builder.with_tracing(configurator);
 		}
 
 		#[cfg(feature = "sub_flow")]
@@ -385,13 +559,24 @@ impl WithSubsystem for ServerBuilder {
 		self
 	}
 
-	#[cfg(feature = "sub_replication")]
+	#[cfg(feature = "sub_profiler")]
+	fn with_profiler<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(ProfilerConfigurator) -> ProfilerConfigurator + Send + 'static,
+	{
+		self.profiler_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
 	fn with_replication<F, C>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(ReplicationConfigurator) -> C + Send + 'static,
 		C: Into<ReplicationConfig> + 'static,
 	{
-		self.replication_factory = Some(Box::new(ReplicationSubsystemFactory::new(configurator)));
+		let config = configurator(ReplicationConfigurator).into();
+		self.is_replica = matches!(config, ReplicationConfig::Replica(_));
+		self.replication_factory = Some(Box::new(ReplicationSubsystemFactory::from_config(config)));
 		self
 	}
 

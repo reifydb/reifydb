@@ -140,11 +140,6 @@ pub struct Interceptors {
 	pub authentication_post_create: Chain<dyn AuthenticationPostCreateInterceptor + Send + Sync>,
 	pub authentication_pre_delete: Chain<dyn AuthenticationPreDeleteInterceptor + Send + Sync>,
 
-	/// Optional hook for test flow processing. When set, `capture_testing_pre_commit`
-	/// calls this to register uncommitted flows in the shared flow engine before
-	/// running the pre-commit interceptor chain.
-	///
-	/// Use [`set_test_pre_commit`](Interceptors::set_test_pre_commit) to configure.
 	pub(crate) test_pre_commit: Option<TestPreCommitHook>,
 }
 
@@ -229,11 +224,6 @@ impl Interceptors {
 		}
 	}
 
-	/// Register a hook for test-only pre-commit flow processing.
-	///
-	/// This hook is called by [`TestTransaction::capture_testing_pre_commit`] to
-	/// rebuild the shared flow engine from all catalog flows (including uncommitted
-	/// ones) before the pre-commit interceptor chain runs.
 	pub fn set_test_pre_commit(&mut self, hook: TestPreCommitHook) {
 		self.test_pre_commit = Some(hook);
 	}

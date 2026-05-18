@@ -10,13 +10,14 @@ use reifydb_core::{
 
 use crate::{
 	ast::identifier::{
-		MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
-		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFunctionIdentifier, MaybeQualifiedIdentifier,
-		MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
-		MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier, MaybeQualifiedSeriesIdentifier,
-		MaybeQualifiedSinkIdentifier, MaybeQualifiedSourceIdentifier, MaybeQualifiedSumTypeIdentifier,
-		MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier, MaybeQualifiedTransactionalViewIdentifier,
-		MaybeQualifiedViewIdentifier, UnqualifiedIdentifier, UnresolvedShapeIdentifier,
+		MaybeQualifiedBindingIdentifier, MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
+		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFunctionIdentifier, MaybeQualifiedHandlerIdentifier,
+		MaybeQualifiedIdentifier, MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier,
+		MaybeQualifiedProcedureIdentifier, MaybeQualifiedRingBufferIdentifier,
+		MaybeQualifiedSequenceIdentifier, MaybeQualifiedSeriesIdentifier, MaybeQualifiedSinkIdentifier,
+		MaybeQualifiedSourceIdentifier, MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
+		MaybeQualifiedTestIdentifier, MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier,
+		UnqualifiedIdentifier, UnresolvedShapeIdentifier,
 	},
 	bump::{BumpBox, BumpFragment},
 	token::token::{Literal, Token, TokenKind},
@@ -27,6 +28,7 @@ pub struct AstStatement<'bump> {
 	pub nodes: Vec<Ast<'bump>>,
 	pub has_pipes: bool,
 	pub is_output: bool,
+	pub rql: &'bump str,
 }
 
 impl<'bump> AstStatement<'bump> {
@@ -42,7 +44,6 @@ impl<'bump> AstStatement<'bump> {
 		self.nodes.len()
 	}
 
-	/// Returns true if this statement contains any DDL nodes (CREATE, ALTER, DROP).
 	pub fn contains_ddl(&self) -> bool {
 		self.nodes.iter().any(|node| node.is_ddl())
 	}
@@ -117,6 +118,7 @@ pub enum Ast<'bump> {
 	Window(AstWindow<'bump>),
 	StatementExpression(AstStatementExpression<'bump>),
 	Rownum(AstRownum<'bump>),
+	SystemColumn(AstSystemColumn<'bump>),
 	DefFunction(AstDefFunction<'bump>),
 	Return(AstReturn<'bump>),
 	SumTypeConstructor(AstSumTypeConstructor<'bump>),
@@ -209,6 +211,7 @@ impl<'bump> Ast<'bump> {
 			Ast::StatementExpression(node) => node.expression.token(),
 			Ast::Environment(node) => &node.token,
 			Ast::Rownum(node) => &node.token,
+			Ast::SystemColumn(node) => &node.token,
 			Ast::DefFunction(node) => &node.token,
 			Ast::Return(node) => &node.token,
 			Ast::SumTypeConstructor(node) => &node.token,
@@ -265,7 +268,6 @@ macro_rules! ast_literal_accessor {
 }
 
 impl<'bump> Ast<'bump> {
-	/// Returns true if this AST node is a DDL statement (CREATE, ALTER, DROP).
 	pub fn is_ddl(&self) -> bool {
 		matches!(
 			self,
@@ -277,8 +279,6 @@ impl<'bump> Ast<'bump> {
 		)
 	}
 
-	/// Returns true if this AST node is a subscription DDL statement
-	/// (CREATE SUBSCRIPTION or DROP SUBSCRIPTION).
 	pub fn is_subscription_ddl(&self) -> bool {
 		matches!(self, Ast::Create(AstCreate::Subscription(_)) | Ast::Drop(AstDrop::Subscription(_)))
 	}
@@ -324,7 +324,6 @@ impl<'bump> Ast<'bump> {
 	ast_accessor!(Rownum, AstRownum<'bump>, is_rownum, as_rownum, "rownum");
 	ast_accessor!(Match, AstMatch<'bump>, is_match, as_match, "match");
 
-	// Keep is_block/as_block as aliases for Inline (backwards compat semantics)
 	pub fn is_block(&self) -> bool {
 		matches!(self, Ast::Inline(_))
 	}
@@ -376,6 +375,7 @@ pub struct AstApply<'bump> {
 	pub token: Token<'bump>,
 	pub operator: UnqualifiedIdentifier<'bump>,
 	pub expressions: Vec<Ast<'bump>>,
+	pub ttl: Option<AstTtl<'bump>>,
 	pub rql: &'bump str,
 }
 
@@ -468,6 +468,7 @@ pub enum AstCreate<'bump> {
 	Test(AstCreateTest<'bump>),
 	Source(AstCreateSource<'bump>),
 	Sink(AstCreateSink<'bump>),
+	Binding(AstCreateBinding<'bump>),
 }
 
 #[derive(Debug)]
@@ -515,6 +516,10 @@ pub enum AstDrop<'bump> {
 	Policy(AstDropPolicy<'bump>),
 	Source(AstDropSource<'bump>),
 	Sink(AstDropSink<'bump>),
+	Procedure(AstDropProcedure<'bump>),
+	Handler(AstDropHandler<'bump>),
+	Test(AstDropTest<'bump>),
+	Binding(AstDropBinding<'bump>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -597,6 +602,58 @@ pub struct AstDropSink<'bump> {
 	pub cascade: bool,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropProcedure<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub procedure: MaybeQualifiedProcedureIdentifier<'bump>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropHandler<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub handler: MaybeQualifiedHandlerIdentifier<'bump>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropTest<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub test: MaybeQualifiedTestIdentifier<'bump>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropBinding<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub binding: MaybeQualifiedBindingIdentifier<'bump>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstBindingProtocol<'bump> {
+	pub kind: AstBindingProtocolKind,
+	pub method: Option<BumpFragment<'bump>>,
+	pub path: Option<BumpFragment<'bump>>,
+	pub rpc_name: Option<BumpFragment<'bump>>,
+	pub format: Option<BumpFragment<'bump>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AstBindingProtocolKind {
+	Http,
+	Grpc,
+	Ws,
+}
+
+#[derive(Debug)]
+pub struct AstCreateBinding<'bump> {
+	pub token: Token<'bump>,
+	pub name: MaybeQualifiedBindingIdentifier<'bump>,
+	pub procedure: MaybeQualifiedProcedureIdentifier<'bump>,
+	pub protocol: AstBindingProtocol<'bump>,
+}
+
 #[derive(Debug)]
 pub struct AstConfigPair<'bump> {
 	pub key: BumpFragment<'bump>,
@@ -665,6 +722,7 @@ pub struct AstCreateDeferredView<'bump> {
 	pub as_clause: Option<AstStatement<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub tick: Option<Duration>,
+	pub ttl: Option<AstTtl<'bump>>,
 }
 
 #[derive(Debug)]
@@ -675,6 +733,7 @@ pub struct AstCreateTransactionalView<'bump> {
 	pub as_clause: Option<AstStatement<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub tick: Option<Duration>,
+	pub ttl: Option<AstTtl<'bump>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -700,6 +759,34 @@ pub struct AstAlterRemoteNamespace<'bump> {
 	pub grpc: BumpFragment<'bump>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstTtl<'bump> {
+	pub duration: Token<'bump>,
+	pub anchor: Option<Token<'bump>>,
+	pub mode: Option<Token<'bump>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstJoinTtl<'bump> {
+	pub left: Option<AstTtl<'bump>>,
+	pub right: Option<AstTtl<'bump>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstHydrationConfig {
+	pub enabled: bool,
+	pub max_rows: Option<u64>,
+}
+
+impl Default for AstHydrationConfig {
+	fn default() -> Self {
+		Self {
+			enabled: true,
+			max_rows: None,
+		}
+	}
+}
+
 #[derive(Debug)]
 pub struct AstCreateSeries<'bump> {
 	pub token: Token<'bump>,
@@ -708,6 +795,7 @@ pub struct AstCreateSeries<'bump> {
 	pub tag: Option<MaybeQualifiedSumTypeIdentifier<'bump>>,
 	pub key: Option<BumpFragment<'bump>>,
 	pub precision: Option<AstTimestampPrecision>,
+	pub ttl: Option<AstTtl<'bump>>,
 }
 
 #[derive(Debug)]
@@ -715,6 +803,8 @@ pub struct AstCreateSubscription<'bump> {
 	pub token: Token<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub as_clause: Option<AstStatement<'bump>>,
+	pub hydration: AstHydrationConfig,
+	pub throttle: Option<Duration>,
 }
 
 #[derive(Debug)]
@@ -723,6 +813,7 @@ pub struct AstCreateTable<'bump> {
 	pub table: MaybeQualifiedTableIdentifier<'bump>,
 	pub if_not_exists: bool,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
+	pub ttl: Option<AstTtl<'bump>>,
 }
 
 #[derive(Debug)]
@@ -790,6 +881,7 @@ pub struct AstCreateRingBuffer<'bump> {
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub capacity: u64,
 	pub partition_by: Vec<String>,
+	pub ttl: Option<AstTtl<'bump>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -818,11 +910,11 @@ pub struct AstVariant<'bump> {
 #[derive(Debug)]
 pub struct AstAssert<'bump> {
 	pub token: Token<'bump>,
-	/// Single expression for pipeline-compatible ASSERT (e.g. `FROM x | ASSERT { cond }`)
+
 	pub node: Option<BumpBox<'bump, Ast<'bump>>>,
-	/// RQL source text of the body for multi-statement or ASSERT ERROR blocks
+
 	pub body: Option<String>,
-	/// True when `ASSERT ERROR { ... }` syntax is used
+
 	pub expect_error: bool,
 	pub message: Option<Token<'bump>>,
 	pub rql: &'bump str,
@@ -913,8 +1005,6 @@ pub struct AstPrimaryKey<'bump> {
 	pub columns: Vec<AstIndexColumn<'bump>>,
 }
 
-/// Generates a `fn token()` method for an enum where every variant contains
-/// a struct with a `token` field.
 macro_rules! impl_token_for_enum {
 	($enum_type:ident, $lt:lifetime, $( $variant:ident($inner:ty) ),+ $(,)?) => {
 		impl<$lt> $enum_type<$lt> {
@@ -953,6 +1043,7 @@ impl_token_for_enum!(AstCreate, 'bump,
 	Test(AstCreateTest<'bump>),
 	Source(AstCreateSource<'bump>),
 	Sink(AstCreateSink<'bump>),
+	Binding(AstCreateBinding<'bump>),
 );
 
 impl_token_for_enum!(AstAlter, 'bump,
@@ -977,6 +1068,10 @@ impl_token_for_enum!(AstDrop, 'bump,
 	Policy(AstDropPolicy<'bump>),
 	Source(AstDropSource<'bump>),
 	Sink(AstDropSink<'bump>),
+	Procedure(AstDropProcedure<'bump>),
+	Handler(AstDropHandler<'bump>),
+	Test(AstDropTest<'bump>),
+	Binding(AstDropBinding<'bump>),
 );
 
 #[derive(Debug)]
@@ -1139,8 +1234,8 @@ pub struct AstInfix<'bump> {
 
 #[derive(Debug)]
 pub enum LetValue<'bump> {
-	Expression(BumpBox<'bump, Ast<'bump>>), // scalar/column expression
-	Statement(AstStatement<'bump>),         // FROM … | …
+	Expression(BumpBox<'bump, Ast<'bump>>),
+	Statement(AstStatement<'bump>),
 }
 
 #[derive(Debug)]
@@ -1177,7 +1272,6 @@ pub struct AstUpdate<'bump> {
 	pub returning: Option<Vec<Ast<'bump>>>,
 }
 
-/// Connector between join condition pairs
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum JoinConnector {
 	#[default]
@@ -1185,15 +1279,13 @@ pub enum JoinConnector {
 	Or,
 }
 
-/// A pair of expressions in a join using clause: (expr1, expr2)
 #[derive(Debug)]
 pub struct AstJoinExpressionPair<'bump> {
 	pub first: BumpBox<'bump, Ast<'bump>>,
 	pub second: BumpBox<'bump, Ast<'bump>>,
-	pub connector: Option<JoinConnector>, // None for last pair
+	pub connector: Option<JoinConnector>,
 }
 
-/// The using clause: using (a, b) and|or (c, d)
 #[derive(Debug)]
 pub struct AstUsingClause<'bump> {
 	pub token: Token<'bump>,
@@ -1207,6 +1299,8 @@ pub enum AstJoin<'bump> {
 		with: AstSubQuery<'bump>,
 		using_clause: AstUsingClause<'bump>,
 		alias: BumpFragment<'bump>,
+		ttl: Option<AstJoinTtl<'bump>>,
+		snapshot: bool,
 		rql: &'bump str,
 	},
 	LeftJoin {
@@ -1214,13 +1308,17 @@ pub enum AstJoin<'bump> {
 		with: AstSubQuery<'bump>,
 		using_clause: AstUsingClause<'bump>,
 		alias: BumpFragment<'bump>,
+		ttl: Option<AstJoinTtl<'bump>>,
+		snapshot: bool,
 		rql: &'bump str,
 	},
 	NaturalJoin {
 		token: Token<'bump>,
 		with: AstSubQuery<'bump>,
 		join_type: Option<JoinType>,
-		alias: BumpFragment<'bump>, // Required alias (no 'as' keyword)
+		alias: BumpFragment<'bump>,
+		ttl: Option<AstJoinTtl<'bump>>,
+		snapshot: bool,
 		rql: &'bump str,
 	},
 }
@@ -1274,6 +1372,7 @@ impl<'bump> AstLiteralNone<'bump> {
 pub struct AstDistinct<'bump> {
 	pub token: Token<'bump>,
 	pub columns: Vec<MaybeQualifiedColumnIdentifier<'bump>>,
+	pub ttl: Option<AstTtl<'bump>>,
 	pub rql: &'bump str,
 }
 
@@ -1480,6 +1579,11 @@ pub struct AstRownum<'bump> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AstSystemColumn<'bump> {
+	pub token: Token<'bump>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstEnvironment<'bump> {
 	pub token: Token<'bump>,
 }
@@ -1593,11 +1697,10 @@ impl AstPolicyTargetType {
 
 #[derive(Debug)]
 pub enum AstPolicyScope<'bump> {
-	/// e.g. ON ns::object
 	Specific(Vec<BumpFragment<'bump>>),
-	/// e.g. ON ns (namespace-wide)
+
 	NamespaceWide(BumpFragment<'bump>),
-	/// SESSION POLICY (no ON clause)
+
 	Global,
 }
 
@@ -1641,7 +1744,6 @@ pub struct AstDropPolicy<'bump> {
 
 impl<'bump> AstVariable<'bump> {
 	pub fn name(&self) -> &str {
-		// Extract name from token value (skip the '$')
 		let text = self.token.value();
 		text.strip_prefix('$').unwrap_or(text)
 	}
@@ -1700,7 +1802,6 @@ pub struct AstElseIf<'bump> {
 	pub then_block: AstBlock<'bump>,
 }
 
-/// Window kind, parsed from the mandatory keyword after `window`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AstWindowKind {
 	Tumbling,
@@ -1730,7 +1831,6 @@ pub struct AstStatementExpression<'bump> {
 	pub expression: BumpBox<'bump, Ast<'bump>>,
 }
 
-/// Function parameter (always has $ prefix)
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstFunctionParameter<'bump> {
 	pub token: Token<'bump>,
@@ -1738,7 +1838,6 @@ pub struct AstFunctionParameter<'bump> {
 	pub type_annotation: Option<AstType<'bump>>,
 }
 
-/// Function definition
 #[derive(Debug)]
 pub struct AstDefFunction<'bump> {
 	pub token: Token<'bump>,
@@ -1748,26 +1847,24 @@ pub struct AstDefFunction<'bump> {
 	pub body: AstBlock<'bump>,
 }
 
-/// Return statement
 #[derive(Debug)]
 pub struct AstReturn<'bump> {
 	pub token: Token<'bump>,
 	pub value: Option<BumpBox<'bump, Ast<'bump>>>,
 }
 
-/// APPEND statement
 #[derive(Debug)]
 pub enum AstAppend<'bump> {
-	/// Imperative form: `APPEND $target FROM <source>`
 	IntoVariable {
 		token: Token<'bump>,
 		target: AstVariable<'bump>,
 		source: AstAppendSource<'bump>,
 	},
-	/// Query form: `APPEND { subquery }`
+
 	Query {
 		token: Token<'bump>,
 		with: AstSubQuery<'bump>,
+		ttl: Option<AstTtl<'bump>>,
 	},
 }
 
@@ -1786,12 +1883,10 @@ impl<'bump> AstAppend<'bump> {
 	}
 }
 
-/// Source for an APPEND statement
 #[derive(Debug)]
 pub enum AstAppendSource<'bump> {
-	/// APPEND $x FROM table | FILTER ...
 	Statement(AstStatement<'bump>),
-	/// APPEND $x FROM [{...}]
+
 	Inline(AstList<'bump>),
 }
 
@@ -1802,13 +1897,12 @@ pub struct AstMatchArmDestructure<'bump> {
 
 #[derive(Debug)]
 pub enum AstMatchArm<'bump> {
-	/// Value arm: `value_expr [IF guard] => result_expr`
 	Value {
 		pattern: BumpBox<'bump, Ast<'bump>>,
 		guard: Option<BumpBox<'bump, Ast<'bump>>>,
 		result: BumpBox<'bump, Ast<'bump>>,
 	},
-	/// IS variant arm: `IS [ns.]Type::Variant [{ fields }] [IF guard] => result`
+
 	IsVariant {
 		namespace: Option<BumpFragment<'bump>>,
 		sumtype_name: BumpFragment<'bump>,
@@ -1817,21 +1911,20 @@ pub enum AstMatchArm<'bump> {
 		guard: Option<BumpBox<'bump, Ast<'bump>>>,
 		result: BumpBox<'bump, Ast<'bump>>,
 	},
-	/// Simplified variant arm (no IS keyword, no type path):
-	///   VariantName [{ field1, field2, ... }] [IF guard] => result
+
 	Variant {
 		variant_name: BumpFragment<'bump>,
 		destructure: Option<AstMatchArmDestructure<'bump>>,
 		guard: Option<BumpBox<'bump, Ast<'bump>>>,
 		result: BumpBox<'bump, Ast<'bump>>,
 	},
-	/// Searched condition arm: `condition [IF guard] => result`
+
 	Condition {
 		condition: BumpBox<'bump, Ast<'bump>>,
 		guard: Option<BumpBox<'bump, Ast<'bump>>>,
 		result: BumpBox<'bump, Ast<'bump>>,
 	},
-	/// ELSE arm: `ELSE => result`
+
 	Else {
 		result: BumpBox<'bump, Ast<'bump>>,
 	},
@@ -1844,7 +1937,6 @@ pub struct AstMatch<'bump> {
 	pub arms: Vec<AstMatchArm<'bump>>,
 }
 
-/// Closure expression: `($params) { body }`
 #[derive(Debug)]
 pub struct AstClosure<'bump> {
 	pub token: Token<'bump>,
@@ -1852,7 +1944,6 @@ pub struct AstClosure<'bump> {
 	pub body: AstBlock<'bump>,
 }
 
-/// CREATE EVENT — declares a typed event type (a sum type with is_event: true)
 #[derive(Debug)]
 pub struct AstCreateEvent<'bump> {
 	pub token: Token<'bump>,
@@ -1860,7 +1951,6 @@ pub struct AstCreateEvent<'bump> {
 	pub variants: Vec<AstVariant<'bump>>,
 }
 
-/// CREATE TAG — declares a tag type (a sum type with SumTypeKind::Tag)
 #[derive(Debug)]
 pub struct AstCreateTag<'bump> {
 	pub token: Token<'bump>,
@@ -1868,7 +1958,6 @@ pub struct AstCreateTag<'bump> {
 	pub variants: Vec<AstVariant<'bump>>,
 }
 
-/// CREATE HANDLER — registers a computation handler for a specific event variant
 #[derive(Debug)]
 pub struct AstCreateHandler<'bump> {
 	pub token: Token<'bump>,
@@ -1879,7 +1968,6 @@ pub struct AstCreateHandler<'bump> {
 	pub body_source: String,
 }
 
-/// CREATE MIGRATION — stores a named migration script in the database
 #[derive(Debug)]
 pub struct AstCreateMigration<'bump> {
 	pub token: Token<'bump>,
@@ -1888,21 +1976,18 @@ pub struct AstCreateMigration<'bump> {
 	pub rollback_body_source: Option<String>,
 }
 
-/// MIGRATE — applies pending migrations
 #[derive(Debug)]
 pub struct AstMigrate<'bump> {
 	pub token: Token<'bump>,
 	pub target: Option<String>,
 }
 
-/// ROLLBACK MIGRATION — rolls back applied migrations
 #[derive(Debug)]
 pub struct AstRollbackMigration<'bump> {
 	pub token: Token<'bump>,
 	pub target: Option<String>,
 }
 
-/// DISPATCH — fires all handlers registered for the specified event variant
 #[derive(Debug)]
 pub struct AstDispatch<'bump> {
 	pub token: Token<'bump>,

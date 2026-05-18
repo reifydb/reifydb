@@ -3,14 +3,12 @@
 
 use std::{
 	collections::HashMap,
-	sync::{
-		Mutex,
-		atomic::{AtomicU64, Ordering},
-	},
+	sync::atomic::{AtomicU64, Ordering},
 	time::Instant,
 };
 
 use hdrhistogram::Histogram;
+use reifydb_runtime::sync::mutex::Mutex;
 
 /// Metrics collector for benchmark results
 pub struct Metrics {
@@ -48,7 +46,7 @@ impl Metrics {
 
 	/// Start the benchmark timer
 	pub fn start(&self) {
-		let mut start = self.start_time.lock().unwrap();
+		let mut start = self.start_time.lock();
 		*start = Some(Instant::now());
 	}
 
@@ -60,7 +58,7 @@ impl Metrics {
 
 	/// Merge a worker's histogram into the global histogram
 	pub fn merge_histogram(&self, other: &Histogram<u64>) {
-		self.latency_histogram.lock().unwrap().add(other).ok();
+		self.latency_histogram.lock().add(other).ok();
 	}
 
 	/// Record a failed request
@@ -75,7 +73,7 @@ impl Metrics {
 			error.to_string()
 		};
 
-		*self.error_counts.lock().unwrap().entry(error_key).or_insert(0) += 1;
+		*self.error_counts.lock().entry(error_key).or_insert(0) += 1;
 	}
 
 	/// Reset metrics for a new run (e.g., after warmup)
@@ -83,9 +81,9 @@ impl Metrics {
 		self.total_requests.store(0, Ordering::Relaxed);
 		self.successful_requests.store(0, Ordering::Relaxed);
 		self.failed_requests.store(0, Ordering::Relaxed);
-		self.latency_histogram.lock().unwrap().reset();
-		self.error_counts.lock().unwrap().clear();
-		*self.start_time.lock().unwrap() = Some(Instant::now());
+		self.latency_histogram.lock().reset();
+		self.error_counts.lock().clear();
+		*self.start_time.lock() = Some(Instant::now());
 	}
 
 	/// Get the current request count
@@ -95,8 +93,8 @@ impl Metrics {
 
 	/// Generate a summary of the metrics
 	pub fn summary(&self) -> MetricsSummary {
-		let histogram = self.latency_histogram.lock().unwrap();
-		let start = self.start_time.lock().unwrap();
+		let histogram = self.latency_histogram.lock();
+		let start = self.start_time.lock();
 		let duration = start.map(|s| s.elapsed()).unwrap_or_default();
 		let total = self.total_requests.load(Ordering::Relaxed);
 		let successful = self.successful_requests.load(Ordering::Relaxed);
@@ -129,7 +127,7 @@ impl Metrics {
 
 	/// Get the top N errors by count
 	fn top_errors(&self, n: usize) -> Vec<(String, u64)> {
-		let errors = self.error_counts.lock().unwrap();
+		let errors = self.error_counts.lock();
 		let mut sorted: Vec<_> = errors.iter().map(|(k, v)| (k.clone(), *v)).collect();
 		sorted.sort_by(|a, b| b.1.cmp(&a.1));
 		sorted.truncate(n);

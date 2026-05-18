@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-// This file includes and modifies code from the skipdb project (https://github.com/al8n/skipdb),
-// originally licensed under the Apache License, Version 2.0.
-// Original copyright:
-//   Copyright (c) 2024 Al Liu
-//
-// The original Apache License can be found at:
-//   http://www.apache.org/licenses/LICENSE-2.0
-
 use std::{
 	fmt,
 	fmt::Debug,
@@ -19,52 +11,17 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::common::CommitVersion;
+use reifydb_core::{actors::watermark::WatermarkMessage, common::CommitVersion};
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSystem},
-	sync::{condvar::Condvar, mutex::Mutex},
+	sync::waiter::WaiterHandle,
 };
 use tracing::instrument;
 
-use super::actor::{WatermarkActor, WatermarkMsg, WatermarkShared};
+use super::actor::{WatermarkActor, WatermarkShared};
 
-/// Handle for waiting on a specific version to complete
-#[derive(Debug)]
-pub struct WaiterHandle {
-	notified: Mutex<bool>,
-	condvar: Condvar,
-}
-
-impl WaiterHandle {
-	fn new() -> Self {
-		Self {
-			notified: Mutex::new(false),
-			condvar: Condvar::new(),
-		}
-	}
-
-	pub(crate) fn notify(&self) {
-		let mut guard = self.notified.lock();
-		*guard = true;
-		self.condvar.notify_one();
-	}
-
-	fn wait_timeout(&self, timeout: Duration) -> bool {
-		let mut guard = self.notified.lock();
-		if *guard {
-			return true;
-		}
-		!self.condvar.wait_for(&mut guard, timeout).timed_out()
-	}
-}
-
-/// WaterMark is used to keep track of the minimum un-finished index. Typically,
-/// an index k becomes finished or "done" according to a WaterMark once
-/// `done(k)` has been called
-///  1. as many times as `begin(k)` has, AND
-///  2. a positive number of times.
 pub struct WaterMark {
-	actor: ActorRef<WatermarkMsg>,
+	actor: ActorRef<WatermarkMessage>,
 	shared: Arc<WatermarkShared>,
 }
 
@@ -78,7 +35,6 @@ impl Debug for WaterMark {
 }
 
 impl WaterMark {
-	/// Create a new WaterMark with given name and actor system.
 	#[instrument(name = "transaction::watermark::new", level = "debug", skip(system), fields(task_name = %task_name))]
 	pub fn new(task_name: String, system: &ActorSystem) -> Self {
 		let shared = Arc::new(WatermarkShared {
@@ -89,7 +45,7 @@ impl WaterMark {
 		let actor = WatermarkActor {
 			shared: shared.clone(),
 		};
-		let actor_ref = system.spawn(&task_name, actor).actor_ref().clone();
+		let actor_ref = system.spawn_system(&task_name, actor).actor_ref().clone();
 
 		Self {
 			actor: actor_ref,
@@ -97,56 +53,39 @@ impl WaterMark {
 		}
 	}
 
-	/// Sets the last index to the given value.
-	#[instrument(name = "transaction::watermark::begin", level = "trace", skip(self), fields(version = version.0))]
-	pub fn begin(&self, version: CommitVersion) {
-		// Update last_index to the maximum
+	#[instrument(name = "transaction::watermark::register_in_flight", level = "trace", skip(self), fields(version = version.0))]
+	pub fn register_in_flight(&self, version: CommitVersion) {
 		self.shared.last_index.fetch_max(version.0, Ordering::SeqCst);
 
-		let _ = self.actor.send(WatermarkMsg::Begin {
+		let _ = self.actor.send(WatermarkMessage::Begin {
 			version: version.0,
 		});
 	}
 
-	/// Sets a single version as done.
-	#[instrument(name = "transaction::watermark::done", level = "trace", skip(self), fields(index = version.0))]
-	pub fn done(&self, version: CommitVersion) {
-		let _ = self.actor.send(WatermarkMsg::Done {
+	#[instrument(name = "transaction::watermark::mark_finished", level = "trace", skip(self), fields(index = version.0))]
+	pub fn mark_finished(&self, version: CommitVersion) {
+		let _ = self.actor.send(WatermarkMessage::Done {
 			version: version.0,
 		});
 	}
 
-	/// Returns the maximum index that has the property that all indices
-	/// less than or equal to it are done.
 	pub fn done_until(&self) -> CommitVersion {
 		CommitVersion(self.shared.done_until.load(Ordering::SeqCst))
 	}
 
-	/// Returns the last index that was begun.
 	pub fn last_index(&self) -> CommitVersion {
 		CommitVersion(self.shared.last_index.load(Ordering::SeqCst))
 	}
 
-	/// Advance the watermark to the given version for replica replication.
-	///
-	/// Directly sets `done_until` and `last_index` atomically, bypassing the
-	/// gap-based watermark logic. This is correct for replicas because they
-	/// apply entries sequentially with no concurrent transactions, and the
-	/// primary's version space is independent from the replica's.
 	pub fn advance_to(&self, version: CommitVersion) {
 		self.shared.last_index.fetch_max(version.0, Ordering::SeqCst);
 		self.shared.done_until.fetch_max(version.0, Ordering::SeqCst);
 	}
 
-	/// Waits until the given index is marked as done with a default
-	/// timeout.
 	pub fn wait_for_mark(&self, index: u64) {
 		self.wait_for_mark_timeout(CommitVersion(index), Duration::from_secs(30));
 	}
 
-	/// Waits until the given index is marked as done with a specified
-	/// timeout.
-	// #[cfg(feature = "native")]
 	pub fn wait_for_mark_timeout(&self, index: CommitVersion, timeout: Duration) -> bool {
 		let current_done = self.shared.done_until.load(Ordering::SeqCst);
 		if current_done >= index.0 {
@@ -156,17 +95,14 @@ impl WaterMark {
 		let waiter = Arc::new(WaiterHandle::new());
 
 		if self.actor
-			.send(WatermarkMsg::WaitFor {
+			.send(WatermarkMessage::WaitFor {
 				version: index.0,
 				waiter: waiter.clone(),
 			})
 			.is_err()
 		{
-			// Actor stopped
 			return false;
 		}
-
-		// Wait with timeout using condvar
 
 		waiter.wait_timeout(timeout)
 	}
@@ -176,7 +112,7 @@ impl WaterMark {
 pub mod tests {
 	use std::{sync::atomic::AtomicUsize, thread, thread::sleep, time::Duration};
 
-	use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem, context::clock::Clock};
+	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 
 	use super::*;
 	use crate::multi::watermark::OLD_VERSION_THRESHOLD;
@@ -189,29 +125,29 @@ pub mod tests {
 	#[test]
 	fn test_begin_done() {
 		init_and_close(|watermark| {
-			watermark.begin(CommitVersion(1));
-			watermark.begin(CommitVersion(2));
-			watermark.begin(CommitVersion(3));
+			watermark.register_in_flight(CommitVersion(1));
+			watermark.register_in_flight(CommitVersion(2));
+			watermark.register_in_flight(CommitVersion(3));
 
-			watermark.done(CommitVersion(1));
-			watermark.done(CommitVersion(2));
-			watermark.done(CommitVersion(3));
+			watermark.mark_finished(CommitVersion(1));
+			watermark.mark_finished(CommitVersion(2));
+			watermark.mark_finished(CommitVersion(3));
 		});
 	}
 
 	#[test]
 	fn test_wait_for_mark() {
 		init_and_close(|watermark| {
-			watermark.begin(CommitVersion(1));
-			watermark.begin(CommitVersion(2));
-			watermark.begin(CommitVersion(3));
+			watermark.register_in_flight(CommitVersion(1));
+			watermark.register_in_flight(CommitVersion(2));
+			watermark.register_in_flight(CommitVersion(3));
 
-			watermark.done(CommitVersion(2));
-			watermark.done(CommitVersion(3));
+			watermark.mark_finished(CommitVersion(2));
+			watermark.mark_finished(CommitVersion(3));
 
 			assert_eq!(watermark.done_until(), 0);
 
-			watermark.done(CommitVersion(1));
+			watermark.mark_finished(CommitVersion(1));
 			watermark.wait_for_mark(1);
 			watermark.wait_for_mark(3);
 			assert_eq!(watermark.done_until(), 3);
@@ -228,7 +164,7 @@ pub mod tests {
 
 	#[test]
 	fn test_high_concurrency() {
-		let system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+		let system = ActorSystem::new(Pools::default(), Clock::Real);
 		let watermark = Arc::new(WaterMark::new("concurrent".into(), &system));
 
 		const NUM_TASKS: usize = 50;
@@ -242,8 +178,8 @@ pub mod tests {
 			let handle = thread::spawn(move || {
 				for i in 0..OPS_PER_TASK {
 					let version = CommitVersion((task_id * OPS_PER_TASK + i) as u64 + 1);
-					wm.begin(version);
-					wm.done(version);
+					wm.register_in_flight(version);
+					wm.mark_finished(version);
 				}
 			});
 			handles.push(handle);
@@ -265,13 +201,13 @@ pub mod tests {
 
 	#[test]
 	fn test_concurrent_wait_for_mark() {
-		let system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+		let system = ActorSystem::new(Pools::default(), Clock::Real);
 		let watermark = Arc::new(WaterMark::new("wait_concurrent".into(), &system));
 		let success_count = Arc::new(AtomicUsize::new(0));
 
 		// Start some versions
 		for i in 1..=10 {
-			watermark.begin(CommitVersion(i));
+			watermark.register_in_flight(CommitVersion(i));
 		}
 
 		let mut handles = vec![];
@@ -294,7 +230,7 @@ pub mod tests {
 
 		// Complete the versions
 		for i in 1..=10 {
-			watermark.done(CommitVersion(i));
+			watermark.mark_finished(CommitVersion(i));
 		}
 
 		for handle in handles {
@@ -313,19 +249,17 @@ pub mod tests {
 		init_and_close(|watermark| {
 			// Advance done_until significantly
 			for i in 1..=100 {
-				watermark.begin(CommitVersion(i));
-				watermark.done(CommitVersion(i));
+				watermark.register_in_flight(CommitVersion(i));
+				watermark.mark_finished(CommitVersion(i));
 			}
 
-			// Wait for processing
-			sleep(Duration::from_millis(50));
-
+			let reached = watermark.wait_for_mark_timeout(CommitVersion(100), Duration::from_secs(5));
+			assert!(reached, "Should have processed all 100 versions");
 			let done_until = watermark.done_until();
-			assert!(done_until.0 >= 50, "Should have processed many versions");
 
 			// Try to wait for a very old version (should return immediately)
 			let very_old = done_until.0.saturating_sub(OLD_VERSION_THRESHOLD + 10);
-			let clock = Clock::default();
+			let clock = Clock::Real;
 			let start = clock.instant();
 			watermark.wait_for_mark(very_old);
 			let elapsed = start.elapsed();
@@ -339,10 +273,10 @@ pub mod tests {
 	fn test_timeout_behavior() {
 		init_and_close(|watermark| {
 			// Begin but don't complete a version
-			watermark.begin(CommitVersion(1));
+			watermark.register_in_flight(CommitVersion(1));
 
 			// Wait with short timeout
-			let clock = Clock::default();
+			let clock = Clock::Real;
 			let start = clock.instant();
 			let result = watermark.wait_for_mark_timeout(CommitVersion(1), Duration::from_millis(100));
 			let elapsed = start.elapsed();
@@ -361,19 +295,17 @@ pub mod tests {
 		// Test that begin() calls can arrive out of order with gap-tolerant processing
 		init_and_close(|watermark| {
 			// Begin versions out of order
-			watermark.begin(CommitVersion(3));
-			watermark.begin(CommitVersion(1));
-			watermark.begin(CommitVersion(2));
+			watermark.register_in_flight(CommitVersion(3));
+			watermark.register_in_flight(CommitVersion(1));
+			watermark.register_in_flight(CommitVersion(2));
 
 			// Complete in order
-			watermark.done(CommitVersion(1));
-			watermark.done(CommitVersion(2));
-			watermark.done(CommitVersion(3));
+			watermark.mark_finished(CommitVersion(1));
+			watermark.mark_finished(CommitVersion(2));
+			watermark.mark_finished(CommitVersion(3));
 
-			// Wait for processing
-			sleep(Duration::from_millis(50));
-
-			// Watermark should advance to 3
+			let reached = watermark.wait_for_mark_timeout(CommitVersion(3), Duration::from_secs(5));
+			assert!(reached, "Timed out waiting for watermark to advance to 3");
 			let done = watermark.done_until();
 			assert_eq!(done.0, 3, "Watermark should advance to 3, got {}", done.0);
 		});
@@ -384,7 +316,7 @@ pub mod tests {
 		// Test that done() arriving before begin() is handled correctly
 		init_and_close(|watermark| {
 			// done() arrives before begin() - this is an "orphaned" done
-			watermark.done(CommitVersion(1));
+			watermark.mark_finished(CommitVersion(1));
 
 			// Wait a bit for processing
 			sleep(Duration::from_millis(20));
@@ -393,7 +325,7 @@ pub mod tests {
 			assert_eq!(watermark.done_until().0, 0);
 
 			// Now begin() arrives
-			watermark.begin(CommitVersion(1));
+			watermark.register_in_flight(CommitVersion(1));
 
 			// Wait for processing
 			sleep(Duration::from_millis(50));
@@ -409,17 +341,15 @@ pub mod tests {
 		// Test complex out-of-order scenario
 		init_and_close(|watermark| {
 			// Interleaved begin/done in various orders
-			watermark.begin(CommitVersion(2));
-			watermark.done(CommitVersion(3)); // orphaned
-			watermark.begin(CommitVersion(1));
-			watermark.done(CommitVersion(1));
-			watermark.begin(CommitVersion(3));
-			watermark.done(CommitVersion(2));
+			watermark.register_in_flight(CommitVersion(2));
+			watermark.mark_finished(CommitVersion(3)); // orphaned
+			watermark.register_in_flight(CommitVersion(1));
+			watermark.mark_finished(CommitVersion(1));
+			watermark.register_in_flight(CommitVersion(3));
+			watermark.mark_finished(CommitVersion(2));
 
-			// Wait for processing
-			sleep(Duration::from_millis(50));
-
-			// All versions complete, watermark should be at 3
+			let reached = watermark.wait_for_mark_timeout(CommitVersion(3), Duration::from_secs(5));
+			assert!(reached, "Timed out waiting for watermark to advance to 3");
 			let done = watermark.done_until();
 			assert_eq!(done.0, 3, "Watermark should advance to 3, got {}", done.0);
 		});
@@ -429,7 +359,7 @@ pub mod tests {
 	where
 		F: FnOnce(Arc<WaterMark>),
 	{
-		let system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+		let system = ActorSystem::new(Pools::default(), Clock::Real);
 		let watermark = Arc::new(WaterMark::new("watermark".into(), &system));
 
 		f(watermark);

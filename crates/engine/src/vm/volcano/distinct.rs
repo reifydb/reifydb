@@ -41,12 +41,10 @@ impl QueryNode for DistinctNode {
 
 	#[instrument(level = "trace", skip_all, name = "volcano::distinct::next")]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		// Only emit once (like AggregateNode)
 		if self.headers.is_some() {
 			return Ok(None);
 		}
 
-		// 1. Collect all input rows into a single batch
 		let mut all_columns: Option<Columns> = None;
 		while let Some(cols) = self.input.next(rx, ctx)? {
 			if cols.row_count() == 0 {
@@ -66,13 +64,11 @@ impl QueryNode for DistinctNode {
 			}
 		};
 
-		// 2. For each row, hash the distinct column values and track first occurrences
 		let row_count = all_columns.row_count();
 		let mut seen = HashSet::<Hash128>::new();
 		let mut kept_indices = Vec::new();
 
 		if self.columns.is_empty() {
-			// Hash all columns when no specific columns are specified
 			for row_idx in 0..row_count {
 				let mut data = Vec::new();
 				for col in all_columns.iter() {
@@ -103,7 +99,6 @@ impl QueryNode for DistinctNode {
 			}
 		}
 
-		// 4. Extract kept rows
 		let result = all_columns.extract_by_indices(&kept_indices);
 		self.headers = Some(ColumnHeaders::from_columns(&result));
 

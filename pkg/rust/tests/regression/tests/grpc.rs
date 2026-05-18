@@ -3,8 +3,8 @@
 
 use std::{error::Error, fmt::Write, path::Path, sync::Arc};
 
-use reifydb::{Database, core::util::retry::retry, server};
-use reifydb_client::GrpcClient;
+use reifydb::{Database, SharedRuntimeConfig, core::util::retry::retry, server};
+use reifydb_client::{GrpcClient, WireFormat};
 use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
@@ -18,8 +18,11 @@ pub struct GrpcRunner {
 
 impl GrpcRunner {
 	pub fn new(runtime: Arc<Runtime>) -> Self {
-		let instance =
-			server::memory().with_grpc(|c| c.bind_addr("::1:0").admin_bind_addr("::1:0")).build().unwrap();
+		let instance = server::memory()
+			.with_runtime_config(SharedRuntimeConfig::default().seeded(0))
+			.with_grpc(|c| c.bind_addr("::1:0").admin_bind_addr("::1:0"))
+			.build()
+			.unwrap();
 
 		Self {
 			instance: Some(instance),
@@ -44,7 +47,7 @@ impl testscript::runner::Runner for GrpcRunner {
 				println!("admin: {rql}");
 
 				let result = self.runtime.block_on(admin_client.admin(&rql, None))?;
-				for frame in result.frames {
+				for frame in result {
 					writeln!(output, "{}", frame).unwrap();
 				}
 			}
@@ -55,7 +58,7 @@ impl testscript::runner::Runner for GrpcRunner {
 				println!("command: {rql}");
 
 				let result = self.runtime.block_on(client.command(&rql, None))?;
-				for frame in result.frames {
+				for frame in result {
 					writeln!(output, "{}", frame).unwrap();
 				}
 			}
@@ -66,7 +69,7 @@ impl testscript::runner::Runner for GrpcRunner {
 				println!("query: {rql}");
 
 				let result = self.runtime.block_on(client.query(&rql, None))?;
-				for frame in result.frames {
+				for frame in result {
 					writeln!(output, "{}", frame).unwrap();
 				}
 			}
@@ -91,12 +94,15 @@ impl testscript::runner::Runner for GrpcRunner {
 		let port = grpc.port().unwrap();
 		let admin_port = grpc.admin_port().unwrap();
 
-		let mut client = self.runtime.block_on(GrpcClient::connect(&format!("http://[::1]:{}", port)))?;
+		let mut client = self
+			.runtime
+			.block_on(GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto))?;
 		client.authenticate("mysecrettoken");
 		self.client = Some(client);
 
-		let mut admin_client =
-			self.runtime.block_on(GrpcClient::connect(&format!("http://[::1]:{}", admin_port)))?;
+		let mut admin_client = self
+			.runtime
+			.block_on(GrpcClient::connect(&format!("http://[::1]:{}", admin_port), WireFormat::Proto))?;
 		admin_client.authenticate("mysecrettoken");
 		self.admin_client = Some(admin_client);
 

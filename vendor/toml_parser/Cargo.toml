@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.85"
 name = "toml_parser"
-version = "1.1.0+spec-1.1.0"
+version = "1.1.2+spec-1.1.0"
 build = false
 include = [
     "build.rs",
@@ -101,11 +101,11 @@ name = "toml_parser"
 path = "src/lib.rs"
 
 [dependencies.anstream]
-version = "0.6.20"
+version = "1.0.0"
 optional = true
 
 [dependencies.anstyle]
-version = "1.0.11"
+version = "1.0.14"
 optional = true
 
 [dependencies.winnow]
@@ -113,11 +113,11 @@ version = "1.0.0"
 default-features = false
 
 [dev-dependencies.anstream]
-version = "0.6.20"
+version = "1.0.0"
 features = ["test"]
 
 [dev-dependencies.snapbox]
-version = "1.0.0"
+version = "1.1.0"
 
 [lints.clippy]
 bool_assert_comparison = "allow"

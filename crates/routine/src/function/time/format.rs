@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct TimeFormat;
+pub struct TimeFormat {
+	info: RoutineInfo,
+}
 
 impl Default for TimeFormat {
 	fn default() -> Self {
@@ -20,7 +18,9 @@ impl Default for TimeFormat {
 
 impl TimeFormat {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("time::format"),
+		}
 	}
 }
 
@@ -87,39 +87,45 @@ fn format_time(hour: u32, minute: u32, second: u32, nanosecond: u32, fmt: &str) 
 	Ok(result)
 }
 
-impl ScalarFunction for TimeFormat {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+impl<'a> Routine<FunctionContext<'a>> for TimeFormat {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		if columns.len() != 2 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
+
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 2 {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let time_col = columns.first().unwrap();
-		let fmt_col = columns.get(1).unwrap();
+		let time_col = &args[0];
+		let fmt_col = &args[1];
 
-		match (time_col.data(), fmt_col.data()) {
+		let (time_data, time_bv) = time_col.unwrap_option();
+		let (fmt_data, _) = fmt_col.unwrap_option();
+
+		match (time_data, fmt_data) {
 			(
-				ColumnData::Time(time_container),
-				ColumnData::Utf8 {
+				ColumnBuffer::Time(time_container),
+				ColumnBuffer::Utf8 {
 					container: fmt_container,
 					..
 				},
 			) => {
+				let row_count = time_data.len();
 				let mut result_data = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
 					match (time_container.get(i), fmt_container.is_defined(i)) {
 						(Some(t), true) => {
-							let fmt_str = &fmt_container[i];
+							let fmt_str = fmt_container.get(i).unwrap();
 							match format_time(
 								t.hour(),
 								t.minute(),
@@ -132,7 +138,7 @@ impl ScalarFunction for TimeFormat {
 								}
 								Err(reason) => {
 									return Err(
-										ScalarFunctionError::ExecutionFailed {
+										RoutineError::FunctionExecutionFailed {
 											function: ctx.fragment.clone(),
 											reason,
 										},
@@ -146,18 +152,25 @@ impl ScalarFunction for TimeFormat {
 					}
 				}
 
-				Ok(ColumnData::Utf8 {
+				let mut final_data = ColumnBuffer::Utf8 {
 					container: Utf8Container::new(result_data),
 					max_bytes: MaxBytes::MAX,
-				})
+				};
+				if let Some(bv) = time_bv {
+					final_data = ColumnBuffer::Option {
+						inner: Box::new(final_data),
+						bitvec: bv.clone(),
+					};
+				}
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
-			(ColumnData::Time(_), other) => Err(ScalarFunctionError::InvalidArgumentType {
+			(ColumnBuffer::Time(_), other) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 1,
 				expected: vec![Type::Utf8],
 				actual: other.get_type(),
 			}),
-			(other, _) => Err(ScalarFunctionError::InvalidArgumentType {
+			(other, _) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Time],
@@ -165,8 +178,10 @@ impl ScalarFunction for TimeFormat {
 			}),
 		}
 	}
+}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Utf8
+impl Function for TimeFormat {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

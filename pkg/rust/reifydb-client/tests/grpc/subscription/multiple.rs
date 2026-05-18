@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_client::{GrpcClient, Value};
+use reifydb_client::{GrpcClient, SubscriptionConfig, Value, WireFormat};
 use tokio::runtime::Runtime;
 
 use crate::{
@@ -19,7 +19,8 @@ fn test_multiple_subscriptions_different_tables() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port)).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table1 = unique_table_name("sub_multi_t1");
@@ -27,8 +28,14 @@ fn test_multiple_subscriptions_different_tables() {
 		create_test_table(&client, &table1, &[("id", "int4"), ("name", "utf8")]).await.unwrap();
 		create_test_table(&client, &table2, &[("id", "int4"), ("value", "int4")]).await.unwrap();
 
-		let mut sub1 = client.subscribe(&format!("from test::{}", table1)).await.unwrap();
-		let mut sub2 = client.subscribe(&format!("from test::{}", table2)).await.unwrap();
+		let mut sub1 = client
+			.subscribe(&format!("from test::{}", table1), SubscriptionConfig::default())
+			.await
+			.unwrap();
+		let mut sub2 = client
+			.subscribe(&format!("from test::{}", table2), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		assert_ne!(sub1.subscription_id(), sub2.subscription_id(), "Subscription IDs should be different");
 
@@ -58,15 +65,22 @@ fn test_multiple_subscriptions_same_table() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port)).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_same_table");
 		create_test_table(&client, &table, &[("id", "int4"), ("name", "utf8")]).await.unwrap();
 
 		// Subscribe twice to the same table
-		let mut sub1 = client.subscribe(&format!("from test::{}", table)).await.unwrap();
-		let mut sub2 = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let mut sub1 = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
+		let mut sub2 = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		assert_ne!(
 			sub1.subscription_id(),
@@ -99,7 +113,8 @@ fn test_changes_routed_to_correct_subscription() {
 	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port)).await.unwrap();
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table1 = unique_table_name("sub_route_t1");
@@ -107,23 +122,27 @@ fn test_changes_routed_to_correct_subscription() {
 		create_test_table(&client, &table1, &[("id", "int4")]).await.unwrap();
 		create_test_table(&client, &table2, &[("id", "int4")]).await.unwrap();
 
-		let mut sub1 = client.subscribe(&format!("from test::{}", table1)).await.unwrap();
-		let mut sub2 = client.subscribe(&format!("from test::{}", table2)).await.unwrap();
+		let mut sub1 = client
+			.subscribe(&format!("from test::{}", table1), SubscriptionConfig::default())
+			.await
+			.unwrap();
+		let mut sub2 = client
+			.subscribe(&format!("from test::{}", table2), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		// Insert only into table1
 		client.command(&format!("INSERT test::{} [{{ id: 100 }}]", table1), None).await.unwrap();
 
-		// Sub1 should receive the change
-		let frames1 = recv_with_timeout(&mut sub1, 5000).await;
-		assert!(frames1.is_some(), "Sub1 should receive change");
+		let change1 = recv_with_timeout(&mut sub1, 5000).await;
+		assert!(change1.is_some(), "Sub1 should receive change");
 
-		let frame = &frames1.unwrap()[0];
+		let frame = &change1.unwrap().frames[0];
 		let id_col = find_column(frame, "id").unwrap();
 		assert_eq!(id_col.data.get_value(0), Value::Int4(100));
 
-		// Sub2 should NOT receive any change (short timeout)
-		let frames2 = recv_with_timeout(&mut sub2, 500).await;
-		assert!(frames2.is_none(), "Sub2 should NOT receive change for table1 insert");
+		let change2 = recv_with_timeout(&mut sub2, 500).await;
+		assert!(change2.is_none(), "Sub2 should NOT receive change for table1 insert");
 
 		drop(sub1);
 		drop(sub2);

@@ -3,7 +3,7 @@
 
 import React, { createContext, useEffect, useRef, ReactNode } from 'react';
 import { Connection, ConnectionConfig } from './connection';
-import { getConnection } from './connection-pool';
+import { get_connection } from './connection-pool';
 
 export const ConnectionContext = createContext<Connection | null>(null);
 
@@ -14,23 +14,23 @@ export interface ConnectionProviderProps {
 
 export function ConnectionProvider({ config, children }: ConnectionProviderProps) {
     // Get the singleton connection - this always returns the same instance
-    // but updates its config via setConfig()
-    const connection = getConnection(config);
+    // but updates its config via set_config()
+    const connection = get_connection(config);
 
     // Track previous config to detect changes
-    const prevConfigRef = useRef<string | undefined>(undefined);
-    const currentConfigStr = JSON.stringify(config);
+    const prev_config_ref = useRef<string | undefined>(undefined);
+    const current_config_str = JSON.stringify(config);
 
     useEffect(() => {
-        const configChanged = prevConfigRef.current !== undefined &&
-                            prevConfigRef.current !== currentConfigStr;
+        const config_changed = prev_config_ref.current !== undefined &&
+                            prev_config_ref.current !== current_config_str;
 
-        if (configChanged && connection.isConnected()) {
+        if (config_changed && connection.is_connected()) {
             // Config changed while connected - reconnect with new config
             connection.reconnect().catch(err => {
                 console.error('[ConnectionProvider] Failed to reconnect:', err);
             });
-        } else if (!connection.isConnected() && !connection.isConnecting()) {
+        } else if (!connection.is_connected() && !connection.is_connecting()) {
             // Auto-connect if not connected
             connection.connect().catch(err => {
                 console.error('[ConnectionProvider] Failed to connect:', err);
@@ -38,8 +38,8 @@ export function ConnectionProvider({ config, children }: ConnectionProviderProps
         }
 
         // Update previous config reference
-        prevConfigRef.current = currentConfigStr;
-    }, [currentConfigStr, connection]);
+        prev_config_ref.current = current_config_str;
+    }, [current_config_str, connection]);
 
     return (
         <ConnectionContext.Provider value={connection}>

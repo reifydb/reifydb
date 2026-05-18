@@ -3,8 +3,8 @@
 
 use std::{error::Error, fmt::Write, path::Path, sync::Arc};
 
-use reifydb::{Database, core::util::retry::retry, server};
-use reifydb_client::HttpClient;
+use reifydb::{Database, SharedRuntimeConfig, core::util::retry::retry, server};
+use reifydb_client::{HttpClient, WireFormat};
 use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
@@ -19,6 +19,7 @@ pub struct HttpRunner {
 impl HttpRunner {
 	pub fn new(runtime: Arc<Runtime>) -> Self {
 		let instance = server::memory()
+			.with_runtime_config(SharedRuntimeConfig::default().seeded(0))
 			.with_http(|http| http.bind_addr("::1:0").admin_bind_addr("::1:0"))
 			.build()
 			.unwrap();
@@ -46,7 +47,7 @@ impl testscript::runner::Runner for HttpRunner {
 				println!("admin: {rql}");
 
 				let result = self.runtime.block_on(admin_client.admin(&rql, None))?;
-				for frame in result.frames {
+				for frame in result {
 					writeln!(output, "{}", frame).unwrap();
 				}
 			}
@@ -57,7 +58,7 @@ impl testscript::runner::Runner for HttpRunner {
 				println!("command: {rql}");
 
 				let result = self.runtime.block_on(client.command(&rql, None))?;
-				for frame in result.frames {
+				for frame in result {
 					writeln!(output, "{}", frame).unwrap();
 				}
 			}
@@ -68,7 +69,7 @@ impl testscript::runner::Runner for HttpRunner {
 				println!("query: {rql}");
 
 				let result = self.runtime.block_on(client.query(&rql, None))?;
-				for frame in result.frames {
+				for frame in result {
 					writeln!(output, "{}", frame).unwrap();
 				}
 			}
@@ -93,12 +94,15 @@ impl testscript::runner::Runner for HttpRunner {
 		let port = http.port().unwrap();
 		let admin_port = http.admin_port().unwrap();
 
-		let mut client = self.runtime.block_on(HttpClient::connect(&format!("http://[::1]:{}", port)))?;
+		let mut client = self
+			.runtime
+			.block_on(HttpClient::connect(&format!("http://[::1]:{}", port), WireFormat::Json))?;
 		client.authenticate("mysecrettoken");
 		self.client = Some(client);
 
-		let mut admin_client =
-			self.runtime.block_on(HttpClient::connect(&format!("http://[::1]:{}", admin_port)))?;
+		let mut admin_client = self
+			.runtime
+			.block_on(HttpClient::connect(&format!("http://[::1]:{}", admin_port), WireFormat::Json))?;
 		admin_client.authenticate("mysecrettoken");
 		self.admin_client = Some(admin_client);
 

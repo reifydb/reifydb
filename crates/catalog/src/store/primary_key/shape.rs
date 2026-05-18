@@ -21,15 +21,11 @@ pub(crate) mod primary_key {
 		])
 	});
 
-	/// Serialize a list of column IDs into a blob
-	/// Format: 8 bytes for count, followed by 8 bytes per column ID
 	pub(crate) fn serialize_column_ids(column_ids: &[ColumnId]) -> Blob {
 		let mut bytes = Vec::new();
 
-		// Write count
 		bytes.extend_from_slice(&(column_ids.len() as u64).to_le_bytes());
 
-		// Write each column ID
 		for col_id in column_ids {
 			bytes.extend_from_slice(&col_id.0.to_le_bytes());
 		}
@@ -37,15 +33,11 @@ pub(crate) mod primary_key {
 		Blob::from(bytes)
 	}
 
-	/// Deserialize a blob into a list of column IDs
-	/// Format: 8 bytes for count, followed by 8 bytes per column ID
 	pub(crate) fn deserialize_column_ids(blob: &Blob) -> Vec<ColumnId> {
 		let bytes = blob.as_bytes();
 
-		// Read count
 		let count = u64::from_le_bytes(bytes[0..8].try_into().unwrap()) as usize;
 
-		// Read each column ID
 		let mut column_ids = Vec::with_capacity(count);
 		for i in 0..count {
 			let start = 8 + i * 8;

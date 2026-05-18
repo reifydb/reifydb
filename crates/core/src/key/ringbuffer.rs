@@ -10,8 +10,6 @@ use crate::{
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
-const VERSION: u8 = 1;
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct RingBufferKey {
 	pub ringbuffer: RingBufferId,
@@ -33,15 +31,14 @@ impl RingBufferKey {
 	}
 
 	fn ringbuffer_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION);
+		let mut serializer = KeySerializer::with_capacity(1);
 		serializer.extend_u8(Self::KIND as u8);
 		serializer.to_encoded_key()
 	}
 
 	fn ringbuffer_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8 - 1);
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8(Self::KIND as u8 - 1);
 		serializer.to_encoded_key()
 	}
 }
@@ -50,18 +47,13 @@ impl EncodableKey for RingBufferKey {
 	const KIND: KeyKind = KeyKind::RingBuffer;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.ringbuffer);
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.ringbuffer);
 		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
@@ -102,16 +94,13 @@ impl RingBufferMetadataKey {
 		.encode()
 	}
 
-	/// Returns a range scanning all partition metadata keys for a given ringbuffer (prefix scan).
 	pub fn full_scan_for_ringbuffer(ringbuffer: RingBufferId) -> EncodedKeyRange {
-		let mut start = KeySerializer::with_capacity(10);
-		start.extend_u8(VERSION);
+		let mut start = KeySerializer::with_capacity(9);
 		start.extend_u8(Self::KIND as u8);
 		start.extend_u64(ringbuffer);
 		let start_key = start.to_encoded_key();
 
-		let mut end = KeySerializer::with_capacity(10);
-		end.extend_u8(VERSION);
+		let mut end = KeySerializer::with_capacity(9);
 		end.extend_u8(Self::KIND as u8);
 		end.extend_u64(RingBufferId(ringbuffer.0 - 1));
 		let end_key = end.to_encoded_key();
@@ -124,8 +113,8 @@ impl EncodableKey for RingBufferMetadataKey {
 	const KIND: KeyKind = KeyKind::RingBufferMetadata;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(32);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.ringbuffer);
+		let mut serializer = KeySerializer::with_capacity(31);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.ringbuffer);
 		for value in &self.partition_values {
 			serializer.extend_value(value);
 		}
@@ -135,11 +124,6 @@ impl EncodableKey for RingBufferMetadataKey {
 	fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
-
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
 			return None;
@@ -147,9 +131,14 @@ impl EncodableKey for RingBufferMetadataKey {
 
 		let ringbuffer = de.read_u64().ok()?;
 
+		let mut partition_values = Vec::new();
+		while !de.is_empty() {
+			partition_values.push(de.read_value().ok()?);
+		}
+
 		Some(Self {
 			ringbuffer: RingBufferId(ringbuffer),
-			partition_values: vec![],
+			partition_values,
 		})
 	}
 }
@@ -165,7 +154,7 @@ mod tests {
 			vec![Value::Utf8("east".to_string())],
 		);
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-		let _ = (de.read_u8(), de.read_u8(), de.read_u64());
+		let _ = (de.read_u8(), de.read_u64());
 		let value = de.read_value().unwrap();
 		assert_eq!(value, Value::Utf8("east".to_string()));
 	}
@@ -177,7 +166,7 @@ mod tests {
 			vec![Value::Utf8("us".to_string()), Value::Uint8(42)],
 		);
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-		let _ = (de.read_u8(), de.read_u8(), de.read_u64());
+		let _ = (de.read_u8(), de.read_u64());
 		assert_eq!(de.read_value().unwrap(), Value::Utf8("us".to_string()));
 		assert_eq!(de.read_value().unwrap(), Value::Uint8(42));
 	}

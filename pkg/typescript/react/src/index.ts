@@ -6,7 +6,7 @@ export * from '@reifydb/client';
 
 // Export connection utilities
 export {Connection, type ConnectionConfig, DEFAULT_CONFIG, DEFAULT_URL} from './connection/connection';
-export {getConnection, clearConnection} from './connection/connection-pool';
+export {get_connection, clear_connection} from './connection/connection-pool';
 export {ConnectionProvider, ConnectionContext, type ConnectionProviderProps} from './connection/connection-context';
 
 // Export React hooks

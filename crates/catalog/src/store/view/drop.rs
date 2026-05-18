@@ -11,19 +11,15 @@ use crate::{CatalogStore, Result, store::shape::drop::drop_shape_metadata};
 
 impl CatalogStore {
 	pub(crate) fn drop_view(txn: &mut AdminTransaction, view: ViewId) -> Result<()> {
-		// First, find the view to get its namespace and primary key
 		let pk_id = if let Some(view_def) = Self::find_view(&mut Transaction::Admin(&mut *txn), view)? {
-			// Remove the namespace-view link (secondary index)
 			txn.remove(&NamespaceViewKey::encoded(view_def.namespace(), view))?;
 			view_def.primary_key().map(|pk| pk.id)
 		} else {
 			None
 		};
 
-		// Clean up all associated metadata (columns, policies, sequences, pk, retention)
 		drop_shape_metadata(txn, view.into(), pk_id)?;
 
-		// Remove the view metadata
 		txn.remove(&ViewKey::encoded(view))?;
 
 		Ok(())

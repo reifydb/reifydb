@@ -11,3 +11,4 @@ pub mod row;
 pub mod temporal;
 pub mod utf8;
 pub mod uuid;
+pub mod varlen;

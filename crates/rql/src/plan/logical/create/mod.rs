@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+pub mod binding;
 pub mod deferred;
 pub mod dictionary;
 pub mod event;
@@ -21,6 +22,7 @@ pub mod table;
 pub mod tag;
 pub mod test;
 pub mod transactional;
+pub mod ttl;
 
 use reifydb_transaction::transaction::Transaction;
 
@@ -78,6 +80,7 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::Test(node) => self.compile_create_test(node),
 			AstCreate::Source(node) => self.compile_create_source(node),
 			AstCreate::Sink(node) => self.compile_create_sink(node),
+			AstCreate::Binding(node) => self.compile_create_binding(node),
 		}
 	}
 }

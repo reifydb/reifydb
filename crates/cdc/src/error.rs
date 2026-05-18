@@ -1,21 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! CDC error types and diagnostics.
-
 use std::{error::Error as StdError, fmt, fmt::Display};
 
 use reifydb_core::common::CommitVersion;
 use reifydb_type::{error, error::Error};
 
-/// Error type for CDC operations.
 #[derive(Debug, Clone)]
 pub enum CdcError {
-	/// The operation failed due to an internal error.
 	Internal(String),
-	/// The CDC entry was not found.
+
 	NotFound(CommitVersion),
-	/// Encoding or decoding failed.
+
 	Codec(String),
 }
 
@@ -41,19 +37,16 @@ impl From<CdcError> for Error {
 	}
 }
 
-/// Result type for CDC operations.
 pub type CdcResult<T> = Result<T, CdcError>;
 
-/// CDC-specific diagnostics.
 pub mod diagnostic {
 
 	use reifydb_type::{error::Diagnostic, fragment::Fragment};
 
-	/// CDC storage operation failed
 	pub fn storage_error(msg: impl Into<String>) -> Diagnostic {
 		Diagnostic {
 			code: "CDC_001".to_string(),
-			statement: None,
+			rql: None,
 			message: format!("CDC storage error: {}", msg.into()),
 			column: None,
 			fragment: Fragment::None,
@@ -65,11 +58,10 @@ pub mod diagnostic {
 		}
 	}
 
-	/// CDC entry not found at the specified version
 	pub fn not_found(version: u64) -> Diagnostic {
 		Diagnostic {
 			code: "CDC_002".to_string(),
-			statement: None,
+			rql: None,
 			message: format!("CDC entry not found for version {}", version),
 			column: None,
 			fragment: Fragment::None,
@@ -82,11 +74,10 @@ pub mod diagnostic {
 		}
 	}
 
-	/// CDC encoding/decoding failed
 	pub fn codec_error(msg: impl Into<String>) -> Diagnostic {
 		Diagnostic {
 			code: "CDC_003".to_string(),
-			statement: None,
+			rql: None,
 			message: format!("CDC codec error: {}", msg.into()),
 			column: None,
 			fragment: Fragment::None,

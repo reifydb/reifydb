@@ -7,28 +7,33 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
+	thread::sleep,
 	time::Duration,
 };
 
+use libc::{SIGHUP, SIGINT, SIGQUIT, SIGTERM, c_int, sighandler_t, signal};
 use reifydb_auth::service::AuthService;
-use reifydb_core::interface::catalog::id::SubscriptionId;
-use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem};
+use reifydb_catalog::catalog::Catalog;
+use reifydb_engine::{engine::StandardEngine, session::RetryStrategy};
+use reifydb_runtime::{
+	SharedRuntime,
+	actor::{mailbox::ActorRef, system::ActorSystem},
+	pool::Pools,
+};
+use reifydb_store_single::SingleStore;
 use reifydb_sub_api::subsystem::HealthStatus;
-#[cfg(feature = "sub_flow")]
+#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
 use reifydb_sub_flow::subsystem::FlowSubsystem;
-#[cfg(feature = "sub_server_grpc")]
+#[cfg(all(feature = "sub_server_grpc", not(reifydb_single_threaded)))]
 use reifydb_sub_server_grpc::subsystem::GrpcSubsystem;
-#[cfg(feature = "sub_server_http")]
+#[cfg(all(feature = "sub_server_http", not(reifydb_single_threaded)))]
 use reifydb_sub_server_http::subsystem::HttpSubsystem;
-#[cfg(feature = "sub_server_ws")]
+#[cfg(all(feature = "sub_server_ws", not(reifydb_single_threaded)))]
 use reifydb_sub_server_ws::subsystem::WsSubsystem;
+#[cfg(not(reifydb_single_threaded))]
 use reifydb_sub_task::{handle::TaskHandle, subsystem::TaskSubsystem};
-use reifydb_subscription::cursor::SubscriptionCursor;
 use reifydb_type::{
 	Result,
-	error::Diagnostic,
-	fragment::Fragment,
 	params::Params,
 	value::{frame::frame::Frame, identity::IdentityId},
 };
@@ -37,11 +42,12 @@ use tracing::{debug, error, instrument, warn};
 #[cfg(feature = "sub_raft")]
 use crate::raft::RaftSubsystem;
 use crate::{
-	Migration,
+	MigrationStatement,
 	boot::Bootloader,
 	health::{ComponentHealth, HealthMonitor},
-	session::{RetryPolicy, Session},
+	session::Session,
 	subsystem::Subsystems,
+	watermarks::Watermarks,
 };
 
 pub struct Database {
@@ -53,21 +59,21 @@ pub struct Database {
 	shared_runtime: SharedRuntime,
 	actor_system: ActorSystem,
 	running: bool,
-	migrations: Vec<Migration>,
+	migrations: Vec<MigrationStatement>,
 }
 
 impl Database {
-	#[cfg(feature = "sub_flow")]
+	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
 	pub fn sub_flow(&self) -> Option<&FlowSubsystem> {
 		self.subsystem::<FlowSubsystem>()
 	}
 
-	#[cfg(feature = "sub_server_grpc")]
+	#[cfg(all(feature = "sub_server_grpc", not(reifydb_single_threaded)))]
 	pub fn sub_server_grpc(&self) -> Option<&GrpcSubsystem> {
 		self.subsystem::<GrpcSubsystem>()
 	}
 
-	#[cfg(feature = "sub_server_http")]
+	#[cfg(all(feature = "sub_server_http", not(reifydb_single_threaded)))]
 	pub fn sub_server_http(&self) -> Option<&HttpSubsystem> {
 		self.subsystem::<HttpSubsystem>()
 	}
@@ -77,7 +83,7 @@ impl Database {
 		self.subsystem::<RaftSubsystem>()
 	}
 
-	#[cfg(feature = "sub_server_ws")]
+	#[cfg(all(feature = "sub_server_ws", not(reifydb_single_threaded)))]
 	pub fn sub_server_ws(&self) -> Option<&WsSubsystem> {
 		self.subsystem::<WsSubsystem>()
 	}
@@ -85,6 +91,7 @@ impl Database {
 	/// Get a handle to the task scheduler subsystem
 	///
 	/// Returns None if the task subsystem is not registered or not running
+	#[cfg(not(reifydb_single_threaded))]
 	pub fn task_handle(&self) -> Option<TaskHandle> {
 		self.subsystem::<TaskSubsystem>().and_then(|subsystem| subsystem.handle())
 	}
@@ -98,12 +105,12 @@ impl Database {
 		health_monitor: Arc<HealthMonitor>,
 		shared_runtime: SharedRuntime,
 		actor_system: ActorSystem,
-		migrations: Vec<Migration>,
+		migrations: Vec<MigrationStatement>,
 	) -> Self {
 		Self {
 			engine: engine.clone(),
 			auth_service,
-			bootloader: Bootloader::new(engine),
+			bootloader: Bootloader::new(engine, actor_system.clone()),
 			subsystems: subsystem_manager,
 			health_monitor,
 			shared_runtime,
@@ -117,12 +124,36 @@ impl Database {
 		&self.engine
 	}
 
+	pub fn catalog(&self) -> Catalog {
+		self.engine.catalog()
+	}
+
+	/// Borrowed view over the database's progress watermarks. Use to ask
+	/// "is the CDC producer caught up?", "what's the last applied replica
+	/// version?", etc. via the chained accessors.
+	pub fn watermarks(&self) -> Watermarks<'_> {
+		Watermarks::new(self)
+	}
+
+	/// Resolve an actor handle by message type. Returns `None` if no actor
+	/// for `M` was registered during engine construction.
+	pub fn actor<M: 'static>(&self) -> Option<ActorRef<M>>
+	where
+		ActorRef<M>: Send + Sync,
+	{
+		self.engine.actor::<M>()
+	}
+
 	pub fn auth_service(&self) -> &AuthService {
 		&self.auth_service
 	}
 
 	pub fn shared_runtime(&self) -> &SharedRuntime {
 		&self.shared_runtime
+	}
+
+	pub fn pools(&self) -> Pools {
+		self.actor_system.pools()
 	}
 
 	pub fn is_running(&self) -> bool {
@@ -179,8 +210,11 @@ impl Database {
 
 		debug!("Stopping system gracefully");
 
-		// Stop all subsystems (now synchronously waits for each to finish)
 		self.subsystems.stop_all()?;
+
+		if let Some(single_store) = self.engine.ioc().try_resolve::<SingleStore>() {
+			single_store.flush_pending_blocking();
+		}
 
 		self.actor_system.shutdown();
 		let _ = self.actor_system.join();
@@ -215,43 +249,43 @@ impl Database {
 		self.health_monitor.update_component_health("system".to_string(), system_health, self.running);
 	}
 
-	/// Apply registered migrations: CREATE MIGRATION for any new ones, then MIGRATE to apply pending.
+	/// Register migrations via idempotent `CREATE MIGRATION` and then run `MIGRATE;`
+	/// to apply any pending ones.
+	///
+	/// Each `CREATE MIGRATION` is a no-op when a migration with the same name
+	/// and identical content hash is already registered, and returns
+	/// `MigrationHashMismatch` when the content has changed since registration.
 	fn apply_migrations(&self) -> Result<()> {
 		debug!("Applying {} registered migrations", self.migrations.len());
 
 		for migration in &self.migrations {
-			// Build CREATE MIGRATION statement
-			let mut rql = format!("CREATE MIGRATION '{}' {{", migration.name);
-			rql.push_str(&migration.body);
-			rql.push('}');
-
-			if let Some(ref rollback) = migration.rollback_body {
-				rql.push_str(" ROLLBACK {");
-				rql.push_str(rollback);
-				rql.push('}');
-			}
-
-			rql.push(';');
-
-			// Try to create — ignore "already exists" errors
-			match self.admin_as_root(&rql, Params::None) {
-				Ok(_) => {
-					debug!("Registered migration '{}'", migration.name);
-				}
-				Err(e) => {
-					let msg = format!("{}", e);
-					if msg.contains("already exists") {
-						debug!("Migration '{}' already registered, skipping", migration.name);
-					} else {
-						return Err(e);
+			match migration {
+				MigrationStatement::Wrapped {
+					name,
+					body,
+					rollback_body,
+				} => {
+					let mut rql = format!("CREATE MIGRATION '{}' {{", name);
+					rql.push_str(body);
+					rql.push('}');
+					if let Some(rollback) = rollback_body.as_deref() {
+						rql.push_str(" ROLLBACK {");
+						rql.push_str(rollback);
+						rql.push('}');
 					}
+					rql.push(';');
+					self.admin_as_root(&rql, Params::None)?;
+					debug!("Registered migration '{}'", name);
+				}
+				MigrationStatement::Raw(stmt) => {
+					self.admin_as_root(stmt, Params::None)?;
+					debug!("Registered raw migration statement ({} bytes)", stmt.len());
 				}
 			}
 		}
 
-		// Apply all pending migrations
 		debug!("Running MIGRATE to apply pending migrations");
-		let result = self.admin_as_root("MIGRATE;", Params::None)?;
+		let result = self.migrate_frames()?;
 		if let Some(frame) = result.first()
 			&& let Ok(Some(count)) = frame.get::<u32>("migrations_applied", 0)
 		{
@@ -259,6 +293,22 @@ impl Database {
 		}
 
 		Ok(())
+	}
+
+	fn migrate_frames(&self) -> Result<Vec<Frame>> {
+		let strategy = RetryStrategy::with_jittered_backoff(
+			30,
+			Duration::from_millis(10),
+			Duration::from_millis(2_000),
+		);
+		let rng = self.engine.rng();
+		let result = strategy.execute(rng, "MIGRATE;", || {
+			self.engine.admin_as(IdentityId::root(), "MIGRATE;", Params::None)
+		});
+		match result.error {
+			Some(e) => Err(e),
+			None => Ok(result.frames),
+		}
 	}
 
 	pub fn get_subsystem_names(&self) -> Vec<String> {
@@ -270,111 +320,57 @@ impl Database {
 	}
 
 	/// Execute an admin (DDL + DML + Query) operation as root user.
-	pub fn admin_as_root(&self, rql: &str, params: impl Into<Params>) -> reifydb_type::Result<Vec<Frame>> {
-		let params = params.into();
-		let engine = &self.engine;
-		RetryPolicy::default().execute(rql, || engine.admin_as(IdentityId::root(), rql, params.clone()))
+	pub fn admin_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
+		let r = self.engine.admin_as(IdentityId::root(), rql, params.into());
+		match r.error {
+			Some(e) => Err(e),
+			None => Ok(r.frames),
+		}
 	}
 
 	/// Execute a transactional command (DML + Query) as root user.
-	pub fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> reifydb_type::Result<Vec<Frame>> {
-		let params = params.into();
-		let engine = &self.engine;
-		RetryPolicy::default().execute(rql, || engine.command_as(IdentityId::root(), rql, params.clone()))
+	pub fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
+		let r = self.engine.command_as(IdentityId::root(), rql, params.into());
+		match r.error {
+			Some(e) => Err(e),
+			None => Ok(r.frames),
+		}
 	}
 
 	/// Execute a read-only query as root user.
-	pub fn query_as_root(&self, rql: &str, params: impl Into<Params>) -> reifydb_type::Result<Vec<Frame>> {
-		self.engine.query_as(IdentityId::root(), rql, params.into())
+	pub fn query_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
+		let r = self.engine.query_as(IdentityId::root(), rql, params.into());
+		match r.error {
+			Some(e) => Err(e),
+			None => Ok(r.frames),
+		}
 	}
 
 	/// Execute an admin (DDL + DML + Query) operation as a specific identity.
-	pub fn admin_as(
-		&self,
-		identity: IdentityId,
-		rql: &str,
-		params: impl Into<Params>,
-	) -> reifydb_type::Result<Vec<Frame>> {
-		let params = params.into();
-		let engine = &self.engine;
-		RetryPolicy::default().execute(rql, || engine.admin_as(identity, rql, params.clone()))
+	pub fn admin_as(&self, identity: IdentityId, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
+		let r = self.engine.admin_as(identity, rql, params.into());
+		match r.error {
+			Some(e) => Err(e),
+			None => Ok(r.frames),
+		}
 	}
 
 	/// Execute a transactional command (DML + Query) as a specific identity.
-	pub fn command_as(
-		&self,
-		identity: IdentityId,
-		rql: &str,
-		params: impl Into<Params>,
-	) -> reifydb_type::Result<Vec<Frame>> {
-		let params = params.into();
-		let engine = &self.engine;
-		RetryPolicy::default().execute(rql, || engine.command_as(identity, rql, params.clone()))
+	pub fn command_as(&self, identity: IdentityId, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
+		let r = self.engine.command_as(identity, rql, params.into());
+		match r.error {
+			Some(e) => Err(e),
+			None => Ok(r.frames),
+		}
 	}
 
 	/// Execute a read-only query as a specific identity.
-	pub fn query_as(
-		&self,
-		identity: IdentityId,
-		rql: &str,
-		params: impl Into<Params>,
-	) -> reifydb_type::Result<Vec<Frame>> {
-		self.engine.query_as(identity, rql, params.into())
-	}
-
-	/// Create a subscription as root and return a cursor for consuming its data.
-	///
-	/// `query` is the inner subscription query (e.g. `from test::events`).
-	/// The full `create subscription { } as { <query> };` statement is assembled internally.
-	pub fn subscribe_as_root(&self, query: &str, batch_size: usize) -> Result<SubscriptionCursor> {
-		self.subscribe_as(IdentityId::root(), query, batch_size)
-	}
-
-	/// Create a subscription as the given identity and return a cursor for consuming its data.
-	///
-	/// `query` is the inner subscription query (e.g. `from test::events`).
-	/// The full `create subscription { } as { <query> };` statement is assembled internally.
-	pub fn subscribe_as(&self, identity: IdentityId, query: &str, batch_size: usize) -> Result<SubscriptionCursor> {
-		let rql = format!("create subscription {{}} as {{ {} }};", query);
-		let engine = &self.engine;
-		let frames = RetryPolicy::default().execute(&rql, || engine.admin_as(identity, &rql, Params::None))?;
-		let frame = &frames[0];
-		let sub_id: u64 = frame
-			.get::<u64>("subscription_id", 0)
-			.map_err(|e| {
-				reifydb_type::error::Error(Box::new(Diagnostic {
-					code: "SUB_001".to_string(),
-					statement: None,
-					message: format!("failed to read subscription_id: {}", e),
-					column: None,
-					fragment: Fragment::None,
-					label: None,
-					help: None,
-					notes: vec![],
-					cause: None,
-					operator_chain: None,
-				}))
-			})?
-			.ok_or_else(|| {
-				reifydb_type::error::Error(Box::new(Diagnostic {
-					code: "SUB_001".to_string(),
-					statement: None,
-					message: "subscription_id not found in response".to_string(),
-					column: None,
-					fragment: Fragment::None,
-					label: None,
-					help: None,
-					notes: vec![],
-					cause: None,
-					operator_chain: None,
-				}))
-			})?;
-		Ok(SubscriptionCursor::new(
-			SubscriptionId(sub_id),
-			batch_size,
-			self.engine.clone(),
-			self.actor_system.clone(),
-		))
+	pub fn query_as(&self, identity: IdentityId, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
+		let r = self.engine.query_as(identity, rql, params.into());
+		match r.error {
+			Some(e) => Err(e),
+			None => Ok(r.frames),
+		}
 	}
 
 	pub fn await_signal(&self) -> Result<()> {
@@ -388,7 +384,7 @@ impl Database {
 		static RUNNING: AtomicBool = AtomicBool::new(true);
 		static SIGNAL_RECEIVED: AtomicBool = AtomicBool::new(false);
 
-		extern "C" fn handle_signal(_sig: libc::c_int) {
+		extern "C" fn handle_signal(_sig: c_int) {
 			// SAFETY: Only async-signal-safe operations are allowed here.
 			// We only use atomic operations, which are signal-safe.
 			RUNNING.store(false, Ordering::SeqCst);
@@ -396,15 +392,15 @@ impl Database {
 		}
 
 		unsafe {
-			libc::signal(libc::SIGINT, handle_signal as libc::sighandler_t);
-			libc::signal(libc::SIGTERM, handle_signal as libc::sighandler_t);
-			libc::signal(libc::SIGQUIT, handle_signal as libc::sighandler_t);
-			libc::signal(libc::SIGHUP, handle_signal as libc::sighandler_t);
+			signal(SIGINT, handle_signal as sighandler_t);
+			signal(SIGTERM, handle_signal as sighandler_t);
+			signal(SIGQUIT, handle_signal as sighandler_t);
+			signal(SIGHUP, handle_signal as sighandler_t);
 		}
 
 		debug!("Waiting for termination signal...");
 		while RUNNING.load(Ordering::SeqCst) {
-			std::thread::sleep(Duration::from_millis(100));
+			sleep(Duration::from_millis(100));
 
 			// Log the signal reception outside the signal handler
 			if SIGNAL_RECEIVED.load(Ordering::SeqCst) {

@@ -10,6 +10,7 @@ pub(crate) mod table {
 	pub(crate) const NAMESPACE: usize = 1;
 	pub(crate) const NAME: usize = 2;
 	pub(crate) const PRIMARY_KEY: usize = 3;
+	pub(crate) const UNDERLYING: usize = 4;
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
@@ -17,6 +18,7 @@ pub(crate) mod table {
 			RowShapeField::unconstrained("namespace", Type::Uint8),
 			RowShapeField::unconstrained("name", Type::Utf8),
 			RowShapeField::unconstrained("primary_key", Type::Uint8),
+			RowShapeField::unconstrained("underlying", Type::Uint1),
 		])
 	});
 }

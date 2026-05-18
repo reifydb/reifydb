@@ -1,11 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+//! Self-hosted system tables. Every catalog object kind ReifyDB stores about itself - identities, namespaces,
+//! columns, policies, flows, sequences, the system event log, and so on - is exposed here as a virtual table so
+//! it can be queried with regular RQL. The vtable definitions registered through this module are what `SELECT *
+//! FROM system.<thing>` reads from.
 
-use reifydb_core::interface::{catalog::vtable::VTable, version::SystemVersion};
+use std::sync::{Arc, OnceLock};
+
+use reifydb_core::interface::{
+	catalog::vtable::{VTable, VTableId},
+	version::SystemVersion,
+};
 
 pub mod authentications;
+pub mod bindings;
 pub mod cdc_consumers;
 pub mod column_properties;
 pub mod columns;
@@ -16,19 +25,21 @@ pub mod enums;
 pub mod event_variants;
 pub mod events;
 pub mod flow_edges;
-pub mod flow_lags;
 pub mod flow_node_types;
 pub mod flow_nodes;
 pub mod flow_operator_inputs;
 pub mod flow_operator_outputs;
 pub mod flow_operators;
+pub mod flow_watermarks;
 pub mod flows;
 pub mod granted_roles;
 pub mod handlers;
 pub mod identities;
+pub mod metrics_cdc;
+pub mod metrics_storage;
 pub mod migrations;
 pub mod namespaces;
-pub mod operator_retention_policies;
+pub mod operator_retention_strategies;
 pub mod policies;
 pub mod policy_operations;
 pub mod primary_key_columns;
@@ -39,15 +50,9 @@ pub mod roles;
 pub mod sequence;
 pub mod series;
 pub mod shape_fields;
-pub mod shape_retention_policies;
+pub mod shape_retention_strategies;
 pub mod shapes;
-pub mod storage_stats_dictionary;
-pub mod storage_stats_flow;
-pub mod storage_stats_flow_node;
-pub mod storage_stats_index;
-pub mod storage_stats_ringbuffer;
-pub mod storage_stats_table;
-pub mod storage_stats_view;
+pub mod subscriptions;
 pub mod tables;
 pub mod tables_virtual;
 pub mod tag_variants;
@@ -58,6 +63,7 @@ pub mod views;
 pub mod virtual_table_columns;
 
 use authentications::authentications;
+use bindings::{grpc::bindings_grpc, http::bindings_http, ws::bindings_ws};
 use cdc_consumers::cdc_consumers;
 use column_properties::column_properties;
 use columns::columns;
@@ -68,37 +74,36 @@ use enums::enums;
 use event_variants::event_variants;
 use events::events;
 use flow_edges::flow_edges;
-use flow_lags::flow_lags;
 use flow_node_types::flow_node_types;
 use flow_nodes::flow_nodes;
 use flow_operator_inputs::flow_operator_inputs;
 use flow_operator_outputs::flow_operator_outputs;
 use flow_operators::flow_operators;
+use flow_watermarks::flow_watermarks;
 use flows::flows;
 use granted_roles::granted_roles;
 use handlers::handlers;
 use identities::identities;
+use metrics_cdc::metrics_cdc_vtable;
+use metrics_storage::metrics_storage_vtable;
 use migrations::migrations;
 use namespaces::namespaces;
-use operator_retention_policies::operator_retention_policies;
+use operator_retention_strategies::operator_retention_strategies;
 use policies::policies;
 use policy_operations::policy_operations;
 use primary_key_columns::primary_key_columns;
 use primary_keys::primary_keys;
-use procedures::procedures;
+use procedures::{
+	ffi::procedures_ffi, native::procedures_native, rql::procedures_rql, test::procedures_test,
+	wasm::procedures_wasm,
+};
 use roles::roles;
 use sequence::sequences;
 use series::series;
 use shape_fields::shape_fields;
-use shape_retention_policies::shape_retention_policies;
+use shape_retention_strategies::shape_retention_strategies;
 use shapes::shapes;
-use storage_stats_dictionary::dictionary_storage_stats;
-use storage_stats_flow::flow_storage_stats;
-use storage_stats_flow_node::flow_node_storage_stats;
-use storage_stats_index::index_storage_stats;
-use storage_stats_ringbuffer::ringbuffer_storage_stats;
-use storage_stats_table::table_storage_stats;
-use storage_stats_view::view_storage_stats;
+use subscriptions::subscriptions;
 use tables::tables;
 use tables_virtual::virtual_tables;
 use tag_variants::tag_variants;
@@ -109,6 +114,40 @@ use views::views;
 use virtual_table_columns::virtual_table_columns;
 
 use crate::system::ringbuffers::ringbuffers;
+
+const METRIC_PRIMITIVE_SLOTS: usize = 9;
+
+static METRICS_STORAGE_CACHE: [OnceLock<Arc<VTable>>; METRIC_PRIMITIVE_SLOTS] = [
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+];
+
+static METRICS_CDC_CACHE: [OnceLock<Arc<VTable>>; METRIC_PRIMITIVE_SLOTS] = [
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+	OnceLock::new(),
+];
+
+fn metrics_storage_table_cached(id: VTableId, local_name: &str, slot: usize) -> Arc<VTable> {
+	METRICS_STORAGE_CACHE[slot].get_or_init(|| metrics_storage_vtable(id, local_name)).clone()
+}
+
+fn metrics_cdc_table_cached(id: VTableId, local_name: &str, slot: usize) -> Arc<VTable> {
+	METRICS_CDC_CACHE[slot].get_or_init(|| metrics_cdc_vtable(id, local_name)).clone()
+}
 
 pub mod ids {
 	pub mod columns {
@@ -267,14 +306,121 @@ pub mod ids {
 		}
 
 		pub mod procedures {
-			use reifydb_core::interface::catalog::id::ColumnId;
+			pub mod rql {
+				use reifydb_core::interface::catalog::id::ColumnId;
 
-			pub const ID: ColumnId = ColumnId(1);
-			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
-			pub const NAME: ColumnId = ColumnId(3);
-			pub const IS_TEST: ColumnId = ColumnId(4);
+				pub const ID: ColumnId = ColumnId(1);
+				pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+				pub const NAME: ColumnId = ColumnId(3);
+				pub const RETURN_TYPE: ColumnId = ColumnId(4);
+				pub const BODY: ColumnId = ColumnId(5);
+				pub const TRIGGER_KIND: ColumnId = ColumnId(6);
+				pub const EVENT_VARIANT_SUMTYPE_ID: ColumnId = ColumnId(7);
+				pub const EVENT_VARIANT_INDEX: ColumnId = ColumnId(8);
 
-			pub const ALL: [ColumnId; 4] = [ID, NAMESPACE_ID, NAME, IS_TEST];
+				pub const ALL: [ColumnId; 8] = [
+					ID,
+					NAMESPACE_ID,
+					NAME,
+					RETURN_TYPE,
+					BODY,
+					TRIGGER_KIND,
+					EVENT_VARIANT_SUMTYPE_ID,
+					EVENT_VARIANT_INDEX,
+				];
+			}
+
+			pub mod test {
+				use reifydb_core::interface::catalog::id::ColumnId;
+
+				pub const ID: ColumnId = ColumnId(1);
+				pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+				pub const NAME: ColumnId = ColumnId(3);
+				pub const RETURN_TYPE: ColumnId = ColumnId(4);
+				pub const BODY: ColumnId = ColumnId(5);
+
+				pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, RETURN_TYPE, BODY];
+			}
+
+			pub mod native {
+				use reifydb_core::interface::catalog::id::ColumnId;
+
+				pub const ID: ColumnId = ColumnId(1);
+				pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+				pub const NAME: ColumnId = ColumnId(3);
+				pub const NATIVE_NAME: ColumnId = ColumnId(4);
+
+				pub const ALL: [ColumnId; 4] = [ID, NAMESPACE_ID, NAME, NATIVE_NAME];
+			}
+
+			pub mod ffi {
+				use reifydb_core::interface::catalog::id::ColumnId;
+
+				pub const ID: ColumnId = ColumnId(1);
+				pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+				pub const NAME: ColumnId = ColumnId(3);
+				pub const NATIVE_NAME: ColumnId = ColumnId(4);
+				pub const LIBRARY_PATH: ColumnId = ColumnId(5);
+				pub const ENTRY_SYMBOL: ColumnId = ColumnId(6);
+
+				pub const ALL: [ColumnId; 6] =
+					[ID, NAMESPACE_ID, NAME, NATIVE_NAME, LIBRARY_PATH, ENTRY_SYMBOL];
+			}
+
+			pub mod wasm {
+				use reifydb_core::interface::catalog::id::ColumnId;
+
+				pub const ID: ColumnId = ColumnId(1);
+				pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+				pub const NAME: ColumnId = ColumnId(3);
+				pub const NATIVE_NAME: ColumnId = ColumnId(4);
+				pub const MODULE_ID: ColumnId = ColumnId(5);
+
+				pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, NATIVE_NAME, MODULE_ID];
+			}
+		}
+
+		pub mod bindings {
+			pub mod http {
+				use reifydb_core::interface::catalog::id::ColumnId;
+
+				pub const ID: ColumnId = ColumnId(1);
+				pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+				pub const PROCEDURE_ID: ColumnId = ColumnId(3);
+				pub const NAME: ColumnId = ColumnId(4);
+				pub const METHOD: ColumnId = ColumnId(5);
+				pub const PATH: ColumnId = ColumnId(6);
+				pub const FORMAT: ColumnId = ColumnId(7);
+
+				pub const ALL: [ColumnId; 7] =
+					[ID, NAMESPACE_ID, PROCEDURE_ID, NAME, METHOD, PATH, FORMAT];
+			}
+
+			pub mod grpc {
+				use reifydb_core::interface::catalog::id::ColumnId;
+
+				pub const ID: ColumnId = ColumnId(1);
+				pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+				pub const PROCEDURE_ID: ColumnId = ColumnId(3);
+				pub const NAME: ColumnId = ColumnId(4);
+				pub const RPC_NAME: ColumnId = ColumnId(5);
+				pub const FORMAT: ColumnId = ColumnId(6);
+
+				pub const ALL: [ColumnId; 6] = [ID, NAMESPACE_ID, PROCEDURE_ID, NAME, RPC_NAME, FORMAT];
+			}
+
+			pub mod ws {
+				use reifydb_core::interface::catalog::id::ColumnId;
+
+				pub const ID: ColumnId = ColumnId(1);
+				pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+				pub const PROCEDURE_ID: ColumnId = ColumnId(3);
+				pub const NAME: ColumnId = ColumnId(4);
+				pub const RPC_NAME: ColumnId = ColumnId(5);
+				pub const FORMAT: ColumnId = ColumnId(6);
+
+				pub const ALL: [ColumnId; 6] = [ID, NAMESPACE_ID, PROCEDURE_ID, NAME, RPC_NAME, FORMAT];
+			}
 		}
 
 		pub mod tag_variants {
@@ -415,27 +561,27 @@ pub mod ids {
 			pub const ALL: [ColumnId; 5] = [KEY, VALUE, DEFAULT_VALUE, DESCRIPTION, REQUIRES_RESTART];
 		}
 
-		pub mod shape_retention_policies {
+		pub mod shape_retention_strategies {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
-			pub const PRIMITIVE_ID: ColumnId = ColumnId(1);
-			pub const PRIMITIVE_TYPE: ColumnId = ColumnId(2);
-			pub const POLICY_TYPE: ColumnId = ColumnId(3);
+			pub const SHAPE_ID: ColumnId = ColumnId(1);
+			pub const SHAPE_TYPE: ColumnId = ColumnId(2);
+			pub const STRATEGY_TYPE: ColumnId = ColumnId(3);
 			pub const CLEANUP_MODE: ColumnId = ColumnId(4);
 			pub const VALUE: ColumnId = ColumnId(5);
 
-			pub const ALL: [ColumnId; 5] = [PRIMITIVE_ID, PRIMITIVE_TYPE, POLICY_TYPE, CLEANUP_MODE, VALUE];
+			pub const ALL: [ColumnId; 5] = [SHAPE_ID, SHAPE_TYPE, STRATEGY_TYPE, CLEANUP_MODE, VALUE];
 		}
 
-		pub mod operator_retention_policies {
+		pub mod operator_retention_strategies {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const OPERATOR_ID: ColumnId = ColumnId(1);
-			pub const POLICY_TYPE: ColumnId = ColumnId(2);
+			pub const STRATEGY_TYPE: ColumnId = ColumnId(2);
 			pub const CLEANUP_MODE: ColumnId = ColumnId(3);
 			pub const VALUE: ColumnId = ColumnId(4);
 
-			pub const ALL: [ColumnId; 4] = [OPERATOR_ID, POLICY_TYPE, CLEANUP_MODE, VALUE];
+			pub const ALL: [ColumnId; 4] = [OPERATOR_ID, STRATEGY_TYPE, CLEANUP_MODE, VALUE];
 		}
 
 		pub mod flow_operators {
@@ -448,20 +594,10 @@ pub mod ids {
 			pub const CAP_UPDATE: ColumnId = ColumnId(5);
 			pub const CAP_DELETE: ColumnId = ColumnId(6);
 			pub const CAP_DROP: ColumnId = ColumnId(7);
-			pub const CAP_PULL: ColumnId = ColumnId(8);
-			pub const CAP_TICK: ColumnId = ColumnId(9);
+			pub const CAP_TICK: ColumnId = ColumnId(8);
 
-			pub const ALL: [ColumnId; 9] = [
-				OPERATOR,
-				LIBRARY_PATH,
-				API,
-				CAP_INSERT,
-				CAP_UPDATE,
-				CAP_DELETE,
-				CAP_PULL,
-				CAP_DROP,
-				CAP_TICK,
-			];
+			pub const ALL: [ColumnId; 8] =
+				[OPERATOR, LIBRARY_PATH, API, CAP_INSERT, CAP_UPDATE, CAP_DELETE, CAP_DROP, CAP_TICK];
 		}
 
 		pub mod flow_operator_inputs {
@@ -499,14 +635,23 @@ pub mod ids {
 			pub const ALL: [ColumnId; 4] = [ID, NAMESPACE_ID, NAME, KIND];
 		}
 
-		pub mod flow_lags {
+		pub mod flow_watermarks {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const FLOW_ID: ColumnId = ColumnId(1);
-			pub const PRIMITIVE_ID: ColumnId = ColumnId(2);
+			pub const SHAPE_ID: ColumnId = ColumnId(2);
 			pub const LAG: ColumnId = ColumnId(3);
 
-			pub const ALL: [ColumnId; 3] = [FLOW_ID, PRIMITIVE_ID, LAG];
+			pub const ALL: [ColumnId; 3] = [FLOW_ID, SHAPE_ID, LAG];
+		}
+
+		pub mod subscriptions {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const COLUMN_COUNT: ColumnId = ColumnId(2);
+
+			pub const ALL: [ColumnId; 2] = [ID, COLUMN_COUNT];
 		}
 
 		pub mod shapes {
@@ -581,11 +726,10 @@ pub mod ids {
 			pub const NAME: ColumnId = ColumnId(2);
 			pub const TARGET_TYPE: ColumnId = ColumnId(3);
 			pub const TARGET_NAMESPACE: ColumnId = ColumnId(4);
-			pub const TARGET_OBJECT: ColumnId = ColumnId(5);
+			pub const TARGET_SHAPE: ColumnId = ColumnId(5);
 			pub const ENABLED: ColumnId = ColumnId(6);
 
-			pub const ALL: [ColumnId; 6] =
-				[ID, NAME, TARGET_TYPE, TARGET_NAMESPACE, TARGET_OBJECT, ENABLED];
+			pub const ALL: [ColumnId; 6] = [ID, NAME, TARGET_TYPE, TARGET_NAMESPACE, TARGET_SHAPE, ENABLED];
 		}
 
 		pub mod authentications {
@@ -644,8 +788,9 @@ pub mod ids {
 		pub const TOKEN: SequenceId = SequenceId(18);
 		pub const SOURCE_CONNECTOR: SequenceId = SequenceId(19);
 		pub const SINK_CONNECTOR: SequenceId = SequenceId(20);
+		pub const BINDING: SequenceId = SequenceId(21);
 
-		pub const ALL: [SequenceId; 20] = [
+		pub const ALL: [SequenceId; 21] = [
 			NAMESPACE,
 			SOURCE,
 			COLUMN,
@@ -666,6 +811,7 @@ pub mod ids {
 			TOKEN,
 			SOURCE_CONNECTOR,
 			SINK_CONNECTOR,
+			BINDING,
 		];
 	}
 
@@ -682,8 +828,8 @@ pub mod ids {
 		pub const PRIMARY_KEYS: VTableId = VTableId(7);
 		pub const PRIMARY_KEY_COLUMNS: VTableId = VTableId(8);
 		pub const VERSIONS: VTableId = VTableId(9);
-		pub const PRIMITIVE_RETENTION_POLICIES: VTableId = VTableId(10);
-		pub const OPERATOR_RETENTION_POLICIES: VTableId = VTableId(11);
+		pub const PRIMITIVE_RETENTION_STRATEGIES: VTableId = VTableId(10);
+		pub const OPERATOR_RETENTION_STRATEGIES: VTableId = VTableId(11);
 		pub const CDC_CONSUMERS: VTableId = VTableId(12);
 		pub const FLOW_OPERATORS: VTableId = VTableId(14);
 		pub const FLOW_NODES: VTableId = VTableId(15);
@@ -695,19 +841,11 @@ pub mod ids {
 		pub const FLOW_OPERATOR_INPUTS: VTableId = VTableId(21);
 		pub const FLOW_OPERATOR_OUTPUTS: VTableId = VTableId(22);
 		pub const RINGBUFFERS: VTableId = VTableId(23);
-		pub const TABLE_STORAGE_STATS: VTableId = VTableId(24);
-		pub const VIEW_STORAGE_STATS: VTableId = VTableId(25);
-		pub const FLOW_STORAGE_STATS: VTableId = VTableId(26);
-		pub const FLOW_NODE_STORAGE_STATS: VTableId = VTableId(27);
-		pub const INDEX_STORAGE_STATS: VTableId = VTableId(28);
-		pub const RINGBUFFER_STORAGE_STATS: VTableId = VTableId(29);
-		pub const DICTIONARY_STORAGE_STATS: VTableId = VTableId(30);
-		pub const FLOW_LAGS: VTableId = VTableId(31);
+		pub const FLOW_WATERMARKS: VTableId = VTableId(31);
 		pub const SHAPES: VTableId = VTableId(32);
 		pub const SHAPE_FIELDS: VTableId = VTableId(33);
 		pub const ENUMS: VTableId = VTableId(34);
 		pub const EVENTS: VTableId = VTableId(35);
-		pub const PROCEDURES: VTableId = VTableId(36);
 		pub const HANDLERS: VTableId = VTableId(37);
 		pub const TAGS: VTableId = VTableId(38);
 		pub const SERIES: VTableId = VTableId(39);
@@ -723,8 +861,39 @@ pub mod ids {
 		pub const ENUM_VARIANTS: VTableId = VTableId(49);
 		pub const EVENT_VARIANTS: VTableId = VTableId(50);
 		pub const TAG_VARIANTS: VTableId = VTableId(51);
+		pub const SUBSCRIPTIONS: VTableId = VTableId(52);
 
-		pub const ALL: [VTableId; 51] = [
+		pub const PROCEDURES_RQL: VTableId = VTableId(53);
+		pub const PROCEDURES_TEST: VTableId = VTableId(54);
+		pub const PROCEDURES_NATIVE: VTableId = VTableId(55);
+		pub const PROCEDURES_FFI: VTableId = VTableId(56);
+		pub const PROCEDURES_WASM: VTableId = VTableId(57);
+
+		pub const BINDINGS_HTTP: VTableId = VTableId(58);
+		pub const BINDINGS_GRPC: VTableId = VTableId(59);
+		pub const BINDINGS_WS: VTableId = VTableId(60);
+
+		pub const METRICS_STORAGE_TABLE: VTableId = VTableId(1024);
+		pub const METRICS_STORAGE_VIEW: VTableId = VTableId(1025);
+		pub const METRICS_STORAGE_TABLE_VIRTUAL: VTableId = VTableId(1026);
+		pub const METRICS_STORAGE_RINGBUFFER: VTableId = VTableId(1027);
+		pub const METRICS_STORAGE_DICTIONARY: VTableId = VTableId(1028);
+		pub const METRICS_STORAGE_SERIES: VTableId = VTableId(1029);
+		pub const METRICS_STORAGE_FLOW: VTableId = VTableId(1030);
+		pub const METRICS_STORAGE_FLOW_NODE: VTableId = VTableId(1031);
+		pub const METRICS_STORAGE_SYSTEM: VTableId = VTableId(1032);
+
+		pub const METRICS_CDC_TABLE: VTableId = VTableId(1033);
+		pub const METRICS_CDC_VIEW: VTableId = VTableId(1034);
+		pub const METRICS_CDC_TABLE_VIRTUAL: VTableId = VTableId(1035);
+		pub const METRICS_CDC_RINGBUFFER: VTableId = VTableId(1036);
+		pub const METRICS_CDC_DICTIONARY: VTableId = VTableId(1037);
+		pub const METRICS_CDC_SERIES: VTableId = VTableId(1038);
+		pub const METRICS_CDC_FLOW: VTableId = VTableId(1039);
+		pub const METRICS_CDC_FLOW_NODE: VTableId = VTableId(1040);
+		pub const METRICS_CDC_SYSTEM: VTableId = VTableId(1041);
+
+		pub const ALL: [VTableId; 70] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -735,8 +904,8 @@ pub mod ids {
 			PRIMARY_KEYS,
 			PRIMARY_KEY_COLUMNS,
 			VERSIONS,
-			PRIMITIVE_RETENTION_POLICIES,
-			OPERATOR_RETENTION_POLICIES,
+			PRIMITIVE_RETENTION_STRATEGIES,
+			OPERATOR_RETENTION_STRATEGIES,
 			CDC_CONSUMERS,
 			FLOW_OPERATORS,
 			FLOW_NODES,
@@ -748,19 +917,19 @@ pub mod ids {
 			FLOW_OPERATOR_INPUTS,
 			FLOW_OPERATOR_OUTPUTS,
 			RINGBUFFERS,
-			TABLE_STORAGE_STATS,
-			VIEW_STORAGE_STATS,
-			FLOW_STORAGE_STATS,
-			FLOW_NODE_STORAGE_STATS,
-			INDEX_STORAGE_STATS,
-			RINGBUFFER_STORAGE_STATS,
-			DICTIONARY_STORAGE_STATS,
-			FLOW_LAGS,
+			FLOW_WATERMARKS,
 			SHAPES,
 			SHAPE_FIELDS,
 			ENUMS,
 			EVENTS,
-			PROCEDURES,
+			PROCEDURES_RQL,
+			PROCEDURES_TEST,
+			PROCEDURES_NATIVE,
+			PROCEDURES_FFI,
+			PROCEDURES_WASM,
+			BINDINGS_HTTP,
+			BINDINGS_GRPC,
+			BINDINGS_WS,
 			HANDLERS,
 			TAGS,
 			SERIES,
@@ -776,6 +945,25 @@ pub mod ids {
 			ENUM_VARIANTS,
 			EVENT_VARIANTS,
 			TAG_VARIANTS,
+			SUBSCRIPTIONS,
+			METRICS_STORAGE_TABLE,
+			METRICS_STORAGE_VIEW,
+			METRICS_STORAGE_TABLE_VIRTUAL,
+			METRICS_STORAGE_RINGBUFFER,
+			METRICS_STORAGE_DICTIONARY,
+			METRICS_STORAGE_SERIES,
+			METRICS_STORAGE_FLOW,
+			METRICS_STORAGE_FLOW_NODE,
+			METRICS_STORAGE_SYSTEM,
+			METRICS_CDC_TABLE,
+			METRICS_CDC_VIEW,
+			METRICS_CDC_TABLE_VIRTUAL,
+			METRICS_CDC_RINGBUFFER,
+			METRICS_CDC_DICTIONARY,
+			METRICS_CDC_SERIES,
+			METRICS_CDC_FLOW,
+			METRICS_CDC_FLOW_NODE,
+			METRICS_CDC_SYSTEM,
 		];
 	}
 }
@@ -789,270 +977,292 @@ struct SystemCatalogInner {
 }
 
 impl SystemCatalog {
-	/// Create a new SystemCatalog with the provided
-	/// versions are set once at construction and never change
 	pub fn new(versions: Vec<SystemVersion>) -> Self {
 		Self(Arc::new(SystemCatalogInner {
 			versions,
 		}))
 	}
 
-	/// Get all system versions
 	pub fn get_system_versions(&self) -> &[SystemVersion] {
 		&self.0.versions
 	}
 
-	/// Get the sequences virtual table definition
 	pub fn get_system_sequences_table() -> Arc<VTable> {
 		sequences()
 	}
 
-	/// Get the namespaces virtual table definition
 	pub fn get_system_namespaces_table() -> Arc<VTable> {
 		namespaces()
 	}
 
-	/// Get the tables virtual table definition
 	pub fn get_system_tables_table() -> Arc<VTable> {
 		tables()
 	}
 
-	/// Get the views virtual table definition
 	pub fn get_system_views_table() -> Arc<VTable> {
 		views()
 	}
 
-	/// Get the flows virtual table definition
 	pub fn get_system_flows_table() -> Arc<VTable> {
 		flows()
 	}
 
-	/// Get the flow_lags virtual table definition
-	pub fn get_system_flow_lags_table() -> Arc<VTable> {
-		flow_lags()
+	pub fn get_system_flow_watermarks_table() -> Arc<VTable> {
+		flow_watermarks()
 	}
 
-	/// Get the columns virtual table definition
+	pub fn get_system_subscriptions_table() -> Arc<VTable> {
+		subscriptions()
+	}
+
 	pub fn get_system_columns_table() -> Arc<VTable> {
 		columns()
 	}
 
-	/// Get the primary_keys virtual table definition
 	pub fn get_system_primary_keys_table() -> Arc<VTable> {
 		primary_keys()
 	}
 
-	/// Get the primary_key_columns virtual table definition
 	pub fn get_system_primary_key_columns_table() -> Arc<VTable> {
 		primary_key_columns()
 	}
 
-	/// Get the column_properties virtual table definition
 	pub fn get_system_column_properties_table() -> Arc<VTable> {
 		column_properties()
 	}
 
-	/// Get the system versions virtual table definition
 	pub fn get_system_versions_table() -> Arc<VTable> {
 		versions()
 	}
 
-	/// Get the shape_retention_policies virtual table definition
-	pub fn get_system_shape_retention_policies_table() -> Arc<VTable> {
-		shape_retention_policies()
+	pub fn get_system_shape_retention_strategies_table() -> Arc<VTable> {
+		shape_retention_strategies()
 	}
 
-	/// Get the operator_retention_policies virtual table definition
-	pub fn get_system_operator_retention_policies_table() -> Arc<VTable> {
-		operator_retention_policies()
+	pub fn get_system_operator_retention_strategies_table() -> Arc<VTable> {
+		operator_retention_strategies()
 	}
 
-	/// Get the cdc_consumers virtual table definition
 	pub fn get_system_cdc_consumers_table() -> Arc<VTable> {
 		cdc_consumers()
 	}
 
-	/// Get the flow_operators virtual table definition
 	pub fn get_system_flow_operators_table() -> Arc<VTable> {
 		flow_operators()
 	}
 
-	/// Get the flow_nodes virtual table definition
 	pub fn get_system_flow_nodes_table() -> Arc<VTable> {
 		flow_nodes()
 	}
 
-	/// Get the flow_edges virtual table definition
 	pub fn get_system_flow_edges_table() -> Arc<VTable> {
 		flow_edges()
 	}
 
-	/// Get the dictionaries virtual table definition
 	pub fn get_system_dictionaries_table() -> Arc<VTable> {
 		dictionaries()
 	}
 
-	/// Get the virtual_tables virtual table definition
 	pub fn get_system_virtual_tables_table() -> Arc<VTable> {
 		virtual_tables()
 	}
 
-	/// Get the types virtual table definition
 	pub fn get_system_types_table() -> Arc<VTable> {
 		types()
 	}
 
-	/// Get the flow_node_types virtual table definition
 	pub fn get_system_flow_node_types_table() -> Arc<VTable> {
 		flow_node_types()
 	}
 
-	/// Get the flow_operator_inputs virtual table definition
 	pub fn get_system_flow_operator_inputs_table() -> Arc<VTable> {
 		flow_operator_inputs()
 	}
 
-	/// Get the flow_operator_outputs virtual table definition
 	pub fn get_system_flow_operator_outputs_table() -> Arc<VTable> {
 		flow_operator_outputs()
 	}
 
-	/// Get the ringbuffers virtual table definition
 	pub fn get_system_ringbuffers_table() -> Arc<VTable> {
 		ringbuffers()
 	}
 
-	/// Get the table_storage_stats virtual table definition
-	pub fn get_system_table_storage_stats_table() -> Arc<VTable> {
-		table_storage_stats()
+	pub fn get_system_metrics_storage_table_table() -> Arc<VTable> {
+		metrics_storage_table_cached(ids::vtable::METRICS_STORAGE_TABLE, "table", 0)
 	}
 
-	/// Get the view_storage_stats virtual table definition
-	pub fn get_system_view_storage_stats_table() -> Arc<VTable> {
-		view_storage_stats()
+	pub fn get_system_metrics_storage_view_table() -> Arc<VTable> {
+		metrics_storage_table_cached(ids::vtable::METRICS_STORAGE_VIEW, "view", 1)
 	}
 
-	/// Get the flow_storage_stats virtual table definition
-	pub fn get_system_flow_storage_stats_table() -> Arc<VTable> {
-		flow_storage_stats()
+	pub fn get_system_metrics_storage_table_virtual_table() -> Arc<VTable> {
+		metrics_storage_table_cached(ids::vtable::METRICS_STORAGE_TABLE_VIRTUAL, "table_virtual", 2)
 	}
 
-	/// Get the flow_node_storage_stats virtual table definition
-	pub fn get_system_flow_node_storage_stats_table() -> Arc<VTable> {
-		flow_node_storage_stats()
+	pub fn get_system_metrics_storage_ringbuffer_table() -> Arc<VTable> {
+		metrics_storage_table_cached(ids::vtable::METRICS_STORAGE_RINGBUFFER, "ringbuffer", 3)
 	}
 
-	/// Get the index_storage_stats virtual table definition
-	pub fn get_system_index_storage_stats_table() -> Arc<VTable> {
-		index_storage_stats()
+	pub fn get_system_metrics_storage_dictionary_table() -> Arc<VTable> {
+		metrics_storage_table_cached(ids::vtable::METRICS_STORAGE_DICTIONARY, "dictionary", 4)
 	}
 
-	/// Get the ringbuffer_storage_stats virtual table definition
-	pub fn get_system_ringbuffer_storage_stats_table() -> Arc<VTable> {
-		ringbuffer_storage_stats()
+	pub fn get_system_metrics_storage_series_table() -> Arc<VTable> {
+		metrics_storage_table_cached(ids::vtable::METRICS_STORAGE_SERIES, "series", 5)
 	}
 
-	/// Get the dictionary_storage_stats virtual table definition
-	pub fn get_system_dictionary_storage_stats_table() -> Arc<VTable> {
-		dictionary_storage_stats()
+	pub fn get_system_metrics_storage_flow_table() -> Arc<VTable> {
+		metrics_storage_table_cached(ids::vtable::METRICS_STORAGE_FLOW, "flow", 6)
 	}
 
-	/// Get the shapes virtual table definition
+	pub fn get_system_metrics_storage_flow_node_table() -> Arc<VTable> {
+		metrics_storage_table_cached(ids::vtable::METRICS_STORAGE_FLOW_NODE, "flow_node", 7)
+	}
+
+	pub fn get_system_metrics_storage_system_table() -> Arc<VTable> {
+		metrics_storage_table_cached(ids::vtable::METRICS_STORAGE_SYSTEM, "system", 8)
+	}
+
+	pub fn get_system_metrics_cdc_table_table() -> Arc<VTable> {
+		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_TABLE, "table", 0)
+	}
+
+	pub fn get_system_metrics_cdc_view_table() -> Arc<VTable> {
+		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_VIEW, "view", 1)
+	}
+
+	pub fn get_system_metrics_cdc_table_virtual_table() -> Arc<VTable> {
+		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_TABLE_VIRTUAL, "table_virtual", 2)
+	}
+
+	pub fn get_system_metrics_cdc_ringbuffer_table() -> Arc<VTable> {
+		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_RINGBUFFER, "ringbuffer", 3)
+	}
+
+	pub fn get_system_metrics_cdc_dictionary_table() -> Arc<VTable> {
+		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_DICTIONARY, "dictionary", 4)
+	}
+
+	pub fn get_system_metrics_cdc_series_table() -> Arc<VTable> {
+		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_SERIES, "series", 5)
+	}
+
+	pub fn get_system_metrics_cdc_flow_table() -> Arc<VTable> {
+		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_FLOW, "flow", 6)
+	}
+
+	pub fn get_system_metrics_cdc_flow_node_table() -> Arc<VTable> {
+		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_FLOW_NODE, "flow_node", 7)
+	}
+
+	pub fn get_system_metrics_cdc_system_table() -> Arc<VTable> {
+		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_SYSTEM, "system", 8)
+	}
+
 	pub fn get_system_shapes_table() -> Arc<VTable> {
 		shapes()
 	}
 
-	/// Get the shape_fields virtual table definition
 	pub fn get_system_shape_fields_table() -> Arc<VTable> {
 		shape_fields()
 	}
 
-	/// Get the enums virtual table definition
 	pub fn get_system_enums_table() -> Arc<VTable> {
 		enums()
 	}
 
-	/// Get the enum_variants virtual table definition
 	pub fn get_system_enum_variants_table() -> Arc<VTable> {
 		enum_variants()
 	}
 
-	/// Get the events virtual table definition
 	pub fn get_system_events_table() -> Arc<VTable> {
 		events()
 	}
 
-	/// Get the event_variants virtual table definition
 	pub fn get_system_event_variants_table() -> Arc<VTable> {
 		event_variants()
 	}
 
-	/// Get the procedures virtual table definition
-	pub fn get_system_procedures_table() -> Arc<VTable> {
-		procedures()
+	pub fn get_system_procedures_rql_table() -> Arc<VTable> {
+		procedures_rql()
 	}
 
-	/// Get the handlers virtual table definition
+	pub fn get_system_procedures_test_table() -> Arc<VTable> {
+		procedures_test()
+	}
+
+	pub fn get_system_procedures_native_table() -> Arc<VTable> {
+		procedures_native()
+	}
+
+	pub fn get_system_procedures_ffi_table() -> Arc<VTable> {
+		procedures_ffi()
+	}
+
+	pub fn get_system_procedures_wasm_table() -> Arc<VTable> {
+		procedures_wasm()
+	}
+
+	pub fn get_system_bindings_http_table() -> Arc<VTable> {
+		bindings_http()
+	}
+
+	pub fn get_system_bindings_grpc_table() -> Arc<VTable> {
+		bindings_grpc()
+	}
+
+	pub fn get_system_bindings_ws_table() -> Arc<VTable> {
+		bindings_ws()
+	}
+
 	pub fn get_system_handlers_table() -> Arc<VTable> {
 		handlers()
 	}
 
-	/// Get the tags virtual table definition
 	pub fn get_system_tags_table() -> Arc<VTable> {
 		tags()
 	}
 
-	/// Get the tag_variants virtual table definition
 	pub fn get_system_tag_variants_table() -> Arc<VTable> {
 		tag_variants()
 	}
 
-	/// Get the series virtual table definition
 	pub fn get_system_series_table() -> Arc<VTable> {
 		series()
 	}
 
-	/// Get the identities virtual table definition
 	pub fn get_system_identities_table() -> Arc<VTable> {
 		identities()
 	}
 
-	/// Get the roles virtual table definition
 	pub fn get_system_roles_table() -> Arc<VTable> {
 		roles()
 	}
 
-	/// Get the granted_roles virtual table definition
 	pub fn get_system_granted_roles_table() -> Arc<VTable> {
 		granted_roles()
 	}
 
-	/// Get the policies virtual table definition
 	pub fn get_system_policies_table() -> Arc<VTable> {
 		policies()
 	}
 
-	/// Get the policy_operations virtual table definition
 	pub fn get_system_policy_operations_table() -> Arc<VTable> {
 		policy_operations()
 	}
 
-	/// Get the migrations virtual table definition
 	pub fn get_system_migrations_table() -> Arc<VTable> {
 		migrations()
 	}
 
-	/// Get the authentications virtual table definition
 	pub fn get_system_authentications_table() -> Arc<VTable> {
 		authentications()
 	}
 
-	/// Get the configs virtual table definition
-	pub fn get_system_configs_table() -> Arc<VTable> {
+	pub fn get_configs_table() -> Arc<VTable> {
 		configs()
 	}
 
-	/// Get the virtual_table_columns virtual table definition
 	pub fn get_system_virtual_table_columns_table() -> Arc<VTable> {
 		virtual_table_columns()
 	}

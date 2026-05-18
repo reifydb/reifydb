@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::tags::*, vtable::TAGS};
 
-/// Returns the static definition for the system.tags virtual table
-/// This table exposes information about all tag sumtypes in the database
 pub fn tags() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

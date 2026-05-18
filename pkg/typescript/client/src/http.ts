@@ -11,17 +11,33 @@ import type {
 
 import type {
     Column,
+    LoginChallengeResult,
     LoginResult,
+    ResponseMeta,
 } from "./types";
 import {
     ReifyError
 } from "./types";
-import {encodeParams} from "./encoder";
+import {encode_params} from "./encoder";
+import {rbcf} from "./rbcf";
+import {CONTENT_TYPE_JSON, CONTENT_TYPE_RBCF} from "./content-types";
 
 export interface HttpClientOptions {
     url: string;
-    timeoutMs?: number;
+    timeout_ms?: number;
     token?: string;
+    /**
+     * Wire format for data frames. Defaults to `"frames"`.
+     *
+     * - `"json"`   — rows-shape JSON: `[[{col: val, ...}, ...], ...]`
+     * - `"frames"` — frames-shape JSON: columnar frames (default)
+     * - `"rbcf"`   — frames-shape binary (RBCF)
+     */
+    format?: "json" | "frames" | "rbcf";
+}
+
+export interface RequestOptions {
+    signal?: AbortSignal;
 }
 
 export class HttpClient {
@@ -35,25 +51,33 @@ export class HttpClient {
         return new HttpClient(options);
     }
 
-    async loginWithPassword(principal: string, password: string): Promise<LoginResult> {
-        return this.login("password", principal, {password});
+    async login_with_password(identity: string, password: string, req_opts?: RequestOptions): Promise<LoginResult> {
+        return this.login("password", {identifier: identity, password}, req_opts);
     }
 
-    async loginWithToken(principal: string, token: string): Promise<LoginResult> {
-        return this.login("token", principal, {token});
+    async login_with_token(token: string, req_opts?: RequestOptions): Promise<LoginResult> {
+        return this.login("token", {token}, req_opts);
     }
 
-    async login(method: string, principal: string, credentials: Record<string, string>): Promise<LoginResult> {
-        const timeoutMs = this.options.timeoutMs ?? 30_000;
+    async login(method: string, credentials: Record<string, string>, req_opts?: RequestOptions): Promise<LoginResult> {
+        const timeout_ms = this.options.timeout_ms ?? 30_000;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        const timeout = setTimeout(() => controller.abort(), timeout_ms);
+
+        let signal = controller.signal;
+        if (req_opts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, req_opts.signal]);
+        } else if (req_opts?.signal) {
+            // Polyfill or fallback if AbortSignal.any is missing
+            req_opts.signal.addEventListener('abort', () => controller.abort());
+        }
 
         try {
             const response = await fetch(`${this.options.url}/v1/authenticate`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({method, principal, credentials}),
-                signal: controller.signal,
+                body: JSON.stringify({method, credentials}),
+                signal,
             });
 
             clearTimeout(timeout);
@@ -68,19 +92,74 @@ export class HttpClient {
             return {token: body.token, identity: body.identity};
         } catch (err: any) {
             clearTimeout(timeout);
-            if (err.name === 'AbortError') throw new Error("Login timeout");
+            if (err.name === 'AbortError') throw new Error("Login timeout or aborted");
             throw err;
         }
     }
 
-    async logout(): Promise<void> {
+    async login_challenge(method: string, credentials: Record<string, string>, req_opts?: RequestOptions): Promise<LoginChallengeResult> {
+        const timeout_ms = this.options.timeout_ms ?? 30_000;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeout_ms);
+
+        let signal = controller.signal;
+        if (req_opts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, req_opts.signal]);
+        } else if (req_opts?.signal) {
+            req_opts.signal.addEventListener('abort', () => controller.abort());
+        }
+
+        try {
+            const response = await fetch(`${this.options.url}/v1/authenticate`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({method, credentials}),
+                signal,
+            });
+
+            clearTimeout(timeout);
+            const body = await response.json();
+
+            if (body.status === "challenge") {
+                if (!body.challenge_id || !body.payload?.message || !body.payload?.nonce) {
+                    throw new Error("Malformed challenge response");
+                }
+                return {
+                    kind: "challenge",
+                    challenge_id: body.challenge_id,
+                    message: body.payload.message,
+                    nonce: body.payload.nonce,
+                };
+            }
+
+            if (body.status === "authenticated" && body.token && body.identity) {
+                this.options = {...this.options, token: body.token};
+                return {kind: "authenticated", token: body.token, identity: body.identity};
+            }
+
+            throw new Error(body.reason || "Authentication failed");
+        } catch (err: any) {
+            clearTimeout(timeout);
+            if (err.name === 'AbortError') throw new Error("Login timeout or aborted");
+            throw err;
+        }
+    }
+
+    async logout(req_opts?: RequestOptions): Promise<void> {
         if (!this.options.token) {
             return;
         }
 
-        const timeoutMs = this.options.timeoutMs ?? 30_000;
+        const timeout_ms = this.options.timeout_ms ?? 30_000;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        const timeout = setTimeout(() => controller.abort(), timeout_ms);
+
+        let signal = controller.signal;
+        if (req_opts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, req_opts.signal]);
+        } else if (req_opts?.signal) {
+            req_opts.signal.addEventListener('abort', () => controller.abort());
+        }
 
         try {
             const response = await fetch(`${this.options.url}/v1/logout`, {
@@ -88,7 +167,7 @@ export class HttpClient {
                 headers: {
                     'Authorization': `Bearer ${this.options.token}`,
                 },
-                signal: controller.signal,
+                signal,
             });
 
             clearTimeout(timeout);
@@ -101,127 +180,175 @@ export class HttpClient {
             this.options = {...this.options, token: undefined};
         } catch (err: any) {
             clearTimeout(timeout);
-            if (err.name === 'AbortError') throw new Error("Logout timeout");
+            if (err.name === 'AbortError') throw new Error("Logout timeout or aborted");
             throw err;
         }
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
     async admin<const S extends readonly ShapeNode[]>(
-        statements: string | string[],
+        rql: string,
         params: any,
-        shapes: S
+        shapes: S,
+        req_opts?: RequestOptions
     ): Promise<FrameResults<S>> {
-        const statementArray = Array.isArray(statements) ? statements : [statements];
-        const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statementArray;
-
-        const encodedParams = params !== undefined && params !== null
-            ? encodeParams(params)
-            : undefined;
-
-        const result = await this.send('admin', outputStatements, encodedParams);
-
-        const transformedFrames = result.map((frame: any, frameIndex: number) => {
-            const frameShape = shapes[frameIndex];
-            if (!frameShape) {
-                return frame;
-            }
-            return frame.map((row: any) => this.transformResult(row, frameShape));
-        });
-
-        return transformedFrames as FrameResults<S>;
+        const { frames } = await this.admin_with_meta(rql, params, shapes, req_opts);
+        return frames;
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
+    async admin_with_meta<const S extends readonly ShapeNode[]>(
+        rql: string,
+        params: any,
+        shapes: S,
+        req_opts?: RequestOptions
+    ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
+        return this.execute('admin', rql, params, shapes, req_opts);
+    }
+
+    /**
+     * @param rql - RQL string to execute
+     */
     async command<const S extends readonly ShapeNode[]>(
-        statements: string | string[],
+        rql: string,
         params: any,
-        shapes: S
+        shapes: S,
+        req_opts?: RequestOptions
     ): Promise<FrameResults<S>> {
-        const statementArray = Array.isArray(statements) ? statements : [statements];
-        const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statementArray;
-
-        const encodedParams = params !== undefined && params !== null
-            ? encodeParams(params)
-            : undefined;
-
-        const result = await this.send('command', outputStatements, encodedParams);
-
-        const transformedFrames = result.map((frame: any, frameIndex: number) => {
-            const frameShape = shapes[frameIndex];
-            if (!frameShape) {
-                return frame;
-            }
-            return frame.map((row: any) => this.transformResult(row, frameShape));
-        });
-
-        return transformedFrames as FrameResults<S>;
+        const { frames } = await this.command_with_meta(rql, params, shapes, req_opts);
+        return frames;
     }
 
+    /**
+     * @param rql - RQL string to execute
+     */
+    async command_with_meta<const S extends readonly ShapeNode[]>(
+        rql: string,
+        params: any,
+        shapes: S,
+        req_opts?: RequestOptions
+    ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
+        return this.execute('command', rql, params, shapes, req_opts);
+    }
+
+    /**
+     * @param rql - RQL string to execute
+     */
     async query<const S extends readonly ShapeNode[]>(
-        statements: string | string[],
+        rql: string,
         params: any,
-        shapes: S
+        shapes: S,
+        req_opts?: RequestOptions
     ): Promise<FrameResults<S>> {
-        const statementArray = Array.isArray(statements) ? statements : [statements];
-        const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
-            : statementArray;
-
-        const encodedParams = params !== undefined && params !== null
-            ? encodeParams(params)
-            : undefined;
-
-        const result = await this.send('query', outputStatements, encodedParams);
-
-        const transformedFrames = result.map((frame: any, frameIndex: number) => {
-            const frameShape = shapes[frameIndex];
-            if (!frameShape) {
-                return frame;
-            }
-            return frame.map((row: any) => this.transformResult(row, frameShape));
-        });
-
-        return transformedFrames as FrameResults<S>;
+        const { frames } = await this.query_with_meta(rql, params, shapes, req_opts);
+        return frames;
     }
 
-    private async send(endpoint: string, statements: string[], params: any): Promise<any> {
-        const timeoutMs = this.options.timeoutMs ?? 30_000;
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    /**
+     * @param rql - RQL string to execute
+     */
+    async query_with_meta<const S extends readonly ShapeNode[]>(
+        rql: string,
+        params: any,
+        shapes: S,
+        req_opts?: RequestOptions
+    ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
+        return this.execute('query', rql, params, shapes, req_opts);
+    }
 
+    private async execute<const S extends readonly ShapeNode[]>(
+        endpoint: 'admin' | 'command' | 'query',
+        rql: string,
+        params: any,
+        shapes: S,
+        req_opts?: RequestOptions
+    ): Promise<{ frames: FrameResults<S>, meta?: ResponseMeta }> {
+        const encoded_params = params !== undefined && params !== null
+            ? encode_params(params)
+            : undefined;
+
+        const { result, meta } = await this.send(endpoint, rql, encoded_params, req_opts);
+
+        const transformed_frames = result.map((frame: any, frame_index: number) => {
+            const frame_shape = shapes[frame_index];
+            if (!frame_shape) {
+                return frame;
+            }
+            return frame.map((row: any) => this.transform_result(row, frame_shape));
+        });
+
+        return { frames: transformed_frames as FrameResults<S>, meta };
+    }
+
+    private async send(
+        endpoint: string,
+        rql: string,
+        params: any,
+        req_opts?: RequestOptions,
+    ): Promise<{ result: any, meta?: ResponseMeta }> {
+        const timeout_ms = this.options.timeout_ms ?? 30_000;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeout_ms);
+
+        let signal = controller.signal;
+        if (req_opts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, req_opts.signal]);
+        } else if (req_opts?.signal) {
+            req_opts.signal.addEventListener('abort', () => controller.abort());
+        }
+
+        const format = this.options.format ?? "frames";
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
+            'Accept': format === "rbcf"
+                ? `${CONTENT_TYPE_RBCF}, ${CONTENT_TYPE_JSON}`
+                : CONTENT_TYPE_JSON,
         };
 
         if (this.options.token) {
             headers['Authorization'] = `Bearer ${this.options.token}`;
         }
 
-        const body: any = {statements};
+        const body: any = { rql };
         if (params !== undefined) {
             body.params = params;
         }
 
+        const url = `${this.options.url}/v1/${endpoint}?format=${format}`;
+
         try {
-            const response = await fetch(`${this.options.url}/v1/${endpoint}`, {
+            const response = await fetch(url, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify(body),
-                signal: controller.signal,
+                signal,
                 credentials: 'include',
             });
 
             clearTimeout(timeout);
 
-            const responseBody = await response.text();
+            const meta = extract_meta(response.headers);
+
+            const content_type = response.headers?.get?.('content-type') ?? '';
+            const is_binary = response.ok &&
+                (content_type.startsWith(CONTENT_TYPE_RBCF) || content_type.startsWith('application/octet-stream'));
+
+            if (is_binary) {
+                const buf = await response.arrayBuffer();
+                const frames = rbcf.decode(new Uint8Array(buf));
+                return { result: frames.map((frame: any) => columns_to_rows(frame.columns)), meta };
+            }
+
+            const response_body = await response.text();
             let parsed: any;
             try {
-                parsed = JSON.parse(responseBody);
+                parsed = JSON.parse(response_body);
             } catch {
-                throw new Error(`Invalid JSON response: ${responseBody}`);
+                throw new Error(`Invalid JSON response: ${response_body}`);
             }
 
             if (!response.ok) {
@@ -232,13 +359,20 @@ export class HttpClient {
                         payload: {diagnostic: parsed.diagnostic}
                     });
                 }
-                throw new Error(parsed.error || `HTTP ${response.status}: ${responseBody}`);
+                throw new Error(parsed.error || `HTTP ${response.status}: ${response_body}`);
             }
 
+            // Response shape depends on format:
+            // - "json"   → `[[{col: val}, ...], ...]` already in rows shape
+            // - "frames" → `{frames: [ColumnarFrame, ...]}` needing column→row pivot
+            if (format === "json") {
+                return { result: parsed ?? [], meta };
+            }
             const frames = parsed.frames || [];
-            return frames.map((frame: any) =>
-                columnsToRows(frame.columns)
-            );
+            return {
+                result: frames.map((frame: any) => columns_to_rows(frame.columns)),
+                meta,
+            };
         } catch (err: any) {
             clearTimeout(timeout);
             if (err.name === 'AbortError') {
@@ -248,62 +382,62 @@ export class HttpClient {
         }
     }
 
-    private transformResult(row: any, resultShape: any): any {
-        if (resultShape && resultShape.kind === 'object' && resultShape.properties) {
-            const transformedRow: any = {};
+    private transform_result(row: any, result_shape: any): any {
+        if (result_shape && result_shape.kind === 'object' && result_shape.properties) {
+            const transformed_row: any = {};
             for (const [key, value] of Object.entries(row)) {
-                const propertyShape = resultShape.properties[key];
-                if (propertyShape && propertyShape.kind === 'primitive') {
+                const property_shape = result_shape.properties[key];
+                if (property_shape && property_shape.kind === 'primitive') {
                     if (value && typeof value === 'object' && typeof (value as any).valueOf === 'function') {
-                        const rawValue = (value as any).valueOf();
-                        transformedRow[key] = this.coerceToPrimitiveType(rawValue, propertyShape.type);
+                        const raw_value = (value as any).valueOf();
+                        transformed_row[key] = this.coerce_to_primitive_type(raw_value, property_shape.type);
                     } else {
-                        transformedRow[key] = this.coerceToPrimitiveType(value, propertyShape.type);
+                        transformed_row[key] = this.coerce_to_primitive_type(value, property_shape.type);
                     }
-                } else if (propertyShape && propertyShape.kind === 'value') {
-                    transformedRow[key] = value;
+                } else if (property_shape && property_shape.kind === 'value') {
+                    transformed_row[key] = value;
                 } else {
-                    transformedRow[key] = propertyShape ? this.transformResult(value, propertyShape) : value;
+                    transformed_row[key] = property_shape ? this.transform_result(value, property_shape) : value;
                 }
             }
-            return transformedRow;
+            return transformed_row;
         }
 
-        if (resultShape && resultShape.kind === 'primitive') {
+        if (result_shape && result_shape.kind === 'primitive') {
             if (row && typeof row === 'object' && typeof row.valueOf === 'function') {
-                return this.coerceToPrimitiveType(row.valueOf(), resultShape.type);
+                return this.coerce_to_primitive_type(row.valueOf(), result_shape.type);
             }
-            return this.coerceToPrimitiveType(row, resultShape.type);
+            return this.coerce_to_primitive_type(row, result_shape.type);
         }
 
-        if (resultShape && resultShape.kind === 'value') {
+        if (result_shape && result_shape.kind === 'value') {
             return row;
         }
 
-        if (resultShape && resultShape.kind === 'array') {
+        if (result_shape && result_shape.kind === 'array') {
             if (Array.isArray(row)) {
-                return row.map((item: any) => this.transformResult(item, resultShape.items));
+                return row.map((item: any) => this.transform_result(item, result_shape.items));
             }
             return row;
         }
 
-        if (resultShape && resultShape.kind === 'optional') {
+        if (result_shape && result_shape.kind === 'optional') {
             if (row === undefined || row === null) {
                 return undefined;
             }
-            return this.transformResult(row, resultShape.shape);
+            return this.transform_result(row, result_shape.shape);
         }
 
         return row;
     }
 
-    private coerceToPrimitiveType(value: any, shapeType: string): any {
+    private coerce_to_primitive_type(value: any, shape_type: string): any {
         if (value === undefined || value === null) {
             return value;
         }
 
-        const bigintTypes = ['Int8', 'Int16', 'Uint8', 'Uint16'];
-        if (bigintTypes.includes(shapeType)) {
+        const bigint_types = ['Int8', 'Int16', 'Uint8', 'Uint16'];
+        if (bigint_types.includes(shape_type)) {
             if (typeof value === 'bigint') {
                 return value;
             }
@@ -319,13 +453,20 @@ export class HttpClient {
     }
 }
 
-function columnsToRows(columns: Column[]): Record<string, Value>[] {
-    const rowCount = columns[0]?.payload.length ?? 0;
-    return Array.from({length: rowCount}, (_, i) => {
+function columns_to_rows(columns: Column[]): Record<string, Value>[] {
+    const row_count = columns[0]?.payload.length ?? 0;
+    return Array.from({length: row_count}, (_, i) => {
         const row: Record<string, Value> = {};
         for (const col of columns) {
             row[col.name] = decode({type: col.type, value: col.payload[i]});
         }
         return row;
     });
+}
+
+function extract_meta(headers: Headers | undefined): ResponseMeta | undefined {
+    const fingerprint = headers?.get?.('x-fingerprint');
+    const duration = headers?.get?.('x-duration');
+    if (!fingerprint || !duration) return undefined;
+    return { fingerprint, duration };
 }

@@ -1,23 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
-import {waitForDatabase} from "../setup";
+import {wait_for_database} from "../setup";
 import {Client, WsClient} from "../../../src";
 import {Shape} from "@reifydb/core";
 
-describe('Concurrent requests', () => {
-    let wsClient: WsClient;
+describe.each([
+    {format: "frames"},
+    {format: "rbcf"},
+] as const)('Concurrent requests [$format]', ({format}) => {
+    let ws_client: WsClient;
 
     beforeAll(async () => {
-        await waitForDatabase();
+        await wait_for_database();
     }, 30000);
 
 
     beforeEach(async () => {
         try {
-            wsClient = await Client.connect_ws(process.env.REIFYDB_WS_URL, {
-                timeoutMs: 10000,
-                token: process.env.REIFYDB_TOKEN
+            ws_client = await Client.connect_ws(process.env.REIFYDB_WS_URL, {
+                timeout_ms: 10000,
+                token: process.env.REIFYDB_TOKEN,
+                format,
             });
         } catch (error) {
             console.error('❌ WebSocket connection failed:', error);
@@ -27,30 +31,30 @@ describe('Concurrent requests', () => {
 
 
     afterEach(async () => {
-        if (wsClient) {
+        if (ws_client) {
             try {
-                wsClient.disconnect();
+                ws_client.disconnect();
             } catch (error) {
                 console.error('⚠️ Error during disconnect:', error);
             }
-            wsClient = null;
+            ws_client = null;
         }
     });
 
     describe('admin', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
-                wsClient.admin(
+                ws_client.admin(
                     'MAP {result: 1};',
                     {},
                     [Shape.object({result: Shape.int4Value()})]
                 ),
-                wsClient.admin(
+                ws_client.admin(
                     'MAP { a: 2, b: 3 };',
                     {},
                     [Shape.object({a: Shape.int4Value(), b: Shape.int4Value()})]
                 ),
-                wsClient.admin(
+                ws_client.admin(
                     "MAP {result: 'ReifyDB'};",
                     {},
                     [Shape.object({result: Shape.utf8Value()})]
@@ -67,17 +71,17 @@ describe('Concurrent requests', () => {
     describe('command', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
-                wsClient.command(
+                ws_client.command(
                     'MAP {result: 1};',
                     {},
                     [Shape.object({result: Shape.int4Value()})]
                 ),
-                wsClient.command(
+                ws_client.command(
                     'MAP { a: 2, b: 3 };',
                     {},
                     [Shape.object({a: Shape.int4Value(), b: Shape.int4Value()})]
                 ),
-                wsClient.command(
+                ws_client.command(
                     "MAP {result: 'ReifyDB'};",
                     {},
                     [Shape.object({result: Shape.utf8Value()})]
@@ -95,17 +99,17 @@ describe('Concurrent requests', () => {
     describe('query', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
-                wsClient.query(
+                ws_client.query(
                     'MAP {result: 1};',
                     {},
                     [Shape.object({result: Shape.int4Value()})]
                 ),
-                wsClient.query(
+                ws_client.query(
                     'MAP { a: 2, b: 3 };',
                     {},
                     [Shape.object({a: Shape.int4Value(), b: Shape.int4Value()})]
                 ),
-                wsClient.query(
+                ws_client.query(
                     "MAP {result: 'ReifyDB'};",
                     {},
                     [Shape.object({result: Shape.utf8Value()})]
@@ -122,17 +126,17 @@ describe('Concurrent requests', () => {
     describe('admin & query mixed', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
-                wsClient.admin(
+                ws_client.admin(
                     'MAP {result: 1};',
                     {},
                     [Shape.object({result: Shape.int4Value()})]
                 ),
-                wsClient.query(
+                ws_client.query(
                     'MAP { a: 2, b: 3 };',
                     {},
                     [Shape.object({a: Shape.int4Value(), b: Shape.int4Value()})]
                 ),
-                wsClient.admin(
+                ws_client.admin(
                     "MAP {result: 'ReifyDB'};",
                     {},
                     [Shape.object({result: Shape.utf8Value()})]
@@ -149,17 +153,17 @@ describe('Concurrent requests', () => {
     describe('command & query mixed', () => {
         it('should handle multiple concurrent requests', async () => {
             const [result1, result2, result3] = await Promise.all([
-                wsClient.command(
+                ws_client.command(
                     'MAP {result: 1};',
                     {},
                     [Shape.object({result: Shape.int4Value()})]
                 ),
-                wsClient.query(
+                ws_client.query(
                     'MAP { a: 2, b: 3 };',
                     {},
                     [Shape.object({a: Shape.int4Value(), b: Shape.int4Value()})]
                 ),
-                wsClient.command(
+                ws_client.command(
                     "MAP {result: 'ReifyDB'};",
                     {},
                     [Shape.object({result: Shape.utf8Value()})]

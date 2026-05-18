@@ -44,9 +44,7 @@ impl Catalog {
 	) -> Result<Option<Sink>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				if let Some(sink) =
-					self.materialized.find_sink_by_name_at(namespace, name, cmd.version())
-				{
+				if let Some(sink) = self.cache.find_sink_by_name_at(namespace, name, cmd.version()) {
 					return Ok(Some(sink));
 				}
 				if let Some(sink) = CatalogStore::find_sink_by_name(
@@ -55,7 +53,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"Sink '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Sink '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(sink));
@@ -70,9 +68,7 @@ impl Catalog {
 				if TransactionalSinkChanges::is_sink_deleted_by_name(admin, namespace, name) {
 					return Ok(None);
 				}
-				if let Some(sink) =
-					self.materialized.find_sink_by_name_at(namespace, name, admin.version())
-				{
+				if let Some(sink) = self.cache.find_sink_by_name_at(namespace, name, admin.version()) {
 					return Ok(Some(sink));
 				}
 				if let Some(sink) = CatalogStore::find_sink_by_name(
@@ -81,7 +77,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"Sink '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Sink '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(sink));
@@ -89,9 +85,7 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				if let Some(sink) =
-					self.materialized.find_sink_by_name_at(namespace, name, qry.version())
-				{
+				if let Some(sink) = self.cache.find_sink_by_name_at(namespace, name, qry.version()) {
 					return Ok(Some(sink));
 				}
 				if let Some(sink) = CatalogStore::find_sink_by_name(
@@ -100,32 +94,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"Sink '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
-						name, namespace
-					);
-					return Ok(Some(sink));
-				}
-				Ok(None)
-			}
-			Transaction::Subscription(sub) => {
-				if let Some(sink) = TransactionalSinkChanges::find_sink_by_name(sub, namespace, name) {
-					return Ok(Some(sink.clone()));
-				}
-				if TransactionalSinkChanges::is_sink_deleted_by_name(sub, namespace, name) {
-					return Ok(None);
-				}
-				if let Some(sink) =
-					self.materialized.find_sink_by_name_at(namespace, name, sub.version())
-				{
-					return Ok(Some(sink));
-				}
-				if let Some(sink) = CatalogStore::find_sink_by_name(
-					&mut Transaction::Subscription(&mut *sub),
-					namespace,
-					name,
-				)? {
-					warn!(
-						"Sink '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Sink '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(sink));
@@ -151,9 +120,7 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				if let Some(sink) =
-					self.materialized.find_sink_by_name_at(namespace, name, rep.version())
-				{
+				if let Some(sink) = self.cache.find_sink_by_name_at(namespace, name, rep.version()) {
 					return Ok(Some(sink));
 				}
 				if let Some(sink) = CatalogStore::find_sink_by_name(
@@ -162,7 +129,7 @@ impl Catalog {
 					name,
 				)? {
 					warn!(
-						"Sink '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Sink '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(sink));

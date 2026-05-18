@@ -1,112 +1,379 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Subscription registry for tracking active WebSocket subscriptions.
-//!
-//! The registry maintains mappings between subscription IDs, connections,
-//! and push channels to enable server-initiated message delivery.
+use std::{
+	collections::{HashMap, HashSet},
+	mem,
+	time::Duration,
+};
 
 use dashmap::DashMap;
-use reifydb_core::{
-	interface::catalog::id::SubscriptionId,
-	value::{
-		column::columns::Columns,
-		frame::response::{ResponseColumn, ResponseFrame},
-	},
+use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
+use reifydb_runtime::context::{clock::Clock, rng::Rng};
+use reifydb_sub_server::{
+	format::WireFormat,
+	response::{CONTENT_TYPE_FRAMES, CONTENT_TYPE_JSON, resolve_response_json},
 };
-use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
-use reifydb_type::value::uuid::Uuid7;
-use serde_json::{Value as JsonValue, json};
+use reifydb_subscription::{
+	batch::BatchId,
+	delivery::{DeliveryResult, SubscriptionDelivery},
+};
+use reifydb_type::value::{frame::frame::Frame, uuid::Uuid7};
+use reifydb_wire_format::{encode::encode_frames, json::to::convert_frames, options::EncodeOptions};
+use serde_json::{Value as JsonValue, from_str, json};
 use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
-/// Unique identifier for a WebSocket connection.
+use crate::handler::{BinaryKind, encode_rbcf_envelope};
+
 pub type ConnectionId = Uuid7;
 
-/// Message sent to a connection for push delivery.
+#[derive(Debug, Clone)]
+pub struct BatchChangeEntryPush {
+	pub subscription_id: SubscriptionId,
+	pub content_type: String,
+	pub body: JsonValue,
+}
+
 #[derive(Debug, Clone)]
 pub enum PushMessage {
-	/// A change notification for a subscription.
-	Change {
+	ChangeJson {
 		subscription_id: SubscriptionId,
 		content_type: String,
 		body: JsonValue,
 	},
-	/// The remote subscription has closed (upstream stream ended).
+
+	ChangeRbcf {
+		subscription_id: SubscriptionId,
+		envelope: Vec<u8>,
+	},
+
 	Closed {
 		subscription_id: SubscriptionId,
 	},
+
+	BatchChangeJson {
+		batch_id: BatchId,
+		entries: Vec<BatchChangeEntryPush>,
+	},
+
+	BatchChangeRbcf {
+		batch_id: BatchId,
+		envelope: Vec<u8>,
+	},
+
+	BatchMemberClosed {
+		batch_id: BatchId,
+		subscription_id: SubscriptionId,
+	},
+
+	BatchClosed {
+		batch_id: BatchId,
+	},
 }
 
-/// Internal state for a subscription.
 struct SubscriptionState {
 	connection_id: ConnectionId,
-	push_tx: mpsc::Sender<PushMessage>,
+	push_tx: mpsc::UnboundedSender<PushMessage>,
+	format: WireFormat,
 	#[allow(dead_code)]
 	query: String,
+
+	batch_id: Option<BatchId>,
+
+	warming: Option<WarmingBuffer>,
+
+	throttle: ThrottleState,
 }
 
-/// Registry tracking subscriptions across all WebSocket connections.
-///
-/// The registry is thread-safe and can be shared across connection handler
-/// and the push broadcast thread.
-pub struct SubscriptionRegistry {
-	/// subscription_id → subscription state
-	subscriptions: DashMap<SubscriptionId, SubscriptionState>,
-	/// connection_id → list of subscription_ids (for cleanup on disconnect)
-	connections: DashMap<ConnectionId, Vec<SubscriptionId>>,
+struct ThrottleState {
+	interval_millis: u64,
+	last_sent_at: Option<u64>,
+	pending: Vec<Columns>,
 }
 
-impl SubscriptionRegistry {
-	/// Create a new empty registry.
-	pub fn new() -> Self {
+impl ThrottleState {
+	fn new(interval: Duration) -> Self {
 		Self {
-			subscriptions: DashMap::new(),
-			connections: DashMap::new(),
+			interval_millis: interval.as_millis() as u64,
+			last_sent_at: None,
+			pending: Vec::new(),
 		}
 	}
 
-	/// Register a new subscription for a connection using the provided subscription ID.
-	///
-	/// The subscription ID should be the database subscription ID returned from CREATE SUBSCRIPTION.
+	fn enabled(&self) -> bool {
+		self.interval_millis != 0
+	}
+
+	fn ready(&self, now_millis: u64) -> bool {
+		match self.last_sent_at {
+			None => true,
+			Some(prev) => now_millis.saturating_sub(prev) >= self.interval_millis,
+		}
+	}
+}
+
+struct WarmingBuffer {
+	buffered: Vec<Columns>,
+	cap: usize,
+	overflowed: bool,
+}
+
+impl WarmingBuffer {
+	fn new(cap: usize) -> Self {
+		Self {
+			buffered: Vec::new(),
+			cap,
+			overflowed: false,
+		}
+	}
+
+	fn push(&mut self, columns: Columns) {
+		if self.overflowed {
+			return;
+		}
+		if self.buffered.len() >= self.cap {
+			self.overflowed = true;
+			self.buffered.clear();
+			return;
+		}
+		self.buffered.push(columns);
+	}
+}
+
+#[derive(Debug)]
+pub enum PromoteResult {
+	Promoted(usize),
+	Overflowed,
+	NotWarming,
+	NotFound,
+	Disconnected,
+}
+
+struct BatchState {
+	connection_id: ConnectionId,
+	push_tx: mpsc::UnboundedSender<PushMessage>,
+	format: WireFormat,
+
+	member_ids: Vec<SubscriptionId>,
+
+	pending: DashMap<SubscriptionId, Vec<Frame>>,
+}
+
+pub struct SubscriptionRegistry {
+	subscriptions: DashMap<SubscriptionId, SubscriptionState>,
+
+	connections: DashMap<ConnectionId, Vec<SubscriptionId>>,
+
+	batches: DashMap<BatchId, BatchState>,
+
+	connection_batches: DashMap<ConnectionId, Vec<BatchId>>,
+
+	clock: Clock,
+}
+
+impl SubscriptionRegistry {
+	pub fn new(clock: Clock) -> Self {
+		Self {
+			subscriptions: DashMap::new(),
+			connections: DashMap::new(),
+			batches: DashMap::new(),
+			connection_batches: DashMap::new(),
+			clock,
+		}
+	}
+
+	#[allow(clippy::too_many_arguments)]
 	pub fn subscribe(
 		&self,
 		subscription_id: SubscriptionId,
 		connection_id: ConnectionId,
 		query: String,
-		push_tx: mpsc::Sender<PushMessage>,
+		push_tx: mpsc::UnboundedSender<PushMessage>,
+		format: WireFormat,
+		warming_cap: Option<usize>,
+		throttle: Duration,
 	) {
-		// Store subscription state
 		self.subscriptions.insert(
 			subscription_id,
 			SubscriptionState {
 				connection_id,
 				push_tx,
+				format,
 				query,
+				batch_id: None,
+				warming: warming_cap.map(WarmingBuffer::new),
+				throttle: ThrottleState::new(throttle),
 			},
 		);
 
-		// Track subscription for connection cleanup
 		self.connections.entry(connection_id).or_default().push(subscription_id);
 
-		debug!("Registered subscription {} for connection {}", subscription_id, connection_id);
+		debug!(
+			"Registered subscription {} for connection {} (warming_cap={:?})",
+			subscription_id, connection_id, warming_cap
+		);
 	}
 
-	/// Get the push channel for a subscription.
-	///
-	/// Returns None if the subscription doesn't exist.
-	pub fn get_push_channel(&self, subscription_id: &SubscriptionId) -> Option<mpsc::Sender<PushMessage>> {
+	pub fn promote_to_live(&self, subscription_id: SubscriptionId) -> PromoteResult {
+		let mut state = match self.subscriptions.get_mut(&subscription_id) {
+			Some(s) => s,
+			None => return PromoteResult::NotFound,
+		};
+		let warming = match state.warming.as_ref() {
+			Some(w) => w,
+			None => return PromoteResult::NotWarming,
+		};
+		if warming.overflowed {
+			state.warming = None;
+			return PromoteResult::Overflowed;
+		}
+		let buffered = state.warming.take().expect("warming present").buffered;
+		let count = buffered.len();
+		let format = state.format;
+		let push_tx = state.push_tx.clone();
+		for columns in buffered {
+			let msg = match encode_change(subscription_id, columns, format) {
+				Some(m) => m,
+				None => return PromoteResult::Disconnected,
+			};
+			if push_tx.send(msg).is_err() {
+				return PromoteResult::Disconnected;
+			}
+		}
+		PromoteResult::Promoted(count)
+	}
+
+	pub fn register_batch(
+		&self,
+		connection_id: ConnectionId,
+		member_ids: Vec<SubscriptionId>,
+		push_tx: mpsc::UnboundedSender<PushMessage>,
+		format: WireFormat,
+		clock: &Clock,
+		rng: &Rng,
+	) -> BatchId {
+		let batch_id = BatchId(Uuid7::generate(clock, rng));
+
+		for member_id in &member_ids {
+			if let Some(mut state) = self.subscriptions.get_mut(member_id) {
+				state.batch_id = Some(batch_id);
+			}
+		}
+
+		self.batches.insert(
+			batch_id,
+			BatchState {
+				connection_id,
+				push_tx,
+				format,
+				member_ids: member_ids.clone(),
+				pending: DashMap::new(),
+			},
+		);
+
+		self.connection_batches.entry(connection_id).or_default().push(batch_id);
+
+		debug!(
+			"Registered batch {} with {} members for connection {}",
+			batch_id,
+			member_ids.len(),
+			connection_id
+		);
+		batch_id
+	}
+
+	pub fn unsubscribe_batch(&self, batch_id: BatchId) -> Option<Vec<SubscriptionId>> {
+		let (_, state) = self.batches.remove(&batch_id)?;
+
+		let connection_id = state.connection_id;
+		let members = state.member_ids.clone();
+
+		let mut removed_by_conn: HashMap<ConnectionId, HashSet<SubscriptionId>> = HashMap::new();
+		for member_id in &members {
+			if let Some((_, sub_state)) = self.subscriptions.remove(member_id) {
+				removed_by_conn.entry(sub_state.connection_id).or_default().insert(*member_id);
+			}
+		}
+		for (conn_id, removed) in removed_by_conn {
+			if let Some(mut subs) = self.connections.get_mut(&conn_id) {
+				subs.retain(|id| !removed.contains(id));
+			}
+		}
+
+		let remove_connection =
+			self.connections.get(&connection_id).map(|subs| subs.is_empty()).unwrap_or(false);
+		if remove_connection {
+			self.connections.remove(&connection_id);
+		}
+
+		let batches_empty = {
+			if let Some(mut batches) = self.connection_batches.get_mut(&connection_id) {
+				batches.retain(|id| *id != batch_id);
+				batches.is_empty()
+			} else {
+				false
+			}
+		};
+		if batches_empty {
+			self.connection_batches.remove(&connection_id);
+		}
+
+		debug!("Unsubscribed batch {} ({} members)", batch_id, members.len());
+		Some(members)
+	}
+
+	pub fn batch_for(&self, subscription_id: &SubscriptionId) -> Option<BatchId> {
+		self.subscriptions.get(subscription_id).and_then(|state| state.batch_id)
+	}
+
+	pub fn batch_count(&self) -> usize {
+		self.batches.len()
+	}
+
+	pub fn push_batch_frames(
+		&self,
+		batch_id: BatchId,
+		subscription_id: SubscriptionId,
+		frames: Vec<Frame>,
+	) -> bool {
+		let Some(batch) = self.batches.get(&batch_id) else {
+			return false;
+		};
+		let mut entry = batch.pending.entry(subscription_id).or_default();
+		for frame in frames {
+			entry.push(frame);
+		}
+		true
+	}
+
+	pub fn emit_batch_member_closed(&self, batch_id: BatchId, subscription_id: SubscriptionId) -> bool {
+		let Some(batch) = self.batches.get(&batch_id) else {
+			return false;
+		};
+		batch.push_tx
+			.send(PushMessage::BatchMemberClosed {
+				batch_id,
+				subscription_id,
+			})
+			.is_ok()
+	}
+
+	pub fn get_push_channel(&self, subscription_id: &SubscriptionId) -> Option<mpsc::UnboundedSender<PushMessage>> {
 		self.subscriptions.get(subscription_id).map(|state| state.push_tx.clone())
 	}
 
-	/// Unsubscribe a specific subscription.
-	///
-	/// Returns true if the subscription existed and was removed.
+	pub fn get_push_target(
+		&self,
+		subscription_id: &SubscriptionId,
+	) -> Option<(mpsc::UnboundedSender<PushMessage>, WireFormat)> {
+		self.subscriptions.get(subscription_id).map(|state| (state.push_tx.clone(), state.format))
+	}
+
 	pub fn unsubscribe(&self, subscription_id: SubscriptionId) -> bool {
 		if let Some((_, state)) = self.subscriptions.remove(&subscription_id) {
 			let connection_id = state.connection_id;
 
-			// Remove from connection's subscription list and check if empty
 			let should_remove_connection = {
 				if let Some(mut subs) = self.connections.get_mut(&connection_id) {
 					subs.retain(|id| *id != subscription_id);
@@ -116,7 +383,6 @@ impl SubscriptionRegistry {
 				}
 			};
 
-			// If the connection has no more subscriptions, remove the entry entirely
 			if should_remove_connection {
 				self.connections.remove(&connection_id);
 			}
@@ -128,11 +394,13 @@ impl SubscriptionRegistry {
 		}
 	}
 
-	/// Cleanup all subscriptions for a connection.
-	///
-	/// Called when a WebSocket connection is closed.
-	/// Returns the list of subscription IDs that were cleaned up.
 	pub fn cleanup_connection(&self, connection_id: ConnectionId) -> Vec<SubscriptionId> {
+		if let Some((_, batch_ids)) = self.connection_batches.remove(&connection_id) {
+			for batch_id in &batch_ids {
+				self.batches.remove(batch_id);
+			}
+		}
+
 		if let Some((_, subscription_ids)) = self.connections.remove(&connection_id) {
 			for sub_id in &subscription_ids {
 				self.subscriptions.remove(sub_id);
@@ -144,40 +412,33 @@ impl SubscriptionRegistry {
 		}
 	}
 
-	/// Broadcast a message to all active subscriptions.
-	///
-	/// Used by the test push thread to send periodic updates.
 	pub async fn broadcast(&self, content_type: String, body: JsonValue) {
 		for entry in self.subscriptions.iter() {
 			let subscription_id = *entry.key();
 			let state = entry.value();
 
-			let msg = PushMessage::Change {
+			let msg = PushMessage::ChangeJson {
 				subscription_id,
 				content_type: content_type.clone(),
 				body: body.clone(),
 			};
 
-			// Try to send, ignore if channel is full or closed
-			if let Err(e) = state.push_tx.try_send(msg) {
+			if let Err(e) = state.push_tx.send(msg) {
 				warn!("Failed to push to subscription {}: {}", subscription_id, e);
 			}
 		}
 	}
 
-	/// Get the number of active subscriptions.
 	#[allow(dead_code)]
 	pub fn subscription_count(&self) -> usize {
 		self.subscriptions.len()
 	}
 
-	/// Get the number of connections with subscriptions.
 	#[allow(dead_code)]
 	pub fn connection_count(&self) -> usize {
 		self.connections.len()
 	}
 
-	/// Log registry stats for debugging resource usage.
 	#[allow(dead_code)]
 	pub fn log_stats(&self) {
 		info!(
@@ -188,73 +449,309 @@ impl SubscriptionRegistry {
 	}
 }
 
-impl Default for SubscriptionRegistry {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
 impl SubscriptionDelivery for SubscriptionRegistry {
 	fn try_deliver(&self, subscription_id: &SubscriptionId, columns: Columns) -> DeliveryResult {
-		let push_tx = match self.get_push_channel(subscription_id) {
-			Some(tx) => tx,
+		if let Some(batch_id) = self.batch_for(subscription_id) {
+			if let Some(batch) = self.batches.get(&batch_id) {
+				batch.pending.entry(*subscription_id).or_default().push(Frame::from(columns));
+				return DeliveryResult::Delivered;
+			}
+
+			return DeliveryResult::Disconnected;
+		}
+
+		let mut state = match self.subscriptions.get_mut(subscription_id) {
+			Some(s) => s,
 			None => return DeliveryResult::Disconnected,
 		};
 
-		// Convert Columns to ResponseFrame
-		let row_numbers: Vec<u64> = columns.row_numbers.iter().map(|r| r.0).collect();
-		let row_count = columns.row_count();
+		if let Some(buffer) = state.warming.as_mut() {
+			buffer.push(columns);
+			return DeliveryResult::Delivered;
+		}
 
-		let response_columns: Vec<ResponseColumn> = columns
-			.columns
-			.iter()
-			.map(|col| {
-				let data: Vec<String> = (0..row_count)
-					.map(|idx| {
-						let value = col.data().get_value(idx);
-						value.to_string()
-					})
-					.collect();
-
-				ResponseColumn {
-					name: col.name.to_string(),
-					r#type: col.data().get_type(),
-					payload: data,
+		if state.throttle.enabled() {
+			let now = self.clock.now_millis();
+			if state.throttle.ready(now) && state.throttle.pending.is_empty() {
+				let msg = match encode_change(*subscription_id, columns, state.format) {
+					Some(msg) => msg,
+					None => return DeliveryResult::Disconnected,
+				};
+				match state.push_tx.send(msg) {
+					Ok(_) => {
+						state.throttle.last_sent_at = Some(now);
+						DeliveryResult::Delivered
+					}
+					Err(_) => DeliveryResult::Disconnected,
 				}
-			})
-			.collect();
-
-		let frame = ResponseFrame {
-			row_numbers,
-			columns: response_columns,
-		};
-
-		let body = json!({ "frames": [frame] });
-
-		let msg = PushMessage::Change {
-			subscription_id: *subscription_id,
-			content_type: "application/vnd.reifydb.frames+json".to_string(),
-			body,
-		};
-
-		match push_tx.try_send(msg) {
-			Ok(_) => DeliveryResult::Delivered,
-			Err(mpsc::error::TrySendError::Full(_)) => DeliveryResult::BackPressure,
-			Err(mpsc::error::TrySendError::Closed(_)) => DeliveryResult::Disconnected,
+			} else {
+				state.throttle.pending.push(columns);
+				DeliveryResult::Delivered
+			}
+		} else {
+			let msg = match encode_change(*subscription_id, columns, state.format) {
+				Some(msg) => msg,
+				None => return DeliveryResult::Disconnected,
+			};
+			match state.push_tx.send(msg) {
+				Ok(_) => DeliveryResult::Delivered,
+				Err(_) => DeliveryResult::Disconnected,
+			}
 		}
 	}
 
 	fn active_subscriptions(&self) -> Vec<SubscriptionId> {
 		self.subscriptions.iter().map(|entry| *entry.key()).collect()
 	}
+
+	fn flush(&self) {
+		let now = self.clock.now_millis();
+		let mut throttle_ready: Vec<(
+			SubscriptionId,
+			Vec<Columns>,
+			WireFormat,
+			mpsc::UnboundedSender<PushMessage>,
+		)> = Vec::new();
+
+		for mut entry in self.subscriptions.iter_mut() {
+			let sub_id = *entry.key();
+			let state = entry.value_mut();
+			if state.batch_id.is_some() || state.warming.is_some() {
+				continue;
+			}
+			if !state.throttle.enabled() || state.throttle.pending.is_empty() {
+				continue;
+			}
+			if !state.throttle.ready(now) {
+				continue;
+			}
+			let drained = mem::take(&mut state.throttle.pending);
+			state.throttle.last_sent_at = Some(now);
+			throttle_ready.push((sub_id, drained, state.format, state.push_tx.clone()));
+		}
+
+		let mut dead_subs: Vec<SubscriptionId> = Vec::new();
+		for (sub_id, drained, format, push_tx) in throttle_ready {
+			for columns in drained {
+				let msg = match encode_change(sub_id, columns, format) {
+					Some(m) => m,
+					None => {
+						dead_subs.push(sub_id);
+						break;
+					}
+				};
+				if push_tx.send(msg).is_err() {
+					dead_subs.push(sub_id);
+					break;
+				}
+			}
+		}
+		for sub_id in dead_subs {
+			self.unsubscribe(sub_id);
+		}
+
+		let mut dead_batches: Vec<BatchId> = Vec::new();
+
+		for entry in self.batches.iter() {
+			let batch_id = *entry.key();
+			let batch = entry.value();
+
+			let taken: Vec<(SubscriptionId, Vec<Frame>)> = batch
+				.pending
+				.iter_mut()
+				.filter_map(|mut e| {
+					let v = mem::take(e.value_mut());
+					if v.is_empty() {
+						return None;
+					}
+					if v.is_empty() {
+						None
+					} else {
+						Some((*e.key(), v))
+					}
+				})
+				.collect();
+			if taken.is_empty() {
+				continue;
+			}
+
+			let msg = match batch.format {
+				WireFormat::Rbcf => {
+					let mut entries: Vec<(String, Vec<u8>)> = Vec::with_capacity(taken.len());
+					for (sub_id, frames) in taken {
+						let rbcf_bytes = match encode_frames(&frames, &EncodeOptions::fast()) {
+							Ok(b) => b,
+							Err(e) => {
+								warn!(
+									"Failed to RBCF-encode batch entry for {}/{}: {}",
+									batch_id, sub_id, e
+								);
+								continue;
+							}
+						};
+						entries.push((sub_id.to_string(), rbcf_bytes));
+					}
+					if entries.is_empty() {
+						continue;
+					}
+					let envelope = encode_rbcf_batch_envelope(&batch_id.to_string(), &entries);
+					PushMessage::BatchChangeRbcf {
+						batch_id,
+						envelope,
+					}
+				}
+				WireFormat::Frames => {
+					let entries = taken
+						.into_iter()
+						.map(|(sub_id, frames)| {
+							let body = json!({ "frames": convert_frames(&frames) });
+							BatchChangeEntryPush {
+								subscription_id: sub_id,
+								content_type: CONTENT_TYPE_FRAMES.to_string(),
+								body,
+							}
+						})
+						.collect();
+					PushMessage::BatchChangeJson {
+						batch_id,
+						entries,
+					}
+				}
+				WireFormat::Json => {
+					let entries = taken
+						.into_iter()
+						.filter_map(|(sub_id, frames)| {
+							let resolved = match resolve_response_json(frames, false) {
+								Ok(r) => r,
+								Err(e) => {
+									warn!(
+										"Failed to JSON-encode batch entry for {}/{}: {}",
+										batch_id, sub_id, e
+									);
+									return None;
+								}
+							};
+							let body = from_str(&resolved.body)
+								.unwrap_or(JsonValue::String(resolved.body));
+							Some(BatchChangeEntryPush {
+								subscription_id: sub_id,
+								content_type: CONTENT_TYPE_JSON.to_string(),
+								body,
+							})
+						})
+						.collect::<Vec<_>>();
+					if entries.is_empty() {
+						continue;
+					}
+					PushMessage::BatchChangeJson {
+						batch_id,
+						entries,
+					}
+				}
+			};
+
+			if batch.push_tx.send(msg).is_err() {
+				dead_batches.push(batch_id);
+			}
+		}
+
+		for batch_id in dead_batches {
+			if let Some(members) = self.unsubscribe_batch(batch_id) {
+				debug!("Batch {} push channel closed; cascaded {} members", batch_id, members.len());
+			}
+		}
+	}
+}
+
+pub fn encode_change_for_handler(
+	subscription_id: SubscriptionId,
+	columns: Columns,
+	format: WireFormat,
+) -> Option<PushMessage> {
+	encode_change(subscription_id, columns, format)
+}
+
+fn encode_change(subscription_id: SubscriptionId, columns: Columns, format: WireFormat) -> Option<PushMessage> {
+	match format {
+		WireFormat::Rbcf => {
+			let frames = vec![Frame::from(columns)];
+			let rbcf_bytes = match encode_frames(&frames, &EncodeOptions::fast()) {
+				Ok(b) => b,
+				Err(e) => {
+					warn!("Failed to RBCF-encode change for {}: {}", subscription_id, e);
+					return None;
+				}
+			};
+			let envelope = encode_rbcf_envelope(
+				BinaryKind::Change,
+				&subscription_id.to_string(),
+				&rbcf_bytes,
+				None,
+			);
+			Some(PushMessage::ChangeRbcf {
+				subscription_id,
+				envelope,
+			})
+		}
+		WireFormat::Frames => {
+			let body = json!({ "frames": convert_frames(&[Frame::from(columns)]) });
+			Some(PushMessage::ChangeJson {
+				subscription_id,
+				content_type: CONTENT_TYPE_FRAMES.to_string(),
+				body,
+			})
+		}
+		WireFormat::Json => {
+			let frames = vec![Frame::from(columns)];
+			let resolved = match resolve_response_json(frames, false) {
+				Ok(r) => r,
+				Err(e) => {
+					warn!("Failed to JSON-encode change for {}: {}", subscription_id, e);
+					return None;
+				}
+			};
+			let body = from_str(&resolved.body).unwrap_or(JsonValue::String(resolved.body));
+			Some(PushMessage::ChangeJson {
+				subscription_id,
+				content_type: CONTENT_TYPE_JSON.to_string(),
+				body,
+			})
+		}
+	}
+}
+
+fn encode_rbcf_batch_envelope(batch_id: &str, entries: &[(String, Vec<u8>)]) -> Vec<u8> {
+	let batch_id_bytes = batch_id.as_bytes();
+	let mut total_entries_bytes = 0usize;
+	for (sub_id, rbcf) in entries {
+		total_entries_bytes += 4 + sub_id.len() + 4 + rbcf.len();
+	}
+
+	let mut envelope = Vec::with_capacity(1 + 4 + batch_id_bytes.len() + 4 + total_entries_bytes);
+	envelope.push(BinaryKind::BatchChange as u8);
+	envelope.extend_from_slice(&(batch_id_bytes.len() as u32).to_le_bytes());
+	envelope.extend_from_slice(batch_id_bytes);
+	envelope.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+
+	for (sub_id, rbcf) in entries {
+		let sub_id_bytes = sub_id.as_bytes();
+		envelope.extend_from_slice(&(sub_id_bytes.len() as u32).to_le_bytes());
+		envelope.extend_from_slice(sub_id_bytes);
+		envelope.extend_from_slice(&(rbcf.len() as u32).to_le_bytes());
+		envelope.extend_from_slice(rbcf);
+	}
+	envelope
 }
 
 #[cfg(test)]
 pub mod tests {
+	use std::collections::HashSet;
+
 	use reifydb_runtime::context::{
 		clock::{Clock, MockClock},
 		rng::Rng,
 	};
+	use reifydb_type::value::Value;
 
 	use super::*;
 
@@ -265,15 +762,27 @@ pub mod tests {
 		(mock, clock, rng)
 	}
 
+	fn single_int_columns(name: &str, value: i64) -> Columns {
+		Columns::single_row([(name, Value::Int8(value))])
+	}
+
 	#[tokio::test]
 	async fn test_subscribe_unsubscribe() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let registry = SubscriptionRegistry::new();
+		let registry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
-		let (tx, mut rx) = mpsc::channel(10);
+		let (tx, mut rx) = mpsc::unbounded_channel();
 
 		let sub_id = SubscriptionId(12345);
-		registry.subscribe(sub_id, connection_id, "FROM test".to_string(), tx);
+		registry.subscribe(
+			sub_id,
+			connection_id,
+			"FROM test".to_string(),
+			tx,
+			WireFormat::Frames,
+			None,
+			Duration::ZERO,
+		);
 		assert_eq!(registry.subscription_count(), 1);
 
 		// Broadcast with a content_type + body
@@ -287,12 +796,12 @@ pub mod tests {
 				}]
 			}]
 		});
-		registry.broadcast("application/vnd.reifydb.frames+json".to_string(), body.clone()).await;
+		registry.broadcast(CONTENT_TYPE_FRAMES.to_string(), body.clone()).await;
 
 		// Should receive message
 		let msg = rx.try_recv().unwrap();
 		match msg {
-			PushMessage::Change {
+			PushMessage::ChangeJson {
 				subscription_id,
 				body: received_body,
 				..
@@ -300,9 +809,7 @@ pub mod tests {
 				assert_eq!(subscription_id, sub_id);
 				assert_eq!(received_body, body);
 			}
-			PushMessage::Closed {
-				..
-			} => panic!("Unexpected Closed message"),
+			other => panic!("Unexpected message: {:?}", other),
 		}
 
 		// Unsubscribe
@@ -318,15 +825,31 @@ pub mod tests {
 	#[tokio::test]
 	async fn test_cleanup_connection() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let registry = SubscriptionRegistry::new();
+		let registry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
-		let (tx1, _rx1) = mpsc::channel(10);
-		let (tx2, _rx2) = mpsc::channel(10);
+		let (tx1, _rx1) = mpsc::unbounded_channel();
+		let (tx2, _rx2) = mpsc::unbounded_channel();
 
 		let sub1 = SubscriptionId(12345);
 		let sub2 = SubscriptionId(12346);
-		registry.subscribe(sub1, connection_id, "FROM test1".to_string(), tx1);
-		registry.subscribe(sub2, connection_id, "FROM test2".to_string(), tx2);
+		registry.subscribe(
+			sub1,
+			connection_id,
+			"FROM test1".to_string(),
+			tx1,
+			WireFormat::Json,
+			None,
+			Duration::ZERO,
+		);
+		registry.subscribe(
+			sub2,
+			connection_id,
+			"FROM test2".to_string(),
+			tx2,
+			WireFormat::Json,
+			None,
+			Duration::ZERO,
+		);
 		assert_eq!(registry.subscription_count(), 2);
 
 		registry.cleanup_connection(connection_id);
@@ -337,15 +860,31 @@ pub mod tests {
 	#[tokio::test]
 	async fn test_partial_unsubscribe() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let registry = SubscriptionRegistry::new();
+		let registry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
-		let (tx1, _rx1) = mpsc::channel(10);
-		let (tx2, _rx2) = mpsc::channel(10);
+		let (tx1, _rx1) = mpsc::unbounded_channel();
+		let (tx2, _rx2) = mpsc::unbounded_channel();
 
 		let sub1 = SubscriptionId(12345);
 		let sub2 = SubscriptionId(12346);
-		registry.subscribe(sub1, connection_id, "FROM test1".to_string(), tx1);
-		registry.subscribe(sub2, connection_id, "FROM test2".to_string(), tx2);
+		registry.subscribe(
+			sub1,
+			connection_id,
+			"FROM test1".to_string(),
+			tx1,
+			WireFormat::Json,
+			None,
+			Duration::ZERO,
+		);
+		registry.subscribe(
+			sub2,
+			connection_id,
+			"FROM test2".to_string(),
+			tx2,
+			WireFormat::Json,
+			None,
+			Duration::ZERO,
+		);
 		assert_eq!(registry.subscription_count(), 2);
 		assert_eq!(registry.connection_count(), 1);
 
@@ -356,5 +895,344 @@ pub mod tests {
 		assert!(registry.unsubscribe(sub2));
 		assert_eq!(registry.subscription_count(), 0);
 		assert_eq!(registry.connection_count(), 0);
+	}
+
+	#[tokio::test]
+	async fn test_batch_flush_coalesces_two_members() {
+		let (_, clock, rng) = test_clock_and_rng();
+		let registry = SubscriptionRegistry::new(clock.clone());
+		let connection_id = Uuid7::generate(&clock, &rng);
+		let (push_tx, mut push_rx) = mpsc::unbounded_channel();
+
+		let sub_a = SubscriptionId(1);
+		let sub_b = SubscriptionId(2);
+
+		registry.subscribe(
+			sub_a,
+			connection_id,
+			"FROM a".to_string(),
+			push_tx.clone(),
+			WireFormat::Frames,
+			None,
+			Duration::ZERO,
+		);
+		registry.subscribe(
+			sub_b,
+			connection_id,
+			"FROM b".to_string(),
+			push_tx.clone(),
+			WireFormat::Frames,
+			None,
+			Duration::ZERO,
+		);
+
+		let batch_id = registry.register_batch(
+			connection_id,
+			vec![sub_a, sub_b],
+			push_tx.clone(),
+			WireFormat::Frames,
+			&clock,
+			&rng,
+		);
+		assert_eq!(registry.batch_count(), 1);
+		assert_eq!(registry.batch_for(&sub_a), Some(batch_id));
+		assert_eq!(registry.batch_for(&sub_b), Some(batch_id));
+
+		// Each try_deliver for batched members should not emit anything yet.
+		assert!(matches!(
+			registry.try_deliver(&sub_a, single_int_columns("value", 10)),
+			DeliveryResult::Delivered
+		));
+		assert!(matches!(
+			registry.try_deliver(&sub_b, single_int_columns("value", 20)),
+			DeliveryResult::Delivered
+		));
+
+		// No push before flush.
+		assert!(push_rx.try_recv().is_err());
+
+		registry.flush();
+
+		let msg = push_rx.try_recv().expect("expected one BatchChange after flush");
+		// Exactly one envelope should be emitted.
+		assert!(push_rx.try_recv().is_err());
+		match msg {
+			PushMessage::BatchChangeJson {
+				batch_id: bid,
+				entries,
+			} => {
+				assert_eq!(bid, batch_id);
+				assert_eq!(entries.len(), 2);
+				let ids: HashSet<SubscriptionId> = entries.iter().map(|e| e.subscription_id).collect();
+				assert!(ids.contains(&sub_a));
+				assert!(ids.contains(&sub_b));
+			}
+			other => panic!("expected BatchChangeJson, got {:?}", other),
+		}
+	}
+
+	#[tokio::test]
+	async fn test_batch_flush_merges_repeated_member_deliveries() {
+		let (_, clock, rng) = test_clock_and_rng();
+		let registry = SubscriptionRegistry::new(clock.clone());
+		let connection_id = Uuid7::generate(&clock, &rng);
+		let (push_tx, mut push_rx) = mpsc::unbounded_channel();
+
+		let sub_a = SubscriptionId(100);
+		registry.subscribe(
+			sub_a,
+			connection_id,
+			"FROM a".to_string(),
+			push_tx.clone(),
+			WireFormat::Frames,
+			None,
+			Duration::ZERO,
+		);
+		let batch_id =
+			registry.register_batch(connection_id, vec![sub_a], push_tx, WireFormat::Frames, &clock, &rng);
+
+		// Two deliveries in one tick - should merge into one envelope entry with two frames.
+		registry.try_deliver(&sub_a, single_int_columns("value", 1));
+		registry.try_deliver(&sub_a, single_int_columns("value", 2));
+
+		registry.flush();
+
+		let msg = push_rx.try_recv().expect("envelope");
+		match msg {
+			PushMessage::BatchChangeJson {
+				batch_id: bid,
+				entries,
+			} => {
+				assert_eq!(bid, batch_id);
+				assert_eq!(entries.len(), 1);
+				assert_eq!(entries[0].subscription_id, sub_a);
+				// `Frames` format body: object with `frames` array of length 2.
+				let frames = entries[0].body.get("frames").expect("frames key").as_array().unwrap();
+				assert_eq!(frames.len(), 2);
+			}
+			other => panic!("expected BatchChangeJson, got {:?}", other),
+		}
+	}
+
+	#[tokio::test]
+	async fn test_batch_flush_empty_tick_is_noop() {
+		let (_, clock, rng) = test_clock_and_rng();
+		let registry = SubscriptionRegistry::new(clock.clone());
+		let connection_id = Uuid7::generate(&clock, &rng);
+		let (push_tx, mut push_rx) = mpsc::unbounded_channel();
+		let sub_a = SubscriptionId(77);
+		registry.subscribe(
+			sub_a,
+			connection_id,
+			"FROM a".to_string(),
+			push_tx.clone(),
+			WireFormat::Frames,
+			None,
+			Duration::ZERO,
+		);
+		registry.register_batch(connection_id, vec![sub_a], push_tx, WireFormat::Frames, &clock, &rng);
+
+		registry.flush();
+		assert!(push_rx.try_recv().is_err());
+	}
+
+	#[tokio::test]
+	async fn test_batch_unsubscribe_cascades_members() {
+		let (_, clock, rng) = test_clock_and_rng();
+		let registry = SubscriptionRegistry::new(clock.clone());
+		let connection_id = Uuid7::generate(&clock, &rng);
+		let (push_tx, _push_rx) = mpsc::unbounded_channel();
+		let sub_a = SubscriptionId(11);
+		let sub_b = SubscriptionId(22);
+		registry.subscribe(
+			sub_a,
+			connection_id,
+			"FROM a".to_string(),
+			push_tx.clone(),
+			WireFormat::Frames,
+			None,
+			Duration::ZERO,
+		);
+		registry.subscribe(
+			sub_b,
+			connection_id,
+			"FROM b".to_string(),
+			push_tx.clone(),
+			WireFormat::Frames,
+			None,
+			Duration::ZERO,
+		);
+		let batch_id = registry.register_batch(
+			connection_id,
+			vec![sub_a, sub_b],
+			push_tx,
+			WireFormat::Frames,
+			&clock,
+			&rng,
+		);
+
+		let removed = registry.unsubscribe_batch(batch_id).expect("batch existed");
+		assert_eq!(removed.len(), 2);
+		assert_eq!(registry.subscription_count(), 0);
+		assert_eq!(registry.batch_count(), 0);
+	}
+
+	#[tokio::test]
+	async fn test_batch_cleanup_on_connection_close() {
+		let (_, clock, rng) = test_clock_and_rng();
+		let registry = SubscriptionRegistry::new(clock.clone());
+		let connection_id = Uuid7::generate(&clock, &rng);
+		let (push_tx, _push_rx) = mpsc::unbounded_channel();
+		let sub_a = SubscriptionId(31);
+		registry.subscribe(
+			sub_a,
+			connection_id,
+			"FROM a".to_string(),
+			push_tx.clone(),
+			WireFormat::Frames,
+			None,
+			Duration::ZERO,
+		);
+		registry.register_batch(connection_id, vec![sub_a], push_tx, WireFormat::Frames, &clock, &rng);
+
+		let cleaned = registry.cleanup_connection(connection_id);
+		assert_eq!(cleaned, vec![sub_a]);
+		assert_eq!(registry.batch_count(), 0);
+	}
+
+	#[test]
+	fn test_batch_id_display_fromstr_roundtrip() {
+		let (_, clock, rng) = test_clock_and_rng();
+		let id = BatchId(Uuid7::generate(&clock, &rng));
+		let rendered = id.to_string();
+		let parsed: BatchId = rendered.parse().expect("parse roundtrip");
+		assert_eq!(id, parsed);
+	}
+
+	#[tokio::test]
+	async fn test_batch_flush_cascades_on_dead_channel() {
+		let (_, clock, rng) = test_clock_and_rng();
+		let registry = SubscriptionRegistry::new(clock.clone());
+		let connection_id = Uuid7::generate(&clock, &rng);
+		let (push_tx, push_rx) = mpsc::unbounded_channel();
+		let sub_a = SubscriptionId(55);
+		registry.subscribe(
+			sub_a,
+			connection_id,
+			"FROM a".to_string(),
+			push_tx.clone(),
+			WireFormat::Frames,
+			None,
+			Duration::ZERO,
+		);
+		let _batch_id =
+			registry.register_batch(connection_id, vec![sub_a], push_tx, WireFormat::Frames, &clock, &rng);
+
+		// Close the receiver side → push_tx.send() will fail during flush.
+		drop(push_rx);
+
+		registry.try_deliver(&sub_a, single_int_columns("value", 7));
+		registry.flush();
+
+		// Batch should be gone.
+		assert_eq!(registry.batch_count(), 0);
+	}
+
+	#[tokio::test]
+	async fn test_warming_buffers_until_promote() {
+		let (_, clock, rng) = test_clock_and_rng();
+		let registry = SubscriptionRegistry::new(clock.clone());
+		let connection_id = Uuid7::generate(&clock, &rng);
+		let (push_tx, mut push_rx) = mpsc::unbounded_channel();
+
+		let sub = SubscriptionId(7001);
+		registry.subscribe(
+			sub,
+			connection_id,
+			"FROM warm".to_string(),
+			push_tx,
+			WireFormat::Frames,
+			Some(16),
+			Duration::ZERO,
+		);
+
+		assert!(matches!(registry.try_deliver(&sub, single_int_columns("v", 1)), DeliveryResult::Delivered));
+		assert!(matches!(registry.try_deliver(&sub, single_int_columns("v", 2)), DeliveryResult::Delivered));
+		assert!(push_rx.try_recv().is_err(), "no pushes while warming");
+
+		match registry.promote_to_live(sub) {
+			PromoteResult::Promoted(n) => assert_eq!(n, 2),
+			other => panic!("unexpected promote result: {:?}", other),
+		}
+
+		let msg = push_rx.try_recv().expect("expected first buffered push after promote");
+		assert!(matches!(msg, PushMessage::ChangeJson { subscription_id, .. } if subscription_id == sub));
+		let msg = push_rx.try_recv().expect("expected second buffered push after promote");
+		assert!(matches!(msg, PushMessage::ChangeJson { subscription_id, .. } if subscription_id == sub));
+
+		assert!(matches!(registry.try_deliver(&sub, single_int_columns("v", 3)), DeliveryResult::Delivered));
+		let msg = push_rx.try_recv().expect("expected live push after promote");
+		assert!(matches!(msg, PushMessage::ChangeJson { subscription_id, .. } if subscription_id == sub));
+	}
+
+	#[tokio::test]
+	async fn test_warming_overflow_marks_subscription() {
+		let (_, clock, rng) = test_clock_and_rng();
+		let registry = SubscriptionRegistry::new(clock.clone());
+		let connection_id = Uuid7::generate(&clock, &rng);
+		let (push_tx, _push_rx) = mpsc::unbounded_channel();
+
+		let sub = SubscriptionId(7002);
+		registry.subscribe(
+			sub,
+			connection_id,
+			"FROM warm".to_string(),
+			push_tx,
+			WireFormat::Frames,
+			Some(2),
+			Duration::ZERO,
+		);
+
+		registry.try_deliver(&sub, single_int_columns("v", 1));
+		registry.try_deliver(&sub, single_int_columns("v", 2));
+		registry.try_deliver(&sub, single_int_columns("v", 3));
+
+		match registry.promote_to_live(sub) {
+			PromoteResult::Overflowed => {}
+			other => panic!("expected Overflowed, got {:?}", other),
+		}
+	}
+
+	#[tokio::test]
+	async fn test_promote_unknown_subscription() {
+		let registry = SubscriptionRegistry::new(Clock::Mock(MockClock::from_millis(0)));
+		match registry.promote_to_live(SubscriptionId(999)) {
+			PromoteResult::NotFound => {}
+			other => panic!("expected NotFound, got {:?}", other),
+		}
+	}
+
+	#[tokio::test]
+	async fn test_promote_non_warming_subscription() {
+		let (_, clock, rng) = test_clock_and_rng();
+		let registry = SubscriptionRegistry::new(clock.clone());
+		let connection_id = Uuid7::generate(&clock, &rng);
+		let (push_tx, _push_rx) = mpsc::unbounded_channel();
+
+		let sub = SubscriptionId(7003);
+		registry.subscribe(
+			sub,
+			connection_id,
+			"FROM live".to_string(),
+			push_tx,
+			WireFormat::Frames,
+			None,
+			Duration::ZERO,
+		);
+
+		match registry.promote_to_live(sub) {
+			PromoteResult::NotWarming => {}
+			other => panic!("expected NotWarming, got {:?}", other),
+		}
 	}
 }

@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::fs;
+
 use reifydb_client::GrpcClient;
-use reifydb_type::error::Error;
+use reifydb_type::{error::Error, value::Value};
 use tracing::{error, info};
+use uuid::Uuid;
 
 /// Execute an entire job: claim the job_run, run all steps sequentially, then complete.
 pub async fn execute_job(client: &GrpcClient, job_run_id: &str, job_id: &str, run_id: &str) -> Result<(), Error> {
 	// Create workspace directory for this run
 	let workspace = format!("/tmp/forge-runs/{run_id}");
-	std::fs::create_dir_all(&workspace).ok();
+	fs::create_dir_all(&workspace).ok();
 
 	// 1. Claim: set job_run status to running (only if still pending)
 	client.command(
@@ -29,7 +32,6 @@ pub async fn execute_job(client: &GrpcClient, job_run_id: &str, job_id: &str, ru
 
 	// Collect step IDs upfront so the non-Send FrameRows iterator doesn't live across awaits
 	let step_ids: Vec<String> = steps_result
-		.frames
 		.first()
 		.map(|f| f.rows().filter_map(|row| row.get_value("id").map(|v| v.to_string())).collect())
 		.unwrap_or_default();
@@ -49,7 +51,6 @@ pub async fn execute_job(client: &GrpcClient, job_run_id: &str, job_id: &str, ru
 			.await?;
 
 		let step_run_id = match step_run_result
-			.frames
 			.first()
 			.and_then(|f| f.rows().next())
 			.and_then(|row| row.get_value("id").map(|v| v.to_string()))
@@ -104,7 +105,6 @@ async fn execute_step(
 		client.query(&format!("FROM forge::steps | FILTER id == uuid::v4(\"{step_id}\")"), None).await?;
 
 	let command_str = step_result
-		.frames
 		.first()
 		.and_then(|f| f.rows().next().and_then(|row| row.get_value("command").map(|v| v.to_string())))
 		.unwrap_or_default();
@@ -128,7 +128,7 @@ async fn execute_step(
 	let rql = if is_exec_call {
 		// Create step-specific workspace subdirectory
 		let step_workspace = format!("{workspace}/{step_run_id}");
-		std::fs::create_dir_all(&step_workspace).ok();
+		fs::create_dir_all(&step_workspace).ok();
 
 		// CALL forge::exec("cargo check") → CALL forge::exec("cargo check",
 		// "/tmp/forge-runs/{run_id}/{step_run_id}")
@@ -149,12 +149,11 @@ async fn execute_step(
 
 				// Read exit_code from result frames
 				let exit_code = command_result
-					.frames
 					.first()
 					.and_then(|f| f.rows().next())
 					.and_then(|row| row.get_value("exit_code"))
 					.and_then(|v| match v {
-						reifydb_type::value::Value::Int4(c) => Some(c),
+						Value::Int4(c) => Some(c),
 						_ => None,
 					})
 					.unwrap_or(-1);
@@ -162,10 +161,10 @@ async fn execute_step(
 				let mut line_number: i32 = 1;
 
 				// Read and insert stdout
-				if let Ok(stdout) = std::fs::read_to_string(format!("{step_workspace}/stdout.log")) {
+				if let Ok(stdout) = fs::read_to_string(format!("{step_workspace}/stdout.log")) {
 					for line in stdout.lines() {
 						let line_escaped = line.replace('"', "\\\"");
-						let log_id = uuid::Uuid::new_v4();
+						let log_id = Uuid::new_v4();
 						let _ = client
 							.command(
 								&format!(
@@ -181,10 +180,10 @@ async fn execute_step(
 				}
 
 				// Read and insert stderr
-				if let Ok(stderr) = std::fs::read_to_string(format!("{step_workspace}/stderr.log")) {
+				if let Ok(stderr) = fs::read_to_string(format!("{step_workspace}/stderr.log")) {
 					for line in stderr.lines() {
 						let line_escaped = line.replace('"', "\\\"");
-						let log_id = uuid::Uuid::new_v4();
+						let log_id = Uuid::new_v4();
 						let _ = client
 							.command(
 								&format!(
@@ -218,9 +217,9 @@ async fn execute_step(
 				info!("Step run {} {} (exit_code: {})", step_run_id, status, exit_code);
 				Ok(succeeded)
 			} else {
-				// Pure RQL step — collect log lines from result frames
+				// Pure RQL step - collect log lines from result frames
 				let mut log_lines: Vec<String> = Vec::new();
-				for frame in &command_result.frames {
+				for frame in &command_result {
 					let headers: Vec<&str> =
 						frame.columns.iter().map(|c| c.name.as_str()).collect();
 					log_lines.push(headers.join(" | "));
@@ -239,7 +238,7 @@ async fn execute_step(
 
 				for (i, line) in log_lines.iter().enumerate() {
 					let line_escaped = line.replace('"', "\\\"");
-					let log_id = uuid::Uuid::new_v4();
+					let log_id = Uuid::new_v4();
 					let line_number = (i as i32) + 1;
 					let _ = client
 						.command(
@@ -268,7 +267,7 @@ async fn execute_step(
 		Err(e) => {
 			// Log the error diagnostic as stderr
 			let err_msg = e.message.replace('"', "\\\"");
-			let log_id = uuid::Uuid::new_v4();
+			let log_id = Uuid::new_v4();
 			let _ = client
 				.command(
 					&format!(

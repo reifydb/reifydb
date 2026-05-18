@@ -3,11 +3,10 @@
 
 use reifydb_type::{error::Diagnostic, fragment::Fragment, value::r#type::Type};
 
-/// View flow processing error
 pub fn flow_error(message: String) -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_001".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Flow processing error: {}", message),
 		column: None,
 		fragment: Fragment::None,
@@ -19,11 +18,10 @@ pub fn flow_error(message: String) -> Diagnostic {
 	}
 }
 
-/// FlowTransaction keyspace overlap detected
 pub fn flow_transaction_keyspace_overlap(key_debug: String) -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_002".to_string(),
-		statement: None,
+		rql: None,
 		message: format!(
 			"FlowTransaction keyspace overlap: key {} was already written by another FlowTransaction",
 			key_debug
@@ -40,11 +38,10 @@ pub fn flow_transaction_keyspace_overlap(key_debug: String) -> Diagnostic {
 	}
 }
 
-/// Flow already registered
 pub fn flow_already_registered(flow_id: u64) -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_003".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Flow {} is already registered", flow_id),
 		column: None,
 		fragment: Fragment::None,
@@ -56,11 +53,10 @@ pub fn flow_already_registered(flow_id: u64) -> Diagnostic {
 	}
 }
 
-/// Invalid flow version data in catalog
 pub fn flow_version_corrupted(flow_id: u64, byte_count: usize) -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_004".to_string(),
-		statement: None,
+		rql: None,
 		message: format!(
 			"Flow {} version data is corrupted: expected 8 bytes, found {} bytes",
 			flow_id, byte_count
@@ -78,11 +74,10 @@ pub fn flow_version_corrupted(flow_id: u64, byte_count: usize) -> Diagnostic {
 	}
 }
 
-/// Flow backfill timeout
 pub fn flow_backfill_timeout(flow_id: u64, timeout_secs: u64) -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_005".to_string(),
-		statement: None,
+		rql: None,
 		message: format!(
 			"Timeout waiting for flow {} backfill to complete after {} seconds",
 			flow_id, timeout_secs
@@ -100,11 +95,10 @@ pub fn flow_backfill_timeout(flow_id: u64, timeout_secs: u64) -> Diagnostic {
 	}
 }
 
-/// Flow dispatcher unavailable
 pub fn flow_dispatcher_unavailable() -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_006".to_string(),
-		statement: None,
+		rql: None,
 		message: "Flow dispatcher is unavailable (channel closed)".to_string(),
 		column: None,
 		fragment: Fragment::None,
@@ -119,11 +113,10 @@ pub fn flow_dispatcher_unavailable() -> Diagnostic {
 	}
 }
 
-/// Remote source unsupported in flow graphs
 pub fn flow_remote_source_unsupported() -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_007".to_string(),
-		statement: None,
+		rql: None,
 		message: "Cannot create flow for remote source".to_string(),
 		column: None,
 		fragment: Fragment::None,
@@ -136,11 +129,10 @@ pub fn flow_remote_source_unsupported() -> Diagnostic {
 	}
 }
 
-/// Window timestamp column not found in input data
 pub fn flow_window_timestamp_column_not_found(column: &str) -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_009".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Window timestamp column '{}' not found in input data", column),
 		column: None,
 		fragment: Fragment::None,
@@ -156,11 +148,10 @@ pub fn flow_window_timestamp_column_not_found(column: &str) -> Diagnostic {
 	}
 }
 
-/// Window timestamp column has wrong type
 pub fn flow_window_timestamp_column_type_mismatch(column: &str, found: Type) -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_010".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Window timestamp column '{}' has type {:?}, expected DateTime", column, found),
 		column: None,
 		fragment: Fragment::None,
@@ -174,17 +165,33 @@ pub fn flow_window_timestamp_column_type_mismatch(column: &str, found: Type) -> 
 	}
 }
 
-/// Flow requires at least one real source
 pub fn flow_source_required() -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_008".to_string(),
-		statement: None,
+		rql: None,
 		message: "Flow requires at least one source".to_string(),
 		column: None,
 		fragment: Fragment::None,
 		label: None,
 		help: Some("A view flow must read from a table, view, ring buffer, or series. \
 			Inline data (FROM [...]) cannot be used as the source for a view."
+			.to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+pub fn flow_ephemeral_id_capacity_exceeded(flow_id: u64) -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_011".to_string(),
+		rql: None,
+		message: format!("Ephemeral flow {} exceeded maximum ID capacity of 99", flow_id),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some("An ephemeral flow is limited to 99 nodes and 99 edges. \
+			Simplify the subscription query to reduce operator count."
 			.to_string()),
 		notes: vec![],
 		cause: None,

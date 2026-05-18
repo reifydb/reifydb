@@ -79,6 +79,7 @@ TS_PACKAGES=(
     "pkg/typescript/console/package.json"
     "pkg/typescript/react/package.json"
     "pkg/typescript/shell/package.json"
+    "pkg/typescript/ui/package.json"
     "pkg/typescript/wasm/package.json"
 )
 

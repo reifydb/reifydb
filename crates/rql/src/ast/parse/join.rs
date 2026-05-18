@@ -25,18 +25,19 @@ impl<'bump> Parser<'bump> {
 		let token = self.consume_keyword(Join)?;
 		let with = self.parse_sub_query()?;
 
-		// as <alias>
 		self.consume_operator(As)?;
 		let alias = self.consume(TokenKind::Identifier)?.fragment;
 
-		// using (col1, col2) and ...
 		let using_clause = self.parse_using_clause()?;
+		let (ttl, snapshot) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::InnerJoin {
 			token,
 			with,
 			using_clause,
 			alias,
+			ttl,
+			snapshot,
 			rql: self.source_since(start),
 		})
 	}
@@ -59,15 +60,17 @@ impl<'bump> Parser<'bump> {
 
 		let with = self.parse_sub_query()?;
 
-		// Required: as <alias>
 		self.consume_operator(As)?;
 		let alias = self.consume(TokenKind::Identifier)?.fragment;
+		let (ttl, snapshot) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::NaturalJoin {
 			token,
 			with,
 			join_type,
 			alias,
+			ttl,
+			snapshot,
 			rql: self.source_since(start),
 		})
 	}
@@ -79,18 +82,19 @@ impl<'bump> Parser<'bump> {
 
 		let with = self.parse_sub_query()?;
 
-		// as <alias>
 		self.consume_operator(As)?;
 		let alias = self.consume(TokenKind::Identifier)?.fragment;
 
-		// using (col1, col2) and ...
 		let using_clause = self.parse_using_clause()?;
+		let (ttl, snapshot) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::InnerJoin {
 			token,
 			with,
 			using_clause,
 			alias,
+			ttl,
+			snapshot,
 			rql: self.source_since(start),
 		})
 	}
@@ -102,32 +106,31 @@ impl<'bump> Parser<'bump> {
 
 		let with = self.parse_sub_query()?;
 
-		// as <alias>
 		self.consume_operator(As)?;
 		let alias = self.consume(TokenKind::Identifier)?.fragment;
 
-		// using (col1, col2) and ...
 		let using_clause = self.parse_using_clause()?;
+		let (ttl, snapshot) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::LeftJoin {
 			token,
 			with,
 			using_clause,
 			alias,
+			ttl,
+			snapshot,
 			rql: self.source_since(start),
 		})
 	}
 
-	/// Parse: using (expr, expr) and|or (expr, expr) ...
 	fn parse_using_clause(&mut self) -> Result<AstUsingClause<'bump>> {
 		let using_token = self.consume_keyword(Using)?;
 		let mut pairs = Vec::new();
 
 		loop {
-			// Expect: (expression, expression)
 			self.consume_operator(OpenParen)?;
 			let first = self.parse_node(Precedence::None)?;
-			// Consume comma separator
+
 			if !self.current()?.is_separator(Comma) {
 				return Err(AstError::TokenizeError {
 					message: "expected ','".to_string(),
@@ -138,7 +141,6 @@ impl<'bump> Parser<'bump> {
 			let second = self.parse_node(Precedence::None)?;
 			self.consume_operator(CloseParen)?;
 
-			// Check for connector ('and' or 'or')
 			let connector = if !self.is_eof() {
 				if self.current()?.is_operator(And) {
 					self.advance()?;
@@ -642,5 +644,130 @@ pub mod tests {
 
 		assert_eq!(alias.text(), "o");
 		assert_eq!(using_clause.pairs.len(), 1);
+	}
+
+	#[test]
+	fn test_inner_join_with_ttl_both_sides() {
+		let bump = Bump::new();
+		let source = "inner join { from orders } as o using (id, o.user_id) \
+			with { ttl: { left: { duration: '1h' }, right: { duration: '2d' } } }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		let result = result.pop().unwrap();
+		let AstJoin::InnerJoin {
+			ttl,
+			..
+		} = result.first_unchecked().as_join()
+		else {
+			panic!("Expected InnerJoin");
+		};
+		let ttl = ttl.as_ref().expect("expected ttl block");
+		let left = ttl.left.as_ref().expect("left side present");
+		assert_eq!(left.duration.fragment.text(), "1h");
+		let right = ttl.right.as_ref().expect("right side present");
+		assert_eq!(right.duration.fragment.text(), "2d");
+	}
+
+	#[test]
+	fn test_inner_join_with_ttl_only_left() {
+		let bump = Bump::new();
+		let source = "inner join { from orders } as o using (id, o.user_id) \
+			with { ttl: { left: { duration: '10m', on: updated } } }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		let result = result.pop().unwrap();
+		let AstJoin::InnerJoin {
+			ttl,
+			..
+		} = result.first_unchecked().as_join()
+		else {
+			panic!("Expected InnerJoin");
+		};
+		let ttl = ttl.as_ref().expect("expected ttl block");
+		let left = ttl.left.as_ref().expect("left present");
+		assert_eq!(left.duration.fragment.text(), "10m");
+		assert_eq!(left.anchor.as_ref().unwrap().fragment.text(), "updated");
+		assert!(ttl.right.is_none(), "right side must be absent when only left is given");
+	}
+
+	#[test]
+	fn test_left_join_with_ttl_only_right() {
+		let bump = Bump::new();
+		let source = "left join { from orders } as o using (id, o.user_id) \
+			with { ttl: { right: { duration: '1d' } } }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		let result = result.pop().unwrap();
+		let AstJoin::LeftJoin {
+			ttl,
+			..
+		} = result.first_unchecked().as_join()
+		else {
+			panic!("Expected LeftJoin");
+		};
+		let ttl = ttl.as_ref().expect("expected ttl block");
+		assert!(ttl.left.is_none());
+		assert_eq!(ttl.right.as_ref().unwrap().duration.fragment.text(), "1d");
+	}
+
+	#[test]
+	fn test_join_with_ttl_empty_body_rejected() {
+		let bump = Bump::new();
+		let source = "inner join { from orders } as o using (id, o.user_id) with { ttl: { } }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let result = parser.parse();
+		assert!(result.is_err(), "expected error for empty join ttl body");
+	}
+
+	#[test]
+	fn test_join_with_old_single_ttl_shorthand_rejected() {
+		let bump = Bump::new();
+		let source = "inner join { from orders } as o using (id, o.user_id) \
+			with { ttl: { duration: '1h' } }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let result = parser.parse();
+		assert!(
+			result.is_err(),
+			"expected error for legacy shorthand: ttl on join now requires explicit 'left'/'right' keys"
+		);
+	}
+
+	#[test]
+	fn test_join_with_unknown_side_key_rejected() {
+		let bump = Bump::new();
+		let source = "inner join { from orders } as o using (id, o.user_id) \
+			with { ttl: { middle: { duration: '1h' } } }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let result = parser.parse();
+		assert!(result.is_err(), "expected error for unknown side key in join ttl");
+	}
+
+	#[test]
+	fn test_join_with_ttl_and_snapshot() {
+		let bump = Bump::new();
+		let source = "inner join { from orders } as o using (id, o.user_id) \
+			with { ttl: { left: { duration: '5m' } }, snapshot: true }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		let result = result.pop().unwrap();
+		let AstJoin::InnerJoin {
+			ttl,
+			snapshot,
+			..
+		} = result.first_unchecked().as_join()
+		else {
+			panic!("Expected InnerJoin");
+		};
+		assert!(*snapshot, "snapshot flag should still parse alongside per-side ttl");
+		let ttl = ttl.as_ref().expect("expected ttl");
+		assert!(ttl.left.is_some());
+		assert!(ttl.right.is_none());
 	}
 }

@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::handlers::*, vtable::HANDLERS};
 
-/// Returns the static definition for the system.handlers virtual table
-/// This table exposes information about all procedures with trigger = Event (event handlers)
 pub fn handlers() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
-	key::{EncodableKey, config::ConfigKey},
+	key::{EncodableKey, config::ConfigStorageKey},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::Value;
@@ -20,7 +20,7 @@ pub(super) struct ConfigApplier;
 impl CatalogChangeApplier for ConfigApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
-		apply_config(catalog, key, row, txn.version());
+		apply_config(catalog, key, row, txn.version())?;
 		Ok(())
 	}
 
@@ -31,14 +31,14 @@ impl CatalogChangeApplier for ConfigApplier {
 
 use reifydb_core::common::CommitVersion;
 
-fn apply_config(catalog: &Catalog, key: &EncodedKey, row: &EncodedRow, version: CommitVersion) {
-	let config_key = ConfigKey::decode(key).map(|k| k.key).unwrap_or_default();
-	if config_key.is_empty() {
-		return;
-	}
+fn apply_config(catalog: &Catalog, key: &EncodedKey, row: &EncodedRow, version: CommitVersion) -> Result<()> {
+	let Some(config_key) = ConfigStorageKey::decode(key).map(|k| k.key) else {
+		return Ok(());
+	};
 	let value = match SHAPE.get_value(row, VALUE) {
 		Value::Any(inner) => *inner,
 		other => other,
 	};
-	catalog.materialized.system_config().apply_persisted(&config_key, version, value);
+	catalog.cache.set_config(config_key, version, value)?;
+	Ok(())
 }

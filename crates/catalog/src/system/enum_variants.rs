@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::enum_variants::*, vtable::ENUM_VARIANTS};
 
-/// Returns the static definition for the system.enum_variants virtual table
-/// This table exposes variant and field information for all enum sumtypes
 pub fn enum_variants() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

@@ -5,11 +5,10 @@ use std::fmt;
 
 use reifydb_type::{error::Diagnostic, fragment::Fragment};
 
-/// Subsystem initialization failed
 pub fn init_failed(subsystem: impl fmt::Display, reason: impl fmt::Display) -> Diagnostic {
 	Diagnostic {
 		code: "SUB_001".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("{} subsystem initialization failed: {}", subsystem, reason),
 		column: None,
 		fragment: Fragment::None,
@@ -21,11 +20,10 @@ pub fn init_failed(subsystem: impl fmt::Display, reason: impl fmt::Display) -> D
 	}
 }
 
-/// Required feature is not enabled
 pub fn feature_disabled(feature: impl fmt::Display) -> Diagnostic {
 	Diagnostic {
 		code: "SUB_002".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Required feature '{}' is not enabled", feature),
 		column: None,
 		fragment: Fragment::None,
@@ -37,11 +35,10 @@ pub fn feature_disabled(feature: impl fmt::Display) -> Diagnostic {
 	}
 }
 
-/// Server socket binding failed
 pub fn bind_failed(addr: impl fmt::Display, reason: impl fmt::Display) -> Diagnostic {
 	Diagnostic {
 		code: "SUB_003".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Failed to bind to {}: {}", addr, reason),
 		column: None,
 		fragment: Fragment::None,
@@ -53,11 +50,10 @@ pub fn bind_failed(addr: impl fmt::Display, reason: impl fmt::Display) -> Diagno
 	}
 }
 
-/// Graceful shutdown failed
 pub fn shutdown_failed(subsystem: impl fmt::Display, reason: impl fmt::Display) -> Diagnostic {
 	Diagnostic {
 		code: "SUB_004".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("{} subsystem shutdown failed: {}", subsystem, reason),
 		column: None,
 		fragment: Fragment::None,
@@ -69,11 +65,10 @@ pub fn shutdown_failed(subsystem: impl fmt::Display, reason: impl fmt::Display) 
 	}
 }
 
-/// Failed to retrieve local address after binding
 pub fn address_unavailable(reason: impl fmt::Display) -> Diagnostic {
 	Diagnostic {
 		code: "SUB_005".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Failed to get local address: {}", reason),
 		column: None,
 		fragment: Fragment::None,
@@ -85,11 +80,10 @@ pub fn address_unavailable(reason: impl fmt::Display) -> Diagnostic {
 	}
 }
 
-/// Socket configuration failed
 pub fn socket_config_failed(reason: impl fmt::Display) -> Diagnostic {
 	Diagnostic {
 		code: "SUB_006".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Socket configuration failed: {}", reason),
 		column: None,
 		fragment: Fragment::None,

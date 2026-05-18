@@ -681,6 +681,7 @@ where
         let memory_index = MemoryIndex::from_u32(memarg.memory);
         let heap = self.env.resolve_heap(memory_index);
         let index = Index::from_typed_reg(self.context.pop_to_reg(self.masm, None)?);
+
         let offset = bounds::ensure_index_and_offset(
             self.masm,
             index,
@@ -828,7 +829,7 @@ where
             self.masm.checked_uadd(
                 writable!(index_offset_and_access_size),
                 index_offset_and_access_size,
-                RegImm::i64(offset_with_access_size as i64),
+                Imm::i64(offset_with_access_size as i64),
                 ptr_size,
                 TrapCode::HEAP_OUT_OF_BOUNDS,
             )?;
@@ -1047,7 +1048,7 @@ where
         if self.env.table_access_spectre_mitigation() {
             // Perform a bounds check and override the value of the
             // table element address in case the index is out of bounds.
-            self.masm.cmp(index, bound.into(), OperandSize::S32)?;
+            self.masm.cmp(index, bound.into(), bound_size)?;
             self.masm
                 .cmov(writable!(base), tmp, IntCmpKind::GeU, ptr_size)?;
         }
@@ -1073,7 +1074,8 @@ where
             masm.load(size_addr, writable!(size), table_data.current_elements_size)
         })?;
 
-        self.context.stack.push(TypedReg::i32(size).into());
+        let dst = TypedReg::new(table_data.index_type(), size);
+        self.context.stack.push(dst.into());
         Ok(())
     }
 
@@ -1100,7 +1102,7 @@ where
             Imm::i32(pow as i32),
             dst.into(),
             ShiftKind::ShrU,
-            heap_data.index_type().try_into()?,
+            self.env.ptr_type().try_into()?,
         )?;
         self.context.stack.push(dst.into());
         Ok(())
@@ -1478,11 +1480,12 @@ where
         )?;
 
         if arg.offset != 0 {
-            self.masm.add(
+            self.masm.checked_uadd(
                 writable!(addr.reg),
                 addr.reg,
-                RegImm::i64(arg.offset as i64),
+                Imm::i64(arg.offset as i64),
                 OperandSize::S64,
+                TrapCode::HEAP_OUT_OF_BOUNDS,
             )?;
         }
 
@@ -1528,11 +1531,12 @@ where
         )?;
 
         if arg.offset != 0 {
-            self.masm.add(
+            self.masm.checked_uadd(
                 writable!(addr.reg),
                 addr.reg,
-                RegImm::i64(arg.offset as i64),
+                Imm::i64(arg.offset as i64),
                 OperandSize::S64,
+                TrapCode::HEAP_OUT_OF_BOUNDS,
             )?;
         }
 

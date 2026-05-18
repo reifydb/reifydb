@@ -20,11 +20,10 @@ pub enum QueryPlan {
 	SeriesScan(SeriesScanNode),
 	IndexScan(IndexScanNode),
 
-	/// O(1) point lookup by row number: `filter rownum == N`
 	RowPointLookup(RowPointLookupNode),
-	/// O(k) list lookup by row numbers: `filter rownum in [a, b, c]`
+
 	RowListLookup(RowListLookupNode),
-	/// Range scan by row numbers: `filter rownum between X and Y`
+
 	RowRangeScan(RowRangeScanNode),
 
 	Aggregate(AggregateNode),

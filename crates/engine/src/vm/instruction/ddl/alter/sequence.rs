@@ -18,7 +18,7 @@ use reifydb_type::{
 
 use crate::{
 	Result,
-	expression::{context::EvalSession, eval::evaluate},
+	expression::{context::EvalContext, eval::evaluate},
 	vm::{services::Services, stack::SymbolTable},
 };
 
@@ -27,43 +27,34 @@ pub(crate) fn alter_table_sequence(
 	txn: &mut AdminTransaction,
 	plan: AlterSequenceNode,
 ) -> Result<Columns> {
-	// let namespace_name = plan.sequence.namespace().name();
-	// let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
-	// 	return_error!(namespace_not_found(
-	// 		plan.sequence.identifier().clone(),
-	// 		namespace_name,
-	// 	));
-	// };
-
-	// Get the table from the resolved column's source
 	let table = match plan.column.shape() {
 		ResolvedShape::Table(t) => t.def().clone(),
 		_ => unimplemented!(),
 	};
 
-	// The column is already resolved, so we can use its def directly
 	let column = plan.column.def().clone();
 
 	if !column.auto_increment {
 		return_error!(can_not_alter_not_auto_increment(plan.column.identifier().clone()));
 	}
 
-	// For catalog operations, use empty params since no
-	// ExecutionContext is available
-
 	static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
 	static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
-	let session = EvalSession {
+	let base = EvalContext {
 		params: &EMPTY_PARAMS,
 		symbols: &EMPTY_SYMBOL_TABLE,
-		functions: &services.functions,
+		routines: &services.routines,
 		runtime_context: &services.runtime_context,
 		arena: None,
 		identity: IdentityId::root(),
 		is_aggregate_context: false,
+		columns: Columns::empty(),
+		row_count: 1,
+		target: None,
+		take: None,
 	};
-	let mut eval_ctx = session.eval_empty();
+	let mut eval_ctx = base.with_eval_empty();
 	eval_ctx.target = Some(TargetColumn::Partial {
 		source_name: None,
 		column_name: None,

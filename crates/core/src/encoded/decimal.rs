@@ -7,24 +7,16 @@ use reifydb_type::value::{decimal::Decimal, r#type::Type};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
-/// Decimal storage using dynamic section
-/// All decimals are stored in dynamic section with MSB=1 to store both mantissa
-/// and scale
 const MODE_DYNAMIC: u128 = 0x80000000000000000000000000000000;
 const MODE_MASK: u128 = 0x80000000000000000000000000000000;
 
-/// Bit masks for dynamic mode (lower 127 bits contain offset+length)
-const DYNAMIC_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF; // 64 bits for offset
-const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000; // 63 bits for length
+const DYNAMIC_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF;
+const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
 
 impl RowShape {
-	/// Set a Decimal value with 2-tier storage optimization
-	/// - Values that fit in i128: stored inline with MSB=0
-	/// - Large values: stored in dynamic section with MSB=1
 	pub fn set_decimal(&self, row: &mut EncodedRow, index: usize, value: &Decimal) {
 		debug_assert!(matches!(self.fields()[index].constraint.get_type().inner_type(), Type::Decimal));
 
-		// Serialize as scale (i64) + mantissa (variable bytes)
 		let (mantissa, original_scale) = value.inner().as_bigint_and_exponent();
 		let scale_bytes = original_scale.to_le_bytes();
 		let digits_bytes = mantissa.to_signed_bytes_le();
@@ -36,7 +28,6 @@ impl RowShape {
 		self.replace_dynamic_data(row, index, &serialized);
 	}
 
-	/// Get a Decimal value, detecting storage mode from MSB
 	pub fn get_decimal(&self, row: &EncodedRow, index: usize) -> Decimal {
 		let field = &self.fields()[index];
 		debug_assert!(matches!(field.constraint.get_type().inner_type(), Type::Decimal));
@@ -44,28 +35,22 @@ impl RowShape {
 		let packed = unsafe { (row.as_ptr().add(field.offset as usize) as *const u128).read_unaligned() };
 		let packed = u128::from_le(packed);
 
-		// Always expect dynamic storage (MSB=1)
 		debug_assert!(packed & MODE_MASK == MODE_DYNAMIC, "Expected dynamic storage");
 
-		// Extract offset and length
 		let offset = (packed & DYNAMIC_OFFSET_MASK) as usize;
 		let length = ((packed & DYNAMIC_LENGTH_MASK) >> 64) as usize;
 
 		let dynamic_start = self.dynamic_section_start();
 		let data_bytes = &row.as_slice()[dynamic_start + offset..dynamic_start + offset + length];
 
-		// Parse scale (first 8 bytes) and mantissa (remaining bytes)
 		let original_scale = i64::from_le_bytes(data_bytes[0..8].try_into().unwrap());
 		let mantissa = StdBigInt::from_signed_bytes_le(&data_bytes[8..]);
 
-		// Reconstruct the BigDecimal with original scale
 		let big_decimal = StdBigDecimal::new(mantissa, original_scale);
 
-		// Create our Decimal from the reconstructed BigDecimal
 		Decimal::from(big_decimal)
 	}
 
-	/// Try to get a Decimal value, returning None if undefined
 	pub fn try_get_decimal(&self, row: &EncodedRow, index: usize) -> Option<Decimal> {
 		if row.is_defined(index)
 			&& matches!(self.fields()[index].constraint.get_type().inner_type(), Type::Decimal)

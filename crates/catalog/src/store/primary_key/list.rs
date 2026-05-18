@@ -24,9 +24,6 @@ impl CatalogStore {
 	pub(crate) fn list_primary_keys(rx: &mut Transaction<'_>) -> Result<Vec<PrimaryKeyInfo>> {
 		let mut result = Vec::new();
 
-		// Scan all primary key entries from storage
-		// Note: Key encoding uses reverse order, so MAX encodes smaller
-		// than 0
 		let primary_key_range = {
 			let start_key = PrimaryKeyKey::encoded(PrimaryKeyId(u64::MAX));
 			let end_key = PrimaryKeyKey::encoded(PrimaryKeyId(0));
@@ -34,7 +31,6 @@ impl CatalogStore {
 			EncodedKeyRange::new(Bound::Included(start_key), Bound::Included(end_key))
 		};
 
-		// Collect entries first to avoid borrow checker issues
 		let mut entries = Vec::new();
 		{
 			let stream = rx.range(primary_key_range, 1024)?;
@@ -44,20 +40,14 @@ impl CatalogStore {
 		}
 
 		for entry in entries {
-			// Decode the primary key ID from the key
 			if let Some(key) = Key::decode(&entry.key)
 				&& let Key::PrimaryKey(pk_key) = key
 			{
-				// Get the source ID from the primary
-				// key record
 				let shape_id = primary_key::SHAPE.get_u64(&entry.row, primary_key::SOURCE);
 
-				// Deserialize column IDs
 				let column_ids_blob = primary_key::SHAPE.get_blob(&entry.row, primary_key::COLUMN_IDS);
 				let column_ids = deserialize_column_ids(&column_ids_blob);
 
-				// Fetch full Column for each column
-				// ID
 				let mut columns = Vec::new();
 				for column_id in column_ids {
 					let column = Self::get_column(rx, column_id)?;
@@ -90,8 +80,6 @@ impl CatalogStore {
 	pub(crate) fn list_primary_key_columns(rx: &mut Transaction<'_>) -> Result<Vec<(u64, u64, usize)>> {
 		let mut result = Vec::new();
 
-		// Scan all primary key entries from storage using same approach
-		// as list_primary_keys
 		let primary_key_range = {
 			let start_key = PrimaryKeyKey::encoded(PrimaryKeyId(u64::MAX));
 			let end_key = PrimaryKeyKey::encoded(PrimaryKeyId(0));
@@ -103,22 +91,15 @@ impl CatalogStore {
 
 		for entry in stream {
 			let entry = entry?;
-			// Decode the primary key ID from the key
+
 			if let Some(key) = Key::decode(&entry.key)
 				&& let Key::PrimaryKey(pk_key) = key
 			{
-				// Deserialize column IDs from the
-				// primary key record
 				let column_ids_blob = primary_key::SHAPE.get_blob(&entry.row, primary_key::COLUMN_IDS);
 				let column_ids = deserialize_column_ids(&column_ids_blob);
 
-				// Add each column with its position
 				for (position, column_id) in column_ids.iter().enumerate() {
-					result.push((
-						pk_key.primary_key.0, // primary key id
-						column_id.0,          // column id
-						position,             // position in the primary key
-					));
+					result.push((pk_key.primary_key.0, column_id.0, position));
 				}
 			}
 		}

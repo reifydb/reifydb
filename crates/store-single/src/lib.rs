@@ -1,22 +1,33 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+
+//! Single-version storage backend for workloads where snapshot isolation would only add overhead. Implements the
+//! `SingleVersionStore` family of traits from `core::interface::store`: get, contains, set, remove, commit, and the
+//! ranged scan iterators used by the engine for table and index walks.
+//!
+//! Writes are atomic per commit but never coexist with prior versions of the same key; readers always observe the
+//! latest committed value. The buffered tier batches recent writes and the persistent tier owns durable state, the
+//! same shape as the multi-version backend minus history.
+//!
+//! Invariant: a key's value after commit is the value the next reader sees - no version cursor, no time travel. Code
+//! that needs history must use `store-multi`; reaching here for it returns nothing useful.
+
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-use reifydb_core::{
-	event::EventBus,
-	interface::version::{ComponentType, HasVersion, SystemVersion},
-};
+use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_type::Result;
 
+pub mod buffer;
 pub mod config;
-pub mod hot;
+pub mod flush;
+pub mod persistent;
 pub mod store;
 pub mod tier;
 
-use config::{HotConfig, SingleStoreConfig};
+use config::SingleStoreConfig;
 use reifydb_core::{
 	delta::Delta,
 	encoded::key::{EncodedKey, EncodedKeyRange},
@@ -48,7 +59,6 @@ impl HasVersion for SingleStoreVersion {
 #[derive(Clone)]
 pub enum SingleStore {
 	Standard(StandardSingleStore) = 0,
-	// Other(Box<dyn SingleVersionStore>) = 254,
 }
 
 impl SingleStore {
@@ -62,21 +72,29 @@ impl SingleStore {
 		SingleStore::Standard(StandardSingleStore::testing_memory())
 	}
 
-	pub fn testing_memory_with_eventbus(event_bus: EventBus) -> Self {
-		SingleStore::Standard(StandardSingleStore::testing_memory_with_eventbus(event_bus))
-	}
-
-	/// Get access to the hot storage tier.
-	///
-	/// Returns `None` if the hot tier is not configured.
-	pub fn hot(&self) -> Option<&hot::tier::HotTier> {
+	pub fn buffer(&self) -> Option<&buffer::tier::SingleBufferTier> {
 		match self {
-			SingleStore::Standard(store) => store.hot(),
+			SingleStore::Standard(store) => store.buffer(),
 		}
 	}
-}
 
-// SingleVersion trait implementations
+	pub fn persistent(&self) -> Option<&persistent::SinglePersistentTier> {
+		match self {
+			SingleStore::Standard(store) => store.persistent(),
+		}
+	}
+
+	pub fn flush_pending_blocking(&self) {
+		match self {
+			SingleStore::Standard(store) => store.flush_pending_blocking(),
+		}
+	}
+
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn testing_memory_with_persistent_sqlite() -> Self {
+		SingleStore::Standard(StandardSingleStore::testing_memory_with_persistent_sqlite())
+	}
+}
 
 impl SingleVersionGet for SingleStore {
 	#[inline]

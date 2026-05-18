@@ -6,12 +6,14 @@ use reifydb_core::{
 	encoded::row::EncodedRow,
 	interface::catalog::{
 		authentication::{Authentication, AuthenticationId},
+		binding::Binding,
+		config::{Config, ConfigKey},
 		dictionary::Dictionary,
-		flow::{Flow, FlowId},
+		flow::{Flow, FlowId, FlowNodeId},
 		handler::Handler,
 		id::{
-			HandlerId, MigrationEventId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId,
-			SinkId, SourceId, SubscriptionId, TableId, TestId, ViewId,
+			BindingId, HandlerId, MigrationEventId, MigrationId, NamespaceId, ProcedureId, RingBufferId,
+			SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
 		},
 		identity::{GrantedRole, Identity, Role, RoleId},
 		migration::{Migration, MigrationEvent},
@@ -20,23 +22,23 @@ use reifydb_core::{
 		procedure::Procedure,
 		ringbuffer::RingBuffer,
 		series::Series,
+		shape::ShapeId,
 		sink::Sink,
 		source::Source,
-		subscription::Subscription,
 		sumtype::SumType,
 		table::Table,
 		test::Test,
 		view::View,
 	},
+	row::Ttl,
 };
-use reifydb_type::value::{
-	Value, dictionary::DictionaryId, identity::IdentityId, row_number::RowNumber, sumtype::SumTypeId,
-};
+use reifydb_type::value::{dictionary::DictionaryId, identity::IdentityId, row_number::RowNumber, sumtype::SumTypeId};
 
 use crate::TransactionId;
 
 pub trait TransactionalChanges:
-	TransactionalDictionaryChanges
+	TransactionalBindingChanges
+	+ TransactionalDictionaryChanges
 	+ TransactionalFlowChanges
 	+ TransactionalHandlerChanges
 	+ TransactionalMigrationChanges
@@ -48,7 +50,6 @@ pub trait TransactionalChanges:
 	+ TransactionalSeriesChanges
 	+ TransactionalSinkChanges
 	+ TransactionalSourceChanges
-	+ TransactionalSubscriptionChanges
 	+ TransactionalSumTypeChanges
 	+ TransactionalTableChanges
 	+ TransactionalTestChanges
@@ -56,7 +57,36 @@ pub trait TransactionalChanges:
 	+ TransactionalIdentityChanges
 	+ TransactionalGrantedRoleChanges
 	+ TransactionalViewChanges
+	+ TransactionalConfigChanges
+	+ TransactionalRowTtlChanges
+	+ TransactionalOperatorTtlChanges
 {
+}
+
+pub trait TransactionalBindingChanges {
+	fn find_binding(&self, id: BindingId) -> Option<&Binding>;
+
+	fn find_binding_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Binding>;
+
+	fn is_binding_deleted(&self, id: BindingId) -> bool;
+
+	fn is_binding_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
+}
+
+pub trait TransactionalRowTtlChanges {
+	fn find_row_ttl(&self, shape: ShapeId) -> Option<&Ttl>;
+
+	fn is_row_ttl_deleted(&self, shape: ShapeId) -> bool;
+}
+
+pub trait TransactionalOperatorTtlChanges {
+	fn find_operator_ttl(&self, node: FlowNodeId) -> Option<&Ttl>;
+
+	fn is_operator_ttl_deleted(&self, node: FlowNodeId) -> bool;
+}
+
+pub trait TransactionalConfigChanges {
+	fn find_config(&self, key: ConfigKey) -> Option<&Config>;
 }
 
 pub trait TransactionalDictionaryChanges {
@@ -149,8 +179,6 @@ pub trait TransactionalViewChanges {
 	fn is_view_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
 }
 
-/// Trait for querying subscription changes within a transaction.
-/// Note: Subscriptions do NOT have names - they are identified only by ID.
 pub trait TransactionalSumTypeChanges {
 	fn find_sumtype(&self, id: SumTypeId) -> Option<&SumType>;
 
@@ -161,16 +189,12 @@ pub trait TransactionalSumTypeChanges {
 	fn is_sumtype_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
 }
 
-pub trait TransactionalSubscriptionChanges {
-	fn find_subscription(&self, id: SubscriptionId) -> Option<&Subscription>;
-
-	fn is_subscription_deleted(&self, id: SubscriptionId) -> bool;
-}
-
 pub trait TransactionalHandlerChanges {
 	fn find_handler_by_id(&self, id: HandlerId) -> Option<&Handler>;
 
 	fn find_handler_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Handler>;
+
+	fn is_handler_deleted(&self, id: HandlerId) -> bool;
 
 	fn is_handler_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
 }
@@ -205,6 +229,8 @@ pub trait TransactionalAuthenticationChanges {
 	) -> Option<&Authentication>;
 
 	fn is_authentication_deleted(&self, id: AuthenticationId) -> bool;
+
+	fn is_authentication_deleted_by_identity_and_method(&self, identity: IdentityId, method: &str) -> bool;
 }
 
 pub trait TransactionalGrantedRoleChanges {
@@ -257,57 +283,61 @@ pub trait TransactionalMigrationChanges {
 
 #[derive(Default, Debug, Clone)]
 pub struct TransactionalCatalogChanges {
-	/// Transaction ID this change set belongs to
 	pub txn_id: TransactionId,
-	/// Config key/value changes to be applied post-commit with the commit version
-	pub config_changes: Vec<(String, Value)>,
-	/// All dictionary definition changes in order (no coalescing)
+
+	pub config: Vec<Change<Config>>,
+
+	pub binding: Vec<Change<Binding>>,
+
 	pub dictionary: Vec<Change<Dictionary>>,
-	/// All flow definition changes in order (no coalescing)
+
 	pub flow: Vec<Change<Flow>>,
-	/// All handler definition changes in order (no coalescing)
+
 	pub handler: Vec<Change<Handler>>,
-	/// All migration definition changes in order (no coalescing)
+
 	pub migration: Vec<Change<Migration>>,
-	/// All migration event changes in order (no coalescing)
+
 	pub migration_event: Vec<Change<MigrationEvent>>,
-	/// All namespace definition changes in order (no coalescing)
+
 	pub namespace: Vec<Change<Namespace>>,
-	/// All procedure definition changes in order (no coalescing)
+
 	pub procedure: Vec<Change<Procedure>>,
-	/// All ring buffer definition changes in order (no coalescing)
+
 	pub ringbuffer: Vec<Change<RingBuffer>>,
-	/// All series definition changes in order (no coalescing)
+
 	pub series: Vec<Change<Series>>,
-	/// All sink definition changes in order (no coalescing)
+
 	pub sink: Vec<Change<Sink>>,
-	/// All source definition changes in order (no coalescing)
+
 	pub source: Vec<Change<Source>>,
-	/// All subscription definition changes in order (no coalescing)
 	pub sumtype: Vec<Change<SumType>>,
-	pub subscription: Vec<Change<Subscription>>,
-	/// All test definition changes in order (no coalescing)
+
 	pub test: Vec<Change<Test>>,
-	/// All table definition changes in order (no coalescing)
+
 	pub table: Vec<Change<Table>>,
-	/// All identity definition changes in order (no coalescing)
+
 	pub identity: Vec<Change<Identity>>,
-	/// All authentication definition changes in order (no coalescing)
+
 	pub authentication: Vec<Change<Authentication>>,
-	/// All role definition changes in order (no coalescing)
+
 	pub role: Vec<Change<Role>>,
-	/// All granted-role changes in order (no coalescing)
+
 	pub granted_role: Vec<Change<GrantedRole>>,
-	/// All policy definition changes in order (no coalescing)
+
 	pub policy: Vec<Change<Policy>>,
-	/// All view definition changes in order (no coalescing)
+
 	pub view: Vec<Change<View>>,
-	/// Order of operations for replay/rollback
+
+	pub row_ttl: Vec<Change<(ShapeId, Ttl)>>,
+
+	pub operator_ttl: Vec<Change<(FlowNodeId, Ttl)>>,
+
 	pub log: Vec<Operation>,
 }
 
 pub struct CatalogChangesSavepoint {
-	config_changes_len: usize,
+	binding_len: usize,
+	config_len: usize,
 	dictionary_len: usize,
 	flow_len: usize,
 	handler_len: usize,
@@ -320,7 +350,6 @@ pub struct CatalogChangesSavepoint {
 	sink_len: usize,
 	source_len: usize,
 	sumtype_len: usize,
-	subscription_len: usize,
 	test_len: usize,
 	table_len: usize,
 	identity_len: usize,
@@ -329,13 +358,16 @@ pub struct CatalogChangesSavepoint {
 	granted_role_len: usize,
 	policy_len: usize,
 	view_len: usize,
+	row_ttl_len: usize,
+	operator_ttl_len: usize,
 	log_len: usize,
 }
 
 impl TransactionalCatalogChanges {
 	pub fn savepoint(&self) -> CatalogChangesSavepoint {
 		CatalogChangesSavepoint {
-			config_changes_len: self.config_changes.len(),
+			binding_len: self.binding.len(),
+			config_len: self.config.len(),
 			dictionary_len: self.dictionary.len(),
 			flow_len: self.flow.len(),
 			handler_len: self.handler.len(),
@@ -348,7 +380,6 @@ impl TransactionalCatalogChanges {
 			sink_len: self.sink.len(),
 			source_len: self.source.len(),
 			sumtype_len: self.sumtype.len(),
-			subscription_len: self.subscription.len(),
 			test_len: self.test.len(),
 			table_len: self.table.len(),
 			identity_len: self.identity.len(),
@@ -357,12 +388,15 @@ impl TransactionalCatalogChanges {
 			granted_role_len: self.granted_role.len(),
 			policy_len: self.policy.len(),
 			view_len: self.view.len(),
+			row_ttl_len: self.row_ttl.len(),
+			operator_ttl_len: self.operator_ttl.len(),
 			log_len: self.log.len(),
 		}
 	}
 
 	pub fn restore_savepoint(&mut self, sp: CatalogChangesSavepoint) {
-		self.config_changes.truncate(sp.config_changes_len);
+		self.binding.truncate(sp.binding_len);
+		self.config.truncate(sp.config_len);
 		self.dictionary.truncate(sp.dictionary_len);
 		self.flow.truncate(sp.flow_len);
 		self.handler.truncate(sp.handler_len);
@@ -375,7 +409,6 @@ impl TransactionalCatalogChanges {
 		self.sink.truncate(sp.sink_len);
 		self.source.truncate(sp.source_len);
 		self.sumtype.truncate(sp.sumtype_len);
-		self.subscription.truncate(sp.subscription_len);
 		self.test.truncate(sp.test_len);
 		self.table.truncate(sp.table_len);
 		self.identity.truncate(sp.identity_len);
@@ -384,11 +417,39 @@ impl TransactionalCatalogChanges {
 		self.granted_role.truncate(sp.granted_role_len);
 		self.policy.truncate(sp.policy_len);
 		self.view.truncate(sp.view_len);
+		self.row_ttl.truncate(sp.row_ttl_len);
+		self.operator_ttl.truncate(sp.operator_ttl_len);
 		self.log.truncate(sp.log_len);
 	}
 
-	pub fn add_config_change(&mut self, key: String, value: Value) {
-		self.config_changes.push((key, value));
+	pub fn add_binding_change(&mut self, change: Change<Binding>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|b| b.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.binding.push(change);
+		self.log.push(Operation::Binding {
+			id,
+			op,
+		});
+	}
+
+	pub fn add_config_change(&mut self, change: Change<Config>) {
+		let key = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|c| c.key)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.config.push(change);
+		self.log.push(Operation::Config {
+			key,
+			op,
+		});
 	}
 
 	pub fn add_dictionary_change(&mut self, change: Change<Dictionary>) {
@@ -486,7 +547,7 @@ impl TransactionalCatalogChanges {
 			.post
 			.as_ref()
 			.or(change.pre.as_ref())
-			.map(|p| p.id)
+			.map(|p| p.id())
 			.expect("Change must have either pre or post state");
 		let op = change.op;
 		self.procedure.push(change);
@@ -616,21 +677,6 @@ impl TransactionalCatalogChanges {
 		});
 	}
 
-	pub fn add_subscription_change(&mut self, change: Change<Subscription>) {
-		let id = change
-			.post
-			.as_ref()
-			.or(change.pre.as_ref())
-			.map(|s| s.id)
-			.expect("Change must have either pre or post state");
-		let op = change.op;
-		self.subscription.push(change);
-		self.log.push(Operation::Subscription {
-			id,
-			op,
-		});
-	}
-
 	pub fn add_identity_change(&mut self, change: Change<Identity>) {
 		let id = change
 			.post
@@ -712,18 +758,44 @@ impl TransactionalCatalogChanges {
 			op,
 		});
 	}
+
+	pub fn add_row_ttl_change(&mut self, change: Change<(ShapeId, Ttl)>) {
+		let shape = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|(s, _)| *s)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.row_ttl.push(change);
+		self.log.push(Operation::Ttl {
+			shape,
+			op,
+		});
+	}
+
+	pub fn add_operator_ttl_change(&mut self, change: Change<(FlowNodeId, Ttl)>) {
+		let node = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|(n, _)| *n)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.operator_ttl.push(change);
+		self.log.push(Operation::OperatorTtl {
+			node,
+			op,
+		});
+	}
 }
 
-/// Represents a single change
 #[derive(Debug, Clone)]
 pub struct Change<T> {
-	/// State before the change (None for CREATE)
 	pub pre: Option<T>,
 
-	/// State after the change (None for DELETE)
 	pub post: Option<T>,
 
-	/// Type of operation
 	pub op: OperationType,
 }
 
@@ -734,9 +806,16 @@ pub enum OperationType {
 	Delete,
 }
 
-/// Log entry for operation ordering
 #[derive(Debug, Clone)]
 pub enum Operation {
+	Binding {
+		id: BindingId,
+		op: OperationType,
+	},
+	Config {
+		key: ConfigKey,
+		op: OperationType,
+	},
 	Dictionary {
 		id: DictionaryId,
 		op: OperationType,
@@ -785,10 +864,6 @@ pub enum Operation {
 		id: SumTypeId,
 		op: OperationType,
 	},
-	Subscription {
-		id: SubscriptionId,
-		op: OperationType,
-	},
 	Test {
 		id: TestId,
 		op: OperationType,
@@ -822,13 +897,22 @@ pub enum Operation {
 		id: ViewId,
 		op: OperationType,
 	},
+	Ttl {
+		shape: ShapeId,
+		op: OperationType,
+	},
+	OperatorTtl {
+		node: FlowNodeId,
+		op: OperationType,
+	},
 }
 
 impl TransactionalCatalogChanges {
 	pub fn new(txn_id: TransactionId) -> Self {
 		Self {
 			txn_id,
-			config_changes: Vec::new(),
+			binding: Vec::new(),
+			config: Vec::new(),
 			dictionary: Vec::new(),
 			flow: Vec::new(),
 			handler: Vec::new(),
@@ -841,7 +925,6 @@ impl TransactionalCatalogChanges {
 			sink: Vec::new(),
 			source: Vec::new(),
 			sumtype: Vec::new(),
-			subscription: Vec::new(),
 			test: Vec::new(),
 			table: Vec::new(),
 			identity: Vec::new(),
@@ -850,18 +933,17 @@ impl TransactionalCatalogChanges {
 			granted_role: Vec::new(),
 			policy: Vec::new(),
 			view: Vec::new(),
+			row_ttl: Vec::new(),
+			operator_ttl: Vec::new(),
 			log: Vec::new(),
 		}
 	}
 
-	/// Check if a table exists in this transaction's view
 	pub fn table_exists(&self, id: TableId) -> bool {
 		self.get_table(id).is_some()
 	}
 
-	/// Get current state of a table within this transaction
 	pub fn get_table(&self, id: TableId) -> Option<&Table> {
-		// Find the last change for this table ID
 		for change in self.table.iter().rev() {
 			if let Some(table) = &change.post {
 				if table.id == id {
@@ -870,21 +952,17 @@ impl TransactionalCatalogChanges {
 			} else if let Some(table) = &change.pre
 				&& table.id == id && change.op == Delete
 			{
-				// Table was deleted
 				return None;
 			}
 		}
 		None
 	}
 
-	/// Check if a view exists in this transaction's view
 	pub fn view_exists(&self, id: ViewId) -> bool {
 		self.get_view(id).is_some()
 	}
 
-	/// Get current state of a view within this transaction
 	pub fn get_view(&self, id: ViewId) -> Option<&View> {
-		// Find the last change for this view ID
 		for change in self.view.iter().rev() {
 			if let Some(view) = &change.post {
 				if view.id() == id {
@@ -893,41 +971,50 @@ impl TransactionalCatalogChanges {
 			} else if let Some(view) = &change.pre
 				&& view.id() == id && change.op == Delete
 			{
-				// View was deleted
 				return None;
 			}
 		}
 		None
 	}
 
-	/// Get all pending changes for commit
+	pub fn get_row_ttl(&self, shape: ShapeId) -> Option<&Ttl> {
+		for change in self.row_ttl.iter().rev() {
+			if let Some((s, ttl)) = &change.post {
+				if *s == shape {
+					return Some(ttl);
+				}
+			} else if let Some((s, _)) = &change.pre
+				&& *s == shape && change.op == Delete
+			{
+				return None;
+			}
+		}
+		None
+	}
+
 	pub fn get_pending_changes(&self) -> &[Operation] {
 		&self.log
 	}
 
-	/// Get the transaction ID
 	pub fn txn_id(&self) -> TransactionId {
 		self.txn_id
 	}
 
-	/// Get namespace definition changes
 	pub fn namespace(&self) -> &[Change<Namespace>] {
 		&self.namespace
 	}
 
-	/// Get table definition changes
 	pub fn table(&self) -> &[Change<Table>] {
 		&self.table
 	}
 
-	/// Get view definition changes
 	pub fn view(&self) -> &[Change<View>] {
 		&self.view
 	}
 
-	/// Clear all changes (for rollback)
 	pub fn clear(&mut self) {
-		self.config_changes.clear();
+		self.binding.clear();
+		self.config.clear();
 		self.dictionary.clear();
 		self.flow.clear();
 		self.handler.clear();
@@ -940,7 +1027,6 @@ impl TransactionalCatalogChanges {
 		self.sink.clear();
 		self.source.clear();
 		self.sumtype.clear();
-		self.subscription.clear();
 		self.test.clear();
 		self.table.clear();
 		self.identity.clear();
@@ -953,7 +1039,6 @@ impl TransactionalCatalogChanges {
 	}
 }
 
-/// Tracks a table row insertion for post-commit event emission
 #[derive(Debug, Clone)]
 pub struct TableRowInsertion {
 	pub table_id: TableId,
@@ -961,14 +1046,7 @@ pub struct TableRowInsertion {
 	pub encoded: EncodedRow,
 }
 
-/// Tracks row changes across different entity types for post-commit event emission
 #[derive(Debug, Clone)]
 pub enum RowChange {
-	/// A row was inserted into a table
 	TableInsert(TableRowInsertion),
-	// Future variants:
-	// ViewInsert(ViewRowInsertion),
-	// RingBufferInsert(RingBufferRowInsertion),
-	// TableUpdate(TableRowUpdate),
-	// TableDelete(TableRowDelete),
 }

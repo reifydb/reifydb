@@ -3,15 +3,17 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use num_bigint::BigInt;
 use reifydb_type::{
 	error::{Diagnostic, Error},
+	fragment::Fragment,
 	params::Params,
 	util::bitvec::BitVec,
 	value::{
 		Value,
 		blob::Blob,
 		container::{
-			blob::BlobContainer, bool::BoolContainer, identity_id::IdentityIdContainer,
+			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, identity_id::IdentityIdContainer,
 			number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
 		},
 		date::Date,
@@ -22,43 +24,112 @@ use reifydb_type::{
 		identity::IdentityId,
 		int::Int,
 		row_number::RowNumber,
+		temporal::parse::datetime::parse_datetime,
 		time::Time,
 		r#type::Type,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 	},
 };
-use tonic::{metadata::MetadataValue, transport::Channel};
+use reifydb_wire_format::decode::decode_frames;
+use serde_json::from_str as serde_json_from_str;
+use tonic::{
+	Request, Status,
+	codec::Streaming,
+	metadata::{Ascii, MetadataMap, MetadataValue},
+	transport::Channel,
+};
+use uuid::Uuid;
 
 use super::generated::{
 	AdminRequest as ProtoAdminRequest, AuthenticateRequest as ProtoAuthenticateRequest,
-	CommandRequest as ProtoCommandRequest, Frame as ProtoFrame, LogoutRequest as ProtoLogoutRequest, NamedParams,
-	Params as ProtoParams, PositionalParams, QueryRequest as ProtoQueryRequest,
-	SubscribeRequest as ProtoSubscribeRequest, SubscriptionEvent, TypedValue,
-	UnsubscribeRequest as ProtoUnsubscribeRequest, params::Params as ProtoParamsOneof,
+	BatchSubscribeRequest as ProtoBatchSubscribeRequest, BatchSubscriptionEvent,
+	BatchUnsubscribeRequest as ProtoBatchUnsubscribeRequest, CommandRequest as ProtoCommandRequest, Format,
+	Frame as ProtoFrame, FramesPayload, LogoutRequest as ProtoLogoutRequest, NamedParams,
+	OperationRequest as ProtoOperationRequest, Params as ProtoParams, PositionalParams,
+	QueryRequest as ProtoQueryRequest, SubscribeRequest as ProtoSubscribeRequest, SubscriptionEvent, TypedValue,
+	UnsubscribeRequest as ProtoUnsubscribeRequest, admin_response, batch_subscription_event, change_event,
+	command_response, operation_response, params::Params as ProtoParamsOneof, query_response,
 	reify_db_client::ReifyDbClient, subscription_event,
 };
-use crate::{AdminResult, CommandResult, LoginResult, QueryResult};
+use crate::{
+	AdminResult, ChangeKind, CommandResult, LoginResult, QueryResult, ResponseMeta, WireFormat,
+	changes::{read_op_kind, strip_op_column},
+	subscription::{BatchItem, SubscriptionConfig, build_subscription_rql},
+};
+
+fn extract_meta(metadata: &MetadataMap) -> Option<ResponseMeta> {
+	let fingerprint = metadata.get("x-fingerprint").and_then(|v| v.to_str().ok())?;
+	let duration = metadata.get("x-duration").and_then(|v| v.to_str().ok())?;
+	Some(ResponseMeta {
+		fingerprint: fingerprint.to_string(),
+		duration: duration.to_string(),
+	})
+}
+
+pub enum RawChangePayload {
+	Rbcf(Vec<u8>),
+	Proto(FramesPayload),
+	Empty,
+}
+
+impl RawChangePayload {
+	pub fn into_frames(self) -> Vec<Frame> {
+		match self {
+			Self::Rbcf(bytes) => decode_frames(&bytes).unwrap_or_default(),
+			Self::Proto(fp) => proto_frames_to_frames(fp.frames),
+			Self::Empty => Vec::new(),
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct GrpcChange {
+	pub kind: ChangeKind,
+	pub frames: Vec<Frame>,
+}
+
+fn classify_frames(frames: Vec<Frame>) -> GrpcChange {
+	let kind = frames.first().map(read_op_kind).unwrap_or(ChangeKind::Insert);
+	let frames = frames.into_iter().map(strip_op_column).collect();
+	GrpcChange {
+		kind,
+		frames,
+	}
+}
 
 #[derive(Clone)]
 pub struct GrpcClient {
 	inner: ReifyDbClient<Channel>,
 	token: Option<String>,
+	format: WireFormat,
 }
 
 impl GrpcClient {
-	pub async fn connect(url: &str) -> Result<Self, Error> {
-		let channel = Channel::from_shared(url.to_string()).unwrap().connect().await.map_err(|e| {
-			Error(Box::new(Diagnostic {
-				code: "GRPC_CONNECT".to_string(),
-				message: format!("Failed to connect: {}", e),
+	pub async fn connect(url: &str, format: WireFormat) -> Result<Self, Error> {
+		if format == WireFormat::Json {
+			return Err(Error(Box::new(Diagnostic {
+				code: "INVALID_FORMAT".to_string(),
+				message: "WireFormat::Json is not supported for GrpcClient".to_string(),
 				..Default::default()
-			}))
-		})?;
+			})));
+		}
+
+		let channel =
+			Channel::from_shared(url.to_string()).unwrap().tcp_nodelay(true).connect().await.map_err(
+				|e| {
+					Error(Box::new(Diagnostic {
+						code: "GRPC_CONNECT".to_string(),
+						message: format!("Failed to connect: {}", e),
+						..Default::default()
+					}))
+				},
+			)?;
 
 		Ok(Self {
 			inner: ReifyDbClient::new(channel),
 			token: None,
+			format,
 		})
 	}
 
@@ -92,7 +163,7 @@ impl GrpcClient {
 		};
 
 		let mut client = self.inner.clone();
-		let response = client.authenticate(tonic::Request::new(request)).await.map_err(status_to_error)?;
+		let response = client.authenticate(Request::new(request)).await.map_err(status_to_error)?;
 		let inner = response.into_inner();
 
 		if inner.status == "authenticated" {
@@ -118,7 +189,7 @@ impl GrpcClient {
 
 		let request = ProtoLogoutRequest {};
 		let mut client = self.inner.clone();
-		let mut req = tonic::Request::new(request);
+		let mut req = Request::new(request);
 		self.attach_auth(&mut req);
 
 		client.logout(req).await.map_err(status_to_error)?;
@@ -126,119 +197,118 @@ impl GrpcClient {
 		Ok(())
 	}
 
-	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
+	fn wire_format(&self) -> i32 {
+		match self.format {
+			WireFormat::Rbcf => Format::Rbcf as i32,
+			_ => Format::Proto as i32,
+		}
+	}
+
+	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		Ok(self.admin_with_meta(rql, params).await?.frames)
+	}
+
+	pub async fn admin_with_meta(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
 		let request = ProtoAdminRequest {
-			statements: vec![rql.to_string()],
+			rql: rql.to_string(),
 			params: params.and_then(params_to_proto),
+			format: self.wire_format(),
 		};
 
 		let mut client = self.inner.clone();
-		let mut req = tonic::Request::new(request);
+		let mut req = Request::new(request);
 		self.attach_auth(&mut req);
 
 		let response = client.admin(req).await.map_err(status_to_error)?;
-		let frames = proto_frames_to_frames(response.into_inner().frames);
+		let meta = extract_meta(response.metadata());
+		let frames = decode_admin_payload(response.into_inner().payload)?;
 		Ok(AdminResult {
 			frames,
+			meta,
 		})
 	}
 
-	pub async fn admin_batch(&self, statements: Vec<&str>, params: Option<Params>) -> Result<AdminResult, Error> {
-		let request = ProtoAdminRequest {
-			statements: statements.into_iter().map(String::from).collect(),
-			params: params.and_then(params_to_proto),
-		};
-
-		let mut client = self.inner.clone();
-		let mut req = tonic::Request::new(request);
-		self.attach_auth(&mut req);
-
-		let response = client.admin(req).await.map_err(status_to_error)?;
-		let frames = proto_frames_to_frames(response.into_inner().frames);
-		Ok(AdminResult {
-			frames,
-		})
+	pub async fn command(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		Ok(self.command_with_meta(rql, params).await?.frames)
 	}
 
-	pub async fn command(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
+	pub async fn command_with_meta(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
 		let request = ProtoCommandRequest {
-			statements: vec![rql.to_string()],
+			rql: rql.to_string(),
 			params: params.and_then(params_to_proto),
+			format: self.wire_format(),
 		};
 
 		let mut client = self.inner.clone();
-		let mut req = tonic::Request::new(request);
+		let mut req = Request::new(request);
 		self.attach_auth(&mut req);
 
 		let response = client.command(req).await.map_err(status_to_error)?;
-		let frames = proto_frames_to_frames(response.into_inner().frames);
+		let meta = extract_meta(response.metadata());
+		let frames = decode_command_payload(response.into_inner().payload)?;
 		Ok(CommandResult {
 			frames,
+			meta,
 		})
 	}
 
-	pub async fn command_batch(
-		&self,
-		statements: Vec<&str>,
-		params: Option<Params>,
-	) -> Result<CommandResult, Error> {
-		let request = ProtoCommandRequest {
-			statements: statements.into_iter().map(String::from).collect(),
-			params: params.and_then(params_to_proto),
-		};
-
-		let mut client = self.inner.clone();
-		let mut req = tonic::Request::new(request);
-		self.attach_auth(&mut req);
-
-		let response = client.command(req).await.map_err(status_to_error)?;
-		let frames = proto_frames_to_frames(response.into_inner().frames);
-		Ok(CommandResult {
-			frames,
-		})
+	pub async fn query(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		Ok(self.query_with_meta(rql, params).await?.frames)
 	}
 
-	pub async fn query(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
+	pub async fn query_with_meta(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
 		let request = ProtoQueryRequest {
-			statements: vec![rql.to_string()],
+			rql: rql.to_string(),
 			params: params.and_then(params_to_proto),
+			format: self.wire_format(),
 		};
 
 		let mut client = self.inner.clone();
-		let mut req = tonic::Request::new(request);
+		let mut req = Request::new(request);
 		self.attach_auth(&mut req);
 
 		let response = client.query(req).await.map_err(status_to_error)?;
-		let frames = proto_frames_to_frames(response.into_inner().frames);
+		let meta = extract_meta(response.metadata());
+		let frames = decode_query_payload(response.into_inner().payload)?;
 		Ok(QueryResult {
 			frames,
+			meta,
 		})
 	}
 
-	pub async fn query_batch(&self, statements: Vec<&str>, params: Option<Params>) -> Result<QueryResult, Error> {
-		let request = ProtoQueryRequest {
-			statements: statements.into_iter().map(String::from).collect(),
+	/// Invoke a gRPC binding by its globally-unique name.
+	pub async fn call(&self, name: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		Ok(self.call_with_meta(name, params).await?.frames)
+	}
+
+	pub async fn call_with_meta(&self, name: &str, params: Option<Params>) -> Result<CommandResult, Error> {
+		let request = ProtoOperationRequest {
+			name: name.to_string(),
 			params: params.and_then(params_to_proto),
+			format: self.wire_format(),
 		};
 
 		let mut client = self.inner.clone();
-		let mut req = tonic::Request::new(request);
+		let mut req = Request::new(request);
 		self.attach_auth(&mut req);
 
-		let response = client.query(req).await.map_err(status_to_error)?;
-		let frames = proto_frames_to_frames(response.into_inner().frames);
-		Ok(QueryResult {
+		let response = client.call(req).await.map_err(status_to_error)?;
+		let meta = extract_meta(response.metadata());
+		let frames = decode_operation_payload(response.into_inner().payload)?;
+		Ok(CommandResult {
 			frames,
+			meta,
 		})
 	}
 
-	pub async fn subscribe(&self, query: &str) -> Result<GrpcSubscription, Error> {
+	pub async fn subscribe(&self, rql: &str, config: SubscriptionConfig) -> Result<GrpcSubscription, Error> {
 		let request = ProtoSubscribeRequest {
-			query: query.to_string(),
+			rql: build_subscription_rql(rql, &config),
+			format: self.wire_format(),
 		};
 
 		let mut client = self.inner.clone();
-		let mut req = tonic::Request::new(request);
+		let mut req = Request::new(request);
 		self.attach_auth(&mut req);
 
 		let response = client.subscribe(req).await.map_err(status_to_error)?;
@@ -267,6 +337,7 @@ impl GrpcClient {
 		Ok(GrpcSubscription {
 			subscription_id,
 			stream,
+			format: self.format,
 		})
 	}
 
@@ -275,16 +346,79 @@ impl GrpcClient {
 			subscription_id: subscription_id.to_string(),
 		};
 		let mut client = self.inner.clone();
-		let mut req = tonic::Request::new(request);
+		let mut req = Request::new(request);
 		self.attach_auth(&mut req);
 		client.unsubscribe(req).await.map_err(status_to_error)?;
 		Ok(())
 	}
 
-	fn attach_auth<T>(&self, request: &mut tonic::Request<T>) {
+	/// Open a batch subscription over N queries. The server coalesces per-tick deltas
+	/// into a single envelope keyed by member subscription id.
+	pub async fn batch_subscribe(&self, items: &[BatchItem<'_>]) -> Result<BatchGrpcSubscription, Error> {
+		let request = ProtoBatchSubscribeRequest {
+			rql: items.iter().map(|i| build_subscription_rql(i.rql, &i.config)).collect(),
+			format: self.wire_format(),
+		};
+
+		let mut client = self.inner.clone();
+		let mut req = Request::new(request);
+		self.attach_auth(&mut req);
+
+		let response = client.batch_subscribe(req).await.map_err(status_to_error)?;
+		let mut stream = response.into_inner();
+
+		// Consume the initial BatchSubscribedEvent to extract batch_id + members
+		let first = stream.message().await.map_err(status_to_error)?.ok_or_else(|| {
+			Error(Box::new(Diagnostic {
+				code: "GRPC_BATCH_SUBSCRIBE".to_string(),
+				message: "Stream closed before receiving batch subscribed event".to_string(),
+				..Default::default()
+			}))
+		})?;
+
+		let (batch_id, members) = match first.event {
+			Some(batch_subscription_event::Event::Subscribed(s)) => {
+				let members: Vec<BatchMemberHandle> = s
+					.members
+					.into_iter()
+					.map(|m| BatchMemberHandle {
+						index: m.index as usize,
+						subscription_id: m.subscription_id,
+					})
+					.collect();
+				(s.batch_id, members)
+			}
+			_ => {
+				return Err(Error(Box::new(Diagnostic {
+					code: "GRPC_BATCH_SUBSCRIBE".to_string(),
+					message: "Expected BatchSubscribedEvent as first message".to_string(),
+					..Default::default()
+				})));
+			}
+		};
+
+		Ok(BatchGrpcSubscription {
+			batch_id,
+			members,
+			stream,
+		})
+	}
+
+	pub async fn batch_unsubscribe(&self, batch_id: &str) -> Result<(), Error> {
+		let request = ProtoBatchUnsubscribeRequest {
+			batch_id: batch_id.to_string(),
+		};
+		let mut client = self.inner.clone();
+		let mut req = Request::new(request);
+		self.attach_auth(&mut req);
+		client.batch_unsubscribe(req).await.map_err(status_to_error)?;
+		Ok(())
+	}
+
+	fn attach_auth<T>(&self, request: &mut Request<T>) {
 		if let Some(ref token) = self.token {
 			let bearer = format!("Bearer {}", token);
-			if let Ok(value) = bearer.parse::<MetadataValue<tonic::metadata::Ascii>>() {
+			if let Ok(value) = bearer.parse::<MetadataValue<Ascii>>() {
 				request.metadata_mut().insert("authorization", value);
 			}
 		}
@@ -293,7 +427,124 @@ impl GrpcClient {
 
 pub struct GrpcSubscription {
 	subscription_id: String,
-	stream: tonic::codec::Streaming<SubscriptionEvent>,
+	stream: Streaming<SubscriptionEvent>,
+	#[allow(dead_code)]
+	format: WireFormat,
+}
+
+/// Member information returned from a successful `batch_subscribe` - pairs the
+/// client's query index with the server-assigned subscription id.
+#[derive(Debug, Clone)]
+pub struct BatchMemberHandle {
+	pub index: usize,
+	pub subscription_id: String,
+}
+
+/// A batch subscription over gRPC. Receives coalesced per-tick envelopes from
+/// N underlying member subscriptions.
+pub struct BatchGrpcSubscription {
+	batch_id: String,
+	members: Vec<BatchMemberHandle>,
+	stream: Streaming<BatchSubscriptionEvent>,
+}
+
+/// One envelope delivered by a batch subscription: a map from member
+/// `subscription_id` → typed change that arrived within that poller tick.
+#[derive(Debug, Clone)]
+pub struct BatchFramesEnvelope {
+	pub batch_id: String,
+	pub entries: HashMap<String, GrpcChange>,
+	pub entry_errors: HashMap<String, String>,
+}
+
+/// A non-data server-initiated notification on a batch stream: either a member
+/// closed (upstream ended, batch still alive) or the batch itself closed.
+#[derive(Debug, Clone)]
+pub enum BatchStreamEvent {
+	Change(BatchFramesEnvelope),
+	MemberClosed {
+		batch_id: String,
+		subscription_id: String,
+	},
+}
+
+impl BatchGrpcSubscription {
+	pub fn batch_id(&self) -> &str {
+		&self.batch_id
+	}
+
+	pub fn members(&self) -> &[BatchMemberHandle] {
+		&self.members
+	}
+
+	/// Receive the next envelope. Returns `None` when the server stream ends.
+	///
+	/// `BatchMemberClosed` notifications are surfaced so callers can track which
+	/// members have stopped producing.
+	pub async fn recv(&mut self) -> Option<BatchStreamEvent> {
+		loop {
+			let msg = self.stream.message().await.ok()??;
+			match msg.event {
+				Some(batch_subscription_event::Event::Change(change)) => {
+					let batch_id = change.batch_id;
+					let mut entries: HashMap<String, GrpcChange> = HashMap::new();
+					let mut entry_errors: HashMap<String, String> = HashMap::new();
+					for entry in change.entries {
+						let sub_id = entry.subscription_id;
+						match entry.change.and_then(|c| c.payload) {
+							Some(change_event::Payload::Rbcf(bytes)) => {
+								match decode_frames(&bytes) {
+									Ok(frames) => {
+										entries.insert(
+											sub_id,
+											classify_frames(frames),
+										);
+									}
+									Err(e) => {
+										entry_errors.insert(
+											sub_id.clone(),
+											e.to_string(),
+										);
+										entries.insert(
+											sub_id,
+											classify_frames(Vec::new()),
+										);
+									}
+								}
+							}
+							Some(change_event::Payload::Frames(fp)) => {
+								entries.insert(
+									sub_id,
+									classify_frames(proto_frames_to_frames(
+										fp.frames,
+									)),
+								);
+							}
+							None => {
+								entries.insert(sub_id, classify_frames(Vec::new()));
+							}
+						}
+					}
+					return Some(BatchStreamEvent::Change(BatchFramesEnvelope {
+						batch_id,
+						entries,
+						entry_errors,
+					}));
+				}
+				Some(batch_subscription_event::Event::MemberClosed(m)) => {
+					return Some(BatchStreamEvent::MemberClosed {
+						batch_id: m.batch_id,
+						subscription_id: m.subscription_id,
+					});
+				}
+				Some(batch_subscription_event::Event::Subscribed(_)) => {
+					// Already consumed during batch_subscribe; ignore any trailing ones.
+					continue;
+				}
+				None => continue,
+			}
+		}
+	}
 }
 
 impl GrpcSubscription {
@@ -301,21 +552,73 @@ impl GrpcSubscription {
 		&self.subscription_id
 	}
 
-	pub async fn recv(&mut self) -> Option<Vec<Frame>> {
+	pub async fn recv(&mut self) -> Option<GrpcChange> {
+		self.recv_raw().await.map(|p| classify_frames(p.into_frames()))
+	}
+
+	pub async fn recv_raw(&mut self) -> Option<RawChangePayload> {
 		loop {
 			let msg = self.stream.message().await.ok()??;
 			match msg.event {
 				Some(subscription_event::Event::Change(change)) => {
-					return Some(proto_frames_to_frames(change.frames));
+					let payload = match change.payload {
+						Some(change_event::Payload::Rbcf(bytes)) => {
+							RawChangePayload::Rbcf(bytes)
+						}
+						Some(change_event::Payload::Frames(fp)) => RawChangePayload::Proto(fp),
+						None => RawChangePayload::Empty,
+					};
+					return Some(payload);
 				}
 				Some(subscription_event::Event::Subscribed(_)) => {
-					// Unexpected but skip
 					continue;
 				}
 				None => continue,
 			}
 		}
 	}
+}
+
+fn decode_admin_payload(payload: Option<admin_response::Payload>) -> Result<Vec<Frame>, Error> {
+	match payload {
+		Some(admin_response::Payload::Rbcf(bytes)) => decode_rbcf(&bytes),
+		Some(admin_response::Payload::Frames(fp)) => Ok(proto_frames_to_frames(fp.frames)),
+		None => Ok(Vec::new()),
+	}
+}
+
+fn decode_command_payload(payload: Option<command_response::Payload>) -> Result<Vec<Frame>, Error> {
+	match payload {
+		Some(command_response::Payload::Rbcf(bytes)) => decode_rbcf(&bytes),
+		Some(command_response::Payload::Frames(fp)) => Ok(proto_frames_to_frames(fp.frames)),
+		None => Ok(Vec::new()),
+	}
+}
+
+fn decode_query_payload(payload: Option<query_response::Payload>) -> Result<Vec<Frame>, Error> {
+	match payload {
+		Some(query_response::Payload::Rbcf(bytes)) => decode_rbcf(&bytes),
+		Some(query_response::Payload::Frames(fp)) => Ok(proto_frames_to_frames(fp.frames)),
+		None => Ok(Vec::new()),
+	}
+}
+
+fn decode_operation_payload(payload: Option<operation_response::Payload>) -> Result<Vec<Frame>, Error> {
+	match payload {
+		Some(operation_response::Payload::Rbcf(bytes)) => decode_rbcf(&bytes),
+		Some(operation_response::Payload::Frames(fp)) => Ok(proto_frames_to_frames(fp.frames)),
+		None => Ok(Vec::new()),
+	}
+}
+
+fn decode_rbcf(bytes: &[u8]) -> Result<Vec<Frame>, Error> {
+	decode_frames(bytes).map_err(|e| {
+		Error(Box::new(Diagnostic {
+			code: "RBCF_DECODE".to_string(),
+			message: format!("failed to decode RBCF payload: {}", e),
+			..Default::default()
+		}))
+	})
 }
 
 fn params_to_proto(params: Params) -> Option<ProtoParams> {
@@ -424,7 +727,22 @@ fn proto_frames_to_frames(frames: Vec<ProtoFrame>) -> Vec<Frame> {
 					}
 				})
 				.collect();
-			Frame::with_row_numbers(columns, row_numbers)
+			let created_at = f
+				.created_at
+				.iter()
+				.filter_map(|s| parse_datetime(Fragment::internal(s)).ok())
+				.collect();
+			let updated_at = f
+				.updated_at
+				.iter()
+				.filter_map(|s| parse_datetime(Fragment::internal(s)).ok())
+				.collect();
+			Frame {
+				row_numbers,
+				created_at,
+				updated_at,
+				columns,
+			}
 		})
 		.collect()
 }
@@ -574,7 +892,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 			let values: Vec<IdentityId> = data
 				.chunks_exact(16)
 				.map(|chunk| {
-					let uuid = uuid::Uuid::from_bytes(chunk.try_into().unwrap());
+					let uuid = Uuid::from_bytes(chunk.try_into().unwrap());
 					IdentityId(Uuid7(uuid))
 				})
 				.collect();
@@ -584,7 +902,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 			let values: Vec<Uuid4> = data
 				.chunks_exact(16)
 				.map(|chunk| {
-					let uuid = uuid::Uuid::from_bytes(chunk.try_into().unwrap());
+					let uuid = Uuid::from_bytes(chunk.try_into().unwrap());
 					Uuid4(uuid)
 				})
 				.collect();
@@ -594,7 +912,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 			let values: Vec<Uuid7> = data
 				.chunks_exact(16)
 				.map(|chunk| {
-					let uuid = uuid::Uuid::from_bytes(chunk.try_into().unwrap());
+					let uuid = Uuid::from_bytes(chunk.try_into().unwrap());
 					Uuid7(uuid)
 				})
 				.collect();
@@ -620,7 +938,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 				pos += 4;
 				let bytes = &data[pos..pos + len];
 				pos += len;
-				values.push(Int(num_bigint::BigInt::from_signed_bytes_le(bytes)));
+				values.push(Int(BigInt::from_signed_bytes_le(bytes)));
 			}
 			FrameColumnData::Int(NumberContainer::new(values))
 		}
@@ -632,7 +950,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 				pos += 4;
 				let bytes = &data[pos..pos + len];
 				pos += len;
-				values.push(Uint(num_bigint::BigInt::from_signed_bytes_le(bytes)));
+				values.push(Uint(BigInt::from_signed_bytes_le(bytes)));
 			}
 			FrameColumnData::Uint(NumberContainer::new(values))
 		}
@@ -652,7 +970,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 				pos += consumed;
 				values.push(Box::new(val));
 			}
-			FrameColumnData::Any(reifydb_type::value::container::any::AnyContainer::new(values))
+			FrameColumnData::Any(AnyContainer::new(values))
 		}
 		Type::DictionaryId => {
 			// Fallback: store as Utf8 for now (dictionary IDs need context)
@@ -692,7 +1010,7 @@ fn decode_any_value(data: &[u8]) -> (Value, usize) {
 
 	match ty {
 		Type::Option(inner) => {
-			// None value — the type tag has 0x80 set
+			// None value - the type tag has 0x80 set
 			(
 				Value::None {
 					inner: *inner,
@@ -782,15 +1100,15 @@ fn decode_any_value(data: &[u8]) -> (Value, usize) {
 			(Value::Duration(Duration::new(months, days, nanos).unwrap()), pos + 16)
 		}
 		Type::IdentityId => {
-			let uuid = uuid::Uuid::from_bytes(data[pos..pos + 16].try_into().unwrap());
+			let uuid = Uuid::from_bytes(data[pos..pos + 16].try_into().unwrap());
 			(Value::IdentityId(IdentityId(Uuid7(uuid))), pos + 16)
 		}
 		Type::Uuid4 => {
-			let uuid = uuid::Uuid::from_bytes(data[pos..pos + 16].try_into().unwrap());
+			let uuid = Uuid::from_bytes(data[pos..pos + 16].try_into().unwrap());
 			(Value::Uuid4(Uuid4(uuid)), pos + 16)
 		}
 		Type::Uuid7 => {
-			let uuid = uuid::Uuid::from_bytes(data[pos..pos + 16].try_into().unwrap());
+			let uuid = Uuid::from_bytes(data[pos..pos + 16].try_into().unwrap());
 			(Value::Uuid7(Uuid7(uuid)), pos + 16)
 		}
 		Type::Blob => {
@@ -803,13 +1121,13 @@ fn decode_any_value(data: &[u8]) -> (Value, usize) {
 			let len = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
 			pos += 4;
 			let bytes = &data[pos..pos + len];
-			(Value::Int(Int(num_bigint::BigInt::from_signed_bytes_le(bytes))), pos + len)
+			(Value::Int(Int(BigInt::from_signed_bytes_le(bytes))), pos + len)
 		}
 		Type::Uint => {
 			let len = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
 			pos += 4;
 			let bytes = &data[pos..pos + len];
-			(Value::Uint(Uint(num_bigint::BigInt::from_signed_bytes_le(bytes))), pos + len)
+			(Value::Uint(Uint(BigInt::from_signed_bytes_le(bytes))), pos + len)
 		}
 		Type::Decimal => {
 			let len = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
@@ -819,7 +1137,7 @@ fn decode_any_value(data: &[u8]) -> (Value, usize) {
 			(Value::Decimal(d), pos + len)
 		}
 		Type::Any => {
-			// Any wraps another value — recursively decode the inner
+			// Any wraps another value - recursively decode the inner
 			let (inner_val, consumed) = decode_any_value(&data[pos..]);
 			(Value::Any(Box::new(inner_val)), pos + consumed)
 		}
@@ -835,8 +1153,8 @@ fn decode_any_value(data: &[u8]) -> (Value, usize) {
 	}
 }
 
-fn status_to_error(status: tonic::Status) -> Error {
-	if let Ok(diag) = serde_json::from_str::<Diagnostic>(status.message()) {
+fn status_to_error(status: Status) -> Error {
+	if let Ok(diag) = serde_json_from_str::<Diagnostic>(status.message()) {
 		return Error(Box::new(diag));
 	}
 	Error(Box::new(Diagnostic {

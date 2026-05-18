@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::shape_fields::*, vtable::SHAPE_FIELDS};
 
-/// Returns the static definition for the system.shape_fields virtual table
-/// This table exposes information about all fields across all shapes in the database
 pub fn shape_fields() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

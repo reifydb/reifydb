@@ -1,34 +1,36 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{mem, sync::Arc};
 
 use reifydb_core::{
 	interface::{evaluate::TargetColumn, resolved::ResolvedColumn},
-	value::column::{Column, columns::Columns, headers::ColumnHeaders},
+	value::column::{ColumnWithName, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
-use reifydb_rql::expression::{Expression, name::column_name_from_expression};
+use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::fragment::Fragment;
+use reifydb_type::{fragment::Fragment, util::cowvec::CowVec};
 use tracing::instrument;
 
+use super::NoopNode;
 use crate::{
 	Result,
 	expression::{
 		cast::cast_column_data,
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalSession},
+		context::{CompileContext, EvalContext},
 	},
-	vm::volcano::query::{QueryContext, QueryNode},
+	vm::volcano::{
+		query::{QueryContext, QueryNode},
+		udf::{UdfEvalNode, strip_udf_columns},
+	},
 };
 
-/// PatchNode merges assignment values with original row values.
-/// Unlike ExtendNode which adds new columns, PatchNode replaces
-/// columns that have matching names in the assignments.
 pub(crate) struct PatchNode {
 	input: Box<dyn QueryNode>,
 	expressions: Vec<Expression>,
+	udf_names: Vec<String>,
 	headers: Option<ColumnHeaders>,
 	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
 }
@@ -38,6 +40,7 @@ impl PatchNode {
 		Self {
 			input,
 			expressions,
+			udf_names: Vec::new(),
 			headers: None,
 			context: None,
 		}
@@ -47,8 +50,16 @@ impl PatchNode {
 impl QueryNode for PatchNode {
 	#[instrument(name = "volcano::patch::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		let (input, expressions, udf_names) = UdfEvalNode::wrap_if_needed(
+			mem::replace(&mut self.input, Box::new(NoopNode)),
+			&self.expressions,
+			&ctx.symbols,
+		);
+		self.input = input;
+		self.expressions = expressions;
+		self.udf_names = udf_names;
+
 		let compile_ctx = CompileContext {
-			functions: &ctx.services.functions,
 			symbols: &ctx.symbols,
 		};
 		let compiled = self
@@ -68,7 +79,7 @@ impl QueryNode for PatchNode {
 		if let Some(columns) = self.input.next(rx, ctx)? {
 			let stored_ctx = &self.context.as_ref().unwrap().0;
 			let transform_ctx = TransformContext {
-				functions: &stored_ctx.services.functions,
+				routines: &ctx.services.routines,
 				runtime_context: &stored_ctx.services.runtime_context,
 				params: &stored_ctx.params,
 			};
@@ -81,6 +92,8 @@ impl QueryNode for PatchNode {
 				});
 			}
 
+			let mut result = result;
+			strip_udf_columns(&mut result, &self.udf_names);
 			Ok(Some(result))
 		} else {
 			Ok(None)
@@ -93,7 +106,7 @@ impl QueryNode for PatchNode {
 		}
 
 		let input_headers = self.input.headers()?;
-		let patch_names: Vec<Fragment> = self.expressions.iter().map(column_name_from_expression).collect();
+		let patch_names: Vec<Fragment> = self.expressions.iter().map(display_label).collect();
 
 		let mut result = Vec::new();
 		for col in &input_headers.columns {
@@ -123,13 +136,15 @@ impl Transform for PatchNode {
 
 		let row_count = input.row_count();
 		let row_numbers = input.row_numbers.to_vec();
+		let created_at = input.created_at.clone();
+		let updated_at = input.updated_at.clone();
 
-		let patch_names: Vec<Fragment> = self.expressions.iter().map(column_name_from_expression).collect();
+		let patch_names: Vec<Fragment> = self.expressions.iter().map(display_label).collect();
 
-		let session = EvalSession::from_transform(ctx, stored_ctx);
+		let session = EvalContext::from_transform(ctx, stored_ctx);
 		let mut patch_columns = Vec::with_capacity(self.expressions.len());
 		for (expr, compiled_expr) in self.expressions.iter().zip(compiled.iter()) {
-			let mut exec_ctx = session.eval(input.clone(), row_count);
+			let mut exec_ctx = session.with_eval(input.clone(), row_count);
 
 			if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
 				let alias_name = alias_expr.alias.name();
@@ -149,7 +164,7 @@ impl Transform for PatchNode {
 			{
 				let data =
 					cast_column_data(&exec_ctx, &column.data, target_type, &expr.lazy_fragment())?;
-				column = Column {
+				column = ColumnWithName {
 					name: column.name,
 					data,
 				};
@@ -158,15 +173,15 @@ impl Transform for PatchNode {
 			patch_columns.push(column);
 		}
 
-		let mut result_columns = Vec::new();
+		let mut result_columns: Vec<ColumnWithName> = Vec::new();
 
-		for original_col in input.into_iter() {
-			let original_name = original_col.name().text();
+		for (original_name, original_data) in input.names.iter().zip(input.columns.iter()) {
+			let original_name_text = original_name.text();
 
-			if let Some(patch_idx) = patch_names.iter().position(|n| n.text() == original_name) {
+			if let Some(patch_idx) = patch_names.iter().position(|n| n.text() == original_name_text) {
 				result_columns.push(patch_columns[patch_idx].clone());
 			} else {
-				result_columns.push(original_col);
+				result_columns.push(ColumnWithName::new(original_name.clone(), original_data.clone()));
 			}
 		}
 
@@ -176,10 +191,18 @@ impl Transform for PatchNode {
 			}
 		}
 
-		if row_numbers.is_empty() {
-			Ok(Columns::new(result_columns))
-		} else {
-			Ok(Columns::with_row_numbers(result_columns, row_numbers))
+		let mut names_vec = Vec::with_capacity(result_columns.len());
+		let mut buffers_vec = Vec::with_capacity(result_columns.len());
+		for c in result_columns {
+			names_vec.push(c.name);
+			buffers_vec.push(c.data);
 		}
+		Ok(Columns {
+			row_numbers: CowVec::new(row_numbers),
+			created_at,
+			updated_at,
+			columns: CowVec::new(buffers_vec),
+			names: CowVec::new(names_vec),
+		})
 	}
 }

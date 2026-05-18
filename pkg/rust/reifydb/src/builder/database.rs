@@ -10,52 +10,67 @@ use reifydb_auth::{
 };
 use reifydb_catalog::{
 	CatalogVersion,
-	bootstrap::{
-		bootstrap_configaults, bootstrap_root_identity, bootstrap_system_procedures, load_materialized_catalog,
-	},
+	bootstrap::{apply_bootstrap_configs, bootstrap_system_objects, load_catalog_cache},
+	cache::CatalogCache,
 	catalog::Catalog,
-	materialized::MaterializedCatalog,
 	system::SystemCatalog,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_cdc::compact::actor::CompactActor;
 use reifydb_cdc::{
 	CdcVersion,
-	produce::producer::{CdcProducerEventListener, spawn_cdc_producer},
+	produce::{
+		producer::{CdcProducerEventListener, spawn_cdc_producer},
+		watermark::CdcProducerWatermark,
+	},
 	storage::CdcStore,
 };
 use reifydb_core::{
 	CoreVersion,
-	config::SystemConfig,
-	event::{
-		EventBus,
-		metric::{CdcStatsDroppedEvent, CdcStatsRecordedEvent, StorageStatsRecordedEvent},
-		transaction::PostCommitEvent,
+	actors::cdc::CdcProduceHandle,
+	event::{EventBus, transaction::PostCommitEvent},
+	interface::{
+		catalog::config::ConfigKey,
+		version::{ComponentType, HasVersion, SystemVersion},
 	},
-	interface::version::{ComponentType, HasVersion, SystemVersion},
 	util::ioc::IocContainer,
 };
-use reifydb_engine::{EngineVersion, engine::StandardEngine, remote::RemoteRegistry, vm::services::EngineConfig};
-use reifydb_extension::transform::registry::{Transforms, TransformsConfigurator};
-use reifydb_metric::worker::{
-	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
+#[cfg(not(reifydb_single_threaded))]
+use reifydb_engine::remote::RemoteRegistry;
+use reifydb_engine::{EngineVersion, engine::StandardEngine, vm::services::EngineConfig};
+#[cfg(reifydb_target = "native")]
+use reifydb_extension::procedure::ffi_loader::register_procedures_from_dir;
+use reifydb_extension::{
+	procedure::wasm_loader::register_wasm_procedures_from_dir,
+	transform::registry::{Transforms, TransformsConfigurator},
 };
 use reifydb_routine::{
-	function::{default_functions, registry::FunctionsConfigurator},
-	procedure::{default_procedures, registry::ProceduresConfigurator},
+	function::default_native_functions,
+	procedure::default_native_procedures,
+	routine::registry::{Routines, RoutinesConfigurator},
 };
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem, context::RuntimeContext};
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_sqlite::SqliteConfig;
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::SubsystemFactory;
+#[cfg(feature = "sub_column")]
+use reifydb_sub_column::factory::StorageSubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::{builder::FlowConfigurator, subsystem::factory::FlowSubsystemFactory};
+#[cfg(feature = "sub_profiler")]
+use reifydb_sub_profiler::{builder::ProfilerConfigurator, factory::ProfilerSubsystemFactory};
 #[cfg(feature = "sub_replication")]
-use reifydb_sub_replication::{
-	builder::{ReplicationConfig, ReplicationConfigurator},
-	factory::ReplicationSubsystemFactory,
-};
-#[cfg(feature = "sub_server")]
+use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurator};
+#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
+use reifydb_sub_replication::factory::ReplicationSubsystemFactory;
+#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_sub_server::interceptor::RequestInterceptorChain;
+#[cfg(feature = "sub_flow")]
+use reifydb_sub_subscription::subsystem::SubscriptionSubsystemFactory;
+#[cfg(not(reifydb_single_threaded))]
 use reifydb_sub_task::factory::{TaskConfig, TaskSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingConfigurator;
@@ -65,22 +80,31 @@ use reifydb_transaction::{
 	TransactionVersion, interceptor::builder::InterceptorBuilder, multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 };
+use reifydb_type::value::Value;
 
-use crate::{
-	Migration, database::Database, health::HealthMonitor, subsystem::Subsystems, system::tasks::create_system_tasks,
-};
+#[cfg(not(reifydb_single_threaded))]
+use crate::system::tasks::create_system_tasks;
+use crate::{MigrationStatement, Result, database::Database, health::HealthMonitor, subsystem::Subsystems};
+
+/// Backend selection for the CDC store.
+///
+/// Defaults to `Memory`. Use `Sqlite(config)` for on-disk, restart-safe CDC
+/// (non-wasm32 targets only).
+#[derive(Default)]
+pub enum CdcBackend {
+	#[default]
+	Memory,
+	#[cfg(not(target_arch = "wasm32"))]
+	Sqlite(SqliteConfig),
+}
 
 pub struct DatabaseBuilder {
 	interceptors: InterceptorBuilder,
 	factories: Vec<Box<dyn SubsystemFactory>>,
 	ioc: IocContainer,
 	actor_system: Option<ActorSystem>,
-	functions_configurator:
-		Option<Box<dyn FnOnce(FunctionsConfigurator) -> FunctionsConfigurator + Send + 'static>>,
-	procedures_configurator:
-		Option<Box<dyn FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static>>,
-	handlers_configurator:
-		Option<Box<dyn FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static>>,
+	routines_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
+	handlers_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
 	#[cfg(reifydb_target = "native")]
 	procedure_dir: Option<PathBuf>,
 	wasm_procedure_dir: Option<PathBuf>,
@@ -94,33 +118,32 @@ pub struct DatabaseBuilder {
 	flow_factory: Option<Box<dyn SubsystemFactory>>,
 	#[cfg(feature = "sub_replication")]
 	replication_factory: Option<Box<dyn SubsystemFactory>>,
+	#[cfg(not(reifydb_single_threaded))]
 	task_factory: Option<Box<dyn SubsystemFactory>>,
 	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
-	migrations: Vec<Migration>,
+	migrations: Vec<MigrationStatement>,
+	is_replica: bool,
+	bootstrap_configs: Vec<(ConfigKey, Value)>,
+	cdc_backend: CdcBackend,
 }
 
 impl DatabaseBuilder {
 	#[allow(unused_mut)]
 	pub fn new(
-		system_config: SystemConfig,
+		catalog_cache: CatalogCache,
 		multi: MultiTransaction,
 		single: SingleTransaction,
 		eventbus: EventBus,
 	) -> Self {
-		let ioc = IocContainer::new()
-			.register(system_config.clone())
-			.register(MaterializedCatalog::new(system_config))
-			.register(eventbus)
-			.register(multi)
-			.register(single);
+		let ioc =
+			IocContainer::new().register(catalog_cache).register(eventbus).register(multi).register(single);
 
 		Self {
 			interceptors: InterceptorBuilder::new(),
 			factories: Vec::new(),
 			ioc,
 			actor_system: None,
-			functions_configurator: None,
-			procedures_configurator: None,
+			routines_configurator: None,
 			handlers_configurator: None,
 			#[cfg(reifydb_target = "native")]
 			procedure_dir: None,
@@ -134,10 +157,20 @@ impl DatabaseBuilder {
 			flow_factory: None,
 			#[cfg(feature = "sub_replication")]
 			replication_factory: None,
+			#[cfg(not(reifydb_single_threaded))]
 			task_factory: None,
 			auth_configurator: None,
 			migrations: Vec::new(),
+			is_replica: false,
+			bootstrap_configs: Vec::new(),
+			cdc_backend: CdcBackend::default(),
 		}
+	}
+
+	/// Select the CDC storage backend. Defaults to `CdcBackend::Memory`.
+	pub fn with_cdc_backend(mut self, backend: CdcBackend) -> Self {
+		self.cdc_backend = backend;
+		self
 	}
 
 	/// Store the underlying MultiStore and SingleStore for metrics worker
@@ -156,6 +189,15 @@ impl DatabaseBuilder {
 		self
 	}
 
+	#[cfg(feature = "sub_profiler")]
+	pub fn with_profiler<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(ProfilerConfigurator) -> ProfilerConfigurator + Send + 'static,
+	{
+		self.factories.push(Box::new(ProfilerSubsystemFactory::with_configurator(configurator)));
+		self
+	}
+
 	#[cfg(feature = "sub_flow")]
 	pub fn with_flow<F>(mut self, configurator: F) -> Self
 	where
@@ -165,7 +207,7 @@ impl DatabaseBuilder {
 		self
 	}
 
-	#[cfg(feature = "sub_replication")]
+	#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
 	pub fn with_replication<F, C>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(ReplicationConfigurator) -> C + Send + 'static,
@@ -191,31 +233,23 @@ impl DatabaseBuilder {
 		self
 	}
 
-	#[cfg(feature = "sub_server")]
+	#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 	pub fn with_request_interceptor_chain(self, chain: RequestInterceptorChain) -> Self {
 		self.ioc.register_service(chain);
 		self
 	}
 
-	pub fn with_functions_configurator<F>(mut self, configurator: F) -> Self
+	pub fn with_routines_configurator<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(FunctionsConfigurator) -> FunctionsConfigurator + Send + 'static,
+		F: FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static,
 	{
-		self.functions_configurator = Some(Box::new(configurator));
-		self
-	}
-
-	pub fn with_procedures_configurator<F>(mut self, configurator: F) -> Self
-	where
-		F: FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static,
-	{
-		self.procedures_configurator = Some(Box::new(configurator));
+		self.routines_configurator = Some(Box::new(configurator));
 		self
 	}
 
 	pub fn with_handlers_configurator<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static,
+		F: FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static,
 	{
 		self.handlers_configurator = Some(Box::new(configurator));
 		self
@@ -261,8 +295,28 @@ impl DatabaseBuilder {
 		self
 	}
 
-	pub fn with_migrations(mut self, migrations: Vec<Migration>) -> Self {
+	pub fn with_migrations(mut self, migrations: Vec<MigrationStatement>) -> Self {
 		self.migrations = migrations;
+		self
+	}
+
+	/// Set a system configuration value to apply during bootstrap.
+	///
+	/// Applied on every `build()` after catalog load and system-object bootstrap,
+	/// overwriting any previously persisted override for this key. Skipped on replicas.
+	pub fn with_config(mut self, key: ConfigKey, value: Value) -> Self {
+		self.bootstrap_configs.push((key, value));
+		self
+	}
+
+	/// Set multiple system configuration values to apply during bootstrap.
+	pub fn with_configs(mut self, configs: impl IntoIterator<Item = (ConfigKey, Value)>) -> Self {
+		self.bootstrap_configs.extend(configs);
+		self
+	}
+
+	pub fn is_replica(mut self) -> Self {
+		self.is_replica = true;
 		self
 	}
 
@@ -270,8 +324,7 @@ impl DatabaseBuilder {
 		self.factories.len()
 	}
 
-	pub fn build(mut self) -> crate::Result<Database> {
-		let default_builder = default_functions();
+	pub fn build(mut self) -> Result<Database> {
 		// Collect interceptors from all factories
 		// Note: We process logging and flow factories separately before adding to self.factories
 
@@ -290,6 +343,7 @@ impl DatabaseBuilder {
 			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
 		}
 
+		#[cfg(not(reifydb_single_threaded))]
 		if let Some(ref factory) = self.task_factory {
 			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
 		}
@@ -298,48 +352,55 @@ impl DatabaseBuilder {
 			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
 		}
 
-		let catalog = self.ioc.resolve::<MaterializedCatalog>()?;
+		let catalog = self.ioc.resolve::<CatalogCache>()?;
 		let multi = self.ioc.resolve::<MultiTransaction>()?;
 		let single = self.ioc.resolve::<SingleTransaction>()?;
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
-		load_materialized_catalog(&multi, &single, &catalog)?;
-		bootstrap_root_identity(&multi, &single, &catalog, &eventbus)?;
-		bootstrap_configaults(&multi, &single, &catalog, &eventbus)?;
-		bootstrap_system_procedures(&multi, &single, &catalog, &eventbus)?;
+		load_catalog_cache(&multi, &single, &catalog)?;
+
+		// Bootstrap complete - clear conflict window so bootstrap entries
+		// don't participate in conflict detection.
+		multi.bootstrapping_completed();
 
 		let runtime = self.ioc.resolve::<SharedRuntime>()?;
 		let actor_system = self.actor_system.unwrap_or_else(|| runtime.actor_system().scope());
 
-		// Create and register CdcStore for CDC storage
-		let cdc_store = CdcStore::memory();
+		// Create and register CdcStore for CDC storage.
+		let cdc_store = match self.cdc_backend {
+			CdcBackend::Memory => CdcStore::memory(),
+			#[cfg(not(target_arch = "wasm32"))]
+			CdcBackend::Sqlite(config) => CdcStore::sqlite(config),
+		};
 		self.ioc = self.ioc.register(cdc_store.clone());
+
+		// Shared CDC producer commit watermark. Producer advances it after
+		// processing each PostCommitEvent; the compactor caps its eligible
+		// range by it so no in-flight write can land at a version already
+		// covered by a packed block. Registered in IoC so consumers can
+		// observe "producer caught up to V" - the watermark advances even
+		// for commits that produce no CDC row (e.g. ConfigStorage-only
+		// commits filtered out by `should_exclude_from_cdc`).
+		let cdc_producer_watermark = CdcProducerWatermark::new();
+		self.ioc = self.ioc.register(cdc_producer_watermark.clone());
+
+		// Spawn the CDC compaction actor (sqlite only). Settings come from
+		// system config (CDC_COMPACT_INTERVAL etc.) so they can be tuned at
+		// runtime via SET CONFIG.
+		#[cfg(not(target_arch = "wasm32"))]
+		if let CdcStore::Sqlite(ref sqlite_store) = cdc_store {
+			let provider = multi.config();
+			let actor = CompactActor::new(provider, sqlite_store.clone(), cdc_producer_watermark.clone());
+			let cdc_compact_handle = actor_system.spawn_system("cdc-compact", actor);
+			self.ioc = self.ioc.register(cdc_compact_handle.actor_ref().clone());
+		}
 
 		// Get the underlying stores for workers
 		let multi_store = self.multi_store.clone().expect("MultiStore must be set via with_stores()");
 		let single_store = self.single_store.clone().expect("SingleStore must be set via with_stores()");
 
-		// Create metrics worker and register event listeners
-		let metrics_worker = Arc::new(MetricsWorker::new(
-			MetricsWorkerConfig::default(),
-			single_store.clone(),
-			multi_store.clone(),
-			eventbus.clone(),
-		));
-		eventbus.register::<StorageStatsRecordedEvent, _>(StorageStatsListener::new(metrics_worker.sender()));
-		eventbus.register::<CdcStatsRecordedEvent, _>(CdcStatsListener::new(metrics_worker.sender()));
-		eventbus.register::<CdcStatsDroppedEvent, _>(CdcStatsDroppedListener::new(metrics_worker.sender()));
-		self.ioc.register_service::<Arc<MetricsWorker>>(metrics_worker);
-
-		// Register stores in IoC for engine and subsystems to access
-		self.ioc = self.ioc.register(multi_store.clone());
 		self.ioc = self.ioc.register(single_store);
-
-		let functions = if let Some(configurator) = self.functions_configurator {
-			configurator(default_builder).configure()
-		} else {
-			default_builder.configure()
-		};
+		self.ioc = self.ioc.register(multi_store.clone());
 
 		let transforms = if let Some(configurator) = self.transforms_configurator {
 			configurator(Transforms::builder()).configure()
@@ -347,53 +408,49 @@ impl DatabaseBuilder {
 			Transforms::empty()
 		};
 
-		let procedures = {
-			let mut procedures_builder = default_procedures();
+		let routines = {
+			let mut routines_builder = Routines::builder();
+			routines_builder = default_native_functions(routines_builder);
+			routines_builder = default_native_procedures(routines_builder);
 
 			#[cfg(reifydb_target = "native")]
 			if let Some(dir) = &self.procedure_dir {
-				procedures_builder =
-					reifydb_extension::procedure::ffi_loader::register_procedures_from_dir(
-						dir,
-						procedures_builder,
-					)?;
+				routines_builder = register_procedures_from_dir(dir, routines_builder)?;
 			}
 
 			if let Some(dir) = &self.wasm_procedure_dir {
-				procedures_builder =
-					reifydb_extension::procedure::wasm_loader::register_wasm_procedures_from_dir(
-						dir,
-						procedures_builder,
-					)?;
+				routines_builder = register_wasm_procedures_from_dir(dir, routines_builder)?;
 			}
 
-			if let Some(configurator) = self.procedures_configurator {
-				procedures_builder = configurator(procedures_builder);
+			if let Some(configurator) = self.routines_configurator {
+				routines_builder = configurator(routines_builder);
 			}
 
 			if let Some(configurator) = self.handlers_configurator {
-				procedures_builder = configurator(procedures_builder);
+				routines_builder = configurator(routines_builder);
 			}
 
-			procedures_builder.configure()
+			routines_builder.configure()
 		};
 
 		// Create RemoteRegistry for forwarding queries to remote namespaces
+		#[cfg(not(reifydb_single_threaded))]
 		let remote_registry = RemoteRegistry::new(runtime.clone());
 
-		// Create engine before CDC worker (CDC worker needs engine for cleanup)
+		// Create engine and CDC producer BEFORE bootstrap so that bootstrap
+		// commits produce CDC entries (PostCommitEvent is captured).
 		let engine = StandardEngine::new(
 			multi.clone(),
 			single.clone(),
 			eventbus.clone(),
 			self.interceptors.build(),
-			Catalog::new(catalog),
+			Catalog::new(catalog.clone()),
 			EngineConfig {
 				runtime_context: RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
-				functions,
-				procedures,
+				routines,
 				transforms,
 				ioc: self.ioc.clone(),
+				#[cfg(not(reifydb_single_threaded))]
 				remote_registry: Some(remote_registry),
 			},
 		);
@@ -413,16 +470,28 @@ impl DatabaseBuilder {
 		);
 		self.ioc = self.ioc.register(auth_service.clone());
 
-		// Spawn CDC producer actor and register event listener
-		// The handle is stored in IoC to keep it alive for the database lifetime
-		// Engine is passed for periodic cleanup based on consumer watermarks
-		let cdc_handle =
-			spawn_cdc_producer(&actor_system, cdc_store, multi_store, engine.clone(), eventbus.clone());
+		// Spawn CDC producer and register PostCommitEvent listener BEFORE
+		// bootstrap so that bootstrap commits generate CDC entries.
+		let cdc_handle = spawn_cdc_producer(
+			&actor_system,
+			cdc_store,
+			multi_store,
+			engine.clone(),
+			eventbus.clone(),
+			runtime.clock().clone(),
+			cdc_producer_watermark,
+		);
 		eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
 			cdc_handle.actor_ref().clone(),
 			runtime.clock().clone(),
 		));
-		self.ioc.register_service::<Arc<reifydb_runtime::actor::system::ActorHandle<reifydb_cdc::produce::producer::CdcProduceMsg>>>(Arc::new(cdc_handle));
+		self.ioc.register_service::<Arc<CdcProduceHandle>>(Arc::new(cdc_handle));
+
+		// Bootstrap AFTER CDC producer is active so commits are captured.
+		if !self.is_replica {
+			bootstrap_system_objects(&multi, &single, &catalog, &eventbus)?;
+			apply_bootstrap_configs(&multi, &single, &catalog, &eventbus, &self.bootstrap_configs)?;
+		}
 
 		// Collect all versions
 		let mut all_versions = vec![
@@ -463,6 +532,14 @@ impl DatabaseBuilder {
 			subsystems.add_subsystem(subsystem);
 		}
 
+		#[cfg(feature = "sub_flow")]
+		{
+			let factory = Box::new(SubscriptionSubsystemFactory);
+			let subsystem = factory.create(&self.ioc)?;
+			all_versions.push(subsystem.version());
+			subsystems.add_subsystem(subsystem);
+		}
+
 		#[cfg(feature = "sub_replication")]
 		if let Some(factory) = self.replication_factory {
 			let subsystem = factory.create(&self.ioc)?;
@@ -470,10 +547,19 @@ impl DatabaseBuilder {
 			subsystems.add_subsystem(subsystem);
 		}
 
+		#[cfg(not(reifydb_single_threaded))]
 		{
 			let factory = self.task_factory.unwrap_or_else(|| {
 				Box::new(TaskSubsystemFactory::with_config(TaskConfig::new(create_system_tasks())))
 			});
+			let subsystem = factory.create(&self.ioc)?;
+			all_versions.push(subsystem.version());
+			subsystems.add_subsystem(subsystem);
+		}
+
+		#[cfg(feature = "sub_column")]
+		{
+			let factory: Box<dyn SubsystemFactory> = Box::new(StorageSubsystemFactory::default());
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);

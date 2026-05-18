@@ -31,10 +31,8 @@ fn init_embedded_files() -> HashMap<&'static str, EmbeddedFile> {
 pub fn get_embedded_file(path: &str) -> Option<&'static EmbeddedFile> {
 	let files = EMBEDDED_FILES.get_or_init(init_embedded_files);
 
-	// Remove leading slash if present
 	let path = path.strip_prefix('/').unwrap_or(path);
 
-	// Default to index.html for root
 	let path = if path.is_empty() {
 		"index.html"
 	} else {

@@ -1,17 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use reifydb_core::{internal_error, value::column::columns::Columns};
-use reifydb_rql::instruction::Instruction;
+use reifydb_routine::routine::registry::Routines;
+use reifydb_rql::instruction::{Instruction, ScopeType};
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	params::Params,
-	value::{Value, frame::frame::Frame},
+	util::bitvec::BitVec,
+	value::{Value, frame::frame::Frame, identity::IdentityId},
 };
 
 use super::{
+	exec::{
+		mask::{LoopMaskState, MaskFrame, extract_bool_bitvec},
+		stack::strip_dollar_prefix,
+	},
 	instruction::{
 		ddl::{
 			alter::{
@@ -19,7 +26,7 @@ use super::{
 				table::execute_alter_table,
 			},
 			create::{
-				deferred::create_deferred_view, dictionary::create_dictionary,
+				binding::create_binding, deferred::create_deferred_view, dictionary::create_dictionary,
 				migration::create_migration, namespace::create_namespace,
 				primary_key::create_primary_key, procedure::create_procedure,
 				property::create_column_property, remote_namespace::create_remote_namespace,
@@ -29,10 +36,10 @@ use super::{
 				transactional::create_transactional_view,
 			},
 			drop::{
-				dictionary::drop_dictionary, namespace::drop_namespace, ringbuffer::drop_ringbuffer,
-				series::drop_series, sink::drop_sink, source::drop_source,
-				subscription::drop_subscription, sumtype::drop_sumtype, table::drop_table,
-				view::drop_view,
+				binding::drop_binding, dictionary::drop_dictionary, namespace::drop_namespace,
+				procedure::drop_procedure, ringbuffer::drop_ringbuffer, series::drop_series,
+				sink::drop_sink, source::drop_source, subscription::drop_subscription,
+				sumtype::drop_sumtype, table::drop_table, view::drop_view,
 			},
 		},
 		dml::{
@@ -42,12 +49,12 @@ use super::{
 			table_delete::delete, table_insert::insert_table, table_update::update_table,
 		},
 	},
-	scalar,
 	services::Services,
 	stack::{ControlFlow, Stack, SymbolTable, Variable},
 };
 use crate::{
 	Result,
+	expression::context::EvalContext,
 	vm::instruction::ddl::{
 		alter::policy::alter_policy,
 		create::{
@@ -55,25 +62,66 @@ use crate::{
 			policy::create_policy, role::create_role,
 		},
 		drop::{
-			authentication::drop_authentication, identity::drop_identity, policy::drop_policy,
-			role::drop_role,
+			authentication::drop_authentication, handler::drop_handler, identity::drop_identity,
+			policy::drop_policy, role::drop_role, test::drop_test,
 		},
 		grant::grant,
 		revoke::revoke,
 	},
 };
 
-pub struct Vm {
+pub static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
+
+pub struct Vm<'a> {
 	pub(crate) ip: usize,
 	pub(crate) iteration_count: usize,
 	pub(crate) stack: Stack,
 	pub symbols: SymbolTable,
 	pub control_flow: ControlFlow,
 	pub(crate) dispatch_depth: u8,
+
+	pub(crate) batch_size: usize,
+
+	pub(crate) active_mask: Option<BitVec>,
+
+	pub(crate) mask_stack: Vec<MaskFrame>,
+
+	pub(crate) loop_mask_stack: Vec<LoopMaskState>,
+
+	pub(crate) params: &'a Params,
+	pub(crate) routines: &'a Routines,
+	pub(crate) runtime_context: &'a RuntimeContext,
+	pub(crate) identity: IdentityId,
 }
 
-impl Vm {
-	pub fn new(symbols: SymbolTable) -> Self {
+impl<'a> Vm<'a> {
+	pub fn from_services(
+		symbols: SymbolTable,
+		services: &'a Services,
+		params: &'a Params,
+		identity: IdentityId,
+	) -> Self {
+		Self::build(symbols, 1, params, &services.routines, &services.runtime_context, identity)
+	}
+
+	pub fn with_batch_size_from_services(
+		symbols: SymbolTable,
+		batch_size: usize,
+		services: &'a Services,
+		params: &'a Params,
+		identity: IdentityId,
+	) -> Self {
+		Self::build(symbols, batch_size, params, &services.routines, &services.runtime_context, identity)
+	}
+
+	fn build(
+		symbols: SymbolTable,
+		batch_size: usize,
+		params: &'a Params,
+		routines: &'a Routines,
+		runtime_context: &'a RuntimeContext,
+		identity: IdentityId,
+	) -> Self {
 		Self {
 			ip: 0,
 			iteration_count: 0,
@@ -81,29 +129,67 @@ impl Vm {
 			symbols,
 			control_flow: ControlFlow::Normal,
 			dispatch_depth: 0,
+			batch_size,
+			active_mask: None,
+			mask_stack: Vec::new(),
+			loop_mask_stack: Vec::new(),
+			params,
+			routines,
+			runtime_context,
+			identity,
 		}
 	}
 
-	/// Pop a scalar Value from the stack. Works for Scalar(Columns) and
-	/// 1x1 Columns variants.
+	pub(crate) fn eval_ctx(&self) -> EvalContext<'_> {
+		EvalContext {
+			params: self.params,
+			symbols: &self.symbols,
+			routines: self.routines,
+			runtime_context: self.runtime_context,
+			arena: None,
+			identity: self.identity,
+			is_aggregate_context: false,
+			columns: Columns::empty(),
+			row_count: self.batch_size,
+			target: None,
+			take: None,
+		}
+	}
+
+	pub(crate) fn run_isolated_body(
+		&mut self,
+		services: &Arc<Services>,
+		tx: &mut Transaction<'_>,
+		instructions: &[Instruction],
+		result: &mut Vec<Frame>,
+	) -> Result<()> {
+		let saved = self.params;
+		self.params = &EMPTY_PARAMS;
+		let run_result = self.run(services, tx, instructions, result);
+		self.params = saved;
+		run_result
+	}
+
 	pub(crate) fn pop_value(&mut self) -> Result<Value> {
 		match self.stack.pop()? {
-			Variable::Scalar(c) => Ok(c.scalar_value()),
-			Variable::Columns(c) if c.len() == 1 && c.row_count() == 1 => Ok(c.scalar_value()),
+			Variable::Columns {
+				columns: c,
+			} if c.is_scalar() => Ok(c.scalar_value()),
 			_ => Err(internal_error!("Expected scalar value on stack")),
 		}
 	}
 
-	/// Pop the top of stack as Columns. Works for any variant.
 	pub(crate) fn pop_as_columns(&mut self) -> Result<Columns> {
 		match self.stack.pop()? {
-			Variable::Scalar(c)
-			| Variable::Columns(c)
+			Variable::Columns {
+				columns: c,
+				..
+			}
 			| Variable::ForIterator {
 				columns: c,
 				..
 			} => Ok(c),
-			Variable::Closure(_) => Ok(Columns::scalar(Value::none())),
+			Variable::Closure(_) => Ok(Columns::single_row([("value", Value::none())])),
 		}
 	}
 
@@ -112,10 +198,12 @@ impl Vm {
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
 		instructions: &[Instruction],
-		params: &Params,
 		result: &mut Vec<Frame>,
 	) -> Result<()> {
+		let params = self.params;
 		while self.ip < instructions.len() {
+			let _ = self.batch_size > 1 && self.check_mask_merge_point()?;
+
 			match &instructions[self.ip] {
 				Instruction::Halt => return Ok(()),
 				Instruction::Nop => {}
@@ -126,31 +214,43 @@ impl Vm {
 				Instruction::Dup => self.exec_dup()?,
 
 				Instruction::LoadVar(f) => self.exec_load_var(f)?,
-				Instruction::StoreVar(f) => self.exec_store_var(f)?,
+				Instruction::StoreVar(f) => {
+					if self.batch_size > 1 && self.is_masked() {
+						let name = strip_dollar_prefix(f.text());
+						let value = self.stack.pop()?;
+						self.exec_store_var_masked(name, value)?;
+					} else if self.batch_size > 1 {
+						let name = strip_dollar_prefix(f.text());
+						let value = self.stack.pop()?;
+						self.symbols.reassign(name.to_string(), value)?;
+					} else {
+						self.exec_store_var(f)?;
+					}
+				}
 				Instruction::DeclareVar(f) => self.exec_declare_var(f)?,
 				Instruction::FieldAccess {
 					object,
 					field,
 				} => self.exec_field_access(object, field)?,
 
-				Instruction::Add => self.exec_binop(scalar::scalar_add)?,
-				Instruction::Sub => self.exec_binop(scalar::scalar_sub)?,
-				Instruction::Mul => self.exec_binop(scalar::scalar_mul)?,
-				Instruction::Div => self.exec_binop(scalar::scalar_div)?,
-				Instruction::Rem => self.exec_binop(scalar::scalar_rem)?,
+				Instruction::Add => self.exec_add()?,
+				Instruction::Sub => self.exec_sub()?,
+				Instruction::Mul => self.exec_mul()?,
+				Instruction::Div => self.exec_div()?,
+				Instruction::Rem => self.exec_rem()?,
 				Instruction::Negate => self.exec_negate()?,
 				Instruction::LogicNot => self.exec_logic_not()?,
 
-				Instruction::CmpEq => self.exec_cmp_op(scalar::scalar_eq)?,
-				Instruction::CmpNe => self.exec_cmp_op(scalar::scalar_ne)?,
-				Instruction::CmpLt => self.exec_cmp_op(scalar::scalar_lt)?,
-				Instruction::CmpLe => self.exec_cmp_op(scalar::scalar_le)?,
-				Instruction::CmpGt => self.exec_cmp_op(scalar::scalar_gt)?,
-				Instruction::CmpGe => self.exec_cmp_op(scalar::scalar_ge)?,
+				Instruction::CmpEq => self.exec_cmp_eq()?,
+				Instruction::CmpNe => self.exec_cmp_ne()?,
+				Instruction::CmpLt => self.exec_cmp_lt()?,
+				Instruction::CmpLe => self.exec_cmp_le()?,
+				Instruction::CmpGt => self.exec_cmp_gt()?,
+				Instruction::CmpGe => self.exec_cmp_ge()?,
 
-				Instruction::LogicAnd => self.exec_cmp_op(scalar::scalar_and)?,
-				Instruction::LogicOr => self.exec_cmp_op(scalar::scalar_or)?,
-				Instruction::LogicXor => self.exec_cmp_op(scalar::scalar_xor)?,
+				Instruction::LogicAnd => self.exec_logic_and()?,
+				Instruction::LogicOr => self.exec_logic_or()?,
+				Instruction::LogicXor => self.exec_logic_xor()?,
 				Instruction::Between => self.exec_between()?,
 				Instruction::InList {
 					count,
@@ -159,16 +259,53 @@ impl Vm {
 				Instruction::Cast(target) => self.exec_cast(target)?,
 
 				Instruction::Jump(addr) => {
-					self.exec_jump(*addr)?;
-					continue;
+					if self.batch_size > 1
+						&& (!self.mask_stack.is_empty() || !self.loop_mask_stack.is_empty())
+					{
+						if self.exec_jump_masked(*addr)? {
+							continue;
+						}
+					} else {
+						self.exec_jump(*addr)?;
+						continue;
+					}
 				}
 				Instruction::JumpIfFalsePop(addr) => {
-					if self.exec_jump_if_false_pop(*addr)? {
+					if self.batch_size > 1 {
+						let is_while_loop = instructions.get(self.ip + 1).is_some_and(|next| {
+							matches!(next, Instruction::EnterScope(ScopeType::Loop))
+						});
+
+						if is_while_loop
+							&& self.loop_mask_stack
+								.last()
+								.is_none_or(|s| s.loop_end_addr != *addr)
+						{
+							let var = self.stack.pop()?;
+							let bool_bv = extract_bool_bitvec(&var)?;
+							let parent = self.effective_mask();
+							let candidate = self.intersect_condition(&bool_bv);
+
+							if candidate == parent {
+							} else if candidate.none() {
+								self.ip = *addr;
+								continue;
+							} else {
+								self.enter_loop_mask(*addr, candidate);
+							}
+						} else if self.exec_jump_if_false_pop_columnar(*addr)? {
+							continue;
+						}
+					} else if self.exec_jump_if_false_pop(*addr)? {
 						continue;
 					}
 				}
 				Instruction::JumpIfTruePop(addr) => {
-					if self.exec_jump_if_true_pop(*addr)? {
+					if self.batch_size > 1 {
+						if self.exec_jump_if_true_pop_columnar(*addr)? {
+							continue;
+						}
+					} else if self.exec_jump_if_true_pop(*addr)? {
 						continue;
 					}
 				}
@@ -178,14 +315,22 @@ impl Vm {
 					exit_scopes,
 					addr,
 				} => {
-					self.exec_break(*exit_scopes, *addr)?;
+					if self.batch_size > 1 && !self.loop_mask_stack.is_empty() {
+						self.exec_break_masked(*exit_scopes, *addr)?;
+					} else {
+						self.exec_break(*exit_scopes, *addr)?;
+					}
 					continue;
 				}
 				Instruction::Continue {
 					exit_scopes,
 					addr,
 				} => {
-					self.exec_continue(*exit_scopes, *addr)?;
+					if self.batch_size > 1 && !self.loop_mask_stack.is_empty() {
+						self.exec_continue_masked(*exit_scopes, *addr)?;
+					} else {
+						self.exec_continue(*exit_scopes, *addr)?;
+					}
 					continue;
 				}
 
@@ -207,7 +352,7 @@ impl Vm {
 					arity,
 					is_procedure_call,
 				} => {
-					self.exec_call(services, tx, params, name, *arity, *is_procedure_call)?;
+					self.exec_call(services, tx, name, *arity, *is_procedure_call)?;
 				}
 				Instruction::ReturnValue => {
 					self.exec_return_value()?;
@@ -273,6 +418,9 @@ impl Vm {
 				}
 				Instruction::CreateSink(n) => {
 					self.exec_ddl(services, tx, |s, t| create_sink(s, t, n.clone()))?
+				}
+				Instruction::CreateBinding(n) => {
+					self.exec_ddl(services, tx, |s, t| create_binding(s, t, n.clone()))?
 				}
 				Instruction::CreateTest(n) => {
 					self.exec_ddl(services, tx, |s, t| create_test(s, t, n.clone()))?
@@ -340,6 +488,18 @@ impl Vm {
 				}
 				Instruction::DropSink(n) => {
 					self.exec_ddl(services, tx, |s, t| drop_sink(s, t, n.clone()))?
+				}
+				Instruction::DropProcedure(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_procedure(s, t, n.clone()))?
+				}
+				Instruction::DropHandler(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_handler(s, t, n.clone()))?
+				}
+				Instruction::DropTest(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_test(s, t, n.clone()))?
+				}
+				Instruction::DropBinding(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_binding(s, t, n.clone()))?
 				}
 				Instruction::DropIdentity(n) => {
 					self.exec_ddl(services, tx, |s, t| drop_identity(s, t, n.clone()))?
@@ -410,11 +570,9 @@ impl Vm {
 				}
 
 				Instruction::Dispatch(n) => self.exec_dispatch(services, tx, n, params)?,
-				Instruction::Migrate(n) => self.exec_migrate(services, tx, n, params)?,
-				Instruction::RollbackMigration(n) => {
-					self.exec_rollback_migration(services, tx, n, params)?
-				}
-				Instruction::AssertBlock(n) => self.exec_assert_block(services, tx, n, params)?,
+				Instruction::Migrate(n) => self.exec_migrate(services, tx, n)?,
+				Instruction::RollbackMigration(n) => self.exec_rollback_migration(services, tx, n)?,
+				Instruction::AssertBlock(n) => self.exec_assert_block(services, tx, n)?,
 			}
 
 			self.ip += 1;

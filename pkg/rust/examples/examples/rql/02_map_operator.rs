@@ -1,16 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # MAP Operator Example
-//!
-//! Demonstrates the MAP operator in ReifyDB's RQL:
-//! - Projecting specific columns
-//! - Computing new fields with expressions
-//! - Renaming fields
-//! - Creating derived values
-//!
-//! Run with: `make rql-map` or `cargo run --bin rql-map`
-
 use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;

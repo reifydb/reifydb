@@ -4,12 +4,11 @@
 use std::sync::Arc;
 
 use reifydb_abi::operator::capabilities::{
-	CAPABILITY_DELETE, CAPABILITY_DROP, CAPABILITY_INSERT, CAPABILITY_PULL, CAPABILITY_TICK, CAPABILITY_UPDATE,
-	has_capability,
+	CAPABILITY_DELETE, CAPABILITY_DROP, CAPABILITY_INSERT, CAPABILITY_TICK, CAPABILITY_UPDATE, has_capability,
 };
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -21,9 +20,8 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes loaded FFI operators from shared libraries
 pub struct SystemFlowOperators {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 	flow_operator_store: SystemFlowOperatorStore,
 }
@@ -31,7 +29,7 @@ pub struct SystemFlowOperators {
 impl SystemFlowOperators {
 	pub fn new(flow_operator_store: SystemFlowOperatorStore) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_flow_operators_table().clone(),
+			vtable: SystemCatalog::get_system_flow_operators_table().clone(),
 			exhausted: false,
 			flow_operator_store,
 		}
@@ -52,67 +50,36 @@ impl BaseVTable for SystemFlowOperators {
 		let infos = self.flow_operator_store.list();
 
 		let capacity = infos.len();
-		let mut operators = ColumnData::utf8_with_capacity(capacity);
-		let mut library_paths = ColumnData::utf8_with_capacity(capacity);
-		let mut apis = ColumnData::uint4_with_capacity(capacity);
-		let mut cap_inserts = ColumnData::bool_with_capacity(capacity);
-		let mut cap_updates = ColumnData::bool_with_capacity(capacity);
-		let mut cap_deletes = ColumnData::bool_with_capacity(capacity);
-		let mut cap_pull_list = ColumnData::bool_with_capacity(capacity);
-		let mut cap_drops = ColumnData::bool_with_capacity(capacity);
-		let mut cap_ticks = ColumnData::bool_with_capacity(capacity);
+		let mut operators = ColumnBuffer::utf8_with_capacity(capacity);
+		let mut library_paths = ColumnBuffer::utf8_with_capacity(capacity);
+		let mut apis = ColumnBuffer::uint4_with_capacity(capacity);
+		let mut cap_inserts = ColumnBuffer::bool_with_capacity(capacity);
+		let mut cap_updates = ColumnBuffer::bool_with_capacity(capacity);
+		let mut cap_deletes = ColumnBuffer::bool_with_capacity(capacity);
+		let mut cap_drops = ColumnBuffer::bool_with_capacity(capacity);
+		let mut cap_ticks = ColumnBuffer::bool_with_capacity(capacity);
 
 		for info in infos {
 			operators.push(info.operator.as_str());
 			library_paths.push(info.library_path.to_str().unwrap_or("<invalid path>"));
 			apis.push(info.api);
 
-			// Decode capabilities bitfield into separate boolean columns
 			cap_inserts.push(has_capability(info.capabilities, CAPABILITY_INSERT));
 			cap_updates.push(has_capability(info.capabilities, CAPABILITY_UPDATE));
 			cap_deletes.push(has_capability(info.capabilities, CAPABILITY_DELETE));
-			cap_pull_list.push(has_capability(info.capabilities, CAPABILITY_PULL));
 			cap_drops.push(has_capability(info.capabilities, CAPABILITY_DROP));
 			cap_ticks.push(has_capability(info.capabilities, CAPABILITY_TICK));
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("operator"),
-				data: operators,
-			},
-			Column {
-				name: Fragment::internal("library_path"),
-				data: library_paths,
-			},
-			Column {
-				name: Fragment::internal("api"),
-				data: apis,
-			},
-			Column {
-				name: Fragment::internal("cap_insert"),
-				data: cap_inserts,
-			},
-			Column {
-				name: Fragment::internal("cap_update"),
-				data: cap_updates,
-			},
-			Column {
-				name: Fragment::internal("cap_delete"),
-				data: cap_deletes,
-			},
-			Column {
-				name: Fragment::internal("cap_pull"),
-				data: cap_pull_list,
-			},
-			Column {
-				name: Fragment::internal("cap_drop"),
-				data: cap_drops,
-			},
-			Column {
-				name: Fragment::internal("cap_tick"),
-				data: cap_ticks,
-			},
+			ColumnWithName::new(Fragment::internal("operator"), operators),
+			ColumnWithName::new(Fragment::internal("library_path"), library_paths),
+			ColumnWithName::new(Fragment::internal("api"), apis),
+			ColumnWithName::new(Fragment::internal("cap_insert"), cap_inserts),
+			ColumnWithName::new(Fragment::internal("cap_update"), cap_updates),
+			ColumnWithName::new(Fragment::internal("cap_delete"), cap_deletes),
+			ColumnWithName::new(Fragment::internal("cap_drop"), cap_drops),
+			ColumnWithName::new(Fragment::internal("cap_tick"), cap_ticks),
 		];
 
 		self.exhausted = true;
@@ -121,7 +88,7 @@ impl BaseVTable for SystemFlowOperators {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

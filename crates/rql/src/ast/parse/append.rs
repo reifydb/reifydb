@@ -13,20 +13,19 @@ use crate::{
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_append(&mut self) -> Result<AstAppend<'bump>> {
 		let token = self.current()?;
-		// Consume APPEND keyword
+
 		self.advance()?;
 
-		// Check if next token is '{' — if so, this is the query form (APPEND { subquery })
 		if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
 			let with = self.parse_sub_query()?;
+			let ttl = self.parse_with_clause_for_operator()?;
 			return Ok(AstAppend::Query {
 				token,
 				with,
+				ttl,
 			});
 		}
 
-		// Otherwise, imperative form: APPEND $target FROM <source>
-		// Parse target variable ($name)
 		let variable_token = self.current()?;
 		if !matches!(variable_token.kind, TokenKind::Variable) {
 			let fragment = variable_token.fragment.to_owned();
@@ -47,15 +46,11 @@ impl<'bump> Parser<'bump> {
 			token: var_token,
 		};
 
-		// Consume FROM keyword
 		self.consume_keyword(Keyword::From)?;
 
-		// Dispatch on next token
 		let source = if !self.is_eof() && self.current()?.is_operator(Operator::OpenBracket) {
-			// Inline: APPEND $x FROM [{...}]
 			AstAppendSource::Inline(self.parse_list()?)
 		} else if !self.is_eof() && matches!(self.current()?.kind, TokenKind::Variable) {
-			// Variable source: always treat as frame source, then parse any pipe continuation
 			let src_token = self.advance()?;
 			let variable = AstVariable {
 				token: src_token,
@@ -68,7 +63,6 @@ impl<'bump> Parser<'bump> {
 			let mut nodes = vec![first_node];
 			let mut has_pipes = false;
 
-			// Check for pipe continuation (e.g., $data | filter { ... })
 			while !self.is_eof() {
 				if let Ok(current) = self.current()
 					&& current.is_separator(Separator::Semicolon)
@@ -76,7 +70,7 @@ impl<'bump> Parser<'bump> {
 					break;
 				}
 				if self.current()?.is_operator(Operator::Pipe) {
-					self.advance()?; // consume the pipe
+					self.advance()?;
 					has_pipes = true;
 					nodes.push(self.parse_node(Precedence::None)?);
 				} else {
@@ -88,9 +82,9 @@ impl<'bump> Parser<'bump> {
 				nodes,
 				has_pipes,
 				is_output: false,
+				rql: "",
 			})
 		} else {
-			// Statement: APPEND $x FROM table | FILTER ...
 			let statement = self.parse_statement_content()?;
 			AstAppendSource::Statement(statement)
 		};
@@ -198,5 +192,81 @@ pub mod tests {
 		assert!(statement.nodes[0].is_from());
 		assert!(matches!(statement.nodes[1], Ast::Append(AstAppend::Query { .. })));
 		assert!(matches!(statement.nodes[2], Ast::Append(AstAppend::Query { .. })));
+	}
+
+	#[test]
+	fn test_append_query_without_ttl() {
+		let bump = Bump::new();
+		let source = "append { from test::orders }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+
+		let result = result.pop().unwrap();
+		let node = result.first_unchecked();
+		let Ast::Append(AstAppend::Query {
+			ttl,
+			..
+		}) = node
+		else {
+			panic!("Expected Append::Query");
+		};
+		assert!(ttl.is_none(), "no ttl when with-clause is absent");
+	}
+
+	#[test]
+	fn test_append_query_with_ttl_duration_only() {
+		let bump = Bump::new();
+		let source = "append { from test::orders } with { ttl: { duration: '1h' } }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+
+		let result = result.pop().unwrap();
+		let node = result.first_unchecked();
+		let Ast::Append(AstAppend::Query {
+			ttl,
+			..
+		}) = node
+		else {
+			panic!("Expected Append::Query");
+		};
+		let ttl = ttl.as_ref().expect("expected ttl");
+		assert_eq!(ttl.duration.fragment.text(), "1h");
+		assert!(ttl.anchor.is_none());
+		assert!(ttl.mode.is_none());
+	}
+
+	#[test]
+	fn test_append_query_with_ttl_full_config() {
+		let bump = Bump::new();
+		let source = "append { from test::orders } with { ttl: { duration: '30m', on: updated, mode: drop } }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+
+		let result = result.pop().unwrap();
+		let node = result.first_unchecked();
+		let Ast::Append(AstAppend::Query {
+			ttl,
+			..
+		}) = node
+		else {
+			panic!("Expected Append::Query");
+		};
+		let ttl = ttl.as_ref().expect("expected ttl");
+		assert_eq!(ttl.duration.fragment.text(), "30m");
+		assert_eq!(ttl.anchor.as_ref().unwrap().fragment.text(), "updated");
+		assert_eq!(ttl.mode.as_ref().unwrap().fragment.text(), "drop");
+	}
+
+	#[test]
+	fn test_append_query_with_unknown_key_rejected() {
+		let bump = Bump::new();
+		let source = "append { from test::orders } with { unknown: 'foo' }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let result = parser.parse();
+		assert!(result.is_err(), "append should reject unknown WITH keys");
 	}
 }

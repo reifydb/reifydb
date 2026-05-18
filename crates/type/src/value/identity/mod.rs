@@ -9,29 +9,23 @@ use uuid::Uuid;
 
 use crate::value::uuid::Uuid7;
 
-/// An identity identifier - a unique UUID v7 for an identity
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Default)]
 pub struct IdentityId(pub Uuid7);
 
 impl IdentityId {
-	/// Create a new IdentityId with a generated UUID v7 using the provided clock and RNG.
 	pub fn generate(clock: &Clock, rng: &Rng) -> Self {
 		IdentityId(Uuid7::generate(clock, rng))
 	}
 
-	/// Create a new IdentityId from an existing Uuid7
 	pub fn new(id: Uuid7) -> Self {
 		IdentityId(id)
 	}
 
-	/// Get the inner Uuid7 value
 	pub fn value(&self) -> Uuid7 {
 		self.0
 	}
 
-	/// Sentinel for anonymous identity: minimum valid UUID v7
-	/// `00000000-0000-7000-8000-000000000000`
 	pub fn anonymous() -> Self {
 		let bytes = [
 			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x70, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -39,8 +33,6 @@ impl IdentityId {
 		IdentityId(Uuid7(Uuid::from_bytes(bytes)))
 	}
 
-	/// Sentinel for root identity: maximum valid UUID v7
-	/// `ffffffff-ffff-7fff-bfff-ffffffffffff`
 	pub fn root() -> Self {
 		let bytes = [
 			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F, 0xFF, 0xBF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
@@ -48,8 +40,6 @@ impl IdentityId {
 		IdentityId(Uuid7(Uuid::from_bytes(bytes)))
 	}
 
-	/// Sentinel for system identity: used for internal engine-initiated operations.
-	/// `ffffffff-fffe-7fff-bfff-ffffffffffff`
 	pub fn system() -> Self {
 		let bytes = [
 			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE, 0x7F, 0xFF, 0xBF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
@@ -69,7 +59,6 @@ impl IdentityId {
 		*self == Self::system()
 	}
 
-	/// Returns true for any privileged identity that bypasses policy enforcement.
 	pub fn is_privileged(&self) -> bool {
 		self.is_root() || self.is_system()
 	}
@@ -154,7 +143,6 @@ impl<'de> Deserialize<'de> for IdentityId {
 				let uuid = Uuid::from_slice(value)
 					.map_err(|e| E::custom(format!("invalid UUID bytes: {}", e)))?;
 
-				// Verify it's a v7 UUID or nil
 				if uuid.get_version_num() != 7 {
 					return Err(E::custom(format!(
 						"expected UUID v7, got v{}",
@@ -166,13 +154,19 @@ impl<'de> Deserialize<'de> for IdentityId {
 			}
 		}
 
-		deserializer.deserialize_any(Uuid7Visitor)
+		if deserializer.is_human_readable() {
+			deserializer.deserialize_str(Uuid7Visitor)
+		} else {
+			deserializer.deserialize_bytes(Uuid7Visitor)
+		}
 	}
 }
 
 #[cfg(test)]
 pub mod tests {
+	use postcard::{from_bytes, to_allocvec};
 	use reifydb_runtime::context::clock::MockClock;
+	use serde_json::{from_str, to_string};
 
 	use super::*;
 
@@ -213,5 +207,31 @@ pub mod tests {
 		let id1 = IdentityId::from(uuid);
 		let id2 = IdentityId::from(uuid);
 		assert_eq!(id1, id2);
+	}
+
+	#[test]
+	fn test_identity_id_postcard_roundtrip() {
+		let (_, clock, rng) = test_clock_and_rng();
+		let id = IdentityId::generate(&clock, &rng);
+		let bytes = to_allocvec(&id).expect("postcard serialize");
+		let decoded: IdentityId = from_bytes(&bytes).expect("postcard deserialize");
+		assert_eq!(id, decoded);
+	}
+
+	#[test]
+	fn test_identity_id_postcard_roundtrip_root() {
+		let id = IdentityId::root();
+		let bytes = to_allocvec(&id).expect("postcard serialize root");
+		let decoded: IdentityId = from_bytes(&bytes).expect("postcard deserialize root");
+		assert_eq!(id, decoded);
+	}
+
+	#[test]
+	fn test_identity_id_json_roundtrip() {
+		let (_, clock, rng) = test_clock_and_rng();
+		let id = IdentityId::generate(&clock, &rng);
+		let s = to_string(&id).expect("json serialize");
+		let decoded: IdentityId = from_str(&s).expect("json deserialize");
+		assert_eq!(id, decoded);
 	}
 }

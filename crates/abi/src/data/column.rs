@@ -3,7 +3,6 @@
 
 use super::buffer::BufferFFI;
 
-/// Type code for column data variant (maps to ColumnData enum)
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColumnTypeCode {
@@ -37,30 +36,21 @@ pub enum ColumnTypeCode {
 	Undefined = 27,
 }
 
-/// FFI-safe column data representation
-///
-/// Contains typed column data in a format suitable for FFI transfer.
-/// - For fixed-size types: `data` contains the raw values
-/// - For variable-length types (Utf8, Blob): `data` contains concatenated bytes, `offsets` contains u64 offsets (length
-///   = row_count + 1)
-/// - `defined_bitvec` tracks which values are defined (bit=1 means defined)
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct ColumnDataFFI {
-	/// Type code indicating data format
 	pub type_code: ColumnTypeCode,
-	/// Number of rows in the column
+
 	pub row_count: usize,
-	/// Raw data buffer (interpretation depends on type_code)
+
 	pub data: BufferFFI,
-	/// Defined/null bitvec (1 = defined, 0 = undefined)
+
 	pub defined_bitvec: BufferFFI,
-	/// Offsets for variable-length types (Utf8, Blob). Empty for fixed-size types.
+
 	pub offsets: BufferFFI,
 }
 
 impl ColumnDataFFI {
-	/// Create an empty column data
 	pub const fn empty() -> Self {
 		Self {
 			type_code: ColumnTypeCode::Undefined,
@@ -72,18 +62,15 @@ impl ColumnDataFFI {
 	}
 }
 
-/// FFI-safe single column representation (name + data)
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct ColumnFFI {
-	/// Column name (UTF-8 encoded)
 	pub name: BufferFFI,
-	/// Column data
+
 	pub data: ColumnDataFFI,
 }
 
 impl ColumnFFI {
-	/// Create an empty column
 	pub const fn empty() -> Self {
 		Self {
 			name: BufferFFI::empty(),
@@ -92,34 +79,34 @@ impl ColumnFFI {
 	}
 }
 
-/// FFI-safe multi-row columnar structure
-///
-/// Represents a batch of rows in columnar format, matching the Rust `Columns` type.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct ColumnsFFI {
-	/// Number of rows
 	pub row_count: usize,
-	/// Number of columns
+
 	pub column_count: usize,
-	/// Pointer to row numbers array (u64 per row, may be null if empty)
+
 	pub row_numbers: *const u64,
-	/// Pointer to array of ColumnFFI
+
 	pub columns: *const ColumnFFI,
+
+	pub created_at: *const u64,
+
+	pub updated_at: *const u64,
 }
 
 impl ColumnsFFI {
-	/// Create an empty Columns
 	pub const fn empty() -> Self {
 		Self {
 			row_count: 0,
 			column_count: 0,
 			row_numbers: core::ptr::null(),
 			columns: core::ptr::null(),
+			created_at: core::ptr::null(),
+			updated_at: core::ptr::null(),
 		}
 	}
 
-	/// Check if the columns are empty
 	pub fn is_empty(&self) -> bool {
 		self.row_count == 0
 	}

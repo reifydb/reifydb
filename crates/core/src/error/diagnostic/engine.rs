@@ -3,11 +3,10 @@
 
 use reifydb_type::{error::Diagnostic, fragment::Fragment};
 
-/// General frame processing error
 pub fn frame_error(message: String) -> Diagnostic {
 	Diagnostic {
 		code: "ENG_001".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Frame processing error: {}", message),
 		column: None,
 		fragment: Fragment::None,
@@ -19,9 +18,8 @@ pub fn frame_error(message: String) -> Diagnostic {
 	}
 }
 
-/// Column policy saturation error - wraps an existing diagnostic
 pub fn saturation_error(diagnostic: Diagnostic) -> Diagnostic {
-	let statement = diagnostic.statement.clone();
+	let rql = diagnostic.rql.clone();
 	let message = diagnostic.message.clone();
 	let column = diagnostic.column.clone();
 	let fragment = diagnostic.fragment.clone();
@@ -30,7 +28,7 @@ pub fn saturation_error(diagnostic: Diagnostic) -> Diagnostic {
 
 	Diagnostic {
 		code: "ENG_002".to_string(),
-		statement,
+		rql,
 		message: format!("Column policy saturation: {}", message),
 		column,
 		fragment,
@@ -42,11 +40,10 @@ pub fn saturation_error(diagnostic: Diagnostic) -> Diagnostic {
 	}
 }
 
-/// Frame missing required ROW_NUMBER column error
 pub fn missing_row_number_column() -> Diagnostic {
 	Diagnostic {
 		code: "ENG_003".to_string(),
-		statement: None,
+		rql: None,
 		message: "Frame must have a __ROW__ID__ column for UPDATE operations".to_string(),
 		column: None,
 		fragment: Fragment::None,
@@ -58,11 +55,10 @@ pub fn missing_row_number_column() -> Diagnostic {
 	}
 }
 
-/// Invalid or undefined RowNumber values error
 pub fn invalid_row_number_values() -> Diagnostic {
 	Diagnostic {
 		code: "ENG_004".to_string(),
-		statement: None,
+		rql: None,
 		message: "All RowNumber values must be defined for UPDATE operations".to_string(),
 		column: None,
 		fragment: Fragment::None,
@@ -74,12 +70,11 @@ pub fn invalid_row_number_values() -> Diagnostic {
 	}
 }
 
-/// Invalid parameter reference error
 pub fn invalid_parameter_reference(fragment: Fragment) -> Diagnostic {
 	let value = fragment.text();
 	Diagnostic {
 		code: "ENG_005".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Invalid parameter reference: {}", value),
 		column: None,
 		fragment,
@@ -91,12 +86,11 @@ pub fn invalid_parameter_reference(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// Parameter not found error
 pub fn parameter_not_found(fragment: Fragment) -> Diagnostic {
 	let value = fragment.text();
 	Diagnostic {
 		code: "ENG_006".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Parameter not found: {}", value),
 		column: None,
 		fragment,
@@ -108,11 +102,10 @@ pub fn parameter_not_found(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// Write operation rejected because the engine is in read-only (replica) mode.
 pub fn read_only_rejection(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "ENG_007".to_string(),
-		statement: None,
+		rql: None,
 		message: "Cannot execute write operations on a read-only replica".to_string(),
 		column: None,
 		fragment,

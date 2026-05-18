@@ -4,11 +4,6 @@
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-//! WebAssembly bindings for ReifyDB query engine
-//!
-//! This crate provides JavaScript-compatible bindings for running ReifyDB
-//! queries in a browser or Node.js environment with in-memory storage.
-
 use std::{
 	cell::{Cell, RefCell},
 	collections::HashMap,
@@ -23,50 +18,90 @@ use reifydb_auth::{
 };
 use reifydb_catalog::{
 	CatalogVersion,
-	bootstrap::{bootstrap_configaults, bootstrap_system_procedures, load_materialized_catalog},
+	bootstrap::{bootstrap_system_objects, load_catalog_cache},
+	cache::CatalogCache,
 	catalog::Catalog,
-	materialized::MaterializedCatalog,
 	system::SystemCatalog,
 };
 use reifydb_cdc::{
 	CdcVersion,
-	produce::producer::{CdcProducerEventListener, spawn_cdc_producer},
+	produce::{
+		producer::{CdcProducerEventListener, spawn_cdc_producer},
+		watermark::CdcProducerWatermark,
+	},
 	storage::CdcStore,
 };
 use reifydb_core::{
 	CoreVersion,
-	config::SystemConfig,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{EngineVersion, engine::StandardEngine, vm::services::EngineConfig};
-use reifydb_routine::{function::default_functions, procedure::default_procedures};
+use reifydb_routine::{
+	function::default_native_functions, procedure::default_native_procedures, routine::registry::Routines,
+};
 use reifydb_rql::RqlVersion;
-use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
+use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, context::clock::Clock, pool::PoolConfig};
 use reifydb_store_multi::{
 	MultiStore, MultiStoreVersion,
-	config::{HotConfig, MultiStoreConfig},
-	hot::storage::HotStorage,
+	buffer::tier::MultiBufferTier,
+	config::{BufferConfig, MultiStoreConfig},
 };
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::Subsystem;
 use reifydb_sub_flow::{builder::FlowConfig, subsystem::FlowSubsystem};
 use reifydb_transaction::{
-	TransactionVersion,
-	interceptor::factory::InterceptorFactory,
-	multi::transaction::{MultiTransaction, register_oracle_defaults},
+	TransactionVersion, interceptor::factory::InterceptorFactory, multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 };
 use reifydb_type::{params::Params, value::identity::IdentityId};
 use wasm_bindgen::prelude::*;
+use web_sys::console;
 
 mod error;
 mod utils;
 
+#[cfg(feature = "console_error_panic_hook")]
+use console_error_panic_hook::set_once as set_panic_hook;
 pub use error::JsError;
 use reifydb_extension::transform::registry::Transforms;
 use reifydb_runtime::context::RuntimeContext;
+use reifydb_wire_format::{
+	decode::decode_frames,
+	encode::encode_frames,
+	format::Encoding,
+	json::{from::frames_from_json, to::frames_to_json},
+	options::EncodeOptions,
+};
+
+/// Encode JSON frames to RBCF binary with an optional forced encoding.
+#[wasm_bindgen(js_name = encode_rbcf)]
+pub fn encode_rbcf(frames_json: &str, forced_encoding: Option<String>) -> Result<Vec<u8>, JsValue> {
+	let frames = frames_from_json(frames_json).map_err(|e| JsError::from_error(&e))?;
+	let mut options = EncodeOptions::default();
+	if let Some(enc_str) = forced_encoding {
+		let enc = match enc_str.to_lowercase().as_str() {
+			"plain" => Encoding::Plain,
+			"dict" => Encoding::Dict,
+			"rle" => Encoding::Rle,
+			"delta" => Encoding::Delta,
+			"deltarle" | "delta_rle" => Encoding::DeltaRle,
+			_ => return Err(JsError::from_message(&format!("unknown encoding: {}", enc_str))),
+		};
+		options.force_encoding = Some(enc);
+	}
+	let bytes = encode_frames(&frames, &options).map_err(|e| JsError::from_error(&e))?;
+	Ok(bytes)
+}
+
+/// Decode RBCF binary to JSON frames.
+#[wasm_bindgen(js_name = decode_rbcf)]
+pub fn decode_rbcf(bytes: &[u8]) -> Result<String, JsValue> {
+	let frames = decode_frames(bytes).map_err(|e| JsError::from_error(&e))?;
+	let json = frames_to_json(&frames).map_err(|e| JsError::from_message(&e.to_string()))?;
+	Ok(json)
+}
 
 /// Result of a successful login, returned to JavaScript.
 #[wasm_bindgen]
@@ -90,7 +125,7 @@ impl LoginResult {
 
 // Debug helper to log to browser console
 fn console_log(msg: &str) {
-	web_sys::console::log_1(&msg.into());
+	console::log_1(&msg.into());
 }
 
 /// WebAssembly ReifyDB Engine
@@ -154,15 +189,15 @@ impl WasmDB {
 		// Set panic hook for better error messages in browser console
 
 		#[cfg(feature = "console_error_panic_hook")]
-		console_error_panic_hook::set_once();
+		set_panic_hook();
 
-		// WASM runtime with minimal threads (single-threaded)
 		let runtime = SharedRuntime::from_config(
-			SharedRuntimeConfig::default()
-				.async_threads(1)
-				.compute_threads(1)
-				.compute_max_in_flight(8)
-				.deterministic_testing(0),
+			SharedRuntimeConfig::default().seeded(0),
+			PoolConfig {
+				async_threads: 1,
+				system_threads: 1,
+				query_threads: 1,
+			},
 		);
 
 		// Create actor system at the top level - this will be shared by
@@ -172,22 +207,21 @@ impl WasmDB {
 		// Create event bus and stores
 		let eventbus = EventBus::new(&actor_system);
 		let multi_store = MultiStore::standard(MultiStoreConfig {
-			hot: Some(HotConfig {
-				storage: HotStorage::memory(),
+			buffer: Some(BufferConfig {
+				storage: MultiBufferTier::memory(),
 			}),
-			warm: None,
-			cold: None,
+			persistent: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus: eventbus.clone(),
 			actor_system: actor_system.clone(),
+			clock: Clock::Real,
 		});
-		let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
+		let single_store = SingleStore::testing_memory();
 
 		// Create transactions
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
-		let system_config = SystemConfig::new();
-		register_oracle_defaults(&system_config);
+		let catalog_cache = CatalogCache::new();
 		let multi = MultiTransaction::new(
 			multi_store.clone(),
 			single.clone(),
@@ -195,15 +229,14 @@ impl WasmDB {
 			actor_system.clone(),
 			runtime.clock().clone(),
 			runtime.rng().clone(),
-			system_config.clone(),
+			Arc::new(catalog_cache.clone()),
 		)
 		.map_err(|e| JsError::from_error(&e))?;
 
 		// Setup IoC container
 		let mut ioc = IocContainer::new();
 
-		let materialized_catalog = MaterializedCatalog::new(system_config);
-		ioc = ioc.register(materialized_catalog.clone());
+		ioc = ioc.register(catalog_cache.clone());
 
 		ioc = ioc.register(runtime.clone());
 
@@ -214,18 +247,22 @@ impl WasmDB {
 		let cdc_store = CdcStore::memory();
 		ioc = ioc.register(cdc_store.clone());
 
+		let cdc_producer_watermark = CdcProducerWatermark::new();
+		ioc = ioc.register(cdc_producer_watermark.clone());
+
 		// Clone ioc for FlowSubsystem (engine consumes ioc)
 		let ioc_ref = ioc.clone();
 
 		// Run shared bootstrap: load catalog, config defaults, system procedures, shapes
-		load_materialized_catalog(&multi, &single, &materialized_catalog)
-			.map_err(|e| JsError::from_error(&e))?;
-		bootstrap_configaults(&multi, &single, &materialized_catalog, &eventbus)
-			.map_err(|e| JsError::from_error(&e))?;
-		bootstrap_system_procedures(&multi, &single, &materialized_catalog, &eventbus)
+		load_catalog_cache(&multi, &single, &catalog_cache).map_err(|e| JsError::from_error(&e))?;
+		bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus)
 			.map_err(|e| JsError::from_error(&e))?;
 
-		let procedures = default_procedures().configure();
+		let routines = {
+			let b = Routines::builder();
+			let b = default_native_functions(b);
+			default_native_procedures(b).configure()
+		};
 
 		// Build engine with bootstrap-initialized catalog
 		let eventbus_clone = eventbus.clone();
@@ -234,11 +271,10 @@ impl WasmDB {
 			single.clone(),
 			eventbus,
 			InterceptorFactory::default(),
-			Catalog::new(materialized_catalog),
+			Catalog::new(catalog_cache),
 			EngineConfig {
 				runtime_context: RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
-				functions: default_functions().configure(),
-				procedures,
+				routines,
 				transforms: Transforms::empty(),
 				ioc,
 				#[cfg(not(target_arch = "wasm32"))]
@@ -254,6 +290,8 @@ impl WasmDB {
 			multi_store.clone(),
 			inner.clone(),
 			eventbus_clone.clone(),
+			runtime.clock().clone(),
+			cdc_producer_watermark,
 		);
 
 		// Register event listener to forward PostCommitEvent to CDC producer
@@ -265,7 +303,6 @@ impl WasmDB {
 		// Create and start FlowSubsystem
 		let flow_config = FlowConfig {
 			operators_dir: None, // No FFI operators in WASM
-			num_workers: 1,      // Single-threaded for WASM
 			custom_operators: HashMap::new(),
 			connector_registry: Default::default(),
 		};
@@ -276,23 +313,24 @@ impl WasmDB {
 		console_log("[WASM] FlowSubsystem started successfully!");
 
 		// Collect all versions and register SystemCatalog
-		let mut all_versions = Vec::new();
-		all_versions.push(SystemVersion {
-			name: "reifydb-webassembly".to_string(),
-			version: env!("CARGO_PKG_VERSION").to_string(),
-			description: "ReifyDB WebAssembly Engine".to_string(),
-			r#type: ComponentType::Package,
-		});
-		all_versions.push(CoreVersion.version());
-		all_versions.push(EngineVersion.version());
-		all_versions.push(CatalogVersion.version());
-		all_versions.push(MultiStoreVersion.version());
-		all_versions.push(SingleStoreVersion.version());
-		all_versions.push(TransactionVersion.version());
-		all_versions.push(AuthVersion.version());
-		all_versions.push(RqlVersion.version());
-		all_versions.push(CdcVersion.version());
-		all_versions.push(flow_subsystem.version());
+		let all_versions = vec![
+			SystemVersion {
+				name: "reifydb-webassembly".to_string(),
+				version: env!("CARGO_PKG_VERSION").to_string(),
+				description: "ReifyDB WebAssembly Engine".to_string(),
+				r#type: ComponentType::Package,
+			},
+			CoreVersion.version(),
+			EngineVersion.version(),
+			CatalogVersion.version(),
+			MultiStoreVersion.version(),
+			SingleStoreVersion.version(),
+			TransactionVersion.version(),
+			AuthVersion.version(),
+			RqlVersion.version(),
+			CdcVersion.version(),
+			flow_subsystem.version(),
+		];
 
 		ioc_ref.register_service(SystemCatalog::new(all_versions));
 
@@ -329,10 +367,10 @@ impl WasmDB {
 		let params = Params::None;
 
 		// Execute query
-		let frames = self.inner.query_as(identity, rql, params).map_err(|e| JsError::from_error(&e))?;
+		let result = self.inner.query_as(identity, rql, params).check().map_err(|e| JsError::from_error(&e))?;
 
 		// Convert frames to JavaScript array of objects
-		utils::frames_to_js(&frames)
+		utils::frames_to_js(&result)
 	}
 
 	/// Execute an admin operation (DDL + DML + Query) and return results
@@ -355,9 +393,9 @@ impl WasmDB {
 		let identity = self.session.current_identity();
 		let params = Params::None;
 
-		let frames = self.inner.admin_as(identity, rql, params).map_err(|e| JsError::from_error(&e))?;
+		let result = self.inner.admin_as(identity, rql, params).check().map_err(|e| JsError::from_error(&e))?;
 
-		utils::frames_to_js(&frames)
+		utils::frames_to_js(&result)
 	}
 
 	/// Execute a command (DML) and return results
@@ -369,9 +407,10 @@ impl WasmDB {
 		let identity = self.session.current_identity();
 		let params = Params::None;
 
-		let frames = self.inner.command_as(identity, rql, params).map_err(|e| JsError::from_error(&e))?;
+		let result =
+			self.inner.command_as(identity, rql, params).check().map_err(|e| JsError::from_error(&e))?;
 
-		utils::frames_to_js(&frames)
+		utils::frames_to_js(&result)
 	}
 
 	/// Execute query with JSON parameters
@@ -391,9 +430,9 @@ impl WasmDB {
 		// Parse JavaScript params to Rust Params
 		let params = utils::parse_params(params_js)?;
 
-		let frames = self.inner.query_as(identity, rql, params).map_err(|e| JsError::from_error(&e))?;
+		let result = self.inner.query_as(identity, rql, params).check().map_err(|e| JsError::from_error(&e))?;
 
-		utils::frames_to_js(&frames)
+		utils::frames_to_js(&result)
 	}
 
 	/// Execute admin with JSON parameters
@@ -403,9 +442,9 @@ impl WasmDB {
 
 		let params = utils::parse_params(params_js)?;
 
-		let frames = self.inner.admin_as(identity, rql, params).map_err(|e| JsError::from_error(&e))?;
+		let result = self.inner.admin_as(identity, rql, params).check().map_err(|e| JsError::from_error(&e))?;
 
-		utils::frames_to_js(&frames)
+		utils::frames_to_js(&result)
 	}
 
 	/// Execute command with JSON parameters
@@ -415,21 +454,23 @@ impl WasmDB {
 
 		let params = utils::parse_params(params_js)?;
 
-		let frames = self.inner.command_as(identity, rql, params).map_err(|e| JsError::from_error(&e))?;
+		let result =
+			self.inner.command_as(identity, rql, params).check().map_err(|e| JsError::from_error(&e))?;
 
-		utils::frames_to_js(&frames)
+		utils::frames_to_js(&result)
 	}
 
 	/// Execute a command and return Display-formatted text output
 	#[wasm_bindgen(js_name = commandText)]
 	pub fn command_text(&self, rql: &str) -> Result<String, JsValue> {
-		let frames = self
+		let result = self
 			.inner
 			.command_as(self.session.current_identity(), rql, Params::None)
+			.check()
 			.map_err(|e| JsError::from_error(&e))?;
 		let mut output = String::new();
-		for frame in &frames {
-			writeln!(output, "{}", frame).map_err(|e| JsError::from_str(&e.to_string()))?;
+		for frame in result.iter() {
+			writeln!(output, "{}", frame).map_err(|e| JsError::from_message(&e.to_string()))?;
 		}
 		Ok(output)
 	}
@@ -437,13 +478,14 @@ impl WasmDB {
 	/// Execute an admin operation and return Display-formatted text output
 	#[wasm_bindgen(js_name = adminText)]
 	pub fn admin_text(&self, rql: &str) -> Result<String, JsValue> {
-		let frames = self
+		let result = self
 			.inner
 			.admin_as(self.session.current_identity(), rql, Params::None)
+			.check()
 			.map_err(|e| JsError::from_error(&e))?;
 		let mut output = String::new();
-		for frame in &frames {
-			writeln!(output, "{}", frame).map_err(|e| JsError::from_str(&e.to_string()))?;
+		for frame in result.iter() {
+			writeln!(output, "{}", frame).map_err(|e| JsError::from_message(&e.to_string()))?;
 		}
 		Ok(output)
 	}
@@ -451,13 +493,14 @@ impl WasmDB {
 	/// Execute a query and return Display-formatted text output
 	#[wasm_bindgen(js_name = queryText)]
 	pub fn query_text(&self, rql: &str) -> Result<String, JsValue> {
-		let frames = self
+		let result = self
 			.inner
 			.query_as(self.session.current_identity(), rql, Params::None)
+			.check()
 			.map_err(|e| JsError::from_error(&e))?;
 		let mut output = String::new();
-		for frame in &frames {
-			writeln!(output, "{}", frame).map_err(|e| JsError::from_str(&e.to_string()))?;
+		for frame in result.iter() {
+			writeln!(output, "{}", frame).map_err(|e| JsError::from_message(&e.to_string()))?;
 		}
 		Ok(output)
 	}
@@ -498,7 +541,7 @@ impl WasmDB {
 				if revoked {
 					Ok(())
 				} else {
-					Err(JsError::from_str("Failed to revoke session token"))
+					Err(JsError::from_message("Failed to revoke session token"))
 				}
 			}
 			None => Ok(()),
@@ -521,10 +564,12 @@ impl WasmDB {
 			}
 			AuthResponse::Failed {
 				reason,
-			} => Err(JsError::from_str(&format!("Authentication failed: {}", reason))),
+			} => Err(JsError::from_message(&format!("Authentication failed: {}", reason))),
 			AuthResponse::Challenge {
 				..
-			} => Err(JsError::from_str("Challenge-response authentication is not supported in WASM mode")),
+			} => Err(JsError::from_message(
+				"Challenge-response authentication is not supported in WASM mode",
+			)),
 		}
 	}
 }

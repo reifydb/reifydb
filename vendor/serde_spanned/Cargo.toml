@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.85"
 name = "serde_spanned"
-version = "1.1.0"
+version = "1.1.1"
 build = false
 include = [
     "build.rs",
@@ -100,7 +100,7 @@ name = "serde_spanned"
 path = "src/lib.rs"
 
 [dependencies.serde_core]
-version = "1.0.225"
+version = "1.0.228"
 optional = true
 default-features = false
 

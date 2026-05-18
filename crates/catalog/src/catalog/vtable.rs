@@ -9,20 +9,16 @@ use reifydb_transaction::transaction::Transaction;
 use crate::catalog::Catalog;
 
 impl Catalog {
-	/// Find a user-defined virtual table by name.
-	/// VTables are not transactionally modified, so this just delegates to the materialized catalog.
 	pub fn find_vtable_user_by_name(
 		&self,
 		_txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
 	) -> Option<Arc<VTable>> {
-		self.materialized.find_vtable_user_by_name(namespace, name)
+		self.cache.find_vtable_user_by_name(namespace, name)
 	}
 
-	/// List all user-defined virtual tables.
-	/// VTables are not transactionally modified, so this just delegates to the materialized catalog.
 	pub fn list_user_vtables(&self) -> Vec<Arc<VTable>> {
-		self.materialized.list_vtable_user_all()
+		self.cache.list_vtable_user_all()
 	}
 }

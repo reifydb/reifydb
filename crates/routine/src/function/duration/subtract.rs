@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct DurationSubtract;
+pub struct DurationSubtract {
+	info: RoutineInfo,
+}
 
 impl Default for DurationSubtract {
 	fn default() -> Self {
@@ -20,31 +18,39 @@ impl Default for DurationSubtract {
 
 impl DurationSubtract {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("duration::subtract"),
+		}
 	}
 }
 
-impl ScalarFunction for DurationSubtract {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+impl<'a> Routine<FunctionContext<'a>> for DurationSubtract {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		if columns.len() != 2 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Duration
+	}
+
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 2 {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let lhs_col = columns.first().unwrap();
-		let rhs_col = columns.get(1).unwrap();
+		let lhs_col = &args[0];
+		let rhs_col = &args[1];
 
-		match (lhs_col.data(), rhs_col.data()) {
-			(ColumnData::Duration(lhs_container), ColumnData::Duration(rhs_container)) => {
+		let (lhs_data, lhs_bv) = lhs_col.unwrap_option();
+		let (rhs_data, rhs_bv) = rhs_col.unwrap_option();
+
+		match (lhs_data, rhs_data) {
+			(ColumnBuffer::Duration(lhs_container), ColumnBuffer::Duration(rhs_container)) => {
+				let row_count = lhs_data.len();
 				let mut container = TemporalContainer::with_capacity(row_count);
 
 				for i in 0..row_count {
@@ -56,15 +62,27 @@ impl ScalarFunction for DurationSubtract {
 					}
 				}
 
-				Ok(ColumnData::Duration(container))
+				let mut result_data = ColumnBuffer::Duration(container);
+				if let Some(bv) = lhs_bv {
+					result_data = ColumnBuffer::Option {
+						inner: Box::new(result_data),
+						bitvec: bv.clone(),
+					};
+				} else if let Some(bv) = rhs_bv {
+					result_data = ColumnBuffer::Option {
+						inner: Box::new(result_data),
+						bitvec: bv.clone(),
+					};
+				}
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 			}
-			(ColumnData::Duration(_), other) => Err(ScalarFunctionError::InvalidArgumentType {
+			(ColumnBuffer::Duration(_), other) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 1,
 				expected: vec![Type::Duration],
 				actual: other.get_type(),
 			}),
-			(other, _) => Err(ScalarFunctionError::InvalidArgumentType {
+			(other, _) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Duration],
@@ -72,8 +90,10 @@ impl ScalarFunction for DurationSubtract {
 			}),
 		}
 	}
+}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Duration
+impl Function for DurationSubtract {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Stress tests for the encoded encoding system
-
 use std::str::FromStr;
 
 use reifydb_core::encoded::shape::RowShape;

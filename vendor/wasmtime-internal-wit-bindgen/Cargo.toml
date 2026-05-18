@@ -11,9 +11,9 @@
 
 [package]
 edition = "2024"
-rust-version = "1.91.0"
+rust-version = "1.92.0"
 name = "wasmtime-internal-wit-bindgen"
-version = "43.0.0"
+version = "44.0.0"
 authors = ["The Wasmtime Project Developers"]
 build = false
 autolib = false
@@ -52,7 +52,7 @@ features = ["std"]
 default-features = false
 
 [dependencies.wit-parser]
-version = "0.245.0"
+version = "0.246.1"
 
 [lints.clippy]
 allow_attributes_without_reason = "warn"
@@ -89,4 +89,6 @@ check-cfg = [
     "cfg(pulley_tail_calls)",
     "cfg(pulley_assume_llvm_makes_tail_calls)",
     "cfg(pulley_disable_interp_simd)",
+    "cfg(arc_try_new)",
+    "cfg(gc_zeal)",
 ]

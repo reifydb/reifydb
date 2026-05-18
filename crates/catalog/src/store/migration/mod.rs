@@ -8,6 +8,7 @@ use reifydb_core::{
 		migration::{Migration, MigrationAction, MigrationEvent},
 	},
 };
+use reifydb_runtime::hash::Hash128;
 use shape::{migration, migration_event};
 
 pub mod create;
@@ -27,12 +28,14 @@ pub(crate) fn migration_from_row(row: &EncodedRow) -> Migration {
 			Some(s.to_string())
 		}
 	};
+	let hash = Hash128(migration::SHAPE.get_u128(row, migration::HASH));
 
 	Migration {
 		id,
 		name,
 		body,
 		rollback_body,
+		hash,
 	}
 }
 

@@ -44,6 +44,7 @@ impl CatalogStore {
 		} else {
 			partition_by_str.split(',').map(|s| s.to_string()).collect()
 		};
+		let underlying = ringbuffer::SHAPE.get_u8(&row, ringbuffer::UNDERLYING) != 0;
 
 		Ok(Some(RingBuffer {
 			id,
@@ -53,6 +54,7 @@ impl CatalogStore {
 			columns: Self::list_columns(rx, id)?,
 			primary_key: Self::find_primary_key(rx, id)?,
 			partition_by,
+			underlying,
 		}))
 	}
 
@@ -105,8 +107,8 @@ impl CatalogStore {
 			let multi = entry?;
 			let metadata = decode_ringbuffer_metadata(&multi.row);
 			let mut de = KeyDeserializer::from_bytes(multi.key.as_slice());
-			// Skip version (u8), kind (u8), ringbuffer_id (u64)
-			let _ = (de.read_u8(), de.read_u8(), de.read_u64());
+
+			let _ = (de.read_u8(), de.read_u64());
 			let mut partition_values = vec![];
 			while !de.is_empty() {
 				if let Ok(value) = de.read_value() {
@@ -124,7 +126,6 @@ impl CatalogStore {
 		Ok(results)
 	}
 
-	/// Returns all partitions for a ringbuffer. Global = 1-element vec, partitioned = N-element vec.
 	pub(crate) fn list_ringbuffer_partitions(
 		rx: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
@@ -142,7 +143,6 @@ impl CatalogStore {
 		}
 	}
 
-	/// Find metadata for a specific partition. Global uses empty key → RingBufferMetadataKey.
 	pub(crate) fn find_partition_metadata(
 		rx: &mut Transaction<'_>,
 		ringbuffer: &RingBuffer,
@@ -277,6 +277,7 @@ pub mod tests {
 				dictionary_id: None,
 			}],
 			partition_by: vec![],
+			underlying: false,
 		};
 
 		let created = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -337,6 +338,7 @@ pub mod tests {
 			capacity: 50,
 			columns: vec![],
 			partition_by: vec![],
+			underlying: false,
 		};
 
 		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -391,6 +393,7 @@ pub mod tests {
 				},
 			],
 			partition_by: vec![],
+			underlying: false,
 		};
 
 		let created = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();

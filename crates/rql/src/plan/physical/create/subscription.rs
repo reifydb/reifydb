@@ -18,7 +18,6 @@ impl<'bump> Compiler<'bump> {
 		create: logical::CreateSubscriptionNode<'bump>,
 	) -> Result<PhysicalPlan<'bump>> {
 		let as_clause = if !create.as_clause.is_empty() {
-			// Compile logical plans to physical plan
 			let physical_plan = self.compile(rx, create.as_clause)?.unwrap();
 			Some(self.bump_box(physical_plan))
 		} else {
@@ -28,6 +27,8 @@ impl<'bump> Compiler<'bump> {
 		Ok(PhysicalPlan::CreateSubscription(CreateSubscriptionNode {
 			columns: create.columns,
 			as_clause,
+			hydration: create.hydration,
+			throttle: create.throttle,
 		}))
 	}
 }

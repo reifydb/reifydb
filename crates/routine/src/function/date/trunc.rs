@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, date::Date, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct DateTrunc;
+pub struct DateTrunc {
+	info: RoutineInfo,
+}
 
 impl Default for DateTrunc {
 	fn default() -> Self {
@@ -20,34 +18,40 @@ impl Default for DateTrunc {
 
 impl DateTrunc {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("date::trunc"),
+		}
 	}
 }
 
-impl ScalarFunction for DateTrunc {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl<'a> Routine<FunctionContext<'a>> for DateTrunc {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Date
+	}
 
-		if columns.len() != 2 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 2 {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let date_col = columns.first().unwrap();
-		let prec_col = columns.get(1).unwrap();
+		let date_col = &args[0];
+		let prec_col = &args[1];
+		let (date_data, date_bitvec) = date_col.unwrap_option();
+		let (prec_data, prec_bitvec) = prec_col.unwrap_option();
+		let row_count = date_data.len();
 
-		match (date_col.data(), prec_col.data()) {
+		let result_data = match (date_data, prec_data) {
 			(
-				ColumnData::Date(date_container),
-				ColumnData::Utf8 {
+				ColumnBuffer::Date(date_container),
+				ColumnBuffer::Utf8 {
 					container: prec_container,
 					..
 				},
@@ -57,13 +61,13 @@ impl ScalarFunction for DateTrunc {
 				for i in 0..row_count {
 					match (date_container.get(i), prec_container.is_defined(i)) {
 						(Some(d), true) => {
-							let precision = &prec_container[i];
+							let precision = prec_container.get(i).unwrap();
 							let truncated =
-								match precision.as_str() {
+								match precision {
 									"year" => Date::new(d.year(), 1, 1),
 									"month" => Date::new(d.year(), d.month(), 1),
 									other => {
-										return Err(ScalarFunctionError::ExecutionFailed {
+										return Err(RoutineError::FunctionExecutionFailed {
 										function: ctx.fragment.clone(),
 										reason: format!("invalid precision: '{}'", other),
 									});
@@ -78,24 +82,40 @@ impl ScalarFunction for DateTrunc {
 					}
 				}
 
-				Ok(ColumnData::Date(container))
+				ColumnBuffer::Date(container)
 			}
-			(ColumnData::Date(_), other) => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 1,
-				expected: vec![Type::Utf8],
-				actual: other.get_type(),
-			}),
-			(other, _) => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 0,
-				expected: vec![Type::Date],
-				actual: other.get_type(),
-			}),
-		}
-	}
+			(ColumnBuffer::Date(_), other) => {
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 1,
+					expected: vec![Type::Utf8],
+					actual: other.get_type(),
+				});
+			}
+			(other, _) => {
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 0,
+					expected: vec![Type::Date],
+					actual: other.get_type(),
+				});
+			}
+		};
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Date
+		let final_data = match (date_bitvec, prec_bitvec) {
+			(Some(bv), _) | (_, Some(bv)) => ColumnBuffer::Option {
+				inner: Box::new(result_data),
+				bitvec: bv.clone(),
+			},
+			_ => result_data,
+		};
+
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for DateTrunc {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

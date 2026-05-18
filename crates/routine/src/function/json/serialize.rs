@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{Value, r#type::Type};
 
-use crate::function::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionResult, propagate_options};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 fn to_json(value: &Value) -> String {
 	match value {
@@ -59,7 +59,9 @@ fn to_json(value: &Value) -> String {
 	}
 }
 
-pub struct JsonSerialize;
+pub struct JsonSerialize {
+	info: RoutineInfo,
+}
 
 impl Default for JsonSerialize {
 	fn default() -> Self {
@@ -69,26 +71,51 @@ impl Default for JsonSerialize {
 
 impl JsonSerialize {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("json::serialize"),
+		}
 	}
 }
 
-impl ScalarFunction for JsonSerialize {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
-
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
-
-		let col = columns.first().unwrap();
-		let results: Vec<String> = (0..row_count).map(|row| to_json(&col.data().get_value(row))).collect();
-
-		Ok(ColumnData::utf8(results))
+impl<'a> Routine<FunctionContext<'a>> for JsonSerialize {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Utf8
+	}
+
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 1 {
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.fragment.clone(),
+				expected: 1,
+				actual: args.len(),
+			});
+		}
+
+		let column = &args[0];
+		let (data, bitvec) = column.unwrap_option();
+		let row_count = data.len();
+
+		let results: Vec<String> = (0..row_count).map(|row| to_json(&data.get_value(row))).collect();
+
+		let result_data = ColumnBuffer::utf8(results);
+		let final_data = match bitvec {
+			Some(bv) => ColumnBuffer::Option {
+				inner: Box::new(result_data),
+				bitvec: bv.clone(),
+			},
+			None => result_data,
+		};
+
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for JsonSerialize {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

@@ -31,42 +31,49 @@ pub struct FlowToCreate {
 impl CatalogStore {
 	pub(crate) fn create_flow(txn: &mut AdminTransaction, to_create: FlowToCreate) -> Result<Flow> {
 		let namespace_id = to_create.namespace;
-
-		// Check if flow already exists
-		if let Some(_flow) = CatalogStore::find_flow_by_name(
-			&mut Transaction::Admin(&mut *txn),
-			namespace_id,
-			to_create.name.text(),
-		)? {
-			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
-			return Err(CatalogError::AlreadyExists {
-				kind: CatalogObjectKind::Flow,
-				namespace: namespace.name().to_string(),
-				name: to_create.name.text().to_string(),
-				fragment: to_create.name.clone(),
-			}
-			.into());
-		}
+		Self::reject_existing_flow(txn, namespace_id, &to_create.name)?;
 
 		let flow_id = next_flow_id(txn)?;
-		Self::store_flow(txn, flow_id, namespace_id, &to_create)?;
-		Self::link_flow_to_namespace(txn, namespace_id, flow_id, to_create.name.text())?;
-
+		Self::install_flow(txn, flow_id, namespace_id, &to_create)?;
 		Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)
 	}
 
-	/// Create a flow with a specific ID (for subscription flows where FlowId == SubscriptionId).
-	/// This skips the name uniqueness check since the ID is guaranteed unique by the sequence.
 	pub(crate) fn create_flow_with_id(
 		txn: &mut AdminTransaction,
 		flow_id: FlowId,
 		to_create: FlowToCreate,
 	) -> Result<Flow> {
 		let namespace_id = to_create.namespace;
-		Self::store_flow(txn, flow_id, namespace_id, &to_create)?;
-		Self::link_flow_to_namespace(txn, namespace_id, flow_id, to_create.name.text())?;
-
+		Self::install_flow(txn, flow_id, namespace_id, &to_create)?;
 		Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)
+	}
+
+	#[inline]
+	fn reject_existing_flow(txn: &mut AdminTransaction, namespace_id: NamespaceId, name: &Fragment) -> Result<()> {
+		if CatalogStore::find_flow_by_name(&mut Transaction::Admin(&mut *txn), namespace_id, name.text())?
+			.is_none()
+		{
+			return Ok(());
+		}
+		let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
+		Err(CatalogError::AlreadyExists {
+			kind: CatalogObjectKind::Flow,
+			namespace: namespace.name().to_string(),
+			name: name.text().to_string(),
+			fragment: name.clone(),
+		}
+		.into())
+	}
+
+	#[inline]
+	fn install_flow(
+		txn: &mut AdminTransaction,
+		flow_id: FlowId,
+		namespace_id: NamespaceId,
+		to_create: &FlowToCreate,
+	) -> Result<()> {
+		Self::store_flow(txn, flow_id, namespace_id, to_create)?;
+		Self::link_flow_to_namespace(txn, namespace_id, flow_id, to_create.name.text())
 	}
 
 	fn store_flow(
@@ -137,7 +144,7 @@ pub mod tests {
 		// First creation should succeed
 		let result = CatalogStore::create_flow(&mut txn, to_create.clone()).unwrap();
 		assert_eq!(result.id, FlowId(1));
-		assert_eq!(result.namespace, NamespaceId(1025));
+		assert_eq!(result.namespace, NamespaceId(16385));
 		assert_eq!(result.name, "test_flow");
 		assert_eq!(result.status, FlowStatus::Active);
 

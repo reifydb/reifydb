@@ -1,20 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
 
-use super::format_bytes::{format_bytes_internal, process_decimal_column, process_float_column, process_int_column};
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
+use crate::{
+	function::text::format_bytes::{
+		format_bytes_internal, process_decimal_column, process_float_column, process_int_column,
+	},
+	routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError},
 };
 
 const SI_UNITS: [&str; 6] = ["B", "KB", "MB", "GB", "TB", "PB"];
 
-/// Formats bytes using SI/decimal units (1000-based: B, KB, MB, GB, TB, PB)
-pub struct FormatBytesSi;
+pub struct FormatBytesSi {
+	info: RoutineInfo,
+}
 
 impl Default for FormatBytesSi {
 	fn default() -> Self {
@@ -24,68 +25,90 @@ impl Default for FormatBytesSi {
 
 impl FormatBytesSi {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("text::format_bytes_si"),
+		}
 	}
 }
 
-impl ScalarFunction for FormatBytesSi {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl<'a> Routine<FunctionContext<'a>> for FormatBytesSi {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
 
-		if columns.len() != 1 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 1 {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let column = columns.first().unwrap();
+		let column = &args[0];
+		let (data, bitvec) = column.unwrap_option();
+		let row_count = data.len();
 
-		match &column.data() {
-			ColumnData::Int1(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnData::Int2(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnData::Int4(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnData::Int8(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnData::Uint1(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnData::Uint2(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnData::Uint4(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnData::Uint8(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnData::Float4(container) => process_float_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnData::Float8(container) => process_float_column!(container, row_count, 1000.0, &SI_UNITS),
-			ColumnData::Decimal {
+		let result_data = match data {
+			ColumnBuffer::Int1(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ColumnBuffer::Int2(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ColumnBuffer::Int4(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ColumnBuffer::Int8(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ColumnBuffer::Uint1(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ColumnBuffer::Uint2(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ColumnBuffer::Uint4(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ColumnBuffer::Uint8(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
+			ColumnBuffer::Float4(container) => {
+				process_float_column!(container, row_count, 1000.0, &SI_UNITS)
+			}
+			ColumnBuffer::Float8(container) => {
+				process_float_column!(container, row_count, 1000.0, &SI_UNITS)
+			}
+			ColumnBuffer::Decimal {
 				container,
 				..
 			} => {
 				process_decimal_column!(container, row_count, 1000.0, &SI_UNITS)
 			}
-			other => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 0,
-				expected: vec![
-					Type::Int1,
-					Type::Int2,
-					Type::Int4,
-					Type::Int8,
-					Type::Uint1,
-					Type::Uint2,
-					Type::Uint4,
-					Type::Uint8,
-					Type::Float4,
-					Type::Float8,
-					Type::Decimal,
-				],
-				actual: other.get_type(),
-			}),
-		}
-	}
+			other => {
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 0,
+					expected: vec![
+						Type::Int1,
+						Type::Int2,
+						Type::Int4,
+						Type::Int8,
+						Type::Uint1,
+						Type::Uint2,
+						Type::Uint4,
+						Type::Uint8,
+						Type::Float4,
+						Type::Float8,
+						Type::Decimal,
+					],
+					actual: other.get_type(),
+				});
+			}
+		};
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Utf8
+		let final_data = match bitvec {
+			Some(bv) => ColumnBuffer::Option {
+				inner: Box::new(result_data),
+				bitvec: bv.clone(),
+			},
+			None => result_data,
+		};
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for FormatBytesSi {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

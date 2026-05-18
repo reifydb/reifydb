@@ -11,13 +11,13 @@ import {
 } from "@reifydb/core";
 import {expectSingleResult} from "./test-helper";
 
-describe('Positional Parameters', () => {
+describe('Positional Parameters (value)', () => {
     let httpClient: JsonHttpClient;
 
     beforeAll(async () => {
         httpClient = Client.connect_json_http(process.env.REIFYDB_HTTP_URL, {
-            timeoutMs: 10000,
-            token: process.env.REIFYDB_TOKEN
+            timeout_ms: 10000,
+            token: process.env.REIFYDB_TOKEN,
         });
     });
 

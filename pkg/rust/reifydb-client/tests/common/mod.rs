@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
-// This file is licensed under the MIT, see license.md file
-
 use std::{collections::HashMap, error::Error, fmt::Write, sync::Arc};
 
-use reifydb::{Database, WithSubsystem, server};
+// === Native (network) test helpers ===
+#[cfg(not(reifydb_single_threaded))]
+use reifydb::{Database, SharedRuntimeConfig, WithSubsystem, server};
 use reifydb_client::{Frame, Params, Value};
 use reifydb_testing::testscript::command::Command;
+#[cfg(not(reifydb_single_threaded))]
 use tokio::runtime::Runtime;
 
+#[cfg(not(reifydb_single_threaded))]
 pub fn create_server_instance(_runtime: &Arc<Runtime>) -> Database {
 	server::memory()
+		.with_runtime_config(SharedRuntimeConfig::default().seeded(0))
 		.with_flow(|f| f)
 		.with_grpc(|grpc| grpc.admin_bind_addr("[::1]:0"))
 		.with_http(|http| http.admin_bind_addr("::1:0"))
@@ -24,6 +25,7 @@ pub fn create_server_instance(_runtime: &Arc<Runtime>) -> Database {
 
 /// Start server and return WebSocket admin port
 #[allow(dead_code)]
+#[cfg(not(reifydb_single_threaded))]
 pub fn start_server_and_get_ws_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	server.start()?;
 	server.admin_as_root(
@@ -36,6 +38,7 @@ pub fn start_server_and_get_ws_port(_runtime: &Arc<Runtime>, server: &mut Databa
 
 /// Start server and return gRPC admin port
 #[allow(dead_code)]
+#[cfg(not(reifydb_single_threaded))]
 pub fn start_server_and_get_grpc_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	server.start()?;
 	server.admin_as_root(
@@ -48,6 +51,7 @@ pub fn start_server_and_get_grpc_port(_runtime: &Arc<Runtime>, server: &mut Data
 
 /// Start server and return HTTP admin port
 #[allow(dead_code)]
+#[cfg(not(reifydb_single_threaded))]
 pub fn start_server_and_get_http_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	server.start()?;
 	server.admin_as_root(
@@ -58,6 +62,109 @@ pub fn start_server_and_get_http_port(_runtime: &Arc<Runtime>, server: &mut Data
 	Ok(server.sub_server_http().unwrap().admin_port().unwrap())
 }
 
+/// Clean up server instance
+#[cfg(not(reifydb_single_threaded))]
+pub fn cleanup_server(mut server: Option<Database>) {
+	if let Some(mut srv) = server.take() {
+		let _ = srv.stop();
+		drop(srv);
+	}
+}
+
+// === DST test helpers ===
+
+#[cfg(reifydb_single_threaded)]
+use reifydb::{Database, SharedRuntimeConfig, embedded};
+#[cfg(reifydb_single_threaded)]
+use reifydb_client::DstClient;
+#[cfg(reifydb_single_threaded)]
+use reifydb_core::actors::server::{ServerAuthResponse, ServerMessage, ServerResponse};
+#[cfg(reifydb_single_threaded)]
+use reifydb_runtime::actor::system::{ActorHandle, ActorSystem};
+#[cfg(reifydb_single_threaded)]
+use reifydb_sub_server::actor::ServerActor;
+#[cfg(reifydb_single_threaded)]
+use reifydb_type::value::identity::IdentityId;
+
+#[cfg(reifydb_single_threaded)]
+pub struct DstTestContext {
+	pub db: Database,
+	pub system: ActorSystem,
+	pub identity: IdentityId,
+	_handle: ActorHandle<ServerMessage>,
+	pub client: DstClient,
+}
+
+#[cfg(reifydb_single_threaded)]
+impl DstTestContext {
+	pub fn new() -> Self {
+		let db = embedded::memory()
+			.with_runtime_config(SharedRuntimeConfig::default().seeded(0))
+			.build()
+			.unwrap();
+
+		db.admin_as_root(
+			"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
+			reifydb_type::params::Params::None,
+		)
+		.unwrap();
+
+		let engine = db.engine().clone();
+		let auth_service = db.auth_service().clone();
+		let system = db.shared_runtime().actor_system();
+		let clock = db.shared_runtime().clock().clone();
+
+		let handle = system.spawn_query("server", ServerActor::new(engine, auth_service, clock));
+		let client = DstClient::new(handle.actor_ref().clone(), system.clone());
+
+		// Authenticate to get identity
+		let auth_response = client.authenticate(
+			"token".to_string(),
+			HashMap::from([("token".to_string(), "mysecrettoken".to_string())]),
+		);
+		let identity = match auth_response {
+			ServerAuthResponse::Authenticated {
+				identity,
+				..
+			} => identity,
+			ServerAuthResponse::Failed {
+				reason,
+			} => panic!("authentication failed: {}", reason),
+			ServerAuthResponse::Error(e) => panic!("authentication error: {}", e),
+			ServerAuthResponse::Challenge {
+				..
+			} => panic!("unexpected challenge response"),
+		};
+
+		Self {
+			db,
+			system,
+			identity,
+			_handle: handle,
+			client,
+		}
+	}
+}
+
+#[cfg(reifydb_single_threaded)]
+pub fn dst_response_to_result(response: ServerResponse) -> Result<Vec<Frame>, Box<dyn Error>> {
+	match response {
+		ServerResponse::Success {
+			frames,
+			..
+		} => Ok(frames),
+		ServerResponse::EngineError {
+			diagnostic,
+			..
+		} => {
+			let err = reifydb_type::error::Error(diagnostic);
+			Err(err.to_string().into())
+		}
+	}
+}
+
+// === Shared helpers (used by both native and DST) ===
+
 /// Parse RQL command from testscript Command
 #[allow(dead_code)]
 pub fn parse_rql(command: &Command) -> String {
@@ -65,7 +172,7 @@ pub fn parse_rql(command: &Command) -> String {
 }
 
 /// Parse positional parameters from command arguments
-/// First argument is the SQL, rest are positional parameters
+/// First argument is the RQL, rest are positional parameters
 #[allow(dead_code)]
 pub fn parse_positional_params(command: &Command) -> (String, Params) {
 	let args: Vec<&str> = command.args.iter().map(|a| a.value.as_str()).collect();
@@ -74,14 +181,14 @@ pub fn parse_positional_params(command: &Command) -> (String, Params) {
 		return (String::new(), Params::Positional(Arc::new(vec![])));
 	}
 
-	let sql = args[0].to_string();
+	let rql = args[0].to_string();
 	let params: Vec<_> = args[1..].iter().map(|s| parse_param_value(s)).collect();
 
-	(sql, Params::Positional(Arc::new(params)))
+	(rql, Params::Positional(Arc::new(params)))
 }
 
 /// Parse named parameters from command arguments
-/// First argument is the SQL, rest are name=value pairs
+/// First argument is the RQL, rest are name=value pairs
 #[allow(dead_code)]
 pub fn parse_named_params(command: &Command) -> (String, Params) {
 	let args: Vec<&str> = command.args.iter().map(|a| a.value.as_str()).collect();
@@ -90,7 +197,7 @@ pub fn parse_named_params(command: &Command) -> (String, Params) {
 		return (String::new(), Params::Named(Arc::new(HashMap::new())));
 	}
 
-	let sql = args[0].to_string();
+	let rql = args[0].to_string();
 	let mut params = HashMap::new();
 
 	for arg in &args[1..] {
@@ -99,7 +206,7 @@ pub fn parse_named_params(command: &Command) -> (String, Params) {
 		}
 	}
 
-	(sql, Params::Named(Arc::new(params)))
+	(rql, Params::Named(Arc::new(params)))
 }
 
 /// Parse a parameter value from string
@@ -146,12 +253,4 @@ pub fn write_frames(frames: Vec<Frame>) -> Result<String, Box<dyn Error>> {
 		writeln!(output, "{}", frame).unwrap();
 	}
 	Ok(output)
-}
-
-/// Clean up server instance
-pub fn cleanup_server(mut server: Option<Database>) {
-	if let Some(mut srv) = server.take() {
-		let _ = srv.stop();
-		drop(srv);
-	}
 }

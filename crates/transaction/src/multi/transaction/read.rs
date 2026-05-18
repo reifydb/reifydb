@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-// This file includes and modifies code from the skipdb project (https://github.com/al8n/skipdb),
-// originally licensed under the Apache License, Version 2.0.
-// Original copyright:
-//   Copyright (c) 2024 Al Liu
-//
-// The original Apache License can be found at:
-//   http://www.apache.org/licenses/LICENSE-2.0
-
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::key::{EncodedKey, EncodedKeyRange},
@@ -17,11 +9,13 @@ use reifydb_core::{
 use reifydb_type::Result;
 
 use super::{MultiTransaction, manager::TransactionManagerQuery, version::StandardVersionProvider};
-use crate::multi::types::TransactionValue;
+use crate::multi::{lease::VersionLeaseGuard, types::TransactionValue};
 
 pub struct MultiReadTransaction {
 	pub(crate) engine: MultiTransaction,
 	pub(crate) tm: TransactionManagerQuery<StandardVersionProvider>,
+	#[allow(dead_code)]
+	pub(crate) lease: Option<VersionLeaseGuard>,
 }
 
 impl MultiReadTransaction {
@@ -30,6 +24,17 @@ impl MultiReadTransaction {
 		Ok(Self {
 			engine,
 			tm,
+			lease: None,
+		})
+	}
+
+	pub fn new_with_lease(engine: MultiTransaction, lease: VersionLeaseGuard) -> Result<Self> {
+		let version = lease.version();
+		let tm = engine.tm.query(Some(version))?;
+		Ok(Self {
+			engine,
+			tm,
+			lease: Some(lease),
 		})
 	}
 }
@@ -90,11 +95,6 @@ impl MultiReadTransaction {
 		})
 	}
 
-	/// Create a streaming iterator for forward range queries.
-	///
-	/// This properly handles high version density by scanning until batch_size
-	/// unique logical keys are collected. The stream yields individual entries
-	/// and maintains cursor state internally.
 	pub fn range(
 		&self,
 		range: EncodedKeyRange,
@@ -104,11 +104,6 @@ impl MultiReadTransaction {
 		Box::new(self.engine.store.range(range, version, batch_size))
 	}
 
-	/// Create a streaming iterator for reverse range queries.
-	///
-	/// This properly handles high version density by scanning until batch_size
-	/// unique logical keys are collected. The stream yields individual entries
-	/// in reverse key order and maintains cursor state internally.
 	pub fn range_rev(
 		&self,
 		range: EncodedKeyRange,
@@ -116,5 +111,15 @@ impl MultiReadTransaction {
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		let version = self.tm.version();
 		Box::new(self.engine.store.range_rev(range, version, batch_size))
+	}
+}
+
+impl Clone for MultiReadTransaction {
+	fn clone(&self) -> Self {
+		Self {
+			engine: self.engine.clone(),
+			tm: self.tm.clone(),
+			lease: None,
+		}
 	}
 }

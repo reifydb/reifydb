@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Concurrent map abstraction that provides a unified API across native and WASM targets.
-//!
-//! On native platforms, this wraps `DashMap` for high-performance concurrent access.
-//! On WASM platforms, this wraps `Arc<RwLock<HashMap>>` to provide similar semantics.
-
 use std::{borrow::Borrow, hash::Hash};
 
 use cfg_if::cfg_if;
@@ -24,7 +19,6 @@ cfg_if! {
     }
 }
 
-/// A concurrent map that provides a unified API across native and WASM targets.
 pub struct Map<K, V>
 where
 	K: Eq + Hash,
@@ -107,7 +101,6 @@ where
 		self.inner.keys()
 	}
 
-	/// Clears `buf` and fills it with all keys in the map, reusing the buffer's allocation.
 	#[inline]
 	pub fn keys_into(&self, buf: &mut Vec<K>)
 	where

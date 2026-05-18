@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
 	util::ioc::IocContainer,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -17,9 +17,8 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system version information
 pub struct SystemVersions {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	ioc: IocContainer,
 	exhausted: bool,
 }
@@ -27,7 +26,7 @@ pub struct SystemVersions {
 impl SystemVersions {
 	pub fn new(ioc: IocContainer) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_versions_table().clone(),
+			vtable: SystemCatalog::get_system_versions_table().clone(),
 			ioc,
 			exhausted: false,
 		}
@@ -50,13 +49,13 @@ impl BaseVTable for SystemVersions {
 			Err(_) => vec![],
 		};
 
-		let mut names_to_insert = ColumnData::utf8_with_capacity(versions.len());
+		let mut names_to_insert = ColumnBuffer::utf8_with_capacity(versions.len());
 
-		let mut versions_to_insert = ColumnData::utf8_with_capacity(versions.len());
+		let mut versions_to_insert = ColumnBuffer::utf8_with_capacity(versions.len());
 
-		let mut descriptions_to_insert = ColumnData::utf8_with_capacity(versions.len());
+		let mut descriptions_to_insert = ColumnBuffer::utf8_with_capacity(versions.len());
 
-		let mut types_to_insert = ColumnData::utf8_with_capacity(versions.len());
+		let mut types_to_insert = ColumnBuffer::utf8_with_capacity(versions.len());
 
 		for version in versions {
 			names_to_insert.push(version.name.as_str());
@@ -66,22 +65,10 @@ impl BaseVTable for SystemVersions {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("name"),
-				data: names_to_insert,
-			},
-			Column {
-				name: Fragment::internal("version"),
-				data: versions_to_insert,
-			},
-			Column {
-				name: Fragment::internal("description"),
-				data: descriptions_to_insert,
-			},
-			Column {
-				name: Fragment::internal("type"),
-				data: types_to_insert,
-			},
+			ColumnWithName::new(Fragment::internal("name"), names_to_insert),
+			ColumnWithName::new(Fragment::internal("version"), versions_to_insert),
+			ColumnWithName::new(Fragment::internal("description"), descriptions_to_insert),
+			ColumnWithName::new(Fragment::internal("type"), types_to_insert),
 		];
 
 		self.exhausted = true;
@@ -90,7 +77,7 @@ impl BaseVTable for SystemVersions {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

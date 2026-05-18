@@ -112,7 +112,7 @@ use core::num::NonZeroU64;
 use core::ops::{Deref, DerefMut};
 use core::pin::Pin;
 use core::ptr::NonNull;
-use wasmtime_environ::{DefinedGlobalIndex, DefinedTableIndex, EntityRef, PrimaryMap, TripleExt};
+use wasmtime_environ::{DefinedGlobalIndex, DefinedTableIndex, EntityRef, TripleExt};
 
 mod context;
 pub use self::context::*;
@@ -473,12 +473,12 @@ pub struct StoreOpaque {
     #[cfg(feature = "stack-switching")]
     continuations: Vec<Box<VMContRef>>,
 
-    instances: wasmtime_environ::collections::PrimaryMap<InstanceId, StoreInstance>,
+    instances: TryPrimaryMap<InstanceId, StoreInstance>,
 
     signal_handler: Option<SignalHandler>,
     modules: ModuleRegistry,
     func_refs: FuncRefs,
-    host_globals: PrimaryMap<DefinedGlobalIndex, StoreBox<VMHostGlobalContext>>,
+    host_globals: TryPrimaryMap<DefinedGlobalIndex, StoreBox<VMHostGlobalContext>>,
     // GC-related fields.
     gc_store: Option<GcStore>,
     gc_roots: RootSet,
@@ -527,7 +527,7 @@ pub struct StoreOpaque {
     hostcall_val_storage: Vec<Val>,
     /// Same as `hostcall_val_storage`, but for the direction of the host
     /// calling wasm.
-    wasm_val_raw_storage: Vec<ValRaw>,
+    wasm_val_raw_storage: TryVec<ValRaw>,
 
     /// Keep track of what protection key is being used during allocation so
     /// that the right memory pages can be enabled when entering WebAssembly
@@ -744,7 +744,7 @@ impl<T> Store<T> {
             vm_store_context: Default::default(),
             #[cfg(feature = "stack-switching")]
             continuations: Vec::new(),
-            instances: wasmtime_environ::collections::PrimaryMap::new(),
+            instances: TryPrimaryMap::new(),
             signal_handler: None,
             gc_store: None,
             gc_roots: RootSet::default(),
@@ -756,7 +756,7 @@ impl<T> Store<T> {
             pending_exception: None,
             modules: ModuleRegistry::default(),
             func_refs: FuncRefs::default(),
-            host_globals: PrimaryMap::new(),
+            host_globals: TryPrimaryMap::new(),
             instance_count: 0,
             instance_limit: crate::DEFAULT_INSTANCE_LIMIT,
             memory_count: 0,
@@ -771,7 +771,7 @@ impl<T> Store<T> {
             traitobj: StorePtr(None),
             default_caller_vmctx: SendSyncPtr::new(NonNull::dangling()),
             hostcall_val_storage: Vec::new(),
-            wasm_val_raw_storage: Vec::new(),
+            wasm_val_raw_storage: TryVec::new(),
             pkey,
             executor: Executor::new(engine)?,
             #[cfg(feature = "debug")]
@@ -1306,6 +1306,35 @@ impl<T> Store<T> {
     pub fn clear_debug_handler(&mut self) {
         self.inner.debug_handler = None;
     }
+
+    /// Register a [`Module`] with this store's module registry for
+    /// debugging, without instantiating it.
+    ///
+    /// This makes the module visible to debuggers (via
+    /// `debug_all_modules`) before the module is actually
+    /// instantiated. This is useful for guest-debug workflows where
+    /// the debugger needs to see modules to set breakpoints before
+    /// the first Wasm instruction executes.
+    #[cfg(feature = "debug")]
+    pub fn debug_register_module(&mut self, module: &crate::Module) -> crate::Result<()> {
+        let (modules, engine, breakpoints) = self.inner.modules_and_engine_and_breakpoints_mut();
+        modules.register_module(module, engine, breakpoints)?;
+        Ok(())
+    }
+
+    /// Register all inner modules of a [`Component`](crate::component::Component)
+    /// with this store's module registry for debugging, without instantiating
+    /// the component.
+    #[cfg(all(feature = "debug", feature = "component-model"))]
+    pub fn debug_register_component(
+        &mut self,
+        component: &crate::component::Component,
+    ) -> crate::Result<()> {
+        for module in component.static_modules() {
+            self.debug_register_module(module)?;
+        }
+        Ok(())
+    }
 }
 
 impl<'a, T> StoreContext<'a, T> {
@@ -1536,7 +1565,7 @@ impl<T> StoreInner<T> {
         // noop shim so code can assume this always exists.
     }
 
-    /// Splits this `StoreInner<T>` into a `limiter`/`StoerOpaque` borrow while
+    /// Splits this `StoreInner<T>` into a `limiter`/`StoreOpaque` borrow while
     /// validating that an async limiter is not configured.
     ///
     /// This is used for sync entrypoints which need to fail if an async limiter
@@ -1687,13 +1716,13 @@ impl StoreOpaque {
 
     pub(crate) fn host_globals(
         &self,
-    ) -> &PrimaryMap<DefinedGlobalIndex, StoreBox<VMHostGlobalContext>> {
+    ) -> &TryPrimaryMap<DefinedGlobalIndex, StoreBox<VMHostGlobalContext>> {
         &self.host_globals
     }
 
     pub(crate) fn host_globals_mut(
         &mut self,
-    ) -> &mut PrimaryMap<DefinedGlobalIndex, StoreBox<VMHostGlobalContext>> {
+    ) -> &mut TryPrimaryMap<DefinedGlobalIndex, StoreBox<VMHostGlobalContext>> {
         &mut self.host_globals
     }
 
@@ -2377,14 +2406,14 @@ impl StoreOpaque {
     /// Same as `take_hostcall_val_storage`, but for the direction of the host
     /// calling wasm.
     #[inline]
-    pub fn take_wasm_val_raw_storage(&mut self) -> Vec<ValRaw> {
+    pub fn take_wasm_val_raw_storage(&mut self) -> TryVec<ValRaw> {
         mem::take(&mut self.wasm_val_raw_storage)
     }
 
     /// Same as `save_hostcall_val_storage`, but for the direction of the host
     /// calling wasm.
     #[inline]
-    pub fn save_wasm_val_raw_storage(&mut self, storage: Vec<ValRaw>) {
+    pub fn save_wasm_val_raw_storage(&mut self, storage: TryVec<ValRaw>) {
         if storage.capacity() > self.wasm_val_raw_storage.capacity() {
             self.wasm_val_raw_storage = storage;
         }

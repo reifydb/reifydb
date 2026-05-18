@@ -8,7 +8,7 @@ use reifydb_core::{
 		series::{SeriesKey, TimestampPrecision},
 		vtable::VTable,
 	},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
@@ -22,9 +22,8 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system series (time-series) information
 pub struct SystemSeries {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -37,7 +36,7 @@ impl Default for SystemSeries {
 impl SystemSeries {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_series_table().clone(),
+			vtable: SystemCatalog::get_system_series_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -54,14 +53,15 @@ impl BaseVTable for SystemSeries {
 			return Ok(None);
 		}
 
-		let all_series = CatalogStore::list_series_all(txn)?;
+		let all_series: Vec<_> =
+			CatalogStore::list_series_all(txn)?.into_iter().filter(|s| !s.underlying).collect();
 
-		let mut ids = ColumnData::uint8_with_capacity(all_series.len());
-		let mut namespaces = ColumnData::uint8_with_capacity(all_series.len());
-		let mut names = ColumnData::utf8_with_capacity(all_series.len());
-		let mut tag_ids = ColumnData::uint8_with_capacity(all_series.len());
-		let mut key_columns = ColumnData::utf8_with_capacity(all_series.len());
-		let mut key_kinds = ColumnData::utf8_with_capacity(all_series.len());
+		let mut ids = ColumnBuffer::uint8_with_capacity(all_series.len());
+		let mut namespaces = ColumnBuffer::uint8_with_capacity(all_series.len());
+		let mut names = ColumnBuffer::utf8_with_capacity(all_series.len());
+		let mut tag_ids = ColumnBuffer::uint8_with_capacity(all_series.len());
+		let mut key_columns = ColumnBuffer::utf8_with_capacity(all_series.len());
+		let mut key_kinds = ColumnBuffer::utf8_with_capacity(all_series.len());
 
 		for s in all_series {
 			ids.push(s.id.0);
@@ -86,30 +86,12 @@ impl BaseVTable for SystemSeries {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: ids,
-			},
-			Column {
-				name: Fragment::internal("namespace_id"),
-				data: namespaces,
-			},
-			Column {
-				name: Fragment::internal("name"),
-				data: names,
-			},
-			Column {
-				name: Fragment::internal("tag_id"),
-				data: tag_ids,
-			},
-			Column {
-				name: Fragment::internal("key_column"),
-				data: key_columns,
-			},
-			Column {
-				name: Fragment::internal("key_kind"),
-				data: key_kinds,
-			},
+			ColumnWithName::new(Fragment::internal("id"), ids),
+			ColumnWithName::new(Fragment::internal("namespace_id"), namespaces),
+			ColumnWithName::new(Fragment::internal("name"), names),
+			ColumnWithName::new(Fragment::internal("tag_id"), tag_ids),
+			ColumnWithName::new(Fragment::internal("key_column"), key_columns),
+			ColumnWithName::new(Fragment::internal("key_kind"), key_kinds),
 		];
 
 		self.exhausted = true;
@@ -118,7 +100,7 @@ impl BaseVTable for SystemSeries {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

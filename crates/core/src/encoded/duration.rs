@@ -18,17 +18,16 @@ impl RowShape {
 		let days = value.get_days();
 		let nanos = value.get_nanos();
 		unsafe {
-			// Write months (i32) at offset
 			ptr::write_unaligned(
 				row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut i32,
 				months,
 			);
-			// Write days (i32) at offset + 4
+
 			ptr::write_unaligned(
 				row.make_mut().as_mut_ptr().add(field.offset as usize + 4) as *mut i32,
 				days,
 			);
-			// Write nanos (i64) at offset + 8
+
 			ptr::write_unaligned(
 				row.make_mut().as_mut_ptr().add(field.offset as usize + 8) as *mut i64,
 				nanos,
@@ -41,11 +40,10 @@ impl RowShape {
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Duration);
 		unsafe {
-			// Read months (i32) from offset
 			let months = (row.as_ptr().add(field.offset as usize) as *const i32).read_unaligned();
-			// Read days (i32) from offset + 4
+
 			let days = (row.as_ptr().add(field.offset as usize + 4) as *const i32).read_unaligned();
-			// Read nanos (i64) from offset + 8
+
 			let nanos = (row.as_ptr().add(field.offset as usize + 8) as *const i64).read_unaligned();
 			Duration::new(months, days, nanos).expect("stored duration must be valid")
 		}

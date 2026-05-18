@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	error::diagnostic::catalog::namespace_not_found,
-	interface::catalog::procedure::{ProcedureParam, ProcedureTrigger},
+	interface::catalog::procedure::{ProcedureParam, RqlTrigger},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, return_error};
@@ -22,24 +22,21 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		create: logical::CreateProcedureNode<'_>,
 	) -> Result<PhysicalPlan<'bump>> {
-		// If this is a handler-style procedure (has on_event), delegate to handler compiler
 		if create.on_event.is_some() {
 			return self.compile_create_handler(rx, create);
 		}
 
-		// Resolve namespace
 		let ns_segments: Vec<&str> = create.procedure.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_fragment = if let Some(n) = create.procedure.namespace.first() {
 				let interned = self.interner.intern_fragment(n);
 				interned.with_text(ns_segments.join("::"))
 			} else {
-				Fragment::internal("default".to_string())
+				Fragment::internal("default")
 			};
 			return_error!(namespace_not_found(ns_fragment, &ns_segments.join("::")));
 		};
 
-		// Convert params
 		let mut params = Vec::with_capacity(create.params.len());
 		for param in &create.params {
 			let constraint = convert_data_type_with_constraints(&param.param_type)?;
@@ -54,7 +51,7 @@ impl<'bump> Compiler<'bump> {
 			name: self.interner.intern_fragment(&create.procedure.name),
 			params,
 			body_source: create.body_source,
-			trigger: ProcedureTrigger::Call,
+			trigger: RqlTrigger::Call,
 			is_test: create.is_test,
 		}))
 	}

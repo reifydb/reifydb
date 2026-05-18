@@ -16,21 +16,20 @@ use reifydb_type::{
 	},
 };
 
-/// Encodes a constraint to a byte vector for storage
 fn encode_constraint(constraint: &Option<Constraint>) -> Vec<u8> {
 	match constraint {
-		None => vec![0], // Type 0: No constraint
+		None => vec![0],
 		Some(Constraint::MaxBytes(max_bytes)) => {
-			let mut bytes = vec![1]; // Type 1: MaxBytes
+			let mut bytes = vec![1];
 			let max_value: u32 = (*max_bytes).into();
 			bytes.extend_from_slice(&max_value.to_le_bytes());
 			bytes
 		}
 		Some(Constraint::PrecisionScale(precision, scale)) => {
-			vec![2, (*precision).into(), (*scale).into()] // Type 2: PrecisionScale
+			vec![2, (*precision).into(), (*scale).into()]
 		}
 		Some(Constraint::Dictionary(dict_id, id_type)) => {
-			let mut bytes = vec![3]; // Type 3: Dictionary
+			let mut bytes = vec![3];
 			bytes.extend_from_slice(&dict_id.to_u64().to_le_bytes());
 			bytes.push(id_type.to_u8());
 			bytes
@@ -43,7 +42,10 @@ fn encode_constraint(constraint: &Option<Constraint>) -> Vec<u8> {
 	}
 }
 
-use reifydb_core::interface::catalog::column::{Column, ColumnIndex};
+use reifydb_core::interface::catalog::{
+	column::{Column, ColumnIndex},
+	id::ColumnId,
+};
 
 use crate::{
 	CatalogStore, Result,
@@ -92,7 +94,6 @@ impl CatalogStore {
 			.into());
 		}
 
-		// Validate auto_increment is only used with integer types
 		if column_to_create.auto_increment {
 			let base_type = column_to_create.constraint.get_type();
 			let is_integer_type = matches!(
@@ -123,12 +124,56 @@ impl CatalogStore {
 		column::SHAPE.set_u8(&mut row, INDEX, column_to_create.index);
 		column::SHAPE.set_bool(&mut row, AUTO_INCREMENT, column_to_create.auto_increment);
 
-		// Store constraint as encoded blob
 		let constraint_bytes = encode_constraint(column_to_create.constraint.constraint());
 		let blob = Blob::from(constraint_bytes);
 		column::SHAPE.set_blob(&mut row, CONSTRAINT, &blob);
 
-		// Store dictionary_id (0 means no dictionary)
+		let dict_id_value = column_to_create.dictionary_id.map(u64::from).unwrap_or(0);
+		column::SHAPE.set_u64(&mut row, DICTIONARY_ID, dict_id_value);
+
+		txn.set(&ColumnsKey::encoded(id), row)?;
+
+		let mut row = primitive_column::SHAPE.allocate();
+		primitive_column::SHAPE.set_u64(&mut row, primitive_column::ID, id);
+		primitive_column::SHAPE.set_utf8(&mut row, primitive_column::NAME, &column_to_create.column);
+		primitive_column::SHAPE.set_u8(&mut row, primitive_column::INDEX, column_to_create.index);
+		txn.set(&ColumnKey::encoded(shape, id), row)?;
+
+		for policy in column_to_create.properties {
+			Self::create_column_property(txn, id, policy)?;
+		}
+
+		Ok(Column {
+			id,
+			name: column_to_create.column,
+			constraint: column_to_create.constraint,
+			index: column_to_create.index,
+			properties: Self::list_column_properties(&mut Transaction::Admin(&mut *txn), id)?,
+			auto_increment: column_to_create.auto_increment,
+			dictionary_id: column_to_create.dictionary_id,
+		})
+	}
+
+	pub(crate) fn create_column_with_id(
+		txn: &mut AdminTransaction,
+		id: ColumnId,
+		shape: impl Into<ShapeId>,
+		column_to_create: ColumnToCreate,
+	) -> Result<Column> {
+		let shape = shape.into();
+
+		let mut row = column::SHAPE.allocate();
+		column::SHAPE.set_u64(&mut row, ID, id);
+		column::SHAPE.set_u64(&mut row, PRIMITIVE, shape);
+		column::SHAPE.set_utf8(&mut row, NAME, &column_to_create.column);
+		column::SHAPE.set_u8(&mut row, VALUE, column_to_create.constraint.get_type().to_u8());
+		column::SHAPE.set_u8(&mut row, INDEX, column_to_create.index);
+		column::SHAPE.set_bool(&mut row, AUTO_INCREMENT, column_to_create.auto_increment);
+
+		let constraint_bytes = encode_constraint(column_to_create.constraint.constraint());
+		let blob = Blob::from(constraint_bytes);
+		column::SHAPE.set_blob(&mut row, CONSTRAINT, &blob);
+
 		let dict_id_value = column_to_create.dictionary_id.map(u64::from).unwrap_or(0);
 		column::SHAPE.set_u64(&mut row, DICTIONARY_ID, dict_id_value);
 
@@ -207,16 +252,16 @@ pub mod test {
 		)
 		.unwrap();
 
-		let column_1 = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(8193)).unwrap();
+		let column_1 = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(16385)).unwrap();
 
-		assert_eq!(column_1.id, 8193);
+		assert_eq!(column_1.id, 16385);
 		assert_eq!(column_1.name, "col_1");
 		assert_eq!(column_1.constraint.get_type(), Type::Boolean);
 		assert_eq!(column_1.auto_increment, false);
 
-		let column_2 = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(8194)).unwrap();
+		let column_2 = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(16386)).unwrap();
 
-		assert_eq!(column_2.id, 8194);
+		assert_eq!(column_2.id, 16386);
 		assert_eq!(column_2.name, "col_2");
 		assert_eq!(column_2.constraint.get_type(), Type::Int2);
 		assert_eq!(column_2.auto_increment, false);
@@ -244,9 +289,9 @@ pub mod test {
 		)
 		.unwrap();
 
-		let column = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(8193)).unwrap();
+		let column = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(16385)).unwrap();
 
-		assert_eq!(column.id, ColumnId(8193));
+		assert_eq!(column.id, ColumnId(16385));
 		assert_eq!(column.name, "id");
 		assert_eq!(column.constraint.get_type(), Type::Uint8);
 		assert_eq!(column.auto_increment, true);

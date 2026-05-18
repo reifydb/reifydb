@@ -7,7 +7,6 @@ use crate::token::{
 	token::{Literal, Token, TokenKind},
 };
 
-/// Scan for a boolean literal (true/false)
 pub fn scan_boolean<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let start_pos = cursor.pos();
 	let start_line = cursor.line();

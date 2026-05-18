@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! RowShape retrieval from storage.
-
 use reifydb_core::{
 	encoded::shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 	error::diagnostic::internal::internal,
@@ -11,7 +9,7 @@ use reifydb_core::{
 		shape::{RowShapeFieldKey, RowShapeKey},
 	},
 };
-use reifydb_transaction::{single::write::SingleWriteTransaction, transaction::Transaction};
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	error::Error,
 	value::constraint::{FFITypeConstraint, TypeConstraint},
@@ -21,9 +19,6 @@ use tracing::{Span, field, instrument};
 use super::shape::{shape_field, shape_header};
 use crate::Result;
 
-/// Find a shape by its fingerprint.
-///
-/// Returns None if the shape doesn't exist in storage.
 #[instrument(
 	name = "shape_store::find",
 	level = "trace",
@@ -35,10 +30,9 @@ use crate::Result;
 	)
 )]
 pub(crate) fn find_row_shape_by_fingerprint(
-	txn: &mut SingleWriteTransaction,
+	txn: &mut Transaction<'_>,
 	fingerprint: RowShapeFingerprint,
 ) -> Result<Option<RowShape>> {
-	// Read shape header
 	let header_key = RowShapeKey::encoded(fingerprint);
 	let header_entry = match txn.get(&header_key)? {
 		Some(entry) => entry,
@@ -90,9 +84,6 @@ pub(crate) fn find_row_shape_by_fingerprint(
 	Ok(Some(RowShape::from_parts(fingerprint, fields)))
 }
 
-/// Load all shapes from storage.
-///
-/// Used during startup to populate the shape registry cache.
 #[instrument(
 	name = "shape_store::load_all",
 	level = "debug",
@@ -103,7 +94,6 @@ pub(crate) fn find_row_shape_by_fingerprint(
 	)
 )]
 pub fn load_all_row_shapes(rx: &mut Transaction<'_>) -> Result<Vec<RowShape>> {
-	// First pass: collect all shape headers (fingerprint, field_count)
 	let mut shape_headers: Vec<(RowShapeFingerprint, usize)> = Vec::new();
 
 	{
@@ -113,7 +103,6 @@ pub fn load_all_row_shapes(rx: &mut Transaction<'_>) -> Result<Vec<RowShape>> {
 		for entry in stream {
 			let entry = entry?;
 
-			// Decode the fingerprint from the key
 			let shape_key = RowShapeKey::decode(&entry.key)
 				.ok_or_else(|| Error(Box::new(internal("Failed to decode shape key"))))?;
 
@@ -123,7 +112,6 @@ pub fn load_all_row_shapes(rx: &mut Transaction<'_>) -> Result<Vec<RowShape>> {
 		}
 	}
 
-	// Second pass: load fields for each shape
 	let mut shapes = Vec::with_capacity(shape_headers.len());
 
 	for (fingerprint, field_count) in shape_headers {

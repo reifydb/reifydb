@@ -37,7 +37,6 @@ impl From<FlowId> for u64 {
 }
 
 impl FlowId {
-	/// Get the inner u64 value.
 	#[inline]
 	pub fn to_u64(self) -> u64 {
 		self.0
@@ -113,7 +112,6 @@ impl From<FlowNodeId> for u64 {
 }
 
 impl FlowNodeId {
-	/// Get the inner u64 value.
 	#[inline]
 	pub fn to_u64(self) -> u64 {
 		self.0
@@ -234,7 +232,6 @@ pub enum FlowStatus {
 }
 
 impl FlowStatus {
-	/// Convert FlowStatus to u8 for storage
 	pub fn to_u8(self) -> u8 {
 		match self {
 			FlowStatus::Active => 0,
@@ -243,13 +240,12 @@ impl FlowStatus {
 		}
 	}
 
-	/// Create FlowStatus from u8, defaulting to Failed for unknown values
 	pub fn from_u8(value: u8) -> Self {
 		match value {
 			0 => FlowStatus::Active,
 			1 => FlowStatus::Paused,
 			2 => FlowStatus::Failed,
-			_ => FlowStatus::Failed, // Default to Failed for unknown statuses
+			_ => FlowStatus::Failed,
 		}
 	}
 }
@@ -263,17 +259,14 @@ pub struct Flow {
 	pub tick: Option<Duration>,
 }
 
-/// Catalog definition for a flow node
-/// The node type and its data are stored as a type discriminator and serialized blob
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlowNode {
 	pub id: FlowNodeId,
 	pub flow: FlowId,
-	pub node_type: u8, // FlowNodeType discriminator
-	pub data: Blob,    // Serialized FlowNodeType data
+	pub node_type: u8,
+	pub data: Blob,
 }
 
-/// Catalog definition for a flow edge
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlowEdge {
 	pub id: FlowEdgeId,

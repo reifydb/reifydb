@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Unified error types for the extension system
-
 use std::{error::Error, io};
 
 use reifydb_sdk::error::FFIError;

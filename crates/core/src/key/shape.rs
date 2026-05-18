@@ -10,30 +10,22 @@ use crate::{
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
-/// Key for storing a shape definition by its fingerprint
 #[derive(Debug, Clone, PartialEq)]
 pub struct RowShapeKey {
 	pub fingerprint: RowShapeFingerprint,
 }
 
-const VERSION: u8 = 1;
-
 impl EncodableKey for RowShapeKey {
 	const KIND: KeyKind = KeyKind::Shape;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.fingerprint.as_u64());
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.fingerprint.as_u64());
 		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
@@ -61,20 +53,18 @@ impl RowShapeKey {
 	}
 
 	fn scan_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8);
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8(Self::KIND as u8);
 		serializer.to_encoded_key()
 	}
 
 	fn scan_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8 - 1);
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8(Self::KIND as u8 - 1);
 		serializer.to_encoded_key()
 	}
 }
 
-/// Key for storing individual shape fields
-/// Keyed by (shape_fingerprint, field_index) for ordered retrieval
 #[derive(Debug, Clone, PartialEq)]
 pub struct RowShapeFieldKey {
 	pub shape_fingerprint: RowShapeFingerprint,
@@ -85,9 +75,8 @@ impl EncodableKey for RowShapeFieldKey {
 	const KIND: KeyKind = KeyKind::RowShapeField;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(11);
+		let mut serializer = KeySerializer::with_capacity(10);
 		serializer
-			.extend_u8(VERSION)
 			.extend_u8(Self::KIND as u8)
 			.extend_u64(self.shape_fingerprint.as_u64())
 			.extend_u16(self.field_index);
@@ -96,11 +85,6 @@ impl EncodableKey for RowShapeFieldKey {
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
@@ -126,24 +110,19 @@ impl RowShapeFieldKey {
 		.encode()
 	}
 
-	/// Scan all fields for a given shape
 	pub fn scan_for_shape(fingerprint: RowShapeFingerprint) -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::shape_start(fingerprint)), Some(Self::shape_end(fingerprint)))
 	}
 
 	fn shape_start(fingerprint: RowShapeFingerprint) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(fingerprint.as_u64());
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(fingerprint.as_u64());
 		serializer.to_encoded_key()
 	}
 
 	fn shape_end(fingerprint: RowShapeFingerprint) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(11);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(fingerprint.as_u64())
-			.extend_u8(0xFF);
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(fingerprint.as_u64()).extend_u8(0xFF);
 		serializer.to_encoded_key()
 	}
 }

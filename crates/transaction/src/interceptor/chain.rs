@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-/// Chain for a specific interceptor type
 pub struct InterceptorChain<I: ?Sized> {
 	pub(crate) interceptors: Vec<Arc<I>>,
 }

@@ -11,9 +11,9 @@
 
 [package]
 edition = "2024"
-rust-version = "1.91.0"
+rust-version = "1.92.0"
 name = "wiggle"
-version = "43.0.0"
+version = "44.0.0"
 authors = [
     "Pat Hickey <phickey@fastly.com>",
     "Jakub Konka <kubkonk@jakubkonka.com>",
@@ -70,15 +70,15 @@ version = "0.1.41"
 default-features = false
 
 [dependencies.wasmtime]
-version = "43.0.0"
+version = "44.0.0"
 optional = true
 default-features = false
 
 [dependencies.wasmtime-environ]
-version = "=43.0.0"
+version = "=44.0.0"
 
 [dependencies.wiggle-macro]
-version = "=43.0.0"
+version = "=44.0.0"
 
 [dependencies.witx]
 version = "0.9.1"
@@ -96,7 +96,7 @@ features = [
 ]
 
 [dev-dependencies.wasmtime]
-version = "43.0.0"
+version = "44.0.0"
 features = ["default"]
 default-features = false
 
@@ -135,4 +135,6 @@ check-cfg = [
     "cfg(pulley_tail_calls)",
     "cfg(pulley_assume_llvm_makes_tail_calls)",
     "cfg(pulley_disable_interp_simd)",
+    "cfg(arc_try_new)",
+    "cfg(gc_zeal)",
 ]

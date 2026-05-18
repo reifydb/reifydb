@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-/// Format f64 with at most 15 significant digits for cross-platform consistency.
-///
-/// f64 has ~15.95 decimal digits of precision. Cross-platform differences in
-/// `f64::exp()` and similar math functions only appear in the 16th-17th digit.
-/// By limiting to 15 significant digits, we get identical output on Linux x86-64,
-/// WASM, and macOS ARM.
 pub fn format_f64(v: f64) -> String {
 	if !v.is_finite() {
 		return v.to_string();
@@ -15,7 +9,7 @@ pub fn format_f64(v: f64) -> String {
 		return "0".to_string();
 	}
 	let s = v.to_string();
-	// Integer representations are exact and don't differ across platforms
+
 	if !s.contains('.') || count_significant_digits(&s) <= 15 {
 		return s;
 	}
@@ -29,10 +23,6 @@ pub fn format_f64(v: f64) -> String {
 	}
 }
 
-/// Format f32 with at most 7 significant digits for cross-platform consistency.
-///
-/// f32 has ~7.22 decimal digits of precision. By limiting to 7 significant digits,
-/// we get identical output across platforms.
 pub fn format_f32(v: f32) -> String {
 	if !v.is_finite() {
 		return v.to_string();
@@ -41,7 +31,7 @@ pub fn format_f32(v: f32) -> String {
 		return "0".to_string();
 	}
 	let s = v.to_string();
-	// Integer representations are exact and don't differ across platforms
+
 	if !s.contains('.') || count_significant_digits(&s) <= 7 {
 		return s;
 	}
@@ -57,7 +47,7 @@ pub fn format_f32(v: f32) -> String {
 
 fn count_significant_digits(s: &str) -> usize {
 	let s = s.strip_prefix('-').unwrap_or(s);
-	// Remove exponent part if present
+
 	let s = if let Some(pos) = s.find(['e', 'E']) {
 		&s[..pos]
 	} else {
@@ -196,7 +186,7 @@ mod tests {
 	#[test]
 	fn test_no_trailing_zeros() {
 		// Ensure we don't produce trailing zeros after trimming
-		let v = 1.20000000000000000f64;
+		let v = 1.2f64;
 		let s = format_f64(v);
 		assert!(!s.ends_with('0') || s == "0", "got: {}", s);
 	}

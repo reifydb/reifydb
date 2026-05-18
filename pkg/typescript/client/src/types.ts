@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
-import type { Params, Frame, Column, ErrorResponse } from "@reifydb/core";
+import type { Params, Frame, Column, ErrorResponse, ShapeNode } from "@reifydb/core";
 import { ReifyError } from "@reifydb/core";
 
 // Re-export types that are actually available in flow
@@ -11,11 +11,16 @@ export interface AdminRequest {
     id: string;
     type: "Admin";
     payload: {
-        statements: string[];
+        rql: string;
         params?: Params;
-        format?: string;
+        format?: "json" | "rbcf";
         unwrap?: boolean;
     }
+}
+
+export interface ResponseMeta {
+    fingerprint: string;
+    duration: string;
 }
 
 export interface AdminResponse {
@@ -24,6 +29,7 @@ export interface AdminResponse {
     payload: {
         content_type: string;
         body: any;
+        meta?: ResponseMeta;
     };
 }
 
@@ -31,9 +37,9 @@ export interface CommandRequest {
     id: string;
     type: "Command";
     payload: {
-        statements: string[];
+        rql: string;
         params?: Params;
-        format?: string;
+        format?: "json" | "rbcf";
         unwrap?: boolean;
     }
 }
@@ -44,6 +50,7 @@ export interface CommandResponse {
     payload: {
         content_type: string;
         body: any;
+        meta?: ResponseMeta;
     };
 }
 
@@ -51,9 +58,9 @@ export interface QueryRequest {
     id: string;
     type: "Query";
     payload: {
-        statements: string[];
+        rql: string;
         params?: Params;
-        format?: string;
+        format?: "json" | "rbcf";
         unwrap?: boolean;
     }
 }
@@ -64,6 +71,7 @@ export interface QueryResponse {
     payload: {
         content_type: string;
         body: any;
+        meta?: ResponseMeta;
     };
 }
 
@@ -71,7 +79,8 @@ export interface SubscribeRequest {
     id: string;
     type: "Subscribe";
     payload: {
-        query: string;
+        rql: string;
+        format?: "json" | "rbcf";
     };
 }
 
@@ -112,9 +121,126 @@ export interface ChangeMessage {
 export type SubscriptionOperation = 'INSERT' | 'UPDATE' | 'REMOVE';
 
 export interface SubscriptionCallbacks<T = any> {
-    onInsert?: (rows: T[]) => void;
-    onUpdate?: (rows: T[]) => void;
-    onRemove?: (rows: T[]) => void;
+    on_insert?: (rows: T[]) => void;
+    on_update?: (rows: T[]) => void;
+    on_remove?: (rows: T[]) => void;
+}
+
+export interface HydrationConfig {
+    enabled: boolean;
+    max_rows?: number;
+}
+
+export interface SubscriptionConfig {
+    hydration?: HydrationConfig;
+    // Minimum interval in milliseconds between updates pushed to this subscription.
+    // Omitted or undefined means no throttling (every change is delivered immediately).
+    throttle?: number;
+}
+
+export function default_hydration_config(): HydrationConfig {
+    return { enabled: true };
+}
+
+export function default_subscription_config(): SubscriptionConfig {
+    return { hydration: default_hydration_config() };
+}
+
+export function build_subscription_rql(body: string, config?: SubscriptionConfig): string {
+    const h = config?.hydration ?? default_hydration_config();
+    const enabled = h.enabled;
+    let opts = h.max_rows !== undefined
+        ? `hydration: { enabled: ${enabled}, max_rows: ${h.max_rows} }`
+        : `hydration: { enabled: ${enabled} }`;
+    if (config?.throttle !== undefined) {
+        opts += `, throttle: "${config.throttle}ms"`;
+    }
+    return `CREATE SUBSCRIPTION WITH { ${opts} } AS { ${body} }`;
+}
+
+export interface BatchSubscribeRequest {
+    id: string;
+    type: "BatchSubscribe";
+    payload: {
+        queries: string[];
+        format?: "json" | "frames" | "rbcf";
+    };
+}
+
+export interface BatchMemberInfo {
+    index: number;
+    subscription_id: string;
+}
+
+export interface BatchSubscribedResponse {
+    id: string;
+    type: "BatchSubscribed";
+    payload: {
+        batch_id: string;
+        members: BatchMemberInfo[];
+    };
+}
+
+export interface BatchUnsubscribeRequest {
+    id: string;
+    type: "BatchUnsubscribe";
+    payload: {
+        batch_id: string;
+    };
+}
+
+export interface BatchUnsubscribedResponse {
+    id: string;
+    type: "BatchUnsubscribed";
+    payload: {
+        batch_id: string;
+    };
+}
+
+export interface BatchChangeMessage {
+    type: "BatchChange";
+    payload: {
+        batch_id: string;
+        entries: Array<{
+            subscription_id: string;
+            content_type: string;
+            body: any;
+        }>;
+    };
+}
+
+export interface BatchMemberClosedMessage {
+    type: "BatchMemberClosed";
+    payload: {
+        batch_id: string;
+        subscription_id: string;
+    };
+}
+
+export interface BatchClosedMessage {
+    type: "BatchClosed";
+    payload: {
+        batch_id: string;
+    };
+}
+
+export interface BatchSubscriptionMember<T = any> {
+    rql: string;
+    params?: any;
+    shape?: ShapeNode;
+    callbacks: SubscriptionCallbacks<T>;
+    config?: SubscriptionConfig;
+}
+
+export interface BatchSubscriptionCallbacks {
+    on_member_closed?: (subscription_id: string) => void;
+    on_closed?: () => void;
+    on_entry_error?: (subscription_id: string, error: Error) => void;
+}
+
+export interface BatchSubscription {
+    batch_id: string;
+    subscription_ids: string[];
 }
 
 export interface AuthRequest {
@@ -123,7 +249,6 @@ export interface AuthRequest {
     payload: {
         token?: string;
         method?: string;
-        principal?: string;
         credentials?: Record<string, string>;
     };
 }
@@ -132,11 +257,18 @@ export interface AuthResponse {
     id: string;
     type: "Auth";
     payload: {
-        status?: string;
+        status?: "authenticated" | "challenge" | "failed";
         token?: string;
         identity?: string;
+        challenge_id?: string;
+        payload?: { message: string; nonce: string };
+        reason?: string;
     };
 }
+
+export type LoginChallengeResult =
+    | { kind: "authenticated"; token: string; identity: string }
+    | { kind: "challenge"; challenge_id: string; message: string; nonce: string };
 
 export interface LogoutRequest {
     id: string;

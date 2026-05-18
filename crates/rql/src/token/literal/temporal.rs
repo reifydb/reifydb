@@ -6,7 +6,6 @@ use crate::token::{
 	token::{Literal, Token, TokenKind},
 };
 
-/// Scan for temporal literal (dates/times starting with @)
 pub fn scan_temporal<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	if cursor.peek() != Some('@') {
 		return None;
@@ -16,33 +15,21 @@ pub fn scan_temporal<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let start_line = cursor.line();
 	let start_column = cursor.column();
 
-	cursor.consume(); // consume '@'
+	cursor.consume();
 
-	// Accept any sequence of characters that could be part of a temporal
-	// literal. This includes letters, digits, colons, hyphens, dots, +, -,
-	// /, T, etc.
 	let content = cursor.consume_while(|c| {
 		c.is_ascii_alphanumeric() || c == '-' || c == ':' || c == '.' || c == '+' || c == '/' || c == 'T'
 	});
 
 	if content.is_empty() {
-		// Just @ without any content - backtrack
-		// We already consumed @, so go back one position
-		// Actually, we can't backtrack easily here, so just return None
-		// The @ will be caught as an unexpected character
 		return None;
 	}
 
-	// Create fragment with just the temporal content (excluding @)
-	let temporal_start = start_pos + 1; // Skip the '@'
+	let temporal_start = start_pos + 1;
 
 	Some(Token {
 		kind: TokenKind::Literal(Literal::Temporal),
-		fragment: cursor.make_fragment(
-			temporal_start,
-			start_line,
-			start_column + 1, // +1 for '@'
-		),
+		fragment: cursor.make_fragment(temporal_start, start_line, start_column + 1),
 	})
 }
 

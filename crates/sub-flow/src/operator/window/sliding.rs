@@ -7,13 +7,12 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_runtime::hash::Hash128;
-use reifydb_type::Result;
+use reifydb_type::{Result, value::datetime::DateTime};
 
 use super::{WindowEvent, WindowLayout, WindowOperator};
 use crate::transaction::FlowTransaction;
 
 impl WindowOperator {
-	/// Determine which windows an event belongs to for sliding windows
 	pub fn get_sliding_window_ids(&self, timestamp_or_row_index: u64) -> Vec<u64> {
 		match &self.kind {
 			WindowKind::Sliding {
@@ -45,7 +44,7 @@ impl WindowOperator {
 				size: WindowSize::Count(count),
 				slide: WindowSize::Count(slide_count),
 			} => {
-				let row_number = timestamp_or_row_index + 1; // 1-based
+				let row_number = timestamp_or_row_index + 1;
 				let min_window = if row_number > *count {
 					(row_number - *count) / *slide_count
 				} else {
@@ -64,7 +63,6 @@ impl WindowOperator {
 		}
 	}
 
-	/// Set window start time for sliding windows (aligned to slide boundaries)
 	pub fn set_sliding_window_start(&self, timestamp: u64, window_id: u64) -> u64 {
 		match &self.kind {
 			WindowKind::Sliding {
@@ -79,12 +77,12 @@ impl WindowOperator {
 	}
 }
 
-/// Process inserts for a single group in sliding windows
 fn process_sliding_group_insert(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	columns: &Columns,
 	group_hash: Hash128,
+	changed_at: DateTime,
 ) -> Result<Vec<Diff>> {
 	let mut result = Vec::new();
 	let row_count = columns.row_count();
@@ -118,7 +116,13 @@ fn process_sliding_group_insert(
 			let layout = window_state.layout().clone();
 
 			let previous_aggregation = if !window_state.events.is_empty() {
-				operator.apply_aggregations(txn, &window_key, &layout, &window_state.events)?
+				operator.apply_aggregations(
+					txn,
+					&window_key,
+					&layout,
+					&window_state.events,
+					changed_at,
+				)?
 			} else {
 				None
 			};
@@ -134,9 +138,13 @@ fn process_sliding_group_insert(
 					operator.set_sliding_window_start(event_timestamp, window_id);
 			}
 
-			if let Some((aggregated_row, is_new)) =
-				operator.apply_aggregations(txn, &window_key, &layout, &window_state.events)?
-			{
+			if let Some((aggregated_row, is_new)) = operator.apply_aggregations(
+				txn,
+				&window_key,
+				&layout,
+				&window_state.events,
+				changed_at,
+			)? {
 				result.push(WindowOperator::emit_aggregation_diff(
 					&aggregated_row,
 					is_new,
@@ -152,10 +160,10 @@ fn process_sliding_group_insert(
 	Ok(result)
 }
 
-/// Apply changes for sliding windows
 pub fn apply_sliding_window(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	let changed_at = change.changed_at;
 	let diffs = operator.apply_window_change(txn, &change, true, |op, txn, columns| {
-		op.process_insert(txn, columns, process_sliding_group_insert)
+		op.process_insert(txn, columns, changed_at, process_sliding_group_insert)
 	})?;
-	Ok(Change::from_flow(operator.node, change.version, diffs))
+	Ok(Change::from_flow(operator.node, change.version, diffs, change.changed_at))
 }

@@ -24,6 +24,7 @@ reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-type = { workspace = true }
 reifydb-core = { workspace = true }
+reifydb-wire-format = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-auth = { workspace = true }
 reifydb-transaction = { workspace = true }

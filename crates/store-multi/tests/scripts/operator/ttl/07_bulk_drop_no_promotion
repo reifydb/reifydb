@@ -1,0 +1,34 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Five versions of one operator-state key, all with the same old created_at.
+# All five go into the drop batch (bulk fast path) without any cascading
+# historical->current promotions.
+
+set 1=v1 version=1 created=1000
+set 1=v2 version=2 created=1000
+set 1=v3 version=3 created=1000
+set 1=v4 version=4 created=1000
+set 1=v5 version=5 created=1000
+---
+ok
+ok
+ok
+ok
+ok
+
+count_current
+count_historical
+---
+current: 1
+historical: 4
+
+scan_ttl mode=created duration=5000 now=10000
+---
+expired=1 versions_dropped=5
+
+count_current
+count_historical
+---
+current: 0
+historical: 0

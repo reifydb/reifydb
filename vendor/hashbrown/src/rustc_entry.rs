@@ -1,6 +1,7 @@
 use self::RustcEntry::*;
-use crate::map::{make_hash, Drain, HashMap, IntoIter, Iter, IterMut};
-use crate::raw::{Allocator, Bucket, Global, RawTable};
+use crate::alloc::{Allocator, Global};
+use crate::map::{Drain, HashMap, IntoIter, Iter, IterMut, make_hash};
+use crate::raw::{Bucket, RawTable};
 use core::fmt::{self, Debug};
 use core::hash::{BuildHasher, Hash};
 use core::mem;
@@ -57,8 +58,7 @@ where
 ///
 /// This `enum` is constructed from the [`rustc_entry`] method on [`HashMap`].
 ///
-/// [`HashMap`]: struct.HashMap.html
-/// [`rustc_entry`]: struct.HashMap.html#method.rustc_entry
+/// [`rustc_entry`]: HashMap::rustc_entry
 pub enum RustcEntry<'a, K, V, A = Global>
 where
     A: Allocator,
@@ -81,8 +81,6 @@ impl<K: Debug, V: Debug, A: Allocator> Debug for RustcEntry<'_, K, V, A> {
 
 /// A view into an occupied entry in a `HashMap`.
 /// It is part of the [`RustcEntry`] enum.
-///
-/// [`RustcEntry`]: enum.RustcEntry.html
 pub struct RustcOccupiedEntry<'a, K, V, A = Global>
 where
     A: Allocator,
@@ -117,8 +115,6 @@ impl<K: Debug, V: Debug, A: Allocator> Debug for RustcOccupiedEntry<'_, K, V, A>
 
 /// A view into a vacant entry in a `HashMap`.
 /// It is part of the [`RustcEntry`] enum.
-///
-/// [`RustcEntry`]: enum.RustcEntry.html
 pub struct RustcVacantEntry<'a, K, V, A = Global>
 where
     A: Allocator,

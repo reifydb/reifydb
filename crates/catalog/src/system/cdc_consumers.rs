@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::cdc_consumers::*, vtable::CDC_CONSUMERS};
 
-/// Returns the static definition for the system.cdc_consumers virtual table
-/// This table exposes information about all CDC consumers and their checkpoints
 pub fn cdc_consumers() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

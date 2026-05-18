@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::cell::Cell;
 use std::path::{Path, PathBuf};
 
-use rusqlite::{Connection, DatabaseName, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension};
 
 use crate::history::SearchResult;
 use crate::{Config, History, HistoryDuplicates, ReadlineError, Result, SearchDirection};
@@ -33,7 +33,7 @@ The VACUUM command may change the ROWIDs of entries in any tables that do not ha
 
 impl SQLiteHistory {
     /// Transient in-memory database
-    pub fn with_config(config: Config) -> Result<Self>
+    pub fn with_config(config: &Config) -> Result<Self>
     where
         Self: Sized,
     {
@@ -41,13 +41,13 @@ impl SQLiteHistory {
     }
 
     /// Open specified database
-    pub fn open<P: AsRef<Path> + ?Sized>(config: Config, path: &P) -> Result<Self> {
+    pub fn open<P: AsRef<Path> + ?Sized>(config: &Config, path: &P) -> Result<Self> {
         Self::new(config, normalize(path.as_ref()))
     }
 
-    fn new(config: Config, path: Option<PathBuf>) -> Result<Self> {
+    fn new(config: &Config, path: Option<PathBuf>) -> Result<Self> {
         let conn = conn(path.as_ref())?;
-        let mut sh = SQLiteHistory {
+        let mut sh = Self {
             max_len: config.max_history_size(),
             ignore_space: config.history_ignore_space(),
             // not strictly consecutive...
@@ -162,7 +162,7 @@ COMMIT;
             return true;
         }
         if line.is_empty()
-            || (self.ignore_space && line.chars().next().map_or(true, char::is_whitespace))
+            || (self.ignore_space && line.chars().next().is_none_or(char::is_whitespace))
         {
             return true;
         }
@@ -192,7 +192,7 @@ COMMIT;
         start: usize,
         dir: SearchDirection,
         start_with: bool,
-    ) -> Result<Option<SearchResult>> {
+    ) -> Result<Option<SearchResult<'_>>> {
         if term.is_empty() || start >= self.len() {
             return Ok(None);
         }
@@ -238,7 +238,7 @@ COMMIT;
 
 impl History for SQLiteHistory {
     /// rowid <> index
-    fn get(&self, index: usize, dir: SearchDirection) -> Result<Option<SearchResult>> {
+    fn get(&self, index: usize, dir: SearchDirection) -> Result<Option<SearchResult<'_>>> {
         let rowid = index + 1; // first rowid is 1
         if self.is_empty() {
             return Ok(None);
@@ -334,7 +334,7 @@ PRAGMA incremental_vacuum;
             }
         } else {
             // TODO Validate: backup whole history
-            self.conn.backup(DatabaseName::Main, path, None)?;
+            self.conn.backup(c"main", path, None)?;
             // TODO Validate: keep using original path
         }
         Ok(())
@@ -372,7 +372,7 @@ PRAGMA incremental_vacuum;
             // TODO check that there is no memory entries (session_id == 0) ?
             self.reset(path)?;
             self.check_schema()?;
-        } else if self.path.as_ref().map_or(true, |p| p != path) {
+        } else if self.path.as_ref().is_none_or(|p| p != path) {
             self.reset(path)?;
             self.check_schema()?;
         }
@@ -398,7 +398,7 @@ PRAGMA incremental_vacuum;
         term: &str,
         start: usize,
         dir: SearchDirection,
-    ) -> Result<Option<SearchResult>> {
+    ) -> Result<Option<SearchResult<'_>>> {
         self.search_match(term, start, dir, false)
     }
 
@@ -407,7 +407,7 @@ PRAGMA incremental_vacuum;
         term: &str,
         start: usize,
         dir: SearchDirection,
-    ) -> Result<Option<SearchResult>> {
+    ) -> Result<Option<SearchResult<'_>>> {
         self.search_match(term, start, dir, true)
     }
 }
@@ -457,7 +457,7 @@ mod tests {
     use std::path::Path;
 
     fn init() -> Result<SQLiteHistory> {
-        let mut h = SQLiteHistory::with_config(Config::default())?;
+        let mut h = SQLiteHistory::with_config(&Config::default())?;
         h.add("line1")?;
         h.add("line2")?;
         h.add("line3")?;
@@ -466,7 +466,7 @@ mod tests {
 
     #[test]
     fn get() -> Result<()> {
-        let mut h = SQLiteHistory::with_config(Config::default())?;
+        let mut h = SQLiteHistory::with_config(&Config::default())?;
         assert_eq!(None, h.get(0, SearchDirection::Forward)?);
         h.add("line")?;
         assert_eq!(
@@ -483,7 +483,7 @@ mod tests {
 
     #[test]
     fn len() -> Result<()> {
-        let mut h = SQLiteHistory::with_config(Config::default())?;
+        let mut h = SQLiteHistory::with_config(&Config::default())?;
         assert_eq!(0, h.len());
         h.add("line")?;
         assert_eq!(1, h.len());
@@ -492,7 +492,7 @@ mod tests {
 
     #[test]
     fn is_empty() -> Result<()> {
-        let mut h = SQLiteHistory::with_config(Config::default())?;
+        let mut h = SQLiteHistory::with_config(&Config::default())?;
         assert!(h.is_empty());
         h.add("line")?;
         assert!(!h.is_empty());
@@ -501,7 +501,7 @@ mod tests {
 
     #[test]
     fn set_max_len() -> Result<()> {
-        let mut h = SQLiteHistory::with_config(Config::default())?;
+        let mut h = SQLiteHistory::with_config(&Config::default())?;
         h.add("l1")?;
         h.add("l2")?;
         h.add("l3")?;
@@ -518,7 +518,7 @@ mod tests {
 
     #[test]
     fn ignore_dups() -> Result<()> {
-        let mut h = SQLiteHistory::with_config(Config::default())?;
+        let mut h = SQLiteHistory::with_config(&Config::default())?;
         h.ignore_dups(true)?;
         h.ignore_dups(false)?;
         h.ignore_dups(true)
@@ -528,7 +528,7 @@ mod tests {
     fn save() -> Result<()> {
         let db1 = "file:db1?mode=memory";
         let db2 = "file:db2?mode=memory";
-        let mut h = SQLiteHistory::open(Config::default(), db1)?;
+        let mut h = SQLiteHistory::open(&Config::default(), db1)?;
         h.save(Path::new(db1))?;
         h.save(Path::new(db2))?;
         h.add("line")?;
@@ -547,7 +547,7 @@ mod tests {
         // let db2 = "file:db2?mode=memory&cache=shared";
         let tf = tempfile::NamedTempFile::new()?;
         let db2 = tf.path();
-        let mut h = SQLiteHistory::open(Config::default(), db1)?;
+        let mut h = SQLiteHistory::open(&Config::default(), db1)?;
         h.append(Path::new(db1))?;
         //h.append(Path::new(db2))?;
         h.add("line")?;
@@ -563,7 +563,7 @@ mod tests {
     fn load() -> Result<()> {
         let db1 = "file:db1?mode=memory";
         let db2 = "file:db2?mode=memory";
-        let mut h = SQLiteHistory::open(Config::default(), db1)?;
+        let mut h = SQLiteHistory::open(&Config::default(), db1)?;
         h.load(Path::new(db1))?;
         h.add("line")?;
         h.load(Path::new(db2))?;
@@ -575,7 +575,7 @@ mod tests {
 
     #[test]
     fn clear() -> Result<()> {
-        let mut h = SQLiteHistory::with_config(Config::default())?;
+        let mut h = SQLiteHistory::with_config(&Config::default())?;
         h.clear()?;
         h.add("line")?;
         h.clear()?;

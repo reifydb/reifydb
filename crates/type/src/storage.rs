@@ -5,9 +5,7 @@ use std::ops::Deref;
 
 use crate::util::{bitvec::BitVec, cowvec::CowVec};
 
-/// Trait for vector-like storage of column values.
 pub trait DataVec<T: Clone>: Deref<Target = [T]> + Clone {
-	/// Create a new empty vec with given capacity, using the same allocator.
 	fn spawn(&self, capacity: usize) -> Self;
 	fn push(&mut self, value: T);
 	fn clear(&mut self);
@@ -28,7 +26,6 @@ pub trait DataVec<T: Clone>: Deref<Target = [T]> + Clone {
 	}
 }
 
-/// Trait for bitvec-like storage (null masks and boolean data).
 pub trait DataBitVec: Clone {
 	fn spawn(&self, capacity: usize) -> Self;
 	fn push(&mut self, bit: bool);
@@ -56,13 +53,11 @@ pub trait DataBitVec: Clone {
 	}
 }
 
-/// Trait abstracting over storage backends.
 pub trait Storage: Clone {
 	type Vec<T: Clone + PartialEq + 'static>: DataVec<T> + PartialEq;
 	type BitVec: DataBitVec + PartialEq;
 }
 
-/// Default storage backend using Arc-backed copy-on-write.
 #[derive(Clone, Debug)]
 pub struct Cow;
 

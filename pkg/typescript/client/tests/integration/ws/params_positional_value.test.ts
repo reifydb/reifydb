@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from "vitest";
 import {Client, WsClient} from "../../../src";
-import {waitForDatabase} from "../setup";
+import {wait_for_database} from "../setup";
 import {
     BooleanValue, Int1Value, Int2Value, Int4Value, Int8Value, Int16Value,
     Uint1Value, Uint2Value, Uint4Value, Uint8Value, Uint16Value,
@@ -13,19 +13,23 @@ import {
 } from "@reifydb/core";
 import { expectSingleValueResult } from "./test-helper";
 
-describe('Positional Parameters', () => {
-    let wsClient: WsClient;
+describe.each([
+    {format: "frames"},
+    {format: "rbcf"},
+] as const)('Positional Parameters (value) [$format]', ({format}) => {
+    let ws_client: WsClient;
 
 
     beforeAll(async () => {
-        await waitForDatabase();
+        await wait_for_database();
     }, 30000);
 
     beforeEach(async () => {
         try {
-            wsClient = await Client.connect_ws(process.env.REIFYDB_WS_URL, {
-                timeoutMs: 10000,
-                token: process.env.REIFYDB_TOKEN
+            ws_client = await Client.connect_ws(process.env.REIFYDB_WS_URL, {
+                timeout_ms: 10000,
+                token: process.env.REIFYDB_TOKEN,
+                format,
             });
         } catch (error) {
             console.error('❌ WebSocket connection failed:', error);
@@ -34,19 +38,19 @@ describe('Positional Parameters', () => {
     }, 15000);
 
     afterEach(async () => {
-        if (wsClient) {
+        if (ws_client) {
             try {
-                wsClient.disconnect();
+                ws_client.disconnect();
             } catch (error) {
                 console.error('⚠️ Error during disconnect:', error);
             }
-            wsClient = null;
+            ws_client = null;
         }
     });
 
     describe('admin', () => {
         it('Boolean', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new BooleanValue(true)],
                 [Shape.object({result: Shape.booleanValue()})]
@@ -56,7 +60,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Int1', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new Int1Value(42)],
                 [Shape.object({result: Shape.int1Value()})]
@@ -66,7 +70,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Int2', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new Int2Value(1234)],
                 [Shape.object({result: Shape.int2Value()})]
@@ -76,7 +80,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Int4', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new Int4Value(12345678)],
                 [Shape.object({result: Shape.int4Value()})]
@@ -86,7 +90,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Int8', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new Int8Value(BigInt("9223372036854775807"))],
                 [Shape.object({result: Shape.int8Value()})]
@@ -96,7 +100,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Int16', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new Int16Value(BigInt("170141183460469231731687303715884105727"))],
                 [Shape.object({result: Shape.int16Value()})]
@@ -106,7 +110,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Uint1', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new Uint1Value(255)],
                 [Shape.object({result: Shape.uint1Value()})]
@@ -116,7 +120,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Uint2', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new Uint2Value(65535)],
                 [Shape.object({result: Shape.uint2Value()})]
@@ -126,7 +130,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Uint4', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new Uint4Value(4294967295)],
                 [Shape.object({result: Shape.uint4Value()})]
@@ -136,7 +140,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Uint8', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new Uint8Value(BigInt("18446744073709551615"))],
                 [Shape.object({result: Shape.uint8Value()})]
@@ -146,7 +150,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Uint16', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new Uint16Value(BigInt("340282366920938463463374607431768211455"))],
                 [Shape.object({result: Shape.uint16Value()})]
@@ -156,7 +160,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Float4', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new Float4Value(3.14)],
                 [Shape.object({result: Shape.float4Value()})]
@@ -166,7 +170,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Float8', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new Float8Value(3.141592653589793)],
                 [Shape.object({result: Shape.float8Value()})]
@@ -176,7 +180,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Decimal', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new DecimalValue("123.456789")],
                 [Shape.object({result: Shape.decimalValue()})]
@@ -186,7 +190,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Utf8', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new Utf8Value("Hello, World!")],
                 [Shape.object({result: Shape.utf8Value()})]
@@ -197,7 +201,7 @@ describe('Positional Parameters', () => {
 
         it('Blob', async () => {
             const data = new Uint8Array([1, 2, 3, 4, 5]);
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new BlobValue(data)],
                 [Shape.object({result: Shape.blobValue()})]
@@ -208,7 +212,7 @@ describe('Positional Parameters', () => {
 
         it('Date', async () => {
             const date = new Date('2024-03-15');
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new DateValue(date)],
                 [Shape.object({result: Shape.dateValue()})]
@@ -218,7 +222,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Time', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new TimeValue("14:30:00.123456789")],
                 [Shape.object({result: Shape.timeValue()})]
@@ -229,7 +233,7 @@ describe('Positional Parameters', () => {
 
         it('DateTime', async () => {
             const datetime = new Date('2024-03-15T14:30:00.123Z');
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new DateTimeValue(datetime)],
                 [Shape.object({result: Shape.dateTimeValue()})]
@@ -239,7 +243,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Duration', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new DurationValue("P1DT2H30M")],
                 [Shape.object({result: Shape.durationValue()})]
@@ -250,7 +254,7 @@ describe('Positional Parameters', () => {
 
         it('Uuid4', async () => {
             const uuid = "550e8400-e29b-41d4-a716-446655440000";
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new Uuid4Value(uuid)],
                 [Shape.object({result: Shape.uuid4Value()})]
@@ -261,7 +265,7 @@ describe('Positional Parameters', () => {
 
         it('Uuid7', async () => {
             const uuid = "018fad5d-f37a-7c94-a716-446655440000";
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new Uuid7Value(uuid)],
                 [Shape.object({result: Shape.uuid7Value()})]
@@ -272,7 +276,7 @@ describe('Positional Parameters', () => {
 
         it('IdentityId', async () => {
             const identityId = "018fad5d-f37a-7c94-a716-446655440001";
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new IdentityIdValue(identityId)],
                 [Shape.object({result: Shape.identityIdValue()})]
@@ -282,7 +286,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('None', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $1}',
                 [new NoneValue()],
                 [Shape.object({result: Shape.noneValue()})]
@@ -295,7 +299,7 @@ describe('Positional Parameters', () => {
 
     describe('command', () => {
         it('Boolean', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new BooleanValue(true)],
                 [Shape.object({result: Shape.booleanValue()})]
@@ -305,7 +309,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Int1', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new Int1Value(42)],
                 [Shape.object({result: Shape.int1Value()})]
@@ -315,7 +319,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Int2', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new Int2Value(1234)],
                 [Shape.object({result: Shape.int2Value()})]
@@ -325,7 +329,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Int4', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new Int4Value(12345678)],
                 [Shape.object({result: Shape.int4Value()})]
@@ -335,7 +339,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Int8', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new Int8Value(BigInt("9223372036854775807"))],
                 [Shape.object({result: Shape.int8Value()})]
@@ -345,7 +349,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Int16', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new Int16Value(BigInt("170141183460469231731687303715884105727"))],
                 [Shape.object({result: Shape.int16Value()})]
@@ -355,7 +359,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Uint1', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new Uint1Value(255)],
                 [Shape.object({result: Shape.uint1Value()})]
@@ -365,7 +369,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Uint2', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new Uint2Value(65535)],
                 [Shape.object({result: Shape.uint2Value()})]
@@ -375,7 +379,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Uint4', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new Uint4Value(4294967295)],
                 [Shape.object({result: Shape.uint4Value()})]
@@ -385,7 +389,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Uint8', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new Uint8Value(BigInt("18446744073709551615"))],
                 [Shape.object({result: Shape.uint8Value()})]
@@ -395,7 +399,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Uint16', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new Uint16Value(BigInt("340282366920938463463374607431768211455"))],
                 [Shape.object({result: Shape.uint16Value()})]
@@ -405,7 +409,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Float4', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new Float4Value(3.14)],
                 [Shape.object({result: Shape.float4Value()})]
@@ -415,7 +419,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Float8', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new Float8Value(3.141592653589793)],
                 [Shape.object({result: Shape.float8Value()})]
@@ -425,7 +429,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Decimal', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new DecimalValue("123.456789")],
                 [Shape.object({result: Shape.decimalValue()})]
@@ -435,7 +439,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Utf8', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new Utf8Value("Hello, World!")],
                 [Shape.object({result: Shape.utf8Value()})]
@@ -446,7 +450,7 @@ describe('Positional Parameters', () => {
 
         it('Blob', async () => {
             const data = new Uint8Array([1, 2, 3, 4, 5]);
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new BlobValue(data)],
                 [Shape.object({result: Shape.blobValue()})]
@@ -457,7 +461,7 @@ describe('Positional Parameters', () => {
 
         it('Date', async () => {
             const date = new Date('2024-03-15');
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new DateValue(date)],
                 [Shape.object({result: Shape.dateValue()})]
@@ -467,7 +471,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Time', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new TimeValue("14:30:00.123456789")],
                 [Shape.object({result: Shape.timeValue()})]
@@ -478,7 +482,7 @@ describe('Positional Parameters', () => {
 
         it('DateTime', async () => {
             const datetime = new Date('2024-03-15T14:30:00.123Z');
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new DateTimeValue(datetime)],
                 [Shape.object({result: Shape.dateTimeValue()})]
@@ -488,7 +492,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Duration', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new DurationValue("P1DT2H30M")],
                 [Shape.object({result: Shape.durationValue()})]
@@ -499,7 +503,7 @@ describe('Positional Parameters', () => {
 
         it('Uuid4', async () => {
             const uuid = "550e8400-e29b-41d4-a716-446655440000";
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new Uuid4Value(uuid)],
                 [Shape.object({result: Shape.uuid4Value()})]
@@ -510,7 +514,7 @@ describe('Positional Parameters', () => {
 
         it('Uuid7', async () => {
             const uuid = "018fad5d-f37a-7c94-a716-446655440000";
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new Uuid7Value(uuid)],
                 [Shape.object({result: Shape.uuid7Value()})]
@@ -521,7 +525,7 @@ describe('Positional Parameters', () => {
 
         it('IdentityId', async () => {
             const identityId = "018fad5d-f37a-7c94-a716-446655440001";
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new IdentityIdValue(identityId)],
                 [Shape.object({result: Shape.identityIdValue()})]
@@ -531,7 +535,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('None', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $1}',
                 [new NoneValue()],
                 [Shape.object({result: Shape.noneValue()})]
@@ -544,7 +548,7 @@ describe('Positional Parameters', () => {
 
     describe('query', () => {
         it('Boolean', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new BooleanValue(true)],
                 [Shape.object({result: Shape.booleanValue()})]
@@ -554,7 +558,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Int1', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new Int1Value(42)],
                 [Shape.object({result: Shape.int1Value()})]
@@ -564,7 +568,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Int2', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new Int2Value(1234)],
                 [Shape.object({result: Shape.int2Value()})]
@@ -574,7 +578,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Int4', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new Int4Value(12345678)],
                 [Shape.object({result: Shape.int4Value()})]
@@ -584,7 +588,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Int8', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new Int8Value(BigInt("9223372036854775807"))],
                 [Shape.object({result: Shape.int8Value()})]
@@ -594,7 +598,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Int16', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new Int16Value(BigInt("170141183460469231731687303715884105727"))],
                 [Shape.object({result: Shape.int16Value()})]
@@ -604,7 +608,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Uint1', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new Uint1Value(255)],
                 [Shape.object({result: Shape.uint1Value()})]
@@ -614,7 +618,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Uint2', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new Uint2Value(65535)],
                 [Shape.object({result: Shape.uint2Value()})]
@@ -624,7 +628,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Uint4', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new Uint4Value(4294967295)],
                 [Shape.object({result: Shape.uint4Value()})]
@@ -634,7 +638,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Uint8', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new Uint8Value(BigInt("18446744073709551615"))],
                 [Shape.object({result: Shape.uint8Value()})]
@@ -644,7 +648,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Uint16', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new Uint16Value(BigInt("340282366920938463463374607431768211455"))],
                 [Shape.object({result: Shape.uint16Value()})]
@@ -654,7 +658,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Float4', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new Float4Value(3.14)],
                 [Shape.object({result: Shape.float4Value()})]
@@ -664,7 +668,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Float8', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new Float8Value(3.141592653589793)],
                 [Shape.object({result: Shape.float8Value()})]
@@ -674,7 +678,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Decimal', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new DecimalValue("123.456789")],
                 [Shape.object({result: Shape.decimalValue()})]
@@ -684,7 +688,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Utf8', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new Utf8Value("Hello, World!")],
                 [Shape.object({result: Shape.utf8Value()})]
@@ -695,7 +699,7 @@ describe('Positional Parameters', () => {
 
         it('Blob', async () => {
             const data = new Uint8Array([1, 2, 3, 4, 5]);
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new BlobValue(data)],
                 [Shape.object({result: Shape.blobValue()})]
@@ -706,7 +710,7 @@ describe('Positional Parameters', () => {
 
         it('Date', async () => {
             const date = new Date('2024-03-15');
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new DateValue(date)],
                 [Shape.object({result: Shape.dateValue()})]
@@ -716,7 +720,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Time', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new TimeValue("14:30:00.123456789")],
                 [Shape.object({result: Shape.timeValue()})]
@@ -727,7 +731,7 @@ describe('Positional Parameters', () => {
 
         it('DateTime', async () => {
             const datetime = new Date('2024-03-15T14:30:00.123Z');
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new DateTimeValue(datetime)],
                 [Shape.object({result: Shape.dateTimeValue()})]
@@ -737,7 +741,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('Duration', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new DurationValue("P1DT2H30M")],
                 [Shape.object({result: Shape.durationValue()})]
@@ -748,7 +752,7 @@ describe('Positional Parameters', () => {
 
         it('Uuid4', async () => {
             const uuid = "550e8400-e29b-41d4-a716-446655440000";
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new Uuid4Value(uuid)],
                 [Shape.object({result: Shape.uuid4Value()})]
@@ -759,7 +763,7 @@ describe('Positional Parameters', () => {
 
         it('Uuid7', async () => {
             const uuid = "018fad5d-f37a-7c94-a716-446655440000";
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new Uuid7Value(uuid)],
                 [Shape.object({result: Shape.uuid7Value()})]
@@ -770,7 +774,7 @@ describe('Positional Parameters', () => {
 
         it('IdentityId', async () => {
             const identityId = "018fad5d-f37a-7c94-a716-446655440001";
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new IdentityIdValue(identityId)],
                 [Shape.object({result: Shape.identityIdValue()})]
@@ -780,7 +784,7 @@ describe('Positional Parameters', () => {
         }, 1000);
 
         it('None', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $1}',
                 [new NoneValue()],
                 [Shape.object({result: Shape.noneValue()})]

@@ -1,18 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Hash types and functions for ReifyDB.
-//!
-//! Provides xxHash3 hashing using pure Rust implementation that works
-//! on both native and WASM targets.
-
 use core::hash::{Hash, Hasher};
 
 use serde::{Deserialize, Serialize};
 use xxhash_rust::xxh3;
 
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Hash64(pub u64);
 
@@ -35,7 +30,7 @@ impl Hash for Hash64 {
 }
 
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Hash128(pub u128);
 
@@ -57,13 +52,38 @@ impl Hash for Hash128 {
 	}
 }
 
-/// Compute xxHash3 64-bit hash of data.
+impl Hash128 {
+	#[inline]
+	pub fn to_hex_string(self) -> String {
+		const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
+		let mut buf = String::with_capacity(32);
+		let val = self.0;
+		for i in (0..32).rev() {
+			let nibble = ((val >> (i * 4)) & 0xf) as usize;
+			buf.push(HEX_DIGITS[nibble] as char);
+		}
+		buf
+	}
+
+	#[inline]
+	pub fn to_hex_string_prefixed(self) -> String {
+		const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
+		let mut buf = String::with_capacity(34);
+		buf.push_str("0x");
+		let val = self.0;
+		for i in (0..32).rev() {
+			let nibble = ((val >> (i * 4)) & 0xf) as usize;
+			buf.push(HEX_DIGITS[nibble] as char);
+		}
+		buf
+	}
+}
+
 #[inline]
 pub fn xxh3_64(data: &[u8]) -> Hash64 {
 	Hash64(xxh3::xxh3_64(data))
 }
 
-/// Compute xxHash3 128-bit hash of data.
 #[inline]
 pub fn xxh3_128(data: &[u8]) -> Hash128 {
 	Hash128(xxh3::xxh3_128(data))

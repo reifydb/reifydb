@@ -20,14 +20,13 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		create: logical::CreateTableNode<'_>,
 	) -> Result<PhysicalPlan<'bump>> {
-		// Get namespace name from the MaybeQualified type (join all segments for nested namespaces)
 		let ns_segments: Vec<&str> = create.table.namespace.iter().map(|n| n.text()).collect();
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_fragment = if let Some(n) = create.table.namespace.first() {
 				let interned = self.interner.intern_fragment(n);
 				interned.with_text(ns_segments.join("::"))
 			} else {
-				Fragment::internal("default".to_string())
+				Fragment::internal("default")
 			};
 			return_error!(namespace_not_found(ns_fragment, &ns_segments.join("::")));
 		};
@@ -36,7 +35,7 @@ impl<'bump> Compiler<'bump> {
 			let interned = self.interner.intern_fragment(n);
 			interned.with_text(namespace.name())
 		} else {
-			Fragment::internal(namespace.name().to_string())
+			Fragment::internal(namespace.name())
 		};
 		let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
 
@@ -45,6 +44,7 @@ impl<'bump> Compiler<'bump> {
 			table: self.interner.intern_fragment(&create.table.name),
 			if_not_exists: create.if_not_exists,
 			columns: create.columns,
+			ttl: create.ttl,
 		}))
 	}
 }

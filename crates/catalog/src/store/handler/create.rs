@@ -46,7 +46,6 @@ impl CatalogStore {
 
 		let handler_id = SystemSequence::next_handler_id(txn)?;
 
-		// Write primary row
 		let mut row = handler_shape::SHAPE.allocate();
 		handler_shape::SHAPE.set_u64(&mut row, handler_shape::ID, handler_id);
 		handler_shape::SHAPE.set_u64(&mut row, handler_shape::NAMESPACE, namespace_id);
@@ -57,14 +56,12 @@ impl CatalogStore {
 
 		txn.set(&HandlerKey::encoded(handler_id), row)?;
 
-		// Write namespace index row
 		let mut ns_row = handler_namespace::SHAPE.allocate();
 		handler_namespace::SHAPE.set_u64(&mut ns_row, handler_namespace::ID, handler_id);
 		handler_namespace::SHAPE.set_utf8(&mut ns_row, handler_namespace::NAME, to_create.name.text());
 
 		txn.set(&NamespaceHandlerKey::encoded(namespace_id, handler_id), ns_row)?;
 
-		// Write variant index row (empty value — key encodes all needed info)
 		let mut var_row = handler_namespace::SHAPE.allocate();
 		handler_namespace::SHAPE.set_u64(&mut var_row, handler_namespace::ID, handler_id);
 		handler_namespace::SHAPE.set_utf8(&mut var_row, handler_namespace::NAME, to_create.name.text());
@@ -123,8 +120,8 @@ pub mod tests {
 		};
 
 		let result = CatalogStore::create_handler(&mut txn, to_create.clone()).unwrap();
-		assert_eq!(result.id, HandlerId(1));
-		assert_eq!(result.namespace, NamespaceId(1025));
+		assert_eq!(result.id, HandlerId(16385));
+		assert_eq!(result.namespace, NamespaceId(16385));
 		assert_eq!(result.name, "test_handler");
 		assert_eq!(result.variant.sumtype_id, SumTypeId(0));
 		assert_eq!(result.variant.variant_tag, 1);
@@ -148,7 +145,7 @@ pub mod tests {
 			},
 			body_source: String::new(),
 		};
-		CatalogStore::create_handler(&mut txn, to_create).unwrap(); // HandlerId(1)
+		CatalogStore::create_handler(&mut txn, to_create).unwrap(); // HandlerId(16385)
 
 		let to_create = HandlerToCreate {
 			namespace: namespace.id(),
@@ -159,7 +156,7 @@ pub mod tests {
 			},
 			body_source: String::new(),
 		};
-		CatalogStore::create_handler(&mut txn, to_create).unwrap(); // HandlerId(2)
+		CatalogStore::create_handler(&mut txn, to_create).unwrap(); // HandlerId(16386)
 
 		let links: Vec<_> = txn
 			.range(NamespaceHandlerKey::full_scan(namespace.id()), 1024)
@@ -168,15 +165,15 @@ pub mod tests {
 			.unwrap();
 		assert_eq!(links.len(), 2);
 
-		// Descending order: HandlerId(2) encodes to smaller bytes → appears first
+		// Descending order: HandlerId(16386) encodes to smaller bytes → appears first
 		let link = &links[0];
 		let row = &link.row;
-		assert_eq!(handler_namespace::SHAPE.get_u64(row, handler_namespace::ID), 2);
+		assert_eq!(handler_namespace::SHAPE.get_u64(row, handler_namespace::ID), 16386);
 		assert_eq!(handler_namespace::SHAPE.get_utf8(row, handler_namespace::NAME), "another_handler");
 
 		let link = &links[1];
 		let row = &link.row;
-		assert_eq!(handler_namespace::SHAPE.get_u64(row, handler_namespace::ID), 1);
+		assert_eq!(handler_namespace::SHAPE.get_u64(row, handler_namespace::ID), 16385);
 		assert_eq!(handler_namespace::SHAPE.get_utf8(row, handler_namespace::NAME), "test_handler");
 	}
 }

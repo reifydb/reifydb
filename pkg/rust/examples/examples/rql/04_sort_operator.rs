@@ -1,16 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # SORT Operator Example
-//!
-//! Demonstrates the SORT operator in ReifyDB's RQL:
-//! - Sorting by single column
-//! - Sorting by multiple columns
-//! - Ascending and descending order
-//! - Sorting different data types
-//!
-//! Run with: `make rql-sort` or `cargo run --bin rql-sort`
-
 use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;

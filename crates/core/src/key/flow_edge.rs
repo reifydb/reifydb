@@ -13,24 +13,17 @@ pub struct FlowEdgeKey {
 	pub edge: FlowEdgeId,
 }
 
-const VERSION: u8 = 1;
-
 impl EncodableKey for FlowEdgeKey {
 	const KIND: KeyKind = KeyKind::FlowEdge;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.edge);
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.edge);
 		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
@@ -58,14 +51,14 @@ impl FlowEdgeKey {
 	}
 
 	fn start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8);
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8(Self::KIND as u8);
 		serializer.to_encoded_key()
 	}
 
 	fn end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8((Self::KIND as u8) - 1);
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8((Self::KIND as u8) - 1);
 		serializer.to_encoded_key()
 	}
 }
@@ -80,18 +73,13 @@ impl EncodableKey for FlowEdgeByFlowKey {
 	const KIND: KeyKind = KeyKind::FlowEdgeByFlow;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(18);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.flow).extend_u64(self.edge);
+		let mut serializer = KeySerializer::with_capacity(17);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.flow).extend_u64(self.edge);
 		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
@@ -122,14 +110,14 @@ impl FlowEdgeByFlowKey {
 	}
 
 	fn start(flow: FlowId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(flow);
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(flow);
 		serializer.to_encoded_key()
 	}
 
 	fn end(flow: FlowId) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(FlowId(flow.0 - 1));
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(FlowId(flow.0 - 1));
 		serializer.to_encoded_key()
 	}
 }

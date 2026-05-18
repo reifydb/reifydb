@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! RowShape definitions for encoding row data with consistent field layouts.
+//! Row-shape descriptor: the schema-of-bytes that explains how to interpret an `EncodedRow`.
 //!
-//! A `RowShape` describes the structure of encoded row data, including:
-//! - Field names, types, and order
-//! - Memory layout (offsets, sizes, alignment)
-//! - A content-addressable fingerprint for deduplication
+//! A `RowShape` lists every field (name, type constraint, byte offset, byte size, alignment) so storage backends,
+//! replication, and CDC can address fields without consulting the catalog. Submodules cover shape consolidation across
+//! rows of the same logical schema, schema evolution rules for adding and removing fields, structural fingerprinting
+//! used by plan caches and migration tooling, and conversion routines from typed schemas.
+//!
+//! Invariant: the `SHAPE_HEADER_SIZE` constant and the packed-mode bit layout (mode bit, length mask, offset mask) are
+//! part of the wire format. Reordering or resizing any of these regions silently breaks every row written under the
+//! previous layout.
 
 pub mod consolidate;
 pub mod evolution;
@@ -20,7 +24,7 @@ use std::{
 	iter,
 	ops::Deref,
 	ptr,
-	sync::{Arc, OnceLock},
+	sync::{Arc, LazyLock, OnceLock},
 };
 
 use reifydb_type::{
@@ -32,33 +36,27 @@ use serde::{Deserialize, Serialize};
 use super::row::EncodedRow;
 use crate::encoded::shape::fingerprint::{RowShapeFingerprint, compute_fingerprint};
 
-/// Size of shape header (fingerprint) in bytes
-pub const SCHEMA_HEADER_SIZE: usize = 8;
+pub const SHAPE_HEADER_SIZE: usize = 24;
 
-/// Constants for packed u128 dynamic references (used by Int, Uint, Decimal)
 const PACKED_MODE_DYNAMIC: u128 = 0x80000000000000000000000000000000;
 const PACKED_MODE_MASK: u128 = 0x80000000000000000000000000000000;
 const PACKED_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF;
 const PACKED_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
 
-/// A field within a shape
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RowShapeField {
-	/// Field name
 	pub name: String,
-	/// Field type constraint (includes base type and optional constraints like MaxBytes)
+
 	pub constraint: TypeConstraint,
-	/// Byte offset within the encoded row
+
 	pub offset: u32,
-	/// Size in bytes
+
 	pub size: u32,
-	/// Alignment requirement
+
 	pub align: u8,
 }
 
 impl RowShapeField {
-	/// Create a new shape field with a type constraint.
-	/// Offset, size, and alignment are computed when added to a RowShape.
 	pub fn new(name: impl Into<String>, constraint: TypeConstraint) -> Self {
 		let storage_type = constraint.storage_type();
 		Self {
@@ -70,28 +68,19 @@ impl RowShapeField {
 		}
 	}
 
-	/// Create a new shape field with an unconstrained type.
-	/// Convenience method for the common case of no constraints.
 	pub fn unconstrained(name: impl Into<String>, field_type: Type) -> Self {
 		Self::new(name, TypeConstraint::unconstrained(field_type))
 	}
 }
 
-/// A shape describing the structure of encoded row data.
 pub struct RowShape(Arc<Inner>);
 
-/// Inner data for a shape describing the structure of encoded row data.
-///
-/// Shapes are immutable and content-addressable via their fingerprint.
-/// The same field configuration always produces the same fingerprint,
-/// enabling shape deduplication in the registry.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Inner {
-	/// Content-addressable fingerprint (hash of canonical field representation)
 	pub fingerprint: RowShapeFingerprint,
-	/// Fields in definition order
+
 	pub fields: Vec<RowShapeField>,
-	/// Cached layout computation (total_size, max_align) - computed once on first use
+
 	#[serde(skip)]
 	cached_layout: OnceLock<(usize, usize)>,
 }
@@ -133,9 +122,6 @@ impl PartialEq for RowShape {
 impl Eq for RowShape {}
 
 impl RowShape {
-	/// Create a new shape from a list of fields.
-	///
-	/// This computes the memory layout (offsets, alignment) and fingerprint.
 	pub fn new(fields: Vec<RowShapeField>) -> Self {
 		let fields = Self::compute_layout(fields);
 		let fingerprint = compute_fingerprint(&fields);
@@ -147,8 +133,6 @@ impl RowShape {
 		}))
 	}
 
-	/// Create a shape from pre-computed fields and fingerprint.
-	/// Used when loading from storage.
 	pub fn from_parts(fingerprint: RowShapeFingerprint, fields: Vec<RowShapeField>) -> Self {
 		Self(Arc::new(Inner {
 			fingerprint,
@@ -157,59 +141,47 @@ impl RowShape {
 		}))
 	}
 
-	/// Get the shape's fingerprint
 	pub fn fingerprint(&self) -> RowShapeFingerprint {
 		self.fingerprint
 	}
 
-	/// Get the fields in this shape
 	pub fn fields(&self) -> &[RowShapeField] {
 		&self.fields
 	}
 
-	/// Get the number of fields
 	pub fn field_count(&self) -> usize {
 		self.fields.len()
 	}
 
-	/// Find a field by name
 	pub fn find_field(&self, name: &str) -> Option<&RowShapeField> {
 		self.fields.iter().find(|f| f.name == name)
 	}
 
-	/// Find field index by name
 	pub fn find_field_index(&self, name: &str) -> Option<usize> {
 		self.fields.iter().position(|f| f.name == name)
 	}
 
-	/// Find a field by index
 	pub fn get_field(&self, index: usize) -> Option<&RowShapeField> {
 		self.fields.get(index)
 	}
 
-	/// Get field name by index
 	pub fn get_field_name(&self, index: usize) -> Option<&str> {
 		self.fields.get(index).map(|f| f.name.as_str())
 	}
 
-	/// Get all field names as an iterator
 	pub fn field_names(&self) -> impl Iterator<Item = &str> {
 		self.fields.iter().map(|f| f.name.as_str())
 	}
 
-	/// Compute memory layout for fields.
-	/// Returns the fields with computed offsets and the total row size.
 	fn compute_layout(mut fields: Vec<RowShapeField>) -> Vec<RowShapeField> {
-		// Start offset calculation from where data section begins (after header + bitvec)
 		let bitvec_size = fields.len().div_ceil(8);
-		let mut offset: u32 = (SCHEMA_HEADER_SIZE + bitvec_size) as u32;
+		let mut offset: u32 = (SHAPE_HEADER_SIZE + bitvec_size) as u32;
 
 		for field in fields.iter_mut() {
 			let storage_type = field.constraint.storage_type();
 			field.size = storage_type.size() as u32;
 			field.align = storage_type.alignment() as u8;
 
-			// Align offset
 			let align = field.align as u32;
 			if align > 0 {
 				offset = (offset + align - 1) & !(align - 1);
@@ -222,30 +194,24 @@ impl RowShape {
 		fields
 	}
 
-	/// Size of the bitvec section in bytes
 	pub fn bitvec_size(&self) -> usize {
 		self.fields.len().div_ceil(8)
 	}
 
-	/// Offset where field data starts (after header and bitvec)
 	pub fn data_offset(&self) -> usize {
-		SCHEMA_HEADER_SIZE + self.bitvec_size()
+		SHAPE_HEADER_SIZE + self.bitvec_size()
 	}
 
-	/// Compute and cache the layout (total_size, max_align).
-	/// This is called once and the result is cached for subsequent calls.
 	fn get_cached_layout(&self) -> (usize, usize) {
 		*self.cached_layout.get_or_init(|| {
-			// Compute max_align
 			let max_align = self.fields.iter().map(|f| f.align as usize).max().unwrap_or(1);
 
-			// Compute total_size
 			let total_size = if self.fields.is_empty() {
-				SCHEMA_HEADER_SIZE + self.bitvec_size()
+				SHAPE_HEADER_SIZE + self.bitvec_size()
 			} else {
 				let last_field = &self.fields[self.fields.len() - 1];
 				let end = last_field.offset as usize + last_field.size as usize;
-				// Align to maximum field alignment
+
 				Self::align_up(end, max_align)
 			};
 
@@ -253,23 +219,18 @@ impl RowShape {
 		})
 	}
 
-	/// Total size of the static section
 	pub fn total_static_size(&self) -> usize {
 		self.get_cached_layout().0
 	}
 
-	/// Start of the dynamic section
 	pub fn dynamic_section_start(&self) -> usize {
 		self.total_static_size()
 	}
 
-	/// Size of the dynamic section
 	pub fn dynamic_section_size(&self, row: &EncodedRow) -> usize {
 		row.len().saturating_sub(self.total_static_size())
 	}
 
-	/// Returns (offset, length) in the dynamic section for a defined dynamic field.
-	/// Returns None if field is undefined, static-only, or uses inline storage.
 	pub(crate) fn read_dynamic_ref(&self, row: &EncodedRow, index: usize) -> Option<(usize, usize)> {
 		if !row.is_defined(index) {
 			return None;
@@ -296,14 +257,13 @@ impl RowShape {
 					let length = ((packed & PACKED_LENGTH_MASK) >> 64) as usize;
 					Some((offset, length))
 				} else {
-					None // inline storage
+					None
 				}
 			}
 			_ => None,
 		}
 	}
 
-	/// Writes a dynamic section reference for the given field in its type-appropriate format.
 	pub(crate) fn write_dynamic_ref(&self, row: &mut EncodedRow, index: usize, offset: usize, length: usize) {
 		let field = &self.fields()[index];
 		match field.constraint.get_type().inner_type() {
@@ -327,13 +287,10 @@ impl RowShape {
 		}
 	}
 
-	/// Replace dynamic data for a field. Handles both first-set (append) and update (splice).
-	/// On update: splices old bytes out, inserts new bytes, adjusts all other dynamic refs.
 	pub(crate) fn replace_dynamic_data(&self, row: &mut EncodedRow, index: usize, new_data: &[u8]) {
 		if let Some((old_offset, old_length)) = self.read_dynamic_ref(row, index) {
 			let delta = new_data.len() as isize - old_length as isize;
 
-			// Collect refs that need adjusting BEFORE splice
 			let refs_to_update: Vec<(usize, usize, usize)> = if delta != 0 {
 				self.fields()
 					.iter()
@@ -349,22 +306,18 @@ impl RowShape {
 				vec![]
 			};
 
-			// Splice bytes in the dynamic section
 			let dynamic_start = self.dynamic_section_start();
 			let abs_start = dynamic_start + old_offset;
 			let abs_end = abs_start + old_length;
 			row.0.make_mut().splice(abs_start..abs_end, new_data.iter().copied());
 
-			// Update this field's reference (same offset, new length)
 			self.write_dynamic_ref(row, index, old_offset, new_data.len());
 
-			// Adjust other dynamic references by the size delta
 			for (i, off, len) in refs_to_update {
 				let new_off = (off as isize + delta) as usize;
 				self.write_dynamic_ref(row, i, new_off, len);
 			}
 		} else {
-			// First set or transitioning from inline — append to dynamic section
 			let dynamic_offset = self.dynamic_section_size(row);
 			row.0.extend_from_slice(new_data);
 			self.write_dynamic_ref(row, index, dynamic_offset, new_data.len());
@@ -372,11 +325,8 @@ impl RowShape {
 		row.set_valid(index, true);
 	}
 
-	/// Remove dynamic data for a field without setting new data.
-	/// Used for dynamic→inline transitions in Int/Uint.
 	pub(crate) fn remove_dynamic_data(&self, row: &mut EncodedRow, index: usize) {
 		if let Some((old_offset, old_length)) = self.read_dynamic_ref(row, index) {
-			// Collect refs that need adjusting
 			let refs_to_update: Vec<(usize, usize, usize)> = self
 				.fields()
 				.iter()
@@ -389,13 +339,11 @@ impl RowShape {
 				})
 				.collect();
 
-			// Remove bytes
 			let dynamic_start = self.dynamic_section_start();
 			let abs_start = dynamic_start + old_offset;
 			let abs_end = abs_start + old_length;
 			row.0.make_mut().splice(abs_start..abs_end, iter::empty());
 
-			// Adjust other references
 			for (i, off, len) in refs_to_update {
 				let new_off = off - old_length;
 				self.write_dynamic_ref(row, i, new_off, len);
@@ -403,7 +351,6 @@ impl RowShape {
 		}
 	}
 
-	/// Allocate a new encoded row
 	pub fn allocate(&self) -> EncodedRow {
 		let (total_size, max_align) = self.get_cached_layout();
 		let layout = Layout::from_size_align(total_size, max_align).unwrap();
@@ -423,15 +370,11 @@ impl RowShape {
 		(offset + align).saturating_sub(1) & !(align.saturating_sub(1))
 	}
 
-	/// Set a field as undefined (not set)
 	pub fn set_none(&self, row: &mut EncodedRow, index: usize) {
 		self.remove_dynamic_data(row, index);
 		row.set_valid(index, false);
 	}
 
-	/// Create a shape from a list of types.
-	/// Fields are named f0, f1, f2, etc. and have unconstrained types.
-	/// Useful for tests and simple state shapes.
 	pub fn testing(types: &[Type]) -> Self {
 		RowShape::new(
 			types.iter()
@@ -440,7 +383,14 @@ impl RowShape {
 				.collect(),
 		)
 	}
+
+	pub fn operator_state() -> Self {
+		OPERATOR_STATE_SHAPE.clone()
+	}
 }
+
+static OPERATOR_STATE_SHAPE: LazyLock<RowShape> =
+	LazyLock::new(|| RowShape::new(vec![RowShapeField::unconstrained("state", Type::Blob)]));
 
 #[cfg(test)]
 mod tests {

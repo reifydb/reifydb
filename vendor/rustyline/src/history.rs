@@ -1,8 +1,6 @@
 //! History API
 
 #[cfg(feature = "with-file-history")]
-use fd_lock::RwLock;
-#[cfg(feature = "with-file-history")]
 use log::{debug, warn};
 use std::borrow::Cow;
 use std::collections::vec_deque;
@@ -57,7 +55,7 @@ pub trait History {
     ///
     /// `SearchDirection` is useful only for implementations without direct
     /// indexing.
-    fn get(&self, index: usize, dir: SearchDirection) -> Result<Option<SearchResult>>;
+    fn get(&self, index: usize, dir: SearchDirection) -> Result<Option<SearchResult<'_>>>;
 
     // termwiz: fn last(&self) -> Option<HistoryIndex>;
 
@@ -69,8 +67,14 @@ pub trait History {
     // reedline: fn append(&mut self, entry: &str);
 
     /// Add a new entry in the history.
+    ///
+    /// Return false if the `line` has been ignored (blank line / duplicate /
+    /// ...).
     fn add(&mut self, line: &str) -> Result<bool>;
     /// Add a new entry in the history.
+    ///
+    /// Return false if the `line` has been ignored (blank line / duplicate /
+    /// ...).
     fn add_owned(&mut self, line: String) -> Result<bool>; // TODO check AsRef<str> + Into<String> vs object safe
 
     /// Return the number of entries in the history.
@@ -155,7 +159,7 @@ pub trait History {
         term: &str,
         start: usize,
         dir: SearchDirection,
-    ) -> Result<Option<SearchResult>>;
+    ) -> Result<Option<SearchResult<'_>>>;
 
     /// Anchored search
     fn starts_with(
@@ -163,7 +167,7 @@ pub trait History {
         term: &str,
         start: usize,
         dir: SearchDirection,
-    ) -> Result<Option<SearchResult>>;
+    ) -> Result<Option<SearchResult<'_>>>;
 
     /* TODO How ? DoubleEndedIterator may be difficult to implement (for an SQLite backend)
     /// Return a iterator.
@@ -184,15 +188,15 @@ impl MemHistory {
     /// Default constructor
     #[must_use]
     pub fn new() -> Self {
-        Self::with_config(Config::default())
+        Self::with_config(&Config::default())
     }
 
     /// Customized constructor with:
-    /// - `Config::max_history_size()`,
-    /// - `Config::history_ignore_space()`,
-    /// - `Config::history_duplicates()`.
+    /// - [`Config::max_history_size()`],
+    /// - [`Config::history_ignore_space()`],
+    /// - [`Config::history_duplicates()`].
     #[must_use]
-    pub fn with_config(config: Config) -> Self {
+    pub fn with_config(config: &Config) -> Self {
         Self {
             entries: VecDeque::new(),
             max_len: config.max_history_size(),
@@ -207,7 +211,7 @@ impl MemHistory {
         start: usize,
         dir: SearchDirection,
         test: F,
-    ) -> Option<SearchResult>
+    ) -> Option<SearchResult<'_>>
     where
         F: Fn(&str) -> Option<usize>,
     {
@@ -253,7 +257,7 @@ impl MemHistory {
             return true;
         }
         if line.is_empty()
-            || (self.ignore_space && line.chars().next().map_or(true, char::is_whitespace))
+            || (self.ignore_space && line.chars().next().is_none_or(char::is_whitespace))
         {
             return true;
         }
@@ -282,7 +286,7 @@ impl Default for MemHistory {
 }
 
 impl History for MemHistory {
-    fn get(&self, index: usize, _: SearchDirection) -> Result<Option<SearchResult>> {
+    fn get(&self, index: usize, _: SearchDirection) -> Result<Option<SearchResult<'_>>> {
         Ok(self
             .entries
             .get(index)
@@ -358,7 +362,7 @@ impl History for MemHistory {
         term: &str,
         start: usize,
         dir: SearchDirection,
-    ) -> Result<Option<SearchResult>> {
+    ) -> Result<Option<SearchResult<'_>>> {
         #[cfg(not(feature = "case_insensitive_history_search"))]
         {
             let test = |entry: &str| entry.find(term);
@@ -386,7 +390,7 @@ impl History for MemHistory {
         term: &str,
         start: usize,
         dir: SearchDirection,
-    ) -> Result<Option<SearchResult>> {
+    ) -> Result<Option<SearchResult<'_>>> {
         #[cfg(not(feature = "case_insensitive_history_search"))]
         {
             let test = |entry: &str| {
@@ -463,15 +467,15 @@ impl FileHistory {
     /// Default constructor
     #[must_use]
     pub fn new() -> Self {
-        Self::with_config(Config::default())
+        Self::with_config(&Config::default())
     }
 
     /// Customized constructor with:
-    /// - `Config::max_history_size()`,
-    /// - `Config::history_ignore_space()`,
-    /// - `Config::history_duplicates()`.
+    /// - [`Config::max_history_size()`],
+    /// - [`Config::history_ignore_space()`],
+    /// - [`Config::history_duplicates()`].
     #[must_use]
-    pub fn with_config(config: Config) -> Self {
+    pub fn with_config(config: &Config) -> Self {
         Self {
             mem: MemHistory::with_config(config),
             new_entries: 0,
@@ -480,7 +484,7 @@ impl FileHistory {
     }
 
     fn save_to(&mut self, file: &File, append: bool) -> Result<()> {
-        use std::io::{BufWriter, Write};
+        use std::io::{BufWriter, Write as _};
 
         fix_perm(file);
         let mut wtr = BufWriter::new(file);
@@ -517,7 +521,7 @@ impl FileHistory {
     }
 
     fn load_from(&mut self, file: &File) -> Result<bool> {
-        use std::io::{BufRead, BufReader};
+        use std::io::{BufRead as _, BufReader};
 
         let rdr = BufReader::new(file);
         let mut lines = rdr.lines();
@@ -560,7 +564,7 @@ impl FileHistory {
                         }
                         _ => {
                             // only line feed and back slash should have been escaped
-                            warn!(target: "rustyline", "bad escaped line: {}", line);
+                            warn!(target: "rustyline", "bad escaped line: {line}");
                             copy = None;
                             break;
                         }
@@ -587,14 +591,14 @@ impl FileHistory {
         )) = self.path_info
         {
             if previous_path.as_path() != path {
-                *previous_path = path.to_owned();
+                path.clone_into(previous_path);
             }
             *previous_modified = modified;
             *previous_size = size;
         } else {
             self.path_info = Some(PathInfo(path.to_owned(), modified, size));
         }
-        debug!(target: "rustyline", "PathInfo({:?}, {:?}, {})", path, modified, size);
+        debug!(target: "rustyline", "PathInfo({path:?}, {modified:?}, {size})");
         Ok(())
     }
 
@@ -603,7 +607,7 @@ impl FileHistory {
             self.path_info
         {
             if previous_path.as_path() != path {
-                debug!(target: "rustyline", "cannot append: {:?} <> {:?}", previous_path, path);
+                debug!(target: "rustyline", "cannot append: {previous_path:?} <> {path:?}");
                 return Ok(false);
             }
             let modified = file.metadata()?.modified()?;
@@ -638,7 +642,7 @@ pub type DefaultHistory = FileHistory;
 
 #[cfg(feature = "with-file-history")]
 impl History for FileHistory {
-    fn get(&self, index: usize, dir: SearchDirection) -> Result<Option<SearchResult>> {
+    fn get(&self, index: usize, dir: SearchDirection) -> Result<Option<SearchResult<'_>>> {
         self.mem.get(index, dir)
     }
 
@@ -690,15 +694,14 @@ impl History for FileHistory {
         let f = File::create(path);
         restore_umask(old_umask);
         let file = f?;
-        let mut lock = RwLock::new(file);
-        let lock_guard = lock.write()?;
-        self.save_to(&lock_guard, false)?;
+        file.lock()?;
+        self.save_to(&file, false)?;
         self.new_entries = 0;
-        self.update_path(path, &lock_guard, self.len())
+        self.update_path(path, &file, self.len())
     }
 
     fn append(&mut self, path: &Path) -> Result<()> {
-        use std::io::Seek;
+        use std::io::Seek as _;
 
         if self.is_empty() || self.new_entries == 0 {
             return Ok(());
@@ -706,12 +709,11 @@ impl History for FileHistory {
         if !path.exists() || self.new_entries == self.mem.max_len {
             return self.save(path);
         }
-        let file = OpenOptions::new().write(true).read(true).open(path)?;
-        let mut lock = RwLock::new(file);
-        let mut lock_guard = lock.write()?;
-        if self.can_just_append(path, &lock_guard)? {
-            lock_guard.seek(SeekFrom::End(0))?;
-            self.save_to(&lock_guard, true)?;
+        let mut file = OpenOptions::new().write(true).read(true).open(path)?;
+        file.lock()?;
+        if self.can_just_append(path, &file)? {
+            file.seek(SeekFrom::End(0))?;
+            self.save_to(&file, true)?;
             let size = self
                 .path_info
                 .as_ref()
@@ -719,7 +721,7 @@ impl History for FileHistory {
                 .2
                 .saturating_add(self.new_entries);
             self.new_entries = 0;
-            return self.update_path(path, &lock_guard, size);
+            return self.update_path(path, &file, size);
         }
         // we may need to truncate file before appending new entries
         let mut other = Self {
@@ -732,26 +734,25 @@ impl History for FileHistory {
             new_entries: 0,
             path_info: None,
         };
-        other.load_from(&lock_guard)?;
+        other.load_from(&file)?;
         let first_new_entry = self.mem.len().saturating_sub(self.new_entries);
         for entry in self.mem.entries.iter().skip(first_new_entry) {
             other.add(entry)?;
         }
-        lock_guard.seek(SeekFrom::Start(0))?;
-        lock_guard.set_len(0)?; // if new size < old size
-        other.save_to(&lock_guard, false)?;
-        self.update_path(path, &lock_guard, other.len())?;
+        file.seek(SeekFrom::Start(0))?;
+        file.set_len(0)?; // if new size < old size
+        other.save_to(&file, false)?;
+        self.update_path(path, &file, other.len())?;
         self.new_entries = 0;
         Ok(())
     }
 
     fn load(&mut self, path: &Path) -> Result<()> {
         let file = File::open(path)?;
-        let lock = RwLock::new(file);
-        let lock_guard = lock.read()?;
+        file.lock_shared()?;
         let len = self.len();
-        if self.load_from(&lock_guard)? {
-            self.update_path(path, &lock_guard, self.len() - len)
+        if self.load_from(&file)? {
+            self.update_path(path, &file, self.len() - len)
         } else {
             // discard old version on next save
             self.path_info = None;
@@ -770,7 +771,7 @@ impl History for FileHistory {
         term: &str,
         start: usize,
         dir: SearchDirection,
-    ) -> Result<Option<SearchResult>> {
+    ) -> Result<Option<SearchResult<'_>>> {
         self.mem.search(term, start, dir)
     }
 
@@ -779,7 +780,7 @@ impl History for FileHistory {
         term: &str,
         start: usize,
         dir: SearchDirection,
-    ) -> Result<Option<SearchResult>> {
+    ) -> Result<Option<SearchResult<'_>>> {
         self.mem.starts_with(term, start, dir)
     }
 }
@@ -824,15 +825,14 @@ cfg_if::cfg_if! {
         }
 
         fn fix_perm(file: &File) {
-            use std::os::unix::io::AsRawFd;
-            let _ = fchmod(file.as_raw_fd(), Mode::S_IRUSR | Mode::S_IWUSR);
+            let _ = fchmod(file, Mode::S_IRUSR | Mode::S_IWUSR);
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{DefaultHistory, History, SearchDirection, SearchResult};
+    use super::{DefaultHistory, History as _, SearchDirection, SearchResult};
     use crate::config::Config;
     use crate::Result;
 
@@ -853,7 +853,7 @@ mod tests {
     #[test]
     fn add() {
         let config = Config::builder().history_ignore_space(true).build();
-        let mut history = DefaultHistory::with_config(config);
+        let mut history = DefaultHistory::with_config(&config);
         #[cfg(feature = "with-file-history")]
         assert_eq!(config.max_history_size(), history.mem.max_len);
         assert!(history.add("line1").unwrap());
@@ -906,7 +906,7 @@ mod tests {
     #[cfg(feature = "with-file-history")]
     #[cfg_attr(miri, ignore)] // unsupported operation: `getcwd` not available when isolation is enabled
     fn load_legacy() -> Result<()> {
-        use std::io::Write;
+        use std::io::Write as _;
         let tf = tempfile::NamedTempFile::new()?;
         {
             let mut legacy = std::fs::File::create(tf.path())?;
@@ -961,7 +961,7 @@ mod tests {
         let tf = tempfile::NamedTempFile::new()?;
 
         let config = Config::builder().history_ignore_dups(false)?.build();
-        let mut history = DefaultHistory::with_config(config);
+        let mut history = DefaultHistory::with_config(&config);
         history.add("line1")?;
         history.add("line1")?;
         history.append(tf.path())?;

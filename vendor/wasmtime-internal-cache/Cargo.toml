@@ -11,9 +11,9 @@
 
 [package]
 edition = "2024"
-rust-version = "1.91.0"
+rust-version = "1.92.0"
 name = "wasmtime-internal-cache"
-version = "43.0.0"
+version = "44.0.0"
 authors = ["The Wasmtime Project Developers"]
 build = "build.rs"
 autolib = false
@@ -68,7 +68,7 @@ default-features = false
 version = "0.9.8"
 
 [dependencies.wasmtime-environ]
-version = "=43.0.0"
+version = "=44.0.0"
 
 [dependencies.zstd]
 version = "0.13.0"
@@ -126,4 +126,6 @@ check-cfg = [
     "cfg(pulley_tail_calls)",
     "cfg(pulley_assume_llvm_makes_tail_calls)",
     "cfg(pulley_disable_interp_simd)",
+    "cfg(arc_try_new)",
+    "cfg(gc_zeal)",
 ]

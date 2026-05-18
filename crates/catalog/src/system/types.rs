@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::vtable::TYPES;
 
-/// Returns the static definition for the system.types virtual table
-/// This table exposes information about all supported data types
 pub fn types() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

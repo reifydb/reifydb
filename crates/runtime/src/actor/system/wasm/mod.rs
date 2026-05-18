@@ -1,113 +1,95 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! WASM actor system implementation.
-//!
-//! All operations execute inline (synchronously) since WASM doesn't support threads.
-
 use std::{
 	cell::{Cell, RefCell},
 	error, fmt,
 	rc::Rc,
-	sync::{Arc, atomic::AtomicBool},
+	sync::{Arc, Mutex, atomic::AtomicBool},
 	time,
 };
 
 use tracing::{debug, warn};
 
-use crate::actor::{
-	context::{CancellationToken, Context},
-	mailbox::ActorRef,
-	traits::{Actor, Directive},
+use crate::{
+	actor::{
+		context::{CancellationToken, Context},
+		mailbox::ActorRef,
+		traits::{Actor, Directive},
+	},
+	context::clock::Clock,
+	pool::Pools,
 };
 
-/// Configuration for the actor system (mostly ignored in WASM).
-#[derive(Debug, Clone)]
-pub struct ActorSystemConfig {
-	/// Number of worker threads (ignored in WASM).
-	pub pool_threads: usize,
-	/// Maximum concurrent compute tasks (ignored in WASM).
-	pub max_in_flight: usize,
-}
-
-impl ActorSystemConfig {
-	/// Set the number of pool threads (ignored in WASM).
-	pub fn pool_threads(mut self, threads: usize) -> Self {
-		self.pool_threads = threads;
-		self
-	}
-
-	/// Set the maximum number of in-flight compute tasks (ignored in WASM).
-	pub fn max_in_flight(mut self, max: usize) -> Self {
-		self.max_in_flight = max;
-		self
-	}
-}
-
-/// Inner shared state for the actor system.
 struct ActorSystemInner {
 	cancel: CancellationToken,
+	clock: Clock,
+	children: Mutex<Vec<ActorSystem>>,
 }
 
-/// Unified system for all concurrent work (WASM version).
-///
-/// In WASM, all operations execute inline (synchronously).
-/// Threading model configuration is ignored.
 #[derive(Clone)]
 pub struct ActorSystem {
 	inner: Arc<ActorSystemInner>,
 }
 
 impl ActorSystem {
-	/// Create a new actor system.
-	///
-	/// Configuration parameters are ignored in WASM.
-	pub fn new(_config: ActorSystemConfig) -> Self {
+	pub fn new(_pools: Pools, clock: Clock) -> Self {
 		Self {
 			inner: Arc::new(ActorSystemInner {
 				cancel: CancellationToken::new(),
+				clock,
+				children: Mutex::new(Vec::new()),
 			}),
 		}
 	}
 
 	pub fn scope(&self) -> Self {
-		Self {
+		let child = Self {
 			inner: Arc::new(ActorSystemInner {
-				cancel: CancellationToken::new(),
+				cancel: self.inner.cancel.child_token(),
+				clock: self.inner.clock.clone(),
+				children: Mutex::new(Vec::new()),
 			}),
-		}
+		};
+		self.inner.children.lock().unwrap().push(child.clone());
+		child
 	}
 
-	/// Get the cancellation token for this system.
+	pub fn pools(&self) -> Pools {
+		Pools::default()
+	}
+
 	pub fn cancellation_token(&self) -> CancellationToken {
 		self.inner.cancel.clone()
 	}
 
-	/// Check if the system has been cancelled.
 	pub fn is_cancelled(&self) -> bool {
 		self.inner.cancel.is_cancelled()
 	}
 
-	/// Signal shutdown to all actors.
 	pub fn shutdown(&self) {
 		self.inner.cancel.cancel();
+
+		for child in self.inner.children.lock().unwrap().iter() {
+			child.shutdown();
+		}
 	}
 
-	/// Wait for all actors to finish after shutdown (no-op in WASM).
+	pub fn clock(&self) -> &Clock {
+		&self.inner.clock
+	}
+
 	pub fn join(&self) -> Result<(), JoinError> {
 		Ok(())
 	}
 
-	/// Wait for all actors to finish after shutdown with timeout (no-op in WASM).
 	pub fn join_timeout(&self, _timeout: time::Duration) -> Result<(), JoinError> {
 		Ok(())
 	}
 
-	/// Spawn an actor (processes messages inline in WASM).
-	pub fn spawn<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+	pub fn spawn_system<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
 		let actor_ref = create_actor_ref::<A::Message>();
 
-		// Wrap actor and state in Rc for sharing between processor and eager init
 		let actor = Rc::new(actor);
 		let actor_for_processor = actor.clone();
 
@@ -124,14 +106,10 @@ impl ActorSystem {
 		let actor_ref_for_drain = actor_ref.clone();
 		let cancel = self.cancellation_token();
 
-		// Queue for messages sent during initialization
-		// Some(vec) = initializing (queue messages), None = ready (process normally)
 		let init_queue: Rc<RefCell<Option<Vec<A::Message>>>> = Rc::new(RefCell::new(Some(Vec::new())));
 		let init_queue_for_processor = init_queue.clone();
 
-		// Create the processor that handles messages inline
 		let processor = move |msg: A::Message| {
-			// If still initializing, queue the message for later
 			{
 				let mut queue_ref = init_queue_for_processor.borrow_mut();
 				if let Some(ref mut queue) = *queue_ref {
@@ -141,7 +119,6 @@ impl ActorSystem {
 				}
 			}
 
-			// Check cancellation
 			if cancel.is_cancelled() {
 				debug!(actor = %_name, "Actor cancelled, ignoring message");
 				actor_ref_for_closure.mark_stopped();
@@ -150,13 +127,11 @@ impl ActorSystem {
 
 			let mut state_ref = state_for_processor.borrow_mut();
 
-			// State should already be initialized from eager init
 			if state_ref.is_none() {
 				warn!(actor = %_name, "Actor state unexpectedly not initialized");
 				return;
 			}
 
-			// Handle the message
 			if let Some(ref mut s) = *state_ref {
 				match actor_for_processor.handle(s, msg, &ctx_for_processor) {
 					Directive::Stop => {
@@ -164,27 +139,23 @@ impl ActorSystem {
 						actor_for_processor.post_stop();
 						actor_ref_for_closure.mark_stopped();
 					}
-					// Continue, Yield, Park are all no-ops in WASM
+
 					Directive::Continue | Directive::Yield | Directive::Park => {}
 				}
 			}
 		};
 
-		// Install the processor FIRST (so init can send messages - they'll be queued)
 		{
 			let mut processor_ref = actor_ref.processor().borrow_mut();
 			*processor_ref = Some(Box::new(processor));
 		}
 
-		// EAGERLY initialize actor (matches native behavior)
-		// This must happen AFTER processor is installed so messages can be sent
 		{
 			let mut state_ref = state.borrow_mut();
 			let initial_state = actor.init(&ctx_for_init);
 			*state_ref = Some(initial_state);
 		}
 
-		// Mark initialization complete and drain queued messages
 		let queued_messages = init_queue.borrow_mut().take().unwrap_or_default();
 		if !queued_messages.is_empty() {
 			debug!(
@@ -202,38 +173,8 @@ impl ActorSystem {
 		}
 	}
 
-	/// Executes a closure immediately (sequential execution).
-	///
-	/// In WASM, there's no thread pool, so this executes synchronously.
-	pub fn install<R, F>(&self, f: F) -> R
-	where
-		R: Send,
-		F: FnOnce() -> R + Send,
-	{
-		f()
-	}
-
-	/// Runs a CPU-bound function immediately (sequential execution).
-	///
-	/// In WASM, there's no thread pool or admission control, so this
-	/// executes synchronously and returns immediately.
-	pub async fn compute<R, F>(&self, f: F) -> Result<R, WasmJoinError>
-	where
-		R: Send + 'static,
-		F: FnOnce() -> R + Send + 'static,
-	{
-		Ok(f())
-	}
-
-	/// Runs a potentially I/O-blocking function immediately (sequential execution).
-	///
-	/// In WASM, this is identical to `compute()` — executes synchronously.
-	pub async fn execute<R, F>(&self, f: F) -> Result<R, WasmJoinError>
-	where
-		R: Send + 'static,
-		F: FnOnce() -> R + Send + 'static,
-	{
-		Ok(f())
+	pub fn spawn_query<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+		self.spawn_system(name, actor)
 	}
 }
 
@@ -243,33 +184,26 @@ impl fmt::Debug for ActorSystem {
 	}
 }
 
-/// Handle to a spawned actor.
 pub struct ActorHandle<M> {
 	pub actor_ref: ActorRef<M>,
 }
 
 impl<M> ActorHandle<M> {
-	/// Get the actor reference for sending messages.
 	pub fn actor_ref(&self) -> &ActorRef<M> {
 		&self.actor_ref
 	}
 
-	/// Wait for the actor to complete.
-	///
-	/// In WASM, this is a no-op since messages are processed inline.
 	pub fn join(self) -> Result<(), JoinError> {
 		Ok(())
 	}
 }
 
-/// Error returned when joining an actor fails.
 #[derive(Debug)]
 pub struct JoinError {
 	message: String,
 }
 
 impl JoinError {
-	/// Create a new JoinError with a message.
 	pub fn new(message: impl Into<String>) -> Self {
 		Self {
 			message: message.into(),
@@ -285,7 +219,6 @@ impl fmt::Display for JoinError {
 
 impl error::Error for JoinError {}
 
-/// WASM join error for compute operations.
 #[derive(Debug)]
 pub struct WasmJoinError;
 
@@ -297,7 +230,6 @@ impl fmt::Display for WasmJoinError {
 
 impl error::Error for WasmJoinError {}
 
-/// WASM implementation of ActorRef inner.
 struct ActorRefInner<M> {
 	processor: Rc<RefCell<Option<Box<dyn FnMut(M)>>>>,
 	alive: Arc<AtomicBool>,
@@ -316,7 +248,6 @@ impl<M> Clone for ActorRefInner<M> {
 	}
 }
 
-/// Create an ActorRef for WASM.
 fn create_actor_ref<M>() -> ActorRef<M> {
 	let inner = ActorRefInner {
 		processor: Rc::new(RefCell::new(None)),

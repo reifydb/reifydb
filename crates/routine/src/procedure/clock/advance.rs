@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::LazyLock;
+
 use reifydb_core::value::column::columns::Columns;
 use reifydb_runtime::context::clock::Clock;
-use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -11,11 +12,10 @@ use reifydb_type::{
 };
 
 use super::set::extract_millis;
-use crate::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
+use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 
-/// Native procedure that advances the mock clock by a duration or number of milliseconds.
-///
-/// Accepts 1 positional argument: a Duration or integer milliseconds.
+static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("clock::advance"));
+
 pub struct ClockAdvanceProcedure;
 
 impl Default for ClockAdvanceProcedure {
@@ -30,19 +30,27 @@ impl ClockAdvanceProcedure {
 	}
 }
 
-impl Procedure for ClockAdvanceProcedure {
-	fn call(&self, ctx: &ProcedureContext, _tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError> {
+impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ClockAdvanceProcedure {
+	fn info(&self) -> &RoutineInfo {
+		&INFO
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::DateTime
+	}
+
+	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
 		let arg = match ctx.params {
 			Params::Positional(args) if args.len() == 1 => &args[0],
 			Params::Positional(args) => {
-				return Err(ProcedureError::ArityMismatch {
+				return Err(RoutineError::ProcedureArityMismatch {
 					procedure: Fragment::internal("clock::advance"),
 					expected: 1,
 					actual: args.len(),
 				});
 			}
 			_ => {
-				return Err(ProcedureError::ArityMismatch {
+				return Err(RoutineError::ProcedureArityMismatch {
 					procedure: Fragment::internal("clock::advance"),
 					expected: 1,
 					actual: 0,
@@ -55,15 +63,14 @@ impl Procedure for ClockAdvanceProcedure {
 				match arg {
 					Value::Duration(dur) => {
 						if dur.get_months() == 0 && dur.get_days() == 0 {
-							// Pure nanos-only duration: advance directly
 							let nanos = dur.get_nanos();
 							if nanos >= 0 {
-								mock.advance_nanos(nanos as u128);
+								mock.advance_nanos(nanos as u64);
 							} else {
 								let current = mock.now_nanos();
-								let abs_nanos = nanos.unsigned_abs() as u128;
+								let abs_nanos = nanos.unsigned_abs();
 								if abs_nanos > current {
-									return Err(ProcedureError::ExecutionFailed {
+									return Err(RoutineError::ProcedureExecutionFailed {
 										procedure: Fragment::internal("clock::advance"),
 										reason: "clock cannot be set before Unix epoch".to_string(),
 									});
@@ -71,16 +78,15 @@ impl Procedure for ClockAdvanceProcedure {
 								mock.set_nanos(current - abs_nanos);
 							}
 						} else {
-							// Calendar-aware: go through DateTime arithmetic
 							let current_nanos = mock.now_nanos();
-							let current_dt = DateTime::from_timestamp_nanos(current_nanos)?;
+							let current_dt = DateTime::from_nanos(current_nanos);
 							let new_dt = current_dt.add_duration(dur)?;
-							mock.set_nanos(new_dt.to_nanos_since_epoch_u128());
+							mock.set_nanos(new_dt.to_nanos());
 						}
 					}
 					other => {
 						let millis = extract_millis(other).ok_or_else(|| {
-							ProcedureError::InvalidArgumentType {
+							RoutineError::ProcedureInvalidArgumentType {
 								procedure: Fragment::internal("clock::advance"),
 								argument_index: 0,
 								expected: EXPECTED_ADVANCE_TYPES.to_vec(),
@@ -91,10 +97,10 @@ impl Procedure for ClockAdvanceProcedure {
 					}
 				}
 				let current_nanos = mock.now_nanos();
-				let dt = DateTime::from_timestamp_nanos(current_nanos)?;
+				let dt = DateTime::from_nanos(current_nanos);
 				Ok(Columns::single_row([("clock", Value::DateTime(dt))]))
 			}
-			Clock::Real => Err(ProcedureError::ExecutionFailed {
+			Clock::Real => Err(RoutineError::ProcedureExecutionFailed {
 				procedure: Fragment::internal("clock::advance"),
 				reason: "clock::advance can only be used with a mock clock".to_string(),
 			}),

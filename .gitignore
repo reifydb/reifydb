@@ -26,6 +26,6 @@
 .claude/
 plan*.md
 .publish-status-*
-
+.npmrc
 #vendoring
 vendor/**/opentelemetry-proto/.vscode/settings.json

@@ -12,7 +12,6 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	/// Parse `LOOP { ... }`
 	pub(crate) fn parse_loop(&mut self) -> Result<AstLoop<'bump>> {
 		let token = self.consume_keyword(Keyword::Loop)?;
 		let body = self.parse_block()?;
@@ -22,7 +21,6 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	/// Parse `WHILE condition { ... }`
 	pub(crate) fn parse_while(&mut self) -> Result<AstWhile<'bump>> {
 		let token = self.consume_keyword(Keyword::While)?;
 		let condition = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
@@ -34,23 +32,18 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	/// Parse `FOR $var IN expr { ... }`
 	pub(crate) fn parse_for(&mut self) -> Result<AstFor<'bump>> {
 		let token = self.consume_keyword(Keyword::For)?;
 
-		// Parse variable
 		let var_token = self.consume(TokenKind::Variable)?;
 		let variable = AstVariable {
 			token: var_token,
 		};
 
-		// Consume IN keyword
 		self.consume_keyword(Keyword::In)?;
 
-		// Parse iterable expression
 		let iterable = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
 
-		// Parse body block
 		let body = self.parse_block()?;
 
 		Ok(AstFor {
@@ -61,7 +54,6 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	/// Parse `BREAK`
 	pub(crate) fn parse_break(&mut self) -> Result<AstBreak<'bump>> {
 		let token = self.consume_keyword(Keyword::Break)?;
 		Ok(AstBreak {
@@ -69,7 +61,6 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	/// Parse `CONTINUE`
 	pub(crate) fn parse_continue(&mut self) -> Result<AstContinue<'bump>> {
 		let token = self.consume_keyword(Keyword::Continue)?;
 		Ok(AstContinue {

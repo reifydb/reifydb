@@ -7,15 +7,16 @@ use std::{
 };
 
 use reifydb_core::{
-	error::CoreError,
-	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
+	error::{CoreError, diagnostic::query},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_routine::function::{
-	AggregateFunction, AggregateFunctionContext, error::FunctionError, registry::Functions,
+use reifydb_routine::routine::{
+	Accumulator, FunctionKind, context::FunctionContext, error::RoutineError, registry::Routines,
 };
-use reifydb_rql::expression::Expression;
+use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
+	error,
 	fragment::Fragment,
 	value::{Value, r#type::Type},
 };
@@ -28,10 +29,10 @@ use crate::{
 
 enum Projection {
 	Aggregate {
-		fragment: Fragment,
 		column: String,
+		column_fragment: Fragment,
 		alias: Fragment,
-		function: Box<dyn AggregateFunction>,
+		accumulator: Box<dyn Accumulator>,
 	},
 	Group {
 		column: String,
@@ -68,7 +69,7 @@ impl QueryNode for AggregateNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::aggregate::initialize")]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		self.input.initialize(rx, ctx)?;
-		// Already has context from constructor
+
 		Ok(())
 	}
 
@@ -82,7 +83,7 @@ impl QueryNode for AggregateNode {
 		}
 
 		let (keys, mut projections) =
-			parse_keys_and_aggregates(&self.by, &self.map, &stored_ctx.services.functions)?;
+			parse_keys_and_aggregates(&self.by, &self.map, &stored_ctx.services.routines, stored_ctx)?;
 
 		let mut seen_groups = HashSet::<Vec<Value>>::new();
 		let mut group_key_order: Vec<Vec<Value>> = Vec::new();
@@ -98,19 +99,20 @@ impl QueryNode for AggregateNode {
 
 			for projection in &mut projections {
 				if let Projection::Aggregate {
-					fragment,
-					function,
+					accumulator,
 					column,
+					column_fragment,
 					..
 				} = projection
 				{
-					let column = columns.column(column).unwrap();
-					function.aggregate(AggregateFunctionContext {
-						fragment: fragment.clone(),
-						column,
-						groups: &groups,
-					})
-					.unwrap();
+					let column_ref = columns.column(column).ok_or_else(|| {
+						error!(query::column_not_found(column_fragment.clone()))
+					})?;
+					let cwn = ColumnWithName::new(
+						column_ref.name().clone(),
+						column_ref.data().clone(),
+					);
+					accumulator.update(&Columns::new(vec![cwn]), &groups)?;
 				}
 			}
 		}
@@ -131,9 +133,9 @@ impl QueryNode for AggregateNode {
 					} else {
 						Some(group_key_order[0][col_idx].get_type())
 					};
-					let mut c = Column {
+					let mut c = ColumnWithName {
 						name: Fragment::internal(alias.fragment()),
-						data: ColumnData::none_typed(
+						data: ColumnBuffer::none_typed(
 							first_key_type.unwrap_or(Type::Boolean),
 							0,
 						),
@@ -145,12 +147,12 @@ impl QueryNode for AggregateNode {
 				}
 				Projection::Aggregate {
 					alias,
-					mut function,
+					mut accumulator,
 					..
 				} => {
-					let (keys_out, mut data) = function.finalize().unwrap();
+					let (keys_out, mut data) = accumulator.finalize().unwrap();
 					align_column_data(&group_key_order, &keys_out, &mut data).unwrap();
-					result_columns.push(Column {
+					result_columns.push(ColumnWithName {
 						name: Fragment::internal(alias.fragment()),
 						data,
 					});
@@ -172,7 +174,8 @@ impl QueryNode for AggregateNode {
 fn parse_keys_and_aggregates<'a>(
 	by: &'a [Expression],
 	project: &'a [Expression],
-	functions: &'a Functions,
+	routines: &'a Routines,
+	ctx: &QueryContext,
 ) -> Result<(Vec<&'a str>, Vec<Projection>)> {
 	let mut keys = Vec::new();
 	let mut projections = Vec::new();
@@ -187,63 +190,66 @@ fn parse_keys_and_aggregates<'a>(
 				})
 			}
 			Expression::AccessSource(access) => {
-				// Handle qualified column references like
-				// departments.dept_name
 				keys.push(access.column.name.text());
 				projections.push(Projection::Group {
 					column: access.column.name.text().to_string(),
 					alias: access.column.name.clone(),
 				})
 			}
-			// _ => return
-			// Err(reifydb_type::error::Error::Unsupported("Non-column
-			// group by not supported".into())),
+
 			expr => panic!("Non-column group by not supported: {expr:#?}"),
 		}
 	}
 
 	for p in project {
-		// Extract the actual expression, handling aliases
 		let (actual_expr, alias) = match p {
-			Expression::Alias(alias_expr) => {
-				// This is an aliased expression like
-				// "total_count: count(value)"
-				(alias_expr.expression.as_ref(), alias_expr.alias.0.clone())
-			}
-			expr => {
-				// Non-aliased expression, use the expression's
-				// fragment as alias
-				(expr, expr.full_fragment_owned())
-			}
+			Expression::Alias(alias_expr) => (alias_expr.expression.as_ref(), alias_expr.alias.0.clone()),
+			expr => (expr, display_label(expr)),
 		};
 
 		match actual_expr {
 			Expression::Call(call) => {
-				let func = call.func.0.text();
+				let func_name = call.func.0.text();
+				let function = routines.get_aggregate_function(func_name).ok_or_else(|| {
+					RoutineError::FunctionNotFound {
+						function: call.func.0.clone(),
+					}
+				})?;
+				let _ = FunctionKind::Aggregate;
+
+				let mut fn_ctx = FunctionContext {
+					fragment: call.func.0.clone(),
+					identity: ctx.identity,
+					row_count: 0,
+					runtime_context: &ctx.services.runtime_context,
+				};
+
+				let accumulator = function.accumulator(&mut fn_ctx).ok_or_else(|| {
+					RoutineError::FunctionExecutionFailed {
+						function: call.func.0.clone(),
+						reason: format!("Function {} is not an aggregate", func_name),
+					}
+				})?;
+
 				match call.args.first() {
 					Some(Expression::Column(c)) => {
-						let function = functions.get_aggregate(func).unwrap();
 						projections.push(Projection::Aggregate {
-							fragment: call.func.0.clone(),
 							column: c.0.name.text().to_string(),
+							column_fragment: c.0.name.clone(),
 							alias,
-							function,
+							accumulator,
 						});
 					}
 					Some(Expression::AccessSource(access)) => {
-						// Handle qualified column
-						// references in aggregate
-						// functions
-						let function = functions.get_aggregate(func).unwrap();
 						projections.push(Projection::Aggregate {
-							fragment: call.func.0.clone(),
 							column: access.column.name.text().to_string(),
+							column_fragment: access.column.name.clone(),
 							alias,
-							function,
+							accumulator,
 						});
 					}
 					None => {
-						return Err(FunctionError::ArityMismatch {
+						return Err(RoutineError::FunctionArityMismatch {
 							function: call.func.0.clone(),
 							expected: 1,
 							actual: 0,
@@ -252,16 +258,13 @@ fn parse_keys_and_aggregates<'a>(
 					}
 					Some(arg) => {
 						let actual_type = arg.infer_type().ok_or_else(|| {
-							FunctionError::ExecutionFailed {
+							RoutineError::FunctionExecutionFailed {
 								function: call.func.0.clone(),
 								reason: "aggregate function arguments must be column references".to_string(),
 							}
 						})?;
-						let expected = functions
-							.get_aggregate(func)
-							.map(|f| f.accepted_types().expected_at(0).to_vec())
-							.unwrap_or_default();
-						return Err(FunctionError::InvalidArgumentType {
+						let expected = function.accepted_types().expected_at(0).to_vec();
+						return Err(RoutineError::FunctionInvalidArgumentType {
 							function: call.func.0.clone(),
 							argument_index: 0,
 							expected,
@@ -271,16 +274,14 @@ fn parse_keys_and_aggregates<'a>(
 					}
 				}
 			}
-			// _ => return
-			// Err(reifydb_type::error::Error::Unsupported("Expected
-			// aggregate call expression".into())),
+
 			_ => panic!("Expected aggregate call expression, got: {actual_expr:#?}"),
 		}
 	}
 	Ok((keys, projections))
 }
 
-fn align_column_data(group_key_order: &[Vec<Value>], keys: &[Vec<Value>], data: &mut ColumnData) -> Result<()> {
+fn align_column_data(group_key_order: &[Vec<Value>], keys: &[Vec<Value>], data: &mut ColumnBuffer) -> Result<()> {
 	let mut key_to_index = HashMap::new();
 	for (i, key) in keys.iter().enumerate() {
 		key_to_index.insert(key, i);

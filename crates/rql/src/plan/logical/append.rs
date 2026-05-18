@@ -7,7 +7,7 @@ use reifydb_type::{err, error::Diagnostic, fragment::Fragment};
 use crate::{
 	Result,
 	ast::ast::{Ast, AstAppend, AstAppendSource, AstList},
-	bump::{BumpBox, BumpFragment},
+	bump::BumpBox,
 	expression::{AliasExpression, ExpressionCompiler, IdentExpression},
 	plan::logical::{AppendNode, AppendSourcePlan, Compiler, InlineDataNode, LogicalPlan},
 };
@@ -24,8 +24,7 @@ impl<'bump> Compiler<'bump> {
 				source,
 				..
 			} => {
-				let target_text = target.name();
-				let target = BumpFragment::internal(self.bump, target_text);
+				let target = target.token.fragment;
 
 				let source = match source {
 					AstAppendSource::Statement(statement) => {
@@ -45,11 +44,17 @@ impl<'bump> Compiler<'bump> {
 			}
 			AstAppend::Query {
 				with,
+				ttl,
 				..
 			} => {
 				let with = self.compile(with.statement, tx)?;
+				let ttl = match ttl {
+					Some(ast_ttl) => Some(Self::compile_operator_ttl(ast_ttl)?),
+					None => None,
+				};
 				Ok(LogicalPlan::Append(AppendNode::Query {
 					with,
+					ttl,
 				}))
 			}
 		}
@@ -80,7 +85,7 @@ fn compile_inline_list(list: AstList<'_>) -> Result<InlineDataNode> {
 			_ => {
 				return err!(Diagnostic {
 					code: "E0001".to_string(),
-					statement: None,
+					rql: None,
 					message: "Expected inline data row".to_string(),
 					column: None,
 					fragment: Fragment::None,

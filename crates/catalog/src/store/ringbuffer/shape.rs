@@ -14,6 +14,7 @@ pub(crate) mod ringbuffer {
 	pub(crate) const CAPACITY: usize = 3;
 	pub(crate) const PRIMARY_KEY: usize = 4;
 	pub(crate) const PARTITION_BY: usize = 5;
+	pub(crate) const UNDERLYING: usize = 6;
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
@@ -23,6 +24,7 @@ pub(crate) mod ringbuffer {
 			RowShapeField::unconstrained("capacity", Type::Uint8),
 			RowShapeField::unconstrained("primary_key", Type::Uint8),
 			RowShapeField::unconstrained("partition_by", Type::Utf8),
+			RowShapeField::unconstrained("underlying", Type::Uint1),
 		])
 	});
 }

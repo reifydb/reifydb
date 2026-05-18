@@ -2,19 +2,20 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::store::MultiVersionRow,
-	key::{EncodableKey, config::ConfigKey},
+	interface::{catalog::config::ConfigKey, store::MultiVersionRow},
+	key::{EncodableKey, config::ConfigStorageKey},
 };
 use reifydb_type::value::Value;
 
 use crate::store::config::shape::config::{SHAPE, VALUE};
 
-pub mod get;
 pub mod set;
 pub mod shape;
 
-pub(crate) fn convert_config(multi: MultiVersionRow) -> (String, Value) {
-	let config_key = ConfigKey::decode(&multi.key).map(|k| k.key).unwrap_or_default();
+pub(crate) fn convert_config(multi: MultiVersionRow) -> (ConfigKey, Value) {
+	let config_key = ConfigStorageKey::decode(&multi.key)
+		.map(|k| k.key)
+		.unwrap_or_else(|| panic!("failed to decode ConfigStorageKey"));
 
 	let value = match SHAPE.get_value(&multi.row, VALUE) {
 		Value::Any(inner) => *inner,

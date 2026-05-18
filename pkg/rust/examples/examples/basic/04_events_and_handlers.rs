@@ -1,17 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # Basic Events and Handlers Example
-//!
-//! Demonstrates event and handler support in ReifyDB:
-//! - Creating events with structured variants
-//! - Creating handlers that react to dispatched event variants
-//! - Accessing event fields inside handler bodies via `event_<fieldname>`
-//! - Dispatching events and observing the `handlers_fired` result
-//! - Querying tables populated as side-effects by handlers
-//!
-//! Run with: `make basic-events-and-handlers` or `cargo run --bin basic-events-and-handlers`
-
 use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;

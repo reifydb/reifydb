@@ -20,7 +20,6 @@ pub fn parse_date(fragment: Fragment) -> Result<Date, Error> {
 		.into());
 	}
 
-	// Check for empty parts and calculate positions
 	let year_str = parts[0].trim();
 	let month_str = parts[1].trim();
 	let day_str = parts[2].trim();
@@ -35,7 +34,7 @@ pub fn parse_date(fragment: Fragment) -> Result<Date, Error> {
 		}
 		.into());
 	}
-	offset += parts[0].len() + 1; // +1 for dash
+	offset += parts[0].len() + 1;
 
 	if month_str.is_empty() {
 		let month_frag = fragment.sub_fragment(offset, parts[1].len());
@@ -46,7 +45,7 @@ pub fn parse_date(fragment: Fragment) -> Result<Date, Error> {
 		}
 		.into());
 	}
-	offset += parts[1].len() + 1; // +1 for dash
+	offset += parts[1].len() + 1;
 
 	if day_str.is_empty() {
 		let day_frag = fragment.sub_fragment(offset, parts[2].len());
@@ -58,7 +57,6 @@ pub fn parse_date(fragment: Fragment) -> Result<Date, Error> {
 		.into());
 	}
 
-	// Reset offset for further validation
 	offset = 0;
 
 	if year_str.len() != 4 {
@@ -81,7 +79,7 @@ pub fn parse_date(fragment: Fragment) -> Result<Date, Error> {
 		.into();
 		err
 	})?;
-	offset += parts[0].len() + 1; // +1 for dash
+	offset += parts[0].len() + 1;
 
 	if month_str.len() != 2 {
 		let month_frag = fragment.sub_fragment(offset, parts[1].len());
@@ -103,7 +101,7 @@ pub fn parse_date(fragment: Fragment) -> Result<Date, Error> {
 		.into();
 		err
 	})?;
-	offset += parts[1].len() + 1; // +1 for dash
+	offset += parts[1].len() + 1;
 
 	if day_str.len() != 2 {
 		let day_frag = fragment.sub_fragment(offset, parts[2].len());

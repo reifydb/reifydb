@@ -1,5 +1,33 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-pub mod aggregate;
-pub mod scalar;
+pub mod abs;
+pub mod acos;
+pub mod asin;
+pub mod atan;
+pub mod atan2;
+pub mod avg;
+pub mod ceil;
+pub mod clamp;
+pub mod cos;
+pub mod count;
+pub mod euler;
+pub mod exp;
+pub mod floor;
+pub mod gcd;
+pub mod lcm;
+pub mod log;
+pub mod log10;
+pub mod log2;
+pub mod max;
+pub mod min;
+pub mod modulo;
+pub mod pi;
+pub mod power;
+pub mod round;
+pub mod sign;
+pub mod sin;
+pub mod sqrt;
+pub mod sum;
+pub mod tan;
+pub mod truncate;

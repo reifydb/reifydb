@@ -7,7 +7,6 @@ use crate::{
 };
 
 pub fn parse_bool(fragment: Fragment) -> Result<bool, Error> {
-	// Fragment is already owned, no conversion needed
 	let value = fragment.text().trim();
 
 	if value.is_empty() {
@@ -17,7 +16,6 @@ pub fn parse_bool(fragment: Fragment) -> Result<bool, Error> {
 		.into());
 	}
 
-	// Fast path: byte-level matching for common cases
 	match value.as_bytes() {
 		b"true" | b"TRUE" | b"True" => return Ok(true),
 		b"false" | b"FALSE" | b"False" => return Ok(false),
@@ -26,15 +24,12 @@ pub fn parse_bool(fragment: Fragment) -> Result<bool, Error> {
 		_ => {}
 	}
 
-	// Slow path: case-insensitive matching for mixed case
 	match value.len() {
 		4 if value.eq_ignore_ascii_case("true") => Ok(true),
 		5 if value.eq_ignore_ascii_case("false") => Ok(false),
 		3 if value == "1.0" => Ok(true),
 		3 if value == "0.0" => Ok(false),
 		_ => {
-			// Check if the value contains numbers - if so, use
-			// numeric boolean diagnostic
 			if value.as_bytes().iter().any(|&b| b.is_ascii_digit()) {
 				Err(TypeError::InvalidNumberBoolean {
 					fragment,

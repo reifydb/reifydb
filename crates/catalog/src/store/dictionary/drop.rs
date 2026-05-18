@@ -12,13 +12,10 @@ use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn drop_dictionary(txn: &mut AdminTransaction, dictionary: DictionaryId) -> Result<()> {
-		// First, find the dictionary to get its namespace
 		if let Some(dictionary_def) = Self::find_dictionary(&mut Transaction::Admin(&mut *txn), dictionary)? {
-			// Remove the namespace-dictionary link (secondary index)
 			txn.remove(&NamespaceDictionaryKey::encoded(dictionary_def.namespace, dictionary))?;
 		}
 
-		// Clean up dictionary entries (hash -> value)
 		let entry_range = DictionaryEntryKey::full_scan(dictionary);
 		let mut entry_stream = txn.range(entry_range, 1024)?;
 		let mut entry_keys = Vec::new();
@@ -30,7 +27,6 @@ impl CatalogStore {
 			txn.remove(&key)?;
 		}
 
-		// Clean up dictionary entry index (id -> value reverse lookup)
 		let index_range = DictionaryEntryIndexKey::full_scan(dictionary);
 		let mut index_stream = txn.range(index_range, 1024)?;
 		let mut index_keys = Vec::new();
@@ -42,10 +38,8 @@ impl CatalogStore {
 			txn.remove(&key)?;
 		}
 
-		// Clean up dictionary sequence
 		txn.remove(&DictionarySequenceKey::encoded(dictionary))?;
 
-		// Remove the dictionary definition
 		txn.remove(&DictionaryKey::encoded(dictionary))?;
 
 		Ok(())

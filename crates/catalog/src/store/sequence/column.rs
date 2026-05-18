@@ -48,12 +48,9 @@ impl ColumnSequence {
 		column: ColumnId,
 		value: Value,
 	) -> Result<()> {
-		// let table = CatalogStore::get_table(txn, table)?;
 		let column = CatalogStore::get_column(&mut txn.as_transaction(), column)?;
 
 		if !column.auto_increment {
-			// return_error!(can_not_alter_not_auto_increment(plan.
-			// column, column.constraint.ty()));
 			unimplemented!()
 		}
 

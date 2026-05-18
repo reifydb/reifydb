@@ -7,7 +7,9 @@ use reifydb_core::{
 		flow::{FlowEdgeId, FlowId, FlowNodeId},
 		id::{RingBufferId, SeriesId, SubscriptionId, TableId, ViewId},
 		series::SeriesKey,
+		shape::ShapeId,
 	},
+	row::{JoinTtl, Ttl},
 	sort::SortKey,
 };
 use serde::{Deserialize, Serialize};
@@ -49,12 +51,19 @@ pub enum FlowNodeType {
 		left: Vec<Expression>,
 		right: Vec<Expression>,
 		alias: Option<String>,
+		#[serde(default)]
+		ttl: Option<JoinTtl>,
+		#[serde(default)]
+		snapshot: bool,
 	},
 	Aggregate {
 		by: Vec<Expression>,
 		map: Vec<Expression>,
 	},
-	Append,
+	Append {
+		#[serde(default)]
+		ttl: Option<Ttl>,
+	},
 	Sort {
 		by: Vec<SortKey>,
 	},
@@ -63,10 +72,14 @@ pub enum FlowNodeType {
 	},
 	Distinct {
 		expressions: Vec<Expression>,
+		#[serde(default)]
+		ttl: Option<Ttl>,
 	},
 	Apply {
 		operator: String,
 		expressions: Vec<Expression>,
+		#[serde(default)]
+		ttl: Option<Ttl>,
 	},
 	SinkTableView {
 		view: ViewId,
@@ -95,8 +108,78 @@ pub enum FlowNodeType {
 }
 
 impl FlowNodeType {
-	/// Returns a discriminator value for this node type variant.
-	/// Must match indices in FLOW_NODE_TYPE_NAMES in catalog/vtable/system/flow_node_types.rs
+	pub fn label(&self) -> String {
+		match self {
+			FlowNodeType::SourceInlineData {
+				..
+			} => "SourceInlineData".into(),
+			FlowNodeType::SourceTable {
+				..
+			} => "SourceTable".into(),
+			FlowNodeType::SourceView {
+				..
+			} => "SourceView".into(),
+			FlowNodeType::SourceFlow {
+				..
+			} => "SourceFlow".into(),
+			FlowNodeType::SourceRingBuffer {
+				..
+			} => "SourceRingBuffer".into(),
+			FlowNodeType::SourceSeries {
+				..
+			} => "SourceSeries".into(),
+			FlowNodeType::Filter {
+				..
+			} => "Filter".into(),
+			FlowNodeType::Gate {
+				..
+			} => "Gate".into(),
+			FlowNodeType::Map {
+				..
+			} => "Map".into(),
+			FlowNodeType::Extend {
+				..
+			} => "Extend".into(),
+			FlowNodeType::Join {
+				..
+			} => "Join".into(),
+			FlowNodeType::Aggregate {
+				..
+			} => "Aggregate".into(),
+			FlowNodeType::Append {
+				..
+			} => "Append".into(),
+			FlowNodeType::Sort {
+				..
+			} => "Sort".into(),
+			FlowNodeType::Take {
+				..
+			} => "Take".into(),
+			FlowNodeType::Distinct {
+				..
+			} => "Distinct".into(),
+			FlowNodeType::Apply {
+				operator,
+				..
+			} => format!("Apply({})", operator),
+			FlowNodeType::SinkTableView {
+				..
+			} => "SinkTableView".into(),
+			FlowNodeType::SinkRingBufferView {
+				..
+			} => "SinkRingBufferView".into(),
+			FlowNodeType::SinkSeriesView {
+				..
+			} => "SinkSeriesView".into(),
+			FlowNodeType::SinkSubscription {
+				..
+			} => "SinkSubscription".into(),
+			FlowNodeType::Window {
+				..
+			} => "Window".into(),
+		}
+	}
+
 	pub fn discriminator(&self) -> u8 {
 		match self {
 			FlowNodeType::SourceInlineData {
@@ -126,7 +209,9 @@ impl FlowNodeType {
 			FlowNodeType::Aggregate {
 				..
 			} => 8,
-			FlowNodeType::Append => 9,
+			FlowNodeType::Append {
+				..
+			} => 9,
 			FlowNodeType::Sort {
 				..
 			} => 10,
@@ -163,6 +248,77 @@ impl FlowNodeType {
 			FlowNodeType::SinkSeriesView {
 				..
 			} => 21,
+		}
+	}
+
+	pub fn primitive_source_shape_id(&self) -> Option<ShapeId> {
+		match self {
+			FlowNodeType::SourceTable {
+				table,
+			} => Some(ShapeId::table(*table)),
+			FlowNodeType::SourceRingBuffer {
+				ringbuffer,
+			} => Some(ShapeId::ringbuffer(*ringbuffer)),
+			FlowNodeType::SourceSeries {
+				series,
+			} => Some(ShapeId::series(*series)),
+			FlowNodeType::SourceInlineData {
+				..
+			}
+			| FlowNodeType::SourceView {
+				..
+			}
+			| FlowNodeType::SourceFlow {
+				..
+			}
+			| FlowNodeType::Filter {
+				..
+			}
+			| FlowNodeType::Gate {
+				..
+			}
+			| FlowNodeType::Map {
+				..
+			}
+			| FlowNodeType::Extend {
+				..
+			}
+			| FlowNodeType::Join {
+				..
+			}
+			| FlowNodeType::Aggregate {
+				..
+			}
+			| FlowNodeType::Append {
+				..
+			}
+			| FlowNodeType::Sort {
+				..
+			}
+			| FlowNodeType::Take {
+				..
+			}
+			| FlowNodeType::Distinct {
+				..
+			}
+			| FlowNodeType::Apply {
+				..
+			}
+			| FlowNodeType::SinkTableView {
+				..
+			}
+			| FlowNodeType::SinkRingBufferView {
+				..
+			}
+			| FlowNodeType::SinkSeriesView {
+				..
+			}
+			| FlowNodeType::SinkSubscription {
+				..
+			}
+			| FlowNodeType::Window {
+				..
+			} => None,
 		}
 	}
 }

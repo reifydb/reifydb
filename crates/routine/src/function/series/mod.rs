@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
-use crate::function::{
-	GeneratorContext, GeneratorFunction, ScalarFunction, ScalarFunctionContext,
-	error::{GeneratorFunctionResult, ScalarFunctionError, ScalarFunctionResult},
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct GenerateSeries;
+pub struct GenerateSeries {
+	info: RoutineInfo,
+}
 
 impl Default for GenerateSeries {
 	fn default() -> Self {
@@ -19,40 +18,76 @@ impl Default for GenerateSeries {
 
 impl GenerateSeries {
 	pub fn new() -> Self {
-		Self {}
+		Self {
+			info: RoutineInfo::new("series::generate"),
+		}
 	}
 }
 
-impl GeneratorFunction for GenerateSeries {
-	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> GeneratorFunctionResult<Columns> {
-		// Extract parameters: start and end
-		let params = &ctx.params;
+impl<'a> Routine<FunctionContext<'a>> for GenerateSeries {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		assert_eq!(params.len(), 2, "generate_series requires exactly 2 parameters: start and end");
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Any
+	}
 
-		// Get start value
-		let start_column = params.first().unwrap();
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 2 {
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.fragment.clone(),
+				expected: 2,
+				actual: args.len(),
+			});
+		}
+
+		let start_column = args.first().ok_or_else(|| RoutineError::FunctionArityMismatch {
+			function: ctx.fragment.clone(),
+			expected: 2,
+			actual: args.len(),
+		})?;
 		let start_value = match start_column.data() {
-			ColumnData::Int4(container) => container.get(0).copied().unwrap_or(1),
-			_ => panic!("start parameter must be an integer"),
+			ColumnBuffer::Int4(container) => container.get(0).copied().unwrap_or(1),
+			_ => {
+				return Err(RoutineError::FunctionExecutionFailed {
+					function: ctx.fragment.clone(),
+					reason: "start parameter must be an integer".to_string(),
+				});
+			}
 		};
 
-		// Get end value
-		let end_column = params.get(1).unwrap();
+		let end_column = args.get(1).ok_or_else(|| RoutineError::FunctionArityMismatch {
+			function: ctx.fragment.clone(),
+			expected: 2,
+			actual: args.len(),
+		})?;
 		let end_value = match end_column.data() {
-			ColumnData::Int4(container) => container.get(0).copied().unwrap_or(10),
-			_ => panic!("end parameter must be an integer"),
+			ColumnBuffer::Int4(container) => container.get(0).copied().unwrap_or(10),
+			_ => {
+				return Err(RoutineError::FunctionExecutionFailed {
+					function: ctx.fragment.clone(),
+					reason: "end parameter must be an integer".to_string(),
+				});
+			}
 		};
 
-		// Generate the series
 		let series: Vec<i32> = (start_value..=end_value).collect();
-		let series_column = Column::int4("value", series);
+		let series_column = ColumnWithName::int4("value", series);
 
 		Ok(Columns::new(vec![series_column]))
 	}
 }
 
-pub struct Series;
+impl Function for GenerateSeries {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Generator]
+	}
+}
+
+pub struct Series {
+	info: RoutineInfo,
+}
 
 impl Default for Series {
 	fn default() -> Self {
@@ -62,46 +97,64 @@ impl Default for Series {
 
 impl Series {
 	pub fn new() -> Self {
-		Self {}
+		Self {
+			info: RoutineInfo::new("gen::series"),
+		}
 	}
 }
 
-fn extract_i32(data: &ColumnData, index: usize) -> Option<i32> {
+fn extract_i32(data: &ColumnBuffer, index: usize) -> Option<i32> {
 	match data {
-		ColumnData::Int1(c) => c.get(index).map(|&v| v as i32),
-		ColumnData::Int2(c) => c.get(index).map(|&v| v as i32),
-		ColumnData::Int4(c) => c.get(index).copied(),
-		ColumnData::Int8(c) => c.get(index).map(|&v| v as i32),
-		ColumnData::Uint1(c) => c.get(index).map(|&v| v as i32),
-		ColumnData::Uint2(c) => c.get(index).map(|&v| v as i32),
-		ColumnData::Uint4(c) => c.get(index).map(|&v| v as i32),
+		ColumnBuffer::Int1(c) => c.get(index).map(|&v| v as i32),
+		ColumnBuffer::Int2(c) => c.get(index).map(|&v| v as i32),
+		ColumnBuffer::Int4(c) => c.get(index).copied(),
+		ColumnBuffer::Int8(c) => c.get(index).map(|&v| v as i32),
+		ColumnBuffer::Uint1(c) => c.get(index).map(|&v| v as i32),
+		ColumnBuffer::Uint2(c) => c.get(index).map(|&v| v as i32),
+		ColumnBuffer::Uint4(c) => c.get(index).map(|&v| v as i32),
 		_ => None,
 	}
 }
 
-impl ScalarFunction for Series {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		let columns = ctx.columns;
-
-		if columns.len() != 2 {
-			return Err(ScalarFunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 2,
-				actual: columns.len(),
-			});
-		}
-
-		let start_column = columns.first().unwrap();
-		let start_value = extract_i32(start_column.data(), 0).unwrap_or(1);
-
-		let end_column = columns.get(1).unwrap();
-		let end_value = extract_i32(end_column.data(), 0).unwrap_or(10);
-
-		let series: Vec<i32> = (start_value..=end_value).collect();
-		Ok(ColumnData::int4(series))
+impl<'a> Routine<FunctionContext<'a>> for Series {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Int4
+	}
+
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 2 {
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.fragment.clone(),
+				expected: 2,
+				actual: args.len(),
+			});
+		}
+
+		let start_column = args.first().ok_or_else(|| RoutineError::FunctionArityMismatch {
+			function: ctx.fragment.clone(),
+			expected: 2,
+			actual: args.len(),
+		})?;
+		let start_value = extract_i32(start_column.data(), 0).unwrap_or(1);
+
+		let end_column = args.get(1).ok_or_else(|| RoutineError::FunctionArityMismatch {
+			function: ctx.fragment.clone(),
+			expected: 2,
+			actual: args.len(),
+		})?;
+		let end_value = extract_i32(end_column.data(), 0).unwrap_or(10);
+
+		let series: Vec<i32> = (start_value..=end_value).collect();
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::int4(series))]))
+	}
+}
+
+impl Function for Series {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

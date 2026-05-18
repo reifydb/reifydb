@@ -57,6 +57,10 @@ export class Int2Value implements Value {
         return this.value === otherInt.value;
     }
 
+    toJSON(): string | null {
+        return this.value === undefined ? null : this.value.toString();
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,

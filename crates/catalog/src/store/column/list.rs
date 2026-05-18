@@ -13,7 +13,6 @@ use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, Result, store::column::shape::primitive_column};
 
-/// Extended column information for system catalogs
 pub struct ColumnInfo {
 	pub column: Column,
 	pub shape_id: ShapeId,
@@ -28,7 +27,6 @@ impl CatalogStore {
 		let shape = shape.into();
 		let mut result = vec![];
 
-		// Collect column IDs first to avoid holding stream borrow
 		let mut ids = Vec::new();
 		{
 			let stream = rx.range(ColumnKey::full_scan(shape), 1024)?;
@@ -51,7 +49,6 @@ impl CatalogStore {
 	pub(crate) fn list_columns_all(rx: &mut Transaction<'_>) -> Result<Vec<ColumnInfo>> {
 		let mut result = Vec::new();
 
-		// Get all tables
 		let tables = CatalogStore::list_tables_all(rx)?;
 		for table in tables {
 			let columns = CatalogStore::list_columns(rx, table.id)?;
@@ -67,7 +64,6 @@ impl CatalogStore {
 			}
 		}
 
-		// Get all views
 		let views = CatalogStore::list_views_all(rx)?;
 		for view in views {
 			let columns = CatalogStore::list_columns(rx, view.id())?;
@@ -83,7 +79,6 @@ impl CatalogStore {
 			}
 		}
 
-		// Get all ring buffers
 		let ringbuffers = CatalogStore::list_ringbuffers_all(rx)?;
 		for ringbuffer in ringbuffers {
 			let columns = CatalogStore::list_columns(rx, ringbuffer.id)?;

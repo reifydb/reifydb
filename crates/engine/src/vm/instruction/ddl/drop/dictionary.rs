@@ -25,7 +25,6 @@ pub(crate) fn drop_dictionary(
 
 	let def = services.catalog.get_dictionary(&mut Transaction::Admin(txn), dictionary_id)?;
 
-	// Check for dependent columns across all entity types
 	let columns = services.catalog.list_columns_all(&mut Transaction::Admin(txn))?;
 	let dependents = find_column_dependents(&services.catalog, txn, &columns, |info| {
 		(info.column.dictionary_id == Some(dictionary_id)).then(String::new)

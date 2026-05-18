@@ -1,32 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # Table Interceptors
-//!
-//! Demonstrates the fluent interceptor API for ReifyDB:
-//! - Registering pre/post insert hooks on tables
-//! - Filtering interceptors by namespace.table pattern
-//! - Using closures for lightweight interceptor logic
-//!
-//! Interceptors allow you to:
-//! - Audit data changes
-//! - Validate data before/after operations
-//! - Trigger side effects (notifications, logging, etc.)
-//!
-//! Run with: `make intercept-table-view` or `cargo run --bin intercept-table-view`
-
 use std::{thread::sleep, time::Duration};
 
 use reifydb::{Params, WithInterceptorBuilder, WithSubsystem, embedded};
 use reifydb_examples::log_query;
 use tracing::info;
-use tracing_subscriber::{EnvFilter, fmt, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{
+	EnvFilter, fmt, fmt::format::FmtSpan, layer::SubscriberExt, registry, util::SubscriberInitExt,
+};
 
 fn main() {
-	tracing_subscriber::registry()
-		.with(fmt::layer().with_span_events(FmtSpan::CLOSE))
-		.with(EnvFilter::from_default_env())
-		.init();
+	registry().with(fmt::layer().with_span_events(FmtSpan::CLOSE)).with(EnvFilter::from_default_env()).init();
 
 	// Step 1: Create database with interceptors configured
 	// The fluent API allows chaining interceptor registrations

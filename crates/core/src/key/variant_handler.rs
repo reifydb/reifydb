@@ -10,10 +10,6 @@ use crate::{
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
-const VERSION: u8 = 1;
-
-/// Key for looking up handlers by the variant they handle.
-/// Supports range scans for DISPATCH to find all handlers for a given (namespace, sumtype, variant_tag).
 #[derive(Debug, Clone, PartialEq)]
 pub struct VariantHandlerKey {
 	pub namespace: NamespaceId,
@@ -41,7 +37,6 @@ impl VariantHandlerKey {
 		Self::new(namespace.into(), sumtype.into(), variant_tag, handler.into()).encode()
 	}
 
-	/// Range scan for all handlers of a specific variant.
 	pub fn variant_scan(namespace: NamespaceId, sumtype: SumTypeId, variant_tag: u8) -> EncodedKeyRange {
 		EncodedKeyRange::start_end(
 			Some(Self::variant_start(namespace, sumtype, variant_tag)),
@@ -50,20 +45,14 @@ impl VariantHandlerKey {
 	}
 
 	fn variant_start(namespace: NamespaceId, sumtype: SumTypeId, variant_tag: u8) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(19);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(namespace)
-			.extend_u64(sumtype)
-			.extend_u8(variant_tag);
+		let mut serializer = KeySerializer::with_capacity(18);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(namespace).extend_u64(sumtype).extend_u8(variant_tag);
 		serializer.to_encoded_key()
 	}
 
 	fn variant_end(namespace: NamespaceId, sumtype: SumTypeId, variant_tag: u8) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(19);
+		let mut serializer = KeySerializer::with_capacity(18);
 		serializer
-			.extend_u8(VERSION)
 			.extend_u8(Self::KIND as u8)
 			.extend_u64(namespace)
 			.extend_u64(sumtype)
@@ -76,9 +65,8 @@ impl EncodableKey for VariantHandlerKey {
 	const KIND: KeyKind = KeyKind::VariantHandler;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(27);
+		let mut serializer = KeySerializer::with_capacity(26);
 		serializer
-			.extend_u8(VERSION)
 			.extend_u8(Self::KIND as u8)
 			.extend_u64(self.namespace)
 			.extend_u64(self.sumtype)
@@ -89,11 +77,6 @@ impl EncodableKey for VariantHandlerKey {
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
@@ -132,14 +115,7 @@ pub mod tests {
 			handler: HandlerId(0x6789),
 		};
 		let encoded = key.encode();
-		let expected: Vec<u8> = vec![
-			0xFE, // version
-			0xCF, // kind (VariantHandler = 0x30, encoded as 0xFF ^ 0x30)
-			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, // namespace 0xABCD
-			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xED, 0xCB, // sumtype 0x1234
-			0xFA, // variant_tag 5
-			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x98, 0x76, // handler 0x6789
-		];
+		let expected: Vec<u8> = vec![0xCF, 0x3F, 0x54, 0x32, 0x6D, 0xCB, 0xFA, 0x3F, 0x98, 0x76];
 		assert_eq!(encoded.as_slice(), expected);
 
 		let decoded = VariantHandlerKey::decode(&encoded).unwrap();
@@ -202,7 +178,6 @@ pub mod tests {
 			Bound::Unbounded => panic!("expected bounded end"),
 		};
 
-		// A key for this exact variant should fall within the range
 		let key = VariantHandlerKey {
 			namespace: ns,
 			sumtype: st,
@@ -213,7 +188,6 @@ pub mod tests {
 		assert!(encoded.as_slice() >= start.as_slice());
 		assert!(encoded.as_slice() <= end.as_slice());
 
-		// A key for a higher variant_tag encodes to smaller bytes and is outside the range
 		let other = VariantHandlerKey {
 			namespace: ns,
 			sumtype: st,

@@ -9,11 +9,11 @@ use super::{
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ParameterKind {
-	Positional(u32), // $1, $2, etc.
-	Named,           // $name, $user_id, etc.
+	Positional(u32),
+	Named,
 }
 
-/// Scan for a parameter token ($1, $name, etc.)
+
 pub fn scan_parameter<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	if cursor.peek() != Some('$') {
 		return None;
@@ -24,9 +24,9 @@ pub fn scan_parameter<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let start_line = cursor.line();
 	let start_column = cursor.column();
 
-	cursor.consume(); // consume '$'
+	cursor.consume();
 
-	// Check for positional parameter ($1, $2, etc.)
+
 	if let Some(ch) = cursor.peek() {
 		if ch.is_ascii_digit() {
 			let num_str = cursor.consume_while(|c| c.is_ascii_digit());
@@ -38,12 +38,12 @@ pub fn scan_parameter<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 					});
 				}
 			}
-			// $0 is invalid, restore state
+
 			cursor.restore_state(state);
 			return None;
 		}
 
-		// Check for named parameter ($name, $user_id, etc.)
+
 		if is_identifier_start(ch) {
 			cursor.consume_while(is_identifier_char);
 			return Some(Token {
@@ -53,7 +53,7 @@ pub fn scan_parameter<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 		}
 	}
 
-	// Just a $ by itself, restore state
+
 	cursor.restore_state(state);
 	None
 }

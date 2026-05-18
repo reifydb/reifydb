@@ -11,8 +11,6 @@ use reifydb_transaction::transaction::admin::AdminTransaction;
 use crate::{CatalogStore, Result, store::view::shape::view};
 
 impl CatalogStore {
-	/// Set the primary key ID for a view
-	/// Returns an internal error if the view doesn't exist
 	pub(crate) fn set_view_primary_key(
 		txn: &mut AdminTransaction,
 		view_id: ViewId,

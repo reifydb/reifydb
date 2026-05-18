@@ -100,7 +100,6 @@ impl SafeMul for f32 {
 	fn wrapping_mul(&self, r: &Self) -> Self {
 		let result = *self * *r;
 		if result.is_infinite() || result.is_nan() {
-			// For overflow, create a finite wrapped value
 			let sign = if (self.is_sign_positive() && r.is_sign_positive())
 				|| (self.is_sign_negative() && r.is_sign_negative())
 			{
@@ -108,9 +107,8 @@ impl SafeMul for f32 {
 			} else {
 				-1.0
 			};
-			// Use a simple wrapping approach: take a reasonable
-			// fraction of the max
-			let wrapped_val = f32::MAX / 2.0; // Start with half of MAX
+
+			let wrapped_val = f32::MAX / 2.0;
 			wrapped_val * sign
 		} else {
 			result
@@ -144,7 +142,6 @@ impl SafeMul for f64 {
 	fn wrapping_mul(&self, r: &Self) -> Self {
 		let result = *self * *r;
 		if result.is_infinite() || result.is_nan() {
-			// For overflow, create a finite wrapped value
 			let sign = if (self.is_sign_positive() && r.is_sign_positive())
 				|| (self.is_sign_negative() && r.is_sign_negative())
 			{
@@ -152,9 +149,8 @@ impl SafeMul for f64 {
 			} else {
 				-1.0
 			};
-			// Use a simple wrapping approach: take a reasonable
-			// fraction of the max
-			let wrapped_val = f64::MAX / 2.0; // Start with half of MAX
+
+			let wrapped_val = f64::MAX / 2.0;
 			wrapped_val * sign
 		} else {
 			result

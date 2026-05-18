@@ -9,36 +9,19 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 	},
 	key::row::RowKey,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::columns::Columns,
 };
 use reifydb_transaction::{
 	interceptor::ringbuffer_row::RingBufferRowInterceptor,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
-use reifydb_type::{fragment::Fragment, util::cowvec::CowVec, value::row_number::RowNumber};
+use reifydb_type::{
+	util::cowvec::CowVec,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
+use smallvec::smallvec;
 
 use crate::Result;
-
-fn build_encoded_columns(shape: &RowShape, row_number: RowNumber, encoded: &EncodedRow) -> Columns {
-	let fields = shape.fields();
-
-	let mut columns_vec: Vec<Column> = Vec::with_capacity(fields.len());
-	for field in fields.iter() {
-		columns_vec.push(Column {
-			name: Fragment::internal(&field.name),
-			data: ColumnData::with_capacity(field.constraint.get_type(), 1),
-		});
-	}
-
-	for (i, _) in fields.iter().enumerate() {
-		columns_vec[i].data.push_value(shape.get_value(encoded, i));
-	}
-
-	Columns {
-		row_numbers: CowVec::new(vec![row_number]),
-		columns: CowVec::new(columns_vec),
-	}
-}
 
 fn build_ringbuffer_insert_change(
 	rb: &RingBuffer,
@@ -46,12 +29,13 @@ fn build_ringbuffer_insert_change(
 	row_number: RowNumber,
 	encoded: &EncodedRow,
 ) -> Change {
+	let ids = [row_number];
+	let rows = [encoded.clone()];
 	Change {
 		origin: ChangeOrigin::Shape(ShapeId::ringbuffer(rb.id)),
 		version: CommitVersion(0),
-		diffs: vec![Diff::Insert {
-			post: build_encoded_columns(shape, row_number, encoded),
-		}],
+		diffs: smallvec![Diff::insert(Columns::from_encoded_rows(shape, &ids, &rows))],
+		changed_at: DateTime::default(),
 	}
 }
 
@@ -62,28 +46,33 @@ fn build_ringbuffer_update_change(
 	post: &EncodedRow,
 ) -> Change {
 	let shape: RowShape = (&rb.columns).into();
+	let ids = [row_number];
+	let pres = [pre.clone()];
+	let posts = [post.clone()];
 	Change {
 		origin: ChangeOrigin::Shape(ShapeId::ringbuffer(rb.id)),
 		version: CommitVersion(0),
-		diffs: vec![Diff::Update {
-			pre: build_encoded_columns(&shape, row_number, pre),
-			post: build_encoded_columns(&shape, row_number, post),
-		}],
+		diffs: smallvec![Diff::update(
+			Columns::from_encoded_rows(&shape, &ids, &pres),
+			Columns::from_encoded_rows(&shape, &ids, &posts),
+		)],
+		changed_at: DateTime::default(),
 	}
 }
 
 fn build_ringbuffer_remove_change(rb: &RingBuffer, row_number: RowNumber, encoded: &EncodedRow) -> Change {
 	let shape: RowShape = (&rb.columns).into();
+	let ids = [row_number];
+	let rows = [encoded.clone()];
 	Change {
 		origin: ChangeOrigin::Shape(ShapeId::ringbuffer(rb.id)),
 		version: CommitVersion(0),
-		diffs: vec![Diff::Remove {
-			pre: build_encoded_columns(&shape, row_number, encoded),
-		}],
+		diffs: smallvec![Diff::remove(Columns::from_encoded_rows(&shape, &ids, &rows))],
+		changed_at: DateTime::default(),
 	}
 }
 
-pub(crate) trait RingBufferOperations {
+pub trait RingBufferOperations {
 	fn insert_ringbuffer(&mut self, ringbuffer: RingBuffer, row: EncodedRow) -> Result<RowNumber>;
 
 	fn insert_ringbuffer_at(
@@ -101,9 +90,6 @@ pub(crate) trait RingBufferOperations {
 
 impl RingBufferOperations for CommandTransaction {
 	fn insert_ringbuffer(&mut self, _ringbuffer: RingBuffer, _row: EncodedRow) -> Result<RowNumber> {
-		// For ring buffers, the row_number is determined by the caller based on ring buffer metadata
-		// This is different from tables which use RowSequence::next_row_number
-		// The caller must provide the correct row_number based on head/tail position
 		unimplemented!(
 			"Ring buffer insert must be called with explicit row_number through insert_ringbuffer_at"
 		)
@@ -118,21 +104,24 @@ impl RingBufferOperations for CommandTransaction {
 	) -> Result<EncodedRow> {
 		let key = RowKey::encoded(ringbuffer.id, row_number);
 
-		// Check if we're overwriting existing data (for ring buffer circular behavior)
 		let pre = self.get(&key)?.map(|v| v.row);
 
-		// If there's an existing encoded, we need to delete it first with interceptors
 		if let Some(ref existing) = pre {
-			RingBufferRowInterceptor::pre_delete(self, ringbuffer, row_number)?;
-			// Don't actually remove, we'll overwrite
-			RingBufferRowInterceptor::post_delete(self, ringbuffer, row_number, existing)?;
+			let ids = [row_number];
+			let existing_rows = [existing.clone()];
+			RingBufferRowInterceptor::pre_delete(self, ringbuffer, &ids)?;
+			RingBufferRowInterceptor::post_delete(self, ringbuffer, &ids, &existing_rows)?;
 		}
 
-		let row = RingBufferRowInterceptor::pre_insert(self, ringbuffer, row)?;
+		let mut rows_buf = [row];
+		RingBufferRowInterceptor::pre_insert(self, ringbuffer, &mut rows_buf)?;
+		let [row] = rows_buf;
 
 		self.set(&key, row.clone())?;
 
-		RingBufferRowInterceptor::post_insert(self, ringbuffer, row_number, &row)?;
+		let ids = [row_number];
+		let rows = [row.clone()];
+		RingBufferRowInterceptor::post_insert(self, ringbuffer, &ids, &rows)?;
 
 		if let Some(pre_row) = pre.as_ref() {
 			self.track_flow_change(build_ringbuffer_update_change(ringbuffer, row_number, pre_row, &row));
@@ -146,17 +135,26 @@ impl RingBufferOperations for CommandTransaction {
 	fn update_ringbuffer(&mut self, ringbuffer: RingBuffer, id: RowNumber, row: EncodedRow) -> Result<EncodedRow> {
 		let key = RowKey::encoded(ringbuffer.id, id);
 
-		// Get the current encoded before updating (for post-update interceptor)
-		let pre = self.get(&key)?.map(|v| v.row);
+		let pre = match self.get(&key)? {
+			Some(v) => v.row,
+			None => return Ok(row),
+		};
 
-		let row = RingBufferRowInterceptor::pre_update(self, &ringbuffer, id, row)?;
+		let mut rows_buf = [row];
+		let ids = [id];
+		RingBufferRowInterceptor::pre_update(self, &ringbuffer, &ids, &mut rows_buf)?;
+		let [row] = rows_buf;
 
+		if self.get_committed(&key)?.is_some() {
+			self.mark_preexisting(&key)?;
+		}
 		self.set(&key, row.clone())?;
 
-		if let Some(ref pre) = pre {
-			RingBufferRowInterceptor::post_update(self, &ringbuffer, id, &row, pre)?;
-			self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, pre, &row));
-		}
+		let posts = [row.clone()];
+		let pres = [pre.clone()];
+		RingBufferRowInterceptor::post_update(self, &ringbuffer, &ids, &posts, &pres)?;
+
+		self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, &pre, &row));
 
 		Ok(row)
 	}
@@ -164,23 +162,28 @@ impl RingBufferOperations for CommandTransaction {
 	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBuffer, id: RowNumber) -> Result<EncodedRow> {
 		let key = RowKey::encoded(ringbuffer.id, id);
 
-		// Get the encoded before removing (for post-delete interceptor)
-		let deleted_row = match self.get(&key)? {
+		let displayed = match self.get(&key)? {
 			Some(v) => v.row,
 			None => return Ok(EncodedRow(CowVec::new(vec![]))),
 		};
+		let committed = self.get_committed(&key)?.map(|v| v.row);
 
-		// Execute pre-delete interceptors
-		RingBufferRowInterceptor::pre_delete(self, ringbuffer, id)?;
+		let ids = [id];
+		RingBufferRowInterceptor::pre_delete(self, ringbuffer, &ids)?;
 
-		// Remove the encoded from the database
-		self.unset(&key, deleted_row.clone())?;
+		let pre_for_cdc = committed.clone().unwrap_or_else(|| displayed.clone());
 
-		RingBufferRowInterceptor::post_delete(self, ringbuffer, id, &deleted_row)?;
+		if committed.is_some() {
+			self.mark_preexisting(&key)?;
+		}
+		self.unset(&key, pre_for_cdc.clone())?;
 
-		self.track_flow_change(build_ringbuffer_remove_change(ringbuffer, id, &deleted_row));
+		let pre_rows = [pre_for_cdc.clone()];
+		RingBufferRowInterceptor::post_delete(self, ringbuffer, &ids, &pre_rows)?;
 
-		Ok(deleted_row)
+		self.track_flow_change(build_ringbuffer_remove_change(ringbuffer, id, &pre_for_cdc));
+
+		Ok(displayed)
 	}
 }
 
@@ -203,15 +206,21 @@ impl RingBufferOperations for AdminTransaction {
 		let pre = self.get(&key)?.map(|v| v.row);
 
 		if let Some(ref existing) = pre {
-			RingBufferRowInterceptor::pre_delete(self, ringbuffer, row_number)?;
-			RingBufferRowInterceptor::post_delete(self, ringbuffer, row_number, existing)?;
+			let ids = [row_number];
+			let existing_rows = [existing.clone()];
+			RingBufferRowInterceptor::pre_delete(self, ringbuffer, &ids)?;
+			RingBufferRowInterceptor::post_delete(self, ringbuffer, &ids, &existing_rows)?;
 		}
 
-		let row = RingBufferRowInterceptor::pre_insert(self, ringbuffer, row)?;
+		let mut rows_buf = [row];
+		RingBufferRowInterceptor::pre_insert(self, ringbuffer, &mut rows_buf)?;
+		let [row] = rows_buf;
 
 		self.set(&key, row.clone())?;
 
-		RingBufferRowInterceptor::post_insert(self, ringbuffer, row_number, &row)?;
+		let ids = [row_number];
+		let rows = [row.clone()];
+		RingBufferRowInterceptor::post_insert(self, ringbuffer, &ids, &rows)?;
 
 		if let Some(pre_row) = pre.as_ref() {
 			self.track_flow_change(build_ringbuffer_update_change(ringbuffer, row_number, pre_row, &row));
@@ -225,16 +234,26 @@ impl RingBufferOperations for AdminTransaction {
 	fn update_ringbuffer(&mut self, ringbuffer: RingBuffer, id: RowNumber, row: EncodedRow) -> Result<EncodedRow> {
 		let key = RowKey::encoded(ringbuffer.id, id);
 
-		let pre = self.get(&key)?.map(|v| v.row);
+		let pre = match self.get(&key)? {
+			Some(v) => v.row,
+			None => return Ok(row),
+		};
 
-		let row = RingBufferRowInterceptor::pre_update(self, &ringbuffer, id, row)?;
+		let mut rows_buf = [row];
+		let ids = [id];
+		RingBufferRowInterceptor::pre_update(self, &ringbuffer, &ids, &mut rows_buf)?;
+		let [row] = rows_buf;
 
+		if self.get_committed(&key)?.is_some() {
+			self.mark_preexisting(&key)?;
+		}
 		self.set(&key, row.clone())?;
 
-		if let Some(ref pre) = pre {
-			RingBufferRowInterceptor::post_update(self, &ringbuffer, id, &row, pre)?;
-			self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, pre, &row));
-		}
+		let posts = [row.clone()];
+		let pres = [pre.clone()];
+		RingBufferRowInterceptor::post_update(self, &ringbuffer, &ids, &posts, &pres)?;
+
+		self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, &pre, &row));
 
 		Ok(row)
 	}
@@ -242,20 +261,28 @@ impl RingBufferOperations for AdminTransaction {
 	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBuffer, id: RowNumber) -> Result<EncodedRow> {
 		let key = RowKey::encoded(ringbuffer.id, id);
 
-		let deleted_row = match self.get(&key)? {
+		let displayed = match self.get(&key)? {
 			Some(v) => v.row,
 			None => return Ok(EncodedRow(CowVec::new(vec![]))),
 		};
+		let committed = self.get_committed(&key)?.map(|v| v.row);
 
-		RingBufferRowInterceptor::pre_delete(self, ringbuffer, id)?;
+		let ids = [id];
+		RingBufferRowInterceptor::pre_delete(self, ringbuffer, &ids)?;
 
-		self.unset(&key, deleted_row.clone())?;
+		let pre_for_cdc = committed.clone().unwrap_or_else(|| displayed.clone());
 
-		RingBufferRowInterceptor::post_delete(self, ringbuffer, id, &deleted_row)?;
+		if committed.is_some() {
+			self.mark_preexisting(&key)?;
+		}
+		self.unset(&key, pre_for_cdc.clone())?;
 
-		self.track_flow_change(build_ringbuffer_remove_change(ringbuffer, id, &deleted_row));
+		let pre_rows = [pre_for_cdc.clone()];
+		RingBufferRowInterceptor::post_delete(self, ringbuffer, &ids, &pre_rows)?;
 
-		Ok(deleted_row)
+		self.track_flow_change(build_ringbuffer_remove_change(ringbuffer, id, &pre_for_cdc));
+
+		Ok(displayed)
 	}
 }
 
@@ -276,9 +303,6 @@ impl RingBufferOperations for Transaction<'_> {
 		match self {
 			Transaction::Command(txn) => txn.insert_ringbuffer_at(ringbuffer, shape, row_number, row),
 			Transaction::Admin(txn) => txn.insert_ringbuffer_at(ringbuffer, shape, row_number, row),
-			Transaction::Subscription(txn) => {
-				txn.as_admin_mut().insert_ringbuffer_at(ringbuffer, shape, row_number, row)
-			}
 			Transaction::Test(t) => t.inner.insert_ringbuffer_at(ringbuffer, shape, row_number, row),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),
@@ -289,7 +313,6 @@ impl RingBufferOperations for Transaction<'_> {
 		match self {
 			Transaction::Command(txn) => txn.update_ringbuffer(ringbuffer, id, row),
 			Transaction::Admin(txn) => txn.update_ringbuffer(ringbuffer, id, row),
-			Transaction::Subscription(txn) => txn.as_admin_mut().update_ringbuffer(ringbuffer, id, row),
 			Transaction::Test(t) => t.inner.update_ringbuffer(ringbuffer, id, row),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),
@@ -300,7 +323,6 @@ impl RingBufferOperations for Transaction<'_> {
 		match self {
 			Transaction::Command(txn) => txn.remove_from_ringbuffer(ringbuffer, id),
 			Transaction::Admin(txn) => txn.remove_from_ringbuffer(ringbuffer, id),
-			Transaction::Subscription(txn) => txn.as_admin_mut().remove_from_ringbuffer(ringbuffer, id),
 			Transaction::Test(t) => t.inner.remove_from_ringbuffer(ringbuffer, id),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),

@@ -60,7 +60,7 @@ impl Runner for CatalogRunner {
 				args.reject_rest()?;
 
 				let txn = self.primary_txn();
-				txn.rql(&rql, Params::None)?;
+				txn.rql(&rql, Params::None).check()?;
 			}
 
 			"replicate" => {
@@ -96,8 +96,8 @@ impl Runner for CatalogRunner {
 				let rql = args.next_pos().ok_or("query requires an RQL string")?.value.clone();
 				args.reject_rest()?;
 
-				let frames = self.replica.query_as(IdentityId::system(), &rql, Params::None)?;
-				for frame in &frames {
+				let result = self.replica.query_as(IdentityId::system(), &rql, Params::None).check()?;
+				for frame in result.iter() {
 					write!(output, "{}", frame)?;
 				}
 			}
@@ -110,7 +110,7 @@ impl Runner for CatalogRunner {
 }
 
 fn deltas_to_system_changes(txn: &AdminTransaction) -> Vec<SystemChange> {
-	// Clone and consume in insertion order — this preserves the order the primary
+	// Clone and consume in insertion order - this preserves the order the primary
 	// wrote entries, which matters because e.g. column entries must exist before
 	// table appliers try to list them.
 	txn.pending_writes()
@@ -138,7 +138,7 @@ fn deltas_to_system_changes(txn: &AdminTransaction) -> Vec<SystemChange> {
 				pre: None,
 			}),
 			Delta::Drop {
-				..
+				key: _,
 			} => None,
 		})
 		.collect()

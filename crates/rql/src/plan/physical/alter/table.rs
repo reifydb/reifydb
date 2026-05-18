@@ -30,7 +30,7 @@ impl<'bump> Compiler<'bump> {
 				let interned = self.interner.intern_fragment(n);
 				interned.with_text(&ns_name)
 			} else {
-				Fragment::internal("default".to_string())
+				Fragment::internal("default")
 			};
 			return_error!(namespace_not_found(ns_fragment, &ns_name));
 		};
@@ -39,7 +39,7 @@ impl<'bump> Compiler<'bump> {
 			let interned = self.interner.intern_fragment(n);
 			interned.with_text(namespace.name())
 		} else {
-			Fragment::internal(namespace.name().to_string())
+			Fragment::internal(namespace.name())
 		};
 		let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
 

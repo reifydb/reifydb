@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! UUID and identity edge case tests for the encoded encoding system
-
 use std::collections::HashSet;
 
 use reifydb_core::encoded::shape::RowShape;

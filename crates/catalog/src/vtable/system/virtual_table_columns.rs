@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -17,9 +17,8 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext, VTableRegistry},
 };
 
-/// Virtual table that exposes column information for all virtual tables
 pub struct SystemVirtualTableColumns {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	pub(crate) catalog: Catalog,
 	exhausted: bool,
 }
@@ -27,7 +26,7 @@ pub struct SystemVirtualTableColumns {
 impl SystemVirtualTableColumns {
 	pub fn new(catalog: Catalog) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_virtual_table_columns_table().clone(),
+			vtable: SystemCatalog::get_system_virtual_table_columns_table().clone(),
 			catalog,
 			exhausted: false,
 		}
@@ -51,7 +50,6 @@ impl BaseVTable for SystemVirtualTableColumns {
 		let mut types = Vec::new();
 		let mut positions = Vec::new();
 
-		// Add columns from system virtual tables
 		for vtable in VTableRegistry::list_vtables(txn)? {
 			for col in &vtable.columns {
 				column_ids.push(col.id.0);
@@ -62,7 +60,6 @@ impl BaseVTable for SystemVirtualTableColumns {
 			}
 		}
 
-		// Add columns from user-defined virtual tables
 		for vtable in self.catalog.list_user_vtables() {
 			for col in &vtable.columns {
 				column_ids.push(col.id.0);
@@ -74,26 +71,11 @@ impl BaseVTable for SystemVirtualTableColumns {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: ColumnData::uint8(column_ids),
-			},
-			Column {
-				name: Fragment::internal("vtable_id"),
-				data: ColumnData::uint8(vtable_ids),
-			},
-			Column {
-				name: Fragment::internal("name"),
-				data: ColumnData::utf8(names),
-			},
-			Column {
-				name: Fragment::internal("type"),
-				data: ColumnData::uint1(types),
-			},
-			Column {
-				name: Fragment::internal("position"),
-				data: ColumnData::uint1(positions),
-			},
+			ColumnWithName::new(Fragment::internal("id"), ColumnBuffer::uint8(column_ids)),
+			ColumnWithName::new(Fragment::internal("vtable_id"), ColumnBuffer::uint8(vtable_ids)),
+			ColumnWithName::new(Fragment::internal("name"), ColumnBuffer::utf8(names)),
+			ColumnWithName::new(Fragment::internal("type"), ColumnBuffer::uint1(types)),
+			ColumnWithName::new(Fragment::internal("position"), ColumnBuffer::uint1(positions)),
 		];
 
 		self.exhausted = true;
@@ -102,7 +84,7 @@ impl BaseVTable for SystemVirtualTableColumns {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

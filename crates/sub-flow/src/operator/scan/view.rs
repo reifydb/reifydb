@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::Arc;
+
+use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 use reifydb_core::{
-	encoded::shape::RowShape,
 	interface::{
 		catalog::{flow::FlowNodeId, view::View},
 		change::{Change, Diff},
 	},
-	key::row::RowKey,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::columns::Columns,
 };
-use reifydb_type::{Result, fragment::Fragment, util::cowvec::CowVec, value::row_number::RowNumber};
+use reifydb_type::Result;
 
 use crate::{Operator, operator::sink::decode_dictionary_columns, transaction::FlowTransaction};
 
@@ -33,83 +34,49 @@ impl Operator for PrimitiveViewOperator {
 		self.node
 	}
 
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD
+	}
+
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let mut decoded_diffs = Vec::with_capacity(change.diffs.len());
 		for diff in change.diffs {
 			decoded_diffs.push(match diff {
 				Diff::Insert {
 					post,
+					..
 				} => {
 					let mut decoded = post;
-					decode_dictionary_columns(&mut decoded, txn)?;
-					Diff::Insert {
-						post: decoded,
-					}
+					decode_dictionary_columns(Arc::make_mut(&mut decoded), txn)?;
+					Diff::insert_arc(decoded)
 				}
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => {
 					let mut decoded_pre = pre;
 					let mut decoded_post = post;
-					decode_dictionary_columns(&mut decoded_pre, txn)?;
-					decode_dictionary_columns(&mut decoded_post, txn)?;
-					Diff::Update {
-						pre: decoded_pre,
-						post: decoded_post,
-					}
+					decode_dictionary_columns(Arc::make_mut(&mut decoded_pre), txn)?;
+					decode_dictionary_columns(Arc::make_mut(&mut decoded_post), txn)?;
+					Diff::update_arc(decoded_pre, decoded_post)
 				}
 				Diff::Remove {
 					pre,
+					..
 				} => {
 					let mut decoded = pre;
-					decode_dictionary_columns(&mut decoded, txn)?;
-					Diff::Remove {
-						pre: decoded,
-					}
+					decode_dictionary_columns(Arc::make_mut(&mut decoded), txn)?;
+					Diff::remove_arc(decoded)
 				}
 			});
 		}
-		Ok(Change::from_flow(self.node, change.version, decoded_diffs))
+		Ok(Change::from_flow(self.node, change.version, decoded_diffs, change.changed_at))
 	}
+}
 
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
-		if rows.is_empty() {
-			return Ok(Columns::from_view(&self.view));
-		}
-
-		let shape: RowShape = self.view.columns().into();
-		let fields = shape.fields();
-
-		// Pre-allocate columns with capacity
-		let mut columns_vec: Vec<Column> = Vec::with_capacity(fields.len());
-		for field in fields.iter() {
-			columns_vec.push(Column {
-				name: Fragment::internal(&field.name),
-				data: ColumnData::with_capacity(field.constraint.get_type(), rows.len()),
-			});
-		}
-		let mut row_numbers = Vec::with_capacity(rows.len());
-
-		for row_num in rows {
-			let key = RowKey::encoded(self.view.underlying_id(), *row_num);
-			if let Some(encoded) = txn.get(&key)? {
-				row_numbers.push(*row_num);
-				// Decode each column value directly
-				for (i, _field) in fields.iter().enumerate() {
-					let value = shape.get_value(&encoded, i);
-					columns_vec[i].data.push_value(value);
-				}
-			}
-		}
-
-		if row_numbers.is_empty() {
-			Ok(Columns::from_view(&self.view))
-		} else {
-			Ok(Columns {
-				row_numbers: CowVec::new(row_numbers),
-				columns: CowVec::new(columns_vec),
-			})
-		}
+impl PrimitiveViewOperator {
+	pub fn output_schema(&self) -> Columns {
+		Columns::from_catalog_columns(self.view.columns())
 	}
 }

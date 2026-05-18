@@ -1,23 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{ops::Deref, sync::Arc};
+use std::{ops::Deref, result::Result as StdResult, sync::Arc, time::Duration};
 
 use bumpalo::Bump;
 use reifydb_catalog::{catalog::Catalog, vtable::system::flow_operator_store::SystemFlowOperatorStore};
-use reifydb_core::{error::diagnostic::subscription, value::column::columns::Columns};
-use reifydb_metric::metric::MetricReader;
-use reifydb_policy::inject_read_policies;
+use reifydb_core::{
+	error::diagnostic::subscription,
+	execution::ExecutionResult,
+	interface::catalog::policy::SessionOp,
+	metric::{ExecutionMetrics, StatementMetric},
+	value::column::columns::Columns,
+};
+use reifydb_metric::storage::metric::MetricReader;
+use reifydb_policy::inject_from_policies;
 use reifydb_rql::{
 	ast::parse_str,
-	compiler::{CompilationResult, Compiled, constrain_policy},
+	compiler::{CompilationResult, Compiled, IncrementalCompilation, constrain_policy},
+	fingerprint::request::fingerprint_request,
 };
+use reifydb_runtime::context::clock::Instant;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::{
 	RqlExecutor, TestTransaction, Transaction, admin::AdminTransaction, command::CommandTransaction,
-	query::QueryTransaction, subscription::SubscriptionTransaction,
+	query::QueryTransaction,
 };
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(reifydb_single_threaded))]
 use reifydb_type::error::Diagnostic;
 use reifydb_type::{
 	error::Error,
@@ -26,7 +34,7 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(reifydb_single_threaded))]
 use crate::remote;
 use crate::{
 	Result,
@@ -39,7 +47,6 @@ use crate::{
 	},
 };
 
-/// Executor is the orchestration layer for RQL statement execution.
 pub struct Executor(Arc<Services>);
 
 impl Clone for Executor {
@@ -66,12 +73,10 @@ impl Executor {
 		Self(Arc::new(Services::new(catalog, config, flow_operator_store, stats_reader)))
 	}
 
-	/// Get a reference to the underlying Services
 	pub fn services(&self) -> &Arc<Services> {
 		&self.0
 	}
 
-	/// Construct an Executor from an existing `Arc<Services>`.
 	pub fn from_services(services: Arc<Services>) -> Self {
 		Self(services)
 	}
@@ -81,9 +86,7 @@ impl Executor {
 		Self(Services::testing())
 	}
 
-	/// If the error is a REMOTE_001 and we have a RemoteRegistry, forward the query.
-	/// Returns `Ok(Some(frames))` if forwarded, `Ok(None)` if not a remote query.
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(not(reifydb_single_threaded))]
 	fn try_forward_remote_query(&self, err: &Error, rql: &str, params: Params) -> Result<Option<Vec<Frame>>> {
 		if let Some(ref registry) = self.0.remote_registry
 			&& remote::is_remote_query(err)
@@ -97,12 +100,11 @@ impl Executor {
 }
 
 impl RqlExecutor for Executor {
-	fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> Result<Vec<Frame>> {
+	fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> ExecutionResult {
 		Executor::rql(self, tx, rql, params)
 	}
 }
 
-/// Populate a stack with parameters so they can be accessed as variables.
 fn populate_symbols(symbols: &mut SymbolTable, params: &Params) -> Result<()> {
 	match params {
 		Params::Positional(values) => {
@@ -121,8 +123,6 @@ fn populate_symbols(symbols: &mut SymbolTable, params: &Params) -> Result<()> {
 	Ok(())
 }
 
-/// Populate the `$identity` variable in the symbol table so policy bodies
-/// (and user RQL) can reference `$identity.id`, `$identity.name`, and `$identity.roles`.
 fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Transaction<'_>) -> Result<()> {
 	let identity = tx.identity();
 	if identity.is_privileged() {
@@ -134,7 +134,7 @@ fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Tran
 			("name", Value::none_of(Type::Utf8)),
 			("roles", Value::List(vec![])),
 		]);
-		symbols.set("identity".to_string(), Variable::Columns(columns), false)?;
+		symbols.set("identity".to_string(), Variable::columns(columns), false)?;
 		return Ok(());
 	}
 	if let Some(user) = catalog.find_identity(tx, identity)? {
@@ -145,45 +145,144 @@ fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Tran
 			("name", Value::Utf8(user.name)),
 			("roles", Value::List(role_values)),
 		]);
-		symbols.set("identity".to_string(), Variable::Columns(columns), false)?;
+		symbols.set("identity".to_string(), Variable::columns(columns), false)?;
 	}
 	Ok(())
 }
 
-/// Execute a list of compiled units, tracking output frames separately.
-/// Returns (output_results, last_result, final_symbols).
+type CompiledUnitsResult = (Vec<Frame>, Vec<Frame>, SymbolTable, Vec<StatementMetric>);
+
+struct ExecutionFailure {
+	error: Error,
+	partial_metrics: Vec<StatementMetric>,
+}
+
+fn build_metrics(statements: Vec<StatementMetric>) -> ExecutionMetrics {
+	let fps: Vec<_> = statements.iter().map(|m| m.fingerprint).collect();
+	ExecutionMetrics {
+		fingerprint: fingerprint_request(&fps),
+		statements,
+		..Default::default()
+	}
+}
+
+struct RunUnitOutcome {
+	symbols: SymbolTable,
+	run_result: Result<()>,
+	execute_duration_us: u64,
+}
+
+#[instrument(
+	name = "vm::run",
+	level = "debug",
+	skip_all,
+	fields(fingerprint = ?compiled.fingerprint, instr_count = compiled.instructions.len()),
+)]
+fn run_compiled_unit(
+	services: &Arc<Services>,
+	tx: &mut Transaction<'_>,
+	compiled: &Compiled,
+	params: &Params,
+	symbols: SymbolTable,
+	result: &mut Vec<Frame>,
+) -> RunUnitOutcome {
+	let mut vm = Vm::from_services(symbols, services, params, tx.identity());
+	let start = services.runtime_context.clock.instant();
+	let run_result = vm.run(services, tx, &compiled.instructions, result);
+	let execute_duration = start.elapsed();
+	RunUnitOutcome {
+		symbols: vm.symbols,
+		run_result,
+		execute_duration_us: execute_duration.as_micros() as u64,
+	}
+}
+
+#[instrument(
+	name = "executor::execute_units",
+	level = "debug",
+	skip_all,
+	fields(unit_count = compiled_list.len()),
+)]
 fn execute_compiled_units(
 	services: &Arc<Services>,
 	tx: &mut Transaction<'_>,
 	compiled_list: &[Compiled],
 	params: &Params,
 	mut symbols: SymbolTable,
-) -> Result<(Vec<Frame>, Vec<Frame>, SymbolTable)> {
+	compile_duration: Duration,
+) -> StdResult<CompiledUnitsResult, ExecutionFailure> {
+	let compile_duration_us = compile_duration.as_micros() as u64 / compiled_list.len().max(1) as u64;
 	let mut result = vec![];
 	let mut output_results: Vec<Frame> = Vec::new();
+	let mut metrics = Vec::new();
 
 	for compiled in compiled_list.iter() {
 		result.clear();
-		let mut vm = Vm::new(symbols);
-		vm.run(services, tx, &compiled.instructions, params, &mut result)?;
-		symbols = vm.symbols;
+		let outcome = run_compiled_unit(services, tx, compiled, params, symbols, &mut result);
+		symbols = outcome.symbols;
+
+		metrics.push(StatementMetric {
+			fingerprint: compiled.fingerprint,
+			normalized_rql: compiled.normalized_rql.clone(),
+			compile_duration_us,
+			execute_duration_us: outcome.execute_duration_us,
+			rows_affected: if outcome.run_result.is_ok() {
+				extract_rows_affected(&result)
+			} else {
+				0
+			},
+		});
+
+		if let Err(error) = outcome.run_result {
+			return Err(ExecutionFailure {
+				error,
+				partial_metrics: metrics,
+			});
+		}
 
 		if compiled.is_output {
 			output_results.append(&mut result);
 		}
 	}
 
-	Ok((output_results, result, symbols))
+	Ok((output_results, result, symbols, metrics))
 }
 
-/// Merge output_results and remaining results into the final result.
 fn merge_results(mut output_results: Vec<Frame>, mut remaining: Vec<Frame>) -> Vec<Frame> {
 	output_results.append(&mut remaining);
 	output_results
 }
 
+#[inline]
+fn error_result(error: Error, metrics: ExecutionMetrics) -> ExecutionResult {
+	ExecutionResult {
+		frames: vec![],
+		error: Some(error),
+		metrics,
+	}
+}
+
+fn extract_rows_affected(result: &[Frame]) -> u64 {
+	if result.len() == 1 {
+		let frame = &result[0];
+		for col in &frame.columns {
+			match col.name.as_str() {
+				"inserted" | "updated" | "deleted" => {
+					if col.data.len() == 1
+						&& let Value::Uint8(n) = col.data.get_value(0)
+					{
+						return n;
+					}
+				}
+				_ => {}
+			}
+		}
+	}
+	result.len() as u64
+}
+
 impl Executor {
-	/// Shared setup: create symbols and populate with params + identity.
+	#[instrument(name = "executor::setup_symbols", level = "debug", skip_all)]
 	fn setup_symbols(&self, params: &Params, tx: &mut Transaction<'_>) -> Result<SymbolTable> {
 		let mut symbols = SymbolTable::new();
 		populate_symbols(&mut symbols, params)?;
@@ -191,303 +290,679 @@ impl Executor {
 		Ok(symbols)
 	}
 
-	/// Execute RQL against an existing open transaction.
-	///
-	/// This is the universal RQL execution interface: it compiles and runs
-	/// arbitrary RQL within whatever transaction variant the caller provides.
-	#[instrument(name = "executor::rql", level = "debug", skip(self, tx, params), fields(rql = %rql))]
-	pub fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> Result<Vec<Frame>> {
-		let mut symbols = self.setup_symbols(&params, tx)?;
+	#[instrument(name = "executor::compile", level = "debug", skip(self, tx), fields(rql = %rql))]
+	fn compile_query(&self, tx: &mut Transaction<'_>, rql: &str) -> Result<CompilationResult> {
+		self.compiler.compile_with_policy(tx, rql, inject_from_policies)
+	}
 
-		let compiled = match self.compiler.compile_with_policy(tx, rql, inject_read_policies) {
+	#[instrument(name = "executor::rql", level = "debug", skip(self, tx, params), fields(rql = %rql))]
+	pub fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> ExecutionResult {
+		let mut symbols = match self.setup_symbols(&params, tx) {
+			Ok(s) => s,
+			Err(e) => {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
+
+		let start_compile = self.0.runtime_context.clock.instant();
+		let compiled_list = match self.compile_query(tx, rql) {
 			Ok(CompilationResult::Ready(compiled)) => compiled,
 			Ok(CompilationResult::Incremental(_)) => {
 				unreachable!("incremental compilation not supported in rql()")
 			}
 			Err(err) => {
-				#[cfg(not(target_arch = "wasm32"))]
-				if let Some(frames) = self.try_forward_remote_query(&err, rql, params)? {
-					return Ok(frames);
+				#[cfg(not(reifydb_single_threaded))]
+				if let Ok(Some(frames)) = self.try_forward_remote_query(&err, rql, params) {
+					return ExecutionResult {
+						frames,
+						error: None,
+						metrics: ExecutionMetrics::default(),
+					};
 				}
-				return Err(err);
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(err),
+					metrics: ExecutionMetrics::default(),
+				};
 			}
 		};
+		let compile_duration = start_compile.elapsed();
+		let compile_duration_us = compile_duration.as_micros() as u64 / compiled_list.len().max(1) as u64;
 
 		let mut result = vec![];
-		for compiled in compiled.iter() {
+		let mut metrics = Vec::new();
+		for compiled in compiled_list.iter() {
 			result.clear();
-			let mut vm = Vm::new(symbols);
-			vm.run(&self.0, tx, &compiled.instructions, &params, &mut result)?;
-			symbols = vm.symbols;
+			let outcome = run_compiled_unit(&self.0, tx, compiled, &params, symbols, &mut result);
+			symbols = outcome.symbols;
+
+			metrics.push(StatementMetric {
+				fingerprint: compiled.fingerprint,
+				normalized_rql: compiled.normalized_rql.clone(),
+				compile_duration_us,
+				execute_duration_us: outcome.execute_duration_us,
+				rows_affected: if outcome.run_result.is_ok() {
+					extract_rows_affected(&result)
+				} else {
+					0
+				},
+			});
+
+			if let Err(e) = outcome.run_result {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: build_metrics(metrics),
+				};
+			}
 		}
 
-		Ok(result)
+		ExecutionResult {
+			frames: result,
+			error: None,
+			metrics: build_metrics(metrics),
+		}
 	}
 
 	#[instrument(name = "executor::admin", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
-	pub fn admin(&self, txn: &mut AdminTransaction, cmd: Admin<'_>) -> Result<Vec<Frame>> {
-		let symbols = self.setup_symbols(&cmd.params, &mut Transaction::Admin(&mut *txn))?;
-
-		PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
-			&mut Transaction::Admin(&mut *txn),
-			"admin",
-			true,
-		)?;
-
-		match self.compiler.compile_with_policy(&mut Transaction::Admin(txn), cmd.rql, inject_read_policies) {
-			Err(err) => {
-				#[cfg(not(target_arch = "wasm32"))]
-				if let Some(frames) = self.try_forward_remote_query(&err, cmd.rql, cmd.params)? {
-					return Ok(frames);
-				}
-				Err(err)
-			}
+	pub fn admin(&self, txn: &mut AdminTransaction, cmd: Admin<'_>) -> ExecutionResult {
+		let symbols = match self.setup_symbols(&cmd.params, &mut Transaction::Admin(&mut *txn)) {
+			Ok(s) => s,
+			Err(e) => return error_result(e, ExecutionMetrics::default()),
+		};
+		if let Err(e) = self.enforce_admin_policy(&symbols, txn) {
+			return error_result(e, ExecutionMetrics::default());
+		}
+		let start_compile = self.0.runtime_context.clock.instant();
+		match self.compile_query(&mut Transaction::Admin(txn), cmd.rql) {
+			Err(err) => self.handle_admin_compile_error(err, cmd.rql, cmd.params),
 			Ok(CompilationResult::Ready(compiled)) => {
-				let (output, remaining, _) = execute_compiled_units(
-					&self.0,
-					&mut Transaction::Admin(txn),
-					&compiled,
-					&cmd.params,
-					symbols,
-				)?;
-				Ok(merge_results(output, remaining))
+				self.execute_admin_ready(txn, compiled, &cmd.params, symbols, start_compile)
 			}
-			Ok(CompilationResult::Incremental(mut state)) => {
-				let policy = constrain_policy(|plans, bump, cat, tx| {
-					inject_read_policies(plans, bump, cat, tx)
-				});
-				let mut result = vec![];
-				let mut output_results: Vec<Frame> = Vec::new();
-				let mut symbols = symbols;
-				while let Some(compiled) = self.compiler.compile_next_with_policy(
-					&mut Transaction::Admin(txn),
-					&mut state,
-					&policy,
-				)? {
-					result.clear();
-					let mut tx = Transaction::Admin(txn);
-					let mut vm = Vm::new(symbols);
-					vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
-					symbols = vm.symbols;
-					if compiled.is_output {
-						output_results.append(&mut result);
-					}
-				}
-				Ok(merge_results(output_results, result))
+			Ok(CompilationResult::Incremental(state)) => {
+				self.execute_admin_incremental(txn, state, &cmd.params, symbols)
 			}
+		}
+	}
+
+	#[inline]
+	fn enforce_admin_policy(&self, symbols: &SymbolTable, txn: &mut AdminTransaction) -> Result<()> {
+		PolicyEvaluator::new(&self.0, symbols).enforce_session_policy(
+			&mut Transaction::Admin(txn),
+			SessionOp::Admin,
+			true,
+		)
+	}
+
+	#[inline]
+	#[cfg_attr(reifydb_single_threaded, allow(unused_variables))]
+	fn handle_admin_compile_error(&self, err: Error, rql: &str, params: Params) -> ExecutionResult {
+		#[cfg(not(reifydb_single_threaded))]
+		if let Ok(Some(frames)) = self.try_forward_remote_query(&err, rql, params) {
+			return ExecutionResult {
+				frames,
+				error: None,
+				metrics: ExecutionMetrics::default(),
+			};
+		}
+		error_result(err, ExecutionMetrics::default())
+	}
+
+	#[inline]
+	fn execute_admin_ready(
+		&self,
+		txn: &mut AdminTransaction,
+		compiled: Arc<Vec<Compiled>>,
+		params: &Params,
+		symbols: SymbolTable,
+		start_compile: Instant,
+	) -> ExecutionResult {
+		let compile_duration = start_compile.elapsed();
+		match execute_compiled_units(
+			&self.0,
+			&mut Transaction::Admin(txn),
+			&compiled,
+			params,
+			symbols,
+			compile_duration,
+		) {
+			Ok((output, remaining, _, metrics)) => ExecutionResult {
+				frames: merge_results(output, remaining),
+				error: None,
+				metrics: build_metrics(metrics),
+			},
+			Err(f) => ExecutionResult {
+				frames: vec![],
+				error: Some(f.error),
+				metrics: build_metrics(f.partial_metrics),
+			},
+		}
+	}
+
+	fn execute_admin_incremental(
+		&self,
+		txn: &mut AdminTransaction,
+		mut state: IncrementalCompilation,
+		params: &Params,
+		symbols: SymbolTable,
+	) -> ExecutionResult {
+		let policy = constrain_policy(inject_from_policies);
+		let mut result = vec![];
+		let mut output_results: Vec<Frame> = Vec::new();
+		let mut symbols = symbols;
+		let mut metrics = Vec::new();
+		loop {
+			let start_incr = self.0.runtime_context.clock.instant();
+			let next = match self.compiler.compile_next_with_policy(
+				&mut Transaction::Admin(txn),
+				&mut state,
+				&policy,
+			) {
+				Ok(n) => n,
+				Err(e) => return error_result(e, build_metrics(metrics)),
+			};
+			let compile_duration = start_incr.elapsed();
+
+			let Some(compiled) = next else {
+				break;
+			};
+
+			result.clear();
+			let mut tx = Transaction::Admin(txn);
+			let mut vm = Vm::from_services(symbols, &self.0, params, tx.identity());
+			let start_execute = self.0.runtime_context.clock.instant();
+			let run_result = vm.run(&self.0, &mut tx, &compiled.instructions, &mut result);
+			let execute_duration = start_execute.elapsed();
+			symbols = vm.symbols;
+
+			metrics.push(StatementMetric {
+				fingerprint: compiled.fingerprint,
+				normalized_rql: compiled.normalized_rql,
+				compile_duration_us: compile_duration.as_micros() as u64,
+				execute_duration_us: execute_duration.as_micros() as u64,
+				rows_affected: if run_result.is_ok() {
+					extract_rows_affected(&result)
+				} else {
+					0
+				},
+			});
+
+			if let Err(e) = run_result {
+				return error_result(e, build_metrics(metrics));
+			}
+
+			if compiled.is_output {
+				output_results.append(&mut result);
+			}
+		}
+		ExecutionResult {
+			frames: merge_results(output_results, result),
+			error: None,
+			metrics: build_metrics(metrics),
 		}
 	}
 
 	#[instrument(name = "executor::test", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
-	pub fn test(&self, txn: &mut TestTransaction<'_>, cmd: Test<'_>) -> Result<Vec<Frame>> {
-		let symbols = self.setup_symbols(&cmd.params, &mut Transaction::Test(Box::new(txn.reborrow())))?;
+	pub fn test(&self, txn: &mut TestTransaction<'_>, cmd: Test<'_>) -> ExecutionResult {
+		let symbols = match self.setup_symbols(&cmd.params, &mut Transaction::Test(Box::new(txn.reborrow()))) {
+			Ok(s) => s,
+			Err(e) => {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
 
-		let session_type = txn.session_type.clone();
+		let session_type = txn.session_type;
 		let session_default_deny = txn.session_default_deny;
-		PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
+		if let Err(e) = PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
 			&mut Transaction::Test(Box::new(txn.reborrow())),
-			&session_type,
+			session_type,
 			session_default_deny,
-		)?;
+		) {
+			return ExecutionResult {
+				frames: vec![],
+				error: Some(e),
+				metrics: ExecutionMetrics::default(),
+			};
+		}
 
+		let start_compile = self.0.runtime_context.clock.instant();
 		match self.compiler.compile_with_policy(
 			&mut Transaction::Test(Box::new(txn.reborrow())),
 			cmd.rql,
-			inject_read_policies,
+			inject_from_policies,
 		) {
 			Err(err) => {
-				#[cfg(not(target_arch = "wasm32"))]
-				if let Some(frames) = self.try_forward_remote_query(&err, cmd.rql, cmd.params)? {
-					return Ok(frames);
+				#[cfg(not(reifydb_single_threaded))]
+				if let Ok(Some(frames)) = self.try_forward_remote_query(&err, cmd.rql, cmd.params) {
+					return ExecutionResult {
+						frames,
+						error: None,
+						metrics: ExecutionMetrics::default(),
+					};
 				}
-				Err(err)
+				ExecutionResult {
+					frames: vec![],
+					error: Some(err),
+					metrics: ExecutionMetrics::default(),
+				}
 			}
 			Ok(CompilationResult::Ready(compiled)) => {
-				let (output, remaining, _) = execute_compiled_units(
+				let compile_duration = start_compile.elapsed();
+				match execute_compiled_units(
 					&self.0,
 					&mut Transaction::Test(Box::new(txn.reborrow())),
 					&compiled,
 					&cmd.params,
 					symbols,
-				)?;
-				Ok(merge_results(output, remaining))
+					compile_duration,
+				) {
+					Ok((output, remaining, _, metrics)) => ExecutionResult {
+						frames: merge_results(output, remaining),
+						error: None,
+						metrics: build_metrics(metrics),
+					},
+					Err(f) => ExecutionResult {
+						frames: vec![],
+						error: Some(f.error),
+						metrics: build_metrics(f.partial_metrics),
+					},
+				}
 			}
 			Ok(CompilationResult::Incremental(mut state)) => {
 				let policy = constrain_policy(|plans, bump, cat, tx| {
-					inject_read_policies(plans, bump, cat, tx)
+					inject_from_policies(plans, bump, cat, tx)
 				});
 				let mut result = vec![];
 				let mut output_results: Vec<Frame> = Vec::new();
 				let mut symbols = symbols;
-				while let Some(compiled) = self.compiler.compile_next_with_policy(
-					&mut Transaction::Test(Box::new(txn.reborrow())),
-					&mut state,
-					&policy,
-				)? {
+				let mut metrics = Vec::new();
+				loop {
+					let start_incr = self.0.runtime_context.clock.instant();
+					let next = match self.compiler.compile_next_with_policy(
+						&mut Transaction::Test(Box::new(txn.reborrow())),
+						&mut state,
+						&policy,
+					) {
+						Ok(n) => n,
+						Err(e) => {
+							return ExecutionResult {
+								frames: vec![],
+								error: Some(e),
+								metrics: build_metrics(metrics),
+							};
+						}
+					};
+					let compile_duration = start_incr.elapsed();
+
+					let Some(compiled) = next else {
+						break;
+					};
+
 					result.clear();
 					let mut tx = Transaction::Test(Box::new(txn.reborrow()));
-					let mut vm = Vm::new(symbols);
-					vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
+					let mut vm = Vm::from_services(symbols, &self.0, &cmd.params, tx.identity());
+					let start_execute = self.0.runtime_context.clock.instant();
+					let run_result = vm.run(&self.0, &mut tx, &compiled.instructions, &mut result);
+					let execute_duration = start_execute.elapsed();
 					symbols = vm.symbols;
+
+					metrics.push(StatementMetric {
+						fingerprint: compiled.fingerprint,
+						normalized_rql: compiled.normalized_rql,
+						compile_duration_us: compile_duration.as_micros() as u64,
+						execute_duration_us: execute_duration.as_micros() as u64,
+						rows_affected: if run_result.is_ok() {
+							extract_rows_affected(&result)
+						} else {
+							0
+						},
+					});
+
+					if let Err(e) = run_result {
+						return ExecutionResult {
+							frames: vec![],
+							error: Some(e),
+							metrics: build_metrics(metrics),
+						};
+					}
+
 					if compiled.is_output {
 						output_results.append(&mut result);
 					}
 				}
-				Ok(merge_results(output_results, result))
+				ExecutionResult {
+					frames: merge_results(output_results, result),
+					error: None,
+					metrics: build_metrics(metrics),
+				}
 			}
 		}
 	}
 
 	#[instrument(name = "executor::subscription", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
-	pub fn subscription(&self, txn: &mut SubscriptionTransaction, cmd: Subscription<'_>) -> Result<Vec<Frame>> {
-		// Pre-compilation validation: parse and check statement constraints
+	pub fn subscription(&self, txn: &mut QueryTransaction, cmd: Subscription<'_>) -> ExecutionResult {
 		let bump = Bump::new();
-		let statements = parse_str(&bump, cmd.rql)?;
+		let statements = match parse_str(&bump, cmd.rql) {
+			Ok(s) => s,
+			Err(e) => {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
 
 		if statements.len() != 1 {
-			return Err(Error(Box::new(subscription::single_statement_required(
-				"Subscription endpoint requires exactly one statement",
-			))));
+			return ExecutionResult {
+				frames: vec![],
+				error: Some(Error(Box::new(subscription::single_statement_required(
+					"Subscription endpoint requires exactly one statement",
+				)))),
+				metrics: ExecutionMetrics::default(),
+			};
 		}
 
 		let statement = &statements[0];
 		if statement.nodes.len() != 1 || !statement.nodes[0].is_subscription_ddl() {
-			return Err(Error(Box::new(subscription::invalid_statement(
-				"Subscription endpoint only supports CREATE SUBSCRIPTION or DROP SUBSCRIPTION",
-			))));
+			return ExecutionResult {
+				frames: vec![],
+				error: Some(Error(Box::new(subscription::invalid_statement(
+					"Subscription endpoint only supports CREATE SUBSCRIPTION or DROP SUBSCRIPTION",
+				)))),
+				metrics: ExecutionMetrics::default(),
+			};
 		}
 
-		let symbols = self.setup_symbols(&cmd.params, &mut Transaction::Subscription(&mut *txn))?;
+		let symbols = match self.setup_symbols(&cmd.params, &mut Transaction::Query(&mut *txn)) {
+			Ok(s) => s,
+			Err(e) => {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
 
-		PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
-			&mut Transaction::Subscription(&mut *txn),
-			"subscription",
+		if let Err(e) = PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
+			&mut Transaction::Query(&mut *txn),
+			SessionOp::Subscription,
 			true,
-		)?;
+		) {
+			return ExecutionResult {
+				frames: vec![],
+				error: Some(e),
+				metrics: ExecutionMetrics::default(),
+			};
+		}
 
+		let start_compile = self.0.runtime_context.clock.instant();
 		let compiled = match self.compiler.compile_with_policy(
-			&mut Transaction::Subscription(txn),
+			&mut Transaction::Query(txn),
 			cmd.rql,
-			inject_read_policies,
+			inject_from_policies,
 		) {
 			Ok(CompilationResult::Ready(compiled)) => compiled,
 			Ok(CompilationResult::Incremental(_)) => {
 				unreachable!("Single subscription statement should not require incremental compilation")
 			}
-			Err(err) => return Err(err),
+			Err(err) => {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(err),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
 		};
+		let compile_duration = start_compile.elapsed();
 
-		let (output, remaining, _) = execute_compiled_units(
+		match execute_compiled_units(
 			&self.0,
-			&mut Transaction::Subscription(txn),
+			&mut Transaction::Query(txn),
 			&compiled,
 			&cmd.params,
 			symbols,
-		)?;
-		Ok(merge_results(output, remaining))
+			compile_duration,
+		) {
+			Ok((output, remaining, _, metrics)) => ExecutionResult {
+				frames: merge_results(output, remaining),
+				error: None,
+				metrics: build_metrics(metrics),
+			},
+			Err(f) => ExecutionResult {
+				frames: vec![],
+				error: Some(f.error),
+				metrics: build_metrics(f.partial_metrics),
+			},
+		}
 	}
 
 	#[instrument(name = "executor::command", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
-	pub fn command(&self, txn: &mut CommandTransaction, cmd: Command<'_>) -> Result<Vec<Frame>> {
-		let symbols = self.setup_symbols(&cmd.params, &mut Transaction::Command(&mut *txn))?;
+	pub fn command(&self, txn: &mut CommandTransaction, cmd: Command<'_>) -> ExecutionResult {
+		let symbols = match self.setup_symbols(&cmd.params, &mut Transaction::Command(&mut *txn)) {
+			Ok(s) => s,
+			Err(e) => {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
 
-		PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
+		if let Err(e) = PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
 			&mut Transaction::Command(&mut *txn),
-			"command",
+			SessionOp::Command,
 			false,
-		)?;
-
-		let compiled = match self.compiler.compile_with_policy(
-			&mut Transaction::Command(txn),
-			cmd.rql,
-			inject_read_policies,
 		) {
+			return ExecutionResult {
+				frames: vec![],
+				error: Some(e),
+				metrics: ExecutionMetrics::default(),
+			};
+		}
+
+		let start_compile = self.0.runtime_context.clock.instant();
+		let compiled = match self.compile_query(&mut Transaction::Command(txn), cmd.rql) {
 			Ok(CompilationResult::Ready(compiled)) => compiled,
 			Ok(CompilationResult::Incremental(_)) => {
 				unreachable!("DDL statements require admin transactions, not command transactions")
 			}
 			Err(err) => {
-				#[cfg(not(target_arch = "wasm32"))]
+				#[cfg(not(reifydb_single_threaded))]
 				if self.0.remote_registry.is_some() && remote::is_remote_query(&err) {
-					return Err(Error(Box::new(Diagnostic {
-						code: "REMOTE_002".to_string(),
-						message: "Write operations on remote namespaces are not supported"
-							.to_string(),
-						help: Some("Use the remote instance directly for write operations"
-							.to_string()),
-						..Default::default()
-					})));
+					return ExecutionResult {
+						frames: vec![],
+						error: Some(Error(Box::new(Diagnostic {
+							code: "REMOTE_002".to_string(),
+							message: "Write operations on remote namespaces are not supported"
+								.to_string(),
+							help: Some("Use the remote instance directly for write operations"
+								.to_string()),
+							..Default::default()
+						}))),
+						metrics: ExecutionMetrics::default(),
+					};
 				}
-				return Err(err);
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(err),
+					metrics: ExecutionMetrics::default(),
+				};
 			}
 		};
+		let compile_duration = start_compile.elapsed();
 
-		let (output, remaining, _) = execute_compiled_units(
+		match execute_compiled_units(
 			&self.0,
 			&mut Transaction::Command(txn),
 			&compiled,
 			&cmd.params,
 			symbols,
-		)?;
-		Ok(merge_results(output, remaining))
+			compile_duration,
+		) {
+			Ok((output, remaining, _, metrics)) => ExecutionResult {
+				frames: merge_results(output, remaining),
+				error: None,
+				metrics: build_metrics(metrics),
+			},
+			Err(f) => ExecutionResult {
+				frames: vec![],
+				error: Some(f.error),
+				metrics: build_metrics(f.partial_metrics),
+			},
+		}
 	}
 
-	/// Call a procedure by fully-qualified name (e.g., "banking.transfer_funds").
 	#[instrument(name = "executor::call_procedure", level = "debug", skip(self, txn, params), fields(name = %name))]
-	pub fn call_procedure(&self, txn: &mut CommandTransaction, name: &str, params: &Params) -> Result<Vec<Frame>> {
+	pub fn call_procedure(&self, txn: &mut CommandTransaction, name: &str, params: &Params) -> ExecutionResult {
 		let rql = format!("CALL {}()", name);
-		let symbols = self.setup_symbols(params, &mut Transaction::Command(&mut *txn))?;
-
-		let compiled = match self.compiler.compile(&mut Transaction::Command(txn), &rql)? {
-			CompilationResult::Ready(compiled) => compiled,
-			CompilationResult::Incremental(_) => {
-				unreachable!("CALL statements should not require incremental compilation")
+		let symbols = match self.setup_symbols(params, &mut Transaction::Command(&mut *txn)) {
+			Ok(s) => s,
+			Err(e) => {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
 			}
 		};
 
+		let start_compile = self.0.runtime_context.clock.instant();
+		let compiled = match self.compiler.compile(&mut Transaction::Command(txn), &rql) {
+			Ok(CompilationResult::Ready(compiled)) => compiled,
+			Ok(CompilationResult::Incremental(_)) => {
+				unreachable!("CALL statements should not require incremental compilation")
+			}
+			Err(e) => {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
+		let compile_duration = start_compile.elapsed();
+		let compile_duration_us = compile_duration.as_micros() as u64 / compiled.len().max(1) as u64;
+
 		let mut result = vec![];
+		let mut metrics = Vec::new();
 		let mut symbols = symbols;
 		for compiled in compiled.iter() {
 			result.clear();
 			let mut tx = Transaction::Command(txn);
-			let mut vm = Vm::new(symbols);
-			vm.run(&self.0, &mut tx, &compiled.instructions, params, &mut result)?;
+			let mut vm = Vm::from_services(symbols, &self.0, params, tx.identity());
+			let start_execute = self.0.runtime_context.clock.instant();
+			let run_result = vm.run(&self.0, &mut tx, &compiled.instructions, &mut result);
+			let execute_duration = start_execute.elapsed();
 			symbols = vm.symbols;
+
+			metrics.push(StatementMetric {
+				fingerprint: compiled.fingerprint,
+				normalized_rql: compiled.normalized_rql.clone(),
+				compile_duration_us,
+				execute_duration_us: execute_duration.as_micros() as u64,
+				rows_affected: if run_result.is_ok() {
+					extract_rows_affected(&result)
+				} else {
+					0
+				},
+			});
+
+			if let Err(e) = run_result {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: build_metrics(metrics),
+				};
+			}
 		}
 
-		Ok(result)
+		ExecutionResult {
+			frames: result,
+			error: None,
+			metrics: build_metrics(metrics),
+		}
 	}
 
 	#[instrument(name = "executor::query", level = "debug", skip(self, txn, qry), fields(rql = %qry.rql))]
-	pub fn query(&self, txn: &mut QueryTransaction, qry: Query<'_>) -> Result<Vec<Frame>> {
-		let symbols = self.setup_symbols(&qry.params, &mut Transaction::Query(&mut *txn))?;
+	pub fn query(&self, txn: &mut QueryTransaction, qry: Query<'_>) -> ExecutionResult {
+		let symbols = match self.setup_symbols(&qry.params, &mut Transaction::Query(&mut *txn)) {
+			Ok(s) => s,
+			Err(e) => {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
 
-		PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
+		if let Err(e) = PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
 			&mut Transaction::Query(&mut *txn),
-			"query",
+			SessionOp::Query,
 			false,
-		)?;
-
-		let compiled = match self.compiler.compile_with_policy(
-			&mut Transaction::Query(txn),
-			qry.rql,
-			inject_read_policies,
 		) {
+			return ExecutionResult {
+				frames: vec![],
+				error: Some(e),
+				metrics: ExecutionMetrics::default(),
+			};
+		}
+
+		let start_compile = self.0.runtime_context.clock.instant();
+		let compiled = match self.compile_query(&mut Transaction::Query(txn), qry.rql) {
 			Ok(CompilationResult::Ready(compiled)) => compiled,
 			Ok(CompilationResult::Incremental(_)) => {
 				unreachable!("DDL statements require admin transactions, not query transactions")
 			}
 			Err(err) => {
-				#[cfg(not(target_arch = "wasm32"))]
-				if let Some(frames) = self.try_forward_remote_query(&err, qry.rql, qry.params)? {
-					return Ok(frames);
+				#[cfg(not(reifydb_single_threaded))]
+				if let Ok(Some(frames)) = self.try_forward_remote_query(&err, qry.rql, qry.params) {
+					return ExecutionResult {
+						frames,
+						error: None,
+						metrics: ExecutionMetrics::default(),
+					};
 				}
-				return Err(err);
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(err),
+					metrics: ExecutionMetrics::default(),
+				};
 			}
 		};
+		let compile_duration = start_compile.elapsed();
 
-		let (output, remaining, _) =
-			execute_compiled_units(&self.0, &mut Transaction::Query(txn), &compiled, &qry.params, symbols)?;
-		Ok(merge_results(output, remaining))
+		let exec_result = execute_compiled_units(
+			&self.0,
+			&mut Transaction::Query(txn),
+			&compiled,
+			&qry.params,
+			symbols,
+			compile_duration,
+		);
+
+		match exec_result {
+			Ok((output, remaining, _, metrics)) => ExecutionResult {
+				frames: merge_results(output, remaining),
+				error: None,
+				metrics: build_metrics(metrics),
+			},
+			Err(f) => ExecutionResult {
+				frames: vec![],
+				error: Some(f.error),
+				metrics: build_metrics(f.partial_metrics),
+			},
+		}
 	}
 }

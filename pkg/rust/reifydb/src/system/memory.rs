@@ -7,6 +7,15 @@ use std::ptr;
 use std::{fs, io};
 use std::{mem, process::exit, time::Duration};
 
+#[cfg(target_os = "macos")]
+#[allow(deprecated)]
+use libc::{
+	__error, CTL_HW, HW_MEMSIZE, KERN_SUCCESS, MACH_TASK_BASIC_INFO, MACH_TASK_BASIC_INFO_COUNT, c_void,
+	mach_task_basic_info, mach_task_self, sysctl, task_info,
+};
+#[cfg(target_os = "linux")]
+use libc::{_SC_PAGESIZE, sysconf, sysinfo};
+#[cfg(not(reifydb_single_threaded))]
 use reifydb_sub_task::{
 	context::TaskContext,
 	schedule::Schedule,
@@ -14,7 +23,9 @@ use reifydb_sub_task::{
 };
 use tracing::{debug, error};
 
+#[cfg(not(reifydb_single_threaded))]
 const MEMORY_KILL_THRESHOLD_PERCENT: f32 = 90.0;
+#[cfg(not(reifydb_single_threaded))]
 const MEMORY_CHECK_INTERVAL: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone)]
@@ -50,7 +61,7 @@ impl MemoryWatchdog {
 			.ok_or("Invalid /proc/self/statm format")?
 			.parse()
 			.map_err(|e| format!("Failed to parse RSS: {}", e))?;
-		let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as u64;
+		let page_size = unsafe { sysconf(_SC_PAGESIZE) } as u64;
 		Ok(rss_pages * page_size)
 	}
 
@@ -60,17 +71,12 @@ impl MemoryWatchdog {
 	#[cfg(target_os = "macos")]
 	pub fn get_current_memory() -> Result<u64, String> {
 		unsafe {
-			let mut info: libc::mach_task_basic_info = mem::zeroed();
-			let mut count = libc::MACH_TASK_BASIC_INFO_COUNT;
+			let mut info: mach_task_basic_info = mem::zeroed();
+			let mut count = MACH_TASK_BASIC_INFO_COUNT;
 			#[allow(deprecated)]
-			let task = libc::mach_task_self();
-			let kr = libc::task_info(
-				task,
-				libc::MACH_TASK_BASIC_INFO,
-				&mut info as *mut _ as *mut i32,
-				&mut count,
-			);
-			if kr != libc::KERN_SUCCESS {
+			let task = mach_task_self();
+			let kr = task_info(task, MACH_TASK_BASIC_INFO, &mut info as *mut _ as *mut i32, &mut count);
+			if kr != KERN_SUCCESS {
 				return Err(format!("task_info failed with kern_return {}", kr));
 			}
 			Ok(info.resident_size)
@@ -91,8 +97,8 @@ impl MemoryWatchdog {
 	#[cfg(target_os = "linux")]
 	pub fn get_max_available_memory() -> Result<u64, String> {
 		unsafe {
-			let mut info: libc::sysinfo = mem::zeroed();
-			let ret = libc::sysinfo(&mut info);
+			let mut info: sysinfo = mem::zeroed();
+			let ret = sysinfo(&mut info);
 			if ret != 0 {
 				return Err(format!("sysinfo() failed: {}", io::Error::last_os_error()));
 			}
@@ -106,19 +112,19 @@ impl MemoryWatchdog {
 	#[cfg(target_os = "macos")]
 	pub fn get_max_available_memory() -> Result<u64, String> {
 		unsafe {
-			let mut mib = [libc::CTL_HW, libc::HW_MEMSIZE];
+			let mut mib = [CTL_HW, HW_MEMSIZE];
 			let mut memsize: u64 = 0;
 			let mut len = mem::size_of::<u64>();
-			let ret = libc::sysctl(
+			let ret = sysctl(
 				mib.as_mut_ptr(),
 				2,
-				&mut memsize as *mut _ as *mut libc::c_void,
+				&mut memsize as *mut _ as *mut c_void,
 				&mut len,
 				ptr::null_mut(),
 				0,
 			);
 			if ret != 0 {
-				return Err(format!("sysctl HW_MEMSIZE failed with errno {}", *libc::__error()));
+				return Err(format!("sysctl HW_MEMSIZE failed with errno {}", *__error()));
 			}
 			Ok(memsize)
 		}
@@ -149,7 +155,7 @@ impl MemoryWatchdog {
 	}
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(all(not(reifydb_single_threaded), any(target_os = "linux", target_os = "macos")))]
 pub fn create_memory_watchdog_task() -> ScheduledTask {
 	ScheduledTask::builder("memory-watchdog")
 		.schedule(Schedule::FixedInterval(MEMORY_CHECK_INTERVAL))

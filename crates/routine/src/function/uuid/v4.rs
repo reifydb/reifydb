@@ -1,17 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{r#type::Type, uuid::Uuid4};
 use uuid::{Builder, Uuid};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct UuidV4;
+pub struct UuidV4 {
+	info: RoutineInfo,
+}
 
 impl Default for UuidV4 {
 	fn default() -> Self {
@@ -21,53 +19,57 @@ impl Default for UuidV4 {
 
 impl UuidV4 {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("uuid::v4"),
+		}
 	}
 }
 
-impl ScalarFunction for UuidV4 {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl<'a> Routine<FunctionContext<'a>> for UuidV4 {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		let row_count = ctx.row_count;
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Uuid4
+	}
 
-		if ctx.columns.len() > 1 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() > 1 {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 0,
-				actual: ctx.columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		if ctx.columns.is_empty() {
-			let mut data = Vec::with_capacity(row_count);
-			for _ in 0..row_count {
-				let bytes = ctx.runtime_context.rng.bytes_16();
-				let uuid = Uuid4::from(Builder::from_random_bytes(bytes).into_uuid());
-				data.push(uuid);
-			}
-			return Ok(ColumnData::uuid4(data));
+		if args.is_empty() {
+			let bytes = ctx.runtime_context.rng.bytes_16();
+			let uuid = Uuid4::from(Builder::from_random_bytes(bytes).into_uuid());
+			let result_data = ColumnBuffer::uuid4(vec![uuid]);
+			return Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]));
 		}
 
-		let column = ctx.columns.first().unwrap();
-		match &column.data() {
-			ColumnData::Utf8 {
+		let column = &args[0];
+		let (data, bitvec) = column.unwrap_option();
+		let row_count = data.len();
+
+		match data {
+			ColumnBuffer::Utf8 {
 				container,
 				..
 			} => {
-				let mut data = Vec::with_capacity(row_count);
+				let mut result = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					let s = &container[i];
+					let s = container.get(i).unwrap();
 					let parsed = Uuid::parse_str(s).map_err(|e| {
-						ScalarFunctionError::ExecutionFailed {
+						RoutineError::FunctionExecutionFailed {
 							function: ctx.fragment.clone(),
 							reason: format!("invalid UUID string '{}': {}", s, e),
 						}
 					})?;
 					if parsed.get_version_num() != 4 {
-						return Err(ScalarFunctionError::ExecutionFailed {
+						return Err(RoutineError::FunctionExecutionFailed {
 							function: ctx.fragment.clone(),
 							reason: format!(
 								"expected UUID v4, got v{}",
@@ -75,11 +77,19 @@ impl ScalarFunction for UuidV4 {
 							),
 						});
 					}
-					data.push(Uuid4::from(parsed));
+					result.push(Uuid4::from(parsed));
 				}
-				Ok(ColumnData::uuid4(data))
+				let result_data = ColumnBuffer::uuid4(result);
+				let final_data = match bitvec {
+					Some(bv) => ColumnBuffer::Option {
+						inner: Box::new(result_data),
+						bitvec: bv.clone(),
+					},
+					None => result_data,
+				};
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
-			other => Err(ScalarFunctionError::InvalidArgumentType {
+			other => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Utf8],
@@ -87,8 +97,10 @@ impl ScalarFunction for UuidV4 {
 			}),
 		}
 	}
+}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Uuid4
+impl Function for UuidV4 {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

@@ -2,20 +2,18 @@
 // Copyright (c) 2025 ReifyDB
 
 use bumpalo::Bump;
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_rql::{
 	ast::parse_str,
 	fingerprint::{request::fingerprint_request, statement::fingerprint_statement},
 };
 use reifydb_type::value::r#type::Type;
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct RqlFingerprint;
+pub struct RqlFingerprint {
+	info: RoutineInfo,
+}
 
 impl Default for RqlFingerprint {
 	fn default() -> Self {
@@ -25,31 +23,36 @@ impl Default for RqlFingerprint {
 
 impl RqlFingerprint {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("rql::fingerprint"),
+		}
 	}
 }
 
-impl ScalarFunction for RqlFingerprint {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl<'a> Routine<FunctionContext<'a>> for RqlFingerprint {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
 
-		if columns.len() != 1 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 1 {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let column = columns.first().unwrap();
+		let column = &args[0];
+		let (data, bitvec) = column.unwrap_option();
+		let row_count = data.len();
 
-		match &column.data() {
-			ColumnData::Utf8 {
+		match data {
+			ColumnBuffer::Utf8 {
 				container,
 				..
 			} => {
@@ -58,10 +61,10 @@ impl ScalarFunction for RqlFingerprint {
 
 				for i in 0..row_count {
 					if container.is_defined(i) {
-						let query = &container[i];
+						let query = container.get(i).unwrap();
 						let bump = Bump::new();
 						let stmts = parse_str(&bump, query).map_err(|e| {
-							ScalarFunctionError::ExecutionFailed {
+							RoutineError::FunctionExecutionFailed {
 								function: ctx.fragment.clone(),
 								reason: format!("{e}"),
 							}
@@ -77,9 +80,18 @@ impl ScalarFunction for RqlFingerprint {
 					}
 				}
 
-				Ok(ColumnData::utf8_with_bitvec(result_data, result_bitvec))
+				let inner_data = ColumnBuffer::utf8_with_bitvec(result_data, result_bitvec);
+				let final_data = match bitvec {
+					Some(bv) => ColumnBuffer::Option {
+						inner: Box::new(inner_data),
+						bitvec: bv.clone(),
+					},
+					None => inner_data,
+				};
+
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
-			other => Err(ScalarFunctionError::InvalidArgumentType {
+			other => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Utf8],
@@ -87,8 +99,10 @@ impl ScalarFunction for RqlFingerprint {
 			}),
 		}
 	}
+}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Utf8
+impl Function for RqlFingerprint {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

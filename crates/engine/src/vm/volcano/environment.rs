@@ -28,7 +28,6 @@ impl EnvironmentNode {
 
 impl QueryNode for EnvironmentNode {
 	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
-		// Store context for environment access
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
@@ -36,7 +35,6 @@ impl QueryNode for EnvironmentNode {
 	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "EnvironmentNode::next() called before initialize()");
 
-		// Environment executes once and returns environment dataframe
 		if self.executed {
 			return Ok(None);
 		}
@@ -48,7 +46,6 @@ impl QueryNode for EnvironmentNode {
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {
-		// Environment headers are known: "name" and "value" columns
 		None
 	}
 }

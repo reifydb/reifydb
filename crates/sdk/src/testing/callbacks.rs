@@ -1,25 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! FFI callback implementations for testing operators
-//!
-//! This module provides test-specific implementations of FFI callbacks that bridge
-//! OperatorContext with TestContext, enabling operators to be tested in isolation.
-//!
-//! Unlike the production implementation:
-//! - Memory uses system allocator directly (no arena)
-//! - State operations work with TestContext's HashMap instead of FlowTransaction
-//! - Logs are captured to TestContext.logs instead of actual logging
-//! - Iterators are simplified in-memory implementations
-
 use std::{
 	alloc::{Layout, alloc, dealloc, realloc as system_realloc},
 	slice::from_raw_parts,
 };
 
-use reifydb_type::util::cowvec::CowVec;
-
-/// Allocate memory using system allocator
 #[unsafe(no_mangle)]
 extern "C" fn test_alloc(size: usize) -> *mut u8 {
 	if size == 0 {
@@ -34,7 +20,6 @@ extern "C" fn test_alloc(size: usize) -> *mut u8 {
 	unsafe { alloc(layout) }
 }
 
-/// Free memory allocated by test_alloc
 #[unsafe(no_mangle)]
 unsafe extern "C" fn test_free(ptr: *mut u8, size: usize) {
 	if ptr.is_null() || size == 0 {
@@ -49,7 +34,6 @@ unsafe extern "C" fn test_free(ptr: *mut u8, size: usize) {
 	unsafe { dealloc(ptr, layout) }
 }
 
-/// Reallocate memory
 #[unsafe(no_mangle)]
 unsafe extern "C" fn test_realloc(ptr: *mut u8, old_size: usize, new_size: usize) -> *mut u8 {
 	if ptr.is_null() {
@@ -74,7 +58,6 @@ unsafe extern "C" fn test_realloc(ptr: *mut u8, old_size: usize, new_size: usize
 	unsafe { system_realloc(ptr, old_layout, new_layout.size()) }
 }
 
-/// Helper to get TestContext from FFI context
 unsafe fn get_test_context(ctx: *mut ContextFFI) -> &'static TestContext {
 	unsafe {
 		let txn_ptr = (*ctx).txn_ptr;
@@ -82,7 +65,6 @@ unsafe fn get_test_context(ctx: *mut ContextFFI) -> &'static TestContext {
 	}
 }
 
-/// Get state value from TestContext
 #[unsafe(no_mangle)]
 extern "C" fn test_state_get(
 	_operator_id: u64,
@@ -98,17 +80,14 @@ extern "C" fn test_state_get(
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 
-		// Convert raw bytes to EncodedKey
 		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
+		let key = EncodedKey::new(key_bytes.to_vec());
 
-		// Get from TestContext state store
 		match test_ctx.get_state(&key) {
 			Some(value_bytes) => {
-				// Allocate and copy value
 				let value_ptr = test_alloc(value_bytes.len());
 				if value_ptr.is_null() {
-					return -2; // Allocation failed
+					return -2;
 				}
 
 				ptr::copy_nonoverlapping(value_bytes.as_ptr(), value_ptr, value_bytes.len());
@@ -124,7 +103,6 @@ extern "C" fn test_state_get(
 	}
 }
 
-/// Set state value in TestContext
 #[unsafe(no_mangle)]
 extern "C" fn test_state_set(
 	_operator_id: u64,
@@ -141,21 +119,17 @@ extern "C" fn test_state_set(
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 
-		// Convert raw bytes to EncodedKey
 		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
+		let key = EncodedKey::new(key_bytes.to_vec());
 
-		// Convert raw bytes to value
 		let value_bytes = from_raw_parts(value_ptr, value_len);
 
-		// Set in TestContext
 		test_ctx.set_state(key, value_bytes.to_vec());
 
 		FFI_OK
 	}
 }
 
-/// Remove state value from TestContext
 #[unsafe(no_mangle)]
 extern "C" fn test_state_remove(_operator_id: u64, ctx: *mut ContextFFI, key_ptr: *const u8, key_len: usize) -> i32 {
 	if ctx.is_null() || key_ptr.is_null() {
@@ -165,18 +139,15 @@ extern "C" fn test_state_remove(_operator_id: u64, ctx: *mut ContextFFI, key_ptr
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 
-		// Convert raw bytes to EncodedKey
 		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
+		let key = EncodedKey::new(key_bytes.to_vec());
 
-		// Remove from TestContext
 		test_ctx.remove_state(&key);
 
 		FFI_OK
 	}
 }
 
-/// Clear all state in TestContext
 #[unsafe(no_mangle)]
 extern "C" fn test_state_clear(_operator_id: u64, ctx: *mut ContextFFI) -> i32 {
 	if ctx.is_null() {
@@ -190,16 +161,138 @@ extern "C" fn test_state_clear(_operator_id: u64, ctx: *mut ContextFFI) -> i32 {
 	}
 }
 
-/// Internal structure for state iterators
+fn test_internal_envelope(operator_id: u64, user_key_bytes: &[u8]) -> EncodedKey {
+	FlowNodeInternalStateKey::new(FlowNodeId(operator_id), user_key_bytes.to_vec()).encode()
+}
+
+#[unsafe(no_mangle)]
+extern "C" fn test_internal_state_get(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	key_ptr: *const u8,
+	key_len: usize,
+	output: *mut BufferFFI,
+) -> i32 {
+	if ctx.is_null() || key_ptr.is_null() || output.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		let key_bytes = from_raw_parts(key_ptr, key_len);
+		let envelope = test_internal_envelope(operator_id, key_bytes);
+
+		match test_ctx.get_state(&envelope) {
+			Some(value_bytes) => {
+				let value_ptr = test_alloc(value_bytes.len());
+				if value_ptr.is_null() {
+					return -2;
+				}
+				ptr::copy_nonoverlapping(value_bytes.as_ptr(), value_ptr, value_bytes.len());
+				(*output).ptr = value_ptr;
+				(*output).len = value_bytes.len();
+				(*output).cap = value_bytes.len();
+				FFI_OK
+			}
+			None => FFI_NOT_FOUND,
+		}
+	}
+}
+
+#[unsafe(no_mangle)]
+extern "C" fn test_internal_state_set(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	key_ptr: *const u8,
+	key_len: usize,
+	value_ptr: *const u8,
+	value_len: usize,
+) -> i32 {
+	if ctx.is_null() || key_ptr.is_null() || value_ptr.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		let key_bytes = from_raw_parts(key_ptr, key_len);
+		let envelope = test_internal_envelope(operator_id, key_bytes);
+		let value_bytes = from_raw_parts(value_ptr, value_len);
+		test_ctx.set_state(envelope, value_bytes.to_vec());
+		FFI_OK
+	}
+}
+
+#[unsafe(no_mangle)]
+extern "C" fn test_internal_state_remove(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	key_ptr: *const u8,
+	key_len: usize,
+) -> i32 {
+	if ctx.is_null() || key_ptr.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		let key_bytes = from_raw_parts(key_ptr, key_len);
+		let envelope = test_internal_envelope(operator_id, key_bytes);
+		test_ctx.remove_state(&envelope);
+		FFI_OK
+	}
+}
+
+#[unsafe(no_mangle)]
+extern "C" fn test_internal_state_prefix(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	prefix_ptr: *const u8,
+	prefix_len: usize,
+	iterator_out: *mut *mut StateIteratorFFI,
+) -> i32 {
+	if ctx.is_null() || iterator_out.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		let user_prefix = if prefix_ptr.is_null() || prefix_len == 0 {
+			vec![]
+		} else {
+			from_raw_parts(prefix_ptr, prefix_len).to_vec()
+		};
+		let envelope_prefix = test_internal_envelope(operator_id, &user_prefix);
+		let envelope_bytes = envelope_prefix.as_ref();
+
+		let state_store = test_ctx.state_store();
+		let state = state_store.lock();
+
+		let mut items: Vec<(Vec<u8>, Vec<u8>)> = state
+			.iter()
+			.filter(|(key, _)| key.starts_with(envelope_bytes))
+			.map(|(key, value)| (key.to_vec(), value.0.to_vec()))
+			.collect();
+
+		items.sort_by(|a, b| a.0.cmp(&b.0));
+
+		let iter = Box::new(TestStateIterator {
+			items,
+			position: 0,
+		});
+
+		*iterator_out = Box::into_raw(iter) as *mut StateIteratorFFI;
+
+		FFI_OK
+	}
+}
+
 #[repr(C)]
 struct TestStateIterator {
-	/// Collected key-value pairs (snapshot at creation time)
 	items: Vec<(Vec<u8>, Vec<u8>)>,
-	/// Current position in iteration
+
 	position: usize,
 }
 
-/// Create an iterator for state with a specific prefix
 #[unsafe(no_mangle)]
 extern "C" fn test_state_prefix(
 	_operator_id: u64,
@@ -215,46 +308,40 @@ extern "C" fn test_state_prefix(
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 
-		// Get prefix bytes (can be empty for full scan)
 		let prefix_bytes = if prefix_ptr.is_null() || prefix_len == 0 {
 			vec![]
 		} else {
 			from_raw_parts(prefix_ptr, prefix_len).to_vec()
 		};
 
-		// Collect all matching key-value pairs from TestContext
 		let state_store = test_ctx.state_store();
-		let state = state_store.lock().unwrap();
+		let state = state_store.lock();
 
 		let mut items: Vec<(Vec<u8>, Vec<u8>)> = state
 			.iter()
 			.filter(|(key, _)| {
 				if prefix_bytes.is_empty() {
-					true // Full scan
+					true
 				} else {
-					key.0.starts_with(&prefix_bytes) // Prefix match
+					key.starts_with(&prefix_bytes)
 				}
 			})
-			.map(|(key, value)| (key.0.to_vec(), value.0.to_vec()))
+			.map(|(key, value)| (key.to_vec(), value.0.to_vec()))
 			.collect();
 
-		// Sort by key for deterministic iteration order
 		items.sort_by(|a, b| a.0.cmp(&b.0));
 
-		// Create iterator structure
 		let iter = Box::new(TestStateIterator {
 			items,
 			position: 0,
 		});
 
-		// Leak the box and cast to opaque pointer
 		*iterator_out = Box::into_raw(iter) as *mut StateIteratorFFI;
 
 		FFI_OK
 	}
 }
 
-/// Get the next key-value pair from a state iterator
 #[unsafe(no_mangle)]
 extern "C" fn test_state_iterator_next(
 	iterator: *mut StateIteratorFFI,
@@ -266,10 +353,8 @@ extern "C" fn test_state_iterator_next(
 	}
 
 	unsafe {
-		// Cast opaque pointer back to TestStateIterator
 		let iter = &mut *(iterator as *mut TestStateIterator);
 
-		// Check if we have more items
 		if iter.position >= iter.items.len() {
 			return FFI_END_OF_ITERATION;
 		}
@@ -277,22 +362,19 @@ extern "C" fn test_state_iterator_next(
 		let (key, value) = &iter.items[iter.position];
 		iter.position += 1;
 
-		// Allocate and copy key
 		let key_ptr = test_alloc(key.len());
 		if key_ptr.is_null() {
-			return -2; // Allocation failed
+			return -2;
 		}
 		ptr::copy_nonoverlapping(key.as_ptr(), key_ptr, key.len());
 		(*key_out).ptr = key_ptr;
 		(*key_out).len = key.len();
 		(*key_out).cap = key.len();
 
-		// Allocate and copy value
 		let value_ptr = test_alloc(value.len());
 		if value_ptr.is_null() {
-			// Free the key we just allocated
 			test_free(key_ptr, key.len());
-			return -2; // Allocation failed
+			return -2;
 		}
 		ptr::copy_nonoverlapping(value.as_ptr(), value_ptr, value.len());
 		(*value_out).ptr = value_ptr;
@@ -303,7 +385,6 @@ extern "C" fn test_state_iterator_next(
 	}
 }
 
-/// Free a state iterator
 #[unsafe(no_mangle)]
 extern "C" fn test_state_iterator_free(iterator: *mut StateIteratorFFI) {
 	if iterator.is_null() {
@@ -311,17 +392,14 @@ extern "C" fn test_state_iterator_free(iterator: *mut StateIteratorFFI) {
 	}
 
 	unsafe {
-		// Cast back to TestStateIterator and drop
 		let _ = Box::from_raw(iterator as *mut TestStateIterator);
 	}
 }
 
-/// Bound type constants for FFI
 const BOUND_UNBOUNDED: u8 = 0;
 const BOUND_INCLUDED: u8 = 1;
 const BOUND_EXCLUDED: u8 = 2;
 
-/// Create an iterator for state within a range
 #[unsafe(no_mangle)]
 extern "C" fn test_state_range(
 	_operator_id: u64,
@@ -341,30 +419,26 @@ extern "C" fn test_state_range(
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 
-		// Parse start bound
 		let start_key = if start_bound_type == BOUND_UNBOUNDED || start_ptr.is_null() {
 			None
 		} else {
 			Some(from_raw_parts(start_ptr, start_len).to_vec())
 		};
 
-		// Parse end bound
 		let end_key = if end_bound_type == BOUND_UNBOUNDED || end_ptr.is_null() {
 			None
 		} else {
 			Some(from_raw_parts(end_ptr, end_len).to_vec())
 		};
 
-		// Collect all matching key-value pairs from TestContext
 		let state_store = test_ctx.state_store();
-		let state = state_store.lock().unwrap();
+		let state = state_store.lock();
 
 		let mut items: Vec<(Vec<u8>, Vec<u8>)> = state
 			.iter()
 			.filter(|(key, _)| {
-				let key_bytes = key.0.as_slice();
+				let key_bytes = key.as_slice();
 
-				// Check start bound
 				let start_ok = match (&start_key, start_bound_type) {
 					(None, _) => true,
 					(Some(start), BOUND_INCLUDED) => key_bytes >= start.as_slice(),
@@ -372,7 +446,6 @@ extern "C" fn test_state_range(
 					_ => true,
 				};
 
-				// Check end bound
 				let end_ok = match (&end_key, end_bound_type) {
 					(None, _) => true,
 					(Some(end), BOUND_INCLUDED) => key_bytes <= end.as_slice(),
@@ -382,37 +455,31 @@ extern "C" fn test_state_range(
 
 				start_ok && end_ok
 			})
-			.map(|(key, value)| (key.0.to_vec(), value.0.to_vec()))
+			.map(|(key, value)| (key.to_vec(), value.0.to_vec()))
 			.collect();
 
-		// Sort by key for deterministic iteration order
 		items.sort_by(|a, b| a.0.cmp(&b.0));
 
-		// Create iterator structure
 		let iter = Box::new(TestStateIterator {
 			items,
 			position: 0,
 		});
 
-		// Leak the box and cast to opaque pointer
 		*iterator_out = Box::into_raw(iter) as *mut StateIteratorFFI;
 
 		FFI_OK
 	}
 }
 
-/// Capture log message to TestContext
 #[unsafe(no_mangle)]
 unsafe extern "C" fn test_log_message(_operator_id: u64, _level: u32, _message: *const u8, _message_len: usize) {
 	unimplemented!()
 }
 
-/// Store get - returns not found (store not available in tests)
 extern "C" fn test_store_get(_ctx: *mut ContextFFI, _key: *const u8, _key_len: usize, _output: *mut BufferFFI) -> i32 {
 	unimplemented!()
 }
 
-/// Store contains_key - returns false (store not available in tests)
 extern "C" fn test_store_contains_key(
 	_ctx: *mut ContextFFI,
 	_key: *const u8,
@@ -422,7 +489,6 @@ extern "C" fn test_store_contains_key(
 	unimplemented!()
 }
 
-/// Store prefix - returns empty iterator (store not available in tests)
 extern "C" fn test_store_prefix(
 	_ctx: *mut ContextFFI,
 	_prefix: *const u8,
@@ -432,7 +498,6 @@ extern "C" fn test_store_prefix(
 	unimplemented!()
 }
 
-/// Store range - returns empty iterator (store not available in tests)
 extern "C" fn test_store_range(
 	_ctx: *mut ContextFFI,
 	_start: *const u8,
@@ -446,7 +511,6 @@ extern "C" fn test_store_range(
 	unimplemented!()
 }
 
-/// Store iterator next - no-op (no iterators created)
 extern "C" fn test_store_iterator_next(
 	_iterator: *mut StoreIteratorFFI,
 	_key_out: *mut BufferFFI,
@@ -455,7 +519,6 @@ extern "C" fn test_store_iterator_next(
 	unimplemented!()
 }
 
-/// Store iterator free - no-op
 extern "C" fn test_store_iterator_free(_iterator: *mut StoreIteratorFFI) {
 	unimplemented!()
 }
@@ -464,10 +527,10 @@ use std::ptr;
 
 use reifydb_abi::{
 	callbacks::{
-		catalog::CatalogCallbacks, host::HostCallbacks, log::LogCallbacks, memory::MemoryCallbacks,
-		rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
+		builder::BuilderCallbacks, catalog::CatalogCallbacks, host::HostCallbacks, log::LogCallbacks,
+		memory::MemoryCallbacks, rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
 	},
-	catalog::{namespace::NamespaceFFI, table::TableFFI},
+	catalog::{namespace::NamespaceFFI, row_shape::RowShapeFFI, table::TableFFI},
 	constants::{FFI_END_OF_ITERATION, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK},
 	context::{
 		context::ContextFFI,
@@ -475,21 +538,29 @@ use reifydb_abi::{
 	},
 	data::buffer::BufferFFI,
 };
-use reifydb_core::encoded::key::EncodedKey;
+use reifydb_core::{
+	encoded::key::EncodedKey,
+	interface::catalog::flow::FlowNodeId,
+	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
+};
 
-use crate::testing::context::TestContext;
+use crate::testing::{
+	context::TestContext,
+	registry::{
+		test_acquire, test_bitvec_ptr, test_commit, test_data_ptr, test_emit_diff, test_grow, test_offsets_ptr,
+		test_release,
+	},
+};
 
-/// Find namespace by ID - stub implementation
 extern "C" fn test_catalog_find_namespace(
 	_ctx: *mut ContextFFI,
 	_namespace_id: u64,
 	_version: u64,
 	_output: *mut NamespaceFFI,
 ) -> i32 {
-	1 // Not found
+	1
 }
 
-/// Find namespace by name - stub implementation
 extern "C" fn test_catalog_find_namespace_by_name(
 	_ctx: *mut ContextFFI,
 	_name_ptr: *const u8,
@@ -497,20 +568,18 @@ extern "C" fn test_catalog_find_namespace_by_name(
 	_version: u64,
 	_output: *mut NamespaceFFI,
 ) -> i32 {
-	1 // Not found
+	1
 }
 
-/// Find table by ID - stub implementation
 extern "C" fn test_catalog_find_table(
 	_ctx: *mut ContextFFI,
 	_table_id: u64,
 	_version: u64,
 	_output: *mut TableFFI,
 ) -> i32 {
-	1 // Not found
+	1
 }
 
-/// Find table by name - stub implementation
 extern "C" fn test_catalog_find_table_by_name(
 	_ctx: *mut ContextFFI,
 	_namespace_id: u64,
@@ -519,18 +588,18 @@ extern "C" fn test_catalog_find_table_by_name(
 	_version: u64,
 	_output: *mut TableFFI,
 ) -> i32 {
-	1 // Not found
+	1
 }
 
-/// Free namespace - stub implementation
-extern "C" fn test_catalog_free_namespace(_namespace: *mut NamespaceFFI) {
-	// No-op in test callbacks
+extern "C" fn test_catalog_find_row_shape(_ctx: *mut ContextFFI, _fingerprint: u64, _output: *mut RowShapeFFI) -> i32 {
+	1
 }
 
-/// Free table - stub implementation
-extern "C" fn test_catalog_free_table(_table: *mut TableFFI) {
-	// No-op in test callbacks
-}
+extern "C" fn test_catalog_free_namespace(_namespace: *mut NamespaceFFI) {}
+
+extern "C" fn test_catalog_free_table(_table: *mut TableFFI) {}
+
+extern "C" fn test_catalog_free_row_shape(_row_shape: *mut RowShapeFFI) {}
 
 unsafe extern "C" fn test_rql(
 	_ctx: *mut ContextFFI,
@@ -543,7 +612,6 @@ unsafe extern "C" fn test_rql(
 	FFI_ERROR_INTERNAL
 }
 
-/// Create the complete host callbacks structure for testing
 pub fn create_test_callbacks() -> HostCallbacks {
 	HostCallbacks {
 		memory: MemoryCallbacks {
@@ -560,6 +628,10 @@ pub fn create_test_callbacks() -> HostCallbacks {
 			range: test_state_range,
 			iterator_next: test_state_iterator_next,
 			iterator_free: test_state_iterator_free,
+			internal_get: test_internal_state_get,
+			internal_set: test_internal_state_set,
+			internal_remove: test_internal_state_remove,
+			internal_prefix: test_internal_state_prefix,
 		},
 		log: LogCallbacks {
 			message: test_log_message,
@@ -577,11 +649,23 @@ pub fn create_test_callbacks() -> HostCallbacks {
 			find_namespace_by_name: test_catalog_find_namespace_by_name,
 			find_table: test_catalog_find_table,
 			find_table_by_name: test_catalog_find_table_by_name,
+			find_row_shape: test_catalog_find_row_shape,
 			free_namespace: test_catalog_free_namespace,
 			free_table: test_catalog_free_table,
+			free_row_shape: test_catalog_free_row_shape,
 		},
 		rql: RqlCallbacks {
 			rql: test_rql,
+		},
+		builder: BuilderCallbacks {
+			acquire: test_acquire,
+			data_ptr: test_data_ptr,
+			offsets_ptr: test_offsets_ptr,
+			bitvec_ptr: test_bitvec_ptr,
+			grow: test_grow,
+			commit: test_commit,
+			release: test_release,
+			emit_diff: test_emit_diff,
 		},
 	}
 }

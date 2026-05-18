@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Memory arena for FFI allocations
-//!
-//! Provides a simple arena allocator that is automatically cleaned up
-//! after each FFI operator invocation.
-
 use std::{
 	alloc::Layout,
 	ptr::{copy_nonoverlapping, null_mut},
@@ -13,25 +8,23 @@ use std::{
 
 use bumpalo::Bump;
 
-/// Memory arena for FFI allocations
-///
-/// All memory allocated from this arena is freed when the arena is dropped
-/// or when `clear()` is called.
 pub struct Arena {
 	bump: Bump,
 }
 
+impl Default for Arena {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Arena {
-	/// Create a new empty arena
 	pub fn new() -> Self {
 		Self {
 			bump: Bump::new(),
 		}
 	}
 
-	/// Allocate memory from the arena
-	///
-	/// Returns null for zero-sized allocations
 	pub fn alloc(&self, size: usize) -> *mut u8 {
 		if size == 0 {
 			return null_mut();
@@ -40,7 +33,6 @@ impl Arena {
 		self.bump.alloc_layout(layout).as_ptr()
 	}
 
-	/// Allocate and copy bytes into the arena
 	pub fn copy_bytes(&self, bytes: &[u8]) -> *mut u8 {
 		if bytes.is_empty() {
 			return null_mut();
@@ -54,15 +46,8 @@ impl Arena {
 		ptr
 	}
 
-	/// Clear all allocations, keeping underlying memory for reuse
 	pub fn clear(&mut self) {
 		self.bump.reset();
-	}
-}
-
-impl Default for Arena {
-	fn default() -> Self {
-		Self::new()
 	}
 }
 

@@ -22,7 +22,6 @@ impl<'bump> Parser<'bump> {
 		loop {
 			self.skip_new_line()?;
 
-			// Check if we've reached the closing bracket
 			let should_break = if let Ok(current) = self.current() {
 				current.is_operator(CloseBracket)
 			} else {

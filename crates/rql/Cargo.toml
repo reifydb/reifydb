@@ -24,6 +24,7 @@ serde_json = { workspace = true }
 postcard = { workspace = true }
 
 [dev-dependencies]
+reifydb = { workspace = true }
 reifydb-testing = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-engine = { workspace = true, features = ["tokio"] }

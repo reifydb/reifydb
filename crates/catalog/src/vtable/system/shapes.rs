@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -17,9 +17,8 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes registered shape information
 pub struct SystemShapes {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	pub(crate) catalog: Catalog,
 	exhausted: bool,
 }
@@ -27,7 +26,7 @@ pub struct SystemShapes {
 impl SystemShapes {
 	pub fn new(catalog: Catalog) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_shapes_table().clone(),
+			vtable: SystemCatalog::get_system_shapes_table().clone(),
 			catalog,
 			exhausted: false,
 		}
@@ -45,10 +44,10 @@ impl BaseVTable for SystemShapes {
 			return Ok(None);
 		}
 
-		let shapes = self.catalog.materialized.list_row_shapes();
+		let shapes = self.catalog.cache.list_row_shapes();
 
-		let mut fingerprints = ColumnData::uint8_with_capacity(shapes.len());
-		let mut field_counts = ColumnData::uint2_with_capacity(shapes.len());
+		let mut fingerprints = ColumnBuffer::uint8_with_capacity(shapes.len());
+		let mut field_counts = ColumnBuffer::uint2_with_capacity(shapes.len());
 
 		for shape in shapes {
 			fingerprints.push(*shape.fingerprint());
@@ -56,14 +55,8 @@ impl BaseVTable for SystemShapes {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("fingerprint"),
-				data: fingerprints,
-			},
-			Column {
-				name: Fragment::internal("field_count"),
-				data: field_counts,
-			},
+			ColumnWithName::new(Fragment::internal("fingerprint"), fingerprints),
+			ColumnWithName::new(Fragment::internal("field_count"), field_counts),
 		];
 
 		self.exhausted = true;
@@ -72,7 +65,7 @@ impl BaseVTable for SystemShapes {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

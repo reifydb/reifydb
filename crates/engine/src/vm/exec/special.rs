@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	internal_error,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_rql::{
 	compiler::CompilationResult,
@@ -28,7 +28,7 @@ use crate::{
 	},
 };
 
-impl Vm {
+impl<'a> Vm<'a> {
 	pub(crate) fn exec_dispatch(
 		&mut self,
 		services: &Arc<Services>,
@@ -43,7 +43,7 @@ impl Vm {
 		self.dispatch_depth += 1;
 		let columns = dispatch(self, services, tx, node.clone(), params, depth)?;
 		self.dispatch_depth -= 1;
-		self.stack.push(Variable::Columns(columns));
+		self.stack.push(Variable::columns(columns));
 		Ok(())
 	}
 
@@ -52,10 +52,9 @@ impl Vm {
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
 		node: &MigrateNode,
-		params: &Params,
 	) -> Result<()> {
-		let columns = execute_migrate(self, services, tx, node.clone(), params)?;
-		self.stack.push(Variable::Columns(columns));
+		let columns = execute_migrate(self, services, tx, node.clone())?;
+		self.stack.push(Variable::columns(columns));
 		Ok(())
 	}
 
@@ -64,10 +63,9 @@ impl Vm {
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
 		node: &RollbackMigrationNode,
-		params: &Params,
 	) -> Result<()> {
-		let columns = execute_rollback_migration(self, services, tx, node.clone(), params)?;
-		self.stack.push(Variable::Columns(columns));
+		let columns = execute_rollback_migration(self, services, tx, node.clone())?;
+		self.stack.push(Variable::columns(columns));
 		Ok(())
 	}
 
@@ -76,17 +74,14 @@ impl Vm {
 		services: &Arc<Services>,
 		tx: &mut Transaction<'_>,
 		node: &AssertBlockNode,
-		params: &Params,
 	) -> Result<()> {
 		let rql = &node.rql;
 		let compile_result = services.compiler.compile(tx, rql);
 
 		if node.expect_error {
-			// ASSERT ERROR: success if compilation or execution errors
 			match compile_result {
 				Err(e) => {
-					// Compilation error -> assertion passes, push diagnostic
-					self.stack.push(Variable::Columns(diagnostic_to_columns(&e.0)));
+					self.stack.push(Variable::columns(diagnostic_to_columns(&e.0)));
 				}
 				Ok(CompilationResult::Ready(units)) => {
 					let mut caught_diagnostic = None;
@@ -94,13 +89,8 @@ impl Vm {
 						let saved_ip = self.ip;
 						self.ip = 0;
 						let mut discard = Vec::new();
-						let exec_result = self.run(
-							services,
-							tx,
-							&unit.instructions,
-							params,
-							&mut discard,
-						);
+						let exec_result =
+							self.run(services, tx, &unit.instructions, &mut discard);
 						self.ip = saved_ip;
 						if let Err(e) = exec_result {
 							caught_diagnostic = Some(e.0);
@@ -108,7 +98,7 @@ impl Vm {
 						}
 					}
 					if let Some(diag) = caught_diagnostic {
-						self.stack.push(Variable::Columns(diagnostic_to_columns(&diag)));
+						self.stack.push(Variable::columns(diagnostic_to_columns(&diag)));
 					} else {
 						let msg = node
 							.message
@@ -129,7 +119,6 @@ impl Vm {
 				}
 			}
 		} else {
-			// Multi-statement ASSERT: compile body, execute, check last result
 			let units = match compile_result {
 				Err(e) => return Err(e),
 				Ok(CompilationResult::Ready(units)) => units,
@@ -145,7 +134,7 @@ impl Vm {
 				let saved_ip = self.ip;
 				self.ip = 0;
 				let mut discard = Vec::new();
-				let exec_result = self.run(services, tx, &unit.instructions, params, &mut discard);
+				let exec_result = self.run(services, tx, &unit.instructions, &mut discard);
 				self.ip = saved_ip;
 				if let Err(e) = exec_result {
 					last_error = Some(e);
@@ -170,31 +159,29 @@ impl Vm {
 	}
 }
 
-/// Convert a `Diagnostic` into a single-row `Columns` with fields:
-/// `code`, `message`, `statement`, `label`, `help`.
 fn diagnostic_to_columns(diag: &Diagnostic) -> Columns {
-	let code_col = Column::new("code", ColumnData::utf8([diag.code.as_str()]));
-	let message_col = Column::new("message", ColumnData::utf8([diag.message.as_str()]));
-	let statement_col = Column::new(
-		"statement",
-		match &diag.statement {
-			Some(s) => ColumnData::utf8([s.as_str()]),
-			None => ColumnData::none_typed(Type::Utf8, 1),
+	let code_col = ColumnWithName::new("code", ColumnBuffer::utf8([diag.code.as_str()]));
+	let message_col = ColumnWithName::new("message", ColumnBuffer::utf8([diag.message.as_str()]));
+	let rql_col = ColumnWithName::new(
+		"rql",
+		match &diag.rql {
+			Some(s) => ColumnBuffer::utf8([s.as_str()]),
+			None => ColumnBuffer::none_typed(Type::Utf8, 1),
 		},
 	);
-	let label_col = Column::new(
+	let label_col = ColumnWithName::new(
 		"label",
 		match &diag.label {
-			Some(s) => ColumnData::utf8([s.as_str()]),
-			None => ColumnData::none_typed(Type::Utf8, 1),
+			Some(s) => ColumnBuffer::utf8([s.as_str()]),
+			None => ColumnBuffer::none_typed(Type::Utf8, 1),
 		},
 	);
-	let help_col = Column::new(
+	let help_col = ColumnWithName::new(
 		"help",
 		match &diag.help {
-			Some(s) => ColumnData::utf8([s.as_str()]),
-			None => ColumnData::none_typed(Type::Utf8, 1),
+			Some(s) => ColumnBuffer::utf8([s.as_str()]),
+			None => ColumnBuffer::none_typed(Type::Utf8, 1),
 		},
 	);
-	Columns::new(vec![code_col, message_col, statement_col, label_col, help_col])
+	Columns::new(vec![code_col, message_col, rql_col, label_col, help_col])
 }

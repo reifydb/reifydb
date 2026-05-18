@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
-//! Example demonstrating async HTTP client usage
 
-use reifydb_client::HttpClient;
+use std::{env, error::Error};
+
+use reifydb_client::{HttpClient, WireFormat};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn Error>> {
 	// Connect to the server
-	let mut client = HttpClient::connect("http://localhost:8080").await?;
+	let mut client = HttpClient::connect("http://localhost:8080", WireFormat::Json).await?;
 
 	// Authenticate
-	let token = std::env::var("REIFYDB_TOKEN").unwrap_or_else(|_| "root".to_string());
+	let token = env::var("REIFYDB_TOKEN").unwrap_or_else(|_| "root".to_string());
 	client.authenticate(&token);
 
 	println!("Connected to ReifyDB via HTTP");
@@ -18,9 +19,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	// Execute a query
 	let result = client.query("from system.tables", None).await?;
 
-	println!("Query executed: {} frames returned", result.frames.len());
+	println!("Query executed: {} frames returned", result.len());
 
-	for frame in result.frames {
+	for frame in result {
 		println!("{}", frame);
 	}
 

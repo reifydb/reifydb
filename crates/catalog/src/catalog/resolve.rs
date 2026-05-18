@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Catalog entity resolution methods.
-//!
-//! These methods resolve catalog entity IDs to their fully resolved
-//! counterparts, including namespace resolution and identifier creation.
-
 use reifydb_core::interface::{
 	catalog::id::{NamespaceId, RingBufferId, TableId, ViewId},
 	resolved::{ResolvedNamespace, ResolvedRingBuffer, ResolvedTable, ResolvedView},
@@ -18,7 +13,6 @@ use super::Catalog;
 use crate::Result;
 
 impl Catalog {
-	/// Resolve a namespace ID to a fully resolved namespace with identifier
 	#[instrument(name = "catalog::resolve::namespace", level = "trace", skip(self, txn))]
 	pub fn resolve_namespace(
 		&self,
@@ -26,11 +20,10 @@ impl Catalog {
 		namespace_id: NamespaceId,
 	) -> Result<ResolvedNamespace> {
 		let def = self.get_namespace(txn, namespace_id)?;
-		let ident = Fragment::internal(def.name().to_string());
+		let ident = Fragment::internal(def.name());
 		Ok(ResolvedNamespace::new(ident, def))
 	}
 
-	/// Resolve a table ID to a fully resolved table with namespace and identifiers
 	#[instrument(name = "catalog::resolve::table", level = "trace", skip(self, txn))]
 	pub fn resolve_table(&self, txn: &mut Transaction<'_>, table_id: TableId) -> Result<ResolvedTable> {
 		let table = self.get_table(txn, table_id)?;
@@ -40,17 +33,15 @@ impl Catalog {
 		Ok(ResolvedTable::new(table_ident, resolved_namespace, table))
 	}
 
-	/// Resolve a view ID to a fully resolved view with namespace and identifiers
 	#[instrument(name = "catalog::resolve::view", level = "trace", skip(self, txn))]
 	pub fn resolve_view(&self, txn: &mut Transaction<'_>, view_id: ViewId) -> Result<ResolvedView> {
 		let view = self.get_view(txn, view_id)?;
 		let resolved_namespace = self.resolve_namespace(txn, view.namespace())?;
-		let view_ident = Fragment::internal(view.name().to_string());
+		let view_ident = Fragment::internal(view.name());
 
 		Ok(ResolvedView::new(view_ident, resolved_namespace, view))
 	}
 
-	/// Resolve a ring buffer ID to a fully resolved ring buffer with namespace and identifiers
 	#[instrument(name = "catalog::resolve::ringbuffer", level = "trace", skip(self, txn))]
 	pub fn resolve_ringbuffer(
 		&self,
@@ -64,7 +55,6 @@ impl Catalog {
 		Ok(ResolvedRingBuffer::new(ringbuffer_ident, resolved_namespace, ringbuffer))
 	}
 
-	/// Resolve column names for a target entity (table, ring buffer, or dictionary) by name.
 	pub fn resolve_column_names(
 		&self,
 		txn: &mut Transaction<'_>,

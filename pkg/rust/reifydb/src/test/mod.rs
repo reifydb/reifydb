@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::path::Path;
+use std::{fs::read_to_string, path::Path};
 
-use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
+use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, pool::PoolConfig};
 use reifydb_type::{params::Params, value::Value};
 
 #[cfg(feature = "sub_flow")]
@@ -17,13 +17,13 @@ use crate::embedded;
 /// If any statement errors (including `RUN TESTS` with failures), the call
 /// returns an error.
 pub fn run_test_file(path: impl AsRef<Path>) -> Result<(), String> {
-	let content = std::fs::read_to_string(path.as_ref()).map_err(|e| format!("failed to read file: {}", e))?;
+	let content = read_to_string(path.as_ref()).map_err(|e| format!("failed to read file: {}", e))?;
 	run_test_str(&content)
 }
 
 /// Run RQL test content against a fresh in-memory database.
 pub fn run_test_str(content: &str) -> Result<(), String> {
-	let runtime = SharedRuntime::from_config(SharedRuntimeConfig::default());
+	let runtime = SharedRuntime::from_config(SharedRuntimeConfig::default(), PoolConfig::default());
 
 	let builder = embedded::memory().with_runtime(runtime);
 	#[cfg(feature = "sub_flow")]

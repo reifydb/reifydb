@@ -13,7 +13,7 @@ pub(crate) mod column {
 	pub(crate) const INDEX: usize = 4;
 	pub(crate) const AUTO_INCREMENT: usize = 5;
 	pub(crate) const CONSTRAINT: usize = 6;
-	pub(crate) const DICTIONARY_ID: usize = 7; // 0 = no dictionary, else dictionary_id
+	pub(crate) const DICTIONARY_ID: usize = 7;
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![

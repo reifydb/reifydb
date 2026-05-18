@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, date::Date, datetime::DateTime, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct DateTimeSubtract;
+pub struct DateTimeSubtract {
+	info: RoutineInfo,
+}
 
 impl Default for DateTimeSubtract {
 	fn default() -> Self {
@@ -20,31 +18,38 @@ impl Default for DateTimeSubtract {
 
 impl DateTimeSubtract {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("datetime::subtract"),
+		}
 	}
 }
 
-impl ScalarFunction for DateTimeSubtract {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+impl<'a> Routine<FunctionContext<'a>> for DateTimeSubtract {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		if columns.len() != 2 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::DateTime
+	}
+
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 2 {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let dt_col = columns.first().unwrap();
-		let dur_col = columns.get(1).unwrap();
+		let dt_col = &args[0];
+		let dur_col = &args[1];
+		let (dt_data, dt_bitvec) = dt_col.unwrap_option();
+		let (dur_data, dur_bitvec) = dur_col.unwrap_option();
+		let row_count = dt_data.len();
 
-		match (dt_col.data(), dur_col.data()) {
-			(ColumnData::DateTime(dt_container), ColumnData::Duration(dur_container)) => {
+		let result_data = match (dt_data, dur_data) {
+			(ColumnBuffer::DateTime(dt_container), ColumnBuffer::Duration(dur_container)) => {
 				let mut container = TemporalContainer::with_capacity(row_count);
 
 				for i in 0..row_count {
@@ -56,19 +61,15 @@ impl ScalarFunction for DateTimeSubtract {
 							let mut month = date.month() as i32;
 							let mut day = date.day();
 
-							// Subtract months component
 							let total_months = month - dur.get_months();
 							year += (total_months - 1).div_euclid(12);
 							month = (total_months - 1).rem_euclid(12) + 1;
 
-							// Clamp day to valid range for the new month
 							let max_day = days_in_month(year, month as u32);
 							if day > max_day {
 								day = max_day;
 							}
 
-							// Convert to seconds since epoch and subtract day/nanos
-							// components
 							if let Some(base_date) = Date::new(year, month as u32, day) {
 								let base_days = base_date.to_days_since_epoch() as i64
 									- dur.get_days() as i64;
@@ -84,13 +85,13 @@ impl ScalarFunction for DateTimeSubtract {
 										total_nanos as u64,
 									));
 								} else {
-									return Err(ScalarFunctionError::ExecutionFailed {
+									return Err(RoutineError::FunctionExecutionFailed {
 										function: ctx.fragment.clone(),
 										reason: "datetime cannot be before Unix epoch".to_string(),
 									});
 								}
 							} else {
-								return Err(ScalarFunctionError::ExecutionFailed {
+								return Err(RoutineError::FunctionExecutionFailed {
 									function: ctx.fragment.clone(),
 									reason: "datetime cannot be before Unix epoch"
 										.to_string(),
@@ -101,25 +102,41 @@ impl ScalarFunction for DateTimeSubtract {
 					}
 				}
 
-				Ok(ColumnData::DateTime(container))
+				ColumnBuffer::DateTime(container)
 			}
-			(ColumnData::DateTime(_), other) => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 1,
-				expected: vec![Type::Duration],
-				actual: other.get_type(),
-			}),
-			(other, _) => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 0,
-				expected: vec![Type::DateTime],
-				actual: other.get_type(),
-			}),
-		}
-	}
+			(ColumnBuffer::DateTime(_), other) => {
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 1,
+					expected: vec![Type::Duration],
+					actual: other.get_type(),
+				});
+			}
+			(other, _) => {
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 0,
+					expected: vec![Type::DateTime],
+					actual: other.get_type(),
+				});
+			}
+		};
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::DateTime
+		let final_data = match (dt_bitvec, dur_bitvec) {
+			(Some(bv), _) | (_, Some(bv)) => ColumnBuffer::Option {
+				inner: Box::new(result_data),
+				bitvec: bv.clone(),
+			},
+			_ => result_data,
+		};
+
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for DateTimeSubtract {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }
 

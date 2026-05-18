@@ -23,7 +23,7 @@ pub(crate) struct VirtualScanNode {
 
 impl VirtualScanNode {
 	pub fn new(virtual_table: VTables, context: Arc<QueryContext>, table_context: VTableContext) -> Result<Self> {
-		let def = virtual_table.definition();
+		let def = virtual_table.vtable();
 
 		let headers = ColumnHeaders {
 			columns: def.columns.iter().map(|col| Fragment::internal(&col.name)).collect(),

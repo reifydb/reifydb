@@ -20,8 +20,6 @@ impl RowSequence {
 		GeneratorU64::next(txn, &RowSequenceKey::encoded(ShapeId::from(table)), None).map(RowNumber)
 	}
 
-	/// Allocates a batch of contiguous row numbers for a table.
-	/// Returns a vector containing all allocated row numbers.
 	pub(crate) fn next_row_number_batch(
 		txn: &mut impl SequenceTransaction,
 		table: TableId,
@@ -30,7 +28,6 @@ impl RowSequence {
 		Self::next_row_number_batch_for_source(txn, ShapeId::from(table), count)
 	}
 
-	/// Allocates the next row number for a ring buffer.
 	pub(crate) fn next_row_number_for_ringbuffer(
 		txn: &mut impl SequenceTransaction,
 		ringbuffer: RingBufferId,
@@ -38,8 +35,6 @@ impl RowSequence {
 		GeneratorU64::next(txn, &RowSequenceKey::encoded(ShapeId::from(ringbuffer)), None).map(RowNumber)
 	}
 
-	/// Allocates a batch of contiguous row numbers for a ring buffer.
-	/// Returns a vector containing all allocated row numbers.
 	pub(crate) fn next_row_number_batch_for_ringbuffer(
 		txn: &mut impl SequenceTransaction,
 		ringbuffer: RingBufferId,
@@ -48,7 +43,6 @@ impl RowSequence {
 		Self::next_row_number_batch_for_source(txn, ShapeId::from(ringbuffer), count)
 	}
 
-	/// Allocates a batch of contiguous row numbers for any shape.
 	fn next_row_number_batch_for_source(
 		txn: &mut impl SequenceTransaction,
 		shape: ShapeId,
@@ -56,11 +50,8 @@ impl RowSequence {
 	) -> Result<Vec<RowNumber>> {
 		let last_row_number = GeneratorU64::next_batched(txn, &RowSequenceKey::encoded(shape), None, count)?;
 
-		// Calculate the first row number in the batch
-		// next_batched returns the last allocated ID
 		let first_row_number = last_row_number.saturating_sub(count - 1);
 
-		// Generate all row numbers in the allocated range
 		let row_numbers = (0..count).map(|offset| RowNumber(first_row_number + offset)).collect();
 
 		Ok(row_numbers)

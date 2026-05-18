@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-04-13
+
+### Fixed
+- Reference to the `rand` crate in `TryRng` docs ([#75])
+
+[0.10.1]: https://github.com/rust-random/rand_core/compare/v0.10.0...v0.10.1
+
+[#75]: https://github.com/rust-random/rand_core/pull/75
+
 ## [0.10.0] - 2026-02-01
 
 This release makes a number of significant changes which we hope will be the
@@ -55,7 +64,7 @@ repository to its own [rust-random/rand_core].
 - `Generator::Item` associated type ([#26])
 - `CryptoBlockRng` ([#69])
 
-[0.10.0]: https://github.com/rust-random/rand_core/compare/v0.9.3...HEAD
+[0.10.0]: https://github.com/rust-random/rand_core/compare/v0.9.3...v0.10.0
 
 [rand#1641]: https://github.com/rust-random/rand/pull/1641
 [rand#1667]: https://github.com/rust-random/rand/pull/1667

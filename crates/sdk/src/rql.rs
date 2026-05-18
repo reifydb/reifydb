@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Guest-side RQL execution via FFI callbacks
-
 use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::{constants::FFI_OK, data::buffer::BufferFFI};
 use reifydb_type::{params::Params, value::frame::frame::Frame};
@@ -12,8 +10,7 @@ use crate::{
 	operator::context::OperatorContext,
 };
 
-/// Execute an RQL statement through the host's RQL callback.
-pub(crate) fn raw_rql(ctx: &OperatorContext, rql: &str, params: Params) -> Result<Vec<Frame>> {
+pub(crate) fn raw_query(ctx: &OperatorContext, query: &str, params: Params) -> Result<Vec<Frame>> {
 	let params_bytes = to_stdvec(&params)
 		.map_err(|e| FFIError::Serialization(format!("failed to serialize params: {}", e)))?;
 
@@ -22,8 +19,8 @@ pub(crate) fn raw_rql(ctx: &OperatorContext, rql: &str, params: Params) -> Resul
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.rql.rql)(
 			ctx.ctx,
-			rql.as_ptr(),
-			rql.len(),
+			query.as_ptr(),
+			query.len(),
 			params_bytes.as_ptr(),
 			params_bytes.len(),
 			&mut output,
@@ -35,7 +32,12 @@ pub(crate) fn raw_rql(ctx: &OperatorContext, rql: &str, params: Params) -> Resul
 				.map_err(|e| FFIError::Serialization(format!("failed to deserialize result: {}", e)))?;
 			Ok(frames)
 		} else {
-			Err(FFIError::Other(format!("host_rql failed with code {}", result)))
+			let msg = if !output.is_empty() {
+				String::from_utf8_lossy(output.as_slice()).into_owned()
+			} else {
+				format!("host_rql failed with code {}", result)
+			};
+			Err(FFIError::Other(msg))
 		}
 	}
 }

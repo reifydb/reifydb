@@ -194,6 +194,8 @@ pub fn frames_to_proto(frames: Vec<Frame>) -> Vec<ProtoFrame> {
 	frames.into_iter()
 		.map(|frame| {
 			let row_numbers = frame.row_numbers.iter().map(|rn| rn.value()).collect();
+			let created_at: Vec<String> = frame.created_at.iter().map(|dt| dt.to_string()).collect();
+			let updated_at: Vec<String> = frame.updated_at.iter().map(|dt| dt.to_string()).collect();
 			let columns = frame
 				.columns
 				.into_iter()
@@ -210,6 +212,8 @@ pub fn frames_to_proto(frames: Vec<Frame>) -> Vec<ProtoFrame> {
 			ProtoFrame {
 				row_numbers,
 				columns,
+				created_at,
+				updated_at,
 			}
 		})
 		.collect()
@@ -317,9 +321,8 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 			(Type::Uint16.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Utf8(c) => {
-			let slice: &[String] = c;
 			let mut buf = Vec::new();
-			for s in slice {
+			for s in c.iter_str() {
 				let bytes = s.as_bytes();
 				buf.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
 				buf.extend_from_slice(bytes);
@@ -385,10 +388,8 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 			(Type::Uuid7.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Blob(c) => {
-			let slice: &[Blob] = c;
 			let mut buf = Vec::new();
-			for v in slice {
-				let bytes = v.as_bytes();
+			for bytes in c.iter_bytes() {
 				buf.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
 				buf.extend_from_slice(bytes);
 			}
@@ -464,7 +465,6 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 							}
 						}
 					} else {
-						// Write zero bytes for the width
 						buf.extend(iter::repeat_n(0u8, disc as usize));
 					}
 				}

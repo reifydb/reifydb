@@ -21,10 +21,9 @@ export class WasmExecutor implements Executor {
     this.db = db;
   }
 
-  async execute(statement: string): Promise<ExecutionResult> {
-    const trimmed = statement.trim();
+  async execute(rql: string): Promise<ExecutionResult> {
+    const trimmed = rql.trim();
 
-    // Remove trailing semicolon for execution
     const query = trimmed.endsWith(';')
       ? trimmed.slice(0, -1).trim()
       : trimmed;
@@ -33,11 +32,11 @@ export class WasmExecutor implements Executor {
       return {
         success: true,
         data: [],
-        executionTime: 0,
+        execution_time: 0,
       };
     }
 
-    const startTime = performance.now();
+    const start_time = performance.now();
 
     try {
       const results = await this.db.admin(query);
@@ -46,7 +45,7 @@ export class WasmExecutor implements Executor {
       return {
         success: true,
         data: Array.isArray(results) ? results : [],
-        executionTime: Math.round(endTime - startTime),
+        execution_time: Math.round(endTime - start_time),
       };
     } catch (error) {
       const endTime = performance.now();
@@ -54,7 +53,7 @@ export class WasmExecutor implements Executor {
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error),
-        executionTime: Math.round(endTime - startTime),
+        execution_time: Math.round(endTime - start_time),
       };
     }
   }
@@ -76,17 +75,17 @@ export class WasmExecutor implements Executor {
     }
   }
 
-  async getShape(tableName: string): Promise<string | null> {
+  async getShape(table_name: string): Promise<string | null> {
     try {
       // Query system catalog for table shape
       const result = await this.db.admin(
-        `FROM system::columns FILTER table = "${tableName}" MAP { name, type }`
+        `FROM system::columns FILTER table = "${table_name}" MAP { name, type }`
       );
       if (Array.isArray(result) && result.length > 0) {
         const columns = result.map((row: Record<string, unknown>) =>
           `  ${row.name}: ${row.type}`
         ).join(',\n');
-        return `${tableName} {\n${columns}\n}`;
+        return `${table_name} {\n${columns}\n}`;
       }
       return null;
     } catch {

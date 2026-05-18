@@ -9,29 +9,31 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::{collections::HashMap, error::Error as StdError, fmt::Write as _, path::Path};
+use std::{collections::HashMap, error::Error as StdError, fmt::Write as _, path::Path, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
-	config::SystemConfig,
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
 	},
 	event::EventBus,
-	interface::store::MultiVersionRow,
+	interface::{
+		catalog::config::{ConfigKey, GetConfig},
+		store::MultiVersionRow,
+	},
 	util::encoding::{
 		binary::decode_binary,
 		format::{Formatter, raw::Raw},
 	},
 };
 use reifydb_runtime::{
-	SharedRuntimeConfig,
 	actor::system::ActorSystem,
 	context::{
 		clock::{Clock, MockClock},
 		rng::Rng,
 	},
+	pool::Pools,
 };
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
@@ -41,11 +43,12 @@ use reifydb_testing::testscript::{
 };
 use reifydb_transaction::{
 	multi::transaction::{
-		MultiTransaction, read::MultiReadTransaction, register_oracle_defaults,
-		replica::MultiReplicaTransaction, write::MultiWriteTransaction,
+		MultiTransaction, read::MultiReadTransaction, replica::MultiReplicaTransaction,
+		write::MultiWriteTransaction,
 	},
 	single::SingleTransaction,
 };
+use reifydb_type::{util::cowvec::CowVec, value::Value};
 
 /// A handle to either a read, write, or replica transaction for test tracking
 enum TransactionHandle {
@@ -61,10 +64,17 @@ test_each_path! { in "crates/transaction/tests/scripts/all" as serializable_all 
 fn test_serializable(path: &Path) {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
-	let bus = EventBus::new(&ActorSystem::new(SharedRuntimeConfig::default().actor_system_config()));
-	let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
-	let system_config = SystemConfig::new();
-	register_oracle_defaults(&system_config);
+	let bus = EventBus::new(&ActorSystem::new(Pools::default(), Clock::Real));
+	let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
+	struct DefaultConfig;
+	impl GetConfig for DefaultConfig {
+		fn get_config(&self, key: ConfigKey) -> Value {
+			key.default_value()
+		}
+		fn get_config_at(&self, key: ConfigKey, _version: CommitVersion) -> Value {
+			key.default_value()
+		}
+	}
 	let engine = MultiTransaction::new(
 		multi_store,
 		SingleTransaction::new(single_store, bus.clone()),
@@ -72,7 +82,7 @@ fn test_serializable(path: &Path) {
 		actor_system,
 		Clock::Mock(MockClock::from_millis(1000)),
 		Rng::seeded(42),
-		system_config,
+		Arc::new(DefaultConfig),
 	)
 	.unwrap();
 
@@ -214,7 +224,7 @@ impl<'a> Runner for MvccRunner {
 				let t = self.get_transaction(&command.prefix)?;
 				let mut args = command.consume_args();
 				for arg in args.rest_pos() {
-					let key = EncodedKey(decode_binary(&arg.value));
+					let key = EncodedKey::new(decode_binary(&arg.value));
 
 					match t {
 						TransactionHandle::Read(_) => {
@@ -236,8 +246,8 @@ impl<'a> Runner for MvccRunner {
 				let t = self.get_transaction(&command.prefix)?;
 				let mut args = command.consume_args();
 				for kv in args.rest_key() {
-					let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
-					let row = EncodedRow(decode_binary(&kv.value));
+					let key = EncodedKey::new(decode_binary(kv.key.as_ref().unwrap()));
+					let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
 					match t {
 						TransactionHandle::Read(_) => {
 							unreachable!("can not call unset on rx")
@@ -272,7 +282,7 @@ impl<'a> Runner for MvccRunner {
 
 				let mut args = command.consume_args();
 				for arg in args.rest_pos() {
-					let key = EncodedKey(decode_binary(&arg.value));
+					let key = EncodedKey::new(decode_binary(&arg.value));
 
 					let value = match &mut t {
 						TransactionHandle::Read(rx) => {
@@ -302,8 +312,8 @@ impl<'a> Runner for MvccRunner {
 				let mut tx = MultiWriteTransaction::new(self.engine.clone()).unwrap();
 
 				for kv in args.rest_key() {
-					let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
-					let row = EncodedRow(decode_binary(&kv.value));
+					let key = EncodedKey::new(decode_binary(kv.key.as_ref().unwrap()));
+					let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
 					if row.is_empty() {
 						tx.remove(&key).unwrap();
 					} else {
@@ -449,8 +459,9 @@ impl<'a> Runner for MvccRunner {
 
 				let mut args = command.consume_args();
 				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-				let prefix =
-					EncodedKey(decode_binary(&args.next_pos().ok_or("prefixnot given")?.value));
+				let prefix = EncodedKey::new(decode_binary(
+					&args.next_pos().ok_or("prefixnot given")?.value,
+				));
 				args.reject_rest()?;
 
 				match &mut t {
@@ -490,8 +501,8 @@ impl<'a> Runner for MvccRunner {
 				let t = self.get_transaction(&command.prefix)?;
 				let mut args = command.consume_args();
 				for kv in args.rest_key() {
-					let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
-					let row = EncodedRow(decode_binary(&kv.value));
+					let key = EncodedKey::new(decode_binary(kv.key.as_ref().unwrap()));
+					let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
 					match t {
 						TransactionHandle::Read(_) => {
 							unreachable!("can not call set on rx")

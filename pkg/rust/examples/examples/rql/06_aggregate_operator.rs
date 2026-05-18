@@ -1,16 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # AGGREGATE Operator Example
-//!
-//! Demonstrates the AGGREGATE operator in ReifyDB's RQL:
-//! - Basic aggregation functions (avg, sum, count, min, max)
-//! - Group by clauses
-//! - Multiple aggregations
-//! - Aggregation with filtering
-//!
-//! Run with: `make rql-aggregate` or `cargo run --bin rql-aggregate`
-
 use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;

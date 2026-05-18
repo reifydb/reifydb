@@ -1,105 +1,117 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::{Arc, LazyLock};
+use std::{
+	collections::BTreeMap,
+	sync::{Arc, LazyLock},
+};
 
 use indexmap::IndexMap;
 use postcard::{from_bytes, to_stdvec};
+use reifydb_abi::operator::capabilities::{CAPABILITY_ALL_STANDARD, CAPABILITY_TICK};
 use reifydb_core::{
-	encoded::shape::RowShape,
+	encoded::{key::EncodedKey, shape::RowShape},
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
 	internal,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	util::encoding::keycode::serializer::KeySerializer,
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_engine::{
 	expression::{
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalSession},
+		context::{CompileContext, EvalContext},
 	},
 	vm::stack::SymbolTable,
 };
-use reifydb_routine::function::registry::Functions;
+use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::{
 	context::RuntimeContext,
 	hash::{Hash128, xxh3_128},
 };
+use reifydb_sdk::operator::Tick;
 use reifydb_type::{
 	Result,
 	error::Error,
 	fragment::Fragment,
 	params::Params,
-	util::cowvec::CowVec,
-	value::{Value, blob::Blob, identity::IdentityId, row_number::RowNumber, r#type::Type},
+	value::{Value, blob::Blob, datetime::DateTime, identity::IdentityId, row_number::RowNumber, r#type::Type},
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
 	operator::{
 		Operator, Operators,
-		stateful::{raw::RawStatefulOperator, single::SingleStateful},
+		stateful::{raw::RawStatefulOperator, row::RowNumberProvider, single::SingleStateful, utils},
 	},
-	transaction::FlowTransaction,
+	transaction::{FlowTransaction, slot::PersistFn},
 };
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
-/// Layout information shared across all rows
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DistinctLayout {
 	names: Vec<String>,
 	types: Vec<Type>,
 }
 
-/// Serialized row data - stores column values directly without Row conversion
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SerializedRow {
 	number: RowNumber,
-	/// Column values serialized with postcard
+	created_at: DateTime,
+	updated_at: DateTime,
+
 	#[serde(with = "serde_bytes")]
 	values_bytes: Vec<u8>,
 }
 
 impl SerializedRow {
-	/// Create from Columns at a specific row index - no Row allocation
 	fn from_columns_at_index(columns: &Columns, row_idx: usize) -> Self {
 		let number = columns.row_numbers[row_idx];
+		let created_at = if columns.created_at.is_empty() {
+			DateTime::default()
+		} else {
+			columns.created_at[row_idx]
+		};
+		let updated_at = if columns.updated_at.is_empty() {
+			DateTime::default()
+		} else {
+			columns.updated_at[row_idx]
+		};
 
 		let values: Vec<Value> = columns.iter().map(|c| c.data().get_value(row_idx)).collect();
 
-		// Serialize values directly with postcard
 		let values_bytes = to_stdvec(&values).expect("Failed to serialize column values");
 
 		Self {
 			number,
+			created_at,
+			updated_at,
 			values_bytes,
 		}
 	}
 
-	/// Convert back to Columns - no Row allocation
 	fn to_columns(&self, layout: &DistinctLayout) -> Columns {
-		// Deserialize values
 		let values: Vec<Value> = from_bytes(&self.values_bytes).expect("Failed to deserialize column values");
 
 		let mut columns_vec = Vec::with_capacity(layout.names.len());
 		for (i, (name, typ)) in layout.names.iter().zip(layout.types.iter()).enumerate() {
 			let value = values.get(i).cloned().unwrap_or(Value::none());
-			let mut col_data = ColumnData::with_capacity(typ.clone(), 1);
+			let mut col_data = ColumnBuffer::with_capacity(typ.clone(), 1);
 			col_data.push_value(value);
-			columns_vec.push(Column {
-				name: Fragment::internal(name),
-				data: col_data,
-			});
+			columns_vec.push(ColumnWithName::new(Fragment::internal(name), col_data));
 		}
 
-		Columns {
-			row_numbers: CowVec::new(vec![self.number]),
-			columns: CowVec::new(columns_vec),
-		}
+		Columns::with_system_columns(
+			columns_vec,
+			vec![self.number],
+			vec![self.created_at],
+			vec![self.updated_at],
+		)
 	}
 }
 
@@ -111,7 +123,6 @@ impl DistinctLayout {
 		}
 	}
 
-	/// Update the layout from Columns (uses first row if multiple)
 	fn update_from_columns(&mut self, columns: &Columns) {
 		if columns.is_empty() {
 			return;
@@ -141,22 +152,17 @@ impl DistinctLayout {
 	}
 }
 
-/// Entry for tracking distinct values
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DistinctEntry {
-	/// Number of times this distinct value appears
-	count: usize,
-	/// The first row that had this distinct value
-	first_row: SerializedRow,
+	rows: BTreeMap<RowNumber, SerializedRow>,
+
+	last_seen_nanos: u64,
 }
 
-/// State for tracking distinct values
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DistinctState {
-	/// Map from hash of distinct expressions to entry
-	/// Using IndexMap to preserve insertion order for "first occurrence" semantics
 	entries: IndexMap<Hash128, DistinctEntry>,
-	/// Shared layout information
+
 	layout: DistinctLayout,
 }
 
@@ -174,8 +180,10 @@ pub struct DistinctOperator {
 	node: FlowNodeId,
 	compiled_expressions: Vec<CompiledExpr>,
 	shape: RowShape,
-	functions: Functions,
+	routines: Routines,
 	runtime_context: RuntimeContext,
+	ttl_nanos: Option<u64>,
+	row_number_provider: RowNumberProvider,
 }
 
 impl DistinctOperator {
@@ -183,12 +191,12 @@ impl DistinctOperator {
 		parent: Arc<Operators>,
 		node: FlowNodeId,
 		expressions: Vec<Expression>,
-		functions: Functions,
+		routines: Routines,
 		runtime_context: RuntimeContext,
+		ttl_nanos: Option<u64>,
 	) -> Self {
 		let symbols = SymbolTable::new();
 		let compile_ctx = CompileContext {
-			functions: &functions,
 			symbols: &symbols,
 		};
 		let compiled_expressions: Vec<CompiledExpr> = expressions
@@ -201,13 +209,33 @@ impl DistinctOperator {
 			parent,
 			node,
 			compiled_expressions,
-			shape: RowShape::testing(&[Type::Blob]),
-			functions,
+			shape: RowShape::operator_state(),
+			routines,
 			runtime_context,
+			ttl_nanos,
+			row_number_provider: RowNumberProvider::new(node),
 		}
 	}
 
-	/// Compute hashes for all rows in Columns
+	fn slot_key(hash: Hash128) -> EncodedKey {
+		let mut s = KeySerializer::new();
+		s.extend_bytes(hash.0.to_be_bytes());
+		s.finish()
+	}
+
+	fn with_stable_rn(cols: Columns, stable_rn: RowNumber) -> Columns {
+		Columns::with_system_columns(
+			cols.iter().map(|c| ColumnWithName::new(c.name().clone(), c.data().clone())).collect(),
+			vec![stable_rn],
+			cols.created_at.to_vec(),
+			cols.updated_at.to_vec(),
+		)
+	}
+
+	pub(crate) fn output_schema(&self) -> Option<Columns> {
+		self.parent.output_schema()
+	}
+
 	fn compute_hashes(&self, columns: &Columns) -> Result<Vec<Hash128>> {
 		let row_count = columns.row_count();
 		if row_count == 0 {
@@ -215,7 +243,6 @@ impl DistinctOperator {
 		}
 
 		if self.compiled_expressions.is_empty() {
-			// Hash the entire row data for each row
 			let mut hashes = Vec::with_capacity(row_count);
 			for row_idx in 0..row_count {
 				let mut data = Vec::new();
@@ -228,16 +255,20 @@ impl DistinctOperator {
 			}
 			Ok(hashes)
 		} else {
-			let session = EvalSession {
+			let session = EvalContext {
 				params: &EMPTY_PARAMS,
 				symbols: &EMPTY_SYMBOL_TABLE,
-				functions: &self.functions,
+				routines: &self.routines,
 				runtime_context: &self.runtime_context,
 				arena: None,
 				identity: IdentityId::root(),
 				is_aggregate_context: false,
+				columns: Columns::empty(),
+				row_count: 1,
+				target: None,
+				take: None,
 			};
-			let exec_ctx = session.eval(columns.clone(), row_count);
+			let exec_ctx = session.with_eval(columns.clone(), row_count);
 			let mut expr_columns = Vec::new();
 			for compiled_expr in &self.compiled_expressions {
 				let col = compiled_expr.execute(&exec_ctx)?;
@@ -270,24 +301,17 @@ impl DistinctOperator {
 			return Ok(DistinctState::default());
 		}
 
-		from_bytes(blob.as_ref())
-			.map_err(|e| Error(Box::new(internal!("Failed to deserialize DistinctState: {}", e))))
+		let state: DistinctState = from_bytes(blob.as_ref())
+			.map_err(|e| Error(Box::new(internal!("Failed to deserialize DistinctState: {}", e))))?;
+		Ok(state)
 	}
 
-	fn save_distinct_state(&self, txn: &mut FlowTransaction, state: &DistinctState) -> Result<()> {
-		let serialized = to_stdvec(state)
-			.map_err(|e| Error(Box::new(internal!("Failed to serialize DistinctState: {}", e))))?;
-		let blob = Blob::from(serialized);
-
-		self.update_state(txn, |shape, row| {
-			shape.set_blob(row, 0, &blob);
-			Ok(())
-		})?;
-		Ok(())
-	}
-
-	/// Process inserts - operates directly on Columns without Row conversion
-	fn process_insert(&self, state: &mut DistinctState, columns: &Columns) -> Result<Vec<Diff>> {
+	fn process_insert(
+		&self,
+		txn: &mut FlowTransaction,
+		state: &mut DistinctState,
+		columns: &Columns,
+	) -> Result<Vec<Diff>> {
 		let mut result = Vec::new();
 		let row_count = columns.row_count();
 		if row_count == 0 {
@@ -296,135 +320,241 @@ impl DistinctOperator {
 
 		state.layout.update_from_columns(columns);
 		let hashes = self.compute_hashes(columns)?;
+		let now_nanos = self.runtime_context.clock.now_nanos();
 
-		let mut new_distinct_indices: Vec<usize> = Vec::new();
+		let mut order: Vec<usize> = (0..row_count).collect();
+		if !columns.row_numbers.is_empty() {
+			order.sort_by(|&a, &b| columns.row_numbers[b].cmp(&columns.row_numbers[a]));
+		}
 
-		for (row_idx, &hash) in hashes.iter().enumerate() {
-			match state.entries.get_mut(&hash) {
-				Some(entry) => {
-					entry.count += 1;
-					// Already seen this distinct value - just increment count
+		let mut new_entries: Vec<(usize, Hash128)> = Vec::new();
+		let mut swap_pairs: Vec<(SerializedRow, usize, Hash128)> = Vec::new();
+
+		for &row_idx in &order {
+			let hash = hashes[row_idx];
+			let row_number = columns.row_numbers[row_idx];
+			let new_serialized = SerializedRow::from_columns_at_index(columns, row_idx);
+
+			if let Some(entry) = state.entries.get_mut(&hash) {
+				entry.last_seen_nanos = now_nanos;
+				let prev_rn = entry.rows.keys().next_back().copied().unwrap();
+				let displaced = if row_number > prev_rn {
+					entry.rows.get(&prev_rn).cloned()
+				} else {
+					None
+				};
+				entry.rows.insert(row_number, new_serialized);
+				if let Some(prev) = displaced {
+					swap_pairs.push((prev, row_idx, hash));
 				}
-				None => {
-					state.entries.insert(
-						hash,
-						DistinctEntry {
-							count: 1,
-							first_row: SerializedRow::from_columns_at_index(
-								columns, row_idx,
-							),
-						},
-					);
-					new_distinct_indices.push(row_idx);
-				}
+			} else {
+				let mut rows = BTreeMap::new();
+				rows.insert(row_number, new_serialized);
+				state.entries.insert(
+					hash,
+					DistinctEntry {
+						rows,
+						last_seen_nanos: now_nanos,
+					},
+				);
+				new_entries.push((row_idx, hash));
 			}
 		}
 
-		if !new_distinct_indices.is_empty() {
-			let output = columns.extract_by_indices(&new_distinct_indices);
-			result.push(Diff::Insert {
-				post: output,
-			});
+		new_entries.sort_by_key(|&(i, _)| columns.row_numbers[i]);
+		swap_pairs.sort_by_key(|&(_, i, _)| columns.row_numbers[i]);
+
+		if !new_entries.is_empty() {
+			let indices: Vec<usize> = new_entries.iter().map(|&(i, _)| i).collect();
+			let mut stable_rns: Vec<RowNumber> = Vec::with_capacity(new_entries.len());
+			for &(_, hash) in &new_entries {
+				let (stable_rn, _) = self
+					.row_number_provider
+					.get_or_create_row_number(txn, &Self::slot_key(hash))?;
+				stable_rns.push(stable_rn);
+			}
+			let source_cols = columns.extract_by_indices(&indices);
+			let output = Columns::with_system_columns(
+				source_cols
+					.iter()
+					.map(|c| ColumnWithName::new(c.name().clone(), c.data().clone()))
+					.collect(),
+				stable_rns,
+				source_cols.created_at.to_vec(),
+				source_cols.updated_at.to_vec(),
+			);
+			result.push(Diff::insert(output));
+		}
+
+		for (old_serialized, new_idx, hash) in swap_pairs {
+			let (stable_rn, _) =
+				self.row_number_provider.get_or_create_row_number(txn, &Self::slot_key(hash))?;
+			let pre_cols = Self::with_stable_rn(old_serialized.to_columns(&state.layout), stable_rn);
+			let post_cols = Self::with_stable_rn(columns.extract_by_indices(&[new_idx]), stable_rn);
+			result.push(Diff::update(pre_cols, post_cols));
 		}
 
 		Ok(result)
 	}
 
-	/// Process updates - operates directly on Columns without Row conversion
 	fn process_update(
 		&self,
+		txn: &mut FlowTransaction,
 		state: &mut DistinctState,
 		pre_columns: &Columns,
 		post_columns: &Columns,
 	) -> Result<Vec<Diff>> {
-		let mut result = Vec::new();
 		let row_count = post_columns.row_count();
 		if row_count == 0 {
-			return Ok(result);
+			return Ok(Vec::new());
 		}
 
 		state.layout.update_from_columns(post_columns);
 		let pre_hashes = self.compute_hashes(pre_columns)?;
 		let post_hashes = self.compute_hashes(post_columns)?;
+		let now_nanos = self.runtime_context.clock.now_nanos();
 
-		// Group updates by type for batch output
-		let mut same_key_update_indices: Vec<usize> = Vec::new();
-		let mut removed_indices: Vec<usize> = Vec::new();
-		let mut inserted_indices: Vec<usize> = Vec::new();
+		let mut result = Vec::new();
 
 		for row_idx in 0..row_count {
 			let pre_hash = pre_hashes[row_idx];
 			let post_hash = post_hashes[row_idx];
+			let row_number = post_columns.row_numbers[row_idx];
 
 			if pre_hash == post_hash {
-				// Distinct key didn't change - update the stored row
-				if let Some(entry) = state.entries.get_mut(&pre_hash) {
-					if entry.first_row.number == post_columns.row_numbers[row_idx] {
-						entry.first_row =
-							SerializedRow::from_columns_at_index(post_columns, row_idx);
-					}
-					same_key_update_indices.push(row_idx);
+				let new_serialized = SerializedRow::from_columns_at_index(post_columns, row_idx);
+				let visible = if let Some(entry) = state.entries.get_mut(&pre_hash) {
+					entry.last_seen_nanos = now_nanos;
+					let visible_rn = entry.rows.keys().next_back().copied();
+					entry.rows.insert(row_number, new_serialized);
+					visible_rn == Some(row_number)
+				} else {
+					false
+				};
+				if visible {
+					let (stable_rn, _) = self
+						.row_number_provider
+						.get_or_create_row_number(txn, &Self::slot_key(pre_hash))?;
+					let pre_out = Self::with_stable_rn(
+						pre_columns.extract_by_indices(&[row_idx]),
+						stable_rn,
+					);
+					let post_out = Self::with_stable_rn(
+						post_columns.extract_by_indices(&[row_idx]),
+						stable_rn,
+					);
+					result.push(Diff::update(pre_out, post_out));
 				}
-			} else {
-				// Key changed - remove from old, add to new
-				if let Some(entry) = state.entries.get_mut(&pre_hash) {
-					if entry.count > 1 {
-						entry.count -= 1;
-					} else {
-						state.entries.shift_remove(&pre_hash);
-						removed_indices.push(row_idx);
-					}
-				}
+				continue;
+			}
 
-				match state.entries.get_mut(&post_hash) {
-					Some(entry) => {
-						entry.count += 1;
+			let pre_mutation: Option<(bool, Option<SerializedRow>)> = {
+				if let Some(entry) = state.entries.get_mut(&pre_hash) {
+					let prev_rn = entry.rows.keys().next_back().copied().unwrap();
+					let removed = entry.rows.remove(&row_number).is_some();
+					if removed {
+						if entry.rows.is_empty() {
+							Some((true, None))
+						} else {
+							let new_rn = entry.rows.keys().next_back().copied().unwrap();
+							if new_rn != prev_rn {
+								let new_visible =
+									entry.rows.get(&new_rn).cloned().unwrap();
+								Some((false, Some(new_visible)))
+							} else {
+								None
+							}
+						}
+					} else {
+						None
 					}
-					None => {
-						state.entries.insert(
-							post_hash,
-							DistinctEntry {
-								count: 1,
-								first_row: SerializedRow::from_columns_at_index(
-									post_columns,
-									row_idx,
-								),
-							},
-						);
-						inserted_indices.push(row_idx);
-					}
+				} else {
+					None
+				}
+			};
+
+			if state.entries.get(&pre_hash).map(|e| e.rows.is_empty()).unwrap_or(false) {
+				state.entries.shift_remove(&pre_hash);
+			}
+
+			let new_serialized = SerializedRow::from_columns_at_index(post_columns, row_idx);
+			let post_mutation: (bool, Option<SerializedRow>) =
+				if let Some(entry) = state.entries.get_mut(&post_hash) {
+					entry.last_seen_nanos = now_nanos;
+					let prev_rn = entry.rows.keys().next_back().copied().unwrap();
+					let displaced = if row_number > prev_rn {
+						entry.rows.get(&prev_rn).cloned()
+					} else {
+						None
+					};
+					entry.rows.insert(row_number, new_serialized);
+					(false, displaced)
+				} else {
+					let mut rows = BTreeMap::new();
+					rows.insert(row_number, new_serialized);
+					state.entries.insert(
+						post_hash,
+						DistinctEntry {
+							rows,
+							last_seen_nanos: now_nanos,
+						},
+					);
+					(true, None)
+				};
+
+			if let Some((pre_is_empty, pre_new_visible_opt)) = pre_mutation {
+				let (stable_rn, _) = self
+					.row_number_provider
+					.get_or_create_row_number(txn, &Self::slot_key(pre_hash))?;
+				if pre_is_empty {
+					self.row_number_provider
+						.remove_by_prefix(txn, Self::slot_key(pre_hash).as_ref())?;
+					result.push(Diff::remove(Self::with_stable_rn(
+						pre_columns.extract_by_indices(&[row_idx]),
+						stable_rn,
+					)));
+				} else if let Some(new_visible) = pre_new_visible_opt {
+					result.push(Diff::update(
+						Self::with_stable_rn(
+							pre_columns.extract_by_indices(&[row_idx]),
+							stable_rn,
+						),
+						Self::with_stable_rn(new_visible.to_columns(&state.layout), stable_rn),
+					));
 				}
 			}
-		}
 
-		if !same_key_update_indices.is_empty() {
-			let pre_output = pre_columns.extract_by_indices(&same_key_update_indices);
-			let post_output = post_columns.extract_by_indices(&same_key_update_indices);
-			result.push(Diff::Update {
-				pre: pre_output,
-				post: post_output,
-			});
-		}
-
-		if !removed_indices.is_empty() {
-			let output = pre_columns.extract_by_indices(&removed_indices);
-			result.push(Diff::Remove {
-				pre: output,
-			});
-		}
-
-		if !inserted_indices.is_empty() {
-			let output = post_columns.extract_by_indices(&inserted_indices);
-			result.push(Diff::Insert {
-				post: output,
-			});
+			let (post_is_new, post_displaced_opt) = post_mutation;
+			if post_is_new || post_displaced_opt.is_some() {
+				let (stable_rn, _) = self
+					.row_number_provider
+					.get_or_create_row_number(txn, &Self::slot_key(post_hash))?;
+				if let Some(old_visible) = post_displaced_opt {
+					result.push(Diff::update(
+						Self::with_stable_rn(old_visible.to_columns(&state.layout), stable_rn),
+						Self::with_stable_rn(
+							post_columns.extract_by_indices(&[row_idx]),
+							stable_rn,
+						),
+					));
+				} else {
+					result.push(Diff::insert(Self::with_stable_rn(
+						post_columns.extract_by_indices(&[row_idx]),
+						stable_rn,
+					)));
+				}
+			}
 		}
 
 		Ok(result)
 	}
 
-	/// Process removes - operates directly on Columns without Row conversion
-	fn process_remove(&self, state: &mut DistinctState, columns: &Columns) -> Result<Vec<Diff>> {
+	fn process_remove(
+		&self,
+		txn: &mut FlowTransaction,
+		state: &mut DistinctState,
+		columns: &Columns,
+	) -> Result<Vec<Diff>> {
 		let mut result = Vec::new();
 		let row_count = columns.row_count();
 		if row_count == 0 {
@@ -433,24 +563,62 @@ impl DistinctOperator {
 
 		let hashes = self.compute_hashes(columns)?;
 
-		let mut removed_hashes: Vec<Hash128> = Vec::new();
+		let mut mutations: Vec<(usize, Hash128, Option<Option<SerializedRow>>)> = Vec::new();
+		let mut empty_hashes: Vec<Hash128> = Vec::new();
 
-		for &hash in &hashes {
-			if let Some(entry) = state.entries.get_mut(&hash) {
-				if entry.count > 1 {
-					entry.count -= 1;
-				} else {
-					removed_hashes.push(hash);
-				}
+		for (row_idx, &hash) in hashes.iter().enumerate() {
+			let row_number = columns.row_numbers[row_idx];
+
+			let Some(entry) = state.entries.get_mut(&hash) else {
+				continue;
+			};
+
+			let prev_rn = entry.rows.keys().next_back().copied().unwrap();
+			let removed = entry.rows.remove(&row_number).is_some();
+			if !removed {
+				continue;
+			}
+
+			if entry.rows.is_empty() {
+				empty_hashes.push(hash);
+				mutations.push((row_idx, hash, Some(None)));
+				continue;
+			}
+
+			let new_rn = entry.rows.keys().next_back().copied().unwrap();
+			if new_rn != prev_rn {
+				let new_visible = entry.rows.get(&new_rn).cloned().unwrap();
+				mutations.push((row_idx, hash, Some(Some(new_visible))));
+			} else {
+				mutations.push((row_idx, hash, None));
 			}
 		}
 
-		for hash in removed_hashes {
-			if let Some(entry) = state.entries.shift_remove(&hash) {
-				let stored_columns = entry.first_row.to_columns(&state.layout);
-				result.push(Diff::Remove {
-					pre: stored_columns,
-				});
+		for hash in empty_hashes {
+			state.entries.shift_remove(&hash);
+		}
+
+		for (row_idx, hash, mutation) in mutations {
+			let Some(new_visible_opt) = mutation else {
+				continue;
+			};
+			let (stable_rn, _) =
+				self.row_number_provider.get_or_create_row_number(txn, &Self::slot_key(hash))?;
+			match new_visible_opt {
+				None => {
+					self.row_number_provider
+						.remove_by_prefix(txn, Self::slot_key(hash).as_ref())?;
+					result.push(Diff::remove(Self::with_stable_rn(
+						columns.extract_by_indices(&[row_idx]),
+						stable_rn,
+					)));
+				}
+				Some(new_visible) => {
+					result.push(Diff::update(
+						Self::with_stable_rn(columns.extract_by_indices(&[row_idx]), stable_rn),
+						Self::with_stable_rn(new_visible.to_columns(&state.layout), stable_rn),
+					));
+				}
 			}
 		}
 
@@ -471,40 +639,270 @@ impl Operator for DistinctOperator {
 		self.node
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		let mut state = self.load_distinct_state(txn)?;
-		let mut result = Vec::new();
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD | CAPABILITY_TICK
+	}
 
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+		let node_id = self.node;
+		let shape = self.shape.clone();
+
+		let (mut state, persist) = txn.take_operator_state::<DistinctState, _>(node_id, |txn| {
+			let s = self.load_distinct_state(txn)?;
+			let persist: PersistFn = Box::new(move |txn, value| {
+				let state = value.downcast::<DistinctState>().expect("DistinctState slot type");
+				let serialized = to_stdvec(&*state).map_err(|e| {
+					Error(Box::new(internal!("Failed to serialize DistinctState: {}", e)))
+				})?;
+				let blob = Blob::from(serialized);
+				let key = utils::empty_key();
+				let mut row = utils::load_or_create_row(node_id, txn, &key, &shape)?;
+				shape.set_blob(&mut row, 0, &blob);
+				utils::save_row(node_id, txn, &key, row)?;
+				Ok(())
+			});
+			Ok((s, persist))
+		})?;
+
+		let mut result = Vec::new();
 		for diff in change.diffs {
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => {
-					let insert_result = self.process_insert(&mut state, &post)?;
+					let insert_result = self.process_insert(txn, &mut state, &post)?;
 					result.extend(insert_result);
 				}
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => {
-					let update_result = self.process_update(&mut state, &pre, &post)?;
+					let update_result = self.process_update(txn, &mut state, &pre, &post)?;
 					result.extend(update_result);
 				}
 				Diff::Remove {
 					pre,
+					..
 				} => {
-					let remove_result = self.process_remove(&mut state, &pre)?;
+					let remove_result = self.process_remove(txn, &mut state, &pre)?;
 					result.extend(remove_result);
 				}
 			}
 		}
 
-		self.save_distinct_state(txn, &state)?;
+		txn.put_operator_state(node_id, state, persist);
 
-		Ok(Change::from_flow(self.node, change.version, result))
+		Ok(Change::from_flow(self.node, change.version, result, change.changed_at))
 	}
 
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
-		self.parent.pull(txn, rows)
+	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
+		let Some(ttl_nanos) = self.ttl_nanos else {
+			return Ok(None);
+		};
+		let cutoff = tick.now.to_nanos().saturating_sub(ttl_nanos);
+
+		let node_id = self.node;
+		let shape = self.shape.clone();
+
+		let state: &mut DistinctState = txn.operator_state(node_id, |txn| {
+			let s = self.load_distinct_state(txn)?;
+			let persist: PersistFn = Box::new(move |txn, value| {
+				let state = value.downcast::<DistinctState>().expect("DistinctState slot type");
+				let serialized = to_stdvec(&*state).map_err(|e| {
+					Error(Box::new(internal!("Failed to serialize DistinctState: {}", e)))
+				})?;
+				let blob = Blob::from(serialized);
+				let key = utils::empty_key();
+				let mut row = utils::load_or_create_row(node_id, txn, &key, &shape)?;
+				shape.set_blob(&mut row, 0, &blob);
+				utils::save_row(node_id, txn, &key, row)?;
+				Ok(())
+			});
+			Ok((s, persist))
+		})?;
+
+		let initial = state.entries.len();
+		state.entries.retain(|_, entry| entry.last_seen_nanos >= cutoff);
+		let evicted = initial - state.entries.len();
+
+		if evicted > 0 {
+			txn.mark_state_dirty(node_id);
+		}
+
+		Ok(None)
+	}
+}
+
+#[cfg(test)]
+mod ttl_tests {
+	use std::sync::Arc as StdArc;
+
+	use reifydb_core::{
+		common::CommitVersion,
+		interface::change::{Change, Diff, Diffs},
+		value::column::{ColumnWithName, buffer::ColumnBuffer},
+	};
+	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_runtime::context::RuntimeContext;
+	use reifydb_transaction::interceptor::interceptors::Interceptors;
+	use reifydb_type::{
+		fragment::Fragment,
+		util::cowvec::CowVec,
+		value::{container::number::NumberContainer, identity::IdentityId},
+	};
+
+	use super::*;
+
+	struct NoOpParent;
+
+	impl Operator for NoOpParent {
+		fn id(&self) -> FlowNodeId {
+			FlowNodeId(0)
+		}
+
+		fn capabilities(&self) -> u32 {
+			CAPABILITY_ALL_STANDARD
+		}
+
+		fn apply(&self, _: &mut FlowTransaction, change: Change) -> Result<Change> {
+			Ok(change)
+		}
+	}
+
+	fn build_insert(value: i64, row_num: u64) -> Change {
+		let cols = vec![ColumnWithName::new(
+			Fragment::internal("k"),
+			ColumnBuffer::Int8(NumberContainer::from_parts(CowVec::new(vec![value]))),
+		)];
+		let now = DateTime::default();
+		let columns = Columns::with_system_columns(cols, vec![RowNumber(row_num)], vec![now], vec![now]);
+		let mut diffs = Diffs::new();
+		diffs.push(Diff::insert(columns));
+		Change::from_flow(FlowNodeId(99), CommitVersion(1), diffs, now)
+	}
+
+	fn make_op(node_id: u64, ttl_nanos: Option<u64>, engine: &TestEngine) -> DistinctOperator {
+		let routines = engine.executor().routines.clone();
+		let rc = RuntimeContext::with_clock(engine.clock().clone());
+		let parent: StdArc<Operators> = StdArc::new(Operators::Custom(Box::new(NoOpParent)));
+		DistinctOperator::new(parent, FlowNodeId(node_id), Vec::new(), routines, rc, ttl_nanos)
+	}
+
+	#[test]
+	fn tick_is_noop_when_retention_is_unset() {
+		let engine = TestEngine::new();
+		let op = make_op(1, None, &engine);
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			engine.catalog(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+
+		op.apply(&mut txn, build_insert(42, 1)).unwrap();
+		op.apply(&mut txn, build_insert(43, 2)).unwrap();
+
+		let result = op
+			.tick(
+				&mut txn,
+				Tick {
+					now: DateTime::from_nanos(u64::MAX),
+				},
+			)
+			.unwrap();
+		assert!(result.is_none(), "tick must return Ok(None) (silent)");
+
+		txn.flush_operator_states().unwrap();
+		let state = op.load_distinct_state(&mut txn).unwrap();
+		assert_eq!(state.entries.len(), 2, "no eviction when ttl is None");
+	}
+
+	#[test]
+	fn tick_evicts_only_entries_past_cutoff() {
+		let engine = TestEngine::new();
+		let mock_clock = engine.mock_clock();
+		// 10ms row
+		let op = make_op(2, Some(10_000_000), &engine);
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			engine.catalog(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+
+		// Insert two entries at t = 1000ms
+		op.apply(&mut txn, build_insert(42, 1)).unwrap();
+		op.apply(&mut txn, build_insert(43, 2)).unwrap();
+
+		// Advance to t = 1005ms (5ms < 10ms row) - tick must NOT evict
+		mock_clock.advance_millis(5);
+		let result = op
+			.tick(
+				&mut txn,
+				Tick {
+					now: DateTime::from_nanos(mock_clock.now_nanos()),
+				},
+			)
+			.unwrap();
+		assert!(result.is_none());
+		txn.flush_operator_states().unwrap();
+		assert_eq!(op.load_distinct_state(&mut txn).unwrap().entries.len(), 2);
+
+		// Advance to t = 1020ms (20ms > 10ms row) - tick must evict both
+		mock_clock.advance_millis(15);
+		let result = op
+			.tick(
+				&mut txn,
+				Tick {
+					now: DateTime::from_nanos(mock_clock.now_nanos()),
+				},
+			)
+			.unwrap();
+		assert!(result.is_none(), "eviction is silent (Drop mode)");
+		txn.flush_operator_states().unwrap();
+		assert_eq!(op.load_distinct_state(&mut txn).unwrap().entries.len(), 0);
+	}
+
+	#[test]
+	fn tick_keeps_recently_touched_entries() {
+		let engine = TestEngine::new();
+		let mock_clock = engine.mock_clock();
+		let op = make_op(3, Some(10_000_000), &engine);
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			engine.catalog(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+
+		// Insert k=42 at t = 1000ms
+		op.apply(&mut txn, build_insert(42, 1)).unwrap();
+
+		// Advance to t = 1015ms, re-insert k=42 (refreshes last_seen_nanos)
+		mock_clock.advance_millis(15);
+		op.apply(&mut txn, build_insert(42, 99)).unwrap();
+
+		// Insert k=43 at t = 1015ms (this and k=42 are both fresh)
+		op.apply(&mut txn, build_insert(43, 2)).unwrap();
+
+		// Tick at t = 1020ms (5ms since both were last touched - within row)
+		mock_clock.advance_millis(5);
+		op.tick(
+			&mut txn,
+			Tick {
+				now: DateTime::from_nanos(mock_clock.now_nanos()),
+			},
+		)
+		.unwrap();
+		txn.flush_operator_states().unwrap();
+		assert_eq!(op.load_distinct_state(&mut txn).unwrap().entries.len(), 2);
 	}
 }

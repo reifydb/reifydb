@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -16,9 +16,8 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system dictionary information
 pub struct SystemDictionaries {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +30,7 @@ impl Default for SystemDictionaries {
 impl SystemDictionaries {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_dictionaries_table().clone(),
+			vtable: SystemCatalog::get_system_dictionaries_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -64,26 +63,11 @@ impl BaseVTable for SystemDictionaries {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: ColumnData::uint8(ids),
-			},
-			Column {
-				name: Fragment::internal("namespace_id"),
-				data: ColumnData::uint8(namespace_ids),
-			},
-			Column {
-				name: Fragment::internal("name"),
-				data: ColumnData::utf8(names),
-			},
-			Column {
-				name: Fragment::internal("value_type"),
-				data: ColumnData::utf8(value_types),
-			},
-			Column {
-				name: Fragment::internal("id_type"),
-				data: ColumnData::utf8(id_types),
-			},
+			ColumnWithName::new(Fragment::internal("id"), ColumnBuffer::uint8(ids)),
+			ColumnWithName::new(Fragment::internal("namespace_id"), ColumnBuffer::uint8(namespace_ids)),
+			ColumnWithName::new(Fragment::internal("name"), ColumnBuffer::utf8(names)),
+			ColumnWithName::new(Fragment::internal("value_type"), ColumnBuffer::utf8(value_types)),
+			ColumnWithName::new(Fragment::internal("id_type"), ColumnBuffer::utf8(id_types)),
 		];
 
 		self.exhausted = true;
@@ -92,7 +76,7 @@ impl BaseVTable for SystemDictionaries {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

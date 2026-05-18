@@ -5,23 +5,24 @@ use std::{mem::take, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
-	delta::Delta,
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
 	},
 	event::EventBus,
+	execution::ExecutionResult,
 	interface::{
 		WithEventBus,
 		change::{Change, ChangeOrigin},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 };
+use reifydb_runtime::context::clock::Clock;
 use reifydb_type::{
 	Result,
 	error::Diagnostic,
 	params::Params,
-	value::{frame::frame::Frame, identity::IdentityId},
+	value::{datetime::DateTime, identity::IdentityId},
 };
 use tracing::instrument;
 
@@ -97,13 +98,12 @@ use crate::{
 		transaction::{MultiTransaction, write::MultiWriteTransaction},
 	},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
-	transaction::{RqlExecutor, Transaction, query::QueryTransaction},
+	transaction::{
+		RqlExecutor, Transaction, apply_pre_commit_writes, collect_transaction_writes, query::QueryTransaction,
+		write::Write,
+	},
 };
 
-/// An active command transaction that holds a multi command transaction
-/// and provides query/command access to single storage.
-///
-/// The transaction will auto-rollback on drop if not explicitly committed.
 pub struct CommandTransaction {
 	pub multi: MultiTransaction,
 	pub single: SingleTransaction,
@@ -112,20 +112,17 @@ pub struct CommandTransaction {
 	pub cmd: Option<MultiWriteTransaction>,
 	pub event_bus: EventBus,
 
-	// Track row changes for post-commit events
 	pub(crate) row_changes: Vec<RowChange>,
 	pub(crate) interceptors: Interceptors,
 
-	// Accumulate flow changes for transactional view pre-commit processing
 	pub(crate) accumulator: ChangeAccumulator,
 
-	/// The identity executing this transaction.
 	pub identity: IdentityId,
 
-	/// Optional RQL executor for running RQL within this transaction.
 	pub(crate) executor: Option<Arc<dyn RqlExecutor>>,
 
-	/// When the transaction has been poisoned, stores the original error diagnostic.
+	pub(crate) clock: Clock,
+
 	poison_cause: Option<Diagnostic>,
 }
 
@@ -138,7 +135,6 @@ enum TransactionState {
 }
 
 impl CommandTransaction {
-	/// Creates a new active command transaction with a pre-commit callback
 	#[instrument(name = "transaction::command::new", level = "debug", skip_all)]
 	pub fn new(
 		multi: MultiTransaction,
@@ -146,6 +142,7 @@ impl CommandTransaction {
 		event_bus: EventBus,
 		interceptors: Interceptors,
 		identity: IdentityId,
+		clock: Clock,
 	) -> Result<Self> {
 		let cmd = multi.begin_command()?;
 		Ok(Self {
@@ -159,23 +156,26 @@ impl CommandTransaction {
 			accumulator: ChangeAccumulator::new(),
 			identity,
 			executor: None,
+			clock,
 			poison_cause: None,
 		})
 	}
 
-	/// Set the RQL executor for this transaction.
 	pub fn set_executor(&mut self, executor: Arc<dyn RqlExecutor>) {
 		self.executor = Some(executor);
 	}
 
-	/// Execute RQL within this transaction using the attached executor.
-	///
-	/// Panics if no `RqlExecutor` has been set on this transaction.
-	pub fn rql(&mut self, rql: &str, params: Params) -> Result<Vec<Frame>> {
-		self.check_active()?;
+	pub fn rql(&mut self, rql: &str, params: Params) -> ExecutionResult {
+		if let Err(e) = self.check_active() {
+			return ExecutionResult {
+				frames: vec![],
+				error: Some(e),
+				metrics: Default::default(),
+			};
+		}
 		let executor = self.executor.clone().expect("RqlExecutor not set");
 		let result = executor.rql(&mut Transaction::Command(self), rql, params);
-		if let Err(ref e) = result {
+		if let Some(ref e) = result.error {
 			self.poison(*e.0.clone());
 		}
 		result
@@ -186,8 +186,6 @@ impl CommandTransaction {
 		&self.event_bus
 	}
 
-	/// Check if transaction is still active and return appropriate error if
-	/// not
 	fn check_active(&self) -> Result<()> {
 		match self.state {
 			TransactionState::Active => Ok(()),
@@ -200,71 +198,76 @@ impl CommandTransaction {
 		}
 	}
 
-	/// Mark this transaction as poisoned, storing the original error diagnostic.
 	pub(crate) fn poison(&mut self, cause: Diagnostic) {
 		self.state = TransactionState::Poisoned;
 		self.poison_cause = Some(cause);
 	}
 
-	/// Commit the transaction.
-	/// Since single transactions are short-lived and auto-commit,
-	/// this only commits the multi transaction.
 	#[instrument(name = "transaction::command::commit", level = "debug", skip(self))]
 	pub fn commit(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
+		let mut ctx = self.build_pre_commit_context()?;
+		self.interceptors.pre_commit.execute(&mut ctx)?;
+		self.finalize_commit(ctx, false)
+	}
 
-		let transaction_writes: Vec<(EncodedKey, Option<EncodedRow>)> = self
-			.pending_writes()
-			.iter()
-			.map(|(key, pending)| match &pending.delta {
-				Delta::Set {
-					row,
-					..
-				} => (key.clone(), Some(row.clone())),
-				_ => (key.clone(), None),
-			})
-			.collect();
-
-		let mut ctx = PreCommitContext {
-			flow_changes: self.accumulator.take_changes(CommitVersion(0)),
+	#[inline]
+	fn build_pre_commit_context(&mut self) -> Result<PreCommitContext> {
+		let transaction_writes = collect_transaction_writes(self.pending_writes());
+		Ok(PreCommitContext {
+			flow_changes: self
+				.accumulator
+				.take_changes(CommitVersion(0), DateTime::from_nanos(self.clock.now_nanos()))?,
 			pending_writes: Vec::new(),
 			pending_shapes: Vec::new(),
 			transaction_writes,
 			view_entries: Vec::new(),
-		};
-		self.interceptors.pre_commit.execute(&mut ctx)?;
-
-		if let Some(mut multi) = self.cmd.take() {
-			// Apply pending view writes produced by pre-commit interceptors
-			for (key, value) in &ctx.pending_writes {
-				match value {
-					Some(v) => multi.set(key, v.clone())?,
-					None => multi.remove(key)?,
-				}
-			}
-
-			let id = multi.tm.id();
-			self.state = TransactionState::Committed;
-
-			let changes = TransactionalCatalogChanges::default();
-			let row_changes = take(&mut self.row_changes);
-
-			let version = multi.commit()?;
-			self.interceptors.post_commit.execute(PostCommitContext::new(
-				id,
-				version,
-				changes,
-				row_changes,
-			))?;
-
-			Ok(version)
-		} else {
-			// This should never happen due to check_active
-			unreachable!("Transaction state inconsistency")
-		}
+		})
 	}
 
-	/// Rollback the transaction.
+	fn finalize_commit(&mut self, ctx: PreCommitContext, unchecked: bool) -> Result<CommitVersion> {
+		let Some(mut multi) = self.cmd.take() else {
+			unreachable!("Transaction state inconsistency")
+		};
+		apply_pre_commit_writes(&mut multi, &ctx.pending_writes)?;
+		let id = multi.id();
+		self.state = TransactionState::Committed;
+
+		let changes = TransactionalCatalogChanges::default();
+		let row_changes = take(&mut self.row_changes);
+		let version = if unchecked {
+			multi.commit_unchecked()?
+		} else {
+			multi.commit()?
+		};
+		self.interceptors.post_commit.execute(PostCommitContext::new(id, version, changes, row_changes))?;
+		Ok(version)
+	}
+
+	pub fn execute_bulk_unchecked<F, R>(&mut self, body: F) -> Result<R>
+	where
+		F: FnOnce(&mut CommandTransaction) -> Result<R>,
+	{
+		self.disable_conflict_tracking()?;
+		let r = match body(self) {
+			Ok(r) => r,
+			Err(e) => {
+				let _ = self.rollback();
+				return Err(e);
+			}
+		};
+		self.commit_unchecked()?;
+		Ok(r)
+	}
+
+	#[instrument(name = "transaction::command::commit_unchecked", level = "debug", skip(self))]
+	pub(crate) fn commit_unchecked(&mut self) -> Result<CommitVersion> {
+		self.check_active()?;
+		let mut ctx = self.build_pre_commit_context()?;
+		self.interceptors.pre_commit.execute(&mut ctx)?;
+		self.finalize_commit(ctx, true)
+	}
+
 	#[instrument(name = "transaction::command::rollback", level = "debug", skip(self))]
 	pub fn rollback(&mut self) -> Result<()> {
 		self.check_active()?;
@@ -272,21 +275,15 @@ impl CommandTransaction {
 			self.state = TransactionState::RolledBack;
 			multi.rollback()
 		} else {
-			// This should never happen due to check_active
 			unreachable!("Transaction state inconsistency")
 		}
 	}
 
-	/// Get access to the pending writes in this transaction
-	///
-	/// This allows checking for key conflicts when committing FlowTransactions
-	/// to ensure they operate on non-overlapping keyspaces.
 	#[instrument(name = "transaction::command::pending_writes", level = "trace", skip(self))]
 	pub fn pending_writes(&self) -> &PendingWrites {
 		self.cmd.as_ref().unwrap().pending_writes()
 	}
 
-	/// Execute a function with query access to the single transaction.
 	#[instrument(name = "transaction::command::with_single_query", level = "trace", skip(self, keys, f))]
 	pub fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
@@ -298,7 +295,6 @@ impl CommandTransaction {
 		self.single.with_query(keys, f)
 	}
 
-	/// Execute a function with query access to the single transaction.
 	#[instrument(name = "transaction::command::with_single_command", level = "trace", skip(self, keys, f))]
 	pub fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
@@ -310,9 +306,6 @@ impl CommandTransaction {
 		self.single.with_command(keys, f)
 	}
 
-	/// Execute a function with a query transaction view.
-	/// This creates a new query transaction using the stored multi-version storage.
-	/// The query transaction will operate independently but share the same single/CDC storage.
 	#[instrument(name = "transaction::command::with_multi_query", level = "trace", skip(self, f))]
 	pub fn with_multi_query<F, R>(&self, f: F) -> Result<R>
 	where
@@ -356,7 +349,6 @@ impl CommandTransaction {
 		f(&mut query_txn)
 	}
 
-	/// Begin a single-version query transaction for specific keys
 	#[instrument(name = "transaction::command::begin_single_query", level = "trace", skip(self, keys))]
 	pub fn begin_single_query<'a, I>(&self, keys: I) -> Result<SingleReadTransaction<'_>>
 	where
@@ -366,7 +358,6 @@ impl CommandTransaction {
 		self.single.begin_query(keys)
 	}
 
-	/// Begin a single-version command transaction for specific keys
 	#[instrument(name = "transaction::command::begin_single_command", level = "trace", skip(self, keys))]
 	pub fn begin_single_command<'a, I>(&self, keys: I) -> Result<SingleWriteTransaction<'_>>
 	where
@@ -376,12 +367,10 @@ impl CommandTransaction {
 		self.single.begin_command(keys)
 	}
 
-	/// Track a row change for post-commit event emission
-	pub fn track_row_change(&mut self, change: RowChange) {
-		self.row_changes.push(change);
+	pub fn track_row_change(&mut self, changes: &[RowChange]) {
+		self.row_changes.extend_from_slice(changes);
 	}
 
-	/// Track a flow change for transactional view pre-commit processing.
 	pub fn track_flow_change(&mut self, change: Change) {
 		if let ChangeOrigin::Shape(id) = change.origin {
 			for diff in change.diffs {
@@ -390,47 +379,46 @@ impl CommandTransaction {
 		}
 	}
 
-	/// Get the transaction version
 	#[inline]
 	pub fn version(&self) -> CommitVersion {
 		self.cmd.as_ref().unwrap().version()
 	}
 
-	/// Get the transaction ID
 	#[inline]
 	pub fn id(&self) -> TransactionId {
-		self.cmd.as_ref().unwrap().tm.id()
+		self.cmd.as_ref().unwrap().id()
 	}
 
-	/// Get a value by key
 	#[inline]
 	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().get(key)?.map(|v| v.into_multi_version_row()))
 	}
 
-	/// Check if a key exists
+	#[inline]
+	pub fn get_committed(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
+		self.check_active()?;
+		Ok(self.cmd.as_mut().unwrap().get_committed(key)?.map(|v| v.into_multi_version_row()))
+	}
+
 	#[inline]
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().contains_key(key)
 	}
 
-	/// Get a prefix batch
 	#[inline]
 	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().prefix(prefix)
 	}
 
-	/// Get a reverse prefix batch
 	#[inline]
 	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().prefix_rev(prefix)
 	}
 
-	/// Read as of version exclusive
 	#[inline]
 	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
 		self.check_active()?;
@@ -438,32 +426,45 @@ impl CommandTransaction {
 		Ok(())
 	}
 
-	/// Set a key-value pair
 	#[inline]
 	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().set(key, row)
 	}
 
-	/// Unset a key, preserving the deleted values.
-	///
-	/// The `row` parameter contains the deleted row for CDC and metrics.
+	#[inline]
+	pub fn reserve_writes(&mut self, additional: usize) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().reserve_writes(additional);
+		Ok(())
+	}
+
+	#[inline]
+	pub(crate) fn disable_conflict_tracking(&mut self) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().disable_conflict_tracking();
+		Ok(())
+	}
+
 	#[inline]
 	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().unset(key, row)
 	}
 
-	/// Remove a key without preserving the deleted values.
-	///
-	/// Use when only the key matters (e.g., index entries, catalog metadata).
 	#[inline]
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove(key)
 	}
 
-	/// Create a streaming iterator for forward range queries.
+	#[inline]
+	pub fn mark_preexisting(&mut self, key: &EncodedKey) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().mark_preexisting(key);
+		Ok(())
+	}
+
 	#[inline]
 	pub fn range(
 		&mut self,
@@ -474,7 +475,6 @@ impl CommandTransaction {
 		Ok(self.cmd.as_mut().unwrap().range(range, batch_size))
 	}
 
-	/// Create a streaming iterator for reverse range queries.
 	#[inline]
 	pub fn range_rev(
 		&mut self,
@@ -489,6 +489,33 @@ impl CommandTransaction {
 impl WithEventBus for CommandTransaction {
 	fn event_bus(&self) -> &EventBus {
 		&self.event_bus
+	}
+}
+
+impl Write for CommandTransaction {
+	#[inline]
+	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+		CommandTransaction::set(self, key, row)
+	}
+	#[inline]
+	fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+		CommandTransaction::unset(self, key, row)
+	}
+	#[inline]
+	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
+		CommandTransaction::remove(self, key)
+	}
+	#[inline]
+	fn mark_preexisting(&mut self, key: &EncodedKey) -> Result<()> {
+		CommandTransaction::mark_preexisting(self, key)
+	}
+	#[inline]
+	fn track_row_change(&mut self, changes: &[RowChange]) {
+		CommandTransaction::track_row_change(self, changes)
+	}
+	#[inline]
+	fn track_flow_change(&mut self, change: Change) {
+		CommandTransaction::track_flow_change(self, change)
 	}
 }
 
@@ -838,11 +865,10 @@ impl WithInterceptors for CommandTransaction {
 
 impl Drop for CommandTransaction {
 	fn drop(&mut self) {
-		if let Some(mut multi) = self.cmd.take() {
-			// Auto-rollback if still active or poisoned (not committed or rolled back)
-			if self.state == TransactionState::Active || self.state == TransactionState::Poisoned {
-				let _ = multi.rollback();
-			}
+		if let Some(mut multi) = self.cmd.take()
+			&& (self.state == TransactionState::Active || self.state == TransactionState::Poisoned)
+		{
+			let _ = multi.rollback();
 		}
 	}
 }

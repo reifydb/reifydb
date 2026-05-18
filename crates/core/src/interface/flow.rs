@@ -1,32 +1,35 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Flow lag tracking interface for virtual table support.
+use std::sync::Arc;
 
 use crate::interface::catalog::{flow::FlowId, shape::ShapeId};
 
-/// A row in the system.flow_lags virtual table.
 #[derive(Debug, Clone)]
-pub struct FlowLagRow {
-	/// The flow ID.
+pub struct FlowWatermarkRow {
 	pub flow_id: FlowId,
-	/// The shape this flow subscribes to.
-	pub object_id: ShapeId,
-	/// The lag: how many versions behind the flow is for this source.
+
+	pub shape_id: ShapeId,
+
 	pub lag: u64,
 }
 
-/// Trait for providing flow lag data to virtual tables.
-///
-/// This trait is defined in the core crate to allow the engine crate
-/// to use it without depending on the sub-flow crate.
-///
-/// Implemented by `FlowLagsProvider` in the sub-flow crate.
-/// Used by the `FlowLags` virtual table in the engine crate.
-pub trait FlowLagsProvider: Send + Sync {
-	/// Get all flow lag rows.
-	///
-	/// Returns one row per (flow, source) pair, showing how far behind
-	/// each flow is for each of its subscribed sources.
-	fn all_lags(&self) -> Vec<FlowLagRow>;
+#[derive(Clone)]
+pub struct FlowWatermarkSampler {
+	fetch: Arc<dyn Fn() -> Vec<FlowWatermarkRow> + Send + Sync>,
+}
+
+impl FlowWatermarkSampler {
+	pub fn new<F>(fetch: F) -> Self
+	where
+		F: Fn() -> Vec<FlowWatermarkRow> + Send + Sync + 'static,
+	{
+		Self {
+			fetch: Arc::new(fetch),
+		}
+	}
+
+	pub fn all(&self) -> Vec<FlowWatermarkRow> {
+		(self.fetch)()
+	}
 }

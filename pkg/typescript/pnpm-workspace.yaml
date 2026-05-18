@@ -1,9 +1,12 @@
 packages:
+  - auth
+  - auth-solana
   - core
   - client
   - console
   - react
   - shell
+  - ui
   - wasm
 
 overrides:

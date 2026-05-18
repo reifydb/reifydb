@@ -1,15 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # SQLite Storage Example
-//!
-//! Demonstrates using ReifyDB with SQLite persistent storage:
-//! - Creating a database with file persistence
-//! - Data survives program restarts
-//! - Database file management
-//!
-//! Run with: `cargo run --bin storage-sqlite`
-
 use std::{fs, path::Path};
 
 use reifydb::{Params, SqliteConfig, embedded};

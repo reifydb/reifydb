@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::flow_nodes::*, vtable::FLOW_NODES};
 
-/// Returns the static definition for the system.flow_nodes virtual table
-/// This table exposes information about all flow nodes in the database
 pub fn flow_nodes() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
@@ -44,8 +42,8 @@ pub fn flow_nodes() -> Arc<VTable> {
 				Column {
 					id: NODE_TYPE,
 					name: "node_type".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint1), /* 0-255 for node
-					                                                         * type discriminator */
+					constraint: TypeConstraint::unconstrained(Type::Uint1),
+
 					properties: vec![],
 					index: ColumnIndex(2),
 					auto_increment: false,
@@ -54,7 +52,7 @@ pub fn flow_nodes() -> Arc<VTable> {
 				Column {
 					id: DATA,
 					name: "data".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Blob), // Serialized node data
+					constraint: TypeConstraint::unconstrained(Type::Blob),
 					properties: vec![],
 					index: ColumnIndex(3),
 					auto_increment: false,

@@ -4,46 +4,47 @@
 use std::{ops::Deref, sync::Arc};
 
 use reifydb_catalog::{
+	cache::CatalogCache,
 	catalog::{
 		Catalog,
 		namespace::NamespaceToCreate,
 		table::{TableColumnToCreate, TableToCreate},
 	},
-	materialized::MaterializedCatalog,
 };
 use reifydb_cdc::{
-	produce::producer::{CdcProduceMsg, CdcProducerEventListener, spawn_cdc_producer},
+	produce::{
+		producer::{CdcProducerEventListener, spawn_cdc_producer},
+		watermark::CdcProducerWatermark,
+	},
 	storage::CdcStore,
 };
 use reifydb_core::{
-	config::SystemConfig,
-	event::{
-		EventBus,
-		metric::{CdcStatsDroppedEvent, CdcStatsRecordedEvent, StorageStatsRecordedEvent},
-		transaction::PostCommitEvent,
-	},
+	actors::cdc::CdcProduceHandle,
+	event::{EventBus, transaction::PostCommitEvent},
 	interface::catalog::id::NamespaceId,
 	util::ioc::IocContainer,
 };
 use reifydb_extension::transform::registry::Transforms;
-use reifydb_metric::worker::{
-	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
+use reifydb_routine::{
+	function::default_native_functions, procedure::default_native_procedures, routine::registry::Routines,
 };
-use reifydb_routine::{function::default_functions, procedure::registry::Procedures};
 use reifydb_runtime::{
 	SharedRuntime, SharedRuntimeConfig,
-	actor::system::{ActorHandle, ActorSystem, ActorSystemConfig},
+	actor::system::ActorSystem,
 	context::{
 		RuntimeContext,
 		clock::{Clock, MockClock},
 		rng::Rng,
 	},
+	pool::{PoolConfig, Pools},
 };
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_sqlite::SqliteConfig;
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
-	multi::transaction::{MultiTransaction, register_oracle_defaults},
+	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 	transaction::admin::AdminTransaction,
 };
@@ -57,6 +58,7 @@ use crate::{engine::StandardEngine, vm::services::EngineConfig};
 
 pub struct TestEngine {
 	engine: StandardEngine,
+	mock_clock: MockClock,
 }
 
 impl Default for TestEngine {
@@ -66,74 +68,76 @@ impl Default for TestEngine {
 }
 
 impl TestEngine {
-	/// Create a new TestEngine with all subsystems (CDC, metrics, etc.).
 	pub fn new() -> Self {
-		Self::builder().with_cdc().with_metrics().build()
+		Self::builder().with_cdc().build()
 	}
 
-	/// Start configuring a test engine via the builder.
 	pub fn builder() -> TestEngineBuilder {
 		TestEngineBuilder::default()
 	}
 
-	/// Run an admin RQL statement as system identity. Panics on error.
 	pub fn admin(&self, rql: &str) -> Vec<Frame> {
-		self.engine
-			.admin_as(IdentityId::system(), rql, Params::None)
-			.unwrap_or_else(|e| panic!("admin failed: {e:?}\nrql: {rql}"))
+		let r = self.engine.admin_as(IdentityId::system(), rql, Params::None);
+		if let Some(e) = r.error {
+			panic!("admin failed: {e:?}\nrql: {rql}")
+		}
+		r.frames
 	}
 
-	/// Run a command RQL statement as system identity. Panics on error.
 	pub fn command(&self, rql: &str) -> Vec<Frame> {
-		self.engine
-			.command_as(IdentityId::system(), rql, Params::None)
-			.unwrap_or_else(|e| panic!("command failed: {e:?}\nrql: {rql}"))
+		let r = self.engine.command_as(IdentityId::system(), rql, Params::None);
+		if let Some(e) = r.error {
+			panic!("command failed: {e:?}\nrql: {rql}")
+		}
+		r.frames
 	}
 
-	/// Run a query RQL statement as system identity. Panics on error.
 	pub fn query(&self, rql: &str) -> Vec<Frame> {
-		self.engine
-			.query_as(IdentityId::system(), rql, Params::None)
-			.unwrap_or_else(|e| panic!("query failed: {e:?}\nrql: {rql}"))
+		let r = self.engine.query_as(IdentityId::system(), rql, Params::None);
+		if let Some(e) = r.error {
+			panic!("query failed: {e:?}\nrql: {rql}")
+		}
+		r.frames
 	}
 
-	/// Run an admin statement expecting an error. Panics if it succeeds.
 	pub fn admin_err(&self, rql: &str) -> String {
-		match self.engine.admin_as(IdentityId::system(), rql, Params::None) {
-			Err(e) => format!("{e:?}"),
-			Ok(_) => panic!("Expected error but admin succeeded\nrql: {rql}"),
+		let r = self.engine.admin_as(IdentityId::system(), rql, Params::None);
+		match r.error {
+			Some(e) => format!("{e:?}"),
+			None => panic!("Expected error but admin succeeded\nrql: {rql}"),
 		}
 	}
 
-	/// Run a command statement expecting an error. Panics if it succeeds.
 	pub fn command_err(&self, rql: &str) -> String {
-		match self.engine.command_as(IdentityId::system(), rql, Params::None) {
-			Err(e) => format!("{e:?}"),
-			Ok(_) => panic!("Expected error but command succeeded\nrql: {rql}"),
+		let r = self.engine.command_as(IdentityId::system(), rql, Params::None);
+		match r.error {
+			Some(e) => format!("{e:?}"),
+			None => panic!("Expected error but command succeeded\nrql: {rql}"),
 		}
 	}
 
-	/// Run a query statement expecting an error. Panics if it succeeds.
 	pub fn query_err(&self, rql: &str) -> String {
-		match self.engine.query_as(IdentityId::system(), rql, Params::None) {
-			Err(e) => format!("{e:?}"),
-			Ok(_) => panic!("Expected error but query succeeded\nrql: {rql}"),
+		let r = self.engine.query_as(IdentityId::system(), rql, Params::None);
+		match r.error {
+			Some(e) => format!("{e:?}"),
+			None => panic!("Expected error but query succeeded\nrql: {rql}"),
 		}
 	}
 
-	/// Count rows in the first frame.
 	pub fn row_count(frames: &[Frame]) -> usize {
 		frames.first().map(|f| f.row_count()).unwrap_or(0)
 	}
 
-	/// Return the system identity used by this harness.
 	pub fn identity() -> IdentityId {
 		IdentityId::system()
 	}
 
-	/// Access the underlying StandardEngine.
 	pub fn inner(&self) -> &StandardEngine {
 		&self.engine
+	}
+
+	pub fn mock_clock(&self) -> MockClock {
+		self.mock_clock.clone()
 	}
 }
 
@@ -148,7 +152,8 @@ impl Deref for TestEngine {
 #[derive(Default)]
 pub struct TestEngineBuilder {
 	cdc: bool,
-	metrics: bool,
+	#[cfg(not(target_arch = "wasm32"))]
+	sqlite_cdc: Option<SqliteConfig>,
 }
 
 impl TestEngineBuilder {
@@ -157,26 +162,23 @@ impl TestEngineBuilder {
 		self
 	}
 
-	pub fn with_metrics(mut self) -> Self {
-		self.metrics = true;
+	#[cfg(not(target_arch = "wasm32"))]
+	pub fn with_sqlite_cdc(mut self, config: SqliteConfig) -> Self {
+		self.cdc = true;
+		self.sqlite_cdc = Some(config);
 		self
 	}
 
 	pub fn build(self) -> TestEngine {
-		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+		let mock_clock = MockClock::from_millis(1000);
+		let pools = Pools::new(PoolConfig::default());
+		let actor_system = ActorSystem::new(pools, Clock::Mock(mock_clock.clone()));
 		let eventbus = EventBus::new(&actor_system);
 		let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
-		let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
+		let single_store = SingleStore::testing_memory();
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
-		let runtime = SharedRuntime::from_config(
-			SharedRuntimeConfig::default()
-				.async_threads(2)
-				.compute_threads(2)
-				.compute_max_in_flight(32)
-				.deterministic_testing(1000),
-		);
-		let system_config = SystemConfig::new();
-		register_oracle_defaults(&system_config);
+		let runtime = make_test_runtime(&mock_clock);
+		let catalog_cache = CatalogCache::new();
 		let multi = MultiTransaction::new(
 			multi_store.clone(),
 			single.clone(),
@@ -184,37 +186,27 @@ impl TestEngineBuilder {
 			actor_system,
 			runtime.clock().clone(),
 			runtime.rng().clone(),
-			system_config,
+			Arc::new(catalog_cache.clone()),
 		)
 		.unwrap();
 
 		let mut ioc = IocContainer::new();
-
-		let materialized_catalog = MaterializedCatalog::new(SystemConfig::new());
-		ioc = ioc.register(materialized_catalog.clone());
-
+		ioc = ioc.register(catalog_cache.clone());
 		ioc = ioc.register(runtime.clone());
 		ioc = ioc.register(single_store.clone());
+		ioc = ioc.register(eventbus.clone());
 
-		if self.metrics {
-			let metrics_worker = Arc::new(MetricsWorker::new(
-				MetricsWorkerConfig::default(),
-				single_store.clone(),
-				multi_store.clone(),
-				eventbus.clone(),
-			));
-			eventbus.register::<StorageStatsRecordedEvent, _>(StorageStatsListener::new(
-				metrics_worker.sender(),
-			));
-			eventbus.register::<CdcStatsRecordedEvent, _>(CdcStatsListener::new(metrics_worker.sender()));
-			eventbus.register::<CdcStatsDroppedEvent, _>(CdcStatsDroppedListener::new(
-				metrics_worker.sender(),
-			));
-			ioc.register_service::<Arc<MetricsWorker>>(metrics_worker);
-		}
-
+		#[cfg(not(target_arch = "wasm32"))]
+		let cdc_store = match self.sqlite_cdc {
+			Some(config) => CdcStore::sqlite(config),
+			None => CdcStore::memory(),
+		};
+		#[cfg(target_arch = "wasm32")]
 		let cdc_store = CdcStore::memory();
 		ioc = ioc.register(cdc_store.clone());
+
+		let cdc_producer_watermark = CdcProducerWatermark::new();
+		ioc = ioc.register(cdc_producer_watermark.clone());
 
 		let ioc_for_cdc = ioc.clone();
 
@@ -223,48 +215,88 @@ impl TestEngineBuilder {
 			single.clone(),
 			eventbus.clone(),
 			InterceptorFactory::default(),
-			Catalog::new(materialized_catalog),
+			Catalog::new(catalog_cache),
 			EngineConfig {
 				runtime_context: RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
-				functions: default_functions().configure(),
-				procedures: Procedures::empty(),
+				routines: {
+					let b = Routines::builder();
+					let b = default_native_functions(b);
+					default_native_procedures(b).configure()
+				},
 				transforms: Transforms::empty(),
 				ioc,
-				#[cfg(not(target_arch = "wasm32"))]
+				#[cfg(not(reifydb_single_threaded))]
 				remote_registry: None,
 			},
 		);
 
 		if self.cdc {
-			let cdc_handle = spawn_cdc_producer(
-				&runtime.actor_system(),
+			register_cdc_producer(
+				&runtime,
 				cdc_store,
-				multi_store.clone(),
-				engine.clone(),
-				eventbus.clone(),
+				multi_store,
+				&engine,
+				&eventbus,
+				ioc_for_cdc,
+				cdc_producer_watermark,
 			);
-			eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
-				cdc_handle.actor_ref().clone(),
-				runtime.clock().clone(),
-			));
-			ioc_for_cdc.register_service::<Arc<ActorHandle<CdcProduceMsg>>>(Arc::new(cdc_handle));
 		}
 
 		TestEngine {
 			engine,
+			mock_clock,
 		}
 	}
+}
+
+#[inline]
+fn make_test_runtime(mock_clock: &MockClock) -> SharedRuntime {
+	let config = SharedRuntimeConfig::default().seeded(1000);
+	let config = SharedRuntimeConfig {
+		clock: Clock::Mock(mock_clock.clone()),
+		..config
+	};
+	let pools = PoolConfig {
+		async_threads: 2,
+		system_threads: 2,
+		query_threads: 2,
+	};
+	SharedRuntime::from_config(config, pools)
+}
+
+fn register_cdc_producer(
+	runtime: &SharedRuntime,
+	cdc_store: CdcStore,
+	multi_store: MultiStore,
+	engine: &StandardEngine,
+	eventbus: &EventBus,
+	ioc_for_cdc: IocContainer,
+	watermark: CdcProducerWatermark,
+) {
+	let cdc_handle = spawn_cdc_producer(
+		&runtime.actor_system(),
+		cdc_store,
+		multi_store,
+		engine.clone(),
+		eventbus.clone(),
+		runtime.clock().clone(),
+		watermark,
+	);
+	eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
+		cdc_handle.actor_ref().clone(),
+		runtime.clock().clone(),
+	));
+	ioc_for_cdc.register_service::<Arc<CdcProduceHandle>>(Arc::new(cdc_handle));
 }
 
 pub fn create_test_admin_transaction() -> AdminTransaction {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
 
-	let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+	let pools = Pools::new(PoolConfig::sync_only());
+	let actor_system = ActorSystem::new(pools, Clock::Real);
 	let event_bus = EventBus::new(&actor_system);
 	let single = SingleTransaction::new(single_store, event_bus.clone());
-	let system_config = SystemConfig::new();
-	register_oracle_defaults(&system_config);
 	let multi = MultiTransaction::new(
 		multi_store,
 		single.clone(),
@@ -272,25 +304,29 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 		actor_system,
 		Clock::Mock(MockClock::from_millis(1000)),
 		Rng::seeded(42),
-		system_config,
+		Arc::new(CatalogCache::new()),
 	)
 	.unwrap();
 
-	AdminTransaction::new(multi, single, event_bus, Interceptors::new(), IdentityId::system()).unwrap()
+	AdminTransaction::new(
+		multi,
+		single,
+		event_bus,
+		Interceptors::new(),
+		IdentityId::system(),
+		Clock::Mock(MockClock::from_millis(1000)),
+	)
+	.unwrap()
 }
 
 pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
 
-	let actor_system = ActorSystem::new(ActorSystemConfig {
-		pool_threads: 1,
-		max_in_flight: 1,
-	});
+	let pools = Pools::new(PoolConfig::sync_only());
+	let actor_system = ActorSystem::new(pools, Clock::Real);
 	let event_bus = EventBus::new(&actor_system);
 	let single = SingleTransaction::new(single_store, event_bus.clone());
-	let system_config = SystemConfig::new();
-	register_oracle_defaults(&system_config);
 	let multi = MultiTransaction::new(
 		multi_store,
 		single.clone(),
@@ -298,7 +334,7 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 		actor_system,
 		Clock::Mock(MockClock::from_millis(1000)),
 		Rng::seeded(42),
-		system_config,
+		Arc::new(CatalogCache::new()),
 	)
 	.unwrap();
 	let mut result = AdminTransaction::new(
@@ -307,11 +343,12 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 		event_bus.clone(),
 		Interceptors::new(),
 		IdentityId::system(),
+		Clock::Mock(MockClock::from_millis(1000)),
 	)
 	.unwrap();
 
-	let materialized_catalog = MaterializedCatalog::new(SystemConfig::new());
-	let catalog = Catalog::new(materialized_catalog);
+	let catalog_cache = CatalogCache::new();
+	let catalog = Catalog::new(catalog_cache);
 
 	let namespace = catalog
 		.create_namespace(
@@ -350,8 +387,9 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 					dictionary_id: None,
 				},
 			],
-			retention_policy: None,
+			retention_strategy: None,
 			primary_key_columns: None,
+			underlying: false,
 		},
 	)
 	.unwrap();

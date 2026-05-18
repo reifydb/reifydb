@@ -29,7 +29,6 @@ fn reload_parent_columns(catalog: &Catalog, txn: &mut Transaction<'_>, key: &Enc
 	let shape_id = if let Some(ck) = ColumnKey::decode(key) {
 		Some(ck.shape)
 	} else if let Some(_ck) = ColumnsKey::decode(key) {
-		// ColumnsKey only has column_id, no parent shape — cannot determine parent
 		return Ok(());
 	} else {
 		None
@@ -45,21 +44,27 @@ fn reload_parent_columns(catalog: &Catalog, txn: &mut Transaction<'_>, key: &Enc
 
 	match shape_id {
 		ShapeId::Table(id) => {
-			if let Some(mut table) = catalog.materialized.find_table_at(id, version) {
+			if let Some(mut table) = catalog.cache.find_table_at(id, version) {
 				table.columns = columns;
-				catalog.materialized.set_table(id, version, Some(table));
+				catalog.cache.set_table(id, version, Some(table));
 			}
 		}
 		ShapeId::View(id) => {
-			if let Some(mut view) = catalog.materialized.find_view_at(id, version) {
+			if let Some(mut view) = catalog.cache.find_view_at(id, version) {
 				*view.columns_mut() = columns;
-				catalog.materialized.set_view(id, version, Some(view));
+				catalog.cache.set_view(id, version, Some(view));
 			}
 		}
 		ShapeId::RingBuffer(id) => {
-			if let Some(mut rb) = catalog.materialized.find_ringbuffer_at(id, version) {
+			if let Some(mut rb) = catalog.cache.find_ringbuffer_at(id, version) {
 				rb.columns = columns;
-				catalog.materialized.set_ringbuffer(id, version, Some(rb));
+				catalog.cache.set_ringbuffer(id, version, Some(rb));
+			}
+		}
+		ShapeId::Series(id) => {
+			if let Some(mut s) = catalog.cache.find_series_at(id, version) {
+				s.columns = columns;
+				catalog.cache.set_series(id, version, Some(s));
 			}
 		}
 		_ => {}

@@ -2,4 +2,4 @@
 // Copyright (c) 2025 ReifyDB
 mod client;
 
-pub use client::WsClient;
+pub use client::{BatchPushEvent, WsBatchSubscription, WsClient};

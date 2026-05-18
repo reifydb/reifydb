@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -16,9 +16,8 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system role information
 pub struct SystemRoles {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +30,7 @@ impl Default for SystemRoles {
 impl SystemRoles {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_roles_table().clone(),
+			vtable: SystemCatalog::get_system_roles_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -50,8 +49,8 @@ impl BaseVTable for SystemRoles {
 
 		let roles = CatalogStore::list_all_roles(txn)?;
 
-		let mut ids = ColumnData::uint8_with_capacity(roles.len());
-		let mut names = ColumnData::utf8_with_capacity(roles.len());
+		let mut ids = ColumnBuffer::uint8_with_capacity(roles.len());
+		let mut names = ColumnBuffer::utf8_with_capacity(roles.len());
 
 		for r in roles {
 			ids.push(r.id);
@@ -59,14 +58,8 @@ impl BaseVTable for SystemRoles {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: ids,
-			},
-			Column {
-				name: Fragment::internal("name"),
-				data: names,
-			},
+			ColumnWithName::new(Fragment::internal("id"), ids),
+			ColumnWithName::new(Fragment::internal("name"), names),
 		];
 
 		self.exhausted = true;
@@ -75,7 +68,7 @@ impl BaseVTable for SystemRoles {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

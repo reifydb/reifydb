@@ -1,19 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::{
 	error::TypeError,
 	value::{container::temporal::TemporalContainer, date::Date, duration::Duration, r#type::Type},
 };
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct DateAge;
+pub struct DateAge {
+	info: RoutineInfo,
+}
 
 impl Default for DateAge {
 	fn default() -> Self {
@@ -23,12 +21,12 @@ impl Default for DateAge {
 
 impl DateAge {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("date::age"),
+		}
 	}
 }
 
-/// Compute calendar-aware age between two dates.
-/// Returns Duration with months + days components.
 pub fn date_age(d1: &Date, d2: &Date) -> Result<Duration, Box<TypeError>> {
 	let y1 = d1.year();
 	let m1 = d1.month() as i32;
@@ -44,7 +42,7 @@ pub fn date_age(d1: &Date, d2: &Date) -> Result<Duration, Box<TypeError>> {
 
 	if days < 0 {
 		months -= 1;
-		// Borrow days from previous month (relative to d2's perspective)
+
 		let borrow_month = if m1 - 1 < 1 {
 			12
 		} else {
@@ -67,28 +65,32 @@ pub fn date_age(d1: &Date, d2: &Date) -> Result<Duration, Box<TypeError>> {
 	Duration::new(total_months, days, 0)
 }
 
-impl ScalarFunction for DateAge {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl<'a> Routine<FunctionContext<'a>> for DateAge {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Duration
+	}
 
-		if columns.len() != 2 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 2 {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let col1 = columns.first().unwrap();
-		let col2 = columns.get(1).unwrap();
+		let col1 = &args[0];
+		let col2 = &args[1];
+		let (data1, bitvec1) = col1.unwrap_option();
+		let (data2, bitvec2) = col2.unwrap_option();
+		let row_count = data1.len();
 
-		match (col1.data(), col2.data()) {
-			(ColumnData::Date(container1), ColumnData::Date(container2)) => {
+		let result_data = match (data1, data2) {
+			(ColumnBuffer::Date(container1), ColumnBuffer::Date(container2)) => {
 				let mut container = TemporalContainer::with_capacity(row_count);
 
 				for i in 0..row_count {
@@ -100,24 +102,40 @@ impl ScalarFunction for DateAge {
 					}
 				}
 
-				Ok(ColumnData::Duration(container))
+				ColumnBuffer::Duration(container)
 			}
-			(ColumnData::Date(_), other) => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 1,
-				expected: vec![Type::Date],
-				actual: other.get_type(),
-			}),
-			(other, _) => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 0,
-				expected: vec![Type::Date],
-				actual: other.get_type(),
-			}),
-		}
-	}
+			(ColumnBuffer::Date(_), other) => {
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 1,
+					expected: vec![Type::Date],
+					actual: other.get_type(),
+				});
+			}
+			(other, _) => {
+				return Err(RoutineError::FunctionInvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 0,
+					expected: vec![Type::Date],
+					actual: other.get_type(),
+				});
+			}
+		};
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Duration
+		let final_data = match (bitvec1, bitvec2) {
+			(Some(bv), _) | (_, Some(bv)) => ColumnBuffer::Option {
+				inner: Box::new(result_data),
+				bitvec: bv.clone(),
+			},
+			_ => result_data,
+		};
+
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for DateAge {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

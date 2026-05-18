@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Single-version transactional path. No snapshot isolation, no conflict detector, no version oracle - a write
+//! transaction sees its own buffered changes and commits them atomically against the underlying single-version
+//! store. Suitable for OLTP workloads that do not need history and are willing to take last-writer-wins semantics
+//! between concurrent writers in exchange for less overhead.
+
 use std::sync::Arc;
 
 use crossbeam_skiplist::SkipMap;
@@ -18,7 +23,11 @@ pub mod read;
 pub mod write;
 
 use read::{KeyReadLock, SingleReadTransaction};
-use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem};
+use reifydb_runtime::{
+	actor::system::ActorSystem,
+	context::clock::Clock,
+	pool::{PoolConfig, Pools},
+};
 use reifydb_type::Result;
 use write::{KeyWriteLock, SingleWriteTransaction};
 
@@ -36,12 +45,10 @@ pub(crate) struct SingleTransactionInner {
 
 impl SingleTransactionInner {
 	fn get_or_create_lock(&self, key: &EncodedKey) -> Arc<RwLock<()>> {
-		// Check if lock exists
 		if let Some(entry) = self.key_locks.get(key) {
 			return entry.value().clone();
 		}
 
-		// Create new lock
 		let lock = Arc::new(RwLock::new(()));
 		self.key_locks.insert(key.clone(), lock.clone());
 		lock
@@ -75,11 +82,11 @@ impl SingleTransaction {
 	}
 
 	pub fn testing() -> Self {
-		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+		let pools = Pools::new(PoolConfig::sync_only());
+		let actor_system = ActorSystem::new(pools, Clock::Real);
 		Self::new(SingleStore::testing_memory(), EventBus::new(&actor_system))
 	}
 
-	/// Helper for single-version queries.
 	pub fn with_query<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
@@ -89,7 +96,6 @@ impl SingleTransaction {
 		f(&mut tx)
 	}
 
-	/// Helper for single-version commands.
 	pub fn with_command<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
@@ -111,10 +117,8 @@ impl SingleTransaction {
 			"SVL transactions must declare keys upfront - empty keysets are not allowed"
 		);
 
-		// Sort keys to establish consistent lock ordering and prevent deadlocks
 		keys_vec.sort();
 
-		// Acquire read locks on all keys in sorted order
 		let mut locks = Vec::new();
 		for key in &keys_vec {
 			let arc = self.inner.get_or_create_lock(key);
@@ -138,10 +142,8 @@ impl SingleTransaction {
 			"SVL transactions must declare keys upfront - empty keysets are not allowed"
 		);
 
-		// Sort keys to establish consistent lock ordering and prevent deadlocks
 		keys_vec.sort();
 
-		// Acquire write locks on all keys in sorted order
 		let mut locks = Vec::new();
 		for key in &keys_vec {
 			let arc = self.inner.get_or_create_lock(key);
@@ -172,7 +174,7 @@ pub mod tests {
 	use super::*;
 
 	fn make_key(s: &str) -> EncodedKey {
-		EncodedKey(CowVec::new(s.as_bytes().to_vec()))
+		EncodedKey::new(s.as_bytes().to_vec())
 	}
 
 	fn make_value(s: &str) -> EncodedRow {

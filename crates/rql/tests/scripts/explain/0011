@@ -1,0 +1,11 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+query 'CALL rql::explain("window sliding { sum(amount) } with { count: 100, slide: 20 }")'
+---
+> +-------+---------+----------+----------+-------------------------------------------------------+
+> |  idx  |  depth  |  parent  |   kind   |                        detail                         |
+> +-------+---------+----------+----------+-------------------------------------------------------+
+> |   0   |    0    |   none   |  Window  |  kind=Sliding { size: Count(100), slide: Count(20) }  |
+> +-------+---------+----------+----------+-------------------------------------------------------+
+>

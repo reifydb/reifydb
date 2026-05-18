@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::sync::rwlock::RwLock;
 
-use super::{CdcStorage, CdcStorageResult, DropBeforeResult, DroppedCdcEntry};
+use super::{CdcStorage, CdcStorageResult, DropBeforeResult, DroppedCdcEntry, normalize_range_inclusive};
 
 #[derive(Clone)]
 pub struct MemoryCdcStorage {
@@ -68,26 +68,17 @@ impl CdcStorage for MemoryCdcStorage {
 		end: Bound<CommitVersion>,
 		batch_size: u64,
 	) -> CdcStorageResult<CdcBatch> {
+		let Some((lo_inc, hi_inc)) = normalize_range_inclusive(start, end) else {
+			return Ok(CdcBatch {
+				items: Vec::new(),
+				has_more: false,
+			});
+		};
 		let guard = self.inner.read();
-		let batch_size = batch_size as usize;
-
-		let range_iter = guard.range((start, end));
-		let mut items: Vec<Cdc> = Vec::with_capacity(batch_size.min(64));
-
-		for (count, (_, cdc)) in range_iter.enumerate() {
-			if count >= batch_size {
-				// We've hit the batch limit, there are more items
-				return Ok(CdcBatch {
-					items,
-					has_more: true,
-				});
-			}
-			items.push(cdc.clone());
-		}
-
+		let (items, has_more) = collect_range_into(&guard, lo_inc, hi_inc, batch_size as usize);
 		Ok(CdcBatch {
 			items,
-			has_more: false,
+			has_more,
 		})
 	}
 
@@ -107,23 +98,10 @@ impl CdcStorage for MemoryCdcStorage {
 		let mut guard = self.inner.write();
 		let keys_to_remove: Vec<_> = guard.range(..version).map(|(k, _)| *k).collect();
 		let count = keys_to_remove.len();
-
-		let mut entries = Vec::new();
-		for key in &keys_to_remove {
-			if let Some(cdc) = guard.get(key) {
-				for sys_change in &cdc.system_changes {
-					entries.push(DroppedCdcEntry {
-						key: sys_change.key().clone(),
-						value_bytes: sys_change.value_bytes() as u64,
-					});
-				}
-			}
-		}
-
+		let entries = collect_dropped_entries(&guard, &keys_to_remove);
 		for key in keys_to_remove {
 			guard.remove(&key);
 		}
-
 		Ok(DropBeforeResult {
 			count,
 			entries,
@@ -131,125 +109,35 @@ impl CdcStorage for MemoryCdcStorage {
 	}
 }
 
-#[cfg(test)]
-pub mod tests {
-	use std::thread;
-
-	use reifydb_core::{
-		encoded::{key::EncodedKey, row::EncodedRow},
-		interface::cdc::SystemChange,
-	};
-	use reifydb_type::util::cowvec::CowVec;
-
-	use super::*;
-
-	fn make_cdc(version: u64) -> Cdc {
-		Cdc::new(
-			CommitVersion(version),
-			12345,
-			Vec::new(),
-			vec![SystemChange::Insert {
-				key: EncodedKey::new(vec![1, 2, 3]),
-				post: EncodedRow(CowVec::new(vec![])),
-			}],
-		)
-	}
-
-	#[test]
-	fn test_clone_shares_storage() {
-		let storage1 = MemoryCdcStorage::new();
-		let storage2 = storage1.clone();
-
-		storage1.write(&make_cdc(1)).unwrap();
-
-		// Both should see the same data
-		assert!(storage1.read(CommitVersion(1)).unwrap().is_some());
-		assert!(storage2.read(CommitVersion(1)).unwrap().is_some());
-	}
-
-	#[test]
-	fn test_concurrent_access() {
-		let storage = MemoryCdcStorage::new();
-		let mut handles = vec![];
-
-		// Spawn multiple writers
-		for i in 0..10 {
-			let s = storage.clone();
-			handles.push(thread::spawn(move || {
-				s.write(&make_cdc(i)).unwrap();
-			}));
+#[inline]
+fn collect_range_into(
+	guard: &BTreeMap<CommitVersion, Cdc>,
+	lo_inc: CommitVersion,
+	hi_inc: CommitVersion,
+	batch_size: usize,
+) -> (Vec<Cdc>, bool) {
+	let mut items: Vec<Cdc> = Vec::with_capacity(batch_size.min(64));
+	for (count, (_, cdc)) in guard.range(lo_inc..=hi_inc).enumerate() {
+		if count >= batch_size {
+			return (items, true);
 		}
+		items.push(cdc.clone());
+	}
+	(items, false)
+}
 
-		for h in handles {
-			h.join().unwrap();
+#[inline]
+fn collect_dropped_entries(guard: &BTreeMap<CommitVersion, Cdc>, keys: &[CommitVersion]) -> Vec<DroppedCdcEntry> {
+	let mut entries = Vec::new();
+	for key in keys {
+		if let Some(cdc) = guard.get(key) {
+			for sys_change in &cdc.system_changes {
+				entries.push(DroppedCdcEntry {
+					key: sys_change.key().clone(),
+					value_bytes: sys_change.value_bytes() as u64,
+				});
+			}
 		}
-
-		// All entries should be present
-		assert_eq!(storage.len(), 10);
 	}
-
-	#[test]
-	fn test_range_exclusive_bounds() {
-		let storage = MemoryCdcStorage::new();
-
-		for v in 1..=5 {
-			storage.write(&make_cdc(v)).unwrap();
-		}
-
-		// Exclusive start
-		let batch = storage
-			.read_range(Bound::Excluded(CommitVersion(2)), Bound::Included(CommitVersion(4)), 100)
-			.unwrap();
-		assert_eq!(batch.items.len(), 2); // 3, 4
-		assert_eq!(batch.items[0].version, CommitVersion(3));
-		assert_eq!(batch.items[1].version, CommitVersion(4));
-
-		// Exclusive end
-		let batch = storage
-			.read_range(Bound::Included(CommitVersion(2)), Bound::Excluded(CommitVersion(4)), 100)
-			.unwrap();
-		assert_eq!(batch.items.len(), 2); // 2, 3
-		assert_eq!(batch.items[0].version, CommitVersion(2));
-		assert_eq!(batch.items[1].version, CommitVersion(3));
-	}
-
-	#[test]
-	fn test_overwrite_entry() {
-		let storage = MemoryCdcStorage::new();
-
-		let cdc1 = Cdc::new(
-			CommitVersion(1),
-			100,
-			Vec::new(),
-			vec![SystemChange::Insert {
-				key: EncodedKey::new(vec![1]),
-				post: EncodedRow(CowVec::new(vec![])),
-			}],
-		);
-
-		let cdc2 = Cdc::new(
-			CommitVersion(1),
-			200, // Different timestamp
-			Vec::new(),
-			vec![
-				SystemChange::Insert {
-					key: EncodedKey::new(vec![2]),
-					post: EncodedRow(CowVec::new(vec![])),
-				},
-				SystemChange::Insert {
-					key: EncodedKey::new(vec![3]),
-					post: EncodedRow(CowVec::new(vec![])),
-				},
-			],
-		);
-
-		storage.write(&cdc1).unwrap();
-		assert_eq!(storage.count(CommitVersion(1)).unwrap(), 1);
-
-		storage.write(&cdc2).unwrap();
-		assert_eq!(storage.count(CommitVersion(1)).unwrap(), 2);
-
-		let read = storage.read(CommitVersion(1)).unwrap().unwrap();
-		assert_eq!(read.timestamp, 200);
-	}
+	entries
 }

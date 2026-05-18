@@ -1,14 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # Router Example — Query Forwarding
-//!
-//! A ReifyDB instance that creates a remote namespace pointing to the data server,
-//! then demonstrates transparent query forwarding over gRPC.
-//!
-//! Start the data server first: `cargo run --bin router-data`
-//! Then run this: `cargo run --bin router`
-
 use reifydb::{Params, WithSubsystem, server};
 use tracing::info;
 
@@ -32,7 +24,7 @@ fn main() {
 	)
 	.unwrap();
 
-	// Query 1: FROM store::products — transparently forwarded to data server
+	// Query 1: FROM store::products - transparently forwarded to data server
 	info!("--- Query: FROM store::products ---");
 	match db.query_as_root("FROM store::products", Params::None) {
 		Ok(frames) => {
@@ -43,7 +35,7 @@ fn main() {
 		Err(e) => info!("Error: {}", e),
 	}
 
-	// Query 2: FROM store::products with filter — forwarded filter
+	// Query 2: FROM store::products with filter - forwarded filter
 	info!("--- Query: FROM store::products FILTER price > 50 ---");
 	match db.query_as_root("FROM store::products FILTER price > 50", Params::None) {
 		Ok(frames) => {
@@ -54,7 +46,7 @@ fn main() {
 		Err(e) => info!("Error: {}", e),
 	}
 
-	// Query 3: Try INSERT into remote namespace — should get REMOTE_002 error
+	// Query 3: Try INSERT into remote namespace - should get REMOTE_002 error
 	info!("--- Command: INSERT into remote namespace (expect REMOTE_002 error) ---");
 	match db.command_as_root(r#"INSERT store::products [{ id: 6, name: "Cable", price: 9.99 }];"#, Params::None) {
 		Ok(frames) => {

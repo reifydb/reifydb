@@ -511,8 +511,8 @@ export class DurationValue implements Value {
                this.nanos === otherDuration.nanos;
     }
 
-    toJSON(): string {
-        return this.value === undefined ? NONE_VALUE : this.toIsoString();
+    toJSON(): string | null {
+        return this.months === undefined ? null : this.toIsoString();
     }
 
     encode(): TypeValuePair {

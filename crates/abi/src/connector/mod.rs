@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! C ABI definitions for ReifyDB source and sink connectors
+//! C ABI shapes for FFI sources and sinks. The two magic constants are the values an extension stamps into its
+//! descriptor so the host can confirm at load time that a connector binary actually exports a connector and not
+//! some other kind of FFI object - mismatched magic is a hard load failure.
 
 pub mod sink;
 pub mod source;
 
-/// Magic number to identify valid FFI source connector libraries
 pub const SOURCE_MAGIC: u32 = 19661506;
 
-/// Magic number to identify valid FFI sink connector libraries
 pub const SINK_MAGIC: u32 = 19681212;

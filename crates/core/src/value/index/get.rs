@@ -41,14 +41,12 @@ impl IndexShape {
 			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 4);
 		}
 
-		// For DESC, undo the inversion first
 		if field.direction == SortDirection::Desc {
 			for b in bytes.iter_mut() {
 				*b = !*b;
 			}
 		}
 
-		// Now undo the ASC encoding
 		if bytes[0] & 0x80 != 0 {
 			bytes[0] ^= 0x80;
 		} else {
@@ -69,14 +67,12 @@ impl IndexShape {
 			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 8);
 		}
 
-		// For DESC, undo the inversion first
 		if field.direction == SortDirection::Desc {
 			for b in bytes.iter_mut() {
 				*b = !*b;
 			}
 		}
 
-		// Now undo the ASC encoding
 		if bytes[0] & 0x80 != 0 {
 			bytes[0] ^= 0x80;
 		} else {

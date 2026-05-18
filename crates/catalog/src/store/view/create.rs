@@ -127,13 +127,12 @@ impl CatalogStore {
 		);
 		view::SHAPE.set_u64(&mut row, view::PRIMARY_KEY, 0u64);
 
-		// Write storage kind and configuration
 		match &to_create.storage {
 			ViewStorageConfig::Table {
 				underlying,
 			} => {
 				view::SHAPE.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::Table as u8);
-				view::SHAPE.set_u64(&mut row, view::UNDERLYING_PRIMITIVE_ID, *underlying);
+				view::SHAPE.set_u64(&mut row, view::UNDERLYING_SHAPE_ID, *underlying);
 				view::SHAPE.set_u64(&mut row, view::CAPACITY, 0u64);
 				view::SHAPE.set_u8(&mut row, view::PROPAGATE_EVICTIONS, 0u8);
 				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, "");
@@ -147,7 +146,7 @@ impl CatalogStore {
 				propagate_evictions,
 			} => {
 				view::SHAPE.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::RingBuffer as u8);
-				view::SHAPE.set_u64(&mut row, view::UNDERLYING_PRIMITIVE_ID, *underlying);
+				view::SHAPE.set_u64(&mut row, view::UNDERLYING_SHAPE_ID, *underlying);
 				view::SHAPE.set_u64(&mut row, view::CAPACITY, *capacity);
 				view::SHAPE.set_u8(
 					&mut row,
@@ -169,7 +168,7 @@ impl CatalogStore {
 				tag,
 			} => {
 				view::SHAPE.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::Series as u8);
-				view::SHAPE.set_u64(&mut row, view::UNDERLYING_PRIMITIVE_ID, *underlying);
+				view::SHAPE.set_u64(&mut row, view::UNDERLYING_SHAPE_ID, *underlying);
 				view::SHAPE.set_u64(&mut row, view::CAPACITY, 0u64);
 				view::SHAPE.set_u8(&mut row, view::PROPAGATE_EVICTIONS, 0u8);
 				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, key.column());
@@ -207,7 +206,6 @@ impl CatalogStore {
 	}
 
 	fn insert_columns_for_view(txn: &mut AdminTransaction, view: ViewId, to_create: ViewToCreate) -> Result<()> {
-		// Look up namespace name for error messages
 		let namespace = Self::get_namespace(&mut Transaction::Admin(&mut *txn), to_create.namespace)?;
 
 		for (idx, column_to_create) in to_create.columns.into_iter().enumerate() {
@@ -223,7 +221,7 @@ impl CatalogStore {
 					properties: vec![],
 					index: ColumnIndex(idx as u8),
 					auto_increment: false,
-					dictionary_id: None, // Views don't support dictionaries yet
+					dictionary_id: None,
 				},
 			)?;
 		}
@@ -262,8 +260,8 @@ pub mod tests {
 
 		// First creation should succeed
 		let result = CatalogStore::create_deferred_view(&mut txn, to_create.clone()).unwrap();
-		assert_eq!(result.id(), ViewId(1025));
-		assert_eq!(result.namespace(), NamespaceId(1025));
+		assert_eq!(result.id(), ViewId(16385));
+		assert_eq!(result.namespace(), NamespaceId(16385));
 		assert_eq!(result.name(), "test_view");
 
 		let err = CatalogStore::create_deferred_view(&mut txn, to_create).unwrap_err();
@@ -302,12 +300,12 @@ pub mod tests {
 
 		let link = &links[1];
 		let row = &link.row;
-		assert_eq!(view_namespace::SHAPE.get_u64(row, view_namespace::ID), 1025);
+		assert_eq!(view_namespace::SHAPE.get_u64(row, view_namespace::ID), 16385);
 		assert_eq!(view_namespace::SHAPE.get_utf8(row, view_namespace::NAME), "test_view");
 
 		let link = &links[0];
 		let row = &link.row;
-		assert_eq!(view_namespace::SHAPE.get_u64(row, view_namespace::ID), 1026);
+		assert_eq!(view_namespace::SHAPE.get_u64(row, view_namespace::ID), 16386);
 		assert_eq!(view_namespace::SHAPE.get_utf8(row, view_namespace::NAME), "another_view");
 	}
 

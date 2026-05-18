@@ -26,7 +26,7 @@ impl CatalogChangeApplier for FlowApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let flow = decode_flow(row);
-		catalog.materialized.set_flow(flow.id, txn.version(), Some(flow));
+		catalog.cache.set_flow(flow.id, txn.version(), Some(flow));
 		Ok(())
 	}
 
@@ -35,7 +35,7 @@ impl CatalogChangeApplier for FlowApplier {
 		let id = FlowKey::decode(key).map(|k| k.flow).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::Flow,
 		})?;
-		catalog.materialized.set_flow(id, txn.version(), None);
+		catalog.cache.set_flow(id, txn.version(), None);
 		Ok(())
 	}
 }

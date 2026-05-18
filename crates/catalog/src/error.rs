@@ -6,7 +6,11 @@ use std::{
 	fmt::{Display, Formatter},
 };
 
-use reifydb_core::key::kind::KeyKind;
+use reifydb_core::{
+	interface::catalog::config::{AcceptError, ConfigKey},
+	key::kind::KeyKind,
+};
+use reifydb_runtime::hash::Hash128;
 use reifydb_type::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
@@ -34,6 +38,9 @@ pub enum CatalogObjectKind {
 	Column,
 	Source,
 	Sink,
+	Procedure,
+	TestProcedure,
+	Binding,
 }
 
 impl Display for CatalogObjectKind {
@@ -58,6 +65,9 @@ impl Display for CatalogObjectKind {
 			CatalogObjectKind::Column => f.write_str("column"),
 			CatalogObjectKind::Source => f.write_str("source"),
 			CatalogObjectKind::Sink => f.write_str("sink"),
+			CatalogObjectKind::Procedure => f.write_str("procedure"),
+			CatalogObjectKind::TestProcedure => f.write_str("test procedure"),
+			CatalogObjectKind::Binding => f.write_str("binding"),
 		}
 	}
 }
@@ -83,6 +93,16 @@ pub enum CatalogError {
 	#[error("migration `{name}` has no rollback body")]
 	MigrationNoRollbackBody {
 		name: String,
+		fragment: Fragment,
+	},
+
+	#[error("migration `{name}` content has changed since registration: was {expected_hex}, now {actual_hex}")]
+	MigrationHashMismatch {
+		name: String,
+		expected: Hash128,
+		actual: Hash128,
+		expected_hex: String,
+		actual_hex: String,
 		fragment: Fragment,
 	},
 
@@ -184,18 +204,71 @@ pub enum CatalogError {
 		fragment: Fragment,
 	},
 
+	#[error(
+		"cannot drop {kind} procedure `{name}`: native/FFI/WASM procedures are managed by the runtime registry, not DDL"
+	)]
+	CannotDropEphemeralProcedure {
+		kind: String,
+		name: String,
+		fragment: Fragment,
+	},
+
+	#[error("cannot register {kind} procedure as ephemeral: only Native/FFI/WASM variants are accepted")]
+	CannotRegisterPersistentAsEphemeral {
+		kind: String,
+	},
+
 	#[error("unknown config key `{0}`")]
-	ConfigKeyNotFound(String),
+	ConfigStorageKeyNotFound(String),
 
 	#[error("config value for key `{0}` cannot be none")]
 	ConfigValueInvalid(String),
 
-	#[error("config value for key `{key}` must be of type `{expected}`, got `{actual}`")]
+	#[error("config value for key `{key}` must be of type `{expected:?}`, got `{actual}`")]
 	ConfigTypeMismatch {
 		key: String,
-		expected: Type,
+		expected: Vec<Type>,
 		actual: Type,
 	},
+
+	#[error("config value for key `{key}` is invalid: {reason}")]
+	ConfigInvalidValue {
+		key: String,
+		reason: String,
+	},
+
+	#[error("unknown operation `{operation}` for {target_type} policy")]
+	PolicyInvalidOperation {
+		target_type: &'static str,
+		operation: String,
+		valid: &'static [&'static str],
+		policy_name: Option<String>,
+	},
+
+	#[error("invalid binding config: {reason}")]
+	InvalidBindingConfig {
+		reason: String,
+		fragment: Fragment,
+	},
+}
+
+impl From<(ConfigKey, AcceptError)> for CatalogError {
+	fn from((key, err): (ConfigKey, AcceptError)) -> Self {
+		match err {
+			AcceptError::TypeMismatch {
+				expected,
+				actual,
+			} => CatalogError::ConfigTypeMismatch {
+				key: key.to_string(),
+				expected,
+				actual,
+			},
+			AcceptError::InvalidValue(reason) => CatalogError::ConfigInvalidValue {
+				key: key.to_string(),
+				reason,
+			},
+		}
+	}
 }
 
 impl IntoDiagnostic for CatalogError {
@@ -299,6 +372,21 @@ impl IntoDiagnostic for CatalogError {
 						"sink",
 						"choose a different name, drop the existing sink or create sink in a different namespace",
 					),
+					CatalogObjectKind::Procedure => (
+						"CA_080",
+						"procedure",
+						"choose a different name, drop the existing procedure or create procedure in a different namespace",
+					),
+					CatalogObjectKind::TestProcedure => (
+						"CA_081",
+						"test procedure",
+						"choose a different name or drop the existing test procedure first",
+					),
+					CatalogObjectKind::Binding => (
+						"CA_087",
+						"binding",
+						"choose a different protocol key or drop the existing binding first",
+					),
 				};
 				let message = if matches!(
 					kind,
@@ -310,7 +398,7 @@ impl IntoDiagnostic for CatalogError {
 				};
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					fragment,
 					label: Some(format!("duplicate {} definition", kind_str)),
@@ -424,6 +512,21 @@ impl IntoDiagnostic for CatalogError {
 						"sink",
 						"ensure the sink exists or create it first using `CREATE SINK`".to_string(),
 					),
+					CatalogObjectKind::Procedure => (
+						"CA_082",
+						"procedure",
+						"ensure the procedure exists or create it first using `CREATE PROCEDURE`".to_string(),
+					),
+					CatalogObjectKind::TestProcedure => (
+						"CA_083",
+						"test procedure",
+						"ensure the test procedure exists or create it first using `CREATE TEST PROCEDURE`".to_string(),
+					),
+					CatalogObjectKind::Binding => (
+						"CA_088",
+						"binding",
+						"ensure the binding exists or create it first using `CREATE <PROTOCOL> BINDING`".to_string(),
+					),
 				};
 				let message = match kind {
 					CatalogObjectKind::Namespace => {
@@ -440,7 +543,7 @@ impl IntoDiagnostic for CatalogError {
 				};
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					fragment,
 					label: Some(label_str),
@@ -457,13 +560,41 @@ impl IntoDiagnostic for CatalogError {
 				fragment,
 			} => Diagnostic {
 				code: "CA_048".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("migration `{}` has no rollback body", name),
 				fragment,
 				label: Some("no rollback body defined".to_string()),
 				help: Some("define a ROLLBACK clause when creating the migration".to_string()),
 				column: None,
 				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::MigrationHashMismatch {
+				name,
+				expected: _,
+				actual: _,
+				expected_hex,
+				actual_hex,
+				fragment,
+			} => Diagnostic {
+				code: "CA_049".to_string(),
+				rql: None,
+				message: format!(
+					"migration `{}` content has changed since registration: was {}, now {}",
+					name, expected_hex, actual_hex
+				),
+				fragment,
+				label: Some("modified migration".to_string()),
+				help: Some(
+					"applied migrations are immutable; revert the change or register a new migration with a different name"
+						.to_string(),
+				),
+				column: None,
+				notes: vec![
+					"the registered hash in the catalog does not match the hash of the supplied body+rollback".to_string(),
+				],
 				cause: None,
 				operator_chain: None,
 			},
@@ -482,7 +613,7 @@ impl IntoDiagnostic for CatalogError {
 				};
 				Diagnostic {
 					code: "CA_005".to_string(),
-					statement: None,
+					rql: None,
 					message: format!(
 						"column `{}` already exists in {} `{}::{}`",
 						column, kind_str, namespace, name
@@ -506,7 +637,7 @@ impl IntoDiagnostic for CatalogError {
 				fragment,
 			} => Diagnostic {
 				code: "CA_008".to_string(),
-				statement: None,
+				rql: None,
 				message: format!(
 					"column `{}` type `{}` does not match dictionary `{}` value type `{}`",
 					column, column_type, dictionary, dictionary_value_type
@@ -529,7 +660,7 @@ impl IntoDiagnostic for CatalogError {
 				fragment,
 			} => Diagnostic {
 				code: "CA_006".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("auto increment is not supported for type `{}`", ty),
 				fragment,
 				label: Some("invalid auto increment usage".to_string()),
@@ -548,7 +679,7 @@ impl IntoDiagnostic for CatalogError {
 				column,
 			} => Diagnostic {
 				code: "CA_008".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("policy `{:?}` already exists for column `{}`", policy, column),
 				fragment: Fragment::None,
 				label: Some("duplicate column policy".to_string()),
@@ -606,7 +737,7 @@ impl IntoDiagnostic for CatalogError {
 				};
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					fragment,
 					label: Some(label_str.to_string()),
@@ -670,7 +801,7 @@ impl IntoDiagnostic for CatalogError {
 				};
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					fragment,
 					label: Some(format!("attempted update on deleted {}", kind_str)),
@@ -726,7 +857,7 @@ impl IntoDiagnostic for CatalogError {
 				};
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					fragment,
 					label: Some(format!("duplicate {} deletion", kind_str)),
@@ -742,7 +873,7 @@ impl IntoDiagnostic for CatalogError {
 				fragment,
 			} => Diagnostic {
 				code: "CA_020".to_string(),
-				statement: None,
+				rql: None,
 				message: "primary key must contain at least one column".to_string(),
 				fragment,
 				label: Some("empty primary key definition".to_string()),
@@ -758,7 +889,7 @@ impl IntoDiagnostic for CatalogError {
 				column_id,
 			} => Diagnostic {
 				code: "CA_021".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("column with ID {} not found for primary key", column_id),
 				fragment,
 				label: Some("invalid column reference in primary key".to_string()),
@@ -777,7 +908,7 @@ impl IntoDiagnostic for CatalogError {
 				name,
 			} => Diagnostic {
 				code: "CA_010".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("subscription `{}` already exists", name),
 				fragment,
 				label: Some("duplicate subscription definition".to_string()),
@@ -795,7 +926,7 @@ impl IntoDiagnostic for CatalogError {
 				name,
 			} => Diagnostic {
 				code: "CA_011".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("subscription `{}` not found", name),
 				fragment,
 				label: Some("unknown subscription reference".to_string()),
@@ -823,7 +954,7 @@ impl IntoDiagnostic for CatalogError {
 				};
 				Diagnostic {
 					code: "CA_039".to_string(),
-					statement: None,
+					rql: None,
 					message: format!(
 						"column `{}` not found in {} `{}`.`{}`",
 						column, kind_str, namespace, name
@@ -838,9 +969,9 @@ impl IntoDiagnostic for CatalogError {
 				}
 			}
 
-			CatalogError::ConfigKeyNotFound(key) => Diagnostic {
+			CatalogError::ConfigStorageKeyNotFound(key) => Diagnostic {
 				code: "CA_050".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("unknown config key `{}`", key),
 				fragment: Fragment::None,
 				label: Some("unknown config key".to_string()),
@@ -853,7 +984,7 @@ impl IntoDiagnostic for CatalogError {
 
 			CatalogError::ConfigValueInvalid(key) => Diagnostic {
 				code: "CA_051".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("config value for key `{}` cannot be none", key),
 				fragment: Fragment::None,
 				label: Some("invalid config value".to_string()),
@@ -868,16 +999,36 @@ impl IntoDiagnostic for CatalogError {
 				key,
 				expected,
 				actual,
+			} => {
+				let expected_str =
+					expected.iter().map(|t| format!("`{:?}`", t)).collect::<Vec<_>>().join(", ");
+				Diagnostic {
+					code: "CA_052".to_string(),
+					rql: None,
+					message: format!(
+						"config value for key `{}` must be of type {}, got `{}`",
+						key, expected_str, actual
+					),
+					fragment: Fragment::None,
+					label: Some("type mismatch".to_string()),
+					help: Some(format!("provide a value of type {}", expected_str)),
+					column: None,
+					notes: vec![],
+					cause: None,
+					operator_chain: None,
+				}
+			}
+
+			CatalogError::ConfigInvalidValue {
+				key,
+				reason,
 			} => Diagnostic {
-				code: "CA_052".to_string(),
-				statement: None,
-				message: format!(
-					"config value for key `{}` must be of type `{}`, got `{}`",
-					key, expected, actual
-				),
+				code: "CA_053".to_string(),
+				rql: None,
+				message: format!("config value for key `{}` is invalid: {}", key, reason),
 				fragment: Fragment::None,
-				label: Some("type mismatch".to_string()),
-				help: Some(format!("provide a value of type `{}`", expected)),
+				label: Some("invalid config value".to_string()),
+				help: None,
 				column: None,
 				notes: vec![],
 				cause: None,
@@ -954,7 +1105,7 @@ impl IntoDiagnostic for CatalogError {
 				};
 				Diagnostic {
 					code: code.to_string(),
-					statement: None,
+					rql: None,
 					message,
 					fragment,
 					label: Some(label.to_string()),
@@ -965,6 +1116,104 @@ impl IntoDiagnostic for CatalogError {
 					operator_chain: None,
 				}
 			}
+
+			CatalogError::CannotDropEphemeralProcedure {
+				kind,
+				name,
+				fragment,
+			} => Diagnostic {
+				code: "CA_084".to_string(),
+				rql: None,
+				message: format!(
+					"cannot drop {} procedure `{}`: native/FFI/WASM procedures are managed by the runtime registry, not DDL",
+					kind, name
+				),
+				fragment,
+				label: Some("cannot drop system-managed procedure".to_string()),
+				help: Some(
+					"native, FFI, and WASM procedures are repopulated on every boot from the runtime registry — remove them from the binary or plugin directory instead"
+						.to_string(),
+				),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::CannotRegisterPersistentAsEphemeral {
+				kind,
+			} => Diagnostic {
+				code: "CA_085".to_string(),
+				rql: None,
+				message: format!(
+					"cannot register {} procedure as ephemeral: only Native/FFI/WASM variants are accepted",
+					kind
+				),
+				fragment: Fragment::None,
+				label: Some("variant not accepted by ephemeral registrar".to_string()),
+				help: Some(
+					"persistent Rql/Test procedures must be created via `CREATE PROCEDURE`, not via the ephemeral registrar"
+						.to_string(),
+				),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::PolicyInvalidOperation {
+				target_type,
+				operation,
+				valid,
+				policy_name,
+			} => {
+				let where_clause = match policy_name {
+					Some(name) => format!(" in policy `{}`", name),
+					None => String::new(),
+				};
+				let help = if valid.is_empty() {
+					format!(
+						"{} policies currently have no enforceable operations — remove this policy or add an enforcement call site for it",
+						target_type
+					)
+				} else {
+					format!("valid operations for {} policy: {}", target_type, valid.join(", "))
+				};
+				Diagnostic {
+					code: "CA_086".to_string(),
+					rql: None,
+					message: format!(
+						"unknown operation `{}` for {} policy{}",
+						operation, target_type, where_clause
+					),
+					fragment: Fragment::None,
+					label: Some("unknown policy operation".to_string()),
+					help: Some(help),
+					column: None,
+					notes: vec![
+						"operation names are matched by exact string equality at enforcement time; unknown keys are silently skipped and effectively dead code"
+							.to_string(),
+					],
+					cause: None,
+					operator_chain: None,
+				}
+			}
+
+			CatalogError::InvalidBindingConfig {
+				reason,
+				fragment,
+			} => Diagnostic {
+				code: "CA_089".to_string(),
+				rql: None,
+				message: format!("invalid binding config: {}", reason),
+				fragment,
+				label: Some("invalid binding config".to_string()),
+				help: Some("check the protocol's required WITH keys and value constraints".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
 		}
 	}
 }
@@ -981,6 +1230,11 @@ pub enum CatalogChangeError {
 	KeyDecodeFailed {
 		kind: KeyKind,
 	},
+
+	#[error("unrecognized key kind (raw: {raw:?})")]
+	UnrecognizedKey {
+		raw: Vec<u8>,
+	},
 }
 
 impl IntoDiagnostic for CatalogChangeError {
@@ -990,12 +1244,28 @@ impl IntoDiagnostic for CatalogChangeError {
 				kind,
 			} => Diagnostic {
 				code: "CA_070".to_string(),
-				statement: None,
+				rql: None,
 				message: format!("failed to decode {:?} key while applying replicated catalog change", kind),
 				fragment: Fragment::None,
 				label: Some("key decode failure during replication".to_string()),
 				help: Some(
 					"this indicates a protocol mismatch between primary and replica — ensure both nodes are running the same version".to_string(),
+				),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			CatalogChangeError::UnrecognizedKey {
+				raw,
+			} => Diagnostic {
+				code: "CA_071".to_string(),
+				rql: None,
+				message: format!("unrecognized key kind (raw: {:?})", raw),
+				fragment: Fragment::None,
+				label: Some("unrecognized key kind during replication".to_string()),
+				help: Some(
+					"this indicates state inconsistency — ensure primary and replica are running the same version".to_string(),
 				),
 				column: None,
 				notes: vec![],

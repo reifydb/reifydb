@@ -1,71 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+
+//! WebSocket server. A single bidirectional channel multiplexes commands and subscriptions: a client opens one
+//! socket and can issue multiple in-flight queries and live subscriptions over it without paying per-call connection
+//! overhead. Suitable for browsers and long-lived sessions where gRPC is awkward.
+//!
+//! The protocol module defines the framing on top of WebSocket frames; the handler dispatches each inbound message
+//! through `sub-server`'s shared execution path. Outbound subscription updates carry the subscription id so the
+//! client can demultiplex.
+
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-//! WebSocket server subsystem for ReifyDB.
-//!
-//! This crate provides a tokio-tungstenite-based WebSocket server for handling
-//! persistent query connections. It integrates with the shared tokio runtime and
-//! implements the transaction ReifyDB `Subsystem` trait for lifecycle management.
-//!
-//! # Features
-//!
-//! - Full WebSocket protocol support (RFC 6455)
-//! - Authentication via initial Auth message
-//! - Query and command execution over persistent connections
-//! - Subscription support for real-time push notifications
-//! - Connection limits via semaphore
-//! - Graceful shutdown with connection draining
-//!
-//! # Message Protocol
-//!
-//! All messages are JSON-formatted with the following structure:
-//!
-//! ```json
-//! {
-//!   "id": "unique-request-id",
-//!   "type": "Auth|Query|Command|Subscribe|Unsubscribe",
-//!   "payload": { ... }
-//! }
-//! ```
-//!
-//! Server-initiated push messages have this structure:
-//!
-//! ```json
-//! {
-//!   "type": "Change",
-//!   "payload": { "subscription_id": "...", ... }
-//! }
-//! ```
-//!
-//! # Example
-//!
-//! ```ignore
-//! use reifydb_core::SharedRuntime;
-//! use reifydb_sub_server::{AppState, QueryConfig};
-//! use reifydb_sub_server_ws::WsSubsystem;
-//!
-//! // Create shared runtime
-//! let runtime = SharedRuntime::new(4);
-//!
-//! // Create application state
-//! let state = AppState::new(pool, engine, QueryConfig::default(), RequestInterceptorChain::empty());
-//!
-//! // Create and start WebSocket subsystem
-//! let mut ws = WsSubsystem::new(
-//!     "0.0.0.0:8091".to_string(),
-//!     state,
-//!     runtime.handle(),
-//! );
-//! ws.start()?;
-//! ```
-
+#[cfg(not(reifydb_single_threaded))]
 pub mod factory;
+#[cfg(not(reifydb_single_threaded))]
 pub mod handler;
+#[cfg(not(reifydb_single_threaded))]
 pub mod protocol;
+#[cfg(not(reifydb_single_threaded))]
 pub mod response;
+#[cfg(not(reifydb_single_threaded))]
 pub mod subscription;
+#[cfg(not(reifydb_single_threaded))]
 pub mod subsystem;

@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::sequences::*, vtable::SEQUENCES};
 
-/// Returns the static definition for the system.sequences virtual table
-/// This table exposes information about all sequences in the database
 pub fn sequences() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

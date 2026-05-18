@@ -159,7 +159,6 @@ impl BitVec {
 		inner.len = total_len;
 	}
 
-	/// Clear all bits, retaining the allocated capacity when solely owned.
 	pub fn clear(&mut self) {
 		let inner = self.make_mut();
 		inner.bits.clear();
@@ -194,6 +193,10 @@ impl BitVec {
 		self.inner.bits.capacity() * 8
 	}
 
+	pub fn as_packed_bytes(&self) -> &[u8] {
+		&self.inner.bits
+	}
+
 	pub fn get(&self, idx: usize) -> bool {
 		assert!(idx < self.inner.len);
 		let byte = self.inner.bits[idx / 8];
@@ -226,41 +229,23 @@ impl BitVec {
 		let byte_count = len.div_ceil(8);
 		let mut result_bits = vec![0u8; byte_count];
 
-		// Process 8 bytes at a time for better performance
-		let chunks = byte_count / 8;
-		let mut i = 0;
-
-		// Process 64-bit chunks
-		for _ in 0..chunks {
-			let a = u64::from_le_bytes([
-				self.inner.bits[i],
-				self.inner.bits[i + 1],
-				self.inner.bits[i + 2],
-				self.inner.bits[i + 3],
-				self.inner.bits[i + 4],
-				self.inner.bits[i + 5],
-				self.inner.bits[i + 6],
-				self.inner.bits[i + 7],
-			]);
-			let b = u64::from_le_bytes([
-				other.inner.bits[i],
-				other.inner.bits[i + 1],
-				other.inner.bits[i + 2],
-				other.inner.bits[i + 3],
-				other.inner.bits[i + 4],
-				other.inner.bits[i + 5],
-				other.inner.bits[i + 6],
-				other.inner.bits[i + 7],
-			]);
-			let result = a & b;
-			result_bits[i..i + 8].copy_from_slice(&result.to_le_bytes());
-			i += 8;
+		let full_chunks = byte_count / 8 * 8;
+		for ((a_chunk, b_chunk), out_chunk) in self.inner.bits[..full_chunks]
+			.chunks_exact(8)
+			.zip(other.inner.bits[..full_chunks].chunks_exact(8))
+			.zip(result_bits[..full_chunks].chunks_exact_mut(8))
+		{
+			let a = u64::from_le_bytes(a_chunk.try_into().unwrap());
+			let b = u64::from_le_bytes(b_chunk.try_into().unwrap());
+			out_chunk.copy_from_slice(&(a & b).to_le_bytes());
 		}
 
-		// Process remaining bytes
-		while i < byte_count {
-			result_bits[i] = self.inner.bits[i] & other.inner.bits[i];
-			i += 1;
+		for ((out, a), b) in result_bits[full_chunks..byte_count]
+			.iter_mut()
+			.zip(&self.inner.bits[full_chunks..byte_count])
+			.zip(&other.inner.bits[full_chunks..byte_count])
+		{
+			*out = a & b;
 		}
 
 		BitVec {
@@ -276,18 +261,16 @@ impl BitVec {
 	}
 
 	pub fn count_ones(&self) -> usize {
-		// Count complete bytes using built-in popcount
 		let mut count = self.inner.bits.iter().map(|&byte| byte.count_ones() as usize).sum();
 
-		// Adjust for partial last byte if needed
 		let full_bytes = self.inner.len / 8;
 		let remainder_bits = self.inner.len % 8;
 
 		if remainder_bits > 0 && full_bytes < self.inner.bits.len() {
 			let last_byte = self.inner.bits[full_bytes];
-			// Mask out bits beyond our length
+
 			let mask = (1u8 << remainder_bits) - 1;
-			// Subtract the invalid bits we counted
+
 			count -= (last_byte & !mask).count_ones() as usize;
 		}
 
@@ -303,7 +286,6 @@ impl BitVec {
 	}
 
 	pub fn any(&self) -> bool {
-		// Fast path: check if any complete bytes are non-zero
 		let full_bytes = self.inner.len / 8;
 		for i in 0..full_bytes {
 			if self.inner.bits[i] != 0 {
@@ -311,7 +293,6 @@ impl BitVec {
 			}
 		}
 
-		// Check remaining bits in last partial byte
 		let remainder_bits = self.inner.len % 8;
 		if remainder_bits > 0 && full_bytes < self.inner.bits.len() {
 			let last_byte = self.inner.bits[full_bytes];
@@ -326,47 +307,64 @@ impl BitVec {
 		!self.any()
 	}
 
+	pub fn not(&self) -> Self {
+		let len = self.len();
+		let byte_count = len.div_ceil(8);
+		let mut result_bits = vec![0u8; byte_count];
+
+		let full_chunks = byte_count / 8 * 8;
+		for (chunk, out_chunk) in self.inner.bits[..full_chunks]
+			.chunks_exact(8)
+			.zip(result_bits[..full_chunks].chunks_exact_mut(8))
+		{
+			let a = u64::from_le_bytes(chunk.try_into().unwrap());
+			out_chunk.copy_from_slice(&(!a).to_le_bytes());
+		}
+
+		for (out, a) in
+			result_bits[full_chunks..byte_count].iter_mut().zip(&self.inner.bits[full_chunks..byte_count])
+		{
+			*out = !a;
+		}
+
+		let remainder_bits = len % 8;
+		if remainder_bits > 0 && !result_bits.is_empty() {
+			let mask = (1u8 << remainder_bits) - 1;
+			let last_idx = result_bits.len() - 1;
+			result_bits[last_idx] &= mask;
+		}
+
+		BitVec {
+			inner: Arc::new(BitVecInner {
+				bits: result_bits,
+				len,
+			}),
+		}
+	}
+
 	pub fn or(&self, other: &Self) -> Self {
 		assert_eq!(self.len(), other.len());
 		let len = self.len();
 		let byte_count = len.div_ceil(8);
 		let mut result_bits = vec![0u8; byte_count];
 
-		// Process 8 bytes at a time for better performance
-		let chunks = byte_count / 8;
-		let mut i = 0;
-
-		// Process 64-bit chunks
-		for _ in 0..chunks {
-			let a = u64::from_le_bytes([
-				self.inner.bits[i],
-				self.inner.bits[i + 1],
-				self.inner.bits[i + 2],
-				self.inner.bits[i + 3],
-				self.inner.bits[i + 4],
-				self.inner.bits[i + 5],
-				self.inner.bits[i + 6],
-				self.inner.bits[i + 7],
-			]);
-			let b = u64::from_le_bytes([
-				other.inner.bits[i],
-				other.inner.bits[i + 1],
-				other.inner.bits[i + 2],
-				other.inner.bits[i + 3],
-				other.inner.bits[i + 4],
-				other.inner.bits[i + 5],
-				other.inner.bits[i + 6],
-				other.inner.bits[i + 7],
-			]);
-			let result = a | b;
-			result_bits[i..i + 8].copy_from_slice(&result.to_le_bytes());
-			i += 8;
+		let full_chunks = byte_count / 8 * 8;
+		for ((a_chunk, b_chunk), out_chunk) in self.inner.bits[..full_chunks]
+			.chunks_exact(8)
+			.zip(other.inner.bits[..full_chunks].chunks_exact(8))
+			.zip(result_bits[..full_chunks].chunks_exact_mut(8))
+		{
+			let a = u64::from_le_bytes(a_chunk.try_into().unwrap());
+			let b = u64::from_le_bytes(b_chunk.try_into().unwrap());
+			out_chunk.copy_from_slice(&(a | b).to_le_bytes());
 		}
 
-		// Process remaining bytes
-		while i < byte_count {
-			result_bits[i] = self.inner.bits[i] | other.inner.bits[i];
-			i += 1;
+		for ((out, a), b) in result_bits[full_chunks..byte_count]
+			.iter_mut()
+			.zip(&self.inner.bits[full_chunks..byte_count])
+			.zip(&other.inner.bits[full_chunks..byte_count])
+		{
+			*out = a | b;
 		}
 
 		BitVec {
@@ -395,8 +393,6 @@ impl BitVec {
 		}
 	}
 
-	/// Try to extract the underlying bytes `Vec` without cloning.
-	/// Returns `Ok((Vec<u8>, len))` if this is the sole owner, `Err(self)` otherwise.
 	pub fn try_into_raw(self) -> Result<(Vec<u8>, usize), Self> {
 		match Arc::try_unwrap(self.inner) {
 			Ok(inner) => Ok((inner.bits, inner.len)),
@@ -406,7 +402,6 @@ impl BitVec {
 		}
 	}
 
-	/// Reconstruct a `BitVec` from raw parts previously obtained via `try_into_raw`.
 	pub fn from_raw(bits: Vec<u8>, len: usize) -> Self {
 		BitVec {
 			inner: Arc::new(BitVecInner {
@@ -422,7 +417,6 @@ impl BitVec {
 		let byte_count = len.div_ceil(8);
 		let mut new_bits = vec![0u8; byte_count];
 
-		// Collect old bit values before mutating
 		for (new_idx, &old_idx) in indices.iter().enumerate() {
 			if self.get(old_idx) {
 				let byte_idx = new_idx / 8;
@@ -431,7 +425,6 @@ impl BitVec {
 			}
 		}
 
-		// Now mutate
 		let inner = self.make_mut();
 		inner.bits = new_bits;
 	}
@@ -1236,6 +1229,144 @@ pub mod tests {
 			let a = BitVec::repeat(3, true);
 			let b = BitVec::repeat(5, true);
 			a.and(&b); // Should panic due to different lengths
+		}
+	}
+
+	mod not_operation {
+		use crate::util::bitvec::BitVec;
+
+		#[test]
+		fn test_empty() {
+			let bv = BitVec::empty();
+			let result = bv.not();
+			assert_eq!(result.len(), 0);
+			assert!(result.none());
+		}
+
+		#[test]
+		fn test_all_true_becomes_all_false() {
+			let bv = BitVec::repeat(10, true);
+			let result = bv.not();
+			assert_eq!(result.len(), 10);
+			assert!(result.none());
+			for i in 0..10 {
+				assert!(!result.get(i), "expected bit {} to be false", i);
+			}
+		}
+
+		#[test]
+		fn test_all_false_becomes_all_true() {
+			let bv = BitVec::repeat(10, false);
+			let result = bv.not();
+			assert_eq!(result.len(), 10);
+			assert!(result.all_ones());
+			for i in 0..10 {
+				assert!(result.get(i), "expected bit {} to be true", i);
+			}
+		}
+
+		#[test]
+		fn test_single_true() {
+			let bv = BitVec::from([true]);
+			let result = bv.not();
+			assert_eq!(result.len(), 1);
+			assert!(!result.get(0));
+		}
+
+		#[test]
+		fn test_single_false() {
+			let bv = BitVec::from([false]);
+			let result = bv.not();
+			assert_eq!(result.len(), 1);
+			assert!(result.get(0));
+		}
+
+		#[test]
+		fn test_alternating() {
+			let bv = BitVec::from_slice(&[true, false, true, false, true, false, true, false]);
+			let result = bv.not();
+			assert_eq!(result.len(), 8);
+			for i in 0..8 {
+				assert_eq!(result.get(i), i % 2 != 0, "bit {} mismatch", i);
+			}
+		}
+
+		#[test]
+		fn test_partial_byte() {
+			// 5 bits: exercises the final-byte masking logic
+			let bv = BitVec::from_slice(&[true, false, true, false, true]);
+			let result = bv.not();
+			assert_eq!(result.len(), 5);
+			assert!(!result.get(0));
+			assert!(result.get(1));
+			assert!(!result.get(2));
+			assert!(result.get(3));
+			assert!(!result.get(4));
+		}
+
+		#[test]
+		fn test_exact_byte_boundary() {
+			// Exactly 8 bits: no partial byte
+			let bv = BitVec::from_slice(&[true, true, true, true, false, false, false, false]);
+			let result = bv.not();
+			assert_eq!(result.len(), 8);
+			for i in 0..4 {
+				assert!(!result.get(i), "bit {} should be false", i);
+			}
+			for i in 4..8 {
+				assert!(result.get(i), "bit {} should be true", i);
+			}
+		}
+
+		#[test]
+		fn test_multi_byte_partial() {
+			// 13 bits: crosses byte boundary with partial final byte
+			let bv = BitVec::from_fn(13, |i| i < 8);
+			let result = bv.not();
+			assert_eq!(result.len(), 13);
+			for i in 0..8 {
+				assert!(!result.get(i), "bit {} should be false", i);
+			}
+			for i in 8..13 {
+				assert!(result.get(i), "bit {} should be true", i);
+			}
+		}
+
+		#[test]
+		fn test_large_64bit_chunks() {
+			// 100 bits: exercises the 64-bit chunking path
+			let bv = BitVec::from_fn(100, |i| i % 3 == 0);
+			let result = bv.not();
+			assert_eq!(result.len(), 100);
+			for i in 0..100 {
+				assert_eq!(result.get(i), i % 3 != 0, "bit {} mismatch", i);
+			}
+		}
+
+		#[test]
+		fn test_double_not_is_identity() {
+			let bv = BitVec::from_fn(37, |i| i % 5 < 2);
+			let result = bv.not().not();
+			assert_eq!(bv.to_vec(), result.to_vec());
+		}
+
+		#[test]
+		fn test_not_and_or_demorgan() {
+			// De Morgan: NOT(a AND b) == (NOT a) OR (NOT b)
+			let a = BitVec::from_fn(20, |i| i % 2 == 0);
+			let b = BitVec::from_fn(20, |i| i % 3 == 0);
+
+			let lhs = a.and(&b).not();
+			let rhs = a.not().or(&b.not());
+			assert_eq!(lhs.to_vec(), rhs.to_vec());
+		}
+
+		#[test]
+		fn test_not_preserves_count() {
+			let bv = BitVec::from_fn(50, |i| i < 20);
+			let result = bv.not();
+			assert_eq!(bv.count_ones() + result.count_ones(), 50);
+			assert_eq!(bv.count_zeros() + result.count_zeros(), 50);
 		}
 	}
 

@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Workspace-wide value system. Defines the `Value` enum every column carries, the `Type` enum that classifies it,
+//! the `Constraint` family that narrows a type (max-bytes, precision-scale, optional), and the per-primitive
+//! representations - integers, unsigned integers, decimals, floats, blobs, booleans, temporals, UUIDs, JSON,
+//! identity ids, and row numbers - that those variants wrap.
+//!
+//! The variants, their order, and their on-the-wire shape are stable. Adding a variant is a coordinated
+//! workspace change that lands together with `wire-format` and the storage encoders; rearranging existing
+//! variants silently corrupts persisted data.
+
 use std::{
 	cmp::Ordering,
 	fmt::{Display, Formatter},
@@ -54,75 +63,73 @@ use r#type::Type;
 use uint::Uint;
 use uuid::{Uuid4, Uuid7};
 
-/// A RQL value, represented as a native Rust type.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Value {
-	/// Value is none (think null in common programming languages)
 	None {
 		#[serde(skip, default = "default_none_inner")]
 		inner: Type,
 	},
-	/// A boolean: true or false.
+
 	Boolean(bool),
-	/// A 4-byte floating point
+
 	Float4(OrderedF32),
-	/// An 8-byte floating point
+
 	Float8(OrderedF64),
-	/// A 1-byte signed integer
+
 	Int1(i8),
-	/// A 2-byte signed integer
+
 	Int2(i16),
-	/// A 4-byte signed integer
+
 	Int4(i32),
-	/// An 8-byte signed integer
+
 	Int8(i64),
-	/// A 16-byte signed integer
+
 	Int16(i128),
-	/// A UTF-8 encoded text. Maximum 255 bytes
+
 	Utf8(String),
-	/// A 1-byte unsigned integer
+
 	Uint1(u8),
-	/// A 2-byte unsigned integer
+
 	Uint2(u16),
-	/// A 4-byte unsigned integer
+
 	Uint4(u32),
-	/// A 8-byte unsigned integer
+
 	Uint8(u64),
-	/// A 16-byte unsigned integer
+
 	Uint16(u128),
-	/// A date value (year, month, day)
+
 	Date(Date),
-	/// A date and time value with nanosecond precision in SVTC
+
 	DateTime(DateTime),
-	/// A time value (hour, minute, second, nanosecond)
+
 	Time(Time),
-	/// A duration representing a duration
+
 	Duration(Duration),
-	/// An identity identifier (UUID v7)
+
 	IdentityId(IdentityId),
-	/// A UUID version 4 (random)
+
 	Uuid4(Uuid4),
-	/// A UUID version 7 (timestamp-based)
+
 	Uuid7(Uuid7),
-	/// A binary large object (BLOB)
+
 	Blob(Blob),
-	/// An arbitrary-precision signed integer
+
 	Int(Int),
-	/// An arbitrary-precision unsigned integer
+
 	Uint(Uint),
-	/// An arbitrary-precision decimal
+
 	Decimal(Decimal),
-	/// A container that can hold any value type
+
 	Any(Box<Value>),
-	/// A dictionary entry identifier
+
 	DictionaryId(DictionaryEntryId),
-	/// A type value (first-class type identifier)
+
 	Type(Type),
-	/// An ordered list of values
+
 	List(Vec<Value>),
-	/// A record (named fields with values)
+
 	Record(Vec<(String, Value)>),
-	/// A tuple of heterogeneous values
+
 	Tuple(Vec<Value>),
 }
 
@@ -352,7 +359,7 @@ impl hash::Hash for Value {
 		match self {
 			Value::None {
 				..
-			} => {} // All Nones hash identically
+			} => {}
 			Value::Boolean(v) => v.hash(state),
 			Value::Float4(v) => v.hash(state),
 			Value::Float8(v) => v.hash(state),
@@ -579,7 +586,7 @@ mod tests {
 
 	use super::*;
 
-	// Happy path — one per numeric type
+	// Happy path - one per numeric type
 
 	#[test]
 	fn to_usize_uint1() {
@@ -656,7 +663,7 @@ mod tests {
 		assert_eq!(Value::Decimal(Decimal::from_i64(42)).to_usize(), Some(42));
 	}
 
-	// Edge cases & errors — negative numbers
+	// Edge cases & errors - negative numbers
 
 	#[test]
 	fn to_usize_int1_negative() {
@@ -698,7 +705,7 @@ mod tests {
 		assert_eq!(Value::Int(Int::from_i64(-5)).to_usize(), None);
 	}
 
-	// Edge cases — zero boundary
+	// Edge cases - zero boundary
 
 	#[test]
 	fn to_usize_zero() {
@@ -715,7 +722,7 @@ mod tests {
 		assert_eq!(Value::float4(0.0f32).to_usize(), Some(0));
 	}
 
-	// Edge cases — non-numeric types return None
+	// Edge cases - non-numeric types return None
 
 	#[test]
 	fn to_usize_boolean_none() {
@@ -767,7 +774,7 @@ mod tests {
 		assert_eq!(Value::none().to_usize(), None);
 	}
 
-	// Edge cases — fractional truncation
+	// Edge cases - fractional truncation
 
 	#[test]
 	fn to_usize_float8_fractional() {

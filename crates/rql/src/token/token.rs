@@ -43,6 +43,9 @@ impl<'bump> Token<'bump> {
 	pub fn is_variable(&self) -> bool {
 		self.kind == TokenKind::Variable
 	}
+	pub fn is_system_column(&self) -> bool {
+		self.kind == TokenKind::SystemColumn
+	}
 	pub fn value(&self) -> &str {
 		self.fragment.text()
 	}
@@ -57,6 +60,7 @@ pub enum TokenKind {
 	Operator(Operator),
 	Variable,
 	Separator(Separator),
+	SystemColumn,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

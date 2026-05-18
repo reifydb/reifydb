@@ -43,96 +43,50 @@ impl Catalog {
 	pub fn find_dictionary(&self, txn: &mut Transaction<'_>, id: DictionaryId) -> Result<Option<Dictionary>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				// 1. Check MaterializedCatalog
-				if let Some(dict) = self.materialized.find_dictionary_at(id, cmd.version()) {
+				if let Some(dict) = self.cache.find_dictionary_at(id, cmd.version()) {
 					return Ok(Some(dict));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(dict) =
 					CatalogStore::find_dictionary(&mut Transaction::Command(&mut *cmd), id)?
 				{
-					warn!(
-						"Dictionary with ID {:?} found in storage but not in MaterializedCatalog",
-						id
-					);
+					warn!("Dictionary with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(dict));
 				}
 
 				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(dict) = TransactionalDictionaryChanges::find_dictionary(admin, id) {
 					return Ok(Some(dict.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalDictionaryChanges::is_dictionary_deleted(admin, id) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
-				if let Some(dict) = self.materialized.find_dictionary_at(id, admin.version()) {
+				if let Some(dict) = self.cache.find_dictionary_at(id, admin.version()) {
 					return Ok(Some(dict));
 				}
 
-				// 4. Fall back to storage as defensive measure
 				if let Some(dict) =
 					CatalogStore::find_dictionary(&mut Transaction::Admin(&mut *admin), id)?
 				{
-					warn!(
-						"Dictionary with ID {:?} found in storage but not in MaterializedCatalog",
-						id
-					);
+					warn!("Dictionary with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(dict));
 				}
 
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				// 1. Check MaterializedCatalog (skip transactional changes)
-				if let Some(dict) = self.materialized.find_dictionary_at(id, qry.version()) {
+				if let Some(dict) = self.cache.find_dictionary_at(id, qry.version()) {
 					return Ok(Some(dict));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(dict) =
 					CatalogStore::find_dictionary(&mut Transaction::Query(&mut *qry), id)?
 				{
-					warn!(
-						"Dictionary with ID {:?} found in storage but not in MaterializedCatalog",
-						id
-					);
-					return Ok(Some(dict));
-				}
-
-				Ok(None)
-			}
-			Transaction::Subscription(sub) => {
-				// 1. Check transactional changes first
-				if let Some(dict) = TransactionalDictionaryChanges::find_dictionary(sub, id) {
-					return Ok(Some(dict.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalDictionaryChanges::is_dictionary_deleted(sub, id) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(dict) = self.materialized.find_dictionary_at(id, sub.version()) {
-					return Ok(Some(dict));
-				}
-
-				// 4. Fall back to storage as defensive measure
-				if let Some(dict) =
-					CatalogStore::find_dictionary(&mut Transaction::Subscription(&mut *sub), id)?
-				{
-					warn!(
-						"Dictionary with ID {:?} found in storage but not in MaterializedCatalog",
-						id
-					);
+					warn!("Dictionary with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(dict));
 				}
 
@@ -154,19 +108,14 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				// 1. Check MaterializedCatalog
-				if let Some(dict) = self.materialized.find_dictionary_at(id, rep.version()) {
+				if let Some(dict) = self.cache.find_dictionary_at(id, rep.version()) {
 					return Ok(Some(dict));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(dict) =
 					CatalogStore::find_dictionary(&mut Transaction::Replica(&mut *rep), id)?
 				{
-					warn!(
-						"Dictionary with ID {:?} found in storage but not in MaterializedCatalog",
-						id
-					);
+					warn!("Dictionary with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(dict));
 				}
 
@@ -184,21 +133,19 @@ impl Catalog {
 	) -> Result<Option<Dictionary>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				// 1. Check MaterializedCatalog
 				if let Some(dict) =
-					self.materialized.find_dictionary_by_name_at(namespace, name, cmd.version())
+					self.cache.find_dictionary_by_name_at(namespace, name, cmd.version())
 				{
 					return Ok(Some(dict));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(dict) = CatalogStore::find_dictionary_by_name(
 					&mut Transaction::Command(&mut *cmd),
 					namespace,
 					name,
 				)? {
 					warn!(
-						"Dictionary '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Dictionary '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(dict));
@@ -207,34 +154,30 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(dict) =
 					TransactionalDictionaryChanges::find_dictionary_by_name(admin, namespace, name)
 				{
 					return Ok(Some(dict.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalDictionaryChanges::is_dictionary_deleted_by_name(admin, namespace, name)
 				{
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
 				if let Some(dict) =
-					self.materialized.find_dictionary_by_name_at(namespace, name, admin.version())
+					self.cache.find_dictionary_by_name_at(namespace, name, admin.version())
 				{
 					return Ok(Some(dict));
 				}
 
-				// 4. Fall back to storage as defensive measure
 				if let Some(dict) = CatalogStore::find_dictionary_by_name(
 					&mut Transaction::Admin(&mut *admin),
 					namespace,
 					name,
 				)? {
 					warn!(
-						"Dictionary '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Dictionary '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(dict));
@@ -243,56 +186,19 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				// 1. Check MaterializedCatalog (skip transactional changes)
 				if let Some(dict) =
-					self.materialized.find_dictionary_by_name_at(namespace, name, qry.version())
+					self.cache.find_dictionary_by_name_at(namespace, name, qry.version())
 				{
 					return Ok(Some(dict));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(dict) = CatalogStore::find_dictionary_by_name(
 					&mut Transaction::Query(&mut *qry),
 					namespace,
 					name,
 				)? {
 					warn!(
-						"Dictionary '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
-						name, namespace
-					);
-					return Ok(Some(dict));
-				}
-
-				Ok(None)
-			}
-			Transaction::Subscription(sub) => {
-				// 1. Check transactional changes first
-				if let Some(dict) =
-					TransactionalDictionaryChanges::find_dictionary_by_name(sub, namespace, name)
-				{
-					return Ok(Some(dict.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalDictionaryChanges::is_dictionary_deleted_by_name(sub, namespace, name) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(dict) =
-					self.materialized.find_dictionary_by_name_at(namespace, name, sub.version())
-				{
-					return Ok(Some(dict));
-				}
-
-				// 4. Fall back to storage as defensive measure
-				if let Some(dict) = CatalogStore::find_dictionary_by_name(
-					&mut Transaction::Subscription(&mut *sub),
-					namespace,
-					name,
-				)? {
-					warn!(
-						"Dictionary '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Dictionary '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(dict));
@@ -321,21 +227,19 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				// 1. Check MaterializedCatalog
 				if let Some(dict) =
-					self.materialized.find_dictionary_by_name_at(namespace, name, rep.version())
+					self.cache.find_dictionary_by_name_at(namespace, name, rep.version())
 				{
 					return Ok(Some(dict));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(dict) = CatalogStore::find_dictionary_by_name(
 					&mut Transaction::Replica(&mut *rep),
 					namespace,
 					name,
 				)? {
 					warn!(
-						"Dictionary '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Dictionary '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(dict));

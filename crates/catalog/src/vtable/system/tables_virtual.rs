@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -17,9 +17,8 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext, VTableRegistry},
 };
 
-/// Virtual table that exposes information about all virtual tables (system and user-defined)
 pub struct SystemTablesVirtual {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	pub(crate) catalog: Catalog,
 	exhausted: bool,
 }
@@ -27,7 +26,7 @@ pub struct SystemTablesVirtual {
 impl SystemTablesVirtual {
 	pub fn new(catalog: Catalog) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_virtual_tables_table().clone(),
+			vtable: SystemCatalog::get_system_virtual_tables_table().clone(),
 			catalog,
 			exhausted: false,
 		}
@@ -45,7 +44,6 @@ impl BaseVTable for SystemTablesVirtual {
 			return Ok(None);
 		}
 
-		// Collect all virtual tables (system only - user-defined tables require catalog access)
 		let mut ids = Vec::new();
 		let mut namespaces = Vec::new();
 		let mut names = Vec::new();
@@ -58,7 +56,6 @@ impl BaseVTable for SystemTablesVirtual {
 			kinds.push("system".to_string());
 		}
 
-		// Add user-defined virtual tables from catalog
 		for def in self.catalog.list_user_vtables() {
 			ids.push(def.id.0);
 			namespaces.push(def.namespace.0);
@@ -66,11 +63,10 @@ impl BaseVTable for SystemTablesVirtual {
 			kinds.push("user".to_string());
 		}
 
-		// Build column data
-		let mut id_col = ColumnData::uint8_with_capacity(ids.len());
-		let mut ns_col = ColumnData::uint8_with_capacity(namespaces.len());
-		let mut name_col = ColumnData::utf8_with_capacity(names.len());
-		let mut kind_col = ColumnData::utf8_with_capacity(kinds.len());
+		let mut id_col = ColumnBuffer::uint8_with_capacity(ids.len());
+		let mut ns_col = ColumnBuffer::uint8_with_capacity(namespaces.len());
+		let mut name_col = ColumnBuffer::utf8_with_capacity(names.len());
+		let mut kind_col = ColumnBuffer::utf8_with_capacity(kinds.len());
 
 		for id in ids {
 			id_col.push(id);
@@ -86,22 +82,10 @@ impl BaseVTable for SystemTablesVirtual {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: id_col,
-			},
-			Column {
-				name: Fragment::internal("namespace_id"),
-				data: ns_col,
-			},
-			Column {
-				name: Fragment::internal("name"),
-				data: name_col,
-			},
-			Column {
-				name: Fragment::internal("kind"),
-				data: kind_col,
-			},
+			ColumnWithName::new(Fragment::internal("id"), id_col),
+			ColumnWithName::new(Fragment::internal("namespace_id"), ns_col),
+			ColumnWithName::new(Fragment::internal("name"), name_col),
+			ColumnWithName::new(Fragment::internal("kind"), kind_col),
 		];
 
 		self.exhausted = true;
@@ -110,7 +94,7 @@ impl BaseVTable for SystemTablesVirtual {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

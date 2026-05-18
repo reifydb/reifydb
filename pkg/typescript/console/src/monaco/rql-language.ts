@@ -96,7 +96,7 @@ const TYPE_KEYWORDS = [
   'text',
 ];
 
-export const rqlLanguageDefinition: languages.IMonarchLanguage = {
+export const rql_language_definition: languages.IMonarchLanguage = {
   defaultToken: '',
   ignoreCase: true,
 
@@ -181,7 +181,7 @@ export const rqlLanguageDefinition: languages.IMonarchLanguage = {
   },
 };
 
-export const rqlLanguageConfiguration: languages.LanguageConfiguration = {
+export const rql_language_configuration: languages.LanguageConfiguration = {
   comments: {
     lineComment: '#',
   },

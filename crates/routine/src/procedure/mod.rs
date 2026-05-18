@@ -1,28 +1,36 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-pub mod context;
-pub mod error;
+//! Built-in procedures: imperative routines users invoke as named statements. They may mutate catalog or storage
+//! state, take typed argument lists, and return zero or more result columns. Identity management, subscription
+//! control, set operations, clock manipulation in tests - anything that does not fit cleanly into a function
+//! goes here.
+//!
+//! `default_native_procedures` is the registration entry point boot uses to install the workspace's built-ins;
+//! extensions add their own through the same `RoutinesConfigurator`.
+
 pub mod identity;
-pub mod registry;
+pub mod subscription;
+pub mod testing;
 
 pub mod clock;
+pub mod rql;
 pub mod set;
 
-use error::ProcedureError;
-use registry::{Procedures, ProceduresConfigurator};
-use reifydb_core::value::column::columns::Columns;
-use reifydb_transaction::transaction::Transaction;
+use std::sync::Arc;
 
-/// A server-side procedure that can mutate database state within a transaction.
-pub trait Procedure: Send + Sync {
-	fn call(&self, ctx: &context::ProcedureContext, tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError>;
-}
+use crate::routine::registry::RoutinesConfigurator;
 
-pub fn default_procedures() -> ProceduresConfigurator {
-	Procedures::builder()
-		.with_procedure("system::config::set", set::config::SetConfigProcedure::new)
-		.with_procedure("clock::set", clock::set::ClockSetProcedure::new)
-		.with_procedure("clock::advance", clock::advance::ClockAdvanceProcedure::new)
-		.with_procedure("identity::inject", identity::inject::IdentityInject::new)
+pub fn default_native_procedures(builder: RoutinesConfigurator) -> RoutinesConfigurator {
+	let builder = builder
+		.register_builtin_procedure(Arc::new(set::config::SetConfigProcedure::new()))
+		.register_builtin_procedure(Arc::new(clock::set::ClockSetProcedure::new()))
+		.register_builtin_procedure(Arc::new(clock::advance::ClockAdvanceProcedure::new()))
+		.register_builtin_procedure(Arc::new(identity::inject::IdentityInject::new()))
+		.register_builtin_procedure(Arc::new(subscription::inspect::InspectSubscription::new()))
+		.register_builtin_procedure(Arc::new(rql::tokenize::RqlTokenize::new()))
+		.register_builtin_procedure(Arc::new(rql::ast::RqlAst::new()))
+		.register_builtin_procedure(Arc::new(rql::logical::RqlLogical::new()))
+		.register_builtin_procedure(Arc::new(rql::explain::RqlExplain::new()));
+	testing::register_testing_native_procedures(builder)
 }

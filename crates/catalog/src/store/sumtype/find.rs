@@ -76,13 +76,13 @@ pub mod tests {
 
 		let result = CatalogStore::find_sumtype_by_name(
 			&mut Transaction::Admin(&mut txn),
-			NamespaceId(1027),
+			NamespaceId(16387),
 			"event_two",
 		)
 		.unwrap()
 		.unwrap();
-		assert_eq!(result.id, SumTypeId(1026));
-		assert_eq!(result.namespace, NamespaceId(1027));
+		assert_eq!(result.id, SumTypeId(16386));
+		assert_eq!(result.namespace, NamespaceId(16387));
 		assert_eq!(result.name, "event_two");
 		assert_eq!(result.kind, SumTypeKind::Event);
 	}
@@ -93,7 +93,7 @@ pub mod tests {
 
 		let result = CatalogStore::find_sumtype_by_name(
 			&mut Transaction::Admin(&mut txn),
-			NamespaceId(1025),
+			NamespaceId(16385),
 			"some_event",
 		)
 		.unwrap();
@@ -112,10 +112,10 @@ pub mod tests {
 		create_event(&mut txn, "namespace_two", "event_two", vec![]);
 		create_event(&mut txn, "namespace_three", "event_three", vec![]);
 
-		// test_namespace (NamespaceId(1025)) has no events
+		// test_namespace (NamespaceId(16385)) has no events
 		let result = CatalogStore::find_sumtype_by_name(
 			&mut Transaction::Admin(&mut txn),
-			NamespaceId(1025),
+			NamespaceId(16385),
 			"event_nonexistent",
 		)
 		.unwrap();
@@ -134,7 +134,7 @@ pub mod tests {
 		create_event(&mut txn, "namespace_two", "event_two", vec![]);
 		create_event(&mut txn, "namespace_three", "event_three", vec![]);
 
-		// event_two is in NamespaceId(1027), not NamespaceId::DEFAULT
+		// event_two is in NamespaceId(16387), not NamespaceId::DEFAULT
 		let result = CatalogStore::find_sumtype_by_name(
 			&mut Transaction::Admin(&mut txn),
 			NamespaceId::DEFAULT,

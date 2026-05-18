@@ -1,31 +1,36 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{mem, sync::Arc};
 
 use reifydb_core::{
 	interface::{evaluate::TargetColumn, resolved::ResolvedColumn},
-	value::column::{Column, columns::Columns, headers::ColumnHeaders},
+	value::column::{ColumnWithName, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
-use reifydb_rql::expression::{Expression, name::column_name_from_expression};
+use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::fragment::Fragment;
+use reifydb_type::{fragment::Fragment, util::cowvec::CowVec};
 use tracing::instrument;
 
+use super::NoopNode;
 use crate::{
 	Result,
 	expression::{
 		cast::cast_column_data,
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalSession},
+		context::{CompileContext, EvalContext},
 	},
-	vm::volcano::query::{QueryContext, QueryNode},
+	vm::volcano::{
+		query::{QueryContext, QueryNode},
+		udf::{UdfEvalNode, evaluate_udfs_no_input, strip_udf_columns},
+	},
 };
 
 pub(crate) struct MapNode {
 	input: Box<dyn QueryNode>,
 	expressions: Vec<Expression>,
+	udf_names: Vec<String>,
 	headers: Option<ColumnHeaders>,
 	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
 }
@@ -35,6 +40,7 @@ impl MapNode {
 		Self {
 			input,
 			expressions,
+			udf_names: Vec::new(),
 			headers: None,
 			context: None,
 		}
@@ -44,8 +50,16 @@ impl MapNode {
 impl QueryNode for MapNode {
 	#[instrument(name = "volcano::map::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		let (input, expressions, udf_names) = UdfEvalNode::wrap_if_needed(
+			mem::replace(&mut self.input, Box::new(NoopNode)),
+			&self.expressions,
+			&ctx.symbols,
+		);
+		self.input = input;
+		self.expressions = expressions;
+		self.udf_names = udf_names;
+
 		let compile_ctx = CompileContext {
-			functions: &ctx.services.functions,
 			symbols: &ctx.symbols,
 		};
 		let compiled = self
@@ -54,7 +68,7 @@ impl QueryNode for MapNode {
 			.map(|e| compile_expression(&compile_ctx, e).expect("compile"))
 			.collect();
 		self.context = Some((Arc::new(ctx.clone()), compiled));
-		let column_names = self.expressions.iter().map(column_name_from_expression).collect();
+		let column_names = self.expressions.iter().map(display_label).collect();
 		self.headers = Some(ColumnHeaders {
 			columns: column_names,
 		});
@@ -69,11 +83,12 @@ impl QueryNode for MapNode {
 		if let Some(columns) = self.input.next(rx, ctx)? {
 			let stored_ctx = &self.context.as_ref().unwrap().0;
 			let transform_ctx = TransformContext {
-				functions: &stored_ctx.services.functions,
+				routines: &ctx.services.routines,
 				runtime_context: &stored_ctx.services.runtime_context,
 				params: &stored_ctx.params,
 			};
-			let result = self.apply(&transform_ctx, columns)?;
+			let mut result = self.apply(&transform_ctx, columns)?;
+			strip_udf_columns(&mut result, &self.udf_names);
 
 			Ok(Some(result))
 		} else {
@@ -92,11 +107,11 @@ impl Transform for MapNode {
 			self.context.as_ref().expect("MapNode::apply() called before initialize()");
 
 		let row_count = input.row_count();
-		let session = EvalSession::from_transform(ctx, stored_ctx);
+		let session = EvalContext::from_transform(ctx, stored_ctx);
 		let mut new_columns = Vec::with_capacity(compiled.len());
 
 		for (expr, compiled_expr) in self.expressions.iter().zip(compiled.iter()) {
-			let mut exec_ctx = session.eval(input.clone(), row_count);
+			let mut exec_ctx = session.with_eval(input.clone(), row_count);
 
 			if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
 				let alias_name = alias_expr.alias.name();
@@ -115,7 +130,7 @@ impl Transform for MapNode {
 			{
 				let data =
 					cast_column_data(&exec_ctx, &column.data, target_type, &expr.lazy_fragment())?;
-				column = Column {
+				column = ColumnWithName {
 					name: column.name,
 					data,
 				};
@@ -124,17 +139,27 @@ impl Transform for MapNode {
 			new_columns.push(column);
 		}
 
-		if !input.row_numbers.is_empty() {
-			Ok(Columns::with_row_numbers(new_columns, input.row_numbers.to_vec()))
-		} else {
-			Ok(Columns::new(new_columns))
+		let mut names_vec = Vec::with_capacity(new_columns.len());
+		let mut buffers_vec = Vec::with_capacity(new_columns.len());
+		for c in new_columns {
+			names_vec.push(c.name);
+			buffers_vec.push(c.data);
 		}
+		Ok(Columns {
+			row_numbers: input.row_numbers,
+			created_at: input.created_at,
+			updated_at: input.updated_at,
+			columns: CowVec::new(buffers_vec),
+			names: CowVec::new(names_vec),
+		})
 	}
 }
 
 pub(crate) struct MapWithoutInputNode {
 	expressions: Vec<Expression>,
 	headers: Option<ColumnHeaders>,
+
+	udf_columns: Option<Columns>,
 	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
 }
 
@@ -143,6 +168,7 @@ impl MapWithoutInputNode {
 		Self {
 			expressions,
 			headers: None,
+			udf_columns: None,
 			context: None,
 		}
 	}
@@ -150,9 +176,13 @@ impl MapWithoutInputNode {
 
 impl QueryNode for MapWithoutInputNode {
 	#[instrument(name = "volcano::map::noinput::initialize", level = "trace", skip_all)]
-	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		if let Some((rewritten, udf_cols)) = evaluate_udfs_no_input(&self.expressions, ctx, rx)? {
+			self.expressions = rewritten;
+			self.udf_columns = Some(udf_cols);
+		}
+
 		let compile_ctx = CompileContext {
-			functions: &ctx.services.functions,
 			symbols: &ctx.symbols,
 		};
 		let compiled = self
@@ -173,11 +203,14 @@ impl QueryNode for MapWithoutInputNode {
 			return Ok(None);
 		}
 
-		let session = EvalSession::from_query(stored_ctx);
+		let session = EvalContext::from_query(stored_ctx);
 		let mut columns = vec![];
 
 		for compiled_expr in compiled {
-			let exec_ctx = session.eval_empty();
+			let exec_ctx = match &self.udf_columns {
+				Some(udf_cols) => session.with_eval(udf_cols.clone(), 1),
+				None => session.with_eval_empty(),
+			};
 
 			let column = compiled_expr.execute(&exec_ctx)?;
 

@@ -1,0 +1,134 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
+use std::sync::Arc;
+
+use reifydb_core::{event::EventBus, util::ioc::IocContainer};
+use reifydb_engine::engine::StandardEngine;
+use reifydb_profiler::{
+	category::ALL_CATEGORIES,
+	event::{ProfilerScopeBatchEvent, ProfilerScopeClosedEvent},
+	intern::DimInterner,
+	sink::{NoopSink, ProfilerSink},
+};
+use reifydb_runtime::{SharedRuntime, sync::rwlock::RwLock};
+use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
+use reifydb_type::Result;
+
+use crate::{
+	accumulator::ProfilerAccumulator,
+	actor::ProfilerCollectorActor,
+	builder::ProfilerConfigurator,
+	listener::{ProfilerScopeBatchListener, ProfilerScopeClosedListener},
+	reader::ProfilerReader,
+	sink::EventBusSink,
+	snapshot_actor::ProfilerSnapshotActor,
+	subsystem::ProfilerSubsystem,
+	vtable::ProfilerAggregatesVTable,
+};
+
+pub struct ProfilerSubsystemFactory {
+	subsystem: Option<ProfilerSubsystem>,
+	configurator: Option<Box<dyn FnOnce(ProfilerConfigurator) -> ProfilerConfigurator + Send>>,
+}
+
+impl ProfilerSubsystemFactory {
+	pub fn new() -> Self {
+		Self {
+			subsystem: None,
+			configurator: None,
+		}
+	}
+
+	pub fn with_configurator<F>(configurator: F) -> Self
+	where
+		F: FnOnce(ProfilerConfigurator) -> ProfilerConfigurator + Send + 'static,
+	{
+		Self {
+			subsystem: None,
+			configurator: Some(Box::new(configurator)),
+		}
+	}
+
+	pub fn with_subsystem(subsystem: ProfilerSubsystem) -> Self {
+		Self {
+			subsystem: Some(subsystem),
+			configurator: None,
+		}
+	}
+}
+
+impl Default for ProfilerSubsystemFactory {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+impl SubsystemFactory for ProfilerSubsystemFactory {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+		let subsystem = if let Some(subsystem) = self.subsystem {
+			subsystem
+		} else {
+			let cfg = match self.configurator {
+				Some(f) => f(ProfilerConfigurator::new()),
+				None => ProfilerConfigurator::default(),
+			};
+
+			let interner = Arc::new(DimInterner::new());
+			let accumulator = Arc::new(RwLock::new(ProfilerAccumulator::new(
+				cfg.accumulator_capacity,
+				cfg.min_calls_for_retention,
+			)));
+			let event_bus = ioc.resolve::<EventBus>()?;
+			let runtime = ioc.resolve::<SharedRuntime>()?;
+
+			if cfg.enabled {
+				let actor =
+					ProfilerCollectorActor::new(Arc::clone(&accumulator), Arc::clone(&interner));
+				let handle = runtime.actor_system().spawn_system("profile-collector", actor);
+				let actor_ref = handle.actor_ref().clone();
+
+				event_bus.register::<ProfilerScopeClosedEvent, _>(ProfilerScopeClosedListener::new(
+					actor_ref.clone(),
+				));
+				event_bus.register::<ProfilerScopeBatchEvent, _>(ProfilerScopeBatchListener::new(
+					actor_ref,
+				));
+			}
+
+			let sink: Arc<dyn ProfilerSink> = if cfg.enabled {
+				Arc::new(EventBusSink::new(event_bus))
+			} else {
+				Arc::new(NoopSink)
+			};
+
+			ProfilerSubsystem::new(
+				cfg.enabled,
+				cfg.categories,
+				interner,
+				accumulator,
+				sink,
+				runtime.clock().clone(),
+			)
+		};
+
+		let engine = ioc.resolve::<StandardEngine>()?;
+		register_profile_aggregates_vtables(&engine, &subsystem.reader())?;
+
+		let runtime = ioc.resolve::<SharedRuntime>()?;
+		let event_bus = ioc.resolve::<EventBus>()?;
+		let snapshot_actor = ProfilerSnapshotActor::new(subsystem.accumulator(), engine, event_bus);
+		runtime.actor_system().spawn_system("profile-snapshot", snapshot_actor);
+
+		Ok(Box::new(subsystem))
+	}
+}
+
+fn register_profile_aggregates_vtables(engine: &StandardEngine, reader: &ProfilerReader) -> Result<()> {
+	for category in ALL_CATEGORIES {
+		let namespace = format!("system::metrics::profiler::{}", category.name());
+		let vtable = ProfilerAggregatesVTable::new(reader.clone(), category);
+		engine.register_virtual_table(&namespace, "spans", vtable)?;
+	}
+	Ok(())
+}

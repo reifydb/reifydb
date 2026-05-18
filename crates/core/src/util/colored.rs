@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Simple ANSI color formatting implementation
-
 use std::fmt;
 
-/// ANSI color codes
 #[derive(Debug, Clone, Copy)]
 pub enum Color {
 	Black,
@@ -70,7 +67,6 @@ impl Color {
 	}
 }
 
-/// Wrapper for colored string output
 pub struct ColoredString {
 	text: String,
 	foreground: Option<Color>,
@@ -126,12 +122,10 @@ impl fmt::Display for ColoredString {
 
 		write!(f, "{}", self.text)?;
 
-		// Reset
 		write!(f, "\x1b[0m")
 	}
 }
 
-/// Extension trait for coloring strings
 pub trait Colorize: Sized {
 	fn red(self) -> ColoredString;
 	fn green(self) -> ColoredString;
@@ -336,7 +330,6 @@ impl<T: Into<String>> Colorize for T {
 	}
 }
 
-/// Allow chaining color methods on ColoredString
 impl Colorize for ColoredString {
 	fn red(mut self) -> ColoredString {
 		self.foreground = Some(Color::Red);

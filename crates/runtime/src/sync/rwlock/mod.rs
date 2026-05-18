@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! RwLock synchronization primitive.
-
-use std::ops::{Deref, DerefMut};
+use std::{
+	fmt,
+	fmt::Debug,
+	ops::{Deref, DerefMut},
+};
 
 use cfg_if::cfg_if;
 
@@ -24,9 +26,15 @@ cfg_if! {
 	}
 }
 
-/// A reader-writer lock for shared read access and exclusive write access.
 pub struct RwLock<T> {
 	inner: RwLockInnerImpl<T>,
+}
+
+impl<T: Debug> Debug for RwLock<T> {
+	#[inline]
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		self.inner.fmt(f)
+	}
 }
 
 // SAFETY: Single-threaded targets (WASM/WASI) don't have real concurrency
@@ -34,7 +42,6 @@ pub struct RwLock<T> {
 unsafe impl<T> Sync for RwLock<T> {}
 
 impl<T> RwLock<T> {
-	/// Creates a new reader-writer lock.
 	#[inline]
 	pub fn new(value: T) -> Self {
 		Self {
@@ -42,7 +49,6 @@ impl<T> RwLock<T> {
 		}
 	}
 
-	/// Acquires a read lock, blocking until it's available.
 	#[inline]
 	pub fn read(&self) -> RwLockReadGuard<'_, T> {
 		RwLockReadGuard {
@@ -50,7 +56,6 @@ impl<T> RwLock<T> {
 		}
 	}
 
-	/// Acquires a write lock, blocking until it's available.
 	#[inline]
 	pub fn write(&self) -> RwLockWriteGuard<'_, T> {
 		RwLockWriteGuard {
@@ -58,7 +63,6 @@ impl<T> RwLock<T> {
 		}
 	}
 
-	/// Attempts to acquire a read lock without blocking.
 	#[inline]
 	pub fn try_read(&self) -> Option<RwLockReadGuard<'_, T>> {
 		self.inner.try_read().map(|inner| RwLockReadGuard {
@@ -66,16 +70,35 @@ impl<T> RwLock<T> {
 		})
 	}
 
-	/// Attempts to acquire a write lock without blocking.
 	#[inline]
 	pub fn try_write(&self) -> Option<RwLockWriteGuard<'_, T>> {
 		self.inner.try_write().map(|inner| RwLockWriteGuard {
 			inner,
 		})
 	}
+
+	#[inline]
+	pub fn read_recursive(&self) -> RwLockReadGuard<'_, T> {
+		RwLockReadGuard {
+			inner: self.inner.read_recursive(),
+		}
+	}
+
+	#[inline]
+	pub fn try_read_recursive(&self) -> Option<RwLockReadGuard<'_, T>> {
+		self.inner.try_read_recursive().map(|inner| RwLockReadGuard {
+			inner,
+		})
+	}
 }
 
-/// A guard providing read access to the data protected by an RwLock.
+impl<T: Default> Default for RwLock<T> {
+	#[inline]
+	fn default() -> Self {
+		Self::new(T::default())
+	}
+}
+
 pub struct RwLockReadGuard<'a, T> {
 	inner: RwLockReadGuardInnerImpl<'a, T>,
 }
@@ -89,7 +112,13 @@ impl<'a, T> Deref for RwLockReadGuard<'a, T> {
 	}
 }
 
-/// A guard providing write access to the data protected by an RwLock.
+impl<'a, T: Debug> Debug for RwLockReadGuard<'a, T> {
+	#[inline]
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		(**self).fmt(f)
+	}
+}
+
 pub struct RwLockWriteGuard<'a, T> {
 	inner: RwLockWriteGuardInnerImpl<'a, T>,
 }
@@ -107,5 +136,12 @@ impl<'a, T> DerefMut for RwLockWriteGuard<'a, T> {
 	#[inline]
 	fn deref_mut(&mut self) -> &mut T {
 		&mut self.inner
+	}
+}
+
+impl<'a, T: Debug> Debug for RwLockWriteGuard<'a, T> {
+	#[inline]
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		(**self).fmt(f)
 	}
 }

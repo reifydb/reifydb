@@ -19,7 +19,7 @@ macro_rules! impl_safe_div_signed {
                         Some(result) => result,
                         None => {
                             if *r == 0 {
-                                0 // division by zero
+                                0
                             } else {
                                 <$t>::MAX
                             }
@@ -44,7 +44,7 @@ macro_rules! impl_safe_div_unsigned {
                 fn saturating_div(&self, r: &Self) -> Self {
                     match <$t>::checked_div(*self, *r) {
                         Some(result) => result,
-                        None => 0 // division by zero
+                        None => 0
                     }
                 }
                 fn wrapping_div(&self, r: &Self) -> Self {
@@ -81,7 +81,6 @@ impl SafeDiv for Int {
 	}
 
 	fn wrapping_div(&self, r: &Self) -> Self {
-		// For division by zero, return zero
 		if r.0 == BigInt::from(0) {
 			Int::from(0)
 		} else {
@@ -173,8 +172,6 @@ impl SafeDiv for f32 {
 		if result.is_finite() {
 			result
 		} else {
-			// For division by zero, infinity, or NaN results,
-			// return 0.0 to match integer wrapping behavior
 			0.0
 		}
 	}
@@ -208,8 +205,6 @@ impl SafeDiv for f64 {
 		if result.is_finite() {
 			result
 		} else {
-			// For division by zero, infinity, or NaN results,
-			// return 0.0 to match integer wrapping behavior
 			0.0
 		}
 	}

@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Virtual-table runtime. Each system table the catalog exposes through `system/` is backed by a vtable handler
+//! registered here; when an RQL query reads from one of those tables, the engine dispatches to the matching
+//! handler which materialises the rows from in-memory catalog state. No persisted bytes back system tables, only
+//! a snapshot of what the materialised catalog already knows.
+
 use std::sync::Arc;
 
 use reifydb_core::{
@@ -16,7 +21,6 @@ use crate::{
 	system::{SystemCatalog, ids::vtable::*},
 };
 
-/// A batch of columnar data returned from virtual table queries
 #[derive(Debug)]
 pub struct Batch {
 	pub columns: Columns,
@@ -26,45 +30,31 @@ pub mod system;
 pub mod tables;
 pub mod user;
 
-/// Context passed to virtual table queries
-///
-/// Note: For pushdown optimization with expressions, use the extended context in the engine crate.
 pub enum VTableContext {
-	/// Basic query context with just parameters
 	Basic {
-		/// Query parameters
 		params: Params,
 	},
-	/// Pushdown optimization hints (without expression types to avoid circular deps)
+
 	PushDown {
-		/// Sort keys from order operations
 		order_by: Vec<SortKey>,
-		/// Limit from take operations
+
 		limit: Option<usize>,
-		/// Query parameters
+
 		params: Params,
 	},
 }
 
-/// Trait for virtual table instances that follow the volcano iterator pattern
 pub trait BaseVTable: Send + Sync {
-	/// Initialize the virtual table iterator with context
-	/// Called once before iteration begins
 	fn initialize(&mut self, txn: &mut Transaction<'_>, ctx: VTableContext) -> Result<()>;
 
-	/// Get the next batch of results (volcano iterator pattern)
 	fn next(&mut self, txn: &mut Transaction<'_>) -> Result<Option<Batch>>;
 
-	/// Get the table definition
-	fn definition(&self) -> &VTable;
+	fn vtable(&self) -> &VTable;
 }
 
-/// Registry for virtual tables (definitions only)
 pub struct VTableRegistry;
 
 impl VTableRegistry {
-	/// Find a virtual table by its ID
-	/// Returns None if the virtual table doesn't exist
 	pub fn find_vtable(_rx: &mut Transaction<'_>, id: VTableId) -> Result<Option<Arc<VTable>>> {
 		Ok(match id {
 			SEQUENCES => Some(SystemCatalog::get_system_sequences_table()),
@@ -76,11 +66,11 @@ impl VTableRegistry {
 			PRIMARY_KEYS => Some(SystemCatalog::get_system_primary_keys_table()),
 			PRIMARY_KEY_COLUMNS => Some(SystemCatalog::get_system_primary_key_columns_table()),
 			VERSIONS => Some(SystemCatalog::get_system_versions_table()),
-			PRIMITIVE_RETENTION_POLICIES => {
-				Some(SystemCatalog::get_system_shape_retention_policies_table())
+			PRIMITIVE_RETENTION_STRATEGIES => {
+				Some(SystemCatalog::get_system_shape_retention_strategies_table())
 			}
-			OPERATOR_RETENTION_POLICIES => {
-				Some(SystemCatalog::get_system_operator_retention_policies_table())
+			OPERATOR_RETENTION_STRATEGIES => {
+				Some(SystemCatalog::get_system_operator_retention_strategies_table())
 			}
 			CDC_CONSUMERS => Some(SystemCatalog::get_system_cdc_consumers_table()),
 			FLOWS => Some(SystemCatalog::get_system_flows_table()),
@@ -110,23 +100,38 @@ impl VTableRegistry {
 			VIRTUAL_TABLES => Some(SystemCatalog::get_system_virtual_tables_table()),
 			VIRTUAL_TABLE_COLUMNS => Some(SystemCatalog::get_system_virtual_table_columns_table()),
 			TYPES => Some(SystemCatalog::get_system_types_table()),
-			TABLE_STORAGE_STATS => Some(SystemCatalog::get_system_table_storage_stats_table()),
-			VIEW_STORAGE_STATS => Some(SystemCatalog::get_system_view_storage_stats_table()),
-			FLOW_STORAGE_STATS => Some(SystemCatalog::get_system_flow_storage_stats_table()),
-			FLOW_NODE_STORAGE_STATS => Some(SystemCatalog::get_system_flow_node_storage_stats_table()),
-			INDEX_STORAGE_STATS => Some(SystemCatalog::get_system_index_storage_stats_table()),
-			RINGBUFFER_STORAGE_STATS => Some(SystemCatalog::get_system_ringbuffer_storage_stats_table()),
-			DICTIONARY_STORAGE_STATS => Some(SystemCatalog::get_system_dictionary_storage_stats_table()),
+			METRICS_STORAGE_TABLE => Some(SystemCatalog::get_system_metrics_storage_table_table()),
+			METRICS_STORAGE_VIEW => Some(SystemCatalog::get_system_metrics_storage_view_table()),
+			METRICS_STORAGE_TABLE_VIRTUAL => {
+				Some(SystemCatalog::get_system_metrics_storage_table_virtual_table())
+			}
+			METRICS_STORAGE_RINGBUFFER => {
+				Some(SystemCatalog::get_system_metrics_storage_ringbuffer_table())
+			}
+			METRICS_STORAGE_DICTIONARY => {
+				Some(SystemCatalog::get_system_metrics_storage_dictionary_table())
+			}
+			METRICS_STORAGE_SERIES => Some(SystemCatalog::get_system_metrics_storage_series_table()),
+			METRICS_STORAGE_FLOW => Some(SystemCatalog::get_system_metrics_storage_flow_table()),
+			METRICS_STORAGE_FLOW_NODE => Some(SystemCatalog::get_system_metrics_storage_flow_node_table()),
+			METRICS_STORAGE_SYSTEM => Some(SystemCatalog::get_system_metrics_storage_system_table()),
+			METRICS_CDC_TABLE => Some(SystemCatalog::get_system_metrics_cdc_table_table()),
+			METRICS_CDC_VIEW => Some(SystemCatalog::get_system_metrics_cdc_view_table()),
+			METRICS_CDC_TABLE_VIRTUAL => Some(SystemCatalog::get_system_metrics_cdc_table_virtual_table()),
+			METRICS_CDC_RINGBUFFER => Some(SystemCatalog::get_system_metrics_cdc_ringbuffer_table()),
+			METRICS_CDC_DICTIONARY => Some(SystemCatalog::get_system_metrics_cdc_dictionary_table()),
+			METRICS_CDC_SERIES => Some(SystemCatalog::get_system_metrics_cdc_series_table()),
+			METRICS_CDC_FLOW => Some(SystemCatalog::get_system_metrics_cdc_flow_table()),
+			METRICS_CDC_FLOW_NODE => Some(SystemCatalog::get_system_metrics_cdc_flow_node_table()),
+			METRICS_CDC_SYSTEM => Some(SystemCatalog::get_system_metrics_cdc_system_table()),
 			MIGRATIONS => Some(SystemCatalog::get_system_migrations_table()),
 			AUTHENTICATIONS => Some(SystemCatalog::get_system_authentications_table()),
-			CONFIGS => Some(SystemCatalog::get_system_configs_table()),
+			CONFIGS => Some(SystemCatalog::get_configs_table()),
 			_ => None,
 		})
 	}
 
-	/// List all virtual tables
 	pub fn list_vtables(_rx: &mut Transaction<'_>) -> Result<Vec<Arc<VTable>>> {
-		// Return all registered virtual tables
 		Ok(vec![
 			SystemCatalog::get_system_sequences_table(),
 			SystemCatalog::get_system_namespaces_table(),
@@ -137,8 +142,8 @@ impl VTableRegistry {
 			SystemCatalog::get_system_primary_keys_table(),
 			SystemCatalog::get_system_primary_key_columns_table(),
 			SystemCatalog::get_system_versions_table(),
-			SystemCatalog::get_system_shape_retention_policies_table(),
-			SystemCatalog::get_system_operator_retention_policies_table(),
+			SystemCatalog::get_system_shape_retention_strategies_table(),
+			SystemCatalog::get_system_operator_retention_strategies_table(),
 			SystemCatalog::get_system_cdc_consumers_table(),
 			SystemCatalog::get_system_flows_table(),
 			SystemCatalog::get_system_flow_operators_table(),
@@ -167,16 +172,27 @@ impl VTableRegistry {
 			SystemCatalog::get_system_virtual_tables_table(),
 			SystemCatalog::get_system_virtual_table_columns_table(),
 			SystemCatalog::get_system_types_table(),
-			SystemCatalog::get_system_table_storage_stats_table(),
-			SystemCatalog::get_system_view_storage_stats_table(),
-			SystemCatalog::get_system_flow_storage_stats_table(),
-			SystemCatalog::get_system_flow_node_storage_stats_table(),
-			SystemCatalog::get_system_index_storage_stats_table(),
-			SystemCatalog::get_system_ringbuffer_storage_stats_table(),
-			SystemCatalog::get_system_dictionary_storage_stats_table(),
+			SystemCatalog::get_system_metrics_storage_table_table(),
+			SystemCatalog::get_system_metrics_storage_view_table(),
+			SystemCatalog::get_system_metrics_storage_table_virtual_table(),
+			SystemCatalog::get_system_metrics_storage_ringbuffer_table(),
+			SystemCatalog::get_system_metrics_storage_dictionary_table(),
+			SystemCatalog::get_system_metrics_storage_series_table(),
+			SystemCatalog::get_system_metrics_storage_flow_table(),
+			SystemCatalog::get_system_metrics_storage_flow_node_table(),
+			SystemCatalog::get_system_metrics_storage_system_table(),
+			SystemCatalog::get_system_metrics_cdc_table_table(),
+			SystemCatalog::get_system_metrics_cdc_view_table(),
+			SystemCatalog::get_system_metrics_cdc_table_virtual_table(),
+			SystemCatalog::get_system_metrics_cdc_ringbuffer_table(),
+			SystemCatalog::get_system_metrics_cdc_dictionary_table(),
+			SystemCatalog::get_system_metrics_cdc_series_table(),
+			SystemCatalog::get_system_metrics_cdc_flow_table(),
+			SystemCatalog::get_system_metrics_cdc_flow_node_table(),
+			SystemCatalog::get_system_metrics_cdc_system_table(),
 			SystemCatalog::get_system_migrations_table(),
 			SystemCatalog::get_system_authentications_table(),
-			SystemCatalog::get_system_configs_table(),
+			SystemCatalog::get_configs_table(),
 		])
 	}
 }

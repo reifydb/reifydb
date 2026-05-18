@@ -1,5 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+
+//! Multi-version storage backend for OLTP traffic. Implements the `MultiVersionStore` family of traits from
+//! `core::interface::store` so the engine can read at a snapshot, write a new version, and step backwards through
+//! history without coordinating with concurrent readers.
+//!
+//! The backend is tiered: hot writes land in the in-memory buffer, the flusher migrates them to persistent storage
+//! at commit boundaries, and the garbage collector reclaims versions that have aged out behind the configured
+//! retention. The persistent tier is pluggable - a SQLite-backed implementation is the default but the trait surface
+//! is what the engine binds to, so other backends can be slotted in.
+//!
+//! Invariant: a row at `version V` is the value visible to a reader whose snapshot is `>= V` and where no later
+//! version exists at `V' <= snapshot`. Commit must publish all deltas of a transaction atomically with respect to
+//! readers; partial visibility breaks snapshot isolation.
+
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
@@ -11,16 +25,17 @@ use reifydb_core::{
 };
 use reifydb_type::Result;
 
-pub mod cold;
-pub mod hot;
+pub mod buffer;
+pub mod flush;
+pub mod gc;
+pub mod persistent;
 pub mod tier;
-pub mod warm;
 
 pub mod config;
 pub mod multi;
 pub mod store;
 
-use config::{HotConfig, MultiStoreConfig};
+use config::{BufferConfig, MultiStoreConfig};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -56,7 +71,6 @@ impl HasVersion for MultiStoreVersion {
 #[derive(Clone)]
 pub enum MultiStore {
 	Standard(StandardMultiStore) = 0,
-	// Other(Box<dyn MultiVersionStore>) = 254,
 }
 
 impl MultiStore {
@@ -74,17 +88,34 @@ impl MultiStore {
 		MultiStore::Standard(StandardMultiStore::testing_memory_with_eventbus(event_bus))
 	}
 
-	/// Get access to the hot storage tier.
-	///
-	/// Returns `None` if the hot tier is not configured.
-	pub fn hot(&self) -> Option<&hot::storage::HotStorage> {
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn testing_memory_with_persistent_sqlite() -> Self {
+		MultiStore::Standard(StandardMultiStore::testing_memory_with_persistent_sqlite())
+	}
+
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn testing_memory_with_persistent_sqlite_with_eventbus(event_bus: EventBus) -> Self {
+		MultiStore::Standard(StandardMultiStore::testing_memory_with_persistent_sqlite_with_eventbus(event_bus))
+	}
+
+	pub fn flush_pending_blocking(&self) {
 		match self {
-			MultiStore::Standard(store) => store.hot(),
+			MultiStore::Standard(store) => store.flush_pending_blocking(),
+		}
+	}
+
+	pub fn buffer(&self) -> Option<&buffer::tier::MultiBufferTier> {
+		match self {
+			MultiStore::Standard(store) => store.buffer(),
+		}
+	}
+
+	pub fn persistent(&self) -> Option<&persistent::MultiPersistentTier> {
+		match self {
+			MultiStore::Standard(store) => store.persistent(),
 		}
 	}
 }
-
-// MultiVersion trait implementations
 
 impl MultiVersionGet for MultiStore {
 	#[inline]
@@ -126,15 +157,9 @@ impl MultiVersionGetPrevious for MultiStore {
 	}
 }
 
-/// Iterator type for multi-version range results.
 pub type MultiVersionRangeIterator<'a> = Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a>;
 
 impl MultiStore {
-	/// Create an iterator for forward range queries.
-	///
-	/// This properly handles high version density by scanning until batch_size
-	/// unique logical keys are collected. The iterator yields individual entries
-	/// and maintains cursor state internally.
 	pub fn range(
 		&self,
 		range: EncodedKeyRange,
@@ -146,11 +171,6 @@ impl MultiStore {
 		}
 	}
 
-	/// Create an iterator for reverse range queries.
-	///
-	/// This properly handles high version density by scanning until batch_size
-	/// unique logical keys are collected. The iterator yields individual entries
-	/// in reverse key order and maintains cursor state internally.
 	pub fn range_rev(
 		&self,
 		range: EncodedKeyRange,
@@ -163,5 +183,4 @@ impl MultiStore {
 	}
 }
 
-// High-level trait implementations
 impl MultiVersionStore for MultiStore {}

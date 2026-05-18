@@ -8,13 +8,11 @@ use reifydb_type::value::{datetime::DateTime, identity::IdentityId};
 use crate::{CatalogStore, Result, store::token::shape::token};
 
 impl CatalogStore {
-	/// Drop a single token by ID.
 	pub(crate) fn drop_token(txn: &mut AdminTransaction, id: TokenId) -> Result<()> {
 		txn.remove(&TokenKey::encoded(id))?;
 		Ok(())
 	}
 
-	/// Drop all tokens for a given identity.
 	pub(crate) fn drop_tokens_by_identity(txn: &mut AdminTransaction, identity: IdentityId) -> Result<()> {
 		let mut to_remove = Vec::new();
 		{
@@ -36,7 +34,6 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	/// Drop all expired tokens.
 	pub(crate) fn drop_expired_tokens(txn: &mut AdminTransaction, now: DateTime) -> Result<()> {
 		let mut to_remove = Vec::new();
 		{

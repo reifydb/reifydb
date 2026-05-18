@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 import {NONE_VALUE, TypeValuePair} from "@reifydb/core";
 
-export function encodeValue(value: any): TypeValuePair {
+export function encode_value(value: any): TypeValuePair {
 
     if (value === null || value === undefined) {
         return { type: 'None', value: NONE_VALUE };
@@ -91,17 +91,17 @@ export function encodeValue(value: any): TypeValuePair {
     throw new Error(`Cannot encode value of type ${typeof value}: ${value}`);
 }
 
-export function encodeParams(params: any): TypeValuePair[] | Record<string, TypeValuePair> {
+export function encode_params(params: any): TypeValuePair[] | Record<string, TypeValuePair> {
     if (params === undefined || params === null) {
         return [];
     }
 
     if (Array.isArray(params)) {
-        return params.map(param => encodeValue(param));
+        return params.map(param => encode_value(param));
     } else if (typeof params === 'object') {
         const encoded: Record<string, TypeValuePair> = {};
         for (const [key, value] of Object.entries(params)) {
-            encoded[key] = encodeValue(value);
+            encoded[key] = encode_value(value);
         }
         return encoded;
     }

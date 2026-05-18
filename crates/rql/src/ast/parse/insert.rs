@@ -14,14 +14,9 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	/// Parse INSERT statement with keyword-first syntax:
-	/// INSERT table [...]              - inline array (no FROM)
-	/// INSERT table $variable          - variable (no FROM)
-	/// INSERT namespace.table FROM source_table  - table source (FROM required)
 	pub(crate) fn parse_insert(&mut self) -> Result<AstInsert<'bump>> {
 		let token = self.consume_keyword(Keyword::Insert)?;
 
-		// 1. Parse target (REQUIRED) - namespace.table or just table
 		if self.is_eof() || !matches!(self.current()?.kind, TokenKind::Identifier | TokenKind::Keyword(_)) {
 			return Err(RqlError::InsertMissingTarget {
 				fragment: token.fragment.to_owned(),
@@ -38,11 +33,6 @@ impl<'bump> Parser<'bump> {
 			UnresolvedShapeIdentifier::new(vec![], segments.remove(0).into_fragment())
 		};
 
-		// 2. Parse data source
-		// Check what follows the target:
-		// - `[` → inline array (no FROM keyword)
-		// - `$` → variable (no FROM keyword)
-		// - `FROM` keyword → table/generator source (parse FROM clause)
 		if self.is_eof() {
 			return Err(RqlError::InsertMissingSource {
 				fragment: token.fragment.to_owned(),
@@ -52,15 +42,12 @@ impl<'bump> Parser<'bump> {
 
 		let current = self.current()?;
 		let source = if current.is_operator(Operator::OpenBracket) {
-			// Inline array - parse directly without FROM keyword
-			// Reuse parse_static from from.rs
 			let list = self.parse_static()?;
 			Ast::From(AstFrom::Inline {
 				token: list.token,
 				list,
 			})
 		} else if matches!(current.kind, TokenKind::Variable) {
-			// Variable - parse directly without FROM keyword
 			let var_token = self.advance()?;
 
 			if var_token.fragment.text() == "$env" {
@@ -77,7 +64,6 @@ impl<'bump> Parser<'bump> {
 				})
 			}
 		} else if current.is_keyword(Keyword::From) {
-			// Table/generator source - use FROM clause
 			Ast::From(self.parse_from()?)
 		} else {
 			return Err(RqlError::InsertMissingSource {

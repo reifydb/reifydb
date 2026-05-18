@@ -1,26 +1,44 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
-
-use reifydb_core::{interface::change::Diff, value::column::columns::Columns};
+use reifydb_core::{
+	encoded::{
+		row::EncodedRow,
+		shape::{RowShape, RowShapeField},
+	},
+	interface::change::Diff,
+	internal,
+	value::column::columns::Columns,
+};
 use reifydb_runtime::hash::Hash128;
-use reifydb_type::{Result, value::row_number::RowNumber};
+use reifydb_type::{
+	Result,
+	error::Error,
+	value::{Value, row_number::RowNumber},
+};
 
 use crate::{
-	operator::{
-		Operators,
-		join::{
-			operator::JoinOperator,
-			state::{JoinSide, JoinSideEntry},
-			store::Store,
-		},
-	},
+	operator::join::{operator::JoinOperator, state::JoinSide, store::Store},
 	transaction::FlowTransaction,
 };
 
-/// Add a row to a state entry (left or right)
-/// Takes Columns + row index instead of Row to avoid allocation
+fn build_shape(columns: &Columns) -> RowShape {
+	let fields: Vec<RowShapeField> = columns
+		.names
+		.iter()
+		.zip(columns.columns.iter())
+		.map(|(name, buf)| RowShapeField::unconstrained(name.text().to_string(), buf.get_type()))
+		.collect();
+	RowShape::new(fields)
+}
+
+fn encode_row(shape: &RowShape, columns: &Columns, row_idx: usize) -> EncodedRow {
+	let values: Vec<Value> = columns.columns.iter().map(|buf| buf.get_value(row_idx)).collect();
+	let mut encoded = shape.allocate();
+	shape.set_values(&mut encoded, &values);
+	encoded
+}
+
 pub(crate) fn add_to_state_entry(
 	txn: &mut FlowTransaction,
 	store: &mut Store,
@@ -28,16 +46,12 @@ pub(crate) fn add_to_state_entry(
 	columns: &Columns,
 	row_idx: usize,
 ) -> Result<()> {
-	let row_number = columns.row_numbers[row_idx];
-	let mut entry = store.get_or_insert_with(txn, key_hash, || JoinSideEntry {
-		rows: Vec::new(),
-	})?;
-	entry.rows.push(row_number);
-	store.set(txn, key_hash, &entry)?;
-	Ok(())
+	let shape = build_shape(columns);
+	store.set_row_shape(txn, &shape)?;
+	let encoded = encode_row(&shape, columns, row_idx);
+	store.put_row(txn, key_hash, columns.row_numbers[row_idx], &encoded)
 }
 
-/// Add multiple rows to a state entry
 pub(crate) fn add_to_state_entry_batch(
 	txn: &mut FlowTransaction,
 	store: &mut Store,
@@ -45,95 +59,80 @@ pub(crate) fn add_to_state_entry_batch(
 	columns: &Columns,
 	indices: &[usize],
 ) -> Result<()> {
-	let mut entry = store.get_or_insert_with(txn, key_hash, || JoinSideEntry {
-		rows: Vec::new(),
-	})?;
-	for &idx in indices {
-		entry.rows.push(columns.row_numbers[idx]);
+	if indices.is_empty() {
+		return Ok(());
 	}
-	store.set(txn, key_hash, &entry)?;
+	let shape = build_shape(columns);
+	store.set_row_shape(txn, &shape)?;
+	for &idx in indices {
+		let encoded = encode_row(&shape, columns, idx);
+		store.put_row(txn, key_hash, columns.row_numbers[idx], &encoded)?;
+	}
 	Ok(())
 }
 
-/// Remove a row from state entry and cleanup if empty
 pub(crate) fn remove_from_state_entry(
 	txn: &mut FlowTransaction,
 	store: &mut Store,
 	key_hash: &Hash128,
 	row_number: RowNumber,
 ) -> Result<bool> {
-	if let Some(mut entry) = store.get(txn, key_hash)? {
-		entry.rows.retain(|&r| r != row_number);
-
-		if entry.rows.is_empty() {
-			store.remove(txn, key_hash)?;
-			Ok(true) // Entry was removed
-		} else {
-			store.set(txn, key_hash, &entry)?;
-			Ok(false) // Entry still has rows
-		}
-	} else {
-		Ok(false) // Entry didn't exist
+	let removed = store.remove_row(txn, key_hash, row_number)?;
+	if !removed {
+		return Ok(false);
 	}
+	Ok(!store.contains_key(txn, key_hash)?)
 }
 
-/// Update a row in-place within a state entry
 pub(crate) fn update_row_in_entry(
 	txn: &mut FlowTransaction,
 	store: &mut Store,
 	key_hash: &Hash128,
 	pre_row_number: RowNumber,
-	post_row_number: RowNumber,
+	post: &Columns,
+	row_idx: usize,
 ) -> Result<bool> {
-	if let Some(mut entry) = store.get(txn, key_hash)? {
-		for row in &mut entry.rows {
-			if *row == pre_row_number {
-				*row = post_row_number;
-				store.set(txn, key_hash, &entry)?;
-				return Ok(true);
-			}
+	let shape = build_shape(post);
+	store.set_row_shape(txn, &shape)?;
+	let encoded = encode_row(&shape, post, row_idx);
+	let post_row_number = post.row_numbers[row_idx];
+	if pre_row_number == post_row_number {
+		store.update_row(txn, key_hash, post_row_number, &encoded)
+	} else {
+		if !store.remove_row(txn, key_hash, pre_row_number)? {
+			return Ok(false);
 		}
+		store.put_row(txn, key_hash, post_row_number, &encoded)?;
+		Ok(true)
 	}
-	Ok(false)
 }
 
-/// Check if a right side has any rows for a given key
 pub(crate) fn has_right_rows(txn: &mut FlowTransaction, right_store: &Store, key_hash: &Hash128) -> Result<bool> {
 	right_store.contains_key(txn, key_hash)
 }
 
-/// Check if it's the first right row being added for a key
 pub(crate) fn is_first_right_row(txn: &mut FlowTransaction, right_store: &Store, key_hash: &Hash128) -> Result<bool> {
 	Ok(!right_store.contains_key(txn, key_hash)?)
 }
 
-/// Get all rows from a store for a given key as Columns (no Row conversion)
-pub(crate) fn pull_from_store(
-	txn: &mut FlowTransaction,
-	store: &Store,
-	key_hash: &Hash128,
-	parent: &Arc<Operators>,
-) -> Result<Columns> {
-	if let Some(entry) = store.get(txn, key_hash)? {
-		parent.pull(txn, &entry.rows)
-	} else {
-		Ok(Columns::empty())
+pub(crate) fn pull_from_store(txn: &mut FlowTransaction, store: &Store, key_hash: &Hash128) -> Result<Columns> {
+	let rows = store.rows_for_key(txn, key_hash)?;
+	if rows.is_empty() {
+		return Ok(Columns::empty());
 	}
+	let shape =
+		store.get_row_shape(txn)?.ok_or_else(|| Error(Box::new(internal!("Row shape not found in store"))))?;
+	let ids: Vec<RowNumber> = rows.iter().map(|(rn, _)| *rn).collect();
+	let encoded: Vec<EncodedRow> = rows.into_iter().map(|(_, r)| r).collect();
+	Ok(Columns::from_encoded_rows(&shape, &ids, &encoded))
 }
 
-/// Context for the "opposite side" of a join emit operation.
-///
-/// Groups the parameters that describe which opposite-side data to look up
-/// and how to combine it with the primary side.
 pub(crate) struct JoinEmitContext<'a> {
 	pub opposite_store: &'a Store,
 	pub key_hash: &'a Hash128,
 	pub operator: &'a JoinOperator,
-	pub opposite_parent: &'a Arc<Operators>,
 }
 
-/// Emit joined columns when inserting a row that has matches on the opposite side.
-/// Uses index-based access, no Row allocation.
 pub(crate) fn emit_joined_columns(
 	txn: &mut FlowTransaction,
 	primary: &Columns,
@@ -141,7 +140,7 @@ pub(crate) fn emit_joined_columns(
 	primary_side: JoinSide,
 	ctx: &JoinEmitContext<'_>,
 ) -> Result<Option<Diff>> {
-	let opposite = pull_from_store(txn, ctx.opposite_store, ctx.key_hash, ctx.opposite_parent)?;
+	let opposite = pull_from_store(txn, ctx.opposite_store, ctx.key_hash)?;
 	if opposite.is_empty() {
 		return Ok(None);
 	}
@@ -154,13 +153,10 @@ pub(crate) fn emit_joined_columns(
 	if joined.is_empty() {
 		Ok(None)
 	} else {
-		Ok(Some(Diff::Insert {
-			post: joined,
-		}))
+		Ok(Some(Diff::insert(joined)))
 	}
 }
 
-/// Emit removal of joined columns
 pub(crate) fn emit_remove_joined_columns(
 	txn: &mut FlowTransaction,
 	primary: &Columns,
@@ -168,7 +164,7 @@ pub(crate) fn emit_remove_joined_columns(
 	primary_side: JoinSide,
 	ctx: &JoinEmitContext<'_>,
 ) -> Result<Option<Diff>> {
-	let opposite = pull_from_store(txn, ctx.opposite_store, ctx.key_hash, ctx.opposite_parent)?;
+	let opposite = pull_from_store(txn, ctx.opposite_store, ctx.key_hash)?;
 	if opposite.is_empty() {
 		return Ok(None);
 	}
@@ -181,13 +177,10 @@ pub(crate) fn emit_remove_joined_columns(
 	if joined.is_empty() {
 		Ok(None)
 	} else {
-		Ok(Some(Diff::Remove {
-			pre: joined,
-		}))
+		Ok(Some(Diff::remove(joined)))
 	}
 }
 
-/// Emit updates for joined columns when a row is updated
 pub(crate) fn emit_update_joined_columns(
 	txn: &mut FlowTransaction,
 	pre: &Columns,
@@ -196,7 +189,7 @@ pub(crate) fn emit_update_joined_columns(
 	primary_side: JoinSide,
 	ctx: &JoinEmitContext<'_>,
 ) -> Result<Option<Diff>> {
-	let opposite = pull_from_store(txn, ctx.opposite_store, ctx.key_hash, ctx.opposite_parent)?;
+	let opposite = pull_from_store(txn, ctx.opposite_store, ctx.key_hash)?;
 	if opposite.is_empty() {
 		return Ok(None);
 	}
@@ -215,14 +208,10 @@ pub(crate) fn emit_update_joined_columns(
 	if pre_joined.is_empty() || post_joined.is_empty() {
 		Ok(None)
 	} else {
-		Ok(Some(Diff::Update {
-			pre: pre_joined,
-			post: post_joined,
-		}))
+		Ok(Some(Diff::update(pre_joined, post_joined)))
 	}
 }
 
-/// Emit joined columns for a batch of rows with the same key
 pub(crate) fn emit_joined_columns_batch(
 	txn: &mut FlowTransaction,
 	primary: &Columns,
@@ -234,7 +223,7 @@ pub(crate) fn emit_joined_columns_batch(
 		return Ok(None);
 	}
 
-	let opposite = pull_from_store(txn, ctx.opposite_store, ctx.key_hash, ctx.opposite_parent)?;
+	let opposite = pull_from_store(txn, ctx.opposite_store, ctx.key_hash)?;
 	if opposite.is_empty() {
 		return Ok(None);
 	}
@@ -265,13 +254,10 @@ pub(crate) fn emit_joined_columns_batch(
 	if joined.is_empty() {
 		Ok(None)
 	} else {
-		Ok(Some(Diff::Insert {
-			post: joined,
-		}))
+		Ok(Some(Diff::insert(joined)))
 	}
 }
 
-/// Emit removal of joined columns for a batch
 pub(crate) fn emit_remove_joined_columns_batch(
 	txn: &mut FlowTransaction,
 	primary: &Columns,
@@ -283,7 +269,7 @@ pub(crate) fn emit_remove_joined_columns_batch(
 		return Ok(None);
 	}
 
-	let opposite = pull_from_store(txn, ctx.opposite_store, ctx.key_hash, ctx.opposite_parent)?;
+	let opposite = pull_from_store(txn, ctx.opposite_store, ctx.key_hash)?;
 	if opposite.is_empty() {
 		return Ok(None);
 	}
@@ -314,18 +300,10 @@ pub(crate) fn emit_remove_joined_columns_batch(
 	if joined.is_empty() {
 		Ok(None)
 	} else {
-		Ok(Some(Diff::Remove {
-			pre: joined,
-		}))
+		Ok(Some(Diff::remove(joined)))
 	}
 }
 
-/// Get all left rows for a given key as Columns
-pub(crate) fn pull_left_columns(
-	txn: &mut FlowTransaction,
-	left_store: &Store,
-	key_hash: &Hash128,
-	left_parent: &Arc<Operators>,
-) -> Result<Columns> {
-	pull_from_store(txn, left_store, key_hash, left_parent)
+pub(crate) fn pull_left_columns(txn: &mut FlowTransaction, left_store: &Store, key_hash: &Hash128) -> Result<Columns> {
+	pull_from_store(txn, left_store, key_hash)
 }

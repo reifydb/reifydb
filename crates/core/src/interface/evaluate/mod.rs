@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Expression-evaluation contract types shared between the engine, the planner, and the catalog.
+//!
+//! `TargetColumn` is the central value: a column-targeting expression (insert, update, default-value resolution) either
+//! knows the fully-resolved column it is writing to (`TargetColumn::Resolved`) or describes the partial information
+//! available before resolution (`TargetColumn::Partial`). Number-out-of-range descriptor construction lives here too so
+//! range-violation diagnostics are assembled identically by every evaluator.
+
 use reifydb_type::{error::NumberOutOfRangeDescriptor, value::r#type::Type};
 
 use crate::interface::{
@@ -8,12 +15,10 @@ use crate::interface::{
 	resolved::{ResolvedColumn, resolved_column_to_number_descriptor},
 };
 
-/// Represents target column information for evaluation
 #[derive(Debug, Clone)]
 pub enum TargetColumn {
-	/// Fully resolved column with complete source information
 	Resolved(ResolvedColumn),
-	/// Partial column information with type, policies, and optional names for error reporting
+
 	Partial {
 		source_name: Option<String>,
 		column_name: Option<String>,
@@ -23,7 +28,6 @@ pub enum TargetColumn {
 }
 
 impl TargetColumn {
-	/// Get the column type
 	pub fn column_type(&self) -> Type {
 		match self {
 			Self::Resolved(col) => col.column_type(),
@@ -34,7 +38,6 @@ impl TargetColumn {
 		}
 	}
 
-	/// Get the column properties
 	pub fn properties(&self) -> Vec<ColumnPropertyKind> {
 		match self {
 			Self::Resolved(col) => col.properties(),
@@ -45,7 +48,6 @@ impl TargetColumn {
 		}
 	}
 
-	/// Convert to NumberOutOfRangeDescriptor for error reporting
 	pub fn to_number_descriptor(&self) -> Option<NumberOutOfRangeDescriptor> {
 		match self {
 			Self::Resolved(col) => Some(resolved_column_to_number_descriptor(col)),
@@ -55,7 +57,6 @@ impl TargetColumn {
 				column_name,
 				..
 			} => {
-				// Only create descriptor if we have at least some name information
 				if source_name.is_some() || column_name.is_some() {
 					Some(NumberOutOfRangeDescriptor {
 						namespace: None,

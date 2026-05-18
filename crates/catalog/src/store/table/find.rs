@@ -25,6 +25,7 @@ impl CatalogStore {
 		let id = TableId(table::SHAPE.get_u64(&row, table::ID));
 		let namespace = NamespaceId(table::SHAPE.get_u64(&row, table::NAMESPACE));
 		let name = table::SHAPE.get_utf8(&row, table::NAME).to_string();
+		let underlying = table::SHAPE.get_u8(&row, table::UNDERLYING) != 0;
 
 		Ok(Some(Table {
 			id,
@@ -32,6 +33,7 @@ impl CatalogStore {
 			namespace,
 			columns: Self::list_columns(rx, id)?,
 			primary_key: Self::find_primary_key(rx, id)?,
+			underlying,
 		}))
 	}
 
@@ -89,13 +91,13 @@ pub mod tests {
 
 		let result = CatalogStore::find_table_by_name(
 			&mut Transaction::Admin(&mut txn),
-			NamespaceId(1027),
+			NamespaceId(16387),
 			"table_two",
 		)
 		.unwrap()
 		.unwrap();
-		assert_eq!(result.id, TableId(1026));
-		assert_eq!(result.namespace, NamespaceId(1027));
+		assert_eq!(result.id, TableId(16386));
+		assert_eq!(result.namespace, NamespaceId(16387));
 		assert_eq!(result.name, "table_two");
 	}
 
@@ -105,7 +107,7 @@ pub mod tests {
 
 		let result = CatalogStore::find_table_by_name(
 			&mut Transaction::Admin(&mut txn),
-			NamespaceId(1025),
+			NamespaceId(16385),
 			"some_table",
 		)
 		.unwrap();
@@ -126,7 +128,7 @@ pub mod tests {
 
 		let result = CatalogStore::find_table_by_name(
 			&mut Transaction::Admin(&mut txn),
-			NamespaceId(1025),
+			NamespaceId(16385),
 			"table_four_two",
 		)
 		.unwrap();

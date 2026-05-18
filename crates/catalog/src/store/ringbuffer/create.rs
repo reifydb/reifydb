@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		column::ColumnIndex,
-		id::{NamespaceId, RingBufferId},
+		id::{ColumnId, NamespaceId, RingBufferId},
 		property::ColumnPropertyKind,
 		ringbuffer::RingBuffer,
 	},
@@ -46,6 +46,7 @@ pub struct RingBufferToCreate {
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
 	pub partition_by: Vec<String>,
+	pub underlying: bool,
 }
 
 impl CatalogStore {
@@ -54,36 +55,43 @@ impl CatalogStore {
 		to_create: RingBufferToCreate,
 	) -> Result<RingBuffer> {
 		let namespace_id = to_create.namespace;
-
-		if let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(
-			&mut Transaction::Admin(&mut *txn),
-			namespace_id,
-			to_create.name.text(),
-		)? {
-			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
-			return Err(CatalogError::AlreadyExists {
-				kind: CatalogObjectKind::RingBuffer,
-				namespace: namespace.name().to_string(),
-				name: ringbuffer.name,
-				fragment: to_create.name.clone(),
-			}
-			.into());
-		}
+		Self::reject_existing_ringbuffer(txn, namespace_id, &to_create.name)?;
 
 		let ringbuffer_id = SystemSequence::next_ringbuffer_id(txn)?;
-
-		Self::store_ringbuffer(txn, ringbuffer_id, namespace_id, &to_create)?;
-		Self::link_ringbuffer_to_namespace(txn, namespace_id, ringbuffer_id, to_create.name.text())?;
-
 		let capacity = to_create.capacity;
 		let is_partitioned = !to_create.partition_by.is_empty();
 
+		Self::store_ringbuffer(txn, ringbuffer_id, namespace_id, &to_create)?;
+		Self::link_ringbuffer_to_namespace(txn, namespace_id, ringbuffer_id, to_create.name.text())?;
 		Self::insert_ringbuffer_columns(txn, ringbuffer_id, to_create)?;
 		if !is_partitioned {
 			Self::initialize_ringbuffer_metadata(txn, ringbuffer_id, capacity)?;
 		}
-
 		Self::get_ringbuffer(&mut Transaction::Admin(&mut *txn), ringbuffer_id)
+	}
+
+	#[inline]
+	fn reject_existing_ringbuffer(
+		txn: &mut AdminTransaction,
+		namespace_id: NamespaceId,
+		name: &Fragment,
+	) -> Result<()> {
+		let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(
+			&mut Transaction::Admin(&mut *txn),
+			namespace_id,
+			name.text(),
+		)?
+		else {
+			return Ok(());
+		};
+		let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
+		Err(CatalogError::AlreadyExists {
+			kind: CatalogObjectKind::RingBuffer,
+			namespace: namespace.name().to_string(),
+			name: ringbuffer.name,
+			fragment: name.clone(),
+		}
+		.into())
 	}
 
 	fn store_ringbuffer(
@@ -97,9 +105,18 @@ impl CatalogStore {
 		ringbuffer::SHAPE.set_u64(&mut row, ringbuffer::NAMESPACE, namespace);
 		ringbuffer::SHAPE.set_utf8(&mut row, ringbuffer::NAME, to_create.name.text());
 		ringbuffer::SHAPE.set_u64(&mut row, ringbuffer::CAPACITY, to_create.capacity);
-		// Initialize with no primary key
+
 		ringbuffer::SHAPE.set_u64(&mut row, ringbuffer::PRIMARY_KEY, 0u64);
 		ringbuffer::SHAPE.set_utf8(&mut row, ringbuffer::PARTITION_BY, to_create.partition_by.join(","));
+		ringbuffer::SHAPE.set_u8(
+			&mut row,
+			ringbuffer::UNDERLYING,
+			if to_create.underlying {
+				1
+			} else {
+				0
+			},
+		);
 
 		txn.set(&RingBufferKey::encoded(ringbuffer), row)?;
 
@@ -163,6 +180,58 @@ impl CatalogStore {
 
 		Ok(())
 	}
+
+	pub(crate) fn create_ringbuffer_with_id(
+		txn: &mut AdminTransaction,
+		ringbuffer_id: RingBufferId,
+		to_create: RingBufferToCreate,
+		column_ids: &[ColumnId],
+	) -> Result<RingBuffer> {
+		assert_eq!(column_ids.len(), to_create.columns.len(), "column_ids length must match columns length");
+
+		let namespace_id = to_create.namespace;
+
+		Self::store_ringbuffer(txn, ringbuffer_id, namespace_id, &to_create)?;
+		Self::link_ringbuffer_to_namespace(txn, namespace_id, ringbuffer_id, to_create.name.text())?;
+
+		let capacity = to_create.capacity;
+		let is_partitioned = !to_create.partition_by.is_empty();
+
+		Self::insert_ringbuffer_columns_with_ids(txn, ringbuffer_id, to_create, column_ids)?;
+		if !is_partitioned {
+			Self::initialize_ringbuffer_metadata(txn, ringbuffer_id, capacity)?;
+		}
+
+		Self::get_ringbuffer(&mut Transaction::Admin(&mut *txn), ringbuffer_id)
+	}
+
+	fn insert_ringbuffer_columns_with_ids(
+		txn: &mut AdminTransaction,
+		ringbuffer_id: RingBufferId,
+		to_create: RingBufferToCreate,
+		column_ids: &[ColumnId],
+	) -> Result<()> {
+		for (idx, (col, &col_id)) in to_create.columns.into_iter().zip(column_ids.iter()).enumerate() {
+			CatalogStore::create_column_with_id(
+				txn,
+				col_id,
+				ringbuffer_id,
+				ColumnToCreate {
+					fragment: Some(col.fragment.clone()),
+					namespace_name: String::new(),
+					shape_name: String::new(),
+					column: col.name.text().to_string(),
+					constraint: col.constraint,
+					properties: col.properties,
+					index: ColumnIndex(idx as u8),
+					auto_increment: col.auto_increment,
+					dictionary_id: col.dictionary_id,
+				},
+			)?;
+		}
+
+		Ok(())
+	}
 }
 
 #[cfg(test)]
@@ -206,6 +275,7 @@ pub mod tests {
 				},
 			],
 			partition_by: vec![],
+			underlying: false,
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -231,6 +301,7 @@ pub mod tests {
 			capacity: 100,
 			columns: vec![],
 			partition_by: vec![],
+			underlying: false,
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -253,6 +324,7 @@ pub mod tests {
 			capacity: 50,
 			columns: vec![],
 			partition_by: vec![],
+			underlying: false,
 		};
 
 		// First creation should succeed
@@ -277,6 +349,7 @@ pub mod tests {
 			capacity: 10,
 			columns: vec![],
 			partition_by: vec![],
+			underlying: false,
 		};
 
 		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -287,6 +360,7 @@ pub mod tests {
 			capacity: 20,
 			columns: vec![],
 			partition_by: vec![],
+			underlying: false,
 		};
 
 		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -325,6 +399,7 @@ pub mod tests {
 			capacity: 500,
 			columns: vec![],
 			partition_by: vec![],
+			underlying: false,
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -353,6 +428,7 @@ pub mod tests {
 			capacity: 10,
 			columns: vec![],
 			partition_by: vec![],
+			underlying: false,
 		};
 		let small_result = CatalogStore::create_ringbuffer(&mut txn, small).unwrap();
 		assert_eq!(small_result.capacity, 10);
@@ -364,6 +440,7 @@ pub mod tests {
 			capacity: 1000,
 			columns: vec![],
 			partition_by: vec![],
+			underlying: false,
 		};
 		let medium_result = CatalogStore::create_ringbuffer(&mut txn, medium).unwrap();
 		assert_eq!(medium_result.capacity, 1000);
@@ -375,6 +452,7 @@ pub mod tests {
 			capacity: 1000000,
 			columns: vec![],
 			partition_by: vec![],
+			underlying: false,
 		};
 		let large_result = CatalogStore::create_ringbuffer(&mut txn, large).unwrap();
 		assert_eq!(large_result.capacity, 1000000);
@@ -423,6 +501,7 @@ pub mod tests {
 			capacity: 100,
 			columns: columns.clone(),
 			partition_by: vec![],
+			underlying: false,
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();

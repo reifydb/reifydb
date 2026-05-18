@@ -1,18 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # Logical Operators Example
-//!
-//! Demonstrates logical operators in ReifyDB's RQL:
-//! - AND operator
-//! - OR operator
-//! - NOT operator
-//! - XOR operator
-//! - Comptokenize logical expressions
-//! - Operator precedence with parentheses
-//!
-//! Run with: `make rql-logical` or `cargo run --bin rql-logical`
-
 use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;

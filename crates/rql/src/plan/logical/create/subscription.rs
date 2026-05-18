@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::catalog::subscription::SubscriptionColumnToCreate;
+use reifydb_core::interface::catalog::subscription::HydrationConfig;
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
@@ -9,6 +9,7 @@ use crate::{
 	ast::ast::AstCreateSubscription,
 	bump::BumpVec,
 	convert_data_type_with_constraints,
+	nodes::SubscriptionColumnToCreate,
 	plan::logical::{Compiler, CreateSubscriptionNode, LogicalPlan},
 };
 
@@ -28,16 +29,22 @@ impl<'bump> Compiler<'bump> {
 			});
 		}
 
-		// Compile the AS clause to logical plans
 		let as_clause = if let Some(as_statement) = ast.as_clause {
 			self.compile(as_statement, tx)?
 		} else {
 			BumpVec::new_in(self.bump)
 		};
 
+		let hydration = HydrationConfig {
+			enabled: ast.hydration.enabled,
+			max_rows: ast.hydration.max_rows,
+		};
+
 		Ok(LogicalPlan::CreateSubscription(CreateSubscriptionNode {
 			columns,
 			as_clause,
+			hydration,
+			throttle: ast.throttle,
 		}))
 	}
 }

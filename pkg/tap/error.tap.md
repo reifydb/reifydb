@@ -82,7 +82,7 @@ All errors should include:
 
 - `CAST_xxx`: Type casting errors
 - `NUMBER_xxx`: Numeric range/overflow errors
-- `SYNTAX_xxx`: SQL/RQL syntax errors
+- `SYNTAX_xxx`: RQL syntax errors
 - `PARAM_xxx`: Parameter binding errors
 - `TYPE_xxx`: Type system errors
 - `MATH_xxx`: Mathematical operation errors

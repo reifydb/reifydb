@@ -7,17 +7,16 @@ use reifydb_type::{Result, value::row_number::RowNumber};
 use super::WithInterceptors;
 use crate::interceptor::chain::InterceptorChain;
 
-// PRE INSERT
 pub struct RingBufferRowPreInsertContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
-	pub row: EncodedRow,
+	pub rows: &'a mut [EncodedRow],
 }
 
 impl<'a> RingBufferRowPreInsertContext<'a> {
-	pub fn new(ringbuffer: &'a RingBuffer, row: EncodedRow) -> Self {
+	pub fn new(ringbuffer: &'a RingBuffer, rows: &'a mut [EncodedRow]) -> Self {
 		Self {
 			ringbuffer,
-			row,
+			rows,
 		}
 	}
 }
@@ -27,11 +26,13 @@ pub trait RingBufferRowPreInsertInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn RingBufferRowPreInsertInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: RingBufferRowPreInsertContext) -> Result<EncodedRow> {
+	pub fn execute(&self, mut ctx: RingBufferRowPreInsertContext) -> Result<()> {
+		let original_len = ctx.rows.len();
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
+			assert_eq!(ctx.rows.len(), original_len, "pre_insert interceptor changed row count");
 		}
-		Ok(ctx.row)
+		Ok(())
 	}
 }
 
@@ -80,19 +81,19 @@ where
 	ClosureRingBufferRowPreInsertInterceptor::new(f)
 }
 
-// POST INSERT
 pub struct RingBufferRowPostInsertContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
-	pub id: RowNumber,
-	pub row: &'a EncodedRow,
+	pub ids: &'a [RowNumber],
+	pub rows: &'a [EncodedRow],
 }
 
 impl<'a> RingBufferRowPostInsertContext<'a> {
-	pub fn new(ringbuffer: &'a RingBuffer, id: RowNumber, row: &'a EncodedRow) -> Self {
+	pub fn new(ringbuffer: &'a RingBuffer, ids: &'a [RowNumber], rows: &'a [EncodedRow]) -> Self {
+		assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
 		Self {
 			ringbuffer,
-			id,
-			row,
+			ids,
+			rows,
 		}
 	}
 }
@@ -155,19 +156,19 @@ where
 	ClosureRingBufferRowPostInsertInterceptor::new(f)
 }
 
-// PRE UPDATE
 pub struct RingBufferRowPreUpdateContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
-	pub id: RowNumber,
-	pub row: EncodedRow,
+	pub ids: &'a [RowNumber],
+	pub rows: &'a mut [EncodedRow],
 }
 
 impl<'a> RingBufferRowPreUpdateContext<'a> {
-	pub fn new(ringbuffer: &'a RingBuffer, id: RowNumber, row: EncodedRow) -> Self {
+	pub fn new(ringbuffer: &'a RingBuffer, ids: &'a [RowNumber], rows: &'a mut [EncodedRow]) -> Self {
+		assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
 		Self {
 			ringbuffer,
-			id,
-			row,
+			ids,
+			rows,
 		}
 	}
 }
@@ -177,11 +178,13 @@ pub trait RingBufferRowPreUpdateInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn RingBufferRowPreUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: RingBufferRowPreUpdateContext) -> Result<EncodedRow> {
+	pub fn execute(&self, mut ctx: RingBufferRowPreUpdateContext) -> Result<()> {
+		let original_len = ctx.rows.len();
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
+			assert_eq!(ctx.rows.len(), original_len, "pre_update interceptor changed row count");
 		}
-		Ok(ctx.row)
+		Ok(())
 	}
 }
 
@@ -230,21 +233,27 @@ where
 	ClosureRingBufferRowPreUpdateInterceptor::new(f)
 }
 
-// POST UPDATE
 pub struct RingBufferRowPostUpdateContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
-	pub id: RowNumber,
-	pub post: &'a EncodedRow,
-	pub pre: &'a EncodedRow,
+	pub ids: &'a [RowNumber],
+	pub posts: &'a [EncodedRow],
+	pub pres: &'a [EncodedRow],
 }
 
 impl<'a> RingBufferRowPostUpdateContext<'a> {
-	pub fn new(ringbuffer: &'a RingBuffer, id: RowNumber, post: &'a EncodedRow, pre: &'a EncodedRow) -> Self {
+	pub fn new(
+		ringbuffer: &'a RingBuffer,
+		ids: &'a [RowNumber],
+		posts: &'a [EncodedRow],
+		pres: &'a [EncodedRow],
+	) -> Self {
+		assert_eq!(ids.len(), posts.len(), "ids/posts length mismatch");
+		assert_eq!(ids.len(), pres.len(), "ids/pres length mismatch");
 		Self {
 			ringbuffer,
-			id,
-			post,
-			pre,
+			ids,
+			posts,
+			pres,
 		}
 	}
 }
@@ -307,17 +316,16 @@ where
 	ClosureRingBufferRowPostUpdateInterceptor::new(f)
 }
 
-// PRE DELETE
 pub struct RingBufferRowPreDeleteContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
-	pub id: RowNumber,
+	pub ids: &'a [RowNumber],
 }
 
 impl<'a> RingBufferRowPreDeleteContext<'a> {
-	pub fn new(ringbuffer: &'a RingBuffer, id: RowNumber) -> Self {
+	pub fn new(ringbuffer: &'a RingBuffer, ids: &'a [RowNumber]) -> Self {
 		Self {
 			ringbuffer,
-			id,
+			ids,
 		}
 	}
 }
@@ -380,19 +388,19 @@ where
 	ClosureRingBufferRowPreDeleteInterceptor::new(f)
 }
 
-// POST DELETE
 pub struct RingBufferRowPostDeleteContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
-	pub id: RowNumber,
-	pub deleted_row: &'a EncodedRow,
+	pub ids: &'a [RowNumber],
+	pub deleted_rows: &'a [EncodedRow],
 }
 
 impl<'a> RingBufferRowPostDeleteContext<'a> {
-	pub fn new(ringbuffer: &'a RingBuffer, id: RowNumber, deleted_row: &'a EncodedRow) -> Self {
+	pub fn new(ringbuffer: &'a RingBuffer, ids: &'a [RowNumber], deleted_rows: &'a [EncodedRow]) -> Self {
+		assert_eq!(ids.len(), deleted_rows.len(), "ids/deleted_rows length mismatch");
 		Self {
 			ringbuffer,
-			id,
-			deleted_row,
+			ids,
+			deleted_rows,
 		}
 	}
 }
@@ -455,62 +463,61 @@ where
 	ClosureRingBufferRowPostDeleteInterceptor::new(f)
 }
 
-/// Helper struct for executing ring buffer interceptors via static methods.
 pub struct RingBufferRowInterceptor;
 
 impl RingBufferRowInterceptor {
 	pub fn pre_insert(
 		txn: &mut impl WithInterceptors,
 		ringbuffer: &RingBuffer,
-		row: EncodedRow,
-	) -> Result<EncodedRow> {
-		let ctx = RingBufferRowPreInsertContext::new(ringbuffer, row);
+		rows: &mut [EncodedRow],
+	) -> Result<()> {
+		let ctx = RingBufferRowPreInsertContext::new(ringbuffer, rows);
 		txn.ringbuffer_row_pre_insert_interceptors().execute(ctx)
 	}
 
 	pub fn post_insert(
 		txn: &mut impl WithInterceptors,
 		ringbuffer: &RingBuffer,
-		id: RowNumber,
-		row: &EncodedRow,
+		ids: &[RowNumber],
+		rows: &[EncodedRow],
 	) -> Result<()> {
-		let ctx = RingBufferRowPostInsertContext::new(ringbuffer, id, row);
+		let ctx = RingBufferRowPostInsertContext::new(ringbuffer, ids, rows);
 		txn.ringbuffer_row_post_insert_interceptors().execute(ctx)
 	}
 
 	pub fn pre_update(
 		txn: &mut impl WithInterceptors,
 		ringbuffer: &RingBuffer,
-		id: RowNumber,
-		row: EncodedRow,
-	) -> Result<EncodedRow> {
-		let ctx = RingBufferRowPreUpdateContext::new(ringbuffer, id, row);
+		ids: &[RowNumber],
+		rows: &mut [EncodedRow],
+	) -> Result<()> {
+		let ctx = RingBufferRowPreUpdateContext::new(ringbuffer, ids, rows);
 		txn.ringbuffer_row_pre_update_interceptors().execute(ctx)
 	}
 
 	pub fn post_update(
 		txn: &mut impl WithInterceptors,
 		ringbuffer: &RingBuffer,
-		id: RowNumber,
-		post: &EncodedRow,
-		pre: &EncodedRow,
+		ids: &[RowNumber],
+		posts: &[EncodedRow],
+		pres: &[EncodedRow],
 	) -> Result<()> {
-		let ctx = RingBufferRowPostUpdateContext::new(ringbuffer, id, post, pre);
+		let ctx = RingBufferRowPostUpdateContext::new(ringbuffer, ids, posts, pres);
 		txn.ringbuffer_row_post_update_interceptors().execute(ctx)
 	}
 
-	pub fn pre_delete(txn: &mut impl WithInterceptors, ringbuffer: &RingBuffer, id: RowNumber) -> Result<()> {
-		let ctx = RingBufferRowPreDeleteContext::new(ringbuffer, id);
+	pub fn pre_delete(txn: &mut impl WithInterceptors, ringbuffer: &RingBuffer, ids: &[RowNumber]) -> Result<()> {
+		let ctx = RingBufferRowPreDeleteContext::new(ringbuffer, ids);
 		txn.ringbuffer_row_pre_delete_interceptors().execute(ctx)
 	}
 
 	pub fn post_delete(
 		txn: &mut impl WithInterceptors,
 		ringbuffer: &RingBuffer,
-		id: RowNumber,
-		deleted_row: &EncodedRow,
+		ids: &[RowNumber],
+		deleted_rows: &[EncodedRow],
 	) -> Result<()> {
-		let ctx = RingBufferRowPostDeleteContext::new(ringbuffer, id, deleted_row);
+		let ctx = RingBufferRowPostDeleteContext::new(ringbuffer, ids, deleted_rows);
 		txn.ringbuffer_row_post_delete_interceptors().execute(ctx)
 	}
 }

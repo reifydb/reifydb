@@ -6,9 +6,9 @@ use std::{collections::HashMap, sync::Arc};
 use reifydb_core::{
 	internal_error,
 	testing::CapturedInvocation,
-	value::column::{Column, columns::Columns},
+	value::column::{ColumnWithName, columns::Columns},
 };
-use reifydb_routine::procedure::context::ProcedureContext;
+use reifydb_routine::routine::context::ProcedureContext;
 use reifydb_rql::{compiler::CompilationResult, instruction::ScopeType, nodes::DispatchNode};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
@@ -19,7 +19,7 @@ use reifydb_type::{
 
 use crate::{
 	Result,
-	expression::{context::EvalSession, eval::evaluate},
+	expression::{context::EvalContext, eval::evaluate},
 	vm::{services::Services, stack::Variable, vm::Vm},
 };
 
@@ -41,7 +41,6 @@ pub(crate) fn dispatch(
 		));
 	}
 
-	// Find the variant in the sumtype to get the tag
 	let sumtype = {
 		let mut tx_tmp = tx.reborrow();
 		services.catalog.get_sumtype(&mut tx_tmp, plan.on_sumtype_id)?
@@ -62,7 +61,6 @@ pub(crate) fn dispatch(
 		variant_tag,
 	};
 
-	// List all procedures with event binding for this variant
 	let procedures = {
 		let mut tx_tmp = tx.reborrow();
 		services.catalog.list_procedures_for_variant(&mut tx_tmp, variant_ref)?
@@ -70,21 +68,24 @@ pub(crate) fn dispatch(
 
 	let handler_count = procedures.len();
 
-	// Evaluate dispatch fields into a Columns payload
-	let session = EvalSession {
+	let base = EvalContext {
 		params,
 		symbols: &vm.symbols,
-		functions: &services.functions,
+		routines: &services.routines,
 		runtime_context: &services.runtime_context,
 		arena: None,
 		identity: tx.identity(),
 		is_aggregate_context: false,
+		columns: Columns::empty(),
+		row_count: 1,
+		target: None,
+		take: None,
 	};
 	let mut event_columns = Vec::with_capacity(plan.fields.len());
 	for (field_name, expr) in &plan.fields {
-		let eval_ctx = session.eval_empty();
+		let eval_ctx = base.with_eval_empty();
 		let col = evaluate(&eval_ctx, expr)?;
-		event_columns.push(Column::new(Fragment::internal(field_name), col.data));
+		event_columns.push(ColumnWithName::new(Fragment::internal(field_name), col.data));
 	}
 	let event_payload = Columns::new(event_columns);
 
@@ -96,37 +97,34 @@ pub(crate) fn dispatch(
 		event_payload.clone(),
 	);
 
-	// Fire each catalog (RQL) procedure in declaration order
 	for procedure in &procedures {
-		let compiled = services.compiler.compile(tx, &procedure.body)?;
+		let compiled = services.compiler.compile(tx, procedure.body().unwrap_or_default())?;
 
 		match compiled {
 			CompilationResult::Ready(compiled_list) => {
 				let handler_start = services.runtime_context.clock.instant();
 				let saved_ip = vm.ip;
 
-				// Enter handler scope
 				vm.symbols.enter_scope(ScopeType::Function);
-				for col in event_payload.columns.iter() {
-					let var_name = format!("event_{}", col.name.text());
-					let scalar = Columns::new(vec![col.clone()]);
-					vm.symbols.set(var_name, Variable::Scalar(scalar), true)?;
+				for (idx, name) in event_payload.names.iter().enumerate() {
+					let var_name = format!("event_{}", name.text());
+					let scalar = Columns::new(vec![ColumnWithName::new(
+						name.clone(),
+						event_payload.columns[idx].clone(),
+					)]);
+					vm.symbols.set(var_name, Variable::columns(scalar), true)?;
 				}
 
 				let mut handler_result = Vec::new();
 				for compiled_unit in compiled_list.iter() {
 					vm.ip = 0;
-					if let Err(e) = vm.run(
-						services,
-						tx,
-						&compiled_unit.instructions,
-						params,
-						&mut handler_result,
-					) {
+					if let Err(e) =
+						vm.run(services, tx, &compiled_unit.instructions, &mut handler_result)
+					{
 						tx.record_test_handler(CapturedInvocation {
 							sequence: 0,
 							namespace: plan.namespace.name().to_string(),
-							handler: procedure.name.clone(),
+							handler: procedure.name().to_string(),
 							event: sumtype.name.clone(),
 							variant: plan.variant_name.clone(),
 							duration_ns: handler_start.elapsed().as_nanos() as u64,
@@ -143,7 +141,7 @@ pub(crate) fn dispatch(
 				tx.record_test_handler(CapturedInvocation {
 					sequence: 0,
 					namespace: plan.namespace.name().to_string(),
-					handler: procedure.name.clone(),
+					handler: procedure.name().to_string(),
 					event: sumtype.name.clone(),
 					variant: plan.variant_name.clone(),
 					duration_ns: handler_start.elapsed().as_nanos() as u64,
@@ -157,30 +155,36 @@ pub(crate) fn dispatch(
 		}
 	}
 
-	// Fire native (runtime-registered) handlers
-	let native_handlers = services.get_handlers(variant_ref);
+	let native_handlers = services.get_handlers(tx, variant_ref);
 	let native_count = native_handlers.len();
 	if !native_handlers.is_empty() {
-		// Build named params from event payload (single-row columns → scalar values)
 		let mut named_map = HashMap::new();
-		for col in event_payload.columns.iter() {
-			let key = col.name.text().to_string();
-			if let Some(val) = col.data.iter().next() {
+		for (idx, name) in event_payload.names.iter().enumerate() {
+			let key = name.text().to_string();
+			if let Some(val) = event_payload.columns[idx].iter().next() {
 				named_map.insert(key, val);
 			}
 		}
 		let call_params = Params::Named(Arc::new(named_map));
 
 		for native_proc in native_handlers {
-			let ctx = ProcedureContext {
-				params: &call_params,
-				catalog: &services.catalog,
-				functions: &services.functions,
-				runtime_context: &services.runtime_context,
-			};
 			let handler_fragment =
 				Fragment::internal(format!("handler for {}::{}", sumtype.name, plan.variant_name));
-			let _result = native_proc.call(&ctx, tx).map_err(|e| e.with_context(handler_fragment))?;
+			let identity = tx.identity();
+			let mut ctx = ProcedureContext {
+				fragment: handler_fragment.clone(),
+				identity,
+				row_count: 1,
+				runtime_context: &services.runtime_context,
+				tx,
+				params: &call_params,
+				catalog: &services.catalog,
+				ioc: &services.ioc,
+			};
+			let empty = Columns::empty();
+			let _result = native_proc
+				.call(&mut ctx, &empty)
+				.map_err(|e| e.with_context(handler_fragment, true))?;
 		}
 	}
 

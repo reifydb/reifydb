@@ -85,7 +85,7 @@ Break      => "BREAK",
 Continue   => "CONTINUE",
 Return     => "RETURN",
 
-Fun        => "FUN",
+Udf        => "UDF",
 Call       => "CALL",
 Apply      => "APPLY",
 Cast       => "CAST",
@@ -169,6 +169,10 @@ Error => "ERROR",
 Returning => "RETURNING",
 Source => "SOURCE",
 Sink => "SINK",
+Binding => "BINDING",
+Http => "HTTP",
+Grpc => "GRPC",
+Ws => "WS",
 }
 
 static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
@@ -200,7 +204,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("BREAK", Keyword::Break);
 	map.insert("CONTINUE", Keyword::Continue);
 	map.insert("RETURN", Keyword::Return);
-	map.insert("FUN", Keyword::Fun);
+	map.insert("UDF", Keyword::Udf);
 	map.insert("CALL", Keyword::Call);
 	map.insert("CAST", Keyword::Cast);
 	map.insert("DESCRIBE", Keyword::Describe);
@@ -277,12 +281,14 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("RETURNING", Keyword::Returning);
 	map.insert("SOURCE", Keyword::Source);
 	map.insert("SINK", Keyword::Sink);
+	map.insert("BINDING", Keyword::Binding);
+	map.insert("HTTP", Keyword::Http);
+	map.insert("GRPC", Keyword::Grpc);
+	map.insert("WS", Keyword::Ws);
 	map
 });
 
-/// Scan for a keyword token
 pub fn scan_keyword<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
-	// Keywords must start with a letter, so check that first
 	let first_char = cursor.peek()?;
 	if !first_char.is_ascii_alphabetic() {
 		return None;
@@ -292,13 +298,11 @@ pub fn scan_keyword<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let start_line = cursor.line();
 	let start_column = cursor.column();
 
-	// Consume identifier characters to get the potential keyword
 	let remaining = cursor.remaining_input();
 	let word_len = remaining.chars().take_while(|&c| is_identifier_char(c)).map(|c| c.len_utf8()).sum::<usize>();
 
 	let word = &remaining[..word_len];
 
-	// Check if it's a keyword (case-insensitive)
 	let uppercase_word;
 	let lookup_word = if word.chars().all(|c| c.is_uppercase()) {
 		word
@@ -308,11 +312,8 @@ pub fn scan_keyword<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	};
 
 	if let Some(&keyword) = KEYWORD_MAP.get(lookup_word) {
-		// Check that the next character is not an identifier
-		// continuation
 		let next_char = cursor.peek_ahead(word.chars().count());
 		if next_char.is_none_or(|ch| !is_identifier_char(ch) && ch != '.' && ch != ':') {
-			// Consume the keyword
 			for _ in 0..word.chars().count() {
 				cursor.consume();
 			}
@@ -394,7 +395,7 @@ pub mod tests {
 	test_keyword_break => (Break, "BREAK"),
 	test_keyword_continue => (Continue, "CONTINUE"),
 	test_keyword_return => (Return, "RETURN"),
-	test_keyword_fun => (Fun, "FUN"),
+	test_keyword_udf => (Udf, "UDF"),
 	test_keyword_call => (Call, "CALL"),
 	test_keyword_describe => (Describe, "DESCRIBE"),
 	test_keyword_create => (Create, "CREATE"),
@@ -540,7 +541,7 @@ pub mod tests {
 	test_not_keyword_break => ( "break"),
 	test_not_keyword_continue => ( "continue"),
 	test_not_keyword_return => ( "return"),
-	test_not_keyword_fun => ( "fun"),
+	test_not_keyword_udf => ( "udf"),
 	test_not_keyword_call => ( "call"),
 	test_not_keyword_describe => ( "describe"),
 	test_not_keyword_create => ( "create"),

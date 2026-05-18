@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Flow execution engine. Registers compiled flow definitions, evaluates each flow's operator graph against
+//! incoming change deltas, and writes the resulting outputs back through the catalog. Process drives the per-tick
+//! work; eval is where individual operators run; register is the wiring step that turns a flow definition into
+//! an executable graph.
+
+pub mod cache;
 pub mod eval;
 pub mod process;
 pub mod register;
@@ -31,7 +37,7 @@ use reifydb_rql::flow::{
 	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer},
 	flow::FlowDag,
 };
-use reifydb_runtime::context::RuntimeContext;
+use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 #[cfg(reifydb_target = "native")]
 use reifydb_type::{Result, error::Error, value::Value};
 use tracing::instrument;
@@ -40,16 +46,17 @@ use tracing::instrument;
 use crate::operator::BoxedOperator;
 #[cfg(reifydb_target = "native")]
 use crate::operator::ffi::FFIOperator;
-use crate::{builder::OperatorFactory, operator::Operators};
+use crate::{builder::OperatorFactory, engine::cache::ExecutionLevelCache, operator::Operators};
 
 pub struct FlowEngine {
 	pub(crate) catalog: Catalog,
 	pub(crate) executor: Executor,
-	pub(crate) operators: BTreeMap<FlowNodeId, Arc<Operators>>,
-	pub(crate) flows: BTreeMap<FlowId, FlowDag>,
-	pub(crate) sources: BTreeMap<ShapeId, Vec<(FlowId, FlowNodeId)>>,
-	pub(crate) sinks: BTreeMap<ShapeId, Vec<(FlowId, FlowNodeId)>>,
-	pub(crate) analyzer: FlowGraphAnalyzer,
+	pub operators: BTreeMap<FlowNodeId, Arc<Operators>>,
+	pub flows: BTreeMap<FlowId, Arc<FlowDag>>,
+	pub sources: BTreeMap<ShapeId, Vec<(FlowId, FlowNodeId)>>,
+	pub sinks: BTreeMap<ShapeId, Vec<(FlowId, FlowNodeId)>>,
+	pub analyzer: FlowGraphAnalyzer,
+	pub(crate) execution_level_cache: ExecutionLevelCache,
 	#[allow(dead_code)]
 	pub(crate) event_bus: EventBus,
 	pub(crate) flow_creation_versions: BTreeMap<FlowId, CommitVersion>,
@@ -78,6 +85,7 @@ impl FlowEngine {
 			sources: BTreeMap::new(),
 			sinks: BTreeMap::new(),
 			analyzer: FlowGraphAnalyzer::new(),
+			execution_level_cache: ExecutionLevelCache::new(),
 			event_bus,
 			flow_creation_versions: BTreeMap::new(),
 			runtime_context,
@@ -85,7 +93,10 @@ impl FlowEngine {
 		}
 	}
 
-	/// Create an FFI operator instance from the global singleton loader
+	pub fn clock(&self) -> &Clock {
+		&self.runtime_context.clock
+	}
+
 	#[cfg(reifydb_target = "native")]
 	#[instrument(name = "flow::engine::create_ffi_operator", level = "debug", skip(self, config), fields(operator = %operator, node_id = ?node_id))]
 	pub(crate) fn create_ffi_operator(
@@ -95,9 +106,8 @@ impl FlowEngine {
 		config: &BTreeMap<String, Value>,
 	) -> Result<BoxedOperator> {
 		let loader = ffi_operator_loader();
-		let mut loader_write = loader.write().unwrap();
+		let mut loader_write = loader.write();
 
-		// Serialize config to postcard
 		let config_bytes = to_stdvec(config)
 			.map_err(|e| Error(Box::new(internal!("Failed to serialize operator config: {:?}", e))))?;
 
@@ -108,27 +118,23 @@ impl FlowEngine {
 		Ok(Box::new(FFIOperator::new(descriptor, instance, node_id, self.executor.clone())))
 	}
 
-	/// Check if an operator name corresponds to an FFI operator
 	#[cfg(reifydb_target = "native")]
 	pub(crate) fn is_ffi_operator(&self, operator: &str) -> bool {
 		let loader = ffi_operator_loader();
-		let loader_read = loader.read().unwrap();
+		let loader_read = loader.read();
 		loader_read.has_operator(operator)
 	}
 
-	/// FFI operators are not supported in WASM
 	#[cfg(not(reifydb_target = "native"))]
 	#[allow(dead_code)]
 	pub(crate) fn is_ffi_operator(&self, _operator: &str) -> bool {
 		false
 	}
 
-	/// Returns a set of all currently registered flow IDs
 	pub fn flow_ids(&self) -> BTreeSet<FlowId> {
 		self.flows.keys().copied().collect()
 	}
 
-	/// Clears all registered flows, operators, sources, sinks, dependency graph, and backfill versions
 	pub fn clear(&mut self) {
 		self.operators.clear();
 		self.flows.clear();
@@ -136,6 +142,31 @@ impl FlowEngine {
 		self.sinks.clear();
 		self.analyzer.clear();
 		self.flow_creation_versions.clear();
+		self.execution_level_cache.invalidate();
+	}
+
+	pub fn remove_flow(&mut self, flow_id: FlowId) {
+		let node_ids: Vec<FlowNodeId> =
+			self.flows.get(&flow_id).map(|flow| flow.get_node_ids().collect()).unwrap_or_default();
+
+		for node_id in node_ids {
+			self.operators.remove(&node_id);
+		}
+
+		for entries in self.sources.values_mut() {
+			entries.retain(|(fid, _)| *fid != flow_id);
+		}
+		self.sources.retain(|_, v| !v.is_empty());
+
+		for entries in self.sinks.values_mut() {
+			entries.retain(|(fid, _)| *fid != flow_id);
+		}
+		self.sinks.retain(|_, v| !v.is_empty());
+
+		self.flows.remove(&flow_id);
+
+		self.analyzer.remove(flow_id);
+		self.execution_level_cache.invalidate();
 	}
 
 	pub fn get_dependency_graph(&self) -> FlowDependencyGraph {
@@ -157,8 +188,14 @@ impl FlowEngine {
 		self.analyzer.get_flow_producing_view(dependency_graph, view_id)
 	}
 
-	pub fn calculate_execution_order(&self) -> Vec<FlowId> {
+	pub fn calculate_execution_levels(&self) -> Vec<Vec<FlowId>> {
+		if let Some(levels) = self.execution_level_cache.get() {
+			return levels;
+		}
+
 		let dependency_graph = self.analyzer.get_dependency_graph();
-		self.analyzer.calculate_execution_order(dependency_graph)
+		let levels = self.analyzer.calculate_execution_levels(dependency_graph);
+		self.execution_level_cache.set(levels.clone());
+		levels
 	}
 }

@@ -15,13 +15,17 @@ const versionShape = Shape.object({
 // Infer the TypeScript type from the shape
 type VersionRow = InferShape<typeof versionShape>;
 
-describe('Shape Type Conversion', () => {
+describe.each([
+    {format: "frames"},
+    {format: "rbcf"},
+] as const)('Shape Type Conversion [$format]', ({format}) => {
     let httpClient: HttpClient;
 
     beforeAll(async () => {
         httpClient = Client.connect_http(process.env.REIFYDB_HTTP_URL, {
-            timeoutMs: 10000,
-            token: process.env.REIFYDB_TOKEN
+            timeout_ms: 10000,
+            token: process.env.REIFYDB_TOKEN,
+            format,
         });
     });
 

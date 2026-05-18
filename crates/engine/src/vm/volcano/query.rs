@@ -5,10 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::resolved::ResolvedShape,
-	value::{
-		batch::lazy::LazyBatch,
-		column::{columns::Columns, headers::ColumnHeaders},
-	},
+	value::column::{columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{params::Params, value::identity::IdentityId};
@@ -18,24 +15,11 @@ use crate::{
 	vm::{services::Services, stack::SymbolTable},
 };
 
-/// Unified trait for query execution nodes following the volcano iterator pattern
-pub(crate) trait QueryNode: Send + Sync {
-	/// Initialize the operator with execution context
-	/// Called once before iteration begins
+pub trait QueryNode: Send + Sync {
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()>;
 
-	/// Get the next batch of results (volcano iterator pattern)
-	/// Returns None when exhausted
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>>;
 
-	/// Get the next batch as a LazyBatch for deferred materialization
-	/// Returns None if this node doesn't support lazy evaluation or is exhausted
-	/// Default implementation returns None (falls back to materialized evaluation)
-	fn next_lazy<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<LazyBatch>> {
-		Ok(None)
-	}
-
-	/// Get the headers of columns this node produces
 	fn headers(&self) -> Option<ColumnHeaders>;
 }
 
@@ -55,11 +39,11 @@ impl QueryNode for Box<dyn QueryNode> {
 	}
 
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		(**self).next(rx, ctx)
-	}
-
-	fn next_lazy<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<LazyBatch>> {
-		(**self).next_lazy(rx, ctx)
+		let result = (**self).next(rx, ctx)?;
+		if let Some(ref columns) = result {
+			columns.assert_invariants("QueryNode::next output");
+		}
+		Ok(result)
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {

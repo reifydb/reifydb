@@ -92,8 +92,7 @@ impl<'bump> Compiler<'bump> {
 						}
 
 						dictionary_id = Some(dictionary.id);
-						// Embed dictionary constraint so the TypeConstraint carries id_type
-						// info
+
 						constraint = TypeConstraint::with_constraint(
 							constraint.get_type(),
 							Constraint::Dictionary(dictionary.id, dictionary.id_type),
@@ -120,7 +119,6 @@ impl<'bump> Compiler<'bump> {
 
 		let partition_by: Vec<String> = ast.partition_by.iter().map(|s| s.to_string()).collect();
 
-		// Validate that partition_by columns exist in the column list
 		for pb_col in &partition_by {
 			if !columns.iter().any(|c| c.name.text() == pb_col.as_str()) {
 				return Err(CatalogError::NotFound {
@@ -134,6 +132,7 @@ impl<'bump> Compiler<'bump> {
 		}
 
 		let ringbuffer = ast.ringbuffer;
+		let ttl = ast.ttl.map(Self::compile_ttl).transpose()?;
 
 		Ok(LogicalPlan::CreateRingBuffer(CreateRingBufferNode {
 			ringbuffer,
@@ -141,6 +140,7 @@ impl<'bump> Compiler<'bump> {
 			columns,
 			capacity: ast.capacity,
 			partition_by,
+			ttl,
 		}))
 	}
 }

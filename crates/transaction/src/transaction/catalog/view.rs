@@ -14,7 +14,7 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalViewChanges,
 	},
-	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
+	transaction::admin::AdminTransaction,
 };
 
 impl CatalogTrackViewChangeOperations for AdminTransaction {
@@ -88,37 +88,5 @@ impl TransactionalViewChanges for AdminTransaction {
 					.map(|v| v.namespace() == namespace && v.name() == name)
 					.unwrap_or(false)
 		})
-	}
-}
-
-impl CatalogTrackViewChangeOperations for SubscriptionTransaction {
-	fn track_view_created(&mut self, view: View) -> Result<()> {
-		self.inner.track_view_created(view)
-	}
-
-	fn track_view_updated(&mut self, pre: View, post: View) -> Result<()> {
-		self.inner.track_view_updated(pre, post)
-	}
-
-	fn track_view_deleted(&mut self, view: View) -> Result<()> {
-		self.inner.track_view_deleted(view)
-	}
-}
-
-impl TransactionalViewChanges for SubscriptionTransaction {
-	fn find_view(&self, id: ViewId) -> Option<&View> {
-		self.inner.find_view(id)
-	}
-
-	fn find_view_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&View> {
-		self.inner.find_view_by_name(namespace, name)
-	}
-
-	fn is_view_deleted(&self, id: ViewId) -> bool {
-		self.inner.is_view_deleted(id)
-	}
-
-	fn is_view_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
-		self.inner.is_view_deleted_by_name(namespace, name)
 	}
 }

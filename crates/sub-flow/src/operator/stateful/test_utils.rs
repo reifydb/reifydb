@@ -1,24 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-#[cfg(test)]
 pub mod test {
+	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 	use reifydb_core::{
 		encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 		interface::{catalog::flow::FlowNodeId, change::Change},
-		value::column::columns::Columns,
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
 	use reifydb_type::{
 		Result,
 		util::cowvec::CowVec,
-		value::{identity::IdentityId, row_number::RowNumber, r#type::Type},
+		value::{identity::IdentityId, r#type::Type},
 	};
 
 	use crate::{operator::Operator, transaction::FlowTransaction};
 
-	/// Test operator implementation for stateful traits
 	pub struct TestOperator {
 		pub id: FlowNodeId,
 		pub layout: RowShape,
@@ -26,7 +24,6 @@ pub mod test {
 	}
 
 	impl TestOperator {
-		/// Create a new test operator with a complex shape
 		pub fn new(id: FlowNodeId) -> Self {
 			Self {
 				id,
@@ -35,7 +32,6 @@ pub mod test {
 			}
 		}
 
-		/// Create a simple test operator with a single column
 		pub fn simple(id: FlowNodeId) -> Self {
 			Self {
 				id,
@@ -44,7 +40,6 @@ pub mod test {
 			}
 		}
 
-		/// Create a test operator with custom key types
 		pub fn with_key_types(id: FlowNodeId, key_types: Vec<Type>) -> Self {
 			Self {
 				id,
@@ -59,31 +54,27 @@ pub mod test {
 			self.id
 		}
 
+		fn capabilities(&self) -> u32 {
+			CAPABILITY_ALL_STANDARD
+		}
+
 		fn apply(&self, _txn: &mut FlowTransaction, _change: Change) -> Result<Change> {
 			todo!()
 		}
-
-		fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> Result<Columns> {
-			unimplemented!()
-		}
 	}
 
-	/// Helper to create test encoded
 	pub fn test_row() -> EncodedRow {
 		EncodedRow(CowVec::new(vec![1, 2, 3, 4, 5]))
 	}
 
-	/// Helper to create test key with suffix
 	pub fn test_key(suffix: &str) -> EncodedKey {
 		EncodedKey::new(format!("test_{}", suffix).into_bytes())
 	}
 
-	/// Helper to verify encoded equality
 	pub fn assert_row_eq(actual: &EncodedRow, expected: &EncodedRow) {
 		assert_eq!(actual.to_vec(), expected.to_vec(), "Rows do not match");
 	}
 
-	/// Helper to create a test transaction
 	pub fn create_test_transaction() -> AdminTransaction {
 		let t = TestEngine::new();
 		t.begin_admin(IdentityId::system()).unwrap()

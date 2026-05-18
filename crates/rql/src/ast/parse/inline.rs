@@ -34,7 +34,6 @@ impl<'bump> Parser<'bump> {
 			self.consume_operator(Colon)?;
 			let mut value_ast = self.parse_node(Precedence::None)?;
 
-			// Detect simplified struct variant syntax: `Identifier { ... }`
 			if let Ast::Identifier(ref ident) = value_ast
 				&& !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly)
 			{

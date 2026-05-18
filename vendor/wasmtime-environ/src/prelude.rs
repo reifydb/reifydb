@@ -20,10 +20,11 @@
 //! and then `use crate::*` works as usual.
 
 pub use crate::collections::{
-    EntitySet, TryClone, TryCollect, TryExtend, TryFromIterator, TryNew, TryString, TryToOwned,
-    try_new,
+    TryBTreeMap, TryClone, TryCollect, TryEntitySet, TryExtend, TryFromIterator, TryHashMap,
+    TryHashSet, TryIndexMap, TryNew, TryPrimaryMap, TrySecondaryMap, TryString, TryToOwned, TryVec,
+    try_new, try_vec,
 };
-pub use crate::error::{Context, Error, Result, bail, ensure, format_err};
+pub use crate::error::{Context, Error, OutOfMemory, Result, bail, ensure, format_err};
 pub use alloc::borrow::ToOwned;
 pub use alloc::boxed::Box;
 pub use alloc::format;

@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::policies::*, vtable::POLICIES};
 
-/// Returns the static definition for the system.policies virtual table
-/// This table exposes information about all security policies in the database
 pub fn policies() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
@@ -60,8 +58,8 @@ pub fn policies() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: TARGET_OBJECT,
-					name: "target_object".to_string(),
+					id: TARGET_SHAPE,
+					name: "target_shape".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Utf8),
 					properties: vec![],
 					index: ColumnIndex(4),

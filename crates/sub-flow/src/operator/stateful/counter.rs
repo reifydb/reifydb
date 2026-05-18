@@ -13,13 +13,11 @@ use crate::{
 	transaction::FlowTransaction,
 };
 
-/// Direction for counter increment/decrement
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CounterDirection {
-	/// Count upwards: 1, 2, 3, ...
 	#[default]
 	Ascending,
-	/// Count downwards: MAX, MAX-1, MAX-2, ...
+
 	Descending,
 }
 
@@ -30,11 +28,10 @@ pub struct Counter {
 }
 
 impl Counter {
-	/// Create counter with single-byte prefix key
 	pub fn with_prefix(node: FlowNodeId, prefix: u8, direction: CounterDirection) -> Self {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(prefix);
-		let key = EncodedKey::new(serializer.finish());
+		let key = serializer.finish();
 		Self {
 			node,
 			key,
@@ -42,7 +39,6 @@ impl Counter {
 		}
 	}
 
-	/// Create counter with custom key (e.g., subscription ID)
 	pub fn with_key(node: FlowNodeId, key: EncodedKey, direction: CounterDirection) -> Self {
 		Self {
 			node,
@@ -51,7 +47,6 @@ impl Counter {
 		}
 	}
 
-	/// Get next counter value (atomically: returns current, then increments/decrements)
 	pub fn next(&self, txn: &mut FlowTransaction) -> Result<RowNumber> {
 		let current = self.load(txn)?;
 		let next_value = self.compute_next(current);
@@ -59,17 +54,14 @@ impl Counter {
 		Ok(RowNumber(current))
 	}
 
-	/// Get current value without modifying
 	pub fn current(&self, txn: &mut FlowTransaction) -> Result<u64> {
 		self.load(txn)
 	}
 
-	/// Set to specific value
 	pub fn set(&self, txn: &mut FlowTransaction, value: u64) -> Result<()> {
 		self.save(txn, value)
 	}
 
-	// Internal methods
 	fn load(&self, txn: &mut FlowTransaction) -> Result<u64> {
 		match internal_state_get(self.node, txn, &self.key)? {
 			None => Ok(self.default_value()),
@@ -112,6 +104,7 @@ impl Counter {
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::common::CommitVersion;
+	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 
 	use super::*;
@@ -120,8 +113,13 @@ mod tests {
 	#[test]
 	fn test_counter_starts_at_one() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let counter = Counter::with_prefix(FlowNodeId(1), b'T', CounterDirection::Ascending);
 
 		let value = counter.next(&mut txn).unwrap();
@@ -131,8 +129,13 @@ mod tests {
 	#[test]
 	fn test_counter_increments() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let counter = Counter::with_prefix(FlowNodeId(1), b'T', CounterDirection::Ascending);
 
 		let v1 = counter.next(&mut txn).unwrap();
@@ -147,8 +150,13 @@ mod tests {
 	#[test]
 	fn test_counter_persistence() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let node = FlowNodeId(1);
 
 		// First counter instance
@@ -170,8 +178,13 @@ mod tests {
 	#[test]
 	fn test_counter_current() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let counter = Counter::with_prefix(FlowNodeId(1), b'T', CounterDirection::Ascending);
 
 		// First call returns default (1)
@@ -191,8 +204,13 @@ mod tests {
 	#[test]
 	fn test_counter_set() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let counter = Counter::with_prefix(FlowNodeId(1), b'T', CounterDirection::Ascending);
 
 		// Set to a specific value
@@ -209,14 +227,19 @@ mod tests {
 	#[test]
 	fn test_counter_with_custom_key() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		// Create a custom key
 		let custom_key = {
 			let mut serializer = KeySerializer::new();
 			serializer.extend_bytes(b"subscription-id-123");
-			EncodedKey::new(serializer.finish())
+			serializer.finish()
 		};
 
 		let counter = Counter::with_key(FlowNodeId(1), custom_key, CounterDirection::Ascending);
@@ -231,8 +254,13 @@ mod tests {
 	#[test]
 	fn test_multiple_counters_isolated() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let node = FlowNodeId(1);
 
 		// Different prefixes should be isolated
@@ -254,8 +282,13 @@ mod tests {
 	#[test]
 	fn test_different_nodes_isolated() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		// Same prefix, different nodes should be isolated
 		let counter1 = Counter::with_prefix(FlowNodeId(1), b'X', CounterDirection::Ascending);
@@ -272,8 +305,13 @@ mod tests {
 	#[test]
 	fn test_wrapping_behavior() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		// Test wrapping from MAX to 0
 		let counter = Counter::with_prefix(FlowNodeId(1), b'W', CounterDirection::Ascending);
@@ -304,8 +342,13 @@ mod tests {
 	#[test]
 	fn test_counter_descending_starts_at_max() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let counter = Counter::with_prefix(FlowNodeId(1), b'T', CounterDirection::Descending);
 
 		let value = counter.next(&mut txn).unwrap();
@@ -315,8 +358,13 @@ mod tests {
 	#[test]
 	fn test_counter_descending_decrements() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let counter = Counter::with_prefix(FlowNodeId(1), b'T', CounterDirection::Descending);
 
 		let v1 = counter.next(&mut txn).unwrap();
@@ -331,8 +379,13 @@ mod tests {
 	#[test]
 	fn test_counter_descending_wrapping() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let counter = Counter::with_prefix(FlowNodeId(1), b'W', CounterDirection::Descending);
 
 		// Set to 1, next should give 1, then wrap to 0, then MAX

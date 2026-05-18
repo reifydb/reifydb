@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_client::WsClient;
+use reifydb_client::{SubscriptionConfig, WireFormat, WsClient};
 use tokio::runtime::Runtime;
 
 use crate::{
@@ -21,7 +21,7 @@ fn test_multiple_subscriptions_different_tables() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Json).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		let table1 = unique_table_name("sub_multi_t1");
@@ -29,8 +29,14 @@ fn test_multiple_subscriptions_different_tables() {
 		create_test_table(&client, &table1, &[("id", "int4"), ("name", "utf8")]).await.unwrap();
 		create_test_table(&client, &table2, &[("id", "int4"), ("value", "int4")]).await.unwrap();
 
-		let sub_id1 = client.subscribe(&format!("from test::{}", table1)).await.unwrap();
-		let sub_id2 = client.subscribe(&format!("from test::{}", table2)).await.unwrap();
+		let sub_id1 = client
+			.subscribe(&format!("from test::{}", table1), SubscriptionConfig::default())
+			.await
+			.unwrap();
+		let sub_id2 = client
+			.subscribe(&format!("from test::{}", table2), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		assert_ne!(sub_id1, sub_id2, "Subscription IDs should be different");
 
@@ -63,15 +69,21 @@ fn test_multiple_subscriptions_same_table() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Json).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		let table = unique_table_name("sub_same_table");
 		create_test_table(&client, &table, &[("id", "int4"), ("name", "utf8")]).await.unwrap();
 
 		// Subscribe twice to the same table
-		let sub_id1 = client.subscribe(&format!("from test::{}", table)).await.unwrap();
-		let sub_id2 = client.subscribe(&format!("from test::{}", table)).await.unwrap();
+		let sub_id1 = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
+		let sub_id2 = client
+			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		assert_ne!(sub_id1, sub_id2, "Different subscriptions should have different IDs");
 
@@ -98,7 +110,7 @@ fn test_changes_routed_to_correct_subscription() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Json).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		let table1 = unique_table_name("sub_route_t1");
@@ -106,8 +118,14 @@ fn test_changes_routed_to_correct_subscription() {
 		create_test_table(&client, &table1, &[("id", "int4")]).await.unwrap();
 		create_test_table(&client, &table2, &[("id", "int4")]).await.unwrap();
 
-		let sub_id1 = client.subscribe(&format!("from test::{}", table1)).await.unwrap();
-		let sub_id2 = client.subscribe(&format!("from test::{}", table2)).await.unwrap();
+		let sub_id1 = client
+			.subscribe(&format!("from test::{}", table1), SubscriptionConfig::default())
+			.await
+			.unwrap();
+		let sub_id2 = client
+			.subscribe(&format!("from test::{}", table2), SubscriptionConfig::default())
+			.await
+			.unwrap();
 
 		// Insert only into table1
 		client.command(&format!("INSERT test::{} [{{ id: 100 }}]", table1), None).await.unwrap();

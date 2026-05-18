@@ -5,32 +5,31 @@ use crate::Error;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
-	// Keywords
 	Keyword(Keyword),
-	// Identifiers
+
 	Ident(String),
-	// Literals
+
 	Integer(i64),
 	Float(f64),
 	StringLit(String),
-	// Operators & punctuation
-	Asterisk,   // *
-	Comma,      // ,
-	Dot,        // .
-	Semicolon,  // ;
-	OpenParen,  // (
-	CloseParen, // )
-	Plus,       // +
-	Minus,      // -
-	Slash,      // /
-	Percent,    // %
-	Eq,         // =
-	NotEq,      // <> or !=
-	Lt,         // <
-	Gt,         // >
-	LtEq,       // <=
-	GtEq,       // >=
-	Concat,     // ||
+
+	Asterisk,
+	Comma,
+	Dot,
+	Semicolon,
+	OpenParen,
+	CloseParen,
+	Plus,
+	Minus,
+	Slash,
+	Percent,
+	Eq,
+	NotEq,
+	Lt,
+	Gt,
+	LtEq,
+	GtEq,
+	Concat,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -76,7 +75,7 @@ pub enum Keyword {
 	Avg,
 	Min,
 	Max,
-	// SQL types
+
 	Int,
 	Int2,
 	Int4,
@@ -100,7 +99,7 @@ pub enum Keyword {
 	Key,
 	With,
 	Recursive,
-	// New keywords for extended SQL support
+
 	Case,
 	When,
 	Then,
@@ -134,13 +133,11 @@ pub fn tokenize(sql: &str) -> Result<Vec<Token>, Error> {
 	while i < len {
 		let c = chars[i];
 
-		// Skip whitespace
 		if c.is_ascii_whitespace() {
 			i += 1;
 			continue;
 		}
 
-		// Skip line comments (-- ...)
 		if c == '-' && i + 1 < len && chars[i + 1] == '-' {
 			while i < len && chars[i] != '\n' {
 				i += 1;
@@ -148,7 +145,6 @@ pub fn tokenize(sql: &str) -> Result<Vec<Token>, Error> {
 			continue;
 		}
 
-		// Operators and punctuation
 		match c {
 			'*' => {
 				tokens.push(Token::Asterisk);
@@ -247,13 +243,11 @@ pub fn tokenize(sql: &str) -> Result<Vec<Token>, Error> {
 			_ => {}
 		}
 
-		// String literals
 		if c == '\'' {
 			i += 1;
 			let mut s = String::new();
 			while i < len {
 				if chars[i] == '\'' {
-					// Check for escaped single quote ''
 					if i + 1 < len && chars[i + 1] == '\'' {
 						s.push('\'');
 						i += 2;
@@ -268,19 +262,18 @@ pub fn tokenize(sql: &str) -> Result<Vec<Token>, Error> {
 			if i >= len {
 				return Err(Error("unterminated string literal".into()));
 			}
-			i += 1; // skip closing quote
+			i += 1;
 			tokens.push(Token::StringLit(s));
 			continue;
 		}
 
-		// Numeric literals
 		if c.is_ascii_digit() {
 			let start = i;
 			while i < len && chars[i].is_ascii_digit() {
 				i += 1;
 			}
 			if i < len && chars[i] == '.' && i + 1 < len && chars[i + 1].is_ascii_digit() {
-				i += 1; // skip dot
+				i += 1;
 				while i < len && chars[i].is_ascii_digit() {
 					i += 1;
 				}
@@ -295,7 +288,6 @@ pub fn tokenize(sql: &str) -> Result<Vec<Token>, Error> {
 			continue;
 		}
 
-		// Identifiers and keywords
 		if c.is_ascii_alphabetic() || c == '_' {
 			let start = i;
 			while i < len && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {

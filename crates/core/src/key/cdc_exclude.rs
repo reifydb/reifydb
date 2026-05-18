@@ -1,53 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Key exclusion logic for CDC generation.
-//!
-//! Determines which key kinds should be excluded from CDC to avoid
-//! generating events for internal system state.
-
 use super::KeyKind;
 
-/// Returns true if the KeyKind should be excluded from CDC generation.
-///
-/// Excluded kinds represent internal system state or operator bookkeeping
-/// that should not generate user-facing change events:
-/// - FlowNodeState: Operator state subject to retention policies
-/// - FlowNodeInternalState: Operator internal state (e.g., join hash tables, row mappings)
-/// - CdcConsumer: CDC consumption checkpoints
-/// - StorageTracker: Internal storage statistics tracking
-/// - SystemSequence, RowSequence, ColumnSequence, DictionarySequence: ID generators
-/// - SystemVersion, TransactionVersion: Internal version tracking
-/// - RingBufferMetadata: Ring buffer internal state (head/tail pointers)
-/// - Index: Index metadata (derived from Row changes)
 pub fn should_exclude_from_cdc(kind: KeyKind) -> bool {
 	matches!(
 		kind,
-		// Flow operator state
 		KeyKind::FlowNodeState
 			| KeyKind::FlowNodeInternalState
-		// CDC infrastructure
 			| KeyKind::CdcConsumer
-		// Internal tracking and statistics
-			| KeyKind::Metric
-		// Sequence generators (internal ID generation)
-			| KeyKind::SystemSequence
+			| KeyKind::Metric | KeyKind::SystemSequence
 			| KeyKind::RowSequence
 			| KeyKind::ColumnSequence
 			| KeyKind::DictionarySequence
-		// Version tracking (internal system state)
 			| KeyKind::SystemVersion
 			| KeyKind::TransactionVersion
 			| KeyKind::FlowVersion
-		// Ring buffer internal bookkeeping
 			| KeyKind::RingBufferMetadata
-		// Index metadata (derived from Row CDC)
-			| KeyKind::Index
-		// Subscriptions are runtime only
-			| KeyKind::Subscription
+			| KeyKind::Index | KeyKind::Subscription
 			| KeyKind::SubscriptionColumn
 			| KeyKind::SubscriptionRow
-			| KeyKind::Config
+			| KeyKind::ConfigStorage
 			| KeyKind::Token
 	)
 }
@@ -89,8 +62,8 @@ pub mod tests {
 			KeyKind::RingBuffer => {}
 			KeyKind::NamespaceRingBuffer => {}
 			KeyKind::RingBufferMetadata => {}
-			KeyKind::ShapeRetentionPolicy => {}
-			KeyKind::OperatorRetentionPolicy => {}
+			KeyKind::ShapeRetentionStrategy => {}
+			KeyKind::OperatorRetentionStrategy => {}
 			KeyKind::Flow => {}
 			KeyKind::NamespaceFlow => {}
 			KeyKind::FlowNode => {}
@@ -126,13 +99,20 @@ pub mod tests {
 			KeyKind::Migration => {}
 			KeyKind::Authentication => {}
 			KeyKind::MigrationEvent => {}
-			KeyKind::Config => {}
+			KeyKind::ConfigStorage => {}
 			KeyKind::Token => {}
 			KeyKind::Source => {}
 			KeyKind::NamespaceSource => {}
 			KeyKind::Sink => {}
 			KeyKind::NamespaceSink => {}
-			KeyKind::SourceCheckpoint => {} /* When adding a new variant, add it here.
+			KeyKind::SourceCheckpoint => {}
+			KeyKind::RowTtl => {}
+			KeyKind::OperatorTtl => {}
+			KeyKind::Procedure => {}
+			KeyKind::NamespaceProcedure => {}
+			KeyKind::ProcedureParam => {}
+			KeyKind::Binding => {}
+			KeyKind::NamespaceBinding => {} /* When adding a new variant, add it here.
 			                                 * The compiler will error if you forget.
 			                                 * Then add a test and update should_exclude_from_cdc() if
 			                                 * needed. */
@@ -291,13 +271,13 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_include_shape_retention_policy() {
-		assert!(!should_exclude_from_cdc(KeyKind::ShapeRetentionPolicy));
+	fn test_include_shape_retention_strategy() {
+		assert!(!should_exclude_from_cdc(KeyKind::ShapeRetentionStrategy));
 	}
 
 	#[test]
-	fn test_include_operator_retention_policy() {
-		assert!(!should_exclude_from_cdc(KeyKind::OperatorRetentionPolicy));
+	fn test_include_operator_retention_strategy() {
+		assert!(!should_exclude_from_cdc(KeyKind::OperatorRetentionStrategy));
 	}
 
 	#[test]
@@ -449,6 +429,6 @@ pub mod tests {
 	// Config overrides (excluded)
 	#[test]
 	fn test_exclude_config() {
-		assert!(should_exclude_from_cdc(KeyKind::Config));
+		assert!(should_exclude_from_cdc(KeyKind::ConfigStorage));
 	}
 }

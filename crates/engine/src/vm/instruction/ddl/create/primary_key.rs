@@ -21,21 +21,18 @@ pub(crate) fn create_primary_key(
 	let namespace_id = plan.namespace.def().id();
 	let table_name = plan.table.text();
 
-	// Find the table
 	let Some(table) =
 		services.catalog.find_table_by_name(&mut Transaction::Admin(txn), namespace_id, table_name)?
 	else {
 		return_error!(table_not_found(plan.table.clone(), plan.namespace.name(), table_name));
 	};
 
-	// Get all columns for the table to validate and resolve column IDs
 	let table_columns = services.catalog.list_columns(&mut Transaction::Admin(txn), table.id)?;
 
 	let mut column_ids = Vec::new();
 	for pk_column in &plan.columns {
 		let column_name = pk_column.column.text();
 
-		// Find the column by name
 		let Some(column) = table_columns.iter().find(|col| col.name == column_name) else {
 			return_error!(column_not_found(pk_column.column.clone()));
 		};

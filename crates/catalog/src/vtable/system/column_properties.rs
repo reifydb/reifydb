@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -16,9 +16,8 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system column policy information
 pub struct SystemColumnProperties {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +30,7 @@ impl Default for SystemColumnProperties {
 impl SystemColumnProperties {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_column_properties_table().clone(),
+			vtable: SystemCatalog::get_system_column_properties_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -63,22 +62,10 @@ impl BaseVTable for SystemColumnProperties {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: ColumnData::uint8(property_ids),
-			},
-			Column {
-				name: Fragment::internal("column_id"),
-				data: ColumnData::uint8(column_ids),
-			},
-			Column {
-				name: Fragment::internal("type"),
-				data: ColumnData::uint1(property_types),
-			},
-			Column {
-				name: Fragment::internal("value"),
-				data: ColumnData::uint1(property_values),
-			},
+			ColumnWithName::new(Fragment::internal("id"), ColumnBuffer::uint8(property_ids)),
+			ColumnWithName::new(Fragment::internal("column_id"), ColumnBuffer::uint8(column_ids)),
+			ColumnWithName::new(Fragment::internal("type"), ColumnBuffer::uint1(property_types)),
+			ColumnWithName::new(Fragment::internal("value"), ColumnBuffer::uint1(property_values)),
 		];
 
 		self.exhausted = true;
@@ -87,7 +74,7 @@ impl BaseVTable for SystemColumnProperties {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

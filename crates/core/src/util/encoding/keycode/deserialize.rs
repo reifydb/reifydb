@@ -10,6 +10,8 @@ use serde::de::{
 	Visitor,
 };
 
+use super::{decode_i64_varint, decode_u64_varint};
+
 pub(crate) struct Deserializer<'de> {
 	pub(crate) input: &'de [u8],
 }
@@ -38,8 +40,8 @@ impl<'de> Deserializer<'de> {
 		let taken = loop {
 			match iter.next() {
 				Some((_, 0xff)) => match iter.next() {
-					Some((i, 0xff)) => break i + 1,        // terminator
-					Some((_, 0x00)) => decoded.push(0xff), // escaped 0xff
+					Some((i, 0xff)) => break i + 1,
+					Some((_, 0x00)) => decoded.push(0xff),
 					_ => {
 						return Err(Error::from(TypeError::SerdeKeycode {
 							message: "invalid escape sequence".to_string(),
@@ -81,7 +83,7 @@ impl<'de> SerdeDeserializer<'de> for &mut Deserializer<'de> {
 	fn deserialize_i8<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
 		let mut byte = self.take_bytes(1)?[0];
 		byte = !byte;
-		byte ^= 1 << 7; // restore original sign
+		byte ^= 1 << 7;
 		visitor.visit_i8(byte as i8)
 	}
 
@@ -104,12 +106,8 @@ impl<'de> SerdeDeserializer<'de> for &mut Deserializer<'de> {
 	}
 
 	fn deserialize_i64<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
-		let mut bytes = self.take_bytes(8)?.to_vec();
-		for b in &mut bytes {
-			*b = !*b;
-		}
-		bytes[0] ^= 1 << 7;
-		visitor.visit_i64(i64::from_be_bytes(bytes.as_slice().try_into()?))
+		let i = decode_i64_varint(&mut self.input)?;
+		visitor.visit_i64(i)
 	}
 
 	fn deserialize_i128<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
@@ -135,19 +133,13 @@ impl<'de> SerdeDeserializer<'de> for &mut Deserializer<'de> {
 	}
 
 	fn deserialize_u32<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
-		let mut bytes = self.take_bytes(4)?.to_vec();
-		for b in &mut bytes {
-			*b = !*b;
-		}
-		visitor.visit_u32(u32::from_be_bytes(bytes.as_slice().try_into()?))
+		let u = decode_u64_varint(&mut self.input)?;
+		visitor.visit_u32(u as u32)
 	}
 
 	fn deserialize_u64<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
-		let mut bytes = self.take_bytes(8)?.to_vec();
-		for b in &mut bytes {
-			*b = !*b;
-		}
-		visitor.visit_u64(u64::from_be_bytes(bytes.as_slice().try_into()?))
+		let u = decode_u64_varint(&mut self.input)?;
+		visitor.visit_u64(u)
 	}
 
 	fn deserialize_u128<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value> {
@@ -164,8 +156,8 @@ impl<'de> SerdeDeserializer<'de> for &mut Deserializer<'de> {
 			*b = !*b;
 		}
 		match bytes[0] >> 7 {
-			0 => bytes.iter_mut().for_each(|b| *b = !*b), // negative, flip all bits
-			1 => bytes[0] ^= 1 << 7,                      // positive, flip sign bit
+			0 => bytes.iter_mut().for_each(|b| *b = !*b),
+			1 => bytes[0] ^= 1 << 7,
 			_ => panic!("bits can only be 0 or 1"),
 		}
 		visitor.visit_f32(f32::from_be_bytes(bytes.as_slice().try_into()?))
@@ -177,8 +169,8 @@ impl<'de> SerdeDeserializer<'de> for &mut Deserializer<'de> {
 			*b = !*b;
 		}
 		match bytes[0] >> 7 {
-			0 => bytes.iter_mut().for_each(|b| *b = !*b), // negative, flip all bits
-			1 => bytes[0] ^= 1 << 7,                      // positive, flip sign bit
+			0 => bytes.iter_mut().for_each(|b| *b = !*b),
+			1 => bytes[0] ^= 1 << 7,
 			_ => panic!("bits can only be 0 or 1"),
 		}
 		visitor.visit_f64(f64::from_be_bytes(bytes.as_slice().try_into()?))

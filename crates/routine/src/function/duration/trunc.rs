@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, duration::Duration, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct DurationTrunc;
+pub struct DurationTrunc {
+	info: RoutineInfo,
+}
 
 impl Default for DurationTrunc {
 	fn default() -> Self {
@@ -20,48 +18,56 @@ impl Default for DurationTrunc {
 
 impl DurationTrunc {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("duration::trunc"),
+		}
 	}
 }
 
-impl ScalarFunction for DurationTrunc {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+impl<'a> Routine<FunctionContext<'a>> for DurationTrunc {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		if columns.len() != 2 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Duration
+	}
+
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 2 {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let dur_col = columns.first().unwrap();
-		let prec_col = columns.get(1).unwrap();
+		let dur_col = &args[0];
+		let prec_col = &args[1];
 
-		match (dur_col.data(), prec_col.data()) {
+		let (dur_data, dur_bv) = dur_col.unwrap_option();
+		let (prec_data, _) = prec_col.unwrap_option();
+
+		match (dur_data, prec_data) {
 			(
-				ColumnData::Duration(dur_container),
-				ColumnData::Utf8 {
+				ColumnBuffer::Duration(dur_container),
+				ColumnBuffer::Utf8 {
 					container: prec_container,
 					..
 				},
 			) => {
+				let row_count = dur_data.len();
 				let mut container = TemporalContainer::with_capacity(row_count);
 
 				for i in 0..row_count {
 					match (dur_container.get(i), prec_container.is_defined(i)) {
 						(Some(dur), true) => {
-							let precision = &prec_container[i];
+							let precision = prec_container.get(i).unwrap();
 							let months = dur.get_months();
 							let days = dur.get_days();
 							let nanos = dur.get_nanos();
 
-							let truncated = match precision.as_str() {
+							let truncated = match precision {
 								"year" => Duration::new((months / 12) * 12, 0, 0)?,
 								"month" => Duration::new(months, 0, 0)?,
 								"day" => Duration::new(months, days, 0)?,
@@ -87,7 +93,7 @@ impl ScalarFunction for DurationTrunc {
 								)?,
 								other => {
 									return Err(
-										ScalarFunctionError::ExecutionFailed {
+										RoutineError::FunctionExecutionFailed {
 											function: ctx.fragment.clone(),
 											reason: format!(
 												"invalid precision: '{}'",
@@ -103,15 +109,22 @@ impl ScalarFunction for DurationTrunc {
 					}
 				}
 
-				Ok(ColumnData::Duration(container))
+				let mut result_data = ColumnBuffer::Duration(container);
+				if let Some(bv) = dur_bv {
+					result_data = ColumnBuffer::Option {
+						inner: Box::new(result_data),
+						bitvec: bv.clone(),
+					};
+				}
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result_data)]))
 			}
-			(ColumnData::Duration(_), other) => Err(ScalarFunctionError::InvalidArgumentType {
+			(ColumnBuffer::Duration(_), other) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 1,
 				expected: vec![Type::Utf8],
 				actual: other.get_type(),
 			}),
-			(other, _) => Err(ScalarFunctionError::InvalidArgumentType {
+			(other, _) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Duration],
@@ -119,8 +132,10 @@ impl ScalarFunction for DurationTrunc {
 			}),
 		}
 	}
+}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Duration
+impl Function for DurationTrunc {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

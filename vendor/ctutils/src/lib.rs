@@ -6,34 +6,10 @@
 )]
 #![forbid(unsafe_code)] // `unsafe` should go in `cmov`
 #![warn(
-    clippy::borrow_as_ptr,
-    clippy::cast_lossless,
-    clippy::cast_possible_truncation,
-    clippy::cast_precision_loss,
-    clippy::checked_conversions,
-    clippy::implicit_saturating_sub,
+    clippy::arithmetic_side_effects,
     clippy::integer_division_remainder_used,
-    clippy::must_use_candidate,
-    clippy::mod_module_files,
-    clippy::panic,
-    clippy::panic_in_result_fn,
-    clippy::ref_as_ptr,
-    clippy::semicolon_if_nothing_returned,
-    clippy::std_instead_of_alloc,
-    clippy::std_instead_of_core,
-    clippy::undocumented_unsafe_blocks,
-    clippy::unnecessary_safety_comment,
-    clippy::unwrap_in_result,
-    missing_copy_implementations,
-    missing_debug_implementations,
-    missing_docs,
-    rust_2018_idioms,
-    trivial_casts,
-    trivial_numeric_casts,
-    unused_lifetimes,
-    unused_qualifications
+    clippy::panic
 )]
-#![cfg_attr(not(test), warn(clippy::unwrap_used))]
 
 //! # API Design
 //!
@@ -103,6 +79,45 @@
 //!
 //! This makes it possible to use `ctutils` in a codebase where other dependencies are using
 //! `subtle`.
+//!
+//! # [`subtle`] migration guide
+//!
+//! This library presents an API which is largely the same shape as `subtle` and amenable to mostly
+//! mechanical find-and-replace updates. Using the above `subtle` interop, you can also migrate
+//! incrementally by converting `ctutils::Choice` <=> `subtle::Choice` and `ctutils::CtOption`
+//! <=> `subtle::CtOption`.
+//!
+//! The following substitutions can be used to perform the migration:
+//!
+//! 1. `subtle` => `ctutils`
+//! 2. `ConstantTimeEq` => `CtEq`, `ConstantTimeGreater` => `CtGt`, `ConstantTimeLess` => `CtLt`.
+//!    - These all use the same `ct_eq`/`ct_gt`/`ct_lt` method names as `subtle` with the same type
+//!      signatures, so only the trait names need to be changed.
+//! 3. `ConditionallySelectable` => `CtSelect`, `conditional_select` => `ct_select`.
+//!    - Note that `ct_select` has a slightly different type signature in that it accepts `&self`
+//!      as the LHS argument. This needs to be changed in the `impl` blocks, but call sites are
+//!      compatible if you update the method name alone because it's valid "fully qualified syntax".
+//!      Changing them from `T::conditional_select(&a, &b, choice)` => `a.ct_select(&b, choice)`
+//!      may still be nice for brevity.
+//!    - `conditional_assign` => `CtAssign::ct_assign`: this one will require some manual work as
+//!      this method has been split out of `ConditionallySelectable` into its own `CtAssign` trait,
+//!      which makes it possible to impl on DSTs like slices which can't be returned from a select
+//!      operation because they're `!Sized`.
+//! 4. `ConditionallyNegatable` => `CtNeg`, `conditional_negate` => `ct_neg`
+//!
+//! ## `CtOption` notes
+//!
+//! A notable semantic change from `subtle` is combinators like `CtOption::map` no longer have a
+//! `Default` bound and will call the provided function with the contained value unconditionally.
+//!
+//! This means whatever value was provided at the time the `CtOption` was constructed now needs to
+//! uphold whatever invariants the provided function is expecting.
+//!
+//! Code which previously constructed a `CtOption` with an invalid inner value that worked with
+//! `subtle` because the `Default` value upheld these invariants might break when the provided
+//! function is now called with the invalid inner value.
+//!
+//! See also: [dalek-cryptography/subtle#63](https://github.com/dalek-cryptography/subtle/issues/63)
 
 #[cfg(feature = "alloc")]
 extern crate alloc;

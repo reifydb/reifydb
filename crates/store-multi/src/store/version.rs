@@ -1,47 +1,39 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::common::CommitVersion;
+use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 use reifydb_type::{Result, util::cowvec::CowVec};
 
-use crate::tier::{EntryKind, TierStorage};
+use crate::tier::TierStorage;
 
-/// Result of a versioned get operation
 #[derive(Debug, Clone)]
 pub enum VersionedGetResult {
-	/// Found a value at this version
 	Value {
 		value: CowVec<u8>,
 		version: CommitVersion,
 	},
-	/// Found a tombstone (deletion) at this version
+
 	Tombstone,
-	/// Key not found at or before the requested version
+
 	NotFound,
 }
 
-/// Get the latest version of a key at or before the given version.
 pub fn get_at_version<S: TierStorage>(
 	storage: &S,
 	table: EntryKind,
 	key: &[u8],
 	version: CommitVersion,
 ) -> Result<VersionedGetResult> {
-	// The storage layer now handles version lookups directly
 	match storage.get(table, key, version)? {
 		Some(value) => Ok(VersionedGetResult::Value {
 			value,
 			version,
 		}),
 		None => {
-			// Need to determine if it's a tombstone or not found
-			// Get all versions and check if any version <= requested exists
 			let all_versions = storage.get_all_versions(table, key)?;
 
-			// Find the latest version <= requested
 			for (v, value) in all_versions {
 				if v <= version {
-					// Found a version at or before requested
 					return match value {
 						Some(val) => Ok(VersionedGetResult::Value {
 							value: val,
@@ -52,7 +44,6 @@ pub fn get_at_version<S: TierStorage>(
 				}
 			}
 
-			// No version exists at or before requested version
 			Ok(VersionedGetResult::NotFound)
 		}
 	}
@@ -62,14 +53,16 @@ pub fn get_at_version<S: TierStorage>(
 pub mod tests {
 	use std::collections::HashMap;
 
+	use reifydb_core::encoded::key::EncodedKey;
+
 	use super::*;
-	use crate::hot::{memory::storage::MemoryPrimitiveStorage, storage::HotStorage};
+	use crate::buffer::{memory::storage::MemoryPrimitiveStorage, tier::MultiBufferTier};
 
 	#[test]
 	fn test_get_at_version_basic() {
 		let storage = MemoryPrimitiveStorage::new();
 
-		let key = CowVec::new(b"test_key".to_vec());
+		let key = EncodedKey::new(b"test_key".to_vec());
 		let version = CommitVersion(42);
 
 		// Insert a value
@@ -114,7 +107,7 @@ pub mod tests {
 	fn test_get_at_version_tombstone() {
 		let storage = MemoryPrimitiveStorage::new();
 
-		let key = CowVec::new(b"test_key".to_vec());
+		let key = EncodedKey::new(b"test_key".to_vec());
 
 		// Insert a tombstone (None value)
 		storage.set(CommitVersion(1), HashMap::from([(EntryKind::Multi, vec![(key.clone(), None)])])).unwrap();
@@ -125,9 +118,9 @@ pub mod tests {
 
 	#[test]
 	fn test_get_at_version_multiple_versions() {
-		let storage = HotStorage::memory();
+		let storage = MultiBufferTier::memory();
 
-		let key = CowVec::new(b"test_key".to_vec());
+		let key = EncodedKey::new(b"test_key".to_vec());
 
 		// Insert multiple versions
 		storage.set(
@@ -182,9 +175,9 @@ pub mod tests {
 
 	#[test]
 	fn test_get_at_version_before_any_version() {
-		let storage = HotStorage::memory();
+		let storage = MultiBufferTier::memory();
 
-		let key = CowVec::new(b"test_key".to_vec());
+		let key = EncodedKey::new(b"test_key".to_vec());
 
 		// Insert at version 10
 		storage.set(

@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.85"
 name = "toml_writer"
-version = "1.1.0+spec-1.1.0"
+version = "1.1.1+spec-1.1.0"
 build = false
 include = [
     "build.rs",
@@ -93,10 +93,10 @@ path = "src/lib.rs"
 [dependencies]
 
 [dev-dependencies.proptest]
-version = "1.7.0"
+version = "1.10.0"
 
 [dev-dependencies.snapbox]
-version = "1.0.0"
+version = "1.1.0"
 
 [dev-dependencies.toml_old]
 version = "0.5.11"

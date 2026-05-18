@@ -1,60 +1,45 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Admin server subsystem implementing the ReifyDB Subsystem trait.
-
 use std::{
 	any::Any,
 	net::SocketAddr,
 	sync::{
-		Arc, RwLock,
+		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
 };
 
-use axum::serve;
+use axum::{serve, serve::ListenerExt};
 use reifydb_core::{
 	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::{SharedRuntime, sync::rwlock::RwLock};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_type::{Result, error::Error};
 use tokio::{net::TcpListener, sync::oneshot};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::{routes::router, state::AdminState};
 
-/// Admin server subsystem.
-///
-/// Manages an Axum-based admin HTTP server with support for:
-/// - Graceful startup and shutdown
-/// - Health monitoring
 pub struct AdminSubsystem {
-	/// Address to bind the server to.
 	bind_addr: String,
-	/// Actual bound address (available after start).
+
 	actual_addr: RwLock<Option<SocketAddr>>,
-	/// Shared application state.
+
 	state: AdminState,
-	/// Flag indicating if the server is running.
+
 	running: Arc<AtomicBool>,
-	/// Channel to send shutdown signal.
+
 	shutdown_tx: Option<oneshot::Sender<()>>,
-	/// Channel to receive shutdown completion.
+
 	shutdown_complete_rx: Option<oneshot::Receiver<()>>,
-	/// Shared tokio runtime.
+
 	runtime: SharedRuntime,
 }
 
 impl AdminSubsystem {
-	/// Create a new admin subsystem.
-	///
-	/// # Arguments
-	///
-	/// * `bind_addr` - Address and port to bind to (e.g., "127.0.0.1:9090")
-	/// * `state` - Shared application state
-	/// * `runtime` - Shared runtime
 	pub fn new(bind_addr: String, state: AdminState, runtime: SharedRuntime) -> Self {
 		Self {
 			bind_addr,
@@ -67,17 +52,14 @@ impl AdminSubsystem {
 		}
 	}
 
-	/// Get the bind address.
 	pub fn bind_addr(&self) -> &str {
 		&self.bind_addr
 	}
 
-	/// Get the actual bound address (available after start).
 	pub fn local_addr(&self) -> Option<SocketAddr> {
-		*self.actual_addr.read().unwrap()
+		*self.actual_addr.read()
 	}
 
-	/// Get the actual bound port (available after start).
 	pub fn port(&self) -> Option<u16> {
 		self.local_addr().map(|a| a.port())
 	}
@@ -103,7 +85,6 @@ impl Subsystem for AdminSubsystem {
 	}
 
 	fn start(&mut self) -> Result<()> {
-		// Idempotent: if already running, return success
 		if self.running.load(Ordering::SeqCst) {
 			return Ok(());
 		}
@@ -126,7 +107,7 @@ impl Subsystem for AdminSubsystem {
 			.into();
 			err
 		})?;
-		*self.actual_addr.write().unwrap() = Some(actual_addr);
+		*self.actual_addr.write() = Some(actual_addr);
 		info!("Admin server bound to {}", actual_addr);
 
 		let (shutdown_tx, shutdown_rx) = oneshot::channel();
@@ -137,22 +118,23 @@ impl Subsystem for AdminSubsystem {
 		let runtime = self.runtime.clone();
 
 		runtime.spawn(async move {
-			// Mark as running
 			running.store(true, Ordering::SeqCst);
 
-			// Create router and serve
 			let app = router(state);
+			let listener = listener.tap_io(|tcp_stream| {
+				if let Err(e) = tcp_stream.set_nodelay(true) {
+					warn!("Failed to set TCP_NODELAY: {e}");
+				}
+			});
 			let server = serve(listener, app).with_graceful_shutdown(async {
 				shutdown_rx.await.ok();
 				info!("Admin server received shutdown signal");
 			});
 
-			// Run until shutdown
 			if let Err(e) = server.await {
 				error!("Admin server error: {}", e);
 			}
 
-			// Mark as stopped
 			running.store(false, Ordering::SeqCst);
 			let _ = complete_tx.send(());
 			info!("Admin server stopped");
@@ -181,7 +163,6 @@ impl Subsystem for AdminSubsystem {
 		if self.running.load(Ordering::SeqCst) {
 			HealthStatus::Healthy
 		} else if self.shutdown_tx.is_some() {
-			// Started but not yet running (startup in progress)
 			HealthStatus::Warning {
 				description: "Starting up".to_string(),
 			}

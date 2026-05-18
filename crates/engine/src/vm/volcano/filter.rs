@@ -1,35 +1,36 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{mem, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	interface::{catalog::dictionary::Dictionary, resolved::ResolvedShape},
-	value::{
-		batch::lazy::LazyBatch,
-		column::{columns::Columns, data::ColumnData, headers::ColumnHeaders},
-	},
+	interface::resolved::ResolvedShape,
+	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
-use reifydb_rql::expression::Expression;
+use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{util::bitvec::BitVec, value::constraint::Constraint};
 use tracing::instrument;
 
-use super::decode_dictionary_columns;
+use super::NoopNode;
 use crate::{
 	Result,
 	expression::{
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalSession},
+		context::{CompileContext, EvalContext},
 	},
-	vm::volcano::query::{QueryContext, QueryNode},
+	vm::volcano::{
+		query::{QueryContext, QueryNode},
+		udf::{UdfEvalNode, strip_udf_columns},
+	},
 };
 
 pub(crate) struct FilterNode {
 	input: Box<dyn QueryNode>,
 	expressions: Vec<Expression>,
+	udf_names: Vec<String>,
 	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
 }
 
@@ -38,6 +39,7 @@ impl FilterNode {
 		Self {
 			input,
 			expressions,
+			udf_names: Vec::new(),
 			context: None,
 		}
 	}
@@ -46,8 +48,16 @@ impl FilterNode {
 impl QueryNode for FilterNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::filter::initialize")]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		let (input, expressions, udf_names) = UdfEvalNode::wrap_if_needed(
+			mem::replace(&mut self.input, Box::new(NoopNode)),
+			&self.expressions,
+			&ctx.symbols,
+		);
+		self.input = input;
+		self.expressions = expressions;
+		self.udf_names = udf_names;
+
 		let compile_ctx = CompileContext {
-			functions: &ctx.services.functions,
 			symbols: &ctx.symbols,
 		};
 		let compiled = self
@@ -63,50 +73,24 @@ impl QueryNode for FilterNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::filter::next")]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "FilterNode::next() called before initialize()");
-		let (stored_ctx, compiled) = self.context.as_ref().unwrap();
+		let (stored_ctx, _) = self.context.as_ref().unwrap();
+		let stored_ctx = stored_ctx.clone();
 
 		loop {
-			// Try lazy path first
-			if let Some(mut lazy_batch) = self.input.next_lazy(rx, ctx)? {
-				// Evaluate filter on lazy batch
-				let filter_result =
-					self.evaluate_filter_on_lazy(&lazy_batch, stored_ctx, compiled, rx)?;
-
-				if let Some(filter_mask) = filter_result {
-					lazy_batch.apply_filter(&filter_mask);
+			match self.input.next(rx, ctx)? {
+				Some(columns) => {
+					let transform_ctx = TransformContext {
+						routines: &ctx.services.routines,
+						runtime_context: &stored_ctx.services.runtime_context,
+						params: &stored_ctx.params,
+					};
+					let mut columns = self.apply(&transform_ctx, columns)?;
+					if columns.row_count() > 0 {
+						strip_udf_columns(&mut columns, &self.udf_names);
+						return Ok(Some(columns));
+					}
 				}
-
-				if lazy_batch.valid_row_count() == 0 {
-					continue; // Skip to next batch
-				}
-
-				// Save dictionary metadata before consuming the lazy batch
-				let dictionaries: Vec<Option<Dictionary>> =
-					lazy_batch.column_metas().iter().map(|m| m.dictionary.clone()).collect();
-
-				// Materialize surviving rows
-				let mut columns = lazy_batch.into_columns();
-
-				// Decode dictionary columns back to actual values
-				decode_dictionary_columns(&mut columns, &dictionaries, rx)?;
-
-				return Ok(Some(columns));
-			}
-
-			// Fall back to materialized path
-			if let Some(columns) = self.input.next(rx, ctx)? {
-				let transform_ctx = TransformContext {
-					functions: &stored_ctx.services.functions,
-					runtime_context: &stored_ctx.services.runtime_context,
-					params: &stored_ctx.params,
-				};
-				let columns = self.apply(&transform_ctx, columns)?;
-				if columns.row_count() > 0 {
-					return Ok(Some(columns));
-				}
-			} else {
-				// No more batches
-				return Ok(None);
+				None => return Ok(None),
 			}
 		}
 	}
@@ -121,7 +105,7 @@ impl Transform for FilterNode {
 		let (stored_ctx, compiled) =
 			self.context.as_ref().expect("FilterNode::apply() called before initialize()");
 
-		let session = EvalSession::from_transform(ctx, stored_ctx);
+		let session = EvalContext::from_transform(ctx, stored_ctx);
 		let mut columns = input;
 		let mut row_count = columns.row_count();
 
@@ -130,12 +114,12 @@ impl Transform for FilterNode {
 				break;
 			}
 
-			let exec_ctx = session.eval(columns.clone(), row_count);
+			let exec_ctx = session.with_eval(columns.clone(), row_count);
 
 			let result = compiled_expr.execute(&exec_ctx)?;
 
 			let filter_mask = match result.data() {
-				ColumnData::Bool(container) => {
+				ColumnBuffer::Bool(container) => {
 					let mut mask = BitVec::repeat(row_count, false);
 					for i in 0..row_count {
 						if i < container.len() {
@@ -146,11 +130,11 @@ impl Transform for FilterNode {
 					}
 					mask
 				}
-				ColumnData::Option {
+				ColumnBuffer::Option {
 					inner,
 					bitvec,
 				} => match inner.as_ref() {
-					ColumnData::Bool(container) => {
+					ColumnBuffer::Bool(container) => {
 						let mut mask = BitVec::repeat(row_count, false);
 						for i in 0..row_count {
 							let defined = i < bitvec.len() && bitvec.get(i);
@@ -173,70 +157,6 @@ impl Transform for FilterNode {
 	}
 }
 
-impl FilterNode {
-	/// Evaluate filter expressions on a lazy batch using column-oriented evaluation.
-	/// Returns a filter mask indicating which rows pass all filter expressions.
-	fn evaluate_filter_on_lazy<'a>(
-		&self,
-		lazy_batch: &LazyBatch,
-		ctx: &QueryContext,
-		compiled: &[CompiledExpr],
-		rx: &mut Transaction<'a>,
-	) -> Result<Option<BitVec>> {
-		// Materialize to columns for column-oriented evaluation,
-		// then decode dictionary columns so filters can compare actual values.
-		let dictionaries: Vec<Option<Dictionary>> =
-			lazy_batch.column_metas().iter().map(|m| m.dictionary.clone()).collect();
-		let mut columns = lazy_batch.clone().into_columns();
-		decode_dictionary_columns(&mut columns, &dictionaries, rx)?;
-		let row_count = columns.row_count();
-
-		if row_count == 0 {
-			return Ok(Some(BitVec::empty()));
-		}
-
-		let session = EvalSession::from_query(ctx);
-		let mut mask = BitVec::repeat(row_count, true);
-
-		for compiled_expr in compiled {
-			let exec_ctx = session.eval(columns.clone(), row_count);
-
-			let result = compiled_expr.execute(&exec_ctx)?;
-
-			match result.data() {
-				ColumnData::Bool(container) => {
-					for i in 0..row_count {
-						if mask.get(i) {
-							let valid = container.is_defined(i);
-							let filter_result = container.data().get(i);
-							mask.set(i, valid & filter_result);
-						}
-					}
-				}
-				ColumnData::Option {
-					inner,
-					bitvec,
-				} => match inner.as_ref() {
-					ColumnData::Bool(container) => {
-						for i in 0..row_count {
-							if mask.get(i) {
-								let defined = i < bitvec.len() && bitvec.get(i);
-								let valid = defined && container.is_defined(i);
-								let value = valid && container.data().get(i);
-								mask.set(i, value);
-							}
-						}
-					}
-					_ => panic!("filter expression must evaluate to a boolean column"),
-				},
-				_ => panic!("filter expression must evaluate to a boolean column"),
-			}
-		}
-
-		Ok(Some(mask))
-	}
-}
-
 pub(crate) fn resolve_is_variant_tags(
 	expr: &mut Expression,
 	source: &ResolvedShape,
@@ -247,7 +167,7 @@ pub(crate) fn resolve_is_variant_tags(
 		Expression::IsVariant(e) => {
 			let col_name = match e.expression.as_ref() {
 				Expression::Column(c) => c.0.name.text().to_string(),
-				other => other.full_fragment_owned().text().to_string(),
+				other => display_label(other).text().to_string(),
 			};
 
 			let tag_col_name = format!("{}_tag", col_name);

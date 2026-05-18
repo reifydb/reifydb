@@ -22,21 +22,21 @@ export class OutputFormatter {
 
   formatResult(result: ExecutionResult): void {
     if (!result.success) {
-      this.formatError(result.error ?? 'Unknown error', result.executionTime);
+      this.formatError(result.error ?? 'Unknown error', result.execution_time);
       return;
     }
 
     if (!result.data || result.data.length === 0) {
       this.terminal.writeln('');
       this.terminal.writeln(`${C.dim}Query executed successfully. No rows returned.${C.reset}`);
-      this.formatExecutionTime(result.executionTime);
+      this.formatExecutionTime(result.execution_time);
       return;
     }
 
-    this.formatTable(result.data, result.executionTime);
+    this.formatTable(result.data, result.execution_time);
   }
 
-  private formatTable(data: Record<string, unknown>[], executionTime: number): void {
+  private formatTable(data: Record<string, unknown>[], execution_time: number): void {
     const renderer = new TableRenderer(data, {
       maxWidth: this.displayMode === 'truncate' ? this.terminal.cols - 2 : undefined,
       truncate: this.displayMode === 'truncate',
@@ -48,20 +48,20 @@ export class OutputFormatter {
       this.terminal.writeln(line);
     }
 
-    const rowCount = data.length;
+    const row_count = data.length;
     this.terminal.writeln('');
     this.terminal.write(
-      `${C.green}${rowCount} row${rowCount !== 1 ? 's' : ''}${C.reset}`
+      `${C.green}${row_count} row${row_count !== 1 ? 's' : ''}${C.reset}`
     );
-    this.formatExecutionTime(executionTime);
+    this.formatExecutionTime(execution_time);
   }
 
-  private formatError(error: string, executionTime: number): void {
+  private formatError(error: string, execution_time: number): void {
     this.terminal.writeln('');
     for (const line of error.split('\n')) {
       this.terminal.writeln(line);
     }
-    this.formatExecutionTime(executionTime);
+    this.formatExecutionTime(execution_time);
   }
 
   private formatExecutionTime(ms: number): void {

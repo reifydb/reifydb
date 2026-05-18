@@ -7,7 +7,7 @@ pub fn take_negative_value(fragment: Fragment) -> Diagnostic {
 	let value = fragment.text();
 	Diagnostic {
 		code: "TAKE_001".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("TAKE operator requires non-negative value, got {}", value),
 		column: None,
 		fragment,
@@ -23,11 +23,10 @@ pub fn take_negative_value(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// Missing aggregate map block error
 pub fn missing_aggregate_map_block(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "AGGREGATE_001".to_string(),
-		statement: None,
+		rql: None,
 		message: "AGGREGATE operator requires at least one aggregation expression".to_string(),
 		column: None,
 		fragment,
@@ -43,11 +42,10 @@ pub fn missing_aggregate_map_block(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// Multiple aggregate map expressions without braces error
 pub fn aggregate_multiple_map_without_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "AGGREGATE_002".to_string(),
-		statement: None,
+		rql: None,
 		message: "Multiple aggregation expressions require curly braces".to_string(),
 		column: None,
 		fragment,
@@ -63,11 +61,10 @@ pub fn aggregate_multiple_map_without_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// Multiple aggregate by expressions without braces error
 pub fn aggregate_multiple_by_without_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "AGGREGATE_003".to_string(),
-		statement: None,
+		rql: None,
 		message: "Multiple grouping columns require curly braces".to_string(),
 		column: None,
 		fragment,
@@ -83,11 +80,10 @@ pub fn aggregate_multiple_by_without_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// Multiple DISTINCT columns without braces error
 pub fn distinct_multiple_columns_without_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "DISTINCT_001".to_string(),
-		statement: None,
+		rql: None,
 		message: "Multiple DISTINCT columns require curly braces".to_string(),
 		column: None,
 		fragment,
@@ -104,11 +100,10 @@ pub fn distinct_multiple_columns_without_braces(fragment: Fragment) -> Diagnosti
 	}
 }
 
-/// Multiple MAP expressions without braces error
 pub fn map_multiple_expressions_without_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "MAP_001".to_string(),
-		statement: None,
+		rql: None,
 		message: "Multiple MAP expressions require curly braces".to_string(),
 		column: None,
 		fragment,
@@ -128,11 +123,10 @@ pub fn map_multiple_expressions_without_braces(fragment: Fragment) -> Diagnostic
 	}
 }
 
-/// Multiple EXTEND expressions without braces error
 pub fn extend_multiple_expressions_without_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "EXTEND_001".to_string(),
-		statement: None,
+		rql: None,
 		message: "Multiple EXTEND expressions require curly braces".to_string(),
 		column: None,
 		fragment,
@@ -148,11 +142,10 @@ pub fn extend_multiple_expressions_without_braces(fragment: Fragment) -> Diagnos
 	}
 }
 
-/// Multiple APPLY arguments without braces error
 pub fn apply_multiple_arguments_without_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "APPLY_001".to_string(),
-		statement: None,
+		rql: None,
 		message: "Multiple APPLY arguments require curly braces".to_string(),
 		column: None,
 		fragment,
@@ -169,11 +162,10 @@ pub fn apply_multiple_arguments_without_braces(fragment: Fragment) -> Diagnostic
 	}
 }
 
-/// Missing slide parameter for sliding window error
 pub fn window_missing_slide_parameter(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "WINDOW_002".to_string(),
-		statement: None,
+		rql: None,
 		message: "Sliding windows must specify a slide parameter".to_string(),
 		column: None,
 		fragment,
@@ -189,11 +181,10 @@ pub fn window_missing_slide_parameter(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// Slide interval too large for window error
 pub fn window_slide_too_large(fragment: Fragment, slide_value: String, window_value: String) -> Diagnostic {
 	Diagnostic {
 		code: "WINDOW_003".to_string(),
-		statement: None,
+		rql: None,
 		message: format!(
 			"Slide interval ({}) must be smaller than window interval ({}) for overlapping sliding windows",
 			slide_value, window_value
@@ -214,11 +205,10 @@ pub fn window_slide_too_large(fragment: Fragment, slide_value: String, window_va
 	}
 }
 
-/// Incompatible slide type with window type error
 pub fn window_incompatible_slide_type(fragment: Fragment, window_type: String, slide_type: String) -> Diagnostic {
 	Diagnostic {
 		code: "WINDOW_004".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Incompatible slide type {} with window type {}", slide_type, window_type),
 		column: None,
 		fragment,
@@ -238,11 +228,10 @@ pub fn window_incompatible_slide_type(fragment: Fragment, window_type: String, s
 	}
 }
 
-/// Tumbling window with slide parameter error
 pub fn window_tumbling_with_slide(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "WINDOW_005".to_string(),
-		statement: None,
+		rql: None,
 		message: "Tumbling windows should not specify a slide parameter".to_string(),
 		column: None,
 		fragment,
@@ -261,11 +250,10 @@ pub fn window_tumbling_with_slide(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// Incompatible window type and size combination error
 pub fn window_incompatible_type_size(fragment: Fragment, window_type: String, size_type: String) -> Diagnostic {
 	Diagnostic {
 		code: "WINDOW_006".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Incompatible window type {} and size type {} for window", window_type, size_type),
 		column: None,
 		fragment,
@@ -283,11 +271,10 @@ pub fn window_incompatible_type_size(fragment: Fragment, window_type: String, si
 	}
 }
 
-/// Missing window type or size error
 pub fn window_missing_type_or_size(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "WINDOW_007".to_string(),
-		statement: None,
+		rql: None,
 		message: "Window type and size must be specified for window".to_string(),
 		column: None,
 		fragment,
@@ -306,11 +293,10 @@ pub fn window_missing_type_or_size(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// UPDATE missing assignments block error
 pub fn update_missing_assignments_block(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "UPDATE_001".to_string(),
-		statement: None,
+		rql: None,
 		message: "UPDATE requires an assignments block".to_string(),
 		column: None,
 		fragment,
@@ -329,11 +315,10 @@ pub fn update_missing_assignments_block(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// UPDATE empty assignments block error
 pub fn update_empty_assignments_block(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "UPDATE_002".to_string(),
-		statement: None,
+		rql: None,
 		message: "UPDATE assignments block cannot be empty".to_string(),
 		column: None,
 		fragment,
@@ -351,11 +336,10 @@ pub fn update_empty_assignments_block(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// UPDATE missing FILTER clause error
 pub fn update_missing_filter_clause(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "UPDATE_003".to_string(),
-		statement: None,
+		rql: None,
 		message: "UPDATE requires a FILTER clause".to_string(),
 		column: None,
 		fragment,
@@ -374,11 +358,10 @@ pub fn update_missing_filter_clause(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// DELETE missing target error
 pub fn delete_missing_target(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "DELETE_001".to_string(),
-		statement: None,
+		rql: None,
 		message: "DELETE requires a target table".to_string(),
 		column: None,
 		fragment,
@@ -394,11 +377,10 @@ pub fn delete_missing_target(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// DELETE missing FILTER clause error
 pub fn delete_missing_filter_clause(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "DELETE_002".to_string(),
-		statement: None,
+		rql: None,
 		message: "DELETE requires a FILTER clause".to_string(),
 		column: None,
 		fragment,
@@ -415,11 +397,10 @@ pub fn delete_missing_filter_clause(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// INSERT missing target error
 pub fn insert_missing_target(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "INSERT_001".to_string(),
-		statement: None,
+		rql: None,
 		message: "INSERT requires a target table".to_string(),
 		column: None,
 		fragment,
@@ -436,11 +417,10 @@ pub fn insert_missing_target(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// INSERT missing data source error
 pub fn insert_missing_source(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "INSERT_002".to_string(),
-		statement: None,
+		rql: None,
 		message: "INSERT requires a data source".to_string(),
 		column: None,
 		fragment,
@@ -459,7 +439,7 @@ pub fn insert_missing_source(fragment: Fragment) -> Diagnostic {
 pub fn insert_mixed_row_types(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "INSERT_003".to_string(),
-		statement: None,
+		rql: None,
 		message: "Cannot mix keyed {key: value} and positional (value, ...) rows in the same INSERT".to_string(),
 		column: None,
 		fragment,
@@ -483,7 +463,7 @@ pub fn insert_positional_wrong_length(
 ) -> Diagnostic {
 	Diagnostic {
 		code: "INSERT_004".to_string(),
-		statement: None,
+		rql: None,
 		message: format!("Positional INSERT expects {} values (one per column), got {}", expected, actual),
 		column: None,
 		fragment,
@@ -498,11 +478,10 @@ pub fn insert_positional_wrong_length(
 	}
 }
 
-/// SORT missing braces error
 pub fn sort_missing_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "SORT_001".to_string(),
-		statement: None,
+		rql: None,
 		message: "SORT requires curly braces around columns".to_string(),
 		column: None,
 		fragment,
@@ -518,11 +497,10 @@ pub fn sort_missing_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// MAP missing braces error
 pub fn map_missing_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "MAP_002".to_string(),
-		statement: None,
+		rql: None,
 		message: "MAP requires curly braces around expressions".to_string(),
 		column: None,
 		fragment,
@@ -537,11 +515,10 @@ pub fn map_missing_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// FILTER missing braces error
 pub fn filter_missing_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "FILTER_001".to_string(),
-		statement: None,
+		rql: None,
 		message: "FILTER requires curly braces around the condition".to_string(),
 		column: None,
 		fragment,
@@ -556,11 +533,10 @@ pub fn filter_missing_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// EXTEND missing braces error
 pub fn extend_missing_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "EXTEND_002".to_string(),
-		statement: None,
+		rql: None,
 		message: "EXTEND requires curly braces around expressions".to_string(),
 		column: None,
 		fragment,
@@ -575,11 +551,10 @@ pub fn extend_missing_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// PATCH missing braces error
 pub fn patch_missing_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "PATCH_001".to_string(),
-		statement: None,
+		rql: None,
 		message: "PATCH requires curly braces around expressions".to_string(),
 		column: None,
 		fragment,
@@ -594,11 +569,10 @@ pub fn patch_missing_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// DISTINCT missing braces error
 pub fn distinct_missing_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "DISTINCT_002".to_string(),
-		statement: None,
+		rql: None,
 		message: "DISTINCT requires curly braces around columns".to_string(),
 		column: None,
 		fragment,
@@ -616,11 +590,10 @@ pub fn distinct_missing_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// APPLY missing braces error
 pub fn apply_missing_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "APPLY_002".to_string(),
-		statement: None,
+		rql: None,
 		message: "APPLY requires curly braces around arguments".to_string(),
 		column: None,
 		fragment,
@@ -636,11 +609,10 @@ pub fn apply_missing_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// TAKE missing braces error
 pub fn take_missing_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "TAKE_002".to_string(),
-		statement: None,
+		rql: None,
 		message: "TAKE requires curly braces around the limit".to_string(),
 		column: None,
 		fragment,
@@ -656,11 +628,10 @@ pub fn take_missing_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// AGGREGATE missing braces error for projections
 pub fn aggregate_missing_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "AGGREGATE_004".to_string(),
-		statement: None,
+		rql: None,
 		message: "AGGREGATE requires curly braces around aggregation expressions".to_string(),
 		column: None,
 		fragment,
@@ -676,11 +647,10 @@ pub fn aggregate_missing_braces(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-/// AGGREGATE BY missing braces error
 pub fn aggregate_by_missing_braces(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "AGGREGATE_005".to_string(),
-		statement: None,
+		rql: None,
 		message: "AGGREGATE BY requires curly braces around grouping columns".to_string(),
 		column: None,
 		fragment,

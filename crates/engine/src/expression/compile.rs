@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::slice::from_ref;
+use std::{mem::discriminant, slice::from_ref};
 
-use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
-use reifydb_rql::expression::Expression;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_type::{
-	error::{BinaryOp, Error, IntoDiagnostic, LogicalOp, OperandCategory, RuntimeErrorKind, TypeError},
+	error::{BinaryOp, Error, IntoDiagnostic, LogicalOp, RuntimeErrorKind, TypeError},
 	fragment::Fragment,
 	value::{Value, r#type::Type},
 };
@@ -21,11 +21,12 @@ use crate::{
 	expression::{
 		access::access_lookup,
 		arith::{add::add_columns, div::div_columns, mul::mul_columns, rem::rem_columns, sub::sub_columns},
-		call::call_eval_with_args,
+		call::call_builtin,
 		cast::cast_column_data,
 		compare::{Equal, GreaterThan, GreaterThanEqual, LessThan, LessThanEqual, NotEqual, compare_columns},
 		constant::{constant_value, constant_value_of},
 		context::EvalContext,
+		logic::{execute_logical_op, try_short_circuit_and, try_short_circuit_or},
 		lookup::column_lookup,
 		parameter::parameter_lookup,
 		prefix::prefix_apply,
@@ -33,8 +34,8 @@ use crate::{
 	vm::stack::Variable,
 };
 
-type SingleExprFn = Box<dyn Fn(&EvalContext) -> Result<Column> + Send + Sync>;
-type MultiExprFn = Box<dyn Fn(&EvalContext) -> Result<Vec<Column>> + Send + Sync>;
+type SingleExprFn = Box<dyn Fn(&EvalContext) -> Result<ColumnWithName> + Send + Sync>;
+type MultiExprFn = Box<dyn Fn(&EvalContext) -> Result<Vec<ColumnWithName>> + Send + Sync>;
 
 pub struct CompiledExpr {
 	inner: CompiledExprInner,
@@ -47,21 +48,24 @@ enum CompiledExprInner {
 }
 
 impl CompiledExpr {
-	pub fn new(f: impl Fn(&EvalContext) -> Result<Column> + Send + Sync + 'static) -> Self {
+	pub fn new(f: impl Fn(&EvalContext) -> Result<ColumnWithName> + Send + Sync + 'static) -> Self {
 		Self {
 			inner: CompiledExprInner::Single(Box::new(f)),
 			access_column_name: None,
 		}
 	}
 
-	pub fn new_multi(f: impl Fn(&EvalContext) -> Result<Vec<Column>> + Send + Sync + 'static) -> Self {
+	pub fn new_multi(f: impl Fn(&EvalContext) -> Result<Vec<ColumnWithName>> + Send + Sync + 'static) -> Self {
 		Self {
 			inner: CompiledExprInner::Multi(Box::new(f)),
 			access_column_name: None,
 		}
 	}
 
-	pub fn new_access(name: String, f: impl Fn(&EvalContext) -> Result<Column> + Send + Sync + 'static) -> Self {
+	pub fn new_access(
+		name: String,
+		f: impl Fn(&EvalContext) -> Result<ColumnWithName> + Send + Sync + 'static,
+	) -> Self {
 		Self {
 			inner: CompiledExprInner::Single(Box::new(f)),
 			access_column_name: Some(name),
@@ -72,20 +76,20 @@ impl CompiledExpr {
 		self.access_column_name.as_deref()
 	}
 
-	pub fn execute(&self, ctx: &EvalContext) -> Result<Column> {
+	pub fn execute(&self, ctx: &EvalContext) -> Result<ColumnWithName> {
 		match &self.inner {
 			CompiledExprInner::Single(f) => f(ctx),
 			CompiledExprInner::Multi(f) => {
 				let columns = f(ctx)?;
-				Ok(columns.into_iter().next().unwrap_or_else(|| Column {
+				Ok(columns.into_iter().next().unwrap_or_else(|| ColumnWithName {
 					name: Fragment::internal("none"),
-					data: ColumnData::with_capacity(Type::Option(Box::new(Type::Boolean)), 0),
+					data: ColumnBuffer::with_capacity(Type::Option(Box::new(Type::Boolean)), 0),
 				}))
 			}
 		}
 	}
 
-	pub fn execute_multi(&self, ctx: &EvalContext) -> Result<Vec<Column>> {
+	pub fn execute_multi(&self, ctx: &EvalContext) -> Result<Vec<ColumnWithName>> {
 		match &self.inner {
 			CompiledExprInner::Single(f) => Ok(vec![f(ctx)?]),
 			CompiledExprInner::Multi(f) => f(ctx),
@@ -94,27 +98,31 @@ impl CompiledExpr {
 }
 
 macro_rules! compile_arith {
-	($ctx:expr, $e:expr, $op_fn:path) => {{
+	($ctx:expr, $parent:expr, $e:expr, $op_fn:path) => {{
 		let left = compile_expression($ctx, &$e.left)?;
 		let right = compile_expression($ctx, &$e.right)?;
 		let fragment = $e.full_fragment_owned();
+		let label = display_label($parent);
 		CompiledExpr::new(move |ctx| {
 			let l = left.execute(ctx)?;
 			let r = right.execute(ctx)?;
-			$op_fn(ctx, &l, &r, || fragment.clone())
+			let mut col = $op_fn(ctx, &l, &r, || fragment.clone())?;
+			col.name = label.clone();
+			Ok(col)
 		})
 	}};
 }
 
 macro_rules! compile_compare {
-	($ctx:expr, $e:expr, $cmp_type:ty, $binary_op:expr) => {{
+	($ctx:expr, $parent:expr, $e:expr, $cmp_type:ty, $binary_op:expr) => {{
 		let left = compile_expression($ctx, &$e.left)?;
 		let right = compile_expression($ctx, &$e.right)?;
 		let fragment = $e.full_fragment_owned();
+		let label = display_label($parent);
 		CompiledExpr::new(move |ctx| {
 			let l = left.execute(ctx)?;
 			let r = right.execute(ctx)?;
-			compare_columns::<$cmp_type>(&l, &r, fragment.clone(), |f, l, r| {
+			let mut col = compare_columns::<$cmp_type>(&l, &r, fragment.clone(), |f, l, r| {
 				TypeError::BinaryOperatorNotApplicable {
 					operator: $binary_op,
 					left: l,
@@ -122,23 +130,23 @@ macro_rules! compile_compare {
 					fragment: f,
 				}
 				.into_diagnostic()
-			})
+			})?;
+			col.name = label.clone();
+			Ok(col)
 		})
 	}};
 }
 
-/// Compile an `Expression` into a `CompiledExpr`.
-///
-/// All execution logic is baked into closures at compile time — no match dispatch at runtime.
 pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<CompiledExpr> {
 	Ok(match expr {
 		Expression::Constant(e) => {
-			let expr = e.clone();
+			let constant = e.clone();
+			let label = display_label(expr);
 			CompiledExpr::new(move |ctx| {
 				let row_count = ctx.take.unwrap_or(ctx.row_count);
-				Ok(Column {
-					name: expr.full_fragment_owned(),
-					data: constant_value(&expr, row_count)?,
+				Ok(ColumnWithName {
+					name: label.clone(),
+					data: constant_value(&constant, row_count)?,
 				})
 			})
 		}
@@ -167,19 +175,23 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 				}
 
 				match ctx.symbols.get(variable_name) {
-					Some(Variable::Scalar(columns)) => {
+					Some(Variable::Columns {
+						columns,
+					}) if columns.is_scalar() => {
 						let value = columns.scalar_value();
 						let mut data =
-							ColumnData::with_capacity(value.get_type(), ctx.row_count);
+							ColumnBuffer::with_capacity(value.get_type(), ctx.row_count);
 						for _ in 0..ctx.row_count {
 							data.push_value(value.clone());
 						}
-						Ok(Column {
+						Ok(ColumnWithName {
 							name: Fragment::internal(variable_name),
 							data,
 						})
 					}
-					Some(Variable::Columns(_))
+					Some(Variable::Columns {
+						..
+					})
 					| Some(Variable::ForIterator {
 						..
 					})
@@ -194,16 +206,15 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					}
 					.into()),
 					None => {
-						// Fallback: check named params (for remote pushdown)
 						if let Some(value) = ctx.params.get_named(variable_name) {
-							let mut data = ColumnData::with_capacity(
+							let mut data = ColumnBuffer::with_capacity(
 								value.get_type(),
 								ctx.row_count,
 							);
 							for _ in 0..ctx.row_count {
 								data.push_value(value.clone());
 							}
-							return Ok(Column {
+							return Ok(ColumnWithName {
 								name: Fragment::internal(variable_name),
 								data,
 							});
@@ -235,29 +246,36 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			})
 		}
 
-		Expression::Add(e) => compile_arith!(_ctx, e, add_columns),
-		Expression::Sub(e) => compile_arith!(_ctx, e, sub_columns),
-		Expression::Mul(e) => compile_arith!(_ctx, e, mul_columns),
-		Expression::Div(e) => compile_arith!(_ctx, e, div_columns),
-		Expression::Rem(e) => compile_arith!(_ctx, e, rem_columns),
+		Expression::Add(e) => compile_arith!(_ctx, expr, e, add_columns),
+		Expression::Sub(e) => compile_arith!(_ctx, expr, e, sub_columns),
+		Expression::Mul(e) => compile_arith!(_ctx, expr, e, mul_columns),
+		Expression::Div(e) => compile_arith!(_ctx, expr, e, div_columns),
+		Expression::Rem(e) => compile_arith!(_ctx, expr, e, rem_columns),
 
-		Expression::Equal(e) => compile_compare!(_ctx, e, Equal, BinaryOp::Equal),
-		Expression::NotEqual(e) => compile_compare!(_ctx, e, NotEqual, BinaryOp::NotEqual),
-		Expression::GreaterThan(e) => compile_compare!(_ctx, e, GreaterThan, BinaryOp::GreaterThan),
+		Expression::Equal(e) => compile_compare!(_ctx, expr, e, Equal, BinaryOp::Equal),
+		Expression::NotEqual(e) => compile_compare!(_ctx, expr, e, NotEqual, BinaryOp::NotEqual),
+		Expression::GreaterThan(e) => compile_compare!(_ctx, expr, e, GreaterThan, BinaryOp::GreaterThan),
 		Expression::GreaterThanEqual(e) => {
-			compile_compare!(_ctx, e, GreaterThanEqual, BinaryOp::GreaterThanEqual)
+			compile_compare!(_ctx, expr, e, GreaterThanEqual, BinaryOp::GreaterThanEqual)
 		}
-		Expression::LessThan(e) => compile_compare!(_ctx, e, LessThan, BinaryOp::LessThan),
-		Expression::LessThanEqual(e) => compile_compare!(_ctx, e, LessThanEqual, BinaryOp::LessThanEqual),
+		Expression::LessThan(e) => compile_compare!(_ctx, expr, e, LessThan, BinaryOp::LessThan),
+		Expression::LessThanEqual(e) => compile_compare!(_ctx, expr, e, LessThanEqual, BinaryOp::LessThanEqual),
 
 		Expression::And(e) => {
 			let left = compile_expression(_ctx, &e.left)?;
 			let right = compile_expression(_ctx, &e.right)?;
 			let fragment = e.full_fragment_owned();
+			let label = display_label(expr);
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
+				if let Some(mut short) = try_short_circuit_and(&l, &fragment, l.data().len()) {
+					short.name = label.clone();
+					return Ok(short);
+				}
 				let r = right.execute(ctx)?;
-				execute_logical_op(&l, &r, &fragment, LogicalOp::And, |a, b| a && b)
+				let mut col = execute_logical_op(&l, &r, &fragment, LogicalOp::And, |a, b| a && b)?;
+				col.name = label.clone();
+				Ok(col)
 			})
 		}
 
@@ -265,10 +283,17 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			let left = compile_expression(_ctx, &e.left)?;
 			let right = compile_expression(_ctx, &e.right)?;
 			let fragment = e.full_fragment_owned();
+			let label = display_label(expr);
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
+				if let Some(mut short) = try_short_circuit_or(&l, &fragment, l.data().len()) {
+					short.name = label.clone();
+					return Ok(short);
+				}
 				let r = right.execute(ctx)?;
-				execute_logical_op(&l, &r, &fragment, LogicalOp::Or, |a, b| a || b)
+				let mut col = execute_logical_op(&l, &r, &fragment, LogicalOp::Or, |a, b| a || b)?;
+				col.name = label.clone();
+				Ok(col)
 			})
 		}
 
@@ -276,10 +301,13 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			let left = compile_expression(_ctx, &e.left)?;
 			let right = compile_expression(_ctx, &e.right)?;
 			let fragment = e.full_fragment_owned();
+			let label = display_label(expr);
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				execute_logical_op(&l, &r, &fragment, LogicalOp::Xor, |a, b| a != b)
+				let mut col = execute_logical_op(&l, &r, &fragment, LogicalOp::Xor, |a, b| a != b)?;
+				col.name = label.clone();
+				Ok(col)
 			})
 		}
 
@@ -287,9 +315,12 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			let inner = compile_expression(_ctx, &e.expression)?;
 			let operator = e.operator.clone();
 			let fragment = e.full_fragment_owned();
+			let label = display_label(expr);
 			CompiledExpr::new(move |ctx| {
 				let column = inner.execute(ctx)?;
-				prefix_apply(&column, &operator, &fragment)
+				let mut col = prefix_apply(&column, &operator, &fragment)?;
+				col.name = label.clone();
+				Ok(col)
 			})
 		}
 
@@ -300,7 +331,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 				let row_count = ctx.take.unwrap_or(ctx.row_count);
 				let values: Vec<Box<Value>> =
 					(0..row_count).map(|_| Box::new(Value::Type(ty.clone()))).collect();
-				Ok(Column::new(fragment.text(), ColumnData::any(values)))
+				Ok(ColumnWithName::new(fragment.text(), ColumnBuffer::any(values)))
 			})
 		}
 
@@ -322,7 +353,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					.collect::<Result<Vec<_>>>()?;
 				let fragment = e.fragment.clone();
 				CompiledExpr::new(move |ctx| {
-					let columns: Vec<Column> = compiled
+					let columns: Vec<ColumnWithName> = compiled
 						.iter()
 						.map(|expr| expr.execute(ctx))
 						.collect::<Result<Vec<_>>>()?;
@@ -336,10 +367,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 						data.push(Box::new(Value::Tuple(items)));
 					}
 
-					Ok(Column {
-						name: fragment.clone(),
-						data: ColumnData::any(data),
-					})
+					Ok(ColumnWithName::new(fragment.clone(), ColumnBuffer::any(data)))
 				})
 			}
 		}
@@ -352,7 +380,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 				.collect::<Result<Vec<_>>>()?;
 			let fragment = e.fragment.clone();
 			CompiledExpr::new(move |ctx| {
-				let columns: Vec<Column> =
+				let columns: Vec<ColumnWithName> =
 					compiled.iter().map(|expr| expr.execute(ctx)).collect::<Result<Vec<_>>>()?;
 
 				let len = columns.first().map_or(1, |c| c.data().len());
@@ -364,10 +392,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					data.push(Box::new(Value::List(items)));
 				}
 
-				Ok(Column {
-					name: fragment.clone(),
-					data: ColumnData::any(data),
-				})
+				Ok(ColumnWithName::new(fragment.clone(), ColumnBuffer::any(data)))
 			})
 		}
 
@@ -410,8 +435,8 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					},
 				)?;
 
-				if !matches!(ge_result.data(), ColumnData::Bool(_))
-					|| !matches!(le_result.data(), ColumnData::Bool(_))
+				if !matches!(ge_result.data(), ColumnBuffer::Bool(_))
+					|| !matches!(le_result.data(), ColumnBuffer::Bool(_))
 				{
 					return Err(TypeError::BinaryOperatorNotApplicable {
 						operator: BinaryOp::Between,
@@ -423,7 +448,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 				}
 
 				match (ge_result.data(), le_result.data()) {
-					(ColumnData::Bool(ge_container), ColumnData::Bool(le_container)) => {
+					(ColumnBuffer::Bool(ge_container), ColumnBuffer::Bool(le_container)) => {
 						let mut data = Vec::with_capacity(ge_container.len());
 						let mut bitvec = Vec::with_capacity(ge_container.len());
 
@@ -438,9 +463,9 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 							}
 						}
 
-						Ok(Column {
+						Ok(ColumnWithName {
 							name: fragment.clone(),
-							data: ColumnData::bool_with_bitvec(data, bitvec),
+							data: ColumnBuffer::bool_with_bitvec(data, bitvec),
 						})
 					}
 					_ => unreachable!(
@@ -468,10 +493,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					let value_col = value.execute(ctx)?;
 					let len = value_col.data().len();
 					let result = vec![negated; len];
-					return Ok(Column {
-						name: fragment.clone(),
-						data: ColumnData::bool(result),
-					});
+					return Ok(ColumnWithName::new(fragment.clone(), ColumnBuffer::bool(result)));
 				}
 
 				let value_col = value.execute(ctx)?;
@@ -536,17 +558,12 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			CompiledExpr::new(move |ctx| {
 				let value_col = value.execute(ctx)?;
 
-				// Empty list → vacuous truth (all elements trivially contained)
 				if list.is_empty() {
 					let len = value_col.data().len();
 					let result = vec![true; len];
-					return Ok(Column {
-						name: fragment.clone(),
-						data: ColumnData::bool(result),
-					});
+					return Ok(ColumnWithName::new(fragment.clone(), ColumnBuffer::bool(result)));
 				}
 
-				// For each list element, check if it's contained in the set value
 				let first_col = list[0].execute(ctx)?;
 				let mut result = list_contains_element(&value_col, &first_col, &fragment)?;
 
@@ -566,6 +583,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 		}
 
 		Expression::Cast(e) => {
+			let label = display_label(expr);
 			if let Expression::Constant(const_expr) = e.expression.as_ref() {
 				let const_expr = const_expr.clone();
 				let target_type = e.to.ty.clone();
@@ -577,10 +595,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					} else {
 						constant_value_of(&const_expr, target_type.clone(), row_count)?
 					};
-					Ok(Column {
-						name: const_expr.full_fragment_owned(),
-						data: casted,
-					})
+					Ok(ColumnWithName::new(label.clone(), casted))
 				})
 			} else {
 				let inner = compile_expression(_ctx, &e.expression)?;
@@ -599,10 +614,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 							cause: e.diagnostic(),
 						})
 					})?;
-					Ok(Column {
-						name: column.name_owned(),
-						data: casted,
-					})
+					Ok(ColumnWithName::new(label.clone(), casted))
 				})
 			}
 		}
@@ -650,7 +662,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					arg_columns.push(compiled_arg.execute(ctx)?);
 				}
 				let arguments = Columns::new(arg_columns);
-				call_eval_with_args(ctx, &expr, arguments, ctx.functions)
+				call_builtin(ctx, &expr, arguments)
 			})
 		}
 
@@ -663,7 +675,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 		Expression::IsVariant(e) => {
 			let col_name = match e.expression.as_ref() {
 				Expression::Column(c) => c.0.name.text().to_string(),
-				other => other.full_fragment_owned().text().to_string(),
+				other => display_label(other).text().to_string(),
 			};
 			let tag_col_name = format!("{}_tag", col_name);
 			let tag = e.tag.expect("IS variant tag must be resolved before compilation");
@@ -673,26 +685,26 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					ctx.columns.iter().find(|c| c.name().text() == tag_col_name.as_str())
 				{
 					match tag_col.data() {
-						ColumnData::Uint1(container) => {
+						ColumnBuffer::Uint1(container) => {
 							let results: Vec<bool> = container
 								.iter()
 								.take(ctx.row_count)
 								.map(|v| v == Some(tag))
 								.collect();
-							Ok(Column {
-								name: fragment.clone(),
-								data: ColumnData::bool(results),
-							})
+							Ok(ColumnWithName::new(
+								fragment.clone(),
+								ColumnBuffer::bool(results),
+							))
 						}
-						_ => Ok(Column {
+						_ => Ok(ColumnWithName {
 							name: fragment.clone(),
-							data: ColumnData::none_typed(Type::Boolean, ctx.row_count),
+							data: ColumnBuffer::none_typed(Type::Boolean, ctx.row_count),
 						}),
 					}
 				} else {
-					Ok(Column {
+					Ok(ColumnWithName {
 						name: fragment.clone(),
-						data: ColumnData::none_typed(Type::Boolean, ctx.row_count),
+						data: ColumnBuffer::none_typed(Type::Boolean, ctx.row_count),
 					})
 				}
 			})
@@ -700,7 +712,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 
 		Expression::FieldAccess(e) => {
 			let field_name = e.field.text().to_string();
-			// Extract variable name at compile time if the object is a variable
+
 			let var_name = match e.object.as_ref() {
 				Expression::Variable(var_expr) => Some(var_expr.name().to_string()),
 				_ => None,
@@ -709,33 +721,35 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			CompiledExpr::new(move |ctx| {
 				if let Some(ref variable_name) = var_name {
 					match ctx.symbols.get(variable_name) {
-						Some(Variable::Columns(columns)) => {
-							let col = columns
-								.columns
+						Some(Variable::Columns {
+							columns,
+						}) if !columns.is_scalar() => {
+							let col_pos = columns
+								.names
 								.iter()
-								.find(|c| c.name.text() == field_name);
-							match col {
-								Some(col) => {
-									let value = col.data.get_value(0);
+								.position(|n| n.text() == field_name);
+							match col_pos {
+								Some(pos) => {
+									let value = columns.columns[pos].get_value(0);
 									let row_count =
 										ctx.take.unwrap_or(ctx.row_count);
-									let mut data = ColumnData::with_capacity(
+									let mut data = ColumnBuffer::with_capacity(
 										value.get_type(),
 										row_count,
 									);
 									for _ in 0..row_count {
 										data.push_value(value.clone());
 									}
-									Ok(Column {
+									Ok(ColumnWithName {
 										name: Fragment::internal(&field_name),
 										data,
 									})
 								}
 								None => {
 									let available: Vec<String> = columns
-										.columns
+										.names
 										.iter()
-										.map(|c| c.name.text().to_string())
+										.map(|n| n.text().to_string())
 										.collect();
 									Err(TypeError::Runtime {
 										kind: RuntimeErrorKind::FieldNotFound {
@@ -753,20 +767,21 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 								}
 							}
 						}
-						Some(Variable::Scalar(_)) | Some(Variable::Closure(_)) => {
-							Err(TypeError::Runtime {
-								kind: RuntimeErrorKind::FieldNotFound {
-									variable: variable_name.to_string(),
-									field: field_name.to_string(),
-									available: vec![],
-								},
-								message: format!(
-									"Field '{}' not found on variable '{}'",
-									field_name, variable_name
-								),
-							}
-							.into())
+						Some(Variable::Columns {
+							..
+						})
+						| Some(Variable::Closure(_)) => Err(TypeError::Runtime {
+							kind: RuntimeErrorKind::FieldNotFound {
+								variable: variable_name.to_string(),
+								field: field_name.to_string(),
+								available: vec![],
+							},
+							message: format!(
+								"Field '{}' not found on variable '{}'",
+								field_name, variable_name
+							),
 						}
+						.into()),
 						Some(Variable::ForIterator {
 							..
 						}) => Err(TypeError::Runtime {
@@ -788,7 +803,6 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 						.into()),
 					}
 				} else {
-					// For non-variable objects, evaluate the object and try to interpret result
 					let _obj_col = object.execute(ctx)?;
 					Err(TypeError::Runtime {
 						kind: RuntimeErrorKind::FieldNotFound {
@@ -812,57 +826,14 @@ fn compile_expressions(ctx: &CompileContext, exprs: &[Expression]) -> Result<Vec
 	exprs.iter().map(|e| compile_expression(ctx, e)).collect()
 }
 
-fn execute_logical_op(
-	left: &Column,
-	right: &Column,
-	fragment: &Fragment,
-	logical_op: LogicalOp,
-	bool_fn: fn(bool, bool) -> bool,
-) -> Result<Column> {
-	binary_op_unwrap_option(left, right, fragment.clone(), |left, right| match (&left.data(), &right.data()) {
-		(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
-			let data: Vec<bool> = l_container
-				.data()
-				.iter()
-				.zip(r_container.data().iter())
-				.map(|(l_val, r_val)| bool_fn(l_val, r_val))
-				.collect();
-
-			Ok(Column {
-				name: fragment.clone(),
-				data: ColumnData::bool(data),
-			})
-		}
-		(l, r) => {
-			let category = if l.is_number() || r.is_number() {
-				OperandCategory::Number
-			} else if l.is_text() || r.is_text() {
-				OperandCategory::Text
-			} else if l.is_temporal() || r.is_temporal() {
-				OperandCategory::Temporal
-			} else if l.is_uuid() || r.is_uuid() {
-				OperandCategory::Uuid
-			} else {
-				unimplemented!("{} {:?} {}", l.get_type(), logical_op, r.get_type());
-			};
-			Err(TypeError::LogicalOperatorNotApplicable {
-				operator: logical_op.clone(),
-				operand_category: category,
-				fragment: fragment.clone(),
-			}
-			.into())
-		}
-	})
-}
-
 fn combine_bool_columns(
-	left: Column,
-	right: Column,
+	left: ColumnWithName,
+	right: ColumnWithName,
 	fragment: Fragment,
 	combine_fn: fn(bool, bool) -> bool,
-) -> Result<Column> {
+) -> Result<ColumnWithName> {
 	binary_op_unwrap_option(&left, &right, fragment.clone(), |left, right| match (left.data(), right.data()) {
-		(ColumnData::Bool(l), ColumnData::Bool(r)) => {
+		(ColumnBuffer::Bool(l), ColumnBuffer::Bool(r)) => {
 			let len = l.len();
 			let mut data = Vec::with_capacity(len);
 			let mut bitvec = Vec::with_capacity(len);
@@ -882,9 +853,9 @@ fn combine_bool_columns(
 				}
 			}
 
-			Ok(Column {
+			Ok(ColumnWithName {
 				name: fragment.clone(),
-				data: ColumnData::bool_with_bitvec(data, bitvec),
+				data: ColumnBuffer::bool_with_bitvec(data, bitvec),
 			})
 		}
 		_ => {
@@ -894,18 +865,37 @@ fn combine_bool_columns(
 }
 
 fn list_items_contain(items: &[Value], element: &Value, fragment: &Fragment) -> bool {
+	if items.iter().any(|item| item == element) {
+		return true;
+	}
+	if items.is_empty() {
+		return false;
+	}
+
+	if let Some(items_buf) = build_homogeneous_buffer(items) {
+		let elems_buf = ColumnBuffer::from_many(element.clone(), items.len());
+		let items_col = ColumnWithName::new(fragment.clone(), items_buf);
+		let elems_col = ColumnWithName::new(fragment.clone(), elems_buf);
+		return compare_columns::<Equal>(&items_col, &elems_col, fragment.clone(), |f, l, r| {
+			TypeError::BinaryOperatorNotApplicable {
+				operator: BinaryOp::Equal,
+				left: l,
+				right: r,
+				fragment: f,
+			}
+			.into_diagnostic()
+		})
+		.map(|c| bool_column_has_true(&c))
+		.unwrap_or(false);
+	}
+
+	list_items_contain_per_item(items, element, fragment)
+}
+
+fn list_items_contain_per_item(items: &[Value], element: &Value, fragment: &Fragment) -> bool {
 	items.iter().any(|item| {
-		if item == element {
-			return true;
-		}
-		let item_col = Column {
-			name: fragment.clone(),
-			data: ColumnData::from(item.clone()),
-		};
-		let elem_col = Column {
-			name: fragment.clone(),
-			data: ColumnData::from(element.clone()),
-		};
+		let item_col = ColumnWithName::new(fragment.clone(), ColumnBuffer::from(item.clone()));
+		let elem_col = ColumnWithName::new(fragment.clone(), ColumnBuffer::from(element.clone()));
 		compare_columns::<Equal>(&item_col, &elem_col, fragment.clone(), |f, l, r| {
 			TypeError::BinaryOperatorNotApplicable {
 				operator: BinaryOp::Equal,
@@ -917,14 +907,87 @@ fn list_items_contain(items: &[Value], element: &Value, fragment: &Fragment) -> 
 		})
 		.ok()
 		.and_then(|c| match c.data() {
-			ColumnData::Bool(b) => Some(b.data().get(0)),
+			ColumnBuffer::Bool(b) => Some(b.data().get(0)),
 			_ => None,
 		})
 		.unwrap_or(false)
 	})
 }
 
-fn list_contains_element(list_col: &Column, element_col: &Column, fragment: &Fragment) -> Result<Column> {
+fn bool_column_has_true(col: &ColumnWithName) -> bool {
+	match col.data() {
+		ColumnBuffer::Bool(b) => b.data().any(),
+		ColumnBuffer::Option {
+			inner,
+			bitvec,
+		} => match inner.as_ref() {
+			ColumnBuffer::Bool(b) => {
+				let n = bitvec.len().min(b.len());
+				(0..n).any(|i| bitvec.get(i) && b.data().get(i))
+			}
+			_ => false,
+		},
+		_ => false,
+	}
+}
+
+fn build_homogeneous_buffer(items: &[Value]) -> Option<ColumnBuffer> {
+	let first = items.first()?;
+	let first_disc = discriminant(first);
+	if !items.iter().all(|v| discriminant(v) == first_disc) {
+		return None;
+	}
+
+	macro_rules! collect {
+		($variant:ident, $constructor:ident, |$x:ident| $convert:expr) => {{
+			let data: Vec<_> = items
+				.iter()
+				.map(|v| match v {
+					Value::$variant($x) => $convert,
+					_ => unreachable!("homogeneous check guarantees variant"),
+				})
+				.collect();
+			Some(ColumnBuffer::$constructor(data))
+		}};
+	}
+
+	match first {
+		Value::Boolean(_) => collect!(Boolean, bool, |x| *x),
+		Value::Float4(_) => collect!(Float4, float4, |x| x.value()),
+		Value::Float8(_) => collect!(Float8, float8, |x| x.value()),
+		Value::Int1(_) => collect!(Int1, int1, |x| *x),
+		Value::Int2(_) => collect!(Int2, int2, |x| *x),
+		Value::Int4(_) => collect!(Int4, int4, |x| *x),
+		Value::Int8(_) => collect!(Int8, int8, |x| *x),
+		Value::Int16(_) => collect!(Int16, int16, |x| *x),
+		Value::Uint1(_) => collect!(Uint1, uint1, |x| *x),
+		Value::Uint2(_) => collect!(Uint2, uint2, |x| *x),
+		Value::Uint4(_) => collect!(Uint4, uint4, |x| *x),
+		Value::Uint8(_) => collect!(Uint8, uint8, |x| *x),
+		Value::Uint16(_) => collect!(Uint16, uint16, |x| *x),
+		Value::Utf8(_) => collect!(Utf8, utf8, |x| x.clone()),
+		Value::Date(_) => collect!(Date, date, |x| *x),
+		Value::DateTime(_) => collect!(DateTime, datetime, |x| *x),
+		Value::Time(_) => collect!(Time, time, |x| *x),
+		Value::Duration(_) => collect!(Duration, duration, |x| *x),
+		Value::Uuid4(_) => collect!(Uuid4, uuid4, |x| *x),
+		Value::Uuid7(_) => collect!(Uuid7, uuid7, |x| *x),
+		Value::IdentityId(_) => collect!(IdentityId, identity_id, |x| *x),
+		Value::Blob(_) => collect!(Blob, blob, |x| x.clone()),
+		Value::Int(_) => collect!(Int, int, |x| x.clone()),
+		Value::Uint(_) => collect!(Uint, uint, |x| x.clone()),
+		Value::Decimal(_) => collect!(Decimal, decimal, |x| x.clone()),
+		Value::DictionaryId(_) => collect!(DictionaryId, dictionary_id, |x| *x),
+
+		_ => None,
+	}
+}
+
+fn list_contains_element(
+	list_col: &ColumnWithName,
+	element_col: &ColumnWithName,
+	fragment: &Fragment,
+) -> Result<ColumnWithName> {
 	let len = list_col.data().len();
 	let mut data = Vec::with_capacity(len);
 
@@ -945,15 +1008,12 @@ fn list_contains_element(list_col: &Column, element_col: &Column, fragment: &Fra
 		data.push(contained);
 	}
 
-	Ok(Column {
-		name: fragment.clone(),
-		data: ColumnData::bool(data),
-	})
+	Ok(ColumnWithName::new(fragment.clone(), ColumnBuffer::bool(data)))
 }
 
-fn negate_column(col: Column, fragment: Fragment) -> Column {
+fn negate_column(col: ColumnWithName, fragment: Fragment) -> ColumnWithName {
 	unary_op_unwrap_option(&col, |col| match col.data() {
-		ColumnData::Bool(container) => {
+		ColumnBuffer::Bool(container) => {
 			let len = container.len();
 			let mut data = Vec::with_capacity(len);
 			let mut bitvec = Vec::with_capacity(len);
@@ -968,9 +1028,9 @@ fn negate_column(col: Column, fragment: Fragment) -> Column {
 				}
 			}
 
-			Ok(Column {
+			Ok(ColumnWithName {
 				name: fragment.clone(),
-				data: ColumnData::bool_with_bitvec(data, bitvec),
+				data: ColumnBuffer::bool_with_bitvec(data, bitvec),
 			})
 		}
 		_ => unreachable!("negate_column should only be called with boolean columns"),
@@ -1001,10 +1061,10 @@ fn execute_if_multi(
 	else_ifs: &[(CompiledExpr, Vec<CompiledExpr>)],
 	else_branch: &Option<Vec<CompiledExpr>>,
 	_fragment: &Fragment,
-) -> Result<Vec<Column>> {
+) -> Result<Vec<ColumnWithName>> {
 	let condition_column = condition.execute(ctx)?;
 
-	let mut result_data: Option<Vec<ColumnData>> = None;
+	let mut result_data: Option<Vec<ColumnBuffer>> = None;
 	let mut result_names: Vec<Fragment> = Vec::new();
 
 	for row_idx in 0..ctx.row_count {
@@ -1036,7 +1096,6 @@ fn execute_if_multi(
 			}
 		};
 
-		// Handle empty branch results (from empty blocks like `{}` or no-branch-taken)
 		let is_empty_result = branch_results.is_empty();
 		if is_empty_result {
 			if let Some(data) = result_data.as_mut() {
@@ -1047,11 +1106,10 @@ fn execute_if_multi(
 			continue;
 		}
 
-		// Initialize from first non-empty branch, backfilling previous empty rows
 		if result_data.is_none() {
-			let mut data: Vec<ColumnData> = branch_results
+			let mut data: Vec<ColumnBuffer> = branch_results
 				.iter()
-				.map(|col| ColumnData::with_capacity(col.data().get_type(), ctx.row_count))
+				.map(|col| ColumnBuffer::with_capacity(col.data().get_type(), ctx.row_count))
 				.collect();
 			for _ in 0..row_idx {
 				for col_data in data.iter_mut() {
@@ -1072,26 +1130,26 @@ fn execute_if_multi(
 	}
 
 	let result_data = result_data.unwrap_or_default();
-	let result: Vec<Column> = result_data
+	let result: Vec<ColumnWithName> = result_data
 		.into_iter()
 		.enumerate()
-		.map(|(i, data)| Column {
+		.map(|(i, data)| ColumnWithName {
 			name: result_names.get(i).cloned().unwrap_or_else(|| Fragment::internal("column")),
 			data,
 		})
 		.collect();
 
 	if result.is_empty() {
-		Ok(vec![Column {
+		Ok(vec![ColumnWithName {
 			name: Fragment::internal("none"),
-			data: ColumnData::none_typed(Type::Boolean, ctx.row_count),
+			data: ColumnBuffer::none_typed(Type::Boolean, ctx.row_count),
 		}])
 	} else {
 		Ok(result)
 	}
 }
 
-fn execute_multi_exprs(ctx: &EvalContext, exprs: &[CompiledExpr]) -> Result<Vec<Column>> {
+fn execute_multi_exprs(ctx: &EvalContext, exprs: &[CompiledExpr]) -> Result<Vec<ColumnWithName>> {
 	let mut result = Vec::new();
 	for expr in exprs {
 		result.extend(expr.execute_multi(ctx)?);
@@ -1099,16 +1157,13 @@ fn execute_multi_exprs(ctx: &EvalContext, exprs: &[CompiledExpr]) -> Result<Vec<
 	Ok(result)
 }
 
-fn execute_projection_multi(ctx: &EvalContext, expressions: &[CompiledExpr]) -> Result<Vec<Column>> {
+fn execute_projection_multi(ctx: &EvalContext, expressions: &[CompiledExpr]) -> Result<Vec<ColumnWithName>> {
 	let mut result = Vec::with_capacity(expressions.len());
 
 	for expr in expressions {
 		let column = expr.execute(ctx)?;
 		let name = column.name.text().to_string();
-		result.push(Column {
-			name: Fragment::internal(name),
-			data: column.data,
-		});
+		result.push(ColumnWithName::new(Fragment::internal(name), column.data));
 	}
 
 	Ok(result)

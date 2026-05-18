@@ -97,11 +97,9 @@ impl<'bump> Compiler<'bump> {
 			});
 		}
 
-		// Resolve key column
 		let key_fragment = ast.key.expect("key is required by parser");
 		let key_column_name = key_fragment.text().to_string();
 
-		// Validate key column exists in declared columns
 		let key_col = columns.iter().find(|c| c.name.text() == key_column_name.as_str());
 		let key_col = match key_col {
 			Some(c) => c,
@@ -123,7 +121,6 @@ impl<'bump> Compiler<'bump> {
 			}
 		};
 
-		// Determine key from column type
 		let key_type = key_col.constraint.get_type();
 		let key = match key_type {
 			Type::DateTime => {
@@ -179,11 +176,14 @@ impl<'bump> Compiler<'bump> {
 			}
 		};
 
+		let ttl = ast.ttl.map(Self::compile_ttl).transpose()?;
+
 		Ok(LogicalPlan::CreateSeries(CreateSeriesNode {
 			series: ast.series,
 			columns,
 			tag: ast.tag,
 			key,
+			ttl,
 		}))
 	}
 }

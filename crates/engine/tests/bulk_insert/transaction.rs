@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Transaction atomicity tests for the bulk_insert module.
-//!
-//! Tests verify that bulk inserts are atomic - all succeed or all fail.
-
 use reifydb_engine::test_prelude::*;
 
 #[test]

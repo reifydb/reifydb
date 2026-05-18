@@ -3,33 +3,28 @@
 
 use std::sync::{Arc, LazyLock};
 
+use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 use reifydb_core::{
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
-	value::column::{Column, columns::Columns},
+	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_engine::{
 	expression::{
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalSession},
+		context::{CompileContext, EvalContext},
 	},
 	vm::stack::SymbolTable,
 };
-use reifydb_routine::function::registry::Functions;
-use reifydb_rql::expression::Expression;
+use reifydb_routine::routine::registry::Routines;
+use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_type::{
-	Result,
-	fragment::Fragment,
-	params::Params,
-	value::{identity::IdentityId, row_number::RowNumber},
-};
+use reifydb_type::{Result, fragment::Fragment, params::Params, value::identity::IdentityId};
 
 use crate::{Operator, operator::Operators, transaction::FlowTransaction};
 
-// Static empty params instance for use in EvaluationContext
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
@@ -38,7 +33,7 @@ pub struct MapOperator {
 	node: FlowNodeId,
 	expressions: Vec<Expression>,
 	compiled_expressions: Vec<CompiledExpr>,
-	functions: Functions,
+	routines: Routines,
 	runtime_context: RuntimeContext,
 }
 
@@ -47,11 +42,10 @@ impl MapOperator {
 		parent: Arc<Operators>,
 		node: FlowNodeId,
 		expressions: Vec<Expression>,
-		functions: Functions,
+		routines: Routines,
 		runtime_context: RuntimeContext,
 	) -> Self {
 		let compile_ctx = CompileContext {
-			functions: &functions,
 			symbols: &EMPTY_SYMBOL_TABLE,
 		};
 		let compiled_expressions: Vec<CompiledExpr> = expressions
@@ -65,28 +59,35 @@ impl MapOperator {
 			node,
 			expressions,
 			compiled_expressions,
-			functions,
+			routines,
 			runtime_context,
 		}
 	}
 
-	/// Project all rows in Columns using expressions
+	pub(crate) fn output_schema(&self) -> Option<Columns> {
+		self.parent.output_schema()
+	}
+
 	fn project(&self, columns: &Columns) -> Result<Columns> {
 		let row_count = columns.row_count();
 		if row_count == 0 {
 			return Ok(Columns::empty());
 		}
 
-		let session = EvalSession {
+		let session = EvalContext {
 			params: &EMPTY_PARAMS,
 			symbols: &EMPTY_SYMBOL_TABLE,
-			functions: &self.functions,
+			routines: &self.routines,
 			runtime_context: &self.runtime_context,
 			arena: None,
 			identity: IdentityId::root(),
 			is_aggregate_context: false,
+			columns: Columns::empty(),
+			row_count: 1,
+			target: None,
+			take: None,
 		};
-		let exec_ctx = session.eval(columns.clone(), row_count);
+		let exec_ctx = session.with_eval(columns.clone(), row_count);
 
 		let mut result_columns = Vec::with_capacity(self.expressions.len());
 
@@ -94,17 +95,10 @@ impl MapOperator {
 			let evaluated_col = compiled_expr.execute(&exec_ctx)?;
 
 			let expr = &self.expressions[i];
-			let field_name = match expr {
-				Expression::Alias(alias_expr) => alias_expr.alias.name().to_string(),
-				Expression::Column(col_expr) => col_expr.0.name.text().to_string(),
-				Expression::AccessSource(access_expr) => access_expr.column.name.text().to_string(),
-				_ => expr.full_fragment_owned().text().to_string(),
-			};
+			let field_name = display_label(expr).text().to_string();
 
-			let named_column = Column {
-				name: Fragment::internal(field_name),
-				data: evaluated_col.data().clone(),
-			};
+			let named_column =
+				ColumnWithName::new(Fragment::internal(field_name), evaluated_col.data().clone());
 
 			result_columns.push(named_column);
 		}
@@ -115,13 +109,22 @@ impl MapOperator {
 			columns.row_numbers.iter().cloned().collect()
 		};
 
-		Ok(Columns::with_row_numbers(result_columns, row_numbers))
+		Ok(Columns::with_system_columns(
+			result_columns,
+			row_numbers,
+			columns.created_at.to_vec(),
+			columns.updated_at.to_vec(),
+		))
 	}
 }
 
 impl Operator for MapOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
+	}
+
+	fn capabilities(&self) -> u32 {
+		CAPABILITY_ALL_STANDARD
 	}
 
 	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
@@ -131,6 +134,7 @@ impl Operator for MapOperator {
 			match diff {
 				Diff::Insert {
 					post,
+					..
 				} => {
 					let projected = match self.project(&post) {
 						Ok(projected) => projected,
@@ -140,42 +144,33 @@ impl Operator for MapOperator {
 					};
 
 					if !projected.is_empty() {
-						result.push(Diff::Insert {
-							post: projected,
-						});
+						result.push(Diff::insert(projected));
 					}
 				}
 				Diff::Update {
 					pre,
 					post,
+					..
 				} => {
 					let projected_post = self.project(&post)?;
 					let projected_pre = self.project(&pre)?;
 
 					if !projected_post.is_empty() {
-						result.push(Diff::Update {
-							pre: projected_pre,
-							post: projected_post,
-						});
+						result.push(Diff::update(projected_pre, projected_post));
 					}
 				}
 				Diff::Remove {
 					pre,
+					..
 				} => {
 					let projected_pre = self.project(&pre)?;
 					if !projected_pre.is_empty() {
-						result.push(Diff::Remove {
-							pre: projected_pre,
-						});
+						result.push(Diff::remove(projected_pre));
 					}
 				}
 			}
 		}
 
-		Ok(Change::from_flow(self.node, change.version, result))
-	}
-
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
-		self.parent.pull(txn, rows)
+		Ok(Change::from_flow(self.node, change.version, result, change.changed_at))
 	}
 }

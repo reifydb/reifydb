@@ -1,55 +1,69 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Native RwLock implementation using parking_lot.
+#![allow(clippy::disallowed_types)]
 
-use std::ops::{Deref, DerefMut};
+use std::{
+	fmt,
+	ops::{Deref, DerefMut},
+};
 
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-/// Native reader-writer lock implementation wrapping RwLock.
 pub struct RwLockInner<T> {
 	inner: RwLock<T>,
 }
 
+impl<T: fmt::Debug> fmt::Debug for RwLockInner<T> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		self.inner.fmt(f)
+	}
+}
+
 impl<T> RwLockInner<T> {
-	/// Creates a new reader-writer lock.
 	pub fn new(value: T) -> Self {
 		Self {
 			inner: RwLock::new(value),
 		}
 	}
 
-	/// Acquires a read lock, blocking until it's available.
 	pub fn read(&self) -> RwLockReadGuardInner<'_, T> {
 		RwLockReadGuardInner {
 			inner: self.inner.read(),
 		}
 	}
 
-	/// Acquires a write lock, blocking until it's available.
 	pub fn write(&self) -> RwLockWriteGuardInner<'_, T> {
 		RwLockWriteGuardInner {
 			inner: self.inner.write(),
 		}
 	}
 
-	/// Attempts to acquire a read lock without blocking.
 	pub fn try_read(&self) -> Option<RwLockReadGuardInner<'_, T>> {
 		self.inner.try_read().map(|guard| RwLockReadGuardInner {
 			inner: guard,
 		})
 	}
 
-	/// Attempts to acquire a write lock without blocking.
 	pub fn try_write(&self) -> Option<RwLockWriteGuardInner<'_, T>> {
 		self.inner.try_write().map(|guard| RwLockWriteGuardInner {
 			inner: guard,
 		})
 	}
+
+	pub fn read_recursive(&self) -> RwLockReadGuardInner<'_, T> {
+		RwLockReadGuardInner {
+			inner: self.inner.read_recursive(),
+		}
+	}
+
+	pub fn try_read_recursive(&self) -> Option<RwLockReadGuardInner<'_, T>> {
+		self.inner.try_read_recursive().map(|guard| RwLockReadGuardInner {
+			inner: guard,
+		})
+	}
 }
 
-/// Native guard providing read access to the data protected by an RwLock.
 pub struct RwLockReadGuardInner<'a, T> {
 	inner: RwLockReadGuard<'a, T>,
 }
@@ -62,7 +76,6 @@ impl<'a, T> Deref for RwLockReadGuardInner<'a, T> {
 	}
 }
 
-/// Native guard providing write access to the data protected by an RwLock.
 pub struct RwLockWriteGuardInner<'a, T> {
 	inner: RwLockWriteGuard<'a, T>,
 }

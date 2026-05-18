@@ -1,32 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! # Deferred View Interceptors
-//!
-//! Demonstrates the fluent interceptor API for deferred views:
-//! - Registering post_insert and post_delete hooks on view data
-//! - Filtering interceptors by namespace.view pattern
-//! - Inspecting view metadata (name, kind, columns) in interceptor callbacks
-//!
-//! View data interceptors allow you to:
-//! - Audit row-level changes in materialized views
-//! - React to inserts, updates, and deletes on view data
-//! - Trigger side effects when view rows change
-//!
-//! Run with: `make intercept-deferred-view` or `cargo run --bin intercept-deferred-view`
-
 use std::{thread::sleep, time::Duration};
 
 use reifydb::{Params, WithInterceptorBuilder, WithSubsystem, embedded};
 use reifydb_examples::log_query;
 use tracing::info;
-use tracing_subscriber::{EnvFilter, fmt, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{
+	EnvFilter, fmt, fmt::format::FmtSpan, layer::SubscriberExt, registry, util::SubscriberInitExt,
+};
 
 fn main() {
-	tracing_subscriber::registry()
-		.with(fmt::layer().with_span_events(FmtSpan::CLOSE))
-		.with(EnvFilter::from_default_env())
-		.init();
+	registry().with(fmt::layer().with_span_events(FmtSpan::CLOSE)).with(EnvFilter::from_default_env()).init();
 
 	// Step 1: Create database with view interceptors configured
 	// The fluent API allows chaining interceptor registrations for views
@@ -71,7 +56,7 @@ fn main() {
 	)
 	.unwrap();
 
-	// Step 4: Insert data into the source table — triggers post_insert on the view
+	// Step 4: Insert data into the source table - triggers post_insert on the view
 	info!("\n--- Inserting users into source table (triggers view post_insert interceptor) ---");
 	log_query(
 		r#"INSERT test::users [

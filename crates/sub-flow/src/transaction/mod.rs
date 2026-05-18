@@ -1,18 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::mem;
+use std::{collections::HashMap, mem, sync::Arc};
 
-use pending::{Pending, PendingWrite};
+use read::ReadFrom;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
+	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
-	encoded::shape::RowShape,
+	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	interface::{
-		catalog::shape::ShapeId,
+		catalog::{flow::FlowNodeId, shape::ShapeId},
 		change::{Change, ChangeOrigin, Diff},
 	},
 };
+use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
 	change_accumulator::ChangeAccumulator,
 	interceptor::{
@@ -78,91 +80,89 @@ use reifydb_transaction::{
 		},
 	},
 	multi::transaction::read::MultiReadTransaction,
-	transaction::admin::AdminTransaction,
+	single::SingleTransaction,
+	transaction::{admin::AdminTransaction, command::CommandTransaction},
 };
+use reifydb_type::Result;
 use tracing::instrument;
 
-pub mod pending;
-pub mod range;
 pub mod read;
+pub mod slot;
 pub mod state;
 pub mod write;
 
-/// Shared fields between Deferred and Transactional variants.
+use slot::{OperatorStateSlot, PersistFn};
+
+pub struct TransactionalParams {
+	pub version: CommitVersion,
+	pub pending: Pending,
+	pub base_pending: Pending,
+	pub query: MultiReadTransaction,
+	pub state_query: MultiReadTransaction,
+	pub single: SingleTransaction,
+	pub catalog: Catalog,
+	pub interceptors: Interceptors,
+	pub clock: Clock,
+
+	pub view_overlay: Arc<Vec<Change>>,
+}
+
+pub struct DeferredParams {
+	pub version: CommitVersion,
+	pub pending: Pending,
+	pub query: MultiReadTransaction,
+	pub state_query: MultiReadTransaction,
+	pub single: SingleTransaction,
+	pub catalog: Catalog,
+	pub interceptors: Interceptors,
+	pub clock: Clock,
+}
+
+pub struct CommittingParams {
+	pub cmd: CommandTransaction,
+	pub catalog: Catalog,
+	pub interceptors: Interceptors,
+	pub clock: Clock,
+}
+
 pub struct FlowTransactionInner {
 	pub version: CommitVersion,
 	pub pending: Pending,
 	pub pending_shapes: Vec<RowShape>,
-	pub primitive_query: MultiReadTransaction,
-	pub state_query: MultiReadTransaction,
+	pub query: MultiReadTransaction,
+	pub state_query: Option<MultiReadTransaction>,
+	pub single: SingleTransaction,
 	pub catalog: Catalog,
 	pub interceptors: Interceptors,
 	pub accumulator: ChangeAccumulator,
+	pub clock: Clock,
+
+	pub operator_states: HashMap<FlowNodeId, OperatorStateSlot>,
 }
 
-/// A transaction wrapper for flow processing with dual-version read semantics.
-///
-/// # Architecture
-///
-/// FlowTransaction provides **dual-version reads** critical for stateful flow processing:
-/// 1. **Source data** - Read at CDC event version (snapshot isolation)
-/// 2. **Flow state** - Read at latest version (state continuity across CDC events)
-/// 3. **Isolated writes** - Local PendingWrites buffer returned to caller
-///
-/// This dual-version approach allows stateful operators (joins, aggregates, distinct) to:
-/// - Process source data at a consistent snapshot (the CDC event version)
-/// - Access their own state at the latest version to maintain continuity
-///
-/// # Dual-Version Read Routing
-///
-/// Reads are automatically routed to the correct query transaction based on key type:
-///
-/// ```text
-/// ┌─────────────────┐
-/// │  FlowTransaction│
-/// └────────┬────────┘
-///          │
-///          ├──► pending (flow-generated writes)
-///          │
-///          ├──► variant
-///          │    ├─ Deferred: skip
-///          │    └─ Transactional { base_pending }: check base_pending
-///          │
-///          ├──► primitive_query (at CDC version)
-///          │    - Source tables / views / regular data
-///          │
-///          └──► state_query (at latest version)
-///               - FlowNodeState / FlowNodeInternalState
-/// ```
-///
-/// # Construction
-///
-/// Use named constructors to enforce correct initialization:
-/// - [`FlowTransaction::deferred`] — CDC path (no base pending)
-/// - [`FlowTransaction::transactional`] — inline pre-commit path (with base pending)
-///
-/// # Write Path
-///
-/// All writes (`set`, `remove`) go to the local `pending` buffer:
-/// - Reads check pending buffer first, then delegate to query transactions
-/// - Pending writes are extracted via [`FlowTransaction::take_pending`]
-///
-/// # Thread Safety
-///
-/// FlowTransaction is Send because all fields are either Copy, owned, or
 pub enum FlowTransaction {
-	/// CDC-driven async flow processing.
-	/// Reads only from committed storage + flow pending writes.
 	Deferred {
 		inner: FlowTransactionInner,
 	},
 
-	/// Inline flow processing within a committing transaction.
-	/// Can additionally read uncommitted writes from the parent transaction.
 	Transactional {
 		inner: FlowTransactionInner,
-		/// Read-only snapshot of the committing transaction's KV writes.
+
 		base_pending: Pending,
+
+		view_overlay: Arc<Vec<Change>>,
+	},
+
+	Ephemeral {
+		inner: FlowTransactionInner,
+
+		state: HashMap<EncodedKey, EncodedRow>,
+	},
+
+	Committing {
+		inner: FlowTransactionInner,
+
+		cmd: Box<CommandTransaction>,
 	},
 }
 
@@ -174,6 +174,14 @@ impl FlowTransaction {
 				..
 			}
 			| Self::Transactional {
+				inner,
+				..
+			}
+			| Self::Ephemeral {
+				inner,
+				..
+			}
+			| Self::Committing {
 				inner,
 				..
 			} => inner,
@@ -189,23 +197,28 @@ impl FlowTransaction {
 			| Self::Transactional {
 				inner,
 				..
+			}
+			| Self::Ephemeral {
+				inner,
+				..
+			}
+			| Self::Committing {
+				inner,
+				..
 			} => inner,
 		}
 	}
 
-	/// Create a deferred (CDC) FlowTransaction from a parent transaction.
-	///
-	/// Used by the async worker path. Reads only from committed storage +
-	/// flow-generated pending writes — no base pending from a parent transaction.
-	#[instrument(name = "flow::transaction::deferred", level = "debug", skip(parent, catalog, interceptors), fields(version = version.0))]
+	#[instrument(name = "flow::transaction::deferred", level = "debug", skip(parent, catalog, interceptors, clock), fields(version = version.0))]
 	pub fn deferred(
 		parent: &AdminTransaction,
 		version: CommitVersion,
 		catalog: Catalog,
 		interceptors: Interceptors,
+		clock: Clock,
 	) -> Self {
-		let mut primitive_query = parent.multi.begin_query().unwrap();
-		primitive_query.read_as_of_version_inclusive(version);
+		let mut query = parent.multi.begin_query().unwrap();
+		query.read_as_of_version_inclusive(version);
 
 		let state_query = parent.multi.begin_query().unwrap();
 		Self::Deferred {
@@ -213,85 +226,182 @@ impl FlowTransaction {
 				version,
 				pending: Pending::new(),
 				pending_shapes: Vec::new(),
-				primitive_query,
-				state_query,
+				query,
+				state_query: Some(state_query),
+				single: parent.single.clone(),
 				catalog,
 				interceptors,
 				accumulator: ChangeAccumulator::new(),
+				clock,
+				operator_states: HashMap::new(),
 			},
 		}
 	}
 
-	/// Create a deferred (CDC) FlowTransaction from pre-built parts.
-	///
-	/// Used by the worker actor which creates its own query transactions.
-	pub fn deferred_from_parts(
-		version: CommitVersion,
-		pending: Pending,
-		primitive_query: MultiReadTransaction,
-		state_query: MultiReadTransaction,
-		catalog: Catalog,
-		interceptors: Interceptors,
-	) -> Self {
+	pub fn deferred_from_parts(params: DeferredParams) -> Self {
+		let mut query = params.query;
+		query.read_as_of_version_inclusive(params.version);
+		let mut state_query = params.state_query;
+		state_query.read_as_of_version_inclusive(params.version);
+
 		Self::Deferred {
 			inner: FlowTransactionInner {
-				version,
-				pending,
+				version: params.version,
+				pending: params.pending,
 				pending_shapes: Vec::new(),
-				primitive_query,
-				state_query,
-				catalog,
-				interceptors,
+				query,
+				state_query: Some(state_query),
+				single: params.single,
+				catalog: params.catalog,
+				interceptors: params.interceptors,
 				accumulator: ChangeAccumulator::new(),
+				clock: params.clock,
+				operator_states: HashMap::new(),
 			},
 		}
 	}
 
-	/// Create a transactional (inline) FlowTransaction.
-	///
-	/// Used by the pre-commit interceptor path. `base_pending` is a read-only
-	/// snapshot of the committing transaction's KV writes so that flow operators
-	/// can see uncommitted row data.
-	pub fn transactional(
-		version: CommitVersion,
-		pending: Pending,
-		base_pending: Pending,
-		primitive_query: MultiReadTransaction,
-		state_query: MultiReadTransaction,
-		catalog: Catalog,
-		interceptors: Interceptors,
-	) -> Self {
-		Self::Transactional {
+	pub fn committing(params: CommittingParams) -> Result<Self> {
+		let version = params.cmd.version();
+		let mut query = params.cmd.multi.begin_query()?;
+		query.read_as_of_version_inclusive(version);
+		let mut state_query = params.cmd.multi.begin_query()?;
+		state_query.read_as_of_version_inclusive(version);
+		let single = params.cmd.single.clone();
+
+		Ok(Self::Committing {
 			inner: FlowTransactionInner {
 				version,
-				pending,
+				pending: Pending::new(),
 				pending_shapes: Vec::new(),
-				primitive_query,
-				state_query,
-				catalog,
-				interceptors,
+				query,
+				state_query: Some(state_query),
+				single,
+				catalog: params.catalog,
+				interceptors: params.interceptors,
 				accumulator: ChangeAccumulator::new(),
+				clock: params.clock,
+				operator_states: HashMap::new(),
 			},
-			base_pending,
+			cmd: Box::new(params.cmd),
+		})
+	}
+
+	pub fn commit(self) -> Result<CommitVersion> {
+		match self {
+			Self::Committing {
+				mut cmd,
+				..
+			} => cmd.commit(),
+			_ => panic!("FlowTransaction::commit only valid on Committing variant"),
 		}
 	}
 
-	/// Get the transaction version.
+	pub fn transactional(params: TransactionalParams) -> Self {
+		Self::Transactional {
+			inner: FlowTransactionInner {
+				version: params.version,
+				pending: params.pending,
+				pending_shapes: Vec::new(),
+				query: params.query,
+				state_query: Some(params.state_query),
+				single: params.single,
+				catalog: params.catalog,
+				interceptors: params.interceptors,
+				accumulator: ChangeAccumulator::new(),
+				clock: params.clock,
+				operator_states: HashMap::new(),
+			},
+			base_pending: params.base_pending,
+			view_overlay: params.view_overlay,
+		}
+	}
+
+	pub fn view_overlay(&self) -> Option<Arc<Vec<Change>>> {
+		match self {
+			Self::Transactional {
+				view_overlay,
+				..
+			} => Some(Arc::clone(view_overlay)),
+			_ => None,
+		}
+	}
+
+	pub fn ephemeral(
+		version: CommitVersion,
+		query: MultiReadTransaction,
+		single: SingleTransaction,
+		catalog: Catalog,
+		state: HashMap<EncodedKey, EncodedRow>,
+		clock: Clock,
+	) -> Self {
+		let mut pq = query;
+		pq.read_as_of_version_inclusive(version);
+
+		Self::Ephemeral {
+			inner: FlowTransactionInner {
+				version,
+				pending: Pending::new(),
+				pending_shapes: Vec::new(),
+				query: pq,
+				state_query: None,
+				single,
+				catalog,
+				interceptors: Interceptors::new(),
+				accumulator: ChangeAccumulator::new(),
+				clock,
+				operator_states: HashMap::new(),
+			},
+			state,
+		}
+	}
+
+	pub fn merge_state(&mut self) {
+		if let Self::Ephemeral {
+			inner,
+			state,
+		} = self
+		{
+			for (key, write) in inner.pending.iter_sorted() {
+				if matches!(Self::read_from(key), ReadFrom::StateQuery) {
+					match write {
+						PendingWrite::Set(row) => {
+							state.insert(key.clone(), row.clone());
+						}
+						PendingWrite::Remove => {
+							state.remove(key);
+						}
+					}
+				}
+			}
+			inner.pending = Pending::new();
+		}
+	}
+
+	pub fn take_state(&mut self) -> HashMap<EncodedKey, EncodedRow> {
+		if let Self::Ephemeral {
+			state,
+			..
+		} = self
+		{
+			mem::take(state)
+		} else {
+			HashMap::new()
+		}
+	}
+
 	pub fn version(&self) -> CommitVersion {
 		self.inner().version
 	}
 
-	/// Extract pending writes, replacing them with an empty buffer.
 	pub fn take_pending(&mut self) -> Pending {
 		mem::take(&mut self.inner_mut().pending)
 	}
 
-	/// Extract pending shapes, replacing them with an empty buffer.
 	pub fn take_pending_shapes(&mut self) -> Vec<RowShape> {
 		mem::take(&mut self.inner_mut().pending_shapes)
 	}
 
-	/// Track a view-level flow change in this transaction's accumulator.
 	pub fn track_flow_change(&mut self, change: Change) {
 		if let ChangeOrigin::Shape(id) = change.origin {
 			for diff in change.diffs {
@@ -300,7 +410,6 @@ impl FlowTransaction {
 		}
 	}
 
-	/// Drain the accumulator entries collected during flow processing.
 	pub fn take_accumulator_entries(&mut self) -> Vec<(ShapeId, Diff)> {
 		let acc = &mut self.inner_mut().accumulator;
 		let entries: Vec<_> = acc.entries_from(0).to_vec();
@@ -308,22 +417,84 @@ impl FlowTransaction {
 		entries
 	}
 
-	/// Get a reference to the pending writes.
 	#[cfg(test)]
 	pub fn pending(&self) -> &Pending {
 		&self.inner().pending
 	}
 
-	/// Update the transaction to read at a new version
 	pub fn update_version(&mut self, new_version: CommitVersion) {
 		let inner = self.inner_mut();
 		inner.version = new_version;
-		inner.primitive_query.read_as_of_version_inclusive(new_version);
+		inner.query.read_as_of_version_inclusive(new_version);
 	}
 
-	/// Get access to the catalog for reading metadata
 	pub fn catalog(&self) -> &Catalog {
 		&self.inner().catalog
+	}
+
+	pub fn clock(&self) -> &Clock {
+		&self.inner().clock
+	}
+
+	pub fn operator_state<S, F>(&mut self, node: FlowNodeId, load: F) -> Result<&mut S>
+	where
+		S: 'static + Send,
+		F: FnOnce(&mut Self) -> Result<(S, PersistFn)>,
+	{
+		if !self.inner().operator_states.contains_key(&node) {
+			let (state, persist) = load(self)?;
+			let slot = OperatorStateSlot {
+				value: Box::new(state),
+				dirty: false,
+				persist,
+			};
+			self.inner_mut().operator_states.insert(node, slot);
+		}
+		let slot = self.inner_mut().operator_states.get_mut(&node).expect("just inserted");
+		Ok(slot.value.downcast_mut::<S>().expect("operator state type mismatch"))
+	}
+
+	pub fn mark_state_dirty(&mut self, node: FlowNodeId) {
+		if let Some(slot) = self.inner_mut().operator_states.get_mut(&node) {
+			slot.dirty = true;
+		}
+	}
+
+	pub fn take_operator_state<S, F>(&mut self, node: FlowNodeId, load: F) -> Result<(S, PersistFn)>
+	where
+		S: 'static + Send,
+		F: FnOnce(&mut Self) -> Result<(S, PersistFn)>,
+	{
+		if let Some(slot) = self.inner_mut().operator_states.remove(&node) {
+			let value = slot.value.downcast::<S>().map_err(|_| ()).expect("operator state type mismatch");
+			Ok((*value, slot.persist))
+		} else {
+			load(self)
+		}
+	}
+
+	pub fn put_operator_state<S>(&mut self, node: FlowNodeId, state: S, persist: PersistFn)
+	where
+		S: 'static + Send,
+	{
+		self.inner_mut().operator_states.insert(
+			node,
+			OperatorStateSlot {
+				value: Box::new(state),
+				dirty: true,
+				persist,
+			},
+		);
+	}
+
+	pub fn flush_operator_states(&mut self) -> Result<()> {
+		let states = mem::take(&mut self.inner_mut().operator_states);
+		for (_, slot) in states {
+			if slot.dirty {
+				(slot.persist)(self, slot.value)?;
+			}
+		}
+		Ok(())
 	}
 }
 

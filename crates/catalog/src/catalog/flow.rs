@@ -46,78 +46,44 @@ impl Catalog {
 	pub fn find_flow(&self, txn: &mut Transaction<'_>, id: FlowId) -> Result<Option<Flow>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				// 1. Check MaterializedCatalog
-				if let Some(flow) = self.materialized.find_flow_at(id, cmd.version()) {
+				if let Some(flow) = self.cache.find_flow_at(id, cmd.version()) {
 					return Ok(Some(flow));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(flow) = CatalogStore::find_flow(&mut Transaction::Command(&mut *cmd), id)? {
-					warn!("Flow with ID {:?} found in storage but not in MaterializedCatalog", id);
+					warn!("Flow with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(flow));
 				}
 
 				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(flow) = TransactionalFlowChanges::find_flow(admin, id) {
 					return Ok(Some(flow.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalFlowChanges::is_flow_deleted(admin, id) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
-				if let Some(flow) = self.materialized.find_flow_at(id, admin.version()) {
+				if let Some(flow) = self.cache.find_flow_at(id, admin.version()) {
 					return Ok(Some(flow));
 				}
 
-				// 4. Fall back to storage as defensive measure
 				if let Some(flow) = CatalogStore::find_flow(&mut Transaction::Admin(&mut *admin), id)? {
-					warn!("Flow with ID {:?} found in storage but not in MaterializedCatalog", id);
+					warn!("Flow with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(flow));
 				}
 
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				// 1. Check MaterializedCatalog (skip transactional changes)
-				if let Some(flow) = self.materialized.find_flow_at(id, qry.version()) {
+				if let Some(flow) = self.cache.find_flow_at(id, qry.version()) {
 					return Ok(Some(flow));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(flow) = CatalogStore::find_flow(&mut Transaction::Query(&mut *qry), id)? {
-					warn!("Flow with ID {:?} found in storage but not in MaterializedCatalog", id);
-					return Ok(Some(flow));
-				}
-
-				Ok(None)
-			}
-			Transaction::Subscription(sub) => {
-				// 1. Check transactional changes first
-				if let Some(flow) = TransactionalFlowChanges::find_flow(sub, id) {
-					return Ok(Some(flow.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalFlowChanges::is_flow_deleted(sub, id) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(flow) = self.materialized.find_flow_at(id, sub.version()) {
-					return Ok(Some(flow));
-				}
-
-				// 4. Fall back to storage as defensive measure
-				if let Some(flow) =
-					CatalogStore::find_flow(&mut Transaction::Subscription(&mut *sub), id)?
-				{
-					warn!("Flow with ID {:?} found in storage but not in MaterializedCatalog", id);
+					warn!("Flow with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(flow));
 				}
 
@@ -138,14 +104,12 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				// 1. Check MaterializedCatalog
-				if let Some(flow) = self.materialized.find_flow_at(id, rep.version()) {
+				if let Some(flow) = self.cache.find_flow_at(id, rep.version()) {
 					return Ok(Some(flow));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(flow) = CatalogStore::find_flow(&mut Transaction::Replica(&mut *rep), id)? {
-					warn!("Flow with ID {:?} found in storage but not in MaterializedCatalog", id);
+					warn!("Flow with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(flow));
 				}
 
@@ -163,21 +127,17 @@ impl Catalog {
 	) -> Result<Option<Flow>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				// 1. Check MaterializedCatalog
-				if let Some(flow) =
-					self.materialized.find_flow_by_name_at(namespace, name, cmd.version())
-				{
+				if let Some(flow) = self.cache.find_flow_by_name_at(namespace, name, cmd.version()) {
 					return Ok(Some(flow));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(flow) = CatalogStore::find_flow_by_name(
 					&mut Transaction::Command(&mut *cmd),
 					namespace,
 					name,
 				)? {
 					warn!(
-						"Flow '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Flow '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(flow));
@@ -186,32 +146,26 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(flow) = TransactionalFlowChanges::find_flow_by_name(admin, namespace, name)
 				{
 					return Ok(Some(flow.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalFlowChanges::is_flow_deleted_by_name(admin, namespace, name) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
-				if let Some(flow) =
-					self.materialized.find_flow_by_name_at(namespace, name, admin.version())
-				{
+				if let Some(flow) = self.cache.find_flow_by_name_at(namespace, name, admin.version()) {
 					return Ok(Some(flow));
 				}
 
-				// 4. Fall back to storage as defensive measure
 				if let Some(flow) = CatalogStore::find_flow_by_name(
 					&mut Transaction::Admin(&mut *admin),
 					namespace,
 					name,
 				)? {
 					warn!(
-						"Flow '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Flow '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(flow));
@@ -220,54 +174,17 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				// 1. Check MaterializedCatalog (skip transactional changes)
-				if let Some(flow) =
-					self.materialized.find_flow_by_name_at(namespace, name, qry.version())
-				{
+				if let Some(flow) = self.cache.find_flow_by_name_at(namespace, name, qry.version()) {
 					return Ok(Some(flow));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(flow) = CatalogStore::find_flow_by_name(
 					&mut Transaction::Query(&mut *qry),
 					namespace,
 					name,
 				)? {
 					warn!(
-						"Flow '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
-						name, namespace
-					);
-					return Ok(Some(flow));
-				}
-
-				Ok(None)
-			}
-			Transaction::Subscription(sub) => {
-				// 1. Check transactional changes first
-				if let Some(flow) = TransactionalFlowChanges::find_flow_by_name(sub, namespace, name) {
-					return Ok(Some(flow.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalFlowChanges::is_flow_deleted_by_name(sub, namespace, name) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(flow) =
-					self.materialized.find_flow_by_name_at(namespace, name, sub.version())
-				{
-					return Ok(Some(flow));
-				}
-
-				// 4. Fall back to storage as defensive measure
-				if let Some(flow) = CatalogStore::find_flow_by_name(
-					&mut Transaction::Subscription(&mut *sub),
-					namespace,
-					name,
-				)? {
-					warn!(
-						"Flow '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Flow '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(flow));
@@ -294,21 +211,17 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				// 1. Check MaterializedCatalog
-				if let Some(flow) =
-					self.materialized.find_flow_by_name_at(namespace, name, rep.version())
-				{
+				if let Some(flow) = self.cache.find_flow_by_name_at(namespace, name, rep.version()) {
 					return Ok(Some(flow));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(flow) = CatalogStore::find_flow_by_name(
 					&mut Transaction::Replica(&mut *rep),
 					namespace,
 					name,
 				)? {
 					warn!(
-						"Flow '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Flow '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(flow));
@@ -336,8 +249,6 @@ impl Catalog {
 		Ok(flow)
 	}
 
-	/// Create a flow with a specific ID (for subscription flows where FlowId == SubscriptionId).
-	/// This skips the name uniqueness check since the ID is guaranteed unique by the sequence.
 	#[instrument(name = "catalog::flow::create_with_id", level = "debug", skip(self, txn, to_create))]
 	pub fn create_flow_with_id(
 		&self,

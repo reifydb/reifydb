@@ -11,9 +11,9 @@
 
 [package]
 edition = "2024"
-rust-version = "1.91.0"
+rust-version = "1.92.0"
 name = "wasmtime-internal-component-macro"
-version = "43.0.0"
+version = "44.0.0"
 authors = ["The Wasmtime Project Developers"]
 build = "build.rs"
 autolib = false
@@ -74,15 +74,15 @@ version = "2.0.106"
 features = ["extra-traits"]
 
 [dependencies.wasmtime-component-util]
-version = "=43.0.0"
+version = "=44.0.0"
 package = "wasmtime-internal-component-util"
 
 [dependencies.wasmtime-wit-bindgen]
-version = "=43.0.0"
+version = "=44.0.0"
 package = "wasmtime-internal-wit-bindgen"
 
 [dependencies.wit-parser]
-version = "0.245.0"
+version = "0.246.1"
 
 [dev-dependencies.prettyplease]
 version = "0.2.31"
@@ -106,7 +106,7 @@ version = "0.1.41"
 default-features = false
 
 [dev-dependencies.wasmtime-wit-bindgen]
-version = "=43.0.0"
+version = "=44.0.0"
 features = ["component-model-async"]
 package = "wasmtime-internal-wit-bindgen"
 
@@ -145,4 +145,6 @@ check-cfg = [
     "cfg(pulley_tail_calls)",
     "cfg(pulley_assume_llvm_makes_tail_calls)",
     "cfg(pulley_disable_interp_simd)",
+    "cfg(arc_try_new)",
+    "cfg(gc_zeal)",
 ]

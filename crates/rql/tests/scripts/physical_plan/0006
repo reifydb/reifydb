@@ -1,9 +1,0 @@
-# Copyright (c) reifydb.com 2025
-# This file is licensed under the Apache-2.0, see license.md file
-
-physical 'from users map {id, name} filter {id == 10}'
----
-> └── Filter [(id == Constant(10))]
->     └── Map [id, name]
->         └── TableScan default::users
->

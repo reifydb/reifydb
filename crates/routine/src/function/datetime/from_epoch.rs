@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, datetime::DateTime, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct DateTimeFromEpoch;
+pub struct DateTimeFromEpoch {
+	info: RoutineInfo,
+}
 
 impl Default for DateTimeFromEpoch {
 	fn default() -> Self {
@@ -20,60 +18,68 @@ impl Default for DateTimeFromEpoch {
 
 impl DateTimeFromEpoch {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("datetime::from_epoch"),
+		}
 	}
 }
 
-fn extract_i64(data: &ColumnData, i: usize) -> Option<i64> {
+fn extract_i64(data: &ColumnBuffer, i: usize) -> Option<i64> {
 	match data {
-		ColumnData::Int1(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Int2(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Int4(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Int8(c) => c.get(i).copied(),
-		ColumnData::Int16(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Uint1(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Uint2(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Uint4(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Uint8(c) => c.get(i).map(|&v| v as i64),
-		ColumnData::Uint16(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Int4(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Int8(c) => c.get(i).copied(),
+		ColumnBuffer::Int16(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint8(c) => c.get(i).map(|&v| v as i64),
+		ColumnBuffer::Uint16(c) => c.get(i).map(|&v| v as i64),
 		_ => None,
 	}
 }
 
-fn is_integer_type(data: &ColumnData) -> bool {
+fn is_integer_type(data: &ColumnBuffer) -> bool {
 	matches!(
 		data,
-		ColumnData::Int1(_)
-			| ColumnData::Int2(_) | ColumnData::Int4(_)
-			| ColumnData::Int8(_) | ColumnData::Int16(_)
-			| ColumnData::Uint1(_)
-			| ColumnData::Uint2(_)
-			| ColumnData::Uint4(_)
-			| ColumnData::Uint8(_)
-			| ColumnData::Uint16(_)
+		ColumnBuffer::Int1(_)
+			| ColumnBuffer::Int2(_)
+			| ColumnBuffer::Int4(_)
+			| ColumnBuffer::Int8(_)
+			| ColumnBuffer::Int16(_)
+			| ColumnBuffer::Uint1(_)
+			| ColumnBuffer::Uint2(_)
+			| ColumnBuffer::Uint4(_)
+			| ColumnBuffer::Uint8(_)
+			| ColumnBuffer::Uint16(_)
 	)
 }
 
-impl ScalarFunction for DateTimeFromEpoch {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+impl<'a> Routine<FunctionContext<'a>> for DateTimeFromEpoch {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		if columns.len() != 1 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::DateTime
+	}
+
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 1 {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let col = columns.first().unwrap();
+		let column = &args[0];
+		let (data, bitvec) = column.unwrap_option();
+		let row_count = data.len();
 
-		if !is_integer_type(col.data()) {
-			return Err(ScalarFunctionError::InvalidArgumentType {
+		if !is_integer_type(data) {
+			return Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![
@@ -88,16 +94,16 @@ impl ScalarFunction for DateTimeFromEpoch {
 					Type::Uint8,
 					Type::Uint16,
 				],
-				actual: col.data().get_type(),
+				actual: data.get_type(),
 			});
 		}
 
 		let mut container = TemporalContainer::with_capacity(row_count);
 
 		for i in 0..row_count {
-			if let Some(ts) = extract_i64(col.data(), i) {
+			if let Some(ts) = extract_i64(data, i) {
 				if ts < 0 {
-					return Err(ScalarFunctionError::ExecutionFailed {
+					return Err(RoutineError::FunctionExecutionFailed {
 						function: ctx.fragment.clone(),
 						reason: format!(
 							"datetime::from_epoch does not support negative timestamps: {}",
@@ -114,10 +120,23 @@ impl ScalarFunction for DateTimeFromEpoch {
 			}
 		}
 
-		Ok(ColumnData::DateTime(container))
-	}
+		let result_data = ColumnBuffer::DateTime(container);
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::DateTime
+		let final_data = if let Some(bv) = bitvec {
+			ColumnBuffer::Option {
+				inner: Box::new(result_data),
+				bitvec: bv.clone(),
+			}
+		} else {
+			result_data
+		};
+
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+	}
+}
+
+impl Function for DateTimeFromEpoch {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

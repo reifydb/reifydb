@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Integration tests for CDC consumer watermark functionality
-
 use reifydb_cdc::{
 	consume::{checkpoint::CdcCheckpoint, watermark::compute_watermark},
 	storage::{CdcStorage, memory::MemoryCdcStorage},
@@ -14,12 +12,15 @@ use reifydb_core::{
 };
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{util::cowvec::CowVec, value::identity::IdentityId};
+use reifydb_type::{
+	util::cowvec::CowVec,
+	value::{datetime::DateTime, identity::IdentityId},
+};
 
 fn make_cdc(version: u64) -> Cdc {
 	Cdc::new(
 		CommitVersion(version),
-		12345 + version,
+		DateTime::from_nanos(12345 + version),
 		Vec::new(),
 		vec![SystemChange::Insert {
 			key: EncodedKey::new(vec![version as u8]),

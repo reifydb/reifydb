@@ -1,27 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Row validation and column mapping for bulk inserts with batch coercion.
-
 use std::iter;
 
 use reifydb_core::{
-	interface::catalog::{column::Column, ringbuffer::RingBuffer, table::Table},
-	value::column::data::ColumnData,
+	interface::catalog::{column::Column, ringbuffer::RingBuffer, series::Series, table::Table},
+	value::column::buffer::ColumnBuffer,
 };
 use reifydb_type::{fragment::Fragment, params::Params, value::Value};
 
 use super::coerce::coerce_columns;
 use crate::{Result, error::EngineError};
 
-/// Validate and coerce all rows for a table in columnar batch mode.
-///
-/// Processes all rows at once by:
-/// 1. Collecting params into columnar format
-/// 2. Coercing each column's data in one batch using `cast_column_data`
-/// 3. Extracting coerced values back to row format
-///
-/// Returns `Vec<Vec<Value>>` where outer vec is rows, inner is column values in table column order.
 pub fn validate_and_coerce_rows(rows: &[Params], table: &Table) -> Result<Vec<Vec<Value>>> {
 	if rows.is_empty() {
 		return Ok(Vec::new());
@@ -36,7 +26,6 @@ pub fn validate_and_coerce_rows(rows: &[Params], table: &Table) -> Result<Vec<Ve
 	Ok(columns_to_rows(&coerced_columns, num_rows, num_cols))
 }
 
-/// Validate and coerce all rows for a ring buffer in columnar batch mode.
 pub fn validate_and_coerce_rows_rb(rows: &[Params], ringbuffer: &RingBuffer) -> Result<Vec<Vec<Value>>> {
 	if rows.is_empty() {
 		return Ok(Vec::new());
@@ -51,10 +40,7 @@ pub fn validate_and_coerce_rows_rb(rows: &[Params], ringbuffer: &RingBuffer) -> 
 	Ok(columns_to_rows(&coerced_columns, num_rows, num_cols))
 }
 
-/// Reorder all rows for a table without coercion (trusted mode).
-///
-/// Used when validation is skipped for pre-validated internal data.
-pub fn reorder_rows_trusted(rows: &[Params], table: &Table) -> Result<Vec<Vec<Value>>> {
+pub fn reorder_rows_unvalidated(rows: &[Params], table: &Table) -> Result<Vec<Vec<Value>>> {
 	if rows.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -62,15 +48,12 @@ pub fn reorder_rows_trusted(rows: &[Params], table: &Table) -> Result<Vec<Vec<Va
 	let num_cols = table.columns.len();
 	let num_rows = rows.len();
 
-	// Build columnar data from params (no coercion)
 	let column_data = collect_rows_to_columns(rows, &table.columns, &table.name)?;
 
-	// Convert directly to row format without coercion
 	Ok(columns_to_rows(&column_data, num_rows, num_cols))
 }
 
-/// Reorder all rows for a ring buffer without coercion (trusted mode).
-pub fn reorder_rows_trusted_rb(rows: &[Params], ringbuffer: &RingBuffer) -> Result<Vec<Vec<Value>>> {
+pub fn reorder_rows_unvalidated_rb(rows: &[Params], ringbuffer: &RingBuffer) -> Result<Vec<Vec<Value>>> {
 	if rows.is_empty() {
 		return Ok(Vec::new());
 	}
@@ -78,25 +61,46 @@ pub fn reorder_rows_trusted_rb(rows: &[Params], ringbuffer: &RingBuffer) -> Resu
 	let num_cols = ringbuffer.columns.len();
 	let num_rows = rows.len();
 
-	// Build columnar data from params (no coercion)
 	let column_data = collect_rows_to_columns(rows, &ringbuffer.columns, &ringbuffer.name)?;
 
-	// Convert directly to row format without coercion
 	Ok(columns_to_rows(&column_data, num_rows, num_cols))
 }
 
-/// Collect rows (params) into columnar format.
-///
-/// Returns `Vec<ColumnData>` where each entry contains all values for that column.
-fn collect_rows_to_columns(rows: &[Params], columns: &[Column], source_name: &str) -> Result<Vec<ColumnData>> {
+pub fn validate_and_coerce_rows_series(rows: &[Params], series: &Series) -> Result<Vec<Vec<Value>>> {
+	if rows.is_empty() {
+		return Ok(Vec::new());
+	}
+
+	let num_cols = series.columns.len();
+	let num_rows = rows.len();
+
+	let column_data = collect_rows_to_columns(rows, &series.columns, &series.name)?;
+	let coerced_columns = coerce_columns(&column_data, &series.columns, num_rows)?;
+
+	Ok(columns_to_rows(&coerced_columns, num_rows, num_cols))
+}
+
+pub fn reorder_rows_unvalidated_series(rows: &[Params], series: &Series) -> Result<Vec<Vec<Value>>> {
+	if rows.is_empty() {
+		return Ok(Vec::new());
+	}
+
+	let num_cols = series.columns.len();
+	let num_rows = rows.len();
+
+	let column_data = collect_rows_to_columns(rows, &series.columns, &series.name)?;
+
+	Ok(columns_to_rows(&column_data, num_rows, num_cols))
+}
+
+fn collect_rows_to_columns(rows: &[Params], columns: &[Column], source_name: &str) -> Result<Vec<ColumnBuffer>> {
 	let num_cols = columns.len();
-	let mut column_data: Vec<ColumnData> =
-		columns.iter().map(|col| ColumnData::none_typed(col.constraint.get_type(), 0)).collect();
+	let mut column_data: Vec<ColumnBuffer> =
+		columns.iter().map(|col| ColumnBuffer::none_typed(col.constraint.get_type(), 0)).collect();
 
 	for params in rows {
 		match params {
 			Params::Named(map) => {
-				// For each column, look up value in map or use Undefined
 				for (col_idx, col) in columns.iter().enumerate() {
 					let value = map.get(&col.name).cloned().unwrap_or(Value::none());
 					column_data[col_idx].push_value(value);
@@ -143,8 +147,7 @@ fn collect_rows_to_columns(rows: &[Params], columns: &[Column], source_name: &st
 	Ok(column_data)
 }
 
-/// Convert columnar data back to row format.
-fn columns_to_rows(columns: &[ColumnData], num_rows: usize, num_cols: usize) -> Vec<Vec<Value>> {
+fn columns_to_rows(columns: &[ColumnBuffer], num_rows: usize, num_cols: usize) -> Vec<Vec<Value>> {
 	let mut result = Vec::with_capacity(num_rows);
 
 	for row_idx in 0..num_rows {

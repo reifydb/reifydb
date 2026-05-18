@@ -61,11 +61,11 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use ColumnPropertyKind::Saturation;
-	use ColumnSaturationPolicy::Error;
+	use ColumnSaturationStrategy::Error;
 	use reifydb_core::interface::catalog::{
 		column::ColumnIndex,
 		id::{ColumnId, TableId},
-		property::{ColumnPropertyKind, ColumnSaturationPolicy},
+		property::{ColumnPropertyKind, ColumnSaturationStrategy},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
@@ -84,8 +84,8 @@ pub mod tests {
 
 		let policy = Saturation(Error);
 
-		let result = CatalogStore::create_column_property(&mut txn, ColumnId(8193), policy.clone()).unwrap();
-		assert_eq!(result.column, ColumnId(8193));
+		let result = CatalogStore::create_column_property(&mut txn, ColumnId(16385), policy.clone()).unwrap();
+		assert_eq!(result.column, ColumnId(16385));
 		assert_eq!(result.property, policy);
 	}
 
@@ -111,10 +111,10 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let policy = Saturation(ColumnSaturationPolicy::None);
-		CatalogStore::create_column_property(&mut txn, ColumnId(8193), policy.clone()).unwrap();
+		let policy = Saturation(ColumnSaturationStrategy::None);
+		CatalogStore::create_column_property(&mut txn, ColumnId(16385), policy.clone()).unwrap();
 
-		let err = CatalogStore::create_column_property(&mut txn, ColumnId(8193), policy.clone()).unwrap_err();
+		let err = CatalogStore::create_column_property(&mut txn, ColumnId(16385), policy.clone()).unwrap_err();
 		let diagnostic = err.diagnostic();
 		assert_eq!(diagnostic.code, "CA_008");
 	}

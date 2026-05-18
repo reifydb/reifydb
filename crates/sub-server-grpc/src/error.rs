@@ -3,39 +3,38 @@
 
 use std::{error, fmt, string::FromUtf8Error};
 
-use reifydb_sub_server::{auth::AuthError, execute::ExecuteError, subscribe::CreateSubscriptionError};
+use reifydb_sub_server::{auth::AuthError, execute::ExecuteError, subscription::errors::CreateSubscriptionError};
 use reifydb_type::value::r#type::Type;
 use serde_json::to_string as to_json;
 use tonic::Status;
 
 pub enum GrpcError {
-	/// Parameter value has wrong byte length for its declared type.
 	InvalidByteLength {
 		r#type: Type,
 		expected: usize,
 		actual: usize,
 	},
-	/// Parameter value contains invalid UTF-8.
+
 	InvalidUtf8(FromUtf8Error),
-	/// Date value is out of range.
+
 	InvalidDate {
 		days: i32,
 	},
-	/// DateTime value is out of range.
+
 	InvalidDateTime(String),
-	/// Time value is out of range.
+
 	InvalidTime {
 		nanos: u64,
 	},
-	/// Decimal string could not be parsed.
+
 	InvalidDecimal(String),
-	/// The parameter type is not supported over gRPC.
+
 	UnsupportedParamType(Type),
-	/// Authentication failed.
+
 	Unauthenticated(AuthError),
-	/// Query/command execution error (timeout, cancelled, engine error, rejected, etc.).
+
 	Execute(ExecuteError),
-	/// Subscription creation failed.
+
 	SubscriptionFailed(String),
 }
 
@@ -141,11 +140,11 @@ impl From<GrpcError> for Status {
 				ExecuteError::Disconnected => Status::internal(err.to_string()),
 				ExecuteError::Engine {
 					diagnostic,
-					statement,
+					rql,
 				} => {
 					let mut diag = (**diagnostic).clone();
-					if diag.statement.is_none() && !statement.is_empty() {
-						diag.with_statement(statement.clone());
+					if diag.rql.is_none() && !rql.is_empty() {
+						diag.with_rql(rql.clone());
 					}
 					let json = to_json(&diag).unwrap_or_else(|_| diagnostic.message.clone());
 					Status::invalid_argument(json)

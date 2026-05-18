@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::utf8::Utf8Container, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct TextTrimEnd;
+pub struct TextTrimEnd {
+	info: RoutineInfo,
+}
 
 impl Default for TextTrimEnd {
 	fn default() -> Self {
@@ -20,31 +18,36 @@ impl Default for TextTrimEnd {
 
 impl TextTrimEnd {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("text::trim_end"),
+		}
 	}
 }
 
-impl ScalarFunction for TextTrimEnd {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl<'a> Routine<FunctionContext<'a>> for TextTrimEnd {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
 
-		if columns.len() != 1 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 1 {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let column = columns.first().unwrap();
+		let column = &args[0];
+		let (data, bitvec) = column.unwrap_option();
+		let row_count = data.len();
 
-		match &column.data() {
-			ColumnData::Utf8 {
+		match data {
+			ColumnBuffer::Utf8 {
 				container,
 				max_bytes,
 			} => {
@@ -52,7 +55,7 @@ impl ScalarFunction for TextTrimEnd {
 
 				for i in 0..row_count {
 					if container.is_defined(i) {
-						let original_str = &container[i];
+						let original_str = container.get(i).unwrap();
 						let trimmed_str = original_str.trim_end();
 						result_data.push(trimmed_str.to_string());
 					} else {
@@ -60,12 +63,20 @@ impl ScalarFunction for TextTrimEnd {
 					}
 				}
 
-				Ok(ColumnData::Utf8 {
+				let result_col_data = ColumnBuffer::Utf8 {
 					container: Utf8Container::new(result_data),
 					max_bytes: *max_bytes,
-				})
+				};
+				let final_data = match bitvec {
+					Some(bv) => ColumnBuffer::Option {
+						inner: Box::new(result_col_data),
+						bitvec: bv.clone(),
+					},
+					None => result_col_data,
+				};
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
-			other => Err(ScalarFunctionError::InvalidArgumentType {
+			other => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Utf8],
@@ -73,8 +84,10 @@ impl ScalarFunction for TextTrimEnd {
 			}),
 		}
 	}
+}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Utf8
+impl Function for TextTrimEnd {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

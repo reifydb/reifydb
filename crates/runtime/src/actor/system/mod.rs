@@ -1,27 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Unified actor system for ReifyDB.
-//!
-//! This module provides a unified system for all concurrent work:
-//! - **Actor spawning** on a shared work-stealing pool
-//! - **CPU-bound compute** with admission control
-//!
-//! # Platform Differences
-//!
-//! - **Native**: Rayon thread pool for all actors
-//! - **WASM**: All operations execute inline (synchronously)
+#[cfg(reifydb_target = "dst")]
+pub mod dst;
 
-#[cfg(not(reifydb_single_threaded))]
+#[cfg(all(not(reifydb_single_threaded), not(reifydb_target = "dst")))]
 pub mod native;
 
-#[cfg(reifydb_single_threaded)]
+#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
 pub mod wasm;
 
-#[cfg(not(reifydb_single_threaded))]
-pub use native::{ActorHandle, ActorSystem, ActorSystemConfig, JoinError};
-#[cfg(reifydb_single_threaded)]
-pub use wasm::{ActorHandle, ActorSystem, ActorSystemConfig, JoinError};
+#[cfg(reifydb_target = "dst")]
+pub use dst::{ActorHandle, ActorSystem, JoinError};
+#[cfg(all(not(reifydb_single_threaded), not(reifydb_target = "dst")))]
+pub use native::{ActorHandle, ActorSystem, JoinError};
+#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
+pub use wasm::{ActorHandle, ActorSystem, JoinError};
 
 #[derive(Debug, Clone, Default)]
 pub struct ActorConfig {

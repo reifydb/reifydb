@@ -19,42 +19,36 @@ pub mod bytes;
 pub mod precision;
 pub mod scale;
 
-/// Represents a type with optional constraints
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TypeConstraint {
 	base_type: Type,
 	constraint: Option<Constraint>,
 }
 
-/// Constraint types for different data types
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Constraint {
-	/// Maximum number of bytes for UTF8, BLOB, INT, UINT
 	MaxBytes(MaxBytes),
-	/// Precision and scale for DECIMAL
+
 	PrecisionScale(Precision, Scale),
-	/// Dictionary constraint: (catalog dictionary ID, id_type)
+
 	Dictionary(DictionaryId, Type),
-	/// Sum type constraint: links a logical column to a catalog SumType
+
 	SumType(SumTypeId),
 }
 
-/// FFI-safe representation of a TypeConstraint
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(C)]
 pub struct FFITypeConstraint {
-	/// Base type code (Type::to_u8)
 	pub base_type: u8,
-	/// Constraint type: 0=None, 1=MaxBytes, 2=PrecisionScale, 3=Dictionary, 4=SumType
+
 	pub constraint_type: u8,
-	/// First constraint param: MaxBytes value OR precision OR dictionary_id low 32 bits
+
 	pub constraint_param1: u32,
-	/// Second constraint param: scale (PrecisionScale) OR id_type (Dictionary)
+
 	pub constraint_param2: u32,
 }
 
 impl TypeConstraint {
-	/// Create an unconstrained type
 	pub const fn unconstrained(ty: Type) -> Self {
 		Self {
 			base_type: ty,
@@ -62,7 +56,6 @@ impl TypeConstraint {
 		}
 	}
 
-	/// Create a type with a constraint
 	pub fn with_constraint(ty: Type, constraint: Constraint) -> Self {
 		Self {
 			base_type: ty,
@@ -70,7 +63,6 @@ impl TypeConstraint {
 		}
 	}
 
-	/// Create a dictionary type constraint
 	pub fn dictionary(dictionary_id: DictionaryId, id_type: Type) -> Self {
 		Self {
 			base_type: Type::DictionaryId,
@@ -78,7 +70,6 @@ impl TypeConstraint {
 		}
 	}
 
-	/// Create a sum type constraint (tag stored as Uint1)
 	pub fn sumtype(id: SumTypeId) -> Self {
 		Self {
 			base_type: Type::Uint1,
@@ -86,13 +77,10 @@ impl TypeConstraint {
 		}
 	}
 
-	/// Get the base type
 	pub fn get_type(&self) -> Type {
 		self.base_type.clone()
 	}
 
-	/// Get the storage type. For DictionaryId with a Dictionary constraint,
-	/// returns the id_type (e.g. Uint4). For all other types, returns the base_type.
 	pub fn storage_type(&self) -> Type {
 		match (&self.base_type, &self.constraint) {
 			(Type::DictionaryId, Some(Constraint::Dictionary(_, id_type))) => id_type.clone(),
@@ -100,12 +88,10 @@ impl TypeConstraint {
 		}
 	}
 
-	/// Get the constraint
 	pub fn constraint(&self) -> &Option<Constraint> {
 		&self.constraint
 	}
 
-	/// Convert to FFI representation
 	pub fn to_ffi(&self) -> FFITypeConstraint {
 		let base_type = self.base_type.to_u8();
 		match &self.constraint {
@@ -142,7 +128,6 @@ impl TypeConstraint {
 		}
 	}
 
-	/// Create from FFI representation
 	pub fn from_ffi(ffi: FFITypeConstraint) -> Self {
 		let ty = Type::from_u8(ffi.base_type);
 		match ffi.constraint_type {
@@ -169,12 +154,9 @@ impl TypeConstraint {
 		}
 	}
 
-	/// Validate a value against this type constraint
 	pub fn validate(&self, value: &Value) -> Result<(), Error> {
-		// First check type compatibility
 		let value_type = value.get_type();
 		if value_type != self.base_type && !matches!(value, Value::None { .. }) {
-			// For Option types, also accept values matching the inner type
 			if let Type::Option(inner) = &self.base_type {
 				if value_type != **inner {
 					unimplemented!()
@@ -184,7 +166,6 @@ impl TypeConstraint {
 			}
 		}
 
-		// If None, only allow for Option types
 		if matches!(value, Value::None { .. }) {
 			if self.base_type.is_option() {
 				return Ok(());
@@ -203,7 +184,6 @@ impl TypeConstraint {
 			}
 		}
 
-		// Check constraints if present
 		match (&self.base_type, &self.constraint) {
 			(Type::Utf8, Some(Constraint::MaxBytes(max))) => {
 				if let Value::Utf8(s) = value {
@@ -247,13 +227,8 @@ impl TypeConstraint {
 			}
 			(Type::Int, Some(Constraint::MaxBytes(max))) => {
 				if let Value::Int(vi) = value {
-					// Calculate byte size of Int by
-					// converting to string and estimating
-					// This is a rough estimate: each
-					// decimal digit needs ~3.32 bits, so
-					// ~0.415 bytes
 					let str_len = vi.to_string().len();
-					let byte_len = (str_len * 415 / 1000) + 1; // Rough estimate
+					let byte_len = (str_len * 415 / 1000) + 1;
 					let max_value: usize = (*max).into();
 					if byte_len > max_value {
 						return Err(TypeError::ConstraintViolation {
@@ -273,13 +248,8 @@ impl TypeConstraint {
 			}
 			(Type::Uint, Some(Constraint::MaxBytes(max))) => {
 				if let Value::Uint(vu) = value {
-					// Calculate byte size of Uint by
-					// converting to string and estimating
-					// This is a rough estimate: each
-					// decimal digit needs ~3.32 bits, so
-					// ~0.415 bytes
 					let str_len = vu.to_string().len();
-					let byte_len = (str_len * 415 / 1000) + 1; // Rough estimate
+					let byte_len = (str_len * 415 / 1000) + 1;
 					let max_value: usize = (*max).into();
 					if byte_len > max_value {
 						return Err(TypeError::ConstraintViolation {
@@ -299,12 +269,8 @@ impl TypeConstraint {
 			}
 			(Type::Decimal, Some(Constraint::PrecisionScale(precision, scale))) => {
 				if let Value::Decimal(decimal) = value {
-					// Calculate precision and scale from
-					// BigDecimal
 					let decimal_str = decimal.to_string();
 
-					// Calculate scale (digits after decimal
-					// point)
 					let decimal_scale: u8 = if let Some(dot_pos) = decimal_str.find('.') {
 						let after_dot = &decimal_str[dot_pos + 1..];
 						after_dot.len().min(255) as u8
@@ -312,8 +278,6 @@ impl TypeConstraint {
 						0
 					};
 
-					// Calculate precision (total number of
-					// significant digits)
 					let decimal_precision: u8 =
 						decimal_str.chars().filter(|c| c.is_ascii_digit()).count().min(255)
 							as u8;
@@ -351,19 +315,17 @@ impl TypeConstraint {
 					}
 				}
 			}
-			// No constraint or non-applicable constraint
+
 			_ => {}
 		}
 
 		Ok(())
 	}
 
-	/// Check if this type is unconstrained
 	pub fn is_unconstrained(&self) -> bool {
 		self.constraint.is_none()
 	}
 
-	/// Get a human-readable string representation
 	#[allow(clippy::inherent_to_string)]
 	pub fn to_string(&self) -> String {
 		match &self.constraint {

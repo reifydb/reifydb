@@ -16,12 +16,7 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	/// Drop a flow by its name within a namespace.
-	///
-	/// This is useful for cleaning up flows associated with subscriptions,
-	/// where the flow name is derived from the subscription ID.
 	pub(crate) fn drop_flow_by_name(txn: &mut AdminTransaction, namespace: NamespaceId, name: &str) -> Result<()> {
-		// Find the flow by name
 		if let Some(flow) =
 			CatalogStore::find_flow_by_name(&mut Transaction::Admin(&mut *txn), namespace, name)?
 		{
@@ -31,30 +26,24 @@ impl CatalogStore {
 	}
 
 	pub(crate) fn drop_flow(txn: &mut AdminTransaction, flow_id: FlowId) -> Result<()> {
-		// Get the flow to find namespace for index deletion
 		let flow = CatalogStore::find_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 
 		if let Some(flow) = flow {
-			// Step 1: Drop all nodes for this flow
 			let nodes = CatalogStore::list_flow_nodes_by_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 			for node in nodes {
 				CatalogStore::drop_flow_node(txn, node.id)?;
 			}
 
-			// Step 2: Drop all edges for this flow
 			let edges = CatalogStore::list_flow_edges_by_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 			for edge in edges {
 				CatalogStore::drop_flow_edge(txn, edge.id)?;
 			}
 
-			// Step 3: Clean up flow version and CDC consumer
 			txn.remove(&FlowVersionKey::encoded(flow_id))?;
 			txn.remove(&CdcConsumerKey::encoded(CdcConsumerId::new(format!("flow:{}", flow_id.0))))?;
 
-			// Step 4: Delete from namespace index
 			txn.remove(&NamespaceFlowKey::encoded(flow.namespace, flow_id))?;
 
-			// Step 5: Delete from main flow table
 			txn.remove(&FlowKey::encoded(flow_id))?;
 		}
 

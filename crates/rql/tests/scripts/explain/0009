@@ -1,0 +1,35 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Test physical plan for global aggregate without BY clause
+query 'CALL rql::explain("from users aggregate { count(id) }")'
+---
+> +-------+---------+----------+-------------+-------------------------+
+> |  idx  |  depth  |  parent  |    kind     |         detail          |
+> +-------+---------+----------+-------------+-------------------------+
+> |   0   |    0    |   none   |  Aggregate  |  by=[] map=[count(id)]  |
+> |   1   |    1    |    0     |  TableScan  |     default::users      |
+> +-------+---------+----------+-------------+-------------------------+
+>
+
+# Test physical plan for global aggregate with empty BY clause
+query 'CALL rql::explain("from users aggregate { total: count(id), sum: sum(age) } by {}")'
+---
+> +-------+---------+----------+-------------+---------------------------------------------------+
+> |  idx  |  depth  |  parent  |    kind     |                      detail                       |
+> +-------+---------+----------+-------------+---------------------------------------------------+
+> |   0   |    0    |   none   |  Aggregate  |  by=[] map=[count(id) as total, sum(age) as sum]  |
+> |   1   |    1    |    0     |  TableScan  |                  default::users                   |
+> +-------+---------+----------+-------------+---------------------------------------------------+
+>
+
+# Test physical plan for multiple global aggregations with aliases
+query 'CALL rql::explain("from users aggregate { cnt: count(id), total: sum(age), average: avg(age), minimum: min(age), maximum: max(age) } by {}")'
+---
+> +-------+---------+----------+-------------+------------------------------------------------------------------------------------------------------------------+
+> |  idx  |  depth  |  parent  |    kind     |                                                      detail                                                      |
+> +-------+---------+----------+-------------+------------------------------------------------------------------------------------------------------------------+
+> |   0   |    0    |   none   |  Aggregate  |  by=[] map=[count(id) as cnt, sum(age) as total, avg(age) as average, min(age) as minimum, max(age) as maximum]  |
+> |   1   |    1    |    0     |  TableScan  |                                                  default::users                                                  |
+> +-------+---------+----------+-------------+------------------------------------------------------------------------------------------------------------------+
+>

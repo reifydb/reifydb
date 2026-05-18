@@ -191,6 +191,10 @@ export class Uuid7Value implements Value {
         return 0;
     }
 
+    toJSON(): string | null {
+        return this.uuid ?? null;
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,

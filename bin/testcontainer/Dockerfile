@@ -3,6 +3,8 @@ FROM rust:1.92.0-slim AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     libssl-dev \
+    clang \
+    mold \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
@@ -20,9 +22,9 @@ COPY pkg ./pkg
 COPY bin ./bin
 
 WORKDIR /build
-RUN cargo build --release --offline --package testcontainer
+RUN RUSTC_WRAPPER="" cargo build --release --offline --package testcontainer
 
-FROM debian:bookworm-slim
+FROM rust:1.92.0-slim
 
 LABEL org.opencontainers.image.title="ReifyDB Test Container"
 LABEL org.opencontainers.image.source="https://github.com/reifydb/reifydb"
@@ -30,12 +32,6 @@ LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 ENV PATH="/usr/local/bin:$PATH"
 ENV RUST_BACKTRACE=1
-
-# Install only runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    libssl3 \
- && rm -rf /var/lib/apt/lists/*
 
 # Add unprivileged user with no login shell
 RUN useradd --system --uid 1001 --no-create-home --shell /usr/sbin/nologin reifydb
@@ -48,6 +44,6 @@ RUN chown root:root /usr/local/bin/testcontainer && \
 
 USER reifydb
 
-EXPOSE 8090
-EXPOSE 8091
+EXPOSE 18090
+EXPOSE 18091
 CMD ["testcontainer"]

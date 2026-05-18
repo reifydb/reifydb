@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::catalog::property::{ColumnPropertyKind, ColumnSaturationPolicy};
+use reifydb_core::interface::catalog::property::{ColumnPropertyKind, ColumnSaturationStrategy};
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
@@ -22,12 +22,12 @@ impl<'bump> Compiler<'bump> {
 			.map(|entry| match entry.kind {
 				AstColumnPropertyKind::Saturation => {
 					if entry.value.is_literal_none() {
-						ColumnPropertyKind::Saturation(ColumnSaturationPolicy::None)
+						ColumnPropertyKind::Saturation(ColumnSaturationStrategy::None)
 					} else {
 						let ident = entry.value.as_identifier().text();
 						match ident {
 							"error" => ColumnPropertyKind::Saturation(
-								ColumnSaturationPolicy::Error,
+								ColumnSaturationStrategy::Error,
 							),
 							_ => unimplemented!(),
 						}

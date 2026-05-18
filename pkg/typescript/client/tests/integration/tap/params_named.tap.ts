@@ -2,21 +2,21 @@
 // Copyright (c) 2025 ReifyDB
 
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
-import {waitForDatabase} from "../setup";
+import {wait_for_database} from "../setup";
 import {Client, WsClient} from "../../../src";
 import {Shape} from "@reifydb/core";
 
 describe('Named Parameters - Primitive Types', () => {
-    let wsClient: WsClient;
+    let ws_client: WsClient;
 
     beforeAll(async () => {
-        await waitForDatabase();
+        await wait_for_database();
     }, 30000);
 
     beforeEach(async () => {
         try {
-            wsClient = await Client.connect_ws(process.env.REIFYDB_WS_URL, {
-                timeoutMs: 10000,
+            ws_client = await Client.connect_ws(process.env.REIFYDB_WS_URL, {
+                timeout_ms: 10000,
                 token: process.env.REIFYDB_TOKEN
             });
         } catch (error) {
@@ -26,19 +26,19 @@ describe('Named Parameters - Primitive Types', () => {
     }, 15000);
 
     afterEach(async () => {
-        if (wsClient) {
+        if (ws_client) {
             try {
-                wsClient.disconnect();
+                ws_client.disconnect();
             } catch (error) {
                 console.error('⚠️ Error during disconnect:', error);
             }
-            wsClient = null;
+            ws_client = null;
         }
     });
 
     describe('command_named', () => {
         it('bool_param', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 "MAP {result: $bool_val}",
                 {bool_val: true},
                 [Shape.object({result: Shape.boolean()})]
@@ -48,7 +48,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('int1_param', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 "MAP {result: $int1_val}",
                 {int1_val: 42},
                 [Shape.object({result: Shape.int1()})]
@@ -58,7 +58,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('int2_param', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 "MAP {result: $int2_val}",
                 {int2_val: 1234},
                 [Shape.object({result: Shape.int2()})]
@@ -68,7 +68,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('int4_param', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 "MAP {result: $int4_val}",
                 {int4_val: 12345678},
                 [Shape.object({result: Shape.int4()})]
@@ -78,7 +78,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('int8_param', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 "MAP {result: $int8_val}",
                 {int8_val: BigInt("9223372036854775807")},
                 [Shape.object({result: Shape.int8()})]
@@ -88,7 +88,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('int16_param', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 "MAP {result: $int16_val}",
                 {int16_val: BigInt("170141183460469231731687303715884105727")},
                 [Shape.object({result: Shape.int16()})]
@@ -98,7 +98,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('uint1_param', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 "MAP {result: $uint1_val}",
                 {uint1_val: 255},
                 [Shape.object({result: Shape.uint1()})]
@@ -108,7 +108,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('uint2_param', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 "MAP {result: $uint2_val}",
                 {uint2_val: 65535},
                 [Shape.object({result: Shape.uint2()})]
@@ -118,7 +118,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('uint4_param', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 "MAP {result: $uint4_val}",
                 {uint4_val: 4294967295},
                 [Shape.object({result: Shape.uint4()})]
@@ -128,7 +128,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('uint8_param', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 "MAP {result: $uint8_val}",
                 {uint8_val: BigInt("18446744073709551615")},
                 [Shape.object({result: Shape.uint8()})]
@@ -138,7 +138,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('uint16_param', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 "MAP {result: $uint16_val}",
                 {uint16_val: BigInt("340282366920938463463374607431768211455")},
                 [Shape.object({result: Shape.uint16()})]
@@ -148,7 +148,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('float4_param', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 "MAP {result: $float4_val}",
                 {float4_val: 3.14},
                 [Shape.object({result: Shape.float4()})]
@@ -159,7 +159,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('float8_param', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 "MAP {result: $float8_val}",
                 {float8_val: 3.141592653589793},
                 [Shape.object({result: Shape.float8()})]
@@ -169,7 +169,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('decimal_param', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 "MAP {result: $decimal_val}",
                 {decimal_val: "123.456789"},
                 [Shape.object({result: Shape.decimal()})]
@@ -181,7 +181,7 @@ describe('Named Parameters - Primitive Types', () => {
 
     describe('query_named', () => {
         it('bool_param', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 "MAP {result: $bool_val}",
                 {bool_val: true},
                 [Shape.object({result: Shape.boolean()})]
@@ -191,7 +191,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('int1_param', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 "MAP {result: $int1_val}",
                 {int1_val: 42},
                 [Shape.object({result: Shape.int1()})]
@@ -201,7 +201,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('int2_param', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 "MAP {result: $int2_val}",
                 {int2_val: 1234},
                 [Shape.object({result: Shape.int2()})]
@@ -211,7 +211,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('int4_param', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 "MAP {result: $int4_val}",
                 {int4_val: 12345678},
                 [Shape.object({result: Shape.int4()})]
@@ -221,7 +221,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('int8_param', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 "MAP {result: $int8_val}",
                 {int8_val: BigInt("9223372036854775807")},
                 [Shape.object({result: Shape.int8()})]
@@ -231,7 +231,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('int16_param', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 "MAP {result: $int16_val}",
                 {int16_val: BigInt("170141183460469231731687303715884105727")},
                 [Shape.object({result: Shape.int16()})]
@@ -241,7 +241,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('uint1_param', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 "MAP {result: $uint1_val}",
                 {uint1_val: 255},
                 [Shape.object({result: Shape.uint1()})]
@@ -251,7 +251,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('uint2_param', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 "MAP {result: $uint2_val}",
                 {uint2_val: 65535},
                 [Shape.object({result: Shape.uint2()})]
@@ -261,7 +261,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('uint4_param', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 "MAP {result: $uint4_val}",
                 {uint4_val: 4294967295},
                 [Shape.object({result: Shape.uint4()})]
@@ -271,7 +271,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('uint8_param', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 "MAP {result: $uint8_val}",
                 {uint8_val: BigInt("18446744073709551615")},
                 [Shape.object({result: Shape.uint8()})]
@@ -281,7 +281,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('uint16_param', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 "MAP {result: $uint16_val}",
                 {uint16_val: BigInt("340282366920938463463374607431768211455")},
                 [Shape.object({result: Shape.uint16()})]
@@ -291,7 +291,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('float4_param', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 "MAP {result: $float4_val}",
                 {float4_val: 3.14},
                 [Shape.object({result: Shape.float4()})]
@@ -301,7 +301,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('float8_param', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 "MAP {result: $float8_val}",
                 {float8_val: 3.141592653589793},
                 [Shape.object({result: Shape.float8()})]
@@ -311,7 +311,7 @@ describe('Named Parameters - Primitive Types', () => {
         });
 
         it('decimal_param', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 "MAP {result: $decimal_val}",
                 {decimal_val: "123.456789"},
                 [Shape.object({result: Shape.decimal()})]

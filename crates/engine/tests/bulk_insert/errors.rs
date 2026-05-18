@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Error condition tests for the bulk_insert module.
-//!
-//! Tests cover all error types: namespace not found, table not found,
-//! ringbuffer not found, column not found, too many values, and coercion failures.
-
 use reifydb_engine::test_prelude::*;
 
 #[test]

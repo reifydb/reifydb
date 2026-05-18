@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::{container::temporal::TemporalContainer, date::Date, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct DateNew;
+pub struct DateNew {
+	info: RoutineInfo,
+}
 
 impl Default for DateNew {
 	fn default() -> Self {
@@ -20,63 +18,72 @@ impl Default for DateNew {
 
 impl DateNew {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("date::new"),
+		}
 	}
 }
 
-fn extract_i32(data: &ColumnData, i: usize) -> Option<i32> {
+fn extract_i32(data: &ColumnBuffer, i: usize) -> Option<i32> {
 	match data {
-		ColumnData::Int1(c) => c.get(i).map(|&v| v as i32),
-		ColumnData::Int2(c) => c.get(i).map(|&v| v as i32),
-		ColumnData::Int4(c) => c.get(i).copied(),
-		ColumnData::Int8(c) => c.get(i).map(|&v| v as i32),
-		ColumnData::Int16(c) => c.get(i).map(|&v| v as i32),
-		ColumnData::Uint1(c) => c.get(i).map(|&v| v as i32),
-		ColumnData::Uint2(c) => c.get(i).map(|&v| v as i32),
-		ColumnData::Uint4(c) => c.get(i).map(|&v| v as i32),
-		ColumnData::Uint8(c) => c.get(i).map(|&v| v as i32),
-		ColumnData::Uint16(c) => c.get(i).map(|&v| v as i32),
+		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as i32),
+		ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as i32),
+		ColumnBuffer::Int4(c) => c.get(i).copied(),
+		ColumnBuffer::Int8(c) => c.get(i).map(|&v| v as i32),
+		ColumnBuffer::Int16(c) => c.get(i).map(|&v| v as i32),
+		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i32),
+		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as i32),
+		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as i32),
+		ColumnBuffer::Uint8(c) => c.get(i).map(|&v| v as i32),
+		ColumnBuffer::Uint16(c) => c.get(i).map(|&v| v as i32),
 		_ => None,
 	}
 }
 
-fn is_integer_type(data: &ColumnData) -> bool {
+fn is_integer_type(data: &ColumnBuffer) -> bool {
 	matches!(
 		data,
-		ColumnData::Int1(_)
-			| ColumnData::Int2(_) | ColumnData::Int4(_)
-			| ColumnData::Int8(_) | ColumnData::Int16(_)
-			| ColumnData::Uint1(_)
-			| ColumnData::Uint2(_)
-			| ColumnData::Uint4(_)
-			| ColumnData::Uint8(_)
-			| ColumnData::Uint16(_)
+		ColumnBuffer::Int1(_)
+			| ColumnBuffer::Int2(_)
+			| ColumnBuffer::Int4(_)
+			| ColumnBuffer::Int8(_)
+			| ColumnBuffer::Int16(_)
+			| ColumnBuffer::Uint1(_)
+			| ColumnBuffer::Uint2(_)
+			| ColumnBuffer::Uint4(_)
+			| ColumnBuffer::Uint8(_)
+			| ColumnBuffer::Uint16(_)
 	)
 }
 
-impl ScalarFunction for DateNew {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl<'a> Routine<FunctionContext<'a>> for DateNew {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Date
+	}
 
-		if columns.len() != 3 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 3 {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 3,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let year_col = columns.first().unwrap();
-		let month_col = columns.get(1).unwrap();
-		let day_col = columns.get(2).unwrap();
+		let year_col = &args[0];
+		let month_col = &args[1];
+		let day_col = &args[2];
+		let (year_data, _) = year_col.unwrap_option();
+		let (month_data, _) = month_col.unwrap_option();
+		let (day_data, _) = day_col.unwrap_option();
+		let row_count = year_data.len();
 
-		if !is_integer_type(year_col.data()) {
-			return Err(ScalarFunctionError::InvalidArgumentType {
+		if !is_integer_type(year_data) {
+			return Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![
@@ -91,11 +98,11 @@ impl ScalarFunction for DateNew {
 					Type::Uint8,
 					Type::Uint16,
 				],
-				actual: year_col.data().get_type(),
+				actual: year_data.get_type(),
 			});
 		}
-		if !is_integer_type(month_col.data()) {
-			return Err(ScalarFunctionError::InvalidArgumentType {
+		if !is_integer_type(month_data) {
+			return Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 1,
 				expected: vec![
@@ -110,11 +117,11 @@ impl ScalarFunction for DateNew {
 					Type::Uint8,
 					Type::Uint16,
 				],
-				actual: month_col.data().get_type(),
+				actual: month_data.get_type(),
 			});
 		}
-		if !is_integer_type(day_col.data()) {
-			return Err(ScalarFunctionError::InvalidArgumentType {
+		if !is_integer_type(day_data) {
+			return Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 2,
 				expected: vec![
@@ -129,16 +136,16 @@ impl ScalarFunction for DateNew {
 					Type::Uint8,
 					Type::Uint16,
 				],
-				actual: day_col.data().get_type(),
+				actual: day_data.get_type(),
 			});
 		}
 
 		let mut container = TemporalContainer::with_capacity(row_count);
 
 		for i in 0..row_count {
-			let year = extract_i32(year_col.data(), i);
-			let month = extract_i32(month_col.data(), i);
-			let day = extract_i32(day_col.data(), i);
+			let year = extract_i32(year_data, i);
+			let month = extract_i32(month_data, i);
+			let day = extract_i32(day_data, i);
 
 			match (year, month, day) {
 				(Some(y), Some(m), Some(d)) => {
@@ -155,10 +162,12 @@ impl ScalarFunction for DateNew {
 			}
 		}
 
-		Ok(ColumnData::Date(container))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::Date(container))]))
 	}
+}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Date
+impl Function for DateNew {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

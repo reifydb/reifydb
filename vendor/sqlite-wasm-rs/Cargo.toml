@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.82.0"
 name = "sqlite-wasm-rs"
-version = "0.5.2"
+version = "0.5.3"
 authors = ["Spxg <unsafe@outlook.es>"]
 build = "build.rs"
 links = "wsqlite3"

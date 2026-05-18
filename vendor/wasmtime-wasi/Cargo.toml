@@ -11,9 +11,9 @@
 
 [package]
 edition = "2024"
-rust-version = "1.91.0"
+rust-version = "1.92.0"
 name = "wasmtime-wasi"
-version = "43.0.0"
+version = "44.0.0"
 authors = ["The Wasmtime Project Developers"]
 build = false
 include = [
@@ -145,7 +145,7 @@ default-features = false
 version = "2.5.7"
 
 [dependencies.wasmtime]
-version = "43.0.0"
+version = "44.0.0"
 features = [
     "runtime",
     "std",
@@ -153,12 +153,12 @@ features = [
 default-features = false
 
 [dependencies.wasmtime-wasi-io]
-version = "43.0.0"
+version = "44.0.0"
 features = ["std"]
 default-features = false
 
 [dependencies.wiggle]
-version = "=43.0.0"
+version = "=44.0.0"
 features = ["wasmtime"]
 optional = true
 default-features = false
@@ -201,7 +201,7 @@ features = [
 default-features = false
 
 [dev-dependencies.wasmtime]
-version = "43.0.0"
+version = "44.0.0"
 features = [
     "default",
     "incremental-cache",
@@ -264,4 +264,6 @@ check-cfg = [
     "cfg(pulley_tail_calls)",
     "cfg(pulley_assume_llvm_makes_tail_calls)",
     "cfg(pulley_disable_interp_simd)",
+    "cfg(arc_try_new)",
+    "cfg(gc_zeal)",
 ]

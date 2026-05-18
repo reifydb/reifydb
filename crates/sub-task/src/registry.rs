@@ -4,23 +4,20 @@
 use std::sync::Arc;
 
 use dashmap::DashMap;
+use reifydb_core::interface::catalog::task::TaskId;
 use reifydb_runtime::context::clock::Instant;
 
-use crate::task::{ScheduledTask, TaskId};
+use crate::task::ScheduledTask;
 
-/// Entry in the task registry tracking execution state
 #[derive(Debug, Clone)]
 pub struct TaskEntry {
-	/// The task definition
 	pub task: Arc<ScheduledTask>,
-	/// When the task should next execute
+
 	pub next_execution: Instant,
 }
 
-/// Thread-safe registry of scheduled tasks
 pub type TaskRegistry = Arc<DashMap<TaskId, TaskEntry>>;
 
-/// Information about a task for status queries
 #[derive(Debug, Clone)]
 pub struct TaskInfo {
 	pub id: TaskId,

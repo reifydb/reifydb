@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct TextIndexOf;
+pub struct TextIndexOf {
+	info: RoutineInfo,
+}
 
 impl Default for TextIndexOf {
 	fn default() -> Self {
@@ -20,37 +18,44 @@ impl Default for TextIndexOf {
 
 impl TextIndexOf {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("text::index_of"),
+		}
 	}
 }
 
-impl ScalarFunction for TextIndexOf {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl<'a> Routine<FunctionContext<'a>> for TextIndexOf {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Int4
+	}
 
-		if columns.len() != 2 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 2 {
+			return Err(RoutineError::FunctionArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let str_col = columns.first().unwrap();
-		let substr_col = columns.get(1).unwrap();
+		let str_col = &args[0];
+		let substr_col = &args[1];
 
-		match (str_col.data(), substr_col.data()) {
+		let (str_data, str_bv) = str_col.unwrap_option();
+		let (substr_data, substr_bv) = substr_col.unwrap_option();
+		let row_count = str_data.len();
+
+		match (str_data, substr_data) {
 			(
-				ColumnData::Utf8 {
+				ColumnBuffer::Utf8 {
 					container: str_container,
 					..
 				},
-				ColumnData::Utf8 {
+				ColumnBuffer::Utf8 {
 					container: substr_container,
 					..
 				},
@@ -60,14 +65,11 @@ impl ScalarFunction for TextIndexOf {
 
 				for i in 0..row_count {
 					if str_container.is_defined(i) && substr_container.is_defined(i) {
-						let s = &str_container[i];
-						let substr = &substr_container[i];
+						let s = str_container.get(i).unwrap();
+						let substr = substr_container.get(i).unwrap();
 						let index = s
-							.find(substr.as_str())
-							.map(|pos| {
-								// Convert byte position to character position
-								s[..pos].chars().count() as i32
-							})
+							.find(substr)
+							.map(|pos| s[..pos].chars().count() as i32)
 							.unwrap_or(-1);
 						result_data.push(index);
 						result_bitvec.push(true);
@@ -77,20 +79,36 @@ impl ScalarFunction for TextIndexOf {
 					}
 				}
 
-				Ok(ColumnData::int4_with_bitvec(result_data, result_bitvec))
+				let result_col_data = ColumnBuffer::int4_with_bitvec(result_data, result_bitvec);
+
+				let combined_bv = match (str_bv, substr_bv) {
+					(Some(b), Some(e)) => Some(b.and(e)),
+					(Some(b), None) => Some(b.clone()),
+					(None, Some(e)) => Some(e.clone()),
+					(None, None) => None,
+				};
+
+				let final_data = match combined_bv {
+					Some(bv) => ColumnBuffer::Option {
+						inner: Box::new(result_col_data),
+						bitvec: bv,
+					},
+					None => result_col_data,
+				};
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
 			(
-				ColumnData::Utf8 {
+				ColumnBuffer::Utf8 {
 					..
 				},
 				other,
-			) => Err(ScalarFunctionError::InvalidArgumentType {
+			) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 1,
 				expected: vec![Type::Utf8],
 				actual: other.get_type(),
 			}),
-			(other, _) => Err(ScalarFunctionError::InvalidArgumentType {
+			(other, _) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Utf8],
@@ -98,8 +116,10 @@ impl ScalarFunction for TextIndexOf {
 			}),
 		}
 	}
+}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Int4
+impl Function for TextIndexOf {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

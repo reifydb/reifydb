@@ -2,6 +2,7 @@
 use log::debug;
 
 use super::Result;
+use crate::highlight::CmdKind;
 use crate::keys::{KeyCode as K, KeyEvent, KeyEvent as E, Modifiers as M};
 use crate::tty::{self, RawReader, Term, Terminal};
 use crate::{Config, EditMode};
@@ -9,7 +10,7 @@ use crate::{Config, EditMode};
 use crate::{Event, EventContext, EventHandler};
 
 /// The number of times one command should be repeated.
-pub type RepeatCount = usize;
+pub type RepeatCount = u16;
 
 /// Commands
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -19,7 +20,7 @@ pub enum Cmd {
     Abort, // Miscellaneous Command
     /// accept-line
     ///
-    /// See also AcceptOrInsertLine
+    /// See also `AcceptOrInsertLine`
     AcceptLine,
     /// beginning-of-history
     BeginningOfHistory,
@@ -131,16 +132,15 @@ impl Cmd {
     /// Tells if current command should reset kill ring.
     #[must_use]
     pub const fn should_reset_kill_ring(&self) -> bool {
-        #[allow(clippy::match_same_arms)]
         match *self {
-            Cmd::Kill(Movement::BackwardChar(_) | Movement::ForwardChar(_)) => true,
-            Cmd::ClearScreen
-            | Cmd::Kill(_)
-            | Cmd::Replace(..)
-            | Cmd::Noop
-            | Cmd::Suspend
-            | Cmd::Yank(..)
-            | Cmd::YankPop => false,
+            Self::Kill(Movement::BackwardChar(_) | Movement::ForwardChar(_)) => true,
+            Self::ClearScreen
+            | Self::Kill(_)
+            | Self::Replace(..)
+            | Self::Noop
+            | Self::Suspend
+            | Self::Yank(..)
+            | Self::YankPop => false,
             _ => true,
         }
     }
@@ -148,21 +148,21 @@ impl Cmd {
     const fn is_repeatable_change(&self) -> bool {
         matches!(
             *self,
-            Cmd::Dedent(..)
-                | Cmd::Indent(..)
-                | Cmd::Insert(..)
-                | Cmd::Kill(_)
-                | Cmd::ReplaceChar(..)
-                | Cmd::Replace(..)
-                | Cmd::SelfInsert(..)
-                | Cmd::ViYankTo(_)
-                | Cmd::Yank(..) // Cmd::TransposeChars | TODO Validate
+            Self::Dedent(..)
+                | Self::Indent(..)
+                | Self::Insert(..)
+                | Self::Kill(_)
+                | Self::ReplaceChar(..)
+                | Self::Replace(..)
+                | Self::SelfInsert(..)
+                | Self::ViYankTo(_)
+                | Self::Yank(..) // Cmd::TransposeChars | TODO Validate
         )
     }
 
     const fn is_repeatable(&self) -> bool {
         match *self {
-            Cmd::Move(_) => true,
+            Self::Move(_) => true,
             _ => self.is_repeatable_change(),
         }
     }
@@ -170,40 +170,43 @@ impl Cmd {
     // Replay this command with a possible different `RepeatCount`.
     fn redo(&self, new: Option<RepeatCount>, wrt: &dyn Refresher) -> Self {
         match *self {
-            Cmd::Dedent(ref mvt) => Cmd::Dedent(mvt.redo(new)),
-            Cmd::Indent(ref mvt) => Cmd::Indent(mvt.redo(new)),
-            Cmd::Insert(previous, ref text) => {
-                Cmd::Insert(repeat_count(previous, new), text.clone())
+            Self::Dedent(ref mvt) => Self::Dedent(mvt.redo(new)),
+            Self::Indent(ref mvt) => Self::Indent(mvt.redo(new)),
+            Self::Insert(previous, ref text) => {
+                Self::Insert(repeat_count(previous, new), text.clone())
             }
-            Cmd::Kill(ref mvt) => Cmd::Kill(mvt.redo(new)),
-            Cmd::Move(ref mvt) => Cmd::Move(mvt.redo(new)),
-            Cmd::ReplaceChar(previous, c) => Cmd::ReplaceChar(repeat_count(previous, new), c),
-            Cmd::Replace(ref mvt, ref text) => {
+            Self::Kill(ref mvt) => Self::Kill(mvt.redo(new)),
+            Self::Move(ref mvt) => Self::Move(mvt.redo(new)),
+            Self::ReplaceChar(previous, c) => Self::ReplaceChar(repeat_count(previous, new), c),
+            Self::Replace(ref mvt, ref text) => {
                 if text.is_none() {
                     let last_insert = wrt.last_insert();
                     if let Movement::ForwardChar(0) = mvt {
-                        Cmd::Replace(
-                            Movement::ForwardChar(last_insert.as_ref().map_or(0, String::len)),
+                        Self::Replace(
+                            Movement::ForwardChar(
+                                RepeatCount::try_from(last_insert.as_ref().map_or(0, String::len))
+                                    .unwrap(),
+                            ),
                             last_insert,
                         )
                     } else {
-                        Cmd::Replace(mvt.redo(new), last_insert)
+                        Self::Replace(mvt.redo(new), last_insert)
                     }
                 } else {
-                    Cmd::Replace(mvt.redo(new), text.clone())
+                    Self::Replace(mvt.redo(new), text.clone())
                 }
             }
-            Cmd::SelfInsert(previous, c) => {
+            Self::SelfInsert(previous, c) => {
                 // consecutive char inserts are repeatable not only the last one...
                 if let Some(text) = wrt.last_insert() {
-                    Cmd::Insert(repeat_count(previous, new), text)
+                    Self::Insert(repeat_count(previous, new), text)
                 } else {
-                    Cmd::SelfInsert(repeat_count(previous, new), c)
+                    Self::SelfInsert(repeat_count(previous, new), c)
                 }
             }
             // Cmd::TransposeChars => Cmd::TransposeChars,
-            Cmd::ViYankTo(ref mvt) => Cmd::ViYankTo(mvt.redo(new)),
-            Cmd::Yank(previous, anchor) => Cmd::Yank(repeat_count(previous, new), anchor),
+            Self::ViYankTo(ref mvt) => Self::ViYankTo(mvt.redo(new)),
+            Self::Yank(previous, anchor) => Self::Yank(repeat_count(previous, new), anchor),
             _ => unreachable!(),
         }
     }
@@ -263,10 +266,10 @@ pub enum CharSearch {
 impl CharSearch {
     const fn opposite(self) -> Self {
         match self {
-            CharSearch::Forward(c) => CharSearch::Backward(c),
-            CharSearch::ForwardBefore(c) => CharSearch::BackwardAfter(c),
-            CharSearch::Backward(c) => CharSearch::Forward(c),
-            CharSearch::BackwardAfter(c) => CharSearch::ForwardBefore(c),
+            Self::Forward(c) => Self::Backward(c),
+            Self::ForwardBefore(c) => Self::BackwardAfter(c),
+            Self::Backward(c) => Self::Forward(c),
+            Self::BackwardAfter(c) => Self::ForwardBefore(c),
         }
     }
 }
@@ -309,26 +312,26 @@ impl Movement {
     // Replay this movement with a possible different `RepeatCount`.
     const fn redo(&self, new: Option<RepeatCount>) -> Self {
         match *self {
-            Movement::WholeLine => Movement::WholeLine,
-            Movement::BeginningOfLine => Movement::BeginningOfLine,
-            Movement::ViFirstPrint => Movement::ViFirstPrint,
-            Movement::EndOfLine => Movement::EndOfLine,
-            Movement::BackwardWord(previous, word) => {
-                Movement::BackwardWord(repeat_count(previous, new), word)
+            Self::WholeLine => Self::WholeLine,
+            Self::BeginningOfLine => Self::BeginningOfLine,
+            Self::ViFirstPrint => Self::ViFirstPrint,
+            Self::EndOfLine => Self::EndOfLine,
+            Self::BackwardWord(previous, word) => {
+                Self::BackwardWord(repeat_count(previous, new), word)
             }
-            Movement::ForwardWord(previous, at, word) => {
-                Movement::ForwardWord(repeat_count(previous, new), at, word)
+            Self::ForwardWord(previous, at, word) => {
+                Self::ForwardWord(repeat_count(previous, new), at, word)
             }
-            Movement::ViCharSearch(previous, char_search) => {
-                Movement::ViCharSearch(repeat_count(previous, new), char_search)
+            Self::ViCharSearch(previous, char_search) => {
+                Self::ViCharSearch(repeat_count(previous, new), char_search)
             }
-            Movement::BackwardChar(previous) => Movement::BackwardChar(repeat_count(previous, new)),
-            Movement::ForwardChar(previous) => Movement::ForwardChar(repeat_count(previous, new)),
-            Movement::LineUp(previous) => Movement::LineUp(repeat_count(previous, new)),
-            Movement::LineDown(previous) => Movement::LineDown(repeat_count(previous, new)),
-            Movement::WholeBuffer => Movement::WholeBuffer,
-            Movement::BeginningOfBuffer => Movement::BeginningOfBuffer,
-            Movement::EndOfBuffer => Movement::EndOfBuffer,
+            Self::BackwardChar(previous) => Self::BackwardChar(repeat_count(previous, new)),
+            Self::ForwardChar(previous) => Self::ForwardChar(repeat_count(previous, new)),
+            Self::LineUp(previous) => Self::LineUp(repeat_count(previous, new)),
+            Self::LineDown(previous) => Self::LineDown(repeat_count(previous, new)),
+            Self::WholeBuffer => Self::WholeBuffer,
+            Self::BeginningOfBuffer => Self::BeginningOfBuffer,
+            Self::EndOfBuffer => Self::EndOfBuffer,
         }
     }
 }
@@ -347,7 +350,7 @@ pub enum InputMode {
 /// Transform key(s) to commands based on current input mode
 pub struct InputState<'b> {
     pub(crate) mode: EditMode,
-    #[cfg_attr(not(feature = "custom-bindings"), allow(dead_code))]
+    #[cfg_attr(not(feature = "custom-bindings"), expect(dead_code))]
     custom_bindings: &'b Bindings,
     pub(crate) input_mode: InputMode, // vi only ?
     // numeric arguments: http://web.mit.edu/gnu/doc/html/rlman_1.html#SEC7
@@ -375,7 +378,7 @@ pub trait Refresher {
     /// cursor position, and number of columns of the terminal.
     fn refresh_line(&mut self) -> Result<()>;
     /// Same as [`refresh_line`] with a specific message instead of hint
-    fn refresh_line_with_msg(&mut self, msg: Option<&str>) -> Result<()>;
+    fn refresh_line_with_msg(&mut self, msg: Option<&str>, kind: CmdKind) -> Result<()>;
     /// Same as `refresh_line` but with a dynamic prompt.
     fn refresh_prompt_and_line(&mut self, prompt: &str) -> Result<()>;
     /// Vi only, switch to insert mode.
@@ -389,10 +392,12 @@ pub trait Refresher {
     /// Returns `true` if there is a hint displayed.
     fn has_hint(&self) -> bool;
     /// Returns the hint text that is shown after the current cursor position.
+    #[cfg_attr(not(feature = "custom-bindings"), expect(dead_code))]
     fn hint_text(&self) -> Option<&str>;
     /// currently edited line
     fn line(&self) -> &str;
     /// Current cursor position (byte position)
+    #[cfg_attr(not(feature = "custom-bindings"), expect(dead_code))]
     fn pos(&self) -> usize;
     /// Display `msg` above currently edited line.
     fn external_print(&mut self, msg: String) -> Result<()>;
@@ -412,6 +417,10 @@ impl<'b> InputState<'b> {
 
     pub fn is_emacs_mode(&self) -> bool {
         self.mode == EditMode::Emacs
+    }
+
+    pub fn is_vi_cmd_mode(&self) -> bool {
+        self.input_mode == InputMode::Command && self.mode == EditMode::Vi
     }
 
     /// Parse user input into one command
@@ -439,6 +448,8 @@ impl<'b> InputState<'b> {
                     tty::Event::ExternalPrint(msg) => {
                         wrt.external_print(msg)?;
                     }
+                    #[cfg(target_os = "macos")]
+                    _ => {}
                 }
             }
         }
@@ -472,7 +483,7 @@ impl<'b> InputState<'b> {
         wrt: &mut dyn Refresher,
         digit: char,
     ) -> Result<KeyEvent> {
-        #[allow(clippy::cast_possible_truncation)]
+        #[expect(clippy::cast_possible_truncation)]
         match digit {
             '0'..='9' => {
                 self.num_args = digit.to_digit(10).unwrap() as i16;
@@ -485,7 +496,7 @@ impl<'b> InputState<'b> {
         loop {
             wrt.refresh_prompt_and_line(&format!("(arg: {}) ", self.num_args))?;
             let key = rdr.next_key(true)?;
-            #[allow(clippy::cast_possible_truncation)]
+            #[expect(clippy::cast_possible_truncation)]
             match key {
                 E(K::Char(digit @ '0'..='9'), m) if m == M::NONE || m == M::ALT => {
                     if self.num_args == -1 {
@@ -580,6 +591,7 @@ impl<'b> InputState<'b> {
                 } else {
                     let snd_key = match evt {
                         // we may have already read the second key in custom_seq_binding
+                        #[allow(clippy::out_of_bounds_indexing)]
                         Event::KeySeq(ref key_seq) if key_seq.len() > 1 => key_seq[1],
                         _ => rdr.next_key(true)?,
                     };
@@ -650,11 +662,11 @@ impl<'b> InputState<'b> {
             E(K::Char('Y' | 'y'), M::ALT) => Cmd::YankPop,
             _ => self.common(rdr, wrt, evt, key, n, positive)?,
         };
-        debug!(target: "rustyline", "Emacs command: {:?}", cmd);
+        debug!(target: "rustyline", "Emacs command: {cmd:?}");
         Ok(cmd)
     }
 
-    #[allow(clippy::cast_possible_truncation)]
+    #[expect(clippy::cast_possible_truncation)]
     fn vi_arg_digit<R: RawReader>(
         &mut self,
         rdr: &mut R,
@@ -676,7 +688,7 @@ impl<'b> InputState<'b> {
             } else {
                 wrt.refresh_line()?;
                 return Ok(key);
-            };
+            }
         }
     }
 
@@ -855,7 +867,7 @@ impl<'b> InputState<'b> {
             E::ESC => Cmd::Noop,
             _ => self.common(rdr, wrt, evt, key, n, true)?,
         };
-        debug!(target: "rustyline", "Vi command: {:?}", cmd);
+        debug!(target: "rustyline", "Vi command: {cmd:?}");
         if cmd.is_repeatable_change() {
             self.last_cmd = cmd.clone();
         }
@@ -892,7 +904,7 @@ impl<'b> InputState<'b> {
             // Don't complete hints when the cursor is not at the end of a line
             E(K::Right, M::NONE) if wrt.has_hint() && wrt.is_cursor_at_end() => Cmd::CompleteHint,
             E(K::Char(k), M::ALT) => {
-                debug!(target: "rustyline", "Vi fast command mode: {}", k);
+                debug!(target: "rustyline", "Vi fast command mode: {k}");
                 self.input_mode = InputMode::Command;
                 wrt.done_inserting();
 
@@ -906,9 +918,8 @@ impl<'b> InputState<'b> {
             }
             _ => self.common(rdr, wrt, evt, key, 1, true)?,
         };
-        debug!(target: "rustyline", "Vi insert: {:?}", cmd);
+        debug!(target: "rustyline", "Vi insert: {cmd:?}");
         if cmd.is_repeatable_change() {
-            #[allow(clippy::if_same_then_else)]
             if let (Cmd::Replace(..), Cmd::SelfInsert(..)) = (&self.last_cmd, &cmd) {
                 // replacing...
             } else if let (Cmd::SelfInsert(..), Cmd::SelfInsert(..)) = (&self.last_cmd, &cmd) {
@@ -1098,7 +1109,7 @@ impl<'b> InputState<'b> {
         num_args
     }
 
-    #[allow(clippy::cast_sign_loss)]
+    #[expect(clippy::cast_sign_loss)]
     fn emacs_num_args(&mut self) -> (RepeatCount, bool) {
         let num_args = self.num_args();
         if num_args < 0 {
@@ -1112,7 +1123,6 @@ impl<'b> InputState<'b> {
         }
     }
 
-    #[allow(clippy::cast_sign_loss)]
     fn vi_num_args(&mut self) -> RepeatCount {
         let num_args = self.num_args();
         if num_args < 0 {
@@ -1124,7 +1134,7 @@ impl<'b> InputState<'b> {
 }
 
 #[cfg(feature = "custom-bindings")]
-impl<'b> InputState<'b> {
+impl InputState<'_> {
     /// Application customized binding
     fn custom_binding(
         &self,
@@ -1163,7 +1173,7 @@ impl<'b> InputState<'b> {
             } else {
                 break;
             }
-            let handler = subtrie.get(evt).unwrap();
+            let handler = subtrie.get(evt).unwrap_or_default();
             if let Some(handler) = handler {
                 let cmd = match handler {
                     EventHandler::Simple(cmd) => Some(cmd.clone()),
@@ -1207,14 +1217,14 @@ enum Event {
    KeySeq([KeyEvent; 1]),
 }
 impl From<KeyEvent> for Event {
-    fn from(k: KeyEvent) -> Event {
-        Event::KeySeq([k])
+    fn from(k: KeyEvent) -> Self {
+        Self::KeySeq([k])
     }
 }
 pub struct Bindings {}
 impl Bindings {
-    pub fn new() -> Bindings {
-        Bindings {}
+    pub fn new() -> Self {
+        Self {}
     }
 }
     }

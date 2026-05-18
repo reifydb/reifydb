@@ -1,54 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+
+//! HTTP/JSON server hosted on top of Axum. Exposes the request/response and subscribe-via-streaming endpoints in
+//! a transport that is friendlier than gRPC for browsers, scripting languages, and tooling that does not want to
+//! depend on protobuf. Routing, handlers, and per-route state sit on top of `sub-server`'s shared dispatch.
+//!
+//! JSON payloads come from `wire-format`'s JSON encoder; the HTTP path is the canonical place RBCF gets rendered
+//! into something a generic client can consume. Anything that needs raw RBCF should use the gRPC or WebSocket
+//! transports instead.
+
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-//! HTTP server subsystem for ReifyDB.
-//!
-//! This crate provides an Axum-based HTTP server for handling query and command
-//! requests. It integrates with the shared tokio runtime and implements the
-//! transaction ReifyDB `Subsystem` trait for lifecycle management.
-//!
-//! # Features
-//!
-//! - REST API for query and command execution
-//! - Bearer token and auth token authentication
-//! - Request timeouts and connection limits
-//! - Graceful shutdown support
-//! - Health check endpoint
-//!
-//! # Endpoints
-//!
-//! - `GET /health` - Health check (no authentication required)
-//! - `POST /v1/query` - Execute read-only queries
-//! - `POST /v1/command` - Execute write commands
-//!
-//! # Example
-//!
-//! ```ignore
-//! use reifydb_core::SharedRuntime;
-//! use reifydb_sub_server::{AppState, QueryConfig};
-//! use reifydb_sub_server_http::HttpSubsystem;
-//!
-//! // Create shared runtime
-//! let runtime = SharedRuntime::new(4);
-//!
-//! // Create application state
-//! let state = AppState::new(pool, engine, QueryConfig::default(), RequestInterceptorChain::empty());
-//!
-//! // Create and start HTTP subsystem
-//! let mut http = HttpSubsystem::new(
-//!     "0.0.0.0:8090".to_string(),
-//!     state,
-//!     runtime.handle(),
-//! );
-//! http.start()?;
-//! ```
-
+#[cfg(not(reifydb_single_threaded))]
 pub mod error;
+#[cfg(not(reifydb_single_threaded))]
 pub mod factory;
+#[cfg(not(reifydb_single_threaded))]
 pub mod handlers;
+#[cfg(not(reifydb_single_threaded))]
 pub mod routes;
+#[cfg(not(reifydb_single_threaded))]
+pub mod state;
+#[cfg(not(reifydb_single_threaded))]
 pub mod subsystem;

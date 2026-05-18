@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+#![cfg(not(reifydb_single_threaded))]
 
 mod common;
 
@@ -7,7 +8,7 @@ use std::{error::Error, path::Path, sync::Arc};
 
 use common::{cleanup_server, create_server_instance, start_server_and_get_ws_port};
 use reifydb::{Database, core::util::retry::retry};
-use reifydb_client::WsClient;
+use reifydb_client::{WireFormat, WsClient};
 use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
@@ -18,14 +19,16 @@ pub struct WsRunner {
 	instance: Option<Database>,
 	client: Option<WsClient>,
 	runtime: Arc<Runtime>,
+	format: WireFormat,
 }
 
 impl WsRunner {
-	pub fn new(runtime: Arc<Runtime>) -> Self {
+	pub fn new(runtime: Arc<Runtime>, format: WireFormat) -> Self {
 		Self {
 			instance: Some(create_server_instance(&runtime)),
 			client: None,
 			runtime,
+			format,
 		}
 	}
 }
@@ -40,7 +43,7 @@ impl testscript::runner::Runner for WsRunner {
 				println!("admin: {rql}");
 
 				let result = self.runtime.block_on(client.admin(&rql, None))?;
-				write_frames(result.frames)
+				write_frames(result)
 			}
 
 			"command" => {
@@ -48,7 +51,7 @@ impl testscript::runner::Runner for WsRunner {
 				println!("command: {rql}");
 
 				let result = self.runtime.block_on(client.command(&rql, None))?;
-				write_frames(result.frames)
+				write_frames(result)
 			}
 
 			"command_positional" => {
@@ -56,7 +59,7 @@ impl testscript::runner::Runner for WsRunner {
 				println!("command_positional: {rql}");
 
 				let result = self.runtime.block_on(client.command(&rql, Some(params)))?;
-				write_frames(result.frames)
+				write_frames(result)
 			}
 
 			"command_named" => {
@@ -64,7 +67,7 @@ impl testscript::runner::Runner for WsRunner {
 				println!("command_named: {rql}");
 
 				let result = self.runtime.block_on(client.command(&rql, Some(params)))?;
-				write_frames(result.frames)
+				write_frames(result)
 			}
 
 			"query" => {
@@ -72,7 +75,7 @@ impl testscript::runner::Runner for WsRunner {
 				println!("query: {rql}");
 
 				let result = self.runtime.block_on(client.query(&rql, None))?;
-				write_frames(result.frames)
+				write_frames(result)
 			}
 
 			"query_positional" => {
@@ -80,7 +83,7 @@ impl testscript::runner::Runner for WsRunner {
 				println!("query_positional: {rql}");
 
 				let result = self.runtime.block_on(client.query(&rql, Some(params)))?;
-				write_frames(result.frames)
+				write_frames(result)
 			}
 
 			"query_named" => {
@@ -88,7 +91,7 @@ impl testscript::runner::Runner for WsRunner {
 				println!("query_named: {rql}");
 
 				let result = self.runtime.block_on(client.query(&rql, Some(params)))?;
-				write_frames(result.frames)
+				write_frames(result)
 			}
 
 			name => Err(format!("invalid command {name}").into()),
@@ -99,7 +102,8 @@ impl testscript::runner::Runner for WsRunner {
 		let server = self.instance.as_mut().unwrap();
 		let port = start_server_and_get_ws_port(&self.runtime, server)?;
 
-		let mut client = self.runtime.block_on(WsClient::connect(&format!("ws://[::1]:{}", port)))?;
+		let mut client =
+			self.runtime.block_on(WsClient::connect(&format!("ws://[::1]:{}", port), self.format))?;
 		self.runtime.block_on(client.authenticate("mysecrettoken"))?;
 
 		self.client = Some(client);
@@ -116,13 +120,23 @@ impl testscript::runner::Runner for WsRunner {
 	}
 }
 
-test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as scripts_ws => test_ws }
+test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as scripts_ws_json => test_ws_json }
+test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as scripts_ws_rbcf => test_ws_rbcf }
 
-fn test_ws(path: &Path) {
+fn test_ws_json(path: &Path) {
 	retry(3, || {
 		let runtime = Arc::new(Runtime::new().unwrap());
 		let _guard = runtime.enter();
-		testscript::runner::run_path(&mut WsRunner::new(Arc::clone(&runtime)), path)
+		testscript::runner::run_path(&mut WsRunner::new(Arc::clone(&runtime), WireFormat::Json), path)
 	})
-	.expect("test failed")
+	.expect("test failed with Json");
+}
+
+fn test_ws_rbcf(path: &Path) {
+	retry(3, || {
+		let runtime = Arc::new(Runtime::new().unwrap());
+		let _guard = runtime.enter();
+		testscript::runner::run_path(&mut WsRunner::new(Arc::clone(&runtime), WireFormat::Rbcf), path)
+	})
+	.expect("test failed with Rbcf");
 }

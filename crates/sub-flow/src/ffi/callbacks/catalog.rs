@@ -1,21 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Catalog access callbacks for FFI operators
-//!
-//! Provides read-only access to the catalog system (namespaces, tables)
-//! with version-based queries for time-travel support.
-
 use std::{mem, ptr, slice::from_raw_parts, str::from_utf8};
 
 use reifydb_abi::{
-	catalog::{column::ColumnFFI, namespace::NamespaceFFI, primary_key::PrimaryKeyFFI, table::TableFFI},
+	catalog::{
+		column::ColumnFFI,
+		namespace::NamespaceFFI,
+		primary_key::PrimaryKeyFFI,
+		row_shape::{RowShapeFFI, RowShapeFieldFFI},
+		table::TableFFI,
+	},
 	constants::{FFI_ERROR_INVALID_UTF8, FFI_ERROR_MARSHAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK},
 	context::context::ContextFFI,
 	data::buffer::BufferFFI,
 };
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 	interface::catalog::{
 		column::Column,
 		id::{NamespaceId, TableId},
@@ -29,7 +31,6 @@ use reifydb_type::value::constraint::{Constraint, TypeConstraint};
 
 use crate::ffi::context::get_transaction_mut;
 
-/// Find a namespace by ID at a specific version
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_catalog_find_namespace(
 	ctx: *mut ContextFFI,
@@ -45,13 +46,10 @@ pub(super) extern "C" fn host_catalog_find_namespace(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		// Access catalog through the catalog() helper method
 		let catalog = flow_txn.catalog();
 
-		// Query catalog
-		match catalog.materialized.find_namespace_at(NamespaceId(namespace_id), CommitVersion(version)) {
+		match catalog.cache().find_namespace_at(NamespaceId(namespace_id), CommitVersion(version)) {
 			Some(namespace) => {
-				// Marshal to FFI
 				*output = marshal_namespace(&namespace);
 				FFI_OK
 			}
@@ -60,7 +58,6 @@ pub(super) extern "C" fn host_catalog_find_namespace(
 	}
 }
 
-/// Find a namespace by name at a specific version
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_catalog_find_namespace_by_name(
 	ctx: *mut ContextFFI,
@@ -77,20 +74,16 @@ pub(super) extern "C" fn host_catalog_find_namespace_by_name(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		// Convert name bytes to string
 		let name_bytes = from_raw_parts(name_ptr, name_len);
 		let name = match from_utf8(name_bytes) {
 			Ok(s) => s,
 			Err(_) => return FFI_ERROR_INVALID_UTF8,
 		};
 
-		// Access catalog
 		let catalog = flow_txn.catalog();
 
-		// Query catalog
-		match catalog.materialized.find_namespace_by_name_at(name, CommitVersion(version)) {
+		match catalog.cache().find_namespace_by_name_at(name, CommitVersion(version)) {
 			Some(namespace) => {
-				// Marshal to FFI
 				*output = marshal_namespace(&namespace);
 				FFI_OK
 			}
@@ -99,7 +92,6 @@ pub(super) extern "C" fn host_catalog_find_namespace_by_name(
 	}
 }
 
-/// Find a table by ID at a specific version
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_catalog_find_table(
 	ctx: *mut ContextFFI,
@@ -115,27 +107,21 @@ pub(super) extern "C" fn host_catalog_find_table(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		// Access catalog
 		let catalog = flow_txn.catalog();
 
-		// Query catalog
-		match catalog.materialized.find_table_at(TableId(table_id), CommitVersion(version)) {
-			Some(table) => {
-				// Marshal to FFI
-				match marshal_table(&table) {
-					Ok(table_ffi) => {
-						*output = table_ffi;
-						FFI_OK
-					}
-					Err(_) => FFI_ERROR_MARSHAL,
+		match catalog.cache().find_table_at(TableId(table_id), CommitVersion(version)) {
+			Some(table) => match marshal_table(&table) {
+				Ok(table_ffi) => {
+					*output = table_ffi;
+					FFI_OK
 				}
-			}
+				Err(_) => FFI_ERROR_MARSHAL,
+			},
 			None => FFI_NOT_FOUND,
 		}
 	}
 }
 
-/// Find a table by name in a namespace at a specific version
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_catalog_find_table_by_name(
 	ctx: *mut ContextFFI,
@@ -153,38 +139,57 @@ pub(super) extern "C" fn host_catalog_find_table_by_name(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		// Convert name bytes to string
 		let name_bytes = from_raw_parts(name_ptr, name_len);
 		let name = match from_utf8(name_bytes) {
 			Ok(s) => s,
 			Err(_) => return FFI_ERROR_INVALID_UTF8,
 		};
 
-		// Access catalog
 		let catalog = flow_txn.catalog();
 
-		// Query catalog
-		match catalog.materialized.find_table_by_name_at(
-			NamespaceId(namespace_id),
-			name,
-			CommitVersion(version),
-		) {
-			Some(table) => {
-				// Marshal to FFI
-				match marshal_table(&table) {
-					Ok(table_ffi) => {
-						*output = table_ffi;
-						FFI_OK
-					}
-					Err(_) => FFI_ERROR_MARSHAL,
+		match catalog.cache().find_table_by_name_at(NamespaceId(namespace_id), name, CommitVersion(version)) {
+			Some(table) => match marshal_table(&table) {
+				Ok(table_ffi) => {
+					*output = table_ffi;
+					FFI_OK
 				}
-			}
+				Err(_) => FFI_ERROR_MARSHAL,
+			},
 			None => FFI_NOT_FOUND,
 		}
 	}
 }
 
-/// Free a namespace definition allocated by the host
+#[unsafe(no_mangle)]
+pub(super) extern "C" fn host_catalog_find_row_shape(
+	ctx: *mut ContextFFI,
+	fingerprint: u64,
+	output: *mut RowShapeFFI,
+) -> i32 {
+	if ctx.is_null() || output.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let ctx_handle = &mut *ctx;
+		let flow_txn = get_transaction_mut(ctx_handle);
+
+		let catalog = flow_txn.catalog();
+		let fp = RowShapeFingerprint::from_le_bytes(fingerprint.to_le_bytes());
+
+		match catalog.cache().find_row_shape(fp) {
+			Some(shape) => match marshal_row_shape(&shape) {
+				Ok(shape_ffi) => {
+					*output = shape_ffi;
+					FFI_OK
+				}
+				Err(_) => FFI_ERROR_MARSHAL,
+			},
+			None => FFI_NOT_FOUND,
+		}
+	}
+}
+
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_catalog_free_namespace(namespace: *mut NamespaceFFI) {
 	if namespace.is_null() {
@@ -194,14 +199,12 @@ pub(super) extern "C" fn host_catalog_free_namespace(namespace: *mut NamespaceFF
 	unsafe {
 		let ns = &*namespace;
 
-		// Free name buffer
 		if !ns.name.ptr.is_null() && ns.name.len > 0 {
 			host_free(ns.name.ptr as *mut u8, ns.name.len);
 		}
 	}
 }
 
-/// Free a table definition allocated by the host
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_catalog_free_table(table: *mut TableFFI) {
 	if table.is_null() {
@@ -211,40 +214,127 @@ pub(super) extern "C" fn host_catalog_free_table(table: *mut TableFFI) {
 	unsafe {
 		let tbl = &*table;
 
-		// Free table name
 		if !tbl.name.ptr.is_null() && tbl.name.len > 0 {
 			host_free(tbl.name.ptr as *mut u8, tbl.name.len);
 		}
 
-		// Free columns array
 		if !tbl.columns.is_null() && tbl.column_count > 0 {
 			let columns_slice = from_raw_parts(tbl.columns, tbl.column_count);
 			for col in columns_slice {
-				// Free column name
 				if !col.name.ptr.is_null() && col.name.len > 0 {
 					host_free(col.name.ptr as *mut u8, col.name.len);
 				}
 			}
-			// Free columns array itself
+
 			host_free(tbl.columns as *mut u8, tbl.column_count * mem::size_of::<ColumnFFI>());
 		}
 
-		// Free primary key
 		if !tbl.primary_key.is_null() {
 			let pk = &*tbl.primary_key;
-			// Free column IDs array
+
 			if !pk.column_ids.is_null() && pk.column_count > 0 {
 				host_free(pk.column_ids as *mut u8, pk.column_count * mem::size_of::<u64>());
 			}
-			// Free primary key struct itself
+
 			host_free(tbl.primary_key as *mut u8, mem::size_of::<PrimaryKeyFFI>());
 		}
 	}
 }
 
-/// Marshal a Namespace to FFI
+#[unsafe(no_mangle)]
+pub(super) extern "C" fn host_catalog_free_row_shape(row_shape: *mut RowShapeFFI) {
+	if row_shape.is_null() {
+		return;
+	}
+
+	unsafe {
+		let shape = &*row_shape;
+
+		if !shape.fields.is_null() && shape.field_count > 0 {
+			let fields_slice = from_raw_parts(shape.fields, shape.field_count);
+			for field in fields_slice {
+				if !field.name.ptr.is_null() && field.name.len > 0 {
+					host_free(field.name.ptr as *mut u8, field.name.len);
+				}
+			}
+
+			host_free(shape.fields as *mut u8, shape.field_count * mem::size_of::<RowShapeFieldFFI>());
+		}
+	}
+}
+
+fn marshal_row_shape(shape: &RowShape) -> Result<RowShapeFFI, &'static str> {
+	let field_count = shape.fields().len();
+	let fields_ptr = if field_count > 0 {
+		let size = field_count * mem::size_of::<RowShapeFieldFFI>();
+		let ptr = host_alloc(size) as *mut RowShapeFieldFFI;
+		if ptr.is_null() {
+			return Err("Failed to allocate row shape fields array");
+		}
+
+		for (i, field) in shape.fields().iter().enumerate() {
+			match marshal_row_shape_field(field) {
+				Ok(field_ffi) => unsafe {
+					*ptr.add(i) = field_ffi;
+				},
+				Err(e) => {
+					for j in 0..i {
+						let earlier = unsafe { *ptr.add(j) };
+						if !earlier.name.ptr.is_null() && earlier.name.len > 0 {
+							unsafe {
+								host_free(earlier.name.ptr as *mut u8, earlier.name.len)
+							};
+						}
+					}
+					unsafe { host_free(ptr as *mut u8, size) };
+					return Err(e);
+				}
+			}
+		}
+
+		ptr
+	} else {
+		ptr::null_mut()
+	};
+
+	Ok(RowShapeFFI {
+		fingerprint: shape.fingerprint().as_u64(),
+		fields: fields_ptr,
+		field_count,
+	})
+}
+
+fn marshal_row_shape_field(field: &RowShapeField) -> Result<RowShapeFieldFFI, &'static str> {
+	let name_bytes = field.name.as_bytes();
+	let name_ptr = host_alloc(name_bytes.len());
+	if name_ptr.is_null() && !name_bytes.is_empty() {
+		return Err("Failed to allocate row shape field name");
+	}
+	if !name_bytes.is_empty() {
+		unsafe {
+			ptr::copy_nonoverlapping(name_bytes.as_ptr(), name_ptr, name_bytes.len());
+		}
+	}
+
+	let (base_type, constraint_type, param1, param2) = encode_type_constraint(&field.constraint);
+
+	Ok(RowShapeFieldFFI {
+		name: BufferFFI {
+			ptr: name_ptr,
+			len: name_bytes.len(),
+			cap: name_bytes.len(),
+		},
+		base_type,
+		constraint_type,
+		constraint_param1: param1,
+		constraint_param2: param2,
+		offset: field.offset,
+		size: field.size,
+		align: field.align,
+	})
+}
+
 fn marshal_namespace(namespace: &Namespace) -> NamespaceFFI {
-	// Allocate and copy name
 	let name_bytes = namespace.name().as_bytes();
 	let name_ptr = host_alloc(name_bytes.len());
 	if !name_ptr.is_null() {
@@ -264,9 +354,7 @@ fn marshal_namespace(namespace: &Namespace) -> NamespaceFFI {
 	}
 }
 
-/// Marshal a Table to FFI
 fn marshal_table(table: &Table) -> Result<TableFFI, &'static str> {
-	// Allocate and copy table name
 	let name_bytes = table.name.as_bytes();
 	let name_ptr = host_alloc(name_bytes.len());
 	if name_ptr.is_null() {
@@ -276,18 +364,15 @@ fn marshal_table(table: &Table) -> Result<TableFFI, &'static str> {
 		ptr::copy_nonoverlapping(name_bytes.as_ptr(), name_ptr, name_bytes.len());
 	}
 
-	// Allocate columns array
 	let columns_count = table.columns.len();
 	let columns_ptr = if columns_count > 0 {
 		let size = columns_count * mem::size_of::<ColumnFFI>();
 		let ptr = host_alloc(size) as *mut ColumnFFI;
 		if ptr.is_null() {
-			// Clean up name before returning error
 			unsafe { host_free(name_ptr, name_bytes.len()) };
 			return Err("Failed to allocate columns array");
 		}
 
-		// Marshal each column
 		for (i, col) in table.columns.iter().enumerate() {
 			unsafe {
 				*ptr.add(i) = marshal_column(col)?;
@@ -299,11 +384,9 @@ fn marshal_table(table: &Table) -> Result<TableFFI, &'static str> {
 		ptr::null_mut()
 	};
 
-	// Marshal primary key if present
 	let (has_pk, pk_ptr) = if let Some(pk) = &table.primary_key {
 		let pk_ptr = host_alloc(mem::size_of::<PrimaryKeyFFI>()) as *mut PrimaryKeyFFI;
 		if pk_ptr.is_null() {
-			// Clean up before returning error
 			unsafe { host_free(name_ptr, name_bytes.len()) };
 			if !columns_ptr.is_null() {
 				unsafe {
@@ -337,9 +420,7 @@ fn marshal_table(table: &Table) -> Result<TableFFI, &'static str> {
 	})
 }
 
-/// Marshal a Column to FFI
 fn marshal_column(column: &Column) -> Result<ColumnFFI, &'static str> {
-	// Allocate and copy column name
 	let name_bytes = column.name.as_bytes();
 	let name_ptr = host_alloc(name_bytes.len());
 	if name_ptr.is_null() {
@@ -349,7 +430,6 @@ fn marshal_column(column: &Column) -> Result<ColumnFFI, &'static str> {
 		ptr::copy_nonoverlapping(name_bytes.as_ptr(), name_ptr, name_bytes.len());
 	}
 
-	// Encode type constraint
 	let (base_type, constraint_type, param1, param2) = encode_type_constraint(&column.constraint);
 
 	Ok(ColumnFFI {
@@ -372,9 +452,7 @@ fn marshal_column(column: &Column) -> Result<ColumnFFI, &'static str> {
 	})
 }
 
-/// Marshal a PrimaryKey to FFI
 fn marshal_primary_key(pk: &PrimaryKey) -> Result<PrimaryKeyFFI, &'static str> {
-	// Allocate column IDs array
 	let column_count = pk.columns.len();
 	let column_ids_ptr = if column_count > 0 {
 		let size = column_count * mem::size_of::<u64>();
@@ -383,7 +461,6 @@ fn marshal_primary_key(pk: &PrimaryKey) -> Result<PrimaryKeyFFI, &'static str> {
 			return Err("Failed to allocate primary key column IDs");
 		}
 
-		// Copy column IDs
 		for (i, col) in pk.columns.iter().enumerate() {
 			unsafe {
 				*ptr.add(i) = col.id.0;
@@ -402,10 +479,6 @@ fn marshal_primary_key(pk: &PrimaryKey) -> Result<PrimaryKeyFFI, &'static str> {
 	})
 }
 
-/// Encode a TypeConstraint to FFI format
-///
-/// Returns: (base_type, constraint_type, param1, param2)
-/// - constraint_type: 0=None, 1=MaxBytes, 2=PrecisionScale
 fn encode_type_constraint(constraint: &TypeConstraint) -> (u8, u8, u32, u32) {
 	let base_type = constraint.get_type().to_u8();
 
@@ -415,10 +488,62 @@ fn encode_type_constraint(constraint: &TypeConstraint) -> (u8, u8, u32, u32) {
 		Some(Constraint::PrecisionScale(precision, scale)) => {
 			(base_type, 2, precision.value() as u32, scale.value() as u32)
 		}
-		Some(Constraint::Dictionary(_, _)) => {
-			// Dictionary constraint: encode as type 3
-			(base_type, 3, 0, 0)
-		}
+		Some(Constraint::Dictionary(_, _)) => (base_type, 3, 0, 0),
 		Some(Constraint::SumType(id)) => (base_type, 4, id.to_u64() as u32, 0),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::{slice::from_raw_parts, str::from_utf8};
+
+	use reifydb_type::value::r#type::Type;
+
+	use super::*;
+
+	#[test]
+	fn marshal_row_shape_emits_fingerprint_field_count_and_per_field_layout() {
+		// This is the wire format the SDK reads back. If marshal ever stops setting fingerprint, or
+		// reorders the (offset, size, align) triple, every downstream FFI operator silently decodes
+		// into the wrong slots - exactly the panic class this feature exists to prevent.
+		let shape = RowShape::new(vec![
+			RowShapeField::new("id", TypeConstraint::unconstrained(Type::Uint8)),
+			RowShapeField::new("mint", TypeConstraint::unconstrained(Type::Utf8)),
+			RowShapeField::new("decimals", TypeConstraint::unconstrained(Type::Uint1)),
+		]);
+
+		let ffi = marshal_row_shape(&shape).expect("marshal must not allocate-fail for a 3-field shape");
+
+		assert_eq!(
+			ffi.fingerprint,
+			shape.fingerprint().as_u64(),
+			"fingerprint must round-trip - SDK uses it to confirm the resolved shape matches the row"
+		);
+		assert_eq!(ffi.field_count, 3);
+
+		let fields_slice = unsafe { from_raw_parts(ffi.fields, ffi.field_count) };
+		let names: Vec<&str> = fields_slice
+			.iter()
+			.map(|f| {
+				let bytes = unsafe { from_raw_parts(f.name.ptr, f.name.len) };
+				from_utf8(bytes).expect("marshalled names must be valid UTF-8")
+			})
+			.collect();
+		assert_eq!(names, vec!["id", "mint", "decimals"]);
+
+		for (ffi_field, shape_field) in fields_slice.iter().zip(shape.fields().iter()) {
+			assert_eq!(
+				ffi_field.offset, shape_field.offset,
+				"offset divergence is the root cause of the 240-vs-120 utf8 panic"
+			);
+			assert_eq!(ffi_field.size, shape_field.size);
+			assert_eq!(ffi_field.align, shape_field.align);
+			assert_eq!(ffi_field.base_type, shape_field.constraint.get_type().to_u8());
+		}
+
+		// Reclaim the host-allocated buffers; if free ever crashes on a well-formed marshal output we
+		// want the test to surface it rather than leak silently into other tests' allocations.
+		let mut ffi_mut = ffi;
+		host_catalog_free_row_shape(&mut ffi_mut as *mut RowShapeFFI);
 	}
 }

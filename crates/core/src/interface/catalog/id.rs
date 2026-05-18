@@ -13,6 +13,28 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct ColumnId(pub u64);
 
+impl ColumnId {
+	pub const REQUEST_HISTORY_TIMESTAMP: ColumnId = ColumnId(1);
+	pub const REQUEST_HISTORY_OPERATION: ColumnId = ColumnId(2);
+	pub const REQUEST_HISTORY_FINGERPRINT: ColumnId = ColumnId(3);
+	pub const REQUEST_HISTORY_TOTAL_DURATION: ColumnId = ColumnId(4);
+	pub const REQUEST_HISTORY_COMPUTE_DURATION: ColumnId = ColumnId(5);
+	pub const REQUEST_HISTORY_SUCCESS: ColumnId = ColumnId(6);
+	pub const REQUEST_HISTORY_STATEMENT_COUNT: ColumnId = ColumnId(7);
+	pub const REQUEST_HISTORY_NORMALIZED_RQL: ColumnId = ColumnId(8);
+
+	pub const STATEMENT_STATS_SNAPSHOT_TIMESTAMP: ColumnId = ColumnId(9);
+	pub const STATEMENT_STATS_FINGERPRINT: ColumnId = ColumnId(10);
+	pub const STATEMENT_STATS_NORMALIZED_RQL: ColumnId = ColumnId(11);
+	pub const STATEMENT_STATS_CALLS: ColumnId = ColumnId(12);
+	pub const STATEMENT_STATS_TOTAL_DURATION: ColumnId = ColumnId(13);
+	pub const STATEMENT_STATS_MEAN_DURATION: ColumnId = ColumnId(14);
+	pub const STATEMENT_STATS_MAX_DURATION: ColumnId = ColumnId(15);
+	pub const STATEMENT_STATS_MIN_DURATION: ColumnId = ColumnId(16);
+	pub const STATEMENT_STATS_TOTAL_ROWS: ColumnId = ColumnId(17);
+	pub const STATEMENT_STATS_ERRORS: ColumnId = ColumnId(18);
+}
+
 impl Deref for ColumnId {
 	type Target = u64;
 
@@ -68,7 +90,6 @@ impl<'de> Deserialize<'de> for ColumnId {
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub enum IndexId {
 	Primary(PrimaryKeyId),
-	// Future: Secondary, Unique, etc.
 }
 
 impl IndexId {
@@ -82,12 +103,9 @@ impl IndexId {
 		IndexId::Primary(id.into())
 	}
 
-	/// Creates a next index id for range operations (numerically next)
 	pub fn next(&self) -> IndexId {
 		match self {
-			IndexId::Primary(primary) => IndexId::Primary(PrimaryKeyId(primary.0 + 1)), /* Future: handle
-			                                                                             * other index
-			                                                                             * types */
+			IndexId::Primary(primary) => IndexId::Primary(PrimaryKeyId(primary.0 + 1)),
 		}
 	}
 
@@ -144,7 +162,6 @@ impl<'de> Deserialize<'de> for IndexId {
 			}
 
 			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
-				// Deserialize as primary key ID for now
 				Ok(IndexId::Primary(PrimaryKeyId(value)))
 			}
 		}
@@ -302,7 +319,6 @@ impl From<TableId> for u64 {
 }
 
 impl TableId {
-	/// Get the inner u64 value.
 	#[inline]
 	pub fn to_u64(self) -> u64 {
 		self.0
@@ -384,7 +400,6 @@ impl From<ViewId> for u64 {
 }
 
 impl ViewId {
-	/// Get the inner u64 value.
 	#[inline]
 	pub fn to_u64(self) -> u64 {
 		self.0
@@ -513,6 +528,11 @@ impl<'de> Deserialize<'de> for PrimaryKeyId {
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct RingBufferId(pub u64);
 
+impl RingBufferId {
+	pub const REQUEST_HISTORY: RingBufferId = RingBufferId(1);
+	pub const STATEMENT_STATS: RingBufferId = RingBufferId(2);
+}
+
 impl Display for RingBufferId {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		Display::fmt(&self.0, f)
@@ -540,7 +560,6 @@ impl From<RingBufferId> for u64 {
 }
 
 impl RingBufferId {
-	/// Get the inner u64 value.
 	#[inline]
 	pub fn to_u64(self) -> u64 {
 		self.0
@@ -593,7 +612,34 @@ impl<'de> Deserialize<'de> for RingBufferId {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub struct ProcedureId(pub u64);
+pub struct ProcedureId(u64);
+
+impl ProcedureId {
+	pub const SYSTEM_RESERVED_START: u64 = 1 << 48;
+
+	pub const SYSTEM_CONFIG_SET: ProcedureId = ProcedureId::persistent(1);
+
+	pub const fn persistent(id: u64) -> Self {
+		assert!(id < Self::SYSTEM_RESERVED_START, "persistent ProcedureId must be below SYSTEM_RESERVED_START");
+		Self(id)
+	}
+
+	pub const fn ephemeral(id: u64) -> Self {
+		assert!(
+			id >= Self::SYSTEM_RESERVED_START,
+			"ephemeral ProcedureId must be at or above SYSTEM_RESERVED_START"
+		);
+		Self(id)
+	}
+
+	pub const fn from_raw(id: u64) -> Self {
+		Self(id)
+	}
+
+	pub const fn is_ephemeral(&self) -> bool {
+		self.0 >= Self::SYSTEM_RESERVED_START
+	}
+}
 
 impl Display for ProcedureId {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -621,18 +667,6 @@ impl From<ProcedureId> for u64 {
 	}
 }
 
-impl From<i32> for ProcedureId {
-	fn from(value: i32) -> Self {
-		Self(value as u64)
-	}
-}
-
-impl From<u64> for ProcedureId {
-	fn from(value: u64) -> Self {
-		Self(value)
-	}
-}
-
 impl Serialize for ProcedureId {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
@@ -657,7 +691,7 @@ impl<'de> Deserialize<'de> for ProcedureId {
 			}
 
 			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
-				Ok(ProcedureId(value))
+				Ok(ProcedureId::from_raw(value))
 			}
 		}
 
@@ -739,8 +773,6 @@ impl<'de> Deserialize<'de> for TestId {
 	}
 }
 
-/// A unique identifier for a subscription.
-/// Uses u64 for efficient storage and to unify with FlowId (FlowId == SubscriptionId for subscription flows).
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct SubscriptionId(pub u64);
@@ -1297,6 +1329,74 @@ impl<'de> Deserialize<'de> for SourceId {
 
 			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
 				Ok(SourceId(value))
+			}
+		}
+
+		deserializer.deserialize_u64(U64Visitor)
+	}
+}
+
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
+pub struct BindingId(pub u64);
+
+impl Display for BindingId {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		Display::fmt(&self.0, f)
+	}
+}
+
+impl Deref for BindingId {
+	type Target = u64;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl PartialEq<u64> for BindingId {
+	fn eq(&self, other: &u64) -> bool {
+		self.0.eq(other)
+	}
+}
+
+impl From<BindingId> for u64 {
+	fn from(value: BindingId) -> Self {
+		value.0
+	}
+}
+
+impl From<u64> for BindingId {
+	fn from(value: u64) -> Self {
+		Self(value)
+	}
+}
+
+impl Serialize for BindingId {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		serializer.serialize_u64(self.0)
+	}
+}
+
+impl<'de> Deserialize<'de> for BindingId {
+	fn deserialize<D>(deserializer: D) -> Result<BindingId, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		struct U64Visitor;
+
+		impl Visitor<'_> for U64Visitor {
+			type Value = BindingId;
+
+			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+				formatter.write_str("an unsigned 64-bit number")
+			}
+
+			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
+				Ok(BindingId(value))
 			}
 		}
 

@@ -1,20 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-/// FFI-safe buffer representing a slice of bytes
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct BufferFFI {
-	/// Pointer to the data
 	pub ptr: *const u8,
-	/// Length of the data
+
 	pub len: usize,
-	/// Capacity of the allocated buffer
+
 	pub cap: usize,
 }
 
 impl BufferFFI {
-	/// Create an empty buffer
 	pub const fn empty() -> Self {
 		Self {
 			ptr: core::ptr::null(),
@@ -23,7 +20,6 @@ impl BufferFFI {
 		}
 	}
 
-	/// Create a buffer from a slice
 	pub fn from_slice(data: &[u8]) -> Self {
 		Self {
 			ptr: data.as_ptr(),
@@ -32,7 +28,6 @@ impl BufferFFI {
 		}
 	}
 
-	/// Check if the buffer is empty
 	pub fn is_empty(&self) -> bool {
 		self.len == 0 || self.ptr.is_null()
 	}

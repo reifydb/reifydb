@@ -4,11 +4,11 @@
 use reifydb_core::{
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
+		row::{EncodedRow, SHAPE_HEADER_SIZE},
 		shape::RowShape,
 	},
 	interface::{catalog::flow::FlowNodeId, store::MultiVersionBatch},
-	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
+	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
 };
 use reifydb_type::Result;
 use tracing::{Span, field, instrument};
@@ -16,7 +16,6 @@ use tracing::{Span, field, instrument};
 use super::FlowTransaction;
 
 impl FlowTransaction {
-	/// Get state for a specific flow node and key
 	#[instrument(name = "flow::state::get", level = "trace", skip(self), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len(),
@@ -30,19 +29,29 @@ impl FlowTransaction {
 		Ok(result)
 	}
 
-	/// Set state for a specific flow node and key
 	#[instrument(name = "flow::state::set", level = "trace", skip(self, value), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len(),
 		value_len = value.len()
 	))]
-	pub fn state_set(&mut self, id: FlowNodeId, key: &EncodedKey, value: EncodedRow) -> Result<()> {
+	pub fn state_set(&mut self, id: FlowNodeId, key: &EncodedKey, mut value: EncodedRow) -> Result<()> {
 		let state_key = FlowNodeStateKey::new(id, key.to_vec());
 		let encoded_key = state_key.encode();
+
+		if value.len() >= SHAPE_HEADER_SIZE
+			&& let Some(prior) = self.get(&encoded_key)?
+			&& prior.len() >= SHAPE_HEADER_SIZE
+		{
+			let prior_created = prior.created_at_nanos();
+			if prior_created != 0 {
+				let updated = value.updated_at_nanos();
+				value.set_timestamps(prior_created, updated);
+			}
+		}
+
 		self.set(&encoded_key, value)
 	}
 
-	/// Remove state for a specific flow node and key
 	#[instrument(name = "flow::state::remove", level = "trace", skip(self), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len()
@@ -53,7 +62,73 @@ impl FlowTransaction {
 		self.remove(&encoded_key)
 	}
 
-	/// Scan all state for a specific flow node
+	#[instrument(name = "flow::internal_state::get", level = "trace", skip(self), fields(
+		node_id = id.0,
+		key_len = key.as_bytes().len(),
+		found = field::Empty
+	))]
+	pub fn internal_state_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+		let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
+		let encoded_key = state_key.encode();
+		let result = self.get(&encoded_key)?;
+		Span::current().record("found", result.is_some());
+		Ok(result)
+	}
+
+	#[instrument(name = "flow::internal_state::set", level = "trace", skip(self, value), fields(
+		node_id = id.0,
+		key_len = key.as_bytes().len(),
+		value_len = value.len()
+	))]
+	pub fn internal_state_set(&mut self, id: FlowNodeId, key: &EncodedKey, mut value: EncodedRow) -> Result<()> {
+		let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
+		let encoded_key = state_key.encode();
+
+		if value.len() >= SHAPE_HEADER_SIZE
+			&& let Some(prior) = self.get(&encoded_key)?
+			&& prior.len() >= SHAPE_HEADER_SIZE
+		{
+			let prior_created = prior.created_at_nanos();
+			if prior_created != 0 {
+				let updated = value.updated_at_nanos();
+				value.set_timestamps(prior_created, updated);
+			}
+		}
+
+		self.set(&encoded_key, value)
+	}
+
+	#[instrument(name = "flow::internal_state::remove", level = "trace", skip(self), fields(
+		node_id = id.0,
+		key_len = key.as_bytes().len()
+	))]
+	pub fn internal_state_remove(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<()> {
+		let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
+		let encoded_key = state_key.encode();
+		self.remove(&encoded_key)
+	}
+
+	#[instrument(name = "flow::internal_state::prefix", level = "debug", skip(self, prefix), fields(
+		node_id = id.0,
+		prefix_len = prefix.len()
+	))]
+	pub fn internal_state_prefix(&mut self, id: FlowNodeId, prefix: &[u8]) -> Result<MultiVersionBatch> {
+		let mut full_prefix = Vec::new();
+		let env = FlowNodeInternalStateKey::encoded(id, vec![]);
+		full_prefix.extend_from_slice(env.as_ref());
+		full_prefix.extend_from_slice(prefix);
+		let range = EncodedKeyRange::prefix(&full_prefix);
+		let iter = self.range(range, 1024);
+		let mut items = Vec::new();
+		for result in iter {
+			items.push(result?);
+		}
+		Ok(MultiVersionBatch {
+			items,
+			has_more: false,
+		})
+	}
+
 	#[instrument(name = "flow::state::scan", level = "debug", skip(self), fields(
 		node_id = id.0,
 		result_count = field::Empty
@@ -72,7 +147,6 @@ impl FlowTransaction {
 		})
 	}
 
-	/// Range query on state for a specific flow node
 	#[instrument(name = "flow::state::range", level = "debug", skip(self, range), fields(
 		node_id = id.0
 	))]
@@ -89,16 +163,13 @@ impl FlowTransaction {
 		})
 	}
 
-	/// Clear all state for a specific flow node
 	#[instrument(name = "flow::state::clear", level = "trace", skip(self), fields(
 		node_id = id.0,
 		keys_removed = field::Empty
 	))]
 	pub fn state_clear(&mut self, id: FlowNodeId) -> Result<()> {
-		// Phase 1: Scan to collect all keys
 		let keys_to_remove = self.scan_keys_for_clear(id)?;
 
-		// Phase 2: Remove all collected keys
 		let count = keys_to_remove.len();
 		self.remove_keys(keys_to_remove)?;
 
@@ -106,7 +177,6 @@ impl FlowTransaction {
 		Ok(())
 	}
 
-	/// Scan and collect all keys for a node (used by state_clear)
 	#[inline]
 	#[instrument(name = "flow::state::clear::scan", level = "trace", skip(self), fields(node_id = id.0))]
 	fn scan_keys_for_clear(&mut self, id: FlowNodeId) -> Result<Vec<EncodedKey>> {
@@ -120,7 +190,6 @@ impl FlowTransaction {
 		Ok(keys)
 	}
 
-	/// Remove a list of keys (used by state_clear)
 	#[inline]
 	#[instrument(name = "flow::state::clear::remove", level = "trace", skip(self, keys), fields(count = keys.len()))]
 	fn remove_keys(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
@@ -130,7 +199,6 @@ impl FlowTransaction {
 		Ok(())
 	}
 
-	/// Load state for a key, creating if not exists
 	#[instrument(name = "flow::state::load_or_create", level = "debug", skip(self, shape), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len(),
@@ -149,7 +217,6 @@ impl FlowTransaction {
 		}
 	}
 
-	/// Save state encoded
 	#[instrument(name = "flow::state::save", level = "trace", skip(self, row), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len()
@@ -173,6 +240,7 @@ pub mod tests {
 		},
 		interface::catalog::flow::FlowNodeId,
 	};
+	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_type::{util::cowvec::CowVec, value::r#type::Type};
 
@@ -190,8 +258,13 @@ pub mod tests {
 	#[test]
 	fn test_state_get_set() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("state_key");
@@ -208,8 +281,13 @@ pub mod tests {
 	#[test]
 	fn test_state_get_nonexistent() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("missing");
@@ -221,8 +299,13 @@ pub mod tests {
 	#[test]
 	fn test_state_remove() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("state_key");
@@ -239,8 +322,13 @@ pub mod tests {
 	#[test]
 	fn test_state_isolation_between_nodes() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);
@@ -257,8 +345,13 @@ pub mod tests {
 	#[test]
 	fn test_state_scan() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node_id = FlowNodeId(1);
 
@@ -275,8 +368,13 @@ pub mod tests {
 	#[test]
 	fn test_state_scan_only_own_node() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);
@@ -297,8 +395,13 @@ pub mod tests {
 	#[test]
 	fn test_state_scan_empty() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node_id = FlowNodeId(1);
 
@@ -309,8 +412,13 @@ pub mod tests {
 	#[test]
 	fn test_state_range() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node_id = FlowNodeId(1);
 
@@ -331,8 +439,13 @@ pub mod tests {
 	#[test]
 	fn test_state_clear() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node_id = FlowNodeId(1);
 
@@ -353,8 +466,13 @@ pub mod tests {
 	#[test]
 	fn test_state_clear_only_own_node() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);
@@ -376,8 +494,13 @@ pub mod tests {
 	#[test]
 	fn test_state_clear_empty_node() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node_id = FlowNodeId(1);
 
@@ -388,8 +511,13 @@ pub mod tests {
 	#[test]
 	fn test_load_or_create_existing() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
@@ -407,8 +535,13 @@ pub mod tests {
 	#[test]
 	fn test_load_or_create_new() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
@@ -424,8 +557,13 @@ pub mod tests {
 	#[test]
 	fn test_save_row() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
@@ -441,8 +579,13 @@ pub mod tests {
 	#[test]
 	fn test_state_multiple_nodes() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);

@@ -8,19 +8,28 @@ repository.workspace = true
 description = "Change Data Capture module for ReifyDB"
 
 [features]
-default = []
+default = ["sqlite"]
+sqlite = ["rusqlite", "reifydb-sqlite", "dep:zstd"]
 
 [dependencies]
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }
+reifydb-sqlite = { workspace = true, optional = true }
+reifydb-store-multi = { workspace = true }
+reifydb-store-single = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
+postcard = { workspace = true }
+serde = { workspace = true }
 tracing = { workspace = true }
+uuid = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rusqlite = { workspace = true, features = ["bundled"], optional = true }
+zstd = { workspace = true, optional = true }
 
 [dev-dependencies]
 reifydb-engine = { workspace = true, features = ["tokio"] }
-reifydb-store-multi = { workspace = true }
-reifydb-store-single = { workspace = true }
 reifydb-testing = { workspace = true }
 test_each_file = { workspace = true }

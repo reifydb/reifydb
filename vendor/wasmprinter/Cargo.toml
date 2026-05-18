@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.82.0"
 name = "wasmprinter"
-version = "0.245.1"
+version = "0.246.2"
 authors = ["Alex Crichton <alex@alexcrichton.com>"]
 build = false
 autolib = false
@@ -57,7 +57,7 @@ default-features = false
 version = "1.2.0"
 
 [dependencies.wasmparser]
-version = "0.245.1"
+version = "0.246.2"
 features = [
     "simd",
     "std",

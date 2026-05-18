@@ -4,11 +4,8 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::{
-		procedure::{Procedure, ProcedureTrigger},
-		vtable::VTable,
-	},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	interface::catalog::{procedure::Procedure, vtable::VTable},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -20,9 +17,8 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes procedures with trigger = Event (event handlers)
 pub struct SystemHandlers {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	pub(crate) catalog: Catalog,
 	exhausted: bool,
 }
@@ -30,7 +26,7 @@ pub struct SystemHandlers {
 impl SystemHandlers {
 	pub fn new(catalog: Catalog) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_handlers_table().clone(),
+			vtable: SystemCatalog::get_system_handlers_table().clone(),
 			catalog,
 			exhausted: false,
 		}
@@ -55,19 +51,18 @@ impl BaseVTable for SystemHandlers {
 		let mut variant_tags = Vec::new();
 
 		let mut collect = |proc_def: &Procedure| {
-			if let ProcedureTrigger::Event {
-				variant,
-			} = &proc_def.trigger && !ids.contains(&proc_def.id.0)
+			if let Some(variant) = proc_def.event_variant()
+				&& !ids.contains(&*proc_def.id())
 			{
-				ids.push(proc_def.id.0);
-				namespace_ids.push(proc_def.namespace.0);
-				names.push(proc_def.name.clone());
+				ids.push(*proc_def.id());
+				namespace_ids.push(proc_def.namespace().0);
+				names.push(proc_def.name().to_string());
 				sumtype_ids.push(variant.sumtype_id.0);
 				variant_tags.push(variant.variant_tag);
 			}
 		};
 
-		for entry in self.catalog.materialized.procedures.iter() {
+		for entry in self.catalog.cache.procedures.iter() {
 			if let Some(ref proc_def) = entry.value().get_latest() {
 				collect(proc_def);
 			}
@@ -82,11 +77,11 @@ impl BaseVTable for SystemHandlers {
 		}
 
 		let len = ids.len();
-		let mut id_col = ColumnData::uint8_with_capacity(len);
-		let mut ns_col = ColumnData::uint8_with_capacity(len);
-		let mut name_col = ColumnData::utf8_with_capacity(len);
-		let mut sumtype_col = ColumnData::uint8_with_capacity(len);
-		let mut tag_col = ColumnData::uint1_with_capacity(len);
+		let mut id_col = ColumnBuffer::uint8_with_capacity(len);
+		let mut ns_col = ColumnBuffer::uint8_with_capacity(len);
+		let mut name_col = ColumnBuffer::utf8_with_capacity(len);
+		let mut sumtype_col = ColumnBuffer::uint8_with_capacity(len);
+		let mut tag_col = ColumnBuffer::uint1_with_capacity(len);
 
 		for id in &ids {
 			id_col.push(*id);
@@ -105,26 +100,11 @@ impl BaseVTable for SystemHandlers {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: id_col,
-			},
-			Column {
-				name: Fragment::internal("namespace_id"),
-				data: ns_col,
-			},
-			Column {
-				name: Fragment::internal("name"),
-				data: name_col,
-			},
-			Column {
-				name: Fragment::internal("on_sumtype_id"),
-				data: sumtype_col,
-			},
-			Column {
-				name: Fragment::internal("on_variant_tag"),
-				data: tag_col,
-			},
+			ColumnWithName::new(Fragment::internal("id"), id_col),
+			ColumnWithName::new(Fragment::internal("namespace_id"), ns_col),
+			ColumnWithName::new(Fragment::internal("name"), name_col),
+			ColumnWithName::new(Fragment::internal("on_sumtype_id"), sumtype_col),
+			ColumnWithName::new(Fragment::internal("on_variant_tag"), tag_col),
 		];
 
 		self.exhausted = true;
@@ -133,7 +113,7 @@ impl BaseVTable for SystemHandlers {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

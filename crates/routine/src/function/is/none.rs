@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_type::value::r#type::Type;
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-pub struct IsNone;
+pub struct IsNone {
+	info: RoutineInfo,
+}
 
 impl Default for IsNone {
 	fn default() -> Self {
@@ -19,30 +18,44 @@ impl Default for IsNone {
 
 impl IsNone {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("is::none"),
+		}
 	}
 }
 
-impl ScalarFunction for IsNone {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
-
-		if columns.len() != 1 {
-			return Err(ScalarFunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 1,
-				actual: columns.len(),
-			});
-		}
-
-		let column = columns.first().unwrap();
-		let data: Vec<bool> = (0..row_count).map(|i| !column.data().is_defined(i)).collect();
-
-		Ok(ColumnData::bool(data))
+impl<'a> Routine<FunctionContext<'a>> for IsNone {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Boolean
+	}
+
+	fn propagates_options(&self) -> bool {
+		false
+	}
+
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.len() != 1 {
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.fragment.clone(),
+				expected: 1,
+				actual: args.len(),
+			});
+		}
+
+		let column = &args[0];
+		let row_count = column.len();
+		let data: Vec<bool> = (0..row_count).map(|i| !column.is_defined(i)).collect();
+
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::bool(data))]))
+	}
+}
+
+impl Function for IsNone {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

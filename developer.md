@@ -32,6 +32,13 @@ Before working on ReifyDB, ensure you have the following installed:
   - Ubuntu/Debian: `sudo apt-get install protobuf-compiler`
   - macOS: `brew install protobuf`
   - Or download from [protobuf releases](https://github.com/protocolbuffers/protobuf/releases)
+- **clang** - C/C++ compiler (used as linker driver):
+  - Ubuntu/Debian: `sudo apt-get install clang`
+  - macOS: Included with Xcode Command Line Tools
+- **mold** - Fast linker for release builds:
+  - Ubuntu/Debian: `sudo apt-get install mold`
+  - macOS: Not required (macOS uses the default linker)
+- **sccache** - Shared compilation cache: `cargo install sccache`
 
 **For TypeScript development:**
 - **Node.js** (18.x or later)

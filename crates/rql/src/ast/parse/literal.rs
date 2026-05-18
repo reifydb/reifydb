@@ -25,7 +25,6 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	// Keep individual methods as thin wrappers for callers outside primary.rs
 	pub(crate) fn parse_literal_number(&mut self) -> Result<AstLiteral<'bump>> {
 		self.parse_literal(Literal::Number)
 	}

@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Adapters that wrap user virtual table implementations into the internal `VTable` trait.
 
 use std::sync::Arc;
 
 use reifydb_core::{
 	interface::{Batch, VTable},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, columns::Columns, buffer::ColumnBuffer},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::Value};
@@ -18,19 +17,19 @@ use crate::vtable::user::{
 };
 use crate::Result;
 
-/// Adapter that wraps a `UserVTable` into the internal `VTable` trait.
+
 pub struct UserVTableAdapter<U: UserVTable> {
 	user_table: U,
-	definition: Arc<VTable>,
+	vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
 impl<U: UserVTable> UserVTableAdapter<U> {
-	/// Create a new adapter wrapping the user table.
+
 	pub fn new(user_table: U, definition: Arc<VTable>) -> Self {
 		Self {
 			user_table,
-			definition,
+			vtable: definition,
 			exhausted: false,
 		}
 	}
@@ -63,27 +62,27 @@ impl<U: UserVTable> VTable for UserVTableAdapter<U> {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }
 
-/// Adapter that wraps a `UserVTableIterator` into the internal `VTable` trait.
+
 pub struct UserVTableIteratorAdapter<U: UserVTableIterator> {
 	user_iter: U,
-	definition: Arc<VTable>,
+	vtable: Arc<VTable>,
 	batch_size: usize,
 	initialized: bool,
 }
 
 impl<U: UserVTableIterator> UserVTableIteratorAdapter<U> {
-	/// Create a new adapter wrapping the user iterator.
+
 	#[allow(dead_code)]
-	pub fn new(user_iter: U, definition: Arc<VTable>) -> Self {
+	pub fn new(user_iter: U, vtable: Arc<VTable>) -> Self {
 		Self {
 			user_iter,
-			definition,
-			batch_size: 1000, // Default batch size
+			vtable,
+			batch_size: 1000,
 			initialized: false,
 		}
 	}
@@ -91,7 +90,7 @@ impl<U: UserVTableIterator> UserVTableIteratorAdapter<U> {
 
 impl<U: UserVTableIterator> VTable for UserVTableIteratorAdapter<U> {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, ctx: VTableContext) -> Result<()> {
-		// Convert internal context to user pushdown context
+
 		let user_ctx = match ctx {
 			VTableContext::Basic {
 				..
@@ -130,23 +129,23 @@ impl<U: UserVTableIterator> VTable for UserVTableIteratorAdapter<U> {
 	}
 
 	fn definition(&self) -> &VTable {
-		&self.definition
+		&self.vtable
 	}
 }
 
-/// Convert user row-oriented data to column-oriented data.
+
 pub(super) fn convert_rows_to_columns(
 	user_columns: &[UserVTableColumn],
 	rows: Vec<Vec<Value>>,
-) -> Vec<Column> {
+) -> Vec<ColumnWithName> {
 	let num_rows = rows.len();
 	let num_cols = user_columns.len();
 
-	// Initialize column data vectors
-	let mut column_data: Vec<ColumnData> =
-		user_columns.iter().map(|col| ColumnData::with_capacity(col.data_type.clone(), num_rows)).collect();
 
-	// Transpose row data into columns
+	let mut column_data: Vec<ColumnBuffer> =
+		user_columns.iter().map(|col| ColumnBuffer::with_capacity(col.data_type.clone(), num_rows)).collect();
+
+
 	for row in rows {
 		for (col_idx, value) in row.into_iter().enumerate() {
 			if col_idx < num_cols {
@@ -155,11 +154,11 @@ pub(super) fn convert_rows_to_columns(
 		}
 	}
 
-	// Create Column structs
+
 	user_columns
 		.iter()
 		.zip(column_data)
-		.map(|(def, data)| Column {
+		.map(|(def, data)| ColumnWithName {
 			name: Fragment::internal(def.name.clone()),
 			data,
 		})

@@ -1,22 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Pool actor that coordinates multiple flow worker actors.
-//!
-//! This module provides an actor-based implementation of the worker pool:
-//! - [`PoolActor`]: Supervises N FlowActors and routes work to them
-//! - [`PoolMsg`]: Messages the pool can receive (RegisterFlow, Submit, SubmitToWorker, WorkerReply)
-//! - [`PoolResponse`]: Response sent back through callbacks
-
-use std::{collections::BTreeMap, mem::replace};
+use std::{
+	collections::BTreeMap,
+	mem::replace,
+	panic::{AssertUnwindSafe, catch_unwind},
+	process,
+};
 
 use reifydb_core::{
+	actors::{
+		flow::{FlowMessage, FlowPoolMessage, FlowResponse, PoolResponse, WorkerBatch},
+		pending::{Pending, PendingWrite},
+	},
 	common::CommitVersion,
 	encoded::shape::RowShape,
 	interface::{catalog::flow::FlowId, change::Change},
 	internal,
 };
-use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{
 	actor::{
 		context::Context,
@@ -27,65 +28,11 @@ use reifydb_runtime::{
 	context::clock::{Clock, Instant},
 };
 use reifydb_type::{util::hex::encode, value::datetime::DateTime};
-use tracing::{Span, field, instrument};
+use tracing::{Span, error, field, instrument};
 
-use super::{
-	instruction::WorkerBatch,
-	worker::{FlowMsg, FlowResponse},
-};
-use crate::transaction::pending::{Pending, PendingWrite};
-
-/// Messages for the pool actor
-pub enum PoolMsg {
-	/// Register a new flow (routes to appropriate worker)
-	RegisterFlow {
-		flow: FlowDag,
-		reply: Box<dyn FnOnce(PoolResponse) + Send>,
-	},
-	/// Submit batches to multiple workers
-	Submit {
-		batches: BTreeMap<usize, WorkerBatch>,
-		reply: Box<dyn FnOnce(PoolResponse) + Send>,
-	},
-	/// Submit to a specific worker
-	SubmitToWorker {
-		worker_id: usize,
-		batch: WorkerBatch,
-		reply: Box<dyn FnOnce(PoolResponse) + Send>,
-	},
-	/// Process periodic tick for time-based maintenance
-	Tick {
-		ticks: BTreeMap<usize, Vec<FlowId>>,
-		timestamp: DateTime,
-		state_version: CommitVersion,
-		reply: Box<dyn FnOnce(PoolResponse) + Send>,
-	},
-	/// Async reply from a FlowActor worker
-	WorkerReply {
-		worker_id: usize,
-		response: FlowResponse,
-	},
-}
-
-/// Response from the pool actor
-pub enum PoolResponse {
-	/// Operation succeeded with pending writes, pending shapes, and view changes
-	Success {
-		pending: Pending,
-		pending_shapes: Vec<RowShape>,
-		view_changes: Vec<Change>,
-	},
-	/// Registration succeeded
-	RegisterSuccess,
-	/// Operation failed with error message
-	Error(String),
-}
-
-/// Phase of the pool actor state machine
 enum Phase {
-	/// Idle, ready for new work
 	Idle,
-	/// Waiting for multiple workers to reply
+
 	WaitingForWorkers {
 		pending_count: usize,
 		results: Vec<Pending>,
@@ -94,21 +41,33 @@ enum Phase {
 		reply: Box<dyn FnOnce(PoolResponse) + Send>,
 		started_at: Instant,
 	},
-	/// Waiting for a single worker to reply
+
 	WaitingForSingleWorker {
 		reply: Box<dyn FnOnce(PoolResponse) + Send>,
 		is_register: bool,
 	},
 }
 
-/// Pool actor - supervises worker actors and routes work.
+#[inline]
+fn reject_if_busy(
+	state: &PoolState,
+	reply: Box<dyn FnOnce(PoolResponse) + Send>,
+) -> Option<Box<dyn FnOnce(PoolResponse) + Send>> {
+	if matches!(state.phase, Phase::Idle) {
+		Some(reply)
+	} else {
+		(reply)(PoolResponse::Error("Pool actor is busy".to_string()));
+		None
+	}
+}
+
 pub struct PoolActor {
-	refs: Vec<ActorRef<FlowMsg>>,
+	refs: Vec<ActorRef<FlowMessage>>,
 	clock: Clock,
 }
 
 impl PoolActor {
-	pub fn new(refs: Vec<ActorRef<FlowMsg>>, clock: Clock) -> Self {
+	pub fn new(refs: Vec<ActorRef<FlowMessage>>, clock: Clock) -> Self {
 		Self {
 			refs,
 			clock,
@@ -116,14 +75,13 @@ impl PoolActor {
 	}
 }
 
-/// Actor state
 pub struct PoolState {
 	phase: Phase,
 }
 
 impl Actor for PoolActor {
 	type State = PoolState;
-	type Message = PoolMsg;
+	type Message = FlowPoolMessage;
 
 	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
 		PoolState {
@@ -132,116 +90,69 @@ impl Actor for PoolActor {
 	}
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
-		match msg {
-			PoolMsg::RegisterFlow {
-				flow,
-				reply,
-			} => {
-				if !matches!(state.phase, Phase::Idle) {
-					(reply)(PoolResponse::Error("Pool actor is busy".to_string()));
-					return Directive::Continue;
-				}
-
-				let flow_id = flow.id;
-				let worker_id = (flow_id.0 as usize) % self.refs.len();
-
-				let self_ref = ctx.self_ref().clone();
-				let callback: Box<dyn FnOnce(FlowResponse) + Send> = Box::new(move |resp| {
-					let _ = self_ref.send(PoolMsg::WorkerReply {
-						worker_id,
-						response: resp,
-					});
-				});
-
-				if self.refs[worker_id]
-					.send(FlowMsg::Register {
-						flow,
-						reply: callback,
-					})
-					.is_err()
-				{
-					reply(PoolResponse::Error(format!("Worker {} stopped", worker_id)));
-					return Directive::Continue;
-				}
-
-				state.phase = Phase::WaitingForSingleWorker {
+		catch_unwind(AssertUnwindSafe(|| {
+			match msg {
+				FlowPoolMessage::RegisterFlow {
+					flow_id,
 					reply,
-					is_register: true,
-				};
-			}
-			PoolMsg::Submit {
-				batches,
-				reply,
-			} => {
-				if !matches!(state.phase, Phase::Idle) {
-					reply(PoolResponse::Error("Pool actor is busy".to_string()));
-					return Directive::Continue;
+				} => {
+					let Some(reply) = reject_if_busy(state, reply) else {
+						return Directive::Continue;
+					};
+					self.handle_register_flow(state, ctx, flow_id, reply);
 				}
-
-				self.handle_submit_async(state, ctx, batches, reply);
-			}
-			PoolMsg::SubmitToWorker {
-				worker_id,
-				batch,
-				reply,
-			} => {
-				if !matches!(state.phase, Phase::Idle) {
-					(reply)(PoolResponse::Error("Pool actor is busy".to_string()));
-					return Directive::Continue;
-				}
-
-				if worker_id >= self.refs.len() {
-					(reply)(PoolResponse::Error(
-						internal!("Invalid worker_id: {}", worker_id).to_string(),
-					));
-					return Directive::Continue;
-				}
-
-				let self_ref = ctx.self_ref().clone();
-				let callback: Box<dyn FnOnce(FlowResponse) + Send> = Box::new(move |resp| {
-					let _ = self_ref.send(PoolMsg::WorkerReply {
-						worker_id,
-						response: resp,
-					});
-				});
-
-				if self.refs[worker_id]
-					.send(FlowMsg::Process {
-						batch,
-						reply: callback,
-					})
-					.is_err()
-				{
-					reply(PoolResponse::Error(format!("Worker {} stopped", worker_id)));
-					return Directive::Continue;
-				}
-
-				state.phase = Phase::WaitingForSingleWorker {
+				FlowPoolMessage::Submit {
+					batches,
 					reply,
-					is_register: false,
-				};
-			}
-			PoolMsg::Tick {
-				ticks,
-				timestamp,
-				state_version,
-				reply,
-			} => {
-				if !matches!(state.phase, Phase::Idle) {
-					(reply)(PoolResponse::Error("Pool actor is busy".to_string()));
-					return Directive::Continue;
+				} => {
+					let Some(reply) = reject_if_busy(state, reply) else {
+						return Directive::Continue;
+					};
+					self.handle_submit_async(state, ctx, batches, reply);
 				}
-
-				self.handle_tick_async(state, ctx, ticks, timestamp, state_version, reply);
+				FlowPoolMessage::SubmitToWorker {
+					worker_id,
+					batch,
+					reply,
+				} => {
+					let Some(reply) = reject_if_busy(state, reply) else {
+						return Directive::Continue;
+					};
+					self.handle_submit_to_worker(state, ctx, worker_id, batch, reply);
+				}
+				FlowPoolMessage::Rebalance {
+					assignments,
+					reply,
+				} => {
+					let Some(reply) = reject_if_busy(state, reply) else {
+						return Directive::Continue;
+					};
+					self.handle_rebalance_async(state, ctx, assignments, reply);
+				}
+				FlowPoolMessage::Tick {
+					ticks,
+					timestamp,
+					state_version,
+					reply,
+				} => {
+					let Some(reply) = reject_if_busy(state, reply) else {
+						return Directive::Continue;
+					};
+					self.handle_tick_async(state, ctx, ticks, timestamp, state_version, reply);
+				}
+				FlowPoolMessage::WorkerReply {
+					worker_id,
+					response,
+				} => {
+					self.handle_worker_reply(state, worker_id, response);
+				}
 			}
-			PoolMsg::WorkerReply {
-				worker_id,
-				response,
-			} => {
-				self.handle_worker_reply(state, worker_id, response);
-			}
-		}
-		Directive::Continue
+			Directive::Continue
+		}))
+		.unwrap_or_else(|_| {
+			error!("panic in flow pool actor, aborting");
+			process::abort()
+		})
 	}
 
 	fn config(&self) -> ActorConfig {
@@ -250,7 +161,80 @@ impl Actor for PoolActor {
 }
 
 impl PoolActor {
-	/// Handle Submit by sending to workers asynchronously.
+	#[inline]
+	fn handle_register_flow(
+		&self,
+		state: &mut PoolState,
+		ctx: &Context<FlowPoolMessage>,
+		flow_id: FlowId,
+		reply: Box<dyn FnOnce(PoolResponse) + Send>,
+	) {
+		let worker_id = (flow_id.0 as usize) % self.refs.len();
+
+		let self_ref = ctx.self_ref().clone();
+		let callback: Box<dyn FnOnce(FlowResponse) + Send> = Box::new(move |resp| {
+			let _ = self_ref.send(FlowPoolMessage::WorkerReply {
+				worker_id,
+				response: resp,
+			});
+		});
+
+		if self.refs[worker_id]
+			.send(FlowMessage::Register {
+				flow_id,
+				reply: callback,
+			})
+			.is_err()
+		{
+			reply(PoolResponse::Error(format!("Worker {} stopped", worker_id)));
+			return;
+		}
+
+		state.phase = Phase::WaitingForSingleWorker {
+			reply,
+			is_register: true,
+		};
+	}
+
+	#[inline]
+	fn handle_submit_to_worker(
+		&self,
+		state: &mut PoolState,
+		ctx: &Context<FlowPoolMessage>,
+		worker_id: usize,
+		batch: WorkerBatch,
+		reply: Box<dyn FnOnce(PoolResponse) + Send>,
+	) {
+		if worker_id >= self.refs.len() {
+			(reply)(PoolResponse::Error(internal!("Invalid worker_id: {}", worker_id).to_string()));
+			return;
+		}
+
+		let self_ref = ctx.self_ref().clone();
+		let callback: Box<dyn FnOnce(FlowResponse) + Send> = Box::new(move |resp| {
+			let _ = self_ref.send(FlowPoolMessage::WorkerReply {
+				worker_id,
+				response: resp,
+			});
+		});
+
+		if self.refs[worker_id]
+			.send(FlowMessage::Process {
+				batch,
+				reply: callback,
+			})
+			.is_err()
+		{
+			reply(PoolResponse::Error(format!("Worker {} stopped", worker_id)));
+			return;
+		}
+
+		state.phase = Phase::WaitingForSingleWorker {
+			reply,
+			is_register: false,
+		};
+	}
+
 	#[instrument(name = "flow::pool::submit", level = "debug", skip(self, state, ctx, batches, reply), fields(
 		batches = batches.len(),
 		instructions = field::Empty,
@@ -259,7 +243,7 @@ impl PoolActor {
 	fn handle_submit_async(
 		&self,
 		state: &mut PoolState,
-		ctx: &Context<PoolMsg>,
+		ctx: &Context<FlowPoolMessage>,
 		batches: BTreeMap<usize, WorkerBatch>,
 		reply: Box<dyn FnOnce(PoolResponse) + Send>,
 	) {
@@ -277,14 +261,14 @@ impl PoolActor {
 
 			let self_ref = ctx.self_ref().clone();
 			let callback: Box<dyn FnOnce(FlowResponse) + Send> = Box::new(move |resp| {
-				let _ = self_ref.send(PoolMsg::WorkerReply {
+				let _ = self_ref.send(FlowPoolMessage::WorkerReply {
 					worker_id,
 					response: resp,
 				});
 			});
 
 			if self.refs[worker_id]
-				.send(FlowMsg::Process {
+				.send(FlowMessage::Process {
 					batch,
 					reply: callback,
 				})
@@ -305,11 +289,52 @@ impl PoolActor {
 		};
 	}
 
-	/// Handle Tick by sending to workers asynchronously.
+	fn handle_rebalance_async(
+		&self,
+		state: &mut PoolState,
+		ctx: &Context<FlowPoolMessage>,
+		assignments: BTreeMap<usize, Vec<FlowId>>,
+		reply: Box<dyn FnOnce(PoolResponse) + Send>,
+	) {
+		let worker_count = self.refs.len();
+
+		for worker_id in 0..worker_count {
+			let flow_ids = assignments.get(&worker_id).cloned().unwrap_or_default();
+
+			let self_ref = ctx.self_ref().clone();
+			let callback: Box<dyn FnOnce(FlowResponse) + Send> = Box::new(move |resp| {
+				let _ = self_ref.send(FlowPoolMessage::WorkerReply {
+					worker_id,
+					response: resp,
+				});
+			});
+
+			if self.refs[worker_id]
+				.send(FlowMessage::Rebalance {
+					flow_ids,
+					reply: callback,
+				})
+				.is_err()
+			{
+				(reply)(PoolResponse::Error(format!("Worker {} stopped", worker_id)));
+				return;
+			}
+		}
+
+		state.phase = Phase::WaitingForWorkers {
+			pending_count: worker_count,
+			results: Vec::new(),
+			pending_shapes: Vec::new(),
+			view_changes: Vec::new(),
+			reply,
+			started_at: self.clock.instant(),
+		};
+	}
+
 	fn handle_tick_async(
 		&self,
 		state: &mut PoolState,
-		ctx: &Context<PoolMsg>,
+		ctx: &Context<FlowPoolMessage>,
 		ticks: BTreeMap<usize, Vec<FlowId>>,
 		timestamp: DateTime,
 		state_version: CommitVersion,
@@ -325,14 +350,14 @@ impl PoolActor {
 
 			let self_ref = ctx.self_ref().clone();
 			let callback: Box<dyn FnOnce(FlowResponse) + Send> = Box::new(move |resp| {
-				let _ = self_ref.send(PoolMsg::WorkerReply {
+				let _ = self_ref.send(FlowPoolMessage::WorkerReply {
 					worker_id,
 					response: resp,
 				});
 			});
 
 			if self.refs[worker_id]
-				.send(FlowMsg::Tick {
+				.send(FlowMessage::Tick {
 					flow_ids,
 					timestamp,
 					state_version,
@@ -355,110 +380,127 @@ impl PoolActor {
 		};
 	}
 
-	/// Handle a WorkerReply message based on current phase.
 	fn handle_worker_reply(&self, state: &mut PoolState, worker_id: usize, response: FlowResponse) {
 		let phase = replace(&mut state.phase, Phase::Idle);
-
 		match phase {
 			Phase::WaitingForSingleWorker {
-				reply: original_reply,
+				reply,
 				is_register,
+			} => self.complete_single_worker_reply(reply, is_register, response),
+			Phase::WaitingForWorkers {
+				pending_count,
+				results,
+				pending_shapes,
+				view_changes,
+				reply,
+				started_at,
+			} => self.aggregate_worker_reply(
+				state,
+				worker_id,
+				response,
+				pending_count,
+				results,
+				pending_shapes,
+				view_changes,
+				reply,
+				started_at,
+			),
+			Phase::Idle => {}
+		}
+	}
+
+	#[inline]
+	fn complete_single_worker_reply(
+		&self,
+		reply: Box<dyn FnOnce(PoolResponse) + Send>,
+		is_register: bool,
+		response: FlowResponse,
+	) {
+		let resp = match response {
+			FlowResponse::Success {
+				pending,
+				pending_shapes,
+				view_changes,
 			} => {
-				let resp = match response {
-					FlowResponse::Success {
+				if is_register {
+					PoolResponse::RegisterSuccess
+				} else {
+					PoolResponse::Success {
 						pending,
 						pending_shapes,
 						view_changes,
-					} => {
-						if is_register {
-							PoolResponse::RegisterSuccess
-						} else {
-							PoolResponse::Success {
-								pending,
-								pending_shapes,
-								view_changes,
-							}
-						}
-					}
-					FlowResponse::Error(e) => PoolResponse::Error(e),
-				};
-				(original_reply)(resp);
-				// state.phase is already Idle
-			}
-			Phase::WaitingForWorkers {
-				mut pending_count,
-				mut results,
-				mut pending_shapes,
-				mut view_changes,
-				reply: original_reply,
-				started_at: start,
-			} => {
-				match response {
-					FlowResponse::Success {
-						pending,
-						pending_shapes: worker_pending_shapes,
-						view_changes: worker_view_changes,
-					} => {
-						results.push(pending);
-						pending_shapes.extend(worker_pending_shapes);
-						view_changes.extend(worker_view_changes);
-						pending_count -= 1;
-
-						if pending_count == 0 {
-							// All workers done — aggregate and reply
-							match self.aggregate_pending_writes(results) {
-								Ok(combined) => {
-									Span::current().record(
-										"elapsed_us",
-										start.elapsed().as_micros() as u64,
-									);
-									(original_reply)(PoolResponse::Success {
-										pending: combined,
-										pending_shapes,
-										view_changes,
-									});
-								}
-								Err(e) => {
-									(original_reply)(PoolResponse::Error(e));
-								}
-							}
-							// state.phase is already Idle
-						} else {
-							// Still waiting for more workers
-							state.phase = Phase::WaitingForWorkers {
-								pending_count,
-								results,
-								pending_shapes,
-								view_changes,
-								reply: original_reply,
-								started_at: start,
-							};
-						}
-					}
-					FlowResponse::Error(e) => {
-						// On first error, reply immediately with error
-						(original_reply)(PoolResponse::Error(format!(
-							"Worker {} error: {}",
-							worker_id, e
-						)));
-						// state.phase is already Idle — remaining replies will hit the Idle
-						// branch below
 					}
 				}
 			}
-			Phase::Idle => {
-				// Stale reply from a previous errored batch — ignore
+			FlowResponse::Error(e) => PoolResponse::Error(e),
+		};
+		(reply)(resp);
+	}
+
+	#[inline]
+	#[allow(clippy::too_many_arguments)]
+	fn aggregate_worker_reply(
+		&self,
+		state: &mut PoolState,
+		worker_id: usize,
+		response: FlowResponse,
+		mut pending_count: usize,
+		mut results: Vec<Pending>,
+		mut pending_shapes: Vec<RowShape>,
+		mut view_changes: Vec<Change>,
+		reply: Box<dyn FnOnce(PoolResponse) + Send>,
+		started_at: Instant,
+	) {
+		match response {
+			FlowResponse::Success {
+				pending,
+				pending_shapes: worker_pending_shapes,
+				view_changes: worker_view_changes,
+			} => {
+				results.push(pending);
+				pending_shapes.extend(worker_pending_shapes);
+				view_changes.extend(worker_view_changes);
+				pending_count -= 1;
+
+				if pending_count == 0 {
+					match self.aggregate_pending_writes(results) {
+						Ok(combined) => {
+							Span::current().record(
+								"elapsed_us",
+								started_at.elapsed().as_micros() as u64,
+							);
+							(reply)(PoolResponse::Success {
+								pending: combined,
+								pending_shapes,
+								view_changes,
+							});
+						}
+						Err(e) => {
+							(reply)(PoolResponse::Error(e));
+						}
+					}
+				} else {
+					state.phase = Phase::WaitingForWorkers {
+						pending_count,
+						results,
+						pending_shapes,
+						view_changes,
+						reply,
+						started_at,
+					};
+				}
+			}
+			FlowResponse::Error(e) => {
+				(reply)(PoolResponse::Error(format!("Worker {} error: {}", worker_id, e)));
 			}
 		}
 	}
 
-	/// Aggregate Pending from multiple workers with keyspace overlap detection.
 	fn aggregate_pending_writes(&self, writes: Vec<Pending>) -> Result<Pending, String> {
 		let mut combined = Pending::new();
 
 		for pending in writes {
 			for (key, value) in pending.iter_sorted() {
-				// Validate no keyspace overlap between workers
 				if combined.contains_key(key) {
 					return Err(internal!(
 						"keyspace overlap detected during worker aggregation: {}",
@@ -467,7 +509,6 @@ impl PoolActor {
 					.to_string());
 				}
 
-				// Safe to merge - disjoint keyspaces
 				match value {
 					PendingWrite::Set(v) => {
 						combined.insert(key.clone(), v.clone());

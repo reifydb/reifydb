@@ -1,5 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+
+//! ReifyDB Query Language: lexer, parser, AST, logical and physical planning, optimisation, and the instruction stream
+//! consumed by the engine VM. This is the full pipeline that turns a source string into something executable.
+//!
+//! The crate exposes the AST shape so external tooling (formatters, linters, the explain renderer) can inspect queries
+//! without re-parsing, and exposes a stable fingerprint over compiled plans that the engine uses for plan caching.
+//! Diagnostics produced here carry source-fragment context so user-visible failures can point at the offending span.
+//!
+//! Invariant: planner output is decoupled from any specific storage backend. The physical plan is expressed in terms
+//! of `core::interface/` traits; concrete backend selection happens later, in the engine. Reaching into a specific
+//! backend from inside the planner couples this crate to the storage tier and breaks the layering that lets `core`
+//! avoid cycles.
+
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
@@ -25,13 +38,13 @@ pub mod bump;
 pub mod compiler;
 pub mod diagnostic;
 pub mod error;
-pub mod explain;
 pub mod expression;
 pub mod fingerprint;
 #[allow(dead_code, unused_variables)]
 pub mod flow;
 pub mod instruction;
 pub mod nodes;
+pub mod optimize;
 pub mod plan;
 pub mod query;
 pub mod token;
@@ -86,7 +99,6 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 		} => {
 			let base_type = convert_data_type(name)?;
 
-			// Parse constraint based on type and parameters
 			let constraint = match (base_type.clone(), params.as_slice()) {
 				(Type::Utf8, [AstLiteral::Number(n)]) => {
 					let max_bytes = parse_number_literal(n.value())? as u32;
@@ -109,8 +121,7 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 					let scale = parse_number_literal(s.value())? as u8;
 					Some(Constraint::PrecisionScale(precision.into(), scale.into()))
 				}
-				// Type doesn't support constraints or invalid
-				// parameter count
+
 				_ => None,
 			};
 

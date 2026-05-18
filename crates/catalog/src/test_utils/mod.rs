@@ -83,7 +83,6 @@ pub fn create_table(
 	table: &str,
 	columns: &[TableColumnToCreate],
 ) -> Table {
-	// First look up the namespace to get its ID
 	let namespace = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
 		.unwrap()
 		.expect("Namespace not found");
@@ -94,7 +93,8 @@ pub fn create_table(
 			name: Fragment::internal(table),
 			namespace: namespace.id(),
 			columns: columns.to_vec(),
-			retention_policy: None,
+			retention_strategy: None,
+			underlying: false,
 		},
 	)
 	.unwrap()
@@ -129,7 +129,6 @@ pub fn create_test_column(
 }
 
 pub fn create_view(txn: &mut AdminTransaction, namespace: &str, view: &str, columns: &[ViewColumnToCreate]) -> View {
-	// First look up the namespace to get its ID
 	let namespace = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
 		.unwrap()
 		.expect("Namespace not found");
@@ -168,7 +167,6 @@ pub fn create_ringbuffer(
 	capacity: u64,
 	columns: &[RingBufferColumnToCreate],
 ) -> RingBuffer {
-	// First look up the namespace to get its ID
 	let namespace = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
 		.unwrap()
 		.expect("Namespace not found");
@@ -181,6 +179,7 @@ pub fn create_ringbuffer(
 			capacity,
 			columns: columns.to_vec(),
 			partition_by: vec![],
+			underlying: false,
 		},
 	)
 	.unwrap()
@@ -214,7 +213,6 @@ pub fn create_test_ringbuffer_column(
 }
 
 pub fn create_flow(txn: &mut AdminTransaction, namespace: &str, flow: &str) -> Flow {
-	// First look up the namespace to get its ID
 	let namespace = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
 		.unwrap()
 		.expect("Namespace not found");

@@ -10,13 +10,6 @@ use crate::{
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
-const VERSION: u8 = 1;
-
-/// Key for series data rows.
-///
-/// Layout without tag: `[Version | Row(0x03) | ShapeId::Series(id) | ordering_value(u64) | sequence(u64)]`
-/// Layout with tag:    `[Version | Row(0x03) | ShapeId::Series(id) | variant_tag(u8) | ordering_value(u64) |
-/// sequence(u64)]`
 #[derive(Debug, Clone, PartialEq)]
 pub struct SeriesRowKey {
 	pub series: SeriesId,
@@ -36,7 +29,7 @@ impl EncodableKey for SeriesRowKey {
 			27
 		};
 		let mut serializer = KeySerializer::with_capacity(capacity);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_shape_id(object);
+		serializer.extend_u8(Self::KIND as u8).extend_shape_id(object);
 		if let Some(tag) = self.variant_tag {
 			serializer.extend_u8(tag);
 		}
@@ -46,11 +39,6 @@ impl EncodableKey for SeriesRowKey {
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
 		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let version = de.read_u8().ok()?;
-		if version != VERSION {
-			return None;
-		}
 
 		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
@@ -63,11 +51,18 @@ impl EncodableKey for SeriesRowKey {
 			_ => return None,
 		};
 
-		// We need to know if there's a variant tag. We can tell by the remaining bytes:
-		// Without tag: u64(8) + u64(8) = 16 bytes remain
-		// With tag: u8(1) + u64(8) + u64(8) = 17 bytes remain
-		let remaining = de.remaining();
-		let variant_tag = if remaining > 16 {
+		let mut temp_de = KeyDeserializer::from_bytes(de.remaining_bytes());
+		let tag_present = if temp_de.read_u64().is_ok() {
+			if temp_de.read_u64().is_ok() {
+				!temp_de.is_empty()
+			} else {
+				true
+			}
+		} else {
+			true
+		};
+
+		let variant_tag = if tag_present {
 			Some(de.read_u8().ok()?)
 		} else {
 			None
@@ -85,7 +80,6 @@ impl EncodableKey for SeriesRowKey {
 	}
 }
 
-/// Range key for scanning series data rows.
 #[derive(Debug, Clone)]
 pub struct SeriesRowKeyRange {
 	pub series: SeriesId,
@@ -95,7 +89,6 @@ pub struct SeriesRowKeyRange {
 }
 
 impl SeriesRowKeyRange {
-	/// Create a range covering all rows for a series (optionally filtered by tag).
 	pub fn full_scan(series: SeriesId, variant_tag: Option<u8>) -> EncodedKeyRange {
 		let range = SeriesRowKeyRange {
 			series,
@@ -106,7 +99,6 @@ impl SeriesRowKeyRange {
 		EncodedKeyRange::new(Bound::Included(range.start_key()), Bound::Included(range.end_key()))
 	}
 
-	/// Create a range scan with optional key bounds.
 	pub fn scan_range(
 		series: SeriesId,
 		variant_tag: Option<u8>,
@@ -114,6 +106,11 @@ impl SeriesRowKeyRange {
 		key_end: Option<u64>,
 		last_key: Option<&EncodedKey>,
 	) -> EncodedKeyRange {
+		if matches!(key_end, Some(0)) {
+			let empty = EncodedKey::new(Vec::<u8>::new());
+			return EncodedKeyRange::new(Bound::Excluded(empty.clone()), Bound::Excluded(empty));
+		}
+
 		let range = SeriesRowKeyRange {
 			series,
 			variant_tag,
@@ -132,40 +129,33 @@ impl SeriesRowKeyRange {
 
 	fn start_key(&self) -> EncodedKey {
 		let object = ShapeId::Series(self.series);
-		let mut serializer = KeySerializer::with_capacity(28);
-		serializer.extend_u8(VERSION).extend_u8(KeyKind::Row as u8).extend_shape_id(object);
+		let mut serializer = KeySerializer::with_capacity(27);
+		serializer.extend_u8(KeyKind::Row as u8).extend_shape_id(object);
 		if let Some(tag) = self.variant_tag {
 			serializer.extend_u8(tag);
 		}
-		// Descending key encoding: higher key values have lower encoded values.
-		// The start key (lower bound) uses key_end (the highest key value in
-		// the desired range) to begin scanning from the newest matching row.
+
 		if let Some(key_val) = self.key_end {
-			serializer.extend_u64(key_val);
+			serializer.extend_u64(key_val - 1);
 		}
 		serializer.to_encoded_key()
 	}
 
 	fn end_key(&self) -> EncodedKey {
-		// Descending key encoding: lower key values have higher encoded values.
-		// The end key (upper bound) uses key_start (the lowest key value in
-		// the desired range) to stop scanning after the oldest matching row.
 		if let Some(key_val) = self.key_start {
 			let object = ShapeId::Series(self.series);
-			let mut serializer = KeySerializer::with_capacity(28);
-			serializer.extend_u8(VERSION).extend_u8(KeyKind::Row as u8).extend_shape_id(object);
+			let mut serializer = KeySerializer::with_capacity(27);
+			serializer.extend_u8(KeyKind::Row as u8).extend_shape_id(object);
 			if let Some(tag) = self.variant_tag {
 				serializer.extend_u8(tag);
 			}
-			// Use sequence 0 which encodes to max bytes in descending encoding,
-			// ensuring all rows at this key value are included.
+
 			serializer.extend_u64(key_val).extend_u64(0u64);
 			serializer.to_encoded_key()
 		} else {
-			// Use ShapeId ordering trick to get end of range
 			let object = ShapeId::Series(self.series);
-			let mut serializer = KeySerializer::with_capacity(11);
-			serializer.extend_u8(VERSION).extend_u8(KeyKind::Row as u8).extend_shape_id(object.prev());
+			let mut serializer = KeySerializer::with_capacity(10);
+			serializer.extend_u8(KeyKind::Row as u8).extend_shape_id(object.prev());
 			serializer.to_encoded_key()
 		}
 	}
@@ -223,8 +213,7 @@ mod tests {
 		};
 		let e1 = key1.encode();
 		let e2 = key2.encode();
-		// Keycode encoding uses NOT of big-endian, producing descending order
-		// Smaller key values sort AFTER larger key values
+
 		assert!(e1 > e2, "key descending ordering not preserved");
 	}
 
@@ -244,7 +233,7 @@ mod tests {
 		};
 		let e1 = key1.encode();
 		let e2 = key2.encode();
-		// Keycode encoding uses NOT of big-endian, producing descending order
+
 		assert!(e1 > e2, "sequence descending ordering not preserved");
 	}
 }

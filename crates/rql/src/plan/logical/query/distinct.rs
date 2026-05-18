@@ -9,15 +9,14 @@ use crate::{
 
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_distinct(&self, ast: AstDistinct<'bump>) -> Result<LogicalPlan<'bump>> {
-		// DISTINCT operates on the output columns of the query
-		// In a proper implementation, we would need to resolve these
-		// columns based on the SELECT clause and FROM sources in the
-		// query context For now, we'll create columns with a default
-		// namespace/source that should be resolved by the query planner
-		// based on context
+		let ttl = match ast.ttl {
+			Some(ast_ttl) => Some(Self::compile_operator_ttl(ast_ttl)?),
+			None => None,
+		};
 
 		Ok(LogicalPlan::Distinct(DistinctNode {
 			columns: ast.columns,
+			ttl,
 			rql: ast.rql.to_string(),
 		}))
 	}

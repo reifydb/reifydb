@@ -6,17 +6,15 @@ use reifydb_core::{
 	common::{JoinType, WindowKind},
 	internal,
 	sort::SortKey,
-	value::column::data::ColumnData,
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_rql::{expression::json::JsonExpression, flow::node::FlowNodeType};
 use reifydb_type::{error::Error, value::r#type::Type};
 use serde::Serialize;
 use serde_json::{Value as JsonValue, to_string, to_value};
 
-use crate::function::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionResult, propagate_options};
+use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
-/// JSON-serializable version of FlowNodeType that uses JsonExpression
-/// for clean expression serialization without Fragment metadata.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum JsonFlowNodeType {
@@ -140,6 +138,8 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 				left,
 				right,
 				alias,
+				ttl: _,
+				snapshot: _,
 			} => JsonFlowNodeType::Join {
 				join_type: *join_type,
 				left: left.iter().map(|e| e.into()).collect(),
@@ -153,7 +153,9 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 				by: by.iter().map(|e| e.into()).collect(),
 				map: map.iter().map(|e| e.into()).collect(),
 			},
-			FlowNodeType::Append => JsonFlowNodeType::Append,
+			FlowNodeType::Append {
+				..
+			} => JsonFlowNodeType::Append,
 			FlowNodeType::Sort {
 				by,
 			} => JsonFlowNodeType::Sort {
@@ -166,12 +168,14 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 			},
 			FlowNodeType::Distinct {
 				expressions,
+				ttl: _,
 			} => JsonFlowNodeType::Distinct {
 				expressions: expressions.iter().map(|e| e.into()).collect(),
 			},
 			FlowNodeType::Apply {
 				operator,
 				expressions,
+				ttl: _,
 			} => JsonFlowNodeType::Apply {
 				operator: operator.clone(),
 				expressions: expressions.iter().map(|e| e.into()).collect(),
@@ -210,7 +214,9 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 	}
 }
 
-pub struct FlowNodeToJson;
+pub struct FlowNodeToJson {
+	info: RoutineInfo,
+}
 
 impl Default for FlowNodeToJson {
 	fn default() -> Self {
@@ -220,27 +226,43 @@ impl Default for FlowNodeToJson {
 
 impl FlowNodeToJson {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: RoutineInfo::new("flow_node::to_json"),
+		}
 	}
 }
 
-impl ScalarFunction for FlowNodeToJson {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
+impl<'a> Routine<FunctionContext<'a>> for FlowNodeToJson {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
+
+	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
+		if args.is_empty() {
+			return Ok(Columns::new(vec![ColumnWithName::new(
+				ctx.fragment.clone(),
+				ColumnBuffer::utf8(Vec::<String>::new()),
+			)]));
 		}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
-
-		if columns.is_empty() {
-			return Ok(ColumnData::utf8(Vec::<String>::new()));
+		if args.len() != 1 {
+			return Err(RoutineError::FunctionArityMismatch {
+				function: ctx.fragment.clone(),
+				expected: 1,
+				actual: args.len(),
+			});
 		}
 
-		let column = columns.first().unwrap();
+		let column = &args[0];
+		let (data, bitvec) = column.unwrap_option();
+		let row_count = data.len();
 
-		match &column.data() {
-			ColumnData::Blob {
+		match data {
+			ColumnBuffer::Blob {
 				container,
 				..
 			} => {
@@ -248,10 +270,11 @@ impl ScalarFunction for FlowNodeToJson {
 
 				for i in 0..row_count {
 					if container.is_defined(i) {
-						let blob = &container[i];
-						let bytes = blob.as_bytes();
+						let bytes = match container.get(i) {
+							Some(b) => b,
+							None => continue,
+						};
 
-						// Deserialize from postcard
 						let node_type: FlowNodeType = from_bytes(bytes).map_err(|e| {
 							Error(Box::new(internal!(
 								"Failed to deserialize FlowNodeType: {}",
@@ -259,10 +282,8 @@ impl ScalarFunction for FlowNodeToJson {
 							)))
 						})?;
 
-						// Convert to JsonFlowNodeType for clean serialization
 						let json_node_type: JsonFlowNodeType = (&node_type).into();
 
-						// Serialize to JSON (untagged - extract inner value only)
 						let json_value = to_value(&json_node_type).map_err(|e| {
 							Error(Box::new(internal!(
 								"Failed to serialize FlowNodeType to JSON: {}",
@@ -270,18 +291,13 @@ impl ScalarFunction for FlowNodeToJson {
 							)))
 						})?;
 
-						// Extract the inner object from the tagged enum {"variant_name": {...}}
 						let inner_value = match json_value {
 							JsonValue::Object(map) if map.len() == 1 => map
 								.into_iter()
 								.next()
 								.map(|(_, v)| v)
 								.unwrap_or(JsonValue::Null),
-							JsonValue::String(_) => {
-								// Unit variants serialize as strings, return null for
-								// untagged
-								JsonValue::Null
-							}
+							JsonValue::String(_) => JsonValue::Null,
 							other => other,
 						};
 
@@ -298,13 +314,26 @@ impl ScalarFunction for FlowNodeToJson {
 					}
 				}
 
-				Ok(ColumnData::utf8(result_data))
+				let result_col_data = ColumnBuffer::utf8(result_data);
+				let final_data = match bitvec {
+					Some(bv) => ColumnBuffer::Option {
+						inner: Box::new(result_col_data),
+						bitvec: bv.clone(),
+					},
+					None => result_col_data,
+				};
+				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
 			}
-			_ => Err(Error(Box::new(internal!("flow_node::to_json only supports Blob input"))).into()),
+			_ => Err(RoutineError::FunctionExecutionFailed {
+				function: ctx.fragment.clone(),
+				reason: "flow_node::to_json only supports Blob input".to_string(),
+			}),
 		}
 	}
+}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Utf8
+impl Function for FlowNodeToJson {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
 	}
 }

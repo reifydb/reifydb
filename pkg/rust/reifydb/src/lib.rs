@@ -7,7 +7,6 @@
 mod api;
 mod boot;
 mod builder;
-mod config;
 mod context;
 mod database;
 pub mod event;
@@ -18,8 +17,12 @@ mod session;
 pub mod subsystem;
 pub mod system;
 pub mod vendor;
+pub mod watermarks;
 
-pub use api::{migration::Migration, *};
+pub use api::{
+	migration::{Migration, MigrationSource, MigrationStatement},
+	*,
+};
 pub use builder::{
 	DatabaseBuilder, EmbeddedBuilder, InterceptBuilder, ServerBuilder, WithInterceptorBuilder, WithSubsystem,
 };
@@ -30,19 +33,27 @@ pub use reifydb_auth as auth;
 pub use reifydb_catalog as catalog;
 pub use reifydb_cdc as cdc;
 pub use reifydb_core as core;
-pub use reifydb_core::event::EventBus;
+#[cfg(feature = "sub_server")]
+pub use reifydb_core::actors::server::Operation;
+pub use reifydb_core::{
+	event::EventBus,
+	interface::catalog::config::{ConfigKey, GetConfig},
+};
 pub use reifydb_derive as derive;
 pub use reifydb_derive::FromFrame;
 pub use reifydb_engine as engine;
-pub use reifydb_routine::{function, procedure};
+pub use reifydb_profiler as profiler;
+pub use reifydb_routine::{function, procedure, routine};
 pub use reifydb_rql as rql;
 pub use reifydb_runtime::{
 	SharedRuntime, SharedRuntimeConfig,
-	actor::system::ActorSystem,
+	actor::{mailbox::ActorRef, system::ActorSystem},
 	context::clock::{Clock, MockClock},
+	pool::PoolConfig,
 };
+pub use reifydb_sqlite::SqliteConfig;
 pub use reifydb_store_multi as multi_storage;
-pub use reifydb_store_multi::hot::{sqlite::config::SqliteConfig, storage::HotStorage};
+pub use reifydb_store_multi::buffer::tier::MultiBufferTier;
 pub use reifydb_store_single as single_storage;
 // subsystems
 pub use reifydb_sub_api as sub;
@@ -57,6 +68,8 @@ pub use reifydb_sub_flow::{
 	operator::{BoxedOperator, Operator, Operators},
 	transaction::FlowTransaction,
 };
+#[cfg(feature = "sub_profiler")]
+pub use reifydb_sub_profiler as sub_profiler;
 #[cfg(feature = "sub_replication")]
 pub use reifydb_sub_replication as sub_replication;
 #[cfg(feature = "sub_raft")]
@@ -65,8 +78,7 @@ pub use reifydb_sub_raft as sub_raft;
 pub use reifydb_sub_server as sub_server;
 #[cfg(feature = "sub_server")]
 pub use reifydb_sub_server::interceptor::{
-	Operation, Protocol, RequestContext, RequestInterceptor, RequestInterceptorChain, RequestMetadata,
-	ResponseContext,
+	Protocol, RequestContext, RequestInterceptor, RequestInterceptorChain, RequestMetadata, ResponseContext,
 };
 #[cfg(feature = "sub_server_admin")]
 pub use reifydb_sub_server_admin as sub_server_admin;
@@ -78,6 +90,7 @@ pub use reifydb_sub_server_http as sub_server_http;
 pub use reifydb_sub_server_otel as sub_server_otel;
 #[cfg(feature = "sub_server_ws")]
 pub use reifydb_sub_server_ws as sub_server_ws;
+#[cfg(not(reifydb_single_threaded))]
 pub use reifydb_sub_task as sub_task;
 #[cfg(feature = "sub_tracing")]
 pub use reifydb_sub_tracing as sub_tracing;
@@ -108,4 +121,4 @@ pub use reifydb_type::{
 	},
 };
 pub mod test;
-pub use session::{Backoff, RetryPolicy, Session};
+pub use session::{Backoff, RetryStrategy, Session};

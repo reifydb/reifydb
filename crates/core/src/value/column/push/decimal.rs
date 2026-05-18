@@ -3,25 +3,25 @@
 
 use reifydb_type::{storage::DataBitVec, value::decimal::Decimal};
 
-use crate::value::column::{ColumnData, push::Push};
+use crate::value::column::{ColumnBuffer, push::Push};
 
-impl Push<Decimal> for ColumnData {
+impl Push<Decimal> for ColumnBuffer {
 	fn push(&mut self, value: Decimal) {
 		match self {
-			ColumnData::Decimal {
+			ColumnBuffer::Decimal {
 				container,
 				..
 			} => {
 				container.push(value);
 			}
-			ColumnData::Option {
+			ColumnBuffer::Option {
 				inner,
 				bitvec,
 			} => {
 				inner.push(value);
 				DataBitVec::push(bitvec, true);
 			}
-			_ => unreachable!("Push<Decimal> for ColumnData with incompatible type"),
+			_ => unreachable!("Push<Decimal> for ColumnBuffer with incompatible type"),
 		}
 	}
 }

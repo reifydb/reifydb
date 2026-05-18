@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -16,9 +16,8 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system primary key column relationships
 pub struct SystemPrimaryKeyColumns {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +30,7 @@ impl Default for SystemPrimaryKeyColumns {
 impl SystemPrimaryKeyColumns {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_primary_key_columns_table().clone(),
+			vtable: SystemCatalog::get_system_primary_key_columns_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -60,18 +59,9 @@ impl BaseVTable for SystemPrimaryKeyColumns {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("primary_key_id"),
-				data: ColumnData::uint8(pk_ids),
-			},
-			Column {
-				name: Fragment::internal("column_id"),
-				data: ColumnData::uint8(column_ids),
-			},
-			Column {
-				name: Fragment::internal("position"),
-				data: ColumnData::uint2(positions),
-			},
+			ColumnWithName::new(Fragment::internal("primary_key_id"), ColumnBuffer::uint8(pk_ids)),
+			ColumnWithName::new(Fragment::internal("column_id"), ColumnBuffer::uint8(column_ids)),
+			ColumnWithName::new(Fragment::internal("position"), ColumnBuffer::uint2(positions)),
 		];
 
 		self.exhausted = true;
@@ -80,7 +70,7 @@ impl BaseVTable for SystemPrimaryKeyColumns {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

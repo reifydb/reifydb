@@ -1,0 +1,42 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Multiple operator-state keys with mixed expiry status. Only expired
+# keys go away; non-expired keys are untouched in both physical tables.
+
+# Key 1: single old version (current only, expired)
+set 1=row1 version=1 created=1000
+# Key 2: single fresh version (current only, NOT expired)
+set 2=row2 version=2 created=9000
+# Key 3: two old versions (current + historical, both expired)
+set 3=row3a version=3 created=1000
+set 3=row3b version=4 created=1000
+---
+ok
+ok
+ok
+ok
+
+count_current
+count_historical
+---
+current: 3
+historical: 1
+
+scan_ttl mode=created duration=5000 now=10000
+---
+expired=2 versions_dropped=3
+
+count_current
+count_historical
+---
+current: 1
+historical: 0
+
+visible 1
+visible 2
+visible 3
+---
+(none)
+created=9000 updated=9000 value="row2"
+(none)

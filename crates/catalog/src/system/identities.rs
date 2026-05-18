@@ -15,8 +15,6 @@ use super::ids::{
 	vtable::IDENTITIES,
 };
 
-/// Returns the static definition for the system.identities virtual table
-/// This table exposes information about all identities in the database
 pub fn identities() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

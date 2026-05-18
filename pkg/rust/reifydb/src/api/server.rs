@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_store_multi::hot::sqlite::config::SqliteConfig;
+use reifydb_sqlite::SqliteConfig;
 
 use crate::{ServerBuilder, api::StorageFactory};
 

@@ -10,7 +10,7 @@ describe('Error Handling', () => {
 
     beforeAll(async () => {
         httpClient = Client.connect_http(process.env.REIFYDB_HTTP_URL, {
-            timeoutMs: 10000,
+            timeout_ms: 10000,
             token: process.env.REIFYDB_TOKEN
         });
     });
@@ -25,7 +25,7 @@ describe('Error Handling', () => {
         ).rejects.toMatchObject({
             name: 'ReifyError',
             code: 'CAST_002',
-            statement: "MAP {result: cast(129, int1)};",
+            rql: "MAP {result: cast(129, int1)};",
             fragment: {
                 Statement: expect.objectContaining({
                     text: "129",
@@ -51,7 +51,7 @@ describe('Error Handling', () => {
         ).rejects.toMatchObject({
             name: 'ReifyError',
             code: 'CAST_002',
-            statement: "MAP {result: cast(129, int1)};",
+            rql: "MAP {result: cast(129, int1)};",
             fragment: {
                 Statement: expect.objectContaining({
                     text: "129",

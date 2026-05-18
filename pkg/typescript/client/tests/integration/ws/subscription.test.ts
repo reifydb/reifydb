@@ -4,48 +4,48 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import { Client, WsClient } from '../../../src';
 import { Shape } from '@reifydb/core';
-import { waitForDatabase } from '../setup';
+import { wait_for_database } from '../setup';
 import {
-    createTestTableName,
-    createTestTable,
-    waitForCallback,
-    createCallbackTracker
+    create_test_table_name,
+    create_test_table,
+    wait_for_callback,
+    create_callback_tracker
 } from './subscription-helpers';
 
 describe('WebSocket Subscriptions', () => {
-    let wsClient: WsClient;
+    let ws_client: WsClient;
     const testUrl = process.env.REIFYDB_WS_URL || 'ws://localhost:18090';
 
     beforeAll(async () => {
-        await waitForDatabase();
+        await wait_for_database();
     }, 30000);
 
     beforeEach(async () => {
-        wsClient = await Client.connect_ws(testUrl, {
-            timeoutMs: 10000,
+        ws_client = await Client.connect_ws(testUrl, {
+            timeout_ms: 10000,
             token: process.env.REIFYDB_TOKEN,
-            reconnectDelayMs: 100  // Fast reconnection for tests
+            reconnect_delay_ms: 100  // Fast reconnection for tests
         });
     }, 15000);
 
     afterEach(async () => {
-        if (wsClient) {
-            wsClient.disconnect();
+        if (ws_client) {
+            ws_client.disconnect();
         }
     });
 
     describe('Basic Subscription Flow', () => {
         it('should successfully subscribe to a query', async () => {
-            const tableName = createTestTableName('sub_basic');
-            await createTestTable(wsClient, tableName, [
+            const table_name = create_test_table_name('sub_basic');
+            await create_test_table(ws_client, table_name, [
                 'id Int4',
                 'name Utf8',
                 'value Int4'
             ]);
 
-            const tracker = createCallbackTracker();
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
+            const tracker = create_callback_tracker();
+            const subscription_id = await ws_client.subscribe(
+                `from test::${table_name}`,
                 null,
                 Shape.object({
                     id: Shape.number(),
@@ -53,53 +53,53 @@ describe('WebSocket Subscriptions', () => {
                     value: Shape.number()
                 }),
                 {
-                    onInsert: tracker.callback
+                    on_insert: tracker.callback
                 }
             );
 
-            expect(subscriptionId).toBeDefined();
-            expect(typeof subscriptionId).toBe('string');
-            expect(subscriptionId.length).toBeGreaterThan(0);
+            expect(subscription_id).toBeDefined();
+            expect(typeof subscription_id).toBe('string');
+            expect(subscription_id.length).toBeGreaterThan(0);
 
             // Verify subscription is active
-            const subscriptions = (wsClient as any).subscriptions;
-            expect(subscriptions.has(subscriptionId)).toBe(true);
+            const subscriptions = (ws_client as any).subscriptions;
+            expect(subscriptions.has(subscription_id)).toBe(true);
 
-            await wsClient.unsubscribe(subscriptionId);
+            await ws_client.unsubscribe(subscription_id);
         }, 10000);
 
         it('should successfully unsubscribe from a subscription', async () => {
-            const tableName = createTestTableName('sub_unsub');
-            await createTestTable(wsClient, tableName, [
+            const table_name = create_test_table_name('sub_unsub');
+            await create_test_table(ws_client, table_name, [
                 'id Int4',
                 'name Utf8'
             ]);
 
-            const tracker = createCallbackTracker();
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
+            const tracker = create_callback_tracker();
+            const subscription_id = await ws_client.subscribe(
+                `from test::${table_name}`,
                 null,
                 Shape.object({
                     id: Shape.number(),
                     name: Shape.string()
                 }),
                 {
-                    onInsert: tracker.callback
+                    on_insert: tracker.callback
                 }
             );
 
-            expect(subscriptionId).toBeDefined();
+            expect(subscription_id).toBeDefined();
 
-            await wsClient.unsubscribe(subscriptionId);
+            await ws_client.unsubscribe(subscription_id);
 
             // Verify subscription is removed
-            const subscriptions = (wsClient as any).subscriptions;
-            expect(subscriptions.has(subscriptionId)).toBe(false);
+            const subscriptions = (ws_client as any).subscriptions;
+            expect(subscriptions.has(subscription_id)).toBe(false);
         }, 10000);
 
         it('should receive INSERT notifications', async () => {
-            const tableName = createTestTableName('sub_insert');
-            await createTestTable(wsClient, tableName, [
+            const table_name = create_test_table_name('sub_insert');
+            await create_test_table(ws_client, table_name, [
                 'id Int4',
                 'name Utf8',
                 'value Int4'
@@ -111,20 +111,20 @@ describe('WebSocket Subscriptions', () => {
                 value: Shape.number()
             });
 
-            const { promise, callback } = waitForCallback(shape);
+            const { promise, callback } = wait_for_callback(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
+            const subscription_id = await ws_client.subscribe(
+                `from test::${table_name}`,
                 null,
                 shape,
                 {
-                    onInsert: callback
+                    on_insert: callback
                 }
             );
 
             // Insert data after subscription is established
-            await wsClient.command(
-                `INSERT test::${tableName} [{ id: 1, name: 'test', value: 100 }]`,
+            await ws_client.command(
+                `INSERT test::${table_name} [{ id: 1, name: 'test', value: 100 }]`,
                 null,
                 []
             );
@@ -139,14 +139,14 @@ describe('WebSocket Subscriptions', () => {
             //@ts-ignore
             expect(rows[0]._op).toBeUndefined(); // _op should be removed
 
-            await wsClient.unsubscribe(subscriptionId);
+            await ws_client.unsubscribe(subscription_id);
         }, 10000);
     });
 
     describe('Operation Callbacks', () => {
-        it('should invoke onInsert callback for INSERT operations', async () => {
-            const tableName = createTestTableName('sub_op_insert');
-            await createTestTable(wsClient, tableName, [
+        it('should invoke on_insert callback for INSERT operations', async () => {
+            const table_name = create_test_table_name('sub_op_insert');
+            await create_test_table(ws_client, table_name, [
                 'id Int4',
                 'name Utf8'
             ]);
@@ -156,36 +156,36 @@ describe('WebSocket Subscriptions', () => {
                 name: Shape.string()
             });
 
-            const insertTracker = createCallbackTracker(shape);
-            const updateTracker = createCallbackTracker(shape);
-            const removeTracker = createCallbackTracker(shape);
+            const insert_tracker = create_callback_tracker(shape);
+            const update_tracker = create_callback_tracker(shape);
+            const remove_tracker = create_callback_tracker(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
+            const subscription_id = await ws_client.subscribe(
+                `from test::${table_name}`,
                 null,
                 shape,
                 {
-                    onInsert: insertTracker.callback,
-                    onUpdate: updateTracker.callback,
-                    onRemove: removeTracker.callback
+                    on_insert: insert_tracker.callback,
+                    on_update: update_tracker.callback,
+                    on_remove: remove_tracker.callback
                 }
             );
 
-            await wsClient.command(
-                `INSERT test::${tableName} [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }]`,
+            await ws_client.command(
+                `INSERT test::${table_name} [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }]`,
                 null,
                 []
             );
 
-            await insertTracker.waitForCall();
+            await insert_tracker.wait_for_call();
 
-            expect(insertTracker.getCallCount()).toBe(1);
-            expect(insertTracker.getAllRows().length).toBe(2);
-            expect(updateTracker.getCallCount()).toBe(0);
-            expect(removeTracker.getCallCount()).toBe(0);
+            expect(insert_tracker.get_call_count()).toBe(1);
+            expect(insert_tracker.get_all_rows().length).toBe(2);
+            expect(update_tracker.get_call_count()).toBe(0);
+            expect(remove_tracker.get_call_count()).toBe(0);
 
             // Verify actual row data
-            const rows = insertTracker.getAllRows();
+            const rows = insert_tracker.get_all_rows();
             const alice = rows.find(r => r.id === 1);
             const bob = rows.find(r => r.id === 2);
             expect(alice).toBeDefined();
@@ -193,12 +193,12 @@ describe('WebSocket Subscriptions', () => {
             expect(bob).toBeDefined();
             expect(bob?.name).toBe('bob');
 
-            await wsClient.unsubscribe(subscriptionId);
+            await ws_client.unsubscribe(subscription_id);
         }, 10000);
 
-        it('should invoke onUpdate callback for UPDATE operations', async () => {
-            const tableName = createTestTableName('sub_op_update');
-            await createTestTable(wsClient, tableName, [
+        it('should invoke on_update callback for UPDATE operations', async () => {
+            const table_name = create_test_table_name('sub_op_update');
+            await create_test_table(ws_client, table_name, [
                 'id Int4',
                 'name Utf8'
             ]);
@@ -208,63 +208,63 @@ describe('WebSocket Subscriptions', () => {
                 name: Shape.string()
             });
 
-            const insertTracker = createCallbackTracker(shape);
-            const updateTracker = createCallbackTracker(shape);
-            const removeTracker = createCallbackTracker(shape);
+            const insert_tracker = create_callback_tracker(shape);
+            const update_tracker = create_callback_tracker(shape);
+            const remove_tracker = create_callback_tracker(shape);
 
             // Subscribe to empty table FIRST
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
+            const subscription_id = await ws_client.subscribe(
+                `from test::${table_name}`,
                 null,
                 shape,
                 {
-                    onInsert: insertTracker.callback,
-                    onUpdate: updateTracker.callback,
-                    onRemove: removeTracker.callback
+                    on_insert: insert_tracker.callback,
+                    on_update: update_tracker.callback,
+                    on_remove: remove_tracker.callback
                 }
             );
 
             // Now insert initial data
-            await wsClient.command(
-                `INSERT test::${tableName} [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }]`,
+            await ws_client.command(
+                `INSERT test::${table_name} [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }]`,
                 null,
                 []
             );
-            await insertTracker.waitForCall();
+            await insert_tracker.wait_for_call();
 
             // Verify inserts were received
-            expect(insertTracker.getCallCount()).toBe(1);
-            expect(insertTracker.getAllRows().length).toBe(2);
+            expect(insert_tracker.get_call_count()).toBe(1);
+            expect(insert_tracker.get_all_rows().length).toBe(2);
 
             // Clear insert tracker before testing updates
-            insertTracker.clear();
+            insert_tracker.clear();
 
             // Update data
-            await wsClient.command(
-                `UPDATE test::${tableName} { name: 'alice_updated' } FILTER id == 1`,
+            await ws_client.command(
+                `UPDATE test::${table_name} { name: 'alice_updated' } FILTER id == 1`,
                 null,
                 []
             );
 
-            await updateTracker.waitForCall();
+            await update_tracker.wait_for_call();
 
-            expect(insertTracker.getCallCount()).toBe(0);
-            expect(updateTracker.getCallCount()).toBe(1);
-            expect(updateTracker.getAllRows().length).toBe(1);
-            expect(removeTracker.getCallCount()).toBe(0);
+            expect(insert_tracker.get_call_count()).toBe(0);
+            expect(update_tracker.get_call_count()).toBe(1);
+            expect(update_tracker.get_all_rows().length).toBe(1);
+            expect(remove_tracker.get_call_count()).toBe(0);
 
             // Verify update data
-            const updateRows = updateTracker.getAllRows();
-            const updatedRow = updateRows.find(r => r.id === 1);
-            expect(updatedRow).toBeDefined();
-            expect(updatedRow?.name).toBe('alice_updated');
+            const update_rows = update_tracker.get_all_rows();
+            const updated_row = update_rows.find(r => r.id === 1);
+            expect(updated_row).toBeDefined();
+            expect(updated_row?.name).toBe('alice_updated');
 
-            await wsClient.unsubscribe(subscriptionId);
+            await ws_client.unsubscribe(subscription_id);
         }, 10000);
 
-        it('should invoke onRemove callback for REMOVE operations', async () => {
-            const tableName = createTestTableName('sub_op_remove');
-            await createTestTable(wsClient, tableName, [
+        it('should invoke on_remove callback for REMOVE operations', async () => {
+            const table_name = create_test_table_name('sub_op_remove');
+            await create_test_table(ws_client, table_name, [
                 'id Int4',
                 'name Utf8'
             ]);
@@ -274,63 +274,63 @@ describe('WebSocket Subscriptions', () => {
                 name: Shape.string()
             });
 
-            const insertTracker = createCallbackTracker(shape);
-            const updateTracker = createCallbackTracker(shape);
-            const removeTracker = createCallbackTracker(shape);
+            const insert_tracker = create_callback_tracker(shape);
+            const update_tracker = create_callback_tracker(shape);
+            const remove_tracker = create_callback_tracker(shape);
 
             // Subscribe to empty table FIRST
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
+            const subscription_id = await ws_client.subscribe(
+                `from test::${table_name}`,
                 null,
                 shape,
                 {
-                    onInsert: insertTracker.callback,
-                    onUpdate: updateTracker.callback,
-                    onRemove: removeTracker.callback
+                    on_insert: insert_tracker.callback,
+                    on_update: update_tracker.callback,
+                    on_remove: remove_tracker.callback
                 }
             );
 
             // Now insert initial data
-            await wsClient.command(
-                `INSERT test::${tableName} [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }]`,
+            await ws_client.command(
+                `INSERT test::${table_name} [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }]`,
                 null,
                 []
             );
-            await insertTracker.waitForCall();
+            await insert_tracker.wait_for_call();
 
             // Verify inserts were received
-            expect(insertTracker.getCallCount()).toBe(1);
-            expect(insertTracker.getAllRows().length).toBe(2);
+            expect(insert_tracker.get_call_count()).toBe(1);
+            expect(insert_tracker.get_all_rows().length).toBe(2);
 
             // Clear insert tracker before testing deletes
-            insertTracker.clear();
+            insert_tracker.clear();
 
             // Delete data
-            await wsClient.command(
-                `DELETE test::${tableName} FILTER id == 1`,
+            await ws_client.command(
+                `DELETE test::${table_name} FILTER id == 1`,
                 null,
                 []
             );
 
-            await removeTracker.waitForCall();
+            await remove_tracker.wait_for_call();
 
-            expect(insertTracker.getCallCount()).toBe(0);
-            expect(updateTracker.getCallCount()).toBe(0);
-            expect(removeTracker.getCallCount()).toBe(1);
-            expect(removeTracker.getAllRows().length).toBe(1);
+            expect(insert_tracker.get_call_count()).toBe(0);
+            expect(update_tracker.get_call_count()).toBe(0);
+            expect(remove_tracker.get_call_count()).toBe(1);
+            expect(remove_tracker.get_all_rows().length).toBe(1);
 
             // Verify remove data
-            const removeRows = removeTracker.getAllRows();
-            const removedRow = removeRows.find(r => r.id === 1);
-            expect(removedRow).toBeDefined();
-            expect(removedRow?.name).toBe('alice');
+            const remove_rows = remove_tracker.get_all_rows();
+            const removed_row = remove_rows.find(r => r.id === 1);
+            expect(removed_row).toBeDefined();
+            expect(removed_row?.name).toBe('alice');
 
-            await wsClient.unsubscribe(subscriptionId);
+            await ws_client.unsubscribe(subscription_id);
         }, 10000);
 
         it('should handle multiple operation types in sequence', async () => {
-            const tableName = createTestTableName('sub_op_multi');
-            await createTestTable(wsClient, tableName, [
+            const table_name = create_test_table_name('sub_op_multi');
+            await create_test_table(ws_client, table_name, [
                 'id Int4',
                 'name Utf8'
             ]);
@@ -340,76 +340,76 @@ describe('WebSocket Subscriptions', () => {
                 name: Shape.string()
             });
 
-            const insertTracker = createCallbackTracker(shape);
-            const updateTracker = createCallbackTracker(shape);
-            const removeTracker = createCallbackTracker(shape);
+            const insert_tracker = create_callback_tracker(shape);
+            const update_tracker = create_callback_tracker(shape);
+            const remove_tracker = create_callback_tracker(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
+            const subscription_id = await ws_client.subscribe(
+                `from test::${table_name}`,
                 null,
                 shape,
                 {
-                    onInsert: insertTracker.callback,
-                    onUpdate: updateTracker.callback,
-                    onRemove: removeTracker.callback
+                    on_insert: insert_tracker.callback,
+                    on_update: update_tracker.callback,
+                    on_remove: remove_tracker.callback
                 }
             );
 
             // Insert
-            await wsClient.command(
-                `INSERT test::${tableName} [{ id: 1, name: 'alice' }]`,
+            await ws_client.command(
+                `INSERT test::${table_name} [{ id: 1, name: 'alice' }]`,
                 null,
                 []
             );
-            await insertTracker.waitForCall();
+            await insert_tracker.wait_for_call();
 
             // Update
-            await wsClient.command(
-                `UPDATE test::${tableName} { name: 'alice_updated' } FILTER id == 1`,
+            await ws_client.command(
+                `UPDATE test::${table_name} { name: 'alice_updated' } FILTER id == 1`,
                 null,
                 []
             );
-            await updateTracker.waitForCall();
+            await update_tracker.wait_for_call();
 
             // Remove
-            await wsClient.command(
-                `DELETE test::${tableName} FILTER id == 1`,
+            await ws_client.command(
+                `DELETE test::${table_name} FILTER id == 1`,
                 null,
                 []
             );
-            await removeTracker.waitForCall();
+            await remove_tracker.wait_for_call();
 
-            expect(insertTracker.getCallCount()).toBe(1);
-            expect(insertTracker.getAllRows().length).toBe(1);
-            expect(updateTracker.getCallCount()).toBe(1);
-            expect(updateTracker.getAllRows().length).toBe(1);
-            expect(removeTracker.getCallCount()).toBe(1);
-            expect(removeTracker.getAllRows().length).toBe(1);
+            expect(insert_tracker.get_call_count()).toBe(1);
+            expect(insert_tracker.get_all_rows().length).toBe(1);
+            expect(update_tracker.get_call_count()).toBe(1);
+            expect(update_tracker.get_all_rows().length).toBe(1);
+            expect(remove_tracker.get_call_count()).toBe(1);
+            expect(remove_tracker.get_all_rows().length).toBe(1);
 
             // Verify insert data
-            const insertRows = insertTracker.getAllRows();
-            const insertedRow = insertRows.find(r => r.id === 1);
-            expect(insertedRow).toBeDefined();
-            expect(insertedRow?.name).toBe('alice');
+            const insert_rows = insert_tracker.get_all_rows();
+            const inserted_row = insert_rows.find(r => r.id === 1);
+            expect(inserted_row).toBeDefined();
+            expect(inserted_row?.name).toBe('alice');
 
             // Verify update data
-            const updateRows = updateTracker.getAllRows();
-            const updatedRow = updateRows.find(r => r.id === 1);
-            expect(updatedRow).toBeDefined();
-            expect(updatedRow?.name).toBe('alice_updated');
+            const update_rows = update_tracker.get_all_rows();
+            const updated_row = update_rows.find(r => r.id === 1);
+            expect(updated_row).toBeDefined();
+            expect(updated_row?.name).toBe('alice_updated');
 
             // Verify remove data
-            const removeRows = removeTracker.getAllRows();
-            const removedRow = removeRows.find(r => r.id === 1);
-            expect(removedRow).toBeDefined();
-            expect(removedRow?.name).toBe('alice_updated');
+            const remove_rows = remove_tracker.get_all_rows();
+            const removed_row = remove_rows.find(r => r.id === 1);
+            expect(removed_row).toBeDefined();
+            expect(removed_row?.name).toBe('alice_updated');
 
-            await wsClient.unsubscribe(subscriptionId);
+            await ws_client.unsubscribe(subscription_id);
         }, 10000);
 
         it('should batch consecutive rows of same operation type', async () => {
-            const tableName = createTestTableName('sub_op_batch');
-            await createTestTable(wsClient, tableName, [
+            const table_name = create_test_table_name('sub_op_batch');
+            await create_test_table(ws_client, table_name, [
                 'id Int4',
                 'name Utf8'
             ]);
@@ -419,47 +419,47 @@ describe('WebSocket Subscriptions', () => {
                 name: Shape.string()
             });
 
-            const insertTracker = createCallbackTracker(shape);
+            const insert_tracker = create_callback_tracker(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
+            const subscription_id = await ws_client.subscribe(
+                `from test::${table_name}`,
                 null,
                 shape,
                 {
-                    onInsert: insertTracker.callback
+                    on_insert: insert_tracker.callback
                 }
             );
 
             // Insert 10 rows at once
             const rows = Array.from({ length: 10 }, (_, i) => ({ id: i + 1, name: `user${i + 1}` }));
-            await wsClient.command(
-                `INSERT test::${tableName} FROM ${JSON.stringify(rows)}`,
+            await ws_client.command(
+                `INSERT test::${table_name} FROM ${JSON.stringify(rows)}`,
                 null,
                 []
             );
 
-            await insertTracker.waitForCall();
+            await insert_tracker.wait_for_call();
 
             // Should be batched into one call with all 10 rows
-            expect(insertTracker.getCallCount()).toBe(1);
-            expect(insertTracker.getAllRows().length).toBe(10);
+            expect(insert_tracker.get_call_count()).toBe(1);
+            expect(insert_tracker.get_all_rows().length).toBe(10);
 
             // Verify all 10 user rows
-            const insertedRows = insertTracker.getAllRows();
+            const inserted_rows = insert_tracker.get_all_rows();
             for (let i = 0; i < 10; i++) {
-                const row = insertedRows.find(r => r.id === i + 1);
+                const row = inserted_rows.find(r => r.id === i + 1);
                 expect(row).toBeDefined();
                 expect(row?.name).toBe(`user${i + 1}`);
             }
 
-            await wsClient.unsubscribe(subscriptionId);
+            await ws_client.unsubscribe(subscription_id);
         }, 10000);
     });
 
     describe('Shape Transformation', () => {
         it('should transform rows using provided shape', async () => {
-            const tableName = createTestTableName('sub_shape_prim');
-            await createTestTable(wsClient, tableName, [
+            const table_name = create_test_table_name('sub_shape_prim');
+            await create_test_table(ws_client, table_name, [
                 'id Int4',
                 'name Utf8',
                 'value Int4'
@@ -471,19 +471,19 @@ describe('WebSocket Subscriptions', () => {
                 value: Shape.number()
             });
 
-            const { promise, callback } = waitForCallback(shape);
+            const { promise, callback } = wait_for_callback(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
+            const subscription_id = await ws_client.subscribe(
+                `from test::${table_name}`,
                 null,
                 shape,
                 {
-                    onInsert: callback
+                    on_insert: callback
                 }
             );
 
-            await wsClient.command(
-                `INSERT test::${tableName} [{ id: 42, name: 'test', value: 100 }]`,
+            await ws_client.command(
+                `INSERT test::${table_name} [{ id: 42, name: 'test', value: 100 }]`,
                 null,
                 []
             );
@@ -501,12 +501,12 @@ describe('WebSocket Subscriptions', () => {
             //@ts-ignore
             expect(rows[0].id.value).toBeUndefined();
 
-            await wsClient.unsubscribe(subscriptionId);
+            await ws_client.unsubscribe(subscription_id);
         }, 10000);
 
         it('should handle value shape types', async () => {
-            const tableName = createTestTableName('sub_shape_val');
-            await createTestTable(wsClient, tableName, [
+            const table_name = create_test_table_name('sub_shape_val');
+            await create_test_table(ws_client, table_name, [
                 'id Int4',
                 'name Utf8'
             ]);
@@ -516,19 +516,19 @@ describe('WebSocket Subscriptions', () => {
                 name: Shape.utf8Value()
             });
 
-            const { promise, callback } = waitForCallback(shape);
+            const { promise, callback } = wait_for_callback(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
+            const subscription_id = await ws_client.subscribe(
+                `from test::${table_name}`,
                 null,
                 shape,
                 {
-                    onInsert: callback
+                    on_insert: callback
                 }
             );
 
-            await wsClient.command(
-                `INSERT test::${tableName} [{ id: 42, name: 'test' }]`,
+            await ws_client.command(
+                `INSERT test::${table_name} [{ id: 42, name: 'test' }]`,
                 null,
                 []
             );
@@ -539,17 +539,17 @@ describe('WebSocket Subscriptions', () => {
             expect(rows[0].id.value).toBe(42);
             expect(rows[0].name.value).toBe('test');
 
-            await wsClient.unsubscribe(subscriptionId);
+            await ws_client.unsubscribe(subscription_id);
         }, 10000);
     });
 
     describe('Concurrent Subscriptions', () => {
         it('should handle multiple concurrent subscriptions', async () => {
-            const table1 = createTestTableName('sub_conc_1');
-            const table2 = createTestTableName('sub_conc_2');
+            const table1 = create_test_table_name('sub_conc_1');
+            const table2 = create_test_table_name('sub_conc_2');
 
-            await createTestTable(wsClient, table1, ['id Int4', 'name Utf8']);
-            await createTestTable(wsClient, table2, ['id Int4', 'value Int4']);
+            await create_test_table(ws_client, table1, ['id Int4', 'name Utf8']);
+            await create_test_table(ws_client, table2, ['id Int4', 'value Int4']);
 
             const shape1 = Shape.object({
                 id: Shape.number(),
@@ -561,54 +561,54 @@ describe('WebSocket Subscriptions', () => {
                 value: Shape.number()
             });
 
-            const tracker1 = createCallbackTracker(shape1);
-            const tracker2 = createCallbackTracker(shape2);
+            const tracker1 = create_callback_tracker(shape1);
+            const tracker2 = create_callback_tracker(shape2);
 
-            const sub1 = await wsClient.subscribe(`from test::${table1}`, null, shape1, {
-                onInsert: tracker1.callback
+            const sub1 = await ws_client.subscribe(`from test::${table1}`, null, shape1, {
+                on_insert: tracker1.callback
             });
 
-            const sub2 = await wsClient.subscribe(`from test::${table2}`, null, shape2, {
-                onInsert: tracker2.callback
+            const sub2 = await ws_client.subscribe(`from test::${table2}`, null, shape2, {
+                on_insert: tracker2.callback
             });
 
             // Insert into table 1
-            await wsClient.command(
+            await ws_client.command(
                 `INSERT test::${table1} [{ id: 1, name: 'alice' }]`,
                 null,
                 []
             );
-            await tracker1.waitForCall();
+            await tracker1.wait_for_call();
 
             // Insert into table 2
-            await wsClient.command(
+            await ws_client.command(
                 `INSERT test::${table2} [{ id: 2, value: 200 }]`,
                 null,
                 []
             );
-            await tracker2.waitForCall();
+            await tracker2.wait_for_call();
 
-            expect(tracker1.getCallCount()).toBe(1);
-            expect(tracker1.getAllRows().length).toBe(1);
-            expect(tracker1.getAllRows()[0].name).toBe('alice');
+            expect(tracker1.get_call_count()).toBe(1);
+            expect(tracker1.get_all_rows().length).toBe(1);
+            expect(tracker1.get_all_rows()[0].name).toBe('alice');
 
-            expect(tracker2.getCallCount()).toBe(1);
-            expect(tracker2.getAllRows().length).toBe(1);
-            expect(tracker2.getAllRows()[0].value).toBe(200);
+            expect(tracker2.get_call_count()).toBe(1);
+            expect(tracker2.get_all_rows().length).toBe(1);
+            expect(tracker2.get_all_rows()[0].value).toBe(200);
 
-            await wsClient.unsubscribe(sub1);
-            await wsClient.unsubscribe(sub2);
+            await ws_client.unsubscribe(sub1);
+            await ws_client.unsubscribe(sub2);
         }, 15000);
 
         it('should handle 5+ concurrent subscriptions', async () => {
             const tables = Array.from({ length: 5 }, (_, i) =>
-                createTestTableName(`sub_conc_${i}`)
+                create_test_table_name(`sub_conc_${i}`)
             );
 
             // Create all tables
             await Promise.all(
                 tables.map(table =>
-                    createTestTable(wsClient, table, ['id Int4', 'value Int4'])
+                    create_test_table(ws_client, table, ['id Int4', 'value Int4'])
                 )
             );
 
@@ -617,13 +617,13 @@ describe('WebSocket Subscriptions', () => {
                 value: Shape.number()
             });
 
-            const trackers = tables.map(() => createCallbackTracker(shape));
+            const trackers = tables.map(() => create_callback_tracker(shape));
 
             // Subscribe to all tables
             const subscriptions = await Promise.all(
                 tables.map((table, i) =>
-                    wsClient.subscribe(`from test::${table}`, null, shape, {
-                        onInsert: trackers[i].callback
+                    ws_client.subscribe(`from test::${table}`, null, shape, {
+                        on_insert: trackers[i].callback
                     })
                 )
             );
@@ -631,7 +631,7 @@ describe('WebSocket Subscriptions', () => {
             // Insert into all tables
             await Promise.all(
                 tables.map((table, i) =>
-                    wsClient.command(
+                    ws_client.command(
                         `INSERT test::${table} [{ id: ${i}, value: ${i * 100} }]`,
                         null,
                         []
@@ -640,25 +640,25 @@ describe('WebSocket Subscriptions', () => {
             );
 
             // Wait for all callbacks
-            await Promise.all(trackers.map(t => t.waitForCall()));
+            await Promise.all(trackers.map(t => t.wait_for_call()));
 
             // Verify all callbacks fired
             for (let i = 0; i < 5; i++) {
-                expect(trackers[i].getCallCount()).toBe(1);
-                expect(trackers[i].getAllRows().length).toBe(1);
-                expect(trackers[i].getAllRows()[0].id).toBe(i);
-                expect(trackers[i].getAllRows()[0].value).toBe(i * 100);
+                expect(trackers[i].get_call_count()).toBe(1);
+                expect(trackers[i].get_all_rows().length).toBe(1);
+                expect(trackers[i].get_all_rows()[0].id).toBe(i);
+                expect(trackers[i].get_all_rows()[0].value).toBe(i * 100);
             }
 
             // Cleanup subscriptions
-            await Promise.all(subscriptions.map(sub => wsClient.unsubscribe(sub)));
+            await Promise.all(subscriptions.map(sub => ws_client.unsubscribe(sub)));
         }, 15000);
     });
 
     describe('Reconnection Behavior', () => {
         it('should resubscribe to active subscriptions after reconnection', async () => {
-            const tableName = createTestTableName('sub_reconn');
-            await createTestTable(wsClient, tableName, [
+            const table_name = create_test_table_name('sub_reconn');
+            await create_test_table(ws_client, table_name, [
                 'id Int4',
                 'name Utf8'
             ]);
@@ -668,47 +668,47 @@ describe('WebSocket Subscriptions', () => {
                 name: Shape.string()
             });
 
-            const tracker = createCallbackTracker(shape);
+            const tracker = create_callback_tracker(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
+            const subscription_id = await ws_client.subscribe(
+                `from test::${table_name}`,
                 null,
                 shape,
                 {
-                    onInsert: tracker.callback
+                    on_insert: tracker.callback
                 }
             );
 
-            expect(subscriptionId).toBeDefined();
+            expect(subscription_id).toBeDefined();
 
             // Force disconnect
-            const socket = (wsClient as any).socket;
+            const socket = (ws_client as any).socket;
             socket.close();
 
             // Wait for reconnection to complete
             await new Promise(resolve => setTimeout(resolve, 300));
 
             // Insert new data
-            await wsClient.command(
-                `INSERT test::${tableName} [{ id: 1, name: 'after_reconnect' }]`,
+            await ws_client.command(
+                `INSERT test::${table_name} [{ id: 1, name: 'after_reconnect' }]`,
                 null,
                 []
             );
 
-            await tracker.waitForCall();
+            await tracker.wait_for_call();
 
             // Should have received the callback after reconnection
-            expect(tracker.getCallCount()).toBe(1);
-            expect(tracker.getAllRows().length).toBe(1);
-            const rows = tracker.getAllRows();
-            const reconnectRow = rows.find(r => r.id === 1);
-            expect(reconnectRow).toBeDefined();
-            expect(reconnectRow?.name).toBe('after_reconnect');
+            expect(tracker.get_call_count()).toBe(1);
+            expect(tracker.get_all_rows().length).toBe(1);
+            const rows = tracker.get_all_rows();
+            const reconnect_row = rows.find(r => r.id === 1);
+            expect(reconnect_row).toBeDefined();
+            expect(reconnect_row?.name).toBe('after_reconnect');
         }, 15000);
 
         it('should maintain callback references after reconnection', async () => {
-            const tableName = createTestTableName('sub_reconn_cb');
-            await createTestTable(wsClient, tableName, [
+            const table_name = create_test_table_name('sub_reconn_cb');
+            await create_test_table(ws_client, table_name, [
                 'id Int4',
                 'value Int4'
             ]);
@@ -718,63 +718,63 @@ describe('WebSocket Subscriptions', () => {
                 value: Shape.number()
             });
 
-            const tracker = createCallbackTracker(shape);
+            const tracker = create_callback_tracker(shape);
 
-            await wsClient.subscribe(
-                `from test::${tableName}`,
+            await ws_client.subscribe(
+                `from test::${table_name}`,
                 null,
                 shape,
-                { onInsert: tracker.callback }
+                { on_insert: tracker.callback }
             );
 
             // Insert before disconnect
-            await wsClient.command(
-                `INSERT test::${tableName} [{ id: 1, value: 100 }]`,
+            await ws_client.command(
+                `INSERT test::${table_name} [{ id: 1, value: 100 }]`,
                 null,
                 []
             );
-            await tracker.waitForCall();
+            await tracker.wait_for_call();
 
             // Verify first insert
-            expect(tracker.getCallCount()).toBe(1);
-            expect(tracker.getAllRows()[0].id).toBe(1);
-            expect(tracker.getAllRows()[0].value).toBe(100);
+            expect(tracker.get_call_count()).toBe(1);
+            expect(tracker.get_all_rows()[0].id).toBe(1);
+            expect(tracker.get_all_rows()[0].value).toBe(100);
 
-            const callsBeforeReconnect = tracker.getCallCount();
+            const calls_before_reconnect = tracker.get_call_count();
 
             // Force disconnect and reconnect
-            (wsClient as any).socket.close();
+            (ws_client as any).socket.close();
 
             // Wait for reconnection to complete
             await new Promise(resolve => setTimeout(resolve, 300));
 
             // Insert after reconnect
-            await wsClient.command(
-                `INSERT test::${tableName} [{ id: 2, value: 200 }]`,
+            await ws_client.command(
+                `INSERT test::${table_name} [{ id: 2, value: 200 }]`,
                 null,
                 []
             );
-            await tracker.waitForCall();
+            await tracker.wait_for_call();
 
             // Verify callback was invoked again after reconnection
-            expect(tracker.getCallCount()).toBeGreaterThan(callsBeforeReconnect);
+            expect(tracker.get_call_count()).toBeGreaterThan(calls_before_reconnect);
             // Verify the second insert data by finding it by ID
-            const allRows = tracker.getAllRows();
-            const secondInsert = allRows.find(r => r.id === 2);
-            expect(secondInsert).toBeDefined();
-            expect(secondInsert?.value).toBe(200);
+            const allRows = tracker.get_all_rows();
+            const second_insert = allRows.find(r => r.id === 2);
+            expect(second_insert).toBeDefined();
+            expect(second_insert?.value).toBe(200);
         }, 15000);
 
         it('should handle multiple subscriptions during reconnection', async () => {
             const tables = [
-                createTestTableName('sub_reconn_m1'),
-                createTestTableName('sub_reconn_m2'),
-                createTestTableName('sub_reconn_m3')
+                create_test_table_name('sub_reconn_m1'),
+                create_test_table_name('sub_reconn_m2'),
+                create_test_table_name('sub_reconn_m3')
             ];
 
             await Promise.all(
                 tables.map(table =>
-                    createTestTable(wsClient, table, ['id Int4', 'value Int4'])
+                    create_test_table(ws_client, table, ['id Int4', 'value Int4'])
                 )
             );
 
@@ -783,19 +783,19 @@ describe('WebSocket Subscriptions', () => {
                 value: Shape.number()
             });
 
-            const trackers = tables.map(() => createCallbackTracker(shape));
+            const trackers = tables.map(() => create_callback_tracker(shape));
 
             // Subscribe to all tables
             await Promise.all(
                 tables.map((table, i) =>
-                    wsClient.subscribe(`from test::${table}`, null, shape, {
-                        onInsert: trackers[i].callback
+                    ws_client.subscribe(`from test::${table}`, null, shape, {
+                        on_insert: trackers[i].callback
                     })
                 )
             );
 
             // Force disconnect
-            (wsClient as any).socket.close();
+            (ws_client as any).socket.close();
 
             // Wait for reconnection to complete
             await new Promise(resolve => setTimeout(resolve, 300));
@@ -803,7 +803,7 @@ describe('WebSocket Subscriptions', () => {
             // Insert into all tables
             await Promise.all(
                 tables.map((table, i) =>
-                    wsClient.command(
+                    ws_client.command(
                         `INSERT test::${table} [{ id: ${i}, value: ${i * 100} }]`,
                         null,
                         []
@@ -811,14 +811,14 @@ describe('WebSocket Subscriptions', () => {
                 )
             );
 
-            await Promise.all(trackers.map(t => t.waitForCall()));
+            await Promise.all(trackers.map(t => t.wait_for_call()));
 
             // All callbacks should still work
             for (let i = 0; i < 3; i++) {
-                expect(trackers[i].getCallCount()).toBe(1);
-                expect(trackers[i].getAllRows().length).toBe(1);
-                expect(trackers[i].getAllRows()[0].id).toBe(i);
-                expect(trackers[i].getAllRows()[0].value).toBe(i * 100);
+                expect(trackers[i].get_call_count()).toBe(1);
+                expect(trackers[i].get_all_rows().length).toBe(1);
+                expect(trackers[i].get_all_rows()[0].id).toBe(i);
+                expect(trackers[i].get_all_rows()[0].value).toBe(i * 100);
             }
         }, 20000);
     });
@@ -826,11 +826,11 @@ describe('WebSocket Subscriptions', () => {
     describe('Error Handling', () => {
         it('should reject subscription with invalid query', async () => {
             try {
-                await wsClient.subscribe(
+                await ws_client.subscribe(
                     'INVALID RQL SYNTAX HERE',
                     null,
                     undefined,
-                    { onInsert: () => {} }
+                    { on_insert: () => {} }
                 );
                 expect.fail('Should have rejected');
             } catch (err: any) {
@@ -844,11 +844,11 @@ describe('WebSocket Subscriptions', () => {
             const nonExistentTable = 'table_that_does_not_exist_' + Date.now();
 
             try {
-                await wsClient.subscribe(
+                await ws_client.subscribe(
                     `from ${nonExistentTable}`,
                     null,
                     undefined,
-                    { onInsert: () => {} }
+                    { on_insert: () => {} }
                 );
                 expect.fail('Should have rejected');
             } catch (err: any) {
@@ -861,7 +861,7 @@ describe('WebSocket Subscriptions', () => {
             const fakeId = 'fake-subscription-id-' + Date.now();
 
             try {
-                await wsClient.unsubscribe(fakeId);
+                await ws_client.unsubscribe(fakeId);
                 // May or may not throw depending on server implementation
                 // If it doesn't throw, that's also acceptable
             } catch (err: any) {
@@ -873,55 +873,55 @@ describe('WebSocket Subscriptions', () => {
 
     describe('Cleanup and Lifecycle', () => {
         it('should clean up subscriptions on disconnect', async () => {
-            const tableName = createTestTableName('sub_cleanup');
-            await createTestTable(wsClient, tableName, ['id Int4']);
+            const table_name = create_test_table_name('sub_cleanup');
+            await create_test_table(ws_client, table_name, ['id Int4']);
 
             const shape = Shape.object({
                 id: Shape.number()
             });
 
-            const tracker = createCallbackTracker(shape);
+            const tracker = create_callback_tracker(shape);
 
-            await wsClient.subscribe(
-                `from test::${tableName}`,
+            await ws_client.subscribe(
+                `from test::${table_name}`,
                 null,
                 shape,
-                { onInsert: tracker.callback }
+                { on_insert: tracker.callback }
             );
 
-            const subscriptions = (wsClient as any).subscriptions;
+            const subscriptions = (ws_client as any).subscriptions;
             expect(subscriptions.size).toBe(1);
 
-            wsClient.disconnect();
+            ws_client.disconnect();
 
             // Subscriptions should be cleared
             expect(subscriptions.size).toBe(0);
         }, 10000);
 
         it('should not receive callbacks after unsubscribe', async () => {
-            const tableName = createTestTableName('sub_no_cb');
-            await createTestTable(wsClient, tableName, ['id Int4', 'value Int4']);
+            const table_name = create_test_table_name('sub_no_cb');
+            await create_test_table(ws_client, table_name, ['id Int4', 'value Int4']);
 
             const shape = Shape.object({
                 id: Shape.number(),
                 value: Shape.number()
             });
 
-            const tracker = createCallbackTracker(shape);
+            const tracker = create_callback_tracker(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
+            const subscription_id = await ws_client.subscribe(
+                `from test::${table_name}`,
                 null,
                 shape,
-                { onInsert: tracker.callback }
+                { on_insert: tracker.callback }
             );
 
             // Unsubscribe immediately
-            await wsClient.unsubscribe(subscriptionId);
+            await ws_client.unsubscribe(subscription_id);
 
             // Insert data
-            await wsClient.command(
-                `INSERT test::${tableName} [{ id: 1, value: 100 }]`,
+            await ws_client.command(
+                `INSERT test::${table_name} [{ id: 1, value: 100 }]`,
                 null,
                 []
             );
@@ -930,32 +930,32 @@ describe('WebSocket Subscriptions', () => {
             await new Promise(resolve => setTimeout(resolve, 100));
 
             // Should not have received callback
-            expect(tracker.getCallCount()).toBe(0);
+            expect(tracker.get_call_count()).toBe(0);
         }, 10000);
     });
 
     describe('Edge Cases', () => {
         it('should handle empty result sets', async () => {
-            const tableName = createTestTableName('sub_empty');
-            await createTestTable(wsClient, tableName, ['id Int4', 'value Int4']);
+            const table_name = create_test_table_name('sub_empty');
+            await create_test_table(ws_client, table_name, ['id Int4', 'value Int4']);
 
             const shape = Shape.object({
                 id: Shape.number(),
                 value: Shape.number()
             });
 
-            const tracker = createCallbackTracker(shape);
+            const tracker = create_callback_tracker(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName} filter { id > 1000 }`,
+            const subscription_id = await ws_client.subscribe(
+                `from test::${table_name} filter { id > 1000 }`,
                 null,
                 shape,
-                { onInsert: tracker.callback }
+                { on_insert: tracker.callback }
             );
 
             // Insert data that doesn't match filter
-            await wsClient.command(
-                `INSERT test::${tableName} [{ id: 1, value: 100 }]`,
+            await ws_client.command(
+                `INSERT test::${table_name} [{ id: 1, value: 100 }]`,
                 null,
                 []
             );
@@ -963,69 +963,69 @@ describe('WebSocket Subscriptions', () => {
             await new Promise(resolve => setTimeout(resolve, 100));
 
             // Should not trigger callback
-            expect(tracker.getCallCount()).toBe(0);
+            expect(tracker.get_call_count()).toBe(0);
 
             // Insert data that matches filter
-            await wsClient.command(
-                `INSERT test::${tableName} [{ id: 1001, value: 200 }]`,
+            await ws_client.command(
+                `INSERT test::${table_name} [{ id: 1001, value: 200 }]`,
                 null,
                 []
             );
-            await tracker.waitForCall();
+            await tracker.wait_for_call();
 
             // Should trigger callback now
-            expect(tracker.getCallCount()).toBe(1);
-            expect(tracker.getAllRows().length).toBe(1);
+            expect(tracker.get_call_count()).toBe(1);
+            expect(tracker.get_all_rows().length).toBe(1);
 
             // Verify matching row data
-            const row = tracker.getAllRows()[0];
+            const row = tracker.get_all_rows()[0];
             expect(row.id).toBe(1001);
             expect(row.value).toBe(200);
 
-            await wsClient.unsubscribe(subscriptionId);
+            await ws_client.unsubscribe(subscription_id);
         }, 10000);
 
         it('should handle large batch of changes', async () => {
-            const tableName = createTestTableName('sub_large');
-            await createTestTable(wsClient, tableName, ['id Int4', 'value Int4']);
+            const table_name = create_test_table_name('sub_large');
+            await create_test_table(ws_client, table_name, ['id Int4', 'value Int4']);
 
             const shape = Shape.object({
                 id: Shape.number(),
                 value: Shape.number()
             });
 
-            const tracker = createCallbackTracker(shape);
+            const tracker = create_callback_tracker(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
+            const subscription_id = await ws_client.subscribe(
+                `from test::${table_name}`,
                 null,
                 shape,
-                { onInsert: tracker.callback }
+                { on_insert: tracker.callback }
             );
 
             // Insert 100 rows
             const rows = Array.from({ length: 100 }, (_, i) => ({ id: i, value: i * 10 }));
 
-            const startTime = Date.now();
-            await wsClient.command(
-                `INSERT test::${tableName} FROM ${JSON.stringify(rows)}`,
+            const start_time = Date.now();
+            await ws_client.command(
+                `INSERT test::${table_name} FROM ${JSON.stringify(rows)}`,
                 null,
                 []
             );
 
-            await tracker.waitForCall();
+            await tracker.wait_for_call();
 
-            const duration = Date.now() - startTime;
+            const duration = Date.now() - start_time;
 
             // Should have received all 100 rows
-            const totalRows = tracker.getAllRows().length;
-            expect(totalRows).toBe(100);
+            const total_rows = tracker.get_all_rows().length;
+            expect(total_rows).toBe(100);
 
             // Verify sample rows by finding them by ID
-            const resultRows = tracker.getAllRows();
-            const row0 = resultRows.find(r => r.id === 0);
-            const row49 = resultRows.find(r => r.id === 49);
-            const row99 = resultRows.find(r => r.id === 99);
+            const result_rows = tracker.get_all_rows();
+            const row0 = result_rows.find(r => r.id === 0);
+            const row49 = result_rows.find(r => r.id === 49);
+            const row99 = result_rows.find(r => r.id === 99);
 
             expect(row0).toBeDefined();
             expect(row0?.value).toBe(0);
@@ -1037,31 +1037,31 @@ describe('WebSocket Subscriptions', () => {
             // Performance check - should complete in reasonable time
             expect(duration).toBeLessThan(3000);
 
-            await wsClient.unsubscribe(subscriptionId);
+            await ws_client.unsubscribe(subscription_id);
         }, 15000);
 
         it('should handle rapid successive changes', async () => {
-            const tableName = createTestTableName('sub_rapid');
-            await createTestTable(wsClient, tableName, ['id Int4', 'value Int4']);
+            const table_name = create_test_table_name('sub_rapid');
+            await create_test_table(ws_client, table_name, ['id Int4', 'value Int4']);
 
             const shape = Shape.object({
                 id: Shape.number(),
                 value: Shape.number()
             });
 
-            const tracker = createCallbackTracker(shape);
+            const tracker = create_callback_tracker(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
+            const subscription_id = await ws_client.subscribe(
+                `from test::${table_name}`,
                 null,
                 shape,
-                { onInsert: tracker.callback }
+                { on_insert: tracker.callback }
             );
 
             // Fire 10 insert commands rapidly without await
             const promises = Array.from({ length: 10 }, (_, i) =>
-                wsClient.command(
-                    `INSERT test::${tableName} [{ id: ${i}, value: ${i * 10} }]`,
+                ws_client.command(
+                    `INSERT test::${table_name} [{ id: ${i}, value: ${i * 10} }]`,
                     null,
                     []
                 )
@@ -1069,21 +1069,21 @@ describe('WebSocket Subscriptions', () => {
 
             await Promise.all(promises);
 
-            await tracker.waitForRows(10);
+            await tracker.wait_for_rows(10);
 
             // Rapid inserts may arrive in one or more batches depending on server poll timing
-            expect(tracker.getCallCount()).toBeGreaterThanOrEqual(1);
-            expect(tracker.getAllRows().length).toBe(10);
+            expect(tracker.get_call_count()).toBeGreaterThanOrEqual(1);
+            expect(tracker.get_all_rows().length).toBe(10);
 
             // Verify all rows have correct values
-            const rows = tracker.getAllRows();
+            const rows = tracker.get_all_rows();
             for (let i = 0; i < 10; i++) {
                 const row = rows.find(r => r.id === i);
                 expect(row).toBeDefined();
                 expect(row?.value).toBe(i * 10);
             }
 
-            await wsClient.unsubscribe(subscriptionId);
+            await ws_client.unsubscribe(subscription_id);
         }, 15000);
     });
 });

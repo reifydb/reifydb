@@ -36,7 +36,6 @@ impl CatalogStore {
 	pub(crate) fn create_source(txn: &mut AdminTransaction, to_create: SourceToCreate) -> Result<Source> {
 		let namespace_id = to_create.namespace;
 
-		// Check if source already exists
 		if let Some(_source) = CatalogStore::find_source_by_name(
 			&mut Transaction::Admin(&mut *txn),
 			namespace_id,
@@ -129,7 +128,7 @@ pub mod tests {
 
 		let result = CatalogStore::create_source(&mut txn, to_create.clone()).unwrap();
 		assert_eq!(result.id, SourceId(1));
-		assert_eq!(result.namespace, NamespaceId(1025));
+		assert_eq!(result.namespace, NamespaceId(16385));
 		assert_eq!(result.name, "test_source");
 		assert_eq!(result.connector, "kafka");
 		assert_eq!(result.config, vec![("key".to_string(), "value".to_string())]);

@@ -1,38 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Host callback implementations for FFI operators
-//!
-//! This module provides the host-side implementations of callbacks that FFI operators
-//! can invoke. The callbacks are organized into five categories:
-//! - `memory`: Arena-based memory allocation
-//! - `state`: Operator state management
-//! - `store`: Read-only store access
-//! - `logging`: Logging from FFI operators
-//! - `catalog`: Read-only catalog access (namespaces, tables)
-
-use reifydb_abi::{
-	callbacks::{
-		catalog::CatalogCallbacks, host::HostCallbacks, log::LogCallbacks, memory::MemoryCallbacks,
-		rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
-	},
-	constants::FFI_ERROR_INTERNAL,
-	context::context::ContextFFI,
-	data::buffer::BufferFFI,
+use reifydb_abi::callbacks::{
+	builder::BuilderCallbacks, catalog::CatalogCallbacks, host::HostCallbacks, log::LogCallbacks,
+	memory::MemoryCallbacks, rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
 };
-use reifydb_extension::procedure::ffi_callbacks::{logging, memory};
+use reifydb_extension::{
+	ffi_callbacks::builder,
+	procedure::ffi_callbacks::{logging, memory},
+};
 
 pub mod catalog;
+pub mod rql;
 pub mod state;
 pub mod state_iterator;
 pub mod store;
 pub mod store_iterator;
 
-/// Create the complete host callbacks structure
-///
-/// This aggregates all callback function pointers from the memory, state,
-/// store, logging, and catalog modules into a single HostCallbacks structure that
-/// can be passed to FFI operators.
 pub fn create_host_callbacks() -> HostCallbacks {
 	HostCallbacks {
 		memory: MemoryCallbacks {
@@ -49,6 +33,10 @@ pub fn create_host_callbacks() -> HostCallbacks {
 			range: state::host_state_range,
 			iterator_next: state::host_state_iterator_next,
 			iterator_free: state::host_state_iterator_free,
+			internal_get: state::host_internal_state_get,
+			internal_set: state::host_internal_state_set,
+			internal_remove: state::host_internal_state_remove,
+			internal_prefix: state::host_internal_state_prefix,
 		},
 		log: LogCallbacks {
 			message: logging::host_log_message,
@@ -66,23 +54,23 @@ pub fn create_host_callbacks() -> HostCallbacks {
 			find_namespace_by_name: catalog::host_catalog_find_namespace_by_name,
 			find_table: catalog::host_catalog_find_table,
 			find_table_by_name: catalog::host_catalog_find_table_by_name,
+			find_row_shape: catalog::host_catalog_find_row_shape,
 			free_namespace: catalog::host_catalog_free_namespace,
 			free_table: catalog::host_catalog_free_table,
+			free_row_shape: catalog::host_catalog_free_row_shape,
 		},
 		rql: RqlCallbacks {
-			rql: host_rql_unsupported,
+			rql: rql::host_rql,
+		},
+		builder: BuilderCallbacks {
+			acquire: builder::host_builder_acquire,
+			data_ptr: builder::host_builder_data_ptr,
+			offsets_ptr: builder::host_builder_offsets_ptr,
+			bitvec_ptr: builder::host_builder_bitvec_ptr,
+			grow: builder::host_builder_grow,
+			commit: builder::host_builder_commit,
+			release: builder::host_builder_release,
+			emit_diff: builder::host_builder_emit_diff,
 		},
 	}
-}
-
-/// Stub: RQL execution is not supported from sub-flow FFI operators.
-unsafe extern "C" fn host_rql_unsupported(
-	_ctx: *mut ContextFFI,
-	_rql_ptr: *const u8,
-	_rql_len: usize,
-	_params_ptr: *const u8,
-	_params_len: usize,
-	_result_out: *mut BufferFFI,
-) -> i32 {
-	FFI_ERROR_INTERNAL
 }

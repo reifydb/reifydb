@@ -5,10 +5,7 @@ use std::cmp;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	common::CommitVersion,
-	encoded::{key::EncodedKey, row::EncodedRow},
-};
+use crate::encoded::{key::EncodedKey, row::EncodedRow};
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Delta {
@@ -16,31 +13,18 @@ pub enum Delta {
 		key: EncodedKey,
 		row: EncodedRow,
 	},
-	/// Unset an entry, preserving the deleted values.
-	/// Symmetric with Set - use when the deleted data matters (e.g., row data, CDC).
+
 	Unset {
 		key: EncodedKey,
 		row: EncodedRow,
 	},
-	/// Remove an entry without preserving the deleted values.
-	/// Use when only the key matters (e.g., index entries, catalog metadata).
+
 	Remove {
 		key: EncodedKey,
 	},
-	/// Drop operation - completely erases versioned entries from storage.
-	/// Unlike Remove (which writes a tombstone and generates CDC), Drop:
-	/// - Deletes existing entries without writing anything new
-	/// - Never generates CDC events
+
 	Drop {
 		key: EncodedKey,
-		/// If Some(v), drop all versions where version < v (keeps v and later).
-		/// If None, this constraint is not applied.
-		up_to_version: Option<CommitVersion>,
-		/// If Some(n), keep the n most recent versions, drop older ones.
-		/// If None, this constraint is not applied.
-		/// Can be combined with up_to_version (both constraints apply).
-		/// If both are None, drops ALL versions.
-		keep_last_versions: Option<usize>,
 	},
 }
 
@@ -57,7 +41,6 @@ impl Ord for Delta {
 }
 
 impl Delta {
-	/// Returns the key
 	pub fn key(&self) -> &EncodedKey {
 		match self {
 			Self::Set {
@@ -78,7 +61,6 @@ impl Delta {
 		}
 	}
 
-	/// Returns the encoded row, if None, it means the entry is marked as remove or drop.
 	pub fn row(&self) -> Option<&EncodedRow> {
 		match self {
 			Self::Set {
@@ -122,12 +104,8 @@ impl Clone for Delta {
 			},
 			Self::Drop {
 				key,
-				up_to_version,
-				keep_last_versions,
 			} => Self::Drop {
 				key: key.clone(),
-				up_to_version: *up_to_version,
-				keep_last_versions: *keep_last_versions,
 			},
 		}
 	}

@@ -13,14 +13,14 @@ use crate::{
 	Result,
 	ast::{
 		ast::{
-			AstColumnProperty, AstColumnPropertyEntry, AstColumnPropertyKind, AstColumnToCreate, AstCreate,
-			AstCreateColumnProperty, AstCreateDeferredView, AstCreateDictionary, AstCreateEvent,
-			AstCreateHandler, AstCreateMigration, AstCreateNamespace, AstCreatePrimaryKey,
-			AstCreateProcedure, AstCreateRemoteNamespace, AstCreateRingBuffer, AstCreateSeries,
-			AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTag, AstCreateTest,
-			AstCreateTransactionalView, AstIndexColumn, AstPolicyTargetType, AstPrimaryKey,
-			AstProcedureParam, AstStatement, AstTimestampPrecision, AstType, AstVariant,
-			AstViewStorageKind,
+			AstBindingProtocolKind, AstColumnProperty, AstColumnPropertyEntry, AstColumnPropertyKind,
+			AstColumnToCreate, AstCreate, AstCreateColumnProperty, AstCreateDeferredView,
+			AstCreateDictionary, AstCreateEvent, AstCreateHandler, AstCreateMigration, AstCreateNamespace,
+			AstCreatePrimaryKey, AstCreateProcedure, AstCreateRemoteNamespace, AstCreateRingBuffer,
+			AstCreateSeries, AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTag,
+			AstCreateTest, AstCreateTransactionalView, AstHydrationConfig, AstIndexColumn, AstJoinTtl,
+			AstPolicyTargetType, AstPrimaryKey, AstProcedureParam, AstStatement, AstTimestampPrecision,
+			AstTtl, AstType, AstVariant, AstViewStorageKind,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
@@ -54,7 +54,6 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_create(&mut self) -> Result<AstCreate<'bump>> {
 		let token = self.consume_keyword(Create)?;
 
-		// Check for CREATE OR REPLACE
 		let or_replace = if (self.consume_if(TokenKind::Operator(Or))?).is_some() {
 			self.consume_keyword(Replace)?;
 			true
@@ -62,7 +61,6 @@ impl<'bump> Parser<'bump> {
 			false
 		};
 
-		// CREATE OR REPLACE is only valid for FLOW currently
 		if or_replace {
 			let fragment = self.current()?.fragment.to_owned();
 			return Err(Error::from(TypeError::Ast {
@@ -90,7 +88,6 @@ impl<'bump> Parser<'bump> {
 			return self.parse_namespace(token);
 		}
 
-		// CREATE VIEW / CREATE VIEW POLICY
 		if (self.consume_if(TokenKind::Keyword(View))?).is_some() {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
 				return self.parse_create_policy(token, AstPolicyTargetType::View);
@@ -99,12 +96,11 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Deferred))?).is_some() {
-			// CREATE DEFERRED RINGBUFFER VIEW ...
 			if (self.consume_if(TokenKind::Keyword(Ringbuffer))?).is_some() {
 				self.consume_keyword(View)?;
 				return self.parse_deferred_view_with_storage(token, ViewStorageKindHint::RingBuffer);
 			}
-			// CREATE DEFERRED SERIES VIEW ...
+
 			if (self.consume_if(TokenKind::Keyword(Series))?).is_some() {
 				self.consume_keyword(View)?;
 				return self.parse_deferred_view_with_storage(token, ViewStorageKindHint::Series);
@@ -116,13 +112,12 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Transactional))?).is_some() {
-			// CREATE TRANSACTIONAL RINGBUFFER VIEW ...
 			if (self.consume_if(TokenKind::Keyword(Ringbuffer))?).is_some() {
 				self.consume_keyword(View)?;
 				return self
 					.parse_transactional_view_with_storage(token, ViewStorageKindHint::RingBuffer);
 			}
-			// CREATE TRANSACTIONAL SERIES VIEW ...
+
 			if (self.consume_if(TokenKind::Keyword(Series))?).is_some() {
 				self.consume_keyword(View)?;
 				return self.parse_transactional_view_with_storage(token, ViewStorageKindHint::Series);
@@ -247,6 +242,21 @@ impl<'bump> Parser<'bump> {
 			return self.parse_sink(token);
 		}
 
+		if (self.consume_if(TokenKind::Keyword(Keyword::Http))?).is_some() {
+			self.consume_keyword(Keyword::Binding)?;
+			return self.parse_create_binding(token, AstBindingProtocolKind::Http);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Grpc))?).is_some() {
+			self.consume_keyword(Keyword::Binding)?;
+			return self.parse_create_binding(token, AstBindingProtocolKind::Grpc);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Ws))?).is_some() {
+			self.consume_keyword(Keyword::Binding)?;
+			return self.parse_create_binding(token, AstBindingProtocolKind::Ws);
+		}
+
 		if self.peek_is_index_creation()? {
 			return self.parse_create_index(token);
 		}
@@ -255,27 +265,22 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_procedure(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
-		// Parse dot-separated name: ns.procedure_name
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 
 		let proc_ident = MaybeQualifiedProcedureIdentifier::new(name).with_namespace(namespace);
 
-		// Parse optional parameter block: { param: Type, ... }
 		let params = if self.current()?.is_operator(Operator::OpenCurly) {
 			self.parse_procedure_params()?
 		} else {
 			Vec::new()
 		};
 
-		// Consume AS keyword
 		self.consume_operator(Operator::As)?;
 
-		// Parse body block: { statements... }
 		self.consume_operator(Operator::OpenCurly)?;
 
-		// Track token position for body source reconstruction
 		let body_start_pos = self.position;
 
 		let mut body = Vec::new();
@@ -290,12 +295,10 @@ impl<'bump> Parser<'bump> {
 			let node = self.parse_node(Precedence::None)?;
 			body.push(node);
 
-			// Try to consume separator
 			self.consume_if(TokenKind::Separator(Separator::NewLine))?;
 			self.consume_if(TokenKind::Separator(Separator::Semicolon))?;
 		}
 
-		// Capture body source by slicing the original source between { and }
 		let body_end_pos = self.position;
 		let body_source = if body_start_pos < body_end_pos {
 			let start = self.tokens[body_start_pos].fragment.offset();
@@ -318,27 +321,22 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_test_procedure(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
-		// Reuse parse_procedure logic but mark as test
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 
 		let proc_ident = MaybeQualifiedProcedureIdentifier::new(name).with_namespace(namespace);
 
-		// Parse optional parameter block: { param: Type, ... }
 		let params = if self.current()?.is_operator(Operator::OpenCurly) {
 			self.parse_procedure_params()?
 		} else {
 			Vec::new()
 		};
 
-		// Consume AS keyword
 		self.consume_operator(Operator::As)?;
 
-		// Parse body block: { statements... }
 		self.consume_operator(Operator::OpenCurly)?;
 
-		// Track token position for body source reconstruction
 		let body_start_pos = self.position;
 
 		let mut body = Vec::new();
@@ -353,12 +351,10 @@ impl<'bump> Parser<'bump> {
 			let node = self.parse_node(Precedence::None)?;
 			body.push(node);
 
-			// Try to consume separator
 			self.consume_if(TokenKind::Separator(Separator::NewLine))?;
 			self.consume_if(TokenKind::Separator(Separator::Semicolon))?;
 		}
 
-		// Capture body source by slicing the original source between { and }
 		let body_end_pos = self.position;
 		let body_source = if body_start_pos < body_end_pos {
 			let start = self.tokens[body_start_pos].fragment.offset();
@@ -381,14 +377,12 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_test(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
-		// Parse dot-separated name: ns::test_name
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 
 		let test_ident = MaybeQualifiedTestIdentifier::new(name).with_namespace(namespace);
 
-		// Parse optional params source: [ { x: 1, expected: 1 }, ... ]
 		let cases = if !self.is_eof() && self.current()?.kind == TokenKind::Operator(Operator::OpenBracket) {
 			let params_start_pos = self.position;
 			let mut depth = 0u32;
@@ -399,7 +393,7 @@ impl<'bump> Parser<'bump> {
 					TokenKind::Operator(Operator::CloseBracket) => {
 						depth -= 1;
 						if depth == 0 {
-							self.position += 1; // consume the closing bracket
+							self.position += 1;
 							break;
 						}
 					}
@@ -408,7 +402,7 @@ impl<'bump> Parser<'bump> {
 				self.position += 1;
 			}
 			let params_end_pos = self.position;
-			// Capture source text between (and including) the brackets
+
 			let start = self.tokens[params_start_pos].fragment.offset();
 			let end = self.tokens[params_end_pos - 1].fragment.offset()
 				+ self.tokens[params_end_pos - 1].fragment.text().len();
@@ -417,10 +411,8 @@ impl<'bump> Parser<'bump> {
 			None
 		};
 
-		// Consume opening brace
 		self.consume_operator(Operator::OpenCurly)?;
 
-		// Track token position for body source reconstruction
 		let body_start_pos = self.position;
 
 		let mut body = Vec::new();
@@ -435,18 +427,15 @@ impl<'bump> Parser<'bump> {
 			let node = self.parse_node(Precedence::None)?;
 			body.push(node);
 
-			// Handle pipe operator between nodes (e.g., FROM x | FILTER y | ASSERT z)
 			if !self.is_eof() && self.current()?.is_operator(Operator::Pipe) {
 				self.advance()?;
 				continue;
 			}
 
-			// Try to consume separator
 			self.consume_if(TokenKind::Separator(Separator::NewLine))?;
 			self.consume_if(TokenKind::Separator(Separator::Semicolon))?;
 		}
 
-		// Capture body source
 		let body_end_pos = self.position;
 		let body_source = if body_start_pos < body_end_pos {
 			let start = self.tokens[body_start_pos].fragment.offset();
@@ -503,7 +492,6 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_namespace(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
-		// Check for IF NOT EXISTS BEFORE identifier
 		let mut if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
 			self.consume_operator(Not)?;
 			self.consume_keyword(Exists)?;
@@ -514,7 +502,6 @@ impl<'bump> Parser<'bump> {
 
 		let segments = self.parse_double_colon_separated_identifiers()?;
 
-		// Check for IF NOT EXISTS AFTER identifier (alternate syntax)
 		if !if_not_exists && (self.consume_if(TokenKind::Keyword(If))?).is_some() {
 			self.consume_operator(Not)?;
 			self.consume_keyword(Exists)?;
@@ -532,7 +519,6 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_remote_namespace(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
-		// Check for IF NOT EXISTS BEFORE identifier
 		let mut if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
 			self.consume_operator(Not)?;
 			self.consume_keyword(Exists)?;
@@ -543,7 +529,6 @@ impl<'bump> Parser<'bump> {
 
 		let segments = self.parse_double_colon_separated_identifiers()?;
 
-		// Check for IF NOT EXISTS AFTER identifier (alternate syntax)
 		if !if_not_exists && (self.consume_if(TokenKind::Keyword(If))?).is_some() {
 			self.consume_operator(Not)?;
 			self.consume_keyword(Exists)?;
@@ -554,7 +539,6 @@ impl<'bump> Parser<'bump> {
 			segments.into_iter().map(|s| s.into_fragment()).collect(),
 		);
 
-		// Parse required WITH { grpc: '...' } block
 		self.consume_keyword(Keyword::With)?;
 		self.consume_operator(Operator::OpenCurly)?;
 
@@ -636,10 +620,10 @@ impl<'bump> Parser<'bump> {
 
 		let series = MaybeQualifiedSeriesIdentifier::new(name).with_namespace(namespace);
 
-		// Parse required WITH block
 		let mut tag = None;
 		let mut key_field = None;
 		let mut precision = None;
+		let mut ttl = None;
 
 		if self.consume_if(TokenKind::Keyword(Keyword::With))?.is_some() {
 			self.consume_operator(Operator::OpenCurly)?;
@@ -665,11 +649,11 @@ impl<'bump> Parser<'bump> {
 						_ => {
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'key', 'tag', or 'precision'"
+									expected: "'key', 'tag', 'precision', or 'ttl'"
 										.to_string(),
 								},
 								message: format!(
-									"expected 'key', 'tag', or 'precision', found `{}`",
+									"expected 'key', 'tag', 'precision', or 'row', found `{}`",
 									current.fragment.text()
 								),
 								fragment: current.fragment.to_owned(),
@@ -717,15 +701,19 @@ impl<'bump> Parser<'bump> {
 							}
 						});
 					}
+					"row" => {
+						ttl = Some(self.parse_row_config()?);
+					}
 					_other => {
 						let fragment = with_key.fragment.to_owned();
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'key', 'tag', or 'precision'".to_string(),
+								expected: "'key', 'tag', 'precision', or 'row'"
+									.to_string(),
 							},
 							message: format!(
 								"Unexpected token: expected {}, got {}",
-								"'key', 'tag', or 'precision'",
+								"'key', 'tag', 'precision', or 'ttl'",
 								fragment.text()
 							),
 							fragment,
@@ -747,7 +735,6 @@ impl<'bump> Parser<'bump> {
 			self.consume_operator(Operator::CloseCurly)?;
 		}
 
-		// key is required
 		let key_fragment = match key_field {
 			Some(k) => Some(k),
 			None => {
@@ -768,46 +755,90 @@ impl<'bump> Parser<'bump> {
 			tag,
 			key: key_fragment,
 			precision,
+			ttl,
 		}))
 	}
 
 	fn parse_subscription(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
-		// Subscriptions don't have names - they're identified only by UUID v7
-		// Syntax: CREATE SUBSCRIPTION { columns... } AS { query }
-		// Or shape-less: CREATE SUBSCRIPTION AS { query }
-
-		// Check if we have columns or go straight to AS
 		let columns = if self.current()?.is_operator(Operator::As) {
-			// Shape-less: no columns, will be inferred from query
 			Vec::new()
 		} else if self.current()?.is_operator(Operator::OpenCurly) {
-			// Has column definitions
 			self.parse_columns()?
+		} else if self.current()?.is_keyword(Keyword::With) {
+			Vec::new()
 		} else {
 			let fragment = self.current()?.fragment.to_owned();
 			return Err(Error::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
-					expected: "'{' or 'AS'".to_string(),
+					expected: "'{', 'WITH', or 'AS'".to_string(),
 				},
 				message: format!(
 					"Unexpected token: expected {}, got {}",
-					"'{' or 'AS'",
+					"'{', 'WITH', or 'AS'",
 					fragment.text()
 				),
 				fragment,
 			}));
 		};
 
-		// Parse optional AS clause
-		let as_clause = if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
-			// Expect opening curly brace
+		let mut hydration = AstHydrationConfig::default();
+		let mut throttle: Option<Duration> = None;
+
+		if self.consume_if(TokenKind::Keyword(Keyword::With))?.is_some() {
 			self.consume_operator(Operator::OpenCurly)?;
 
-			// Parse the query nodes inside the AS clause
+			loop {
+				self.skip_new_line()?;
+
+				if self.current()?.is_operator(Operator::CloseCurly) {
+					break;
+				}
+
+				let key = self.consume(TokenKind::Identifier)?;
+				self.consume_operator(Operator::Colon)?;
+
+				match key.fragment.text() {
+					"hydration" => {
+						hydration = self.parse_hydration_with_value()?;
+					}
+					"throttle" => {
+						throttle = Some(self.parse_tick_duration()?);
+					}
+					_ => {
+						let fragment = key.fragment.to_owned();
+						return Err(Error::from(TypeError::Ast {
+							kind: AstErrorKind::UnexpectedToken {
+								expected: "'hydration' or 'throttle'".to_string(),
+							},
+							message: format!(
+								"expected 'hydration' or 'throttle', found `{}`",
+								fragment.text()
+							),
+							fragment,
+						}));
+					}
+				}
+
+				self.skip_new_line()?;
+
+				if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+					continue;
+				}
+
+				if self.current()?.is_operator(Operator::CloseCurly) {
+					break;
+				}
+			}
+
+			self.consume_operator(Operator::CloseCurly)?;
+		}
+
+		let as_clause = if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
+			self.consume_operator(Operator::OpenCurly)?;
+
 			let mut query_nodes = Vec::new();
 			let mut has_pipes = false;
 
-			// Parse statements until we hit the closing brace
 			loop {
 				if self.is_eof() || self.current()?.kind == TokenKind::Operator(Operator::CloseCurly) {
 					break;
@@ -816,29 +847,26 @@ impl<'bump> Parser<'bump> {
 				let node = self.parse_node(Precedence::None)?;
 				query_nodes.push(node);
 
-				// Check for pipe operator or newline as separator between nodes
 				if !self.is_eof() && self.current()?.is_operator(Operator::Pipe) {
-					self.advance()?; // consume the pipe
+					self.advance()?;
 					has_pipes = true;
 				} else {
-					// Try to consume a newline if present (optional)
 					self.consume_if(TokenKind::Separator(Separator::NewLine))?;
 				}
 			}
 
-			// Expect closing curly brace
 			self.consume_operator(Operator::CloseCurly)?;
 
 			Some(AstStatement {
 				nodes: query_nodes,
 				has_pipes,
 				is_output: false,
+				rql: "",
 			})
 		} else {
 			None
 		};
 
-		// Validation: shape-less subscriptions require AS clause
 		if columns.is_empty() && as_clause.is_none() {
 			let fragment = self
 				.current()
@@ -863,6 +891,8 @@ impl<'bump> Parser<'bump> {
 			token,
 			columns,
 			as_clause,
+			hydration,
+			throttle,
 		}))
 	}
 
@@ -874,24 +904,19 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedDeferredViewIdentifier::new(name).with_namespace(namespace);
 
-		// Parse optional WITH clause for tick configuration
-		let tick = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
+		let (tick, ttl) = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
 			self.advance()?;
 			self.parse_view_tick_with_clause()?
 		} else {
-			None
+			(None, None)
 		};
 
-		// Parse optional AS clause
 		let as_clause = if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
-			// Expect opening curly brace
 			self.consume_operator(Operator::OpenCurly)?;
 
-			// Parse the query nodes inside the AS clause
 			let mut query_nodes = Vec::new();
 			let mut has_pipes = false;
 
-			// Parse statements until we hit the closing brace
 			loop {
 				if self.is_eof() || self.current()?.kind == TokenKind::Operator(Operator::CloseCurly) {
 					break;
@@ -900,23 +925,21 @@ impl<'bump> Parser<'bump> {
 				let node = self.parse_node(Precedence::None)?;
 				query_nodes.push(node);
 
-				// Check for pipe operator or newline as separator between nodes
 				if !self.is_eof() && self.current()?.is_operator(Operator::Pipe) {
-					self.advance()?; // consume the pipe
+					self.advance()?;
 					has_pipes = true;
 				} else {
-					// Try to consume a newline if present (optional)
 					self.consume_if(TokenKind::Separator(Separator::NewLine))?;
 				}
 			}
 
-			// Expect closing curly brace
 			self.consume_operator(Operator::CloseCurly)?;
 
 			Some(AstStatement {
 				nodes: query_nodes,
 				has_pipes,
 				is_output: false,
+				rql: "",
 			})
 		} else {
 			None
@@ -929,6 +952,7 @@ impl<'bump> Parser<'bump> {
 			as_clause,
 			storage_kind: AstViewStorageKind::Table,
 			tick,
+			ttl,
 		}))
 	}
 
@@ -944,9 +968,8 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedDeferredViewIdentifier::new(name).with_namespace(namespace);
 
-		let (storage_kind, tick) = self.parse_view_storage_with_clause(hint)?;
+		let (storage_kind, tick, ttl) = self.parse_view_storage_with_clause(hint)?;
 
-		// Parse optional AS clause
 		let as_clause = self.parse_view_as_clause()?;
 
 		Ok(AstCreate::DeferredView(AstCreateDeferredView {
@@ -956,6 +979,7 @@ impl<'bump> Parser<'bump> {
 			as_clause,
 			storage_kind,
 			tick,
+			ttl,
 		}))
 	}
 
@@ -967,24 +991,19 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedTransactionalViewIdentifier::new(name).with_namespace(namespace);
 
-		// Parse optional WITH clause for tick configuration
-		let tick = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
+		let (tick, ttl) = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
 			self.advance()?;
 			self.parse_view_tick_with_clause()?
 		} else {
-			None
+			(None, None)
 		};
 
-		// Parse optional AS clause
 		let as_clause = if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
-			// Expect opening curly brace
 			self.consume_operator(Operator::OpenCurly)?;
 
-			// Parse the query nodes inside the AS clause
 			let mut query_nodes = Vec::new();
 			let mut has_pipes = false;
 
-			// Parse statements until we hit the closing brace
 			loop {
 				if self.is_eof() || self.current()?.kind == TokenKind::Operator(Operator::CloseCurly) {
 					break;
@@ -993,23 +1012,21 @@ impl<'bump> Parser<'bump> {
 				let node = self.parse_node(Precedence::None)?;
 				query_nodes.push(node);
 
-				// Check for pipe operator or newline as separator between nodes
 				if !self.is_eof() && self.current()?.is_operator(Operator::Pipe) {
-					self.advance()?; // consume the pipe
+					self.advance()?;
 					has_pipes = true;
 				} else {
-					// Try to consume a newline if present (optional)
 					self.consume_if(TokenKind::Separator(Separator::NewLine))?;
 				}
 			}
 
-			// Expect closing curly brace
 			self.consume_operator(Operator::CloseCurly)?;
 
 			Some(AstStatement {
 				nodes: query_nodes,
 				has_pipes,
 				is_output: false,
+				rql: "",
 			})
 		} else {
 			None
@@ -1022,6 +1039,7 @@ impl<'bump> Parser<'bump> {
 			as_clause,
 			storage_kind: AstViewStorageKind::Table,
 			tick,
+			ttl,
 		}))
 	}
 
@@ -1037,9 +1055,8 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedTransactionalViewIdentifier::new(name).with_namespace(namespace);
 
-		let (storage_kind, tick) = self.parse_view_storage_with_clause(hint)?;
+		let (storage_kind, tick, ttl) = self.parse_view_storage_with_clause(hint)?;
 
-		// Parse optional AS clause
 		let as_clause = self.parse_view_as_clause()?;
 
 		Ok(AstCreate::TransactionalView(AstCreateTransactionalView {
@@ -1049,6 +1066,7 @@ impl<'bump> Parser<'bump> {
 			as_clause,
 			storage_kind,
 			tick,
+			ttl,
 		}))
 	}
 
@@ -1068,11 +1086,57 @@ impl<'bump> Parser<'bump> {
 
 		let table = MaybeQualifiedTableIdentifier::new(name).with_namespace(namespace);
 
+		let mut ttl = None;
+
+		if self.consume_if(TokenKind::Keyword(Keyword::With))?.is_some() {
+			self.consume_operator(Operator::OpenCurly)?;
+
+			loop {
+				self.skip_new_line()?;
+
+				if self.current()?.is_operator(Operator::CloseCurly) {
+					break;
+				}
+
+				let key = self.consume(TokenKind::Identifier)?;
+				self.consume_operator(Operator::Colon)?;
+
+				match key.fragment.text() {
+					"row" => {
+						ttl = Some(self.parse_row_config()?);
+					}
+					_other => {
+						let fragment = key.fragment.to_owned();
+						return Err(Error::from(TypeError::Ast {
+							kind: AstErrorKind::UnexpectedToken {
+								expected: "'row'".to_string(),
+							},
+							message: format!("expected 'row', found `{}`", fragment.text()),
+							fragment,
+						}));
+					}
+				}
+
+				self.skip_new_line()?;
+
+				if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+					continue;
+				}
+
+				if self.current()?.is_operator(Operator::CloseCurly) {
+					break;
+				}
+			}
+
+			self.consume_operator(Operator::CloseCurly)?;
+		}
+
 		Ok(AstCreate::Table(AstCreateTable {
 			token,
 			table,
 			if_not_exists,
 			columns,
+			ttl,
 		}))
 	}
 
@@ -1082,12 +1146,12 @@ impl<'bump> Parser<'bump> {
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let columns = self.parse_columns()?;
 
-		// Parse WITH block (required for ringbuffer - must have capacity)
 		self.consume_keyword(Keyword::With)?;
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut capacity: Option<u64> = None;
 		let mut partition_by: Vec<String> = Vec::new();
+		let mut ttl = None;
 
 		loop {
 			self.skip_new_line()?;
@@ -1110,10 +1174,11 @@ impl<'bump> Parser<'bump> {
 					_ => {
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'capacity' or 'partition_by'".to_string(),
+								expected: "'capacity', 'partition_by', or 'row'"
+									.to_string(),
 							},
 							message: format!(
-								"expected 'capacity' or 'partition_by', found `{}`",
+								"expected 'capacity', 'partition_by', or 'row', found `{}`",
 								current.fragment.text()
 							),
 							fragment: current.fragment.to_owned(),
@@ -1157,15 +1222,18 @@ impl<'bump> Parser<'bump> {
 					}
 					self.consume_operator(Operator::CloseCurly)?;
 				}
+				"row" => {
+					ttl = Some(self.parse_row_config()?);
+				}
 				_other => {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'capacity' or 'partition_by'".to_string(),
+							expected: "'capacity', 'partition_by', or 'row'".to_string(),
 						},
 						message: format!(
 							"Unexpected token: expected {}, got {}",
-							"'capacity' or 'partition_by'",
+							"'capacity', 'partition_by', or 'ttl'",
 							fragment.text()
 						),
 						fragment,
@@ -1213,11 +1281,10 @@ impl<'bump> Parser<'bump> {
 			columns,
 			capacity,
 			partition_by,
+			ttl,
 		}))
 	}
 
-	/// Parse primary key definition: {col1: DESC, col2: ASC}
-	/// Defaults to DESC when sort order is not specified
 	fn parse_primary_keyinition(&mut self) -> Result<AstPrimaryKey<'bump>> {
 		let mut columns = Vec::new();
 
@@ -1232,7 +1299,6 @@ impl<'bump> Parser<'bump> {
 
 			let column = self.parse_column_identifier()?;
 
-			// Check for optional sort direction (default is DESC)
 			let sort_direction = if self.current()?.is_operator(Operator::Colon) {
 				self.consume_operator(Operator::Colon)?;
 
@@ -1243,11 +1309,9 @@ impl<'bump> Parser<'bump> {
 					self.consume_keyword(Keyword::Desc)?;
 					SortDirection::Desc
 				} else {
-					// If colon present but invalid keyword, default to DESC
 					SortDirection::Desc
 				}
 			} else {
-				// No colon, default to DESC
 				SortDirection::Desc
 			};
 
@@ -1289,7 +1353,6 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	/// Parse CREATE PRIMARY KEY ON ns.table { col1, col2: desc }
 	fn parse_create_primary_key(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		self.consume_keyword(Keyword::On)?;
 
@@ -1307,7 +1370,6 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	/// Parse CREATE COLUMN POLICY ON ns.table.column { saturation: error, default: 0 }
 	fn parse_create_column_property(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		self.consume_keyword(Keyword::On)?;
 
@@ -1324,7 +1386,6 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			// Parse property kind
 			let kind_token = self.consume(TokenKind::Identifier)?;
 			let kind = match kind_token.fragment.text() {
 				"saturation" => AstColumnPropertyKind::Saturation,
@@ -1339,10 +1400,8 @@ impl<'bump> Parser<'bump> {
 				}
 			};
 
-			// Consume colon separator
 			self.consume_operator(Operator::Colon)?;
 
-			// Parse property value
 			let value = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
 
 			properties.push(AstColumnPropertyEntry {
@@ -1371,7 +1430,6 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_dictionary(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
-		// Check for IF NOT EXISTS
 		let if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
 			self.consume_operator(Not)?;
 			self.consume_keyword(Exists)?;
@@ -1389,11 +1447,9 @@ impl<'bump> Parser<'bump> {
 			MaybeQualifiedDictionaryIdentifier::new(name).with_namespace(namespace)
 		};
 
-		// Parse FOR <value_type>
 		self.consume_keyword(For)?;
 		let value_type = self.parse_type()?;
 
-		// Parse AS <id_type>
 		self.consume_operator(Operator::As)?;
 		let id_type = self.parse_type()?;
 
@@ -1467,7 +1523,6 @@ impl<'bump> Parser<'bump> {
 	fn parse_type(&mut self) -> Result<AstType<'bump>> {
 		let ty_token = self.consume(TokenKind::Identifier)?;
 
-		// Check for Option(T) syntax
 		if ty_token.fragment.text().eq_ignore_ascii_case("option") {
 			self.consume_operator(Operator::OpenParen)?;
 			let inner = self.parse_type()?;
@@ -1484,15 +1539,12 @@ impl<'bump> Parser<'bump> {
 			});
 		}
 
-		// Check for type with parameters like DECIMAL(10,2)
 		if !self.is_eof() && self.current()?.is_operator(Operator::OpenParen) {
 			self.consume_operator(Operator::OpenParen)?;
 			let mut params = Vec::new();
 
-			// Parse first parameter
 			params.push(self.parse_literal_number()?);
 
-			// Parse additional parameters if comma-separated
 			while self.consume_if(TokenKind::Separator(Comma))?.is_some() {
 				params.push(self.parse_literal_number()?);
 			}
@@ -1540,9 +1592,7 @@ impl<'bump> Parser<'bump> {
 
 		let name = name_identifier.into_fragment();
 
-		// Parse type with optional parameters
 		let ty = if ty_token.fragment.text().eq_ignore_ascii_case("option") {
-			// Option(T) syntax
 			self.consume_operator(Operator::OpenParen)?;
 			let inner = self.parse_type()?;
 			self.consume_operator(Operator::CloseParen)?;
@@ -1555,15 +1605,11 @@ impl<'bump> Parser<'bump> {
 				name: name_token.fragment,
 			}
 		} else if !self.is_eof() && self.current()?.is_operator(Operator::OpenParen) {
-			// Type with parameters like UTF8(50) or DECIMAL(10,2)
 			self.consume_operator(Operator::OpenParen)?;
 			let mut params = Vec::new();
 
-			// Parse first parameter - for type constraints we
-			// expect numbers
 			params.push(self.parse_literal_number()?);
 
-			// Parse additional parameters if comma-separated
 			while self.consume_if(TokenKind::Separator(Comma))?.is_some() {
 				params.push(self.parse_literal_number()?);
 			}
@@ -1575,7 +1621,6 @@ impl<'bump> Parser<'bump> {
 				params,
 			}
 		} else {
-			// Simple type without parameters
 			AstType::Unconstrained(ty_token.fragment)
 		};
 
@@ -1605,7 +1650,6 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			// Property key can be an Identifier or the Dictionary keyword
 			let key_token = {
 				let current = self.current()?;
 				match current.kind {
@@ -1785,22 +1829,19 @@ impl<'bump> Parser<'bump> {
 	}
 
 	pub(crate) fn parse_handler(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
-		// Parse handler name: ns.handler_name
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name_frag = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let handler_name = MaybeQualifiedTableIdentifier::new(name_frag).with_namespace(namespace);
 
-		// ON event_type::VariantName AS alias
 		self.consume_keyword(Keyword::On)?;
 
-		// Parse event_namespace::event_type::variant as a single chain of :: separated identifiers
 		let mut event_segments = self.parse_double_colon_separated_identifiers()?;
-		// Last segment is the variant name
+
 		let on_variant = event_segments.pop().unwrap().into_fragment();
-		// Second-to-last is the event type name
+
 		let event_name_frag = event_segments.pop().unwrap().into_fragment();
-		// Remaining segments are the namespace
+
 		let event_namespace: Vec<_> = event_segments.into_iter().map(|s| s.into_fragment()).collect();
 		let on_event = if event_namespace.is_empty() {
 			MaybeQualifiedSumTypeIdentifier::new(event_name_frag)
@@ -1808,7 +1849,6 @@ impl<'bump> Parser<'bump> {
 			MaybeQualifiedSumTypeIdentifier::new(event_name_frag).with_namespace(event_namespace)
 		};
 
-		// Body: { statements... }
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let body_start_pos = self.position;
@@ -1850,7 +1890,6 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_migration(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
-		// Parse migration name as a string literal: CREATE MIGRATION 'name'
 		let name = match &self.current()?.kind {
 			TokenKind::Literal(Literal::Text) => {
 				let text = self.current()?.fragment.text().to_string();
@@ -1872,11 +1911,9 @@ impl<'bump> Parser<'bump> {
 			}
 		};
 
-		// Parse body: { statements... }
 		self.consume_operator(Operator::OpenCurly)?;
 		let body_start_pos = self.position;
 
-		// Skip over body tokens, counting brace depth
 		let mut depth = 1u32;
 		while depth > 0 {
 			if self.is_eof() {
@@ -1917,7 +1954,6 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(Operator::CloseCurly)?;
 
-		// Parse optional ROLLBACK { ... }
 		let rollback_body_source = if (self.consume_if(TokenKind::Keyword(Keyword::Rollback))?).is_some() {
 			self.consume_operator(Operator::OpenCurly)?;
 			let rb_start_pos = self.position;
@@ -2005,6 +2041,7 @@ impl<'bump> Parser<'bump> {
 				nodes: query_nodes,
 				has_pipes,
 				is_output: false,
+				rql: "",
 			}))
 		} else {
 			Ok(None)
@@ -2014,11 +2051,12 @@ impl<'bump> Parser<'bump> {
 	fn parse_view_storage_with_clause(
 		&mut self,
 		hint: ViewStorageKindHint,
-	) -> Result<(AstViewStorageKind, Option<Duration>)> {
+	) -> Result<(AstViewStorageKind, Option<Duration>, Option<AstTtl<'bump>>)> {
 		self.consume_keyword(Keyword::With)?;
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut tick: Option<Duration> = None;
+		let mut ttl: Option<AstTtl<'bump>> = None;
 
 		match hint {
 			ViewStorageKindHint::RingBuffer => {
@@ -2093,11 +2131,14 @@ impl<'bump> Parser<'bump> {
 						"tick" => {
 							tick = Some(self.parse_tick_duration()?);
 						}
+						"row" => {
+							ttl = Some(self.parse_row_config()?);
+						}
 						other => {
 							let fragment = key.fragment.to_owned();
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'capacity', 'propagate_evictions', 'partition_by', or 'tick'"
+									expected: "'capacity', 'propagate_evictions', 'partition_by', 'tick', or 'row'"
 										.to_string(),
 								},
 								message: format!(
@@ -2121,7 +2162,7 @@ impl<'bump> Parser<'bump> {
 						},
 						message: "ringbuffer view requires 'capacity' in WITH clause"
 							.to_string(),
-						fragment: Fragment::internal("".to_string()),
+						fragment: Fragment::internal(""),
 					})
 				})?;
 
@@ -2132,6 +2173,7 @@ impl<'bump> Parser<'bump> {
 						partition_by,
 					},
 					tick,
+					ttl,
 				))
 			}
 			ViewStorageKindHint::Series => {
@@ -2174,12 +2216,16 @@ impl<'bump> Parser<'bump> {
 						"tick" => {
 							tick = Some(self.parse_tick_duration()?);
 						}
+						"row" => {
+							ttl = Some(self.parse_row_config()?);
+						}
 						other => {
 							let fragment = key.fragment.to_owned();
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'key', 'precision', or 'tick'"
-										.to_string(),
+									expected:
+										"'key', 'precision', 'tick', or 'row'"
+											.to_string(),
 								},
 								message: format!(
 									"unexpected key '{}' in WITH clause",
@@ -2202,17 +2248,17 @@ impl<'bump> Parser<'bump> {
 						precision,
 					},
 					tick,
+					ttl,
 				))
 			}
 		}
 	}
 
-	/// Parse a WITH clause containing only `tick` for table-backed views.
-	/// Expects the WITH keyword to already be consumed. Parses `{ tick: "5m" }`.
-	fn parse_view_tick_with_clause(&mut self) -> Result<Option<Duration>> {
+	fn parse_view_tick_with_clause(&mut self) -> Result<(Option<Duration>, Option<AstTtl<'bump>>)> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut tick: Option<Duration> = None;
+		let mut ttl: Option<AstTtl<'bump>> = None;
 
 		loop {
 			self.skip_new_line()?;
@@ -2227,11 +2273,14 @@ impl<'bump> Parser<'bump> {
 				"tick" => {
 					tick = Some(self.parse_tick_duration()?);
 				}
+				"row" => {
+					ttl = Some(self.parse_row_config()?);
+				}
 				other => {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'tick'".to_string(),
+							expected: "'tick' or 'row'".to_string(),
 						},
 						message: format!("unexpected key '{}' in WITH clause", other),
 						fragment,
@@ -2243,14 +2292,518 @@ impl<'bump> Parser<'bump> {
 		}
 
 		self.consume_operator(Operator::CloseCurly)?;
-		Ok(tick)
+		Ok((tick, ttl))
 	}
 
-	/// Parse a tick duration value (a string literal like "5m", "1h", "30s").
 	fn parse_tick_duration(&mut self) -> Result<Duration> {
 		let token = self.consume(TokenKind::Literal(Literal::Text))?;
 		let duration_str = token.fragment.text();
 		Compiler::parse_duration(duration_str)
+	}
+
+	fn parse_hydration_with_value(&mut self) -> Result<AstHydrationConfig> {
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut enabled: Option<bool> = None;
+		let mut max_rows: Option<u64> = None;
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume(TokenKind::Identifier)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"enabled" => {
+					let current = self.current()?;
+					match current.kind {
+						TokenKind::Literal(Literal::True) => {
+							self.advance()?;
+							enabled = Some(true);
+						}
+						TokenKind::Literal(Literal::False) => {
+							self.advance()?;
+							enabled = Some(false);
+						}
+						_ => {
+							let fragment = current.fragment.to_owned();
+							return Err(Error::from(TypeError::Ast {
+								kind: AstErrorKind::UnexpectedToken {
+									expected: "boolean literal".to_string(),
+								},
+								message: format!(
+									"expected boolean literal for hydration.enabled, found `{}`",
+									fragment.text()
+								),
+								fragment,
+							}));
+						}
+					}
+				}
+				"max_rows" => {
+					let token = self.consume(TokenKind::Literal(Literal::Number))?;
+					let text = token.fragment.text();
+					if text.starts_with('-') {
+						let fragment = token.fragment.to_owned();
+						return Err(Error::from(TypeError::Ast {
+							kind: AstErrorKind::UnexpectedToken {
+								expected: "non-negative integer".to_string(),
+							},
+							message: format!(
+								"hydration.max_rows must be a positive integer, found `{}`",
+								fragment.text()
+							),
+							fragment,
+						}));
+					}
+					let parsed = text.parse::<u64>().map_err(|_| {
+						let fragment = token.fragment.to_owned();
+						Error::from(TypeError::Ast {
+							kind: AstErrorKind::UnexpectedToken {
+								expected: "valid u64 integer".to_string(),
+							},
+							message: format!(
+								"hydration.max_rows must be a valid u64, found `{}`",
+								fragment.text()
+							),
+							fragment,
+						})
+					})?;
+					if parsed == 0 {
+						let fragment = token.fragment.to_owned();
+						return Err(Error::from(TypeError::Ast {
+							kind: AstErrorKind::UnexpectedToken {
+								expected: "positive integer".to_string(),
+							},
+							message:
+								"hydration.max_rows must be greater than zero (use enabled: false to disable)"
+									.to_string(),
+							fragment,
+						}));
+					}
+					max_rows = Some(parsed);
+				}
+				_other => {
+					let fragment = key.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "'enabled' or 'max_rows'".to_string(),
+						},
+						message: format!(
+							"expected 'enabled' or 'max_rows' in hydration config, found `{}`",
+							fragment.text()
+						),
+						fragment,
+					}));
+				}
+			}
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		Ok(AstHydrationConfig {
+			enabled: enabled.unwrap_or(true),
+			max_rows,
+		})
+	}
+
+	fn parse_row_config(&mut self) -> Result<AstTtl<'bump>> {
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut ttl: Option<AstTtl<'bump>> = None;
+
+		loop {
+			self.skip_new_line()?;
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume(TokenKind::Identifier)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"ttl" => {
+					ttl = Some(self.parse_ttl()?);
+				}
+				_other => {
+					let fragment = key.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "'ttl'".to_string(),
+						},
+						message: format!(
+							"expected 'ttl' in row config, found `{}`",
+							fragment.text()
+						),
+						fragment,
+					}));
+				}
+			}
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		ttl.ok_or_else(|| {
+			let fragment = self
+				.current()
+				.ok()
+				.map(|t| t.fragment.to_owned())
+				.unwrap_or_else(|| Fragment::internal("end of input"));
+			Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "'ttl' is required in row config".to_string(),
+				},
+				message: "'ttl' is required in row config".to_string(),
+				fragment,
+			})
+		})
+	}
+
+	fn parse_ttl(&mut self) -> Result<AstTtl<'bump>> {
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut duration = None;
+		let mut anchor = None;
+		let mut mode = None;
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = {
+				let current = self.current()?;
+				match current.kind {
+					TokenKind::Identifier => self.consume(TokenKind::Identifier)?,
+					TokenKind::Keyword(Keyword::On) => {
+						let token = self.advance()?;
+						Token {
+							kind: TokenKind::Identifier,
+							..token
+						}
+					}
+					_ => {
+						return Err(Error::from(TypeError::Ast {
+							kind: AstErrorKind::UnexpectedToken {
+								expected: "'duration', 'on', or 'mode'".to_string(),
+							},
+							message: format!(
+								"expected 'duration', 'on', or 'mode', found `{}`",
+								current.fragment.text()
+							),
+							fragment: current.fragment.to_owned(),
+						}));
+					}
+				}
+			};
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"duration" => {
+					let token = self.consume(TokenKind::Literal(Literal::Text))?;
+					duration = Some(token);
+				}
+				"on" => {
+					let token = self.consume(TokenKind::Identifier)?;
+					anchor = Some(token);
+				}
+				"mode" => {
+					let current = self.current()?;
+					let token = match current.kind {
+						TokenKind::Identifier => self.consume(TokenKind::Identifier)?,
+						TokenKind::Keyword(Keyword::Delete)
+						| TokenKind::Keyword(Keyword::Drop) => {
+							let token = self.advance()?;
+							Token {
+								kind: TokenKind::Identifier,
+								..token
+							}
+						}
+						_ => {
+							return Err(Error::from(TypeError::Ast {
+								kind: AstErrorKind::UnexpectedToken {
+									expected: "'delete' or 'drop'".to_string(),
+								},
+								message: format!(
+									"expected 'delete' or 'drop', found `{}`",
+									current.fragment.text()
+								),
+								fragment: current.fragment.to_owned(),
+							}));
+						}
+					};
+					mode = Some(token);
+				}
+				_other => {
+					let fragment = key.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "'duration', 'on', or 'mode'".to_string(),
+						},
+						message: format!(
+							"expected 'duration', 'on', or 'mode', found `{}`",
+							fragment.text()
+						),
+						fragment,
+					}));
+				}
+			}
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		let duration = duration.ok_or_else(|| {
+			let fragment = self
+				.current()
+				.ok()
+				.map(|t| t.fragment.to_owned())
+				.unwrap_or_else(|| Fragment::internal("end of input"));
+			Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "'duration' is required in row config".to_string(),
+				},
+				message: "'duration' is required in row config".to_string(),
+				fragment,
+			})
+		})?;
+
+		Ok(AstTtl {
+			duration,
+			anchor,
+			mode,
+		})
+	}
+
+	fn parse_join_ttl(&mut self) -> Result<AstJoinTtl<'bump>> {
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut left: Option<AstTtl<'bump>> = None;
+		let mut right: Option<AstTtl<'bump>> = None;
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume(TokenKind::Identifier)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"left" => {
+					if left.is_some() {
+						let fragment = key.fragment.to_owned();
+						return Err(Error::from(TypeError::Ast {
+							kind: AstErrorKind::UnexpectedToken {
+								expected: "single 'left' entry".to_string(),
+							},
+							message: "'left' specified more than once in join ttl"
+								.to_string(),
+							fragment,
+						}));
+					}
+					left = Some(self.parse_ttl()?);
+				}
+				"right" => {
+					if right.is_some() {
+						let fragment = key.fragment.to_owned();
+						return Err(Error::from(TypeError::Ast {
+							kind: AstErrorKind::UnexpectedToken {
+								expected: "single 'right' entry".to_string(),
+							},
+							message: "'right' specified more than once in join ttl"
+								.to_string(),
+							fragment,
+						}));
+					}
+					right = Some(self.parse_ttl()?);
+				}
+				other => {
+					let fragment = key.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "'left' or 'right'".to_string(),
+						},
+						message: format!(
+							"unexpected key '{}' in join ttl; expected 'left' or 'right'",
+							other
+						),
+						fragment,
+					}));
+				}
+			}
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		if left.is_none() && right.is_none() {
+			let fragment = self
+				.current()
+				.ok()
+				.map(|t| t.fragment.to_owned())
+				.unwrap_or_else(|| Fragment::internal("end of input"));
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "at least one of 'left' or 'right'".to_string(),
+				},
+				message: "join ttl must specify at least one side ('left' or 'right')".to_string(),
+				fragment,
+			}));
+		}
+
+		Ok(AstJoinTtl {
+			left,
+			right,
+		})
+	}
+
+	pub(crate) fn parse_with_clause_for_operator(&mut self) -> Result<Option<AstTtl<'bump>>> {
+		if self.is_eof() || !self.current()?.is_keyword(Keyword::With) {
+			return Ok(None);
+		}
+		self.advance()?;
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut ttl: Option<AstTtl<'bump>> = None;
+
+		loop {
+			self.skip_new_line()?;
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume(TokenKind::Identifier)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"ttl" => {
+					ttl = Some(self.parse_ttl()?);
+				}
+				other => {
+					let fragment = key.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "'ttl'".to_string(),
+						},
+						message: format!("unexpected key '{}' in operator WITH clause", other),
+						fragment,
+					}));
+				}
+			}
+
+			self.consume_if(TokenKind::Separator(Comma))?;
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+		Ok(ttl)
+	}
+
+	pub(crate) fn parse_with_clause_for_join(&mut self) -> Result<(Option<AstJoinTtl<'bump>>, bool)> {
+		if self.is_eof() || !self.current()?.is_keyword(Keyword::With) {
+			return Ok((None, false));
+		}
+		self.advance()?;
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut ttl: Option<AstJoinTtl<'bump>> = None;
+		let mut snapshot: bool = false;
+
+		loop {
+			self.skip_new_line()?;
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume(TokenKind::Identifier)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"ttl" => {
+					ttl = Some(self.parse_join_ttl()?);
+				}
+				"snapshot" => {
+					let value = self.advance()?;
+					snapshot = match value.kind {
+						TokenKind::Literal(Literal::True) => true,
+						TokenKind::Literal(Literal::False) => false,
+						_ => {
+							let fragment = value.fragment.to_owned();
+							return Err(Error::from(TypeError::Ast {
+								kind: AstErrorKind::UnexpectedToken {
+									expected: "boolean literal 'true' or 'false'"
+										.to_string(),
+								},
+								message: format!(
+									"expected boolean literal for 'snapshot', got '{}'",
+									value.fragment.text()
+								),
+								fragment,
+							}));
+						}
+					};
+				}
+				other => {
+					let fragment = key.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "'ttl' or 'snapshot'".to_string(),
+						},
+						message: format!("unexpected key '{}' in join WITH clause", other),
+						fragment,
+					}));
+				}
+			}
+
+			self.consume_if(TokenKind::Separator(Comma))?;
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+		Ok((ttl, snapshot))
 	}
 }
 
@@ -2266,7 +2819,8 @@ pub mod tests {
 			ast::{
 				Ast, AstColumnProperty, AstCreate, AstCreateDeferredView, AstCreateDictionary,
 				AstCreateNamespace, AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription,
-				AstCreateSumType, AstCreateTable, AstCreateTransactionalView, AstType,
+				AstCreateSumType, AstCreateTable, AstCreateTransactionalView, AstHydrationConfig,
+				AstType,
 			},
 			parse::Parser,
 		},
@@ -3463,5 +4017,112 @@ pub mod tests {
 			}
 			_ => unreachable!("Expected Subscription create"),
 		}
+	}
+
+	fn parse_subscription_hydration(source: &str) -> AstHydrationConfig {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		let r = result.pop().unwrap();
+		match r.first_unchecked().as_create() {
+			AstCreate::Subscription(s) => s.hydration.clone(),
+			_ => unreachable!("expected subscription"),
+		}
+	}
+
+	#[test]
+	fn test_subscription_hydration_disabled() {
+		let cfg = parse_subscription_hydration(
+			"CREATE SUBSCRIPTION WITH { hydration: { enabled: false } } AS { FROM demo::events }",
+		);
+		assert!(!cfg.enabled);
+		assert_eq!(cfg.max_rows, None);
+	}
+
+	#[test]
+	fn test_subscription_hydration_with_max_rows() {
+		let cfg = parse_subscription_hydration(
+			"CREATE SUBSCRIPTION WITH { hydration: { enabled: true, max_rows: 1000 } } AS { FROM demo::events }",
+		);
+		assert!(cfg.enabled);
+		assert_eq!(cfg.max_rows, Some(1000));
+	}
+
+	#[test]
+	fn test_subscription_hydration_max_rows_only_defaults_enabled() {
+		let cfg = parse_subscription_hydration(
+			"CREATE SUBSCRIPTION WITH { hydration: { max_rows: 250 } } AS { FROM demo::events }",
+		);
+		assert!(cfg.enabled);
+		assert_eq!(cfg.max_rows, Some(250));
+	}
+
+	#[test]
+	fn test_subscription_hydration_empty_struct() {
+		let cfg = parse_subscription_hydration(
+			"CREATE SUBSCRIPTION WITH { hydration: { } } AS { FROM demo::events }",
+		);
+		assert!(cfg.enabled);
+		assert_eq!(cfg.max_rows, None);
+	}
+
+	#[test]
+	fn test_subscription_with_clause_omitted_defaults_to_enabled() {
+		let cfg = parse_subscription_hydration("CREATE SUBSCRIPTION AS { FROM demo::events }");
+		assert!(cfg.enabled);
+		assert_eq!(cfg.max_rows, None);
+	}
+
+	fn parse_subscription_must_fail(source: &str) -> String {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let err = parser.parse().expect_err("expected parse error");
+		err.to_string()
+	}
+
+	#[test]
+	fn test_subscription_with_unknown_top_level_key_rejected() {
+		let msg = parse_subscription_must_fail(
+			"CREATE SUBSCRIPTION WITH { snapshot: { enabled: false } } AS { FROM demo::events }",
+		);
+		assert!(msg.contains("hydration"), "error should reference 'hydration', got: {}", msg);
+	}
+
+	#[test]
+	fn test_subscription_with_unknown_sub_key_rejected() {
+		let msg = parse_subscription_must_fail(
+			"CREATE SUBSCRIPTION WITH { hydration: { foo: 1 } } AS { FROM demo::events }",
+		);
+		assert!(msg.contains("'enabled' or 'max_rows'"), "error should reference legal sub-keys, got: {}", msg);
+	}
+
+	#[test]
+	fn test_subscription_with_non_struct_hydration_value_rejected() {
+		let msg = parse_subscription_must_fail(
+			"CREATE SUBSCRIPTION WITH { hydration: false } AS { FROM demo::events }",
+		);
+		assert!(!msg.is_empty(), "expected a parse error message");
+	}
+
+	#[test]
+	fn test_subscription_with_max_rows_zero_rejected() {
+		let msg = parse_subscription_must_fail(
+			"CREATE SUBSCRIPTION WITH { hydration: { max_rows: 0 } } AS { FROM demo::events }",
+		);
+		assert!(
+			msg.contains("greater than zero") || msg.contains("positive"),
+			"error should explain zero rejection, got: {}",
+			msg
+		);
+	}
+
+	#[test]
+	fn test_subscription_with_non_bool_enabled_rejected() {
+		let msg = parse_subscription_must_fail(
+			"CREATE SUBSCRIPTION WITH { hydration: { enabled: 1 } } AS { FROM demo::events }",
+		);
+		assert!(msg.contains("boolean"), "error should reference boolean expectation, got: {}", msg);
 	}
 }

@@ -3,15 +3,15 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{columns::Columns, data::ColumnData, headers::ColumnHeaders};
-use reifydb_rql::expression::Expression;
+use reifydb_core::value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders};
+use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_transaction::transaction::Transaction;
 use tracing::instrument;
 
 use crate::{
 	Result,
 	error::EngineError,
-	expression::{context::EvalSession, eval::evaluate},
+	expression::{context::EvalContext, eval::evaluate},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -48,17 +48,17 @@ impl QueryNode for AssertNode {
 
 		if let Some(columns) = self.input.next(rx, ctx)? {
 			let row_count = columns.row_count();
-			let session = EvalSession::from_query(stored_ctx);
+			let session = EvalContext::from_query(stored_ctx);
 
-			// Evaluate each assert expression
 			for assert_expr in &self.expressions {
-				let eval_ctx = session.eval(columns.clone(), row_count);
+				let eval_ctx = session.with_eval(columns.clone(), row_count);
 
 				let result = evaluate(&eval_ctx, assert_expr)?;
 
 				let frag = assert_expr.full_fragment_owned();
+				let label = display_label(assert_expr);
 				match result.data() {
-					ColumnData::Bool(container) => {
+					ColumnBuffer::Bool(container) => {
 						for i in 0..row_count {
 							let valid = container.is_defined(i);
 							let value = container.data().get(i);
@@ -69,25 +69,58 @@ impl QueryNode for AssertNode {
 										.message
 										.clone()
 										.unwrap_or_default(),
-									expression: Some(frag.text().to_string()),
+									expression: Some(label.text().to_string()),
 								}
 								.into());
 							}
 						}
 					}
+					ColumnBuffer::Option {
+						inner,
+						bitvec,
+					} => match inner.as_ref() {
+						ColumnBuffer::Bool(container) => {
+							for i in 0..row_count {
+								let defined = i < bitvec.len() && bitvec.get(i);
+								let valid = defined && container.is_defined(i);
+								let value = valid && container.data().get(i);
+								if !value {
+									return Err(EngineError::AssertionFailed {
+										fragment: frag.clone(),
+										message: self
+											.message
+											.clone()
+											.unwrap_or_default(),
+										expression: Some(label
+											.text()
+											.to_string()),
+									}
+									.into());
+								}
+							}
+						}
+						_ => {
+							return Err(EngineError::AssertionFailed {
+								fragment: frag.clone(),
+								message: "assert expression must evaluate to a boolean"
+									.to_string(),
+								expression: Some(label.text().to_string()),
+							}
+							.into());
+						}
+					},
 					_ => {
 						return Err(EngineError::AssertionFailed {
 							fragment: frag.clone(),
 							message: "assert expression must evaluate to a boolean"
 								.to_string(),
-							expression: Some(frag.text().to_string()),
+							expression: Some(label.text().to_string()),
 						}
 						.into());
 					}
 				}
 			}
 
-			// Passthrough: return the original columns unchanged
 			Ok(Some(columns))
 		} else {
 			Ok(None)
@@ -133,32 +166,60 @@ impl QueryNode for AssertWithoutInputNode {
 
 		debug_assert!(self.context.is_some(), "AssertWithoutInputNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
-		let session = EvalSession::from_query(stored_ctx);
+		let session = EvalContext::from_query(stored_ctx);
 
 		for assert_expr in &self.expressions {
-			let eval_ctx = session.eval_empty();
+			let eval_ctx = session.with_eval_empty();
 
 			let result = evaluate(&eval_ctx, assert_expr)?;
 
 			let frag = assert_expr.full_fragment_owned();
+			let label = display_label(assert_expr);
 			match result.data() {
-				ColumnData::Bool(container) => {
+				ColumnBuffer::Bool(container) => {
 					let valid = container.is_defined(0);
 					let value = container.data().get(0);
 					if !valid || !value {
 						return Err(EngineError::AssertionFailed {
 							fragment: frag.clone(),
 							message: self.message.clone().unwrap_or_default(),
-							expression: Some(frag.text().to_string()),
+							expression: Some(label.text().to_string()),
 						}
 						.into());
 					}
 				}
+				ColumnBuffer::Option {
+					inner,
+					bitvec,
+				} => match inner.as_ref() {
+					ColumnBuffer::Bool(container) => {
+						let defined = !bitvec.is_empty() && bitvec.get(0);
+						let valid = defined && container.is_defined(0);
+						let value = valid && container.data().get(0);
+						if !value {
+							return Err(EngineError::AssertionFailed {
+								fragment: frag.clone(),
+								message: self.message.clone().unwrap_or_default(),
+								expression: Some(label.text().to_string()),
+							}
+							.into());
+						}
+					}
+					_ => {
+						return Err(EngineError::AssertionFailed {
+							fragment: frag.clone(),
+							message: "assert expression must evaluate to a boolean"
+								.to_string(),
+							expression: Some(label.text().to_string()),
+						}
+						.into());
+					}
+				},
 				_ => {
 					return Err(EngineError::AssertionFailed {
 						fragment: frag.clone(),
 						message: "assert expression must evaluate to a boolean".to_string(),
-						expression: Some(frag.text().to_string()),
+						expression: Some(label.text().to_string()),
 					}
 					.into());
 				}

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from "vitest";
 import {Client, WsClient} from "../../../src";
-import {waitForDatabase} from "../setup";
+import {wait_for_database} from "../setup";
 import {Shape, Utf8Value, Int4Value, Int1Value, InferShape} from "@reifydb/core";
 
 // Define the shape once
@@ -16,18 +16,22 @@ const versionShape = Shape.object({
 // Infer the TypeScript type from the shape
 type VersionRow = InferShape<typeof versionShape>;
 
-describe('Shape Type Conversion', () => {
-    let wsClient: WsClient;
+describe.each([
+    {format: "frames"},
+    {format: "rbcf"},
+] as const)('Shape Type Conversion [$format]', ({format}) => {
+    let ws_client: WsClient;
 
     beforeAll(async () => {
-        await waitForDatabase();
+        await wait_for_database();
     }, 30000);
 
     beforeEach(async () => {
         try {
-            wsClient = await Client.connect_ws(process.env.REIFYDB_WS_URL, {
-                timeoutMs: 10000,
-                token: process.env.REIFYDB_TOKEN
+            ws_client = await Client.connect_ws(process.env.REIFYDB_WS_URL, {
+                timeout_ms: 10000,
+                token: process.env.REIFYDB_TOKEN,
+                format,
             });
         } catch (error) {
             console.error('❌ WebSocket connection failed:', error);
@@ -36,19 +40,19 @@ describe('Shape Type Conversion', () => {
     }, 15000);
 
     afterEach(async () => {
-        if (wsClient) {
+        if (ws_client) {
             try {
-                wsClient.disconnect();
+                ws_client.disconnect();
             } catch (error) {
                 console.error('⚠️ Error during disconnect:', error);
             }
-            wsClient = null;
+            ws_client = null;
         }
     });
 
     describe('Primitive Shape Conversion', () => {
         it('should convert Value objects to primitives when using primitive shape', async () => {
-            const result = await wsClient.query(
+            const result = await ws_client.query(
                 "FROM system::versions TAKE 1",
                 null,
                 [versionShape]
@@ -88,7 +92,7 @@ describe('Shape Type Conversion', () => {
                 float_val: Shape.float8()
             });
 
-            const result = await wsClient.admin(
+            const result = await ws_client.admin(
                 "MAP { str_val: 'test', int_val: 42, bool_val: true, float_val: 3.14 }",
                 null,
                 [shape]
@@ -119,7 +123,7 @@ describe('Shape Type Conversion', () => {
                 another_val: Shape.int8()
             });
 
-            const result = await wsClient.admin(
+            const result = await ws_client.admin(
                 "MAP { big_val: 9223372036854775807, another_val: 1 }",
                 null,
                 [shape]
@@ -146,7 +150,7 @@ describe('Shape Type Conversion', () => {
                 count: Shape.int4Value()
             });
 
-            const result = await wsClient.admin(
+            const result = await ws_client.admin(
                 "MAP { name: 'test', count: 42 }",
                 null,
                 [valueShape]
@@ -174,7 +178,7 @@ describe('Shape Type Conversion', () => {
 
     describe('Without Shape (backward compatibility)', () => {
         it('should return Value objects when no shape is provided', async () => {
-            const result = await wsClient.query(
+            const result = await ws_client.query(
                 "FROM system::versions TAKE 1",
                 null,
                 [] // No shape provided

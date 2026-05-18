@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::flow_edges::*, vtable::FLOW_EDGES};
 
-/// Returns the static definition for the system.flow_edges virtual table
-/// This table exposes information about all flow edges in the database
 pub fn flow_edges() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

@@ -5,7 +5,7 @@ use reifydb_core::{
 	encoded::shape::RowShape,
 	interface::catalog::{
 		change::CatalogTrackRingBufferChangeOperations,
-		id::{NamespaceId, PrimaryKeyId, RingBufferId},
+		id::{ColumnId, NamespaceId, PrimaryKeyId, RingBufferId},
 		property::ColumnPropertyKind,
 		ringbuffer::{PartitionedMetadata, RingBuffer, RingBufferMetadata},
 	},
@@ -45,6 +45,7 @@ pub struct RingBufferToCreate {
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
 	pub partition_by: Vec<String>,
+	pub underlying: bool,
 }
 
 impl From<RingBufferColumnToCreate> for StoreRingBufferColumnToCreate {
@@ -68,6 +69,7 @@ impl From<RingBufferToCreate> for StoreRingBufferToCreate {
 			columns: to_create.columns.into_iter().map(|c| c.into()).collect(),
 			capacity: to_create.capacity,
 			partition_by: to_create.partition_by,
+			underlying: to_create.underlying,
 		}
 	}
 }
@@ -84,9 +86,6 @@ impl Catalog {
 			}
 			Transaction::Query(qry) => {
 				CatalogStore::find_ringbuffer(&mut Transaction::Query(&mut *qry), id)
-			}
-			Transaction::Subscription(sub) => {
-				CatalogStore::find_ringbuffer(&mut Transaction::Subscription(&mut *sub), id)
 			}
 			Transaction::Test(t) => {
 				CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut *t.inner), id)
@@ -120,11 +119,6 @@ impl Catalog {
 				namespace,
 				name,
 			),
-			Transaction::Subscription(sub) => CatalogStore::find_ringbuffer_by_name(
-				&mut Transaction::Subscription(&mut *sub),
-				namespace,
-				name,
-			),
 			Transaction::Test(t) => CatalogStore::find_ringbuffer_by_name(
 				&mut Transaction::Admin(&mut *t.inner),
 				namespace,
@@ -155,6 +149,23 @@ impl Catalog {
 		to_create: RingBufferToCreate,
 	) -> Result<RingBuffer> {
 		let ringbuffer = CatalogStore::create_ringbuffer(txn, to_create.into())?;
+		txn.track_ringbuffer_created(ringbuffer.clone())?;
+
+		let shape = RowShape::from(ringbuffer.columns.as_slice());
+		self.get_or_create_row_shape(&mut Transaction::Admin(&mut *txn), shape.fields().to_vec())?;
+
+		Ok(ringbuffer)
+	}
+
+	pub fn create_ringbuffer_with_id(
+		&self,
+		txn: &mut AdminTransaction,
+		ringbuffer_id: RingBufferId,
+		to_create: RingBufferToCreate,
+		column_ids: &[ColumnId],
+	) -> Result<RingBuffer> {
+		let ringbuffer =
+			CatalogStore::create_ringbuffer_with_id(txn, ringbuffer_id, to_create.into(), column_ids)?;
 		txn.track_ringbuffer_created(ringbuffer.clone())?;
 
 		let shape = RowShape::from(ringbuffer.columns.as_slice());

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::buffer::ColumnBuffer;
 use reifydb_type::{
 	error::TypeError,
 	fragment::{Fragment, LazyFragment},
@@ -10,16 +10,16 @@ use reifydb_type::{
 
 use crate::Result;
 
-pub fn to_blob(data: &ColumnData, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
+pub fn to_blob(data: &ColumnBuffer, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
 	match data {
-		ColumnData::Utf8 {
+		ColumnBuffer::Utf8 {
 			container,
 			..
 		} => {
-			let mut out = ColumnData::with_capacity(Type::Blob, container.len());
+			let mut out = ColumnBuffer::with_capacity(Type::Blob, container.len());
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
-					let temp_fragment = Fragment::internal(container[idx].as_str());
+					let temp_fragment = Fragment::internal(container.get(idx).unwrap());
 					out.push(Blob::from_utf8(temp_fragment));
 				} else {
 					out.push_none()
@@ -49,17 +49,17 @@ pub mod tests {
 	fn test_from_utf8() {
 		let strings = vec!["Hello".to_string(), "World".to_string()];
 		let bitvec = BitVec::repeat(2, true);
-		let container = ColumnData::utf8_with_bitvec(strings, bitvec);
+		let container = ColumnBuffer::utf8_with_bitvec(strings, bitvec);
 
 		let result = to_blob(&container, || Fragment::testing_empty()).unwrap();
 
 		match result {
-			ColumnData::Blob {
+			ColumnBuffer::Blob {
 				container,
 				..
 			} => {
-				assert_eq!(container[0].as_bytes(), b"Hello");
-				assert_eq!(container[1].as_bytes(), b"World");
+				assert_eq!(container.get(0), Some(b"Hello".as_slice()));
+				assert_eq!(container.get(1), Some(b"World".as_slice()));
 			}
 			_ => panic!("Expected BLOB column data"),
 		}
@@ -69,7 +69,7 @@ pub mod tests {
 	fn test_unsupported() {
 		let ints = vec![42i32];
 		let bitvec = BitVec::repeat(1, true);
-		let container = ColumnData::int4_with_bitvec(ints, bitvec);
+		let container = ColumnBuffer::int4_with_bitvec(ints, bitvec);
 
 		let result = to_blob(&container, || Fragment::testing_empty());
 		assert!(result.is_err());

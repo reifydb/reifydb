@@ -4,7 +4,6 @@
 use reifydb_type::fragment::Fragment;
 use serde::{Deserialize, Serialize};
 
-/// Column identifier with shape qualification
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ColumnIdentifier {
 	pub shape: ColumnShape,
@@ -44,15 +43,13 @@ impl ColumnIdentifier {
 	}
 }
 
-/// How a column is qualified in plans (always fully qualified)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ColumnShape {
-	/// Fully qualified by namespace.shape
 	Qualified {
 		namespace: Fragment,
 		name: Fragment,
 	},
-	/// Qualified by alias (which maps to a fully qualified shape)
+
 	Alias(Fragment),
 }
 

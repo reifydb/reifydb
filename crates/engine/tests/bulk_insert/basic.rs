@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Basic API tests for the bulk_insert module.
-//!
-//! Tests cover core functionality: table inserts, ringbuffer inserts,
-//! different parameter styles, and result verification.
-
 use reifydb_engine::test_prelude::*;
 
 #[test]

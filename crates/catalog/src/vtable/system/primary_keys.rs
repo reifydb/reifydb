@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	value::column::{Column, columns::Columns, data::ColumnData},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -16,9 +16,8 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes system primary key information
 pub struct SystemPrimaryKeys {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +30,7 @@ impl Default for SystemPrimaryKeys {
 impl SystemPrimaryKeys {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_primary_keys_table().clone(),
+			vtable: SystemCatalog::get_system_primary_keys_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -51,7 +50,6 @@ impl BaseVTable for SystemPrimaryKeys {
 		let mut pk_ids = Vec::new();
 		let mut shape_ids = Vec::new();
 
-		// Read primary keys from storage instead of in-memory catalog
 		let primary_keys = CatalogStore::list_primary_keys(txn)?;
 		for pk_info in primary_keys {
 			pk_ids.push(pk_info.def.id.0);
@@ -59,14 +57,8 @@ impl BaseVTable for SystemPrimaryKeys {
 		}
 
 		let columns = vec![
-			Column {
-				name: Fragment::internal("id"),
-				data: ColumnData::uint8(pk_ids),
-			},
-			Column {
-				name: Fragment::internal("shape_id"),
-				data: ColumnData::uint8(shape_ids),
-			},
+			ColumnWithName::new(Fragment::internal("id"), ColumnBuffer::uint8(pk_ids)),
+			ColumnWithName::new(Fragment::internal("shape_id"), ColumnBuffer::uint8(shape_ids)),
 		];
 
 		self.exhausted = true;
@@ -75,7 +67,7 @@ impl BaseVTable for SystemPrimaryKeys {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

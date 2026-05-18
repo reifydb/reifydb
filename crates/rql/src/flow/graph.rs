@@ -50,7 +50,6 @@ impl<NodeData> DirectedGraph<NodeData> {
 			panic!("Target operator {:?} does not exist", target);
 		}
 
-		// Check for cycles before adding edge
 		if self.creates_cycle(&source, &target) {
 			panic!("Adding edge would create a cycle");
 		}
@@ -90,11 +89,10 @@ impl<NodeData> DirectedGraph<NodeData> {
 
 	pub fn topological_sort(&self) -> Vec<FlowNodeId> {
 		let mut in_degree = BTreeMap::new();
-		// Use a min-heap (via Reverse) to ensure deterministic ordering by node ID
+
 		let mut heap: BinaryHeap<Reverse<FlowNodeId>> = BinaryHeap::new();
 		let mut result = Vec::new();
 
-		// Calculate in-degrees
 		for node_id in self.nodes.keys() {
 			in_degree.insert(*node_id, 0);
 		}
@@ -103,18 +101,15 @@ impl<NodeData> DirectedGraph<NodeData> {
 			*in_degree.get_mut(&edge.target).unwrap() += 1;
 		}
 
-		// Add nodes with no incoming edges to heap (sorted by node ID)
 		for (node_id, &degree) in &in_degree {
 			if degree == 0 {
 				heap.push(Reverse(*node_id));
 			}
 		}
 
-		// Process nodes in deterministic order (smallest node ID first)
 		while let Some(Reverse(node_id)) = heap.pop() {
 			result.push(node_id);
 
-			// Update in-degrees of neighbors
 			if let Some(neighbors) = self.outgoing.get(&node_id) {
 				for neighbor in neighbors {
 					let degree = in_degree.get_mut(neighbor).unwrap();
@@ -179,9 +174,6 @@ impl<NodeData> DirectedGraph<NodeData> {
 	}
 
 	fn creates_cycle(&self, source: &FlowNodeId, target: &FlowNodeId) -> bool {
-		// Check if adding edge from source to target would create a
-		// cycle This happens if there's already a path from target to
-		// source
 		let reachable = self.dfs_from(target);
 		reachable.contains(source)
 	}
@@ -196,14 +188,11 @@ impl<NodeData> DirectedGraph<NodeData> {
 
 	pub fn remove_node(&mut self, node_id: &FlowNodeId) -> Option<NodeData> {
 		if let Some(data) = self.nodes.remove(node_id) {
-			// Remove all edges involving this operator
 			self.edges.retain(|edge| edge.source != *node_id && edge.target != *node_id);
 
-			// Clean up adjacency lists
 			self.outgoing.remove(node_id);
 			self.incoming.remove(node_id);
 
-			// Remove references from other nodes' adjacency lists
 			for (_, outgoing_list) in self.outgoing.iter_mut() {
 				outgoing_list.retain(|id| id != node_id);
 			}

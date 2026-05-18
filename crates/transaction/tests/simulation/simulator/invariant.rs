@@ -41,7 +41,7 @@ impl Invariant for NoDirtyReads {
 		let mut committed_state: HashMap<String, Vec<u8>> = HashMap::new();
 		// Snapshot of committed state at each tx's begin
 		let mut tx_snapshots: HashMap<TxId, HashMap<String, Vec<u8>>> = HashMap::new();
-		// Pending writes per tx: key -> Some(encoded_value) for Set, None for Remove (tombstone)
+		// DeltaEntry writes per tx: key -> Some(encoded_value) for Set, None for Remove (tombstone)
 		let mut pending_writes: HashMap<TxId, HashMap<String, Option<Vec<u8>>>> = HashMap::new();
 
 		for result in &trace.results {
@@ -352,7 +352,7 @@ impl Invariant for SnapshotConsistency {
 		let mut committed_state: BTreeMap<String, String> = BTreeMap::new();
 		// Snapshot at each tx's begin
 		let mut tx_snapshots: HashMap<TxId, BTreeMap<String, String>> = HashMap::new();
-		// Pending writes per tx: key -> Some(value_string) for Set, None for Remove
+		// DeltaEntry writes per tx: key -> Some(value_string) for Set, None for Remove
 		let mut pending_writes: HashMap<TxId, HashMap<String, Option<String>>> = HashMap::new();
 
 		for result in &trace.results {

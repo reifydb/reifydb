@@ -613,6 +613,55 @@ static GLOBAL_EXNDATA: ThreadLocalWrapper<Cell<[u32; 2]>> = ThreadLocalWrapper(C
 #[no_mangle]
 pub static mut __instance_terminated: u32 = 0;
 
+/// Stores the Wasm indirect-function-table index of the registered hard-abort
+/// callback.  Zero means no callback is registered.
+#[cfg(panic = "unwind")]
+#[no_mangle]
+pub static mut __abort_handler: u32 = 0;
+
+/// Register a callback invoked when a hard abort (instance termination) occurs.
+///
+/// Returns the previously registered handler, or `None` if none was set.
+/// This mirrors the `std::panic::set_hook` convention and lets callers chain
+/// or restore handlers.
+///
+/// The callback fires after the terminated flag is set, so any re-entrant
+/// export call from within the handler is immediately blocked.  A throwing
+/// or panicking handler cannot suppress the original error.
+///
+/// **Experimental — only available when built with `panic=unwind`.**
+/// On `panic=abort` builds the no-op stub always returns `None` and the
+/// callback will never fire.
+#[cfg(panic = "unwind")]
+pub fn set_on_abort(f: fn()) -> Option<fn()> {
+    // On wasm32, function pointers are indices into the Wasm
+    // __indirect_function_table. Casting fn() -> usize -> u32 extracts
+    // that index without touching linear memory.
+    unsafe {
+        let prev = __abort_handler;
+        __abort_handler = f as usize as u32;
+        if prev != 0 {
+            Some(core::mem::transmute::<usize, fn()>(prev as usize))
+        } else {
+            None
+        }
+    }
+}
+
+/// No-op stub for `panic=abort` builds — handler will never fire.
+#[cfg(not(panic = "unwind"))]
+pub fn set_on_abort(_f: fn()) -> Option<fn()> {
+    None
+}
+
+/// Schedule the instance for reinitialization before the next export call.
+///
+/// The reinit machinery is automatically emitted when this function is used.
+/// Works with both `panic=unwind` and `panic=abort` builds.
+pub fn schedule_reinit() {
+    crate::__wbindgen_reinit();
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn __wbindgen_exn_store(idx: u32) {
     debug_assert_eq!(GLOBAL_EXNDATA.0.get()[0], 0);

@@ -7,7 +7,6 @@ use radix_trie::TrieKey;
 
 /// Input event
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(docsrs, doc(cfg(feature = "custom-bindings")))]
 pub enum Event {
     /// Wildcard.
     /// Useful if you want to filter out some keys.
@@ -21,7 +20,7 @@ pub enum Event {
 impl Event {
     /// See [`KeyEvent::normalize`]
     pub(crate) fn normalize(mut self) -> Self {
-        if let Event::KeySeq(ref mut keys) = self {
+        if let Self::KeySeq(ref mut keys) = self {
             for key in keys.iter_mut() {
                 *key = KeyEvent::normalize(*key);
             }
@@ -32,7 +31,7 @@ impl Event {
     /// Return `i`th key event
     #[must_use]
     pub fn get(&self, i: usize) -> Option<&KeyEvent> {
-        if let Event::KeySeq(ref ks) = self {
+        if let Self::KeySeq(ref ks) = self {
             ks.get(i)
         } else {
             None
@@ -41,8 +40,8 @@ impl Event {
 }
 
 impl From<KeyEvent> for Event {
-    fn from(k: KeyEvent) -> Event {
-        Event::KeySeq(vec![k])
+    fn from(k: KeyEvent) -> Self {
+        Self::KeySeq(vec![k])
     }
 }
 
@@ -107,21 +106,20 @@ impl KeyEvent {
 impl TrieKey for Event {
     fn encode_bytes(&self) -> Vec<u8> {
         match self {
-            Event::Any => ANY.to_be_bytes().to_vec(),
-            Event::KeySeq(keys) => {
+            Self::Any => ANY.to_be_bytes().to_vec(),
+            Self::KeySeq(keys) => {
                 let mut dst = Vec::with_capacity(keys.len() * 4);
                 for key in keys {
                     dst.extend_from_slice(&key.encode().to_be_bytes());
                 }
                 dst
             }
-            Event::Mouse() => MOUSE.to_be_bytes().to_vec(),
+            Self::Mouse() => MOUSE.to_be_bytes().to_vec(),
         }
     }
 }
 
 /// Event handler
-#[cfg_attr(docsrs, doc(cfg(feature = "custom-bindings")))]
 pub enum EventHandler {
     /// unconditional command
     Simple(Cmd),
@@ -132,13 +130,12 @@ pub enum EventHandler {
 }
 
 impl From<Cmd> for EventHandler {
-    fn from(c: Cmd) -> EventHandler {
-        EventHandler::Simple(c)
+    fn from(c: Cmd) -> Self {
+        Self::Simple(c)
     }
 }
 
 /// Give access to user input.
-#[cfg_attr(docsrs, doc(cfg(feature = "custom-bindings")))]
 pub struct EventContext<'r> {
     mode: EditMode,
     input_mode: InputMode,
@@ -147,7 +144,7 @@ pub struct EventContext<'r> {
 
 impl<'r> EventContext<'r> {
     pub(crate) fn new(is: &InputState, wrt: &'r dyn Refresher) -> Self {
-        EventContext {
+        Self {
             mode: is.mode,
             input_mode: is.input_mode,
             wrt,
@@ -200,7 +197,6 @@ impl<'r> EventContext<'r> {
 ///  * original key pressed (when same command is bound to different key)
 ///  * hint
 ///  * ...
-#[cfg_attr(docsrs, doc(cfg(feature = "custom-bindings")))]
 pub trait ConditionalEventHandler: Send + Sync {
     /// Takes the current input state and
     /// returns the command to be performed or `None` to perform the default
@@ -233,7 +229,7 @@ mod test {
         assert!(sub_result.unwrap().is_some());
         let prefix = Event::from(KeyEvent::ctrl('O'));
         let subtrie = trie.get_raw_descendant(&prefix);
-        assert!(subtrie.is_none())
+        assert!(subtrie.is_none());
     }
 
     #[test]

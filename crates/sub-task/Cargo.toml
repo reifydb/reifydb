@@ -19,5 +19,8 @@ reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 tracing = { workspace = true }
 
+[build-dependencies]
+reifydb-build = { workspace = true }
+
 [dev-dependencies]
 tokio = { workspace = true }

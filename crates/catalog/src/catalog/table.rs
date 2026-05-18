@@ -6,13 +6,13 @@ use reifydb_core::{
 	interface::catalog::{
 		change::CatalogTrackTableChangeOperations,
 		column::{Column, ColumnIndex},
-		id::{NamespaceId, PrimaryKeyId, TableId},
+		id::{ColumnId, NamespaceId, PrimaryKeyId, TableId},
 		property::ColumnPropertyKind,
 		shape::ShapeId,
 		table::Table,
 	},
 	internal,
-	retention::RetentionPolicy,
+	retention::RetentionStrategy,
 };
 use reifydb_transaction::{
 	change::TransactionalTableChanges,
@@ -36,7 +36,6 @@ use crate::{
 	},
 };
 
-/// Column specification for table creation via Catalog API.
 #[derive(Debug, Clone)]
 pub struct TableColumnToCreate {
 	pub name: Fragment,
@@ -47,20 +46,15 @@ pub struct TableColumnToCreate {
 	pub dictionary_id: Option<DictionaryId>,
 }
 
-/// Table creation specification for the Catalog API.
-///
-/// This struct includes `primary_key_columns` which allows specifying primary key
-/// column names at creation time. The Catalog will handle resolving column names
-/// to IDs and creating the primary key record.
 #[derive(Debug, Clone)]
 pub struct TableToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub columns: Vec<TableColumnToCreate>,
-	pub retention_policy: Option<RetentionPolicy>,
-	/// Optional primary key columns specified by name.
-	/// If provided, the Catalog will create a primary key after creating the table.
+	pub retention_strategy: Option<RetentionStrategy>,
+
 	pub primary_key_columns: Option<Vec<String>>,
+	pub underlying: bool,
 }
 
 impl From<TableColumnToCreate> for StoreTableColumnToCreate {
@@ -82,7 +76,8 @@ impl From<TableToCreate> for StoreTableToCreate {
 			name: to_create.name,
 			namespace: to_create.namespace,
 			columns: to_create.columns.into_iter().map(|c| c.into()).collect(),
-			retention_policy: to_create.retention_policy,
+			retention_strategy: to_create.retention_strategy,
+			underlying: to_create.underlying,
 		}
 	}
 }
@@ -92,80 +87,46 @@ impl Catalog {
 	pub fn find_table(&self, txn: &mut Transaction<'_>, id: TableId) -> Result<Option<Table>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				// 1. Check MaterializedCatalog
-				if let Some(table) = self.materialized.find_table_at(id, cmd.version()) {
+				if let Some(table) = self.cache.find_table_at(id, cmd.version()) {
 					return Ok(Some(table));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(table) = CatalogStore::find_table(&mut Transaction::Command(&mut *cmd), id)?
 				{
-					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
+					warn!("Table with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(table));
 				}
 
 				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(table) = TransactionalTableChanges::find_table(admin, id) {
 					return Ok(Some(table.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalTableChanges::is_table_deleted(admin, id) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
-				if let Some(table) = self.materialized.find_table_at(id, admin.version()) {
+				if let Some(table) = self.cache.find_table_at(id, admin.version()) {
 					return Ok(Some(table));
 				}
 
-				// 4. Fall back to storage as defensive measure
 				if let Some(table) = CatalogStore::find_table(&mut Transaction::Admin(&mut *admin), id)?
 				{
-					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
+					warn!("Table with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(table));
 				}
 
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				// 1. Check MaterializedCatalog (skip transactional changes)
-				if let Some(table) = self.materialized.find_table_at(id, qry.version()) {
+				if let Some(table) = self.cache.find_table_at(id, qry.version()) {
 					return Ok(Some(table));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(table) = CatalogStore::find_table(&mut Transaction::Query(&mut *qry), id)? {
-					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
-					return Ok(Some(table));
-				}
-
-				Ok(None)
-			}
-			Transaction::Subscription(sub) => {
-				// 1. Check transactional changes first
-				if let Some(table) = TransactionalTableChanges::find_table(sub, id) {
-					return Ok(Some(table.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalTableChanges::is_table_deleted(sub, id) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(table) = self.materialized.find_table_at(id, sub.version()) {
-					return Ok(Some(table));
-				}
-
-				// 4. Fall back to storage as defensive measure
-				if let Some(table) =
-					CatalogStore::find_table(&mut Transaction::Subscription(&mut *sub), id)?
-				{
-					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
+					warn!("Table with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(table));
 				}
 
@@ -186,15 +147,13 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				// 1. Check MaterializedCatalog
-				if let Some(table) = self.materialized.find_table_at(id, rep.version()) {
+				if let Some(table) = self.cache.find_table_at(id, rep.version()) {
 					return Ok(Some(table));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(table) = CatalogStore::find_table(&mut Transaction::Replica(&mut *rep), id)?
 				{
-					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
+					warn!("Table with ID {:?} found in storage but not in CatalogCache", id);
 					return Ok(Some(table));
 				}
 
@@ -212,21 +171,17 @@ impl Catalog {
 	) -> Result<Option<Table>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				// 1. Check MaterializedCatalog
-				if let Some(table) =
-					self.materialized.find_table_by_name_at(namespace, name, cmd.version())
-				{
+				if let Some(table) = self.cache.find_table_by_name_at(namespace, name, cmd.version()) {
 					return Ok(Some(table));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(table) = CatalogStore::find_table_by_name(
 					&mut Transaction::Command(&mut *cmd),
 					namespace,
 					name,
 				)? {
 					warn!(
-						"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Table '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(table));
@@ -235,33 +190,28 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				// 1. Check transactional changes first
 				if let Some(table) =
 					TransactionalTableChanges::find_table_by_name(admin, namespace, name)
 				{
 					return Ok(Some(table.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalTableChanges::is_table_deleted_by_name(admin, namespace, name) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
-				if let Some(table) =
-					self.materialized.find_table_by_name_at(namespace, name, admin.version())
+				if let Some(table) = self.cache.find_table_by_name_at(namespace, name, admin.version())
 				{
 					return Ok(Some(table));
 				}
 
-				// 4. Fall back to storage as defensive measure
 				if let Some(table) = CatalogStore::find_table_by_name(
 					&mut Transaction::Admin(&mut *admin),
 					namespace,
 					name,
 				)? {
 					warn!(
-						"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Table '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(table));
@@ -270,55 +220,17 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				// 1. Check MaterializedCatalog (skip transactional changes)
-				if let Some(table) =
-					self.materialized.find_table_by_name_at(namespace, name, qry.version())
-				{
+				if let Some(table) = self.cache.find_table_by_name_at(namespace, name, qry.version()) {
 					return Ok(Some(table));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(table) = CatalogStore::find_table_by_name(
 					&mut Transaction::Query(&mut *qry),
 					namespace,
 					name,
 				)? {
 					warn!(
-						"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
-						name, namespace
-					);
-					return Ok(Some(table));
-				}
-
-				Ok(None)
-			}
-			Transaction::Subscription(sub) => {
-				// 1. Check transactional changes first
-				if let Some(table) = TransactionalTableChanges::find_table_by_name(sub, namespace, name)
-				{
-					return Ok(Some(table.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalTableChanges::is_table_deleted_by_name(sub, namespace, name) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(table) =
-					self.materialized.find_table_by_name_at(namespace, name, sub.version())
-				{
-					return Ok(Some(table));
-				}
-
-				// 4. Fall back to storage as defensive measure
-				if let Some(table) = CatalogStore::find_table_by_name(
-					&mut Transaction::Subscription(&mut *sub),
-					namespace,
-					name,
-				)? {
-					warn!(
-						"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Table '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(table));
@@ -345,21 +257,17 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				// 1. Check MaterializedCatalog
-				if let Some(table) =
-					self.materialized.find_table_by_name_at(namespace, name, rep.version())
-				{
+				if let Some(table) = self.cache.find_table_by_name_at(namespace, name, rep.version()) {
 					return Ok(Some(table));
 				}
 
-				// 2. Fall back to storage as defensive measure
 				if let Some(table) = CatalogStore::find_table_by_name(
 					&mut Transaction::Replica(&mut *rep),
 					namespace,
 					name,
 				)? {
 					warn!(
-						"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						"Table '{}' in namespace {:?} found in storage but not in CatalogCache",
 						name, namespace
 					);
 					return Ok(Some(table));
@@ -389,7 +297,6 @@ impl Catalog {
 	) -> Result<Table> {
 		let name = name.into();
 
-		// Try to get the namespace name for the error message
 		let namespace_name = self
 			.find_namespace(txn, namespace)?
 			.map(|ns| ns.name().to_string())
@@ -409,42 +316,45 @@ impl Catalog {
 	#[instrument(name = "catalog::table::create", level = "debug", skip(self, txn, to_create))]
 	pub fn create_table(&self, txn: &mut AdminTransaction, to_create: TableToCreate) -> Result<Table> {
 		let pk_columns = to_create.primary_key_columns.clone();
-
 		let table = CatalogStore::create_table(txn, to_create.into())?;
-		txn.track_table_created(table.clone())?;
+		self.finalize_created_table(txn, table, pk_columns)
+	}
 
+	pub fn create_table_with_id(
+		&self,
+		txn: &mut AdminTransaction,
+		table_id: TableId,
+		to_create: TableToCreate,
+		column_ids: &[ColumnId],
+	) -> Result<Table> {
+		let pk_columns = to_create.primary_key_columns.clone();
+		let table = CatalogStore::create_table_with_id(txn, table_id, to_create.into(), column_ids)?;
+		self.finalize_created_table(txn, table, pk_columns)
+	}
+
+	#[inline]
+	fn finalize_created_table(
+		&self,
+		txn: &mut AdminTransaction,
+		table: Table,
+		pk_columns: Option<Vec<String>>,
+	) -> Result<Table> {
+		txn.track_table_created(table.clone())?;
 		let shape = RowShape::from(table.columns.as_slice());
 		self.get_or_create_row_shape(&mut Transaction::Admin(&mut *txn), shape.fields().to_vec())?;
 
-		if let Some(pk_columns) = pk_columns {
-			let table_columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut *txn), table.id)?;
-			let column_ids = pk_columns
-				.iter()
-				.map(|name| {
-					table_columns.iter().find(|c| &c.name == name).map(|c| c.id).ok_or_else(|| {
-						error!(internal!(
-							"Primary key column '{}' not found in table '{}'",
-							name,
-							table.name
-						))
-					})
-				})
-				.collect::<Result<Vec<_>>>()?;
-
-			let _pk_id = CatalogStore::create_primary_key(
-				txn,
-				PrimaryKeyToCreate {
-					shape: ShapeId::Table(table.id),
-					column_ids,
-				},
-			)?;
-
-			// txn.track_primary_key_created(pk_id, ShapeId::Table(table.id))?;
-
-			return CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table.id);
-		}
-
-		Ok(table)
+		let Some(pk_columns) = pk_columns else {
+			return Ok(table);
+		};
+		let column_ids = resolve_pk_column_ids(&mut Transaction::Admin(&mut *txn), &table, &pk_columns)?;
+		CatalogStore::create_primary_key(
+			txn,
+			PrimaryKeyToCreate {
+				shape: ShapeId::Table(table.id),
+				column_ids,
+			},
+		)?;
+		CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table.id)
 	}
 
 	#[instrument(name = "catalog::table::drop", level = "debug", skip(self, txn))]
@@ -454,19 +364,16 @@ impl Catalog {
 		Ok(())
 	}
 
-	/// Lists all tables in the catalog.
 	#[instrument(name = "catalog::table::list_all", level = "debug", skip(self, txn))]
 	pub fn list_tables_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Table>> {
 		CatalogStore::list_tables_all(txn)
 	}
 
-	/// Lists all columns for a given table.
 	#[instrument(name = "catalog::table::list_columns", level = "debug", skip(self, txn))]
 	pub fn list_columns(&self, txn: &mut Transaction<'_>, table_id: TableId) -> Result<Vec<Column>> {
 		CatalogStore::list_columns(txn, table_id)
 	}
 
-	/// Sets the primary key ID for a table.
 	#[instrument(name = "catalog::table::set_primary_key", level = "debug", skip(self, txn))]
 	pub fn set_table_primary_key(
 		&self,
@@ -477,7 +384,6 @@ impl Catalog {
 		CatalogStore::set_table_primary_key(txn, table_id, primary_key_id)
 	}
 
-	/// Gets the primary key ID for a table.
 	#[instrument(name = "catalog::table::get_pk_id", level = "trace", skip(self, txn))]
 	pub fn get_table_pk_id(&self, txn: &mut Transaction<'_>, table_id: TableId) -> Result<Option<PrimaryKeyId>> {
 		CatalogStore::get_table_pk_id(txn, table_id)
@@ -491,29 +397,25 @@ impl Catalog {
 		column: TableColumnToCreate,
 		namespace_name: &str,
 	) -> Result<Table> {
-		let pre = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
-		let index = ColumnIndex(pre.columns.len() as u8);
-
-		CatalogStore::create_column(
-			txn,
-			table_id,
-			ColumnToCreate {
-				fragment: Some(column.fragment.clone()),
-				namespace_name: namespace_name.to_string(),
-				shape_name: pre.name.clone(),
-				column: column.name.text().to_string(),
-				constraint: column.constraint,
-				properties: column.properties,
-				index,
-				auto_increment: column.auto_increment,
-				dictionary_id: column.dictionary_id,
-			},
-		)?;
-
-		let post = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
-		txn.track_table_updated(pre, post.clone())?;
-
-		Ok(post)
+		alter_table_with_tracking(txn, table_id, |txn, pre| {
+			let index = ColumnIndex(pre.columns.len() as u8);
+			CatalogStore::create_column(
+				txn,
+				table_id,
+				ColumnToCreate {
+					fragment: Some(column.fragment.clone()),
+					namespace_name: namespace_name.to_string(),
+					shape_name: pre.name.clone(),
+					column: column.name.text().to_string(),
+					constraint: column.constraint,
+					properties: column.properties,
+					index,
+					auto_increment: column.auto_increment,
+					dictionary_id: column.dictionary_id,
+				},
+			)?;
+			Ok(())
+		})
 	}
 
 	#[instrument(name = "catalog::table::drop_column", level = "debug", skip(self, txn))]
@@ -524,24 +426,11 @@ impl Catalog {
 		column_name: &str,
 		namespace_name: &str,
 	) -> Result<Table> {
-		let pre = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
-
-		let column = pre.columns.iter().find(|c| c.name == column_name).ok_or_else(|| {
-			CatalogError::ColumnNotFound {
-				kind: CatalogObjectKind::Table,
-				namespace: namespace_name.to_string(),
-				name: pre.name.clone(),
-				column: column_name.to_string(),
-				fragment: Fragment::None,
-			}
-		})?;
-
-		CatalogStore::drop_column(txn, ShapeId::Table(table_id), column.id)?;
-
-		let post = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
-		txn.track_table_updated(pre, post.clone())?;
-
-		Ok(post)
+		alter_table_with_tracking(txn, table_id, |txn, pre| {
+			let column = find_column_or_error(pre, column_name, namespace_name)?;
+			CatalogStore::drop_column(txn, ShapeId::Table(table_id), column.id)?;
+			Ok(())
+		})
 	}
 
 	#[instrument(name = "catalog::table::rename_column", level = "debug", skip(self, txn))]
@@ -553,23 +442,53 @@ impl Catalog {
 		new_name: &str,
 		namespace_name: &str,
 	) -> Result<Table> {
-		let pre = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
-
-		let column = pre.columns.iter().find(|c| c.name == old_name).ok_or_else(|| {
-			CatalogError::ColumnNotFound {
-				kind: CatalogObjectKind::Table,
-				namespace: namespace_name.to_string(),
-				name: pre.name.clone(),
-				column: old_name.to_string(),
-				fragment: Fragment::None,
-			}
-		})?;
-
-		CatalogStore::rename_column(txn, ShapeId::Table(table_id), column.id, new_name)?;
-
-		let post = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
-		txn.track_table_updated(pre, post.clone())?;
-
-		Ok(post)
+		alter_table_with_tracking(txn, table_id, |txn, pre| {
+			let column = find_column_or_error(pre, old_name, namespace_name)?;
+			CatalogStore::rename_column(txn, ShapeId::Table(table_id), column.id, new_name)?;
+			Ok(())
+		})
 	}
+}
+
+#[inline]
+fn alter_table_with_tracking<F>(txn: &mut AdminTransaction, table_id: TableId, mutate: F) -> Result<Table>
+where
+	F: FnOnce(&mut AdminTransaction, &Table) -> Result<()>,
+{
+	let pre = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
+	mutate(txn, &pre)?;
+	let post = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
+	txn.track_table_updated(pre, post.clone())?;
+	Ok(post)
+}
+
+#[inline]
+fn find_column_or_error<'a>(table: &'a Table, column_name: &str, namespace_name: &str) -> Result<&'a Column> {
+	table.columns.iter().find(|c| c.name == column_name).ok_or_else(|| {
+		CatalogError::ColumnNotFound {
+			kind: CatalogObjectKind::Table,
+			namespace: namespace_name.to_string(),
+			name: table.name.clone(),
+			column: column_name.to_string(),
+			fragment: Fragment::None,
+		}
+		.into()
+	})
+}
+
+#[inline]
+fn resolve_pk_column_ids(
+	txn: &mut Transaction<'_>,
+	table: &Table,
+	pk_column_names: &[String],
+) -> Result<Vec<ColumnId>> {
+	let table_columns = CatalogStore::list_columns(txn, table.id)?;
+	pk_column_names
+		.iter()
+		.map(|name| {
+			table_columns.iter().find(|c| &c.name == name).map(|c| c.id).ok_or_else(|| {
+				error!(internal!("Primary key column '{}' not found in table '{}'", name, table.name))
+			})
+		})
+		.collect()
 }

@@ -14,24 +14,19 @@ use crate::{CatalogStore, Result, store::shape::drop::drop_shape_metadata};
 
 impl CatalogStore {
 	pub(crate) fn drop_ringbuffer(txn: &mut AdminTransaction, ringbuffer: RingBufferId) -> Result<()> {
-		// First, find the ringbuffer to get its namespace and primary key
 		let pk_id = if let Some(ringbuffer_def) =
 			Self::find_ringbuffer(&mut Transaction::Admin(&mut *txn), ringbuffer)?
 		{
-			// Remove the namespace-ringbuffer link (secondary index)
 			txn.remove(&NamespaceRingBufferKey::encoded(ringbuffer_def.namespace, ringbuffer))?;
 			ringbuffer_def.primary_key.as_ref().map(|pk| pk.id)
 		} else {
 			None
 		};
 
-		// Clean up all associated metadata (columns, policies, sequences, pk, retention)
 		drop_shape_metadata(txn, ringbuffer.into(), pk_id)?;
 
-		// Remove the ringbuffer metadata
 		txn.remove(&RingBufferMetadataKey::encoded(ringbuffer))?;
 
-		// Remove the ringbuffer definition
 		txn.remove(&RingBufferKey::encoded(ringbuffer))?;
 
 		Ok(())
@@ -42,7 +37,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::{
 		interface::catalog::{id::RingBufferId, shape::ShapeId},
-		retention::RetentionPolicy,
+		retention::RetentionStrategy,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -54,7 +49,7 @@ pub mod tests {
 	use crate::{
 		CatalogStore,
 		store::{
-			retention_policy::create::create_shape_retention_policy,
+			retention_strategy::create::create_shape_retention_strategy,
 			ringbuffer::create::RingBufferColumnToCreate,
 		},
 		test_utils::{create_ringbuffer, ensure_test_namespace, ensure_test_ringbuffer},
@@ -118,16 +113,16 @@ pub mod tests {
 			],
 		);
 
-		// Add retention policy
-		create_shape_retention_policy(&mut txn, ShapeId::RingBuffer(rb.id), &RetentionPolicy::KeepForever)
+		// Add retention strategy
+		create_shape_retention_strategy(&mut txn, ShapeId::RingBuffer(rb.id), &RetentionStrategy::KeepForever)
 			.unwrap();
 
 		// Verify columns exist before drop
 		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), rb.id).unwrap();
 		assert_eq!(columns.len(), 2);
 
-		// Verify retention policy exists before drop
-		let policy = CatalogStore::find_shape_retention_policy(
+		// Verify retention strategy exists before drop
+		let policy = CatalogStore::find_shape_retention_strategy(
 			&mut Transaction::Admin(&mut txn),
 			ShapeId::RingBuffer(rb.id),
 		)
@@ -141,8 +136,8 @@ pub mod tests {
 		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), rb.id).unwrap();
 		assert!(columns.is_empty());
 
-		// Verify retention policy is cleaned up
-		let policy = CatalogStore::find_shape_retention_policy(
+		// Verify retention strategy is cleaned up
+		let policy = CatalogStore::find_shape_retention_strategy(
 			&mut Transaction::Admin(&mut txn),
 			ShapeId::RingBuffer(rb.id),
 		)

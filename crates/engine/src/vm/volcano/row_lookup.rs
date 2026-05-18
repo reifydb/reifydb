@@ -1,13 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Row-number optimized access nodes for O(1) and O(k) lookups.
-//!
-//! These nodes bypass full table scans when filtering by row number:
-//! - `RowPointLookupNode`: Single row O(1) lookup
-//! - `RowListLookupNode`: Multiple discrete rows O(k) lookup
-//! - `RowRangeScanNode`: Row number range scan
-
 use std::{iter, sync::Arc};
 
 use reifydb_core::{
@@ -29,7 +22,6 @@ use crate::{
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
-/// O(1) point lookup by row number
 pub(crate) struct RowPointLookupNode {
 	source: ResolvedShape,
 	row_number: u64,
@@ -85,10 +77,9 @@ impl QueryNode for RowPointLookupNode {
 		}
 		self.exhausted = true;
 
-		let shape_id = get_object_id(&self.source)?;
+		let shape_id = get_shape_id(&self.source)?;
 		let encoded_key = RowKey::encoded(shape_id, RowNumber(self.row_number));
 
-		// O(1) point lookup
 		if let Some(multi_values) = rx.get(&encoded_key)? {
 			let mut columns = columns_from_shape(&self.source);
 			let shape = self.get_or_load_shape(rx, &multi_values.row)?;
@@ -96,7 +87,6 @@ impl QueryNode for RowPointLookupNode {
 
 			Ok(Some(columns))
 		} else {
-			// Row not found - return empty result
 			Ok(None)
 		}
 	}
@@ -106,7 +96,6 @@ impl QueryNode for RowPointLookupNode {
 	}
 }
 
-/// O(k) list lookup by row numbers
 pub(crate) struct RowListLookupNode {
 	source: ResolvedShape,
 	row_numbers: Vec<u64>,
@@ -165,28 +154,24 @@ impl QueryNode for RowListLookupNode {
 			return Ok(None);
 		}
 
-		let shape_id = get_object_id(&self.source)?;
+		let shape_id = get_shape_id(&self.source)?;
 		let mut batch_rows = Vec::new();
 		let mut found_row_numbers = Vec::new();
 
-		// Process up to batch_size rows
 		let end_index = (self.current_index + batch_size).min(self.row_numbers.len());
 
 		for &row_num in &self.row_numbers[self.current_index..end_index] {
 			let encoded_key = RowKey::encoded(shape_id, RowNumber(row_num));
 
-			// O(1) point lookup for each row
 			if let Some(multi_values) = rx.get(&encoded_key)? {
 				batch_rows.push(multi_values.row);
 				found_row_numbers.push(RowNumber(row_num));
 			}
-			// Skip rows that don't exist
 		}
 
 		self.current_index = end_index;
 
 		if batch_rows.is_empty() {
-			// If no rows found in this batch but more to process, try next batch
 			if self.current_index < self.row_numbers.len() {
 				return self.next(rx, ctx);
 			}
@@ -205,7 +190,6 @@ impl QueryNode for RowListLookupNode {
 	}
 }
 
-/// Range scan by row numbers (start..=end)
 pub(crate) struct RowRangeScanNode {
 	source: ResolvedShape,
 	#[allow(dead_code)]
@@ -269,11 +253,10 @@ impl QueryNode for RowRangeScanNode {
 			return Ok(None);
 		}
 
-		let shape_id = get_object_id(&self.source)?;
+		let shape_id = get_shape_id(&self.source)?;
 		let mut batch_rows = Vec::new();
 		let mut found_row_numbers = Vec::new();
 
-		// Fetch up to batch_size rows in the range
 		let batch_end = (self.current_row + batch_size as u64 - 1).min(self.end);
 
 		for row_num in self.current_row..=batch_end {
@@ -283,7 +266,6 @@ impl QueryNode for RowRangeScanNode {
 				batch_rows.push(multi_values.row);
 				found_row_numbers.push(RowNumber(row_num));
 			}
-			// Skip rows that don't exist (sparse storage)
 		}
 
 		self.current_row = batch_end + 1;
@@ -292,7 +274,6 @@ impl QueryNode for RowRangeScanNode {
 		}
 
 		if batch_rows.is_empty() {
-			// No rows found in this range segment
 			if !self.exhausted {
 				return self.next(rx, ctx);
 			}
@@ -310,8 +291,6 @@ impl QueryNode for RowRangeScanNode {
 		Some(self.headers.clone())
 	}
 }
-
-// Helper functions
 
 fn build_headers_and_storage_types(source: &ResolvedShape) -> Result<(ColumnHeaders, Vec<Type>)> {
 	let columns = match source {
@@ -332,7 +311,7 @@ fn build_headers_and_storage_types(source: &ResolvedShape) -> Result<(ColumnHead
 	Ok((headers, storage_types))
 }
 
-fn get_object_id(source: &ResolvedShape) -> Result<ShapeId> {
+fn get_shape_id(source: &ResolvedShape) -> Result<ShapeId> {
 	match source {
 		ResolvedShape::Table(table) => Ok(table.def().id.into()),
 		ResolvedShape::View(view) => Ok(view.def().underlying_id()),
@@ -343,9 +322,9 @@ fn get_object_id(source: &ResolvedShape) -> Result<ShapeId> {
 
 fn columns_from_shape(source: &ResolvedShape) -> Columns {
 	match source {
-		ResolvedShape::Table(table) => Columns::from_resolved_table(table),
-		ResolvedShape::View(view) => Columns::from_resolved_view(view),
-		ResolvedShape::RingBuffer(rb) => Columns::from_ringbuffer(rb),
+		ResolvedShape::Table(table) => Columns::from_catalog_columns(table.columns()),
+		ResolvedShape::View(view) => Columns::from_catalog_columns(view.columns()),
+		ResolvedShape::RingBuffer(rb) => Columns::from_catalog_columns(rb.columns()),
 		_ => Columns::empty(),
 	}
 }

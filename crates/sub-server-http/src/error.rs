@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! HTTP error handling and response formatting.
-//!
-//! This module provides error types that implement Axum's `IntoResponse` trait
-//! for consistent error responses across all HTTP endpoints.
-
 use std::{error, fmt};
 
 use axum::{
@@ -18,12 +13,10 @@ use reifydb_type::error::Diagnostic;
 use serde::Serialize;
 use tracing::{debug, error};
 
-/// JSON error response body.
 #[derive(Debug, Serialize)]
 pub struct ErrorResponse {
-	/// Human-readable error message.
 	pub error: String,
-	/// Machine-readable error code.
+
 	pub code: String,
 }
 
@@ -36,25 +29,25 @@ impl ErrorResponse {
 	}
 }
 
-/// JSON diagnostic error response body (matches WS format).
 #[derive(Debug, Serialize)]
 pub struct DiagnosticResponse {
-	/// Full diagnostic information.
 	pub diagnostic: Diagnostic,
 }
 
-/// Application error type that converts to HTTP responses.
 #[derive(Debug)]
 pub enum AppError {
-	/// Authentication error.
 	Auth(AuthError),
-	/// Query/command execution error.
+
 	Execute(ExecuteError),
-	/// Request parsing error.
+
 	BadRequest(String),
-	/// Invalid parameter error.
+
 	InvalidParams(String),
-	/// Internal server error.
+
+	NotFound(String),
+
+	MethodNotAllowed(String),
+
 	Internal(String),
 }
 
@@ -77,6 +70,8 @@ impl fmt::Display for AppError {
 			AppError::Execute(e) => write!(f, "Execution error: {}", e),
 			AppError::BadRequest(msg) => write!(f, "Bad request: {}", msg),
 			AppError::InvalidParams(msg) => write!(f, "Invalid params: {}", msg),
+			AppError::NotFound(msg) => write!(f, "Not found: {}", msg),
+			AppError::MethodNotAllowed(msg) => write!(f, "Method not allowed: {}", msg),
 			AppError::Internal(msg) => write!(f, "Internal error: {}", msg),
 		}
 	}
@@ -86,22 +81,25 @@ impl error::Error for AppError {}
 
 impl IntoResponse for AppError {
 	fn into_response(self) -> Response {
-		// Handle engine errors specially - they have full diagnostic info
 		if let AppError::Execute(ExecuteError::Engine {
 			diagnostic,
-			statement,
+			rql,
 		}) = self
 		{
 			debug!("Engine error: {}", diagnostic.message);
-			// Clone the diagnostic and attach the statement
 			let mut diag = (*diagnostic).clone();
-			if diag.statement.is_none() && !statement.is_empty() {
-				diag.with_statement(statement);
+			if diag.rql.is_none() && !rql.is_empty() {
+				diag.with_rql(rql);
 			}
+			let status = if diag.code.starts_with("POLICY_") {
+				StatusCode::FORBIDDEN
+			} else {
+				StatusCode::BAD_REQUEST
+			};
 			let body = Json(DiagnosticResponse {
 				diagnostic: diag,
 			});
-			return (StatusCode::BAD_REQUEST, body).into_response();
+			return (status, body).into_response();
 		}
 
 		let (status, code, message) = match &self {
@@ -140,7 +138,6 @@ impl IntoResponse for AppError {
 			AppError::Execute(ExecuteError::Engine {
 				..
 			}) => {
-				// Already handled above
 				unreachable!()
 			}
 			AppError::BadRequest(msg) => {
@@ -150,6 +147,14 @@ impl IntoResponse for AppError {
 			AppError::InvalidParams(msg) => {
 				let body = Json(ErrorResponse::new("INVALID_PARAMS", msg.clone()));
 				return (StatusCode::BAD_REQUEST, body).into_response();
+			}
+			AppError::NotFound(msg) => {
+				let body = Json(ErrorResponse::new("NOT_FOUND", msg.clone()));
+				return (StatusCode::NOT_FOUND, body).into_response();
+			}
+			AppError::MethodNotAllowed(msg) => {
+				let body = Json(ErrorResponse::new("METHOD_NOT_ALLOWED", msg.clone()));
+				return (StatusCode::METHOD_NOT_ALLOWED, body).into_response();
 			}
 			AppError::Internal(msg) => {
 				error!("Internal error: {}", msg);

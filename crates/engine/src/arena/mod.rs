@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Bumpalo-backed arena allocator used by the engine for per-request scratch storage. Plans, intermediate column
+//! buffers, and the bit-vectors that drive selection live in an arena tied to the request lifetime so the engine
+//! can release everything in one bump-reset rather than tracking individual allocations.
+
 use std::{
 	fmt::{self, Debug},
 	ops::Deref,
@@ -140,12 +144,12 @@ impl<'bump> PartialEq for BumpBitVec<'bump> {
 		if self.len != other.len {
 			return false;
 		}
-		// Compare full bytes
+
 		let full_bytes = self.len / 8;
 		if self.bits[..full_bytes] != other.bits[..full_bytes] {
 			return false;
 		}
-		// Compare remaining bits in last partial byte
+
 		let remainder = self.len % 8;
 		if remainder > 0 {
 			let mask = (1u8 << remainder) - 1;
@@ -215,7 +219,6 @@ impl<'bump> DataBitVec for BumpBitVec<'bump> {
 	fn count_ones(&self) -> usize {
 		let mut count: usize = self.bits.iter().map(|&byte: &u8| byte.count_ones() as usize).sum();
 
-		// Adjust for partial last byte
 		let full_bytes = self.len / 8;
 		let remainder_bits = self.len % 8;
 
@@ -598,7 +601,7 @@ mod tests {
 			assert_eq!(container.get(0), Some(true));
 			assert_eq!(container.get(1), Some(false));
 			// push_default on a bare container pushes false;
-			// nullability is tracked by the Option wrapper at the ColumnData level.
+			// nullability is tracked by the Option wrapper at the ColumnBuffer level.
 			assert_eq!(container.get(2), Some(false));
 		}
 

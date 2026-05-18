@@ -17,12 +17,10 @@ impl RowShape {
 		let field = &self.fields()[index];
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Utf8);
 
-		// Read offset and length from static section
 		let ref_slice = &row.as_slice()[field.offset as usize..field.offset as usize + 8];
 		let offset = u32::from_le_bytes([ref_slice[0], ref_slice[1], ref_slice[2], ref_slice[3]]) as usize;
 		let length = u32::from_le_bytes([ref_slice[4], ref_slice[5], ref_slice[6], ref_slice[7]]) as usize;
 
-		// Get string from dynamic section
 		let dynamic_start = self.dynamic_section_start();
 		let string_start = dynamic_start + offset;
 		let string_slice = &row.as_slice()[string_start..string_start + length];

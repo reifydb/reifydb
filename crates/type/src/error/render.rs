@@ -46,15 +46,15 @@ impl DefaultRenderer {
 			let fragment = text;
 			let line = line.0;
 			let col = column.0;
-			let statement = diagnostic.statement.as_deref().unwrap_or("");
+			let rql = diagnostic.rql.as_deref().unwrap_or("");
 
 			let _ = writeln!(output, "LOCATION");
 			let _ = writeln!(output, "  line {}, column {}", line, col);
 			let _ = writeln!(output);
 
-			let line_content = get_line(statement, line);
+			let line_content = get_line(rql, line);
 
-			let _ = writeln!(output, "CODE");
+			let _ = writeln!(output, "RQL");
 			let _ = writeln!(output, "  {} │ {}", line, line_content);
 			let fragment_start = line_content.find(fragment.as_ref()).unwrap_or(col as usize);
 			let _ = writeln!(output, "    │ {}{}", " ".repeat(fragment_start), "~".repeat(fragment.len()));
@@ -72,7 +72,6 @@ impl DefaultRenderer {
 			let _ = writeln!(output);
 		}
 
-		// Render operator chain if present
 		if let Some(chain) = &diagnostic.operator_chain
 			&& !chain.is_empty()
 		{
@@ -122,10 +121,8 @@ impl DefaultRenderer {
 			"↳ "
 		};
 
-		// Main error line
 		let _ = writeln!(output, "{}{} Error {}: {}", indent, prefix, diagnostic.code, diagnostic.message);
 
-		// Location info
 		if let Fragment::Statement {
 			line,
 			column,
@@ -136,13 +133,13 @@ impl DefaultRenderer {
 			let fragment = text;
 			let line = line.0;
 			let col = column.0;
-			let statement = diagnostic.statement.as_deref().unwrap_or("");
+			let rql = diagnostic.rql.as_deref().unwrap_or("");
 
 			let _ = writeln!(
 				output,
 				"{}  at {} (line {}, column {})",
 				indent,
-				if statement.is_empty() {
+				if rql.is_empty() {
 					"unknown".to_string()
 				} else {
 					format!("\"{}\"", fragment)
@@ -152,8 +149,7 @@ impl DefaultRenderer {
 			);
 			let _ = writeln!(output);
 
-			// Code visualization
-			let line_content = get_line(statement, line);
+			let line_content = get_line(rql, line);
 
 			let _ = writeln!(output, "{}  {} │ {}", indent, line, line_content);
 			let fragment_start = line_content.find(fragment.as_ref()).unwrap_or(col as usize);
@@ -185,29 +181,24 @@ impl DefaultRenderer {
 			let _ = writeln!(output);
 		}
 
-		// Handle nested cause first (if exists)
 		if let Some(cause) = &diagnostic.cause {
 			self.render_nested(output, cause, depth + 1);
 		}
 
-		// Help section
 		if let Some(help) = &diagnostic.help {
 			let _ = writeln!(output, "{}  help: {}", indent, help);
 		}
 
-		// Column info
 		if let Some(col) = &diagnostic.column {
 			let _ = writeln!(output, "{}  column `{}` is of type `{}`", indent, col.name, col.r#type);
 		}
 
-		// Notes
 		if !diagnostic.notes.is_empty() {
 			for note in &diagnostic.notes {
 				let _ = writeln!(output, "{}  note: {}", indent, note);
 			}
 		}
 
-		// Add spacing between diagnostic levels
 		if depth > 0 {
 			let _ = writeln!(output);
 		}

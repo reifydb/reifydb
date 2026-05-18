@@ -14,7 +14,7 @@ use crate::{
 		OperationType::{Create, Delete},
 		TransactionalSourceChanges,
 	},
-	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
+	transaction::admin::AdminTransaction,
 };
 
 impl CatalogTrackSourceChangeOperations for AdminTransaction {
@@ -90,33 +90,5 @@ impl TransactionalSourceChanges for AdminTransaction {
 					.map(|s| s.namespace == namespace && s.name == name)
 					.unwrap_or(false)
 		})
-	}
-}
-
-impl CatalogTrackSourceChangeOperations for SubscriptionTransaction {
-	fn track_source_created(&mut self, source: Source) -> Result<()> {
-		self.inner.track_source_created(source)
-	}
-
-	fn track_source_deleted(&mut self, source: Source) -> Result<()> {
-		self.inner.track_source_deleted(source)
-	}
-}
-
-impl TransactionalSourceChanges for SubscriptionTransaction {
-	fn find_source(&self, id: SourceId) -> Option<&Source> {
-		self.inner.find_source(id)
-	}
-
-	fn find_source_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Source> {
-		self.inner.find_source_by_name(namespace, name)
-	}
-
-	fn is_source_deleted(&self, id: SourceId) -> bool {
-		self.inner.is_source_deleted(id)
-	}
-
-	fn is_source_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
-		self.inner.is_source_deleted_by_name(namespace, name)
 	}
 }

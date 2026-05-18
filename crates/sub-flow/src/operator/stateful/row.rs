@@ -16,27 +16,17 @@ use reifydb_type::{Result, util::cowvec::CowVec, value::row_number::RowNumber};
 use crate::{
 	operator::stateful::{
 		counter::{Counter, CounterDirection},
-		utils::{internal_state_get, internal_state_set},
+		utils::{internal_state_get, internal_state_remove, internal_state_set},
 	},
 	transaction::FlowTransaction,
 };
 
-/// Provides stable encoded numbers for keys with automatic Insert/Update detection
-///
-/// This component maintains:
-/// - A sequential counter for generating new encoded numbers
-/// - A mapping from keys to their assigned encoded numbers
-///
-/// When a key is seen for the first time, it gets a new encoded number and returns
-/// true. When a key is seen again, it returns the existing encoded number and
-/// false.
 pub struct RowNumberProvider {
 	node: FlowNodeId,
 	counter: Counter,
 }
 
 impl RowNumberProvider {
-	/// Create a new RowNumberProvider for the given operator
 	pub fn new(node: FlowNodeId) -> Self {
 		Self {
 			node,
@@ -44,9 +34,6 @@ impl RowNumberProvider {
 		}
 	}
 
-	/// Get or create RowNumbers for multiple keys
-	/// Returns Vec<(RowNumber, is_new)> in the same order as input keys
-	/// where is_new indicates if the row number was newly created
 	pub fn get_or_create_row_numbers<'a, I>(
 		&self,
 		txn: &mut FlowTransaction,
@@ -74,11 +61,9 @@ impl RowNumberProvider {
 
 			let new_row_number = self.counter.next(txn)?;
 
-			// Save the mapping from key to encoded number
 			let row_num_bytes = new_row_number.0.to_be_bytes().to_vec();
 			internal_state_set(self.node, txn, &map_key, EncodedRow(CowVec::new(row_num_bytes)))?;
 
-			// Save the reverse mapping from row_number to key
 			let reverse_key = self.make_reverse_map_key(new_row_number);
 			internal_state_set(
 				self.node,
@@ -93,9 +78,6 @@ impl RowNumberProvider {
 		Ok(results)
 	}
 
-	/// Get or create a RowNumber for a given key
-	/// Returns (RowNumber, is_new) where is_new indicates if it was newly
-	/// created
 	pub fn get_or_create_row_number(
 		&self,
 		txn: &mut FlowTransaction,
@@ -104,7 +86,42 @@ impl RowNumberProvider {
 		Ok(self.get_or_create_row_numbers(txn, once(key))?.into_iter().next().unwrap())
 	}
 
-	/// Get the original key for a given row number (reverse lookup)
+	pub fn get_row_number(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<Option<RowNumber>> {
+		let map_key = self.make_map_key(key);
+		match internal_state_get(self.node, txn, &map_key)? {
+			Some(existing_row) => {
+				let bytes = existing_row.as_slice();
+				if bytes.len() < 8 {
+					return Ok(None);
+				}
+				let row_num = u64::from_be_bytes([
+					bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+				]);
+				Ok(Some(RowNumber(row_num)))
+			}
+			None => Ok(None),
+		}
+	}
+
+	pub fn remove_for_key(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<bool> {
+		let map_key = self.make_map_key(key);
+		let Some(existing_row) = internal_state_get(self.node, txn, &map_key)? else {
+			return Ok(false);
+		};
+		let bytes = existing_row.as_slice();
+		if bytes.len() < 8 {
+			internal_state_remove(self.node, txn, &map_key)?;
+			return Ok(true);
+		}
+		let row_num = u64::from_be_bytes([
+			bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+		]);
+		let reverse_key = self.make_reverse_map_key(RowNumber(row_num));
+		internal_state_remove(self.node, txn, &map_key)?;
+		internal_state_remove(self.node, txn, &reverse_key)?;
+		Ok(true)
+	}
+
 	pub fn get_key_for_row_number(
 		&self,
 		txn: &mut FlowTransaction,
@@ -118,29 +135,24 @@ impl RowNumberProvider {
 		}
 	}
 
-	/// Create a mapping key for a given encoded key (node_id added by FlowNodeInternalStateKey wrapper)
 	fn make_map_key(&self, key: &EncodedKey) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(b'M'); // 'M' for mapping
+		serializer.extend_u8(b'M');
 		serializer.extend_bytes(key.as_ref());
-		EncodedKey::new(serializer.finish())
+		serializer.finish()
 	}
 
-	/// Create a reverse mapping key for a given row number (node_id added by FlowNodeInternalStateKey wrapper)
 	fn make_reverse_map_key(&self, row_number: RowNumber) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(b'R'); // 'R' for reverse mapping
+		serializer.extend_u8(b'R');
 		serializer.extend_u64(row_number.0);
-		EncodedKey::new(serializer.finish())
+		serializer.finish()
 	}
 
-	/// Remove all encoded number mappings with the given prefix
-	/// This is useful for cleaning up all join results from a specific left encoded
 	pub fn remove_by_prefix(&self, txn: &mut FlowTransaction, key_prefix: &[u8]) -> Result<()> {
-		// Create the prefix for scanning
 		let mut prefix = Vec::new();
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(b'M'); // 'M' for mapping
+		serializer.extend_u8(b'M');
 		prefix.extend_from_slice(&serializer.finish());
 		prefix.extend_from_slice(key_prefix);
 
@@ -169,6 +181,7 @@ impl RowNumberProvider {
 pub mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::common::CommitVersion;
+	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 
 	use super::*;
@@ -177,8 +190,13 @@ pub mod tests {
 	#[test]
 	fn test_first_row_number() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		let key = test_key("first");
@@ -191,8 +209,13 @@ pub mod tests {
 	#[test]
 	fn test_duplicate_key_same_row_number() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		let key = test_key("duplicate");
@@ -214,8 +237,13 @@ pub mod tests {
 	#[test]
 	fn test_sequential_row_numbers() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create multiple unique keys
@@ -231,8 +259,13 @@ pub mod tests {
 	#[test]
 	fn test_mixed_new_and_existing() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create some keys
@@ -269,8 +302,13 @@ pub mod tests {
 	#[test]
 	fn test_multiple_providers_isolated() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let provider1 = RowNumberProvider::new(FlowNodeId(1));
 		let provider2 = RowNumberProvider::new(FlowNodeId(2));
 
@@ -296,8 +334,13 @@ pub mod tests {
 	#[test]
 	fn test_counter_persistence() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create some encoded numbers
@@ -319,8 +362,13 @@ pub mod tests {
 	#[test]
 	fn test_large_row_numbers() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create many encoded numbers
@@ -347,8 +395,13 @@ pub mod tests {
 	#[test]
 	fn test_mixed_existing_and_new_keys() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		// Create 3 initial keys to establish existing row numbers
@@ -426,5 +479,111 @@ pub mod tests {
 
 		let reverse_key2 = provider.get_key_for_row_number(&mut txn, RowNumber(2)).unwrap();
 		assert_eq!(reverse_key2, Some(key2));
+	}
+
+	#[test]
+	fn test_get_row_number_returns_none_for_unknown() {
+		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
+		let provider = RowNumberProvider::new(FlowNodeId(1));
+
+		let key = test_key("never_seen");
+		assert_eq!(provider.get_row_number(&mut txn, &key).unwrap(), None);
+	}
+
+	#[test]
+	fn test_get_row_number_returns_existing_without_creating() {
+		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
+		let provider = RowNumberProvider::new(FlowNodeId(1));
+
+		let key = test_key("lookup_hit");
+		let (created, was_new) = provider.get_or_create_row_number(&mut txn, &key).unwrap();
+		assert!(was_new);
+
+		let looked_up = provider.get_row_number(&mut txn, &key).unwrap();
+		assert_eq!(looked_up, Some(created));
+
+		let another = test_key("another_missing");
+		assert_eq!(provider.get_row_number(&mut txn, &another).unwrap(), None);
+		let (after, was_new_after) = provider.get_or_create_row_number(&mut txn, &another).unwrap();
+		assert!(was_new_after);
+		assert_ne!(after, created);
+	}
+
+	#[test]
+	fn test_remove_for_key_clears_both_indices() {
+		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
+		let provider = RowNumberProvider::new(FlowNodeId(1));
+
+		let key = test_key("to_remove");
+		let (assigned, _) = provider.get_or_create_row_number(&mut txn, &key).unwrap();
+		assert_eq!(provider.get_key_for_row_number(&mut txn, assigned).unwrap(), Some(key.clone()));
+
+		let removed = provider.remove_for_key(&mut txn, &key).unwrap();
+		assert!(removed);
+
+		assert_eq!(provider.get_row_number(&mut txn, &key).unwrap(), None);
+		assert_eq!(provider.get_key_for_row_number(&mut txn, assigned).unwrap(), None);
+	}
+
+	#[test]
+	fn test_remove_for_key_is_idempotent() {
+		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
+		let provider = RowNumberProvider::new(FlowNodeId(1));
+
+		let key = test_key("absent");
+		assert!(!provider.remove_for_key(&mut txn, &key).unwrap());
+
+		let (_assigned, _) = provider.get_or_create_row_number(&mut txn, &key).unwrap();
+		assert!(provider.remove_for_key(&mut txn, &key).unwrap());
+		assert!(!provider.remove_for_key(&mut txn, &key).unwrap());
+	}
+
+	#[test]
+	fn test_remove_for_key_then_recreate_assigns_new_number() {
+		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
+		let provider = RowNumberProvider::new(FlowNodeId(1));
+
+		let key = test_key("recycled");
+		let (first, _) = provider.get_or_create_row_number(&mut txn, &key).unwrap();
+		assert!(provider.remove_for_key(&mut txn, &key).unwrap());
+
+		let (second, was_new) = provider.get_or_create_row_number(&mut txn, &key).unwrap();
+		assert!(was_new, "after removal the next mapping should be created fresh");
+		assert_ne!(first, second, "counter must keep advancing, not recycle old row numbers");
 	}
 }

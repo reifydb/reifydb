@@ -3,7 +3,7 @@
 
 use std::{error::Error, future::Future, sync::Arc, time::Duration};
 
-use reifydb_client::{Frame, FrameColumn, GrpcClient, GrpcSubscription, Value};
+use reifydb_client::{Frame, FrameColumn, GrpcChange, GrpcClient, GrpcSubscription, SubscriptionConfig, WireFormat};
 use tokio::{runtime::Runtime, time::timeout};
 
 use crate::common::{cleanup_server, create_server_instance, start_server_and_get_grpc_port};
@@ -39,16 +39,14 @@ pub async fn create_test_table(
 	Ok(())
 }
 
-/// Wait for a change with timeout
-pub async fn recv_with_timeout(sub: &mut GrpcSubscription, timeout_ms: u64) -> Option<Vec<Frame>> {
+pub async fn recv_with_timeout(sub: &mut GrpcSubscription, timeout_ms: u64) -> Option<GrpcChange> {
 	match timeout(Duration::from_millis(timeout_ms), sub.recv()).await {
 		Ok(result) => result,
 		Err(_) => None,
 	}
 }
 
-/// Wait for multiple changes with timeout
-pub async fn recv_multiple_with_timeout(sub: &mut GrpcSubscription, count: usize, timeout_ms: u64) -> Vec<Vec<Frame>> {
+pub async fn recv_multiple_with_timeout(sub: &mut GrpcSubscription, count: usize, timeout_ms: u64) -> Vec<GrpcChange> {
 	let mut results = Vec::new();
 	let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms);
 
@@ -59,7 +57,7 @@ pub async fn recv_multiple_with_timeout(sub: &mut GrpcSubscription, count: usize
 		}
 
 		match timeout(remaining, sub.recv()).await {
-			Ok(Some(frames)) => results.push(frames),
+			Ok(Some(change)) => results.push(change),
 			Ok(None) => break,
 			Err(_) => break,
 		}
@@ -68,17 +66,8 @@ pub async fn recv_multiple_with_timeout(sub: &mut GrpcSubscription, count: usize
 	results
 }
 
-/// Find a column by name in a Frame
 pub fn find_column<'a>(frame: &'a Frame, name: &str) -> Option<&'a FrameColumn> {
 	frame.columns.iter().find(|c| c.name == name)
-}
-
-/// Get the _op column value from a change frame (1=insert, 2=update, 3=delete)
-pub fn get_op_value(frame: &Frame, row_index: usize) -> Option<u8> {
-	find_column(frame, "_op").map(|col| match col.data.get_value(row_index) {
-		Value::Uint1(v) => v,
-		other => panic!("Expected Uint1 for _op, got {:?}", other),
-	})
 }
 
 /// Test harness for subscription tests that abstracts away boilerplate
@@ -97,7 +86,9 @@ impl SubscriptionTestHarness {
 		let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 		runtime.block_on(async {
-			let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port)).await.unwrap();
+			let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto)
+				.await
+				.unwrap();
 			client.authenticate("mysecrettoken");
 
 			let ctx = TestContext::new(client);
@@ -138,8 +129,12 @@ impl TestContext {
 	}
 
 	/// Subscribe to a table, returns a GrpcSubscription
-	pub async fn subscribe(&self, table: &str) -> Result<GrpcSubscription, Box<dyn Error>> {
-		let sub = self.client.subscribe(&format!("from test::{}", table)).await?;
+	pub async fn subscribe(
+		&self,
+		table: &str,
+		config: SubscriptionConfig,
+	) -> Result<GrpcSubscription, Box<dyn Error>> {
+		let sub = self.client.subscribe(&format!("from test::{}", table), config).await?;
 		Ok(sub)
 	}
 
@@ -163,8 +158,7 @@ impl TestContext {
 		Ok(())
 	}
 
-	/// Receive next change notification with 5s timeout
-	pub async fn recv(sub: &mut GrpcSubscription) -> Option<Vec<Frame>> {
+	pub async fn recv(sub: &mut GrpcSubscription) -> Option<GrpcChange> {
 		recv_with_timeout(sub, 5000).await
 	}
 }

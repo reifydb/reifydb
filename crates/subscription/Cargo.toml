@@ -25,3 +25,4 @@ reifydb-type = { workspace = true }
 
 tracing = { workspace = true }
 tokio = { workspace = true }
+uuid = { workspace = true }

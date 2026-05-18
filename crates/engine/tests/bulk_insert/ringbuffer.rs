@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Ringbuffer overflow tests for the bulk_insert module.
-//!
-//! Tests verify that ring buffers correctly handle capacity limits
-//! and circular overflow behavior.
-
 use reifydb_engine::test_prelude::*;
 
 #[test]

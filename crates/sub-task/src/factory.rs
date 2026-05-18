@@ -8,15 +8,12 @@ use reifydb_type::Result;
 
 use crate::{subsystem::TaskSubsystem, task::ScheduledTask};
 
-/// Configuration for the task scheduler subsystem
 #[derive(Default)]
 pub struct TaskConfig {
-	/// Tasks to register at startup
 	tasks: Vec<ScheduledTask>,
 }
 
 impl TaskConfig {
-	/// Create a new task configuration
 	pub fn new(tasks: Vec<ScheduledTask>) -> Self {
 		Self {
 			tasks,
@@ -24,20 +21,17 @@ impl TaskConfig {
 	}
 }
 
-/// Factory for creating TaskSubsystem instances
 pub struct TaskSubsystemFactory {
 	config: TaskConfig,
 }
 
 impl TaskSubsystemFactory {
-	/// Create a new factory with default configuration
 	pub fn new() -> Self {
 		Self {
 			config: TaskConfig::default(),
 		}
 	}
 
-	/// Create a factory with custom configuration
 	pub fn with_config(config: TaskConfig) -> Self {
 		Self {
 			config,
@@ -53,7 +47,6 @@ impl Default for TaskSubsystemFactory {
 
 impl SubsystemFactory for TaskSubsystemFactory {
 	fn provide_interceptors(&self, builder: InterceptorBuilder, _ioc: &IocContainer) -> InterceptorBuilder {
-		// Task subsystem doesn't need any special interceptors
 		builder
 	}
 

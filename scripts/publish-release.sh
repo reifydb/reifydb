@@ -136,7 +136,7 @@ if [ $SKIP_CRATES -eq 0 ]; then
     # --publish-as-is uses current version from Cargo.toml
     # --allow-branch release restricts publishing to release branch only
     # Note: --registry crates-io removed as it causes issues with cargo-workspaces
-    CARGO_WS_ARGS="publish --publish-as-is --allow-branch release --publish-interval 10 --no-verify"
+    CARGO_WS_ARGS="publish --publish-as-is --allow-branch release --publish-interval 30 --no-verify"
 
     if [ $DRY_RUN -eq 1 ]; then
         CARGO_WS_ARGS="$CARGO_WS_ARGS --dry-run"

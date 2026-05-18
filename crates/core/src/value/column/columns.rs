@@ -2,10 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::{
-	collections::HashMap,
 	hash::Hash,
 	mem,
-	ops::{Deref, Index, IndexMut},
+	ops::{Index, IndexMut},
 };
 
 use indexmap::IndexMap;
@@ -13,38 +12,43 @@ use reifydb_type::{
 	Result,
 	fragment::Fragment,
 	util::cowvec::CowVec,
-	value::{Value, constraint::Constraint, row_number::RowNumber, r#type::Type},
+	value::{Value, constraint::Constraint, datetime::DateTime, row_number::RowNumber, r#type::Type},
 };
+use serde::{Deserialize, Serialize};
 
 use crate::{
-	encoded::shape::{RowShape, RowShapeField},
-	interface::{
-		catalog::{table::Table, view::View},
-		resolved::{ResolvedRingBuffer, ResolvedTable, ResolvedView},
+	encoded::{
+		row::EncodedRow,
+		shape::{RowShape, RowShapeField},
 	},
+	interface::catalog::column::Column as CatalogColumn,
+	return_internal_error,
 	row::Row,
-	value::column::{Column, ColumnData, headers::ColumnHeaders},
+	value::column::{
+		ColumnBuffer, ColumnWithName, buffer::pool::ColumnBufferPool, data::Column, headers::ColumnHeaders,
+	},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Columns {
 	pub row_numbers: CowVec<RowNumber>,
-	pub columns: CowVec<Column>,
+	pub created_at: CowVec<DateTime>,
+	pub updated_at: CowVec<DateTime>,
+	pub columns: CowVec<ColumnBuffer>,
+	pub names: CowVec<Fragment>,
 }
 
-impl Deref for Columns {
-	type Target = [Column];
-
-	fn deref(&self) -> &Self::Target {
-		self.columns.deref()
-	}
+#[derive(Debug, Clone, Copy)]
+pub struct ColumnRef<'a> {
+	name: &'a Fragment,
+	data: &'a ColumnBuffer,
 }
 
 impl Index<usize> for Columns {
-	type Output = Column;
+	type Output = ColumnBuffer;
 
 	fn index(&self, index: usize) -> &Self::Output {
-		self.columns.index(index)
+		&self.columns[index]
 	}
 }
 
@@ -54,58 +58,75 @@ impl IndexMut<usize> for Columns {
 	}
 }
 
-impl Columns {
-	/// Create a 1-column, 1-row Columns from a single Value.
-	/// Used to store scalar values inside `Variable::Scalar(Columns)`.
-	pub fn scalar(value: Value) -> Self {
-		let data = match value {
-			Value::None {
-				..
-			} => ColumnData::none_typed(Type::Boolean, 1),
-			Value::Boolean(v) => ColumnData::bool([v]),
-			Value::Float4(v) => ColumnData::float4([v.into()]),
-			Value::Float8(v) => ColumnData::float8([v.into()]),
-			Value::Int1(v) => ColumnData::int1([v]),
-			Value::Int2(v) => ColumnData::int2([v]),
-			Value::Int4(v) => ColumnData::int4([v]),
-			Value::Int8(v) => ColumnData::int8([v]),
-			Value::Int16(v) => ColumnData::int16([v]),
-			Value::Utf8(v) => ColumnData::utf8([v]),
-			Value::Uint1(v) => ColumnData::uint1([v]),
-			Value::Uint2(v) => ColumnData::uint2([v]),
-			Value::Uint4(v) => ColumnData::uint4([v]),
-			Value::Uint8(v) => ColumnData::uint8([v]),
-			Value::Uint16(v) => ColumnData::uint16([v]),
-			Value::Date(v) => ColumnData::date([v]),
-			Value::DateTime(v) => ColumnData::datetime([v]),
-			Value::Time(v) => ColumnData::time([v]),
-			Value::Duration(v) => ColumnData::duration([v]),
-			Value::IdentityId(v) => ColumnData::identity_id([v]),
-			Value::Uuid4(v) => ColumnData::uuid4([v]),
-			Value::Uuid7(v) => ColumnData::uuid7([v]),
-			Value::Blob(v) => ColumnData::blob([v]),
-			Value::Int(v) => ColumnData::int(vec![v]),
-			Value::Uint(v) => ColumnData::uint(vec![v]),
-			Value::Decimal(v) => ColumnData::decimal(vec![v]),
-			Value::DictionaryId(v) => ColumnData::dictionary_id(vec![v]),
-			Value::Any(v) => ColumnData::any(vec![v]),
-			Value::Type(v) => ColumnData::any(vec![Box::new(Value::Type(v))]),
-			Value::List(v) => ColumnData::any(vec![Box::new(Value::List(v))]),
-			Value::Record(v) => ColumnData::any(vec![Box::new(Value::Record(v))]),
-			Value::Tuple(v) => ColumnData::any(vec![Box::new(Value::Tuple(v))]),
-		};
-		let column = Column {
-			name: Fragment::internal("value"),
-			data,
-		};
+impl<'a> ColumnRef<'a> {
+	pub fn new(name: &'a Fragment, data: &'a ColumnBuffer) -> Self {
 		Self {
-			row_numbers: CowVec::new(Vec::new()),
-			columns: CowVec::new(vec![column]),
+			name,
+			data,
 		}
 	}
 
-	/// Extract the single value from a 1-column, 1-row Columns.
-	/// Panics if the Columns does not have exactly 1 column and 1 row.
+	pub fn name(&self) -> &'a Fragment {
+		self.name
+	}
+
+	pub fn data(&self) -> &'a ColumnBuffer {
+		self.data
+	}
+
+	pub fn get_type(&self) -> Type {
+		self.data.get_type()
+	}
+
+	pub fn column(&self) -> Column {
+		Column::from_column_buffer(self.data.clone())
+	}
+
+	pub fn with_new_data(&self, data: ColumnBuffer) -> ColumnWithName {
+		ColumnWithName::new(self.name.clone(), data)
+	}
+}
+
+fn value_to_buffer(value: Value) -> ColumnBuffer {
+	match value {
+		Value::None {
+			..
+		} => ColumnBuffer::none_typed(Type::Boolean, 1),
+		Value::Boolean(v) => ColumnBuffer::bool([v]),
+		Value::Float4(v) => ColumnBuffer::float4([v.into()]),
+		Value::Float8(v) => ColumnBuffer::float8([v.into()]),
+		Value::Int1(v) => ColumnBuffer::int1([v]),
+		Value::Int2(v) => ColumnBuffer::int2([v]),
+		Value::Int4(v) => ColumnBuffer::int4([v]),
+		Value::Int8(v) => ColumnBuffer::int8([v]),
+		Value::Int16(v) => ColumnBuffer::int16([v]),
+		Value::Utf8(v) => ColumnBuffer::utf8([v]),
+		Value::Uint1(v) => ColumnBuffer::uint1([v]),
+		Value::Uint2(v) => ColumnBuffer::uint2([v]),
+		Value::Uint4(v) => ColumnBuffer::uint4([v]),
+		Value::Uint8(v) => ColumnBuffer::uint8([v]),
+		Value::Uint16(v) => ColumnBuffer::uint16([v]),
+		Value::Date(v) => ColumnBuffer::date([v]),
+		Value::DateTime(v) => ColumnBuffer::datetime([v]),
+		Value::Time(v) => ColumnBuffer::time([v]),
+		Value::Duration(v) => ColumnBuffer::duration([v]),
+		Value::IdentityId(v) => ColumnBuffer::identity_id([v]),
+		Value::Uuid4(v) => ColumnBuffer::uuid4([v]),
+		Value::Uuid7(v) => ColumnBuffer::uuid7([v]),
+		Value::Blob(v) => ColumnBuffer::blob([v]),
+		Value::Int(v) => ColumnBuffer::int(vec![v]),
+		Value::Uint(v) => ColumnBuffer::uint(vec![v]),
+		Value::Decimal(v) => ColumnBuffer::decimal(vec![v]),
+		Value::DictionaryId(v) => ColumnBuffer::dictionary_id(vec![v]),
+		Value::Any(v) => ColumnBuffer::any(vec![v]),
+		Value::Type(v) => ColumnBuffer::any(vec![Box::new(Value::Type(v))]),
+		Value::List(v) => ColumnBuffer::any(vec![Box::new(Value::List(v))]),
+		Value::Record(v) => ColumnBuffer::any(vec![Box::new(Value::Record(v))]),
+		Value::Tuple(v) => ColumnBuffer::any(vec![Box::new(Value::Tuple(v))]),
+	}
+}
+
+impl Columns {
 	pub fn scalar_value(&self) -> Value {
 		debug_assert_eq!(self.len(), 1, "scalar_value() requires exactly 1 column, got {}", self.len());
 		debug_assert_eq!(
@@ -114,104 +135,112 @@ impl Columns {
 			"scalar_value() requires exactly 1 row, got {}",
 			self.row_count()
 		);
-		self.columns[0].data().get_value(0)
+		self.columns[0].get_value(0)
 	}
 
-	pub fn new(columns: Vec<Column>) -> Self {
-		let n = columns.first().map_or(0, |c| c.data().len());
-		assert!(columns.iter().all(|c| c.data().len() == n));
+	pub fn new(columns: Vec<ColumnWithName>) -> Self {
+		let n = columns.first().map_or(0, |c| c.data.len());
+		assert!(columns.iter().all(|c| c.data.len() == n));
+
+		let mut names = Vec::with_capacity(columns.len());
+		let mut buffers = Vec::with_capacity(columns.len());
+		for c in columns {
+			names.push(c.name);
+			buffers.push(c.data);
+		}
 
 		Self {
 			row_numbers: CowVec::new(Vec::new()),
-			columns: CowVec::new(columns),
+			created_at: CowVec::new(Vec::new()),
+			updated_at: CowVec::new(Vec::new()),
+			columns: CowVec::new(buffers),
+			names: CowVec::new(names),
 		}
 	}
 
-	pub fn with_row_numbers(columns: Vec<Column>, row_numbers: Vec<RowNumber>) -> Self {
-		let n = columns.first().map_or(0, |c| c.data().len());
-		assert!(columns.iter().all(|c| c.data().len() == n));
+	pub fn with_system_columns(
+		columns: Vec<ColumnWithName>,
+		row_numbers: Vec<RowNumber>,
+		created_at: Vec<DateTime>,
+		updated_at: Vec<DateTime>,
+	) -> Self {
+		let n = columns.first().map_or(0, |c| c.data.len());
+		assert!(columns.iter().all(|c| c.data.len() == n));
 		assert_eq!(row_numbers.len(), n, "row_numbers length must match column data length");
+		assert_eq!(created_at.len(), n, "created_at length must match column data length");
+		assert_eq!(updated_at.len(), n, "updated_at length must match column data length");
+
+		let mut names = Vec::with_capacity(columns.len());
+		let mut buffers = Vec::with_capacity(columns.len());
+		for c in columns {
+			names.push(c.name);
+			buffers.push(c.data);
+		}
 
 		Self {
 			row_numbers: CowVec::new(row_numbers),
-			columns: CowVec::new(columns),
+			created_at: CowVec::new(created_at),
+			updated_at: CowVec::new(updated_at),
+			columns: CowVec::new(buffers),
+			names: CowVec::new(names),
 		}
 	}
 
 	pub fn single_row<'b>(rows: impl IntoIterator<Item = (&'b str, Value)>) -> Columns {
-		let mut columns = Vec::new();
-		let mut index = HashMap::new();
-
-		for (idx, (name, value)) in rows.into_iter().enumerate() {
-			let data = match value {
-				Value::None {
-					..
-				} => ColumnData::none_typed(Type::Boolean, 1),
-				Value::Boolean(v) => ColumnData::bool([v]),
-				Value::Float4(v) => ColumnData::float4([v.into()]),
-				Value::Float8(v) => ColumnData::float8([v.into()]),
-				Value::Int1(v) => ColumnData::int1([v]),
-				Value::Int2(v) => ColumnData::int2([v]),
-				Value::Int4(v) => ColumnData::int4([v]),
-				Value::Int8(v) => ColumnData::int8([v]),
-				Value::Int16(v) => ColumnData::int16([v]),
-				Value::Utf8(v) => ColumnData::utf8([v.clone()]),
-				Value::Uint1(v) => ColumnData::uint1([v]),
-				Value::Uint2(v) => ColumnData::uint2([v]),
-				Value::Uint4(v) => ColumnData::uint4([v]),
-				Value::Uint8(v) => ColumnData::uint8([v]),
-				Value::Uint16(v) => ColumnData::uint16([v]),
-				Value::Date(v) => ColumnData::date([v]),
-				Value::DateTime(v) => ColumnData::datetime([v]),
-				Value::Time(v) => ColumnData::time([v]),
-				Value::Duration(v) => ColumnData::duration([v]),
-				Value::IdentityId(v) => ColumnData::identity_id([v]),
-				Value::Uuid4(v) => ColumnData::uuid4([v]),
-				Value::Uuid7(v) => ColumnData::uuid7([v]),
-				Value::Blob(v) => ColumnData::blob([v.clone()]),
-				Value::Int(v) => ColumnData::int(vec![v]),
-				Value::Uint(v) => ColumnData::uint(vec![v]),
-				Value::Decimal(v) => ColumnData::decimal(vec![v]),
-				Value::DictionaryId(v) => ColumnData::dictionary_id(vec![v]),
-				Value::Type(t) => ColumnData::any(vec![Box::new(Value::Type(t))]),
-				Value::Any(v) => ColumnData::any(vec![v]),
-				Value::List(v) => ColumnData::any(vec![Box::new(Value::List(v))]),
-				Value::Record(v) => ColumnData::any(vec![Box::new(Value::Record(v))]),
-				Value::Tuple(v) => ColumnData::any(vec![Box::new(Value::Tuple(v))]),
-			};
-
-			let column = Column {
-				name: Fragment::internal(name.to_string()),
-				data,
-			};
-			index.insert(name, idx);
-			columns.push(column);
+		let mut names = Vec::new();
+		let mut buffers = Vec::new();
+		for (name, value) in rows {
+			names.push(Fragment::internal(name));
+			buffers.push(value_to_buffer(value));
 		}
-
 		Self {
 			row_numbers: CowVec::new(Vec::new()),
-			columns: CowVec::new(columns),
+			created_at: CowVec::new(Vec::new()),
+			updated_at: CowVec::new(Vec::new()),
+			columns: CowVec::new(buffers),
+			names: CowVec::new(names),
+		}
+	}
+
+	pub fn with_row_numbers(mut self, row_numbers: Vec<RowNumber>) -> Self {
+		let n = row_numbers.len();
+		self.row_numbers = CowVec::new(row_numbers);
+		if self.created_at.len() != n {
+			let now = DateTime::default();
+			self.created_at = CowVec::new(vec![now; n]);
+			self.updated_at = CowVec::new(vec![now; n]);
+		}
+		self
+	}
+
+	pub fn from_catalog_columns(cols: &[CatalogColumn]) -> Self {
+		let mut names = Vec::with_capacity(cols.len());
+		let mut buffers = Vec::with_capacity(cols.len());
+		for col in cols {
+			names.push(Fragment::internal(&col.name));
+			buffers.push(ColumnBuffer::with_capacity(col.constraint.get_type(), 0));
+		}
+		Self {
+			row_numbers: CowVec::new(Vec::new()),
+			created_at: CowVec::new(Vec::new()),
+			updated_at: CowVec::new(Vec::new()),
+			columns: CowVec::new(buffers),
+			names: CowVec::new(names),
 		}
 	}
 
 	pub fn apply_headers(&mut self, headers: &ColumnHeaders) {
-		// Apply the column names from headers to this Columns instance
+		let n = self.len();
+		let names = self.names.make_mut();
 		for (i, name) in headers.columns.iter().enumerate() {
-			if i < self.len() {
-				let column = &mut self[i];
-				let data = mem::replace(column.data_mut(), ColumnData::none_typed(Type::Boolean, 0));
-
-				*column = Column {
-					name: name.clone(),
-					data,
-				};
+			if i < n {
+				names[i] = name.clone();
 			}
 		}
 	}
 }
 
 impl Columns {
-	/// Get the row number (for single-row Columns). Panics if Columns has 0 or multiple rows.
 	pub fn number(&self) -> RowNumber {
 		assert_eq!(self.row_count(), 1, "number() requires exactly 1 row, got {}", self.row_count());
 		if self.row_numbers.is_empty() {
@@ -225,48 +254,110 @@ impl Columns {
 		let row_count = if !self.row_numbers.is_empty() {
 			self.row_numbers.len()
 		} else {
-			self.first().map(|c| c.data().len()).unwrap_or(0)
+			self.columns.first().map(|c| c.len()).unwrap_or(0)
 		};
 		(row_count, self.len())
 	}
 
+	pub fn len(&self) -> usize {
+		self.columns.len()
+	}
+
 	pub fn is_empty(&self) -> bool {
-		self.shape().0 == 0
+		self.columns.is_empty()
+	}
+
+	pub fn iter(&self) -> impl Iterator<Item = ColumnRef<'_>> + '_ {
+		self.names.iter().zip(self.columns.iter()).map(|(n, d)| ColumnRef::new(n, d))
+	}
+
+	pub fn first(&self) -> Option<ColumnRef<'_>> {
+		self.get(0)
+	}
+
+	pub fn last(&self) -> Option<ColumnRef<'_>> {
+		let n = self.len();
+		if n == 0 {
+			None
+		} else {
+			self.get(n - 1)
+		}
+	}
+
+	pub fn get(&self, index: usize) -> Option<ColumnRef<'_>> {
+		if index < self.len() {
+			Some(ColumnRef::new(&self.names[index], &self.columns[index]))
+		} else {
+			None
+		}
+	}
+
+	pub fn name_at(&self, index: usize) -> &Fragment {
+		&self.names[index]
+	}
+
+	pub fn data_at(&self, index: usize) -> &ColumnBuffer {
+		&self.columns[index]
+	}
+
+	pub fn data_at_mut(&mut self, index: usize) -> &mut ColumnBuffer {
+		&mut self.columns.make_mut()[index]
 	}
 
 	pub fn row(&self, i: usize) -> Vec<Value> {
-		self.iter().map(|c| c.data().get_value(i)).collect()
+		self.columns.iter().map(|c| c.get_value(i)).collect()
 	}
 
-	pub fn column(&self, name: &str) -> Option<&Column> {
-		self.iter().find(|col| col.name().text() == name)
+	pub fn column(&self, name: &str) -> Option<ColumnRef<'_>> {
+		self.names.iter().position(|n| n.text() == name).and_then(|i| self.get(i))
 	}
 
 	pub fn row_count(&self) -> usize {
 		if !self.row_numbers.is_empty() {
 			self.row_numbers.len()
 		} else {
-			self.first().map_or(0, |col| col.data().len())
+			self.columns.first().map_or(0, |col| col.len())
 		}
 	}
 
+	pub fn has_rows(&self) -> bool {
+		self.row_count() > 0
+	}
+
+	pub fn is_scalar(&self) -> bool {
+		self.len() == 1 && self.row_count() == 1
+	}
+
 	pub fn get_row(&self, index: usize) -> Vec<Value> {
-		self.iter().map(|col| col.data().get_value(index)).collect()
+		self.columns.iter().map(|col| col.get_value(index)).collect()
 	}
-}
 
-impl IntoIterator for Columns {
-	type Item = Column;
-	type IntoIter = std::vec::IntoIter<Column>;
-
-	fn into_iter(self) -> Self::IntoIter {
-		self.columns.into_iter()
-	}
-}
-
-impl Column {
-	pub fn extend(&mut self, other: Column) -> Result<()> {
-		self.data_mut().extend(other.data().clone())
+	#[track_caller]
+	pub fn assert_invariants(&self, ctx: &str) {
+		let n = self.columns.first().map_or(0, |c| c.len());
+		for (i, col) in self.columns.iter().enumerate() {
+			assert_eq!(
+				col.len(),
+				n,
+				"{ctx}: Columns column[{i}] has length {} but columns[0] has length {n}",
+				col.len(),
+			);
+		}
+		assert!(
+			self.row_numbers.is_empty() || self.row_numbers.len() == n,
+			"{ctx}: Columns.row_numbers.len() = {} but columns[0].len() = {n}",
+			self.row_numbers.len(),
+		);
+		assert!(
+			self.created_at.is_empty() || self.created_at.len() == n,
+			"{ctx}: Columns.created_at.len() = {} but columns[0].len() = {n}",
+			self.created_at.len(),
+		);
+		assert!(
+			self.updated_at.is_empty() || self.updated_at.len() == n,
+			"{ctx}: Columns.updated_at.len() = {} but columns[0].len() = {n}",
+			self.updated_at.len(),
+		);
 	}
 }
 
@@ -274,198 +365,307 @@ impl Columns {
 	pub fn from_rows(names: &[&str], result_rows: &[Vec<Value>]) -> Self {
 		let column_count = names.len();
 
-		let mut columns: Vec<Column> = names
-			.iter()
-			.map(|name| Column {
-				name: Fragment::internal(name.to_string()),
-				data: ColumnData::none_typed(Type::Boolean, 0),
-			})
-			.collect();
+		let mut name_vec: Vec<Fragment> = names.iter().map(Fragment::internal).collect();
+		let mut buffers: Vec<ColumnBuffer> =
+			(0..column_count).map(|_| ColumnBuffer::none_typed(Type::Boolean, 0)).collect();
 
 		for row in result_rows {
 			assert_eq!(row.len(), column_count, "row length does not match column count");
 			for (i, value) in row.iter().enumerate() {
-				columns[i].data_mut().push_value(value.clone());
+				buffers[i].push_value(value.clone());
 			}
 		}
 
-		Columns::new(columns)
+		let _ = &mut name_vec;
+		Self {
+			row_numbers: CowVec::new(Vec::new()),
+			created_at: CowVec::new(Vec::new()),
+			updated_at: CowVec::new(Vec::new()),
+			columns: CowVec::new(buffers),
+			names: CowVec::new(name_vec),
+		}
 	}
 
-	pub fn from_rows_with_row_numbers(
-		names: &[&str],
-		result_rows: &[Vec<Value>],
-		row_numbers: Vec<RowNumber>,
-	) -> Self {
-		let column_count = names.len();
+	pub fn from_encoded_rows(shape: &RowShape, ids: &[RowNumber], rows: &[EncodedRow]) -> Self {
+		assert_eq!(ids.len(), rows.len(), "ids length must match rows length");
+		let fields = shape.fields();
+		let row_count = rows.len();
 
-		let mut columns: Vec<Column> = names
-			.iter()
-			.map(|name| Column {
-				name: Fragment::internal(name.to_string()),
-				data: ColumnData::none_typed(Type::Boolean, 0),
-			})
-			.collect();
+		let mut columns_vec: Vec<ColumnWithName> = Vec::with_capacity(fields.len());
+		for field in fields.iter() {
+			columns_vec.push(ColumnWithName {
+				name: Fragment::internal(&field.name),
+				data: ColumnBuffer::with_capacity(field.constraint.get_type(), row_count),
+			});
+		}
 
-		for row in result_rows {
-			assert_eq!(row.len(), column_count, "row length does not match column count");
-			for (i, value) in row.iter().enumerate() {
-				columns[i].data_mut().push_value(value.clone());
+		for encoded in rows {
+			for (i, _) in fields.iter().enumerate() {
+				columns_vec[i].data.push_value(shape.get_value(encoded, i));
 			}
 		}
 
-		Columns::with_row_numbers(columns, row_numbers)
+		let row_numbers: Vec<RowNumber> = ids.to_vec();
+		let created_at: Vec<DateTime> =
+			rows.iter().map(|r| DateTime::from_nanos(r.created_at_nanos())).collect();
+		let updated_at: Vec<DateTime> =
+			rows.iter().map(|r| DateTime::from_nanos(r.updated_at_nanos())).collect();
+
+		Self::with_system_columns(columns_vec, row_numbers, created_at, updated_at)
 	}
 }
 
 impl Columns {
 	pub fn empty() -> Self {
 		Self {
-			row_numbers: CowVec::new(vec![]),
-			columns: CowVec::new(vec![]),
+			row_numbers: CowVec::with_capacity(1),
+			created_at: CowVec::with_capacity(1),
+			updated_at: CowVec::with_capacity(1),
+			columns: CowVec::with_capacity(16),
+			names: CowVec::with_capacity(16),
 		}
 	}
+}
 
-	pub fn from_resolved_table(table: &ResolvedTable) -> Self {
-		Self::from_table(table.def())
-	}
-
-	/// Create empty Columns (0 rows) with shape from a Table
-	pub fn from_table(table: &Table) -> Self {
-		let columns: Vec<Column> = table
-			.columns
-			.iter()
-			.map(|col| Column {
-				name: Fragment::internal(&col.name),
-				data: ColumnData::with_capacity(col.constraint.get_type(), 0),
-			})
-			.collect();
-
-		Self {
-			row_numbers: CowVec::new(Vec::new()),
-			columns: CowVec::new(columns),
-		}
-	}
-
-	/// Create empty Columns (0 rows) with shape from a View
-	pub fn from_view(view: &View) -> Self {
-		let columns: Vec<Column> = view
-			.columns()
-			.iter()
-			.map(|col| Column {
-				name: Fragment::internal(&col.name),
-				data: ColumnData::with_capacity(col.constraint.get_type(), 0),
-			})
-			.collect();
-
-		Self {
-			row_numbers: CowVec::new(Vec::new()),
-			columns: CowVec::new(columns),
-		}
-	}
-
-	pub fn from_ringbuffer(ringbuffer: &ResolvedRingBuffer) -> Self {
-		let _source = ringbuffer.clone();
-
-		let columns: Vec<Column> = ringbuffer
-			.columns()
-			.iter()
-			.map(|col| {
-				let column_ident = Fragment::internal(&col.name);
-				Column {
-					name: column_ident,
-					data: ColumnData::with_capacity(col.constraint.get_type(), 0),
-				}
-			})
-			.collect();
-
-		Self {
-			row_numbers: CowVec::new(Vec::new()),
-			columns: CowVec::new(columns),
-		}
-	}
-
-	pub fn from_resolved_view(view: &ResolvedView) -> Self {
-		Self::from_view(view.def())
+impl Default for Columns {
+	fn default() -> Self {
+		Self::empty()
 	}
 }
 
 impl Columns {
-	/// Extract a subset of rows by indices, returning a new Columns
 	pub fn extract_by_indices(&self, indices: &[usize]) -> Columns {
 		if indices.is_empty() {
 			return Columns::empty();
 		}
 
-		let new_columns: Vec<Column> = self
-			.columns
-			.iter()
-			.map(|col| {
-				let mut new_data = ColumnData::with_capacity(col.data().get_type(), indices.len());
-				for &idx in indices {
-					new_data.push_value(col.data().get_value(idx));
-				}
-				Column {
-					name: col.name.clone(),
-					data: new_data,
-				}
-			})
-			.collect();
+		let mut new_buffers: Vec<ColumnBuffer> = Vec::with_capacity(self.columns.len());
+		for col in self.columns.iter() {
+			let mut new_data = ColumnBuffer::with_capacity(col.get_type(), indices.len());
+			for &idx in indices {
+				new_data.push_value(col.get_value(idx));
+			}
+			new_buffers.push(new_data);
+		}
 
-		if self.row_numbers.is_empty() {
-			Columns::new(new_columns)
+		let new_row_numbers: Vec<RowNumber> = if self.row_numbers.is_empty() {
+			Vec::new()
 		} else {
-			let new_row_numbers: Vec<RowNumber> = indices.iter().map(|&i| self.row_numbers[i]).collect();
-			Columns::with_row_numbers(new_columns, new_row_numbers)
+			indices.iter().map(|&i| self.row_numbers[i]).collect()
+		};
+		let new_created_at: Vec<DateTime> = if self.created_at.is_empty() {
+			Vec::new()
+		} else {
+			indices.iter().map(|&i| self.created_at[i]).collect()
+		};
+		let new_updated_at: Vec<DateTime> = if self.updated_at.is_empty() {
+			Vec::new()
+		} else {
+			indices.iter().map(|&i| self.updated_at[i]).collect()
+		};
+		Columns {
+			row_numbers: CowVec::new(new_row_numbers),
+			created_at: CowVec::new(new_created_at),
+			updated_at: CowVec::new(new_updated_at),
+			columns: CowVec::new(new_buffers),
+			names: self.names.clone(),
 		}
 	}
 
-	/// Extract a single row by index, returning a new Columns with 1 row
 	pub fn extract_row(&self, index: usize) -> Columns {
 		self.extract_by_indices(&[index])
 	}
 
-	/// Project to a subset of columns by name, preserving the order of the provided names.
-	/// Columns not found in self are silently skipped.
-	pub fn project_by_names(&self, names: &[String]) -> Columns {
-		let new_columns: Vec<Column> = names
-			.iter()
-			.filter_map(|name| self.columns.iter().find(|c| c.name().text() == name.as_str()).cloned())
-			.collect();
+	pub fn append_rows_by_indices(&mut self, source: &Columns, indices: &[usize]) {
+		if indices.is_empty() {
+			return;
+		}
 
-		if new_columns.is_empty() {
+		if self.columns.is_empty() {
+			*self = source.extract_by_indices(indices);
+			return;
+		}
+
+		assert_eq!(
+			self.columns.len(),
+			source.columns.len(),
+			"append_rows: column count mismatch (self={}, source={})",
+			self.columns.len(),
+			source.columns.len(),
+		);
+
+		let self_cols = self.columns.make_mut();
+		for (i, src_col) in source.columns.iter().enumerate() {
+			for &idx in indices {
+				self_cols[i].push_value(src_col.get_value(idx));
+			}
+		}
+
+		if !source.row_numbers.is_empty() {
+			let rns = self.row_numbers.make_mut();
+			for &idx in indices {
+				rns.push(source.row_numbers[idx]);
+			}
+		}
+		if !source.created_at.is_empty() {
+			let cr = self.created_at.make_mut();
+			for &idx in indices {
+				cr.push(source.created_at[idx]);
+			}
+		}
+		if !source.updated_at.is_empty() {
+			let up = self.updated_at.make_mut();
+			for &idx in indices {
+				up.push(source.updated_at[idx]);
+			}
+		}
+	}
+
+	pub fn append_all(&mut self, source: Columns) -> Result<()> {
+		if source.row_count() == 0 {
+			return Ok(());
+		}
+
+		if self.columns.is_empty() {
+			*self = source;
+			return Ok(());
+		}
+
+		if self.columns.len() != source.columns.len() {
+			return_internal_error!(
+				"Columns::append_all: column count mismatch (self={}, source={})",
+				self.columns.len(),
+				source.columns.len()
+			);
+		}
+
+		if self.row_numbers.is_empty() != source.row_numbers.is_empty() {
+			return_internal_error!(
+				"Columns::append_all: row_numbers population mismatch (self_empty={}, source_empty={})",
+				self.row_numbers.is_empty(),
+				source.row_numbers.is_empty()
+			);
+		}
+		if self.created_at.is_empty() != source.created_at.is_empty() {
+			return_internal_error!(
+				"Columns::append_all: created_at population mismatch (self_empty={}, source_empty={})",
+				self.created_at.is_empty(),
+				source.created_at.is_empty()
+			);
+		}
+		if self.updated_at.is_empty() != source.updated_at.is_empty() {
+			return_internal_error!(
+				"Columns::append_all: updated_at population mismatch (self_empty={}, source_empty={})",
+				self.updated_at.is_empty(),
+				source.updated_at.is_empty()
+			);
+		}
+
+		let dest_cols = self.columns.make_mut();
+		let source_cols = source.columns.into_inner();
+		for (i, src_col) in source_cols.into_iter().enumerate() {
+			dest_cols[i].extend(src_col)?;
+		}
+
+		if !source.row_numbers.is_empty() {
+			self.row_numbers.extend_from_slice(source.row_numbers.as_slice());
+		}
+		if !source.created_at.is_empty() {
+			self.created_at.extend_from_slice(source.created_at.as_slice());
+		}
+		if !source.updated_at.is_empty() {
+			self.updated_at.extend_from_slice(source.updated_at.as_slice());
+		}
+
+		Ok(())
+	}
+
+	pub fn concat(batches: Vec<Columns>) -> Result<Option<Columns>> {
+		let mut iter = batches.into_iter();
+		let mut merged = match iter.next() {
+			Some(first) => first,
+			None => return Ok(None),
+		};
+		for cols in iter {
+			merged.append_all(cols)?;
+		}
+		if merged.row_count() == 0 {
+			return Ok(None);
+		}
+		Ok(Some(merged))
+	}
+
+	pub fn remove_row(&mut self, row_number: RowNumber) -> bool {
+		let pos = self.row_numbers.iter().position(|&r| r == row_number);
+		let Some(idx) = pos else {
+			return false;
+		};
+
+		let kept_indices: Vec<usize> = (0..self.row_count()).filter(|&i| i != idx).collect();
+		*self = self.extract_by_indices(&kept_indices);
+		true
+	}
+
+	pub fn project_by_names(&self, names: &[String]) -> Columns {
+		let mut new_names = Vec::new();
+		let mut new_buffers = Vec::new();
+
+		for name in names {
+			if let Some(pos) = self.names.iter().position(|n| n.text() == name.as_str()) {
+				new_names.push(self.names[pos].clone());
+				new_buffers.push(self.columns[pos].clone());
+			}
+		}
+
+		if new_buffers.is_empty() {
 			return Columns::empty();
 		}
 
 		Columns {
 			row_numbers: self.row_numbers.clone(),
-			columns: CowVec::new(new_columns),
+			created_at: self.created_at.clone(),
+			updated_at: self.updated_at.clone(),
+			columns: CowVec::new(new_buffers),
+			names: CowVec::new(new_names),
 		}
 	}
 
-	/// Partition Columns into groups based on keys (one key per row).
-	/// Returns an IndexMap preserving insertion order of first occurrence.
 	pub fn partition_by_keys<K: Hash + Eq + Clone>(&self, keys: &[K]) -> IndexMap<K, Columns> {
 		assert_eq!(keys.len(), self.row_count(), "keys length must match row count");
 
-		// Group indices by key
 		let mut key_to_indices: IndexMap<K, Vec<usize>> = IndexMap::new();
 		for (idx, key) in keys.iter().enumerate() {
 			key_to_indices.entry(key.clone()).or_default().push(idx);
 		}
 
-		// Convert to Columns
 		key_to_indices.into_iter().map(|(key, indices)| (key, self.extract_by_indices(&indices))).collect()
 	}
 
-	/// Create Columns from a Row by decoding its encoded values
 	pub fn from_row(row: &Row) -> Self {
-		let mut columns = Vec::new();
+		let mut out = Columns::empty();
+		out.reset_from_row(row);
+		out
+	}
+
+	pub fn reset_from_row(&mut self, row: &Row) {
+		let field_count = row.shape.fields().len();
+
+		self.row_numbers.clear();
+		self.created_at.clear();
+		self.updated_at.clear();
+		self.columns.clear();
+		self.names.clear();
+
+		self.columns.make_mut().reserve(field_count);
+		self.names.make_mut().reserve(field_count);
+
+		self.row_numbers.push(row.number);
+		self.created_at.push(DateTime::from_nanos(row.encoded.created_at_nanos()));
+		self.updated_at.push(DateTime::from_nanos(row.encoded.updated_at_nanos()));
 
 		for (idx, field) in row.shape.fields().iter().enumerate() {
 			let value = row.shape.get_value(&row.encoded, idx);
 
-			// Use the field type for the column data, handling undefined values
 			let column_type = if matches!(value, Value::None { .. }) {
 				field.constraint.get_type()
 			} else {
@@ -473,14 +673,14 @@ impl Columns {
 			};
 
 			let mut data = if column_type.is_option() {
-				ColumnData::none_typed(column_type.clone(), 0)
+				ColumnBuffer::none_typed(column_type.clone(), 0)
 			} else {
-				ColumnData::with_capacity(column_type.clone(), 1)
+				ColumnBuffer::with_capacity(column_type.clone(), 1)
 			};
 			data.push_value(value);
 
 			if column_type == Type::DictionaryId
-				&& let ColumnData::DictionaryId(container) = &mut data
+				&& let ColumnBuffer::DictionaryId(container) = &mut data
 				&& let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
 			{
 				container.set_dictionary_id(*dict_id);
@@ -488,20 +688,79 @@ impl Columns {
 
 			let name = row.shape.get_field_name(idx).expect("RowShape missing name for field");
 
-			columns.push(Column {
-				name: Fragment::internal(name),
-				data,
-			});
-		}
-
-		Self {
-			row_numbers: CowVec::new(vec![row.number]),
-			columns: CowVec::new(columns),
+			self.names.push(Fragment::internal(name));
+			self.columns.push(data);
 		}
 	}
 
-	/// Convert Columns back to a Row (assumes single row)
-	/// Panics if Columns contains more than 1 row
+	pub fn reset_from_row_with_pool(&mut self, row: &Row, pool: &ColumnBufferPool) {
+		let field_count = row.shape.fields().len();
+
+		self.row_numbers.clear();
+		self.created_at.clear();
+		self.updated_at.clear();
+		self.names.clear();
+
+		self.row_numbers.push(row.number);
+		self.created_at.push(DateTime::from_nanos(row.encoded.created_at_nanos()));
+		self.updated_at.push(DateTime::from_nanos(row.encoded.updated_at_nanos()));
+
+		let columns_vec = self.columns.make_mut();
+		let names_vec = self.names.make_mut();
+
+		while columns_vec.len() > field_count {
+			if let Some(buf) = columns_vec.pop() {
+				pool.release(buf);
+			}
+		}
+
+		columns_vec.reserve(field_count);
+		names_vec.reserve(field_count);
+
+		for (idx, field) in row.shape.fields().iter().enumerate() {
+			let value = row.shape.get_value(&row.encoded, idx);
+
+			let column_type = if matches!(value, Value::None { .. }) {
+				field.constraint.get_type()
+			} else {
+				value.get_type()
+			};
+
+			if idx < columns_vec.len() {
+				if columns_vec[idx].get_type() == column_type {
+					columns_vec[idx].clear();
+				} else {
+					let replacement = if column_type.is_option() {
+						ColumnBuffer::none_typed(column_type.clone(), 0)
+					} else {
+						pool.acquire(&column_type, 1)
+					};
+					let old = mem::replace(&mut columns_vec[idx], replacement);
+					pool.release(old);
+				}
+			} else {
+				let fresh = if column_type.is_option() {
+					ColumnBuffer::none_typed(column_type.clone(), 0)
+				} else {
+					pool.acquire(&column_type, 1)
+				};
+				columns_vec.push(fresh);
+			}
+
+			columns_vec[idx].push_value(value);
+
+			if column_type == Type::DictionaryId
+				&& let ColumnBuffer::DictionaryId(container) = &mut columns_vec[idx]
+				&& let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
+			{
+				container.set_dictionary_id(*dict_id);
+			}
+
+			let name = row.shape.get_field_name(idx).expect("RowShape missing name for field");
+			names_vec.push(Fragment::internal(name));
+		}
+	}
+
 	pub fn to_single_row(&self) -> Row {
 		assert_eq!(self.row_count(), 1, "to_row() requires exactly 1 row, got {}", self.row_count());
 		assert_eq!(
@@ -513,18 +772,17 @@ impl Columns {
 
 		let row_number = *self.row_numbers.first().unwrap();
 
-		// Build shape fields for the layout
 		let fields: Vec<RowShapeField> = self
-			.columns
+			.names
 			.iter()
-			.map(|col| RowShapeField::unconstrained(col.name().text().to_string(), col.data().get_type()))
+			.zip(self.columns.iter())
+			.map(|(name, data)| RowShapeField::unconstrained(name.text().to_string(), data.get_type()))
 			.collect();
 
 		let layout = RowShape::new(fields);
 		let mut encoded = layout.allocate();
 
-		// Get values and set them
-		let values: Vec<Value> = self.columns.iter().map(|col| col.data().get_value(0)).collect();
+		let values: Vec<Value> = self.columns.iter().map(|col| col.get_value(0)).collect();
 		layout.set_values(&mut encoded, &values);
 
 		Row {
@@ -558,7 +816,6 @@ pub mod tests {
 		assert_eq!(columns.len(), 4);
 		assert_eq!(columns.shape(), (1, 4));
 
-		// Check that the values are correctly stored
 		assert_eq!(columns.column("date_col").unwrap().data().get_value(0), Value::Date(date));
 		assert_eq!(columns.column("datetime_col").unwrap().data().get_value(0), Value::DateTime(datetime));
 		assert_eq!(columns.column("time_col").unwrap().data().get_value(0), Value::Time(time));
@@ -582,7 +839,6 @@ pub mod tests {
 		assert_eq!(columns.len(), 6);
 		assert_eq!(columns.shape(), (1, 6));
 
-		// Check all values are correctly stored
 		assert_eq!(columns.column("bool_col").unwrap().data().get_value(0), Value::Boolean(true));
 		assert_eq!(columns.column("int_col").unwrap().data().get_value(0), Value::Int4(42));
 		assert_eq!(columns.column("str_col").unwrap().data().get_value(0), Value::Utf8("hello".to_string()));

@@ -218,7 +218,6 @@ impl From<Uint> for Decimal {
 	}
 }
 
-// Arithmetic operations
 impl Add for Decimal {
 	type Output = Self;
 
@@ -251,7 +250,6 @@ impl Div for Decimal {
 	}
 }
 
-// Reference arithmetic operations (to avoid cloning)
 impl Add<&Decimal> for &Decimal {
 	type Output = Decimal;
 
@@ -290,8 +288,6 @@ impl Default for Decimal {
 	}
 }
 
-// Serde implementation for string-based serialization
-// This works with both JSON and binary formats (bincode, rmp, etc.)
 impl Serialize for Decimal {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where

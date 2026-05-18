@@ -10,8 +10,6 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{CatalogStore, Result, store::view::shape::view};
 
 impl CatalogStore {
-	/// Get the primary key ID for a view
-	/// Returns None if the view doesn't exist or has no primary key
 	pub(crate) fn get_view_pk_id(rx: &mut Transaction<'_>, view_id: ViewId) -> Result<Option<PrimaryKeyId>> {
 		let multi = match rx.get(&ViewKey::encoded(view_id))? {
 			Some(v) => v,

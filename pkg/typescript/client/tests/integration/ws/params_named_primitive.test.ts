@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from "vitest";
 import {Client, WsClient} from "../../../src";
-import {waitForDatabase} from "../setup";
+import {wait_for_database} from "../setup";
 import {Shape} from "@reifydb/core";
 import {
     expectSingleResult,
@@ -11,18 +11,22 @@ import {
     expectSingleBigIntResult
 } from "./test-helper";
 
-describe('Named Parameters', () => {
-    let wsClient: WsClient;
+describe.each([
+    {format: "frames"},
+    {format: "rbcf"},
+] as const)('Named Parameters (primitive) [$format]', ({format}) => {
+    let ws_client: WsClient;
 
     beforeAll(async () => {
-        await waitForDatabase();
+        await wait_for_database();
     }, 30000);
 
     beforeEach(async () => {
         try {
-            wsClient = await Client.connect_ws(process.env.REIFYDB_WS_URL, {
-                timeoutMs: 10000,
-                token: process.env.REIFYDB_TOKEN
+            ws_client = await Client.connect_ws(process.env.REIFYDB_WS_URL, {
+                timeout_ms: 10000,
+                token: process.env.REIFYDB_TOKEN,
+                format,
             });
         } catch (error) {
             console.error('❌ WebSocket connection failed:', error);
@@ -31,20 +35,20 @@ describe('Named Parameters', () => {
     }, 15000);
 
     afterEach(async () => {
-        if (wsClient) {
+        if (ws_client) {
             try {
-                wsClient.disconnect();
+                ws_client.disconnect();
             } catch (error) {
                 console.error('⚠️ Error during disconnect:', error);
             }
-            wsClient = null;
+            ws_client = null;
         }
     });
 
     describe('admin', () => {
 
         it('Boolean', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: true },
                 [Shape.object({result: Shape.boolean()})]
@@ -54,7 +58,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Int1', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: 42 },
                 [Shape.object({result: Shape.int1()})]
@@ -64,7 +68,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Int2', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: 1234 },
                 [Shape.object({result: Shape.int2()})]
@@ -74,7 +78,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Int4', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: 12345678 },
                 [Shape.object({result: Shape.int4()})]
@@ -84,7 +88,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Int8', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: BigInt("9223372036854775807") },
                 [Shape.object({result: Shape.int8()})]
@@ -94,7 +98,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Int16', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: BigInt("170141183460469231731687303715884105727") },
                 [Shape.object({result: Shape.int16()})]
@@ -104,7 +108,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Uint1', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: 255 },
                 [Shape.object({result: Shape.uint1()})]
@@ -114,7 +118,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Uint2', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: 65535 },
                 [Shape.object({result: Shape.uint2()})]
@@ -124,7 +128,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Uint4', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: 4294967295 },
                 [Shape.object({result: Shape.uint4()})]
@@ -134,7 +138,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Uint8', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: BigInt("18446744073709551615") },
                 [Shape.object({result: Shape.uint8()})]
@@ -144,7 +148,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Uint16', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: BigInt("340282366920938463463374607431768211455") },
                 [Shape.object({result: Shape.uint16()})]
@@ -154,7 +158,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Float4', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: 3.14 },
                 [Shape.object({result: Shape.float4()})]
@@ -164,7 +168,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Float8', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: 3.141592653589793 },
                 [Shape.object({result: Shape.float8()})]
@@ -178,7 +182,7 @@ describe('Named Parameters', () => {
 
         it('Decimal', async () => {
             const decimal = "123.456789";
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: decimal },
                 [Shape.object({result: Shape.decimal()})]
@@ -188,7 +192,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Utf8', async () => {
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: "Hello, World!" },
                 [Shape.object({result: Shape.utf8()})]
@@ -199,7 +203,7 @@ describe('Named Parameters', () => {
 
         it('Blob', async () => {
             const data = new Uint8Array([1, 2, 3, 4, 5]);
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: data },
                 [Shape.object({result: Shape.blob()})]
@@ -210,7 +214,7 @@ describe('Named Parameters', () => {
 
         it('Date', async () => {
             const date = new Date('2024-03-15');
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: date },
                 [Shape.object({result: Shape.date()})]
@@ -221,7 +225,7 @@ describe('Named Parameters', () => {
 
         it('Time', async () => {
             const time = new Date('1970-01-01T14:30:00.123Z');
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: time },
                 [Shape.object({result: Shape.time()})]
@@ -232,7 +236,7 @@ describe('Named Parameters', () => {
 
         it('DateTime', async () => {
             const datetime = new Date('2024-03-15T14:30:00.123Z');
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: datetime },
                 [Shape.object({result: Shape.datetime()})]
@@ -243,7 +247,7 @@ describe('Named Parameters', () => {
 
         it('Duration', async () => {
             const duration = "P1DT2H30M";
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: duration },
                 [Shape.object({result: Shape.duration()})]
@@ -254,7 +258,7 @@ describe('Named Parameters', () => {
 
         it('Uuid4', async () => {
             const uuid = "550e8400-e29b-41d4-a716-446655440000";
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: uuid },
                 [Shape.object({result: Shape.uuid4()})]
@@ -265,7 +269,7 @@ describe('Named Parameters', () => {
 
         it('Uuid7', async () => {
             const uuid = "018fad5d-f37a-7c94-a716-446655440000";
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: uuid },
                 [Shape.object({result: Shape.uuid7()})]
@@ -276,7 +280,7 @@ describe('Named Parameters', () => {
 
         it('IdentityId', async () => {
             const identityId = "018fad5d-f37a-7c94-a716-446655440001";
-            const frames = await wsClient.admin(
+            const frames = await ws_client.admin(
                 'MAP {result: $value}',
                 { value: identityId },
                 [Shape.object({result: Shape.identityid()})]
@@ -290,7 +294,7 @@ describe('Named Parameters', () => {
     describe('command', () => {
 
         it('Boolean', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: true },
                 [Shape.object({result: Shape.boolean()})]
@@ -300,7 +304,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Int1', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: 42 },
                 [Shape.object({result: Shape.int1()})]
@@ -310,7 +314,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Int2', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: 1234 },
                 [Shape.object({result: Shape.int2()})]
@@ -320,7 +324,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Int4', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: 12345678 },
                 [Shape.object({result: Shape.int4()})]
@@ -330,7 +334,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Int8', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: BigInt("9223372036854775807") },
                 [Shape.object({result: Shape.int8()})]
@@ -340,7 +344,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Int16', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: BigInt("170141183460469231731687303715884105727") },
                 [Shape.object({result: Shape.int16()})]
@@ -350,7 +354,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Uint1', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: 255 },
                 [Shape.object({result: Shape.uint1()})]
@@ -360,7 +364,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Uint2', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: 65535 },
                 [Shape.object({result: Shape.uint2()})]
@@ -370,7 +374,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Uint4', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: 4294967295 },
                 [Shape.object({result: Shape.uint4()})]
@@ -380,7 +384,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Uint8', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: BigInt("18446744073709551615") },
                 [Shape.object({result: Shape.uint8()})]
@@ -390,7 +394,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Uint16', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: BigInt("340282366920938463463374607431768211455") },
                 [Shape.object({result: Shape.uint16()})]
@@ -400,7 +404,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Float4', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: 3.14 },
                 [Shape.object({result: Shape.float4()})]
@@ -410,7 +414,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Float8', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: 3.141592653589793 },
                 [Shape.object({result: Shape.float8()})]
@@ -424,7 +428,7 @@ describe('Named Parameters', () => {
 
         it('Decimal', async () => {
             const decimal = "123.456789";
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: decimal },
                 [Shape.object({result: Shape.decimal()})]
@@ -434,7 +438,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Utf8', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: "Hello, World!" },
                 [Shape.object({result: Shape.utf8()})]
@@ -445,7 +449,7 @@ describe('Named Parameters', () => {
 
         it('Blob', async () => {
             const data = new Uint8Array([1, 2, 3, 4, 5]);
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: data },
                 [Shape.object({result: Shape.blob()})]
@@ -456,7 +460,7 @@ describe('Named Parameters', () => {
 
         it('Date', async () => {
             const date = new Date('2024-03-15');
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: date },
                 [Shape.object({result: Shape.date()})]
@@ -467,7 +471,7 @@ describe('Named Parameters', () => {
 
         it('Time', async () => {
             const time = new Date('1970-01-01T14:30:00.123Z');
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: time },
                 [Shape.object({result: Shape.time()})]
@@ -478,7 +482,7 @@ describe('Named Parameters', () => {
 
         it('DateTime', async () => {
             const datetime = new Date('2024-03-15T14:30:00.123Z');
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: datetime },
                 [Shape.object({result: Shape.datetime()})]
@@ -489,7 +493,7 @@ describe('Named Parameters', () => {
 
         it('Duration', async () => {
             const duration = "P1DT2H30M";
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: duration },
                 [Shape.object({result: Shape.duration()})]
@@ -500,7 +504,7 @@ describe('Named Parameters', () => {
 
         it('Uuid4', async () => {
             const uuid = "550e8400-e29b-41d4-a716-446655440000";
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: uuid },
                 [Shape.object({result: Shape.uuid4()})]
@@ -511,7 +515,7 @@ describe('Named Parameters', () => {
 
         it('Uuid7', async () => {
             const uuid = "018fad5d-f37a-7c94-a716-446655440000";
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: uuid },
                 [Shape.object({result: Shape.uuid7()})]
@@ -522,7 +526,7 @@ describe('Named Parameters', () => {
 
         it('IdentityId', async () => {
             const identityId = "018fad5d-f37a-7c94-a716-446655440001";
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: $value}',
                 { value: identityId },
                 [Shape.object({result: Shape.identityid()})]
@@ -536,7 +540,7 @@ describe('Named Parameters', () => {
     describe('query', () => {
 
         it('Boolean', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: true },
                 [Shape.object({result: Shape.boolean()})]
@@ -546,7 +550,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Int1', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: 42 },
                 [Shape.object({result: Shape.int1()})]
@@ -556,7 +560,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Int2', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: 1234 },
                 [Shape.object({result: Shape.int2()})]
@@ -566,7 +570,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Int4', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: 12345678 },
                 [Shape.object({result: Shape.int4()})]
@@ -576,7 +580,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Int8', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: BigInt("9223372036854775807") },
                 [Shape.object({result: Shape.int8()})]
@@ -586,7 +590,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Int16', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: BigInt("170141183460469231731687303715884105727") },
                 [Shape.object({result: Shape.int16()})]
@@ -596,7 +600,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Uint1', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: 255 },
                 [Shape.object({result: Shape.uint1()})]
@@ -606,7 +610,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Uint2', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: 65535 },
                 [Shape.object({result: Shape.uint2()})]
@@ -616,7 +620,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Uint4', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: 4294967295 },
                 [Shape.object({result: Shape.uint4()})]
@@ -626,7 +630,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Uint8', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: BigInt("18446744073709551615") },
                 [Shape.object({result: Shape.uint8()})]
@@ -636,7 +640,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Uint16', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: BigInt("340282366920938463463374607431768211455") },
                 [Shape.object({result: Shape.uint16()})]
@@ -646,7 +650,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Float4', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: 3.14 },
                 [Shape.object({result: Shape.float4()})]
@@ -656,7 +660,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Float8', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: 3.141592653589793 },
                 [Shape.object({result: Shape.float8()})]
@@ -670,7 +674,7 @@ describe('Named Parameters', () => {
 
         it('Decimal', async () => {
             const decimal = "123.456789";
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: decimal },
                 [Shape.object({result: Shape.decimal()})]
@@ -680,7 +684,7 @@ describe('Named Parameters', () => {
         }, 1000);
 
         it('Utf8', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: "Hello, World!" },
                 [Shape.object({result: Shape.utf8()})]
@@ -691,7 +695,7 @@ describe('Named Parameters', () => {
 
         it('Blob', async () => {
             const data = new Uint8Array([1, 2, 3, 4, 5]);
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: data },
                 [Shape.object({result: Shape.blob()})]
@@ -702,7 +706,7 @@ describe('Named Parameters', () => {
 
         it('Date', async () => {
             const date = new Date('2024-03-15');
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: date },
                 [Shape.object({result: Shape.date()})]
@@ -713,7 +717,7 @@ describe('Named Parameters', () => {
 
         it('Time', async () => {
             const time = new Date('1970-01-01T14:30:00.123Z');
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: time },
                 [Shape.object({result: Shape.time()})]
@@ -724,7 +728,7 @@ describe('Named Parameters', () => {
 
         it('DateTime', async () => {
             const datetime = new Date('2024-03-15T14:30:00.123Z');
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: datetime },
                 [Shape.object({result: Shape.datetime()})]
@@ -735,7 +739,7 @@ describe('Named Parameters', () => {
 
         it('Duration', async () => {
             const duration = "P1DT2H30M";
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: duration },
                 [Shape.object({result: Shape.duration()})]
@@ -746,7 +750,7 @@ describe('Named Parameters', () => {
 
         it('Uuid4', async () => {
             const uuid = "550e8400-e29b-41d4-a716-446655440000";
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: uuid },
                 [Shape.object({result: Shape.uuid4()})]
@@ -757,7 +761,7 @@ describe('Named Parameters', () => {
 
         it('Uuid7', async () => {
             const uuid = "018fad5d-f37a-7c94-a716-446655440000";
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: uuid },
                 [Shape.object({result: Shape.uuid7()})]
@@ -768,7 +772,7 @@ describe('Named Parameters', () => {
 
         it('IdentityId', async () => {
             const identityId = "018fad5d-f37a-7c94-a716-446655440001";
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: $value}',
                 { value: identityId },
                 [Shape.object({result: Shape.identityid()})]

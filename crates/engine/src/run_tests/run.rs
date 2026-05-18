@@ -4,6 +4,7 @@
 use std::{collections::HashMap, mem, sync::Arc};
 
 use reifydb_core::{
+	interface::catalog::policy::SessionOp,
 	internal_error,
 	testing::{CapturedEvent, CapturedInvocation},
 	value::column::columns::Columns,
@@ -13,10 +14,7 @@ use reifydb_rql::{
 	nodes::{RunTestsNode, RunTestsScope},
 };
 use reifydb_transaction::transaction::{TestTransaction, Transaction};
-use reifydb_type::{
-	params::Params,
-	value::{Value, duration::Duration as RqlDuration, frame::frame::Frame},
-};
+use reifydb_type::value::{Value, duration::Duration as RqlDuration, frame::frame::Frame};
 
 use crate::{
 	Result,
@@ -24,15 +22,11 @@ use crate::{
 	vm::{services::Services, stack::Variable, vm::Vm},
 };
 
-/// Run a single test invocation (body compiled + executed with given params).
-/// If `named_vars` is provided, injects them as variables before execution.
-/// Returns (outcome, message).
 fn run_single(
 	vm: &mut Vm,
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	body: &str,
-	params: &Params,
 	named_vars: Option<&HashMap<String, Value>>,
 ) -> (String, String) {
 	match services.compiler.compile(txn, body) {
@@ -41,7 +35,6 @@ fn run_single(
 				let saved_ip = vm.ip;
 				let mut exec_error = None;
 
-				// Inject named variables into the symbol table
 				if let Some(vars) = named_vars {
 					for (name, value) in vars {
 						if let Err(e) = vm.symbols.set(
@@ -57,13 +50,9 @@ fn run_single(
 				for compiled_unit in compiled_list.iter() {
 					vm.ip = 0;
 					let mut test_result = Vec::new();
-					if let Err(e) = vm.run(
-						services,
-						txn,
-						&compiled_unit.instructions,
-						params,
-						&mut test_result,
-					) {
+					if let Err(e) =
+						vm.run(services, txn, &compiled_unit.instructions, &mut test_result)
+					{
 						exec_error = Some(e);
 						break;
 					}
@@ -88,7 +77,6 @@ fn run_single(
 	}
 }
 
-/// Resolve params data from a cases string by compiling `FROM <source>` and executing it.
 fn resolve_params(vm: &mut Vm, services: &Arc<Services>, txn: &mut Transaction<'_>, source: &str) -> Result<Frame> {
 	let query = format!("FROM {}", source);
 	let compiled = services.compiler.compile(txn, &query)?;
@@ -99,7 +87,7 @@ fn resolve_params(vm: &mut Vm, services: &Arc<Services>, txn: &mut Transaction<'
 
 			for compiled_unit in compiled_list.iter() {
 				vm.ip = 0;
-				vm.run(services, txn, &compiled_unit.instructions, &Params::None, &mut frames)?;
+				vm.run(services, txn, &compiled_unit.instructions, &mut frames)?;
 			}
 
 			vm.ip = saved_ip;
@@ -115,7 +103,6 @@ fn resolve_params(vm: &mut Vm, services: &Arc<Services>, txn: &mut Transaction<'
 	}
 }
 
-/// Format a row label like `[x=1, expected=1]` for display in test names.
 fn format_row_label(col_names: &[String], row_values: &[Value]) -> String {
 	let pairs: Vec<String> =
 		col_names.iter().zip(row_values.iter()).map(|(name, val)| format!("{}={}", name, val)).collect();
@@ -127,7 +114,6 @@ pub(crate) fn run_tests(
 	services: &Arc<Services>,
 	tx: &mut Transaction<'_>,
 	plan: RunTestsNode,
-	params: &Params,
 ) -> Result<Columns> {
 	let txn = match tx {
 		Transaction::Admin(txn) => txn,
@@ -137,7 +123,6 @@ pub(crate) fn run_tests(
 		}
 	};
 
-	// Stack-allocated test state — passed into Transaction::Test by reference
 	let mut events: Vec<CapturedEvent> = Vec::new();
 	let mut invocations: Vec<CapturedInvocation> = Vec::new();
 	let mut event_seq: u64 = 0;
@@ -184,7 +169,6 @@ pub(crate) fn run_tests(
 
 		match &test.cases {
 			None => {
-				// Non-parameterized: single run
 				events.clear();
 				invocations.clear();
 				_ = mem::replace(&mut event_seq, 0);
@@ -197,7 +181,7 @@ pub(crate) fn run_tests(
 					&mut invocations,
 					&mut event_seq,
 					&mut handler_seq,
-					"admin",
+					SessionOp::Admin,
 					true,
 				);
 				let (outcome, message) = run_single(
@@ -205,7 +189,6 @@ pub(crate) fn run_tests(
 					services,
 					&mut Transaction::Test(Box::new(test_txn.reborrow())),
 					&test.body,
-					params,
 					None,
 				);
 				test_txn.restore();
@@ -227,7 +210,6 @@ pub(crate) fn run_tests(
 				}
 			}
 			Some(source) => {
-				// Parameterized: resolve params, iterate rows
 				let cases_frame =
 					resolve_params(vm, services, &mut Transaction::Admin(&mut *txn), source)?;
 
@@ -241,7 +223,6 @@ pub(crate) fn run_tests(
 						cases_frame.columns.iter().map(|c| c.data.get_value(row_idx)).collect();
 					let row_label = format_row_label(&col_names, &row_values);
 
-					// Build named variables from column names + row values
 					let mut named_vars = HashMap::new();
 					for (name, value) in col_names.iter().zip(row_values.into_iter()) {
 						named_vars.insert(name.clone(), value);
@@ -259,7 +240,7 @@ pub(crate) fn run_tests(
 						&mut invocations,
 						&mut event_seq,
 						&mut handler_seq,
-						"admin",
+						SessionOp::Admin,
 						true,
 					);
 					let (outcome, message) = run_single(
@@ -267,7 +248,6 @@ pub(crate) fn run_tests(
 						services,
 						&mut Transaction::Test(Box::new(test_txn.reborrow())),
 						&test.body,
-						params,
 						Some(&named_vars),
 					);
 					test_txn.restore();

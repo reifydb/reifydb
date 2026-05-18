@@ -1,58 +1,69 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! FFI operator implementation that bridges FFI operators with ReifyDB
-
 use std::{
-	cell::RefCell,
+	any::Any,
+	cell::{Cell, UnsafeCell},
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},
 	process::abort,
-	result::Result as StdResult,
+	ptr,
 };
 
 use reifydb_abi::{
+	callbacks::builder::EmitDiffKind,
 	context::context::ContextFFI,
-	data::column::ColumnsFFI,
 	flow::change::ChangeFFI,
 	operator::{descriptor::OperatorDescriptorFFI, vtable::OperatorVTableFFI},
 };
 use reifydb_core::{
-	interface::{catalog::flow::FlowNodeId, change::Change},
+	common::CommitVersion,
+	interface::{
+		catalog::flow::FlowNodeId,
+		change::{Change, Diff, Diffs},
+	},
 	value::column::columns::Columns,
 };
 use reifydb_engine::vm::executor::Executor;
-use reifydb_sdk::{error::FFIError, ffi::arena::Arena};
-use reifydb_type::{
-	Result,
-	value::{datetime::DateTime, row_number::RowNumber},
-};
+use reifydb_extension::ffi_callbacks::builder::{BuilderRegistry, with_registry};
+use reifydb_sdk::{error::FFIError, ffi::arena::Arena, operator::Tick};
+use reifydb_type::{Result, value::datetime::DateTime};
 use tracing::{Span, error, field, instrument};
 
 use crate::{
 	ffi::{callbacks::create_host_callbacks, context::new_ffi_context},
 	operator::Operator,
-	transaction::FlowTransaction,
+	transaction::{FlowTransaction, slot::PersistFn},
 };
 
-/// FFI operator that wraps an external operator implementation
+thread_local! {
+	static FFI_MARSHAL_ARENA: UnsafeCell<Arena> = UnsafeCell::new(Arena::new());
+}
+
+#[derive(Clone, Copy)]
+struct SendableInstance(*mut c_void);
+unsafe impl Send for SendableInstance {}
+unsafe impl Sync for SendableInstance {}
+
 pub struct FFIOperator {
-	/// Operator descriptor from the FFI library
 	descriptor: OperatorDescriptorFFI,
-	/// Virtual function table for calling FFI functions
+
 	vtable: OperatorVTableFFI,
-	/// Pointer to the FFI operator instance
+
 	instance: *mut c_void,
-	/// ID for this operator
+
 	operator_id: FlowNodeId,
-	/// Executor for RQL execution via FFI callbacks
+
 	executor: Executor,
-	/// Arena for type conversions
-	arena: RefCell<Arena>,
+
+	builder_registry: BuilderRegistry,
+
+	last_registered_txn: Cell<u64>,
+
+	cached_ctx: UnsafeCell<ContextFFI>,
 }
 
 impl FFIOperator {
-	/// Create a new FFI operator
 	pub fn new(
 		descriptor: OperatorDescriptorFFI,
 		instance: *mut c_void,
@@ -67,38 +78,57 @@ impl FFIOperator {
 			instance,
 			operator_id,
 			executor,
-			arena: RefCell::new(Arena::new()),
+			builder_registry: BuilderRegistry::new(),
+			last_registered_txn: Cell::new(u64::MAX),
+			cached_ctx: UnsafeCell::new(ContextFFI {
+				txn_ptr: ptr::null_mut(),
+				executor_ptr: ptr::null(),
+				operator_id: operator_id.0,
+				clock_now_nanos: 0,
+				callbacks: create_host_callbacks(),
+			}),
 		}
 	}
 
-	/// Get the operator descriptor
 	pub(crate) fn descriptor(&self) -> &OperatorDescriptorFFI {
 		&self.descriptor
+	}
+
+	fn ensure_txn_setup(&self, txn: &mut FlowTransaction) -> Result<()> {
+		let txn_version = txn.version().0;
+		if self.last_registered_txn.get() != txn_version {
+			ensure_flush_slot(txn, self.operator_id, self.vtable, self.instance, self.executor.clone())?;
+			self.last_registered_txn.set(txn_version);
+			// SAFETY: single-threaded actor; no aliasing with guest (vtable not
+
+			let ctx = unsafe { &mut *self.cached_ctx.get() };
+			ctx.txn_ptr = txn as *mut _ as *mut c_void;
+			ctx.executor_ptr = &self.executor as *const _ as *const c_void;
+			ctx.clock_now_nanos = txn.clock().now_nanos();
+		}
+		Ok(())
 	}
 }
 
 // SAFETY: FFIOperator is only accessed from a single actor at a time.
-// The raw pointer and RefCell<Arena> are not shared across threads.
+
 unsafe impl Send for FFIOperator {}
 unsafe impl Sync for FFIOperator {}
 
 impl Drop for FFIOperator {
 	fn drop(&mut self) {
-		// Call the destroy function from the vtable to clean up the FFI operator instance
 		if !self.instance.is_null() {
 			unsafe { (self.vtable.destroy)(self.instance) };
 		}
 	}
 }
 
-/// Marshal a flow change to FFI format
 #[inline]
 #[instrument(name = "flow::ffi::marshal", level = "trace", skip_all)]
 fn marshal_input(arena: &mut Arena, change: &Change) -> ChangeFFI {
 	arena.marshal_change(change)
 }
 
-/// Call the FFI vtable apply function
 #[inline]
 #[instrument(name = "flow::ffi::vtable_call", level = "trace", skip_all, fields(operator_id = operator_id.0))]
 fn call_vtable(
@@ -106,12 +136,9 @@ fn call_vtable(
 	instance: *mut c_void,
 	ffi_ctx_ptr: *mut ContextFFI,
 	ffi_input: &ChangeFFI,
-	ffi_output: &mut ChangeFFI,
 	operator_id: FlowNodeId,
 ) -> i32 {
-	let result = catch_unwind(AssertUnwindSafe(|| unsafe {
-		(vtable.apply)(instance, ffi_ctx_ptr, ffi_input, ffi_output)
-	}));
+	let result = catch_unwind(AssertUnwindSafe(|| unsafe { (vtable.apply)(instance, ffi_ctx_ptr, ffi_input) }));
 
 	match result {
 		Ok(code) => code,
@@ -129,16 +156,53 @@ fn call_vtable(
 	}
 }
 
-/// Unmarshal FFI output to Change
-#[inline]
-#[instrument(name = "flow::ffi::unmarshal", level = "trace", skip_all)]
-fn unmarshal_output(arena: &mut Arena, ffi_output: &ChangeFFI) -> StdResult<Change, String> {
-	arena.unmarshal_change(ffi_output)
+fn ensure_flush_slot(
+	txn: &mut FlowTransaction,
+	operator_id: FlowNodeId,
+	vtable: OperatorVTableFFI,
+	instance: *mut c_void,
+	executor: Executor,
+) -> Result<()> {
+	let send_instance = SendableInstance(instance);
+	let _ = txn.operator_state(operator_id, move |_txn| {
+		let captured_instance = send_instance;
+		let captured_vtable = vtable;
+		let captured_executor = executor;
+		let captured_id = operator_id;
+		let persist: PersistFn = Box::new(move |txn, _value: Box<dyn Any>| {
+			let ffi_ctx = new_ffi_context(txn, &captured_executor, captured_id, create_host_callbacks());
+			let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut ContextFFI;
+			let inst = captured_instance;
+			let result = catch_unwind(AssertUnwindSafe(|| unsafe {
+				(captured_vtable.flush_state)(inst.0, ffi_ctx_ptr)
+			}));
+			match result {
+				Ok(0) => Ok(()),
+				Ok(code) => Err(FFIError::Other(format!(
+					"FFI operator flush_state failed with code: {}",
+					code
+				))
+				.into()),
+				Err(_) => {
+					error!(operator_id = captured_id.0, "FFI operator panicked during flush_state");
+					abort();
+				}
+			}
+		});
+
+		Ok(((), persist))
+	})?;
+	txn.mark_state_dirty(operator_id);
+	Ok(())
 }
 
 impl Operator for FFIOperator {
 	fn id(&self) -> FlowNodeId {
 		self.operator_id
+	}
+
+	fn capabilities(&self) -> u32 {
+		self.descriptor.capabilities
 	}
 
 	#[instrument(name = "flow::ffi::apply", level = "debug", skip_all, fields(
@@ -147,141 +211,115 @@ impl Operator for FFIOperator {
 		output_diff_count = field::Empty
 	))]
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		let mut arena = self.arena.borrow_mut();
+		self.ensure_txn_setup(txn)?;
 
-		let ffi_input = marshal_input(&mut arena, &change);
+		// SAFETY: single-threaded per operator; no live pointers from a prior
 
-		let mut ffi_output = ChangeFFI::empty();
+		FFI_MARSHAL_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
+		let ffi_input = FFI_MARSHAL_ARENA.with(|cell| marshal_input(unsafe { &mut *cell.get() }, &change));
 
-		let ffi_ctx = new_ffi_context(txn, &self.executor, self.operator_id, create_host_callbacks());
-		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut ContextFFI;
+		let version = change.version;
+		let changed_at = change.changed_at;
 
-		let result_code = call_vtable(
-			&self.vtable,
-			self.instance,
-			ffi_ctx_ptr,
-			&ffi_input,
-			&mut ffi_output,
-			self.operator_id,
-		);
+		let ffi_ctx_ptr = self.cached_ctx.get();
+
+		let result_code = with_registry(&self.builder_registry, || {
+			call_vtable(&self.vtable, self.instance, ffi_ctx_ptr, &ffi_input, self.operator_id)
+		});
 
 		if result_code != 0 {
+			let _ = self.builder_registry.drain();
 			return Err(
 				FFIError::Other(format!("FFI operator apply failed with code: {}", result_code)).into()
 			);
 		}
 
-		let output_change = unmarshal_output(&mut arena, &ffi_output).map_err(FFIError::Other)?;
-
-		// Clear the arena after operation
-		arena.clear();
+		let output_change = drain_emitted_diffs(&self.builder_registry, self.operator_id, version, changed_at);
 
 		Span::current().record("output_diff_count", output_change.diffs.len());
 
 		Ok(output_change)
 	}
 
-	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
-		let mut arena = self.arena.borrow_mut();
-
-		let row_numbers: Vec<u64> = rows.iter().map(|r| (*r).into()).collect();
-
-		let mut ffi_output = ColumnsFFI::empty();
-
-		let ffi_ctx = new_ffi_context(txn, &self.executor, self.operator_id, create_host_callbacks());
-		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut ContextFFI;
-
-		// Call FFI pull function
-		let result = catch_unwind(AssertUnwindSafe(|| unsafe {
-			(self.vtable.pull)(
-				self.instance,
-				ffi_ctx_ptr,
-				row_numbers.as_ptr(),
-				row_numbers.len(),
-				&mut ffi_output,
-			)
-		}));
-
-		let result_code = match result {
-			Ok(code) => code,
-			Err(panic_info) => {
-				let msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
-					s.to_string()
-				} else if let Some(s) = panic_info.downcast_ref::<String>() {
-					s.clone()
-				} else {
-					"Unknown panic".to_string()
-				};
-				error!(operator_id = self.operator_id.0, "FFI operator panicked during pull: {}", msg);
-				abort();
-			}
-		};
-
-		if result_code != 0 {
-			return Err(
-				FFIError::Other(format!("FFI operator pull failed with code: {}", result_code)).into()
-			);
-		}
-
-		// Unmarshal the columns
-		let columns = arena.unmarshal_columns(&ffi_output);
-
-		// Clear the arena's arena after operation
-		arena.clear();
-
-		Ok(columns)
-	}
-
 	#[instrument(name = "flow::ffi::tick", level = "debug", skip_all, fields(
 		operator_id = self.operator_id.0,
 		output_diff_count = field::Empty
 	))]
-	fn tick(&self, txn: &mut FlowTransaction, timestamp: DateTime) -> Result<Option<Change>> {
-		let mut arena = self.arena.borrow_mut();
+	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
+		self.ensure_txn_setup(txn)?;
 
-		let timestamp_nanos = timestamp.to_nanos();
-		let mut ffi_output = ChangeFFI::empty();
+		let timestamp_nanos = tick.now.to_nanos();
+		let ffi_ctx_ptr = self.cached_ctx.get();
 
-		let ffi_ctx = new_ffi_context(txn, &self.executor, self.operator_id, create_host_callbacks());
-		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut ContextFFI;
-
-		let result = catch_unwind(AssertUnwindSafe(|| unsafe {
-			(self.vtable.tick)(self.instance, ffi_ctx_ptr, timestamp_nanos, &mut ffi_output)
-		}));
-
-		let result_code = match result {
-			Ok(code) => code,
-			Err(panic_info) => {
-				let msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
-					s.to_string()
-				} else if let Some(s) = panic_info.downcast_ref::<String>() {
-					s.clone()
-				} else {
-					"Unknown panic".to_string()
-				};
-				error!(operator_id = self.operator_id.0, "FFI operator panicked during tick: {}", msg);
-				abort();
-			}
-		};
+		let result_code = self.invoke_under_panic_guard("tick", || unsafe {
+			(self.vtable.tick)(self.instance, ffi_ctx_ptr, timestamp_nanos)
+		});
 
 		if result_code < 0 {
+			let _ = self.builder_registry.drain();
 			return Err(
 				FFIError::Other(format!("FFI operator tick failed with code: {}", result_code)).into()
 			);
 		}
 
 		if result_code == 1 {
-			// No output (no-op)
-			arena.clear();
+			let _ = self.builder_registry.drain();
 			return Ok(None);
 		}
 
-		let output_change = unmarshal_output(&mut arena, &ffi_output).map_err(FFIError::Other)?;
-
-		arena.clear();
-
+		let version = CommitVersion(timestamp_nanos);
+		let output_change = drain_emitted_diffs(&self.builder_registry, self.operator_id, version, tick.now);
 		Span::current().record("output_diff_count", output_change.diffs.len());
-
 		Ok(Some(output_change))
 	}
+}
+
+impl FFIOperator {
+	#[inline]
+	fn invoke_under_panic_guard<F>(&self, op: &'static str, call: F) -> i32
+	where
+		F: FnOnce() -> i32,
+	{
+		with_registry(&self.builder_registry, || {
+			let result = catch_unwind(AssertUnwindSafe(call));
+			match result {
+				Ok(code) => code,
+				Err(panic_info) => {
+					let msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
+						s.to_string()
+					} else if let Some(s) = panic_info.downcast_ref::<String>() {
+						s.clone()
+					} else {
+						"Unknown panic".to_string()
+					};
+					error!(
+						operator_id = self.operator_id.0,
+						"FFI operator panicked during {}: {}", op, msg
+					);
+					abort();
+				}
+			}
+		})
+	}
+}
+
+fn drain_emitted_diffs(
+	registry: &BuilderRegistry,
+	operator_id: FlowNodeId,
+	version: CommitVersion,
+	changed_at: DateTime,
+) -> Change {
+	let emitted = registry.drain();
+	let diffs: Diffs = emitted
+		.into_iter()
+		.map(|d| match d.kind {
+			EmitDiffKind::Insert => Diff::insert(d.post.unwrap_or_else(Columns::empty)),
+			EmitDiffKind::Update => Diff::update(
+				d.pre.unwrap_or_else(Columns::empty),
+				d.post.unwrap_or_else(Columns::empty),
+			),
+			EmitDiffKind::Remove => Diff::remove(d.pre.unwrap_or_else(Columns::empty)),
+		})
+		.collect();
+	Change::from_flow(operator_id, version, diffs, changed_at)
 }

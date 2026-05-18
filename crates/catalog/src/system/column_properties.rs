@@ -12,8 +12,6 @@ use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::column_properties::*, vtable::COLUMN_PROPERTIES};
 
-/// Returns the static definition for the system.column_properties virtual table
-/// This table exposes information about all column policies
 pub fn column_properties() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 

@@ -6,15 +6,18 @@ use std::sync::Arc;
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::key::{EncodedKey, EncodedKeyRange},
+	execution::ExecutionResult,
 	interface::{
 		catalog::{
 			authentication::{Authentication, AuthenticationId},
+			binding::Binding,
+			config::{Config, ConfigKey},
 			dictionary::Dictionary,
-			flow::{Flow, FlowId},
+			flow::{Flow, FlowId, FlowNodeId},
 			handler::Handler,
 			id::{
-				HandlerId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId, SinkId,
-				SourceId, SubscriptionId, TableId, TestId, ViewId,
+				BindingId, HandlerId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId,
+				SinkId, SourceId, TableId, TestId, ViewId,
 			},
 			identity::{GrantedRole, Identity, Role, RoleId},
 			migration::Migration,
@@ -23,9 +26,9 @@ use reifydb_core::{
 			procedure::Procedure,
 			ringbuffer::RingBuffer,
 			series::Series,
+			shape::ShapeId,
 			sink::Sink,
 			source::Source,
-			subscription::Subscription,
 			sumtype::SumType,
 			table::Table,
 			test::Test,
@@ -33,23 +36,25 @@ use reifydb_core::{
 		},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
+	row::Ttl,
 };
 use reifydb_type::{
 	Result,
 	params::Params,
-	value::{dictionary::DictionaryId, frame::frame::Frame, identity::IdentityId, sumtype::SumTypeId},
+	value::{dictionary::DictionaryId, identity::IdentityId, sumtype::SumTypeId},
 };
 use tracing::instrument;
 
 use crate::{
 	TransactionId,
 	change::{
-		TransactionalAuthenticationChanges, TransactionalChanges, TransactionalDictionaryChanges,
-		TransactionalFlowChanges, TransactionalGrantedRoleChanges, TransactionalHandlerChanges,
-		TransactionalIdentityChanges, TransactionalMigrationChanges, TransactionalNamespaceChanges,
+		TransactionalAuthenticationChanges, TransactionalBindingChanges, TransactionalChanges,
+		TransactionalConfigChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
+		TransactionalGrantedRoleChanges, TransactionalHandlerChanges, TransactionalIdentityChanges,
+		TransactionalMigrationChanges, TransactionalNamespaceChanges, TransactionalOperatorTtlChanges,
 		TransactionalPolicyChanges, TransactionalProcedureChanges, TransactionalRingBufferChanges,
-		TransactionalRoleChanges, TransactionalSeriesChanges, TransactionalSinkChanges,
-		TransactionalSourceChanges, TransactionalSubscriptionChanges, TransactionalSumTypeChanges,
+		TransactionalRoleChanges, TransactionalRowTtlChanges, TransactionalSeriesChanges,
+		TransactionalSinkChanges, TransactionalSourceChanges, TransactionalSumTypeChanges,
 		TransactionalTableChanges, TransactionalTestChanges, TransactionalViewChanges,
 	},
 	multi::transaction::read::MultiReadTransaction,
@@ -57,88 +62,80 @@ use crate::{
 	transaction::{RqlExecutor, Transaction},
 };
 
-/// An active query transaction that holds a multi query transaction
-/// and provides query-only access to single storage.
 pub struct QueryTransaction {
 	pub(crate) multi: MultiReadTransaction,
-	pub(crate) single: SingleTransaction,
+	pub(crate) single: Option<SingleTransaction>,
 
-	/// The identity executing this transaction.
 	pub identity: IdentityId,
 
-	/// Optional RQL executor for running RQL within this transaction.
 	pub(crate) executor: Option<Arc<dyn RqlExecutor>>,
 }
 
 impl QueryTransaction {
-	/// Creates a new active query transaction
 	#[instrument(name = "transaction::query::new", level = "debug", skip_all)]
 	pub fn new(multi: MultiReadTransaction, single: SingleTransaction, identity: IdentityId) -> Self {
 		Self {
 			multi,
-			single,
+			single: Some(single),
 			identity,
 			executor: None,
 		}
 	}
 
-	/// Set the RQL executor for this transaction.
+	pub fn new_read_only(multi: MultiReadTransaction, identity: IdentityId) -> Self {
+		Self {
+			multi,
+			single: None,
+			identity,
+			executor: None,
+		}
+	}
+
 	pub fn set_executor(&mut self, executor: Arc<dyn RqlExecutor>) {
 		self.executor = Some(executor);
 	}
 
-	/// Execute RQL within this transaction using the attached executor.
-	///
-	/// Panics if no `RqlExecutor` has been set on this transaction.
-	pub fn rql(&mut self, rql: &str, params: Params) -> Result<Vec<Frame>> {
+	pub fn rql(&mut self, rql: &str, params: Params) -> ExecutionResult {
 		let executor = self.executor.clone().expect("RqlExecutor not set");
 		executor.rql(&mut Transaction::Query(self), rql, params)
 	}
 
-	/// Get the transaction version
 	#[inline]
 	pub fn version(&self) -> CommitVersion {
 		self.multi.version()
 	}
 
-	/// Get the transaction ID
 	#[inline]
 	pub fn id(&self) -> TransactionId {
 		self.multi.tm.id()
 	}
 
-	/// Get a value by key
 	#[inline]
 	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
 		Ok(self.multi.get(key)?.map(|v| v.into_multi_version_row()))
 	}
 
-	/// Check if a key exists
 	#[inline]
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
 		self.multi.contains_key(key)
 	}
 
-	/// Get a prefix batch
 	#[inline]
 	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		self.multi.prefix(prefix)
 	}
 
-	/// Get a reverse prefix batch
 	#[inline]
 	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		self.multi.prefix_rev(prefix)
 	}
 
-	/// Read as of version exclusive
 	#[inline]
 	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<()> {
 		self.multi.read_as_of_version_exclusive(version);
 		Ok(())
 	}
 
-	/// Create a streaming iterator for forward range queries.
 	#[inline]
 	pub fn range(
 		&self,
@@ -148,7 +145,6 @@ impl QueryTransaction {
 		self.multi.range(range, batch_size)
 	}
 
-	/// Create a streaming iterator for reverse range queries.
 	#[inline]
 	pub fn range_rev(
 		&self,
@@ -158,7 +154,6 @@ impl QueryTransaction {
 		self.multi.range_rev(range, batch_size)
 	}
 
-	/// Execute a function with query access to the single transaction.
 	#[instrument(name = "transaction::query::with_single_query", level = "trace", skip(self, keys, f))]
 	pub fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
@@ -166,11 +161,9 @@ impl QueryTransaction {
 		F: FnOnce(&mut SingleReadTransaction<'_>) -> Result<R> + Send,
 		R: Send,
 	{
-		self.single.with_query(keys, f)
+		self.single.as_ref().expect("single not available in read-only query context").with_query(keys, f)
 	}
 
-	/// Execute a function with access to the multi query transaction.
-	/// This operates within the same transaction context.
 	#[instrument(name = "transaction::query::with_multi_query", level = "trace", skip(self, f))]
 	pub fn with_multi_query<F, R>(&mut self, f: F) -> Result<R>
 	where
@@ -179,18 +172,14 @@ impl QueryTransaction {
 		f(&mut self.multi)
 	}
 
-	/// Begin a single-version query transaction for specific keys
 	#[instrument(name = "transaction::query::begin_single_query", level = "trace", skip(self, keys))]
 	pub fn begin_single_query<'a, I>(&self, keys: I) -> Result<SingleReadTransaction<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
-		self.single.begin_query(keys)
+		self.single.as_ref().expect("single not available in read-only query context").begin_query(keys)
 	}
 }
-
-// No-op implementations of TransactionalChanges for QueryTransaction.
-// Query transactions don't track changes, so all methods return None/false.
 
 impl TransactionalDictionaryChanges for QueryTransaction {
 	fn find_dictionary(&self, _id: DictionaryId) -> Option<&Dictionary> {
@@ -372,16 +361,6 @@ impl TransactionalSumTypeChanges for QueryTransaction {
 	}
 }
 
-impl TransactionalSubscriptionChanges for QueryTransaction {
-	fn find_subscription(&self, _id: SubscriptionId) -> Option<&Subscription> {
-		None
-	}
-
-	fn is_subscription_deleted(&self, _id: SubscriptionId) -> bool {
-		false
-	}
-}
-
 impl TransactionalHandlerChanges for QueryTransaction {
 	fn find_handler_by_id(&self, _id: HandlerId) -> Option<&Handler> {
 		None
@@ -389,6 +368,10 @@ impl TransactionalHandlerChanges for QueryTransaction {
 
 	fn find_handler_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&Handler> {
 		None
+	}
+
+	fn is_handler_deleted(&self, _id: HandlerId) -> bool {
+		false
 	}
 
 	fn is_handler_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
@@ -498,6 +481,10 @@ impl TransactionalAuthenticationChanges for QueryTransaction {
 	fn is_authentication_deleted(&self, _id: AuthenticationId) -> bool {
 		false
 	}
+
+	fn is_authentication_deleted_by_identity_and_method(&self, _identity: IdentityId, _method: &str) -> bool {
+		false
+	}
 }
 
 impl TransactionalSourceChanges for QueryTransaction {
@@ -532,6 +519,50 @@ impl TransactionalSinkChanges for QueryTransaction {
 	}
 
 	fn is_sink_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
+		false
+	}
+}
+
+impl TransactionalConfigChanges for QueryTransaction {
+	fn find_config(&self, _key: ConfigKey) -> Option<&Config> {
+		None
+	}
+}
+
+impl TransactionalRowTtlChanges for QueryTransaction {
+	fn find_row_ttl(&self, _shape: ShapeId) -> Option<&Ttl> {
+		None
+	}
+
+	fn is_row_ttl_deleted(&self, _shape: ShapeId) -> bool {
+		false
+	}
+}
+
+impl TransactionalOperatorTtlChanges for QueryTransaction {
+	fn find_operator_ttl(&self, _node: FlowNodeId) -> Option<&Ttl> {
+		None
+	}
+
+	fn is_operator_ttl_deleted(&self, _node: FlowNodeId) -> bool {
+		false
+	}
+}
+
+impl TransactionalBindingChanges for QueryTransaction {
+	fn find_binding(&self, _id: BindingId) -> Option<&Binding> {
+		None
+	}
+
+	fn find_binding_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&Binding> {
+		None
+	}
+
+	fn is_binding_deleted(&self, _id: BindingId) -> bool {
+		false
+	}
+
+	fn is_binding_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
 		false
 	}
 }

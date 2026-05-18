@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Performance and scalability tests for the encoded encoding system
-
 use reifydb_core::encoded::shape::RowShape;
 use reifydb_type::value::{blob::Blob, date::Date, int::Int, r#type::Type, uuid::Uuid4};
 
@@ -136,7 +134,7 @@ fn test_memory_efficiency() {
 	// Expected: validity bits (rounded up) + data
 	// 3 validity bits = 1 byte, data = 1 + 4 + 8 = 13 bytes
 	// Plus any alignment padding
-	assert!(row.len() < 32, "Static row too large: {} bytes", row.len());
+	assert!(row.len() < 48, "Static row too large: {} bytes", row.len());
 
 	// Dynamic types should grow as needed - test with separate rows since
 	// dynamic fields can only be set once

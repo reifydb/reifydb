@@ -9,7 +9,7 @@ pub mod temporal;
 pub mod text;
 pub mod uuid;
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::buffer::ColumnBuffer;
 use reifydb_type::{
 	error::TypeError, fragment::LazyFragment, storage::DataBitVec, util::bitvec::BitVec, value::r#type::Type,
 };
@@ -21,12 +21,11 @@ use crate::{
 
 pub fn cast_column_data(
 	ctx: &EvalContext,
-	data: &ColumnData,
+	data: &ColumnBuffer,
 	target: Type,
 	lazy_fragment: impl LazyFragment + Clone,
-) -> Result<ColumnData> {
-	// Handle Option-wrapped data: cast the inner data, then re-wrap with the bitvec
-	if let ColumnData::Option {
+) -> Result<ColumnBuffer> {
+	if let ColumnBuffer::Option {
 		inner,
 		bitvec,
 	} = data
@@ -39,19 +38,15 @@ pub fn cast_column_data(
 		let defined_count = DataBitVec::count_ones(bitvec);
 
 		if defined_count == 0 {
-			return Ok(ColumnData::none_typed(inner_target, total_len));
+			return Ok(ColumnBuffer::none_typed(inner_target, total_len));
 		}
 
 		if defined_count < total_len {
-			// Compact: keep only defined positions (avoids parsing placeholders like "" for text)
 			let mut compacted = inner.as_ref().clone();
 			compacted.filter(bitvec)?;
 
-			// Cast only real values
 			let mut cast_compacted = cast_column_data(ctx, &compacted, inner_target, lazy_fragment)?;
 
-			// Expand back to full length: defined positions → compacted index, None positions → sentinel
-			// (gets type default)
 			let sentinel = defined_count;
 			let mut expand_indices = Vec::with_capacity(total_len);
 			let mut src_idx = 0usize;
@@ -66,38 +61,37 @@ pub fn cast_column_data(
 			cast_compacted.reorder(&expand_indices);
 
 			return Ok(match cast_compacted {
-				already @ ColumnData::Option {
+				already @ ColumnBuffer::Option {
 					..
 				} => already,
-				other => ColumnData::Option {
+				other => ColumnBuffer::Option {
 					inner: Box::new(other),
 					bitvec: bitvec.clone(),
 				},
 			});
 		}
 
-		// All positions defined — cast directly (fast path)
 		let cast_inner = cast_column_data(ctx, inner, inner_target, lazy_fragment)?;
 		return Ok(match cast_inner {
-			already @ ColumnData::Option {
+			already @ ColumnBuffer::Option {
 				..
 			} => already,
-			other => ColumnData::Option {
+			other => ColumnBuffer::Option {
 				inner: Box::new(other),
 				bitvec: bitvec.clone(),
 			},
 		});
 	}
-	// Handle bare data -> Option(T) target: cast to inner type, wrap with all-defined bitvec
+
 	if let Type::Option(inner_target) = &target {
 		let cast_inner = cast_column_data(ctx, data, *inner_target.clone(), lazy_fragment)?;
 		return Ok(match cast_inner {
-			already @ ColumnData::Option {
+			already @ ColumnBuffer::Option {
 				..
 			} => already,
 			other => {
 				let bitvec = BitVec::repeat(other.len(), true);
-				ColumnData::Option {
+				ColumnBuffer::Option {
 					inner: Box::new(other),
 					bitvec,
 				}
@@ -131,7 +125,7 @@ pub fn cast_column_data(
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::value::column::data::ColumnData;
+	use reifydb_core::value::column::buffer::ColumnBuffer;
 	use reifydb_rql::expression::{
 		CastExpression, ConstantExpression,
 		ConstantExpression::Number,
@@ -160,7 +154,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(*result.data(), ColumnData::int4([42]));
+		assert_eq!(*result.data(), ColumnBuffer::int4([42]));
 	}
 
 	#[test]
@@ -185,7 +179,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(*result.data(), ColumnData::int4([-42]));
+		assert_eq!(*result.data(), ColumnBuffer::int4([-42]));
 	}
 
 	#[test]
@@ -210,7 +204,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(*result.data(), ColumnData::int1([-128]));
+		assert_eq!(*result.data(), ColumnBuffer::int1([-128]));
 	}
 
 	#[test]
@@ -231,7 +225,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(*result.data(), ColumnData::float8([4.2]));
+		assert_eq!(*result.data(), ColumnBuffer::float8([4.2]));
 	}
 
 	#[test]
@@ -252,7 +246,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(*result.data(), ColumnData::float4([4.2]));
+		assert_eq!(*result.data(), ColumnBuffer::float4([4.2]));
 	}
 
 	#[test]
@@ -273,7 +267,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(*result.data(), ColumnData::float4([-1.1]));
+		assert_eq!(*result.data(), ColumnBuffer::float4([-1.1]));
 	}
 
 	#[test]
@@ -294,7 +288,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(*result.data(), ColumnData::float8([-1.1]));
+		assert_eq!(*result.data(), ColumnBuffer::float8([-1.1]));
 	}
 
 	#[test]
@@ -315,7 +309,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(*result.data(), ColumnData::bool([false]));
+		assert_eq!(*result.data(), ColumnBuffer::bool([false]));
 	}
 
 	#[test]
@@ -391,7 +385,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		if let ColumnData::Decimal {
+		if let ColumnBuffer::Decimal {
 			container,
 			..
 		} = result.data()

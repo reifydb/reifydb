@@ -1,4 +1,4 @@
-//! file control options
+//! File control options
 use crate::errno::Errno;
 #[cfg(all(target_os = "freebsd", target_arch = "x86_64"))]
 use core::slice;
@@ -13,12 +13,10 @@ use std::ffi::CStr;
 use std::ffi::OsString;
 #[cfg(not(any(target_os = "redox", target_os = "solaris")))]
 use std::ops::{Deref, DerefMut};
-#[cfg(not(target_os = "redox"))]
-use std::os::raw;
 use std::os::unix::ffi::OsStringExt;
+#[cfg(not(target_os = "redox"))]
+use std::os::unix::io::OwnedFd;
 use std::os::unix::io::RawFd;
-#[cfg(not(any(target_os = "redox", target_os = "solaris")))]
-use std::os::unix::io::{AsRawFd, OwnedFd};
 #[cfg(any(
     target_os = "netbsd",
     apple_targets,
@@ -27,7 +25,7 @@ use std::os::unix::io::{AsRawFd, OwnedFd};
 ))]
 use std::path::PathBuf;
 #[cfg(any(linux_android, target_os = "freebsd"))]
-use std::{os::unix::io::AsFd, ptr};
+use std::ptr;
 
 #[cfg(feature = "fs")]
 use crate::{sys::stat::Mode, NixPath, Result};
@@ -42,6 +40,42 @@ use crate::{sys::stat::Mode, NixPath, Result};
 ))]
 #[cfg(feature = "fs")]
 pub use self::posix_fadvise::{posix_fadvise, PosixFadviseAdvice};
+
+/// A file descriptor referring to the working directory of the current process
+/// **that should be ONLY passed to the `dirfd` argument of those `xxat()` functions**.
+///
+/// # Examples
+///
+/// Use it in [`openat()`]:
+///
+/// ```no_run
+/// use nix::fcntl::AT_FDCWD;
+/// use nix::fcntl::openat;
+/// use nix::fcntl::OFlag;
+/// use nix::sys::stat::Mode;
+///
+/// let fd = openat(AT_FDCWD, "foo", OFlag::O_RDONLY | OFlag::O_CLOEXEC, Mode::empty()).unwrap();
+/// ```
+///
+/// # WARNING
+///
+/// Do NOT pass this symbol to non-`xxat()` functions, it won't work:
+///
+/// ```should_panic
+/// use nix::errno::Errno;
+/// use nix::fcntl::AT_FDCWD;
+/// use nix::sys::stat::fstat;
+///
+/// let never = fstat(AT_FDCWD).unwrap();
+/// ```
+//
+// SAFETY:
+// 1. `AT_FDCWD` is usable for the whole process life, so it is `'static`.
+// 2. It is not a valid file descriptor, but OS will handle it for us when passed
+//    to `xxat(2)` calls.
+#[cfg(not(target_os = "redox"))] // Redox does not have this
+pub const AT_FDCWD: std::os::fd::BorrowedFd<'static> =
+    unsafe { std::os::fd::BorrowedFd::borrow_raw(libc::AT_FDCWD) };
 
 #[cfg(not(target_os = "redox"))]
 #[cfg(any(feature = "fs", feature = "process", feature = "user"))]
@@ -94,7 +128,8 @@ libc_bitflags!(
         #[cfg(not(any(
             solarish,
             target_os = "aix",
-            target_os = "haiku"
+            target_os = "haiku",
+            target_os = "cygwin"
         )))]
         O_ASYNC;
         /// Closes the file descriptor once an `execve` call is made.
@@ -107,14 +142,14 @@ libc_bitflags!(
         #[cfg(any(
             freebsdlike,
             linux_android,
-            solarish,
+            target_os = "illumos",
             target_os = "netbsd"
         ))]
         O_DIRECT;
         /// If the specified path isn't a directory, fail.
         O_DIRECTORY;
         /// Implicitly follow each `write()` with an `fdatasync()`.
-        #[cfg(any(linux_android, apple_targets, netbsdlike))]
+        #[cfg(any(linux_android, apple_targets, target_os = "freebsd", netbsdlike))]
         O_DSYNC;
         /// Error out if a file was not created.
         O_EXCL;
@@ -139,7 +174,7 @@ libc_bitflags!(
         #[cfg(not(target_os = "redox"))]
         O_NOCTTY;
         /// Same as `O_NONBLOCK`.
-        #[cfg(not(any(target_os = "redox", target_os = "haiku")))]
+        #[cfg(not(any(target_os = "redox", target_os = "haiku", target_os = "cygwin")))]
         O_NDELAY;
         /// `open()` will fail if the given path is a symbolic link.
         O_NOFOLLOW;
@@ -151,7 +186,7 @@ libc_bitflags!(
         /// Obtain a file descriptor for low-level access.
         ///
         /// The file itself is not opened and other file operations will fail.
-        #[cfg(any(linux_android, target_os = "redox"))]
+        #[cfg(any(linux_android, target_os = "redox", target_os = "freebsd", target_os = "fuchsia"))]
         O_PATH;
         /// Only allow reading.
         ///
@@ -164,8 +199,18 @@ libc_bitflags!(
         /// Similar to `O_DSYNC` but applies to `read`s instead.
         #[cfg(any(target_os = "linux", netbsdlike))]
         O_RSYNC;
-        /// Skip search permission checks.
-        #[cfg(target_os = "netbsd")]
+        /// Open directory for search only. Skip search permission checks on
+        /// later `openat()` calls using the obtained file descriptor.
+        #[cfg(any(
+            apple_targets,
+            solarish,
+            target_os = "netbsd",
+            target_os = "freebsd",
+            target_os = "fuchsia",
+            target_os = "emscripten",
+            target_os = "aix",
+            target_os = "wasi"
+        ))]
         O_SEARCH;
         /// Open with a shared file lock.
         #[cfg(any(bsd, target_os = "redox"))]
@@ -188,16 +233,6 @@ libc_bitflags!(
     }
 );
 
-/// Computes the raw fd consumed by a function of the form `*at`.
-#[cfg(any(
-    all(feature = "fs", not(target_os = "redox")),
-    all(feature = "process", linux_android),
-    all(feature = "fanotify", target_os = "linux")
-))]
-pub(crate) fn at_rawfd(fd: Option<RawFd>) -> raw::c_int {
-    fd.unwrap_or(libc::AT_FDCWD)
-}
-
 feature! {
 #![feature = "fs"]
 
@@ -211,35 +246,171 @@ pub fn open<P: ?Sized + NixPath>(
     path: &P,
     oflag: OFlag,
     mode: Mode,
-) -> Result<RawFd> {
+) -> Result<std::os::fd::OwnedFd> {
+    use std::os::fd::FromRawFd;
+
     let fd = path.with_nix_path(|cstr| unsafe {
         libc::open(cstr.as_ptr(), oflag.bits(), mode.bits() as c_uint)
     })?;
+    Errno::result(fd)?;
 
-    Errno::result(fd)
+    // SAFETY:
+    //
+    // `open(2)` should return a valid owned fd on success
+    Ok( unsafe { std::os::fd::OwnedFd::from_raw_fd(fd)  } )
 }
 
 /// open or create a file for reading, writing or executing
 ///
 /// The `openat` function is equivalent to the [`open`] function except in the case where the path
 /// specifies a relative path.  In that case, the file to be opened is determined relative to the
-/// directory associated with the file descriptor `fd`.
+/// directory associated with the file descriptor `dirfd`.
 ///
 /// # See Also
 /// [`openat`](https://pubs.opengroup.org/onlinepubs/9699919799/functions/openat.html)
 // The conversion is not identical on all operating systems.
 #[allow(clippy::useless_conversion)]
 #[cfg(not(target_os = "redox"))]
-pub fn openat<P: ?Sized + NixPath>(
-    dirfd: Option<RawFd>,
+pub fn openat<P: ?Sized + NixPath, Fd: std::os::fd::AsFd>(
+    dirfd: Fd,
     path: &P,
     oflag: OFlag,
     mode: Mode,
-) -> Result<RawFd> {
+) -> Result<OwnedFd> {
+    use std::os::fd::AsRawFd;
+    use std::os::fd::FromRawFd;
+
     let fd = path.with_nix_path(|cstr| unsafe {
-        libc::openat(at_rawfd(dirfd), cstr.as_ptr(), oflag.bits(), mode.bits() as c_uint)
+        libc::openat(dirfd.as_fd().as_raw_fd(), cstr.as_ptr(), oflag.bits(), mode.bits() as c_uint)
     })?;
-    Errno::result(fd)
+    Errno::result(fd)?;
+
+    // SAFETY:
+    //
+    // `openat(2)` should return a valid owned fd on success
+    Ok( unsafe { OwnedFd::from_raw_fd(fd)  } )
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(target_os = "linux")] {
+        libc_bitflags! {
+            /// Path resolution flags.
+            ///
+            /// See [path resolution(7)](https://man7.org/linux/man-pages/man7/path_resolution.7.html)
+            /// for details of the resolution process.
+            pub struct ResolveFlag: libc::c_ulonglong {
+                /// Do not permit the path resolution to succeed if any component of
+                /// the resolution is not a descendant of the directory indicated by
+                /// dirfd.  This causes absolute symbolic links (and absolute values of
+                /// pathname) to be rejected.
+                RESOLVE_BENEATH;
+
+                /// Treat the directory referred to by dirfd as the root directory
+                /// while resolving pathname.
+                RESOLVE_IN_ROOT;
+
+                /// Disallow all magic-link resolution during path resolution. Magic
+                /// links are symbolic link-like objects that are most notably found
+                /// in proc(5);  examples include `/proc/[pid]/exe` and `/proc/[pid]/fd/*`.
+                ///
+                /// See symlink(7) for more details.
+                RESOLVE_NO_MAGICLINKS;
+
+                /// Disallow resolution of symbolic links during path resolution. This
+                /// option implies RESOLVE_NO_MAGICLINKS.
+                RESOLVE_NO_SYMLINKS;
+
+                /// Disallow traversal of mount points during path resolution (including
+                /// all bind mounts).
+                RESOLVE_NO_XDEV;
+            }
+        }
+
+        /// Specifies how [`openat2()`] should open a pathname.
+        ///
+        /// # Reference
+        ///
+        /// * [Linux](https://man7.org/linux/man-pages/man2/open_how.2type.html)
+        #[repr(transparent)]
+        #[derive(Clone, Copy, Debug)]
+        pub struct OpenHow(libc::open_how);
+
+        impl OpenHow {
+            /// Create a new zero-filled `open_how`.
+            pub fn new() -> Self {
+                // safety: according to the man page, open_how MUST be zero-initialized
+                // on init so that unknown fields are also zeroed.
+                Self(unsafe {
+                    std::mem::MaybeUninit::zeroed().assume_init()
+                })
+            }
+
+            /// Set the open flags used to open a file, completely overwriting any
+            /// existing flags.
+            pub fn flags(mut self, flags: OFlag) -> Self {
+                let flags = flags.bits() as libc::c_ulonglong;
+                self.0.flags = flags;
+                self
+            }
+
+            /// Set the file mode new files will be created with, overwriting any
+            /// existing flags.
+            pub fn mode(mut self, mode: Mode) -> Self {
+                let mode = mode.bits() as libc::c_ulonglong;
+                self.0.mode = mode;
+                self
+            }
+
+            /// Set resolve flags, completely overwriting any existing flags.
+            ///
+            /// See [ResolveFlag] for more detail.
+            pub fn resolve(mut self, resolve: ResolveFlag) -> Self {
+                let resolve = resolve.bits();
+                self.0.resolve = resolve;
+                self
+            }
+        }
+
+        // safety: default isn't derivable because libc::open_how must be zeroed
+        impl Default for OpenHow {
+            fn default() -> Self {
+                Self::new()
+            }
+        }
+
+        /// Open or create a file for reading, writing or executing.
+        ///
+        /// `openat2` is an extension of the [`openat`] function that allows the caller
+        /// to control how path resolution happens.
+        ///
+        /// # See also
+        ///
+        /// [openat2](https://man7.org/linux/man-pages/man2/openat2.2.html)
+        pub fn openat2<P: ?Sized + NixPath, Fd: std::os::fd::AsFd>(
+            dirfd: Fd,
+            path: &P,
+            mut how: OpenHow,
+        ) -> Result<OwnedFd> {
+            use std::os::fd::AsRawFd;
+            use std::os::fd::FromRawFd;
+
+            let fd = path.with_nix_path(|cstr| unsafe {
+                libc::syscall(
+                    libc::SYS_openat2,
+                    dirfd.as_fd().as_raw_fd(),
+                    cstr.as_ptr(),
+                    &mut how as *mut OpenHow,
+                    std::mem::size_of::<libc::open_how>(),
+                )
+            })? as RawFd;
+            Errno::result(fd)?;
+
+            // SAFETY:
+            //
+            // `openat2(2)` should return a valid owned fd on success
+            Ok( unsafe { OwnedFd::from_raw_fd(fd)  } )
+        }
+    }
 }
 
 /// Change the name of a file.
@@ -251,18 +422,20 @@ pub fn openat<P: ?Sized + NixPath>(
 /// # See Also
 /// [`renameat`](https://pubs.opengroup.org/onlinepubs/9699919799/functions/rename.html)
 #[cfg(not(target_os = "redox"))]
-pub fn renameat<P1: ?Sized + NixPath, P2: ?Sized + NixPath>(
-    old_dirfd: Option<RawFd>,
+pub fn renameat<P1: ?Sized + NixPath, P2: ?Sized + NixPath, Fd1: std::os::fd::AsFd, Fd2: std::os::fd::AsFd>(
+    old_dirfd: Fd1,
     old_path: &P1,
-    new_dirfd: Option<RawFd>,
+    new_dirfd: Fd2,
     new_path: &P2,
 ) -> Result<()> {
+    use std::os::fd::AsRawFd;
+
     let res = old_path.with_nix_path(|old_cstr| {
         new_path.with_nix_path(|new_cstr| unsafe {
             libc::renameat(
-                at_rawfd(old_dirfd),
+                old_dirfd.as_fd().as_raw_fd(),
                 old_cstr.as_ptr(),
-                at_rawfd(new_dirfd),
+                new_dirfd.as_fd().as_raw_fd(),
                 new_cstr.as_ptr(),
             )
         })
@@ -299,19 +472,21 @@ feature! {
 /// # See Also
 /// * [`rename`](https://man7.org/linux/man-pages/man2/rename.2.html)
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
-pub fn renameat2<P1: ?Sized + NixPath, P2: ?Sized + NixPath>(
-    old_dirfd: Option<RawFd>,
+pub fn renameat2<P1: ?Sized + NixPath, P2: ?Sized + NixPath, Fd1: std::os::fd::AsFd, Fd2: std::os::fd::AsFd>(
+    old_dirfd: Fd1,
     old_path: &P1,
-    new_dirfd: Option<RawFd>,
+    new_dirfd: Fd2,
     new_path: &P2,
     flags: RenameFlags,
 ) -> Result<()> {
+    use std::os::fd::AsRawFd;
+
     let res = old_path.with_nix_path(|old_cstr| {
         new_path.with_nix_path(|new_cstr| unsafe {
             libc::renameat2(
-                at_rawfd(old_dirfd),
+                old_dirfd.as_fd().as_raw_fd(),
                 old_cstr.as_ptr(),
-                at_rawfd(new_dirfd),
+                new_dirfd.as_fd().as_raw_fd(),
                 new_cstr.as_ptr(),
                 flags.bits(),
             )
@@ -326,7 +501,16 @@ fn wrap_readlink_result(mut v: Vec<u8>, len: ssize_t) -> Result<OsString> {
     Ok(OsString::from_vec(v.to_vec()))
 }
 
-fn readlink_maybe_at<P: ?Sized + NixPath>(
+/// Read the symlink specified by `path` and `dirfd` and put the contents in `v`.
+/// Return the number of bytes placed in `v`.
+///
+/// This function can call `readlink(2)` or `readlinkat(2)` depending on if `dirfd`
+/// is some, if it is, then `readlinkat(2)` is called, otherwise, call `readlink(2)`.
+///
+/// # Safety
+///
+/// This function is not I/O-safe considering it employs the `RawFd` type.
+unsafe fn readlink_maybe_at<P: ?Sized + NixPath>(
     dirfd: Option<RawFd>,
     path: &P,
     v: &mut Vec<u8>,
@@ -334,7 +518,7 @@ fn readlink_maybe_at<P: ?Sized + NixPath>(
     path.with_nix_path(|cstr| unsafe {
         match dirfd {
             #[cfg(target_os = "redox")]
-            Some(_) => unreachable!(),
+            Some(_) => unreachable!("redox does not have readlinkat(2)"),
             #[cfg(not(target_os = "redox"))]
             Some(dirfd) => libc::readlinkat(
                 dirfd,
@@ -351,7 +535,15 @@ fn readlink_maybe_at<P: ?Sized + NixPath>(
     })
 }
 
-fn inner_readlink<P: ?Sized + NixPath>(
+/// The actual implementation of [`readlink(2)`] or [`readlinkat(2)`].
+///
+/// This function can call `readlink(2)` or `readlinkat(2)` depending on if `dirfd`
+/// is some, if it is, then `readlinkat(2)` is called, otherwise, call `readlink(2)`.
+///
+/// # Safety
+///
+/// This function is marked unsafe because it uses `RawFd`.
+unsafe fn inner_readlink<P: ?Sized + NixPath>(
     dirfd: Option<RawFd>,
     path: &P,
 ) -> Result<OsString> {
@@ -363,7 +555,12 @@ fn inner_readlink<P: ?Sized + NixPath>(
 
     {
         // simple case: result is strictly less than `PATH_MAX`
-        let res = readlink_maybe_at(dirfd, path, &mut v)?;
+
+        // SAFETY:
+        //
+        // If this call of `readlink_maybe_at()` is safe or not depends on the
+        // usage of `unsafe fn inner_readlink()`.
+        let res = unsafe { readlink_maybe_at(dirfd, path, &mut v)? };
         let len = Errno::result(res)?;
         debug_assert!(len >= 0);
         if (len as usize) < v.capacity() {
@@ -376,16 +573,23 @@ fn inner_readlink<P: ?Sized + NixPath>(
     let mut try_size = {
         let reported_size = match dirfd {
             #[cfg(target_os = "redox")]
-            Some(_) => unreachable!(),
+            Some(_) => unreachable!("redox does not have readlinkat(2)"),
             #[cfg(any(linux_android, target_os = "freebsd", target_os = "hurd"))]
             Some(dirfd) => {
+                // SAFETY:
+                //
+                // If this call of `borrow_raw()` is safe or not depends on the
+                // usage of `unsafe fn inner_readlink()`.
+                let dirfd = unsafe {
+                    std::os::fd::BorrowedFd::borrow_raw(dirfd)
+                };
                 let flags = if path.is_empty() {
                     AtFlags::AT_EMPTY_PATH
                 } else {
                     AtFlags::empty()
                 };
                 super::sys::stat::fstatat(
-                    Some(dirfd),
+                    dirfd,
                     path,
                     flags | AtFlags::AT_SYMLINK_NOFOLLOW,
                 )
@@ -396,11 +600,16 @@ fn inner_readlink<P: ?Sized + NixPath>(
                 target_os = "freebsd",
                 target_os = "hurd"
             )))]
-            Some(dirfd) => super::sys::stat::fstatat(
-                Some(dirfd),
-                path,
-                AtFlags::AT_SYMLINK_NOFOLLOW,
-            ),
+            Some(dirfd) => {
+                // SAFETY:
+                //
+                // If this call of `borrow_raw()` is safe or not depends on the
+                // usage of `unsafe fn inner_readlink()`.
+                let dirfd = unsafe {
+                    std::os::fd::BorrowedFd::borrow_raw(dirfd)
+                };
+                super::sys::stat::fstatat(dirfd, path, AtFlags::AT_SYMLINK_NOFOLLOW)
+            },
             None => super::sys::stat::lstat(path),
         }
         .map(|x| x.st_size)
@@ -420,7 +629,11 @@ fn inner_readlink<P: ?Sized + NixPath>(
     loop {
         {
             v.reserve_exact(try_size);
-            let res = readlink_maybe_at(dirfd, path, &mut v)?;
+            // SAFETY:
+            //
+            // If this call of `readlink_maybe_at()` is safe or not depends on the
+            // usage of `unsafe fn inner_readlink()`.
+            let res = unsafe { readlink_maybe_at(dirfd, path, &mut v)? };
             let len = Errno::result(res)?;
             debug_assert!(len >= 0);
             if (len as usize) < v.capacity() {
@@ -443,23 +656,39 @@ fn inner_readlink<P: ?Sized + NixPath>(
 /// # See Also
 /// * [`readlink`](https://pubs.opengroup.org/onlinepubs/9699919799/functions/readlink.html)
 pub fn readlink<P: ?Sized + NixPath>(path: &P) -> Result<OsString> {
-    inner_readlink(None, path)
+    // argument `dirfd` should be `None` since we call it from `readlink()`
+    //
+    // Do NOT call it with `Some(AT_CWD)` as in that way, we are emulating
+    // `readlink(2)` with `readlinkat(2)`, which will make us lose `readlink(2)`
+    // on Redox.
+    //
+    // SAFETY:
+    //
+    // It is definitely safe because the argument involving `RawFd` is `None`
+    unsafe { inner_readlink(None, path) }
 }
 
 /// Read value of a symbolic link.
 ///
-/// Equivalent to [`readlink` ] except where `path` specifies a relative path.  In that case,
-/// interpret `path` relative to open file specified by `dirfd`.
+/// Equivalent to [`readlink` ] except for the case where `path` specifies a
+/// relative path, `path` will be interpreted relative to the path specified
+/// by `dirfd`. (Use [`AT_FDCWD`] to make it relative to the working directory).
 ///
 /// # See Also
 /// * [`readlink`](https://pubs.opengroup.org/onlinepubs/9699919799/functions/readlink.html)
 #[cfg(not(target_os = "redox"))]
-pub fn readlinkat<P: ?Sized + NixPath>(
-    dirfd: Option<RawFd>,
+pub fn readlinkat<Fd: std::os::fd::AsFd,P: ?Sized + NixPath>(
+    dirfd: Fd,
     path: &P,
 ) -> Result<OsString> {
-    let dirfd = at_rawfd(dirfd);
-    inner_readlink(Some(dirfd), path)
+    use std::os::fd::AsRawFd;
+
+    // argument `dirfd` should be `Some` since we call it from `readlinkat()`
+    //
+    // SAFETY:
+    //
+    // The passed `RawFd` should be valid since it is borrowed from `Fd: AsFd`.
+    unsafe { inner_readlink(Some(dirfd.as_fd().as_raw_fd()), path) }
 }
 }
 
@@ -516,7 +745,7 @@ pub enum FcntlArg<'a> {
     F_SETFL(OFlag), // O_NONBLOCK
     /// Set or clear a file segment lock
     F_SETLK(&'a libc::flock),
-    /// Like [`F_SETLK`](FcntlArg::F_SETLK) except that if a shared or exclusive lock is blocked by
+    /// Like [`F_SETLK`] except that if a shared or exclusive lock is blocked by
     /// other locks, the process waits until the request can be satisfied.
     F_SETLKW(&'a libc::flock),
     /// Get the first lock that blocks the lock description
@@ -524,7 +753,7 @@ pub enum FcntlArg<'a> {
     /// Acquire or release an open file description lock
     #[cfg(linux_android)]
     F_OFD_SETLK(&'a libc::flock),
-    /// Like [`F_OFD_SETLK`](FcntlArg::F_OFD_SETLK) except that if a conflicting lock is held on
+    /// Like [`F_OFD_SETLK`] except that if a conflicting lock is held on
     /// the file, then wait for that lock to be released.
     #[cfg(linux_android)]
     F_OFD_SETLKW(&'a libc::flock),
@@ -569,6 +798,39 @@ pub enum FcntlArg<'a> {
     /// Return the full path without firmlinks of the fd.
     #[cfg(apple_targets)]
     F_GETPATH_NOFIRMLINK(&'a mut PathBuf),
+    /// Issue an advisory read async with no copy to user
+    #[cfg(apple_targets)]
+    F_RDADVISE(libc::radvisory),
+    /// Turn read ahead off/on
+    #[cfg(apple_targets)]
+    F_RDAHEAD(bool),
+    /// Pre-allocate storage with different policies on fd.
+    /// Note that we want a mutable reference for the OUT
+    /// fstore_t field fst_bytesalloc.
+    #[cfg(apple_targets)]
+    F_PREALLOCATE(&'a mut libc::fstore_t),
+    #[cfg(apple_targets)]
+    /// Get disk device information. In practice,
+    /// only the file offset data is set.
+    F_LOG2PHYS(&'a mut libc::off_t),
+    #[cfg(apple_targets)]
+    /// Get disk device information. In practice,
+    /// only the file offset data is set.
+    /// The difference with F_LOG2PHYS is the struct passed
+    /// is used as both IN/OUT as both its l2p_devoffset and
+    /// l2p_contigbytes can be used for more specific queries.
+    F_LOG2PHYS_EXT(&'a mut libc::log2phys),
+    /// Transfer any extra space in the file past the logical EOF
+    /// (as previously allocated via F_PREALLOCATE) to another file.
+    /// The other file is specified via a file descriptor as the lone extra argument.
+    /// Both descriptors must reference regular files in the same volume.
+    #[cfg(apple_targets)]
+    F_TRANSFEREXTENTS(RawFd),
+    /// Set or clear the read ahead (pre-fetch) amount for sequential access or
+    /// disable it with 0 or to system default for any value < 0.
+    /// It manages how the kernel caches file data.
+    #[cfg(target_os = "freebsd")]
+    F_READAHEAD(c_int),
     // TODO: Rest of flags
 }
 
@@ -597,7 +859,10 @@ pub use self::FcntlArg::*;
 /// # See Also
 /// * [`fcntl`](https://pubs.opengroup.org/onlinepubs/9699919799/functions/fcntl.html)
 // TODO: Figure out how to handle value fcntl returns
-pub fn fcntl(fd: RawFd, arg: FcntlArg) -> Result<c_int> {
+pub fn fcntl<Fd: std::os::fd::AsFd>(fd: Fd, arg: FcntlArg) -> Result<c_int> {
+    use std::os::fd::AsRawFd;
+
+    let fd = fd.as_fd().as_raw_fd();
     let res = unsafe {
         match arg {
             F_DUPFD(rawfd) => libc::fcntl(fd, libc::F_DUPFD, rawfd),
@@ -674,6 +939,39 @@ pub fn fcntl(fd: RawFd, arg: FcntlArg) -> Result<c_int> {
                 *path = PathBuf::from(OsString::from(optr.to_str().unwrap()));
                 return Ok(ok_res)
             },
+            #[cfg(apple_targets)]
+            F_RDADVISE(rad) => {
+                libc::fcntl(fd, libc::F_RDADVISE, &rad)
+            },
+            #[cfg(apple_targets)]
+            F_LOG2PHYS(offset) => {
+                let mut info: libc::log2phys = std::mem::zeroed();
+                let res = libc::fcntl(fd, libc::F_LOG2PHYS, &mut info);
+                let ok_res = Errno::result(res)?;
+                *offset = info.l2p_devoffset;
+                return Ok(ok_res)
+            }
+            #[cfg(apple_targets)]
+            F_LOG2PHYS_EXT(info) => {
+                libc::fcntl(fd, libc::F_LOG2PHYS_EXT, info)
+            }
+            #[cfg(apple_targets)]
+            F_RDAHEAD(on) => {
+                let val = if on { 1 } else { 0 };
+                libc::fcntl(fd, libc::F_RDAHEAD, val)
+            },
+            #[cfg(apple_targets)]
+            F_PREALLOCATE(st) => {
+                libc::fcntl(fd, libc::F_PREALLOCATE, st)
+            },
+            #[cfg(apple_targets)]
+            F_TRANSFEREXTENTS(rawfd) => {
+                libc::fcntl(fd, libc::F_TRANSFEREXTENTS, rawfd)
+            },
+            #[cfg(target_os = "freebsd")]
+            F_READAHEAD(val) => {
+                libc::fcntl(fd, libc::F_READAHEAD, val)
+            },
         }
     };
 
@@ -730,7 +1028,7 @@ pub fn flock(fd: RawFd, arg: FlockArg) -> Result<()> {
 /// # Safety
 /// Types implementing this must not be `Clone`.
 #[cfg(not(any(target_os = "redox", target_os = "solaris")))]
-pub unsafe trait Flockable: AsRawFd {}
+pub unsafe trait Flockable: std::os::fd::AsRawFd {}
 
 /// Represents an owned flock, which unlocks on drop.
 ///
@@ -740,6 +1038,7 @@ pub unsafe trait Flockable: AsRawFd {}
 pub struct Flock<T: Flockable>(T);
 
 #[cfg(not(any(target_os = "redox", target_os = "solaris")))]
+#[allow(clippy::unnecessary_unwrap)] // https://github.com/rust-lang/rust-clippy/issues/15744
 impl<T: Flockable> Drop for Flock<T> {
     fn drop(&mut self) {
         let res = Errno::result(unsafe { libc::flock(self.0.as_raw_fd(), libc::LOCK_UN) });
@@ -832,6 +1131,30 @@ impl<T: Flockable> Flock<T> {
         std::mem::forget(self);
         Ok(inner)
     }
+
+    /// Relock the file.  This can upgrade or downgrade the lock type.
+    ///
+    /// # Example
+    /// ```
+    /// # use std::fs::File;
+    /// # use nix::fcntl::{Flock, FlockArg};
+    /// # use tempfile::tempfile;
+    /// let f: std::fs::File = tempfile().unwrap();
+    /// let locked_file = Flock::lock(f, FlockArg::LockExclusive).unwrap();
+    /// // Do stuff, then downgrade the lock
+    /// locked_file.relock(FlockArg::LockShared).unwrap();
+    /// ```
+    pub fn relock(&self, arg: FlockArg) -> Result<()> {
+         let flags = match arg {
+            FlockArg::LockShared => libc::LOCK_SH,
+            FlockArg::LockExclusive => libc::LOCK_EX,
+            FlockArg::LockSharedNonblock => libc::LOCK_SH | libc::LOCK_NB,
+            FlockArg::LockExclusiveNonblock => libc::LOCK_EX | libc::LOCK_NB,
+            #[allow(deprecated)]
+            FlockArg::Unlock | FlockArg::UnlockNonblock => return Err(Errno::EINVAL),
+        };
+        Errno::result(unsafe { libc::flock(self.as_raw_fd(), flags) }).map(drop)
+    }
 }
 
 // Safety: `File` is not [std::clone::Clone].
@@ -852,16 +1175,20 @@ libc_bitflags! {
         /// Request that pages be moved instead of copied.
         ///
         /// Not applicable to `vmsplice`.
+        #[cfg(not(target_env = "uclibc"))]
         SPLICE_F_MOVE;
         /// Do not block on I/O.
+        #[cfg(not(target_env = "uclibc"))]
         SPLICE_F_NONBLOCK;
         /// Hint that more data will be coming in a subsequent splice.
         ///
         /// Not applicable to `vmsplice`.
+        #[cfg(not(target_env = "uclibc"))]
         SPLICE_F_MORE;
         /// Gift the user pages to the kernel.
         ///
         /// Not applicable to `splice`.
+        #[cfg(not(target_env = "uclibc"))]
         SPLICE_F_GIFT;
     }
 }
@@ -890,13 +1217,15 @@ feature! {
 // define it as "loff_t".  But on both OSes, on all supported platforms, those
 // are 64 bits.  So Nix uses i64 to make the docs simple and consistent.
 #[cfg(any(linux_android, target_os = "freebsd"))]
-pub fn copy_file_range<Fd1: AsFd, Fd2: AsFd>(
+pub fn copy_file_range<Fd1: std::os::fd::AsFd, Fd2: std::os::fd::AsFd>(
     fd_in: Fd1,
     off_in: Option<&mut i64>,
     fd_out: Fd2,
     off_out: Option<&mut i64>,
     len: usize,
 ) -> Result<usize> {
+    use std::os::fd::AsRawFd;
+
     let off_in = off_in
         .map(|offset| offset as *mut i64)
         .unwrap_or(ptr::null_mut());
@@ -940,14 +1269,16 @@ pub fn copy_file_range<Fd1: AsFd, Fd2: AsFd>(
 /// # See Also
 /// *[`splice`](https://man7.org/linux/man-pages/man2/splice.2.html)
 #[cfg(linux_android)]
-pub fn splice(
-    fd_in: RawFd,
+pub fn splice<Fd1: std::os::fd::AsFd, Fd2: std::os::fd::AsFd>(
+    fd_in: Fd1,
     off_in: Option<&mut libc::loff_t>,
-    fd_out: RawFd,
+    fd_out: Fd2,
     off_out: Option<&mut libc::loff_t>,
     len: usize,
     flags: SpliceFFlags,
 ) -> Result<usize> {
+    use std::os::fd::AsRawFd;
+
     let off_in = off_in
         .map(|offset| offset as *mut libc::loff_t)
         .unwrap_or(ptr::null_mut());
@@ -956,7 +1287,7 @@ pub fn splice(
         .unwrap_or(ptr::null_mut());
 
     let ret = unsafe {
-        libc::splice(fd_in, off_in, fd_out, off_out, len, flags.bits())
+        libc::splice(fd_in.as_fd().as_raw_fd(), off_in, fd_out.as_fd().as_raw_fd(), off_out, len, flags.bits())
     };
     Errno::result(ret).map(|r| r as usize)
 }
@@ -966,13 +1297,15 @@ pub fn splice(
 /// # See Also
 /// *[`tee`](https://man7.org/linux/man-pages/man2/tee.2.html)
 #[cfg(linux_android)]
-pub fn tee(
-    fd_in: RawFd,
-    fd_out: RawFd,
+pub fn tee<Fd1: std::os::fd::AsFd, Fd2: std::os::fd::AsFd>(
+    fd_in: Fd1,
+    fd_out: Fd2,
     len: usize,
     flags: SpliceFFlags,
 ) -> Result<usize> {
-    let ret = unsafe { libc::tee(fd_in, fd_out, len, flags.bits()) };
+    use std::os::fd::AsRawFd;
+
+    let ret = unsafe { libc::tee(fd_in.as_fd().as_raw_fd(), fd_out.as_fd().as_raw_fd(), len, flags.bits()) };
     Errno::result(ret).map(|r| r as usize)
 }
 
@@ -981,14 +1314,16 @@ pub fn tee(
 /// # See Also
 /// *[`vmsplice`](https://man7.org/linux/man-pages/man2/vmsplice.2.html)
 #[cfg(linux_android)]
-pub fn vmsplice(
-    fd: RawFd,
+pub fn vmsplice<F: std::os::fd::AsFd>(
+    fd: F,
     iov: &[std::io::IoSlice<'_>],
     flags: SpliceFFlags,
 ) -> Result<usize> {
+    use std::os::fd::AsRawFd;
+
     let ret = unsafe {
         libc::vmsplice(
-            fd,
+            fd.as_fd().as_raw_fd(),
             iov.as_ptr().cast(),
             iov.len(),
             flags.bits(),
@@ -1026,7 +1361,7 @@ libc_bitflags!(
         FALLOC_FL_INSERT_RANGE;
         /// Shared file data extants are made private to the file.
         ///
-        /// Gaurantees that a subsequent write will not fail due to lack of space.
+        /// Guarantees that a subsequent write will not fail due to lack of space.
         FALLOC_FL_UNSHARE_RANGE;
     }
 );
@@ -1040,13 +1375,15 @@ feature! {
 /// file referred to by fd.
 #[cfg(target_os = "linux")]
 #[cfg(feature = "fs")]
-pub fn fallocate(
-    fd: RawFd,
+pub fn fallocate<Fd: std::os::fd::AsFd>(
+    fd: Fd,
     mode: FallocateFlags,
     offset: libc::off_t,
     len: libc::off_t,
 ) -> Result<()> {
-    let res = unsafe { libc::fallocate(fd, mode.bits(), offset, len) };
+    use std::os::fd::AsRawFd;
+
+    let res = unsafe { libc::fallocate(fd.as_fd().as_raw_fd(), mode.bits(), offset, len) };
     Errno::result(res).map(drop)
 }
 
@@ -1113,7 +1450,7 @@ impl SpacectlRange {
 /// f.write_all(INITIAL).unwrap();
 /// let mut range = SpacectlRange(3, 6);
 /// while (!range.is_empty()) {
-///     range = fspacectl(f.as_raw_fd(), range).unwrap();
+///     range = fspacectl(&f, range).unwrap();
 /// }
 /// let mut buf = vec![0; INITIAL.len()];
 /// f.read_exact_at(&mut buf, 0).unwrap();
@@ -1121,14 +1458,16 @@ impl SpacectlRange {
 /// ```
 #[cfg(target_os = "freebsd")]
 #[inline] // Delays codegen, preventing linker errors with dylibs and --no-allow-shlib-undefined
-pub fn fspacectl(fd: RawFd, range: SpacectlRange) -> Result<SpacectlRange> {
+pub fn fspacectl<Fd: std::os::fd::AsFd>(fd: Fd, range: SpacectlRange) -> Result<SpacectlRange> {
+    use std::os::fd::AsRawFd;
+
     let mut rqsr = libc::spacectl_range {
         r_offset: range.0,
         r_len: range.1,
     };
     let res = unsafe {
         libc::fspacectl(
-            fd,
+            fd.as_fd().as_raw_fd(),
             libc::SPACECTL_DEALLOC, // Only one command is supported ATM
             &rqsr,
             0, // No flags are currently supported
@@ -1163,18 +1502,20 @@ pub fn fspacectl(fd: RawFd, range: SpacectlRange) -> Result<SpacectlRange> {
 /// const INITIAL: &[u8] = b"0123456789abcdef";
 /// let mut f = tempfile().unwrap();
 /// f.write_all(INITIAL).unwrap();
-/// fspacectl_all(f.as_raw_fd(), 3, 6).unwrap();
+/// fspacectl_all(&f, 3, 6).unwrap();
 /// let mut buf = vec![0; INITIAL.len()];
 /// f.read_exact_at(&mut buf, 0).unwrap();
 /// assert_eq!(buf, b"012\0\0\0\0\0\09abcdef");
 /// ```
 #[cfg(target_os = "freebsd")]
 #[inline] // Delays codegen, preventing linker errors with dylibs and --no-allow-shlib-undefined
-pub fn fspacectl_all(
-    fd: RawFd,
+pub fn fspacectl_all<Fd: std::os::fd::AsFd>(
+    fd: Fd,
     offset: libc::off_t,
     len: libc::off_t,
 ) -> Result<()> {
+    use std::os::fd::AsRawFd;
+
     let mut rqsr = libc::spacectl_range {
         r_offset: offset,
         r_len: len,
@@ -1182,7 +1523,7 @@ pub fn fspacectl_all(
     while rqsr.r_len > 0 {
         let res = unsafe {
             libc::fspacectl(
-                fd,
+                fd.as_fd().as_raw_fd(),
                 libc::SPACECTL_DEALLOC, // Only one command is supported ATM
                 &rqsr,
                 0, // No flags are currently supported
@@ -1205,7 +1546,6 @@ pub fn fspacectl_all(
 mod posix_fadvise {
     use crate::errno::Errno;
     use crate::Result;
-    use std::os::unix::io::RawFd;
 
     #[cfg(feature = "fs")]
     libc_enum! {
@@ -1237,13 +1577,15 @@ mod posix_fadvise {
     ///
     /// # See Also
     /// * [`posix_fadvise`](https://pubs.opengroup.org/onlinepubs/9699919799/functions/posix_fadvise.html)
-    pub fn posix_fadvise(
-        fd: RawFd,
+    pub fn posix_fadvise<Fd: std::os::fd::AsFd>(
+        fd: Fd,
         offset: libc::off_t,
         len: libc::off_t,
         advice: PosixFadviseAdvice,
     ) -> Result<()> {
-        let res = unsafe { libc::posix_fadvise(fd, offset, len, advice as libc::c_int) };
+        use std::os::fd::AsRawFd;
+
+        let res = unsafe { libc::posix_fadvise(fd.as_fd().as_raw_fd(), offset, len, advice as libc::c_int) };
 
         if res == 0 {
             Ok(())
@@ -1265,12 +1607,14 @@ mod posix_fadvise {
     target_os = "fuchsia",
     target_os = "wasi",
 ))]
-pub fn posix_fallocate(
-    fd: RawFd,
+pub fn posix_fallocate<Fd: std::os::fd::AsFd>(
+    fd: Fd,
     offset: libc::off_t,
     len: libc::off_t,
 ) -> Result<()> {
-    let res = unsafe { libc::posix_fallocate(fd, offset, len) };
+    use std::os::fd::AsRawFd;
+
+    let res = unsafe { libc::posix_fallocate(fd.as_fd().as_raw_fd(), offset, len) };
     match Errno::result(res) {
         Err(err) => Err(err),
         Ok(0) => Ok(()),

@@ -4,43 +4,115 @@
 use std::time::Duration;
 
 use reifydb_core::event::EventBus;
-use reifydb_runtime::actor::system::ActorSystem;
+use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_sqlite::SqliteConfig;
 
-use crate::hot::storage::HotStorage;
+use crate::{buffer::tier::MultiBufferTier, persistent::MultiPersistentTier};
 
 #[derive(Clone)]
 pub struct MultiStoreConfig {
-	pub hot: Option<HotConfig>,
-	pub warm: Option<WarmConfig>,
-	pub cold: Option<ColdConfig>,
+	pub buffer: Option<BufferConfig>,
+	pub persistent: Option<PersistentConfig>,
 	pub retention: RetentionConfig,
 	pub merge_config: MergeConfig,
 	pub event_bus: EventBus,
 	pub actor_system: ActorSystem,
+	pub clock: Clock,
+}
+
+impl MultiStoreConfig {
+	pub fn memory(actor_system: ActorSystem, clock: Clock, event_bus: EventBus) -> Self {
+		Self {
+			buffer: Some(BufferConfig {
+				storage: MultiBufferTier::memory(),
+			}),
+			persistent: None,
+			retention: Default::default(),
+			merge_config: Default::default(),
+			event_bus,
+			actor_system,
+			clock,
+		}
+	}
+
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn sqlite(
+		persistent: PersistentConfig,
+		actor_system: ActorSystem,
+		clock: Clock,
+		event_bus: EventBus,
+	) -> Self {
+		Self {
+			buffer: Some(BufferConfig {
+				storage: MultiBufferTier::memory(),
+			}),
+			persistent: Some(persistent),
+			retention: Default::default(),
+			merge_config: Default::default(),
+			event_bus,
+			actor_system,
+			clock,
+		}
+	}
+
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn sqlite_unbuffered(
+		persistent: PersistentConfig,
+		actor_system: ActorSystem,
+		clock: Clock,
+		event_bus: EventBus,
+	) -> Self {
+		Self {
+			buffer: None,
+			persistent: Some(persistent),
+			retention: Default::default(),
+			merge_config: Default::default(),
+			event_bus,
+			actor_system,
+			clock,
+		}
+	}
 }
 
 #[derive(Clone)]
-pub struct HotConfig {
-	pub storage: HotStorage,
+pub struct BufferConfig {
+	pub storage: MultiBufferTier,
 }
 
-/// Warm tier configuration.
-///
-/// Placeholder for future warm tier configuration.
-#[derive(Clone, Default)]
-pub struct WarmConfig;
+#[derive(Clone)]
+pub struct PersistentConfig {
+	pub storage: MultiPersistentTier,
+	pub flush_interval: Duration,
+}
 
-/// Cold tier configuration.
-///
-/// Placeholder for future cold tier configuration.
-#[derive(Clone, Default)]
-pub struct ColdConfig;
+impl PersistentConfig {
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn sqlite(sqlite_config: SqliteConfig) -> Self {
+		Self {
+			storage: MultiPersistentTier::sqlite(sqlite_config),
+			flush_interval: Duration::from_secs(5),
+		}
+	}
+
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn sqlite_in_memory() -> Self {
+		Self {
+			storage: MultiPersistentTier::sqlite_in_memory(),
+			flush_interval: Duration::from_secs(5),
+		}
+	}
+
+	pub fn flush_interval(mut self, interval: Duration) -> Self {
+		self.flush_interval = interval;
+		self
+	}
+}
 
 #[derive(Clone, Debug)]
 pub struct RetentionConfig {
-	pub hot: Duration,
-	pub warm: Duration,
-	// cold is forever (no eviction)
+	pub buffer: Duration,
+	pub persistent: Duration,
 }
 
 #[derive(Clone, Debug)]
@@ -53,8 +125,8 @@ pub struct MergeConfig {
 impl Default for RetentionConfig {
 	fn default() -> Self {
 		Self {
-			hot: Duration::from_secs(300),   // 5 minutes
-			warm: Duration::from_secs(3600), // 1 hour
+			buffer: Duration::from_secs(300),
+			persistent: Duration::from_secs(3600),
 		}
 	}
 }

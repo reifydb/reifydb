@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Flow compilation module - compiles RQL plans into Flows
-//!
-//! This module contains the flow compiler that was moved from reifydb-rql to avoid
-//! lifetime issues with async recursion and generic MultiVersionCommandTransaction types.
+//! Engine-side compiler that turns a CREATE FLOW statement into the dataflow definition the `sub-flow` runtime
+//! consumes. This module is the bridge between RQL's flow AST and the operator graph the streaming runtime
+//! actually evaluates.
 
 pub mod compiler;

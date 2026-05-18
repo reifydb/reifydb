@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
-import {waitForDatabase} from "../setup";
+import {wait_for_database} from "../setup";
 import {Shape} from "@reifydb/core";
 import {Client, WsClient} from "../../../src";
 
@@ -10,16 +10,16 @@ describe('ReifyDB Client Integration Tests', () => {
     const AUTH_TOKEN = process.env.REIFYDB_TOKEN;
 
     beforeAll(async () => {
-        await waitForDatabase();
+        await wait_for_database();
     }, 30000);
 
     describe('WebSocket Client', () => {
-        let wsClient: WsClient;
+        let ws_client: WsClient;
 
         beforeEach(async () => {
             try {
-                wsClient = await Client.connect_ws(WS_URL, {
-                    timeoutMs: 10000,
+                ws_client = await Client.connect_ws(WS_URL, {
+                    timeout_ms: 10000,
                     token: AUTH_TOKEN
                 });
             } catch (error) {
@@ -29,18 +29,18 @@ describe('ReifyDB Client Integration Tests', () => {
         }, 15000); // 15 second timeout
 
         afterEach(async () => {
-            if (wsClient) {
+            if (ws_client) {
                 try {
-                    wsClient.disconnect();
+                    ws_client.disconnect();
                 } catch (error) {
                     console.error('⚠️ Error during disconnect:', error);
                 }
-                wsClient = null;
+                ws_client = null;
             }
         });
 
         it('should execute simple command', async () => {
-            const frames = await wsClient.command(
+            const frames = await ws_client.command(
                 'MAP {result: 42}',
                 {},
                 [
@@ -55,7 +55,7 @@ describe('ReifyDB Client Integration Tests', () => {
         }, 10000);
 
         it('should execute simple query', async () => {
-            const frames = await wsClient.query(
+            const frames = await ws_client.query(
                 'MAP {result: 42}',
                 {},
                 [

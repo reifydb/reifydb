@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Integration tests for updating EncodedRow fields in-place.
-//! Verifies that replace_dynamic_data properly splices bytes, adjusts references,
-//! and leaves no orphan data.
-
 use std::{f64::consts::E, str::FromStr};
 
 use num_bigint::BigInt;
@@ -213,7 +209,7 @@ fn test_update_first_of_three_dynamic_fields() {
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[1, 2, 3, 4, 5]));
 	shape.set_utf8(&mut row, 2, "ccc");
 
-	// Update first with larger data — should shift blob and third utf8
+	// Update first with larger data - should shift blob and third utf8
 	shape.set_utf8(&mut row, 0, "aaaaaaaaaa"); // 3 → 10
 
 	assert_eq!(shape.get_utf8(&row, 0), "aaaaaaaaaa");

@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! OpenTelemetry server subsystem implementing the ReifyDB Subsystem trait.
-
 use std::{
 	any::Any,
 	error,
 	result::Result as StdResult,
 	sync::{
-		Arc, Mutex,
+		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
 };
@@ -26,62 +24,24 @@ use reifydb_core::{
 	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::{SharedRuntime, sync::mutex::Mutex};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_type::{Result, error::Error};
+use reifydb_type::Result;
 use tracing::{debug, error, info};
 
 use crate::config::OtelConfig;
 
-/// OpenTelemetry subsystem.
-///
-/// Manages OpenTelemetry tracing integration with support for:
-/// - OTLP and Jaeger exporters
-/// - Graceful startup and shutdown with proper trace flushing
-/// - Integration with existing tracing infrastructure
-/// - Health monitoring
-///
-/// # Architecture Note
-///
-/// This subsystem creates and manages an OpenTelemetry tracer provider.
-/// To integrate with the tracing ecosystem, you must also configure
-/// `sub-tracing` to include the OpenTelemetry layer using the
-/// `with_layer()` method (see sub-tracing documentation).
-///
-/// # Example
-///
-/// ```ignore
-/// use reifydb_sub_server_otel::{OtelConfig, OtelSubsystem, ExporterType};
-///
-/// let config = OtelConfig::new()
-///     .service_name("my-service")
-///     .endpoint("http://localhost:4317");
-///
-/// let mut otel = OtelSubsystem::new(config);
-/// otel.start()?;
-/// // Tracer provider is now set globally and traces are being exported
-///
-/// otel.shutdown()?;
-/// // All traces flushed and exported
-/// ```
 pub struct OtelSubsystem {
-	/// Configuration
 	config: OtelConfig,
-	/// Flag indicating if the subsystem is running
+
 	running: Arc<AtomicBool>,
-	/// The tracer provider (held to prevent premature drop)
+
 	tracer_provider: Arc<Mutex<Option<SdkTracerProvider>>>,
-	/// Shared runtime for async operations
+
 	runtime: SharedRuntime,
 }
 
 impl OtelSubsystem {
-	/// Create a new OpenTelemetry subsystem.
-	///
-	/// # Arguments
-	///
-	/// * `config` - OpenTelemetry configuration
-	/// * `runtime` - Shared runtime
 	pub fn new(config: OtelConfig, runtime: SharedRuntime) -> Self {
 		Self {
 			config,
@@ -91,39 +51,56 @@ impl OtelSubsystem {
 		}
 	}
 
-	/// Get the configuration
 	pub fn config(&self) -> &OtelConfig {
 		&self.config
 	}
 
-	/// Get a tracer from the initialized provider.
-	///
-	/// Returns None if the subsystem hasn't been started yet or if the lock is contended.
-	/// Uses try_lock() to avoid blocking in sync context with async mutex.
 	pub fn tracer(&self) -> Option<SdkTracer> {
 		self.tracer_provider
 			.try_lock()
-			.ok()
 			.and_then(|guard| guard.as_ref().map(|provider| provider.tracer("reifydb")))
 	}
 
-	/// Build the OTLP tracer provider
+	fn build_provider_in_runtime(&self) -> Result<SdkTracerProvider> {
+		#[cfg(not(feature = "otlp"))]
+		{
+			return Err(CoreError::SubsystemFeatureDisabled {
+				feature: "otlp".to_string(),
+			}
+			.into());
+		}
+		#[cfg(feature = "otlp")]
+		{
+			let _guard = self.runtime.handle().enter();
+			self.build_otlp_tracer_provider().map_err(|e| {
+				CoreError::SubsystemInitFailed {
+					subsystem: "OpenTelemetry".to_string(),
+					reason: e.to_string(),
+				}
+				.into()
+			})
+		}
+	}
+
+	#[inline]
+	fn install_provider(&self, provider: SdkTracerProvider) {
+		global::set_tracer_provider(provider.clone());
+		*self.tracer_provider.lock() = Some(provider);
+	}
+
 	#[cfg(feature = "otlp")]
 	fn build_otlp_tracer_provider(&self) -> StdResult<SdkTracerProvider, Box<dyn error::Error>> {
-		// Build resource with service name and version
 		let resource = Resource::builder()
 			.with_service_name(self.config.service_name.clone())
 			.with_attributes([KeyValue::new("service.version", self.config.service_version.clone())])
 			.build();
 
-		// Build the OTLP exporter
 		let exporter = SpanExporter::builder()
 			.with_tonic()
 			.with_endpoint(&self.config.endpoint)
 			.with_timeout(self.config.export_timeout)
 			.build()?;
 
-		// Configure batch processor with our settings
 		let batch_config = BatchConfigBuilder::default()
 			.with_max_export_batch_size(self.config.max_export_batch_size)
 			.with_scheduled_delay(self.config.scheduled_delay)
@@ -132,7 +109,6 @@ impl OtelSubsystem {
 
 		let batch_processor = BatchSpanProcessor::builder(exporter).with_batch_config(batch_config).build();
 
-		// Build the tracer provider
 		let provider = SdkTracerProvider::builder()
 			.with_span_processor(batch_processor)
 			.with_resource(resource)
@@ -164,42 +140,11 @@ impl Subsystem for OtelSubsystem {
 	}
 
 	fn start(&mut self) -> Result<()> {
-		// Idempotent: if already running, return success
 		if self.running.load(Ordering::SeqCst) {
 			return Ok(());
 		}
-
-		// Build the tracer provider (needs runtime context for tonic/hyper)
-		#[cfg(not(feature = "otlp"))]
-		{
-			let err: Error = CoreError::SubsystemFeatureDisabled {
-				feature: "otlp".to_string(),
-			}
-			.into();
-			return Err(err);
-		}
-
-		#[cfg(feature = "otlp")]
-		let provider = {
-			// Enter runtime context for tonic/hyper initialization
-			let _guard = self.runtime.handle().enter();
-			self.build_otlp_tracer_provider().map_err(|e| {
-				let err: Error = CoreError::SubsystemInitFailed {
-					subsystem: "OpenTelemetry".to_string(),
-					reason: e.to_string(),
-				}
-				.into();
-				err
-			})?
-		};
-
-		// Set the global tracer provider
-		// This allows tracing-opentelemetry layer to find and use it
-		global::set_tracer_provider(provider.clone());
-
-		// Store the provider to prevent premature drop
-		*self.tracer_provider.lock().unwrap() = Some(provider);
-
+		let provider = self.build_provider_in_runtime()?;
+		self.install_provider(provider);
 		self.running.store(true, Ordering::SeqCst);
 		info!(
 			service = %self.config.service_name,
@@ -207,17 +152,15 @@ impl Subsystem for OtelSubsystem {
 			exporter = ?self.config.exporter_type,
 			"OpenTelemetry subsystem started"
 		);
-
 		Ok(())
 	}
 
 	fn shutdown(&mut self) -> Result<()> {
 		if self.running.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
-			return Ok(()); // Already shutdown
+			return Ok(());
 		}
 
-		if let Some(provider) = self.tracer_provider.lock().unwrap().take() {
-			// This ensures all pending traces are exported
+		if let Some(provider) = self.tracer_provider.lock().take() {
 			if let Err(e) = provider.shutdown() {
 				error!("Error shutting down tracer provider: {:?}", e);
 			} else {

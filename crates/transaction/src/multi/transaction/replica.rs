@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{mem, ops::RangeBounds};
+use core::mem;
+use std::{collections::HashSet, ops::RangeBounds, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
+	delta::Delta,
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
@@ -16,61 +18,145 @@ use reifydb_core::{
 use reifydb_type::{Result, util::cowvec::CowVec};
 use tracing::instrument;
 
-use super::{MultiTransaction, TransactionManagerCommand, version::StandardVersionProvider};
+use super::{MultiTransaction, version::StandardVersionProvider};
 use crate::{
+	TransactionId,
 	delta::optimize_deltas,
+	error::TransactionError,
 	multi::{
+		conflict::ConflictManager,
+		marker::Marker,
+		oracle::Oracle,
 		pending::PendingWrites,
-		transaction::write::MergePendingIterator,
-		types::{Pending, TransactionValue},
+		transaction::write::{Lifecycle, MergePendingIterator},
+		types::{DeltaEntry, TransactionValue},
 	},
 };
 
-/// A multi-version write transaction for replica use.
-///
-/// Unlike `MultiWriteTransaction`, this type commits at a specific version
-/// provided by the primary, bypassing oracle conflict detection and version
-/// allocation entirely. It is the only write path on a replica node.
 pub struct MultiReplicaTransaction {
 	engine: MultiTransaction,
-	pub(crate) tm: TransactionManagerCommand<StandardVersionProvider>,
-	version: CommitVersion,
+
+	pub(crate) id: TransactionId,
+	pub(crate) version: CommitVersion,
+	pub(crate) read_version: Option<CommitVersion>,
+	pub(crate) size: u64,
+	pub(crate) count: u64,
+	pub(crate) oracle: Arc<Oracle<StandardVersionProvider>>,
+	pub(crate) conflicts: ConflictManager,
+	pub(crate) pending_writes: PendingWrites,
+	pub(crate) duplicates: Vec<DeltaEntry>,
+	pub(crate) delta_log: Vec<DeltaEntry>,
+	pub(crate) preexisting_keys: HashSet<Vec<u8>>,
+
+	pub(crate) lifecycle: Lifecycle,
+
+	commit_version: CommitVersion,
 }
 
 impl MultiReplicaTransaction {
 	#[instrument(name = "transaction::replica::new", level = "debug", skip(engine), fields(version = %version.0))]
 	pub fn new(engine: MultiTransaction, version: CommitVersion) -> Result<Self> {
-		let mut tm = engine.tm.write()?;
-		// Set read_version so that version() returns the primary's exact version
-		// and reads see committed data up to (but not including) this version.
-		// Pending writes within this transaction are always visible via MergePendingIterator.
-		tm.read_version = Some(version);
+		let oracle = engine.tm.oracle().clone();
+		let snapshot = oracle.version()?;
+		oracle.query.register_in_flight(snapshot);
+
+		let id = TransactionId::generate(oracle.metrics_clock(), oracle.rng());
 		Ok(Self {
 			engine,
-			tm,
-			version,
+			id,
+			version: snapshot,
+			read_version: Some(version),
+			size: 0,
+			count: 0,
+			oracle,
+			conflicts: ConflictManager::new(),
+			pending_writes: PendingWrites::new(),
+			duplicates: Vec::new(),
+			delta_log: Vec::new(),
+			preexisting_keys: HashSet::new(),
+			lifecycle: Lifecycle::Active,
+			commit_version: version,
 		})
+	}
+
+	fn transition_to(&mut self, next: Lifecycle) {
+		debug_assert!(matches!(
+			(self.lifecycle, next),
+			(Lifecycle::Active, Lifecycle::QueryDone)
+				| (Lifecycle::Active, Lifecycle::Discarded)
+				| (Lifecycle::QueryDone, Lifecycle::Discarded)
+		));
+		self.lifecycle = next;
+	}
+}
+
+impl Drop for MultiReplicaTransaction {
+	fn drop(&mut self) {
+		if self.lifecycle != Lifecycle::Discarded {
+			self.discard();
+		}
 	}
 }
 
 impl MultiReplicaTransaction {
-	/// Commit pending writes at the primary's exact version.
-	///
-	/// Bypasses oracle conflict detection and version allocation.
-	/// Registers with the command watermark so the system doesn't stall.
-	/// Does NOT emit PostCommitEvent — replicas do not generate CDC.
-	#[instrument(name = "transaction::replica::commit", level = "debug", skip(self), fields(version = %self.version.0, pending_count = self.tm.pending_writes().len()))]
-	pub fn commit_at_version(&mut self) -> Result<()> {
-		let version = self.version;
+	pub fn id(&self) -> TransactionId {
+		self.id
+	}
 
-		if self.tm.pending_writes().is_empty() {
-			self.tm.discard();
+	pub fn version(&self) -> CommitVersion {
+		self.read_version.unwrap_or(self.version)
+	}
+
+	pub fn pending_writes(&self) -> &PendingWrites {
+		&self.pending_writes
+	}
+
+	pub fn mark_preexisting(&mut self, key: &EncodedKey) {
+		self.preexisting_keys.insert(key.as_ref().to_vec());
+	}
+
+	pub fn preexisting_keys(&self) -> &HashSet<Vec<u8>> {
+		&self.preexisting_keys
+	}
+
+	pub fn marker(&mut self) -> Marker<'_> {
+		Marker::new(&mut self.conflicts)
+	}
+
+	pub fn marker_with_pending_writes(&mut self) -> (Marker<'_>, &PendingWrites) {
+		(Marker::new(&mut self.conflicts), &self.pending_writes)
+	}
+
+	pub fn base_version(&self) -> CommitVersion {
+		self.version
+	}
+}
+
+impl MultiReplicaTransaction {
+	#[instrument(name = "transaction::replica::commit", level = "debug", skip(self), fields(version = %self.commit_version.0, pending_count = self.pending_writes.len()))]
+	pub fn commit_at_version(&mut self) -> Result<()> {
+		let version = self.commit_version;
+
+		if self.pending_writes.is_empty() {
+			self.discard();
 			return Ok(());
 		}
 
-		// Take pending writes directly — bypass oracle entirely
-		let pending_writes = mem::take(&mut self.tm.pending_writes);
-		let duplicate_writes = mem::take(&mut self.tm.duplicates);
+		let deltas = self.drain_deltas();
+
+		self.engine.tm.begin_commit(version);
+		MultiVersionCommit::commit(&self.engine.store, deltas, version)?;
+		self.engine.tm.done_commit(version);
+		self.engine.tm.advance_clock_to(version);
+		self.discard();
+
+		Ok(())
+	}
+
+	#[inline]
+	fn drain_deltas(&mut self) -> CowVec<Delta> {
+		let pending_writes = mem::take(&mut self.pending_writes);
+		let duplicate_writes = mem::take(&mut self.duplicates);
 
 		let mut raw_deltas = Vec::with_capacity(pending_writes.len() + duplicate_writes.len());
 		pending_writes.into_iter_insertion_order().for_each(|(_k, v)| {
@@ -79,84 +165,167 @@ impl MultiReplicaTransaction {
 		});
 		duplicate_writes.into_iter().for_each(|item| raw_deltas.push(item.delta));
 
-		let optimized = optimize_deltas(raw_deltas.into_iter());
-		let deltas = CowVec::new(optimized);
-
-		// Register with command watermark BEFORE storage write
-		self.engine.tm.begin_commit(version);
-
-		// Write to multi-version store at the primary's exact version
-		MultiVersionCommit::commit(&self.engine.store, deltas, version)?;
-
-		// Signal watermark advancement AFTER storage write
-		self.engine.tm.done_commit(version);
-
-		// Advance the oracle's clock so clock.current() returns the right
-		// snapshot for subsequent query transactions
-		self.engine.tm.advance_clock_to(version);
-
-		// Release query watermark
-		self.tm.discard();
-
-		// NO PostCommitEvent — replica does not generate CDC
-		Ok(())
+		CowVec::new(optimize_deltas(raw_deltas, &self.preexisting_keys))
 	}
 }
 
 impl MultiReplicaTransaction {
-	pub fn version(&self) -> CommitVersion {
-		self.tm.version()
+	#[instrument(name = "transaction::replica::set", level = "trace", skip(self, row))]
+	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+		if self.lifecycle == Lifecycle::Discarded {
+			return Err(TransactionError::RolledBack.into());
+		}
+		self.modify(DeltaEntry {
+			delta: Delta::Set {
+				key: key.clone(),
+				row,
+			},
+			version: self.base_version(),
+		})
 	}
 
-	pub fn pending_writes(&self) -> &PendingWrites {
-		self.tm.pending_writes()
+	#[instrument(name = "transaction::replica::unset", level = "trace", skip(self, row))]
+	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+		if self.lifecycle == Lifecycle::Discarded {
+			return Err(TransactionError::RolledBack.into());
+		}
+		self.modify(DeltaEntry {
+			delta: Delta::Unset {
+				key: key.clone(),
+				row,
+			},
+			version: self.base_version(),
+		})
+	}
+
+	#[instrument(name = "transaction::replica::remove", level = "trace", skip(self))]
+	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
+		if self.lifecycle == Lifecycle::Discarded {
+			return Err(TransactionError::RolledBack.into());
+		}
+		self.modify(DeltaEntry {
+			delta: Delta::Remove {
+				key: key.clone(),
+			},
+			version: self.base_version(),
+		})
 	}
 
 	#[instrument(name = "transaction::replica::rollback", level = "debug", skip(self))]
 	pub fn rollback(&mut self) -> Result<()> {
-		self.tm.rollback()
+		if self.lifecycle == Lifecycle::Discarded {
+			return Err(TransactionError::RolledBack.into());
+		}
+		self.pending_writes.rollback();
+		self.conflicts.rollback();
+		self.delta_log.clear();
+		self.duplicates.clear();
+		Ok(())
 	}
 
 	#[instrument(name = "transaction::replica::contains_key", level = "trace", skip(self))]
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
-		let version = self.tm.version();
-		match self.tm.contains_key(key)? {
-			Some(true) => Ok(true),
-			Some(false) => Ok(false),
-			None => MultiVersionContains::contains(&self.engine.store, key, version),
+		if self.lifecycle == Lifecycle::Discarded {
+			return Err(TransactionError::RolledBack.into());
+		}
+		let version = self.version();
+		match self.pending_writes.get(key) {
+			Some(pending) => {
+				if pending.was_removed() {
+					return Ok(false);
+				}
+				Ok(true)
+			}
+			None => {
+				self.conflicts.mark_read(key);
+				MultiVersionContains::contains(&self.engine.store, key, version)
+			}
 		}
 	}
 
 	#[instrument(name = "transaction::replica::get", level = "trace", skip(self))]
 	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>> {
-		let version = self.tm.version();
-		match self.tm.get(key)? {
-			Some(v) => {
-				if v.row().is_some() {
-					Ok(Some(v.into()))
-				} else {
-					Ok(None)
-				}
-			}
-			None => Ok(MultiVersionGet::get(&self.engine.store, key, version)?.map(Into::into)),
+		if self.lifecycle == Lifecycle::Discarded {
+			return Err(TransactionError::RolledBack.into());
 		}
+		let version = self.version();
+		if let Some(v) = self.pending_writes.get(key) {
+			if v.row().is_some() {
+				return Ok(Some(DeltaEntry {
+					delta: match v.row() {
+						Some(row) => Delta::Set {
+							key: key.clone(),
+							row: row.clone(),
+						},
+						None => Delta::Remove {
+							key: key.clone(),
+						},
+					},
+					version: v.version,
+				}
+				.into()));
+			}
+			return Ok(None);
+		}
+		self.conflicts.mark_read(key);
+		Ok(MultiVersionGet::get(&self.engine.store, key, version)?.map(Into::into))
+	}
+}
+
+impl MultiReplicaTransaction {
+	fn modify(&mut self, pending: DeltaEntry) -> Result<()> {
+		let cnt = self.count + 1;
+		let size = self.size + self.pending_writes.estimate_size(&pending);
+		if cnt >= self.pending_writes.max_batch_entries() || size >= self.pending_writes.max_batch_size() {
+			return Err(TransactionError::TooLarge.into());
+		}
+
+		self.count = cnt;
+		self.size = size;
+
+		self.conflicts.mark_write(pending.key());
+
+		let key = pending.key();
+		let row = pending.row();
+		let version = pending.version;
+
+		if let Some((old_key, old_value)) = self.pending_writes.remove_entry(key)
+			&& old_value.version != version
+		{
+			self.duplicates.push(DeltaEntry {
+				delta: match row {
+					Some(row) => Delta::Set {
+						key: old_key,
+						row: row.clone(),
+					},
+					None => Delta::Remove {
+						key: old_key,
+					},
+				},
+				version,
+			})
+		}
+		self.delta_log.push(pending.clone());
+		self.pending_writes.insert(key.clone(), pending);
+
+		Ok(())
 	}
 
-	#[instrument(name = "transaction::replica::set", level = "trace", skip(self, row))]
-	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
-		self.tm.set(key, row)
+	pub fn discard(&mut self) {
+		match self.lifecycle {
+			Lifecycle::Discarded => return,
+			Lifecycle::Active => self.oracle.query.mark_finished(self.version),
+			Lifecycle::QueryDone => {}
+		}
+		self.transition_to(Lifecycle::Discarded);
 	}
 
-	#[instrument(name = "transaction::replica::unset", level = "trace", skip(self, row))]
-	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
-		self.tm.unset(key, row)
+	pub fn is_discard(&self) -> bool {
+		self.lifecycle == Lifecycle::Discarded
 	}
+}
 
-	#[instrument(name = "transaction::replica::remove", level = "trace", skip(self))]
-	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		self.tm.remove(key)
-	}
-
+impl MultiReplicaTransaction {
 	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
 		let items: Vec<_> = self.range(EncodedKeyRange::prefix(prefix), 1024).collect::<Result<Vec<_>>>()?;
 		Ok(MultiVersionBatch {
@@ -179,14 +348,14 @@ impl MultiReplicaTransaction {
 		range: EncodedKeyRange,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
-		let version = self.tm.version();
-		let (mut marker, pw) = self.tm.marker_with_pending_writes();
+		let version = self.version();
+		let (mut marker, pw) = self.marker_with_pending_writes();
 		let start = RangeBounds::start_bound(&range);
 		let end = RangeBounds::end_bound(&range);
 
 		marker.mark_range(range.clone());
 
-		let pending: Vec<(EncodedKey, Pending)> =
+		let pending: Vec<(EncodedKey, DeltaEntry)> =
 			pw.range((start, end)).map(|(k, v)| (k.clone(), v.clone())).collect();
 
 		let storage_iter = self.engine.store.range(range, version, batch_size);
@@ -199,14 +368,14 @@ impl MultiReplicaTransaction {
 		range: EncodedKeyRange,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
-		let version = self.tm.version();
-		let (mut marker, pw) = self.tm.marker_with_pending_writes();
+		let version = self.version();
+		let (mut marker, pw) = self.marker_with_pending_writes();
 		let start = RangeBounds::start_bound(&range);
 		let end = RangeBounds::end_bound(&range);
 
 		marker.mark_range(range.clone());
 
-		let pending: Vec<(EncodedKey, Pending)> =
+		let pending: Vec<(EncodedKey, DeltaEntry)> =
 			pw.range((start, end)).rev().map(|(k, v)| (k.clone(), v.clone())).collect();
 
 		let storage_iter = self.engine.store.range_rev(range, version, batch_size);

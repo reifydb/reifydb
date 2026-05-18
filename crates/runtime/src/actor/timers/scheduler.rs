@@ -20,22 +20,20 @@ use rayon::ThreadPool;
 use super::{TimerHandle, next_timer_id};
 
 struct TimerEntry {
-	/// Unique timer ID.
 	id: u64,
-	/// When the timer should fire.
+
 	deadline: Instant,
-	/// The kind of timer
+
 	kind: TimerKind,
-	/// Shared flag to check if cancelled.
+
 	cancelled: Arc<AtomicBool>,
 }
 
 enum TimerKind {
-	/// Fire once and remove.
 	Once {
 		callback: Box<dyn FnOnce() + Send>,
 	},
-	/// Fire repeatedly until cancelled or callback returns false.
+
 	Repeat {
 		callback: Arc<dyn Fn() -> bool + Send + Sync>,
 		interval: Duration,
@@ -51,9 +49,7 @@ impl PartialEq for TimerEntry {
 }
 
 impl Ord for TimerEntry {
-	// BinaryHeap is a max-heap, so we reverse the ordering to get a min-heap by deadline.
 	fn cmp(&self, other: &Self) -> CmpOrdering {
-		// Reverse ordering for min-heap behavior
 		other.deadline.cmp(&self.deadline).then_with(|| other.id.cmp(&self.id))
 	}
 }
@@ -64,40 +60,30 @@ impl PartialOrd for TimerEntry {
 	}
 }
 
-/// Commands sent to the scheduler coordinator thread.
 enum SchedulerCommand {
-	/// Schedule a one-shot timer.
 	ScheduleOnce {
 		id: u64,
 		delay: Duration,
 		callback: Box<dyn FnOnce() + Send>,
 		cancelled: Arc<AtomicBool>,
 	},
-	/// Schedule a repeating timer.
+
 	ScheduleRepeat {
 		id: u64,
 		interval: Duration,
 		callback: Arc<dyn Fn() -> bool + Send + Sync>,
 		cancelled: Arc<AtomicBool>,
 	},
-	/// Shutdown the scheduler.
+
 	Shutdown,
 }
 
-/// Handle to the timer scheduler.
-///
-/// Used to schedule timers and shutdown the scheduler.
-/// Cloning the handle creates another reference to the same scheduler.
 pub struct SchedulerHandle {
 	command_tx: Sender<SchedulerCommand>,
 	join_handle: Option<JoinHandle<()>>,
 }
 
 impl SchedulerHandle {
-	/// Create and start a new scheduler.
-	///
-	/// The scheduler runs on a dedicated coordinator thread and dispatches
-	/// timer callbacks to the provided rayon thread pool.
 	pub fn new(pool: Arc<ThreadPool>) -> Self {
 		let (command_tx, command_rx) = bounded(256);
 
@@ -114,9 +100,6 @@ impl SchedulerHandle {
 		}
 	}
 
-	/// Schedule a callback to fire once after a delay.
-	///
-	/// Returns a handle that can be used to cancel the timer.
 	pub fn schedule_once<F>(&self, delay: Duration, callback: F) -> TimerHandle
 	where
 		F: FnOnce() + Send + 'static,
@@ -135,10 +118,6 @@ impl SchedulerHandle {
 		handle
 	}
 
-	/// Schedule a callback to fire repeatedly at an interval.
-	///
-	/// The callback returns `true` to continue or `false` to stop.
-	/// Returns a handle that can be used to cancel the timer.
 	pub fn schedule_repeat<F>(&self, interval: Duration, callback: F) -> TimerHandle
 	where
 		F: Fn() -> bool + Send + Sync + 'static,
@@ -164,7 +143,6 @@ impl SchedulerHandle {
 		}
 	}
 
-	/// Shutdown the scheduler and wait for it to complete.
 	pub fn shutdown(&mut self) {
 		if let Some(handle) = self.join_handle.take() {
 			let _ = self.command_tx.send(SchedulerCommand::Shutdown);
@@ -182,12 +160,10 @@ impl Drop for SchedulerHandle {
 	}
 }
 
-/// The main scheduler loop running on the coordinator thread.
 fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>) {
 	let mut heap: BinaryHeap<TimerEntry> = BinaryHeap::new();
 
 	loop {
-		// Calculate timeout until next timer
 		let timeout = heap.peek().map(|entry| {
 			let now = Instant::now();
 			if entry.deadline <= now {
@@ -197,33 +173,21 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>)
 			}
 		});
 
-		// Wait for command or timeout
 		let command = match timeout {
-			Some(Duration::ZERO) => {
-				// Timer(s) ready to fire - check for commands without blocking
-				command_rx.try_recv().ok()
-			}
-			Some(dur) => {
-				// Wait until next timer or command
-				match command_rx.recv_timeout(dur) {
-					Ok(cmd) => Some(cmd),
-					Err(RecvTimeoutError::Timeout) => None,
-					Err(RecvTimeoutError::Disconnected) => {
-						// Channel closed, exit
-						return;
-					}
+			Some(Duration::ZERO) => command_rx.try_recv().ok(),
+			Some(dur) => match command_rx.recv_timeout(dur) {
+				Ok(cmd) => Some(cmd),
+				Err(RecvTimeoutError::Timeout) => None,
+				Err(RecvTimeoutError::Disconnected) => {
+					return;
 				}
-			}
-			None => {
-				// No timers - block until command
-				match command_rx.recv() {
-					Ok(cmd) => Some(cmd),
-					Err(_) => return, // Channel closed
-				}
-			}
+			},
+			None => match command_rx.recv() {
+				Ok(cmd) => Some(cmd),
+				Err(_) => return,
+			},
 		};
 
-		// Process command if received
 		if let Some(cmd) = command {
 			match cmd {
 				SchedulerCommand::ScheduleOnce {
@@ -233,7 +197,6 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>)
 					cancelled,
 				} => {
 					let deadline = if delay.is_zero() {
-						// Zero delay - fire immediately
 						if !cancelled.load(Ordering::SeqCst) {
 							pool.spawn(callback);
 						}
@@ -275,7 +238,6 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>)
 			}
 		}
 
-		// Fire all due timers
 		let now = Instant::now();
 		while let Some(entry) = heap.peek() {
 			if entry.deadline > now {
@@ -284,7 +246,6 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>)
 
 			let entry = heap.pop().unwrap();
 
-			// Check if cancelled
 			if entry.cancelled.load(Ordering::SeqCst) {
 				continue;
 			}
@@ -302,7 +263,6 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>)
 					let cancelled = entry.cancelled.clone();
 					let callback_clone = callback.clone();
 
-					// Dispatch callback to pool
 					pool.spawn(move || {
 						if !cancelled.load(Ordering::SeqCst) {
 							let continue_timer = callback_clone();
@@ -312,7 +272,6 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>)
 						}
 					});
 
-					// Re-schedule if not cancelled
 					if !entry.cancelled.load(Ordering::SeqCst) {
 						heap.push(TimerEntry {
 							id: entry.id,
@@ -334,19 +293,19 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>)
 mod tests {
 	use std::sync::{atomic::AtomicUsize, mpsc};
 
-	use parking_lot::Mutex;
 	use rayon::ThreadPoolBuilder;
+
+	use crate::sync::mutex::Mutex;
+
+	fn test_pool() -> Arc<ThreadPool> {
+		Arc::new(ThreadPoolBuilder::new().num_threads(1).build().unwrap())
+	}
 
 	use super::*;
 
-	fn test_pool() -> Arc<ThreadPool> {
-		Arc::new(ThreadPoolBuilder::new().num_threads(2).build().unwrap())
-	}
-
 	#[test]
 	fn test_schedule_once() {
-		let pool = test_pool();
-		let mut scheduler = SchedulerHandle::new(pool);
+		let mut scheduler = SchedulerHandle::new(test_pool());
 
 		let (tx, rx) = mpsc::channel();
 		scheduler.schedule_once(Duration::from_millis(10), move || {
@@ -359,8 +318,7 @@ mod tests {
 
 	#[test]
 	fn test_schedule_once_zero_delay() {
-		let pool = test_pool();
-		let mut scheduler = SchedulerHandle::new(pool);
+		let mut scheduler = SchedulerHandle::new(test_pool());
 
 		let (tx, rx) = mpsc::channel();
 		scheduler.schedule_once(Duration::ZERO, move || {
@@ -373,8 +331,7 @@ mod tests {
 
 	#[test]
 	fn test_schedule_repeat() {
-		let pool = test_pool();
-		let mut scheduler = SchedulerHandle::new(pool);
+		let mut scheduler = SchedulerHandle::new(test_pool());
 
 		let counter = Arc::new(AtomicUsize::new(0));
 		let counter_clone = counter.clone();
@@ -396,8 +353,7 @@ mod tests {
 
 	#[test]
 	fn test_schedule_repeat_stops_on_false() {
-		let pool = test_pool();
-		let mut scheduler = SchedulerHandle::new(pool);
+		let mut scheduler = SchedulerHandle::new(test_pool());
 
 		let counter = Arc::new(AtomicUsize::new(0));
 		let counter_clone = counter.clone();
@@ -419,8 +375,7 @@ mod tests {
 
 	#[test]
 	fn test_cancel_before_fire() {
-		let pool = test_pool();
-		let mut scheduler = SchedulerHandle::new(pool);
+		let mut scheduler = SchedulerHandle::new(test_pool());
 
 		let (tx, rx) = mpsc::channel();
 		let handle = scheduler.schedule_once(Duration::from_millis(50), move || {
@@ -438,8 +393,7 @@ mod tests {
 
 	#[test]
 	fn test_multiple_timers() {
-		let pool = test_pool();
-		let mut scheduler = SchedulerHandle::new(pool);
+		let mut scheduler = SchedulerHandle::new(test_pool());
 
 		let results = Arc::new(Mutex::new(Vec::new()));
 

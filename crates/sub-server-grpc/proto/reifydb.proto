@@ -7,18 +7,36 @@ service ReifyDB {
   rpc Query(QueryRequest) returns (QueryResponse);
   rpc Subscribe(SubscribeRequest) returns (stream SubscriptionEvent);
   rpc Unsubscribe(UnsubscribeRequest) returns (UnsubscribeResponse);
+  rpc BatchSubscribe(BatchSubscribeRequest) returns (stream BatchSubscriptionEvent);
+  rpc BatchUnsubscribe(BatchUnsubscribeRequest) returns (BatchUnsubscribeResponse);
   rpc Authenticate(AuthenticateRequest) returns (AuthenticateResponse);
   rpc Logout(LogoutRequest) returns (LogoutResponse);
+  rpc Call(OperationRequest) returns (OperationResponse);
 }
 
-message AdminRequest  { repeated string statements = 1; optional Params params = 2; }
-message AdminResponse { repeated Frame frames = 1; }
-message CommandRequest  { repeated string statements = 1; optional Params params = 2; }
-message CommandResponse { repeated Frame frames = 1; }
-message QueryRequest  { repeated string statements = 1; optional Params params = 2; }
-message QueryResponse { repeated Frame frames = 1; }
+// Wire format the server should use when emitting frames back to the client.
+// FORMAT_UNSPECIFIED is treated as FORMAT_PROTO for backwards compatibility.
+enum Format {
+  FORMAT_UNSPECIFIED = 0;
+  FORMAT_PROTO = 1;
+  FORMAT_RBCF = 2;
+}
 
-message SubscribeRequest { string query = 1; }
+message FramesPayload { repeated Frame frames = 1; }
+
+message AdminRequest  { string rql = 1; optional Params params = 2; Format format = 3; }
+message AdminResponse { oneof payload { FramesPayload frames = 1; bytes rbcf = 2; } }
+message CommandRequest  { string rql = 1; optional Params params = 2; Format format = 3; }
+message CommandResponse { oneof payload { FramesPayload frames = 1; bytes rbcf = 2; } }
+message QueryRequest  { string rql = 1; optional Params params = 2; Format format = 3; }
+message QueryResponse { oneof payload { FramesPayload frames = 1; bytes rbcf = 2; } }
+
+// Call a bound procedure via its gRPC binding name (globally unique across `system::bindings::grpc`).
+// `format` is accepted but ignored — the binding's declared format wins.
+message OperationRequest  { string name = 1; optional Params params = 2; Format format = 3; }
+message OperationResponse { oneof payload { FramesPayload frames = 1; bytes rbcf = 2; } }
+
+message SubscribeRequest { string rql = 1; Format format = 2; }
 message UnsubscribeRequest { string subscription_id = 1; }
 message UnsubscribeResponse { string subscription_id = 1; }
 message SubscriptionEvent {
@@ -28,7 +46,43 @@ message SubscriptionEvent {
   }
 }
 message SubscribedEvent { string subscription_id = 1; }
-message ChangeEvent { repeated Frame frames = 1; }
+message ChangeEvent { oneof payload { FramesPayload frames = 1; bytes rbcf = 2; } }
+
+// BatchSubscribe opens a single stream that delivers coalesced deltas from N RQL queries.
+// Each poller tick emits one BatchChangeEvent containing an entry per member that had data.
+message BatchSubscribeRequest {
+  repeated string rql = 1;
+  Format format = 2;
+}
+message BatchUnsubscribeRequest { string batch_id = 1; }
+message BatchUnsubscribeResponse { string batch_id = 1; }
+message BatchSubscriptionEvent {
+  oneof event {
+    BatchSubscribedEvent subscribed = 1;
+    BatchChangeEvent change = 2;
+    BatchMemberClosedEvent member_closed = 3;
+  }
+}
+message BatchSubscribedEvent {
+  string batch_id = 1;
+  repeated BatchMember members = 2;
+}
+message BatchMember {
+  uint32 index = 1;
+  string subscription_id = 2;
+}
+message BatchChangeEvent {
+  string batch_id = 1;
+  repeated BatchChangeEntry entries = 2;
+}
+message BatchChangeEntry {
+  string subscription_id = 1;
+  ChangeEvent change = 2;
+}
+message BatchMemberClosedEvent {
+  string batch_id = 1;
+  string subscription_id = 2;
+}
 
 message AuthenticateRequest {
   string method = 1;
@@ -53,7 +107,7 @@ message PositionalParams { repeated TypedValue values = 1; }
 message NamedParams      { map<string, TypedValue> values = 1; }
 message TypedValue       { uint32 type = 1; bytes value = 2; }
 
-message Frame       { repeated uint64 row_numbers = 1; repeated FrameColumn columns = 2; }
+message Frame       { repeated uint64 row_numbers = 1; repeated FrameColumn columns = 2; repeated string created_at = 3; repeated string updated_at = 4; }
 message FrameColumn {
   string name    = 1;
   uint32 type    = 2;

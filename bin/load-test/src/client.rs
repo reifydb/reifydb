@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_client::{HttpClient, WsClient};
+use reifydb_client::{HttpClient, WireFormat, WsClient};
+use reqwest::Client as ReqwestClient;
 
 use crate::config::Protocol;
 
@@ -33,14 +34,14 @@ impl Client {
 		protocol: Protocol,
 		url: &str,
 		token: Option<&str>,
-		http_client: Option<reqwest::Client>,
+		http_client: Option<ReqwestClient>,
 	) -> Result<Self, Error> {
 		match protocol {
 			Protocol::Http => {
 				let mut client = if let Some(inner) = http_client {
-					HttpClient::with_client(inner, url)
+					HttpClient::with_client(inner, url, WireFormat::Json)?
 				} else {
-					HttpClient::connect(url).await?
+					HttpClient::connect(url, WireFormat::Json).await?
 				};
 				if let Some(token) = token {
 					client.authenticate(token);
@@ -48,7 +49,7 @@ impl Client {
 				Ok(Client::Http(client))
 			}
 			Protocol::Ws => {
-				let mut client = WsClient::connect(url).await?;
+				let mut client = WsClient::connect(url, WireFormat::Json).await?;
 				if let Some(token) = token {
 					client.authenticate(token).await?;
 				}

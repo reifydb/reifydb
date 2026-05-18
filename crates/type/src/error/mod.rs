@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+//! Diagnostic and error machinery used by every other crate in the workspace. The `Error` type carries a structured
+//! `Diagnostic` plus the source-fragment context needed to render a user-visible message that points at the
+//! offending span; the rendering, the serde shape, and the helper macros that simplify producing one all live here.
+//!
+//! Anything that surfaces a failure to a user goes through this type. Returning a bare string from deeper code is
+//! what causes a diagnostic to lose its source span between layers.
+
 use std::{
 	fmt::{Display, Formatter},
 	mem,
@@ -20,7 +27,6 @@ use render::DefaultRenderer;
 
 use crate::{fragment::Fragment, value::r#type::Type};
 
-/// Entry in the operator call chain for flow operator errors
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OperatorChainEntry {
 	pub node_id: u64,
@@ -31,7 +37,7 @@ pub struct OperatorChainEntry {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Diagnostic {
 	pub code: String,
-	pub statement: Option<String>,
+	pub rql: Option<String>,
 	pub message: String,
 	pub column: Option<DiagnosticColumn>,
 	pub fragment: Fragment,
@@ -39,7 +45,7 @@ pub struct Diagnostic {
 	pub help: Option<String>,
 	pub notes: Vec<String>,
 	pub cause: Option<Box<Diagnostic>>,
-	/// Operator call chain when error occurred (for flow operator errors)
+
 	pub operator_chain: Option<Vec<OperatorChainEntry>>,
 }
 
@@ -53,7 +59,7 @@ impl Default for Diagnostic {
 	fn default() -> Self {
 		Self {
 			code: String::new(),
-			statement: None,
+			rql: None,
 			message: String::new(),
 			column: None,
 			fragment: Fragment::None,
@@ -73,25 +79,17 @@ impl Display for Diagnostic {
 }
 
 impl Diagnostic {
-	/// Set the statement for this diagnostic and all nested diagnostics
-	/// recursively
-	pub fn with_statement(&mut self, statement: String) {
-		self.statement = Some(statement.clone());
+	pub fn with_rql(&mut self, rql: String) {
+		self.rql = Some(rql.clone());
 
-		// Recursively set statement for all nested diagnostics
 		if let Some(ref mut cause) = self.cause {
 			let mut updated_cause = mem::take(cause.as_mut());
-			updated_cause.with_statement(statement);
+			updated_cause.with_rql(rql);
 			**cause = updated_cause;
 		}
 	}
 
-	/// Set or update the fragment for this diagnostic and all nested
-	/// diagnostics recursively
 	pub fn with_fragment(&mut self, new_fragment: Fragment) {
-		// Always update the fragment, not just when it's None
-		// This is needed for cast errors that need to update the
-		// fragment
 		self.fragment = new_fragment;
 
 		if let Some(ref mut cause) = self.cause {
@@ -99,8 +97,6 @@ impl Diagnostic {
 		}
 	}
 
-	/// Get the fragment if this is a Statement fragment (for backward
-	/// compatibility)
 	pub fn fragment(&self) -> Option<Fragment> {
 		match &self.fragment {
 			Fragment::Statement {
@@ -111,13 +107,7 @@ impl Diagnostic {
 	}
 }
 
-/// Trait for converting error types into Diagnostic.
-///
-/// Implement this trait to provide rich diagnostic information for custom error types.
-/// The trait consumes the error (takes `self` by value) to allow moving owned data
-/// into the diagnostic.
 pub trait IntoDiagnostic {
-	/// Convert self into a Diagnostic with error code, message, fragment, and other metadata.
 	fn into_diagnostic(self) -> Diagnostic;
 }
 
@@ -336,6 +326,10 @@ pub enum ProcedureErrorKind {
 	UndefinedProcedure {
 		name: String,
 	},
+
+	NoRegisteredImplementation {
+		name: String,
+	},
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -364,6 +358,15 @@ pub enum RuntimeErrorKind {
 	},
 	AppendTargetNotFrame {
 		name: String,
+	},
+	AppendColumnMismatch {
+		name: String,
+		existing: Vec<String>,
+		incoming: Vec<String>,
+		fragment: Fragment,
+	},
+	ExpectedSingleColumn {
+		actual: usize,
 	},
 }
 

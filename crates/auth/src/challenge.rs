@@ -1,19 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! In-memory challenge store for multi-step authentication flows.
-//!
-//! Challenges are one-time-use and expire after a configurable TTL.
+use std::{collections::HashMap, time::Duration};
 
-use std::{collections::HashMap, sync::RwLock, time::Duration};
-
-use reifydb_runtime::context::{
-	clock::{Clock, Instant},
-	rng::Rng,
+use reifydb_runtime::{
+	context::{
+		clock::{Clock, Instant},
+		rng::Rng,
+	},
+	sync::rwlock::RwLock,
 };
 use uuid::Builder;
 
-/// A pending authentication challenge.
 struct ChallengeEntry {
 	pub identifier: String,
 	pub method: String,
@@ -21,18 +19,12 @@ struct ChallengeEntry {
 	pub created_at: Instant,
 }
 
-/// Stored challenge info returned when consuming a challenge.
 pub struct ChallengeInfo {
 	pub identifier: String,
 	pub method: String,
 	pub payload: HashMap<String, String>,
 }
 
-/// In-memory store for pending authentication challenges.
-///
-/// Challenges are created during multi-step authentication (e.g., wallet signing)
-/// and consumed on the client's response. Each challenge is one-time-use and
-/// expires after the configured TTL.
 pub struct ChallengeStore {
 	entries: RwLock<HashMap<String, ChallengeEntry>>,
 	ttl: Duration,
@@ -46,7 +38,6 @@ impl ChallengeStore {
 		}
 	}
 
-	/// Create a new challenge and return its ID.
 	pub fn create(
 		&self,
 		identifier: String,
@@ -64,15 +55,13 @@ impl ChallengeStore {
 			payload,
 			created_at: clock.instant(),
 		};
-		let mut entries = self.entries.write().unwrap();
+		let mut entries = self.entries.write();
 		entries.insert(challenge_id.clone(), entry);
 		challenge_id
 	}
 
-	/// Consume a challenge by ID. Returns the challenge data if valid and not expired.
-	/// The challenge is removed after consumption (one-time use).
 	pub fn consume(&self, challenge_id: &str) -> Option<ChallengeInfo> {
-		let mut entries = self.entries.write().unwrap();
+		let mut entries = self.entries.write();
 		let entry = entries.remove(challenge_id)?;
 
 		if entry.created_at.elapsed() > self.ttl {
@@ -86,10 +75,9 @@ impl ChallengeStore {
 		})
 	}
 
-	/// Remove all expired entries.
 	pub fn cleanup_expired(&self) {
 		let ttl = self.ttl;
-		let mut entries = self.entries.write().unwrap();
+		let mut entries = self.entries.write();
 		entries.retain(|_, e| e.created_at.elapsed() <= ttl);
 	}
 }

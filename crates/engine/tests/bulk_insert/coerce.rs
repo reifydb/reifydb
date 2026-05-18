@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Validation mode tests for the bulk_insert module.
-//!
-//! Tests cover type coercion, constraint validation, and missing column handling.
-
 use reifydb_engine::test_prelude::*;
 
 #[test]

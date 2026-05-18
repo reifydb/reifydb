@@ -46,6 +46,10 @@ export class Utf8Value implements Value {
         return this.value === otherUtf8.value;
     }
 
+    toJSON(): string | null {
+        return this.value ?? null;
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,

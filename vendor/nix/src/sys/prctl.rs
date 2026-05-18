@@ -9,9 +9,11 @@ use crate::errno::Errno;
 use crate::sys::signal::Signal;
 use crate::Result;
 
-use libc::{c_int, c_ulong};
+use libc::{c_int, c_ulong, c_void};
 use std::convert::TryFrom;
 use std::ffi::{CStr, CString};
+use std::num::NonZeroUsize;
+use std::ptr::NonNull;
 
 libc_enum! {
     /// The type of hardware memory corruption kill policy for the thread.
@@ -164,7 +166,7 @@ pub fn get_name() -> Result<CString> {
 
 /// Sets the timer slack value for the calling thread. Timer slack is used by the kernel to group
 /// timer expirations and make them the supplied amount of nanoseconds late.
-pub fn set_timerslack(ns: u64) -> Result<()> {
+pub fn set_timerslack(ns: c_ulong) -> Result<()> {
     let res = unsafe { libc::prctl(libc::PR_SET_TIMERSLACK, ns, 0, 0, 0) };
 
     Errno::result(res).map(drop)
@@ -212,4 +214,15 @@ pub fn set_thp_disable(flag: bool) -> Result<()> {
 /// Get the "THP disable" flag for the calling thread.
 pub fn get_thp_disable() -> Result<bool> {
     prctl_get_bool(libc::PR_GET_THP_DISABLE)
+}
+
+/// Set an identifier (or reset it) to the address memory range.
+pub fn set_vma_anon_name(addr: NonNull<c_void>, length: NonZeroUsize, name: Option<&CStr>) -> Result<()> {
+    let nameref = match name {
+        Some(n) => n.as_ptr(),
+        _ => std::ptr::null()
+    };
+    let res = unsafe { libc::prctl(libc::PR_SET_VMA, libc::PR_SET_VMA_ANON_NAME, addr.as_ptr(), length, nameref) };
+
+    Errno::result(res).map(drop)
 }

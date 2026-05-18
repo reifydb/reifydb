@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Error handling for WASM bindings
-
 use std::fmt::Display;
 
 use wasm_bindgen::prelude::*;
@@ -21,7 +19,7 @@ impl JsError {
 	}
 
 	/// Create a JsError from a string message
-	pub fn from_str(message: &str) -> JsValue {
+	pub fn from_message(message: &str) -> JsValue {
 		JsValue::from_str(message)
 	}
 }

@@ -5,3 +5,8 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 mod auth;
+mod interceptor;
+mod metric;
+mod system_config;
+mod virtual_table;
+mod wire_format;

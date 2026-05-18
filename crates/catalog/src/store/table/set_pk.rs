@@ -11,8 +11,6 @@ use reifydb_transaction::transaction::admin::AdminTransaction;
 use crate::{CatalogStore, Result, store::table::shape::table};
 
 impl CatalogStore {
-	/// Set the primary key ID for a table
-	/// Returns an internal error if the table doesn't exist
 	pub(crate) fn set_table_primary_key(
 		txn: &mut AdminTransaction,
 		table_id: TableId,

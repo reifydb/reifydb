@@ -14,10 +14,8 @@ impl CatalogStore {
 		let source = CatalogStore::find_source(&mut Transaction::Admin(&mut *txn), shape_id)?;
 
 		if let Some(source) = source {
-			// Delete from namespace index
 			txn.remove(&NamespaceSourceKey::encoded(source.namespace, shape_id))?;
 
-			// Delete from main source table
 			txn.remove(&SourceKey::encoded(shape_id))?;
 		}
 

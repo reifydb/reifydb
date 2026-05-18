@@ -5,11 +5,9 @@ pub mod service;
 
 use std::sync::Arc;
 
-use reifydb_core::event::{EventListener, metric::CdcStatsRecordedEvent};
+use reifydb_core::event::{EventListener, metric::CdcWrittenEvent};
 use tokio::sync::Notify;
 
-/// Bridges the EventBus (actor-based) to tokio::sync::Notify so that
-/// replication streaming tasks wake immediately when new CDC entries are written.
 pub struct CdcNotifyListener {
 	notify: Arc<Notify>,
 }
@@ -22,8 +20,8 @@ impl CdcNotifyListener {
 	}
 }
 
-impl EventListener<CdcStatsRecordedEvent> for CdcNotifyListener {
-	fn on(&self, _event: &CdcStatsRecordedEvent) {
+impl EventListener<CdcWrittenEvent> for CdcNotifyListener {
+	fn on(&self, _event: &CdcWrittenEvent) {
 		self.notify.notify_waiters();
 	}
 }

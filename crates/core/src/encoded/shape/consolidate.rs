@@ -1,23 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! RowShape consolidation utilities - STUB
-//!
-//! This module will eventually provide functionality to:
-//! - Consolidate multiple shapes into a single unified shape
-//! - Widen types when merging incompatible field types
-//!
-//! Currently stubbed with unimplemented!() as this is out of scope
-//! for the initial implementation.
-
 use reifydb_runtime::hash::Hash64;
 use reifydb_type::value::r#type::Type;
 
 use super::RowShape;
 
-/// Type widening rules - STUB
-///
-/// Future: implement proper widening hierarchy (e.g., Int4 -> Int8 -> Int16)
 pub fn widen_type(a: Type, b: Type) -> Type {
 	match (a, b) {
 		(Type::Option(_), t) | (t, Type::Option(_)) => t,
@@ -26,12 +14,6 @@ pub fn widen_type(a: Type, b: Type) -> Type {
 	}
 }
 
-/// Find widest compatible shape from multiple fingerprints - STUB
-///
-/// Future: this will merge shapes by:
-/// 1. Finding all unique field names
-/// 2. For each field, finding the widest compatible type
-/// 3. Producing a new shape that can represent all input shapes
 #[allow(unused_variables)]
 pub fn consolidate_shapes(fingerprints: &[Hash64], lookup: impl Fn(Hash64) -> Option<RowShape>) -> RowShape {
 	unimplemented!("shape consolidation not yet supported")

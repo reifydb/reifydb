@@ -22,7 +22,7 @@ export interface Fragment {
 
 export interface Diagnostic {
     code: string,
-    statement?: string;
+    rql?: string;
     message: string,
     column?: DiagnosticColumn,
     fragment?: Fragment,
@@ -48,7 +48,7 @@ export interface ErrorResponse {
 
 export class ReifyError extends Error {
     public readonly code: string;
-    public readonly statement?: string;
+    public readonly rql?: string;
     public readonly column?: DiagnosticColumn;
     public readonly fragment?: Fragment;
     public readonly label?: string;
@@ -65,7 +65,7 @@ export class ReifyError extends Error {
 
         this.name = "ReifyError";
         this.code = diagnostic.code;
-        this.statement = diagnostic.statement;
+        this.rql = diagnostic.rql;
         this.column = diagnostic.column;
         this.fragment = diagnostic.fragment;
         this.label = diagnostic.label;

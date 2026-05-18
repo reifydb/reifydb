@@ -4,6 +4,7 @@
 use std::{mem, ops::Bound, time::Duration};
 
 use reifydb_core::{
+	actors::cdc::CdcPollMessage,
 	common::CommitVersion,
 	encoded::key::EncodedKey,
 	interface::cdc::{Cdc, CdcConsumerId, SystemChange},
@@ -15,29 +16,18 @@ use reifydb_runtime::actor::{
 	traits::{Actor, Directive},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::Result;
+use reifydb_type::{Result, error::Error};
 use tracing::{debug, error};
 
-use super::{checkpoint::CdcCheckpoint, consumer::CdcConsume, host::CdcHost};
+use super::{checkpoint::CdcCheckpoint, consumer::CdcConsume, host::CdcHost, watermark::CdcConsumerWatermark};
 use crate::storage::CdcStore;
 
-pub enum PollMsg {
-	/// Trigger a poll for CDC events
-	Poll,
-	/// Retry watermark readiness check
-	CheckWatermark,
-	/// Async response from the consumer
-	ConsumeResponse(Result<()>),
-}
-
-/// Configuration for the poll actor
 #[derive(Debug, Clone)]
 pub struct PollActorConfig {
-	/// Unique identifier for this consumer
 	pub consumer_id: CdcConsumerId,
-	/// How often to poll when no data is available
+
 	pub poll_interval: Duration,
-	/// Maximum batch size for fetching CDC events (None = unbounded)
+
 	pub max_batch_size: Option<u64>,
 }
 
@@ -47,11 +37,17 @@ pub struct PollActor<H: CdcHost, C: CdcConsume> {
 	consumer: Box<C>,
 	store: CdcStore,
 	consumer_key: EncodedKey,
+	consumer_watermark: Option<CdcConsumerWatermark>,
 }
 
 impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
-	/// Create a new poll actor
-	pub fn new(config: PollActorConfig, host: H, consumer: C, store: CdcStore) -> Self {
+	pub fn new(
+		config: PollActorConfig,
+		host: H,
+		consumer: C,
+		store: CdcStore,
+		consumer_watermark: Option<CdcConsumerWatermark>,
+	) -> Self {
 		let consumer_key = CdcConsumerKey {
 			consumer: config.consumer_id.clone(),
 		}
@@ -63,31 +59,42 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			consumer: Box::new(consumer),
 			store,
 			consumer_key,
+			consumer_watermark,
+		}
+	}
+
+	#[inline]
+	fn publish_watermark(&self, version: CommitVersion) {
+		if let Some(wm) = &self.consumer_watermark {
+			wm.store(version);
 		}
 	}
 }
 
-/// Phase of the poll actor state machine
-pub enum PollState {
-	/// Ready to accept a new Poll
+pub enum Phase {
 	Ready,
-	/// Waiting for watermark to catch up to a specific version
+
 	WaitingForWatermark {
 		current_version: CommitVersion,
 		retries_remaining: u8,
 	},
-	/// Waiting for the consumer to respond
+
 	WaitingForConsume {
-		/// The latest CDC version in the batch
 		latest_version: CommitVersion,
-		/// Number of CDC transactions in the batch
+
 		count: usize,
 	},
 }
 
+pub struct PollState {
+	phase: Phase,
+
+	cached_checkpoint: Option<CommitVersion>,
+}
+
 impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C> {
 	type State = PollState;
-	type Message = PollMsg;
+	type Message = CdcPollMessage;
 
 	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
 		debug!(
@@ -95,96 +102,20 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C
 			self.config.consumer_id, self.config.poll_interval
 		);
 
-		// Send initial poll message to start the loop
-		let _ = ctx.self_ref().send(PollMsg::Poll);
+		let _ = ctx.self_ref().send(CdcPollMessage::Poll);
 
-		PollState::Ready
+		PollState {
+			phase: Phase::Ready,
+			cached_checkpoint: None,
+		}
 	}
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
 		match msg {
-			PollMsg::Poll => {
-				// Ignore Poll if we're already waiting for watermark or consume
-				if !matches!(*state, PollState::Ready) {
-					return Directive::Continue;
-				}
-
-				if ctx.is_cancelled() {
-					debug!("[Consumer {:?}] Stopped", self.config.consumer_id);
-					return Directive::Stop;
-				}
-
-				// Get current version and check watermark readiness (non-blocking)
-				let current_version = match self.host.current_version() {
-					Ok(v) => v,
-					Err(e) => {
-						error!(
-							"[Consumer {:?}] Error getting current version: {}",
-							self.config.consumer_id, e
-						);
-						ctx.schedule_once(self.config.poll_interval, || PollMsg::Poll);
-						return Directive::Continue;
-					}
-				};
-
-				let done = self.host.done_until();
-				if done >= current_version {
-					// Watermark is ready, proceed with batch processing
-					self.start_consume(state, ctx);
-				} else {
-					*state = PollState::WaitingForWatermark {
-						current_version,
-						retries_remaining: 4,
-					};
-					ctx.schedule_once(Duration::from_millis(50), || PollMsg::CheckWatermark);
-				}
-			}
-			PollMsg::CheckWatermark => {
-				if let PollState::WaitingForWatermark {
-					current_version,
-					retries_remaining,
-				} = *state
-				{
-					let is_cancelled = ctx.is_cancelled();
-					if is_cancelled {
-						debug!("[Consumer {:?}] Stopped", self.config.consumer_id);
-						return Directive::Stop;
-					}
-
-					let done = self.host.done_until();
-					if done >= current_version {
-						// Watermark caught up, proceed
-						*state = PollState::Ready;
-						self.start_consume(state, ctx);
-					} else if retries_remaining == 0 {
-						// Timeout — proceed anyway (matches original 200ms behavior)
-						*state = PollState::Ready;
-						self.start_consume(state, ctx);
-					} else {
-						// Still not ready, schedule another check
-						*state = PollState::WaitingForWatermark {
-							current_version,
-							retries_remaining: retries_remaining - 1,
-						};
-						ctx.schedule_once(Duration::from_millis(50), || {
-							PollMsg::CheckWatermark
-						});
-					}
-				}
-				// If not in WaitingForWatermark phase, ignore
-			}
-			PollMsg::ConsumeResponse(result) => {
-				// Only handle if we're waiting for a consume response
-				if let PollState::WaitingForConsume {
-					latest_version,
-					count,
-				} = mem::replace(&mut *state, PollState::Ready)
-				{
-					self.finish_consume(state, ctx, latest_version, count, result);
-				}
-			}
+			CdcPollMessage::Poll => self.on_poll(state, ctx),
+			CdcPollMessage::CheckWatermark => self.on_check_watermark(state, ctx),
+			CdcPollMessage::ConsumeResponse(result) => self.on_consume_response(state, ctx, result),
 		}
-		Directive::Continue
 	}
 
 	fn config(&self) -> ActorConfig {
@@ -193,217 +124,222 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C
 }
 
 impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
-	/// Start consuming a batch: fetch CDCs, filter, and send to consumer asynchronously.
-	/// If no data is available, schedules the next poll directly.
-	fn start_consume(&self, state: &mut PollState, ctx: &Context<PollMsg>) {
-		*state = PollState::Ready;
+	#[inline]
+	fn on_poll(&self, state: &mut PollState, ctx: &Context<CdcPollMessage>) -> Directive {
+		if !matches!(state.phase, Phase::Ready) {
+			return Directive::Continue;
+		}
+		if ctx.is_cancelled() {
+			debug!("[Consumer {:?}] Stopped", self.config.consumer_id);
+			return Directive::Stop;
+		}
+		let current_version = match self.host.current_version() {
+			Ok(v) => v,
+			Err(e) => {
+				error!("[Consumer {:?}] Error getting current version: {}", self.config.consumer_id, e);
+				ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
+				return Directive::Continue;
+			}
+		};
+		if self.host.done_until() >= current_version {
+			self.start_consume(state, ctx);
+		} else {
+			state.phase = Phase::WaitingForWatermark {
+				current_version,
+				retries_remaining: 4,
+			};
+			ctx.schedule_once(Duration::from_millis(50), || CdcPollMessage::CheckWatermark);
+		}
+		Directive::Continue
+	}
 
+	#[inline]
+	fn on_check_watermark(&self, state: &mut PollState, ctx: &Context<CdcPollMessage>) -> Directive {
+		let Phase::WaitingForWatermark {
+			current_version,
+			retries_remaining,
+		} = state.phase
+		else {
+			return Directive::Continue;
+		};
+		if ctx.is_cancelled() {
+			debug!("[Consumer {:?}] Stopped", self.config.consumer_id);
+			return Directive::Stop;
+		}
+		let watermark_ready = self.host.done_until() >= current_version;
+		let timed_out = retries_remaining == 0;
+		if watermark_ready || timed_out {
+			state.phase = Phase::Ready;
+			self.start_consume(state, ctx);
+		} else {
+			state.phase = Phase::WaitingForWatermark {
+				current_version,
+				retries_remaining: retries_remaining - 1,
+			};
+			ctx.schedule_once(Duration::from_millis(50), || CdcPollMessage::CheckWatermark);
+		}
+		Directive::Continue
+	}
+
+	#[inline]
+	fn on_consume_response(
+		&self,
+		state: &mut PollState,
+		ctx: &Context<CdcPollMessage>,
+		result: Result<()>,
+	) -> Directive {
+		if let Phase::WaitingForConsume {
+			latest_version,
+			count,
+		} = mem::replace(&mut state.phase, Phase::Ready)
+		{
+			self.finish_consume(state, ctx, latest_version, count, result);
+		}
+		Directive::Continue
+	}
+
+	fn start_consume(&self, state: &mut PollState, ctx: &Context<CdcPollMessage>) {
+		state.phase = Phase::Ready;
 		let safe_version = self.host.done_until();
 
+		let Some(checkpoint) = self.resolve_checkpoint(state, ctx) else {
+			return;
+		};
+		if safe_version <= checkpoint {
+			ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
+			return;
+		}
+
+		let Some(transactions) = self.fetch_or_reschedule(checkpoint, safe_version, ctx) else {
+			return;
+		};
+		if transactions.is_empty() {
+			ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
+			return;
+		}
+
+		let (count, latest_version) = summarize_batch(checkpoint, &transactions);
+		let relevant_cdcs: Vec<Cdc> = transactions.into_iter().filter(is_relevant_cdc).collect();
+
+		if relevant_cdcs.is_empty() {
+			self.advance_checkpoint_skip_ahead(state, ctx, latest_version);
+			return;
+		}
+
+		state.phase = Phase::WaitingForConsume {
+			latest_version,
+			count,
+		};
+		self.dispatch_to_consumer(relevant_cdcs, ctx);
+	}
+
+	#[inline]
+	fn advance_checkpoint_skip_ahead(
+		&self,
+		state: &mut PollState,
+		ctx: &Context<CdcPollMessage>,
+		latest_version: CommitVersion,
+	) {
+		state.cached_checkpoint = Some(latest_version);
+		self.publish_watermark(latest_version);
+		let _ = ctx.self_ref().send(CdcPollMessage::Poll);
+	}
+
+	#[inline]
+	fn resolve_checkpoint(&self, state: &mut PollState, ctx: &Context<CdcPollMessage>) -> Option<CommitVersion> {
+		if let Some(v) = state.cached_checkpoint {
+			return Some(v);
+		}
+		let v = self.seed_checkpoint_from_durable(ctx)?;
+		state.cached_checkpoint = Some(v);
+		self.publish_watermark(v);
+		Some(v)
+	}
+
+	#[inline]
+	fn seed_checkpoint_from_durable(&self, ctx: &Context<CdcPollMessage>) -> Option<CommitVersion> {
 		let mut query = match self.host.begin_query() {
 			Ok(q) => q,
 			Err(e) => {
 				error!("[Consumer {:?}] Error beginning query: {}", self.config.consumer_id, e);
-				ctx.schedule_once(self.config.poll_interval, || PollMsg::Poll);
-				return;
+				ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
+				return None;
 			}
 		};
-
-		let checkpoint = match CdcCheckpoint::fetch(&mut Transaction::Query(&mut query), &self.consumer_key) {
+		let v = match CdcCheckpoint::fetch(&mut Transaction::Query(&mut query), &self.consumer_key) {
 			Ok(c) => c,
 			Err(e) => {
 				error!("[Consumer {:?}] Error fetching checkpoint: {}", self.config.consumer_id, e);
-				ctx.schedule_once(self.config.poll_interval, || PollMsg::Poll);
-				return;
+				ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
+				return None;
 			}
 		};
-
-		// Drop the query — we no longer hold any transaction
 		drop(query);
-
-		if safe_version <= checkpoint {
-			// Nothing safe to fetch yet
-			ctx.schedule_once(self.config.poll_interval, || PollMsg::Poll);
-			return;
-		}
-
-		let transactions = match self.fetch_cdcs_until(checkpoint, safe_version) {
-			Ok(t) => t,
-			Err(e) => {
-				error!("[Consumer {:?}] Error fetching CDCs: {}", self.config.consumer_id, e);
-				ctx.schedule_once(self.config.poll_interval, || PollMsg::Poll);
-				return;
-			}
-		};
-
-		if transactions.is_empty() {
-			ctx.schedule_once(self.config.poll_interval, || PollMsg::Poll);
-			return;
-		}
-
-		let count = transactions.len();
-		let latest_version = transactions.iter().map(|tx| tx.version).max().unwrap_or(checkpoint);
-
-		// Filter transactions to only those with Row or Flow-related changes
-		let relevant_cdcs = transactions
-			.into_iter()
-			.filter(|cdc| {
-				// Pass through if there are decoded row changes (columnar Change objects)
-				!cdc.changes.is_empty()
-					|| cdc.system_changes.iter().any(|sys_change| match sys_change {
-						SystemChange::Insert {
-							key,
-							..
-						}
-						| SystemChange::Update {
-							key,
-							..
-						}
-						| SystemChange::Delete {
-							key,
-							..
-						} => {
-							if let Some(kind) = Key::kind(key) {
-								matches!(
-									kind,
-									KeyKind::Row
-										| KeyKind::Flow | KeyKind::FlowNode
-										| KeyKind::FlowNodeByFlow | KeyKind::FlowEdge
-										| KeyKind::FlowEdgeByFlow
-										| KeyKind::NamespaceFlow
-								)
-							} else {
-								false
-							}
-						}
-					})
-			})
-			.collect::<Vec<_>>();
-
-		if relevant_cdcs.is_empty() {
-			// No relevant CDCs — persist checkpoint and commit directly
-			match self.host.begin_command() {
-				Ok(mut transaction) => {
-					match CdcCheckpoint::persist(
-						&mut transaction,
-						&self.consumer_key,
-						latest_version,
-					) {
-						Ok(_) => {
-							let _ = transaction.commit();
-						}
-						Err(e) => {
-							error!(
-								"[Consumer {:?}] Error persisting checkpoint: {}",
-								self.config.consumer_id, e
-							);
-							let _ = transaction.rollback();
-						}
-					}
-				}
-				Err(e) => {
-					error!(
-						"[Consumer {:?}] Error beginning transaction for checkpoint: {}",
-						self.config.consumer_id, e
-					);
-				}
-			}
-			// More events likely available
-			let _ = ctx.self_ref().send(PollMsg::Poll);
-			return;
-		}
-
-		// Transition to WaitingForConsume phase before sending
-		*state = PollState::WaitingForConsume {
-			latest_version,
-			count,
-		};
-
-		// Send to consumer with a callback that delivers ConsumeResponse back to self
-		let self_ref = ctx.self_ref().clone();
-		let reply: Box<dyn FnOnce(Result<()>) + Send> = Box::new(move |result| {
-			let _ = self_ref.send(PollMsg::ConsumeResponse(result));
-		});
-
-		self.consumer.consume(relevant_cdcs, reply);
+		Some(v)
 	}
 
-	/// Finish consuming: persist consumer checkpoint on success, schedule next poll.
+	#[inline]
+	fn fetch_or_reschedule(
+		&self,
+		checkpoint: CommitVersion,
+		safe_version: CommitVersion,
+		ctx: &Context<CdcPollMessage>,
+	) -> Option<Vec<Cdc>> {
+		match self.fetch_cdcs_until(checkpoint, safe_version) {
+			Ok(t) => Some(t),
+			Err(e) => {
+				error!("[Consumer {:?}] Error fetching CDCs: {}", self.config.consumer_id, e);
+				ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
+				None
+			}
+		}
+	}
+
+	#[inline]
+	fn dispatch_to_consumer(&self, cdcs: Vec<Cdc>, ctx: &Context<CdcPollMessage>) {
+		let self_ref = ctx.self_ref().clone();
+		let reply: Box<dyn FnOnce(Result<()>) + Send> = Box::new(move |result| {
+			let _ = self_ref.send(CdcPollMessage::ConsumeResponse(result));
+		});
+		self.consumer.consume(cdcs, reply);
+	}
+
 	fn finish_consume(
 		&self,
 		state: &mut PollState,
-		ctx: &Context<PollMsg>,
+		ctx: &Context<CdcPollMessage>,
 		latest_version: CommitVersion,
 		count: usize,
 		result: Result<()>,
 	) {
-		*state = PollState::Ready;
-
+		state.phase = Phase::Ready;
 		match result {
-			Ok(()) => {
-				// Consumer committed its own writes. Now persist the consumer-level checkpoint.
-				match self.host.begin_command() {
-					Ok(mut transaction) => {
-						match CdcCheckpoint::persist(
-							&mut transaction,
-							&self.consumer_key,
-							latest_version,
-						) {
-							Ok(_) => {
-								match transaction.commit() {
-									Ok(_) => {
-										if count > 0 {
-											// More events likely available
-											// - poll again immediately
-											let _ = ctx
-												.self_ref()
-												.send(PollMsg::Poll);
-										} else {
-											ctx.schedule_once(
-												self.config
-													.poll_interval,
-												|| PollMsg::Poll,
-											);
-										}
-									}
-									Err(e) => {
-										error!(
-											"[Consumer {:?}] Error committing checkpoint: {}",
-											self.config.consumer_id, e
-										);
-										ctx.schedule_once(
-											self.config.poll_interval,
-											|| PollMsg::Poll,
-										);
-									}
-								}
-							}
-							Err(e) => {
-								error!(
-									"[Consumer {:?}] Error persisting checkpoint: {}",
-									self.config.consumer_id, e
-								);
-								let _ = transaction.rollback();
-								ctx.schedule_once(self.config.poll_interval, || {
-									PollMsg::Poll
-								});
-							}
-						}
-					}
-					Err(e) => {
-						error!(
-							"[Consumer {:?}] Error beginning checkpoint transaction: {}",
-							self.config.consumer_id, e
-						);
-						ctx.schedule_once(self.config.poll_interval, || PollMsg::Poll);
-					}
-				}
-			}
-			Err(e) => {
-				error!("[Consumer {:?}] Error consuming events: {}", self.config.consumer_id, e);
-				ctx.schedule_once(self.config.poll_interval, || PollMsg::Poll);
-			}
+			Ok(()) => self.advance_after_success(state, ctx, latest_version, count),
+			Err(e) => self.reschedule_after_error(ctx, e),
 		}
+	}
+
+	#[inline]
+	fn advance_after_success(
+		&self,
+		state: &mut PollState,
+		ctx: &Context<CdcPollMessage>,
+		latest_version: CommitVersion,
+		count: usize,
+	) {
+		state.cached_checkpoint = Some(latest_version);
+		self.publish_watermark(latest_version);
+		if count > 0 {
+			let _ = ctx.self_ref().send(CdcPollMessage::Poll);
+		} else {
+			ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
+		}
+	}
+
+	#[inline]
+	fn reschedule_after_error(&self, ctx: &Context<CdcPollMessage>, err: Error) {
+		error!("[Consumer {:?}] Error consuming events: {}", self.config.consumer_id, err);
+		ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
 	}
 
 	fn fetch_cdcs_until(&self, since_version: CommitVersion, until_version: CommitVersion) -> Result<Vec<Cdc>> {
@@ -415,4 +351,43 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		)?;
 		Ok(batch.items)
 	}
+}
+
+#[inline]
+fn summarize_batch(checkpoint: CommitVersion, transactions: &[Cdc]) -> (usize, CommitVersion) {
+	let count = transactions.len();
+	let latest_version = transactions.iter().map(|tx| tx.version).max().unwrap_or(checkpoint);
+	(count, latest_version)
+}
+
+fn is_relevant_cdc(cdc: &Cdc) -> bool {
+	!cdc.changes.is_empty() || cdc.system_changes.iter().any(is_relevant_system_change)
+}
+
+fn is_relevant_system_change(change: &SystemChange) -> bool {
+	let key = match change {
+		SystemChange::Insert {
+			key,
+			..
+		}
+		| SystemChange::Update {
+			key,
+			..
+		}
+		| SystemChange::Delete {
+			key,
+			..
+		} => key,
+	};
+	Key::kind(key)
+		.map(|kind| {
+			matches!(
+				kind,
+				KeyKind::Row
+					| KeyKind::Flow | KeyKind::FlowNode | KeyKind::FlowNodeByFlow
+					| KeyKind::FlowEdge | KeyKind::FlowEdgeByFlow
+					| KeyKind::NamespaceFlow
+			)
+		})
+		.unwrap_or(false)
 }

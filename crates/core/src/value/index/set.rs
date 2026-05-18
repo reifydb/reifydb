@@ -53,7 +53,6 @@ impl IndexShape {
 		let v = value.into();
 		let mut bytes = v.to_bits().to_be_bytes();
 
-		// Apply ASC encoding first
 		if v.is_sign_negative() {
 			for b in bytes.iter_mut() {
 				*b = !*b;
@@ -62,7 +61,6 @@ impl IndexShape {
 			bytes[0] ^= 0x80;
 		}
 
-		// For DESC, invert all bytes
 		if field.direction == SortDirection::Desc {
 			for b in bytes.iter_mut() {
 				*b = !*b;
@@ -82,7 +80,6 @@ impl IndexShape {
 		let v = value.into();
 		let mut bytes = v.to_bits().to_be_bytes();
 
-		// Apply ASC encoding first
 		if v.is_sign_negative() {
 			for b in bytes.iter_mut() {
 				*b = !*b;
@@ -91,7 +88,6 @@ impl IndexShape {
 			bytes[0] ^= 0x80;
 		}
 
-		// For DESC, invert all bytes
 		if field.direction == SortDirection::Desc {
 			for b in bytes.iter_mut() {
 				*b = !*b;
@@ -463,7 +459,6 @@ impl IndexShape {
 		debug_assert_eq!(field.value, Type::IdentityId);
 		key.set_valid(index, true);
 
-		// Direct conversion from inner Uuid7 to Uuid
 		let uuid: Uuid = value.0.into();
 		let uuid_bytes = uuid.as_bytes();
 		let mut bytes = [0u8; 16];

@@ -10,5 +10,5 @@ publish = false
 [dev-dependencies]
 reifydb = { workspace = true }
 reifydb-testing = { path = "../../../../crates/testing" }
-test_each_file = { version = "0.3.5" }
+test_each_file = { version = "0.3.7" }
 tokio = { workspace = true }
