@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use crate::{
-	catalog::{namespace::NamespaceFFI, table::TableFFI},
+	catalog::{namespace::NamespaceFFI, row_shape::RowShapeFFI, table::TableFFI},
 	context::context::ContextFFI,
 };
 
@@ -31,7 +31,11 @@ pub struct CatalogCallbacks {
 		output: *mut TableFFI,
 	) -> i32,
 
+	pub find_row_shape: extern "C" fn(ctx: *mut ContextFFI, fingerprint: u64, output: *mut RowShapeFFI) -> i32,
+
 	pub free_namespace: extern "C" fn(namespace: *mut NamespaceFFI),
 
 	pub free_table: extern "C" fn(table: *mut TableFFI),
+
+	pub free_row_shape: extern "C" fn(row_shape: *mut RowShapeFFI),
 }

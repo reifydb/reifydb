@@ -8,4 +8,5 @@
 pub mod column;
 pub mod namespace;
 pub mod primary_key;
+pub mod row_shape;
 pub mod table;

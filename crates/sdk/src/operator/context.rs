@@ -2,7 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_abi::context::context::ContextFFI;
-use reifydb_core::{encoded::key::EncodedKey, interface::catalog::flow::FlowNodeId};
+use reifydb_core::{
+	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
+	interface::catalog::flow::FlowNodeId,
+};
 use reifydb_type::{
 	params::Params,
 	value::{frame::frame::Frame, row_number::RowNumber},
@@ -10,7 +13,7 @@ use reifydb_type::{
 
 use crate::{
 	catalog::Catalog,
-	error::Result,
+	error::{FFIError, Result},
 	operator::{builder::ColumnsBuilder, diff::DiffStart},
 	rql::raw_query,
 	state::{InternalState, State, row::RowNumberProvider},
@@ -47,6 +50,17 @@ impl OperatorContext {
 
 	pub fn catalog(&mut self) -> Catalog<'_> {
 		Catalog::new(self)
+	}
+
+	pub fn shape_for_row(&mut self, row: &EncodedRow) -> Result<RowShape> {
+		let fingerprint = row.fingerprint();
+		match self.catalog().find_row_shape(fingerprint)? {
+			Some(shape) => Ok(shape),
+			None => Err(FFIError::Other(format!(
+				"row shape with fingerprint {} not registered in catalog",
+				fingerprint.as_u64()
+			))),
+		}
 	}
 
 	pub fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)> {

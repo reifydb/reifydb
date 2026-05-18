@@ -54,8 +54,10 @@ pub fn create_host_callbacks() -> HostCallbacks {
 			find_namespace_by_name: catalog::host_catalog_find_namespace_by_name,
 			find_table: catalog::host_catalog_find_table,
 			find_table_by_name: catalog::host_catalog_find_table_by_name,
+			find_row_shape: catalog::host_catalog_find_row_shape,
 			free_namespace: catalog::host_catalog_free_namespace,
 			free_table: catalog::host_catalog_free_table,
+			free_row_shape: catalog::host_catalog_free_row_shape,
 		},
 		rql: RqlCallbacks {
 			rql: rql::host_rql,

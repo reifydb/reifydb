@@ -85,8 +85,8 @@ impl AggregateRecord {
 		self.calls = self.calls.saturating_add(1);
 		self.total_us = self.total_us.saturating_add(duration_us as u64);
 		self.histogram.observe(duration_us);
-		for (i, &extra) in extras.iter().enumerate() {
-			self.extras_sum[i] = self.extras_sum[i].saturating_add(extra);
+		for (sum, &extra) in self.extras_sum.iter_mut().zip(extras.iter()) {
+			*sum = sum.saturating_add(extra);
 		}
 	}
 

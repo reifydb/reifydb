@@ -1,18 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::{
+	fmt,
+	sync::atomic::{AtomicU32, Ordering},
+};
 
 use dashmap::DashMap;
 use reifydb_runtime::sync::rwlock::RwLock;
 
 use crate::record::{DIM_UNSET, DimIdx};
 
-#[derive(Debug)]
 pub struct DimInterner {
 	forward: DashMap<String, DimIdx>,
 	reverse: RwLock<Vec<String>>,
 	next: AtomicU32,
+}
+
+impl fmt::Debug for DimInterner {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("DimInterner").field("len", &self.len()).finish()
+	}
 }
 
 impl Default for DimInterner {

@@ -23,6 +23,8 @@ use reifydb_profiler::{
 use reifydb_routine::routine::registry::RoutinesConfigurator;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_runtime::context::clock::Clock;
+#[cfg(feature = "sub_profiler")]
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, pool::PoolConfig};
 use reifydb_store_multi::buffer::tier::MultiBufferTier;
 use reifydb_sub_api::subsystem::SubsystemFactory;

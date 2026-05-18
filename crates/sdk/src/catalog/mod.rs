@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod namespace;
+pub mod row_shape;
 pub mod table;
 
 use std::{slice::from_raw_parts, str};
@@ -9,6 +10,7 @@ use std::{slice::from_raw_parts, str};
 use reifydb_abi::catalog::{column::ColumnFFI, primary_key::PrimaryKeyFFI};
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::shape::{RowShape, fingerprint::RowShapeFingerprint},
 	interface::catalog::{
 		column::{Column, ColumnIndex},
 		id::{ColumnId, NamespaceId, PrimaryKeyId, TableId},
@@ -62,6 +64,10 @@ impl<'a> Catalog<'a> {
 		version: CommitVersion,
 	) -> Result<Option<Table>, FFIError> {
 		table::raw_catalog_find_table_by_name(self.ctx, namespace, name, version)
+	}
+
+	pub fn find_row_shape(&self, fingerprint: RowShapeFingerprint) -> Result<Option<RowShape>, FFIError> {
+		row_shape::raw_catalog_find_row_shape(self.ctx, fingerprint)
 	}
 }
 
@@ -121,7 +127,7 @@ pub(crate) unsafe fn unmarshal_primary_key(ffi_pk: &PrimaryKeyFFI) -> Result<Pri
 	})
 }
 
-fn decode_type_constraint(
+pub(crate) fn decode_type_constraint(
 	base_type: u8,
 	constraint_type: u8,
 	param1: u32,

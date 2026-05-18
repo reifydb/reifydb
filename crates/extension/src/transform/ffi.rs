@@ -141,7 +141,7 @@ pub(crate) mod stubs {
 		callbacks::{
 			catalog::CatalogCallbacks, rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
 		},
-		catalog::{namespace::NamespaceFFI, table::TableFFI},
+		catalog::{namespace::NamespaceFFI, row_shape::RowShapeFFI, table::TableFFI},
 		constants::FFI_ERROR_INTERNAL,
 		context::{
 			context::ContextFFI,
@@ -274,8 +274,10 @@ pub(crate) mod stubs {
 			find_namespace_by_name: catalog_find_namespace_by_name,
 			find_table: catalog_find_table,
 			find_table_by_name: catalog_find_table_by_name,
+			find_row_shape: catalog_find_row_shape,
 			free_namespace: catalog_free_namespace,
 			free_table: catalog_free_table,
+			free_row_shape: catalog_free_row_shape,
 		}
 	}
 
@@ -304,8 +306,12 @@ pub(crate) mod stubs {
 	) -> i32 {
 		FFI_ERROR_INTERNAL
 	}
+	extern "C" fn catalog_find_row_shape(_: *mut ContextFFI, _: u64, _: *mut RowShapeFFI) -> i32 {
+		FFI_ERROR_INTERNAL
+	}
 	extern "C" fn catalog_free_namespace(_: *mut NamespaceFFI) {}
 	extern "C" fn catalog_free_table(_: *mut TableFFI) {}
+	extern "C" fn catalog_free_row_shape(_: *mut RowShapeFFI) {}
 
 	pub fn rql() -> RqlCallbacks {
 		RqlCallbacks {

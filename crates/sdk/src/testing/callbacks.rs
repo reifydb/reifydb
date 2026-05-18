@@ -530,7 +530,7 @@ use reifydb_abi::{
 		builder::BuilderCallbacks, catalog::CatalogCallbacks, host::HostCallbacks, log::LogCallbacks,
 		memory::MemoryCallbacks, rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
 	},
-	catalog::{namespace::NamespaceFFI, table::TableFFI},
+	catalog::{namespace::NamespaceFFI, row_shape::RowShapeFFI, table::TableFFI},
 	constants::{FFI_END_OF_ITERATION, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK},
 	context::{
 		context::ContextFFI,
@@ -591,9 +591,15 @@ extern "C" fn test_catalog_find_table_by_name(
 	1
 }
 
+extern "C" fn test_catalog_find_row_shape(_ctx: *mut ContextFFI, _fingerprint: u64, _output: *mut RowShapeFFI) -> i32 {
+	1
+}
+
 extern "C" fn test_catalog_free_namespace(_namespace: *mut NamespaceFFI) {}
 
 extern "C" fn test_catalog_free_table(_table: *mut TableFFI) {}
+
+extern "C" fn test_catalog_free_row_shape(_row_shape: *mut RowShapeFFI) {}
 
 unsafe extern "C" fn test_rql(
 	_ctx: *mut ContextFFI,
@@ -643,8 +649,10 @@ pub fn create_test_callbacks() -> HostCallbacks {
 			find_namespace_by_name: test_catalog_find_namespace_by_name,
 			find_table: test_catalog_find_table,
 			find_table_by_name: test_catalog_find_table_by_name,
+			find_row_shape: test_catalog_find_row_shape,
 			free_namespace: test_catalog_free_namespace,
 			free_table: test_catalog_free_table,
+			free_row_shape: test_catalog_free_row_shape,
 		},
 		rql: RqlCallbacks {
 			rql: test_rql,
