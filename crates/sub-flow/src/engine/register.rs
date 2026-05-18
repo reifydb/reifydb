@@ -66,9 +66,24 @@ impl FlowEngine {
 	pub fn register_with_transaction(&mut self, txn: &mut Transaction<'_>, flow: Arc<FlowDag>) -> Result<()> {
 		debug_assert!(!self.flows.contains_key(&flow.id), "Flow already registered");
 
+		let mut added: Vec<FlowNodeId> = Vec::new();
 		for node_id in flow.topological_order()? {
 			let node = flow.get_node(&node_id).unwrap();
-			self.add(txn, &flow, node)?;
+			if let Err(err) = self.add(txn, &flow, node) {
+				for id in &added {
+					self.operators.remove(id);
+				}
+				for entries in self.sources.values_mut() {
+					entries.retain(|(fid, _)| *fid != flow.id);
+				}
+				self.sources.retain(|_, v| !v.is_empty());
+				for entries in self.sinks.values_mut() {
+					entries.retain(|(fid, _)| *fid != flow.id);
+				}
+				self.sinks.retain(|_, v| !v.is_empty());
+				return Err(err);
+			}
+			added.push(node_id);
 		}
 
 		self.analyzer.add((*flow).clone());

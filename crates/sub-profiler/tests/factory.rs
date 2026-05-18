@@ -36,7 +36,14 @@ fn with_subsystem_returns_provided_and_registers_vtables() {
 	let interner = Arc::new(DimInterner::new());
 	let accumulator = Arc::new(RwLock::new(ProfilerAccumulator::new(16, 0)));
 	let sink: Arc<dyn reifydb_profiler::sink::ProfilerSink> = Arc::new(NoopSink);
-	let subsystem = ProfilerSubsystem::new(false, CategorySet::empty(), interner, accumulator, sink, runtime.clock().clone());
+	let subsystem = ProfilerSubsystem::new(
+		false,
+		CategorySet::empty(),
+		interner,
+		accumulator,
+		sink,
+		runtime.clock().clone(),
+	);
 
 	let ioc = IocContainer::new().register(engine.clone()).register(runtime).register(eventbus.clone());
 

@@ -405,7 +405,8 @@ impl ServerBuilder {
 				cfg.min_calls_for_retention,
 			)));
 			let sink: Arc<dyn ProfilerSink> = if cfg.enabled {
-				let actor = ProfilerCollectorActor::new(Arc::clone(&accumulator), Arc::clone(&interner));
+				let actor =
+					ProfilerCollectorActor::new(Arc::clone(&accumulator), Arc::clone(&interner));
 				let handle = runtime.actor_system().spawn_system("profile-collector", actor);
 				let actor_ref = handle.actor_ref().clone();
 				eventbus.register::<ProfilerScopeClosedEvent, _>(ProfilerScopeClosedListener::new(
