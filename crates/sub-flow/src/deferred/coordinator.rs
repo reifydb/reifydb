@@ -25,7 +25,12 @@ use reifydb_core::{
 	common::CommitVersion,
 	encoded::shape::RowShape,
 	interface::{
-		catalog::{flow::FlowId, id::ViewId, shape::ShapeId},
+		catalog::{
+			config::{ConfigKey, GetConfig},
+			flow::FlowId,
+			id::ViewId,
+			shape::ShapeId,
+		},
 		cdc::{Cdc, CdcBatch, SystemChange},
 		change::{Change, ChangeOrigin},
 	},
@@ -280,12 +285,17 @@ impl CoordinatorActor {
 			clock,
 		}
 	}
+
+	fn flow_tick(&self) -> Duration {
+		self.engine.catalog().get_config_duration(ConfigKey::FlowTick)
+	}
 }
 
 pub struct CoordinatorState {
 	states: FlowStates,
 	analyzer: FlowGraphAnalyzer,
 	phase: Phase,
+	phase_entered_at: Option<Instant>,
 	tick_schedules: BTreeMap<FlowId, TickSchedule>,
 
 	flow_assignments: BTreeMap<FlowId, usize>,
@@ -296,12 +306,13 @@ impl Actor for CoordinatorActor {
 	type Message = FlowCoordinatorMessage;
 
 	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
-		ctx.schedule_once(Duration::from_secs(1), || FlowCoordinatorMessage::Tick);
+		ctx.schedule_once(self.flow_tick(), || FlowCoordinatorMessage::Tick);
 
 		CoordinatorState {
 			states: FlowStates::new(),
 			analyzer: FlowGraphAnalyzer::new(),
 			phase: Phase::Idle,
+			phase_entered_at: None,
 			tick_schedules: BTreeMap::new(),
 			flow_assignments: BTreeMap::new(),
 		}
@@ -323,8 +334,15 @@ impl Actor for CoordinatorActor {
 				FlowCoordinatorMessage::Tick => {
 					if matches!(state.phase, Phase::Idle) {
 						self.handle_tick(state, ctx);
+					} else if let Some(entered) = &state.phase_entered_at
+						&& self.clock.instant().duration_since(entered) > self.flow_tick() * 10
+					{
+						error!(
+							"flow coordinator stuck in non-Idle phase for more than 10x FLOW_TICK; pool reply lost, aborting"
+						);
+						process::abort();
 					}
-					ctx.schedule_once(Duration::from_secs(1), || FlowCoordinatorMessage::Tick);
+					ctx.schedule_once(self.flow_tick(), || FlowCoordinatorMessage::Tick);
 				}
 			}
 			Directive::Continue
@@ -497,6 +515,7 @@ impl CoordinatorActor {
 		response: PoolResponse,
 	) {
 		let phase = mem::replace(&mut state.phase, Phase::Idle);
+		state.phase_entered_at = None;
 		match phase {
 			Phase::RegisteringFlows {
 				flows,
@@ -1252,6 +1271,7 @@ impl CoordinatorActor {
 		state.phase = Phase::Ticking {
 			state_lease,
 		};
+		state.phase_entered_at = Some(self.clock.instant());
 	}
 
 	fn commit_tick_writes(&self, pending: Pending, pending_shapes: Vec<RowShape>) {

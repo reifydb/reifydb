@@ -52,6 +52,7 @@ pub enum ConfigKey {
 	CdcCompactMaxBlocksPerTick,
 	CdcCompactBlockCacheCapacity,
 	CdcCompactZstdLevel,
+	FlowTick,
 	ThreadsAsync,
 	ThreadsSystem,
 	ThreadsQuery,
@@ -76,6 +77,7 @@ impl ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick,
 			Self::CdcCompactBlockCacheCapacity,
 			Self::CdcCompactZstdLevel,
+			Self::FlowTick,
 			Self::ThreadsAsync,
 			Self::ThreadsSystem,
 			Self::ThreadsQuery,
@@ -102,6 +104,7 @@ impl ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick => Value::Uint8(16),
 			Self::CdcCompactBlockCacheCapacity => Value::Uint8(8),
 			Self::CdcCompactZstdLevel => Value::Uint1(7),
+			Self::FlowTick => Value::Duration(Duration::from_seconds(1).unwrap()),
 			Self::ThreadsAsync => Value::Uint2(1),
 			Self::ThreadsSystem => Value::Uint2(2),
 			Self::ThreadsQuery => Value::Uint2(1),
@@ -147,6 +150,10 @@ impl ConfigKey {
 				"Zstd compression level for CDC blocks. Range 1-22; higher means smaller blocks but \
 				 slower compression. Decompression cost is independent of level."
 			}
+			Self::FlowTick => {
+				"How often the deferred and transactional flow tick coordinators wake up to dispatch \
+				 due flows."
+			}
 			Self::ThreadsAsync => {
 				"Number of worker threads for the async runtime. Must be >= 1. \
 				 Read at boot before the runtime starts; changes require restart."
@@ -180,6 +187,7 @@ impl ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick => false,
 			Self::CdcCompactBlockCacheCapacity => true,
 			Self::CdcCompactZstdLevel => false,
+			Self::FlowTick => false,
 			Self::ThreadsAsync => true,
 			Self::ThreadsSystem => true,
 			Self::ThreadsQuery => true,
@@ -204,6 +212,7 @@ impl ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick => &[Type::Uint8],
 			Self::CdcCompactBlockCacheCapacity => &[Type::Uint8],
 			Self::CdcCompactZstdLevel => &[Type::Uint1],
+			Self::FlowTick => &[Type::Duration],
 			Self::ThreadsAsync => &[Type::Uint2],
 			Self::ThreadsSystem => &[Type::Uint2],
 			Self::ThreadsQuery => &[Type::Uint2],
@@ -228,6 +237,7 @@ impl ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick => false,
 			Self::CdcCompactBlockCacheCapacity => false,
 			Self::CdcCompactZstdLevel => false,
+			Self::FlowTick => false,
 			Self::ThreadsAsync => false,
 			Self::ThreadsSystem => false,
 			Self::ThreadsQuery => false,
@@ -290,6 +300,16 @@ impl ConfigKey {
 						Ok(())
 					} else {
 						Err("HISTORICAL_GC_INTERVAL must be greater than zero".to_string())
+					}
+				}
+				_ => Ok(()),
+			},
+			Self::FlowTick => match value {
+				Value::Duration(d) => {
+					if d.is_positive() {
+						Ok(())
+					} else {
+						Err("FLOW_TICK must be greater than zero".to_string())
 					}
 				}
 				_ => Ok(()),
@@ -408,6 +428,7 @@ impl fmt::Display for ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick => write!(f, "CDC_COMPACT_MAX_BLOCKS_PER_TICK"),
 			Self::CdcCompactBlockCacheCapacity => write!(f, "CDC_COMPACT_BLOCK_CACHE_CAPACITY"),
 			Self::CdcCompactZstdLevel => write!(f, "CDC_COMPACT_ZSTD_LEVEL"),
+			Self::FlowTick => write!(f, "FLOW_TICK"),
 			Self::ThreadsAsync => write!(f, "THREADS_ASYNC"),
 			Self::ThreadsSystem => write!(f, "THREADS_SYSTEM"),
 			Self::ThreadsQuery => write!(f, "THREADS_QUERY"),
@@ -436,6 +457,7 @@ impl FromStr for ConfigKey {
 			"CDC_COMPACT_MAX_BLOCKS_PER_TICK" => Ok(Self::CdcCompactMaxBlocksPerTick),
 			"CDC_COMPACT_BLOCK_CACHE_CAPACITY" => Ok(Self::CdcCompactBlockCacheCapacity),
 			"CDC_COMPACT_ZSTD_LEVEL" => Ok(Self::CdcCompactZstdLevel),
+			"FLOW_TICK" => Ok(Self::FlowTick),
 			"THREADS_ASYNC" => Ok(Self::ThreadsAsync),
 			"THREADS_SYSTEM" => Ok(Self::ThreadsSystem),
 			"THREADS_QUERY" => Ok(Self::ThreadsQuery),

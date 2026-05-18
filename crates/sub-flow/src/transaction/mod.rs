@@ -81,7 +81,7 @@ use reifydb_transaction::{
 	},
 	multi::transaction::read::MultiReadTransaction,
 	single::SingleTransaction,
-	transaction::admin::AdminTransaction,
+	transaction::{admin::AdminTransaction, command::CommandTransaction},
 };
 use reifydb_type::Result;
 use tracing::instrument;
@@ -113,6 +113,13 @@ pub struct DeferredParams {
 	pub query: MultiReadTransaction,
 	pub state_query: MultiReadTransaction,
 	pub single: SingleTransaction,
+	pub catalog: Catalog,
+	pub interceptors: Interceptors,
+	pub clock: Clock,
+}
+
+pub struct CommittingParams {
+	pub cmd: CommandTransaction,
 	pub catalog: Catalog,
 	pub interceptors: Interceptors,
 	pub clock: Clock,
@@ -151,6 +158,12 @@ pub enum FlowTransaction {
 
 		state: HashMap<EncodedKey, EncodedRow>,
 	},
+
+	Committing {
+		inner: FlowTransactionInner,
+
+		cmd: CommandTransaction,
+	},
 }
 
 impl FlowTransaction {
@@ -165,6 +178,10 @@ impl FlowTransaction {
 				..
 			}
 			| Self::Ephemeral {
+				inner,
+				..
+			}
+			| Self::Committing {
 				inner,
 				..
 			} => inner,
@@ -182,6 +199,10 @@ impl FlowTransaction {
 				..
 			}
 			| Self::Ephemeral {
+				inner,
+				..
+			}
+			| Self::Committing {
 				inner,
 				..
 			} => inner,
@@ -218,13 +239,18 @@ impl FlowTransaction {
 	}
 
 	pub fn deferred_from_parts(params: DeferredParams) -> Self {
+		let mut query = params.query;
+		query.read_as_of_version_inclusive(params.version);
+		let mut state_query = params.state_query;
+		state_query.read_as_of_version_inclusive(params.version);
+
 		Self::Deferred {
 			inner: FlowTransactionInner {
 				version: params.version,
 				pending: params.pending,
 				pending_shapes: Vec::new(),
-				query: params.query,
-				state_query: Some(params.state_query),
+				query,
+				state_query: Some(state_query),
 				single: params.single,
 				catalog: params.catalog,
 				interceptors: params.interceptors,
@@ -232,6 +258,42 @@ impl FlowTransaction {
 				clock: params.clock,
 				operator_states: HashMap::new(),
 			},
+		}
+	}
+
+	pub fn committing(params: CommittingParams) -> Result<Self> {
+		let version = params.cmd.version();
+		let mut query = params.cmd.multi.begin_query()?;
+		query.read_as_of_version_inclusive(version);
+		let mut state_query = params.cmd.multi.begin_query()?;
+		state_query.read_as_of_version_inclusive(version);
+		let single = params.cmd.single.clone();
+
+		Ok(Self::Committing {
+			inner: FlowTransactionInner {
+				version,
+				pending: Pending::new(),
+				pending_shapes: Vec::new(),
+				query,
+				state_query: Some(state_query),
+				single,
+				catalog: params.catalog,
+				interceptors: params.interceptors,
+				accumulator: ChangeAccumulator::new(),
+				clock: params.clock,
+				operator_states: HashMap::new(),
+			},
+			cmd: params.cmd,
+		})
+	}
+
+	pub fn commit(self) -> Result<CommitVersion> {
+		match self {
+			Self::Committing {
+				mut cmd,
+				..
+			} => cmd.commit(),
+			_ => panic!("FlowTransaction::commit only valid on Committing variant"),
 		}
 	}
 

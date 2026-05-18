@@ -5,12 +5,7 @@ pub mod factory;
 #[cfg(reifydb_target = "native")]
 pub mod ffi;
 
-use std::{
-	any::Any,
-	collections::HashMap,
-	sync::{Arc, RwLock},
-	time::Duration,
-};
+use std::{any::Any, collections::HashMap, sync::Arc, time::Duration};
 
 #[cfg(reifydb_target = "native")]
 use ffi::load_ffi_operators;
@@ -35,8 +30,9 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::loader::load_flow_dag;
 use reifydb_runtime::{
 	SharedRuntime,
-	actor::mailbox::ActorRef,
+	actor::{mailbox::ActorRef, system::ActorHandle},
 	context::{RuntimeContext, clock::Clock},
+	sync::rwlock::RwLock,
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_transaction::{
@@ -60,6 +56,7 @@ use crate::{
 	transactional::{
 		interceptor::{TransactionalFlowPostCommitInterceptor, TransactionalFlowPreCommitInterceptor},
 		registry::TransactionalFlowRegistry,
+		tick::{TransactionalTickActor, TransactionalTickMessage},
 	},
 };
 
@@ -113,6 +110,7 @@ pub struct FlowSubsystem {
 	worker_handles: Vec<FlowHandle>,
 	pool_handle: Option<FlowPoolHandle>,
 	coordinator_handle: Option<FlowCoordinatorHandle>,
+	transactional_tick_handle: Option<ActorHandle<TransactionalTickMessage>>,
 	transactional_flow_engine: Arc<RwLock<FlowEngine>>,
 	running: bool,
 }
@@ -171,6 +169,16 @@ impl FlowSubsystem {
 
 		Self::register_flow_interceptors(&engine, &transactional_flow_engine, &clock, &custom_operators);
 
+		let transactional_tick_handle = actor_system.spawn_system(
+			"transactional-flow-tick",
+			TransactionalTickActor::new(
+				transactional_flow_engine.clone(),
+				engine.clone(),
+				engine.catalog(),
+				clock.clone(),
+			),
+		);
+
 		ioc.register_service::<FlowWatermarkSampler>(FlowWatermarkSampler::new({
 			let tracker = primitive_tracker.clone();
 			let engine = engine.clone();
@@ -197,6 +205,7 @@ impl FlowSubsystem {
 			worker_handles,
 			pool_handle: Some(pool_handle),
 			coordinator_handle: Some(coordinator_handle),
+			transactional_tick_handle: Some(transactional_tick_handle),
 			transactional_flow_engine,
 			running: false,
 		}
@@ -319,7 +328,7 @@ impl FlowSubsystem {
 					)?;
 				}
 
-				*hook_flow_engine.write().unwrap() = fresh_engine;
+				*hook_flow_engine.write() = fresh_engine;
 				Ok(())
 			}));
 		}));
@@ -356,13 +365,15 @@ impl Subsystem for FlowSubsystem {
 			let _ = handle.join();
 		}
 
+		if let Some(handle) = self.transactional_tick_handle.take() {
+			let _ = handle.join();
+		}
+
 		for handle in self.worker_handles.drain(..) {
 			let _ = handle.join();
 		}
 
-		if let Ok(mut engine) = self.transactional_flow_engine.write() {
-			engine.clear();
-		}
+		self.transactional_flow_engine.write().clear();
 
 		self.running = false;
 		Ok(())

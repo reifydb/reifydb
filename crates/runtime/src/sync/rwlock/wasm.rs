@@ -41,6 +41,18 @@ impl<T> RwLockInner<T> {
 			inner,
 		})
 	}
+
+	pub fn read_recursive(&self) -> RwLockReadGuardInner<'_, T> {
+		RwLockReadGuardInner {
+			inner: self.inner.borrow(),
+		}
+	}
+
+	pub fn try_read_recursive(&self) -> Option<RwLockReadGuardInner<'_, T>> {
+		self.inner.try_borrow().ok().map(|inner| RwLockReadGuardInner {
+			inner,
+		})
+	}
 }
 
 pub struct RwLockReadGuardInner<'a, T> {

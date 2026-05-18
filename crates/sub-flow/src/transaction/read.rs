@@ -224,6 +224,10 @@ impl FlowTransaction {
 			Self::Deferred {
 				inner,
 				..
+			}
+			| Self::Committing {
+				inner,
+				..
 			} => {
 				let merged: BTreeMap<EncodedKey, PendingWrite> = inner
 					.pending
@@ -324,6 +328,10 @@ impl FlowTransaction {
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		match self {
 			Self::Deferred {
+				inner,
+				..
+			}
+			| Self::Committing {
 				inner,
 				..
 			} => {

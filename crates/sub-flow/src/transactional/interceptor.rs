@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{
-	mem,
-	sync::{Arc, RwLock},
-};
+use std::{mem, sync::Arc};
 
 use rayon::prelude::*;
 use reifydb_catalog::catalog::Catalog;
@@ -18,6 +15,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::engine::StandardEngine;
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_transaction::{
 	change::OperationType,
 	interceptor::transaction::{PostCommitContext, PostCommitInterceptor, PreCommitContext, PreCommitInterceptor},
@@ -47,7 +45,7 @@ pub struct TransactionalFlowPreCommitInterceptor {
 
 impl PreCommitInterceptor for TransactionalFlowPreCommitInterceptor {
 	fn intercept(&self, ctx: &mut PreCommitContext) -> Result<()> {
-		let engine = self.flow_engine.read().unwrap();
+		let engine = self.flow_engine.read_recursive();
 		execute_inline_flow_changes(&engine, &self.engine, &self.catalog, ctx)?;
 
 		if !ctx.pending_shapes.is_empty() {

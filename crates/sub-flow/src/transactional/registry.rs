@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::catalog::{flow::FlowId, view::ViewKind};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::{flow::FlowDag, loader::load_flow_dag, node::FlowNodeType};
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{Result, value::identity::IdentityId};
 
@@ -24,7 +25,7 @@ impl TransactionalFlowRegistry {
 			return Ok(false);
 		}
 
-		let mut engine = self.flow_engine.write().unwrap();
+		let mut engine = self.flow_engine.write();
 
 		if engine.flows.contains_key(&flow.id) {
 			return Ok(true);

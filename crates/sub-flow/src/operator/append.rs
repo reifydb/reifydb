@@ -145,11 +145,7 @@ impl Operator for AppendOperator {
 	}
 
 	fn capabilities(&self) -> u32 {
-		if self.ttl_nanos.is_some() {
-			CAPABILITY_ALL_STANDARD | CAPABILITY_TICK
-		} else {
-			CAPABILITY_ALL_STANDARD
-		}
+		CAPABILITY_ALL_STANDARD | CAPABILITY_TICK
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
@@ -558,12 +554,14 @@ mod tests {
 	}
 
 	#[test]
-	fn capabilities_include_tick_only_when_ttl_is_set() {
-		// CAPABILITY_TICK gates whether the engine ever calls tick on us; getting this wrong
-		// either silently skips eviction or wakes us up uselessly every tick
+	fn capabilities_always_include_tick() {
+		// Mirrors join/distinct: the operator always declares CAPABILITY_TICK so the
+		// engine can route per-flow ticks (set via `with { tick: ... }` on the view) here
+		// even when TTL is disabled. Tick is a no-op in that case, but the capability is
+		// required to avoid the engine's enforce_tick_capability abort.
 		let with_ttl = AppendOperator::new_for_state_tests(FlowNodeId(8), Some(100), TtlAnchor::Created);
 		assert!(with_ttl.capabilities() & CAPABILITY_TICK != 0);
 		let without_ttl = AppendOperator::new_for_state_tests(FlowNodeId(9), None, TtlAnchor::Created);
-		assert!(without_ttl.capabilities() & CAPABILITY_TICK == 0);
+		assert!(without_ttl.capabilities() & CAPABILITY_TICK != 0);
 	}
 }

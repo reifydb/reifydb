@@ -8,23 +8,65 @@ use super::FlowTransaction;
 
 impl FlowTransaction {
 	pub fn set(&mut self, key: &EncodedKey, value: EncodedRow) -> Result<()> {
-		self.inner_mut().pending.insert(key.clone(), value);
-		Ok(())
+		match self {
+			Self::Committing {
+				cmd,
+				..
+			} => cmd.set(key, value),
+			_ => {
+				self.inner_mut().pending.insert(key.clone(), value);
+				Ok(())
+			}
+		}
 	}
 
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		self.inner_mut().pending.remove(key.clone());
-		Ok(())
+		match self {
+			Self::Committing {
+				cmd,
+				..
+			} => cmd.remove(key),
+			_ => {
+				self.inner_mut().pending.remove(key.clone());
+				Ok(())
+			}
+		}
 	}
 
 	pub fn set_batch(&mut self, keys: &[EncodedKey], values: &[EncodedRow]) -> Result<()> {
-		self.inner_mut().pending.insert_batch(keys, values);
-		Ok(())
+		match self {
+			Self::Committing {
+				cmd,
+				..
+			} => {
+				for (key, value) in keys.iter().zip(values.iter()) {
+					cmd.set(key, value.clone())?;
+				}
+				Ok(())
+			}
+			_ => {
+				self.inner_mut().pending.insert_batch(keys, values);
+				Ok(())
+			}
+		}
 	}
 
 	pub fn remove_batch(&mut self, keys: &[EncodedKey]) -> Result<()> {
-		self.inner_mut().pending.remove_batch(keys);
-		Ok(())
+		match self {
+			Self::Committing {
+				cmd,
+				..
+			} => {
+				for key in keys {
+					cmd.remove(key)?;
+				}
+				Ok(())
+			}
+			_ => {
+				self.inner_mut().pending.remove_batch(keys);
+				Ok(())
+			}
+		}
 	}
 }
 
