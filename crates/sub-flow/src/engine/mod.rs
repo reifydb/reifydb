@@ -106,7 +106,7 @@ impl FlowEngine {
 		config: &BTreeMap<String, Value>,
 	) -> Result<BoxedOperator> {
 		let loader = ffi_operator_loader();
-		let mut loader_write = loader.write().unwrap();
+		let mut loader_write = loader.write();
 
 		let config_bytes = to_stdvec(config)
 			.map_err(|e| Error(Box::new(internal!("Failed to serialize operator config: {:?}", e))))?;
@@ -121,7 +121,7 @@ impl FlowEngine {
 	#[cfg(reifydb_target = "native")]
 	pub(crate) fn is_ffi_operator(&self, operator: &str) -> bool {
 		let loader = ffi_operator_loader();
-		let loader_read = loader.read().unwrap();
+		let loader_read = loader.read();
 		loader_read.has_operator(operator)
 	}
 

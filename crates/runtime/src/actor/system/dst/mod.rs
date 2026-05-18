@@ -465,10 +465,13 @@ impl error::Error for JoinError {}
 
 #[cfg(test)]
 mod tests {
-	use std::sync::{Arc, Mutex};
+	use std::sync::Arc;
 
 	use super::*;
-	use crate::pool::{PoolConfig, Pools};
+	use crate::{
+		pool::{PoolConfig, Pools},
+		sync::mutex::Mutex,
+	};
 
 	struct CounterActor;
 
@@ -580,7 +583,7 @@ mod tests {
 			msg: Self::Message,
 			_ctx: &Context<Self::Message>,
 		) -> Directive {
-			self.log.lock().unwrap().push(msg);
+			self.log.lock().push(msg);
 			Directive::Continue
 		}
 	}
@@ -662,7 +665,7 @@ mod tests {
 		system.run_until_idle();
 
 		// Strict global FIFO: msg1 (ts=0), msg2 (ts=1), msg3 (ts=2).
-		assert_eq!(*log.lock().unwrap(), vec!["msg1", "msg2", "msg3"]);
+		assert_eq!(*log.lock(), vec!["msg1", "msg2", "msg3"]);
 	}
 
 	#[test]
@@ -713,7 +716,7 @@ mod tests {
 		system.run_until_idle();
 
 		// Timers should have fired in deadline order.
-		assert_eq!(*log.lock().unwrap(), vec!["t100", "t200", "t300"]);
+		assert_eq!(*log.lock(), vec!["t100", "t200", "t300"]);
 	}
 
 	#[test]
@@ -734,7 +737,7 @@ mod tests {
 		system.advance_time(Duration::from_millis(350));
 		system.run_until_idle();
 
-		assert_eq!(log.lock().unwrap().len(), 3);
+		assert_eq!(log.lock().len(), 3);
 	}
 
 	#[test]
@@ -757,7 +760,7 @@ mod tests {
 		fwd_handle.actor_ref.send("hello".into()).unwrap();
 		system.run_until_idle();
 
-		assert_eq!(*log.lock().unwrap(), vec!["fwd:hello"]);
+		assert_eq!(*log.lock(), vec!["fwd:hello"]);
 	}
 
 	#[test]
@@ -853,7 +856,7 @@ mod tests {
 
 		system.run_until_idle();
 
-		assert_eq!(*log.lock().unwrap(), vec!["a1", "b1", "c1", "a2", "b2"]);
+		assert_eq!(*log.lock(), vec!["a1", "b1", "c1", "a2", "b2"]);
 	}
 
 	// Allow debug formatting for StepResult in test assertions.

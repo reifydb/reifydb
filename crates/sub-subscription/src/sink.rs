@@ -4,7 +4,7 @@
 use std::{
 	collections::{BTreeSet, HashMap},
 	mem,
-	sync::{Arc, Mutex},
+	sync::Arc,
 };
 
 use postcard::{from_bytes, to_stdvec};
@@ -18,6 +18,7 @@ use reifydb_core::{
 	internal,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sub_flow::{
 	operator::{
 		Operator, Operators,
@@ -49,12 +50,12 @@ impl DeliveryBuffer {
 	}
 
 	pub fn push(&self, subscription_id: SubscriptionId, columns: Columns) {
-		self.staging.lock().unwrap().entry(subscription_id).or_default().push(columns);
+		self.staging.lock().entry(subscription_id).or_default().push(columns);
 	}
 
 	pub fn commit_batch(&self) {
 		let staged = {
-			let mut guard = self.staging.lock().unwrap();
+			let mut guard = self.staging.lock();
 			mem::take(&mut *guard)
 		};
 		self.store.commit_staged(staged);

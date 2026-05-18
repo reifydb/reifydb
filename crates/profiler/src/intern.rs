@@ -4,7 +4,7 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use dashmap::DashMap;
-use parking_lot::RwLock;
+use reifydb_runtime::sync::rwlock::RwLock;
 
 use crate::record::{DIM_UNSET, DimIdx};
 

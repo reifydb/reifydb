@@ -2,3 +2,11 @@ disallowed-methods = [
     { path = "std::time::Instant::now", reason = "Use reifydb_runtime::context::clock::Clock::instant() instead" },
     { path = "std::time::SystemTime::now", reason = "Use reifydb_runtime::context::clock::Clock::now_*() instead" },
 ]
+
+disallowed-types = [
+    { path = "std::sync::Mutex", reason = "Use reifydb_runtime::sync::mutex::Mutex instead" },
+    { path = "std::sync::RwLock", reason = "Use reifydb_runtime::sync::rwlock::RwLock instead" },
+    { path = "parking_lot::Mutex", reason = "Use reifydb_runtime::sync::mutex::Mutex instead" },
+    { path = "parking_lot::RwLock", reason = "Use reifydb_runtime::sync::rwlock::RwLock instead" },
+    { path = "parking_lot::Condvar", reason = "Use reifydb_runtime::sync::condvar::Condvar instead" },
+]

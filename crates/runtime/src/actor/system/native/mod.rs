@@ -8,7 +8,7 @@ use std::{
 	error, fmt,
 	fmt::{Debug, Formatter},
 	mem,
-	sync::{Arc, Mutex},
+	sync::Arc,
 	time,
 	time::Duration,
 };
@@ -22,6 +22,7 @@ use crate::{
 	},
 	context::clock::Clock,
 	pool::Pools,
+	sync::mutex::Mutex,
 };
 
 struct ActorSystemInner {
@@ -71,7 +72,7 @@ impl ActorSystem {
 				children: Mutex::new(Vec::new()),
 			}),
 		};
-		self.inner.children.lock().unwrap().push(child.clone());
+		self.inner.children.lock().push(child.clone());
 		child
 	}
 
@@ -90,29 +91,29 @@ impl ActorSystem {
 	pub fn shutdown(&self) {
 		self.inner.cancel.cancel();
 
-		for child in self.inner.children.lock().unwrap().iter() {
+		for child in self.inner.children.lock().iter() {
 			child.shutdown();
 		}
 
-		let wakers = mem::take(&mut *self.inner.wakers.lock().unwrap());
+		let wakers = mem::take(&mut *self.inner.wakers.lock());
 		for waker in &wakers {
 			waker();
 		}
 		drop(wakers);
 
-		self.inner.keepalive.lock().unwrap().clear();
+		self.inner.keepalive.lock().clear();
 	}
 
 	pub(crate) fn register_waker(&self, f: Arc<dyn Fn() + Send + Sync>) {
-		self.inner.wakers.lock().unwrap().push(f);
+		self.inner.wakers.lock().push(f);
 	}
 
 	pub(crate) fn register_keepalive(&self, cell: Box<dyn Any + Send + Sync>) {
-		self.inner.keepalive.lock().unwrap().push(cell);
+		self.inner.keepalive.lock().push(cell);
 	}
 
 	pub(crate) fn register_done_rx(&self, rx: Receiver<()>) {
-		self.inner.done_rxs.lock().unwrap().push(rx);
+		self.inner.done_rxs.lock().push(rx);
 	}
 
 	pub fn join(&self) -> Result<(), JoinError> {
@@ -122,7 +123,7 @@ impl ActorSystem {
 	#[allow(clippy::disallowed_methods)]
 	pub fn join_timeout(&self, timeout: Duration) -> Result<(), JoinError> {
 		let deadline = time::Instant::now() + timeout;
-		let rxs: Vec<_> = mem::take(&mut *self.inner.done_rxs.lock().unwrap());
+		let rxs: Vec<_> = mem::take(&mut *self.inner.done_rxs.lock());
 		for rx in rxs {
 			let remaining = deadline.saturating_duration_since(time::Instant::now());
 			match rx.recv_timeout(remaining) {

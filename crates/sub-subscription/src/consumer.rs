@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{
-	collections::HashMap,
-	sync::{Arc, RwLock, RwLockReadGuard},
-};
+use std::{collections::HashMap, sync::Arc};
 
 use dashmap::DashMap;
 use reifydb_catalog::catalog::Catalog;
@@ -18,6 +15,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin},
 	},
 };
+use reifydb_runtime::sync::rwlock::{RwLock, RwLockReadGuard};
 use reifydb_sub_flow::{engine::FlowEngine, transaction::FlowTransaction};
 use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
 use reifydb_type::Result;
@@ -82,7 +80,7 @@ impl CdcConsume for SubscriptionCdcConsumer {
 impl SubscriptionCdcConsumer {
 	#[inline]
 	fn acquire_flow_engine(&self) -> Option<RwLockReadGuard<'_, FlowEngine>> {
-		self.flow_engine.read().ok()
+		Some(self.flow_engine.read())
 	}
 
 	fn process_cdc_batch(&self, flow_engine: &FlowEngine, cdcs: &[Cdc]) {

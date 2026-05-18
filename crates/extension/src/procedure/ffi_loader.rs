@@ -5,7 +5,7 @@ use std::{
 	collections::HashMap,
 	fs,
 	path::{Path, PathBuf},
-	sync::{Arc, OnceLock, RwLock},
+	sync::{Arc, OnceLock},
 };
 
 use libloading::Symbol;
@@ -14,6 +14,7 @@ use reifydb_abi::procedure::{
 	types::{PROCEDURE_MAGIC, ProcedureCreateFnFFI},
 };
 use reifydb_routine::routine::registry::RoutinesConfigurator;
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::error::{FFIError, Result as FFIResult};
 
 use super::ffi::NativeProcedureFFI;
@@ -163,7 +164,7 @@ impl Default for ProcedureLoader {
 
 pub fn register_procedures_from_dir(dir: &Path, mut builder: RoutinesConfigurator) -> FFIResult<RoutinesConfigurator> {
 	let loader = ffi_procedure_loader();
-	let mut loader_guard = loader.write().unwrap();
+	let mut loader_guard = loader.write();
 
 	let mut names = Vec::new();
 

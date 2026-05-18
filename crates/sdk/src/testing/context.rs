@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{
-	collections::HashMap,
-	sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::{key::EncodedKey, row::EncodedRow},
 };
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_type::util::cowvec::CowVec;
 
 #[derive(Clone)]
@@ -39,11 +37,11 @@ impl TestContext {
 	}
 
 	pub fn logs(&self) -> Vec<String> {
-		self.logs.lock().unwrap().clone()
+		self.logs.lock().clone()
 	}
 
 	pub fn clear_logs(&self) {
-		self.logs.lock().unwrap().clear();
+		self.logs.lock().clear();
 	}
 
 	pub fn version(&self) -> CommitVersion {
@@ -55,31 +53,31 @@ impl TestContext {
 	}
 
 	pub fn get_state(&self, key: &EncodedKey) -> Option<Vec<u8>> {
-		self.state_store.lock().unwrap().get(key).map(|v| v.0.to_vec())
+		self.state_store.lock().get(key).map(|v| v.0.to_vec())
 	}
 
 	pub fn set_state(&self, key: EncodedKey, value: Vec<u8>) {
-		self.state_store.lock().unwrap().insert(key, EncodedRow(CowVec::new(value)));
+		self.state_store.lock().insert(key, EncodedRow(CowVec::new(value)));
 	}
 
 	pub fn remove_state(&self, key: &EncodedKey) -> Option<Vec<u8>> {
-		self.state_store.lock().unwrap().remove(key).map(|v| v.0.to_vec())
+		self.state_store.lock().remove(key).map(|v| v.0.to_vec())
 	}
 
 	pub fn has_state(&self, key: &EncodedKey) -> bool {
-		self.state_store.lock().unwrap().contains_key(key)
+		self.state_store.lock().contains_key(key)
 	}
 
 	pub fn state_count(&self) -> usize {
-		self.state_store.lock().unwrap().len()
+		self.state_store.lock().len()
 	}
 
 	pub fn clear_state(&self) {
-		self.state_store.lock().unwrap().clear();
+		self.state_store.lock().clear();
 	}
 
 	pub fn state_keys(&self) -> Vec<EncodedKey> {
-		self.state_store.lock().unwrap().keys().cloned().collect()
+		self.state_store.lock().keys().cloned().collect()
 	}
 }
 
@@ -111,8 +109,8 @@ pub mod tests {
 		let ctx = TestContext::default();
 
 		// Simulate logging (would be done through callbacks in real usage)
-		ctx.logs.lock().unwrap().push("Log 1".to_string());
-		ctx.logs.lock().unwrap().push("Log 2".to_string());
+		ctx.logs.lock().push("Log 1".to_string());
+		ctx.logs.lock().push("Log 2".to_string());
 
 		let logs = ctx.logs();
 		assert_eq!(logs.len(), 2);

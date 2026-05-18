@@ -5,7 +5,7 @@ use std::{
 	collections::HashMap,
 	ffi::c_void,
 	path::{Path, PathBuf},
-	sync::{OnceLock, RwLock},
+	sync::OnceLock,
 };
 
 use libloading::Symbol;
@@ -15,6 +15,7 @@ use reifydb_abi::operator::{
 	types::{OPERATOR_MAGIC, OperatorCreateFnFFI},
 };
 use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::error::{FFIError, Result as FFIResult};
 use reifydb_type::value::constraint::{FFITypeConstraint, TypeConstraint};
 

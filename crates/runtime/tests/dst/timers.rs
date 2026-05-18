@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{
-	sync::{Arc, Mutex},
-	time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
-use reifydb_runtime::actor::{context::Context, system::dst::StepResult};
+use reifydb_runtime::{
+	actor::{context::Context, system::dst::StepResult},
+	sync::mutex::Mutex,
+};
 
 use super::helpers::*;
 
@@ -232,7 +232,7 @@ fn schedule_tick_uses_mock_clock() {
 	system.advance_time(Duration::from_millis(350));
 	system.run_until_idle();
 
-	let ts = timestamps.lock().unwrap().clone();
+	let ts = timestamps.lock().clone();
 	assert_eq!(ts.len(), 3);
 	// Mock clock starts at 0, ticks at 100ms, 200ms, 300ms.
 	assert_eq!(ts[0], 100_000_000); // 100ms in nanos

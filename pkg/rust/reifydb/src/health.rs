@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{
-	collections::HashMap,
-	fmt,
-	sync::{Arc, Mutex},
-	time::Duration,
-};
+use std::{collections::HashMap, fmt, sync::Arc, time::Duration};
 
-use reifydb_runtime::context::clock::{Clock, Instant};
+use reifydb_runtime::{
+	context::clock::{Clock, Instant},
+	sync::mutex::Mutex,
+};
 use reifydb_sub_api::subsystem::HealthStatus;
 
 #[derive(Debug, Clone)]
@@ -39,7 +37,7 @@ impl HealthMonitor {
 	}
 
 	pub fn update_component_health(&self, name: String, status: HealthStatus, is_running: bool) {
-		let mut components = self.components.lock().unwrap();
+		let mut components = self.components.lock();
 		components.insert(
 			name.clone(),
 			ComponentHealth {
@@ -52,17 +50,17 @@ impl HealthMonitor {
 	}
 
 	pub fn get_component_health(&self, name: &str) -> Option<ComponentHealth> {
-		let components = self.components.lock().unwrap();
+		let components = self.components.lock();
 		components.get(name).cloned()
 	}
 
 	pub fn get_all_health(&self) -> HashMap<String, ComponentHealth> {
-		let components = self.components.lock().unwrap();
+		let components = self.components.lock();
 		components.clone()
 	}
 
 	pub fn get_system_health(&self) -> HealthStatus {
-		let components = self.components.lock().unwrap();
+		let components = self.components.lock();
 
 		if components.is_empty() {
 			return HealthStatus::Unknown;
@@ -108,12 +106,12 @@ impl HealthMonitor {
 	}
 
 	pub fn remove_component(&self, name: &str) {
-		let mut components = self.components.lock().unwrap();
+		let mut components = self.components.lock();
 		components.remove(name);
 	}
 
 	pub fn get_stale_components(&self, max_age: Duration) -> Vec<String> {
-		let components = self.components.lock().unwrap();
+		let components = self.components.lock();
 		let now = self.clock.instant();
 
 		components

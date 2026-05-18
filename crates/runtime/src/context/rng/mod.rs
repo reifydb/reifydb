@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use getrandom::fill as getrandom_fill;
 use rand::{Rng as RandRng, RngExt, SeedableRng, rngs::StdRng};
+
+use crate::sync::mutex::Mutex;
 
 #[derive(Clone, Default)]
 pub enum Rng {
@@ -28,7 +30,7 @@ impl Rng {
 			}
 			Rng::Seeded(seeded) => {
 				let mut buf = [0u8; 16];
-				let mut rng = seeded.inner.lock().unwrap();
+				let mut rng = seeded.inner.lock();
 				rng.fill_bytes(&mut buf);
 				buf
 			}
@@ -44,7 +46,7 @@ impl Rng {
 			}
 			Rng::Seeded(seeded) => {
 				let mut buf = [0u8; 32];
-				let mut rng = seeded.inner.lock().unwrap();
+				let mut rng = seeded.inner.lock();
 				rng.fill_bytes(&mut buf);
 				buf
 			}
@@ -60,7 +62,7 @@ impl Rng {
 			}
 			Rng::Seeded(seeded) => {
 				let mut buf = [0u8; 10];
-				let mut rng = seeded.inner.lock().unwrap();
+				let mut rng = seeded.inner.lock();
 				rng.fill_bytes(&mut buf);
 				buf
 			}
@@ -76,7 +78,7 @@ impl Rng {
 			}
 			Rng::Seeded(seeded) => {
 				let mut buf = [0u8; 10];
-				let mut rng = seeded.infra.lock().unwrap();
+				let mut rng = seeded.infra.lock();
 				rng.fill_bytes(&mut buf);
 				buf
 			}
@@ -92,7 +94,7 @@ impl Rng {
 			}
 			Rng::Seeded(seeded) => {
 				let mut buf = [0u8; 32];
-				let mut rng = seeded.infra.lock().unwrap();
+				let mut rng = seeded.infra.lock();
 				rng.fill_bytes(&mut buf);
 				buf
 			}
@@ -115,7 +117,7 @@ impl Rng {
 				}
 			}
 			Rng::Seeded(seeded) => {
-				let mut rng = seeded.infra.lock().unwrap();
+				let mut rng = seeded.infra.lock();
 				rng.random_range(0..=max_inclusive)
 			}
 		}

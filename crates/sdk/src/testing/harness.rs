@@ -140,7 +140,7 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 
 	pub fn state(&self) -> TestStateStore {
 		let store = self.context.state_store();
-		let data = store.lock().unwrap();
+		let data = store.lock();
 		let mut result = TestStateStore::new();
 		for (k, v) in data.iter() {
 			result.set(k.clone(), v.clone());

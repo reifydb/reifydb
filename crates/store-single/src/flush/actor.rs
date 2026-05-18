@@ -3,10 +3,7 @@
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use std::mem;
-use std::{
-	sync::{Arc, Mutex},
-	time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::encoded::key::EncodedKey;
@@ -17,7 +14,10 @@ use reifydb_runtime::actor::{
 	system::{ActorConfig, ActorSystem},
 	traits::{Actor, Directive},
 };
-use reifydb_runtime::{actor::timers::TimerHandle, sync::waiter::WaiterHandle};
+use reifydb_runtime::{
+	actor::timers::TimerHandle,
+	sync::{mutex::Mutex, waiter::WaiterHandle},
+};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_type::util::cowvec::CowVec;
 use reifydb_type::value::datetime::DateTime;
@@ -77,7 +77,7 @@ impl FlushActor {
 		state.flushing = true;
 
 		let drained: DirtyMap = {
-			let mut guard = self.dirty.lock().unwrap();
+			let mut guard = self.dirty.lock();
 			mem::take(&mut *guard)
 		};
 		if drained.is_empty() {

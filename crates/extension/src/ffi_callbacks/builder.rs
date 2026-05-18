@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{cell::Cell, collections::HashMap, fmt, mem, ptr, slice, str, sync::Mutex};
+use std::{cell::Cell, collections::HashMap, fmt, mem, ptr, slice, str};
 
 use postcard::from_bytes as postcard_decode;
 use reifydb_abi::{
@@ -11,6 +11,7 @@ use reifydb_abi::{
 	data::column::ColumnTypeCode,
 };
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_type::{
 	fragment::Fragment,
 	util::{bitvec::BitVec, cowvec::CowVec},
@@ -95,7 +96,7 @@ impl BuilderRegistry {
 	}
 
 	pub fn drain(&self) -> Vec<EmittedDiff> {
-		let mut inner = self.inner.lock().unwrap();
+		let mut inner = self.inner.lock();
 		inner.slots.clear();
 		mem::take(&mut inner.accumulator)
 	}
@@ -155,7 +156,7 @@ pub unsafe extern "C" fn host_builder_acquire(
 	let Some(registry) = current_registry() else {
 		return ptr::null_mut();
 	};
-	let mut inner = registry.inner.lock().unwrap();
+	let mut inner = registry.inner.lock();
 	let id = inner.next_id;
 	inner.next_id = inner.next_id.checked_add(1).unwrap_or(1);
 
@@ -190,7 +191,7 @@ pub unsafe extern "C" fn host_builder_data_ptr(handle: *mut ColumnBufferHandle) 
 		return ptr::null_mut();
 	};
 	let h = Handle::decode(handle);
-	let mut inner = registry.inner.lock().unwrap();
+	let mut inner = registry.inner.lock();
 	match inner.slots.get_mut(&h.id) {
 		Some(BuilderSlot::Active(active)) if active.generation == h.generation => active.data.as_mut_ptr(),
 		_ => ptr::null_mut(),
@@ -205,7 +206,7 @@ pub unsafe extern "C" fn host_builder_offsets_ptr(handle: *mut ColumnBufferHandl
 		return ptr::null_mut();
 	};
 	let h = Handle::decode(handle);
-	let mut inner = registry.inner.lock().unwrap();
+	let mut inner = registry.inner.lock();
 	match inner.slots.get_mut(&h.id) {
 		Some(BuilderSlot::Active(active)) if active.generation == h.generation => match &mut active.offsets {
 			Some(offsets) => offsets.as_mut_ptr(),
@@ -223,7 +224,7 @@ pub unsafe extern "C" fn host_builder_bitvec_ptr(handle: *mut ColumnBufferHandle
 		return ptr::null_mut();
 	};
 	let h = Handle::decode(handle);
-	let mut inner = registry.inner.lock().unwrap();
+	let mut inner = registry.inner.lock();
 	match inner.slots.get_mut(&h.id) {
 		Some(BuilderSlot::Active(active)) if active.generation == h.generation => {
 			if active.bitvec.is_none() {
@@ -244,7 +245,7 @@ pub unsafe extern "C" fn host_builder_grow(handle: *mut ColumnBufferHandle, addi
 		return FFI_ERROR_INTERNAL;
 	};
 	let h = Handle::decode(handle);
-	let mut inner = registry.inner.lock().unwrap();
+	let mut inner = registry.inner.lock();
 	match inner.slots.get_mut(&h.id) {
 		Some(BuilderSlot::Active(active)) if active.generation == h.generation => {
 			let elem = elem_size_for(active.type_code);
@@ -277,7 +278,7 @@ pub unsafe extern "C" fn host_builder_commit(handle: *mut ColumnBufferHandle, wr
 		return FFI_ERROR_INTERNAL;
 	};
 	let h = Handle::decode(handle);
-	let mut inner = registry.inner.lock().unwrap();
+	let mut inner = registry.inner.lock();
 	let slot = match inner.slots.remove(&h.id) {
 		Some(slot) => slot,
 		None => return FFI_ERROR_INTERNAL,
@@ -349,7 +350,7 @@ pub unsafe extern "C" fn host_builder_release(handle: *mut ColumnBufferHandle) {
 		return;
 	};
 	let h = Handle::decode(handle);
-	let mut inner = registry.inner.lock().unwrap();
+	let mut inner = registry.inner.lock();
 	inner.slots.remove(&h.id);
 }
 
@@ -382,7 +383,7 @@ pub unsafe extern "C" fn host_builder_emit_diff(
 		return FFI_ERROR_INTERNAL;
 	};
 
-	let mut inner = registry.inner.lock().unwrap();
+	let mut inner = registry.inner.lock();
 	let txn_clock_now = unsafe { (*ctx).clock_now_nanos };
 	let now = DateTime::from_nanos(txn_clock_now);
 

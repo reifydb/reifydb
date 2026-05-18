@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{cell::Cell, collections::HashMap, fmt, mem, ptr, slice, str, sync::Mutex};
+use std::{cell::Cell, collections::HashMap, fmt, mem, ptr, slice, str};
 
 use postcard::from_bytes as postcard_decode;
 use reifydb_abi::{
@@ -13,6 +13,7 @@ use reifydb_core::{
 	interface::change::{Diff, Diffs},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_type::{
 	fragment::Fragment,
 	util::{bitvec::BitVec, cowvec::CowVec},
@@ -92,7 +93,7 @@ impl TestBuilderRegistry {
 	}
 
 	pub fn drain_diffs(&self) -> Vec<EmittedDiff> {
-		let mut inner = self.inner.lock().unwrap();
+		let mut inner = self.inner.lock();
 		inner.slots.clear();
 		mem::take(&mut inner.accumulator)
 	}
@@ -180,7 +181,7 @@ pub(crate) unsafe extern "C" fn test_acquire(
 	let Some(registry) = current() else {
 		return ptr::null_mut();
 	};
-	let mut inner = registry.inner.lock().unwrap();
+	let mut inner = registry.inner.lock();
 	let id = inner.next_id;
 	inner.next_id = inner.next_id.checked_add(1).unwrap_or(1);
 
@@ -211,7 +212,7 @@ pub(crate) unsafe extern "C" fn test_data_ptr(handle: *mut ColumnBufferHandle) -
 		return ptr::null_mut();
 	};
 	let h = Handle::decode(handle);
-	let mut inner = registry.inner.lock().unwrap();
+	let mut inner = registry.inner.lock();
 	match inner.slots.get_mut(&h.id) {
 		Some(Slot::Active(a)) if a.generation == h.generation => a.data.as_mut_ptr(),
 		_ => ptr::null_mut(),
@@ -223,7 +224,7 @@ pub(crate) unsafe extern "C" fn test_offsets_ptr(handle: *mut ColumnBufferHandle
 		return ptr::null_mut();
 	};
 	let h = Handle::decode(handle);
-	let mut inner = registry.inner.lock().unwrap();
+	let mut inner = registry.inner.lock();
 	match inner.slots.get_mut(&h.id) {
 		Some(Slot::Active(a)) if a.generation == h.generation => match &mut a.offsets {
 			Some(o) => o.as_mut_ptr(),
@@ -238,7 +239,7 @@ pub(crate) unsafe extern "C" fn test_bitvec_ptr(handle: *mut ColumnBufferHandle)
 		return ptr::null_mut();
 	};
 	let h = Handle::decode(handle);
-	let mut inner = registry.inner.lock().unwrap();
+	let mut inner = registry.inner.lock();
 	match inner.slots.get_mut(&h.id) {
 		Some(Slot::Active(a)) if a.generation == h.generation => {
 			if a.bitvec.is_none() {
@@ -256,7 +257,7 @@ pub(crate) unsafe extern "C" fn test_grow(handle: *mut ColumnBufferHandle, addit
 		return -1;
 	};
 	let h = Handle::decode(handle);
-	let mut inner = registry.inner.lock().unwrap();
+	let mut inner = registry.inner.lock();
 	match inner.slots.get_mut(&h.id) {
 		Some(Slot::Active(a)) if a.generation == h.generation => {
 			let elem = elem_size_for(a.type_code);
@@ -277,7 +278,7 @@ pub(crate) unsafe extern "C" fn test_commit(handle: *mut ColumnBufferHandle, wri
 		return -1;
 	};
 	let h = Handle::decode(handle);
-	let mut inner = registry.inner.lock().unwrap();
+	let mut inner = registry.inner.lock();
 	let slot = match inner.slots.remove(&h.id) {
 		Some(s) => s,
 		None => return -1,
@@ -345,7 +346,7 @@ pub(crate) unsafe extern "C" fn test_release(handle: *mut ColumnBufferHandle) {
 		return;
 	};
 	let h = Handle::decode(handle);
-	let mut inner = registry.inner.lock().unwrap();
+	let mut inner = registry.inner.lock();
 	inner.slots.remove(&h.id);
 }
 
@@ -370,7 +371,7 @@ pub(crate) unsafe extern "C" fn test_emit_diff(
 	let Some(registry) = current() else {
 		return -1;
 	};
-	let mut inner = registry.inner.lock().unwrap();
+	let mut inner = registry.inner.lock();
 	let now = DateTime::default();
 
 	let pre = if pre_count > 0 {

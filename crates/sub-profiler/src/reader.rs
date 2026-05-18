@@ -3,8 +3,8 @@
 
 use std::sync::Arc;
 
-use parking_lot::RwLock;
 use reifydb_profiler::{category::ProfilerCategory, record::AggregateRecord};
+use reifydb_runtime::sync::rwlock::RwLock;
 
 use crate::accumulator::ProfilerAccumulator;
 

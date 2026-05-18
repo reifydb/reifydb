@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use reifydb_runtime::{
 	actor::{
@@ -12,6 +12,7 @@ use reifydb_runtime::{
 	},
 	context::clock::{Clock, MockClock},
 	pool::{PoolConfig, Pools},
+	sync::mutex::Mutex,
 };
 
 pub fn test_system() -> ActorSystem {
@@ -31,7 +32,7 @@ pub fn new_log() -> SharedLog {
 }
 
 pub fn log_contents(log: &SharedLog) -> Vec<String> {
-	log.lock().unwrap().clone()
+	log.lock().clone()
 }
 
 pub struct CounterActor;
@@ -75,7 +76,7 @@ impl Actor for LogActor {
 	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {}
 
 	fn handle(&self, _state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
-		self.log.lock().unwrap().push(msg);
+		self.log.lock().push(msg);
 		Directive::Continue
 	}
 }
@@ -161,7 +162,7 @@ impl Actor for PostStopActor {
 	}
 
 	fn post_stop(&self) {
-		*self.stopped.lock().unwrap() = true;
+		*self.stopped.lock() = true;
 	}
 }
 
@@ -236,7 +237,7 @@ impl Actor for TickActor {
 	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {}
 
 	fn handle(&self, _state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
-		self.timestamps.lock().unwrap().push(msg.0);
+		self.timestamps.lock().push(msg.0);
 		Directive::Continue
 	}
 }

@@ -6,7 +6,7 @@ use std::{
 	error,
 	result::Result as StdResult,
 	sync::{
-		Arc, Mutex,
+		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
 };
@@ -24,7 +24,7 @@ use reifydb_core::{
 	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::{SharedRuntime, sync::mutex::Mutex};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_type::Result;
 use tracing::{debug, error, info};
@@ -58,7 +58,6 @@ impl OtelSubsystem {
 	pub fn tracer(&self) -> Option<SdkTracer> {
 		self.tracer_provider
 			.try_lock()
-			.ok()
 			.and_then(|guard| guard.as_ref().map(|provider| provider.tracer("reifydb")))
 	}
 
@@ -86,7 +85,7 @@ impl OtelSubsystem {
 	#[inline]
 	fn install_provider(&self, provider: SdkTracerProvider) {
 		global::set_tracer_provider(provider.clone());
-		*self.tracer_provider.lock().unwrap() = Some(provider);
+		*self.tracer_provider.lock() = Some(provider);
 	}
 
 	#[cfg(feature = "otlp")]
@@ -161,7 +160,7 @@ impl Subsystem for OtelSubsystem {
 			return Ok(());
 		}
 
-		if let Some(provider) = self.tracer_provider.lock().unwrap().take() {
+		if let Some(provider) = self.tracer_provider.lock().take() {
 			if let Err(e) = provider.shutdown() {
 				error!("Error shutting down tracer provider: {:?}", e);
 			} else {

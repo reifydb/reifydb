@@ -116,7 +116,7 @@ impl TransactionalTickActor {
 		}
 
 		for flow_id in due_flows {
-			match self.process_one_flow(flow_id, timestamp.clone()) {
+			match self.process_one_flow(flow_id, timestamp) {
 				Ok(()) => {
 					state.last_ticks.insert(flow_id, now.clone());
 				}

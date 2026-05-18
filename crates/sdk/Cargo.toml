@@ -12,6 +12,7 @@ description = "SDK for building ReifyDB operators, procedures, transforms and mo
 bumpalo.workspace = true
 reifydb-abi.workspace = true
 reifydb-core.workspace = true
+reifydb-runtime.workspace = true
 reifydb-type.workspace = true
 postcard.workspace = true
 rand.workspace = true

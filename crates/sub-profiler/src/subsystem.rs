@@ -9,10 +9,9 @@ use std::{
 	},
 };
 
-use parking_lot::RwLock;
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_profiler::{category::CategorySet, intern::DimInterner, layer::ProfilerLayer, sink::ProfilerSink};
-use reifydb_runtime::context::clock::Clock;
+use reifydb_runtime::{context::clock::Clock, sync::rwlock::RwLock};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_type::Result;
 use tracing::{info, instrument};

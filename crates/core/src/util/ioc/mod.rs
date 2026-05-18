@@ -17,9 +17,10 @@ pub mod resolve_rc;
 use std::{
 	any::{Any, TypeId, type_name},
 	collections::HashMap,
-	sync::{Arc, RwLock},
+	sync::Arc,
 };
 
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_type::Result;
 
 use crate::internal_error;
@@ -52,29 +53,28 @@ impl IocContainer {
 	}
 
 	pub fn register<T: Clone + Any + Send + Sync + 'static>(self, service: T) -> Self {
-		self.dependencies.write().unwrap().insert(TypeId::of::<T>(), BoxedValue::new(service));
+		self.dependencies.write().insert(TypeId::of::<T>(), BoxedValue::new(service));
 		self
 	}
 
 	pub fn register_service<T: Clone + Any + Send + Sync + 'static>(&self, service: T) {
-		self.dependencies.write().unwrap().insert(TypeId::of::<T>(), BoxedValue::new(service));
+		self.dependencies.write().insert(TypeId::of::<T>(), BoxedValue::new(service));
 	}
 
 	pub fn clear(&self) {
-		self.dependencies.write().unwrap().clear();
+		self.dependencies.write().clear();
 	}
 
 	pub fn resolve<T: Clone + Any + Send + Sync + 'static>(&self) -> Result<T> {
 		self.dependencies
 			.read()
-			.unwrap()
 			.get(&TypeId::of::<T>())
 			.and_then(|boxed| boxed.value::<T>())
 			.ok_or_else(|| internal_error!("Type {} not registered in IoC container", type_name::<T>()))
 	}
 
 	pub fn try_resolve<T: Clone + Any + Send + Sync + 'static>(&self) -> Option<T> {
-		self.dependencies.read().unwrap().get(&TypeId::of::<T>()).and_then(|boxed| boxed.value::<T>())
+		self.dependencies.read().get(&TypeId::of::<T>()).and_then(|boxed| boxed.value::<T>())
 	}
 }
 

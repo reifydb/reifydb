@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+#![allow(clippy::disallowed_types)]
+
 use std::{
 	fmt,
 	ops::{Deref, DerefMut},

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::sync::{
-	Arc, Mutex,
+	Arc,
 	atomic::{AtomicU8, Ordering},
 };
 
@@ -11,10 +11,13 @@ use rayon::ThreadPool;
 use tracing::debug;
 
 use super::{ActorSystem, JoinError};
-use crate::actor::{
-	context::{CancellationToken, Context},
-	mailbox::{ActorRef, create_mailbox},
-	traits::{Actor, Directive},
+use crate::{
+	actor::{
+		context::{CancellationToken, Context},
+		mailbox::{ActorRef, create_mailbox},
+		traits::{Actor, Directive},
+	},
+	sync::mutex::Mutex,
 };
 
 const BATCH_SIZE: usize = 64;
@@ -51,7 +54,7 @@ fn run_batch<A: Actor>(cell: Arc<ActorCell<A>>)
 where
 	A::State: Send,
 {
-	let mut guard = cell.state.lock().unwrap();
+	let mut guard = cell.state.lock();
 	let state = match guard.as_mut() {
 		Some(s) => s,
 		None => {
@@ -209,7 +212,7 @@ where
 		debug!(actor = %actor_name, "Pool actor starting");
 
 		{
-			let mut guard = cell_for_init.state.lock().unwrap();
+			let mut guard = cell_for_init.state.lock();
 			let state_val = cell_for_init.actor.init(&cell_for_init.ctx);
 			*guard = Some(state_val);
 		}

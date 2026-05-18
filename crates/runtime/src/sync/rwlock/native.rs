@@ -1,12 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::ops::{Deref, DerefMut};
+#![allow(clippy::disallowed_types)]
+
+use std::{
+	fmt,
+	ops::{Deref, DerefMut},
+};
 
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 pub struct RwLockInner<T> {
 	inner: RwLock<T>,
+}
+
+impl<T: fmt::Debug> fmt::Debug for RwLockInner<T> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		self.inner.fmt(f)
+	}
 }
 
 impl<T> RwLockInner<T> {

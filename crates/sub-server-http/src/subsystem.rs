@@ -6,7 +6,7 @@ use std::{
 	io,
 	net::SocketAddr,
 	sync::{
-		Arc, RwLock,
+		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
 };
@@ -16,7 +16,7 @@ use reifydb_core::{
 	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::{SharedRuntime, sync::rwlock::RwLock};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_sub_server::state::AppState;
 use reifydb_type::Result;
@@ -76,7 +76,7 @@ impl HttpSubsystem {
 	}
 
 	pub fn local_addr(&self) -> Option<SocketAddr> {
-		*self.actual_addr.read().unwrap()
+		*self.actual_addr.read()
 	}
 
 	pub fn port(&self) -> Option<u16> {
@@ -84,7 +84,7 @@ impl HttpSubsystem {
 	}
 
 	pub fn admin_local_addr(&self) -> Option<SocketAddr> {
-		*self.admin_actual_addr.read().unwrap()
+		*self.admin_actual_addr.read()
 	}
 
 	pub fn admin_port(&self) -> Option<u16> {
@@ -98,7 +98,7 @@ impl HttpSubsystem {
 		};
 		let listener = self.bind_listener(&addr)?;
 		let actual_addr = local_addr_or_err(&listener)?;
-		*self.actual_addr.write().unwrap() = Some(actual_addr);
+		*self.actual_addr.write() = Some(actual_addr);
 		info!("HTTP server bound to {}", actual_addr);
 
 		let (shutdown_tx, shutdown_rx) = oneshot::channel();
@@ -126,7 +126,7 @@ impl HttpSubsystem {
 		};
 		let listener = self.bind_listener(&admin_addr)?;
 		let actual_addr = local_addr_or_err(&listener)?;
-		*self.admin_actual_addr.write().unwrap() = Some(actual_addr);
+		*self.admin_actual_addr.write() = Some(actual_addr);
 		info!("HTTP admin server bound to {}", actual_addr);
 
 		let (admin_shutdown_tx, admin_shutdown_rx) = oneshot::channel();

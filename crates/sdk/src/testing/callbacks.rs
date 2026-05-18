@@ -265,7 +265,7 @@ extern "C" fn test_internal_state_prefix(
 		let envelope_bytes = envelope_prefix.as_ref();
 
 		let state_store = test_ctx.state_store();
-		let state = state_store.lock().unwrap();
+		let state = state_store.lock();
 
 		let mut items: Vec<(Vec<u8>, Vec<u8>)> = state
 			.iter()
@@ -315,7 +315,7 @@ extern "C" fn test_state_prefix(
 		};
 
 		let state_store = test_ctx.state_store();
-		let state = state_store.lock().unwrap();
+		let state = state_store.lock();
 
 		let mut items: Vec<(Vec<u8>, Vec<u8>)> = state
 			.iter()
@@ -432,7 +432,7 @@ extern "C" fn test_state_range(
 		};
 
 		let state_store = test_ctx.state_store();
-		let state = state_store.lock().unwrap();
+		let state = state_store.lock();
 
 		let mut items: Vec<(Vec<u8>, Vec<u8>)> = state
 			.iter()

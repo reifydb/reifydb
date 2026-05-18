@@ -199,9 +199,9 @@ where
 
 #[cfg(test)]
 mod tests {
-	use std::sync::{Arc, Mutex as StdMutex};
+	use std::sync::Arc;
 
-	use reifydb_runtime::context::clock::Clock;
+	use reifydb_runtime::{context::clock::Clock, sync::mutex::Mutex as StdMutex};
 	use tracing::{debug_span, subscriber::with_default, trace_span};
 	use tracing_subscriber::{Registry, layer::SubscriberExt};
 
@@ -216,13 +216,13 @@ mod tests {
 
 	impl ProfilerSink for RecordingSink {
 		fn on_span_record(&self, record: &MinimalSpanRecord) {
-			self.records.lock().unwrap().push(*record);
+			self.records.lock().push(*record);
 		}
 		fn on_scope_closed(&self, summary: &ProfilerSummary) {
-			self.summaries.lock().unwrap().push(summary.clone());
+			self.summaries.lock().push(summary.clone());
 		}
 		fn on_scope_batch(&self, summary: &ProfilerSummary) {
-			self.summaries.lock().unwrap().push(summary.clone());
+			self.summaries.lock().push(summary.clone());
 		}
 	}
 
@@ -240,7 +240,7 @@ mod tests {
 			let span = debug_span!("flow::engine::apply", node_id = "n1", node_type = "map");
 			let _g = span.enter();
 		});
-		let recs = sink.records.lock().unwrap();
+		let recs = sink.records.lock();
 		assert_eq!(recs.len(), 1, "ambient scope must capture unscoped tracked spans for always-on profiling");
 	}
 
@@ -263,7 +263,7 @@ mod tests {
 			let _ = handle.finish();
 		});
 
-		let recs = sink.records.lock().unwrap();
+		let recs = sink.records.lock();
 		assert_eq!(
 			recs.len(),
 			1,
@@ -284,7 +284,7 @@ mod tests {
 			});
 			let _ = handle.finish();
 		});
-		assert!(sink.records.lock().unwrap().is_empty());
+		assert!(sink.records.lock().is_empty());
 	}
 
 	#[test]
@@ -308,7 +308,7 @@ mod tests {
 			});
 			let _summary = handle.finish();
 		});
-		let recs = sink.records.lock().unwrap();
+		let recs = sink.records.lock();
 		assert_eq!(recs.len(), 1);
 		let rec = recs[0];
 		assert_eq!(rec.category(), ProfilerCategory::Flow);
@@ -333,7 +333,7 @@ mod tests {
 			});
 			let _ = handle.finish();
 		});
-		let recs = sink.records.lock().unwrap();
+		let recs = sink.records.lock();
 		assert_eq!(recs.len(), 2);
 	}
 }

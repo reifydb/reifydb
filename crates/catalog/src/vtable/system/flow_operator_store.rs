@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{
-	collections::HashMap,
-	path::PathBuf,
-	sync::{Arc, RwLock},
-};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use reifydb_core::event::{EventListener, flow::FlowOperatorLoadedEvent};
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_type::value::constraint::TypeConstraint;
 
 #[derive(Clone, Debug)]
@@ -46,11 +43,11 @@ impl SystemFlowOperatorStore {
 	}
 
 	pub fn add(&self, info: SystemFlowOperatorInfo) {
-		self.operators.write().unwrap().insert(info.operator.clone(), info);
+		self.operators.write().insert(info.operator.clone(), info);
 	}
 
 	pub fn list(&self) -> Vec<SystemFlowOperatorInfo> {
-		self.operators.read().unwrap().values().cloned().collect()
+		self.operators.read().values().cloned().collect()
 	}
 }
 

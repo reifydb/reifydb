@@ -4,7 +4,6 @@
 use std::{
 	panic::{AssertUnwindSafe, catch_unwind},
 	process,
-	sync::Mutex,
 };
 
 use reifydb_catalog::catalog::Catalog;
@@ -21,10 +20,13 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::actor::{
-	context::Context,
-	system::ActorConfig,
-	traits::{Actor, Directive},
+use reifydb_runtime::{
+	actor::{
+		context::Context,
+		system::ActorConfig,
+		traits::{Actor, Directive},
+	},
+	sync::mutex::Mutex,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
@@ -72,7 +74,7 @@ impl Actor for FlowWorkerActor {
 	type Message = FlowMessage;
 
 	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
-		let factory = self.engine_factory.lock().unwrap().take();
+		let factory = self.engine_factory.lock().take();
 		let flow_engine = factory.expect("FlowActor::init called twice")();
 		FlowState {
 			flow_engine,

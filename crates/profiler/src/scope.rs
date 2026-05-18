@@ -12,8 +12,10 @@ use std::{
 
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
-use parking_lot::Mutex;
-use reifydb_runtime::context::clock::{Clock, Instant};
+use reifydb_runtime::{
+	context::clock::{Clock, Instant},
+	sync::mutex::Mutex,
+};
 use serde::{Deserialize, Serialize};
 use tokio::task_local;
 

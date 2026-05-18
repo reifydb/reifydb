@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+
+use reifydb_runtime::sync::rwlock::RwLock;
 
 use crate::interceptor::interceptors::Interceptors;
 
@@ -28,11 +30,11 @@ impl InterceptorFactory {
 	}
 
 	pub fn add_late(&self, factory: LateInterceptorFactoryFn) {
-		self.late.write().unwrap().push(factory);
+		self.late.write().push(factory);
 	}
 
 	pub fn clear_late(&self) {
-		self.late.write().unwrap().clear();
+		self.late.write().clear();
 	}
 
 	pub fn create(&self) -> Interceptors {
@@ -42,7 +44,7 @@ impl InterceptorFactory {
 			factory(&mut interceptors);
 		}
 
-		for factory in self.late.read().unwrap().iter() {
+		for factory in self.late.read().iter() {
 			factory(&mut interceptors);
 		}
 

@@ -5,10 +5,11 @@ use std::{
 	collections::{HashMap, HashSet},
 	mem,
 	ops::Deref,
-	sync::{Arc, RwLock},
+	sync::Arc,
 };
 
 use reifydb_catalog::catalog::Catalog;
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::sumtype::VariantRef;
 
@@ -140,7 +141,7 @@ impl RoutinesInner {
 		variant: VariantRef,
 	) -> Vec<Arc<dyn Procedure>> {
 		{
-			let mut state = self.handlers.write().unwrap();
+			let mut state = self.handlers.write();
 			if !state.deferred.is_empty() {
 				let deferred = mem::take(&mut state.deferred);
 				let mut still_deferred = Vec::new();
@@ -155,7 +156,7 @@ impl RoutinesInner {
 				state.deferred = still_deferred;
 			}
 		}
-		let state = self.handlers.read().unwrap();
+		let state = self.handlers.read();
 		state.resolved.get(&variant).map(|hs| hs.to_vec()).unwrap_or_default()
 	}
 }

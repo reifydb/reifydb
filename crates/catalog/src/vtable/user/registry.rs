@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{
-	collections::HashMap,
-	sync::{Arc, RwLock},
-};
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::interface::catalog::{
 	id::NamespaceId,
 	vtable::{VTable, VTableId},
 };
+use reifydb_runtime::sync::rwlock::RwLock;
 
 use crate::vtable::tables::{UserVTableDataFunction, VTables};
 
@@ -61,21 +59,21 @@ impl UserVTableRegistry {
 	}
 
 	pub fn allocate_id(&self) -> VTableId {
-		let mut inner = self.inner.write().unwrap();
+		let mut inner = self.inner.write();
 		let id = VTableId(inner.next_id);
 		inner.next_id += 1;
 		id
 	}
 
 	pub fn register(&self, namespace: NamespaceId, name: String, entry: UserVTableEntry) {
-		let mut inner = self.inner.write().unwrap();
+		let mut inner = self.inner.write();
 		let id = entry.def.id;
 		inner.entries.insert((namespace, name), entry.clone());
 		inner.entries_by_id.insert(id, entry);
 	}
 
 	pub fn unregister(&self, namespace: NamespaceId, name: &str) -> Option<UserVTableEntry> {
-		let mut inner = self.inner.write().unwrap();
+		let mut inner = self.inner.write();
 		if let Some(entry) = inner.entries.remove(&(namespace, name.to_string())) {
 			let id = entry.def.id;
 			inner.entries_by_id.remove(&id);
@@ -86,17 +84,17 @@ impl UserVTableRegistry {
 	}
 
 	pub fn find_by_name(&self, namespace: NamespaceId, name: &str) -> Option<VTables> {
-		let inner = self.inner.read().unwrap();
+		let inner = self.inner.read();
 		inner.entries.get(&(namespace, name.to_string())).map(|e| e.create_instance())
 	}
 
 	pub fn find_by_id(&self, id: VTableId) -> Option<VTables> {
-		let inner = self.inner.read().unwrap();
+		let inner = self.inner.read();
 		inner.entries_by_id.get(&id).map(|e| e.create_instance())
 	}
 
 	pub fn list_definitions(&self) -> Vec<Arc<VTable>> {
-		let inner = self.inner.read().unwrap();
+		let inner = self.inner.read();
 		inner.entries.values().map(|e| e.def.clone()).collect()
 	}
 }

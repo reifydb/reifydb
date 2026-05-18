@@ -7,12 +7,11 @@
 
 use std::sync::Arc;
 
-use parking_lot::RwLock;
 use reifydb_catalog::bootstrap::bootstrap_system_objects;
 use reifydb_core::{event::EventBus, util::ioc::IocContainer};
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_profiler::{category::CategorySet, intern::DimInterner, sink::NoopSink};
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::{SharedRuntime, sync::rwlock::RwLock};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_sub_profiler::{
 	accumulator::ProfilerAccumulator, factory::ProfilerSubsystemFactory, subsystem::ProfilerSubsystem,

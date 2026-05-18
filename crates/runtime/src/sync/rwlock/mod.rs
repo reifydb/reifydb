@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::ops::{Deref, DerefMut};
+use std::{
+	fmt,
+	fmt::Debug,
+	ops::{Deref, DerefMut},
+};
 
 use cfg_if::cfg_if;
 
@@ -24,6 +28,13 @@ cfg_if! {
 
 pub struct RwLock<T> {
 	inner: RwLockInnerImpl<T>,
+}
+
+impl<T: Debug> Debug for RwLock<T> {
+	#[inline]
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		self.inner.fmt(f)
+	}
 }
 
 // SAFETY: Single-threaded targets (WASM/WASI) don't have real concurrency
@@ -81,6 +92,13 @@ impl<T> RwLock<T> {
 	}
 }
 
+impl<T: Default> Default for RwLock<T> {
+	#[inline]
+	fn default() -> Self {
+		Self::new(T::default())
+	}
+}
+
 pub struct RwLockReadGuard<'a, T> {
 	inner: RwLockReadGuardInnerImpl<'a, T>,
 }
@@ -91,6 +109,13 @@ impl<'a, T> Deref for RwLockReadGuard<'a, T> {
 	#[inline]
 	fn deref(&self) -> &T {
 		&self.inner
+	}
+}
+
+impl<'a, T: Debug> Debug for RwLockReadGuard<'a, T> {
+	#[inline]
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		(**self).fmt(f)
 	}
 }
 
@@ -111,5 +136,12 @@ impl<'a, T> DerefMut for RwLockWriteGuard<'a, T> {
 	#[inline]
 	fn deref_mut(&mut self) -> &mut T {
 		&mut self.inner
+	}
+}
+
+impl<'a, T: Debug> Debug for RwLockWriteGuard<'a, T> {
+	#[inline]
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		(**self).fmt(f)
 	}
 }

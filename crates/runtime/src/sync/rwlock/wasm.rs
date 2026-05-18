@@ -4,11 +4,18 @@
 use std::{
 	cell,
 	cell::{Ref, RefMut},
+	fmt,
 	ops::{Deref, DerefMut},
 };
 
 pub struct RwLockInner<T> {
 	inner: cell::RefCell<T>,
+}
+
+impl<T: fmt::Debug> fmt::Debug for RwLockInner<T> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		self.inner.fmt(f)
+	}
 }
 
 impl<T> RwLockInner<T> {

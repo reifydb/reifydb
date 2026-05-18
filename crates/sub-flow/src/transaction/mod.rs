@@ -162,7 +162,7 @@ pub enum FlowTransaction {
 	Committing {
 		inner: FlowTransactionInner,
 
-		cmd: CommandTransaction,
+		cmd: Box<CommandTransaction>,
 	},
 }
 
@@ -283,7 +283,7 @@ impl FlowTransaction {
 				clock: params.clock,
 				operator_states: HashMap::new(),
 			},
-			cmd: params.cmd,
+			cmd: Box::new(params.cmd),
 		})
 	}
 

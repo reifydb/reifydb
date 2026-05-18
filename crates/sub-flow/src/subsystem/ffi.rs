@@ -30,7 +30,7 @@ pub fn load_ffi_operators(dir: &PathBuf, event_bus: &EventBus) -> Result<()> {
 			continue;
 		}
 
-		let mut guard = loader.write().unwrap();
+		let mut guard = loader.write();
 		let info = match guard.register_operator(&path)? {
 			Some(info) => info,
 			None => {

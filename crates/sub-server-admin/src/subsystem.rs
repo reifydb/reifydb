@@ -5,7 +5,7 @@ use std::{
 	any::Any,
 	net::SocketAddr,
 	sync::{
-		Arc, RwLock,
+		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
 };
@@ -15,7 +15,7 @@ use reifydb_core::{
 	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::{SharedRuntime, sync::rwlock::RwLock};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_type::{Result, error::Error};
 use tokio::{net::TcpListener, sync::oneshot};
@@ -57,7 +57,7 @@ impl AdminSubsystem {
 	}
 
 	pub fn local_addr(&self) -> Option<SocketAddr> {
-		*self.actual_addr.read().unwrap()
+		*self.actual_addr.read()
 	}
 
 	pub fn port(&self) -> Option<u16> {
@@ -107,7 +107,7 @@ impl Subsystem for AdminSubsystem {
 			.into();
 			err
 		})?;
-		*self.actual_addr.write().unwrap() = Some(actual_addr);
+		*self.actual_addr.write() = Some(actual_addr);
 		info!("Admin server bound to {}", actual_addr);
 
 		let (shutdown_tx, shutdown_rx) = oneshot::channel();

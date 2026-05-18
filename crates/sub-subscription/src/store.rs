@@ -3,14 +3,12 @@
 
 use std::{
 	collections::{HashMap, VecDeque},
-	sync::{
-		RwLock, RwLockReadGuard,
-		atomic::{AtomicU64, Ordering},
-	},
+	sync::atomic::{AtomicU64, Ordering},
 };
 
 use dashmap::DashMap;
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
+use reifydb_runtime::sync::rwlock::{RwLock, RwLockReadGuard};
 
 struct SubscriptionBuffer {
 	queue: VecDeque<Columns>,
@@ -78,7 +76,7 @@ impl SubscriptionStore {
 		if staged.is_empty() {
 			return;
 		}
-		let _write = self.coord.write().unwrap();
+		let _write = self.coord.write();
 		for (id, columns_vec) in staged {
 			let Some(mut buf) = self.inner.get_mut(&id) else {
 				continue;
@@ -93,7 +91,7 @@ impl SubscriptionStore {
 	}
 
 	pub fn begin_poll(&self) -> RwLockReadGuard<'_, ()> {
-		self.coord.read().unwrap()
+		self.coord.read()
 	}
 }
 

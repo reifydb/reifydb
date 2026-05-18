@@ -27,7 +27,7 @@ use crate::{
 		Operator, Operators,
 		stateful::{
 			row::RowNumberProvider,
-			utils::{state_range, state_remove, state_set},
+			utils::{state_get, state_range, state_remove, state_set},
 		},
 	},
 	transaction::FlowTransaction,
@@ -114,7 +114,7 @@ impl AppendOperator {
 		let key = Self::make_timestamp_key(composite_key);
 		let now_nanos = txn.clock().now_nanos();
 		let shape = RowShape::operator_state();
-		let (mut row, created_at) = match crate::operator::stateful::utils::state_get(self.node, txn, &key)? {
+		let (mut row, created_at) = match state_get(self.node, txn, &key)? {
 			Some(existing) => {
 				let c = existing.created_at_nanos();
 				(

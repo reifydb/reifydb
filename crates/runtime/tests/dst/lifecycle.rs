@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use reifydb_runtime::actor::system::dst::StepResult;
+use reifydb_runtime::{actor::system::dst::StepResult, sync::mutex::Mutex};
 
 use super::helpers::*;
 
@@ -39,7 +39,7 @@ fn post_stop_called_on_directive_stop() {
 	handle.actor_ref.send(PostStopMessage::Stop).unwrap();
 	system.run_until_idle();
 
-	assert!(*stopped.lock().unwrap());
+	assert!(*stopped.lock());
 }
 
 #[test]
@@ -56,7 +56,7 @@ fn post_stop_called_on_panic() {
 	handle.actor_ref.send(PostStopMessage::Boom).unwrap();
 	system.run_until_idle();
 
-	assert!(*stopped.lock().unwrap());
+	assert!(*stopped.lock());
 }
 
 #[test]
@@ -72,7 +72,7 @@ fn post_stop_called_on_shutdown() {
 
 	system.shutdown();
 
-	assert!(*stopped.lock().unwrap());
+	assert!(*stopped.lock());
 }
 
 #[test]

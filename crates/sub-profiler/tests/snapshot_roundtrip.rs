@@ -13,7 +13,6 @@
 
 use std::sync::Arc;
 
-use parking_lot::RwLock;
 use reifydb_catalog::bootstrap::bootstrap_system_objects;
 use reifydb_core::{event::EventBus, util::ioc::IocContainer};
 use reifydb_engine::test_harness::TestEngine;
@@ -22,6 +21,7 @@ use reifydb_profiler::{
 	intern::DimInterner,
 	record::{DIM_UNSET, MAX_EXTRAS, SpanIdent},
 };
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sub_profiler::{
 	accumulator::ProfilerAccumulator, snapshot_actor::ProfilerSnapshotActor, vtable::ProfilerAggregatesVTable,
 };

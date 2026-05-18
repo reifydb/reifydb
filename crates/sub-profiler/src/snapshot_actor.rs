@@ -3,7 +3,6 @@
 
 use std::{collections::HashMap, sync::Arc, time::Duration as StdDuration};
 
-use parking_lot::RwLock;
 use reifydb_core::{
 	event::{
 		EventBus,
@@ -13,9 +12,12 @@ use reifydb_core::{
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_profiler::{category::ProfilerCategory, record::AggregateRecord};
-use reifydb_runtime::actor::{
-	context::Context,
-	traits::{Actor, Directive},
+use reifydb_runtime::{
+	actor::{
+		context::Context,
+		traits::{Actor, Directive},
+	},
+	sync::rwlock::RwLock,
 };
 use reifydb_type::{
 	params::Params,

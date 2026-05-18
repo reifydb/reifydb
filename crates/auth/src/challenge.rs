@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, sync::RwLock, time::Duration};
+use std::{collections::HashMap, time::Duration};
 
-use reifydb_runtime::context::{
-	clock::{Clock, Instant},
-	rng::Rng,
+use reifydb_runtime::{
+	context::{
+		clock::{Clock, Instant},
+		rng::Rng,
+	},
+	sync::rwlock::RwLock,
 };
 use uuid::Builder;
 
@@ -52,13 +55,13 @@ impl ChallengeStore {
 			payload,
 			created_at: clock.instant(),
 		};
-		let mut entries = self.entries.write().unwrap();
+		let mut entries = self.entries.write();
 		entries.insert(challenge_id.clone(), entry);
 		challenge_id
 	}
 
 	pub fn consume(&self, challenge_id: &str) -> Option<ChallengeInfo> {
-		let mut entries = self.entries.write().unwrap();
+		let mut entries = self.entries.write();
 		let entry = entries.remove(challenge_id)?;
 
 		if entry.created_at.elapsed() > self.ttl {
@@ -74,7 +77,7 @@ impl ChallengeStore {
 
 	pub fn cleanup_expired(&self) {
 		let ttl = self.ttl;
-		let mut entries = self.entries.write().unwrap();
+		let mut entries = self.entries.write();
 		entries.retain(|_, e| e.created_at.elapsed() <= ttl);
 	}
 }

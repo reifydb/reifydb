@@ -4,7 +4,7 @@
 use std::{
 	collections::{BTreeMap, HashMap},
 	ops::{Bound, Deref},
-	sync::{Arc, Mutex},
+	sync::Arc,
 	time::Duration,
 };
 
@@ -20,7 +20,7 @@ use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSystem},
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
-	sync::waiter::WaiterHandle,
+	sync::{mutex::Mutex, waiter::WaiterHandle},
 };
 use reifydb_type::util::{cowvec::CowVec, hex};
 use tracing::instrument;
@@ -105,7 +105,7 @@ impl StandardSingleStore {
 			return;
 		};
 
-		if self.dirty.lock().unwrap().is_empty() {
+		if self.dirty.lock().is_empty() {
 			return;
 		}
 
@@ -239,7 +239,7 @@ impl SingleVersionCommit for StandardSingleStore {
 		if let Some(buffer) = &self.buffer {
 			buffer.set(entries.clone())?;
 			if self.persistent.is_some() {
-				let mut dirty = self.dirty.lock().unwrap();
+				let mut dirty = self.dirty.lock();
 				for (key, value) in entries {
 					dirty.insert(key, value);
 				}

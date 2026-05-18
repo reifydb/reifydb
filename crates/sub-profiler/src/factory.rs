@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use parking_lot::RwLock;
 use reifydb_core::{event::EventBus, util::ioc::IocContainer};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_profiler::{
@@ -12,7 +11,7 @@ use reifydb_profiler::{
 	intern::DimInterner,
 	sink::{NoopSink, ProfilerSink},
 };
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::{SharedRuntime, sync::rwlock::RwLock};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_type::Result;
 

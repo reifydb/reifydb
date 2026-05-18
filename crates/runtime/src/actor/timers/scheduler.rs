@@ -293,8 +293,9 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>)
 mod tests {
 	use std::sync::{atomic::AtomicUsize, mpsc};
 
-	use parking_lot::Mutex;
 	use rayon::ThreadPoolBuilder;
+
+	use crate::sync::mutex::Mutex;
 
 	fn test_pool() -> Arc<ThreadPool> {
 		Arc::new(ThreadPoolBuilder::new().num_threads(1).build().unwrap())

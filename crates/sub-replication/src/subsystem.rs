@@ -6,7 +6,7 @@ use std::{
 	net::SocketAddr,
 	result::Result as StdResult,
 	sync::{
-		Arc, RwLock,
+		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
 };
@@ -18,7 +18,7 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::{SharedRuntime, sync::rwlock::RwLock};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_type::{Result, error::Error};
 use tokio::{
@@ -94,7 +94,7 @@ impl ReplicationSubsystem {
 	}
 
 	pub fn local_addr(&self) -> Option<SocketAddr> {
-		*self.actual_addr.read().unwrap()
+		*self.actual_addr.read()
 	}
 
 	pub fn port(&self) -> Option<u16> {
@@ -157,7 +157,7 @@ impl ReplicationSubsystem {
 			}
 			.into()
 		})?;
-		*self.actual_addr.write().unwrap() = Some(actual_addr);
+		*self.actual_addr.write() = Some(actual_addr);
 		info!("Replication server bound to {}", actual_addr);
 		Ok(())
 	}

@@ -57,8 +57,9 @@ impl Visit for FlowApplyFields {
 
 #[cfg(test)]
 mod tests {
-	use std::sync::{Arc, Mutex};
+	use std::sync::Arc;
 
+	use reifydb_runtime::sync::mutex::Mutex;
 	use tracing::{
 		Subscriber, debug_span,
 		span::{Attributes, Id},
@@ -83,7 +84,7 @@ mod tests {
 		fn on_new_span(&self, attrs: &Attributes<'_>, _id: &Id, _ctx: Context<'_, S>) {
 			let mut v = FlowApplyFields::default();
 			attrs.record(&mut v);
-			*self.captured.lock().unwrap() = Some(v);
+			*self.captured.lock() = Some(v);
 		}
 	}
 
@@ -105,7 +106,7 @@ mod tests {
 				lock_wait_us = 5u64,
 			);
 		});
-		let captured = captured.lock().unwrap().clone().unwrap();
+		let captured = captured.lock().clone().unwrap();
 		assert_eq!(captured.node_id, "n1");
 		assert_eq!(captured.node_type, "map");
 		assert_eq!(captured.input_rows, 10);

@@ -5,7 +5,7 @@ use std::{
 	collections::HashMap,
 	fs,
 	path::{Path, PathBuf},
-	sync::{OnceLock, RwLock},
+	sync::OnceLock,
 };
 
 use libloading::Symbol;
@@ -13,6 +13,7 @@ use reifydb_abi::transform::{
 	descriptor::TransformDescriptorFFI,
 	types::{TRANSFORM_MAGIC, TransformCreateFnFFI},
 };
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::error::{FFIError, Result as FFIResult};
 
 use super::{
@@ -167,7 +168,7 @@ pub fn register_transforms_from_dir(
 	mut builder: TransformsConfigurator,
 ) -> FFIResult<TransformsConfigurator> {
 	let loader = ffi_transform_loader();
-	let mut loader_guard = loader.write().unwrap();
+	let mut loader_guard = loader.write();
 
 	let mut names = Vec::new();
 
@@ -202,7 +203,7 @@ pub fn register_transforms_from_dir(
 		let name_clone = name.clone();
 		builder = builder.register(&name, move || {
 			let loader = ffi_transform_loader();
-			let mut loader_guard = loader.write().unwrap();
+			let mut loader_guard = loader.write();
 			loader_guard.create_transform_by_name(&name_clone, &[]).unwrap()
 		});
 	}

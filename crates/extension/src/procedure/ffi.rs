@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{cell::UnsafeCell, ffi::c_void, ptr, sync::Mutex};
+use std::{cell::UnsafeCell, ffi::c_void, ptr};
 
 use postcard::to_stdvec;
 use reifydb_abi::{
@@ -14,6 +14,7 @@ use reifydb_abi::{
 };
 use reifydb_core::value::column::columns::Columns;
 use reifydb_routine::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sdk::{error::FFIError, ffi::arena::Arena};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::r#type::Type;
@@ -78,7 +79,7 @@ unsafe impl Sync for NativeProcedureFFI {}
 
 impl Drop for NativeProcedureFFI {
 	fn drop(&mut self) {
-		let instance = *self.instance.get_mut().unwrap();
+		let instance = *self.instance.lock();
 		if !instance.is_null() {
 			unsafe { (self.vtable.destroy)(instance) };
 		}
@@ -125,7 +126,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for NativeProcedureFFI {
 
 	#[instrument(name = "procedure::ffi::execute", level = "debug", skip_all)]
 	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
-		let instance_guard = self.instance.lock().unwrap();
+		let instance_guard = self.instance.lock();
 		let instance = *instance_guard;
 
 		let params_bytes = to_stdvec(ctx.params).map_err(|e| {

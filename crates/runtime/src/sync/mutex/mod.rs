@@ -62,6 +62,13 @@ impl<T> Mutex<T> {
 	}
 }
 
+impl<T: Default> Default for Mutex<T> {
+	#[inline]
+	fn default() -> Self {
+		Self::new(T::default())
+	}
+}
+
 pub struct MutexGuard<'a, T> {
 	pub(in crate::sync) inner: MutexGuardInnerImpl<'a, T>,
 }
@@ -79,5 +86,12 @@ impl<'a, T> DerefMut for MutexGuard<'a, T> {
 	#[inline]
 	fn deref_mut(&mut self) -> &mut T {
 		&mut self.inner
+	}
+}
+
+impl<'a, T: Debug> Debug for MutexGuard<'a, T> {
+	#[inline]
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		(**self).fmt(f)
 	}
 }

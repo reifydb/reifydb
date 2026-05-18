@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use parking_lot::RwLock;
 use reifydb_profiler::{
 	callsite,
 	category::{ProfilerCategory, ProfilerCategory::*},
@@ -11,9 +10,12 @@ use reifydb_profiler::{
 	record::{MAX_EXTRAS, MinimalSpanRecord, SpanIdent},
 	summary::ProfilerSummary,
 };
-use reifydb_runtime::actor::{
-	context::Context,
-	traits::{Actor, Directive},
+use reifydb_runtime::{
+	actor::{
+		context::Context,
+		traits::{Actor, Directive},
+	},
+	sync::rwlock::RwLock,
 };
 
 use crate::{accumulator::ProfilerAccumulator, histograms::histogram_for};

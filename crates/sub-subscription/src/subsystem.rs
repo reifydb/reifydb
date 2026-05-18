@@ -1,13 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{
-	any::Any,
-	collections::HashMap,
-	result::Result as StdResult,
-	sync::{Arc, RwLock},
-	time::Duration,
-};
+use std::{any::Any, collections::HashMap, result::Result as StdResult, sync::Arc, time::Duration};
 
 use dashmap::DashMap;
 use reifydb_catalog::catalog::Catalog;
@@ -48,7 +42,7 @@ use reifydb_rql::{
 	fingerprint::request::fingerprint_request,
 	flow::{flow::FlowDag, node::FlowNodeType},
 };
-use reifydb_runtime::{SharedRuntime, context::RuntimeContext};
+use reifydb_runtime::{SharedRuntime, context::RuntimeContext, sync::rwlock::RwLock};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
 use reifydb_sub_flow::{
 	builder::OperatorFactory, engine::FlowEngine, operator::Operators, transaction::FlowTransaction,
@@ -103,11 +97,11 @@ impl SubscriptionService for SubscriptionServiceImpl {
 
 		let flow_id = flow_dag.id;
 		{
-			let mut engine = self.state.flow_engine.write().unwrap();
+			let mut engine = self.state.flow_engine.write();
 			register_ephemeral_flow(&mut engine, txn, flow_dag, id, self.state.delivery.clone())?;
 		}
 
-		self.state.subscription_flows.write().unwrap().insert(id, flow_id);
+		self.state.subscription_flows.write().insert(id, flow_id);
 
 		self.state.flow_states.insert(flow_id, HashMap::new());
 
@@ -117,11 +111,11 @@ impl SubscriptionService for SubscriptionServiceImpl {
 	fn unregister_subscription(&self, id: &SubscriptionId) -> Result<()> {
 		let existed = self.state.store.unregister(id);
 
-		if let Some(flow_id) = self.state.subscription_flows.write().unwrap().remove(id) {
+		if let Some(flow_id) = self.state.subscription_flows.write().remove(id) {
 			self.state.flow_states.remove(&flow_id);
 			self.state.hydration_versions.remove(&flow_id);
 
-			self.state.flow_engine.write().unwrap().remove_flow(flow_id);
+			self.state.flow_engine.write().remove_flow(flow_id);
 		}
 
 		if existed {
@@ -150,7 +144,6 @@ impl SubscriptionService for SubscriptionServiceImpl {
 			.state
 			.subscription_flows
 			.read()
-			.unwrap()
 			.get(&sub_id)
 			.copied()
 			.ok_or(HydrateError::SubscriptionNotFound)?;
@@ -190,7 +183,7 @@ impl SubscriptionService for SubscriptionServiceImpl {
 
 		let now = DateTime::from_nanos(engine.clock().now_nanos());
 
-		let flow_engine = self.state.flow_engine.write().unwrap();
+		let flow_engine = self.state.flow_engine.write();
 		let flow_state = self.state.flow_states.remove(&flow_id).map(|(_, v)| v).unwrap_or_default();
 		let primitive_query = self.state.multi.begin_query()?;
 		let mut txn = FlowTransaction::ephemeral(
@@ -249,7 +242,7 @@ fn collect_source_descriptors(
 	catalog: &Catalog,
 	outer: &mut QueryTransaction,
 ) -> StdResult<Vec<(ShapeId, String)>, HydrateError> {
-	let fe = flow_engine.read().unwrap();
+	let fe = flow_engine.read();
 	let flow = fe.flows.get(&flow_id).cloned().ok_or(HydrateError::SubscriptionNotFound)?;
 	drop(fe);
 

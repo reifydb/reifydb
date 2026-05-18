@@ -2,15 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 #[cfg(not(reifydb_single_threaded))]
-use std::{
-	collections::HashMap,
-	sync::{Mutex, mpsc},
-};
+use std::{collections::HashMap, sync::mpsc};
 
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_client::{GrpcClient, WireFormat};
 #[cfg(not(reifydb_single_threaded))]
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::{SharedRuntime, sync::mutex::Mutex};
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_type::error::Diagnostic;
 use reifydb_type::error::Error;
@@ -80,21 +77,21 @@ impl RemoteRegistry {
 
 	fn get_or_connect(&self, address: &str, token: Option<&str>) -> Result<GrpcClient, Error> {
 		let key = cache_key(address, token);
-		if let Some(c) = self.clients.lock().unwrap().get(&key) {
+		if let Some(c) = self.clients.lock().get(&key) {
 			return Ok(c.clone());
 		}
 		let client = self.connect(address, token)?;
-		self.clients.lock().unwrap().entry(key).or_insert_with(|| client.clone());
+		self.clients.lock().entry(key).or_insert_with(|| client.clone());
 		Ok(client)
 	}
 
 	fn evict(&self, address: &str, token: Option<&str>) {
-		self.clients.lock().unwrap().remove(&cache_key(address, token));
+		self.clients.lock().remove(&cache_key(address, token));
 	}
 
 	#[cfg(test)]
 	fn cache_len(&self) -> usize {
-		self.clients.lock().unwrap().len()
+		self.clients.lock().len()
 	}
 
 	fn connect(&self, address: &str, token: Option<&str>) -> Result<GrpcClient, Error> {
