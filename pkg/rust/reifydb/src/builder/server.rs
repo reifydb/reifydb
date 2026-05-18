@@ -3,8 +3,6 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-#[cfg(feature = "sub_profiler")]
-use parking_lot::RwLock;
 use reifydb_auth::service::AuthConfigurator;
 use reifydb_catalog::{bootstrap::read_configs, cache::CatalogCache};
 use reifydb_core::interface::catalog::config::ConfigKey;
