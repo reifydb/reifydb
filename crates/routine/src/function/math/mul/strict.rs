@@ -5,51 +5,47 @@ use reifydb_core::value::column::columns::Columns;
 use reifydb_type::value::r#type::Type;
 
 use crate::{
-	function::math::arith::{
-		cast::promote_two,
-		dispatch::{BasicStrategy, dispatch_two},
-		op::Sub,
-	},
+	function::math::arith::{dispatch::dispatch_strict, op::Mul},
 	routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError},
 };
 
-pub struct SubSaturate {
+pub struct MulStrict {
 	info: RoutineInfo,
 }
 
-impl Default for SubSaturate {
+impl Default for MulStrict {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl SubSaturate {
+impl MulStrict {
 	pub fn new() -> Self {
 		Self {
-			info: RoutineInfo::new("math::sub_saturate"),
+			info: RoutineInfo::new("math::mul_strict"),
 		}
 	}
 }
 
-impl<'a> Routine<FunctionContext<'a>> for SubSaturate {
+impl<'a> Routine<FunctionContext<'a>> for MulStrict {
 	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
 	fn return_type(&self, input_types: &[Type]) -> Type {
-		if input_types.len() >= 2 {
-			promote_two(input_types[0].clone(), input_types[1].clone())
-		} else {
-			input_types.first().cloned().unwrap_or(Type::Float8)
-		}
+		input_types.first().cloned().unwrap_or(Type::Float8)
+	}
+
+	fn propagates_options(&self) -> bool {
+		false
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		dispatch_two::<Sub>(ctx, args, BasicStrategy::Saturate)
+		dispatch_strict::<Mul>(ctx, args)
 	}
 }
 
-impl Function for SubSaturate {
+impl Function for MulStrict {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
 	}

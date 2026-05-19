@@ -8,30 +8,30 @@ use crate::{
 	function::math::arith::{
 		cast::promote_two,
 		dispatch::{BasicStrategy, dispatch_two},
-		op::Sub,
+		op::Div,
 	},
 	routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError},
 };
 
-pub struct SubSaturate {
+pub struct DivNone {
 	info: RoutineInfo,
 }
 
-impl Default for SubSaturate {
+impl Default for DivNone {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl SubSaturate {
+impl DivNone {
 	pub fn new() -> Self {
 		Self {
-			info: RoutineInfo::new("math::sub_saturate"),
+			info: RoutineInfo::new("math::div_none"),
 		}
 	}
 }
 
-impl<'a> Routine<FunctionContext<'a>> for SubSaturate {
+impl<'a> Routine<FunctionContext<'a>> for DivNone {
 	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
@@ -45,11 +45,11 @@ impl<'a> Routine<FunctionContext<'a>> for SubSaturate {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		dispatch_two::<Sub>(ctx, args, BasicStrategy::Saturate)
+		dispatch_two::<Div>(ctx, args, BasicStrategy::Null)
 	}
 }
 
-impl Function for SubSaturate {
+impl Function for DivNone {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
 	}

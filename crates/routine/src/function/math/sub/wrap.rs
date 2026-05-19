@@ -13,25 +13,25 @@ use crate::{
 	routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError},
 };
 
-pub struct SubSaturate {
+pub struct SubWrap {
 	info: RoutineInfo,
 }
 
-impl Default for SubSaturate {
+impl Default for SubWrap {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl SubSaturate {
+impl SubWrap {
 	pub fn new() -> Self {
 		Self {
-			info: RoutineInfo::new("math::sub_saturate"),
+			info: RoutineInfo::new("math::sub_wrap"),
 		}
 	}
 }
 
-impl<'a> Routine<FunctionContext<'a>> for SubSaturate {
+impl<'a> Routine<FunctionContext<'a>> for SubWrap {
 	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
@@ -45,11 +45,11 @@ impl<'a> Routine<FunctionContext<'a>> for SubSaturate {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		dispatch_two::<Sub>(ctx, args, BasicStrategy::Saturate)
+		dispatch_two::<Sub>(ctx, args, BasicStrategy::Wrap)
 	}
 }
 
-impl Function for SubSaturate {
+impl Function for SubWrap {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
 	}

@@ -3,6 +3,8 @@
 
 pub mod abs;
 pub mod acos;
+pub mod add;
+pub mod arith;
 pub mod asin;
 pub mod atan;
 pub mod atan2;
@@ -11,6 +13,7 @@ pub mod ceil;
 pub mod clamp;
 pub mod cos;
 pub mod count;
+pub mod div;
 pub mod euler;
 pub mod exp;
 pub mod floor;
@@ -22,8 +25,10 @@ pub mod log2;
 pub mod max;
 pub mod min;
 pub mod modulo;
+pub mod mul;
 pub mod pi;
 pub mod power;
+pub mod rem;
 pub mod round;
 pub mod sign;
 pub mod sin;
