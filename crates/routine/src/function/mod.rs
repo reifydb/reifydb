@@ -69,6 +69,7 @@ pub fn default_native_functions(builder: RoutinesConfigurator) -> RoutinesConfig
 		.register_builtin_function(Arc::new(math::sign::Sign::new()))
 		.register_builtin_function(Arc::new(math::sin::Sin::new()))
 		.register_builtin_function(Arc::new(math::sqrt::Sqrt::new()))
+		.register_builtin_function(Arc::new(math::sub::saturate::SubSaturate::new()))
 		.register_builtin_function(Arc::new(math::tan::Tan::new()))
 		.register_builtin_function(Arc::new(math::truncate::Truncate::new()))
 		.register_builtin_function(Arc::new(date::year::DateYear::new()))

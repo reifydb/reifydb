@@ -28,6 +28,7 @@ pub mod round;
 pub mod sign;
 pub mod sin;
 pub mod sqrt;
+pub mod sub;
 pub mod sum;
 pub mod tan;
 pub mod truncate;
