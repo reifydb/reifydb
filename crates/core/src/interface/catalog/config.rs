@@ -56,6 +56,7 @@ pub enum ConfigKey {
 	ThreadsAsync,
 	ThreadsSystem,
 	ThreadsQuery,
+	ThreadsCommit,
 }
 
 impl ConfigKey {
@@ -81,6 +82,7 @@ impl ConfigKey {
 			Self::ThreadsAsync,
 			Self::ThreadsSystem,
 			Self::ThreadsQuery,
+			Self::ThreadsCommit,
 		]
 	}
 
@@ -108,6 +110,7 @@ impl ConfigKey {
 			Self::ThreadsAsync => Value::Uint2(1),
 			Self::ThreadsSystem => Value::Uint2(2),
 			Self::ThreadsQuery => Value::Uint2(1),
+			Self::ThreadsCommit => Value::Uint2(2),
 		}
 	}
 
@@ -166,6 +169,10 @@ impl ConfigKey {
 				"Number of worker threads for the query pool (execution-heavy actors). \
 				 Must be >= 1. Changes require restart."
 			}
+			Self::ThreadsCommit => {
+				"Number of worker threads for the commit pool (synchronous pre-commit flow execution). \
+				 Must be >= 1. Changes require restart."
+			}
 		}
 	}
 
@@ -191,6 +198,7 @@ impl ConfigKey {
 			Self::ThreadsAsync => true,
 			Self::ThreadsSystem => true,
 			Self::ThreadsQuery => true,
+			Self::ThreadsCommit => true,
 		}
 	}
 
@@ -216,6 +224,7 @@ impl ConfigKey {
 			Self::ThreadsAsync => &[Type::Uint2],
 			Self::ThreadsSystem => &[Type::Uint2],
 			Self::ThreadsQuery => &[Type::Uint2],
+			Self::ThreadsCommit => &[Type::Uint2],
 		}
 	}
 
@@ -241,6 +250,7 @@ impl ConfigKey {
 			Self::ThreadsAsync => false,
 			Self::ThreadsSystem => false,
 			Self::ThreadsQuery => false,
+			Self::ThreadsCommit => false,
 		}
 	}
 
@@ -324,6 +334,10 @@ impl ConfigKey {
 			},
 			Self::ThreadsQuery => match value {
 				Value::Uint2(0) => Err("THREADS_QUERY must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::ThreadsCommit => match value {
+				Value::Uint2(0) => Err("THREADS_COMMIT must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
 			_ => Ok(()),
@@ -432,6 +446,7 @@ impl fmt::Display for ConfigKey {
 			Self::ThreadsAsync => write!(f, "THREADS_ASYNC"),
 			Self::ThreadsSystem => write!(f, "THREADS_SYSTEM"),
 			Self::ThreadsQuery => write!(f, "THREADS_QUERY"),
+			Self::ThreadsCommit => write!(f, "THREADS_COMMIT"),
 		}
 	}
 }
@@ -461,6 +476,7 @@ impl FromStr for ConfigKey {
 			"THREADS_ASYNC" => Ok(Self::ThreadsAsync),
 			"THREADS_SYSTEM" => Ok(Self::ThreadsSystem),
 			"THREADS_QUERY" => Ok(Self::ThreadsQuery),
+			"THREADS_COMMIT" => Ok(Self::ThreadsCommit),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
 		}
 	}

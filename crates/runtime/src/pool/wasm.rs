@@ -28,6 +28,18 @@ impl Pools {
 	pub fn query_pool(&self) -> StubPool {
 		StubPool
 	}
+
+	pub fn query_thread_count(&self) -> usize {
+		1
+	}
+
+	pub fn commit_pool(&self) -> StubPool {
+		StubPool
+	}
+
+	pub fn commit_thread_count(&self) -> usize {
+		1
+	}
 }
 
 #[derive(Clone)]

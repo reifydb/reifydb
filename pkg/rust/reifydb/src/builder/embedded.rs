@@ -32,7 +32,7 @@ fn pool_config_from_sources(
 	let persisted = read_configs(
 		Some(&multi_buffer),
 		None,
-		&[ConfigKey::ThreadsAsync, ConfigKey::ThreadsSystem, ConfigKey::ThreadsQuery],
+		&[ConfigKey::ThreadsAsync, ConfigKey::ThreadsSystem, ConfigKey::ThreadsQuery, ConfigKey::ThreadsCommit],
 	)?;
 
 	let resolve = |key: ConfigKey| -> usize {
@@ -52,6 +52,7 @@ fn pool_config_from_sources(
 		async_threads: resolve(ConfigKey::ThreadsAsync),
 		system_threads: resolve(ConfigKey::ThreadsSystem),
 		query_threads: resolve(ConfigKey::ThreadsQuery),
+		commit_threads: resolve(ConfigKey::ThreadsCommit),
 	};
 	Ok((multi_buffer, pools))
 }

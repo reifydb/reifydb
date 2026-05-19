@@ -8,18 +8,11 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_core::{
-	common::CommitVersion,
-	encoded::key::EncodedKey,
-	interface::{
-		catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId},
-		store::EntryKind,
-	},
-};
+use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
 use reifydb_type::{Result, util::cowvec::CowVec};
 use tracing::{Span, field, instrument};
 
-use super::entry::{CurrentMap, Entries, Entry, HistoricalMap, entry_id_to_key};
+use super::entry::{CurrentMap, Entries, Entry, HistoricalMap};
 use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage};
 
 #[derive(Clone)]
@@ -48,34 +41,18 @@ impl MemoryPrimitiveStorage {
 	}
 
 	pub fn count_current(&self, table: EntryKind) -> Result<u64> {
-		let table_key = entry_id_to_key(table);
-		Ok(self.inner.entries.data.get(&table_key).map(|e| e.current.read().len() as u64).unwrap_or(0))
+		Ok(self.inner.entries.data.get(&table).map(|e| e.current.read().len() as u64).unwrap_or(0))
 	}
 
 	pub fn list_all_entry_kinds(&self) -> Result<Vec<EntryKind>> {
-		let mut out = Vec::new();
-		for key in self.inner.entries.data.keys() {
-			if key == "multi" {
-				out.push(EntryKind::Multi);
-			} else if let Some(rest) = key.strip_prefix("source:")
-				&& let Ok(id) = rest.parse::<u64>()
-			{
-				out.push(EntryKind::Source(ShapeId::Table(TableId(id))));
-			} else if let Some(rest) = key.strip_prefix("operator:")
-				&& let Ok(id) = rest.parse::<u64>()
-			{
-				out.push(EntryKind::Operator(FlowNodeId(id)));
-			}
-		}
-		Ok(out)
+		Ok(self.inner.entries.data.keys())
 	}
 
 	pub fn count_historical(&self, table: EntryKind) -> Result<u64> {
-		let table_key = entry_id_to_key(table);
 		Ok(self.inner
 			.entries
 			.data
-			.get(&table_key)
+			.get(&table)
 			.map(|e| {
 				let hist = e.historical.read();
 				hist.values().map(|m| m.len() as u64).sum()
@@ -86,8 +63,7 @@ impl MemoryPrimitiveStorage {
 	#[inline]
 	#[instrument(name = "store::multi::memory::get_or_create_table", level = "trace", skip(self), fields(table = ?table))]
 	fn get_or_create_table(&self, table: EntryKind) -> Entry {
-		let table_key = entry_id_to_key(table);
-		self.inner.entries.data.get_or_insert_with(table_key, Entry::new)
+		self.inner.entries.data.get_or_insert_with(table, Entry::new)
 	}
 
 	#[inline]
@@ -129,8 +105,7 @@ impl MemoryPrimitiveStorage {
 impl TierStorage for MemoryPrimitiveStorage {
 	#[instrument(name = "store::multi::memory::get", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len(), version = version.0))]
 	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<Option<CowVec<u8>>> {
-		let table_key = entry_id_to_key(table);
-		let entry = match self.inner.entries.data.get(&table_key) {
+		let entry = match self.inner.entries.data.get(&table) {
 			Some(e) => e,
 			None => return Ok(None),
 		};
@@ -157,8 +132,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 	#[instrument(name = "store::multi::memory::contains", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len(), version = version.0), ret)]
 	fn contains(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<bool> {
-		let table_key = entry_id_to_key(table);
-		let entry = match self.inner.entries.data.get(&table_key) {
+		let entry = match self.inner.entries.data.get(&table) {
 			Some(e) => e,
 			None => return Ok(false),
 		};
@@ -213,8 +187,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 			return Ok(RangeBatch::empty());
 		}
 
-		let table_key = entry_id_to_key(table);
-		let entry = match self.inner.entries.data.get(&table_key) {
+		let entry = match self.inner.entries.data.get(&table) {
 			Some(e) => e,
 			None => {
 				cursor.exhausted = true;
@@ -320,8 +293,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 			return Ok(RangeBatch::empty());
 		}
 
-		let table_key = entry_id_to_key(table);
-		let entry = match self.inner.entries.data.get(&table_key) {
+		let entry = match self.inner.entries.data.get(&table) {
 			Some(e) => e,
 			None => {
 				cursor.exhausted = true;
@@ -421,8 +393,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 	#[instrument(name = "store::multi::memory::clear_table", level = "debug", skip(self), fields(table = ?table))]
 	fn clear_table(&self, table: EntryKind) -> Result<()> {
-		let table_key = entry_id_to_key(table);
-		if let Some(entry) = self.inner.entries.data.get(&table_key) {
+		if let Some(entry) = self.inner.entries.data.get(&table) {
 			*entry.current.write() = CurrentMap::new();
 			*entry.historical.write() = HistoricalMap::new();
 		}
@@ -502,8 +473,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 	#[instrument(name = "store::multi::memory::get_all_versions", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()))]
 	fn get_all_versions(&self, table: EntryKind, key: &[u8]) -> Result<Vec<(CommitVersion, Option<CowVec<u8>>)>> {
-		let table_key = entry_id_to_key(table);
-		let entry = match self.inner.entries.data.get(&table_key) {
+		let entry = match self.inner.entries.data.get(&table) {
 			Some(e) => e,
 			None => return Ok(Vec::new()),
 		};
@@ -540,8 +510,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 			return Ok(Vec::new());
 		}
 
-		let table_key = entry_id_to_key(table);
-		let entry = match self.inner.entries.data.get(&table_key) {
+		let entry = match self.inner.entries.data.get(&table) {
 			Some(e) => e,
 			None => {
 				cursor.exhausted = true;
