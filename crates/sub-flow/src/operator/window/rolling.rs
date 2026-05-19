@@ -6,6 +6,7 @@ use reifydb_core::{
 	encoded::key::EncodedKey,
 	interface::change::{Change, Diff},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
+	row::Row,
 	value::column::columns::Columns,
 };
 use reifydb_runtime::hash::Hash128;
@@ -120,6 +121,7 @@ fn process_rolling_group_insert(
 	let window_id = 0u64;
 	let window_key = operator.create_window_key(group_hash, window_id);
 	let mut window_state = operator.load_window_state(txn, &window_key)?;
+	let mut last_post: Option<(Row, bool)> = None;
 
 	for (row_idx, &event_timestamp) in timestamps.iter().enumerate() {
 		let single_row_columns = columns.extract_row(row_idx);
@@ -131,10 +133,16 @@ fn process_rolling_group_insert(
 		}
 		let layout = window_state.layout().clone();
 
-		let previous_aggregation = if !window_state.events.is_empty() {
-			operator.apply_aggregations(txn, &window_key, &layout, &window_state.events, changed_at)?
-		} else {
-			None
+		let previous_aggregation = match last_post.take() {
+			Some(prev) => Some(prev),
+			None if !window_state.events.is_empty() => operator.apply_aggregations(
+				txn,
+				&window_key,
+				&layout,
+				&window_state.events,
+				changed_at,
+			)?,
+			None => None,
 		};
 
 		let event = WindowEvent::from_row(&row, event_timestamp);
@@ -154,7 +162,9 @@ fn process_rolling_group_insert(
 		} else {
 			current_timestamp
 		};
+		let pre_evict_len = window_state.events.len();
 		operator.evict_old_events(&mut window_state, eviction_ts);
+		let evicted = window_state.events.len() != pre_evict_len;
 
 		if !window_state.events.is_empty()
 			&& let Some((aggregated_row, is_new)) = operator.apply_aggregations(
@@ -164,11 +174,19 @@ fn process_rolling_group_insert(
 				&window_state.events,
 				changed_at,
 			)? {
+			let cached = if evicted {
+				None
+			} else {
+				Some((aggregated_row.clone(), is_new))
+			};
 			result.push(WindowOperator::emit_aggregation_diff(
 				&aggregated_row,
 				is_new,
 				previous_aggregation,
 			));
+			last_post = cached;
+		} else {
+			last_post = None;
 		}
 	}
 

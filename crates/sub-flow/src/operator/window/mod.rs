@@ -240,6 +240,10 @@ impl WindowOperator {
 		self.kind.size().is_some_and(|m| m.is_count())
 	}
 
+	pub fn is_rolling(&self) -> bool {
+		matches!(self.kind, WindowKind::Rolling { .. })
+	}
+
 	pub fn size_duration(&self) -> Option<Duration> {
 		self.kind.size().and_then(|m| m.as_duration())
 	}
@@ -284,14 +288,17 @@ impl WindowOperator {
 		}
 
 		let mut hashes = Vec::with_capacity(row_count);
+		let mut buf = Vec::with_capacity(128);
 		for row_idx in 0..row_count {
-			let mut data = Vec::new();
+			buf.clear();
 			for col in &group_columns {
 				let value = col.data().get_value(row_idx);
-				let value_str = value.to_string();
-				data.extend_from_slice(value_str.as_bytes());
+				let bytes = to_stdvec(&value).map_err(|e| {
+					Error(Box::new(internal!("Failed to encode group-by value: {}", e)))
+				})?;
+				buf.extend_from_slice(&bytes);
 			}
-			hashes.push(xxh3_128(&data));
+			hashes.push(xxh3_128(&buf));
 		}
 
 		Ok(hashes)
@@ -352,6 +359,9 @@ impl WindowOperator {
 		row_number: RowNumber,
 		window_id: u64,
 	) -> Result<()> {
+		if self.is_rolling() {
+			return Ok(());
+		}
 		let index_key = self.create_row_index_key(group_hash, row_number);
 		let mut window_ids = self.lookup_row_index(txn, group_hash, row_number)?;
 		if !window_ids.contains(&window_id) {
@@ -371,6 +381,15 @@ impl WindowOperator {
 		group_hash: Hash128,
 		row_number: RowNumber,
 	) -> Result<Vec<u64>> {
+		if self.is_rolling() {
+			let window_key = self.create_window_key(group_hash, 0);
+			let window_state = self.load_window_state(txn, &window_key)?;
+			return Ok(if window_state.events.iter().any(|e| e.row_number == row_number) {
+				vec![0]
+			} else {
+				Vec::new()
+			});
+		}
 		let index_key = self.create_row_index_key(group_hash, row_number);
 		let state_row = self.load_state(txn, &index_key)?;
 		if state_row.is_empty() || !state_row.is_defined(0) {
@@ -490,9 +509,11 @@ impl WindowOperator {
 			}
 		}
 
-		let index_key = self.create_row_index_key(group_hash, row_number);
-		let empty = self.layout.allocate();
-		self.save_state(txn, &index_key, empty)?;
+		if !self.is_rolling() {
+			let index_key = self.create_row_index_key(group_hash, row_number);
+			let empty = self.layout.allocate();
+			self.save_state(txn, &index_key, empty)?;
+		}
 
 		Ok(result)
 	}
