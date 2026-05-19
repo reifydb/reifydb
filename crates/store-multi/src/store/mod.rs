@@ -47,9 +47,16 @@ pub struct StandardMultiStoreInner {
 	#[allow(dead_code)]
 	pub(crate) flush_actor: Option<ActorRef<FlushMessage>>,
 
-	_actor_system: ActorSystem,
+	actor_system: ActorSystem,
 
 	pub(crate) event_bus: EventBus,
+}
+
+impl Drop for StandardMultiStoreInner {
+	fn drop(&mut self) {
+		self.actor_system.shutdown();
+		let _ = self.actor_system.join_timeout(Duration::from_secs(5));
+	}
 }
 
 impl StandardMultiStore {
@@ -106,7 +113,7 @@ impl StandardMultiStore {
 			persistent,
 			drop_actor,
 			flush_actor,
-			_actor_system: actor_system,
+			actor_system,
 			event_bus: config.event_bus,
 		})))
 	}
@@ -152,13 +159,9 @@ impl Deref for StandardMultiStore {
 impl StandardMultiStore {
 	pub fn testing_memory() -> Self {
 		let pools = Pools::new(PoolConfig::sync_only());
-		let actor_system = ActorSystem::new(pools, Clock::Real);
-		Self::testing_memory_with_eventbus(EventBus::new(&actor_system))
-	}
-
-	pub fn testing_memory_with_eventbus(event_bus: EventBus) -> Self {
-		let pools = Pools::new(PoolConfig::sync_only());
-		let actor_system = ActorSystem::new(pools, Clock::Real);
+		let clock = Clock::testing();
+		let actor_system = ActorSystem::new(pools, clock.clone());
+		let event_bus = EventBus::new(&actor_system);
 		Self::new(MultiStoreConfig {
 			buffer: Some(BufferConfig {
 				storage: MultiBufferTier::memory(),
@@ -168,7 +171,25 @@ impl StandardMultiStore {
 			merge_config: Default::default(),
 			event_bus,
 			actor_system,
-			clock: Clock::Real,
+			clock,
+		})
+		.unwrap()
+	}
+
+	pub fn testing_memory_with_eventbus(event_bus: EventBus) -> Self {
+		let pools = Pools::new(PoolConfig::sync_only());
+		let clock = Clock::testing();
+		let actor_system = ActorSystem::new(pools, clock.clone());
+		Self::new(MultiStoreConfig {
+			buffer: Some(BufferConfig {
+				storage: MultiBufferTier::memory(),
+			}),
+			persistent: None,
+			retention: Default::default(),
+			merge_config: Default::default(),
+			event_bus,
+			actor_system,
+			clock,
 		})
 		.unwrap()
 	}
@@ -176,14 +197,9 @@ impl StandardMultiStore {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn testing_memory_with_persistent_sqlite() -> Self {
 		let pools = Pools::new(PoolConfig::default());
-		let actor_system = ActorSystem::new(pools, Clock::Real);
-		Self::testing_memory_with_persistent_sqlite_with_eventbus(EventBus::new(&actor_system))
-	}
-
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn testing_memory_with_persistent_sqlite_with_eventbus(event_bus: EventBus) -> Self {
-		let pools = Pools::new(PoolConfig::default());
-		let actor_system = ActorSystem::new(pools, Clock::Real);
+		let clock = Clock::testing();
+		let actor_system = ActorSystem::new(pools, clock.clone());
+		let event_bus = EventBus::new(&actor_system);
 		Self::new(MultiStoreConfig {
 			buffer: Some(BufferConfig {
 				storage: MultiBufferTier::memory(),
@@ -193,7 +209,26 @@ impl StandardMultiStore {
 			merge_config: Default::default(),
 			event_bus,
 			actor_system,
-			clock: Clock::Real,
+			clock,
+		})
+		.unwrap()
+	}
+
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn testing_memory_with_persistent_sqlite_with_eventbus(event_bus: EventBus) -> Self {
+		let pools = Pools::new(PoolConfig::default());
+		let clock = Clock::testing();
+		let actor_system = ActorSystem::new(pools, clock.clone());
+		Self::new(MultiStoreConfig {
+			buffer: Some(BufferConfig {
+				storage: MultiBufferTier::memory(),
+			}),
+			persistent: Some(PersistentConfig::sqlite_in_memory()),
+			retention: Default::default(),
+			merge_config: Default::default(),
+			event_bus,
+			actor_system,
+			clock,
 		})
 		.unwrap()
 	}

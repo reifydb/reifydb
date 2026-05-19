@@ -27,14 +27,14 @@ use reifydb_cdc::{
 };
 use reifydb_core::{
 	common::CommitVersion,
-	error::diagnostic::{catalog::namespace_not_found, engine::read_only_rejection},
+	error::diagnostic::engine::read_only_rejection,
 	event::{Event, EventBus},
 	execution::ExecutionResult,
 	interface::{
 		WithEventBus,
 		catalog::{
 			column::{Column, ColumnIndex},
-			id::ColumnId,
+			id::{ColumnId, NamespaceId},
 			vtable::{VTable, VTableId},
 		},
 	},
@@ -51,7 +51,7 @@ use reifydb_transaction::{
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
 	multi::{lease::VersionLeaseGuard, transaction::MultiTransaction},
 	single::SingleTransaction,
-	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction},
+	transaction::{admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction},
 };
 use reifydb_type::{
 	error::Error,
@@ -344,14 +344,13 @@ impl StandardEngine {
 		outcome
 	}
 
-	pub fn register_virtual_table<T: UserVTable>(&self, namespace: &str, name: &str, table: T) -> Result<VTableId> {
+	pub fn register_virtual_table<T: UserVTable>(
+		&self,
+		namespace_id: NamespaceId,
+		name: &str,
+		table: T,
+	) -> Result<VTableId> {
 		let catalog = self.catalog();
-
-		let mut qry = self.begin_query(IdentityId::root())?;
-		let ns_def = catalog
-			.find_namespace_by_name(&mut Transaction::Query(&mut qry), namespace)?
-			.ok_or_else(|| Error(Box::new(namespace_not_found(Fragment::None, namespace))))?;
-
 		let table_id = self.executor.virtual_table_registry.allocate_id();
 
 		let table_columns = table.vtable();
@@ -359,7 +358,7 @@ impl StandardEngine {
 
 		let def = Arc::new(VTable {
 			id: table_id,
-			namespace: ns_def.id(),
+			namespace: namespace_id,
 			name: name.to_string(),
 			columns,
 		});
@@ -372,7 +371,7 @@ impl StandardEngine {
 			def: def.clone(),
 			data_fn,
 		};
-		self.executor.virtual_table_registry.register(ns_def.id(), name.to_string(), entry);
+		self.executor.virtual_table_registry.register(namespace_id, name.to_string(), entry);
 		Ok(table_id)
 	}
 }
