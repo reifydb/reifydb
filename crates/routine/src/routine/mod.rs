@@ -20,7 +20,10 @@ use reifydb_core::value::column::{
 use reifydb_type::{
 	fragment::Fragment,
 	util::bitvec::BitVec,
-	value::r#type::{Type, input_types::InputTypes},
+	value::{
+		Value,
+		r#type::{Type, input_types::InputTypes},
+	},
 };
 use serde::{Deserialize, Serialize};
 
@@ -135,11 +138,20 @@ pub trait Routine<C: Context>: Send + Sync {
 	}
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AggregateFunctionCapability {
+	Retractable,
+}
+
 pub trait Function: for<'a> Routine<context::FunctionContext<'a>> {
 	fn kinds(&self) -> &[FunctionKind];
 
 	fn accumulator(&self, _ctx: &mut context::FunctionContext<'_>) -> Option<Box<dyn Accumulator>> {
 		None
+	}
+
+	fn aggregate_capabilities(&self) -> &[AggregateFunctionCapability] {
+		&[]
 	}
 }
 
@@ -150,4 +162,26 @@ impl<T: ?Sized> Procedure for T where T: for<'a, 'tx> Routine<context::Procedure
 pub trait Accumulator: Send + Sync {
 	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), RoutineError>;
 	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), RoutineError>;
+
+	fn kind_name(&self) -> &'static str {
+		"accumulator"
+	}
+
+	fn retract(&mut self, _args: &Columns, _groups: &GroupByView) -> Result<(), RoutineError> {
+		Err(RoutineError::Unsupported {
+			op: "retract",
+			accumulator: self.kind_name(),
+		})
+	}
+
+	fn peek(&self, _group: &GroupKey) -> Option<Value> {
+		None
+	}
+
+	fn seed(&mut self, _group: GroupKey, _value: Value) -> Result<(), RoutineError> {
+		Err(RoutineError::Unsupported {
+			op: "seed",
+			accumulator: self.kind_name(),
+		})
+	}
 }

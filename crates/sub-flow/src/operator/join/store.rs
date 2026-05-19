@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::cell::Cell;
+
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
 	encoded::{
@@ -31,6 +33,7 @@ pub(crate) struct Store {
 	node_id: FlowNodeId,
 	prefix: Vec<u8>,
 	schema_key: EncodedKey,
+	shape_written: Cell<bool>,
 }
 
 impl Store {
@@ -43,6 +46,7 @@ impl Store {
 			node_id,
 			prefix,
 			schema_key: EncodedKey::new(vec![schema_byte]),
+			shape_written: Cell::new(false),
 		}
 	}
 
@@ -159,6 +163,9 @@ impl Store {
 	}
 
 	pub(crate) fn set_row_shape(&self, txn: &mut FlowTransaction, shape: &RowShape) -> Result<()> {
+		if self.shape_written.get() {
+			return Ok(());
+		}
 		let serialized = to_stdvec(&shape.fields().to_vec())
 			.map_err(|e| Error(Box::new(internal!("Failed to serialize row shape: {}", e))))?;
 		let op = RowShape::operator_state();
@@ -180,6 +187,7 @@ impl Store {
 		op.set_blob(&mut row, 0, &Blob::from(serialized));
 		row.set_timestamps(created_at, now_nanos);
 		state_set(self.node_id, txn, &self.schema_key, row)?;
+		self.shape_written.set(true);
 		Ok(())
 	}
 

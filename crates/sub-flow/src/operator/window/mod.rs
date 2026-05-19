@@ -43,7 +43,7 @@ use reifydb_core::{
 	interface::change::{Change, Diff},
 	row::Row,
 	util::encoding::keycode::serializer::KeySerializer,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, view::group_by::GroupByView},
 };
 use reifydb_engine::{
 	expression::{
@@ -52,7 +52,9 @@ use reifydb_engine::{
 	},
 	vm::stack::SymbolTable,
 };
-use reifydb_routine::routine::registry::Routines;
+use reifydb_routine::routine::{
+	Accumulator, AggregateFunctionCapability, context::FunctionContext, registry::Routines,
+};
 use reifydb_rql::expression::{
 	Expression,
 	name::{collect_all_column_names, display_label},
@@ -148,6 +150,8 @@ pub struct WindowState {
 	pub event_count: u64,
 
 	pub last_event_time: u64,
+
+	pub running_totals: Vec<Value>,
 }
 
 impl WindowState {
@@ -167,6 +171,103 @@ pub struct WindowConfig {
 	pub routines: Routines,
 }
 
+#[derive(Clone, Debug)]
+pub struct FastAgg {
+	pub function_name: String,
+	pub input_column: Option<String>,
+}
+
+fn detect_fast_agg(routines: &Routines, expr: &Expression) -> Option<FastAgg> {
+	let inner = match expr {
+		Expression::Alias(alias) => alias.expression.as_ref(),
+		other => other,
+	};
+	let call = match inner {
+		Expression::Call(c) => c,
+		_ => return None,
+	};
+	let function_name = call.func.0.text().to_string();
+	let func = routines.get_aggregate_function(&function_name)?;
+	if !func.aggregate_capabilities().contains(&AggregateFunctionCapability::Retractable) {
+		return None;
+	}
+	let input_column = match call.args.as_slice() {
+		[] => None,
+		[Expression::Column(col)] => Some(col.0.name.text().to_string()),
+		_ => return None,
+	};
+	Some(FastAgg {
+		function_name,
+		input_column,
+	})
+}
+
+fn make_single_row_columns_for_agg(layout: &WindowLayout, row: &Row, kind: &FastAgg) -> Option<Columns> {
+	match &kind.input_column {
+		Some(col_name) => {
+			let col_idx = layout.names.iter().position(|n| n == col_name)?;
+			let ty = layout.types[col_idx].clone();
+			let value = row.shape.get_value(&row.encoded, col_idx);
+			let mut buf = ColumnBuffer::with_capacity(ty, 1);
+			buf.push_value(value);
+			Some(Columns::new(vec![ColumnWithName {
+				name: Fragment::internal(col_name.clone()),
+				data: buf,
+			}]))
+		}
+		None => {
+			let mut buf = ColumnBuffer::with_capacity(Type::Int4, 1);
+			buf.push_value(Value::Int4(0));
+			Some(Columns::new(vec![ColumnWithName {
+				name: Fragment::internal("dummy"),
+				data: buf,
+			}]))
+		}
+	}
+}
+
+fn single_group_view() -> GroupByView {
+	let mut view = GroupByView::new();
+	view.insert(Vec::new(), vec![0]);
+	view
+}
+
+fn events_to_agg_columns(layout: &WindowLayout, events: &[WindowEvent], kind: &FastAgg) -> Option<Columns> {
+	let shape = layout.to_shape();
+	match &kind.input_column {
+		Some(col_name) => {
+			let col_idx = layout.names.iter().position(|n| n == col_name)?;
+			let ty = layout.types[col_idx].clone();
+			let mut buf = ColumnBuffer::with_capacity(ty, events.len());
+			for ev in events {
+				let encoded = EncodedRow(CowVec::new(ev.encoded_bytes.clone()));
+				let value = shape.get_value(&encoded, col_idx);
+				buf.push_value(value);
+			}
+			Some(Columns::new(vec![ColumnWithName {
+				name: Fragment::internal(col_name.clone()),
+				data: buf,
+			}]))
+		}
+		None => {
+			let mut buf = ColumnBuffer::with_capacity(Type::Int4, events.len());
+			for _ in events {
+				buf.push_value(Value::Int4(0));
+			}
+			Some(Columns::new(vec![ColumnWithName {
+				name: Fragment::internal("dummy"),
+				data: buf,
+			}]))
+		}
+	}
+}
+
+fn events_group_view(event_count: usize) -> GroupByView {
+	let mut view = GroupByView::new();
+	view.insert(Vec::new(), (0..event_count).collect());
+	view
+}
+
 pub struct WindowOperator {
 	pub parent: Arc<Operators>,
 	pub node: FlowNodeId,
@@ -182,6 +283,9 @@ pub struct WindowOperator {
 	pub runtime_context: RuntimeContext,
 
 	pub projected_columns: Vec<String>,
+
+	pub fast_aggregations: Option<Vec<FastAgg>>,
+	pub agg_output_names: Vec<String>,
 }
 
 impl WindowOperator {
@@ -208,6 +312,16 @@ impl WindowOperator {
 		let mut projected_columns: Vec<String> = needed.into_iter().collect();
 		projected_columns.sort();
 
+		let detected: Vec<Option<FastAgg>> =
+			config.aggregations.iter().map(|e| detect_fast_agg(&config.routines, e)).collect();
+		let fast_aggregations = if !detected.is_empty() && detected.iter().all(Option::is_some) {
+			Some(detected.into_iter().map(Option::unwrap).collect())
+		} else {
+			None
+		};
+		let agg_output_names: Vec<String> =
+			config.aggregations.iter().map(|e| display_label(e).text().to_string()).collect();
+
 		Self {
 			parent: config.parent,
 			node: config.node,
@@ -222,6 +336,8 @@ impl WindowOperator {
 			row_number_provider: RowNumberProvider::new(config.node),
 			runtime_context: config.runtime_context,
 			projected_columns,
+			fast_aggregations,
+			agg_output_names,
 		}
 	}
 
@@ -238,6 +354,10 @@ impl WindowOperator {
 
 	pub fn is_count_based(&self) -> bool {
 		self.kind.size().is_some_and(|m| m.is_count())
+	}
+
+	pub fn is_rolling(&self) -> bool {
+		matches!(self.kind, WindowKind::Rolling { .. })
 	}
 
 	pub fn size_duration(&self) -> Option<Duration> {
@@ -284,14 +404,17 @@ impl WindowOperator {
 		}
 
 		let mut hashes = Vec::with_capacity(row_count);
+		let mut buf = Vec::with_capacity(128);
 		for row_idx in 0..row_count {
-			let mut data = Vec::new();
+			buf.clear();
 			for col in &group_columns {
 				let value = col.data().get_value(row_idx);
-				let value_str = value.to_string();
-				data.extend_from_slice(value_str.as_bytes());
+				let bytes = to_stdvec(&value).map_err(|e| {
+					Error(Box::new(internal!("Failed to encode group-by value: {}", e)))
+				})?;
+				buf.extend_from_slice(&bytes);
 			}
-			hashes.push(xxh3_128(&data));
+			hashes.push(xxh3_128(&buf));
 		}
 
 		Ok(hashes)
@@ -352,6 +475,9 @@ impl WindowOperator {
 		row_number: RowNumber,
 		window_id: u64,
 	) -> Result<()> {
+		if self.is_rolling() {
+			return Ok(());
+		}
 		let index_key = self.create_row_index_key(group_hash, row_number);
 		let mut window_ids = self.lookup_row_index(txn, group_hash, row_number)?;
 		if !window_ids.contains(&window_id) {
@@ -371,6 +497,15 @@ impl WindowOperator {
 		group_hash: Hash128,
 		row_number: RowNumber,
 	) -> Result<Vec<u64>> {
+		if self.is_rolling() {
+			let window_key = self.create_window_key(group_hash, 0);
+			let window_state = self.load_window_state(txn, &window_key)?;
+			return Ok(if window_state.events.iter().any(|e| e.row_number == row_number) {
+				vec![0]
+			} else {
+				Vec::new()
+			});
+		}
 		let index_key = self.create_row_index_key(group_hash, row_number);
 		let state_row = self.load_state(txn, &index_key)?;
 		if state_row.is_empty() || !state_row.is_defined(0) {
@@ -418,9 +553,13 @@ impl WindowOperator {
 					&layout,
 					&window_state.events,
 					changed_at,
+					&window_state,
 				)?;
 
+				let pre_event_row = window_state.events[idx].to_row(&layout);
 				window_state.events[idx] = WindowEvent::from_row(post_row, post_timestamp);
+				self.update_running_totals_on_evict(&mut window_state, &pre_event_row);
+				self.update_running_totals_on_push(&mut window_state, post_row);
 
 				let post_aggregation = self.apply_aggregations(
 					txn,
@@ -428,6 +567,7 @@ impl WindowOperator {
 					&layout,
 					&window_state.events,
 					changed_at,
+					&window_state,
 				)?;
 
 				self.save_window_state(txn, &window_key, &window_state)?;
@@ -490,9 +630,11 @@ impl WindowOperator {
 			}
 		}
 
-		let index_key = self.create_row_index_key(group_hash, row_number);
-		let empty = self.layout.allocate();
-		self.save_state(txn, &index_key, empty)?;
+		if !self.is_rolling() {
+			let index_key = self.create_row_index_key(group_hash, row_number);
+			let empty = self.layout.allocate();
+			self.save_state(txn, &index_key, empty)?;
+		}
 
 		Ok(result)
 	}
@@ -513,19 +655,33 @@ impl WindowOperator {
 		};
 
 		let changed_at = DateTime::from_nanos(txn.clock().now_nanos());
-		let pre_aggregation =
-			self.apply_aggregations(txn, window_key, &layout, &window_state.events, changed_at)?;
+		let pre_aggregation = self.apply_aggregations(
+			txn,
+			window_key,
+			&layout,
+			&window_state.events,
+			changed_at,
+			&window_state,
+		)?;
 
+		let evicted_row = window_state.events[idx].to_row(&layout);
 		window_state.events.remove(idx);
 		window_state.event_count = window_state.event_count.saturating_sub(1);
+		self.update_running_totals_on_evict(&mut window_state, &evicted_row);
 
 		if window_state.events.is_empty() {
 			self.save_window_state(txn, window_key, &window_state)?;
 			return Ok(pre_aggregation.map(|(pre_row, _)| Diff::remove(Columns::from_row(&pre_row))));
 		}
 
-		let post_aggregation =
-			self.apply_aggregations(txn, window_key, &layout, &window_state.events, changed_at)?;
+		let post_aggregation = self.apply_aggregations(
+			txn,
+			window_key,
+			&layout,
+			&window_state.events,
+			changed_at,
+			&window_state,
+		)?;
 		self.save_window_state(txn, window_key, &window_state)?;
 
 		Ok(match (pre_aggregation, post_aggregation) {
@@ -553,23 +709,13 @@ impl WindowOperator {
 		Ok(result)
 	}
 
-	pub fn extract_group_values(
-		&self,
-		window_layout: &WindowLayout,
-		events: &[WindowEvent],
-	) -> Result<(Vec<Value>, Vec<String>)> {
-		if events.is_empty() || self.group_by.is_empty() {
-			return Ok((Vec::new(), Vec::new()));
-		}
-
-		let columns = self.events_to_columns(window_layout, events)?;
-		let row_count = columns.row_count();
-		if row_count == 0 {
+	pub fn extract_group_values(&self, columns: &Columns) -> Result<(Vec<Value>, Vec<String>)> {
+		if columns.row_count() == 0 || self.group_by.is_empty() {
 			return Ok((Vec::new(), Vec::new()));
 		}
 
 		let session = self.eval_session(false);
-		let exec_ctx = session.with_eval(columns, row_count);
+		let exec_ctx = session.with_eval(columns.clone(), columns.row_count());
 
 		let mut values = Vec::new();
 		let mut names = Vec::new();
@@ -621,6 +767,7 @@ impl WindowOperator {
 		window_layout: &WindowLayout,
 		events: &[WindowEvent],
 		changed_at: DateTime,
+		state: &WindowState,
 	) -> Result<Option<(Row, bool)>> {
 		if events.is_empty() {
 			return Ok(None);
@@ -632,6 +779,14 @@ impl WindowOperator {
 			let mut result_row = events[0].to_row(window_layout);
 			result_row.number = result_row_number;
 			return Ok(Some((result_row, is_new)));
+		}
+
+		if let Some(fast) = &self.fast_aggregations
+			&& state.running_totals.len() == fast.len()
+			&& let Some(row) =
+				self.build_fast_path_result(txn, window_key, events, changed_at, state, fast)?
+		{
+			return Ok(Some(row));
 		}
 
 		let (result_values, result_names, result_types) =
@@ -655,6 +810,177 @@ impl WindowOperator {
 		)))
 	}
 
+	fn build_fast_path_result(
+		&self,
+		txn: &mut FlowTransaction,
+		window_key: &EncodedKey,
+		events: &[WindowEvent],
+		changed_at: DateTime,
+		state: &WindowState,
+		fast: &[FastAgg],
+	) -> Result<Option<(Row, bool)>> {
+		let window_layout = state.layout();
+		let (group_values, group_names) = if self.group_by.is_empty() {
+			(Vec::new(), Vec::new())
+		} else {
+			let first_columns = self.events_to_columns(window_layout, &events[..1])?;
+			self.extract_group_values(&first_columns)?
+		};
+
+		let mut values = Vec::with_capacity(group_values.len() + fast.len());
+		let mut names = Vec::with_capacity(group_values.len() + fast.len());
+		let mut types = Vec::with_capacity(group_values.len() + fast.len());
+
+		for (value, name) in group_values.into_iter().zip(group_names.into_iter()) {
+			types.push(value.get_type());
+			values.push(value);
+			names.push(name);
+		}
+
+		for (slot, _kind) in fast.iter().enumerate() {
+			let value = state.running_totals[slot].clone();
+			types.push(value.get_type());
+			values.push(value);
+			names.push(self.agg_output_names[slot].clone());
+		}
+
+		let layout = build_aggregation_shape(&names, &types);
+		let mut encoded = layout.allocate();
+		layout.set_values(&mut encoded, &values);
+
+		let ts_nanos = changed_at.to_nanos();
+		encoded.set_timestamps(ts_nanos, ts_nanos);
+
+		let (result_row_number, is_new) = self.row_number_provider.get_or_create_row_number(txn, window_key)?;
+
+		#[cfg(debug_assertions)]
+		{
+			let (slow_values, slow_names, slow_types) =
+				self.compute_aggregation_outputs(window_layout, events)?;
+			debug_assert_eq!(names, slow_names, "fast-path output names diverge from slow path");
+			debug_assert_eq!(types, slow_types, "fast-path output types diverge from slow path");
+			debug_assert_eq!(values, slow_values, "fast-path output values diverge from slow path");
+		}
+
+		Ok(Some((
+			Row {
+				number: result_row_number,
+				encoded,
+				shape: layout,
+			},
+			is_new,
+		)))
+	}
+
+	fn build_accumulator(&self, kind: &FastAgg) -> Option<Box<dyn Accumulator>> {
+		let func = self.routines.get_aggregate_function(&kind.function_name)?;
+		let mut ctx = FunctionContext {
+			fragment: Fragment::internal(&kind.function_name),
+			identity: IdentityId::root(),
+			row_count: 1,
+			runtime_context: &self.runtime_context,
+		};
+		func.accumulator(&mut ctx)
+	}
+
+	pub fn ensure_running_totals(&self, state: &mut WindowState, layout: &WindowLayout) {
+		let Some(fast) = &self.fast_aggregations else {
+			return;
+		};
+		if state.running_totals.len() == fast.len() {
+			return;
+		}
+		let mut totals: Vec<Value> = Vec::with_capacity(fast.len());
+		for kind in fast {
+			let Some(mut acc) = self.build_accumulator(kind) else {
+				state.running_totals = Vec::new();
+				return;
+			};
+			if !state.events.is_empty() {
+				let Some(cols) = events_to_agg_columns(layout, &state.events, kind) else {
+					state.running_totals = Vec::new();
+					return;
+				};
+				let view = events_group_view(state.events.len());
+				if acc.update(&cols, &view).is_err() {
+					state.running_totals = Vec::new();
+					return;
+				}
+			}
+			totals.push(acc.peek(&Vec::new()).unwrap_or_else(Value::none));
+		}
+		state.running_totals = totals;
+	}
+
+	pub fn update_running_totals_on_push(&self, state: &mut WindowState, row: &Row) {
+		let Some(fast) = &self.fast_aggregations else {
+			return;
+		};
+		let layout = match &state.window_layout {
+			Some(l) => l.clone(),
+			None => return,
+		};
+		let bootstrap_was_needed = state.running_totals.len() != fast.len();
+		self.ensure_running_totals(state, &layout);
+		if state.running_totals.len() != fast.len() {
+			return;
+		}
+		if bootstrap_was_needed {
+			return;
+		}
+		for (slot, kind) in fast.iter().enumerate() {
+			let Some(mut acc) = self.build_accumulator(kind) else {
+				state.running_totals = Vec::new();
+				return;
+			};
+			if acc.seed(Vec::new(), state.running_totals[slot].clone()).is_err() {
+				state.running_totals = Vec::new();
+				return;
+			}
+			let Some(cols) = make_single_row_columns_for_agg(&layout, row, kind) else {
+				state.running_totals = Vec::new();
+				return;
+			};
+			if acc.update(&cols, &single_group_view()).is_err() {
+				state.running_totals = Vec::new();
+				return;
+			}
+			state.running_totals[slot] = acc.peek(&Vec::new()).unwrap_or_else(Value::none);
+		}
+	}
+
+	pub fn update_running_totals_on_evict(&self, state: &mut WindowState, row: &Row) {
+		let Some(fast) = &self.fast_aggregations else {
+			return;
+		};
+		let layout = match &state.window_layout {
+			Some(l) => l.clone(),
+			None => return,
+		};
+		if state.running_totals.len() != fast.len() {
+			return;
+		}
+		for (slot, kind) in fast.iter().enumerate() {
+			let Some(mut acc) = self.build_accumulator(kind) else {
+				state.running_totals = Vec::new();
+				return;
+			};
+			if acc.seed(Vec::new(), state.running_totals[slot].clone()).is_err() {
+				state.running_totals = Vec::new();
+				return;
+			}
+			let Some(cols) = make_single_row_columns_for_agg(&layout, row, kind) else {
+				state.running_totals = Vec::new();
+				return;
+			};
+			if acc.retract(&cols, &single_group_view()).is_err() {
+				state.running_totals = Vec::new();
+				return;
+			}
+			state.running_totals[slot] = acc.peek(&Vec::new()).unwrap_or_else(Value::none);
+		}
+	}
+
 	#[inline]
 	fn compute_aggregation_outputs(
 		&self,
@@ -662,9 +988,9 @@ impl WindowOperator {
 		events: &[WindowEvent],
 	) -> Result<(Vec<Value>, Vec<String>, Vec<Type>)> {
 		let columns = self.events_to_columns(window_layout, events)?;
+		let (group_values, group_names) = self.extract_group_values(&columns)?;
 		let agg_session = self.eval_session(true);
 		let exec_ctx = agg_session.with_eval(columns, events.len());
-		let (group_values, group_names) = self.extract_group_values(window_layout, events)?;
 
 		let mut values = Vec::new();
 		let mut names = Vec::new();
@@ -723,6 +1049,7 @@ impl WindowOperator {
 								layout,
 								&window_state.events,
 								changed_at,
+								&window_state,
 							)? {
 							result.push(Diff::remove(Columns::from_row(&row)));
 						}
@@ -919,9 +1246,14 @@ impl WindowOperator {
 
 		let changed_at = DateTime::from_nanos(current_timestamp);
 		if let Some(layout) = &window_state.window_layout
-			&& let Some((row, _)) =
-				self.apply_aggregations(txn, window_key, layout, &window_state.events, changed_at)?
-		{
+			&& let Some((row, _)) = self.apply_aggregations(
+				txn,
+				window_key,
+				layout,
+				&window_state.events,
+				changed_at,
+				&window_state,
+			)? {
 			return Ok(Some(Diff::remove(Columns::from_row(&row))));
 		}
 		Ok(None)
