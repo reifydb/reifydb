@@ -1,8 +1,6 @@
 // Copyright (c) 2025 ReifyDB
 // SPDX-License-Identifier: Apache-2.0
 
-// Generated from proto/raft.proto — hand-written (no protoc codegen).
-
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct RaftMessage {
 	#[prost(bytes = "vec", tag = "1")]

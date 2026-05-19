@@ -11,6 +11,7 @@ use reifydb_core::{
 			RequestExecutedEvent,
 		},
 	},
+	interface::catalog::id::NamespaceId,
 	util::ioc::IocContainer,
 };
 use reifydb_engine::engine::StandardEngine;
@@ -83,7 +84,7 @@ impl SubsystemFactory for MetricSubsystemFactory {
 		match ioc.resolve::<StandardEngine>() {
 			Ok(engine) => {
 				engine.register_virtual_table(
-					"system::metrics::profiler",
+					NamespaceId::SYSTEM_METRICS_PROFILER,
 					"categories",
 					MetricsProfilerCategoriesVTable::new(),
 				)?;

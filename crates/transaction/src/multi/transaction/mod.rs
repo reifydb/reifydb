@@ -20,6 +20,8 @@ use reifydb_core::{
 		store::{MultiVersionContains, MultiVersionGet},
 	},
 };
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::{
@@ -27,9 +29,9 @@ use reifydb_runtime::{
 		rng::Rng,
 	},
 	pool::{PoolConfig, Pools},
-	sync::rwlock::RwLock,
 };
 use reifydb_store_multi::MultiStore;
+#[cfg(not(target_arch = "wasm32"))]
 use reifydb_sub_raft::driver::Raft;
 use reifydb_type::{Result, util::hex, value::Value};
 use tracing::instrument;
@@ -206,6 +208,7 @@ pub struct Inner {
 	pub(crate) tm: TransactionManager<StandardVersionProvider>,
 	pub(crate) store: MultiStore,
 	pub(crate) event_bus: EventBus,
+	#[cfg(not(target_arch = "wasm32"))]
 	pub(crate) raft: RwLock<Option<Raft>>,
 }
 
@@ -240,6 +243,7 @@ impl Inner {
 			tm,
 			store,
 			event_bus,
+			#[cfg(not(target_arch = "wasm32"))]
 			raft: RwLock::new(None),
 		})
 	}
@@ -314,10 +318,12 @@ impl MultiTransaction {
 	pub fn config(&self) -> Arc<dyn GetConfig> {
 		self.0.tm.config()
 	}
+	#[cfg(not(target_arch = "wasm32"))]
 	pub fn set_raft(&self, handle: Raft) {
 		*self.0.raft.write() = Some(handle);
 	}
 
+	#[cfg(not(target_arch = "wasm32"))]
 	pub fn clear_raft(&self) {
 		*self.0.raft.write() = None;
 	}

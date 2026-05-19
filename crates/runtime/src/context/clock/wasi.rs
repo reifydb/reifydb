@@ -56,6 +56,10 @@ impl Clock {
 			},
 		}
 	}
+
+	pub fn testing() -> Self {
+		Clock::Mock(MockClock::from_millis(0))
+	}
 }
 
 impl Default for Clock {

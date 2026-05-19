@@ -61,7 +61,7 @@ async fn main() {
 
 	eprintln!("node {node_id}: starting gRPC transport on {bind_addr}");
 	let (transport, _server_handle) =
-		GrpcTransport::start(node_id, bind_addr, peers).await.expect("failed to start gRPC transport");
+		GrpcTransport::start(bind_addr, peers).await.expect("failed to start gRPC transport");
 
 	let config = DriverConfig::default();
 	let (driver, handle) = RaftDriver::new(node, transport, config);

@@ -26,25 +26,18 @@ use crate::{
 	transport::Transport,
 };
 
-/// gRPC-based transport for Raft messages. Each node runs a gRPC server
-/// and maintains client connections to all peers.
 pub struct GrpcTransport {
-	node_id: NodeId,
 	inbound: Arc<Mutex<Vec<Envelope>>>,
 	outbound_txs: HashMap<NodeId, mpsc::UnboundedSender<Envelope>>,
 }
 
 impl GrpcTransport {
-	/// Start the gRPC server and connect to all peers.
-	/// Returns the transport and a future that runs the server.
 	pub async fn start(
-		node_id: NodeId,
 		bind_addr: SocketAddr,
 		peers: Vec<PeerConfig>,
 	) -> Result<(Self, JoinHandle<()>), Box<dyn Error>> {
 		let inbound = Arc::new(Mutex::new(Vec::new()));
 
-		// Start gRPC server.
 		let service = InboundService {
 			inbound: inbound.clone(),
 		};
@@ -59,10 +52,8 @@ impl GrpcTransport {
 			})
 		};
 
-		// Give server a moment to bind.
 		sleep(Duration::from_millis(50)).await;
 
-		// Connect to each peer.
 		let mut outbound_txs = HashMap::new();
 		for peer in &peers {
 			let (tx, mut rx) = mpsc::unbounded_channel::<Envelope>();
@@ -93,7 +84,6 @@ impl GrpcTransport {
 		}
 
 		let transport = Self {
-			node_id,
 			inbound,
 			outbound_txs,
 		};

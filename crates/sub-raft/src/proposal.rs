@@ -9,20 +9,17 @@ use std::{
 
 use crate::{log::Index, message::Command, node::NodeId};
 
-/// A proposal submitted to the Raft driver by the write path.
 pub struct Proposal {
 	pub command: Command,
 	pub result_tx: SyncSender<Result<Index, ProposalError>>,
 }
 
-/// Errors that can occur when proposing a command.
 #[derive(Debug, Clone)]
 pub enum ProposalError {
-	/// This node is not the leader. Contains the leader NodeId if known.
 	NotLeader(Option<NodeId>),
-	/// The driver has shut down.
+
 	Shutdown,
-	/// The proposal channel is full (backpressure).
+
 	Overloaded,
 }
 

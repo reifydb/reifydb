@@ -16,6 +16,7 @@ use reifydb_core::{
 		MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow,
 	},
 };
+#[cfg(not(target_arch = "wasm32"))]
 use reifydb_sub_raft::message::Command;
 use reifydb_type::{
 	Result,
@@ -494,27 +495,30 @@ impl MultiWriteTransaction {
 			return Ok(CommitVersion(0));
 		}
 		let deltas = self.optimize_for_storage(&entries);
-		let raft_handle = self.engine.raft.read().clone();
-		if let Some(raft) = raft_handle {
-			let cmd = Command::WriteMulti {
-				deltas: deltas.to_vec(),
-				version: commit_version,
-			};
-			if let Err(e) = raft.propose(cmd) {
+		#[cfg(not(target_arch = "wasm32"))]
+		{
+			let raft_handle = self.engine.raft.read().clone();
+			if let Some(raft) = raft_handle {
+				let cmd = Command::WriteMulti {
+					deltas: deltas.to_vec(),
+					version: commit_version,
+				};
+				if let Err(e) = raft.propose(cmd) {
+					self.oracle.done_commit(commit_version);
+					self.discard();
+					return Err(TransactionError::RaftProposeFailed {
+						message: e.to_string(),
+					}
+					.into());
+				}
 				self.oracle.done_commit(commit_version);
 				self.discard();
-				return Err(TransactionError::RaftProposeFailed {
-					message: e.to_string(),
-				}
-				.into());
+				return Ok(commit_version);
 			}
-			self.oracle.done_commit(commit_version);
-			self.discard();
-		} else {
-			MultiVersionCommit::commit(&self.engine.store, deltas.clone(), commit_version)?;
-			self.discard();
-			self.publish(commit_version, deltas);
 		}
+		MultiVersionCommit::commit(&self.engine.store, deltas.clone(), commit_version)?;
+		self.discard();
+		self.publish(commit_version, deltas);
 		Ok(commit_version)
 	}
 

@@ -16,8 +16,6 @@ use crate::{
 	message::Command,
 };
 
-/// Helper to construct a `Command::Write` with a single key=value delta.
-/// Uses the entry's index as the commit version for simplicity.
 pub fn write(key: &str, value: &str, version: u64) -> Command {
 	Command::WriteMulti {
 		deltas: vec![Delta::Set {
@@ -28,7 +26,6 @@ pub fn write(key: &str, value: &str, version: u64) -> Command {
 	}
 }
 
-/// A simple key/value store state machine for testing.
 pub struct KV {
 	applied_index: Index,
 	data: BTreeMap<String, String>,

@@ -3,10 +3,10 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{event::EventBus, util::ioc::IocContainer};
+use reifydb_core::{event::EventBus, interface::catalog::id::NamespaceId, util::ioc::IocContainer};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_profiler::{
-	category::ALL_CATEGORIES,
+	category::{ALL_CATEGORIES, ProfilerCategory},
 	event::{ProfilerScopeBatchEvent, ProfilerScopeClosedEvent},
 	intern::DimInterner,
 	sink::{NoopSink, ProfilerSink},
@@ -126,9 +126,19 @@ impl SubsystemFactory for ProfilerSubsystemFactory {
 
 fn register_profile_aggregates_vtables(engine: &StandardEngine, reader: &ProfilerReader) -> Result<()> {
 	for category in ALL_CATEGORIES {
-		let namespace = format!("system::metrics::profiler::{}", category.name());
 		let vtable = ProfilerAggregatesVTable::new(reader.clone(), category);
-		engine.register_virtual_table(&namespace, "spans", vtable)?;
+		engine.register_virtual_table(category_namespace_id(category), "spans", vtable)?;
 	}
 	Ok(())
+}
+
+fn category_namespace_id(category: ProfilerCategory) -> NamespaceId {
+	match category {
+		ProfilerCategory::Query => NamespaceId::SYSTEM_METRICS_PROFILER_QUERY,
+		ProfilerCategory::Txn => NamespaceId::SYSTEM_METRICS_PROFILER_TXN,
+		ProfilerCategory::Storage => NamespaceId::SYSTEM_METRICS_PROFILER_STORAGE,
+		ProfilerCategory::Plan => NamespaceId::SYSTEM_METRICS_PROFILER_PLAN,
+		ProfilerCategory::Cdc => NamespaceId::SYSTEM_METRICS_PROFILER_CDC,
+		ProfilerCategory::Flow => NamespaceId::SYSTEM_METRICS_PROFILER_FLOW,
+	}
 }

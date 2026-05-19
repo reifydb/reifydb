@@ -172,11 +172,7 @@ impl Subsystem for RaftSubsystem {
 
 		let (transport, transport_join) = self
 			.runtime
-			.block_on(GrpcTransport::start(
-				self.config.node_id,
-				self.config.bind_addr,
-				self.config.peers.clone(),
-			))
+			.block_on(GrpcTransport::start(self.config.bind_addr, self.config.peers.clone()))
 			.expect("failed to start raft gRPC transport");
 
 		let driver_config = DriverConfig {

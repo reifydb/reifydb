@@ -58,6 +58,13 @@ impl Clock {
 			},
 		}
 	}
+
+	pub fn testing() -> Self {
+		#[cfg(reifydb_target = "dst")]
+		return Clock::Mock(MockClock::from_millis(0));
+		#[cfg(not(reifydb_target = "dst"))]
+		return Clock::Real;
+	}
 }
 
 #[derive(Clone)]

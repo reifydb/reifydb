@@ -14,7 +14,7 @@
 use std::sync::Arc;
 
 use reifydb_catalog::bootstrap::bootstrap_system_objects;
-use reifydb_core::{event::EventBus, util::ioc::IocContainer};
+use reifydb_core::{event::EventBus, interface::catalog::id::NamespaceId, util::ioc::IocContainer};
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_profiler::{
 	category::ProfilerCategory,
@@ -37,6 +37,17 @@ fn upsert(
 	accumulator.write().upsert(ident, span_name, duration_us, &[0; MAX_EXTRAS], interner);
 }
 
+fn category_namespace_id(category: ProfilerCategory) -> NamespaceId {
+	match category {
+		ProfilerCategory::Query => NamespaceId::SYSTEM_METRICS_PROFILER_QUERY,
+		ProfilerCategory::Txn => NamespaceId::SYSTEM_METRICS_PROFILER_TXN,
+		ProfilerCategory::Storage => NamespaceId::SYSTEM_METRICS_PROFILER_STORAGE,
+		ProfilerCategory::Plan => NamespaceId::SYSTEM_METRICS_PROFILER_PLAN,
+		ProfilerCategory::Cdc => NamespaceId::SYSTEM_METRICS_PROFILER_CDC,
+		ProfilerCategory::Flow => NamespaceId::SYSTEM_METRICS_PROFILER_FLOW,
+	}
+}
+
 #[test]
 fn end_to_end_drain_into_history_series() {
 	let test_engine = TestEngine::new();
@@ -57,13 +68,13 @@ fn end_to_end_drain_into_history_series() {
 	// Wire the live VTables under the bootstrapped per-category namespaces.
 	let reader_factory = || reifydb_sub_profiler::reader::ProfilerReader::new(Arc::clone(&accumulator));
 	for category in reifydb_profiler::category::ALL_CATEGORIES {
-		let namespace = format!("system::metrics::profiler::{}", category.name());
+		let ns_id = category_namespace_id(category);
 		engine.register_virtual_table(
-			&namespace,
+			ns_id,
 			"spans",
 			ProfilerAggregatesVTable::new(reader_factory(), category),
 		)
-		.unwrap_or_else(|e| panic!("register {namespace}::spans: {e}"));
+		.unwrap_or_else(|e| panic!("register {}::spans: {e}", category.name()));
 	}
 
 	// Drive records into two categories so we can verify per-category partitioning works.

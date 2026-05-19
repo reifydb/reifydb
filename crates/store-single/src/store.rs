@@ -135,14 +135,15 @@ impl Deref for StandardSingleStore {
 impl StandardSingleStore {
 	pub fn testing_memory() -> Self {
 		let pools = Pools::new(PoolConfig::sync_only());
-		let actor_system = ActorSystem::new(pools, Clock::Real);
+		let clock = Clock::testing();
+		let actor_system = ActorSystem::new(pools, clock.clone());
 		Self::new(SingleStoreConfig {
 			buffer: Some(BufferConfig {
 				storage: SingleBufferTier::memory(),
 			}),
 			persistent: None,
 			actor_system,
-			clock: Clock::Real,
+			clock,
 		})
 		.unwrap()
 	}
@@ -150,14 +151,15 @@ impl StandardSingleStore {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn testing_memory_with_persistent_sqlite() -> Self {
 		let pools = Pools::new(PoolConfig::default());
-		let actor_system = ActorSystem::new(pools, Clock::Real);
+		let clock = Clock::testing();
+		let actor_system = ActorSystem::new(pools, clock.clone());
 		Self::new(SingleStoreConfig {
 			buffer: Some(BufferConfig {
 				storage: SingleBufferTier::memory(),
 			}),
 			persistent: Some(PersistentConfig::sqlite_in_memory()),
 			actor_system,
-			clock: Clock::Real,
+			clock,
 		})
 		.unwrap()
 	}

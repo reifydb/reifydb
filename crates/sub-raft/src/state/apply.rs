@@ -16,9 +16,6 @@ use crate::{
 	message::Command,
 };
 
-/// A Raft state machine that bridges committed log entries to ReifyDB's
-/// storage. Dispatches multi-version writes to MultiStore and single-version
-/// writes to SingleStore. Detects catalog key changes and invokes a callback.
 pub struct Apply<M: MultiVersionCommit, S: SingleVersionCommit> {
 	applied_index: Index,
 	multi_store: M,

@@ -6,6 +6,7 @@ use std::mem::{take, transmute};
 use indexmap::IndexMap;
 use reifydb_core::interface::store::{SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRow};
 use reifydb_runtime::sync::rwlock::{RwLock, RwLockWriteGuard};
+#[cfg(not(target_arch = "wasm32"))]
 use reifydb_sub_raft::message::Command;
 use reifydb_type::{
 	Result,
@@ -162,18 +163,22 @@ impl<'a> SingleWriteTransaction<'a> {
 		let deltas: Vec<Delta> = take(&mut self.pending).into_iter().map(|(_, delta)| delta).collect();
 
 		if !deltas.is_empty() {
-			let raft_handle = self.inner.raft.read().clone();
-			if let Some(raft) = raft_handle {
-				let cmd = Command::WriteSingle {
-					deltas,
-				};
-				raft.propose(cmd).map_err(|e| TransactionError::RaftProposeFailed {
-					message: e.to_string(),
-				})?;
-			} else {
-				let mut store = self.inner.store.write();
-				SingleVersionCommit::commit(&mut *store, CowVec::new(deltas))?;
+			#[cfg(not(target_arch = "wasm32"))]
+			{
+				let raft_handle = self.inner.raft.read().clone();
+				if let Some(raft) = raft_handle {
+					let cmd = Command::WriteSingle {
+						deltas,
+					};
+					raft.propose(cmd).map_err(|e| TransactionError::RaftProposeFailed {
+						message: e.to_string(),
+					})?;
+					self.completed = true;
+					return Ok(());
+				}
 			}
+			let mut store = self.inner.store.write();
+			SingleVersionCommit::commit(&mut *store, CowVec::new(deltas))?;
 		}
 
 		self.completed = true;

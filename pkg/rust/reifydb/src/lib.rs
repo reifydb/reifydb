@@ -70,10 +70,10 @@ pub use reifydb_sub_flow::{
 };
 #[cfg(feature = "sub_profiler")]
 pub use reifydb_sub_profiler as sub_profiler;
-#[cfg(feature = "sub_replication")]
-pub use reifydb_sub_replication as sub_replication;
 #[cfg(feature = "sub_raft")]
 pub use reifydb_sub_raft as sub_raft;
+#[cfg(feature = "sub_replication")]
+pub use reifydb_sub_replication as sub_replication;
 #[cfg(feature = "sub_server")]
 pub use reifydb_sub_server as sub_server;
 #[cfg(feature = "sub_server")]

@@ -17,7 +17,6 @@ use crate::{
 	transport::Transport,
 };
 
-/// Observable snapshot of the node's state.
 #[derive(Clone, Debug)]
 pub struct NodeStatus {
 	pub node_id: NodeId,
@@ -29,13 +28,11 @@ pub struct NodeStatus {
 	pub leader: Option<NodeId>,
 }
 
-/// Configuration for the Raft driver loop.
 pub struct DriverConfig {
-	/// Interval between logical ticks.
 	pub tick_interval: Duration,
-	/// Interval between transport receive polls.
+
 	pub recv_interval: Duration,
-	/// Capacity of the proposal channel.
+
 	pub proposal_channel_capacity: usize,
 }
 
@@ -49,7 +46,6 @@ impl Default for DriverConfig {
 	}
 }
 
-/// Cheap, cloneable handle for submitting proposals to the driver.
 #[derive(Clone)]
 pub struct Raft {
 	proposal_tx: mpsc::Sender<Proposal>,
@@ -57,11 +53,6 @@ pub struct Raft {
 }
 
 impl Raft {
-	/// Propose a command and wait for it to be committed.
-	/// Returns the log index of the committed entry.
-	///
-	/// This is a synchronous call safe to use from any thread (Rayon, OS, etc.).
-	/// It does not require a tokio runtime on the calling thread.
 	pub fn propose(&self, command: Command) -> Result<Index, ProposalError> {
 		let (result_tx, result_rx) = std::sync::mpsc::sync_channel(1);
 		self.proposal_tx
@@ -76,25 +67,20 @@ impl Raft {
 		result_rx.recv().map_err(|_| ProposalError::Shutdown)?
 	}
 
-	/// Returns true if the driver has shut down.
 	pub fn is_closed(&self) -> bool {
 		self.proposal_tx.is_closed()
 	}
 
-	/// Returns the latest observed node status.
 	pub fn status(&self) -> NodeStatus {
 		self.status_rx.borrow().clone()
 	}
 
-	/// Waits until the node status changes.
 	pub async fn status_changed(&mut self) -> NodeStatus {
 		let _ = self.status_rx.changed().await;
 		self.status_rx.borrow().clone()
 	}
 }
 
-/// Drives a Raft node: receives messages via transport, ticks on an
-/// interval, accepts proposals, and sends outbound messages.
 pub struct RaftDriver<T: Transport> {
 	node: Option<Node>,
 	transport: T,
@@ -105,7 +91,6 @@ pub struct RaftDriver<T: Transport> {
 }
 
 impl<T: Transport> RaftDriver<T> {
-	/// Creates a new driver and its handle.
 	pub fn new(node: Node, transport: T, config: DriverConfig) -> (Self, Raft) {
 		let (proposal_tx, proposal_rx) = mpsc::channel(config.proposal_channel_capacity);
 		let initial_status = Self::snapshot_status(&node);
@@ -143,8 +128,6 @@ impl<T: Transport> RaftDriver<T> {
 		}
 	}
 
-	/// Run the driver loop. This blocks until the proposal channel is closed
-	/// (all Raft instances dropped) or an unrecoverable error occurs.
 	pub async fn run(mut self) {
 		let mut tick_interval = interval(self.config.tick_interval);
 		let mut recv_interval = interval(self.config.recv_interval);
@@ -157,7 +140,7 @@ impl<T: Transport> RaftDriver<T> {
 				result = self.proposal_rx.recv() => {
 					match result {
 						Some(proposal) => self.do_propose(proposal),
-						None => break, // all handles dropped
+						None => break,
 					}
 				}
 				_ = recv_interval.tick() => {

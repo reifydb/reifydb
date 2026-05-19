@@ -160,7 +160,7 @@ impl IntoDiagnostic for TransactionError {
 			},
 
 			TransactionError::RaftProposeFailed { message } => Diagnostic {
-				code: "TXN_012".to_string(),
+				code: "TXN_013".to_string(),
 				rql: None,
 				message: format!("Raft proposal failed: {message}"),
 				column: None,
@@ -173,7 +173,7 @@ impl IntoDiagnostic for TransactionError {
 			},
 
 			TransactionError::SnapshotVersionEvicted { version, cutoff } => Diagnostic {
-				code: "TXN_013".to_string(),
+				code: "TXN_012".to_string(),
 				rql: None,
 				message: format!(
 					"Snapshot version {} evicted by historical GC; current cutoff is {}",

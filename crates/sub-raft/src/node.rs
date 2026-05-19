@@ -1,11 +1,6 @@
 // Copyright (c) 2025 ReifyDB
 // SPDX-License-Identifier: Apache-2.0
 
-// This file includes and modifies code from the toydb project (https://github.com/erikgrinaker/toydb),
-// originally licensed under the Apache License, Version 2.0.
-// Original copyright:
-//   Copyright (c) 2024 Erik Grinaker
-
 use std::{
 	cmp::{max, min},
 	collections::{HashMap, HashSet},
@@ -21,25 +16,18 @@ use crate::{
 	state::State,
 };
 
-/// A node ID, unique within a cluster.
 pub type NodeId = u8;
 
-/// A leader term number. Increases monotonically on elections.
 pub type Term = u64;
 
-/// A logical clock interval as number of ticks.
 pub type Ticks = u8;
 
-/// The interval between leader heartbeats in ticks.
 pub const HEARTBEAT_INTERVAL: Ticks = 4;
 
-/// The default election timeout range in ticks.
 pub const ELECTION_TIMEOUT_RANGE: Range<Ticks> = 10..20;
 
-/// The maximum number of log entries to send in a single append message.
 pub const MAX_APPEND_ENTRIES: usize = 100;
 
-/// Raft node options.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Options {
 	pub heartbeat_interval: Ticks,
@@ -57,7 +45,6 @@ impl Default for Options {
 	}
 }
 
-/// A Raft node with a dynamic role.
 pub enum Node {
 	Candidate(RawNode<Candidate>),
 	Follower(RawNode<Follower>),
@@ -65,14 +52,11 @@ pub enum Node {
 }
 
 impl Node {
-	/// Creates a new Raft node with a thread-local RNG.
 	pub fn new(id: NodeId, peers: HashSet<NodeId>, log: Log, state: Box<dyn State>, opts: Options) -> Self {
-		// Use node ID as a simple non-deterministic seed mixer.
 		let rng = SmallRng::from_rng(&mut rng());
 		Self::new_with_rng(id, peers, log, state, opts, rng)
 	}
 
-	/// Creates a new Raft node with a specific RNG for deterministic testing.
 	pub fn new_seeded(
 		id: NodeId,
 		peers: HashSet<NodeId>,
@@ -100,7 +84,6 @@ impl Node {
 		node.into()
 	}
 
-	/// Returns the node's ID.
 	pub fn id(&self) -> NodeId {
 		match self {
 			Self::Candidate(n) => n.id,
@@ -109,7 +92,6 @@ impl Node {
 		}
 	}
 
-	/// Returns the node's term.
 	pub fn term(&self) -> Term {
 		match self {
 			Self::Candidate(n) => n.term(),
@@ -118,7 +100,6 @@ impl Node {
 		}
 	}
 
-	/// Returns the node's role as a string.
 	pub fn role(&self) -> &'static str {
 		match self {
 			Self::Candidate(_) => "candidate",
@@ -127,7 +108,6 @@ impl Node {
 		}
 	}
 
-	/// Processes an inbound message. Returns the (possibly role-transitioned) node.
 	pub fn step(self, msg: Envelope) -> Self {
 		assert_eq!(msg.to, self.id(), "message to other node: {msg:?}");
 		match self {
@@ -137,7 +117,6 @@ impl Node {
 		}
 	}
 
-	/// Advances time by a tick.
 	pub fn tick(self) -> Self {
 		match self {
 			Self::Candidate(n) => n.tick(),
@@ -146,7 +125,6 @@ impl Node {
 		}
 	}
 
-	/// Drains and returns all outbound messages.
 	pub fn drain_outbox(&mut self) -> Vec<Envelope> {
 		match self {
 			Self::Candidate(n) => mem::take(&mut n.outbox),
@@ -155,7 +133,6 @@ impl Node {
 		}
 	}
 
-	/// Returns a reference to the log.
 	pub fn log(&self) -> &Log {
 		match self {
 			Self::Candidate(n) => &n.log,
@@ -164,7 +141,6 @@ impl Node {
 		}
 	}
 
-	/// Returns the applied index from the state machine.
 	pub fn applied_index(&self) -> Index {
 		match self {
 			Self::Candidate(n) => n.state.get_applied_index(),
@@ -173,8 +149,6 @@ impl Node {
 		}
 	}
 
-	/// Proposes a command for consensus (leader only). Panics if not leader.
-	/// For single-node clusters, the entry is immediately committed and applied.
 	pub fn propose(&mut self, command: Command) -> Index {
 		match self {
 			Self::Leader(n) => {
@@ -188,7 +162,6 @@ impl Node {
 		}
 	}
 
-	/// Returns the leader's follower progress, if leader.
 	pub fn progress(&self) -> Option<&HashMap<NodeId, Progress>> {
 		match self {
 			Self::Leader(n) => Some(&n.role.progress),
@@ -196,7 +169,6 @@ impl Node {
 		}
 	}
 
-	/// Returns the follower's leader, if any.
 	pub fn leader(&self) -> Option<NodeId> {
 		match self {
 			Self::Follower(n) => n.role.leader,
@@ -204,7 +176,6 @@ impl Node {
 		}
 	}
 
-	/// Returns a reference to the state machine.
 	pub fn state(&self) -> &dyn State {
 		match self {
 			Self::Candidate(n) => n.state.as_ref(),
@@ -213,17 +184,14 @@ impl Node {
 		}
 	}
 
-	/// Returns the commit index and term.
 	pub fn get_commit_index(&self) -> (Index, Term) {
 		self.log().get_commit_index()
 	}
 
-	/// Returns the current term and vote.
 	pub fn get_term_vote(&self) -> (Term, Option<NodeId>) {
 		self.log().get_term_vote()
 	}
 
-	/// Returns the node's peers.
 	pub fn peers(&self) -> &HashSet<NodeId> {
 		match self {
 			Self::Candidate(n) => &n.peers,
@@ -232,7 +200,6 @@ impl Node {
 		}
 	}
 
-	/// Returns the node's options.
 	pub fn options(&self) -> &Options {
 		match self {
 			Self::Candidate(n) => &n.opts,
@@ -241,7 +208,6 @@ impl Node {
 		}
 	}
 
-	/// Returns all log entries from index 1 to last_index.
 	pub fn scan_log(&self) -> Vec<Entry> {
 		let (last_index, _) = self.log().get_last_index();
 		if last_index == 0 {
@@ -250,7 +216,6 @@ impl Node {
 		self.log().scan(1, last_index)
 	}
 
-	/// Consumes the node and returns its components for reconstruction.
 	pub fn dismantle(self) -> (NodeId, HashSet<NodeId>, Log, Box<dyn State>, Options) {
 		match self {
 			Self::Candidate(n) => (n.id, n.peers, n.log, n.state, n.opts),
@@ -259,8 +224,6 @@ impl Node {
 		}
 	}
 
-	/// Transitions to candidate and campaigns for leadership. Panics if
-	/// already a leader.
 	pub fn force_campaign(self) -> Self {
 		match self {
 			Self::Follower(n) => n.into_candidate().into(),
@@ -272,7 +235,6 @@ impl Node {
 		}
 	}
 
-	/// Emits a heartbeat. Panics if not leader.
 	pub fn force_heartbeat(&mut self) {
 		match self {
 			Self::Leader(n) => n.heartbeat(),
@@ -297,10 +259,8 @@ impl From<RawNode<Leader>> for Node {
 	}
 }
 
-/// Marker trait for a Raft role.
 pub trait Role {}
 
-/// A Raft node with role R.
 pub struct RawNode<R: Role> {
 	pub(crate) id: NodeId,
 	pub(crate) peers: HashSet<NodeId>,
@@ -308,9 +268,9 @@ pub struct RawNode<R: Role> {
 	pub(crate) state: Box<dyn State>,
 	pub(crate) opts: Options,
 	pub(crate) role: R,
-	/// Outbound messages produced by step()/tick().
+
 	pub(crate) outbox: Vec<Envelope>,
-	/// Per-node RNG for deterministic election timeouts.
+
 	pub(crate) rng: SmallRng,
 }
 
@@ -367,7 +327,6 @@ impl<R: Role> RawNode<R> {
 	}
 }
 
-/// A follower replicates log entries from a leader.
 pub struct Follower {
 	pub(crate) leader: Option<NodeId>,
 	leader_seen: Ticks,
@@ -582,7 +541,6 @@ impl RawNode<Follower> {
 	}
 }
 
-/// A candidate is campaigning to become a leader.
 pub struct Candidate {
 	votes: HashSet<NodeId>,
 	election_duration: Ticks,
@@ -706,17 +664,14 @@ impl RawNode<Candidate> {
 	}
 }
 
-/// A leader serves requests and replicates the log to followers.
 pub struct Leader {
 	pub(crate) progress: HashMap<NodeId, Progress>,
 	since_heartbeat: Ticks,
 }
 
-/// Per-follower replication progress.
 pub struct Progress {
-	/// The highest index where the follower's log matches the leader.
 	pub match_index: Index,
-	/// The next index to replicate to the follower.
+
 	pub next_index: Index,
 }
 
@@ -900,7 +855,6 @@ impl RawNode<Leader> {
 			return old_index;
 		}
 
-		// Can only commit entries from our own term (section 5.4.2).
 		match self.log.get(commit_index) {
 			Some(entry) if entry.term == self.term() => {}
 			Some(_) => return old_index,
