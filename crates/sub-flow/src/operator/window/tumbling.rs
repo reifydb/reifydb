@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::Entry};
 
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
@@ -69,13 +69,14 @@ fn process_tumbling_group_insert(
 		row_info.push((event_timestamp, window_id));
 	}
 
-	let mut window_caches: HashMap<u64, (WindowState, Option<(Row, bool)>, EncodedKey)> = HashMap::new();
+	type WindowCache = (WindowState, Option<(Row, bool)>, EncodedKey);
+	let mut window_caches: HashMap<u64, WindowCache> = HashMap::new();
 
 	for (row_idx, &(event_timestamp, window_id)) in row_info.iter().enumerate() {
-		if !window_caches.contains_key(&window_id) {
+		if let Entry::Vacant(e) = window_caches.entry(window_id) {
 			let window_key = operator.create_window_key(group_hash, window_id);
 			let state = operator.load_window_state(txn, &window_key)?;
-			window_caches.insert(window_id, (state, None, window_key));
+			e.insert((state, None, window_key));
 		}
 
 		let single_row_columns = columns.extract_row(row_idx);
@@ -91,9 +92,14 @@ fn process_tumbling_group_insert(
 
 		let previous_aggregation = match last_post.take() {
 			Some(prev) => Some(prev),
-			None if !window_state.events.is_empty() => {
-				operator.apply_aggregations(txn, window_key, &layout, &window_state.events, changed_at)?
-			}
+			None if !window_state.events.is_empty() => operator.apply_aggregations(
+				txn,
+				window_key,
+				&layout,
+				&window_state.events,
+				changed_at,
+				window_state,
+			)?,
 			None => None,
 		};
 
@@ -102,13 +108,19 @@ fn process_tumbling_group_insert(
 		window_state.events.push(event);
 		window_state.event_count += 1;
 		window_state.last_event_time = event_timestamp;
+		operator.update_running_totals_on_push(window_state, &row);
 		if window_state.window_start == 0 {
 			window_state.window_start = operator.set_tumbling_window_start(event_timestamp);
 		}
 
-		if let Some((aggregated_row, is_new)) =
-			operator.apply_aggregations(txn, window_key, &layout, &window_state.events, changed_at)?
-		{
+		if let Some((aggregated_row, is_new)) = operator.apply_aggregations(
+			txn,
+			window_key,
+			&layout,
+			&window_state.events,
+			changed_at,
+			window_state,
+		)? {
 			let cache_value = Some((aggregated_row.clone(), is_new));
 			result.push(WindowOperator::emit_aggregation_diff(
 				&aggregated_row,

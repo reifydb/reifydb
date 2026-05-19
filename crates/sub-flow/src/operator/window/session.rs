@@ -109,6 +109,7 @@ impl WindowOperator {
 						layout,
 						&state.events,
 						changed_at,
+						&state,
 					)? {
 					result.push(Diff::remove(Columns::from_row(&row)));
 				}
@@ -187,7 +188,7 @@ fn close_session(
 		return Ok(None);
 	};
 	let Some((pre_row, _)) =
-		operator.apply_aggregations(txn, &pre_window_key, layout, &pre_state.events, changed_at)?
+		operator.apply_aggregations(txn, &pre_window_key, layout, &pre_state.events, changed_at, &pre_state)?
 	else {
 		return Ok(None);
 	};
@@ -219,7 +220,7 @@ fn append_event_to_session(
 	let layout = window_state.layout().clone();
 
 	let previous_aggregation = if !window_state.events.is_empty() {
-		operator.apply_aggregations(txn, &window_key, &layout, &window_state.events, changed_at)?
+		operator.apply_aggregations(txn, &window_key, &layout, &window_state.events, changed_at, &window_state)?
 	} else {
 		None
 	};
@@ -229,12 +230,13 @@ fn append_event_to_session(
 	window_state.events.push(event);
 	window_state.event_count += 1;
 	window_state.last_event_time = event_timestamp;
+	operator.update_running_totals_on_push(&mut window_state, &row);
 	if window_state.window_start == 0 {
 		window_state.window_start = event_timestamp;
 	}
 
 	let diff = if let Some((aggregated_row, is_new)) =
-		operator.apply_aggregations(txn, &window_key, &layout, &window_state.events, changed_at)?
+		operator.apply_aggregations(txn, &window_key, &layout, &window_state.events, changed_at, &window_state)?
 	{
 		Some(WindowOperator::emit_aggregation_diff(&aggregated_row, is_new, previous_aggregation))
 	} else {

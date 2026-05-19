@@ -22,7 +22,8 @@ use reifydb_type::{
 };
 
 use crate::routine::{
-	Accumulator, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Accumulator, AggregateFunctionCapability, Function, FunctionKind, Routine, RoutineInfo,
+	context::FunctionContext, error::RoutineError,
 };
 
 pub struct Sum {
@@ -85,6 +86,10 @@ impl Function for Sum {
 	fn accumulator(&self, _ctx: &mut FunctionContext<'_>) -> Option<Box<dyn Accumulator>> {
 		Some(Box::new(SumAccumulator::new()))
 	}
+
+	fn aggregate_capabilities(&self) -> &[AggregateFunctionCapability] {
+		&[AggregateFunctionCapability::Retractable]
+	}
 }
 
 struct SumAccumulator {
@@ -127,6 +132,26 @@ macro_rules! sum_arm {
 	};
 }
 
+macro_rules! sub_arm {
+	($self:expr, $column:expr, $groups:expr, $container:expr, $t:ty, $variant:ident) => {
+		for (group, indices) in $groups.iter() {
+			let mut delta: $t = Default::default();
+			let mut has_value = false;
+			for &i in indices {
+				if $column.is_defined(i) {
+					if let Some(&val) = $container.get(i) {
+						delta += val;
+						has_value = true;
+					}
+				}
+			}
+			if has_value && let Some(Value::$variant(prev)) = $self.sums.swap_remove(group) {
+				$self.sums.insert(group.clone(), Value::$variant(prev - delta));
+			}
+		}
+	};
+}
+
 macro_rules! sum_arm_float {
 	($self:expr, $column:expr, $groups:expr, $container:expr, $t:ty, $variant:ident, $ctor:expr) => {
 		for (group, indices) in $groups.iter() {
@@ -148,6 +173,26 @@ macro_rules! sum_arm_float {
 				$self.sums.insert(group.clone(), $ctor(merged));
 			} else {
 				$self.sums.entry(group.clone()).or_insert(Value::none());
+			}
+		}
+	};
+}
+
+macro_rules! sub_arm_float {
+	($self:expr, $column:expr, $groups:expr, $container:expr, $t:ty, $variant:ident, $ctor:expr) => {
+		for (group, indices) in $groups.iter() {
+			let mut delta: $t = Default::default();
+			let mut has_value = false;
+			for &i in indices {
+				if $column.is_defined(i) {
+					if let Some(&val) = $container.get(i) {
+						delta += val;
+						has_value = true;
+					}
+				}
+			}
+			if has_value && let Some(Value::$variant(prev)) = $self.sums.swap_remove(group) {
+				$self.sums.insert(group.clone(), $ctor(prev.value() - delta));
 			}
 		}
 	};
@@ -312,5 +357,156 @@ impl Accumulator for SumAccumulator {
 		}
 
 		Ok((keys, data))
+	}
+
+	fn kind_name(&self) -> &'static str {
+		"math::sum"
+	}
+
+	fn retract(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), RoutineError> {
+		let column = &args[0];
+		let (data, _bitvec) = column.unwrap_option();
+
+		if self.input_type.is_none() {
+			self.input_type = Some(data.get_type());
+		}
+
+		match data {
+			ColumnBuffer::Int1(container) => {
+				sub_arm!(self, column, groups, container, i8, Int1);
+				Ok(())
+			}
+			ColumnBuffer::Int2(container) => {
+				sub_arm!(self, column, groups, container, i16, Int2);
+				Ok(())
+			}
+			ColumnBuffer::Int4(container) => {
+				sub_arm!(self, column, groups, container, i32, Int4);
+				Ok(())
+			}
+			ColumnBuffer::Int8(container) => {
+				sub_arm!(self, column, groups, container, i64, Int8);
+				Ok(())
+			}
+			ColumnBuffer::Int16(container) => {
+				sub_arm!(self, column, groups, container, i128, Int16);
+				Ok(())
+			}
+			ColumnBuffer::Uint1(container) => {
+				sub_arm!(self, column, groups, container, u8, Uint1);
+				Ok(())
+			}
+			ColumnBuffer::Uint2(container) => {
+				sub_arm!(self, column, groups, container, u16, Uint2);
+				Ok(())
+			}
+			ColumnBuffer::Uint4(container) => {
+				sub_arm!(self, column, groups, container, u32, Uint4);
+				Ok(())
+			}
+			ColumnBuffer::Uint8(container) => {
+				sub_arm!(self, column, groups, container, u64, Uint8);
+				Ok(())
+			}
+			ColumnBuffer::Uint16(container) => {
+				sub_arm!(self, column, groups, container, u128, Uint16);
+				Ok(())
+			}
+			ColumnBuffer::Float4(container) => {
+				sub_arm_float!(self, column, groups, container, f32, Float4, Value::float4);
+				Ok(())
+			}
+			ColumnBuffer::Float8(container) => {
+				sub_arm_float!(self, column, groups, container, f64, Float8, Value::float8);
+				Ok(())
+			}
+			ColumnBuffer::Int {
+				container,
+				..
+			} => {
+				for (group, indices) in groups.iter() {
+					let mut delta = Int::zero();
+					let mut has_value = false;
+					for &i in indices {
+						if column.is_defined(i)
+							&& let Some(val) = container.get(i)
+						{
+							delta = Int(delta.0 + &val.0);
+							has_value = true;
+						}
+					}
+					if has_value && let Some(Value::Int(prev)) = self.sums.swap_remove(group) {
+						self.sums.insert(group.clone(), Value::Int(Int(prev.0 - &delta.0)));
+					}
+				}
+				Ok(())
+			}
+			ColumnBuffer::Uint {
+				container,
+				..
+			} => {
+				for (group, indices) in groups.iter() {
+					let mut delta = Uint::zero();
+					let mut has_value = false;
+					for &i in indices {
+						if column.is_defined(i)
+							&& let Some(val) = container.get(i)
+						{
+							delta = Uint(delta.0 + &val.0);
+							has_value = true;
+						}
+					}
+					if has_value && let Some(Value::Uint(prev)) = self.sums.swap_remove(group) {
+						self.sums.insert(group.clone(), Value::Uint(Uint(prev.0 - &delta.0)));
+					}
+				}
+				Ok(())
+			}
+			ColumnBuffer::Decimal {
+				container,
+				..
+			} => {
+				for (group, indices) in groups.iter() {
+					let mut delta = Decimal::zero();
+					let mut has_value = false;
+					for &i in indices {
+						if column.is_defined(i)
+							&& let Some(val) = container.get(i)
+						{
+							delta = Decimal(delta.0 + &val.0);
+							has_value = true;
+						}
+					}
+					if has_value && let Some(Value::Decimal(prev)) = self.sums.swap_remove(group) {
+						self.sums.insert(
+							group.clone(),
+							Value::Decimal(Decimal(prev.0 - &delta.0)),
+						);
+					}
+				}
+				Ok(())
+			}
+			other => Err(RoutineError::FunctionInvalidArgumentType {
+				function: Fragment::internal("math::sum"),
+				argument_index: 0,
+				expected: InputTypes::numeric().expected_at(0).to_vec(),
+				actual: other.get_type(),
+			}),
+		}
+	}
+
+	fn peek(&self, group: &GroupKey) -> Option<Value> {
+		self.sums.get(group).cloned()
+	}
+
+	fn seed(&mut self, group: GroupKey, value: Value) -> Result<(), RoutineError> {
+		if matches!(value, Value::None { .. }) {
+			return Ok(());
+		}
+		if self.input_type.is_none() {
+			self.input_type = Some(value.get_type());
+		}
+		self.sums.insert(group, value);
+		Ok(())
 	}
 }
