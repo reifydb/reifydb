@@ -40,6 +40,14 @@ impl Pools {
 	pub fn commit_thread_count(&self) -> usize {
 		1
 	}
+
+	pub fn background_pool(&self) -> StubPool {
+		StubPool
+	}
+
+	pub fn background_thread_count(&self) -> usize {
+		1
+	}
 }
 
 #[derive(Clone)]

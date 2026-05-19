@@ -306,6 +306,10 @@ impl ActorSystem {
 		self.spawn_system(name, actor)
 	}
 
+	pub fn spawn_background<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+		self.spawn_system(name, actor)
+	}
+
 	pub fn step(&self) -> StepResult {
 		{
 			let mut panics = self.inner.init_panics.borrow_mut();

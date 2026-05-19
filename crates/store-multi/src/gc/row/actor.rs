@@ -48,7 +48,7 @@ impl<P: ListRowTtls> Actor<P> {
 
 	pub fn spawn(system: &ActorSystem, store: StandardMultiStore, provider: P) -> ActorRef<Message> {
 		let actor = Self::new(store, provider);
-		system.spawn_system("row-row", actor).actor_ref().clone()
+		system.spawn_background("row-row", actor).actor_ref().clone()
 	}
 
 	fn run_scan(&self, state: &mut ActorState, now: DateTime) {

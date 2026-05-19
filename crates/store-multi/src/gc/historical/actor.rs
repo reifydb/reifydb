@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, mem::take, sync::Arc};
 
 use reifydb_core::{
 	actors::historical_gc::HistoricalGcMessage as Message,
@@ -64,7 +64,7 @@ impl<W: QueryWatermark> Actor<W> {
 		config: Arc<dyn GetConfig>,
 	) -> ActorRef<Message> {
 		let actor = Self::new(store, watermark, config);
-		system.spawn_system("historical-historical", actor).actor_ref().clone()
+		system.spawn_background("historical-historical", actor).actor_ref().clone()
 	}
 
 	fn start_sweep(&self, state: &mut ActorState, ctx: &Context<Message>) {
@@ -119,7 +119,7 @@ impl<W: QueryWatermark> Actor<W> {
 		let batch_size = self.batch_size();
 
 		let Some(entry_kind) = progress.remaining.pop() else {
-			let stats = std::mem::take(&mut progress.stats);
+			let stats = take(&mut progress.stats);
 			state.in_progress = None;
 			self.finish_sweep(buffer, cutoff, &stats);
 			return;

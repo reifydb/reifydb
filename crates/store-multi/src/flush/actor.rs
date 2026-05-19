@@ -75,7 +75,7 @@ impl FlushActor {
 		flush_interval: Duration,
 	) -> ActorRef<FlushMessage> {
 		let actor = Self::new(buffer, persistent, flush_interval);
-		system.spawn_system("persistent-flush", actor).actor_ref().clone()
+		system.spawn_background("persistent-flush", actor).actor_ref().clone()
 	}
 
 	fn merge_dirty(
