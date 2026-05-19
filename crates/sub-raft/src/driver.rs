@@ -1,7 +1,11 @@
 // Copyright (c) 2025 ReifyDB
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::HashMap, sync::mpsc::SyncSender, time::Duration};
+use std::{
+	collections::HashMap,
+	sync::mpsc::{SyncSender, sync_channel},
+	time::Duration,
+};
 
 use tokio::{
 	select,
@@ -54,7 +58,7 @@ pub struct Raft {
 
 impl Raft {
 	pub fn propose(&self, command: Command) -> Result<Index, ProposalError> {
-		let (result_tx, result_rx) = std::sync::mpsc::sync_channel(1);
+		let (result_tx, result_rx) = sync_channel(1);
 		self.proposal_tx
 			.try_send(Proposal {
 				command,

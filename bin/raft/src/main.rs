@@ -11,8 +11,10 @@
 //!     --peer 2=127.0.0.1:9200 --peer 3=127.0.0.1:9300
 
 use std::{
-	io::{BufRead, Write},
+	env,
+	io::{BufRead, Write, stdin, stdout},
 	net::SocketAddr,
+	thread,
 	time::Duration,
 };
 
@@ -24,7 +26,7 @@ use reifydb_sub_raft::{
 use reifydb_type::params::Params;
 
 fn main() {
-	let args: Vec<String> = std::env::args().collect();
+	let args: Vec<String> = env::args().collect();
 
 	let mut node_id: Option<NodeId> = None;
 	let mut bind_addr: Option<SocketAddr> = None;
@@ -83,7 +85,7 @@ fn main() {
 
 	eprintln!("node {node_id}: waiting for leader election...");
 	loop {
-		std::thread::sleep(Duration::from_millis(100));
+		thread::sleep(Duration::from_millis(100));
 		let status = handle.status();
 		if status.role == "leader" || status.leader.is_some() {
 			eprintln!("node {node_id}: {} (term={}, leader={:?})", status.role, status.term, status.leader);
@@ -93,8 +95,8 @@ fn main() {
 
 	eprintln!("node {node_id}: ready. Commands: admin <RQL>, command <RQL>, query <RQL>, status, quit\n");
 
-	let stdin = std::io::stdin();
-	let mut stdout = std::io::stdout();
+	let stdin = stdin();
+	let mut stdout = stdout();
 	let identity = IdentityId::system();
 
 	loop {
@@ -140,9 +142,9 @@ fn main() {
 		};
 
 		let result = match cmd {
-			"admin" => db.admin_as(identity.clone(), rql, Params::None),
-			"command" => db.command_as(identity.clone(), rql, Params::None),
-			"query" => db.query_as(identity.clone(), rql, Params::None),
+			"admin" => db.admin_as(identity, rql, Params::None),
+			"command" => db.command_as(identity, rql, Params::None),
+			"query" => db.query_as(identity, rql, Params::None),
 			_ => {
 				println!("unknown command '{cmd}'. Use: admin, command, query, status, quit");
 				continue;

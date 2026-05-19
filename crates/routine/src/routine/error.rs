@@ -57,6 +57,12 @@ pub enum RoutineError {
 		reason: String,
 	},
 
+	#[error("operation '{op}' is not supported by accumulator '{accumulator}'")]
+	Unsupported {
+		op: &'static str,
+		accumulator: &'static str,
+	},
+
 	#[error(transparent)]
 	Wrapped(Box<Error>),
 }
@@ -254,6 +260,24 @@ impl IntoDiagnostic for RoutineError {
 					operator_chain: None,
 				}
 			}
+			RoutineError::Unsupported {
+				op,
+				accumulator,
+			} => Diagnostic {
+				code: "ACCUMULATOR_001".to_string(),
+				rql: None,
+				message: format!(
+					"operation '{}' is not supported by accumulator '{}'",
+					op, accumulator
+				),
+				column: None,
+				fragment: Fragment::none(),
+				label: Some("unsupported operation".to_string()),
+				help: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
 			RoutineError::Wrapped(err) => *err.0,
 		}
 	}

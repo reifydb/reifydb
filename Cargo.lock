@@ -3129,6 +3129,7 @@ dependencies = [
  "prost",
  "rand 0.10.1",
  "reifydb-core",
+ "reifydb-runtime",
  "reifydb-type",
  "serde",
  "tokio",

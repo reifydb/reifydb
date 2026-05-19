@@ -65,6 +65,9 @@ use reifydb_type::value::Value;
 #[cfg(feature = "sub_profiler")]
 use tracing_subscriber::filter::LevelFilter;
 
+#[cfg(feature = "sub_raft")]
+use crate::raft::RaftSubsystemFactory;
+
 fn pool_config_from_sources(
 	factory: &StorageFactory,
 	overrides: &[(ConfigKey, Value)],
@@ -319,7 +322,7 @@ impl ServerBuilder {
 
 	#[cfg(feature = "sub_raft")]
 	pub fn with_raft(mut self, config: RaftConfig) -> Self {
-		let factory = crate::raft::RaftSubsystemFactory::new(config);
+		let factory = RaftSubsystemFactory::new(config);
 		self.subsystem_factories.push(Box::new(factory));
 		self
 	}

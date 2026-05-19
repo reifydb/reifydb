@@ -6,6 +6,7 @@ use reifydb_core::{
 	encoded::key::EncodedKey,
 	interface::change::{Change, Diff},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
+	row::Row,
 	value::column::columns::Columns,
 };
 use reifydb_runtime::hash::Hash128;
@@ -22,18 +23,51 @@ impl WindowOperator {
 			} => {
 				let window_size_ms = duration.as_millis() as u64;
 				let cutoff_time = current_timestamp.saturating_sub(window_size_ms);
+				let layout_opt = state.window_layout.clone();
+				let totals_intact_before = self
+					.fast_aggregations
+					.as_ref()
+					.is_some_and(|fast| state.running_totals.len() == fast.len());
+				let evicted_rows: Vec<Row> =
+					if totals_intact_before && let Some(layout) = layout_opt.as_ref() {
+						state.events
+							.iter()
+							.filter(|e| e.timestamp <= cutoff_time)
+							.map(|e| e.to_row(layout))
+							.collect()
+					} else {
+						Vec::new()
+					};
 				let original_len = state.events.len();
 				state.events.retain(|event| event.timestamp > cutoff_time);
 				let evicted_count = original_len - state.events.len();
 				state.event_count = state.event_count.saturating_sub(evicted_count as u64);
+				for row in &evicted_rows {
+					self.update_running_totals_on_evict(state, row);
+				}
 			}
 			WindowKind::Rolling {
 				size: WindowSize::Count(count),
 			} => {
 				if state.events.len() > *count as usize {
 					let excess = state.events.len() - *count as usize;
+					let layout_opt = state.window_layout.clone();
+					let totals_intact_before = self
+						.fast_aggregations
+						.as_ref()
+						.is_some_and(|fast| state.running_totals.len() == fast.len());
+					let evicted_rows: Vec<Row> = if totals_intact_before
+						&& let Some(layout) = layout_opt.as_ref()
+					{
+						state.events[0..excess].iter().map(|e| e.to_row(layout)).collect()
+					} else {
+						Vec::new()
+					};
 					state.events.drain(0..excess);
 					state.event_count = *count;
+					for row in &evicted_rows {
+						self.update_running_totals_on_evict(state, row);
+					}
 				}
 			}
 			_ => {}
@@ -68,7 +102,8 @@ impl WindowOperator {
 			};
 
 			let changed_at = DateTime::from_nanos(current_timestamp);
-			let pre_agg = self.apply_aggregations(txn, &window_key, &layout, &state.events, changed_at)?;
+			let pre_agg =
+				self.apply_aggregations(txn, &window_key, &layout, &state.events, changed_at, &state)?;
 			let pre_count = state.events.len();
 			self.evict_old_events(&mut state, current_timestamp);
 
@@ -85,6 +120,7 @@ impl WindowOperator {
 						&layout,
 						&state.events,
 						changed_at,
+						&state,
 					)?;
 					self.save_window_state(txn, &window_key, &state)?;
 					if let (Some((pre_row, _)), Some((post_row, _))) = (pre_agg, post_agg) {
@@ -120,6 +156,7 @@ fn process_rolling_group_insert(
 	let window_id = 0u64;
 	let window_key = operator.create_window_key(group_hash, window_id);
 	let mut window_state = operator.load_window_state(txn, &window_key)?;
+	let mut last_post: Option<(Row, bool)> = None;
 
 	for (row_idx, &event_timestamp) in timestamps.iter().enumerate() {
 		let single_row_columns = columns.extract_row(row_idx);
@@ -131,10 +168,17 @@ fn process_rolling_group_insert(
 		}
 		let layout = window_state.layout().clone();
 
-		let previous_aggregation = if !window_state.events.is_empty() {
-			operator.apply_aggregations(txn, &window_key, &layout, &window_state.events, changed_at)?
-		} else {
-			None
+		let previous_aggregation = match last_post.take() {
+			Some(prev) => Some(prev),
+			None if !window_state.events.is_empty() => operator.apply_aggregations(
+				txn,
+				&window_key,
+				&layout,
+				&window_state.events,
+				changed_at,
+				&window_state,
+			)?,
+			None => None,
 		};
 
 		let event = WindowEvent::from_row(&row, event_timestamp);
@@ -142,6 +186,7 @@ fn process_rolling_group_insert(
 		window_state.events.push(event);
 		window_state.event_count += 1;
 		window_state.last_event_time = event_timestamp;
+		operator.update_running_totals_on_push(&mut window_state, &row);
 
 		if window_state.window_start == 0 {
 			window_state.window_start = event_timestamp;
@@ -154,7 +199,9 @@ fn process_rolling_group_insert(
 		} else {
 			current_timestamp
 		};
+		let pre_evict_len = window_state.events.len();
 		operator.evict_old_events(&mut window_state, eviction_ts);
+		let evicted = window_state.events.len() != pre_evict_len;
 
 		if !window_state.events.is_empty()
 			&& let Some((aggregated_row, is_new)) = operator.apply_aggregations(
@@ -163,12 +210,21 @@ fn process_rolling_group_insert(
 				&layout,
 				&window_state.events,
 				changed_at,
+				&window_state,
 			)? {
+			let cached = if evicted {
+				None
+			} else {
+				Some((aggregated_row.clone(), is_new))
+			};
 			result.push(WindowOperator::emit_aggregation_diff(
 				&aggregated_row,
 				is_new,
 				previous_aggregation,
 			));
+			last_post = cached;
+		} else {
+			last_post = None;
 		}
 	}
 

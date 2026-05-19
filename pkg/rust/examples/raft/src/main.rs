@@ -7,7 +7,7 @@
 //!   raft-cluster --node-id 1 --bind 127.0.0.1:9100 \
 //!     --peer 2=127.0.0.1:9200 --peer 3=127.0.0.1:9300
 
-use std::{collections::HashSet, net::SocketAddr};
+use std::{collections::HashSet, env, net::SocketAddr, time::Duration};
 
 use reifydb_sub_raft::{
 	config::PeerConfig,
@@ -17,10 +17,11 @@ use reifydb_sub_raft::{
 	node::{Node, NodeId, Options},
 	state::testing::KV,
 };
+use tokio::{spawn, time::sleep};
 
 #[tokio::main]
 async fn main() {
-	let args: Vec<String> = std::env::args().collect();
+	let args: Vec<String> = env::args().collect();
 
 	let mut node_id: Option<NodeId> = None;
 	let mut bind_addr: Option<SocketAddr> = None;
@@ -67,13 +68,13 @@ async fn main() {
 	let (driver, handle) = RaftDriver::new(node, transport, config);
 
 	eprintln!("node {node_id}: driver running");
-	let driver_handle = tokio::spawn(driver.run());
+	let driver_handle = spawn(driver.run());
 
 	// Periodically print status.
 	let status_handle = handle.clone();
-	tokio::spawn(async move {
+	spawn(async move {
 		loop {
-			tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+			sleep(Duration::from_secs(5)).await;
 			eprintln!("node {node_id}: alive (handle active={})", !status_handle.is_closed());
 		}
 	});

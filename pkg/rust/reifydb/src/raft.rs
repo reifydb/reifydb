@@ -84,6 +84,7 @@ pub struct RaftSubsystem {
 }
 
 impl RaftSubsystem {
+	#[allow(clippy::too_many_arguments)]
 	fn new(
 		config: RaftConfig,
 		multi_store: MultiStore,

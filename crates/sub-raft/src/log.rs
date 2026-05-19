@@ -37,6 +37,12 @@ pub struct Log {
 	commit_term: Term,
 }
 
+impl Default for Log {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Log {
 	pub fn new() -> Self {
 		Self {

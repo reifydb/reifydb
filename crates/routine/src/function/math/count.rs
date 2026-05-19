@@ -16,7 +16,8 @@ use reifydb_type::value::{
 };
 
 use crate::routine::{
-	Accumulator, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Accumulator, AggregateFunctionCapability, Function, FunctionKind, Routine, RoutineInfo,
+	context::FunctionContext, error::RoutineError,
 };
 
 pub struct Count {
@@ -78,6 +79,10 @@ impl Function for Count {
 	fn accumulator(&self, _ctx: &mut FunctionContext<'_>) -> Option<Box<dyn Accumulator>> {
 		Some(Box::new(CountAccumulator::new()))
 	}
+
+	fn aggregate_capabilities(&self) -> &[AggregateFunctionCapability] {
+		&[AggregateFunctionCapability::Retractable]
+	}
 }
 
 struct CountAccumulator {
@@ -123,5 +128,42 @@ impl Accumulator for CountAccumulator {
 		}
 
 		Ok((keys, data))
+	}
+
+	fn kind_name(&self) -> &'static str {
+		"math::count"
+	}
+
+	fn retract(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), RoutineError> {
+		let column = &args[0];
+		let column_name = args.name_at(0);
+
+		let is_count_star = column_name.text() == "dummy" && matches!(column, ColumnBuffer::Int4(_));
+
+		if is_count_star {
+			for (group, indices) in groups.iter() {
+				let count = indices.len() as i64;
+				let entry = self.counts.entry(group.clone()).or_insert(0);
+				*entry = entry.saturating_sub(count);
+			}
+		} else {
+			for (group, indices) in groups.iter() {
+				let count = indices.iter().filter(|&i| column.is_defined(*i)).count() as i64;
+				let entry = self.counts.entry(group.clone()).or_insert(0);
+				*entry = entry.saturating_sub(count);
+			}
+		}
+		Ok(())
+	}
+
+	fn peek(&self, group: &GroupKey) -> Option<Value> {
+		self.counts.get(group).copied().map(Value::Int8)
+	}
+
+	fn seed(&mut self, group: GroupKey, value: Value) -> Result<(), RoutineError> {
+		if let Value::Int8(n) = value {
+			self.counts.insert(group, n);
+		}
+		Ok(())
 	}
 }

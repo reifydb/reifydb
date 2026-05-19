@@ -31,6 +31,12 @@ pub struct KV {
 	data: BTreeMap<String, String>,
 }
 
+impl Default for KV {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl KV {
 	pub fn new() -> Self {
 		Self {

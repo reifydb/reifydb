@@ -477,16 +477,16 @@ impl RawNode<Follower> {
 				last_index,
 				last_term,
 			} => {
-				if let (_, Some(vote)) = self.log.get_term_vote() {
-					if msg.from != vote {
-						self.send(
-							msg.from,
-							Message::CampaignResponse {
-								vote: false,
-							},
-						);
-						return self.into();
-					}
+				if let (_, Some(vote)) = self.log.get_term_vote()
+					&& msg.from != vote
+				{
+					self.send(
+						msg.from,
+						Message::CampaignResponse {
+							vote: false,
+						},
+					);
+					return self.into();
 				}
 
 				let (log_index, log_term) = self.log.get_last_index();

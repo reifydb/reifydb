@@ -1,16 +1,10 @@
 // Copyright (c) 2025 ReifyDB
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{
-	collections::HashMap,
-	error::Error,
-	mem::take,
-	net::SocketAddr,
-	sync::{Arc, Mutex},
-	time::Duration,
-};
+use std::{collections::HashMap, error::Error, mem::take, net::SocketAddr, sync::Arc, time::Duration};
 
 use postcard::{from_bytes, to_stdvec};
+use reifydb_runtime::sync::mutex::Mutex;
 use tokio::{spawn, sync::mpsc, task::JoinHandle, time::sleep};
 use tonic::{Request, Response, Status, transport::Server};
 
@@ -99,7 +93,7 @@ impl Transport for GrpcTransport {
 	}
 
 	fn receive(&self) -> Vec<Envelope> {
-		let mut inbound = self.inbound.lock().unwrap();
+		let mut inbound = self.inbound.lock();
 		take(&mut *inbound)
 	}
 }
@@ -114,7 +108,7 @@ impl RaftTransportTrait for InboundService {
 		let msg = request.into_inner();
 		let envelope: Envelope =
 			from_bytes(&msg.payload).map_err(|e| Status::invalid_argument(format!("deserialize: {e}")))?;
-		self.inbound.lock().unwrap().push(envelope);
+		self.inbound.lock().push(envelope);
 		Ok(Response::new(RaftAck {}))
 	}
 }

@@ -122,6 +122,7 @@ fn process_sliding_group_insert(
 					&layout,
 					&window_state.events,
 					changed_at,
+					&window_state,
 				)?
 			} else {
 				None
@@ -132,6 +133,7 @@ fn process_sliding_group_insert(
 			window_state.events.push(event);
 			window_state.event_count += 1;
 			window_state.last_event_time = event_timestamp;
+			operator.update_running_totals_on_push(&mut window_state, &row);
 
 			if window_state.window_start == 0 {
 				window_state.window_start =
@@ -144,6 +146,7 @@ fn process_sliding_group_insert(
 				&layout,
 				&window_state.events,
 				changed_at,
+				&window_state,
 			)? {
 				result.push(WindowOperator::emit_aggregation_diff(
 					&aggregated_row,

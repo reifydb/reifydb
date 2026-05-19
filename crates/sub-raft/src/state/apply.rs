@@ -82,7 +82,7 @@ impl<M: MultiVersionCommit + 'static, S: SingleVersionCommit + 'static> State fo
 
 				if self.on_catalog_change.is_some() {
 					let has_catalog =
-						deltas.iter().any(|d| Key::kind(d.key()).map_or(false, is_catalog_key));
+						deltas.iter().any(|d| Key::kind(d.key()).is_some_and(is_catalog_key));
 					if has_catalog {
 						(self.on_catalog_change.as_ref().unwrap())();
 					}

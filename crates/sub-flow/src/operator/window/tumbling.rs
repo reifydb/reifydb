@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+use std::collections::{HashMap, hash_map::Entry};
+
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
+	encoded::key::EncodedKey,
 	interface::change::{Change, Diff},
+	row::Row,
 	value::column::columns::Columns,
 };
 use reifydb_runtime::hash::Hash128;
 use reifydb_type::{Result, value::datetime::DateTime};
 
-use super::{WindowEvent, WindowLayout, WindowOperator};
+use super::{WindowEvent, WindowLayout, WindowOperator, WindowState};
 use crate::transaction::FlowTransaction;
 
 impl WindowOperator {
@@ -52,7 +56,8 @@ fn process_tumbling_group_insert(
 
 	let timestamps = operator.resolve_event_timestamps(columns, row_count)?;
 
-	for (row_idx, &timestamp) in timestamps.iter().enumerate() {
+	let mut row_info: Vec<(u64, u64)> = Vec::with_capacity(row_count);
+	for &timestamp in timestamps.iter() {
 		let (event_timestamp, window_id) = if operator.is_count_based() {
 			let event_timestamp = operator.current_timestamp();
 			let global_count = operator.get_and_increment_global_count(txn, group_hash)?;
@@ -61,23 +66,41 @@ fn process_tumbling_group_insert(
 		} else {
 			(timestamp, operator.get_tumbling_window_id(timestamp))
 		};
+		row_info.push((event_timestamp, window_id));
+	}
 
-		let window_key = operator.create_window_key(group_hash, window_id);
-		let mut window_state = operator.load_window_state(txn, &window_key)?;
+	type WindowCache = (WindowState, Option<(Row, bool)>, EncodedKey);
+	let mut window_caches: HashMap<u64, WindowCache> = HashMap::new();
+
+	for (row_idx, &(event_timestamp, window_id)) in row_info.iter().enumerate() {
+		if let Entry::Vacant(e) = window_caches.entry(window_id) {
+			let window_key = operator.create_window_key(group_hash, window_id);
+			let state = operator.load_window_state(txn, &window_key)?;
+			e.insert((state, None, window_key));
+		}
 
 		let single_row_columns = columns.extract_row(row_idx);
 		let projected = operator.project_columns(&single_row_columns);
 		let row = projected.to_single_row();
+
+		let (window_state, last_post, window_key) = window_caches.get_mut(&window_id).unwrap();
 
 		if window_state.window_layout.is_none() {
 			window_state.window_layout = Some(WindowLayout::from_row(&row));
 		}
 		let layout = window_state.layout().clone();
 
-		let previous_aggregation = if !window_state.events.is_empty() {
-			operator.apply_aggregations(txn, &window_key, &layout, &window_state.events, changed_at)?
-		} else {
-			None
+		let previous_aggregation = match last_post.take() {
+			Some(prev) => Some(prev),
+			None if !window_state.events.is_empty() => operator.apply_aggregations(
+				txn,
+				window_key,
+				&layout,
+				&window_state.events,
+				changed_at,
+				window_state,
+			)?,
+			None => None,
 		};
 
 		let event = WindowEvent::from_row(&row, event_timestamp);
@@ -85,23 +108,35 @@ fn process_tumbling_group_insert(
 		window_state.events.push(event);
 		window_state.event_count += 1;
 		window_state.last_event_time = event_timestamp;
-
+		operator.update_running_totals_on_push(window_state, &row);
 		if window_state.window_start == 0 {
 			window_state.window_start = operator.set_tumbling_window_start(event_timestamp);
 		}
 
-		if let Some((aggregated_row, is_new)) =
-			operator.apply_aggregations(txn, &window_key, &layout, &window_state.events, changed_at)?
-		{
+		if let Some((aggregated_row, is_new)) = operator.apply_aggregations(
+			txn,
+			window_key,
+			&layout,
+			&window_state.events,
+			changed_at,
+			window_state,
+		)? {
+			let cache_value = Some((aggregated_row.clone(), is_new));
 			result.push(WindowOperator::emit_aggregation_diff(
 				&aggregated_row,
 				is_new,
 				previous_aggregation,
 			));
+			*last_post = cache_value;
+		} else {
+			*last_post = None;
 		}
 
-		operator.save_window_state(txn, &window_key, &window_state)?;
 		operator.store_row_index(txn, group_hash, event_row_number, window_id)?;
+	}
+
+	for (window_state, _, window_key) in window_caches.values() {
+		operator.save_window_state(txn, window_key, window_state)?;
 	}
 
 	Ok(result)
