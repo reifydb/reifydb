@@ -260,6 +260,8 @@ fn make_test_runtime(mock_clock: &MockClock) -> SharedRuntime {
 		async_threads: 2,
 		system_threads: 2,
 		query_threads: 2,
+		commit_threads: 2,
+		background_threads: 1,
 	};
 	SharedRuntime::from_config(config, pools)
 }

@@ -6,5 +6,6 @@ use reifydb_type::value::datetime::DateTime;
 #[derive(Debug, Clone)]
 pub enum HistoricalGcMessage {
 	Tick(DateTime),
+	ContinueSweep,
 	Shutdown,
 }

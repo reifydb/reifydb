@@ -244,6 +244,8 @@ mod tests {
 			async_threads: 2,
 			system_threads: 2,
 			query_threads: 2,
+			commit_threads: 2,
+			background_threads: 1,
 		}
 	}
 

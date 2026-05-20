@@ -158,6 +158,20 @@ impl ActorSystem {
 	{
 		pool::spawn_on_pool(self, name, actor, self.inner.pools.query_pool())
 	}
+
+	pub fn spawn_commit<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
+	where
+		A::State: Send,
+	{
+		pool::spawn_on_pool(self, name, actor, self.inner.pools.commit_pool())
+	}
+
+	pub fn spawn_background<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
+	where
+		A::State: Send,
+	{
+		pool::spawn_on_pool(self, name, actor, self.inner.pools.background_pool())
+	}
 }
 
 impl Debug for ActorSystem {

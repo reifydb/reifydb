@@ -85,7 +85,7 @@ impl SubsystemFactory for ProfilerSubsystemFactory {
 			if cfg.enabled {
 				let actor =
 					ProfilerCollectorActor::new(Arc::clone(&accumulator), Arc::clone(&interner));
-				let handle = runtime.actor_system().spawn_system("profile-collector", actor);
+				let handle = runtime.actor_system().spawn_background("profile-collector", actor);
 				let actor_ref = handle.actor_ref().clone();
 
 				event_bus.register::<ProfilerScopeClosedEvent, _>(ProfilerScopeClosedListener::new(
@@ -118,7 +118,7 @@ impl SubsystemFactory for ProfilerSubsystemFactory {
 		let runtime = ioc.resolve::<SharedRuntime>()?;
 		let event_bus = ioc.resolve::<EventBus>()?;
 		let snapshot_actor = ProfilerSnapshotActor::new(subsystem.accumulator(), engine, event_bus);
-		runtime.actor_system().spawn_system("profile-snapshot", snapshot_actor);
+		runtime.actor_system().spawn_background("profile-snapshot", snapshot_actor);
 
 		Ok(Box::new(subsystem))
 	}

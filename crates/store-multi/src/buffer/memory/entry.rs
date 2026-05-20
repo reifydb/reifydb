@@ -37,16 +37,8 @@ impl Clone for Entry {
 	}
 }
 
-pub(super) fn entry_id_to_key(entry: EntryKind) -> String {
-	match entry {
-		EntryKind::Multi => "multi".to_string(),
-		EntryKind::Source(id) => format!("source:{}", id),
-		EntryKind::Operator(id) => format!("operator:{}", id),
-	}
-}
-
 pub(super) struct Entries {
-	pub(super) data: Map<String, Entry>,
+	pub(super) data: Map<EntryKind, Entry>,
 }
 
 impl Default for Entries {

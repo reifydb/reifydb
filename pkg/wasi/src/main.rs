@@ -81,6 +81,8 @@ impl Bridge {
 				async_threads: 1,
 				system_threads: 1,
 				query_threads: 1,
+				commit_threads: 1,
+				background_threads: 1,
 			},
 		);
 

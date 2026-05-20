@@ -14,6 +14,8 @@ use super::PoolConfig;
 struct PoolsInner {
 	system: Arc<ThreadPool>,
 	query: Arc<ThreadPool>,
+	commit: Arc<ThreadPool>,
+	background: Arc<ThreadPool>,
 	tokio: Option<ManuallyDrop<Runtime>>,
 }
 
@@ -53,6 +55,20 @@ impl Pools {
 				.build()
 				.expect("failed to build query thread pool"),
 		);
+		let commit = Arc::new(
+			ThreadPoolBuilder::new()
+				.num_threads(config.commit_threads)
+				.thread_name(|i| format!("commit-pool-{i}"))
+				.build()
+				.expect("failed to build commit thread pool"),
+		);
+		let background = Arc::new(
+			ThreadPoolBuilder::new()
+				.num_threads(config.background_threads)
+				.thread_name(|i| format!("background-pool-{i}"))
+				.build()
+				.expect("failed to build background thread pool"),
+		);
 		let tokio = if config.async_threads > 0 {
 			let rt = runtime::Builder::new_multi_thread()
 				.worker_threads(config.async_threads)
@@ -69,6 +85,8 @@ impl Pools {
 			inner: Arc::new(PoolsInner {
 				system,
 				query,
+				commit,
+				background,
 				tokio,
 			}),
 		}
@@ -84,6 +102,26 @@ impl Pools {
 
 	pub fn query_pool(&self) -> &Arc<ThreadPool> {
 		&self.inner.query
+	}
+
+	pub fn query_thread_count(&self) -> usize {
+		self.inner.query.current_num_threads()
+	}
+
+	pub fn commit_pool(&self) -> &Arc<ThreadPool> {
+		&self.inner.commit
+	}
+
+	pub fn commit_thread_count(&self) -> usize {
+		self.inner.commit.current_num_threads()
+	}
+
+	pub fn background_pool(&self) -> &Arc<ThreadPool> {
+		&self.inner.background
+	}
+
+	pub fn background_thread_count(&self) -> usize {
+		self.inner.background.current_num_threads()
 	}
 
 	fn tokio(&self) -> &Runtime {

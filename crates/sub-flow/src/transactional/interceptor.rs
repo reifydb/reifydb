@@ -104,7 +104,7 @@ pub(crate) fn execute_inline_flow_changes(
 		}
 
 		let pools = engine.actor_system().pools();
-		let results: Vec<Result<FlowResult>> = pools.system_pool().install(|| {
+		let results: Vec<Result<FlowResult>> = pools.commit_pool().install(|| {
 			flow_txns
 				.into_par_iter()
 				.map(|(flow_id, relevant, mut flow_txn)| {

@@ -67,7 +67,7 @@ impl FlushActor {
 		flush_interval: Duration,
 	) -> ActorRef<FlushMessage> {
 		let actor = Self::new(dirty, persistent, flush_interval);
-		system.spawn_system("single-persistent-flush", actor).actor_ref().clone()
+		system.spawn_background("single-persistent-flush", actor).actor_ref().clone()
 	}
 
 	fn drain(&self, state: &mut FlushActorState) {

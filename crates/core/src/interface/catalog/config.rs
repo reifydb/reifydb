@@ -56,6 +56,8 @@ pub enum ConfigKey {
 	ThreadsAsync,
 	ThreadsSystem,
 	ThreadsQuery,
+	ThreadsCommit,
+	ThreadsBackground,
 }
 
 impl ConfigKey {
@@ -81,6 +83,8 @@ impl ConfigKey {
 			Self::ThreadsAsync,
 			Self::ThreadsSystem,
 			Self::ThreadsQuery,
+			Self::ThreadsCommit,
+			Self::ThreadsBackground,
 		]
 	}
 
@@ -108,6 +112,8 @@ impl ConfigKey {
 			Self::ThreadsAsync => Value::Uint2(1),
 			Self::ThreadsSystem => Value::Uint2(2),
 			Self::ThreadsQuery => Value::Uint2(1),
+			Self::ThreadsCommit => Value::Uint2(2),
+			Self::ThreadsBackground => Value::Uint2(1),
 		}
 	}
 
@@ -166,6 +172,14 @@ impl ConfigKey {
 				"Number of worker threads for the query pool (execution-heavy actors). \
 				 Must be >= 1. Changes require restart."
 			}
+			Self::ThreadsCommit => {
+				"Number of worker threads for the commit pool (synchronous pre-commit flow execution). \
+				 Must be >= 1. Changes require restart."
+			}
+			Self::ThreadsBackground => {
+				"Number of worker threads for the background pool (non-critical cleanup and metrics actors). \
+				 Must be >= 1. Changes require restart."
+			}
 		}
 	}
 
@@ -191,6 +205,8 @@ impl ConfigKey {
 			Self::ThreadsAsync => true,
 			Self::ThreadsSystem => true,
 			Self::ThreadsQuery => true,
+			Self::ThreadsCommit => true,
+			Self::ThreadsBackground => true,
 		}
 	}
 
@@ -216,6 +232,8 @@ impl ConfigKey {
 			Self::ThreadsAsync => &[Type::Uint2],
 			Self::ThreadsSystem => &[Type::Uint2],
 			Self::ThreadsQuery => &[Type::Uint2],
+			Self::ThreadsCommit => &[Type::Uint2],
+			Self::ThreadsBackground => &[Type::Uint2],
 		}
 	}
 
@@ -241,6 +259,8 @@ impl ConfigKey {
 			Self::ThreadsAsync => false,
 			Self::ThreadsSystem => false,
 			Self::ThreadsQuery => false,
+			Self::ThreadsCommit => false,
+			Self::ThreadsBackground => false,
 		}
 	}
 
@@ -324,6 +344,14 @@ impl ConfigKey {
 			},
 			Self::ThreadsQuery => match value {
 				Value::Uint2(0) => Err("THREADS_QUERY must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::ThreadsCommit => match value {
+				Value::Uint2(0) => Err("THREADS_COMMIT must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::ThreadsBackground => match value {
+				Value::Uint2(0) => Err("THREADS_BACKGROUND must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
 			_ => Ok(()),
@@ -432,6 +460,8 @@ impl fmt::Display for ConfigKey {
 			Self::ThreadsAsync => write!(f, "THREADS_ASYNC"),
 			Self::ThreadsSystem => write!(f, "THREADS_SYSTEM"),
 			Self::ThreadsQuery => write!(f, "THREADS_QUERY"),
+			Self::ThreadsCommit => write!(f, "THREADS_COMMIT"),
+			Self::ThreadsBackground => write!(f, "THREADS_BACKGROUND"),
 		}
 	}
 }
@@ -461,6 +491,8 @@ impl FromStr for ConfigKey {
 			"THREADS_ASYNC" => Ok(Self::ThreadsAsync),
 			"THREADS_SYSTEM" => Ok(Self::ThreadsSystem),
 			"THREADS_QUERY" => Ok(Self::ThreadsQuery),
+			"THREADS_COMMIT" => Ok(Self::ThreadsCommit),
+			"THREADS_BACKGROUND" => Ok(Self::ThreadsBackground),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
 		}
 	}
@@ -610,7 +642,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 20);
+		assert_eq!(all.len(), 22);
 		assert!(all.contains(&ConfigKey::CdcCompactInterval));
 		assert!(all.contains(&ConfigKey::CdcCompactBlockSize));
 		assert!(all.contains(&ConfigKey::CdcCompactSafetyLag));
@@ -621,6 +653,8 @@ mod tests {
 		assert!(all.contains(&ConfigKey::ThreadsAsync));
 		assert!(all.contains(&ConfigKey::ThreadsSystem));
 		assert!(all.contains(&ConfigKey::ThreadsQuery));
+		assert!(all.contains(&ConfigKey::ThreadsCommit));
+		assert!(all.contains(&ConfigKey::ThreadsBackground));
 	}
 
 	#[test]
@@ -628,9 +662,13 @@ mod tests {
 		assert_eq!("THREADS_ASYNC".parse::<ConfigKey>().unwrap(), ConfigKey::ThreadsAsync);
 		assert_eq!("THREADS_SYSTEM".parse::<ConfigKey>().unwrap(), ConfigKey::ThreadsSystem);
 		assert_eq!("THREADS_QUERY".parse::<ConfigKey>().unwrap(), ConfigKey::ThreadsQuery);
+		assert_eq!("THREADS_COMMIT".parse::<ConfigKey>().unwrap(), ConfigKey::ThreadsCommit);
+		assert_eq!("THREADS_BACKGROUND".parse::<ConfigKey>().unwrap(), ConfigKey::ThreadsBackground);
 		assert_eq!(format!("{}", ConfigKey::ThreadsAsync), "THREADS_ASYNC");
 		assert_eq!(format!("{}", ConfigKey::ThreadsSystem), "THREADS_SYSTEM");
 		assert_eq!(format!("{}", ConfigKey::ThreadsQuery), "THREADS_QUERY");
+		assert_eq!(format!("{}", ConfigKey::ThreadsCommit), "THREADS_COMMIT");
+		assert_eq!(format!("{}", ConfigKey::ThreadsBackground), "THREADS_BACKGROUND");
 	}
 
 	#[test]
@@ -638,11 +676,19 @@ mod tests {
 		assert_eq!(ConfigKey::ThreadsAsync.default_value(), Value::Uint2(1));
 		assert_eq!(ConfigKey::ThreadsSystem.default_value(), Value::Uint2(2));
 		assert_eq!(ConfigKey::ThreadsQuery.default_value(), Value::Uint2(1));
+		assert_eq!(ConfigKey::ThreadsCommit.default_value(), Value::Uint2(2));
+		assert_eq!(ConfigKey::ThreadsBackground.default_value(), Value::Uint2(1));
 	}
 
 	#[test]
 	fn test_threads_reject_zero() {
-		for key in [ConfigKey::ThreadsAsync, ConfigKey::ThreadsSystem, ConfigKey::ThreadsQuery] {
+		for key in [
+			ConfigKey::ThreadsAsync,
+			ConfigKey::ThreadsSystem,
+			ConfigKey::ThreadsQuery,
+			ConfigKey::ThreadsCommit,
+			ConfigKey::ThreadsBackground,
+		] {
 			match key.accept(Value::Uint2(0)).unwrap_err() {
 				AcceptError::InvalidValue(reason) => {
 					assert!(
@@ -660,6 +706,8 @@ mod tests {
 		assert_eq!(ConfigKey::ThreadsAsync.accept(Value::Uint2(4)).unwrap(), Value::Uint2(4));
 		assert_eq!(ConfigKey::ThreadsSystem.accept(Value::Uint2(8)).unwrap(), Value::Uint2(8));
 		assert_eq!(ConfigKey::ThreadsQuery.accept(Value::Uint2(16)).unwrap(), Value::Uint2(16));
+		assert_eq!(ConfigKey::ThreadsCommit.accept(Value::Uint2(4)).unwrap(), Value::Uint2(4));
+		assert_eq!(ConfigKey::ThreadsBackground.accept(Value::Uint2(2)).unwrap(), Value::Uint2(2));
 	}
 
 	#[test]
@@ -673,6 +721,8 @@ mod tests {
 		assert!(ConfigKey::ThreadsAsync.requires_restart());
 		assert!(ConfigKey::ThreadsSystem.requires_restart());
 		assert!(ConfigKey::ThreadsQuery.requires_restart());
+		assert!(ConfigKey::ThreadsCommit.requires_restart());
+		assert!(ConfigKey::ThreadsBackground.requires_restart());
 	}
 
 	#[test]

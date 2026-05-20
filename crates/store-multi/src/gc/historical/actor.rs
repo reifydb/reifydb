@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, mem::take, sync::Arc};
 
 use reifydb_core::{
 	actors::historical_gc::HistoricalGcMessage as Message,
@@ -30,9 +30,15 @@ use crate::{
 	tier::{HistoricalCursor, TierStorage},
 };
 
+struct SweepProgress {
+	cutoff: CommitVersion,
+	remaining: Vec<EntryKind>,
+	stats: GcStats,
+}
+
 pub struct ActorState {
 	_timer_handle: Option<TimerHandle>,
-	sweeping: bool,
+	in_progress: Option<SweepProgress>,
 	cursors: HashMap<EntryKind, HistoricalCursor>,
 }
 
@@ -58,11 +64,11 @@ impl<W: QueryWatermark> Actor<W> {
 		config: Arc<dyn GetConfig>,
 	) -> ActorRef<Message> {
 		let actor = Self::new(store, watermark, config);
-		system.spawn_system("historical-historical", actor).actor_ref().clone()
+		system.spawn_background("historical-historical", actor).actor_ref().clone()
 	}
 
-	fn run_sweep(&self, state: &mut ActorState, _now: DateTime) {
-		if state.sweeping {
+	fn start_sweep(&self, state: &mut ActorState, ctx: &Context<Message>) {
+		if state.in_progress.is_some() {
 			trace!("Historical GC sweep already in progress, skipping tick");
 			return;
 		}
@@ -71,64 +77,78 @@ impl<W: QueryWatermark> Actor<W> {
 			return;
 		};
 
-		state.sweeping = true;
-
 		let cutoff = self.watermark.effective_gc_cutoff();
 		if cutoff.0 == 0 {
 			trace!("Historical GC sweep skipped: watermark is zero");
-			state.sweeping = false;
 			return;
 		}
-
-		let batch_size = self.batch_size();
-		let stats = self.sweep_all_shapes(buffer, cutoff, batch_size, &mut state.cursors);
-		self.finish_sweep(buffer, cutoff, &stats);
-
-		state.sweeping = false;
-	}
-
-	#[inline]
-	fn batch_size(&self) -> usize {
-		self.config.get_config_uint8(ConfigKey::HistoricalGcBatchSize) as usize
-	}
-
-	#[inline]
-	fn sweep_all_shapes(
-		&self,
-		buffer: &MultiBufferTier,
-		cutoff: CommitVersion,
-		batch_size: usize,
-		cursors: &mut HashMap<EntryKind, HistoricalCursor>,
-	) -> GcStats {
-		let mut stats = GcStats::default();
 
 		let entry_kinds = match buffer.list_all_entry_kinds() {
 			Ok(v) => v,
 			Err(e) => {
 				warn!(error = %e, "Historical GC sweep failed: list_all_entry_kinds");
-				return stats;
+				return;
 			}
 		};
 
-		for entry_kind in entry_kinds {
-			let cursor = cursors.entry(entry_kind).or_default();
-			if cursor.exhausted {
-				*cursor = HistoricalCursor::default();
-			}
-
-			let dropped = match self.sweep_shape(buffer, entry_kind, cutoff, batch_size, cursor) {
-				Ok(n) => n,
-				Err(e) => {
-					warn!(?entry_kind, error = %e, "Historical GC sweep failed for shape");
-					0
-				}
-			};
-
-			stats.shapes_scanned += 1;
-			stats.versions_dropped += dropped;
+		if entry_kinds.is_empty() {
+			return;
 		}
 
-		stats
+		state.in_progress = Some(SweepProgress {
+			cutoff,
+			remaining: entry_kinds,
+			stats: GcStats::default(),
+		});
+
+		let _ = ctx.self_ref().send(Message::ContinueSweep);
+	}
+
+	fn step_sweep(&self, state: &mut ActorState, ctx: &Context<Message>) {
+		let Some(buffer) = self.store.buffer() else {
+			state.in_progress = None;
+			return;
+		};
+
+		let progress = match state.in_progress.as_mut() {
+			Some(p) => p,
+			None => return,
+		};
+
+		let cutoff = progress.cutoff;
+		let batch_size = self.batch_size();
+
+		let Some(entry_kind) = progress.remaining.pop() else {
+			let stats = take(&mut progress.stats);
+			state.in_progress = None;
+			self.finish_sweep(buffer, cutoff, &stats);
+			return;
+		};
+
+		let cursor = state.cursors.entry(entry_kind).or_default();
+		if cursor.exhausted {
+			*cursor = HistoricalCursor::default();
+		}
+
+		let dropped = match self.sweep_shape(buffer, entry_kind, cutoff, batch_size, cursor) {
+			Ok(n) => n,
+			Err(e) => {
+				warn!(?entry_kind, error = %e, "Historical GC sweep failed for shape");
+				0
+			}
+		};
+
+		if let Some(progress) = state.in_progress.as_mut() {
+			progress.stats.shapes_scanned += 1;
+			progress.stats.versions_dropped += dropped;
+		}
+
+		let _ = ctx.self_ref().send(Message::ContinueSweep);
+	}
+
+	#[inline]
+	fn batch_size(&self) -> usize {
+		self.config.get_config_uint8(ConfigKey::HistoricalGcBatchSize) as usize
 	}
 
 	#[inline]
@@ -184,7 +204,7 @@ impl<W: QueryWatermark> ActorTrait for Actor<W> {
 		let timer_handle = ctx.schedule_tick(scan_interval, |nanos| Message::Tick(DateTime::from_nanos(nanos)));
 		ActorState {
 			_timer_handle: Some(timer_handle),
-			sweeping: false,
+			in_progress: None,
 			cursors: HashMap::new(),
 		}
 	}
@@ -195,8 +215,11 @@ impl<W: QueryWatermark> ActorTrait for Actor<W> {
 		}
 
 		match msg {
-			Message::Tick(now) => {
-				self.run_sweep(state, now);
+			Message::Tick(_) => {
+				self.start_sweep(state, ctx);
+			}
+			Message::ContinueSweep => {
+				self.step_sweep(state, ctx);
 			}
 			Message::Shutdown => {
 				debug!("Historical GC actor shutting down");
@@ -204,7 +227,7 @@ impl<W: QueryWatermark> ActorTrait for Actor<W> {
 			}
 		}
 
-		Directive::Continue
+		Directive::Yield
 	}
 
 	fn post_stop(&self) {

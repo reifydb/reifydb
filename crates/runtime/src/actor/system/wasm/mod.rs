@@ -176,6 +176,14 @@ impl ActorSystem {
 	pub fn spawn_query<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
 		self.spawn_system(name, actor)
 	}
+
+	pub fn spawn_commit<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+		self.spawn_system(name, actor)
+	}
+
+	pub fn spawn_background<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+		self.spawn_system(name, actor)
+	}
 }
 
 impl fmt::Debug for ActorSystem {
