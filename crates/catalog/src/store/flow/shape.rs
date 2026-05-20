@@ -10,7 +10,6 @@ pub(crate) mod flow {
 	pub(crate) const NAMESPACE: usize = 1;
 	pub(crate) const NAME: usize = 2;
 	pub(crate) const STATUS: usize = 3;
-	pub(crate) const TICK_NANOS: usize = 4;
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
@@ -18,7 +17,6 @@ pub(crate) mod flow {
 			RowShapeField::unconstrained("namespace", Type::Uint8),
 			RowShapeField::unconstrained("name", Type::Utf8),
 			RowShapeField::unconstrained("status", Type::Uint1),
-			RowShapeField::unconstrained("tick_nanos", Type::Uint8),
 		])
 	});
 }

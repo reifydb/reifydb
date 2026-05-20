@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::{Arc, LazyLock};
+use std::{
+	sync::{Arc, LazyLock},
+	time::Duration,
+};
 
 use postcard::to_stdvec;
 use reifydb_abi::operator::capabilities::{CAPABILITY_ALL_STANDARD, CAPABILITY_TICK};
@@ -445,6 +448,14 @@ impl Operator for JoinOperator {
 
 	fn capabilities(&self) -> u32 {
 		CAPABILITY_ALL_STANDARD | CAPABILITY_TICK
+	}
+
+	fn ticks(&self) -> Option<Duration> {
+		if self.ttl.left_nanos.is_some() || self.ttl.right_nanos.is_some() {
+			Some(Duration::from_secs(1))
+		} else {
+			None
+		}
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {

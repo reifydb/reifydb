@@ -7,7 +7,7 @@ use std::{
 	ops::Deref,
 };
 
-use reifydb_type::value::{blob::Blob, duration::Duration};
+use reifydb_type::value::blob::Blob;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
 use crate::interface::catalog::id::NamespaceId;
@@ -256,7 +256,6 @@ pub struct Flow {
 	pub namespace: NamespaceId,
 	pub name: String,
 	pub status: FlowStatus,
-	pub tick: Option<Duration>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
 use postcard::from_bytes;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{interface::catalog::flow::FlowId, internal};
@@ -21,12 +19,7 @@ pub fn load_flow_dag(catalog: &Catalog, txn: &mut Transaction<'_>, flow_id: Flow
 	let node_defs = catalog.list_flow_nodes_by_flow(txn, flow_id)?;
 	let edge_defs = catalog.list_flow_edges_by_flow(txn, flow_id)?;
 
-	let tick = catalog
-		.find_flow(txn, flow_id)?
-		.and_then(|def| def.tick)
-		.map(|d| Duration::from_nanos(d.get_nanos() as u64));
-
-	let mut builder = FlowDag::builder(flow_id).tick(tick);
+	let mut builder = FlowDag::builder(flow_id);
 
 	for node_def in node_defs {
 		let node_type: FlowNodeType = from_bytes(node_def.data.as_ref())

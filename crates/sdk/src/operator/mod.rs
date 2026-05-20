@@ -6,7 +6,7 @@
 //! views, the diff representation an operator emits, and the context that gives the operator access to engine
 //! services. Anything an extension needs to write a useful operator lives here.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use reifydb_type::value::{Value, row_number::RowNumber};
 
@@ -52,6 +52,10 @@ pub trait FFIOperator: 'static {
 
 	fn tick(&mut self, _ctx: &mut OperatorContext, _tick: Tick) -> Result<bool> {
 		Ok(false)
+	}
+
+	fn ticks(&self) -> Option<Duration> {
+		None
 	}
 
 	fn flush_state(&mut self, _ctx: &mut OperatorContext) -> Result<()> {

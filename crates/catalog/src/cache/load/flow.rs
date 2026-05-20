@@ -12,14 +12,13 @@ use reifydb_core::{
 	key::flow::FlowKey,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::duration::Duration;
 
 use super::CatalogCache;
 use crate::{
 	Result,
 	store::flow::shape::{
 		flow,
-		flow::{ID, NAME, NAMESPACE, STATUS, TICK_NANOS},
+		flow::{ID, NAME, NAMESPACE, STATUS},
 	},
 };
 
@@ -43,18 +42,11 @@ fn convert_flow(multi: MultiVersionRow) -> Flow {
 	let namespace = NamespaceId(flow::SHAPE.get_u64(&row, NAMESPACE));
 	let name = flow::SHAPE.get_utf8(&row, NAME).to_string();
 	let status = FlowStatus::from_u8(flow::SHAPE.get_u8(&row, STATUS));
-	let tick_nanos = flow::SHAPE.get_u64(&row, TICK_NANOS);
-	let tick = if tick_nanos > 0 {
-		Some(Duration::from_nanoseconds(tick_nanos as i64).unwrap())
-	} else {
-		None
-	};
 
 	Flow {
 		id,
 		namespace,
 		name,
 		status,
-		tick,
 	}
 }

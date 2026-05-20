@@ -174,7 +174,6 @@ pub struct CreateDeferredViewNode {
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: Box<QueryPlan>,
 	pub storage_kind: CompiledViewStorageKind,
-	pub tick: Option<Duration>,
 	pub ttl: Option<Ttl>,
 }
 
@@ -186,7 +185,6 @@ pub struct CreateTransactionalViewNode {
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: Box<QueryPlan>,
 	pub storage_kind: CompiledViewStorageKind,
-	pub tick: Option<Duration>,
 	pub ttl: Option<Ttl>,
 }
 

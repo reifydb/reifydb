@@ -8,13 +8,18 @@ use std::{
 	panic::{AssertUnwindSafe, catch_unwind},
 	process::abort,
 	ptr,
+	time::Duration,
 };
 
 use reifydb_abi::{
 	callbacks::builder::EmitDiffKind,
 	context::context::ContextFFI,
 	flow::change::ChangeFFI,
-	operator::{descriptor::OperatorDescriptorFFI, vtable::OperatorVTableFFI},
+	operator::{
+		capabilities::{CAPABILITY_TICK, has_capability},
+		descriptor::OperatorDescriptorFFI,
+		vtable::OperatorVTableFFI,
+	},
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -203,6 +208,14 @@ impl Operator for FFIOperator {
 
 	fn capabilities(&self) -> u32 {
 		self.descriptor.capabilities
+	}
+
+	fn ticks(&self) -> Option<Duration> {
+		if !has_capability(self.descriptor.capabilities, CAPABILITY_TICK) {
+			return None;
+		}
+		let nanos = unsafe { (self.vtable.tick_interval)(self.instance) };
+		Some(Duration::from_nanos(nanos))
 	}
 
 	#[instrument(name = "flow::ffi::apply", level = "debug", skip_all, fields(

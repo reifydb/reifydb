@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, change::Change},
@@ -44,6 +44,10 @@ impl Operator for ApplyOperator {
 
 	fn capabilities(&self) -> u32 {
 		self.inner.capabilities()
+	}
+
+	fn ticks(&self) -> Option<Duration> {
+		self.inner.ticks()
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {

@@ -132,11 +132,12 @@ impl TransactionalTickActor {
 
 	fn collect_due_flows(&self, state: &TransactionalTickState, now: &Instant) -> Vec<FlowId> {
 		let engine = self.flow_engine.read();
+		let interval = self.flow_tick();
 		let mut due: Vec<FlowId> = Vec::new();
 		for (flow_id, flow) in engine.flows.iter() {
-			let Some(interval) = flow.tick() else {
+			if !flow.ticks() {
 				continue;
-			};
+			}
 			let elapsed_due = match state.last_ticks.get(flow_id) {
 				Some(last) => now.duration_since(last) >= interval,
 				None => true,

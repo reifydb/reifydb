@@ -10,14 +10,13 @@ use reifydb_core::{
 	key::{EncodableKey, flow::FlowKey, kind::KeyKind},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::duration::Duration;
 
 use super::CatalogChangeApplier;
 use crate::{
 	Result,
 	catalog::Catalog,
 	error::CatalogChangeError,
-	store::flow::shape::flow::{self, ID, NAME, NAMESPACE, STATUS, TICK_NANOS},
+	store::flow::shape::flow::{self, ID, NAME, NAMESPACE, STATUS},
 };
 
 pub(super) struct FlowApplier;
@@ -45,18 +44,11 @@ fn decode_flow(row: &EncodedRow) -> Flow {
 	let namespace = NamespaceId(flow::SHAPE.get_u64(row, NAMESPACE));
 	let name = flow::SHAPE.get_utf8(row, NAME).to_string();
 	let status = FlowStatus::from_u8(flow::SHAPE.get_u8(row, STATUS));
-	let tick_nanos = flow::SHAPE.get_u64(row, TICK_NANOS);
-	let tick = if tick_nanos > 0 {
-		Some(Duration::from_nanoseconds(tick_nanos as i64).unwrap())
-	} else {
-		None
-	};
 
 	Flow {
 		id,
 		namespace,
 		name,
 		status,
-		tick,
 	}
 }

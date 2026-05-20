@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use reifydb_abi::operator::capabilities::{CAPABILITY_ALL_STANDARD, CAPABILITY_TICK};
 use reifydb_core::{
@@ -146,6 +146,14 @@ impl Operator for AppendOperator {
 
 	fn capabilities(&self) -> u32 {
 		CAPABILITY_ALL_STANDARD | CAPABILITY_TICK
+	}
+
+	fn ticks(&self) -> Option<Duration> {
+		if self.ttl_nanos.is_some() {
+			Some(Duration::from_secs(1))
+		} else {
+			None
+		}
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {

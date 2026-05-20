@@ -4,6 +4,7 @@
 use std::{
 	collections::BTreeMap,
 	sync::{Arc, LazyLock},
+	time::Duration,
 };
 
 use indexmap::IndexMap;
@@ -641,6 +642,14 @@ impl Operator for DistinctOperator {
 
 	fn capabilities(&self) -> u32 {
 		CAPABILITY_ALL_STANDARD | CAPABILITY_TICK
+	}
+
+	fn ticks(&self) -> Option<Duration> {
+		if self.ttl_nanos.is_some() {
+			Some(Duration::from_secs(1))
+		} else {
+			None
+		}
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {

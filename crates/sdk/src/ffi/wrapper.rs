@@ -333,6 +333,30 @@ pub unsafe extern "C" fn ffi_tick<O: FFIOperator>(
 
 /// # Safety
 ///
+/// - `instance` must be a valid pointer to an `OperatorWrapper<O>` originally created by `Box::new`.
+pub unsafe extern "C" fn ffi_tick_interval<O: FFIOperator>(instance: *mut c_void) -> u64 {
+	let result = catch_unwind(AssertUnwindSafe(|| {
+		let wrapper = OperatorWrapper::<O>::from_ptr(instance);
+		match wrapper.operator.ticks() {
+			Some(d) => d.as_nanos() as u64,
+			None => 0,
+		}
+	}));
+
+	match result {
+		Ok(nanos) => nanos,
+		Err(payload) => {
+			let bt = Backtrace::force_capture();
+			let detail = describe_panic_payload(&payload);
+			error!("Panic in ffi_tick_interval - aborting");
+			print_ffi_fatal("ffi_tick_interval", any::type_name::<O>(), -99, &detail, None, Some(&bt));
+			abort();
+		}
+	}
+}
+
+/// # Safety
+///
 /// - `instance` must be a valid pointer to an `OperatorWrapper<O>` originally created by `Box::new`, or null (in which
 ///   case this is a no-op).
 pub unsafe extern "C" fn ffi_destroy<O: FFIOperator>(instance: *mut c_void) {
@@ -391,6 +415,7 @@ pub fn create_vtable<O: FFIOperator>() -> OperatorVTableFFI {
 		apply: ffi_apply::<O>,
 		pull: ffi_pull::<O>,
 		tick: ffi_tick::<O>,
+		tick_interval: ffi_tick_interval::<O>,
 		destroy: ffi_destroy::<O>,
 		flush_state: ffi_flush_state::<O>,
 	}

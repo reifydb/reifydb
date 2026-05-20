@@ -1204,7 +1204,8 @@ impl CoordinatorActor {
 	}
 
 	fn maybe_register_tick_schedule(&self, state: &mut CoordinatorState, flow: &FlowDag) {
-		if let Some(tick) = flow.tick() {
+		if flow.ticks() {
+			let tick = self.flow_tick();
 			state.tick_schedules.insert(
 				flow.id(),
 				TickSchedule {

@@ -9,7 +9,6 @@ use reifydb_core::{
 	key::{flow::FlowKey, namespace_flow::NamespaceFlowKey},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::duration::Duration;
 
 use crate::{
 	CatalogStore, Result,
@@ -29,19 +28,11 @@ impl CatalogStore {
 		let status_u8 = flow::SHAPE.get_u8(&row, flow::STATUS);
 		let status = FlowStatus::from_u8(status_u8);
 
-		let tick_nanos = flow::SHAPE.get_u64(&row, flow::TICK_NANOS);
-		let tick = if tick_nanos > 0 {
-			Some(Duration::from_nanoseconds(tick_nanos as i64)?)
-		} else {
-			None
-		};
-
 		Ok(Some(Flow {
 			id,
 			name,
 			namespace,
 			status,
-			tick,
 		}))
 	}
 

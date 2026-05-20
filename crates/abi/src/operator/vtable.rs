@@ -19,6 +19,8 @@ pub struct OperatorVTableFFI {
 
 	pub tick: unsafe extern "C" fn(instance: *mut c_void, ctx: *mut ContextFFI, timestamp_nanos: u64) -> i32,
 
+	pub tick_interval: unsafe extern "C" fn(instance: *mut c_void) -> u64,
+
 	pub destroy: unsafe extern "C" fn(instance: *mut c_void),
 
 	pub flush_state: unsafe extern "C" fn(instance: *mut c_void, ctx: *mut ContextFFI) -> i32,

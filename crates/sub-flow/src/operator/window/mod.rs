@@ -1379,6 +1379,26 @@ impl Operator for WindowOperator {
 		CAPABILITY_ALL_STANDARD | CAPABILITY_TICK
 	}
 
+	fn ticks(&self) -> Option<Duration> {
+		match &self.kind {
+			WindowKind::Tumbling {
+				..
+			}
+			| WindowKind::Sliding {
+				..
+			}
+			| WindowKind::Session {
+				..
+			}
+			| WindowKind::Rolling {
+				size: WindowSize::Duration(_),
+			} => Some(Duration::from_secs(1)),
+			WindowKind::Rolling {
+				size: WindowSize::Count(_),
+			} => None,
+		}
+	}
+
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		match &self.kind {
 			WindowKind::Tumbling {

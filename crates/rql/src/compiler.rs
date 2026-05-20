@@ -318,7 +318,7 @@ fn compile_view_storage_kind(ast: AstViewStorageKind) -> CompiledViewStorageKind
 	}
 }
 
-fn compile_tick_duration(std_dur: time::Duration) -> Duration {
+fn compile_throttle_duration(std_dur: time::Duration) -> Duration {
 	Duration::from_nanoseconds(std_dur.as_nanos() as i64).unwrap()
 }
 
@@ -1098,7 +1098,6 @@ impl InstructionCompiler {
 						node.as_clause,
 					))?),
 					storage_kind: compile_view_storage_kind(node.storage_kind),
-					tick: node.tick.map(compile_tick_duration),
 					ttl: node.ttl,
 				}));
 				self.emit(Instruction::Emit);
@@ -1113,7 +1112,6 @@ impl InstructionCompiler {
 						node.as_clause,
 					))?),
 					storage_kind: compile_view_storage_kind(node.storage_kind),
-					tick: node.tick.map(compile_tick_duration),
 					ttl: node.ttl,
 				}));
 				self.emit(Instruction::Emit);
@@ -1126,7 +1124,7 @@ impl InstructionCompiler {
 						.map(|a| materialize_query_plan(BumpBox::into_inner(a)).map(Box::new))
 						.transpose()?,
 					hydration: node.hydration,
-					throttle: node.throttle.map(compile_tick_duration),
+					throttle: node.throttle.map(compile_throttle_duration),
 				}));
 				self.emit(Instruction::Emit);
 			}

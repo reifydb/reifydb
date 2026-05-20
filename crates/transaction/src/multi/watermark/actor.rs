@@ -97,7 +97,7 @@ impl WatermarkState {
 			self.pending.entry(version).and_modify(|v| *v += 1).or_insert(1);
 		}
 
-		if !self.pending.contains_key(&version) || !self.indices.iter().any(|Reverse(v)| *v == version) {
+		if !self.indices.iter().any(|Reverse(v)| *v == version) {
 			self.indices.push(Reverse(version));
 		}
 

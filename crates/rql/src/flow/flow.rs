@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Deref, sync::Arc, time::Duration};
+use std::{ops::Deref, sync::Arc};
 
 use reifydb_core::{
 	interface::catalog::flow::{FlowId, FlowNodeId},
@@ -23,7 +23,6 @@ pub struct FlowDag {
 pub struct Inner {
 	pub id: FlowId,
 	pub graph: DirectedGraph<FlowNode>,
-	pub tick: Option<Duration>,
 }
 
 impl Deref for FlowDag {
@@ -38,7 +37,6 @@ impl Deref for FlowDag {
 pub struct FlowBuilder {
 	id: FlowId,
 	graph: DirectedGraph<FlowNode>,
-	tick: Option<Duration>,
 }
 
 impl FlowBuilder {
@@ -46,13 +44,7 @@ impl FlowBuilder {
 		Self {
 			id: id.into(),
 			graph: DirectedGraph::new(),
-			tick: None,
 		}
-	}
-
-	pub fn tick(mut self, tick: Option<Duration>) -> Self {
-		self.tick = tick;
-		self
 	}
 
 	pub fn id(&self) -> FlowId {
@@ -100,7 +92,6 @@ impl FlowBuilder {
 			inner: Arc::new(Inner {
 				id: self.id,
 				graph: self.graph,
-				tick: self.tick,
 			}),
 		}
 	}
@@ -135,13 +126,13 @@ impl FlowDag {
 		self.inner.graph.edge_count()
 	}
 
-	pub fn tick(&self) -> Option<Duration> {
-		self.inner.tick
-	}
-
 	pub fn is_subscription(&self) -> bool {
 		self.get_node_ids().any(|id| {
 			self.get_node(&id).is_some_and(|n| matches!(n.ty, FlowNodeType::SinkSubscription { .. }))
 		})
+	}
+
+	pub fn ticks(&self) -> bool {
+		self.get_node_ids().any(|id| self.get_node(&id).is_some_and(|n| n.ty.ticks()))
 	}
 }

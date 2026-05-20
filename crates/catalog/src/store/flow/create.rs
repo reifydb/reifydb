@@ -9,7 +9,7 @@ use reifydb_core::{
 	key::{flow::FlowKey, namespace_flow::NamespaceFlowKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{fragment::Fragment, value::duration::Duration};
+use reifydb_type::fragment::Fragment;
 
 use crate::{
 	CatalogStore, Result,
@@ -25,7 +25,6 @@ pub struct FlowToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub status: FlowStatus,
-	pub tick: Option<Duration>,
 }
 
 impl CatalogStore {
@@ -87,8 +86,6 @@ impl CatalogStore {
 		flow::SHAPE.set_u64(&mut row, flow::NAMESPACE, namespace);
 		flow::SHAPE.set_utf8(&mut row, flow::NAME, to_create.name.text());
 		flow::SHAPE.set_u8(&mut row, flow::STATUS, to_create.status.to_u8());
-		let tick_nanos = to_create.tick.map(|d| d.get_nanos() as u64).unwrap_or(0);
-		flow::SHAPE.set_u64(&mut row, flow::TICK_NANOS, tick_nanos);
 
 		let key = FlowKey::encoded(flow);
 		txn.set(&key, row)?;
@@ -138,7 +135,6 @@ pub mod tests {
 			name: Fragment::internal("test_flow"),
 			namespace: test_namespace.id(),
 			status: FlowStatus::Active,
-			tick: None,
 		};
 
 		// First creation should succeed
@@ -163,7 +159,6 @@ pub mod tests {
 			name: Fragment::internal("flow_one"),
 			namespace: test_namespace.id(),
 			status: FlowStatus::Active,
-			tick: None,
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
 
@@ -171,7 +166,6 @@ pub mod tests {
 			name: Fragment::internal("flow_two"),
 			namespace: test_namespace.id(),
 			status: FlowStatus::Paused,
-			tick: None,
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
 
@@ -220,7 +214,6 @@ pub mod tests {
 			name: Fragment::internal("shared_name"),
 			namespace: namespace_one.id(),
 			status: FlowStatus::Active,
-			tick: None,
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
 
@@ -229,7 +222,6 @@ pub mod tests {
 			name: Fragment::internal("shared_name"),
 			namespace: namespace_two.id(),
 			status: FlowStatus::Active,
-			tick: None,
 		};
 		let result = CatalogStore::create_flow(&mut txn, to_create).unwrap();
 		assert_eq!(result.name, "shared_name");

@@ -193,7 +193,6 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub storage_kind: AstViewStorageKind,
-	pub tick: Option<Duration>,
 	pub ttl: Option<Ttl>,
 }
 
@@ -205,7 +204,6 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub storage_kind: AstViewStorageKind,
-	pub tick: Option<Duration>,
 	pub ttl: Option<Ttl>,
 }
 

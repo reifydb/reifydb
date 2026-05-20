@@ -50,7 +50,6 @@ impl<'bump> Compiler<'bump> {
 			columns,
 			as_clause: with,
 			storage_kind: ast.storage_kind,
-			tick: ast.tick,
 			ttl,
 		}))
 	}

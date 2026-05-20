@@ -18,7 +18,7 @@ use reifydb_sdk::operator::Tick;
 use reifydb_type::{Result, value::datetime::DateTime};
 use tracing::{Span, field, instrument};
 
-use crate::{engine::FlowEngine, transaction::FlowTransaction};
+use crate::{engine::FlowEngine, operator::Operators, transaction::FlowTransaction};
 
 impl FlowEngine {
 	#[instrument(name = "flow::engine::process", level = "debug", skip(self, txn, change), fields(
@@ -198,6 +198,15 @@ impl FlowEngine {
 				Some(op) => op.clone(),
 				None => continue,
 			};
+			let interval = match operator.ticks() {
+				Some(interval) => interval,
+				None => continue,
+			};
+			if matches!(&*operator, Operators::Custom(_) | Operators::Apply(_))
+				&& !self.operator_due(node_id, timestamp.to_nanos(), interval)
+			{
+				continue;
+			}
 			if let Some(tick_emission) = operator.tick(
 				txn,
 				Tick {

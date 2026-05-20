@@ -802,7 +802,7 @@ impl<'bump> Parser<'bump> {
 						hydration = self.parse_hydration_with_value()?;
 					}
 					"throttle" => {
-						throttle = Some(self.parse_tick_duration()?);
+						throttle = Some(self.parse_throttle_duration()?);
 					}
 					_ => {
 						let fragment = key.fragment.to_owned();
@@ -904,11 +904,11 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedDeferredViewIdentifier::new(name).with_namespace(namespace);
 
-		let (tick, ttl) = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
+		let ttl = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
 			self.advance()?;
-			self.parse_view_tick_with_clause()?
+			self.parse_view_with_clause()?
 		} else {
-			(None, None)
+			None
 		};
 
 		let as_clause = if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
@@ -951,7 +951,6 @@ impl<'bump> Parser<'bump> {
 			columns,
 			as_clause,
 			storage_kind: AstViewStorageKind::Table,
-			tick,
 			ttl,
 		}))
 	}
@@ -968,7 +967,7 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedDeferredViewIdentifier::new(name).with_namespace(namespace);
 
-		let (storage_kind, tick, ttl) = self.parse_view_storage_with_clause(hint)?;
+		let (storage_kind, ttl) = self.parse_view_storage_with_clause(hint)?;
 
 		let as_clause = self.parse_view_as_clause()?;
 
@@ -978,7 +977,6 @@ impl<'bump> Parser<'bump> {
 			columns,
 			as_clause,
 			storage_kind,
-			tick,
 			ttl,
 		}))
 	}
@@ -991,11 +989,11 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedTransactionalViewIdentifier::new(name).with_namespace(namespace);
 
-		let (tick, ttl) = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
+		let ttl = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
 			self.advance()?;
-			self.parse_view_tick_with_clause()?
+			self.parse_view_with_clause()?
 		} else {
-			(None, None)
+			None
 		};
 
 		let as_clause = if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
@@ -1038,7 +1036,6 @@ impl<'bump> Parser<'bump> {
 			columns,
 			as_clause,
 			storage_kind: AstViewStorageKind::Table,
-			tick,
 			ttl,
 		}))
 	}
@@ -1055,7 +1052,7 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedTransactionalViewIdentifier::new(name).with_namespace(namespace);
 
-		let (storage_kind, tick, ttl) = self.parse_view_storage_with_clause(hint)?;
+		let (storage_kind, ttl) = self.parse_view_storage_with_clause(hint)?;
 
 		let as_clause = self.parse_view_as_clause()?;
 
@@ -1065,7 +1062,6 @@ impl<'bump> Parser<'bump> {
 			columns,
 			as_clause,
 			storage_kind,
-			tick,
 			ttl,
 		}))
 	}
@@ -2051,11 +2047,10 @@ impl<'bump> Parser<'bump> {
 	fn parse_view_storage_with_clause(
 		&mut self,
 		hint: ViewStorageKindHint,
-	) -> Result<(AstViewStorageKind, Option<Duration>, Option<AstTtl<'bump>>)> {
+	) -> Result<(AstViewStorageKind, Option<AstTtl<'bump>>)> {
 		self.consume_keyword(Keyword::With)?;
 		self.consume_operator(Operator::OpenCurly)?;
 
-		let mut tick: Option<Duration> = None;
 		let mut ttl: Option<AstTtl<'bump>> = None;
 
 		match hint {
@@ -2128,9 +2123,6 @@ impl<'bump> Parser<'bump> {
 							}
 							self.consume_operator(Operator::CloseCurly)?;
 						}
-						"tick" => {
-							tick = Some(self.parse_tick_duration()?);
-						}
 						"row" => {
 							ttl = Some(self.parse_row_config()?);
 						}
@@ -2138,7 +2130,7 @@ impl<'bump> Parser<'bump> {
 							let fragment = key.fragment.to_owned();
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'capacity', 'propagate_evictions', 'partition_by', 'tick', or 'row'"
+									expected: "'capacity', 'propagate_evictions', 'partition_by', or 'row'"
 										.to_string(),
 								},
 								message: format!(
@@ -2172,7 +2164,6 @@ impl<'bump> Parser<'bump> {
 						propagate_evictions,
 						partition_by,
 					},
-					tick,
 					ttl,
 				))
 			}
@@ -2213,9 +2204,6 @@ impl<'bump> Parser<'bump> {
 								}
 							});
 						}
-						"tick" => {
-							tick = Some(self.parse_tick_duration()?);
-						}
 						"row" => {
 							ttl = Some(self.parse_row_config()?);
 						}
@@ -2223,9 +2211,8 @@ impl<'bump> Parser<'bump> {
 							let fragment = key.fragment.to_owned();
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected:
-										"'key', 'precision', 'tick', or 'row'"
-											.to_string(),
+									expected: "'key', 'precision', or 'row'"
+										.to_string(),
 								},
 								message: format!(
 									"unexpected key '{}' in WITH clause",
@@ -2247,17 +2234,15 @@ impl<'bump> Parser<'bump> {
 						key_column,
 						precision,
 					},
-					tick,
 					ttl,
 				))
 			}
 		}
 	}
 
-	fn parse_view_tick_with_clause(&mut self) -> Result<(Option<Duration>, Option<AstTtl<'bump>>)> {
+	fn parse_view_with_clause(&mut self) -> Result<Option<AstTtl<'bump>>> {
 		self.consume_operator(Operator::OpenCurly)?;
 
-		let mut tick: Option<Duration> = None;
 		let mut ttl: Option<AstTtl<'bump>> = None;
 
 		loop {
@@ -2270,9 +2255,6 @@ impl<'bump> Parser<'bump> {
 			self.consume_operator(Operator::Colon)?;
 
 			match key.fragment.text() {
-				"tick" => {
-					tick = Some(self.parse_tick_duration()?);
-				}
 				"row" => {
 					ttl = Some(self.parse_row_config()?);
 				}
@@ -2280,7 +2262,7 @@ impl<'bump> Parser<'bump> {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'tick' or 'row'".to_string(),
+							expected: "'row'".to_string(),
 						},
 						message: format!("unexpected key '{}' in WITH clause", other),
 						fragment,
@@ -2292,10 +2274,10 @@ impl<'bump> Parser<'bump> {
 		}
 
 		self.consume_operator(Operator::CloseCurly)?;
-		Ok((tick, ttl))
+		Ok(ttl)
 	}
 
-	fn parse_tick_duration(&mut self) -> Result<Duration> {
+	fn parse_throttle_duration(&mut self) -> Result<Duration> {
 		let token = self.consume(TokenKind::Literal(Literal::Text))?;
 		let duration_str = token.fragment.text();
 		Compiler::parse_duration(duration_str)

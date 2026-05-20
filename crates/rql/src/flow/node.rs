@@ -108,6 +108,30 @@ pub enum FlowNodeType {
 }
 
 impl FlowNodeType {
+	pub fn ticks(&self) -> bool {
+		match self {
+			FlowNodeType::Join {
+				ttl,
+				..
+			} => ttl.as_ref().is_some_and(|t| t.left.is_some() || t.right.is_some()),
+			FlowNodeType::Append {
+				ttl,
+				..
+			} => ttl.is_some(),
+			FlowNodeType::Distinct {
+				ttl,
+				..
+			} => ttl.is_some(),
+			FlowNodeType::Window {
+				..
+			} => true,
+			FlowNodeType::Apply {
+				..
+			} => true,
+			_ => false,
+		}
+	}
+
 	pub fn label(&self) -> String {
 		match self {
 			FlowNodeType::SourceInlineData {
@@ -356,5 +380,112 @@ impl FlowEdge {
 			source: source.into(),
 			target: target.into(),
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::{
+		common::JoinType,
+		row::{JoinTtl, Ttl, TtlAnchor, TtlCleanupMode},
+	};
+
+	use super::FlowNodeType;
+
+	fn ttl() -> Ttl {
+		Ttl {
+			duration_nanos: 10_000_000_000,
+			anchor: TtlAnchor::Created,
+			cleanup_mode: TtlCleanupMode::Drop,
+		}
+	}
+
+	fn join(ttl: Option<JoinTtl>) -> FlowNodeType {
+		FlowNodeType::Join {
+			join_type: JoinType::Inner,
+			left: vec![],
+			right: vec![],
+			alias: None,
+			ttl,
+			snapshot: false,
+		}
+	}
+
+	#[test]
+	fn join_ticks_only_when_a_side_ttl_is_set() {
+		// A join evicts its buffered side state on tick, so it must request flow ticks exactly
+		// when a per-side TTL is configured. Without this the join-state TTL is never enforced
+		// and the join leaks (the bug this fixes). An empty JoinTtl evicts nothing.
+		assert!(!join(None).ticks());
+		assert!(!join(Some(JoinTtl {
+			left: None,
+			right: None
+		}))
+		.ticks());
+		assert!(join(Some(JoinTtl {
+			left: Some(ttl()),
+			right: None
+		}))
+		.ticks());
+		assert!(join(Some(JoinTtl {
+			left: None,
+			right: Some(ttl())
+		}))
+		.ticks());
+	}
+
+	#[test]
+	fn apply_always_requests_ticks() {
+		// Apply nodes always register for flow ticks, regardless of the underlying operator's
+		// tick capability or TTL. The graph-level gate cannot see the runtime operator, so it
+		// registers unconditionally; the runtime operator then decides whether tick() actually
+		// runs (an FFI operator without CAPABILITY_TICK reports no interval and is skipped).
+		// Registering here is what lets a tick-capable custom operator be ticked at all.
+		let apply_with_ttl = FlowNodeType::Apply {
+			operator: "compute_swap_volumes".to_string(),
+			expressions: vec![],
+			ttl: Some(ttl()),
+		};
+		assert!(apply_with_ttl.ticks());
+		let apply_without_ttl = FlowNodeType::Apply {
+			operator: "compute_swap_volumes".to_string(),
+			expressions: vec![],
+			ttl: None,
+		};
+		assert!(apply_without_ttl.ticks());
+	}
+
+	#[test]
+	fn append_and_distinct_tick_only_with_ttl() {
+		assert!(!FlowNodeType::Append {
+			ttl: None
+		}
+		.ticks());
+		assert!(FlowNodeType::Append {
+			ttl: Some(ttl())
+		}
+		.ticks());
+		assert!(!FlowNodeType::Distinct {
+			expressions: vec![],
+			ttl: None
+		}
+		.ticks());
+		assert!(FlowNodeType::Distinct {
+			expressions: vec![],
+			ttl: Some(ttl())
+		}
+		.ticks());
+	}
+
+	#[test]
+	fn stateless_nodes_do_not_request_ticks() {
+		assert!(!FlowNodeType::Map {
+			expressions: vec![]
+		}
+		.ticks());
+		assert!(!FlowNodeType::Filter {
+			conditions: vec![]
+		}
+		.ticks());
 	}
 }

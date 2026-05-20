@@ -14,8 +14,10 @@ pub mod register;
 use std::{
 	collections::{BTreeMap, BTreeSet, HashMap},
 	sync::Arc,
+	time::Duration,
 };
 
+use dashmap::DashMap;
 #[cfg(reifydb_target = "native")]
 use postcard::to_stdvec;
 use reifydb_catalog::catalog::Catalog;
@@ -62,6 +64,7 @@ pub struct FlowEngine {
 	pub(crate) flow_creation_versions: BTreeMap<FlowId, CommitVersion>,
 	pub(crate) runtime_context: RuntimeContext,
 	pub(crate) custom_operators: Arc<HashMap<String, OperatorFactory>>,
+	operator_tick_times: DashMap<FlowNodeId, u64>,
 }
 
 impl FlowEngine {
@@ -90,11 +93,24 @@ impl FlowEngine {
 			flow_creation_versions: BTreeMap::new(),
 			runtime_context,
 			custom_operators,
+			operator_tick_times: DashMap::new(),
 		}
 	}
 
 	pub fn clock(&self) -> &Clock {
 		&self.runtime_context.clock
+	}
+
+	fn operator_due(&self, node_id: FlowNodeId, now_nanos: u64, interval: Duration) -> bool {
+		let interval_nanos = interval.as_nanos() as u64;
+		let due = match self.operator_tick_times.get(&node_id) {
+			Some(last) => now_nanos.saturating_sub(*last) >= interval_nanos,
+			None => true,
+		};
+		if due {
+			self.operator_tick_times.insert(node_id, now_nanos);
+		}
+		due
 	}
 
 	#[cfg(reifydb_target = "native")]

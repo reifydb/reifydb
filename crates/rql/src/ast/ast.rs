@@ -721,7 +721,6 @@ pub struct AstCreateDeferredView<'bump> {
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub as_clause: Option<AstStatement<'bump>>,
 	pub storage_kind: AstViewStorageKind,
-	pub tick: Option<Duration>,
 	pub ttl: Option<AstTtl<'bump>>,
 }
 
@@ -732,7 +731,6 @@ pub struct AstCreateTransactionalView<'bump> {
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub as_clause: Option<AstStatement<'bump>>,
 	pub storage_kind: AstViewStorageKind,
-	pub tick: Option<Duration>,
 	pub ttl: Option<AstTtl<'bump>>,
 }
 

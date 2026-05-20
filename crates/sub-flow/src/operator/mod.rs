@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
+use std::time::Duration;
+
 use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
 use reifydb_sdk::operator::Tick;
 use reifydb_type::Result;
@@ -55,6 +57,10 @@ pub trait Operator: Send + Sync {
 
 	fn tick(&self, _txn: &mut FlowTransaction, _tick: Tick) -> Result<Option<Change>> {
 		Ok(None)
+	}
+
+	fn ticks(&self) -> Option<Duration> {
+		None
 	}
 }
 
@@ -131,6 +137,31 @@ impl Operators {
 			Operators::SourceRingBuffer(op) => op.capabilities(),
 			Operators::SourceSeries(op) => op.capabilities(),
 			Operators::Custom(op) => op.capabilities(),
+		}
+	}
+
+	pub fn ticks(&self) -> Option<Duration> {
+		match self {
+			Operators::Filter(op) => op.ticks(),
+			Operators::Gate(op) => op.ticks(),
+			Operators::Map(op) => op.ticks(),
+			Operators::Extend(op) => op.ticks(),
+			Operators::Join(op) => op.ticks(),
+			Operators::Sort(op) => op.ticks(),
+			Operators::Take(op) => op.ticks(),
+			Operators::Distinct(op) => op.ticks(),
+			Operators::Append(op) => op.ticks(),
+			Operators::Apply(op) => op.ticks(),
+			Operators::SinkTableView(op) => op.ticks(),
+			Operators::SinkRingBufferView(op) => op.ticks(),
+			Operators::SinkSeriesView(op) => op.ticks(),
+			Operators::Window(op) => op.ticks(),
+			Operators::SourceTable(op) => op.ticks(),
+			Operators::SourceView(op) => op.ticks(),
+			Operators::SourceFlow(op) => op.ticks(),
+			Operators::SourceRingBuffer(op) => op.ticks(),
+			Operators::SourceSeries(op) => op.ticks(),
+			Operators::Custom(op) => op.ticks(),
 		}
 	}
 
