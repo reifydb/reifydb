@@ -5,6 +5,7 @@ pub trait SafeRemainder: Sized {
 	fn checked_rem(&self, r: &Self) -> Option<Self>;
 	fn saturating_rem(&self, r: &Self) -> Self;
 	fn wrapping_rem(&self, r: &Self) -> Self;
+	fn is_zero(&self) -> bool;
 }
 
 macro_rules! impl_safe_rem_signed {
@@ -33,6 +34,9 @@ macro_rules! impl_safe_rem_signed {
                     } else {
                         (*self).wrapping_rem(*r)
                     }
+                }
+                fn is_zero(&self) -> bool {
+                    *self == 0
                 }
             }
         )*
@@ -63,6 +67,9 @@ macro_rules! impl_safe_rem_unsigned {
                     } else {
                         *self % *r
                     }
+                }
+                fn is_zero(&self) -> bool {
+                    *self == 0
                 }
             }
         )*
@@ -101,6 +108,10 @@ impl SafeRemainder for Int {
 			Int::from(&self.0 % &r.0)
 		}
 	}
+
+	fn is_zero(&self) -> bool {
+		self.0 == BigInt::from(0)
+	}
 }
 
 impl SafeRemainder for Uint {
@@ -126,6 +137,10 @@ impl SafeRemainder for Uint {
 		} else {
 			Uint::from(&self.0 % &r.0)
 		}
+	}
+
+	fn is_zero(&self) -> bool {
+		self.0 == BigInt::from(0)
 	}
 }
 
@@ -155,6 +170,10 @@ impl SafeRemainder for Decimal {
 			let result = self.inner() % r.inner();
 			Decimal::from(result)
 		}
+	}
+
+	fn is_zero(&self) -> bool {
+		self.inner().is_zero()
 	}
 }
 
@@ -197,6 +216,10 @@ impl SafeRemainder for f32 {
 			}
 		}
 	}
+
+	fn is_zero(&self) -> bool {
+		*self == 0.0
+	}
 }
 
 impl SafeRemainder for f64 {
@@ -237,6 +260,10 @@ impl SafeRemainder for f64 {
 				result
 			}
 		}
+	}
+
+	fn is_zero(&self) -> bool {
+		*self == 0.0
 	}
 }
 

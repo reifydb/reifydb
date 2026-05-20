@@ -25,6 +25,21 @@ impl Type {
 			return Boolean;
 		}
 
+		if left == Decimal || right == Decimal {
+			return Decimal;
+		}
+
+		if left == Int || right == Int {
+			if matches!(left, Uint) || matches!(right, Uint) {
+				return Int;
+			}
+			return Int;
+		}
+
+		if left == Uint || right == Uint {
+			return Uint;
+		}
+
 		if left == Float8 || right == Float8 {
 			return Float8;
 		}

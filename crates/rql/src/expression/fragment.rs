@@ -5,7 +5,8 @@ use reifydb_type::{
 	value::{
 		Value,
 		boolean::parse::parse_bool,
-		number::parse::{parse_float, parse_primitive_int, parse_primitive_uint},
+		decimal::parse::parse_decimal,
+		number::parse::{parse_primitive_int, parse_primitive_uint},
 	},
 };
 
@@ -150,7 +151,7 @@ impl ConstantExpression {
 	fn parse_number(fragment: &Fragment) -> Value {
 		let text = fragment.text();
 		if text.contains('.') || text.contains('e') || text.contains('E') {
-			return parse_float::<f64>(fragment.clone()).map(Value::float8).unwrap_or(Value::none());
+			return parse_decimal(fragment.clone()).map(Value::Decimal).unwrap_or(Value::none());
 		}
 		parse_primitive_int::<i8>(fragment.clone())
 			.map(Value::Int1)

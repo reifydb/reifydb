@@ -516,6 +516,22 @@ impl IntoDiagnostic for TypeError {
 				}
 			}
 
+			TypeError::DivisionByZero {
+				target,
+				fragment,
+			} => Diagnostic {
+				code: "NUMBER_007".to_string(),
+				rql: None,
+				message: "division by zero".to_string(),
+				fragment,
+				label: Some(format!("divisor evaluates to zero in {} arithmetic", target)),
+				help: Some("ensure the divisor is non-zero before evaluating this expression".to_string()),
+				notes: vec![],
+				column: None,
+				cause: None,
+				operator_chain: None,
+			},
+
 			TypeError::NanNotAllowed => Diagnostic {
 				code: "NUMBER_003".to_string(),
 				rql: None,

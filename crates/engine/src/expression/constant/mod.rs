@@ -16,7 +16,8 @@ use reifydb_type::{
 	return_error,
 	value::{
 		boolean::parse::parse_bool,
-		number::parse::{parse_float, parse_primitive_int, parse_primitive_uint},
+		decimal::parse::parse_decimal,
+		number::parse::{parse_primitive_int, parse_primitive_uint},
 		r#type::Type,
 	},
 };
@@ -39,8 +40,8 @@ pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> Res
 			fragment,
 		} => {
 			if fragment.text().contains(".") || fragment.text().contains("e") {
-				return match parse_float(fragment.clone()) {
-					Ok(v) => Ok(ColumnBuffer::float8(vec![v; row_count])),
+				return match parse_decimal(fragment.clone()) {
+					Ok(v) => Ok(ColumnBuffer::decimal(vec![v; row_count])),
 					Err(err) => return_error!(err.diagnostic()),
 				};
 			}

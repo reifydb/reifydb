@@ -188,14 +188,24 @@ impl From<u128> for Decimal {
 
 impl From<f32> for Decimal {
 	fn from(value: f32) -> Self {
-		let inner = BigDecimalInner::from_f32(value).unwrap_or_else(|| BigDecimalInner::from(0));
+		if !value.is_finite() {
+			return Self(BigDecimalInner::from(0));
+		}
+		let inner = BigDecimalInner::from_str(&value.to_string()).unwrap_or_else(|_| {
+			BigDecimalInner::from_f32(value).unwrap_or_else(|| BigDecimalInner::from(0))
+		});
 		Self(inner)
 	}
 }
 
 impl From<f64> for Decimal {
 	fn from(value: f64) -> Self {
-		let inner = BigDecimalInner::from_f64(value).unwrap_or_else(|| BigDecimalInner::from(0));
+		if !value.is_finite() {
+			return Self(BigDecimalInner::from(0));
+		}
+		let inner = BigDecimalInner::from_str(&value.to_string()).unwrap_or_else(|_| {
+			BigDecimalInner::from_f64(value).unwrap_or_else(|| BigDecimalInner::from(0))
+		});
 		Self(inner)
 	}
 }

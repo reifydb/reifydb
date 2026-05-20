@@ -504,6 +504,12 @@ pub enum TypeError {
 		descriptor: Option<NumberOutOfRangeDescriptor>,
 	},
 
+	#[error("division by zero")]
+	DivisionByZero {
+		target: Type,
+		fragment: Fragment,
+	},
+
 	#[error("NaN not allowed")]
 	NanNotAllowed,
 

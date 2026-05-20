@@ -387,7 +387,13 @@ impl InlineDataNode {
 			}
 
 			let wide_type = if let Some(ref fvt) = first_value_type {
-				if fvt.is_integer() {
+				if *fvt == Type::Decimal {
+					Some(Type::Decimal)
+				} else if *fvt == Type::Int {
+					Some(Type::Int)
+				} else if *fvt == Type::Uint {
+					Some(Type::Uint)
+				} else if fvt.is_integer() {
 					Some(Type::Int16)
 				} else if fvt.is_floating_point() {
 					Some(Type::Float8)

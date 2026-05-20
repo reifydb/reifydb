@@ -79,11 +79,80 @@ macro_rules! impl_scalar_op {
 	};
 }
 
+macro_rules! impl_scalar_divisive_op {
+	($method:ident, $safe_trait:ident, $checked_method:ident) => {
+		impl EvalContext<'_> {
+			pub fn $method<L, R>(
+				&self,
+				l: &L,
+				r: &R,
+				fragment: impl LazyFragment + Copy,
+			) -> Result<Option<<L as Promote<R>>::Output>>
+			where
+				L: Promote<R>,
+				R: IsNumber,
+				<L as Promote<R>>::Output: IsNumber,
+				<L as Promote<R>>::Output: $safe_trait,
+			{
+				match &self.saturation_policy() {
+					ColumnSaturationStrategy::Error => {
+						let Some((lp, rp)) = l.checked_promote(r) else {
+							let descriptor = self
+								.target
+								.as_ref()
+								.and_then(|c| c.to_number_descriptor());
+							return Err(TypeError::NumberOutOfRange {
+								target: <L as Promote<R>>::Output::get_type(),
+								fragment: fragment.fragment(),
+								descriptor,
+							}
+							.into());
+						};
+
+						if <<L as Promote<R>>::Output as $safe_trait>::is_zero(&rp) {
+							return Err(TypeError::DivisionByZero {
+								target: <L as Promote<R>>::Output::get_type(),
+								fragment: fragment.fragment(),
+							}
+							.into());
+						}
+
+						lp.$checked_method(&rp)
+							.ok_or_else(|| {
+								let descriptor = self
+									.target
+									.as_ref()
+									.and_then(|c| c.to_number_descriptor());
+								TypeError::NumberOutOfRange {
+									target: <L as Promote<R>>::Output::get_type(),
+									fragment: fragment.fragment(),
+									descriptor,
+								}
+								.into()
+							})
+							.map(Some)
+					}
+					ColumnSaturationStrategy::None => {
+						let Some((lp, rp)) = l.checked_promote(r) else {
+							return Ok(None);
+						};
+
+						match lp.$checked_method(&rp) {
+							None => Ok(None),
+							Some(value) => Ok(Some(value)),
+						}
+					}
+				}
+			}
+		}
+	};
+}
+
 impl_scalar_op!(add, SafeAdd, checked_add);
 impl_scalar_op!(sub, SafeSub, checked_sub);
 impl_scalar_op!(mul, SafeMul, checked_mul);
-impl_scalar_op!(div, SafeDiv, checked_div);
-impl_scalar_op!(remainder, SafeRemainder, checked_rem);
+impl_scalar_divisive_op!(div, SafeDiv, checked_div);
+impl_scalar_divisive_op!(remainder, SafeRemainder, checked_rem);
 
 #[cfg(test)]
 pub mod tests {

@@ -5,6 +5,7 @@ pub trait SafeDiv: Sized {
 	fn checked_div(&self, r: &Self) -> Option<Self>;
 	fn saturating_div(&self, r: &Self) -> Self;
 	fn wrapping_div(&self, r: &Self) -> Self;
+	fn is_zero(&self) -> bool;
 }
 
 macro_rules! impl_safe_div_signed {
@@ -29,6 +30,9 @@ macro_rules! impl_safe_div_signed {
                 fn wrapping_div(&self, r: &Self) -> Self {
                     if *r == 0 { 0 } else { <$t>::wrapping_div(*self, *r) }
                 }
+                fn is_zero(&self) -> bool {
+                    *self == 0
+                }
             }
         )*
     };
@@ -49,6 +53,9 @@ macro_rules! impl_safe_div_unsigned {
                 }
                 fn wrapping_div(&self, r: &Self) -> Self {
                    if *r == 0 { 0 } else { <$t>::wrapping_div(*self, *r) }
+                }
+                fn is_zero(&self) -> bool {
+                    *self == 0
                 }
             }
         )*
@@ -87,6 +94,10 @@ impl SafeDiv for Int {
 			Int::from(&self.0 / &r.0)
 		}
 	}
+
+	fn is_zero(&self) -> bool {
+		self.0 == BigInt::from(0)
+	}
 }
 
 impl SafeDiv for Uint {
@@ -112,6 +123,10 @@ impl SafeDiv for Uint {
 		} else {
 			Uint::from(&self.0 / &r.0)
 		}
+	}
+
+	fn is_zero(&self) -> bool {
+		self.0 == BigInt::from(0)
 	}
 }
 
@@ -141,6 +156,10 @@ impl SafeDiv for Decimal {
 			let result = self.inner() / r.inner();
 			Decimal::from(result)
 		}
+	}
+
+	fn is_zero(&self) -> bool {
+		self.inner().is_zero()
 	}
 }
 
@@ -175,6 +194,10 @@ impl SafeDiv for f32 {
 			0.0
 		}
 	}
+
+	fn is_zero(&self) -> bool {
+		*self == 0.0
+	}
 }
 
 impl SafeDiv for f64 {
@@ -207,6 +230,10 @@ impl SafeDiv for f64 {
 		} else {
 			0.0
 		}
+	}
+
+	fn is_zero(&self) -> bool {
+		*self == 0.0
 	}
 }
 
