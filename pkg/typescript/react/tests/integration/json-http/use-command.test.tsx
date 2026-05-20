@@ -46,7 +46,7 @@ describe('useCommand Hooks (JSON HTTP)', () => {
 
             expect(result.current.error).toBeUndefined();
             expect(result.current.result!.rows).toHaveLength(1);
-            expect(result.current.result!.rows[0]).toEqual({answer: 42});
+            expect(result.current.result!.rows[0]).toEqual({answer: "42"});
         });
 
         it('should handle parameters', async () => {
@@ -78,12 +78,12 @@ describe('useCommand Hooks (JSON HTTP)', () => {
                 expect(result.current.is_executing).toBe(false);
             });
 
-            expect(result.current.result!.rows[0]).toEqual({num: 1});
+            expect(result.current.result!.rows[0]).toEqual({num: "1"});
 
             rerender({command: `MAP {num: 2}`});
 
             await waitFor(() => {
-                expect(result.current.result!.rows[0]).toEqual({num: 2});
+                expect(result.current.result!.rows[0]).toEqual({num: "2"});
             });
         });
 
@@ -98,12 +98,12 @@ describe('useCommand Hooks (JSON HTTP)', () => {
                 expect(result.current.is_executing).toBe(false);
             });
 
-            expect(result.current.result!.rows[0]).toEqual({result: 10});
+            expect(result.current.result!.rows[0]).toEqual({result: "10"});
 
             rerender({params: {value: 20}});
 
             await waitFor(() => {
-                expect(result.current.result!.rows[0]).toEqual({result: 20});
+                expect(result.current.result!.rows[0]).toEqual({result: "20"});
             });
         });
 
@@ -126,7 +126,7 @@ describe('useCommand Hooks (JSON HTTP)', () => {
             });
 
             const person = result.current.result!.rows[0];
-            expect(person).toEqual({name: 'Alice', age: 30});
+            expect(person).toEqual({name: 'Alice', age: "30"});
         });
 
         it('should handle errors', async () => {
@@ -178,9 +178,9 @@ describe('useCommand Hooks (JSON HTTP)', () => {
             });
 
             expect(result.current.results).toHaveLength(3);
-            expect(result.current.results![0].rows[0]).toEqual({first: 1});
-            expect(result.current.results![1].rows[0]).toEqual({second: 2});
-            expect(result.current.results![2].rows[0]).toEqual({third: 3});
+            expect(result.current.results![0].rows[0]).toEqual({first: "1"});
+            expect(result.current.results![1].rows[0]).toEqual({second: "2"});
+            expect(result.current.results![2].rows[0]).toEqual({third: "3"});
         });
 
         it('should handle single statement as string', async () => {
@@ -197,7 +197,7 @@ describe('useCommand Hooks (JSON HTTP)', () => {
             });
 
             expect(result.current.results).toHaveLength(1);
-            expect(result.current.results![0].rows[0]).toEqual({answer: 42});
+            expect(result.current.results![0].rows[0]).toEqual({answer: "42"});
         });
 
         it('should handle parameters for multiple queries', async () => {
@@ -216,8 +216,8 @@ describe('useCommand Hooks (JSON HTTP)', () => {
                 expect(result.current.is_executing).toBe(false);
             });
 
-            expect(result.current.results![0].rows[0]).toEqual({first: 10});
-            expect(result.current.results![1].rows[0]).toEqual({second: 20});
+            expect(result.current.results![0].rows[0]).toEqual({first: "10"});
+            expect(result.current.results![1].rows[0]).toEqual({second: "20"});
         });
 
         it('should handle multiple shapes', async () => {
@@ -236,7 +236,7 @@ describe('useCommand Hooks (JSON HTTP)', () => {
                 expect(result.current.is_executing).toBe(false);
             });
 
-            expect(result.current.results![0].rows[0]).toEqual({value: 100});
+            expect(result.current.results![0].rows[0]).toEqual({value: "100"});
             expect(result.current.results![1].rows[0]).toEqual({name: 'test'});
         });
 
@@ -321,9 +321,9 @@ describe('useCommand Hooks (JSON HTTP)', () => {
                 expect(result2.current.is_executing).toBe(false);
             });
 
-            expect(result1.current.result!.rows[0]).toEqual({value: 100});
-            expect(result2.current.results![0].rows[0]).toEqual({x: 200});
-            expect(result2.current.results![1].rows[0]).toEqual({y: 300});
+            expect(result1.current.result!.rows[0]).toEqual({value: "100"});
+            expect(result2.current.results![0].rows[0]).toEqual({x: "200"});
+            expect(result2.current.results![1].rows[0]).toEqual({y: "300"});
         });
 
         it('should work with ConnectionProvider', async () => {
@@ -342,7 +342,7 @@ describe('useCommand Hooks (JSON HTTP)', () => {
                 expect(result.current.is_executing).toBe(false);
             });
 
-            expect(result.current.result!.rows[0]).toEqual({value: 999});
+            expect(result.current.result!.rows[0]).toEqual({value: "999"});
         });
 
         it('should support config override in hooks', async () => {

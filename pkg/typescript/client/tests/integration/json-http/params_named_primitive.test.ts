@@ -23,22 +23,22 @@ describe('Named Parameters (primitive)', () => {
 
         it('Int1', async () => {
             const frames = await httpClient.admin('MAP {result: $value}', { value: 42 });
-            expectSingleResult(frames, 42, 'number');
+            expectSingleResult(frames, "42", 'string');
         }, 1000);
 
         it('Int2', async () => {
             const frames = await httpClient.admin('MAP {result: $value}', { value: 1234 });
-            expectSingleResult(frames, 1234, 'number');
+            expectSingleResult(frames, "1234", 'string');
         }, 1000);
 
         it('Int4', async () => {
             const frames = await httpClient.admin('MAP {result: $value}', { value: 12345678 });
-            expectSingleResult(frames, 12345678, 'number');
+            expectSingleResult(frames, "12345678", 'string');
         }, 1000);
 
         it('Int8', async () => {
             const frames = await httpClient.admin('MAP {result: $value}', { value: BigInt("42") });
-            expectSingleResult(frames, 42, 'number');
+            expectSingleResult(frames, "42", 'string');
         }, 1000);
 
         it('Int16', async () => {
@@ -48,22 +48,22 @@ describe('Named Parameters (primitive)', () => {
 
         it('Uint1', async () => {
             const frames = await httpClient.admin('MAP {result: $value}', { value: 255 });
-            expectSingleResult(frames, 255, 'number');
+            expectSingleResult(frames, "255", 'string');
         }, 1000);
 
         it('Uint2', async () => {
             const frames = await httpClient.admin('MAP {result: $value}', { value: 65535 });
-            expectSingleResult(frames, 65535, 'number');
+            expectSingleResult(frames, "65535", 'string');
         }, 1000);
 
         it('Uint4', async () => {
             const frames = await httpClient.admin('MAP {result: $value}', { value: 4294967295 });
-            expectSingleResult(frames, 4294967295, 'number');
+            expectSingleResult(frames, "4294967295", 'string');
         }, 1000);
 
         it('Uint8', async () => {
             const frames = await httpClient.admin('MAP {result: $value}', { value: BigInt("255") });
-            expectSingleResult(frames, 255, 'number');
+            expectSingleResult(frames, "255", 'string');
         }, 1000);
 
         it('Uint16', async () => {
@@ -73,15 +73,15 @@ describe('Named Parameters (primitive)', () => {
 
         it('Float4', async () => {
             const frames = await httpClient.admin('MAP {result: $value}', { value: 3.14 });
-            expectSingleResult(frames, 3.14, 'number');
+            expectSingleResult(frames, "3.14", 'string');
         }, 1000);
 
         it('Float8', async () => {
             const frames = await httpClient.admin('MAP {result: $value}', { value: 3.141592653589793 });
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].result).toBeCloseTo(3.141592653589793, 14);
-            expect(typeof frames[0][0].result).toBe('number');
+            expect(frames[0][0].result).toBe("3.14159265358979");
+            expect(typeof frames[0][0].result).toBe('string');
         }, 1000);
 
         it('Decimal', async () => {
@@ -162,22 +162,22 @@ describe('Named Parameters (primitive)', () => {
 
         it('Int1', async () => {
             const frames = await httpClient.command('MAP {result: $value}', { value: 42 });
-            expectSingleResult(frames, 42, 'number');
+            expectSingleResult(frames, "42", 'string');
         }, 1000);
 
         it('Int2', async () => {
             const frames = await httpClient.command('MAP {result: $value}', { value: 1234 });
-            expectSingleResult(frames, 1234, 'number');
+            expectSingleResult(frames, "1234", 'string');
         }, 1000);
 
         it('Int4', async () => {
             const frames = await httpClient.command('MAP {result: $value}', { value: 12345678 });
-            expectSingleResult(frames, 12345678, 'number');
+            expectSingleResult(frames, "12345678", 'string');
         }, 1000);
 
         it('Int8', async () => {
             const frames = await httpClient.command('MAP {result: $value}', { value: BigInt("42") });
-            expectSingleResult(frames, 42, 'number');
+            expectSingleResult(frames, "42", 'string');
         }, 1000);
 
         it('Int16', async () => {
@@ -187,22 +187,22 @@ describe('Named Parameters (primitive)', () => {
 
         it('Uint1', async () => {
             const frames = await httpClient.command('MAP {result: $value}', { value: 255 });
-            expectSingleResult(frames, 255, 'number');
+            expectSingleResult(frames, "255", 'string');
         }, 1000);
 
         it('Uint2', async () => {
             const frames = await httpClient.command('MAP {result: $value}', { value: 65535 });
-            expectSingleResult(frames, 65535, 'number');
+            expectSingleResult(frames, "65535", 'string');
         }, 1000);
 
         it('Uint4', async () => {
             const frames = await httpClient.command('MAP {result: $value}', { value: 4294967295 });
-            expectSingleResult(frames, 4294967295, 'number');
+            expectSingleResult(frames, "4294967295", 'string');
         }, 1000);
 
         it('Uint8', async () => {
             const frames = await httpClient.command('MAP {result: $value}', { value: BigInt("255") });
-            expectSingleResult(frames, 255, 'number');
+            expectSingleResult(frames, "255", 'string');
         }, 1000);
 
         it('Uint16', async () => {
@@ -212,15 +212,15 @@ describe('Named Parameters (primitive)', () => {
 
         it('Float4', async () => {
             const frames = await httpClient.command('MAP {result: $value}', { value: 3.14 });
-            expectSingleResult(frames, 3.14, 'number');
+            expectSingleResult(frames, "3.14", 'string');
         }, 1000);
 
         it('Float8', async () => {
             const frames = await httpClient.command('MAP {result: $value}', { value: 3.141592653589793 });
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].result).toBeCloseTo(3.141592653589793, 14);
-            expect(typeof frames[0][0].result).toBe('number');
+            expect(frames[0][0].result).toBe("3.14159265358979");
+            expect(typeof frames[0][0].result).toBe('string');
         }, 1000);
 
         it('Decimal', async () => {
@@ -301,22 +301,22 @@ describe('Named Parameters (primitive)', () => {
 
         it('Int1', async () => {
             const frames = await httpClient.query('MAP {result: $value}', { value: 42 });
-            expectSingleResult(frames, 42, 'number');
+            expectSingleResult(frames, "42", 'string');
         }, 1000);
 
         it('Int2', async () => {
             const frames = await httpClient.query('MAP {result: $value}', { value: 1234 });
-            expectSingleResult(frames, 1234, 'number');
+            expectSingleResult(frames, "1234", 'string');
         }, 1000);
 
         it('Int4', async () => {
             const frames = await httpClient.query('MAP {result: $value}', { value: 12345678 });
-            expectSingleResult(frames, 12345678, 'number');
+            expectSingleResult(frames, "12345678", 'string');
         }, 1000);
 
         it('Int8', async () => {
             const frames = await httpClient.query('MAP {result: $value}', { value: BigInt("42") });
-            expectSingleResult(frames, 42, 'number');
+            expectSingleResult(frames, "42", 'string');
         }, 1000);
 
         it('Int16', async () => {
@@ -326,22 +326,22 @@ describe('Named Parameters (primitive)', () => {
 
         it('Uint1', async () => {
             const frames = await httpClient.query('MAP {result: $value}', { value: 255 });
-            expectSingleResult(frames, 255, 'number');
+            expectSingleResult(frames, "255", 'string');
         }, 1000);
 
         it('Uint2', async () => {
             const frames = await httpClient.query('MAP {result: $value}', { value: 65535 });
-            expectSingleResult(frames, 65535, 'number');
+            expectSingleResult(frames, "65535", 'string');
         }, 1000);
 
         it('Uint4', async () => {
             const frames = await httpClient.query('MAP {result: $value}', { value: 4294967295 });
-            expectSingleResult(frames, 4294967295, 'number');
+            expectSingleResult(frames, "4294967295", 'string');
         }, 1000);
 
         it('Uint8', async () => {
             const frames = await httpClient.query('MAP {result: $value}', { value: BigInt("255") });
-            expectSingleResult(frames, 255, 'number');
+            expectSingleResult(frames, "255", 'string');
         }, 1000);
 
         it('Uint16', async () => {
@@ -351,15 +351,15 @@ describe('Named Parameters (primitive)', () => {
 
         it('Float4', async () => {
             const frames = await httpClient.query('MAP {result: $value}', { value: 3.14 });
-            expectSingleResult(frames, 3.14, 'number');
+            expectSingleResult(frames, "3.14", 'string');
         }, 1000);
 
         it('Float8', async () => {
             const frames = await httpClient.query('MAP {result: $value}', { value: 3.141592653589793 });
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].result).toBeCloseTo(3.141592653589793, 14);
-            expect(typeof frames[0][0].result).toBe('number');
+            expect(frames[0][0].result).toBe("3.14159265358979");
+            expect(typeof frames[0][0].result).toBe('string');
         }, 1000);
 
         it('Decimal', async () => {

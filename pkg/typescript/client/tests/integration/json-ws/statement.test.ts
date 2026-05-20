@@ -63,10 +63,10 @@ describe('Statement', () => {
             expect(frames).toHaveLength(2);
 
             expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].one).toBe(1);
+            expect(frames[0][0].one).toBe("1");
 
             expect(frames[1]).toHaveLength(1);
-            expect(frames[1][0].two).toBe(2);
+            expect(frames[1][0].two).toBe("2");
 
         }, 1000);
 
@@ -75,7 +75,7 @@ describe('Statement', () => {
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].result).toBe(1);
+            expect(frames[0][0].result).toBe("1");
         }, 1000);
 
         it('multiple statements, but same structure', async () => {
@@ -91,9 +91,9 @@ describe('Statement', () => {
             expect(frames[1]).toHaveLength(1);
             expect(frames[2]).toHaveLength(1);
 
-            expect(frames[0][0].result).toBe(1);
-            expect(frames[1][0].result).toBe(2);
-            expect(frames[2][0].result).toBe(3);
+            expect(frames[0][0].result).toBe("1");
+            expect(frames[1][0].result).toBe("2");
+            expect(frames[2][0].result).toBe("3");
         }, 1000);
 
         it('multiple statements, different structure', async () => {
@@ -109,10 +109,10 @@ describe('Statement', () => {
             expect(frames[1]).toHaveLength(1);
             expect(frames[2]).toHaveLength(1);
 
-            expect(frames[0][0].result).toBe(1);
+            expect(frames[0][0].result).toBe("1");
 
-            expect(frames[1][0].a).toBe(2);
-            expect(frames[1][0].b).toBe(3);
+            expect(frames[1][0].a).toBe("2");
+            expect(frames[1][0].b).toBe("3");
 
             expect(frames[2][0].result).toBe("ReifyDB");
         }, 1000);
@@ -143,10 +143,10 @@ describe('Statement', () => {
             expect(frames).toHaveLength(2);
 
             expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].one).toBe(1);
+            expect(frames[0][0].one).toBe("1");
 
             expect(frames[1]).toHaveLength(1);
-            expect(frames[1][0].two).toBe(2);
+            expect(frames[1][0].two).toBe("2");
 
         }, 1000);
 
@@ -155,7 +155,7 @@ describe('Statement', () => {
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].result).toBe(1);
+            expect(frames[0][0].result).toBe("1");
         }, 1000);
 
         it('multiple statements, but same structure', async () => {
@@ -171,9 +171,9 @@ describe('Statement', () => {
             expect(frames[1]).toHaveLength(1);
             expect(frames[2]).toHaveLength(1);
 
-            expect(frames[0][0].result).toBe(1);
-            expect(frames[1][0].result).toBe(2);
-            expect(frames[2][0].result).toBe(3);
+            expect(frames[0][0].result).toBe("1");
+            expect(frames[1][0].result).toBe("2");
+            expect(frames[2][0].result).toBe("3");
         }, 1000);
 
         it('multiple statements, different structure', async () => {
@@ -189,10 +189,10 @@ describe('Statement', () => {
             expect(frames[1]).toHaveLength(1);
             expect(frames[2]).toHaveLength(1);
 
-            expect(frames[0][0].result).toBe(1);
+            expect(frames[0][0].result).toBe("1");
 
-            expect(frames[1][0].a).toBe(2);
-            expect(frames[1][0].b).toBe(3);
+            expect(frames[1][0].a).toBe("2");
+            expect(frames[1][0].b).toBe("3");
 
             expect(frames[2][0].result).toBe("ReifyDB");
         }, 1000);
@@ -224,10 +224,10 @@ describe('Statement', () => {
             expect(frames).toHaveLength(2);
 
             expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].one).toBe(1);
+            expect(frames[0][0].one).toBe("1");
 
             expect(frames[1]).toHaveLength(1);
-            expect(frames[1][0].two).toBe(2);
+            expect(frames[1][0].two).toBe("2");
 
         }, 1000);
 
@@ -236,7 +236,7 @@ describe('Statement', () => {
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].result).toBe(1);
+            expect(frames[0][0].result).toBe("1");
         }, 1000);
 
         it('multiple statements, but same structure', async () => {
@@ -252,9 +252,9 @@ describe('Statement', () => {
             expect(frames[1]).toHaveLength(1);
             expect(frames[2]).toHaveLength(1);
 
-            expect(frames[0][0].result).toBe(1);
-            expect(frames[1][0].result).toBe(2);
-            expect(frames[2][0].result).toBe(3);
+            expect(frames[0][0].result).toBe("1");
+            expect(frames[1][0].result).toBe("2");
+            expect(frames[2][0].result).toBe("3");
         }, 1000);
 
         it('multiple statements, different structure', async () => {
@@ -270,10 +270,10 @@ describe('Statement', () => {
             expect(frames[1]).toHaveLength(1);
             expect(frames[2]).toHaveLength(1);
 
-            expect(frames[0][0].result).toBe(1);
+            expect(frames[0][0].result).toBe("1");
 
-            expect(frames[1][0].a).toBe(2);
-            expect(frames[1][0].b).toBe(3);
+            expect(frames[1][0].a).toBe("2");
+            expect(frames[1][0].b).toBe("3");
 
             expect(frames[2][0].result).toBe("ReifyDB");
         }, 1000);

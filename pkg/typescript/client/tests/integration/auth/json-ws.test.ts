@@ -33,7 +33,7 @@ describe('Auth Login Tests — JSON WebSocket', () => {
             const frames = await client.query('MAP {v: 42}');
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].v).toBe(42);
+            expect(frames[0][0].v).toBe("42");
         }, 10000);
 
         it('should reject wrong password', async () => {
@@ -69,7 +69,7 @@ describe('Auth Login Tests — JSON WebSocket', () => {
             const frames = await client.query('MAP {v: 42}');
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].v).toBe(42);
+            expect(frames[0][0].v).toBe("42");
         }, 10000);
 
         it('should reject wrong token', async () => {
@@ -100,14 +100,14 @@ describe('Auth Login Tests — JSON WebSocket', () => {
             expect(resultA.token).toBeDefined();
 
             const framesA = await client.query('MAP {v: 1}');
-            expect(framesA[0][0].v).toBe(1);
+            expect(framesA[0][0].v).toBe("1");
 
             const resultB = await client.login_with_token('bob-secret-token');
             expect(resultB.token).toBeDefined();
             expect(resultB.token).not.toBe(resultA.token);
 
             const framesB = await client.query('MAP {v: 2}');
-            expect(framesB[0][0].v).toBe(2);
+            expect(framesB[0][0].v).toBe("2");
         }, 10000);
     });
 
@@ -127,7 +127,7 @@ describe('Auth Login Tests — JSON WebSocket', () => {
             const oldToken = result.token;
 
             const frames = await client.query('MAP {v: 1}');
-            expect(frames[0][0].v).toBe(1);
+            expect(frames[0][0].v).toBe("1");
 
             await client.logout();
 
@@ -161,7 +161,7 @@ describe('Auth Login Tests — JSON WebSocket', () => {
             clientA.disconnect();
 
             const frames = await clientB.query('MAP {v: 42}');
-            expect(frames[0][0].v).toBe(42);
+            expect(frames[0][0].v).toBe("42");
 
             clientB.disconnect();
             client = null;

@@ -48,6 +48,12 @@ type TableRow = InferShape<typeof table_shape>;
 type ViewRow = InferShape<typeof view_shape>;
 type ColumnRow = InferShape<typeof column_shape>;
 
+function to_number(value: unknown): number | undefined {
+    if (value === undefined || value === null) return undefined;
+    const n = Number(value);
+    return Number.isNaN(n) ? undefined : n;
+}
+
 export function useShape(): [boolean, TableInfo[], string | undefined] {
     const {is_executing, results, error, query} = useQueryExecutor();
     const [shape, set_shape] = useState<TableInfo[]>([]);
@@ -96,7 +102,7 @@ export function useShape(): [boolean, TableInfo[], string | undefined] {
 
         const namespace_map = new Map<number, string>();
         namespaces.forEach((ns) => {
-            const id = ns.id?.valueOf() as number;
+            const id = to_number(ns.id);
             const name = ns.name?.valueOf() as string;
             if (id !== undefined && name) {
                 namespace_map.set(id, name);
@@ -106,8 +112,8 @@ export function useShape(): [boolean, TableInfo[], string | undefined] {
         const table_info_map = new Map<number, TableInfo>();
 
         tables.forEach((table) => {
-            const table_id = table.id?.valueOf() as number;
-            const namespace_id = table.namespace_id?.valueOf() as number;
+            const table_id = to_number(table.id);
+            const namespace_id = to_number(table.namespace_id);
             const table_name = table.name?.valueOf() as string;
 
             if (table_id === undefined || !table_name || namespace_id === undefined) return;
@@ -124,8 +130,8 @@ export function useShape(): [boolean, TableInfo[], string | undefined] {
         });
 
         views.forEach((view) => {
-            const view_id = view.id?.valueOf() as number;
-            const namespace_id = view.namespace_id?.valueOf() as number;
+            const view_id = to_number(view.id);
+            const namespace_id = to_number(view.namespace_id);
             const view_name = view.name?.valueOf() as string;
 
             if (view_id === undefined || !view_name || namespace_id === undefined) return;
@@ -175,11 +181,11 @@ export function useShape(): [boolean, TableInfo[], string | undefined] {
         const table_columns_map = new Map<number, Array<{name: string; data_type: string; position: number}>>();
 
         columns.forEach((column) => {
-            const shape_id = column.shape_id?.valueOf() as number;
-            const shape_type = column.shape_type?.valueOf() as number;
+            const shape_id = to_number(column.shape_id);
+            const shape_type = to_number(column.shape_type);
             const column_name = column.name?.valueOf() as string;
-            const type_id = column.type?.valueOf() as number;
-            const position = column.position?.valueOf() as number;
+            const type_id = to_number(column.type);
+            const position = to_number(column.position);
 
             if (shape_id === undefined || !column_name || type_id === undefined) return;
             if (shape_type !== 0 && shape_type !== 1) return;

@@ -96,7 +96,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
                 const shape = Shape.object({ price: Shape.float() });
                 const { result } = renderHook(() =>
                     useCommandOne(
-                        `MAP {price: 19.99}`,
+                        `MAP {price: cast(19.99, float4)}`,
                         undefined,
                         shape
                     )
@@ -106,14 +106,14 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
                     expect(result.current.is_executing).toBe(false);
                 });
 
-                expect(result.current.result!.rows[0].price).toBe(19.99);
+                expect(result.current.result!.rows[0].price).toBeCloseTo(19.99);
             });
 
             it('should handle double precision numbers', async () => {
                 const shape = Shape.object({ value: Shape.double() });
                 const { result } = renderHook(() =>
                     useCommandOne(
-                        `MAP {value: 3.141592653589793}`,
+                        `MAP {value: cast(3.141592653589793, float8)}`,
                         undefined,
                         shape
                     )
@@ -176,7 +176,7 @@ describe('useCommand with TypeScript Primitive Types (HTTP)', () => {
                     expect(result.current.is_executing).toBe(false);
                 });
 
-                expect(result.current.result!.rows[0].temperature).toBe(-40.5);
+                expect(result.current.result!.rows[0].temperature).toBe("-40.5");
             });
 
             it('should handle zero', async () => {

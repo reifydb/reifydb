@@ -48,7 +48,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [42]
             );
 
-            expectSingleResult(frames, 42, 'number');
+            expectSingleResult(frames, "42", 'string');
         }, 1000);
 
         it('Int2', async () => {
@@ -57,7 +57,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [1234]
             );
 
-            expectSingleResult(frames, 1234, 'number');
+            expectSingleResult(frames, "1234", 'string');
         }, 1000);
 
         it('Int4', async () => {
@@ -66,7 +66,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [12345678]
             );
 
-            expectSingleResult(frames, 12345678, 'number');
+            expectSingleResult(frames, "12345678", 'string');
         }, 1000);
 
         it('Int8', async () => {
@@ -75,7 +75,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [BigInt("42")]
             );
 
-            expectSingleResult(frames, 42, 'number');
+            expectSingleResult(frames, "42", 'string');
         }, 1000);
 
         it('Int16', async () => {
@@ -93,7 +93,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [255]
             );
 
-            expectSingleResult(frames, 255, 'number');
+            expectSingleResult(frames, "255", 'string');
         }, 1000);
 
         it('Uint2', async () => {
@@ -102,7 +102,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [65535]
             );
 
-            expectSingleResult(frames, 65535, 'number');
+            expectSingleResult(frames, "65535", 'string');
         }, 1000);
 
         it('Uint4', async () => {
@@ -111,7 +111,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [4294967295]
             );
 
-            expectSingleResult(frames, 4294967295, 'number');
+            expectSingleResult(frames, "4294967295", 'string');
         }, 1000);
 
         it('Uint8', async () => {
@@ -120,7 +120,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [BigInt("255")]
             );
 
-            expectSingleResult(frames, 255, 'number');
+            expectSingleResult(frames, "255", 'string');
         }, 1000);
 
         it('Uint16', async () => {
@@ -138,7 +138,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [3.14]
             );
 
-            expectSingleResult(frames, 3.14, 'number');
+            expectSingleResult(frames, "3.14", 'string');
         }, 1000);
 
         it('Float8', async () => {
@@ -149,8 +149,8 @@ describe('Positional Parameters (Primitive)', () => {
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].result).toBeCloseTo(3.141592653589793, 14);
-            expect(typeof frames[0][0].result).toBe('number');
+            expect(frames[0][0].result).toBe("3.14159265358979");
+            expect(typeof frames[0][0].result).toBe('string');
         }, 1000);
 
         it('Decimal', async () => {
@@ -277,7 +277,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [42]
             );
 
-            expectSingleResult(frames, 42, 'number');
+            expectSingleResult(frames, "42", 'string');
         }, 1000);
 
         it('Int2', async () => {
@@ -286,7 +286,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [1234]
             );
 
-            expectSingleResult(frames, 1234, 'number');
+            expectSingleResult(frames, "1234", 'string');
         }, 1000);
 
         it('Int4', async () => {
@@ -295,7 +295,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [12345678]
             );
 
-            expectSingleResult(frames, 12345678, 'number');
+            expectSingleResult(frames, "12345678", 'string');
         }, 1000);
 
         it('Int8', async () => {
@@ -304,7 +304,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [BigInt("42")]
             );
 
-            expectSingleResult(frames, 42, 'number');
+            expectSingleResult(frames, "42", 'string');
         }, 1000);
 
         it('Int16', async () => {
@@ -322,7 +322,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [255]
             );
 
-            expectSingleResult(frames, 255, 'number');
+            expectSingleResult(frames, "255", 'string');
         }, 1000);
 
         it('Uint2', async () => {
@@ -331,7 +331,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [65535]
             );
 
-            expectSingleResult(frames, 65535, 'number');
+            expectSingleResult(frames, "65535", 'string');
         }, 1000);
 
         it('Uint4', async () => {
@@ -340,7 +340,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [4294967295]
             );
 
-            expectSingleResult(frames, 4294967295, 'number');
+            expectSingleResult(frames, "4294967295", 'string');
         }, 1000);
 
         it('Uint8', async () => {
@@ -349,7 +349,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [BigInt("255")]
             );
 
-            expectSingleResult(frames, 255, 'number');
+            expectSingleResult(frames, "255", 'string');
         }, 1000);
 
         it('Uint16', async () => {
@@ -367,7 +367,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [3.14]
             );
 
-            expectSingleResult(frames, 3.14, 'number');
+            expectSingleResult(frames, "3.14", 'string');
         }, 1000);
 
         it('Float8', async () => {
@@ -378,8 +378,8 @@ describe('Positional Parameters (Primitive)', () => {
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].result).toBeCloseTo(3.141592653589793, 14);
-            expect(typeof frames[0][0].result).toBe('number');
+            expect(frames[0][0].result).toBe("3.14159265358979");
+            expect(typeof frames[0][0].result).toBe('string');
         }, 1000);
 
         it('Decimal', async () => {
@@ -506,7 +506,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [42]
             );
 
-            expectSingleResult(frames, 42, 'number');
+            expectSingleResult(frames, "42", 'string');
         }, 1000);
 
         it('Int2', async () => {
@@ -515,7 +515,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [1234]
             );
 
-            expectSingleResult(frames, 1234, 'number');
+            expectSingleResult(frames, "1234", 'string');
         }, 1000);
 
         it('Int4', async () => {
@@ -524,7 +524,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [12345678]
             );
 
-            expectSingleResult(frames, 12345678, 'number');
+            expectSingleResult(frames, "12345678", 'string');
         }, 1000);
 
         it('Int8', async () => {
@@ -533,7 +533,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [BigInt("42")]
             );
 
-            expectSingleResult(frames, 42, 'number');
+            expectSingleResult(frames, "42", 'string');
         }, 1000);
 
         it('Int16', async () => {
@@ -551,7 +551,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [255]
             );
 
-            expectSingleResult(frames, 255, 'number');
+            expectSingleResult(frames, "255", 'string');
         }, 1000);
 
         it('Uint2', async () => {
@@ -560,7 +560,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [65535]
             );
 
-            expectSingleResult(frames, 65535, 'number');
+            expectSingleResult(frames, "65535", 'string');
         }, 1000);
 
         it('Uint4', async () => {
@@ -569,7 +569,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [4294967295]
             );
 
-            expectSingleResult(frames, 4294967295, 'number');
+            expectSingleResult(frames, "4294967295", 'string');
         }, 1000);
 
         it('Uint8', async () => {
@@ -578,7 +578,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [BigInt("255")]
             );
 
-            expectSingleResult(frames, 255, 'number');
+            expectSingleResult(frames, "255", 'string');
         }, 1000);
 
         it('Uint16', async () => {
@@ -596,7 +596,7 @@ describe('Positional Parameters (Primitive)', () => {
                 [3.14]
             );
 
-            expectSingleResult(frames, 3.14, 'number');
+            expectSingleResult(frames, "3.14", 'string');
         }, 1000);
 
         it('Float8', async () => {
@@ -607,8 +607,8 @@ describe('Positional Parameters (Primitive)', () => {
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].result).toBeCloseTo(3.141592653589793, 14);
-            expect(typeof frames[0][0].result).toBe('number');
+            expect(frames[0][0].result).toBe("3.14159265358979");
+            expect(typeof frames[0][0].result).toBe('string');
         }, 1000);
 
         it('Decimal', async () => {

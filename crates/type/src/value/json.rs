@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use serde_json::{Map, Value as JsonValue, json};
+use serde_json::{Map, Value as JsonValue};
 
 use super::Value;
 
@@ -12,20 +12,20 @@ impl Value {
 				..
 			} => JsonValue::Null,
 			Value::Boolean(b) => JsonValue::Bool(*b),
-			Value::Int1(i) => json!(*i),
-			Value::Int2(i) => json!(*i),
-			Value::Int4(i) => json!(*i),
-			Value::Int8(i) => json!(*i),
+			Value::Int1(i) => JsonValue::String(i.to_string()),
+			Value::Int2(i) => JsonValue::String(i.to_string()),
+			Value::Int4(i) => JsonValue::String(i.to_string()),
+			Value::Int8(i) => JsonValue::String(i.to_string()),
 			Value::Int16(i) => JsonValue::String(i.to_string()),
-			Value::Uint1(u) => json!(*u),
-			Value::Uint2(u) => json!(*u),
-			Value::Uint4(u) => json!(*u),
-			Value::Uint8(u) => json!(*u),
+			Value::Uint1(u) => JsonValue::String(u.to_string()),
+			Value::Uint2(u) => JsonValue::String(u.to_string()),
+			Value::Uint4(u) => JsonValue::String(u.to_string()),
+			Value::Uint8(u) => JsonValue::String(u.to_string()),
 			Value::Uint16(u) => JsonValue::String(u.to_string()),
 			Value::Float4(f) => {
 				let v: f32 = **f;
 				if v.is_finite() {
-					json!(v)
+					JsonValue::String(f.to_string())
 				} else {
 					JsonValue::Null
 				}
@@ -33,7 +33,7 @@ impl Value {
 			Value::Float8(f) => {
 				let v: f64 = **f;
 				if v.is_finite() {
-					json!(v)
+					JsonValue::String(f.to_string())
 				} else {
 					JsonValue::Null
 				}

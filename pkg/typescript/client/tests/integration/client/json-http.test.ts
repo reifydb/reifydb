@@ -22,7 +22,7 @@ describe('ReifyDB Client Integration Tests', () => {
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].result).toBe(42);
+            expect(frames[0][0].result).toBe("42");
         }, 10000);
 
         it('should execute simple query', async () => {
@@ -30,7 +30,7 @@ describe('ReifyDB Client Integration Tests', () => {
 
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
-            expect(frames[0][0].result).toBe(42);
+            expect(frames[0][0].result).toBe("42");
         }, 10000);
     });
 });

@@ -91,15 +91,15 @@ describe('useCommand with TypeScript Primitive Types (JSON WS)', () => {
                     expect(result.current.is_executing).toBe(false);
                 });
 
-                expect(result.current.result!.rows[0].age).toBe(25);
-                expect(typeof result.current.result!.rows[0].age).toBe('number');
+                expect(result.current.result!.rows[0].age).toBe("25");
+                expect(typeof result.current.result!.rows[0].age).toBe('string');
             });
 
             it('should handle float numbers', async () => {
                 const shape = Shape.object({ price: Shape.float() });
                 const { result } = renderHook(() =>
                     useCommandOne(
-                        `MAP {price: 19.99}`,
+                        `MAP {price: cast(19.99, float4)}`,
                         undefined,
                         shape
                     )
@@ -109,14 +109,14 @@ describe('useCommand with TypeScript Primitive Types (JSON WS)', () => {
                     expect(result.current.is_executing).toBe(false);
                 });
 
-                expect(result.current.result!.rows[0].price).toBe(19.99);
+                expect(result.current.result!.rows[0].price).toBe("19.99");
             });
 
             it('should handle double precision numbers', async () => {
                 const shape = Shape.object({ value: Shape.double() });
                 const { result } = renderHook(() =>
                     useCommandOne(
-                        `MAP {value: 3.141592653589793}`,
+                        `MAP {value: cast(3.141592653589793, float8)}`,
                         undefined,
                         shape
                     )
@@ -126,7 +126,7 @@ describe('useCommand with TypeScript Primitive Types (JSON WS)', () => {
                     expect(result.current.is_executing).toBe(false);
                 });
 
-                expect(result.current.result!.rows[0].value).toBeCloseTo(3.141592653589793);
+                expect(result.current.result!.rows[0].value).toBe("3.14159265358979");
             });
 
             it('should handle decimal numbers', async () => {
@@ -161,8 +161,7 @@ describe('useCommand with TypeScript Primitive Types (JSON WS)', () => {
                     expect(result.current.is_executing).toBe(false);
                 });
 
-                expect(result.current.result!.rows[0].count).toBe(100);
-                expect(Number.isInteger(result.current.result!.rows[0].count)).toBe(true);
+                expect(result.current.result!.rows[0].count).toBe("100");
             });
 
             it('should handle negative numbers', async () => {
@@ -179,7 +178,7 @@ describe('useCommand with TypeScript Primitive Types (JSON WS)', () => {
                     expect(result.current.is_executing).toBe(false);
                 });
 
-                expect(result.current.result!.rows[0].temperature).toBe(-40.5);
+                expect(result.current.result!.rows[0].temperature).toBe("-40.5");
             });
 
             it('should handle zero', async () => {
@@ -196,7 +195,7 @@ describe('useCommand with TypeScript Primitive Types (JSON WS)', () => {
                     expect(result.current.is_executing).toBe(false);
                 });
 
-                expect(result.current.result!.rows[0].zero).toBe(0);
+                expect(result.current.result!.rows[0].zero).toBe("0");
             });
         });
 
@@ -299,8 +298,8 @@ describe('useCommand with TypeScript Primitive Types (JSON WS)', () => {
             });
 
             // With shape, numbers are still JS numbers
-            expect(result.current.result!.rows[0].age).toBe(30);
-            expect(typeof result.current.result!.rows[0].age).toBe('number');
+            expect(result.current.result!.rows[0].age).toBe("30");
+            expect(typeof result.current.result!.rows[0].age).toBe('string');
         });
 
         it('should handle boolean shape', async () => {
@@ -396,7 +395,7 @@ describe('useCommand with TypeScript Primitive Types (JSON WS)', () => {
             });
 
             const data = result.current.result!.rows[0];
-            expect(data.sum).toBe(30);
+            expect(data.sum).toBe("30");
             expect(data.concat).toBe('Hello, World!');
             expect(data.flag).toBe(true);
         });
@@ -416,8 +415,8 @@ describe('useCommand with TypeScript Primitive Types (JSON WS)', () => {
 
             expect(result.current.results![0].rows[0].str).toBe('test');
             expect(typeof result.current.results![0].rows[0].str).toBe('string');
-            expect(result.current.results![1].rows[0].num).toBe(42);
-            expect(typeof result.current.results![1].rows[0].num).toBe('number');
+            expect(result.current.results![1].rows[0].num).toBe("42");
+            expect(typeof result.current.results![1].rows[0].num).toBe('string');
             expect(result.current.results![2].rows[0].bool).toBe(true);
             expect(typeof result.current.results![2].rows[0].bool).toBe('boolean');
         });
@@ -438,7 +437,7 @@ describe('useCommand with TypeScript Primitive Types (JSON WS)', () => {
             });
 
             expect(result.current.results![0].rows[0].value).toBe('hello');
-            expect(result.current.results![1].rows[0].value).toBe(123);
+            expect(result.current.results![1].rows[0].value).toBe("123");
         });
     });
 });

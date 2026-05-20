@@ -93,7 +93,7 @@ describe.each([
             });
 
             const result = await ws_client.admin(
-                "MAP { str_val: 'test', int_val: 42, bool_val: true, float_val: 3.14 }",
+                "MAP { str_val: 'test', int_val: 42, bool_val: true, float_val: cast(3.14, float8) }",
                 null,
                 [shape]
             );

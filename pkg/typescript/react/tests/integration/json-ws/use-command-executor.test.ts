@@ -44,7 +44,7 @@ describe('useCommandExecutor Hook (JSON WS)', () => {
         expect(result.current.error).toBeUndefined();
         expect(result.current.results).toHaveLength(1);
         expect(result.current.results![0].rows).toHaveLength(1);
-        expect(result.current.results![0].rows[0]).toEqual({answer: 42});
+        expect(result.current.results![0].rows[0]).toEqual({answer: "42"});
     });
 
     it('should execute multiple statements', async () => {
@@ -69,9 +69,9 @@ describe('useCommandExecutor Hook (JSON WS)', () => {
         });
 
         expect(result.current.results).toHaveLength(3);
-        expect(result.current.results![0].rows[0]).toEqual({first: 1});
-        expect(result.current.results![1].rows[0]).toEqual({second: 2});
-        expect(result.current.results![2].rows[0]).toEqual({third: 3});
+        expect(result.current.results![0].rows[0]).toEqual({first: "1"});
+        expect(result.current.results![1].rows[0]).toEqual({second: "2"});
+        expect(result.current.results![2].rows[0]).toEqual({third: "3"});
     });
 
     it('should handle command with parameters', async () => {
@@ -138,7 +138,7 @@ describe('useCommandExecutor Hook (JSON WS)', () => {
 
         // Should only have results from second command
         expect(result.current.results).toHaveLength(1);
-        expect(result.current.results![0].rows[0]).toEqual({second: 2});
+        expect(result.current.results![0].rows[0]).toEqual({second: "2"});
     });
 
     it('should handle empty results', async () => {
@@ -183,8 +183,8 @@ describe('useCommandExecutor Hook (JSON WS)', () => {
         });
 
         // Each hook should have its own results
-        expect(result1.current.results![0].rows[0]).toEqual({value: 100});
-        expect(result2.current.results![0].rows[0]).toEqual({value: 200});
+        expect(result1.current.results![0].rows[0]).toEqual({value: "100"});
+        expect(result2.current.results![0].rows[0]).toEqual({value: "200"});
     });
 
     it('should support manual command cancellation', async () => {
