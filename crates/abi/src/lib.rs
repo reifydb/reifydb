@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! C ABI definitions for the FFI boundary that out-of-process operators, procedures, transforms, flows, and
 //! connectors implement. Defines the `repr(C)` shapes of catalog handles, columnar data, callbacks, contexts, and

@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Authentication: turning a wire-level credential into a verified `IdentityId` the rest of the system can attach
 //! to a transaction. The crate owns the registry of supported authentication methods, the challenge-response state

@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Ephemeral subscription subsystem: maintains the per-client cursor that drains the CDC stream and pushes deltas
 //! through the connected sink. "Ephemeral" because nothing here persists subscription state across restarts; if a

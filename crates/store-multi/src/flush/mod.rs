@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Background flusher that migrates writes from the buffer tier to the persistent tier. The actor decides when to
 //! flush (size, age, explicit request) and the listener exposes flush events to anything that wants to track

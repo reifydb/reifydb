@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Abstract syntax tree for RQL. The parser entry point `parse_str` tokenises a source string and emits an
 //! `AstStatement` tree allocated in a bump arena tied to the source lifetime, so spans inside the AST can refer

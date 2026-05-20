@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 
 // Dict encoding: index array in `data`, dictionary table in `extra`.
 // Port of crates/wire-format/src/encoding/dict.rs.

@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 
 //! Diagnostic and error machinery used by every other crate in the workspace. The `Error` type carries a structured
 //! `Diagnostic` plus the source-fragment context needed to render a user-visible message that points at the

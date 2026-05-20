@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 //
 // Combined create+drop within a single txn; asserts via
 // `find_authentication_by_identity_and_method`. The authentication catalog API

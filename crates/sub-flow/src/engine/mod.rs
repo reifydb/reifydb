@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Flow execution engine. Registers compiled flow definitions, evaluates each flow's operator graph against
 //! incoming change deltas, and writes the resulting outputs back through the catalog. Process drives the per-tick

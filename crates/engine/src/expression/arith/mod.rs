@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 /// Generates a complete match expression dispatching all numeric type pairs to the appropriate
 /// handler functions. Uses push-down accumulation to build the cross-product of type arms.

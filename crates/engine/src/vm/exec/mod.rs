@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Inner execution primitives the VM dispatch loop calls into. Arithmetic, comparison, logic, control flow,
 //! masking, broadcasting, looping, and the call-into-routine dispatcher: each is the lowest-level operation a

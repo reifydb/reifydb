@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 use js_sys::{Array, JSON, Object, Reflect};
 use reifydb_type::{params::Params, value::frame::frame::Frame};

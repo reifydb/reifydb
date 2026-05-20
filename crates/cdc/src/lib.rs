@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Change Data Capture: durable record of every committed write, ordered, addressable, and consumable by external
 //! systems. The transaction layer hands committed deltas here at commit time; this crate persists them, exposes the

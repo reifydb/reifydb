@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Query execution and orchestration. The engine consumes a compiled `rql` plan, drives the virtual machine over the
 //! storage tier, applies policy enforcement, manages per-query session state, and produces the columnar result the

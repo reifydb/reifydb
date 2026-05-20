@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Volcano-style execution: open/next/close iterator pipeline that pulls rows through scans, joins, and other
 //! relational operators a row-at-a-time (or column-batch-at-a-time). Sits alongside the vectorised path; the

@@ -1,6 +1,6 @@
 #!/bin/bash
-# SPDX-License-Identifier: Apache-2.0
-# Copyright (c) 2025 ReifyDB
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (c) 2026 ReifyDB
 # Check for internal pub use re-exports in the codebase
 #
 # This script checks ALL files (not just staged) for internal re-exports.

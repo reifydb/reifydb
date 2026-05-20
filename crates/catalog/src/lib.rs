@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Concrete implementation of the catalog object hierarchy declared by `core::interface::catalog`. Owns the on-disk
 //! representation of namespaces, tables, views, flows, identities, policies, sequences, tokens, tests, and the system

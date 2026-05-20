@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 
 //! Build-time helper called from each downstream crate's `build.rs` to resolve the `reifydb_target` and
 //! `reifydb_single_threaded` cfg flags that gate platform-specific code paths. Nothing else in the workspace runs

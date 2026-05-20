@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Observability primitives: counters, gauges, histograms, plus the per-statement accumulator the engine uses to
 //! attribute work to a query. The crate owns the metric registry, the in-memory storage of recent samples, and the

@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! gRPC server. Accepts requests, hands them to `sub-server` for execution, and streams subscription updates back
 //! to clients. The protobuf definitions and generated stubs live alongside the conversion code that maps between

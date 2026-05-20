@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Catalog bootstrap. Runs at startup, installs the system namespace, the seed identities (root, the system
 //! background actors), and any built-in shapes the engine needs before it can serve traffic. On a fresh database

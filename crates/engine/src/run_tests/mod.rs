@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Engine-side runner for first-class CREATE TEST / RUN TESTS. Compiles the test body in the active admin
 //! transaction and executes it; collects per-test results into the typed `result/` types the caller observes.

@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 
 // Per-type formatters. Each produces the exact string form that Rust's `Display` impl
 // writes for the corresponding Value, so downstream @reifydb/core decode() works unchanged.

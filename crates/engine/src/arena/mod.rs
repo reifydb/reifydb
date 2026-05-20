@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Bumpalo-backed arena allocator used by the engine for per-request scratch storage. Plans, intermediate column
 //! buffers, and the bit-vectors that drive selection live in an arena tied to the request lifetime so the engine

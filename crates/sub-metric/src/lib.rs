@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Metric collection subsystem: watches the engine's metric registry, samples it on a cadence, and delivers
 //! snapshots to whatever sink the deployment has configured (an in-process listener, a periodic logger, an external

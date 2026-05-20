@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 // TODO(index-metrics): per-index storage/cdc stats require `KeyKind::Index` /
 // `KeyKind::IndexEntry` to carry `IndexId` in their key layout. Add

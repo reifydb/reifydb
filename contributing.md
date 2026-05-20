@@ -79,7 +79,7 @@ This helps keep the project organized and makes it easier for maintainers to pri
 
 ## License
 
-ReifyDB is licensed under [Apache 2.0](license.md). By participating in this project (filing issues, joining discussions, or contributing in the future), you agree that any contributions will be under the same license.
+ReifyDB is licensed under [AGPL-3.0-or-later](license.md). By participating in this project (filing issues, joining discussions, or contributing in the future), you agree that any contributions will be under the same license.
 
 ---
 

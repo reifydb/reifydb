@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! SQL-to-RQL transpiler. Tokenises, parses, and emits a SQL statement into the equivalent RQL surface so callers
 //! who arrive with a SQL query can submit it to an engine that natively speaks RQL. Coverage is intentionally narrow:

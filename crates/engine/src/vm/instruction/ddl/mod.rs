@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! DDL instruction handlers. CREATE, ALTER, DROP, GRANT, REVOKE, and MIGRATE operate against the catalog tier
 //! through admin transactions and emit catalog change events that the materialised view picks up. Each operation

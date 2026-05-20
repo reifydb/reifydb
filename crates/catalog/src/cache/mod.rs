@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! In-memory materialised view of the catalog: every catalog object the running engine has seen, indexed for fast
 //! lookup by id and qualified name. The materialised view is loaded at boot, kept in sync with catalog mutations

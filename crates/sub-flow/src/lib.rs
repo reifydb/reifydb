@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Streaming flow runtime: continuously evaluates registered flow definitions over the change stream coming out of
 //! the transaction layer, applies the operator graph the planner produced, and writes the resulting deltas back into

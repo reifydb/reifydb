@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 
 //! Foundational primitive types shared by every other crate in the workspace - the value enum, type enum, type
 //! constraints, the source-fragment carrier used in diagnostics, the error and diagnostic machinery, and the parameter

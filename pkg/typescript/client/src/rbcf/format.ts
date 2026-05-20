@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 
 // RBCF: ReifyDB Binary Columnar Format v1.
 // Wire layout mirrors crates/wire-format/src/format.rs exactly.

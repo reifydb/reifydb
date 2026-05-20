@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 //
 // `CREATE HANDLER ns::name ON ns::event::Variant { body }` stores a Procedure
 // with `RqlTrigger::Event { variant }`. The bug lives in

@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 import {beforeAll, describe, expect, it} from "vitest";
 import {Client, HttpClient} from "../../../src";
 import {Shape, Utf8Value, Int4Value, Int1Value, InferShape} from "@reifydb/core";

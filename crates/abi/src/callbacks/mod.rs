@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Callback function pointers the host exports for the guest to invoke - catalog reads, RQL execution, store
 //! access, logging, host-allocated memory, and per-extension state. The builder pattern lets the host assemble a

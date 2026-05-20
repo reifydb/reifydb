@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 
 //! Encoder side of RBCF. Takes a `Frame` of typed columns and lays them out into the binary wire format - frame
 //! header, per-column header, optional none-bitmap, encoded value bytes - selecting an encoding per column based

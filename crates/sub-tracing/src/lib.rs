@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! In-process tracing subsystem built on `tracing_subscriber`. Configures the global subscriber, binds backends
 //! (stdout, file, JSON), and exposes a builder so each deployment can pick the verbosity and format that fits.

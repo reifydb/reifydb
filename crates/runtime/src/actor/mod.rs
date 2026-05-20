@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 
 //! Lightweight actor system. Each actor owns its mailbox, processes messages serially, and replies through a typed
 //! channel; the system handle spawns actors onto the runtime's pools and supervises their lifecycle. Timers,

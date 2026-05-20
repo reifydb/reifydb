@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Bridge that lets a local engine subscribe to a remote ReifyDB instance and forward incoming change payloads into
 //! a local channel or sink. Wraps the gRPC client, handles authentication, and proxies raw RBCF payloads through a

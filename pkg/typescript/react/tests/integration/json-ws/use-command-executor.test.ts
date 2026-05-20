@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 import {afterEach, afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, act, waitFor} from '@testing-library/react';
 import {useCommandExecutor, get_connection, clear_connection, Shape} from '../../../src';

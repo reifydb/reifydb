@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Sandboxed WebAssembly host for running user-supplied operators, procedures, and transforms inside the engine
 //! without giving them direct access to the process. The host is wasmtime-backed on native targets and shells out

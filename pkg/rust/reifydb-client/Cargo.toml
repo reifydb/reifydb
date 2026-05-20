@@ -3,7 +3,7 @@ name = "reifydb-client"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-license = "Apache-2.0"
+license = "MIT"
 repository.workspace = true
 description = "Official Rust client library for ReifyDB"
 
@@ -32,7 +32,9 @@ reifydb-type = { workspace = true }
 reifydb-wire-format = { workspace = true }
 reifydb-client-derive = { workspace = true }
 
-# DST client
+# The `dst` (deterministic simulation testing) feature links AGPL-3.0-or-later
+# reifydb-core; it is an internal testing aid and is NOT part of this crate's
+# MIT-licensed surface. Default features never pull reifydb-core.
 reifydb-core = { workspace = true, optional = true }
 reifydb-runtime = { workspace = true, optional = true }
 

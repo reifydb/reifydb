@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 import {WsClient, WsClientOptions} from "./ws";
 import {HttpClient, HttpClientOptions} from "./http";
 import {JsonHttpClient, JsonHttpClientOptions} from "./json-http";

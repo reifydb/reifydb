@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 
 //! Synchronisation primitives that are mockable under deterministic simulation. The mutex, rwlock, condvar,
 //! waiter, and concurrent map exposed here delegate to native equivalents on real targets and to a virtualised

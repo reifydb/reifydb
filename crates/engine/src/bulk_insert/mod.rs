@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Fast path for inserting many rows at once. Skips the per-row VM dispatch loop, coerces and validates the input
 //! batch up front, and writes directly through the storage commit path so a load of a million rows pays a small

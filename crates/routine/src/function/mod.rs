@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Built-in functions: pure, side-effect-free transformations the engine evaluates as part of expression
 //! evaluation. Grouped by domain - blob, temporal, json, math, identity introspection, RQL meta-queries, type

@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 #[allow(unused_imports)]
 use std::{collections::HashMap, collections::HashSet, mem, sync::Arc, time::Duration as StdDuration};

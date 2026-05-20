@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Virtual machine that executes the instruction stream emitted by the planner. The VM owns the per-request
 //! lifecycle (admin, command, query, subscription), threads parameters through, walks the plan, dispatches each

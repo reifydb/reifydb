@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 
 //! Sources of non-determinism the workspace consumes: the wall clock and the random number generator. Both have
 //! mockable variants so a deterministic-simulation run replaces them with seeded equivalents and reproduces the

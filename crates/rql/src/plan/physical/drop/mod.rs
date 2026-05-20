@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 use reifydb_core::error::diagnostic::catalog::{
 	dictionary_not_found, handler_not_found, namespace_not_found, procedure_not_found, ringbuffer_not_found,

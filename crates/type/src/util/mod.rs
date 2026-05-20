@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 
 //! Small dependency-free utilities used throughout the workspace: the bit-vector backing none-bitmaps and row
 //! masks, the copy-on-write vector `CowVec` that the storage tier uses for delta lists, base58/base64/hex codecs,

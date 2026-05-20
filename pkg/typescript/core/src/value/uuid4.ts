@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 import { v4 as uuidv4, NIL as NIL_UUID, validate, version } from 'uuid';
 import { Type, Value, TypeValuePair } from ".";
 import { NONE_VALUE } from "../constant";

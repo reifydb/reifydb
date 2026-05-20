@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! End-to-end demonstration that the harness catches a buggy operator and
 //! reports the seed in the panic message. `SwallowsRemoveOperator` drops

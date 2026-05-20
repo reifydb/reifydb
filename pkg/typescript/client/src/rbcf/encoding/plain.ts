@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 
 // Plain encoding: raw little-endian values for fixed-size types, offsets+data for varlen,
 // bit-packed for booleans. Port of crates/wire-format/src/encoding/plain.rs and the

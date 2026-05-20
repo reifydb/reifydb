@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 
 // Nones bitmap: LSB-first per byte. A set bit means the value is defined (present).
 // Mirrors Rust BitVec::from_raw used in crates/wire-format/src/encoding/plain.rs:encode_bitvec

@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 
 //! RBCF (ReifyDB Binary Columnar Format) encoder and decoder. The single binary representation that travels between
 //! processes - server to client, primary to replica, host to FFI extension - and is independent of any specific

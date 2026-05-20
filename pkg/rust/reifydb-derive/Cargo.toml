@@ -3,7 +3,7 @@ name = "reifydb-derive"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-license = "Apache-2.0"
+license = "AGPL-3.0-or-later"
 repository.workspace = true
 description = "Derive macros for ReifyDB"
 

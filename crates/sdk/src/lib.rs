@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Surface that external code uses to extend ReifyDB - building operators, procedures, transforms, flows, and custom
 //! connectors that plug into the engine. The crate exposes the FFI boundary that out-of-process extensions implement,

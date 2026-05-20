@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! OpenTelemetry / Jaeger tracing exporter. Configures a tracing subscriber that sends spans emitted by the rest of
 //! the workspace to a collector over OTLP. The crate adds the export pipeline; in-process tracing is owned by

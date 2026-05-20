@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Operator authoring surface for SDK consumers. An operator is a node in a flow graph that takes a set of input
 //! columns, transforms them, and produces output columns; this module exposes the builder, the column and row

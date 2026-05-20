@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 // This file includes and modifies code from the toydb project (https://github.com/erikgrinaker/toydb),
 // originally licensed under the Apache License, Version 2.0.

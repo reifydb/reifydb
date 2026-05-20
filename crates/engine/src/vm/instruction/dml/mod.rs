@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! DML instruction handlers. INSERT, UPDATE, DELETE specialised per shape - tables, ringbuffers, series, the
 //! dictionary, and the RETURNING-style read-back path. Per-shape handling is necessary because each shape stores

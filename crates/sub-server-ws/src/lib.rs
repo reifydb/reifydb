@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! WebSocket server. A single bidirectional channel multiplexes commands and subscriptions: a client opens one
 //! socket and can issue multiple in-flight queries and live subscriptions over it without paying per-call connection

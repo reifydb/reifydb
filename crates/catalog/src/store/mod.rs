@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Storage-facing implementation of catalog persistence. Each object kind has a sibling module here that owns the
 //! `EncodedKey` layout and the (de)serialisation between the typed catalog object and its on-disk bytes. The

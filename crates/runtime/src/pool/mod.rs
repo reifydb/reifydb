@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 
 //! Thread-pool abstraction. Splits work across five named pools - async I/O, system, query, commit, and background -
 //! so the runtime can size each independently. Native targets get the tokio-backed implementation; single-threaded

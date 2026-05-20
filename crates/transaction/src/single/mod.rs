@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Single-version transactional path. No snapshot isolation, no conflict detector, no version oracle - a write
 //! transaction sees its own buffered changes and commits them atomically against the underlying single-version

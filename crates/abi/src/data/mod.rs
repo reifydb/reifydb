@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Columnar payload shapes that cross the FFI boundary. Buffer, column, and layout cover the host-WASM-capable
 //! representation of typed data; the WASM submodule carries the variant that runs entirely inside a sandboxed

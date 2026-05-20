@@ -28,7 +28,7 @@ FROM rust:1.92.0-slim
 
 LABEL org.opencontainers.image.title="ReifyDB Test Container"
 LABEL org.opencontainers.image.source="https://github.com/reifydb/reifydb"
-LABEL org.opencontainers.image.licenses="Apache-2.0"
+LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
 
 ENV PATH="/usr/local/bin:$PATH"
 ENV RUST_BACKTRACE=1

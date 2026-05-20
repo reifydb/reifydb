@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Auth service handle wired up by the runtime. Owns the catalog and admin-transaction handles needed to verify
 //! credentials, mint tokens, and load identities; exposes the high-level "authenticate this request" entry point

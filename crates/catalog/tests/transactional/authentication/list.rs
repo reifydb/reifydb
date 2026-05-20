@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 //
 // Asserts via `list_authentications_by_method`. Like `find_*`, the current
 // implementation delegates straight to storage and does not consult

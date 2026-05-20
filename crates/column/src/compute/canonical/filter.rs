@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{data::canonical::Canonical, mask::RowMask, nones::NoneBitmap};
 use reifydb_type::{Result, util::bitvec::BitVec};

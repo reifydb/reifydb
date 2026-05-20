@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 
 use reifydb_type::value::{container::uuid::UuidContainer, frame::data::FrameColumnData, r#type::Type, uuid::Uuid4};
 

@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 //
 // Policies are named globally (not namespace-scoped). Only `find_policy_by_name`
 // exists on the Catalog for transactional uncommitted-read visibility;

@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 //
 // All tests here are ignored until RQL gains `DROP HANDLER ns::name`. When it
 // lands, scenario A is the canonical reproducer for the missing `.retain()` in

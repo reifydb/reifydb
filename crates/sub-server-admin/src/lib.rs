@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Admin web UI and HTTP API hosted on top of Axum. Serves the bundled static assets, exposes management endpoints
 //! that wrap RQL admin operations (create/drop catalog objects, inspect identities, manage policies), and threads

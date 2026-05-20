@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 import { rql_language_definition, rql_language_configuration } from './rql-language';
 import { premium_dark_theme, premium_light_theme, brutalist_dark_theme, brutalist_light_theme } from './themes';

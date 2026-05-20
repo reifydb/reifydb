@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Profiling subsystem. Bridges `reifydb-profiler` to the reifydb metric pipeline: registers six static histograms
 //! (one per category) with `STATIC_REGISTRY`, runs a single-writer `ProfilerCollectorActor` that folds incoming

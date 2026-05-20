@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! C ABI shapes for the slice of catalog state an FFI extension can inspect: namespaces, tables, columns, and
 //! primary keys. Limited intentionally - extensions do not need the entire catalog object hierarchy, only enough

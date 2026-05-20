@@ -1,0 +1,27 @@
+# Keep the Docker build context small. The testcontainer image builds the
+# `testcontainer` Rust binary from source (crates, pkg, bin, vendor, .cargo,
+# Cargo.toml, Cargo.lock); it never needs Rust build output, JS deps, or VCS
+# data. Without this file the whole repo (incl. a multi-GB target/) is scanned
+# and sent to the daemon, which stalls the build.
+
+# Rust build output (anchored, mirroring .gitignore - must NOT match the
+# vendored source dir vendor/cc/src/target).
+/target/
+/crates/*/target/
+/bin/*/target/
+/pkg/rust/*/target/
+/pkg/rust/tests/*/target/
+/fuzz/target/
+
+# JS dependencies (not needed to build the Rust binary).
+**/node_modules/
+
+# VCS and local dev cruft.
+.git/
+.github/
+.idea/
+.run/
+.venv/
+.env
+.claude/
+.ai/

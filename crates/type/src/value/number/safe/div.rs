@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 
 pub trait SafeDiv: Sized {
 	fn checked_div(&self, r: &Self) -> Option<Self>;

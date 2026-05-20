@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Multi-version transactional path. Owns the conflict detector that decides whether a write transaction can
 //! commit at its read snapshot, the watermark machinery that tracks the lowest still-readable version for GC, and

@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Two-stage planner. `compile_logical` resolves names, type-checks, and produces a logical plan in terms of
 //! `core::interface/` primitives; `compile_physical` lowers that into the executable shape the engine VM consumes.

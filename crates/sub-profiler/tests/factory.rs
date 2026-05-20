@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Factory integration tests for the profiler subsystem. Validates the with_subsystem path against a real
 //! bootstrapped engine so the per-category vtable registration step (which requires

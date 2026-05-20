@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Host-side FFI for flow operators. Provides the callback functions guest extensions invoke (catalog reads, value
 //! marshalling, error reporting) and the per-call context that wraps the engine services available to a guest

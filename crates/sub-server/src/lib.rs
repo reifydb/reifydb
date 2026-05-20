@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Common infrastructure shared by every server transport - gRPC, HTTP, WebSocket, admin. Owns the dispatch loop
 //! that accepts an authenticated request, looks up the binding, executes it through the engine, and serialises the

@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! CDC-driven replication: a primary publishes its change stream over the wire, replicas tail it, and apply the
 //! deltas locally so their committed state converges to the primary's. The crate owns both sides - the primary

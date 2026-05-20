@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 // Scenario: if a prior row's `created_at` is 0 (uninitialised header,
 // pre-fix legacy state, or a row written with both timestamps cleared), the

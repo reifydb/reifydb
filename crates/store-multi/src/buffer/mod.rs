@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Hot tier of the multi-version store. Holds recent writes in memory before the flusher migrates them to the
 //! persistent tier. Reads consult the buffer first and fall through to persistent storage on a miss, so

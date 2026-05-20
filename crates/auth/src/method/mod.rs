@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Authentication method implementations. Each method is self-contained - it owns its credential format,
 //! verification logic, and challenge state - and registers with the `registry/` so the service can pick the

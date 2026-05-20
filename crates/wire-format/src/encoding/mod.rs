@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 
 //! Per-column wire encodings: plain, dictionary, run-length, and delta. Each encoding has a stable tag in the RBCF
 //! header so the decoder can pick the right reader without out-of-band coordination. New encodings need a new tag

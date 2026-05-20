@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Guest-side FFI: the symbols a built-as-cdylib extension exports so the host can find and call into it. The
 //! arena owns memory the extension hands back across the boundary; the exports module declares the C-callable

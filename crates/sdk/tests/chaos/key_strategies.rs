@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! All three `KeyStrategy` variants must drive the operator end-to-end.
 //! HashOf with a small key range is particularly load-bearing because

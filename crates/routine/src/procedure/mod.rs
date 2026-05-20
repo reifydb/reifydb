@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Built-in procedures: imperative routines users invoke as named statements. They may mutate catalog or storage
 //! state, take typed argument lists, and return zero or more result columns. Identity management, subscription

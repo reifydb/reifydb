@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Columnar storage engine: the immutable, on-disk representation of materialized columns plus the read-time
 //! machinery (compute kernels, predicates, scans, selection vectors, snapshots) the engine uses to query them. This

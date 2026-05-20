@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 import {NONE_VALUE, TypeValuePair} from "@reifydb/core";
 
 export function encode_value(value: any): TypeValuePair {

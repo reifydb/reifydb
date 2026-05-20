@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 import {
     BlobValue, BooleanValue, DateValue, DateTimeValue, DecimalValue,
     Float4Value, Float8Value,

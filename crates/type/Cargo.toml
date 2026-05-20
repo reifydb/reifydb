@@ -3,7 +3,7 @@ name = "reifydb-type"
 authors.workspace = true
 version.workspace = true
 edition.workspace = true
-license = "Apache-2.0"
+license = "MIT"
 repository.workspace = true
 description = "Core type system and value representations for ReifyDB"
 

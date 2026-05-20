@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Unified loader for ReifyDB extensions, regardless of whether the extension is a native dynamic library, a WASM
 //! module, or an in-tree Rust function. Wraps the FFI symbol-resolution machinery, registers callbacks the host

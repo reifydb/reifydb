@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! HTTP/JSON server hosted on top of Axum. Exposes the request/response and subscribe-via-streaming endpoints in
 //! a transport that is friendlier than gRPC for browsers, scripting languages, and tooling that does not want to

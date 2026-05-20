@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 //
 // All tests in this module are ignored until RQL gains `DROP TEST ns::name`.
 // When that lands, removing `#[ignore]` is expected to surface the missing

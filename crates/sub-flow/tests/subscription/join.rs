@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 // Join parity is #[ignore]'d because PR1's hydrate returns UnsupportedSourceType for
 // multi-source flows. Once multi-source hydrate lands, fill in a real test body and

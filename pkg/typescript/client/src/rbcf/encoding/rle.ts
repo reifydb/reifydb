@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 
 // Run-length encoding. Port of crates/wire-format/src/encoding/rle.rs and
 // the dispatch in crates/wire-format/src/decode/fixed.rs decode_rle_column.

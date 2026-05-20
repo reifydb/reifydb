@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
 
 //! Process-level runtime: actor system, thread pools, async executors, time and randomness, and the synchronisation
 //! primitives the rest of the workspace builds on. The `SharedRuntime` handle carries the actor system, the pool set,

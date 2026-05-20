@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Runtime expression evaluator. Compiles RQL expressions into a small typed tree that the VM can apply over
 //! columns - access, arithmetic, comparison, logical, casts, conversions, lookups, function and routine calls.

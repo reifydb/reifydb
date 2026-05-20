@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Compute kernels that operate on encoded columns. Compare, take, slice, filter, sum, search-sorted, min/max -
 //! the primitives the engine VM dispatches to when it executes the per-instruction work of a query. Kernels

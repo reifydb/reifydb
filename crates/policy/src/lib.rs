@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
 
 //! Default-deny read and write policy enforcement layered between the engine and the catalog. For reads, policies are
 //! compiled into filter predicates and injected into the logical plan so unauthorised rows are eliminated before they
