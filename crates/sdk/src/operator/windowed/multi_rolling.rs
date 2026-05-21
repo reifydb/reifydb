@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{BTreeMap, HashMap},
+	collections::{BTreeMap, BTreeSet, HashMap},
 	fmt::{self, Debug, Formatter},
 	hash::Hash,
 };
@@ -273,6 +273,15 @@ where
 			return Ok(());
 		}
 
+		let meta_keys: Vec<MetaKey> = buckets
+			.keys()
+			.map(|(group, _)| group)
+			.collect::<BTreeSet<_>>()
+			.into_iter()
+			.map(meta_key_for)
+			.collect();
+		self.meta.warm(ctx, &meta_keys)?;
+
 		let mut meta_loaded: HashMap<A::GroupKey, GroupMeta<A::WindowKey>> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
@@ -280,6 +289,24 @@ where
 				meta_loaded.insert(group.clone(), m);
 			}
 		}
+
+		let mut state_rows: HashMap<A::GroupKey, RowNumber> = HashMap::new();
+		let mut resolve_order: Vec<A::GroupKey> = Vec::new();
+		let mut state_lookup_keys: Vec<EncodedKey> = Vec::new();
+		let mut seen: BTreeSet<A::GroupKey> = BTreeSet::new();
+		for (group, wk) in buckets.keys() {
+			let initial_high_water = meta_loaded.get(group).and_then(|m| m.high_water);
+			if initial_high_water.is_none_or(|hw| *wk >= hw) && seen.insert(group.clone()) {
+				resolve_order.push(group.clone());
+				state_lookup_keys.push(self.aggregator.encode_state_key(group));
+			}
+		}
+		let resolved_rows = ctx.get_or_create_row_numbers(&state_lookup_keys)?;
+		let state_keys: Vec<RowNumber> = resolved_rows.iter().map(|(rn, _)| *rn).collect();
+		for (group, (state_row_number, _)) in resolve_order.into_iter().zip(resolved_rows) {
+			state_rows.insert(group, state_row_number);
+		}
+		self.groups.warm(ctx, &state_keys)?;
 
 		struct GroupSlot<A: MultiRollingOperator> {
 			state_row_number: RowNumber,
@@ -303,8 +330,14 @@ where
 			let slot = match group_slots.get_mut(&group) {
 				Some(s) => s,
 				None => {
-					let key = self.aggregator.encode_state_key(&group);
-					let (state_row_number, _is_new) = ctx.get_or_create_row_number(&key)?;
+					let state_row_number = match state_rows.get(&group) {
+						Some(&rn) => rn,
+						None => {
+							let key = self.aggregator.encode_state_key(&group);
+							let (rn, _is_new) = ctx.get_or_create_row_number(&key)?;
+							rn
+						}
+					};
 					let GroupState {
 						buffer,
 						last_emit: prior_emit,

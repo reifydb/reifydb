@@ -514,3 +514,68 @@ pub(super) extern "C" fn host_internal_state_remove(
 		}
 	}
 }
+
+#[unsafe(no_mangle)]
+pub(super) extern "C" fn host_state_internal_get_many(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	keys: *const KeyRefFFI,
+	keys_len: usize,
+	iterator_out: *mut *mut StateIteratorFFI,
+) -> i32 {
+	if ctx.is_null() || iterator_out.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+	if keys_len > 0 && keys.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let ctx_handle = &mut *ctx;
+		let flow_txn = get_transaction_mut(ctx_handle);
+		let node_id = FlowNodeId(operator_id);
+
+		let key_refs = if keys_len == 0 {
+			&[]
+		} else {
+			from_raw_parts(keys, keys_len)
+		};
+
+		let mut encoded_keys: Vec<EncodedKey> = Vec::with_capacity(key_refs.len());
+		for key_ref in key_refs {
+			if key_ref.len > 0 && key_ref.ptr.is_null() {
+				return FFI_ERROR_NULL_PTR;
+			}
+			let bytes = if key_ref.len == 0 {
+				Vec::new()
+			} else {
+				from_raw_parts(key_ref.ptr, key_ref.len).to_vec()
+			};
+			encoded_keys.push(EncodedKey::new(bytes));
+		}
+
+		match flow_txn.internal_state_get_many(node_id, &encoded_keys) {
+			Ok(batch) => {
+				let handle = state_iterator::create_internal_iterator(batch);
+
+				let iter_ptr = host_alloc(mem::size_of::<StateIteratorInternal>())
+					as *mut StateIteratorInternal;
+				if iter_ptr.is_null() {
+					state_iterator::free_iterator(handle);
+					return FFI_ERROR_ALLOC;
+				}
+
+				ptr::write(
+					iter_ptr,
+					StateIteratorInternal {
+						handle,
+					},
+				);
+
+				*iterator_out = iter_ptr as *mut StateIteratorFFI;
+				FFI_OK
+			}
+			Err(_) => FFI_ERROR_INTERNAL,
+		}
+	}
+}

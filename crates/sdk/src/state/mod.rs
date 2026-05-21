@@ -6,6 +6,7 @@ pub mod ffi;
 pub mod keyed;
 pub mod row;
 pub mod single;
+pub mod stats;
 pub mod utils;
 pub mod window;
 
@@ -63,15 +64,21 @@ impl<'a> State<'a> {
 	}
 
 	pub fn scan_prefix<T: DeserializeOwned>(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, T)>> {
-		ffi::prefix(self.ctx, prefix)?.into_iter().map(|(k, row)| Ok((k, decode_payload(&row)?))).collect()
+		let raw = ffi::prefix(self.ctx, prefix)?;
+		stats::record(self.ctx.operator_id().0, stats::Event::FfiPrefix(raw.len()));
+		raw.into_iter().map(|(k, row)| Ok((k, decode_payload(&row)?))).collect()
 	}
 
 	pub fn get_many<T: DeserializeOwned>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>> {
-		ffi::get_many(self.ctx, keys)?.into_iter().map(|(k, row)| Ok((k, decode_payload(&row)?))).collect()
+		let raw = ffi::get_many(self.ctx, keys)?;
+		stats::record(self.ctx.operator_id().0, stats::Event::FfiGetMany(raw.len()));
+		raw.into_iter().map(|(k, row)| Ok((k, decode_payload(&row)?))).collect()
 	}
 
 	pub fn keys_with_prefix(&self, prefix: &EncodedKey) -> Result<Vec<EncodedKey>> {
-		Ok(ffi::prefix(self.ctx, prefix)?.into_iter().map(|(k, _)| k).collect())
+		let raw = ffi::prefix(self.ctx, prefix)?;
+		stats::record(self.ctx.operator_id().0, stats::Event::FfiPrefix(raw.len()));
+		Ok(raw.into_iter().map(|(k, _)| k).collect())
 	}
 
 	pub fn range<T: DeserializeOwned>(
@@ -79,7 +86,9 @@ impl<'a> State<'a> {
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
 	) -> Result<Vec<(EncodedKey, T)>> {
-		ffi::range(self.ctx, start, end)?.into_iter().map(|(k, row)| Ok((k, decode_payload(&row)?))).collect()
+		let raw = ffi::range(self.ctx, start, end)?;
+		stats::record(self.ctx.operator_id().0, stats::Event::FfiRange(raw.len()));
+		raw.into_iter().map(|(k, row)| Ok((k, decode_payload(&row)?))).collect()
 	}
 
 	pub fn get_with_anchors<T: DeserializeOwned>(&self, key: &EncodedKey) -> Result<Option<StateEntry<T>>> {
@@ -123,6 +132,12 @@ impl<'a> InternalState<'a> {
 			Some(row) => decode_payload(&row).map(Some),
 			None => Ok(None),
 		}
+	}
+
+	pub fn get_many<T: DeserializeOwned>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>> {
+		let raw = ffi::internal_get_many(self.ctx, keys)?;
+		stats::record(self.ctx.operator_id().0, stats::Event::FfiInternalGetMany(raw.len()));
+		raw.into_iter().map(|(k, row)| Ok((k, decode_payload(&row)?))).collect()
 	}
 
 	pub fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> Result<()> {

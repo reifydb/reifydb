@@ -164,10 +164,21 @@ pub(crate) mod stubs {
 			internal_set: internal_state_set,
 			internal_remove: internal_state_remove,
 			get_many: state_get_many,
+			internal_get_many: internal_state_get_many,
 		}
 	}
 
 	extern "C" fn state_get_many(
+		_: u64,
+		_: *mut ContextFFI,
+		_: *const KeyRefFFI,
+		_: usize,
+		_: *mut *mut StateIteratorFFI,
+	) -> i32 {
+		FFI_ERROR_INTERNAL
+	}
+
+	extern "C" fn internal_state_get_many(
 		_: u64,
 		_: *mut ContextFFI,
 		_: *const KeyRefFFI,

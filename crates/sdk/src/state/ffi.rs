@@ -15,6 +15,7 @@ use tracing::{Span, instrument};
 use crate::{
 	error::{FFIError, Result},
 	operator::context::OperatorContext,
+	state::stats::{self, Event},
 };
 
 #[instrument(name = "flow::operator::state::ffi:get", level = "trace", skip(ctx), fields(
@@ -23,6 +24,7 @@ use crate::{
 	found
 ))]
 pub(crate) fn get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+	stats::record(ctx.operator_id().0, Event::FfiGet);
 	let key_bytes = key.as_bytes();
 	let mut output = BufferFFI {
 		ptr: null_mut(),
@@ -65,6 +67,7 @@ pub(crate) fn get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<Enco
 	value_len = value.as_ref().len()
 ))]
 pub(crate) fn set(ctx: &mut OperatorContext, key: &EncodedKey, value: &EncodedRow) -> Result<()> {
+	stats::record(ctx.operator_id().0, Event::FfiSet);
 	let key_bytes = key.as_bytes();
 	let value_bytes = value.as_ref();
 
@@ -91,6 +94,7 @@ pub(crate) fn set(ctx: &mut OperatorContext, key: &EncodedKey, value: &EncodedRo
 	key_len = key.as_bytes().len()
 ))]
 pub(crate) fn remove(ctx: &mut OperatorContext, key: &EncodedKey) -> Result<()> {
+	stats::record(ctx.operator_id().0, Event::FfiRemove);
 	let key_bytes = key.as_bytes();
 
 	unsafe {
@@ -390,6 +394,7 @@ pub(crate) fn range(
 	operator_id = ctx.operator_id().0
 ))]
 pub(crate) fn clear(ctx: &mut OperatorContext) -> Result<()> {
+	stats::record(ctx.operator_id().0, Event::FfiClear);
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.clear)((*ctx.ctx).operator_id, ctx.ctx);
 
@@ -407,6 +412,7 @@ pub(crate) fn clear(ctx: &mut OperatorContext) -> Result<()> {
 	found
 ))]
 pub(crate) fn internal_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+	stats::record(ctx.operator_id().0, Event::FfiInternalGet);
 	let key_bytes = key.as_bytes();
 	let mut output = BufferFFI {
 		ptr: null_mut(),
@@ -448,6 +454,7 @@ pub(crate) fn internal_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Op
 	value_len = value.as_ref().len()
 ))]
 pub(crate) fn internal_set(ctx: &mut OperatorContext, key: &EncodedKey, value: &EncodedRow) -> Result<()> {
+	stats::record(ctx.operator_id().0, Event::FfiInternalSet);
 	let key_bytes = key.as_bytes();
 	let value_bytes = value.as_ref();
 
@@ -474,6 +481,7 @@ pub(crate) fn internal_set(ctx: &mut OperatorContext, key: &EncodedKey, value: &
 	key_len = key.as_bytes().len()
 ))]
 pub(crate) fn internal_remove(ctx: &mut OperatorContext, key: &EncodedKey) -> Result<()> {
+	stats::record(ctx.operator_id().0, Event::FfiInternalRemove);
 	let key_bytes = key.as_bytes();
 
 	unsafe {
@@ -489,5 +497,103 @@ pub(crate) fn internal_remove(ctx: &mut OperatorContext, key: &EncodedKey) -> Re
 		} else {
 			Err(FFIError::Other(format!("host_internal_state_remove failed with code {}", result)))
 		}
+	}
+}
+
+#[instrument(name = "flow::operator::internal_state::ffi:get_many", level = "trace", skip(ctx, keys), fields(
+	operator_id = ctx.operator_id().0,
+	key_count = keys.len(),
+	result_count
+))]
+pub(crate) fn internal_get_many(ctx: &OperatorContext, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+	if keys.is_empty() {
+		Span::current().record("result_count", 0);
+		return Ok(Vec::new());
+	}
+
+	let key_refs: Vec<KeyRefFFI> = keys
+		.iter()
+		.map(|key| {
+			let bytes = key.as_bytes();
+			KeyRefFFI {
+				ptr: bytes.as_ptr(),
+				len: bytes.len(),
+			}
+		})
+		.collect();
+
+	let mut iterator: *mut StateIteratorFFI = null_mut();
+
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.internal_get_many)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			key_refs.as_ptr(),
+			key_refs.len(),
+			&mut iterator,
+		);
+
+		if result != FFI_OK {
+			return Err(FFIError::Other(format!(
+				"host_internal_state_get_many failed with code {}",
+				result
+			)));
+		}
+
+		if iterator.is_null() {
+			Span::current().record("result_count", 0);
+			return Ok(Vec::new());
+		}
+
+		let mut results = Vec::new();
+
+		loop {
+			let mut key_buf = BufferFFI {
+				ptr: null_mut(),
+				len: 0,
+				cap: 0,
+			};
+			let mut value_buf = BufferFFI {
+				ptr: null_mut(),
+				len: 0,
+				cap: 0,
+			};
+
+			let next_result =
+				((*ctx.ctx).callbacks.state.iterator_next)(iterator, &mut key_buf, &mut value_buf);
+
+			if next_result == FFI_END_OF_ITERATION {
+				break;
+			} else if next_result != FFI_OK {
+				((*ctx.ctx).callbacks.state.iterator_free)(iterator);
+				return Err(FFIError::Other(format!(
+					"host_state_iterator_next failed with code {}",
+					next_result
+				)));
+			}
+
+			if !key_buf.ptr.is_null() && key_buf.len > 0 {
+				let key_bytes = from_raw_parts(key_buf.ptr, key_buf.len).to_vec();
+				let key = EncodedKey::new(key_bytes);
+
+				let value = if !value_buf.ptr.is_null() && value_buf.len > 0 {
+					let value_bytes = from_raw_parts(value_buf.ptr, value_buf.len).to_vec();
+					EncodedRow(CowVec::new(value_bytes))
+				} else {
+					EncodedRow(CowVec::new(Vec::new()))
+				};
+
+				((*ctx.ctx).callbacks.memory.free)(key_buf.ptr as *mut u8, key_buf.len);
+				if !value_buf.ptr.is_null() && value_buf.len > 0 {
+					((*ctx.ctx).callbacks.memory.free)(value_buf.ptr as *mut u8, value_buf.len);
+				}
+
+				results.push((key, value));
+			}
+		}
+
+		((*ctx.ctx).callbacks.state.iterator_free)(iterator);
+		Span::current().record("result_count", results.len());
+		Ok(results)
 	}
 }

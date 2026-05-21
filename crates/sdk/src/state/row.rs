@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::iter;
+use std::{collections::HashMap, iter};
 
 use reifydb_core::{
 	encoded::key::EncodedKey, interface::catalog::flow::FlowNodeId,
@@ -30,22 +30,28 @@ impl RowNumberProvider {
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
-		let mut results = Vec::new();
+		let map_keys: Vec<EncodedKey> = keys.into_iter().map(|key| self.make_map_key(key)).collect();
+
+		let mut existing: HashMap<Vec<u8>, u64> = HashMap::with_capacity(map_keys.len());
+		for (map_key, row_num) in ctx.internal_state().get_many::<u64>(&map_keys)? {
+			existing.insert(map_key.as_bytes().to_vec(), row_num);
+		}
+
 		let mut counter = self.load_counter(ctx)?;
 		let initial_counter = counter;
 
-		for key in keys {
-			let map_key = self.make_map_key(key);
-
-			if let Some(row_num) = ctx.internal_state().get::<u64>(&map_key)? {
+		let mut newly_assigned: HashMap<Vec<u8>, u64> = HashMap::new();
+		let mut results = Vec::with_capacity(map_keys.len());
+		for map_key in &map_keys {
+			let bytes = map_key.as_bytes();
+			if let Some(&row_num) = existing.get(bytes).or_else(|| newly_assigned.get(bytes)) {
 				results.push((RowNumber(row_num), false));
 				continue;
 			}
 
-			let new_row_number = RowNumber(counter);
-			ctx.internal_state().set::<u64>(&map_key, &counter)?;
-
-			results.push((new_row_number, true));
+			ctx.internal_state().set::<u64>(map_key, &counter)?;
+			newly_assigned.insert(bytes.to_vec(), counter);
+			results.push((RowNumber(counter), true));
 			counter += 1;
 		}
 

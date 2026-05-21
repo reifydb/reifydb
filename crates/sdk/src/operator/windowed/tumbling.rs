@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use reifydb_abi::flow::diff::DiffType;
 use reifydb_core::{
@@ -136,6 +136,15 @@ where
 			return Ok(());
 		}
 
+		let meta_keys: Vec<MetaKey> = buckets
+			.keys()
+			.map(|(group, _)| group)
+			.collect::<BTreeSet<_>>()
+			.into_iter()
+			.map(meta_key_for)
+			.collect();
+		self.meta.warm(ctx, &meta_keys)?;
+
 		let mut meta_loaded: HashMap<A::GroupKey, GroupMeta<A::SlotKey, A::SlotContribution>> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
@@ -144,10 +153,35 @@ where
 			}
 		}
 
+		let mut survivor_keys: Vec<EncodedKey> = Vec::new();
+		let mut slot_survives: Vec<bool> = Vec::with_capacity(buckets.len());
+		for (group, span) in buckets.keys() {
+			let initial_high_water = meta_loaded.get(group).and_then(|m| m.high_water);
+			let survives = initial_high_water.is_none_or(|hw| span.start >= hw);
+			slot_survives.push(survives);
+			if survives {
+				survivor_keys.push(self.aggregator.encode_row_key(group, span.start));
+			}
+		}
+		let resolved_rows = ctx.get_or_create_row_numbers(&survivor_keys)?;
+		let slot_keys: Vec<RowNumber> = resolved_rows.iter().map(|(rn, _)| *rn).collect();
+		self.slots.warm(ctx, &slot_keys)?;
+		let mut resolved_rows = resolved_rows.into_iter();
+		let slot_resolved: Vec<Option<(RowNumber, bool)>> = slot_survives
+			.into_iter()
+			.map(|survives| {
+				if survives {
+					resolved_rows.next()
+				} else {
+					None
+				}
+			})
+			.collect();
+
 		let mut inserts: Vec<(RowNumber, A::Output)> = Vec::new();
 		let mut updates: Vec<(RowNumber, A::Output)> = Vec::new();
 
-		for ((group, span), events) in buckets {
+		for (((group, span), events), slot_pre) in buckets.into_iter().zip(slot_resolved) {
 			let entry = meta_loaded.entry(group.clone()).or_default();
 			match entry.high_water {
 				Some(hw) if span.start < hw => continue,
@@ -162,8 +196,13 @@ where
 			}
 			let prev_close = entry.carry_for_current.clone();
 
-			let key = self.aggregator.encode_row_key(&group, span.start);
-			let (row_number, is_new) = ctx.get_or_create_row_number(&key)?;
+			let (row_number, is_new) = match slot_pre {
+				Some(resolved) => resolved,
+				None => {
+					let key = self.aggregator.encode_row_key(&group, span.start);
+					ctx.get_or_create_row_number(&key)?
+				}
+			};
 
 			let mut slot_map: WindowSlots<A> = self.slots.get(ctx, &row_number)?.unwrap_or_default();
 			let was_empty_before = slot_map.is_empty();

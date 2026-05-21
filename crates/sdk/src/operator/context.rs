@@ -68,9 +68,9 @@ impl OperatorContext {
 		provider.get_or_create_row_number(self, key)
 	}
 
-	pub fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<RowNumber>> {
+	pub fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 		let provider = RowNumberProvider::new(self.operator_id());
-		Ok(provider.get_or_create_row_numbers_batch(self, keys.iter())?.into_iter().map(|(rn, _)| rn).collect())
+		provider.get_or_create_row_numbers_batch(self, keys.iter())
 	}
 
 	pub fn query(&self, query: &str, params: Params) -> Result<Vec<Frame>> {

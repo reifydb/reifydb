@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{BTreeMap, HashMap},
+	collections::{BTreeMap, BTreeSet, HashMap},
 	fmt::Debug,
 	hash::Hash,
 };
@@ -201,6 +201,15 @@ where
 			return Ok(());
 		}
 
+		let meta_keys: Vec<MetaKey> = buckets
+			.keys()
+			.map(|(group, _)| group)
+			.collect::<BTreeSet<_>>()
+			.into_iter()
+			.map(meta_key_for)
+			.collect();
+		self.meta.warm(ctx, &meta_keys)?;
+
 		let mut meta_loaded: HashMap<A::GroupKey, GroupMeta<A::WindowKey>> = HashMap::new();
 
 		for (group, _) in buckets.keys() {
@@ -209,6 +218,24 @@ where
 				meta_loaded.insert(group.clone(), m);
 			}
 		}
+
+		let mut buffer_rows: HashMap<A::GroupKey, (RowNumber, bool)> = HashMap::new();
+		let mut resolve_order: Vec<A::GroupKey> = Vec::new();
+		let mut group_keys: Vec<EncodedKey> = Vec::new();
+		let mut seen: BTreeSet<A::GroupKey> = BTreeSet::new();
+		for (group, wk) in buckets.keys() {
+			let initial_high_water = meta_loaded.get(group).and_then(|m| m.high_water);
+			if initial_high_water.is_none_or(|hw| *wk >= hw) && seen.insert(group.clone()) {
+				resolve_order.push(group.clone());
+				group_keys.push(self.aggregator.encode_row_key(group));
+			}
+		}
+		let resolved_rows = ctx.get_or_create_row_numbers(&group_keys)?;
+		let buffer_keys: Vec<RowNumber> = resolved_rows.iter().map(|(rn, _)| *rn).collect();
+		for (group, resolved) in resolve_order.into_iter().zip(resolved_rows) {
+			buffer_rows.insert(group, resolved);
+		}
+		self.buffers.warm(ctx, &buffer_keys)?;
 
 		struct GroupSlot<A: RollingOperator> {
 			row_number: RowNumber,
@@ -233,8 +260,13 @@ where
 			let slot = match group_slots.get_mut(&group) {
 				Some(s) => s,
 				None => {
-					let key = self.aggregator.encode_row_key(&group);
-					let (row_number, is_new) = ctx.get_or_create_row_number(&key)?;
+					let (row_number, is_new) = match buffer_rows.get(&group) {
+						Some(&resolved) => resolved,
+						None => {
+							let key = self.aggregator.encode_row_key(&group);
+							ctx.get_or_create_row_number(&key)?
+						}
+					};
 					let buffer: RollingBuffer<A> =
 						self.buffers.get(ctx, &row_number)?.unwrap_or_default();
 					let was_empty_before = buffer.is_empty();

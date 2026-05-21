@@ -47,13 +47,19 @@ where
 	}
 
 	pub fn get_arc(&mut self, ctx: &mut OperatorContext, key: &K) -> Result<Option<Arc<V>>> {
+		let operator_id = ctx.operator_id().0;
+
 		if let Some(cached) = self.cache.get(key) {
+			crate::state::stats::record(operator_id, crate::state::stats::Event::CacheHit);
 			return Ok(Some(cached));
 		}
 
 		if let Some(slot) = self.dirty.get(key) {
+			crate::state::stats::record(operator_id, crate::state::stats::Event::CacheDirtyHit);
 			return Ok(slot.clone());
 		}
+
+		crate::state::stats::record(operator_id, crate::state::stats::Event::CacheMiss);
 
 		let encoded_key = key.into_encoded_key();
 		let loaded = match self.backend {
@@ -75,10 +81,6 @@ where
 	}
 
 	pub fn warm(&mut self, ctx: &mut OperatorContext, keys: &[K]) -> Result<()> {
-		if !matches!(self.backend, StateBackend::Data) {
-			return Ok(());
-		}
-
 		let mut to_load: Vec<K> = Vec::new();
 		for key in keys {
 			if self.cache.contains_key(key) || self.dirty.contains_key(key) {
@@ -98,7 +100,11 @@ where
 			encoded_keys.push(encoded);
 		}
 
-		for (encoded, value) in ctx.state().get_many::<V>(&encoded_keys)? {
+		let loaded = match self.backend {
+			StateBackend::Data => ctx.state().get_many::<V>(&encoded_keys)?,
+			StateBackend::Internal => ctx.internal_state().get_many::<V>(&encoded_keys)?,
+		};
+		for (encoded, value) in loaded {
 			if let Some(key) = by_encoded.get(encoded.as_bytes()) {
 				self.cache.put(key.clone(), Arc::new(value));
 			}
@@ -273,6 +279,39 @@ pub mod tests {
 		cache.warm(&mut ctx, &keys).unwrap();
 
 		// Present keys are now cached without further host reads; absent key is not.
+		assert!(cache.is_cached(&"a".to_string()));
+		assert!(cache.is_cached(&"b".to_string()));
+		assert!(!cache.is_cached(&"missing".to_string()));
+
+		assert_eq!(cache.get(&mut ctx, &"a".to_string()).unwrap(), Some(1));
+		assert_eq!(cache.get(&mut ctx, &"b".to_string()).unwrap(), Some(2));
+		assert_eq!(cache.get(&mut ctx, &"missing".to_string()).unwrap(), None);
+	}
+
+	#[test]
+	fn test_warm_internal_backend_bulk_loads_present_keys_and_skips_absent() {
+		let mut harness = TestHarnessBuilder::<WarmTestOperator>::new()
+			.with_node_id(FlowNodeId(1))
+			.build()
+			.expect("Failed to build harness");
+
+		// Seed committed internal state under the same encoding the cache uses for its keys.
+		{
+			let mut ctx = harness.create_operator_context();
+			let mut state = ctx.internal_state();
+			state.set(&encode_key(&"a".to_string()), &1i32).unwrap();
+			state.set(&encode_key(&"b".to_string()), &2i32).unwrap();
+		}
+
+		// An Internal-backed cache must batch-load via internal_get_many. Before
+		// InternalState::get_many existed, warm no-oped on this backend and nothing
+		// was cached - this test pins that warm now actually loads internal state.
+		let mut cache: StateCache<String, i32> = StateCache::new_internal(100);
+		let keys = vec!["a".to_string(), "b".to_string(), "missing".to_string()];
+
+		let mut ctx = harness.create_operator_context();
+		cache.warm(&mut ctx, &keys).unwrap();
+
 		assert!(cache.is_cached(&"a".to_string()));
 		assert!(cache.is_cached(&"b".to_string()));
 		assert!(!cache.is_cached(&"missing".to_string()));

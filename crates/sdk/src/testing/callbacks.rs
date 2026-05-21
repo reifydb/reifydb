@@ -298,6 +298,54 @@ extern "C" fn test_state_get_many(
 }
 
 #[unsafe(no_mangle)]
+extern "C" fn test_internal_state_get_many(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	keys: *const KeyRefFFI,
+	keys_len: usize,
+	iterator_out: *mut *mut StateIteratorFFI,
+) -> i32 {
+	if ctx.is_null() || iterator_out.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+	if keys_len > 0 && keys.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+
+		let key_refs = if keys_len == 0 {
+			&[]
+		} else {
+			from_raw_parts(keys, keys_len)
+		};
+
+		let mut items: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+		for key_ref in key_refs {
+			let key_bytes = if key_ref.len == 0 {
+				Vec::new()
+			} else {
+				from_raw_parts(key_ref.ptr, key_ref.len).to_vec()
+			};
+			let envelope = test_internal_envelope(operator_id, &key_bytes);
+			if let Some(value_bytes) = test_ctx.get_state(&envelope) {
+				items.push((key_bytes, value_bytes.to_vec()));
+			}
+		}
+
+		let iter = Box::new(TestStateIterator {
+			items,
+			position: 0,
+		});
+
+		*iterator_out = Box::into_raw(iter) as *mut StateIteratorFFI;
+
+		FFI_OK
+	}
+}
+
+#[unsafe(no_mangle)]
 extern "C" fn test_state_prefix(
 	_operator_id: u64,
 	ctx: *mut ContextFFI,
@@ -636,6 +684,7 @@ pub fn create_test_callbacks() -> HostCallbacks {
 			internal_set: test_internal_state_set,
 			internal_remove: test_internal_state_remove,
 			get_many: test_state_get_many,
+			internal_get_many: test_internal_state_get_many,
 		},
 		log: LogCallbacks {
 			message: test_log_message,

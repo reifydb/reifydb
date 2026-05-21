@@ -85,4 +85,12 @@ pub struct StateCallbacks {
 		keys_len: usize,
 		iterator_out: *mut *mut StateIteratorFFI,
 	) -> i32,
+
+	pub internal_get_many: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ContextFFI,
+		keys: *const KeyRefFFI,
+		keys_len: usize,
+		iterator_out: *mut *mut StateIteratorFFI,
+	) -> i32,
 }

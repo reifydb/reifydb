@@ -5,7 +5,7 @@ use std::{cell::RefCell, collections::HashMap};
 
 use reifydb_core::{
 	interface::store::MultiVersionBatch,
-	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
+	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
 };
 
 pub type StateIteratorHandle = u64;
@@ -26,6 +26,22 @@ impl BatchIterator {
 			.into_iter()
 			.filter_map(|multi| {
 				let state_key = FlowNodeStateKey::decode(&multi.key)?;
+				Some((state_key.key, multi.row.to_vec()))
+			})
+			.collect();
+
+		Self {
+			items,
+			position: 0,
+		}
+	}
+
+	fn new_internal(batch: MultiVersionBatch) -> Self {
+		let items = batch
+			.items
+			.into_iter()
+			.filter_map(|multi| {
+				let state_key = FlowNodeInternalStateKey::decode(&multi.key)?;
 				Some((state_key.key, multi.row.to_vec()))
 			})
 			.collect();
@@ -78,6 +94,11 @@ impl IteratorRegistry {
 
 pub(crate) fn create_iterator(batch: MultiVersionBatch) -> StateIteratorHandle {
 	let iter = BatchIterator::new(batch);
+	ITERATOR_REGISTRY.with(|r| r.borrow_mut().insert(iter))
+}
+
+pub(crate) fn create_internal_iterator(batch: MultiVersionBatch) -> StateIteratorHandle {
+	let iter = BatchIterator::new_internal(batch);
 	ITERATOR_REGISTRY.with(|r| r.borrow_mut().insert(iter))
 }
 

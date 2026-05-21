@@ -199,6 +199,106 @@ impl FlowTransaction {
 		Ok(result)
 	}
 
+	#[instrument(name = "flow::internal_state::get_many", level = "debug", skip(self, keys), fields(
+		node_id = id.0,
+		key_count = keys.len(),
+		found_count = field::Empty
+	))]
+	pub fn internal_state_get_many(&mut self, id: FlowNodeId, keys: &[EncodedKey]) -> Result<MultiVersionBatch> {
+		let version = self.version();
+		let encoded: Vec<EncodedKey> = keys
+			.iter()
+			.map(|key| FlowNodeInternalStateKey::new(id, key.as_ref().to_vec()).encode())
+			.collect();
+
+		let mut items: Vec<MultiVersionRow> = Vec::new();
+		let mut to_batch: Vec<EncodedKey> = Vec::new();
+
+		for encoded_key in &encoded {
+			let pending = {
+				let inner = self.inner();
+				if inner.pending.is_removed(encoded_key) {
+					Some(None)
+				} else {
+					inner.pending.get(encoded_key).map(|row| Some(row.clone()))
+				}
+			};
+			match pending {
+				Some(None) => continue,
+				Some(Some(row)) => {
+					items.push(MultiVersionRow {
+						key: encoded_key.clone(),
+						row,
+						version,
+					});
+					continue;
+				}
+				None => {}
+			}
+
+			let base = if let Self::Transactional {
+				base_pending,
+				..
+			} = &*self
+			{
+				if base_pending.is_removed(encoded_key) {
+					Some(None)
+				} else {
+					base_pending.get(encoded_key).map(|row| Some(row.clone()))
+				}
+			} else {
+				None
+			};
+			match base {
+				Some(None) => continue,
+				Some(Some(row)) => {
+					items.push(MultiVersionRow {
+						key: encoded_key.clone(),
+						row,
+						version,
+					});
+					continue;
+				}
+				None => {}
+			}
+
+			to_batch.push(encoded_key.clone());
+		}
+
+		if !to_batch.is_empty() {
+			if let Self::Ephemeral {
+				inner,
+				state,
+			} = self
+			{
+				let version = inner.version;
+				for encoded_key in &to_batch {
+					if let Some(row) = state.get(encoded_key) {
+						items.push(MultiVersionRow {
+							key: encoded_key.clone(),
+							row: row.clone(),
+							version,
+						});
+					}
+				}
+			} else {
+				let inner = self.inner_mut();
+				let found = inner.state_query.as_ref().unwrap().get_many(&to_batch)?;
+				for encoded_key in &to_batch {
+					if let Some(multi) = found.get(encoded_key) {
+						items.push(multi.clone());
+					}
+				}
+			}
+		}
+
+		Span::current().record("found_count", items.len());
+		Ok(MultiVersionBatch {
+			items,
+			has_more: false,
+		})
+	}
+
 	#[instrument(name = "flow::internal_state::set", level = "trace", skip(self, value), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len(),
@@ -379,6 +479,41 @@ pub mod tests {
 		// Get state back
 		let result = txn.state_get(node_id, &key).unwrap();
 		assert_eq!(result, Some(value));
+	}
+
+	#[test]
+	fn test_internal_state_get_many() {
+		let parent = create_test_transaction();
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
+
+		let node_id = FlowNodeId(1);
+		txn.internal_state_set(node_id, &make_key("a"), make_value("1")).unwrap();
+		txn.internal_state_set(node_id, &make_key("b"), make_value("2")).unwrap();
+
+		// A data-state key sharing the name must not leak into the internal batch read:
+		// the two namespaces use different envelopes.
+		txn.state_set(node_id, &make_key("a"), make_value("data")).unwrap();
+
+		let batch = txn
+			.internal_state_get_many(node_id, &[make_key("a"), make_key("b"), make_key("missing")])
+			.unwrap();
+
+		// Missing key is omitted; present keys come back under the internal envelope.
+		assert_eq!(batch.items.len(), 2);
+		let mut decoded: Vec<(Vec<u8>, EncodedRow)> = batch
+			.items
+			.iter()
+			.map(|item| (FlowNodeInternalStateKey::decode(&item.key).unwrap().key, item.row.clone()))
+			.collect();
+		decoded.sort_by(|a, b| a.0.cmp(&b.0));
+		assert_eq!(decoded[0], (b"a".to_vec(), make_value("1")));
+		assert_eq!(decoded[1], (b"b".to_vec(), make_value("2")));
 	}
 
 	#[test]
