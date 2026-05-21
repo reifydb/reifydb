@@ -302,6 +302,12 @@ where
 		Span::current().record("add_txn_us", add_start.elapsed().as_micros() as u64);
 
 		let water_mark = self.config.get_config_uint8(ConfigKey::OracleWaterMark) as usize;
+		let total_keys: usize = inner.time_windows.values().map(|w| w.modified_keys.len()).sum();
+		let total_txns: usize = inner.time_windows.values().map(|w| w.transactions.len()).sum();
+		println!(
+			"[oracle2] windows={} total_txns={} total_modified_keys={} watermark={}",
+			inner.time_windows.len(), total_txns, total_keys, water_mark
+		);
 		inner.time_windows.len() > water_mark
 	}
 

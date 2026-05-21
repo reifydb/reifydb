@@ -140,8 +140,8 @@ where
 		let aggregator = A::from_config(operator_id, config)?;
 		Ok(Self {
 			aggregator,
-			buffers: StateCache::<RowNumber, RollingBuffer<A>>::new(1024),
-			meta: StateCache::<MetaKey, GroupMeta<A::WindowKey>>::new_internal(4096),
+			buffers: StateCache::<RowNumber, RollingBuffer<A>>::new(8),
+			meta: StateCache::<MetaKey, GroupMeta<A::WindowKey>>::new_internal(64),
 		})
 	}
 

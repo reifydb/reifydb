@@ -14,3 +14,8 @@ pub fn memory() -> EmbeddedBuilder {
 pub fn sqlite(config: SqliteConfig) -> EmbeddedBuilder {
 	EmbeddedBuilder::new(StorageFactory::Sqlite(config))
 }
+
+/// Create an embedded database with SQLite storage and no in-memory buffer.
+pub fn sqlite_without_buffer(config: SqliteConfig) -> EmbeddedBuilder {
+	EmbeddedBuilder::new(StorageFactory::SqliteWithoutBuffer(config))
+}

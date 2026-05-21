@@ -14,3 +14,8 @@ pub fn memory() -> ServerBuilder {
 pub fn sqlite(config: SqliteConfig) -> ServerBuilder {
 	ServerBuilder::new(StorageFactory::Sqlite(config))
 }
+
+/// Create a server with SQLite storage and no in-memory buffer.
+pub fn sqlite_without_buffer(config: SqliteConfig) -> ServerBuilder {
+	ServerBuilder::new(StorageFactory::SqliteWithoutBuffer(config))
+}

@@ -34,4 +34,12 @@ pub(super) fn cleanup_old_windows(
 	if removed > 0 {
 		debug!(removed, "evicted old windows");
 	}
+
+	let newest = time_windows.values().map(|w| w.max_version().0).max().unwrap_or(0);
+	let oldest = time_windows.values().map(|w| w.max_version().0).min().unwrap_or(0);
+	println!(
+		"[oracle] windows={} removed={} safe_evict_below={} oldest_max={} newest_max={} gap={}",
+		time_windows.len(), removed, safe_evict_below.0, oldest, newest,
+		newest.saturating_sub(safe_evict_below.0)
+	);
 }

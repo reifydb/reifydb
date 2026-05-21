@@ -104,8 +104,8 @@ where
 		let aggregator = A::from_config(operator_id, config)?;
 		Ok(Self {
 			aggregator,
-			slots: StateCache::<RowNumber, WindowSlots<A>>::new(1024),
-			meta: StateCache::<MetaKey, GroupMeta<A::SlotKey, A::SlotContribution>>::new_internal(4096),
+			slots: StateCache::<RowNumber, WindowSlots<A>>::new(8),
+			meta: StateCache::<MetaKey, GroupMeta<A::SlotKey, A::SlotContribution>>::new_internal(64),
 		})
 	}
 

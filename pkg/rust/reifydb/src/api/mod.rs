@@ -35,6 +35,8 @@ pub enum StorageFactory {
 	Memory,
 	/// SQLite-based persistent storage
 	Sqlite(SqliteConfig),
+	/// SQLite-based persistent storage with no in-memory buffer
+	SqliteWithoutBuffer(SqliteConfig),
 }
 
 impl StorageFactory {
@@ -51,6 +53,9 @@ impl StorageFactory {
 			StorageFactory::Memory => create_memory_store_with(multi_buffer, actor_system),
 			StorageFactory::Sqlite(config) => {
 				create_sqlite_store_with(multi_buffer, config.clone(), actor_system)
+			}
+			StorageFactory::SqliteWithoutBuffer(config) => {
+				create_sqlite_without_buffer_store_with(config.clone(), actor_system)
 			}
 		}
 	}
@@ -129,6 +134,52 @@ fn create_sqlite_store_with(
 		buffer: Some(SingleBufferConfig {
 			storage: SingleBufferTier::memory(),
 		}),
+		persistent: Some(SinglePersistentConfig::sqlite(single_config)),
+		actor_system: actor_system.clone(),
+		clock: Clock::Real,
+	});
+
+	let transaction_single = SingleTransaction::new(single_store.clone(), eventbus.clone());
+	(multi_store, single_store, transaction_single, eventbus)
+}
+
+fn create_sqlite_without_buffer_store_with(
+	config: SqliteConfig,
+	actor_system: &ActorSystem,
+) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
+	let eventbus = EventBus::new(actor_system);
+
+	let multi_path = match &config.path {
+		DbPath::File(p) => DbPath::File(p.with_extension("").join("multi.db")),
+		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("multi.db")),
+		DbPath::Tmpfs(p) => DbPath::Tmpfs(p.with_extension("").join("multi.db")),
+	};
+	let multi_config = SqliteConfig {
+		path: multi_path,
+		..config.clone()
+	};
+
+	let multi_store = MultiStore::standard(MultiStoreConfig {
+		buffer: None,
+		persistent: Some(MultiPersistentConfig::sqlite(multi_config)),
+		retention: Default::default(),
+		merge_config: Default::default(),
+		event_bus: eventbus.clone(),
+		actor_system: actor_system.clone(),
+		clock: Clock::Real,
+	});
+
+	let single_path = match &config.path {
+		DbPath::File(p) => DbPath::File(p.with_extension("").join("single.db")),
+		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("single.db")),
+		DbPath::Tmpfs(p) => DbPath::Tmpfs(p.with_extension("").join("single.db")),
+	};
+	let single_config = SqliteConfig {
+		path: single_path,
+		..config.clone()
+	};
+	let single_store = SingleStore::standard(SingleStoreConfig {
+		buffer: None,
 		persistent: Some(SinglePersistentConfig::sqlite(single_config)),
 		actor_system: actor_system.clone(),
 		clock: Clock::Real,
