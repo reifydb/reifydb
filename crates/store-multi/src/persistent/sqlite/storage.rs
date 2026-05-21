@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, ops::Bound, sync::Arc};
+use std::{collections::HashMap, ops::Bound, sync::Arc, time::Instant};
 
 use reifydb_core::{
 	common::CommitVersion, encoded::key::EncodedKey, error::diagnostic::internal::internal,
@@ -20,11 +20,33 @@ use tracing::instrument;
 use super::{
 	entry::warm_current_table_name,
 	query::{
-		build_create_warm_current_sql, build_get_warm_current_sql, build_range_warm_current_sql,
-		build_upsert_warm_current_sql, version_from_bytes, version_to_bytes,
+		build_create_warm_current_sql, build_get_many_warm_current_sql, build_get_warm_current_sql,
+		build_range_warm_current_sql, build_upsert_warm_current_sql, version_from_bytes, version_to_bytes,
 	},
 };
-use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage};
+use crate::tier::{
+	HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage, VersionedGetResult,
+};
+
+const SQLITE_SET_DEBUG_THRESHOLD_US: u128 = 5_000;
+
+const GET_MANY_CHUNK: usize = 900;
+
+struct ReadTimer(Instant);
+
+impl ReadTimer {
+	fn start() -> Self {
+		Self(Instant::now())
+	}
+}
+
+impl Drop for ReadTimer {
+	fn drop(&mut self) {
+		use std::sync::atomic::Ordering::Relaxed;
+		crate::debug_counters::SQLITE_READ_NANOS.fetch_add(self.0.elapsed().as_nanos() as u64, Relaxed);
+		crate::debug_counters::SQLITE_READ_COUNT.fetch_add(1, Relaxed);
+	}
+}
 
 #[derive(Clone)]
 pub struct SqlitePersistentStorage {
@@ -80,6 +102,7 @@ impl SqlitePersistentStorage {
 			return Ok(RangeBatch::empty());
 		}
 
+		let _read_timer = ReadTimer::start();
 		let table_name = warm_current_table_name(req.table);
 		let conn = self.inner.conn.lock();
 
@@ -171,7 +194,8 @@ struct RangeChunkRequest<'a> {
 
 impl TierStorage for SqlitePersistentStorage {
 	#[instrument(name = "store::multi::persistent::sqlite::get", level = "trace", skip(self), fields(table = ?table, key_len = key.len(), version = version.0))]
-	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<Option<CowVec<u8>>> {
+	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
+		let _read_timer = ReadTimer::start();
 		let table_name = warm_current_table_name(table);
 		let conn = self.inner.conn.lock();
 		let sql = build_get_warm_current_sql(&table_name);
@@ -187,12 +211,75 @@ impl TierStorage for SqlitePersistentStorage {
 		};
 
 		match result {
-			Ok((stored_version, value)) if stored_version <= version => Ok(value.map(CowVec::new)),
-			Ok(_) => Ok(None),
-			Err(QueryReturnedNoRows) => Ok(None),
-			Err(e) if e.to_string().contains("no such table") => Ok(None),
+			Ok((stored_version, value)) if stored_version <= version => Ok(match value {
+				Some(v) => VersionedGetResult::Value {
+					value: CowVec::new(v),
+					version: stored_version,
+				},
+				None => VersionedGetResult::Tombstone,
+			}),
+			Ok(_) => Ok(VersionedGetResult::NotFound),
+			Err(QueryReturnedNoRows) => Ok(VersionedGetResult::NotFound),
+			Err(e) if e.to_string().contains("no such table") => Ok(VersionedGetResult::NotFound),
 			Err(e) => Err(error!(internal(format!("Failed to read persistent: {}", e)))),
 		}
+	}
+
+	fn get_many(
+		&self,
+		table: EntryKind,
+		keys: &[&[u8]],
+		version: CommitVersion,
+	) -> Result<HashMap<Vec<u8>, VersionedGetResult>> {
+		let _read_timer = ReadTimer::start();
+		let mut out = HashMap::with_capacity(keys.len());
+		if keys.is_empty() {
+			return Ok(out);
+		}
+
+		let table_name = warm_current_table_name(table);
+		let conn = self.inner.conn.lock();
+
+		for chunk in keys.chunks(GET_MANY_CHUNK) {
+			let sql = build_get_many_warm_current_sql(&table_name, chunk.len());
+			let mut stmt = match conn.prepare_cached(&sql) {
+				Ok(stmt) => stmt,
+				Err(e) if e.to_string().contains("no such table") => return Ok(out),
+				Err(e) => {
+					return Err(error!(internal(format!(
+						"Failed to prepare persistent get_many: {}",
+						e
+					))));
+				}
+			};
+
+			let rows = stmt
+				.query_map(params_from_iter(chunk.iter().copied()), |row| {
+					let key: Vec<u8> = row.get(0)?;
+					let version_bytes: Vec<u8> = row.get(1)?;
+					let value: Option<Vec<u8>> = row.get(2)?;
+					Ok((key, version_from_bytes(&version_bytes), value))
+				})
+				.map_err(|e| error!(internal(format!("Failed to query persistent get_many: {}", e))))?;
+
+			for row in rows {
+				let (key, stored_version, value) = row.map_err(|e| {
+					error!(internal(format!("Failed to read persistent get_many row: {}", e)))
+				})?;
+				if stored_version <= version {
+					let resolved = match value {
+						Some(v) => VersionedGetResult::Value {
+							value: CowVec::new(v),
+							version: stored_version,
+						},
+						None => VersionedGetResult::Tombstone,
+					};
+					out.insert(key, resolved);
+				}
+			}
+		}
+
+		Ok(out)
 	}
 
 	#[instrument(name = "store::multi::persistent::sqlite::set", level = "debug", skip(self, batches), fields(table_count = batches.len(), version = version.0))]
@@ -201,7 +288,9 @@ impl TierStorage for SqlitePersistentStorage {
 			return Ok(());
 		}
 
+		let lock_start = Instant::now();
 		let conn = self.inner.conn.lock();
+		let lock_wait = lock_start.elapsed();
 		let tx = conn
 			.unchecked_transaction()
 			.map_err(|e| error!(internal(format!("Failed to start persistent transaction: {}", e))))?;
@@ -227,7 +316,26 @@ impl TierStorage for SqlitePersistentStorage {
 			}
 		}
 
-		tx.commit().map_err(|e| error!(internal(format!("Failed to commit persistent transaction: {}", e))))
+		let commit_start = Instant::now();
+		let result = tx
+			.commit()
+			.map_err(|e| error!(internal(format!("Failed to commit persistent transaction: {}", e))));
+		let txn_commit = commit_start.elapsed();
+
+		if lock_wait.as_micros() + txn_commit.as_micros() >= SQLITE_SET_DEBUG_THRESHOLD_US {
+			println!(
+				"[dbg:sqlite-set] ts_ms={} version={} lock_wait={}us txn_commit={}us",
+				std::time::SystemTime::now()
+					.duration_since(std::time::UNIX_EPOCH)
+					.map(|d| d.as_millis())
+					.unwrap_or(0),
+				version.0,
+				lock_wait.as_micros(),
+				txn_commit.as_micros()
+			);
+		}
+
+		result
 	}
 
 	fn range_next(

@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
+use std::collections::HashMap;
+
 use reifydb_core::{
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::{EncodedRow, SHAPE_HEADER_SIZE},
 		shape::RowShape,
 	},
-	interface::{catalog::flow::FlowNodeId, store::MultiVersionBatch},
+	interface::{
+		catalog::flow::FlowNodeId,
+		store::{MultiVersionBatch, MultiVersionRow},
+	},
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
 };
 use reifydb_type::Result;
@@ -27,6 +32,125 @@ impl FlowTransaction {
 		let result = self.get(&encoded_key)?;
 		Span::current().record("found", result.is_some());
 		Ok(result)
+	}
+
+	#[instrument(name = "flow::state::get_many", level = "debug", skip(self, keys), fields(
+		node_id = id.0,
+		key_count = keys.len(),
+		found_count = field::Empty
+	))]
+	pub fn state_get_many(&mut self, id: FlowNodeId, keys: &[EncodedKey]) -> Result<MultiVersionBatch> {
+		let version = self.version();
+		let encoded: Vec<EncodedKey> =
+			keys.iter().map(|key| FlowNodeStateKey::new(id, key.as_ref().to_vec()).encode()).collect();
+
+		let mut items: Vec<MultiVersionRow> = Vec::new();
+		let mut to_batch: Vec<EncodedKey> = Vec::new();
+
+		for encoded_key in &encoded {
+			let pending = {
+				let inner = self.inner();
+				if inner.pending.is_removed(encoded_key) {
+					Some(None)
+				} else {
+					inner.pending.get(encoded_key).map(|row| Some(row.clone()))
+				}
+			};
+			match pending {
+				Some(None) => continue,
+				Some(Some(row)) => {
+					items.push(MultiVersionRow {
+						key: encoded_key.clone(),
+						row,
+						version,
+					});
+					continue;
+				}
+				None => {}
+			}
+
+			let base = if let Self::Transactional {
+				base_pending,
+				..
+			} = &*self
+			{
+				if base_pending.is_removed(encoded_key) {
+					Some(None)
+				} else {
+					base_pending.get(encoded_key).map(|row| Some(row.clone()))
+				}
+			} else {
+				None
+			};
+			match base {
+				Some(None) => continue,
+				Some(Some(row)) => {
+					items.push(MultiVersionRow {
+						key: encoded_key.clone(),
+						row,
+						version,
+					});
+					continue;
+				}
+				None => {}
+			}
+
+			to_batch.push(encoded_key.clone());
+		}
+
+		if !to_batch.is_empty() {
+			if let Self::Ephemeral {
+				inner,
+				state,
+			} = self
+			{
+				let version = inner.version;
+				for encoded_key in &to_batch {
+					if let Some(row) = state.get(encoded_key) {
+						items.push(MultiVersionRow {
+							key: encoded_key.clone(),
+							row: row.clone(),
+							version,
+						});
+					}
+				}
+			} else {
+				let inner = self.inner_mut();
+				let found = inner.state_query.as_ref().unwrap().get_many(&to_batch)?;
+				for encoded_key in &to_batch {
+					if let Some(multi) = found.get(encoded_key) {
+						items.push(multi.clone());
+					}
+				}
+			}
+		}
+
+		Span::current().record("found_count", items.len());
+		Ok(MultiVersionBatch {
+			items,
+			has_more: false,
+		})
+	}
+
+	#[instrument(name = "flow::state::prefetch", level = "debug", skip(self, keys), fields(node_id = id.0, key_count = keys.len()))]
+	pub fn prefetch_state(&mut self, id: FlowNodeId, keys: &[EncodedKey]) -> Result<()> {
+		if keys.is_empty() {
+			return Ok(());
+		}
+
+		let batch = self.state_get_many(id, keys)?;
+		let mut found: HashMap<EncodedKey, EncodedRow> = HashMap::with_capacity(batch.items.len());
+		for item in batch.items {
+			found.insert(item.key, item.row);
+		}
+
+		let inner = self.inner_mut();
+		for key in keys {
+			let encoded_key = FlowNodeStateKey::new(id, key.as_ref().to_vec()).encode();
+			let value = found.get(&encoded_key).cloned();
+			inner.prefetch.insert(encoded_key, value);
+		}
+		Ok(())
 	}
 
 	#[instrument(name = "flow::state::set", level = "trace", skip(self, value), fields(
@@ -106,27 +230,6 @@ impl FlowTransaction {
 		let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
 		let encoded_key = state_key.encode();
 		self.remove(&encoded_key)
-	}
-
-	#[instrument(name = "flow::internal_state::prefix", level = "debug", skip(self, prefix), fields(
-		node_id = id.0,
-		prefix_len = prefix.len()
-	))]
-	pub fn internal_state_prefix(&mut self, id: FlowNodeId, prefix: &[u8]) -> Result<MultiVersionBatch> {
-		let mut full_prefix = Vec::new();
-		let env = FlowNodeInternalStateKey::encoded(id, vec![]);
-		full_prefix.extend_from_slice(env.as_ref());
-		full_prefix.extend_from_slice(prefix);
-		let range = EncodedKeyRange::prefix(&full_prefix);
-		let iter = self.range(range, 1024);
-		let mut items = Vec::new();
-		for result in iter {
-			items.push(result?);
-		}
-		Ok(MultiVersionBatch {
-			items,
-			has_more: false,
-		})
 	}
 
 	#[instrument(name = "flow::state::scan", level = "debug", skip(self), fields(

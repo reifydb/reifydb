@@ -66,6 +66,10 @@ impl<'a> State<'a> {
 		ffi::prefix(self.ctx, prefix)?.into_iter().map(|(k, row)| Ok((k, decode_payload(&row)?))).collect()
 	}
 
+	pub fn get_many<T: DeserializeOwned>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>> {
+		ffi::get_many(self.ctx, keys)?.into_iter().map(|(k, row)| Ok((k, decode_payload(&row)?))).collect()
+	}
+
 	pub fn keys_with_prefix(&self, prefix: &EncodedKey) -> Result<Vec<EncodedKey>> {
 		Ok(ffi::prefix(self.ctx, prefix)?.into_iter().map(|(k, _)| k).collect())
 	}
@@ -132,17 +136,6 @@ impl<'a> InternalState<'a> {
 
 	pub fn contains(&self, key: &EncodedKey) -> Result<bool> {
 		Ok(ffi::internal_get(self.ctx, key)?.is_some())
-	}
-
-	pub fn scan_prefix<T: DeserializeOwned>(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, T)>> {
-		ffi::internal_prefix(self.ctx, prefix)?
-			.into_iter()
-			.map(|(k, row)| Ok((k, decode_payload(&row)?)))
-			.collect()
-	}
-
-	pub fn keys_with_prefix(&self, prefix: &EncodedKey) -> Result<Vec<EncodedKey>> {
-		Ok(ffi::internal_prefix(self.ctx, prefix)?.into_iter().map(|(k, _)| k).collect())
 	}
 
 	#[inline]
@@ -236,22 +229,6 @@ pub trait FFIRawStatefulOperator: FFIOperator {
 
 	fn internal_state_remove(&self, ctx: &mut OperatorContext, key: &EncodedKey) -> Result<()> {
 		ctx.internal_state().remove(key)
-	}
-
-	fn internal_state_scan_prefix<T: DeserializeOwned>(
-		&self,
-		ctx: &mut OperatorContext,
-		prefix: &EncodedKey,
-	) -> Result<Vec<(EncodedKey, T)>> {
-		ctx.internal_state().scan_prefix(prefix)
-	}
-
-	fn internal_state_keys_with_prefix(
-		&self,
-		ctx: &mut OperatorContext,
-		prefix: &EncodedKey,
-	) -> Result<Vec<EncodedKey>> {
-		ctx.internal_state().keys_with_prefix(prefix)
 	}
 
 	fn internal_state_contains(&self, ctx: &mut OperatorContext, key: &EncodedKey) -> Result<bool> {

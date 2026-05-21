@@ -86,18 +86,18 @@ fn memory_sweep_drops_only_versions_below_cutoff() {
 	assert_eq!(storage.count_historical(shape()).unwrap(), 50);
 
 	// Reading at the latest snapshot still returns v100.
-	let cur = storage.get(shape(), &k, CommitVersion(100)).unwrap();
+	let cur = storage.get(shape(), &k, CommitVersion(100)).unwrap().value();
 	assert_eq!(cur.as_deref(), Some(b"v100".as_slice()));
 
 	// Reading at v60 still resolves to v60 (above cutoff, retained).
-	let mid = storage.get(shape(), &k, CommitVersion(60)).unwrap();
+	let mid = storage.get(shape(), &k, CommitVersion(60)).unwrap().value();
 	assert_eq!(mid.as_deref(), Some(b"v60".as_slice()));
 
 	// Reading at v40 returns None: v40 was pruned and standard MVCC `get`
 	// resolves to the largest version <= requested, of which none survive.
 	// In production this query never happens - the watermark contract says
 	// no reader is below cutoff.
-	let pruned = storage.get(shape(), &k, CommitVersion(40)).unwrap();
+	let pruned = storage.get(shape(), &k, CommitVersion(40)).unwrap().value();
 	assert!(pruned.is_none());
 }
 
@@ -116,13 +116,13 @@ fn sqlite_sweep_drops_only_versions_below_cutoff() {
 	assert_eq!(storage.count_current(shape()).unwrap(), 1);
 	assert_eq!(storage.count_historical(shape()).unwrap(), 50);
 
-	let cur = storage.get(shape(), &k, CommitVersion(100)).unwrap();
+	let cur = storage.get(shape(), &k, CommitVersion(100)).unwrap().value();
 	assert_eq!(cur.as_deref(), Some(b"v100".as_slice()));
 
-	let mid = storage.get(shape(), &k, CommitVersion(60)).unwrap();
+	let mid = storage.get(shape(), &k, CommitVersion(60)).unwrap().value();
 	assert_eq!(mid.as_deref(), Some(b"v60".as_slice()));
 
-	let pruned = storage.get(shape(), &k, CommitVersion(40)).unwrap();
+	let pruned = storage.get(shape(), &k, CommitVersion(40)).unwrap().value();
 	assert!(pruned.is_none());
 }
 
@@ -194,7 +194,7 @@ fn sweep_does_not_touch_current_even_below_cutoff() {
 	assert_eq!(storage.count_current(shape()).unwrap(), 1);
 	assert_eq!(storage.count_historical(shape()).unwrap(), 0);
 
-	let cur = storage.get(shape(), &k, CommitVersion(10)).unwrap();
+	let cur = storage.get(shape(), &k, CommitVersion(10)).unwrap().value();
 	assert_eq!(cur.as_deref(), Some(b"v10".as_slice()));
 }
 

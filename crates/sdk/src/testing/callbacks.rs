@@ -242,38 +242,49 @@ extern "C" fn test_internal_state_remove(
 	}
 }
 
+#[repr(C)]
+struct TestStateIterator {
+	items: Vec<(Vec<u8>, Vec<u8>)>,
+
+	position: usize,
+}
+
 #[unsafe(no_mangle)]
-extern "C" fn test_internal_state_prefix(
-	operator_id: u64,
+extern "C" fn test_state_get_many(
+	_operator_id: u64,
 	ctx: *mut ContextFFI,
-	prefix_ptr: *const u8,
-	prefix_len: usize,
+	keys: *const KeyRefFFI,
+	keys_len: usize,
 	iterator_out: *mut *mut StateIteratorFFI,
 ) -> i32 {
 	if ctx.is_null() || iterator_out.is_null() {
 		return FFI_ERROR_NULL_PTR;
 	}
+	if keys_len > 0 && keys.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
 
 	unsafe {
 		let test_ctx = get_test_context(ctx);
-		let user_prefix = if prefix_ptr.is_null() || prefix_len == 0 {
-			vec![]
+
+		let key_refs = if keys_len == 0 {
+			&[]
 		} else {
-			from_raw_parts(prefix_ptr, prefix_len).to_vec()
+			from_raw_parts(keys, keys_len)
 		};
-		let envelope_prefix = test_internal_envelope(operator_id, &user_prefix);
-		let envelope_bytes = envelope_prefix.as_ref();
 
-		let state_store = test_ctx.state_store();
-		let state = state_store.lock();
-
-		let mut items: Vec<(Vec<u8>, Vec<u8>)> = state
-			.iter()
-			.filter(|(key, _)| key.starts_with(envelope_bytes))
-			.map(|(key, value)| (key.to_vec(), value.0.to_vec()))
-			.collect();
-
-		items.sort_by(|a, b| a.0.cmp(&b.0));
+		let mut items: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+		for key_ref in key_refs {
+			let key_bytes = if key_ref.len == 0 {
+				Vec::new()
+			} else {
+				from_raw_parts(key_ref.ptr, key_ref.len).to_vec()
+			};
+			let key = EncodedKey::new(key_bytes.clone());
+			if let Some(value_bytes) = test_ctx.get_state(&key) {
+				items.push((key_bytes, value_bytes.to_vec()));
+			}
+		}
 
 		let iter = Box::new(TestStateIterator {
 			items,
@@ -284,13 +295,6 @@ extern "C" fn test_internal_state_prefix(
 
 		FFI_OK
 	}
-}
-
-#[repr(C)]
-struct TestStateIterator {
-	items: Vec<(Vec<u8>, Vec<u8>)>,
-
-	position: usize,
 }
 
 #[unsafe(no_mangle)]
@@ -536,7 +540,7 @@ use reifydb_abi::{
 		context::ContextFFI,
 		iterators::{StateIteratorFFI, StoreIteratorFFI},
 	},
-	data::buffer::BufferFFI,
+	data::{buffer::BufferFFI, key_ref::KeyRefFFI},
 };
 use reifydb_core::{
 	encoded::key::EncodedKey,
@@ -631,7 +635,7 @@ pub fn create_test_callbacks() -> HostCallbacks {
 			internal_get: test_internal_state_get,
 			internal_set: test_internal_state_set,
 			internal_remove: test_internal_state_remove,
-			internal_prefix: test_internal_state_prefix,
+			get_many: test_state_get_many,
 		},
 		log: LogCallbacks {
 			message: test_log_message,

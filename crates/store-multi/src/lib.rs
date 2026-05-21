@@ -26,6 +26,7 @@ use reifydb_core::{
 use reifydb_type::Result;
 
 pub mod buffer;
+pub mod debug_counters;
 pub mod flush;
 pub mod gc;
 pub mod persistent;
@@ -179,6 +180,16 @@ impl MultiStore {
 	) -> MultiVersionRangeIterator<'_> {
 		match self {
 			MultiStore::Standard(store) => Box::new(store.range_rev(range, version, batch_size)),
+		}
+	}
+
+	pub fn get_many(
+		&self,
+		keys: &[EncodedKey],
+		version: CommitVersion,
+	) -> Result<std::collections::HashMap<EncodedKey, MultiVersionRow>> {
+		match self {
+			MultiStore::Standard(store) => store.get_many(keys, version),
 		}
 	}
 }

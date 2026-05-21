@@ -1,0 +1,35 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# The critical invariant: in a batched read a buffer tombstone must shadow a higher-versioned
+# persistent "ghost", exactly as the single-key cascade does (cascade/03_tombstone_short_circuit).
+
+set k=alive version=1
+flush
+---
+ok
+
+# Plant a ghost in persistent at a HIGHER version than the upcoming delete.
+persistent_set k=ghost version=5
+---
+ok
+
+# Tombstone k in the buffer at v2.
+unset k=alive version=2
+flush
+---
+ok
+
+# A live key and an absent key share the batch.
+set m=mango version=3
+flush
+---
+ok
+
+# At v5: k is shadowed to None (buffer tombstone wins over the persistent ghost),
+# m is present, x is absent - all resolved in one batched call.
+get_many k m x version=5
+---
+"k" => None
+"m" => "mango"
+"x" => None

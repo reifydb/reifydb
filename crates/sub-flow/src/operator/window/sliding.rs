@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
+use std::collections::HashSet;
+
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
+	encoded::key::EncodedKey,
 	interface::change::{Change, Diff},
 	value::column::columns::Columns,
 };
@@ -91,6 +94,19 @@ fn process_sliding_group_insert(
 	}
 
 	let timestamps = operator.resolve_event_timestamps(columns, row_count)?;
+
+	if !operator.is_count_based() {
+		let mut prefetch_keys: Vec<EncodedKey> = Vec::new();
+		let mut seen_windows: HashSet<u64> = HashSet::new();
+		for &timestamp in timestamps.iter() {
+			for window_id in operator.get_sliding_window_ids(timestamp) {
+				if seen_windows.insert(window_id) {
+					prefetch_keys.push(operator.create_window_key(group_hash, window_id));
+				}
+			}
+		}
+		txn.prefetch_state(operator.node, &prefetch_keys)?;
+	}
 
 	for (row_idx, &timestamp) in timestamps.iter().enumerate() {
 		let (event_timestamp, window_ids) = if operator.is_count_based() {

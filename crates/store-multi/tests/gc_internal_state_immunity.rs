@@ -56,7 +56,7 @@ fn write(storage: &MultiBufferTier, key: EncodedKey, payload: &[u8], created_at:
 /// or `None` if the key isn't present. Lets tests assert that the right
 /// value survives, not just that *some* value does.
 fn read_payload(storage: &MultiBufferTier, key: &EncodedKey) -> Option<Vec<u8>> {
-	let bytes = storage.get(EntryKind::Operator(NODE), key, CommitVersion(u64::MAX)).unwrap()?;
+	let bytes = storage.get(EntryKind::Operator(NODE), key, CommitVersion(u64::MAX)).unwrap().value()?;
 	Some(bytes[SHAPE_HEADER_SIZE..].to_vec())
 }
 

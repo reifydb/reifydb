@@ -33,12 +33,8 @@ use reifydb_runtime::{
 use reifydb_store_multi::{
 	buffer::tier::MultiBufferTier,
 	config::{BufferConfig, MultiStoreConfig, PersistentConfig},
-	store::{
-		StandardMultiStore,
-		router::classify_key,
-		version::{VersionedGetResult, get_at_version},
-	},
-	tier::TierStorage,
+	store::{StandardMultiStore, router::classify_key},
+	tier::{TierStorage, VersionedGetResult},
 };
 use reifydb_testing::testscript;
 use reifydb_type::{cow_vec, util::cowvec::CowVec};
@@ -143,6 +139,23 @@ impl testscript::runner::Runner for Runner {
 				let value = self.store.get(&key, version)?.map(|sv: MultiVersionRow| sv.row.to_vec());
 
 				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
+			}
+
+			"get_many" => {
+				let mut args = command.consume_args();
+				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
+				let keys: Vec<EncodedKey> = args
+					.rest_pos()
+					.into_iter()
+					.map(|a| EncodedKey::new(decode_binary(&a.value)))
+					.collect();
+				args.reject_rest()?;
+
+				let found = self.store.get_many(&keys, version)?;
+				for key in &keys {
+					let value = found.get(key).map(|row| row.row.to_vec());
+					writeln!(output, "{}", Raw::key_maybe_value(key, value))?;
+				}
 			}
 			"contains" => {
 				let mut args = command.consume_args();
@@ -310,7 +323,7 @@ impl testscript::runner::Runner for Runner {
 
 				let buffer = self.store.buffer().ok_or("buffer tier not configured")?;
 				let table = classify_key(&key);
-				let value = match get_at_version(buffer, table, key.as_ref(), version)? {
+				let value = match buffer.get(table, key.as_ref(), version)? {
 					VersionedGetResult::Value {
 						value,
 						..
@@ -330,8 +343,58 @@ impl testscript::runner::Runner for Runner {
 
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
 				let table = classify_key(&key);
-				let value = persistent.get(table, key.as_ref(), version)?.map(|v| v.to_vec());
+				let value = persistent.get(table, key.as_ref(), version)?.value().map(|v| v.to_vec());
 				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
+			}
+
+			"buffer_get_state" => {
+				let mut args = command.consume_args();
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
+				args.reject_rest()?;
+
+				let buffer = self.store.buffer().ok_or("buffer tier not configured")?;
+				let table = classify_key(&key);
+				let line = match buffer.get(table, key.as_ref(), version)? {
+					VersionedGetResult::Value {
+						value,
+						version: found,
+					} => format!(
+						"{} => {} version={}",
+						Raw::key(&key),
+						Raw::bytes(value.as_ref()),
+						found.0
+					),
+					VersionedGetResult::Tombstone => format!("{} => tombstone", Raw::key(&key)),
+					VersionedGetResult::NotFound => format!("{} => notfound", Raw::key(&key)),
+				};
+				writeln!(output, "{line}")?;
+			}
+
+			"persistent_get_state" => {
+				let mut args = command.consume_args();
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
+				args.reject_rest()?;
+
+				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
+				let table = classify_key(&key);
+				let line = match persistent.get(table, key.as_ref(), version)? {
+					VersionedGetResult::Value {
+						value,
+						version: found,
+					} => format!(
+						"{} => {} version={}",
+						Raw::key(&key),
+						Raw::bytes(value.as_ref()),
+						found.0
+					),
+					VersionedGetResult::Tombstone => format!("{} => tombstone", Raw::key(&key)),
+					VersionedGetResult::NotFound => format!("{} => notfound", Raw::key(&key)),
+				};
+				writeln!(output, "{line}")?;
 			}
 
 			"persistent_set" => {

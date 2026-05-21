@@ -3,7 +3,10 @@
 
 use std::{collections::HashMap, hash::Hash, mem, sync::Arc};
 
-use reifydb_core::{encoded::key::IntoEncodedKey, util::lru::LruCache};
+use reifydb_core::{
+	encoded::key::{EncodedKey, IntoEncodedKey},
+	util::lru::LruCache,
+};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{error::Result, operator::context::OperatorContext};
@@ -69,6 +72,38 @@ where
 
 	pub fn get(&mut self, ctx: &mut OperatorContext, key: &K) -> Result<Option<V>> {
 		Ok(self.get_arc(ctx, key)?.map(|arc| (*arc).clone()))
+	}
+
+	pub fn warm(&mut self, ctx: &mut OperatorContext, keys: &[K]) -> Result<()> {
+		if !matches!(self.backend, StateBackend::Data) {
+			return Ok(());
+		}
+
+		let mut to_load: Vec<K> = Vec::new();
+		for key in keys {
+			if self.cache.contains_key(key) || self.dirty.contains_key(key) {
+				continue;
+			}
+			to_load.push(key.clone());
+		}
+		if to_load.is_empty() {
+			return Ok(());
+		}
+
+		let mut by_encoded: HashMap<Vec<u8>, K> = HashMap::with_capacity(to_load.len());
+		let mut encoded_keys: Vec<EncodedKey> = Vec::with_capacity(to_load.len());
+		for key in &to_load {
+			let encoded = key.into_encoded_key();
+			by_encoded.insert(encoded.as_bytes().to_vec(), key.clone());
+			encoded_keys.push(encoded);
+		}
+
+		for (encoded, value) in ctx.state().get_many::<V>(&encoded_keys)? {
+			if let Some(key) = by_encoded.get(encoded.as_bytes()) {
+				self.cache.put(key.clone(), Arc::new(value));
+			}
+		}
+		Ok(())
 	}
 
 	pub fn set(&mut self, _ctx: &mut OperatorContext, key: &K, value: &V) -> Result<()> {
@@ -174,9 +209,100 @@ where
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::encoded::key::IntoEncodedKey;
+	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
+	use reifydb_core::{encoded::key::IntoEncodedKey, interface::catalog::flow::FlowNodeId};
+	use reifydb_type::value::{Value, row_number::RowNumber};
 
 	use super::*;
+	use crate::{
+		operator::{
+			FFIOperator, FFIOperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
+			context::OperatorContext,
+		},
+		state::FFIRawStatefulOperator,
+		testing::{harness::TestHarnessBuilder, helpers::encode_key},
+	};
+
+	struct WarmTestOperator;
+
+	impl FFIOperatorMetadata for WarmTestOperator {
+		const NAME: &'static str = "warm_test";
+		const API: u32 = 1;
+		const VERSION: &'static str = "1.0.0";
+		const DESCRIPTION: &'static str = "Test operator for StateCache::warm";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	}
+
+	impl FFIOperator for WarmTestOperator {
+		fn new(_operator_id: FlowNodeId, _config: &HashMap<String, Value>) -> Result<Self> {
+			Ok(Self)
+		}
+
+		fn apply(&mut self, _ctx: &mut OperatorContext, _input: BorrowedChange<'_>) -> Result<()> {
+			Ok(())
+		}
+
+		fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> Result<()> {
+			Ok(())
+		}
+	}
+
+	impl FFIRawStatefulOperator for WarmTestOperator {}
+
+	#[test]
+	fn test_warm_bulk_loads_present_keys_and_skips_absent() {
+		let mut harness = TestHarnessBuilder::<WarmTestOperator>::new()
+			.with_node_id(FlowNodeId(1))
+			.build()
+			.expect("Failed to build harness");
+
+		// Seed committed state under the same encoding the cache uses for its keys.
+		{
+			let mut ctx = harness.create_operator_context();
+			let mut state = ctx.state();
+			state.set(&encode_key(&"a".to_string()), &1i32).unwrap();
+			state.set(&encode_key(&"b".to_string()), &2i32).unwrap();
+		}
+
+		let mut cache: StateCache<String, i32> = StateCache::new(100);
+		let keys = vec!["a".to_string(), "b".to_string(), "missing".to_string()];
+
+		let mut ctx = harness.create_operator_context();
+		cache.warm(&mut ctx, &keys).unwrap();
+
+		// Present keys are now cached without further host reads; absent key is not.
+		assert!(cache.is_cached(&"a".to_string()));
+		assert!(cache.is_cached(&"b".to_string()));
+		assert!(!cache.is_cached(&"missing".to_string()));
+
+		assert_eq!(cache.get(&mut ctx, &"a".to_string()).unwrap(), Some(1));
+		assert_eq!(cache.get(&mut ctx, &"b".to_string()).unwrap(), Some(2));
+		assert_eq!(cache.get(&mut ctx, &"missing".to_string()).unwrap(), None);
+	}
+
+	#[test]
+	fn test_warm_does_not_overwrite_pending() {
+		let mut harness = TestHarnessBuilder::<WarmTestOperator>::new()
+			.with_node_id(FlowNodeId(1))
+			.build()
+			.expect("Failed to build harness");
+
+		{
+			let mut ctx = harness.create_operator_context();
+			ctx.state().set(&encode_key(&"a".to_string()), &1i32).unwrap();
+		}
+
+		let mut cache: StateCache<String, i32> = StateCache::new(100);
+		let mut ctx = harness.create_operator_context();
+
+		// A pending (dirty) write must shadow the committed value warm would load.
+		cache.set(&mut ctx, &"a".to_string(), &99i32).unwrap();
+		cache.warm(&mut ctx, &["a".to_string()]).unwrap();
+
+		assert_eq!(cache.get(&mut ctx, &"a".to_string()).unwrap(), Some(99));
+	}
 
 	#[test]
 	fn test_cache_capacity() {

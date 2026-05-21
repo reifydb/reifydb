@@ -6,6 +6,7 @@ use std::{
 	collections::{HashMap, HashSet},
 	ops::Bound,
 	sync::Arc,
+	time::{Duration, Instant},
 };
 
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
@@ -13,7 +14,12 @@ use reifydb_type::{Result, util::cowvec::CowVec};
 use tracing::{Span, field, instrument};
 
 use super::entry::{CurrentMap, Entries, Entry, HistoricalMap};
-use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage};
+use crate::tier::{
+	HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage, VersionedGetResult,
+};
+
+const BUFFER_SET_LOCK_DEBUG_THRESHOLD_US: u128 = 2_000;
+const DROP_HOLD_DEBUG_THRESHOLD_US: u128 = 2_000;
 
 #[derive(Clone)]
 pub struct MemoryPrimitiveStorage {
@@ -76,11 +82,14 @@ impl MemoryPrimitiveStorage {
 		table: EntryKind,
 		version: CommitVersion,
 		entries: Vec<(EncodedKey, Option<CowVec<u8>>)>,
-	) {
+	) -> (Duration, Duration) {
 		let table_entry = self.get_or_create_table(table);
+		let lock_start = Instant::now();
 		let mut current = table_entry.current.write();
 		let mut historical = table_entry.historical.write();
+		let lock_wait = lock_start.elapsed();
 
+		let mutate_start = Instant::now();
 		for (key, value) in entries {
 			if let Some((pre_version, pre_value)) = current.get(&key) {
 				if *pre_version < version {
@@ -99,22 +108,30 @@ impl MemoryPrimitiveStorage {
 				current.insert(key, (version, value));
 			}
 		}
+
+		(lock_wait, mutate_start.elapsed())
 	}
 }
 
 impl TierStorage for MemoryPrimitiveStorage {
 	#[instrument(name = "store::multi::memory::get", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len(), version = version.0))]
-	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<Option<CowVec<u8>>> {
+	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
 		let entry = match self.inner.entries.data.get(&table) {
 			Some(e) => e,
-			None => return Ok(None),
+			None => return Ok(VersionedGetResult::NotFound),
 		};
 
 		let current = entry.current.read();
 		if let Some((cur_version, value)) = current.get(key)
 			&& *cur_version <= version
 		{
-			return Ok(value.clone());
+			return Ok(match value {
+				Some(v) => VersionedGetResult::Value {
+					value: v.clone(),
+					version: *cur_version,
+				},
+				None => VersionedGetResult::Tombstone,
+			});
 		}
 		drop(current);
 
@@ -122,12 +139,18 @@ impl TierStorage for MemoryPrimitiveStorage {
 		if let Some(versions) = historical.get(key) {
 			for (Reverse(v), value) in versions.range(Reverse(version)..) {
 				if *v <= version {
-					return Ok(value.clone());
+					return Ok(match value {
+						Some(val) => VersionedGetResult::Value {
+							value: val.clone(),
+							version: *v,
+						},
+						None => VersionedGetResult::Tombstone,
+					});
 				}
 			}
 		}
 
-		Ok(None)
+		Ok(VersionedGetResult::NotFound)
 	}
 
 	#[instrument(name = "store::multi::memory::contains", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len(), version = version.0), ret)]
@@ -164,10 +187,30 @@ impl TierStorage for MemoryPrimitiveStorage {
 	))]
 	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
 		let total_entries: usize = batches.values().map(|v| v.len()).sum();
+		let table_count = batches.len();
 
+		let mut lock_wait_sum = Duration::ZERO;
+		let mut mutate_sum = Duration::ZERO;
 		batches.into_iter().for_each(|(table, entries)| {
-			self.process_table(table, version, entries);
+			let (lock_wait, mutate) = self.process_table(table, version, entries);
+			lock_wait_sum += lock_wait;
+			mutate_sum += mutate;
 		});
+
+		if lock_wait_sum.as_micros() >= BUFFER_SET_LOCK_DEBUG_THRESHOLD_US {
+			println!(
+				"[dbg:buffer-set] ts_ms={} version={} tables={} entries={} lock_wait={}us mutate={}us",
+				std::time::SystemTime::now()
+					.duration_since(std::time::UNIX_EPOCH)
+					.map(|d| d.as_millis())
+					.unwrap_or(0),
+				version.0,
+				table_count,
+				total_entries,
+				lock_wait_sum.as_micros(),
+				mutate_sum.as_micros()
+			);
+		}
 
 		Span::current().record("total_entry_count", total_entries);
 		Ok(())
@@ -406,6 +449,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 	))]
 	fn drop(&self, batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()> {
 		let total_entries: usize = batches.values().map(|v| v.len()).sum();
+		let hold_start = Instant::now();
 
 		for (table, entries) in batches {
 			let table_entry = self.get_or_create_table(table);
@@ -465,6 +509,19 @@ impl TierStorage for MemoryPrimitiveStorage {
 					}
 				}
 			}
+		}
+
+		let held_us = hold_start.elapsed().as_micros();
+		if held_us >= DROP_HOLD_DEBUG_THRESHOLD_US {
+			println!(
+				"[dbg:drop-hold] ts_ms={} entries={} held={}us",
+				std::time::SystemTime::now()
+					.duration_since(std::time::UNIX_EPOCH)
+					.map(|d| d.as_millis())
+					.unwrap_or(0),
+				total_entries,
+				held_us
+			);
 		}
 
 		Span::current().record("total_entry_count", total_entries);
@@ -601,7 +658,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let value = storage.get(EntryKind::Multi, &key, version).unwrap();
+		let value = storage.get(EntryKind::Multi, &key, version).unwrap().value();
 		assert_eq!(value.as_deref(), Some(b"value1".as_slice()));
 
 		// Contains
@@ -643,11 +700,11 @@ pub mod tests {
 		.unwrap();
 
 		assert_eq!(
-			storage.get(EntryKind::Source(source1), &key, version).unwrap().as_deref(),
+			storage.get(EntryKind::Source(source1), &key, version).unwrap().value().as_deref(),
 			Some(b"table1".as_slice())
 		);
 		assert_eq!(
-			storage.get(EntryKind::Source(source2), &key, version).unwrap().as_deref(),
+			storage.get(EntryKind::Source(source2), &key, version).unwrap().value().as_deref(),
 			Some(b"table2".as_slice())
 		);
 	}
@@ -681,19 +738,19 @@ pub mod tests {
 
 		// Get at version 3 should return v3 (from current)
 		assert_eq!(
-			storage.get(EntryKind::Multi, &key, CommitVersion(3)).unwrap().as_deref(),
+			storage.get(EntryKind::Multi, &key, CommitVersion(3)).unwrap().value().as_deref(),
 			Some(b"v3".as_slice())
 		);
 
 		// Get at version 2 should return v2 (from historical)
 		assert_eq!(
-			storage.get(EntryKind::Multi, &key, CommitVersion(2)).unwrap().as_deref(),
+			storage.get(EntryKind::Multi, &key, CommitVersion(2)).unwrap().value().as_deref(),
 			Some(b"v2".as_slice())
 		);
 
 		// Get at version 1 should return v1 (from historical)
 		assert_eq!(
-			storage.get(EntryKind::Multi, &key, CommitVersion(1)).unwrap().as_deref(),
+			storage.get(EntryKind::Multi, &key, CommitVersion(1)).unwrap().value().as_deref(),
 			Some(b"v1".as_slice())
 		);
 	}
@@ -720,19 +777,19 @@ pub mod tests {
 
 		// Get at version 3 should return v3 (current)
 		assert_eq!(
-			storage.get(EntryKind::Multi, &key, CommitVersion(3)).unwrap().as_deref(),
+			storage.get(EntryKind::Multi, &key, CommitVersion(3)).unwrap().value().as_deref(),
 			Some(b"v3".as_slice())
 		);
 
 		// Get at version 1 should return v1 (historical)
 		assert_eq!(
-			storage.get(EntryKind::Multi, &key, CommitVersion(1)).unwrap().as_deref(),
+			storage.get(EntryKind::Multi, &key, CommitVersion(1)).unwrap().value().as_deref(),
 			Some(b"v1".as_slice())
 		);
 
 		// Get at version 2 should return v1 (largest version <= 2)
 		assert_eq!(
-			storage.get(EntryKind::Multi, &key, CommitVersion(2)).unwrap().as_deref(),
+			storage.get(EntryKind::Multi, &key, CommitVersion(2)).unwrap().value().as_deref(),
 			Some(b"v1".as_slice())
 		);
 	}
@@ -927,15 +984,15 @@ pub mod tests {
 		storage.drop(HashMap::from([(EntryKind::Multi, vec![(key.clone(), CommitVersion(1))])])).unwrap();
 
 		// Version 1 should no longer be accessible
-		assert!(storage.get(EntryKind::Multi, &key, CommitVersion(1)).unwrap().is_none());
+		assert!(storage.get(EntryKind::Multi, &key, CommitVersion(1)).unwrap().value().is_none());
 
 		// Versions 2 and 3 should still work
 		assert_eq!(
-			storage.get(EntryKind::Multi, &key, CommitVersion(2)).unwrap().as_deref(),
+			storage.get(EntryKind::Multi, &key, CommitVersion(2)).unwrap().value().as_deref(),
 			Some(b"v2".as_slice())
 		);
 		assert_eq!(
-			storage.get(EntryKind::Multi, &key, CommitVersion(3)).unwrap().as_deref(),
+			storage.get(EntryKind::Multi, &key, CommitVersion(3)).unwrap().value().as_deref(),
 			Some(b"v3".as_slice())
 		);
 	}
@@ -957,12 +1014,12 @@ pub mod tests {
 		storage.set(CommitVersion(2), HashMap::from([(EntryKind::Multi, vec![(key.clone(), None)])])).unwrap();
 
 		// Get at version 2 should return None (tombstone)
-		assert!(storage.get(EntryKind::Multi, &key, CommitVersion(2)).unwrap().is_none());
+		assert!(storage.get(EntryKind::Multi, &key, CommitVersion(2)).unwrap().value().is_none());
 		assert!(!storage.contains(EntryKind::Multi, &key, CommitVersion(2)).unwrap());
 
 		// Get at version 1 should return value
 		assert_eq!(
-			storage.get(EntryKind::Multi, &key, CommitVersion(1)).unwrap().as_deref(),
+			storage.get(EntryKind::Multi, &key, CommitVersion(1)).unwrap().value().as_deref(),
 			Some(b"value".as_slice())
 		);
 	}

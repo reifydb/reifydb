@@ -172,7 +172,9 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 
 	pub fn execute(self) -> Result<BulkInsertResult> {
 		self.engine.reject_if_read_only()?;
+		let begin_start = std::time::Instant::now();
 		let mut txn = self.engine.begin_command(self.identity)?;
+		let begin_us = begin_start.elapsed().as_micros();
 		let catalog = self.engine.catalog();
 		let clock = self.engine.clock();
 		let total_rows = self.total_pending_rows();
@@ -180,9 +182,23 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 		let pending_ringbuffers = self.pending_ringbuffers;
 		let pending_series = self.pending_series;
 
-		V::run(&mut txn, total_rows, move |txn| {
+		let run_start = std::time::Instant::now();
+		let out = V::run(&mut txn, total_rows, move |txn| {
 			run_all_pending::<V>(catalog, clock, txn, pending_tables, pending_ringbuffers, pending_series)
-		})
+		});
+		let run_us = run_start.elapsed().as_micros();
+		if begin_us + run_us >= 8_000 {
+			println!(
+				"[dbg:bulk-exec] ts_ms={} begin={}us run={}us",
+				std::time::SystemTime::now()
+					.duration_since(std::time::UNIX_EPOCH)
+					.map(|d| d.as_millis())
+					.unwrap_or(0),
+				begin_us,
+				run_us
+			);
+		}
+		out
 	}
 
 	#[inline]

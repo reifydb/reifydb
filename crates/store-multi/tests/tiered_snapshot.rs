@@ -24,6 +24,8 @@ test_each_path! { in "crates/store-multi/tests/scripts/tiered_snapshot/flush" as
 test_each_path! { in "crates/store-multi/tests/scripts/tiered_snapshot/versions" as ts_versions => test_snapshot }
 test_each_path! { in "crates/store-multi/tests/scripts/tiered_snapshot/tombstones" as ts_tombstones => test_snapshot }
 test_each_path! { in "crates/store-multi/tests/scripts/tiered_snapshot/cascade" as ts_cascade => test_snapshot }
+test_each_path! { in "crates/store-multi/tests/scripts/tiered_snapshot/versioned_get" as ts_versioned_get => test_snapshot }
+test_each_path! { in "crates/store-multi/tests/scripts/tiered_snapshot/get_many" as ts_get_many => test_snapshot }
 
 fn test_snapshot(path: &Path) {
 	temp_dir(|_db_path| {

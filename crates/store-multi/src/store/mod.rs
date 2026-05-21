@@ -27,7 +27,6 @@ use crate::{
 pub mod drop;
 pub mod multi;
 pub mod router;
-pub mod version;
 pub mod worker;
 
 use reifydb_core::actors::drop::DropMessage;
@@ -230,6 +229,21 @@ impl StandardMultiStore {
 			actor_system,
 			clock,
 		})
+		.unwrap()
+	}
+
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn testing_persistent_sqlite_only() -> Self {
+		let pools = Pools::new(PoolConfig::default());
+		let clock = Clock::testing();
+		let actor_system = ActorSystem::new(pools, clock.clone());
+		let event_bus = EventBus::new(&actor_system);
+		Self::new(MultiStoreConfig::sqlite_unbuffered(
+			PersistentConfig::sqlite_in_memory(),
+			actor_system,
+			clock,
+			event_bus,
+		))
 		.unwrap()
 	}
 }

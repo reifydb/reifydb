@@ -8,7 +8,7 @@ use reifydb_abi::{
 		FFI_END_OF_ITERATION, FFI_ERROR_ALLOC, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK,
 	},
 	context::{context::ContextFFI, iterators::StateIteratorFFI},
-	data::buffer::BufferFFI,
+	data::{buffer::BufferFFI, key_ref::KeyRefFFI},
 };
 use reifydb_core::{
 	encoded::{
@@ -205,6 +205,71 @@ pub(super) extern "C" fn host_state_prefix(
 const BOUND_UNBOUNDED: u8 = 0;
 const BOUND_INCLUDED: u8 = 1;
 const BOUND_EXCLUDED: u8 = 2;
+
+#[unsafe(no_mangle)]
+pub(super) extern "C" fn host_state_get_many(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	keys: *const KeyRefFFI,
+	keys_len: usize,
+	iterator_out: *mut *mut StateIteratorFFI,
+) -> i32 {
+	if ctx.is_null() || iterator_out.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+	if keys_len > 0 && keys.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let ctx_handle = &mut *ctx;
+		let flow_txn = get_transaction_mut(ctx_handle);
+		let node_id = FlowNodeId(operator_id);
+
+		let key_refs = if keys_len == 0 {
+			&[]
+		} else {
+			from_raw_parts(keys, keys_len)
+		};
+
+		let mut encoded_keys: Vec<EncodedKey> = Vec::with_capacity(key_refs.len());
+		for key_ref in key_refs {
+			if key_ref.len > 0 && key_ref.ptr.is_null() {
+				return FFI_ERROR_NULL_PTR;
+			}
+			let bytes = if key_ref.len == 0 {
+				Vec::new()
+			} else {
+				from_raw_parts(key_ref.ptr, key_ref.len).to_vec()
+			};
+			encoded_keys.push(EncodedKey::new(bytes));
+		}
+
+		match flow_txn.state_get_many(node_id, &encoded_keys) {
+			Ok(batch) => {
+				let handle = state_iterator::create_iterator(batch);
+
+				let iter_ptr = host_alloc(mem::size_of::<StateIteratorInternal>())
+					as *mut StateIteratorInternal;
+				if iter_ptr.is_null() {
+					state_iterator::free_iterator(handle);
+					return FFI_ERROR_ALLOC;
+				}
+
+				ptr::write(
+					iter_ptr,
+					StateIteratorInternal {
+						handle,
+					},
+				);
+
+				*iterator_out = iter_ptr as *mut StateIteratorFFI;
+				FFI_OK
+			}
+			Err(_) => FFI_ERROR_INTERNAL,
+		}
+	}
+}
 
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_state_range(
@@ -445,57 +510,6 @@ pub(super) extern "C" fn host_internal_state_remove(
 
 		match flow_txn.internal_state_remove(FlowNodeId(operator_id), &key) {
 			Ok(_) => FFI_OK,
-			Err(_) => FFI_ERROR_INTERNAL,
-		}
-	}
-}
-
-#[unsafe(no_mangle)]
-pub(super) extern "C" fn host_internal_state_prefix(
-	operator_id: u64,
-	ctx: *mut ContextFFI,
-	prefix_ptr: *const u8,
-	prefix_len: usize,
-	iterator_out: *mut *mut StateIteratorFFI,
-) -> i32 {
-	if ctx.is_null() || iterator_out.is_null() {
-		return FFI_ERROR_NULL_PTR;
-	}
-
-	unsafe {
-		let ctx_handle = &mut *ctx;
-		let flow_txn = get_transaction_mut(ctx_handle);
-		let node_id = FlowNodeId(operator_id);
-
-		let prefix_bytes = if prefix_ptr.is_null() {
-			vec![]
-		} else {
-			from_raw_parts(prefix_ptr, prefix_len).to_vec()
-		};
-
-		let result = flow_txn.internal_state_prefix(node_id, &prefix_bytes);
-
-		match result {
-			Ok(batch) => {
-				let handle = state_iterator::create_iterator(batch);
-
-				let iter_ptr = host_alloc(mem::size_of::<StateIteratorInternal>())
-					as *mut StateIteratorInternal;
-				if iter_ptr.is_null() {
-					state_iterator::free_iterator(handle);
-					return FFI_ERROR_ALLOC;
-				}
-
-				ptr::write(
-					iter_ptr,
-					StateIteratorInternal {
-						handle,
-					},
-				);
-
-				*iterator_out = iter_ptr as *mut StateIteratorFFI;
-				FFI_OK
-			}
 			Err(_) => FFI_ERROR_INTERNAL,
 		}
 	}

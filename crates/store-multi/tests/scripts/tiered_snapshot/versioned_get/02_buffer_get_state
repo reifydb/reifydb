@@ -1,0 +1,53 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Verifies MemoryPrimitiveStorage::get classifies Value / Tombstone / NotFound, including
+# historical version resolution, and never collapses a tombstone into a missing key.
+
+# Absent key -> notfound
+buffer_get_state k version=1
+---
+"k" => notfound
+
+# Value at v1 (kept in the buffer; auto_flush is off, so nothing reaches persistent)
+set k=alive version=1
+---
+ok
+
+buffer_get_state k version=1
+---
+"k" => "alive" version=1
+
+# Below the write the row is not yet visible -> notfound
+buffer_get_state k version=0
+---
+"k" => notfound
+
+# Overwrite at v3 promotes v1 (alive) into the historical chain
+set k=brave version=3
+---
+ok
+
+buffer_get_state k version=3
+---
+"k" => "brave" version=3
+
+# v2 resolves to the largest version <= 2, which is the historical v1
+buffer_get_state k version=2
+---
+"k" => "alive" version=1
+
+# Tombstone at v5 (unset, not flushed -> stays in the buffer's current map)
+unset k=brave version=5
+---
+ok
+
+# In-range delete -> tombstone, distinct from notfound
+buffer_get_state k version=5
+---
+"k" => tombstone
+
+# v4: the tombstone at v5 is not <= 4, so resolution falls to historical v3
+buffer_get_state k version=4
+---
+"k" => "brave" version=3

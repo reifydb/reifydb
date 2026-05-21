@@ -71,6 +71,10 @@ impl FlowTransaction {
 			};
 		}
 
+		if let Some(cached) = self.inner().prefetch.get(key) {
+			return Ok(cached.clone());
+		}
+
 		let inner = self.inner_mut();
 		let query = match Self::read_from(key) {
 			ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),

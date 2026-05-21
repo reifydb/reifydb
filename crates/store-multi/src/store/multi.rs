@@ -4,6 +4,7 @@
 use std::{
 	collections::{BTreeMap, HashMap, HashSet},
 	ops::{Bound, RangeBounds},
+	time::Instant,
 };
 
 use reifydb_core::{
@@ -26,16 +27,17 @@ use tracing::{instrument, warn};
 use super::{
 	StandardMultiStore,
 	router::{classify_key, classify_range, is_single_version_semantics_key},
-	version::{VersionedGetResult, get_at_version},
 };
 use crate::{
 	Result,
 	buffer::tier::MultiBufferTier,
 	persistent::MultiPersistentTier,
-	tier::{RangeBatch, RangeCursor, TierBatch, TierStorage},
+	tier::{RangeBatch, RangeCursor, TierBatch, TierStorage, VersionedGetResult},
 };
 
 const TIER_SCAN_CHUNK_SIZE: usize = 32;
+
+const STORE_COMMIT_DEBUG_THRESHOLD_US: u128 = 8_000;
 
 impl MultiVersionGet for StandardMultiStore {
 	#[instrument(name = "store::multi::get", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref()), version = version.0))]
@@ -43,7 +45,7 @@ impl MultiVersionGet for StandardMultiStore {
 		let table = classify_key(key);
 
 		if let Some(buffer) = &self.buffer {
-			match get_at_version(buffer, table, key.as_ref(), version)? {
+			match buffer.get(table, key.as_ref(), version)? {
 				VersionedGetResult::Value {
 					value,
 					version: v,
@@ -60,7 +62,7 @@ impl MultiVersionGet for StandardMultiStore {
 		}
 
 		if let Some(persistent) = &self.persistent {
-			match get_at_version(persistent, table, key.as_ref(), version)? {
+			match persistent.get(table, key.as_ref(), version)? {
 				VersionedGetResult::Value {
 					value,
 					version: v,
@@ -90,10 +92,18 @@ impl MultiVersionContains for StandardMultiStore {
 impl MultiVersionCommit for StandardMultiStore {
 	#[instrument(name = "store::multi::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len(), version = version.0))]
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
+		let t_total = Instant::now();
+
+		let t = Instant::now();
 		let classified = classify_deltas(&deltas);
+		let classify_us = t.elapsed().as_micros();
+
+		let t = Instant::now();
 		let drop_batch = build_drop_batch(classified.explicit_drops, &classified.pending_set_keys, version);
 		self.dispatch_drops(drop_batch);
+		let dispatch_us = t.elapsed().as_micros();
 
+		let t = Instant::now();
 		if let Some(buffer) = &self.buffer {
 			buffer.set(version, classified.batches)?;
 		} else if let Some(persistent) = &self.persistent {
@@ -101,8 +111,28 @@ impl MultiVersionCommit for StandardMultiStore {
 		} else {
 			return Ok(());
 		}
+		let buffer_set_us = t.elapsed().as_micros();
 
+		let t = Instant::now();
 		self.emit_commit_metrics(classified.writes, classified.deletes, version);
+		let emit_us = t.elapsed().as_micros();
+
+		let total_us = t_total.elapsed().as_micros();
+		if total_us >= STORE_COMMIT_DEBUG_THRESHOLD_US {
+			println!(
+				"[dbg:store-commit] ts_ms={} version={} total={}us classify={}us dispatch={}us buffer_set={}us emit={}us",
+				std::time::SystemTime::now()
+					.duration_since(std::time::UNIX_EPOCH)
+					.map(|d| d.as_millis())
+					.unwrap_or(0),
+				version.0,
+				total_us,
+				classify_us,
+				dispatch_us,
+				buffer_set_us,
+				emit_us
+			);
+		}
 		Ok(())
 	}
 }
@@ -212,6 +242,75 @@ fn build_drop_batch(
 }
 
 impl StandardMultiStore {
+	pub fn get_many(
+		&self,
+		keys: &[EncodedKey],
+		version: CommitVersion,
+	) -> Result<HashMap<EncodedKey, MultiVersionRow>> {
+		let mut by_table: HashMap<EntryKind, Vec<&EncodedKey>> = HashMap::new();
+		for key in keys {
+			by_table.entry(classify_key(key)).or_default().push(key);
+		}
+
+		let mut out: HashMap<EncodedKey, MultiVersionRow> = HashMap::new();
+
+		for (table, table_keys) in by_table {
+			let key_slices: Vec<&[u8]> = table_keys.iter().map(|k| k.as_ref()).collect();
+
+			let buffer_results = match &self.buffer {
+				Some(buffer) => buffer.get_many(table, &key_slices, version)?,
+				None => HashMap::new(),
+			};
+
+			let persistent_slices: Vec<&[u8]> = table_keys
+				.iter()
+				.filter(|k| !buffer_results.contains_key(k.as_ref()))
+				.map(|k| k.as_ref())
+				.collect();
+
+			let persistent_results = if persistent_slices.is_empty() {
+				HashMap::new()
+			} else {
+				match &self.persistent {
+					Some(persistent) => persistent.get_many(table, &persistent_slices, version)?,
+					None => HashMap::new(),
+				}
+			};
+
+			for key in table_keys {
+				let resolved = match buffer_results.get(key.as_ref()) {
+					Some(VersionedGetResult::Value {
+						value,
+						version: v,
+					}) => Some((value.clone(), *v)),
+					Some(VersionedGetResult::Tombstone) => None,
+					Some(VersionedGetResult::NotFound) | None => {
+						match persistent_results.get(key.as_ref()) {
+							Some(VersionedGetResult::Value {
+								value,
+								version: v,
+							}) => Some((value.clone(), *v)),
+							_ => None,
+						}
+					}
+				};
+
+				if let Some((value, v)) = resolved {
+					out.insert(
+						key.clone(),
+						MultiVersionRow {
+							key: key.clone(),
+							row: EncodedRow(value),
+							version: v,
+						},
+					);
+				}
+			}
+		}
+
+		Ok(out)
+	}
+
 	#[inline]
 	fn dispatch_drops(&self, drop_batch: Vec<DropRequest>) {
 		if drop_batch.is_empty() {
@@ -705,7 +804,7 @@ impl MultiVersionGetPrevious for StandardMultiStore {
 		let prev_version = CommitVersion(before_version.0 - 1);
 
 		if let Some(buffer) = &self.buffer {
-			match get_at_version(buffer, table, key.as_ref(), prev_version)? {
+			match buffer.get(table, key.as_ref(), prev_version)? {
 				VersionedGetResult::Value {
 					value,
 					version,
@@ -722,7 +821,7 @@ impl MultiVersionGetPrevious for StandardMultiStore {
 		}
 
 		if let Some(persistent) = &self.persistent {
-			match get_at_version(persistent, table, key.as_ref(), prev_version)? {
+			match persistent.get(table, key.as_ref(), prev_version)? {
 				VersionedGetResult::Value {
 					value,
 					version,

@@ -147,7 +147,7 @@ pub(crate) mod stubs {
 			context::ContextFFI,
 			iterators::{StateIteratorFFI, StoreIteratorFFI},
 		},
-		data::buffer::BufferFFI,
+		data::{buffer::BufferFFI, key_ref::KeyRefFFI},
 	};
 
 	pub fn state() -> StateCallbacks {
@@ -163,8 +163,18 @@ pub(crate) mod stubs {
 			internal_get: internal_state_get,
 			internal_set: internal_state_set,
 			internal_remove: internal_state_remove,
-			internal_prefix: internal_state_prefix,
+			get_many: state_get_many,
 		}
+	}
+
+	extern "C" fn state_get_many(
+		_: u64,
+		_: *mut ContextFFI,
+		_: *const KeyRefFFI,
+		_: usize,
+		_: *mut *mut StateIteratorFFI,
+	) -> i32 {
+		FFI_ERROR_INTERNAL
 	}
 
 	extern "C" fn state_get(_: u64, _: *mut ContextFFI, _: *const u8, _: usize, _: *mut BufferFFI) -> i32 {
@@ -219,15 +229,6 @@ pub(crate) mod stubs {
 		FFI_ERROR_INTERNAL
 	}
 	extern "C" fn internal_state_remove(_: u64, _: *mut ContextFFI, _: *const u8, _: usize) -> i32 {
-		FFI_ERROR_INTERNAL
-	}
-	extern "C" fn internal_state_prefix(
-		_: u64,
-		_: *mut ContextFFI,
-		_: *const u8,
-		_: usize,
-		_: *mut *mut StateIteratorFFI,
-	) -> i32 {
 		FFI_ERROR_INTERNAL
 	}
 

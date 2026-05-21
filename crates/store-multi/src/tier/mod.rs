@@ -9,6 +9,30 @@ use reifydb_type::{Result, util::cowvec::CowVec};
 pub type TierBatch = HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>>;
 
 #[derive(Debug, Clone)]
+pub enum VersionedGetResult {
+	Value {
+		value: CowVec<u8>,
+		version: CommitVersion,
+	},
+
+	Tombstone,
+
+	NotFound,
+}
+
+impl VersionedGetResult {
+	pub fn value(self) -> Option<CowVec<u8>> {
+		match self {
+			VersionedGetResult::Value {
+				value,
+				..
+			} => Some(value),
+			VersionedGetResult::Tombstone | VersionedGetResult::NotFound => None,
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
 pub struct RawEntry {
 	pub key: EncodedKey,
 	pub version: CommitVersion,
@@ -79,10 +103,28 @@ impl Default for RangeCursor {
 }
 
 pub trait TierStorage: Send + Sync + Clone + 'static {
-	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<Option<CowVec<u8>>>;
+	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult>;
+
+	fn get_many(
+		&self,
+		table: EntryKind,
+		keys: &[&[u8]],
+		version: CommitVersion,
+	) -> Result<HashMap<Vec<u8>, VersionedGetResult>> {
+		let mut out = HashMap::with_capacity(keys.len());
+		for &key in keys {
+			match self.get(table, key, version)? {
+				VersionedGetResult::NotFound => {}
+				resolved => {
+					out.insert(key.to_vec(), resolved);
+				}
+			}
+		}
+		Ok(out)
+	}
 
 	fn contains(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<bool> {
-		Ok(self.get(table, key, version)?.is_some())
+		Ok(matches!(self.get(table, key, version)?, VersionedGetResult::Value { .. }))
 	}
 
 	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()>;

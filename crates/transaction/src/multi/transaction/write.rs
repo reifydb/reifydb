@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use core::mem;
-use std::{cmp::Ordering, collections::HashSet, iter, ops::RangeBounds, sync::Arc, vec};
+use std::{cmp::Ordering, collections::HashSet, iter, ops::RangeBounds, sync::Arc, time::Instant, vec};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -37,6 +37,8 @@ use crate::{
 		types::{DeltaEntry, TransactionValue},
 	},
 };
+
+const TXN_COMMIT_DEBUG_THRESHOLD_US: u128 = 8_000;
 
 pub struct WriteSavepoint {
 	pub(crate) pending_writes: PendingWrites,
@@ -480,8 +482,31 @@ impl MultiWriteTransaction {
 			self.discard();
 			return Ok(CommitVersion(0));
 		}
+		let t_total = Instant::now();
+
+		let t = Instant::now();
 		let (commit_version, entries) = self.commit_pending_unchecked()?;
-		self.finalize_commit(commit_version, entries)
+		let commit_pending_us = t.elapsed().as_micros();
+
+		let t = Instant::now();
+		let result = self.finalize_commit(commit_version, entries);
+		let finalize_us = t.elapsed().as_micros();
+
+		let total_us = t_total.elapsed().as_micros();
+		if total_us >= TXN_COMMIT_DEBUG_THRESHOLD_US {
+			println!(
+				"[dbg:txn-commit] ts_ms={} version={} total={}us commit_pending={}us finalize={}us",
+				std::time::SystemTime::now()
+					.duration_since(std::time::UNIX_EPOCH)
+					.map(|d| d.as_millis())
+					.unwrap_or(0),
+				commit_version.0,
+				total_us,
+				commit_pending_us,
+				finalize_us
+			);
+		}
+		result
 	}
 
 	#[inline]

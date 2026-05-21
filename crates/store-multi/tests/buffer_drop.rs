@@ -155,7 +155,7 @@ impl testscript::runner::Runner for Runner {
 				args.reject_rest()?;
 
 				let version = CommitVersion(u64::MAX); // Get latest
-				let value = self.storage.get(table, &key, version)?;
+				let value = self.storage.get(table, &key, version)?.value();
 				let key_str = Raw::bytes(key.as_ref());
 				match value {
 					Some(v) => {
@@ -176,7 +176,7 @@ impl testscript::runner::Runner for Runner {
 				args.reject_rest()?;
 
 				let version = CommitVersion(u64::MAX); // Get latest
-				let exists = self.storage.get(table, &key, version)?.is_some();
+				let exists = self.storage.get(table, &key, version)?.value().is_some();
 				writeln!(output, "{}", exists)?;
 			}
 

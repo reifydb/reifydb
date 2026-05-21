@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
-use std::collections::{HashMap, hash_map::Entry};
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
@@ -68,6 +68,15 @@ fn process_tumbling_group_insert(
 		};
 		row_info.push((event_timestamp, window_id));
 	}
+
+	let mut prefetch_keys: Vec<EncodedKey> = Vec::new();
+	let mut seen_windows: HashSet<u64> = HashSet::new();
+	for &(_, window_id) in &row_info {
+		if seen_windows.insert(window_id) {
+			prefetch_keys.push(operator.create_window_key(group_hash, window_id));
+		}
+	}
+	txn.prefetch_state(operator.node, &prefetch_keys)?;
 
 	type WindowCache = (WindowState, Option<(Row, bool)>, EncodedKey);
 	let mut window_caches: HashMap<u64, WindowCache> = HashMap::new();

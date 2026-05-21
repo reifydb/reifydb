@@ -1,0 +1,23 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# get_many honors the per-key version snapshot inside a single batch (multi-version buffer;
+# nothing is flushed, so all versions live in the buffer's current + historical maps).
+
+set a=a1 version=1
+set a=a3 version=3
+set b=b2 version=2
+---
+ok
+
+# At v2: a resolves to a1 (largest version <= 2), b to b2.
+get_many a b version=2
+---
+"a" => "a1"
+"b" => "b2"
+
+# At v3: a advances to a3, b stays b2.
+get_many a b version=3
+---
+"a" => "a3"
+"b" => "b2"

@@ -12,7 +12,7 @@ use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::s
 use reifydb_sqlite::SqliteConfig;
 use reifydb_type::{Result, util::cowvec::CowVec};
 
-use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage};
+use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage, VersionedGetResult};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 pub mod sqlite;
@@ -40,9 +40,20 @@ impl MultiPersistentTier {
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 impl TierStorage for MultiPersistentTier {
-	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<Option<CowVec<u8>>> {
+	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
 		match self {
 			Self::Sqlite(s) => s.get(table, key, version),
+		}
+	}
+
+	fn get_many(
+		&self,
+		table: EntryKind,
+		keys: &[&[u8]],
+		version: CommitVersion,
+	) -> Result<HashMap<Vec<u8>, VersionedGetResult>> {
+		match self {
+			Self::Sqlite(s) => s.get_many(table, keys, version),
 		}
 	}
 
@@ -119,7 +130,7 @@ impl TierStorage for MultiPersistentTier {
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
 impl TierStorage for MultiPersistentTier {
-	fn get(&self, _table: EntryKind, _key: &[u8], _version: CommitVersion) -> Result<Option<CowVec<u8>>> {
+	fn get(&self, _table: EntryKind, _key: &[u8], _version: CommitVersion) -> Result<VersionedGetResult> {
 		match *self {}
 	}
 

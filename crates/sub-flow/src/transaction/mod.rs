@@ -138,6 +138,8 @@ pub struct FlowTransactionInner {
 	pub clock: Clock,
 
 	pub operator_states: HashMap<FlowNodeId, OperatorStateSlot>,
+
+	pub prefetch: HashMap<EncodedKey, Option<EncodedRow>>,
 }
 
 pub enum FlowTransaction {
@@ -234,6 +236,7 @@ impl FlowTransaction {
 				accumulator: ChangeAccumulator::new(),
 				clock,
 				operator_states: HashMap::new(),
+				prefetch: HashMap::new(),
 			},
 		}
 	}
@@ -257,6 +260,7 @@ impl FlowTransaction {
 				accumulator: ChangeAccumulator::new(),
 				clock: params.clock,
 				operator_states: HashMap::new(),
+				prefetch: HashMap::new(),
 			},
 		}
 	}
@@ -282,6 +286,7 @@ impl FlowTransaction {
 				accumulator: ChangeAccumulator::new(),
 				clock: params.clock,
 				operator_states: HashMap::new(),
+				prefetch: HashMap::new(),
 			},
 			cmd: Box::new(params.cmd),
 		})
@@ -311,6 +316,7 @@ impl FlowTransaction {
 				accumulator: ChangeAccumulator::new(),
 				clock: params.clock,
 				operator_states: HashMap::new(),
+				prefetch: HashMap::new(),
 			},
 			base_pending: params.base_pending,
 			view_overlay: params.view_overlay,
@@ -351,6 +357,7 @@ impl FlowTransaction {
 				accumulator: ChangeAccumulator::new(),
 				clock,
 				operator_states: HashMap::new(),
+				prefetch: HashMap::new(),
 			},
 			state,
 		}

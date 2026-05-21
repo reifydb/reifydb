@@ -7,7 +7,7 @@ use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::s
 use reifydb_type::{Result, util::cowvec::CowVec};
 
 use super::memory::storage::MemoryPrimitiveStorage;
-use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage};
+use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage, VersionedGetResult};
 
 #[derive(Clone)]
 #[repr(u8)]
@@ -49,7 +49,7 @@ impl MultiBufferTier {
 
 impl TierStorage for MultiBufferTier {
 	#[inline]
-	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<Option<CowVec<u8>>> {
+	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
 		match self {
 			Self::Memory(s) => s.get(table, key, version),
 		}
@@ -159,7 +159,10 @@ pub mod tests {
 			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"value".to_vec())))])]),
 		)
 		.unwrap();
-		assert_eq!(storage.get(EntryKind::Multi, &key, version).unwrap().as_deref(), Some(b"value".as_slice()));
+		assert_eq!(
+			storage.get(EntryKind::Multi, &key, version).unwrap().value().as_deref(),
+			Some(b"value".as_slice())
+		);
 	}
 
 	#[test]

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
+use std::collections::HashMap;
+
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::key::{EncodedKey, EncodedKeyRange},
@@ -55,6 +57,11 @@ impl MultiReadTransaction {
 	pub fn get(&self, key: &EncodedKey) -> Result<Option<TransactionValue>> {
 		let version = self.tm.version();
 		Ok(self.engine.get(key, version)?.map(Into::into))
+	}
+
+	pub fn get_many(&self, keys: &[EncodedKey]) -> Result<HashMap<EncodedKey, MultiVersionRow>> {
+		let version = self.tm.version();
+		self.engine.store.get_many(keys, version)
 	}
 
 	pub fn contains_key(&self, key: &EncodedKey) -> Result<bool> {

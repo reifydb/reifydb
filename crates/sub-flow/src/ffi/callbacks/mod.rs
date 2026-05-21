@@ -36,7 +36,7 @@ pub fn create_host_callbacks() -> HostCallbacks {
 			internal_get: state::host_internal_state_get,
 			internal_set: state::host_internal_state_set,
 			internal_remove: state::host_internal_state_remove,
-			internal_prefix: state::host_internal_state_prefix,
+			get_many: state::host_state_get_many,
 		},
 		log: LogCallbacks {
 			message: logging::host_log_message,

@@ -6,7 +6,7 @@ use std::{ops::Bound, ptr, ptr::null_mut, slice::from_raw_parts};
 use reifydb_abi::{
 	constants::{FFI_END_OF_ITERATION, FFI_NOT_FOUND, FFI_OK},
 	context::iterators::StateIteratorFFI,
-	data::buffer::BufferFFI,
+	data::{buffer::BufferFFI, key_ref::KeyRefFFI},
 };
 use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
 use reifydb_type::util::cowvec::CowVec;
@@ -106,6 +106,101 @@ pub(crate) fn remove(ctx: &mut OperatorContext, key: &EncodedKey) -> Result<()> 
 		} else {
 			Err(FFIError::Other(format!("host_state_remove failed with code {}", result)))
 		}
+	}
+}
+
+#[instrument(name = "flow::operator::state::ffi:get_many", level = "trace", skip(ctx, keys), fields(
+	operator_id = ctx.operator_id().0,
+	key_count = keys.len(),
+	result_count
+))]
+pub(crate) fn get_many(ctx: &OperatorContext, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+	if keys.is_empty() {
+		Span::current().record("result_count", 0);
+		return Ok(Vec::new());
+	}
+
+	let key_refs: Vec<KeyRefFFI> = keys
+		.iter()
+		.map(|key| {
+			let bytes = key.as_bytes();
+			KeyRefFFI {
+				ptr: bytes.as_ptr(),
+				len: bytes.len(),
+			}
+		})
+		.collect();
+
+	let mut iterator: *mut StateIteratorFFI = null_mut();
+
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.get_many)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			key_refs.as_ptr(),
+			key_refs.len(),
+			&mut iterator,
+		);
+
+		if result != FFI_OK {
+			return Err(FFIError::Other(format!("host_state_get_many failed with code {}", result)));
+		}
+
+		if iterator.is_null() {
+			Span::current().record("result_count", 0);
+			return Ok(Vec::new());
+		}
+
+		let mut results = Vec::new();
+
+		loop {
+			let mut key_buf = BufferFFI {
+				ptr: null_mut(),
+				len: 0,
+				cap: 0,
+			};
+			let mut value_buf = BufferFFI {
+				ptr: null_mut(),
+				len: 0,
+				cap: 0,
+			};
+
+			let next_result =
+				((*ctx.ctx).callbacks.state.iterator_next)(iterator, &mut key_buf, &mut value_buf);
+
+			if next_result == FFI_END_OF_ITERATION {
+				break;
+			} else if next_result != FFI_OK {
+				((*ctx.ctx).callbacks.state.iterator_free)(iterator);
+				return Err(FFIError::Other(format!(
+					"host_state_iterator_next failed with code {}",
+					next_result
+				)));
+			}
+
+			if !key_buf.ptr.is_null() && key_buf.len > 0 {
+				let key_bytes = from_raw_parts(key_buf.ptr, key_buf.len).to_vec();
+				let key = EncodedKey::new(key_bytes);
+
+				let value = if !value_buf.ptr.is_null() && value_buf.len > 0 {
+					let value_bytes = from_raw_parts(value_buf.ptr, value_buf.len).to_vec();
+					EncodedRow(CowVec::new(value_bytes))
+				} else {
+					EncodedRow(CowVec::new(Vec::new()))
+				};
+
+				((*ctx.ctx).callbacks.memory.free)(key_buf.ptr as *mut u8, key_buf.len);
+				if !value_buf.ptr.is_null() && value_buf.len > 0 {
+					((*ctx.ctx).callbacks.memory.free)(value_buf.ptr as *mut u8, value_buf.len);
+				}
+
+				results.push((key, value));
+			}
+		}
+
+		((*ctx.ctx).callbacks.state.iterator_free)(iterator);
+		Span::current().record("result_count", results.len());
+		Ok(results)
 	}
 }
 
@@ -394,85 +489,5 @@ pub(crate) fn internal_remove(ctx: &mut OperatorContext, key: &EncodedKey) -> Re
 		} else {
 			Err(FFIError::Other(format!("host_internal_state_remove failed with code {}", result)))
 		}
-	}
-}
-
-#[instrument(name = "flow::operator::internal_state::ffi:prefix", level = "trace", skip(ctx), fields(
-	operator_id = ctx.operator_id().0,
-	prefix_len = prefix.as_bytes().len(),
-	result_count
-))]
-pub(crate) fn internal_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedRow)>> {
-	let prefix_bytes = prefix.as_bytes();
-	let mut iterator: *mut StateIteratorFFI = null_mut();
-
-	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.internal_prefix)(
-			(*ctx.ctx).operator_id,
-			ctx.ctx,
-			prefix_bytes.as_ptr(),
-			prefix_bytes.len(),
-			&mut iterator,
-		);
-
-		if result != FFI_OK {
-			return Err(FFIError::Other(format!("host_internal_state_prefix failed with code {}", result)));
-		}
-
-		if iterator.is_null() {
-			Span::current().record("result_count", 0);
-			return Ok(Vec::new());
-		}
-
-		let mut results = Vec::new();
-
-		loop {
-			let mut key_buf = BufferFFI {
-				ptr: null_mut(),
-				len: 0,
-				cap: 0,
-			};
-			let mut value_buf = BufferFFI {
-				ptr: null_mut(),
-				len: 0,
-				cap: 0,
-			};
-
-			let next_result =
-				((*ctx.ctx).callbacks.state.iterator_next)(iterator, &mut key_buf, &mut value_buf);
-
-			if next_result == FFI_END_OF_ITERATION {
-				break;
-			} else if next_result != FFI_OK {
-				((*ctx.ctx).callbacks.state.iterator_free)(iterator);
-				return Err(FFIError::Other(format!(
-					"host_state_iterator_next failed with code {}",
-					next_result
-				)));
-			}
-
-			if !key_buf.ptr.is_null() && key_buf.len > 0 {
-				let key_bytes = from_raw_parts(key_buf.ptr, key_buf.len).to_vec();
-				let key = EncodedKey::new(key_bytes);
-
-				let value = if !value_buf.ptr.is_null() && value_buf.len > 0 {
-					let value_bytes = from_raw_parts(value_buf.ptr, value_buf.len).to_vec();
-					EncodedRow(CowVec::new(value_bytes))
-				} else {
-					EncodedRow(CowVec::new(Vec::new()))
-				};
-
-				((*ctx.ctx).callbacks.memory.free)(key_buf.ptr as *mut u8, key_buf.len);
-				if !value_buf.ptr.is_null() && value_buf.len > 0 {
-					((*ctx.ctx).callbacks.memory.free)(value_buf.ptr as *mut u8, value_buf.len);
-				}
-
-				results.push((key, value));
-			}
-		}
-
-		((*ctx.ctx).callbacks.state.iterator_free)(iterator);
-		Span::current().record("result_count", results.len());
-		Ok(results)
 	}
 }

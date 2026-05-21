@@ -259,7 +259,7 @@ impl testscript::runner::Runner for Runner {
 				args.reject_rest()?;
 
 				let key = self.state_key(key_id);
-				let value = self.storage.get(self.table(), &key, CommitVersion(u64::MAX))?;
+				let value = self.storage.get(self.table(), &key, CommitVersion(u64::MAX))?.value();
 				match value {
 					Some(bytes) => {
 						let row = EncodedRow(bytes.clone());
