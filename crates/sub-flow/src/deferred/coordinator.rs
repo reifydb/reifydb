@@ -1008,6 +1008,12 @@ impl CoordinatorActor {
 			}
 		};
 
+		if let Err(e) = transaction.disable_conflict_tracking() {
+			let _ = transaction.rollback();
+			(original_reply)(coordinator_error(e));
+			return;
+		}
+
 		if let Err(e) = apply_pending_writes(&mut transaction, &combined) {
 			let _ = transaction.rollback();
 			(original_reply)(coordinator_error(e));
@@ -1032,7 +1038,7 @@ impl CoordinatorActor {
 			return;
 		}
 
-		match transaction.commit() {
+		match transaction.commit_unchecked() {
 			Ok(_) => (original_reply)(Ok(())),
 			Err(e) => (original_reply)(coordinator_error(e)),
 		}
@@ -1284,6 +1290,12 @@ impl CoordinatorActor {
 			}
 		};
 
+		if let Err(e) = transaction.disable_conflict_tracking() {
+			let _ = transaction.rollback();
+			warn!(error = %e, "failed to disable conflict tracking for tick commit");
+			return;
+		}
+
 		for (key, pw) in pending.iter_sorted() {
 			let result = match pw {
 				PendingWrite::Set(value) => transaction.set(key, value.clone()),
@@ -1304,7 +1316,7 @@ impl CoordinatorActor {
 			return;
 		}
 
-		if let Err(e) = transaction.commit() {
+		if let Err(e) = transaction.commit_unchecked() {
 			warn!(error = %e, "failed to commit tick writes");
 		}
 	}

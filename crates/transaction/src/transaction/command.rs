@@ -257,7 +257,7 @@ impl CommandTransaction {
 	}
 
 	#[instrument(name = "transaction::command::commit_unchecked", level = "debug", skip(self))]
-	pub(crate) fn commit_unchecked(&mut self) -> Result<CommitVersion> {
+	pub fn commit_unchecked(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
 		let mut ctx = self.build_pre_commit_context()?;
 		self.interceptors.pre_commit.execute(&mut ctx)?;
@@ -436,7 +436,7 @@ impl CommandTransaction {
 	}
 
 	#[inline]
-	pub(crate) fn disable_conflict_tracking(&mut self) -> Result<()> {
+	pub fn disable_conflict_tracking(&mut self) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().disable_conflict_tracking();
 		Ok(())

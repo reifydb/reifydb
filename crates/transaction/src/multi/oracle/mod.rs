@@ -301,14 +301,7 @@ where
 		inner.add_committed_transaction(commit_version, conflicts, window_size);
 		Span::current().record("add_txn_us", add_start.elapsed().as_micros() as u64);
 
-		let water_mark = self.config.get_config_uint8(ConfigKey::OracleWaterMark) as usize;
-		let total_keys: usize = inner.time_windows.values().map(|w| w.modified_keys.len()).sum();
-		let total_txns: usize = inner.time_windows.values().map(|w| w.transactions.len()).sum();
-		println!(
-			"[oracle2] windows={} total_txns={} total_modified_keys={} watermark={}",
-			inner.time_windows.len(), total_txns, total_keys, water_mark
-		);
-		inner.time_windows.len() > water_mark
+		inner.time_windows.len() > 1
 	}
 
 	#[inline]
@@ -354,6 +347,9 @@ where
 		self.clock.advance_to(version);
 	}
 
+	/// Allocates a commit version without OCC conflict detection or committed-window
+	/// registration. Sound only for a single trusted writer of a keyspace with no concurrent
+	/// conflicting writers (bulk ingest, flow operator-state commits).
 	pub(crate) fn advance_unchecked(&self, version: CommitVersion) -> Result<CreateCommitResult> {
 		let inner = self.inner.read();
 		if version < inner.evicted_up_through {

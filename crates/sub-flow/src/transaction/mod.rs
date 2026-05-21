@@ -261,7 +261,8 @@ impl FlowTransaction {
 		}
 	}
 
-	pub fn committing(params: CommittingParams) -> Result<Self> {
+	pub fn committing(mut params: CommittingParams) -> Result<Self> {
+		params.cmd.disable_conflict_tracking()?;
 		let version = params.cmd.version();
 		let mut query = params.cmd.multi.begin_query()?;
 		query.read_as_of_version_inclusive(version);
@@ -293,7 +294,7 @@ impl FlowTransaction {
 			Self::Committing {
 				mut cmd,
 				..
-			} => cmd.commit(),
+			} => cmd.commit_unchecked(),
 			_ => panic!("FlowTransaction::commit only valid on Committing variant"),
 		}
 	}

@@ -77,29 +77,6 @@ impl<W: QueryWatermark> Actor<W> {
 			return;
 		};
 
-		if let Ok(kinds) = buffer.list_all_entry_kinds() {
-			let mut tc = 0u64;
-			let mut th = 0u64;
-			let mut top_c: (u64, Option<EntryKind>) = (0, None);
-			let mut top_h: (u64, Option<EntryKind>) = (0, None);
-			for kind in &kinds {
-				let c = buffer.count_current(*kind).unwrap_or(0);
-				let h = buffer.count_historical(*kind).unwrap_or(0);
-				tc += c;
-				th += h;
-				if c > top_c.0 {
-					top_c = (c, Some(*kind));
-				}
-				if h > top_h.0 {
-					top_h = (h, Some(*kind));
-				}
-			}
-			println!(
-				"[verify] sum_cur={} sum_hist={} kinds={} top_cur={:?}={} top_hist={:?}={}",
-				tc, th, kinds.len(), top_c.1, top_c.0, top_h.1, top_h.0
-			);
-		}
-
 		let cutoff = self.watermark.effective_gc_cutoff();
 		if cutoff.0 == 0 {
 			trace!("Historical GC sweep skipped: watermark is zero");
