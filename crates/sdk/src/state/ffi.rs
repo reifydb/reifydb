@@ -15,7 +15,6 @@ use tracing::{Span, instrument};
 use crate::{
 	error::{FFIError, Result},
 	operator::context::OperatorContext,
-	state::stats::{self, Event},
 };
 
 #[instrument(name = "flow::operator::state::ffi:get", level = "trace", skip(ctx), fields(
@@ -24,7 +23,6 @@ use crate::{
 	found
 ))]
 pub(crate) fn get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<EncodedRow>> {
-	stats::record(ctx.operator_id().0, Event::FfiGet);
 	let key_bytes = key.as_bytes();
 	let mut output = BufferFFI {
 		ptr: null_mut(),
@@ -67,7 +65,6 @@ pub(crate) fn get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<Enco
 	value_len = value.as_ref().len()
 ))]
 pub(crate) fn set(ctx: &mut OperatorContext, key: &EncodedKey, value: &EncodedRow) -> Result<()> {
-	stats::record(ctx.operator_id().0, Event::FfiSet);
 	let key_bytes = key.as_bytes();
 	let value_bytes = value.as_ref();
 
@@ -94,7 +91,6 @@ pub(crate) fn set(ctx: &mut OperatorContext, key: &EncodedKey, value: &EncodedRo
 	key_len = key.as_bytes().len()
 ))]
 pub(crate) fn remove(ctx: &mut OperatorContext, key: &EncodedKey) -> Result<()> {
-	stats::record(ctx.operator_id().0, Event::FfiRemove);
 	let key_bytes = key.as_bytes();
 
 	unsafe {
@@ -394,7 +390,6 @@ pub(crate) fn range(
 	operator_id = ctx.operator_id().0
 ))]
 pub(crate) fn clear(ctx: &mut OperatorContext) -> Result<()> {
-	stats::record(ctx.operator_id().0, Event::FfiClear);
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.clear)((*ctx.ctx).operator_id, ctx.ctx);
 
@@ -412,7 +407,6 @@ pub(crate) fn clear(ctx: &mut OperatorContext) -> Result<()> {
 	found
 ))]
 pub(crate) fn internal_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<EncodedRow>> {
-	stats::record(ctx.operator_id().0, Event::FfiInternalGet);
 	let key_bytes = key.as_bytes();
 	let mut output = BufferFFI {
 		ptr: null_mut(),
@@ -454,7 +448,6 @@ pub(crate) fn internal_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Op
 	value_len = value.as_ref().len()
 ))]
 pub(crate) fn internal_set(ctx: &mut OperatorContext, key: &EncodedKey, value: &EncodedRow) -> Result<()> {
-	stats::record(ctx.operator_id().0, Event::FfiInternalSet);
 	let key_bytes = key.as_bytes();
 	let value_bytes = value.as_ref();
 
@@ -481,7 +474,6 @@ pub(crate) fn internal_set(ctx: &mut OperatorContext, key: &EncodedKey, value: &
 	key_len = key.as_bytes().len()
 ))]
 pub(crate) fn internal_remove(ctx: &mut OperatorContext, key: &EncodedKey) -> Result<()> {
-	stats::record(ctx.operator_id().0, Event::FfiInternalRemove);
 	let key_bytes = key.as_bytes();
 
 	unsafe {

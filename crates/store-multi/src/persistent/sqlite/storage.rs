@@ -8,7 +8,7 @@ use std::{
 		Arc,
 		atomic::{AtomicUsize, Ordering},
 	},
-	time::{Duration, Instant},
+	time::Duration,
 };
 
 use reifydb_core::{
@@ -36,27 +36,9 @@ use crate::tier::{
 	HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage, VersionedGetResult,
 };
 
-const SQLITE_SET_DEBUG_THRESHOLD_US: u128 = 5_000;
-
 const GET_MANY_CHUNK: usize = 900;
 
 const WRITER_BUSY_TIMEOUT: Duration = Duration::from_millis(200);
-
-struct ReadTimer(Instant);
-
-impl ReadTimer {
-	fn start() -> Self {
-		Self(Instant::now())
-	}
-}
-
-impl Drop for ReadTimer {
-	fn drop(&mut self) {
-		use std::sync::atomic::Ordering::Relaxed;
-		crate::debug_counters::SQLITE_READ_NANOS.fetch_add(self.0.elapsed().as_nanos() as u64, Relaxed);
-		crate::debug_counters::SQLITE_READ_COUNT.fetch_add(1, Relaxed);
-	}
-}
 
 #[derive(Clone)]
 pub struct SqlitePersistentStorage {
@@ -185,7 +167,6 @@ impl SqlitePersistentStorage {
 			return Ok(RangeBatch::empty());
 		}
 
-		let _read_timer = ReadTimer::start();
 		let table_name = warm_current_table_name(req.table);
 		let conn = self.inner.readers.acquire();
 
@@ -278,7 +259,6 @@ struct RangeChunkRequest<'a> {
 impl TierStorage for SqlitePersistentStorage {
 	#[instrument(name = "store::multi::persistent::sqlite::get", level = "trace", skip(self), fields(table = ?table, key_len = key.len(), version = version.0))]
 	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
-		let _read_timer = ReadTimer::start();
 		let table_name = warm_current_table_name(table);
 		let conn = self.inner.readers.acquire();
 		let sql = build_get_warm_current_sql(&table_name);
@@ -314,7 +294,6 @@ impl TierStorage for SqlitePersistentStorage {
 		keys: &[&[u8]],
 		version: CommitVersion,
 	) -> Result<HashMap<Vec<u8>, VersionedGetResult>> {
-		let _read_timer = ReadTimer::start();
 		let mut out = HashMap::with_capacity(keys.len());
 		if keys.is_empty() {
 			return Ok(out);
@@ -371,9 +350,7 @@ impl TierStorage for SqlitePersistentStorage {
 			return Ok(());
 		}
 
-		let lock_start = Instant::now();
 		let conn = self.inner.conn.lock();
-		let lock_wait = lock_start.elapsed();
 		let tx = conn
 			.unchecked_transaction()
 			.map_err(|e| error!(internal(format!("Failed to start persistent transaction: {}", e))))?;
@@ -399,26 +376,7 @@ impl TierStorage for SqlitePersistentStorage {
 			}
 		}
 
-		let commit_start = Instant::now();
-		let result = tx
-			.commit()
-			.map_err(|e| error!(internal(format!("Failed to commit persistent transaction: {}", e))));
-		let txn_commit = commit_start.elapsed();
-
-		if lock_wait.as_micros() + txn_commit.as_micros() >= SQLITE_SET_DEBUG_THRESHOLD_US {
-			println!(
-				"[dbg:sqlite-set] ts_ms={} version={} lock_wait={}us txn_commit={}us",
-				std::time::SystemTime::now()
-					.duration_since(std::time::UNIX_EPOCH)
-					.map(|d| d.as_millis())
-					.unwrap_or(0),
-				version.0,
-				lock_wait.as_micros(),
-				txn_commit.as_micros()
-			);
-		}
-
-		result
+		tx.commit().map_err(|e| error!(internal(format!("Failed to commit persistent transaction: {}", e))))
 	}
 
 	fn range_next(

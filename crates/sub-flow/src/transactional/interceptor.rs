@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	mem,
-	sync::{Arc, atomic::Ordering::Relaxed},
-	time::Instant,
-};
+use std::{mem, sync::Arc};
 
 use rayon::prelude::*;
 use reifydb_catalog::catalog::Catalog;
@@ -20,7 +16,6 @@ use reifydb_core::{
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_store_multi::debug_counters::{SQLITE_READ_COUNT, SQLITE_READ_NANOS};
 use reifydb_transaction::{
 	change::OperationType,
 	interceptor::transaction::{PostCommitContext, PostCommitInterceptor, PreCommitContext, PreCommitInterceptor},
@@ -74,11 +69,6 @@ pub(crate) fn execute_inline_flow_changes(
 		return Ok(());
 	}
 
-	let dbg_start = Instant::now();
-	let dbg_reads0 = SQLITE_READ_NANOS.load(Relaxed);
-	let dbg_count0 = SQLITE_READ_COUNT.load(Relaxed);
-	let dbg_changes = ctx.flow_changes.len();
-
 	let base_query = engine.multi().begin_query()?;
 	let base_state_query = engine.multi().begin_query()?;
 	let execution_levels = flow_engine.calculate_execution_levels();
@@ -94,15 +84,8 @@ pub(crate) fn execute_inline_flow_changes(
 	let mut available_changes = prepare_available_changes(&ctx.flow_changes, read_version);
 	let base_pending = build_base_pending(&ctx.transaction_writes);
 
-	let dbg_levels = execution_levels.len();
-	let mut dbg_prepare_us = 0u128;
-	let mut dbg_run_us = 0u128;
-	let mut dbg_merge_us = 0u128;
-	let mut dbg_flows = 0usize;
-
 	for level in execution_levels {
 		let view_overlay = build_view_overlay(&available_changes);
-		let dbg_t = Instant::now();
 		let flow_txns = prepare_level_flow_txns(
 			&level,
 			&available_changes,
@@ -115,15 +98,12 @@ pub(crate) fn execute_inline_flow_changes(
 			&base_query,
 			&base_state_query,
 		)?;
-		dbg_prepare_us += dbg_t.elapsed().as_micros();
 
 		if flow_txns.is_empty() {
 			continue;
 		}
-		dbg_flows += flow_txns.len();
 
 		let pools = engine.actor_system().pools();
-		let dbg_t = Instant::now();
 		let results: Vec<Result<FlowResult>> = pools.commit_pool().install(|| {
 			flow_txns
 				.into_par_iter()
@@ -132,33 +112,8 @@ pub(crate) fn execute_inline_flow_changes(
 				})
 				.collect()
 		});
-		dbg_run_us += dbg_t.elapsed().as_micros();
 
-		let dbg_t = Instant::now();
 		merge_level_results(ctx, &mut available_changes, results, engine, read_version)?;
-		dbg_merge_us += dbg_t.elapsed().as_micros();
-	}
-
-	let dbg_total_us = dbg_start.elapsed().as_micros();
-	if dbg_total_us >= 8_000 {
-		let read_us = SQLITE_READ_NANOS.load(Relaxed).wrapping_sub(dbg_reads0) / 1000;
-		let reads = SQLITE_READ_COUNT.load(Relaxed).wrapping_sub(dbg_count0);
-		println!(
-			"[dbg:flow] ts_ms={} total={}us prepare={}us run={}us merge={}us sqlite_read={}us reads={} levels={} flows={} changes={}",
-			std::time::SystemTime::now()
-				.duration_since(std::time::UNIX_EPOCH)
-				.map(|d| d.as_millis())
-				.unwrap_or(0),
-			dbg_total_us,
-			dbg_prepare_us,
-			dbg_run_us,
-			dbg_merge_us,
-			read_us,
-			reads,
-			dbg_levels,
-			dbg_flows,
-			dbg_changes
-		);
 	}
 
 	Ok(())

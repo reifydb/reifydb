@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem::take, sync::Arc, time::Instant};
+use std::{mem::take, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -229,36 +229,18 @@ impl CommandTransaction {
 		let Some(mut multi) = self.cmd.take() else {
 			unreachable!("Transaction state inconsistency")
 		};
-		let t = Instant::now();
 		apply_pre_commit_writes(&mut multi, &ctx.pending_writes)?;
-		let apply_us = t.elapsed().as_micros();
 		let id = multi.id();
 		self.state = TransactionState::Committed;
 
 		let changes = TransactionalCatalogChanges::default();
 		let row_changes = take(&mut self.row_changes);
-		let t = Instant::now();
 		let version = if unchecked {
 			multi.commit_unchecked()?
 		} else {
 			multi.commit()?
 		};
-		let multi_commit_us = t.elapsed().as_micros();
-		let t = Instant::now();
 		self.interceptors.post_commit.execute(PostCommitContext::new(id, version, changes, row_changes))?;
-		let post_commit_us = t.elapsed().as_micros();
-		if apply_us + multi_commit_us + post_commit_us >= 8_000 {
-			println!(
-				"[dbg:finalize] ts_ms={} apply={}us multi_commit={}us post_commit={}us",
-				std::time::SystemTime::now()
-					.duration_since(std::time::UNIX_EPOCH)
-					.map(|d| d.as_millis())
-					.unwrap_or(0),
-				apply_us,
-				multi_commit_us,
-				post_commit_us
-			);
-		}
 		Ok(version)
 	}
 
@@ -267,7 +249,6 @@ impl CommandTransaction {
 		F: FnOnce(&mut CommandTransaction) -> Result<R>,
 	{
 		self.disable_conflict_tracking()?;
-		let body_start = Instant::now();
 		let r = match body(self) {
 			Ok(r) => r,
 			Err(e) => {
@@ -275,49 +256,16 @@ impl CommandTransaction {
 				return Err(e);
 			}
 		};
-		let body_us = body_start.elapsed().as_micros();
-		let commit_start = Instant::now();
 		self.commit_unchecked()?;
-		let commit_us = commit_start.elapsed().as_micros();
-		if body_us + commit_us >= 8_000 {
-			println!(
-				"[dbg:bulk-body] ts_ms={} body={}us commit_unchecked={}us",
-				std::time::SystemTime::now()
-					.duration_since(std::time::UNIX_EPOCH)
-					.map(|d| d.as_millis())
-					.unwrap_or(0),
-				body_us,
-				commit_us
-			);
-		}
 		Ok(r)
 	}
 
 	#[instrument(name = "transaction::command::commit_unchecked", level = "debug", skip(self))]
 	pub(crate) fn commit_unchecked(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
-		let t = Instant::now();
 		let mut ctx = self.build_pre_commit_context()?;
-		let build_ctx_us = t.elapsed().as_micros();
-		let t = Instant::now();
 		self.interceptors.pre_commit.execute(&mut ctx)?;
-		let pre_commit_us = t.elapsed().as_micros();
-		let t = Instant::now();
-		let result = self.finalize_commit(ctx, true);
-		let finalize_us = t.elapsed().as_micros();
-		if build_ctx_us + pre_commit_us + finalize_us >= 8_000 {
-			println!(
-				"[dbg:cmd-commit] ts_ms={} build_ctx={}us pre_commit={}us finalize={}us",
-				std::time::SystemTime::now()
-					.duration_since(std::time::UNIX_EPOCH)
-					.map(|d| d.as_millis())
-					.unwrap_or(0),
-				build_ctx_us,
-				pre_commit_us,
-				finalize_us
-			);
-		}
-		result
+		self.finalize_commit(ctx, true)
 	}
 
 	#[instrument(name = "transaction::command::rollback", level = "debug", skip(self))]

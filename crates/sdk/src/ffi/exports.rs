@@ -106,8 +106,6 @@ pub unsafe extern "C" fn create_operator_instance<O: FFIOperatorWithMetadata>(
 		}
 	};
 
-	crate::state::stats::register_name(operator_id, O::NAME);
-
 	let wrapper = Box::new(OperatorWrapper::new(operator));
 	Box::into_raw(wrapper) as *mut c_void
 }

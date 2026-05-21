@@ -26,7 +26,6 @@ use reifydb_core::{
 use reifydb_type::Result;
 
 pub mod buffer;
-pub mod debug_counters;
 pub mod flush;
 pub mod gc;
 pub mod persistent;
@@ -35,6 +34,8 @@ pub mod tier;
 pub mod config;
 pub mod multi;
 pub mod store;
+
+use std::collections::HashMap;
 
 use config::{BufferConfig, MultiStoreConfig};
 use reifydb_core::{
@@ -187,7 +188,7 @@ impl MultiStore {
 		&self,
 		keys: &[EncodedKey],
 		version: CommitVersion,
-	) -> Result<std::collections::HashMap<EncodedKey, MultiVersionRow>> {
+	) -> Result<HashMap<EncodedKey, MultiVersionRow>> {
 		match self {
 			MultiStore::Standard(store) => store.get_many(keys, version),
 		}

@@ -3,12 +3,7 @@
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use std::mem;
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use std::time::Instant;
 use std::{collections::HashMap, sync::Arc, time::Duration};
-
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-const FLUSH_SQLITE_DEBUG_THRESHOLD_US: u128 = 5_000;
 
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -147,24 +142,10 @@ impl FlushActor {
 		let mut total = 0usize;
 		for (version, batch) in by_version {
 			let count: usize = batch.values().map(|v| v.len()).sum();
-			let set_start = Instant::now();
 			if let Err(e) = self.persistent.set(version, batch) {
 				error!(version = version.0, error = %e, "persistent flush: set failed");
 			} else {
 				total += count;
-			}
-			let set_us = set_start.elapsed().as_micros();
-			if set_us >= FLUSH_SQLITE_DEBUG_THRESHOLD_US {
-				println!(
-					"[dbg:flush-sqlite] ts_ms={} version={} rows={} set={}us",
-					std::time::SystemTime::now()
-						.duration_since(std::time::UNIX_EPOCH)
-						.map(|d| d.as_millis())
-						.unwrap_or(0),
-					version.0,
-					count,
-					set_us
-				);
 			}
 		}
 

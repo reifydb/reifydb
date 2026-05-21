@@ -4,7 +4,6 @@
 use std::{
 	collections::{BTreeMap, HashMap, HashSet},
 	ops::{Bound, RangeBounds},
-	time::Instant,
 };
 
 use reifydb_core::{
@@ -36,8 +35,6 @@ use crate::{
 };
 
 const TIER_SCAN_CHUNK_SIZE: usize = 32;
-
-const STORE_COMMIT_DEBUG_THRESHOLD_US: u128 = 8_000;
 
 impl MultiVersionGet for StandardMultiStore {
 	#[instrument(name = "store::multi::get", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref()), version = version.0))]
@@ -92,18 +89,11 @@ impl MultiVersionContains for StandardMultiStore {
 impl MultiVersionCommit for StandardMultiStore {
 	#[instrument(name = "store::multi::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len(), version = version.0))]
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
-		let t_total = Instant::now();
-
-		let t = Instant::now();
 		let classified = classify_deltas(&deltas);
-		let classify_us = t.elapsed().as_micros();
 
-		let t = Instant::now();
 		let drop_batch = build_drop_batch(classified.explicit_drops, &classified.pending_set_keys, version);
 		self.dispatch_drops(drop_batch);
-		let dispatch_us = t.elapsed().as_micros();
 
-		let t = Instant::now();
 		if let Some(buffer) = &self.buffer {
 			buffer.set(version, classified.batches)?;
 		} else if let Some(persistent) = &self.persistent {
@@ -111,28 +101,9 @@ impl MultiVersionCommit for StandardMultiStore {
 		} else {
 			return Ok(());
 		}
-		let buffer_set_us = t.elapsed().as_micros();
 
-		let t = Instant::now();
 		self.emit_commit_metrics(classified.writes, classified.deletes, version);
-		let emit_us = t.elapsed().as_micros();
 
-		let total_us = t_total.elapsed().as_micros();
-		if total_us >= STORE_COMMIT_DEBUG_THRESHOLD_US {
-			println!(
-				"[dbg:store-commit] ts_ms={} version={} total={}us classify={}us dispatch={}us buffer_set={}us emit={}us",
-				std::time::SystemTime::now()
-					.duration_since(std::time::UNIX_EPOCH)
-					.map(|d| d.as_millis())
-					.unwrap_or(0),
-				version.0,
-				total_us,
-				classify_us,
-				dispatch_us,
-				buffer_set_us,
-				emit_us
-			);
-		}
 		Ok(())
 	}
 }

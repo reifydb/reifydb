@@ -47,19 +47,13 @@ where
 	}
 
 	pub fn get_arc(&mut self, ctx: &mut OperatorContext, key: &K) -> Result<Option<Arc<V>>> {
-		let operator_id = ctx.operator_id().0;
-
 		if let Some(cached) = self.cache.get(key) {
-			crate::state::stats::record(operator_id, crate::state::stats::Event::CacheHit);
 			return Ok(Some(cached));
 		}
 
 		if let Some(slot) = self.dirty.get(key) {
-			crate::state::stats::record(operator_id, crate::state::stats::Event::CacheDirtyHit);
 			return Ok(slot.clone());
 		}
-
-		crate::state::stats::record(operator_id, crate::state::stats::Event::CacheMiss);
 
 		let encoded_key = key.into_encoded_key();
 		let loaded = match self.backend {

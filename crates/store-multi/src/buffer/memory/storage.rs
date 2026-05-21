@@ -6,7 +6,6 @@ use std::{
 	collections::{HashMap, HashSet},
 	ops::Bound,
 	sync::Arc,
-	time::{Duration, Instant},
 };
 
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
@@ -17,9 +16,6 @@ use super::entry::{CurrentMap, Entries, Entry, HistoricalMap};
 use crate::tier::{
 	HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage, VersionedGetResult,
 };
-
-const BUFFER_SET_LOCK_DEBUG_THRESHOLD_US: u128 = 2_000;
-const DROP_HOLD_DEBUG_THRESHOLD_US: u128 = 2_000;
 
 #[derive(Clone)]
 pub struct MemoryPrimitiveStorage {
@@ -82,14 +78,11 @@ impl MemoryPrimitiveStorage {
 		table: EntryKind,
 		version: CommitVersion,
 		entries: Vec<(EncodedKey, Option<CowVec<u8>>)>,
-	) -> (Duration, Duration) {
+	) {
 		let table_entry = self.get_or_create_table(table);
-		let lock_start = Instant::now();
 		let mut current = table_entry.current.write();
 		let mut historical = table_entry.historical.write();
-		let lock_wait = lock_start.elapsed();
 
-		let mutate_start = Instant::now();
 		for (key, value) in entries {
 			if let Some((pre_version, pre_value)) = current.get(&key) {
 				if *pre_version < version {
@@ -108,8 +101,6 @@ impl MemoryPrimitiveStorage {
 				current.insert(key, (version, value));
 			}
 		}
-
-		(lock_wait, mutate_start.elapsed())
 	}
 }
 
@@ -187,30 +178,10 @@ impl TierStorage for MemoryPrimitiveStorage {
 	))]
 	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
 		let total_entries: usize = batches.values().map(|v| v.len()).sum();
-		let table_count = batches.len();
 
-		let mut lock_wait_sum = Duration::ZERO;
-		let mut mutate_sum = Duration::ZERO;
 		batches.into_iter().for_each(|(table, entries)| {
-			let (lock_wait, mutate) = self.process_table(table, version, entries);
-			lock_wait_sum += lock_wait;
-			mutate_sum += mutate;
+			self.process_table(table, version, entries);
 		});
-
-		if lock_wait_sum.as_micros() >= BUFFER_SET_LOCK_DEBUG_THRESHOLD_US {
-			println!(
-				"[dbg:buffer-set] ts_ms={} version={} tables={} entries={} lock_wait={}us mutate={}us",
-				std::time::SystemTime::now()
-					.duration_since(std::time::UNIX_EPOCH)
-					.map(|d| d.as_millis())
-					.unwrap_or(0),
-				version.0,
-				table_count,
-				total_entries,
-				lock_wait_sum.as_micros(),
-				mutate_sum.as_micros()
-			);
-		}
 
 		Span::current().record("total_entry_count", total_entries);
 		Ok(())
@@ -449,7 +420,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 	))]
 	fn drop(&self, batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>) -> Result<()> {
 		let total_entries: usize = batches.values().map(|v| v.len()).sum();
-		let hold_start = Instant::now();
 
 		for (table, entries) in batches {
 			let table_entry = self.get_or_create_table(table);
@@ -509,19 +479,6 @@ impl TierStorage for MemoryPrimitiveStorage {
 					}
 				}
 			}
-		}
-
-		let held_us = hold_start.elapsed().as_micros();
-		if held_us >= DROP_HOLD_DEBUG_THRESHOLD_US {
-			println!(
-				"[dbg:drop-hold] ts_ms={} entries={} held={}us",
-				std::time::SystemTime::now()
-					.duration_since(std::time::UNIX_EPOCH)
-					.map(|d| d.as_millis())
-					.unwrap_or(0),
-				total_entries,
-				held_us
-			);
 		}
 
 		Span::current().record("total_entry_count", total_entries);
