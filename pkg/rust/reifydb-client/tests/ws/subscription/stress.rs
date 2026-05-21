@@ -11,7 +11,10 @@ use std::{
 };
 
 use reifydb_client::{SubscriptionConfig, WireFormat, WsClient};
-use tokio::{runtime::Runtime, time::sleep};
+use tokio::{
+	runtime::Runtime,
+	time::{sleep, timeout},
+};
 
 use crate::{
 	common::{cleanup_server, create_server_instance, start_server_and_get_ws_port},
@@ -420,17 +423,30 @@ fn test_subscribe_receive_unsubscribe_cycles() {
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
 		const NUM_CYCLES: usize = 200;
+		// Generous per-op bound: a healthy op completes in milliseconds even under heavy parallel
+		// load, so 30s only trips on a genuine hang - turning it into a fast, attributed failure
+		// instead of stalling the whole test run.
+		const OP_TIMEOUT: Duration = Duration::from_secs(30);
 		for i in 0..NUM_CYCLES {
-			let sub_id = client
-				.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			let sub_id = timeout(
+				OP_TIMEOUT,
+				client.subscribe(&format!("from test::{}", table), SubscriptionConfig::default()),
+			)
+			.await
+			.unwrap_or_else(|_| panic!("Cycle {}: subscribe timed out", i))
+			.unwrap();
+			timeout(OP_TIMEOUT, client.command(&format!("INSERT test::{} [{{ id: {} }}]", table, i), None))
 				.await
+				.unwrap_or_else(|_| panic!("Cycle {}: command timed out", i))
 				.unwrap();
-			client.command(&format!("INSERT test::{} [{{ id: {} }}]", table, i), None).await.unwrap();
 
 			let change = recv_with_timeout(&mut client, 500).await;
 			assert!(change.is_some(), "Cycle {}: should receive notification", i);
 
-			client.unsubscribe(&sub_id).await.unwrap();
+			timeout(OP_TIMEOUT, client.unsubscribe(&sub_id))
+				.await
+				.unwrap_or_else(|_| panic!("Cycle {}: unsubscribe timed out", i))
+				.unwrap();
 		}
 
 		client.close().await.unwrap();

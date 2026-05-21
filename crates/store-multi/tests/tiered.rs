@@ -9,6 +9,7 @@ use reifydb_runtime::{
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
 };
+use reifydb_sqlite::SqliteConfig;
 use reifydb_store_multi::{
 	buffer::tier::MultiBufferTier,
 	config::{BufferConfig, MultiStoreConfig, PersistentConfig},
@@ -24,23 +25,27 @@ test_each_path! { in "crates/store-multi/tests/scripts/multi" as store_multi_tie
 test_each_path! { in "crates/store-multi/tests/scripts/historical" as store_multi_tiered_historical => test_tiered }
 
 fn test_tiered(path: &Path) {
-	temp_dir(|_db_path| {
-		let pools = Pools::new(PoolConfig::default());
-		let actor_system = ActorSystem::new(pools, Clock::Real);
-		let event_bus = EventBus::new(&actor_system);
-		let store = StandardMultiStore::new(MultiStoreConfig {
-			buffer: Some(BufferConfig {
-				storage: MultiBufferTier::memory(),
-			}),
-			persistent: Some(PersistentConfig::sqlite_in_memory()),
-			retention: Default::default(),
-			merge_config: Default::default(),
-			event_bus,
-			actor_system,
-			clock: Clock::Real,
+	for read_pool_size in [1u32, 2, 4] {
+		temp_dir(|_db_path| {
+			let pools = Pools::new(PoolConfig::default());
+			let actor_system = ActorSystem::new(pools, Clock::Real);
+			let event_bus = EventBus::new(&actor_system);
+			let store = StandardMultiStore::new(MultiStoreConfig {
+				buffer: Some(BufferConfig {
+					storage: MultiBufferTier::memory(),
+				}),
+				persistent: Some(PersistentConfig::sqlite(
+					SqliteConfig::in_memory().read_pool_size(read_pool_size),
+				)),
+				retention: Default::default(),
+				merge_config: Default::default(),
+				event_bus,
+				actor_system,
+				clock: Clock::Real,
+			})
+			.unwrap();
+			run_path(&mut Runner::from_store(store), path)
 		})
-		.unwrap();
-		run_path(&mut Runner::from_store(store), path)
-	})
-	.expect("test failed")
+		.unwrap_or_else(|e| panic!("read_pool_size={read_pool_size}: {e}"));
+	}
 }

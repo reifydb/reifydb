@@ -1,13 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, ops::Bound, sync::Arc, time::Instant};
+use std::{
+	collections::HashMap,
+	ops::Bound,
+	sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+	},
+	time::Instant,
+};
 
 use reifydb_core::{
 	common::CommitVersion, encoded::key::EncodedKey, error::diagnostic::internal::internal,
 	interface::store::EntryKind,
 };
-use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_runtime::sync::mutex::{Mutex, MutexGuard};
 use reifydb_sqlite::{
 	SqliteConfig,
 	connection::{connect, convert_flags, resolve_db_path},
@@ -55,6 +63,25 @@ pub struct SqlitePersistentStorage {
 
 struct SqlitePersistentStorageInner {
 	conn: Mutex<Connection>,
+	readers: ReadPool,
+}
+
+struct ReadPool {
+	conns: Vec<Mutex<Connection>>,
+	next: AtomicUsize,
+}
+
+impl ReadPool {
+	fn acquire(&self) -> MutexGuard<'_, Connection> {
+		let n = self.conns.len();
+		let start = self.next.fetch_add(1, Ordering::Relaxed) % n;
+		for i in 0..n {
+			if let Some(guard) = self.conns[(start + i) % n].try_lock() {
+				return guard;
+			}
+		}
+		self.conns[start].lock()
+	}
 }
 
 impl SqlitePersistentStorage {
@@ -70,9 +97,22 @@ impl SqlitePersistentStorage {
 		let conn = connect(&db_path, flags).expect("Failed to connect to persistent database");
 		pragma::apply(&conn, &config).expect("Failed to configure persistent SQLite pragmas");
 
+		let pool_size = config.read_pool_size.max(1) as usize;
+		let mut conns = Vec::with_capacity(pool_size);
+		for _ in 0..pool_size {
+			let reader = connect(&db_path, flags).expect("Failed to open persistent read connection");
+			pragma::apply_read_only(&reader, &config)
+				.expect("Failed to configure persistent read connection");
+			conns.push(Mutex::new(reader));
+		}
+
 		Self {
 			inner: Arc::new(SqlitePersistentStorageInner {
 				conn: Mutex::new(conn),
+				readers: ReadPool {
+					conns,
+					next: AtomicUsize::new(0),
+				},
 			}),
 		}
 	}
@@ -83,7 +123,7 @@ impl SqlitePersistentStorage {
 
 	pub fn count_current(&self, table: EntryKind) -> Result<u64> {
 		let table_name = warm_current_table_name(table);
-		let conn = self.inner.conn.lock();
+		let conn = self.inner.readers.acquire();
 		let sql = format!("SELECT COUNT(*) FROM \"{}\"", table_name);
 		match conn.query_row(&sql, [], |row| row.get::<_, i64>(0)) {
 			Ok(c) => Ok(c as u64),
@@ -104,7 +144,7 @@ impl SqlitePersistentStorage {
 
 		let _read_timer = ReadTimer::start();
 		let table_name = warm_current_table_name(req.table);
-		let conn = self.inner.conn.lock();
+		let conn = self.inner.readers.acquire();
 
 		let sql = build_range_warm_current_sql(
 			&table_name,
@@ -197,7 +237,7 @@ impl TierStorage for SqlitePersistentStorage {
 	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
 		let _read_timer = ReadTimer::start();
 		let table_name = warm_current_table_name(table);
-		let conn = self.inner.conn.lock();
+		let conn = self.inner.readers.acquire();
 		let sql = build_get_warm_current_sql(&table_name);
 
 		let result = match conn.prepare_cached(&sql) {
@@ -238,7 +278,7 @@ impl TierStorage for SqlitePersistentStorage {
 		}
 
 		let table_name = warm_current_table_name(table);
-		let conn = self.inner.conn.lock();
+		let conn = self.inner.readers.acquire();
 
 		for chunk in keys.chunks(GET_MANY_CHUNK) {
 			let sql = build_get_many_warm_current_sql(&table_name, chunk.len());
@@ -411,7 +451,7 @@ impl TierStorage for SqlitePersistentStorage {
 		// TODO: change the TierStorage interface to remove the
 
 		let table_name = warm_current_table_name(table);
-		let conn = self.inner.conn.lock();
+		let conn = self.inner.readers.acquire();
 		let sql = build_get_warm_current_sql(&table_name);
 
 		let result = match conn.prepare_cached(&sql) {

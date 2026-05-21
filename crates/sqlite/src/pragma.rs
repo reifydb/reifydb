@@ -21,6 +21,15 @@ pub fn apply(conn: &Connection, config: &SqliteConfig) -> SqliteResult<()> {
 	Ok(())
 }
 
+pub fn apply_read_only(conn: &Connection, config: &SqliteConfig) -> SqliteResult<()> {
+	set(conn, "query_only", true)?;
+	set(conn, "temp_store", config.temp_store.as_str())?;
+	set(conn, "cache_size", -(config.cache_size as i32))?;
+	set(conn, "mmap_size", config.mmap_size as i64)?;
+	conn.set_prepared_statement_cache_capacity(config.prepared_statement_cache_capacity as usize);
+	Ok(())
+}
+
 pub fn incremental_vacuum(conn: &Connection) -> SqliteResult<()> {
 	conn.pragma_query(None, "incremental_vacuum", |_| Ok(())).map_err(|source| SqliteError::Execute {
 		statement: "PRAGMA incremental_vacuum".into(),

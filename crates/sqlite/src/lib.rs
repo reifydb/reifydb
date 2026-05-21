@@ -55,6 +55,8 @@ pub struct SqliteConfig {
 	pub mmap_size: u64,
 
 	pub prepared_statement_cache_capacity: u32,
+
+	pub read_pool_size: u32,
 }
 
 impl SqliteConfig {
@@ -70,6 +72,7 @@ impl SqliteConfig {
 			page_size: 4096,
 			mmap_size: 64 * 1024 * 1024,
 			prepared_statement_cache_capacity: 128,
+			read_pool_size: 4,
 		}
 	}
 
@@ -85,6 +88,7 @@ impl SqliteConfig {
 			page_size: 4096,
 			mmap_size: 0,
 			prepared_statement_cache_capacity: 128,
+			read_pool_size: 4,
 		}
 	}
 
@@ -100,6 +104,7 @@ impl SqliteConfig {
 			page_size: 16384,
 			mmap_size: 256 * 1024 * 1024,
 			prepared_statement_cache_capacity: 256,
+			read_pool_size: 8,
 		}
 	}
 
@@ -115,6 +120,7 @@ impl SqliteConfig {
 			page_size: 16384,
 			mmap_size: 0,
 			prepared_statement_cache_capacity: 128,
+			read_pool_size: 4,
 		}
 	}
 
@@ -130,6 +136,7 @@ impl SqliteConfig {
 			page_size: 16384,
 			mmap_size: 0,
 			prepared_statement_cache_capacity: 128,
+			read_pool_size: 2,
 		}
 	}
 
@@ -145,6 +152,7 @@ impl SqliteConfig {
 			page_size: 4096,
 			mmap_size: 0,
 			prepared_statement_cache_capacity: 32,
+			read_pool_size: 2,
 		}
 	}
 
@@ -170,6 +178,11 @@ impl SqliteConfig {
 
 	pub fn temp_store(mut self, store: TempStore) -> Self {
 		self.temp_store = store;
+		self
+	}
+
+	pub fn read_pool_size(mut self, size: u32) -> Self {
+		self.read_pool_size = size.max(1);
 		self
 	}
 
