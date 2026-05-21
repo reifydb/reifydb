@@ -18,7 +18,7 @@ use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBa
 pub mod sqlite;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use sqlite::storage::SqlitePersistentStorage;
+use sqlite::storage::{CheckpointOutcome, SqlitePersistentStorage};
 
 #[derive(Clone)]
 #[cfg_attr(all(feature = "sqlite", not(target_arch = "wasm32")), repr(u8))]
@@ -35,6 +35,12 @@ impl MultiPersistentTier {
 
 	pub fn sqlite_in_memory() -> Self {
 		Self::Sqlite(SqlitePersistentStorage::in_memory())
+	}
+
+	pub fn maybe_checkpoint(&self) -> Result<CheckpointOutcome> {
+		match self {
+			Self::Sqlite(s) => s.maybe_checkpoint(),
+		}
 	}
 }
 

@@ -8,7 +8,7 @@ use std::{
 		Arc,
 		atomic::{AtomicUsize, Ordering},
 	},
-	time::Instant,
+	time::{Duration, Instant},
 };
 
 use reifydb_core::{
@@ -23,7 +23,7 @@ use reifydb_sqlite::{
 };
 use reifydb_type::{Result, error, util::cowvec::CowVec};
 use rusqlite::{Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, params, params_from_iter};
-use tracing::instrument;
+use tracing::{instrument, warn};
 
 use super::{
 	entry::warm_current_table_name,
@@ -39,6 +39,8 @@ use crate::tier::{
 const SQLITE_SET_DEBUG_THRESHOLD_US: u128 = 5_000;
 
 const GET_MANY_CHUNK: usize = 900;
+
+const WRITER_BUSY_TIMEOUT: Duration = Duration::from_millis(200);
 
 struct ReadTimer(Instant);
 
@@ -61,9 +63,16 @@ pub struct SqlitePersistentStorage {
 	inner: Arc<SqlitePersistentStorageInner>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CheckpointOutcome {
+	pub log_frames: u32,
+	pub restarted: bool,
+}
+
 struct SqlitePersistentStorageInner {
 	conn: Mutex<Connection>,
 	readers: ReadPool,
+	checkpoint_threshold_frames: u32,
 }
 
 struct ReadPool {
@@ -96,6 +105,7 @@ impl SqlitePersistentStorage {
 
 		let conn = connect(&db_path, flags).expect("Failed to connect to persistent database");
 		pragma::apply(&conn, &config).expect("Failed to configure persistent SQLite pragmas");
+		conn.busy_timeout(WRITER_BUSY_TIMEOUT).expect("Failed to set persistent busy timeout");
 
 		let pool_size = config.read_pool_size.max(1) as usize;
 		let mut conns = Vec::with_capacity(pool_size);
@@ -113,8 +123,41 @@ impl SqlitePersistentStorage {
 					conns,
 					next: AtomicUsize::new(0),
 				},
+				checkpoint_threshold_frames: config.wal_autocheckpoint,
 			}),
 		}
+	}
+
+	pub fn maybe_checkpoint(&self) -> Result<CheckpointOutcome> {
+		let conn = self.inner.conn.lock();
+
+		let mut log_frames: i64 = 0;
+		conn.pragma(None, "wal_checkpoint", "PASSIVE", |row| {
+			log_frames = row.get(1)?;
+			Ok(())
+		})
+		.map_err(|e| error!(internal(format!("Failed to query persistent WAL size: {}", e))))?;
+
+		let log_frames = log_frames.max(0) as u32;
+		if log_frames <= self.inner.checkpoint_threshold_frames {
+			return Ok(CheckpointOutcome {
+				log_frames,
+				restarted: false,
+			});
+		}
+
+		let mut busy: i64 = 1;
+		if let Err(e) = conn.pragma(None, "wal_checkpoint", "RESTART", |row| {
+			busy = row.get(0)?;
+			Ok(())
+		}) {
+			warn!(error = %e, "persistent checkpoint: RESTART failed");
+		}
+
+		Ok(CheckpointOutcome {
+			log_frames,
+			restarted: busy == 0,
+		})
 	}
 
 	pub fn in_memory() -> Self {

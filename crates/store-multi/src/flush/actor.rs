@@ -170,6 +170,9 @@ impl FlushActor {
 
 		if total > 0 {
 			debug!(rows = total, "persistent flush completed");
+			if let Err(e) = self.persistent.maybe_checkpoint() {
+				warn!(error = %e, "persistent flush: checkpoint failed");
+			}
 		}
 
 		state.flushing = false;
