@@ -31,7 +31,7 @@ use reifydb_type::{
 };
 
 use crate::{
-	operator::{Operator, Operators, stateful::raw::RawStatefulOperator},
+	operator::{Operator, OperatorCell, stateful::raw::RawStatefulOperator},
 	transaction::FlowTransaction,
 };
 
@@ -41,7 +41,7 @@ static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::ne
 static VISIBLE_MARKER: LazyLock<EncodedRow> = LazyLock::new(|| EncodedRow(CowVec::new(vec![1])));
 
 pub struct GateOperator {
-	parent: Arc<Operators>,
+	parent: OperatorCell,
 	node: FlowNodeId,
 	compiled_conditions: Vec<CompiledExpr>,
 	routines: Routines,
@@ -50,7 +50,7 @@ pub struct GateOperator {
 
 impl GateOperator {
 	pub fn new(
-		parent: Arc<Operators>,
+		parent: OperatorCell,
 		node: FlowNodeId,
 		conditions: Vec<Expression>,
 		routines: Routines,

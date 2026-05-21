@@ -170,10 +170,10 @@ pub(super) extern "C" fn host_state_prefix(
 		};
 
 		let result = if prefix_bytes.is_empty() {
-			flow_txn.state_scan(node_id)
+			flow_txn.state_scan_all(node_id)
 		} else {
 			let range = EncodedKeyRange::prefix(&prefix_bytes);
-			flow_txn.state_range(node_id, range)
+			flow_txn.state_range_all(node_id, range)
 		};
 
 		match result {
@@ -331,7 +331,7 @@ pub(super) extern "C" fn host_state_range(
 		};
 
 		let range = EncodedKeyRange::new(start_bound, end_bound);
-		let result = flow_txn.state_range(node_id, range);
+		let result = flow_txn.state_range_all(node_id, range);
 
 		match result {
 			Ok(batch) => {

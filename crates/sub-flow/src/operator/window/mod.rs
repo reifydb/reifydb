@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
-
 use reifydb_abi::operator::capabilities::{CAPABILITY_ALL_STANDARD, CAPABILITY_TICK};
 use reifydb_core::{
 	common::{CommitVersion, WindowKind, WindowSize},
@@ -15,7 +13,7 @@ use reifydb_sdk::operator::Tick;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	operator::{Operator, Operators},
+	operator::{Operator, OperatorCell},
 	transaction::FlowTransaction,
 };
 
@@ -161,7 +159,7 @@ impl WindowState {
 }
 
 pub struct WindowConfig {
-	pub parent: Arc<Operators>,
+	pub parent: OperatorCell,
 	pub node: FlowNodeId,
 	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
@@ -269,7 +267,7 @@ fn events_group_view(event_count: usize) -> GroupByView {
 }
 
 pub struct WindowOperator {
-	pub parent: Arc<Operators>,
+	pub parent: OperatorCell,
 	pub node: FlowNodeId,
 	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
@@ -1207,7 +1205,7 @@ impl WindowOperator {
 
 	#[inline]
 	fn scan_window_keys(&self, txn: &mut FlowTransaction) -> Result<Vec<EncodedKey>> {
-		let all_state = txn.state_scan(self.node)?;
+		let all_state = txn.state_scan_all(self.node)?;
 		let prefix = FlowNodeStateKey::new(self.node, vec![]).encode();
 		let win_marker = b"win:";
 

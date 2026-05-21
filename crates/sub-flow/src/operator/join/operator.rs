@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	sync::{Arc, LazyLock},
-	time::Duration,
-};
+use std::{cell::RefCell, sync::LazyLock, time::Duration};
 
 use postcard::to_stdvec;
 use reifydb_abi::operator::capabilities::{CAPABILITY_ALL_STANDARD, CAPABILITY_TICK};
@@ -47,7 +44,7 @@ use super::{
 };
 use crate::{
 	operator::{
-		Operator, Operators,
+		Operator, OperatorCell,
 		join::store::Store,
 		stateful::{raw::RawStatefulOperator, row::RowNumberProvider, single::SingleStateful},
 	},
@@ -64,15 +61,15 @@ static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
 pub struct JoinSideConfig {
-	pub parent: Arc<Operators>,
+	pub parent: OperatorCell,
 	pub node: FlowNodeId,
 	pub exprs: Vec<Expression>,
 	pub schema: Columns,
 }
 
 pub struct JoinOperator {
-	pub(crate) left_parent: Arc<Operators>,
-	pub(crate) right_parent: Arc<Operators>,
+	pub(crate) left_parent: OperatorCell,
+	pub(crate) right_parent: OperatorCell,
 	node: FlowNodeId,
 	strategy: JoinStrategy,
 	left_node: FlowNodeId,
@@ -90,6 +87,8 @@ pub struct JoinOperator {
 	runtime_context: RuntimeContext,
 	ttl: JoinStateTtl,
 	pub(crate) snapshot: bool,
+	left_evict_cursor: RefCell<Option<EncodedKey>>,
+	right_evict_cursor: RefCell<Option<EncodedKey>>,
 }
 
 impl JoinOperator {
@@ -154,6 +153,8 @@ impl JoinOperator {
 			runtime_context,
 			ttl,
 			snapshot,
+			left_evict_cursor: RefCell::new(None),
+			right_evict_cursor: RefCell::new(None),
 		}
 	}
 
@@ -525,7 +526,9 @@ impl Operator for JoinOperator {
 	}
 
 	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
-		evict_per_side_ttl(txn, self.node, self.ttl, tick.now.to_nanos())?;
+		let mut left_cursor = self.left_evict_cursor.borrow_mut();
+		let mut right_cursor = self.right_evict_cursor.borrow_mut();
+		evict_per_side_ttl(txn, self.node, self.ttl, tick.now.to_nanos(), &mut left_cursor, &mut right_cursor)?;
 		Ok(None)
 	}
 }
@@ -535,14 +538,16 @@ pub(crate) fn evict_per_side_ttl(
 	node: FlowNodeId,
 	ttl: JoinStateTtl,
 	now_nanos: u64,
+	left_cursor: &mut Option<EncodedKey>,
+	right_cursor: &mut Option<EncodedKey>,
 ) -> Result<()> {
 	if let Some(ttl_nanos) = ttl.left_nanos {
 		let cutoff = now_nanos.saturating_sub(ttl_nanos);
-		Store::new(node, JoinSide::Left).tick_evict(txn, cutoff)?;
+		Store::new(node, JoinSide::Left).tick_evict(txn, cutoff, left_cursor)?;
 	}
 	if let Some(ttl_nanos) = ttl.right_nanos {
 		let cutoff = now_nanos.saturating_sub(ttl_nanos);
-		Store::new(node, JoinSide::Right).tick_evict(txn, cutoff)?;
+		Store::new(node, JoinSide::Right).tick_evict(txn, cutoff, right_cursor)?;
 	}
 	Ok(())
 }
@@ -716,7 +721,15 @@ mod tests {
 
 		mock_clock.advance_millis(10_000);
 
-		evict_per_side_ttl(&mut txn, node, JoinStateTtl::default(), engine.clock().now_nanos()).unwrap();
+		evict_per_side_ttl(
+			&mut txn,
+			node,
+			JoinStateTtl::default(),
+			engine.clock().now_nanos(),
+			&mut None,
+			&mut None,
+		)
+		.unwrap();
 
 		assert!(contains(&left, &mut txn, 0xAAA), "left side must keep its row when no TTL is set");
 		assert!(contains(&right, &mut txn, 0xBBB), "right side must keep its row when no TTL is set");
@@ -750,7 +763,7 @@ mod tests {
 			left_nanos: Some(30_000_000), // 30ms
 			right_nanos: None,
 		};
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos()).unwrap();
+		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
 
 		assert!(!contains(&left, &mut txn, 0xAAA), "left side must be evicted past its TTL");
 		assert!(contains(&right, &mut txn, 0xBBB), "right side must keep its row when right_nanos is None");
@@ -783,7 +796,7 @@ mod tests {
 			left_nanos: None,
 			right_nanos: Some(30_000_000), // 30ms
 		};
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos()).unwrap();
+		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
 
 		assert!(contains(&left, &mut txn, 0xAAA), "left side must keep its row when left_nanos is None");
 		assert!(!contains(&right, &mut txn, 0xBBB), "right side must be evicted past its TTL");
@@ -816,7 +829,7 @@ mod tests {
 			left_nanos: Some(50_000_000), // 50ms
 			right_nanos: Some(50_000_000),
 		};
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos()).unwrap();
+		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
 
 		assert!(!contains(&left, &mut txn, 0xAAA), "left side must be evicted past the symmetric TTL");
 		assert!(!contains(&right, &mut txn, 0xBBB), "right side must be evicted past the symmetric TTL");
@@ -851,12 +864,12 @@ mod tests {
 		};
 
 		mock_clock.advance_millis(40);
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos()).unwrap();
+		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
 		assert!(!contains(&left, &mut txn, 0xAAA), "left side must be evicted past its 30ms TTL");
 		assert!(contains(&right, &mut txn, 0xBBB), "right side must survive while still within its 90ms TTL");
 
 		mock_clock.advance_millis(60);
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos()).unwrap();
+		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
 		assert!(!contains(&right, &mut txn, 0xBBB), "right side must be evicted past its 90ms TTL");
 	}
 
@@ -889,7 +902,7 @@ mod tests {
 			left_nanos: Some(50_000_000),
 			right_nanos: None,
 		};
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos()).unwrap();
+		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
 
 		assert!(!contains(&left, &mut txn, 0xAAA), "older row must be evicted");
 		assert!(contains(&left, &mut txn, 0xBBB), "younger row in the same side must survive");
@@ -921,7 +934,7 @@ mod tests {
 			left_nanos: Some(100_000_000), // 100ms
 			right_nanos: Some(100_000_000),
 		};
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos()).unwrap();
+		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
 
 		assert!(contains(&left, &mut txn, 0xAAA), "left must survive while under its TTL");
 		assert!(contains(&right, &mut txn, 0xBBB), "right must survive while under its TTL");
@@ -947,7 +960,7 @@ mod tests {
 			left_nanos: Some(10_000_000),
 			right_nanos: Some(10_000_000),
 		};
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos()).unwrap();
+		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
 
 		let left = Store::new(node, JoinSide::Left);
 		let right = Store::new(node, JoinSide::Right);

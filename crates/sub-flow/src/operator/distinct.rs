@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::BTreeMap,
-	sync::{Arc, LazyLock},
-	time::Duration,
-};
+use std::{collections::BTreeMap, sync::LazyLock, time::Duration};
 
 use indexmap::IndexMap;
 use postcard::{from_bytes, to_stdvec};
@@ -45,7 +41,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	operator::{
-		Operator, Operators,
+		Operator, OperatorCell,
 		stateful::{raw::RawStatefulOperator, row::RowNumberProvider, single::SingleStateful, utils},
 	},
 	transaction::{FlowTransaction, slot::PersistFn},
@@ -177,7 +173,7 @@ impl Default for DistinctState {
 }
 
 pub struct DistinctOperator {
-	parent: Arc<Operators>,
+	parent: OperatorCell,
 	node: FlowNodeId,
 	compiled_expressions: Vec<CompiledExpr>,
 	shape: RowShape,
@@ -189,7 +185,7 @@ pub struct DistinctOperator {
 
 impl DistinctOperator {
 	pub fn new(
-		parent: Arc<Operators>,
+		parent: OperatorCell,
 		node: FlowNodeId,
 		expressions: Vec<Expression>,
 		routines: Routines,
@@ -746,8 +742,6 @@ impl Operator for DistinctOperator {
 
 #[cfg(test)]
 mod ttl_tests {
-	use std::sync::Arc as StdArc;
-
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::change::{Change, Diff, Diffs},
@@ -763,6 +757,7 @@ mod ttl_tests {
 	};
 
 	use super::*;
+	use crate::operator::Operators;
 
 	struct NoOpParent;
 
@@ -795,7 +790,7 @@ mod ttl_tests {
 	fn make_op(node_id: u64, ttl_nanos: Option<u64>, engine: &TestEngine) -> DistinctOperator {
 		let routines = engine.executor().routines.clone();
 		let rc = RuntimeContext::with_clock(engine.clock().clone());
-		let parent: StdArc<Operators> = StdArc::new(Operators::Custom(Box::new(NoOpParent)));
+		let parent: OperatorCell = OperatorCell::new(Operators::Custom(Box::new(NoOpParent)));
 		DistinctOperator::new(parent, FlowNodeId(node_id), Vec::new(), routines, rc, ttl_nanos)
 	}
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::cell::Cell;
+use std::{cell::Cell, ops::Bound};
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
@@ -114,7 +114,8 @@ impl Store {
 	pub(crate) fn remove_all_for_key(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<usize> {
 		let prefix = self.hash_prefix(hash);
 		let range = EncodedKeyRange::prefix(&prefix);
-		let entries: Vec<(EncodedKey, EncodedRow)> = state_range(self.node_id, txn, range)?.collect();
+		let entries: Vec<(EncodedKey, EncodedRow)> =
+			state_range(self.node_id, txn, range).collect::<Result<_>>()?;
 		let count = entries.len();
 		for (key, _) in entries {
 			state_remove(self.node_id, txn, &key)?;
@@ -129,7 +130,8 @@ impl Store {
 	) -> Result<Vec<(RowNumber, EncodedRow)>> {
 		let prefix = self.hash_prefix(hash);
 		let range = EncodedKeyRange::prefix(&prefix);
-		let entries: Vec<(EncodedKey, EncodedRow)> = state_range(self.node_id, txn, range)?.collect();
+		let entries: Vec<(EncodedKey, EncodedRow)> =
+			state_range(self.node_id, txn, range).collect::<Result<_>>()?;
 		let mut out = Vec::with_capacity(entries.len());
 		for (full_key, row) in entries {
 			if let Some(rn) = row_number_from_key(full_key.as_slice()) {
@@ -142,7 +144,7 @@ impl Store {
 	pub(crate) fn contains_key(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<bool> {
 		let prefix = self.hash_prefix(hash);
 		let range = EncodedKeyRange::prefix(&prefix);
-		Ok(state_range(self.node_id, txn, range)?.next().is_some())
+		Ok(state_range(self.node_id, txn, range).next().transpose()?.is_some())
 	}
 
 	pub(crate) fn get_row_shape(&self, txn: &mut FlowTransaction) -> Result<Option<RowShape>> {
@@ -191,16 +193,36 @@ impl Store {
 		Ok(())
 	}
 
-	pub(crate) fn tick_evict(&self, txn: &mut FlowTransaction, cutoff_nanos: u64) -> Result<usize> {
-		let prefix_range = EncodedKeyRange::prefix(&self.prefix);
-		let entries: Vec<(EncodedKey, EncodedRow)> = state_range(self.node_id, txn, prefix_range)?.collect();
+	pub(crate) fn tick_evict(
+		&self,
+		txn: &mut FlowTransaction,
+		cutoff_nanos: u64,
+		cursor: &mut Option<EncodedKey>,
+	) -> Result<usize> {
+		const EVICT_BATCH: usize = 4096;
+		let base = EncodedKeyRange::prefix(&self.prefix);
+		let start = match cursor.as_ref() {
+			Some(c) => Bound::Excluded(c.clone()),
+			None => base.start.clone(),
+		};
+		let range = EncodedKeyRange::new(start, base.end.clone());
+		let batch = state_range(self.node_id, txn, range).take(EVICT_BATCH).collect::<Result<Vec<_>>>()?;
+		let reached_end = batch.len() < EVICT_BATCH;
+		let last_key = batch.last().map(|(key, _)| key.clone());
+
 		let mut evicted = 0;
-		for (key, row) in entries {
+		for (key, row) in batch {
 			if row.updated_at_nanos() < cutoff_nanos {
 				state_remove(self.node_id, txn, &key)?;
 				evicted += 1;
 			}
 		}
+
+		*cursor = if reached_end {
+			None
+		} else {
+			last_key
+		};
 		Ok(evicted)
 	}
 }
@@ -373,7 +395,7 @@ mod tests {
 		store.put_row(&mut txn, &h(0xAAA), rn(2), &row(0x20)).unwrap();
 
 		let cutoff = mock_clock.now_nanos() - 30_000_000;
-		let evicted = store.tick_evict(&mut txn, cutoff).unwrap();
+		let evicted = store.tick_evict(&mut txn, cutoff, &mut None).unwrap();
 		assert_eq!(evicted, 1, "only the older row should be evicted");
 
 		let remaining = store.rows_for_key(&mut txn, &h(0xAAA)).unwrap();
@@ -395,7 +417,7 @@ mod tests {
 		let store = Store::new(FlowNodeId(7), JoinSide::Left);
 
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		assert_eq!(store.tick_evict(&mut txn, 0).unwrap(), 0);
+		assert_eq!(store.tick_evict(&mut txn, 0, &mut None).unwrap(), 0);
 		assert!(store.contains_key(&mut txn, &h(0xAAA)).unwrap());
 	}
 
@@ -417,7 +439,7 @@ mod tests {
 		left.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
 		right.put_row(&mut txn, &h(0xBBB), rn(2), &row(0x20)).unwrap();
 
-		let evicted = left.tick_evict(&mut txn, u64::MAX).unwrap();
+		let evicted = left.tick_evict(&mut txn, u64::MAX, &mut None).unwrap();
 		assert_eq!(evicted, 1);
 
 		assert!(!left.contains_key(&mut txn, &h(0xAAA)).unwrap());

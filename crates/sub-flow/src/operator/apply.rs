@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, change::Change},
@@ -11,18 +11,18 @@ use reifydb_sdk::operator::Tick;
 use reifydb_type::Result;
 
 use crate::{
-	operator::{BoxedOperator, Operator, Operators},
+	operator::{BoxedOperator, Operator, OperatorCell},
 	transaction::FlowTransaction,
 };
 
 pub struct ApplyOperator {
-	parent: Arc<Operators>,
+	parent: OperatorCell,
 	node: FlowNodeId,
 	inner: BoxedOperator,
 }
 
 impl ApplyOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, inner: BoxedOperator) -> Self {
+	pub fn new(parent: OperatorCell, node: FlowNodeId, inner: BoxedOperator) -> Self {
 		Self {
 			parent,
 			node,

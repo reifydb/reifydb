@@ -336,7 +336,7 @@ impl FlowTransaction {
 		node_id = id.0,
 		result_count = field::Empty
 	))]
-	pub fn state_scan(&mut self, id: FlowNodeId) -> Result<MultiVersionBatch> {
+	pub fn state_scan_all(&mut self, id: FlowNodeId) -> Result<MultiVersionBatch> {
 		let range = FlowNodeStateKey::node_range(id);
 		let iter = self.range(range, 1024);
 		let mut items = Vec::new();
@@ -353,7 +353,7 @@ impl FlowTransaction {
 	#[instrument(name = "flow::state::range", level = "debug", skip(self, range), fields(
 		node_id = id.0
 	))]
-	pub fn state_range(&mut self, id: FlowNodeId, range: EncodedKeyRange) -> Result<MultiVersionBatch> {
+	pub fn state_range_all(&mut self, id: FlowNodeId, range: EncodedKeyRange) -> Result<MultiVersionBatch> {
 		let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(id, vec![]));
 		let iter = self.range(prefixed_range, 1024);
 		let mut items = Vec::new();
@@ -581,7 +581,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_state_scan() {
+	fn test_state_scan_all() {
 		let parent = create_test_transaction();
 		let mut txn = FlowTransaction::deferred(
 			&parent,
@@ -597,7 +597,7 @@ pub mod tests {
 		txn.state_set(node_id, &make_key("key2"), make_value("value2")).unwrap();
 		txn.state_set(node_id, &make_key("key3"), make_value("value3")).unwrap();
 
-		let iter = txn.state_scan(node_id).unwrap();
+		let iter = txn.state_scan_all(node_id).unwrap();
 		let items: Vec<_> = iter.items.into_iter().collect();
 
 		assert_eq!(items.len(), 3);
@@ -622,11 +622,11 @@ pub mod tests {
 		txn.state_set(node2, &make_key("key3"), make_value("value3")).unwrap();
 
 		// Scan node1 should only return node1's state
-		let items: Vec<_> = txn.state_scan(node1).unwrap().items.into_iter().collect();
+		let items: Vec<_> = txn.state_scan_all(node1).unwrap().items.into_iter().collect();
 		assert_eq!(items.len(), 2);
 
 		// Scan node2 should only return node2's state
-		let items: Vec<_> = txn.state_scan(node2).unwrap().items.into_iter().collect();
+		let items: Vec<_> = txn.state_scan_all(node2).unwrap().items.into_iter().collect();
 		assert_eq!(items.len(), 1);
 	}
 
@@ -643,12 +643,12 @@ pub mod tests {
 
 		let node_id = FlowNodeId(1);
 
-		let iter = txn.state_scan(node_id).unwrap();
+		let iter = txn.state_scan_all(node_id).unwrap();
 		assert!(iter.items.into_iter().next().is_none());
 	}
 
 	#[test]
-	fn test_state_range() {
+	fn test_state_range_all() {
 		let parent = create_test_transaction();
 		let mut txn = FlowTransaction::deferred(
 			&parent,
@@ -667,7 +667,7 @@ pub mod tests {
 
 		// Range query from "b" to "d" (exclusive)
 		let range = EncodedKeyRange::new(Bound::Included(make_key("b")), Bound::Excluded(make_key("d")));
-		let iter = txn.state_range(node_id, range).unwrap();
+		let iter = txn.state_range_all(node_id, range).unwrap();
 		let items: Vec<_> = iter.items.into_iter().collect();
 
 		// Should only include "b" and "c"
@@ -692,13 +692,13 @@ pub mod tests {
 		txn.state_set(node_id, &make_key("key3"), make_value("value3")).unwrap();
 
 		// Verify state exists
-		assert_eq!(txn.state_scan(node_id).unwrap().items.into_iter().count(), 3);
+		assert_eq!(txn.state_scan_all(node_id).unwrap().items.into_iter().count(), 3);
 
 		// Clear all state
 		txn.state_clear(node_id).unwrap();
 
 		// Verify state is empty
-		assert_eq!(txn.state_scan(node_id).unwrap().items.into_iter().count(), 0);
+		assert_eq!(txn.state_scan_all(node_id).unwrap().items.into_iter().count(), 0);
 	}
 
 	#[test]
@@ -723,10 +723,10 @@ pub mod tests {
 		txn.state_clear(node1).unwrap();
 
 		// Node1 should be empty
-		assert_eq!(txn.state_scan(node1).unwrap().items.into_iter().count(), 0);
+		assert_eq!(txn.state_scan_all(node1).unwrap().items.into_iter().count(), 0);
 
 		// Node2 should still have state
-		assert_eq!(txn.state_scan(node2).unwrap().items.into_iter().count(), 1);
+		assert_eq!(txn.state_scan_all(node2).unwrap().items.into_iter().count(), 1);
 	}
 
 	#[test]

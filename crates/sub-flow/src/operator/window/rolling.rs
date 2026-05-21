@@ -77,7 +77,7 @@ impl WindowOperator {
 	pub fn tick_rolling_eviction(&self, txn: &mut FlowTransaction, current_timestamp: u64) -> Result<Vec<Diff>> {
 		let mut result = Vec::new();
 
-		let all_state = txn.state_scan(self.node)?;
+		let all_state = txn.state_scan_all(self.node)?;
 		let prefix = FlowNodeStateKey::new(self.node, vec![]).encode();
 		let win_marker = b"win:";
 

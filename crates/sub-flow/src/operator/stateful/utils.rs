@@ -68,7 +68,7 @@ pub fn internal_state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &En
 	Ok(())
 }
 
-pub fn state_scan(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<StateIterator> {
+pub fn state_scan_all(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 	let range = FlowNodeStateKey::node_range(id);
 	let stream = txn.range(range, 1024);
 	let mut items = Vec::new();
@@ -80,22 +80,12 @@ pub fn state_scan(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<StateIter
 			items.push((multi.key, multi.row));
 		}
 	}
-	Ok(StateIterator::from_items(items))
+	Ok(items)
 }
 
-pub fn state_range(id: FlowNodeId, txn: &mut FlowTransaction, range: EncodedKeyRange) -> Result<StateIterator> {
+pub fn state_range<'a>(id: FlowNodeId, txn: &'a mut FlowTransaction, range: EncodedKeyRange) -> StateIterator<'a> {
 	let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(id, vec![]));
-	let stream = txn.range(prefixed_range, 1024);
-	let mut items = Vec::new();
-	for result in stream {
-		let multi = result?;
-		if let Some(state_key) = FlowNodeStateKey::decode(&multi.key) {
-			items.push((EncodedKey::new(state_key.key), multi.row));
-		} else {
-			items.push((multi.key, multi.row));
-		}
-	}
-	Ok(StateIterator::from_items(items))
+	StateIterator::new(txn.range(prefixed_range, 1024))
 }
 
 pub fn state_clear(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<()> {
@@ -239,7 +229,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_state_scan() {
+	fn test_state_scan_all() {
 		let mut txn = create_test_transaction();
 		let mut txn = FlowTransaction::deferred(
 			&mut txn,
@@ -258,7 +248,7 @@ pub mod tests {
 		}
 
 		// Scan all entries
-		let entries: Vec<_> = state_scan(node_id, &mut txn).unwrap().collect();
+		let entries: Vec<_> = state_scan_all(node_id, &mut txn).unwrap();
 		assert_eq!(entries.len(), 5);
 
 		// Verify we got all the expected values
@@ -289,7 +279,7 @@ pub mod tests {
 
 		// Test range query from b to d (exclusive end)
 		let range = EncodedKeyRange::new(Included(test_key("b")), Excluded(test_key("d")));
-		let entries: Vec<_> = state_range(node_id, &mut txn, range).unwrap().collect();
+		let entries: Vec<_> = state_range(node_id, &mut txn, range).collect::<Result<Vec<_>>>().unwrap();
 
 		// Should include b and c, but not d (exclusive end)
 		assert_eq!(entries.len(), 2);

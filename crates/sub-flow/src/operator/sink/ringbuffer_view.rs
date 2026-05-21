@@ -34,7 +34,7 @@ use super::{coerce_columns, encode_row_at_index};
 use crate::{
 	Operator,
 	operator::{
-		Operators,
+		OperatorCell,
 		stateful::{raw::RawStatefulOperator, single::SingleStateful},
 	},
 	transaction::FlowTransaction,
@@ -48,7 +48,7 @@ struct RingBufferState {
 
 pub struct SinkRingBufferViewOperator {
 	#[allow(dead_code)]
-	parent: Arc<Operators>,
+	parent: OperatorCell,
 	node: FlowNodeId,
 	view: ResolvedView,
 	ringbuffer_id: RingBufferId,
@@ -59,7 +59,7 @@ pub struct SinkRingBufferViewOperator {
 
 impl SinkRingBufferViewOperator {
 	pub fn new(
-		parent: Arc<Operators>,
+		parent: OperatorCell,
 		node: FlowNodeId,
 		view: ResolvedView,
 		ringbuffer_id: RingBufferId,

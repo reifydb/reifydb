@@ -45,7 +45,10 @@ use reifydb_rql::{
 use reifydb_runtime::{SharedRuntime, context::RuntimeContext, sync::rwlock::RwLock};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
 use reifydb_sub_flow::{
-	builder::OperatorFactory, engine::FlowEngine, operator::Operators, transaction::FlowTransaction,
+	builder::OperatorFactory,
+	engine::FlowEngine,
+	operator::{OperatorCell, Operators},
+	transaction::FlowTransaction,
 };
 use reifydb_transaction::{
 	interceptor::builder::InterceptorBuilder,
@@ -429,7 +432,7 @@ fn register_ephemeral_flow(
 					subscription_id,
 					delivery.clone(),
 				);
-				engine.operators.insert(node_id, Arc::new(Operators::Custom(Box::new(op))));
+				engine.operators.insert(node_id, OperatorCell::new(Operators::Custom(Box::new(op))));
 			}
 			_ => {
 				engine.add(txn, &flow, node)?;

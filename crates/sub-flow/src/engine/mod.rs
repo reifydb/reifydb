@@ -48,12 +48,12 @@ use tracing::instrument;
 use crate::operator::BoxedOperator;
 #[cfg(reifydb_target = "native")]
 use crate::operator::ffi::FFIOperator;
-use crate::{builder::OperatorFactory, engine::cache::ExecutionLevelCache, operator::Operators};
+use crate::{builder::OperatorFactory, engine::cache::ExecutionLevelCache, operator::OperatorCell};
 
 pub struct FlowEngine {
 	pub(crate) catalog: Catalog,
 	pub(crate) executor: Executor,
-	pub operators: BTreeMap<FlowNodeId, Arc<Operators>>,
+	pub operators: BTreeMap<FlowNodeId, OperatorCell>,
 	pub flows: BTreeMap<FlowId, Arc<FlowDag>>,
 	pub sources: BTreeMap<ShapeId, Vec<(FlowId, FlowNodeId)>>,
 	pub sinks: BTreeMap<ShapeId, Vec<(FlowId, FlowNodeId)>>,

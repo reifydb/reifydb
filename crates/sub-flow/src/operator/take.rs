@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	operator::{
-		Operator, Operators,
+		Operator, OperatorCell,
 		stateful::{raw::RawStatefulOperator, single::SingleStateful, utils},
 	},
 	transaction::{FlowTransaction, slot::PersistFn},
@@ -47,7 +47,7 @@ struct TakeState {
 }
 
 pub struct TakeOperator {
-	parent: Arc<Operators>,
+	parent: OperatorCell,
 	node: FlowNodeId,
 	limit: usize,
 	shape: RowShape,
@@ -75,7 +75,7 @@ fn decode_take_row(shape: &RowShape, row_number: RowNumber, encoded: &EncodedRow
 }
 
 impl TakeOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, limit: usize) -> Self {
+	pub fn new(parent: OperatorCell, node: FlowNodeId, limit: usize) -> Self {
 		Self {
 			parent,
 			node,

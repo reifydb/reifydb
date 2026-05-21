@@ -3,8 +3,9 @@
 
 use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
-	interface::store::MultiVersionBatch,
+	interface::store::MultiVersionRow,
 };
+use reifydb_type::Result;
 
 pub mod counter;
 pub mod keyed;
@@ -17,49 +18,32 @@ pub mod window;
 
 use reifydb_core::key::{EncodableKey, flow_node_state::FlowNodeStateKey};
 
-pub struct StateIterator {
-	items: Vec<(EncodedKey, EncodedRow)>,
-	position: usize,
+pub struct StateIterator<'a> {
+	inner: Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a>,
 }
 
-impl StateIterator {
-	pub fn new(batch: MultiVersionBatch) -> Self {
-		let items = batch
-			.items
-			.into_iter()
-			.map(|multi| {
-				if let Some(state_key) = FlowNodeStateKey::decode(&multi.key) {
+impl<'a> StateIterator<'a> {
+	pub fn new(inner: Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a>) -> Self {
+		Self {
+			inner,
+		}
+	}
+}
+
+impl Iterator for StateIterator<'_> {
+	type Item = Result<(EncodedKey, EncodedRow)>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		match self.inner.next()? {
+			Ok(multi) => {
+				let pair = if let Some(state_key) = FlowNodeStateKey::decode(&multi.key) {
 					(EncodedKey::new(state_key.key), multi.row)
 				} else {
 					(multi.key, multi.row)
-				}
-			})
-			.collect();
-
-		Self {
-			items,
-			position: 0,
-		}
-	}
-
-	pub fn from_items(items: Vec<(EncodedKey, EncodedRow)>) -> Self {
-		Self {
-			items,
-			position: 0,
-		}
-	}
-}
-
-impl Iterator for StateIterator {
-	type Item = (EncodedKey, EncodedRow);
-
-	fn next(&mut self) -> Option<Self::Item> {
-		if self.position < self.items.len() {
-			let item = self.items[self.position].clone();
-			self.position += 1;
-			Some(item)
-		} else {
-			None
+				};
+				Some(Ok(pair))
+			}
+			Err(e) => Some(Err(e)),
 		}
 	}
 }

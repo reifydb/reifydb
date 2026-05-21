@@ -116,9 +116,7 @@ impl FFIOperator {
 }
 
 // SAFETY: FFIOperator is only accessed from a single actor at a time.
-
 unsafe impl Send for FFIOperator {}
-unsafe impl Sync for FFIOperator {}
 
 impl Drop for FFIOperator {
 	fn drop(&mut self) {

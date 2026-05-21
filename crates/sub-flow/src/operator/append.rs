@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{sync::Arc, time::Duration};
+use std::{cell::RefCell, ops::Bound, sync::Arc, time::Duration};
 
 use reifydb_abi::operator::capabilities::{CAPABILITY_ALL_STANDARD, CAPABILITY_TICK};
 use reifydb_core::{
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
 		shape::RowShape,
 	},
 	interface::{
@@ -24,7 +23,7 @@ use reifydb_type::{Result, error::Error, value::row_number::RowNumber};
 
 use crate::{
 	operator::{
-		Operator, Operators,
+		Operator, OperatorCell,
 		stateful::{
 			row::RowNumberProvider,
 			utils::{state_get, state_range, state_remove, state_set},
@@ -38,7 +37,7 @@ const TIMESTAMP_PREFIX: u8 = b'T';
 pub struct AppendOperator {
 	node: FlowNodeId,
 
-	parents: Vec<Arc<Operators>>,
+	parents: Vec<OperatorCell>,
 
 	input_nodes: Vec<FlowNodeId>,
 
@@ -47,12 +46,14 @@ pub struct AppendOperator {
 	ttl_nanos: Option<u64>,
 
 	ttl_anchor: TtlAnchor,
+
+	evict_cursor: RefCell<Option<EncodedKey>>,
 }
 
 impl AppendOperator {
 	pub fn new(
 		node: FlowNodeId,
-		parents: Vec<Arc<Operators>>,
+		parents: Vec<OperatorCell>,
 		input_nodes: Vec<FlowNodeId>,
 		ttl_nanos: Option<u64>,
 		ttl_anchor: TtlAnchor,
@@ -67,6 +68,7 @@ impl AppendOperator {
 			row_number_provider: RowNumberProvider::new(node),
 			ttl_nanos,
 			ttl_anchor,
+			evict_cursor: RefCell::new(None),
 		}
 	}
 
@@ -79,6 +81,7 @@ impl AppendOperator {
 			row_number_provider: RowNumberProvider::new(node),
 			ttl_nanos,
 			ttl_anchor,
+			evict_cursor: RefCell::new(None),
 		}
 	}
 
@@ -205,11 +208,19 @@ impl Operator for AppendOperator {
 		let now_nanos = tick.now.to_nanos();
 		let cutoff = now_nanos.saturating_sub(ttl_nanos);
 
+		const EVICT_BATCH: usize = 4096;
 		let prefix = [TIMESTAMP_PREFIX];
-		let prefix_range = EncodedKeyRange::prefix(&prefix);
-		let entries: Vec<(EncodedKey, EncodedRow)> = state_range(self.node, txn, prefix_range)?.collect();
+		let base = EncodedKeyRange::prefix(&prefix);
+		let start = match self.evict_cursor.borrow().clone() {
+			Some(cursor) => Bound::Excluded(cursor),
+			None => base.start.clone(),
+		};
+		let range = EncodedKeyRange::new(start, base.end.clone());
+		let batch = state_range(self.node, txn, range).take(EVICT_BATCH).collect::<Result<Vec<_>>>()?;
+		let reached_end = batch.len() < EVICT_BATCH;
+		let last_key = batch.last().map(|(key, _)| key.clone());
 
-		for (storage_key, row) in entries {
+		for (storage_key, row) in batch {
 			let anchor_ts = match self.ttl_anchor {
 				TtlAnchor::Created => row.created_at_nanos(),
 				TtlAnchor::Updated => row.updated_at_nanos(),
@@ -226,6 +237,11 @@ impl Operator for AppendOperator {
 			self.forget_mapping(txn, &composite_key)?;
 		}
 
+		*self.evict_cursor.borrow_mut() = if reached_end {
+			None
+		} else {
+			last_key
+		};
 		Ok(None)
 	}
 }

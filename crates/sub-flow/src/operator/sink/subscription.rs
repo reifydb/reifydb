@@ -36,7 +36,7 @@ use super::encode_row_at_index;
 use crate::{
 	Operator,
 	operator::{
-		Operators,
+		OperatorCell,
 		stateful::{
 			counter::{Counter, CounterDirection},
 			raw::RawStatefulOperator,
@@ -54,7 +54,7 @@ struct DeliveredState {
 
 pub struct SinkSubscriptionOperator {
 	#[allow(dead_code)]
-	parent: Arc<Operators>,
+	parent: OperatorCell,
 	node: FlowNodeId,
 	subscription: ResolvedSubscription,
 	counter: Counter,
@@ -62,7 +62,7 @@ pub struct SinkSubscriptionOperator {
 }
 
 impl SinkSubscriptionOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, subscription: ResolvedSubscription) -> Self {
+	pub fn new(parent: OperatorCell, node: FlowNodeId, subscription: ResolvedSubscription) -> Self {
 		let counter_key = {
 			let mut serializer = KeySerializer::new();
 			serializer.extend_u64(subscription.def().id.0);

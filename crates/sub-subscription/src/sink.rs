@@ -21,7 +21,7 @@ use reifydb_core::{
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sub_flow::{
 	operator::{
-		Operator, Operators,
+		Operator, OperatorCell,
 		stateful::{raw::RawStatefulOperator, single::SingleStateful, utils},
 	},
 	transaction::{FlowTransaction, slot::PersistFn},
@@ -69,7 +69,7 @@ struct DeliveredState {
 
 pub struct EphemeralSinkSubscriptionOperator {
 	#[allow(dead_code)]
-	parent: Arc<Operators>,
+	parent: OperatorCell,
 	node: FlowNodeId,
 	subscription_id: SubscriptionId,
 	delivery: Arc<DeliveryBuffer>,
@@ -78,7 +78,7 @@ pub struct EphemeralSinkSubscriptionOperator {
 
 impl EphemeralSinkSubscriptionOperator {
 	pub fn new(
-		parent: Arc<Operators>,
+		parent: OperatorCell,
 		node: FlowNodeId,
 		subscription_id: SubscriptionId,
 		delivery: Arc<DeliveryBuffer>,

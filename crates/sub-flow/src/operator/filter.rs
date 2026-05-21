@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 
 use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 use reifydb_core::{
@@ -29,7 +29,7 @@ use reifydb_type::{
 };
 
 use crate::{
-	operator::{Operator, Operators},
+	operator::{Operator, OperatorCell},
 	transaction::FlowTransaction,
 };
 
@@ -37,7 +37,7 @@ static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
 pub struct FilterOperator {
-	parent: Arc<Operators>,
+	parent: OperatorCell,
 	node: FlowNodeId,
 	compiled_conditions: Vec<CompiledExpr>,
 	routines: Routines,
@@ -46,7 +46,7 @@ pub struct FilterOperator {
 
 impl FilterOperator {
 	pub fn new(
-		parent: Arc<Operators>,
+		parent: OperatorCell,
 		node: FlowNodeId,
 		conditions: Vec<Expression>,
 		routines: Routines,
