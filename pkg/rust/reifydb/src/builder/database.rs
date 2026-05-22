@@ -30,7 +30,7 @@ use reifydb_core::{
 	actors::cdc::CdcProduceHandle,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::{
-		catalog::config::ConfigKey,
+		catalog::config::{ConfigKey, GetConfig},
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	util::ioc::IocContainer,
@@ -367,10 +367,12 @@ impl DatabaseBuilder {
 		let actor_system = self.actor_system.unwrap_or_else(|| runtime.actor_system().scope());
 
 		// Create and register CdcStore for CDC storage.
+		let cdc_recent_cache_capacity =
+			multi.config().get_config_uint8(ConfigKey::CdcRecentCacheCapacity) as usize;
 		let cdc_store = match self.cdc_backend {
 			CdcBackend::Memory => CdcStore::memory(),
 			#[cfg(not(target_arch = "wasm32"))]
-			CdcBackend::Sqlite(config) => CdcStore::sqlite(config),
+			CdcBackend::Sqlite(config) => CdcStore::sqlite(config, cdc_recent_cache_capacity),
 		};
 		self.ioc = self.ioc.register(cdc_store.clone());
 
@@ -388,9 +390,13 @@ impl DatabaseBuilder {
 		// system config (CDC_COMPACT_INTERVAL etc.) so they can be tuned at
 		// runtime via SET CONFIG.
 		#[cfg(not(target_arch = "wasm32"))]
-		if let CdcStore::Sqlite(ref sqlite_store) = cdc_store {
+		if let CdcStore::Sqlite(ref cached_store) = cdc_store {
 			let provider = multi.config();
-			let actor = CompactActor::new(provider, sqlite_store.clone(), cdc_producer_watermark.clone());
+			let actor = CompactActor::new(
+				provider,
+				cached_store.inner().clone(),
+				cdc_producer_watermark.clone(),
+			);
 			let cdc_compact_handle = actor_system.spawn_system("cdc-compact", actor);
 			self.ioc = self.ioc.register(cdc_compact_handle.actor_ref().clone());
 		}

@@ -16,7 +16,7 @@ use reifydb_cdc::{
 		producer::{CdcProducerEventListener, spawn_cdc_producer},
 		watermark::CdcProducerWatermark,
 	},
-	storage::CdcStore,
+	storage::{CdcStore, recent_cache::RecentCdcCache},
 };
 use reifydb_core::{
 	actors::cdc::CdcProduceHandle,
@@ -198,7 +198,7 @@ impl TestEngineBuilder {
 
 		#[cfg(not(target_arch = "wasm32"))]
 		let cdc_store = match self.sqlite_cdc {
-			Some(config) => CdcStore::sqlite(config),
+			Some(config) => CdcStore::sqlite(config, RecentCdcCache::DEFAULT_CAPACITY),
 			None => CdcStore::memory(),
 		};
 		#[cfg(target_arch = "wasm32")]

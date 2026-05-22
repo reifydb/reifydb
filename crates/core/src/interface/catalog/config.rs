@@ -52,6 +52,7 @@ pub enum ConfigKey {
 	CdcCompactMaxBlocksPerTick,
 	CdcCompactBlockCacheCapacity,
 	CdcCompactZstdLevel,
+	CdcRecentCacheCapacity,
 	FlowTick,
 	ThreadsAsync,
 	ThreadsSystem,
@@ -79,6 +80,7 @@ impl ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick,
 			Self::CdcCompactBlockCacheCapacity,
 			Self::CdcCompactZstdLevel,
+			Self::CdcRecentCacheCapacity,
 			Self::FlowTick,
 			Self::ThreadsAsync,
 			Self::ThreadsSystem,
@@ -108,6 +110,7 @@ impl ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick => Value::Uint8(16),
 			Self::CdcCompactBlockCacheCapacity => Value::Uint8(8),
 			Self::CdcCompactZstdLevel => Value::Uint1(7),
+			Self::CdcRecentCacheCapacity => Value::Uint8(128),
 			Self::FlowTick => Value::Duration(Duration::from_seconds(1).unwrap()),
 			Self::ThreadsAsync => Value::Uint2(1),
 			Self::ThreadsSystem => Value::Uint2(2),
@@ -156,6 +159,10 @@ impl ConfigKey {
 				"Zstd compression level for CDC blocks. Range 1-22; higher means smaller blocks but \
 				 slower compression. Decompression cost is independent of level."
 			}
+			Self::CdcRecentCacheCapacity => {
+				"Number of most-recent decoded CDC entries held in memory so a caught-up consumer \
+				 is served without re-reading and re-deserializing from the backend."
+			}
 			Self::FlowTick => {
 				"How often the deferred and transactional flow tick coordinators wake up to dispatch \
 				 due flows."
@@ -201,6 +208,7 @@ impl ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick => false,
 			Self::CdcCompactBlockCacheCapacity => true,
 			Self::CdcCompactZstdLevel => false,
+			Self::CdcRecentCacheCapacity => true,
 			Self::FlowTick => false,
 			Self::ThreadsAsync => true,
 			Self::ThreadsSystem => true,
@@ -228,6 +236,7 @@ impl ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick => &[Type::Uint8],
 			Self::CdcCompactBlockCacheCapacity => &[Type::Uint8],
 			Self::CdcCompactZstdLevel => &[Type::Uint1],
+			Self::CdcRecentCacheCapacity => &[Type::Uint8],
 			Self::FlowTick => &[Type::Duration],
 			Self::ThreadsAsync => &[Type::Uint2],
 			Self::ThreadsSystem => &[Type::Uint2],
@@ -255,6 +264,7 @@ impl ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick => false,
 			Self::CdcCompactBlockCacheCapacity => false,
 			Self::CdcCompactZstdLevel => false,
+			Self::CdcRecentCacheCapacity => false,
 			Self::FlowTick => false,
 			Self::ThreadsAsync => false,
 			Self::ThreadsSystem => false,
@@ -456,6 +466,7 @@ impl fmt::Display for ConfigKey {
 			Self::CdcCompactMaxBlocksPerTick => write!(f, "CDC_COMPACT_MAX_BLOCKS_PER_TICK"),
 			Self::CdcCompactBlockCacheCapacity => write!(f, "CDC_COMPACT_BLOCK_CACHE_CAPACITY"),
 			Self::CdcCompactZstdLevel => write!(f, "CDC_COMPACT_ZSTD_LEVEL"),
+			Self::CdcRecentCacheCapacity => write!(f, "CDC_RECENT_CACHE_CAPACITY"),
 			Self::FlowTick => write!(f, "FLOW_TICK"),
 			Self::ThreadsAsync => write!(f, "THREADS_ASYNC"),
 			Self::ThreadsSystem => write!(f, "THREADS_SYSTEM"),
@@ -487,6 +498,7 @@ impl FromStr for ConfigKey {
 			"CDC_COMPACT_MAX_BLOCKS_PER_TICK" => Ok(Self::CdcCompactMaxBlocksPerTick),
 			"CDC_COMPACT_BLOCK_CACHE_CAPACITY" => Ok(Self::CdcCompactBlockCacheCapacity),
 			"CDC_COMPACT_ZSTD_LEVEL" => Ok(Self::CdcCompactZstdLevel),
+			"CDC_RECENT_CACHE_CAPACITY" => Ok(Self::CdcRecentCacheCapacity),
 			"FLOW_TICK" => Ok(Self::FlowTick),
 			"THREADS_ASYNC" => Ok(Self::ThreadsAsync),
 			"THREADS_SYSTEM" => Ok(Self::ThreadsSystem),
@@ -642,19 +654,37 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 22);
+		assert_eq!(all.len(), 23);
 		assert!(all.contains(&ConfigKey::CdcCompactInterval));
 		assert!(all.contains(&ConfigKey::CdcCompactBlockSize));
 		assert!(all.contains(&ConfigKey::CdcCompactSafetyLag));
 		assert!(all.contains(&ConfigKey::CdcCompactMaxBlocksPerTick));
 		assert!(all.contains(&ConfigKey::CdcCompactBlockCacheCapacity));
 		assert!(all.contains(&ConfigKey::CdcCompactZstdLevel));
+		assert!(all.contains(&ConfigKey::CdcRecentCacheCapacity));
 		assert!(all.contains(&ConfigKey::QueryRowBatchSize));
 		assert!(all.contains(&ConfigKey::ThreadsAsync));
 		assert!(all.contains(&ConfigKey::ThreadsSystem));
 		assert!(all.contains(&ConfigKey::ThreadsQuery));
 		assert!(all.contains(&ConfigKey::ThreadsCommit));
 		assert!(all.contains(&ConfigKey::ThreadsBackground));
+	}
+
+	#[test]
+	fn test_cdc_recent_cache_capacity_round_trip() {
+		assert_eq!(
+			"CDC_RECENT_CACHE_CAPACITY".parse::<ConfigKey>().unwrap(),
+			ConfigKey::CdcRecentCacheCapacity
+		);
+		assert_eq!(format!("{}", ConfigKey::CdcRecentCacheCapacity), "CDC_RECENT_CACHE_CAPACITY");
+	}
+
+	#[test]
+	fn test_cdc_recent_cache_capacity_metadata() {
+		assert_eq!(ConfigKey::CdcRecentCacheCapacity.default_value(), Value::Uint8(128));
+		assert_eq!(ConfigKey::CdcRecentCacheCapacity.expected_types(), &[Type::Uint8]);
+		assert!(ConfigKey::CdcRecentCacheCapacity.requires_restart());
+		assert!(!ConfigKey::CdcRecentCacheCapacity.is_optional());
 	}
 
 	#[test]

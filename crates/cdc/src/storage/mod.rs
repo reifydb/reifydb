@@ -5,12 +5,16 @@
 //! durable default for production deployments. Both implement the same trait surface so the producer and consumer
 //! sides are agnostic to which is configured.
 
+pub mod cached;
 pub mod memory;
+pub mod recent_cache;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 pub mod sqlite;
 
 use std::{collections::Bound, sync};
 
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use cached::CachedCdcStorage;
 use memory::MemoryCdcStorage;
 use reifydb_core::{
 	common::CommitVersion,
@@ -184,7 +188,7 @@ pub enum CdcStore {
 	Memory(MemoryCdcStorage),
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	Sqlite(sqlite::storage::SqliteCdcStorage),
+	Sqlite(CachedCdcStorage<sqlite::storage::SqliteCdcStorage>),
 }
 
 impl CdcStore {
@@ -193,8 +197,11 @@ impl CdcStore {
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn sqlite(config: SqliteConfig) -> Self {
-		Self::Sqlite(sqlite::storage::SqliteCdcStorage::new(config))
+	pub fn sqlite(config: SqliteConfig, recent_cache_capacity: usize) -> Self {
+		Self::Sqlite(CachedCdcStorage::new(
+			sqlite::storage::SqliteCdcStorage::new(config),
+			recent_cache_capacity,
+		))
 	}
 
 	pub fn write(&self, cdc: &Cdc) -> CdcStorageResult<()> {
