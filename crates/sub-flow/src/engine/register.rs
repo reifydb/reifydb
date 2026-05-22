@@ -468,20 +468,25 @@ impl FlowEngine {
 							})?
 							.clone();
 
-						if !self.is_ffi_operator(operator.as_str()) {
+						let inner = if self.is_native_operator(operator.as_str()) {
+							self.create_native_operator(
+								operator.as_str(),
+								node.id,
+								&config,
+							)?
+						} else if self.is_ffi_operator(operator.as_str()) {
+							self.create_ffi_operator(operator.as_str(), node.id, &config)?
+						} else {
 							return Err(Error(Box::new(internal!(
 								"Unknown operator: {}",
 								operator
 							))));
-						}
-
-						let ffi_op =
-							self.create_ffi_operator(operator.as_str(), node.id, &config)?;
+						};
 
 						self.operators.insert(
 							node.id,
 							Arc::new(Operators::Apply(ApplyOperator::new(
-								parent, node.id, ffi_op,
+								parent, node.id, inner,
 							))),
 						);
 					}

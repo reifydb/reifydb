@@ -8,6 +8,8 @@ use crate::data::buffer::BufferFFI;
 pub struct OperatorDescriptorFFI {
 	pub api: u32,
 
+	pub abi_tag: u32,
+
 	pub operator: BufferFFI,
 
 	pub version: BufferFFI,

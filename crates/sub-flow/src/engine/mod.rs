@@ -48,6 +48,8 @@ use tracing::instrument;
 use crate::operator::BoxedOperator;
 #[cfg(reifydb_target = "native")]
 use crate::operator::ffi::FFIOperator;
+#[cfg(reifydb_target = "native")]
+use crate::operator::native::native_operator_loader;
 use crate::{builder::OperatorFactory, engine::cache::ExecutionLevelCache, operator::Operators};
 
 pub struct FlowEngine {
@@ -139,6 +141,24 @@ impl FlowEngine {
 		let loader = ffi_operator_loader();
 		let loader_read = loader.read();
 		loader_read.has_operator(operator)
+	}
+
+	#[cfg(reifydb_target = "native")]
+	#[instrument(name = "flow::engine::create_native_operator", level = "debug", skip(self, config), fields(operator = %operator, node_id = ?node_id))]
+	pub(crate) fn create_native_operator(
+		&self,
+		operator: &str,
+		node_id: FlowNodeId,
+		config: &BTreeMap<String, Value>,
+	) -> Result<BoxedOperator> {
+		let loader = native_operator_loader();
+		let mut loader_write = loader.write();
+		loader_write.create_operator_by_name(operator, node_id, config)
+	}
+
+	#[cfg(reifydb_target = "native")]
+	pub(crate) fn is_native_operator(&self, operator: &str) -> bool {
+		native_operator_loader().read().has_operator(operator)
 	}
 
 	#[cfg(not(reifydb_target = "native"))]

@@ -5,7 +5,7 @@ use std::{collections::HashMap, ffi::c_void, ptr, slice};
 
 use postcard::from_bytes;
 use reifydb_abi::{
-	constants::CURRENT_API,
+	constants::{CURRENT_API, OPERATOR_ABI_TAG},
 	data::buffer::BufferFFI,
 	operator::{
 		column::{OperatorColumnFFI, OperatorColumnsFFI},
@@ -61,6 +61,7 @@ fn columns_to_ffi(columns: &'static [OperatorColumn]) -> OperatorColumnsFFI {
 pub fn create_descriptor<O: FFIOperatorWithMetadata>() -> OperatorDescriptorFFI {
 	OperatorDescriptorFFI {
 		api: CURRENT_API,
+		abi_tag: OPERATOR_ABI_TAG,
 		operator: str_to_buffer(O::NAME),
 		version: str_to_buffer(O::VERSION),
 		description: str_to_buffer(O::DESCRIPTION),

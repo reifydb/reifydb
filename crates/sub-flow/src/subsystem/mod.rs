@@ -8,7 +8,7 @@ pub mod ffi;
 use std::{any::Any, collections::HashMap, sync::Arc, time::Duration};
 
 #[cfg(reifydb_target = "native")]
-use ffi::load_ffi_operators;
+use ffi::{load_ffi_operators, load_native_operators};
 use reifydb_cdc::{
 	consume::{
 		consumer::{CdcConsume, CdcConsumer},
@@ -216,6 +216,9 @@ impl FlowSubsystem {
 		#[cfg(reifydb_target = "native")]
 		if let Some(ref operators_dir) = config.operators_dir {
 			let event_bus = engine.event_bus();
+			if let Err(e) = load_native_operators(operators_dir, event_bus) {
+				panic!("Failed to load native operators from {:?}: {}", operators_dir, e);
+			}
 			if let Err(e) = load_ffi_operators(operators_dir, event_bus) {
 				panic!("Failed to load FFI operators from {:?}: {}", operators_dir, e);
 			}

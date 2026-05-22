@@ -9,10 +9,13 @@ use std::{
 };
 
 use libloading::Symbol;
-use reifydb_abi::operator::{
-	column::OperatorColumnsFFI,
-	descriptor::OperatorDescriptorFFI,
-	types::{OPERATOR_MAGIC, OperatorCreateFnFFI},
+use reifydb_abi::{
+	constants::OPERATOR_ABI_TAG,
+	operator::{
+		column::OperatorColumnsFFI,
+		descriptor::OperatorDescriptorFFI,
+		types::{OPERATOR_MAGIC, OperatorCreateFnFFI},
+	},
 };
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_runtime::sync::rwlock::RwLock;
@@ -25,6 +28,16 @@ static GLOBAL_FFI_OPERATOR_LOADER: OnceLock<RwLock<FFIOperatorLoader>> = OnceLoc
 
 pub fn ffi_operator_loader() -> &'static RwLock<FFIOperatorLoader> {
 	GLOBAL_FFI_OPERATOR_LOADER.get_or_init(|| RwLock::new(FFIOperatorLoader::new()))
+}
+
+pub fn check_operator_abi_tag(abi_tag: u32) -> FFIResult<()> {
+	if abi_tag != OPERATOR_ABI_TAG {
+		return Err(FFIError::Other(format!(
+			"FFI operator ABI tag mismatch: plugin reports {:#06x}, host expects {:#06x}",
+			abi_tag, OPERATOR_ABI_TAG
+		)));
+	}
+	Ok(())
 }
 
 pub struct FFIOperatorLoader {
@@ -65,6 +78,7 @@ impl FFIOperatorLoader {
 
 			Ok(OperatorDescriptorFFI {
 				api: (*descriptor_ptr).api,
+				abi_tag: (*descriptor_ptr).abi_tag,
 				operator: (*descriptor_ptr).operator,
 				version: (*descriptor_ptr).version,
 				description: (*descriptor_ptr).description,
@@ -82,6 +96,8 @@ impl FFIOperatorLoader {
 		path: &Path,
 	) -> FFIResult<(String, u32)> {
 		validate_api_version(descriptor.api).map_err(|e| FFIError::Other(e.to_string()))?;
+
+		check_operator_abi_tag(descriptor.abi_tag)?;
 
 		let operator = unsafe { buffer_to_string(&descriptor.operator) };
 		self.operator_paths.insert(operator.clone(), path.to_path_buf());

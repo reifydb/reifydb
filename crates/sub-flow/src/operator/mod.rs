@@ -20,6 +20,8 @@ pub mod filter;
 pub mod gate;
 pub mod join;
 pub mod map;
+#[cfg(reifydb_target = "native")]
+pub mod native;
 pub mod scan;
 pub mod sink;
 pub mod sort;
