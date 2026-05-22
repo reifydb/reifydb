@@ -2,7 +2,7 @@
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 # Defect targets:
-#   - missing or broken regression guard in build_upsert_warm_current_sql
+#   - missing or broken regression guard in build_upsert_current_sql
 #   - drain writing the older version over the newer one in persistent
 #
 # Sequence:

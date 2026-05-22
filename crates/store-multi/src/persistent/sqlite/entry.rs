@@ -11,6 +11,6 @@ pub(super) fn entry_id_to_name(table: EntryKind) -> String {
 	}
 }
 
-pub(super) fn warm_current_table_name(table: EntryKind) -> String {
-	format!("{}__warm_current", entry_id_to_name(table))
+pub(super) fn current_table_name(table: EntryKind) -> String {
+	format!("{}__current", entry_id_to_name(table))
 }

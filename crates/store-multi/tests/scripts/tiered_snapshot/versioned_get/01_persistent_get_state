@@ -30,7 +30,7 @@ persistent_get_state k version=0
 ---
 "k" => notfound
 
-# Delete at v2, flushed -> the single warm-current row becomes a tombstone
+# Delete at v2, flushed -> the single current row becomes a tombstone
 unset k=alive version=2
 flush
 ---

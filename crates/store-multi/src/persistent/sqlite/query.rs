@@ -15,7 +15,7 @@ pub(super) fn version_from_bytes(bytes: &[u8]) -> CommitVersion {
 	CommitVersion(u64::from_be_bytes(bytes.try_into().expect("version must be 8 bytes")))
 }
 
-pub(super) fn build_create_warm_current_sql(table_name: &str) -> String {
+pub(super) fn build_create_current_sql(table_name: &str) -> String {
 	format!(
 		"CREATE TABLE IF NOT EXISTS \"{}\" (\
 			key BLOB PRIMARY KEY,\
@@ -26,16 +26,16 @@ pub(super) fn build_create_warm_current_sql(table_name: &str) -> String {
 	)
 }
 
-pub(super) fn build_get_warm_current_sql(table_name: &str) -> String {
+pub(super) fn build_get_current_sql(table_name: &str) -> String {
 	format!("SELECT version, value FROM \"{}\" WHERE key = ?1", table_name)
 }
 
-pub(super) fn build_get_many_warm_current_sql(table_name: &str, key_count: usize) -> String {
+pub(super) fn build_get_many_current_sql(table_name: &str, key_count: usize) -> String {
 	let placeholders = (1..=key_count).map(|i| format!("?{i}")).collect::<Vec<_>>().join(",");
 	format!("SELECT key, version, value FROM \"{}\" WHERE key IN ({})", table_name, placeholders)
 }
 
-pub(super) fn build_upsert_warm_current_sql(table_name: &str) -> String {
+pub(super) fn build_upsert_current_sql(table_name: &str) -> String {
 	format!(
 		"INSERT INTO \"{0}\" (key, version, value) VALUES (?1, ?2, ?3) \
 		 ON CONFLICT(key) DO UPDATE SET \
@@ -46,7 +46,7 @@ pub(super) fn build_upsert_warm_current_sql(table_name: &str) -> String {
 	)
 }
 
-pub(super) fn build_range_warm_current_sql(
+pub(super) fn build_range_current_sql(
 	table_name: &str,
 	start: Bound<()>,
 	end: Bound<()>,
