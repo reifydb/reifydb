@@ -48,7 +48,11 @@ use tracing::{debug, error, trace};
 use super::decode::{
 	build_insert_diff_into_with_pool, build_remove_diff_into_with_pool, build_update_diff_into_with_pool,
 };
-use crate::{consume::host::CdcHost, produce::watermark::CdcProducerWatermark, storage::CdcStorage};
+use crate::{
+	consume::{host::CdcHost, wake::CdcWakeRegistry},
+	produce::watermark::CdcProducerWatermark,
+	storage::CdcStorage,
+};
 
 const MAX_POOL_SLABS: usize = 256;
 
@@ -67,6 +71,7 @@ pub struct CdcProducerActor<S, T, H> {
 
 	pool: ColumnBufferPool,
 	watermark: CdcProducerWatermark,
+	wake_registry: CdcWakeRegistry,
 }
 
 impl<S, T, H> CdcProducerActor<S, T, H>
@@ -82,6 +87,7 @@ where
 		event_bus: EventBus,
 		clock: Clock,
 		watermark: CdcProducerWatermark,
+		wake_registry: CdcWakeRegistry,
 	) -> Self {
 		Self {
 			storage: Arc::new(storage),
@@ -92,6 +98,7 @@ where
 			slab_pool: Slab::new(MAX_POOL_SLABS),
 			pool: ColumnBufferPool::new(),
 			watermark,
+			wake_registry,
 		}
 	}
 
@@ -376,6 +383,7 @@ where
 		self.process(version, changed_at, deltas);
 
 		self.watermark.advance(version);
+		self.wake_registry.notify_all();
 	}
 
 	#[inline]
@@ -580,13 +588,14 @@ pub fn spawn_cdc_producer<S, T, H>(
 	event_bus: EventBus,
 	clock: Clock,
 	watermark: CdcProducerWatermark,
+	wake_registry: CdcWakeRegistry,
 ) -> CdcProduceHandle
 where
 	S: CdcStorage + Send + Sync + 'static,
 	T: MultiVersionGetPrevious + Send + Sync + 'static,
 	H: CdcHost,
 {
-	let actor = CdcProducerActor::new(storage, transaction_store, host, event_bus, clock, watermark);
+	let actor = CdcProducerActor::new(storage, transaction_store, host, event_bus, clock, watermark, wake_registry);
 	system.spawn_system("cdc-producer", actor)
 }
 
@@ -621,6 +630,7 @@ pub mod tests {
 			event_bus,
 			clock,
 			CdcProducerWatermark::new(),
+			CdcWakeRegistry::new(),
 		);
 
 		let deltas = vec![Delta::Set {
@@ -674,6 +684,7 @@ pub mod tests {
 			event_bus,
 			clock,
 			CdcProducerWatermark::new(),
+			CdcWakeRegistry::new(),
 		);
 
 		let deltas = vec![

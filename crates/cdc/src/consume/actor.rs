@@ -1,7 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem, ops::Bound, time::Duration};
+use std::{
+	mem,
+	ops::Bound,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
+	time::Duration,
+};
 
 use reifydb_core::{
 	actors::cdc::CdcPollMessage,
@@ -38,6 +46,7 @@ pub struct PollActor<H: CdcHost, C: CdcConsume> {
 	store: CdcStore,
 	consumer_key: EncodedKey,
 	consumer_watermark: Option<CdcConsumerWatermark>,
+	wake_armed: Arc<AtomicBool>,
 }
 
 impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
@@ -47,6 +56,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		consumer: C,
 		store: CdcStore,
 		consumer_watermark: Option<CdcConsumerWatermark>,
+		wake_armed: Arc<AtomicBool>,
 	) -> Self {
 		let consumer_key = CdcConsumerKey {
 			consumer: config.consumer_id.clone(),
@@ -60,6 +70,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			store,
 			consumer_key,
 			consumer_watermark,
+			wake_armed,
 		}
 	}
 
@@ -200,6 +211,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 
 	fn start_consume(&self, state: &mut PollState, ctx: &Context<CdcPollMessage>) {
 		state.phase = Phase::Ready;
+		self.wake_armed.store(false, Ordering::Release);
 		let safe_version = self.host.done_until();
 
 		let Some(checkpoint) = self.resolve_checkpoint(state, ctx) else {

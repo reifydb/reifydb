@@ -13,6 +13,7 @@ use reifydb_cdc::{
 	consume::{
 		consumer::{CdcConsume, CdcConsumer},
 		poll::{PollConsumer, PollConsumerConfig},
+		wake::CdcWakeRegistry,
 	},
 	storage::CdcStore,
 };
@@ -186,12 +187,14 @@ impl FlowSubsystem {
 			move || compute_flow_watermarks(&tracker, &engine, &flow_catalog)
 		}));
 
+		let cdc_wake_registry = ioc.resolve::<CdcWakeRegistry>().expect("CdcWakeRegistry must be registered");
 		let poll_config = PollConsumerConfig::new(
 			CdcConsumerId::new("flow-coordinator"),
 			"flow-cdc-poll",
-			Duration::from_millis(10),
+			Duration::from_secs(1),
 			Some(100),
-		);
+		)
+		.with_wake_registry(cdc_wake_registry);
 		let dispatcher = FlowConsumeDispatcher {
 			coordinator: consume_ref,
 			registrar,

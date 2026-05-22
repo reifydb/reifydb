@@ -12,12 +12,15 @@ use reifydb_catalog::{
 	},
 };
 use reifydb_cdc::{
+	consume::wake::CdcWakeRegistry,
 	produce::{
 		producer::{CdcProducerEventListener, spawn_cdc_producer},
 		watermark::CdcProducerWatermark,
 	},
-	storage::{CdcStore, recent_cache::RecentCdcCache},
+	storage::CdcStore,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_cdc::storage::recent_cache::RecentCdcCache;
 use reifydb_core::{
 	actors::cdc::CdcProduceHandle,
 	event::{EventBus, transaction::PostCommitEvent},
@@ -208,6 +211,9 @@ impl TestEngineBuilder {
 		let cdc_producer_watermark = CdcProducerWatermark::new();
 		ioc = ioc.register(cdc_producer_watermark.clone());
 
+		let cdc_wake_registry = CdcWakeRegistry::new();
+		ioc = ioc.register(cdc_wake_registry.clone());
+
 		let ioc_for_cdc = ioc.clone();
 
 		let engine = StandardEngine::new(
@@ -239,6 +245,7 @@ impl TestEngineBuilder {
 				&eventbus,
 				ioc_for_cdc,
 				cdc_producer_watermark,
+				cdc_wake_registry,
 			);
 		}
 
@@ -274,6 +281,7 @@ fn register_cdc_producer(
 	eventbus: &EventBus,
 	ioc_for_cdc: IocContainer,
 	watermark: CdcProducerWatermark,
+	wake_registry: CdcWakeRegistry,
 ) {
 	let cdc_handle = spawn_cdc_producer(
 		&runtime.actor_system(),
@@ -283,6 +291,7 @@ fn register_cdc_producer(
 		eventbus.clone(),
 		runtime.clock().clone(),
 		watermark,
+		wake_registry,
 	);
 	eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
 		cdc_handle.actor_ref().clone(),

@@ -13,4 +13,5 @@ pub mod checkpoint;
 pub mod consumer;
 pub mod host;
 pub mod poll;
+pub mod wake;
 pub mod watermark;

@@ -19,6 +19,7 @@ use reifydb_catalog::{
 use reifydb_cdc::compact::actor::CompactActor;
 use reifydb_cdc::{
 	CdcVersion,
+	consume::wake::CdcWakeRegistry,
 	produce::{
 		producer::{CdcProducerEventListener, spawn_cdc_producer},
 		watermark::CdcProducerWatermark,
@@ -386,6 +387,9 @@ impl DatabaseBuilder {
 		let cdc_producer_watermark = CdcProducerWatermark::new();
 		self.ioc = self.ioc.register(cdc_producer_watermark.clone());
 
+		let cdc_wake_registry = CdcWakeRegistry::new();
+		self.ioc = self.ioc.register(cdc_wake_registry.clone());
+
 		// Spawn the CDC compaction actor (sqlite only). Settings come from
 		// system config (CDC_COMPACT_INTERVAL etc.) so they can be tuned at
 		// runtime via SET CONFIG.
@@ -486,6 +490,7 @@ impl DatabaseBuilder {
 			eventbus.clone(),
 			runtime.clock().clone(),
 			cdc_producer_watermark,
+			cdc_wake_registry,
 		);
 		eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
 			cdc_handle.actor_ref().clone(),
