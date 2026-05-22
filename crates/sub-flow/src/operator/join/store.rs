@@ -8,7 +8,7 @@ use reifydb_core::{
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
-		shape::{RowShape, RowShapeField},
+		shape::{RowShape, RowShapeField, cache::RowShapeCacheCell, fingerprint::RowShapeFingerprint},
 	},
 	interface::catalog::flow::FlowNodeId,
 	internal,
@@ -28,12 +28,14 @@ use crate::{
 
 const HASH_BYTES: usize = 16;
 const ROW_NUMBER_BYTES: usize = 8;
+const SHAPE_CACHE_CAPACITY: usize = 8;
 
 pub(crate) struct Store {
 	node_id: FlowNodeId,
 	prefix: Vec<u8>,
 	schema_key: EncodedKey,
 	shape_written: Cell<bool>,
+	shape_cache: RowShapeCacheCell,
 }
 
 impl Store {
@@ -47,6 +49,7 @@ impl Store {
 			prefix,
 			schema_key: EncodedKey::new(vec![schema_byte]),
 			shape_written: Cell::new(false),
+			shape_cache: RowShapeCacheCell::new(SHAPE_CACHE_CAPACITY),
 		}
 	}
 
@@ -130,10 +133,9 @@ impl Store {
 	) -> Result<Vec<(RowNumber, EncodedRow)>> {
 		let prefix = self.hash_prefix(hash);
 		let range = EncodedKeyRange::prefix(&prefix);
-		let entries: Vec<(EncodedKey, EncodedRow)> =
-			state_range(self.node_id, txn, range).collect::<Result<_>>()?;
-		let mut out = Vec::with_capacity(entries.len());
-		for (full_key, row) in entries {
+		let mut out = Vec::new();
+		for entry in state_range(self.node_id, txn, range) {
+			let (full_key, row) = entry?;
 			if let Some(rn) = row_number_from_key(full_key.as_slice()) {
 				out.push((rn, row));
 			}
@@ -147,7 +149,14 @@ impl Store {
 		Ok(state_range(self.node_id, txn, range).next().transpose()?.is_some())
 	}
 
-	pub(crate) fn get_row_shape(&self, txn: &mut FlowTransaction) -> Result<Option<RowShape>> {
+	pub(crate) fn get_row_shape(
+		&self,
+		txn: &mut FlowTransaction,
+		fingerprint: RowShapeFingerprint,
+	) -> Result<Option<RowShape>> {
+		if let Some(shape) = self.shape_cache.get(&fingerprint) {
+			return Ok(Some(shape));
+		}
 		match state_get(self.node_id, txn, &self.schema_key)? {
 			Some(row) => {
 				let op = RowShape::operator_state();
@@ -158,7 +167,9 @@ impl Store {
 				let fields: Vec<RowShapeField> = from_bytes(blob.as_ref()).map_err(|e| {
 					Error(Box::new(internal!("Failed to deserialize row shape: {}", e)))
 				})?;
-				Ok(Some(RowShape::new(fields)))
+				let shape = RowShape::new(fields);
+				self.shape_cache.insert(shape.clone());
+				Ok(Some(shape))
 			}
 			None => Ok(None),
 		}
@@ -190,6 +201,7 @@ impl Store {
 		row.set_timestamps(created_at, now_nanos);
 		state_set(self.node_id, txn, &self.schema_key, row)?;
 		self.shape_written.set(true);
+		self.shape_cache.insert(shape.clone());
 		Ok(())
 	}
 
@@ -241,7 +253,7 @@ mod tests {
 	use reifydb_core::{common::CommitVersion, encoded::row::EncodedRow};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_type::value::identity::IdentityId;
+	use reifydb_type::value::{identity::IdentityId, r#type::Type};
 
 	use super::*;
 
@@ -444,5 +456,64 @@ mod tests {
 
 		assert!(!left.contains_key(&mut txn, &h(0xAAA)).unwrap());
 		assert!(right.contains_key(&mut txn, &h(0xBBB)).unwrap());
+	}
+
+	#[test]
+	fn get_row_shape_round_trips_written_shape() {
+		let engine = TestEngine::new();
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+		let store = Store::new(FlowNodeId(20), JoinSide::Left);
+
+		let shape = RowShape::testing(&[Type::Int4, Type::Utf8]);
+		store.set_row_shape(&mut txn, &shape).unwrap();
+
+		let got = store.get_row_shape(&mut txn, shape.fingerprint()).unwrap();
+		assert_eq!(got, Some(shape));
+	}
+
+	#[test]
+	fn get_row_shape_loads_from_state_when_cache_is_cold() {
+		let engine = TestEngine::new();
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+		let node = FlowNodeId(21);
+		let shape = RowShape::testing(&[Type::Int4]);
+
+		let writer = Store::new(node, JoinSide::Left);
+		writer.set_row_shape(&mut txn, &shape).unwrap();
+
+		let reader = Store::new(node, JoinSide::Left);
+		let got = reader.get_row_shape(&mut txn, shape.fingerprint()).unwrap();
+		assert_eq!(got, Some(shape), "a cold in-memory cache must fall back to the persisted shape");
+	}
+
+	#[test]
+	fn get_row_shape_returns_none_when_shape_absent() {
+		let engine = TestEngine::new();
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+		let store = Store::new(FlowNodeId(22), JoinSide::Right);
+
+		let fp = RowShape::testing(&[Type::Int4]).fingerprint();
+		assert_eq!(store.get_row_shape(&mut txn, fp).unwrap(), None);
 	}
 }

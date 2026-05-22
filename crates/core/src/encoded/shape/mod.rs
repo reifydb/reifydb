@@ -12,6 +12,7 @@
 //! part of the wire format. Reordering or resizing any of these regions silently breaks every row written under the
 //! previous layout.
 
+pub mod cache;
 pub mod consolidate;
 pub mod evolution;
 pub mod fingerprint;

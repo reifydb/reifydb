@@ -120,10 +120,12 @@ pub(crate) fn pull_from_store(txn: &mut FlowTransaction, store: &Store, key_hash
 	if rows.is_empty() {
 		return Ok(Columns::empty());
 	}
-	let shape =
-		store.get_row_shape(txn)?.ok_or_else(|| Error(Box::new(internal!("Row shape not found in store"))))?;
 	let ids: Vec<RowNumber> = rows.iter().map(|(rn, _)| *rn).collect();
 	let encoded: Vec<EncodedRow> = rows.into_iter().map(|(_, r)| r).collect();
+	let fingerprint = encoded[0].fingerprint();
+	let shape = store
+		.get_row_shape(txn, fingerprint)?
+		.ok_or_else(|| Error(Box::new(internal!("Row shape not found in store"))))?;
 	Ok(Columns::from_encoded_rows(&shape, &ids, &encoded))
 }
 
