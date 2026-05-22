@@ -22,7 +22,6 @@ use reifydb_core::{
 	key::{ringbuffer::RingBufferMetadataKey, row::RowKey},
 	value::column::columns::Columns,
 };
-use reifydb_transaction::interceptor::view_row::ViewRowInterceptor;
 use reifydb_type::{
 	Result,
 	error::Error,
@@ -167,7 +166,7 @@ impl Operator for SinkRingBufferViewOperator {
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_ringbuffer_remove(txn, &view, &shape, object_id, &mut state, pre)?,
+				} => self.apply_ringbuffer_remove(txn, &view, object_id, &mut state, pre)?,
 			}
 		}
 
@@ -234,14 +233,12 @@ impl SinkRingBufferViewOperator {
 		let surviving: Vec<usize> =
 			(0..assigned_ids.len()).filter(|&i| !evicted_in_batch.contains(&assigned_ids[i])).collect();
 		let final_ids: Vec<RowNumber> = surviving.iter().map(|&i| assigned_ids[i]).collect();
-		let mut final_rows: Vec<EncodedRow> = surviving.iter().map(|&i| encoded_rows[i].clone()).collect();
+		let final_rows: Vec<EncodedRow> = surviving.iter().map(|&i| encoded_rows[i].clone()).collect();
 
-		ViewRowInterceptor::pre_insert(txn, view, &final_ids, &mut final_rows)?;
 		for (assigned_rn, encoded) in final_ids.iter().zip(final_rows.iter()) {
 			let key = RowKey::encoded(object_id, *assigned_rn);
 			txn.set(&key, encoded.clone())?;
 		}
-		ViewRowInterceptor::post_insert(txn, view, &final_ids, &final_rows)?;
 		emit_view_change(txn, view, Diff::insert(coerced));
 		Ok(())
 	}
@@ -261,34 +258,27 @@ impl SinkRingBufferViewOperator {
 		let coerced_pre = coerce_columns(pre, view.columns())?;
 		let coerced_post = coerce_columns(post, view.columns())?;
 		let row_count = coerced_post.row_count();
-		let mut post_ids: Vec<RowNumber> = Vec::with_capacity(row_count);
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut pre_encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
 		let mut post_encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
 			let pre_source_rn = coerced_pre.row_numbers[row_idx];
 			let post_source_rn = coerced_post.row_numbers[row_idx];
 			let pre_storage_rn = state.forward.get(&pre_source_rn).copied().unwrap_or(pre_source_rn);
 			let post_storage_rn = state.forward.get(&post_source_rn).copied().unwrap_or(post_source_rn);
-			let (_, pre_encoded) = encode_row_at_index(&coerced_pre, row_idx, shape, pre_storage_rn)?;
 			let (_, post_encoded) = encode_row_at_index(&coerced_post, row_idx, shape, post_storage_rn)?;
 
-			post_ids.push(post_storage_rn);
 			pre_keys.push(RowKey::encoded(object_id, pre_storage_rn));
 			post_keys.push(RowKey::encoded(object_id, post_storage_rn));
-			pre_encoded_rows.push(pre_encoded);
 			post_encoded_rows.push(post_encoded);
 		}
 
-		ViewRowInterceptor::pre_update(txn, view, &post_ids, &mut post_encoded_rows)?;
 		for ((pre_key, post_key), post_encoded) in
 			pre_keys.iter().zip(post_keys.iter()).zip(post_encoded_rows.iter())
 		{
 			txn.remove(pre_key)?;
 			txn.set(post_key, post_encoded.clone())?;
 		}
-		ViewRowInterceptor::post_update(txn, view, &post_ids, &post_encoded_rows, &pre_encoded_rows)?;
 		emit_view_change(txn, view, Diff::update(coerced_pre, coerced_post));
 		Ok(())
 	}
@@ -298,7 +288,6 @@ impl SinkRingBufferViewOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		view: &View,
-		shape: &RowShape,
 		object_id: ShapeId,
 		state: &mut RingBufferState,
 		pre: &Arc<Columns>,
@@ -306,21 +295,16 @@ impl SinkRingBufferViewOperator {
 		let coerced = coerce_columns(pre, view.columns())?;
 		let row_count = coerced.row_count();
 		let mut storage_ids: Vec<RowNumber> = Vec::with_capacity(row_count);
-		let mut encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
 			let source_rn = coerced.row_numbers[row_idx];
 			let storage_rn = state.forward.remove(&source_rn).unwrap_or(source_rn);
 			state.reverse.remove(&storage_rn);
-			let (_, encoded) = encode_row_at_index(&coerced, row_idx, shape, storage_rn)?;
 			storage_ids.push(storage_rn);
-			encoded_rows.push(encoded);
 		}
-		ViewRowInterceptor::pre_delete(txn, view, &storage_ids)?;
 		for storage_rn in storage_ids.iter() {
 			let key = RowKey::encoded(object_id, *storage_rn);
 			txn.remove(&key)?;
 		}
-		ViewRowInterceptor::post_delete(txn, view, &storage_ids, &encoded_rows)?;
 		emit_view_change(txn, view, Diff::remove(coerced));
 		Ok(())
 	}

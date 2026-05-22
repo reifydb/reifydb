@@ -74,10 +74,6 @@ use reifydb_transaction::{
 			ViewPostCreateInterceptor, ViewPostUpdateInterceptor, ViewPreDeleteInterceptor,
 			ViewPreUpdateInterceptor,
 		},
-		view_row::{
-			ViewRowPostDeleteInterceptor, ViewRowPostInsertInterceptor, ViewRowPostUpdateInterceptor,
-			ViewRowPreDeleteInterceptor, ViewRowPreInsertInterceptor, ViewRowPreUpdateInterceptor,
-		},
 	},
 	multi::transaction::read::MultiReadTransaction,
 	single::SingleTransaction,
@@ -564,13 +560,6 @@ impl WithInterceptors for FlowTransaction {
 	interceptor_method!(table_pre_update_interceptors, table_pre_update, TablePreUpdateInterceptor);
 	interceptor_method!(table_post_update_interceptors, table_post_update, TablePostUpdateInterceptor);
 	interceptor_method!(table_pre_delete_interceptors, table_pre_delete, TablePreDeleteInterceptor);
-
-	interceptor_method!(view_row_pre_insert_interceptors, view_row_pre_insert, ViewRowPreInsertInterceptor);
-	interceptor_method!(view_row_post_insert_interceptors, view_row_post_insert, ViewRowPostInsertInterceptor);
-	interceptor_method!(view_row_pre_update_interceptors, view_row_pre_update, ViewRowPreUpdateInterceptor);
-	interceptor_method!(view_row_post_update_interceptors, view_row_post_update, ViewRowPostUpdateInterceptor);
-	interceptor_method!(view_row_pre_delete_interceptors, view_row_pre_delete, ViewRowPreDeleteInterceptor);
-	interceptor_method!(view_row_post_delete_interceptors, view_row_post_delete, ViewRowPostDeleteInterceptor);
 
 	interceptor_method!(view_post_create_interceptors, view_post_create, ViewPostCreateInterceptor);
 	interceptor_method!(view_pre_update_interceptors, view_pre_update, ViewPreUpdateInterceptor);

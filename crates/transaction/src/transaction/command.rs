@@ -88,10 +88,6 @@ use crate::{
 			ViewPostCreateInterceptor, ViewPostUpdateInterceptor, ViewPreDeleteInterceptor,
 			ViewPreUpdateInterceptor,
 		},
-		view_row::{
-			ViewRowPostDeleteInterceptor, ViewRowPostInsertInterceptor, ViewRowPostUpdateInterceptor,
-			ViewRowPreDeleteInterceptor, ViewRowPreInsertInterceptor, ViewRowPreUpdateInterceptor,
-		},
 	},
 	multi::{
 		pending::PendingWrites,
@@ -628,30 +624,6 @@ impl WithInterceptors for CommandTransaction {
 
 	fn table_pre_delete_interceptors(&mut self) -> &mut Chain<dyn TablePreDeleteInterceptor + Send + Sync> {
 		&mut self.interceptors.table_pre_delete
-	}
-
-	fn view_row_pre_insert_interceptors(&mut self) -> &mut Chain<dyn ViewRowPreInsertInterceptor + Send + Sync> {
-		&mut self.interceptors.view_row_pre_insert
-	}
-
-	fn view_row_post_insert_interceptors(&mut self) -> &mut Chain<dyn ViewRowPostInsertInterceptor + Send + Sync> {
-		&mut self.interceptors.view_row_post_insert
-	}
-
-	fn view_row_pre_update_interceptors(&mut self) -> &mut Chain<dyn ViewRowPreUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.view_row_pre_update
-	}
-
-	fn view_row_post_update_interceptors(&mut self) -> &mut Chain<dyn ViewRowPostUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.view_row_post_update
-	}
-
-	fn view_row_pre_delete_interceptors(&mut self) -> &mut Chain<dyn ViewRowPreDeleteInterceptor + Send + Sync> {
-		&mut self.interceptors.view_row_pre_delete
-	}
-
-	fn view_row_post_delete_interceptors(&mut self) -> &mut Chain<dyn ViewRowPostDeleteInterceptor + Send + Sync> {
-		&mut self.interceptors.view_row_post_delete
 	}
 
 	fn view_post_create_interceptors(&mut self) -> &mut Chain<dyn ViewPostCreateInterceptor + Send + Sync> {

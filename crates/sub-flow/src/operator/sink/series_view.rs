@@ -14,7 +14,6 @@ use reifydb_core::{
 	key::row::RowKey,
 	value::column::columns::Columns,
 };
-use reifydb_transaction::interceptor::view_row::ViewRowInterceptor;
 use reifydb_type::{
 	Result,
 	value::{datetime::DateTime, row_number::RowNumber},
@@ -80,7 +79,7 @@ impl Operator for SinkSeriesViewOperator {
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_series_view_remove(txn, &view, &shape, object_id, pre)?,
+				} => self.apply_series_view_remove(txn, &view, object_id, pre)?,
 			}
 		}
 
@@ -108,12 +107,10 @@ impl SinkSeriesViewOperator {
 			ids.push(row_number);
 			encoded_rows.push(encoded);
 		}
-		ViewRowInterceptor::pre_insert(txn, view, &ids, &mut encoded_rows)?;
 		for (row_number, encoded) in ids.iter().zip(encoded_rows.iter()) {
 			let key = RowKey::encoded(object_id, *row_number);
 			txn.set(&key, encoded.clone())?;
 		}
-		ViewRowInterceptor::post_insert(txn, view, &ids, &encoded_rows)?;
 		emit_view_change(txn, view, Diff::insert(coerced));
 		Ok(())
 	}
@@ -131,31 +128,24 @@ impl SinkSeriesViewOperator {
 		let coerced_pre = coerce_columns(pre, view.columns())?;
 		let coerced_post = coerce_columns(post, view.columns())?;
 		let row_count = coerced_post.row_count();
-		let mut post_ids: Vec<RowNumber> = Vec::with_capacity(row_count);
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut pre_encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
 		let mut post_encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
 			let pre_row_number = coerced_pre.row_numbers[row_idx];
 			let post_row_number = coerced_post.row_numbers[row_idx];
-			let (_, pre_encoded) = encode_row_at_index(&coerced_pre, row_idx, shape, pre_row_number)?;
 			let (_, post_encoded) = encode_row_at_index(&coerced_post, row_idx, shape, post_row_number)?;
 
-			post_ids.push(post_row_number);
 			pre_keys.push(RowKey::encoded(object_id, pre_row_number));
 			post_keys.push(RowKey::encoded(object_id, post_row_number));
-			pre_encoded_rows.push(pre_encoded);
 			post_encoded_rows.push(post_encoded);
 		}
-		ViewRowInterceptor::pre_update(txn, view, &post_ids, &mut post_encoded_rows)?;
 		for ((pre_key, post_key), post_encoded) in
 			pre_keys.iter().zip(post_keys.iter()).zip(post_encoded_rows.iter())
 		{
 			txn.remove(pre_key)?;
 			txn.set(post_key, post_encoded.clone())?;
 		}
-		ViewRowInterceptor::post_update(txn, view, &post_ids, &post_encoded_rows, &pre_encoded_rows)?;
 		emit_view_change(txn, view, Diff::update(coerced_pre, coerced_post));
 		Ok(())
 	}
@@ -165,26 +155,20 @@ impl SinkSeriesViewOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		view: &View,
-		shape: &RowShape,
 		object_id: ShapeId,
 		pre: &Arc<Columns>,
 	) -> Result<()> {
 		let coerced = coerce_columns(pre, view.columns())?;
 		let row_count = coerced.row_count();
 		let mut ids: Vec<RowNumber> = Vec::with_capacity(row_count);
-		let mut encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
 			let row_number = coerced.row_numbers[row_idx];
-			let (_, encoded) = encode_row_at_index(&coerced, row_idx, shape, row_number)?;
 			ids.push(row_number);
-			encoded_rows.push(encoded);
 		}
-		ViewRowInterceptor::pre_delete(txn, view, &ids)?;
 		for row_number in ids.iter() {
 			let key = RowKey::encoded(object_id, *row_number);
 			txn.remove(&key)?;
 		}
-		ViewRowInterceptor::post_delete(txn, view, &ids, &encoded_rows)?;
 		emit_view_change(txn, view, Diff::remove(coerced));
 		Ok(())
 	}

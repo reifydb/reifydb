@@ -44,9 +44,6 @@ impl Operator for NoOpParent {
 	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> TypeResult<Change> {
 		Ok(change)
 	}
-	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> TypeResult<Columns> {
-		Ok(Columns::empty())
-	}
 }
 
 fn make_distinct_op(node_id: u64) -> (DistinctOperator, TestEngine) {

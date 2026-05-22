@@ -19,7 +19,6 @@ use reifydb_core::{
 	util::encoding::keycode::{catalog::serialize_shape_id, encode_u8, encode_u64_varint},
 	value::column::columns::Columns,
 };
-use reifydb_transaction::interceptor::{WithInterceptors, view_row::ViewRowInterceptor};
 use reifydb_type::{
 	Result,
 	value::{datetime::DateTime, row_number::RowNumber},
@@ -89,7 +88,7 @@ impl Operator for SinkTableViewOperator {
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_table_view_remove(txn, &view, &shape, pre)?,
+				} => self.apply_table_view_remove(txn, &view, pre)?,
 			}
 		}
 
@@ -110,25 +109,20 @@ impl SinkTableViewOperator {
 		let row_count = coerced.row_count();
 		let mut ids: Vec<RowNumber> = Vec::with_capacity(row_count);
 		let mut encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
+
 		for row_idx in 0..row_count {
 			let row_number = coerced.row_numbers[row_idx];
 			let (_, encoded) = encode_row_at_index(&coerced, row_idx, shape, row_number)?;
 			ids.push(row_number);
 			encoded_rows.push(encoded);
 		}
-		let has_pre = !txn.view_row_pre_insert_interceptors().is_empty();
-		let has_post = !txn.view_row_post_insert_interceptors().is_empty();
-		if has_pre {
-			ViewRowInterceptor::pre_insert(txn, view, &ids, &mut encoded_rows)?;
-		}
+
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		for row_number in ids.iter() {
 			keys.push(self.row_key(*row_number));
 		}
 		txn.set_batch(&keys, &encoded_rows)?;
-		if has_post {
-			ViewRowInterceptor::post_insert(txn, view, &ids, &encoded_rows)?;
-		}
+
 		emit_view_change(txn, view, Diff::insert(coerced));
 		Ok(())
 	}
@@ -145,15 +139,12 @@ impl SinkTableViewOperator {
 		let coerced_pre = coerce_columns(pre, view.columns())?;
 		let coerced_post = coerce_columns(post, view.columns())?;
 		let row_count = coerced_post.row_count();
-		let mut post_ids: Vec<RowNumber> = Vec::with_capacity(row_count);
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut pre_encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
 		let mut post_encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
 			let pre_row_number = coerced_pre.row_numbers[row_idx];
 			let post_row_number = coerced_post.row_numbers[row_idx];
-			let (_, pre_encoded) = encode_row_at_index(&coerced_pre, row_idx, shape, pre_row_number)?;
 			let (_, mut post_encoded) =
 				encode_row_at_index(&coerced_post, row_idx, shape, post_row_number)?;
 
@@ -189,57 +180,30 @@ impl SinkTableViewOperator {
 				post_encoded.set_timestamps(c, updated);
 			}
 
-			post_ids.push(post_row_number);
 			pre_keys.push(pre_key);
 			post_keys.push(post_key);
-			pre_encoded_rows.push(pre_encoded);
 			post_encoded_rows.push(post_encoded);
 		}
 
-		let has_pre = !txn.view_row_pre_update_interceptors().is_empty();
-		let has_post = !txn.view_row_post_update_interceptors().is_empty();
-		if has_pre {
-			ViewRowInterceptor::pre_update(txn, view, &post_ids, &mut post_encoded_rows)?;
-		}
 		txn.remove_batch(&pre_keys)?;
 		txn.set_batch(&post_keys, &post_encoded_rows)?;
-		if has_post {
-			ViewRowInterceptor::post_update(txn, view, &post_ids, &post_encoded_rows, &pre_encoded_rows)?;
-		}
 
 		emit_view_change(txn, view, Diff::update(coerced_pre, coerced_post));
 		Ok(())
 	}
 
 	#[inline]
-	fn apply_table_view_remove(
-		&self,
-		txn: &mut FlowTransaction,
-		view: &View,
-		shape: &RowShape,
-		pre: &Arc<Columns>,
-	) -> Result<()> {
+	fn apply_table_view_remove(&self, txn: &mut FlowTransaction, view: &View, pre: &Arc<Columns>) -> Result<()> {
 		let coerced = coerce_columns(pre, view.columns())?;
 		let row_count = coerced.row_count();
-		let mut ids: Vec<RowNumber> = Vec::with_capacity(row_count);
-		let mut encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
 			let row_number = coerced.row_numbers[row_idx];
-			let (_, encoded) = encode_row_at_index(&coerced, row_idx, shape, row_number)?;
 			keys.push(self.row_key(row_number));
-			ids.push(row_number);
-			encoded_rows.push(encoded);
 		}
-		let has_pre = !txn.view_row_pre_delete_interceptors().is_empty();
-		let has_post = !txn.view_row_post_delete_interceptors().is_empty();
-		if has_pre {
-			ViewRowInterceptor::pre_delete(txn, view, &ids)?;
-		}
+
 		txn.remove_batch(&keys)?;
-		if has_post {
-			ViewRowInterceptor::post_delete(txn, view, &ids, &encoded_rows)?;
-		}
+
 		emit_view_change(txn, view, Diff::remove(coerced));
 		Ok(())
 	}

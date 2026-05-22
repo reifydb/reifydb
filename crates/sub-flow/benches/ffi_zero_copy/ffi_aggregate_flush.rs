@@ -14,7 +14,7 @@ use reifydb_core::interface::{catalog::flow::FlowNodeId, change::Change};
 use reifydb_sdk::{
 	error::Result as SdkResult,
 	operator::{
-		FFIOperator, FFIOperatorMetadata, change::BorrowedChange, column::OperatorColumn,
+		FFIOperator, FFIOperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
 		context::OperatorContext,
 	},
 	state::cache::StateCache,

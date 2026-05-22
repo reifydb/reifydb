@@ -22,7 +22,6 @@ pub mod table;
 pub mod table_row;
 pub mod transaction;
 pub mod view;
-pub mod view_row;
 
 use authentication::{AuthenticationPostCreateInterceptor, AuthenticationPreDeleteInterceptor};
 use chain::InterceptorChain;
@@ -69,10 +68,6 @@ use table_row::{
 };
 use transaction::{PostCommitInterceptor, PreCommitInterceptor};
 use view::{ViewPostCreateInterceptor, ViewPostUpdateInterceptor, ViewPreDeleteInterceptor, ViewPreUpdateInterceptor};
-use view_row::{
-	ViewRowPostDeleteInterceptor, ViewRowPostInsertInterceptor, ViewRowPostUpdateInterceptor,
-	ViewRowPreDeleteInterceptor, ViewRowPreInsertInterceptor, ViewRowPreUpdateInterceptor,
-};
 
 pub type Chain<I> = InterceptorChain<I>;
 
@@ -122,13 +117,6 @@ pub trait WithInterceptors {
 	fn table_pre_update_interceptors(&mut self) -> &mut Chain<dyn TablePreUpdateInterceptor + Send + Sync>;
 	fn table_post_update_interceptors(&mut self) -> &mut Chain<dyn TablePostUpdateInterceptor + Send + Sync>;
 	fn table_pre_delete_interceptors(&mut self) -> &mut Chain<dyn TablePreDeleteInterceptor + Send + Sync>;
-
-	fn view_row_pre_insert_interceptors(&mut self) -> &mut Chain<dyn ViewRowPreInsertInterceptor + Send + Sync>;
-	fn view_row_post_insert_interceptors(&mut self) -> &mut Chain<dyn ViewRowPostInsertInterceptor + Send + Sync>;
-	fn view_row_pre_update_interceptors(&mut self) -> &mut Chain<dyn ViewRowPreUpdateInterceptor + Send + Sync>;
-	fn view_row_post_update_interceptors(&mut self) -> &mut Chain<dyn ViewRowPostUpdateInterceptor + Send + Sync>;
-	fn view_row_pre_delete_interceptors(&mut self) -> &mut Chain<dyn ViewRowPreDeleteInterceptor + Send + Sync>;
-	fn view_row_post_delete_interceptors(&mut self) -> &mut Chain<dyn ViewRowPostDeleteInterceptor + Send + Sync>;
 
 	fn view_post_create_interceptors(&mut self) -> &mut Chain<dyn ViewPostCreateInterceptor + Send + Sync>;
 	fn view_pre_update_interceptors(&mut self) -> &mut Chain<dyn ViewPreUpdateInterceptor + Send + Sync>;

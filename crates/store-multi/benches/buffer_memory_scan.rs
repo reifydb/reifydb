@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, ops::Bound, time::Instant};
 
-use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
+use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
 use reifydb_store_multi::{
 	buffer::memory::storage::MemoryPrimitiveStorage,
 	tier::{RangeCursor, TierStorage},
@@ -19,7 +19,7 @@ fn make_bank_state() -> MemoryPrimitiveStorage {
 		let mut batch = Vec::new();
 		for i in 0..4u8 {
 			batch.push((
-				CowVec::new(format!("account_{}", i).into_bytes()),
+				EncodedKey::new(format!("account_{}", i).into_bytes()),
 				Some(CowVec::new(vec![v as u8])),
 			));
 		}
@@ -35,7 +35,7 @@ fn make_counter_state() -> MemoryPrimitiveStorage {
 			CommitVersion(v),
 			HashMap::from([(
 				EntryKind::Multi,
-				vec![(CowVec::new(b"counter".to_vec()), Some(CowVec::new(vec![v as u8])))],
+				vec![(EncodedKey::new(b"counter".to_vec()), Some(CowVec::new(vec![v as u8])))],
 			)]),
 		)
 		.unwrap();

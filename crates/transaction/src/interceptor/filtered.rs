@@ -66,12 +66,6 @@ use super::{
 		ViewPostCreateContext, ViewPostCreateInterceptor, ViewPostUpdateContext, ViewPostUpdateInterceptor,
 		ViewPreDeleteContext, ViewPreDeleteInterceptor, ViewPreUpdateContext, ViewPreUpdateInterceptor,
 	},
-	view_row::{
-		ViewRowPostDeleteContext, ViewRowPostDeleteInterceptor, ViewRowPostInsertContext,
-		ViewRowPostInsertInterceptor, ViewRowPostUpdateContext, ViewRowPostUpdateInterceptor,
-		ViewRowPreDeleteContext, ViewRowPreDeleteInterceptor, ViewRowPreInsertContext,
-		ViewRowPreInsertInterceptor, ViewRowPreUpdateContext, ViewRowPreUpdateInterceptor,
-	},
 };
 
 macro_rules! define_filtered_interceptor {
@@ -268,48 +262,6 @@ define_filtered_interceptor!(
 	RingBufferRowPostDeleteInterceptor,
 	RingBufferRowPostDeleteContext,
 	ringbuffer
-);
-
-define_filtered_interceptor!(
-	FilteredViewRowPreInsertInterceptor,
-	ViewRowPreInsertInterceptor,
-	ViewRowPreInsertContext,
-	view
-);
-
-define_filtered_interceptor!(
-	FilteredViewRowPostInsertInterceptor,
-	ViewRowPostInsertInterceptor,
-	ViewRowPostInsertContext,
-	view
-);
-
-define_filtered_interceptor!(
-	FilteredViewRowPreUpdateInterceptor,
-	ViewRowPreUpdateInterceptor,
-	ViewRowPreUpdateContext,
-	view
-);
-
-define_filtered_interceptor!(
-	FilteredViewRowPostUpdateInterceptor,
-	ViewRowPostUpdateInterceptor,
-	ViewRowPostUpdateContext,
-	view
-);
-
-define_filtered_interceptor!(
-	FilteredViewRowPreDeleteInterceptor,
-	ViewRowPreDeleteInterceptor,
-	ViewRowPreDeleteContext,
-	view
-);
-
-define_filtered_interceptor!(
-	FilteredViewRowPostDeleteInterceptor,
-	ViewRowPostDeleteInterceptor,
-	ViewRowPostDeleteContext,
-	view
 );
 
 define_filtered_interceptor!(FilteredViewPostCreateInterceptor, ViewPostCreateInterceptor, ViewPostCreateContext, post);

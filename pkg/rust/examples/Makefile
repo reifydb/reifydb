@@ -28,7 +28,6 @@ help:
 	@echo ""
 	@echo "Interceptor Examples:"
 	@echo "  make intercept-table-view    - Table and view interceptors (pre/post hooks)"
-	@echo "  make intercept-deferred-view - Deferred view lifecycle interceptors (post_create/pre_delete)"
 	@echo ""
 	@echo "Subscription Examples:"
 	@echo "  make subscription-cursor  - Pull-based subscription cursor (CDC data consumption)"
@@ -105,10 +104,6 @@ rql-logical:
 intercept-table-view:
 	RUST_LOG=info cargo run --release --bin intercept-table-view
 
-.PHONY: intercept-deferred-view
-intercept-deferred-view:
-	RUST_LOG=info cargo run --release --bin intercept-deferred-view
-
 # Replication Examples
 .PHONY: replication-basic
 replication-basic:
@@ -117,7 +112,7 @@ replication-basic:
 # Define example groups
 BASIC_EXAMPLES := basic-hello-world basic-tables basic-enums basic-events-and-handlers
 RQL_EXAMPLES := rql-from rql-map rql-filter rql-sort rql-take rql-aggregate rql-join rql-arithmetic rql-comparison rql-logical
-INTERCEPT_EXAMPLES := intercept-table-view intercept-deferred-view
+INTERCEPT_EXAMPLES := intercept-table-view
 # Run all examples in order (by directory, then by filename)
 .PHONY: run-all
 run-all:

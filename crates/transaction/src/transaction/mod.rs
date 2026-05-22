@@ -90,10 +90,6 @@ use crate::{
 			ViewPostCreateInterceptor, ViewPostUpdateInterceptor, ViewPreDeleteInterceptor,
 			ViewPreUpdateInterceptor,
 		},
-		view_row::{
-			ViewRowPostDeleteInterceptor, ViewRowPostInsertInterceptor, ViewRowPostUpdateInterceptor,
-			ViewRowPreDeleteInterceptor, ViewRowPreInsertInterceptor, ViewRowPreUpdateInterceptor,
-		},
 	},
 	multi::transaction::write::WriteSavepoint,
 	single::{read::SingleReadTransaction, write::SingleWriteTransaction},
@@ -729,30 +725,6 @@ impl WithInterceptors for Transaction<'_> {
 	delegate_interceptor!(table_pre_update_interceptors, &mut Chain<dyn TablePreUpdateInterceptor + Send + Sync>);
 	delegate_interceptor!(table_post_update_interceptors, &mut Chain<dyn TablePostUpdateInterceptor + Send + Sync>);
 	delegate_interceptor!(table_pre_delete_interceptors, &mut Chain<dyn TablePreDeleteInterceptor + Send + Sync>);
-	delegate_interceptor!(
-		view_row_pre_insert_interceptors,
-		&mut Chain<dyn ViewRowPreInsertInterceptor + Send + Sync>
-	);
-	delegate_interceptor!(
-		view_row_post_insert_interceptors,
-		&mut Chain<dyn ViewRowPostInsertInterceptor + Send + Sync>
-	);
-	delegate_interceptor!(
-		view_row_pre_update_interceptors,
-		&mut Chain<dyn ViewRowPreUpdateInterceptor + Send + Sync>
-	);
-	delegate_interceptor!(
-		view_row_post_update_interceptors,
-		&mut Chain<dyn ViewRowPostUpdateInterceptor + Send + Sync>
-	);
-	delegate_interceptor!(
-		view_row_pre_delete_interceptors,
-		&mut Chain<dyn ViewRowPreDeleteInterceptor + Send + Sync>
-	);
-	delegate_interceptor!(
-		view_row_post_delete_interceptors,
-		&mut Chain<dyn ViewRowPostDeleteInterceptor + Send + Sync>
-	);
 	delegate_interceptor!(view_post_create_interceptors, &mut Chain<dyn ViewPostCreateInterceptor + Send + Sync>);
 	delegate_interceptor!(view_pre_update_interceptors, &mut Chain<dyn ViewPreUpdateInterceptor + Send + Sync>);
 	delegate_interceptor!(view_post_update_interceptors, &mut Chain<dyn ViewPostUpdateInterceptor + Send + Sync>);
