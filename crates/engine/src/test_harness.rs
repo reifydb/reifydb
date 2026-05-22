@@ -11,6 +11,8 @@ use reifydb_catalog::{
 		table::{TableColumnToCreate, TableToCreate},
 	},
 };
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_cdc::storage::recent_cache::RecentCdcCache;
 use reifydb_cdc::{
 	consume::wake::CdcWakeRegistry,
 	produce::{
@@ -19,8 +21,6 @@ use reifydb_cdc::{
 	},
 	storage::CdcStore,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use reifydb_cdc::storage::recent_cache::RecentCdcCache;
 use reifydb_core::{
 	actors::cdc::CdcProduceHandle,
 	event::{EventBus, transaction::PostCommitEvent},

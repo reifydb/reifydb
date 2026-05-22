@@ -3,11 +3,10 @@
 
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
-use reifydb_catalog::catalog::Catalog;
+use reifydb_catalog::{catalog::Catalog, shape::decode::decode_row};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	encoded::{key::EncodedKey, row::EncodedRow},
 	event::{
 		EventBus, EventListener,
 		metric::{CdcEvictedEvent, CdcEviction, CdcWrite, CdcWrittenEvent},
@@ -26,8 +25,7 @@ use reifydb_core::{
 		EncodableKey, Key, cdc_exclude::should_exclude_from_cdc, kind::KeyKind, row::RowKey,
 		series_row::SeriesRowKey,
 	},
-	util::slab::Slab,
-	value::column::{buffer::pool::ColumnBufferPool, columns::Columns},
+	value::column::columns::Columns,
 };
 use reifydb_runtime::{
 	actor::{
@@ -45,20 +43,33 @@ use reifydb_type::{
 };
 use tracing::{debug, error, trace};
 
-use super::decode::{
-	build_insert_diff_into_with_pool, build_remove_diff_into_with_pool, build_update_diff_into_with_pool,
-};
 use crate::{
 	consume::{host::CdcHost, wake::CdcWakeRegistry},
 	produce::watermark::CdcProducerWatermark,
 	storage::CdcStorage,
 };
 
-const MAX_POOL_SLABS: usize = 256;
-
 const CLEANUP_INTERVAL: Duration = Duration::from_secs(30);
 
 use reifydb_core::actors::cdc::{CdcProduceHandle, CdcProduceMessage};
+
+struct ShapeChanges {
+	insert_post: Columns,
+	update_pre: Columns,
+	update_post: Columns,
+	remove_pre: Columns,
+}
+
+impl Default for ShapeChanges {
+	fn default() -> Self {
+		Self {
+			insert_post: Columns::empty(),
+			update_pre: Columns::empty(),
+			update_post: Columns::empty(),
+			remove_pre: Columns::empty(),
+		}
+	}
+}
 
 pub struct CdcProducerActor<S, T, H> {
 	storage: Arc<S>,
@@ -67,9 +78,6 @@ pub struct CdcProducerActor<S, T, H> {
 	event_bus: EventBus,
 	clock: Clock,
 
-	slab_pool: Slab<Columns>,
-
-	pool: ColumnBufferPool,
 	watermark: CdcProducerWatermark,
 	wake_registry: CdcWakeRegistry,
 }
@@ -95,18 +103,15 @@ where
 			host,
 			event_bus,
 			clock,
-			slab_pool: Slab::new(MAX_POOL_SLABS),
-			pool: ColumnBufferPool::new(),
 			watermark,
 			wake_registry,
 		}
 	}
 
 	fn process(&self, version: CommitVersion, changed_at: DateTime, deltas: Vec<Delta>) {
-		let mut diffs_by_shape: BTreeMap<ShapeId, Vec<Diff>> = BTreeMap::new();
+		let mut changes_by_shape: BTreeMap<ShapeId, ShapeChanges> = BTreeMap::new();
 		let mut system_changes: Vec<SystemChange> = Vec::new();
 
-		let mut acquired_slabs: Vec<Arc<Columns>> = Vec::new();
 		let catalog = self.host.catalog();
 
 		trace!(version = version.0, delta_count = deltas.len(), "Processing CDC");
@@ -119,9 +124,8 @@ where
 				&delta,
 				version,
 				catalog,
-				&mut diffs_by_shape,
+				&mut changes_by_shape,
 				&mut system_changes,
-				&mut acquired_slabs,
 			) {
 				continue;
 			}
@@ -130,9 +134,8 @@ where
 			}
 		}
 
-		let changes = self.merge_into_changes(diffs_by_shape, version, changed_at);
+		let changes = self.finalize(changes_by_shape, version, changed_at);
 		self.write_and_emit(version, changed_at, changes, system_changes);
-		self.release_slabs(acquired_slabs);
 	}
 
 	#[inline]
@@ -146,9 +149,8 @@ where
 		delta: &Delta,
 		version: CommitVersion,
 		catalog: &Catalog,
-		diffs_by_shape: &mut BTreeMap<ShapeId, Vec<Diff>>,
+		changes_by_shape: &mut BTreeMap<ShapeId, ShapeChanges>,
 		system_changes: &mut Vec<SystemChange>,
-		acquired_slabs: &mut Vec<Arc<Columns>>,
 	) -> bool {
 		let key = delta.key();
 		if Key::kind(key) != Some(KeyKind::Row) {
@@ -163,88 +165,64 @@ where
 			return false;
 		};
 
-		let Some(diff) = self.build_row_diff(delta, row_number, version, catalog, acquired_slabs) else {
+		if !self.accumulate_row_delta(
+			delta,
+			row_number,
+			version,
+			catalog,
+			changes_by_shape.entry(shape).or_default(),
+		) {
 			return false;
-		};
-		diffs_by_shape.entry(shape).or_default().push(diff);
+		}
 		push_raw_system_change(delta, self.transaction_store.as_ref(), version, system_changes);
 		true
 	}
 
 	#[inline]
-	fn build_row_diff(
+	fn accumulate_row_delta(
 		&self,
 		delta: &Delta,
 		row_number: RowNumber,
 		version: CommitVersion,
 		catalog: &Catalog,
-		acquired_slabs: &mut Vec<Arc<Columns>>,
-	) -> Option<Diff> {
+		acc: &mut ShapeChanges,
+	) -> bool {
 		match delta {
 			Delta::Set {
 				key,
 				row,
-			} => self.build_diff_for_set(key, row, row_number, version, catalog, acquired_slabs),
+			} => {
+				let pre = self.transaction_store.get_previous_version(key, version).ok().flatten();
+				if let Some(prev) = pre {
+					let Some(pre_row) = decode_row(catalog, row_number, prev.row) else {
+						return false;
+					};
+					let Some(post_row) = decode_row(catalog, row_number, row.clone()) else {
+						return false;
+					};
+					acc.update_pre.push_row(&pre_row);
+					acc.update_post.push_row(&post_row);
+					true
+				} else {
+					let Some(post_row) = decode_row(catalog, row_number, row.clone()) else {
+						return false;
+					};
+					acc.insert_post.push_row(&post_row);
+					true
+				}
+			}
 			Delta::Unset {
 				row,
 				..
-			} if !row.is_empty() => self.build_diff_for_unset(row, row_number, catalog, acquired_slabs),
-			_ => None,
+			} if !row.is_empty() => {
+				let Some(pre_row) = decode_row(catalog, row_number, row.clone()) else {
+					return false;
+				};
+				acc.remove_pre.push_row(&pre_row);
+				true
+			}
+			_ => false,
 		}
-	}
-
-	#[inline]
-	fn build_diff_for_set(
-		&self,
-		key: &EncodedKey,
-		row: &EncodedRow,
-		row_number: RowNumber,
-		version: CommitVersion,
-		catalog: &Catalog,
-		acquired_slabs: &mut Vec<Arc<Columns>>,
-	) -> Option<Diff> {
-		let pre = self.transaction_store.get_previous_version(key, version).ok().flatten();
-		if let Some(prev) = pre {
-			let mut pre_buf = self.slab_pool.acquire();
-			let mut post_buf = self.slab_pool.acquire();
-			let diff = build_update_diff_into_with_pool(
-				catalog,
-				row_number,
-				prev.row,
-				row.clone(),
-				&mut pre_buf,
-				&mut post_buf,
-				&self.pool,
-			);
-			acquired_slabs.push(pre_buf);
-			acquired_slabs.push(post_buf);
-			diff
-		} else {
-			let mut post_buf = self.slab_pool.acquire();
-			let diff = build_insert_diff_into_with_pool(
-				catalog,
-				row_number,
-				row.clone(),
-				&mut post_buf,
-				&self.pool,
-			);
-			acquired_slabs.push(post_buf);
-			diff
-		}
-	}
-
-	#[inline]
-	fn build_diff_for_unset(
-		&self,
-		row: &EncodedRow,
-		row_number: RowNumber,
-		catalog: &Catalog,
-		acquired_slabs: &mut Vec<Arc<Columns>>,
-	) -> Option<Diff> {
-		let mut pre_buf = self.slab_pool.acquire();
-		let diff = build_remove_diff_into_with_pool(catalog, row_number, row.clone(), &mut pre_buf, &self.pool);
-		acquired_slabs.push(pre_buf);
-		diff
 	}
 
 	#[inline]
@@ -277,16 +255,27 @@ where
 	}
 
 	#[inline]
-	fn merge_into_changes(
+	fn finalize(
 		&self,
-		diffs_by_shape: BTreeMap<ShapeId, Vec<Diff>>,
+		changes_by_shape: BTreeMap<ShapeId, ShapeChanges>,
 		version: CommitVersion,
 		changed_at: DateTime,
 	) -> Vec<Change> {
-		let mut changes = Vec::with_capacity(diffs_by_shape.len());
-		for (shape, diffs) in diffs_by_shape {
-			let merged = merge_diffs(diffs);
-			changes.push(Change::from_shape(shape, version, merged, changed_at));
+		let mut changes = Vec::with_capacity(changes_by_shape.len());
+		for (shape, acc) in changes_by_shape {
+			let mut diffs: Vec<Diff> = Vec::with_capacity(3);
+			if !acc.insert_post.is_empty() {
+				diffs.push(Diff::insert_arc(Arc::new(acc.insert_post)));
+			}
+			if !acc.update_pre.is_empty() {
+				diffs.push(Diff::update_arc(Arc::new(acc.update_pre), Arc::new(acc.update_post)));
+			}
+			if !acc.remove_pre.is_empty() {
+				diffs.push(Diff::remove_arc(Arc::new(acc.remove_pre)));
+			}
+			if !diffs.is_empty() {
+				changes.push(Change::from_shape(shape, version, diffs, changed_at));
+			}
 		}
 		changes
 	}
@@ -322,13 +311,6 @@ where
 			})
 			.collect();
 		self.event_bus.emit(CdcWrittenEvent::new(entries, version));
-	}
-
-	#[inline]
-	fn release_slabs(&self, slabs: Vec<Arc<Columns>>) {
-		for slab in slabs {
-			self.slab_pool.release(slab);
-		}
 	}
 
 	fn try_cleanup(&self) {
@@ -440,69 +422,6 @@ fn delta_to_raw_system_change(
 			},
 		}),
 		_ => None,
-	}
-}
-
-pub(crate) fn merge_diffs(diffs: Vec<Diff>) -> Vec<Diff> {
-	let mut insert_post: Option<Arc<Columns>> = None;
-	let mut update_pre: Option<Arc<Columns>> = None;
-	let mut update_post: Option<Arc<Columns>> = None;
-	let mut remove_pre: Option<Arc<Columns>> = None;
-
-	for diff in diffs {
-		match diff {
-			Diff::Insert {
-				post,
-				..
-			} => merge_or_init(&mut insert_post, post, "insert"),
-			Diff::Update {
-				pre,
-				post,
-				..
-			} => {
-				merge_or_init(&mut update_pre, pre, "update pre");
-				merge_or_init(&mut update_post, post, "update post");
-			}
-			Diff::Remove {
-				pre,
-				..
-			} => merge_or_init(&mut remove_pre, pre, "remove"),
-		}
-	}
-
-	let mut result = Vec::with_capacity(3);
-	if let Some(post) = insert_post {
-		result.push(Diff::Insert {
-			post,
-			origin: None,
-		});
-	}
-	if let (Some(pre), Some(post)) = (update_pre, update_post) {
-		result.push(Diff::Update {
-			pre,
-			post,
-			origin: None,
-		});
-	}
-	if let Some(pre) = remove_pre {
-		result.push(Diff::Remove {
-			pre,
-			origin: None,
-		});
-	}
-	result
-}
-
-#[inline]
-fn merge_or_init(slot: &mut Option<Arc<Columns>>, fresh: Arc<Columns>, ctx: &str) {
-	match slot {
-		Some(existing) => {
-			let owned = Arc::try_unwrap(fresh).unwrap_or_else(|arc| (*arc).clone());
-			if let Err(e) = Arc::make_mut(existing).append_columns(owned) {
-				error!("Failed to merge {ctx} columns: {:?}", e);
-			}
-		}
-		None => *slot = Some(fresh),
 	}
 }
 
