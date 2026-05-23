@@ -22,7 +22,24 @@ use reifydb_core::{
 use reifydb_type::value::row_number::RowNumber;
 use serde::{Serialize, de::DeserializeOwned};
 
-use crate::{error::Result, operator::column::row::Row, state::StateEntry};
+use crate::{
+	error::Result,
+	operator::column::{row::Row, sink::RowSink},
+	state::StateEntry,
+};
+
+pub trait RowEmit {
+	type Sink: RowSink;
+	fn sink(&mut self) -> &mut Self::Sink;
+	fn finish(self, row_numbers: &[RowNumber]) -> Result<()>;
+}
+
+pub trait UpdateEmit {
+	type Sink: RowSink;
+	fn pre(&mut self) -> &mut Self::Sink;
+	fn post(&mut self) -> &mut Self::Sink;
+	fn finish(self, row_numbers: &[RowNumber]) -> Result<()>;
+}
 
 pub trait StateApi {
 	fn get<T: DeserializeOwned>(&self, key: &EncodedKey) -> Result<Option<T>>;
@@ -39,6 +56,14 @@ pub trait StateApi {
 		end: Bound<&EncodedKey>,
 	) -> Result<Vec<(EncodedKey, T)>>;
 	fn get_with_anchors<T: DeserializeOwned>(&self, key: &EncodedKey) -> Result<Option<StateEntry<T>>>;
+}
+
+pub trait InternalStateApi {
+	fn get<T: DeserializeOwned>(&self, key: &EncodedKey) -> Result<Option<T>>;
+	fn get_many<T: DeserializeOwned>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>>;
+	fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> Result<()>;
+	fn remove(&mut self, key: &EncodedKey) -> Result<()>;
+	fn contains(&self, key: &EncodedKey) -> Result<bool>;
 }
 
 pub trait StoreApi {
@@ -61,19 +86,64 @@ pub trait CatalogApi {
 	fn find_row_shape(&self, fingerprint: RowShapeFingerprint) -> Result<Option<RowShape>>;
 }
 
-/// The surface an operator's business logic codes against, abstracting the FFI vs native boundary.
-/// Emit is expressed in terms of typed `Row`s so the same operator code drives either backend: the
-/// FFI impl writes through the zero-copy column builder, the native impl accumulates owned `Columns`.
 pub trait OperatorContext {
+	type InsertEmit<'a>: RowEmit
+	where
+		Self: 'a;
+	type UpdateEmit<'a>: UpdateEmit
+	where
+		Self: 'a;
+	type RemoveEmit<'a>: RowEmit
+	where
+		Self: 'a;
+
 	fn operator_id(&self) -> FlowNodeId;
 	fn clock_now_nanos(&self) -> u64;
 	fn state(&mut self) -> impl StateApi + '_;
+	fn internal_state(&mut self) -> impl InternalStateApi + '_;
 	fn store(&mut self) -> impl StoreApi + '_;
 	fn catalog(&mut self) -> impl CatalogApi + '_;
 	fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)>;
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
 	fn shape_for_row(&mut self, row: &EncodedRow) -> Result<RowShape>;
-	fn emit_insert<R: Row>(&mut self, rows: &[R], row_numbers: &[RowNumber]) -> Result<()>;
-	fn emit_update<R: Row>(&mut self, pre: &[R], post: &[R], row_numbers: &[RowNumber]) -> Result<()>;
-	fn emit_remove<R: Row>(&mut self, rows: &[R], row_numbers: &[RowNumber]) -> Result<()>;
+
+	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::InsertEmit<'_>>;
+	fn update_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::UpdateEmit<'_>>;
+	fn remove_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::RemoveEmit<'_>>;
+
+	fn emit_insert<R: Row>(&mut self, rows: &[R], row_numbers: &[RowNumber]) -> Result<()> {
+		if rows.is_empty() {
+			return Ok(());
+		}
+		let mut emit = self.insert_emit::<R>(rows.len())?;
+		for row in rows {
+			row.encode_into(emit.sink())?;
+		}
+		emit.finish(row_numbers)
+	}
+
+	fn emit_update<R: Row>(&mut self, pre: &[R], post: &[R], row_numbers: &[RowNumber]) -> Result<()> {
+		if row_numbers.is_empty() {
+			return Ok(());
+		}
+		let mut emit = self.update_emit::<R>(row_numbers.len())?;
+		for row in pre {
+			row.encode_into(emit.pre())?;
+		}
+		for row in post {
+			row.encode_into(emit.post())?;
+		}
+		emit.finish(row_numbers)
+	}
+
+	fn emit_remove<R: Row>(&mut self, rows: &[R], row_numbers: &[RowNumber]) -> Result<()> {
+		if rows.is_empty() {
+			return Ok(());
+		}
+		let mut emit = self.remove_emit::<R>(rows.len())?;
+		for row in rows {
+			row.encode_into(emit.sink())?;
+		}
+		emit.finish(row_numbers)
+	}
 }

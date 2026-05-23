@@ -9,7 +9,10 @@ use reifydb_core::{
 };
 use serde::{Serialize, de::DeserializeOwned};
 
-use crate::{error::Result, operator::context::ffi::FFIOperatorContext};
+use crate::{
+	error::Result,
+	operator::context::{InternalStateApi, OperatorContext, StateApi},
+};
 
 #[derive(Clone, Copy, Debug)]
 pub enum StateBackend {
@@ -46,7 +49,7 @@ where
 		}
 	}
 
-	pub fn get_arc(&mut self, ctx: &mut FFIOperatorContext, key: &K) -> Result<Option<Arc<V>>> {
+	pub fn get_arc(&mut self, ctx: &mut impl OperatorContext, key: &K) -> Result<Option<Arc<V>>> {
 		if let Some(cached) = self.cache.get(key) {
 			return Ok(Some(cached));
 		}
@@ -70,11 +73,11 @@ where
 		}
 	}
 
-	pub fn get(&mut self, ctx: &mut FFIOperatorContext, key: &K) -> Result<Option<V>> {
+	pub fn get(&mut self, ctx: &mut impl OperatorContext, key: &K) -> Result<Option<V>> {
 		Ok(self.get_arc(ctx, key)?.map(|arc| (*arc).clone()))
 	}
 
-	pub fn warm(&mut self, ctx: &mut FFIOperatorContext, keys: &[K]) -> Result<()> {
+	pub fn warm(&mut self, ctx: &mut impl OperatorContext, keys: &[K]) -> Result<()> {
 		let mut to_load: Vec<K> = Vec::new();
 		for key in keys {
 			if self.cache.contains_key(key) || self.dirty.contains_key(key) {
@@ -106,27 +109,27 @@ where
 		Ok(())
 	}
 
-	pub fn set(&mut self, _ctx: &mut FFIOperatorContext, key: &K, value: &V) -> Result<()> {
+	pub fn set(&mut self, _ctx: &mut impl OperatorContext, key: &K, value: &V) -> Result<()> {
 		let arc = Arc::new(value.clone());
 		self.cache.put(key.clone(), arc.clone());
 		self.dirty.insert(key.clone(), Some(arc));
 		Ok(())
 	}
 
-	pub fn put(&mut self, _ctx: &mut FFIOperatorContext, key: &K, value: V) -> Result<()> {
+	pub fn put(&mut self, _ctx: &mut impl OperatorContext, key: &K, value: V) -> Result<()> {
 		let arc = Arc::new(value);
 		self.cache.put(key.clone(), arc.clone());
 		self.dirty.insert(key.clone(), Some(arc));
 		Ok(())
 	}
 
-	pub fn put_arc(&mut self, _ctx: &mut FFIOperatorContext, key: &K, value: Arc<V>) -> Result<()> {
+	pub fn put_arc(&mut self, _ctx: &mut impl OperatorContext, key: &K, value: Arc<V>) -> Result<()> {
 		self.cache.put(key.clone(), value.clone());
 		self.dirty.insert(key.clone(), Some(value));
 		Ok(())
 	}
 
-	pub fn modify<F>(&mut self, ctx: &mut FFIOperatorContext, key: &K, f: F) -> Result<()>
+	pub fn modify<F>(&mut self, ctx: &mut impl OperatorContext, key: &K, f: F) -> Result<()>
 	where
 		F: FnOnce(&mut V) -> Result<()>,
 		V: Default,
@@ -136,13 +139,13 @@ where
 		self.put_arc(ctx, key, arc)
 	}
 
-	pub fn remove(&mut self, _ctx: &mut FFIOperatorContext, key: &K) -> Result<()> {
+	pub fn remove(&mut self, _ctx: &mut impl OperatorContext, key: &K) -> Result<()> {
 		self.cache.remove(key);
 		self.dirty.insert(key.clone(), None);
 		Ok(())
 	}
 
-	pub fn flush(&mut self, ctx: &mut FFIOperatorContext) -> Result<()> {
+	pub fn flush(&mut self, ctx: &mut impl OperatorContext) -> Result<()> {
 		let dirty = mem::take(&mut self.dirty);
 		for (key, slot) in dirty {
 			let encoded_key = (&key).into_encoded_key();
@@ -189,14 +192,14 @@ where
 	for<'a> &'a K: IntoEncodedKey,
 	V: Clone + Default + Serialize + DeserializeOwned,
 {
-	pub fn get_or_default(&mut self, ctx: &mut FFIOperatorContext, key: &K) -> Result<V> {
+	pub fn get_or_default(&mut self, ctx: &mut impl OperatorContext, key: &K) -> Result<V> {
 		match self.get(ctx, key)? {
 			Some(value) => Ok(value),
 			None => Ok(V::default()),
 		}
 	}
 
-	pub fn update<U>(&mut self, ctx: &mut FFIOperatorContext, key: &K, updater: U) -> Result<V>
+	pub fn update<U>(&mut self, ctx: &mut impl OperatorContext, key: &K, updater: U) -> Result<V>
 	where
 		U: FnOnce(&mut V) -> Result<()>,
 	{
@@ -216,16 +219,16 @@ pub mod tests {
 	use super::*;
 	use crate::{
 		operator::{
-			FFIOperator, FFIOperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
+			FFIOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
 			context::ffi::FFIOperatorContext,
 		},
-		state::FFIRawStatefulOperator,
+		state::RawStatefulOperator,
 		testing::{harness::TestHarnessBuilder, helpers::encode_key},
 	};
 
 	struct WarmTestOperator;
 
-	impl FFIOperatorMetadata for WarmTestOperator {
+	impl OperatorMetadata for WarmTestOperator {
 		const NAME: &'static str = "warm_test";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -245,7 +248,7 @@ pub mod tests {
 		}
 	}
 
-	impl FFIRawStatefulOperator for WarmTestOperator {}
+	impl RawStatefulOperator for WarmTestOperator {}
 
 	#[test]
 	fn test_warm_bulk_loads_present_keys_and_skips_absent() {

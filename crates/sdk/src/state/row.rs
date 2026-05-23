@@ -107,16 +107,16 @@ pub mod tests {
 	use crate::{
 		error::Result,
 		operator::{
-			FFIOperator, FFIOperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
+			FFIOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
 			context::ffi::FFIOperatorContext,
 		},
-		state::{FFIRawStatefulOperator, row::RowNumberProvider},
+		state::{RawStatefulOperator, row::RowNumberProvider},
 		testing::{harness::TestHarnessBuilder, helpers::encode_key},
 	};
 
 	struct RowNumberTestOperator;
 
-	impl FFIOperatorMetadata for RowNumberTestOperator {
+	impl OperatorMetadata for RowNumberTestOperator {
 		const NAME: &'static str = "row_number_test";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -136,7 +136,7 @@ pub mod tests {
 		}
 	}
 
-	impl FFIRawStatefulOperator for RowNumberTestOperator {}
+	impl RawStatefulOperator for RowNumberTestOperator {}
 
 	#[test]
 	fn test_first_row_number_starts_at_one() {

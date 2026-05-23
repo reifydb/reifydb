@@ -15,15 +15,15 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	error::Result,
 	operator::{
-		FFIOperator, FFIOperatorMetadata,
-		change::BorrowedChange,
+		OperatorLogic, OperatorMetadata,
 		column::{
 			batch::{InsertBatch, UpdateBatch},
 			operator::OperatorColumn,
 			row::Row,
 		},
-		context::ffi::FFIOperatorContext,
-		windowed::{FFITumblingOperator, TumblingOperator, WindowSlots, span::WindowSpan},
+		context::OperatorContext,
+		view::{ChangeView, ColumnsView, DiffView},
+		windowed::{TumblingOperator, TumblingRegistration, WindowSlots, span::WindowSpan},
 	},
 	state::cache::StateCache,
 };
@@ -73,7 +73,7 @@ impl<K, S> Default for GroupMeta<K, S> {
 
 pub struct TumblingDriver<A>
 where
-	A: FFITumblingOperator,
+	A: TumblingRegistration,
 	A::Output: Row,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
@@ -94,13 +94,61 @@ enum DiffKind {
 	Remove,
 }
 
-impl<A> FFIOperator for TumblingDriver<A>
+impl<A> TumblingDriver<A>
 where
-	A: FFITumblingOperator + 'static,
+	A: TumblingRegistration,
 	A::Output: Row,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
-	fn new(operator_id: FlowNodeId, config: &HashMap<String, Value>) -> Result<Self> {
+	#[allow(clippy::type_complexity)]
+	fn route_rows<C: ColumnsView>(
+		&self,
+		cols: &C,
+		kind: DiffKind,
+		buckets: &mut BTreeMap<(A::GroupKey, WindowSpan<A::SlotKey>), Vec<SlotEvent<A>>>,
+	) {
+		for i in 0..cols.row_count() {
+			let Some(row) = cols.row(i) else {
+				continue;
+			};
+			let Some((group, slot, slot_input)) = self.aggregator.extract(&row) else {
+				continue;
+			};
+			let span = self.aggregator.window_for(slot);
+			let event = match kind {
+				DiffKind::Apply => SlotEvent::Apply(slot, slot_input),
+				DiffKind::Remove => SlotEvent::Remove(slot),
+			};
+			buckets.entry((group, span)).or_default().push(event);
+		}
+	}
+}
+
+impl<A> OperatorMetadata for TumblingDriver<A>
+where
+	A: TumblingRegistration + 'static,
+	A::Output: Row,
+	for<'a> &'a A::GroupKey: IntoEncodedKey,
+{
+	const NAME: &'static str = A::NAME;
+	const API: u32 = 1;
+	const VERSION: &'static str = A::VERSION;
+	const DESCRIPTION: &'static str = A::DESCRIPTION;
+	const INPUT_COLUMNS: &'static [OperatorColumn] = A::INPUT_COLUMNS;
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = A::OUTPUT_COLUMNS;
+	const CAPABILITIES: u32 = A::CAPABILITIES;
+}
+
+impl<A> OperatorLogic for TumblingDriver<A>
+where
+	A: TumblingRegistration + Send + Sync + 'static,
+	A::Output: Row,
+	A::GroupKey: Send + Sync,
+	A::SlotKey: Send + Sync,
+	A::SlotContribution: Send + Sync,
+	for<'a> &'a A::GroupKey: IntoEncodedKey,
+{
+	fn create(operator_id: FlowNodeId, config: &HashMap<String, Value>) -> Result<Self> {
 		let aggregator = A::from_config(operator_id, config)?;
 		Ok(Self {
 			aggregator,
@@ -110,25 +158,24 @@ where
 	}
 
 	#[allow(clippy::type_complexity)]
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
 		let mut buckets: BTreeMap<(A::GroupKey, WindowSpan<A::SlotKey>), Vec<SlotEvent<A>>> = BTreeMap::new();
 
-		for diff in input.diffs() {
-			let (cols, kind) = match diff.kind() {
-				DiffType::Insert | DiffType::Update => (diff.post(), DiffKind::Apply),
-				DiffType::Remove => (diff.pre(), DiffKind::Remove),
+		for di in 0..change.diff_count() {
+			let Some(diff) = change.diff(di) else {
+				continue;
 			};
-
-			for i in 0..cols.row_count() {
-				let Some((group, slot, slot_input)) = self.aggregator.extract(&cols, i) else {
-					continue;
-				};
-				let span = self.aggregator.window_for(slot);
-				let event = match kind {
-					DiffKind::Apply => SlotEvent::Apply(slot, slot_input),
-					DiffKind::Remove => SlotEvent::Remove(slot),
-				};
-				buckets.entry((group, span)).or_default().push(event);
+			match diff.kind() {
+				DiffType::Insert | DiffType::Update => {
+					if let Some(cols) = diff.post() {
+						self.route_rows(&cols, DiffKind::Apply, &mut buckets);
+					}
+				}
+				DiffType::Remove => {
+					if let Some(cols) = diff.pre() {
+						self.route_rows(&cols, DiffKind::Remove, &mut buckets);
+					}
+				}
 			}
 		}
 
@@ -241,14 +288,14 @@ where
 		}
 
 		if !inserts.is_empty() {
-			let mut batch = InsertBatch::<A::Output>::new(ctx, inserts.len())?;
+			let mut batch = InsertBatch::<A::Output, _>::new(ctx, inserts.len())?;
 			for (rn, data) in &inserts {
 				batch.push(*rn, data)?;
 			}
 			batch.finish()?;
 		}
 		if !updates.is_empty() {
-			let mut batch = UpdateBatch::<A::Output>::new(ctx, updates.len())?;
+			let mut batch = UpdateBatch::<A::Output, _>::new(ctx, updates.len())?;
 			for (rn, data) in &updates {
 				batch.push(*rn, data, data)?;
 			}
@@ -262,26 +309,11 @@ where
 		Ok(())
 	}
 
-	fn flush_state(&mut self, ctx: &mut FFIOperatorContext) -> Result<()> {
+	fn flush_state(&mut self, ctx: &mut impl OperatorContext) -> Result<()> {
 		self.slots.flush(ctx)?;
 		self.meta.flush(ctx)?;
 		Ok(())
 	}
-}
-
-impl<A> FFIOperatorMetadata for TumblingDriver<A>
-where
-	A: FFITumblingOperator,
-	A::Output: Row,
-	for<'a> &'a A::GroupKey: IntoEncodedKey,
-{
-	const NAME: &'static str = A::NAME;
-	const API: u32 = 1;
-	const VERSION: &'static str = A::VERSION;
-	const DESCRIPTION: &'static str = A::DESCRIPTION;
-	const INPUT_COLUMNS: &'static [OperatorColumn] = A::INPUT_COLUMNS;
-	const OUTPUT_COLUMNS: &'static [OperatorColumn] = A::OUTPUT_COLUMNS;
-	const CAPABILITIES: u32 = A::CAPABILITIES;
 }
 
 #[cfg(test)]
@@ -302,7 +334,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		operator::change::BorrowedColumns,
+		operator::{FFIOperatorAdapter, view::RowView},
 		row,
 		testing::{
 			builders::{TestChangeBuilder, TestRowBuilder},
@@ -348,10 +380,10 @@ mod tests {
 		type SlotContribution = TestSlot;
 		type Output = TestOut;
 
-		fn extract(&self, cols: &BorrowedColumns<'_>, i: usize) -> Option<(String, u64, TestInput)> {
-			let group = cols.column("group")?.utf8_at(i)?.to_string();
-			let slot = cols.column("slot")?.u64_at(i)?;
-			let size = cols.column("size")?.f64_at(i)?;
+		fn extract(&self, row: &impl RowView) -> Option<(String, u64, TestInput)> {
+			let group = row.utf8("group")?.to_string();
+			let slot = row.u64("slot")?;
+			let size = row.f64("size")?;
 			Some((
 				group,
 				slot,
@@ -386,7 +418,7 @@ mod tests {
 		}
 	}
 
-	impl FFITumblingOperator for TestVolumeAggregator {
+	impl TumblingRegistration for TestVolumeAggregator {
 		const NAME: &'static str = "test_volume_tumbling";
 		const VERSION: &'static str = "0.0.1";
 		const DESCRIPTION: &'static str = "test fixture";
@@ -420,7 +452,9 @@ mod tests {
 
 	#[test]
 	fn single_insert_emits_insert() {
-		let mut h = TestHarnessBuilder::<TumblingDriver<TestVolumeAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
+			.build()
+			.expect("harness");
 		let change = TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build();
 		let out = h.apply(change).expect("apply");
 		assert_eq!(out.diffs.len(), 1);
@@ -436,7 +470,9 @@ mod tests {
 
 	#[test]
 	fn update_replaces_slot_does_not_double_count() {
-		let mut h = TestHarnessBuilder::<TumblingDriver<TestVolumeAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
+			.build()
+			.expect("harness");
 
 		// First batch: insert volume 10 at slot 0 of window [0, 60).
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
@@ -459,7 +495,9 @@ mod tests {
 
 	#[test]
 	fn remove_drops_slot_and_emits_update_with_remaining() {
-		let mut h = TestHarnessBuilder::<TumblingDriver<TestVolumeAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
+			.build()
+			.expect("harness");
 
 		// Insert two slots in the same window.
 		let _ = h
@@ -483,7 +521,9 @@ mod tests {
 
 	#[test]
 	fn remove_clears_window_emits_nothing() {
-		let mut h = TestHarnessBuilder::<TumblingDriver<TestVolumeAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
+			.build()
+			.expect("harness");
 
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 
@@ -496,7 +536,9 @@ mod tests {
 
 	#[test]
 	fn boundary_slot_belongs_to_next_window() {
-		let mut h = TestHarnessBuilder::<TumblingDriver<TestVolumeAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
+			.build()
+			.expect("harness");
 
 		// Slots 59 and 60 should land in DIFFERENT windows: 59 in
 		// [0, 60), 60 in [60, 120). Two emitted rows.
@@ -521,7 +563,9 @@ mod tests {
 
 	#[test]
 	fn late_event_for_closed_window_dropped() {
-		let mut h = TestHarnessBuilder::<TumblingDriver<TestVolumeAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
+			.build()
+			.expect("harness");
 
 		// Open window [60, 120): emit volume 5.
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 60, 5.0)).build()).expect("apply");
@@ -536,7 +580,9 @@ mod tests {
 
 	#[test]
 	fn multiple_groups_isolate_state() {
-		let mut h = TestHarnessBuilder::<TumblingDriver<TestVolumeAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
+			.build()
+			.expect("harness");
 
 		let out = h
 			.apply(TestChangeBuilder::new()

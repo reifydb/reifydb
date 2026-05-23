@@ -160,7 +160,7 @@ mod tests {
 	use serde::{Deserialize, Serialize};
 
 	use super::*;
-	use crate::operator::{change::BorrowedColumns, windowed::span::WindowSpan};
+	use crate::operator::{view::RowView, windowed::span::WindowSpan};
 
 	#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 	struct Trade {
@@ -186,11 +186,7 @@ mod tests {
 		type SlotContribution = VolSlot;
 		type Output = VolOut;
 
-		fn extract(
-			&self,
-			_cols: &BorrowedColumns<'_>,
-			_row_index: usize,
-		) -> Option<(Self::GroupKey, Self::SlotKey, Self::SlotInput)> {
+		fn extract(&self, _row: &impl RowView) -> Option<(Self::GroupKey, Self::SlotKey, Self::SlotInput)> {
 			None
 		}
 
@@ -259,11 +255,7 @@ mod tests {
 		type SlotContribution = VolSlot;
 		type Output = VolOut;
 
-		fn extract(
-			&self,
-			_cols: &BorrowedColumns<'_>,
-			_row_index: usize,
-		) -> Option<(Self::GroupKey, Self::SlotKey, Self::SlotInput)> {
+		fn extract(&self, _row: &impl RowView) -> Option<(Self::GroupKey, Self::SlotKey, Self::SlotInput)> {
 			None
 		}
 

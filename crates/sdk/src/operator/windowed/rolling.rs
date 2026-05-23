@@ -39,14 +39,14 @@ where
 use crate::{
 	error::Result,
 	operator::{
-		FFIOperator, FFIOperatorMetadata,
-		change::{BorrowedChange, BorrowedColumns},
+		OperatorLogic, OperatorMetadata,
 		column::{
 			batch::{InsertBatch, UpdateBatch},
 			operator::OperatorColumn,
 			row::Row,
 		},
-		context::ffi::FFIOperatorContext,
+		context::OperatorContext,
+		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::span::Slot,
 	},
 	state::cache::StateCache,
@@ -65,11 +65,7 @@ pub trait RollingOperator {
 
 	fn capacity(&self) -> usize;
 
-	fn extract(
-		&self,
-		cols: &BorrowedColumns<'_>,
-		row_index: usize,
-	) -> Option<(Self::GroupKey, Self::WindowKey, Self::WindowInput)>;
+	fn extract(&self, row: &impl RowView) -> Option<(Self::GroupKey, Self::WindowKey, Self::WindowInput)>;
 
 	fn fold_into_window(&self, prev: Option<&Self::Buffered>, input: &Self::WindowInput) -> Self::Buffered;
 
@@ -80,7 +76,7 @@ pub trait RollingOperator {
 	) -> Option<Self::Output>;
 }
 
-pub trait FFIRollingOperator: RollingOperator + Sized
+pub trait RollingRegistration: RollingOperator + Sized
 where
 	Self::Output: Row,
 	for<'a> &'a Self::GroupKey: IntoEncodedKey,
@@ -115,7 +111,7 @@ impl<K> Default for GroupMeta<K> {
 
 pub struct RollingDriver<A>
 where
-	A: FFIRollingOperator,
+	A: RollingRegistration,
 	A::Output: Row,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
@@ -130,13 +126,31 @@ enum BufferEvent<A: RollingOperator> {
 	Remove,
 }
 
-impl<A> FFIOperator for RollingDriver<A>
+impl<A> OperatorMetadata for RollingDriver<A>
 where
-	A: FFIRollingOperator + 'static,
+	A: RollingRegistration + 'static,
 	A::Output: Row,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
-	fn new(operator_id: FlowNodeId, config: &HashMap<String, Value>) -> Result<Self> {
+	const NAME: &'static str = A::NAME;
+	const API: u32 = 1;
+	const VERSION: &'static str = A::VERSION;
+	const DESCRIPTION: &'static str = A::DESCRIPTION;
+	const INPUT_COLUMNS: &'static [OperatorColumn] = A::INPUT_COLUMNS;
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = A::OUTPUT_COLUMNS;
+	const CAPABILITIES: u32 = A::CAPABILITIES;
+}
+
+impl<A> OperatorLogic for RollingDriver<A>
+where
+	A: RollingRegistration + Send + Sync + 'static,
+	A::Output: Row,
+	A::GroupKey: Send + Sync,
+	A::WindowKey: Send + Sync,
+	A::Buffered: Send + Sync,
+	for<'a> &'a A::GroupKey: IntoEncodedKey,
+{
+	fn create(operator_id: FlowNodeId, config: &HashMap<String, Value>) -> Result<Self> {
 		let aggregator = A::from_config(operator_id, config)?;
 		Ok(Self {
 			aggregator,
@@ -146,52 +160,74 @@ where
 	}
 
 	#[allow(clippy::type_complexity)]
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
 		let mut buckets: BTreeMap<(A::GroupKey, A::WindowKey), Vec<BufferEvent<A>>> = BTreeMap::new();
 
-		for diff in input.diffs() {
+		for di in 0..change.diff_count() {
+			let Some(diff) = change.diff(di) else {
+				continue;
+			};
 			match diff.kind() {
 				DiffType::Insert => {
-					let cols = diff.post();
-					for i in 0..cols.row_count() {
-						let Some((group, wk, in_row)) = self.aggregator.extract(&cols, i)
-						else {
-							continue;
-						};
-						buckets.entry((group, wk))
-							.or_default()
-							.push(BufferEvent::Apply(in_row));
+					if let Some(cols) = diff.post() {
+						for i in 0..cols.row_count() {
+							let Some(row) = cols.row(i) else {
+								continue;
+							};
+							let Some((group, wk, in_row)) = self.aggregator.extract(&row)
+							else {
+								continue;
+							};
+							buckets.entry((group, wk))
+								.or_default()
+								.push(BufferEvent::Apply(in_row));
+						}
 					}
 				}
 				DiffType::Update => {
-					let pre = diff.pre();
-					let post = diff.post();
-					let n = pre.row_count().min(post.row_count());
-					for i in 0..n {
-						let Some((g_pre, wk_pre, _)) = self.aggregator.extract(&pre, i) else {
-							continue;
-						};
-						let Some((g_post, wk_post, in_row)) = self.aggregator.extract(&post, i)
-						else {
-							continue;
-						};
-						if g_pre != g_post || wk_pre != wk_post {
-							buckets.entry((g_pre, wk_pre))
+					if let (Some(pre), Some(post)) = (diff.pre(), diff.post()) {
+						let n = pre.row_count().min(post.row_count());
+						for i in 0..n {
+							let Some(pre_row) = pre.row(i) else {
+								continue;
+							};
+							let Some((g_pre, wk_pre, _)) =
+								self.aggregator.extract(&pre_row)
+							else {
+								continue;
+							};
+							let Some(post_row) = post.row(i) else {
+								continue;
+							};
+							let Some((g_post, wk_post, in_row)) =
+								self.aggregator.extract(&post_row)
+							else {
+								continue;
+							};
+							if g_pre != g_post || wk_pre != wk_post {
+								buckets.entry((g_pre, wk_pre))
+									.or_default()
+									.push(BufferEvent::Remove);
+							}
+							buckets.entry((g_post, wk_post))
 								.or_default()
-								.push(BufferEvent::Remove);
+								.push(BufferEvent::Apply(in_row));
 						}
-						buckets.entry((g_post, wk_post))
-							.or_default()
-							.push(BufferEvent::Apply(in_row));
 					}
 				}
 				DiffType::Remove => {
-					let cols = diff.pre();
-					for i in 0..cols.row_count() {
-						let Some((group, wk, _)) = self.aggregator.extract(&cols, i) else {
-							continue;
-						};
-						buckets.entry((group, wk)).or_default().push(BufferEvent::Remove);
+					if let Some(cols) = diff.pre() {
+						for i in 0..cols.row_count() {
+							let Some(row) = cols.row(i) else {
+								continue;
+							};
+							let Some((group, wk, _)) = self.aggregator.extract(&row) else {
+								continue;
+							};
+							buckets.entry((group, wk))
+								.or_default()
+								.push(BufferEvent::Remove);
+						}
 					}
 				}
 			}
@@ -329,14 +365,14 @@ where
 		}
 
 		if !inserts.is_empty() {
-			let mut batch = InsertBatch::<A::Output>::new(ctx, inserts.len())?;
+			let mut batch = InsertBatch::<A::Output, _>::new(ctx, inserts.len())?;
 			for (rn, data) in &inserts {
 				batch.push(*rn, data)?;
 			}
 			batch.finish()?;
 		}
 		if !updates.is_empty() {
-			let mut batch = UpdateBatch::<A::Output>::new(ctx, updates.len())?;
+			let mut batch = UpdateBatch::<A::Output, _>::new(ctx, updates.len())?;
 			for (rn, data) in &updates {
 				batch.push(*rn, data, data)?;
 			}
@@ -350,26 +386,11 @@ where
 		Ok(())
 	}
 
-	fn flush_state(&mut self, ctx: &mut FFIOperatorContext) -> Result<()> {
+	fn flush_state(&mut self, ctx: &mut impl OperatorContext) -> Result<()> {
 		self.buffers.flush(ctx)?;
 		self.meta.flush(ctx)?;
 		Ok(())
 	}
-}
-
-impl<A> FFIOperatorMetadata for RollingDriver<A>
-where
-	A: FFIRollingOperator,
-	A::Output: Row,
-	for<'a> &'a A::GroupKey: IntoEncodedKey,
-{
-	const NAME: &'static str = A::NAME;
-	const API: u32 = 1;
-	const VERSION: &'static str = A::VERSION;
-	const DESCRIPTION: &'static str = A::DESCRIPTION;
-	const INPUT_COLUMNS: &'static [OperatorColumn] = A::INPUT_COLUMNS;
-	const OUTPUT_COLUMNS: &'static [OperatorColumn] = A::OUTPUT_COLUMNS;
-	const CAPABILITIES: u32 = A::CAPABILITIES;
 }
 
 #[cfg(test)]
@@ -390,7 +411,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		operator::change::BorrowedColumns,
+		operator::{FFIOperatorAdapter, view::RowView},
 		row,
 		testing::{
 			builders::{TestChangeBuilder, TestRowBuilder},
@@ -439,10 +460,10 @@ mod tests {
 			self.capacity
 		}
 
-		fn extract(&self, cols: &BorrowedColumns<'_>, i: usize) -> Option<(String, u64, TestInput)> {
-			let group = cols.column("group")?.utf8_at(i)?.to_string();
-			let window_start = cols.column("window_start")?.u64_at(i)?;
-			let value = cols.column("value")?.f64_at(i)?;
+		fn extract(&self, row: &impl RowView) -> Option<(String, u64, TestInput)> {
+			let group = row.utf8("group")?.to_string();
+			let window_start = row.u64("window_start")?;
+			let value = row.f64("value")?;
 			Some((
 				group,
 				window_start,
@@ -467,7 +488,7 @@ mod tests {
 		}
 	}
 
-	impl FFIRollingOperator for TestRollingSumAggregator {
+	impl RollingRegistration for TestRollingSumAggregator {
 		const NAME: &'static str = "test_rolling_sum";
 		const VERSION: &'static str = "0.0.1";
 		const DESCRIPTION: &'static str = "test fixture";
@@ -503,8 +524,9 @@ mod tests {
 
 	#[test]
 	fn single_insert_emits_insert() {
-		let mut h =
-			TestHarnessBuilder::<RollingDriver<TestRollingSumAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
+			.build()
+			.expect("harness");
 		let out =
 			h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 		assert_eq!(out.diffs.len(), 1);
@@ -518,8 +540,9 @@ mod tests {
 
 	#[test]
 	fn buffer_fills_then_evicts_smallest() {
-		let mut h =
-			TestHarnessBuilder::<RollingDriver<TestRollingSumAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
+			.build()
+			.expect("harness");
 
 		// Insert 4 windows; capacity = 3. The smallest (window_start=0)
 		// is evicted on the 4th insert; the resulting Update reflects
@@ -549,8 +572,9 @@ mod tests {
 		// event for that older key (Insert, Update, Remove) is dropped
 		// silently. An Update for a buried (non-newest) window does NOT
 		// reach `fold_into_window` and the buffer is unchanged.
-		let mut h =
-			TestHarnessBuilder::<RollingDriver<TestRollingSumAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
+			.build()
+			.expect("harness");
 
 		let _ = h
 			.apply(TestChangeBuilder::new()
@@ -577,8 +601,9 @@ mod tests {
 		// Remove for a WindowKey strictly older than high_water is
 		// dropped silently, matching the tumbling driver's behaviour.
 		// The buffer keeps the would-be-removed entry.
-		let mut h =
-			TestHarnessBuilder::<RollingDriver<TestRollingSumAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
+			.build()
+			.expect("harness");
 
 		let _ = h
 			.apply(TestChangeBuilder::new()
@@ -599,8 +624,9 @@ mod tests {
 		// A Remove for the newest WindowKey (wk == high_water) is NOT
 		// late and is processed normally: the entry is dropped from the
 		// buffer and an Update is emitted with the remaining contents.
-		let mut h =
-			TestHarnessBuilder::<RollingDriver<TestRollingSumAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
+			.build()
+			.expect("harness");
 
 		let _ = h
 			.apply(TestChangeBuilder::new()
@@ -625,8 +651,9 @@ mod tests {
 	fn late_insert_for_buried_window_dropped() {
 		// Late Insert for a window older than high_water is dropped
 		// silently, mirroring the tumbling driver's late-event rule.
-		let mut h =
-			TestHarnessBuilder::<RollingDriver<TestRollingSumAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
+			.build()
+			.expect("harness");
 
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 60, 5.0)).build()).expect("apply");
 
@@ -638,8 +665,9 @@ mod tests {
 
 	#[test]
 	fn remove_clears_buffer_emits_nothing() {
-		let mut h =
-			TestHarnessBuilder::<RollingDriver<TestRollingSumAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
+			.build()
+			.expect("harness");
 
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 
@@ -655,8 +683,9 @@ mod tests {
 		// Same (group, window_start) Update should replace the
 		// buffered value, not add to it. The chaos-test defect class
 		// "accumulate-on-Update" lands here.
-		let mut h =
-			TestHarnessBuilder::<RollingDriver<TestRollingSumAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
+			.build()
+			.expect("harness");
 
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 		let out = h
@@ -675,8 +704,9 @@ mod tests {
 
 	#[test]
 	fn multiple_groups_isolate_buffers() {
-		let mut h =
-			TestHarnessBuilder::<RollingDriver<TestRollingSumAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
+			.build()
+			.expect("harness");
 
 		let out = h
 			.apply(TestChangeBuilder::new()

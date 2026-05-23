@@ -14,7 +14,7 @@ use reifydb_core::interface::{catalog::flow::FlowNodeId, change::Change};
 use reifydb_sdk::{
 	error::Result as SdkResult,
 	operator::{
-		FFIOperator, FFIOperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
+		FFIOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
 		context::ffi::FFIOperatorContext,
 	},
 	state::cache::StateCache,
@@ -33,7 +33,7 @@ struct SumAgg {
 	cache: Rc<RefCell<StateCache<i64, SumState>>>,
 }
 
-impl FFIOperatorMetadata for SumAgg {
+impl OperatorMetadata for SumAgg {
 	const NAME: &'static str = "sum_agg_bench";
 	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";

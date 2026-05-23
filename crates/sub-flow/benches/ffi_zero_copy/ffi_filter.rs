@@ -16,7 +16,7 @@ use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_sdk::{
 	error::Result as SdkResult,
 	operator::{
-		FFIOperator, FFIOperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
+		FFIOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
 		context::ffi::FFIOperatorContext,
 	},
 	testing::{builders::TestChangeBuilder, harness::TestHarnessBuilder},
@@ -25,7 +25,7 @@ use reifydb_type::value::{Value, row_number::RowNumber};
 
 struct EvenFilter;
 
-impl FFIOperatorMetadata for EvenFilter {
+impl OperatorMetadata for EvenFilter {
 	const NAME: &'static str = "even_filter_bench";
 	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";

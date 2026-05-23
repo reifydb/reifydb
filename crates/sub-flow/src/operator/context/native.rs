@@ -20,13 +20,12 @@ use reifydb_core::{
 		},
 		change::Diff,
 	},
-	value::column::columns::Columns,
 };
 use reifydb_sdk::{
 	error::{FFIError, Result as SdkResult},
 	operator::{
 		column::{row::Row, sink::native::NativeRowSink},
-		context::{CatalogApi, OperatorContext, StateApi, StoreApi},
+		context::{CatalogApi, InternalStateApi, OperatorContext, RowEmit, StateApi, StoreApi, UpdateEmit},
 	},
 	state::StateEntry,
 };
@@ -69,12 +68,52 @@ impl<'a> NativeOperatorContext<'a> {
 	}
 }
 
-fn encode_rows<R: Row>(rows: &[R], row_numbers: &[RowNumber]) -> SdkResult<Columns> {
-	let mut sink = NativeRowSink::new(R::COLUMNS)?;
-	for row in rows {
-		row.encode_into(&mut sink)?;
+enum EmitKind {
+	Insert,
+	Remove,
+}
+
+pub struct NativeRowEmit<'a> {
+	sink: NativeRowSink,
+	diffs: &'a mut Vec<Diff>,
+	kind: EmitKind,
+}
+
+impl RowEmit for NativeRowEmit<'_> {
+	type Sink = NativeRowSink;
+	fn sink(&mut self) -> &mut NativeRowSink {
+		&mut self.sink
 	}
-	sink.finish(row_numbers.to_vec())
+	fn finish(self, row_numbers: &[RowNumber]) -> SdkResult<()> {
+		let columns = self.sink.finish(row_numbers.to_vec())?;
+		match self.kind {
+			EmitKind::Insert => self.diffs.push(Diff::insert(columns)),
+			EmitKind::Remove => self.diffs.push(Diff::remove(columns)),
+		}
+		Ok(())
+	}
+}
+
+pub struct NativeUpdateEmit<'a> {
+	pre: NativeRowSink,
+	post: NativeRowSink,
+	diffs: &'a mut Vec<Diff>,
+}
+
+impl UpdateEmit for NativeUpdateEmit<'_> {
+	type Sink = NativeRowSink;
+	fn pre(&mut self) -> &mut NativeRowSink {
+		&mut self.pre
+	}
+	fn post(&mut self) -> &mut NativeRowSink {
+		&mut self.post
+	}
+	fn finish(self, row_numbers: &[RowNumber]) -> SdkResult<()> {
+		let pre_columns = self.pre.finish(row_numbers.to_vec())?;
+		let post_columns = self.post.finish(row_numbers.to_vec())?;
+		self.diffs.push(Diff::update(pre_columns, post_columns));
+		Ok(())
+	}
 }
 
 pub struct NativeState {
@@ -136,6 +175,33 @@ impl StateApi for NativeState {
 	}
 }
 
+pub struct NativeInternalState {
+	txn: *mut FlowTransaction,
+	node: FlowNodeId,
+}
+
+impl InternalStateApi for NativeInternalState {
+	fn get<T: DeserializeOwned>(&self, key: &EncodedKey) -> SdkResult<Option<T>> {
+		match unsafe { (*self.txn).internal_state_get(self.node, key) }.map_err(to_ffi)? {
+			Some(row) => Ok(Some(decode(&row)?)),
+			None => Ok(None),
+		}
+	}
+	fn get_many<T: DeserializeOwned>(&self, keys: &[EncodedKey]) -> SdkResult<Vec<(EncodedKey, T)>> {
+		let batch = unsafe { (*self.txn).internal_state_get_many(self.node, keys) }.map_err(to_ffi)?;
+		batch.items.iter().map(|r| Ok((r.key.clone(), decode(&r.row)?))).collect()
+	}
+	fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> SdkResult<()> {
+		unsafe { (*self.txn).internal_state_set(self.node, key, encode(value)?) }.map_err(to_ffi)
+	}
+	fn remove(&mut self, key: &EncodedKey) -> SdkResult<()> {
+		unsafe { (*self.txn).internal_state_remove(self.node, key) }.map_err(to_ffi)
+	}
+	fn contains(&self, key: &EncodedKey) -> SdkResult<bool> {
+		Ok(unsafe { (*self.txn).internal_state_get(self.node, key) }.map_err(to_ffi)?.is_some())
+	}
+}
+
 pub struct NativeStore {
 	txn: *mut FlowTransaction,
 }
@@ -190,6 +256,19 @@ impl CatalogApi for NativeCatalog {
 }
 
 impl OperatorContext for NativeOperatorContext<'_> {
+	type InsertEmit<'a>
+		= NativeRowEmit<'a>
+	where
+		Self: 'a;
+	type UpdateEmit<'a>
+		= NativeUpdateEmit<'a>
+	where
+		Self: 'a;
+	type RemoveEmit<'a>
+		= NativeRowEmit<'a>
+	where
+		Self: 'a;
+
 	fn operator_id(&self) -> FlowNodeId {
 		self.node
 	}
@@ -198,6 +277,12 @@ impl OperatorContext for NativeOperatorContext<'_> {
 	}
 	fn state(&mut self) -> impl StateApi + '_ {
 		NativeState {
+			txn: self.txn,
+			node: self.node,
+		}
+	}
+	fn internal_state(&mut self) -> impl InternalStateApi + '_ {
+		NativeInternalState {
 			txn: self.txn,
 			node: self.node,
 		}
@@ -225,29 +310,25 @@ impl OperatorContext for NativeOperatorContext<'_> {
 	fn shape_for_row(&mut self, _row: &EncodedRow) -> SdkResult<RowShape> {
 		Err(FFIError::Other("shape_for_row is not supported in the native context".to_string()))
 	}
-	fn emit_insert<R: Row>(&mut self, rows: &[R], row_numbers: &[RowNumber]) -> SdkResult<()> {
-		if rows.is_empty() {
-			return Ok(());
-		}
-		let columns = encode_rows(rows, row_numbers)?;
-		self.diffs.push(Diff::insert(columns));
-		Ok(())
+	fn insert_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<NativeRowEmit<'_>> {
+		Ok(NativeRowEmit {
+			sink: NativeRowSink::new(R::COLUMNS)?,
+			diffs: &mut self.diffs,
+			kind: EmitKind::Insert,
+		})
 	}
-	fn emit_update<R: Row>(&mut self, pre: &[R], post: &[R], row_numbers: &[RowNumber]) -> SdkResult<()> {
-		if row_numbers.is_empty() {
-			return Ok(());
-		}
-		let pre_columns = encode_rows(pre, row_numbers)?;
-		let post_columns = encode_rows(post, row_numbers)?;
-		self.diffs.push(Diff::update(pre_columns, post_columns));
-		Ok(())
+	fn update_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<NativeUpdateEmit<'_>> {
+		Ok(NativeUpdateEmit {
+			pre: NativeRowSink::new(R::COLUMNS)?,
+			post: NativeRowSink::new(R::COLUMNS)?,
+			diffs: &mut self.diffs,
+		})
 	}
-	fn emit_remove<R: Row>(&mut self, rows: &[R], row_numbers: &[RowNumber]) -> SdkResult<()> {
-		if rows.is_empty() {
-			return Ok(());
-		}
-		let columns = encode_rows(rows, row_numbers)?;
-		self.diffs.push(Diff::remove(columns));
-		Ok(())
+	fn remove_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<NativeRowEmit<'_>> {
+		Ok(NativeRowEmit {
+			sink: NativeRowSink::new(R::COLUMNS)?,
+			diffs: &mut self.diffs,
+			kind: EmitKind::Remove,
+		})
 	}
 }

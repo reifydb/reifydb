@@ -8,7 +8,7 @@ use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_sdk::{
 	error::Result,
 	operator::{
-		FFIOperator, FFIOperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
+		FFIOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
 		context::ffi::FFIOperatorContext,
 	},
 	state::cache::StateCache,
@@ -31,7 +31,7 @@ struct SumState {
 /// that provides a valid FFIOperatorContext for testing StateCache directly.
 struct PassthroughOperator;
 
-impl FFIOperatorMetadata for PassthroughOperator {
+impl OperatorMetadata for PassthroughOperator {
 	const NAME: &'static str = "passthrough";
 	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";

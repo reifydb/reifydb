@@ -20,7 +20,7 @@ use reifydb_type::{util::cowvec::CowVec, value::Value};
 use crate::{
 	error::Result,
 	ffi::arena::Arena,
-	operator::{FFIOperator, FFIOperatorMetadata, change::BorrowedChange, context::ffi::FFIOperatorContext},
+	operator::{FFIOperator, OperatorMetadata, change::BorrowedChange, context::ffi::FFIOperatorContext},
 	testing::{
 		builders::TestChangeBuilder,
 		callbacks::create_test_callbacks,
@@ -281,11 +281,11 @@ impl<T: FFIOperator> TestHarnessBuilder<T> {
 pub struct TestMetadataHarness;
 
 impl TestMetadataHarness {
-	pub fn assert_name<T: FFIOperatorMetadata>(expected: &str) {
+	pub fn assert_name<T: OperatorMetadata>(expected: &str) {
 		assert_eq!(T::NAME, expected, "Operator name mismatch. Expected: {}, Actual: {}", expected, T::NAME);
 	}
 
-	pub fn assert_api<T: FFIOperatorMetadata>(expected: u32) {
+	pub fn assert_api<T: OperatorMetadata>(expected: u32) {
 		assert_eq!(
 			T::API,
 			expected,
@@ -295,7 +295,7 @@ impl TestMetadataHarness {
 		);
 	}
 
-	pub fn assert_version<T: FFIOperatorMetadata>(expected: &str) {
+	pub fn assert_version<T: OperatorMetadata>(expected: &str) {
 		assert_eq!(
 			T::VERSION,
 			expected,
@@ -318,7 +318,7 @@ pub mod tests {
 	use super::{super::helpers::encode_key, *};
 	use crate::{
 		operator::{
-			FFIOperator, FFIOperatorMetadata,
+			FFIOperator, OperatorMetadata,
 			builder::{ColumnsBuilder, CommittedColumn},
 			change::{BorrowedChange, BorrowedColumns},
 			column::operator::OperatorColumn,
@@ -333,7 +333,7 @@ pub mod tests {
 		_config: HashMap<String, Value>,
 	}
 
-	impl FFIOperatorMetadata for TestOperator {
+	impl OperatorMetadata for TestOperator {
 		const NAME: &'static str = "test_operator";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -360,7 +360,7 @@ pub mod tests {
 	// Stateful operator that stores values from flow changes
 	struct StatefulTestOperator;
 
-	impl FFIOperatorMetadata for StatefulTestOperator {
+	impl OperatorMetadata for StatefulTestOperator {
 		const NAME: &'static str = "stateful_test_operator";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";

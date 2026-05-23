@@ -18,7 +18,7 @@ use reifydb_type::value::Value;
 
 use crate::{
 	ffi::wrapper::{OperatorWrapper, create_vtable},
-	operator::{FFIOperatorWithMetadata, column::operator::OperatorColumn},
+	operator::{FFIOperator, OperatorMetadata, column::operator::OperatorColumn},
 };
 
 fn str_to_buffer(s: &'static str) -> BufferFFI {
@@ -58,7 +58,7 @@ fn columns_to_ffi(columns: &'static [OperatorColumn]) -> OperatorColumnsFFI {
 	}
 }
 
-pub fn create_descriptor<O: FFIOperatorWithMetadata>() -> OperatorDescriptorFFI {
+pub fn create_descriptor<O: FFIOperator + OperatorMetadata>() -> OperatorDescriptorFFI {
 	OperatorDescriptorFFI {
 		api: CURRENT_API,
 		abi_tag: OPERATOR_ABI_TAG,
@@ -77,7 +77,7 @@ pub fn create_descriptor<O: FFIOperatorWithMetadata>() -> OperatorDescriptorFFI 
 /// # Safety
 /// - config_ptr must be valid for config_len bytes or null
 /// - The returned pointer must be freed by calling the destroy function
-pub unsafe extern "C" fn create_operator_instance<O: FFIOperatorWithMetadata>(
+pub unsafe extern "C" fn create_operator_instance<O: FFIOperator + OperatorMetadata>(
 	config_ptr: *const u8,
 	config_len: usize,
 	operator_id: u64,

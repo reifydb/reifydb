@@ -331,7 +331,7 @@ mod tests {
 	use crate::{
 		error::Result,
 		operator::{
-			FFIOperator, FFIOperatorMetadata,
+			FFIOperator, OperatorMetadata,
 			change::BorrowedChange,
 			column::{batch::InsertBatch, operator::OperatorColumn},
 			context::ffi::FFIOperatorContext,
@@ -348,7 +348,7 @@ mod tests {
 	});
 
 	struct OpU8;
-	impl FFIOperatorMetadata for OpU8 {
+	impl OperatorMetadata for OpU8 {
 		const NAME: &'static str = "writer_u8";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -362,7 +362,7 @@ mod tests {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
-			let mut batch = InsertBatch::<U8Row>::new(ctx, 3)?;
+			let mut batch = InsertBatch::<U8Row, _>::new(ctx, 3)?;
 			for (i, &v) in [0u8, 1, u8::MAX].iter().enumerate() {
 				batch.push(
 					RowNumber(i as u64 + 1),
@@ -394,7 +394,7 @@ mod tests {
 	});
 
 	struct OpU16;
-	impl FFIOperatorMetadata for OpU16 {
+	impl OperatorMetadata for OpU16 {
 		const NAME: &'static str = "writer_u16";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -408,7 +408,7 @@ mod tests {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
-			let mut batch = InsertBatch::<U16Row>::new(ctx, 3)?;
+			let mut batch = InsertBatch::<U16Row, _>::new(ctx, 3)?;
 			for (i, &v) in [0u16, 1, u16::MAX].iter().enumerate() {
 				batch.push(
 					RowNumber(i as u64 + 1),
@@ -440,7 +440,7 @@ mod tests {
 	});
 
 	struct OpU32;
-	impl FFIOperatorMetadata for OpU32 {
+	impl OperatorMetadata for OpU32 {
 		const NAME: &'static str = "writer_u32";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -454,7 +454,7 @@ mod tests {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
-			let mut batch = InsertBatch::<U32Row>::new(ctx, 3)?;
+			let mut batch = InsertBatch::<U32Row, _>::new(ctx, 3)?;
 			for (i, &v) in [0u32, 1, u32::MAX].iter().enumerate() {
 				batch.push(
 					RowNumber(i as u64 + 1),
@@ -486,7 +486,7 @@ mod tests {
 	});
 
 	struct OpU64;
-	impl FFIOperatorMetadata for OpU64 {
+	impl OperatorMetadata for OpU64 {
 		const NAME: &'static str = "writer_u64";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -500,7 +500,7 @@ mod tests {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
-			let mut batch = InsertBatch::<U64Row>::new(ctx, 3)?;
+			let mut batch = InsertBatch::<U64Row, _>::new(ctx, 3)?;
 			for (i, &v) in [0u64, 1, u64::MAX].iter().enumerate() {
 				batch.push(
 					RowNumber(i as u64 + 1),
@@ -532,7 +532,7 @@ mod tests {
 	});
 
 	struct OpI8;
-	impl FFIOperatorMetadata for OpI8 {
+	impl OperatorMetadata for OpI8 {
 		const NAME: &'static str = "writer_i8";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -546,7 +546,7 @@ mod tests {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
-			let mut batch = InsertBatch::<I8Row>::new(ctx, 3)?;
+			let mut batch = InsertBatch::<I8Row, _>::new(ctx, 3)?;
 			for (i, &v) in [i8::MIN, 0_i8, i8::MAX].iter().enumerate() {
 				batch.push(
 					RowNumber(i as u64 + 1),
@@ -578,7 +578,7 @@ mod tests {
 	});
 
 	struct OpI16;
-	impl FFIOperatorMetadata for OpI16 {
+	impl OperatorMetadata for OpI16 {
 		const NAME: &'static str = "writer_i16";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -592,7 +592,7 @@ mod tests {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
-			let mut batch = InsertBatch::<I16Row>::new(ctx, 3)?;
+			let mut batch = InsertBatch::<I16Row, _>::new(ctx, 3)?;
 			for (i, &v) in [i16::MIN, 0_i16, i16::MAX].iter().enumerate() {
 				batch.push(
 					RowNumber(i as u64 + 1),
@@ -624,7 +624,7 @@ mod tests {
 	});
 
 	struct OpI32;
-	impl FFIOperatorMetadata for OpI32 {
+	impl OperatorMetadata for OpI32 {
 		const NAME: &'static str = "writer_i32";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -638,7 +638,7 @@ mod tests {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
-			let mut batch = InsertBatch::<I32Row>::new(ctx, 3)?;
+			let mut batch = InsertBatch::<I32Row, _>::new(ctx, 3)?;
 			for (i, &v) in [i32::MIN, 0_i32, i32::MAX].iter().enumerate() {
 				batch.push(
 					RowNumber(i as u64 + 1),
@@ -670,7 +670,7 @@ mod tests {
 	});
 
 	struct OpI64;
-	impl FFIOperatorMetadata for OpI64 {
+	impl OperatorMetadata for OpI64 {
 		const NAME: &'static str = "writer_i64";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -684,7 +684,7 @@ mod tests {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
-			let mut batch = InsertBatch::<I64Row>::new(ctx, 3)?;
+			let mut batch = InsertBatch::<I64Row, _>::new(ctx, 3)?;
 			for (i, &v) in [i64::MIN, 0_i64, i64::MAX].iter().enumerate() {
 				batch.push(
 					RowNumber(i as u64 + 1),
@@ -716,7 +716,7 @@ mod tests {
 	});
 
 	struct OpF32;
-	impl FFIOperatorMetadata for OpF32 {
+	impl OperatorMetadata for OpF32 {
 		const NAME: &'static str = "writer_f32";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -730,7 +730,7 @@ mod tests {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
-			let mut batch = InsertBatch::<F32Row>::new(ctx, 3)?;
+			let mut batch = InsertBatch::<F32Row, _>::new(ctx, 3)?;
 			for (i, &v) in [0.0_f32, -1.5_f32, f32::MAX].iter().enumerate() {
 				batch.push(
 					RowNumber(i as u64 + 1),
@@ -762,7 +762,7 @@ mod tests {
 	});
 
 	struct OpF64;
-	impl FFIOperatorMetadata for OpF64 {
+	impl OperatorMetadata for OpF64 {
 		const NAME: &'static str = "writer_f64";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -776,7 +776,7 @@ mod tests {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
-			let mut batch = InsertBatch::<F64Row>::new(ctx, 3)?;
+			let mut batch = InsertBatch::<F64Row, _>::new(ctx, 3)?;
 			for (i, &v) in [0.0_f64, -1.5_f64, f64::MAX].iter().enumerate() {
 				batch.push(
 					RowNumber(i as u64 + 1),
@@ -808,7 +808,7 @@ mod tests {
 	});
 
 	struct OpBool;
-	impl FFIOperatorMetadata for OpBool {
+	impl OperatorMetadata for OpBool {
 		const NAME: &'static str = "writer_bool";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -822,7 +822,7 @@ mod tests {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
-			let mut batch = InsertBatch::<BoolRow>::new(ctx, 3)?;
+			let mut batch = InsertBatch::<BoolRow, _>::new(ctx, 3)?;
 			for (i, &v) in [true, false, true].iter().enumerate() {
 				batch.push(
 					RowNumber(i as u64 + 1),
@@ -854,7 +854,7 @@ mod tests {
 	});
 
 	struct OpUtf8;
-	impl FFIOperatorMetadata for OpUtf8 {
+	impl OperatorMetadata for OpUtf8 {
 		const NAME: &'static str = "writer_utf8";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -869,7 +869,7 @@ mod tests {
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let values = ["", "hello", "こんにちは"];
-			let mut batch = InsertBatch::<Utf8Row>::new(ctx, values.len())?;
+			let mut batch = InsertBatch::<Utf8Row, _>::new(ctx, values.len())?;
 			for (i, &s) in values.iter().enumerate() {
 				batch.push(
 					RowNumber(i as u64 + 1),
@@ -894,7 +894,7 @@ mod tests {
 	}
 
 	struct OpUtf8Growth;
-	impl FFIOperatorMetadata for OpUtf8Growth {
+	impl OperatorMetadata for OpUtf8Growth {
 		const NAME: &'static str = "writer_utf8_growth";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -910,7 +910,7 @@ mod tests {
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			// AVG_BYTES for String is 24; 20 rows * 24 = 480 bytes pre-allocated.
 			// Each string is 100 bytes so total 2000 bytes forces VarLenWriter::ensure_capacity.
-			let mut batch = InsertBatch::<Utf8Row>::new(ctx, 20)?;
+			let mut batch = InsertBatch::<Utf8Row, _>::new(ctx, 20)?;
 			for i in 0..20u64 {
 				batch.push(
 					RowNumber(i + 1),
@@ -945,7 +945,7 @@ mod tests {
 	row!(BlobRow { b: Vec<u8> });
 
 	struct OpBlob;
-	impl FFIOperatorMetadata for OpBlob {
+	impl OperatorMetadata for OpBlob {
 		const NAME: &'static str = "writer_blob";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -970,7 +970,7 @@ mod tests {
 					b: vec![42u8; 1000],
 				},
 			];
-			let mut batch = InsertBatch::<BlobRow>::new(ctx, rows.len())?;
+			let mut batch = InsertBatch::<BlobRow, _>::new(ctx, rows.len())?;
 			for (i, row) in rows.iter().enumerate() {
 				batch.push(RowNumber(i as u64 + 1), row)?;
 			}
@@ -997,7 +997,7 @@ mod tests {
 	});
 
 	struct OpDecimal;
-	impl FFIOperatorMetadata for OpDecimal {
+	impl OperatorMetadata for OpDecimal {
 		const NAME: &'static str = "writer_decimal";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -1011,7 +1011,7 @@ mod tests {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
-			let mut batch = InsertBatch::<DecimalRow>::new(ctx, 3)?;
+			let mut batch = InsertBatch::<DecimalRow, _>::new(ctx, 3)?;
 			batch.push(
 				RowNumber(1),
 				&DecimalRow {
@@ -1055,7 +1055,7 @@ mod tests {
 	});
 
 	struct OpWide;
-	impl FFIOperatorMetadata for OpWide {
+	impl OperatorMetadata for OpWide {
 		const NAME: &'static str = "writer_wide";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -1069,7 +1069,7 @@ mod tests {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
-			let mut batch = InsertBatch::<WideRow>::new(ctx, 1)?;
+			let mut batch = InsertBatch::<WideRow, _>::new(ctx, 1)?;
 			batch.push(
 				RowNumber(1),
 				&WideRow {
@@ -1099,7 +1099,7 @@ mod tests {
 	});
 
 	struct OpDate;
-	impl FFIOperatorMetadata for OpDate {
+	impl OperatorMetadata for OpDate {
 		const NAME: &'static str = "writer_date";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -1118,7 +1118,7 @@ mod tests {
 				Date::new(2024, 3, 15).expect("date"),
 				Date::new(2554, 1, 1).expect("date"),
 			];
-			let mut batch = InsertBatch::<DateRow>::new(ctx, values.len())?;
+			let mut batch = InsertBatch::<DateRow, _>::new(ctx, values.len())?;
 			for (i, &v) in values.iter().enumerate() {
 				batch.push(
 					RowNumber(i as u64 + 1),
@@ -1150,7 +1150,7 @@ mod tests {
 	});
 
 	struct OpDateTime;
-	impl FFIOperatorMetadata for OpDateTime {
+	impl OperatorMetadata for OpDateTime {
 		const NAME: &'static str = "writer_datetime";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -1169,7 +1169,7 @@ mod tests {
 				DateTime::from_nanos(1_700_000_000_000_000_000),
 				DateTime::from_nanos(u64::MAX),
 			];
-			let mut batch = InsertBatch::<DateTimeRow>::new(ctx, values.len())?;
+			let mut batch = InsertBatch::<DateTimeRow, _>::new(ctx, values.len())?;
 			for (i, &v) in values.iter().enumerate() {
 				batch.push(
 					RowNumber(i as u64 + 1),
@@ -1204,7 +1204,7 @@ mod tests {
 	});
 
 	struct OpTime;
-	impl FFIOperatorMetadata for OpTime {
+	impl OperatorMetadata for OpTime {
 		const NAME: &'static str = "writer_time";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -1223,7 +1223,7 @@ mod tests {
 				Time::new(14, 30, 45, 123_456_789).expect("time"),
 				Time::new(23, 59, 59, 999_999_999).expect("time"),
 			];
-			let mut batch = InsertBatch::<TimeRow>::new(ctx, values.len())?;
+			let mut batch = InsertBatch::<TimeRow, _>::new(ctx, values.len())?;
 			for (i, &v) in values.iter().enumerate() {
 				batch.push(
 					RowNumber(i as u64 + 1),
@@ -1255,7 +1255,7 @@ mod tests {
 	});
 
 	struct OpDuration;
-	impl FFIOperatorMetadata for OpDuration {
+	impl OperatorMetadata for OpDuration {
 		const NAME: &'static str = "writer_duration";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -1274,7 +1274,7 @@ mod tests {
 				Duration::new(13, 5, 3_600_000_000_000).expect("duration"),
 				Duration::from_seconds(-30).expect("duration"),
 			];
-			let mut batch = InsertBatch::<DurationRow>::new(ctx, values.len())?;
+			let mut batch = InsertBatch::<DurationRow, _>::new(ctx, values.len())?;
 			for (i, &v) in values.iter().enumerate() {
 				batch.push(
 					RowNumber(i as u64 + 1),

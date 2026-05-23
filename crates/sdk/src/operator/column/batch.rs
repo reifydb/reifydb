@@ -1,40 +1,35 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use core::marker::PhantomData;
+use std::marker::PhantomData;
 
 use reifydb_type::value::row_number::RowNumber;
 
 use crate::{
 	error::FFIError,
 	operator::{
-		builder::ColumnsBuilder,
-		column::{row::Row, sink::ffi::FFIRowSink},
-		context::ffi::FFIOperatorContext,
+		column::row::Row,
+		context::{OperatorContext, RowEmit, UpdateEmit},
 	},
 };
 
-pub struct InsertBatch<'a, R: Row> {
-	builder: ColumnsBuilder<'a>,
-	sink: FFIRowSink<'a>,
+pub struct InsertBatch<'a, R: Row, O: OperatorContext + 'a> {
+	emit: O::InsertEmit<'a>,
 	row_numbers: Vec<RowNumber>,
-	_t: PhantomData<R>,
+	_row: PhantomData<R>,
 }
 
-impl<'a, R: Row> InsertBatch<'a, R> {
-	pub fn new(ctx: &'a mut FFIOperatorContext, row_capacity: usize) -> Result<Self, FFIError> {
-		let mut builder = ColumnsBuilder::new(ctx);
-		let sink = FFIRowSink::new::<R>(&mut builder, row_capacity)?;
+impl<'a, R: Row, O: OperatorContext + 'a> InsertBatch<'a, R, O> {
+	pub fn new(ctx: &'a mut O, row_capacity: usize) -> Result<Self, FFIError> {
 		Ok(Self {
-			builder,
-			sink,
+			emit: ctx.insert_emit::<R>(row_capacity)?,
 			row_numbers: Vec::with_capacity(row_capacity),
-			_t: PhantomData,
+			_row: PhantomData,
 		})
 	}
 
 	pub fn push(&mut self, row_number: RowNumber, row: &R) -> Result<(), FFIError> {
-		row.encode_into(&mut self.sink)?;
+		row.encode_into(self.emit.sink())?;
 		self.row_numbers.push(row_number);
 		Ok(())
 	}
@@ -49,41 +44,32 @@ impl<'a, R: Row> InsertBatch<'a, R> {
 		self.row_numbers.is_empty()
 	}
 
-	pub fn finish(mut self) -> Result<(), FFIError> {
+	pub fn finish(self) -> Result<(), FFIError> {
 		if self.row_numbers.is_empty() {
 			return Ok(());
 		}
-		let columns = self.sink.finish_all()?;
-		let names: Vec<&str> = R::COLUMNS.iter().map(|(n, _)| *n).collect();
-		self.builder.emit_insert(&columns, &names, &self.row_numbers)
+		self.emit.finish(&self.row_numbers)
 	}
 }
 
-pub struct UpdateBatch<'a, R: Row> {
-	builder: ColumnsBuilder<'a>,
-	pre: FFIRowSink<'a>,
-	post: FFIRowSink<'a>,
+pub struct UpdateBatch<'a, R: Row, O: OperatorContext + 'a> {
+	emit: O::UpdateEmit<'a>,
 	row_numbers: Vec<RowNumber>,
-	_t: PhantomData<R>,
+	_row: PhantomData<R>,
 }
 
-impl<'a, R: Row> UpdateBatch<'a, R> {
-	pub fn new(ctx: &'a mut FFIOperatorContext, row_capacity: usize) -> Result<Self, FFIError> {
-		let mut builder = ColumnsBuilder::new(ctx);
-		let pre = FFIRowSink::new::<R>(&mut builder, row_capacity)?;
-		let post = FFIRowSink::new::<R>(&mut builder, row_capacity)?;
+impl<'a, R: Row, O: OperatorContext + 'a> UpdateBatch<'a, R, O> {
+	pub fn new(ctx: &'a mut O, row_capacity: usize) -> Result<Self, FFIError> {
 		Ok(Self {
-			builder,
-			pre,
-			post,
+			emit: ctx.update_emit::<R>(row_capacity)?,
 			row_numbers: Vec::with_capacity(row_capacity),
-			_t: PhantomData,
+			_row: PhantomData,
 		})
 	}
 
 	pub fn push(&mut self, row_number: RowNumber, pre_row: &R, post_row: &R) -> Result<(), FFIError> {
-		pre_row.encode_into(&mut self.pre)?;
-		post_row.encode_into(&mut self.post)?;
+		pre_row.encode_into(self.emit.pre())?;
+		post_row.encode_into(self.emit.post())?;
 		self.row_numbers.push(row_number);
 		Ok(())
 	}
@@ -98,48 +84,31 @@ impl<'a, R: Row> UpdateBatch<'a, R> {
 		self.row_numbers.is_empty()
 	}
 
-	pub fn finish(mut self) -> Result<(), FFIError> {
+	pub fn finish(self) -> Result<(), FFIError> {
 		if self.row_numbers.is_empty() {
 			return Ok(());
 		}
-		let pre_cols = self.pre.finish_all()?;
-		let post_cols = self.post.finish_all()?;
-		let names: Vec<&str> = R::COLUMNS.iter().map(|(n, _)| *n).collect();
-		let row_count = self.row_numbers.len();
-		self.builder.emit_update(
-			&pre_cols,
-			&names,
-			row_count,
-			&self.row_numbers,
-			&post_cols,
-			&names,
-			row_count,
-			&self.row_numbers,
-		)
+		self.emit.finish(&self.row_numbers)
 	}
 }
 
-pub struct RemoveBatch<'a, R: Row> {
-	builder: ColumnsBuilder<'a>,
-	sink: FFIRowSink<'a>,
+pub struct RemoveBatch<'a, R: Row, O: OperatorContext + 'a> {
+	emit: O::RemoveEmit<'a>,
 	row_numbers: Vec<RowNumber>,
-	_t: PhantomData<R>,
+	_row: PhantomData<R>,
 }
 
-impl<'a, R: Row> RemoveBatch<'a, R> {
-	pub fn new(ctx: &'a mut FFIOperatorContext, row_capacity: usize) -> Result<Self, FFIError> {
-		let mut builder = ColumnsBuilder::new(ctx);
-		let sink = FFIRowSink::new::<R>(&mut builder, row_capacity)?;
+impl<'a, R: Row, O: OperatorContext + 'a> RemoveBatch<'a, R, O> {
+	pub fn new(ctx: &'a mut O, row_capacity: usize) -> Result<Self, FFIError> {
 		Ok(Self {
-			builder,
-			sink,
+			emit: ctx.remove_emit::<R>(row_capacity)?,
 			row_numbers: Vec::with_capacity(row_capacity),
-			_t: PhantomData,
+			_row: PhantomData,
 		})
 	}
 
 	pub fn push(&mut self, row_number: RowNumber, row: &R) -> Result<(), FFIError> {
-		row.encode_into(&mut self.sink)?;
+		row.encode_into(self.emit.sink())?;
 		self.row_numbers.push(row_number);
 		Ok(())
 	}
@@ -154,13 +123,11 @@ impl<'a, R: Row> RemoveBatch<'a, R> {
 		self.row_numbers.is_empty()
 	}
 
-	pub fn finish(mut self) -> Result<(), FFIError> {
+	pub fn finish(self) -> Result<(), FFIError> {
 		if self.row_numbers.is_empty() {
 			return Ok(());
 		}
-		let columns = self.sink.finish_all()?;
-		let names: Vec<&str> = R::COLUMNS.iter().map(|(n, _)| *n).collect();
-		self.builder.emit_remove(&columns, &names, &self.row_numbers)
+		self.emit.finish(&self.row_numbers)
 	}
 }
 
@@ -175,7 +142,7 @@ mod tests {
 	use crate::{
 		error::Result,
 		operator::{
-			FFIOperator, FFIOperatorMetadata,
+			FFIOperator, OperatorMetadata,
 			change::BorrowedChange,
 			column::{
 				batch::{InsertBatch, RemoveBatch, UpdateBatch},
@@ -204,7 +171,7 @@ mod tests {
 	});
 
 	struct EmitOpInsert;
-	impl FFIOperatorMetadata for EmitOpInsert {
+	impl OperatorMetadata for EmitOpInsert {
 		const NAME: &'static str = "batch_op_insert";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -218,7 +185,7 @@ mod tests {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
-			let mut batch = InsertBatch::<Bar>::new(ctx, 3)?;
+			let mut batch = InsertBatch::<Bar, _>::new(ctx, 3)?;
 			batch.push(
 				RowNumber(1),
 				&Bar {
@@ -283,7 +250,7 @@ mod tests {
 	}
 
 	struct EmitOpEmpty;
-	impl FFIOperatorMetadata for EmitOpEmpty {
+	impl OperatorMetadata for EmitOpEmpty {
 		const NAME: &'static str = "batch_op_empty";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -297,7 +264,7 @@ mod tests {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
-			InsertBatch::<Bar>::new(ctx, 0)?.finish()
+			InsertBatch::<Bar, _>::new(ctx, 0)?.finish()
 		}
 	}
 
@@ -309,7 +276,7 @@ mod tests {
 	}
 
 	struct EmitOpUpdate;
-	impl FFIOperatorMetadata for EmitOpUpdate {
+	impl OperatorMetadata for EmitOpUpdate {
 		const NAME: &'static str = "batch_op_update";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -323,7 +290,7 @@ mod tests {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
-			let mut batch = UpdateBatch::<Bar>::new(ctx, 1)?;
+			let mut batch = UpdateBatch::<Bar, _>::new(ctx, 1)?;
 			batch.push(
 				RowNumber(1),
 				&Bar {
@@ -369,7 +336,7 @@ mod tests {
 	}
 
 	struct EmitOpRemove;
-	impl FFIOperatorMetadata for EmitOpRemove {
+	impl OperatorMetadata for EmitOpRemove {
 		const NAME: &'static str = "batch_op_remove";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -383,7 +350,7 @@ mod tests {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
-			let mut batch = RemoveBatch::<Bar>::new(ctx, 2)?;
+			let mut batch = RemoveBatch::<Bar, _>::new(ctx, 2)?;
 			batch.push(
 				RowNumber(1),
 				&Bar {
@@ -419,7 +386,7 @@ mod tests {
 	}
 
 	struct EmitOpBig;
-	impl FFIOperatorMetadata for EmitOpBig {
+	impl OperatorMetadata for EmitOpBig {
 		const NAME: &'static str = "batch_op_big";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -433,7 +400,7 @@ mod tests {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
-			let mut batch = InsertBatch::<Bar>::new(ctx, 100)?;
+			let mut batch = InsertBatch::<Bar, _>::new(ctx, 100)?;
 			for i in 0..100u64 {
 				batch.push(
 					RowNumber(i + 1),
@@ -472,7 +439,7 @@ mod tests {
 	row!(OptU64Row { v: Option<u64> });
 
 	struct EmitOpOptU64;
-	impl FFIOperatorMetadata for EmitOpOptU64 {
+	impl OperatorMetadata for EmitOpOptU64 {
 		const NAME: &'static str = "batch_op_opt_u64";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -486,7 +453,7 @@ mod tests {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
-			let mut batch = InsertBatch::<OptU64Row>::new(ctx, 4)?;
+			let mut batch = InsertBatch::<OptU64Row, _>::new(ctx, 4)?;
 			batch.push(
 				RowNumber(1),
 				&OptU64Row {
@@ -541,7 +508,7 @@ mod tests {
 	row!(OptStrRow { s: Option<String> });
 
 	struct EmitOpOptStr;
-	impl FFIOperatorMetadata for EmitOpOptStr {
+	impl OperatorMetadata for EmitOpOptStr {
 		const NAME: &'static str = "batch_op_opt_str";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -555,7 +522,7 @@ mod tests {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
-			let mut batch = InsertBatch::<OptStrRow>::new(ctx, 4)?;
+			let mut batch = InsertBatch::<OptStrRow, _>::new(ctx, 4)?;
 			batch.push(
 				RowNumber(1),
 				&OptStrRow {
@@ -610,7 +577,7 @@ mod tests {
 	row!(OptBlobRow { b: Option<Vec<u8>> });
 
 	struct EmitOpOptBlob;
-	impl FFIOperatorMetadata for EmitOpOptBlob {
+	impl OperatorMetadata for EmitOpOptBlob {
 		const NAME: &'static str = "batch_op_opt_blob";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
@@ -624,7 +591,7 @@ mod tests {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
-			let mut batch = InsertBatch::<OptBlobRow>::new(ctx, 3)?;
+			let mut batch = InsertBatch::<OptBlobRow, _>::new(ctx, 3)?;
 			batch.push(
 				RowNumber(1),
 				&OptBlobRow {

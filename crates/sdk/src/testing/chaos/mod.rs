@@ -346,7 +346,7 @@ mod tests {
 	use crate::{
 		error::Result,
 		operator::{
-			FFIOperator, FFIOperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
+			FFIOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
 			context::ffi::FFIOperatorContext,
 		},
 	};
@@ -357,7 +357,7 @@ mod tests {
 	/// these tests; if it ever is, the test framework will panic loudly.
 	struct NoOpOperator;
 
-	impl FFIOperatorMetadata for NoOpOperator {
+	impl OperatorMetadata for NoOpOperator {
 		const NAME: &'static str = "noop";
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";

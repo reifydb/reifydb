@@ -61,8 +61,8 @@ use serde::{Serialize, de::DeserializeOwned};
 use crate::{
 	error::Result,
 	operator::{
-		change::BorrowedColumns,
 		column::{operator::OperatorColumn, row::Row},
+		view::RowView,
 		windowed::span::{Slot, WindowSpan},
 	},
 };
@@ -123,15 +123,11 @@ pub trait TumblingOperator {
 	/// Public output emitted to downstream operators.
 	type Output: WindowOutput;
 
-	/// Project one row from a `BorrowedColumns` batch into a routed,
-	/// typed input. Returning `None` skips the row (e.g. for
-	/// missing/invalid values). The returned `SlotKey` must lie inside
-	/// the [`WindowSpan`] that [`Self::window_for`] would return for it.
-	fn extract(
-		&self,
-		cols: &BorrowedColumns<'_>,
-		row_index: usize,
-	) -> Option<(Self::GroupKey, Self::SlotKey, Self::SlotInput)>;
+	/// Project one input row into a routed, typed input. Returning `None`
+	/// skips the row (e.g. for missing/invalid values). The returned
+	/// `SlotKey` must lie inside the [`WindowSpan`] that
+	/// [`Self::window_for`] would return for it.
+	fn extract(&self, row: &impl RowView) -> Option<(Self::GroupKey, Self::SlotKey, Self::SlotInput)>;
 
 	/// Reduce one input row into the slot's contribution. `prev` is
 	/// `Some` if a row for this same `SlotKey` was already folded earlier
@@ -199,7 +195,7 @@ pub type WindowSlots<A> = BTreeMap<<A as TumblingOperator>::SlotKey, <A as Tumbl
 /// FFI registration surface for a [`TumblingOperator`].
 ///
 /// `TumblingOperator` is the *pure* aggregation surface (the four functions
-/// the contract harness checks). `FFITumblingOperator` adds the bits the FFI
+/// the contract harness checks). `TumblingRegistration` adds the bits the FFI
 /// driver needs to register the operator with the runtime: per-operator
 /// metadata constants, a config-driven constructor, and a row-key encoder
 /// so the driver can allocate `RowNumber` per `(group, window_start)`.
@@ -208,7 +204,7 @@ pub type WindowSlots<A> = BTreeMap<<A as TumblingOperator>::SlotKey, <A as Tumbl
 /// harness in `crate::testing::windowed` only sees the pure aggregator, so
 /// test fixtures don't need FFI metadata; production operators registered
 /// through [`TumblingDriver`] must impl both.
-pub trait FFITumblingOperator: TumblingOperator + Sized
+pub trait TumblingRegistration: TumblingOperator + Sized
 where
 	Self::Output: Row,
 	for<'a> &'a Self::GroupKey: IntoEncodedKey,

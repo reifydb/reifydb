@@ -24,7 +24,7 @@ use reifydb_type::{
 };
 use serde::{Serialize, de::DeserializeOwned};
 
-use super::{CatalogApi, OperatorContext, StateApi, StoreApi};
+use super::{CatalogApi, InternalStateApi, OperatorContext, RowEmit, StateApi, StoreApi, UpdateEmit};
 use crate::{
 	catalog::Catalog,
 	error::{FFIError, Result},
@@ -37,6 +37,65 @@ use crate::{
 	state::{InternalState, State, StateEntry, row::RowNumberProvider},
 	store::Store,
 };
+
+enum EmitKind {
+	Insert,
+	Remove,
+}
+
+pub struct FFIRowEmit<'a> {
+	builder: ColumnsBuilder<'a>,
+	sink: FFIRowSink<'a>,
+	names: Vec<&'static str>,
+	kind: EmitKind,
+}
+
+impl<'a> RowEmit for FFIRowEmit<'a> {
+	type Sink = FFIRowSink<'a>;
+	fn sink(&mut self) -> &mut FFIRowSink<'a> {
+		&mut self.sink
+	}
+	fn finish(self, row_numbers: &[RowNumber]) -> Result<()> {
+		let mut builder = self.builder;
+		let columns = self.sink.finish_all()?;
+		match self.kind {
+			EmitKind::Insert => builder.emit_insert(&columns, &self.names, row_numbers),
+			EmitKind::Remove => builder.emit_remove(&columns, &self.names, row_numbers),
+		}
+	}
+}
+
+pub struct FFIUpdateEmit<'a> {
+	builder: ColumnsBuilder<'a>,
+	pre: FFIRowSink<'a>,
+	post: FFIRowSink<'a>,
+	names: Vec<&'static str>,
+}
+
+impl<'a> UpdateEmit for FFIUpdateEmit<'a> {
+	type Sink = FFIRowSink<'a>;
+	fn pre(&mut self) -> &mut FFIRowSink<'a> {
+		&mut self.pre
+	}
+	fn post(&mut self) -> &mut FFIRowSink<'a> {
+		&mut self.post
+	}
+	fn finish(self, row_numbers: &[RowNumber]) -> Result<()> {
+		let mut builder = self.builder;
+		let pre_columns = self.pre.finish_all()?;
+		let post_columns = self.post.finish_all()?;
+		builder.emit_update(
+			&pre_columns,
+			&self.names,
+			row_numbers.len(),
+			row_numbers,
+			&post_columns,
+			&self.names,
+			row_numbers.len(),
+			row_numbers,
+		)
+	}
+}
 
 pub struct FFIOperatorContext {
 	pub(crate) ctx: *mut ContextFFI,
@@ -141,6 +200,24 @@ impl StateApi for State<'_> {
 	}
 }
 
+impl InternalStateApi for InternalState<'_> {
+	fn get<T: DeserializeOwned>(&self, key: &EncodedKey) -> Result<Option<T>> {
+		InternalState::get(self, key)
+	}
+	fn get_many<T: DeserializeOwned>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>> {
+		InternalState::get_many(self, keys)
+	}
+	fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> Result<()> {
+		InternalState::set(self, key, value)
+	}
+	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
+		InternalState::remove(self, key)
+	}
+	fn contains(&self, key: &EncodedKey) -> Result<bool> {
+		InternalState::contains(self, key)
+	}
+}
+
 impl StoreApi for Store<'_> {
 	fn get(&self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 		Store::get(self, key)
@@ -180,6 +257,10 @@ impl CatalogApi for Catalog<'_> {
 }
 
 impl OperatorContext for FFIOperatorContext {
+	type InsertEmit<'a> = FFIRowEmit<'a>;
+	type UpdateEmit<'a> = FFIUpdateEmit<'a>;
+	type RemoveEmit<'a> = FFIRowEmit<'a>;
+
 	fn operator_id(&self) -> FlowNodeId {
 		FFIOperatorContext::operator_id(self)
 	}
@@ -188,6 +269,9 @@ impl OperatorContext for FFIOperatorContext {
 	}
 	fn state(&mut self) -> impl StateApi + '_ {
 		FFIOperatorContext::state(self)
+	}
+	fn internal_state(&mut self) -> impl InternalStateApi + '_ {
+		FFIOperatorContext::internal_state(self)
 	}
 	fn store(&mut self) -> impl StoreApi + '_ {
 		FFIOperatorContext::store(self)
@@ -204,57 +288,38 @@ impl OperatorContext for FFIOperatorContext {
 	fn shape_for_row(&mut self, row: &EncodedRow) -> Result<RowShape> {
 		FFIOperatorContext::shape_for_row(self, row)
 	}
-	fn emit_insert<R: Row>(&mut self, rows: &[R], row_numbers: &[RowNumber]) -> Result<()> {
-		if rows.is_empty() {
-			return Ok(());
-		}
+	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<FFIRowEmit<'_>> {
 		let mut builder = self.builder();
-		let mut sink = FFIRowSink::new::<R>(&mut builder, rows.len())?;
-		for row in rows {
-			row.encode_into(&mut sink)?;
-		}
-		let columns = sink.finish_all()?;
-		let names: Vec<&str> = R::COLUMNS.iter().map(|(n, _)| *n).collect();
-		builder.emit_insert(&columns, &names, row_numbers)
+		let sink = FFIRowSink::new::<R>(&mut builder, row_capacity)?;
+		let names = R::COLUMNS.iter().map(|(n, _)| *n).collect();
+		Ok(FFIRowEmit {
+			builder,
+			sink,
+			names,
+			kind: EmitKind::Insert,
+		})
 	}
-	fn emit_update<R: Row>(&mut self, pre: &[R], post: &[R], row_numbers: &[RowNumber]) -> Result<()> {
-		if row_numbers.is_empty() {
-			return Ok(());
-		}
+	fn update_emit<R: Row>(&mut self, row_capacity: usize) -> Result<FFIUpdateEmit<'_>> {
 		let mut builder = self.builder();
-		let mut pre_sink = FFIRowSink::new::<R>(&mut builder, pre.len())?;
-		let mut post_sink = FFIRowSink::new::<R>(&mut builder, post.len())?;
-		for row in pre {
-			row.encode_into(&mut pre_sink)?;
-		}
-		for row in post {
-			row.encode_into(&mut post_sink)?;
-		}
-		let pre_columns = pre_sink.finish_all()?;
-		let post_columns = post_sink.finish_all()?;
-		let names: Vec<&str> = R::COLUMNS.iter().map(|(n, _)| *n).collect();
-		builder.emit_update(
-			&pre_columns,
-			&names,
-			pre.len(),
-			row_numbers,
-			&post_columns,
-			&names,
-			post.len(),
-			row_numbers,
-		)
+		let pre = FFIRowSink::new::<R>(&mut builder, row_capacity)?;
+		let post = FFIRowSink::new::<R>(&mut builder, row_capacity)?;
+		let names = R::COLUMNS.iter().map(|(n, _)| *n).collect();
+		Ok(FFIUpdateEmit {
+			builder,
+			pre,
+			post,
+			names,
+		})
 	}
-	fn emit_remove<R: Row>(&mut self, rows: &[R], row_numbers: &[RowNumber]) -> Result<()> {
-		if rows.is_empty() {
-			return Ok(());
-		}
+	fn remove_emit<R: Row>(&mut self, row_capacity: usize) -> Result<FFIRowEmit<'_>> {
 		let mut builder = self.builder();
-		let mut sink = FFIRowSink::new::<R>(&mut builder, rows.len())?;
-		for row in rows {
-			row.encode_into(&mut sink)?;
-		}
-		let columns = sink.finish_all()?;
-		let names: Vec<&str> = R::COLUMNS.iter().map(|(n, _)| *n).collect();
-		builder.emit_remove(&columns, &names, row_numbers)
+		let sink = FFIRowSink::new::<R>(&mut builder, row_capacity)?;
+		let names = R::COLUMNS.iter().map(|(n, _)| *n).collect();
+		Ok(FFIRowEmit {
+			builder,
+			sink,
+			names,
+			kind: EmitKind::Remove,
+		})
 	}
 }

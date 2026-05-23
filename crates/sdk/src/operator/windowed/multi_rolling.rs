@@ -39,14 +39,14 @@ where
 use crate::{
 	error::Result,
 	operator::{
-		FFIOperator, FFIOperatorMetadata,
-		change::{BorrowedChange, BorrowedColumns},
+		OperatorLogic, OperatorMetadata,
 		column::{
 			batch::{InsertBatch, RemoveBatch, UpdateBatch},
 			operator::OperatorColumn,
 			row::Row,
 		},
-		context::ffi::FFIOperatorContext,
+		context::OperatorContext,
+		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::span::Slot,
 	},
 	state::cache::StateCache,
@@ -69,18 +69,10 @@ pub trait MultiRollingOperator {
 
 	fn capacity(&self) -> usize;
 
-	fn extract_apply(
-		&self,
-		cols: &BorrowedColumns<'_>,
-		row_index: usize,
-	) -> Option<(Self::GroupKey, Self::WindowKey, Self::WindowInput)>;
+	fn extract_apply(&self, row: &impl RowView) -> Option<(Self::GroupKey, Self::WindowKey, Self::WindowInput)>;
 
-	fn extract_remove(
-		&self,
-		cols: &BorrowedColumns<'_>,
-		row_index: usize,
-	) -> Option<(Self::GroupKey, Self::WindowKey, Self::RemoveInput)> {
-		let _ = (cols, row_index);
+	fn extract_remove(&self, row: &impl RowView) -> Option<(Self::GroupKey, Self::WindowKey, Self::RemoveInput)> {
+		let _ = row;
 		None
 	}
 
@@ -98,7 +90,7 @@ pub trait MultiRollingOperator {
 	) -> BTreeMap<Self::SecondaryKey, Self::Output>;
 }
 
-pub trait FFIMultiRollingOperator: MultiRollingOperator + Sized
+pub trait MultiRollingRegistration: MultiRollingOperator + Sized
 where
 	Self::Output: Row,
 	for<'a> &'a Self::GroupKey: IntoEncodedKey,
@@ -175,7 +167,7 @@ impl<K> Default for GroupMeta<K> {
 
 pub struct MultiRollingDriver<A>
 where
-	A: FFIMultiRollingOperator,
+	A: MultiRollingRegistration,
 	A::Output: Row,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
@@ -190,13 +182,32 @@ enum BufferEvent<A: MultiRollingOperator> {
 	RemoveWhole,
 }
 
-impl<A> FFIOperator for MultiRollingDriver<A>
+impl<A> OperatorMetadata for MultiRollingDriver<A>
 where
-	A: FFIMultiRollingOperator + 'static,
+	A: MultiRollingRegistration + 'static,
 	A::Output: Row,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
-	fn new(operator_id: FlowNodeId, config: &HashMap<String, Value>) -> Result<Self> {
+	const NAME: &'static str = A::NAME;
+	const API: u32 = 1;
+	const VERSION: &'static str = A::VERSION;
+	const DESCRIPTION: &'static str = A::DESCRIPTION;
+	const INPUT_COLUMNS: &'static [OperatorColumn] = A::INPUT_COLUMNS;
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = A::OUTPUT_COLUMNS;
+	const CAPABILITIES: u32 = A::CAPABILITIES;
+}
+
+impl<A> OperatorLogic for MultiRollingDriver<A>
+where
+	A: MultiRollingRegistration + Send + Sync + 'static,
+	A::Output: Row + Send + Sync,
+	A::GroupKey: Send + Sync,
+	A::WindowKey: Send + Sync,
+	A::Buffered: Send + Sync,
+	A::SecondaryKey: Send + Sync,
+	for<'a> &'a A::GroupKey: IntoEncodedKey,
+{
+	fn create(operator_id: FlowNodeId, config: &HashMap<String, Value>) -> Result<Self> {
 		let aggregator = A::from_config(operator_id, config)?;
 		Ok(Self {
 			aggregator,
@@ -206,63 +217,88 @@ where
 	}
 
 	#[allow(clippy::type_complexity)]
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
 		let mut buckets: BTreeMap<(A::GroupKey, A::WindowKey), Vec<BufferEvent<A>>> = BTreeMap::new();
 
-		for diff in input.diffs() {
+		for di in 0..change.diff_count() {
+			let Some(diff) = change.diff(di) else {
+				continue;
+			};
 			match diff.kind() {
 				DiffType::Insert => {
-					let cols = diff.post();
-					for i in 0..cols.row_count() {
-						let Some((group, wk, in_row)) = self.aggregator.extract_apply(&cols, i)
-						else {
-							continue;
-						};
-						buckets.entry((group, wk))
-							.or_default()
-							.push(BufferEvent::Apply(in_row));
+					if let Some(cols) = diff.post() {
+						for i in 0..cols.row_count() {
+							let Some(row) = cols.row(i) else {
+								continue;
+							};
+							let Some((group, wk, in_row)) =
+								self.aggregator.extract_apply(&row)
+							else {
+								continue;
+							};
+							buckets.entry((group, wk))
+								.or_default()
+								.push(BufferEvent::Apply(in_row));
+						}
 					}
 				}
 				DiffType::Update => {
-					let pre = diff.pre();
-					let post = diff.post();
-					let n = pre.row_count().min(post.row_count());
-					for i in 0..n {
-						let Some((g_pre, wk_pre, _)) = self.aggregator.extract_apply(&pre, i)
-						else {
-							continue;
-						};
-						let Some((g_post, wk_post, in_row)) =
-							self.aggregator.extract_apply(&post, i)
-						else {
-							continue;
-						};
-						if g_pre != g_post || wk_pre != wk_post {
-							let retraction = match self.aggregator.extract_remove(&pre, i) {
-								Some((_, _, rm)) => BufferEvent::RemoveSub(rm),
-								None => BufferEvent::RemoveWhole,
+					if let (Some(pre), Some(post)) = (diff.pre(), diff.post()) {
+						let n = pre.row_count().min(post.row_count());
+						for i in 0..n {
+							let Some(pre_row) = pre.row(i) else {
+								continue;
 							};
-							buckets.entry((g_pre, wk_pre)).or_default().push(retraction);
+							let Some((g_pre, wk_pre, _)) =
+								self.aggregator.extract_apply(&pre_row)
+							else {
+								continue;
+							};
+							let Some(post_row) = post.row(i) else {
+								continue;
+							};
+							let Some((g_post, wk_post, in_row)) =
+								self.aggregator.extract_apply(&post_row)
+							else {
+								continue;
+							};
+							if g_pre != g_post || wk_pre != wk_post {
+								let retraction = match self
+									.aggregator
+									.extract_remove(&pre_row)
+								{
+									Some((_, _, rm)) => BufferEvent::RemoveSub(rm),
+									None => BufferEvent::RemoveWhole,
+								};
+								buckets.entry((g_pre, wk_pre))
+									.or_default()
+									.push(retraction);
+							}
+							buckets.entry((g_post, wk_post))
+								.or_default()
+								.push(BufferEvent::Apply(in_row));
 						}
-						buckets.entry((g_post, wk_post))
-							.or_default()
-							.push(BufferEvent::Apply(in_row));
 					}
 				}
 				DiffType::Remove => {
-					let cols = diff.pre();
-					for i in 0..cols.row_count() {
-						if let Some((group, wk, rm)) = self.aggregator.extract_remove(&cols, i)
-						{
-							buckets.entry((group, wk))
-								.or_default()
-								.push(BufferEvent::RemoveSub(rm));
-						} else if let Some((group, wk, _)) =
-							self.aggregator.extract_apply(&cols, i)
-						{
-							buckets.entry((group, wk))
-								.or_default()
-								.push(BufferEvent::RemoveWhole);
+					if let Some(cols) = diff.pre() {
+						for i in 0..cols.row_count() {
+							let Some(row) = cols.row(i) else {
+								continue;
+							};
+							if let Some((group, wk, rm)) =
+								self.aggregator.extract_remove(&row)
+							{
+								buckets.entry((group, wk))
+									.or_default()
+									.push(BufferEvent::RemoveSub(rm));
+							} else if let Some((group, wk, _)) =
+								self.aggregator.extract_apply(&row)
+							{
+								buckets.entry((group, wk))
+									.or_default()
+									.push(BufferEvent::RemoveWhole);
+							}
 						}
 					}
 				}
@@ -433,21 +469,21 @@ where
 		}
 
 		if !inserts.is_empty() {
-			let mut batch = InsertBatch::<A::Output>::new(ctx, inserts.len())?;
+			let mut batch = InsertBatch::<A::Output, _>::new(ctx, inserts.len())?;
 			for (rn, data) in &inserts {
 				batch.push(*rn, data)?;
 			}
 			batch.finish()?;
 		}
 		if !updates.is_empty() {
-			let mut batch = UpdateBatch::<A::Output>::new(ctx, updates.len())?;
+			let mut batch = UpdateBatch::<A::Output, _>::new(ctx, updates.len())?;
 			for (rn, prior, new) in &updates {
 				batch.push(*rn, prior, new)?;
 			}
 			batch.finish()?;
 		}
 		if !removes.is_empty() {
-			let mut batch = RemoveBatch::<A::Output>::new(ctx, removes.len())?;
+			let mut batch = RemoveBatch::<A::Output, _>::new(ctx, removes.len())?;
 			for (rn, data) in &removes {
 				batch.push(*rn, data)?;
 			}
@@ -461,26 +497,11 @@ where
 		Ok(())
 	}
 
-	fn flush_state(&mut self, ctx: &mut FFIOperatorContext) -> Result<()> {
+	fn flush_state(&mut self, ctx: &mut impl OperatorContext) -> Result<()> {
 		self.groups.flush(ctx)?;
 		self.meta.flush(ctx)?;
 		Ok(())
 	}
-}
-
-impl<A> FFIOperatorMetadata for MultiRollingDriver<A>
-where
-	A: FFIMultiRollingOperator,
-	A::Output: Row,
-	for<'a> &'a A::GroupKey: IntoEncodedKey,
-{
-	const NAME: &'static str = A::NAME;
-	const API: u32 = 1;
-	const VERSION: &'static str = A::VERSION;
-	const DESCRIPTION: &'static str = A::DESCRIPTION;
-	const INPUT_COLUMNS: &'static [OperatorColumn] = A::INPUT_COLUMNS;
-	const OUTPUT_COLUMNS: &'static [OperatorColumn] = A::OUTPUT_COLUMNS;
-	const CAPABILITIES: u32 = A::CAPABILITIES;
 }
 
 #[cfg(test)]
@@ -501,7 +522,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		operator::change::BorrowedColumns,
+		operator::{FFIOperatorAdapter, view::RowView},
 		row,
 		testing::{
 			builders::{TestChangeBuilder, TestRowBuilder},
@@ -555,11 +576,11 @@ mod tests {
 			3
 		}
 
-		fn extract_apply(&self, cols: &BorrowedColumns<'_>, i: usize) -> Option<(String, u64, TestInput)> {
-			let group = cols.column("group")?.utf8_at(i)?.to_string();
-			let window_start = cols.column("window_start")?.u64_at(i)?;
-			let key = cols.column("key")?.u64_at(i)?;
-			let value = cols.column("value")?.f64_at(i)?;
+		fn extract_apply(&self, row: &impl RowView) -> Option<(String, u64, TestInput)> {
+			let group = row.utf8("group")?.to_string();
+			let window_start = row.u64("window_start")?;
+			let key = row.u64("key")?;
+			let value = row.f64("value")?;
 			Some((
 				group,
 				window_start,
@@ -601,7 +622,7 @@ mod tests {
 		}
 	}
 
-	impl FFIMultiRollingOperator for TestTopAggregator {
+	impl MultiRollingRegistration for TestTopAggregator {
 		const NAME: &'static str = "test_top_rolling";
 		const VERSION: &'static str = "0.0.1";
 		const DESCRIPTION: &'static str = "test fixture";
@@ -645,8 +666,9 @@ mod tests {
 
 	#[test]
 	fn first_window_emits_inserts_for_top_2() {
-		let mut h =
-			TestHarnessBuilder::<MultiRollingDriver<TestTopAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
+			.build()
+			.expect("harness");
 		let out = h
 			.apply(TestChangeBuilder::new()
 				.insert(input_row(1, "BTC", 0, 100, 5.0))
@@ -668,8 +690,9 @@ mod tests {
 
 	#[test]
 	fn three_distinct_windows_emit_top_2_by_value() {
-		let mut h =
-			TestHarnessBuilder::<MultiRollingDriver<TestTopAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
+			.build()
+			.expect("harness");
 		let out = h
 			.apply(TestChangeBuilder::new()
 				.insert(input_row(1, "BTC", 0, 100, 5.0))
@@ -695,8 +718,9 @@ mod tests {
 
 	#[test]
 	fn vanishing_secondary_key_emits_remove() {
-		let mut h =
-			TestHarnessBuilder::<MultiRollingDriver<TestTopAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
+			.build()
+			.expect("harness");
 		// Fill 2 windows -> emit two ranks.
 		let _ = h
 			.apply(TestChangeBuilder::new()
@@ -718,8 +742,9 @@ mod tests {
 
 	#[test]
 	fn remove_at_high_water_propagates_to_emit_diff() {
-		let mut h =
-			TestHarnessBuilder::<MultiRollingDriver<TestTopAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
+			.build()
+			.expect("harness");
 		let _ = h
 			.apply(TestChangeBuilder::new()
 				.insert(input_row(1, "BTC", 0, 100, 5.0))
@@ -742,8 +767,9 @@ mod tests {
 
 	#[test]
 	fn buried_window_insert_dropped_silently() {
-		let mut h =
-			TestHarnessBuilder::<MultiRollingDriver<TestTopAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
+			.build()
+			.expect("harness");
 		let _ = h
 			.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 60, 100, 5.0)).build())
 			.expect("apply");
@@ -756,8 +782,9 @@ mod tests {
 
 	#[test]
 	fn capacity_eviction_drops_oldest_window() {
-		let mut h =
-			TestHarnessBuilder::<MultiRollingDriver<TestTopAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
+			.build()
+			.expect("harness");
 		// Capacity = 3. Insert 4 windows; smallest-key entry must be
 		// evicted. Top-2 across the 3 surviving windows.
 		let out = h
@@ -786,8 +813,9 @@ mod tests {
 
 	#[test]
 	fn multiple_groups_isolate_emits() {
-		let mut h =
-			TestHarnessBuilder::<MultiRollingDriver<TestTopAggregator>>::new().build().expect("harness");
+		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
+			.build()
+			.expect("harness");
 		let out = h
 			.apply(TestChangeBuilder::new()
 				.insert(input_row(1, "BTC", 0, 100, 5.0))

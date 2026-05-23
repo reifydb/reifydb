@@ -6,16 +6,18 @@ use std::{
 	collections::{BTreeMap, HashMap},
 	path::{Path, PathBuf},
 	sync::OnceLock,
+	time::Duration,
 };
 
 use libloading::Symbol;
 use reifydb_core::{
+	common::CommitVersion,
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	internal,
 };
 use reifydb_extension::loader::ffi::LibraryCache;
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_sdk::operator::{OperatorLogic, view::native::NativeChangeView};
+use reifydb_sdk::operator::{OperatorLogic, Tick, view::native::NativeChangeView};
 use reifydb_type::{
 	Result,
 	error::Error,
@@ -223,9 +225,30 @@ impl<C: OperatorLogic + 'static> Operator for NativeOperator<C> {
 			let view = NativeChangeView::new(&change);
 			let logic = unsafe { &mut *self.logic.get() };
 			logic.apply(&mut ctx, view)?;
+			logic.flush_state(&mut ctx)?;
 		}
 		let diffs = ctx.take_diffs();
 		Ok(Change::from_flow(self.node, version, diffs, changed_at))
+	}
+
+	fn ticks(&self) -> Option<Duration> {
+		let logic = unsafe { &*self.logic.get() };
+		logic.ticks()
+	}
+
+	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
+		let now = tick.now.clone();
+		let mut ctx = NativeOperatorContext::new(txn, self.node);
+		{
+			let logic = unsafe { &mut *self.logic.get() };
+			logic.tick(&mut ctx, tick)?;
+			logic.flush_state(&mut ctx)?;
+		}
+		let diffs = ctx.take_diffs();
+		if diffs.is_empty() {
+			return Ok(None);
+		}
+		Ok(Some(Change::from_flow(self.node, CommitVersion(now.to_nanos() as u64), diffs, now)))
 	}
 }
 

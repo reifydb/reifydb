@@ -5,10 +5,13 @@ use reifydb_core::{encoded::key::EncodedKey, util::encoding::keycode::serializer
 use reifydb_type::value::{Value, r#type::Type};
 use serde::{Serialize, de::DeserializeOwned};
 
-use super::FFIRawStatefulOperator;
-use crate::{error::Result, operator::context::ffi::FFIOperatorContext};
+use super::RawStatefulOperator;
+use crate::{
+	error::Result,
+	operator::context::{OperatorContext, StateApi},
+};
 
-pub trait FFIKeyedStateful: FFIRawStatefulOperator {
+pub trait KeyedStateful: RawStatefulOperator {
 	type State: Serialize + DeserializeOwned;
 
 	fn key_types(&self) -> &[Type];
@@ -21,17 +24,17 @@ pub trait FFIKeyedStateful: FFIRawStatefulOperator {
 		serializer.finish()
 	}
 
-	fn load_state(&self, ctx: &mut FFIOperatorContext, key_values: &[Value]) -> Result<Option<Self::State>> {
+	fn load_state(&self, ctx: &mut impl OperatorContext, key_values: &[Value]) -> Result<Option<Self::State>> {
 		let key = self.encode_key(key_values);
 		ctx.state().get::<Self::State>(&key)
 	}
 
-	fn save_state(&self, ctx: &mut FFIOperatorContext, key_values: &[Value], value: &Self::State) -> Result<()> {
+	fn save_state(&self, ctx: &mut impl OperatorContext, key_values: &[Value], value: &Self::State) -> Result<()> {
 		let key = self.encode_key(key_values);
 		ctx.state().set(&key, value)
 	}
 
-	fn remove_state(&self, ctx: &mut FFIOperatorContext, key_values: &[Value]) -> Result<()> {
+	fn remove_state(&self, ctx: &mut impl OperatorContext, key_values: &[Value]) -> Result<()> {
 		let key = self.encode_key(key_values);
 		ctx.state().remove(&key)
 	}

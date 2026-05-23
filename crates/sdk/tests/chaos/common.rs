@@ -15,7 +15,7 @@ use reifydb_core::{
 use reifydb_sdk::{
 	error::Result,
 	operator::{
-		FFIOperator, FFIOperatorMetadata,
+		FFIOperator, OperatorMetadata,
 		builder::{ColumnsBuilder, CommittedColumn},
 		change::{BorrowedChange, BorrowedColumns},
 		column::operator::OperatorColumn,
@@ -30,7 +30,7 @@ use reifydb_type::value::{Value, row_number::RowNumber, r#type::Type};
 /// must-match scenario in the chaos integration suite.
 pub struct PassthroughOperator;
 
-impl FFIOperatorMetadata for PassthroughOperator {
+impl OperatorMetadata for PassthroughOperator {
 	const NAME: &'static str = "chaos_passthrough";
 	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
@@ -64,7 +64,7 @@ impl FFIOperator for PassthroughOperator {
 /// this operator must diverge whenever the chaos sequence emits a Remove.
 pub struct SwallowsRemoveOperator;
 
-impl FFIOperatorMetadata for SwallowsRemoveOperator {
+impl OperatorMetadata for SwallowsRemoveOperator {
 	const NAME: &'static str = "chaos_swallows_remove";
 	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
