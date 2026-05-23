@@ -48,11 +48,11 @@ impl Pending {
 		self.writes.extend(keys.iter().map(|k| (k.clone(), PendingWrite::Remove)));
 	}
 
-	pub fn purge(&mut self, key: EncodedKey) {
+	pub fn drop_key(&mut self, key: EncodedKey) {
 		self.writes.insert(key, PendingWrite::Drop);
 	}
 
-	pub fn purge_batch(&mut self, keys: &[EncodedKey]) {
+	pub fn drop_keys(&mut self, keys: &[EncodedKey]) {
 		self.writes.extend(keys.iter().map(|k| (k.clone(), PendingWrite::Drop)));
 	}
 

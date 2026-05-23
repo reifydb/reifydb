@@ -245,7 +245,7 @@ fn merge_level_results(
 			match pw {
 				PendingWrite::Set(v) => ctx.pending_writes.push((key.clone(), Some(v.clone()))),
 				PendingWrite::Remove => ctx.pending_writes.push((key.clone(), None)),
-				PendingWrite::Drop => ctx.purges.push(key.clone()),
+				PendingWrite::Drop => ctx.drops.push(key.clone()),
 			}
 		}
 	}

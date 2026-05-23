@@ -517,7 +517,7 @@ impl PoolActor {
 						combined.remove(key.clone());
 					}
 					PendingWrite::Drop => {
-						combined.purge(key.clone());
+						combined.drop_key(key.clone());
 					}
 				}
 			}

@@ -224,11 +224,11 @@ impl FlowEngine {
 			}
 		}
 
-		self.emit_operator_purge_metrics(txn);
+		self.emit_operator_drop_metrics(txn);
 		Ok(())
 	}
 
-	fn emit_operator_purge_metrics(&self, txn: &FlowTransaction) {
+	fn emit_operator_drop_metrics(&self, txn: &FlowTransaction) {
 		let mut per_node: HashMap<FlowNodeId, u64> = HashMap::new();
 		for (key, write) in txn.pending().iter_sorted() {
 			if !matches!(write, PendingWrite::Drop) {

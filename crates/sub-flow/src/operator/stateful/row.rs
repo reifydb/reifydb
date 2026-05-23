@@ -14,7 +14,7 @@ use reifydb_type::{Result, value::row_number::RowNumber};
 use crate::{
 	operator::stateful::{
 		counter::{Counter, CounterDirection},
-		utils::{internal_state_get, internal_state_purge, internal_state_set},
+		utils::{internal_state_drop, internal_state_get, internal_state_set},
 	},
 	transaction::FlowTransaction,
 };
@@ -91,8 +91,8 @@ impl RowNumberProvider {
 		};
 		let row_num = decode_payload::<u64>(&existing_row)?;
 		let reverse_key = self.make_reverse_map_key(RowNumber(row_num));
-		internal_state_purge(self.node, txn, &map_key)?;
-		internal_state_purge(self.node, txn, &reverse_key)?;
+		internal_state_drop(self.node, txn, &map_key)?;
+		internal_state_drop(self.node, txn, &reverse_key)?;
 		Ok(true)
 	}
 

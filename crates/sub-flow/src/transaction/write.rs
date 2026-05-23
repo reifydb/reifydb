@@ -33,14 +33,14 @@ impl FlowTransaction {
 		}
 	}
 
-	pub fn purge(&mut self, key: &EncodedKey) -> Result<()> {
+	pub fn drop_key(&mut self, key: &EncodedKey) -> Result<()> {
 		match self {
 			Self::Committing {
 				cmd,
 				..
-			} => cmd.purge(key),
+			} => cmd.drop_key(key),
 			_ => {
-				self.inner_mut().pending.purge(key.clone());
+				self.inner_mut().pending.drop_key(key.clone());
 				Ok(())
 			}
 		}
@@ -82,19 +82,19 @@ impl FlowTransaction {
 		}
 	}
 
-	pub fn purge_batch(&mut self, keys: &[EncodedKey]) -> Result<()> {
+	pub fn drop_keys(&mut self, keys: &[EncodedKey]) -> Result<()> {
 		match self {
 			Self::Committing {
 				cmd,
 				..
 			} => {
 				for key in keys {
-					cmd.purge(key)?;
+					cmd.drop_key(key)?;
 				}
 				Ok(())
 			}
 			_ => {
-				self.inner_mut().pending.purge_batch(keys);
+				self.inner_mut().pending.drop_keys(keys);
 				Ok(())
 			}
 		}

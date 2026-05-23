@@ -215,7 +215,7 @@ impl CommandTransaction {
 				.accumulator
 				.take_changes(CommitVersion(0), DateTime::from_nanos(self.clock.now_nanos()))?,
 			pending_writes: Vec::new(),
-			purges: Vec::new(),
+			drops: Vec::new(),
 			pending_shapes: Vec::new(),
 			transaction_writes,
 			view_entries: Vec::new(),
@@ -456,9 +456,9 @@ impl CommandTransaction {
 	}
 
 	#[inline]
-	pub fn purge(&mut self, key: &EncodedKey) -> Result<()> {
+	pub fn drop_key(&mut self, key: &EncodedKey) -> Result<()> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().purge(key)
+		self.cmd.as_mut().unwrap().drop_key(key)
 	}
 
 	#[inline]

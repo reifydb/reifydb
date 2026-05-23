@@ -261,11 +261,11 @@ impl MultiWriteTransaction {
 		})
 	}
 
-	#[instrument(name = "transaction::command::purge", level = "trace", skip(self), fields(
+	#[instrument(name = "transaction::command::drop_key", level = "trace", skip(self), fields(
 		txn_id = %self.id,
 		key_len = key.len()
 	))]
-	pub fn purge(&mut self, key: &EncodedKey) -> Result<()> {
+	pub fn drop_key(&mut self, key: &EncodedKey) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}

@@ -42,10 +42,10 @@ pub fn state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey)
 	Ok(())
 }
 
-pub fn state_purge(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<()> {
+pub fn state_drop(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<()> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
-	txn.purge(&encoded_key)?;
+	txn.drop_key(&encoded_key)?;
 	Ok(())
 }
 
@@ -78,10 +78,10 @@ pub fn internal_state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &En
 	Ok(())
 }
 
-pub fn internal_state_purge(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<()> {
+pub fn internal_state_drop(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<()> {
 	let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
-	txn.purge(&encoded_key)?;
+	txn.drop_key(&encoded_key)?;
 	Ok(())
 }
 
@@ -114,7 +114,7 @@ pub fn evict_state_by_ttl(
 			TtlAnchor::Updated => row.updated_at_nanos(),
 		};
 		if anchor < cutoff {
-			state_purge(id, txn, &key)?;
+			state_drop(id, txn, &key)?;
 			evicted += 1;
 		}
 	}
@@ -577,7 +577,7 @@ pub mod tests {
 
 	#[test]
 	fn evict_state_by_ttl_never_touches_internal_state() {
-		// Eviction must scan/purge ONLY FlowNodeStateKey, never
+		// Eviction must scan/drop ONLY FlowNodeStateKey, never
 		// FlowNodeInternalStateKey, or the row-number counter (stored under
 		// internal state) could be deleted and row numbers reused.
 		let mut parent = create_test_transaction();
@@ -601,10 +601,10 @@ pub mod tests {
 		let evicted =
 			evict_state_by_ttl(node, &mut txn, 10, TtlAnchor::Created, 1_000_000_000, &mut cursor).unwrap();
 
-		assert_eq!(evicted, 1, "the expired FlowNodeState row must be purged");
+		assert_eq!(evicted, 1, "the expired FlowNodeState row must be dropped");
 		assert!(
 			state_get(node, &mut txn, &state_key).unwrap().is_none(),
-			"expired FlowNodeState row must be purged"
+			"expired FlowNodeState row must be dropped"
 		);
 		assert!(
 			internal_state_get(node, &mut txn, &counter_key).unwrap().is_some(),
