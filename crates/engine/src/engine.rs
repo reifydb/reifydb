@@ -393,6 +393,10 @@ impl CdcHost for StandardEngine {
 		StandardEngine::done_until(self)
 	}
 
+	fn cdc_producer_watermark(&self) -> CommitVersion {
+		StandardEngine::cdc_producer_watermark(self)
+	}
+
 	fn wait_for_mark_timeout(&self, version: CommitVersion, timeout: Duration) -> bool {
 		StandardEngine::wait_for_mark_timeout(self, version, timeout)
 	}

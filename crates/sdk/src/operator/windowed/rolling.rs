@@ -154,8 +154,8 @@ where
 		let aggregator = A::from_config(operator_id, config)?;
 		Ok(Self {
 			aggregator,
-			buffers: StateCache::<RowNumber, RollingBuffer<A>>::new(1024),
-			meta: StateCache::<MetaKey, GroupMeta<A::WindowKey>>::new_internal(4096),
+			buffers: StateCache::<RowNumber, RollingBuffer<A>>::new(8),
+			meta: StateCache::<MetaKey, GroupMeta<A::WindowKey>>::new_internal(64),
 		})
 	}
 
@@ -524,9 +524,10 @@ mod tests {
 
 	#[test]
 	fn single_insert_emits_insert() {
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
+				.build()
+				.expect("harness");
 		let out =
 			h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 		assert_eq!(out.diffs.len(), 1);
@@ -540,9 +541,10 @@ mod tests {
 
 	#[test]
 	fn buffer_fills_then_evicts_smallest() {
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
+				.build()
+				.expect("harness");
 
 		// Insert 4 windows; capacity = 3. The smallest (window_start=0)
 		// is evicted on the 4th insert; the resulting Update reflects
@@ -572,9 +574,10 @@ mod tests {
 		// event for that older key (Insert, Update, Remove) is dropped
 		// silently. An Update for a buried (non-newest) window does NOT
 		// reach `fold_into_window` and the buffer is unchanged.
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
+				.build()
+				.expect("harness");
 
 		let _ = h
 			.apply(TestChangeBuilder::new()
@@ -601,9 +604,10 @@ mod tests {
 		// Remove for a WindowKey strictly older than high_water is
 		// dropped silently, matching the tumbling driver's behaviour.
 		// The buffer keeps the would-be-removed entry.
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
+				.build()
+				.expect("harness");
 
 		let _ = h
 			.apply(TestChangeBuilder::new()
@@ -624,9 +628,10 @@ mod tests {
 		// A Remove for the newest WindowKey (wk == high_water) is NOT
 		// late and is processed normally: the entry is dropped from the
 		// buffer and an Update is emitted with the remaining contents.
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
+				.build()
+				.expect("harness");
 
 		let _ = h
 			.apply(TestChangeBuilder::new()
@@ -651,9 +656,10 @@ mod tests {
 	fn late_insert_for_buried_window_dropped() {
 		// Late Insert for a window older than high_water is dropped
 		// silently, mirroring the tumbling driver's late-event rule.
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
+				.build()
+				.expect("harness");
 
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 60, 5.0)).build()).expect("apply");
 
@@ -665,9 +671,10 @@ mod tests {
 
 	#[test]
 	fn remove_clears_buffer_emits_nothing() {
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
+				.build()
+				.expect("harness");
 
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 
@@ -683,9 +690,10 @@ mod tests {
 		// Same (group, window_start) Update should replace the
 		// buffered value, not add to it. The chaos-test defect class
 		// "accumulate-on-Update" lands here.
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
+				.build()
+				.expect("harness");
 
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 		let out = h
@@ -704,9 +712,10 @@ mod tests {
 
 	#[test]
 	fn multiple_groups_isolate_buffers() {
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
+				.build()
+				.expect("harness");
 
 		let out = h
 			.apply(TestChangeBuilder::new()

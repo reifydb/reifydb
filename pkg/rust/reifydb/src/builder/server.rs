@@ -369,6 +369,8 @@ impl ServerBuilder {
 			StorageFactory::Memory => CdcBackend::Memory,
 			#[cfg(not(target_arch = "wasm32"))]
 			StorageFactory::Sqlite(config) => CdcBackend::Sqlite(config.clone()),
+			#[cfg(not(target_arch = "wasm32"))]
+			StorageFactory::SqliteWithoutBuffer(config) => CdcBackend::Sqlite(config.clone()),
 		};
 
 		let mut database_builder = DatabaseBuilder::new(catalog_cache, multi, single, eventbus.clone())

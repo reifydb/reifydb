@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	common::{CommitVersion, JoinType},
-	interface::change::Diff,
-	value::column::columns::Columns,
-};
+use reifydb_core::{common::JoinType, interface::change::Diff, value::column::columns::Columns};
 use reifydb_runtime::hash::Hash128;
 
 use crate::{
@@ -28,7 +24,6 @@ pub(crate) struct JoinContext<'a> {
 	pub side: JoinSide,
 	pub state: &'a mut JoinState,
 	pub operator: &'a JoinOperator,
-	pub version: CommitVersion,
 }
 
 #[derive(Clone, Copy)]

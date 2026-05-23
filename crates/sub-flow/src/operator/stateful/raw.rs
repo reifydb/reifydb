@@ -23,11 +23,11 @@ pub trait RawStatefulOperator: Operator {
 		utils::state_remove(self.id(), txn, key)
 	}
 
-	fn state_scan(&self, txn: &mut FlowTransaction) -> Result<StateIterator> {
-		utils::state_scan(self.id(), txn)
+	fn state_scan_all(&self, txn: &mut FlowTransaction) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+		utils::state_scan_all(self.id(), txn)
 	}
 
-	fn state_range(&self, txn: &mut FlowTransaction, range: EncodedKeyRange) -> Result<StateIterator> {
+	fn state_range<'a>(&self, txn: &'a mut FlowTransaction, range: EncodedKeyRange) -> StateIterator<'a> {
 		utils::state_range(self.id(), txn, range)
 	}
 
@@ -110,7 +110,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_simple_state_scan() {
+	fn test_simple_state_scan_all() {
 		let mut txn = create_test_transaction();
 		let mut txn = FlowTransaction::deferred(
 			&mut txn,
@@ -130,7 +130,7 @@ pub mod tests {
 		}
 
 		// Scan and verify count
-		let scanned: Vec<_> = operator.state_scan(&mut txn).unwrap().collect();
+		let scanned: Vec<_> = operator.state_scan_all(&mut txn).unwrap();
 		assert_eq!(scanned.len(), 3);
 	}
 
@@ -154,7 +154,7 @@ pub mod tests {
 		}
 
 		let range = EncodedKeyRange::new(Included(test_key("02")), Excluded(test_key("05")));
-		let range_result: Vec<_> = operator.state_range(&mut txn, range).unwrap().collect();
+		let range_result: Vec<_> = operator.state_range(&mut txn, range).collect::<Result<Vec<_>>>().unwrap();
 
 		// Should get keys 02, 03, 04 (not 05 as end is exclusive)
 		assert_eq!(range_result.len(), 3);
@@ -183,14 +183,14 @@ pub mod tests {
 		}
 
 		// Verify entries exist
-		let count = operator.state_scan(&mut txn).unwrap().count();
+		let count = operator.state_scan_all(&mut txn).unwrap().len();
 		assert_eq!(count, 5);
 
 		// Clear all
 		operator.state_clear(&mut txn).unwrap();
 
 		// Verify all cleared
-		let count = operator.state_scan(&mut txn).unwrap().count();
+		let count = operator.state_scan_all(&mut txn).unwrap().len();
 		assert_eq!(count, 0);
 	}
 
@@ -244,7 +244,7 @@ pub mod tests {
 
 		// Query range that doesn't exist (after all "item_*" entries)
 		let range = EncodedKeyRange::new(Included(test_key("z_aaa")), Excluded(test_key("z_zzz")));
-		let range_result: Vec<_> = operator.state_range(&mut txn, range).unwrap().collect();
+		let range_result: Vec<_> = operator.state_range(&mut txn, range).collect::<Result<Vec<_>>>().unwrap();
 
 		assert_eq!(range_result.len(), 0);
 	}
@@ -320,7 +320,7 @@ pub mod tests {
 		operator.state_remove(&mut txn, &test_key("partial_3")).unwrap();
 
 		// Should have 3 entries left (0, 2, 4)
-		let remaining: Vec<_> = operator.state_scan(&mut txn).unwrap().collect();
+		let remaining: Vec<_> = operator.state_scan_all(&mut txn).unwrap();
 		assert_eq!(remaining.len(), 3);
 	}
 }

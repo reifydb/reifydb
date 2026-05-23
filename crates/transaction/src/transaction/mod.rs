@@ -255,6 +255,7 @@ impl<'a> TestTransaction<'a> {
 				DateTime::from_nanos(self.inner.clock.now_nanos()),
 			)?,
 			pending_writes: Vec::new(),
+			purges: Vec::new(),
 			pending_shapes: Vec::new(),
 			transaction_writes,
 			view_entries: Vec::new(),
@@ -267,6 +268,10 @@ impl<'a> TestTransaction<'a> {
 				Some(v) => self.inner.cmd.as_mut().unwrap().set(key, v.clone())?,
 				None => self.inner.cmd.as_mut().unwrap().remove(key)?,
 			}
+		}
+
+		for key in &ctx.purges {
+			self.inner.cmd.as_mut().unwrap().purge(key)?;
 		}
 
 		for (id, diff) in ctx.view_entries {

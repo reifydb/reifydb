@@ -17,6 +17,7 @@ use super::{
 	actor::{PollActor, PollActorConfig},
 	consumer::{CdcConsume, CdcConsumer},
 	host::CdcHost,
+	wake::CdcWakeRegistry,
 	watermark::CdcConsumerWatermark,
 };
 use crate::storage::CdcStore;
@@ -32,6 +33,8 @@ pub struct PollConsumerConfig {
 	pub max_batch_size: Option<u64>,
 
 	pub consumer_watermark: Option<CdcConsumerWatermark>,
+
+	pub wake_registry: Option<CdcWakeRegistry>,
 }
 
 impl PollConsumerConfig {
@@ -47,11 +50,17 @@ impl PollConsumerConfig {
 			poll_interval,
 			max_batch_size,
 			consumer_watermark: None,
+			wake_registry: None,
 		}
 	}
 
 	pub fn with_consumer_watermark(mut self, watermark: CdcConsumerWatermark) -> Self {
 		self.consumer_watermark = Some(watermark);
+		self
+	}
+
+	pub fn with_wake_registry(mut self, registry: CdcWakeRegistry) -> Self {
+		self.wake_registry = Some(registry);
 		self
 	}
 }
@@ -109,8 +118,14 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> CdcConsumer for PollCons
 		}
 		let (host, consumer, store) = self.take_resources();
 		let watermark = self.config.consumer_watermark.clone();
-		let actor = PollActor::new(self.build_actor_config(), host, consumer, store, watermark);
-		self.handle = Some(self.actor_system.spawn_system(&self.config.thread_name, actor));
+		let wake_armed = Arc::new(AtomicBool::new(false));
+		let actor =
+			PollActor::new(self.build_actor_config(), host, consumer, store, watermark, wake_armed.clone());
+		let handle = self.actor_system.spawn_system(&self.config.thread_name, actor);
+		if let Some(registry) = &self.config.wake_registry {
+			registry.register(wake_armed, handle.actor_ref().clone());
+		}
+		self.handle = Some(handle);
 		Ok(())
 	}
 

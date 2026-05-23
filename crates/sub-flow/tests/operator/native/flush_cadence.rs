@@ -17,5 +17,9 @@ fn state_is_visible_only_after_flush() {
 	assert_eq!(harness.state_value::<i64>(&flush_probe_key()), None, "state must not be visible before flush");
 
 	harness.flush().expect("flush");
-	assert_eq!(harness.state_value::<i64>(&flush_probe_key()), Some(FLUSH_PROBE_VALUE), "state visible after flush");
+	assert_eq!(
+		harness.state_value::<i64>(&flush_probe_key()),
+		Some(FLUSH_PROBE_VALUE),
+		"state visible after flush"
+	);
 }

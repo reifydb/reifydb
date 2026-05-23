@@ -38,7 +38,7 @@ use reifydb_sdk::{
 };
 use reifydb_type::{
 	util::cowvec::CowVec,
-	value::{Value, constraint::TypeConstraint, r#type::Type, row_number::RowNumber},
+	value::{Value, constraint::TypeConstraint, row_number::RowNumber, r#type::Type},
 };
 
 pub const WINDOW_SIZE: i64 = 100;

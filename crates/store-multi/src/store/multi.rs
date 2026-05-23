@@ -91,7 +91,12 @@ impl MultiVersionCommit for StandardMultiStore {
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
 		let classified = classify_deltas(&deltas);
 
-		let drop_batch = build_drop_batch(classified.explicit_drops, &classified.pending_set_keys, version);
+		let (operator_drops, source_drops): (Vec<_>, Vec<_>) = classified
+			.explicit_drops
+			.into_iter()
+			.partition(|(table, _)| matches!(table, EntryKind::Operator(_)));
+
+		let drop_batch = build_drop_batch(source_drops, &classified.pending_set_keys, version);
 		self.dispatch_drops(drop_batch);
 
 		if let Some(buffer) = &self.buffer {
@@ -101,6 +106,8 @@ impl MultiVersionCommit for StandardMultiStore {
 		} else {
 			return Ok(());
 		}
+
+		self.evict_operator_state(&operator_drops)?;
 
 		self.emit_commit_metrics(classified.writes, classified.deletes, version);
 
@@ -292,6 +299,36 @@ impl StandardMultiStore {
 		{
 			warn!("Failed to send drop batch");
 		}
+	}
+
+	fn evict_operator_state(&self, drops: &[(EntryKind, EncodedKey)]) -> Result<()> {
+		if drops.is_empty() {
+			return Ok(());
+		}
+
+		if let Some(buffer) = &self.buffer {
+			let mut batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
+			for (table, key) in drops {
+				for (entry_version, _) in buffer.get_all_versions(*table, key.as_ref())? {
+					batches.entry(*table).or_default().push((key.clone(), entry_version));
+				}
+			}
+			if !batches.is_empty() {
+				buffer.drop(batches)?;
+			}
+		}
+
+		if let Some(persistent) = &self.persistent {
+			let mut by_table: HashMap<EntryKind, Vec<EncodedKey>> = HashMap::new();
+			for (table, key) in drops {
+				by_table.entry(*table).or_default().push(key.clone());
+			}
+			for (table, keys) in by_table {
+				persistent.delete_keys(table, &keys)?;
+			}
+		}
+
+		Ok(())
 	}
 
 	#[inline]

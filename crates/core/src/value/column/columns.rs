@@ -761,6 +761,55 @@ impl Columns {
 		}
 	}
 
+	pub fn push_row(&mut self, row: &Row) {
+		let field_count = row.shape.fields().len();
+
+		if self.columns.is_empty() {
+			self.columns.make_mut().reserve(field_count);
+			self.names.make_mut().reserve(field_count);
+			self.row_numbers.push(row.number);
+			self.created_at.push(DateTime::from_nanos(row.encoded.created_at_nanos()));
+			self.updated_at.push(DateTime::from_nanos(row.encoded.updated_at_nanos()));
+
+			for (idx, field) in row.shape.fields().iter().enumerate() {
+				let value = row.shape.get_value(&row.encoded, idx);
+
+				let column_type = if matches!(value, Value::None { .. }) {
+					field.constraint.get_type()
+				} else {
+					value.get_type()
+				};
+
+				let mut data = if column_type.is_option() {
+					ColumnBuffer::none_typed(column_type.clone(), 0)
+				} else {
+					ColumnBuffer::with_capacity(column_type.clone(), 1)
+				};
+				data.push_value(value);
+
+				if column_type == Type::DictionaryId
+					&& let ColumnBuffer::DictionaryId(container) = &mut data
+					&& let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
+				{
+					container.set_dictionary_id(*dict_id);
+				}
+
+				let name = row.shape.get_field_name(idx).expect("RowShape missing name for field");
+				self.names.push(Fragment::internal(name));
+				self.columns.push(data);
+			}
+		} else if self.columns.len() == field_count {
+			let columns_vec = self.columns.make_mut();
+			for (idx, column) in columns_vec.iter_mut().enumerate() {
+				let value = row.shape.get_value(&row.encoded, idx);
+				column.push_value(value);
+			}
+			self.row_numbers.push(row.number);
+			self.created_at.push(DateTime::from_nanos(row.encoded.created_at_nanos()));
+			self.updated_at.push(DateTime::from_nanos(row.encoded.updated_at_nanos()));
+		}
+	}
+
 	pub fn to_single_row(&self) -> Row {
 		assert_eq!(self.row_count(), 1, "to_row() requires exactly 1 row, got {}", self.row_count());
 		assert_eq!(

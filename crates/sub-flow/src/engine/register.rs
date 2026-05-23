@@ -34,7 +34,7 @@ use crate::operator::apply::ApplyOperator;
 use crate::{
 	engine::FlowEngine,
 	operator::{
-		Operators,
+		OperatorCell, Operators,
 		append::AppendOperator,
 		distinct::DistinctOperator,
 		extend::ExtendOperator,
@@ -112,7 +112,9 @@ impl FlowEngine {
 				self.add_source(flow.id, node.id, ShapeId::table(table.id));
 				self.operators.insert(
 					node.id,
-					Arc::new(Operators::SourceTable(PrimitiveTableOperator::new(node.id, table))),
+					OperatorCell::new(Operators::SourceTable(PrimitiveTableOperator::new(
+						node.id, table,
+					))),
 				);
 			}
 			SourceView {
@@ -124,7 +126,7 @@ impl FlowEngine {
 				let source_flow = self.catalog.get_flow(&mut txn.reborrow(), source_flow)?;
 				self.operators.insert(
 					node.id,
-					Arc::new(Operators::SourceFlow(PrimitiveFlowOperator::new(
+					OperatorCell::new(Operators::SourceFlow(PrimitiveFlowOperator::new(
 						node.id,
 						source_flow,
 					))),
@@ -137,9 +139,9 @@ impl FlowEngine {
 				self.add_source(flow.id, node.id, ShapeId::ringbuffer(rb.id));
 				self.operators.insert(
 					node.id,
-					Arc::new(Operators::SourceRingBuffer(PrimitiveRingBufferOperator::new(
-						node.id, rb,
-					))),
+					OperatorCell::new(Operators::SourceRingBuffer(
+						PrimitiveRingBufferOperator::new(node.id, rb),
+					)),
 				);
 			}
 			SourceSeries {
@@ -149,7 +151,9 @@ impl FlowEngine {
 				self.add_source(flow.id, node.id, ShapeId::series(s.id));
 				self.operators.insert(
 					node.id,
-					Arc::new(Operators::SourceSeries(PrimitiveSeriesOperator::new(node.id, s))),
+					OperatorCell::new(Operators::SourceSeries(PrimitiveSeriesOperator::new(
+						node.id,
+					))),
 				);
 			}
 			SinkTableView {
@@ -166,7 +170,7 @@ impl FlowEngine {
 				let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 				self.operators.insert(
 					node.id,
-					Arc::new(Operators::SinkTableView(SinkTableViewOperator::new(
+					OperatorCell::new(Operators::SinkTableView(SinkTableViewOperator::new(
 						parent, node.id, resolved, table,
 					))),
 				);
@@ -186,14 +190,16 @@ impl FlowEngine {
 				let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 				self.operators.insert(
 					node.id,
-					Arc::new(Operators::SinkRingBufferView(SinkRingBufferViewOperator::new(
-						parent,
-						node.id,
-						resolved,
-						ringbuffer,
-						capacity,
-						propagate_evictions,
-					))),
+					OperatorCell::new(Operators::SinkRingBufferView(
+						SinkRingBufferViewOperator::new(
+							parent,
+							node.id,
+							resolved,
+							ringbuffer,
+							capacity,
+							propagate_evictions,
+						),
+					)),
 				);
 			}
 			SinkSeriesView {
@@ -210,7 +216,7 @@ impl FlowEngine {
 				let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 				self.operators.insert(
 					node.id,
-					Arc::new(Operators::SinkSeriesView(SinkSeriesViewOperator::new(
+					OperatorCell::new(Operators::SinkSeriesView(SinkSeriesViewOperator::new(
 						parent,
 						node.id,
 						resolved,
@@ -236,7 +242,7 @@ impl FlowEngine {
 					.clone();
 				self.operators.insert(
 					node.id,
-					Arc::new(Operators::Filter(FilterOperator::new(
+					OperatorCell::new(Operators::Filter(FilterOperator::new(
 						parent,
 						node.id,
 						conditions,
@@ -255,7 +261,7 @@ impl FlowEngine {
 					.clone();
 				self.operators.insert(
 					node.id,
-					Arc::new(Operators::Gate(GateOperator::new(
+					OperatorCell::new(Operators::Gate(GateOperator::new(
 						parent,
 						node.id,
 						conditions,
@@ -274,7 +280,7 @@ impl FlowEngine {
 					.clone();
 				self.operators.insert(
 					node.id,
-					Arc::new(Operators::Map(MapOperator::new(
+					OperatorCell::new(Operators::Map(MapOperator::new(
 						parent,
 						node.id,
 						expressions,
@@ -293,7 +299,11 @@ impl FlowEngine {
 					.clone();
 				self.operators.insert(
 					node.id,
-					Arc::new(Operators::Extend(ExtendOperator::new(parent, node.id, expressions))),
+					OperatorCell::new(Operators::Extend(ExtendOperator::new(
+						parent,
+						node.id,
+						expressions,
+					))),
 				);
 			}
 			Sort {
@@ -306,7 +316,11 @@ impl FlowEngine {
 					.clone();
 				self.operators.insert(
 					node.id,
-					Arc::new(Operators::Sort(SortOperator::new(parent, node.id, Vec::new()))),
+					OperatorCell::new(Operators::Sort(SortOperator::new(
+						parent,
+						node.id,
+						Vec::new(),
+					))),
 				);
 			}
 			Take {
@@ -319,7 +333,7 @@ impl FlowEngine {
 					.clone();
 				self.operators.insert(
 					node.id,
-					Arc::new(Operators::Take(TakeOperator::new(parent, node.id, limit))),
+					OperatorCell::new(Operators::Take(TakeOperator::new(parent, node.id, limit))),
 				);
 			}
 			Join {
@@ -359,10 +373,9 @@ impl FlowEngine {
 
 				self.operators.insert(
 					node.id,
-					Arc::new(Operators::Join(JoinOperator::new(
+					OperatorCell::new(Operators::Join(JoinOperator::new(
 						JoinSideConfig {
 							schema: left_parent.output_schema().unwrap_or_default(),
-							parent: left_parent,
 							node: left_node,
 							exprs: left,
 						},
@@ -370,7 +383,6 @@ impl FlowEngine {
 							schema: right_parent.output_schema().expect(
 								"right side of join must have a statically known schema",
 							),
-							parent: right_parent,
 							node: right_node,
 							exprs: right,
 						},
@@ -394,7 +406,7 @@ impl FlowEngine {
 					.clone();
 				self.operators.insert(
 					node.id,
-					Arc::new(Operators::Distinct(DistinctOperator::new(
+					OperatorCell::new(Operators::Distinct(DistinctOperator::new(
 						parent,
 						node.id,
 						expressions,
@@ -434,7 +446,7 @@ impl FlowEngine {
 
 				self.operators.insert(
 					node.id,
-					Arc::new(Operators::Append(AppendOperator::new(
+					OperatorCell::new(Operators::Append(AppendOperator::new(
 						node.id,
 						parents,
 						node.inputs.clone(),
@@ -446,8 +458,10 @@ impl FlowEngine {
 			Apply {
 				operator,
 				expressions,
-				ttl: _,
+				ttl,
 			} => {
+				let ttl_nanos = ttl.as_ref().map(|t| t.duration_nanos);
+				let ttl_anchor = ttl.as_ref().map(|t| t.anchor).unwrap_or_default();
 				let config = evaluate_operator_config(
 					expressions.as_slice(),
 					&self.executor.routines,
@@ -456,7 +470,7 @@ impl FlowEngine {
 
 				if let Some(factory) = self.custom_operators.get(operator.as_str()) {
 					let op = factory(node.id, &config)?;
-					self.operators.insert(node.id, Arc::new(Operators::Custom(op)));
+					self.operators.insert(node.id, OperatorCell::new(Operators::Custom(op)));
 				} else {
 					#[cfg(reifydb_target = "native")]
 					{
@@ -485,14 +499,14 @@ impl FlowEngine {
 
 						self.operators.insert(
 							node.id,
-							Arc::new(Operators::Apply(ApplyOperator::new(
-								parent, node.id, inner,
+							OperatorCell::new(Operators::Apply(ApplyOperator::new(
+								parent, node.id, inner, ttl_nanos, ttl_anchor,
 							))),
 						);
 					}
 					#[cfg(not(reifydb_target = "native"))]
 					{
-						let _ = operator;
+						let _ = (operator, ttl_nanos, ttl_anchor);
 
 						return Err(Error(Box::new(internal!(
 							"FFI operators are not supported in WASM"
@@ -524,7 +538,7 @@ impl FlowEngine {
 					runtime_context: self.runtime_context.clone(),
 					routines: self.executor.routines.clone(),
 				});
-				self.operators.insert(node.id, Arc::new(Operators::Window(operator)));
+				self.operators.insert(node.id, OperatorCell::new(Operators::Window(operator)));
 			}
 		}
 
@@ -601,8 +615,10 @@ impl FlowEngine {
 			}
 		}
 
-		self.operators
-			.insert(node.id, Arc::new(Operators::SourceView(PrimitiveViewOperator::new(node.id, view))));
+		self.operators.insert(
+			node.id,
+			OperatorCell::new(Operators::SourceView(PrimitiveViewOperator::new(node.id, view))),
+		);
 		Ok(())
 	}
 

@@ -244,8 +244,7 @@ impl FlowTransaction {
 	pub fn deferred_from_parts(params: DeferredParams) -> Self {
 		let mut query = params.query;
 		query.read_as_of_version_inclusive(params.version);
-		let mut state_query = params.state_query;
-		state_query.read_as_of_version_inclusive(params.version);
+		let state_query = params.state_query;
 
 		Self::Deferred {
 			inner: FlowTransactionInner {
@@ -266,7 +265,8 @@ impl FlowTransaction {
 		}
 	}
 
-	pub fn committing(params: CommittingParams) -> Result<Self> {
+	pub fn committing(mut params: CommittingParams) -> Result<Self> {
+		params.cmd.disable_conflict_tracking()?;
 		let version = params.cmd.version();
 		let mut query = params.cmd.multi.begin_query()?;
 		query.read_as_of_version_inclusive(version);
@@ -299,7 +299,7 @@ impl FlowTransaction {
 			Self::Committing {
 				mut cmd,
 				..
-			} => cmd.commit(),
+			} => cmd.commit_unchecked(),
 			_ => panic!("FlowTransaction::commit only valid on Committing variant"),
 		}
 	}
@@ -379,7 +379,7 @@ impl FlowTransaction {
 						PendingWrite::Set(row) => {
 							state.insert(key.clone(), row.clone());
 						}
-						PendingWrite::Remove => {
+						PendingWrite::Remove | PendingWrite::Drop => {
 							state.remove(key);
 						}
 					}
@@ -428,8 +428,7 @@ impl FlowTransaction {
 		entries
 	}
 
-	#[cfg(test)]
-	pub fn pending(&self) -> &Pending {
+	pub(crate) fn pending(&self) -> &Pending {
 		&self.inner().pending
 	}
 

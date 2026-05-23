@@ -83,8 +83,10 @@ impl FFIOperator for EvenFilter {
 }
 
 fn bench_ffi_filter(n_rows: usize, iters: usize) {
-	let mut harness =
-		FFIOperatorHarnessBuilder::<EvenFilter>::new().with_node_id(FlowNodeId(1)).build().expect("build harness");
+	let mut harness = FFIOperatorHarnessBuilder::<EvenFilter>::new()
+		.with_node_id(FlowNodeId(1))
+		.build()
+		.expect("build harness");
 
 	let mut tcb = TestChangeBuilder::new();
 	for i in 0..n_rows {

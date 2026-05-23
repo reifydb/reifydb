@@ -2,27 +2,19 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
-use reifydb_core::{
-	interface::{
-		catalog::{flow::FlowNodeId, series::Series},
-		change::Change,
-	},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
-};
-use reifydb_type::{Result, fragment::Fragment, value::r#type::Type};
+use reifydb_core::interface::{catalog::flow::FlowNodeId, change::Change};
+use reifydb_type::Result;
 
 use crate::{Operator, transaction::FlowTransaction};
 
 pub struct PrimitiveSeriesOperator {
 	node: FlowNodeId,
-	series: Series,
 }
 
 impl PrimitiveSeriesOperator {
-	pub fn new(node: FlowNodeId, series: Series) -> Self {
+	pub fn new(node: FlowNodeId) -> Self {
 		Self {
 			node,
-			series,
 		}
 	}
 }
@@ -38,25 +30,5 @@ impl Operator for PrimitiveSeriesOperator {
 
 	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		Ok(Change::from_flow(self.node, change.version, change.diffs, change.changed_at))
-	}
-}
-
-impl PrimitiveSeriesOperator {
-	fn empty_columns(&self) -> Columns {
-		let mut columns = Vec::with_capacity(1 + self.series.columns.len());
-
-		columns.push(ColumnWithName {
-			name: Fragment::internal("timestamp"),
-			data: ColumnBuffer::with_capacity(Type::Int8, 0),
-		});
-
-		for col in &self.series.columns {
-			columns.push(ColumnWithName {
-				name: Fragment::internal(&col.name),
-				data: ColumnBuffer::with_capacity(col.constraint.get_type(), 0),
-			});
-		}
-
-		Columns::new(columns)
 	}
 }

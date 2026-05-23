@@ -26,20 +26,19 @@ use reifydb_type::{
 use smallvec::smallvec;
 
 use super::{coerce_columns, encode_row_at_index};
-use crate::{Operator, operator::Operators, transaction::FlowTransaction};
+use crate::{Operator, operator::OperatorCell, transaction::FlowTransaction};
 
 pub struct SinkTableViewOperator {
 	#[allow(dead_code)]
-	parent: Arc<Operators>,
+	parent: OperatorCell,
 	node: FlowNodeId,
 	view: ResolvedView,
-	underlying: TableId,
 
 	key_prefix: Vec<u8>,
 }
 
 impl SinkTableViewOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, view: ResolvedView, underlying: TableId) -> Self {
+	pub fn new(parent: OperatorCell, node: FlowNodeId, view: ResolvedView, underlying: TableId) -> Self {
 		let mut key_prefix: Vec<u8> = Vec::with_capacity(10);
 		key_prefix.push(encode_u8(KeyKind::Row as u8));
 		serialize_shape_id(&ShapeId::table(underlying), &mut key_prefix);
@@ -47,7 +46,6 @@ impl SinkTableViewOperator {
 			parent,
 			node,
 			view,
-			underlying,
 			key_prefix,
 		}
 	}

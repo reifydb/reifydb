@@ -154,7 +154,7 @@ impl StateApi for NativeState {
 		unsafe { (*self.txn).state_clear(self.node) }.map_err(to_sdk_err)
 	}
 	fn scan_prefix<T: DeserializeOwned>(&self, prefix: &EncodedKey) -> SdkResult<Vec<(EncodedKey, T)>> {
-		let batch = unsafe { (*self.txn).state_range(self.node, EncodedKeyRange::prefix(prefix.as_ref())) }
+		let batch = unsafe { (*self.txn).state_range_all(self.node, EncodedKeyRange::prefix(prefix.as_ref())) }
 			.map_err(to_sdk_err)?;
 		batch.items.iter().map(|r| Ok((strip_state_envelope(&r.key), decode(&r.row)?))).collect()
 	}
@@ -163,7 +163,7 @@ impl StateApi for NativeState {
 		batch.items.iter().map(|r| Ok((strip_state_envelope(&r.key), decode(&r.row)?))).collect()
 	}
 	fn keys_with_prefix(&self, prefix: &EncodedKey) -> SdkResult<Vec<EncodedKey>> {
-		let batch = unsafe { (*self.txn).state_range(self.node, EncodedKeyRange::prefix(prefix.as_ref())) }
+		let batch = unsafe { (*self.txn).state_range_all(self.node, EncodedKeyRange::prefix(prefix.as_ref())) }
 			.map_err(to_sdk_err)?;
 		Ok(batch.items.iter().map(|r| strip_state_envelope(&r.key)).collect())
 	}
@@ -173,7 +173,7 @@ impl StateApi for NativeState {
 		end: Bound<&EncodedKey>,
 	) -> SdkResult<Vec<(EncodedKey, T)>> {
 		let range = EncodedKeyRange::new(start.map(|k| k.clone()), end.map(|k| k.clone()));
-		let batch = unsafe { (*self.txn).state_range(self.node, range) }.map_err(to_sdk_err)?;
+		let batch = unsafe { (*self.txn).state_range_all(self.node, range) }.map_err(to_sdk_err)?;
 		batch.items.iter().map(|r| Ok((strip_state_envelope(&r.key), decode(&r.row)?))).collect()
 	}
 	fn get_with_anchors<T: DeserializeOwned>(&self, key: &EncodedKey) -> SdkResult<Option<StateEntry<T>>> {

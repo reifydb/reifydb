@@ -13,6 +13,7 @@ use reifydb_cdc::{
 	consume::{
 		consumer::{CdcConsume, CdcConsumer},
 		poll::{PollConsumer, PollConsumerConfig},
+		wake::CdcWakeRegistry,
 	},
 	storage::CdcStore,
 };
@@ -30,7 +31,10 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::loader::load_flow_dag;
 use reifydb_runtime::{
 	SharedRuntime,
-	actor::{mailbox::ActorRef, system::ActorHandle},
+	actor::{
+		mailbox::ActorRef,
+		system::{ActorHandle, ActorSystem},
+	},
 	context::{RuntimeContext, clock::Clock},
 	sync::rwlock::RwLock,
 };
@@ -126,18 +130,25 @@ impl FlowSubsystem {
 		let cdc_store = ioc.resolve::<CdcStore>().expect("CdcStore must be registered");
 
 		let actor_system = engine.actor_system();
+		let flow_scope = actor_system.scope();
 		let num_workers = actor_system.pools().system_thread_count();
 		info!(num_workers, "initializing flow coordinator with {} workers", num_workers);
 
 		let flow_catalog = FlowCatalog::new(engine.catalog());
 
-		let (worker_refs, worker_handles) =
-			Self::spawn_flow_workers(num_workers, &engine, &flow_catalog, &clock, &custom_operators);
+		let (worker_refs, worker_handles) = Self::spawn_flow_workers(
+			&flow_scope,
+			num_workers,
+			&engine,
+			&flow_catalog,
+			&clock,
+			&custom_operators,
+		);
 
-		let pool_handle = actor_system.spawn_system("flow-pool", PoolActor::new(worker_refs, clock.clone()));
+		let pool_handle = flow_scope.spawn_system("flow-pool", PoolActor::new(worker_refs, clock.clone()));
 		let pool_ref = pool_handle.actor_ref().clone();
 
-		let coordinator_handle = actor_system.spawn_system(
+		let coordinator_handle = flow_scope.spawn_system(
 			"flow-coordinator",
 			CoordinatorActor::new(
 				engine.clone(),
@@ -169,7 +180,7 @@ impl FlowSubsystem {
 
 		Self::register_flow_interceptors(&engine, &transactional_flow_engine, &clock, &custom_operators);
 
-		let transactional_tick_handle = actor_system.spawn_system(
+		let transactional_tick_handle = flow_scope.spawn_system(
 			"transactional-flow-tick",
 			TransactionalTickActor::new(
 				transactional_flow_engine.clone(),
@@ -186,19 +197,21 @@ impl FlowSubsystem {
 			move || compute_flow_watermarks(&tracker, &engine, &flow_catalog)
 		}));
 
+		let cdc_wake_registry = ioc.resolve::<CdcWakeRegistry>().expect("CdcWakeRegistry must be registered");
 		let poll_config = PollConsumerConfig::new(
 			CdcConsumerId::new("flow-coordinator"),
 			"flow-cdc-poll",
-			Duration::from_millis(10),
+			Duration::from_secs(1),
 			Some(100),
-		);
+		)
+		.with_wake_registry(cdc_wake_registry);
 		let dispatcher = FlowConsumeDispatcher {
 			coordinator: consume_ref,
 			registrar,
 			flow_catalog,
 			engine: engine.clone(),
 		};
-		let consumer = PollConsumer::new(poll_config, engine, dispatcher, cdc_store, actor_system);
+		let consumer = PollConsumer::new(poll_config, engine, dispatcher, cdc_store, flow_scope);
 
 		Self {
 			consumer,
@@ -232,13 +245,13 @@ impl FlowSubsystem {
 
 	#[inline]
 	fn spawn_flow_workers(
+		actor_system: &ActorSystem,
 		num_workers: usize,
 		engine: &StandardEngine,
 		flow_catalog: &FlowCatalog,
 		clock: &Clock,
 		custom_operators: &Arc<HashMap<String, OperatorFactory>>,
 	) -> (Vec<ActorRef<FlowMessage>>, Vec<FlowHandle>) {
-		let actor_system = engine.actor_system();
 		let mut worker_refs = Vec::with_capacity(num_workers);
 		let mut worker_handles = Vec::with_capacity(num_workers);
 

@@ -119,7 +119,11 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 		self.end_txn(txn);
 	}
 
-	pub fn store_range(&mut self, start: Bound<&EncodedKey>, end: Bound<&EncodedKey>) -> Vec<(EncodedKey, EncodedRow)> {
+	pub fn store_range(
+		&mut self,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+	) -> Vec<(EncodedKey, EncodedRow)> {
 		let node = self.node_id;
 		let mut txn = self.begin_txn();
 		let rows = {

@@ -1,22 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	sync::{Arc, LazyLock},
-	time::Duration,
-};
+use std::{cell::RefCell, sync::LazyLock, time::Duration};
 
 use postcard::to_stdvec;
 use reifydb_abi::operator::capabilities::{CAPABILITY_ALL_STANDARD, CAPABILITY_TICK};
 use reifydb_core::{
-	common::{CommitVersion, JoinType},
+	common::JoinType,
 	encoded::{key::EncodedKey, shape::RowShape},
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, ChangeOrigin, Diff},
 	},
 	internal,
-	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	util::encoding::keycode::serializer::KeySerializer,
 	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_engine::{
@@ -47,7 +44,7 @@ use super::{
 };
 use crate::{
 	operator::{
-		Operator, Operators,
+		Operator,
 		join::store::Store,
 		stateful::{raw::RawStatefulOperator, row::RowNumberProvider, single::SingleStateful},
 	},
@@ -64,32 +61,28 @@ static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
 pub struct JoinSideConfig {
-	pub parent: Arc<Operators>,
 	pub node: FlowNodeId,
 	pub exprs: Vec<Expression>,
 	pub schema: Columns,
 }
 
 pub struct JoinOperator {
-	pub(crate) left_parent: Arc<Operators>,
-	pub(crate) right_parent: Arc<Operators>,
 	node: FlowNodeId,
 	strategy: JoinStrategy,
 	left_node: FlowNodeId,
 	right_node: FlowNodeId,
-	left_exprs: Vec<Expression>,
-	pub(crate) right_exprs: Vec<Expression>,
 	compiled_left_exprs: Vec<CompiledExpr>,
 	compiled_right_exprs: Vec<CompiledExpr>,
 	alias: Option<String>,
 	shape: RowShape,
 	right_schema: Columns,
 	row_number_provider: RowNumberProvider,
-	executor: Executor,
 	routines: Routines,
 	runtime_context: RuntimeContext,
 	ttl: JoinStateTtl,
 	pub(crate) snapshot: bool,
+	left_evict_cursor: RefCell<Option<EncodedKey>>,
+	right_evict_cursor: RefCell<Option<EncodedKey>>,
 }
 
 impl JoinOperator {
@@ -104,8 +97,6 @@ impl JoinOperator {
 		ttl: JoinStateTtl,
 		snapshot: bool,
 	) -> Self {
-		let left_parent = left.parent;
-		let right_parent = right.parent;
 		let left_node = left.node;
 		let right_node = right.node;
 		let left_exprs = left.exprs;
@@ -135,25 +126,22 @@ impl JoinOperator {
 		let runtime_context = executor.runtime_context.clone();
 
 		Self {
-			left_parent,
-			right_parent,
 			node,
 			strategy,
 			left_node,
 			right_node,
-			left_exprs,
-			right_exprs,
 			compiled_left_exprs,
 			compiled_right_exprs,
 			alias,
 			shape,
 			right_schema,
 			row_number_provider,
-			executor,
 			routines,
 			runtime_context,
 			ttl,
 			snapshot,
+			left_evict_cursor: RefCell::new(None),
+			right_evict_cursor: RefCell::new(None),
 		}
 	}
 
@@ -287,43 +275,12 @@ impl JoinOperator {
 		self.row_number_provider.remove_by_prefix(txn, &prefix)
 	}
 
-	pub(crate) fn join_columns(
-		&self,
-		txn: &mut FlowTransaction,
-		left: &Columns,
-		left_idx: usize,
-		right: &Columns,
-		right_idx: usize,
-	) -> Result<Columns> {
-		let left_row_number = left.row_numbers[left_idx];
-		let right_row_number = right.row_numbers[right_idx];
-
-		let composite_key = Self::make_composite_key(left_row_number, right_row_number);
-		let (result_row_number, _is_new) =
-			self.row_number_provider.get_or_create_row_number(txn, &composite_key)?;
-
-		let builder = JoinedColumnsBuilder::new(left, right, &self.alias);
-		Ok(builder.join_at_indices(result_row_number, left, left_idx, right, right_idx))
-	}
-
 	fn make_composite_key(left_num: RowNumber, right_num: RowNumber) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'L');
 		serializer.extend_u64(left_num.0);
 		serializer.extend_u64(right_num.0);
 		serializer.finish()
-	}
-
-	fn parse_composite_key(key_bytes: &[u8]) -> Option<(RowNumber, Option<RowNumber>)> {
-		if key_bytes.is_empty() || key_bytes[0] != !b'L' {
-			return None;
-		}
-
-		let mut de = KeyDeserializer::from_bytes(&key_bytes[1..]);
-		let left_num = de.read_u64().ok()?;
-		let right_num = de.read_u64().ok().map(RowNumber);
-
-		Some((RowNumber(left_num), right_num))
 	}
 
 	pub(crate) fn join_columns_one_to_many(
@@ -483,27 +440,11 @@ impl Operator for JoinOperator {
 				Diff::Insert {
 					post,
 					..
-				} => self.apply_join_insert(
-					txn,
-					&post,
-					compiled_exprs,
-					side,
-					version,
-					&mut state,
-					&mut result,
-				)?,
+				} => self.apply_join_insert(txn, &post, compiled_exprs, side, &mut state, &mut result)?,
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_join_remove(
-					txn,
-					&pre,
-					compiled_exprs,
-					side,
-					version,
-					&mut state,
-					&mut result,
-				)?,
+				} => self.apply_join_remove(txn, &pre, compiled_exprs, side, &mut state, &mut result)?,
 				Diff::Update {
 					pre,
 					post,
@@ -514,7 +455,6 @@ impl Operator for JoinOperator {
 					&post,
 					compiled_exprs,
 					side,
-					version,
 					&mut state,
 					&mut result,
 				)?,
@@ -525,7 +465,9 @@ impl Operator for JoinOperator {
 	}
 
 	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
-		evict_per_side_ttl(txn, self.node, self.ttl, tick.now.to_nanos())?;
+		let mut left_cursor = self.left_evict_cursor.borrow_mut();
+		let mut right_cursor = self.right_evict_cursor.borrow_mut();
+		evict_per_side_ttl(txn, self.node, self.ttl, tick.now.to_nanos(), &mut left_cursor, &mut right_cursor)?;
 		Ok(None)
 	}
 }
@@ -535,14 +477,16 @@ pub(crate) fn evict_per_side_ttl(
 	node: FlowNodeId,
 	ttl: JoinStateTtl,
 	now_nanos: u64,
+	left_cursor: &mut Option<EncodedKey>,
+	right_cursor: &mut Option<EncodedKey>,
 ) -> Result<()> {
 	if let Some(ttl_nanos) = ttl.left_nanos {
 		let cutoff = now_nanos.saturating_sub(ttl_nanos);
-		Store::new(node, JoinSide::Left).tick_evict(txn, cutoff)?;
+		Store::new(node, JoinSide::Left).tick_evict(txn, cutoff, left_cursor)?;
 	}
 	if let Some(ttl_nanos) = ttl.right_nanos {
 		let cutoff = now_nanos.saturating_sub(ttl_nanos);
-		Store::new(node, JoinSide::Right).tick_evict(txn, cutoff)?;
+		Store::new(node, JoinSide::Right).tick_evict(txn, cutoff, right_cursor)?;
 	}
 	Ok(())
 }
@@ -556,7 +500,6 @@ impl JoinOperator {
 		post: &Columns,
 		compiled_exprs: &[CompiledExpr],
 		side: JoinSide,
-		version: CommitVersion,
 		state: &mut JoinState,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
@@ -567,7 +510,6 @@ impl JoinOperator {
 				side,
 				state,
 				operator: self,
-				version,
 			};
 			let diffs = match key {
 				Some(key_hash) => {
@@ -589,7 +531,6 @@ impl JoinOperator {
 		pre: &Columns,
 		compiled_exprs: &[CompiledExpr],
 		side: JoinSide,
-		version: CommitVersion,
 		state: &mut JoinState,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
@@ -600,7 +541,6 @@ impl JoinOperator {
 				side,
 				state,
 				operator: self,
-				version,
 			};
 			let diffs = match key {
 				Some(key_hash) => {
@@ -623,7 +563,6 @@ impl JoinOperator {
 		post: &Columns,
 		compiled_exprs: &[CompiledExpr],
 		side: JoinSide,
-		version: CommitVersion,
 		state: &mut JoinState,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
@@ -636,7 +575,6 @@ impl JoinOperator {
 				side,
 				state,
 				operator: self,
-				version,
 			};
 			let diffs = match (pre_keys[row_idx], post_keys[row_idx]) {
 				(Some(pre_key), Some(post_key)) => {
@@ -716,7 +654,15 @@ mod tests {
 
 		mock_clock.advance_millis(10_000);
 
-		evict_per_side_ttl(&mut txn, node, JoinStateTtl::default(), engine.clock().now_nanos()).unwrap();
+		evict_per_side_ttl(
+			&mut txn,
+			node,
+			JoinStateTtl::default(),
+			engine.clock().now_nanos(),
+			&mut None,
+			&mut None,
+		)
+		.unwrap();
 
 		assert!(contains(&left, &mut txn, 0xAAA), "left side must keep its row when no TTL is set");
 		assert!(contains(&right, &mut txn, 0xBBB), "right side must keep its row when no TTL is set");
@@ -750,7 +696,7 @@ mod tests {
 			left_nanos: Some(30_000_000), // 30ms
 			right_nanos: None,
 		};
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos()).unwrap();
+		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
 
 		assert!(!contains(&left, &mut txn, 0xAAA), "left side must be evicted past its TTL");
 		assert!(contains(&right, &mut txn, 0xBBB), "right side must keep its row when right_nanos is None");
@@ -783,7 +729,7 @@ mod tests {
 			left_nanos: None,
 			right_nanos: Some(30_000_000), // 30ms
 		};
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos()).unwrap();
+		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
 
 		assert!(contains(&left, &mut txn, 0xAAA), "left side must keep its row when left_nanos is None");
 		assert!(!contains(&right, &mut txn, 0xBBB), "right side must be evicted past its TTL");
@@ -816,7 +762,7 @@ mod tests {
 			left_nanos: Some(50_000_000), // 50ms
 			right_nanos: Some(50_000_000),
 		};
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos()).unwrap();
+		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
 
 		assert!(!contains(&left, &mut txn, 0xAAA), "left side must be evicted past the symmetric TTL");
 		assert!(!contains(&right, &mut txn, 0xBBB), "right side must be evicted past the symmetric TTL");
@@ -851,12 +797,12 @@ mod tests {
 		};
 
 		mock_clock.advance_millis(40);
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos()).unwrap();
+		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
 		assert!(!contains(&left, &mut txn, 0xAAA), "left side must be evicted past its 30ms TTL");
 		assert!(contains(&right, &mut txn, 0xBBB), "right side must survive while still within its 90ms TTL");
 
 		mock_clock.advance_millis(60);
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos()).unwrap();
+		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
 		assert!(!contains(&right, &mut txn, 0xBBB), "right side must be evicted past its 90ms TTL");
 	}
 
@@ -889,7 +835,7 @@ mod tests {
 			left_nanos: Some(50_000_000),
 			right_nanos: None,
 		};
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos()).unwrap();
+		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
 
 		assert!(!contains(&left, &mut txn, 0xAAA), "older row must be evicted");
 		assert!(contains(&left, &mut txn, 0xBBB), "younger row in the same side must survive");
@@ -921,7 +867,7 @@ mod tests {
 			left_nanos: Some(100_000_000), // 100ms
 			right_nanos: Some(100_000_000),
 		};
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos()).unwrap();
+		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
 
 		assert!(contains(&left, &mut txn, 0xAAA), "left must survive while under its TTL");
 		assert!(contains(&right, &mut txn, 0xBBB), "right must survive while under its TTL");
@@ -947,7 +893,7 @@ mod tests {
 			left_nanos: Some(10_000_000),
 			right_nanos: Some(10_000_000),
 		};
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos()).unwrap();
+		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
 
 		let left = Store::new(node, JoinSide::Left);
 		let right = Store::new(node, JoinSide::Right);

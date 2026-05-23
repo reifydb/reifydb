@@ -51,8 +51,9 @@ impl PreCommitInterceptor for TransactionalFlowPreCommitInterceptor {
 		if !ctx.pending_shapes.is_empty() {
 			let shapes = mem::take(&mut ctx.pending_shapes);
 			let mut cmd = self.engine.begin_command(IdentityId::system())?;
+			cmd.disable_conflict_tracking()?;
 			self.catalog.persist_pending_shapes(&mut Transaction::Command(&mut cmd), shapes)?;
-			cmd.commit()?;
+			cmd.commit_unchecked()?;
 		}
 
 		Ok(())
@@ -244,6 +245,7 @@ fn merge_level_results(
 			match pw {
 				PendingWrite::Set(v) => ctx.pending_writes.push((key.clone(), Some(v.clone()))),
 				PendingWrite::Remove => ctx.pending_writes.push((key.clone(), None)),
+				PendingWrite::Drop => ctx.purges.push(key.clone()),
 			}
 		}
 	}

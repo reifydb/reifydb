@@ -14,7 +14,7 @@ use reifydb_type::{Result, value::row_number::RowNumber};
 use crate::{
 	operator::stateful::{
 		counter::{Counter, CounterDirection},
-		utils::{internal_state_get, internal_state_remove, internal_state_set},
+		utils::{internal_state_get, internal_state_purge, internal_state_set},
 	},
 	transaction::FlowTransaction,
 };
@@ -91,8 +91,8 @@ impl RowNumberProvider {
 		};
 		let row_num = decode_payload::<u64>(&existing_row)?;
 		let reverse_key = self.make_reverse_map_key(RowNumber(row_num));
-		internal_state_remove(self.node, txn, &map_key)?;
-		internal_state_remove(self.node, txn, &reverse_key)?;
+		internal_state_purge(self.node, txn, &map_key)?;
+		internal_state_purge(self.node, txn, &reverse_key)?;
 		Ok(true)
 	}
 
@@ -609,5 +609,46 @@ pub mod tests {
 			.unwrap()
 			.unwrap();
 		assert_eq!(decode_payload::<Vec<u8>>(&reverse).unwrap(), key.as_ref().to_vec());
+	}
+
+	#[test]
+	fn test_counter_survives_full_mapping_eviction() {
+		// Regression: purging EVERY per-key mapping (full eviction of the provider's
+		// state) must not delete the monotonic counter. If it did, a fresh key would
+		// reuse a previously issued row number and corrupt any downstream consumer that
+		// tracks rows by number.
+		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
+		let provider = RowNumberProvider::new(FlowNodeId(1));
+
+		let keys = [test_key("a"), test_key("b"), test_key("c")];
+		let mut issued = Vec::new();
+		for key in &keys {
+			let (n, was_new) = provider.get_or_create_row_number(&mut txn, key).unwrap();
+			assert!(was_new);
+			issued.push(n);
+		}
+
+		for key in &keys {
+			assert!(provider.remove_for_key(&mut txn, key).unwrap());
+		}
+
+		let (fresh, was_new) = provider.get_or_create_row_number(&mut txn, &test_key("d")).unwrap();
+		assert!(was_new, "a brand-new key after full eviction must be assigned fresh");
+		for prev in &issued {
+			assert_ne!(&fresh, prev, "row number {:?} was reused after full eviction", prev);
+		}
+		assert!(
+			issued.iter().all(|prev| fresh.0 > prev.0),
+			"counter must keep advancing past every previously issued number, got {:?} after {:?}",
+			fresh,
+			issued
+		);
 	}
 }

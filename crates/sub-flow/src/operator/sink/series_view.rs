@@ -21,11 +21,11 @@ use reifydb_type::{
 use smallvec::smallvec;
 
 use super::{coerce_columns, encode_row_at_index};
-use crate::{Operator, operator::Operators, transaction::FlowTransaction};
+use crate::{Operator, operator::OperatorCell, transaction::FlowTransaction};
 
 pub struct SinkSeriesViewOperator {
 	#[allow(dead_code)]
-	parent: Arc<Operators>,
+	parent: OperatorCell,
 	node: FlowNodeId,
 	view: ResolvedView,
 	series_id: SeriesId,
@@ -35,7 +35,7 @@ pub struct SinkSeriesViewOperator {
 
 impl SinkSeriesViewOperator {
 	pub fn new(
-		parent: Arc<Operators>,
+		parent: OperatorCell,
 		node: FlowNodeId,
 		view: ResolvedView,
 		series_id: SeriesId,

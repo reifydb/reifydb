@@ -11,7 +11,10 @@ use reifydb_catalog::{
 		table::{TableColumnToCreate, TableToCreate},
 	},
 };
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_cdc::storage::recent_cache::RecentCdcCache;
 use reifydb_cdc::{
+	consume::wake::CdcWakeRegistry,
 	produce::{
 		producer::{CdcProducerEventListener, spawn_cdc_producer},
 		watermark::CdcProducerWatermark,
@@ -198,7 +201,7 @@ impl TestEngineBuilder {
 
 		#[cfg(not(target_arch = "wasm32"))]
 		let cdc_store = match self.sqlite_cdc {
-			Some(config) => CdcStore::sqlite(config),
+			Some(config) => CdcStore::sqlite(config, RecentCdcCache::DEFAULT_CAPACITY),
 			None => CdcStore::memory(),
 		};
 		#[cfg(target_arch = "wasm32")]
@@ -207,6 +210,9 @@ impl TestEngineBuilder {
 
 		let cdc_producer_watermark = CdcProducerWatermark::new();
 		ioc = ioc.register(cdc_producer_watermark.clone());
+
+		let cdc_wake_registry = CdcWakeRegistry::new();
+		ioc = ioc.register(cdc_wake_registry.clone());
 
 		let ioc_for_cdc = ioc.clone();
 
@@ -239,6 +245,7 @@ impl TestEngineBuilder {
 				&eventbus,
 				ioc_for_cdc,
 				cdc_producer_watermark,
+				cdc_wake_registry,
 			);
 		}
 
@@ -266,6 +273,7 @@ fn make_test_runtime(mock_clock: &MockClock) -> SharedRuntime {
 	SharedRuntime::from_config(config, pools)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn register_cdc_producer(
 	runtime: &SharedRuntime,
 	cdc_store: CdcStore,
@@ -274,6 +282,7 @@ fn register_cdc_producer(
 	eventbus: &EventBus,
 	ioc_for_cdc: IocContainer,
 	watermark: CdcProducerWatermark,
+	wake_registry: CdcWakeRegistry,
 ) {
 	let cdc_handle = spawn_cdc_producer(
 		&runtime.actor_system(),
@@ -283,6 +292,7 @@ fn register_cdc_producer(
 		eventbus.clone(),
 		runtime.clock().clone(),
 		watermark,
+		wake_registry,
 	);
 	eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
 		cdc_handle.actor_ref().clone(),

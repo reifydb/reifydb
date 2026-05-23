@@ -9,6 +9,7 @@ use std::{
 
 use reifydb_catalog::cache::CatalogCache;
 use reifydb_cdc::{
+	consume::wake::CdcWakeRegistry,
 	produce::{producer::spawn_cdc_producer, watermark::CdcProducerWatermark},
 	storage::{CdcStorage, memory::MemoryCdcStorage},
 	testing::TestCdcHost,
@@ -72,6 +73,7 @@ impl TtlFixture {
 			event_bus.clone(),
 			clock,
 			CdcProducerWatermark::new(),
+			CdcWakeRegistry::new(),
 		);
 
 		Self {

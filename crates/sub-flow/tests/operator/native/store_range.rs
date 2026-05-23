@@ -19,5 +19,9 @@ fn range_returns_all_rows_past_pagination_batch() {
 	let range = RowKeyRange::scan_range(ShapeId::table(STORE_TABLE), None);
 	let rows = harness.store_range(range.start.as_ref(), range.end.as_ref());
 
-	assert_eq!(rows.len(), STORE_ROW_COUNT as usize, "range must return all rows; the 1024 batch_size must not truncate");
+	assert_eq!(
+		rows.len(),
+		STORE_ROW_COUNT as usize,
+		"range must return all rows; the 1024 batch_size must not truncate"
+	);
 }

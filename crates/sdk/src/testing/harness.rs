@@ -30,11 +30,7 @@ use crate::{
 		arena::Arena,
 		wrapper::{OperatorWrapper, ffi_apply},
 	},
-	operator::{
-		FFIOperator, OperatorMetadata,
-		change::BorrowedChange,
-		context::ffi::FFIOperatorContext,
-	},
+	operator::{FFIOperator, OperatorMetadata, change::BorrowedChange, context::ffi::FFIOperatorContext},
 	testing::{
 		builders::TestChangeBuilder,
 		callbacks::create_test_callbacks,
@@ -139,7 +135,11 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		}
 	}
 
-	pub fn store_range(&mut self, start: Bound<&EncodedKey>, end: Bound<&EncodedKey>) -> Vec<(EncodedKey, EncodedRow)> {
+	pub fn store_range(
+		&mut self,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+	) -> Vec<(EncodedKey, EncodedRow)> {
 		let mut ctx = self.create_operator_context();
 		ctx.store().range(start, end).expect("store range")
 	}
@@ -344,11 +344,6 @@ impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
 	}
 }
 
-/// Drives an operator through the real `ffi_apply` EXPORT (the `.so` boundary),
-/// not the in-process adapter. Used to verify the FFI guest's abort-on-error
-/// behavior, which lives in the export wrapper rather than in
-/// `FFIOperatorAdapter::apply`. Returns the FFI status code; an erroring or
-/// panicking operator aborts the process inside `ffi_apply` and never returns.
 pub fn drive_ffi_apply<O: FFIOperator + OperatorMetadata>(input: &Change) -> i32 {
 	let context = Box::new(TestContext::new(CommitVersion(1)));
 	let mut ffi_context = ContextFFI {
@@ -672,8 +667,9 @@ pub mod tests {
 
 	#[test]
 	fn test_harness_multiple_operations() {
-		let mut harness =
-			FFIOperatorHarnessBuilder::<StatefulTestOperator>::new().build().expect("Failed to build harness");
+		let mut harness = FFIOperatorHarnessBuilder::<StatefulTestOperator>::new()
+			.build()
+			.expect("Failed to build harness");
 
 		// Insert multiple rows
 		let input1 = TestChangeBuilder::new()

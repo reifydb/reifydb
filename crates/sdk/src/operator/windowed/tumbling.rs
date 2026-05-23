@@ -152,8 +152,8 @@ where
 		let aggregator = A::from_config(operator_id, config)?;
 		Ok(Self {
 			aggregator,
-			slots: StateCache::<RowNumber, WindowSlots<A>>::new(1024),
-			meta: StateCache::<MetaKey, GroupMeta<A::SlotKey, A::SlotContribution>>::new_internal(4096),
+			slots: StateCache::<RowNumber, WindowSlots<A>>::new(8),
+			meta: StateCache::<MetaKey, GroupMeta<A::SlotKey, A::SlotContribution>>::new_internal(64),
 		})
 	}
 
@@ -452,9 +452,10 @@ mod tests {
 
 	#[test]
 	fn single_insert_emits_insert() {
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
+				.build()
+				.expect("harness");
 		let change = TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build();
 		let out = h.apply(change).expect("apply");
 		assert_eq!(out.diffs.len(), 1);
@@ -470,9 +471,10 @@ mod tests {
 
 	#[test]
 	fn update_replaces_slot_does_not_double_count() {
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
+				.build()
+				.expect("harness");
 
 		// First batch: insert volume 10 at slot 0 of window [0, 60).
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
@@ -495,9 +497,10 @@ mod tests {
 
 	#[test]
 	fn remove_drops_slot_and_emits_update_with_remaining() {
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
+				.build()
+				.expect("harness");
 
 		// Insert two slots in the same window.
 		let _ = h
@@ -521,9 +524,10 @@ mod tests {
 
 	#[test]
 	fn remove_clears_window_emits_nothing() {
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
+				.build()
+				.expect("harness");
 
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 
@@ -536,9 +540,10 @@ mod tests {
 
 	#[test]
 	fn boundary_slot_belongs_to_next_window() {
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
+				.build()
+				.expect("harness");
 
 		// Slots 59 and 60 should land in DIFFERENT windows: 59 in
 		// [0, 60), 60 in [60, 120). Two emitted rows.
@@ -563,9 +568,10 @@ mod tests {
 
 	#[test]
 	fn late_event_for_closed_window_dropped() {
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
+				.build()
+				.expect("harness");
 
 		// Open window [60, 120): emit volume 5.
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 60, 5.0)).build()).expect("apply");
@@ -580,9 +586,10 @@ mod tests {
 
 	#[test]
 	fn multiple_groups_isolate_state() {
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
+				.build()
+				.expect("harness");
 
 		let out = h
 			.apply(TestChangeBuilder::new()

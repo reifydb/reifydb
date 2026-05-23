@@ -26,9 +26,9 @@ pub mod engine;
 #[cfg(reifydb_target = "native")]
 pub mod ffi;
 pub mod host;
-#[allow(dead_code)]
 pub mod operator;
 pub mod subsystem;
+#[cfg(reifydb_target = "native")]
 pub mod testing;
 pub mod transaction;
 

@@ -6,7 +6,7 @@
 #[path = "common.rs"]
 mod common;
 
-use std::{sync::Arc as StdArc, time::Instant};
+use std::time::Instant;
 
 use common::with_counting;
 use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
@@ -21,7 +21,7 @@ use reifydb_core::{
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_sub_flow::{
-	operator::{Operator, Operators, distinct::DistinctOperator},
+	operator::{Operator, OperatorCell, Operators, distinct::DistinctOperator},
 	transaction::FlowTransaction,
 };
 use reifydb_transaction::{interceptor::interceptors::Interceptors, transaction::admin::AdminTransaction};
@@ -50,7 +50,7 @@ fn make_distinct_op(node_id: u64) -> (DistinctOperator, TestEngine) {
 	let engine = TestEngine::new();
 	let routines = engine.executor().routines.clone();
 	let rc = RuntimeContext::with_clock(engine.clock().clone());
-	let parent: StdArc<Operators> = StdArc::new(Operators::Custom(Box::new(NoOpParent)));
+	let parent: OperatorCell = OperatorCell::new(Operators::Custom(Box::new(NoOpParent)));
 	let op = DistinctOperator::new(parent, FlowNodeId(node_id), Vec::new(), routines, rc, None);
 	(op, engine)
 }

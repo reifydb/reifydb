@@ -6,4 +6,3 @@
 // the 1024 is the storage pagination batch_size, NOT a row limit. With more than
 // 1024 rows in range, range() must return every one in every variant - a native-
 // side cap such as `.take(1024)` would make this fail.
-

@@ -14,7 +14,6 @@ pub enum TransactionKind {
 	TimeTravel(CommitVersion),
 }
 
-#[derive(Clone)]
 pub struct TransactionManagerQuery<L>
 where
 	L: VersionProvider,
@@ -22,6 +21,21 @@ where
 	id: TransactionId,
 	engine: TransactionManager<L>,
 	transaction: TransactionKind,
+	registered: Option<CommitVersion>,
+}
+
+impl<L> Clone for TransactionManagerQuery<L>
+where
+	L: VersionProvider,
+{
+	fn clone(&self) -> Self {
+		Self {
+			id: self.id,
+			engine: self.engine.clone(),
+			transaction: self.transaction.clone(),
+			registered: None,
+		}
+	}
 }
 
 impl<L> TransactionManagerQuery<L>
@@ -33,6 +47,7 @@ where
 			id,
 			engine,
 			transaction: TransactionKind::Current(version),
+			registered: Some(version),
 		}
 	}
 
@@ -41,6 +56,7 @@ where
 			id,
 			engine,
 			transaction: TransactionKind::TimeTravel(version),
+			registered: None,
 		}
 	}
 
@@ -65,7 +81,7 @@ where
 	L: VersionProvider,
 {
 	fn drop(&mut self) {
-		if let TransactionKind::Current(version) = self.transaction {
+		if let Some(version) = self.registered.take() {
 			self.engine.inner.done_query(version);
 		}
 	}

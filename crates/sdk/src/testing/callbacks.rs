@@ -560,12 +560,7 @@ extern "C" fn test_store_get(ctx: *mut ContextFFI, key: *const u8, key_len: usiz
 	}
 }
 
-extern "C" fn test_store_contains_key(
-	ctx: *mut ContextFFI,
-	key: *const u8,
-	key_len: usize,
-	result: *mut u8,
-) -> i32 {
+extern "C" fn test_store_contains_key(ctx: *mut ContextFFI, key: *const u8, key_len: usize, result: *mut u8) -> i32 {
 	if ctx.is_null() || key.is_null() || result.is_null() {
 		return FFI_ERROR_NULL_PTR;
 	}
@@ -596,8 +591,11 @@ extern "C" fn test_store_prefix(
 			from_raw_parts(prefix, prefix_len).to_vec()
 		};
 		let prefix_key = EncodedKey::new(prefix_bytes);
-		let items: Vec<(Vec<u8>, Vec<u8>)> =
-			test_ctx.store_prefix(&prefix_key).into_iter().map(|(k, v)| (k.to_vec(), v.0.to_vec())).collect();
+		let items: Vec<(Vec<u8>, Vec<u8>)> = test_ctx
+			.store_prefix(&prefix_key)
+			.into_iter()
+			.map(|(k, v)| (k.to_vec(), v.0.to_vec()))
+			.collect();
 
 		let iter = Box::new(TestStoreIterator {
 			items,

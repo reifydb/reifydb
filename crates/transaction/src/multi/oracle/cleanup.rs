@@ -8,8 +8,6 @@ use tracing::{debug, instrument};
 
 use super::CommittedWindow;
 
-const WINDOW_LOW_WATER_MARK: usize = 10;
-
 #[instrument(name = "transaction::oracle::cleanup", level = "debug", skip(time_windows, evicted_up_through), fields(window_count = time_windows.len(), safe_evict_below = %safe_evict_below))]
 pub(super) fn cleanup_old_windows(
 	time_windows: &mut BTreeMap<CommitVersion, CommittedWindow>,
@@ -17,7 +15,7 @@ pub(super) fn cleanup_old_windows(
 	safe_evict_below: CommitVersion,
 ) {
 	let mut removed = 0usize;
-	while time_windows.len() > WINDOW_LOW_WATER_MARK {
+	loop {
 		let Some((&start, window)) = time_windows.iter().next() else {
 			break;
 		};

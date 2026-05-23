@@ -3,6 +3,7 @@
 
 pub mod harness;
 
+use harness::NativeOperatorHarness;
 use reifydb_abi::flow::diff::DiffType;
 use reifydb_core::{interface::change::Change, value::column::columns::Columns};
 use reifydb_sdk::{
@@ -10,8 +11,6 @@ use reifydb_sdk::{
 	testing::harness::FFIOperatorHarness,
 };
 use reifydb_type::value::{Value, row_number::RowNumber};
-
-use harness::NativeOperatorHarness;
 
 #[derive(Debug, PartialEq)]
 struct ColumnsRender {
@@ -36,8 +35,7 @@ fn render_columns(cols: &Columns) -> ColumnsRender {
 }
 
 fn render_change(change: &Change) -> Vec<DiffRender> {
-	change
-		.diffs
+	change.diffs
 		.iter()
 		.map(|d| DiffRender {
 			kind: d.kind(),
@@ -62,8 +60,10 @@ fn run_native<C>(config: &[(&str, Value)], inputs: &[Change]) -> Vec<Change>
 where
 	C: OperatorLogic + OperatorMetadata + 'static,
 {
-	let mut harness =
-		NativeOperatorHarness::<C>::builder().with_config(config.iter().cloned()).build().expect("native harness build");
+	let mut harness = NativeOperatorHarness::<C>::builder()
+		.with_config(config.iter().cloned())
+		.build()
+		.expect("native harness build");
 	inputs.iter().map(|input| harness.apply(input.clone()).expect("native apply")).collect()
 }
 

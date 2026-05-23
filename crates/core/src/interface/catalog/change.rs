@@ -9,7 +9,7 @@ use crate::{
 		binding::Binding,
 		config::Config,
 		dictionary::Dictionary,
-		flow::{Flow, FlowNodeId},
+		flow::Flow,
 		handler::Handler,
 		identity::{GrantedRole, Identity, Role},
 		migration::{Migration, MigrationEvent},
@@ -189,14 +189,6 @@ pub trait CatalogTrackRowTtlChangeOperations {
 	fn track_row_ttl_deleted(&mut self, shape: ShapeId, ttl: Ttl) -> Result<()>;
 }
 
-pub trait CatalogTrackOperatorTtlChangeOperations {
-	fn track_operator_ttl_created(&mut self, node: FlowNodeId, ttl: Ttl) -> Result<()>;
-
-	fn track_operator_ttl_updated(&mut self, node: FlowNodeId, pre: Ttl, post: Ttl) -> Result<()>;
-
-	fn track_operator_ttl_deleted(&mut self, node: FlowNodeId, ttl: Ttl) -> Result<()>;
-}
-
 pub trait CatalogTrackChangeOperations:
 	CatalogTrackBindingChangeOperations
 	+ CatalogTrackDictionaryChangeOperations
@@ -221,6 +213,5 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackViewChangeOperations
 	+ CatalogTrackConfigChangeOperations
 	+ CatalogTrackRowTtlChangeOperations
-	+ CatalogTrackOperatorTtlChangeOperations
 {
 }

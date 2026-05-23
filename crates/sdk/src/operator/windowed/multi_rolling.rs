@@ -211,8 +211,8 @@ where
 		let aggregator = A::from_config(operator_id, config)?;
 		Ok(Self {
 			aggregator,
-			groups: StateCache::<RowNumber, GroupState<A>>::new(1024),
-			meta: StateCache::<MetaKey, GroupMeta<A::WindowKey>>::new_internal(4096),
+			groups: StateCache::<RowNumber, GroupState<A>>::new(8),
+			meta: StateCache::<MetaKey, GroupMeta<A::WindowKey>>::new_internal(64),
 		})
 	}
 
@@ -666,9 +666,10 @@ mod tests {
 
 	#[test]
 	fn first_window_emits_inserts_for_top_2() {
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
+				.build()
+				.expect("harness");
 		let out = h
 			.apply(TestChangeBuilder::new()
 				.insert(input_row(1, "BTC", 0, 100, 5.0))
@@ -690,9 +691,10 @@ mod tests {
 
 	#[test]
 	fn three_distinct_windows_emit_top_2_by_value() {
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
+				.build()
+				.expect("harness");
 		let out = h
 			.apply(TestChangeBuilder::new()
 				.insert(input_row(1, "BTC", 0, 100, 5.0))
@@ -718,9 +720,10 @@ mod tests {
 
 	#[test]
 	fn vanishing_secondary_key_emits_remove() {
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
+				.build()
+				.expect("harness");
 		// Fill 2 windows -> emit two ranks.
 		let _ = h
 			.apply(TestChangeBuilder::new()
@@ -742,9 +745,10 @@ mod tests {
 
 	#[test]
 	fn remove_at_high_water_propagates_to_emit_diff() {
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
+				.build()
+				.expect("harness");
 		let _ = h
 			.apply(TestChangeBuilder::new()
 				.insert(input_row(1, "BTC", 0, 100, 5.0))
@@ -767,9 +771,10 @@ mod tests {
 
 	#[test]
 	fn buried_window_insert_dropped_silently() {
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
+				.build()
+				.expect("harness");
 		let _ = h
 			.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 60, 100, 5.0)).build())
 			.expect("apply");
@@ -782,9 +787,10 @@ mod tests {
 
 	#[test]
 	fn capacity_eviction_drops_oldest_window() {
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
+				.build()
+				.expect("harness");
 		// Capacity = 3. Insert 4 windows; smallest-key entry must be
 		// evicted. Top-2 across the 3 surviving windows.
 		let out = h
@@ -813,9 +819,10 @@ mod tests {
 
 	#[test]
 	fn multiple_groups_isolate_emits() {
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
-			.build()
-			.expect("harness");
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
+				.build()
+				.expect("harness");
 		let out = h
 			.apply(TestChangeBuilder::new()
 				.insert(input_row(1, "BTC", 0, 100, 5.0))

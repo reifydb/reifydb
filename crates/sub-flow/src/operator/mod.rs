@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
+use std::{ops::Deref, sync::Arc, time::Duration};
 
 use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
 use reifydb_sdk::operator::Tick;
@@ -11,7 +11,6 @@ use crate::transaction::FlowTransaction;
 
 pub mod append;
 pub mod apply;
-pub mod capability_guard;
 #[cfg(reifydb_target = "native")]
 pub mod context;
 pub mod distinct;
@@ -20,6 +19,7 @@ pub mod extend;
 pub mod ffi;
 pub mod filter;
 pub mod gate;
+pub mod guard;
 pub mod join;
 pub mod map;
 #[cfg(reifydb_target = "native")]
@@ -33,11 +33,11 @@ pub mod window;
 
 use append::AppendOperator;
 use apply::ApplyOperator;
-use capability_guard::{enforce_apply_capabilities, enforce_tick_capability};
 use distinct::DistinctOperator;
 use extend::ExtendOperator;
 use filter::FilterOperator;
 use gate::GateOperator;
+use guard::{enforce_apply_capabilities, enforce_tick_capability};
 use join::operator::JoinOperator;
 use map::MapOperator;
 use reifydb_core::interface::change::Change;
@@ -52,7 +52,7 @@ use sort::SortOperator;
 use take::TakeOperator;
 use window::WindowOperator;
 
-pub trait Operator: Send + Sync {
+pub trait Operator: Send {
 	fn id(&self) -> FlowNodeId;
 
 	fn capabilities(&self) -> u32;
@@ -68,7 +68,33 @@ pub trait Operator: Send + Sync {
 	}
 }
 
-pub type BoxedOperator = Box<dyn Operator + Send + Sync>;
+pub type BoxedOperator = Box<dyn Operator + Send>;
+
+#[derive(Clone)]
+pub struct OperatorCell(Arc<Operators>);
+
+impl OperatorCell {
+	#[allow(clippy::arc_with_non_send_sync)]
+	pub fn new(operators: Operators) -> Self {
+		Self(Arc::new(operators))
+	}
+}
+
+impl Deref for OperatorCell {
+	type Target = Operators;
+
+	fn deref(&self) -> &Operators {
+		&self.0
+	}
+}
+
+// SAFETY: a flow and all of its operators are only ever accessed by a single thread at any one
+// time. Flows that execute in parallel on the rayon commit pool own disjoint operator sets
+// (operators are keyed by FlowNodeId and never shared between flows), so no Operators value is ever
+// reachable from two threads simultaneously. The inner Arc is only cloned and dereferenced from the
+// owning thread, so asserting Send and Sync over the !Sync Operators it holds is sound.
+unsafe impl Send for OperatorCell {}
+unsafe impl Sync for OperatorCell {}
 
 pub enum Operators {
 	SourceTable(PrimitiveTableOperator),

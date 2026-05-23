@@ -7,11 +7,14 @@ use std::{
 };
 
 use reifydb_core::{
+	actors::pending::PendingWrite,
 	common::CommitVersion,
+	event::row::OperatorRowsExpiredEvent,
 	interface::{
 		catalog::flow::{FlowId, FlowNodeId},
 		change::{Change, ChangeOrigin},
 	},
+	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
 };
 use reifydb_rql::flow::{flow::FlowDag, node::FlowNode};
 use reifydb_sdk::operator::Tick;
@@ -220,6 +223,37 @@ impl FlowEngine {
 				}
 			}
 		}
+
+		self.emit_operator_purge_metrics(txn);
 		Ok(())
+	}
+
+	fn emit_operator_purge_metrics(&self, txn: &FlowTransaction) {
+		let mut per_node: HashMap<FlowNodeId, u64> = HashMap::new();
+		for (key, write) in txn.pending().iter_sorted() {
+			if !matches!(write, PendingWrite::Drop) {
+				continue;
+			}
+			let node = FlowNodeStateKey::decode(key)
+				.map(|k| k.node)
+				.or_else(|| FlowNodeInternalStateKey::decode(key).map(|k| k.node));
+			if let Some(node) = node {
+				*per_node.entry(node).or_default() += 1;
+			}
+		}
+
+		if per_node.is_empty() {
+			return;
+		}
+
+		let rows: u64 = per_node.values().copied().sum();
+		self.event_bus.emit(OperatorRowsExpiredEvent::new(
+			per_node.len() as u64,
+			0,
+			rows,
+			rows,
+			per_node.clone(),
+			per_node,
+		));
 	}
 }

@@ -95,10 +95,6 @@ impl FFIOperator {
 		}
 	}
 
-	pub(crate) fn descriptor(&self) -> &OperatorDescriptorFFI {
-		&self.descriptor
-	}
-
 	fn ensure_txn_setup(&self, txn: &mut FlowTransaction) -> Result<()> {
 		let txn_version = txn.version().0;
 		if self.last_registered_txn.get() != txn_version {
@@ -116,9 +112,7 @@ impl FFIOperator {
 }
 
 // SAFETY: FFIOperator is only accessed from a single actor at a time.
-
 unsafe impl Send for FFIOperator {}
-unsafe impl Sync for FFIOperator {}
 
 impl Drop for FFIOperator {
 	fn drop(&mut self) {

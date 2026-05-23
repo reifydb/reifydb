@@ -236,7 +236,6 @@ impl<C> NativeOperatorAdapter<C> {
 }
 
 unsafe impl<C: Send> Send for NativeOperatorAdapter<C> {}
-unsafe impl<C: Send> Sync for NativeOperatorAdapter<C> {}
 
 impl<C: OperatorLogic + 'static> NativeOperatorAdapter<C> {
 	fn ensure_flush_slot(&self, txn: &mut FlowTransaction) -> Result<()> {
@@ -289,7 +288,7 @@ impl<C: OperatorLogic + 'static> Operator for NativeOperatorAdapter<C> {
 
 	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
 		self.ensure_flush_slot(txn)?;
-		let now = tick.now.clone();
+		let now = tick.now;
 		let mut ctx = NativeOperatorContext::new(txn, self.node);
 		{
 			let logic = unsafe { &mut *self.logic.get() };
@@ -299,7 +298,7 @@ impl<C: OperatorLogic + 'static> Operator for NativeOperatorAdapter<C> {
 		if diffs.is_empty() {
 			return Ok(None);
 		}
-		Ok(Some(Change::from_flow(self.node, CommitVersion(now.to_nanos() as u64), diffs, now)))
+		Ok(Some(Change::from_flow(self.node, CommitVersion(now.to_nanos()), diffs, now)))
 	}
 }
 

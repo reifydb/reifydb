@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 
 use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 use reifydb_core::{
@@ -23,13 +23,13 @@ use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{Result, fragment::Fragment, params::Params, value::identity::IdentityId};
 
-use crate::{Operator, operator::Operators, transaction::FlowTransaction};
+use crate::{Operator, operator::OperatorCell, transaction::FlowTransaction};
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
 pub struct MapOperator {
-	parent: Arc<Operators>,
+	parent: OperatorCell,
 	node: FlowNodeId,
 	expressions: Vec<Expression>,
 	compiled_expressions: Vec<CompiledExpr>,
@@ -39,7 +39,7 @@ pub struct MapOperator {
 
 impl MapOperator {
 	pub fn new(
-		parent: Arc<Operators>,
+		parent: OperatorCell,
 		node: FlowNodeId,
 		expressions: Vec<Expression>,
 		routines: Routines,

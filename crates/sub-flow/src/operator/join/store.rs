@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::cell::Cell;
+use std::{cell::Cell, ops::Bound};
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
-		shape::{RowShape, RowShapeField},
+		shape::{RowShape, RowShapeField, cache::RowShapeCacheCell, fingerprint::RowShapeFingerprint},
 	},
 	interface::catalog::flow::FlowNodeId,
 	internal,
@@ -22,18 +22,20 @@ use reifydb_type::{
 
 use super::state::JoinSide;
 use crate::{
-	operator::stateful::utils::{state_get, state_range, state_remove, state_set},
+	operator::stateful::utils::{state_get, state_purge, state_range, state_remove, state_set},
 	transaction::FlowTransaction,
 };
 
 const HASH_BYTES: usize = 16;
 const ROW_NUMBER_BYTES: usize = 8;
+const SHAPE_CACHE_CAPACITY: usize = 8;
 
 pub(crate) struct Store {
 	node_id: FlowNodeId,
 	prefix: Vec<u8>,
 	schema_key: EncodedKey,
 	shape_written: Cell<bool>,
+	shape_cache: RowShapeCacheCell,
 }
 
 impl Store {
@@ -47,6 +49,7 @@ impl Store {
 			prefix,
 			schema_key: EncodedKey::new(vec![schema_byte]),
 			shape_written: Cell::new(false),
+			shape_cache: RowShapeCacheCell::new(SHAPE_CACHE_CAPACITY),
 		}
 	}
 
@@ -111,17 +114,6 @@ impl Store {
 		Ok(existed)
 	}
 
-	pub(crate) fn remove_all_for_key(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<usize> {
-		let prefix = self.hash_prefix(hash);
-		let range = EncodedKeyRange::prefix(&prefix);
-		let entries: Vec<(EncodedKey, EncodedRow)> = state_range(self.node_id, txn, range)?.collect();
-		let count = entries.len();
-		for (key, _) in entries {
-			state_remove(self.node_id, txn, &key)?;
-		}
-		Ok(count)
-	}
-
 	pub(crate) fn rows_for_key(
 		&self,
 		txn: &mut FlowTransaction,
@@ -129,9 +121,9 @@ impl Store {
 	) -> Result<Vec<(RowNumber, EncodedRow)>> {
 		let prefix = self.hash_prefix(hash);
 		let range = EncodedKeyRange::prefix(&prefix);
-		let entries: Vec<(EncodedKey, EncodedRow)> = state_range(self.node_id, txn, range)?.collect();
-		let mut out = Vec::with_capacity(entries.len());
-		for (full_key, row) in entries {
+		let mut out = Vec::new();
+		for entry in state_range(self.node_id, txn, range) {
+			let (full_key, row) = entry?;
 			if let Some(rn) = row_number_from_key(full_key.as_slice()) {
 				out.push((rn, row));
 			}
@@ -142,10 +134,17 @@ impl Store {
 	pub(crate) fn contains_key(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<bool> {
 		let prefix = self.hash_prefix(hash);
 		let range = EncodedKeyRange::prefix(&prefix);
-		Ok(state_range(self.node_id, txn, range)?.next().is_some())
+		Ok(state_range(self.node_id, txn, range).next().transpose()?.is_some())
 	}
 
-	pub(crate) fn get_row_shape(&self, txn: &mut FlowTransaction) -> Result<Option<RowShape>> {
+	pub(crate) fn get_row_shape(
+		&self,
+		txn: &mut FlowTransaction,
+		fingerprint: RowShapeFingerprint,
+	) -> Result<Option<RowShape>> {
+		if let Some(shape) = self.shape_cache.get(&fingerprint) {
+			return Ok(Some(shape));
+		}
 		match state_get(self.node_id, txn, &self.schema_key)? {
 			Some(row) => {
 				let op = RowShape::operator_state();
@@ -156,7 +155,9 @@ impl Store {
 				let fields: Vec<RowShapeField> = from_bytes(blob.as_ref()).map_err(|e| {
 					Error(Box::new(internal!("Failed to deserialize row shape: {}", e)))
 				})?;
-				Ok(Some(RowShape::new(fields)))
+				let shape = RowShape::new(fields);
+				self.shape_cache.insert(shape.clone());
+				Ok(Some(shape))
 			}
 			None => Ok(None),
 		}
@@ -188,19 +189,40 @@ impl Store {
 		row.set_timestamps(created_at, now_nanos);
 		state_set(self.node_id, txn, &self.schema_key, row)?;
 		self.shape_written.set(true);
+		self.shape_cache.insert(shape.clone());
 		Ok(())
 	}
 
-	pub(crate) fn tick_evict(&self, txn: &mut FlowTransaction, cutoff_nanos: u64) -> Result<usize> {
-		let prefix_range = EncodedKeyRange::prefix(&self.prefix);
-		let entries: Vec<(EncodedKey, EncodedRow)> = state_range(self.node_id, txn, prefix_range)?.collect();
+	pub(crate) fn tick_evict(
+		&self,
+		txn: &mut FlowTransaction,
+		cutoff_nanos: u64,
+		cursor: &mut Option<EncodedKey>,
+	) -> Result<usize> {
+		const EVICT_BATCH: usize = 4096;
+		let base = EncodedKeyRange::prefix(&self.prefix);
+		let start = match cursor.as_ref() {
+			Some(c) => Bound::Excluded(c.clone()),
+			None => base.start.clone(),
+		};
+		let range = EncodedKeyRange::new(start, base.end.clone());
+		let batch = state_range(self.node_id, txn, range).take(EVICT_BATCH).collect::<Result<Vec<_>>>()?;
+		let reached_end = batch.len() < EVICT_BATCH;
+		let last_key = batch.last().map(|(key, _)| key.clone());
+
 		let mut evicted = 0;
-		for (key, row) in entries {
+		for (key, row) in batch {
 			if row.updated_at_nanos() < cutoff_nanos {
-				state_remove(self.node_id, txn, &key)?;
+				state_purge(self.node_id, txn, &key)?;
 				evicted += 1;
 			}
 		}
+
+		*cursor = if reached_end {
+			None
+		} else {
+			last_key
+		};
 		Ok(evicted)
 	}
 }
@@ -219,7 +241,7 @@ mod tests {
 	use reifydb_core::{common::CommitVersion, encoded::row::EncodedRow};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_type::value::identity::IdentityId;
+	use reifydb_type::value::{identity::IdentityId, r#type::Type};
 
 	use super::*;
 
@@ -332,29 +354,6 @@ mod tests {
 	}
 
 	#[test]
-	fn remove_all_for_key_clears_only_that_hash() {
-		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
-		let store = Store::new(FlowNodeId(5), JoinSide::Left);
-
-		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		store.put_row(&mut txn, &h(0xAAA), rn(2), &row(0x20)).unwrap();
-		store.put_row(&mut txn, &h(0xBBB), rn(3), &row(0x30)).unwrap();
-
-		let removed = store.remove_all_for_key(&mut txn, &h(0xAAA)).unwrap();
-		assert_eq!(removed, 2);
-		assert!(!store.contains_key(&mut txn, &h(0xAAA)).unwrap());
-		assert!(store.contains_key(&mut txn, &h(0xBBB)).unwrap());
-	}
-
-	#[test]
 	fn tick_evict_drops_stale_rows_only_per_row() {
 		let engine = TestEngine::new();
 		let mock_clock = engine.mock_clock();
@@ -373,7 +372,7 @@ mod tests {
 		store.put_row(&mut txn, &h(0xAAA), rn(2), &row(0x20)).unwrap();
 
 		let cutoff = mock_clock.now_nanos() - 30_000_000;
-		let evicted = store.tick_evict(&mut txn, cutoff).unwrap();
+		let evicted = store.tick_evict(&mut txn, cutoff, &mut None).unwrap();
 		assert_eq!(evicted, 1, "only the older row should be evicted");
 
 		let remaining = store.rows_for_key(&mut txn, &h(0xAAA)).unwrap();
@@ -395,7 +394,7 @@ mod tests {
 		let store = Store::new(FlowNodeId(7), JoinSide::Left);
 
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		assert_eq!(store.tick_evict(&mut txn, 0).unwrap(), 0);
+		assert_eq!(store.tick_evict(&mut txn, 0, &mut None).unwrap(), 0);
 		assert!(store.contains_key(&mut txn, &h(0xAAA)).unwrap());
 	}
 
@@ -417,10 +416,69 @@ mod tests {
 		left.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
 		right.put_row(&mut txn, &h(0xBBB), rn(2), &row(0x20)).unwrap();
 
-		let evicted = left.tick_evict(&mut txn, u64::MAX).unwrap();
+		let evicted = left.tick_evict(&mut txn, u64::MAX, &mut None).unwrap();
 		assert_eq!(evicted, 1);
 
 		assert!(!left.contains_key(&mut txn, &h(0xAAA)).unwrap());
 		assert!(right.contains_key(&mut txn, &h(0xBBB)).unwrap());
+	}
+
+	#[test]
+	fn get_row_shape_round_trips_written_shape() {
+		let engine = TestEngine::new();
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+		let store = Store::new(FlowNodeId(20), JoinSide::Left);
+
+		let shape = RowShape::testing(&[Type::Int4, Type::Utf8]);
+		store.set_row_shape(&mut txn, &shape).unwrap();
+
+		let got = store.get_row_shape(&mut txn, shape.fingerprint()).unwrap();
+		assert_eq!(got, Some(shape));
+	}
+
+	#[test]
+	fn get_row_shape_loads_from_state_when_cache_is_cold() {
+		let engine = TestEngine::new();
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+		let node = FlowNodeId(21);
+		let shape = RowShape::testing(&[Type::Int4]);
+
+		let writer = Store::new(node, JoinSide::Left);
+		writer.set_row_shape(&mut txn, &shape).unwrap();
+
+		let reader = Store::new(node, JoinSide::Left);
+		let got = reader.get_row_shape(&mut txn, shape.fingerprint()).unwrap();
+		assert_eq!(got, Some(shape), "a cold in-memory cache must fall back to the persisted shape");
+	}
+
+	#[test]
+	fn get_row_shape_returns_none_when_shape_absent() {
+		let engine = TestEngine::new();
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+		let store = Store::new(FlowNodeId(22), JoinSide::Right);
+
+		let fp = RowShape::testing(&[Type::Int4]).fingerprint();
+		assert_eq!(store.get_row_shape(&mut txn, fp).unwrap(), None);
 	}
 }

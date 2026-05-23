@@ -10,7 +10,7 @@ use reifydb_core::{
 		},
 		store::MultiVersionRow,
 	},
-	key::source::SourceKey,
+	key::{EncodableKey, source::SourceKey},
 };
 use reifydb_transaction::transaction::Transaction;
 use serde_json::from_str;
@@ -30,6 +30,10 @@ pub(crate) fn load_sources(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> 
 
 	for entry in stream {
 		let multi = entry?;
+
+		if SourceKey::decode(&multi.key).is_none() {
+			continue;
+		}
 		let version = multi.version;
 		let source = convert_source(multi);
 		catalog.set_source(source.id, version, Some(source));

@@ -78,7 +78,7 @@ impl WindowOperator {
 			return Ok(result);
 		}
 
-		let all_state = txn.state_scan(self.node)?;
+		let all_state = txn.state_scan_all(self.node)?;
 		let prefix = FlowNodeStateKey::new(self.node, vec![]).encode();
 		let win_marker = b"win:";
 

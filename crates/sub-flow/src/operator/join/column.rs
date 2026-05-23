@@ -51,44 +51,6 @@ impl JoinedColumnsBuilder {
 		}
 	}
 
-	pub(crate) fn join_single(&self, row_number: RowNumber, left: &Columns, right: &Columns) -> Columns {
-		debug_assert_eq!(left.row_count(), 1, "left must have exactly 1 row");
-		debug_assert_eq!(right.row_count(), 1, "right must have exactly 1 row");
-
-		self.join_one_to_many(&[row_number], left, 0, right)
-	}
-
-	pub(crate) fn join_at_indices(
-		&self,
-		row_number: RowNumber,
-		left: &Columns,
-		left_idx: usize,
-		right: &Columns,
-		right_idx: usize,
-	) -> Columns {
-		let total_columns = self.left_column_count + self.right_column_names.len();
-		let mut result_columns = Vec::with_capacity(total_columns);
-
-		for (i, left_col) in left.columns.iter().enumerate() {
-			let mut col_data = ColumnBuffer::with_capacity(left_col.get_type(), 1);
-			col_data.push_value(left_col.get_value(left_idx));
-			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data));
-		}
-
-		for (right_col, aliased_name) in right.columns.iter().zip(self.right_column_names.iter()) {
-			let mut col_data = ColumnBuffer::with_capacity(right_col.get_type(), 1);
-			col_data.push_value(right_col.get_value(right_idx));
-			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
-		}
-
-		Columns::with_system_columns(
-			result_columns,
-			vec![row_number],
-			Self::extract_single_timestamp(&left.created_at, left_idx),
-			Self::extract_single_timestamp(&left.updated_at, left_idx),
-		)
-	}
-
 	pub(crate) fn join_one_to_many(
 		&self,
 		row_numbers: &[RowNumber],
@@ -275,10 +237,6 @@ impl JoinedColumnsBuilder {
 			Self::extract_timestamps_at_indices(&left.created_at, left_indices),
 			Self::extract_timestamps_at_indices(&left.updated_at, left_indices),
 		)
-	}
-
-	pub(crate) fn right_column_names(&self) -> &[String] {
-		&self.right_column_names
 	}
 
 	fn extract_single_timestamp(ts: &CowVec<DateTime>, idx: usize) -> Vec<DateTime> {

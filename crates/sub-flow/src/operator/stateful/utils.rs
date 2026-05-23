@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
+use std::ops::Bound;
+
 use reifydb_core::{
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
@@ -9,6 +11,7 @@ use reifydb_core::{
 	},
 	interface::catalog::flow::FlowNodeId,
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
+	row::TtlAnchor,
 };
 use reifydb_type::Result;
 
@@ -36,6 +39,13 @@ pub fn state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey)
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 	txn.remove(&encoded_key)?;
+	Ok(())
+}
+
+pub fn state_purge(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<()> {
+	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
+	let encoded_key = state_key.encode();
+	txn.purge(&encoded_key)?;
 	Ok(())
 }
 
@@ -68,7 +78,56 @@ pub fn internal_state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &En
 	Ok(())
 }
 
-pub fn state_scan(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<StateIterator> {
+pub fn internal_state_purge(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<()> {
+	let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
+	let encoded_key = state_key.encode();
+	txn.purge(&encoded_key)?;
+	Ok(())
+}
+
+pub fn evict_state_by_ttl(
+	id: FlowNodeId,
+	txn: &mut FlowTransaction,
+	ttl_nanos: u64,
+	ttl_anchor: TtlAnchor,
+	now_nanos: u64,
+	cursor: &mut Option<EncodedKey>,
+) -> Result<usize> {
+	const EVICT_BATCH: usize = 4096;
+	let base = EncodedKeyRange::all();
+	let start = match cursor.as_ref() {
+		Some(c) => Bound::Excluded(c.clone()),
+		None => base.start.clone(),
+	};
+	let range = EncodedKeyRange::new(start, base.end.clone());
+	let cutoff = now_nanos.saturating_sub(ttl_nanos);
+
+	let batch: Vec<(EncodedKey, EncodedRow)> =
+		state_range(id, txn, range).take(EVICT_BATCH).collect::<Result<_>>()?;
+	let reached_end = batch.len() < EVICT_BATCH;
+	let last_key = batch.last().map(|(key, _)| key.clone());
+
+	let mut evicted = 0;
+	for (key, row) in batch {
+		let anchor = match ttl_anchor {
+			TtlAnchor::Created => row.created_at_nanos(),
+			TtlAnchor::Updated => row.updated_at_nanos(),
+		};
+		if anchor < cutoff {
+			state_purge(id, txn, &key)?;
+			evicted += 1;
+		}
+	}
+
+	*cursor = if reached_end {
+		None
+	} else {
+		last_key
+	};
+	Ok(evicted)
+}
+
+pub fn state_scan_all(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 	let range = FlowNodeStateKey::node_range(id);
 	let stream = txn.range(range, 1024);
 	let mut items = Vec::new();
@@ -80,22 +139,12 @@ pub fn state_scan(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<StateIter
 			items.push((multi.key, multi.row));
 		}
 	}
-	Ok(StateIterator::from_items(items))
+	Ok(items)
 }
 
-pub fn state_range(id: FlowNodeId, txn: &mut FlowTransaction, range: EncodedKeyRange) -> Result<StateIterator> {
+pub fn state_range<'a>(id: FlowNodeId, txn: &'a mut FlowTransaction, range: EncodedKeyRange) -> StateIterator<'a> {
 	let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(id, vec![]));
-	let stream = txn.range(prefixed_range, 1024);
-	let mut items = Vec::new();
-	for result in stream {
-		let multi = result?;
-		if let Some(state_key) = FlowNodeStateKey::decode(&multi.key) {
-			items.push((EncodedKey::new(state_key.key), multi.row));
-		} else {
-			items.push((multi.key, multi.row));
-		}
-	}
-	Ok(StateIterator::from_items(items))
+	StateIterator::new(txn.range(prefixed_range, 1024))
 }
 
 pub fn state_clear(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<()> {
@@ -141,7 +190,7 @@ pub mod tests {
 	use std::ops::Bound::{Excluded, Included, Unbounded};
 
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::common::CommitVersion;
+	use reifydb_core::{common::CommitVersion, encoded::row::SHAPE_HEADER_SIZE};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_type::{util::cowvec::CowVec, value::r#type::Type};
@@ -239,7 +288,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_state_scan() {
+	fn test_state_scan_all() {
 		let mut txn = create_test_transaction();
 		let mut txn = FlowTransaction::deferred(
 			&mut txn,
@@ -258,7 +307,7 @@ pub mod tests {
 		}
 
 		// Scan all entries
-		let entries: Vec<_> = state_scan(node_id, &mut txn).unwrap().collect();
+		let entries: Vec<_> = state_scan_all(node_id, &mut txn).unwrap();
 		assert_eq!(entries.len(), 5);
 
 		// Verify we got all the expected values
@@ -289,7 +338,7 @@ pub mod tests {
 
 		// Test range query from b to d (exclusive end)
 		let range = EncodedKeyRange::new(Included(test_key("b")), Excluded(test_key("d")));
-		let entries: Vec<_> = state_range(node_id, &mut txn, range).unwrap().collect();
+		let entries: Vec<_> = state_range(node_id, &mut txn, range).collect::<Result<Vec<_>>>().unwrap();
 
 		// Should include b and c, but not d (exclusive end)
 		assert_eq!(entries.len(), 2);
@@ -516,5 +565,50 @@ pub mod tests {
 		let result = state_get(node_id, &mut txn, &key).unwrap().unwrap();
 
 		assert_row_eq(&result, &large_value);
+	}
+
+	fn aged_row(payload: &[u8], created_at: u64) -> EncodedRow {
+		let mut buf = vec![0u8; SHAPE_HEADER_SIZE + payload.len()];
+		buf[8..16].copy_from_slice(&created_at.to_le_bytes());
+		buf[16..24].copy_from_slice(&created_at.to_le_bytes());
+		buf[SHAPE_HEADER_SIZE..].copy_from_slice(payload);
+		EncodedRow(CowVec::new(buf))
+	}
+
+	#[test]
+	fn evict_state_by_ttl_never_touches_internal_state() {
+		// Eviction must scan/purge ONLY FlowNodeStateKey, never
+		// FlowNodeInternalStateKey, or the row-number counter (stored under
+		// internal state) could be deleted and row numbers reused.
+		let mut parent = create_test_transaction();
+		let mut txn = FlowTransaction::deferred(
+			&mut parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
+		let node = FlowNodeId(1);
+
+		let aged = aged_row(b"x", 100);
+		let state_key = test_key("expired_state");
+		state_set(node, &mut txn, &state_key, aged.clone()).unwrap();
+
+		let counter_key = EncodedKey::new(vec![b'C']);
+		internal_state_set(node, &mut txn, &counter_key, aged).unwrap();
+
+		let mut cursor = None;
+		let evicted =
+			evict_state_by_ttl(node, &mut txn, 10, TtlAnchor::Created, 1_000_000_000, &mut cursor).unwrap();
+
+		assert_eq!(evicted, 1, "the expired FlowNodeState row must be purged");
+		assert!(
+			state_get(node, &mut txn, &state_key).unwrap().is_none(),
+			"expired FlowNodeState row must be purged"
+		);
+		assert!(
+			internal_state_get(node, &mut txn, &counter_key).unwrap().is_some(),
+			"FlowNodeInternalState (the row-number counter) must be immune from TTL eviction"
+		);
 	}
 }

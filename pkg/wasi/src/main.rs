@@ -23,6 +23,7 @@ use reifydb_catalog::{
 };
 use reifydb_cdc::{
 	CdcVersion,
+	consume::wake::CdcWakeRegistry,
 	produce::{
 		producer::{CdcProducerEventListener, spawn_cdc_producer},
 		watermark::CdcProducerWatermark,
@@ -125,6 +126,9 @@ impl Bridge {
 		let cdc_producer_watermark = CdcProducerWatermark::new();
 		ioc = ioc.register(cdc_producer_watermark.clone());
 
+		let cdc_wake_registry = CdcWakeRegistry::new();
+		ioc = ioc.register(cdc_wake_registry.clone());
+
 		let ioc_ref = ioc.clone();
 
 		load_catalog_cache(&multi, &single, &catalog_cache)?;
@@ -162,6 +166,7 @@ impl Bridge {
 			eventbus_clone.clone(),
 			runtime.clock().clone(),
 			cdc_producer_watermark,
+			cdc_wake_registry,
 		);
 
 		let cdc_listener =
