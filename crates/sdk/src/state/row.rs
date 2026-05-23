@@ -9,7 +9,10 @@ use reifydb_core::{
 };
 use reifydb_type::value::row_number::RowNumber;
 
-use crate::{error::Result, operator::context::ffi::FFIOperatorContext};
+use crate::{
+	error::Result,
+	operator::context::{InternalStateApi, OperatorContext},
+};
 
 pub struct RowNumberProvider {
 	_node: FlowNodeId,
@@ -22,12 +25,9 @@ impl RowNumberProvider {
 		}
 	}
 
-	pub fn get_or_create_row_numbers_batch<'a, I>(
-		&self,
-		ctx: &mut FFIOperatorContext,
-		keys: I,
-	) -> Result<Vec<(RowNumber, bool)>>
+	pub fn get_or_create_row_numbers_batch<'a, O, I>(&self, ctx: &mut O, keys: I) -> Result<Vec<(RowNumber, bool)>>
 	where
+		O: OperatorContext,
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
 		let map_keys: Vec<EncodedKey> = keys.into_iter().map(|key| self.make_map_key(key)).collect();
@@ -62,19 +62,19 @@ impl RowNumberProvider {
 		Ok(results)
 	}
 
-	pub fn get_or_create_row_number(
+	pub fn get_or_create_row_number<O: OperatorContext>(
 		&self,
-		ctx: &mut FFIOperatorContext,
+		ctx: &mut O,
 		key: &EncodedKey,
 	) -> Result<(RowNumber, bool)> {
 		Ok(self.get_or_create_row_numbers_batch(ctx, iter::once(key))?.into_iter().next().unwrap())
 	}
 
-	fn load_counter(&self, ctx: &mut FFIOperatorContext) -> Result<u64> {
+	fn load_counter<O: OperatorContext>(&self, ctx: &mut O) -> Result<u64> {
 		Ok(ctx.internal_state().get::<u64>(&self.make_counter_key())?.unwrap_or(1))
 	}
 
-	fn save_counter(&self, ctx: &mut FFIOperatorContext, counter: u64) -> Result<()> {
+	fn save_counter<O: OperatorContext>(&self, ctx: &mut O, counter: u64) -> Result<()> {
 		ctx.internal_state().set::<u64>(&self.make_counter_key(), &counter)
 	}
 

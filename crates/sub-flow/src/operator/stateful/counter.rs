@@ -2,11 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	encoded::{key::EncodedKey, row::EncodedRow},
-	interface::catalog::flow::FlowNodeId,
+	encoded::key::EncodedKey, interface::catalog::flow::FlowNodeId,
 	util::encoding::keycode::serializer::KeySerializer,
 };
-use reifydb_type::{Result, util::cowvec::CowVec, value::row_number::RowNumber};
+use reifydb_sdk::state::{decode_payload, encode_payload};
+use reifydb_type::{Result, value::row_number::RowNumber};
 
 use crate::{
 	operator::stateful::utils::{internal_state_get, internal_state_set},
@@ -65,23 +65,13 @@ impl Counter {
 	fn load(&self, txn: &mut FlowTransaction) -> Result<u64> {
 		match internal_state_get(self.node, txn, &self.key)? {
 			None => Ok(self.default_value()),
-			Some(encoded) => {
-				let bytes = encoded.as_slice();
-				if bytes.len() >= 8 {
-					Ok(u64::from_be_bytes([
-						bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6],
-						bytes[7],
-					]))
-				} else {
-					Ok(self.default_value())
-				}
-			}
+			Some(encoded) => Ok(decode_payload::<u64>(&encoded)?),
 		}
 	}
 
 	fn save(&self, txn: &mut FlowTransaction, value: u64) -> Result<()> {
-		let bytes = value.to_be_bytes().to_vec();
-		internal_state_set(self.node, txn, &self.key, EncodedRow(CowVec::new(bytes)))?;
+		let now = txn.clock().now_nanos();
+		internal_state_set(self.node, txn, &self.key, encode_payload(&value, now)?)?;
 		Ok(())
 	}
 

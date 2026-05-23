@@ -231,8 +231,7 @@ pub unsafe extern "C" fn ffi_tick<O: FFIOperator>(
 		let mut op_ctx = FFIOperatorContext::new(ctx);
 
 		match wrapper.operator.tick(&mut op_ctx, tick) {
-			Ok(true) => 0,
-			Ok(false) => 1,
+			Ok(()) => 0,
 			Err(e) => {
 				warn!(?e, "Tick failed");
 				set_fatal_detail(format!("{:?}", e));

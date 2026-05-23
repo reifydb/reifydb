@@ -275,14 +275,12 @@ impl Operator for FFIOperator {
 			);
 		}
 
-		if result_code == 1 {
-			let _ = self.builder_registry.drain();
-			return Ok(None);
-		}
-
 		let version = CommitVersion(timestamp_nanos);
 		let output_change = drain_emitted_diffs(&self.builder_registry, self.operator_id, version, tick.now);
 		Span::current().record("output_diff_count", output_change.diffs.len());
+		if output_change.diffs.is_empty() {
+			return Ok(None);
+		}
 		Ok(Some(output_change))
 	}
 }

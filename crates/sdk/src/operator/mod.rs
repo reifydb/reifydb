@@ -39,8 +39,8 @@ pub trait FFIOperator: 'static {
 
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()>;
 
-	fn tick(&mut self, _ctx: &mut FFIOperatorContext, _tick: Tick) -> Result<bool> {
-		Ok(false)
+	fn tick(&mut self, _ctx: &mut FFIOperatorContext, _tick: Tick) -> Result<()> {
+		Ok(())
 	}
 
 	fn ticks(&self) -> Option<Duration> {
@@ -69,8 +69,8 @@ pub trait OperatorLogic: Send + Sync {
 
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()>;
 
-	fn tick(&mut self, _ctx: &mut impl OperatorContext, _tick: Tick) -> Result<bool> {
-		Ok(false)
+	fn tick(&mut self, _ctx: &mut impl OperatorContext, _tick: Tick) -> Result<()> {
+		Ok(())
 	}
 
 	fn ticks(&self) -> Option<Duration> {
@@ -107,7 +107,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> FFIOperator for FFIOperatorA
 		self.core.apply(ctx, input)
 	}
 
-	fn tick(&mut self, ctx: &mut FFIOperatorContext, tick: Tick) -> Result<bool> {
+	fn tick(&mut self, ctx: &mut FFIOperatorContext, tick: Tick) -> Result<()> {
 		self.core.tick(ctx, tick)
 	}
 

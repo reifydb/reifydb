@@ -2,7 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	cell::UnsafeCell,
+	any::Any,
+	cell::{Cell, UnsafeCell},
 	collections::{BTreeMap, HashMap},
 	path::{Path, PathBuf},
 	sync::OnceLock,
@@ -26,7 +27,7 @@ use reifydb_type::{
 
 use crate::{
 	operator::{BoxedOperator, Operator, context::native::NativeOperatorContext},
-	transaction::FlowTransaction,
+	transaction::{FlowTransaction, slot::PersistFn},
 };
 
 pub const NATIVE_OPERATOR_MAGIC: u32 = 0x5244_424E;
@@ -189,10 +190,15 @@ impl Default for NativeOperatorLoader {
 	}
 }
 
+#[derive(Clone, Copy)]
+struct SendableLogic<C>(*mut C);
+unsafe impl<C: Send> Send for SendableLogic<C> {}
+
 pub struct NativeOperator<C> {
 	logic: UnsafeCell<C>,
 	node: FlowNodeId,
 	capabilities: u32,
+	last_registered_txn: Cell<u64>,
 }
 
 impl<C> NativeOperator<C> {
@@ -201,12 +207,34 @@ impl<C> NativeOperator<C> {
 			logic: UnsafeCell::new(logic),
 			node,
 			capabilities,
+			last_registered_txn: Cell::new(u64::MAX),
 		}
 	}
 }
 
 unsafe impl<C: Send> Send for NativeOperator<C> {}
 unsafe impl<C: Send> Sync for NativeOperator<C> {}
+
+impl<C: OperatorLogic + 'static> NativeOperator<C> {
+	fn ensure_flush_slot(&self, txn: &mut FlowTransaction) -> Result<()> {
+		let txn_version = txn.version().0;
+		if self.last_registered_txn.get() != txn_version {
+			let captured = SendableLogic(self.logic.get());
+			let node = self.node;
+			let persist: PersistFn = Box::new(move |txn: &mut FlowTransaction, _value: Box<dyn Any>| {
+				let captured = captured;
+				let logic = unsafe { &mut *captured.0 };
+				let mut ctx = NativeOperatorContext::new(txn, node);
+				logic.flush_state(&mut ctx)?;
+				Ok(())
+			});
+			let _ = txn.operator_state::<(), _>(node, move |_txn| Ok(((), persist)))?;
+			txn.mark_state_dirty(node);
+			self.last_registered_txn.set(txn_version);
+		}
+		Ok(())
+	}
+}
 
 impl<C: OperatorLogic + 'static> Operator for NativeOperator<C> {
 	fn id(&self) -> FlowNodeId {
@@ -218,6 +246,7 @@ impl<C: OperatorLogic + 'static> Operator for NativeOperator<C> {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+		self.ensure_flush_slot(txn)?;
 		let version = change.version;
 		let changed_at = change.changed_at;
 		let mut ctx = NativeOperatorContext::new(txn, self.node);
@@ -225,7 +254,6 @@ impl<C: OperatorLogic + 'static> Operator for NativeOperator<C> {
 			let view = NativeChangeView::new(&change);
 			let logic = unsafe { &mut *self.logic.get() };
 			logic.apply(&mut ctx, view)?;
-			logic.flush_state(&mut ctx)?;
 		}
 		let diffs = ctx.take_diffs();
 		Ok(Change::from_flow(self.node, version, diffs, changed_at))
@@ -237,12 +265,12 @@ impl<C: OperatorLogic + 'static> Operator for NativeOperator<C> {
 	}
 
 	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
+		self.ensure_flush_slot(txn)?;
 		let now = tick.now.clone();
 		let mut ctx = NativeOperatorContext::new(txn, self.node);
 		{
 			let logic = unsafe { &mut *self.logic.get() };
 			logic.tick(&mut ctx, tick)?;
-			logic.flush_state(&mut ctx)?;
 		}
 		let diffs = ctx.take_diffs();
 		if diffs.is_empty() {

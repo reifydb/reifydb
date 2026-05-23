@@ -26,12 +26,12 @@ use reifydb_sdk::{
 		column::{row::Row, sink::native::NativeRowSink},
 		context::{CatalogApi, InternalStateApi, OperatorContext, RowEmit, StateApi, StoreApi, UpdateEmit},
 	},
-	state::{StateEntry, decode_payload, encode_payload},
+	state::{StateEntry, decode_payload, encode_payload, row::RowNumberProvider},
 };
 use reifydb_type::{Result, value::row_number::RowNumber};
 use serde::{Serialize, de::DeserializeOwned};
 
-use crate::{operator::stateful::row::RowNumberProvider, transaction::FlowTransaction};
+use crate::transaction::FlowTransaction;
 
 fn to_sdk_err<E: ToString>(e: E) -> SdkError {
 	SdkError::Other(e.to_string())
@@ -306,14 +306,12 @@ impl OperatorContext for NativeOperatorContext<'_> {
 		}
 	}
 	fn get_or_create_row_number(&mut self, key: &EncodedKey) -> SdkResult<(RowNumber, bool)> {
-		RowNumberProvider::new(self.node)
-			.get_or_create_row_number(unsafe { &mut *self.txn }, key)
-			.map_err(to_sdk_err)
+		let provider = RowNumberProvider::new(self.node);
+		provider.get_or_create_row_number(self, key)
 	}
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> SdkResult<Vec<(RowNumber, bool)>> {
-		RowNumberProvider::new(self.node)
-			.get_or_create_row_numbers(unsafe { &mut *self.txn }, keys.iter())
-			.map_err(to_sdk_err)
+		let provider = RowNumberProvider::new(self.node);
+		provider.get_or_create_row_numbers_batch(self, keys.iter())
 	}
 	fn shape_for_row(&mut self, row: &EncodedRow) -> SdkResult<RowShape> {
 		let fingerprint = row.fingerprint();

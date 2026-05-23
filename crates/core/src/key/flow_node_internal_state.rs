@@ -48,6 +48,8 @@ impl FlowNodeInternalStateKey {
 
 	pub const ROW_NUMBER_MAPPING_TAG: u8 = b'M';
 
+	pub const ROW_NUMBER_REVERSE_TAG: u8 = b'R';
+
 	pub const WINDOW_META_TAG: u8 = b'W';
 
 	pub const GATE_VISIBILITY_TAG: u8 = b'G';
