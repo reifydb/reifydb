@@ -332,8 +332,9 @@ pub unsafe extern "C" fn ffi_flush_state<O: FFIOperator>(instance: *mut c_void, 
 	match result {
 		Ok(Ok(())) => 0,
 		Ok(Err(e)) => {
-			error!(target: "ffi_flush_state", "operator flush_state failed: {:?}", e);
-			-2
+			error!("operator flush_state failed - aborting");
+			print_ffi_fatal("ffi_flush_state", any::type_name::<O>(), -2, &format!("{:?}", e), None, None);
+			abort();
 		}
 		Err(payload) => {
 			let bt = Backtrace::force_capture();

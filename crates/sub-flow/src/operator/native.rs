@@ -5,7 +5,9 @@ use std::{
 	any::Any,
 	cell::{Cell, UnsafeCell},
 	collections::{BTreeMap, HashMap},
+	panic::{AssertUnwindSafe, catch_unwind},
 	path::{Path, PathBuf},
+	process::abort,
 	sync::OnceLock,
 	time::Duration,
 };
@@ -18,17 +20,38 @@ use reifydb_core::{
 };
 use reifydb_extension::loader::ffi::LibraryCache;
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_sdk::operator::{OperatorLogic, Tick, view::native::NativeChangeView};
+use reifydb_sdk::{
+	error::Result as SdkResult,
+	operator::{OperatorLogic, Tick, view::native::NativeChangeView},
+};
 use reifydb_type::{
 	Result,
 	error::Error,
 	value::{Value, constraint::TypeConstraint},
 };
+use tracing::error;
 
 use crate::{
 	operator::{BoxedOperator, Operator, context::native::NativeOperatorContext},
 	transaction::{FlowTransaction, slot::PersistFn},
 };
+
+fn run_or_abort<R>(node: FlowNodeId, stage: &'static str, f: impl FnOnce() -> SdkResult<R>) -> R {
+	match catch_unwind(AssertUnwindSafe(f)) {
+		Ok(Ok(value)) => value,
+		Ok(Err(e)) => {
+			error!(
+				operator_id = node.0,
+				stage, "native operator returned an error; operators must not fail - aborting: {:?}", e
+			);
+			abort();
+		}
+		Err(_) => {
+			error!(operator_id = node.0, stage, "native operator panicked - aborting");
+			abort();
+		}
+	}
+}
 
 pub const NATIVE_OPERATOR_MAGIC: u32 = 0x5244_424E;
 
@@ -225,7 +248,7 @@ impl<C: OperatorLogic + 'static> NativeOperator<C> {
 				let captured = captured;
 				let logic = unsafe { &mut *captured.0 };
 				let mut ctx = NativeOperatorContext::new(txn, node);
-				logic.flush_state(&mut ctx)?;
+				run_or_abort(node, "flush_state", || logic.flush_state(&mut ctx));
 				Ok(())
 			});
 			let _ = txn.operator_state::<(), _>(node, move |_txn| Ok(((), persist)))?;
@@ -253,7 +276,7 @@ impl<C: OperatorLogic + 'static> Operator for NativeOperator<C> {
 		{
 			let view = NativeChangeView::new(&change);
 			let logic = unsafe { &mut *self.logic.get() };
-			logic.apply(&mut ctx, view)?;
+			run_or_abort(self.node, "apply", || logic.apply(&mut ctx, view));
 		}
 		let diffs = ctx.take_diffs();
 		Ok(Change::from_flow(self.node, version, diffs, changed_at))
@@ -270,7 +293,7 @@ impl<C: OperatorLogic + 'static> Operator for NativeOperator<C> {
 		let mut ctx = NativeOperatorContext::new(txn, self.node);
 		{
 			let logic = unsafe { &mut *self.logic.get() };
-			logic.tick(&mut ctx, tick)?;
+			run_or_abort(self.node, "tick", || logic.tick(&mut ctx, tick));
 		}
 		let diffs = ctx.take_diffs();
 		if diffs.is_empty() {
