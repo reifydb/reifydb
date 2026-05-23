@@ -18,7 +18,7 @@ use super::{
 	schema::ChaosSchema,
 	strategy::ColumnRegistry,
 };
-use crate::{operator::FFIOperator, testing::harness::OperatorTestHarness};
+use crate::{operator::FFIOperator, testing::harness::FFIOperatorHarness};
 
 pub type OracleFn = Arc<dyn Fn(&[ChaosBatch]) -> MaterializedTable + Send + Sync>;
 
@@ -66,7 +66,7 @@ pub struct RunnableChaos<T: FFIOperator> {
 	pub registry: Arc<ColumnRegistry>,
 	pub tolerances: Tolerances,
 	pub oracle: OracleFn,
-	pub harness: OperatorTestHarness<T>,
+	pub harness: FFIOperatorHarness<T>,
 }
 
 impl<T: FFIOperator> RunnableChaos<T> {

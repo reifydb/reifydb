@@ -338,7 +338,7 @@ mod tests {
 		row,
 		testing::{
 			builders::{TestChangeBuilder, TestRowBuilder},
-			harness::TestHarnessBuilder,
+			harness::FFIOperatorHarnessBuilder,
 		},
 	};
 
@@ -452,7 +452,7 @@ mod tests {
 
 	#[test]
 	fn single_insert_emits_insert() {
-		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
 			.build()
 			.expect("harness");
 		let change = TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build();
@@ -470,7 +470,7 @@ mod tests {
 
 	#[test]
 	fn update_replaces_slot_does_not_double_count() {
-		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
 			.build()
 			.expect("harness");
 
@@ -495,7 +495,7 @@ mod tests {
 
 	#[test]
 	fn remove_drops_slot_and_emits_update_with_remaining() {
-		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
 			.build()
 			.expect("harness");
 
@@ -521,7 +521,7 @@ mod tests {
 
 	#[test]
 	fn remove_clears_window_emits_nothing() {
-		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
 			.build()
 			.expect("harness");
 
@@ -536,7 +536,7 @@ mod tests {
 
 	#[test]
 	fn boundary_slot_belongs_to_next_window() {
-		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
 			.build()
 			.expect("harness");
 
@@ -563,7 +563,7 @@ mod tests {
 
 	#[test]
 	fn late_event_for_closed_window_dropped() {
-		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
 			.build()
 			.expect("harness");
 
@@ -580,7 +580,7 @@ mod tests {
 
 	#[test]
 	fn multiple_groups_isolate_state() {
-		let mut h = TestHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
 			.build()
 			.expect("harness");
 

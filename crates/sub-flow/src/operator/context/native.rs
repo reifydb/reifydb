@@ -19,6 +19,7 @@ use reifydb_core::{
 		},
 		change::Diff,
 	},
+	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
 };
 use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
@@ -39,6 +40,14 @@ fn to_sdk_err<E: ToString>(e: E) -> SdkError {
 
 fn decode<T: DeserializeOwned>(row: &EncodedRow) -> SdkResult<T> {
 	decode_payload(row)
+}
+
+fn strip_state_envelope(stored: &EncodedKey) -> EncodedKey {
+	FlowNodeStateKey::decode(stored).map(|k| EncodedKey::new(k.key)).unwrap_or_else(|| stored.clone())
+}
+
+fn strip_internal_envelope(stored: &EncodedKey) -> EncodedKey {
+	FlowNodeInternalStateKey::decode(stored).map(|k| EncodedKey::new(k.key)).unwrap_or_else(|| stored.clone())
 }
 
 fn encode<T: Serialize>(value: &T, now_nanos: u64) -> SdkResult<EncodedRow> {
@@ -147,16 +156,16 @@ impl StateApi for NativeState {
 	fn scan_prefix<T: DeserializeOwned>(&self, prefix: &EncodedKey) -> SdkResult<Vec<(EncodedKey, T)>> {
 		let batch = unsafe { (*self.txn).state_range(self.node, EncodedKeyRange::prefix(prefix.as_ref())) }
 			.map_err(to_sdk_err)?;
-		batch.items.iter().map(|r| Ok((r.key.clone(), decode(&r.row)?))).collect()
+		batch.items.iter().map(|r| Ok((strip_state_envelope(&r.key), decode(&r.row)?))).collect()
 	}
 	fn get_many<T: DeserializeOwned>(&self, keys: &[EncodedKey]) -> SdkResult<Vec<(EncodedKey, T)>> {
 		let batch = unsafe { (*self.txn).state_get_many(self.node, keys) }.map_err(to_sdk_err)?;
-		batch.items.iter().map(|r| Ok((r.key.clone(), decode(&r.row)?))).collect()
+		batch.items.iter().map(|r| Ok((strip_state_envelope(&r.key), decode(&r.row)?))).collect()
 	}
 	fn keys_with_prefix(&self, prefix: &EncodedKey) -> SdkResult<Vec<EncodedKey>> {
 		let batch = unsafe { (*self.txn).state_range(self.node, EncodedKeyRange::prefix(prefix.as_ref())) }
 			.map_err(to_sdk_err)?;
-		Ok(batch.items.iter().map(|r| r.key.clone()).collect())
+		Ok(batch.items.iter().map(|r| strip_state_envelope(&r.key)).collect())
 	}
 	fn range<T: DeserializeOwned>(
 		&self,
@@ -165,7 +174,7 @@ impl StateApi for NativeState {
 	) -> SdkResult<Vec<(EncodedKey, T)>> {
 		let range = EncodedKeyRange::new(start.map(|k| k.clone()), end.map(|k| k.clone()));
 		let batch = unsafe { (*self.txn).state_range(self.node, range) }.map_err(to_sdk_err)?;
-		batch.items.iter().map(|r| Ok((r.key.clone(), decode(&r.row)?))).collect()
+		batch.items.iter().map(|r| Ok((strip_state_envelope(&r.key), decode(&r.row)?))).collect()
 	}
 	fn get_with_anchors<T: DeserializeOwned>(&self, key: &EncodedKey) -> SdkResult<Option<StateEntry<T>>> {
 		match unsafe { (*self.txn).state_get(self.node, key) }.map_err(to_sdk_err)? {
@@ -194,7 +203,7 @@ impl InternalStateApi for NativeInternalState {
 	}
 	fn get_many<T: DeserializeOwned>(&self, keys: &[EncodedKey]) -> SdkResult<Vec<(EncodedKey, T)>> {
 		let batch = unsafe { (*self.txn).internal_state_get_many(self.node, keys) }.map_err(to_sdk_err)?;
-		batch.items.iter().map(|r| Ok((r.key.clone(), decode(&r.row)?))).collect()
+		batch.items.iter().map(|r| Ok((strip_internal_envelope(&r.key), decode(&r.row)?))).collect()
 	}
 	fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> SdkResult<()> {
 		let now = self.now_nanos;

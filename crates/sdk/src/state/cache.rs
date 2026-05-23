@@ -223,7 +223,7 @@ pub mod tests {
 			context::ffi::FFIOperatorContext,
 		},
 		state::RawStatefulOperator,
-		testing::{harness::TestHarnessBuilder, helpers::encode_key},
+		testing::{harness::FFIOperatorHarnessBuilder, helpers::encode_key},
 	};
 
 	struct WarmTestOperator;
@@ -252,7 +252,7 @@ pub mod tests {
 
 	#[test]
 	fn test_warm_bulk_loads_present_keys_and_skips_absent() {
-		let mut harness = TestHarnessBuilder::<WarmTestOperator>::new()
+		let mut harness = FFIOperatorHarnessBuilder::<WarmTestOperator>::new()
 			.with_node_id(FlowNodeId(1))
 			.build()
 			.expect("Failed to build harness");
@@ -283,7 +283,7 @@ pub mod tests {
 
 	#[test]
 	fn test_warm_internal_backend_bulk_loads_present_keys_and_skips_absent() {
-		let mut harness = TestHarnessBuilder::<WarmTestOperator>::new()
+		let mut harness = FFIOperatorHarnessBuilder::<WarmTestOperator>::new()
 			.with_node_id(FlowNodeId(1))
 			.build()
 			.expect("Failed to build harness");
@@ -316,7 +316,7 @@ pub mod tests {
 
 	#[test]
 	fn test_warm_does_not_overwrite_pending() {
-		let mut harness = TestHarnessBuilder::<WarmTestOperator>::new()
+		let mut harness = FFIOperatorHarnessBuilder::<WarmTestOperator>::new()
 			.with_node_id(FlowNodeId(1))
 			.build()
 			.expect("Failed to build harness");

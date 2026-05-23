@@ -12,7 +12,7 @@ use reifydb_sdk::{
 		context::ffi::FFIOperatorContext,
 	},
 	state::cache::StateCache,
-	testing::{builders::TestChangeBuilder, harness::TestHarnessBuilder},
+	testing::{builders::TestChangeBuilder, harness::FFIOperatorHarnessBuilder},
 };
 use reifydb_type::value::Value;
 use serde::{Deserialize, Serialize};
@@ -53,7 +53,7 @@ impl FFIOperator for PassthroughOperator {
 
 #[test]
 fn test_cache_set_and_get() {
-	let mut harness = TestHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut harness = FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
 	let key = "test_key".to_string();
@@ -76,7 +76,7 @@ fn test_cache_set_and_get() {
 
 #[test]
 fn test_cache_flush_persists_to_ffi() {
-	let mut harness = TestHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut harness = FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
 	let key = "persist_key".to_string();
@@ -97,7 +97,7 @@ fn test_cache_flush_persists_to_ffi() {
 
 #[test]
 fn test_cache_get_or_default_creates_default() {
-	let mut harness = TestHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut harness = FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
 	let key = "new_key".to_string();
@@ -111,7 +111,7 @@ fn test_cache_get_or_default_creates_default() {
 
 #[test]
 fn test_cache_get_or_default_returns_existing() {
-	let mut harness = TestHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut harness = FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
 	let key = "existing_key".to_string();
@@ -136,7 +136,7 @@ fn test_cache_get_or_default_returns_existing() {
 
 #[test]
 fn test_cache_update() {
-	let mut harness = TestHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut harness = FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
 	let key = "counter".to_string();
@@ -173,7 +173,7 @@ fn test_cache_update() {
 
 #[test]
 fn test_cache_remove() {
-	let mut harness = TestHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut harness = FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
 	let key = "remove_key".to_string();
@@ -212,7 +212,7 @@ fn test_cache_remove() {
 
 #[test]
 fn test_cache_invalidate_only_clears_cache() {
-	let mut harness = TestHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut harness = FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
 	let key = "invalidate_key".to_string();
@@ -249,7 +249,7 @@ fn test_cache_invalidate_only_clears_cache() {
 
 #[test]
 fn test_cache_clear_cache() {
-	let mut harness = TestHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut harness = FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
 
@@ -285,7 +285,7 @@ fn test_cache_clear_cache() {
 
 #[test]
 fn test_cache_multiple_keys() {
-	let mut harness = TestHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut harness = FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<String, SumState> = StateCache::new(10);
 
@@ -322,7 +322,7 @@ fn test_cache_multiple_keys() {
 
 #[test]
 fn test_cache_lru_eviction() {
-	let mut harness = TestHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut harness = FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<String, CounterState> = StateCache::new(3);
 
@@ -376,7 +376,7 @@ fn test_cache_lru_eviction() {
 
 #[test]
 fn test_cache_lru_access_updates_order() {
-	let mut harness = TestHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut harness = FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<String, CounterState> = StateCache::new(3);
 
@@ -419,7 +419,7 @@ fn test_cache_lru_access_updates_order() {
 
 #[test]
 fn test_cache_tuple_keys() {
-	let mut harness = TestHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut harness = FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<(String, String), SumState> = StateCache::new(10);
 
@@ -455,7 +455,7 @@ fn test_cache_tuple_keys() {
 
 #[test]
 fn test_cache_tuple_key_update() {
-	let mut harness = TestHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut harness = FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<(String, String), SumState> = StateCache::new(10);
 	let key = ("account".to_string(), "balance".to_string());
@@ -495,7 +495,7 @@ fn test_cache_capacity() {
 
 #[test]
 fn test_cache_len_and_is_empty() {
-	let mut harness = TestHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut harness = FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
 
@@ -520,7 +520,7 @@ fn test_cache_len_and_is_empty() {
 
 #[test]
 fn test_cache_miss_then_hit() {
-	let mut harness = TestHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut harness = FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<String, CounterState> = StateCache::new(10);
 	let key = "miss_hit_key".to_string();
@@ -560,7 +560,7 @@ fn test_cache_miss_then_hit() {
 
 #[test]
 fn test_cache_with_operator_apply() {
-	let mut harness = TestHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut harness = FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	// Create cache outside the operator (since StateCache is !Send+!Sync)
 	let mut cache: StateCache<String, CounterState> = StateCache::new(10);

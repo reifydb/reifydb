@@ -3,6 +3,7 @@
 
 use std::{
 	alloc::{Layout, alloc, dealloc, realloc as system_realloc},
+	ops::Bound,
 	slice::from_raw_parts,
 };
 
@@ -528,51 +529,178 @@ unsafe extern "C" fn test_log_message(_operator_id: u64, _level: u32, _message: 
 	unimplemented!()
 }
 
-extern "C" fn test_store_get(_ctx: *mut ContextFFI, _key: *const u8, _key_len: usize, _output: *mut BufferFFI) -> i32 {
-	unimplemented!()
+struct TestStoreIterator {
+	items: Vec<(Vec<u8>, Vec<u8>)>,
+	position: usize,
+}
+
+extern "C" fn test_store_get(ctx: *mut ContextFFI, key: *const u8, key_len: usize, output: *mut BufferFFI) -> i32 {
+	if ctx.is_null() || key.is_null() || output.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		let encoded = EncodedKey::new(from_raw_parts(key, key_len).to_vec());
+		match test_ctx.get_store(&encoded) {
+			Some(value) => {
+				let bytes = value.0.as_ref();
+				let value_ptr = test_alloc(bytes.len());
+				if value_ptr.is_null() {
+					return -2;
+				}
+				ptr::copy_nonoverlapping(bytes.as_ptr(), value_ptr, bytes.len());
+				(*output).ptr = value_ptr;
+				(*output).len = bytes.len();
+				(*output).cap = bytes.len();
+				FFI_OK
+			}
+			None => FFI_NOT_FOUND,
+		}
+	}
 }
 
 extern "C" fn test_store_contains_key(
-	_ctx: *mut ContextFFI,
-	_key: *const u8,
-	_key_len: usize,
-	_result: *mut u8,
+	ctx: *mut ContextFFI,
+	key: *const u8,
+	key_len: usize,
+	result: *mut u8,
 ) -> i32 {
-	unimplemented!()
+	if ctx.is_null() || key.is_null() || result.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		let encoded = EncodedKey::new(from_raw_parts(key, key_len).to_vec());
+		*result = u8::from(test_ctx.get_store(&encoded).is_some());
+		FFI_OK
+	}
 }
 
 extern "C" fn test_store_prefix(
-	_ctx: *mut ContextFFI,
-	_prefix: *const u8,
-	_prefix_len: usize,
-	_iterator_out: *mut *mut StoreIteratorFFI,
+	ctx: *mut ContextFFI,
+	prefix: *const u8,
+	prefix_len: usize,
+	iterator_out: *mut *mut StoreIteratorFFI,
 ) -> i32 {
-	unimplemented!()
+	if ctx.is_null() || iterator_out.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		let prefix_bytes = if prefix_len == 0 || prefix.is_null() {
+			Vec::new()
+		} else {
+			from_raw_parts(prefix, prefix_len).to_vec()
+		};
+		let prefix_key = EncodedKey::new(prefix_bytes);
+		let items: Vec<(Vec<u8>, Vec<u8>)> =
+			test_ctx.store_prefix(&prefix_key).into_iter().map(|(k, v)| (k.to_vec(), v.0.to_vec())).collect();
+
+		let iter = Box::new(TestStoreIterator {
+			items,
+			position: 0,
+		});
+		*iterator_out = Box::into_raw(iter) as *mut StoreIteratorFFI;
+		FFI_OK
+	}
 }
 
 extern "C" fn test_store_range(
-	_ctx: *mut ContextFFI,
-	_start: *const u8,
-	_start_len: usize,
-	_start_bound_type: u8,
-	_end: *const u8,
-	_end_len: usize,
-	_end_bound_type: u8,
-	_iterator_out: *mut *mut StoreIteratorFFI,
+	ctx: *mut ContextFFI,
+	start: *const u8,
+	start_len: usize,
+	start_bound_type: u8,
+	end: *const u8,
+	end_len: usize,
+	end_bound_type: u8,
+	iterator_out: *mut *mut StoreIteratorFFI,
 ) -> i32 {
-	unimplemented!()
+	if ctx.is_null() || iterator_out.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+
+		let bound = |bound_type: u8, ptr: *const u8, len: usize| -> Bound<EncodedKey> {
+			if bound_type == BOUND_UNBOUNDED || ptr.is_null() {
+				Bound::Unbounded
+			} else {
+				let key = EncodedKey::new(from_raw_parts(ptr, len).to_vec());
+				if bound_type == BOUND_EXCLUDED {
+					Bound::Excluded(key)
+				} else {
+					Bound::Included(key)
+				}
+			}
+		};
+
+		let items: Vec<(Vec<u8>, Vec<u8>)> = test_ctx
+			.store_range(bound(start_bound_type, start, start_len), bound(end_bound_type, end, end_len))
+			.into_iter()
+			.map(|(k, v)| (k.to_vec(), v.0.to_vec()))
+			.collect();
+
+		let iter = Box::new(TestStoreIterator {
+			items,
+			position: 0,
+		});
+		*iterator_out = Box::into_raw(iter) as *mut StoreIteratorFFI;
+		FFI_OK
+	}
 }
 
 extern "C" fn test_store_iterator_next(
-	_iterator: *mut StoreIteratorFFI,
-	_key_out: *mut BufferFFI,
-	_value_out: *mut BufferFFI,
+	iterator: *mut StoreIteratorFFI,
+	key_out: *mut BufferFFI,
+	value_out: *mut BufferFFI,
 ) -> i32 {
-	unimplemented!()
+	if iterator.is_null() || key_out.is_null() || value_out.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let iter = &mut *(iterator as *mut TestStoreIterator);
+		if iter.position >= iter.items.len() {
+			return FFI_END_OF_ITERATION;
+		}
+
+		let (key, value) = &iter.items[iter.position];
+		iter.position += 1;
+
+		let key_ptr = test_alloc(key.len());
+		if key_ptr.is_null() {
+			return -2;
+		}
+		ptr::copy_nonoverlapping(key.as_ptr(), key_ptr, key.len());
+		(*key_out).ptr = key_ptr;
+		(*key_out).len = key.len();
+		(*key_out).cap = key.len();
+
+		let value_ptr = test_alloc(value.len());
+		if value_ptr.is_null() {
+			test_free(key_ptr, key.len());
+			return -2;
+		}
+		ptr::copy_nonoverlapping(value.as_ptr(), value_ptr, value.len());
+		(*value_out).ptr = value_ptr;
+		(*value_out).len = value.len();
+		(*value_out).cap = value.len();
+
+		FFI_OK
+	}
 }
 
-extern "C" fn test_store_iterator_free(_iterator: *mut StoreIteratorFFI) {
-	unimplemented!()
+extern "C" fn test_store_iterator_free(iterator: *mut StoreIteratorFFI) {
+	if iterator.is_null() {
+		return;
+	}
+	unsafe {
+		drop(Box::from_raw(iterator as *mut TestStoreIterator));
+	}
 }
 
 use std::ptr;

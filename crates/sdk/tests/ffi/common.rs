@@ -25,7 +25,7 @@ use reifydb_sdk::{
 		column::operator::OperatorColumn,
 		context::ffi::FFIOperatorContext,
 	},
-	testing::harness::TestHarnessBuilder,
+	testing::harness::FFIOperatorHarnessBuilder,
 };
 use reifydb_type::{
 	fragment::Fragment,
@@ -168,7 +168,7 @@ pub fn round_trip_column(name: &str, input: ColumnBuffer) -> ColumnBuffer {
 	diffs.push(Diff::insert(columns));
 	let change = Change::from_flow(FlowNodeId(1), CommitVersion(1), diffs, now);
 
-	let mut harness = TestHarnessBuilder::<PassthroughOperator>::new()
+	let mut harness = FFIOperatorHarnessBuilder::<PassthroughOperator>::new()
 		.with_node_id(FlowNodeId(1))
 		.build()
 		.expect("build harness");

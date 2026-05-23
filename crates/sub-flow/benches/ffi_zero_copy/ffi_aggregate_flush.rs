@@ -18,7 +18,7 @@ use reifydb_sdk::{
 		context::ffi::FFIOperatorContext,
 	},
 	state::cache::StateCache,
-	testing::{builders::TestChangeBuilder, harness::TestHarnessBuilder},
+	testing::{builders::TestChangeBuilder, harness::FFIOperatorHarnessBuilder},
 };
 use reifydb_type::value::Value;
 use serde::{Deserialize, Serialize};
@@ -83,7 +83,7 @@ impl FFIOperator for SumAgg {
 
 fn bench_ffi_aggregate_flush(distinct_keys: usize, batches: usize, rows_per_batch: usize) {
 	let mut harness =
-		TestHarnessBuilder::<SumAgg>::new().with_node_id(FlowNodeId(1)).build().expect("build harness");
+		FFIOperatorHarnessBuilder::<SumAgg>::new().with_node_id(FlowNodeId(1)).build().expect("build harness");
 
 	let mut inputs: Vec<Change> = Vec::with_capacity(batches);
 	for b in 0..batches {

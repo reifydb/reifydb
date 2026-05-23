@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+	collections::{BTreeMap, HashMap},
+	ops::Bound,
+	sync::Arc,
+};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -13,6 +17,7 @@ use reifydb_type::util::cowvec::CowVec;
 #[derive(Clone)]
 pub struct TestContext {
 	state_store: Arc<Mutex<HashMap<EncodedKey, EncodedRow>>>,
+	store: Arc<Mutex<BTreeMap<EncodedKey, EncodedRow>>>,
 	version: CommitVersion,
 	logs: Arc<Mutex<Vec<String>>>,
 }
@@ -27,6 +32,7 @@ impl TestContext {
 	pub fn new(version: CommitVersion) -> Self {
 		Self {
 			state_store: Arc::new(Mutex::new(HashMap::new())),
+			store: Arc::new(Mutex::new(BTreeMap::new())),
 			version,
 			logs: Arc::new(Mutex::new(Vec::new())),
 		}
@@ -78,6 +84,31 @@ impl TestContext {
 
 	pub fn state_keys(&self) -> Vec<EncodedKey> {
 		self.state_store.lock().keys().cloned().collect()
+	}
+
+	pub fn store(&self) -> &Arc<Mutex<BTreeMap<EncodedKey, EncodedRow>>> {
+		&self.store
+	}
+
+	pub fn get_store(&self, key: &EncodedKey) -> Option<EncodedRow> {
+		self.store.lock().get(key).cloned()
+	}
+
+	pub fn set_store(&self, key: EncodedKey, value: EncodedRow) {
+		self.store.lock().insert(key, value);
+	}
+
+	pub fn store_range(&self, start: Bound<EncodedKey>, end: Bound<EncodedKey>) -> Vec<(EncodedKey, EncodedRow)> {
+		self.store.lock().range((start, end)).map(|(k, v)| (k.clone(), v.clone())).collect()
+	}
+
+	pub fn store_prefix(&self, prefix: &EncodedKey) -> Vec<(EncodedKey, EncodedRow)> {
+		self.store
+			.lock()
+			.iter()
+			.filter(|(k, _)| k.as_slice().starts_with(prefix.as_slice()))
+			.map(|(k, v)| (k.clone(), v.clone()))
+			.collect()
 	}
 }
 

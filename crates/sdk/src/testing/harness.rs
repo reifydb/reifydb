@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, ffi::c_void, marker::PhantomData, ops::Index, ptr};
+use std::{
+	collections::HashMap,
+	ffi::c_void,
+	marker::PhantomData,
+	ops::{Bound, Index},
+	ptr,
+};
 
 use ptr::null;
 use reifydb_abi::context::context::ContextFFI;
@@ -16,11 +22,19 @@ use reifydb_core::{
 	row::Row,
 };
 use reifydb_type::{util::cowvec::CowVec, value::Value};
+use serde::de::DeserializeOwned;
 
 use crate::{
 	error::Result,
-	ffi::arena::Arena,
-	operator::{FFIOperator, OperatorMetadata, change::BorrowedChange, context::ffi::FFIOperatorContext},
+	ffi::{
+		arena::Arena,
+		wrapper::{OperatorWrapper, ffi_apply},
+	},
+	operator::{
+		FFIOperator, OperatorMetadata,
+		change::BorrowedChange,
+		context::ffi::FFIOperatorContext,
+	},
 	testing::{
 		builders::TestChangeBuilder,
 		callbacks::create_test_callbacks,
@@ -30,7 +44,7 @@ use crate::{
 	},
 };
 
-pub struct OperatorTestHarness<T: FFIOperator> {
+pub struct FFIOperatorHarness<T: FFIOperator> {
 	operator: T,
 	context: Box<TestContext>,
 	ffi_context: Box<ContextFFI>,
@@ -43,9 +57,9 @@ pub struct OperatorTestHarness<T: FFIOperator> {
 	input_arena: Arena,
 }
 
-impl<T: FFIOperator> OperatorTestHarness<T> {
-	pub fn builder() -> TestHarnessBuilder<T> {
-		TestHarnessBuilder::new()
+impl<T: FFIOperator> FFIOperatorHarness<T> {
+	pub fn builder() -> FFIOperatorHarnessBuilder<T> {
+		FFIOperatorHarnessBuilder::new()
 	}
 
 	pub fn apply(&mut self, input: Change) -> Result<Change> {
@@ -76,6 +90,58 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 		};
 		self.history.push(output.clone());
 		Ok(output)
+	}
+
+	pub fn apply_without_flush(&mut self, input: Change) -> Result<Change> {
+		let version = input.version;
+		let changed_at = input.changed_at;
+		let origin = input.origin.clone();
+
+		self.input_arena.clear();
+		let ffi_change = self.input_arena.marshal_change(&input);
+		let ffi_ctx_ptr = &mut *self.ffi_context as *mut ContextFFI;
+
+		let result: Result<()> = with_registry(&self.builder_registry, || {
+			let mut op_ctx = FFIOperatorContext::new(ffi_ctx_ptr);
+			let borrowed = unsafe { BorrowedChange::from_raw(&ffi_change as *const _) };
+			self.operator.apply(&mut op_ctx, borrowed)
+		});
+
+		drop(input);
+		result?;
+
+		let emitted = self.builder_registry.drain_diffs();
+		let diffs = into_diffs(emitted);
+		let output = match origin {
+			ChangeOrigin::Flow(node) => Change::from_flow(node, version, diffs, changed_at),
+			ChangeOrigin::Shape(_) => Change::from_flow(self.node_id, version, diffs, changed_at),
+		};
+		self.history.push(output.clone());
+		Ok(output)
+	}
+
+	pub fn flush(&mut self) -> Result<()> {
+		let ffi_ctx_ptr = &mut *self.ffi_context as *mut ContextFFI;
+		with_registry(&self.builder_registry, || {
+			let mut op_ctx = FFIOperatorContext::new(ffi_ctx_ptr);
+			self.operator.flush_state(&mut op_ctx)
+		})
+	}
+
+	pub fn state_value<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Option<V> {
+		let mut ctx = self.create_operator_context();
+		ctx.state().get::<V>(key).expect("state get")
+	}
+
+	pub fn seed_store(&mut self, rows: &[(EncodedKey, EncodedRow)]) {
+		for (key, value) in rows {
+			self.context.set_store(key.clone(), value.clone());
+		}
+	}
+
+	pub fn store_range(&mut self, start: Bound<&EncodedKey>, end: Bound<&EncodedKey>) -> Vec<(EncodedKey, EncodedRow)> {
+		let mut ctx = self.create_operator_context();
+		ctx.store().range(start, end).expect("store range")
 	}
 
 	pub fn insert(&mut self, row: Row) -> &mut Self {
@@ -183,7 +249,7 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 	}
 }
 
-impl<T: FFIOperator> Index<usize> for OperatorTestHarness<T> {
+impl<T: FFIOperator> Index<usize> for FFIOperatorHarness<T> {
 	type Output = Change;
 
 	fn index(&self, index: usize) -> &Self::Output {
@@ -191,7 +257,7 @@ impl<T: FFIOperator> Index<usize> for OperatorTestHarness<T> {
 	}
 }
 
-pub struct TestHarnessBuilder<T: FFIOperator> {
+pub struct FFIOperatorHarnessBuilder<T: FFIOperator> {
 	config: HashMap<String, Value>,
 	node_id: FlowNodeId,
 	version: CommitVersion,
@@ -199,13 +265,13 @@ pub struct TestHarnessBuilder<T: FFIOperator> {
 	_phantom: PhantomData<T>,
 }
 
-impl<T: FFIOperator> Default for TestHarnessBuilder<T> {
+impl<T: FFIOperator> Default for FFIOperatorHarnessBuilder<T> {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl<T: FFIOperator> TestHarnessBuilder<T> {
+impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
 	pub fn new() -> Self {
 		Self {
 			config: HashMap::new(),
@@ -248,7 +314,7 @@ impl<T: FFIOperator> TestHarnessBuilder<T> {
 		self
 	}
 
-	pub fn build(self) -> Result<OperatorTestHarness<T>> {
+	pub fn build(self) -> Result<FFIOperatorHarness<T>> {
 		let context = Box::new(TestContext::new(self.version));
 
 		for (k, v) in self.initial_state {
@@ -265,7 +331,7 @@ impl<T: FFIOperator> TestHarnessBuilder<T> {
 
 		let operator = T::new(self.node_id, &self.config)?;
 
-		Ok(OperatorTestHarness {
+		Ok(FFIOperatorHarness {
 			operator,
 			context,
 			ffi_context,
@@ -276,6 +342,33 @@ impl<T: FFIOperator> TestHarnessBuilder<T> {
 			input_arena: Arena::new(),
 		})
 	}
+}
+
+/// Drives an operator through the real `ffi_apply` EXPORT (the `.so` boundary),
+/// not the in-process adapter. Used to verify the FFI guest's abort-on-error
+/// behavior, which lives in the export wrapper rather than in
+/// `FFIOperatorAdapter::apply`. Returns the FFI status code; an erroring or
+/// panicking operator aborts the process inside `ffi_apply` and never returns.
+pub fn drive_ffi_apply<O: FFIOperator + OperatorMetadata>(input: &Change) -> i32 {
+	let context = Box::new(TestContext::new(CommitVersion(1)));
+	let mut ffi_context = ContextFFI {
+		txn_ptr: &*context as *const TestContext as *mut c_void,
+		executor_ptr: null(),
+		operator_id: 1,
+		clock_now_nanos: 0,
+		callbacks: create_test_callbacks(),
+	};
+
+	let operator = O::new(FlowNodeId(1), &HashMap::new()).expect("create operator");
+	let mut wrapper = OperatorWrapper::new(operator);
+
+	let mut arena = Arena::new();
+	let ffi_change = arena.marshal_change(input);
+
+	let registry = TestBuilderRegistry::new();
+	with_registry(&registry, || unsafe {
+		ffi_apply::<O>(wrapper.as_ptr(), &mut ffi_context as *mut ContextFFI, &ffi_change as *const _)
+	})
 }
 
 pub struct TestMetadataHarness;
@@ -501,7 +594,7 @@ pub mod tests {
 
 	#[test]
 	fn test_harness_builder() {
-		let result = TestHarnessBuilder::<TestOperator>::new()
+		let result = FFIOperatorHarnessBuilder::<TestOperator>::new()
 			.with_node_id(FlowNodeId(42))
 			.with_version(CommitVersion(10))
 			.add_config("key", Value::Utf8("value".into()))
@@ -517,7 +610,7 @@ pub mod tests {
 	#[test]
 	fn test_harness_with_stateful_operator() {
 		// Build harness with stateful operator
-		let mut harness = TestHarnessBuilder::<StatefulTestOperator>::new()
+		let mut harness = FFIOperatorHarnessBuilder::<StatefulTestOperator>::new()
 			.with_node_id(FlowNodeId(1))
 			.build()
 			.expect("Failed to build harness");
@@ -540,7 +633,7 @@ pub mod tests {
 
 	#[test]
 	fn test_harness_history_index() {
-		let mut harness = TestHarnessBuilder::<StatefulTestOperator>::new()
+		let mut harness = FFIOperatorHarnessBuilder::<StatefulTestOperator>::new()
 			.with_node_id(FlowNodeId(1))
 			.build()
 			.expect("Failed to build harness");
@@ -580,7 +673,7 @@ pub mod tests {
 	#[test]
 	fn test_harness_multiple_operations() {
 		let mut harness =
-			TestHarnessBuilder::<StatefulTestOperator>::new().build().expect("Failed to build harness");
+			FFIOperatorHarnessBuilder::<StatefulTestOperator>::new().build().expect("Failed to build harness");
 
 		// Insert multiple rows
 		let input1 = TestChangeBuilder::new()

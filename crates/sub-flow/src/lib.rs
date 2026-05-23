@@ -29,6 +29,7 @@ pub mod host;
 #[allow(dead_code)]
 pub mod operator;
 pub mod subsystem;
+pub mod testing;
 pub mod transaction;
 
 pub(crate) use operator::Operator;

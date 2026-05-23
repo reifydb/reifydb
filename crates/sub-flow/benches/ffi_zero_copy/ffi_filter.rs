@@ -19,7 +19,7 @@ use reifydb_sdk::{
 		FFIOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
 		context::ffi::FFIOperatorContext,
 	},
-	testing::{builders::TestChangeBuilder, harness::TestHarnessBuilder},
+	testing::{builders::TestChangeBuilder, harness::FFIOperatorHarnessBuilder},
 };
 use reifydb_type::value::{Value, row_number::RowNumber};
 
@@ -84,7 +84,7 @@ impl FFIOperator for EvenFilter {
 
 fn bench_ffi_filter(n_rows: usize, iters: usize) {
 	let mut harness =
-		TestHarnessBuilder::<EvenFilter>::new().with_node_id(FlowNodeId(1)).build().expect("build harness");
+		FFIOperatorHarnessBuilder::<EvenFilter>::new().with_node_id(FlowNodeId(1)).build().expect("build harness");
 
 	let mut tcb = TestChangeBuilder::new();
 	for i in 0..n_rows {

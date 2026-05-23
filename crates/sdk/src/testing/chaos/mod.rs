@@ -46,7 +46,7 @@ use runner::{OracleFn, RunnableChaos};
 use schema::{ChaosSchema, KeyStrategy};
 use strategy::{ColumnRegistry, ColumnSampler, RowContent, samplers};
 
-use crate::{operator::FFIOperator, testing::harness::OperatorTestHarness};
+use crate::{operator::FFIOperator, testing::harness::FFIOperatorHarness};
 
 /// Errors surfaced from the chaos harness builder.
 #[derive(Debug)]
@@ -177,7 +177,7 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 	}
 
 	/// Per-knob config to be passed to `T::new`. Mirrors
-	/// [`crate::testing::harness::TestHarnessBuilder::with_config`].
+	/// [`crate::testing::harness::FFIOperatorHarnessBuilder::with_config`].
 	pub fn with_config<I, K>(mut self, config: I) -> Self
 	where
 		I: IntoIterator<Item = (K, Value)>,
@@ -244,7 +244,7 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 		self
 	}
 
-	/// Validate, build the inner `OperatorTestHarness`, and bundle every
+	/// Validate, build the inner `FFIOperatorHarness`, and bundle every
 	/// piece into a `RunnableChaos` ready to `.run()`.
 	///
 	/// Validation is delegated to [`ChaosSchema::validate`] and
@@ -272,7 +272,7 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 		let schema = Arc::new(schema);
 
 		let mut builder =
-			OperatorTestHarness::<T>::builder().with_node_id(self.node_id).with_version(self.version);
+			FFIOperatorHarness::<T>::builder().with_node_id(self.node_id).with_version(self.version);
 		for (k, v) in self.operator_config {
 			builder = builder.add_config(k, v);
 		}

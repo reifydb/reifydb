@@ -111,7 +111,7 @@ pub mod tests {
 			context::ffi::FFIOperatorContext,
 		},
 		state::{RawStatefulOperator, row::RowNumberProvider},
-		testing::{harness::TestHarnessBuilder, helpers::encode_key},
+		testing::{harness::FFIOperatorHarnessBuilder, helpers::encode_key},
 	};
 
 	struct RowNumberTestOperator;
@@ -140,7 +140,7 @@ pub mod tests {
 
 	#[test]
 	fn test_first_row_number_starts_at_one() {
-		let mut harness = TestHarnessBuilder::<RowNumberTestOperator>::new()
+		let mut harness = FFIOperatorHarnessBuilder::<RowNumberTestOperator>::new()
 			.with_node_id(FlowNodeId(1))
 			.build()
 			.expect("Failed to build harness");
@@ -155,7 +155,7 @@ pub mod tests {
 
 	#[test]
 	fn test_duplicate_key_returns_same_row_number() {
-		let mut harness = TestHarnessBuilder::<RowNumberTestOperator>::new()
+		let mut harness = FFIOperatorHarnessBuilder::<RowNumberTestOperator>::new()
 			.with_node_id(FlowNodeId(1))
 			.build()
 			.expect("Failed to build harness");
@@ -175,7 +175,7 @@ pub mod tests {
 
 	#[test]
 	fn test_sequential_numbering() {
-		let mut harness = TestHarnessBuilder::<RowNumberTestOperator>::new()
+		let mut harness = FFIOperatorHarnessBuilder::<RowNumberTestOperator>::new()
 			.with_node_id(FlowNodeId(1))
 			.build()
 			.expect("Failed to build harness");
@@ -201,12 +201,12 @@ pub mod tests {
 	#[test]
 	fn test_operator_isolation() {
 		// Two harnesses with different node IDs share state store but have isolated namespaces
-		let mut harness1 = TestHarnessBuilder::<RowNumberTestOperator>::new()
+		let mut harness1 = FFIOperatorHarnessBuilder::<RowNumberTestOperator>::new()
 			.with_node_id(FlowNodeId(1))
 			.build()
 			.expect("Failed to build harness1");
 
-		let mut harness2 = TestHarnessBuilder::<RowNumberTestOperator>::new()
+		let mut harness2 = FFIOperatorHarnessBuilder::<RowNumberTestOperator>::new()
 			.with_node_id(FlowNodeId(2))
 			.build()
 			.expect("Failed to build harness2");
@@ -229,7 +229,7 @@ pub mod tests {
 
 	#[test]
 	fn test_persistence_across_calls() {
-		let mut harness = TestHarnessBuilder::<RowNumberTestOperator>::new()
+		let mut harness = FFIOperatorHarnessBuilder::<RowNumberTestOperator>::new()
 			.with_node_id(FlowNodeId(1))
 			.build()
 			.expect("Failed to build harness");
@@ -261,7 +261,7 @@ pub mod tests {
 
 	#[test]
 	fn test_large_scale_row_numbers() {
-		let mut harness = TestHarnessBuilder::<RowNumberTestOperator>::new()
+		let mut harness = FFIOperatorHarnessBuilder::<RowNumberTestOperator>::new()
 			.with_node_id(FlowNodeId(1))
 			.build()
 			.expect("Failed to build harness");
@@ -285,7 +285,7 @@ pub mod tests {
 
 	#[test]
 	fn test_empty_key() {
-		let mut harness = TestHarnessBuilder::<RowNumberTestOperator>::new()
+		let mut harness = FFIOperatorHarnessBuilder::<RowNumberTestOperator>::new()
 			.with_node_id(FlowNodeId(1))
 			.build()
 			.expect("Failed to build harness");
@@ -306,7 +306,7 @@ pub mod tests {
 
 	#[test]
 	fn test_binary_key_data() {
-		let mut harness = TestHarnessBuilder::<RowNumberTestOperator>::new()
+		let mut harness = FFIOperatorHarnessBuilder::<RowNumberTestOperator>::new()
 			.with_node_id(FlowNodeId(1))
 			.build()
 			.expect("Failed to build harness");
@@ -327,7 +327,7 @@ pub mod tests {
 
 	#[test]
 	fn test_interleaved_operations() {
-		let mut harness = TestHarnessBuilder::<RowNumberTestOperator>::new()
+		let mut harness = FFIOperatorHarnessBuilder::<RowNumberTestOperator>::new()
 			.with_node_id(FlowNodeId(1))
 			.build()
 			.expect("Failed to build harness");
@@ -413,7 +413,7 @@ pub mod tests {
 
 	#[test]
 	fn test_batch_mixed_existing_and_new_keys() {
-		let mut harness = TestHarnessBuilder::<RowNumberTestOperator>::new()
+		let mut harness = FFIOperatorHarnessBuilder::<RowNumberTestOperator>::new()
 			.with_node_id(FlowNodeId(1))
 			.build()
 			.expect("Failed to build harness");

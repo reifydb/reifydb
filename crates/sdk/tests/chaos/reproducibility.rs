@@ -74,7 +74,7 @@ fn different_seeds_diverge_in_event_log() {
 #[test]
 fn same_seed_produces_identical_operator_history_lengths() {
 	// Indirect determinism check: the number of Changes the harness drove
-	// through OperatorTestHarness::apply must match across runs.
+	// through FFIOperatorHarness::apply must match across runs.
 	let a = build_and_run(7);
 	let b = build_and_run(7);
 	a.assert_matches();

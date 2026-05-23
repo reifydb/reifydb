@@ -337,7 +337,7 @@ mod tests {
 			context::ffi::FFIOperatorContext,
 		},
 		row,
-		testing::{builders::TestChangeBuilder, harness::TestHarnessBuilder},
+		testing::{builders::TestChangeBuilder, harness::FFIOperatorHarnessBuilder},
 	};
 
 	struct U8Row {
@@ -377,7 +377,7 @@ mod tests {
 
 	#[test]
 	fn scalar_u8_roundtrip() {
-		let mut h = TestHarnessBuilder::<OpU8>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<OpU8>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 3);
@@ -423,7 +423,7 @@ mod tests {
 
 	#[test]
 	fn scalar_u16_roundtrip() {
-		let mut h = TestHarnessBuilder::<OpU16>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<OpU16>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 3);
@@ -469,7 +469,7 @@ mod tests {
 
 	#[test]
 	fn scalar_u32_roundtrip() {
-		let mut h = TestHarnessBuilder::<OpU32>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<OpU32>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 3);
@@ -515,7 +515,7 @@ mod tests {
 
 	#[test]
 	fn scalar_u64_roundtrip() {
-		let mut h = TestHarnessBuilder::<OpU64>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<OpU64>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 3);
@@ -561,7 +561,7 @@ mod tests {
 
 	#[test]
 	fn scalar_i8_roundtrip() {
-		let mut h = TestHarnessBuilder::<OpI8>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<OpI8>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 3);
@@ -607,7 +607,7 @@ mod tests {
 
 	#[test]
 	fn scalar_i16_roundtrip() {
-		let mut h = TestHarnessBuilder::<OpI16>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<OpI16>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 3);
@@ -653,7 +653,7 @@ mod tests {
 
 	#[test]
 	fn scalar_i32_roundtrip() {
-		let mut h = TestHarnessBuilder::<OpI32>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<OpI32>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 3);
@@ -699,7 +699,7 @@ mod tests {
 
 	#[test]
 	fn scalar_i64_roundtrip() {
-		let mut h = TestHarnessBuilder::<OpI64>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<OpI64>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 3);
@@ -745,7 +745,7 @@ mod tests {
 
 	#[test]
 	fn scalar_f32_roundtrip() {
-		let mut h = TestHarnessBuilder::<OpF32>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<OpF32>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 3);
@@ -791,7 +791,7 @@ mod tests {
 
 	#[test]
 	fn scalar_f64_roundtrip() {
-		let mut h = TestHarnessBuilder::<OpF64>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<OpF64>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 3);
@@ -837,7 +837,7 @@ mod tests {
 
 	#[test]
 	fn bool_roundtrip() {
-		let mut h = TestHarnessBuilder::<OpBool>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<OpBool>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 3);
@@ -884,7 +884,7 @@ mod tests {
 
 	#[test]
 	fn utf8_roundtrip() {
-		let mut h = TestHarnessBuilder::<OpUtf8>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<OpUtf8>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 3);
@@ -925,7 +925,7 @@ mod tests {
 
 	#[test]
 	fn utf8_capacity_growth() {
-		let mut h = TestHarnessBuilder::<OpUtf8Growth>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<OpUtf8Growth>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 20);
@@ -980,7 +980,7 @@ mod tests {
 
 	#[test]
 	fn blob_roundtrip() {
-		let mut h = TestHarnessBuilder::<OpBlob>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<OpBlob>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 3);
@@ -1036,7 +1036,7 @@ mod tests {
 
 	#[test]
 	fn decimal_roundtrip() {
-		let mut h = TestHarnessBuilder::<OpDecimal>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<OpDecimal>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 3);
@@ -1083,7 +1083,7 @@ mod tests {
 
 	#[test]
 	fn wide_integers_roundtrip() {
-		let mut h = TestHarnessBuilder::<OpWide>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<OpWide>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 1);
@@ -1133,7 +1133,7 @@ mod tests {
 
 	#[test]
 	fn scalar_date_roundtrip() {
-		let mut h = TestHarnessBuilder::<OpDate>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<OpDate>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 3);
@@ -1184,7 +1184,7 @@ mod tests {
 
 	#[test]
 	fn scalar_datetime_roundtrip() {
-		let mut h = TestHarnessBuilder::<OpDateTime>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<OpDateTime>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 3);
@@ -1238,7 +1238,7 @@ mod tests {
 
 	#[test]
 	fn scalar_time_roundtrip() {
-		let mut h = TestHarnessBuilder::<OpTime>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<OpTime>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 3);
@@ -1289,7 +1289,7 @@ mod tests {
 
 	#[test]
 	fn scalar_duration_roundtrip() {
-		let mut h = TestHarnessBuilder::<OpDuration>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<OpDuration>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 3);

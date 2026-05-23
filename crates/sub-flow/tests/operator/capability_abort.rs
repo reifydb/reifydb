@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
+// Backend-agnostic: `enforce_apply_capabilities` runs in `Operators::apply` (the
+// dispatch wrapper), the same code regardless of FFI vs native adapter, so there
+// is nothing backend-specific to twin. An operator that receives a diff kind it
+// did not declare must abort. Forked because abort kills the process.
+
 use std::{env, process::Command};
 
 use reifydb_abi::operator::capabilities::{CAPABILITY_INSERT, CAPABILITY_UPDATE};
@@ -16,7 +21,7 @@ use reifydb_sub_flow::operator::capability_guard::enforce_apply_capabilities;
 use reifydb_type::value::datetime::DateTime;
 
 const CHILD_ENV: &str = "REIFYDB_CAPABILITY_ABORT_CHILD";
-const CHILD_TEST_NAME: &str = "aborts_when_operator_receives_undeclared_diff_kind";
+const CHILD_TEST_NAME: &str = "capability_abort::aborts_when_operator_receives_undeclared_diff_kind";
 
 #[test]
 fn aborts_when_operator_receives_undeclared_diff_kind() {

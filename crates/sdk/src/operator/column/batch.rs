@@ -151,7 +151,7 @@ mod tests {
 			context::ffi::FFIOperatorContext,
 		},
 		row,
-		testing::{builders::TestChangeBuilder, harness::TestHarnessBuilder},
+		testing::{builders::TestChangeBuilder, harness::FFIOperatorHarnessBuilder},
 	};
 
 	struct Bar {
@@ -222,7 +222,7 @@ mod tests {
 
 	#[test]
 	fn insert_batch_emits_typed_columns_in_one_diff() {
-		let mut h = TestHarnessBuilder::<EmitOpInsert>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<EmitOpInsert>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		assert_eq!(out.diffs.len(), 1);
 		let diff = &out.diffs[0];
@@ -270,7 +270,7 @@ mod tests {
 
 	#[test]
 	fn empty_batch_emits_no_diff() {
-		let mut h = TestHarnessBuilder::<EmitOpEmpty>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<EmitOpEmpty>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		assert_eq!(out.diffs.len(), 0);
 	}
@@ -314,7 +314,7 @@ mod tests {
 
 	#[test]
 	fn update_batch_roundtrips_all_fields() {
-		let mut h = TestHarnessBuilder::<EmitOpUpdate>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<EmitOpUpdate>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		assert_eq!(out.diffs.len(), 1);
 		let diff = &out.diffs[0];
@@ -377,7 +377,7 @@ mod tests {
 
 	#[test]
 	fn remove_batch_emits_one_diff_with_n_rows() {
-		let mut h = TestHarnessBuilder::<EmitOpRemove>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<EmitOpRemove>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		assert_eq!(out.diffs.len(), 1);
 		let diff = &out.diffs[0];
@@ -419,7 +419,7 @@ mod tests {
 
 	#[test]
 	fn round_trip_100_rows_decodes_correctly() {
-		let mut h = TestHarnessBuilder::<EmitOpBig>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<EmitOpBig>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 100);
@@ -484,7 +484,7 @@ mod tests {
 
 	#[test]
 	fn optional_scalar_some_and_none() {
-		let mut h = TestHarnessBuilder::<EmitOpOptU64>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<EmitOpOptU64>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 4);
@@ -553,7 +553,7 @@ mod tests {
 
 	#[test]
 	fn optional_string_some_and_none() {
-		let mut h = TestHarnessBuilder::<EmitOpOptStr>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<EmitOpOptStr>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 4);
@@ -616,7 +616,7 @@ mod tests {
 
 	#[test]
 	fn optional_blob_some_and_none() {
-		let mut h = TestHarnessBuilder::<EmitOpOptBlob>::new().build().expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<EmitOpOptBlob>::new().build().expect("harness");
 		let out = h.apply(TestChangeBuilder::new().build()).expect("apply");
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 3);

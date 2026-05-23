@@ -217,14 +217,14 @@ impl Default for NativeOperatorLoader {
 struct SendableLogic<C>(*mut C);
 unsafe impl<C: Send> Send for SendableLogic<C> {}
 
-pub struct NativeOperator<C> {
+pub struct NativeOperatorAdapter<C> {
 	logic: UnsafeCell<C>,
 	node: FlowNodeId,
 	capabilities: u32,
 	last_registered_txn: Cell<u64>,
 }
 
-impl<C> NativeOperator<C> {
+impl<C> NativeOperatorAdapter<C> {
 	pub fn new(logic: C, node: FlowNodeId, capabilities: u32) -> Self {
 		Self {
 			logic: UnsafeCell::new(logic),
@@ -235,10 +235,10 @@ impl<C> NativeOperator<C> {
 	}
 }
 
-unsafe impl<C: Send> Send for NativeOperator<C> {}
-unsafe impl<C: Send> Sync for NativeOperator<C> {}
+unsafe impl<C: Send> Send for NativeOperatorAdapter<C> {}
+unsafe impl<C: Send> Sync for NativeOperatorAdapter<C> {}
 
-impl<C: OperatorLogic + 'static> NativeOperator<C> {
+impl<C: OperatorLogic + 'static> NativeOperatorAdapter<C> {
 	fn ensure_flush_slot(&self, txn: &mut FlowTransaction) -> Result<()> {
 		let txn_version = txn.version().0;
 		if self.last_registered_txn.get() != txn_version {
@@ -259,7 +259,7 @@ impl<C: OperatorLogic + 'static> NativeOperator<C> {
 	}
 }
 
-impl<C: OperatorLogic + 'static> Operator for NativeOperator<C> {
+impl<C: OperatorLogic + 'static> Operator for NativeOperatorAdapter<C> {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
