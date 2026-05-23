@@ -130,7 +130,7 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C
 	}
 
 	fn config(&self) -> ActorConfig {
-		ActorConfig::new().mailbox_capacity(16)
+		ActorConfig::new()
 	}
 }
 
@@ -212,7 +212,18 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 	fn start_consume(&self, state: &mut PollState, ctx: &Context<CdcPollMessage>) {
 		state.phase = Phase::Ready;
 		self.wake_armed.store(false, Ordering::Release);
-		let safe_version = self.host.done_until();
+		let safe_version = self.host.cdc_producer_watermark();
+		#[cfg(feature = "assertions")]
+		{
+			let done = self.host.done_until();
+			assert!(
+				safe_version <= done,
+				"the producer's visible-CDC watermark is ahead of the commit watermark, so the consumer \
+				 would fetch CDC for versions that have not committed yet (producer safe={}, commit done={})",
+				safe_version.0,
+				done.0
+			);
+		}
 
 		let Some(checkpoint) = self.resolve_checkpoint(state, ctx) else {
 			return;
@@ -226,19 +237,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			return;
 		};
 		if transactions.is_empty() {
-			let producer_wm = self.host.cdc_producer_watermark();
-			let max_version = self.store.max_version();
-			let producer_caught_up = producer_wm >= safe_version;
-			let no_cdc_beyond_checkpoint = match &max_version {
-				Ok(Some(mv)) => *mv <= checkpoint,
-				Ok(None) => true,
-				Err(_) => false,
-			};
-			if producer_caught_up && no_cdc_beyond_checkpoint {
-				self.advance_checkpoint_skip_ahead(state, ctx, safe_version);
-			} else {
-				ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
-			}
+			self.advance_checkpoint_skip_ahead(state, ctx, safe_version);
 			return;
 		}
 
@@ -264,6 +263,16 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		ctx: &Context<CdcPollMessage>,
 		latest_version: CommitVersion,
 	) {
+		#[cfg(feature = "assertions")]
+		if let Some(prev) = state.cached_checkpoint {
+			assert!(
+				latest_version >= prev,
+				"the consumer checkpoint moved backwards, so CDC that was already consumed would be \
+				 re-delivered (cached checkpoint prev={}, new latest={})",
+				prev.0,
+				latest_version.0
+			);
+		}
 		state.cached_checkpoint = Some(latest_version);
 		self.publish_watermark(latest_version);
 		let _ = ctx.self_ref().send(CdcPollMessage::Poll);
@@ -351,6 +360,16 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		latest_version: CommitVersion,
 		count: usize,
 	) {
+		#[cfg(feature = "assertions")]
+		if let Some(prev) = state.cached_checkpoint {
+			assert!(
+				latest_version >= prev,
+				"the consumer checkpoint moved backwards, so CDC that was already consumed would be \
+				 re-delivered (cached checkpoint prev={}, new latest={})",
+				prev.0,
+				latest_version.0
+			);
+		}
 		state.cached_checkpoint = Some(latest_version);
 		self.publish_watermark(latest_version);
 		if count > 0 {

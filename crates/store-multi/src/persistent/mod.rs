@@ -49,12 +49,7 @@ impl MultiPersistentTier {
 		}
 	}
 
-	pub fn delete_expired(
-		&self,
-		table: EntryKind,
-		anchor: TtlAnchor,
-		cutoff_nanos: u64,
-	) -> Result<u64> {
+	pub fn delete_expired(&self, table: EntryKind, anchor: TtlAnchor, cutoff_nanos: u64) -> Result<u64> {
 		match self {
 			Self::Sqlite(s) => s.delete_expired(table, anchor, cutoff_nanos),
 		}
@@ -73,12 +68,7 @@ impl MultiPersistentTier {
 		match *self {}
 	}
 
-	pub fn delete_expired(
-		&self,
-		_table: EntryKind,
-		_anchor: TtlAnchor,
-		_cutoff_nanos: u64,
-	) -> Result<u64> {
+	pub fn delete_expired(&self, _table: EntryKind, _anchor: TtlAnchor, _cutoff_nanos: u64) -> Result<u64> {
 		match *self {}
 	}
 
