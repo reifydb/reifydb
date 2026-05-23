@@ -10,12 +10,12 @@ use reifydb_abi::{
 use reifydb_core::encoded::shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint};
 
 use super::decode_type_constraint;
-use crate::{error::FFIError, operator::context::ffi::FFIOperatorContext};
+use crate::{error::SdkError, operator::context::ffi::FFIOperatorContext};
 
 pub(super) fn raw_catalog_find_row_shape(
 	ctx: &FFIOperatorContext,
 	fingerprint: RowShapeFingerprint,
-) -> Result<Option<RowShape>, FFIError> {
+) -> Result<Option<RowShape>, SdkError> {
 	unsafe {
 		let callback = (*ctx.ctx).callbacks.catalog.find_row_shape;
 
@@ -34,12 +34,12 @@ pub(super) fn raw_catalog_find_row_shape(
 				Ok(Some(shape))
 			}
 			FFI_NOT_FOUND => Ok(None),
-			_ => Err(FFIError::Other("Failed to find row shape".to_string())),
+			_ => Err(SdkError::Other("Failed to find row shape".to_string())),
 		}
 	}
 }
 
-unsafe fn unmarshal_row_shape(ffi_shape: &RowShapeFFI) -> Result<RowShape, FFIError> {
+unsafe fn unmarshal_row_shape(ffi_shape: &RowShapeFFI) -> Result<RowShape, SdkError> {
 	let fields = if !ffi_shape.fields.is_null() && ffi_shape.field_count > 0 {
 		let slice = unsafe { from_raw_parts(ffi_shape.fields, ffi_shape.field_count) };
 		let mut out = Vec::with_capacity(slice.len());
@@ -54,7 +54,7 @@ unsafe fn unmarshal_row_shape(ffi_shape: &RowShapeFFI) -> Result<RowShape, FFIEr
 	Ok(RowShape::from_parts(RowShapeFingerprint::new(ffi_shape.fingerprint), fields))
 }
 
-unsafe fn unmarshal_row_shape_field(ffi_field: &RowShapeFieldFFI) -> Result<RowShapeField, FFIError> {
+unsafe fn unmarshal_row_shape_field(ffi_field: &RowShapeFieldFFI) -> Result<RowShapeField, SdkError> {
 	let name_bytes = if !ffi_field.name.ptr.is_null() && ffi_field.name.len > 0 {
 		unsafe { from_raw_parts(ffi_field.name.ptr, ffi_field.name.len) }
 	} else {
@@ -62,7 +62,7 @@ unsafe fn unmarshal_row_shape_field(ffi_field: &RowShapeFieldFFI) -> Result<RowS
 	};
 
 	let name = str::from_utf8(name_bytes)
-		.map_err(|_| FFIError::Other("Invalid UTF-8 in row shape field name".to_string()))?
+		.map_err(|_| SdkError::Other("Invalid UTF-8 in row shape field name".to_string()))?
 		.to_string();
 
 	let constraint = decode_type_constraint(

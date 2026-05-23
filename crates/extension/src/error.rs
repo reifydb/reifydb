@@ -3,7 +3,7 @@
 
 use std::{error::Error, io};
 
-use reifydb_sdk::error::FFIError;
+use reifydb_sdk::error::SdkError;
 use reifydb_type::error::Error as TypeError;
 
 #[derive(Debug, thiserror::Error)]
@@ -39,7 +39,7 @@ pub enum ExtensionError {
 	Io(#[from] io::Error),
 
 	#[error(transparent)]
-	FFI(#[from] FFIError),
+	FFI(#[from] SdkError),
 
 	#[error(transparent)]
 	Other(Box<dyn Error + Send + Sync>),
@@ -47,6 +47,6 @@ pub enum ExtensionError {
 
 impl From<ExtensionError> for TypeError {
 	fn from(err: ExtensionError) -> Self {
-		FFIError::Other(err.to_string()).into()
+		SdkError::Other(err.to_string()).into()
 	}
 }

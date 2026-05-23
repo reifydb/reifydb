@@ -16,13 +16,13 @@ use reifydb_core::{
 };
 
 use super::{unmarshal_column, unmarshal_primary_key};
-use crate::{error::FFIError, operator::context::ffi::FFIOperatorContext};
+use crate::{error::SdkError, operator::context::ffi::FFIOperatorContext};
 
 pub(super) fn raw_catalog_find_table(
 	ctx: &FFIOperatorContext,
 	table_id: TableId,
 	version: CommitVersion,
-) -> Result<Option<Table>, FFIError> {
+) -> Result<Option<Table>, SdkError> {
 	unsafe {
 		let callback = (*ctx.ctx).callbacks.catalog.find_table;
 
@@ -41,7 +41,7 @@ pub(super) fn raw_catalog_find_table(
 				Ok(Some(table))
 			}
 			FFI_NOT_FOUND => Ok(None),
-			_ => Err(FFIError::Other("Failed to find table".to_string())),
+			_ => Err(SdkError::Other("Failed to find table".to_string())),
 		}
 	}
 }
@@ -51,7 +51,7 @@ pub(super) fn raw_catalog_find_table_by_name(
 	namespace_id: NamespaceId,
 	name: &str,
 	version: CommitVersion,
-) -> Result<Option<Table>, FFIError> {
+) -> Result<Option<Table>, SdkError> {
 	unsafe {
 		let callback = (*ctx.ctx).callbacks.catalog.find_table_by_name;
 
@@ -79,12 +79,12 @@ pub(super) fn raw_catalog_find_table_by_name(
 				Ok(Some(table))
 			}
 			FFI_NOT_FOUND => Ok(None),
-			_ => Err(FFIError::Other("Failed to find table by name".to_string())),
+			_ => Err(SdkError::Other("Failed to find table by name".to_string())),
 		}
 	}
 }
 
-unsafe fn unmarshal_table(ffi_table: &TableFFI) -> Result<Table, FFIError> {
+unsafe fn unmarshal_table(ffi_table: &TableFFI) -> Result<Table, SdkError> {
 	let name_bytes = if !ffi_table.name.ptr.is_null() && ffi_table.name.len > 0 {
 		unsafe { from_raw_parts(ffi_table.name.ptr, ffi_table.name.len) }
 	} else {
@@ -92,7 +92,7 @@ unsafe fn unmarshal_table(ffi_table: &TableFFI) -> Result<Table, FFIError> {
 	};
 
 	let name = str::from_utf8(name_bytes)
-		.map_err(|_| FFIError::Other("Invalid UTF-8 in table name".to_string()))?
+		.map_err(|_| SdkError::Other("Invalid UTF-8 in table name".to_string()))?
 		.to_string();
 
 	let mut columns = Vec::with_capacity(ffi_table.column_count);

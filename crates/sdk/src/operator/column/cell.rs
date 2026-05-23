@@ -8,7 +8,7 @@ use reifydb_abi::data::column::ColumnTypeCode;
 use reifydb_type::value::{date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, time::Time};
 
 use crate::{
-	error::FFIError,
+	error::SdkError,
 	operator::{column::sink::RowSink, view::RowView},
 };
 
@@ -16,7 +16,7 @@ pub trait Cell: Sized {
 	const COLUMN_TYPE: ColumnTypeCode;
 	const AVG_BYTES: usize = 0;
 
-	fn encode<S: RowSink>(&self, sink: &mut S, col: usize) -> Result<(), FFIError>;
+	fn encode<S: RowSink>(&self, sink: &mut S, col: usize) -> Result<(), SdkError>;
 	fn decode<V: RowView>(view: &V, name: &str) -> Option<Self>;
 }
 
@@ -25,7 +25,7 @@ macro_rules! impl_cell_scalar {
 		impl Cell for $ty {
 			const COLUMN_TYPE: ColumnTypeCode = $code;
 			#[inline]
-			fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
+			fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
 				e.$push(col, *self);
 				Ok(())
 			}
@@ -52,7 +52,7 @@ impl_cell_scalar!(bool, ColumnTypeCode::Bool, push_bool, bool);
 impl Cell for u128 {
 	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Uint16;
 	#[inline]
-	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
 		e.push_u128(col, *self);
 		Ok(())
 	}
@@ -65,7 +65,7 @@ impl Cell for u128 {
 impl Cell for i128 {
 	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Int16;
 	#[inline]
-	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
 		e.push_i128(col, *self);
 		Ok(())
 	}
@@ -79,7 +79,7 @@ impl Cell for String {
 	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Utf8;
 	const AVG_BYTES: usize = 24;
 	#[inline]
-	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
 		e.push_utf8(col, self.as_str())
 	}
 	#[inline]
@@ -92,7 +92,7 @@ impl Cell for Arc<str> {
 	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Utf8;
 	const AVG_BYTES: usize = 24;
 	#[inline]
-	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
 		e.push_utf8(col, self.as_ref())
 	}
 	#[inline]
@@ -105,7 +105,7 @@ impl Cell for Vec<u8> {
 	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Blob;
 	const AVG_BYTES: usize = 32;
 	#[inline]
-	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
 		e.push_blob(col, self.as_slice())
 	}
 	#[inline]
@@ -118,9 +118,9 @@ impl Cell for Decimal {
 	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Decimal;
 	const AVG_BYTES: usize = 16;
 	#[inline]
-	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
 		let bytes = to_allocvec(self)
-			.map_err(|err| FFIError::Serialization(format!("decimal serialize: {}", err)))?;
+			.map_err(|err| SdkError::Serialization(format!("decimal serialize: {}", err)))?;
 		e.push_decimal_bytes(col, &bytes)
 	}
 	#[inline]
@@ -132,7 +132,7 @@ impl Cell for Decimal {
 impl Cell for Date {
 	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Date;
 	#[inline]
-	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
 		e.push_date(col, *self);
 		Ok(())
 	}
@@ -145,7 +145,7 @@ impl Cell for Date {
 impl Cell for DateTime {
 	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::DateTime;
 	#[inline]
-	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
 		e.push_datetime(col, *self);
 		Ok(())
 	}
@@ -158,7 +158,7 @@ impl Cell for DateTime {
 impl Cell for Time {
 	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Time;
 	#[inline]
-	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
 		e.push_time(col, *self);
 		Ok(())
 	}
@@ -171,7 +171,7 @@ impl Cell for Time {
 impl Cell for Duration {
 	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Duration;
 	#[inline]
-	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
 		e.push_duration(col, *self);
 		Ok(())
 	}
@@ -185,7 +185,7 @@ impl<T: Cell> Cell for Option<T> {
 	const COLUMN_TYPE: ColumnTypeCode = T::COLUMN_TYPE;
 	const AVG_BYTES: usize = T::AVG_BYTES;
 	#[inline]
-	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
 		match self {
 			Some(v) => v.encode(e, col),
 			None => e.push_none(col),

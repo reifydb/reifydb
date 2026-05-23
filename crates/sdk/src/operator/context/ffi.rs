@@ -27,7 +27,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use super::{CatalogApi, InternalStateApi, OperatorContext, RowEmit, StateApi, StoreApi, UpdateEmit};
 use crate::{
 	catalog::Catalog,
-	error::{FFIError, Result},
+	error::{Result, SdkError},
 	operator::{
 		builder::ColumnsBuilder,
 		column::{row::Row, sink::ffi::FFIRowSink},
@@ -133,7 +133,7 @@ impl FFIOperatorContext {
 		let fingerprint = row.fingerprint();
 		match self.catalog().find_row_shape(fingerprint)? {
 			Some(shape) => Ok(shape),
-			None => Err(FFIError::Other(format!(
+			None => Err(SdkError::Other(format!(
 				"row shape with fingerprint {} not registered in catalog",
 				fingerprint.as_u64()
 			))),

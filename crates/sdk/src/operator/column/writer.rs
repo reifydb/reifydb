@@ -7,7 +7,7 @@ use reifydb_abi::data::column::ColumnTypeCode;
 use reifydb_type::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
 
 use crate::{
-	error::FFIError,
+	error::SdkError,
 	operator::builder::{ColumnBuilder, ColumnsBuilder, CommittedColumn},
 };
 
@@ -68,7 +68,7 @@ impl<'a, T: Copy> ScalarWriter<'a, T> {
 		self.cursor == 0
 	}
 
-	pub fn finish(self) -> Result<CommittedColumn, FFIError> {
+	pub fn finish(self) -> Result<CommittedColumn, SdkError> {
 		if let Some(d) = &self.defined {
 			self.inner.set_defined(d);
 		}
@@ -116,7 +116,7 @@ impl<'a> BoolWriter<'a> {
 		self.values.is_empty()
 	}
 
-	pub fn finish(self) -> Result<CommittedColumn, FFIError> {
+	pub fn finish(self) -> Result<CommittedColumn, SdkError> {
 		if let Some(d) = &self.defined {
 			self.inner.set_defined(d);
 		}
@@ -135,7 +135,7 @@ pub struct VarLenWriter<'a> {
 }
 
 impl<'a> VarLenWriter<'a> {
-	fn new(inner: ColumnBuilder<'a>, capacity: usize, expected_bytes: usize) -> Result<Self, FFIError> {
+	fn new(inner: ColumnBuilder<'a>, capacity: usize, expected_bytes: usize) -> Result<Self, SdkError> {
 		let type_code = inner.type_code();
 		debug_assert!(
 			matches!(type_code, ColumnTypeCode::Utf8 | ColumnTypeCode::Blob | ColumnTypeCode::Decimal),
@@ -160,7 +160,7 @@ impl<'a> VarLenWriter<'a> {
 	}
 
 	#[inline]
-	fn ensure_capacity(&mut self, need: usize) -> Result<(), FFIError> {
+	fn ensure_capacity(&mut self, need: usize) -> Result<(), SdkError> {
 		if self.byte_cursor + need <= self.data_capacity {
 			return Ok(());
 		}
@@ -171,7 +171,7 @@ impl<'a> VarLenWriter<'a> {
 	}
 
 	#[inline]
-	fn push_bytes_internal(&mut self, bytes: &[u8]) -> Result<(), FFIError> {
+	fn push_bytes_internal(&mut self, bytes: &[u8]) -> Result<(), SdkError> {
 		debug_assert!(self.item_cursor < self.capacity, "VarLenWriter::push past capacity");
 		self.ensure_capacity(bytes.len())?;
 		unsafe {
@@ -190,17 +190,17 @@ impl<'a> VarLenWriter<'a> {
 		Ok(())
 	}
 
-	pub fn push_str(&mut self, s: &str) -> Result<(), FFIError> {
+	pub fn push_str(&mut self, s: &str) -> Result<(), SdkError> {
 		debug_assert_eq!(self.type_code, ColumnTypeCode::Utf8);
 		self.push_bytes_internal(s.as_bytes())
 	}
 
-	pub fn push_bytes(&mut self, b: &[u8]) -> Result<(), FFIError> {
+	pub fn push_bytes(&mut self, b: &[u8]) -> Result<(), SdkError> {
 		debug_assert!(matches!(self.type_code, ColumnTypeCode::Blob | ColumnTypeCode::Decimal));
 		self.push_bytes_internal(b)
 	}
 
-	pub fn push_none(&mut self) -> Result<(), FFIError> {
+	pub fn push_none(&mut self) -> Result<(), SdkError> {
 		debug_assert!(self.item_cursor < self.capacity, "VarLenWriter::push_none past capacity");
 		unsafe {
 			let offsets = self.inner.offsets_ptr();
@@ -222,7 +222,7 @@ impl<'a> VarLenWriter<'a> {
 		self.item_cursor == 0
 	}
 
-	pub fn finish(self) -> Result<CommittedColumn, FFIError> {
+	pub fn finish(self) -> Result<CommittedColumn, SdkError> {
 		if let Some(d) = &self.defined {
 			self.inner.set_defined(d);
 		}
@@ -251,68 +251,68 @@ pub type BlobWriter<'a> = VarLenWriter<'a>;
 pub type DecimalWriter<'a> = VarLenWriter<'a>;
 
 impl<'a> ColumnsBuilder<'a> {
-	pub fn u8_writer(&mut self, capacity: usize) -> Result<U8Writer<'_>, FFIError> {
+	pub fn u8_writer(&mut self, capacity: usize) -> Result<U8Writer<'_>, SdkError> {
 		Ok(ScalarWriter::new(self.acquire(ColumnTypeCode::Uint1, capacity)?, capacity))
 	}
-	pub fn u16_writer(&mut self, capacity: usize) -> Result<U16Writer<'_>, FFIError> {
+	pub fn u16_writer(&mut self, capacity: usize) -> Result<U16Writer<'_>, SdkError> {
 		Ok(ScalarWriter::new(self.acquire(ColumnTypeCode::Uint2, capacity)?, capacity))
 	}
-	pub fn u32_writer(&mut self, capacity: usize) -> Result<U32Writer<'_>, FFIError> {
+	pub fn u32_writer(&mut self, capacity: usize) -> Result<U32Writer<'_>, SdkError> {
 		Ok(ScalarWriter::new(self.acquire(ColumnTypeCode::Uint4, capacity)?, capacity))
 	}
-	pub fn u64_writer(&mut self, capacity: usize) -> Result<U64Writer<'_>, FFIError> {
+	pub fn u64_writer(&mut self, capacity: usize) -> Result<U64Writer<'_>, SdkError> {
 		Ok(ScalarWriter::new(self.acquire(ColumnTypeCode::Uint8, capacity)?, capacity))
 	}
-	pub fn u128_writer(&mut self, capacity: usize) -> Result<U128Writer<'_>, FFIError> {
+	pub fn u128_writer(&mut self, capacity: usize) -> Result<U128Writer<'_>, SdkError> {
 		Ok(ScalarWriter::new(self.acquire(ColumnTypeCode::Uint16, capacity)?, capacity))
 	}
-	pub fn i8_writer(&mut self, capacity: usize) -> Result<I8Writer<'_>, FFIError> {
+	pub fn i8_writer(&mut self, capacity: usize) -> Result<I8Writer<'_>, SdkError> {
 		Ok(ScalarWriter::new(self.acquire(ColumnTypeCode::Int1, capacity)?, capacity))
 	}
-	pub fn i16_writer(&mut self, capacity: usize) -> Result<I16Writer<'_>, FFIError> {
+	pub fn i16_writer(&mut self, capacity: usize) -> Result<I16Writer<'_>, SdkError> {
 		Ok(ScalarWriter::new(self.acquire(ColumnTypeCode::Int2, capacity)?, capacity))
 	}
-	pub fn i32_writer(&mut self, capacity: usize) -> Result<I32Writer<'_>, FFIError> {
+	pub fn i32_writer(&mut self, capacity: usize) -> Result<I32Writer<'_>, SdkError> {
 		Ok(ScalarWriter::new(self.acquire(ColumnTypeCode::Int4, capacity)?, capacity))
 	}
-	pub fn i64_writer(&mut self, capacity: usize) -> Result<I64Writer<'_>, FFIError> {
+	pub fn i64_writer(&mut self, capacity: usize) -> Result<I64Writer<'_>, SdkError> {
 		Ok(ScalarWriter::new(self.acquire(ColumnTypeCode::Int8, capacity)?, capacity))
 	}
-	pub fn i128_writer(&mut self, capacity: usize) -> Result<I128Writer<'_>, FFIError> {
+	pub fn i128_writer(&mut self, capacity: usize) -> Result<I128Writer<'_>, SdkError> {
 		Ok(ScalarWriter::new(self.acquire(ColumnTypeCode::Int16, capacity)?, capacity))
 	}
-	pub fn f32_writer(&mut self, capacity: usize) -> Result<F32Writer<'_>, FFIError> {
+	pub fn f32_writer(&mut self, capacity: usize) -> Result<F32Writer<'_>, SdkError> {
 		Ok(ScalarWriter::new(self.acquire(ColumnTypeCode::Float4, capacity)?, capacity))
 	}
-	pub fn f64_writer(&mut self, capacity: usize) -> Result<F64Writer<'_>, FFIError> {
+	pub fn f64_writer(&mut self, capacity: usize) -> Result<F64Writer<'_>, SdkError> {
 		Ok(ScalarWriter::new(self.acquire(ColumnTypeCode::Float8, capacity)?, capacity))
 	}
-	pub fn date_writer(&mut self, capacity: usize) -> Result<DateWriter<'_>, FFIError> {
+	pub fn date_writer(&mut self, capacity: usize) -> Result<DateWriter<'_>, SdkError> {
 		Ok(ScalarWriter::new(self.acquire(ColumnTypeCode::Date, capacity)?, capacity))
 	}
-	pub fn datetime_writer(&mut self, capacity: usize) -> Result<DateTimeWriter<'_>, FFIError> {
+	pub fn datetime_writer(&mut self, capacity: usize) -> Result<DateTimeWriter<'_>, SdkError> {
 		Ok(ScalarWriter::new(self.acquire(ColumnTypeCode::DateTime, capacity)?, capacity))
 	}
-	pub fn time_writer(&mut self, capacity: usize) -> Result<TimeWriter<'_>, FFIError> {
+	pub fn time_writer(&mut self, capacity: usize) -> Result<TimeWriter<'_>, SdkError> {
 		Ok(ScalarWriter::new(self.acquire(ColumnTypeCode::Time, capacity)?, capacity))
 	}
-	pub fn duration_writer(&mut self, capacity: usize) -> Result<DurationWriter<'_>, FFIError> {
+	pub fn duration_writer(&mut self, capacity: usize) -> Result<DurationWriter<'_>, SdkError> {
 		Ok(ScalarWriter::new(self.acquire(ColumnTypeCode::Duration, capacity)?, capacity))
 	}
-	pub fn bool_writer(&mut self, capacity: usize) -> Result<BoolWriter<'_>, FFIError> {
+	pub fn bool_writer(&mut self, capacity: usize) -> Result<BoolWriter<'_>, SdkError> {
 		Ok(BoolWriter::new(self.acquire(ColumnTypeCode::Bool, capacity)?, capacity))
 	}
-	pub fn utf8_writer(&mut self, capacity: usize, expected_bytes: usize) -> Result<Utf8Writer<'_>, FFIError> {
+	pub fn utf8_writer(&mut self, capacity: usize, expected_bytes: usize) -> Result<Utf8Writer<'_>, SdkError> {
 		VarLenWriter::new(self.acquire(ColumnTypeCode::Utf8, capacity)?, capacity, expected_bytes)
 	}
-	pub fn blob_writer(&mut self, capacity: usize, expected_bytes: usize) -> Result<BlobWriter<'_>, FFIError> {
+	pub fn blob_writer(&mut self, capacity: usize, expected_bytes: usize) -> Result<BlobWriter<'_>, SdkError> {
 		VarLenWriter::new(self.acquire(ColumnTypeCode::Blob, capacity)?, capacity, expected_bytes)
 	}
 	pub fn decimal_writer(
 		&mut self,
 		capacity: usize,
 		expected_bytes: usize,
-	) -> Result<DecimalWriter<'_>, FFIError> {
+	) -> Result<DecimalWriter<'_>, SdkError> {
 		VarLenWriter::new(self.acquire(ColumnTypeCode::Decimal, capacity)?, capacity, expected_bytes)
 	}
 }

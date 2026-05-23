@@ -4,7 +4,7 @@
 use reifydb_abi::data::column::ColumnTypeCode;
 
 use crate::{
-	error::FFIError,
+	error::SdkError,
 	operator::{column::sink::RowSink, view::RowView},
 };
 
@@ -12,7 +12,7 @@ pub trait Row: Sized {
 	const COLUMNS: &'static [(&'static str, ColumnTypeCode)];
 	const AVG_VAR_BYTES: usize = 0;
 
-	fn encode_into<S: RowSink>(&self, sink: &mut S) -> Result<(), FFIError>;
+	fn encode_into<S: RowSink>(&self, sink: &mut S) -> Result<(), SdkError>;
 	fn decode_from<V: RowView>(view: &V) -> Option<Self>;
 }
 
@@ -26,7 +26,7 @@ macro_rules! __row_body {
 
 		const AVG_VAR_BYTES: usize = 0 $(+ <$fty as $crate::operator::column::cell::Cell>::AVG_BYTES)+;
 
-		fn encode_into<__S: $crate::operator::column::sink::RowSink>(&self, e: &mut __S) -> Result<(), $crate::error::FFIError> {
+		fn encode_into<__S: $crate::operator::column::sink::RowSink>(&self, e: &mut __S) -> Result<(), $crate::error::SdkError> {
 			let mut __col = 0usize;
 			$(
 				<$fty as $crate::operator::column::cell::Cell>::encode(&self.$fname, e, __col)?;

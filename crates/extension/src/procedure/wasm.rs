@@ -4,13 +4,13 @@
 use postcard::to_stdvec;
 use reifydb_core::value::column::columns::Columns;
 use reifydb_routine::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
-use reifydb_sdk::{error::FFIError, marshal::wasm::unmarshal_columns_from_bytes};
+use reifydb_sdk::{error::SdkError, marshal::wasm::unmarshal_columns_from_bytes};
 use reifydb_type::{error::Error, value::r#type::Type};
 
 use crate::{error::ExtensionError, loader::wasm::invoke_wasm_module};
 
 fn ext_err(err: ExtensionError) -> RoutineError {
-	RoutineError::Wrapped(Box::new(Error::from(FFIError::Other(err.to_string()))))
+	RoutineError::Wrapped(Box::new(Error::from(SdkError::Other(err.to_string()))))
 }
 
 pub struct WasmProcedure {

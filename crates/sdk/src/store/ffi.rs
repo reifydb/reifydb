@@ -13,7 +13,7 @@ use reifydb_type::util::cowvec::CowVec;
 use tracing::{Span, instrument};
 
 use crate::{
-	error::{FFIError, Result},
+	error::{Result, SdkError},
 	operator::context::ffi::FFIOperatorContext,
 };
 
@@ -41,7 +41,7 @@ pub(super) fn raw_store_get(ctx: &FFIOperatorContext, key: &EncodedKey) -> Resul
 		} else if result == FFI_NOT_FOUND {
 			Ok(None)
 		} else {
-			Err(FFIError::Other(format!("host_store_get failed with code {}", result)))
+			Err(SdkError::Other(format!("host_store_get failed with code {}", result)))
 		}
 	}
 }
@@ -64,7 +64,7 @@ pub(super) fn raw_store_contains_key(ctx: &FFIOperatorContext, key: &EncodedKey)
 		if result == FFI_OK {
 			Ok(result_byte != 0)
 		} else {
-			Err(FFIError::Other(format!("host_store_contains_key failed with code {}", result)))
+			Err(SdkError::Other(format!("host_store_contains_key failed with code {}", result)))
 		}
 	}
 }
@@ -85,7 +85,7 @@ pub(super) fn raw_store_prefix(ctx: &FFIOperatorContext, prefix: &EncodedKey) ->
 		);
 
 		if result < 0 {
-			return Err(FFIError::Other(format!("host_store_prefix failed with code {}", result)));
+			return Err(SdkError::Other(format!("host_store_prefix failed with code {}", result)));
 		}
 
 		collect_iterator_results(ctx, iterator)
@@ -129,7 +129,7 @@ pub(super) fn raw_store_range(
 		);
 
 		if result < 0 {
-			return Err(FFIError::Other(format!("host_store_range failed with code {}", result)));
+			return Err(SdkError::Other(format!("host_store_range failed with code {}", result)));
 		}
 
 		collect_iterator_results(ctx, iterator)
@@ -172,7 +172,7 @@ pub(super) unsafe fn collect_iterator_results(
 			break;
 		} else if next_result != FFI_OK {
 			unsafe { ((*ctx.ctx).callbacks.store.iterator_free)(iterator) };
-			return Err(FFIError::Other(format!(
+			return Err(SdkError::Other(format!(
 				"host_store_iterator_next failed with code {}",
 				next_result
 			)));

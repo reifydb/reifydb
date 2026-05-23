@@ -4,7 +4,7 @@
 use std::{fs, path::Path, sync::Arc};
 
 use reifydb_routine::routine::registry::RoutinesConfigurator;
-use reifydb_sdk::error::FFIError;
+use reifydb_sdk::error::SdkError;
 use reifydb_type::Result;
 
 use super::wasm::WasmProcedure;
@@ -14,11 +14,11 @@ pub fn register_wasm_procedures_from_dir(
 	mut builder: RoutinesConfigurator,
 ) -> Result<RoutinesConfigurator> {
 	let entries = fs::read_dir(dir).map_err(|e| {
-		FFIError::Other(format!("Failed to read WASM procedure directory {}: {}", dir.display(), e))
+		SdkError::Other(format!("Failed to read WASM procedure directory {}: {}", dir.display(), e))
 	})?;
 
 	for entry in entries {
-		let entry = entry.map_err(|e| FFIError::Other(format!("Failed to read directory entry: {}", e)))?;
+		let entry = entry.map_err(|e| SdkError::Other(format!("Failed to read directory entry: {}", e)))?;
 		let path = entry.path();
 
 		if path.extension().and_then(|s| s.to_str()) != Some("wasm") {
@@ -31,7 +31,7 @@ pub fn register_wasm_procedures_from_dir(
 		};
 
 		let wasm_bytes = fs::read(&path)
-			.map_err(|e| FFIError::Other(format!("Failed to read WASM file {}: {}", path.display(), e)))?;
+			.map_err(|e| SdkError::Other(format!("Failed to read WASM file {}: {}", path.display(), e)))?;
 
 		builder = builder.register_procedure(Arc::new(WasmProcedure::new(name, wasm_bytes)));
 	}

@@ -8,7 +8,7 @@ use reifydb_abi::data::column::ColumnTypeCode;
 use reifydb_type::value::{Value, decimal::Decimal, row_number::RowNumber, r#type::Type};
 
 use crate::{
-	error::FFIError,
+	error::SdkError,
 	operator::{
 		builder::{ColumnBuilder, ColumnsBuilder, CommittedColumn},
 		context::ffi::FFIOperatorContext,
@@ -124,7 +124,7 @@ impl<'a> InsertDiff<'a> {
 		self
 	}
 
-	pub fn try_finish(mut self) -> Result<(), FFIError> {
+	pub fn try_finish(mut self) -> Result<(), SdkError> {
 		self.disarmed = true;
 		emit_insert(&mut self.inner, &self.schema, &self.rows)
 	}
@@ -169,7 +169,7 @@ impl<'a> UpdateDiff<'a> {
 		self
 	}
 
-	pub fn try_finish(mut self) -> Result<(), FFIError> {
+	pub fn try_finish(mut self) -> Result<(), SdkError> {
 		self.disarmed = true;
 		emit_update(&mut self.inner, &self.schema, &self.rows)
 	}
@@ -210,7 +210,7 @@ impl<'a> RemoveDiff<'a> {
 		self
 	}
 
-	pub fn try_finish(mut self) -> Result<(), FFIError> {
+	pub fn try_finish(mut self) -> Result<(), SdkError> {
 		self.disarmed = true;
 		emit_remove(&mut self.inner, &self.schema, &self.rows)
 	}
@@ -296,7 +296,7 @@ fn emit_insert(
 	inner: &mut ColumnsBuilder<'_>,
 	schema: &[(String, ColumnTypeCode)],
 	rows: &[StagedRow],
-) -> Result<(), FFIError> {
+) -> Result<(), SdkError> {
 	if rows.is_empty() {
 		return Ok(());
 	}
@@ -318,7 +318,7 @@ fn emit_update(
 	inner: &mut ColumnsBuilder<'_>,
 	schema: &[(String, ColumnTypeCode)],
 	rows: &[UpdateRow],
-) -> Result<(), FFIError> {
+) -> Result<(), SdkError> {
 	if rows.is_empty() {
 		return Ok(());
 	}
@@ -353,7 +353,7 @@ fn emit_remove(
 	inner: &mut ColumnsBuilder<'_>,
 	schema: &[(String, ColumnTypeCode)],
 	rows: &[StagedRow],
-) -> Result<(), FFIError> {
+) -> Result<(), SdkError> {
 	if rows.is_empty() {
 		return Ok(());
 	}
@@ -371,7 +371,7 @@ fn emit_remove(
 	inner.emit_remove(&committed, &names_ref, &row_numbers)
 }
 
-fn transpose(schema: &[(String, ColumnTypeCode)], rows: &[&Vec<(String, Value)>]) -> Result<Vec<Vec<Value>>, FFIError> {
+fn transpose(schema: &[(String, ColumnTypeCode)], rows: &[&Vec<(String, Value)>]) -> Result<Vec<Vec<Value>>, SdkError> {
 	let mut columns: Vec<Vec<Value>> = (0..schema.len()).map(|_| Vec::with_capacity(rows.len())).collect();
 	for row in rows {
 		let lookup: HashMap<&str, &Value> = row.iter().map(|(n, v)| (n.as_str(), v)).collect();
@@ -379,7 +379,7 @@ fn transpose(schema: &[(String, ColumnTypeCode)], rows: &[&Vec<(String, Value)>]
 			match lookup.get(name.as_str()) {
 				Some(value) => columns[i].push((*value).clone()),
 				None => {
-					return Err(FFIError::InvalidInput(format!(
+					return Err(SdkError::InvalidInput(format!(
 						"transpose: row missing column {:?}",
 						name
 					)));
@@ -394,7 +394,7 @@ fn write_column(
 	col: ColumnBuilder<'_>,
 	type_code: ColumnTypeCode,
 	values: &[Value],
-) -> Result<CommittedColumn, FFIError> {
+) -> Result<CommittedColumn, SdkError> {
 	let defined: Vec<bool> = values.iter().map(|v| !matches!(v, Value::None { .. })).collect();
 	let has_nulls = defined.iter().any(|d| !*d);
 	if has_nulls {
@@ -462,11 +462,11 @@ fn write_column(
 			col.write_blob(&buf)
 		}
 		ColumnTypeCode::Decimal => write_decimal_column(col, values),
-		other => Err(FFIError::NotImplemented(format!("emit: unsupported column type {:?}", other))),
+		other => Err(SdkError::NotImplemented(format!("emit: unsupported column type {:?}", other))),
 	}
 }
 
-fn write_decimal_column(col: ColumnBuilder<'_>, values: &[Value]) -> Result<CommittedColumn, FFIError> {
+fn write_decimal_column(col: ColumnBuilder<'_>, values: &[Value]) -> Result<CommittedColumn, SdkError> {
 	let mut serialized: Vec<Vec<u8>> = Vec::with_capacity(values.len());
 	for v in values {
 		let dec: Decimal = match v {
@@ -477,14 +477,14 @@ fn write_decimal_column(col: ColumnBuilder<'_>, values: &[Value]) -> Result<Comm
 				..
 			} => Decimal::from_i64(0),
 			_ => {
-				return Err(FFIError::InvalidInput(format!(
+				return Err(SdkError::InvalidInput(format!(
 					"emit decimal: expected Decimal, got {:?}",
 					v
 				)));
 			}
 		};
 		let bytes =
-			to_allocvec(&dec).map_err(|e| FFIError::Serialization(format!("decimal serialize: {}", e)))?;
+			to_allocvec(&dec).map_err(|e| SdkError::Serialization(format!("decimal serialize: {}", e)))?;
 		serialized.push(bytes);
 	}
 	col.write_blob(&serialized)
@@ -539,11 +539,11 @@ fn type_to_column_code(ty: Type) -> Option<ColumnTypeCode> {
 	Some(code)
 }
 
-fn type_mismatch_err(name: &str, value: &Value) -> FFIError {
-	FFIError::InvalidInput(format!("emit: column {} type mismatch (got {:?})", name, value))
+fn type_mismatch_err(name: &str, value: &Value) -> SdkError {
+	SdkError::InvalidInput(format!("emit: column {} type mismatch (got {:?})", name, value))
 }
 
-fn value_to_bool(v: &Value) -> Result<bool, FFIError> {
+fn value_to_bool(v: &Value) -> Result<bool, SdkError> {
 	match v {
 		Value::Boolean(b) => Ok(*b),
 		Value::None {
@@ -555,7 +555,7 @@ fn value_to_bool(v: &Value) -> Result<bool, FFIError> {
 
 macro_rules! value_to_int {
 	($name:ident, $variant:ident, $ty:ty) => {
-		fn $name(v: &Value) -> Result<$ty, FFIError> {
+		fn $name(v: &Value) -> Result<$ty, SdkError> {
 			match v {
 				Value::$variant(x) => Ok(*x),
 				Value::None {
@@ -578,7 +578,7 @@ value_to_int!(value_to_i32, Int4, i32);
 value_to_int!(value_to_i64, Int8, i64);
 value_to_int!(value_to_i128, Int16, i128);
 
-fn value_to_f32(v: &Value) -> Result<f32, FFIError> {
+fn value_to_f32(v: &Value) -> Result<f32, SdkError> {
 	match v {
 		Value::Float4(f) => Ok(f32::from(*f)),
 		Value::None {
@@ -588,7 +588,7 @@ fn value_to_f32(v: &Value) -> Result<f32, FFIError> {
 	}
 }
 
-fn value_to_f64(v: &Value) -> Result<f64, FFIError> {
+fn value_to_f64(v: &Value) -> Result<f64, SdkError> {
 	match v {
 		Value::Float8(f) => Ok(f64::from(*f)),
 		Value::None {
@@ -598,7 +598,7 @@ fn value_to_f64(v: &Value) -> Result<f64, FFIError> {
 	}
 }
 
-fn value_to_utf8(v: &Value) -> Result<String, FFIError> {
+fn value_to_utf8(v: &Value) -> Result<String, SdkError> {
 	match v {
 		Value::Utf8(s) => Ok(s.clone()),
 		Value::None {
@@ -608,7 +608,7 @@ fn value_to_utf8(v: &Value) -> Result<String, FFIError> {
 	}
 }
 
-fn value_to_blob(v: &Value) -> Result<Vec<u8>, FFIError> {
+fn value_to_blob(v: &Value) -> Result<Vec<u8>, SdkError> {
 	match v {
 		Value::Blob(b) => Ok(b.as_ref().to_vec()),
 		Value::None {

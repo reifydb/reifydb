@@ -14,7 +14,7 @@ use reifydb_type::{
 };
 
 use crate::{
-	error::{FFIError, Result},
+	error::{Result, SdkError},
 	operator::builder::ColumnsBuilder,
 };
 
@@ -62,7 +62,7 @@ impl FFIProcedureContext {
 
 pub(crate) fn raw_procedure_query(ctx: &FFIProcedureContext, query: &str, params: Params) -> Result<Vec<Frame>> {
 	let params_bytes = to_stdvec(&params)
-		.map_err(|e| FFIError::Serialization(format!("failed to serialize params: {}", e)))?;
+		.map_err(|e| SdkError::Serialization(format!("failed to serialize params: {}", e)))?;
 
 	let mut output = BufferFFI::empty();
 
@@ -79,10 +79,10 @@ pub(crate) fn raw_procedure_query(ctx: &FFIProcedureContext, query: &str, params
 		if result == FFI_OK {
 			let result_bytes = output.as_slice();
 			let frames: Vec<Frame> = from_bytes(result_bytes)
-				.map_err(|e| FFIError::Serialization(format!("failed to deserialize result: {}", e)))?;
+				.map_err(|e| SdkError::Serialization(format!("failed to deserialize result: {}", e)))?;
 			Ok(frames)
 		} else {
-			Err(FFIError::Other(format!("host_rql failed with code {}", result)))
+			Err(SdkError::Other(format!("host_rql failed with code {}", result)))
 		}
 	}
 }

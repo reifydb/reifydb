@@ -7,7 +7,7 @@ use reifydb_core::internal;
 use reifydb_type::error::Error;
 
 #[derive(Debug)]
-pub enum FFIError {
+pub enum SdkError {
 	Configuration(String),
 
 	MissingConfiguration {
@@ -30,39 +30,39 @@ pub enum FFIError {
 	Other(String),
 }
 
-impl fmt::Display for FFIError {
+impl fmt::Display for SdkError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			FFIError::Configuration(msg) => write!(f, "Configuration error: {}", msg),
-			FFIError::MissingConfiguration {
+			SdkError::Configuration(msg) => write!(f, "Configuration error: {}", msg),
+			SdkError::MissingConfiguration {
 				operator,
 				key,
 			} => {
 				write!(f, "{operator} requires '{key}' configuration")
 			}
-			FFIError::StateError(msg) => write!(f, "State error: {}", msg),
-			FFIError::Serialization(msg) => write!(f, "Serialization error: {}", msg),
-			FFIError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
-			FFIError::MemoryError(msg) => write!(f, "Memory error: {}", msg),
-			FFIError::Timeout => write!(f, "Operation timeout"),
-			FFIError::NotImplemented(msg) => write!(f, "Not implemented: {}", msg),
-			FFIError::Other(msg) => write!(f, "{}", msg),
+			SdkError::StateError(msg) => write!(f, "State error: {}", msg),
+			SdkError::Serialization(msg) => write!(f, "Serialization error: {}", msg),
+			SdkError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
+			SdkError::MemoryError(msg) => write!(f, "Memory error: {}", msg),
+			SdkError::Timeout => write!(f, "Operation timeout"),
+			SdkError::NotImplemented(msg) => write!(f, "Not implemented: {}", msg),
+			SdkError::Other(msg) => write!(f, "{}", msg),
 		}
 	}
 }
 
-impl error::Error for FFIError {}
+impl error::Error for SdkError {}
 
-impl From<FFIError> for Error {
-	fn from(err: FFIError) -> Self {
+impl From<SdkError> for Error {
+	fn from(err: SdkError) -> Self {
 		Error(Box::new(internal!(format!("{}", err))))
 	}
 }
 
-impl From<Error> for FFIError {
+impl From<Error> for SdkError {
 	fn from(err: Error) -> Self {
-		FFIError::Other(err.to_string())
+		SdkError::Other(err.to_string())
 	}
 }
 
-pub type Result<T, E = FFIError> = std::result::Result<T, E>;
+pub type Result<T, E = SdkError> = std::result::Result<T, E>;

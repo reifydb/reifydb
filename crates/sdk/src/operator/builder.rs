@@ -10,7 +10,7 @@ use reifydb_abi::{
 };
 use reifydb_type::value::row_number::RowNumber;
 
-use crate::{error::FFIError, operator::context::ffi::FFIOperatorContext};
+use crate::{error::SdkError, operator::context::ffi::FFIOperatorContext};
 
 pub struct ColumnBuilder<'a> {
 	ctx: *mut ContextFFI,
@@ -48,25 +48,25 @@ impl<'a> ColumnBuilder<'a> {
 		}
 	}
 
-	pub fn grow(&self, additional: usize) -> Result<(), FFIError> {
+	pub fn grow(&self, additional: usize) -> Result<(), SdkError> {
 		let code = unsafe {
 			let cb = (*self.ctx).callbacks.builder;
 			(cb.grow)(self.handle, additional)
 		};
 		if code != 0 {
-			return Err(FFIError::Other(format!("ColumnBuilder::grow failed: {}", code)));
+			return Err(SdkError::Other(format!("ColumnBuilder::grow failed: {}", code)));
 		}
 		Ok(())
 	}
 
-	pub fn commit(mut self, written_count: usize) -> Result<CommittedColumn, FFIError> {
+	pub fn commit(mut self, written_count: usize) -> Result<CommittedColumn, SdkError> {
 		let code = unsafe {
 			let cb = (*self.ctx).callbacks.builder;
 			(cb.commit)(self.handle, written_count)
 		};
 		self.committed = true;
 		if code != 0 {
-			return Err(FFIError::Other(format!("ColumnBuilder::commit failed: {}", code)));
+			return Err(SdkError::Other(format!("ColumnBuilder::commit failed: {}", code)));
 		}
 		Ok(CommittedColumn {
 			handle: self.handle,
@@ -78,7 +78,7 @@ impl<'a> ColumnBuilder<'a> {
 		self.type_code
 	}
 
-	pub fn write_bool(self, values: &[bool]) -> Result<CommittedColumn, FFIError> {
+	pub fn write_bool(self, values: &[bool]) -> Result<CommittedColumn, SdkError> {
 		debug_assert_eq!(self.type_code, ColumnTypeCode::Bool, "write_bool requires a Bool ColumnBuilder");
 
 		let byte_count = values.len().div_ceil(8);
@@ -97,72 +97,72 @@ impl<'a> ColumnBuilder<'a> {
 		self.commit(values.len())
 	}
 
-	pub fn write_f32(self, values: &[f32]) -> Result<CommittedColumn, FFIError> {
+	pub fn write_f32(self, values: &[f32]) -> Result<CommittedColumn, SdkError> {
 		debug_assert_eq!(self.type_code, ColumnTypeCode::Float4);
 		unsafe { write_scalar(self, values) }
 	}
 
-	pub fn write_f64(self, values: &[f64]) -> Result<CommittedColumn, FFIError> {
+	pub fn write_f64(self, values: &[f64]) -> Result<CommittedColumn, SdkError> {
 		debug_assert_eq!(self.type_code, ColumnTypeCode::Float8);
 		unsafe { write_scalar(self, values) }
 	}
 
-	pub fn write_i8(self, values: &[i8]) -> Result<CommittedColumn, FFIError> {
+	pub fn write_i8(self, values: &[i8]) -> Result<CommittedColumn, SdkError> {
 		debug_assert_eq!(self.type_code, ColumnTypeCode::Int1);
 		unsafe { write_scalar(self, values) }
 	}
 
-	pub fn write_i16(self, values: &[i16]) -> Result<CommittedColumn, FFIError> {
+	pub fn write_i16(self, values: &[i16]) -> Result<CommittedColumn, SdkError> {
 		debug_assert_eq!(self.type_code, ColumnTypeCode::Int2);
 		unsafe { write_scalar(self, values) }
 	}
 
-	pub fn write_i32(self, values: &[i32]) -> Result<CommittedColumn, FFIError> {
+	pub fn write_i32(self, values: &[i32]) -> Result<CommittedColumn, SdkError> {
 		debug_assert_eq!(self.type_code, ColumnTypeCode::Int4);
 		unsafe { write_scalar(self, values) }
 	}
 
-	pub fn write_i64(self, values: &[i64]) -> Result<CommittedColumn, FFIError> {
+	pub fn write_i64(self, values: &[i64]) -> Result<CommittedColumn, SdkError> {
 		debug_assert_eq!(self.type_code, ColumnTypeCode::Int8);
 		unsafe { write_scalar(self, values) }
 	}
 
-	pub fn write_i128(self, values: &[i128]) -> Result<CommittedColumn, FFIError> {
+	pub fn write_i128(self, values: &[i128]) -> Result<CommittedColumn, SdkError> {
 		debug_assert_eq!(self.type_code, ColumnTypeCode::Int16);
 		unsafe { write_scalar(self, values) }
 	}
 
-	pub fn write_u8(self, values: &[u8]) -> Result<CommittedColumn, FFIError> {
+	pub fn write_u8(self, values: &[u8]) -> Result<CommittedColumn, SdkError> {
 		debug_assert_eq!(self.type_code, ColumnTypeCode::Uint1);
 		unsafe { write_scalar(self, values) }
 	}
 
-	pub fn write_u16(self, values: &[u16]) -> Result<CommittedColumn, FFIError> {
+	pub fn write_u16(self, values: &[u16]) -> Result<CommittedColumn, SdkError> {
 		debug_assert_eq!(self.type_code, ColumnTypeCode::Uint2);
 		unsafe { write_scalar(self, values) }
 	}
 
-	pub fn write_u32(self, values: &[u32]) -> Result<CommittedColumn, FFIError> {
+	pub fn write_u32(self, values: &[u32]) -> Result<CommittedColumn, SdkError> {
 		debug_assert_eq!(self.type_code, ColumnTypeCode::Uint4);
 		unsafe { write_scalar(self, values) }
 	}
 
-	pub fn write_u64(self, values: &[u64]) -> Result<CommittedColumn, FFIError> {
+	pub fn write_u64(self, values: &[u64]) -> Result<CommittedColumn, SdkError> {
 		debug_assert_eq!(self.type_code, ColumnTypeCode::Uint8);
 		unsafe { write_scalar(self, values) }
 	}
 
-	pub fn write_u128(self, values: &[u128]) -> Result<CommittedColumn, FFIError> {
+	pub fn write_u128(self, values: &[u128]) -> Result<CommittedColumn, SdkError> {
 		debug_assert_eq!(self.type_code, ColumnTypeCode::Uint16);
 		unsafe { write_scalar(self, values) }
 	}
 
-	pub fn write_utf8<S: AsRef<str>>(self, values: &[S]) -> Result<CommittedColumn, FFIError> {
+	pub fn write_utf8<S: AsRef<str>>(self, values: &[S]) -> Result<CommittedColumn, SdkError> {
 		debug_assert_eq!(self.type_code, ColumnTypeCode::Utf8, "write_utf8 requires a Utf8 ColumnBuilder");
 		write_var_len(self, values.iter().map(|s| s.as_ref().as_bytes()))
 	}
 
-	pub fn write_blob<B: AsRef<[u8]>>(self, values: &[B]) -> Result<CommittedColumn, FFIError> {
+	pub fn write_blob<B: AsRef<[u8]>>(self, values: &[B]) -> Result<CommittedColumn, SdkError> {
 		debug_assert_eq!(self.type_code, ColumnTypeCode::Blob, "write_blob requires a Blob ColumnBuilder");
 		write_var_len(self, values.iter().map(|b| b.as_ref()))
 	}
@@ -184,7 +184,7 @@ impl<'a> ColumnBuilder<'a> {
 	}
 }
 
-unsafe fn write_scalar<T: Copy>(col: ColumnBuilder<'_>, values: &[T]) -> Result<CommittedColumn, FFIError> {
+unsafe fn write_scalar<T: Copy>(col: ColumnBuilder<'_>, values: &[T]) -> Result<CommittedColumn, SdkError> {
 	let bytes = core::mem::size_of_val(values);
 	if bytes > 0 {
 		unsafe {
@@ -194,7 +194,7 @@ unsafe fn write_scalar<T: Copy>(col: ColumnBuilder<'_>, values: &[T]) -> Result<
 	col.commit(values.len())
 }
 
-fn write_var_len<'b, I>(col: ColumnBuilder<'_>, items: I) -> Result<CommittedColumn, FFIError>
+fn write_var_len<'b, I>(col: ColumnBuilder<'_>, items: I) -> Result<CommittedColumn, SdkError>
 where
 	I: IntoIterator<Item = &'b [u8]>,
 {
@@ -251,13 +251,13 @@ impl<'a> ColumnsBuilder<'a> {
 		}
 	}
 
-	pub fn acquire(&mut self, type_code: ColumnTypeCode, capacity: usize) -> Result<ColumnBuilder<'_>, FFIError> {
+	pub fn acquire(&mut self, type_code: ColumnTypeCode, capacity: usize) -> Result<ColumnBuilder<'_>, SdkError> {
 		let handle = unsafe {
 			let cb = (*self.ctx).callbacks.builder;
 			(cb.acquire)(self.ctx, type_code, capacity)
 		};
 		if handle.is_null() {
-			return Err(FFIError::Other(format!(
+			return Err(SdkError::Other(format!(
 				"ColumnsBuilder::acquire failed for type {:?}",
 				type_code
 			)));
@@ -276,7 +276,7 @@ impl<'a> ColumnsBuilder<'a> {
 		post: &[CommittedColumn],
 		names: &[&str],
 		row_numbers: &[RowNumber],
-	) -> Result<(), FFIError> {
+	) -> Result<(), SdkError> {
 		assert_eq!(post.len(), names.len(), "emit_insert: post columns and names must have matching length");
 		let row_count = post.first().map(|c| c.row_count).unwrap_or(0);
 		assert_eq!(row_numbers.len(), row_count, "emit_insert: row_numbers length must equal post row count");
@@ -294,7 +294,7 @@ impl<'a> ColumnsBuilder<'a> {
 		post_names: &[&str],
 		post_row_count: usize,
 		post_row_numbers: &[RowNumber],
-	) -> Result<(), FFIError> {
+	) -> Result<(), SdkError> {
 		assert_eq!(pre.len(), pre_names.len(), "emit_update: pre columns/names mismatch");
 		assert_eq!(post.len(), post_names.len(), "emit_update: post columns/names mismatch");
 		assert_eq!(pre_row_numbers.len(), pre_row_count, "emit_update: pre_row_numbers length mismatch");
@@ -317,7 +317,7 @@ impl<'a> ColumnsBuilder<'a> {
 		pre: &[CommittedColumn],
 		names: &[&str],
 		row_numbers: &[RowNumber],
-	) -> Result<(), FFIError> {
+	) -> Result<(), SdkError> {
 		assert_eq!(pre.len(), names.len(), "emit_remove: pre columns and names must have matching length");
 		let row_count = pre.first().map(|c| c.row_count).unwrap_or(0);
 		assert_eq!(row_numbers.len(), row_count, "emit_remove: row_numbers length must equal pre row count");
@@ -336,7 +336,7 @@ impl<'a> ColumnsBuilder<'a> {
 		post_names: &[&str],
 		post_row_count: usize,
 		post_row_numbers: &[RowNumber],
-	) -> Result<(), FFIError> {
+	) -> Result<(), SdkError> {
 		let pre_handles: Vec<*mut ColumnBufferHandle> = pre.iter().map(|c| c.handle).collect();
 		let pre_name_ptrs: Vec<*const u8> = pre_names.iter().map(|n| n.as_ptr()).collect();
 		let pre_name_lens: Vec<usize> = pre_names.iter().map(|n| n.len()).collect();
@@ -400,7 +400,7 @@ impl<'a> ColumnsBuilder<'a> {
 			)
 		};
 		if code != 0 {
-			return Err(FFIError::Other(format!("emit_diff failed: {}", code)));
+			return Err(SdkError::Other(format!("emit_diff failed: {}", code)));
 		}
 		Ok(())
 	}

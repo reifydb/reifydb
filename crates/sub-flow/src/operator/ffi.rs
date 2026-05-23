@@ -31,7 +31,7 @@ use reifydb_core::{
 };
 use reifydb_engine::vm::executor::Executor;
 use reifydb_extension::ffi_callbacks::builder::{BuilderRegistry, with_registry};
-use reifydb_sdk::{error::FFIError, ffi::arena::Arena, operator::Tick};
+use reifydb_sdk::{error::SdkError, ffi::arena::Arena, operator::Tick};
 use reifydb_type::{Result, value::datetime::DateTime};
 use tracing::{Span, error, field, instrument};
 
@@ -183,7 +183,7 @@ fn ensure_flush_slot(
 			}));
 			match result {
 				Ok(0) => Ok(()),
-				Ok(code) => Err(FFIError::Other(format!(
+				Ok(code) => Err(SdkError::Other(format!(
 					"FFI operator flush_state failed with code: {}",
 					code
 				))
@@ -243,7 +243,7 @@ impl Operator for FFIOperator {
 		if result_code != 0 {
 			let _ = self.builder_registry.drain();
 			return Err(
-				FFIError::Other(format!("FFI operator apply failed with code: {}", result_code)).into()
+				SdkError::Other(format!("FFI operator apply failed with code: {}", result_code)).into()
 			);
 		}
 
@@ -271,7 +271,7 @@ impl Operator for FFIOperator {
 		if result_code < 0 {
 			let _ = self.builder_registry.drain();
 			return Err(
-				FFIError::Other(format!("FFI operator tick failed with code: {}", result_code)).into()
+				SdkError::Other(format!("FFI operator tick failed with code: {}", result_code)).into()
 			);
 		}
 

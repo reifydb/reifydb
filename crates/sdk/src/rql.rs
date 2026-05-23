@@ -6,13 +6,13 @@ use reifydb_abi::{constants::FFI_OK, data::buffer::BufferFFI};
 use reifydb_type::{params::Params, value::frame::frame::Frame};
 
 use crate::{
-	error::{FFIError, Result},
+	error::{Result, SdkError},
 	operator::context::ffi::FFIOperatorContext,
 };
 
 pub(crate) fn raw_query(ctx: &FFIOperatorContext, query: &str, params: Params) -> Result<Vec<Frame>> {
 	let params_bytes = to_stdvec(&params)
-		.map_err(|e| FFIError::Serialization(format!("failed to serialize params: {}", e)))?;
+		.map_err(|e| SdkError::Serialization(format!("failed to serialize params: {}", e)))?;
 
 	let mut output = BufferFFI::empty();
 
@@ -29,7 +29,7 @@ pub(crate) fn raw_query(ctx: &FFIOperatorContext, query: &str, params: Params) -
 		if result == FFI_OK {
 			let result_bytes = output.as_slice();
 			let frames: Vec<Frame> = from_bytes(result_bytes)
-				.map_err(|e| FFIError::Serialization(format!("failed to deserialize result: {}", e)))?;
+				.map_err(|e| SdkError::Serialization(format!("failed to deserialize result: {}", e)))?;
 			Ok(frames)
 		} else {
 			let msg = if !output.is_empty() {
@@ -37,7 +37,7 @@ pub(crate) fn raw_query(ctx: &FFIOperatorContext, query: &str, params: Params) -
 			} else {
 				format!("host_rql failed with code {}", result)
 			};
-			Err(FFIError::Other(msg))
+			Err(SdkError::Other(msg))
 		}
 	}
 }

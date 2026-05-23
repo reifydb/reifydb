@@ -7,7 +7,7 @@ use reifydb_core::value::column::columns::Columns;
 use reifydb_type::value::Value;
 
 use crate::{
-	error::{FFIError, Result},
+	error::{Result, SdkError},
 	operator::column::operator::OperatorColumn,
 };
 
@@ -74,7 +74,7 @@ impl SourceEmitter {
 	}
 
 	pub fn emit(&self, batch: SourceBatch) -> Result<()> {
-		self.sender.send(batch).map_err(|_| FFIError::Other("source emitter channel closed".to_string()))
+		self.sender.send(batch).map_err(|_| SdkError::Other("source emitter channel closed".to_string()))
 	}
 }
 

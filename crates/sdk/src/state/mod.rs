@@ -17,7 +17,7 @@ use reifydb_type::value::blob::Blob;
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
-	error::{FFIError, Result},
+	error::{Result, SdkError},
 	operator::context::{InternalStateApi, OperatorContext, StateApi, ffi::FFIOperatorContext},
 };
 
@@ -154,7 +154,7 @@ impl<'a> InternalState<'a> {
 #[inline]
 pub fn encode_payload<T: Serialize>(value: &T, now_nanos: u64) -> Result<EncodedRow> {
 	let bytes = to_allocvec(value)
-		.map_err(|e| FFIError::Serialization(format!("operator state serialization failed: {}", e)))?;
+		.map_err(|e| SdkError::Serialization(format!("operator state serialization failed: {}", e)))?;
 	let shape = RowShape::operator_state();
 	let mut row = shape.allocate();
 	shape.set_blob(&mut row, 0, &Blob::new(bytes));
@@ -167,7 +167,7 @@ pub fn decode_payload<T: DeserializeOwned>(row: &EncodedRow) -> Result<T> {
 	let shape = RowShape::operator_state();
 	let blob = shape.get_blob(row, 0);
 	from_bytes(blob.as_bytes())
-		.map_err(|e| FFIError::Serialization(format!("operator state deserialization failed: {}", e)))
+		.map_err(|e| SdkError::Serialization(format!("operator state deserialization failed: {}", e)))
 }
 
 pub trait RawStatefulOperator {

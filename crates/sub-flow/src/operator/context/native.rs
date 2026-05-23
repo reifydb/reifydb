@@ -21,7 +21,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_sdk::{
-	error::{FFIError, Result as SdkResult},
+	error::{Result as SdkResult, SdkError},
 	operator::{
 		column::{row::Row, sink::native::NativeRowSink},
 		context::{CatalogApi, InternalStateApi, OperatorContext, RowEmit, StateApi, StoreApi, UpdateEmit},
@@ -33,8 +33,8 @@ use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{operator::stateful::row::RowNumberProvider, transaction::FlowTransaction};
 
-fn to_ffi<E: ToString>(e: E) -> FFIError {
-	FFIError::Other(e.to_string())
+fn to_sdk_err<E: ToString>(e: E) -> SdkError {
+	SdkError::Other(e.to_string())
 }
 
 fn decode<T: DeserializeOwned>(row: &EncodedRow) -> SdkResult<T> {
@@ -126,36 +126,36 @@ pub struct NativeState {
 
 impl StateApi for NativeState {
 	fn get<T: DeserializeOwned>(&self, key: &EncodedKey) -> SdkResult<Option<T>> {
-		match unsafe { (*self.txn).state_get(self.node, key) }.map_err(to_ffi)? {
+		match unsafe { (*self.txn).state_get(self.node, key) }.map_err(to_sdk_err)? {
 			Some(row) => Ok(Some(decode(&row)?)),
 			None => Ok(None),
 		}
 	}
 	fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> SdkResult<()> {
 		let now = self.now_nanos;
-		unsafe { (*self.txn).state_set(self.node, key, encode(value, now)?) }.map_err(to_ffi)
+		unsafe { (*self.txn).state_set(self.node, key, encode(value, now)?) }.map_err(to_sdk_err)
 	}
 	fn remove(&mut self, key: &EncodedKey) -> SdkResult<()> {
-		unsafe { (*self.txn).state_remove(self.node, key) }.map_err(to_ffi)
+		unsafe { (*self.txn).state_remove(self.node, key) }.map_err(to_sdk_err)
 	}
 	fn contains(&self, key: &EncodedKey) -> SdkResult<bool> {
-		Ok(unsafe { (*self.txn).state_get(self.node, key) }.map_err(to_ffi)?.is_some())
+		Ok(unsafe { (*self.txn).state_get(self.node, key) }.map_err(to_sdk_err)?.is_some())
 	}
 	fn clear(&mut self) -> SdkResult<()> {
-		unsafe { (*self.txn).state_clear(self.node) }.map_err(to_ffi)
+		unsafe { (*self.txn).state_clear(self.node) }.map_err(to_sdk_err)
 	}
 	fn scan_prefix<T: DeserializeOwned>(&self, prefix: &EncodedKey) -> SdkResult<Vec<(EncodedKey, T)>> {
 		let batch = unsafe { (*self.txn).state_range(self.node, EncodedKeyRange::prefix(prefix.as_ref())) }
-			.map_err(to_ffi)?;
+			.map_err(to_sdk_err)?;
 		batch.items.iter().map(|r| Ok((r.key.clone(), decode(&r.row)?))).collect()
 	}
 	fn get_many<T: DeserializeOwned>(&self, keys: &[EncodedKey]) -> SdkResult<Vec<(EncodedKey, T)>> {
-		let batch = unsafe { (*self.txn).state_get_many(self.node, keys) }.map_err(to_ffi)?;
+		let batch = unsafe { (*self.txn).state_get_many(self.node, keys) }.map_err(to_sdk_err)?;
 		batch.items.iter().map(|r| Ok((r.key.clone(), decode(&r.row)?))).collect()
 	}
 	fn keys_with_prefix(&self, prefix: &EncodedKey) -> SdkResult<Vec<EncodedKey>> {
 		let batch = unsafe { (*self.txn).state_range(self.node, EncodedKeyRange::prefix(prefix.as_ref())) }
-			.map_err(to_ffi)?;
+			.map_err(to_sdk_err)?;
 		Ok(batch.items.iter().map(|r| r.key.clone()).collect())
 	}
 	fn range<T: DeserializeOwned>(
@@ -164,11 +164,11 @@ impl StateApi for NativeState {
 		end: Bound<&EncodedKey>,
 	) -> SdkResult<Vec<(EncodedKey, T)>> {
 		let range = EncodedKeyRange::new(start.map(|k| k.clone()), end.map(|k| k.clone()));
-		let batch = unsafe { (*self.txn).state_range(self.node, range) }.map_err(to_ffi)?;
+		let batch = unsafe { (*self.txn).state_range(self.node, range) }.map_err(to_sdk_err)?;
 		batch.items.iter().map(|r| Ok((r.key.clone(), decode(&r.row)?))).collect()
 	}
 	fn get_with_anchors<T: DeserializeOwned>(&self, key: &EncodedKey) -> SdkResult<Option<StateEntry<T>>> {
-		match unsafe { (*self.txn).state_get(self.node, key) }.map_err(to_ffi)? {
+		match unsafe { (*self.txn).state_get(self.node, key) }.map_err(to_sdk_err)? {
 			Some(row) => Ok(Some(StateEntry {
 				created_at_nanos: row.created_at_nanos(),
 				updated_at_nanos: row.updated_at_nanos(),
@@ -187,24 +187,24 @@ pub struct NativeInternalState {
 
 impl InternalStateApi for NativeInternalState {
 	fn get<T: DeserializeOwned>(&self, key: &EncodedKey) -> SdkResult<Option<T>> {
-		match unsafe { (*self.txn).internal_state_get(self.node, key) }.map_err(to_ffi)? {
+		match unsafe { (*self.txn).internal_state_get(self.node, key) }.map_err(to_sdk_err)? {
 			Some(row) => Ok(Some(decode(&row)?)),
 			None => Ok(None),
 		}
 	}
 	fn get_many<T: DeserializeOwned>(&self, keys: &[EncodedKey]) -> SdkResult<Vec<(EncodedKey, T)>> {
-		let batch = unsafe { (*self.txn).internal_state_get_many(self.node, keys) }.map_err(to_ffi)?;
+		let batch = unsafe { (*self.txn).internal_state_get_many(self.node, keys) }.map_err(to_sdk_err)?;
 		batch.items.iter().map(|r| Ok((r.key.clone(), decode(&r.row)?))).collect()
 	}
 	fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> SdkResult<()> {
 		let now = self.now_nanos;
-		unsafe { (*self.txn).internal_state_set(self.node, key, encode(value, now)?) }.map_err(to_ffi)
+		unsafe { (*self.txn).internal_state_set(self.node, key, encode(value, now)?) }.map_err(to_sdk_err)
 	}
 	fn remove(&mut self, key: &EncodedKey) -> SdkResult<()> {
-		unsafe { (*self.txn).internal_state_remove(self.node, key) }.map_err(to_ffi)
+		unsafe { (*self.txn).internal_state_remove(self.node, key) }.map_err(to_sdk_err)
 	}
 	fn contains(&self, key: &EncodedKey) -> SdkResult<bool> {
-		Ok(unsafe { (*self.txn).internal_state_get(self.node, key) }.map_err(to_ffi)?.is_some())
+		Ok(unsafe { (*self.txn).internal_state_get(self.node, key) }.map_err(to_sdk_err)?.is_some())
 	}
 }
 
@@ -214,13 +214,13 @@ pub struct NativeStore {
 
 impl StoreApi for NativeStore {
 	fn get(&self, key: &EncodedKey) -> SdkResult<Option<EncodedRow>> {
-		unsafe { (*self.txn).get(key) }.map_err(to_ffi)
+		unsafe { (*self.txn).get(key) }.map_err(to_sdk_err)
 	}
 	fn contains(&self, key: &EncodedKey) -> SdkResult<bool> {
-		unsafe { (*self.txn).contains_key(key) }.map_err(to_ffi)
+		unsafe { (*self.txn).contains_key(key) }.map_err(to_sdk_err)
 	}
 	fn prefix(&self, prefix: &EncodedKey) -> SdkResult<Vec<(EncodedKey, EncodedRow)>> {
-		let batch = unsafe { (*self.txn).prefix(prefix) }.map_err(to_ffi)?;
+		let batch = unsafe { (*self.txn).prefix(prefix) }.map_err(to_sdk_err)?;
 		Ok(batch.items.into_iter().map(|r| (r.key, r.row)).collect())
 	}
 	fn range(
@@ -229,7 +229,7 @@ impl StoreApi for NativeStore {
 		end: Bound<&EncodedKey>,
 	) -> SdkResult<Vec<(EncodedKey, EncodedRow)>> {
 		let range = EncodedKeyRange::new(start.map(|k| k.clone()), end.map(|k| k.clone()));
-		let rows = unsafe { (*self.txn).range(range, 1024) }.collect::<Result<Vec<_>>>().map_err(to_ffi)?;
+		let rows = unsafe { (*self.txn).range(range, 1024) }.collect::<Result<Vec<_>>>().map_err(to_sdk_err)?;
 		Ok(rows.into_iter().map(|r| (r.key, r.row)).collect())
 	}
 }
@@ -308,15 +308,22 @@ impl OperatorContext for NativeOperatorContext<'_> {
 	fn get_or_create_row_number(&mut self, key: &EncodedKey) -> SdkResult<(RowNumber, bool)> {
 		RowNumberProvider::new(self.node)
 			.get_or_create_row_number(unsafe { &mut *self.txn }, key)
-			.map_err(to_ffi)
+			.map_err(to_sdk_err)
 	}
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> SdkResult<Vec<(RowNumber, bool)>> {
 		RowNumberProvider::new(self.node)
 			.get_or_create_row_numbers(unsafe { &mut *self.txn }, keys.iter())
-			.map_err(to_ffi)
+			.map_err(to_sdk_err)
 	}
-	fn shape_for_row(&mut self, _row: &EncodedRow) -> SdkResult<RowShape> {
-		Err(FFIError::Other("shape_for_row is not supported in the native context".to_string()))
+	fn shape_for_row(&mut self, row: &EncodedRow) -> SdkResult<RowShape> {
+		let fingerprint = row.fingerprint();
+		match self.catalog().find_row_shape(fingerprint)? {
+			Some(shape) => Ok(shape),
+			None => Err(SdkError::Other(format!(
+				"row shape with fingerprint {} not registered in catalog",
+				fingerprint.as_u64()
+			))),
+		}
 	}
 	fn insert_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<NativeRowEmit<'_>> {
 		Ok(NativeRowEmit {

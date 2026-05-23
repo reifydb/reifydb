@@ -15,7 +15,7 @@ use reifydb_abi::{
 use reifydb_core::value::column::columns::Columns;
 use reifydb_routine::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_runtime::sync::mutex::Mutex;
-use reifydb_sdk::{error::FFIError, ffi::arena::Arena};
+use reifydb_sdk::{error::SdkError, ffi::arena::Arena};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::r#type::Type;
 use tracing::instrument;
@@ -131,7 +131,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for NativeProcedureFFI {
 
 		let params_bytes = to_stdvec(ctx.params).map_err(|e| {
 			RoutineError::Wrapped(Box::new(
-				FFIError::Other(format!("Failed to serialize params: {}", e)).into(),
+				SdkError::Other(format!("Failed to serialize params: {}", e)).into(),
 			))
 		})?;
 
@@ -155,7 +155,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for NativeProcedureFFI {
 			let _ = self.builder_registry.drain();
 			drop(instance_guard);
 			return Err(RoutineError::Wrapped(Box::new(
-				FFIError::Other(format!("FFI procedure call failed with code: {}", result_code)).into(),
+				SdkError::Other(format!("FFI procedure call failed with code: {}", result_code)).into(),
 			)));
 		}
 

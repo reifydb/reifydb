@@ -11,7 +11,7 @@ use reifydb_type::{
 	},
 };
 
-use crate::{error::FFIError, operator::column::sink::RowSink};
+use crate::{error::SdkError, operator::column::sink::RowSink};
 
 pub struct NativeRowSink {
 	names: Vec<&'static str>,
@@ -20,7 +20,7 @@ pub struct NativeRowSink {
 }
 
 impl NativeRowSink {
-	pub fn new(columns: &'static [(&'static str, ColumnTypeCode)]) -> Result<Self, FFIError> {
+	pub fn new(columns: &'static [(&'static str, ColumnTypeCode)]) -> Result<Self, SdkError> {
 		let mut names = Vec::with_capacity(columns.len());
 		let mut types = Vec::with_capacity(columns.len());
 		let mut cols = Vec::with_capacity(columns.len());
@@ -37,7 +37,7 @@ impl NativeRowSink {
 		})
 	}
 
-	pub fn finish(self, row_numbers: Vec<RowNumber>) -> Result<Columns, FFIError> {
+	pub fn finish(self, row_numbers: Vec<RowNumber>) -> Result<Columns, SdkError> {
 		let out = self
 			.names
 			.into_iter()
@@ -56,7 +56,7 @@ impl NativeRowSink {
 	}
 }
 
-fn code_to_type(code: ColumnTypeCode) -> Result<Type, FFIError> {
+fn code_to_type(code: ColumnTypeCode) -> Result<Type, SdkError> {
 	Ok(match code {
 		ColumnTypeCode::Bool => Type::Boolean,
 		ColumnTypeCode::Uint1 => Type::Uint1,
@@ -78,7 +78,7 @@ fn code_to_type(code: ColumnTypeCode) -> Result<Type, FFIError> {
 		ColumnTypeCode::Utf8 => Type::Utf8,
 		ColumnTypeCode::Blob => Type::Blob,
 		other => {
-			return Err(FFIError::NotImplemented(format!(
+			return Err(SdkError::NotImplemented(format!(
 				"native sink does not support column type {:?} (Decimal and others deferred)",
 				other
 			)));
@@ -162,21 +162,21 @@ impl RowSink for NativeRowSink {
 		self.push(col, Value::Boolean(v));
 	}
 	#[inline]
-	fn push_utf8(&mut self, col: usize, v: &str) -> Result<(), FFIError> {
+	fn push_utf8(&mut self, col: usize, v: &str) -> Result<(), SdkError> {
 		self.push(col, Value::Utf8(v.to_string()));
 		Ok(())
 	}
 	#[inline]
-	fn push_blob(&mut self, col: usize, v: &[u8]) -> Result<(), FFIError> {
+	fn push_blob(&mut self, col: usize, v: &[u8]) -> Result<(), SdkError> {
 		self.push(col, Value::Blob(Blob::new(v.to_vec())));
 		Ok(())
 	}
 	#[inline]
-	fn push_decimal_bytes(&mut self, _col: usize, _v: &[u8]) -> Result<(), FFIError> {
-		Err(FFIError::NotImplemented("native sink does not yet support Decimal columns".to_string()))
+	fn push_decimal_bytes(&mut self, _col: usize, _v: &[u8]) -> Result<(), SdkError> {
+		Err(SdkError::NotImplemented("native sink does not yet support Decimal columns".to_string()))
 	}
 	#[inline]
-	fn push_none(&mut self, col: usize) -> Result<(), FFIError> {
+	fn push_none(&mut self, col: usize) -> Result<(), SdkError> {
 		let inner = self.types[col].clone();
 		self.push(
 			col,

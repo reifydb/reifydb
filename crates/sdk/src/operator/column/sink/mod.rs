@@ -6,7 +6,7 @@ pub mod native;
 
 use reifydb_type::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
 
-use crate::error::FFIError;
+use crate::error::SdkError;
 
 pub trait RowSink {
 	fn push_u8(&mut self, col: usize, v: u8);
@@ -26,8 +26,8 @@ pub trait RowSink {
 	fn push_time(&mut self, col: usize, v: Time);
 	fn push_duration(&mut self, col: usize, v: Duration);
 	fn push_bool(&mut self, col: usize, v: bool);
-	fn push_utf8(&mut self, col: usize, v: &str) -> Result<(), FFIError>;
-	fn push_blob(&mut self, col: usize, v: &[u8]) -> Result<(), FFIError>;
-	fn push_decimal_bytes(&mut self, col: usize, v: &[u8]) -> Result<(), FFIError>;
-	fn push_none(&mut self, col: usize) -> Result<(), FFIError>;
+	fn push_utf8(&mut self, col: usize, v: &str) -> Result<(), SdkError>;
+	fn push_blob(&mut self, col: usize, v: &[u8]) -> Result<(), SdkError>;
+	fn push_decimal_bytes(&mut self, col: usize, v: &[u8]) -> Result<(), SdkError>;
+	fn push_none(&mut self, col: usize) -> Result<(), SdkError>;
 }

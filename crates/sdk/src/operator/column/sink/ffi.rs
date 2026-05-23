@@ -5,7 +5,7 @@ use reifydb_abi::data::column::ColumnTypeCode;
 use reifydb_type::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
 
 use crate::{
-	error::FFIError,
+	error::SdkError,
 	operator::{
 		builder::{ColumnsBuilder, CommittedColumn},
 		column::{
@@ -54,7 +54,7 @@ impl<'a> AnyWriter<'a> {
 		type_code: ColumnTypeCode,
 		row_capacity: usize,
 		var_bytes_hint: usize,
-	) -> Result<AnyWriter<'a>, FFIError> {
+	) -> Result<AnyWriter<'a>, SdkError> {
 		let builder: &mut ColumnsBuilder<'a> =
 			unsafe { core::mem::transmute::<&mut ColumnsBuilder<'_>, &mut ColumnsBuilder<'a>>(builder) };
 		Ok(match type_code {
@@ -81,7 +81,7 @@ impl<'a> AnyWriter<'a> {
 				AnyWriter::Decimal(builder.decimal_writer(row_capacity, var_bytes_hint)?)
 			}
 			other => {
-				return Err(FFIError::Other(format!(
+				return Err(SdkError::Other(format!(
 					"FFIRowSink: unsupported column type {:?}",
 					other
 				)));
@@ -89,7 +89,7 @@ impl<'a> AnyWriter<'a> {
 		})
 	}
 
-	fn finish(self) -> Result<CommittedColumn, FFIError> {
+	fn finish(self) -> Result<CommittedColumn, SdkError> {
 		match self {
 			AnyWriter::U8(w) => w.finish(),
 			AnyWriter::U16(w) => w.finish(),
@@ -116,7 +116,7 @@ impl<'a> AnyWriter<'a> {
 }
 
 impl<'a> FFIRowSink<'a> {
-	pub(crate) fn new<R: Row>(builder: &mut ColumnsBuilder<'a>, row_capacity: usize) -> Result<Self, FFIError> {
+	pub(crate) fn new<R: Row>(builder: &mut ColumnsBuilder<'a>, row_capacity: usize) -> Result<Self, SdkError> {
 		let mut writers = Vec::with_capacity(R::COLUMNS.len());
 		let var_count = R::COLUMNS
 			.iter()
@@ -141,7 +141,7 @@ impl<'a> FFIRowSink<'a> {
 		self.row_capacity
 	}
 
-	pub(crate) fn finish_all(self) -> Result<Vec<CommittedColumn>, FFIError> {
+	pub(crate) fn finish_all(self) -> Result<Vec<CommittedColumn>, SdkError> {
 		let mut out = Vec::with_capacity(self.writers.len());
 		for w in self.writers {
 			out.push(w.finish()?);
@@ -288,7 +288,7 @@ impl RowSink for FFIRowSink<'_> {
 	}
 
 	#[inline]
-	fn push_utf8(&mut self, col: usize, v: &str) -> Result<(), FFIError> {
+	fn push_utf8(&mut self, col: usize, v: &str) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
 			AnyWriter::Utf8(w) => w.push_str(v),
 			_ => {
@@ -299,7 +299,7 @@ impl RowSink for FFIRowSink<'_> {
 	}
 
 	#[inline]
-	fn push_blob(&mut self, col: usize, v: &[u8]) -> Result<(), FFIError> {
+	fn push_blob(&mut self, col: usize, v: &[u8]) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
 			AnyWriter::Blob(w) => w.push_bytes(v),
 			_ => {
@@ -310,7 +310,7 @@ impl RowSink for FFIRowSink<'_> {
 	}
 
 	#[inline]
-	fn push_decimal_bytes(&mut self, col: usize, v: &[u8]) -> Result<(), FFIError> {
+	fn push_decimal_bytes(&mut self, col: usize, v: &[u8]) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
 			AnyWriter::Decimal(w) => w.push_bytes(v),
 			_ => {
@@ -321,7 +321,7 @@ impl RowSink for FFIRowSink<'_> {
 	}
 
 	#[inline]
-	fn push_none(&mut self, col: usize) -> Result<(), FFIError> {
+	fn push_none(&mut self, col: usize) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
 			AnyWriter::U8(w) => w.push_none(),
 			AnyWriter::U16(w) => w.push_none(),

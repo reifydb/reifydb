@@ -3,20 +3,20 @@
 
 use std::{fs, path::Path};
 
-use reifydb_sdk::error::FFIError;
+use reifydb_sdk::error::SdkError;
 use reifydb_type::Result;
 
 use super::{registry::Transforms, wasm::WasmTransform};
 
 pub fn load_transforms_from_dir(dir: &Path) -> Result<Transforms> {
 	let entries = fs::read_dir(dir).map_err(|e| {
-		FFIError::Other(format!("Failed to read WASM transform directory {}: {}", dir.display(), e))
+		SdkError::Other(format!("Failed to read WASM transform directory {}: {}", dir.display(), e))
 	})?;
 
 	let mut builder = Transforms::builder();
 
 	for entry in entries {
-		let entry = entry.map_err(|e| FFIError::Other(format!("Failed to read directory entry: {}", e)))?;
+		let entry = entry.map_err(|e| SdkError::Other(format!("Failed to read directory entry: {}", e)))?;
 		let path = entry.path();
 
 		if path.extension().and_then(|s| s.to_str()) != Some("wasm") {
@@ -29,7 +29,7 @@ pub fn load_transforms_from_dir(dir: &Path) -> Result<Transforms> {
 		};
 
 		let wasm_bytes = fs::read(&path)
-			.map_err(|e| FFIError::Other(format!("Failed to read WASM file {}: {}", path.display(), e)))?;
+			.map_err(|e| SdkError::Other(format!("Failed to read WASM file {}: {}", path.display(), e)))?;
 
 		let name_for_closure = name.clone();
 		builder = builder

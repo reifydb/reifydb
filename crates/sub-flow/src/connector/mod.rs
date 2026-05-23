@@ -12,7 +12,7 @@ use reifydb_sdk::{
 		sink::{FFISink, FFISinkMetadata},
 		source::{FFISource, FFISourceMetadata},
 	},
-	error::{FFIError, Result as SdkResult},
+	error::{Result as SdkResult, SdkError},
 };
 use reifydb_type::value::Value;
 
@@ -58,7 +58,7 @@ impl ConnectorRegistry {
 		let factory = self
 			.sources
 			.get(name)
-			.ok_or_else(|| FFIError::Configuration(format!("unknown source connector: {}", name)))?;
+			.ok_or_else(|| SdkError::Configuration(format!("unknown source connector: {}", name)))?;
 		factory(config)
 	}
 
@@ -66,7 +66,7 @@ impl ConnectorRegistry {
 		let factory = self
 			.sinks
 			.get(name)
-			.ok_or_else(|| FFIError::Configuration(format!("unknown sink connector: {}", name)))?;
+			.ok_or_else(|| SdkError::Configuration(format!("unknown sink connector: {}", name)))?;
 		factory(config)
 	}
 

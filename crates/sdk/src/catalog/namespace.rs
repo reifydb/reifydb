@@ -12,13 +12,13 @@ use reifydb_core::{
 	interface::catalog::{id::NamespaceId, namespace::Namespace},
 };
 
-use crate::{error::FFIError, operator::context::ffi::FFIOperatorContext};
+use crate::{error::SdkError, operator::context::ffi::FFIOperatorContext};
 
 pub(super) fn raw_catalog_find_namespace(
 	ctx: &FFIOperatorContext,
 	namespace_id: NamespaceId,
 	version: CommitVersion,
-) -> Result<Option<Namespace>, FFIError> {
+) -> Result<Option<Namespace>, SdkError> {
 	unsafe {
 		let callback = (*ctx.ctx).callbacks.catalog.find_namespace;
 
@@ -37,7 +37,7 @@ pub(super) fn raw_catalog_find_namespace(
 				Ok(Some(namespace))
 			}
 			FFI_NOT_FOUND => Ok(None),
-			_ => Err(FFIError::Other("Failed to find namespace".to_string())),
+			_ => Err(SdkError::Other("Failed to find namespace".to_string())),
 		}
 	}
 }
@@ -46,7 +46,7 @@ pub(super) fn raw_catalog_find_namespace_by_name(
 	ctx: &FFIOperatorContext,
 	name: &str,
 	version: CommitVersion,
-) -> Result<Option<Namespace>, FFIError> {
+) -> Result<Option<Namespace>, SdkError> {
 	unsafe {
 		let callback = (*ctx.ctx).callbacks.catalog.find_namespace_by_name;
 
@@ -67,12 +67,12 @@ pub(super) fn raw_catalog_find_namespace_by_name(
 				Ok(Some(namespace))
 			}
 			FFI_NOT_FOUND => Ok(None),
-			_ => Err(FFIError::Other("Failed to find namespace by name".to_string())),
+			_ => Err(SdkError::Other("Failed to find namespace by name".to_string())),
 		}
 	}
 }
 
-unsafe fn unmarshal_namespace(ffi_ns: &NamespaceFFI) -> Result<Namespace, FFIError> {
+unsafe fn unmarshal_namespace(ffi_ns: &NamespaceFFI) -> Result<Namespace, SdkError> {
 	let name_bytes = if !ffi_ns.name.ptr.is_null() && ffi_ns.name.len > 0 {
 		unsafe { from_raw_parts(ffi_ns.name.ptr, ffi_ns.name.len) }
 	} else {
@@ -80,7 +80,7 @@ unsafe fn unmarshal_namespace(ffi_ns: &NamespaceFFI) -> Result<Namespace, FFIErr
 	};
 
 	let name = str::from_utf8(name_bytes)
-		.map_err(|_| FFIError::Other("Invalid UTF-8 in namespace name".to_string()))?
+		.map_err(|_| SdkError::Other("Invalid UTF-8 in namespace name".to_string()))?
 		.to_string();
 
 	let local_name = name.rsplit_once("::").map(|(_, s)| s).unwrap_or(&name).to_string();

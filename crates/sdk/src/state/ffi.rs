@@ -13,7 +13,7 @@ use reifydb_type::util::cowvec::CowVec;
 use tracing::{Span, instrument};
 
 use crate::{
-	error::{FFIError, Result},
+	error::{Result, SdkError},
 	operator::context::ffi::FFIOperatorContext,
 };
 
@@ -54,7 +54,7 @@ pub(crate) fn get(ctx: &FFIOperatorContext, key: &EncodedKey) -> Result<Option<E
 			Span::current().record("found", false);
 			Ok(None)
 		} else {
-			Err(FFIError::Other(format!("host_state_get failed with code {}", result)))
+			Err(SdkError::Other(format!("host_state_get failed with code {}", result)))
 		}
 	}
 }
@@ -81,7 +81,7 @@ pub(crate) fn set(ctx: &mut FFIOperatorContext, key: &EncodedKey, value: &Encode
 		if result == FFI_OK {
 			Ok(())
 		} else {
-			Err(FFIError::Other(format!("host_state_set failed with code {}", result)))
+			Err(SdkError::Other(format!("host_state_set failed with code {}", result)))
 		}
 	}
 }
@@ -104,7 +104,7 @@ pub(crate) fn remove(ctx: &mut FFIOperatorContext, key: &EncodedKey) -> Result<(
 		if result == FFI_OK {
 			Ok(())
 		} else {
-			Err(FFIError::Other(format!("host_state_remove failed with code {}", result)))
+			Err(SdkError::Other(format!("host_state_remove failed with code {}", result)))
 		}
 	}
 }
@@ -143,7 +143,7 @@ pub(crate) fn get_many(ctx: &FFIOperatorContext, keys: &[EncodedKey]) -> Result<
 		);
 
 		if result != FFI_OK {
-			return Err(FFIError::Other(format!("host_state_get_many failed with code {}", result)));
+			return Err(SdkError::Other(format!("host_state_get_many failed with code {}", result)));
 		}
 
 		if iterator.is_null() {
@@ -172,7 +172,7 @@ pub(crate) fn get_many(ctx: &FFIOperatorContext, keys: &[EncodedKey]) -> Result<
 				break;
 			} else if next_result != FFI_OK {
 				((*ctx.ctx).callbacks.state.iterator_free)(iterator);
-				return Err(FFIError::Other(format!(
+				return Err(SdkError::Other(format!(
 					"host_state_iterator_next failed with code {}",
 					next_result
 				)));
@@ -223,7 +223,7 @@ pub(crate) fn prefix(ctx: &FFIOperatorContext, prefix: &EncodedKey) -> Result<Ve
 		);
 
 		if result != FFI_OK {
-			return Err(FFIError::Other(format!("host_state_prefix failed with code {}", result)));
+			return Err(SdkError::Other(format!("host_state_prefix failed with code {}", result)));
 		}
 
 		if iterator.is_null() {
@@ -252,7 +252,7 @@ pub(crate) fn prefix(ctx: &FFIOperatorContext, prefix: &EncodedKey) -> Result<Ve
 				break;
 			} else if next_result != FFI_OK {
 				((*ctx.ctx).callbacks.state.iterator_free)(iterator);
-				return Err(FFIError::Other(format!(
+				return Err(SdkError::Other(format!(
 					"host_state_iterator_next failed with code {}",
 					next_result
 				)));
@@ -325,7 +325,7 @@ pub(crate) fn range(
 		);
 
 		if result != FFI_OK {
-			return Err(FFIError::Other(format!("host_state_range failed with code {}", result)));
+			return Err(SdkError::Other(format!("host_state_range failed with code {}", result)));
 		}
 
 		if iterator.is_null() {
@@ -354,7 +354,7 @@ pub(crate) fn range(
 				break;
 			} else if next_result != FFI_OK {
 				((*ctx.ctx).callbacks.state.iterator_free)(iterator);
-				return Err(FFIError::Other(format!(
+				return Err(SdkError::Other(format!(
 					"host_state_iterator_next failed with code {}",
 					next_result
 				)));
@@ -396,7 +396,7 @@ pub(crate) fn clear(ctx: &mut FFIOperatorContext) -> Result<()> {
 		if result == FFI_OK {
 			Ok(())
 		} else {
-			Err(FFIError::Other(format!("host_state_clear failed with code {}", result)))
+			Err(SdkError::Other(format!("host_state_clear failed with code {}", result)))
 		}
 	}
 }
@@ -437,7 +437,7 @@ pub(crate) fn internal_get(ctx: &FFIOperatorContext, key: &EncodedKey) -> Result
 			Span::current().record("found", false);
 			Ok(None)
 		} else {
-			Err(FFIError::Other(format!("host_internal_state_get failed with code {}", result)))
+			Err(SdkError::Other(format!("host_internal_state_get failed with code {}", result)))
 		}
 	}
 }
@@ -464,7 +464,7 @@ pub(crate) fn internal_set(ctx: &mut FFIOperatorContext, key: &EncodedKey, value
 		if result == FFI_OK {
 			Ok(())
 		} else {
-			Err(FFIError::Other(format!("host_internal_state_set failed with code {}", result)))
+			Err(SdkError::Other(format!("host_internal_state_set failed with code {}", result)))
 		}
 	}
 }
@@ -487,7 +487,7 @@ pub(crate) fn internal_remove(ctx: &mut FFIOperatorContext, key: &EncodedKey) ->
 		if result == FFI_OK {
 			Ok(())
 		} else {
-			Err(FFIError::Other(format!("host_internal_state_remove failed with code {}", result)))
+			Err(SdkError::Other(format!("host_internal_state_remove failed with code {}", result)))
 		}
 	}
 }
@@ -529,7 +529,7 @@ pub(crate) fn internal_get_many(
 		);
 
 		if result != FFI_OK {
-			return Err(FFIError::Other(format!(
+			return Err(SdkError::Other(format!(
 				"host_internal_state_get_many failed with code {}",
 				result
 			)));
@@ -561,7 +561,7 @@ pub(crate) fn internal_get_many(
 				break;
 			} else if next_result != FFI_OK {
 				((*ctx.ctx).callbacks.state.iterator_free)(iterator);
-				return Err(FFIError::Other(format!(
+				return Err(SdkError::Other(format!(
 					"host_state_iterator_next failed with code {}",
 					next_result
 				)));

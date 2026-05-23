@@ -9,7 +9,7 @@ use reifydb_abi::{
 	transform::{descriptor::TransformDescriptorFFI, vtable::TransformVTableFFI},
 };
 use reifydb_core::value::column::columns::Columns;
-use reifydb_sdk::{error::FFIError, ffi::arena::Arena};
+use reifydb_sdk::{error::SdkError, ffi::arena::Arena};
 use reifydb_type::{self, Result};
 use tracing::instrument;
 
@@ -101,7 +101,7 @@ impl Transform for NativeTransformFFI {
 
 		if result_code != 0 {
 			let _ = self.builder_registry.drain();
-			return Err(FFIError::Other(format!("FFI transform apply failed with code: {}", result_code))
+			return Err(SdkError::Other(format!("FFI transform apply failed with code: {}", result_code))
 				.into());
 		}
 

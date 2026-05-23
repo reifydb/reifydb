@@ -19,7 +19,7 @@ use reifydb_abi::{
 };
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_sdk::error::{FFIError, Result as FFIResult};
+use reifydb_sdk::error::{Result as FFIResult, SdkError};
 use reifydb_type::value::constraint::{FFITypeConstraint, TypeConstraint};
 
 use crate::loader::ffi::{LibraryCache, buffer_to_string, validate_api_version};
@@ -32,7 +32,7 @@ pub fn ffi_operator_loader() -> &'static RwLock<FFIOperatorLoader> {
 
 pub fn check_operator_abi_tag(abi_tag: u32) -> FFIResult<()> {
 	if abi_tag != OPERATOR_ABI_TAG {
-		return Err(FFIError::Other(format!(
+		return Err(SdkError::Other(format!(
 			"FFI operator ABI tag mismatch: plugin reports {:#06x}, host expects {:#06x}",
 			abi_tag, OPERATOR_ABI_TAG
 		)));
@@ -57,23 +57,23 @@ impl FFIOperatorLoader {
 	pub fn load_operator_library(&mut self, path: &Path) -> FFIResult<bool> {
 		self.cache
 			.check_magic(path, b"ffi_operator_magic\0", OPERATOR_MAGIC)
-			.map_err(|e| FFIError::Other(e.to_string()))
+			.map_err(|e| SdkError::Other(e.to_string()))
 	}
 
 	fn get_descriptor(&self, path: &Path) -> FFIResult<OperatorDescriptorFFI> {
 		let library = self
 			.cache
 			.get(path)
-			.ok_or_else(|| FFIError::Other(format!("Library not loaded: {}", path.display())))?;
+			.ok_or_else(|| SdkError::Other(format!("Library not loaded: {}", path.display())))?;
 		unsafe {
 			let get_descriptor: Symbol<extern "C" fn() -> *const OperatorDescriptorFFI> =
 				library.get(b"ffi_operator_get_descriptor\0").map_err(|e| {
-					FFIError::Other(format!("Failed to find ffi_operator_get_descriptor: {}", e))
+					SdkError::Other(format!("Failed to find ffi_operator_get_descriptor: {}", e))
 				})?;
 
 			let descriptor_ptr = get_descriptor();
 			if descriptor_ptr.is_null() {
-				return Err(FFIError::Other("Descriptor is null".to_string()));
+				return Err(SdkError::Other("Descriptor is null".to_string()));
 			}
 
 			Ok(OperatorDescriptorFFI {
@@ -95,7 +95,7 @@ impl FFIOperatorLoader {
 		descriptor: &OperatorDescriptorFFI,
 		path: &Path,
 	) -> FFIResult<(String, u32)> {
-		validate_api_version(descriptor.api).map_err(|e| FFIError::Other(e.to_string()))?;
+		validate_api_version(descriptor.api).map_err(|e| SdkError::Other(e.to_string()))?;
 
 		check_operator_abi_tag(descriptor.abi_tag)?;
 
@@ -146,14 +146,14 @@ impl FFIOperatorLoader {
 		let create_fn: OperatorCreateFnFFI = unsafe {
 			let create_symbol: Symbol<OperatorCreateFnFFI> = library
 				.get(b"ffi_operator_create\0")
-				.map_err(|e| FFIError::Other(format!("Failed to find ffi_operator_create: {}", e)))?;
+				.map_err(|e| SdkError::Other(format!("Failed to find ffi_operator_create: {}", e)))?;
 
 			*create_symbol
 		};
 
 		let instance = create_fn(config.as_ptr(), config.len(), operator_id.0);
 		if instance.is_null() {
-			return Err(FFIError::Other("Failed to create operator instance".to_string()));
+			return Err(SdkError::Other("Failed to create operator instance".to_string()));
 		}
 
 		Ok(Some((descriptor, instance)))
@@ -168,11 +168,11 @@ impl FFIOperatorLoader {
 		let path = self
 			.operator_paths
 			.get(operator)
-			.ok_or_else(|| FFIError::Other(format!("Operator not found: {}", operator)))?
+			.ok_or_else(|| SdkError::Other(format!("Operator not found: {}", operator)))?
 			.clone();
 
 		self.load_operator(&path, config, operator_id)?
-			.ok_or_else(|| FFIError::Other(format!("Operator library no longer valid: {}", operator)))
+			.ok_or_else(|| SdkError::Other(format!("Operator library no longer valid: {}", operator)))
 	}
 
 	pub fn has_operator(&self, operator: &str) -> bool {

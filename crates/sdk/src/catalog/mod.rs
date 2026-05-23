@@ -24,7 +24,7 @@ use reifydb_type::value::{
 	r#type::Type,
 };
 
-use crate::{error::FFIError, operator::context::ffi::FFIOperatorContext};
+use crate::{error::SdkError, operator::context::ffi::FFIOperatorContext};
 
 pub struct Catalog<'a> {
 	ctx: &'a mut FFIOperatorContext,
@@ -41,7 +41,7 @@ impl<'a> Catalog<'a> {
 		&self,
 		namespace: NamespaceId,
 		version: CommitVersion,
-	) -> Result<Option<Namespace>, FFIError> {
+	) -> Result<Option<Namespace>, SdkError> {
 		namespace::raw_catalog_find_namespace(self.ctx, namespace, version)
 	}
 
@@ -49,11 +49,11 @@ impl<'a> Catalog<'a> {
 		&self,
 		namespace: &str,
 		version: CommitVersion,
-	) -> Result<Option<Namespace>, FFIError> {
+	) -> Result<Option<Namespace>, SdkError> {
 		namespace::raw_catalog_find_namespace_by_name(self.ctx, namespace, version)
 	}
 
-	pub fn find_table(&self, table: TableId, version: CommitVersion) -> Result<Option<Table>, FFIError> {
+	pub fn find_table(&self, table: TableId, version: CommitVersion) -> Result<Option<Table>, SdkError> {
 		table::raw_catalog_find_table(self.ctx, table, version)
 	}
 
@@ -62,16 +62,16 @@ impl<'a> Catalog<'a> {
 		namespace: NamespaceId,
 		name: &str,
 		version: CommitVersion,
-	) -> Result<Option<Table>, FFIError> {
+	) -> Result<Option<Table>, SdkError> {
 		table::raw_catalog_find_table_by_name(self.ctx, namespace, name, version)
 	}
 
-	pub fn find_row_shape(&self, fingerprint: RowShapeFingerprint) -> Result<Option<RowShape>, FFIError> {
+	pub fn find_row_shape(&self, fingerprint: RowShapeFingerprint) -> Result<Option<RowShape>, SdkError> {
 		row_shape::raw_catalog_find_row_shape(self.ctx, fingerprint)
 	}
 }
 
-pub(crate) unsafe fn unmarshal_column(ffi_col: &ColumnFFI) -> Result<Column, FFIError> {
+pub(crate) unsafe fn unmarshal_column(ffi_col: &ColumnFFI) -> Result<Column, SdkError> {
 	let name_bytes = if !ffi_col.name.ptr.is_null() && ffi_col.name.len > 0 {
 		unsafe { from_raw_parts(ffi_col.name.ptr, ffi_col.name.len) }
 	} else {
@@ -79,7 +79,7 @@ pub(crate) unsafe fn unmarshal_column(ffi_col: &ColumnFFI) -> Result<Column, FFI
 	};
 
 	let name = str::from_utf8(name_bytes)
-		.map_err(|_| FFIError::Other("Invalid UTF-8 in column name".to_string()))?
+		.map_err(|_| SdkError::Other("Invalid UTF-8 in column name".to_string()))?
 		.to_string();
 
 	let constraint = decode_type_constraint(
@@ -100,7 +100,7 @@ pub(crate) unsafe fn unmarshal_column(ffi_col: &ColumnFFI) -> Result<Column, FFI
 	})
 }
 
-pub(crate) unsafe fn unmarshal_primary_key(ffi_pk: &PrimaryKeyFFI) -> Result<PrimaryKey, FFIError> {
+pub(crate) unsafe fn unmarshal_primary_key(ffi_pk: &PrimaryKeyFFI) -> Result<PrimaryKey, SdkError> {
 	let column_ids = if !ffi_pk.column_ids.is_null() && ffi_pk.column_count > 0 {
 		unsafe { from_raw_parts(ffi_pk.column_ids, ffi_pk.column_count).to_vec() }
 	} else {
@@ -132,7 +132,7 @@ pub(crate) fn decode_type_constraint(
 	constraint_type: u8,
 	param1: u32,
 	param2: u32,
-) -> Result<TypeConstraint, FFIError> {
+) -> Result<TypeConstraint, SdkError> {
 	let ty = Type::from_u8(base_type);
 
 	match constraint_type {
@@ -142,6 +142,6 @@ pub(crate) fn decode_type_constraint(
 			ty,
 			Constraint::PrecisionScale(Precision::new(param1 as u8), Scale::new(param2 as u8)),
 		)),
-		_ => Err(FFIError::Other("Invalid constraint type".to_string())),
+		_ => Err(SdkError::Other("Invalid constraint type".to_string())),
 	}
 }
