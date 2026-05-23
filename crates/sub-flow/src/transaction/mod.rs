@@ -240,8 +240,7 @@ impl FlowTransaction {
 	pub fn deferred_from_parts(params: DeferredParams) -> Self {
 		let mut query = params.query;
 		query.read_as_of_version_inclusive(params.version);
-		let mut state_query = params.state_query;
-		state_query.read_as_of_version_inclusive(params.version);
+		let state_query = params.state_query;
 
 		Self::Deferred {
 			inner: FlowTransactionInner {

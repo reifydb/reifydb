@@ -25,6 +25,7 @@ use reifydb_catalog::{
 };
 use reifydb_cdc::{
 	CdcVersion,
+	consume::wake::CdcWakeRegistry,
 	produce::{
 		producer::{CdcProducerEventListener, spawn_cdc_producer},
 		watermark::CdcProducerWatermark,
@@ -252,6 +253,9 @@ impl WasmDB {
 		let cdc_producer_watermark = CdcProducerWatermark::new();
 		ioc = ioc.register(cdc_producer_watermark.clone());
 
+		let cdc_wake_registry = CdcWakeRegistry::new();
+		ioc = ioc.register(cdc_wake_registry.clone());
+
 		// Clone ioc for FlowSubsystem (engine consumes ioc)
 		let ioc_ref = ioc.clone();
 
@@ -294,6 +298,7 @@ impl WasmDB {
 			eventbus_clone.clone(),
 			runtime.clock().clone(),
 			cdc_producer_watermark,
+			cdc_wake_registry,
 		);
 
 		// Register event listener to forward PostCommitEvent to CDC producer

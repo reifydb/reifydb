@@ -431,10 +431,11 @@ impl FlowTransaction {
 
 #[cfg(test)]
 pub mod tests {
-	use std::collections::Bound;
+	use std::{collections::Bound, sync::Arc};
 
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
+		actors::pending::Pending,
 		common::CommitVersion,
 		encoded::{
 			key::{EncodedKey, EncodedKeyRange},
@@ -443,12 +444,26 @@ pub mod tests {
 		},
 		interface::catalog::flow::FlowNodeId,
 	};
+	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_type::{util::cowvec::CowVec, value::r#type::Type};
+	use reifydb_type::{
+		util::cowvec::CowVec,
+		value::{identity::IdentityId, r#type::Type},
+	};
 
 	use super::*;
-	use crate::operator::stateful::test_utils::test::create_test_transaction;
+	use crate::{
+		operator::stateful::test_utils::test::create_test_transaction,
+		transaction::{CommittingParams, DeferredParams, TransactionalParams},
+	};
+
+	fn commit_state_row(engine: &TestEngine, node: FlowNodeId, key: &EncodedKey, row: EncodedRow) -> CommitVersion {
+		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
+		cmd.disable_conflict_tracking().unwrap();
+		cmd.set(&FlowNodeStateKey::new(node, key.as_ref().to_vec()).encode(), row).unwrap();
+		cmd.commit_unchecked().unwrap()
+	}
 
 	fn make_key(s: &str) -> EncodedKey {
 		EncodedKey::new(s.as_bytes().to_vec())
@@ -843,5 +858,195 @@ pub mod tests {
 		// Cross-node keys should not exist
 		assert_eq!(txn.state_get(node2, &make_key("b")).unwrap(), None);
 		assert_eq!(txn.state_get(node3, &make_key("a")).unwrap(), None);
+	}
+
+	#[test]
+	fn deferred_read_sees_state_committed_above_primitive_version() {
+		// A deferred consume's operator-state reads must observe the latest committed
+		// snapshot, not be bounded to the consume's own input (primitive) version. A
+		// prior consume's accumulated join state is committed at that consume's COMMIT
+		// version, which is strictly greater than any input data version. If a later
+		// consume read operator state bounded to its own lower primitive_version, the
+		// other side of a join written by the prior consume would be invisible and the
+		// row would wrongly emit an unmatched (null) result. This pins that invariant
+		// (it is the root cause of the deferred left-join null-match flake).
+		let engine = TestEngine::new();
+		let node_id = FlowNodeId(1);
+		let inner_key = make_key("late_right_side");
+		let value = make_value("matched_row");
+
+		// The primitive (input) version we will read at. Two further commits then push
+		// the operator-state write strictly more than one version above it, so the read
+		// bound (which resolves to primitive_version + 1) cannot reach it on its own.
+		let primitive_version = commit_state_row(&engine, node_id, &make_key("warmup_a"), make_value("a"));
+		commit_state_row(&engine, node_id, &make_key("warmup_b"), make_value("b"));
+		let committed_at = commit_state_row(&engine, node_id, &inner_key, value.clone());
+		assert!(
+			committed_at.0 >= primitive_version.0 + 2,
+			"operator state must commit at least two versions above the primitive version: committed_at={committed_at:?} primitive_version={primitive_version:?}"
+		);
+
+		let (state_version, lease) = engine.acquire_current_snapshot_lease().unwrap();
+		assert!(state_version >= committed_at);
+
+		let query = engine.multi().begin_query_at_version(&lease).unwrap();
+		let state_query = engine.multi().begin_query_at_version(&lease).unwrap();
+		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+			version: primitive_version,
+			pending: Pending::new(),
+			query,
+			state_query,
+			single: engine.single().clone(),
+			catalog: Catalog::testing(),
+			interceptors: engine.create_interceptors(),
+			clock: engine.clock().clone(),
+		});
+
+		let batch = txn.state_get_many(node_id, &[inner_key]).unwrap();
+		assert_eq!(
+			batch.items.len(),
+			1,
+			"operator state committed at {committed_at:?} (above primitive_version {primitive_version:?}) must be visible to a deferred read"
+		);
+		assert_eq!(batch.items[0].row, value);
+	}
+
+	#[test]
+	fn committing_persists_state_writes_and_keeps_prior_state() {
+		// The committing variant wraps the command being committed: its state writes route
+		// to that command (state_set -> cmd, not the in-memory pending) and become durable
+		// when the flow commits, alongside any state committed by prior transactions. This
+		// guards the committing write+commit path the transactional tick relies on; a
+		// regression that dropped these writes or failed to persist them would be caught.
+		let engine = TestEngine::new();
+		let node_id = FlowNodeId(1);
+		let prior_key = make_key("prior");
+		let prior_value = make_value("prior_value");
+		commit_state_row(&engine, node_id, &prior_key, prior_value.clone());
+
+		let written_key = make_key("written_by_tick");
+		let written_value = make_value("tick_value");
+		{
+			let cmd = engine.begin_command(IdentityId::system()).unwrap();
+			let mut txn = FlowTransaction::committing(CommittingParams {
+				cmd,
+				catalog: Catalog::testing(),
+				interceptors: engine.create_interceptors(),
+				clock: engine.clock().clone(),
+			})
+			.unwrap();
+			txn.state_set(node_id, &written_key, written_value.clone()).unwrap();
+			txn.commit().unwrap();
+		}
+
+		// After the committing flow commits, both the prior state and the state it wrote
+		// are durable and observable at the latest snapshot.
+		let (_version, lease) = engine.acquire_current_snapshot_lease().unwrap();
+		let query = engine.multi().begin_query_at_version(&lease).unwrap();
+		let prior_encoded = FlowNodeStateKey::new(node_id, prior_key.as_ref().to_vec()).encode();
+		let written_encoded = FlowNodeStateKey::new(node_id, written_key.as_ref().to_vec()).encode();
+		let found = query.get_many(&[prior_encoded.clone(), written_encoded.clone()]).unwrap();
+		assert_eq!(
+			found.len(),
+			2,
+			"the committing flow's write and the prior committed state must both be durable after commit"
+		);
+		assert_eq!(found.get(&prior_encoded).unwrap().row, prior_value);
+		assert_eq!(found.get(&written_encoded).unwrap().row, written_value);
+	}
+
+	#[test]
+	fn transactional_read_sees_committed_state_below_version_and_base_pending() {
+		// The transactional variant reads committed operator state via state_query (opened
+		// at the latest snapshot by the interceptor) plus a base_pending overlay for the
+		// current transaction's own writes. Its state read must NOT be bounded to the txn
+		// `version`: here `version` is set below the committed state, which must still be
+		// visible. This is the exact situation that broke the deferred path; this guards
+		// the transactional path against the same version-bounding regression.
+		let engine = TestEngine::new();
+		let node_id = FlowNodeId(1);
+		let committed_key = make_key("committed");
+		let committed_value = make_value("committed_value");
+
+		let low_version = commit_state_row(&engine, node_id, &make_key("warmup"), make_value("w"));
+		commit_state_row(&engine, node_id, &make_key("bump"), make_value("bump"));
+		let committed_at = commit_state_row(&engine, node_id, &committed_key, committed_value.clone());
+		assert!(
+			committed_at.0 >= low_version.0 + 2,
+			"committed state must land at least two versions above the txn version so a wrongful bound (which resolves to version + 1) would hide it: committed_at={committed_at:?} low_version={low_version:?}"
+		);
+
+		let base_key = make_key("in_flight");
+		let base_value = make_value("in_flight_value");
+		let mut base_pending = Pending::new();
+		base_pending.insert(
+			FlowNodeStateKey::new(node_id, base_key.as_ref().to_vec()).encode(),
+			base_value.clone(),
+		);
+
+		let mut txn = FlowTransaction::transactional(TransactionalParams {
+			version: low_version,
+			pending: Pending::new(),
+			base_pending,
+			query: engine.multi().begin_query().unwrap(),
+			state_query: engine.multi().begin_query().unwrap(),
+			single: engine.single().clone(),
+			catalog: Catalog::testing(),
+			interceptors: engine.create_interceptors(),
+			clock: engine.clock().clone(),
+			view_overlay: Arc::new(Vec::new()),
+		});
+
+		// Committed state above the txn version is visible (state_query is at the snapshot).
+		let committed = txn.state_get_many(node_id, &[committed_key]).unwrap();
+		assert_eq!(
+			committed.items.len(),
+			1,
+			"committed state at {committed_at:?} must be visible even though the txn version is {low_version:?}"
+		);
+		assert_eq!(committed.items[0].row, committed_value);
+
+		// base_pending (the current transaction's writes) is visible via the overlay.
+		let base = txn.state_get_many(node_id, &[base_key]).unwrap();
+		assert_eq!(base.items.len(), 1);
+		assert_eq!(base.items[0].row, base_value);
+	}
+
+	#[test]
+	fn ephemeral_read_sees_state_map_and_pending() {
+		// The ephemeral variant has no state_query; it serves operator-state reads from an
+		// in-memory state map (its seeded prior state) with the pending overlay on top.
+		// Guards that both the seeded map and live writes are read back.
+		let engine = TestEngine::new();
+		let node_id = FlowNodeId(1);
+		let seeded_key = make_key("seeded");
+		let seeded_value = make_value("seeded_value");
+
+		let mut state = HashMap::new();
+		state.insert(
+			FlowNodeStateKey::new(node_id, seeded_key.as_ref().to_vec()).encode(),
+			seeded_value.clone(),
+		);
+
+		let mut txn = FlowTransaction::ephemeral(
+			CommitVersion(1),
+			engine.multi().begin_query().unwrap(),
+			engine.single().clone(),
+			Catalog::testing(),
+			state,
+			engine.clock().clone(),
+		);
+
+		let seeded = txn.state_get_many(node_id, &[seeded_key]).unwrap();
+		assert_eq!(seeded.items.len(), 1, "seeded ephemeral state must be readable");
+		assert_eq!(seeded.items[0].row, seeded_value);
+
+		// A live write is visible via the pending overlay.
+		let live_key = make_key("live");
+		let live_value = make_value("live_value");
+		txn.state_set(node_id, &live_key, live_value.clone()).unwrap();
+		let live = txn.state_get_many(node_id, &[live_key]).unwrap();
+		assert_eq!(live.items.len(), 1);
+		assert_eq!(live.items[0].row, live_value);
 	}
 }

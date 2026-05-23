@@ -7,6 +7,7 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
+	thread,
 };
 
 use dashmap::DashMap;
@@ -129,7 +130,7 @@ impl Subsystem for TaskSubsystem {
 		let coordinator_tx = self.coordinator_tx.take();
 		let coordinator_handle = self.coordinator_handle.take();
 		let runtime = self.runtime.clone();
-		let worker = std::thread::spawn(move || {
+		let worker = thread::spawn(move || {
 			if let Some(coordinator_tx) = coordinator_tx {
 				let _ = coordinator_tx.blocking_send(TaskCoordinatorMessage::Shutdown);
 			}

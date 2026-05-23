@@ -130,10 +130,7 @@ impl FlowWorkerActor {
 				pending_shapes,
 				view_changes,
 			},
-			Err(e) => {
-				eprintln!("[FLOWERR] flow consume/rebalance error: {}", e);
-				FlowResponse::Error(e.to_string())
-			}
+			Err(e) => FlowResponse::Error(e.to_string()),
 		};
 		(reply)(resp);
 	}
@@ -153,10 +150,7 @@ impl FlowWorkerActor {
 				pending_shapes,
 				view_changes: Vec::new(),
 			},
-			Err(e) => {
-				eprintln!("[FLOWERR] flow consume/rebalance error: {}", e);
-				FlowResponse::Error(e.to_string())
-			}
+			Err(e) => FlowResponse::Error(e.to_string()),
 		};
 		(reply)(resp);
 	}
@@ -184,10 +178,7 @@ impl FlowWorkerActor {
 				pending_shapes: Vec::new(),
 				view_changes: Vec::new(),
 			},
-			Err(e) => {
-				eprintln!("[FLOWERR] flow consume/rebalance error: {}", e);
-				FlowResponse::Error(e.to_string())
-			}
+			Err(e) => FlowResponse::Error(e.to_string()),
 		};
 		(reply)(resp);
 	}
@@ -215,10 +206,7 @@ impl FlowWorkerActor {
 				pending_shapes: Vec::new(),
 				view_changes: Vec::new(),
 			},
-			Err(e) => {
-				eprintln!("[FLOWERR] flow consume/rebalance error: {}", e);
-				FlowResponse::Error(e.to_string())
-			}
+			Err(e) => FlowResponse::Error(e.to_string()),
 		};
 		(reply)(resp);
 	}

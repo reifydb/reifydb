@@ -362,11 +362,9 @@ where
 
 	#[inline]
 	fn on_produce(&self, version: CommitVersion, changed_at: DateTime, deltas: Vec<Delta>) {
-		eprintln!("[PRODDBG] on_produce START version={}", version.0);
 		self.process(version, changed_at, deltas);
 
 		self.watermark.advance(version);
-		eprintln!("[PRODDBG] on_produce END version={}", version.0);
 		self.wake_registry.notify_all();
 	}
 
@@ -469,7 +467,7 @@ where
 	}
 
 	fn config(&self) -> ActorConfig {
-		ActorConfig::new().mailbox_capacity(256)
+		ActorConfig::new()
 	}
 }
 
@@ -489,26 +487,19 @@ impl CdcProducerEventListener {
 
 impl EventListener<PostCommitEvent> for CdcProducerEventListener {
 	fn on(&self, event: &PostCommitEvent) {
-		let dbg_version = *event.version();
 		let msg = CdcProduceMessage::Produce {
 			version: *event.version(),
 			changed_at: DateTime::from_nanos(self.clock.now_nanos()),
 			deltas: event.deltas().iter().cloned().collect(),
 		};
 
-		match self.actor_ref.send(msg) {
-			Ok(()) => eprintln!("[SENTDBG] sent Produce version={}", dbg_version.0),
-			Err(e) => {
-				eprintln!(
-					"[DROPDBG] producer mailbox full -> DROPPED Produce version={}",
-					dbg_version.0
-				);
-				error!("Failed to send CDC event to producer actor: {:?}", e);
-			}
+		if let Err(e) = self.actor_ref.send(msg) {
+			error!("Failed to send CDC event to producer actor: {:?}", e);
 		}
 	}
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_cdc_producer<S, T, H>(
 	system: &ActorSystem,
 	storage: S,

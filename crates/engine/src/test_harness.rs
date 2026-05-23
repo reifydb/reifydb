@@ -273,6 +273,7 @@ fn make_test_runtime(mock_clock: &MockClock) -> SharedRuntime {
 	SharedRuntime::from_config(config, pools)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn register_cdc_producer(
 	runtime: &SharedRuntime,
 	cdc_store: CdcStore,

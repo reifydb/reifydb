@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::{
-	Arc,
-	atomic::{AtomicBool, Ordering},
+use std::{
+	fmt,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
 };
 
 use reifydb_core::actors::cdc::CdcPollMessage;
@@ -19,8 +22,8 @@ pub struct CdcWakeRegistry {
 	handles: Arc<Mutex<Vec<WakeHandle>>>,
 }
 
-impl std::fmt::Debug for CdcWakeRegistry {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for CdcWakeRegistry {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("CdcWakeRegistry").finish_non_exhaustive()
 	}
 }

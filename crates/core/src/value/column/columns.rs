@@ -800,9 +800,9 @@ impl Columns {
 			}
 		} else if self.columns.len() == field_count {
 			let columns_vec = self.columns.make_mut();
-			for idx in 0..field_count {
+			for (idx, column) in columns_vec.iter_mut().enumerate() {
 				let value = row.shape.get_value(&row.encoded, idx);
-				columns_vec[idx].push_value(value);
+				column.push_value(value);
 			}
 			self.row_numbers.push(row.number);
 			self.created_at.push(DateTime::from_nanos(row.encoded.created_at_nanos()));
