@@ -3,7 +3,6 @@
 
 use std::{marker::PhantomData, mem, ops::Bound};
 
-use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::{
@@ -27,9 +26,9 @@ use reifydb_sdk::{
 		column::{row::Row, sink::native::NativeRowSink},
 		context::{CatalogApi, InternalStateApi, OperatorContext, RowEmit, StateApi, StoreApi, UpdateEmit},
 	},
-	state::StateEntry,
+	state::{StateEntry, decode_payload, encode_payload},
 };
-use reifydb_type::{Result, util::cowvec::CowVec, value::row_number::RowNumber};
+use reifydb_type::{Result, value::row_number::RowNumber};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{operator::stateful::row::RowNumberProvider, transaction::FlowTransaction};
@@ -39,25 +38,28 @@ fn to_ffi<E: ToString>(e: E) -> FFIError {
 }
 
 fn decode<T: DeserializeOwned>(row: &EncodedRow) -> SdkResult<T> {
-	from_bytes(row.as_slice()).map_err(to_ffi)
+	decode_payload(row)
 }
 
-fn encode<T: Serialize>(value: &T) -> SdkResult<EncodedRow> {
-	Ok(EncodedRow(CowVec::new(to_stdvec(value).map_err(to_ffi)?)))
+fn encode<T: Serialize>(value: &T, now_nanos: u64) -> SdkResult<EncodedRow> {
+	encode_payload(value, now_nanos)
 }
 
 pub struct NativeOperatorContext<'a> {
 	txn: *mut FlowTransaction,
 	node: FlowNodeId,
+	now_nanos: u64,
 	diffs: Vec<Diff>,
 	_marker: PhantomData<&'a mut FlowTransaction>,
 }
 
 impl<'a> NativeOperatorContext<'a> {
 	pub fn new(txn: &'a mut FlowTransaction, node: FlowNodeId) -> Self {
+		let now_nanos = txn.clock().now_nanos();
 		Self {
 			txn: txn as *mut FlowTransaction,
 			node,
+			now_nanos,
 			diffs: Vec::new(),
 			_marker: PhantomData,
 		}
@@ -119,6 +121,7 @@ impl UpdateEmit for NativeUpdateEmit<'_> {
 pub struct NativeState {
 	txn: *mut FlowTransaction,
 	node: FlowNodeId,
+	now_nanos: u64,
 }
 
 impl StateApi for NativeState {
@@ -129,7 +132,8 @@ impl StateApi for NativeState {
 		}
 	}
 	fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> SdkResult<()> {
-		unsafe { (*self.txn).state_set(self.node, key, encode(value)?) }.map_err(to_ffi)
+		let now = self.now_nanos;
+		unsafe { (*self.txn).state_set(self.node, key, encode(value, now)?) }.map_err(to_ffi)
 	}
 	fn remove(&mut self, key: &EncodedKey) -> SdkResult<()> {
 		unsafe { (*self.txn).state_remove(self.node, key) }.map_err(to_ffi)
@@ -166,8 +170,8 @@ impl StateApi for NativeState {
 	fn get_with_anchors<T: DeserializeOwned>(&self, key: &EncodedKey) -> SdkResult<Option<StateEntry<T>>> {
 		match unsafe { (*self.txn).state_get(self.node, key) }.map_err(to_ffi)? {
 			Some(row) => Ok(Some(StateEntry {
-				created_at_nanos: 0,
-				updated_at_nanos: 0,
+				created_at_nanos: row.created_at_nanos(),
+				updated_at_nanos: row.updated_at_nanos(),
 				value: decode(&row)?,
 			})),
 			None => Ok(None),
@@ -178,6 +182,7 @@ impl StateApi for NativeState {
 pub struct NativeInternalState {
 	txn: *mut FlowTransaction,
 	node: FlowNodeId,
+	now_nanos: u64,
 }
 
 impl InternalStateApi for NativeInternalState {
@@ -192,7 +197,8 @@ impl InternalStateApi for NativeInternalState {
 		batch.items.iter().map(|r| Ok((r.key.clone(), decode(&r.row)?))).collect()
 	}
 	fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> SdkResult<()> {
-		unsafe { (*self.txn).internal_state_set(self.node, key, encode(value)?) }.map_err(to_ffi)
+		let now = self.now_nanos;
+		unsafe { (*self.txn).internal_state_set(self.node, key, encode(value, now)?) }.map_err(to_ffi)
 	}
 	fn remove(&mut self, key: &EncodedKey) -> SdkResult<()> {
 		unsafe { (*self.txn).internal_state_remove(self.node, key) }.map_err(to_ffi)
@@ -273,18 +279,20 @@ impl OperatorContext for NativeOperatorContext<'_> {
 		self.node
 	}
 	fn clock_now_nanos(&self) -> u64 {
-		unsafe { (*self.txn).clock().now_nanos() }
+		self.now_nanos
 	}
 	fn state(&mut self) -> impl StateApi + '_ {
 		NativeState {
 			txn: self.txn,
 			node: self.node,
+			now_nanos: self.now_nanos,
 		}
 	}
 	fn internal_state(&mut self) -> impl InternalStateApi + '_ {
 		NativeInternalState {
 			txn: self.txn,
 			node: self.node,
+			now_nanos: self.now_nanos,
 		}
 	}
 	fn store(&mut self) -> impl StoreApi + '_ {

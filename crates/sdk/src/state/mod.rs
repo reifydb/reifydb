@@ -152,7 +152,7 @@ impl<'a> InternalState<'a> {
 }
 
 #[inline]
-fn encode_payload<T: Serialize>(value: &T, now_nanos: u64) -> Result<EncodedRow> {
+pub fn encode_payload<T: Serialize>(value: &T, now_nanos: u64) -> Result<EncodedRow> {
 	let bytes = to_allocvec(value)
 		.map_err(|e| FFIError::Serialization(format!("operator state serialization failed: {}", e)))?;
 	let shape = RowShape::operator_state();
@@ -163,7 +163,7 @@ fn encode_payload<T: Serialize>(value: &T, now_nanos: u64) -> Result<EncodedRow>
 }
 
 #[inline]
-fn decode_payload<T: DeserializeOwned>(row: &EncodedRow) -> Result<T> {
+pub fn decode_payload<T: DeserializeOwned>(row: &EncodedRow) -> Result<T> {
 	let shape = RowShape::operator_state();
 	let blob = shape.get_blob(row, 0);
 	from_bytes(blob.as_bytes())
