@@ -17,7 +17,7 @@ use reifydb_sdk::{
 	error::Result as SdkResult,
 	operator::{
 		FFIOperator, FFIOperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
-		context::OperatorContext,
+		context::ffi::FFIOperatorContext,
 	},
 	testing::{builders::TestChangeBuilder, harness::TestHarnessBuilder},
 };
@@ -40,7 +40,7 @@ impl FFIOperator for EvenFilter {
 		Ok(Self)
 	}
 
-	fn apply(&mut self, ctx: &mut OperatorContext, input: BorrowedChange<'_>) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> SdkResult<()> {
 		let mut builder = ctx.builder();
 		for diff in input.diffs() {
 			if diff.kind() != DiffType::Insert {
@@ -78,10 +78,6 @@ impl FFIOperator for EvenFilter {
 			let row_numbers: Vec<RowNumber> = (1..=kept_n as u64).map(RowNumber).collect();
 			builder.emit_insert(&[committed], &["a"], &row_numbers)?;
 		}
-		Ok(())
-	}
-
-	fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> SdkResult<()> {
 		Ok(())
 	}
 }

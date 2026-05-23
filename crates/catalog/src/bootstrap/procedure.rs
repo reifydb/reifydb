@@ -35,7 +35,7 @@ pub enum EphemeralProcedureDescriptor {
 		return_type: Option<TypeConstraint>,
 		native_name: String,
 	},
-	Ffi {
+	FFI {
 		namespace: NamespaceId,
 		name: String,
 		params: Vec<ProcedureParam>,
@@ -90,7 +90,7 @@ pub fn load_ephemeral_procedures(
 				return_type,
 				native_name,
 			},
-			EphemeralProcedureDescriptor::Ffi {
+			EphemeralProcedureDescriptor::FFI {
 				namespace,
 				name,
 				params,
@@ -98,7 +98,7 @@ pub fn load_ephemeral_procedures(
 				native_name,
 				library_path,
 				entry_symbol,
-			} => Procedure::Ffi {
+			} => Procedure::FFI {
 				id,
 				namespace,
 				name,

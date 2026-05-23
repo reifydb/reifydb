@@ -73,7 +73,7 @@ for file in $crates_files; do
             echo "  📄 $rel_path:$line_num"
             echo "     $content"
             echo ""
-            ((violation_count++))
+            violation_count=$((violation_count + 1))
         fi
     done < <(grep -n "^[[:space:]]*pub use " "$file" 2>/dev/null || true)
 done

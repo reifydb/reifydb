@@ -46,6 +46,46 @@ impl ColumnBuffer {
 	pub fn get_as<T: FromColumnBuffer>(&self, index: usize) -> Option<T> {
 		T::from_column_buffer(self, index)
 	}
+
+	pub fn get_str(&self, index: usize) -> Option<&str> {
+		match self {
+			ColumnBuffer::Utf8 {
+				container,
+				..
+			} => container.get(index),
+			ColumnBuffer::Option {
+				inner,
+				bitvec,
+			} => {
+				if index < DataBitVec::len(bitvec) && DataBitVec::get(bitvec, index) {
+					inner.get_str(index)
+				} else {
+					None
+				}
+			}
+			_ => None,
+		}
+	}
+
+	pub fn get_bytes(&self, index: usize) -> Option<&[u8]> {
+		match self {
+			ColumnBuffer::Blob {
+				container,
+				..
+			} => container.get(index),
+			ColumnBuffer::Option {
+				inner,
+				bitvec,
+			} => {
+				if index < DataBitVec::len(bitvec) && DataBitVec::get(bitvec, index) {
+					inner.get_bytes(index)
+				} else {
+					None
+				}
+			}
+			_ => None,
+		}
+	}
 }
 
 macro_rules! impl_from_column_data_numeric {
@@ -92,6 +132,18 @@ impl FromColumnBuffer for String {
 				container,
 				..
 			} => container.get(index).map(str::to_string),
+			_ => None,
+		}
+	}
+}
+
+impl FromColumnBuffer for Vec<u8> {
+	fn from_column_buffer(data: &ColumnBuffer, index: usize) -> Option<Self> {
+		match data {
+			ColumnBuffer::Blob {
+				container,
+				..
+			} => container.get(index).map(<[u8]>::to_vec),
 			_ => None,
 		}
 	}

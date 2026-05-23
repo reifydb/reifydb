@@ -9,32 +9,32 @@ use crate::{
 	error::FFIError,
 	operator::{
 		builder::ColumnsBuilder,
-		column::{emitter::RowEmitter, row::Row},
-		context::OperatorContext,
+		column::{row::Row, sink::ffi::FFIRowSink},
+		context::ffi::FFIOperatorContext,
 	},
 };
 
 pub struct InsertBatch<'a, R: Row> {
 	builder: ColumnsBuilder<'a>,
-	emitter: RowEmitter<'a>,
+	sink: FFIRowSink<'a>,
 	row_numbers: Vec<RowNumber>,
 	_t: PhantomData<R>,
 }
 
 impl<'a, R: Row> InsertBatch<'a, R> {
-	pub fn new(ctx: &'a mut OperatorContext, row_capacity: usize) -> Result<Self, FFIError> {
+	pub fn new(ctx: &'a mut FFIOperatorContext, row_capacity: usize) -> Result<Self, FFIError> {
 		let mut builder = ColumnsBuilder::new(ctx);
-		let emitter = RowEmitter::new::<R>(&mut builder, row_capacity)?;
+		let sink = FFIRowSink::new::<R>(&mut builder, row_capacity)?;
 		Ok(Self {
 			builder,
-			emitter,
+			sink,
 			row_numbers: Vec::with_capacity(row_capacity),
 			_t: PhantomData,
 		})
 	}
 
 	pub fn push(&mut self, row_number: RowNumber, row: &R) -> Result<(), FFIError> {
-		row.encode_into(&mut self.emitter)?;
+		row.encode_into(&mut self.sink)?;
 		self.row_numbers.push(row_number);
 		Ok(())
 	}
@@ -53,7 +53,7 @@ impl<'a, R: Row> InsertBatch<'a, R> {
 		if self.row_numbers.is_empty() {
 			return Ok(());
 		}
-		let columns = self.emitter.finish_all()?;
+		let columns = self.sink.finish_all()?;
 		let names: Vec<&str> = R::COLUMNS.iter().map(|(n, _)| *n).collect();
 		self.builder.emit_insert(&columns, &names, &self.row_numbers)
 	}
@@ -61,17 +61,17 @@ impl<'a, R: Row> InsertBatch<'a, R> {
 
 pub struct UpdateBatch<'a, R: Row> {
 	builder: ColumnsBuilder<'a>,
-	pre: RowEmitter<'a>,
-	post: RowEmitter<'a>,
+	pre: FFIRowSink<'a>,
+	post: FFIRowSink<'a>,
 	row_numbers: Vec<RowNumber>,
 	_t: PhantomData<R>,
 }
 
 impl<'a, R: Row> UpdateBatch<'a, R> {
-	pub fn new(ctx: &'a mut OperatorContext, row_capacity: usize) -> Result<Self, FFIError> {
+	pub fn new(ctx: &'a mut FFIOperatorContext, row_capacity: usize) -> Result<Self, FFIError> {
 		let mut builder = ColumnsBuilder::new(ctx);
-		let pre = RowEmitter::new::<R>(&mut builder, row_capacity)?;
-		let post = RowEmitter::new::<R>(&mut builder, row_capacity)?;
+		let pre = FFIRowSink::new::<R>(&mut builder, row_capacity)?;
+		let post = FFIRowSink::new::<R>(&mut builder, row_capacity)?;
 		Ok(Self {
 			builder,
 			pre,
@@ -121,25 +121,25 @@ impl<'a, R: Row> UpdateBatch<'a, R> {
 
 pub struct RemoveBatch<'a, R: Row> {
 	builder: ColumnsBuilder<'a>,
-	emitter: RowEmitter<'a>,
+	sink: FFIRowSink<'a>,
 	row_numbers: Vec<RowNumber>,
 	_t: PhantomData<R>,
 }
 
 impl<'a, R: Row> RemoveBatch<'a, R> {
-	pub fn new(ctx: &'a mut OperatorContext, row_capacity: usize) -> Result<Self, FFIError> {
+	pub fn new(ctx: &'a mut FFIOperatorContext, row_capacity: usize) -> Result<Self, FFIError> {
 		let mut builder = ColumnsBuilder::new(ctx);
-		let emitter = RowEmitter::new::<R>(&mut builder, row_capacity)?;
+		let sink = FFIRowSink::new::<R>(&mut builder, row_capacity)?;
 		Ok(Self {
 			builder,
-			emitter,
+			sink,
 			row_numbers: Vec::with_capacity(row_capacity),
 			_t: PhantomData,
 		})
 	}
 
 	pub fn push(&mut self, row_number: RowNumber, row: &R) -> Result<(), FFIError> {
-		row.encode_into(&mut self.emitter)?;
+		row.encode_into(&mut self.sink)?;
 		self.row_numbers.push(row_number);
 		Ok(())
 	}
@@ -158,7 +158,7 @@ impl<'a, R: Row> RemoveBatch<'a, R> {
 		if self.row_numbers.is_empty() {
 			return Ok(());
 		}
-		let columns = self.emitter.finish_all()?;
+		let columns = self.sink.finish_all()?;
 		let names: Vec<&str> = R::COLUMNS.iter().map(|(n, _)| *n).collect();
 		self.builder.emit_remove(&columns, &names, &self.row_numbers)
 	}
@@ -181,7 +181,7 @@ mod tests {
 				batch::{InsertBatch, RemoveBatch, UpdateBatch},
 				operator::OperatorColumn,
 			},
-			context::OperatorContext,
+			context::ffi::FFIOperatorContext,
 		},
 		row,
 		testing::{builders::TestChangeBuilder, harness::TestHarnessBuilder},
@@ -217,7 +217,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let mut batch = InsertBatch::<Bar>::new(ctx, 3)?;
 			batch.push(
 				RowNumber(1),
@@ -250,9 +250,6 @@ mod tests {
 				},
 			)?;
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -299,11 +296,8 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			InsertBatch::<Bar>::new(ctx, 0)?.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -328,7 +322,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let mut batch = UpdateBatch::<Bar>::new(ctx, 1)?;
 			batch.push(
 				RowNumber(1),
@@ -348,9 +342,6 @@ mod tests {
 				},
 			)?;
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -391,7 +382,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let mut batch = RemoveBatch::<Bar>::new(ctx, 2)?;
 			batch.push(
 				RowNumber(1),
@@ -414,9 +405,6 @@ mod tests {
 				},
 			)?;
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -444,7 +432,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let mut batch = InsertBatch::<Bar>::new(ctx, 100)?;
 			for i in 0..100u64 {
 				batch.push(
@@ -459,9 +447,6 @@ mod tests {
 				)?;
 			}
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -500,7 +485,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let mut batch = InsertBatch::<OptU64Row>::new(ctx, 4)?;
 			batch.push(
 				RowNumber(1),
@@ -527,9 +512,6 @@ mod tests {
 				},
 			)?;
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -572,7 +554,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let mut batch = InsertBatch::<OptStrRow>::new(ctx, 4)?;
 			batch.push(
 				RowNumber(1),
@@ -599,9 +581,6 @@ mod tests {
 				},
 			)?;
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -644,7 +623,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let mut batch = InsertBatch::<OptBlobRow>::new(ctx, 3)?;
 			batch.push(
 				RowNumber(1),
@@ -665,9 +644,6 @@ mod tests {
 				},
 			)?;
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 

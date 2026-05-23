@@ -14,10 +14,10 @@ use tracing::{Span, instrument};
 
 use crate::{
 	error::{FFIError, Result},
-	operator::context::OperatorContext,
+	operator::context::ffi::FFIOperatorContext,
 };
 
-pub(super) fn raw_store_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+pub(super) fn raw_store_get(ctx: &FFIOperatorContext, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 	let key_bytes = key.as_bytes();
 	let mut output = BufferFFI {
 		ptr: null_mut(),
@@ -49,7 +49,7 @@ pub(super) fn raw_store_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<O
 #[instrument(name = "flow::operator::store::raw::contains_key", level = "trace", skip(ctx), fields(
 	key_len = key.as_bytes().len()
 ))]
-pub(super) fn raw_store_contains_key(ctx: &OperatorContext, key: &EncodedKey) -> Result<bool> {
+pub(super) fn raw_store_contains_key(ctx: &FFIOperatorContext, key: &EncodedKey) -> Result<bool> {
 	let key_bytes = key.as_bytes();
 	let mut result_byte: u8 = 0;
 
@@ -72,7 +72,7 @@ pub(super) fn raw_store_contains_key(ctx: &OperatorContext, key: &EncodedKey) ->
 #[instrument(name = "flow::operator::store::raw::prefix", level = "trace", skip(ctx), fields(
 	prefix_len = prefix.as_bytes().len()
 ))]
-pub(super) fn raw_store_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+pub(super) fn raw_store_prefix(ctx: &FFIOperatorContext, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 	let prefix_bytes = prefix.as_bytes();
 	let mut iterator: *mut StoreIteratorFFI = null_mut();
 
@@ -98,7 +98,7 @@ const BOUND_EXCLUDED: u8 = 2;
 
 #[instrument(name = "flow::operator::store::raw::range", level = "trace", skip(ctx, start, end))]
 pub(super) fn raw_store_range(
-	ctx: &OperatorContext,
+	ctx: &FFIOperatorContext,
 	start: Bound<&EncodedKey>,
 	end: Bound<&EncodedKey>,
 ) -> Result<Vec<(EncodedKey, EncodedRow)>> {
@@ -143,7 +143,7 @@ pub(super) fn raw_store_range(
 	fields(result_count)
 )]
 pub(super) unsafe fn collect_iterator_results(
-	ctx: &OperatorContext,
+	ctx: &FFIOperatorContext,
 	iterator: *mut StoreIteratorFFI,
 ) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 	if iterator.is_null() {

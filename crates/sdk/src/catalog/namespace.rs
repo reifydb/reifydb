@@ -12,10 +12,10 @@ use reifydb_core::{
 	interface::catalog::{id::NamespaceId, namespace::Namespace},
 };
 
-use crate::{error::FFIError, operator::context::OperatorContext};
+use crate::{error::FFIError, operator::context::ffi::FFIOperatorContext};
 
 pub(super) fn raw_catalog_find_namespace(
-	ctx: &OperatorContext,
+	ctx: &FFIOperatorContext,
 	namespace_id: NamespaceId,
 	version: CommitVersion,
 ) -> Result<Option<Namespace>, FFIError> {
@@ -43,7 +43,7 @@ pub(super) fn raw_catalog_find_namespace(
 }
 
 pub(super) fn raw_catalog_find_namespace_by_name(
-	ctx: &OperatorContext,
+	ctx: &FFIOperatorContext,
 	name: &str,
 	version: CommitVersion,
 ) -> Result<Option<Namespace>, FFIError> {

@@ -17,13 +17,13 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-pub struct SystemProceduresFfi {
+pub struct SystemProceduresFFI {
 	pub(crate) vtable: Arc<VTable>,
 	pub(crate) catalog: Catalog,
 	exhausted: bool,
 }
 
-impl SystemProceduresFfi {
+impl SystemProceduresFFI {
 	pub fn new(catalog: Catalog) -> Self {
 		Self {
 			vtable: SystemCatalog::get_system_procedures_ffi_table().clone(),
@@ -33,7 +33,7 @@ impl SystemProceduresFfi {
 	}
 }
 
-impl BaseVTable for SystemProceduresFfi {
+impl BaseVTable for SystemProceduresFFI {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -52,7 +52,7 @@ impl BaseVTable for SystemProceduresFfi {
 		let mut entry_col = ColumnBuffer::utf8_with_capacity(0);
 
 		for entry in self.catalog.cache.procedures.iter() {
-			if let Some(Procedure::Ffi {
+			if let Some(Procedure::FFI {
 				id,
 				namespace,
 				name,

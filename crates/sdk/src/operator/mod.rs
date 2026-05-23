@@ -8,22 +8,23 @@
 
 use std::{collections::HashMap, time::Duration};
 
-use reifydb_type::value::{Value, row_number::RowNumber};
+use reifydb_type::value::Value;
 
 pub mod builder;
 pub mod change;
 pub mod column;
 pub mod context;
 pub mod diff;
+pub mod view;
 pub mod view_column;
-pub mod view_row;
 pub mod windowed;
 
 use change::BorrowedChange;
 use column::operator::OperatorColumn;
-use context::OperatorContext;
+use context::{OperatorContext, ffi::FFIOperatorContext};
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_type::value::datetime::DateTime;
+use view::ChangeView;
 
 use crate::error::Result;
 
@@ -46,11 +47,9 @@ pub trait FFIOperator: 'static {
 	where
 		Self: Sized;
 
-	fn apply(&mut self, ctx: &mut OperatorContext, input: BorrowedChange<'_>) -> Result<()>;
+	fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()>;
 
-	fn pull(&mut self, ctx: &mut OperatorContext, row_numbers: &[RowNumber]) -> Result<()>;
-
-	fn tick(&mut self, _ctx: &mut OperatorContext, _tick: Tick) -> Result<bool> {
+	fn tick(&mut self, _ctx: &mut FFIOperatorContext, _tick: Tick) -> Result<bool> {
 		Ok(false)
 	}
 
@@ -58,10 +57,14 @@ pub trait FFIOperator: 'static {
 		None
 	}
 
-	fn flush_state(&mut self, _ctx: &mut OperatorContext) -> Result<()> {
+	fn flush_state(&mut self, _ctx: &mut FFIOperatorContext) -> Result<()> {
 		Ok(())
 	}
 }
 
 pub trait FFIOperatorWithMetadata: FFIOperator + FFIOperatorMetadata {}
 impl<T> FFIOperatorWithMetadata for T where T: FFIOperator + FFIOperatorMetadata {}
+
+pub trait OperatorLogic: Send + Sync {
+	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()>;
+}

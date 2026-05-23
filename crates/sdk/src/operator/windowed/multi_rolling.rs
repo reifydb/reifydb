@@ -46,7 +46,7 @@ use crate::{
 			operator::OperatorColumn,
 			row::Row,
 		},
-		context::OperatorContext,
+		context::ffi::FFIOperatorContext,
 		windowed::span::Slot,
 	},
 	state::cache::StateCache,
@@ -206,7 +206,7 @@ where
 	}
 
 	#[allow(clippy::type_complexity)]
-	fn apply(&mut self, ctx: &mut OperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
 		let mut buckets: BTreeMap<(A::GroupKey, A::WindowKey), Vec<BufferEvent<A>>> = BTreeMap::new();
 
 		for diff in input.diffs() {
@@ -461,11 +461,7 @@ where
 		Ok(())
 	}
 
-	fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> Result<()> {
-		Ok(())
-	}
-
-	fn flush_state(&mut self, ctx: &mut OperatorContext) -> Result<()> {
+	fn flush_state(&mut self, ctx: &mut FFIOperatorContext) -> Result<()> {
 		self.groups.flush(ctx)?;
 		self.meta.flush(ctx)?;
 		Ok(())

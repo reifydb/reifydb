@@ -21,10 +21,10 @@ use reifydb_abi::{
 	},
 	operator::vtable::OperatorVTableFFI,
 };
-use reifydb_type::value::{datetime::DateTime, row_number::RowNumber};
+use reifydb_type::value::datetime::DateTime;
 use tracing::{error, instrument, warn};
 
-use crate::operator::{FFIOperator, Tick, change::BorrowedChange, context::OperatorContext};
+use crate::operator::{FFIOperator, Tick, change::BorrowedChange, context::ffi::FFIOperatorContext};
 
 thread_local! {
 
@@ -173,7 +173,7 @@ pub unsafe extern "C" fn ffi_apply<O: FFIOperator>(
 		}
 		let wrapper = OperatorWrapper::<O>::from_ptr(instance);
 		let borrowed = unsafe { BorrowedChange::from_raw(input) };
-		let mut op_ctx = OperatorContext::new(ctx);
+		let mut op_ctx = FFIOperatorContext::new(ctx);
 		match wrapper.operator.apply(&mut op_ctx, borrowed) {
 			Ok(()) => 0,
 			Err(e) => {
@@ -214,70 +214,6 @@ pub unsafe extern "C" fn ffi_apply<O: FFIOperator>(
 ///
 /// - `instance` must be a valid pointer to an `OperatorWrapper<O>` created by `Box::new`.
 /// - `ctx` must be a valid pointer to a `ContextFFI`.
-/// - `row_numbers` must be valid for reading `count` elements, or null if `count` is 0.
-#[instrument(name = "flow::operator::ffi::pull", level = "debug", skip_all, fields(
-	operator_type = any::type_name::<O>(),
-	row_count = count,
-))]
-pub unsafe extern "C" fn ffi_pull<O: FFIOperator>(
-	instance: *mut c_void,
-	ctx: *mut ContextFFI,
-	row_numbers: *const u64,
-	count: usize,
-) -> i32 {
-	let result = catch_unwind(AssertUnwindSafe(|| {
-		let wrapper = OperatorWrapper::<O>::from_ptr(instance);
-
-		let numbers: Vec<RowNumber> = if !row_numbers.is_null() && count > 0 {
-			unsafe { slice::from_raw_parts(row_numbers, count) }
-				.iter()
-				.map(|&n| RowNumber::from(n))
-				.collect()
-		} else {
-			Vec::new()
-		};
-
-		let mut op_ctx = OperatorContext::new(ctx);
-		match wrapper.operator.pull(&mut op_ctx, &numbers) {
-			Ok(()) => 0,
-			Err(e) => {
-				warn!(?e, "pull failed");
-				set_fatal_detail(format!("{:?}", e));
-				-2
-			}
-		}
-	}));
-
-	let (code, backtrace) = match result {
-		Ok(code) => (code, None),
-		Err(payload) => {
-			let bt = Backtrace::force_capture();
-			set_fatal_detail(describe_panic_payload(&payload));
-			error!("Panic in ffi_pull");
-			(-99, Some(bt))
-		}
-	};
-
-	if code < 0 {
-		let detail = take_fatal_detail().unwrap_or_default();
-		let input_desc = format!("row_count={}", count);
-		print_ffi_fatal(
-			"ffi_pull",
-			any::type_name::<O>(),
-			code,
-			&detail,
-			Some(&input_desc),
-			backtrace.as_ref(),
-		);
-		abort();
-	}
-	code
-}
-
-/// # Safety
-///
-/// - `instance` must be a valid pointer to an `OperatorWrapper<O>` created by `Box::new`.
-/// - `ctx` must be a valid pointer to a `ContextFFI`.
 #[instrument(name = "flow::operator::ffi::tick", level = "debug", skip_all, fields(
 	operator_type = any::type_name::<O>(),
 ))]
@@ -292,7 +228,7 @@ pub unsafe extern "C" fn ffi_tick<O: FFIOperator>(
 		let tick = Tick {
 			now: DateTime::from_nanos(timestamp_nanos),
 		};
-		let mut op_ctx = OperatorContext::new(ctx);
+		let mut op_ctx = FFIOperatorContext::new(ctx);
 
 		match wrapper.operator.tick(&mut op_ctx, tick) {
 			Ok(true) => 0,
@@ -390,7 +326,7 @@ pub unsafe extern "C" fn ffi_flush_state<O: FFIOperator>(instance: *mut c_void, 
 
 	let result = catch_unwind(AssertUnwindSafe(|| {
 		let wrapper = unsafe { &mut *(instance as *mut OperatorWrapper<O>) };
-		let mut op_ctx = OperatorContext::new(ctx);
+		let mut op_ctx = FFIOperatorContext::new(ctx);
 		wrapper.operator.flush_state(&mut op_ctx)
 	}));
 
@@ -413,7 +349,6 @@ pub unsafe extern "C" fn ffi_flush_state<O: FFIOperator>(instance: *mut c_void, 
 pub fn create_vtable<O: FFIOperator>() -> OperatorVTableFFI {
 	OperatorVTableFFI {
 		apply: ffi_apply::<O>,
-		pull: ffi_pull::<O>,
 		tick: ffi_tick::<O>,
 		tick_interval: ffi_tick_interval::<O>,
 		destroy: ffi_destroy::<O>,

@@ -24,14 +24,14 @@ use reifydb_type::value::{
 	r#type::Type,
 };
 
-use crate::{error::FFIError, operator::context::OperatorContext};
+use crate::{error::FFIError, operator::context::ffi::FFIOperatorContext};
 
 pub struct Catalog<'a> {
-	ctx: &'a mut OperatorContext,
+	ctx: &'a mut FFIOperatorContext,
 }
 
 impl<'a> Catalog<'a> {
-	pub(crate) fn new(ctx: &'a mut OperatorContext) -> Self {
+	pub(crate) fn new(ctx: &'a mut FFIOperatorContext) -> Self {
 		Self {
 			ctx,
 		}

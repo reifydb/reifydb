@@ -11,7 +11,7 @@ use crate::{
 	error::FFIError,
 	operator::{
 		builder::{ColumnBuilder, ColumnsBuilder, CommittedColumn},
-		context::OperatorContext,
+		context::ffi::FFIOperatorContext,
 	},
 };
 
@@ -20,7 +20,7 @@ pub struct DiffStart<'a> {
 }
 
 impl<'a> DiffStart<'a> {
-	pub(crate) fn new(ctx: &'a mut OperatorContext) -> Self {
+	pub(crate) fn new(ctx: &'a mut FFIOperatorContext) -> Self {
 		Self {
 			inner: ColumnsBuilder::new(ctx),
 		}

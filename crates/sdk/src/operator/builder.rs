@@ -10,7 +10,7 @@ use reifydb_abi::{
 };
 use reifydb_type::value::row_number::RowNumber;
 
-use crate::{error::FFIError, operator::context::OperatorContext};
+use crate::{error::FFIError, operator::context::ffi::FFIOperatorContext};
 
 pub struct ColumnBuilder<'a> {
 	ctx: *mut ContextFFI,
@@ -237,7 +237,7 @@ pub struct ColumnsBuilder<'a> {
 }
 
 impl<'a> ColumnsBuilder<'a> {
-	pub fn new(ctx: &'a mut OperatorContext) -> Self {
+	pub fn new(ctx: &'a mut FFIOperatorContext) -> Self {
 		Self {
 			ctx: ctx.ctx,
 			_phantom: core::marker::PhantomData,

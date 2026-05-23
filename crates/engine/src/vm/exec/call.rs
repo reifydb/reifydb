@@ -470,7 +470,7 @@ impl<'a> Vm<'a> {
 				native_name,
 				..
 			}
-			| Procedure::Ffi {
+			| Procedure::FFI {
 				native_name,
 				..
 			}

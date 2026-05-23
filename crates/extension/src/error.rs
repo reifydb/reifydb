@@ -9,7 +9,7 @@ use reifydb_type::error::Error as TypeError;
 #[derive(Debug, thiserror::Error)]
 pub enum ExtensionError {
 	#[error("FFI load error: {0}")]
-	FfiLoad(String),
+	FFILoad(String),
 
 	#[error("WASM load error: {0}")]
 	WasmLoad(String),
@@ -39,7 +39,7 @@ pub enum ExtensionError {
 	Io(#[from] io::Error),
 
 	#[error(transparent)]
-	Ffi(#[from] FFIError),
+	FFI(#[from] FFIError),
 
 	#[error(transparent)]
 	Other(Box<dyn Error + Send + Sync>),

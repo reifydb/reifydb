@@ -9,15 +9,15 @@ use reifydb_type::value::{date::Date, datetime::DateTime, decimal::Decimal, dura
 
 use crate::{
 	error::FFIError,
-	operator::{column::emitter::RowEmitter, view_row::RowView},
+	operator::{column::sink::RowSink, view::RowView},
 };
 
 pub trait Cell: Sized {
 	const COLUMN_TYPE: ColumnTypeCode;
 	const AVG_BYTES: usize = 0;
 
-	fn encode(&self, emitter: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError>;
-	fn decode(view: &RowView<'_>, name: &str) -> Option<Self>;
+	fn encode<S: RowSink>(&self, sink: &mut S, col: usize) -> Result<(), FFIError>;
+	fn decode<V: RowView>(view: &V, name: &str) -> Option<Self>;
 }
 
 macro_rules! impl_cell_scalar {
@@ -25,12 +25,12 @@ macro_rules! impl_cell_scalar {
 		impl Cell for $ty {
 			const COLUMN_TYPE: ColumnTypeCode = $code;
 			#[inline]
-			fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+			fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
 				e.$push(col, *self);
 				Ok(())
 			}
 			#[inline]
-			fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
+			fn decode<V: RowView>(view: &V, name: &str) -> Option<Self> {
 				view.$read(name)
 			}
 		}
@@ -52,12 +52,12 @@ impl_cell_scalar!(bool, ColumnTypeCode::Bool, push_bool, bool);
 impl Cell for u128 {
 	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Uint16;
 	#[inline]
-	fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
 		e.push_u128(col, *self);
 		Ok(())
 	}
 	#[inline]
-	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
+	fn decode<V: RowView>(view: &V, name: &str) -> Option<Self> {
 		view.u128(name)
 	}
 }
@@ -65,12 +65,12 @@ impl Cell for u128 {
 impl Cell for i128 {
 	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Int16;
 	#[inline]
-	fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
 		e.push_i128(col, *self);
 		Ok(())
 	}
 	#[inline]
-	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
+	fn decode<V: RowView>(view: &V, name: &str) -> Option<Self> {
 		view.i128(name)
 	}
 }
@@ -79,12 +79,12 @@ impl Cell for String {
 	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Utf8;
 	const AVG_BYTES: usize = 24;
 	#[inline]
-	fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
 		e.push_utf8(col, self.as_str())
 	}
 	#[inline]
-	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
-		view.utf8(name).map(|s| s.to_string())
+	fn decode<V: RowView>(view: &V, name: &str) -> Option<Self> {
+		view.utf8(name).map(str::to_string)
 	}
 }
 
@@ -92,11 +92,11 @@ impl Cell for Arc<str> {
 	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Utf8;
 	const AVG_BYTES: usize = 24;
 	#[inline]
-	fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
 		e.push_utf8(col, self.as_ref())
 	}
 	#[inline]
-	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
+	fn decode<V: RowView>(view: &V, name: &str) -> Option<Self> {
 		view.utf8(name).map(Arc::from)
 	}
 }
@@ -105,12 +105,12 @@ impl Cell for Vec<u8> {
 	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Blob;
 	const AVG_BYTES: usize = 32;
 	#[inline]
-	fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
 		e.push_blob(col, self.as_slice())
 	}
 	#[inline]
-	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
-		view.blob(name).map(|b| b.to_vec())
+	fn decode<V: RowView>(view: &V, name: &str) -> Option<Self> {
+		view.blob(name).map(<[u8]>::to_vec)
 	}
 }
 
@@ -118,13 +118,13 @@ impl Cell for Decimal {
 	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Decimal;
 	const AVG_BYTES: usize = 16;
 	#[inline]
-	fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
 		let bytes = to_allocvec(self)
 			.map_err(|err| FFIError::Serialization(format!("decimal serialize: {}", err)))?;
 		e.push_decimal_bytes(col, &bytes)
 	}
 	#[inline]
-	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
+	fn decode<V: RowView>(view: &V, name: &str) -> Option<Self> {
 		view.decimal(name)
 	}
 }
@@ -132,12 +132,12 @@ impl Cell for Decimal {
 impl Cell for Date {
 	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Date;
 	#[inline]
-	fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
 		e.push_date(col, *self);
 		Ok(())
 	}
 	#[inline]
-	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
+	fn decode<V: RowView>(view: &V, name: &str) -> Option<Self> {
 		view.date(name)
 	}
 }
@@ -145,12 +145,12 @@ impl Cell for Date {
 impl Cell for DateTime {
 	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::DateTime;
 	#[inline]
-	fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
 		e.push_datetime(col, *self);
 		Ok(())
 	}
 	#[inline]
-	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
+	fn decode<V: RowView>(view: &V, name: &str) -> Option<Self> {
 		view.datetime(name)
 	}
 }
@@ -158,12 +158,12 @@ impl Cell for DateTime {
 impl Cell for Time {
 	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Time;
 	#[inline]
-	fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
 		e.push_time(col, *self);
 		Ok(())
 	}
 	#[inline]
-	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
+	fn decode<V: RowView>(view: &V, name: &str) -> Option<Self> {
 		view.time(name)
 	}
 }
@@ -171,12 +171,12 @@ impl Cell for Time {
 impl Cell for Duration {
 	const COLUMN_TYPE: ColumnTypeCode = ColumnTypeCode::Duration;
 	#[inline]
-	fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
 		e.push_duration(col, *self);
 		Ok(())
 	}
 	#[inline]
-	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
+	fn decode<V: RowView>(view: &V, name: &str) -> Option<Self> {
 		view.duration(name)
 	}
 }
@@ -185,14 +185,14 @@ impl<T: Cell> Cell for Option<T> {
 	const COLUMN_TYPE: ColumnTypeCode = T::COLUMN_TYPE;
 	const AVG_BYTES: usize = T::AVG_BYTES;
 	#[inline]
-	fn encode(&self, e: &mut RowEmitter<'_>, col: usize) -> Result<(), FFIError> {
+	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), FFIError> {
 		match self {
 			Some(v) => v.encode(e, col),
 			None => e.push_none(col),
 		}
 	}
 	#[inline]
-	fn decode(view: &RowView<'_>, name: &str) -> Option<Self> {
+	fn decode<V: RowView>(view: &V, name: &str) -> Option<Self> {
 		Some(if view.is_defined(name) {
 			T::decode(view, name)
 		} else {

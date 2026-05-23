@@ -9,12 +9,12 @@ use reifydb_sdk::{
 	error::Result,
 	operator::{
 		FFIOperator, FFIOperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
-		context::OperatorContext,
+		context::ffi::FFIOperatorContext,
 	},
 	state::cache::StateCache,
 	testing::{builders::TestChangeBuilder, harness::TestHarnessBuilder},
 };
-use reifydb_type::value::{Value, row_number::RowNumber};
+use reifydb_type::value::Value;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default, Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -28,7 +28,7 @@ struct SumState {
 }
 
 /// Simple pass-through operator - we only need this to create a harness
-/// that provides a valid OperatorContext for testing StateCache directly.
+/// that provides a valid FFIOperatorContext for testing StateCache directly.
 struct PassthroughOperator;
 
 impl FFIOperatorMetadata for PassthroughOperator {
@@ -46,11 +46,7 @@ impl FFIOperator for PassthroughOperator {
 		Ok(Self)
 	}
 
-	fn apply(&mut self, _ctx: &mut OperatorContext, _input: BorrowedChange<'_>) -> Result<()> {
-		Ok(())
-	}
-
-	fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> Result<()> {
+	fn apply(&mut self, _ctx: &mut FFIOperatorContext, _input: BorrowedChange<'_>) -> Result<()> {
 		Ok(())
 	}
 }

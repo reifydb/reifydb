@@ -7,10 +7,10 @@ use reifydb_type::{params::Params, value::frame::frame::Frame};
 
 use crate::{
 	error::{FFIError, Result},
-	operator::context::OperatorContext,
+	operator::context::ffi::FFIOperatorContext,
 };
 
-pub(crate) fn raw_query(ctx: &OperatorContext, query: &str, params: Params) -> Result<Vec<Frame>> {
+pub(crate) fn raw_query(ctx: &FFIOperatorContext, query: &str, params: Params) -> Result<Vec<Frame>> {
 	let params_bytes = to_stdvec(&params)
 		.map_err(|e| FFIError::Serialization(format!("failed to serialize params: {}", e)))?;
 

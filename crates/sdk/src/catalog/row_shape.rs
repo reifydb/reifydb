@@ -10,10 +10,10 @@ use reifydb_abi::{
 use reifydb_core::encoded::shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint};
 
 use super::decode_type_constraint;
-use crate::{error::FFIError, operator::context::OperatorContext};
+use crate::{error::FFIError, operator::context::ffi::FFIOperatorContext};
 
 pub(super) fn raw_catalog_find_row_shape(
-	ctx: &OperatorContext,
+	ctx: &FFIOperatorContext,
 	fingerprint: RowShapeFingerprint,
 ) -> Result<Option<RowShape>, FFIError> {
 	unsafe {

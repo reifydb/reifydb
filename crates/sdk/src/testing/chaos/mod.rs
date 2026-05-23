@@ -340,14 +340,14 @@ mod tests {
 
 	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
+	use reifydb_type::value::r#type::Type;
 
 	use super::{config::BatchSizeDist, *};
 	use crate::{
 		error::Result,
 		operator::{
 			FFIOperator, FFIOperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
-			context::OperatorContext,
+			context::ffi::FFIOperatorContext,
 		},
 	};
 
@@ -372,11 +372,7 @@ mod tests {
 			Ok(Self)
 		}
 
-		fn apply(&mut self, _ctx: &mut OperatorContext, _input: BorrowedChange<'_>) -> Result<()> {
-			Ok(())
-		}
-
-		fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> Result<()> {
+		fn apply(&mut self, _ctx: &mut FFIOperatorContext, _input: BorrowedChange<'_>) -> Result<()> {
 			Ok(())
 		}
 	}

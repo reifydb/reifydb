@@ -19,7 +19,7 @@ use reifydb_sdk::{
 		builder::{ColumnsBuilder, CommittedColumn},
 		change::{BorrowedChange, BorrowedColumns},
 		column::operator::OperatorColumn,
-		context::OperatorContext,
+		context::ffi::FFIOperatorContext,
 	},
 	testing::chaos::{event::ChaosBatch, materialize::materialize_batches, oracle::MaterializedTable},
 };
@@ -45,7 +45,7 @@ impl FFIOperator for PassthroughOperator {
 		Ok(Self)
 	}
 
-	fn apply(&mut self, ctx: &mut OperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
 		let mut builder = ctx.builder();
 		for diff in input.diffs() {
 			match diff.kind() {
@@ -54,10 +54,6 @@ impl FFIOperator for PassthroughOperator {
 				DiffType::Remove => emit_remove(&mut builder, &diff.pre())?,
 			}
 		}
-		Ok(())
-	}
-
-	fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> Result<()> {
 		Ok(())
 	}
 }
@@ -83,7 +79,7 @@ impl FFIOperator for SwallowsRemoveOperator {
 		Ok(Self)
 	}
 
-	fn apply(&mut self, ctx: &mut OperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
 		let mut builder = ctx.builder();
 		for diff in input.diffs() {
 			match diff.kind() {
@@ -92,10 +88,6 @@ impl FFIOperator for SwallowsRemoveOperator {
 				DiffType::Remove => {} // intentional bug: drop Removes
 			}
 		}
-		Ok(())
-	}
-
-	fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> Result<()> {
 		Ok(())
 	}
 }

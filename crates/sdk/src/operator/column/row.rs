@@ -5,15 +5,15 @@ use reifydb_abi::data::column::ColumnTypeCode;
 
 use crate::{
 	error::FFIError,
-	operator::{column::emitter::RowEmitter, view_row::RowView},
+	operator::{column::sink::RowSink, view::RowView},
 };
 
 pub trait Row: Sized {
 	const COLUMNS: &'static [(&'static str, ColumnTypeCode)];
 	const AVG_VAR_BYTES: usize = 0;
 
-	fn encode_into(&self, emitter: &mut RowEmitter<'_>) -> Result<(), FFIError>;
-	fn decode_from(view: &RowView<'_>) -> Option<Self>;
+	fn encode_into<S: RowSink>(&self, sink: &mut S) -> Result<(), FFIError>;
+	fn decode_from<V: RowView>(view: &V) -> Option<Self>;
 }
 
 #[doc(hidden)]
@@ -26,7 +26,7 @@ macro_rules! __row_body {
 
 		const AVG_VAR_BYTES: usize = 0 $(+ <$fty as $crate::operator::column::cell::Cell>::AVG_BYTES)+;
 
-		fn encode_into(&self, e: &mut $crate::operator::column::emitter::RowEmitter<'_>) -> Result<(), $crate::error::FFIError> {
+		fn encode_into<__S: $crate::operator::column::sink::RowSink>(&self, e: &mut __S) -> Result<(), $crate::error::FFIError> {
 			let mut __col = 0usize;
 			$(
 				<$fty as $crate::operator::column::cell::Cell>::encode(&self.$fname, e, __col)?;
@@ -36,7 +36,7 @@ macro_rules! __row_body {
 			Ok(())
 		}
 
-		fn decode_from(view: &$crate::operator::view_row::RowView<'_>) -> Option<Self> {
+		fn decode_from<__V: $crate::operator::view::RowView>(view: &__V) -> Option<Self> {
 			Some(Self {
 				$($fname: <$fty as $crate::operator::column::cell::Cell>::decode(view, stringify!($fname))?,)+
 			})

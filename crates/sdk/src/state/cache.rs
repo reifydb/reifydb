@@ -9,7 +9,7 @@ use reifydb_core::{
 };
 use serde::{Serialize, de::DeserializeOwned};
 
-use crate::{error::Result, operator::context::OperatorContext};
+use crate::{error::Result, operator::context::ffi::FFIOperatorContext};
 
 #[derive(Clone, Copy, Debug)]
 pub enum StateBackend {
@@ -46,7 +46,7 @@ where
 		}
 	}
 
-	pub fn get_arc(&mut self, ctx: &mut OperatorContext, key: &K) -> Result<Option<Arc<V>>> {
+	pub fn get_arc(&mut self, ctx: &mut FFIOperatorContext, key: &K) -> Result<Option<Arc<V>>> {
 		if let Some(cached) = self.cache.get(key) {
 			return Ok(Some(cached));
 		}
@@ -70,11 +70,11 @@ where
 		}
 	}
 
-	pub fn get(&mut self, ctx: &mut OperatorContext, key: &K) -> Result<Option<V>> {
+	pub fn get(&mut self, ctx: &mut FFIOperatorContext, key: &K) -> Result<Option<V>> {
 		Ok(self.get_arc(ctx, key)?.map(|arc| (*arc).clone()))
 	}
 
-	pub fn warm(&mut self, ctx: &mut OperatorContext, keys: &[K]) -> Result<()> {
+	pub fn warm(&mut self, ctx: &mut FFIOperatorContext, keys: &[K]) -> Result<()> {
 		let mut to_load: Vec<K> = Vec::new();
 		for key in keys {
 			if self.cache.contains_key(key) || self.dirty.contains_key(key) {
@@ -106,27 +106,27 @@ where
 		Ok(())
 	}
 
-	pub fn set(&mut self, _ctx: &mut OperatorContext, key: &K, value: &V) -> Result<()> {
+	pub fn set(&mut self, _ctx: &mut FFIOperatorContext, key: &K, value: &V) -> Result<()> {
 		let arc = Arc::new(value.clone());
 		self.cache.put(key.clone(), arc.clone());
 		self.dirty.insert(key.clone(), Some(arc));
 		Ok(())
 	}
 
-	pub fn put(&mut self, _ctx: &mut OperatorContext, key: &K, value: V) -> Result<()> {
+	pub fn put(&mut self, _ctx: &mut FFIOperatorContext, key: &K, value: V) -> Result<()> {
 		let arc = Arc::new(value);
 		self.cache.put(key.clone(), arc.clone());
 		self.dirty.insert(key.clone(), Some(arc));
 		Ok(())
 	}
 
-	pub fn put_arc(&mut self, _ctx: &mut OperatorContext, key: &K, value: Arc<V>) -> Result<()> {
+	pub fn put_arc(&mut self, _ctx: &mut FFIOperatorContext, key: &K, value: Arc<V>) -> Result<()> {
 		self.cache.put(key.clone(), value.clone());
 		self.dirty.insert(key.clone(), Some(value));
 		Ok(())
 	}
 
-	pub fn modify<F>(&mut self, ctx: &mut OperatorContext, key: &K, f: F) -> Result<()>
+	pub fn modify<F>(&mut self, ctx: &mut FFIOperatorContext, key: &K, f: F) -> Result<()>
 	where
 		F: FnOnce(&mut V) -> Result<()>,
 		V: Default,
@@ -136,13 +136,13 @@ where
 		self.put_arc(ctx, key, arc)
 	}
 
-	pub fn remove(&mut self, _ctx: &mut OperatorContext, key: &K) -> Result<()> {
+	pub fn remove(&mut self, _ctx: &mut FFIOperatorContext, key: &K) -> Result<()> {
 		self.cache.remove(key);
 		self.dirty.insert(key.clone(), None);
 		Ok(())
 	}
 
-	pub fn flush(&mut self, ctx: &mut OperatorContext) -> Result<()> {
+	pub fn flush(&mut self, ctx: &mut FFIOperatorContext) -> Result<()> {
 		let dirty = mem::take(&mut self.dirty);
 		for (key, slot) in dirty {
 			let encoded_key = (&key).into_encoded_key();
@@ -189,14 +189,14 @@ where
 	for<'a> &'a K: IntoEncodedKey,
 	V: Clone + Default + Serialize + DeserializeOwned,
 {
-	pub fn get_or_default(&mut self, ctx: &mut OperatorContext, key: &K) -> Result<V> {
+	pub fn get_or_default(&mut self, ctx: &mut FFIOperatorContext, key: &K) -> Result<V> {
 		match self.get(ctx, key)? {
 			Some(value) => Ok(value),
 			None => Ok(V::default()),
 		}
 	}
 
-	pub fn update<U>(&mut self, ctx: &mut OperatorContext, key: &K, updater: U) -> Result<V>
+	pub fn update<U>(&mut self, ctx: &mut FFIOperatorContext, key: &K, updater: U) -> Result<V>
 	where
 		U: FnOnce(&mut V) -> Result<()>,
 	{
@@ -211,13 +211,13 @@ where
 pub mod tests {
 	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 	use reifydb_core::{encoded::key::IntoEncodedKey, interface::catalog::flow::FlowNodeId};
-	use reifydb_type::value::{Value, row_number::RowNumber};
+	use reifydb_type::value::Value;
 
 	use super::*;
 	use crate::{
 		operator::{
 			FFIOperator, FFIOperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
-			context::OperatorContext,
+			context::ffi::FFIOperatorContext,
 		},
 		state::FFIRawStatefulOperator,
 		testing::{harness::TestHarnessBuilder, helpers::encode_key},
@@ -240,11 +240,7 @@ pub mod tests {
 			Ok(Self)
 		}
 
-		fn apply(&mut self, _ctx: &mut OperatorContext, _input: BorrowedChange<'_>) -> Result<()> {
-			Ok(())
-		}
-
-		fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> Result<()> {
+		fn apply(&mut self, _ctx: &mut FFIOperatorContext, _input: BorrowedChange<'_>) -> Result<()> {
 			Ok(())
 		}
 	}

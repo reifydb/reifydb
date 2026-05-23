@@ -14,17 +14,13 @@ use reifydb_core::{
 	},
 	key::EncodableKey,
 	row::Row,
-	value::column::columns::Columns,
 };
-use reifydb_type::{
-	util::cowvec::CowVec,
-	value::{Value, row_number::RowNumber},
-};
+use reifydb_type::{util::cowvec::CowVec, value::Value};
 
 use crate::{
 	error::Result,
 	ffi::arena::Arena,
-	operator::{FFIOperator, FFIOperatorMetadata, change::BorrowedChange, context::OperatorContext},
+	operator::{FFIOperator, FFIOperatorMetadata, change::BorrowedChange, context::ffi::FFIOperatorContext},
 	testing::{
 		builders::TestChangeBuilder,
 		callbacks::create_test_callbacks,
@@ -62,7 +58,7 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 		let ffi_ctx_ptr = &mut *self.ffi_context as *mut ContextFFI;
 
 		let result: Result<()> = with_registry(&self.builder_registry, || {
-			let mut op_ctx = OperatorContext::new(ffi_ctx_ptr);
+			let mut op_ctx = FFIOperatorContext::new(ffi_ctx_ptr);
 			let borrowed = unsafe { BorrowedChange::from_raw(&ffi_change as *const _) };
 			self.operator.apply(&mut op_ctx, borrowed)?;
 
@@ -110,24 +106,6 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 
 	pub fn clear_history(&mut self) {
 		self.history.clear();
-	}
-
-	pub fn pull(&mut self, row_numbers: &[RowNumber]) -> Result<Columns> {
-		let ffi_ctx_ptr = &mut *self.ffi_context as *mut ContextFFI;
-		let result: Result<()> = with_registry(&self.builder_registry, || {
-			let mut op_ctx = OperatorContext::new(ffi_ctx_ptr);
-			self.operator.pull(&mut op_ctx, row_numbers)?;
-			self.operator.flush_state(&mut op_ctx)
-		});
-		result?;
-
-		let mut emitted = self.builder_registry.drain_diffs();
-		let cols = if let Some(first) = emitted.drain(..).next() {
-			first.post.or(first.pre).unwrap_or_else(Columns::empty)
-		} else {
-			Columns::empty()
-		};
-		Ok(cols)
 	}
 
 	pub fn version(&self) -> CommitVersion {
@@ -188,8 +166,8 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 		Ok(())
 	}
 
-	pub fn create_operator_context(&mut self) -> OperatorContext {
-		OperatorContext::new(&mut *self.ffi_context as *mut ContextFFI)
+	pub fn create_operator_context(&mut self) -> FFIOperatorContext {
+		FFIOperatorContext::new(&mut *self.ffi_context as *mut ContextFFI)
 	}
 
 	pub fn operator(&self) -> &T {
@@ -344,7 +322,7 @@ pub mod tests {
 			builder::{ColumnsBuilder, CommittedColumn},
 			change::{BorrowedChange, BorrowedColumns},
 			column::operator::OperatorColumn,
-			context::OperatorContext,
+			context::ffi::FFIOperatorContext,
 		},
 		testing::builders::{TestChangeBuilder, TestRowBuilder},
 	};
@@ -373,13 +351,9 @@ pub mod tests {
 			})
 		}
 
-		fn apply(&mut self, ctx: &mut OperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
 			// Pass-through: forward each input diff via the builder.
 			forward_diffs_passthrough(ctx, &input)
-		}
-
-		fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -401,7 +375,7 @@ pub mod tests {
 			Ok(Self)
 		}
 
-		fn apply(&mut self, ctx: &mut OperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
 			// Stash the post-row's first int8 value into operator
 			// state, keyed by the row number. Then forward the
 			// diffs unchanged via the builder so callers can still
@@ -426,17 +400,13 @@ pub mod tests {
 			}
 			forward_diffs_passthrough(ctx, &input)
 		}
-
-		fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> Result<()> {
-			Ok(())
-		}
 	}
 
 	/// Helper used by both test operators: read each input diff and emit
 	/// it back unchanged via `ctx.builder()`. This keeps the harness's
 	/// `apply` returning a `Change` that mirrors the input - same shape
 	/// the legacy `Ok(input)` pass-through produced.
-	fn forward_diffs_passthrough(ctx: &mut OperatorContext, input: &BorrowedChange<'_>) -> Result<()> {
+	fn forward_diffs_passthrough(ctx: &mut FFIOperatorContext, input: &BorrowedChange<'_>) -> Result<()> {
 		let mut builder = ctx.builder();
 		for diff in input.diffs() {
 			match diff.kind() {

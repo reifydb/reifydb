@@ -9,7 +9,7 @@ use reifydb_core::{
 };
 use reifydb_type::value::row_number::RowNumber;
 
-use crate::{error::Result, operator::context::OperatorContext};
+use crate::{error::Result, operator::context::ffi::FFIOperatorContext};
 
 pub struct RowNumberProvider {
 	_node: FlowNodeId,
@@ -24,7 +24,7 @@ impl RowNumberProvider {
 
 	pub fn get_or_create_row_numbers_batch<'a, I>(
 		&self,
-		ctx: &mut OperatorContext,
+		ctx: &mut FFIOperatorContext,
 		keys: I,
 	) -> Result<Vec<(RowNumber, bool)>>
 	where
@@ -64,17 +64,17 @@ impl RowNumberProvider {
 
 	pub fn get_or_create_row_number(
 		&self,
-		ctx: &mut OperatorContext,
+		ctx: &mut FFIOperatorContext,
 		key: &EncodedKey,
 	) -> Result<(RowNumber, bool)> {
 		Ok(self.get_or_create_row_numbers_batch(ctx, iter::once(key))?.into_iter().next().unwrap())
 	}
 
-	fn load_counter(&self, ctx: &mut OperatorContext) -> Result<u64> {
+	fn load_counter(&self, ctx: &mut FFIOperatorContext) -> Result<u64> {
 		Ok(ctx.internal_state().get::<u64>(&self.make_counter_key())?.unwrap_or(1))
 	}
 
-	fn save_counter(&self, ctx: &mut OperatorContext, counter: u64) -> Result<()> {
+	fn save_counter(&self, ctx: &mut FFIOperatorContext, counter: u64) -> Result<()> {
 		ctx.internal_state().set::<u64>(&self.make_counter_key(), &counter)
 	}
 
@@ -102,13 +102,13 @@ pub mod tests {
 		interface::catalog::flow::FlowNodeId,
 		key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
 	};
-	use reifydb_type::value::{Value, row_number::RowNumber};
+	use reifydb_type::value::Value;
 
 	use crate::{
 		error::Result,
 		operator::{
 			FFIOperator, FFIOperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
-			context::OperatorContext,
+			context::ffi::FFIOperatorContext,
 		},
 		state::{FFIRawStatefulOperator, row::RowNumberProvider},
 		testing::{harness::TestHarnessBuilder, helpers::encode_key},
@@ -131,11 +131,7 @@ pub mod tests {
 			Ok(Self)
 		}
 
-		fn apply(&mut self, _ctx: &mut OperatorContext, _input: BorrowedChange<'_>) -> Result<()> {
-			Ok(())
-		}
-
-		fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> Result<()> {
+		fn apply(&mut self, _ctx: &mut FFIOperatorContext, _input: BorrowedChange<'_>) -> Result<()> {
 			Ok(())
 		}
 	}

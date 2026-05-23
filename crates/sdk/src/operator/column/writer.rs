@@ -334,7 +334,7 @@ mod tests {
 			FFIOperator, FFIOperatorMetadata,
 			change::BorrowedChange,
 			column::{batch::InsertBatch, operator::OperatorColumn},
-			context::OperatorContext,
+			context::ffi::FFIOperatorContext,
 		},
 		row,
 		testing::{builders::TestChangeBuilder, harness::TestHarnessBuilder},
@@ -361,7 +361,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let mut batch = InsertBatch::<U8Row>::new(ctx, 3)?;
 			for (i, &v) in [0u8, 1, u8::MAX].iter().enumerate() {
 				batch.push(
@@ -372,9 +372,6 @@ mod tests {
 				)?;
 			}
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -410,7 +407,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let mut batch = InsertBatch::<U16Row>::new(ctx, 3)?;
 			for (i, &v) in [0u16, 1, u16::MAX].iter().enumerate() {
 				batch.push(
@@ -421,9 +418,6 @@ mod tests {
 				)?;
 			}
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -459,7 +453,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let mut batch = InsertBatch::<U32Row>::new(ctx, 3)?;
 			for (i, &v) in [0u32, 1, u32::MAX].iter().enumerate() {
 				batch.push(
@@ -470,9 +464,6 @@ mod tests {
 				)?;
 			}
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -508,7 +499,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let mut batch = InsertBatch::<U64Row>::new(ctx, 3)?;
 			for (i, &v) in [0u64, 1, u64::MAX].iter().enumerate() {
 				batch.push(
@@ -519,9 +510,6 @@ mod tests {
 				)?;
 			}
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -557,7 +545,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let mut batch = InsertBatch::<I8Row>::new(ctx, 3)?;
 			for (i, &v) in [i8::MIN, 0_i8, i8::MAX].iter().enumerate() {
 				batch.push(
@@ -568,9 +556,6 @@ mod tests {
 				)?;
 			}
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -606,7 +591,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let mut batch = InsertBatch::<I16Row>::new(ctx, 3)?;
 			for (i, &v) in [i16::MIN, 0_i16, i16::MAX].iter().enumerate() {
 				batch.push(
@@ -617,9 +602,6 @@ mod tests {
 				)?;
 			}
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -655,7 +637,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let mut batch = InsertBatch::<I32Row>::new(ctx, 3)?;
 			for (i, &v) in [i32::MIN, 0_i32, i32::MAX].iter().enumerate() {
 				batch.push(
@@ -666,9 +648,6 @@ mod tests {
 				)?;
 			}
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -704,7 +683,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let mut batch = InsertBatch::<I64Row>::new(ctx, 3)?;
 			for (i, &v) in [i64::MIN, 0_i64, i64::MAX].iter().enumerate() {
 				batch.push(
@@ -715,9 +694,6 @@ mod tests {
 				)?;
 			}
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -753,7 +729,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let mut batch = InsertBatch::<F32Row>::new(ctx, 3)?;
 			for (i, &v) in [0.0_f32, -1.5_f32, f32::MAX].iter().enumerate() {
 				batch.push(
@@ -764,9 +740,6 @@ mod tests {
 				)?;
 			}
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -802,7 +775,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let mut batch = InsertBatch::<F64Row>::new(ctx, 3)?;
 			for (i, &v) in [0.0_f64, -1.5_f64, f64::MAX].iter().enumerate() {
 				batch.push(
@@ -813,9 +786,6 @@ mod tests {
 				)?;
 			}
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -851,7 +821,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let mut batch = InsertBatch::<BoolRow>::new(ctx, 3)?;
 			for (i, &v) in [true, false, true].iter().enumerate() {
 				batch.push(
@@ -862,9 +832,6 @@ mod tests {
 				)?;
 			}
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -900,7 +867,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let values = ["", "hello", "こんにちは"];
 			let mut batch = InsertBatch::<Utf8Row>::new(ctx, values.len())?;
 			for (i, &s) in values.iter().enumerate() {
@@ -912,9 +879,6 @@ mod tests {
 				)?;
 			}
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -943,7 +907,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			// AVG_BYTES for String is 24; 20 rows * 24 = 480 bytes pre-allocated.
 			// Each string is 100 bytes so total 2000 bytes forces VarLenWriter::ensure_capacity.
 			let mut batch = InsertBatch::<Utf8Row>::new(ctx, 20)?;
@@ -956,9 +920,6 @@ mod tests {
 				)?;
 			}
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -997,7 +958,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let rows = [
 				BlobRow {
 					b: vec![],
@@ -1014,9 +975,6 @@ mod tests {
 				batch.push(RowNumber(i as u64 + 1), row)?;
 			}
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -1052,7 +1010,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let mut batch = InsertBatch::<DecimalRow>::new(ctx, 3)?;
 			batch.push(
 				RowNumber(1),
@@ -1073,9 +1031,6 @@ mod tests {
 				},
 			)?;
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -1113,7 +1068,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let mut batch = InsertBatch::<WideRow>::new(ctx, 1)?;
 			batch.push(
 				RowNumber(1),
@@ -1123,9 +1078,6 @@ mod tests {
 				},
 			)?;
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -1160,7 +1112,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let values = [
 				Date::default(),
 				Date::new(2024, 3, 15).expect("date"),
@@ -1176,9 +1128,6 @@ mod tests {
 				)?;
 			}
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -1214,7 +1163,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let values = [
 				DateTime::from_nanos(0),
 				DateTime::from_nanos(1_700_000_000_000_000_000),
@@ -1230,9 +1179,6 @@ mod tests {
 				)?;
 			}
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -1271,7 +1217,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let values = [
 				Time::default(),
 				Time::new(14, 30, 45, 123_456_789).expect("time"),
@@ -1287,9 +1233,6 @@ mod tests {
 				)?;
 			}
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 
@@ -1325,7 +1268,7 @@ mod tests {
 		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
 			Ok(Self)
 		}
-		fn apply(&mut self, ctx: &mut OperatorContext, _: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
 			let values = [
 				Duration::default(),
 				Duration::new(13, 5, 3_600_000_000_000).expect("duration"),
@@ -1341,9 +1284,6 @@ mod tests {
 				)?;
 			}
 			batch.finish()
-		}
-		fn pull(&mut self, _: &mut OperatorContext, _: &[RowNumber]) -> Result<()> {
-			Ok(())
 		}
 	}
 

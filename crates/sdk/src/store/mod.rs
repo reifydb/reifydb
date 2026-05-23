@@ -9,14 +9,14 @@ use ffi::{raw_store_contains_key, raw_store_get, raw_store_prefix, raw_store_ran
 use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
 use tracing::{Span, instrument};
 
-use crate::{error::Result, operator::context::OperatorContext};
+use crate::{error::Result, operator::context::ffi::FFIOperatorContext};
 
 pub struct Store<'a> {
-	ctx: &'a mut OperatorContext,
+	ctx: &'a mut FFIOperatorContext,
 }
 
 impl<'a> Store<'a> {
-	pub(crate) fn new(ctx: &'a mut OperatorContext) -> Self {
+	pub(crate) fn new(ctx: &'a mut FFIOperatorContext) -> Self {
 		Self {
 			ctx,
 		}

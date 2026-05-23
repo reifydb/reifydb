@@ -3,7 +3,7 @@
 
 pub mod batch;
 pub mod cell;
-pub mod emitter;
 pub mod operator;
 pub mod row;
+pub mod sink;
 pub mod writer;

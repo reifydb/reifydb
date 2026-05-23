@@ -15,12 +15,12 @@ use reifydb_sdk::{
 	error::Result as SdkResult,
 	operator::{
 		FFIOperator, FFIOperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
-		context::OperatorContext,
+		context::ffi::FFIOperatorContext,
 	},
 	state::cache::StateCache,
 	testing::{builders::TestChangeBuilder, harness::TestHarnessBuilder},
 };
-use reifydb_type::value::{Value, row_number::RowNumber};
+use reifydb_type::value::Value;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default, Clone, Serialize, Deserialize)]
@@ -50,7 +50,7 @@ impl FFIOperator for SumAgg {
 		})
 	}
 
-	fn apply(&mut self, ctx: &mut OperatorContext, input: BorrowedChange<'_>) -> SdkResult<()> {
+	fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> SdkResult<()> {
 		for diff in input.diffs() {
 			if diff.kind() != DiffType::Insert {
 				continue;
@@ -76,11 +76,7 @@ impl FFIOperator for SumAgg {
 		Ok(())
 	}
 
-	fn pull(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[RowNumber]) -> SdkResult<()> {
-		Ok(())
-	}
-
-	fn flush_state(&mut self, ctx: &mut OperatorContext) -> SdkResult<()> {
+	fn flush_state(&mut self, ctx: &mut FFIOperatorContext) -> SdkResult<()> {
 		self.cache.borrow_mut().flush(ctx)
 	}
 }

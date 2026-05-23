@@ -10,6 +10,7 @@ use crate::{
 		builder::{ColumnsBuilder, CommittedColumn},
 		column::{
 			row::Row,
+			sink::RowSink,
 			writer::{
 				BlobWriter, BoolWriter, DateTimeWriter, DateWriter, DecimalWriter, DurationWriter,
 				F32Writer, F64Writer, I8Writer, I16Writer, I32Writer, I64Writer, I128Writer,
@@ -19,7 +20,7 @@ use crate::{
 	},
 };
 
-pub struct RowEmitter<'a> {
+pub struct FFIRowSink<'a> {
 	writers: Vec<AnyWriter<'a>>,
 	row_capacity: usize,
 }
@@ -81,7 +82,7 @@ impl<'a> AnyWriter<'a> {
 			}
 			other => {
 				return Err(FFIError::Other(format!(
-					"RowEmitter: unsupported column type {:?}",
+					"FFIRowSink: unsupported column type {:?}",
 					other
 				)));
 			}
@@ -114,7 +115,7 @@ impl<'a> AnyWriter<'a> {
 	}
 }
 
-impl<'a> RowEmitter<'a> {
+impl<'a> FFIRowSink<'a> {
 	pub(crate) fn new<R: Row>(builder: &mut ColumnsBuilder<'a>, row_capacity: usize) -> Result<Self, FFIError> {
 		let mut writers = Vec::with_capacity(R::COLUMNS.len());
 		let var_count = R::COLUMNS
@@ -140,8 +141,18 @@ impl<'a> RowEmitter<'a> {
 		self.row_capacity
 	}
 
+	pub(crate) fn finish_all(self) -> Result<Vec<CommittedColumn>, FFIError> {
+		let mut out = Vec::with_capacity(self.writers.len());
+		for w in self.writers {
+			out.push(w.finish()?);
+		}
+		Ok(out)
+	}
+}
+
+impl RowSink for FFIRowSink<'_> {
 	#[inline]
-	pub fn push_u8(&mut self, col: usize, v: u8) {
+	fn push_u8(&mut self, col: usize, v: u8) {
 		match &mut self.writers[col] {
 			AnyWriter::U8(w) => w.push(v),
 			_ => debug_panic("push_u8 on wrong column type"),
@@ -149,7 +160,7 @@ impl<'a> RowEmitter<'a> {
 	}
 
 	#[inline]
-	pub fn push_u16(&mut self, col: usize, v: u16) {
+	fn push_u16(&mut self, col: usize, v: u16) {
 		match &mut self.writers[col] {
 			AnyWriter::U16(w) => w.push(v),
 			_ => debug_panic("push_u16 on wrong column type"),
@@ -157,7 +168,7 @@ impl<'a> RowEmitter<'a> {
 	}
 
 	#[inline]
-	pub fn push_u32(&mut self, col: usize, v: u32) {
+	fn push_u32(&mut self, col: usize, v: u32) {
 		match &mut self.writers[col] {
 			AnyWriter::U32(w) => w.push(v),
 			_ => debug_panic("push_u32 on wrong column type"),
@@ -165,7 +176,7 @@ impl<'a> RowEmitter<'a> {
 	}
 
 	#[inline]
-	pub fn push_u64(&mut self, col: usize, v: u64) {
+	fn push_u64(&mut self, col: usize, v: u64) {
 		match &mut self.writers[col] {
 			AnyWriter::U64(w) => w.push(v),
 			_ => debug_panic("push_u64 on wrong column type"),
@@ -173,7 +184,7 @@ impl<'a> RowEmitter<'a> {
 	}
 
 	#[inline]
-	pub fn push_u128(&mut self, col: usize, v: u128) {
+	fn push_u128(&mut self, col: usize, v: u128) {
 		match &mut self.writers[col] {
 			AnyWriter::U128(w) => w.push(v),
 			_ => debug_panic("push_u128 on wrong column type"),
@@ -181,7 +192,7 @@ impl<'a> RowEmitter<'a> {
 	}
 
 	#[inline]
-	pub fn push_i8(&mut self, col: usize, v: i8) {
+	fn push_i8(&mut self, col: usize, v: i8) {
 		match &mut self.writers[col] {
 			AnyWriter::I8(w) => w.push(v),
 			_ => debug_panic("push_i8 on wrong column type"),
@@ -189,7 +200,7 @@ impl<'a> RowEmitter<'a> {
 	}
 
 	#[inline]
-	pub fn push_i16(&mut self, col: usize, v: i16) {
+	fn push_i16(&mut self, col: usize, v: i16) {
 		match &mut self.writers[col] {
 			AnyWriter::I16(w) => w.push(v),
 			_ => debug_panic("push_i16 on wrong column type"),
@@ -197,7 +208,7 @@ impl<'a> RowEmitter<'a> {
 	}
 
 	#[inline]
-	pub fn push_i32(&mut self, col: usize, v: i32) {
+	fn push_i32(&mut self, col: usize, v: i32) {
 		match &mut self.writers[col] {
 			AnyWriter::I32(w) => w.push(v),
 			_ => debug_panic("push_i32 on wrong column type"),
@@ -205,7 +216,7 @@ impl<'a> RowEmitter<'a> {
 	}
 
 	#[inline]
-	pub fn push_i64(&mut self, col: usize, v: i64) {
+	fn push_i64(&mut self, col: usize, v: i64) {
 		match &mut self.writers[col] {
 			AnyWriter::I64(w) => w.push(v),
 			_ => debug_panic("push_i64 on wrong column type"),
@@ -213,7 +224,7 @@ impl<'a> RowEmitter<'a> {
 	}
 
 	#[inline]
-	pub fn push_i128(&mut self, col: usize, v: i128) {
+	fn push_i128(&mut self, col: usize, v: i128) {
 		match &mut self.writers[col] {
 			AnyWriter::I128(w) => w.push(v),
 			_ => debug_panic("push_i128 on wrong column type"),
@@ -221,7 +232,7 @@ impl<'a> RowEmitter<'a> {
 	}
 
 	#[inline]
-	pub fn push_f32(&mut self, col: usize, v: f32) {
+	fn push_f32(&mut self, col: usize, v: f32) {
 		match &mut self.writers[col] {
 			AnyWriter::F32(w) => w.push(v),
 			_ => debug_panic("push_f32 on wrong column type"),
@@ -229,7 +240,7 @@ impl<'a> RowEmitter<'a> {
 	}
 
 	#[inline]
-	pub fn push_f64(&mut self, col: usize, v: f64) {
+	fn push_f64(&mut self, col: usize, v: f64) {
 		match &mut self.writers[col] {
 			AnyWriter::F64(w) => w.push(v),
 			_ => debug_panic("push_f64 on wrong column type"),
@@ -237,7 +248,7 @@ impl<'a> RowEmitter<'a> {
 	}
 
 	#[inline]
-	pub fn push_date(&mut self, col: usize, v: Date) {
+	fn push_date(&mut self, col: usize, v: Date) {
 		match &mut self.writers[col] {
 			AnyWriter::Date(w) => w.push(v),
 			_ => debug_panic("push_date on wrong column type"),
@@ -245,7 +256,7 @@ impl<'a> RowEmitter<'a> {
 	}
 
 	#[inline]
-	pub fn push_datetime(&mut self, col: usize, v: DateTime) {
+	fn push_datetime(&mut self, col: usize, v: DateTime) {
 		match &mut self.writers[col] {
 			AnyWriter::DateTime(w) => w.push(v),
 			_ => debug_panic("push_datetime on wrong column type"),
@@ -253,7 +264,7 @@ impl<'a> RowEmitter<'a> {
 	}
 
 	#[inline]
-	pub fn push_time(&mut self, col: usize, v: Time) {
+	fn push_time(&mut self, col: usize, v: Time) {
 		match &mut self.writers[col] {
 			AnyWriter::Time(w) => w.push(v),
 			_ => debug_panic("push_time on wrong column type"),
@@ -261,7 +272,7 @@ impl<'a> RowEmitter<'a> {
 	}
 
 	#[inline]
-	pub fn push_duration(&mut self, col: usize, v: Duration) {
+	fn push_duration(&mut self, col: usize, v: Duration) {
 		match &mut self.writers[col] {
 			AnyWriter::Duration(w) => w.push(v),
 			_ => debug_panic("push_duration on wrong column type"),
@@ -269,7 +280,7 @@ impl<'a> RowEmitter<'a> {
 	}
 
 	#[inline]
-	pub fn push_bool(&mut self, col: usize, v: bool) {
+	fn push_bool(&mut self, col: usize, v: bool) {
 		match &mut self.writers[col] {
 			AnyWriter::Bool(w) => w.push(v),
 			_ => debug_panic("push_bool on wrong column type"),
@@ -277,7 +288,7 @@ impl<'a> RowEmitter<'a> {
 	}
 
 	#[inline]
-	pub fn push_utf8(&mut self, col: usize, v: &str) -> Result<(), FFIError> {
+	fn push_utf8(&mut self, col: usize, v: &str) -> Result<(), FFIError> {
 		match &mut self.writers[col] {
 			AnyWriter::Utf8(w) => w.push_str(v),
 			_ => {
@@ -288,7 +299,7 @@ impl<'a> RowEmitter<'a> {
 	}
 
 	#[inline]
-	pub fn push_blob(&mut self, col: usize, v: &[u8]) -> Result<(), FFIError> {
+	fn push_blob(&mut self, col: usize, v: &[u8]) -> Result<(), FFIError> {
 		match &mut self.writers[col] {
 			AnyWriter::Blob(w) => w.push_bytes(v),
 			_ => {
@@ -299,7 +310,7 @@ impl<'a> RowEmitter<'a> {
 	}
 
 	#[inline]
-	pub fn push_decimal_bytes(&mut self, col: usize, v: &[u8]) -> Result<(), FFIError> {
+	fn push_decimal_bytes(&mut self, col: usize, v: &[u8]) -> Result<(), FFIError> {
 		match &mut self.writers[col] {
 			AnyWriter::Decimal(w) => w.push_bytes(v),
 			_ => {
@@ -310,7 +321,7 @@ impl<'a> RowEmitter<'a> {
 	}
 
 	#[inline]
-	pub fn push_none(&mut self, col: usize) -> Result<(), FFIError> {
+	fn push_none(&mut self, col: usize) -> Result<(), FFIError> {
 		match &mut self.writers[col] {
 			AnyWriter::U8(w) => w.push_none(),
 			AnyWriter::U16(w) => w.push_none(),
@@ -334,14 +345,6 @@ impl<'a> RowEmitter<'a> {
 			AnyWriter::Decimal(w) => return w.push_none(),
 		}
 		Ok(())
-	}
-
-	pub(crate) fn finish_all(self) -> Result<Vec<CommittedColumn>, FFIError> {
-		let mut out = Vec::with_capacity(self.writers.len());
-		for w in self.writers {
-			out.push(w.finish()?);
-		}
-		Ok(out)
 	}
 }
 

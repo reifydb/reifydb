@@ -49,7 +49,7 @@ impl LibraryCache {
 		if !self.libraries.contains_key(path) {
 			let lib = unsafe {
 				Library::new(path).map_err(|e| {
-					ExtensionError::FfiLoad(format!(
+					ExtensionError::FFILoad(format!(
 						"Failed to load library {}: {}",
 						path.display(),
 						e

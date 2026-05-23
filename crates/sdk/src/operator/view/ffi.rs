@@ -2,22 +2,25 @@
 // Copyright (c) 2026 ReifyDB
 
 use postcard::from_bytes;
-use reifydb_abi::data::column::ColumnTypeCode;
+use reifydb_abi::{data::column::ColumnTypeCode, flow::diff::DiffType};
 use reifydb_type::value::{
 	Value, date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, ordered_f32::OrderedF32,
 	ordered_f64::OrderedF64, row_number::RowNumber, time::Time, r#type::Type,
 };
 use serde::de::DeserializeOwned;
 
-use crate::operator::change::{BorrowedColumn, BorrowedColumns};
+use crate::operator::{
+	change::{BorrowedChange, BorrowedColumn, BorrowedColumns, BorrowedDiff},
+	view::{ChangeView, ColumnsView, DiffView, RowView},
+};
 
 #[derive(Clone, Copy)]
-pub struct RowView<'a> {
+pub struct FFIRowView<'a> {
 	columns: BorrowedColumns<'a>,
 	index: usize,
 }
 
-impl<'a> RowView<'a> {
+impl<'a> FFIRowView<'a> {
 	pub(crate) fn new(columns: BorrowedColumns<'a>, index: usize) -> Self {
 		Self {
 			columns,
@@ -33,26 +36,24 @@ impl<'a> RowView<'a> {
 		self.columns
 	}
 
-	pub fn row_number(&self) -> Option<RowNumber> {
-		self.columns.row_numbers().get(self.index).copied().map(RowNumber)
+	fn column_defined(&self, name: &str) -> Option<BorrowedColumn<'a>> {
+		let col = self.columns.column(name)?;
+		if !is_defined_at(&col, self.index) {
+			return None;
+		}
+		Some(col)
 	}
+}
 
-	pub fn created_at_nanos(&self) -> Option<u64> {
-		self.columns.created_at().get(self.index).copied()
-	}
-
-	pub fn updated_at_nanos(&self) -> Option<u64> {
-		self.columns.updated_at().get(self.index).copied()
-	}
-
-	pub fn is_defined(&self, name: &str) -> bool {
+impl<'a> RowView for FFIRowView<'a> {
+	fn is_defined(&self, name: &str) -> bool {
 		match self.columns.column(name) {
 			Some(col) => is_defined_at(&col, self.index),
 			None => false,
 		}
 	}
 
-	pub fn utf8(&self, name: &str) -> Option<&'a str> {
+	fn utf8(&self, name: &str) -> Option<&str> {
 		let col = self.column_defined(name)?;
 		if col.type_code() != ColumnTypeCode::Utf8 {
 			return None;
@@ -60,7 +61,7 @@ impl<'a> RowView<'a> {
 		col.iter_str().nth(self.index)
 	}
 
-	pub fn blob(&self, name: &str) -> Option<&'a [u8]> {
+	fn blob(&self, name: &str) -> Option<&[u8]> {
 		let col = self.column_defined(name)?;
 		if col.type_code() != ColumnTypeCode::Blob {
 			return None;
@@ -68,7 +69,7 @@ impl<'a> RowView<'a> {
 		col.iter_bytes().nth(self.index)
 	}
 
-	pub fn bool(&self, name: &str) -> Option<bool> {
+	fn bool(&self, name: &str) -> Option<bool> {
 		let col = self.column_defined(name)?;
 		if col.type_code() != ColumnTypeCode::Bool {
 			return None;
@@ -78,7 +79,7 @@ impl<'a> RowView<'a> {
 		Some((byte >> (self.index % 8)) & 1 == 1)
 	}
 
-	pub fn u64(&self, name: &str) -> Option<u64> {
+	fn u64(&self, name: &str) -> Option<u64> {
 		let col = self.column_defined(name)?;
 		match col.type_code() {
 			ColumnTypeCode::Uint8 => fixed_at::<u64>(&col, self.index),
@@ -89,7 +90,7 @@ impl<'a> RowView<'a> {
 		}
 	}
 
-	pub fn u32(&self, name: &str) -> Option<u32> {
+	fn u32(&self, name: &str) -> Option<u32> {
 		let col = self.column_defined(name)?;
 		match col.type_code() {
 			ColumnTypeCode::Uint4 => fixed_at::<u32>(&col, self.index),
@@ -99,7 +100,7 @@ impl<'a> RowView<'a> {
 		}
 	}
 
-	pub fn u16(&self, name: &str) -> Option<u16> {
+	fn u16(&self, name: &str) -> Option<u16> {
 		let col = self.column_defined(name)?;
 		match col.type_code() {
 			ColumnTypeCode::Uint2 => fixed_at::<u16>(&col, self.index),
@@ -108,7 +109,7 @@ impl<'a> RowView<'a> {
 		}
 	}
 
-	pub fn u8(&self, name: &str) -> Option<u8> {
+	fn u8(&self, name: &str) -> Option<u8> {
 		let col = self.column_defined(name)?;
 		if col.type_code() != ColumnTypeCode::Uint1 {
 			return None;
@@ -116,7 +117,7 @@ impl<'a> RowView<'a> {
 		fixed_at::<u8>(&col, self.index)
 	}
 
-	pub fn i64(&self, name: &str) -> Option<i64> {
+	fn i64(&self, name: &str) -> Option<i64> {
 		let col = self.column_defined(name)?;
 		match col.type_code() {
 			ColumnTypeCode::Int8 => fixed_at::<i64>(&col, self.index),
@@ -127,7 +128,7 @@ impl<'a> RowView<'a> {
 		}
 	}
 
-	pub fn i32(&self, name: &str) -> Option<i32> {
+	fn i32(&self, name: &str) -> Option<i32> {
 		let col = self.column_defined(name)?;
 		match col.type_code() {
 			ColumnTypeCode::Int4 => fixed_at::<i32>(&col, self.index),
@@ -137,7 +138,7 @@ impl<'a> RowView<'a> {
 		}
 	}
 
-	pub fn i16(&self, name: &str) -> Option<i16> {
+	fn i16(&self, name: &str) -> Option<i16> {
 		let col = self.column_defined(name)?;
 		match col.type_code() {
 			ColumnTypeCode::Int2 => fixed_at::<i16>(&col, self.index),
@@ -146,7 +147,7 @@ impl<'a> RowView<'a> {
 		}
 	}
 
-	pub fn i8(&self, name: &str) -> Option<i8> {
+	fn i8(&self, name: &str) -> Option<i8> {
 		let col = self.column_defined(name)?;
 		if col.type_code() != ColumnTypeCode::Int1 {
 			return None;
@@ -154,7 +155,7 @@ impl<'a> RowView<'a> {
 		fixed_at::<i8>(&col, self.index)
 	}
 
-	pub fn u128(&self, name: &str) -> Option<u128> {
+	fn u128(&self, name: &str) -> Option<u128> {
 		let col = self.column_defined(name)?;
 		if col.type_code() != ColumnTypeCode::Uint16 {
 			return None;
@@ -162,7 +163,7 @@ impl<'a> RowView<'a> {
 		fixed_at::<u128>(&col, self.index)
 	}
 
-	pub fn i128(&self, name: &str) -> Option<i128> {
+	fn i128(&self, name: &str) -> Option<i128> {
 		let col = self.column_defined(name)?;
 		if col.type_code() != ColumnTypeCode::Int16 {
 			return None;
@@ -170,7 +171,7 @@ impl<'a> RowView<'a> {
 		fixed_at::<i128>(&col, self.index)
 	}
 
-	pub fn f64(&self, name: &str) -> Option<f64> {
+	fn f64(&self, name: &str) -> Option<f64> {
 		let col = self.column_defined(name)?;
 		match col.type_code() {
 			ColumnTypeCode::Float8 => fixed_at::<f64>(&col, self.index),
@@ -179,7 +180,7 @@ impl<'a> RowView<'a> {
 		}
 	}
 
-	pub fn f32(&self, name: &str) -> Option<f32> {
+	fn f32(&self, name: &str) -> Option<f32> {
 		let col = self.column_defined(name)?;
 		if col.type_code() != ColumnTypeCode::Float4 {
 			return None;
@@ -187,7 +188,7 @@ impl<'a> RowView<'a> {
 		fixed_at::<f32>(&col, self.index)
 	}
 
-	pub fn decimal(&self, name: &str) -> Option<Decimal> {
+	fn decimal(&self, name: &str) -> Option<Decimal> {
 		let col = self.column_defined(name)?;
 		match col.type_code() {
 			ColumnTypeCode::Decimal => decode_serialized_at::<Decimal>(&col, self.index),
@@ -197,7 +198,7 @@ impl<'a> RowView<'a> {
 		}
 	}
 
-	pub fn date(&self, name: &str) -> Option<Date> {
+	fn date(&self, name: &str) -> Option<Date> {
 		let col = self.column_defined(name)?;
 		if col.type_code() != ColumnTypeCode::Date {
 			return None;
@@ -205,7 +206,7 @@ impl<'a> RowView<'a> {
 		fixed_at::<Date>(&col, self.index)
 	}
 
-	pub fn datetime(&self, name: &str) -> Option<DateTime> {
+	fn datetime(&self, name: &str) -> Option<DateTime> {
 		let col = self.column_defined(name)?;
 		if col.type_code() != ColumnTypeCode::DateTime {
 			return None;
@@ -213,7 +214,7 @@ impl<'a> RowView<'a> {
 		fixed_at::<DateTime>(&col, self.index)
 	}
 
-	pub fn time(&self, name: &str) -> Option<Time> {
+	fn time(&self, name: &str) -> Option<Time> {
 		let col = self.column_defined(name)?;
 		if col.type_code() != ColumnTypeCode::Time {
 			return None;
@@ -221,7 +222,7 @@ impl<'a> RowView<'a> {
 		fixed_at::<Time>(&col, self.index)
 	}
 
-	pub fn duration(&self, name: &str) -> Option<Duration> {
+	fn duration(&self, name: &str) -> Option<Duration> {
 		let col = self.column_defined(name)?;
 		if col.type_code() != ColumnTypeCode::Duration {
 			return None;
@@ -229,17 +230,21 @@ impl<'a> RowView<'a> {
 		fixed_at::<Duration>(&col, self.index)
 	}
 
-	pub fn value(&self, name: &str) -> Option<Value> {
+	fn value(&self, name: &str) -> Option<Value> {
 		let col = self.columns.column(name)?;
 		Some(read_value_at(&col, self.index))
 	}
 
-	fn column_defined(&self, name: &str) -> Option<BorrowedColumn<'a>> {
-		let col = self.columns.column(name)?;
-		if !is_defined_at(&col, self.index) {
-			return None;
-		}
-		Some(col)
+	fn row_number(&self) -> Option<RowNumber> {
+		self.columns.row_numbers().get(self.index).copied().map(RowNumber)
+	}
+
+	fn created_at_nanos(&self) -> Option<u64> {
+		self.columns.created_at().get(self.index).copied()
+	}
+
+	fn updated_at_nanos(&self) -> Option<u64> {
+		self.columns.updated_at().get(self.index).copied()
 	}
 }
 
@@ -366,14 +371,62 @@ fn read_value_at(col: &BorrowedColumn<'_>, index: usize) -> Value {
 }
 
 impl<'a> BorrowedColumns<'a> {
-	pub fn row(self, index: usize) -> Option<RowView<'a>> {
+	pub fn row(self, index: usize) -> Option<FFIRowView<'a>> {
 		if index >= self.row_count() {
 			return None;
 		}
-		Some(RowView::new(self, index))
+		Some(FFIRowView::new(self, index))
 	}
 
-	pub fn rows(self) -> impl Iterator<Item = RowView<'a>> {
-		(0..self.row_count()).map(move |i| RowView::new(self, i))
+	pub fn rows(self) -> impl Iterator<Item = FFIRowView<'a>> {
+		(0..self.row_count()).map(move |i| FFIRowView::new(self, i))
+	}
+}
+
+impl<'a> ColumnsView for BorrowedColumns<'a> {
+	fn row_count(&self) -> usize {
+		BorrowedColumns::row_count(self)
+	}
+
+	fn row(&self, index: usize) -> Option<impl RowView + '_> {
+		(*self).row(index)
+	}
+}
+
+impl<'a> DiffView for BorrowedDiff<'a> {
+	fn kind(&self) -> DiffType {
+		BorrowedDiff::kind(self)
+	}
+
+	fn pre(&self) -> Option<impl ColumnsView + '_> {
+		match self.kind() {
+			DiffType::Update | DiffType::Remove => Some(self.pre()),
+			DiffType::Insert => None,
+		}
+	}
+
+	fn post(&self) -> Option<impl ColumnsView + '_> {
+		match self.kind() {
+			DiffType::Insert | DiffType::Update => Some(self.post()),
+			DiffType::Remove => None,
+		}
+	}
+}
+
+impl<'a> ChangeView for BorrowedChange<'a> {
+	fn version(&self) -> u64 {
+		BorrowedChange::version(self)
+	}
+
+	fn changed_at_nanos(&self) -> u64 {
+		BorrowedChange::changed_at_nanos(self)
+	}
+
+	fn diff_count(&self) -> usize {
+		BorrowedChange::diff_count(self)
+	}
+
+	fn diff(&self, index: usize) -> Option<impl DiffView + '_> {
+		self.diffs().nth(index)
 	}
 }

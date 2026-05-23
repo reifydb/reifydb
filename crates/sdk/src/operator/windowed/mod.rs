@@ -231,7 +231,7 @@ where
 	fn from_config(operator_id: FlowNodeId, config: &HashMap<String, Value>) -> Result<Self>;
 
 	/// Encode the row key for `(group, window_start)`. The driver passes
-	/// the resulting key to `OperatorContext::get_or_create_row_number`
+	/// the resulting key to `FFIOperatorContext::get_or_create_row_number`
 	/// to allocate the output row identity for this window.
 	///
 	/// Use [`EncodedKey::builder`] and append the same fields the

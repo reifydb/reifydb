@@ -2,22 +2,30 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
+	cell::UnsafeCell,
 	collections::{BTreeMap, HashMap},
 	path::{Path, PathBuf},
 	sync::OnceLock,
 };
 
 use libloading::Symbol;
-use reifydb_core::{interface::catalog::flow::FlowNodeId, internal};
+use reifydb_core::{
+	interface::{catalog::flow::FlowNodeId, change::Change},
+	internal,
+};
 use reifydb_extension::loader::ffi::LibraryCache;
 use reifydb_runtime::sync::rwlock::RwLock;
+use reifydb_sdk::operator::{OperatorLogic, view::native::NativeChangeView};
 use reifydb_type::{
 	Result,
 	error::Error,
 	value::{Value, constraint::TypeConstraint},
 };
 
-use crate::operator::BoxedOperator;
+use crate::{
+	operator::{BoxedOperator, Operator, context::native::NativeOperatorContext},
+	transaction::FlowTransaction,
+};
 
 pub const NATIVE_OPERATOR_MAGIC: u32 = 0x5244_424E;
 
@@ -176,6 +184,48 @@ impl NativeOperatorLoader {
 impl Default for NativeOperatorLoader {
 	fn default() -> Self {
 		Self::new()
+	}
+}
+
+pub struct NativeOperator<C> {
+	logic: UnsafeCell<C>,
+	node: FlowNodeId,
+	capabilities: u32,
+}
+
+impl<C> NativeOperator<C> {
+	pub fn new(logic: C, node: FlowNodeId, capabilities: u32) -> Self {
+		Self {
+			logic: UnsafeCell::new(logic),
+			node,
+			capabilities,
+		}
+	}
+}
+
+unsafe impl<C: Send> Send for NativeOperator<C> {}
+unsafe impl<C: Send> Sync for NativeOperator<C> {}
+
+impl<C: OperatorLogic + 'static> Operator for NativeOperator<C> {
+	fn id(&self) -> FlowNodeId {
+		self.node
+	}
+
+	fn capabilities(&self) -> u32 {
+		self.capabilities
+	}
+
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+		let version = change.version;
+		let changed_at = change.changed_at;
+		let mut ctx = NativeOperatorContext::new(txn, self.node);
+		{
+			let view = NativeChangeView::new(&change);
+			let logic = unsafe { &mut *self.logic.get() };
+			logic.apply(&mut ctx, view)?;
+		}
+		let diffs = ctx.take_diffs();
+		Ok(Change::from_flow(self.node, version, diffs, changed_at))
 	}
 }
 

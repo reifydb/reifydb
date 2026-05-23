@@ -14,7 +14,7 @@ use tracing::{Span, instrument};
 
 use crate::{
 	error::{FFIError, Result},
-	operator::context::OperatorContext,
+	operator::context::ffi::FFIOperatorContext,
 };
 
 #[instrument(name = "flow::operator::state::ffi:get", level = "trace", skip(ctx), fields(
@@ -22,7 +22,7 @@ use crate::{
 	key_len = key.as_bytes().len(),
 	found
 ))]
-pub(crate) fn get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+pub(crate) fn get(ctx: &FFIOperatorContext, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 	let key_bytes = key.as_bytes();
 	let mut output = BufferFFI {
 		ptr: null_mut(),
@@ -64,7 +64,7 @@ pub(crate) fn get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<Enco
 	key_len = key.as_bytes().len(),
 	value_len = value.as_ref().len()
 ))]
-pub(crate) fn set(ctx: &mut OperatorContext, key: &EncodedKey, value: &EncodedRow) -> Result<()> {
+pub(crate) fn set(ctx: &mut FFIOperatorContext, key: &EncodedKey, value: &EncodedRow) -> Result<()> {
 	let key_bytes = key.as_bytes();
 	let value_bytes = value.as_ref();
 
@@ -90,7 +90,7 @@ pub(crate) fn set(ctx: &mut OperatorContext, key: &EncodedKey, value: &EncodedRo
 	operator_id = ctx.operator_id().0,
 	key_len = key.as_bytes().len()
 ))]
-pub(crate) fn remove(ctx: &mut OperatorContext, key: &EncodedKey) -> Result<()> {
+pub(crate) fn remove(ctx: &mut FFIOperatorContext, key: &EncodedKey) -> Result<()> {
 	let key_bytes = key.as_bytes();
 
 	unsafe {
@@ -114,7 +114,7 @@ pub(crate) fn remove(ctx: &mut OperatorContext, key: &EncodedKey) -> Result<()> 
 	key_count = keys.len(),
 	result_count
 ))]
-pub(crate) fn get_many(ctx: &OperatorContext, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+pub(crate) fn get_many(ctx: &FFIOperatorContext, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 	if keys.is_empty() {
 		Span::current().record("result_count", 0);
 		return Ok(Vec::new());
@@ -209,7 +209,7 @@ pub(crate) fn get_many(ctx: &OperatorContext, keys: &[EncodedKey]) -> Result<Vec
 	prefix_len = prefix.as_bytes().len(),
 	result_count
 ))]
-pub(crate) fn prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+pub(crate) fn prefix(ctx: &FFIOperatorContext, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 	let prefix_bytes = prefix.as_bytes();
 	let mut iterator: *mut StateIteratorFFI = null_mut();
 
@@ -293,7 +293,7 @@ const BOUND_EXCLUDED: u8 = 2;
 	result_count
 ))]
 pub(crate) fn range(
-	ctx: &OperatorContext,
+	ctx: &FFIOperatorContext,
 	start: Bound<&EncodedKey>,
 	end: Bound<&EncodedKey>,
 ) -> Result<Vec<(EncodedKey, EncodedRow)>> {
@@ -389,7 +389,7 @@ pub(crate) fn range(
 #[instrument(name = "flow::operator::state::ffi::clear", level = "debug", skip(ctx), fields(
 	operator_id = ctx.operator_id().0
 ))]
-pub(crate) fn clear(ctx: &mut OperatorContext) -> Result<()> {
+pub(crate) fn clear(ctx: &mut FFIOperatorContext) -> Result<()> {
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.clear)((*ctx.ctx).operator_id, ctx.ctx);
 
@@ -406,7 +406,7 @@ pub(crate) fn clear(ctx: &mut OperatorContext) -> Result<()> {
 	key_len = key.as_bytes().len(),
 	found
 ))]
-pub(crate) fn internal_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+pub(crate) fn internal_get(ctx: &FFIOperatorContext, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 	let key_bytes = key.as_bytes();
 	let mut output = BufferFFI {
 		ptr: null_mut(),
@@ -447,7 +447,7 @@ pub(crate) fn internal_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Op
 	key_len = key.as_bytes().len(),
 	value_len = value.as_ref().len()
 ))]
-pub(crate) fn internal_set(ctx: &mut OperatorContext, key: &EncodedKey, value: &EncodedRow) -> Result<()> {
+pub(crate) fn internal_set(ctx: &mut FFIOperatorContext, key: &EncodedKey, value: &EncodedRow) -> Result<()> {
 	let key_bytes = key.as_bytes();
 	let value_bytes = value.as_ref();
 
@@ -473,7 +473,7 @@ pub(crate) fn internal_set(ctx: &mut OperatorContext, key: &EncodedKey, value: &
 	operator_id = ctx.operator_id().0,
 	key_len = key.as_bytes().len()
 ))]
-pub(crate) fn internal_remove(ctx: &mut OperatorContext, key: &EncodedKey) -> Result<()> {
+pub(crate) fn internal_remove(ctx: &mut FFIOperatorContext, key: &EncodedKey) -> Result<()> {
 	let key_bytes = key.as_bytes();
 
 	unsafe {
@@ -497,7 +497,10 @@ pub(crate) fn internal_remove(ctx: &mut OperatorContext, key: &EncodedKey) -> Re
 	key_count = keys.len(),
 	result_count
 ))]
-pub(crate) fn internal_get_many(ctx: &OperatorContext, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+pub(crate) fn internal_get_many(
+	ctx: &FFIOperatorContext,
+	keys: &[EncodedKey],
+) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 	if keys.is_empty() {
 		Span::current().record("result_count", 0);
 		return Ok(Vec::new());

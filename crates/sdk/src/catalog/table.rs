@@ -16,10 +16,10 @@ use reifydb_core::{
 };
 
 use super::{unmarshal_column, unmarshal_primary_key};
-use crate::{error::FFIError, operator::context::OperatorContext};
+use crate::{error::FFIError, operator::context::ffi::FFIOperatorContext};
 
 pub(super) fn raw_catalog_find_table(
-	ctx: &OperatorContext,
+	ctx: &FFIOperatorContext,
 	table_id: TableId,
 	version: CommitVersion,
 ) -> Result<Option<Table>, FFIError> {
@@ -47,7 +47,7 @@ pub(super) fn raw_catalog_find_table(
 }
 
 pub(super) fn raw_catalog_find_table_by_name(
-	ctx: &OperatorContext,
+	ctx: &FFIOperatorContext,
 	namespace_id: NamespaceId,
 	name: &str,
 	version: CommitVersion,

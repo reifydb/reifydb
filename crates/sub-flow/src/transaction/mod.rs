@@ -89,6 +89,8 @@ pub mod write;
 
 use slot::{OperatorStateSlot, PersistFn};
 
+use crate::host::{HostCatalog, StandardHostCatalog};
+
 pub struct TransactionalParams {
 	pub version: CommitVersion,
 	pub pending: Pending,
@@ -129,6 +131,7 @@ pub struct FlowTransactionInner {
 	pub state_query: Option<MultiReadTransaction>,
 	pub single: SingleTransaction,
 	pub catalog: Catalog,
+	pub host_catalog: Arc<dyn HostCatalog>,
 	pub interceptors: Interceptors,
 	pub accumulator: ChangeAccumulator,
 	pub clock: Clock,
@@ -227,7 +230,8 @@ impl FlowTransaction {
 				query,
 				state_query: Some(state_query),
 				single: parent.single.clone(),
-				catalog,
+				catalog: catalog.clone(),
+				host_catalog: Arc::new(StandardHostCatalog::new(catalog)),
 				interceptors,
 				accumulator: ChangeAccumulator::new(),
 				clock,
@@ -251,7 +255,8 @@ impl FlowTransaction {
 				query,
 				state_query: Some(state_query),
 				single: params.single,
-				catalog: params.catalog,
+				catalog: params.catalog.clone(),
+				host_catalog: Arc::new(StandardHostCatalog::new(params.catalog)),
 				interceptors: params.interceptors,
 				accumulator: ChangeAccumulator::new(),
 				clock: params.clock,
@@ -277,7 +282,8 @@ impl FlowTransaction {
 				query,
 				state_query: Some(state_query),
 				single,
-				catalog: params.catalog,
+				catalog: params.catalog.clone(),
+				host_catalog: Arc::new(StandardHostCatalog::new(params.catalog)),
 				interceptors: params.interceptors,
 				accumulator: ChangeAccumulator::new(),
 				clock: params.clock,
@@ -307,7 +313,8 @@ impl FlowTransaction {
 				query: params.query,
 				state_query: Some(params.state_query),
 				single: params.single,
-				catalog: params.catalog,
+				catalog: params.catalog.clone(),
+				host_catalog: Arc::new(StandardHostCatalog::new(params.catalog)),
 				interceptors: params.interceptors,
 				accumulator: ChangeAccumulator::new(),
 				clock: params.clock,
@@ -348,7 +355,8 @@ impl FlowTransaction {
 				query: pq,
 				state_query: None,
 				single,
-				catalog,
+				catalog: catalog.clone(),
+				host_catalog: Arc::new(StandardHostCatalog::new(catalog)),
 				interceptors: Interceptors::new(),
 				accumulator: ChangeAccumulator::new(),
 				clock,
@@ -433,6 +441,10 @@ impl FlowTransaction {
 
 	pub fn catalog(&self) -> &Catalog {
 		&self.inner().catalog
+	}
+
+	pub fn host_catalog(&self) -> &dyn HostCatalog {
+		&*self.inner().host_catalog
 	}
 
 	pub fn clock(&self) -> &Clock {

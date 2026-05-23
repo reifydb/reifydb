@@ -10,13 +10,6 @@ use crate::{context::context::ContextFFI, flow::change::ChangeFFI};
 pub struct OperatorVTableFFI {
 	pub apply: unsafe extern "C" fn(instance: *mut c_void, ctx: *mut ContextFFI, input: *const ChangeFFI) -> i32,
 
-	pub pull: unsafe extern "C" fn(
-		instance: *mut c_void,
-		ctx: *mut ContextFFI,
-		row_numbers: *const u64,
-		count: usize,
-	) -> i32,
-
 	pub tick: unsafe extern "C" fn(instance: *mut c_void, ctx: *mut ContextFFI, timestamp_nanos: u64) -> i32,
 
 	pub tick_interval: unsafe extern "C" fn(instance: *mut c_void) -> u64,

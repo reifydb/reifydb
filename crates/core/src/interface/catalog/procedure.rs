@@ -23,7 +23,7 @@ pub enum ProcedureKind {
 	Rql,
 	Test,
 	Native,
-	Ffi,
+	FFI,
 	Wasm,
 }
 
@@ -33,7 +33,7 @@ impl ProcedureKind {
 			ProcedureKind::Rql => "rql",
 			ProcedureKind::Test => "test",
 			ProcedureKind::Native => "native",
-			ProcedureKind::Ffi => "ffi",
+			ProcedureKind::FFI => "ffi",
 			ProcedureKind::Wasm => "wasm",
 		}
 	}
@@ -79,7 +79,7 @@ pub enum Procedure {
 		native_name: String,
 	},
 
-	Ffi {
+	FFI {
 		id: ProcedureId,
 		namespace: NamespaceId,
 		name: String,
@@ -116,7 +116,7 @@ impl Procedure {
 				id,
 				..
 			}
-			| Procedure::Ffi {
+			| Procedure::FFI {
 				id,
 				..
 			}
@@ -141,7 +141,7 @@ impl Procedure {
 				namespace,
 				..
 			}
-			| Procedure::Ffi {
+			| Procedure::FFI {
 				namespace,
 				..
 			}
@@ -166,7 +166,7 @@ impl Procedure {
 				name,
 				..
 			}
-			| Procedure::Ffi {
+			| Procedure::FFI {
 				name,
 				..
 			}
@@ -191,7 +191,7 @@ impl Procedure {
 				params,
 				..
 			}
-			| Procedure::Ffi {
+			| Procedure::FFI {
 				params,
 				..
 			}
@@ -216,7 +216,7 @@ impl Procedure {
 				return_type,
 				..
 			}
-			| Procedure::Ffi {
+			| Procedure::FFI {
 				return_type,
 				..
 			}
@@ -238,9 +238,9 @@ impl Procedure {
 			Procedure::Native {
 				..
 			} => ProcedureKind::Native,
-			Procedure::Ffi {
+			Procedure::FFI {
 				..
-			} => ProcedureKind::Ffi,
+			} => ProcedureKind::FFI,
 			Procedure::Wasm {
 				..
 			} => ProcedureKind::Wasm,
@@ -269,7 +269,7 @@ impl Procedure {
 				native_name,
 				..
 			}
-			| Procedure::Ffi {
+			| Procedure::FFI {
 				native_name,
 				..
 			}

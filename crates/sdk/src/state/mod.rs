@@ -18,7 +18,7 @@ use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
 	error::{FFIError, Result},
-	operator::{FFIOperator, context::OperatorContext},
+	operator::{FFIOperator, context::ffi::FFIOperatorContext},
 };
 
 pub struct StateEntry<T> {
@@ -28,11 +28,11 @@ pub struct StateEntry<T> {
 }
 
 pub struct State<'a> {
-	ctx: &'a mut OperatorContext,
+	ctx: &'a mut FFIOperatorContext,
 }
 
 impl<'a> State<'a> {
-	pub(crate) fn new(ctx: &'a mut OperatorContext) -> Self {
+	pub(crate) fn new(ctx: &'a mut FFIOperatorContext) -> Self {
 		Self {
 			ctx,
 		}
@@ -108,11 +108,11 @@ impl<'a> State<'a> {
 /// `FlowNodeInternalStateKey(operator_id, ...)` so callers pass only the
 /// inner-tag bytes.
 pub struct InternalState<'a> {
-	ctx: &'a mut OperatorContext,
+	ctx: &'a mut FFIOperatorContext,
 }
 
 impl<'a> InternalState<'a> {
-	pub(crate) fn new(ctx: &'a mut OperatorContext) -> Self {
+	pub(crate) fn new(ctx: &'a mut FFIOperatorContext) -> Self {
 		Self {
 			ctx,
 		}
@@ -171,41 +171,41 @@ fn decode_payload<T: DeserializeOwned>(row: &EncodedRow) -> Result<T> {
 }
 
 pub trait FFIRawStatefulOperator: FFIOperator {
-	fn state_get<T: DeserializeOwned>(&self, ctx: &mut OperatorContext, key: &EncodedKey) -> Result<Option<T>> {
+	fn state_get<T: DeserializeOwned>(&self, ctx: &mut FFIOperatorContext, key: &EncodedKey) -> Result<Option<T>> {
 		ctx.state().get(key)
 	}
 
-	fn state_set<T: Serialize>(&self, ctx: &mut OperatorContext, key: &EncodedKey, value: &T) -> Result<()> {
+	fn state_set<T: Serialize>(&self, ctx: &mut FFIOperatorContext, key: &EncodedKey, value: &T) -> Result<()> {
 		ctx.state().set(key, value)
 	}
 
-	fn state_remove(&self, ctx: &mut OperatorContext, key: &EncodedKey) -> Result<()> {
+	fn state_remove(&self, ctx: &mut FFIOperatorContext, key: &EncodedKey) -> Result<()> {
 		ctx.state().remove(key)
 	}
 
 	fn state_scan_prefix<T: DeserializeOwned>(
 		&self,
-		ctx: &mut OperatorContext,
+		ctx: &mut FFIOperatorContext,
 		prefix: &EncodedKey,
 	) -> Result<Vec<(EncodedKey, T)>> {
 		ctx.state().scan_prefix(prefix)
 	}
 
-	fn state_keys_with_prefix(&self, ctx: &mut OperatorContext, prefix: &EncodedKey) -> Result<Vec<EncodedKey>> {
+	fn state_keys_with_prefix(&self, ctx: &mut FFIOperatorContext, prefix: &EncodedKey) -> Result<Vec<EncodedKey>> {
 		ctx.state().keys_with_prefix(prefix)
 	}
 
-	fn state_contains(&self, ctx: &mut OperatorContext, key: &EncodedKey) -> Result<bool> {
+	fn state_contains(&self, ctx: &mut FFIOperatorContext, key: &EncodedKey) -> Result<bool> {
 		ctx.state().contains(key)
 	}
 
-	fn state_clear(&self, ctx: &mut OperatorContext) -> Result<()> {
+	fn state_clear(&self, ctx: &mut FFIOperatorContext) -> Result<()> {
 		ctx.state().clear()
 	}
 
 	fn state_scan_range<T: DeserializeOwned>(
 		&self,
-		ctx: &mut OperatorContext,
+		ctx: &mut FFIOperatorContext,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
 	) -> Result<Vec<(EncodedKey, T)>> {
@@ -219,7 +219,7 @@ pub trait FFIRawStatefulOperator: FFIOperator {
 
 	fn internal_state_get<T: DeserializeOwned>(
 		&self,
-		ctx: &mut OperatorContext,
+		ctx: &mut FFIOperatorContext,
 		key: &EncodedKey,
 	) -> Result<Option<T>> {
 		ctx.internal_state().get(key)
@@ -227,18 +227,18 @@ pub trait FFIRawStatefulOperator: FFIOperator {
 
 	fn internal_state_set<T: Serialize>(
 		&self,
-		ctx: &mut OperatorContext,
+		ctx: &mut FFIOperatorContext,
 		key: &EncodedKey,
 		value: &T,
 	) -> Result<()> {
 		ctx.internal_state().set(key, value)
 	}
 
-	fn internal_state_remove(&self, ctx: &mut OperatorContext, key: &EncodedKey) -> Result<()> {
+	fn internal_state_remove(&self, ctx: &mut FFIOperatorContext, key: &EncodedKey) -> Result<()> {
 		ctx.internal_state().remove(key)
 	}
 
-	fn internal_state_contains(&self, ctx: &mut OperatorContext, key: &EncodedKey) -> Result<bool> {
+	fn internal_state_contains(&self, ctx: &mut FFIOperatorContext, key: &EncodedKey) -> Result<bool> {
 		ctx.internal_state().contains(key)
 	}
 }

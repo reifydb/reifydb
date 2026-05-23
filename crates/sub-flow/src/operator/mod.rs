@@ -12,6 +12,8 @@ use crate::transaction::FlowTransaction;
 pub mod append;
 pub mod apply;
 pub mod capability_guard;
+#[cfg(reifydb_target = "native")]
+pub mod context;
 pub mod distinct;
 pub mod extend;
 #[cfg(reifydb_target = "native")]
