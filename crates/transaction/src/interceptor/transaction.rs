@@ -22,6 +22,8 @@ pub struct PreCommitContext {
 
 	pub pending_writes: Vec<(EncodedKey, Option<EncodedRow>)>,
 
+	pub purges: Vec<EncodedKey>,
+
 	pub pending_shapes: Vec<RowShape>,
 
 	pub transaction_writes: Vec<(EncodedKey, Option<EncodedRow>)>,
@@ -34,6 +36,7 @@ impl PreCommitContext {
 		Self {
 			flow_changes: Vec::new(),
 			pending_writes: Vec::new(),
+			purges: Vec::new(),
 			pending_shapes: Vec::new(),
 			transaction_writes: Vec::new(),
 			view_entries: Vec::new(),

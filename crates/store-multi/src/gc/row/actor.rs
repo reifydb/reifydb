@@ -6,7 +6,10 @@ use std::collections::HashMap;
 use reifydb_core::{
 	actors::ttl::RowTtlMessage as Message,
 	event::row::RowsExpiredEvent,
-	interface::catalog::{config::ConfigKey, shape::ShapeId},
+	interface::{
+		catalog::{config::ConfigKey, shape::ShapeId},
+		store::EntryKind,
+	},
 	row::{TtlAnchor, TtlCleanupMode},
 };
 use reifydb_runtime::actor::{
@@ -57,10 +60,12 @@ impl<P: ListRowTtls> Actor<P> {
 			return;
 		}
 
-		let Some(buffer) = self.store.buffer() else {
-			warn!("Row TTL scan skipped: buffer tier is not configured");
+		let buffer = self.store.buffer();
+		let persistent = self.store.persistent();
+		if buffer.is_none() && persistent.is_none() {
+			warn!("Row TTL scan skipped: no storage tier is configured");
 			return;
-		};
+		}
 
 		state.scanning = true;
 
@@ -70,6 +75,7 @@ impl<P: ListRowTtls> Actor<P> {
 		let ttls = self.provider.list_row_ttls();
 		let config = self.provider.config();
 		let mut stats = ScanStats::default();
+		let mut persistent_rows_deleted: u64 = 0;
 
 		let batch_size = config.get_config_uint8(ConfigKey::RowTtlScanBatchSize) as usize;
 
@@ -81,82 +87,115 @@ impl<P: ListRowTtls> Actor<P> {
 				continue;
 			}
 
-			let mut cursor = state.scanner.cursors.remove(shape_id).unwrap_or_default();
+			if let Some(buffer) = buffer {
+				let mut cursor = state.scanner.cursors.remove(shape_id).unwrap_or_default();
 
-			let scan_result = match ttl_config.anchor {
-				TtlAnchor::Created => scanner::scan_shape_by_created_at(
-					buffer,
-					*shape_id,
-					ttl_config,
-					now_nanos,
-					batch_size,
-					&mut cursor,
-				),
-				TtlAnchor::Updated => scanner::scan_shape_by_updated_at(
-					buffer,
-					*shape_id,
-					ttl_config,
-					now_nanos,
-					batch_size,
-					&mut cursor,
-				),
-			};
+				let scan_result = match ttl_config.anchor {
+					TtlAnchor::Created => scanner::scan_shape_by_created_at(
+						buffer,
+						*shape_id,
+						ttl_config,
+						now_nanos,
+						batch_size,
+						&mut cursor,
+					),
+					TtlAnchor::Updated => scanner::scan_shape_by_updated_at(
+						buffer,
+						*shape_id,
+						ttl_config,
+						now_nanos,
+						batch_size,
+						&mut cursor,
+					),
+				};
 
-			match scan_result {
-				Ok((expired, result)) => {
-					debug!(
-						?shape_id,
-						expired_count = expired.len(),
-						?result,
-						"Shape scan iteration completed"
-					);
-					stats.shapes_scanned += 1;
+				match scan_result {
+					Ok((expired, result)) => {
+						debug!(
+							?shape_id,
+							expired_count = expired.len(),
+							?result,
+							"Shape scan iteration completed"
+						);
+						stats.shapes_scanned += 1;
 
-					if !expired.is_empty() {
-						stats.rows_expired += expired.len() as u64;
-						for row in &expired {
-							*stats.bytes_discovered.entry(row.shape_id).or_insert(0) +=
-								row.scanned_bytes;
+						if !expired.is_empty() {
+							stats.rows_expired += expired.len() as u64;
+							for row in &expired {
+								*stats.bytes_discovered
+									.entry(row.shape_id)
+									.or_insert(0) += row.scanned_bytes;
+							}
+
+							match scanner::drop_expired_keys(buffer, &expired, &mut stats) {
+								Ok(_) => {
+									let bytes_freed: u64 =
+										stats.bytes_reclaimed.values().sum();
+									debug!(
+										?shape_id,
+										bytes_freed,
+										"Freed storage from expired rows for shape"
+									);
+								}
+								Err(e) => {
+									warn!(?shape_id, error = %e, "Failed to drop expired keys");
+								}
+							}
 						}
 
-						match scanner::drop_expired_keys(buffer, &expired, &mut stats) {
-							Ok(_) => {
-								let bytes_freed: u64 =
-									stats.bytes_reclaimed.values().sum();
-								debug!(
-									?shape_id,
-									bytes_freed,
-									"Freed storage from expired rows for shape"
-								);
+						match result {
+							scanner::ScanResult::Yielded => {
+								state.scanner.cursors.insert(*shape_id, cursor);
 							}
-							Err(e) => {
-								warn!(?shape_id, error = %e, "Failed to drop expired keys");
-							}
+							scanner::ScanResult::Exhausted => {}
 						}
 					}
-
-					match result {
-						scanner::ScanResult::Yielded => {
-							state.scanner.cursors.insert(*shape_id, cursor);
-						}
-						scanner::ScanResult::Exhausted => {}
+					Err(e) => {
+						warn!(?shape_id, error = %e, "Failed to scan shape for expired rows");
 					}
 				}
-				Err(e) => {
-					warn!(?shape_id, error = %e, "Failed to scan shape for expired rows");
+			}
+
+			if let Some(persistent) = persistent {
+				let cutoff = now_nanos.saturating_sub(ttl_config.duration_nanos);
+				match persistent.delete_expired(EntryKind::Source(*shape_id), ttl_config.anchor, cutoff)
+				{
+					Ok(deleted) => {
+						persistent_rows_deleted += deleted;
+						if deleted > 0 {
+							debug!(
+								?shape_id,
+								deleted, "Evicted expired rows from persistent tier"
+							);
+						}
+					}
+					Err(e) => {
+						warn!(?shape_id, error = %e, "Failed to evict expired persistent rows");
+					}
 				}
 			}
 		}
 
-		if stats.rows_expired > 0 {
+		if let Some(buffer) = buffer
+			&& stats.rows_expired > 0
+		{
 			buffer.maintenance();
+		}
 
+		if buffer.is_none()
+			&& let Some(persistent) = persistent
+			&& let Err(e) = persistent.maybe_checkpoint()
+		{
+			warn!(error = %e, "persistent WAL checkpoint failed");
+		}
+
+		if stats.rows_expired > 0 || persistent_rows_deleted > 0 {
 			info!(
 				shapes_scanned = stats.shapes_scanned,
 				shapes_skipped = stats.shapes_skipped,
 				rows_expired = stats.rows_expired,
 				versions_dropped = stats.versions_dropped,
-				bytes_discovered = ?stats.bytes_discovered.values().sum::<u64>(),
+				persistent_rows_deleted,
 				bytes_reclaimed = ?stats.bytes_reclaimed.values().sum::<u64>(),
 				"Row TTL scan completed"
 			);

@@ -10,7 +10,6 @@ pub mod granted_role;
 pub mod identity;
 pub mod namespace;
 pub mod operator_retention_strategy;
-pub mod operator_ttl;
 pub mod policy;
 pub mod primary_key;
 pub mod procedure;
@@ -34,7 +33,6 @@ use granted_role::load_granted_roles;
 use identity::load_identities;
 use namespace::load_namespaces;
 use operator_retention_strategy::load_operator_retention_strategies;
-use operator_ttl::load_operator_ttls;
 use policy::load_policies;
 use primary_key::load_primary_keys;
 use procedure::load_procedures;
@@ -71,7 +69,6 @@ impl CatalogCacheLoader {
 		load_shape_retention_strategies(rx, catalog)?;
 		load_operator_retention_strategies(rx, catalog)?;
 		load_row_ttls(rx, catalog)?;
-		load_operator_ttls(rx, catalog)?;
 
 		load_dictionaries(rx, catalog)?;
 		load_sumtypes(rx, catalog)?;

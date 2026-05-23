@@ -31,7 +31,7 @@ use reifydb_core::{
 	actors::cdc::CdcProduceHandle,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::{
-		catalog::config::{ConfigKey, GetConfig},
+		catalog::config::ConfigKey,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	util::ioc::IocContainer,

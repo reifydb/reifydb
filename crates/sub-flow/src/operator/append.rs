@@ -26,7 +26,7 @@ use crate::{
 		Operator, OperatorCell,
 		stateful::{
 			row::RowNumberProvider,
-			utils::{state_get, state_range, state_remove, state_set},
+			utils::{state_get, state_purge, state_range, state_set},
 		},
 	},
 	transaction::FlowTransaction,
@@ -138,7 +138,7 @@ impl AppendOperator {
 	fn forget_mapping(&self, txn: &mut FlowTransaction, composite_key: &EncodedKey) -> Result<()> {
 		self.row_number_provider.remove_for_key(txn, composite_key)?;
 		let ts_key = Self::make_timestamp_key(composite_key);
-		state_remove(self.node, txn, &ts_key)
+		state_purge(self.node, txn, &ts_key)
 	}
 }
 

@@ -13,7 +13,6 @@ mod handler;
 mod identity;
 mod migration;
 mod namespace;
-mod operator_ttl;
 mod policy;
 mod procedure;
 mod ringbuffer;

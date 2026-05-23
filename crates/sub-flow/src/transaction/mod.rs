@@ -372,7 +372,7 @@ impl FlowTransaction {
 						PendingWrite::Set(row) => {
 							state.insert(key.clone(), row.clone());
 						}
-						PendingWrite::Remove => {
+						PendingWrite::Remove | PendingWrite::Drop => {
 							state.remove(key);
 						}
 					}
@@ -421,8 +421,7 @@ impl FlowTransaction {
 		entries
 	}
 
-	#[cfg(test)]
-	pub fn pending(&self) -> &Pending {
+	pub(crate) fn pending(&self) -> &Pending {
 		&self.inner().pending
 	}
 

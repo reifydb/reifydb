@@ -12,8 +12,11 @@ use std::{
 };
 
 use reifydb_core::{
-	common::CommitVersion, encoded::key::EncodedKey, error::diagnostic::internal::internal,
+	common::CommitVersion,
+	encoded::{key::EncodedKey, row::EncodedRow},
+	error::diagnostic::internal::internal,
 	interface::store::EntryKind,
+	row::TtlAnchor,
 };
 use reifydb_runtime::sync::mutex::{Mutex, MutexGuard};
 use reifydb_sqlite::{
@@ -28,12 +31,17 @@ use tracing::{instrument, warn};
 use super::{
 	entry::current_table_name,
 	query::{
-		build_create_current_sql, build_get_current_sql, build_get_many_current_sql, build_range_current_sql,
-		build_upsert_current_sql, version_from_bytes, version_to_bytes,
+		build_create_current_sql, build_delete_expired_sql, build_delete_keys_sql, build_get_current_sql,
+		build_get_many_current_sql, build_range_current_sql, build_upsert_current_sql, version_from_bytes,
+		version_to_bytes,
 	},
 };
-use crate::tier::{
-	HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage, VersionedGetResult,
+use crate::{
+	persistent::CheckpointOutcome,
+	tier::{
+		HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage,
+		VersionedGetResult,
+	},
 };
 
 const GET_MANY_CHUNK: usize = 900;
@@ -43,12 +51,6 @@ const WRITER_BUSY_TIMEOUT: Duration = Duration::from_millis(200);
 #[derive(Clone)]
 pub struct SqlitePersistentStorage {
 	inner: Arc<SqlitePersistentStorageInner>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CheckpointOutcome {
-	pub log_frames: u32,
-	pub restarted: bool,
 }
 
 struct SqlitePersistentStorageInner {
@@ -157,8 +159,49 @@ impl SqlitePersistentStorage {
 		}
 	}
 
+	pub fn delete_expired(&self, table: EntryKind, anchor: TtlAnchor, cutoff_nanos: u64) -> Result<u64> {
+		let table_name = current_table_name(table);
+		let anchor_column = match anchor {
+			TtlAnchor::Created => "created_nanos",
+			TtlAnchor::Updated => "updated_nanos",
+		};
+		let sql = build_delete_expired_sql(&table_name, anchor_column);
+		let conn = self.inner.conn.lock();
+		match conn.execute(&sql, params![cutoff_nanos as i64]) {
+			Ok(n) => Ok(n as u64),
+			Err(e) if e.to_string().contains("no such table") => Ok(0),
+			Err(e) => Err(error!(internal(format!(
+				"Failed to delete expired persistent rows from {}: {}",
+				table_name, e
+			)))),
+		}
+	}
+
+	pub fn delete_keys(&self, table: EntryKind, keys: &[EncodedKey]) -> Result<u64> {
+		if keys.is_empty() {
+			return Ok(0);
+		}
+		let table_name = current_table_name(table);
+		let conn = self.inner.conn.lock();
+		let mut total = 0u64;
+		for chunk in keys.chunks(GET_MANY_CHUNK) {
+			let sql = build_delete_keys_sql(&table_name, chunk.len());
+			match conn.execute(&sql, params_from_iter(chunk.iter().map(|k| k.as_slice()))) {
+				Ok(n) => total += n as u64,
+				Err(e) if e.to_string().contains("no such table") => return Ok(total),
+				Err(e) => {
+					return Err(error!(internal(format!(
+						"Failed to delete keys from {}: {}",
+						table_name, e
+					))));
+				}
+			}
+		}
+		Ok(total)
+	}
+
 	fn create_table_if_needed(conn: &Connection, table_name: &str) -> SqliteResult<()> {
-		conn.execute(&build_create_current_sql(table_name), [])?;
+		conn.execute_batch(&build_create_current_sql(table_name))?;
 		Ok(())
 	}
 
@@ -370,9 +413,21 @@ impl TierStorage for SqlitePersistentStorage {
 			for (key, value) in entries {
 				let key_slice = key.as_slice();
 				let value_slice = value.as_ref().map(|v| v.as_slice());
-				stmt.execute(params![key_slice, new_version_bytes.as_slice(), value_slice]).map_err(
-					|e| error!(internal(format!("Failed to upsert persistent row: {}", e))),
-				)?;
+				let (created_nanos, updated_nanos) = match &value {
+					Some(v) if v.len() >= 24 => {
+						let row = EncodedRow(v.clone());
+						(row.created_at_nanos() as i64, row.updated_at_nanos() as i64)
+					}
+					_ => (0i64, 0i64),
+				};
+				stmt.execute(params![
+					key_slice,
+					new_version_bytes.as_slice(),
+					value_slice,
+					created_nanos,
+					updated_nanos
+				])
+				.map_err(|e| error!(internal(format!("Failed to upsert persistent row: {}", e))))?;
 			}
 		}
 
@@ -492,3 +547,112 @@ impl TierStorage for SqlitePersistentStorage {
 }
 
 impl TierBackend for SqlitePersistentStorage {}
+
+#[cfg(test)]
+mod tests {
+	use std::collections::HashMap;
+
+	use reifydb_core::interface::catalog::{id::TableId, shape::ShapeId};
+
+	use super::*;
+
+	fn table() -> EntryKind {
+		EntryKind::Source(ShapeId::Table(TableId(1)))
+	}
+
+	fn key(n: u64) -> EncodedKey {
+		EncodedKey::new(n.to_be_bytes().to_vec())
+	}
+
+	fn row(created_nanos: u64, updated_nanos: u64, payload: &[u8]) -> CowVec<u8> {
+		let mut buf = vec![0u8; 24 + payload.len()];
+		buf[8..16].copy_from_slice(&created_nanos.to_le_bytes());
+		buf[16..24].copy_from_slice(&updated_nanos.to_le_bytes());
+		buf[24..].copy_from_slice(payload);
+		CowVec::new(buf)
+	}
+
+	fn visible(s: &SqlitePersistentStorage, k: &EncodedKey) -> bool {
+		s.get(table(), k.as_slice(), CommitVersion(u64::MAX)).unwrap().value().is_some()
+	}
+
+	#[test]
+	fn delete_expired_created_anchor_removes_only_rows_at_or_below_cutoff() {
+		let s = SqlitePersistentStorage::in_memory();
+		s.set(
+			CommitVersion(1),
+			HashMap::from([(
+				table(),
+				vec![
+					(key(1), Some(row(100, 100, b"a"))),
+					(key(2), Some(row(200, 200, b"b"))),
+					(key(3), Some(row(300, 300, b"c"))),
+				],
+			)]),
+		)
+		.unwrap();
+		assert_eq!(s.count_current(table()).unwrap(), 3);
+
+		let deleted = s.delete_expired(table(), TtlAnchor::Created, 200).unwrap();
+
+		assert_eq!(deleted, 2, "rows created at <= cutoff(200) must be physically deleted");
+		assert_eq!(
+			s.count_current(table()).unwrap(),
+			1,
+			"deletion must reclaim sqlite rows, not tombstone them"
+		);
+		assert!(!visible(&s, &key(1)));
+		assert!(!visible(&s, &key(2)));
+		assert!(visible(&s, &key(3)), "row newer than the TTL cutoff must survive");
+	}
+
+	#[test]
+	fn delete_expired_updated_anchor_keeps_recently_updated_rows() {
+		let s = SqlitePersistentStorage::in_memory();
+		s.set(
+			CommitVersion(1),
+			HashMap::from([(
+				table(),
+				vec![
+					(key(1), Some(row(10, 500, b"created-old-updated-fresh"))),
+					(key(2), Some(row(10, 50, b"created-old-updated-stale"))),
+				],
+			)]),
+		)
+		.unwrap();
+
+		let deleted = s.delete_expired(table(), TtlAnchor::Updated, 100).unwrap();
+
+		assert_eq!(deleted, 1, "Updated anchor must key eviction on updated_nanos, not created_nanos");
+		assert!(
+			visible(&s, &key(1)),
+			"a row updated after the cutoff must NOT be evicted even if created long ago"
+		);
+		assert!(!visible(&s, &key(2)));
+	}
+
+	#[test]
+	fn delete_expired_skips_rows_with_unset_anchor() {
+		let s = SqlitePersistentStorage::in_memory();
+		s.set(
+			CommitVersion(1),
+			HashMap::from([(table(), vec![(key(1), None), (key(2), Some(row(0, 0, b"no-anchor")))])]),
+		)
+		.unwrap();
+		let before = s.count_current(table()).unwrap();
+
+		let deleted = s.delete_expired(table(), TtlAnchor::Created, u64::MAX).unwrap();
+
+		assert_eq!(deleted, 0, "rows whose anchor is 0 (tombstones / undatable) must never be mass-deleted");
+		assert_eq!(s.count_current(table()).unwrap(), before);
+	}
+
+	#[test]
+	fn delete_expired_on_missing_table_is_noop() {
+		let s = SqlitePersistentStorage::in_memory();
+		let deleted = s
+			.delete_expired(EntryKind::Source(ShapeId::Table(TableId(999))), TtlAnchor::Created, 100)
+			.unwrap();
+		assert_eq!(deleted, 0);
+	}
+}

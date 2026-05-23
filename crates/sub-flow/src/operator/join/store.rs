@@ -22,7 +22,7 @@ use reifydb_type::{
 
 use super::state::JoinSide;
 use crate::{
-	operator::stateful::utils::{state_get, state_range, state_remove, state_set},
+	operator::stateful::utils::{state_get, state_purge, state_range, state_remove, state_set},
 	transaction::FlowTransaction,
 };
 
@@ -225,7 +225,7 @@ impl Store {
 		let mut evicted = 0;
 		for (key, row) in batch {
 			if row.updated_at_nanos() < cutoff_nanos {
-				state_remove(self.node_id, txn, &key)?;
+				state_purge(self.node_id, txn, &key)?;
 				evicted += 1;
 			}
 		}

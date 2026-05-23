@@ -192,6 +192,7 @@ fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending
 					transaction.remove(key)?;
 				}
 			}
+			PendingWrite::Drop => transaction.purge(key)?,
 		}
 	}
 	Ok(())
@@ -680,6 +681,9 @@ impl CoordinatorActor {
 						}
 						PendingWrite::Remove => {
 							consume_ctx.combined.remove(key.clone());
+						}
+						PendingWrite::Drop => {
+							consume_ctx.combined.purge(key.clone());
 						}
 					}
 				}
@@ -1300,6 +1304,7 @@ impl CoordinatorActor {
 			let result = match pw {
 				PendingWrite::Set(value) => transaction.set(key, value.clone()),
 				PendingWrite::Remove => transaction.remove(key),
+				PendingWrite::Drop => transaction.purge(key),
 			};
 			if let Err(e) = result {
 				let _ = transaction.rollback();

@@ -45,7 +45,8 @@ impl RecentCdcCache {
 	) -> Option<(Vec<Cdc>, bool)> {
 		let entries = self.inner.lock();
 		let min = entries.keys().next().copied()?;
-		if lo_inc < min {
+		let max = entries.keys().next_back().copied()?;
+		if lo_inc < min || hi_inc > max {
 			return None;
 		}
 		let mut range = entries.range(lo_inc..=hi_inc);
@@ -102,6 +103,20 @@ mod tests {
 		cache.insert(&cdc(5));
 		cache.insert(&cdc(6));
 		assert!(cache.try_serve_range(cv(3), cv(6), 100).is_none());
+	}
+
+	#[test]
+	fn serve_range_returns_none_when_above_cache_max() {
+		// hi above the cache's max version: versions in (max, hi] may exist in
+		// durable storage but not in the cache, so claiming the range is empty
+		// would make the caller miss them. The caller must fall back to storage.
+		let cache = RecentCdcCache::new(8);
+		cache.insert(&cdc(5));
+		cache.insert(&cdc(6));
+		assert!(cache.try_serve_range(cv(5), cv(8), 100).is_none(), "must not serve past cache max");
+		assert!(cache.try_serve_range(cv(7), cv(7), 100).is_none(), "must not serve a gap above max as empty");
+		let (items, _) = cache.try_serve_range(cv(5), cv(6), 100).expect("fully covered up to max");
+		assert_eq!(items.len(), 2);
 	}
 
 	#[test]

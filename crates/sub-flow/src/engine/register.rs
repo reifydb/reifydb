@@ -460,8 +460,10 @@ impl FlowEngine {
 			Apply {
 				operator,
 				expressions,
-				ttl: _,
+				ttl,
 			} => {
+				let ttl_nanos = ttl.as_ref().map(|t| t.duration_nanos);
+				let ttl_anchor = ttl.as_ref().map(|t| t.anchor).unwrap_or_default();
 				let config = evaluate_operator_config(
 					expressions.as_slice(),
 					&self.executor.routines,
@@ -495,13 +497,13 @@ impl FlowEngine {
 						self.operators.insert(
 							node.id,
 							OperatorCell::new(Operators::Apply(ApplyOperator::new(
-								parent, node.id, ffi_op,
+								parent, node.id, ffi_op, ttl_nanos, ttl_anchor,
 							))),
 						);
 					}
 					#[cfg(not(reifydb_target = "native"))]
 					{
-						let _ = operator;
+						let _ = (operator, ttl_nanos, ttl_anchor);
 
 						return Err(Error(Box::new(internal!(
 							"FFI operators are not supported in WASM"

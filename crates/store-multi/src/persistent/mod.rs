@@ -18,7 +18,13 @@ use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBa
 pub mod sqlite;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use sqlite::storage::{CheckpointOutcome, SqlitePersistentStorage};
+use sqlite::storage::SqlitePersistentStorage;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CheckpointOutcome {
+	pub log_frames: u32,
+	pub restarted: bool,
+}
 
 #[derive(Clone)]
 #[cfg_attr(all(feature = "sqlite", not(target_arch = "wasm32")), repr(u8))]
@@ -41,6 +47,43 @@ impl MultiPersistentTier {
 		match self {
 			Self::Sqlite(s) => s.maybe_checkpoint(),
 		}
+	}
+
+	pub fn delete_expired(
+		&self,
+		table: EntryKind,
+		anchor: reifydb_core::row::TtlAnchor,
+		cutoff_nanos: u64,
+	) -> Result<u64> {
+		match self {
+			Self::Sqlite(s) => s.delete_expired(table, anchor, cutoff_nanos),
+		}
+	}
+
+	pub fn delete_keys(&self, table: EntryKind, keys: &[EncodedKey]) -> Result<u64> {
+		match self {
+			Self::Sqlite(s) => s.delete_keys(table, keys),
+		}
+	}
+}
+
+#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
+impl MultiPersistentTier {
+	pub fn maybe_checkpoint(&self) -> Result<CheckpointOutcome> {
+		match *self {}
+	}
+
+	pub fn delete_expired(
+		&self,
+		_table: EntryKind,
+		_anchor: reifydb_core::row::TtlAnchor,
+		_cutoff_nanos: u64,
+	) -> Result<u64> {
+		match *self {}
+	}
+
+	pub fn delete_keys(&self, _table: EntryKind, _keys: &[EncodedKey]) -> Result<u64> {
+		match *self {}
 	}
 }
 

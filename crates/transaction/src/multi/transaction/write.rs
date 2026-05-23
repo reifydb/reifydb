@@ -261,6 +261,22 @@ impl MultiWriteTransaction {
 		})
 	}
 
+	#[instrument(name = "transaction::command::purge", level = "trace", skip(self), fields(
+		txn_id = %self.id,
+		key_len = key.len()
+	))]
+	pub fn purge(&mut self, key: &EncodedKey) -> Result<()> {
+		if self.lifecycle == Lifecycle::Discarded {
+			return Err(TransactionError::RolledBack.into());
+		}
+		self.modify(DeltaEntry {
+			delta: Delta::Drop {
+				key: key.clone(),
+			},
+			version: self.base_version(),
+		})
+	}
+
 	#[instrument(name = "transaction::command::rollback", level = "debug", skip(self), fields(txn_id = %self.id))]
 	pub fn rollback(&mut self) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {

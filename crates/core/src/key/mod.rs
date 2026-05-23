@@ -93,7 +93,6 @@ pub mod namespace_source;
 pub mod namespace_sumtype;
 pub mod namespace_table;
 pub mod namespace_view;
-pub mod operator_ttl;
 pub mod policy;
 pub mod policy_op;
 pub mod primary_key;
@@ -354,7 +353,6 @@ impl Key {
 			| KeyKind::NamespaceSink
 			| KeyKind::SourceCheckpoint => None,
 			KeyKind::RowTtl => None,
-			KeyKind::OperatorTtl => None,
 			KeyKind::Procedure => ProcedureKey::decode(key).map(Self::Procedure),
 			KeyKind::NamespaceProcedure => NamespaceProcedureKey::decode(key).map(Self::NamespaceProcedure),
 			KeyKind::ProcedureParam => ProcedureParamKey::decode(key).map(Self::ProcedureParam),

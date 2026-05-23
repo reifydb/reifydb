@@ -17,11 +17,15 @@ pub(super) fn version_from_bytes(bytes: &[u8]) -> CommitVersion {
 
 pub(super) fn build_create_current_sql(table_name: &str) -> String {
 	format!(
-		"CREATE TABLE IF NOT EXISTS \"{}\" (\
+		"CREATE TABLE IF NOT EXISTS \"{0}\" (\
 			key BLOB PRIMARY KEY,\
 			version BLOB NOT NULL,\
-			value BLOB\
-		) WITHOUT ROWID",
+			value BLOB,\
+			created_nanos INTEGER NOT NULL DEFAULT 0,\
+			updated_nanos INTEGER NOT NULL DEFAULT 0\
+		) WITHOUT ROWID;\
+		CREATE INDEX IF NOT EXISTS \"{0}__created_nanos\" ON \"{0}\" (created_nanos);\
+		CREATE INDEX IF NOT EXISTS \"{0}__updated_nanos\" ON \"{0}\" (updated_nanos);",
 		table_name
 	)
 }
@@ -37,13 +41,24 @@ pub(super) fn build_get_many_current_sql(table_name: &str, key_count: usize) -> 
 
 pub(super) fn build_upsert_current_sql(table_name: &str) -> String {
 	format!(
-		"INSERT INTO \"{0}\" (key, version, value) VALUES (?1, ?2, ?3) \
+		"INSERT INTO \"{0}\" (key, version, value, created_nanos, updated_nanos) VALUES (?1, ?2, ?3, ?4, ?5) \
 		 ON CONFLICT(key) DO UPDATE SET \
 		     version = excluded.version, \
-		     value = excluded.value \
+		     value = excluded.value, \
+		     created_nanos = excluded.created_nanos, \
+		     updated_nanos = excluded.updated_nanos \
 		 WHERE excluded.version >= \"{0}\".version",
 		table_name
 	)
+}
+
+pub(super) fn build_delete_expired_sql(table_name: &str, anchor_column: &str) -> String {
+	format!("DELETE FROM \"{0}\" WHERE {1} > 0 AND {1} <= ?1", table_name, anchor_column)
+}
+
+pub(super) fn build_delete_keys_sql(table_name: &str, key_count: usize) -> String {
+	let placeholders = (1..=key_count).map(|i| format!("?{i}")).collect::<Vec<_>>().join(",");
+	format!("DELETE FROM \"{}\" WHERE key IN ({})", table_name, placeholders)
 }
 
 pub(super) fn build_range_current_sql(

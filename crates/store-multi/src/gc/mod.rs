@@ -7,5 +7,4 @@
 //! than the global default.
 
 pub mod historical;
-pub mod operator;
 pub mod row;

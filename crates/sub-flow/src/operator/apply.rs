@@ -1,17 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
+use std::{cell::RefCell, time::Duration};
 
+use reifydb_abi::operator::capabilities::CAPABILITY_TICK;
 use reifydb_core::{
+	encoded::key::EncodedKey,
 	interface::{catalog::flow::FlowNodeId, change::Change},
+	row::TtlAnchor,
 	value::column::columns::Columns,
 };
 use reifydb_sdk::operator::Tick;
 use reifydb_type::Result;
 
 use crate::{
-	operator::{BoxedOperator, Operator, OperatorCell},
+	operator::{BoxedOperator, Operator, OperatorCell, stateful::utils::evict_state_by_ttl},
 	transaction::FlowTransaction,
 };
 
@@ -19,14 +22,26 @@ pub struct ApplyOperator {
 	parent: OperatorCell,
 	node: FlowNodeId,
 	inner: BoxedOperator,
+	ttl_nanos: Option<u64>,
+	ttl_anchor: TtlAnchor,
+	evict_cursor: RefCell<Option<EncodedKey>>,
 }
 
 impl ApplyOperator {
-	pub fn new(parent: OperatorCell, node: FlowNodeId, inner: BoxedOperator) -> Self {
+	pub fn new(
+		parent: OperatorCell,
+		node: FlowNodeId,
+		inner: BoxedOperator,
+		ttl_nanos: Option<u64>,
+		ttl_anchor: TtlAnchor,
+	) -> Self {
 		Self {
 			parent,
 			node,
 			inner,
+			ttl_nanos,
+			ttl_anchor,
+			evict_cursor: RefCell::new(None),
 		}
 	}
 }
@@ -43,11 +58,22 @@ impl Operator for ApplyOperator {
 	}
 
 	fn capabilities(&self) -> u32 {
-		self.inner.capabilities()
+		let caps = self.inner.capabilities();
+		if self.ttl_nanos.is_some() {
+			caps | CAPABILITY_TICK
+		} else {
+			caps
+		}
 	}
 
 	fn ticks(&self) -> Option<Duration> {
-		self.inner.ticks()
+		let inner = self.inner.ticks();
+		let evict = self.ttl_nanos.map(|_| Duration::from_secs(1));
+		match (inner, evict) {
+			(Some(a), Some(b)) => Some(a.min(b)),
+			(Some(a), None) => Some(a),
+			(None, other) => other,
+		}
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
@@ -55,6 +81,16 @@ impl Operator for ApplyOperator {
 	}
 
 	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
-		self.inner.tick(txn, tick)
+		let now_nanos = tick.now.to_nanos();
+		let inner_change = if self.inner.ticks().is_some() {
+			self.inner.tick(txn, tick)?
+		} else {
+			None
+		};
+		if let Some(ttl_nanos) = self.ttl_nanos {
+			let mut cursor = self.evict_cursor.borrow_mut();
+			evict_state_by_ttl(self.node, txn, ttl_nanos, self.ttl_anchor, now_nanos, &mut cursor)?;
+		}
+		Ok(inner_change)
 	}
 }

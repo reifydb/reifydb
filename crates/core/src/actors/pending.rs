@@ -15,6 +15,7 @@ use crate::encoded::{key::EncodedKey, row::EncodedRow};
 pub enum PendingWrite {
 	Set(EncodedRow),
 	Remove,
+	Drop,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -47,6 +48,14 @@ impl Pending {
 		self.writes.extend(keys.iter().map(|k| (k.clone(), PendingWrite::Remove)));
 	}
 
+	pub fn purge(&mut self, key: EncodedKey) {
+		self.writes.insert(key, PendingWrite::Drop);
+	}
+
+	pub fn purge_batch(&mut self, keys: &[EncodedKey]) {
+		self.writes.extend(keys.iter().map(|k| (k.clone(), PendingWrite::Drop)));
+	}
+
 	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedRow> {
 		match self.writes.get(key) {
 			Some(PendingWrite::Set(value)) => Some(value),
@@ -55,7 +64,7 @@ impl Pending {
 	}
 
 	pub fn is_removed(&self, key: &EncodedKey) -> bool {
-		matches!(self.writes.get(key), Some(PendingWrite::Remove))
+		matches!(self.writes.get(key), Some(PendingWrite::Remove) | Some(PendingWrite::Drop))
 	}
 
 	pub fn contains_key(&self, key: &EncodedKey) -> bool {
