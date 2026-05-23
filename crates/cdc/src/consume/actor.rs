@@ -213,7 +213,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		state.phase = Phase::Ready;
 		self.wake_armed.store(false, Ordering::Release);
 		let safe_version = self.host.cdc_producer_watermark();
-		#[cfg(feature = "assertions")]
+		#[cfg(reifydb_assertions)]
 		{
 			let done = self.host.done_until();
 			assert!(
@@ -263,7 +263,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		ctx: &Context<CdcPollMessage>,
 		latest_version: CommitVersion,
 	) {
-		#[cfg(feature = "assertions")]
+		#[cfg(reifydb_assertions)]
 		if let Some(prev) = state.cached_checkpoint {
 			assert!(
 				latest_version >= prev,
@@ -360,7 +360,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		latest_version: CommitVersion,
 		count: usize,
 	) {
-		#[cfg(feature = "assertions")]
+		#[cfg(reifydb_assertions)]
 		if let Some(prev) = state.cached_checkpoint {
 			assert!(
 				latest_version >= prev,

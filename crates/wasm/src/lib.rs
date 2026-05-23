@@ -166,6 +166,17 @@ mod native {
 			})?;
 
 			let wt_args: Vec<Val> = args.as_ref().iter().map(|v| v.clone().into()).collect();
+			#[cfg(reifydb_assertions)]
+			{
+				let expected = func.ty(&self.store).params().len();
+				assert!(
+					wt_args.len() == expected,
+					"host-side marshalling produced an argument count that disagrees with the wasm function's declared arity, so the call would read wrong stack slots before wasmtime rejects it (function={} got={} expected={})",
+					name,
+					wt_args.len(),
+					expected
+				);
+			}
 			let result_count = func.ty(&self.store).results().len();
 			let mut results = vec![Val::I32(0); result_count];
 

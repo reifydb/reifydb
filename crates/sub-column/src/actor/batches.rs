@@ -19,6 +19,9 @@ pub fn column_block_from_batches(
 ) -> Result<ColumnBlock> {
 	let mut chunked: Vec<ColumnChunks> = Vec::with_capacity(schema.len());
 
+	#[cfg(reifydb_assertions)]
+	let mut block_rows: Option<usize> = None;
+
 	for (name, ty) in &schema {
 		let mut combined: Option<ColumnBuffer> = None;
 		for batch in &batches {
@@ -37,6 +40,20 @@ pub fn column_block_from_batches(
 			column: name.clone(),
 		})?;
 		let canonical = Canonical::from_column_buffer(&data)?;
+		#[cfg(reifydb_assertions)]
+		{
+			let rows = canonical.len();
+			match block_rows {
+				None => block_rows = Some(rows),
+				Some(expected) => assert!(
+					rows == expected,
+					"sub-column assembled a ragged column block: column '{}' has {} rows but earlier columns have {}, so a row-wise read of the block would misalign fields or index past a shorter column",
+					name,
+					rows,
+					expected
+				),
+			}
+		}
 		let nullable = canonical.nullable;
 		let array = compressor.compress(&canonical)?;
 		chunked.push(ColumnChunks::single(ty.clone(), nullable, array));

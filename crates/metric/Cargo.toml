@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Observability primitives for ReifyDB — counters, gauges, histograms, and query statement accumulators"
 
+[build-dependencies]
+reifydb-build = { workspace = true }
+
 [dependencies]
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }

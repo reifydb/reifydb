@@ -30,6 +30,16 @@ impl Histogram {
 	#[inline]
 	pub fn observe(&self, value: f64) {
 		let idx = self.boundaries.partition_point(|&b| b < value);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				idx < self.buckets.len(),
+				"histogram bucket index from partition_point exceeds the bucket array length, which means the histogram was constructed with a mismatched boundaries/buckets pair and any observation silently corrupts adjacent memory (idx={} buckets_len={} boundaries_len={})",
+				idx,
+				self.buckets.len(),
+				self.boundaries.len()
+			);
+		}
 		self.buckets[idx].fetch_add(1, Ordering::Relaxed);
 
 		let mut current = self.sum.load(Ordering::Relaxed);

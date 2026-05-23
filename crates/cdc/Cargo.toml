@@ -10,7 +10,9 @@ description = "Change Data Capture module for ReifyDB"
 [features]
 default = ["sqlite"]
 sqlite = ["rusqlite", "reifydb-sqlite", "dep:zstd"]
-assertions = []
+
+[build-dependencies]
+reifydb-build = { workspace = true }
 
 [dependencies]
 reifydb-catalog = { workspace = true }

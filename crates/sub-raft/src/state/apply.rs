@@ -65,6 +65,15 @@ impl<M: MultiVersionCommit + 'static, S: SingleVersionCommit + 'static> State fo
 	}
 
 	fn apply(&mut self, entry: &Entry) {
+		#[cfg(reifydb_assertions)]
+		{
+			let prev = self.applied_index;
+			let new = entry.index;
+			assert!(
+				new == prev + 1,
+				"raft applied_index must advance exactly one step at a time to guarantee no log entries are skipped or re-applied (prev={prev} new={new})"
+			);
+		}
 		match &entry.command {
 			Command::WriteMulti {
 				deltas,

@@ -10,6 +10,9 @@ description = "Database catalog and metadata management for ReifyDB"
 [features]
 default = []
 
+[build-dependencies]
+reifydb-build = { workspace = true }
+
 [dependencies]
 reifydb-abi = { workspace = true }
 reifydb-core = { workspace = true }

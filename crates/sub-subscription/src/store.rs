@@ -36,7 +36,16 @@ impl SubscriptionStore {
 	}
 
 	pub fn next_id(&self) -> SubscriptionId {
-		SubscriptionId(self.next_id.fetch_add(1, Ordering::Relaxed))
+		let raw = self.next_id.fetch_add(1, Ordering::Relaxed);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				raw != 0,
+				"the subscription id counter wrapped past u64::MAX and issued 0, so a new subscriber collides with the reserved initial id and would receive another subscriber's delivery stream (issued={})",
+				raw
+			);
+		}
+		SubscriptionId(raw)
 	}
 
 	pub fn register(&self, id: SubscriptionId, column_names: Vec<String>) {

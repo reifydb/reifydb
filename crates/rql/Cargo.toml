@@ -10,6 +10,9 @@ description = "ReifyDB Query Language (RQL) parser and AST"
 [features]
 default = []
 
+[build-dependencies]
+reifydb-build = { workspace = true }
+
 [dependencies]
 bumpalo = { workspace = true }
 reifydb-core = {workspace = true}

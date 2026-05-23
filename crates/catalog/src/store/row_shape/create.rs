@@ -20,6 +20,14 @@ use crate::Result;
 pub(crate) fn create_row_shape(txn: &mut Transaction<'_>, shape: &RowShape) -> Result<()> {
 	let fingerprint = shape.fingerprint();
 
+	#[cfg(reifydb_assertions)]
+	{
+		assert!(
+			shape.field_count() <= u16::MAX as usize,
+			"shape field_count exceeds u16::MAX so the header FIELD_COUNT cell silently truncates and readers reconstruct a schema with the wrong number of fields (field_count={})",
+			shape.field_count()
+		);
+	}
 	let mut header_row = shape_header::SHAPE.allocate();
 	shape_header::SHAPE.set_u16(&mut header_row, shape_header::FIELD_COUNT, shape.field_count() as u16);
 	txn.set(&RowShapeKey::encoded(fingerprint), header_row)?;

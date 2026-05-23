@@ -10,6 +10,9 @@ description = "Core type system and value representations for ReifyDB"
 [features]
 default = []
 
+[build-dependencies]
+reifydb-build = { workspace = true }
+
 [dependencies]
 serde = { workspace = true }
 serde_bytes = { workspace = true }

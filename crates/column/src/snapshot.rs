@@ -84,6 +84,15 @@ pub struct ColumnBlock {
 impl ColumnBlock {
 	pub fn new(schema: Schema, columns: Vec<ColumnChunks>) -> Self {
 		debug_assert_eq!(schema.len(), columns.len(), "ColumnBlock::new: schema and columns length mismatch");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				schema.len() == columns.len(),
+				"ColumnBlock schema and data column counts disagree, so any column lookup by schema index reads data from the wrong column or panics out of bounds (schema_len={} columns_len={})",
+				schema.len(),
+				columns.len()
+			);
+		}
 		Self {
 			schema,
 			columns,

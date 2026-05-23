@@ -9,6 +9,8 @@ use reifydb_runtime::{SharedRuntime, context::clock::Instant};
 use tokio::{select, sync::mpsc, task::spawn_blocking, time};
 use tracing::{debug, error, info};
 
+#[cfg(reifydb_assertions)]
+use crate::schedule::Schedule;
 use crate::{
 	context::TaskContext,
 	registry::{TaskEntry, TaskRegistry},
@@ -109,6 +111,14 @@ pub async fn run_coordinator(
 
 			if let Some(mut entry) = registry.get_mut(&task_id) {
 			    if let Some(next_exec) = entry.task.schedule.next_execution(completed_at) {
+				#[cfg(reifydb_assertions)]
+				{
+					assert!(
+						!matches!(entry.task.schedule, Schedule::Once(_)),
+						"a Schedule::Once task entered the reschedule path after completing, so a one-shot task would run repeatedly and duplicate its side effects (task={})",
+						entry.task.name
+					);
+				}
 
 				entry.next_execution = next_exec.clone();
 

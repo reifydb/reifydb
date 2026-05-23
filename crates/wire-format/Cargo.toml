@@ -6,6 +6,9 @@ edition.workspace = true
 authors.workspace = true
 license = "MIT"
 
+[build-dependencies]
+reifydb-build = { workspace = true }
+
 [dependencies]
 reifydb-type = { workspace = true }
 num-bigint = { workspace = true }

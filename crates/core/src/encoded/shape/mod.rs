@@ -363,6 +363,15 @@ impl RowShape {
 			let vec = Vec::from_raw_parts(ptr, total_size, total_size);
 			let mut row = EncodedRow(CowVec::new(vec));
 			row.set_fingerprint(self.fingerprint);
+			#[cfg(reifydb_assertions)]
+			{
+				assert!(
+					row.len() == total_size,
+					"allocated row length does not match the shape total_static_size, so any field accessor using pre-computed offsets will read from garbage memory (row_len={} total_size={})",
+					row.len(),
+					total_size
+				);
+			}
 			row
 		}
 	}

@@ -10,6 +10,9 @@ description = "Authentication and authorization module for ReifyDB"
 [features]
 default = []
 
+[build-dependencies]
+reifydb-build = { workspace = true }
+
 [dependencies]
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }

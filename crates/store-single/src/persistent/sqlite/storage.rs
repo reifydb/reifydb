@@ -206,6 +206,20 @@ impl TierStorage for SqlitePersistentStorage {
 			has_more,
 		};
 
+		#[cfg(reifydb_assertions)]
+		{
+			if let (Some(prev), Some(first)) = (cursor.last_key.as_ref(), batch.entries.first()) {
+				let prev_key = prev.as_slice();
+				let first_key = first.key.as_slice();
+				assert!(
+					first_key > prev_key,
+					"forward range scan yielded a first key not strictly greater than the previous batch's last key, so paging re-emits or reorders rows and a consumer reading the stream sees duplicates or moves backwards (prev_last={:?} batch_first={:?})",
+					prev_key,
+					first_key
+				);
+			}
+		}
+
 		if let Some(last_entry) = batch.entries.last() {
 			cursor.last_key = Some(last_entry.key.clone());
 		}
@@ -275,6 +289,20 @@ impl TierStorage for SqlitePersistentStorage {
 			entries,
 			has_more,
 		};
+
+		#[cfg(reifydb_assertions)]
+		{
+			if let (Some(prev), Some(first)) = (cursor.last_key.as_ref(), batch.entries.first()) {
+				let prev_key = prev.as_slice();
+				let first_key = first.key.as_slice();
+				assert!(
+					first_key < prev_key,
+					"reverse range scan yielded a first key not strictly less than the previous batch's last key, so descending paging re-emits or reorders rows and a consumer reading the stream sees duplicates or moves forwards (prev_last={:?} batch_first={:?})",
+					prev_key,
+					first_key
+				);
+			}
+		}
 
 		if let Some(last_entry) = batch.entries.last() {
 			cursor.last_key = Some(last_entry.key.clone());

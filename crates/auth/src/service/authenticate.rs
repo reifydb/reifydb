@@ -101,6 +101,14 @@ impl AuthService {
 
 	#[inline]
 	fn finalize_authentication(&self, identity: IdentityId) -> Result<AuthResponse, Error> {
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				identity != IdentityId::default(),
+				"authentication finalized for the nil placeholder identity instead of a resolved one, so an unauthenticated principal would receive a valid session token and gain authorization (identity={:?})",
+				identity
+			);
+		}
 		let token = generate_session_token(&self.rng);
 		self.persist_token(&token, identity)?;
 		Ok(AuthResponse::Authenticated {

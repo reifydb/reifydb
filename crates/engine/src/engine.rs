@@ -96,6 +96,14 @@ impl AuthEngine for StandardEngine {
 impl StandardEngine {
 	#[instrument(name = "engine::transaction::begin_command", level = "debug", skip(self))]
 	pub fn begin_command(&self, identity: IdentityId) -> Result<CommandTransaction> {
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				!self.is_read_only(),
+				"begin_command called on a read-only engine: writes are permanently disabled after set_read_only(), so any caller reaching this point has bypassed the reject_if_read_only guard (identity={:?})",
+				identity
+			);
+		}
 		let interceptors = self.interceptors.create();
 		let mut txn = CommandTransaction::new(
 			self.multi.clone(),

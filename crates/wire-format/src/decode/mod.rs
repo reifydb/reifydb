@@ -56,7 +56,7 @@ pub fn decode_frames(data: &[u8]) -> Result<Vec<Frame>, DecodeError> {
 	pos += 2;
 	let frame_count = read_u32(data, pos) as usize;
 	pos += 4;
-	let _total_size = read_u32(data, pos);
+	let _total_size = read_u32(data, pos) as usize;
 	pos += 4;
 
 	let mut frames = Vec::with_capacity(frame_count);
@@ -65,6 +65,14 @@ pub fn decode_frames(data: &[u8]) -> Result<Vec<Frame>, DecodeError> {
 		frames.push(frame);
 		pos = new_pos;
 	}
+
+	#[cfg(reifydb_assertions)]
+	assert!(
+		pos == _total_size,
+		"the RBCF message header declared a total size that disagrees with the bytes consumed while decoding, so the message is truncated or carries trailing bytes and a peer would mis-frame the following message (declared={} consumed={})",
+		_total_size,
+		pos
+	);
 
 	Ok(frames)
 }

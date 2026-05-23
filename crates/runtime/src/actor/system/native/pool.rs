@@ -54,6 +54,15 @@ fn run_batch<A: Actor>(cell: Arc<ActorCell<A>>)
 where
 	A::State: Send,
 {
+	#[cfg(reifydb_assertions)]
+	{
+		let s = cell.schedule_state.load(Ordering::Acquire);
+		assert!(
+			s == SCHEDULED || s == NOTIFIED,
+			"actor run_batch entered while schedule_state={s} (expected SCHEDULED={SCHEDULED} or NOTIFIED={NOTIFIED}); this is a spurious wakeup that bypassed the notify guard"
+		);
+	}
+
 	let mut guard = cell.state.lock();
 	let state = match guard.as_mut() {
 		Some(s) => s,

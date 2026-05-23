@@ -71,6 +71,15 @@ impl ReplicaApplier {
 
 	#[inline]
 	fn advance_to(&self, version: CommitVersion) {
+		#[cfg(reifydb_assertions)]
+		{
+			let prev = self.last_applied.load(Ordering::Acquire);
+			let new = version.0;
+			assert!(
+				new > prev,
+				"replica watermark must only move forward: a regression would cause the replication client to re-request already-applied CDC, corrupting the replica (prev={prev} new={new})"
+			);
+		}
 		self.engine.multi().advance_version_for_replica(version);
 		self.last_applied.store(version.0, Ordering::Release);
 		self.watermark.store(version);

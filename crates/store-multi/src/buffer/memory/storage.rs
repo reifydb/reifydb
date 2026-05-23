@@ -88,6 +88,15 @@ impl MemoryPrimitiveStorage {
 				if *pre_version < version {
 					let pre_version = *pre_version;
 					let pre_value = pre_value.clone();
+					#[cfg(reifydb_assertions)]
+					{
+						assert!(
+							version.0 > pre_version.0,
+							"promoting current entry to historical requires the incoming version to exceed it, otherwise the same version appears in both tiers and point-reads return the wrong entry (version={} pre_version={})",
+							version.0,
+							pre_version.0
+						);
+					}
 					historical
 						.entry(key.clone())
 						.or_default()

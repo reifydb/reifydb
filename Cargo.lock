@@ -2599,6 +2599,7 @@ dependencies = [
  "argon2",
  "bs58",
  "ed25519-dalek",
+ "reifydb-build",
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-runtime",
@@ -2622,6 +2623,7 @@ dependencies = [
  "futures-util",
  "once_cell",
  "reifydb-abi",
+ "reifydb-build",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-metric",
@@ -2644,6 +2646,7 @@ name = "reifydb-cdc"
 version = "0.5.6"
 dependencies = [
  "postcard",
+ "reifydb-build",
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",
@@ -2705,6 +2708,7 @@ name = "reifydb-column"
 version = "0.5.6"
 dependencies = [
  "dashmap",
+ "reifydb-build",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-type",
@@ -2821,6 +2825,7 @@ name = "reifydb-metric"
 version = "0.5.6"
 dependencies = [
  "dashmap",
+ "reifydb-build",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-type",
@@ -2906,6 +2911,7 @@ dependencies = [
  "bumpalo",
  "postcard",
  "reifydb",
+ "reifydb-build",
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",
@@ -2952,6 +2958,7 @@ dependencies = [
  "postcard",
  "rand 0.10.1",
  "reifydb-abi",
+ "reifydb-build",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-type",
@@ -2964,6 +2971,7 @@ dependencies = [
 name = "reifydb-sql"
 version = "0.5.6"
 dependencies = [
+ "reifydb-build",
  "reifydb-testing",
  "test_each_file",
 ]
@@ -3026,6 +3034,7 @@ name = "reifydb-sub-column"
 version = "0.5.6"
 dependencies = [
  "reifydb",
+ "reifydb-build",
  "reifydb-catalog",
  "reifydb-column",
  "reifydb-core",
@@ -3128,6 +3137,7 @@ dependencies = [
  "postcard",
  "prost",
  "rand 0.10.1",
+ "reifydb-build",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-type",
@@ -3410,6 +3420,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "postcard",
+ "reifydb-build",
  "reifydb-runtime",
  "serde",
  "serde_bytes",
@@ -3491,6 +3502,7 @@ version = "0.5.6"
 dependencies = [
  "bigdecimal",
  "num-bigint",
+ "reifydb-build",
  "reifydb-type",
  "serde",
  "serde_json",

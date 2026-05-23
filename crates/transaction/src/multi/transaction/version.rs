@@ -114,6 +114,15 @@ impl VersionProvider for StandardVersionProvider {
 
 		self.current_block_end.store(new_block_end, Ordering::SeqCst);
 
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				version <= new_block_end,
+				"handed out a commit version past the block end that was just persisted, so a crash could re-issue \
+				 the same version to a different commit and corrupt version history (version={version} \
+				 persisted_block_end={new_block_end})"
+			);
+		}
 		Ok(CommitVersion(version))
 	}
 

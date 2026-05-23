@@ -10,6 +10,9 @@ description = "SQL to RQL transpiler"
 [features]
 default = []
 
+[build-dependencies]
+reifydb-build = { workspace = true }
+
 [dependencies]
 
 [dev-dependencies]

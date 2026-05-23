@@ -8,6 +8,9 @@ authors.workspace = true
 repository.workspace = true
 description = "SDK for building ReifyDB operators, procedures, transforms and more"
 
+[build-dependencies]
+reifydb-build = { workspace = true }
+
 [dependencies]
 bumpalo.workspace = true
 reifydb-abi.workspace = true

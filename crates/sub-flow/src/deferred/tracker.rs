@@ -21,6 +21,16 @@ impl ShapeVersionTracker {
 		let mut versions = self.versions.write();
 		versions.entry(object_id)
 			.and_modify(|v| {
+				#[cfg(reifydb_assertions)]
+				{
+					let prev = v.0;
+					let new = version.0;
+					assert!(
+						new >= prev,
+						"shape version moved backwards for shape {:?}: a monotonic tracker must never decrease (prev={prev} new={new})",
+						object_id
+					);
+				}
 				if version.0 > v.0 {
 					*v = version;
 				}

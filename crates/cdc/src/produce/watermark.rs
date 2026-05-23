@@ -44,7 +44,7 @@ impl CdcProducerWatermark {
 		while state.pending.remove(&(hi + 1)) {
 			hi += 1;
 		}
-		#[cfg(feature = "assertions")]
+		#[cfg(reifydb_assertions)]
 		{
 			let prev = self.published.load(Ordering::SeqCst);
 			assert!(

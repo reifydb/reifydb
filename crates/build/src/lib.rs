@@ -27,10 +27,15 @@ pub fn emit_target_cfg() {
 
 	println!("cargo::rustc-check-cfg=cfg(reifydb_target, values(\"native\", \"wasm\", \"wasi\", \"dst\"))");
 	println!("cargo::rustc-check-cfg=cfg(reifydb_single_threaded)");
+	println!("cargo::rustc-check-cfg=cfg(reifydb_assertions)");
 	println!("cargo:rustc-cfg=reifydb_target=\"{}\"", reifydb_target);
 	if single_threaded {
 		println!("cargo:rustc-cfg=reifydb_single_threaded");
 	}
+	if env::var("REIFYDB_ASSERTIONS").ok().is_some_and(|v| v == "1") {
+		println!("cargo:rustc-cfg=reifydb_assertions");
+	}
 	println!("cargo:rerun-if-changed=build.rs");
 	println!("cargo:rerun-if-env-changed=REIFYDB_DST");
+	println!("cargo:rerun-if-env-changed=REIFYDB_ASSERTIONS");
 }

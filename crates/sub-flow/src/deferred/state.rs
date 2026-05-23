@@ -43,10 +43,27 @@ impl FlowState {
 	}
 
 	pub fn activate(&mut self) {
+		#[cfg(reifydb_assertions)]
+		{
+			let current = self.status;
+			assert!(
+				matches!(current, FlowStatus::Backfilling),
+				"flow state transition Active->Active is invalid: activate() must only be called on a Backfilling flow (current={current:?})"
+			);
+		}
 		self.status = FlowStatus::Active;
 	}
 
 	pub fn update_checkpoint(&mut self, version: CommitVersion) {
+		#[cfg(reifydb_assertions)]
+		{
+			let prev = self.checkpoint.0;
+			let new = version.0;
+			assert!(
+				new >= prev,
+				"flow checkpoint moved backwards: re-delivering already-processed CDC would corrupt flow state (prev={prev} new={new})"
+			);
+		}
 		self.checkpoint = version;
 	}
 }
