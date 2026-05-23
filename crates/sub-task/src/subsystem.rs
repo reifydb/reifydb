@@ -126,13 +126,18 @@ impl Subsystem for TaskSubsystem {
 
 		info!("Shutting down task subsystem");
 
-		if let Some(coordinator_tx) = self.coordinator_tx.take() {
-			let _ = coordinator_tx.blocking_send(TaskCoordinatorMessage::Shutdown);
-		}
-
-		if let Some(join_handle) = self.coordinator_handle.take() {
-			let _ = self.runtime.block_on(join_handle);
-		}
+		let coordinator_tx = self.coordinator_tx.take();
+		let coordinator_handle = self.coordinator_handle.take();
+		let runtime = self.runtime.clone();
+		let worker = std::thread::spawn(move || {
+			if let Some(coordinator_tx) = coordinator_tx {
+				let _ = coordinator_tx.blocking_send(TaskCoordinatorMessage::Shutdown);
+			}
+			if let Some(join_handle) = coordinator_handle {
+				let _ = runtime.block_on(join_handle);
+			}
+		});
+		let _ = worker.join();
 
 		self.handle = None;
 

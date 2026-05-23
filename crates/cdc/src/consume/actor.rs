@@ -199,6 +199,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		ctx: &Context<CdcPollMessage>,
 		result: Result<()>,
 	) -> Directive {
+		eprintln!("[RESPDBG {:?}] consume response ok={}", self.config.consumer_id, result.is_ok());
 		if let Phase::WaitingForConsume {
 			latest_version,
 			count,
@@ -226,15 +227,25 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			return;
 		};
 		if transactions.is_empty() {
-			let producer_caught_up = self.host.cdc_producer_watermark() >= safe_version;
-			let no_cdc_beyond_checkpoint = match self.store.max_version() {
-				Ok(Some(mv)) => mv <= checkpoint,
+			let producer_wm = self.host.cdc_producer_watermark();
+			let max_version = self.store.max_version();
+			let producer_caught_up = producer_wm >= safe_version;
+			let no_cdc_beyond_checkpoint = match &max_version {
+				Ok(Some(mv)) => *mv <= checkpoint,
 				Ok(None) => true,
 				Err(_) => false,
 			};
 			if producer_caught_up && no_cdc_beyond_checkpoint {
 				self.advance_checkpoint_skip_ahead(state, ctx, safe_version);
 			} else {
+				eprintln!(
+					"[WAITDBG {:?}] cp={} done_until={} producer_wm={} max_version={:?}",
+					self.config.consumer_id,
+					checkpoint.0,
+					safe_version.0,
+					producer_wm.0,
+					max_version
+				);
 				ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
 			}
 			return;
@@ -252,6 +263,10 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			latest_version,
 			count,
 		};
+		eprintln!(
+			"[DISPATCHDBG {:?}] dispatch cp={} latest={} count={}",
+			self.config.consumer_id, checkpoint.0, latest_version.0, count
+		);
 		self.dispatch_to_consumer(relevant_cdcs, ctx);
 	}
 

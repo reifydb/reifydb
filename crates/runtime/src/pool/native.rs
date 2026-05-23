@@ -23,7 +23,12 @@ impl Drop for PoolsInner {
 	fn drop(&mut self) {
 		if let Some(rt) = self.tokio.as_mut() {
 			let rt = unsafe { ManuallyDrop::take(rt) };
-			rt.shutdown_timeout(Duration::from_secs(5));
+
+			if runtime::Handle::try_current().is_err() {
+				rt.shutdown_timeout(Duration::from_secs(5));
+			} else {
+				rt.shutdown_background();
+			}
 		}
 	}
 }
