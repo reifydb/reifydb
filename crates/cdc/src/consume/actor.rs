@@ -226,7 +226,17 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			return;
 		};
 		if transactions.is_empty() {
-			ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
+			let producer_caught_up = self.host.cdc_producer_watermark() >= safe_version;
+			let no_cdc_beyond_checkpoint = match self.store.max_version() {
+				Ok(Some(mv)) => mv <= checkpoint,
+				Ok(None) => true,
+				Err(_) => false,
+			};
+			if producer_caught_up && no_cdc_beyond_checkpoint {
+				self.advance_checkpoint_skip_ahead(state, ctx, safe_version);
+			} else {
+				ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
+			}
 			return;
 		}
 

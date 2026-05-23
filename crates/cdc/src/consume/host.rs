@@ -17,6 +17,8 @@ pub trait CdcHost: Clone + Send + Sync + 'static {
 
 	fn done_until(&self) -> CommitVersion;
 
+	fn cdc_producer_watermark(&self) -> CommitVersion;
+
 	fn wait_for_mark_timeout(&self, version: CommitVersion, timeout: Duration) -> bool;
 
 	fn catalog(&self) -> &Catalog;

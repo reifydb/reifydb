@@ -104,6 +104,10 @@ impl CdcHost for TestCdcHost {
 		CommitVersion(1)
 	}
 
+	fn cdc_producer_watermark(&self) -> CommitVersion {
+		CommitVersion(1)
+	}
+
 	fn wait_for_mark_timeout(&self, _version: CommitVersion, _timeout: Duration) -> bool {
 		true
 	}
