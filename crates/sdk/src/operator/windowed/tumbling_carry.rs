@@ -109,6 +109,10 @@ pub trait TumblingCarryOperator {
 	) -> Option<Self::Output>;
 
 	fn carry_forward(&self, value: &AccValue<Self>, prev_carry: Option<&Self::Carry>) -> Option<Self::Carry>;
+
+	fn new_accumulator(&self) -> Self::Acc {
+		Self::Acc::default()
+	}
 }
 
 pub trait TumblingCarryRegistration: TumblingCarryOperator + Sized
@@ -306,7 +310,8 @@ where
 				}
 			};
 
-			let mut acc: A::Acc = self.accs.get(ctx, &row_number)?.unwrap_or_default();
+			let mut acc: A::Acc =
+				self.accs.get(ctx, &row_number)?.unwrap_or_else(|| self.aggregator.new_accumulator());
 			let was_empty_before = acc.is_empty();
 
 			for event in events {

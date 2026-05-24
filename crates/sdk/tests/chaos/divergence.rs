@@ -18,6 +18,7 @@ use reifydb_sdk::testing::chaos::{
 	schema::KeyStrategy,
 	strategy::samplers,
 };
+use reifydb_testing::chaos_test;
 
 use super::common::{SwallowsRemoveOperator, passthrough_oracle, simple_kv_shape};
 
@@ -77,12 +78,11 @@ fn swallows_remove_operator_panic_message_mentions_divergence() {
 	outcome.assert_matches();
 }
 
-#[test]
-fn swallows_remove_operator_does_not_diverge_under_no_remove() {
+chaos_test!(swallows_remove_operator_does_not_diverge_under_no_remove, |seed| {
 	// Sanity: under SupportedOps::no_remove(), no Remove ops are generated,
-	// so the operator's bug is unreachable. assert_matches must succeed.
-	// This guards against false positives - the divergence reporting must
-	// only fire when actual Removes happen.
+	// so the operator's bug is unreachable. assert_matches must succeed for
+	// every seed. This guards against false positives - the divergence
+	// reporting must only fire when actual Removes happen.
 	let outcome = ChaosHarness::<SwallowsRemoveOperator>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
@@ -99,9 +99,9 @@ fn swallows_remove_operator_does_not_diverge_under_no_remove() {
 			supported_ops: SupportedOps::no_remove(),
 		})
 		.with_oracle(passthrough_oracle(vec!["k".into()]))
-		.seed(42)
+		.seed(seed)
 		.build()
 		.expect("build")
 		.run();
 	outcome.assert_matches();
-}
+});

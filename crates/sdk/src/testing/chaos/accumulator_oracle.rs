@@ -112,7 +112,7 @@ fn apply_leg<A>(
 	}
 	let key = (group, span.start);
 	spans.insert(key.clone(), span);
-	let acc = accs.entry(key.clone()).or_default();
+	let acc = accs.entry(key.clone()).or_insert_with(|| agg.new_accumulator());
 	if is_add {
 		acc.add(&contribution);
 	} else {
@@ -457,7 +457,7 @@ fn apply_carry_leg<A>(
 	}
 	let key = (group, span.start);
 	spans.insert(key.clone(), span);
-	let acc = accs.entry(key.clone()).or_default();
+	let acc = accs.entry(key.clone()).or_insert_with(|| agg.new_accumulator());
 	if is_add {
 		acc.add(&contribution);
 	} else {

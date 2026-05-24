@@ -2961,6 +2961,7 @@ dependencies = [
  "reifydb-build",
  "reifydb-core",
  "reifydb-runtime",
+ "reifydb-testing",
  "reifydb-type",
  "serde",
  "tracing",
@@ -3383,6 +3384,7 @@ name = "reifydb-testing"
 version = "0.5.6"
 dependencies = [
  "reifydb-core",
+ "reifydb-runtime",
  "reifydb-type",
  "test_each_file",
  "tokio",

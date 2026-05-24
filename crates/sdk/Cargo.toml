@@ -26,6 +26,10 @@ uuid.workspace = true
 [features]
 default = []
 test-support = []
+chaos = []
+
+[dev-dependencies]
+reifydb-testing = { workspace = true }
 
 [[test]]
 name = "ffi"

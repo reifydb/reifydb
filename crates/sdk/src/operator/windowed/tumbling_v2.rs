@@ -95,6 +95,10 @@ pub trait TumblingOperatorV2 {
 		span: WindowSpan<Self::WindowCoord>,
 		value: AccValue<Self>,
 	) -> Option<Self::Output>;
+
+	fn new_accumulator(&self) -> Self::Acc {
+		Self::Acc::default()
+	}
 }
 
 pub trait TumblingRegistrationV2: TumblingOperatorV2 + Sized
@@ -287,7 +291,8 @@ where
 				}
 			};
 
-			let mut acc: A::Acc = self.accs.get(ctx, &row_number)?.unwrap_or_default();
+			let mut acc: A::Acc =
+				self.accs.get(ctx, &row_number)?.unwrap_or_else(|| self.aggregator.new_accumulator());
 			let was_empty_before = acc.is_empty();
 
 			for event in events {

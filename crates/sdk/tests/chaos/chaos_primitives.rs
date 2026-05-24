@@ -7,6 +7,9 @@
 //! materialized-table level. If any test in this file fails, the operator
 //! is responding to chaos primitives in a way that produces a different
 //! visible state - a real bug class the harness exists to expose.
+//!
+//! Each `chaos_test!` runs `CHAOS_ITERATIONS` randomized seeds via the shared
+//! chaos runner; a failure reports the base seed for replay.
 
 use reifydb_sdk::testing::chaos::{
 	ChaosHarness,
@@ -14,6 +17,7 @@ use reifydb_sdk::testing::chaos::{
 	schema::KeyStrategy,
 	strategy::samplers,
 };
+use reifydb_testing::chaos_test;
 
 use super::common::{PassthroughOperator, passthrough_oracle, simple_kv_shape};
 
@@ -28,8 +32,7 @@ fn cfg(duplicate_update_burst: f64, update_as_remove_insert: f64) -> ChaosConfig
 	}
 }
 
-#[test]
-fn no_chaos_primitives_passthrough_matches() {
+chaos_test!(no_chaos_primitives_passthrough_matches, |seed| {
 	// Baseline: both probabilities at 0.0. If this fails, base passthrough
 	// is broken and every other test is meaningless.
 	let outcome = ChaosHarness::<PassthroughOperator>::builder()
@@ -41,15 +44,14 @@ fn no_chaos_primitives_passthrough_matches() {
 		.with_column("v", samplers::f64_range(0.0..100.0))
 		.with_chaos(cfg(0.0, 0.0))
 		.with_oracle(passthrough_oracle(vec!["k".into()]))
-		.seed(42)
+		.seed(seed)
 		.build()
 		.expect("build")
 		.run();
 	outcome.assert_matches();
-}
+});
 
-#[test]
-fn duplicate_burst_at_one_passthrough_matches() {
+chaos_test!(duplicate_burst_at_one_passthrough_matches, |seed| {
 	// Every Update spawns one identical no-op Update (pre = post).
 	// Passthrough handles correctly because re-applying the same post
 	// to the same row is idempotent at the materialized-table level.
@@ -62,7 +64,7 @@ fn duplicate_burst_at_one_passthrough_matches() {
 		.with_column("v", samplers::f64_range(0.0..100.0))
 		.with_chaos(cfg(1.0, 0.0))
 		.with_oracle(passthrough_oracle(vec!["k".into()]))
-		.seed(99)
+		.seed(seed)
 		.build()
 		.expect("build")
 		.run();
@@ -70,10 +72,9 @@ fn duplicate_burst_at_one_passthrough_matches() {
 	// Sanity: at p=1.0, many Updates should be duplicate no-ops.
 	let updates: usize = outcome.events().filter(|e| e.is_update()).count();
 	assert!(updates > 50, "expected duplicate-burst to inflate Update count; got {updates}");
-}
+});
 
-#[test]
-fn rewrite_at_one_passthrough_matches() {
+chaos_test!(rewrite_at_one_passthrough_matches, |seed| {
 	// Every Update is rewritten to Remove(pre) + Insert(post). Passthrough
 	// must agree with the identity oracle because removing-then-inserting
 	// the same key with the new value lands in the same materialized state
@@ -87,7 +88,7 @@ fn rewrite_at_one_passthrough_matches() {
 		.with_column("v", samplers::f64_range(0.0..100.0))
 		.with_chaos(cfg(0.0, 1.0))
 		.with_oracle(passthrough_oracle(vec!["k".into()]))
-		.seed(7)
+		.seed(seed)
 		.build()
 		.expect("build")
 		.run();
@@ -95,10 +96,9 @@ fn rewrite_at_one_passthrough_matches() {
 	// Sanity: at rewrite p=1.0, no Updates should appear in the output stream.
 	let updates: usize = outcome.events().filter(|e| e.is_update()).count();
 	assert_eq!(updates, 0, "rewrite at p=1.0 must eliminate all Updates");
-}
+});
 
-#[test]
-fn both_chaos_primitives_at_one_passthrough_matches() {
+chaos_test!(both_chaos_primitives_at_one_passthrough_matches, |seed| {
 	// Rewrite takes precedence over duplicate-burst (per generator's
 	// documented rule). With rewrite at 1.0 every Update becomes
 	// Remove+Insert; duplicate-burst never fires because there is no
@@ -112,11 +112,11 @@ fn both_chaos_primitives_at_one_passthrough_matches() {
 		.with_column("v", samplers::f64_range(0.0..100.0))
 		.with_chaos(cfg(1.0, 1.0))
 		.with_oracle(passthrough_oracle(vec!["k".into()]))
-		.seed(11)
+		.seed(seed)
 		.build()
 		.expect("build")
 		.run();
 	outcome.assert_matches();
 	let updates: usize = outcome.events().filter(|e| e.is_update()).count();
 	assert_eq!(updates, 0, "rewrite precedence: no Updates should reach the operator");
-}
+});

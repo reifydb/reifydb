@@ -12,6 +12,7 @@ default = []
 
 [dependencies]
 reifydb-core = { workspace = true }
+reifydb-runtime = { workspace = true }
 reifydb-type = {workspace = true}
 uuid = { workspace = true }
 tokio = {workspace = true}

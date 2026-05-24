@@ -49,10 +49,9 @@ where
 
 #[cfg(test)]
 pub mod tests {
-	use std::{
-		sync::{Arc, Mutex},
-		thread,
-	};
+	use std::{sync::Arc, thread};
+
+	use reifydb_runtime::sync::mutex::Mutex;
 
 	use super::*;
 
@@ -69,12 +68,12 @@ pub mod tests {
 
 		thread::spawn(move || {
 			thread::sleep(Duration::from_millis(50));
-			*counter_clone.lock().unwrap() = 5;
+			*counter_clone.lock() = 5;
 		});
 
-		wait_for(|| *counter.lock().unwrap() == 5, "Counter should reach 5").await;
+		wait_for(|| *counter.lock() == 5, "Counter should reach 5").await;
 
-		assert_eq!(*counter.lock().unwrap(), 5);
+		assert_eq!(*counter.lock(), 5);
 	}
 
 	#[tokio::test]

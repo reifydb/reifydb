@@ -6,6 +6,9 @@
 //! input rows internally (block-trade, normalized-block) have batch-size
 //! sensitivity in production; this suite verifies the harness drives them
 //! with valid Changes regardless of batching shape.
+//!
+//! Each `chaos_test!` runs `CHAOS_ITERATIONS` randomized seeds via the shared
+//! chaos runner; a failure reports the base seed for replay.
 
 use reifydb_sdk::testing::chaos::{
 	ChaosHarness,
@@ -13,6 +16,7 @@ use reifydb_sdk::testing::chaos::{
 	schema::KeyStrategy,
 	strategy::samplers,
 };
+use reifydb_testing::chaos_test;
 
 use super::common::{PassthroughOperator, passthrough_oracle, simple_kv_shape};
 
@@ -27,8 +31,7 @@ fn cfg(batch_size: BatchSizeDist) -> ChaosConfig {
 	}
 }
 
-#[test]
-fn constant_batch_size_one_drives_passthrough() {
+chaos_test!(constant_batch_size_one_drives_passthrough, |seed| {
 	let outcome = ChaosHarness::<PassthroughOperator>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
@@ -38,15 +41,14 @@ fn constant_batch_size_one_drives_passthrough() {
 		.with_column("v", samplers::f64_range(0.0..100.0))
 		.with_chaos(cfg(BatchSizeDist::Constant(1)))
 		.with_oracle(passthrough_oracle(vec!["k".into()]))
-		.seed(42)
+		.seed(seed)
 		.build()
 		.expect("build")
 		.run();
 	outcome.assert_matches();
-}
+});
 
-#[test]
-fn uniform_batch_size_range_drives_passthrough() {
+chaos_test!(uniform_batch_size_range_drives_passthrough, |seed| {
 	let outcome = ChaosHarness::<PassthroughOperator>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
@@ -59,15 +61,14 @@ fn uniform_batch_size_range_drives_passthrough() {
 			max: 20,
 		}))
 		.with_oracle(passthrough_oracle(vec!["k".into()]))
-		.seed(99)
+		.seed(seed)
 		.build()
 		.expect("build")
 		.run();
 	outcome.assert_matches();
-}
+});
 
-#[test]
-fn geometric_batch_size_drives_passthrough() {
+chaos_test!(geometric_batch_size_drives_passthrough, |seed| {
 	let outcome = ChaosHarness::<PassthroughOperator>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
@@ -77,9 +78,9 @@ fn geometric_batch_size_drives_passthrough() {
 		.with_column("v", samplers::f64_range(0.0..100.0))
 		.with_chaos(cfg(BatchSizeDist::Geometric(0.4)))
 		.with_oracle(passthrough_oracle(vec!["k".into()]))
-		.seed(7)
+		.seed(seed)
 		.build()
 		.expect("build")
 		.run();
 	outcome.assert_matches();
-}
+});

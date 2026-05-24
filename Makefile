@@ -52,6 +52,8 @@ help:
 	@printf "  %-25s %s\n" "test-full" "Same as 'make test'"
 	@printf "  %-25s %s\n" "test-workspace" "Run only workspace tests"
 	@printf "  %-25s %s\n" "test-dst" "Run deterministic simulation tests"
+	@printf "  %-25s %s\n" "test-chaos N=1234" "Run randomized chaos tests (seed-reproducible; FILTER=)"
+	@printf "  %-25s %s\n" "list-chaos" "List chaos tests (CHAOS_PACKAGES=, FILTER=)"
 	@echo ""
 	@echo "  🔧 Test Components"
 	@echo "  ───────────────────────────────────────────────────────────────"
@@ -181,6 +183,7 @@ include mk/test-external.mk
 include mk/test-pkg-rust.mk
 include mk/test-pkg-typescript.mk
 include mk/test-examples.mk
+include mk/test-chaos.mk
 
 # Only include benchmark makefile when benchmark targets are being run
 ifneq ($(filter bench bench-% ,$(MAKECMDGOALS)),)
