@@ -15,21 +15,37 @@ use std::{
 use libloading::Symbol;
 use reifydb_core::{
 	common::CommitVersion,
-	interface::{catalog::flow::FlowNodeId, change::Change},
+	encoded::{
+		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
+		shape::{RowShape, fingerprint::RowShapeFingerprint},
+	},
+	interface::{
+		catalog::{
+			flow::FlowNodeId,
+			id::{NamespaceId, TableId},
+			namespace::Namespace,
+			table::Table,
+		},
+		change::Change,
+	},
 	internal,
 };
 use reifydb_extension::loader::ffi::LibraryCache;
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::{
 	config::Config,
-	error::Result as SdkResult,
+	error::{Result as SdkResult, SdkError},
 	operator::{OperatorLogic, Tick, view::native::NativeChangeView},
 };
 use reifydb_type::{Result, error::Error, value::constraint::TypeConstraint};
 use tracing::error;
 
 use crate::{
-	operator::{BoxedOperator, Operator, context::native::NativeOperatorContext},
+	operator::{
+		BoxedOperator, Operator,
+		context::native::{NativeBridge, NativeOperatorContext},
+	},
 	transaction::{FlowTransaction, slot::PersistFn},
 };
 
@@ -54,7 +70,7 @@ pub const NATIVE_OPERATOR_MAGIC: u32 = 0x5244_424E;
 
 pub const NATIVE_ABI_TAG: u32 = 0x0308;
 
-pub type NativeOperatorCreateFn = fn(FlowNodeId, &Config) -> Result<BoxedOperator>;
+pub type NativeOperatorCreateFn = fn(FlowNodeId, &Config) -> Result<BoxedBridgedOperator>;
 
 pub struct NativeOperatorColumn {
 	pub name: String,
@@ -85,6 +101,187 @@ pub fn check_native_abi_tag(abi_tag: u32) -> Result<()> {
 		))));
 	}
 	Ok(())
+}
+
+pub trait BridgedOperator: Send {
+	fn id(&self) -> FlowNodeId;
+
+	fn capabilities(&self) -> u32;
+
+	fn apply(&self, bridge: &mut dyn NativeBridge, change: Change) -> Result<Change>;
+
+	fn tick(&self, _bridge: &mut dyn NativeBridge, _tick: Tick) -> Result<Option<Change>> {
+		Ok(None)
+	}
+
+	fn ticks(&self) -> Option<Duration> {
+		None
+	}
+
+	fn flush_state(&self, _bridge: &mut dyn NativeBridge) -> Result<()> {
+		Ok(())
+	}
+}
+
+pub type BoxedBridgedOperator = Box<dyn BridgedOperator>;
+
+pub struct FlowNativeBridge<'a> {
+	txn: &'a mut FlowTransaction,
+	node: FlowNodeId,
+	now_nanos: u64,
+}
+
+impl<'a> FlowNativeBridge<'a> {
+	pub fn new(txn: &'a mut FlowTransaction, node: FlowNodeId) -> Self {
+		let now_nanos = txn.clock().now_nanos();
+		Self {
+			txn,
+			node,
+			now_nanos,
+		}
+	}
+}
+
+impl NativeBridge for FlowNativeBridge<'_> {
+	fn clock_now_nanos(&self) -> u64 {
+		self.now_nanos
+	}
+	fn state_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+		self.txn.state_get(self.node, key)
+	}
+	fn state_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+		Ok(self.txn.state_get_many(self.node, keys)?.items.into_iter().map(|r| (r.key, r.row)).collect())
+	}
+	fn state_set(&mut self, key: &EncodedKey, value: EncodedRow) -> Result<()> {
+		self.txn.state_set(self.node, key, value)
+	}
+	fn state_remove(&mut self, key: &EncodedKey) -> Result<()> {
+		self.txn.state_remove(self.node, key)
+	}
+	fn state_clear(&mut self) -> Result<()> {
+		self.txn.state_clear(self.node)
+	}
+	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+		Ok(self.txn.state_range_all(self.node, range)?.items.into_iter().map(|r| (r.key, r.row)).collect())
+	}
+	fn internal_state_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+		self.txn.internal_state_get(self.node, key)
+	}
+	fn internal_state_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+		Ok(self.txn
+			.internal_state_get_many(self.node, keys)?
+			.items
+			.into_iter()
+			.map(|r| (r.key, r.row))
+			.collect())
+	}
+	fn internal_state_set(&mut self, key: &EncodedKey, value: EncodedRow) -> Result<()> {
+		self.txn.internal_state_set(self.node, key, value)
+	}
+	fn internal_state_remove(&mut self, key: &EncodedKey) -> Result<()> {
+		self.txn.internal_state_remove(self.node, key)
+	}
+	fn store_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+		self.txn.get(key)
+	}
+	fn store_contains(&mut self, key: &EncodedKey) -> Result<bool> {
+		self.txn.contains_key(key)
+	}
+	fn store_prefix(&mut self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+		Ok(self.txn.prefix(prefix)?.items.into_iter().map(|r| (r.key, r.row)).collect())
+	}
+	fn store_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+		let rows = self.txn.range(range, 1024).collect::<Result<Vec<_>>>()?;
+		Ok(rows.into_iter().map(|r| (r.key, r.row)).collect())
+	}
+	fn catalog_find_namespace(
+		&mut self,
+		namespace: NamespaceId,
+		version: CommitVersion,
+	) -> Result<Option<Namespace>> {
+		Ok(self.txn.host_catalog().find_namespace(namespace, version))
+	}
+	fn catalog_find_namespace_by_name(
+		&mut self,
+		namespace: &str,
+		version: CommitVersion,
+	) -> Result<Option<Namespace>> {
+		Ok(self.txn.host_catalog().find_namespace_by_name(namespace, version))
+	}
+	fn catalog_find_table(&mut self, table: TableId, version: CommitVersion) -> Result<Option<Table>> {
+		Ok(self.txn.host_catalog().find_table(table, version))
+	}
+	fn catalog_find_table_by_name(
+		&mut self,
+		namespace: NamespaceId,
+		name: &str,
+		version: CommitVersion,
+	) -> Result<Option<Table>> {
+		Ok(self.txn.host_catalog().find_table_by_name(namespace, name, version))
+	}
+	fn catalog_find_row_shape(&mut self, fingerprint: RowShapeFingerprint) -> Result<Option<RowShape>> {
+		Ok(self.txn.host_catalog().find_row_shape(fingerprint))
+	}
+	fn state_get_many_visit(
+		&mut self,
+		keys: &[EncodedKey],
+		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
+	) -> SdkResult<()> {
+		let batch = self.txn.state_get_many(self.node, keys).map_err(|e| SdkError::Other(e.to_string()))?;
+		for r in &batch.items {
+			visit(&r.key, &r.row)?;
+		}
+		Ok(())
+	}
+	fn internal_state_get_many_visit(
+		&mut self,
+		keys: &[EncodedKey],
+		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
+	) -> SdkResult<()> {
+		let batch =
+			self.txn.internal_state_get_many(self.node, keys)
+				.map_err(|e| SdkError::Other(e.to_string()))?;
+		for r in &batch.items {
+			visit(&r.key, &r.row)?;
+		}
+		Ok(())
+	}
+	fn state_range_visit(
+		&mut self,
+		range: EncodedKeyRange,
+		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
+	) -> SdkResult<()> {
+		let batch = self.txn.state_range_all(self.node, range).map_err(|e| SdkError::Other(e.to_string()))?;
+		for r in &batch.items {
+			visit(&r.key, &r.row)?;
+		}
+		Ok(())
+	}
+	fn store_range_visit(
+		&mut self,
+		range: EncodedKeyRange,
+		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
+	) -> SdkResult<()> {
+		let rows =
+			self.txn.range(range, 1024)
+				.collect::<Result<Vec<_>>>()
+				.map_err(|e| SdkError::Other(e.to_string()))?;
+		for r in &rows {
+			visit(&r.key, &r.row)?;
+		}
+		Ok(())
+	}
+	fn store_prefix_visit(
+		&mut self,
+		prefix: &EncodedKey,
+		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
+	) -> SdkResult<()> {
+		let batch = self.txn.prefix(prefix).map_err(|e| SdkError::Other(e.to_string()))?;
+		for r in &batch.items {
+			visit(&r.key, &r.row)?;
+		}
+		Ok(())
+	}
 }
 
 pub struct LoadedNativeOperatorInfo {
@@ -200,7 +397,9 @@ impl NativeOperatorLoader {
 			*create_symbol
 		};
 
-		create(operator_id, config)
+		let bridged = create(operator_id, config)?;
+		let capabilities = bridged.capabilities();
+		Ok(Box::new(NativeBridgedOperator::new(bridged, operator_id, capabilities)))
 	}
 }
 
@@ -210,15 +409,10 @@ impl Default for NativeOperatorLoader {
 	}
 }
 
-#[derive(Clone, Copy)]
-struct SendableLogic<C>(*mut C);
-unsafe impl<C: Send> Send for SendableLogic<C> {}
-
 pub struct NativeOperatorAdapter<C> {
 	logic: UnsafeCell<C>,
 	node: FlowNodeId,
 	capabilities: u32,
-	last_registered_txn: Cell<u64>,
 }
 
 impl<C> NativeOperatorAdapter<C> {
@@ -227,35 +421,13 @@ impl<C> NativeOperatorAdapter<C> {
 			logic: UnsafeCell::new(logic),
 			node,
 			capabilities,
-			last_registered_txn: Cell::new(u64::MAX),
 		}
 	}
 }
 
 unsafe impl<C: Send> Send for NativeOperatorAdapter<C> {}
 
-impl<C: OperatorLogic + 'static> NativeOperatorAdapter<C> {
-	fn ensure_flush_slot(&self, txn: &mut FlowTransaction) -> Result<()> {
-		let txn_version = txn.version().0;
-		if self.last_registered_txn.get() != txn_version {
-			let captured = SendableLogic(self.logic.get());
-			let node = self.node;
-			let persist: PersistFn = Box::new(move |txn: &mut FlowTransaction, _value: Box<dyn Any>| {
-				let captured = captured;
-				let logic = unsafe { &mut *captured.0 };
-				let mut ctx = NativeOperatorContext::new(txn, node);
-				run_or_abort(node, "flush_state", || logic.flush_state(&mut ctx));
-				Ok(())
-			});
-			let _ = txn.operator_state::<(), _>(node, move |_txn| Ok(((), persist)))?;
-			txn.mark_state_dirty(node);
-			self.last_registered_txn.set(txn_version);
-		}
-		Ok(())
-	}
-}
-
-impl<C: OperatorLogic + 'static> Operator for NativeOperatorAdapter<C> {
+impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
@@ -264,11 +436,10 @@ impl<C: OperatorLogic + 'static> Operator for NativeOperatorAdapter<C> {
 		self.capabilities
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		self.ensure_flush_slot(txn)?;
+	fn apply(&self, bridge: &mut dyn NativeBridge, change: Change) -> Result<Change> {
 		let version = change.version;
 		let changed_at = change.changed_at;
-		let mut ctx = NativeOperatorContext::new(txn, self.node);
+		let mut ctx = NativeOperatorContext::new(bridge, self.node);
 		{
 			let view = NativeChangeView::new(&change);
 			let logic = unsafe { &mut *self.logic.get() };
@@ -283,10 +454,9 @@ impl<C: OperatorLogic + 'static> Operator for NativeOperatorAdapter<C> {
 		logic.ticks()
 	}
 
-	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
-		self.ensure_flush_slot(txn)?;
+	fn tick(&self, bridge: &mut dyn NativeBridge, tick: Tick) -> Result<Option<Change>> {
 		let now = tick.now;
-		let mut ctx = NativeOperatorContext::new(txn, self.node);
+		let mut ctx = NativeOperatorContext::new(bridge, self.node);
 		{
 			let logic = unsafe { &mut *self.logic.get() };
 			run_or_abort(self.node, "tick", || logic.tick(&mut ctx, tick));
@@ -296,6 +466,81 @@ impl<C: OperatorLogic + 'static> Operator for NativeOperatorAdapter<C> {
 			return Ok(None);
 		}
 		Ok(Some(Change::from_flow(self.node, CommitVersion(now.to_nanos()), diffs, now)))
+	}
+
+	fn flush_state(&self, bridge: &mut dyn NativeBridge) -> Result<()> {
+		let mut ctx = NativeOperatorContext::new(bridge, self.node);
+		let logic = unsafe { &mut *self.logic.get() };
+		run_or_abort(self.node, "flush_state", || logic.flush_state(&mut ctx));
+		Ok(())
+	}
+}
+
+#[derive(Clone, Copy)]
+struct SendableBridged(*const dyn BridgedOperator);
+unsafe impl Send for SendableBridged {}
+
+pub struct NativeBridgedOperator {
+	inner: BoxedBridgedOperator,
+	node: FlowNodeId,
+	capabilities: u32,
+	last_registered_txn: Cell<u64>,
+}
+
+impl NativeBridgedOperator {
+	pub fn new(inner: BoxedBridgedOperator, node: FlowNodeId, capabilities: u32) -> Self {
+		Self {
+			inner,
+			node,
+			capabilities,
+			last_registered_txn: Cell::new(u64::MAX),
+		}
+	}
+
+	fn ensure_flush_slot(&self, txn: &mut FlowTransaction) -> Result<()> {
+		let txn_version = txn.version().0;
+		if self.last_registered_txn.get() != txn_version {
+			let captured = SendableBridged(&*self.inner as *const dyn BridgedOperator);
+			let node = self.node;
+			let persist: PersistFn = Box::new(move |txn: &mut FlowTransaction, _value: Box<dyn Any>| {
+				let captured = captured;
+				let bridged = unsafe { &*captured.0 };
+				let mut bridge = FlowNativeBridge::new(txn, node);
+				bridged.flush_state(&mut bridge)
+			});
+			let _ = txn.operator_state::<(), _>(node, move |_txn| Ok(((), persist)))?;
+			txn.mark_state_dirty(node);
+			self.last_registered_txn.set(txn_version);
+		}
+		Ok(())
+	}
+}
+
+unsafe impl Send for NativeBridgedOperator {}
+
+impl Operator for NativeBridgedOperator {
+	fn id(&self) -> FlowNodeId {
+		self.node
+	}
+
+	fn capabilities(&self) -> u32 {
+		self.capabilities
+	}
+
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+		self.ensure_flush_slot(txn)?;
+		let mut bridge = FlowNativeBridge::new(txn, self.node);
+		self.inner.apply(&mut bridge, change)
+	}
+
+	fn ticks(&self) -> Option<Duration> {
+		self.inner.ticks()
+	}
+
+	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
+		self.ensure_flush_slot(txn)?;
+		let mut bridge = FlowNativeBridge::new(txn, self.node);
+		self.inner.tick(&mut bridge, tick)
 	}
 }
 

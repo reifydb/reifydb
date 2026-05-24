@@ -33,9 +33,10 @@ impl RowNumberProvider {
 		let map_keys: Vec<EncodedKey> = keys.into_iter().map(|key| self.make_map_key(key)).collect();
 
 		let mut existing: HashMap<Vec<u8>, u64> = HashMap::with_capacity(map_keys.len());
-		for (map_key, row_num) in ctx.internal_state().get_many::<u64>(&map_keys)? {
+		ctx.internal_state().get_many_visit::<u64>(&map_keys, &mut |map_key, row_num| {
 			existing.insert(map_key.as_bytes().to_vec(), row_num);
-		}
+			Ok(())
+		})?;
 
 		let mut counter = self.load_counter(ctx)?;
 		let initial_counter = counter;

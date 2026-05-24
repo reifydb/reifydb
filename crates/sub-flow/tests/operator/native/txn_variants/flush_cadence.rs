@@ -13,7 +13,10 @@ use reifydb_core::{
 };
 use reifydb_sdk::operator::OperatorMetadata;
 use reifydb_sub_flow::{
-	operator::{Operator, native::NativeOperatorAdapter},
+	operator::{
+		Operator,
+		native::{NativeBridgedOperator, NativeOperatorAdapter},
+	},
 	transaction::FlowTransaction,
 };
 use reifydb_type::value::datetime::DateTime;
@@ -22,7 +25,9 @@ use super::fixtures::{NODE_ID, deferred_txn, engine, ephemeral_txn, transactiona
 use crate::common::{FlushProbe, flush_probe_key};
 
 fn assert_flush_is_deferred(txn: &mut FlowTransaction) {
-	let op = NativeOperatorAdapter::new(FlushProbe, NODE_ID, <FlushProbe as OperatorMetadata>::CAPABILITIES);
+	let capabilities = <FlushProbe as OperatorMetadata>::CAPABILITIES;
+	let inner = NativeOperatorAdapter::new(FlushProbe, NODE_ID, capabilities);
+	let op = NativeBridgedOperator::new(Box::new(inner), NODE_ID, capabilities);
 	let change = Change::from_flow(NODE_ID, CommitVersion(1), Diffs::new(), DateTime::from_nanos(0));
 
 	op.apply(txn, change).unwrap();

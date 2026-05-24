@@ -56,6 +56,40 @@ pub trait StateApi {
 		end: Bound<&EncodedKey>,
 	) -> Result<Vec<(EncodedKey, T)>>;
 	fn get_with_anchors<T: DeserializeOwned>(&self, key: &EncodedKey) -> Result<Option<StateEntry<T>>>;
+
+	fn get_many_visit<T: DeserializeOwned>(
+		&self,
+		keys: &[EncodedKey],
+		visit: &mut dyn FnMut(EncodedKey, T) -> Result<()>,
+	) -> Result<()> {
+		for (k, v) in self.get_many::<T>(keys)? {
+			visit(k, v)?;
+		}
+		Ok(())
+	}
+
+	fn range_visit<T: DeserializeOwned>(
+		&self,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+		visit: &mut dyn FnMut(EncodedKey, T) -> Result<()>,
+	) -> Result<()> {
+		for (k, v) in self.range::<T>(start, end)? {
+			visit(k, v)?;
+		}
+		Ok(())
+	}
+
+	fn scan_prefix_visit<T: DeserializeOwned>(
+		&self,
+		prefix: &EncodedKey,
+		visit: &mut dyn FnMut(EncodedKey, T) -> Result<()>,
+	) -> Result<()> {
+		for (k, v) in self.scan_prefix::<T>(prefix)? {
+			visit(k, v)?;
+		}
+		Ok(())
+	}
 }
 
 pub trait InternalStateApi {
@@ -64,6 +98,17 @@ pub trait InternalStateApi {
 	fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> Result<()>;
 	fn remove(&mut self, key: &EncodedKey) -> Result<()>;
 	fn contains(&self, key: &EncodedKey) -> Result<bool>;
+
+	fn get_many_visit<T: DeserializeOwned>(
+		&self,
+		keys: &[EncodedKey],
+		visit: &mut dyn FnMut(EncodedKey, T) -> Result<()>,
+	) -> Result<()> {
+		for (k, v) in self.get_many::<T>(keys)? {
+			visit(k, v)?;
+		}
+		Ok(())
+	}
 }
 
 pub trait StoreApi {
@@ -71,6 +116,29 @@ pub trait StoreApi {
 	fn contains(&self, key: &EncodedKey) -> Result<bool>;
 	fn prefix(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedRow)>>;
 	fn range(&self, start: Bound<&EncodedKey>, end: Bound<&EncodedKey>) -> Result<Vec<(EncodedKey, EncodedRow)>>;
+
+	fn range_visit(
+		&self,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+		visit: &mut dyn FnMut(EncodedKey, EncodedRow) -> Result<()>,
+	) -> Result<()> {
+		for (k, v) in self.range(start, end)? {
+			visit(k, v)?;
+		}
+		Ok(())
+	}
+
+	fn prefix_visit(
+		&self,
+		prefix: &EncodedKey,
+		visit: &mut dyn FnMut(EncodedKey, EncodedRow) -> Result<()>,
+	) -> Result<()> {
+		for (k, v) in self.prefix(prefix)? {
+			visit(k, v)?;
+		}
+		Ok(())
+	}
 }
 
 pub trait CatalogApi {

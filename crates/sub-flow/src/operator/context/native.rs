@@ -32,7 +32,71 @@ use reifydb_sdk::{
 use reifydb_type::{Result, value::row_number::RowNumber};
 use serde::{Serialize, de::DeserializeOwned};
 
-use crate::transaction::FlowTransaction;
+pub trait NativeBridge {
+	fn clock_now_nanos(&self) -> u64;
+
+	fn state_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>>;
+	fn state_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedRow)>>;
+	fn state_set(&mut self, key: &EncodedKey, value: EncodedRow) -> Result<()>;
+	fn state_remove(&mut self, key: &EncodedKey) -> Result<()>;
+	fn state_clear(&mut self) -> Result<()>;
+	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>>;
+
+	fn internal_state_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>>;
+	fn internal_state_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedRow)>>;
+	fn internal_state_set(&mut self, key: &EncodedKey, value: EncodedRow) -> Result<()>;
+	fn internal_state_remove(&mut self, key: &EncodedKey) -> Result<()>;
+
+	fn store_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>>;
+	fn store_contains(&mut self, key: &EncodedKey) -> Result<bool>;
+	fn store_prefix(&mut self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedRow)>>;
+	fn store_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>>;
+
+	fn catalog_find_namespace(
+		&mut self,
+		namespace: NamespaceId,
+		version: CommitVersion,
+	) -> Result<Option<Namespace>>;
+	fn catalog_find_namespace_by_name(
+		&mut self,
+		namespace: &str,
+		version: CommitVersion,
+	) -> Result<Option<Namespace>>;
+	fn catalog_find_table(&mut self, table: TableId, version: CommitVersion) -> Result<Option<Table>>;
+	fn catalog_find_table_by_name(
+		&mut self,
+		namespace: NamespaceId,
+		name: &str,
+		version: CommitVersion,
+	) -> Result<Option<Table>>;
+	fn catalog_find_row_shape(&mut self, fingerprint: RowShapeFingerprint) -> Result<Option<RowShape>>;
+
+	fn state_get_many_visit(
+		&mut self,
+		keys: &[EncodedKey],
+		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
+	) -> SdkResult<()>;
+	fn internal_state_get_many_visit(
+		&mut self,
+		keys: &[EncodedKey],
+		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
+	) -> SdkResult<()>;
+	fn state_range_visit(
+		&mut self,
+		range: EncodedKeyRange,
+		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
+	) -> SdkResult<()>;
+	fn store_range_visit(
+		&mut self,
+		range: EncodedKeyRange,
+		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
+	) -> SdkResult<()>;
+	fn store_prefix_visit(
+		&mut self,
+		prefix: &EncodedKey,
+		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
+	) -> SdkResult<()>;
+}
 
 fn to_sdk_err<E: ToString>(e: E) -> SdkError {
 	SdkError::Other(e.to_string())
@@ -55,18 +119,18 @@ fn encode<T: Serialize>(value: &T, now_nanos: u64) -> SdkResult<EncodedRow> {
 }
 
 pub struct NativeOperatorContext<'a> {
-	txn: *mut FlowTransaction,
+	bridge: *mut (dyn NativeBridge + 'a),
 	node: FlowNodeId,
 	now_nanos: u64,
 	diffs: Vec<Diff>,
-	_marker: PhantomData<&'a mut FlowTransaction>,
+	_marker: PhantomData<&'a mut (dyn NativeBridge + 'a)>,
 }
 
 impl<'a> NativeOperatorContext<'a> {
-	pub fn new(txn: &'a mut FlowTransaction, node: FlowNodeId) -> Self {
-		let now_nanos = txn.clock().now_nanos();
+	pub fn new(bridge: &'a mut (dyn NativeBridge + 'a), node: FlowNodeId) -> Self {
+		let now_nanos = bridge.clock_now_nanos();
 		Self {
-			txn: txn as *mut FlowTransaction,
+			bridge: bridge as *mut (dyn NativeBridge + 'a),
 			node,
 			now_nanos,
 			diffs: Vec::new(),
@@ -88,6 +152,7 @@ pub struct NativeRowEmit<'a> {
 	sink: NativeRowSink,
 	diffs: &'a mut Vec<Diff>,
 	kind: EmitKind,
+	now_nanos: u64,
 }
 
 impl RowEmit for NativeRowEmit<'_> {
@@ -96,7 +161,7 @@ impl RowEmit for NativeRowEmit<'_> {
 		&mut self.sink
 	}
 	fn finish(self, row_numbers: &[RowNumber]) -> SdkResult<()> {
-		let columns = self.sink.finish(row_numbers.to_vec())?;
+		let columns = self.sink.finish(row_numbers.to_vec(), self.now_nanos)?;
 		match self.kind {
 			EmitKind::Insert => self.diffs.push(Diff::insert(columns)),
 			EmitKind::Remove => self.diffs.push(Diff::remove(columns)),
@@ -109,6 +174,7 @@ pub struct NativeUpdateEmit<'a> {
 	pre: NativeRowSink,
 	post: NativeRowSink,
 	diffs: &'a mut Vec<Diff>,
+	now_nanos: u64,
 }
 
 impl UpdateEmit for NativeUpdateEmit<'_> {
@@ -120,52 +186,52 @@ impl UpdateEmit for NativeUpdateEmit<'_> {
 		&mut self.post
 	}
 	fn finish(self, row_numbers: &[RowNumber]) -> SdkResult<()> {
-		let pre_columns = self.pre.finish(row_numbers.to_vec())?;
-		let post_columns = self.post.finish(row_numbers.to_vec())?;
+		let pre_columns = self.pre.finish(row_numbers.to_vec(), self.now_nanos)?;
+		let post_columns = self.post.finish(row_numbers.to_vec(), self.now_nanos)?;
 		self.diffs.push(Diff::update(pre_columns, post_columns));
 		Ok(())
 	}
 }
 
-pub struct NativeState {
-	txn: *mut FlowTransaction,
-	node: FlowNodeId,
+pub struct NativeState<'a> {
+	bridge: *mut (dyn NativeBridge + 'a),
 	now_nanos: u64,
+	_marker: PhantomData<&'a mut (dyn NativeBridge + 'a)>,
 }
 
-impl StateApi for NativeState {
+impl StateApi for NativeState<'_> {
 	fn get<T: DeserializeOwned>(&self, key: &EncodedKey) -> SdkResult<Option<T>> {
-		match unsafe { (*self.txn).state_get(self.node, key) }.map_err(to_sdk_err)? {
+		match unsafe { (*self.bridge).state_get(key) }.map_err(to_sdk_err)? {
 			Some(row) => Ok(Some(decode(&row)?)),
 			None => Ok(None),
 		}
 	}
 	fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> SdkResult<()> {
 		let now = self.now_nanos;
-		unsafe { (*self.txn).state_set(self.node, key, encode(value, now)?) }.map_err(to_sdk_err)
+		unsafe { (*self.bridge).state_set(key, encode(value, now)?) }.map_err(to_sdk_err)
 	}
 	fn remove(&mut self, key: &EncodedKey) -> SdkResult<()> {
-		unsafe { (*self.txn).state_remove(self.node, key) }.map_err(to_sdk_err)
+		unsafe { (*self.bridge).state_remove(key) }.map_err(to_sdk_err)
 	}
 	fn contains(&self, key: &EncodedKey) -> SdkResult<bool> {
-		Ok(unsafe { (*self.txn).state_get(self.node, key) }.map_err(to_sdk_err)?.is_some())
+		Ok(unsafe { (*self.bridge).state_get(key) }.map_err(to_sdk_err)?.is_some())
 	}
 	fn clear(&mut self) -> SdkResult<()> {
-		unsafe { (*self.txn).state_clear(self.node) }.map_err(to_sdk_err)
+		unsafe { (*self.bridge).state_clear() }.map_err(to_sdk_err)
 	}
 	fn scan_prefix<T: DeserializeOwned>(&self, prefix: &EncodedKey) -> SdkResult<Vec<(EncodedKey, T)>> {
-		let batch = unsafe { (*self.txn).state_range_all(self.node, EncodedKeyRange::prefix(prefix.as_ref())) }
+		let rows = unsafe { (*self.bridge).state_range(EncodedKeyRange::prefix(prefix.as_ref())) }
 			.map_err(to_sdk_err)?;
-		batch.items.iter().map(|r| Ok((strip_state_envelope(&r.key), decode(&r.row)?))).collect()
+		rows.into_iter().map(|(k, r)| Ok((strip_state_envelope(&k), decode(&r)?))).collect()
 	}
 	fn get_many<T: DeserializeOwned>(&self, keys: &[EncodedKey]) -> SdkResult<Vec<(EncodedKey, T)>> {
-		let batch = unsafe { (*self.txn).state_get_many(self.node, keys) }.map_err(to_sdk_err)?;
-		batch.items.iter().map(|r| Ok((strip_state_envelope(&r.key), decode(&r.row)?))).collect()
+		let rows = unsafe { (*self.bridge).state_get_many(keys) }.map_err(to_sdk_err)?;
+		rows.into_iter().map(|(k, r)| Ok((strip_state_envelope(&k), decode(&r)?))).collect()
 	}
 	fn keys_with_prefix(&self, prefix: &EncodedKey) -> SdkResult<Vec<EncodedKey>> {
-		let batch = unsafe { (*self.txn).state_range_all(self.node, EncodedKeyRange::prefix(prefix.as_ref())) }
+		let rows = unsafe { (*self.bridge).state_range(EncodedKeyRange::prefix(prefix.as_ref())) }
 			.map_err(to_sdk_err)?;
-		Ok(batch.items.iter().map(|r| strip_state_envelope(&r.key)).collect())
+		Ok(rows.into_iter().map(|(k, _)| strip_state_envelope(&k)).collect())
 	}
 	fn range<T: DeserializeOwned>(
 		&self,
@@ -173,11 +239,11 @@ impl StateApi for NativeState {
 		end: Bound<&EncodedKey>,
 	) -> SdkResult<Vec<(EncodedKey, T)>> {
 		let range = EncodedKeyRange::new(start.map(|k| k.clone()), end.map(|k| k.clone()));
-		let batch = unsafe { (*self.txn).state_range_all(self.node, range) }.map_err(to_sdk_err)?;
-		batch.items.iter().map(|r| Ok((strip_state_envelope(&r.key), decode(&r.row)?))).collect()
+		let rows = unsafe { (*self.bridge).state_range(range) }.map_err(to_sdk_err)?;
+		rows.into_iter().map(|(k, r)| Ok((strip_state_envelope(&k), decode(&r)?))).collect()
 	}
 	fn get_with_anchors<T: DeserializeOwned>(&self, key: &EncodedKey) -> SdkResult<Option<StateEntry<T>>> {
-		match unsafe { (*self.txn).state_get(self.node, key) }.map_err(to_sdk_err)? {
+		match unsafe { (*self.bridge).state_get(key) }.map_err(to_sdk_err)? {
 			Some(row) => Ok(Some(StateEntry {
 				created_at_nanos: row.created_at_nanos(),
 				updated_at_nanos: row.updated_at_nanos(),
@@ -186,51 +252,101 @@ impl StateApi for NativeState {
 			None => Ok(None),
 		}
 	}
+	fn get_many_visit<T: DeserializeOwned>(
+		&self,
+		keys: &[EncodedKey],
+		visit: &mut dyn FnMut(EncodedKey, T) -> SdkResult<()>,
+	) -> SdkResult<()> {
+		unsafe {
+			(*self.bridge).state_get_many_visit(keys, &mut |k, row| {
+				let value = decode::<T>(row)?;
+				visit(strip_state_envelope(k), value)
+			})
+		}
+	}
+	fn range_visit<T: DeserializeOwned>(
+		&self,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+		visit: &mut dyn FnMut(EncodedKey, T) -> SdkResult<()>,
+	) -> SdkResult<()> {
+		let range = EncodedKeyRange::new(start.map(|k| k.clone()), end.map(|k| k.clone()));
+		unsafe {
+			(*self.bridge).state_range_visit(range, &mut |k, row| {
+				let value = decode::<T>(row)?;
+				visit(strip_state_envelope(k), value)
+			})
+		}
+	}
+	fn scan_prefix_visit<T: DeserializeOwned>(
+		&self,
+		prefix: &EncodedKey,
+		visit: &mut dyn FnMut(EncodedKey, T) -> SdkResult<()>,
+	) -> SdkResult<()> {
+		unsafe {
+			(*self.bridge).state_range_visit(EncodedKeyRange::prefix(prefix.as_ref()), &mut |k, row| {
+				let value = decode::<T>(row)?;
+				visit(strip_state_envelope(k), value)
+			})
+		}
+	}
 }
 
-pub struct NativeInternalState {
-	txn: *mut FlowTransaction,
-	node: FlowNodeId,
+pub struct NativeInternalState<'a> {
+	bridge: *mut (dyn NativeBridge + 'a),
 	now_nanos: u64,
+	_marker: PhantomData<&'a mut (dyn NativeBridge + 'a)>,
 }
 
-impl InternalStateApi for NativeInternalState {
+impl InternalStateApi for NativeInternalState<'_> {
 	fn get<T: DeserializeOwned>(&self, key: &EncodedKey) -> SdkResult<Option<T>> {
-		match unsafe { (*self.txn).internal_state_get(self.node, key) }.map_err(to_sdk_err)? {
+		match unsafe { (*self.bridge).internal_state_get(key) }.map_err(to_sdk_err)? {
 			Some(row) => Ok(Some(decode(&row)?)),
 			None => Ok(None),
 		}
 	}
 	fn get_many<T: DeserializeOwned>(&self, keys: &[EncodedKey]) -> SdkResult<Vec<(EncodedKey, T)>> {
-		let batch = unsafe { (*self.txn).internal_state_get_many(self.node, keys) }.map_err(to_sdk_err)?;
-		batch.items.iter().map(|r| Ok((strip_internal_envelope(&r.key), decode(&r.row)?))).collect()
+		let rows = unsafe { (*self.bridge).internal_state_get_many(keys) }.map_err(to_sdk_err)?;
+		rows.into_iter().map(|(k, r)| Ok((strip_internal_envelope(&k), decode(&r)?))).collect()
 	}
 	fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> SdkResult<()> {
 		let now = self.now_nanos;
-		unsafe { (*self.txn).internal_state_set(self.node, key, encode(value, now)?) }.map_err(to_sdk_err)
+		unsafe { (*self.bridge).internal_state_set(key, encode(value, now)?) }.map_err(to_sdk_err)
 	}
 	fn remove(&mut self, key: &EncodedKey) -> SdkResult<()> {
-		unsafe { (*self.txn).internal_state_remove(self.node, key) }.map_err(to_sdk_err)
+		unsafe { (*self.bridge).internal_state_remove(key) }.map_err(to_sdk_err)
 	}
 	fn contains(&self, key: &EncodedKey) -> SdkResult<bool> {
-		Ok(unsafe { (*self.txn).internal_state_get(self.node, key) }.map_err(to_sdk_err)?.is_some())
+		Ok(unsafe { (*self.bridge).internal_state_get(key) }.map_err(to_sdk_err)?.is_some())
+	}
+	fn get_many_visit<T: DeserializeOwned>(
+		&self,
+		keys: &[EncodedKey],
+		visit: &mut dyn FnMut(EncodedKey, T) -> SdkResult<()>,
+	) -> SdkResult<()> {
+		unsafe {
+			(*self.bridge).internal_state_get_many_visit(keys, &mut |k, row| {
+				let value = decode::<T>(row)?;
+				visit(strip_internal_envelope(k), value)
+			})
+		}
 	}
 }
 
-pub struct NativeStore {
-	txn: *mut FlowTransaction,
+pub struct NativeStore<'a> {
+	bridge: *mut (dyn NativeBridge + 'a),
+	_marker: PhantomData<&'a mut (dyn NativeBridge + 'a)>,
 }
 
-impl StoreApi for NativeStore {
+impl StoreApi for NativeStore<'_> {
 	fn get(&self, key: &EncodedKey) -> SdkResult<Option<EncodedRow>> {
-		unsafe { (*self.txn).get(key) }.map_err(to_sdk_err)
+		unsafe { (*self.bridge).store_get(key) }.map_err(to_sdk_err)
 	}
 	fn contains(&self, key: &EncodedKey) -> SdkResult<bool> {
-		unsafe { (*self.txn).contains_key(key) }.map_err(to_sdk_err)
+		unsafe { (*self.bridge).store_contains(key) }.map_err(to_sdk_err)
 	}
 	fn prefix(&self, prefix: &EncodedKey) -> SdkResult<Vec<(EncodedKey, EncodedRow)>> {
-		let batch = unsafe { (*self.txn).prefix(prefix) }.map_err(to_sdk_err)?;
-		Ok(batch.items.into_iter().map(|r| (r.key, r.row)).collect())
+		unsafe { (*self.bridge).store_prefix(prefix) }.map_err(to_sdk_err)
 	}
 	fn range(
 		&self,
@@ -238,24 +354,40 @@ impl StoreApi for NativeStore {
 		end: Bound<&EncodedKey>,
 	) -> SdkResult<Vec<(EncodedKey, EncodedRow)>> {
 		let range = EncodedKeyRange::new(start.map(|k| k.clone()), end.map(|k| k.clone()));
-		let rows = unsafe { (*self.txn).range(range, 1024) }.collect::<Result<Vec<_>>>().map_err(to_sdk_err)?;
-		Ok(rows.into_iter().map(|r| (r.key, r.row)).collect())
+		unsafe { (*self.bridge).store_range(range) }.map_err(to_sdk_err)
+	}
+	fn range_visit(
+		&self,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+		visit: &mut dyn FnMut(EncodedKey, EncodedRow) -> SdkResult<()>,
+	) -> SdkResult<()> {
+		let range = EncodedKeyRange::new(start.map(|k| k.clone()), end.map(|k| k.clone()));
+		unsafe { (*self.bridge).store_range_visit(range, &mut |k, row| visit(k.clone(), row.clone())) }
+	}
+	fn prefix_visit(
+		&self,
+		prefix: &EncodedKey,
+		visit: &mut dyn FnMut(EncodedKey, EncodedRow) -> SdkResult<()>,
+	) -> SdkResult<()> {
+		unsafe { (*self.bridge).store_prefix_visit(prefix, &mut |k, row| visit(k.clone(), row.clone())) }
 	}
 }
 
-pub struct NativeCatalog {
-	txn: *mut FlowTransaction,
+pub struct NativeCatalog<'a> {
+	bridge: *mut (dyn NativeBridge + 'a),
+	_marker: PhantomData<&'a mut (dyn NativeBridge + 'a)>,
 }
 
-impl CatalogApi for NativeCatalog {
+impl CatalogApi for NativeCatalog<'_> {
 	fn find_namespace(&self, namespace: NamespaceId, version: CommitVersion) -> SdkResult<Option<Namespace>> {
-		Ok(unsafe { (*self.txn).host_catalog() }.find_namespace(namespace, version))
+		unsafe { (*self.bridge).catalog_find_namespace(namespace, version) }.map_err(to_sdk_err)
 	}
 	fn find_namespace_by_name(&self, namespace: &str, version: CommitVersion) -> SdkResult<Option<Namespace>> {
-		Ok(unsafe { (*self.txn).host_catalog() }.find_namespace_by_name(namespace, version))
+		unsafe { (*self.bridge).catalog_find_namespace_by_name(namespace, version) }.map_err(to_sdk_err)
 	}
 	fn find_table(&self, table: TableId, version: CommitVersion) -> SdkResult<Option<Table>> {
-		Ok(unsafe { (*self.txn).host_catalog() }.find_table(table, version))
+		unsafe { (*self.bridge).catalog_find_table(table, version) }.map_err(to_sdk_err)
 	}
 	fn find_table_by_name(
 		&self,
@@ -263,10 +395,10 @@ impl CatalogApi for NativeCatalog {
 		name: &str,
 		version: CommitVersion,
 	) -> SdkResult<Option<Table>> {
-		Ok(unsafe { (*self.txn).host_catalog() }.find_table_by_name(namespace, name, version))
+		unsafe { (*self.bridge).catalog_find_table_by_name(namespace, name, version) }.map_err(to_sdk_err)
 	}
 	fn find_row_shape(&self, fingerprint: RowShapeFingerprint) -> SdkResult<Option<RowShape>> {
-		Ok(unsafe { (*self.txn).host_catalog() }.find_row_shape(fingerprint))
+		unsafe { (*self.bridge).catalog_find_row_shape(fingerprint) }.map_err(to_sdk_err)
 	}
 }
 
@@ -292,26 +424,28 @@ impl OperatorContext for NativeOperatorContext<'_> {
 	}
 	fn state(&mut self) -> impl StateApi + '_ {
 		NativeState {
-			txn: self.txn,
-			node: self.node,
+			bridge: self.bridge,
 			now_nanos: self.now_nanos,
+			_marker: PhantomData,
 		}
 	}
 	fn internal_state(&mut self) -> impl InternalStateApi + '_ {
 		NativeInternalState {
-			txn: self.txn,
-			node: self.node,
+			bridge: self.bridge,
 			now_nanos: self.now_nanos,
+			_marker: PhantomData,
 		}
 	}
 	fn store(&mut self) -> impl StoreApi + '_ {
 		NativeStore {
-			txn: self.txn,
+			bridge: self.bridge,
+			_marker: PhantomData,
 		}
 	}
 	fn catalog(&mut self) -> impl CatalogApi + '_ {
 		NativeCatalog {
-			txn: self.txn,
+			bridge: self.bridge,
+			_marker: PhantomData,
 		}
 	}
 	fn get_or_create_row_number(&mut self, key: &EncodedKey) -> SdkResult<(RowNumber, bool)> {
@@ -333,24 +467,30 @@ impl OperatorContext for NativeOperatorContext<'_> {
 		}
 	}
 	fn insert_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<NativeRowEmit<'_>> {
+		let now_nanos = self.now_nanos;
 		Ok(NativeRowEmit {
 			sink: NativeRowSink::new(R::COLUMNS)?,
 			diffs: &mut self.diffs,
 			kind: EmitKind::Insert,
+			now_nanos,
 		})
 	}
 	fn update_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<NativeUpdateEmit<'_>> {
+		let now_nanos = self.now_nanos;
 		Ok(NativeUpdateEmit {
 			pre: NativeRowSink::new(R::COLUMNS)?,
 			post: NativeRowSink::new(R::COLUMNS)?,
 			diffs: &mut self.diffs,
+			now_nanos,
 		})
 	}
 	fn remove_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<NativeRowEmit<'_>> {
+		let now_nanos = self.now_nanos;
 		Ok(NativeRowEmit {
 			sink: NativeRowSink::new(R::COLUMNS)?,
 			diffs: &mut self.diffs,
 			kind: EmitKind::Remove,
+			now_nanos,
 		})
 	}
 }

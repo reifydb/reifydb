@@ -97,13 +97,17 @@ where
 			encoded_keys.push(encoded);
 		}
 
-		let loaded = match self.backend {
-			StateBackend::Data => ctx.state().get_many::<V>(&encoded_keys)?,
-			StateBackend::Internal => ctx.internal_state().get_many::<V>(&encoded_keys)?,
-		};
-		for (encoded, value) in loaded {
+		let cache = &mut self.cache;
+		let mut visit = |encoded: EncodedKey, value: V| -> Result<()> {
 			if let Some(key) = by_encoded.get(encoded.as_bytes()) {
-				self.cache.put(key.clone(), Arc::new(value));
+				cache.put(key.clone(), Arc::new(value));
+			}
+			Ok(())
+		};
+		match self.backend {
+			StateBackend::Data => ctx.state().get_many_visit::<V>(&encoded_keys, &mut visit)?,
+			StateBackend::Internal => {
+				ctx.internal_state().get_many_visit::<V>(&encoded_keys, &mut visit)?
 			}
 		}
 		Ok(())

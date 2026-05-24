@@ -31,18 +31,23 @@ use reifydb_type::{Result, value::Value};
 use serde::de::DeserializeOwned;
 
 use crate::{
-	operator::{Operator, context::native::NativeOperatorContext, native::NativeOperatorAdapter},
+	operator::{
+		Operator,
+		context::native::NativeOperatorContext,
+		native::{FlowNativeBridge, NativeBridgedOperator, NativeOperatorAdapter},
+	},
 	transaction::{DeferredParams, FlowTransaction},
 };
 
 pub struct NativeOperatorHarness<C: OperatorLogic + OperatorMetadata + 'static> {
 	engine: TestEngine,
-	adapter: NativeOperatorAdapter<C>,
+	operator: NativeBridgedOperator,
 	node_id: FlowNodeId,
 	version: u64,
 	pending: Pending,
 	current: Option<FlowTransaction>,
 	history: Vec<Change>,
+	_phantom: PhantomData<C>,
 }
 
 impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
@@ -72,7 +77,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 
 	pub fn apply(&mut self, input: Change) -> Result<Change> {
 		let mut txn = self.begin_txn();
-		let output = self.adapter.apply(&mut txn, input)?;
+		let output = self.operator.apply(&mut txn, input)?;
 		txn.flush_operator_states()?;
 		self.end_txn(txn);
 		self.history.push(output.clone());
@@ -81,7 +86,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 
 	pub fn apply_without_flush(&mut self, input: Change) -> Result<Change> {
 		let mut txn = self.begin_txn();
-		let output = self.adapter.apply(&mut txn, input)?;
+		let output = self.operator.apply(&mut txn, input)?;
 		self.current = Some(txn);
 		self.history.push(output.clone());
 		Ok(output)
@@ -100,12 +105,14 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 	pub fn state_value<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Option<V> {
 		let node = self.node_id;
 		if let Some(txn) = self.current.as_mut() {
-			let mut ctx = NativeOperatorContext::new(txn, node);
+			let mut bridge = FlowNativeBridge::new(txn, node);
+			let mut ctx = NativeOperatorContext::new(&mut bridge, node);
 			return ctx.state().get::<V>(key).expect("state get");
 		}
 		let mut txn = self.begin_txn();
 		let value = {
-			let mut ctx = NativeOperatorContext::new(&mut txn, node);
+			let mut bridge = FlowNativeBridge::new(&mut txn, node);
+			let mut ctx = NativeOperatorContext::new(&mut bridge, node);
 			ctx.state().get::<V>(key).expect("state get")
 		};
 		self.end_txn(txn);
@@ -128,7 +135,8 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 		let node = self.node_id;
 		let mut txn = self.begin_txn();
 		let rows = {
-			let mut ctx = NativeOperatorContext::new(&mut txn, node);
+			let mut bridge = FlowNativeBridge::new(&mut txn, node);
+			let mut ctx = NativeOperatorContext::new(&mut bridge, node);
 			ctx.store().range(start, end).expect("store range")
 		};
 		self.end_txn(txn);
@@ -231,16 +239,19 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarnessBuilder
 			self.node_id,
 			&Config::new(<C as OperatorMetadata>::NAME, self.config.clone().into_iter().collect()),
 		)?;
-		let adapter = NativeOperatorAdapter::new(core, self.node_id, <C as OperatorMetadata>::CAPABILITIES);
+		let capabilities = <C as OperatorMetadata>::CAPABILITIES;
+		let adapter = NativeOperatorAdapter::new(core, self.node_id, capabilities);
+		let operator = NativeBridgedOperator::new(Box::new(adapter), self.node_id, capabilities);
 
 		Ok(NativeOperatorHarness {
 			engine,
-			adapter,
+			operator,
 			node_id: self.node_id,
 			version: self.version.0,
 			pending: Pending::new(),
 			current: None,
 			history: Vec::new(),
+			_phantom: PhantomData,
 		})
 	}
 }

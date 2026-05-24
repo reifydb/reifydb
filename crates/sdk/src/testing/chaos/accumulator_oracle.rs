@@ -144,7 +144,7 @@ fn materialize_outputs<O: Row>(outputs: impl Iterator<Item = O>, output_key_colu
 	if count == 0 {
 		return MaterializedTable::empty();
 	}
-	let columns = sink.finish(row_numbers).expect("finish sink");
+	let columns = sink.finish(row_numbers, DateTime::default().to_nanos()).expect("finish sink");
 	let change =
 		Change::from_flow(FlowNodeId(0), CommitVersion(0), vec![Diff::insert(columns)], DateTime::default());
 	materialize_history(&[change], output_key_columns)
