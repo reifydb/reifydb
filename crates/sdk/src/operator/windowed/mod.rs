@@ -67,10 +67,16 @@ use crate::{
 	},
 };
 
+pub mod accumulator;
 pub mod multi_rolling;
+pub mod multi_rolling_v2;
 pub mod rolling;
+pub mod rolling_incremental;
+pub mod rolling_v2;
 pub mod span;
 pub mod tumbling;
+pub mod tumbling_carry;
+pub mod tumbling_v2;
 
 /// A typed view extracted from one input row, sufficient to drive the
 /// aggregation. Implementations are typically small `Copy` structs

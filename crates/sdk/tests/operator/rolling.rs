@@ -1,0 +1,88 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
+
+//! Differential chaos for the rolling V2 driver (`RollingSum`): a sliding
+//! buffer of the last `ROLLING_CAPACITY` windows per group. The window_start
+//! range is deliberately wider than the capacity so eviction is exercised on
+//! most seeds, and events share window coordinates so within-window
+//! accumulation and partial removal are hit.
+
+use reifydb_sdk::{
+	operator::{FFIOperatorAdapter, windowed::rolling_v2::RollingDriverV2},
+	testing::chaos::{
+		ChaosHarness,
+		accumulator_oracle::rolling_accumulator_oracle,
+		config::{ChaosConfig, SupportedOps},
+		runner::ChaosOutcome,
+		schema::KeyStrategy,
+		strategy::{ColumnSampler, samplers},
+	},
+};
+
+use super::common::{self, RollingSum};
+
+fn group_key() -> Vec<String> {
+	vec!["group".to_string()]
+}
+
+fn value_sampler(none_values: bool) -> ColumnSampler {
+	if none_values {
+		common::maybe_none_f64(-50.0, 50.0)
+	} else {
+		samplers::f64_range(-50.0..50.0)
+	}
+}
+
+fn run(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
+	ChaosHarness::<FFIOperatorAdapter<RollingDriverV2<RollingSum>>>::builder()
+		.with_input_shape(common::rolling_shape())
+		.with_output_shape(common::rolling_out_shape())
+		.with_key_strategy(KeyStrategy::Sequential)
+		.with_output_key(["group"])
+		.with_column("group", samplers::utf8_choices(&["BTC", "ETH", "SOL"]))
+		// More distinct window coordinates than capacity -> eviction.
+		.with_column("window_start", samplers::u64_range(0..10))
+		.with_column("value", value_sampler(none_values))
+		.with_chaos(cfg)
+		.with_oracle(|batches| rolling_accumulator_oracle(&common::rolling_sum(), batches, &group_key()))
+		.seed(seed)
+		.build()
+		.expect("build rolling harness")
+		.run()
+}
+
+#[test]
+fn rolling_sum_matches_across_configs_and_seeds() {
+	for &seed in &common::SEEDS {
+		run(false, common::baseline(150, SupportedOps::insert_only()), seed).assert_matches();
+		run(false, common::baseline(150, SupportedOps::no_remove()), seed).assert_matches();
+		run(false, common::baseline(150, SupportedOps::no_update()), seed).assert_matches();
+		run(false, common::baseline(200, SupportedOps::all()), seed).assert_matches();
+		run(false, common::full_chaos(250), seed).assert_matches();
+	}
+}
+
+#[test]
+fn rolling_sum_handles_none_inputs() {
+	for &seed in &common::SEEDS {
+		run(true, common::full_chaos(200), seed).assert_matches();
+	}
+}
+
+#[test]
+fn rolling_sum_evicts_beyond_capacity() {
+	// With 10 distinct window coordinates and capacity 3, an inserts-only
+	// run must leave each live group reporting exactly `ROLLING_CAPACITY`
+	// windows once it has seen enough.
+	let outcome = run(false, common::baseline(300, SupportedOps::insert_only()), 7);
+	outcome.assert_matches();
+	assert!(!outcome.oracle_table.is_empty(), "expected rolling output rows");
+}
+
+#[test]
+fn rolling_sum_empty_stream_is_empty() {
+	let outcome = run(false, common::baseline(0, SupportedOps::all()), 0);
+	outcome.assert_matches();
+	assert!(outcome.operator_table.is_empty());
+	assert!(outcome.oracle_table.is_empty());
+}

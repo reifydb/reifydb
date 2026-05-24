@@ -27,6 +27,7 @@ use std::{
 use reifydb_core::{common::CommitVersion, encoded::shape::RowShape, interface::catalog::flow::FlowNodeId};
 use reifydb_type::value::Value;
 
+pub mod accumulator_oracle;
 pub mod batcher;
 pub mod config;
 pub mod event;

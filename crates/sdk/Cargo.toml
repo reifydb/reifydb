@@ -35,4 +35,8 @@ path = "tests/ffi.rs"
 name = "chaos"
 path = "tests/chaos.rs"
 
+[[test]]
+name = "operator"
+path = "tests/operator.rs"
+
 
