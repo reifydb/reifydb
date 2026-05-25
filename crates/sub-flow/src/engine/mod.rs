@@ -41,6 +41,8 @@ use reifydb_rql::flow::{
 };
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 #[cfg(reifydb_target = "native")]
+use reifydb_sdk::config::Config;
+#[cfg(reifydb_target = "native")]
 use reifydb_type::{Result, error::Error, value::Value};
 use tracing::instrument;
 
@@ -149,7 +151,7 @@ impl FlowEngine {
 		&self,
 		operator: &str,
 		node_id: FlowNodeId,
-		config: &BTreeMap<String, Value>,
+		config: &Config,
 	) -> Result<BoxedOperator> {
 		let loader = native_operator_loader();
 		let mut loader_write = loader.write();

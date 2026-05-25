@@ -94,17 +94,15 @@ impl RowNumberProvider {
 
 #[cfg(test)]
 pub mod tests {
-	use std::collections::HashMap;
-
 	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 	use reifydb_core::{
 		encoded::key::EncodedKey,
 		interface::catalog::flow::FlowNodeId,
 		key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
 	};
-	use reifydb_type::value::Value;
 
 	use crate::{
+		config::Config,
 		error::Result,
 		operator::{
 			FFIOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
@@ -127,7 +125,7 @@ pub mod tests {
 	}
 
 	impl FFIOperator for RowNumberTestOperator {
-		fn new(_operator_id: FlowNodeId, _config: &HashMap<String, Value>) -> Result<Self> {
+		fn new(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
 			Ok(Self)
 		}
 

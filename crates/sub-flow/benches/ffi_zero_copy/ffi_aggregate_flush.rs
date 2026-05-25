@@ -6,12 +6,13 @@
 #[path = "common.rs"]
 mod common;
 
-use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Instant};
+use std::{cell::RefCell, rc::Rc, time::Instant};
 
 use common::with_counting;
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::CAPABILITY_ALL_STANDARD};
 use reifydb_core::interface::{catalog::flow::FlowNodeId, change::Change};
 use reifydb_sdk::{
+	config::Config,
 	error::Result as SdkResult,
 	operator::{
 		FFIOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
@@ -44,7 +45,7 @@ impl OperatorMetadata for SumAgg {
 }
 
 impl FFIOperator for SumAgg {
-	fn new(_id: FlowNodeId, _config: &HashMap<String, Value>) -> SdkResult<Self> {
+	fn new(_id: FlowNodeId, _config: &Config) -> SdkResult<Self> {
 		Ok(Self {
 			cache: Rc::new(RefCell::new(StateCache::new(16_384))),
 		})

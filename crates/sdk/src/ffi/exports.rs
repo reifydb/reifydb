@@ -17,6 +17,7 @@ use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_type::value::Value;
 
 use crate::{
+	config::Config,
 	ffi::wrapper::{OperatorWrapper, create_vtable},
 	operator::{FFIOperator, OperatorMetadata, column::operator::OperatorColumn},
 };
@@ -99,6 +100,7 @@ pub unsafe extern "C" fn create_operator_instance<O: FFIOperator + OperatorMetad
 		}
 	};
 
+	let config = Config::new(O::NAME, config.into_iter().collect());
 	let operator = match O::new(FlowNodeId(operator_id), &config) {
 		Ok(op) => op,
 		Err(e) => {

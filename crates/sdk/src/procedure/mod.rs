@@ -4,16 +4,12 @@
 pub mod exports;
 pub mod wrapper;
 
-use std::collections::HashMap;
-
 use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::{constants::FFI_OK, context::context::ContextFFI, data::buffer::BufferFFI};
-use reifydb_type::{
-	params::Params,
-	value::{Value, frame::frame::Frame},
-};
+use reifydb_type::{params::Params, value::frame::frame::Frame};
 
 use crate::{
+	config::Config,
 	error::{Result, SdkError},
 	operator::builder::ColumnsBuilder,
 };
@@ -29,7 +25,7 @@ pub trait FFIProcedureMetadata {
 }
 
 pub trait FFIProcedure: 'static {
-	fn new(config: &HashMap<String, Value>) -> Result<Self>
+	fn new(config: &Config) -> Result<Self>
 	where
 		Self: Sized;
 

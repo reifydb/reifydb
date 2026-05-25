@@ -45,20 +45,16 @@
 //!   slot coordinate (`u64` timestamps, Solana slot numbers, `DateTime` newtypes, etc.). See [`span`] for the canonical
 //!   helper and [`span::Slot`] for the coordinate trait.
 
-use std::{
-	collections::{BTreeMap, HashMap},
-	fmt::Debug,
-	hash::Hash,
-};
+use std::{collections::BTreeMap, fmt::Debug, hash::Hash};
 
 use reifydb_core::{
 	encoded::key::{EncodedKey, IntoEncodedKey},
 	interface::catalog::flow::FlowNodeId,
 };
-use reifydb_type::value::Value;
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
+	config::Config,
 	error::Result,
 	operator::{
 		column::{operator::OperatorColumn, row::Row},
@@ -230,7 +226,7 @@ where
 
 	/// Construct an aggregator from FFI config. Called once per operator
 	/// instance from [`crate::operator::FFIOperator::new`].
-	fn from_config(operator_id: FlowNodeId, config: &HashMap<String, Value>) -> Result<Self>;
+	fn from_config(operator_id: FlowNodeId, config: &Config) -> Result<Self>;
 
 	/// Encode the row key for `(group, window_start)`. The driver passes
 	/// the resulting key to `FFIOperatorContext::get_or_create_row_number`

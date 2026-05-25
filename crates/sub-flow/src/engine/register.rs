@@ -24,6 +24,7 @@ use reifydb_rql::flow::{
 		},
 	},
 };
+use reifydb_sdk::config::Config;
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_type::{Result, error::Error};
 use tracing::instrument;
@@ -467,9 +468,10 @@ impl FlowEngine {
 					&self.executor.routines,
 					&self.runtime_context,
 				)?;
+				let cfg = Config::new(operator.as_str(), config.clone());
 
 				if let Some(factory) = self.custom_operators.get(operator.as_str()) {
-					let op = factory(node.id, &config)?;
+					let op = factory(node.id, &cfg)?;
 					self.operators.insert(node.id, OperatorCell::new(Operators::Custom(op)));
 				} else {
 					#[cfg(reifydb_target = "native")]
@@ -483,11 +485,7 @@ impl FlowEngine {
 							.clone();
 
 						let inner = if self.is_native_operator(operator.as_str()) {
-							self.create_native_operator(
-								operator.as_str(),
-								node.id,
-								&config,
-							)?
+							self.create_native_operator(operator.as_str(), node.id, &cfg)?
 						} else if self.is_ffi_operator(operator.as_str()) {
 							self.create_ffi_operator(operator.as_str(), node.id, &config)?
 						} else {

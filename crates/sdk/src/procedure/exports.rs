@@ -11,9 +11,12 @@ use reifydb_abi::{
 };
 use reifydb_type::value::Value;
 
-use crate::procedure::{
-	FFIProcedureWithMetadata,
-	wrapper::{ProcedureWrapper, create_procedure_vtable},
+use crate::{
+	config::Config,
+	procedure::{
+		FFIProcedureWithMetadata,
+		wrapper::{ProcedureWrapper, create_procedure_vtable},
+	},
 };
 
 fn str_to_buffer(s: &'static str) -> BufferFFI {
@@ -56,6 +59,7 @@ pub unsafe extern "C" fn create_procedure_instance<T: FFIProcedureWithMetadata>(
 		}
 	};
 
+	let config = Config::new(T::NAME, config.into_iter().collect());
 	let procedure = match T::new(&config) {
 		Ok(p) => p,
 		Err(e) => {

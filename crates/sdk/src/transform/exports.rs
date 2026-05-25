@@ -11,9 +11,12 @@ use reifydb_abi::{
 };
 use reifydb_type::value::Value;
 
-use crate::transform::{
-	FFITransformWithMetadata,
-	wrapper::{TransformWrapper, create_transform_vtable},
+use crate::{
+	config::Config,
+	transform::{
+		FFITransformWithMetadata,
+		wrapper::{TransformWrapper, create_transform_vtable},
+	},
 };
 
 fn str_to_buffer(s: &'static str) -> BufferFFI {
@@ -54,6 +57,7 @@ pub unsafe extern "C" fn create_transform_instance<T: FFITransformWithMetadata>(
 		}
 	};
 
+	let config = Config::new(T::NAME, config.into_iter().collect());
 	let transform = match T::new(&config) {
 		Ok(t) => t,
 		Err(e) => {

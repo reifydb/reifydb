@@ -6,9 +6,9 @@
 //! views, the diff representation an operator emits, and the context that gives the operator access to engine
 //! services. Anything an extension needs to write a useful operator lives here.
 
-use std::{collections::HashMap, time::Duration};
+use std::time::Duration;
 
-use reifydb_type::value::Value;
+use crate::config::Config;
 
 pub mod builder;
 pub mod change;
@@ -33,7 +33,7 @@ pub struct Tick {
 }
 
 pub trait FFIOperator: 'static {
-	fn new(operator_id: FlowNodeId, config: &HashMap<String, Value>) -> Result<Self>
+	fn new(operator_id: FlowNodeId, config: &Config) -> Result<Self>
 	where
 		Self: Sized;
 
@@ -63,7 +63,7 @@ pub trait OperatorMetadata {
 }
 
 pub trait OperatorLogic: Send + Sync {
-	fn create(operator_id: FlowNodeId, config: &HashMap<String, Value>) -> Result<Self>
+	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self>
 	where
 		Self: Sized;
 
@@ -97,7 +97,7 @@ impl<C: OperatorMetadata> OperatorMetadata for FFIOperatorAdapter<C> {
 }
 
 impl<C: OperatorLogic + OperatorMetadata + 'static> FFIOperator for FFIOperatorAdapter<C> {
-	fn new(operator_id: FlowNodeId, config: &HashMap<String, Value>) -> Result<Self> {
+	fn new(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
 		Ok(Self {
 			core: C::create(operator_id, config)?,
 		})

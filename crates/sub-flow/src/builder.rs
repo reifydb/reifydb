@@ -1,22 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{BTreeMap, HashMap},
-	path::PathBuf,
-	sync::Arc,
-};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use reifydb_core::interface::catalog::flow::FlowNodeId;
-use reifydb_sdk::connector::{
-	sink::{FFISink, FFISinkMetadata},
-	source::{FFISource, FFISourceMetadata},
+use reifydb_sdk::{
+	config::Config,
+	connector::{
+		sink::{FFISink, FFISinkMetadata},
+		source::{FFISource, FFISourceMetadata},
+	},
 };
-use reifydb_type::{Result, value::Value};
+use reifydb_type::Result;
 
 use crate::{connector::ConnectorRegistry, operator::BoxedOperator};
 
-pub type OperatorFactory = Arc<dyn Fn(FlowNodeId, &BTreeMap<String, Value>) -> Result<BoxedOperator> + Send + Sync>;
+pub type OperatorFactory = Arc<dyn Fn(FlowNodeId, &Config) -> Result<BoxedOperator> + Send + Sync>;
 
 pub struct FlowConfigurator {
 	operators_dir: Option<PathBuf>,
@@ -47,7 +46,7 @@ impl FlowConfigurator {
 	pub fn register_operator(
 		mut self,
 		name: impl Into<String>,
-		factory: impl Fn(FlowNodeId, &BTreeMap<String, Value>) -> Result<BoxedOperator> + Send + Sync + 'static,
+		factory: impl Fn(FlowNodeId, &Config) -> Result<BoxedOperator> + Send + Sync + 'static,
 	) -> Self {
 		self.custom_operators.insert(name.into(), Arc::new(factory));
 		self

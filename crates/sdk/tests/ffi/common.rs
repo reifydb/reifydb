@@ -3,8 +3,6 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
-
 use reifydb_abi::{
 	data::column::ColumnTypeCode, flow::diff::DiffType, operator::capabilities::CAPABILITY_ALL_STANDARD,
 };
@@ -17,6 +15,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_sdk::{
+	config::Config,
 	error::Result,
 	operator::{
 		FFIOperator, OperatorMetadata,
@@ -49,7 +48,7 @@ impl OperatorMetadata for PassthroughOperator {
 }
 
 impl FFIOperator for PassthroughOperator {
-	fn new(_id: FlowNodeId, _config: &HashMap<String, Value>) -> Result<Self> {
+	fn new(_id: FlowNodeId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 

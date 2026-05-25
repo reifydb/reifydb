@@ -337,14 +337,13 @@ impl IntoColumnSampler for Range<f64> {
 
 #[cfg(test)]
 mod tests {
-	use std::collections::HashMap;
-
 	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
 	use reifydb_type::value::r#type::Type;
 
 	use super::{config::BatchSizeDist, *};
 	use crate::{
+		config::Config,
 		error::Result,
 		operator::{
 			FFIOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
@@ -369,7 +368,7 @@ mod tests {
 	}
 
 	impl FFIOperator for NoOpOperator {
-		fn new(_operator_id: FlowNodeId, _config: &HashMap<String, Value>) -> Result<Self> {
+		fn new(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
 			Ok(Self)
 		}
 

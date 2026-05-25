@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::mpsc::SyncSender};
+use std::sync::mpsc::SyncSender;
 
 use reifydb_core::value::column::columns::Columns;
-use reifydb_type::value::Value;
 
 use crate::{
+	config::Config,
 	error::{Result, SdkError},
 	operator::column::operator::OperatorColumn,
 };
@@ -51,7 +51,7 @@ pub trait FFISourceMetadata {
 }
 
 pub trait FFISource: Send + 'static {
-	fn new(config: &HashMap<String, Value>) -> Result<Self>
+	fn new(config: &Config) -> Result<Self>
 	where
 		Self: Sized;
 

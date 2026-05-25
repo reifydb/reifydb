@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
-
 use reifydb_core::value::column::columns::Columns;
-use reifydb_type::value::Value;
 
-use crate::{error::Result, operator::column::operator::OperatorColumn};
+use crate::{config::Config, error::Result, operator::column::operator::OperatorColumn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -34,7 +31,7 @@ pub trait FFISinkMetadata {
 }
 
 pub trait FFISink: Send + 'static {
-	fn new(config: &HashMap<String, Value>) -> Result<Self>
+	fn new(config: &Config) -> Result<Self>
 	where
 		Self: Sized;
 

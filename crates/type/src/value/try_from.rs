@@ -413,83 +413,65 @@ impl TryFromValue for Decimal {
 	}
 }
 
-impl TryFromValueCoerce for i64 {
-	fn try_from_value_coerce(value: &Value) -> Result<Self, FromValueError> {
-		match value {
-			Value::Int1(v) => Ok(*v as i64),
-			Value::Int2(v) => Ok(*v as i64),
-			Value::Int4(v) => Ok(*v as i64),
-			Value::Int8(v) => Ok(*v),
-			_ => Err(FromValueError::TypeMismatch {
-				expected: Type::Int8,
-				found: value.get_type(),
-			}),
+macro_rules! coerce_int {
+	($t:ty, $expected:expr, $name:literal) => {
+		impl TryFromValueCoerce for $t {
+			fn try_from_value_coerce(value: &Value) -> Result<Self, FromValueError> {
+				let out_of_range = |repr: String| FromValueError::OutOfRange {
+					value: repr,
+					target_type: $name,
+				};
+				match value {
+					Value::Int1(v) => <$t>::try_from(*v).map_err(|_| out_of_range(v.to_string())),
+					Value::Int2(v) => <$t>::try_from(*v).map_err(|_| out_of_range(v.to_string())),
+					Value::Int4(v) => <$t>::try_from(*v).map_err(|_| out_of_range(v.to_string())),
+					Value::Int8(v) => <$t>::try_from(*v).map_err(|_| out_of_range(v.to_string())),
+					Value::Int16(v) => <$t>::try_from(*v).map_err(|_| out_of_range(v.to_string())),
+					Value::Uint1(v) => <$t>::try_from(*v).map_err(|_| out_of_range(v.to_string())),
+					Value::Uint2(v) => <$t>::try_from(*v).map_err(|_| out_of_range(v.to_string())),
+					Value::Uint4(v) => <$t>::try_from(*v).map_err(|_| out_of_range(v.to_string())),
+					Value::Uint8(v) => <$t>::try_from(*v).map_err(|_| out_of_range(v.to_string())),
+					Value::Uint16(v) => <$t>::try_from(*v).map_err(|_| out_of_range(v.to_string())),
+					_ => Err(FromValueError::TypeMismatch {
+						expected: $expected,
+						found: value.get_type(),
+					}),
+				}
+			}
 		}
-	}
+	};
 }
 
-impl TryFromValueCoerce for i128 {
+coerce_int!(i8, Type::Int1, "i8");
+coerce_int!(i16, Type::Int2, "i16");
+coerce_int!(i32, Type::Int4, "i32");
+coerce_int!(i64, Type::Int8, "i64");
+coerce_int!(i128, Type::Int16, "i128");
+coerce_int!(u8, Type::Uint1, "u8");
+coerce_int!(u16, Type::Uint2, "u16");
+coerce_int!(u32, Type::Uint4, "u32");
+coerce_int!(u64, Type::Uint8, "u64");
+coerce_int!(u128, Type::Uint16, "u128");
+coerce_int!(usize, Type::Uint8, "usize");
+
+impl TryFromValueCoerce for f32 {
 	fn try_from_value_coerce(value: &Value) -> Result<Self, FromValueError> {
 		match value {
-			Value::Int1(v) => Ok(*v as i128),
-			Value::Int2(v) => Ok(*v as i128),
-			Value::Int4(v) => Ok(*v as i128),
-			Value::Int8(v) => Ok(*v as i128),
-			Value::Int16(v) => Ok(*v),
-			_ => Err(FromValueError::TypeMismatch {
-				expected: Type::Int16,
-				found: value.get_type(),
-			}),
-		}
-	}
-}
+			Value::Float4(v) => Ok(v.value()),
+			Value::Float8(v) => Ok(v.value() as f32),
 
-impl TryFromValueCoerce for u64 {
-	fn try_from_value_coerce(value: &Value) -> Result<Self, FromValueError> {
-		match value {
-			Value::Uint1(v) => Ok(*v as u64),
-			Value::Uint2(v) => Ok(*v as u64),
-			Value::Uint4(v) => Ok(*v as u64),
-			Value::Uint8(v) => Ok(*v),
-
-			Value::Int1(v) if *v >= 0 => Ok(*v as u64),
-			Value::Int2(v) if *v >= 0 => Ok(*v as u64),
-			Value::Int4(v) if *v >= 0 => Ok(*v as u64),
-			Value::Int8(v) if *v >= 0 => Ok(*v as u64),
-			Value::Int1(v) => Err(FromValueError::OutOfRange {
-				value: v.to_string(),
-				target_type: "u64",
-			}),
-			Value::Int2(v) => Err(FromValueError::OutOfRange {
-				value: v.to_string(),
-				target_type: "u64",
-			}),
-			Value::Int4(v) => Err(FromValueError::OutOfRange {
-				value: v.to_string(),
-				target_type: "u64",
-			}),
-			Value::Int8(v) => Err(FromValueError::OutOfRange {
-				value: v.to_string(),
-				target_type: "u64",
-			}),
+			Value::Int1(v) => Ok(*v as f32),
+			Value::Int2(v) => Ok(*v as f32),
+			Value::Int4(v) => Ok(*v as f32),
+			Value::Int8(v) => Ok(*v as f32),
+			Value::Int16(v) => Ok(*v as f32),
+			Value::Uint1(v) => Ok(*v as f32),
+			Value::Uint2(v) => Ok(*v as f32),
+			Value::Uint4(v) => Ok(*v as f32),
+			Value::Uint8(v) => Ok(*v as f32),
+			Value::Uint16(v) => Ok(*v as f32),
 			_ => Err(FromValueError::TypeMismatch {
-				expected: Type::Uint8,
-				found: value.get_type(),
-			}),
-		}
-	}
-}
-
-impl TryFromValueCoerce for u128 {
-	fn try_from_value_coerce(value: &Value) -> Result<Self, FromValueError> {
-		match value {
-			Value::Uint1(v) => Ok(*v as u128),
-			Value::Uint2(v) => Ok(*v as u128),
-			Value::Uint4(v) => Ok(*v as u128),
-			Value::Uint8(v) => Ok(*v as u128),
-			Value::Uint16(v) => Ok(*v),
-			_ => Err(FromValueError::TypeMismatch {
-				expected: Type::Uint16,
+				expected: Type::Float4,
 				found: value.get_type(),
 			}),
 		}
@@ -563,14 +545,15 @@ pub mod tests {
 
 	#[test]
 	fn test_try_from_value_coerce_i64() {
-		// Should accept all signed integer types
+		// Accepts every integer width whose value fits in i64, regardless of signedness
 		assert_eq!(i64::try_from_value_coerce(&Value::Int1(42)), Ok(42i64));
 		assert_eq!(i64::try_from_value_coerce(&Value::Int2(1234)), Ok(1234i64));
 		assert_eq!(i64::try_from_value_coerce(&Value::Int4(123456)), Ok(123456i64));
 		assert_eq!(i64::try_from_value_coerce(&Value::Int8(1234567890)), Ok(1234567890i64));
+		assert_eq!(i64::try_from_value_coerce(&Value::Uint4(42)), Ok(42i64));
 
-		// Should reject other types
-		assert!(i64::try_from_value_coerce(&Value::Uint4(42)).is_err());
+		// Rejects values that overflow i64 (range-checked) and non-integer types
+		assert!(i64::try_from_value_coerce(&Value::Uint8(u64::MAX)).is_err());
 		assert!(i64::try_from_value_coerce(&Value::Boolean(true)).is_err());
 	}
 

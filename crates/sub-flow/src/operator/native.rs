@@ -4,7 +4,7 @@
 use std::{
 	any::Any,
 	cell::{Cell, UnsafeCell},
-	collections::{BTreeMap, HashMap},
+	collections::HashMap,
 	panic::{AssertUnwindSafe, catch_unwind},
 	path::{Path, PathBuf},
 	process::abort,
@@ -21,14 +21,11 @@ use reifydb_core::{
 use reifydb_extension::loader::ffi::LibraryCache;
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::{
+	config::Config,
 	error::Result as SdkResult,
 	operator::{OperatorLogic, Tick, view::native::NativeChangeView},
 };
-use reifydb_type::{
-	Result,
-	error::Error,
-	value::{Value, constraint::TypeConstraint},
-};
+use reifydb_type::{Result, error::Error, value::constraint::TypeConstraint};
 use tracing::error;
 
 use crate::{
@@ -57,7 +54,7 @@ pub const NATIVE_OPERATOR_MAGIC: u32 = 0x5244_424E;
 
 pub const NATIVE_ABI_TAG: u32 = 0x0308;
 
-pub type NativeOperatorCreateFn = fn(FlowNodeId, &BTreeMap<String, Value>) -> Result<BoxedOperator>;
+pub type NativeOperatorCreateFn = fn(FlowNodeId, &Config) -> Result<BoxedOperator>;
 
 pub struct NativeOperatorColumn {
 	pub name: String,
@@ -174,7 +171,7 @@ impl NativeOperatorLoader {
 		&mut self,
 		operator: &str,
 		operator_id: FlowNodeId,
-		config: &BTreeMap<String, Value>,
+		config: &Config,
 	) -> Result<BoxedOperator> {
 		let path = self
 			.operator_paths

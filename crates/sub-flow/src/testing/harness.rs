@@ -19,6 +19,7 @@ use reifydb_core::{
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::{
+	config::Config,
 	operator::{
 		OperatorLogic, OperatorMetadata,
 		context::{OperatorContext, StateApi, StoreApi},
@@ -226,7 +227,10 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarnessBuilder
 
 	pub fn build(self) -> Result<NativeOperatorHarness<C>> {
 		let engine = TestEngine::new();
-		let core = C::create(self.node_id, &self.config)?;
+		let core = C::create(
+			self.node_id,
+			&Config::new(<C as OperatorMetadata>::NAME, self.config.clone().into_iter().collect()),
+		)?;
 		let adapter = NativeOperatorAdapter::new(core, self.node_id, <C as OperatorMetadata>::CAPABILITIES);
 
 		Ok(NativeOperatorHarness {

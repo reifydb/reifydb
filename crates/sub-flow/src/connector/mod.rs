@@ -8,16 +8,16 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_sdk::{
+	config::Config,
 	connector::{
 		sink::{FFISink, FFISinkMetadata},
 		source::{FFISource, FFISourceMetadata},
 	},
 	error::{Result as SdkResult, SdkError},
 };
-use reifydb_type::value::Value;
 
-type SourceFactory = Arc<dyn Fn(&HashMap<String, Value>) -> SdkResult<Box<dyn FFISource>> + Send + Sync>;
-type SinkFactory = Arc<dyn Fn(&HashMap<String, Value>) -> SdkResult<Box<dyn FFISink>> + Send + Sync>;
+type SourceFactory = Arc<dyn Fn(&Config) -> SdkResult<Box<dyn FFISource>> + Send + Sync>;
+type SinkFactory = Arc<dyn Fn(&Config) -> SdkResult<Box<dyn FFISink>> + Send + Sync>;
 
 pub struct ConnectorRegistry {
 	sources: HashMap<String, SourceFactory>,
@@ -36,7 +36,7 @@ impl ConnectorRegistry {
 		let name = S::NAME.to_string();
 		self.sources.insert(
 			name,
-			Arc::new(|config| {
+			Arc::new(|config: &Config| {
 				let source = S::new(config)?;
 				Ok(Box::new(source) as Box<dyn FFISource>)
 			}),
@@ -47,14 +47,14 @@ impl ConnectorRegistry {
 		let name = S::NAME.to_string();
 		self.sinks.insert(
 			name,
-			Arc::new(|config| {
+			Arc::new(|config: &Config| {
 				let sink = S::new(config)?;
 				Ok(Box::new(sink) as Box<dyn FFISink>)
 			}),
 		);
 	}
 
-	pub fn create_source(&self, name: &str, config: &HashMap<String, Value>) -> SdkResult<Box<dyn FFISource>> {
+	pub fn create_source(&self, name: &str, config: &Config) -> SdkResult<Box<dyn FFISource>> {
 		let factory = self
 			.sources
 			.get(name)
@@ -62,7 +62,7 @@ impl ConnectorRegistry {
 		factory(config)
 	}
 
-	pub fn create_sink(&self, name: &str, config: &HashMap<String, Value>) -> SdkResult<Box<dyn FFISink>> {
+	pub fn create_sink(&self, name: &str, config: &Config) -> SdkResult<Box<dyn FFISink>> {
 		let factory = self
 			.sinks
 			.get(name)
@@ -87,8 +87,6 @@ impl Default for ConnectorRegistry {
 
 #[cfg(test)]
 mod tests {
-	use std::collections::HashMap;
-
 	use reifydb_sdk::{
 		connector::{
 			sink::SinkRecord,
@@ -111,7 +109,7 @@ mod tests {
 	}
 
 	impl FFISource for MockSource {
-		fn new(_config: &HashMap<String, Value>) -> Result<Self> {
+		fn new(_config: &Config) -> Result<Self> {
 			Ok(MockSource)
 		}
 
@@ -138,7 +136,7 @@ mod tests {
 	}
 
 	impl FFISink for MockSink {
-		fn new(_config: &HashMap<String, Value>) -> Result<Self> {
+		fn new(_config: &Config) -> Result<Self> {
 			Ok(MockSink)
 		}
 
@@ -159,7 +157,7 @@ mod tests {
 		assert!(registry.has_source("mock"));
 		assert!(!registry.has_source("nonexistent"));
 
-		let source = registry.create_source("mock", &HashMap::new());
+		let source = registry.create_source("mock", &Config::new("mock", Default::default()));
 		assert!(source.is_ok());
 	}
 
@@ -171,7 +169,7 @@ mod tests {
 		assert!(registry.has_sink("mock"));
 		assert!(!registry.has_sink("nonexistent"));
 
-		let sink = registry.create_sink("mock", &HashMap::new());
+		let sink = registry.create_sink("mock", &Config::new("mock", Default::default()));
 		assert!(sink.is_ok());
 	}
 
@@ -179,10 +177,10 @@ mod tests {
 	fn test_unknown_connector_error() {
 		let registry = ConnectorRegistry::new();
 
-		let result = registry.create_source("nonexistent", &HashMap::new());
+		let result = registry.create_source("nonexistent", &Config::new("nonexistent", Default::default()));
 		assert!(result.is_err());
 
-		let result = registry.create_sink("nonexistent", &HashMap::new());
+		let result = registry.create_sink("nonexistent", &Config::new("nonexistent", Default::default()));
 		assert!(result.is_err());
 	}
 }

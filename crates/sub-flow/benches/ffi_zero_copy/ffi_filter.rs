@@ -6,7 +6,7 @@
 #[path = "common.rs"]
 mod common;
 
-use std::{collections::HashMap, time::Instant};
+use std::time::Instant;
 
 use common::with_counting;
 use reifydb_abi::{
@@ -14,6 +14,7 @@ use reifydb_abi::{
 };
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_sdk::{
+	config::Config,
 	error::Result as SdkResult,
 	operator::{
 		FFIOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
@@ -36,7 +37,7 @@ impl OperatorMetadata for EvenFilter {
 }
 
 impl FFIOperator for EvenFilter {
-	fn new(_id: FlowNodeId, _config: &HashMap<String, Value>) -> SdkResult<Self> {
+	fn new(_id: FlowNodeId, _config: &Config) -> SdkResult<Self> {
 		Ok(Self)
 	}
 

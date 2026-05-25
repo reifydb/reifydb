@@ -5,11 +5,9 @@ pub mod context;
 pub mod exports;
 pub mod wrapper;
 
-use std::collections::HashMap;
-
-use reifydb_type::value::Value;
-
-use crate::{error::Result, operator::change::BorrowedColumns, transform::context::FFITransformContext};
+use crate::{
+	config::Config, error::Result, operator::change::BorrowedColumns, transform::context::FFITransformContext,
+};
 
 pub trait FFITransformMetadata {
 	const NAME: &'static str;
@@ -22,7 +20,7 @@ pub trait FFITransformMetadata {
 }
 
 pub trait FFITransform: 'static {
-	fn new(config: &HashMap<String, Value>) -> Result<Self>
+	fn new(config: &Config) -> Result<Self>
 	where
 		Self: Sized;
 

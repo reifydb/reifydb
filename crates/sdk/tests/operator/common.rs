@@ -14,7 +14,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 use reifydb_core::{
@@ -25,6 +25,7 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 };
 use reifydb_sdk::{
+	config::Config,
 	error::Result,
 	operator::{
 		column::operator::OperatorColumn,
@@ -203,7 +204,7 @@ impl TumblingRegistrationV2 for VolumeTumbling {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 
-	fn from_config(_operator_id: FlowNodeId, _config: &HashMap<String, Value>) -> Result<Self> {
+	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -287,7 +288,7 @@ impl TumblingRegistrationV2 for MinTumbling {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 
-	fn from_config(_operator_id: FlowNodeId, _config: &HashMap<String, Value>) -> Result<Self> {
+	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -416,7 +417,7 @@ impl TumblingRegistrationV2 for OhlcvSealingTumbling {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 
-	fn from_config(_operator_id: FlowNodeId, _config: &HashMap<String, Value>) -> Result<Self> {
+	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -512,7 +513,7 @@ impl RollingRegistrationV2 for RollingSum {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 
-	fn from_config(_operator_id: FlowNodeId, _config: &HashMap<String, Value>) -> Result<Self> {
+	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
 		Ok(rolling_sum())
 	}
 
@@ -599,7 +600,7 @@ impl MultiRollingRegistrationV2 for TopVolumeMultiRolling {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 
-	fn from_config(_operator_id: FlowNodeId, _config: &HashMap<String, Value>) -> Result<Self> {
+	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -678,7 +679,7 @@ impl TumblingCarryRegistration for TwapCarry {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 
-	fn from_config(_operator_id: FlowNodeId, _config: &HashMap<String, Value>) -> Result<Self> {
+	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -796,7 +797,7 @@ impl RollingRegistrationV2 for VelocityIncremental {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 
-	fn from_config(_operator_id: FlowNodeId, _config: &HashMap<String, Value>) -> Result<Self> {
+	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
 		Ok(velocity_incremental())
 	}
 

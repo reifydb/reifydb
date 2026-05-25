@@ -8,8 +8,6 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
-
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::CAPABILITY_ALL_STANDARD};
 use reifydb_core::{
 	encoded::{
@@ -25,6 +23,7 @@ use reifydb_core::{
 	row::Row,
 };
 use reifydb_sdk::{
+	config::Config,
 	error::{Result as SdkResult, SdkError},
 	operator::{
 		OperatorLogic, OperatorMetadata,
@@ -94,7 +93,7 @@ impl OperatorMetadata for ParityWindow {
 }
 
 impl OperatorLogic for ParityWindow {
-	fn create(_operator_id: FlowNodeId, _config: &HashMap<String, Value>) -> SdkResult<Self> {
+	fn create(_operator_id: FlowNodeId, _config: &Config) -> SdkResult<Self> {
 		Ok(ParityWindow)
 	}
 
@@ -179,7 +178,7 @@ impl OperatorMetadata for RowNumberProbe {
 }
 
 impl OperatorLogic for RowNumberProbe {
-	fn create(_operator_id: FlowNodeId, _config: &HashMap<String, Value>) -> SdkResult<Self> {
+	fn create(_operator_id: FlowNodeId, _config: &Config) -> SdkResult<Self> {
 		Ok(RowNumberProbe)
 	}
 
@@ -212,7 +211,7 @@ impl OperatorMetadata for FlushProbe {
 }
 
 impl OperatorLogic for FlushProbe {
-	fn create(_operator_id: FlowNodeId, _config: &HashMap<String, Value>) -> SdkResult<Self> {
+	fn create(_operator_id: FlowNodeId, _config: &Config) -> SdkResult<Self> {
 		Ok(FlushProbe)
 	}
 
@@ -246,7 +245,7 @@ impl OperatorMetadata for NoopOperator {
 }
 
 impl OperatorLogic for NoopOperator {
-	fn create(_operator_id: FlowNodeId, _config: &HashMap<String, Value>) -> SdkResult<Self> {
+	fn create(_operator_id: FlowNodeId, _config: &Config) -> SdkResult<Self> {
 		Ok(NoopOperator)
 	}
 
@@ -270,7 +269,7 @@ impl OperatorMetadata for ErroringOperator {
 }
 
 impl OperatorLogic for ErroringOperator {
-	fn create(_operator_id: FlowNodeId, _config: &HashMap<String, Value>) -> SdkResult<Self> {
+	fn create(_operator_id: FlowNodeId, _config: &Config) -> SdkResult<Self> {
 		Ok(ErroringOperator)
 	}
 

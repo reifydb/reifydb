@@ -214,10 +214,10 @@ where
 pub mod tests {
 	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 	use reifydb_core::{encoded::key::IntoEncodedKey, interface::catalog::flow::FlowNodeId};
-	use reifydb_type::value::Value;
 
 	use super::*;
 	use crate::{
+		config::Config,
 		operator::{
 			FFIOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
 			context::ffi::FFIOperatorContext,
@@ -239,7 +239,7 @@ pub mod tests {
 	}
 
 	impl FFIOperator for WarmTestOperator {
-		fn new(_operator_id: FlowNodeId, _config: &HashMap<String, Value>) -> Result<Self> {
+		fn new(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
 			Ok(Self)
 		}
 

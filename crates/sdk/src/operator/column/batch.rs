@@ -133,13 +133,12 @@ impl<'a, R: Row, O: OperatorContext + 'a> RemoveBatch<'a, R, O> {
 
 #[cfg(test)]
 mod tests {
-	use std::collections::HashMap;
-
 	use reifydb_abi::{flow::diff::DiffType, operator::capabilities::CAPABILITY_ALL_STANDARD};
 	use reifydb_core::interface::catalog::flow::FlowNodeId;
-	use reifydb_type::value::{Value, row_number::RowNumber};
+	use reifydb_type::value::row_number::RowNumber;
 
 	use crate::{
+		config::Config,
 		error::Result,
 		operator::{
 			FFIOperator, OperatorMetadata,
@@ -181,7 +180,7 @@ mod tests {
 		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 	}
 	impl FFIOperator for EmitOpInsert {
-		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
+		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -260,7 +259,7 @@ mod tests {
 		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 	}
 	impl FFIOperator for EmitOpEmpty {
-		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
+		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -286,7 +285,7 @@ mod tests {
 		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 	}
 	impl FFIOperator for EmitOpUpdate {
-		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
+		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -346,7 +345,7 @@ mod tests {
 		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 	}
 	impl FFIOperator for EmitOpRemove {
-		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
+		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -396,7 +395,7 @@ mod tests {
 		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 	}
 	impl FFIOperator for EmitOpBig {
-		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
+		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -449,7 +448,7 @@ mod tests {
 		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 	}
 	impl FFIOperator for EmitOpOptU64 {
-		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
+		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -518,7 +517,7 @@ mod tests {
 		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 	}
 	impl FFIOperator for EmitOpOptStr {
-		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
+		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -587,7 +586,7 @@ mod tests {
 		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 	}
 	impl FFIOperator for EmitOpOptBlob {
-		fn new(_: FlowNodeId, _: &HashMap<String, Value>) -> Result<Self> {
+		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
 			Ok(Self)
 		}
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {

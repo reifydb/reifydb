@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::HashMap,
+	collections::{BTreeMap, HashMap},
 	ffi::c_void,
 	marker::PhantomData,
 	ops::{Bound, Index},
@@ -25,6 +25,7 @@ use reifydb_type::{util::cowvec::CowVec, value::Value};
 use serde::de::DeserializeOwned;
 
 use crate::{
+	config::Config,
 	error::Result,
 	ffi::{
 		arena::Arena,
@@ -228,7 +229,8 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		(*self.context).set_version(CommitVersion(1));
 		self.history.clear();
 
-		self.operator = T::new(self.node_id, &self.config)?;
+		self.operator =
+			T::new(self.node_id, &Config::new("operator", self.config.clone().into_iter().collect()))?;
 		Ok(())
 	}
 
@@ -329,7 +331,8 @@ impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
 			callbacks: create_test_callbacks(),
 		});
 
-		let operator = T::new(self.node_id, &self.config)?;
+		let operator =
+			T::new(self.node_id, &Config::new("operator", self.config.clone().into_iter().collect()))?;
 
 		Ok(FFIOperatorHarness {
 			operator,
@@ -354,7 +357,7 @@ pub fn drive_ffi_apply<O: FFIOperator + OperatorMetadata>(input: &Change) -> i32
 		callbacks: create_test_callbacks(),
 	};
 
-	let operator = O::new(FlowNodeId(1), &HashMap::new()).expect("create operator");
+	let operator = O::new(FlowNodeId(1), &Config::new("operator", BTreeMap::new())).expect("create operator");
 	let mut wrapper = OperatorWrapper::new(operator);
 
 	let mut arena = Arena::new();
@@ -418,7 +421,7 @@ pub mod tests {
 	// Simple pass-through operator for basic tests
 	struct TestOperator {
 		_node_id: FlowNodeId,
-		_config: HashMap<String, Value>,
+		_config: Config,
 	}
 
 	impl OperatorMetadata for TestOperator {
@@ -432,7 +435,7 @@ pub mod tests {
 	}
 
 	impl FFIOperator for TestOperator {
-		fn new(operator_id: FlowNodeId, config: &HashMap<String, Value>) -> Result<Self> {
+		fn new(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
 			Ok(Self {
 				_node_id: operator_id,
 				_config: config.clone(),
@@ -459,7 +462,7 @@ pub mod tests {
 	}
 
 	impl FFIOperator for StatefulTestOperator {
-		fn new(_operator_id: FlowNodeId, _config: &HashMap<String, Value>) -> Result<Self> {
+		fn new(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
 			Ok(Self)
 		}
 

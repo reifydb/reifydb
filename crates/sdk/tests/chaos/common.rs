@@ -13,6 +13,7 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 };
 use reifydb_sdk::{
+	config::Config,
 	error::Result,
 	operator::{
 		FFIOperator, OperatorMetadata,
@@ -41,7 +42,7 @@ impl OperatorMetadata for PassthroughOperator {
 }
 
 impl FFIOperator for PassthroughOperator {
-	fn new(_id: FlowNodeId, _config: &HashMap<String, Value>) -> Result<Self> {
+	fn new(_id: FlowNodeId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -75,7 +76,7 @@ impl OperatorMetadata for SwallowsRemoveOperator {
 }
 
 impl FFIOperator for SwallowsRemoveOperator {
-	fn new(_id: FlowNodeId, _config: &HashMap<String, Value>) -> Result<Self> {
+	fn new(_id: FlowNodeId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 

@@ -13,8 +13,10 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::flow_node_internal_state::FlowNodeInternalStateKey,
 };
-use reifydb_type::value::{Value, row_number::RowNumber};
+use reifydb_type::value::row_number::RowNumber;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+
+use crate::config::Config;
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 struct MetaKey(EncodedKey);
@@ -102,7 +104,7 @@ where
 	const OUTPUT_COLUMNS: &'static [OperatorColumn];
 	const CAPABILITIES: u32;
 
-	fn from_config(operator_id: FlowNodeId, config: &HashMap<String, Value>) -> Result<Self>;
+	fn from_config(operator_id: FlowNodeId, config: &Config) -> Result<Self>;
 
 	fn encode_state_key(&self, group: &Self::GroupKey) -> EncodedKey;
 
@@ -207,7 +209,7 @@ where
 	A::SecondaryKey: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
-	fn create(operator_id: FlowNodeId, config: &HashMap<String, Value>) -> Result<Self> {
+	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
 		let aggregator = A::from_config(operator_id, config)?;
 		Ok(Self {
 			aggregator,
@@ -630,7 +632,7 @@ mod tests {
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 
-		fn from_config(_operator_id: FlowNodeId, _config: &HashMap<String, Value>) -> Result<Self> {
+		fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
 			Ok(Self)
 		}
 
