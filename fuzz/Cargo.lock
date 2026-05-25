@@ -973,6 +973,7 @@ dependencies = [
  "futures-util",
  "once_cell",
  "reifydb-abi",
+ "reifydb-build",
  "reifydb-core",
  "reifydb-metric",
  "reifydb-runtime",
@@ -1034,6 +1035,7 @@ name = "reifydb-metric"
 version = "0.5.6"
 dependencies = [
  "dashmap",
+ "reifydb-build",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-type",
@@ -1046,6 +1048,7 @@ version = "0.5.6"
 dependencies = [
  "bumpalo",
  "postcard",
+ "reifydb-build",
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-runtime",
@@ -1083,6 +1086,9 @@ dependencies = [
 [[package]]
 name = "reifydb-sql"
 version = "0.5.6"
+dependencies = [
+ "reifydb-build",
+]
 
 [[package]]
 name = "reifydb-sqlite"
@@ -1129,6 +1135,7 @@ dependencies = [
  "postcard",
  "prost",
  "rand",
+ "reifydb-build",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-type",
@@ -1165,6 +1172,7 @@ dependencies = [
  "bigdecimal",
  "num-bigint",
  "num-traits",
+ "reifydb-build",
  "reifydb-runtime",
  "serde",
  "serde_bytes",

@@ -31,7 +31,7 @@ pub(crate) fn create_subscription(
 			None => Value::none(),
 		};
 		let throttle_value = match plan.throttle {
-			Some(d) => Value::Uint8(u64::try_from(d.milliseconds()).unwrap_or(u64::MAX)),
+			Some(d) => Value::Uint8(u64::try_from(d.milliseconds()?).unwrap_or(u64::MAX)),
 			None => Value::none(),
 		};
 		return Ok(Columns::single_row([
@@ -65,7 +65,7 @@ pub(crate) fn create_subscription(
 		None => Value::none(),
 	};
 	let throttle_value = match plan.throttle {
-		Some(d) => Value::Uint8(u64::try_from(d.milliseconds()).unwrap_or(u64::MAX)),
+		Some(d) => Value::Uint8(u64::try_from(d.milliseconds()?).unwrap_or(u64::MAX)),
 		None => Value::none(),
 	};
 

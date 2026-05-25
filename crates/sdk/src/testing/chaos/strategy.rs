@@ -204,8 +204,8 @@ pub mod samplers {
 	}
 
 	pub fn duration_range(range: Range<Duration>) -> ColumnSampler {
-		let start_nanos = range.start.nanoseconds();
-		let end_nanos = range.end.nanoseconds();
+		let start_nanos = range.start.nanoseconds().expect("duration_range start exceeds i64 nanoseconds");
+		let end_nanos = range.end.nanoseconds().expect("duration_range end exceeds i64 nanoseconds");
 		assert!(start_nanos < end_nanos, "duration_range start must be < end");
 		Arc::new(move |rng| {
 			let nanos = rng.random_range(start_nanos..end_nanos);
@@ -472,7 +472,7 @@ mod tests {
 		let mut rng = StdRng::seed_from_u64(0);
 		for _ in 0..1000 {
 			let secs = match s(&mut rng) {
-				Value::Duration(d) => d.seconds(),
+				Value::Duration(d) => d.seconds().unwrap(),
 				other => panic!("expected Duration, got {other:?}"),
 			};
 			assert!((0..3_600).contains(&secs), "out of range: {secs}");

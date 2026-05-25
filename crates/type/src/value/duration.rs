@@ -23,6 +23,9 @@ pub struct Duration {
 }
 
 const NANOS_PER_DAY: i64 = 86_400_000_000_000;
+const SECONDS_PER_DAY: i64 = 86_400;
+const DAYS_PER_MONTH: i64 = 30;
+const SECONDS_PER_YEAR: i64 = 31_557_600;
 
 impl Default for Duration {
 	fn default() -> Self {
@@ -151,20 +154,56 @@ impl Duration {
 		}
 	}
 
-	pub fn seconds(&self) -> i64 {
-		self.nanos / 1_000_000_000
+	fn checked_total(
+		&self,
+		per_year: i64,
+		per_month: i64,
+		per_day: i64,
+		sub_day: i64,
+	) -> Result<i64, Box<TypeError>> {
+		let years = (self.months / 12) as i64;
+		let rem_months = (self.months % 12) as i64;
+		years.checked_mul(per_year)
+			.and_then(|a| rem_months.checked_mul(per_month).and_then(|b| a.checked_add(b)))
+			.and_then(|a| (self.days as i64).checked_mul(per_day).and_then(|b| a.checked_add(b)))
+			.and_then(|a| a.checked_add(sub_day))
+			.ok_or_else(|| Box::new(Self::overflow_err("duration total overflows i64")))
 	}
 
-	pub fn milliseconds(&self) -> i64 {
-		self.nanos / 1_000_000
+	pub fn seconds(&self) -> Result<i64, Box<TypeError>> {
+		self.checked_total(
+			SECONDS_PER_YEAR,
+			DAYS_PER_MONTH * SECONDS_PER_DAY,
+			SECONDS_PER_DAY,
+			self.nanos / 1_000_000_000,
+		)
 	}
 
-	pub fn microseconds(&self) -> i64 {
-		self.nanos / 1_000
+	pub fn milliseconds(&self) -> Result<i64, Box<TypeError>> {
+		self.checked_total(
+			SECONDS_PER_YEAR * 1_000,
+			DAYS_PER_MONTH * SECONDS_PER_DAY * 1_000,
+			SECONDS_PER_DAY * 1_000,
+			self.nanos / 1_000_000,
+		)
 	}
 
-	pub fn nanoseconds(&self) -> i64 {
-		self.nanos
+	pub fn microseconds(&self) -> Result<i64, Box<TypeError>> {
+		self.checked_total(
+			SECONDS_PER_YEAR * 1_000_000,
+			DAYS_PER_MONTH * SECONDS_PER_DAY * 1_000_000,
+			SECONDS_PER_DAY * 1_000_000,
+			self.nanos / 1_000,
+		)
+	}
+
+	pub fn nanoseconds(&self) -> Result<i64, Box<TypeError>> {
+		self.checked_total(
+			SECONDS_PER_YEAR * 1_000_000_000,
+			NANOS_PER_DAY * DAYS_PER_MONTH,
+			NANOS_PER_DAY,
+			self.nanos,
+		)
 	}
 
 	pub fn get_months(&self) -> i32 {
@@ -179,8 +218,8 @@ impl Duration {
 		self.nanos
 	}
 
-	pub fn as_nanos(&self) -> i64 {
-		self.nanos
+	pub fn as_nanos(&self) -> Result<i64, Box<TypeError>> {
+		self.nanoseconds()
 	}
 
 	pub fn is_positive(&self) -> bool {
@@ -1115,5 +1154,152 @@ pub mod tests {
 	fn test_mul_days_truncation() {
 		let d = Duration::from_days(1).unwrap();
 		assert_overflow(d.try_mul(i32::MAX as i64 + 1));
+	}
+
+	fn assert_total_overflow(result: Result<i64, Box<TypeError>>) {
+		let err = result.expect_err("expected DurationOverflow error");
+		match *err {
+			TypeError::Temporal {
+				kind: TemporalKind::DurationOverflow {
+					..
+				},
+				..
+			} => {}
+			other => panic!("expected DurationOverflow, got: {:?}", other),
+		}
+	}
+
+	#[test]
+	fn test_total_seconds_roundtrips_across_day_boundary() {
+		// from_seconds(90_000) normalizes to days=1 + 3600s; .seconds() must report
+		// the full 90_000, not just the sub-day remainder. This is the core bug:
+		// before the fix the days field was ignored and this returned 3600.
+		let d = Duration::from_seconds(90_000).unwrap();
+		assert_eq!(d.get_days(), 1);
+		assert_eq!(d.seconds().unwrap(), 90_000);
+	}
+
+	#[test]
+	fn test_total_milliseconds_roundtrips_across_day_boundary() {
+		let d = Duration::from_milliseconds(90_000_000).unwrap();
+		assert_eq!(d.get_days(), 1);
+		assert_eq!(d.milliseconds().unwrap(), 90_000_000);
+	}
+
+	#[test]
+	fn test_total_microseconds_roundtrips_across_day_boundary() {
+		let d = Duration::from_microseconds(90_000_000_000).unwrap();
+		assert_eq!(d.get_days(), 1);
+		assert_eq!(d.microseconds().unwrap(), 90_000_000_000);
+	}
+
+	#[test]
+	fn test_total_nanoseconds_roundtrips_across_day_boundary() {
+		let d = Duration::from_nanoseconds(90_000_000_000_000).unwrap();
+		assert_eq!(d.get_days(), 1);
+		assert_eq!(d.nanoseconds().unwrap(), 90_000_000_000_000);
+		assert_eq!(d.as_nanos().unwrap(), 90_000_000_000_000);
+	}
+
+	#[test]
+	fn test_total_from_minutes_crossing_day() {
+		// 1500 minutes = 90_000 s = 1 day + 3600 s; the day must be counted.
+		let d = Duration::from_minutes(1_500).unwrap();
+		assert_eq!(d.get_days(), 1);
+		assert_eq!(d.seconds().unwrap(), 90_000);
+	}
+
+	#[test]
+	fn test_total_from_hours_crossing_day() {
+		// from_hours(25) was the motivating example: it normalizes to days=1 and
+		// must report 90_000 s, not 3600.
+		let d = Duration::from_hours(25).unwrap();
+		assert_eq!(d.get_days(), 1);
+		assert_eq!(d.seconds().unwrap(), 90_000);
+	}
+
+	#[test]
+	fn test_total_from_days_counts_days() {
+		let d = Duration::from_days(3).unwrap();
+		assert_eq!(d.seconds().unwrap(), 3 * 86_400);
+		assert_eq!(d.nanoseconds().unwrap(), 3 * NANOS_PER_DAY);
+	}
+
+	#[test]
+	fn test_total_from_weeks_counts_days() {
+		let d = Duration::from_weeks(2).unwrap();
+		assert_eq!(d.get_days(), 14);
+		assert_eq!(d.seconds().unwrap(), 14 * 86_400);
+	}
+
+	#[test]
+	fn test_total_from_months_uses_thirty_days() {
+		// Residual months (< 12) count as 30 days each.
+		let d = Duration::from_months(5).unwrap();
+		assert_eq!(d.get_months(), 5);
+		assert_eq!(d.seconds().unwrap(), 5 * 30 * 86_400);
+	}
+
+	#[test]
+	fn test_total_from_years_uses_three_six_five_quarter_days() {
+		// Whole years count as 365.25 days each (Postgres EXTRACT(EPOCH) convention),
+		// stored as 12 months. A bare-days duration of 365 days is intentionally
+		// different from one year, so the two must NOT be equal.
+		let one_year = Duration::from_years(1).unwrap();
+		assert_eq!(one_year.get_months(), 12);
+		assert_eq!(one_year.seconds().unwrap(), 31_557_600);
+
+		let three_sixty_five_days = Duration::from_days(365).unwrap();
+		assert_eq!(three_sixty_five_days.seconds().unwrap(), 31_536_000);
+		assert_ne!(one_year.seconds().unwrap(), three_sixty_five_days.seconds().unwrap());
+
+		assert_eq!(Duration::from_years(2).unwrap().seconds().unwrap(), 2 * 31_557_600);
+	}
+
+	#[test]
+	fn test_total_months_split_into_years_and_residual() {
+		// 13 months = 1 whole year (365.25d) + 1 residual month (30d).
+		let d = Duration::from_months(13).unwrap();
+		assert_eq!(d.seconds().unwrap(), 31_557_600 + 30 * 86_400);
+	}
+
+	#[test]
+	fn test_total_new_combined_mixed_sign() {
+		// months and days may carry opposite signs (months are variable-length and
+		// are not commensurable with days/nanos). The total must accumulate them with
+		// their signs: +1 month (30d) minus 5 days.
+		let d = Duration::new(1, -5, 0).unwrap();
+		assert_eq!(d.seconds().unwrap(), 30 * 86_400 - 5 * 86_400);
+	}
+
+	#[test]
+	fn test_total_from_micros_infallible_roundtrips() {
+		// from_micros_infallible distributes whole days into the days field; the
+		// microsecond total must reconstruct the original input.
+		let micros: u64 = 90_000_000_000;
+		let d = Duration::from_micros_infallible(micros);
+		assert_eq!(d.get_days(), 1);
+		assert_eq!(d.microseconds().unwrap(), micros as i64);
+	}
+
+	#[test]
+	fn test_total_zero_is_zero_in_every_unit() {
+		let d = Duration::zero();
+		assert_eq!(d.seconds().unwrap(), 0);
+		assert_eq!(d.milliseconds().unwrap(), 0);
+		assert_eq!(d.microseconds().unwrap(), 0);
+		assert_eq!(d.nanoseconds().unwrap(), 0);
+		assert_eq!(d.as_nanos().unwrap(), 0);
+	}
+
+	#[test]
+	fn test_total_overflow_fails_loud_per_unit() {
+		// A huge day count overflows i64 nanoseconds but not i64 seconds. Overflow
+		// must surface as an error rather than wrapping silently, and each unit is
+		// checked independently so seconds stays valid where nanoseconds cannot.
+		let d = Duration::new(0, i32::MAX, 0).unwrap();
+		assert_eq!(d.seconds().unwrap(), i32::MAX as i64 * 86_400);
+		assert_total_overflow(d.nanoseconds());
+		assert_total_overflow(d.as_nanos());
 	}
 }

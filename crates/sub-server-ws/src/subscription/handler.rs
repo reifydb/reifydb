@@ -627,8 +627,8 @@ async fn run_ws_hydrate(
 		info!(
 			subscription_id = subscription_id.0,
 			version = version.0,
-			total_us = metrics.total.microseconds(),
-			compute_us = metrics.compute.microseconds(),
+			total_us = metrics.total.microseconds().unwrap_or(0),
+			compute_us = metrics.compute.microseconds().unwrap_or(0),
 			statement_count = metrics.statements.len(),
 			row_count = row_count,
 			fingerprint = %metrics.fingerprint.to_hex(),
