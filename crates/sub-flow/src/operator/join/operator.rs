@@ -4,7 +4,7 @@
 use std::{cell::RefCell, sync::LazyLock, time::Duration};
 
 use postcard::to_stdvec;
-use reifydb_abi::operator::capabilities::{CAPABILITY_ALL_STANDARD, CAPABILITY_TICK};
+use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	common::JoinType,
 	encoded::{key::EncodedKey, shape::RowShape},
@@ -403,8 +403,8 @@ impl Operator for JoinOperator {
 		self.node
 	}
 
-	fn capabilities(&self) -> u32 {
-		CAPABILITY_ALL_STANDARD | CAPABILITY_TICK
+	fn capabilities(&self) -> &[OperatorCapability] {
+		OperatorCapability::STANDARD_WITH_TICK
 	}
 
 	fn ticks(&self) -> Option<Duration> {

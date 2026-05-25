@@ -216,7 +216,7 @@ where
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
+	use reifydb_abi::operator::capabilities::OperatorCapability;
 	use reifydb_core::{encoded::key::IntoEncodedKey, interface::catalog::flow::FlowNodeId};
 
 	use super::*;
@@ -239,7 +239,7 @@ pub mod tests {
 		const DESCRIPTION: &'static str = "Test operator for StateCache::warm";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 
 	impl FFIOperator for WarmTestOperator {

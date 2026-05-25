@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
+use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_sdk::{
 	config::Config,
@@ -37,7 +37,7 @@ impl OperatorMetadata for PassthroughOperator {
 	const DESCRIPTION: &'static str = "Pass-through operator for testing";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
 impl FFIOperator for PassthroughOperator {

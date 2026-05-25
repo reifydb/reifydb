@@ -3,7 +3,7 @@
 
 use std::sync::LazyLock;
 
-use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
+use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::{
 		catalog::flow::FlowNodeId,
@@ -134,8 +134,8 @@ impl Operator for FilterOperator {
 		self.node
 	}
 
-	fn capabilities(&self) -> u32 {
-		CAPABILITY_ALL_STANDARD
+	fn capabilities(&self) -> &[OperatorCapability] {
+		OperatorCapability::STANDARD
 	}
 
 	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {

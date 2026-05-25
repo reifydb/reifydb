@@ -16,7 +16,7 @@ use reifydb_abi::{
 	context::context::ContextFFI,
 	flow::change::ChangeFFI,
 	operator::{
-		capabilities::{CAPABILITY_TICK, has_capability},
+		capabilities::{OperatorCapability, from_bitmask},
 		descriptor::OperatorDescriptorFFI,
 		vtable::OperatorVTableFFI,
 	},
@@ -51,7 +51,7 @@ unsafe impl Send for SendableInstance {}
 unsafe impl Sync for SendableInstance {}
 
 pub struct FFIOperator {
-	descriptor: OperatorDescriptorFFI,
+	capabilities: Box<[OperatorCapability]>,
 
 	vtable: OperatorVTableFFI,
 
@@ -76,9 +76,10 @@ impl FFIOperator {
 		executor: Executor,
 	) -> Self {
 		let vtable = descriptor.vtable;
+		let capabilities = from_bitmask(descriptor.capabilities).into_boxed_slice();
 
 		Self {
-			descriptor,
+			capabilities,
 			vtable,
 			instance,
 			operator_id,
@@ -200,12 +201,12 @@ impl Operator for FFIOperator {
 		self.operator_id
 	}
 
-	fn capabilities(&self) -> u32 {
-		self.descriptor.capabilities
+	fn capabilities(&self) -> &[OperatorCapability] {
+		&self.capabilities
 	}
 
 	fn ticks(&self) -> Option<Duration> {
-		if !has_capability(self.descriptor.capabilities, CAPABILITY_TICK) {
+		if !self.capabilities.contains(&OperatorCapability::Tick) {
 			return None;
 		}
 		let nanos = unsafe { (self.vtable.tick_interval)(self.instance) };

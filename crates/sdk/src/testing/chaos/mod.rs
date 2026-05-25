@@ -343,7 +343,7 @@ impl IntoColumnSampler for Range<f64> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
+	use reifydb_abi::operator::capabilities::OperatorCapability;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
 	use reifydb_type::value::r#type::Type;
 
@@ -370,7 +370,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "no-op operator for chaos builder tests";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 
 	impl FFIOperator for NoOpOperator {

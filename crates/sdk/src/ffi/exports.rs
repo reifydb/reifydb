@@ -8,6 +8,7 @@ use reifydb_abi::{
 	constants::{CURRENT_API, OPERATOR_ABI_TAG},
 	data::buffer::BufferFFI,
 	operator::{
+		capabilities::to_bitmask,
 		column::{OperatorColumnFFI, OperatorColumnsFFI},
 		descriptor::OperatorDescriptorFFI,
 		types::OPERATOR_MAGIC,
@@ -68,7 +69,7 @@ pub fn create_descriptor<O: FFIOperator + OperatorMetadata>() -> OperatorDescrip
 		description: str_to_buffer(O::DESCRIPTION),
 		input_columns: columns_to_ffi(O::INPUT_COLUMNS),
 		output_columns: columns_to_ffi(O::OUTPUT_COLUMNS),
-		capabilities: O::CAPABILITIES,
+		capabilities: to_bitmask(O::CAPABILITIES),
 		vtable: create_vtable::<O>(),
 	}
 }

@@ -3,6 +3,7 @@
 
 use std::{ops::Deref, sync::Arc, time::Duration};
 
+use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
 use reifydb_sdk::operator::Tick;
 use reifydb_type::Result;
@@ -55,7 +56,7 @@ use window::WindowOperator;
 pub trait Operator: Send {
 	fn id(&self) -> FlowNodeId;
 
-	fn capabilities(&self) -> u32;
+	fn capabilities(&self) -> &[OperatorCapability];
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change>;
 
@@ -145,7 +146,7 @@ impl Operators {
 		}
 	}
 
-	pub fn capabilities(&self) -> u32 {
+	pub fn capabilities(&self) -> &[OperatorCapability] {
 		match self {
 			Operators::Filter(op) => op.capabilities(),
 			Operators::Gate(op) => op.capabilities(),

@@ -9,7 +9,7 @@ mod common;
 use std::time::Instant;
 
 use common::with_counting;
-use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
+use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -38,8 +38,8 @@ impl Operator for NoOpParent {
 	fn id(&self) -> FlowNodeId {
 		FlowNodeId(0)
 	}
-	fn capabilities(&self) -> u32 {
-		CAPABILITY_ALL_STANDARD
+	fn capabilities(&self) -> &[OperatorCapability] {
+		OperatorCapability::STANDARD
 	}
 	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> TypeResult<Change> {
 		Ok(change)

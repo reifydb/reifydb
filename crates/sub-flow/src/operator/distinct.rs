@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, sync::LazyLock, time::Duration};
 
 use indexmap::IndexMap;
 use postcard::{from_bytes, to_stdvec};
-use reifydb_abi::operator::capabilities::{CAPABILITY_ALL_STANDARD, CAPABILITY_TICK};
+use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	encoded::{key::EncodedKey, shape::RowShape},
 	interface::{
@@ -636,8 +636,8 @@ impl Operator for DistinctOperator {
 		self.node
 	}
 
-	fn capabilities(&self) -> u32 {
-		CAPABILITY_ALL_STANDARD | CAPABILITY_TICK
+	fn capabilities(&self) -> &[OperatorCapability] {
+		OperatorCapability::STANDARD_WITH_TICK
 	}
 
 	fn ticks(&self) -> Option<Duration> {
@@ -766,8 +766,8 @@ mod ttl_tests {
 			FlowNodeId(0)
 		}
 
-		fn capabilities(&self) -> u32 {
-			CAPABILITY_ALL_STANDARD
+		fn capabilities(&self) -> &[OperatorCapability] {
+			OperatorCapability::STANDARD
 		}
 
 		fn apply(&self, _: &mut FlowTransaction, change: Change) -> Result<Change> {

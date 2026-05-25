@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod test {
-	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
+	use reifydb_abi::operator::capabilities::OperatorCapability;
 	use reifydb_core::{
 		encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 		interface::{catalog::flow::FlowNodeId, change::Change},
@@ -54,8 +54,8 @@ pub mod test {
 			self.id
 		}
 
-		fn capabilities(&self) -> u32 {
-			CAPABILITY_ALL_STANDARD
+		fn capabilities(&self) -> &[OperatorCapability] {
+			OperatorCapability::STANDARD
 		}
 
 		fn apply(&self, _txn: &mut FlowTransaction, _change: Change) -> Result<Change> {

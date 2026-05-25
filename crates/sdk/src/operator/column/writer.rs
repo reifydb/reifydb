@@ -319,7 +319,7 @@ impl<'a> ColumnsBuilder<'a> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
+	use reifydb_abi::operator::capabilities::OperatorCapability;
 	use reifydb_core::interface::catalog::flow::FlowNodeId;
 	use reifydb_type::value::{
 		date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, row_number::RowNumber, time::Time,
@@ -353,7 +353,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for OpU8 {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -399,7 +399,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for OpU16 {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -445,7 +445,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for OpU32 {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -491,7 +491,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for OpU64 {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -537,7 +537,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for OpI8 {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -583,7 +583,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for OpI16 {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -629,7 +629,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for OpI32 {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -675,7 +675,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for OpI64 {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -721,7 +721,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for OpF32 {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -767,7 +767,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for OpF64 {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -813,7 +813,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for OpBool {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -859,7 +859,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for OpUtf8 {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -899,7 +899,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for OpUtf8Growth {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -950,7 +950,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for OpBlob {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -1002,7 +1002,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for OpDecimal {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -1060,7 +1060,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for OpWide {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -1104,7 +1104,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for OpDate {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -1155,7 +1155,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for OpDateTime {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -1209,7 +1209,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for OpTime {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -1260,7 +1260,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for OpDuration {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {

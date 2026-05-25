@@ -9,9 +9,7 @@ mod common;
 use std::time::Instant;
 
 use common::with_counting;
-use reifydb_abi::{
-	data::column::ColumnTypeCode, flow::diff::DiffType, operator::capabilities::CAPABILITY_ALL_STANDARD,
-};
+use reifydb_abi::{data::column::ColumnTypeCode, flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_sdk::{
 	config::Config,
@@ -33,7 +31,7 @@ impl OperatorMetadata for EvenFilter {
 	const DESCRIPTION: &'static str = "Bench fixture: keeps rows where col[0] (Int8) is even";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
 impl FFIOperator for EvenFilter {

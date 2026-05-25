@@ -8,7 +8,7 @@
 
 use std::{env, process::Command};
 
-use reifydb_abi::operator::capabilities::{CAPABILITY_INSERT, CAPABILITY_UPDATE};
+use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -46,11 +46,11 @@ fn aborts_when_operator_receives_undeclared_diff_kind() {
 
 	let stderr = String::from_utf8_lossy(&output.stderr);
 	assert!(
-		stderr.contains("does not declare the corresponding capability bit"),
+		stderr.contains("does not declare the corresponding capability"),
 		"missing abort message; stderr={}",
 		stderr
 	);
-	assert!(stderr.contains("0x00000002"), "missing CAPABILITY_UPDATE bit (0x02) in message; stderr={}", stderr);
+	assert!(stderr.contains("Update"), "missing Update capability in message; stderr={}", stderr);
 	assert!(stderr.contains("update"), "missing diff kind in message; stderr={}", stderr);
 }
 
@@ -61,8 +61,8 @@ fn run_child() {
 	diffs.push(Diff::update(Columns::empty(), Columns::empty()));
 	let change = Change::from_flow(FlowNodeId(42), CommitVersion(0), diffs, DateTime::default());
 
-	let caps = CAPABILITY_INSERT;
-	assert_eq!(caps & CAPABILITY_UPDATE, 0);
+	let caps = &[OperatorCapability::Insert];
+	assert!(!caps.contains(&OperatorCapability::Update));
 
 	enforce_apply_capabilities(FlowNodeId(42), caps, &change);
 

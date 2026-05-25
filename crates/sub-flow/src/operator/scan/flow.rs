@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
+use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::interface::{
 	catalog::flow::{Flow, FlowNodeId},
 	change::Change,
@@ -30,8 +30,8 @@ impl Operator for PrimitiveFlowOperator {
 		self.node
 	}
 
-	fn capabilities(&self) -> u32 {
-		CAPABILITY_ALL_STANDARD
+	fn capabilities(&self) -> &[OperatorCapability] {
+		OperatorCapability::STANDARD
 	}
 
 	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {

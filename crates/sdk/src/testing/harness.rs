@@ -419,7 +419,7 @@ impl TestMetadataHarness {
 pub mod tests {
 	use reifydb_abi::{
 		callbacks::builder::EmitDiffKind, data::column::ColumnTypeCode, flow::diff::DiffType,
-		operator::capabilities::CAPABILITY_ALL_STANDARD,
+		operator::capabilities::OperatorCapability,
 	};
 	use reifydb_core::{common::CommitVersion, encoded::key::IntoEncodedKey, interface::catalog::flow::FlowNodeId};
 	use reifydb_type::value::row_number::RowNumber;
@@ -449,7 +449,7 @@ pub mod tests {
 		const DESCRIPTION: &'static str = "Simple pass-through test operator";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 
 	impl FFIOperator for TestOperator {
@@ -476,7 +476,7 @@ pub mod tests {
 		const DESCRIPTION: &'static str = "Stateful test operator that stores values";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 
 	impl FFIOperator for StatefulTestOperator {

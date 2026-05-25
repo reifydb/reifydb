@@ -9,7 +9,7 @@ mod common;
 use std::{cell::RefCell, rc::Rc, time::Instant};
 
 use common::with_counting;
-use reifydb_abi::{flow::diff::DiffType, operator::capabilities::CAPABILITY_ALL_STANDARD};
+use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_core::interface::{catalog::flow::FlowNodeId, change::Change};
 use reifydb_sdk::{
 	config::Config,
@@ -41,7 +41,7 @@ impl OperatorMetadata for SumAgg {
 	const DESCRIPTION: &'static str = "Bench fixture: per-key Int8 sum aggregate via StateCache";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
 impl FFIOperator for SumAgg {

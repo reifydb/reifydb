@@ -3,7 +3,7 @@
 
 use std::{cell::RefCell, time::Duration};
 
-use reifydb_abi::operator::capabilities::CAPABILITY_TICK;
+use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	encoded::key::EncodedKey,
 	interface::{catalog::flow::FlowNodeId, change::Change},
@@ -25,6 +25,7 @@ pub struct ApplyOperator {
 	ttl_nanos: Option<u64>,
 	ttl_anchor: TtlAnchor,
 	evict_cursor: RefCell<Option<EncodedKey>>,
+	capabilities: Box<[OperatorCapability]>,
 }
 
 impl ApplyOperator {
@@ -35,6 +36,10 @@ impl ApplyOperator {
 		ttl_nanos: Option<u64>,
 		ttl_anchor: TtlAnchor,
 	) -> Self {
+		let mut capabilities: Vec<OperatorCapability> = inner.capabilities().to_vec();
+		if ttl_nanos.is_some() && !capabilities.contains(&OperatorCapability::Tick) {
+			capabilities.push(OperatorCapability::Tick);
+		}
 		Self {
 			parent,
 			node,
@@ -42,6 +47,7 @@ impl ApplyOperator {
 			ttl_nanos,
 			ttl_anchor,
 			evict_cursor: RefCell::new(None),
+			capabilities: capabilities.into_boxed_slice(),
 		}
 	}
 }
@@ -57,13 +63,8 @@ impl Operator for ApplyOperator {
 		self.node
 	}
 
-	fn capabilities(&self) -> u32 {
-		let caps = self.inner.capabilities();
-		if self.ttl_nanos.is_some() {
-			caps | CAPABILITY_TICK
-		} else {
-			caps
-		}
+	fn capabilities(&self) -> &[OperatorCapability] {
+		&self.capabilities
 	}
 
 	fn ticks(&self) -> Option<Duration> {

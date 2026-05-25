@@ -5,9 +5,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_abi::{
-	data::column::ColumnTypeCode, flow::diff::DiffType, operator::capabilities::CAPABILITY_ALL_STANDARD,
-};
+use reifydb_abi::{data::column::ColumnTypeCode, flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_core::{
 	encoded::shape::{RowShape, RowShapeField},
 	interface::catalog::flow::FlowNodeId,
@@ -40,7 +38,7 @@ impl OperatorMetadata for PassthroughOperator {
 	const DESCRIPTION: &'static str = "echoes every input diff back via ctx.builder";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
 impl FFIOperator for PassthroughOperator {
@@ -74,7 +72,7 @@ impl OperatorMetadata for SwallowsRemoveOperator {
 	const DESCRIPTION: &'static str = "passthrough except Remove is silently dropped";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
 impl FFIOperator for SwallowsRemoveOperator {

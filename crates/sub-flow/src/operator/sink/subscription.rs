@@ -4,7 +4,7 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use postcard::{from_bytes, to_stdvec};
-use reifydb_abi::{flow::diff::DiffType, operator::capabilities::CAPABILITY_ALL_STANDARD};
+use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	encoded::{
@@ -153,8 +153,8 @@ impl Operator for SinkSubscriptionOperator {
 		self.node
 	}
 
-	fn capabilities(&self) -> u32 {
-		CAPABILITY_ALL_STANDARD
+	fn capabilities(&self) -> &[OperatorCapability] {
+		OperatorCapability::STANDARD
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {

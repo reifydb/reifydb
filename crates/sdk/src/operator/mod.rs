@@ -22,6 +22,7 @@ pub mod windowed;
 use change::BorrowedChange;
 use column::operator::OperatorColumn;
 use context::{OperatorContext, ffi::FFIOperatorContext};
+use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_type::value::datetime::DateTime;
 use view::ChangeView;
@@ -59,7 +60,7 @@ pub trait OperatorMetadata {
 	const DESCRIPTION: &'static str;
 	const INPUT_COLUMNS: &'static [OperatorColumn];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn];
-	const CAPABILITIES: u32;
+	const CAPABILITIES: &'static [OperatorCapability];
 }
 
 pub trait OperatorLogic: Send + Sync {
@@ -93,7 +94,7 @@ impl<C: OperatorMetadata> OperatorMetadata for FFIOperatorAdapter<C> {
 	const DESCRIPTION: &'static str = C::DESCRIPTION;
 	const INPUT_COLUMNS: &'static [OperatorColumn] = C::INPUT_COLUMNS;
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = C::OUTPUT_COLUMNS;
-	const CAPABILITIES: u32 = C::CAPABILITIES;
+	const CAPABILITIES: &'static [OperatorCapability] = C::CAPABILITIES;
 }
 
 impl<C: OperatorLogic + OperatorMetadata + 'static> FFIOperator for FFIOperatorAdapter<C> {

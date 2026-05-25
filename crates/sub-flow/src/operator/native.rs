@@ -13,6 +13,7 @@ use std::{
 };
 
 use libloading::Symbol;
+use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::{
@@ -106,7 +107,7 @@ pub fn check_native_abi_tag(abi_tag: u32) -> Result<()> {
 pub trait BridgedOperator: Send {
 	fn id(&self) -> FlowNodeId;
 
-	fn capabilities(&self) -> u32;
+	fn capabilities(&self) -> &'static [OperatorCapability];
 
 	fn apply(&self, bridge: &mut dyn NativeBridge, change: Change) -> Result<Change>;
 
@@ -412,11 +413,11 @@ impl Default for NativeOperatorLoader {
 pub struct NativeOperatorAdapter<C> {
 	logic: UnsafeCell<C>,
 	node: FlowNodeId,
-	capabilities: u32,
+	capabilities: &'static [OperatorCapability],
 }
 
 impl<C> NativeOperatorAdapter<C> {
-	pub fn new(logic: C, node: FlowNodeId, capabilities: u32) -> Self {
+	pub fn new(logic: C, node: FlowNodeId, capabilities: &'static [OperatorCapability]) -> Self {
 		Self {
 			logic: UnsafeCell::new(logic),
 			node,
@@ -432,7 +433,7 @@ impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
 		self.node
 	}
 
-	fn capabilities(&self) -> u32 {
+	fn capabilities(&self) -> &'static [OperatorCapability] {
 		self.capabilities
 	}
 
@@ -483,12 +484,12 @@ unsafe impl Send for SendableBridged {}
 pub struct NativeBridgedOperator {
 	inner: BoxedBridgedOperator,
 	node: FlowNodeId,
-	capabilities: u32,
+	capabilities: &'static [OperatorCapability],
 	last_registered_txn: Cell<u64>,
 }
 
 impl NativeBridgedOperator {
-	pub fn new(inner: BoxedBridgedOperator, node: FlowNodeId, capabilities: u32) -> Self {
+	pub fn new(inner: BoxedBridgedOperator, node: FlowNodeId, capabilities: &'static [OperatorCapability]) -> Self {
 		Self {
 			inner,
 			node,
@@ -523,7 +524,7 @@ impl Operator for NativeBridgedOperator {
 		self.node
 	}
 
-	fn capabilities(&self) -> u32 {
+	fn capabilities(&self) -> &[OperatorCapability] {
 		self.capabilities
 	}
 

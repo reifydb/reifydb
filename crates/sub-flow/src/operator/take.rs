@@ -8,7 +8,7 @@ use std::{
 };
 
 use postcard::{from_bytes, to_stdvec};
-use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
+use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	encoded::{
 		row::EncodedRow,
@@ -310,8 +310,8 @@ impl Operator for TakeOperator {
 		self.node
 	}
 
-	fn capabilities(&self) -> u32 {
-		CAPABILITY_ALL_STANDARD
+	fn capabilities(&self) -> &[OperatorCapability] {
+		OperatorCapability::STANDARD
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {

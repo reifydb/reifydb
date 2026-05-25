@@ -8,7 +8,7 @@
 
 #![allow(dead_code)]
 
-use reifydb_abi::{flow::diff::DiffType, operator::capabilities::CAPABILITY_ALL_STANDARD};
+use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_core::{
 	encoded::{
 		key::EncodedKey,
@@ -89,7 +89,7 @@ impl OperatorMetadata for ParityWindow {
 	const DESCRIPTION: &'static str = "Buckets events into fixed windows and counts per window";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = WINDOW_INPUT_COLUMNS;
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = WINDOW_OUTPUT_COLUMNS;
-	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
 impl OperatorLogic for ParityWindow {
@@ -174,7 +174,7 @@ impl OperatorMetadata for RowNumberProbe {
 	const DESCRIPTION: &'static str = "Allocates a row number for a fixed key and reports (row_number, is_new)";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = PROBE_OUTPUT_COLUMNS;
-	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
 impl OperatorLogic for RowNumberProbe {
@@ -207,7 +207,7 @@ impl OperatorMetadata for FlushProbe {
 	const DESCRIPTION: &'static str = "Writes state only in flush_state to observe flush cadence";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
 impl OperatorLogic for FlushProbe {
@@ -241,7 +241,7 @@ impl OperatorMetadata for NoopOperator {
 	const DESCRIPTION: &'static str = "Does nothing";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
 impl OperatorLogic for NoopOperator {
@@ -265,7 +265,7 @@ impl OperatorMetadata for ErroringOperator {
 	const DESCRIPTION: &'static str = "Always returns Err from apply";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
 impl OperatorLogic for ErroringOperator {

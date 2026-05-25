@@ -133,7 +133,7 @@ impl<'a, R: Row, O: OperatorContext + 'a> RemoveBatch<'a, R, O> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_abi::{flow::diff::DiffType, operator::capabilities::CAPABILITY_ALL_STANDARD};
+	use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 	use reifydb_core::interface::catalog::flow::FlowNodeId;
 	use reifydb_type::value::row_number::RowNumber;
 
@@ -177,7 +177,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for EmitOpInsert {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -256,7 +256,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for EmitOpEmpty {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -282,7 +282,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for EmitOpUpdate {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -342,7 +342,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for EmitOpRemove {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -392,7 +392,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for EmitOpBig {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -445,7 +445,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for EmitOpOptU64 {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -514,7 +514,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for EmitOpOptStr {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
@@ -583,7 +583,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 	impl FFIOperator for EmitOpOptBlob {
 		fn new(_: FlowNodeId, _: &Config) -> Result<Self> {

@@ -3,9 +3,7 @@
 
 #![allow(dead_code)]
 
-use reifydb_abi::{
-	data::column::ColumnTypeCode, flow::diff::DiffType, operator::capabilities::CAPABILITY_ALL_STANDARD,
-};
+use reifydb_abi::{data::column::ColumnTypeCode, flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -44,7 +42,7 @@ impl OperatorMetadata for PassthroughOperator {
 	const DESCRIPTION: &'static str = "echoes every input diff back via ctx.builder";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
 impl FFIOperator for PassthroughOperator {

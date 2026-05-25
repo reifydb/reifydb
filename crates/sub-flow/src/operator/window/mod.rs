@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_abi::operator::capabilities::{CAPABILITY_ALL_STANDARD, CAPABILITY_TICK};
+use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	common::{CommitVersion, WindowKind, WindowSize},
 	error::diagnostic::flow::{flow_window_timestamp_column_not_found, flow_window_timestamp_column_type_mismatch},
@@ -1373,8 +1373,8 @@ impl Operator for WindowOperator {
 		self.node
 	}
 
-	fn capabilities(&self) -> u32 {
-		CAPABILITY_ALL_STANDARD | CAPABILITY_TICK
+	fn capabilities(&self) -> &[OperatorCapability] {
+		OperatorCapability::STANDARD_WITH_TICK
 	}
 
 	fn ticks(&self) -> Option<Duration> {

@@ -3,9 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_abi::operator::capabilities::{
-	CAPABILITY_DELETE, CAPABILITY_DROP, CAPABILITY_INSERT, CAPABILITY_TICK, CAPABILITY_UPDATE, has_capability,
-};
+use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -64,11 +62,11 @@ impl BaseVTable for SystemFlowOperators {
 			library_paths.push(info.library_path.to_str().unwrap_or("<invalid path>"));
 			apis.push(info.api);
 
-			cap_inserts.push(has_capability(info.capabilities, CAPABILITY_INSERT));
-			cap_updates.push(has_capability(info.capabilities, CAPABILITY_UPDATE));
-			cap_deletes.push(has_capability(info.capabilities, CAPABILITY_DELETE));
-			cap_drops.push(has_capability(info.capabilities, CAPABILITY_DROP));
-			cap_ticks.push(has_capability(info.capabilities, CAPABILITY_TICK));
+			cap_inserts.push(info.capabilities & OperatorCapability::Insert.bit() != 0);
+			cap_updates.push(info.capabilities & OperatorCapability::Update.bit() != 0);
+			cap_deletes.push(info.capabilities & OperatorCapability::Delete.bit() != 0);
+			cap_drops.push(info.capabilities & OperatorCapability::Drop.bit() != 0);
+			cap_ticks.push(info.capabilities & OperatorCapability::Tick.bit() != 0);
 		}
 
 		let columns = vec![

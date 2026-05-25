@@ -7,7 +7,7 @@ use std::{
 	hash::Hash,
 };
 
-use reifydb_abi::flow::diff::DiffType;
+use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_core::{
 	encoded::key::{EncodedKey, IntoEncodedKey},
 	interface::catalog::flow::FlowNodeId,
@@ -119,7 +119,7 @@ where
 	const DESCRIPTION: &'static str = A::DESCRIPTION;
 	const INPUT_COLUMNS: &'static [OperatorColumn] = A::INPUT_COLUMNS;
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = A::OUTPUT_COLUMNS;
-	const CAPABILITIES: u32 = A::CAPABILITIES;
+	const CAPABILITIES: &'static [OperatorCapability] = A::CAPABILITIES;
 }
 
 impl<A> OperatorLogic for RollingIncrementalDriver<A>
@@ -395,7 +395,6 @@ where
 
 #[cfg(test)]
 mod tests {
-	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 	use reifydb_core::{
 		encoded::{
 			key::EncodedKey,
@@ -528,7 +527,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
 		fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
 			Ok(Self {

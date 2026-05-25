@@ -16,7 +16,7 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
+use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	encoded::{
 		key::EncodedKey,
@@ -202,7 +202,7 @@ impl TumblingRegistration for VolumeTumbling {
 	const DESCRIPTION: &'static str = "chaos fixture: invertible volume sum";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
 	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
 		Ok(Self)
@@ -286,7 +286,7 @@ impl TumblingRegistration for MinTumbling {
 	const DESCRIPTION: &'static str = "chaos fixture: removal-safe min over a multiset";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
 	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
 		Ok(Self)
@@ -415,7 +415,7 @@ impl TumblingRegistration for OhlcvSealingTumbling {
 	const DESCRIPTION: &'static str = "chaos fixture: sealing OHLCV with bounded lateness";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
 	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
 		Ok(Self)
@@ -511,7 +511,7 @@ impl RollingRegistration for RollingSum {
 	const DESCRIPTION: &'static str = "chaos fixture: rolling sum over last N windows";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
 	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
 		Ok(rolling_sum())
@@ -598,7 +598,7 @@ impl MultiRollingRegistration for TopVolumeMultiRolling {
 	const DESCRIPTION: &'static str = "chaos fixture: rolling top-2 volume by trader";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
 	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
 		Ok(Self)
@@ -677,7 +677,7 @@ impl TumblingCarryRegistration for TwapCarry {
 	const DESCRIPTION: &'static str = "chaos fixture: tumbling carry-forward";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
 	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
 		Ok(Self)
@@ -795,7 +795,7 @@ impl RollingRegistration for VelocityIncremental {
 	const DESCRIPTION: &'static str = "chaos fixture: rolling velocity via running moments";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
 	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
 		Ok(velocity_incremental())

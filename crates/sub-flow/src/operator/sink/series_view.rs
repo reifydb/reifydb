@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
+use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	interface::{
@@ -56,8 +56,8 @@ impl Operator for SinkSeriesViewOperator {
 		self.node
 	}
 
-	fn capabilities(&self) -> u32 {
-		CAPABILITY_ALL_STANDARD
+	fn capabilities(&self) -> &[OperatorCapability] {
+		OperatorCapability::STANDARD
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
