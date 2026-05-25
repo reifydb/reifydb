@@ -15,6 +15,7 @@ use reifydb_core::{
 use reifydb_type::value::{datetime::DateTime, row_number::RowNumber};
 
 use super::{
+	context::ChaosContext,
 	event::{ChaosBatch, ChaosEvent},
 	materialize::materialize_history,
 	oracle::MaterializedTable,
@@ -35,6 +36,7 @@ type WindowKey<A> = (Group<A>, Coord<A>);
 
 pub fn tumbling_accumulator_oracle<A>(
 	agg: &A,
+	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
 ) -> MaterializedTable
@@ -87,7 +89,7 @@ where
 		}
 	}
 
-	materialize_outputs(last_visible.into_values(), output_key_columns)
+	materialize_outputs(last_visible.into_values(), ctx.now_nanos(), output_key_columns)
 }
 
 #[allow(clippy::type_complexity)]
@@ -132,7 +134,11 @@ where
 	agg.extract(&row_view)
 }
 
-fn materialize_outputs<O: Row>(outputs: impl Iterator<Item = O>, output_key_columns: &[String]) -> MaterializedTable {
+fn materialize_outputs<O: Row>(
+	outputs: impl Iterator<Item = O>,
+	now_nanos: u64,
+	output_key_columns: &[String],
+) -> MaterializedTable {
 	let mut sink = NativeRowSink::new(<O as Row>::COLUMNS).expect("output sink");
 	let mut row_numbers: Vec<RowNumber> = Vec::new();
 	let mut count = 0u64;
@@ -144,9 +150,13 @@ fn materialize_outputs<O: Row>(outputs: impl Iterator<Item = O>, output_key_colu
 	if count == 0 {
 		return MaterializedTable::empty();
 	}
-	let columns = sink.finish(row_numbers, DateTime::default().to_nanos()).expect("finish sink");
-	let change =
-		Change::from_flow(FlowNodeId(0), CommitVersion(0), vec![Diff::insert(columns)], DateTime::default());
+	let columns = sink.finish(row_numbers, now_nanos).expect("finish sink");
+	let change = Change::from_flow(
+		FlowNodeId(0),
+		CommitVersion(0),
+		vec![Diff::insert(columns)],
+		DateTime::from_nanos(now_nanos),
+	);
 	materialize_history(&[change], output_key_columns)
 }
 
@@ -248,6 +258,7 @@ where
 
 pub fn rolling_accumulator_oracle<A>(
 	agg: &A,
+	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
 ) -> MaterializedTable
@@ -273,7 +284,7 @@ where
 		}
 	}
 
-	materialize_outputs(last_visible.into_values(), output_key_columns)
+	materialize_outputs(last_visible.into_values(), ctx.now_nanos(), output_key_columns)
 }
 
 #[allow(clippy::type_complexity)]
@@ -292,6 +303,7 @@ where
 
 pub fn rolling_incremental_accumulator_oracle<A>(
 	agg: &A,
+	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
 ) -> MaterializedTable
@@ -327,7 +339,7 @@ where
 		}
 	}
 
-	materialize_outputs(last_visible.into_values(), output_key_columns)
+	materialize_outputs(last_visible.into_values(), ctx.now_nanos(), output_key_columns)
 }
 
 type CarryCoord<A> = <A as TumblingCarryOperator>::WindowCoord;
@@ -352,6 +364,7 @@ impl<K, C> Default for GroupCarry<K, C> {
 
 pub fn tumbling_carry_accumulator_oracle<A>(
 	agg: &A,
+	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
 ) -> MaterializedTable
@@ -432,7 +445,7 @@ where
 		}
 	}
 
-	materialize_outputs(last_visible.into_values(), output_key_columns)
+	materialize_outputs(last_visible.into_values(), ctx.now_nanos(), output_key_columns)
 }
 
 #[allow(clippy::type_complexity)]
@@ -558,6 +571,7 @@ where
 
 pub fn multi_rolling_accumulator_oracle<A>(
 	agg: &A,
+	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
 ) -> MaterializedTable
@@ -583,7 +597,7 @@ where
 	}
 
 	let outputs: Vec<A::Output> = last_visible.into_values().flatten().collect();
-	materialize_outputs(outputs.into_iter(), output_key_columns)
+	materialize_outputs(outputs.into_iter(), ctx.now_nanos(), output_key_columns)
 }
 
 #[allow(clippy::type_complexity)]

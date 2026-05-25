@@ -44,7 +44,7 @@ fn run(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
 		.with_column("window_start", samplers::u64_range(0..10))
 		.with_column("value", value_sampler(none_values))
 		.with_chaos(cfg)
-		.with_oracle(|batches| rolling_accumulator_oracle(&common::rolling_sum(), batches, &group_key()))
+		.with_oracle(|ctx, batches| rolling_accumulator_oracle(&common::rolling_sum(), ctx, batches, &group_key()))
 		.seed(seed)
 		.build()
 		.expect("build rolling harness")

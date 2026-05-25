@@ -44,7 +44,7 @@ fn run(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
 		.with_column("ts", samplers::u64_range(0..300))
 		.with_column("price", price_sampler(none_values))
 		.with_chaos(cfg)
-		.with_oracle(|batches| tumbling_carry_accumulator_oracle(&TwapCarry, batches, &window_key()))
+		.with_oracle(|ctx, batches| tumbling_carry_accumulator_oracle(&TwapCarry, ctx, batches, &window_key()))
 		.seed(seed)
 		.build()
 		.expect("build carry harness")

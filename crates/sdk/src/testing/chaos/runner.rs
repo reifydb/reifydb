@@ -10,6 +10,7 @@ use std::{
 use super::{
 	batcher::Batcher,
 	config::ChaosConfig,
+	context::ChaosContext,
 	event::{ChaosBatch, ChaosEvent},
 	generator::Generator,
 	materialize::materialize_history,
@@ -20,11 +21,11 @@ use super::{
 };
 use crate::{operator::FFIOperator, testing::harness::FFIOperatorHarness};
 
-pub type OracleFn = Arc<dyn Fn(&[ChaosBatch]) -> MaterializedTable + Send + Sync>;
+pub type OracleFn = Arc<dyn Fn(&ChaosContext, &[ChaosBatch]) -> MaterializedTable + Send + Sync>;
 
 #[derive(Debug)]
 pub struct ChaosOutcome {
-	pub seed: u64,
+	pub context: ChaosContext,
 	pub batches: Vec<ChaosBatch>,
 	pub operator_table: MaterializedTable,
 	pub oracle_table: MaterializedTable,
@@ -50,7 +51,7 @@ impl ChaosOutcome {
 		}
 		let header = vec![
 			format!("chaos divergence:"),
-			format!("  seed: {}", self.seed),
+			format!("  seed: {}", self.context.seed),
 			format!("  batches: {}", self.batches.len()),
 			format!("  ops: {}", self.ops_count()),
 		];
@@ -60,7 +61,7 @@ impl ChaosOutcome {
 }
 
 pub struct RunnableChaos<T: FFIOperator> {
-	pub seed: u64,
+	pub context: ChaosContext,
 	pub config: ChaosConfig,
 	pub schema: Arc<ChaosSchema>,
 	pub registry: Arc<ColumnRegistry>,
@@ -75,9 +76,9 @@ impl<T: FFIOperator> RunnableChaos<T> {
 			self.schema.clone(),
 			self.registry.clone(),
 			self.config,
-			derive_seed(self.seed, 1),
+			derive_seed(self.context.seed, 1),
 		);
-		let mut batcher = Batcher::new(self.config.batch_size, derive_seed(self.seed, 2));
+		let mut batcher = Batcher::new(self.config.batch_size, derive_seed(self.context.seed, 2));
 
 		while let Some(change) = batcher.next_change(&mut generator) {
 			self.harness.apply(change).expect("operator apply failed during chaos run");
@@ -87,11 +88,11 @@ impl<T: FFIOperator> RunnableChaos<T> {
 		let operator_history: Vec<_> =
 			(0..self.harness.history_len()).map(|i| self.harness[i].clone()).collect();
 		let operator_table = materialize_history(&operator_history, &self.schema.output_key_columns);
-		let oracle_table = (self.oracle)(&batches);
+		let oracle_table = (self.oracle)(&self.context, &batches);
 		let comparison = compare(&operator_table, &oracle_table, &self.tolerances);
 
 		ChaosOutcome {
-			seed: self.seed,
+			context: self.context,
 			batches,
 			operator_table,
 			oracle_table,
@@ -119,7 +120,7 @@ mod tests {
 	#[test]
 	fn outcome_match_does_not_panic() {
 		let outcome = ChaosOutcome {
-			seed: 42,
+			context: ChaosContext::new(42),
 			batches: vec![],
 			operator_table: MaterializedTable::empty(),
 			oracle_table: MaterializedTable::empty(),
@@ -139,7 +140,7 @@ mod tests {
 		);
 		let oracle = MaterializedTable::empty();
 		let outcome = ChaosOutcome {
-			seed: 12345,
+			context: ChaosContext::new(12345),
 			batches: vec![],
 			operator_table: op.clone(),
 			oracle_table: oracle.clone(),

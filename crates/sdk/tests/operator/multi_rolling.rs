@@ -46,7 +46,7 @@ fn run(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
 		.with_column("trader", samplers::u64_range(0..5))
 		.with_column("volume", volume_sampler(none_values))
 		.with_chaos(cfg)
-		.with_oracle(|batches| multi_rolling_accumulator_oracle(&TopVolumeMultiRolling, batches, &rank_key()))
+		.with_oracle(|ctx, batches| multi_rolling_accumulator_oracle(&TopVolumeMultiRolling, ctx, batches, &rank_key()))
 		.seed(seed)
 		.build()
 		.expect("build multi-rolling harness")

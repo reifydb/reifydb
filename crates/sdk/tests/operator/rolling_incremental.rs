@@ -53,8 +53,13 @@ fn run(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
 		.with_column("value", value_sampler(none_values))
 		.with_tolerance("baseline", BASELINE_TOL)
 		.with_chaos(cfg)
-		.with_oracle(|batches| {
-			rolling_incremental_accumulator_oracle(&common::velocity_incremental(), batches, &group_key())
+		.with_oracle(|ctx, batches| {
+			rolling_incremental_accumulator_oracle(
+				&common::velocity_incremental(),
+				ctx,
+				batches,
+				&group_key(),
+			)
 		})
 		.seed(seed)
 		.build()

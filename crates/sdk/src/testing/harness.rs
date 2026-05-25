@@ -21,6 +21,7 @@ use reifydb_core::{
 	key::EncodableKey,
 	row::Row,
 };
+use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_type::{util::cowvec::CowVec, value::Value};
 use serde::de::DeserializeOwned;
 
@@ -47,6 +48,7 @@ pub struct FFIOperatorHarness<T: FFIOperator> {
 	ffi_context: Box<ContextFFI>,
 	config: HashMap<String, Value>,
 	node_id: FlowNodeId,
+	clock: Clock,
 	history: Vec<Change>,
 
 	builder_registry: TestBuilderRegistry,
@@ -59,7 +61,12 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		FFIOperatorHarnessBuilder::new()
 	}
 
+	fn refresh_clock(&mut self) {
+		self.ffi_context.clock_now_nanos = self.clock.now_nanos();
+	}
+
 	pub fn apply(&mut self, input: Change) -> Result<Change> {
+		self.refresh_clock();
 		let version = input.version;
 		let changed_at = input.changed_at;
 		let origin = input.origin.clone();
@@ -90,6 +97,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 	}
 
 	pub fn apply_without_flush(&mut self, input: Change) -> Result<Change> {
+		self.refresh_clock();
 		let version = input.version;
 		let changed_at = input.changed_at;
 		let origin = input.origin.clone();
@@ -118,6 +126,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 	}
 
 	pub fn flush(&mut self) -> Result<()> {
+		self.refresh_clock();
 		let ffi_ctx_ptr = &mut *self.ffi_context as *mut ContextFFI;
 		with_registry(&self.builder_registry, || {
 			let mut op_ctx = FFIOperatorContext::new(ffi_ctx_ptr);
@@ -235,6 +244,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 	}
 
 	pub fn create_operator_context(&mut self) -> FFIOperatorContext {
+		self.refresh_clock();
 		FFIOperatorContext::new(&mut *self.ffi_context as *mut ContextFFI)
 	}
 
@@ -263,6 +273,7 @@ pub struct FFIOperatorHarnessBuilder<T: FFIOperator> {
 	config: HashMap<String, Value>,
 	node_id: FlowNodeId,
 	version: CommitVersion,
+	clock: Clock,
 	initial_state: HashMap<EncodedKey, EncodedRow>,
 	_phantom: PhantomData<T>,
 }
@@ -279,9 +290,15 @@ impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
 			config: HashMap::new(),
 			node_id: FlowNodeId(1),
 			version: CommitVersion(1),
+			clock: Clock::Mock(MockClock::new(0)),
 			initial_state: HashMap::new(),
 			_phantom: PhantomData,
 		}
+	}
+
+	pub fn with_clock(mut self, clock: Clock) -> Self {
+		self.clock = clock;
+		self
 	}
 
 	pub fn with_config<I, K>(mut self, config: I) -> Self
@@ -327,7 +344,7 @@ impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
 			txn_ptr: &*context as *const TestContext as *mut c_void,
 			executor_ptr: null(),
 			operator_id: self.node_id.0,
-			clock_now_nanos: 0,
+			clock_now_nanos: self.clock.now_nanos(),
 			callbacks: create_test_callbacks(),
 		});
 
@@ -340,6 +357,7 @@ impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
 			ffi_context,
 			config: self.config,
 			node_id: self.node_id,
+			clock: self.clock,
 			history: Vec::new(),
 			builder_registry: TestBuilderRegistry::new(),
 			input_arena: Arena::new(),

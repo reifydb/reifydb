@@ -30,6 +30,7 @@ use reifydb_type::value::Value;
 pub mod accumulator_oracle;
 pub mod batcher;
 pub mod config;
+pub mod context;
 pub mod event;
 pub mod generator;
 pub mod materialize;
@@ -40,6 +41,7 @@ pub mod schema;
 pub mod strategy;
 
 use config::{ChaosConfig, SupportedOps};
+use context::ChaosContext;
 use event::ChaosBatch;
 use oracle::MaterializedTable;
 use report::Tolerances;
@@ -239,7 +241,7 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 	/// `batches` and snapshot at the end of each batch's inner loop.
 	pub fn with_oracle<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&[ChaosBatch]) -> MaterializedTable + Send + Sync + 'static,
+		F: Fn(&ChaosContext, &[ChaosBatch]) -> MaterializedTable + Send + Sync + 'static,
 	{
 		self.oracle = Some(Arc::new(f));
 		self
@@ -272,15 +274,19 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 		self.registry.validate(&schema.input_shape).map_err(ChaosError::InputColumnsMissingSampler)?;
 		let schema = Arc::new(schema);
 
-		let mut builder =
-			FFIOperatorHarness::<T>::builder().with_node_id(self.node_id).with_version(self.version);
+		let context = ChaosContext::new(self.seed);
+
+		let mut builder = FFIOperatorHarness::<T>::builder()
+			.with_node_id(self.node_id)
+			.with_version(self.version)
+			.with_clock(context.clock.clone());
 		for (k, v) in self.operator_config {
 			builder = builder.add_config(k, v);
 		}
 		let harness = builder.build().map_err(|e| ChaosError::HarnessBuild(format!("{e:?}")))?;
 
 		Ok(RunnableChaos {
-			seed: self.seed,
+			context,
 			config: self.config,
 			schema,
 			registry: Arc::new(self.registry),
@@ -446,7 +452,7 @@ mod tests {
 			.with_output_key(["k"])
 			.with_column("k", samplers::u64_range(1..1000))
 			.with_column("v", samplers::f64_range(0.0..1.0))
-			.with_oracle(|_| MaterializedTable::empty())
+			.with_oracle(|_, _| MaterializedTable::empty())
 	}
 
 	#[test]
@@ -494,7 +500,7 @@ mod tests {
 			.with_column("k", samplers::u64_range(1..1000))
 			.with_column("v", samplers::f64_range(0.0..1.0))
 			// "missing" intentionally not registered.
-			.with_oracle(|_| MaterializedTable::empty())
+			.with_oracle(|_, _| MaterializedTable::empty())
 			.build();
 		match expect_build_err(result, "missing sampler") {
 			ChaosError::InputColumnsMissingSampler(cols) => {
