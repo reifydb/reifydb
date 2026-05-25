@@ -6,6 +6,7 @@ use std::{
 	collections::BTreeMap,
 	fmt::Debug,
 	hash::{Hash, Hasher},
+	marker::PhantomData,
 };
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -757,6 +758,200 @@ where
 	}
 }
 
+pub trait SealFold {
+	type Value: Clone + Debug + Serialize + DeserializeOwned;
+	type State: Clone + Debug + Default + Serialize + DeserializeOwned;
+	type Output: Clone + Debug + PartialEq;
+
+	fn fold(state: &mut Self::State, prev: Option<&Self::Value>, cur: &Self::Value);
+
+	fn output(state: &Self::State) -> Option<Self::Output>;
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(bound(
+	serialize = "C: Serialize, C::Duration: Serialize, F::State: Serialize, F::Value: Serialize",
+	deserialize = "C: serde::de::DeserializeOwned, C::Duration: serde::de::DeserializeOwned, F::State: serde::de::DeserializeOwned, F::Value: serde::de::DeserializeOwned"
+))]
+pub struct SealingFold<C: Slot, F: SealFold> {
+	lateness: Option<C::Duration>,
+	high_water: Option<C>,
+	sealed: F::State,
+	last_sealed: Option<F::Value>,
+	tail: BTreeMap<C, F::Value>,
+	#[serde(skip)]
+	marker: PhantomData<fn() -> F>,
+}
+
+impl<C: Slot, F: SealFold> Clone for SealingFold<C, F> {
+	fn clone(&self) -> Self {
+		Self {
+			lateness: self.lateness,
+			high_water: self.high_water,
+			sealed: self.sealed.clone(),
+			last_sealed: self.last_sealed.clone(),
+			tail: self.tail.clone(),
+			marker: PhantomData,
+		}
+	}
+}
+
+impl<C: Slot, F: SealFold> Debug for SealingFold<C, F> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("SealingFold")
+			.field("lateness", &self.lateness)
+			.field("high_water", &self.high_water)
+			.field("sealed", &self.sealed)
+			.field("last_sealed", &self.last_sealed)
+			.field("tail", &self.tail)
+			.finish()
+	}
+}
+
+impl<C: Slot, F: SealFold> Default for SealingFold<C, F> {
+	fn default() -> Self {
+		Self {
+			lateness: None,
+			high_water: None,
+			sealed: F::State::default(),
+			last_sealed: None,
+			tail: BTreeMap::new(),
+			marker: PhantomData,
+		}
+	}
+}
+
+impl<C: Slot, F: SealFold> SealingFold<C, F> {
+	pub fn with_lateness(lateness: C::Duration) -> Self {
+		Self {
+			lateness: Some(lateness),
+			high_water: None,
+			sealed: F::State::default(),
+			last_sealed: None,
+			tail: BTreeMap::new(),
+			marker: PhantomData,
+		}
+	}
+
+	fn seal_aged(&mut self) {
+		let (Some(hw), Some(l)) = (self.high_water, self.lateness) else {
+			return;
+		};
+		while let Some((&c, _)) = self.tail.iter().next() {
+			if hw - c > l {
+				let (_, v) = self.tail.pop_first().expect("non-empty");
+				F::fold(&mut self.sealed, self.last_sealed.as_ref(), &v);
+				self.last_sealed = Some(v);
+			} else {
+				break;
+			}
+		}
+	}
+}
+
+impl<C, F> WindowAccumulator for SealingFold<C, F>
+where
+	C: Slot + Hash + Serialize + DeserializeOwned,
+	C::Duration: Serialize + DeserializeOwned,
+	F: SealFold,
+{
+	type Contribution = (C, F::Value);
+	type Output = F::Output;
+
+	fn add(&mut self, contribution: &(C, F::Value)) {
+		let coord = contribution.0;
+		self.high_water = Some(match self.high_water {
+			Some(hw) if hw >= coord => hw,
+			_ => coord,
+		});
+		self.tail.insert(coord, contribution.1.clone());
+		self.seal_aged();
+	}
+
+	fn remove(&mut self, contribution: &(C, F::Value)) {
+		self.tail.remove(&contribution.0);
+	}
+
+	fn finalize(&self) -> Option<F::Output> {
+		let mut state = self.sealed.clone();
+		let mut prev = self.last_sealed.clone();
+		for v in self.tail.values() {
+			F::fold(&mut state, prev.as_ref(), v);
+			prev = Some(v.clone());
+		}
+		F::output(&state)
+	}
+
+	fn is_empty(&self) -> bool {
+		self.last_sealed.is_none() && self.tail.is_empty()
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(bound(
+	serialize = "C: Serialize, C::Duration: Serialize, V: Serialize",
+	deserialize = "C: serde::de::DeserializeOwned, C::Duration: serde::de::DeserializeOwned, V: serde::de::DeserializeOwned"
+))]
+pub struct SealingTail<C: Slot, V> {
+	lateness: Option<C::Duration>,
+	high_water: Option<C>,
+	tail: BTreeMap<C, V>,
+}
+
+impl<C: Slot, V> Default for SealingTail<C, V> {
+	fn default() -> Self {
+		Self {
+			lateness: None,
+			high_water: None,
+			tail: BTreeMap::new(),
+		}
+	}
+}
+
+impl<C: Slot, V: Clone> SealingTail<C, V> {
+	pub fn with_lateness(lateness: C::Duration) -> Self {
+		Self {
+			lateness: Some(lateness),
+			high_water: None,
+			tail: BTreeMap::new(),
+		}
+	}
+
+	fn seal_aged(&mut self) {
+		let (Some(hw), Some(l)) = (self.high_water, self.lateness) else {
+			return;
+		};
+		while let Some((&c, _)) = self.tail.iter().next() {
+			if hw - c > l {
+				self.tail.pop_first();
+			} else {
+				break;
+			}
+		}
+	}
+
+	pub fn add(&mut self, coord: C, value: V) {
+		self.high_water = Some(match self.high_water {
+			Some(hw) if hw >= coord => hw,
+			_ => coord,
+		});
+		self.tail.insert(coord, value);
+		self.seal_aged();
+	}
+
+	pub fn remove(&mut self, coord: &C) {
+		self.tail.remove(coord);
+	}
+
+	pub fn tail(&self) -> &BTreeMap<C, V> {
+		&self.tail
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.tail.is_empty()
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use postcard::{from_bytes, to_allocvec};
@@ -1279,5 +1474,112 @@ mod tests {
 		let bytes = to_allocvec(&ep).expect("serialize");
 		let restored: SealingEndpoint<u64, i64> = from_bytes(&bytes).expect("deserialize");
 		assert_eq!(restored, ep);
+	}
+
+	// A left-fold over consecutive observations in coordinate order: the path
+	// length sum(|cur - prev|). The first observation has no predecessor and
+	// contributes 0. This is the order-dependent, non-invertible shape that
+	// SealingFold seals the aged prefix of while keeping the recent tail
+	// removable.
+	struct AbsPathFold;
+
+	impl SealFold for AbsPathFold {
+		type Value = f64;
+		type State = f64;
+		type Output = f64;
+
+		fn fold(state: &mut f64, prev: Option<&f64>, cur: &f64) {
+			if let Some(p) = prev {
+				*state += (cur - p).abs();
+			}
+		}
+
+		fn output(state: &f64) -> Option<f64> {
+			Some(*state)
+		}
+	}
+
+	#[test]
+	fn sealing_fold_no_lateness_sums_all_adjacent_steps() {
+		let mut acc: SealingFold<u64, AbsPathFold> = SealingFold::default();
+		acc.add(&(0, 10.0));
+		acc.add(&(1, 20.0));
+		acc.add(&(2, 15.0));
+		// |20-10| + |15-20| = 10 + 5 = 15; the first observation contributes 0.
+		assert_eq!(acc.finalize(), Some(15.0));
+	}
+
+	#[test]
+	fn sealing_fold_seals_aged_prefix_exactly_for_forward_data() {
+		// lateness 1: observation at coord 0 ages out once hw reaches 2 and is
+		// folded into the sealed path; the total is still exact for
+		// forward-only inserts.
+		let mut acc: SealingFold<u64, AbsPathFold> = SealingFold::with_lateness(1);
+		acc.add(&(0, 10.0));
+		acc.add(&(1, 20.0)); // coord 0 still live (hw-0 = 1, not > 1)
+		acc.add(&(2, 15.0)); // coord 0 ages out -> sealed
+		assert_eq!(acc.finalize(), Some(15.0), "sealed prefix preserves the full path exactly");
+	}
+
+	#[test]
+	fn sealing_fold_aged_removal_is_dropped_no_op_but_live_removal_is_safe() {
+		let mut acc: SealingFold<u64, AbsPathFold> = SealingFold::with_lateness(1);
+		acc.add(&(0, 10.0));
+		acc.add(&(1, 20.0));
+		acc.add(&(2, 15.0)); // coord 0 sealed
+		// Removing the aged (sealed) observation is a dropped no-op.
+		acc.remove(&(0, 10.0));
+		assert_eq!(acc.finalize(), Some(15.0), "aged removal does not disturb the sealed path");
+		// Removing a still-live tail observation IS removal-safe: the path
+		// recomputes over sealed-prefix + remaining tail (10 -> 20 = 10).
+		acc.remove(&(2, 15.0));
+		assert_eq!(acc.finalize(), Some(10.0), "live removal recomputes the path");
+	}
+
+	#[test]
+	fn sealing_fold_default_add_remove_is_inverse() {
+		assert_add_remove_is_inverse::<SealingFold<u64, AbsPathFold>>(&[(0u64, 10.0f64), (1, 20.0)], (2u64, 30.0f64));
+	}
+
+	#[test]
+	fn sealing_fold_postcard_roundtrip() {
+		let mut acc: SealingFold<u64, AbsPathFold> = SealingFold::with_lateness(1);
+		acc.add(&(0, 10.0));
+		acc.add(&(1, 20.0));
+		acc.add(&(2, 15.0));
+		let bytes = to_allocvec(&acc).expect("serialize");
+		let restored: SealingFold<u64, AbsPathFold> = from_bytes(&bytes).expect("deserialize");
+		assert_eq!(restored.finalize(), acc.finalize());
+	}
+
+	#[test]
+	fn sealing_tail_drops_aged_keeps_recent() {
+		let mut tail: SealingTail<u64, i64> = SealingTail::with_lateness(10);
+		tail.add(0, 1);
+		tail.add(5, 2);
+		tail.add(12, 3); // hw=12; coord 0 (age 12 > 10) dropped
+		let keys: Vec<u64> = tail.tail().keys().copied().collect();
+		assert_eq!(keys, vec![5, 12], "aged prefix dropped, recent tail kept in order");
+		tail.remove(&5);
+		let keys: Vec<u64> = tail.tail().keys().copied().collect();
+		assert_eq!(keys, vec![12], "live tail entry removable");
+	}
+
+	#[test]
+	fn sealing_tail_default_never_drops() {
+		let mut tail: SealingTail<u64, i64> = SealingTail::default();
+		tail.add(0, 1);
+		tail.add(100, 2);
+		assert_eq!(tail.tail().len(), 2, "with no lateness bound nothing is dropped");
+	}
+
+	#[test]
+	fn sealing_tail_postcard_roundtrip() {
+		let mut tail: SealingTail<u64, i64> = SealingTail::with_lateness(10);
+		tail.add(0, 1);
+		tail.add(12, 3);
+		let bytes = to_allocvec(&tail).expect("serialize");
+		let restored: SealingTail<u64, i64> = from_bytes(&bytes).expect("deserialize");
+		assert_eq!(restored, tail);
 	}
 }
