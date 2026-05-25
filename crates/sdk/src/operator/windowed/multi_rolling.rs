@@ -16,7 +16,22 @@ use reifydb_core::{
 use reifydb_type::value::row_number::RowNumber;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-use crate::config::Config;
+use crate::{
+	config::Config,
+	error::Result,
+	operator::{
+		OperatorLogic, OperatorMetadata,
+		column::{
+			batch::{InsertBatch, RemoveBatch, UpdateBatch},
+			operator::OperatorColumn,
+			row::Row,
+		},
+		context::OperatorContext,
+		view::{ChangeView, ColumnsView, DiffView, RowView},
+		windowed::{accumulator::WindowAccumulator, span::Slot},
+	},
+	state::cache::StateCache,
+};
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 struct MetaKey(EncodedKey);
@@ -38,32 +53,14 @@ where
 	MetaKey(group.into_encoded_key())
 }
 
-use crate::{
-	error::Result,
-	operator::{
-		OperatorLogic, OperatorMetadata,
-		column::{
-			batch::{InsertBatch, RemoveBatch, UpdateBatch},
-			operator::OperatorColumn,
-			row::Row,
-		},
-		context::OperatorContext,
-		view::{ChangeView, ColumnsView, DiffView, RowView},
-		windowed::span::Slot,
-	},
-	state::cache::StateCache,
-};
+type AccContribution<A> = <<A as MultiRollingOperator>::WindowAcc as WindowAccumulator>::Contribution;
 
 pub trait MultiRollingOperator {
 	type GroupKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned;
 
-	type WindowKey: Slot + Hash + Serialize + DeserializeOwned;
+	type WindowCoord: Slot + Hash + Serialize + DeserializeOwned;
 
-	type WindowInput: Clone + Debug;
-
-	type RemoveInput: Clone + Debug;
-
-	type Buffered: Clone + Debug + Serialize + DeserializeOwned;
+	type WindowAcc: WindowAccumulator;
 
 	type SecondaryKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned;
 
@@ -71,24 +68,12 @@ pub trait MultiRollingOperator {
 
 	fn capacity(&self) -> usize;
 
-	fn extract_apply(&self, row: &impl RowView) -> Option<(Self::GroupKey, Self::WindowKey, Self::WindowInput)>;
-
-	fn extract_remove(&self, row: &impl RowView) -> Option<(Self::GroupKey, Self::WindowKey, Self::RemoveInput)> {
-		let _ = row;
-		None
-	}
-
-	fn fold_into_window(&self, prev: Option<&Self::Buffered>, input: &Self::WindowInput) -> Self::Buffered;
-
-	fn remove_from_window(&self, prev: &Self::Buffered, remove: &Self::RemoveInput) -> Option<Self::Buffered> {
-		let _ = (prev, remove);
-		None
-	}
+	fn extract(&self, row: &impl RowView) -> Option<(Self::GroupKey, Self::WindowCoord, AccContribution<Self>)>;
 
 	fn combine(
 		&self,
 		group: &Self::GroupKey,
-		buffer: &BTreeMap<Self::WindowKey, Self::Buffered>,
+		buffer: &BTreeMap<Self::WindowCoord, Self::WindowAcc>,
 	) -> BTreeMap<Self::SecondaryKey, Self::Output>;
 }
 
@@ -112,7 +97,7 @@ where
 }
 
 pub type MultiRollingBuffer<A> =
-	BTreeMap<<A as MultiRollingOperator>::WindowKey, <A as MultiRollingOperator>::Buffered>;
+	BTreeMap<<A as MultiRollingOperator>::WindowCoord, <A as MultiRollingOperator>::WindowAcc>;
 
 pub type MultiRollingEmit<A> = BTreeMap<<A as MultiRollingOperator>::SecondaryKey, <A as MultiRollingOperator>::Output>;
 
@@ -175,13 +160,12 @@ where
 {
 	aggregator: A,
 	groups: StateCache<RowNumber, GroupState<A>>,
-	meta: StateCache<MetaKey, GroupMeta<A::WindowKey>>,
+	meta: StateCache<MetaKey, GroupMeta<A::WindowCoord>>,
 }
 
-enum BufferEvent<A: MultiRollingOperator> {
-	Apply(A::WindowInput),
-	RemoveSub(A::RemoveInput),
-	RemoveWhole,
+enum AccEvent<A: MultiRollingOperator> {
+	Add(AccContribution<A>),
+	Remove(AccContribution<A>),
 }
 
 impl<A> OperatorMetadata for MultiRollingDriver<A>
@@ -204,9 +188,10 @@ where
 	A: MultiRollingRegistration + Send + Sync + 'static,
 	A::Output: Row + Send + Sync,
 	A::GroupKey: Send + Sync,
-	A::WindowKey: Send + Sync,
-	A::Buffered: Send + Sync,
+	A::WindowCoord: Send + Sync,
+	A::WindowAcc: Send + Sync,
 	A::SecondaryKey: Send + Sync,
+	AccContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
@@ -214,13 +199,13 @@ where
 		Ok(Self {
 			aggregator,
 			groups: StateCache::<RowNumber, GroupState<A>>::new(8),
-			meta: StateCache::<MetaKey, GroupMeta<A::WindowKey>>::new_internal(64),
+			meta: StateCache::<MetaKey, GroupMeta<A::WindowCoord>>::new_internal(64),
 		})
 	}
 
 	#[allow(clippy::type_complexity)]
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
-		let mut buckets: BTreeMap<(A::GroupKey, A::WindowKey), Vec<BufferEvent<A>>> = BTreeMap::new();
+		let mut buckets: BTreeMap<(A::GroupKey, A::WindowCoord), Vec<AccEvent<A>>> = BTreeMap::new();
 
 		for di in 0..change.diff_count() {
 			let Some(diff) = change.diff(di) else {
@@ -233,14 +218,13 @@ where
 							let Some(row) = cols.row(i) else {
 								continue;
 							};
-							let Some((group, wk, in_row)) =
-								self.aggregator.extract_apply(&row)
-							else {
-								continue;
-							};
-							buckets.entry((group, wk))
-								.or_default()
-								.push(BufferEvent::Apply(in_row));
+							if let Some((group, coord, contribution)) =
+								self.aggregator.extract(&row)
+							{
+								buckets.entry((group, coord))
+									.or_default()
+									.push(AccEvent::Add(contribution));
+							}
 						}
 					}
 				}
@@ -248,37 +232,22 @@ where
 					if let (Some(pre), Some(post)) = (diff.pre(), diff.post()) {
 						let n = pre.row_count().min(post.row_count());
 						for i in 0..n {
-							let Some(pre_row) = pre.row(i) else {
-								continue;
-							};
-							let Some((g_pre, wk_pre, _)) =
-								self.aggregator.extract_apply(&pre_row)
-							else {
-								continue;
-							};
-							let Some(post_row) = post.row(i) else {
-								continue;
-							};
-							let Some((g_post, wk_post, in_row)) =
-								self.aggregator.extract_apply(&post_row)
-							else {
-								continue;
-							};
-							if g_pre != g_post || wk_pre != wk_post {
-								let retraction = match self
-									.aggregator
-									.extract_remove(&pre_row)
-								{
-									Some((_, _, rm)) => BufferEvent::RemoveSub(rm),
-									None => BufferEvent::RemoveWhole,
-								};
-								buckets.entry((g_pre, wk_pre))
+							if let Some(pre_row) = pre.row(i)
+								&& let Some((group, coord, contribution)) =
+									self.aggregator.extract(&pre_row)
+							{
+								buckets.entry((group, coord))
 									.or_default()
-									.push(retraction);
+									.push(AccEvent::Remove(contribution));
 							}
-							buckets.entry((g_post, wk_post))
-								.or_default()
-								.push(BufferEvent::Apply(in_row));
+							if let Some(post_row) = post.row(i)
+								&& let Some((group, coord, contribution)) =
+									self.aggregator.extract(&post_row)
+							{
+								buckets.entry((group, coord))
+									.or_default()
+									.push(AccEvent::Add(contribution));
+							}
 						}
 					}
 				}
@@ -288,18 +257,12 @@ where
 							let Some(row) = cols.row(i) else {
 								continue;
 							};
-							if let Some((group, wk, rm)) =
-								self.aggregator.extract_remove(&row)
+							if let Some((group, coord, contribution)) =
+								self.aggregator.extract(&row)
 							{
-								buckets.entry((group, wk))
+								buckets.entry((group, coord))
 									.or_default()
-									.push(BufferEvent::RemoveSub(rm));
-							} else if let Some((group, wk, _)) =
-								self.aggregator.extract_apply(&row)
-							{
-								buckets.entry((group, wk))
-									.or_default()
-									.push(BufferEvent::RemoveWhole);
+									.push(AccEvent::Remove(contribution));
 							}
 						}
 					}
@@ -320,7 +283,7 @@ where
 			.collect();
 		self.meta.warm(ctx, &meta_keys)?;
 
-		let mut meta_loaded: HashMap<A::GroupKey, GroupMeta<A::WindowKey>> = HashMap::new();
+		let mut meta_loaded: HashMap<A::GroupKey, GroupMeta<A::WindowCoord>> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
 				let m = self.meta.get(ctx, &meta_key_for(group))?.unwrap_or_default();
@@ -332,9 +295,9 @@ where
 		let mut resolve_order: Vec<A::GroupKey> = Vec::new();
 		let mut state_lookup_keys: Vec<EncodedKey> = Vec::new();
 		let mut seen: BTreeSet<A::GroupKey> = BTreeSet::new();
-		for (group, wk) in buckets.keys() {
+		for (group, coord) in buckets.keys() {
 			let initial_high_water = meta_loaded.get(group).and_then(|m| m.high_water);
-			if initial_high_water.is_none_or(|hw| *wk >= hw) && seen.insert(group.clone()) {
+			if initial_high_water.is_none_or(|hw| *coord >= hw) && seen.insert(group.clone()) {
 				resolve_order.push(group.clone());
 				state_lookup_keys.push(self.aggregator.encode_state_key(group));
 			}
@@ -356,11 +319,11 @@ where
 
 		let capacity = self.aggregator.capacity();
 
-		for ((group, wk), events) in buckets {
+		for ((group, coord), events) in buckets {
 			let meta = meta_loaded.entry(group.clone()).or_default();
 
 			if let Some(hw) = meta.high_water
-				&& wk < hw
+				&& coord < hw
 			{
 				continue;
 			}
@@ -393,41 +356,24 @@ where
 				}
 			};
 
+			let mut acc = slot.buffer.remove(&coord).unwrap_or_default();
 			for event in events {
 				match event {
-					BufferEvent::Apply(in_row) => {
-						let prev = slot.buffer.get(&wk);
-						let buffered = self.aggregator.fold_into_window(prev, &in_row);
-						slot.buffer.insert(wk, buffered);
-						while slot.buffer.len() > capacity {
-							slot.buffer.pop_first();
-						}
-						slot.buffer_changed = true;
-					}
-					BufferEvent::RemoveSub(rm) => {
-						if let Some(prev) = slot.buffer.get(&wk) {
-							match self.aggregator.remove_from_window(prev, &rm) {
-								Some(updated) => {
-									slot.buffer.insert(wk, updated);
-								}
-								None => {
-									slot.buffer.remove(&wk);
-								}
-							}
-							slot.buffer_changed = true;
-						}
-					}
-					BufferEvent::RemoveWhole => {
-						if slot.buffer.remove(&wk).is_some() {
-							slot.buffer_changed = true;
-						}
-					}
+					AccEvent::Add(c) => acc.add(&c),
+					AccEvent::Remove(c) => acc.remove(&c),
 				}
 			}
+			if !acc.is_empty() {
+				slot.buffer.insert(coord, acc);
+			}
+			while slot.buffer.len() > capacity {
+				slot.buffer.pop_first();
+			}
+			slot.buffer_changed = true;
 
 			meta.high_water = Some(match meta.high_water {
-				Some(hw) if hw > wk => hw,
-				_ => wk,
+				Some(hw) if hw > coord => hw,
+				_ => coord,
 			});
 		}
 
@@ -520,11 +466,14 @@ mod tests {
 		row::Row as CoreRow,
 	};
 	use reifydb_type::value::{Value, r#type::Type};
-	use serde::{Deserialize, Serialize};
 
 	use super::*;
 	use crate::{
-		operator::{FFIOperatorAdapter, view::RowView},
+		operator::{
+			FFIOperatorAdapter,
+			view::RowView,
+			windowed::accumulator::{KeyedInvertibleAcc, Moments},
+		},
 		row,
 		testing::{
 			builders::{TestChangeBuilder, TestRowBuilder},
@@ -532,91 +481,75 @@ mod tests {
 		},
 	};
 
-	// Test fixture: rolling top-2 by value per group, last 3 buffered
-	// windows. Buffered carries a single (key, value) per window;
-	// combine sorts by value desc and emits top-2 by rank.
-
-	#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-	struct TestInput {
-		key: u64,
-		value: f64,
-	}
-
-	#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
-	struct TestBuffered {
-		key: u64,
-		value: f64,
-	}
+	// Rolling top-2 traders by summed volume over the last 3 windows. Each
+	// window cell is a KeyedInvertibleAcc<trader, Moments> so a trade's
+	// volume accumulates per trader and an Update/Remove subtracts it
+	// (invertible). combine merges all buffered windows' per-trader sums,
+	// ranks by total volume, and emits the top 2 keyed by rank.
 
 	#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-	struct TestOut {
+	struct TopOut {
 		group: String,
 		rank: u32,
-		key: u64,
-		value: f64,
+		trader: u64,
+		volume: f64,
 	}
 
-	row!(TestOut {
+	row!(TopOut {
 		group: String,
 		rank: u32,
-		key: u64,
-		value: f64
+		trader: u64,
+		volume: f64
 	});
 
-	struct TestTopAggregator;
+	struct TestTopVolume;
 
-	impl MultiRollingOperator for TestTopAggregator {
+	impl MultiRollingOperator for TestTopVolume {
 		type GroupKey = String;
-		type WindowKey = u64;
-		type WindowInput = TestInput;
-		type RemoveInput = ();
-		type Buffered = TestBuffered;
+		type WindowCoord = u64;
+		type WindowAcc = KeyedInvertibleAcc<u64, Moments>;
 		type SecondaryKey = u32;
-		type Output = TestOut;
+		type Output = TopOut;
 
 		fn capacity(&self) -> usize {
 			3
 		}
 
-		fn extract_apply(&self, row: &impl RowView) -> Option<(String, u64, TestInput)> {
+		fn extract(&self, row: &impl RowView) -> Option<(String, u64, (u64, f64))> {
 			let group = row.utf8("group")?.to_string();
 			let window_start = row.u64("window_start")?;
-			let key = row.u64("key")?;
-			let value = row.f64("value")?;
-			Some((
-				group,
-				window_start,
-				TestInput {
-					key,
-					value,
-				},
-			))
+			let trader = row.u64("trader")?;
+			let volume = row.f64("volume")?;
+			Some((group, window_start, (trader, volume)))
 		}
 
-		fn fold_into_window(&self, _prev: Option<&TestBuffered>, input: &TestInput) -> TestBuffered {
-			TestBuffered {
-				key: input.key,
-				value: input.value,
+		fn combine(
+			&self,
+			group: &String,
+			buffer: &BTreeMap<u64, KeyedInvertibleAcc<u64, Moments>>,
+		) -> BTreeMap<u32, TopOut> {
+			let mut totals: BTreeMap<u64, f64> = BTreeMap::new();
+			for window in buffer.values() {
+				if let Some(per_trader) = window.finalize() {
+					for (trader, moments) in per_trader {
+						*totals.entry(trader).or_insert(0.0) += moments.sum();
+					}
+				}
 			}
-		}
-
-		fn combine(&self, group: &String, buffer: &BTreeMap<u64, TestBuffered>) -> BTreeMap<u32, TestOut> {
-			// Sort buffered values by descending value with tiebreak
-			// on key for determinism. Take top-2.
-			let mut entries: Vec<&TestBuffered> = buffer.values().collect();
-			entries.sort_by(|a, b| {
-				b.value.partial_cmp(&a.value).unwrap_or(Ordering::Equal).then_with(|| a.key.cmp(&b.key))
+			let mut ranked: Vec<(u64, f64)> = totals.into_iter().collect();
+			ranked.sort_by(|a, b| {
+				b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal).then_with(|| a.0.cmp(&b.0))
 			});
 			let mut out = BTreeMap::new();
-			for (i, e) in entries.into_iter().take(2).enumerate() {
+			for (i, (trader, volume)) in ranked.into_iter().take(2).enumerate() {
 				let rank = (i as u32) + 1;
 				out.insert(
 					rank,
-					TestOut {
+					TopOut {
 						group: group.clone(),
 						rank,
-						key: e.key,
-						value: e.value,
+						trader,
+						volume,
 					},
 				);
 			}
@@ -624,8 +557,8 @@ mod tests {
 		}
 	}
 
-	impl MultiRollingRegistration for TestTopAggregator {
-		const NAME: &'static str = "test_top_rolling";
+	impl MultiRollingRegistration for TestTopVolume {
+		const NAME: &'static str = "test_top_volume";
 		const VERSION: &'static str = "0.0.1";
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -649,54 +582,83 @@ mod tests {
 		RowShape::new(vec![
 			RowShapeField::unconstrained("group", Type::Utf8),
 			RowShapeField::unconstrained("window_start", Type::Uint8),
-			RowShapeField::unconstrained("key", Type::Uint8),
-			RowShapeField::unconstrained("value", Type::Float8),
+			RowShapeField::unconstrained("trader", Type::Uint8),
+			RowShapeField::unconstrained("volume", Type::Float8),
 		])
 	}
 
-	fn input_row(rn: u64, group: &str, window_start: u64, key: u64, value: f64) -> CoreRow {
+	fn input_row(rn: u64, group: &str, window_start: u64, trader: u64, volume: f64) -> CoreRow {
 		TestRowBuilder::new(rn)
 			.with_values(vec![
 				Value::Utf8(group.into()),
 				Value::Uint8(window_start),
-				Value::Uint8(key),
-				Value::float8(value),
+				Value::Uint8(trader),
+				Value::float8(volume),
 			])
 			.with_shape(input_shape())
 			.build()
 	}
 
 	#[test]
-	fn first_window_emits_inserts_for_top_2() {
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
-				.build()
-				.expect("harness");
+	fn same_window_volume_accumulates_per_trader() {
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopVolume>>>::new()
+			.build()
+			.expect("harness");
+		// Two trades for trader 100 in one window must SUM (5+3=8), unlike
+		// the old last-write-wins fold. Trader 200 has 9.
 		let out = h
 			.apply(TestChangeBuilder::new()
 				.insert(input_row(1, "BTC", 0, 100, 5.0))
 				.insert(input_row(2, "BTC", 0, 200, 9.0))
-				.insert(input_row(3, "BTC", 0, 300, 7.0))
+				.insert(input_row(3, "BTC", 0, 100, 3.0))
 				.build())
 			.expect("apply");
-		// Last write wins per (group, wk): the last insert at wk=0 is
-		// key=300, value=7. The single buffered entry yields rank-1 only.
-		assert_eq!(out.diffs.len(), 1);
-		let diff = &out.diffs[0];
-		assert_eq!(diff.kind(), DiffType::Insert);
-		let post = diff.post().expect("post");
-		assert_eq!(post.row_count(), 1);
-		let r = post.row_ref(0).expect("r0");
-		assert_eq!(r.u32("rank"), Some(1));
-		assert_eq!(r.u64("key"), Some(300));
+		let post = out.diffs[0].post().expect("post");
+		let by_rank: BTreeMap<u32, (u64, f64)> = (0..post.row_count())
+			.map(|i| {
+				let r = post.row_ref(i).expect("row");
+				(r.u32("rank").unwrap(), (r.u64("trader").unwrap(), r.f64("volume").unwrap()))
+			})
+			.collect();
+		assert_eq!(by_rank.get(&1).copied(), Some((200u64, 9.0)), "trader 200 leads at 9.0");
+		assert_eq!(by_rank.get(&2).copied(), Some((100u64, 8.0)), "trader 100 volume summed 5+3 = 8.0");
 	}
 
 	#[test]
-	fn three_distinct_windows_emit_top_2_by_value() {
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
-				.build()
-				.expect("harness");
+	fn update_subtracts_old_volume_no_double_count() {
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopVolume>>>::new()
+			.build()
+			.expect("harness");
+		let _ = h
+			.apply(TestChangeBuilder::new()
+				.insert(input_row(1, "BTC", 0, 100, 5.0))
+				.insert(input_row(2, "BTC", 0, 200, 9.0))
+				.build())
+			.expect("apply");
+		// Update trader 100's trade 5 -> 20. The driver routes remove(5)+add(20)
+		// so trader 100's total is 20, NOT 5+20=25. It overtakes trader 200.
+		let out = h
+			.apply(TestChangeBuilder::new()
+				.update(input_row(1, "BTC", 0, 100, 5.0), input_row(1, "BTC", 0, 100, 20.0))
+				.build())
+			.expect("apply");
+		let kinds: Vec<DiffType> = out.diffs.iter().map(|d| d.kind()).collect();
+		assert!(kinds.contains(&DiffType::Update), "ranks changed, expect Update");
+		let post = out.diffs.iter().find(|d| d.kind() == DiffType::Update).unwrap().post().expect("post");
+		let by_rank: BTreeMap<u32, (u64, f64)> = (0..post.row_count())
+			.map(|i| {
+				let r = post.row_ref(i).expect("row");
+				(r.u32("rank").unwrap(), (r.u64("trader").unwrap(), r.f64("volume").unwrap()))
+			})
+			.collect();
+		assert_eq!(by_rank.get(&1).copied(), Some((100u64, 20.0)), "trader 100 now leads at 20, not 25");
+	}
+
+	#[test]
+	fn top_2_across_three_windows() {
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopVolume>>>::new()
+			.build()
+			.expect("harness");
 		let out = h
 			.apply(TestChangeBuilder::new()
 				.insert(input_row(1, "BTC", 0, 100, 5.0))
@@ -704,97 +666,46 @@ mod tests {
 				.insert(input_row(3, "BTC", 120, 300, 7.0))
 				.build())
 			.expect("apply");
-		// Top-2 by value across three windows: (200, 9), (300, 7).
-		assert_eq!(out.diffs.len(), 1);
-		let diff = &out.diffs[0];
-		assert_eq!(diff.kind(), DiffType::Insert);
-		let post = diff.post().expect("post");
+		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 2);
 		let by_rank: BTreeMap<u32, (u64, f64)> = (0..post.row_count())
 			.map(|i| {
 				let r = post.row_ref(i).expect("row");
-				(r.u32("rank").unwrap(), (r.u64("key").unwrap(), r.f64("value").unwrap()))
+				(r.u32("rank").unwrap(), (r.u64("trader").unwrap(), r.f64("volume").unwrap()))
 			})
 			.collect();
-		assert_eq!(by_rank.get(&1).copied(), Some((200u64, 9.0f64)));
-		assert_eq!(by_rank.get(&2).copied(), Some((300u64, 7.0f64)));
+		assert_eq!(by_rank.get(&1).copied(), Some((200u64, 9.0)));
+		assert_eq!(by_rank.get(&2).copied(), Some((300u64, 7.0)));
 	}
 
 	#[test]
-	fn vanishing_secondary_key_emits_remove() {
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
-				.build()
-				.expect("harness");
-		// Fill 2 windows -> emit two ranks.
+	fn vanishing_rank_emits_remove_at_high_water() {
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopVolume>>>::new()
+			.build()
+			.expect("harness");
 		let _ = h
 			.apply(TestChangeBuilder::new()
 				.insert(input_row(1, "BTC", 0, 100, 5.0))
 				.insert(input_row(2, "BTC", 60, 200, 9.0))
 				.build())
 			.expect("apply");
-		// Drop the older window via Remove (RemoveWhole default since
-		// extract_remove returns None). Only one window remains -> rank-1
-		// stays (with the rolling value of the surviving window),
-		// rank-2 vanishes -> Remove emitted.
-		let out = h
-			.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 100, 5.0)).build())
-			.expect("apply");
-		// Wait - the Remove targets the OLDER window which is below
-		// high_water=60. Late-event filter drops it; no diff.
-		assert_eq!(out.diffs.len(), 0, "remove on buried window dropped late");
-	}
-
-	#[test]
-	fn remove_at_high_water_propagates_to_emit_diff() {
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
-				.build()
-				.expect("harness");
-		let _ = h
-			.apply(TestChangeBuilder::new()
-				.insert(input_row(1, "BTC", 0, 100, 5.0))
-				.insert(input_row(2, "BTC", 60, 200, 9.0))
-				.build())
-			.expect("apply");
-		// Remove the newest window (wk=60 == high_water, NOT strictly
-		// less, so it's not late). Buffer goes to {wk=0}; combine emits
-		// only rank-1.
+		// Remove the newest window (wk=60 == high_water, not late). Trader
+		// 200's only trade leaves -> its window empties and is dropped from
+		// the buffer; rank-1 changes to trader 100, rank-2 vanishes -> Remove.
 		let out = h
 			.apply(TestChangeBuilder::new().remove(input_row(2, "BTC", 60, 200, 9.0)).build())
 			.expect("apply");
-		// Prior emit had ranks {1, 2}; new emit has rank {1} (with the
-		// surviving wk=0 key=100 value=5.0). Rank-1 changed from
-		// (200, 9) to (100, 5) -> Update. Rank-2 vanished -> Remove.
 		let kinds: Vec<DiffType> = out.diffs.iter().map(|d| d.kind()).collect();
 		assert!(kinds.contains(&DiffType::Update), "rank-1 changed identity, expect Update");
 		assert!(kinds.contains(&DiffType::Remove), "rank-2 vanished, expect Remove");
 	}
 
 	#[test]
-	fn buried_window_insert_dropped_silently() {
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
-				.build()
-				.expect("harness");
-		let _ = h
-			.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 60, 100, 5.0)).build())
-			.expect("apply");
-		// high_water=60. Insert at wk=0 < 60 is dropped silently.
-		let out = h
-			.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 999, 999.0)).build())
-			.expect("apply");
-		assert_eq!(out.diffs.len(), 0);
-	}
-
-	#[test]
 	fn capacity_eviction_drops_oldest_window() {
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
-				.build()
-				.expect("harness");
-		// Capacity = 3. Insert 4 windows; smallest-key entry must be
-		// evicted. Top-2 across the 3 surviving windows.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopVolume>>>::new()
+			.build()
+			.expect("harness");
+		// Capacity 3; 4 windows. Window 0 (trader 100, vol 1) is evicted.
 		let out = h
 			.apply(TestChangeBuilder::new()
 				.insert(input_row(1, "BTC", 0, 100, 1.0))
@@ -803,42 +714,28 @@ mod tests {
 				.insert(input_row(4, "BTC", 180, 400, 5.0))
 				.build())
 			.expect("apply");
-		// After eviction buffer = {60: 8, 120: 2, 180: 5}. Top-2 by
-		// value: (200, 8), (400, 5).
-		assert_eq!(out.diffs.len(), 1);
-		let diff = &out.diffs[0];
-		assert_eq!(diff.kind(), DiffType::Insert);
-		let post = diff.post().expect("post");
+		let post = out.diffs[0].post().expect("post");
 		let by_rank: BTreeMap<u32, (u64, f64)> = (0..post.row_count())
 			.map(|i| {
 				let r = post.row_ref(i).expect("row");
-				(r.u32("rank").unwrap(), (r.u64("key").unwrap(), r.f64("value").unwrap()))
+				(r.u32("rank").unwrap(), (r.u64("trader").unwrap(), r.f64("volume").unwrap()))
 			})
 			.collect();
-		assert_eq!(by_rank.get(&1).copied(), Some((200u64, 8.0f64)));
-		assert_eq!(by_rank.get(&2).copied(), Some((400u64, 5.0f64)));
+		assert_eq!(by_rank.get(&1).copied(), Some((200u64, 8.0)));
+		assert_eq!(by_rank.get(&2).copied(), Some((400u64, 5.0)), "window 0 evicted; trader 100 gone");
 	}
 
 	#[test]
-	fn multiple_groups_isolate_emits() {
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopAggregator>>>::new()
-				.build()
-				.expect("harness");
-		let out = h
-			.apply(TestChangeBuilder::new()
-				.insert(input_row(1, "BTC", 0, 100, 5.0))
-				.insert(input_row(2, "ETH", 0, 700, 50.0))
-				.build())
+	fn buried_window_insert_dropped_silently() {
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopVolume>>>::new()
+			.build()
+			.expect("harness");
+		let _ = h
+			.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 60, 100, 5.0)).build())
 			.expect("apply");
-		// Two groups, each with one buffered window -> rank-1 each.
-		assert_eq!(out.diffs.len(), 1);
-		let post = out.diffs[0].post().expect("post");
-		assert_eq!(post.row_count(), 2);
-		let groups: Vec<String> = (0..post.row_count())
-			.map(|i| post.row_ref(i).unwrap().utf8("group").unwrap_or_default().to_string())
-			.collect();
-		assert!(groups.contains(&"BTC".to_string()));
-		assert!(groups.contains(&"ETH".to_string()));
+		let out = h
+			.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 999, 999.0)).build())
+			.expect("apply");
+		assert_eq!(out.diffs.len(), 0, "insert below high-water dropped");
 	}
 }

@@ -35,12 +35,12 @@ use reifydb_sdk::{
 				KeyedInvertibleAcc, LastValue, Moments, Multiset, OrdF64, RetainedAcc, SealingEndpoint,
 				SealingMax, SealingMin, WindowAccumulator,
 			},
-			multi_rolling_v2::{MultiRollingOperatorV2, MultiRollingRegistrationV2},
+			multi_rolling::{MultiRollingOperator, MultiRollingRegistration},
+			rolling::{RollingOperator, RollingRegistration},
 			rolling_incremental::RollingIncrementalOperator,
-			rolling_v2::{RollingOperatorV2, RollingRegistrationV2},
 			span::WindowSpan,
+			tumbling::{TumblingOperator, TumblingRegistration},
 			tumbling_carry::{TumblingCarryOperator, TumblingCarryRegistration},
-			tumbling_v2::{TumblingOperatorV2, TumblingRegistrationV2},
 		},
 	},
 	row,
@@ -170,7 +170,7 @@ row!(VolumeOut {
 
 pub struct VolumeTumbling;
 
-impl TumblingOperatorV2 for VolumeTumbling {
+impl TumblingOperator for VolumeTumbling {
 	type GroupKey = String;
 	type WindowCoord = u64;
 	type Acc = VolumeAcc;
@@ -196,7 +196,7 @@ impl TumblingOperatorV2 for VolumeTumbling {
 	}
 }
 
-impl TumblingRegistrationV2 for VolumeTumbling {
+impl TumblingRegistration for VolumeTumbling {
 	const NAME: &'static str = "operator_test_volume";
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "chaos fixture: invertible volume sum";
@@ -254,7 +254,7 @@ row!(MinOut {
 
 pub struct MinTumbling;
 
-impl TumblingOperatorV2 for MinTumbling {
+impl TumblingOperator for MinTumbling {
 	type GroupKey = String;
 	type WindowCoord = u64;
 	type Acc = MinAcc;
@@ -280,7 +280,7 @@ impl TumblingOperatorV2 for MinTumbling {
 	}
 }
 
-impl TumblingRegistrationV2 for MinTumbling {
+impl TumblingRegistration for MinTumbling {
 	const NAME: &'static str = "operator_test_min";
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "chaos fixture: removal-safe min over a multiset";
@@ -380,7 +380,7 @@ row!(OhlcvOut {
 
 pub struct OhlcvSealingTumbling;
 
-impl TumblingOperatorV2 for OhlcvSealingTumbling {
+impl TumblingOperator for OhlcvSealingTumbling {
 	type GroupKey = String;
 	type WindowCoord = u64;
 	type Acc = OhlcvAcc;
@@ -409,7 +409,7 @@ impl TumblingOperatorV2 for OhlcvSealingTumbling {
 	}
 }
 
-impl TumblingRegistrationV2 for OhlcvSealingTumbling {
+impl TumblingRegistration for OhlcvSealingTumbling {
 	const NAME: &'static str = "operator_test_ohlcv_sealing";
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "chaos fixture: sealing OHLCV with bounded lateness";
@@ -475,7 +475,7 @@ pub fn rolling_sum() -> RollingSum {
 	}
 }
 
-impl RollingOperatorV2 for RollingSum {
+impl RollingOperator for RollingSum {
 	type GroupKey = String;
 	type WindowCoord = u64;
 	type WindowAcc = WindowSum;
@@ -505,7 +505,7 @@ impl RollingOperatorV2 for RollingSum {
 	}
 }
 
-impl RollingRegistrationV2 for RollingSum {
+impl RollingRegistration for RollingSum {
 	const NAME: &'static str = "operator_test_rolling_sum";
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "chaos fixture: rolling sum over last N windows";
@@ -539,7 +539,7 @@ row!(TopOut {
 
 pub struct TopVolumeMultiRolling;
 
-impl MultiRollingOperatorV2 for TopVolumeMultiRolling {
+impl MultiRollingOperator for TopVolumeMultiRolling {
 	type GroupKey = String;
 	type WindowCoord = u64;
 	type WindowAcc = KeyedInvertibleAcc<u64, Moments>;
@@ -592,7 +592,7 @@ impl MultiRollingOperatorV2 for TopVolumeMultiRolling {
 	}
 }
 
-impl MultiRollingRegistrationV2 for TopVolumeMultiRolling {
+impl MultiRollingRegistration for TopVolumeMultiRolling {
 	const NAME: &'static str = "operator_test_top_volume";
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "chaos fixture: rolling top-2 volume by trader";
@@ -713,7 +713,7 @@ pub fn velocity_incremental() -> VelocityIncremental {
 	}
 }
 
-impl RollingOperatorV2 for VelocityIncremental {
+impl RollingOperator for VelocityIncremental {
 	type GroupKey = String;
 	type WindowCoord = u64;
 	type WindowAcc = LastValue<f64>;
@@ -789,7 +789,7 @@ impl RollingIncrementalOperator for VelocityIncremental {
 	}
 }
 
-impl RollingRegistrationV2 for VelocityIncremental {
+impl RollingRegistration for VelocityIncremental {
 	const NAME: &'static str = "operator_test_velocity";
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "chaos fixture: rolling velocity via running moments";

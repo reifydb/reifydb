@@ -8,7 +8,7 @@
 //! accumulation and partial removal are hit.
 
 use reifydb_sdk::{
-	operator::{FFIOperatorAdapter, windowed::rolling_v2::RollingDriverV2},
+	operator::{FFIOperatorAdapter, windowed::rolling::RollingDriver},
 	testing::chaos::{
 		ChaosHarness,
 		accumulator_oracle::rolling_accumulator_oracle,
@@ -34,7 +34,7 @@ fn value_sampler(none_values: bool) -> ColumnSampler {
 }
 
 fn run(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
-	ChaosHarness::<FFIOperatorAdapter<RollingDriverV2<RollingSum>>>::builder()
+	ChaosHarness::<FFIOperatorAdapter<RollingDriver<RollingSum>>>::builder()
 		.with_input_shape(common::rolling_shape())
 		.with_output_shape(common::rolling_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)

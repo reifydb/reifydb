@@ -16,7 +16,22 @@ use reifydb_core::{
 use reifydb_type::value::row_number::RowNumber;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-use crate::config::Config;
+use crate::{
+	config::Config,
+	error::Result,
+	operator::{
+		OperatorLogic, OperatorMetadata,
+		column::{
+			batch::{InsertBatch, UpdateBatch},
+			operator::OperatorColumn,
+			row::Row,
+		},
+		context::OperatorContext,
+		view::{ChangeView, ColumnsView, DiffView, RowView},
+		windowed::{accumulator::WindowAccumulator, span::Slot},
+	},
+	state::cache::StateCache,
+};
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 struct MetaKey(EncodedKey);
@@ -38,43 +53,39 @@ where
 	MetaKey(group.into_encoded_key())
 }
 
-use crate::{
-	error::Result,
-	operator::{
-		OperatorLogic, OperatorMetadata,
-		column::{
-			batch::{InsertBatch, UpdateBatch},
-			operator::OperatorColumn,
-			row::Row,
-		},
-		context::OperatorContext,
-		view::{ChangeView, ColumnsView, DiffView, RowView},
-		windowed::span::Slot,
-	},
-	state::cache::StateCache,
-};
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(bound(serialize = "K: Serialize", deserialize = "K: serde::de::DeserializeOwned"))]
+struct GroupMeta<K> {
+	high_water: Option<K>,
+}
+
+impl<K> Default for GroupMeta<K> {
+	fn default() -> Self {
+		Self {
+			high_water: None,
+		}
+	}
+}
+
+type AccContribution<A> = <<A as RollingOperator>::WindowAcc as WindowAccumulator>::Contribution;
 
 pub trait RollingOperator {
 	type GroupKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned;
 
-	type WindowKey: Slot + Hash + Serialize + DeserializeOwned;
+	type WindowCoord: Slot + Hash + Serialize + DeserializeOwned;
 
-	type WindowInput: Clone + Debug;
-
-	type Buffered: Clone + Debug + Serialize + DeserializeOwned;
+	type WindowAcc: WindowAccumulator;
 
 	type Output: Clone + Debug + PartialEq;
 
 	fn capacity(&self) -> usize;
 
-	fn extract(&self, row: &impl RowView) -> Option<(Self::GroupKey, Self::WindowKey, Self::WindowInput)>;
-
-	fn fold_into_window(&self, prev: Option<&Self::Buffered>, input: &Self::WindowInput) -> Self::Buffered;
+	fn extract(&self, row: &impl RowView) -> Option<(Self::GroupKey, Self::WindowCoord, AccContribution<Self>)>;
 
 	fn combine(
 		&self,
 		group: &Self::GroupKey,
-		buffer: &BTreeMap<Self::WindowKey, Self::Buffered>,
+		buffer: &BTreeMap<Self::WindowCoord, Self::WindowAcc>,
 	) -> Option<Self::Output>;
 }
 
@@ -95,21 +106,7 @@ where
 	fn encode_row_key(&self, group: &Self::GroupKey) -> EncodedKey;
 }
 
-pub type RollingBuffer<A> = BTreeMap<<A as RollingOperator>::WindowKey, <A as RollingOperator>::Buffered>;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "K: Serialize", deserialize = "K: serde::de::DeserializeOwned"))]
-struct GroupMeta<K> {
-	high_water: Option<K>,
-}
-
-impl<K> Default for GroupMeta<K> {
-	fn default() -> Self {
-		Self {
-			high_water: None,
-		}
-	}
-}
+pub type RollingBuffer<A> = BTreeMap<<A as RollingOperator>::WindowCoord, <A as RollingOperator>::WindowAcc>;
 
 pub struct RollingDriver<A>
 where
@@ -119,13 +116,12 @@ where
 {
 	aggregator: A,
 	buffers: StateCache<RowNumber, RollingBuffer<A>>,
-
-	meta: StateCache<MetaKey, GroupMeta<A::WindowKey>>,
+	meta: StateCache<MetaKey, GroupMeta<A::WindowCoord>>,
 }
 
-enum BufferEvent<A: RollingOperator> {
-	Apply(A::WindowInput),
-	Remove,
+enum AccEvent<A: RollingOperator> {
+	Add(AccContribution<A>),
+	Remove(AccContribution<A>),
 }
 
 impl<A> OperatorMetadata for RollingDriver<A>
@@ -148,8 +144,9 @@ where
 	A: RollingRegistration + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
-	A::WindowKey: Send + Sync,
-	A::Buffered: Send + Sync,
+	A::WindowCoord: Send + Sync,
+	A::WindowAcc: Send + Sync,
+	AccContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
@@ -157,13 +154,13 @@ where
 		Ok(Self {
 			aggregator,
 			buffers: StateCache::<RowNumber, RollingBuffer<A>>::new(8),
-			meta: StateCache::<MetaKey, GroupMeta<A::WindowKey>>::new_internal(64),
+			meta: StateCache::<MetaKey, GroupMeta<A::WindowCoord>>::new_internal(64),
 		})
 	}
 
 	#[allow(clippy::type_complexity)]
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
-		let mut buckets: BTreeMap<(A::GroupKey, A::WindowKey), Vec<BufferEvent<A>>> = BTreeMap::new();
+		let mut buckets: BTreeMap<(A::GroupKey, A::WindowCoord), Vec<AccEvent<A>>> = BTreeMap::new();
 
 		for di in 0..change.diff_count() {
 			let Some(diff) = change.diff(di) else {
@@ -176,13 +173,14 @@ where
 							let Some(row) = cols.row(i) else {
 								continue;
 							};
-							let Some((group, wk, in_row)) = self.aggregator.extract(&row)
+							let Some((group, coord, contribution)) =
+								self.aggregator.extract(&row)
 							else {
 								continue;
 							};
-							buckets.entry((group, wk))
+							buckets.entry((group, coord))
 								.or_default()
-								.push(BufferEvent::Apply(in_row));
+								.push(AccEvent::Add(contribution));
 						}
 					}
 				}
@@ -190,30 +188,22 @@ where
 					if let (Some(pre), Some(post)) = (diff.pre(), diff.post()) {
 						let n = pre.row_count().min(post.row_count());
 						for i in 0..n {
-							let Some(pre_row) = pre.row(i) else {
-								continue;
-							};
-							let Some((g_pre, wk_pre, _)) =
-								self.aggregator.extract(&pre_row)
-							else {
-								continue;
-							};
-							let Some(post_row) = post.row(i) else {
-								continue;
-							};
-							let Some((g_post, wk_post, in_row)) =
-								self.aggregator.extract(&post_row)
-							else {
-								continue;
-							};
-							if g_pre != g_post || wk_pre != wk_post {
-								buckets.entry((g_pre, wk_pre))
+							if let Some(pre_row) = pre.row(i)
+								&& let Some((group, coord, contribution)) =
+									self.aggregator.extract(&pre_row)
+							{
+								buckets.entry((group, coord))
 									.or_default()
-									.push(BufferEvent::Remove);
+									.push(AccEvent::Remove(contribution));
 							}
-							buckets.entry((g_post, wk_post))
-								.or_default()
-								.push(BufferEvent::Apply(in_row));
+							if let Some(post_row) = post.row(i)
+								&& let Some((group, coord, contribution)) =
+									self.aggregator.extract(&post_row)
+							{
+								buckets.entry((group, coord))
+									.or_default()
+									.push(AccEvent::Add(contribution));
+							}
 						}
 					}
 				}
@@ -223,12 +213,14 @@ where
 							let Some(row) = cols.row(i) else {
 								continue;
 							};
-							let Some((group, wk, _)) = self.aggregator.extract(&row) else {
+							let Some((group, coord, contribution)) =
+								self.aggregator.extract(&row)
+							else {
 								continue;
 							};
-							buckets.entry((group, wk))
+							buckets.entry((group, coord))
 								.or_default()
-								.push(BufferEvent::Remove);
+								.push(AccEvent::Remove(contribution));
 						}
 					}
 				}
@@ -248,8 +240,7 @@ where
 			.collect();
 		self.meta.warm(ctx, &meta_keys)?;
 
-		let mut meta_loaded: HashMap<A::GroupKey, GroupMeta<A::WindowKey>> = HashMap::new();
-
+		let mut meta_loaded: HashMap<A::GroupKey, GroupMeta<A::WindowCoord>> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
 				let m = self.meta.get(ctx, &meta_key_for(group))?.unwrap_or_default();
@@ -261,9 +252,9 @@ where
 		let mut resolve_order: Vec<A::GroupKey> = Vec::new();
 		let mut group_keys: Vec<EncodedKey> = Vec::new();
 		let mut seen: BTreeSet<A::GroupKey> = BTreeSet::new();
-		for (group, wk) in buckets.keys() {
+		for (group, coord) in buckets.keys() {
 			let initial_high_water = meta_loaded.get(group).and_then(|m| m.high_water);
-			if initial_high_water.is_none_or(|hw| *wk >= hw) && seen.insert(group.clone()) {
+			if initial_high_water.is_none_or(|hw| *coord >= hw) && seen.insert(group.clone()) {
 				resolve_order.push(group.clone());
 				group_keys.push(self.aggregator.encode_row_key(group));
 			}
@@ -286,11 +277,11 @@ where
 
 		let capacity = self.aggregator.capacity();
 
-		for ((group, wk), events) in buckets {
+		for ((group, coord), events) in buckets {
 			let meta = meta_loaded.entry(group.clone()).or_default();
 
 			if let Some(hw) = meta.high_water
-				&& wk < hw
+				&& coord < hw
 			{
 				continue;
 			}
@@ -322,28 +313,24 @@ where
 				}
 			};
 
+			let mut acc = slot.buffer.remove(&coord).unwrap_or_default();
 			for event in events {
 				match event {
-					BufferEvent::Apply(in_row) => {
-						let prev = slot.buffer.get(&wk);
-						let buffered = self.aggregator.fold_into_window(prev, &in_row);
-						slot.buffer.insert(wk, buffered);
-						while slot.buffer.len() > capacity {
-							slot.buffer.pop_first();
-						}
-						slot.buffer_changed = true;
-					}
-					BufferEvent::Remove => {
-						if slot.buffer.remove(&wk).is_some() {
-							slot.buffer_changed = true;
-						}
-					}
+					AccEvent::Add(c) => acc.add(&c),
+					AccEvent::Remove(c) => acc.remove(&c),
 				}
 			}
+			if !acc.is_empty() {
+				slot.buffer.insert(coord, acc);
+			}
+			while slot.buffer.len() > capacity {
+				slot.buffer.pop_first();
+			}
+			slot.buffer_changed = true;
 
 			meta.high_water = Some(match meta.high_water {
-				Some(hw) if hw > wk => hw,
-				_ => wk,
+				Some(hw) if hw > coord => hw,
+				_ => coord,
 			});
 		}
 
@@ -397,8 +384,6 @@ where
 
 #[cfg(test)]
 mod tests {
-	use std::collections::BTreeMap;
-
 	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 	use reifydb_core::{
 		encoded::{
@@ -413,7 +398,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		operator::{FFIOperatorAdapter, view::RowView},
+		operator::{FFIOperatorAdapter, view::RowView, windowed::accumulator::Moments},
 		row,
 		testing::{
 			builders::{TestChangeBuilder, TestRowBuilder},
@@ -421,76 +406,87 @@ mod tests {
 		},
 	};
 
-	// Test fixture: rolling sum of last 3 windows per group. Buffered
-	// stores the per-window value; combine sums values across the buffer.
+	// Rolling sum over the last 3 windows, where EACH window is itself an
+	// invertible sum accumulator. This exercises the rolling improvement:
+	// multiple input rows can share a window coordinate and accumulate, and a
+	// single event can be removed from inside a window (remove(pre)) without
+	// dropping the whole window - which the old last-write-wins buffer could
+	// not do.
 
-	#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-	struct TestInput {
-		value: f64,
+	#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+	struct WindowSum {
+		moments: Moments,
 	}
 
-	#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
-	struct TestBuffered {
-		value: f64,
+	impl WindowAccumulator for WindowSum {
+		type Contribution = f64;
+		type Output = f64;
+
+		fn add(&mut self, contribution: &f64) {
+			self.moments.add(*contribution);
+		}
+
+		fn remove(&mut self, contribution: &f64) {
+			self.moments.remove(*contribution);
+		}
+
+		fn finalize(&self) -> Option<f64> {
+			(!self.moments.is_empty()).then(|| self.moments.sum())
+		}
+
+		fn is_empty(&self) -> bool {
+			self.moments.is_empty()
+		}
 	}
 
 	#[derive(Clone, Debug, PartialEq)]
 	struct TestOut {
 		group: String,
 		rolling_sum: f64,
-		count: u32,
+		windows: u32,
 	}
 
 	row!(TestOut {
 		group: String,
 		rolling_sum: f64,
-		count: u32
+		windows: u32
 	});
 
-	struct TestRollingSumAggregator {
+	struct TestRollingSum {
 		capacity: usize,
 	}
 
-	impl RollingOperator for TestRollingSumAggregator {
+	impl RollingOperator for TestRollingSum {
 		type GroupKey = String;
-		type WindowKey = u64;
-		type WindowInput = TestInput;
-		type Buffered = TestBuffered;
+		type WindowCoord = u64;
+		type WindowAcc = WindowSum;
 		type Output = TestOut;
 
 		fn capacity(&self) -> usize {
 			self.capacity
 		}
 
-		fn extract(&self, row: &impl RowView) -> Option<(String, u64, TestInput)> {
+		fn extract(&self, row: &impl RowView) -> Option<(String, u64, f64)> {
 			let group = row.utf8("group")?.to_string();
 			let window_start = row.u64("window_start")?;
 			let value = row.f64("value")?;
-			Some((
-				group,
-				window_start,
-				TestInput {
-					value,
-				},
-			))
+			Some((group, window_start, value))
 		}
 
-		fn fold_into_window(&self, _prev: Option<&TestBuffered>, input: &TestInput) -> TestBuffered {
-			TestBuffered {
-				value: input.value,
+		fn combine(&self, group: &String, buffer: &BTreeMap<u64, WindowSum>) -> Option<TestOut> {
+			if buffer.is_empty() {
+				return None;
 			}
-		}
-
-		fn combine(&self, group: &String, buffer: &BTreeMap<u64, TestBuffered>) -> Option<TestOut> {
-			(!buffer.is_empty()).then(|| TestOut {
+			let rolling_sum = buffer.values().filter_map(|w| w.finalize()).sum();
+			Some(TestOut {
 				group: group.clone(),
-				rolling_sum: buffer.values().map(|b| b.value).sum(),
-				count: buffer.len() as u32,
+				rolling_sum,
+				windows: buffer.len() as u32,
 			})
 		}
 	}
 
-	impl RollingRegistration for TestRollingSumAggregator {
+	impl RollingRegistration for TestRollingSum {
 		const NAME: &'static str = "test_rolling_sum";
 		const VERSION: &'static str = "0.0.1";
 		const DESCRIPTION: &'static str = "test fixture";
@@ -526,31 +522,76 @@ mod tests {
 
 	#[test]
 	fn single_insert_emits_insert() {
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
-				.build()
-				.expect("harness");
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+			.build()
+			.expect("harness");
 		let out =
 			h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 		assert_eq!(out.diffs.len(), 1);
 		let diff = &out.diffs[0];
 		assert_eq!(diff.kind(), DiffType::Insert);
 		let r = diff.post().expect("post").row_ref(0).expect("r0");
-		assert_eq!(r.utf8("group").as_deref(), Some("BTC"));
 		assert_eq!(r.f64("rolling_sum"), Some(10.0));
-		assert_eq!(r.u32("count"), Some(1));
+		assert_eq!(r.u32("windows"), Some(1));
 	}
 
 	#[test]
-	fn buffer_fills_then_evicts_smallest() {
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
-				.build()
-				.expect("harness");
+	fn multiple_events_accumulate_within_one_window() {
+		// Two rows share window coordinate 0; the window accumulates to 7.
+		// This is the capability the old last-write-wins buffer lacked.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+			.build()
+			.expect("harness");
+		let out = h
+			.apply(TestChangeBuilder::new()
+				.insert(input_row(1, "BTC", 0, 3.0))
+				.insert(input_row(2, "BTC", 0, 4.0))
+				.build())
+			.expect("apply");
+		let r = out.diffs[0].post().expect("post").row_ref(0).expect("r0");
+		assert_eq!(r.f64("rolling_sum"), Some(7.0));
+		assert_eq!(r.u32("windows"), Some(1), "both rows landed in the same window");
+	}
 
-		// Insert 4 windows; capacity = 3. The smallest (window_start=0)
-		// is evicted on the 4th insert; the resulting Update reflects
-		// the buffer of [60, 120, 180] -> values [2, 3, 4] -> sum 9.
+	#[test]
+	fn partial_remove_within_window_keeps_window_alive() {
+		// Window 0 holds two events (sum 7). Removing one event leaves the
+		// window with sum 4 - the window is NOT dropped wholesale.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+			.build()
+			.expect("harness");
+		let _ = h
+			.apply(TestChangeBuilder::new()
+				.insert(input_row(1, "BTC", 0, 3.0))
+				.insert(input_row(2, "BTC", 0, 4.0))
+				.build())
+			.expect("apply");
+		let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 3.0)).build()).expect("apply");
+		let r = out.diffs[0].post().expect("post").row_ref(0).expect("r0");
+		assert_eq!(r.f64("rolling_sum"), Some(4.0));
+		assert_eq!(r.u32("windows"), Some(1), "window survives partial removal");
+	}
+
+	#[test]
+	fn update_within_window_applies_post_minus_pre() {
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+			.build()
+			.expect("harness");
+		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+		let out = h
+			.apply(TestChangeBuilder::new()
+				.update(input_row(1, "BTC", 0, 10.0), input_row(1, "BTC", 0, 25.0))
+				.build())
+			.expect("apply");
+		let r = out.diffs[0].post().expect("post").row_ref(0).expect("r0");
+		assert_eq!(r.f64("rolling_sum"), Some(25.0), "25, not 10 + 25");
+	}
+
+	#[test]
+	fn buffer_fills_then_evicts_oldest_window() {
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+			.build()
+			.expect("harness");
 		let out = h
 			.apply(TestChangeBuilder::new()
 				.insert(input_row(1, "BTC", 0, 1.0))
@@ -559,181 +600,50 @@ mod tests {
 				.insert(input_row(4, "BTC", 180, 4.0))
 				.build())
 			.expect("apply");
-
-		// One emit per Change: a single Insert (the four inserts collapse
-		// to one row keyed by group "BTC") with the post-eviction state.
-		assert_eq!(out.diffs.len(), 1);
-		let diff = &out.diffs[0];
-		let r = diff.post().expect("post").row_ref(0).expect("r0");
-		assert_eq!(r.f64("rolling_sum"), Some(9.0));
-		assert_eq!(r.u32("count"), Some(3));
+		let r = out.diffs[0].post().expect("post").row_ref(0).expect("r0");
+		assert_eq!(r.f64("rolling_sum"), Some(9.0), "window 0 evicted: 2+3+4");
+		assert_eq!(r.u32("windows"), Some(3));
 	}
 
 	#[test]
-	fn update_on_buried_window_dropped_late() {
-		// The driver's late-event filter mirrors the tumbling driver:
-		// once high_water has advanced past a WindowKey, any further
-		// event for that older key (Insert, Update, Remove) is dropped
-		// silently. An Update for a buried (non-newest) window does NOT
-		// reach `fold_into_window` and the buffer is unchanged.
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
-				.build()
-				.expect("harness");
-
-		let _ = h
-			.apply(TestChangeBuilder::new()
-				.insert(input_row(1, "BTC", 0, 1.0))
-				.insert(input_row(2, "BTC", 60, 2.0))
-				.insert(input_row(3, "BTC", 120, 3.0))
-				.build())
-			.expect("apply");
-
-		// Update the OLDEST (buried) window. high_water = 120; this
-		// Update for wk=0 is dropped. No diff emitted because the
-		// buffer didn't change.
-		let out = h
-			.apply(TestChangeBuilder::new()
-				.update(input_row(1, "BTC", 0, 1.0), input_row(1, "BTC", 0, 99.0))
-				.build())
-			.expect("apply");
-
-		assert_eq!(out.diffs.len(), 0, "buried-window Update is dropped late, no emit");
-	}
-
-	#[test]
-	fn remove_late_window_dropped() {
-		// Remove for a WindowKey strictly older than high_water is
-		// dropped silently, matching the tumbling driver's behaviour.
-		// The buffer keeps the would-be-removed entry.
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
-				.build()
-				.expect("harness");
-
-		let _ = h
-			.apply(TestChangeBuilder::new()
-				.insert(input_row(1, "BTC", 0, 10.0))
-				.insert(input_row(2, "BTC", 60, 20.0))
-				.build())
-			.expect("apply");
-
-		// high_water = 60; Remove for wk=0 is dropped late. No diff.
-		let out =
-			h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
-
-		assert_eq!(out.diffs.len(), 0, "late Remove dropped, buffer unchanged");
-	}
-
-	#[test]
-	fn remove_newest_window_drops_from_buffer() {
-		// A Remove for the newest WindowKey (wk == high_water) is NOT
-		// late and is processed normally: the entry is dropped from the
-		// buffer and an Update is emitted with the remaining contents.
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
-				.build()
-				.expect("harness");
-
-		let _ = h
-			.apply(TestChangeBuilder::new()
-				.insert(input_row(1, "BTC", 0, 10.0))
-				.insert(input_row(2, "BTC", 60, 20.0))
-				.build())
-			.expect("apply");
-
-		// high_water = 60; Remove for wk=60 is at the high-water mark,
-		// not strictly older, so the filter lets it through.
-		let out =
-			h.apply(TestChangeBuilder::new().remove(input_row(2, "BTC", 60, 20.0)).build()).expect("apply");
-
-		let diff = &out.diffs[0];
-		assert_eq!(diff.kind(), DiffType::Update);
-		let r = diff.post().expect("post").row_ref(0).expect("r0");
-		assert_eq!(r.f64("rolling_sum"), Some(10.0));
-		assert_eq!(r.u32("count"), Some(1));
-	}
-
-	#[test]
-	fn late_insert_for_buried_window_dropped() {
-		// Late Insert for a window older than high_water is dropped
-		// silently, mirroring the tumbling driver's late-event rule.
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
-				.build()
-				.expect("harness");
-
+	fn late_window_event_dropped() {
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+			.build()
+			.expect("harness");
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 60, 5.0)).build()).expect("apply");
-
-		// high_water = 60; an Insert for wk=0 is strictly older. Dropped.
 		let out =
 			h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
-		assert_eq!(out.diffs.len(), 0);
+		assert_eq!(out.diffs.len(), 0, "event for a buried window is dropped");
 	}
 
 	#[test]
 	fn remove_clears_buffer_emits_nothing() {
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
-				.build()
-				.expect("harness");
-
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+			.build()
+			.expect("harness");
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
-
-		// Remove the only entry; combine returns None.
 		let out =
 			h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
-
 		assert_eq!(out.diffs.len(), 0);
 	}
 
 	#[test]
-	fn update_replaces_window_does_not_double_count() {
-		// Same (group, window_start) Update should replace the
-		// buffered value, not add to it. The chaos-test defect class
-		// "accumulate-on-Update" lands here.
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
-				.build()
-				.expect("harness");
-
-		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
-		let out = h
-			.apply(TestChangeBuilder::new()
-				.update(input_row(1, "BTC", 0, 10.0), input_row(1, "BTC", 0, 25.0))
-				.build())
-			.expect("apply");
-
-		let diff = &out.diffs[0];
-		assert_eq!(diff.kind(), DiffType::Update);
-		let r = diff.post().expect("post").row_ref(0).expect("r0");
-		// 25, not 10 + 25 = 35.
-		assert_eq!(r.f64("rolling_sum"), Some(25.0));
-		assert_eq!(r.u32("count"), Some(1));
-	}
-
-	#[test]
 	fn multiple_groups_isolate_buffers() {
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSumAggregator>>>::new()
-				.build()
-				.expect("harness");
-
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
+			.build()
+			.expect("harness");
 		let out = h
 			.apply(TestChangeBuilder::new()
 				.insert(input_row(1, "BTC", 0, 10.0))
 				.insert(input_row(2, "ETH", 0, 50.0))
 				.build())
 			.expect("apply");
-
 		assert_eq!(out.diffs.len(), 1);
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 2);
-		let r0 = post.row_ref(0).expect("r0");
-		let r1 = post.row_ref(1).expect("r1");
-		assert_eq!(r0.utf8("group").as_deref(), Some("BTC"));
-		assert_eq!(r0.f64("rolling_sum"), Some(10.0));
-		assert_eq!(r1.utf8("group").as_deref(), Some("ETH"));
-		assert_eq!(r1.f64("rolling_sum"), Some(50.0));
+		assert_eq!(post.row_ref(0).expect("r0").utf8("group").as_deref(), Some("BTC"));
+		assert_eq!(post.row_ref(0).expect("r0").f64("rolling_sum"), Some(10.0));
+		assert_eq!(post.row_ref(1).expect("r1").utf8("group").as_deref(), Some("ETH"));
+		assert_eq!(post.row_ref(1).expect("r1").f64("rolling_sum"), Some(50.0));
 	}
 }

@@ -759,6 +759,7 @@ where
 
 #[cfg(test)]
 mod tests {
+	use postcard::{from_bytes, to_allocvec};
 	use serde::{Deserialize, Serialize};
 
 	use super::*;
@@ -1026,8 +1027,8 @@ mod tests {
 		let mut m = Moments::default();
 		m.add(1.5);
 		m.add(2.5);
-		let bytes = postcard::to_allocvec(&m).expect("serialize");
-		let restored: Moments = postcard::from_bytes(&bytes).expect("deserialize");
+		let bytes = to_allocvec(&m).expect("serialize");
+		let restored: Moments = from_bytes(&bytes).expect("deserialize");
 		assert_eq!(restored, m);
 	}
 
@@ -1037,8 +1038,8 @@ mod tests {
 		ms.add(of64(1.0));
 		ms.add(of64(1.0));
 		ms.add(of64(2.0));
-		let bytes = postcard::to_allocvec(&ms).expect("serialize");
-		let restored: Multiset<OrdF64> = postcard::from_bytes(&bytes).expect("deserialize");
+		let bytes = to_allocvec(&ms).expect("serialize");
+		let restored: Multiset<OrdF64> = from_bytes(&bytes).expect("deserialize");
 		assert_eq!(restored, ms);
 		assert_eq!(restored.min(), Some(&of64(1.0)));
 		assert_eq!(restored.total(), 3);
@@ -1049,8 +1050,8 @@ mod tests {
 		let mut rm: RetainedMap<u64, i64> = RetainedMap::default();
 		rm.insert(1, 10);
 		rm.insert(2, 20);
-		let bytes = postcard::to_allocvec(&rm).expect("serialize");
-		let restored: RetainedMap<u64, i64> = postcard::from_bytes(&bytes).expect("deserialize");
+		let bytes = to_allocvec(&rm).expect("serialize");
+		let restored: RetainedMap<u64, i64> = from_bytes(&bytes).expect("deserialize");
 		assert_eq!(restored, rm);
 		assert_eq!(restored.len(), 2);
 	}
@@ -1145,8 +1146,8 @@ mod tests {
 		let mut acc: RetainedAcc<u64, i64> = RetainedAcc::default();
 		acc.add(&(1, 10));
 		acc.add(&(2, 20));
-		let bytes = postcard::to_allocvec(&acc).expect("serialize");
-		let restored: RetainedAcc<u64, i64> = postcard::from_bytes(&bytes).expect("deserialize");
+		let bytes = to_allocvec(&acc).expect("serialize");
+		let restored: RetainedAcc<u64, i64> = from_bytes(&bytes).expect("deserialize");
 		assert_eq!(restored, acc);
 	}
 
@@ -1187,8 +1188,8 @@ mod tests {
 		let mut acc: KeyedInvertibleAcc<u64, Moments> = KeyedInvertibleAcc::default();
 		acc.add(&(1, 10.0));
 		acc.add(&(2, 20.0));
-		let bytes = postcard::to_allocvec(&acc).expect("serialize");
-		let restored: KeyedInvertibleAcc<u64, Moments> = postcard::from_bytes(&bytes).expect("deserialize");
+		let bytes = to_allocvec(&acc).expect("serialize");
+		let restored: KeyedInvertibleAcc<u64, Moments> = from_bytes(&bytes).expect("deserialize");
 		assert_eq!(restored, acc);
 	}
 
@@ -1268,15 +1269,15 @@ mod tests {
 		let mut mx: SealingMax<u64, i64> = SealingMax::with_lateness(10);
 		mx.add(&(0, 5));
 		mx.add(&(12, 8));
-		let bytes = postcard::to_allocvec(&mx).expect("serialize");
-		let restored: SealingMax<u64, i64> = postcard::from_bytes(&bytes).expect("deserialize");
+		let bytes = to_allocvec(&mx).expect("serialize");
+		let restored: SealingMax<u64, i64> = from_bytes(&bytes).expect("deserialize");
 		assert_eq!(restored, mx);
 
 		let mut ep: SealingEndpoint<u64, i64> = SealingEndpoint::with_lateness(10);
 		ep.add(&(0, 100));
 		ep.add(&(12, 300));
-		let bytes = postcard::to_allocvec(&ep).expect("serialize");
-		let restored: SealingEndpoint<u64, i64> = postcard::from_bytes(&bytes).expect("deserialize");
+		let bytes = to_allocvec(&ep).expect("serialize");
+		let restored: SealingEndpoint<u64, i64> = from_bytes(&bytes).expect("deserialize");
 		assert_eq!(restored, ep);
 	}
 }

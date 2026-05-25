@@ -9,7 +9,7 @@
 //! (`OhlcvSealingTumbling`).
 
 use reifydb_sdk::{
-	operator::{FFIOperatorAdapter, windowed::tumbling_v2::TumblingDriverV2},
+	operator::{FFIOperatorAdapter, windowed::tumbling::TumblingDriver},
 	testing::chaos::{
 		ChaosHarness,
 		accumulator_oracle::tumbling_accumulator_oracle,
@@ -35,7 +35,7 @@ fn size_sampler(none_values: bool) -> ColumnSampler {
 }
 
 fn run_volume(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
-	ChaosHarness::<FFIOperatorAdapter<TumblingDriverV2<VolumeTumbling>>>::builder()
+	ChaosHarness::<FFIOperatorAdapter<TumblingDriver<VolumeTumbling>>>::builder()
 		.with_input_shape(common::tumbling_shape())
 		.with_output_shape(common::volume_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -52,7 +52,7 @@ fn run_volume(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
 }
 
 fn run_min(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
-	ChaosHarness::<FFIOperatorAdapter<TumblingDriverV2<MinTumbling>>>::builder()
+	ChaosHarness::<FFIOperatorAdapter<TumblingDriver<MinTumbling>>>::builder()
 		.with_input_shape(common::tumbling_shape())
 		.with_output_shape(common::min_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -75,7 +75,7 @@ fn run_ohlcv(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
 	} else {
 		samplers::f64_range(10.0..500.0)
 	};
-	ChaosHarness::<FFIOperatorAdapter<TumblingDriverV2<OhlcvSealingTumbling>>>::builder()
+	ChaosHarness::<FFIOperatorAdapter<TumblingDriver<OhlcvSealingTumbling>>>::builder()
 		.with_input_shape(common::ohlcv_shape())
 		.with_output_shape(common::ohlcv_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)

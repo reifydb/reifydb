@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::{
+	collections::{BTreeMap, BTreeSet, HashMap},
+	fmt::Debug,
+	hash::Hash,
+};
 
 use reifydb_abi::flow::diff::DiffType;
 use reifydb_core::{
@@ -10,7 +14,7 @@ use reifydb_core::{
 	key::flow_node_internal_state::FlowNodeInternalStateKey,
 };
 use reifydb_type::value::row_number::RowNumber;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
 	config::Config,
@@ -23,8 +27,11 @@ use crate::{
 			row::Row,
 		},
 		context::OperatorContext,
-		view::{ChangeView, ColumnsView, DiffView},
-		windowed::{TumblingOperator, TumblingRegistration, WindowSlots, span::WindowSpan},
+		view::{ChangeView, ColumnsView, DiffView, RowView},
+		windowed::{
+			accumulator::WindowAccumulator,
+			span::{Slot, WindowSpan},
+		},
 	},
 	state::cache::StateCache,
 };
@@ -50,26 +57,66 @@ where
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(bound(
-	serialize = "K: Serialize, S: Serialize",
-	deserialize = "K: serde::de::DeserializeOwned, S: serde::de::DeserializeOwned"
-))]
-struct GroupMeta<K, S> {
+#[serde(bound(serialize = "K: Serialize", deserialize = "K: serde::de::DeserializeOwned"))]
+struct GroupMeta<K> {
 	high_water: Option<K>,
-
-	carry_for_current: Option<S>,
-
-	current_window_carry: Option<S>,
 }
 
-impl<K, S> Default for GroupMeta<K, S> {
+impl<K> Default for GroupMeta<K> {
 	fn default() -> Self {
 		Self {
 			high_water: None,
-			carry_for_current: None,
-			current_window_carry: None,
 		}
 	}
+}
+
+type AccContribution<A> = <<A as TumblingOperator>::Acc as WindowAccumulator>::Contribution;
+type AccValue<A> = <<A as TumblingOperator>::Acc as WindowAccumulator>::Output;
+type Buckets<A> = BTreeMap<
+	(<A as TumblingOperator>::GroupKey, WindowSpan<<A as TumblingOperator>::WindowCoord>),
+	Vec<AccEvent<A>>,
+>;
+
+pub trait TumblingOperator {
+	type GroupKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned;
+
+	type WindowCoord: Slot + Hash + Serialize + DeserializeOwned;
+
+	type Acc: WindowAccumulator;
+
+	type Output: Clone + Debug + PartialEq;
+
+	fn extract(&self, row: &impl RowView) -> Option<(Self::GroupKey, Self::WindowCoord, AccContribution<Self>)>;
+
+	fn window_for(&self, coord: Self::WindowCoord) -> WindowSpan<Self::WindowCoord>;
+
+	fn build_output(
+		&self,
+		group: &Self::GroupKey,
+		span: WindowSpan<Self::WindowCoord>,
+		value: AccValue<Self>,
+	) -> Option<Self::Output>;
+
+	fn new_accumulator(&self) -> Self::Acc {
+		Self::Acc::default()
+	}
+}
+
+pub trait TumblingRegistration: TumblingOperator + Sized
+where
+	Self::Output: Row,
+	for<'a> &'a Self::GroupKey: IntoEncodedKey,
+{
+	const NAME: &'static str;
+	const VERSION: &'static str;
+	const DESCRIPTION: &'static str;
+	const INPUT_COLUMNS: &'static [OperatorColumn];
+	const OUTPUT_COLUMNS: &'static [OperatorColumn];
+	const CAPABILITIES: u32;
+
+	fn from_config(operator_id: FlowNodeId, config: &Config) -> Result<Self>;
+
+	fn encode_row_key(&self, group: &Self::GroupKey, window_start: Self::WindowCoord) -> EncodedKey;
 }
 
 pub struct TumblingDriver<A>
@@ -79,20 +126,13 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	aggregator: A,
-	slots: StateCache<RowNumber, WindowSlots<A>>,
-
-	meta: StateCache<MetaKey, GroupMeta<A::SlotKey, A::SlotContribution>>,
+	accs: StateCache<RowNumber, A::Acc>,
+	meta: StateCache<MetaKey, GroupMeta<A::WindowCoord>>,
 }
 
-enum SlotEvent<A: TumblingOperator> {
-	Apply(A::SlotKey, A::SlotInput),
-	Remove(A::SlotKey),
-}
-
-#[derive(Clone, Copy)]
-enum DiffKind {
-	Apply,
-	Remove,
+enum AccEvent<A: TumblingOperator> {
+	Add(AccContribution<A>),
+	Remove(AccContribution<A>),
 }
 
 impl<A> TumblingDriver<A>
@@ -101,24 +141,48 @@ where
 	A::Output: Row,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
-	#[allow(clippy::type_complexity)]
-	fn route_rows<C: ColumnsView>(
-		&self,
-		cols: &C,
-		kind: DiffKind,
-		buckets: &mut BTreeMap<(A::GroupKey, WindowSpan<A::SlotKey>), Vec<SlotEvent<A>>>,
-	) {
+	fn route(&self, change: &impl ChangeView) -> Buckets<A> {
+		let mut buckets: Buckets<A> = BTreeMap::new();
+
+		for di in 0..change.diff_count() {
+			let Some(diff) = change.diff(di) else {
+				continue;
+			};
+			match diff.kind() {
+				DiffType::Insert => {
+					if let Some(cols) = diff.post() {
+						self.push_all(&cols, &mut buckets, true);
+					}
+				}
+				DiffType::Update => {
+					if let (Some(pre), Some(post)) = (diff.pre(), diff.post()) {
+						self.push_all(&pre, &mut buckets, false);
+						self.push_all(&post, &mut buckets, true);
+					}
+				}
+				DiffType::Remove => {
+					if let Some(cols) = diff.pre() {
+						self.push_all(&cols, &mut buckets, false);
+					}
+				}
+			}
+		}
+		buckets
+	}
+
+	fn push_all<C: ColumnsView>(&self, cols: &C, buckets: &mut Buckets<A>, is_add: bool) {
 		for i in 0..cols.row_count() {
 			let Some(row) = cols.row(i) else {
 				continue;
 			};
-			let Some((group, slot, slot_input)) = self.aggregator.extract(&row) else {
+			let Some((group, coord, contribution)) = self.aggregator.extract(&row) else {
 				continue;
 			};
-			let span = self.aggregator.window_for(slot);
-			let event = match kind {
-				DiffKind::Apply => SlotEvent::Apply(slot, slot_input),
-				DiffKind::Remove => SlotEvent::Remove(slot),
+			let span = self.aggregator.window_for(coord);
+			let event = if is_add {
+				AccEvent::Add(contribution)
+			} else {
+				AccEvent::Remove(contribution)
 			};
 			buckets.entry((group, span)).or_default().push(event);
 		}
@@ -145,41 +209,23 @@ where
 	A: TumblingRegistration + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
-	A::SlotKey: Send + Sync,
-	A::SlotContribution: Send + Sync,
+	A::WindowCoord: Send + Sync,
+	A::Acc: Send + Sync,
+	AccContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
 		let aggregator = A::from_config(operator_id, config)?;
 		Ok(Self {
 			aggregator,
-			slots: StateCache::<RowNumber, WindowSlots<A>>::new(8),
-			meta: StateCache::<MetaKey, GroupMeta<A::SlotKey, A::SlotContribution>>::new_internal(64),
+			accs: StateCache::<RowNumber, A::Acc>::new(8),
+			meta: StateCache::<MetaKey, GroupMeta<A::WindowCoord>>::new_internal(64),
 		})
 	}
 
 	#[allow(clippy::type_complexity)]
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
-		let mut buckets: BTreeMap<(A::GroupKey, WindowSpan<A::SlotKey>), Vec<SlotEvent<A>>> = BTreeMap::new();
-
-		for di in 0..change.diff_count() {
-			let Some(diff) = change.diff(di) else {
-				continue;
-			};
-			match diff.kind() {
-				DiffType::Insert | DiffType::Update => {
-					if let Some(cols) = diff.post() {
-						self.route_rows(&cols, DiffKind::Apply, &mut buckets);
-					}
-				}
-				DiffType::Remove => {
-					if let Some(cols) = diff.pre() {
-						self.route_rows(&cols, DiffKind::Remove, &mut buckets);
-					}
-				}
-			}
-		}
-
+		let buckets = self.route(&change);
 		if buckets.is_empty() {
 			return Ok(());
 		}
@@ -193,7 +239,7 @@ where
 			.collect();
 		self.meta.warm(ctx, &meta_keys)?;
 
-		let mut meta_loaded: HashMap<A::GroupKey, GroupMeta<A::SlotKey, A::SlotContribution>> = HashMap::new();
+		let mut meta_loaded: HashMap<A::GroupKey, GroupMeta<A::WindowCoord>> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
 				let m = self.meta.get(ctx, &meta_key_for(group))?.unwrap_or_default();
@@ -212,8 +258,8 @@ where
 			}
 		}
 		let resolved_rows = ctx.get_or_create_row_numbers(&survivor_keys)?;
-		let slot_keys: Vec<RowNumber> = resolved_rows.iter().map(|(rn, _)| *rn).collect();
-		self.slots.warm(ctx, &slot_keys)?;
+		let acc_keys: Vec<RowNumber> = resolved_rows.iter().map(|(rn, _)| *rn).collect();
+		self.accs.warm(ctx, &acc_keys)?;
 		let mut resolved_rows = resolved_rows.into_iter();
 		let slot_resolved: Vec<Option<(RowNumber, bool)>> = slot_survives
 			.into_iter()
@@ -233,16 +279,10 @@ where
 			let entry = meta_loaded.entry(group.clone()).or_default();
 			match entry.high_water {
 				Some(hw) if span.start < hw => continue,
-				Some(hw) if span.start > hw => {
-					entry.carry_for_current = entry.current_window_carry.take();
-					entry.high_water = Some(span.start);
-				}
+				Some(hw) if span.start > hw => entry.high_water = Some(span.start),
 				Some(_) => {}
-				None => {
-					entry.high_water = Some(span.start);
-				}
+				None => entry.high_water = Some(span.start),
 			}
-			let prev_close = entry.carry_for_current.clone();
 
 			let (row_number, is_new) = match slot_pre {
 				Some(resolved) => resolved,
@@ -252,32 +292,19 @@ where
 				}
 			};
 
-			let mut slot_map: WindowSlots<A> = self.slots.get(ctx, &row_number)?.unwrap_or_default();
-			let was_empty_before = slot_map.is_empty();
+			let mut acc: A::Acc =
+				self.accs.get(ctx, &row_number)?.unwrap_or_else(|| self.aggregator.new_accumulator());
+			let was_empty_before = acc.is_empty();
 
 			for event in events {
 				match event {
-					SlotEvent::Apply(slot, in_row) => {
-						let prev = slot_map.get(&slot);
-						let contribution = self.aggregator.fold_into_slot(prev, &in_row);
-						slot_map.insert(slot, contribution);
-					}
-					SlotEvent::Remove(slot) => {
-						slot_map.remove(&slot);
-					}
+					AccEvent::Add(c) => acc.add(&c),
+					AccEvent::Remove(c) => acc.remove(&c),
 				}
 			}
 
-			let output = self.aggregator.combine(&group, span, &slot_map, prev_close.as_ref());
-
-			if output.is_some()
-				&& let Some(new_carry) = self.aggregator.carry_forward(&slot_map, prev_close.as_ref())
-			{
-				let entry = meta_loaded.entry(group.clone()).or_default();
-				entry.current_window_carry = Some(new_carry);
-			}
-
-			self.slots.put(ctx, &row_number, slot_map)?;
+			let output = acc.finalize().and_then(|value| self.aggregator.build_output(&group, span, value));
+			self.accs.put(ctx, &row_number, acc)?;
 
 			if let Some(out) = output {
 				if is_new || was_empty_before {
@@ -311,7 +338,7 @@ where
 	}
 
 	fn flush_state(&mut self, ctx: &mut impl OperatorContext) -> Result<()> {
-		self.slots.flush(ctx)?;
+		self.accs.flush(ctx)?;
 		self.meta.flush(ctx)?;
 		Ok(())
 	}
@@ -319,8 +346,6 @@ where
 
 #[cfg(test)]
 mod tests {
-	use std::collections::BTreeMap;
-
 	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 	use reifydb_core::{
 		encoded::{
@@ -335,7 +360,11 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		operator::{FFIOperatorAdapter, view::RowView},
+		operator::{
+			FFIOperatorAdapter,
+			view::RowView,
+			windowed::accumulator::{Moments, Multiset, OrdF64},
+		},
 		row,
 		testing::{
 			builders::{TestChangeBuilder, TestRowBuilder},
@@ -343,84 +372,169 @@ mod tests {
 		},
 	};
 
-	// Test fixture: a per-window volume aggregator with last-write-wins
-	// per-slot replacement. Keyed by group `String`, slotted by `u64`.
-	// `combine` returns total volume across the window plus its
-	// `(group, window_start)` identifier so downstream assertions can
-	// inspect routing, not just value math.
+	// An invertible volume aggregator. Its accumulator keeps only running
+	// Moments (no per-slot map): Insert adds, Update is routed by the driver
+	// as remove(pre)+add(post), Remove subtracts. This is the case the old
+	// per-slot map existed to handle and that the pre/post diff now subsumes.
 
-	#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-	struct TestInput {
-		size: f64,
+	#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+	struct VolumeAcc {
+		moments: Moments,
 	}
 
-	#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
-	struct TestSlot {
-		size: f64,
+	impl WindowAccumulator for VolumeAcc {
+		type Contribution = f64;
+		type Output = OrdF64;
+
+		fn add(&mut self, contribution: &f64) {
+			self.moments.add(*contribution);
+		}
+
+		fn remove(&mut self, contribution: &f64) {
+			self.moments.remove(*contribution);
+		}
+
+		fn finalize(&self) -> Option<OrdF64> {
+			(!self.moments.is_empty()).then(|| OrdF64::new(self.moments.sum()).expect("finite"))
+		}
+
+		fn is_empty(&self) -> bool {
+			self.moments.is_empty()
+		}
 	}
 
 	#[derive(Clone, Debug, PartialEq)]
-	struct TestOut {
+	struct VolumeOut {
 		group: String,
 		window_start: u64,
 		volume: f64,
 	}
 
-	row!(TestOut {
+	row!(VolumeOut {
 		group: String,
 		window_start: u64,
 		volume: f64
 	});
 
-	struct TestVolumeAggregator;
+	struct TestVolume;
 
-	impl TumblingOperator for TestVolumeAggregator {
+	impl TumblingOperator for TestVolume {
 		type GroupKey = String;
-		type SlotKey = u64;
-		type SlotInput = TestInput;
-		type SlotContribution = TestSlot;
-		type Output = TestOut;
+		type WindowCoord = u64;
+		type Acc = VolumeAcc;
+		type Output = VolumeOut;
 
-		fn extract(&self, row: &impl RowView) -> Option<(String, u64, TestInput)> {
+		fn extract(&self, row: &impl RowView) -> Option<(String, u64, f64)> {
 			let group = row.utf8("group")?.to_string();
 			let slot = row.u64("slot")?;
 			let size = row.f64("size")?;
-			Some((
-				group,
-				slot,
-				TestInput {
-					size,
-				},
-			))
+			Some((group, slot, size))
 		}
 
-		fn fold_into_slot(&self, _prev: Option<&TestSlot>, input: &TestInput) -> TestSlot {
-			TestSlot {
-				size: input.size,
-			}
+		fn window_for(&self, coord: u64) -> WindowSpan<u64> {
+			WindowSpan::for_slot(coord, 60)
 		}
 
-		fn combine(
-			&self,
-			group: &String,
-			span: WindowSpan<u64>,
-			slots: &BTreeMap<u64, TestSlot>,
-			_prev_window_close: Option<&TestSlot>,
-		) -> Option<TestOut> {
-			(!slots.is_empty()).then(|| TestOut {
+		fn build_output(&self, group: &String, span: WindowSpan<u64>, value: OrdF64) -> Option<VolumeOut> {
+			Some(VolumeOut {
 				group: group.clone(),
 				window_start: span.start,
-				volume: slots.values().map(|s| s.size).sum(),
+				volume: value.get(),
 			})
-		}
-
-		fn window_for(&self, slot: u64) -> WindowSpan<u64> {
-			WindowSpan::for_slot(slot, 60)
 		}
 	}
 
-	impl TumblingRegistration for TestVolumeAggregator {
-		const NAME: &'static str = "test_volume_tumbling";
+	impl TumblingRegistration for TestVolume {
+		const NAME: &'static str = "test_volume";
+		const VERSION: &'static str = "0.0.1";
+		const DESCRIPTION: &'static str = "test fixture";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
+
+		fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+			Ok(Self)
+		}
+
+		fn encode_row_key(&self, group: &String, window_start: u64) -> EncodedKey {
+			EncodedKey::builder().str(group).u64(window_start).build()
+		}
+	}
+
+	// A removal-safe minimum aggregator over an ordered multiset. Demonstrates
+	// the non-invertible family: an Update that replaces the current minimum
+	// with a larger value must raise the window minimum, which a scalar
+	// running-min could not do.
+
+	#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+	struct MinAcc {
+		values: Multiset<OrdF64>,
+	}
+
+	impl WindowAccumulator for MinAcc {
+		type Contribution = OrdF64;
+		type Output = OrdF64;
+
+		fn add(&mut self, contribution: &OrdF64) {
+			self.values.add(*contribution);
+		}
+
+		fn remove(&mut self, contribution: &OrdF64) {
+			self.values.remove(contribution);
+		}
+
+		fn finalize(&self) -> Option<OrdF64> {
+			self.values.min().copied()
+		}
+
+		fn is_empty(&self) -> bool {
+			self.values.is_empty()
+		}
+	}
+
+	#[derive(Clone, Debug, PartialEq)]
+	struct MinOut {
+		group: String,
+		window_start: u64,
+		min: f64,
+	}
+
+	row!(MinOut {
+		group: String,
+		window_start: u64,
+		min: f64
+	});
+
+	struct TestMin;
+
+	impl TumblingOperator for TestMin {
+		type GroupKey = String;
+		type WindowCoord = u64;
+		type Acc = MinAcc;
+		type Output = MinOut;
+
+		fn extract(&self, row: &impl RowView) -> Option<(String, u64, OrdF64)> {
+			let group = row.utf8("group")?.to_string();
+			let slot = row.u64("slot")?;
+			let size = row.f64("size")?;
+			Some((group, slot, OrdF64::new(size)?))
+		}
+
+		fn window_for(&self, coord: u64) -> WindowSpan<u64> {
+			WindowSpan::for_slot(coord, 60)
+		}
+
+		fn build_output(&self, group: &String, span: WindowSpan<u64>, value: OrdF64) -> Option<MinOut> {
+			Some(MinOut {
+				group: group.clone(),
+				window_start: span.start,
+				min: value.get(),
+			})
+		}
+	}
+
+	impl TumblingRegistration for TestMin {
+		const NAME: &'static str = "test_min";
 		const VERSION: &'static str = "0.0.1";
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -453,42 +567,34 @@ mod tests {
 
 	#[test]
 	fn single_insert_emits_insert() {
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
-				.build()
-				.expect("harness");
-		let change = TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build();
-		let out = h.apply(change).expect("apply");
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolume>>>::new()
+			.build()
+			.expect("harness");
+		let out =
+			h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 		assert_eq!(out.diffs.len(), 1);
 		let diff = &out.diffs[0];
 		assert_eq!(diff.kind(), DiffType::Insert);
-		let post = diff.post().expect("post");
-		assert_eq!(post.row_count(), 1);
-		let r = post.row_ref(0).expect("r0");
+		let r = diff.post().expect("post").row_ref(0).expect("r0");
 		assert_eq!(r.utf8("group").as_deref(), Some("BTC"));
 		assert_eq!(r.u64("window_start"), Some(0));
 		assert_eq!(r.f64("volume"), Some(10.0));
 	}
 
 	#[test]
-	fn update_replaces_slot_does_not_double_count() {
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
-				.build()
-				.expect("harness");
-
-		// First batch: insert volume 10 at slot 0 of window [0, 60).
+	fn update_applies_post_minus_pre_no_double_count() {
+		// The crux of the redesign: an Update carries pre=10, post=25.
+		// The driver routes it as remove(10)+add(25) on a running sum,
+		// yielding 25 - not 10 + 25 = 35 - with NO per-slot map.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolume>>>::new()
+			.build()
+			.expect("harness");
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
-
-		// Second batch: Update at slot 0 with volume 25 - per-slot
-		// replacement means the window's volume should now be 25,
-		// NOT 10 + 25 = 35 (the historical accumulate-on-Update bug).
 		let out = h
 			.apply(TestChangeBuilder::new()
 				.update(input_row(1, "BTC", 0, 10.0), input_row(1, "BTC", 0, 25.0))
 				.build())
 			.expect("apply");
-
 		assert_eq!(out.diffs.len(), 1);
 		let diff = &out.diffs[0];
 		assert_eq!(diff.kind(), DiffType::Update);
@@ -497,25 +603,21 @@ mod tests {
 	}
 
 	#[test]
-	fn remove_drops_slot_and_emits_update_with_remaining() {
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
-				.build()
-				.expect("harness");
-
-		// Insert two slots in the same window.
+	fn two_contributions_then_remove_subtracts_pre() {
+		// Two distinct slots in one window sum to 15; a Remove carrying
+		// pre=5 subtracts that contribution, leaving 10. No slot key is
+		// needed - the diff's pre value is what gets subtracted.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolume>>>::new()
+			.build()
+			.expect("harness");
 		let _ = h
 			.apply(TestChangeBuilder::new()
 				.insert(input_row(1, "BTC", 0, 10.0))
 				.insert(input_row(2, "BTC", 30, 5.0))
 				.build())
 			.expect("apply");
-
-		// Remove slot 30. Window should now hold only slot 0
-		// (volume 10), emitted as Update.
 		let out =
 			h.apply(TestChangeBuilder::new().remove(input_row(2, "BTC", 30, 5.0)).build()).expect("apply");
-
 		assert_eq!(out.diffs.len(), 1);
 		let diff = &out.diffs[0];
 		assert_eq!(diff.kind(), DiffType::Update);
@@ -525,89 +627,110 @@ mod tests {
 
 	#[test]
 	fn remove_clears_window_emits_nothing() {
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
-				.build()
-				.expect("harness");
-
+		// Locked decision: an emptied window emits nothing (no downstream
+		// Remove). The accumulator is empty; finalize returns None.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolume>>>::new()
+			.build()
+			.expect("harness");
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
-
-		// Remove the only slot. combine returns None, no diff.
 		let out =
 			h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
-
 		assert_eq!(out.diffs.len(), 0);
 	}
 
 	#[test]
 	fn boundary_slot_belongs_to_next_window() {
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
-				.build()
-				.expect("harness");
-
-		// Slots 59 and 60 should land in DIFFERENT windows: 59 in
-		// [0, 60), 60 in [60, 120). Two emitted rows.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolume>>>::new()
+			.build()
+			.expect("harness");
 		let out = h
 			.apply(TestChangeBuilder::new()
 				.insert(input_row(1, "BTC", 59, 1.0))
 				.insert(input_row(2, "BTC", 60, 1.0))
 				.build())
 			.expect("apply");
-
 		assert_eq!(out.diffs.len(), 1);
-		let diff = &out.diffs[0];
-		assert_eq!(diff.kind(), DiffType::Insert);
-		let post = diff.post().expect("post");
+		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 2);
-		let r0 = post.row_ref(0).expect("r0");
-		let r1 = post.row_ref(1).expect("r1");
-		// BTreeMap keys windows by start, so the [0, 60) row comes first.
-		assert_eq!(r0.u64("window_start"), Some(0));
-		assert_eq!(r1.u64("window_start"), Some(60));
+		assert_eq!(post.row_ref(0).expect("r0").u64("window_start"), Some(0));
+		assert_eq!(post.row_ref(1).expect("r1").u64("window_start"), Some(60));
 	}
 
 	#[test]
 	fn late_event_for_closed_window_dropped() {
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
-				.build()
-				.expect("harness");
-
-		// Open window [60, 120): emit volume 5.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolume>>>::new()
+			.build()
+			.expect("harness");
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 60, 5.0)).build()).expect("apply");
-
-		// Late event for window [0, 60): should be dropped silently
-		// because the high-water mark is now 60. No diff.
 		let out =
 			h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
-
 		assert_eq!(out.diffs.len(), 0);
 	}
 
 	#[test]
 	fn multiple_groups_isolate_state() {
-		let mut h =
-			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolumeAggregator>>>::new()
-				.build()
-				.expect("harness");
-
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolume>>>::new()
+			.build()
+			.expect("harness");
 		let out = h
 			.apply(TestChangeBuilder::new()
 				.insert(input_row(1, "BTC", 0, 10.0))
 				.insert(input_row(2, "ETH", 0, 50.0))
 				.build())
 			.expect("apply");
-
 		assert_eq!(out.diffs.len(), 1);
 		let post = out.diffs[0].post().expect("post");
 		assert_eq!(post.row_count(), 2);
-		let r0 = post.row_ref(0).expect("r0");
-		let r1 = post.row_ref(1).expect("r1");
-		// BTreeMap orders by group string: "BTC" < "ETH".
-		assert_eq!(r0.utf8("group").as_deref(), Some("BTC"));
-		assert_eq!(r0.f64("volume"), Some(10.0));
-		assert_eq!(r1.utf8("group").as_deref(), Some("ETH"));
-		assert_eq!(r1.f64("volume"), Some(50.0));
+		assert_eq!(post.row_ref(0).expect("r0").utf8("group").as_deref(), Some("BTC"));
+		assert_eq!(post.row_ref(0).expect("r0").f64("volume"), Some(10.0));
+		assert_eq!(post.row_ref(1).expect("r1").utf8("group").as_deref(), Some("ETH"));
+		assert_eq!(post.row_ref(1).expect("r1").f64("volume"), Some(50.0));
+	}
+
+	#[test]
+	fn min_update_replacing_minimum_raises_window_min() {
+		// The removal-safe multiset case: window holds {5, 8, 6}, min = 5.
+		// An Update replacing the 5 with 10 must raise the min to 6. A
+		// running scalar min cannot do this; the multiset remove(5)+add(10)
+		// leaves {6, 8, 10}.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestMin>>>::new()
+			.build()
+			.expect("harness");
+		let _ = h
+			.apply(TestChangeBuilder::new()
+				.insert(input_row(1, "BTC", 0, 5.0))
+				.insert(input_row(2, "BTC", 10, 8.0))
+				.insert(input_row(3, "BTC", 20, 6.0))
+				.build())
+			.expect("apply");
+		let out = h
+			.apply(TestChangeBuilder::new()
+				.update(input_row(1, "BTC", 0, 5.0), input_row(1, "BTC", 0, 10.0))
+				.build())
+			.expect("apply");
+		assert_eq!(out.diffs.len(), 1);
+		let diff = &out.diffs[0];
+		assert_eq!(diff.kind(), DiffType::Update);
+		let r = diff.post().expect("post").row_ref(0).expect("r0");
+		assert_eq!(r.f64("min"), Some(6.0));
+	}
+
+	#[test]
+	fn min_remove_duplicate_keeps_value_until_last_removed() {
+		// Two events share value 5. Removing one occurrence must keep the
+		// min at 5 (the multiset still holds one 5).
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestMin>>>::new()
+			.build()
+			.expect("harness");
+		let _ = h
+			.apply(TestChangeBuilder::new()
+				.insert(input_row(1, "BTC", 0, 5.0))
+				.insert(input_row(2, "BTC", 10, 5.0))
+				.insert(input_row(3, "BTC", 20, 9.0))
+				.build())
+			.expect("apply");
+		let out = h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 5.0)).build()).expect("apply");
+		let r = out.diffs[0].post().expect("post").row_ref(0).expect("r0");
+		assert_eq!(r.f64("min"), Some(5.0), "one occurrence of 5 remains, min stays 5");
 	}
 }

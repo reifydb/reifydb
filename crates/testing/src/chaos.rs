@@ -100,7 +100,7 @@ mod tests {
 	// fails to compile; if the seed is not threaded, the arithmetic check
 	// would still hold, so the value here is the compile-time guard plus
 	// proof the body executes under the runner.
-	crate::chaos_test!(macro_expands_to_a_runnable_test, |seed| {
+	chaos_test!(macro_expands_to_a_runnable_test, |seed| {
 		assert_eq!(seed.wrapping_mul(2), seed.wrapping_add(seed));
 	});
 

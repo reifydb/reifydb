@@ -9,7 +9,7 @@
 //! emission and the high-water-driven Remove path.
 
 use reifydb_sdk::{
-	operator::{FFIOperatorAdapter, windowed::multi_rolling_v2::MultiRollingDriverV2},
+	operator::{FFIOperatorAdapter, windowed::multi_rolling::MultiRollingDriver},
 	testing::chaos::{
 		ChaosHarness,
 		accumulator_oracle::multi_rolling_accumulator_oracle,
@@ -35,7 +35,7 @@ fn volume_sampler(none_values: bool) -> ColumnSampler {
 }
 
 fn run(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
-	ChaosHarness::<FFIOperatorAdapter<MultiRollingDriverV2<TopVolumeMultiRolling>>>::builder()
+	ChaosHarness::<FFIOperatorAdapter<MultiRollingDriver<TopVolumeMultiRolling>>>::builder()
 		.with_input_shape(common::multi_rolling_shape())
 		.with_output_shape(common::top_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)

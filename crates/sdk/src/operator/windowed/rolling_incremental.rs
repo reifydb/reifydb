@@ -30,7 +30,7 @@ use crate::{
 		view::{ChangeView, ColumnsView, DiffView},
 		windowed::{
 			accumulator::WindowAccumulator,
-			rolling_v2::{RollingOperatorV2, RollingRegistrationV2},
+			rolling::{RollingOperator, RollingRegistration},
 		},
 	},
 	state::cache::StateCache,
@@ -70,11 +70,11 @@ impl<K> Default for GroupMeta<K> {
 	}
 }
 
-type WindowContribution<A> = <<A as RollingOperatorV2>::WindowAcc as WindowAccumulator>::Contribution;
-type WindowValue<A> = <<A as RollingOperatorV2>::WindowAcc as WindowAccumulator>::Output;
+type WindowContribution<A> = <<A as RollingOperator>::WindowAcc as WindowAccumulator>::Contribution;
+type WindowValue<A> = <<A as RollingOperator>::WindowAcc as WindowAccumulator>::Output;
 type RunningContribution<A> = <<A as RollingIncrementalOperator>::Running as WindowAccumulator>::Contribution;
 
-pub trait RollingIncrementalOperator: RollingOperatorV2 {
+pub trait RollingIncrementalOperator: RollingOperator {
 	type Running: WindowAccumulator;
 
 	fn window_contribution(&self, window_value: &WindowValue<Self>) -> RunningContribution<Self>;
@@ -88,11 +88,11 @@ pub trait RollingIncrementalOperator: RollingOperatorV2 {
 	) -> Option<Self::Output>;
 }
 
-pub type RollingBuffer<A> = BTreeMap<<A as RollingOperatorV2>::WindowCoord, <A as RollingOperatorV2>::WindowAcc>;
+pub type RollingBuffer<A> = BTreeMap<<A as RollingOperator>::WindowCoord, <A as RollingOperator>::WindowAcc>;
 
 pub struct RollingIncrementalDriver<A>
 where
-	A: RollingIncrementalOperator + RollingRegistrationV2,
+	A: RollingIncrementalOperator + RollingRegistration,
 	A::Output: Row,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
@@ -102,14 +102,14 @@ where
 	meta: StateCache<MetaKey, GroupMeta<A::WindowCoord>>,
 }
 
-enum AccEvent<A: RollingOperatorV2> {
+enum AccEvent<A: RollingOperator> {
 	Add(WindowContribution<A>),
 	Remove(WindowContribution<A>),
 }
 
 impl<A> OperatorMetadata for RollingIncrementalDriver<A>
 where
-	A: RollingIncrementalOperator + RollingRegistrationV2 + 'static,
+	A: RollingIncrementalOperator + RollingRegistration + 'static,
 	A::Output: Row,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
@@ -124,7 +124,7 @@ where
 
 impl<A> OperatorLogic for RollingIncrementalDriver<A>
 where
-	A: RollingIncrementalOperator + RollingRegistrationV2 + Send + Sync + 'static,
+	A: RollingIncrementalOperator + RollingRegistration + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
 	A::WindowCoord: Send + Sync,
@@ -444,7 +444,7 @@ mod tests {
 		capacity: usize,
 	}
 
-	impl RollingOperatorV2 for TestVelocity {
+	impl RollingOperator for TestVelocity {
 		type GroupKey = String;
 		type WindowCoord = u64;
 		type WindowAcc = LastValue<f64>;
@@ -522,7 +522,7 @@ mod tests {
 		}
 	}
 
-	impl RollingRegistrationV2 for TestVelocity {
+	impl RollingRegistration for TestVelocity {
 		const NAME: &'static str = "test_velocity_incremental";
 		const VERSION: &'static str = "0.0.1";
 		const DESCRIPTION: &'static str = "test fixture";

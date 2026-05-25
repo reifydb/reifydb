@@ -59,6 +59,10 @@ impl Config {
 		self.values.contains_key(key)
 	}
 
+	pub fn iter(&self) -> impl Iterator<Item = (&String, &Value)> {
+		self.values.iter()
+	}
+
 	fn opt<T: TryFromValue>(&self, key: &str) -> Option<T> {
 		self.values.get(key).and_then(T::from_value)
 	}

@@ -23,14 +23,14 @@ use crate::operator::{
 	column::{row::Row, sink::native::NativeRowSink},
 	view::{ColumnsView, native::NativeColumnsView},
 	windowed::{
-		accumulator::WindowAccumulator, multi_rolling_v2::MultiRollingOperatorV2,
-		rolling_incremental::RollingIncrementalOperator, rolling_v2::RollingOperatorV2, span::WindowSpan,
-		tumbling_carry::TumblingCarryOperator, tumbling_v2::TumblingOperatorV2,
+		accumulator::WindowAccumulator, multi_rolling::MultiRollingOperator, rolling::RollingOperator,
+		rolling_incremental::RollingIncrementalOperator, span::WindowSpan, tumbling::TumblingOperator,
+		tumbling_carry::TumblingCarryOperator,
 	},
 };
 
-type Coord<A> = <A as TumblingOperatorV2>::WindowCoord;
-type Group<A> = <A as TumblingOperatorV2>::GroupKey;
+type Coord<A> = <A as TumblingOperator>::WindowCoord;
+type Group<A> = <A as TumblingOperator>::GroupKey;
 type WindowKey<A> = (Group<A>, Coord<A>);
 
 pub fn tumbling_accumulator_oracle<A>(
@@ -39,7 +39,7 @@ pub fn tumbling_accumulator_oracle<A>(
 	output_key_columns: &[String],
 ) -> MaterializedTable
 where
-	A: TumblingOperatorV2,
+	A: TumblingOperator,
 	A::Output: Row,
 {
 	let mut accs: HashMap<WindowKey<A>, A::Acc> = HashMap::new();
@@ -100,7 +100,7 @@ fn apply_leg<A>(
 	spans: &mut HashMap<WindowKey<A>, WindowSpan<Coord<A>>>,
 	touched: &mut BTreeSet<WindowKey<A>>,
 ) where
-	A: TumblingOperatorV2,
+	A: TumblingOperator,
 {
 	let Some((group, coord, contribution)) = extract_one(agg, row) else {
 		return;
@@ -124,7 +124,7 @@ fn apply_leg<A>(
 #[allow(clippy::type_complexity)]
 fn extract_one<A>(agg: &A, row: &CoreRow) -> Option<(Group<A>, Coord<A>, <A::Acc as WindowAccumulator>::Contribution)>
 where
-	A: TumblingOperatorV2,
+	A: TumblingOperator,
 {
 	let columns = Columns::from_row(row);
 	let view = NativeColumnsView::new(&columns);
@@ -150,10 +150,10 @@ fn materialize_outputs<O: Row>(outputs: impl Iterator<Item = O>, output_key_colu
 	materialize_history(&[change], output_key_columns)
 }
 
-type RollingCoord<A> = <A as RollingOperatorV2>::WindowCoord;
-type RollingGroup<A> = <A as RollingOperatorV2>::GroupKey;
+type RollingCoord<A> = <A as RollingOperator>::WindowCoord;
+type RollingGroup<A> = <A as RollingOperator>::GroupKey;
 
-type RollingContribution<A> = <<A as RollingOperatorV2>::WindowAcc as WindowAccumulator>::Contribution;
+type RollingContribution<A> = <<A as RollingOperator>::WindowAcc as WindowAccumulator>::Contribution;
 type RollingBuckets<A> = BTreeMap<(RollingGroup<A>, RollingCoord<A>), Vec<Leg<RollingContribution<A>>>>;
 
 enum Leg<C> {
@@ -163,7 +163,7 @@ enum Leg<C> {
 
 fn bucket_rolling<A>(agg: &A, batch: &ChaosBatch) -> RollingBuckets<A>
 where
-	A: RollingOperatorV2,
+	A: RollingOperator,
 {
 	let mut buckets: RollingBuckets<A> = BTreeMap::new();
 	for event in &batch.events {
@@ -191,7 +191,7 @@ where
 
 fn push_rolling<A>(agg: &A, row: &CoreRow, is_add: bool, buckets: &mut RollingBuckets<A>)
 where
-	A: RollingOperatorV2,
+	A: RollingOperator,
 {
 	if let Some((group, coord, contribution)) = extract_rolling(agg, row) {
 		let leg = if is_add {
@@ -212,7 +212,7 @@ fn apply_rolling_buckets<A>(
 	high_water: &mut HashMap<RollingGroup<A>, RollingCoord<A>>,
 ) -> BTreeSet<RollingGroup<A>>
 where
-	A: RollingOperatorV2,
+	A: RollingOperator,
 {
 	let mut touched: BTreeSet<RollingGroup<A>> = BTreeSet::new();
 	for ((group, coord), legs) in buckets {
@@ -252,7 +252,7 @@ pub fn rolling_accumulator_oracle<A>(
 	output_key_columns: &[String],
 ) -> MaterializedTable
 where
-	A: RollingOperatorV2,
+	A: RollingOperator,
 	A::Output: Row,
 {
 	let capacity = agg.capacity();
@@ -282,7 +282,7 @@ fn extract_rolling<A>(
 	row: &CoreRow,
 ) -> Option<(RollingGroup<A>, RollingCoord<A>, <A::WindowAcc as WindowAccumulator>::Contribution)>
 where
-	A: RollingOperatorV2,
+	A: RollingOperator,
 {
 	let columns = Columns::from_row(row);
 	let view = NativeColumnsView::new(&columns);
@@ -466,14 +466,14 @@ fn apply_carry_leg<A>(
 	touched.insert(key);
 }
 
-type MultiCoord<A> = <A as MultiRollingOperatorV2>::WindowCoord;
-type MultiGroup<A> = <A as MultiRollingOperatorV2>::GroupKey;
-type MultiContribution<A> = <<A as MultiRollingOperatorV2>::WindowAcc as WindowAccumulator>::Contribution;
+type MultiCoord<A> = <A as MultiRollingOperator>::WindowCoord;
+type MultiGroup<A> = <A as MultiRollingOperator>::GroupKey;
+type MultiContribution<A> = <<A as MultiRollingOperator>::WindowAcc as WindowAccumulator>::Contribution;
 type MultiBuckets<A> = BTreeMap<(MultiGroup<A>, MultiCoord<A>), Vec<Leg<MultiContribution<A>>>>;
 
 fn bucket_multi<A>(agg: &A, batch: &ChaosBatch) -> MultiBuckets<A>
 where
-	A: MultiRollingOperatorV2,
+	A: MultiRollingOperator,
 {
 	let mut buckets: MultiBuckets<A> = BTreeMap::new();
 	for event in &batch.events {
@@ -501,7 +501,7 @@ where
 
 fn push_multi<A>(agg: &A, row: &CoreRow, is_add: bool, buckets: &mut MultiBuckets<A>)
 where
-	A: MultiRollingOperatorV2,
+	A: MultiRollingOperator,
 {
 	if let Some((group, coord, contribution)) = extract_multi(agg, row) {
 		let leg = if is_add {
@@ -522,7 +522,7 @@ fn apply_multi_buckets<A>(
 	high_water: &mut HashMap<MultiGroup<A>, MultiCoord<A>>,
 ) -> BTreeSet<MultiGroup<A>>
 where
-	A: MultiRollingOperatorV2,
+	A: MultiRollingOperator,
 {
 	let mut touched: BTreeSet<MultiGroup<A>> = BTreeSet::new();
 	for ((group, coord), legs) in buckets {
@@ -562,7 +562,7 @@ pub fn multi_rolling_accumulator_oracle<A>(
 	output_key_columns: &[String],
 ) -> MaterializedTable
 where
-	A: MultiRollingOperatorV2,
+	A: MultiRollingOperator,
 	A::Output: Row,
 {
 	let capacity = agg.capacity();
@@ -592,7 +592,7 @@ fn extract_multi<A>(
 	row: &CoreRow,
 ) -> Option<(MultiGroup<A>, MultiCoord<A>, <A::WindowAcc as WindowAccumulator>::Contribution)>
 where
-	A: MultiRollingOperatorV2,
+	A: MultiRollingOperator,
 {
 	let columns = Columns::from_row(row);
 	let view = NativeColumnsView::new(&columns);

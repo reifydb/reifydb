@@ -322,8 +322,7 @@ mod tests {
 	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 	use reifydb_core::interface::catalog::flow::FlowNodeId;
 	use reifydb_type::value::{
-		date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, row_number::RowNumber,
-		time::Time,
+		date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, row_number::RowNumber, time::Time,
 	};
 
 	use crate::{
