@@ -36,7 +36,7 @@ use reifydb_core::{
 		},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
-	row::Ttl,
+	row::RowSettings,
 };
 use reifydb_type::{
 	Result,
@@ -53,7 +53,7 @@ use crate::{
 		TransactionalGrantedRoleChanges, TransactionalHandlerChanges, TransactionalIdentityChanges,
 		TransactionalMigrationChanges, TransactionalNamespaceChanges, TransactionalPolicyChanges,
 		TransactionalProcedureChanges, TransactionalRingBufferChanges, TransactionalRoleChanges,
-		TransactionalRowTtlChanges, TransactionalSeriesChanges, TransactionalSinkChanges,
+		TransactionalRowSettingsChanges, TransactionalSeriesChanges, TransactionalSinkChanges,
 		TransactionalSourceChanges, TransactionalSumTypeChanges, TransactionalTableChanges,
 		TransactionalTestChanges, TransactionalViewChanges,
 	},
@@ -529,12 +529,12 @@ impl TransactionalConfigChanges for QueryTransaction {
 	}
 }
 
-impl TransactionalRowTtlChanges for QueryTransaction {
-	fn find_row_ttl(&self, _shape: ShapeId) -> Option<&Ttl> {
+impl TransactionalRowSettingsChanges for QueryTransaction {
+	fn find_row_settings(&self, _shape: ShapeId) -> Option<&RowSettings> {
 		None
 	}
 
-	fn is_row_ttl_deleted(&self, _shape: ShapeId) -> bool {
+	fn is_row_settings_deleted(&self, _shape: ShapeId) -> bool {
 		false
 	}
 }

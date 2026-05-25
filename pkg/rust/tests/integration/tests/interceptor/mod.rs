@@ -17,7 +17,7 @@ mod policy;
 mod procedure;
 mod ringbuffer;
 mod role;
-mod row_ttl;
+mod row_settings;
 mod series;
 mod sumtype;
 mod table;

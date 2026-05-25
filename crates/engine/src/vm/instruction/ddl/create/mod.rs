@@ -2,12 +2,27 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::{Catalog, flow::FlowToCreate};
-use reifydb_core::interface::catalog::{flow::FlowStatus, view::View};
+use reifydb_core::{
+	error::diagnostic::catalog::persistent_requires_buffer,
+	interface::catalog::{flow::FlowStatus, view::View},
+};
 use reifydb_rql::query::QueryPlan;
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::fragment::Fragment;
+use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{Result, flow::compiler::compile_flow};
+
+pub(crate) fn require_buffer_for_non_persistent(
+	txn: &AdminTransaction,
+	persistent: bool,
+	fragment: Fragment,
+	shape: &str,
+) -> Result<()> {
+	if !persistent && !txn.multi.has_buffer() {
+		return_error!(persistent_requires_buffer(fragment, shape));
+	}
+	Ok(())
+}
 
 pub mod authentication;
 pub mod binding;

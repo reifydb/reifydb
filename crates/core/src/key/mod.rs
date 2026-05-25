@@ -104,7 +104,7 @@ pub mod ringbuffer;
 pub mod role;
 pub mod row;
 pub mod row_sequence;
-pub mod row_ttl;
+pub mod row_settings;
 pub mod series;
 pub mod series_row;
 pub mod shape;
@@ -352,7 +352,7 @@ impl Key {
 			| KeyKind::Sink
 			| KeyKind::NamespaceSink
 			| KeyKind::SourceCheckpoint => None,
-			KeyKind::RowTtl => None,
+			KeyKind::RowSettings => None,
 			KeyKind::Procedure => ProcedureKey::decode(key).map(Self::Procedure),
 			KeyKind::NamespaceProcedure => NamespaceProcedureKey::decode(key).map(Self::NamespaceProcedure),
 			KeyKind::ProcedureParam => ProcedureParamKey::decode(key).map(Self::ProcedureParam),

@@ -14,7 +14,7 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, rep
 use reifydb_type::value::identity::IdentityId;
 
 #[test]
-fn test_row_ttl_sync_to_catalog_cache() {
+fn test_row_settings_sync_to_catalog_cache() {
 	let engine = TestEngine::new();
 	let catalog = engine.catalog();
 
@@ -36,13 +36,13 @@ fn test_row_ttl_sync_to_catalog_cache() {
 	let shape = ShapeId::Table(table.id);
 
 	let ttl = catalog
-		.find_row_ttl(&mut Transaction::Admin(&mut txn), shape)
+		.find_row_settings(&mut Transaction::Admin(&mut txn), shape)
 		.expect("TTL not found in materialized catalog");
-	assert_eq!(ttl.duration_nanos, 3_600_000_000_000);
+	assert_eq!(ttl.ttl.expect("ttl not set").duration_nanos, 3_600_000_000_000);
 }
 
 #[test]
-fn test_row_ttl_replication_sync() {
+fn test_row_settings_replication_sync() {
 	let primary = TestEngine::new();
 	let replica = TestEngine::new();
 	let replica_catalog = replica.catalog();
@@ -86,9 +86,9 @@ fn test_row_ttl_replication_sync() {
 	let shape = ShapeId::Table(table.id);
 
 	let ttl = replica_catalog
-		.find_row_ttl(&mut Transaction::Admin(&mut q_txn), shape)
+		.find_row_settings(&mut Transaction::Admin(&mut q_txn), shape)
 		.expect("TTL not found in replica materialized catalog");
-	assert_eq!(ttl.duration_nanos, 60_000_000_000);
+	assert_eq!(ttl.ttl.expect("ttl not set").duration_nanos, 60_000_000_000);
 }
 
 fn deltas_to_system_changes(txn: &AdminTransaction) -> Vec<SystemChange> {

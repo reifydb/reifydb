@@ -721,7 +721,7 @@ pub struct AstCreateDeferredView<'bump> {
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub as_clause: Option<AstStatement<'bump>>,
 	pub storage_kind: AstViewStorageKind,
-	pub ttl: Option<AstTtl<'bump>>,
+	pub settings: Option<AstRowSettings<'bump>>,
 }
 
 #[derive(Debug)]
@@ -731,7 +731,7 @@ pub struct AstCreateTransactionalView<'bump> {
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub as_clause: Option<AstStatement<'bump>>,
 	pub storage_kind: AstViewStorageKind,
-	pub ttl: Option<AstTtl<'bump>>,
+	pub settings: Option<AstRowSettings<'bump>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -785,6 +785,18 @@ impl Default for AstHydrationConfig {
 	}
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstPersistent<'bump> {
+	pub value: bool,
+	pub token: Token<'bump>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstRowSettings<'bump> {
+	pub ttl: Option<AstTtl<'bump>>,
+	pub persistent: Option<AstPersistent<'bump>>,
+}
+
 #[derive(Debug)]
 pub struct AstCreateSeries<'bump> {
 	pub token: Token<'bump>,
@@ -793,7 +805,7 @@ pub struct AstCreateSeries<'bump> {
 	pub tag: Option<MaybeQualifiedSumTypeIdentifier<'bump>>,
 	pub key: Option<BumpFragment<'bump>>,
 	pub precision: Option<AstTimestampPrecision>,
-	pub ttl: Option<AstTtl<'bump>>,
+	pub settings: Option<AstRowSettings<'bump>>,
 }
 
 #[derive(Debug)]
@@ -811,7 +823,7 @@ pub struct AstCreateTable<'bump> {
 	pub table: MaybeQualifiedTableIdentifier<'bump>,
 	pub if_not_exists: bool,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
-	pub ttl: Option<AstTtl<'bump>>,
+	pub settings: Option<AstRowSettings<'bump>>,
 }
 
 #[derive(Debug)]
@@ -879,7 +891,7 @@ pub struct AstCreateRingBuffer<'bump> {
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub capacity: u64,
 	pub partition_by: Vec<String>,
-	pub ttl: Option<AstTtl<'bump>>,
+	pub settings: Option<AstRowSettings<'bump>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

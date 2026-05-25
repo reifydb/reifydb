@@ -8,11 +8,11 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
 	interface::catalog::{config::GetConfig, shape::ShapeId},
-	row::Ttl,
+	row::RowSettings,
 };
 
-pub trait ListRowTtls: Clone + Send + Sync + 'static {
-	fn list_row_ttls(&self) -> Vec<(ShapeId, Ttl)>;
+pub trait ListRowSettings: Clone + Send + Sync + 'static {
+	fn list_row_settings(&self) -> Vec<(ShapeId, RowSettings)>;
 	fn config(&self) -> Arc<dyn GetConfig>;
 }
 

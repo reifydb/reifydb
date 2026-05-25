@@ -33,7 +33,7 @@ pub enum ScanResult {
 pub fn scan_shape_by_created_at(
 	storage: &MultiBufferTier,
 	shape_id: ShapeId,
-	ttl_config: &Ttl,
+	ttl: &Ttl,
 	now_nanos: u64,
 	batch_size: usize,
 	cursor: &mut RangeCursor,
@@ -57,7 +57,7 @@ pub fn scan_shape_by_created_at(
 				"Row is missing created_at timestamp - this is an invariant violation"
 			);
 
-			if now_nanos.saturating_sub(anchor_nanos) >= ttl_config.duration_nanos {
+			if now_nanos.saturating_sub(anchor_nanos) >= ttl.duration_nanos {
 				expired.push(ExpiredRow {
 					shape_id,
 					key: entry.key.clone(),
@@ -78,7 +78,7 @@ pub fn scan_shape_by_created_at(
 pub fn scan_shape_by_updated_at(
 	storage: &MultiBufferTier,
 	shape_id: ShapeId,
-	ttl_config: &Ttl,
+	ttl: &Ttl,
 	now_nanos: u64,
 	batch_size: usize,
 	cursor: &mut RangeCursor,
@@ -102,7 +102,7 @@ pub fn scan_shape_by_updated_at(
 				"Row is missing updated_at timestamp - this is an invariant violation"
 			);
 
-			if now_nanos.saturating_sub(anchor_nanos) >= ttl_config.duration_nanos {
+			if now_nanos.saturating_sub(anchor_nanos) >= ttl.duration_nanos {
 				expired.push(ExpiredRow {
 					shape_id,
 					key: entry.key.clone(),

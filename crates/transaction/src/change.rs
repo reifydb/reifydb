@@ -30,7 +30,7 @@ use reifydb_core::{
 		test::Test,
 		view::View,
 	},
-	row::Ttl,
+	row::RowSettings,
 };
 use reifydb_type::value::{dictionary::DictionaryId, identity::IdentityId, row_number::RowNumber, sumtype::SumTypeId};
 
@@ -58,7 +58,7 @@ pub trait TransactionalChanges:
 	+ TransactionalGrantedRoleChanges
 	+ TransactionalViewChanges
 	+ TransactionalConfigChanges
-	+ TransactionalRowTtlChanges
+	+ TransactionalRowSettingsChanges
 {
 }
 
@@ -72,10 +72,10 @@ pub trait TransactionalBindingChanges {
 	fn is_binding_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
 }
 
-pub trait TransactionalRowTtlChanges {
-	fn find_row_ttl(&self, shape: ShapeId) -> Option<&Ttl>;
+pub trait TransactionalRowSettingsChanges {
+	fn find_row_settings(&self, shape: ShapeId) -> Option<&RowSettings>;
 
-	fn is_row_ttl_deleted(&self, shape: ShapeId) -> bool;
+	fn is_row_settings_deleted(&self, shape: ShapeId) -> bool;
 }
 
 pub trait TransactionalConfigChanges {
@@ -321,7 +321,7 @@ pub struct TransactionalCatalogChanges {
 
 	pub view: Vec<Change<View>>,
 
-	pub row_ttl: Vec<Change<(ShapeId, Ttl)>>,
+	pub row_settings: Vec<Change<(ShapeId, RowSettings)>>,
 
 	pub log: Vec<Operation>,
 }
@@ -349,7 +349,7 @@ pub struct CatalogChangesSavepoint {
 	granted_role_len: usize,
 	policy_len: usize,
 	view_len: usize,
-	row_ttl_len: usize,
+	row_settings_len: usize,
 	log_len: usize,
 }
 
@@ -378,7 +378,7 @@ impl TransactionalCatalogChanges {
 			granted_role_len: self.granted_role.len(),
 			policy_len: self.policy.len(),
 			view_len: self.view.len(),
-			row_ttl_len: self.row_ttl.len(),
+			row_settings_len: self.row_settings.len(),
 			log_len: self.log.len(),
 		}
 	}
@@ -406,7 +406,7 @@ impl TransactionalCatalogChanges {
 		self.granted_role.truncate(sp.granted_role_len);
 		self.policy.truncate(sp.policy_len);
 		self.view.truncate(sp.view_len);
-		self.row_ttl.truncate(sp.row_ttl_len);
+		self.row_settings.truncate(sp.row_settings_len);
 		self.log.truncate(sp.log_len);
 	}
 
@@ -747,7 +747,7 @@ impl TransactionalCatalogChanges {
 		});
 	}
 
-	pub fn add_row_ttl_change(&mut self, change: Change<(ShapeId, Ttl)>) {
+	pub fn add_row_settings_change(&mut self, change: Change<(ShapeId, RowSettings)>) {
 		let shape = change
 			.post
 			.as_ref()
@@ -755,7 +755,7 @@ impl TransactionalCatalogChanges {
 			.map(|(s, _)| *s)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.row_ttl.push(change);
+		self.row_settings.push(change);
 		self.log.push(Operation::Ttl {
 			shape,
 			op,
@@ -902,7 +902,7 @@ impl TransactionalCatalogChanges {
 			granted_role: Vec::new(),
 			policy: Vec::new(),
 			view: Vec::new(),
-			row_ttl: Vec::new(),
+			row_settings: Vec::new(),
 			log: Vec::new(),
 		}
 	}
@@ -945,8 +945,8 @@ impl TransactionalCatalogChanges {
 		None
 	}
 
-	pub fn get_row_ttl(&self, shape: ShapeId) -> Option<&Ttl> {
-		for change in self.row_ttl.iter().rev() {
+	pub fn get_row_settings(&self, shape: ShapeId) -> Option<&RowSettings> {
+		for change in self.row_settings.iter().rev() {
 			if let Some((s, ttl)) = &change.post {
 				if *s == shape {
 					return Some(ttl);

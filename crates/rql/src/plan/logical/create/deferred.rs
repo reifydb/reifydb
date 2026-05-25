@@ -42,7 +42,13 @@ impl<'bump> Compiler<'bump> {
 			BumpVec::new_in(self.bump)
 		};
 
-		let ttl = ast.ttl.map(Self::compile_ttl).transpose()?;
+		let (ttl, persistent) = match ast.settings {
+			Some(settings) => (
+				settings.ttl.map(Self::compile_ttl).transpose()?,
+				settings.persistent.is_none_or(|p| p.value),
+			),
+			None => (None, true),
+		};
 
 		Ok(LogicalPlan::CreateDeferredView(CreateDeferredViewNode {
 			view,
@@ -51,6 +57,7 @@ impl<'bump> Compiler<'bump> {
 			as_clause: with,
 			storage_kind: ast.storage_kind,
 			ttl,
+			persistent,
 		}))
 	}
 }

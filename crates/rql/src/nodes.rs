@@ -175,6 +175,7 @@ pub struct CreateDeferredViewNode {
 	pub as_clause: Box<QueryPlan>,
 	pub storage_kind: CompiledViewStorageKind,
 	pub ttl: Option<Ttl>,
+	pub persistent: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -186,6 +187,7 @@ pub struct CreateTransactionalViewNode {
 	pub as_clause: Box<QueryPlan>,
 	pub storage_kind: CompiledViewStorageKind,
 	pub ttl: Option<Ttl>,
+	pub persistent: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -215,6 +217,7 @@ pub struct CreateTableNode {
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
 	pub ttl: Option<Ttl>,
+	pub persistent: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -226,6 +229,7 @@ pub struct CreateRingBufferNode {
 	pub capacity: u64,
 	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
+	pub persistent: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -325,6 +329,7 @@ pub struct CreateSeriesNode {
 	pub tag: Option<SumTypeId>,
 	pub key: SeriesKey,
 	pub ttl: Option<Ttl>,
+	pub persistent: bool,
 }
 
 #[derive(Debug, Clone)]

@@ -3,7 +3,11 @@
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use std::mem;
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+	collections::HashMap,
+	sync::{Arc, OnceLock},
+	time::Duration,
+};
 
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -20,7 +24,7 @@ use tracing::{debug, error, warn};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::tier::{TierBatch, TierStorage, VersionedGetResult};
-use crate::{buffer::tier::MultiBufferTier, persistent::MultiPersistentTier};
+use crate::{buffer::tier::MultiBufferTier, flush::ShapePersistence, persistent::MultiPersistentTier};
 
 #[derive(Clone)]
 pub enum FlushMessage {
@@ -56,15 +60,22 @@ pub struct FlushActor {
 	buffer: MultiBufferTier,
 	persistent: MultiPersistentTier,
 	flush_interval: Duration,
+	persistence: Arc<OnceLock<Arc<dyn ShapePersistence>>>,
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 impl FlushActor {
-	pub fn new(buffer: MultiBufferTier, persistent: MultiPersistentTier, flush_interval: Duration) -> Self {
+	pub fn new(
+		buffer: MultiBufferTier,
+		persistent: MultiPersistentTier,
+		flush_interval: Duration,
+		persistence: Arc<OnceLock<Arc<dyn ShapePersistence>>>,
+	) -> Self {
 		Self {
 			buffer,
 			persistent,
 			flush_interval,
+			persistence,
 		}
 	}
 
@@ -73,8 +84,9 @@ impl FlushActor {
 		buffer: MultiBufferTier,
 		persistent: MultiPersistentTier,
 		flush_interval: Duration,
+		persistence: Arc<OnceLock<Arc<dyn ShapePersistence>>>,
 	) -> ActorRef<FlushMessage> {
-		let actor = Self::new(buffer, persistent, flush_interval);
+		let actor = Self::new(buffer, persistent, flush_interval, persistence);
 		system.spawn_background("persistent-flush", actor).actor_ref().clone()
 	}
 
@@ -110,6 +122,13 @@ impl FlushActor {
 		let mut by_version: HashMap<CommitVersion, TierBatch> = HashMap::new();
 
 		for (kind, keys_map) in pending {
+			if let EntryKind::Source(shape) = kind
+				&& let Some(provider) = self.persistence.get()
+				&& !provider.is_persistent(shape)
+			{
+				continue;
+			}
+
 			for (key, entry) in keys_map {
 				let value = if entry.is_tombstone {
 					None

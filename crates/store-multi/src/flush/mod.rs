@@ -7,3 +7,9 @@
 
 pub mod actor;
 pub mod listener;
+
+use reifydb_core::interface::catalog::shape::ShapeId;
+
+pub trait ShapePersistence: Send + Sync + 'static {
+	fn is_persistent(&self, shape: ShapeId) -> bool;
+}

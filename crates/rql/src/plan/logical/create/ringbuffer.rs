@@ -132,7 +132,13 @@ impl<'bump> Compiler<'bump> {
 		}
 
 		let ringbuffer = ast.ringbuffer;
-		let ttl = ast.ttl.map(Self::compile_ttl).transpose()?;
+		let (ttl, persistent) = match ast.settings {
+			Some(settings) => (
+				settings.ttl.map(Self::compile_ttl).transpose()?,
+				settings.persistent.is_none_or(|p| p.value),
+			),
+			None => (None, true),
+		};
 
 		Ok(LogicalPlan::CreateRingBuffer(CreateRingBufferNode {
 			ringbuffer,
@@ -141,6 +147,7 @@ impl<'bump> Compiler<'bump> {
 			capacity: ast.capacity,
 			partition_by,
 			ttl,
+			persistent,
 		}))
 	}
 }

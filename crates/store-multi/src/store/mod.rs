@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Deref, sync::Arc, time::Duration};
+use std::{
+	ops::Deref,
+	sync::{Arc, OnceLock},
+	time::Duration,
+};
 
 use reifydb_core::event::EventBus;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -15,7 +19,10 @@ use reifydb_runtime::{
 use tracing::instrument;
 
 use crate::{
-	BufferConfig, buffer::tier::MultiBufferTier, config::MultiStoreConfig, flush::actor::FlushMessage,
+	BufferConfig,
+	buffer::tier::MultiBufferTier,
+	config::MultiStoreConfig,
+	flush::{ShapePersistence, actor::FlushMessage},
 	persistent::MultiPersistentTier,
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -46,6 +53,9 @@ pub struct StandardMultiStoreInner {
 	#[allow(dead_code)]
 	pub(crate) flush_actor: Option<ActorRef<FlushMessage>>,
 
+	#[allow(dead_code)]
+	pub(crate) row_settings_provider: Arc<OnceLock<Arc<dyn ShapePersistence>>>,
+
 	actor_system: ActorSystem,
 
 	pub(crate) event_bus: EventBus,
@@ -67,6 +77,8 @@ impl StandardMultiStore {
 		let buffer = config.buffer.map(|c| c.storage);
 
 		let actor_system = config.actor_system.clone();
+
+		let row_settings_provider: Arc<OnceLock<Arc<dyn ShapePersistence>>> = Arc::new(OnceLock::new());
 
 		let drop_actor = buffer.as_ref().map(|storage| {
 			let drop_config = DropWorkerConfig::default();
@@ -90,6 +102,7 @@ impl StandardMultiStore {
 						buf.clone(),
 						persistent_storage.clone(),
 						persistent_cfg.flush_interval,
+						row_settings_provider.clone(),
 					);
 					config.event_bus.register::<MultiCommittedEvent, _>(FlushEventListener::new(
 						actor_ref.clone(),
@@ -112,9 +125,14 @@ impl StandardMultiStore {
 			persistent,
 			drop_actor,
 			flush_actor,
+			row_settings_provider,
 			actor_system,
 			event_bus: config.event_bus,
 		})))
+	}
+
+	pub fn set_row_settings_provider(&self, provider: Arc<dyn ShapePersistence>) {
+		let _ = self.row_settings_provider.set(provider);
 	}
 
 	pub fn buffer(&self) -> Option<&MultiBufferTier> {

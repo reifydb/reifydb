@@ -176,7 +176,13 @@ impl<'bump> Compiler<'bump> {
 			}
 		};
 
-		let ttl = ast.ttl.map(Self::compile_ttl).transpose()?;
+		let (ttl, persistent) = match ast.settings {
+			Some(settings) => (
+				settings.ttl.map(Self::compile_ttl).transpose()?,
+				settings.persistent.is_none_or(|p| p.value),
+			),
+			None => (None, true),
+		};
 
 		Ok(LogicalPlan::CreateSeries(CreateSeriesNode {
 			series: ast.series,
@@ -184,6 +190,7 @@ impl<'bump> Compiler<'bump> {
 			tag: ast.tag,
 			key,
 			ttl,
+			persistent,
 		}))
 	}
 }

@@ -262,6 +262,12 @@ impl Inner {
 }
 
 impl MultiTransaction {
+	pub fn has_buffer(&self) -> bool {
+		self.store.buffer().is_some()
+	}
+}
+
+impl MultiTransaction {
 	pub fn testing() -> Self {
 		let multi_store = MultiStore::testing_memory();
 		let single_store = SingleStore::testing_memory();

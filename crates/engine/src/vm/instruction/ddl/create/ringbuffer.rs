@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_catalog::{catalog::ringbuffer::RingBufferToCreate, store::ttl::create::create_row_ttl};
+use reifydb_catalog::{catalog::ringbuffer::RingBufferToCreate, store::row_settings::create::create_row_settings};
 use reifydb_core::{
 	interface::catalog::{change::CatalogTrackRingBufferChangeOperations, shape::ShapeId},
+	row::RowSettings,
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::CreateRingBufferNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::Value;
 
+use super::require_buffer_for_non_persistent;
 use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_ringbuffer(
@@ -17,6 +19,8 @@ pub(crate) fn create_ringbuffer(
 	txn: &mut AdminTransaction,
 	plan: CreateRingBufferNode,
 ) -> Result<Columns> {
+	require_buffer_for_non_persistent(txn, plan.persistent, plan.ringbuffer.clone(), plan.ringbuffer.text())?;
+
 	if let Some(existing) = services.catalog.find_ringbuffer_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.def().id(),
@@ -45,7 +49,14 @@ pub(crate) fn create_ringbuffer(
 	let id = result.id;
 
 	if let Some(ttl) = plan.ttl {
-		create_row_ttl(txn, ShapeId::RingBuffer(id), &ttl)?;
+		create_row_settings(
+			txn,
+			ShapeId::RingBuffer(id),
+			&RowSettings {
+				ttl: Some(ttl),
+				persistent: plan.persistent,
+			},
+		)?;
 	}
 
 	txn.track_ringbuffer_created(result)?;

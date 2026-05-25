@@ -26,7 +26,7 @@ use crate::{
 		test::Test,
 		view::View,
 	},
-	row::Ttl,
+	row::RowSettings,
 };
 
 pub trait CatalogTrackConfigChangeOperations {
@@ -181,12 +181,12 @@ pub trait CatalogTrackSinkChangeOperations {
 	fn track_sink_deleted(&mut self, sink: Sink) -> Result<()>;
 }
 
-pub trait CatalogTrackRowTtlChangeOperations {
-	fn track_row_ttl_created(&mut self, shape: ShapeId, ttl: Ttl) -> Result<()>;
+pub trait CatalogTrackRowSettingsChangeOperations {
+	fn track_row_settings_created(&mut self, shape: ShapeId, settings: RowSettings) -> Result<()>;
 
-	fn track_row_ttl_updated(&mut self, shape: ShapeId, pre: Ttl, post: Ttl) -> Result<()>;
+	fn track_row_settings_updated(&mut self, shape: ShapeId, pre: RowSettings, post: RowSettings) -> Result<()>;
 
-	fn track_row_ttl_deleted(&mut self, shape: ShapeId, ttl: Ttl) -> Result<()>;
+	fn track_row_settings_deleted(&mut self, shape: ShapeId, settings: RowSettings) -> Result<()>;
 }
 
 pub trait CatalogTrackChangeOperations:
@@ -212,6 +212,6 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackGrantedRoleChangeOperations
 	+ CatalogTrackViewChangeOperations
 	+ CatalogTrackConfigChangeOperations
-	+ CatalogTrackRowTtlChangeOperations
+	+ CatalogTrackRowSettingsChangeOperations
 {
 }

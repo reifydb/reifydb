@@ -18,7 +18,7 @@ use reifydb_store_multi::{
 	MultiStore,
 	gc::{
 		historical::{QueryWatermark, actor::spawn_historical_gc_actor},
-		row::actor::spawn_row_ttl_actor,
+		row::actor::spawn_row_settings_actor,
 	},
 };
 use reifydb_transaction::single::SingleTransaction;
@@ -65,7 +65,9 @@ pub(crate) fn spawn_actors(engine: &StandardEngine, actor_system: &ActorSystem) 
 
 	let catalog = engine.catalog();
 
-	let _ttl_actor = spawn_row_ttl_actor(store.clone(), actor_system.clone(), catalog.clone());
+	store.set_row_settings_provider(Arc::new(catalog.clone()));
+
+	let _ttl_actor = spawn_row_settings_actor(store.clone(), actor_system.clone(), catalog.clone());
 
 	let watermark = EngineQueryWatermark {
 		engine: engine.clone(),

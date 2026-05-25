@@ -47,6 +47,7 @@ impl<'bump> Compiler<'bump> {
 			as_clause: self.bump_box(physical_plan),
 			storage_kind: create.storage_kind,
 			ttl: create.ttl,
+			persistent: create.persistent,
 		}))
 	}
 }

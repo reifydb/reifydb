@@ -16,11 +16,11 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RowTtlKey {
+pub struct RowSettingsKey {
 	pub shape: ShapeId,
 }
 
-impl RowTtlKey {
+impl RowSettingsKey {
 	pub fn encoded(shape: impl Into<ShapeId>) -> EncodedKey {
 		Self {
 			shape: shape.into(),
@@ -29,8 +29,8 @@ impl RowTtlKey {
 	}
 }
 
-impl EncodableKey for RowTtlKey {
-	const KIND: KeyKind = KeyKind::RowTtl;
+impl EncodableKey for RowSettingsKey {
+	const KIND: KeyKind = KeyKind::RowSettings;
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
@@ -87,22 +87,22 @@ impl EncodableKey for RowTtlKey {
 	}
 }
 
-pub struct RowTtlKeyRange;
+pub struct RowSettingsKeyRange;
 
-impl RowTtlKeyRange {
+impl RowSettingsKeyRange {
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
 	}
 
 	fn start() -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(RowTtlKey::KIND as u8);
+		serializer.extend_u8(RowSettingsKey::KIND as u8);
 		serializer.to_encoded_key()
 	}
 
 	fn end() -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(1);
-		serializer.extend_u8(RowTtlKey::KIND as u8 - 1);
+		serializer.extend_u8(RowSettingsKey::KIND as u8 - 1);
 		serializer.to_encoded_key()
 	}
 }
@@ -112,35 +112,35 @@ pub mod tests {
 	use super::*;
 
 	#[test]
-	fn test_row_ttl_key_encoding() {
-		let key = RowTtlKey {
+	fn test_row_settings_key_encoding() {
+		let key = RowSettingsKey {
 			shape: ShapeId::Table(TableId(42)),
 		};
 
 		let encoded = key.encode();
-		let decoded = RowTtlKey::decode(&encoded).unwrap();
+		let decoded = RowSettingsKey::decode(&encoded).unwrap();
 		assert_eq!(key, decoded);
 	}
 
 	#[test]
-	fn test_row_ttl_key_roundtrip_ringbuffer() {
-		let key = RowTtlKey {
+	fn test_row_settings_key_roundtrip_ringbuffer() {
+		let key = RowSettingsKey {
 			shape: ShapeId::RingBuffer(RingBufferId(99)),
 		};
 
 		let encoded = key.encode();
-		let decoded = RowTtlKey::decode(&encoded).unwrap();
+		let decoded = RowSettingsKey::decode(&encoded).unwrap();
 		assert_eq!(key, decoded);
 	}
 
 	#[test]
-	fn test_row_ttl_key_roundtrip_series() {
-		let key = RowTtlKey {
+	fn test_row_settings_key_roundtrip_series() {
+		let key = RowSettingsKey {
 			shape: ShapeId::Series(SeriesId(7)),
 		};
 
 		let encoded = key.encode();
-		let decoded = RowTtlKey::decode(&encoded).unwrap();
+		let decoded = RowSettingsKey::decode(&encoded).unwrap();
 		assert_eq!(key, decoded);
 	}
 }

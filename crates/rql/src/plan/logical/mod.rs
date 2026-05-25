@@ -564,6 +564,7 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub ttl: Option<Ttl>,
+	pub persistent: bool,
 }
 
 #[derive(Debug)]
@@ -574,6 +575,7 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub ttl: Option<Ttl>,
+	pub persistent: bool,
 }
 
 #[derive(Debug)]
@@ -608,6 +610,7 @@ pub struct CreateTableNode<'bump> {
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
 	pub ttl: Option<Ttl>,
+	pub persistent: bool,
 }
 
 #[derive(Debug)]
@@ -618,6 +621,7 @@ pub struct CreateRingBufferNode<'bump> {
 	pub capacity: u64,
 	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
+	pub persistent: bool,
 }
 
 #[derive(Debug)]
@@ -1089,6 +1093,7 @@ pub struct CreateSeriesNode<'bump> {
 	pub tag: Option<MaybeQualifiedSumTypeIdentifier<'bump>>,
 	pub key: SeriesKey,
 	pub ttl: Option<Ttl>,
+	pub persistent: bool,
 }
 
 #[derive(Debug)]

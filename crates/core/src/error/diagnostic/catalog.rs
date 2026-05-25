@@ -96,6 +96,23 @@ pub fn view_already_exists(fragment: Fragment, namespace: &str, view: &str) -> D
 	}
 }
 
+pub fn persistent_requires_buffer(fragment: Fragment, shape: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_086".to_string(),
+		rql: None,
+		message: format!("`{}` sets `persistent: false` but the store has no in-memory buffer tier", shape),
+		fragment,
+		label: Some("non-persistent shape requires a buffer tier".to_string()),
+		help: Some(
+			"configure an in-memory buffer tier for the store, or remove `persistent: false`".to_string()
+		),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn table_not_found(fragment: Fragment, namespace: &str, table: &str) -> Diagnostic {
 	Diagnostic {
 		code: "CA_004".to_string(),

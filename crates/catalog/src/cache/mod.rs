@@ -27,8 +27,8 @@ pub mod primary_key;
 pub mod procedure;
 pub mod ringbuffer;
 pub mod role;
+pub mod row_settings;
 pub mod row_shape;
-pub mod row_ttl;
 pub mod series;
 pub mod shape_retention_strategy;
 pub mod sink;
@@ -73,7 +73,7 @@ use reifydb_core::{
 		vtable::{VTable, VTableId},
 	},
 	retention::RetentionStrategy,
-	row::Ttl,
+	row::RowSettings,
 	util::multi::MultiVersionContainer,
 };
 use reifydb_type::{
@@ -113,7 +113,7 @@ pub type MultiVersionGrantedRole = MultiVersionContainer<GrantedRole>;
 pub type MultiVersionPolicy = MultiVersionContainer<Policy>;
 pub type MultiVersionSource = MultiVersionContainer<Source>;
 pub type MultiVersionSink = MultiVersionContainer<Sink>;
-pub type MultiVersionRowTtl = MultiVersionContainer<Ttl>;
+pub type MultiVersionRowSettings = MultiVersionContainer<RowSettings>;
 pub type MultiVersionConfig = MultiVersionContainer<Value>;
 pub type MultiVersionAuthentication = MultiVersionContainer<Authentication>;
 
@@ -170,7 +170,7 @@ pub struct CatalogCacheInner {
 
 	pub(crate) operator_retention_strategies: SkipMap<FlowNodeId, MultiVersionRetentionStrategy>,
 
-	pub(crate) row_ttls: SkipMap<ShapeId, MultiVersionRowTtl>,
+	pub(crate) row_settings: SkipMap<ShapeId, MultiVersionRowSettings>,
 
 	pub(crate) dictionaries: SkipMap<DictionaryId, MultiVersionDictionary>,
 
@@ -294,7 +294,7 @@ impl CatalogCache {
 			primary_keys: SkipMap::new(),
 			shape_retention_strategies: SkipMap::new(),
 			operator_retention_strategies: SkipMap::new(),
-			row_ttls: SkipMap::new(),
+			row_settings: SkipMap::new(),
 			dictionaries: SkipMap::new(),
 			dictionaries_by_name: SkipMap::new(),
 			sumtypes: SkipMap::new(),
@@ -528,7 +528,7 @@ mod config_validation_tests {
 
 	// Sanity: keys without bespoke validation still accept zero-Duration values.
 	#[test]
-	fn test_row_ttl_scan_interval_accepts_zero() {
+	fn test_row_settings_scan_interval_accepts_zero() {
 		let catalog = CatalogCache::new();
 		let zero = Value::Duration(TypeDuration::from_seconds(0).unwrap());
 		assert!(catalog.set_config(ConfigKey::RowTtlScanInterval, CommitVersion(1), zero).is_ok());

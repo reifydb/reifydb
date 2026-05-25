@@ -85,6 +85,7 @@ impl<'bump> Compiler<'bump> {
 			tag,
 			key: create.key,
 			ttl: create.ttl,
+			persistent: create.persistent,
 		}))
 	}
 }

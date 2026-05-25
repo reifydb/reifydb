@@ -45,6 +45,7 @@ impl<'bump> Compiler<'bump> {
 			if_not_exists: create.if_not_exists,
 			columns: create.columns,
 			ttl: create.ttl,
+			persistent: create.persistent,
 		}))
 	}
 }

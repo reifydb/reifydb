@@ -22,6 +22,19 @@ pub struct Ttl {
 	pub cleanup_mode: TtlCleanupMode,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RowSettings {
+	pub ttl: Option<Ttl>,
+
+	pub persistent: bool,
+}
+
+impl RowSettings {
+	pub fn is_persistent(&self) -> bool {
+		self.persistent
+	}
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum TtlAnchor {
 	#[default]

@@ -8,18 +8,19 @@ use reifydb_catalog::{
 		table::{TableColumnToCreate, TableToCreate},
 		view::ViewToCreate,
 	},
-	store::{ttl::create::create_row_ttl, view::create::ViewStorageConfig},
+	store::{row_settings::create::create_row_settings, view::create::ViewStorageConfig},
 };
 use reifydb_core::{
 	error::diagnostic::catalog::view_already_exists,
 	interface::catalog::{change::CatalogTrackViewChangeOperations, shape::ShapeId},
+	row::RowSettings,
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::{CompiledViewStorageKind, CreateDeferredViewNode};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{fragment::Fragment, return_error, value::Value};
 
-use super::create_deferred_view_flow;
+use super::{create_deferred_view_flow, require_buffer_for_non_persistent};
 use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_deferred_view(
@@ -27,6 +28,8 @@ pub(crate) fn create_deferred_view(
 	txn: &mut AdminTransaction,
 	plan: CreateDeferredViewNode,
 ) -> Result<Columns> {
+	require_buffer_for_non_persistent(txn, plan.persistent, plan.view.clone(), plan.view.text())?;
+
 	if let Some(view) = services.catalog.find_view_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.id(),
@@ -60,7 +63,14 @@ pub(crate) fn create_deferred_view(
 				..
 			} => ShapeId::Series(*underlying),
 		};
-		create_row_ttl(txn, shape_id, ttl)?;
+		create_row_settings(
+			txn,
+			shape_id,
+			&RowSettings {
+				ttl: Some(ttl.clone()),
+				persistent: plan.persistent,
+			},
+		)?;
 	}
 
 	let result = services.catalog.create_deferred_view(

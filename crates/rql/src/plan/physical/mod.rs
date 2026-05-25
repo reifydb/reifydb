@@ -194,6 +194,7 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub ttl: Option<Ttl>,
+	pub persistent: bool,
 }
 
 #[derive(Debug)]
@@ -205,6 +206,7 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub ttl: Option<Ttl>,
+	pub persistent: bool,
 }
 
 #[derive(Debug)]

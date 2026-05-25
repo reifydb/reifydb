@@ -159,13 +159,20 @@ impl<'bump> Compiler<'bump> {
 		}
 
 		let table = ast.table;
-		let ttl = ast.ttl.map(Self::compile_ttl).transpose()?;
+		let (ttl, persistent) = match ast.settings {
+			Some(settings) => (
+				settings.ttl.map(Self::compile_ttl).transpose()?,
+				settings.persistent.is_none_or(|p| p.value),
+			),
+			None => (None, true),
+		};
 
 		Ok(LogicalPlan::CreateTable(CreateTableNode {
 			table,
 			if_not_exists: ast.if_not_exists,
 			columns,
 			ttl,
+			persistent,
 		}))
 	}
 }

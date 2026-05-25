@@ -19,8 +19,8 @@ use crate::{
 			AstCreatePrimaryKey, AstCreateProcedure, AstCreateRemoteNamespace, AstCreateRingBuffer,
 			AstCreateSeries, AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTag,
 			AstCreateTest, AstCreateTransactionalView, AstHydrationConfig, AstIndexColumn, AstJoinTtl,
-			AstPolicyTargetType, AstPrimaryKey, AstProcedureParam, AstStatement, AstTimestampPrecision,
-			AstTtl, AstType, AstVariant, AstViewStorageKind,
+			AstPersistent, AstPolicyTargetType, AstPrimaryKey, AstProcedureParam, AstRowSettings,
+			AstStatement, AstTimestampPrecision, AstTtl, AstType, AstVariant, AstViewStorageKind,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
@@ -623,7 +623,7 @@ impl<'bump> Parser<'bump> {
 		let mut tag = None;
 		let mut key_field = None;
 		let mut precision = None;
-		let mut ttl = None;
+		let mut settings = None;
 
 		if self.consume_if(TokenKind::Keyword(Keyword::With))?.is_some() {
 			self.consume_operator(Operator::OpenCurly)?;
@@ -702,7 +702,7 @@ impl<'bump> Parser<'bump> {
 						});
 					}
 					"row" => {
-						ttl = Some(self.parse_row_config()?);
+						settings = Some(self.parse_row_config()?);
 					}
 					_other => {
 						let fragment = with_key.fragment.to_owned();
@@ -755,7 +755,7 @@ impl<'bump> Parser<'bump> {
 			tag,
 			key: key_fragment,
 			precision,
-			ttl,
+			settings,
 		}))
 	}
 
@@ -904,7 +904,7 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedDeferredViewIdentifier::new(name).with_namespace(namespace);
 
-		let ttl = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
+		let settings = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
 			self.advance()?;
 			self.parse_view_with_clause()?
 		} else {
@@ -951,7 +951,7 @@ impl<'bump> Parser<'bump> {
 			columns,
 			as_clause,
 			storage_kind: AstViewStorageKind::Table,
-			ttl,
+			settings,
 		}))
 	}
 
@@ -967,7 +967,7 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedDeferredViewIdentifier::new(name).with_namespace(namespace);
 
-		let (storage_kind, ttl) = self.parse_view_storage_with_clause(hint)?;
+		let (storage_kind, settings) = self.parse_view_storage_with_clause(hint)?;
 
 		let as_clause = self.parse_view_as_clause()?;
 
@@ -977,7 +977,7 @@ impl<'bump> Parser<'bump> {
 			columns,
 			as_clause,
 			storage_kind,
-			ttl,
+			settings,
 		}))
 	}
 
@@ -989,7 +989,7 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedTransactionalViewIdentifier::new(name).with_namespace(namespace);
 
-		let ttl = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
+		let settings = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
 			self.advance()?;
 			self.parse_view_with_clause()?
 		} else {
@@ -1036,7 +1036,7 @@ impl<'bump> Parser<'bump> {
 			columns,
 			as_clause,
 			storage_kind: AstViewStorageKind::Table,
-			ttl,
+			settings,
 		}))
 	}
 
@@ -1052,7 +1052,7 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedTransactionalViewIdentifier::new(name).with_namespace(namespace);
 
-		let (storage_kind, ttl) = self.parse_view_storage_with_clause(hint)?;
+		let (storage_kind, settings) = self.parse_view_storage_with_clause(hint)?;
 
 		let as_clause = self.parse_view_as_clause()?;
 
@@ -1062,7 +1062,7 @@ impl<'bump> Parser<'bump> {
 			columns,
 			as_clause,
 			storage_kind,
-			ttl,
+			settings,
 		}))
 	}
 
@@ -1082,7 +1082,7 @@ impl<'bump> Parser<'bump> {
 
 		let table = MaybeQualifiedTableIdentifier::new(name).with_namespace(namespace);
 
-		let mut ttl = None;
+		let mut settings = None;
 
 		if self.consume_if(TokenKind::Keyword(Keyword::With))?.is_some() {
 			self.consume_operator(Operator::OpenCurly)?;
@@ -1099,7 +1099,7 @@ impl<'bump> Parser<'bump> {
 
 				match key.fragment.text() {
 					"row" => {
-						ttl = Some(self.parse_row_config()?);
+						settings = Some(self.parse_row_config()?);
 					}
 					_other => {
 						let fragment = key.fragment.to_owned();
@@ -1132,7 +1132,7 @@ impl<'bump> Parser<'bump> {
 			table,
 			if_not_exists,
 			columns,
-			ttl,
+			settings,
 		}))
 	}
 
@@ -1147,7 +1147,7 @@ impl<'bump> Parser<'bump> {
 
 		let mut capacity: Option<u64> = None;
 		let mut partition_by: Vec<String> = Vec::new();
-		let mut ttl = None;
+		let mut settings = None;
 
 		loop {
 			self.skip_new_line()?;
@@ -1219,7 +1219,7 @@ impl<'bump> Parser<'bump> {
 					self.consume_operator(Operator::CloseCurly)?;
 				}
 				"row" => {
-					ttl = Some(self.parse_row_config()?);
+					settings = Some(self.parse_row_config()?);
 				}
 				_other => {
 					let fragment = key.fragment.to_owned();
@@ -1277,7 +1277,7 @@ impl<'bump> Parser<'bump> {
 			columns,
 			capacity,
 			partition_by,
-			ttl,
+			settings,
 		}))
 	}
 
@@ -2047,11 +2047,11 @@ impl<'bump> Parser<'bump> {
 	fn parse_view_storage_with_clause(
 		&mut self,
 		hint: ViewStorageKindHint,
-	) -> Result<(AstViewStorageKind, Option<AstTtl<'bump>>)> {
+	) -> Result<(AstViewStorageKind, Option<AstRowSettings<'bump>>)> {
 		self.consume_keyword(Keyword::With)?;
 		self.consume_operator(Operator::OpenCurly)?;
 
-		let mut ttl: Option<AstTtl<'bump>> = None;
+		let mut settings = None;
 
 		match hint {
 			ViewStorageKindHint::RingBuffer => {
@@ -2124,7 +2124,7 @@ impl<'bump> Parser<'bump> {
 							self.consume_operator(Operator::CloseCurly)?;
 						}
 						"row" => {
-							ttl = Some(self.parse_row_config()?);
+							settings = Some(self.parse_row_config()?);
 						}
 						other => {
 							let fragment = key.fragment.to_owned();
@@ -2164,7 +2164,7 @@ impl<'bump> Parser<'bump> {
 						propagate_evictions,
 						partition_by,
 					},
-					ttl,
+					settings,
 				))
 			}
 			ViewStorageKindHint::Series => {
@@ -2205,7 +2205,7 @@ impl<'bump> Parser<'bump> {
 							});
 						}
 						"row" => {
-							ttl = Some(self.parse_row_config()?);
+							settings = Some(self.parse_row_config()?);
 						}
 						other => {
 							let fragment = key.fragment.to_owned();
@@ -2234,16 +2234,16 @@ impl<'bump> Parser<'bump> {
 						key_column,
 						precision,
 					},
-					ttl,
+					settings,
 				))
 			}
 		}
 	}
 
-	fn parse_view_with_clause(&mut self) -> Result<Option<AstTtl<'bump>>> {
+	fn parse_view_with_clause(&mut self) -> Result<Option<AstRowSettings<'bump>>> {
 		self.consume_operator(Operator::OpenCurly)?;
 
-		let mut ttl: Option<AstTtl<'bump>> = None;
+		let mut settings = None;
 
 		loop {
 			self.skip_new_line()?;
@@ -2256,7 +2256,7 @@ impl<'bump> Parser<'bump> {
 
 			match key.fragment.text() {
 				"row" => {
-					ttl = Some(self.parse_row_config()?);
+					settings = Some(self.parse_row_config()?);
 				}
 				other => {
 					let fragment = key.fragment.to_owned();
@@ -2274,7 +2274,7 @@ impl<'bump> Parser<'bump> {
 		}
 
 		self.consume_operator(Operator::CloseCurly)?;
-		Ok(ttl)
+		Ok(settings)
 	}
 
 	fn parse_throttle_duration(&mut self) -> Result<Duration> {
@@ -2402,10 +2402,11 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_row_config(&mut self) -> Result<AstTtl<'bump>> {
+	fn parse_row_config(&mut self) -> Result<AstRowSettings<'bump>> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut ttl: Option<AstTtl<'bump>> = None;
+		let mut persistent: Option<AstPersistent<'bump>> = None;
 
 		loop {
 			self.skip_new_line()?;
@@ -2420,14 +2421,39 @@ impl<'bump> Parser<'bump> {
 				"ttl" => {
 					ttl = Some(self.parse_ttl()?);
 				}
+				"persistent" => {
+					let current = self.current()?;
+					let value = match current.kind {
+						TokenKind::Literal(Literal::True) => true,
+						TokenKind::Literal(Literal::False) => false,
+						_ => {
+							let fragment = current.fragment.to_owned();
+							return Err(Error::from(TypeError::Ast {
+								kind: AstErrorKind::UnexpectedToken {
+									expected: "boolean literal".to_string(),
+								},
+								message: format!(
+									"expected boolean literal for 'persistent', found `{}`",
+									fragment.text()
+								),
+								fragment,
+							}));
+						}
+					};
+					let token = self.advance()?;
+					persistent = Some(AstPersistent {
+						value,
+						token,
+					});
+				}
 				_other => {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'ttl'".to_string(),
+							expected: "'ttl' or 'persistent'".to_string(),
 						},
 						message: format!(
-							"expected 'ttl' in row config, found `{}`",
+							"expected 'ttl' or 'persistent' in row config, found `{}`",
 							fragment.text()
 						),
 						fragment,
@@ -2447,19 +2473,38 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(Operator::CloseCurly)?;
 
-		ttl.ok_or_else(|| {
+		if ttl.is_none() && persistent.is_none() {
 			let fragment = self
 				.current()
 				.ok()
 				.map(|t| t.fragment.to_owned())
 				.unwrap_or_else(|| Fragment::internal("end of input"));
-			Error::from(TypeError::Ast {
+			return Err(Error::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
 					expected: "'ttl' is required in row config".to_string(),
 				},
 				message: "'ttl' is required in row config".to_string(),
 				fragment,
-			})
+			}));
+		}
+
+		if let Some(p) = &persistent
+			&& !p.value && ttl.is_none()
+		{
+			let fragment = p.token.fragment.to_owned();
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "a 'ttl' alongside 'persistent: false'".to_string(),
+				},
+				message: "a non-persistent shape requires a row ttl; add 'ttl' to the row config"
+					.to_string(),
+				fragment,
+			}));
+		}
+
+		Ok(AstRowSettings {
+			ttl,
+			persistent,
 		})
 	}
 

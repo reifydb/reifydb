@@ -22,7 +22,7 @@ use reifydb_runtime::actor::{
 use reifydb_type::value::datetime::DateTime;
 use tracing::{debug, info, trace, warn};
 
-use super::{ListRowTtls, ScanStats, scanner};
+use super::{ListRowSettings, ScanStats, scanner};
 use crate::{store::StandardMultiStore, tier::RangeCursor};
 
 #[derive(Default)]
@@ -36,12 +36,12 @@ pub struct ActorState {
 	scanner: ScannerState,
 }
 
-pub struct Actor<P: ListRowTtls> {
+pub struct Actor<P: ListRowSettings> {
 	store: StandardMultiStore,
 	provider: P,
 }
 
-impl<P: ListRowTtls> Actor<P> {
+impl<P: ListRowSettings> Actor<P> {
 	pub fn new(store: StandardMultiStore, provider: P) -> Self {
 		Self {
 			store,
@@ -72,16 +72,19 @@ impl<P: ListRowTtls> Actor<P> {
 		let now_nanos = now.to_nanos();
 		trace!(now_nanos, "Starting row TTL scan");
 
-		let ttls = self.provider.list_row_ttls();
+		let entries = self.provider.list_row_settings();
 		let config = self.provider.config();
 		let mut stats = ScanStats::default();
 		let mut persistent_rows_deleted: u64 = 0;
 
 		let batch_size = config.get_config_uint8(ConfigKey::RowTtlScanBatchSize) as usize;
 
-		for (shape_id, ttl_config) in &ttls {
-			trace!(?shape_id, ?ttl_config, "Evaluating TTL config for shape");
-			if ttl_config.cleanup_mode == TtlCleanupMode::Delete {
+		for (shape_id, settings) in &entries {
+			let Some(ttl) = settings.ttl.as_ref() else {
+				continue;
+			};
+			trace!(?shape_id, ?ttl, "Evaluating TTL config for shape");
+			if ttl.cleanup_mode == TtlCleanupMode::Delete {
 				debug!(?shape_id, "Skipping shape with TtlCleanupMode::Delete (not supported in V1)");
 				stats.shapes_skipped += 1;
 				continue;
@@ -90,11 +93,11 @@ impl<P: ListRowTtls> Actor<P> {
 			if let Some(buffer) = buffer {
 				let mut cursor = state.scanner.cursors.remove(shape_id).unwrap_or_default();
 
-				let scan_result = match ttl_config.anchor {
+				let scan_result = match ttl.anchor {
 					TtlAnchor::Created => scanner::scan_shape_by_created_at(
 						buffer,
 						*shape_id,
-						ttl_config,
+						ttl,
 						now_nanos,
 						batch_size,
 						&mut cursor,
@@ -102,7 +105,7 @@ impl<P: ListRowTtls> Actor<P> {
 					TtlAnchor::Updated => scanner::scan_shape_by_updated_at(
 						buffer,
 						*shape_id,
-						ttl_config,
+						ttl,
 						now_nanos,
 						batch_size,
 						&mut cursor,
@@ -157,9 +160,8 @@ impl<P: ListRowTtls> Actor<P> {
 			}
 
 			if let Some(persistent) = persistent {
-				let cutoff = now_nanos.saturating_sub(ttl_config.duration_nanos);
-				match persistent.delete_expired(EntryKind::Source(*shape_id), ttl_config.anchor, cutoff)
-				{
+				let cutoff = now_nanos.saturating_sub(ttl.duration_nanos);
+				match persistent.delete_expired(EntryKind::Source(*shape_id), ttl.anchor, cutoff) {
 					Ok(deleted) => {
 						persistent_rows_deleted += deleted;
 						if deleted > 0 {
@@ -220,7 +222,7 @@ impl<P: ListRowTtls> Actor<P> {
 	}
 }
 
-impl<P: ListRowTtls> ActorTrait for Actor<P> {
+impl<P: ListRowSettings> ActorTrait for Actor<P> {
 	type State = ActorState;
 	type Message = Message;
 
@@ -264,7 +266,7 @@ impl<P: ListRowTtls> ActorTrait for Actor<P> {
 	}
 }
 
-pub fn spawn_row_ttl_actor<P: ListRowTtls>(
+pub fn spawn_row_settings_actor<P: ListRowSettings>(
 	store: StandardMultiStore,
 	system: ActorSystem,
 	provider: P,

@@ -3,10 +3,11 @@
 
 use reifydb_catalog::{
 	catalog::table::{TableColumnToCreate, TableToCreate},
-	store::ttl::create::create_row_ttl,
+	store::row_settings::create::create_row_settings,
 };
 use reifydb_core::{
 	interface::catalog::{change::CatalogTrackTableChangeOperations, shape::ShapeId},
+	row::RowSettings,
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::CreateTableNode;
@@ -20,9 +21,12 @@ use reifydb_type::{
 	},
 };
 
+use super::require_buffer_for_non_persistent;
 use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_table(services: &Services, txn: &mut AdminTransaction, plan: CreateTableNode) -> Result<Columns> {
+	require_buffer_for_non_persistent(txn, plan.persistent, plan.table.clone(), plan.table.text())?;
+
 	if let Some(existing) = services.catalog.find_table_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.def().id(),
@@ -51,7 +55,14 @@ pub(crate) fn create_table(services: &Services, txn: &mut AdminTransaction, plan
 		},
 	)?;
 	if let Some(ttl) = plan.ttl {
-		create_row_ttl(txn, ShapeId::Table(table.id), &ttl)?;
+		create_row_settings(
+			txn,
+			ShapeId::Table(table.id),
+			&RowSettings {
+				ttl: Some(ttl),
+				persistent: plan.persistent,
+			},
+		)?;
 	}
 
 	txn.track_table_created(table.clone())?;
