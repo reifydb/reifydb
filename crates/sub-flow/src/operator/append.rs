@@ -26,7 +26,7 @@ use crate::{
 		Operator, OperatorCell,
 		stateful::{
 			row::RowNumberProvider,
-			utils::{state_drop, state_get, state_range, state_set},
+			utils::{internal_state_drop, internal_state_get, internal_state_range, internal_state_set},
 		},
 	},
 	transaction::FlowTransaction,
@@ -117,7 +117,7 @@ impl AppendOperator {
 		let key = Self::make_timestamp_key(composite_key);
 		let now_nanos = txn.clock().now_nanos();
 		let shape = RowShape::operator_state();
-		let (mut row, created_at) = match state_get(self.node, txn, &key)? {
+		let (mut row, created_at) = match internal_state_get(self.node, txn, &key)? {
 			Some(existing) => {
 				let c = existing.created_at_nanos();
 				(
@@ -132,13 +132,13 @@ impl AppendOperator {
 			None => (shape.allocate(), now_nanos),
 		};
 		row.set_timestamps(created_at, now_nanos);
-		state_set(self.node, txn, &key, row)
+		internal_state_set(self.node, txn, &key, row)
 	}
 
 	fn forget_mapping(&self, txn: &mut FlowTransaction, composite_key: &EncodedKey) -> Result<()> {
 		self.row_number_provider.remove_for_key(txn, composite_key)?;
 		let ts_key = Self::make_timestamp_key(composite_key);
-		state_drop(self.node, txn, &ts_key)
+		internal_state_drop(self.node, txn, &ts_key)
 	}
 }
 
@@ -216,7 +216,8 @@ impl Operator for AppendOperator {
 			None => base.start.clone(),
 		};
 		let range = EncodedKeyRange::new(start, base.end.clone());
-		let batch = state_range(self.node, txn, range).take(EVICT_BATCH).collect::<Result<Vec<_>>>()?;
+		let batch =
+			internal_state_range(self.node, txn, range).take(EVICT_BATCH).collect::<Result<Vec<_>>>()?;
 		let reached_end = batch.len() < EVICT_BATCH;
 		let last_key = batch.last().map(|(key, _)| key.clone());
 
@@ -360,7 +361,7 @@ mod tests {
 	use reifydb_type::value::{datetime::DateTime, identity::IdentityId};
 
 	use super::*;
-	use crate::operator::stateful::utils::state_get;
+	use crate::operator::stateful::utils::internal_state_get;
 
 	fn make_tick(clock: &Clock) -> Tick {
 		Tick {
@@ -413,13 +414,13 @@ mod tests {
 		assert!(op.row_number_provider.get_row_number(&mut txn, &key).unwrap().is_some());
 		assert!(op.row_number_provider.get_key_for_row_number(&mut txn, assigned).unwrap().is_some());
 		let ts_key = AppendOperator::make_timestamp_key(&key);
-		assert!(state_get(op.node, &mut txn, &ts_key).unwrap().is_some());
+		assert!(internal_state_get(op.node, &mut txn, &ts_key).unwrap().is_some());
 
 		op.forget_mapping(&mut txn, &key).unwrap();
 
 		assert!(op.row_number_provider.get_row_number(&mut txn, &key).unwrap().is_none());
 		assert!(op.row_number_provider.get_key_for_row_number(&mut txn, assigned).unwrap().is_none());
-		assert!(state_get(op.node, &mut txn, &ts_key).unwrap().is_none());
+		assert!(internal_state_get(op.node, &mut txn, &ts_key).unwrap().is_none());
 	}
 
 	#[test]
@@ -442,7 +443,7 @@ mod tests {
 
 		let ts_key = AppendOperator::make_timestamp_key(&key);
 		assert!(
-			state_get(op.node, &mut txn, &ts_key).unwrap().is_none(),
+			internal_state_get(op.node, &mut txn, &ts_key).unwrap().is_none(),
 			"timestamp must not be written when ttl is disabled"
 		);
 	}
@@ -465,13 +466,13 @@ mod tests {
 		let key = composite(0, 1);
 		op.touch_timestamp(&mut txn, &key).unwrap();
 		let ts_key = AppendOperator::make_timestamp_key(&key);
-		let first = state_get(op.node, &mut txn, &ts_key).unwrap().unwrap();
+		let first = internal_state_get(op.node, &mut txn, &ts_key).unwrap().unwrap();
 		let created_at = first.created_at_nanos();
 		assert_ne!(created_at, 0);
 
 		mock_clock.advance_millis(100);
 		op.touch_timestamp(&mut txn, &key).unwrap();
-		let second = state_get(op.node, &mut txn, &ts_key).unwrap().unwrap();
+		let second = internal_state_get(op.node, &mut txn, &ts_key).unwrap().unwrap();
 		assert_eq!(
 			second.created_at_nanos(),
 			created_at,

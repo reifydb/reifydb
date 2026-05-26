@@ -146,28 +146,29 @@ impl<'de> Visitor<'de> for TimeVisitor {
 			(value, None)
 		};
 
-		let time_parts: Vec<&str> = time_part.split(':').collect();
-		if time_parts.len() != 3 {
+		let mut time_parts = time_part.split(':');
+		let (Some(hour_str), Some(minute_str), Some(second_str), None) =
+			(time_parts.next(), time_parts.next(), time_parts.next(), time_parts.next())
+		else {
 			return Err(E::custom(format!("invalid time format: {}", value)));
-		}
+		};
 
-		let hour = time_parts[0]
-			.parse::<u32>()
-			.map_err(|_| E::custom(format!("invalid hour: {}", time_parts[0])))?;
-		let minute = time_parts[1]
-			.parse::<u32>()
-			.map_err(|_| E::custom(format!("invalid minute: {}", time_parts[1])))?;
-		let second = time_parts[2]
-			.parse::<u32>()
-			.map_err(|_| E::custom(format!("invalid second: {}", time_parts[2])))?;
+		let hour = hour_str.parse::<u32>().map_err(|_| E::custom(format!("invalid hour: {}", hour_str)))?;
+		let minute =
+			minute_str.parse::<u32>().map_err(|_| E::custom(format!("invalid minute: {}", minute_str)))?;
+		let second =
+			second_str.parse::<u32>().map_err(|_| E::custom(format!("invalid second: {}", second_str)))?;
 
 		let nano = if let Some(nano_str) = nano_part {
-			let padded = if nano_str.len() < 9 {
-				format!("{:0<9}", nano_str)
+			if nano_str.is_empty() {
+				0
 			} else {
-				nano_str[..9].to_string()
-			};
-			padded.parse::<u32>().map_err(|_| E::custom(format!("invalid nanoseconds: {}", nano_str)))?
+				let digits = nano_str.len().min(9);
+				let value = nano_str[..digits]
+					.parse::<u32>()
+					.map_err(|_| E::custom(format!("invalid nanoseconds: {}", nano_str)))?;
+				value * 10u32.pow((9 - digits) as u32)
+			}
 		} else {
 			0
 		};
@@ -443,6 +444,30 @@ pub mod tests {
 
 		let recovered: Time = from_str(&json).unwrap();
 		assert_eq!(time, recovered);
+	}
+
+	#[test]
+	fn test_deserialize_requires_exactly_three_parts() {
+		assert!(from_str::<Time>("\"14:30\"").is_err());
+		assert!(from_str::<Time>("\"14:30:45:99\"").is_err());
+		let time: Time = from_str("\"14:30:45\"").unwrap();
+		assert_eq!(time, Time::new(14, 30, 45, 0).unwrap());
+	}
+
+	#[test]
+	fn test_deserialize_subsecond_digit_counts() {
+		// Fewer than 9 fractional digits are right-padded with zeros to nanoseconds.
+		assert_eq!(from_str::<Time>("\"14:30:45.5\"").unwrap().nanosecond(), 500_000_000);
+		assert_eq!(from_str::<Time>("\"14:30:45.123\"").unwrap().nanosecond(), 123_000_000);
+		// Leading zeros in the fraction are preserved.
+		assert_eq!(from_str::<Time>("\"14:30:45.001\"").unwrap().nanosecond(), 1_000_000);
+		// Exactly 9 map verbatim; more than 9 truncate to the first 9.
+		assert_eq!(from_str::<Time>("\"14:30:45.123456789\"").unwrap().nanosecond(), 123_456_789);
+		assert_eq!(from_str::<Time>("\"14:30:45.123456789999\"").unwrap().nanosecond(), 123_456_789);
+		// A trailing dot with no digits is zero nanoseconds.
+		assert_eq!(from_str::<Time>("\"14:30:45.\"").unwrap().nanosecond(), 0);
+		// A non-numeric fraction is rejected.
+		assert!(from_str::<Time>("\"14:30:45.12x\"").is_err());
 	}
 
 	fn assert_time_overflow<T: Debug>(result: Result<T, Box<TypeError>>) {

@@ -47,11 +47,6 @@ pub fn scan_operator_by_created_at(
 		if let Some(ref value) = entry.value {
 			let row = EncodedRow(value.clone());
 			let anchor_nanos = row.created_at_nanos();
-			assert!(
-				anchor_nanos > 0,
-				"Operator-state row is missing created_at timestamp - this is an invariant violation"
-			);
-
 			if now_nanos.saturating_sub(anchor_nanos) >= ttl.duration_nanos {
 				expired.push(ExpiredOperatorState {
 					node_id,
@@ -92,11 +87,6 @@ pub fn scan_operator_by_updated_at(
 		if let Some(ref value) = entry.value {
 			let row = EncodedRow(value.clone());
 			let anchor_nanos = row.updated_at_nanos();
-			assert!(
-				anchor_nanos > 0,
-				"Operator-state row is missing updated_at timestamp - this is an invariant violation"
-			);
-
 			if now_nanos.saturating_sub(anchor_nanos) >= ttl.duration_nanos {
 				expired.push(ExpiredOperatorState {
 					node_id,
@@ -157,11 +147,6 @@ pub fn scan_operator_join(
 			TtlAnchor::Created => row.created_at_nanos(),
 			TtlAnchor::Updated => row.updated_at_nanos(),
 		};
-		assert!(
-			anchor_nanos > 0,
-			"Join-state row is missing its TTL anchor timestamp - this is an invariant violation"
-		);
-
 		if now_nanos.saturating_sub(anchor_nanos) >= ttl.duration_nanos {
 			expired.push(ExpiredOperatorState {
 				node_id,

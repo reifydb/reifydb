@@ -102,6 +102,15 @@ pub fn state_range<'a>(id: FlowNodeId, txn: &'a mut FlowTransaction, range: Enco
 	StateIterator::new(txn.range(prefixed_range, 1024))
 }
 
+pub fn internal_state_range<'a>(
+	id: FlowNodeId,
+	txn: &'a mut FlowTransaction,
+	range: EncodedKeyRange,
+) -> StateIterator<'a> {
+	let prefixed_range = range.with_prefix(FlowNodeInternalStateKey::encoded(id, vec![]));
+	StateIterator::new(txn.range(prefixed_range, 1024))
+}
+
 pub fn state_clear(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<()> {
 	let range = FlowNodeStateKey::node_range(id);
 	let keys_to_remove = {

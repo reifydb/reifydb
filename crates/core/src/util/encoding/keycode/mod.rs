@@ -237,11 +237,11 @@ pub fn decode_i64_varint(input: &mut &[u8]) -> Result<i64> {
 		}));
 	}
 
-	let mut buf = input[..len].to_vec();
-	for b in buf.iter_mut() {
-		*b = !*b;
+	let mut buf = [0u8; 9];
+	for (dst, &src) in buf[..len].iter_mut().zip(&input[..len]) {
+		*dst = !src;
 	}
-	let mut slice = &buf[..];
+	let mut slice = &buf[..len];
 	let v = varint::decode_i64_varint(&mut slice).ok_or_else(|| {
 		Error::from(TypeError::SerdeKeycode {
 			message: "failed to decode signed varint".to_string(),
@@ -273,11 +273,11 @@ pub fn decode_u64_varint(input: &mut &[u8]) -> Result<u64> {
 		}));
 	}
 
-	let mut buf = input[..len].to_vec();
-	for b in buf.iter_mut() {
-		*b = !*b;
+	let mut buf = [0u8; 9];
+	for (dst, &src) in buf[..len].iter_mut().zip(&input[..len]) {
+		*dst = !src;
 	}
-	let mut slice = &buf[..];
+	let mut slice = &buf[..len];
 	let v = varint::decode_u64_varint(&mut slice).unwrap();
 	*input = &input[len..];
 	Ok(v)

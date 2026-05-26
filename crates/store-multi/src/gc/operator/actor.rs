@@ -6,7 +6,10 @@ use std::collections::HashMap;
 use reifydb_core::{
 	actors::operator_ttl::OperatorTtlMessage as Message,
 	event::row::OperatorRowsExpiredEvent,
-	interface::{catalog::config::ConfigKey, store::EntryKind},
+	interface::{
+		catalog::{config::ConfigKey, flow::FlowNodeId},
+		store::EntryKind,
+	},
 	key::flow_node_state::FlowNodeStateKey,
 	row::{TtlAnchor, TtlCleanupMode},
 };
@@ -25,7 +28,7 @@ use crate::{gc::row::scanner::ScanResult, store::StandardMultiStore, tier::Range
 
 #[derive(Default)]
 pub struct ScannerState {
-	cursors: HashMap<reifydb_core::interface::catalog::flow::FlowNodeId, RangeCursor>,
+	cursors: HashMap<FlowNodeId, RangeCursor>,
 }
 
 pub struct ActorState {

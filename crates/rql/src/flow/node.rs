@@ -99,21 +99,13 @@ pub enum FlowNodeType {
 
 impl FlowNodeType {
 	pub fn ticks(&self) -> bool {
-		match self {
-			FlowNodeType::Append {
-				..
-			}
-			| FlowNodeType::Distinct {
-				..
-			}
-			| FlowNodeType::Window {
-				..
-			}
-			| FlowNodeType::Apply {
-				..
-			} => true,
-			_ => false,
-		}
+		matches!(
+			self,
+			FlowNodeType::Append { .. }
+				| FlowNodeType::Distinct { .. }
+				| FlowNodeType::Window { .. }
+				| FlowNodeType::Apply { .. }
+		)
 	}
 
 	pub fn label(&self) -> String {

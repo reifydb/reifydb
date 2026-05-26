@@ -76,6 +76,20 @@ impl VarlenContainer<Cow> {
 		}
 	}
 
+	pub fn from_repeated_bytes(item: &[u8], count: usize) -> Self {
+		let mut data: Vec<u8> = Vec::with_capacity(item.len() * count);
+		let mut offsets: Vec<u64> = Vec::with_capacity(count + 1);
+		offsets.push(0);
+		for _ in 0..count {
+			data.extend_from_slice(item);
+			offsets.push(data.len() as u64);
+		}
+		Self {
+			data: CowVec::new(data),
+			offsets: CowVec::new(offsets),
+		}
+	}
+
 	pub fn with_capacity(item_capacity: usize, data_capacity: usize) -> Self {
 		let mut offsets = Vec::with_capacity(item_capacity + 1);
 		offsets.push(0);
@@ -313,6 +327,33 @@ mod tests {
 		assert_eq!(c.len(), 3);
 		assert_eq!(c.data_bytes(), b"abcdef");
 		assert_eq!(c.offsets(), &[0u64, 1, 3, 6]);
+	}
+
+	#[test]
+	fn from_repeated_bytes_matches_explicit_copies() {
+		let repeated = VarlenContainer::from_repeated_bytes(b"abc", 3);
+		let explicit = VarlenContainer::from_byte_slices([b"abc".as_slice(), b"abc", b"abc"]);
+		assert_eq!(repeated, explicit);
+		assert_eq!(repeated.len(), 3);
+		assert_eq!(repeated.data_bytes(), b"abcabcabc");
+		assert_eq!(repeated.offsets(), &[0u64, 3, 6, 9]);
+	}
+
+	#[test]
+	fn from_repeated_bytes_zero_count_is_empty() {
+		let c = VarlenContainer::from_repeated_bytes(b"abc", 0);
+		assert_eq!(c.len(), 0);
+		assert_eq!(c.offsets(), &[0u64]);
+		assert!(c.data_bytes().is_empty());
+	}
+
+	#[test]
+	fn from_repeated_bytes_empty_item_keeps_count() {
+		let c = VarlenContainer::from_repeated_bytes(b"", 4);
+		assert_eq!(c.len(), 4);
+		assert_eq!(c.get_bytes(0), Some(b"".as_slice()));
+		assert_eq!(c.get_bytes(3), Some(b"".as_slice()));
+		assert!(c.data_bytes().is_empty());
 	}
 
 	#[test]

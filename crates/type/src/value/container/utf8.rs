@@ -72,6 +72,12 @@ impl Utf8Container<Cow> {
 		}
 	}
 
+	pub fn from_repeated_str(value: &str, count: usize) -> Self {
+		Self {
+			inner: VarlenContainer::from_repeated_bytes(value.as_bytes(), count),
+		}
+	}
+
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
 			inner: VarlenContainer::with_capacity(capacity, capacity * 16),
@@ -252,6 +258,20 @@ pub mod tests {
 		assert_eq!(container.get(1), Some("bar"));
 		assert_eq!(container.get(2), Some("baz"));
 
+		for i in 0..3 {
+			assert!(container.is_defined(i));
+		}
+	}
+
+	#[test]
+	fn test_from_repeated_str() {
+		let container = Utf8Container::from_repeated_str("mint", 3);
+		let explicit =
+			Utf8Container::from_vec(vec!["mint".to_string(), "mint".to_string(), "mint".to_string()]);
+		assert_eq!(container, explicit);
+		assert_eq!(container.len(), 3);
+		assert_eq!(container.get(0), Some("mint"));
+		assert_eq!(container.get(2), Some("mint"));
 		for i in 0..3 {
 			assert!(container.is_defined(i));
 		}

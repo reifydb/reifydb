@@ -245,17 +245,17 @@ impl<'de> Visitor<'de> for DateTimeVisitor {
 	{
 		let value = value.strip_suffix('Z').unwrap_or(value);
 
-		let parts: Vec<&str> = value.split('T').collect();
-		if parts.len() != 2 {
+		let mut t_parts = value.split('T');
+		let (Some(date_part), Some(time_full), None) = (t_parts.next(), t_parts.next(), t_parts.next()) else {
 			return Err(E::custom(format!("invalid datetime format: {}", value)));
-		}
+		};
 
-		let date_parts: Vec<&str> = parts[0].split('-').collect();
-		if date_parts.len() != 3 {
-			return Err(E::custom(format!("invalid date format: {}", parts[0])));
-		}
-
-		let (year_str, month_str, day_str) = (date_parts[0], date_parts[1], date_parts[2]);
+		let mut date_parts = date_part.split('-');
+		let (Some(year_str), Some(month_str), Some(day_str), None) =
+			(date_parts.next(), date_parts.next(), date_parts.next(), date_parts.next())
+		else {
+			return Err(E::custom(format!("invalid date format: {}", date_part)));
+		};
 
 		let year = year_str.parse::<i32>().map_err(|_| E::custom(format!("invalid year: {}", year_str)))?;
 		if year < 1970 {
@@ -264,34 +264,35 @@ impl<'de> Visitor<'de> for DateTimeVisitor {
 		let month = month_str.parse::<u32>().map_err(|_| E::custom(format!("invalid month: {}", month_str)))?;
 		let day = day_str.parse::<u32>().map_err(|_| E::custom(format!("invalid day: {}", day_str)))?;
 
-		let (time_part, nano_part) = if let Some(dot_pos) = parts[1].find('.') {
-			(&parts[1][..dot_pos], Some(&parts[1][dot_pos + 1..]))
+		let (time_part, nano_part) = if let Some(dot_pos) = time_full.find('.') {
+			(&time_full[..dot_pos], Some(&time_full[dot_pos + 1..]))
 		} else {
-			(parts[1], None)
+			(time_full, None)
 		};
 
-		let time_parts: Vec<&str> = time_part.split(':').collect();
-		if time_parts.len() != 3 {
-			return Err(E::custom(format!("invalid time format: {}", parts[1])));
-		}
+		let mut time_parts = time_part.split(':');
+		let (Some(hour_str), Some(minute_str), Some(second_str), None) =
+			(time_parts.next(), time_parts.next(), time_parts.next(), time_parts.next())
+		else {
+			return Err(E::custom(format!("invalid time format: {}", time_full)));
+		};
 
-		let hour = time_parts[0]
-			.parse::<u32>()
-			.map_err(|_| E::custom(format!("invalid hour: {}", time_parts[0])))?;
-		let minute = time_parts[1]
-			.parse::<u32>()
-			.map_err(|_| E::custom(format!("invalid minute: {}", time_parts[1])))?;
-		let second = time_parts[2]
-			.parse::<u32>()
-			.map_err(|_| E::custom(format!("invalid second: {}", time_parts[2])))?;
+		let hour = hour_str.parse::<u32>().map_err(|_| E::custom(format!("invalid hour: {}", hour_str)))?;
+		let minute =
+			minute_str.parse::<u32>().map_err(|_| E::custom(format!("invalid minute: {}", minute_str)))?;
+		let second =
+			second_str.parse::<u32>().map_err(|_| E::custom(format!("invalid second: {}", second_str)))?;
 
 		let nano = if let Some(nano_str) = nano_part {
-			let padded = if nano_str.len() < 9 {
-				format!("{:0<9}", nano_str)
+			if nano_str.is_empty() {
+				0
 			} else {
-				nano_str[..9].to_string()
-			};
-			padded.parse::<u32>().map_err(|_| E::custom(format!("invalid nanoseconds: {}", nano_str)))?
+				let digits = nano_str.len().min(9);
+				let value = nano_str[..digits]
+					.parse::<u32>()
+					.map_err(|_| E::custom(format!("invalid nanoseconds: {}", nano_str)))?;
+				value * 10u32.pow((9 - digits) as u32)
+			}
 		} else {
 			0
 		};
@@ -550,6 +551,50 @@ pub mod tests {
 
 		let recovered: DateTime = from_str(&json).unwrap();
 		assert_eq!(datetime, recovered);
+	}
+
+	#[test]
+	fn test_deserialize_subsecond_digit_counts() {
+		// Fewer than 9 fractional digits are right-padded with zeros to nanoseconds.
+		let dt: DateTime = from_str("\"2024-03-15T14:30:45.5Z\"").unwrap();
+		assert_eq!(dt.nanosecond(), 500_000_000);
+
+		let dt: DateTime = from_str("\"2024-03-15T14:30:45.123Z\"").unwrap();
+		assert_eq!(dt.nanosecond(), 123_000_000);
+
+		// Leading zeros in the fraction are preserved.
+		let dt: DateTime = from_str("\"2024-03-15T14:30:45.001Z\"").unwrap();
+		assert_eq!(dt.nanosecond(), 1_000_000);
+
+		// Exactly 9 digits map verbatim.
+		let dt: DateTime = from_str("\"2024-03-15T14:30:45.123456789Z\"").unwrap();
+		assert_eq!(dt.nanosecond(), 123_456_789);
+
+		// More than 9 digits truncate to the first 9 (sub-nanosecond ignored).
+		let dt: DateTime = from_str("\"2024-03-15T14:30:45.123456789999Z\"").unwrap();
+		assert_eq!(dt.nanosecond(), 123_456_789);
+
+		// A trailing dot with no fractional digits is zero nanoseconds.
+		let dt: DateTime = from_str("\"2024-03-15T14:30:45.Z\"").unwrap();
+		assert_eq!(dt.nanosecond(), 0);
+	}
+
+	#[test]
+	fn test_deserialize_rejects_non_numeric_fraction() {
+		assert!(from_str::<DateTime>("\"2024-03-15T14:30:45.12xZ\"").is_err());
+	}
+
+	#[test]
+	fn test_deserialize_rejects_malformed_field_counts() {
+		// Missing the T separator, or wrong date/time field counts, must all error -
+		// guards the split-iterator parsing against accepting malformed input.
+		assert!(from_str::<DateTime>("\"2024-03-15 14:30:45Z\"").is_err());
+		assert!(from_str::<DateTime>("\"2024-03T14:30:45Z\"").is_err());
+		assert!(from_str::<DateTime>("\"2024-03-15-01T14:30:45Z\"").is_err());
+		assert!(from_str::<DateTime>("\"2024-03-15T14:30Z\"").is_err());
+		assert!(from_str::<DateTime>("\"2024-03-15T14:30:45:99Z\"").is_err());
+		let dt: DateTime = from_str("\"2024-03-15T14:30:45Z\"").unwrap();
+		assert_eq!(dt, DateTime::new(2024, 3, 15, 14, 30, 45, 0).unwrap());
 	}
 
 	fn assert_datetime_overflow<T: Debug>(result: Result<T, Box<TypeError>>) {

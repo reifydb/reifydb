@@ -272,6 +272,13 @@ impl ColumnBuffer {
 		}
 	}
 
+	pub fn utf8_repeated(value: &str, count: usize) -> Self {
+		ColumnBuffer::Utf8 {
+			container: Utf8Container::from_repeated_str(value, count),
+			max_bytes: MaxBytes::MAX,
+		}
+	}
+
 	pub fn utf8_optional(data: impl IntoIterator<Item = Option<String>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();

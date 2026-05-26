@@ -4,7 +4,7 @@
 use std::{
 	cmp::Ordering,
 	collections::BTreeMap,
-	fmt::Debug,
+	fmt::{self, Debug, Formatter},
 	hash::{Hash, Hasher},
 	marker::PhantomData,
 };
@@ -797,7 +797,7 @@ impl<C: Slot, F: SealFold> Clone for SealingFold<C, F> {
 }
 
 impl<C: Slot, F: SealFold> Debug for SealingFold<C, F> {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.debug_struct("SealingFold")
 			.field("lateness", &self.lateness)
 			.field("high_water", &self.high_water)

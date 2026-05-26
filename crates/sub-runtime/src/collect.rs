@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+use std::fs::read_to_string;
+
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+use libc::mallinfo2;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_store_multi::MultiStore;
 
@@ -61,11 +66,11 @@ pub fn collect_memory(c: &Collectors) -> Vec<Sample> {
 		if p.rss_total > 0 {
 			out.push(Sample::new("derived", "mmap_share", p.rss_file as f64 / p.rss_total as f64, "ratio"));
 		}
-		if let Some(a) = &alloc {
-			if p.rss_anon > 0 {
-				let frag = (p.rss_anon as f64 - a.heap_live as f64) / p.rss_anon as f64;
-				out.push(Sample::new("derived", "heap_retention_ratio", frag, "ratio"));
-			}
+		if let Some(a) = &alloc
+			&& p.rss_anon > 0
+		{
+			let frag = (p.rss_anon as f64 - a.heap_live as f64) / p.rss_anon as f64;
+			out.push(Sample::new("derived", "heap_retention_ratio", frag, "ratio"));
 		}
 	}
 
@@ -133,8 +138,8 @@ struct ProcMem {
 
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 fn collect_process() -> Option<ProcMem> {
-	let status = std::fs::read_to_string("/proc/self/status").ok()?;
-	let rollup = std::fs::read_to_string("/proc/self/smaps_rollup").unwrap_or_default();
+	let status = read_to_string("/proc/self/status").ok()?;
+	let rollup = read_to_string("/proc/self/smaps_rollup").unwrap_or_default();
 	Some(ProcMem {
 		rss_total: field_kb(&status, "VmRSS:").unwrap_or(0),
 		rss_anon: field_kb(&status, "RssAnon:").unwrap_or(0),
@@ -176,7 +181,7 @@ struct AllocMem {
 
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 fn collect_allocator() -> Option<AllocMem> {
-	let mi = unsafe { libc::mallinfo2() };
+	let mi = unsafe { mallinfo2() };
 	Some(AllocMem {
 		heap_live: mi.uordblks as u64,
 		heap_free_retained: mi.fordblks as u64,

@@ -176,16 +176,11 @@ impl<'de> Visitor<'de> for DateVisitor {
 	where
 		E: de::Error,
 	{
-		let parts: Vec<&str> = value.split('-').collect();
-
-		if parts.len() != 3 {
+		let mut parts = value.split('-');
+		let (Some(year_str), Some(month_str), Some(day_str), None) =
+			(parts.next(), parts.next(), parts.next(), parts.next())
+		else {
 			return Err(E::custom(format!("invalid date format: {}", value)));
-		}
-
-		let (year_str, month_str, day_str) = if parts[0].is_empty() && parts.len() == 4 {
-			(format!("-{}", parts[1]), parts[2], parts[3])
-		} else {
-			(parts[0].to_string(), parts[1], parts[2])
 		};
 
 		let year = year_str.parse::<i32>().map_err(|_| E::custom(format!("invalid year: {}", year_str)))?;
@@ -378,6 +373,17 @@ pub mod tests {
 
 		let recovered: Date = from_str(&json).unwrap();
 		assert_eq!(date, recovered);
+	}
+
+	#[test]
+	fn test_deserialize_requires_exactly_three_parts() {
+		assert!(from_str::<Date>("\"2024-03\"").is_err());
+		assert!(from_str::<Date>("\"2024-03-15-99\"").is_err());
+		// A leading '-' yields an empty first field (4 parts) and is rejected,
+		// not treated as a negative year - matching the previous behavior.
+		assert!(from_str::<Date>("\"-2024-03-15\"").is_err());
+		let date: Date = from_str("\"2024-03-15\"").unwrap();
+		assert_eq!(date, Date::new(2024, 3, 15).unwrap());
 	}
 
 	fn assert_date_overflow<T: Debug>(result: Result<T, Box<TypeError>>) {

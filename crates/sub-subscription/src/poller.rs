@@ -6,7 +6,7 @@ use std::{sync::Arc, time::Duration};
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
-use tokio::{select, sync::watch::Receiver, task::spawn_blocking, time::sleep};
+use tokio::{pin, select, sync::watch::Receiver, task::spawn_blocking, time::sleep};
 
 use crate::store::SubscriptionStore;
 
@@ -66,7 +66,7 @@ impl StoreBackedPoller {
 			let mut stop = false;
 			{
 				let notified = self.store.wake().notified();
-				tokio::pin!(notified);
+				pin!(notified);
 				select! {
 					biased;
 					result = stop_rx.changed() => {
