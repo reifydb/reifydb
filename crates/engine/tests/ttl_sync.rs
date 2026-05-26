@@ -91,6 +91,44 @@ fn test_row_settings_replication_sync() {
 	assert_eq!(ttl.ttl.expect("ttl not set").duration_nanos, 60_000_000_000);
 }
 
+#[test]
+fn test_operator_settings_sync_to_catalog_cache() {
+	use reifydb_catalog::store::operator_settings::create::create_operator_settings;
+	use reifydb_core::{
+		interface::catalog::flow::FlowNodeId,
+		row::{OperatorSettings, Ttl, TtlAnchor, TtlCleanupMode},
+	};
+	use reifydb_store_multi::gc::operator::ListOperatorSettings;
+
+	let engine = TestEngine::new();
+	let catalog = engine.catalog();
+
+	// An operator's TTL is persisted by the flow compiler via create_operator_settings.
+	// The operator-TTL GC actor only ever sees these via the cache-backed list below, so
+	// the write must reach the cache through the post-commit interceptor. Before the fix
+	// create_operator_settings only wrote storage without tracking the change, so the
+	// interceptor never learned about it and this list stayed empty - silently disabling
+	// operator-state GC for every stateful operator.
+	let node_id = FlowNodeId(42);
+	let settings = OperatorSettings {
+		ttl: Some(Ttl {
+			duration_nanos: 3_600_000_000_000,
+			anchor: TtlAnchor::Created,
+			cleanup_mode: TtlCleanupMode::Drop,
+		}),
+		join: None,
+	};
+
+	let mut txn = engine.begin_admin(IdentityId::system()).unwrap();
+	create_operator_settings(&mut txn, node_id, &settings).unwrap();
+	txn.commit().unwrap();
+
+	let listed = catalog.list_operator_settings();
+	assert_eq!(listed.len(), 1, "operator settings did not sync to the catalog cache");
+	assert_eq!(listed[0].0, node_id);
+	assert_eq!(listed[0].1.ttl.as_ref().expect("ttl not set").duration_nanos, 3_600_000_000_000);
+}
+
 fn deltas_to_system_changes(txn: &AdminTransaction) -> Vec<SystemChange> {
 	txn.pending_writes()
 		.clone()

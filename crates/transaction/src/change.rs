@@ -9,7 +9,7 @@ use reifydb_core::{
 		binding::Binding,
 		config::{Config, ConfigKey},
 		dictionary::Dictionary,
-		flow::{Flow, FlowId},
+		flow::{Flow, FlowId, FlowNodeId},
 		handler::Handler,
 		id::{
 			BindingId, HandlerId, MigrationEventId, MigrationId, NamespaceId, ProcedureId, RingBufferId,
@@ -30,7 +30,7 @@ use reifydb_core::{
 		test::Test,
 		view::View,
 	},
-	row::RowSettings,
+	row::{OperatorSettings, RowSettings},
 };
 use reifydb_type::value::{dictionary::DictionaryId, identity::IdentityId, row_number::RowNumber, sumtype::SumTypeId};
 
@@ -59,6 +59,7 @@ pub trait TransactionalChanges:
 	+ TransactionalViewChanges
 	+ TransactionalConfigChanges
 	+ TransactionalRowSettingsChanges
+	+ TransactionalOperatorSettingsChanges
 {
 }
 
@@ -76,6 +77,12 @@ pub trait TransactionalRowSettingsChanges {
 	fn find_row_settings(&self, shape: ShapeId) -> Option<&RowSettings>;
 
 	fn is_row_settings_deleted(&self, shape: ShapeId) -> bool;
+}
+
+pub trait TransactionalOperatorSettingsChanges {
+	fn find_operator_settings(&self, operator: FlowNodeId) -> Option<&OperatorSettings>;
+
+	fn is_operator_settings_deleted(&self, operator: FlowNodeId) -> bool;
 }
 
 pub trait TransactionalConfigChanges {
@@ -323,6 +330,8 @@ pub struct TransactionalCatalogChanges {
 
 	pub row_settings: Vec<Change<(ShapeId, RowSettings)>>,
 
+	pub operator_settings: Vec<Change<(FlowNodeId, OperatorSettings)>>,
+
 	pub log: Vec<Operation>,
 }
 
@@ -350,6 +359,7 @@ pub struct CatalogChangesSavepoint {
 	policy_len: usize,
 	view_len: usize,
 	row_settings_len: usize,
+	operator_settings_len: usize,
 	log_len: usize,
 }
 
@@ -379,6 +389,7 @@ impl TransactionalCatalogChanges {
 			policy_len: self.policy.len(),
 			view_len: self.view.len(),
 			row_settings_len: self.row_settings.len(),
+			operator_settings_len: self.operator_settings.len(),
 			log_len: self.log.len(),
 		}
 	}
@@ -407,6 +418,7 @@ impl TransactionalCatalogChanges {
 		self.policy.truncate(sp.policy_len);
 		self.view.truncate(sp.view_len);
 		self.row_settings.truncate(sp.row_settings_len);
+		self.operator_settings.truncate(sp.operator_settings_len);
 		self.log.truncate(sp.log_len);
 	}
 
@@ -761,6 +773,21 @@ impl TransactionalCatalogChanges {
 			op,
 		});
 	}
+
+	pub fn add_operator_settings_change(&mut self, change: Change<(FlowNodeId, OperatorSettings)>) {
+		let operator = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|(o, _)| *o)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.operator_settings.push(change);
+		self.log.push(Operation::OperatorTtl {
+			operator,
+			op,
+		});
+	}
 }
 
 #[derive(Debug, Clone)]
@@ -874,6 +901,10 @@ pub enum Operation {
 		shape: ShapeId,
 		op: OperationType,
 	},
+	OperatorTtl {
+		operator: FlowNodeId,
+		op: OperationType,
+	},
 }
 
 impl TransactionalCatalogChanges {
@@ -903,6 +934,7 @@ impl TransactionalCatalogChanges {
 			policy: Vec::new(),
 			view: Vec::new(),
 			row_settings: Vec::new(),
+			operator_settings: Vec::new(),
 			log: Vec::new(),
 		}
 	}
@@ -953,6 +985,21 @@ impl TransactionalCatalogChanges {
 				}
 			} else if let Some((s, _)) = &change.pre
 				&& *s == shape && change.op == Delete
+			{
+				return None;
+			}
+		}
+		None
+	}
+
+	pub fn get_operator_settings(&self, operator: FlowNodeId) -> Option<&OperatorSettings> {
+		for change in self.operator_settings.iter().rev() {
+			if let Some((o, settings)) = &change.post {
+				if *o == operator {
+					return Some(settings);
+				}
+			} else if let Some((o, _)) = &change.pre
+				&& *o == operator && change.op == Delete
 			{
 				return None;
 			}

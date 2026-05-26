@@ -13,7 +13,7 @@ use reifydb_core::{
 			binding::Binding,
 			config::{Config, ConfigKey},
 			dictionary::Dictionary,
-			flow::{Flow, FlowId},
+			flow::{Flow, FlowId, FlowNodeId},
 			handler::Handler,
 			id::{
 				BindingId, HandlerId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId,
@@ -36,7 +36,7 @@ use reifydb_core::{
 		},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
-	row::RowSettings,
+	row::{OperatorSettings, RowSettings},
 };
 use reifydb_type::{
 	Result,
@@ -51,11 +51,11 @@ use crate::{
 		TransactionalAuthenticationChanges, TransactionalBindingChanges, TransactionalChanges,
 		TransactionalConfigChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
 		TransactionalGrantedRoleChanges, TransactionalHandlerChanges, TransactionalIdentityChanges,
-		TransactionalMigrationChanges, TransactionalNamespaceChanges, TransactionalPolicyChanges,
-		TransactionalProcedureChanges, TransactionalRingBufferChanges, TransactionalRoleChanges,
-		TransactionalRowSettingsChanges, TransactionalSeriesChanges, TransactionalSinkChanges,
-		TransactionalSourceChanges, TransactionalSumTypeChanges, TransactionalTableChanges,
-		TransactionalTestChanges, TransactionalViewChanges,
+		TransactionalMigrationChanges, TransactionalNamespaceChanges, TransactionalOperatorSettingsChanges,
+		TransactionalPolicyChanges, TransactionalProcedureChanges, TransactionalRingBufferChanges,
+		TransactionalRoleChanges, TransactionalRowSettingsChanges, TransactionalSeriesChanges,
+		TransactionalSinkChanges, TransactionalSourceChanges, TransactionalSumTypeChanges,
+		TransactionalTableChanges, TransactionalTestChanges, TransactionalViewChanges,
 	},
 	multi::transaction::read::MultiReadTransaction,
 	single::{SingleTransaction, read::SingleReadTransaction},
@@ -535,6 +535,16 @@ impl TransactionalRowSettingsChanges for QueryTransaction {
 	}
 
 	fn is_row_settings_deleted(&self, _shape: ShapeId) -> bool {
+		false
+	}
+}
+
+impl TransactionalOperatorSettingsChanges for QueryTransaction {
+	fn find_operator_settings(&self, _operator: FlowNodeId) -> Option<&OperatorSettings> {
+		None
+	}
+
+	fn is_operator_settings_deleted(&self, _operator: FlowNodeId) -> bool {
 		false
 	}
 }

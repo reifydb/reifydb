@@ -252,6 +252,16 @@ impl PostCommitInterceptor for CatalogCacheInterceptor {
 			self.catalog.set_row_settings(*shape, version, settings);
 		}
 
+		for change in &ctx.changes.operator_settings {
+			let (operator, _) = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.expect("Change must have either pre or post state");
+			let settings = change.post.as_ref().map(|(_, settings)| settings.clone());
+			self.catalog.set_operator_settings(*operator, version, settings);
+		}
+
 		Ok(())
 	}
 }

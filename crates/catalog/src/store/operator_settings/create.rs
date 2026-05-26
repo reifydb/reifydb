@@ -2,7 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId, key::operator_settings::OperatorSettingsKey, row::OperatorSettings,
+	interface::catalog::{change::CatalogTrackOperatorSettingsChangeOperations, flow::FlowNodeId},
+	key::operator_settings::OperatorSettingsKey,
+	row::OperatorSettings,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
@@ -16,5 +18,6 @@ pub fn create_operator_settings(
 ) -> Result<()> {
 	let value = encode_operator_settings(settings);
 	txn.set(&OperatorSettingsKey::encoded(operator), value)?;
+	txn.track_operator_settings_created(operator, settings.clone())?;
 	Ok(())
 }
