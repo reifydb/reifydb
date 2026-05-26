@@ -36,7 +36,7 @@ use reifydb_engine::vm::executor::Executor;
 #[cfg(reifydb_target = "native")]
 use reifydb_extension::operator::ffi_loader::ffi_operator_loader;
 use reifydb_rql::flow::{
-	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer},
+	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer, FlowSchedule},
 	flow::FlowDag,
 };
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
@@ -52,7 +52,11 @@ use crate::operator::BoxedOperator;
 use crate::operator::ffi::FFIOperator;
 #[cfg(reifydb_target = "native")]
 use crate::operator::native::native_operator_loader;
-use crate::{builder::OperatorFactory, engine::cache::ExecutionLevelCache, operator::OperatorCell};
+use crate::{
+	builder::OperatorFactory,
+	engine::cache::{ExecutionLevelCache, ScheduleCache},
+	operator::OperatorCell,
+};
 
 pub struct FlowEngine {
 	pub(crate) catalog: Catalog,
@@ -63,6 +67,7 @@ pub struct FlowEngine {
 	pub sinks: BTreeMap<ShapeId, Vec<(FlowId, FlowNodeId)>>,
 	pub analyzer: FlowGraphAnalyzer,
 	pub(crate) execution_level_cache: ExecutionLevelCache,
+	pub(crate) schedule_cache: ScheduleCache,
 	#[allow(dead_code)]
 	pub(crate) event_bus: EventBus,
 	pub(crate) flow_creation_versions: BTreeMap<FlowId, CommitVersion>,
@@ -93,6 +98,7 @@ impl FlowEngine {
 			sinks: BTreeMap::new(),
 			analyzer: FlowGraphAnalyzer::new(),
 			execution_level_cache: ExecutionLevelCache::new(),
+			schedule_cache: ScheduleCache::new(),
 			event_bus,
 			flow_creation_versions: BTreeMap::new(),
 			runtime_context,
@@ -181,6 +187,7 @@ impl FlowEngine {
 		self.analyzer.clear();
 		self.flow_creation_versions.clear();
 		self.execution_level_cache.invalidate();
+		self.schedule_cache.invalidate();
 	}
 
 	pub fn remove_flow(&mut self, flow_id: FlowId) {
@@ -205,6 +212,7 @@ impl FlowEngine {
 
 		self.analyzer.remove(flow_id);
 		self.execution_level_cache.invalidate();
+		self.schedule_cache.invalidate();
 	}
 
 	pub fn get_dependency_graph(&self) -> FlowDependencyGraph {
@@ -235,5 +243,16 @@ impl FlowEngine {
 		let levels = self.analyzer.calculate_execution_levels(dependency_graph);
 		self.execution_level_cache.set(levels.clone());
 		levels
+	}
+
+	pub fn calculate_schedule(&self) -> FlowSchedule {
+		if let Some(schedule) = self.schedule_cache.get() {
+			return schedule;
+		}
+
+		let dependency_graph = self.analyzer.get_dependency_graph();
+		let schedule = self.analyzer.calculate_schedule(dependency_graph);
+		self.schedule_cache.set(schedule.clone());
+		schedule
 	}
 }

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem, sync::Arc};
+use std::{collections::BTreeMap, mem, sync::Arc};
 
-use rayon::prelude::*;
+use rayon::{Scope, scope};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
@@ -15,7 +15,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::sync::rwlock::RwLock;
+use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
 use reifydb_transaction::{
 	change::OperationType,
 	interceptor::transaction::{PostCommitContext, PostCommitInterceptor, PreCommitContext, PreCommitInterceptor},
@@ -24,6 +24,7 @@ use reifydb_transaction::{
 };
 use reifydb_type::{
 	Result,
+	error::Error,
 	value::{datetime::DateTime, identity::IdentityId},
 };
 use smallvec::smallvec;
@@ -70,52 +71,75 @@ pub(crate) fn execute_inline_flow_changes(
 		return Ok(());
 	}
 
-	let base_query = engine.multi().begin_query()?;
-	let base_state_query = engine.multi().begin_query()?;
-	let execution_levels = flow_engine.calculate_execution_levels();
-	if execution_levels.is_empty() {
+	let mut schedule = flow_engine.calculate_schedule();
+	if schedule.roots.is_empty() {
 		return Ok(());
 	}
+
+	let base_query = engine.multi().begin_query()?;
+	let base_state_query = engine.multi().begin_query()?;
 
 	let read_version = {
 		let q: MultiReadTransaction = engine.multi().begin_query()?;
 		q.version()
 	};
 
-	let mut available_changes = prepare_available_changes(&ctx.flow_changes, read_version);
+	let available_changes = prepare_available_changes(&ctx.flow_changes, read_version);
 	let base_pending = build_base_pending(&ctx.transaction_writes);
 
-	for level in execution_levels {
-		let view_overlay = build_view_overlay(&available_changes);
-		let flow_txns = prepare_level_flow_txns(
-			&level,
-			&available_changes,
-			flow_engine,
-			engine,
-			catalog,
-			read_version,
-			&base_pending,
-			&view_overlay,
-			&base_query,
-			&base_state_query,
-		)?;
+	let scheduler = Scheduler {
+		flow_engine,
+		engine,
+		catalog,
+		read_version,
+		base_pending: &base_pending,
+		base_query: &base_query,
+		base_state_query: &base_state_query,
+		state: Mutex::new(SchedulerState {
+			available_changes,
+			in_degree: mem::take(&mut schedule.in_degree),
+			consumers: mem::take(&mut schedule.consumers),
+			view_entries: Vec::new(),
+			pending_shapes: Vec::new(),
+			pending_writes: Vec::new(),
+			drops: Vec::new(),
+			first_error: None,
+		}),
+	};
 
-		if flow_txns.is_empty() {
-			continue;
-		}
+	let pools = engine.actor_system().pools();
+	pools.commit_pool().install(|| {
+		scope(|s| {
+			for root in &schedule.roots {
+				scheduler.dispatch(s, *root);
+			}
+		})
+	});
 
-		let pools = engine.actor_system().pools();
-		let results: Vec<Result<FlowResult>> = pools.commit_pool().install(|| {
-			flow_txns
-				.into_par_iter()
-				.map(|(flow_id, relevant, mut flow_txn)| {
-					run_flow_in_level(flow_engine, flow_id, relevant, &mut flow_txn)
-				})
-				.collect()
-		});
+	let mut state = scheduler.state.lock();
 
-		merge_level_results(ctx, &mut available_changes, results, engine, read_version)?;
+	if let Some(err) = state.first_error.take() {
+		return Err(err);
 	}
+
+	#[cfg(reifydb_assertions)]
+	{
+		let unscheduled: Vec<u64> =
+			state.in_degree.iter().filter(|&(_, deg)| *deg > 0).map(|(id, _)| id.0).collect();
+		assert!(
+			unscheduled.is_empty(),
+			"dataflow scheduler finished with {} flow(s) never scheduled (their in_degree never reached \
+			 zero), so their views would silently not update this commit: {:?}; the inter-flow dependency \
+			 graph is cyclic or the in_degree bookkeeping is wrong",
+			unscheduled.len(),
+			unscheduled
+		);
+	}
+
+	ctx.view_entries.append(&mut state.view_entries);
+	ctx.pending_shapes.append(&mut state.pending_shapes);
+	ctx.pending_writes.append(&mut state.pending_writes);
+	ctx.drops.append(&mut state.drops);
 
 	Ok(())
 }
@@ -156,55 +180,7 @@ fn build_view_overlay(available_changes: &[Change]) -> Arc<Vec<Change>> {
 }
 
 #[inline]
-#[allow(clippy::too_many_arguments)]
-fn prepare_level_flow_txns(
-	level: &[FlowId],
-	available_changes: &[Change],
-	flow_engine: &FlowEngine,
-	engine: &StandardEngine,
-	catalog: &Catalog,
-	read_version: CommitVersion,
-	base_pending: &Pending,
-	view_overlay: &Arc<Vec<Change>>,
-	base_query: &MultiReadTransaction,
-	base_state_query: &MultiReadTransaction,
-) -> Result<Vec<(FlowId, Vec<Change>, FlowTransaction)>> {
-	let mut flow_txns: Vec<(FlowId, Vec<Change>, FlowTransaction)> = Vec::new();
-	for &flow_id in level {
-		let relevant: Vec<Change> = available_changes
-			.iter()
-			.filter(|c| flow_is_interested_in(c, flow_id, flow_engine))
-			.cloned()
-			.collect();
-
-		if relevant.is_empty() {
-			continue;
-		}
-
-		let query = base_query.clone();
-		let state_query = base_state_query.clone();
-		let interceptors = engine.create_interceptors();
-
-		let flow_txn = FlowTransaction::transactional(TransactionalParams {
-			version: read_version,
-			pending: Pending::new(),
-			base_pending: base_pending.clone(),
-			query,
-			state_query,
-			single: engine.single().clone(),
-			catalog: catalog.clone(),
-			interceptors,
-			clock: engine.clock().clone(),
-			view_overlay: Arc::clone(view_overlay),
-		});
-
-		flow_txns.push((flow_id, relevant, flow_txn));
-	}
-	Ok(flow_txns)
-}
-
-#[inline]
-fn run_flow_in_level(
+fn run_flow(
 	flow_engine: &FlowEngine,
 	flow_id: FlowId,
 	relevant: Vec<Change>,
@@ -221,35 +197,143 @@ fn run_flow_in_level(
 	})
 }
 
-#[inline]
-fn merge_level_results(
-	ctx: &mut PreCommitContext,
-	available_changes: &mut Vec<Change>,
-	results: Vec<Result<FlowResult>>,
-	engine: &StandardEngine,
+struct Scheduler<'a> {
+	flow_engine: &'a FlowEngine,
+	engine: &'a StandardEngine,
+	catalog: &'a Catalog,
 	read_version: CommitVersion,
-) -> Result<()> {
-	for result in results {
-		let result = result?;
+	base_pending: &'a Pending,
+	base_query: &'a MultiReadTransaction,
+	base_state_query: &'a MultiReadTransaction,
+	state: Mutex<SchedulerState>,
+}
+
+struct SchedulerState {
+	available_changes: Vec<Change>,
+	in_degree: BTreeMap<FlowId, usize>,
+	consumers: BTreeMap<FlowId, Vec<FlowId>>,
+	view_entries: Vec<(ShapeId, Diff)>,
+	pending_shapes: Vec<RowShape>,
+	pending_writes: Vec<(EncodedKey, Option<EncodedRow>)>,
+	drops: Vec<EncodedKey>,
+	first_error: Option<Error>,
+}
+
+impl<'a> Scheduler<'a> {
+	fn dispatch<'scope>(&'scope self, s: &Scope<'scope>, flow_id: FlowId) {
+		s.spawn(move |s| self.run(s, flow_id));
+	}
+
+	fn run<'scope>(&'scope self, s: &Scope<'scope>, flow_id: FlowId) {
+		let prepared = {
+			let state = self.state.lock();
+			if state.first_error.is_some() {
+				return;
+			}
+			self.prepare_flow_txn(&state.available_changes, flow_id)
+		};
+
+		let outcome = prepared
+			.map(|(relevant, mut flow_txn)| run_flow(self.flow_engine, flow_id, relevant, &mut flow_txn));
+
+		let mut state = self.state.lock();
+		match outcome {
+			Some(Err(err)) => {
+				if state.first_error.is_none() {
+					state.first_error = Some(err);
+				}
+				return;
+			}
+			Some(Ok(result)) => self.merge_flow_result(&mut state, result),
+			None => {}
+		}
+
+		let newly_ready = self.settle(&mut state, flow_id);
+		drop(state);
+
+		for child in newly_ready {
+			self.dispatch(s, child);
+		}
+	}
+
+	fn prepare_flow_txn(
+		&self,
+		available_changes: &[Change],
+		flow_id: FlowId,
+	) -> Option<(Vec<Change>, FlowTransaction)> {
+		let relevant: Vec<Change> = available_changes
+			.iter()
+			.filter(|c| flow_is_interested_in(c, flow_id, self.flow_engine))
+			.cloned()
+			.collect();
+
+		if relevant.is_empty() {
+			return None;
+		}
+
+		let query = self.base_query.clone();
+		let state_query = self.base_state_query.clone();
+		let interceptors = self.engine.create_interceptors();
+
+		let flow_txn = FlowTransaction::transactional(TransactionalParams {
+			version: self.read_version,
+			pending: Pending::new(),
+			base_pending: self.base_pending.clone(),
+			query,
+			state_query,
+			single: self.engine.single().clone(),
+			catalog: self.catalog.clone(),
+			interceptors,
+			clock: self.engine.clock().clone(),
+			view_overlay: build_view_overlay(available_changes),
+		});
+
+		Some((relevant, flow_txn))
+	}
+
+	fn merge_flow_result(&self, state: &mut SchedulerState, result: FlowResult) {
 		for (id, diff) in &result.view_entries {
-			available_changes.push(Change {
+			state.available_changes.push(Change {
 				origin: ChangeOrigin::Shape(*id),
-				version: read_version,
+				version: self.read_version,
 				diffs: smallvec![diff.clone()],
-				changed_at: DateTime::from_nanos(engine.clock().now_nanos()),
+				changed_at: DateTime::from_nanos(self.engine.clock().now_nanos()),
 			});
 		}
-		ctx.view_entries.extend(result.view_entries);
-		ctx.pending_shapes.extend(result.pending_shapes);
+		state.view_entries.extend(result.view_entries);
+		state.pending_shapes.extend(result.pending_shapes);
 		for (key, pw) in result.pending.iter_sorted() {
 			match pw {
-				PendingWrite::Set(v) => ctx.pending_writes.push((key.clone(), Some(v.clone()))),
-				PendingWrite::Remove => ctx.pending_writes.push((key.clone(), None)),
-				PendingWrite::Drop => ctx.drops.push(key.clone()),
+				PendingWrite::Set(v) => state.pending_writes.push((key.clone(), Some(v.clone()))),
+				PendingWrite::Remove => state.pending_writes.push((key.clone(), None)),
+				PendingWrite::Drop => state.drops.push(key.clone()),
 			}
 		}
 	}
-	Ok(())
+
+	fn settle(&self, state: &mut SchedulerState, flow_id: FlowId) -> Vec<FlowId> {
+		let consumers = state.consumers.get_mut(&flow_id).map(mem::take).unwrap_or_default();
+		let mut newly_ready = Vec::new();
+		for consumer in consumers {
+			let degree = state.in_degree.get_mut(&consumer).expect("consumer must have an in_degree entry");
+			#[cfg(reifydb_assertions)]
+			{
+				assert!(
+					*degree > 0,
+					"dataflow scheduler decremented in_degree of flow {} below zero while settling \
+					 producer {}, so the consumer would be dispatched more than once and its operator \
+					 state double-applied (its in_degree was already zero)",
+					consumer.0,
+					flow_id.0
+				);
+			}
+			*degree -= 1;
+			if *degree == 0 {
+				newly_ready.push(consumer);
+			}
+		}
+		newly_ready
+	}
 }
 
 fn flow_is_interested_in(change: &Change, flow_id: FlowId, engine: &FlowEngine) -> bool {

@@ -52,6 +52,13 @@ pub struct FlowDependencyGraph {
 	pub sink_views: BTreeMap<ViewId, FlowId>,
 }
 
+#[derive(Debug, Clone)]
+pub struct FlowSchedule {
+	pub roots: Vec<FlowId>,
+	pub consumers: BTreeMap<FlowId, Vec<FlowId>>,
+	pub in_degree: BTreeMap<FlowId, usize>,
+}
+
 pub struct FlowGraphAnalyzer {
 	flows: Vec<FlowDag>,
 	dependency_graph: FlowDependencyGraph,
@@ -326,6 +333,29 @@ impl FlowGraphAnalyzer {
 		}
 
 		levels
+	}
+
+	pub fn calculate_schedule(&self, dependency_graph: &FlowDependencyGraph) -> FlowSchedule {
+		let mut in_degree: BTreeMap<FlowId, usize> = BTreeMap::new();
+		let mut consumers: BTreeMap<FlowId, Vec<FlowId>> = BTreeMap::new();
+
+		for flow_summary in &dependency_graph.flows {
+			in_degree.insert(flow_summary.id, 0);
+			consumers.insert(flow_summary.id, Vec::new());
+		}
+
+		for dependency in &dependency_graph.dependencies {
+			consumers.entry(dependency.source_flow).or_default().push(dependency.target_flow);
+			*in_degree.entry(dependency.target_flow).or_default() += 1;
+		}
+
+		let roots = in_degree.iter().filter(|&(_, deg)| *deg == 0).map(|(id, _)| *id).collect();
+
+		FlowSchedule {
+			roots,
+			consumers,
+			in_degree,
+		}
 	}
 }
 
@@ -877,5 +907,266 @@ pub mod tests {
 		assert_eq!(levels[0].len(), 2);
 		assert!(levels[0].contains(&FlowId(1)));
 		assert!(levels[0].contains(&FlowId(2)));
+	}
+
+	#[test]
+	fn test_calculate_schedule_linear_chain() {
+		let mut analyzer = FlowGraphAnalyzer::new();
+
+		let flow1 = create_test_flow_with_nodes(
+			1,
+			vec![
+				SourceTable {
+					table: TableId(100),
+				},
+				SinkTableView {
+					view: ViewId(200),
+					table: TableId(0),
+				},
+			],
+		);
+
+		let flow2 = create_test_flow_with_nodes(
+			2,
+			vec![
+				SourceView {
+					view: ViewId(200),
+				},
+				SinkTableView {
+					view: ViewId(300),
+					table: TableId(0),
+				},
+			],
+		);
+
+		let flow3 = create_test_flow_with_nodes(
+			3,
+			vec![
+				SourceView {
+					view: ViewId(300),
+				},
+				SinkTableView {
+					view: ViewId(400),
+					table: TableId(0),
+				},
+			],
+		);
+
+		analyzer.add(flow1);
+		analyzer.add(flow2);
+		analyzer.add(flow3);
+		let dependency_graph = analyzer.get_dependency_graph();
+
+		let schedule = analyzer.calculate_schedule(dependency_graph);
+
+		// only the head of the chain has no producer to wait on
+		assert_eq!(schedule.roots, vec![FlowId(1)]);
+		assert_eq!(schedule.in_degree[&FlowId(1)], 0);
+		assert_eq!(schedule.in_degree[&FlowId(2)], 1);
+		assert_eq!(schedule.in_degree[&FlowId(3)], 1);
+		// each link unblocks the next flow, the tail unblocks nothing
+		assert_eq!(schedule.consumers[&FlowId(1)], vec![FlowId(2)]);
+		assert_eq!(schedule.consumers[&FlowId(2)], vec![FlowId(3)]);
+		assert!(schedule.consumers[&FlowId(3)].is_empty());
+	}
+
+	#[test]
+	fn test_calculate_schedule_wide_fan_out() {
+		let mut analyzer = FlowGraphAnalyzer::new();
+
+		let flow1 = create_test_flow_with_nodes(
+			1,
+			vec![
+				SourceTable {
+					table: TableId(100),
+				},
+				SinkTableView {
+					view: ViewId(200),
+					table: TableId(0),
+				},
+			],
+		);
+
+		let flow2 = create_test_flow_with_nodes(
+			2,
+			vec![
+				SourceView {
+					view: ViewId(200),
+				},
+				SinkTableView {
+					view: ViewId(300),
+					table: TableId(0),
+				},
+			],
+		);
+
+		let flow3 = create_test_flow_with_nodes(
+			3,
+			vec![
+				SourceView {
+					view: ViewId(200),
+				},
+				SinkTableView {
+					view: ViewId(301),
+					table: TableId(0),
+				},
+			],
+		);
+
+		let flow4 = create_test_flow_with_nodes(
+			4,
+			vec![
+				SourceView {
+					view: ViewId(200),
+				},
+				SinkTableView {
+					view: ViewId(302),
+					table: TableId(0),
+				},
+			],
+		);
+
+		analyzer.add(flow1);
+		analyzer.add(flow2);
+		analyzer.add(flow3);
+		analyzer.add(flow4);
+		let dependency_graph = analyzer.get_dependency_graph();
+
+		let schedule = analyzer.calculate_schedule(dependency_graph);
+
+		// the single producer is the only root; each consumer waits on exactly it
+		assert_eq!(schedule.roots, vec![FlowId(1)]);
+		assert_eq!(schedule.in_degree[&FlowId(2)], 1);
+		assert_eq!(schedule.in_degree[&FlowId(3)], 1);
+		assert_eq!(schedule.in_degree[&FlowId(4)], 1);
+		let mut fan_out = schedule.consumers[&FlowId(1)].clone();
+		fan_out.sort();
+		assert_eq!(fan_out, vec![FlowId(2), FlowId(3), FlowId(4)]);
+	}
+
+	#[test]
+	fn test_calculate_schedule_independent_roots() {
+		let mut analyzer = FlowGraphAnalyzer::new();
+
+		let flow1 = create_test_flow_with_nodes(
+			1,
+			vec![
+				SourceTable {
+					table: TableId(100),
+				},
+				SinkTableView {
+					view: ViewId(200),
+					table: TableId(0),
+				},
+			],
+		);
+
+		let flow2 = create_test_flow_with_nodes(
+			2,
+			vec![
+				SourceTable {
+					table: TableId(101),
+				},
+				SinkTableView {
+					view: ViewId(201),
+					table: TableId(0),
+				},
+			],
+		);
+
+		analyzer.add(flow1);
+		analyzer.add(flow2);
+		let dependency_graph = analyzer.get_dependency_graph();
+
+		let schedule = analyzer.calculate_schedule(dependency_graph);
+
+		// disconnected flows are both roots and unblock nothing
+		let mut roots = schedule.roots.clone();
+		roots.sort();
+		assert_eq!(roots, vec![FlowId(1), FlowId(2)]);
+		assert_eq!(schedule.in_degree[&FlowId(1)], 0);
+		assert_eq!(schedule.in_degree[&FlowId(2)], 0);
+		assert!(schedule.consumers[&FlowId(1)].is_empty());
+		assert!(schedule.consumers[&FlowId(2)].is_empty());
+	}
+
+	#[test]
+	fn test_calculate_schedule_diamond() {
+		let mut analyzer = FlowGraphAnalyzer::new();
+
+		let flow_a = create_test_flow_with_nodes(
+			1,
+			vec![
+				SourceTable {
+					table: TableId(100),
+				},
+				SinkTableView {
+					view: ViewId(200),
+					table: TableId(0),
+				},
+			],
+		);
+
+		let flow_b = create_test_flow_with_nodes(
+			2,
+			vec![
+				SourceView {
+					view: ViewId(200),
+				},
+				SinkTableView {
+					view: ViewId(201),
+					table: TableId(0),
+				},
+			],
+		);
+
+		let flow_c = create_test_flow_with_nodes(
+			3,
+			vec![
+				SourceView {
+					view: ViewId(200),
+				},
+				SinkTableView {
+					view: ViewId(202),
+					table: TableId(0),
+				},
+			],
+		);
+
+		let flow_d = create_test_flow_with_nodes(
+			4,
+			vec![
+				SourceView {
+					view: ViewId(201),
+				},
+				SourceView {
+					view: ViewId(202),
+				},
+				SinkTableView {
+					view: ViewId(203),
+					table: TableId(0),
+				},
+			],
+		);
+
+		analyzer.add(flow_a);
+		analyzer.add(flow_b);
+		analyzer.add(flow_c);
+		analyzer.add(flow_d);
+		let dependency_graph = analyzer.get_dependency_graph();
+
+		let schedule = analyzer.calculate_schedule(dependency_graph);
+
+		// D joins two branches, so it must wait for BOTH producers, not just one level barrier
+		assert_eq!(schedule.roots, vec![FlowId(1)]);
+		assert_eq!(schedule.in_degree[&FlowId(1)], 0);
+		assert_eq!(schedule.in_degree[&FlowId(2)], 1);
+		assert_eq!(schedule.in_degree[&FlowId(3)], 1);
+		assert_eq!(schedule.in_degree[&FlowId(4)], 2);
+		assert_eq!(schedule.consumers[&FlowId(2)], vec![FlowId(4)]);
+		assert_eq!(schedule.consumers[&FlowId(3)], vec![FlowId(4)]);
+		let mut a_consumers = schedule.consumers[&FlowId(1)].clone();
+		a_consumers.sort();
+		assert_eq!(a_consumers, vec![FlowId(2), FlowId(3)]);
 	}
 }
