@@ -3,7 +3,10 @@
 
 const MVCC_VERSION_SIZE: usize = 10;
 
-use std::ops::AddAssign;
+use std::{
+	collections::{HashMap, HashSet},
+	ops::AddAssign,
+};
 
 use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
@@ -165,12 +168,27 @@ impl AddAssign for TieredStorageStats {
 
 pub struct StorageStatsWriter<S> {
 	storage: S,
+	stats: HashMap<(Tier, MetricId), MultiStorageStats>,
+	dirty: HashSet<(Tier, MetricId)>,
 }
 
 impl<S: SingleVersionStore> StorageStatsWriter<S> {
 	pub fn new(storage: S) -> Self {
+		let mut stats = HashMap::new();
+
+		if let Ok(batch) = storage.prefix(&EncodedKey::new(storage_stats_key_prefix())) {
+			for item in batch.items {
+				if let Some((tier, id)) = decode_storage_stats_key(item.key.as_slice())
+					&& let Some(s) = decode_storage_stats(item.row.as_slice())
+				{
+					stats.insert((tier, id), s);
+				}
+			}
+		}
 		Self {
 			storage,
+			stats,
+			dirty: HashSet::new(),
 		}
 	}
 
@@ -223,17 +241,23 @@ impl<S: SingleVersionStore> StorageStatsWriter<S> {
 	where
 		F: FnOnce(&mut MultiStorageStats),
 	{
-		let storage_key = EncodedKey::new(encode_storage_stats_key(tier, id));
+		f(self.stats.entry((tier, id)).or_default());
+		self.dirty.insert((tier, id));
+		Ok(())
+	}
 
-		let mut stats = self
-			.storage
-			.get(&storage_key)?
-			.and_then(|v| decode_storage_stats(v.row.as_slice()))
-			.unwrap_or_default();
-
-		f(&mut stats);
-
-		self.storage.set(&storage_key, EncodedRow(CowVec::new(encode_storage_stats(&stats))))
+	pub fn flush(&mut self) -> Result<()> {
+		if self.dirty.is_empty() {
+			return Ok(());
+		}
+		let dirty: Vec<(Tier, MetricId)> = self.dirty.drain().collect();
+		for (tier, id) in dirty {
+			if let Some(stats) = self.stats.get(&(tier, id)) {
+				let storage_key = EncodedKey::new(encode_storage_stats_key(tier, id));
+				self.storage.set(&storage_key, EncodedRow(CowVec::new(encode_storage_stats(stats))))?;
+			}
+		}
+		Ok(())
 	}
 }
 

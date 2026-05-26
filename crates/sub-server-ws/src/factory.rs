@@ -33,8 +33,6 @@ pub struct WsConfigurator {
 
 	runtime: Option<SharedRuntime>,
 
-	poll_interval: Duration,
-
 	poll_batch_size: usize,
 }
 
@@ -47,7 +45,6 @@ impl Default for WsConfigurator {
 			query_timeout: Duration::from_secs(30),
 			max_frame_size: 16 << 20,
 			runtime: None,
-			poll_interval: Duration::from_millis(10),
 			poll_batch_size: 100,
 		}
 	}
@@ -88,11 +85,6 @@ impl WsConfigurator {
 		self
 	}
 
-	pub fn poll_interval(mut self, interval: Duration) -> Self {
-		self.poll_interval = interval;
-		self
-	}
-
 	pub fn poll_batch_size(mut self, size: usize) -> Self {
 		self.poll_batch_size = size;
 		self
@@ -106,7 +98,6 @@ impl WsConfigurator {
 			query_timeout: self.query_timeout,
 			max_frame_size: self.max_frame_size,
 			runtime: self.runtime,
-			poll_interval: self.poll_interval,
 			poll_batch_size: self.poll_batch_size,
 		}
 	}
@@ -125,8 +116,6 @@ pub struct WsConfig {
 	pub max_frame_size: usize,
 
 	pub runtime: Option<SharedRuntime>,
-
-	pub poll_interval: Duration,
 
 	pub poll_batch_size: usize,
 }
@@ -188,7 +177,6 @@ impl SubsystemFactory for WsSubsystemFactory {
 			config.admin_bind_addr.clone(),
 			state,
 			runtime,
-			config.poll_interval,
 			config.poll_batch_size,
 			subscription_store,
 		);

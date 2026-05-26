@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
+use std::time::Duration;
+
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 
 #[derive(Debug)]
@@ -15,5 +17,11 @@ pub trait SubscriptionDelivery: Send + Sync {
 
 	fn active_subscriptions(&self) -> Vec<SubscriptionId>;
 
-	fn flush(&self) {}
+	fn active_subscriptions_into(&self, out: &mut Vec<SubscriptionId>) {
+		out.extend(self.active_subscriptions());
+	}
+
+	fn flush(&self) -> Option<Duration> {
+		None
+	}
 }

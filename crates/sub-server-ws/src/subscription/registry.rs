@@ -4,6 +4,7 @@
 use std::{
 	collections::{HashMap, HashSet},
 	mem,
+	sync::atomic::{AtomicUsize, Ordering},
 	time::Duration,
 };
 
@@ -111,6 +112,13 @@ impl ThrottleState {
 			Some(prev) => now_millis.saturating_sub(prev) >= self.interval_millis,
 		}
 	}
+
+	fn remaining_millis(&self, now_millis: u64) -> u64 {
+		match self.last_sent_at {
+			None => 0,
+			Some(prev) => self.interval_millis.saturating_sub(now_millis.saturating_sub(prev)),
+		}
+	}
 }
 
 struct WarmingBuffer {
@@ -170,6 +178,7 @@ pub struct SubscriptionRegistry {
 	connection_batches: DashMap<ConnectionId, Vec<BatchId>>,
 
 	clock: Clock,
+	throttle_pending: AtomicUsize,
 }
 
 impl SubscriptionRegistry {
@@ -180,6 +189,7 @@ impl SubscriptionRegistry {
 			batches: DashMap::new(),
 			connection_batches: DashMap::new(),
 			clock,
+			throttle_pending: AtomicUsize::new(0),
 		}
 	}
 
@@ -372,6 +382,9 @@ impl SubscriptionRegistry {
 
 	pub fn unsubscribe(&self, subscription_id: SubscriptionId) -> bool {
 		if let Some((_, state)) = self.subscriptions.remove(&subscription_id) {
+			if !state.throttle.pending.is_empty() {
+				self.throttle_pending.fetch_sub(1, Ordering::AcqRel);
+			}
 			let connection_id = state.connection_id;
 
 			let should_remove_connection = {
@@ -485,7 +498,11 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 					Err(_) => DeliveryResult::Disconnected,
 				}
 			} else {
+				let was_empty = state.throttle.pending.is_empty();
 				state.throttle.pending.push(columns);
+				if was_empty {
+					self.throttle_pending.fetch_add(1, Ordering::AcqRel);
+				}
 				DeliveryResult::Delivered
 			}
 		} else {
@@ -504,50 +521,65 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 		self.subscriptions.iter().map(|entry| *entry.key()).collect()
 	}
 
-	fn flush(&self) {
+	fn active_subscriptions_into(&self, out: &mut Vec<SubscriptionId>) {
+		out.extend(self.subscriptions.iter().map(|entry| *entry.key()));
+	}
+
+	fn flush(&self) -> Option<Duration> {
 		let now = self.clock.now_millis();
-		let mut throttle_ready: Vec<(
-			SubscriptionId,
-			Vec<Columns>,
-			WireFormat,
-			mpsc::UnboundedSender<PushMessage>,
-		)> = Vec::new();
+		let mut next_deadline: Option<u64> = None;
 
-		for mut entry in self.subscriptions.iter_mut() {
-			let sub_id = *entry.key();
-			let state = entry.value_mut();
-			if state.batch_id.is_some() || state.warming.is_some() {
-				continue;
-			}
-			if !state.throttle.enabled() || state.throttle.pending.is_empty() {
-				continue;
-			}
-			if !state.throttle.ready(now) {
-				continue;
-			}
-			let drained = mem::take(&mut state.throttle.pending);
-			state.throttle.last_sent_at = Some(now);
-			throttle_ready.push((sub_id, drained, state.format, state.push_tx.clone()));
-		}
+		if self.throttle_pending.load(Ordering::Acquire) > 0 {
+			let mut throttle_ready: Vec<(
+				SubscriptionId,
+				Vec<Columns>,
+				WireFormat,
+				mpsc::UnboundedSender<PushMessage>,
+			)> = Vec::new();
 
-		let mut dead_subs: Vec<SubscriptionId> = Vec::new();
-		for (sub_id, drained, format, push_tx) in throttle_ready {
-			for columns in drained {
-				let msg = match encode_change(sub_id, columns, format) {
-					Some(m) => m,
-					None => {
+			for mut entry in self.subscriptions.iter_mut() {
+				let sub_id = *entry.key();
+				let state = entry.value_mut();
+				if state.batch_id.is_some() || state.warming.is_some() {
+					continue;
+				}
+				if !state.throttle.enabled() || state.throttle.pending.is_empty() {
+					continue;
+				}
+				if !state.throttle.ready(now) {
+					let rem = state.throttle.remaining_millis(now);
+					next_deadline = Some(next_deadline.map_or(rem, |d| d.min(rem)));
+					continue;
+				}
+				let drained = mem::take(&mut state.throttle.pending);
+				self.throttle_pending.fetch_sub(1, Ordering::AcqRel);
+				state.throttle.last_sent_at = Some(now);
+				throttle_ready.push((sub_id, drained, state.format, state.push_tx.clone()));
+			}
+
+			let mut dead_subs: Vec<SubscriptionId> = Vec::new();
+			for (sub_id, drained, format, push_tx) in throttle_ready {
+				for columns in drained {
+					let msg = match encode_change(sub_id, columns, format) {
+						Some(m) => m,
+						None => {
+							dead_subs.push(sub_id);
+							break;
+						}
+					};
+					if push_tx.send(msg).is_err() {
 						dead_subs.push(sub_id);
 						break;
 					}
-				};
-				if push_tx.send(msg).is_err() {
-					dead_subs.push(sub_id);
-					break;
 				}
 			}
+			for sub_id in dead_subs {
+				self.unsubscribe(sub_id);
+			}
 		}
-		for sub_id in dead_subs {
-			self.unsubscribe(sub_id);
+
+		if self.batches.is_empty() {
+			return next_deadline.map(Duration::from_millis);
 		}
 
 		let mut dead_batches: Vec<BatchId> = Vec::new();
@@ -660,6 +692,8 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 				debug!("Batch {} push channel closed; cascaded {} members", batch_id, members.len());
 			}
 		}
+
+		next_deadline.map(Duration::from_millis)
 	}
 }
 

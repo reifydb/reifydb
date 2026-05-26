@@ -250,6 +250,12 @@ impl Actor for MetricCollectorActor {
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
 		match msg {
 			MetricMessage::Tick(_) => {
+				if let Err(e) = state.storage_writer.flush() {
+					error!("Failed to flush storage stats: {}", e);
+				}
+				if let Err(e) = state.cdc_writer.flush() {
+					error!("Failed to flush cdc stats: {}", e);
+				}
 				let _ = mem::take(&mut state.pending);
 				emit_stats_processed(&self.event_bus, &mut state.max_version);
 			}

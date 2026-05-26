@@ -27,7 +27,6 @@ pub struct GrpcConfigurator {
 	query_timeout: Duration,
 	request_timeout: Duration,
 	runtime: Option<SharedRuntime>,
-	poll_interval: Duration,
 	poll_batch_size: usize,
 }
 
@@ -46,7 +45,6 @@ impl GrpcConfigurator {
 			query_timeout: Duration::from_secs(30),
 			request_timeout: Duration::from_secs(60),
 			runtime: None,
-			poll_interval: Duration::from_millis(10),
 			poll_batch_size: 100,
 		}
 	}
@@ -81,11 +79,6 @@ impl GrpcConfigurator {
 		self
 	}
 
-	pub fn poll_interval(mut self, interval: Duration) -> Self {
-		self.poll_interval = interval;
-		self
-	}
-
 	pub fn poll_batch_size(mut self, size: usize) -> Self {
 		self.poll_batch_size = size;
 		self
@@ -99,7 +92,6 @@ impl GrpcConfigurator {
 			query_timeout: self.query_timeout,
 			request_timeout: self.request_timeout,
 			runtime: self.runtime,
-			poll_interval: self.poll_interval,
 			poll_batch_size: self.poll_batch_size,
 		}
 	}
@@ -114,7 +106,6 @@ pub struct GrpcConfig {
 	pub query_timeout: Duration,
 	pub request_timeout: Duration,
 	pub runtime: Option<SharedRuntime>,
-	pub poll_interval: Duration,
 	pub poll_batch_size: usize,
 }
 
@@ -177,7 +168,6 @@ impl SubsystemFactory for GrpcSubsystemFactory {
 			config.admin_bind_addr.clone(),
 			state,
 			runtime,
-			config.poll_interval,
 			config.poll_batch_size,
 			subscription_store,
 		);

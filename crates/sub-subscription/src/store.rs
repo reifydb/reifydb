@@ -9,6 +9,7 @@ use std::{
 use dashmap::DashMap;
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_runtime::sync::rwlock::{RwLock, RwLockReadGuard};
+use tokio::sync::Notify;
 
 struct SubscriptionBuffer {
 	queue: VecDeque<Columns>,
@@ -23,6 +24,7 @@ pub struct SubscriptionStore {
 	default_capacity: usize,
 
 	coord: RwLock<()>,
+	wake: Notify,
 }
 
 impl SubscriptionStore {
@@ -32,7 +34,12 @@ impl SubscriptionStore {
 			next_id: AtomicU64::new(1),
 			default_capacity,
 			coord: RwLock::new(()),
+			wake: Notify::new(),
 		}
+	}
+
+	pub fn wake(&self) -> &Notify {
+		&self.wake
 	}
 
 	pub fn next_id(&self) -> SubscriptionId {
@@ -77,6 +84,13 @@ impl SubscriptionStore {
 		}
 	}
 
+	pub fn drain_into(&self, id: &SubscriptionId, max_batches: usize, out: &mut Vec<Columns>) {
+		if let Some(mut buf) = self.inner.get_mut(id) {
+			let count = max_batches.min(buf.queue.len());
+			out.extend(buf.queue.drain(..count));
+		}
+	}
+
 	pub fn active_subscriptions(&self) -> Vec<SubscriptionId> {
 		self.inner.iter().map(|entry| *entry.key()).collect()
 	}
@@ -85,18 +99,21 @@ impl SubscriptionStore {
 		if staged.is_empty() {
 			return;
 		}
-		let _write = self.coord.write();
-		for (id, columns_vec) in staged {
-			let Some(mut buf) = self.inner.get_mut(&id) else {
-				continue;
-			};
-			for columns in columns_vec {
-				if buf.queue.len() >= buf.capacity {
-					buf.queue.pop_front();
+		{
+			let _write = self.coord.write();
+			for (id, columns_vec) in staged {
+				let Some(mut buf) = self.inner.get_mut(&id) else {
+					continue;
+				};
+				for columns in columns_vec {
+					if buf.queue.len() >= buf.capacity {
+						buf.queue.pop_front();
+					}
+					buf.queue.push_back(columns);
 				}
-				buf.queue.push_back(columns);
 			}
 		}
+		self.wake.notify_one();
 	}
 
 	pub fn begin_poll(&self) -> RwLockReadGuard<'_, ()> {

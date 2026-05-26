@@ -20,6 +20,10 @@ impl Catalog {
 	) -> Option<OperatorSettings> {
 		self.cache.find_operator_settings_at(operator, txn.version())
 	}
+
+	pub fn find_operator_settings_latest(&self, operator: FlowNodeId) -> Option<OperatorSettings> {
+		self.cache.find_operator_settings(operator)
+	}
 }
 
 impl ListOperatorSettings for Catalog {

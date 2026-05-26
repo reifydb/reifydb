@@ -87,4 +87,29 @@ pub mod tests {
 		assert_eq!(catalog.find_operator_settings_at(operator, CommitVersion(3)), None);
 		assert_eq!(catalog.find_operator_settings_at(operator, CommitVersion(2)), Some(v2));
 	}
+
+	#[test]
+	fn latest_read_finds_settings_written_after_reader_version() {
+		// Regression for the operator-registration TTL race: the operator reads its TTL at
+		// the registration transaction's version. If the settings were committed at a LATER
+		// version than that snapshot, a version-pinned read returns None and the operator's
+		// own tick-eviction (of its GC-immune internal state) silently never runs, leaking
+		// per-row maps. The latest read (now used at registration) must still find them.
+		let catalog = CatalogCache::new();
+		let operator = FlowNodeId(7);
+		let cfg = settings(10_000_000_000, TtlAnchor::Created, TtlCleanupMode::Drop);
+
+		catalog.set_operator_settings(operator, CommitVersion(5), Some(cfg.clone()));
+
+		assert_eq!(
+			catalog.find_operator_settings_at(operator, CommitVersion(3)),
+			None,
+			"a reader pinned to an earlier version misses settings committed later - this is the bug"
+		);
+		assert_eq!(
+			catalog.find_operator_settings(operator),
+			Some(cfg),
+			"the latest read must find settings regardless of reader version - this is the fix"
+		);
+	}
 }

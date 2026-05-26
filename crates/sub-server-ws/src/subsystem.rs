@@ -9,7 +9,6 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, AtomicUsize, Ordering},
 	},
-	time::Duration,
 };
 
 use reifydb_core::{
@@ -57,8 +56,6 @@ pub struct WsSubsystem {
 
 	registry: Arc<SubscriptionRegistry>,
 
-	poll_interval: Duration,
-
 	poll_batch_size: usize,
 
 	subscription_store: Option<Arc<SubscriptionStore>>,
@@ -70,7 +67,6 @@ impl WsSubsystem {
 		admin_bind_addr: Option<String>,
 		state: AppState,
 		runtime: SharedRuntime,
-		poll_interval: Duration,
 		poll_batch_size: usize,
 		subscription_store: Option<Arc<SubscriptionStore>>,
 	) -> Self {
@@ -90,7 +86,6 @@ impl WsSubsystem {
 			connection_semaphore: Arc::new(Semaphore::new(max_connections)),
 			runtime,
 			registry: Arc::new(SubscriptionRegistry::new(clock)),
-			poll_interval,
 			poll_batch_size,
 			subscription_store,
 		}
@@ -127,9 +122,8 @@ impl WsSubsystem {
 		};
 		let poller = Arc::new(StoreBackedPoller::new(store.clone(), self.poll_batch_size));
 		let registry = self.registry.clone();
-		let poll_interval = self.poll_interval;
 		self.runtime.spawn(async move {
-			poller.run_loop(registry, poll_interval, shutdown_rx).await;
+			poller.run_loop(registry, shutdown_rx).await;
 		});
 	}
 

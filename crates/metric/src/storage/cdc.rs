@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::AddAssign;
+use std::{
+	collections::{HashMap, HashSet},
+	ops::AddAssign,
+};
 
 use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
@@ -61,45 +64,58 @@ impl AddAssign for CdcStats {
 
 pub struct CdcStatsWriter<S> {
 	storage: S,
+	stats: HashMap<MetricId, CdcStats>,
+	dirty: HashSet<MetricId>,
 }
 
 impl<S: SingleVersionStore> CdcStatsWriter<S> {
 	pub fn new(storage: S) -> Self {
+		let mut stats = HashMap::new();
+
+		if let Ok(batch) = storage.prefix(&EncodedKey::new(cdc_stats_key_prefix())) {
+			for item in batch.items {
+				if let Some(id) = decode_cdc_stats_key(item.key.as_slice())
+					&& let Some(s) = decode_cdc_stats(item.row.as_slice())
+				{
+					stats.insert(id, s);
+				}
+			}
+		}
 		Self {
 			storage,
+			stats,
+			dirty: HashSet::new(),
 		}
 	}
 
 	pub fn record_cdc(&mut self, key: &[u8], value_bytes: u64) -> Result<()> {
 		let id = parse_id(key);
 		let key_bytes = key.len() as u64;
-
-		let storage_key = EncodedKey::new(encode_cdc_stats_key(id));
-
-		let mut stats = self
-			.storage
-			.get(&storage_key)?
-			.and_then(|v| decode_cdc_stats(v.row.as_slice()))
-			.unwrap_or_default();
-
-		stats.record(key_bytes, value_bytes);
-
-		self.storage.set(&storage_key, EncodedRow(CowVec::new(encode_cdc_stats(&stats))))
+		self.stats.entry(id).or_default().record(key_bytes, value_bytes);
+		self.dirty.insert(id);
+		Ok(())
 	}
 
 	pub fn record_drop(&mut self, key: &[u8], value_bytes: u64) -> Result<()> {
 		let id = parse_id(key);
 		let key_bytes = key.len() as u64;
-		let storage_key = EncodedKey::new(encode_cdc_stats_key(id));
+		self.stats.entry(id).or_default().record_drop(key_bytes, value_bytes);
+		self.dirty.insert(id);
+		Ok(())
+	}
 
-		let mut stats = self
-			.storage
-			.get(&storage_key)?
-			.and_then(|v| decode_cdc_stats(v.row.as_slice()))
-			.unwrap_or_default();
-
-		stats.record_drop(key_bytes, value_bytes);
-		self.storage.set(&storage_key, EncodedRow(CowVec::new(encode_cdc_stats(&stats))))
+	pub fn flush(&mut self) -> Result<()> {
+		if self.dirty.is_empty() {
+			return Ok(());
+		}
+		let dirty: Vec<MetricId> = self.dirty.drain().collect();
+		for id in dirty {
+			if let Some(stats) = self.stats.get(&id) {
+				let storage_key = EncodedKey::new(encode_cdc_stats_key(id));
+				self.storage.set(&storage_key, EncodedRow(CowVec::new(encode_cdc_stats(stats))))?;
+			}
+		}
+		Ok(())
 	}
 }
 

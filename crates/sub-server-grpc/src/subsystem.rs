@@ -9,7 +9,6 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
-	time::Duration,
 };
 
 use reifydb_core::{
@@ -46,7 +45,6 @@ pub struct GrpcSubsystem {
 	admin_shutdown_tx: Option<oneshot::Sender<()>>,
 	admin_shutdown_complete_rx: Option<oneshot::Receiver<()>>,
 	runtime: SharedRuntime,
-	poll_interval: Duration,
 	poll_batch_size: usize,
 	registry: Option<Arc<GrpcSubscriptionRegistry>>,
 	subscription_shutdown_tx: Option<watch::Sender<bool>>,
@@ -60,7 +58,6 @@ impl GrpcSubsystem {
 		admin_bind_addr: Option<String>,
 		state: AppState,
 		runtime: SharedRuntime,
-		poll_interval: Duration,
 		poll_batch_size: usize,
 		subscription_store: Option<Arc<SubscriptionStore>>,
 	) -> Self {
@@ -76,7 +73,6 @@ impl GrpcSubsystem {
 			admin_shutdown_tx: None,
 			admin_shutdown_complete_rx: None,
 			runtime,
-			poll_interval,
 			poll_batch_size,
 			registry: None,
 			subscription_shutdown_tx: None,
@@ -129,9 +125,8 @@ impl GrpcSubsystem {
 			return;
 		};
 		let poller = Arc::new(StoreBackedPoller::new(store.clone(), self.poll_batch_size));
-		let poll_interval = self.poll_interval;
 		self.runtime.spawn(async move {
-			poller.run_loop(registry, poll_interval, poller_stop_rx).await;
+			poller.run_loop(registry, poller_stop_rx).await;
 		});
 	}
 

@@ -395,10 +395,7 @@ impl FlowEngine {
 					.get(&node.inputs[0])
 					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
 					.clone();
-				let ttl = self
-					.catalog
-					.find_operator_settings(&mut txn.reborrow(), node.id)
-					.and_then(|s| s.ttl);
+				let ttl = self.catalog.find_operator_settings_latest(node.id).and_then(|s| s.ttl);
 				self.operators.insert(
 					node.id,
 					OperatorCell::new(Operators::Distinct(DistinctOperator::new(
@@ -434,10 +431,7 @@ impl FlowEngine {
 					parents.push(parent);
 				}
 
-				let ttl = self
-					.catalog
-					.find_operator_settings(&mut txn.reborrow(), node.id)
-					.and_then(|s| s.ttl);
+				let ttl = self.catalog.find_operator_settings_latest(node.id).and_then(|s| s.ttl);
 				let ttl_nanos = ttl.as_ref().map(|t| t.duration_nanos);
 				let ttl_anchor = ttl.as_ref().map(|t| t.anchor).unwrap_or_default();
 

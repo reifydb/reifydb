@@ -40,22 +40,22 @@ impl CombinedStats {
 
 #[derive(Clone)]
 pub struct MetricReader<S> {
-	storage_reader: StorageStatsReader<S>,
-	cdc_reader: CdcStatsReader<S>,
+	storage: StorageStatsReader<S>,
+	cdc: CdcStatsReader<S>,
 }
 
 impl<S: SingleVersionStore> MetricReader<S> {
 	pub fn new(storage: S) -> Self {
 		Self {
-			storage_reader: StorageStatsReader::new(storage.clone()),
-			cdc_reader: CdcStatsReader::new(storage),
+			storage: StorageStatsReader::new(storage.clone()),
+			cdc: CdcStatsReader::new(storage),
 		}
 	}
 
 	pub fn scan_tier(&self, tier: Tier) -> Result<Vec<(MetricId, CombinedStats)>> {
-		let storage_stats = self.storage_reader.scan_tier(tier)?;
+		let storage_stats = self.storage.scan_tier(tier)?;
 
-		let cdc_stats: HashMap<MetricId, CdcStats> = self.cdc_reader.scan_all()?.into_iter().collect();
+		let cdc_stats: HashMap<MetricId, CdcStats> = self.cdc.scan_all()?.into_iter().collect();
 
 		let results: Vec<(MetricId, CombinedStats)> = storage_stats
 			.into_iter()
@@ -75,8 +75,8 @@ impl<S: SingleVersionStore> MetricReader<S> {
 	}
 
 	pub fn get(&self, tier: Tier, id: MetricId) -> Result<Option<CombinedStats>> {
-		let storage = self.storage_reader.get(tier, id)?;
-		let cdc = self.cdc_reader.get(id)?;
+		let storage = self.storage.get(tier, id)?;
+		let cdc = self.cdc.get(id)?;
 
 		match (storage, cdc) {
 			(Some(storage), cdc) => Ok(Some(CombinedStats {
@@ -92,10 +92,10 @@ impl<S: SingleVersionStore> MetricReader<S> {
 	}
 
 	pub fn storage_reader(&self) -> &StorageStatsReader<S> {
-		&self.storage_reader
+		&self.storage
 	}
 
 	pub fn cdc_reader(&self) -> &CdcStatsReader<S> {
-		&self.cdc_reader
+		&self.cdc
 	}
 }
