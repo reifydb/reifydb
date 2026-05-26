@@ -569,6 +569,11 @@ impl StandardEngine {
 	}
 
 	#[inline]
+	pub fn oracle_window_count(&self) -> usize {
+		self.multi.oracle_window_count()
+	}
+
+	#[inline]
 	pub fn wait_for_mark_timeout(&self, version: CommitVersion, timeout: Duration) -> bool {
 		self.multi.wait_for_mark_timeout(version, timeout)
 	}

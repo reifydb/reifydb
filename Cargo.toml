@@ -37,6 +37,7 @@ members = [
     "crates/sub-column",
     "crates/sub-metric",
     "crates/sub-profiler",
+    "crates/sub-runtime",
     "crates/sub-server-admin",
     "crates/sub-flow",
     "crates/sub-task",
@@ -107,6 +108,7 @@ default-members = [
     "crates/sub-column",
     "crates/sub-metric",
     "crates/sub-profiler",
+    "crates/sub-runtime",
     "crates/sub-server-admin",
     "crates/sub-flow",
     "crates/sub-task",
@@ -216,6 +218,7 @@ reifydb-sub-api = { version = "0.5.6", path = "crates/sub-api" }
 reifydb-sub-column = { version = "0.5.6", path = "crates/sub-column" }
 reifydb-sub-metric = { version = "0.5.6", path = "crates/sub-metric" }
 reifydb-sub-profiler = { version = "0.5.6", path = "crates/sub-profiler" }
+reifydb-sub-runtime = { version = "0.5.6", path = "crates/sub-runtime" }
 reifydb-sub-server-admin = { version = "0.5.6", path = "crates/sub-server-admin" }
 reifydb-sub-flow = { version = "0.5.6", path = "crates/sub-flow" }
 reifydb-sub-task = { version = "0.5.6", path = "crates/sub-task" }

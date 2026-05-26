@@ -59,6 +59,7 @@ pub enum ConfigKey {
 	ThreadsQuery,
 	ThreadsCommit,
 	ThreadsBackground,
+	RuntimeMetricsInterval,
 }
 
 impl ConfigKey {
@@ -87,6 +88,7 @@ impl ConfigKey {
 			Self::ThreadsQuery,
 			Self::ThreadsCommit,
 			Self::ThreadsBackground,
+			Self::RuntimeMetricsInterval,
 		]
 	}
 
@@ -117,6 +119,7 @@ impl ConfigKey {
 			Self::ThreadsQuery => Value::Uint2(1),
 			Self::ThreadsCommit => Value::Uint2(2),
 			Self::ThreadsBackground => Value::Uint2(1),
+			Self::RuntimeMetricsInterval => Value::Duration(Duration::from_seconds(5).unwrap()),
 		}
 	}
 
@@ -187,6 +190,11 @@ impl ConfigKey {
 				"Number of worker threads for the background pool (non-critical cleanup and metrics actors). \
 				 Must be >= 1. Changes require restart."
 			}
+			Self::RuntimeMetricsInterval => {
+				"How often the runtime-metrics sampler records a memory snapshot into \
+				 system::metrics::runtime::memory::snapshots. When unset, the history sampler is \
+				 dormant and only the live ::current view is available; when set, must be > 0."
+			}
 		}
 	}
 
@@ -215,6 +223,7 @@ impl ConfigKey {
 			Self::ThreadsQuery => true,
 			Self::ThreadsCommit => true,
 			Self::ThreadsBackground => true,
+			Self::RuntimeMetricsInterval => false,
 		}
 	}
 
@@ -243,6 +252,7 @@ impl ConfigKey {
 			Self::ThreadsQuery => &[Type::Uint2],
 			Self::ThreadsCommit => &[Type::Uint2],
 			Self::ThreadsBackground => &[Type::Uint2],
+			Self::RuntimeMetricsInterval => &[Type::Duration],
 		}
 	}
 
@@ -271,6 +281,7 @@ impl ConfigKey {
 			Self::ThreadsQuery => false,
 			Self::ThreadsCommit => false,
 			Self::ThreadsBackground => false,
+			Self::RuntimeMetricsInterval => true,
 		}
 	}
 
@@ -362,6 +373,19 @@ impl ConfigKey {
 			},
 			Self::ThreadsBackground => match value {
 				Value::Uint2(0) => Err("THREADS_BACKGROUND must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::RuntimeMetricsInterval => match value {
+				Value::None {
+					..
+				} => Ok(()),
+				Value::Duration(d) => {
+					if d.is_positive() {
+						Ok(())
+					} else {
+						Err("RUNTIME_METRICS_INTERVAL must be greater than zero".to_string())
+					}
+				}
 				_ => Ok(()),
 			},
 			_ => Ok(()),
@@ -473,6 +497,7 @@ impl fmt::Display for ConfigKey {
 			Self::ThreadsQuery => write!(f, "THREADS_QUERY"),
 			Self::ThreadsCommit => write!(f, "THREADS_COMMIT"),
 			Self::ThreadsBackground => write!(f, "THREADS_BACKGROUND"),
+			Self::RuntimeMetricsInterval => write!(f, "RUNTIME_METRICS_INTERVAL"),
 		}
 	}
 }
@@ -505,6 +530,7 @@ impl FromStr for ConfigKey {
 			"THREADS_QUERY" => Ok(Self::ThreadsQuery),
 			"THREADS_COMMIT" => Ok(Self::ThreadsCommit),
 			"THREADS_BACKGROUND" => Ok(Self::ThreadsBackground),
+			"RUNTIME_METRICS_INTERVAL" => Ok(Self::RuntimeMetricsInterval),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
 		}
 	}
@@ -654,7 +680,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 23);
+		assert_eq!(all.len(), 24);
 		assert!(all.contains(&ConfigKey::CdcCompactInterval));
 		assert!(all.contains(&ConfigKey::CdcCompactBlockSize));
 		assert!(all.contains(&ConfigKey::CdcCompactSafetyLag));
@@ -668,6 +694,38 @@ mod tests {
 		assert!(all.contains(&ConfigKey::ThreadsQuery));
 		assert!(all.contains(&ConfigKey::ThreadsCommit));
 		assert!(all.contains(&ConfigKey::ThreadsBackground));
+		assert!(all.contains(&ConfigKey::RuntimeMetricsInterval));
+	}
+
+	#[test]
+	fn test_runtime_metrics_interval_metadata() {
+		// Single optional Duration knob: default on (5s), none disables the history sampler.
+		assert_eq!(
+			ConfigKey::RuntimeMetricsInterval.default_value(),
+			Value::Duration(Duration::from_seconds(5).unwrap())
+		);
+		assert_eq!(ConfigKey::RuntimeMetricsInterval.expected_types(), &[Type::Duration]);
+		assert!(ConfigKey::RuntimeMetricsInterval.is_optional());
+	}
+
+	#[test]
+	fn test_runtime_metrics_interval_round_trip() {
+		assert_eq!("RUNTIME_METRICS_INTERVAL".parse::<ConfigKey>().unwrap(), ConfigKey::RuntimeMetricsInterval);
+		assert_eq!(format!("{}", ConfigKey::RuntimeMetricsInterval), "RUNTIME_METRICS_INTERVAL");
+	}
+
+	#[test]
+	fn test_runtime_metrics_interval_accepts_none_and_positive_rejects_zero() {
+		let none = Value::None {
+			inner: Type::Duration,
+		};
+		assert_eq!(ConfigKey::RuntimeMetricsInterval.accept(none.clone()).unwrap(), none);
+
+		let five = Value::Duration(Duration::from_seconds(5).unwrap());
+		assert_eq!(ConfigKey::RuntimeMetricsInterval.accept(five.clone()).unwrap(), five);
+
+		let zero = Value::Duration(Duration::from_seconds(0).unwrap());
+		assert!(matches!(ConfigKey::RuntimeMetricsInterval.accept(zero), Err(AcceptError::InvalidValue(_))));
 	}
 
 	#[test]

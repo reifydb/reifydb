@@ -53,9 +53,7 @@ pub struct SqliteConfig {
 	pub wal_autocheckpoint: u32,
 	pub page_size: u32,
 	pub mmap_size: u64,
-
 	pub prepared_statement_cache_capacity: u32,
-
 	pub read_pool_size: u32,
 }
 

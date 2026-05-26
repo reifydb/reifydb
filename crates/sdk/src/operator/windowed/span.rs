@@ -6,6 +6,7 @@ use std::{
 	ops::{Add, Rem, Sub},
 };
 
+use reifydb_type::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
 use serde::{Deserialize, Serialize};
 
 pub trait Slot:
@@ -28,6 +29,34 @@ impl IsZero for u64 {
 	#[inline]
 	fn is_zero(&self) -> bool {
 		*self == 0
+	}
+}
+
+impl IsZero for Duration {
+	#[inline]
+	fn is_zero(&self) -> bool {
+		*self == Duration::zero()
+	}
+}
+
+impl IsZero for DateTime {
+	#[inline]
+	fn is_zero(&self) -> bool {
+		*self == DateTime::default()
+	}
+}
+
+impl IsZero for Date {
+	#[inline]
+	fn is_zero(&self) -> bool {
+		*self == Date::default()
+	}
+}
+
+impl IsZero for Time {
+	#[inline]
+	fn is_zero(&self) -> bool {
+		*self == Time::default()
 	}
 }
 

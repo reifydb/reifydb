@@ -1,0 +1,25 @@
+[package]
+name = "reifydb-sub-runtime"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Always-on runtime-metrics subsystem for ReifyDB"
+
+[dependencies]
+reifydb-catalog = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-engine = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-store-multi = { workspace = true }
+reifydb-sub-api = { workspace = true }
+reifydb-type = { workspace = true }
+
+tracing = { workspace = true }
+
+[target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+reifydb-testing = { workspace = true }

@@ -952,6 +952,57 @@ impl<C: Slot, V: Clone> SealingTail<C, V> {
 	}
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(bound(
+	serialize = "C: Serialize, C::Duration: Serialize, V: Serialize",
+	deserialize = "C: serde::de::DeserializeOwned, C::Duration: serde::de::DeserializeOwned, V: serde::de::DeserializeOwned"
+))]
+pub struct TailAcc<C: Slot, V> {
+	events: SealingTail<C, V>,
+}
+
+impl<C: Slot, V> Default for TailAcc<C, V> {
+	fn default() -> Self {
+		Self {
+			events: SealingTail::default(),
+		}
+	}
+}
+
+impl<C: Slot, V: Clone> TailAcc<C, V> {
+	pub fn with_lateness(lateness: C::Duration) -> Self {
+		Self {
+			events: SealingTail::with_lateness(lateness),
+		}
+	}
+}
+
+impl<C, V> WindowAccumulator for TailAcc<C, V>
+where
+	C: Slot + Serialize + DeserializeOwned,
+	C::Duration: Serialize + DeserializeOwned,
+	V: Clone + Debug + PartialEq + Serialize + DeserializeOwned,
+{
+	type Contribution = (C, V);
+	type Output = BTreeMap<C, V>;
+
+	fn add(&mut self, contribution: &(C, V)) {
+		self.events.add(contribution.0, contribution.1.clone());
+	}
+
+	fn remove(&mut self, contribution: &(C, V)) {
+		self.events.remove(&contribution.0);
+	}
+
+	fn finalize(&self) -> Option<BTreeMap<C, V>> {
+		(!self.events.is_empty()).then(|| self.events.tail().clone())
+	}
+
+	fn is_empty(&self) -> bool {
+		self.events.is_empty()
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use postcard::{from_bytes, to_allocvec};
@@ -1538,7 +1589,10 @@ mod tests {
 
 	#[test]
 	fn sealing_fold_default_add_remove_is_inverse() {
-		assert_add_remove_is_inverse::<SealingFold<u64, AbsPathFold>>(&[(0u64, 10.0f64), (1, 20.0)], (2u64, 30.0f64));
+		assert_add_remove_is_inverse::<SealingFold<u64, AbsPathFold>>(
+			&[(0u64, 10.0f64), (1, 20.0)],
+			(2u64, 30.0f64),
+		);
 	}
 
 	#[test]
@@ -1581,5 +1635,47 @@ mod tests {
 		let bytes = to_allocvec(&tail).expect("serialize");
 		let restored: SealingTail<u64, i64> = from_bytes(&bytes).expect("deserialize");
 		assert_eq!(restored, tail);
+	}
+
+	#[test]
+	fn tail_acc_no_lateness_retains_whole_window_like_retained_acc() {
+		// With no lateness bound, TailAcc.finalize() returns the full map -
+		// a drop-in for RetainedAcc (same Output = BTreeMap<C, V>).
+		let mut acc: TailAcc<u64, i64> = TailAcc::default();
+		acc.add(&(0, 10));
+		acc.add(&(100, 20));
+		let map = acc.finalize().expect("non-empty");
+		assert_eq!(map.len(), 2);
+		assert_eq!(map.get(&0), Some(&10));
+		assert_eq!(map.get(&100), Some(&20));
+	}
+
+	#[test]
+	fn tail_acc_default_add_remove_is_inverse() {
+		assert_add_remove_is_inverse::<TailAcc<u64, i64>>(&[(0u64, 10i64), (1, 20)], (2u64, 30i64));
+	}
+
+	#[test]
+	fn tail_acc_with_lateness_drops_aged_from_finalize() {
+		let mut acc: TailAcc<u64, i64> = TailAcc::with_lateness(10);
+		acc.add(&(0, 10));
+		acc.add(&(5, 20));
+		acc.add(&(12, 30)); // hw=12; coord 0 (age 12 > 10) dropped
+		let map = acc.finalize().expect("non-empty");
+		assert_eq!(
+			map.keys().copied().collect::<Vec<_>>(),
+			vec![5, 12],
+			"aged prefix dropped from the emitted map"
+		);
+	}
+
+	#[test]
+	fn tail_acc_postcard_roundtrip() {
+		let mut acc: TailAcc<u64, i64> = TailAcc::with_lateness(10);
+		acc.add(&(0, 1));
+		acc.add(&(12, 3));
+		let bytes = to_allocvec(&acc).expect("serialize");
+		let restored: TailAcc<u64, i64> = from_bytes(&bytes).expect("deserialize");
+		assert_eq!(restored, acc);
 	}
 }

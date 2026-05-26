@@ -2569,6 +2569,7 @@ dependencies = [
  "reifydb-sub-profiler",
  "reifydb-sub-raft",
  "reifydb-sub-replication",
+ "reifydb-sub-runtime",
  "reifydb-sub-server",
  "reifydb-sub-server-admin",
  "reifydb-sub-server-grpc",
@@ -3168,6 +3169,22 @@ dependencies = [
  "tokio-stream",
  "tonic",
  "tonic-prost",
+ "tracing",
+]
+
+[[package]]
+name = "reifydb-sub-runtime"
+version = "0.5.6"
+dependencies = [
+ "libc",
+ "reifydb-catalog",
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-runtime",
+ "reifydb-store-multi",
+ "reifydb-sub-api",
+ "reifydb-testing",
+ "reifydb-type",
  "tracing",
 ]
 

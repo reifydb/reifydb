@@ -25,6 +25,7 @@ reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 reifydb-metric = { workspace = true }
 reifydb-sub-metric = { workspace = true }
+reifydb-sub-runtime = { workspace = true }
 reifydb-profiler = { workspace = true }
 reifydb-derive = { workspace = true }
 parking_lot = { workspace = true }

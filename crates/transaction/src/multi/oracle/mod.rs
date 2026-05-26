@@ -152,6 +152,10 @@ where
 		&self.rng
 	}
 
+	pub fn window_count(&self) -> usize {
+		self.inner.read().time_windows.len()
+	}
+
 	#[instrument(name = "transaction::oracle::new_commit", level = "debug", skip(self, conflicts), fields(
 		%version,
 		read_keys = field::Empty,

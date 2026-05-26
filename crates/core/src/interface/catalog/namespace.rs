@@ -21,6 +21,9 @@ impl NamespaceId {
 	pub const SYSTEM_METRICS_PROFILER_PLAN: NamespaceId = NamespaceId(14);
 	pub const SYSTEM_METRICS_PROFILER_CDC: NamespaceId = NamespaceId(15);
 	pub const SYSTEM_METRICS_PROFILER_FLOW: NamespaceId = NamespaceId(16);
+	pub const SYSTEM_METRICS_RUNTIME: NamespaceId = NamespaceId(17);
+	pub const SYSTEM_METRICS_RUNTIME_MEMORY: NamespaceId = NamespaceId(18);
+	pub const SYSTEM_METRICS_RUNTIME_WATERMARKS: NamespaceId = NamespaceId(19);
 }
 
 #[derive(Debug, Clone, PartialEq)]

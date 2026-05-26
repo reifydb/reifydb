@@ -67,6 +67,7 @@ use reifydb_sub_profiler::{builder::ProfilerConfigurator, factory::ProfilerSubsy
 use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurator};
 #[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
 use reifydb_sub_replication::factory::ReplicationSubsystemFactory;
+use reifydb_sub_runtime::factory::RuntimeSubsystemFactory;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_sub_server::interceptor::RequestInterceptorChain;
 #[cfg(feature = "sub_flow")]
@@ -571,6 +572,13 @@ impl DatabaseBuilder {
 		#[cfg(feature = "sub_column")]
 		{
 			let factory: Box<dyn SubsystemFactory> = Box::new(StorageSubsystemFactory::default());
+			let subsystem = factory.create(&self.ioc)?;
+			all_versions.push(subsystem.version());
+			subsystems.add_subsystem(subsystem);
+		}
+
+		{
+			let factory: Box<dyn SubsystemFactory> = Box::new(RuntimeSubsystemFactory::new());
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);
