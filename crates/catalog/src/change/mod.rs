@@ -25,6 +25,7 @@ mod handler;
 mod identity;
 mod migration;
 mod namespace;
+mod operator_settings;
 mod passthrough;
 mod policy;
 mod primary_key;
@@ -53,6 +54,7 @@ use handler::HandlerApplier;
 use identity::IdentityApplier;
 use migration::{MigrationApplier, MigrationEventApplier};
 use namespace::NamespaceApplier;
+use operator_settings::OperatorSettingsApplier;
 use passthrough::PassthroughApplier;
 use policy::PolicyApplier;
 use primary_key::PrimaryKeyApplier;
@@ -113,6 +115,7 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 			dispatch::<OperatorRetentionStrategyApplier>(catalog, txn, change)
 		}
 		KeyKind::RowSettings => dispatch::<RowSettingsApplier>(catalog, txn, change),
+		KeyKind::OperatorSettings => dispatch::<OperatorSettingsApplier>(catalog, txn, change),
 		KeyKind::Shape => dispatch::<RowShapeHeaderApplier>(catalog, txn, change),
 		KeyKind::RowShapeField => dispatch::<RowShapeFieldApplier>(catalog, txn, change),
 

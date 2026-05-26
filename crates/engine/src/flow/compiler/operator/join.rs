@@ -122,10 +122,11 @@ impl CompileOperator for JoinCompiler {
 				left: left_keys,
 				right: right_keys,
 				alias: effective_alias,
-				ttl: self.ttl,
 				snapshot: self.snapshot,
 			},
 		)?;
+
+		compiler.write_operator_settings_join(txn, node_id, self.ttl)?;
 
 		compiler.add_edge(txn, &left_node, &node_id)?;
 		compiler.add_edge(txn, &right_node, &node_id)?;

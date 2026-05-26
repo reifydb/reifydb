@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
+
+pub(crate) mod operator_settings {
+	use once_cell::sync::Lazy;
+	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_type::value::r#type::Type;
+
+	pub(crate) const ANCHOR_CREATED: u8 = 0;
+	pub(crate) const ANCHOR_UPDATED: u8 = 1;
+
+	pub(crate) const CLEANUP_MODE_DELETE: u8 = 0;
+	pub(crate) const CLEANUP_MODE_DROP: u8 = 1;
+
+	pub(crate) const IS_JOIN: usize = 0;
+
+	pub(crate) const ANCHOR: usize = 1;
+	pub(crate) const CLEANUP_MODE: usize = 2;
+	pub(crate) const DURATION_NANOS: usize = 3;
+
+	pub(crate) const LEFT_ANCHOR: usize = 4;
+	pub(crate) const LEFT_CLEANUP_MODE: usize = 5;
+	pub(crate) const LEFT_DURATION_NANOS: usize = 6;
+
+	pub(crate) const RIGHT_ANCHOR: usize = 7;
+	pub(crate) const RIGHT_CLEANUP_MODE: usize = 8;
+	pub(crate) const RIGHT_DURATION_NANOS: usize = 9;
+
+	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
+		RowShape::new(vec![
+			RowShapeField::unconstrained("is_join", Type::Boolean),
+			RowShapeField::unconstrained("anchor", Type::Uint1),
+			RowShapeField::unconstrained("cleanup_mode", Type::Uint1),
+			RowShapeField::unconstrained("duration_nanos", Type::Uint8),
+			RowShapeField::unconstrained("left_anchor", Type::Uint1),
+			RowShapeField::unconstrained("left_cleanup_mode", Type::Uint1),
+			RowShapeField::unconstrained("left_duration_nanos", Type::Uint8),
+			RowShapeField::unconstrained("right_anchor", Type::Uint1),
+			RowShapeField::unconstrained("right_cleanup_mode", Type::Uint1),
+			RowShapeField::unconstrained("right_duration_nanos", Type::Uint8),
+		])
+	});
+}

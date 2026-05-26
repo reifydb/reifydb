@@ -20,6 +20,7 @@ pub(crate) mod handler;
 pub(crate) mod identity;
 pub(crate) mod migration;
 pub(crate) mod namespace;
+pub mod operator_settings;
 pub(crate) mod policy;
 #[allow(dead_code)]
 pub(crate) mod primary_key;

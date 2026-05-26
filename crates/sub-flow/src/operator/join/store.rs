@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::Cell, ops::Bound};
+use std::cell::Cell;
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
@@ -22,7 +22,7 @@ use reifydb_type::{
 
 use super::state::JoinSide;
 use crate::{
-	operator::stateful::utils::{state_drop, state_get, state_range, state_remove, state_set},
+	operator::stateful::utils::{state_get, state_range, state_remove, state_set},
 	transaction::FlowTransaction,
 };
 
@@ -192,39 +192,6 @@ impl Store {
 		self.shape_cache.insert(shape.clone());
 		Ok(())
 	}
-
-	pub(crate) fn tick_evict(
-		&self,
-		txn: &mut FlowTransaction,
-		cutoff_nanos: u64,
-		cursor: &mut Option<EncodedKey>,
-	) -> Result<usize> {
-		const EVICT_BATCH: usize = 4096;
-		let base = EncodedKeyRange::prefix(&self.prefix);
-		let start = match cursor.as_ref() {
-			Some(c) => Bound::Excluded(c.clone()),
-			None => base.start.clone(),
-		};
-		let range = EncodedKeyRange::new(start, base.end.clone());
-		let batch = state_range(self.node_id, txn, range).take(EVICT_BATCH).collect::<Result<Vec<_>>>()?;
-		let reached_end = batch.len() < EVICT_BATCH;
-		let last_key = batch.last().map(|(key, _)| key.clone());
-
-		let mut evicted = 0;
-		for (key, row) in batch {
-			if row.updated_at_nanos() < cutoff_nanos {
-				state_drop(self.node_id, txn, &key)?;
-				evicted += 1;
-			}
-		}
-
-		*cursor = if reached_end {
-			None
-		} else {
-			last_key
-		};
-		Ok(evicted)
-	}
 }
 
 fn row_number_from_key(bytes: &[u8]) -> Option<RowNumber> {
@@ -351,76 +318,6 @@ mod tests {
 		assert!(!store.contains_key(&mut txn, &h(0xAAA)).unwrap());
 
 		assert!(!store.remove_row(&mut txn, &h(0xAAA), rn(99)).unwrap());
-	}
-
-	#[test]
-	fn tick_evict_drops_stale_rows_only_per_row() {
-		let engine = TestEngine::new();
-		let mock_clock = engine.mock_clock();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
-		let store = Store::new(FlowNodeId(6), JoinSide::Left);
-
-		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		mock_clock.advance_millis(50);
-		store.put_row(&mut txn, &h(0xAAA), rn(2), &row(0x20)).unwrap();
-
-		let cutoff = mock_clock.now_nanos() - 30_000_000;
-		let evicted = store.tick_evict(&mut txn, cutoff, &mut None).unwrap();
-		assert_eq!(evicted, 1, "only the older row should be evicted");
-
-		let remaining = store.rows_for_key(&mut txn, &h(0xAAA)).unwrap();
-		assert_eq!(remaining.len(), 1);
-		assert_eq!(remaining[0].0, rn(2));
-	}
-
-	#[test]
-	fn tick_evict_is_noop_when_nothing_stale() {
-		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
-		let store = Store::new(FlowNodeId(7), JoinSide::Left);
-
-		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		assert_eq!(store.tick_evict(&mut txn, 0, &mut None).unwrap(), 0);
-		assert!(store.contains_key(&mut txn, &h(0xAAA)).unwrap());
-	}
-
-	#[test]
-	fn tick_evict_only_touches_own_side() {
-		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
-		let node = FlowNodeId(8);
-		let left = Store::new(node, JoinSide::Left);
-		let right = Store::new(node, JoinSide::Right);
-
-		left.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		right.put_row(&mut txn, &h(0xBBB), rn(2), &row(0x20)).unwrap();
-
-		let evicted = left.tick_evict(&mut txn, u64::MAX, &mut None).unwrap();
-		assert_eq!(evicted, 1);
-
-		assert!(!left.contains_key(&mut txn, &h(0xAAA)).unwrap());
-		assert!(right.contains_key(&mut txn, &h(0xBBB)).unwrap());
 	}
 
 	#[test]

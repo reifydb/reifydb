@@ -29,12 +29,9 @@ impl CompileOperator for AppendCompiler {
 		let left_node = compiler.compile_plan(txn, *self.left)?;
 		let right_node = compiler.compile_plan(txn, *self.right)?;
 
-		let node_id = compiler.add_node(
-			txn,
-			FlowNodeType::Append {
-				ttl: self.ttl,
-			},
-		)?;
+		let node_id = compiler.add_node(txn, FlowNodeType::Append {})?;
+
+		compiler.write_operator_settings(txn, node_id, self.ttl)?;
 
 		compiler.add_edge(txn, &left_node, &node_id)?;
 		compiler.add_edge(txn, &right_node, &node_id)?;

@@ -39,9 +39,10 @@ impl CompileOperator for ApplyCompiler {
 			Apply {
 				operator: self.operator.text().to_string(),
 				expressions: self.arguments,
-				ttl: self.ttl,
 			},
 		)?;
+
+		compiler.write_operator_settings(txn, node_id, self.ttl)?;
 
 		if let Some(input) = input_node {
 			compiler.add_edge(txn, &input, &node_id)?;

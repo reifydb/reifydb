@@ -32,8 +32,8 @@ use super::{
 	entry::current_table_name,
 	query::{
 		build_create_current_sql, build_delete_expired_sql, build_delete_keys_sql, build_get_current_sql,
-		build_get_many_current_sql, build_range_current_sql, build_upsert_current_sql, version_from_bytes,
-		version_to_bytes,
+		build_get_many_current_sql, build_range_current_sql, build_upsert_current_sql, prefix_upper_bound,
+		version_from_bytes, version_to_bytes,
 	},
 };
 use crate::{
@@ -159,15 +159,28 @@ impl SqlitePersistentStorage {
 		}
 	}
 
-	pub fn delete_expired(&self, table: EntryKind, anchor: TtlAnchor, cutoff_nanos: u64) -> Result<u64> {
+	pub fn delete_expired(
+		&self,
+		table: EntryKind,
+		anchor: TtlAnchor,
+		cutoff_nanos: u64,
+		prefix: Option<&[u8]>,
+	) -> Result<u64> {
 		let table_name = current_table_name(table);
 		let anchor_column = match anchor {
 			TtlAnchor::Created => "created_nanos",
 			TtlAnchor::Updated => "updated_nanos",
 		};
-		let sql = build_delete_expired_sql(&table_name, anchor_column);
+		let sql = build_delete_expired_sql(&table_name, anchor_column, prefix.is_some());
 		let conn = self.inner.conn.lock();
-		match conn.execute(&sql, params![cutoff_nanos as i64]) {
+		let result = match prefix {
+			Some(prefix) => {
+				let upper = prefix_upper_bound(prefix);
+				conn.execute(&sql, params![cutoff_nanos as i64, prefix, upper.as_slice()])
+			}
+			None => conn.execute(&sql, params![cutoff_nanos as i64]),
+		};
+		match result {
 			Ok(n) => Ok(n as u64),
 			Err(e) if e.to_string().contains("no such table") => Ok(0),
 			Err(e) => Err(error!(internal(format!(
@@ -593,7 +606,7 @@ mod tests {
 		.unwrap();
 		assert_eq!(s.count_current(table()).unwrap(), 3);
 
-		let deleted = s.delete_expired(table(), TtlAnchor::Created, 200).unwrap();
+		let deleted = s.delete_expired(table(), TtlAnchor::Created, 200, None).unwrap();
 
 		assert_eq!(deleted, 2, "rows created at <= cutoff(200) must be physically deleted");
 		assert_eq!(
@@ -621,7 +634,7 @@ mod tests {
 		)
 		.unwrap();
 
-		let deleted = s.delete_expired(table(), TtlAnchor::Updated, 100).unwrap();
+		let deleted = s.delete_expired(table(), TtlAnchor::Updated, 100, None).unwrap();
 
 		assert_eq!(deleted, 1, "Updated anchor must key eviction on updated_nanos, not created_nanos");
 		assert!(
@@ -641,7 +654,7 @@ mod tests {
 		.unwrap();
 		let before = s.count_current(table()).unwrap();
 
-		let deleted = s.delete_expired(table(), TtlAnchor::Created, u64::MAX).unwrap();
+		let deleted = s.delete_expired(table(), TtlAnchor::Created, u64::MAX, None).unwrap();
 
 		assert_eq!(deleted, 0, "rows whose anchor is 0 (tombstones / undatable) must never be mass-deleted");
 		assert_eq!(s.count_current(table()).unwrap(), before);
@@ -651,8 +664,30 @@ mod tests {
 	fn delete_expired_on_missing_table_is_noop() {
 		let s = SqlitePersistentStorage::in_memory();
 		let deleted = s
-			.delete_expired(EntryKind::Source(ShapeId::Table(TableId(999))), TtlAnchor::Created, 100)
+			.delete_expired(EntryKind::Source(ShapeId::Table(TableId(999))), TtlAnchor::Created, 100, None)
 			.unwrap();
 		assert_eq!(deleted, 0);
+	}
+
+	#[test]
+	fn delete_expired_with_prefix_only_touches_matching_keys() {
+		let s = SqlitePersistentStorage::in_memory();
+		// Two "sides" distinguished by a leading prefix byte, both stale by the cutoff.
+		let left = EncodedKey::new(vec![0x01, 0xAA]);
+		let right = EncodedKey::new(vec![0x02, 0xBB]);
+		s.set(
+			CommitVersion(1),
+			HashMap::from([(
+				table(),
+				vec![(left.clone(), Some(row(10, 10, b"l"))), (right.clone(), Some(row(10, 10, b"r")))],
+			)]),
+		)
+		.unwrap();
+
+		let deleted = s.delete_expired(table(), TtlAnchor::Updated, 100, Some(&[0x01])).unwrap();
+
+		assert_eq!(deleted, 1, "only the 0x01-prefixed (left) row should be deleted");
+		assert!(!visible(&s, &left));
+		assert!(visible(&s, &right), "the 0x02-prefixed (right) row must survive a left-only prefix sweep");
 	}
 }

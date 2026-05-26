@@ -161,7 +161,8 @@ impl<P: ListRowSettings> Actor<P> {
 
 			if let Some(persistent) = persistent {
 				let cutoff = now_nanos.saturating_sub(ttl.duration_nanos);
-				match persistent.delete_expired(EntryKind::Source(*shape_id), ttl.anchor, cutoff) {
+				match persistent.delete_expired(EntryKind::Source(*shape_id), ttl.anchor, cutoff, None)
+				{
 					Ok(deleted) => {
 						persistent_rows_deleted += deleted;
 						if deleted > 0 {

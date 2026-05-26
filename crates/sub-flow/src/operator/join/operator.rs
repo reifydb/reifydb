@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::RefCell, sync::LazyLock, time::Duration};
+use std::sync::LazyLock;
 
 use postcard::to_stdvec;
 use reifydb_abi::operator::capabilities::OperatorCapability;
@@ -29,7 +29,6 @@ use reifydb_runtime::{
 	context::RuntimeContext,
 	hash::{Hash128, xxh3_128},
 };
-use reifydb_sdk::operator::Tick;
 use reifydb_type::{
 	Result,
 	error::Error,
@@ -45,17 +44,10 @@ use super::{
 use crate::{
 	operator::{
 		Operator,
-		join::store::Store,
 		stateful::{raw::RawStatefulOperator, row::RowNumberProvider, single::SingleStateful},
 	},
 	transaction::FlowTransaction,
 };
-
-#[derive(Default, Clone, Copy)]
-pub struct JoinStateTtl {
-	pub left_nanos: Option<u64>,
-	pub right_nanos: Option<u64>,
-}
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
@@ -79,10 +71,7 @@ pub struct JoinOperator {
 	row_number_provider: RowNumberProvider,
 	routines: Routines,
 	runtime_context: RuntimeContext,
-	ttl: JoinStateTtl,
 	pub(crate) snapshot: bool,
-	left_evict_cursor: RefCell<Option<EncodedKey>>,
-	right_evict_cursor: RefCell<Option<EncodedKey>>,
 }
 
 impl JoinOperator {
@@ -94,7 +83,6 @@ impl JoinOperator {
 		join_type: JoinType,
 		alias: Option<String>,
 		executor: Executor,
-		ttl: JoinStateTtl,
 		snapshot: bool,
 	) -> Self {
 		let left_node = left.node;
@@ -138,10 +126,7 @@ impl JoinOperator {
 			row_number_provider,
 			routines,
 			runtime_context,
-			ttl,
 			snapshot,
-			left_evict_cursor: RefCell::new(None),
-			right_evict_cursor: RefCell::new(None),
 		}
 	}
 
@@ -404,15 +389,7 @@ impl Operator for JoinOperator {
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
-		OperatorCapability::STANDARD_WITH_TICK
-	}
-
-	fn ticks(&self) -> Option<Duration> {
-		if self.ttl.left_nanos.is_some() || self.ttl.right_nanos.is_some() {
-			Some(Duration::from_secs(1))
-		} else {
-			None
-		}
+		OperatorCapability::STANDARD
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
@@ -463,32 +440,6 @@ impl Operator for JoinOperator {
 
 		Ok(Change::from_flow(self.node, version, result, change.changed_at))
 	}
-
-	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
-		let mut left_cursor = self.left_evict_cursor.borrow_mut();
-		let mut right_cursor = self.right_evict_cursor.borrow_mut();
-		evict_per_side_ttl(txn, self.node, self.ttl, tick.now.to_nanos(), &mut left_cursor, &mut right_cursor)?;
-		Ok(None)
-	}
-}
-
-pub(crate) fn evict_per_side_ttl(
-	txn: &mut FlowTransaction,
-	node: FlowNodeId,
-	ttl: JoinStateTtl,
-	now_nanos: u64,
-	left_cursor: &mut Option<EncodedKey>,
-	right_cursor: &mut Option<EncodedKey>,
-) -> Result<()> {
-	if let Some(ttl_nanos) = ttl.left_nanos {
-		let cutoff = now_nanos.saturating_sub(ttl_nanos);
-		Store::new(node, JoinSide::Left).tick_evict(txn, cutoff, left_cursor)?;
-	}
-	if let Some(ttl_nanos) = ttl.right_nanos {
-		let cutoff = now_nanos.saturating_sub(ttl_nanos);
-		Store::new(node, JoinSide::Right).tick_evict(txn, cutoff, right_cursor)?;
-	}
-	Ok(())
 }
 
 impl JoinOperator {
@@ -590,314 +541,5 @@ impl JoinOperator {
 		}
 
 		Ok(())
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::{
-		common::CommitVersion,
-		encoded::{row::EncodedRow, shape::RowShape},
-	};
-	use reifydb_engine::test_harness::TestEngine;
-	use reifydb_runtime::hash::Hash128;
-	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_type::value::{blob::Blob, identity::IdentityId};
-
-	use super::*;
-
-	fn row(payload: u8) -> EncodedRow {
-		let shape = RowShape::operator_state();
-		let mut r = shape.allocate();
-		shape.set_blob(&mut r, 0, &Blob::from(vec![payload]));
-		r
-	}
-
-	fn h(v: u128) -> Hash128 {
-		Hash128(v)
-	}
-
-	fn rn(v: u64) -> RowNumber {
-		RowNumber(v)
-	}
-
-	fn put(store: &Store, txn: &mut FlowTransaction, hash: u128, row_number: u64, payload: u8) {
-		store.put_row(txn, &h(hash), rn(row_number), &row(payload)).unwrap();
-	}
-
-	fn contains(store: &Store, txn: &mut FlowTransaction, hash: u128) -> bool {
-		store.contains_key(txn, &h(hash)).unwrap()
-	}
-
-	#[test]
-	fn tick_with_no_ttl_is_noop() {
-		// When neither side has a TTL configured, advancing the clock arbitrarily must not
-		// cause eviction. A regression that defaulted to "evict everything older than now"
-		// would silently wipe state across both sides.
-		let engine = TestEngine::new();
-		let mock_clock = engine.mock_clock();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
-		let node = FlowNodeId(101);
-		let left = Store::new(node, JoinSide::Left);
-		let right = Store::new(node, JoinSide::Right);
-
-		put(&left, &mut txn, 0xAAA, 1, 0x10);
-		put(&right, &mut txn, 0xBBB, 2, 0x20);
-
-		mock_clock.advance_millis(10_000);
-
-		evict_per_side_ttl(
-			&mut txn,
-			node,
-			JoinStateTtl::default(),
-			engine.clock().now_nanos(),
-			&mut None,
-			&mut None,
-		)
-		.unwrap();
-
-		assert!(contains(&left, &mut txn, 0xAAA), "left side must keep its row when no TTL is set");
-		assert!(contains(&right, &mut txn, 0xBBB), "right side must keep its row when no TTL is set");
-	}
-
-	#[test]
-	fn tick_evicts_only_left_when_right_ttl_is_none() {
-		// Verifies that left.ttl is applied to the left store and that the right store is
-		// untouched. The most common regression here would be the right branch reading the
-		// left's cutoff (or vice versa).
-		let engine = TestEngine::new();
-		let mock_clock = engine.mock_clock();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
-		let node = FlowNodeId(102);
-		let left = Store::new(node, JoinSide::Left);
-		let right = Store::new(node, JoinSide::Right);
-
-		put(&left, &mut txn, 0xAAA, 1, 0x10);
-		put(&right, &mut txn, 0xBBB, 2, 0x20);
-
-		mock_clock.advance_millis(50);
-
-		let ttl = JoinStateTtl {
-			left_nanos: Some(30_000_000), // 30ms
-			right_nanos: None,
-		};
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
-
-		assert!(!contains(&left, &mut txn, 0xAAA), "left side must be evicted past its TTL");
-		assert!(contains(&right, &mut txn, 0xBBB), "right side must keep its row when right_nanos is None");
-	}
-
-	#[test]
-	fn tick_evicts_only_right_when_left_ttl_is_none() {
-		// Mirror of the previous test: this would catch a regression that hardcoded the side
-		// being evicted, or that copied left.ttl across both branches.
-		let engine = TestEngine::new();
-		let mock_clock = engine.mock_clock();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
-		let node = FlowNodeId(103);
-		let left = Store::new(node, JoinSide::Left);
-		let right = Store::new(node, JoinSide::Right);
-
-		put(&left, &mut txn, 0xAAA, 1, 0x10);
-		put(&right, &mut txn, 0xBBB, 2, 0x20);
-
-		mock_clock.advance_millis(50);
-
-		let ttl = JoinStateTtl {
-			left_nanos: None,
-			right_nanos: Some(30_000_000), // 30ms
-		};
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
-
-		assert!(contains(&left, &mut txn, 0xAAA), "left side must keep its row when left_nanos is None");
-		assert!(!contains(&right, &mut txn, 0xBBB), "right side must be evicted past its TTL");
-	}
-
-	#[test]
-	fn tick_with_symmetric_ttl_evicts_both_sides_after_cutoff() {
-		// Both sides configured with the same TTL: after the cutoff, both must be evicted.
-		// A regression that silently skipped one side would fail this.
-		let engine = TestEngine::new();
-		let mock_clock = engine.mock_clock();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
-		let node = FlowNodeId(104);
-		let left = Store::new(node, JoinSide::Left);
-		let right = Store::new(node, JoinSide::Right);
-
-		put(&left, &mut txn, 0xAAA, 1, 0x10);
-		put(&right, &mut txn, 0xBBB, 2, 0x20);
-
-		mock_clock.advance_millis(60);
-
-		let ttl = JoinStateTtl {
-			left_nanos: Some(50_000_000), // 50ms
-			right_nanos: Some(50_000_000),
-		};
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
-
-		assert!(!contains(&left, &mut txn, 0xAAA), "left side must be evicted past the symmetric TTL");
-		assert!(!contains(&right, &mut txn, 0xBBB), "right side must be evicted past the symmetric TTL");
-	}
-
-	#[test]
-	fn tick_with_asymmetric_ttl_evicts_left_first_then_right() {
-		// The headline test for per-side TTL: each side evicts on its own clock. Critically
-		// detects the most likely failure mode of feeding both sides the same cutoff. We
-		// drive two ticks at different times to show left dies first while right survives,
-		// then right dies after its own (longer) TTL.
-		let engine = TestEngine::new();
-		let mock_clock = engine.mock_clock();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
-		let node = FlowNodeId(105);
-		let left = Store::new(node, JoinSide::Left);
-		let right = Store::new(node, JoinSide::Right);
-
-		put(&left, &mut txn, 0xAAA, 1, 0x10);
-		put(&right, &mut txn, 0xBBB, 2, 0x20);
-
-		let ttl = JoinStateTtl {
-			left_nanos: Some(30_000_000),  // 30ms
-			right_nanos: Some(90_000_000), // 90ms
-		};
-
-		mock_clock.advance_millis(40);
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
-		assert!(!contains(&left, &mut txn, 0xAAA), "left side must be evicted past its 30ms TTL");
-		assert!(contains(&right, &mut txn, 0xBBB), "right side must survive while still within its 90ms TTL");
-
-		mock_clock.advance_millis(60);
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
-		assert!(!contains(&right, &mut txn, 0xBBB), "right side must be evicted past its 90ms TTL");
-	}
-
-	#[test]
-	fn tick_evicts_per_row_not_per_side() {
-		// Inside a single side, a row inserted later must survive even when an older row in
-		// the same side gets evicted. Catches a regression that wipes the whole side based
-		// on the oldest row or the first scanned row.
-		let engine = TestEngine::new();
-		let mock_clock = engine.mock_clock();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
-		let node = FlowNodeId(106);
-		let left = Store::new(node, JoinSide::Left);
-
-		put(&left, &mut txn, 0xAAA, 1, 0x10);
-		mock_clock.advance_millis(30);
-		put(&left, &mut txn, 0xBBB, 2, 0x20);
-
-		mock_clock.advance_millis(30);
-		// now = 60ms, ttl = 50ms, cutoff = 10ms.
-		// AAA inserted at 0ms (stale), BBB inserted at 30ms (within window).
-		let ttl = JoinStateTtl {
-			left_nanos: Some(50_000_000),
-			right_nanos: None,
-		};
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
-
-		assert!(!contains(&left, &mut txn, 0xAAA), "older row must be evicted");
-		assert!(contains(&left, &mut txn, 0xBBB), "younger row in the same side must survive");
-	}
-
-	#[test]
-	fn tick_does_not_evict_rows_within_ttl_window() {
-		// Off-by-one check on the cutoff math: rows whose age is below the TTL must remain.
-		let engine = TestEngine::new();
-		let mock_clock = engine.mock_clock();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
-		let node = FlowNodeId(107);
-		let left = Store::new(node, JoinSide::Left);
-		let right = Store::new(node, JoinSide::Right);
-
-		put(&left, &mut txn, 0xAAA, 1, 0x10);
-		put(&right, &mut txn, 0xBBB, 2, 0x20);
-
-		mock_clock.advance_millis(50);
-
-		let ttl = JoinStateTtl {
-			left_nanos: Some(100_000_000), // 100ms
-			right_nanos: Some(100_000_000),
-		};
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
-
-		assert!(contains(&left, &mut txn, 0xAAA), "left must survive while under its TTL");
-		assert!(contains(&right, &mut txn, 0xBBB), "right must survive while under its TTL");
-	}
-
-	#[test]
-	fn tick_is_safe_when_no_state_was_written() {
-		// Calling tick before any insert must not panic or error. Catches an unguarded scan
-		// or decode against an empty range, which would surface as a runtime failure during
-		// flow startup.
-		let engine = TestEngine::new();
-		let admin = engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn = FlowTransaction::deferred(
-			&admin,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			engine.clock().clone(),
-		);
-		let node = FlowNodeId(108);
-
-		let ttl = JoinStateTtl {
-			left_nanos: Some(10_000_000),
-			right_nanos: Some(10_000_000),
-		};
-		evict_per_side_ttl(&mut txn, node, ttl, engine.clock().now_nanos(), &mut None, &mut None).unwrap();
-
-		let left = Store::new(node, JoinSide::Left);
-		let right = Store::new(node, JoinSide::Right);
-		assert!(!contains(&left, &mut txn, 0xAAA));
-		assert!(!contains(&right, &mut txn, 0xAAA));
 	}
 }

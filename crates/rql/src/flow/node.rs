@@ -9,7 +9,6 @@ use reifydb_core::{
 		series::SeriesKey,
 		shape::ShapeId,
 	},
-	row::{JoinTtl, Ttl},
 	sort::SortKey,
 };
 use serde::{Deserialize, Serialize};
@@ -52,18 +51,13 @@ pub enum FlowNodeType {
 		right: Vec<Expression>,
 		alias: Option<String>,
 		#[serde(default)]
-		ttl: Option<JoinTtl>,
-		#[serde(default)]
 		snapshot: bool,
 	},
 	Aggregate {
 		by: Vec<Expression>,
 		map: Vec<Expression>,
 	},
-	Append {
-		#[serde(default)]
-		ttl: Option<Ttl>,
-	},
+	Append {},
 	Sort {
 		by: Vec<SortKey>,
 	},
@@ -72,14 +66,10 @@ pub enum FlowNodeType {
 	},
 	Distinct {
 		expressions: Vec<Expression>,
-		#[serde(default)]
-		ttl: Option<Ttl>,
 	},
 	Apply {
 		operator: String,
 		expressions: Vec<Expression>,
-		#[serde(default)]
-		ttl: Option<Ttl>,
 	},
 	SinkTableView {
 		view: ViewId,
@@ -110,22 +100,16 @@ pub enum FlowNodeType {
 impl FlowNodeType {
 	pub fn ticks(&self) -> bool {
 		match self {
-			FlowNodeType::Join {
-				ttl,
-				..
-			} => ttl.as_ref().is_some_and(|t| t.left.is_some() || t.right.is_some()),
 			FlowNodeType::Append {
-				ttl,
 				..
-			} => ttl.is_some(),
-			FlowNodeType::Distinct {
-				ttl,
+			}
+			| FlowNodeType::Distinct {
 				..
-			} => ttl.is_some(),
-			FlowNodeType::Window {
+			}
+			| FlowNodeType::Window {
 				..
-			} => true,
-			FlowNodeType::Apply {
+			}
+			| FlowNodeType::Apply {
 				..
 			} => true,
 			_ => false,
@@ -385,94 +369,49 @@ impl FlowEdge {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{
-		common::JoinType,
-		row::{JoinTtl, Ttl, TtlAnchor, TtlCleanupMode},
-	};
+	use reifydb_core::common::JoinType;
 
 	use super::FlowNodeType;
 
-	fn ttl() -> Ttl {
-		Ttl {
-			duration_nanos: 10_000_000_000,
-			anchor: TtlAnchor::Created,
-			cleanup_mode: TtlCleanupMode::Drop,
-		}
-	}
-
-	fn join(ttl: Option<JoinTtl>) -> FlowNodeType {
+	fn join() -> FlowNodeType {
 		FlowNodeType::Join {
 			join_type: JoinType::Inner,
 			left: vec![],
 			right: vec![],
 			alias: None,
-			ttl,
 			snapshot: false,
 		}
 	}
 
 	#[test]
-	fn join_ticks_only_when_a_side_ttl_is_set() {
-		// A join evicts its buffered side state on tick, so it must request flow ticks exactly
-		// when a per-side TTL is configured. Without this the join-state TTL is never enforced
-		// and the join leaks (the bug this fixes). An empty JoinTtl evicts nothing.
-		assert!(!join(None).ticks());
-		assert!(!join(Some(JoinTtl {
-			left: None,
-			right: None
-		}))
-		.ticks());
-		assert!(join(Some(JoinTtl {
-			left: Some(ttl()),
-			right: None
-		}))
-		.ticks());
-		assert!(join(Some(JoinTtl {
-			left: None,
-			right: Some(ttl())
-		}))
-		.ticks());
+	fn join_never_requests_ticks() {
+		// Join state TTL is reclaimed by the background operator GC actor (per-side, via
+		// OperatorSettings), not on the flow tick path - so a Join node never requests ticks.
+		assert!(!join().ticks());
 	}
 
 	#[test]
 	fn apply_always_requests_ticks() {
 		// Apply nodes always register for flow ticks, regardless of the underlying operator's
-		// tick capability or TTL. The graph-level gate cannot see the runtime operator, so it
+		// tick capability. The graph-level gate cannot see the runtime operator, so it
 		// registers unconditionally; the runtime operator then decides whether tick() actually
 		// runs (an FFI operator without CAPABILITY_TICK reports no interval and is skipped).
 		// Registering here is what lets a tick-capable custom operator be ticked at all.
-		let apply_with_ttl = FlowNodeType::Apply {
+		let apply = FlowNodeType::Apply {
 			operator: "compute_swap_volumes".to_string(),
 			expressions: vec![],
-			ttl: Some(ttl()),
 		};
-		assert!(apply_with_ttl.ticks());
-		let apply_without_ttl = FlowNodeType::Apply {
-			operator: "compute_swap_volumes".to_string(),
-			expressions: vec![],
-			ttl: None,
-		};
-		assert!(apply_without_ttl.ticks());
+		assert!(apply.ticks());
 	}
 
 	#[test]
-	fn append_and_distinct_tick_only_with_ttl() {
-		assert!(!FlowNodeType::Append {
-			ttl: None
-		}
-		.ticks());
-		assert!(FlowNodeType::Append {
-			ttl: Some(ttl())
-		}
-		.ticks());
-		assert!(!FlowNodeType::Distinct {
-			expressions: vec![],
-			ttl: None
-		}
-		.ticks());
+	fn append_and_distinct_always_request_ticks() {
+		// Their TTL now lives in OperatorSettings (not the node) and is reclaimed on tick when
+		// configured; the graph-level gate cannot see it, so they request ticks unconditionally and
+		// the runtime operator decides whether tick() actually runs.
+		assert!(FlowNodeType::Append {}.ticks());
 		assert!(FlowNodeType::Distinct {
-			expressions: vec![],
-			ttl: Some(ttl())
+			expressions: vec![]
 		}
 		.ticks());
 	}

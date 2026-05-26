@@ -111,6 +111,7 @@ pub mod tests {
 			KeyKind::NamespaceProcedure => {}
 			KeyKind::ProcedureParam => {}
 			KeyKind::Binding => {}
+			KeyKind::OperatorSettings => {}
 			KeyKind::NamespaceBinding => {} /* When adding a new variant, add it here.
 			                                 * The compiler will error if you forget.
 			                                 * Then add a test and update should_exclude_from_cdc() if
@@ -277,6 +278,11 @@ pub mod tests {
 	#[test]
 	fn test_include_operator_retention_strategy() {
 		assert!(!should_exclude_from_cdc(KeyKind::OperatorRetentionStrategy));
+	}
+
+	#[test]
+	fn test_include_operator_settings() {
+		assert!(!should_exclude_from_cdc(KeyKind::OperatorSettings));
 	}
 
 	#[test]

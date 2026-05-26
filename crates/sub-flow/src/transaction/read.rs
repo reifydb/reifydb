@@ -209,6 +209,7 @@ impl FlowTransaction {
 				KeyKind::NamespaceSink => ReadFrom::Query,
 				KeyKind::SourceCheckpoint => ReadFrom::Query,
 				KeyKind::RowSettings => ReadFrom::Query,
+				KeyKind::OperatorSettings => ReadFrom::Query,
 				KeyKind::Procedure => ReadFrom::Query,
 				KeyKind::NamespaceProcedure => ReadFrom::Query,
 				KeyKind::ProcedureParam => ReadFrom::Query,

@@ -52,8 +52,27 @@ pub(super) fn build_upsert_current_sql(table_name: &str) -> String {
 	)
 }
 
-pub(super) fn build_delete_expired_sql(table_name: &str, anchor_column: &str) -> String {
-	format!("DELETE FROM \"{0}\" WHERE {1} > 0 AND {1} <= ?1", table_name, anchor_column)
+pub(super) fn build_delete_expired_sql(table_name: &str, anchor_column: &str, has_prefix: bool) -> String {
+	if has_prefix {
+		format!(
+			"DELETE FROM \"{0}\" WHERE {1} > 0 AND {1} <= ?1 AND key >= ?2 AND key < ?3",
+			table_name, anchor_column
+		)
+	} else {
+		format!("DELETE FROM \"{0}\" WHERE {1} > 0 AND {1} <= ?1", table_name, anchor_column)
+	}
+}
+
+pub(super) fn prefix_upper_bound(prefix: &[u8]) -> Vec<u8> {
+	let mut upper = prefix.to_vec();
+	while let Some(last) = upper.last_mut() {
+		if *last < 0xFF {
+			*last += 1;
+			return upper;
+		}
+		upper.pop();
+	}
+	upper
 }
 
 pub(super) fn build_delete_keys_sql(table_name: &str, key_count: usize) -> String {

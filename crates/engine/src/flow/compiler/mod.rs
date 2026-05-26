@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_catalog::catalog::Catalog;
+use reifydb_catalog::{catalog::Catalog, store::operator_settings::create::create_operator_settings};
 use reifydb_core::{
 	error::diagnostic::flow::{
 		flow_ephemeral_id_capacity_exceeded, flow_remote_source_unsupported, flow_source_required,
@@ -12,6 +12,7 @@ use reifydb_core::{
 		view::View,
 	},
 	internal,
+	row::{JoinTtl, OperatorSettings, Ttl},
 };
 use reifydb_rql::{
 	flow::{
@@ -167,6 +168,54 @@ impl FlowCompiler {
 
 		self.builder.add_node(node::FlowNode::new(node_id, node_type));
 		Ok(node_id)
+	}
+
+	pub(crate) fn write_operator_settings(
+		&self,
+		txn: &mut Transaction<'_>,
+		node_id: FlowNodeId,
+		ttl: Option<Ttl>,
+	) -> Result<()> {
+		if self.ephemeral {
+			return Ok(());
+		}
+		if let Some(ttl) = ttl {
+			create_operator_settings(
+				txn.admin_mut(),
+				node_id,
+				&OperatorSettings {
+					ttl: Some(ttl),
+					join: None,
+				},
+			)?;
+		}
+		Ok(())
+	}
+
+	pub(crate) fn write_operator_settings_join(
+		&self,
+		txn: &mut Transaction<'_>,
+		node_id: FlowNodeId,
+		join: Option<JoinTtl>,
+	) -> Result<()> {
+		if self.ephemeral {
+			return Ok(());
+		}
+		let Some(join) = join else {
+			return Ok(());
+		};
+		if join.left.is_none() && join.right.is_none() {
+			return Ok(());
+		}
+		create_operator_settings(
+			txn.admin_mut(),
+			node_id,
+			&OperatorSettings {
+				ttl: None,
+				join: Some(join),
+			},
+		)?;
+		Ok(())
 	}
 
 	pub(crate) fn compile(

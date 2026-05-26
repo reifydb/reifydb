@@ -41,7 +41,7 @@ use crate::{
 		extend::ExtendOperator,
 		filter::FilterOperator,
 		gate::GateOperator,
-		join::operator::{JoinOperator, JoinSideConfig, JoinStateTtl},
+		join::operator::{JoinOperator, JoinSideConfig},
 		map::MapOperator,
 		scan::{
 			flow::PrimitiveFlowOperator, ringbuffer::PrimitiveRingBufferOperator,
@@ -343,7 +343,6 @@ impl FlowEngine {
 				left,
 				right,
 				alias,
-				ttl,
 				snapshot,
 			} => {
 				if node.inputs.len() != 2 {
@@ -365,14 +364,6 @@ impl FlowEngine {
 					.ok_or_else(|| Error(Box::new(internal!("Right parent operator not found"))))?
 					.clone();
 
-				let ttl = match ttl {
-					Some(t) => JoinStateTtl {
-						left_nanos: t.left.as_ref().map(|s| s.duration_nanos),
-						right_nanos: t.right.as_ref().map(|s| s.duration_nanos),
-					},
-					None => JoinStateTtl::default(),
-				};
-
 				self.operators.insert(
 					node.id,
 					OperatorCell::new(Operators::Join(JoinOperator::new(
@@ -392,20 +383,22 @@ impl FlowEngine {
 						join_type,
 						alias,
 						self.executor.clone(),
-						ttl,
 						snapshot,
 					))),
 				);
 			}
 			Distinct {
 				expressions,
-				ttl,
 			} => {
 				let parent = self
 					.operators
 					.get(&node.inputs[0])
 					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
 					.clone();
+				let ttl = self
+					.catalog
+					.find_operator_settings(&mut txn.reborrow(), node.id)
+					.and_then(|s| s.ttl);
 				self.operators.insert(
 					node.id,
 					OperatorCell::new(Operators::Distinct(DistinctOperator::new(
@@ -418,9 +411,7 @@ impl FlowEngine {
 					))),
 				);
 			}
-			Append {
-				ttl,
-			} => {
+			Append {} => {
 				if node.inputs.len() < 2 {
 					return Err(Error(Box::new(internal!(
 						"Append node must have at least 2 inputs"
@@ -443,6 +434,10 @@ impl FlowEngine {
 					parents.push(parent);
 				}
 
+				let ttl = self
+					.catalog
+					.find_operator_settings(&mut txn.reborrow(), node.id)
+					.and_then(|s| s.ttl);
 				let ttl_nanos = ttl.as_ref().map(|t| t.duration_nanos);
 				let ttl_anchor = ttl.as_ref().map(|t| t.anchor).unwrap_or_default();
 
@@ -460,10 +455,7 @@ impl FlowEngine {
 			Apply {
 				operator,
 				expressions,
-				ttl,
 			} => {
-				let ttl_nanos = ttl.as_ref().map(|t| t.duration_nanos);
-				let ttl_anchor = ttl.as_ref().map(|t| t.anchor).unwrap_or_default();
 				let config = evaluate_operator_config(
 					expressions.as_slice(),
 					&self.executor.routines,
@@ -499,13 +491,13 @@ impl FlowEngine {
 						self.operators.insert(
 							node.id,
 							OperatorCell::new(Operators::Apply(ApplyOperator::new(
-								parent, node.id, inner, ttl_nanos, ttl_anchor,
+								parent, node.id, inner,
 							))),
 						);
 					}
 					#[cfg(not(reifydb_target = "native"))]
 					{
-						let _ = (operator, ttl_nanos, ttl_anchor);
+						let _ = operator;
 
 						return Err(Error(Box::new(internal!(
 							"FFI operators are not supported in WASM"

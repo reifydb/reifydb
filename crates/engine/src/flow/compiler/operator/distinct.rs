@@ -73,9 +73,10 @@ impl CompileOperator for DistinctCompiler {
 			txn,
 			Distinct {
 				expressions,
-				ttl: self.ttl,
 			},
 		)?;
+
+		compiler.write_operator_settings(txn, node_id, self.ttl)?;
 
 		compiler.add_edge(txn, &input_node, &node_id)?;
 		Ok(node_id)

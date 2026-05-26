@@ -35,6 +35,13 @@ impl RowSettings {
 	}
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OperatorSettings {
+	pub ttl: Option<Ttl>,
+
+	pub join: Option<JoinTtl>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum TtlAnchor {
 	#[default]
