@@ -27,7 +27,7 @@ impl CdcConsumerWatermark {
 	}
 }
 
-pub fn compute_watermark(txn: &mut Transaction<'_>) -> Result<CommitVersion> {
+pub fn compute_watermark(txn: &mut Transaction<'_>) -> Result<Option<CommitVersion>> {
 	let mut min_version: Option<CommitVersion> = None;
 	for multi in txn.range(CdcConsumerKeyRange::full_scan(), 1024)? {
 		let multi = multi?;
@@ -36,7 +36,7 @@ pub fn compute_watermark(txn: &mut Transaction<'_>) -> Result<CommitVersion> {
 		}
 	}
 
-	Ok(min_version.unwrap_or(CommitVersion(1)))
+	Ok(min_version)
 }
 
 #[inline]

@@ -11,9 +11,9 @@ use reifydb_runtime::{
 };
 use reifydb_sqlite::SqliteConfig;
 use reifydb_store_multi::{
-	buffer::tier::MultiBufferTier,
-	config::{BufferConfig, MultiStoreConfig, PersistentConfig},
+	config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
 	store::StandardMultiStore,
+	tier::commit::buffer::MultiCommitBufferTier,
 };
 use reifydb_testing::{tempdir::temp_dir, testscript::runner::run_path};
 use test_each_file::test_each_path;
@@ -35,8 +35,8 @@ fn test_snapshot(path: &Path) {
 			let actor_system = ActorSystem::new(pools, Clock::Real);
 			let event_bus = EventBus::new(&actor_system);
 			let store = StandardMultiStore::new(MultiStoreConfig {
-				buffer: Some(BufferConfig {
-					storage: MultiBufferTier::memory(),
+				commit: Some(CommitBufferConfig {
+					storage: MultiCommitBufferTier::memory(),
 				}),
 				persistent: Some(PersistentConfig::sqlite(
 					SqliteConfig::in_memory().read_pool_size(read_pool_size),

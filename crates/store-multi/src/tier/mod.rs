@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
+pub mod commit;
+pub mod persistent;
+pub mod read;
+
 use std::{collections::HashMap, ops::Bound};
 
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};

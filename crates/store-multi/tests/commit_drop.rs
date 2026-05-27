@@ -12,10 +12,7 @@ use reifydb_core::{
 	},
 	util::encoding::{binary::decode_binary, format::raw::Raw},
 };
-use reifydb_store_multi::{
-	buffer::tier::MultiBufferTier,
-	tier::{RangeCursor, TierStorage},
-};
+use reifydb_store_multi::tier::{RangeCursor, TierStorage, commit::buffer::MultiCommitBufferTier};
 use reifydb_testing::{
 	testscript,
 	testscript::{
@@ -29,20 +26,20 @@ use test_each_file::test_each_path;
 test_each_path! { in "crates/store-multi/tests/scripts/buffer/drop" as buffer_drop_memory => test_memory }
 
 fn test_memory(path: &Path) {
-	let storage = MultiBufferTier::memory();
+	let storage = MultiCommitBufferTier::memory();
 	run_path(&mut Runner::new(storage), path).expect("test failed")
 }
 
 /// Runs physical drop tests for buffer storage.
 pub struct Runner {
-	storage: MultiBufferTier,
+	storage: MultiCommitBufferTier,
 	table: EntryKind,
 	/// Current version counter - increments with each write
 	version: u64,
 }
 
 impl Runner {
-	fn new(storage: MultiBufferTier) -> Self {
+	fn new(storage: MultiCommitBufferTier) -> Self {
 		Self {
 			storage,
 			table: EntryKind::Multi,

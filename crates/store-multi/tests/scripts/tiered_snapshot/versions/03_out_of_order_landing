@@ -3,20 +3,23 @@
 
 # Defect targets:
 #   - missing or broken regression guard in build_upsert_current_sql
-#   - drain writing the older version over the newer one in persistent
+#   - a sweep writing an older version over the newer one already in persistent
 #
-# Sequence:
-#   1. Commit at v=3 (becomes buffer's __current).
-#   2. Flush -> persistent has (k, v=3, "high").
-#   3. Commit at v=1 (older than current; lands in buffer's __historical).
-#   4. Flush -> drain reads buffer at v=1, finds "low" (from historical), sends
-#      upsert (k, v=1, "low") to persistent. Persistent's regression guard rejects it
-#      because persistent's existing version (3) > incoming (1). Persistent stays at
-#      (k, v=3, "high").
+# Coupled-flush sequence (single watermark W=3):
+#   1. Commit at v=3 (commit tier current).
+#   2. Sweep -> persists (k, v=3, "high"), evicts v3 from the commit tier.
+#   3. Commit at v=1 (older; the commit tier no longer holds v3, so this is the
+#      only resident value for k).
+#   4. Sweep at W=3 -> collects v=1 ("low") as the latest-<=W value and offers
+#      upsert (k, v=1, "low") to persistent. The regression guard rejects it
+#      because persistent's stored version (3) > incoming (1). Persistent stays
+#      at (k, v=3, "high"); v1 is evicted from the commit tier.
 
 set k=high   version=3
+watermark 3
 flush
 ---
+ok
 ok
 
 set k=low   version=1
@@ -24,25 +27,26 @@ flush
 ---
 ok
 
-# Persistent must NOT have regressed
+# Persistent must NOT have regressed - the late, older write was rejected.
 persistent_get k version=3
 ---
 "k" => "high"
 
-# Reads below the stored version are rejected
+# Reads below the stored version are rejected by the version guard.
 persistent_get k version=1
 ---
 "k" => None
 
-# Buffer still serves v=1 from its historical chain
+# The out-of-order v=1 write was evicted from the commit tier by the sweep.
 buffer_get k version=1
 ---
-"k" => "low"
+"k" => None
 
-# Cascade is historical-aware via buffer
+# Cascade resolves through persistent: v=3 sees "high"; v=1 is unreachable
+# (evicted from commit, rejected by persistent's regression guard).
 get k version=1
 ---
-"k" => "low"
+"k" => None
 
 get k version=3
 ---

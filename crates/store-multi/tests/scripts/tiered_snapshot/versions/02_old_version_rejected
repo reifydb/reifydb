@@ -6,11 +6,13 @@
 #     (would falsely show a value at a snapshot before it existed)
 
 set k=v3   version=3
+watermark 3
 flush
 ---
 ok
+ok
 
-# Persistent has stored_version=3. Reads at lower versions must return None
+# The sweep at W=3 persisted v3. Reads at lower versions must return None
 # (the value did not exist at that snapshot).
 persistent_get k version=1
 ---

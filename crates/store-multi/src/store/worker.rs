@@ -25,7 +25,7 @@ use reifydb_runtime::{
 use tracing::{Span, debug, error, instrument};
 
 use super::drop::find_keys_to_drop;
-use crate::{buffer::tier::MultiBufferTier, tier::TierStorage};
+use crate::tier::{TierStorage, commit::buffer::MultiCommitBufferTier};
 
 #[derive(Debug, Clone)]
 pub struct DropWorkerConfig {
@@ -46,7 +46,7 @@ impl Default for DropWorkerConfig {
 use reifydb_core::actors::drop::{DropMessage, DropRequest};
 
 pub struct DropActor {
-	storage: MultiBufferTier,
+	storage: MultiCommitBufferTier,
 	event_bus: EventBus,
 	config: DropWorkerConfig,
 	clock: Clock,
@@ -63,7 +63,12 @@ pub struct DropActorState {
 }
 
 impl DropActor {
-	pub fn new(config: DropWorkerConfig, storage: MultiBufferTier, event_bus: EventBus, clock: Clock) -> Self {
+	pub fn new(
+		config: DropWorkerConfig,
+		storage: MultiCommitBufferTier,
+		event_bus: EventBus,
+		clock: Clock,
+	) -> Self {
 		Self {
 			storage,
 			event_bus,
@@ -75,7 +80,7 @@ impl DropActor {
 	pub fn spawn(
 		system: &ActorSystem,
 		config: DropWorkerConfig,
-		storage: MultiBufferTier,
+		storage: MultiCommitBufferTier,
 		event_bus: EventBus,
 		clock: Clock,
 	) -> ActorRef<DropMessage> {
@@ -104,7 +109,7 @@ impl DropActor {
 	}
 
 	#[instrument(name = "drop::process_batch", level = "debug", skip_all, fields(num_requests = requests.len(), total_dropped))]
-	fn process_batch(storage: &MultiBufferTier, requests: &mut Vec<DropRequest>, event_bus: &EventBus) {
+	fn process_batch(storage: &MultiCommitBufferTier, requests: &mut Vec<DropRequest>, event_bus: &EventBus) {
 		let mut batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
 
 		let mut drops_with_stats = Vec::new();

@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::{collections::HashMap, error::Error as StdError, fmt::Write};
+use std::{collections::HashMap, error::Error as StdError, fmt::Write, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -31,10 +31,10 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 };
 use reifydb_store_multi::{
-	buffer::tier::MultiBufferTier,
-	config::{BufferConfig, MultiStoreConfig, PersistentConfig},
+	config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
+	gc::EvictionWatermark,
 	store::{StandardMultiStore, router::classify_key},
-	tier::{TierStorage, VersionedGetResult},
+	tier::{TierStorage, VersionedGetResult, commit::buffer::MultiCommitBufferTier},
 };
 use reifydb_testing::testscript;
 use reifydb_type::{cow_vec, util::cowvec::CowVec};
@@ -61,11 +61,11 @@ impl Runner {
 	/// constructor is only consumed by `store_multi.rs`, so other binaries
 	/// see it as unused.
 	#[allow(dead_code)]
-	pub fn new(storage: MultiBufferTier) -> Self {
+	pub fn new(storage: MultiCommitBufferTier) -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let store = StandardMultiStore::new(MultiStoreConfig {
-			buffer: Some(BufferConfig {
+			commit: Some(CommitBufferConfig {
 				storage,
 			}),
 			persistent: None,
@@ -249,7 +249,8 @@ impl testscript::runner::Runner for Runner {
 				};
 				args.reject_rest()?;
 
-				self.store.commit(
+				MultiVersionCommit::commit(
+					&self.store,
 					cow_vec![
 						(Delta::Set {
 							key,
@@ -273,7 +274,8 @@ impl testscript::runner::Runner for Runner {
 				};
 				args.reject_rest()?;
 
-				self.store.commit(
+				MultiVersionCommit::commit(
+					&self.store,
 					cow_vec![
 						(Delta::Remove {
 							key
@@ -297,7 +299,8 @@ impl testscript::runner::Runner for Runner {
 				};
 				args.reject_rest()?;
 
-				self.store.commit(
+				MultiVersionCommit::commit(
+					&self.store,
 					cow_vec![
 						(Delta::Unset {
 							key,
@@ -307,6 +310,17 @@ impl testscript::runner::Runner for Runner {
 					version,
 				)?;
 				self.maybe_flush();
+			}
+
+			"watermark" => {
+				let mut args = command.consume_args();
+				let version = CommitVersion(
+					args.next_pos().ok_or("watermark version not given")?.value.parse()?,
+				);
+				args.reject_rest()?;
+
+				self.store.set_eviction_watermark(Arc::new(FixedWatermark(version)));
+				writeln!(output, "ok")?;
 			}
 
 			"flush" => {
@@ -321,7 +335,7 @@ impl testscript::runner::Runner for Runner {
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
-				let buffer = self.store.buffer().ok_or("buffer tier not configured")?;
+				let buffer = self.store.commit().ok_or("buffer tier not configured")?;
 				let table = classify_key(&key);
 				let value = match buffer.get(table, key.as_ref(), version)? {
 					VersionedGetResult::Value {
@@ -354,7 +368,7 @@ impl testscript::runner::Runner for Runner {
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
-				let buffer = self.store.buffer().ok_or("buffer tier not configured")?;
+				let buffer = self.store.commit().ok_or("buffer tier not configured")?;
 				let table = classify_key(&key);
 				let line = match buffer.get(table, key.as_ref(), version)? {
 					VersionedGetResult::Value {
@@ -423,6 +437,21 @@ impl testscript::runner::Runner for Runner {
 			}
 		}
 		Ok(output)
+	}
+}
+
+/// A constant eviction cutoff injected by the `watermark` testscript command.
+///
+/// Mirrors the `StaticWatermark` used by the store-multi unit/integration tests:
+/// the store reads this through the `EvictionWatermark` trait when the flush actor
+/// sweeps, so a script can pin the cutoff `W` before issuing `flush`. The store
+/// stores the watermark in a `OnceLock`, so a single `watermark` command per script
+/// is what takes effect.
+struct FixedWatermark(CommitVersion);
+
+impl EvictionWatermark for FixedWatermark {
+	fn watermark(&self) -> CommitVersion {
+		self.0
 	}
 }
 

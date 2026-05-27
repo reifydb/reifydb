@@ -18,7 +18,6 @@ use reifydb_core::{
 	util::encoding::format::raw::Raw,
 };
 use reifydb_store_multi::{
-	buffer::tier::MultiBufferTier,
 	gc::row::{
 		ScanStats,
 		scanner::{
@@ -26,7 +25,7 @@ use reifydb_store_multi::{
 			drop_expired_keys, scan_shape_by_created_at, scan_shape_by_updated_at,
 		},
 	},
-	tier::{RangeCursor, TierStorage},
+	tier::{RangeCursor, TierStorage, commit::buffer::MultiCommitBufferTier},
 };
 use reifydb_testing::{
 	tempdir::temp_dir,
@@ -43,25 +42,25 @@ test_each_path! { in "crates/store-multi/tests/scripts/buffer/ttl" as buffer_ttl
 test_each_path! { in "crates/store-multi/tests/scripts/buffer/ttl" as buffer_ttl_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	let storage = MultiBufferTier::memory();
+	let storage = MultiCommitBufferTier::memory();
 	run_path(&mut Runner::new(storage), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
 	temp_dir(|_db_path| {
-		let storage = MultiBufferTier::memory();
+		let storage = MultiCommitBufferTier::memory();
 		run_path(&mut Runner::new(storage), path)
 	})
 	.expect("test failed")
 }
 
 pub struct Runner {
-	storage: MultiBufferTier,
+	storage: MultiCommitBufferTier,
 	shape: ShapeId,
 }
 
 impl Runner {
-	fn new(storage: MultiBufferTier) -> Self {
+	fn new(storage: MultiCommitBufferTier) -> Self {
 		Self {
 			storage,
 			shape: ShapeId::Table(TableId(1)),

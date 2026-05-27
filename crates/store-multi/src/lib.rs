@@ -25,19 +25,16 @@ use reifydb_core::{
 };
 use reifydb_type::Result;
 
-pub mod buffer;
 pub mod flush;
 pub mod gc;
-pub mod persistent;
 pub mod tier;
 
 pub mod config;
-pub mod multi;
 pub mod store;
 
 use std::collections::HashMap;
 
-use config::{BufferConfig, MultiStoreConfig};
+use config::{CommitBufferConfig, MultiStoreConfig};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -106,13 +103,13 @@ impl MultiStore {
 		}
 	}
 
-	pub fn buffer(&self) -> Option<&buffer::tier::MultiBufferTier> {
+	pub fn commit(&self) -> Option<&tier::commit::buffer::MultiCommitBufferTier> {
 		match self {
-			MultiStore::Standard(store) => store.buffer(),
+			MultiStore::Standard(store) => store.commit(),
 		}
 	}
 
-	pub fn persistent(&self) -> Option<&persistent::MultiPersistentTier> {
+	pub fn persistent(&self) -> Option<&tier::persistent::MultiPersistentTier> {
 		match self {
 			MultiStore::Standard(store) => store.persistent(),
 		}
@@ -141,7 +138,7 @@ impl MultiVersionCommit for MultiStore {
 	#[inline]
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
 		match self {
-			MultiStore::Standard(store) => store.commit(deltas, version),
+			MultiStore::Standard(store) => MultiVersionCommit::commit(store, deltas, version),
 		}
 	}
 }

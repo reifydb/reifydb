@@ -9,7 +9,7 @@ use reifydb_core::interface::catalog::config::ConfigKey;
 use reifydb_extension::transform::registry::TransformsConfigurator;
 use reifydb_routine::routine::registry::RoutinesConfigurator;
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, pool::PoolConfig};
-use reifydb_store_multi::buffer::tier::MultiBufferTier;
+use reifydb_store_multi::tier::commit::buffer::MultiCommitBufferTier;
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
@@ -27,10 +27,10 @@ use reifydb_type::value::Value;
 fn pool_config_from_sources(
 	factory: &StorageFactory,
 	overrides: &[(ConfigKey, Value)],
-) -> Result<(MultiBufferTier, PoolConfig)> {
-	let multi_buffer = factory.open_multi_buffer();
+) -> Result<(MultiCommitBufferTier, PoolConfig)> {
+	let multi_commit_buffer = factory.open_multi_commit_buffer();
 	let persisted = read_configs(
-		Some(&multi_buffer),
+		Some(&multi_commit_buffer),
 		None,
 		&[
 			ConfigKey::ThreadsAsync,
@@ -61,7 +61,7 @@ fn pool_config_from_sources(
 		commit_threads: resolve(ConfigKey::ThreadsCommit),
 		background_threads: resolve(ConfigKey::ThreadsBackground),
 	};
-	Ok((multi_buffer, pools))
+	Ok((multi_commit_buffer, pools))
 }
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, database::CdcBackend, traits::WithSubsystem};
@@ -204,22 +204,22 @@ impl EmbeddedBuilder {
 	}
 
 	pub fn build(self) -> Result<Database> {
-		let (runtime, multi_buffer) = match self.runtime {
-			Some(rt) => (rt, self.storage_factory.open_multi_buffer()),
+		let (runtime, multi_commit_buffer) = match self.runtime {
+			Some(rt) => (rt, self.storage_factory.open_multi_commit_buffer()),
 			None => {
-				let (multi_buffer, pool_config) =
+				let (multi_commit_buffer, pool_config) =
 					pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
 				let rt = SharedRuntime::from_config(
 					self.runtime_config.unwrap_or_default(),
 					pool_config,
 				);
-				(rt, multi_buffer)
+				(rt, multi_commit_buffer)
 			}
 		};
 
 		let actor_system = runtime.actor_system().scope();
 		let (multi_store, single_store, transaction_single, eventbus) =
-			self.storage_factory.create_with_multi_buffer(multi_buffer, &actor_system);
+			self.storage_factory.create_with_multi_commit_buffer(multi_commit_buffer, &actor_system);
 		let catalog_cache = CatalogCache::new();
 		let (multi, single, eventbus) = transaction(
 			(multi_store.clone(), single_store.clone(), transaction_single, eventbus),

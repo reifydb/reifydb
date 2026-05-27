@@ -4,9 +4,8 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	common::CommitVersion,
 	encoded::shape::RowShape,
-	interface::catalog::config::GetConfig,
+	interface::catalog::config::{ConfigKey, GetConfig},
 	key::{
 		EncodableKey,
 		system_version::{SystemVersion, SystemVersionKey},
@@ -17,8 +16,7 @@ use reifydb_runtime::actor::system::ActorSystem;
 use reifydb_store_multi::{
 	MultiStore,
 	gc::{
-		historical::{QueryWatermark, actor::spawn_historical_gc_actor},
-		operator::actor::spawn_operator_settings_actor,
+		historical::actor::spawn_historical_gc_actor, operator::actor::spawn_operator_settings_actor,
 		row::actor::spawn_row_settings_actor,
 	},
 };
@@ -66,29 +64,16 @@ pub(crate) fn spawn_actors(engine: &StandardEngine, actor_system: &ActorSystem) 
 
 	let catalog = engine.catalog();
 
+	store.configure_read_buffer_capacity(catalog.get_config_uint8(ConfigKey::MultiReadBufferCapacity) as usize);
 	store.set_row_settings_provider(Arc::new(catalog.clone()));
 
 	let _ttl_actor = spawn_row_settings_actor(store.clone(), actor_system.clone(), catalog.clone());
-
 	let _operator_ttl_actor = spawn_operator_settings_actor(store.clone(), actor_system.clone(), catalog.clone());
 
-	let watermark = EngineQueryWatermark {
-		engine: engine.clone(),
-	};
+	store.set_eviction_watermark(Arc::new(engine.clone()));
+
 	let config: Arc<dyn GetConfig> = Arc::new(catalog);
-	let _gc_actor = spawn_historical_gc_actor(store, actor_system.clone(), watermark, config);
+	let _gc_actor = spawn_historical_gc_actor(store, actor_system.clone(), engine.clone(), config);
 
 	Ok(())
-}
-
-struct EngineQueryWatermark {
-	engine: StandardEngine,
-}
-
-impl QueryWatermark for EngineQueryWatermark {
-	fn effective_gc_cutoff(&self) -> CommitVersion {
-		let qdu = self.engine.query_done_until();
-		let lease_min = self.engine.multi().leases().min_active().unwrap_or(CommitVersion(u64::MAX));
-		qdu.min(lease_min)
-	}
 }

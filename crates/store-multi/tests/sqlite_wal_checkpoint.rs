@@ -15,7 +15,7 @@ use reifydb_sqlite::{
 	SqliteConfig,
 	connection::{connect, convert_flags, resolve_db_path},
 };
-use reifydb_store_multi::{persistent::MultiPersistentTier, tier::TierStorage};
+use reifydb_store_multi::tier::{TierStorage, persistent::MultiPersistentTier};
 use reifydb_type::util::cowvec::CowVec;
 
 fn kind() -> EntryKind {

@@ -53,6 +53,7 @@ pub enum ConfigKey {
 	CdcCompactBlockCacheCapacity,
 	CdcCompactZstdLevel,
 	CdcRecentCacheCapacity,
+	MultiReadBufferCapacity,
 	FlowTick,
 	ThreadsAsync,
 	ThreadsSystem,
@@ -83,6 +84,7 @@ impl ConfigKey {
 			Self::CdcCompactBlockCacheCapacity,
 			Self::CdcCompactZstdLevel,
 			Self::CdcRecentCacheCapacity,
+			Self::MultiReadBufferCapacity,
 			Self::FlowTick,
 			Self::ThreadsAsync,
 			Self::ThreadsSystem,
@@ -115,6 +117,7 @@ impl ConfigKey {
 			Self::CdcCompactBlockCacheCapacity => Value::Uint8(8),
 			Self::CdcCompactZstdLevel => Value::Uint1(7),
 			Self::CdcRecentCacheCapacity => Value::Uint8(128),
+			Self::MultiReadBufferCapacity => Value::Uint8(4096),
 			Self::FlowTick => Value::Duration(Duration::from_seconds(1).unwrap()),
 			Self::ThreadsAsync => Value::Uint2(1),
 			Self::ThreadsSystem => Value::Uint2(2),
@@ -168,6 +171,10 @@ impl ConfigKey {
 			Self::CdcRecentCacheCapacity => {
 				"Number of most-recent decoded CDC entries held in memory so a caught-up consumer \
 				 is served without re-reading and re-deserializing from the backend."
+			}
+			Self::MultiReadBufferCapacity => {
+				"Number of keys held in the multi-version store read buffer so cold reads \
+				 evicted from the commit buffer are served without a persistent-tier lookup."
 			}
 			Self::FlowTick => {
 				"How often the deferred and transactional flow tick coordinators wake up to dispatch \
@@ -224,6 +231,7 @@ impl ConfigKey {
 			Self::CdcCompactBlockCacheCapacity => true,
 			Self::CdcCompactZstdLevel => false,
 			Self::CdcRecentCacheCapacity => true,
+			Self::MultiReadBufferCapacity => true,
 			Self::FlowTick => false,
 			Self::ThreadsAsync => true,
 			Self::ThreadsSystem => true,
@@ -254,6 +262,7 @@ impl ConfigKey {
 			Self::CdcCompactBlockCacheCapacity => &[Type::Uint8],
 			Self::CdcCompactZstdLevel => &[Type::Uint1],
 			Self::CdcRecentCacheCapacity => &[Type::Uint8],
+			Self::MultiReadBufferCapacity => &[Type::Uint8],
 			Self::FlowTick => &[Type::Duration],
 			Self::ThreadsAsync => &[Type::Uint2],
 			Self::ThreadsSystem => &[Type::Uint2],
@@ -284,6 +293,7 @@ impl ConfigKey {
 			Self::CdcCompactBlockCacheCapacity => false,
 			Self::CdcCompactZstdLevel => false,
 			Self::CdcRecentCacheCapacity => false,
+			Self::MultiReadBufferCapacity => false,
 			Self::FlowTick => false,
 			Self::ThreadsAsync => false,
 			Self::ThreadsSystem => false,
@@ -331,6 +341,12 @@ impl ConfigKey {
 			Self::CdcCompactBlockCacheCapacity => match value {
 				Value::Uint8(0) => {
 					Err("CDC_COMPACT_BLOCK_CACHE_CAPACITY must be greater than zero".to_string())
+				}
+				_ => Ok(()),
+			},
+			Self::MultiReadBufferCapacity => match value {
+				Value::Uint8(0) => {
+					Err("MULTI_READ_BUFFER_CAPACITY must be greater than zero".to_string())
 				}
 				_ => Ok(()),
 			},
@@ -511,6 +527,7 @@ impl fmt::Display for ConfigKey {
 			Self::CdcCompactBlockCacheCapacity => write!(f, "CDC_COMPACT_BLOCK_CACHE_CAPACITY"),
 			Self::CdcCompactZstdLevel => write!(f, "CDC_COMPACT_ZSTD_LEVEL"),
 			Self::CdcRecentCacheCapacity => write!(f, "CDC_RECENT_CACHE_CAPACITY"),
+			Self::MultiReadBufferCapacity => write!(f, "MULTI_READ_BUFFER_CAPACITY"),
 			Self::FlowTick => write!(f, "FLOW_TICK"),
 			Self::ThreadsAsync => write!(f, "THREADS_ASYNC"),
 			Self::ThreadsSystem => write!(f, "THREADS_SYSTEM"),
@@ -545,6 +562,7 @@ impl FromStr for ConfigKey {
 			"CDC_COMPACT_BLOCK_CACHE_CAPACITY" => Ok(Self::CdcCompactBlockCacheCapacity),
 			"CDC_COMPACT_ZSTD_LEVEL" => Ok(Self::CdcCompactZstdLevel),
 			"CDC_RECENT_CACHE_CAPACITY" => Ok(Self::CdcRecentCacheCapacity),
+			"MULTI_READ_BUFFER_CAPACITY" => Ok(Self::MultiReadBufferCapacity),
 			"FLOW_TICK" => Ok(Self::FlowTick),
 			"THREADS_ASYNC" => Ok(Self::ThreadsAsync),
 			"THREADS_SYSTEM" => Ok(Self::ThreadsSystem),
@@ -702,7 +720,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 25);
+		assert_eq!(all.len(), 26);
 		assert!(all.contains(&ConfigKey::CdcCompactInterval));
 		assert!(all.contains(&ConfigKey::CdcCompactBlockSize));
 		assert!(all.contains(&ConfigKey::CdcCompactSafetyLag));
@@ -710,6 +728,7 @@ mod tests {
 		assert!(all.contains(&ConfigKey::CdcCompactBlockCacheCapacity));
 		assert!(all.contains(&ConfigKey::CdcCompactZstdLevel));
 		assert!(all.contains(&ConfigKey::CdcRecentCacheCapacity));
+		assert!(all.contains(&ConfigKey::MultiReadBufferCapacity));
 		assert!(all.contains(&ConfigKey::QueryRowBatchSize));
 		assert!(all.contains(&ConfigKey::ThreadsAsync));
 		assert!(all.contains(&ConfigKey::ThreadsSystem));
@@ -793,6 +812,29 @@ mod tests {
 		assert_eq!(ConfigKey::CdcRecentCacheCapacity.expected_types(), &[Type::Uint8]);
 		assert!(ConfigKey::CdcRecentCacheCapacity.requires_restart());
 		assert!(!ConfigKey::CdcRecentCacheCapacity.is_optional());
+	}
+
+	#[test]
+	fn test_multi_read_cache_capacity_round_trip() {
+		assert_eq!(
+			"MULTI_READ_BUFFER_CAPACITY".parse::<ConfigKey>().unwrap(),
+			ConfigKey::MultiReadBufferCapacity
+		);
+		assert_eq!(format!("{}", ConfigKey::MultiReadBufferCapacity), "MULTI_READ_BUFFER_CAPACITY");
+	}
+
+	#[test]
+	fn test_multi_read_cache_capacity_metadata_and_rejects_zero() {
+		assert_eq!(ConfigKey::MultiReadBufferCapacity.default_value(), Value::Uint8(4096));
+		assert_eq!(ConfigKey::MultiReadBufferCapacity.expected_types(), &[Type::Uint8]);
+		assert!(ConfigKey::MultiReadBufferCapacity.requires_restart());
+		assert!(!ConfigKey::MultiReadBufferCapacity.is_optional());
+		match ConfigKey::MultiReadBufferCapacity.accept(Value::Uint8(0)).unwrap_err() {
+			AcceptError::InvalidValue(reason) => {
+				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
+			}
+			other => panic!("expected InvalidValue, got {other:?}"),
+		}
 	}
 
 	#[test]

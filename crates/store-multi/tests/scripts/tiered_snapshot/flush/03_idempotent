@@ -1,12 +1,13 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-# Defect targets:
-#   - drain mutating persistent a second time after pending was emptied
-#   - panic on empty pending
-#   - flushing-flag reentrancy guard bug
+# Defect targets (coupled-flush model):
+#   - a repeated sweep at the same watermark mutating persistent a second time
+#   - panic / error when a sweep finds nothing left to evict below W
+#   - re-persisting a value the previous sweep already evicted from the commit tier
 
 set k=1   version=1
+watermark 1
 flush
 flush
 flush
@@ -14,7 +15,10 @@ flush
 ok
 ok
 ok
+ok
 
+# The first sweep persisted v1 and evicted it from the commit tier; the second and
+# third sweeps find nothing at/below W=1 still resident, so persistent stays at "1".
 persistent_get k version=1
 ---
 "k" => "1"

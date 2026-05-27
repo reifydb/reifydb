@@ -4,10 +4,7 @@
 use std::{collections::HashMap, ops::Bound, time::Instant};
 
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
-use reifydb_store_multi::{
-	buffer::memory::storage::MemoryPrimitiveStorage,
-	tier::{RangeCursor, TierStorage},
-};
+use reifydb_store_multi::tier::{RangeCursor, TierStorage, commit::memory::storage::MemoryPrimitiveStorage};
 use reifydb_type::util::cowvec::CowVec;
 
 const ITERS: u32 = 200_000;

@@ -22,9 +22,9 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 };
 use reifydb_store_multi::{
-	buffer::tier::MultiBufferTier,
-	config::{BufferConfig, MultiStoreConfig},
+	config::{CommitBufferConfig, MultiStoreConfig},
 	store::StandardMultiStore,
+	tier::commit::buffer::MultiCommitBufferTier,
 };
 use reifydb_testing::{
 	testscript,
@@ -36,7 +36,7 @@ use test_each_file::test_each_path;
 test_each_path! { in "crates/store-multi/tests/scripts/drop" as store_drop_multi_memory => test_memory }
 
 fn test_memory(path: &Path) {
-	let storage = MultiBufferTier::memory();
+	let storage = MultiCommitBufferTier::memory();
 	run_path(&mut Runner::new(storage), path).expect("test failed")
 }
 
@@ -47,11 +47,11 @@ pub struct Runner {
 }
 
 impl Runner {
-	fn new(storage: MultiBufferTier) -> Self {
+	fn new(storage: MultiCommitBufferTier) -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let store = StandardMultiStore::new(MultiStoreConfig {
-			buffer: Some(BufferConfig {
+			commit: Some(CommitBufferConfig {
 				storage,
 			}),
 			persistent: None,
@@ -182,7 +182,8 @@ impl testscript::runner::Runner for Runner {
 				};
 				args.reject_rest()?;
 
-				self.store.commit(
+				MultiVersionCommit::commit(
+					&self.store,
 					cow_vec![
 						(Delta::Set {
 							key,
@@ -206,7 +207,8 @@ impl testscript::runner::Runner for Runner {
 				};
 				args.reject_rest()?;
 
-				self.store.commit(
+				MultiVersionCommit::commit(
+					&self.store,
 					cow_vec![
 						(Delta::Remove {
 							key
@@ -230,7 +232,8 @@ impl testscript::runner::Runner for Runner {
 				};
 				args.reject_rest()?;
 
-				self.store.commit(
+				MultiVersionCommit::commit(
+					&self.store,
 					cow_vec![
 						(Delta::Unset {
 							key,
@@ -254,7 +257,8 @@ impl testscript::runner::Runner for Runner {
 				};
 				args.reject_rest()?;
 
-				self.store.commit(
+				MultiVersionCommit::commit(
+					&self.store,
 					cow_vec![
 						(Delta::Drop {
 							key,

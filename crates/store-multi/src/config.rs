@@ -8,11 +8,11 @@ use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteConfig;
 
-use crate::{buffer::tier::MultiBufferTier, persistent::MultiPersistentTier};
+use crate::tier::{commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier};
 
 #[derive(Clone)]
 pub struct MultiStoreConfig {
-	pub buffer: Option<BufferConfig>,
+	pub commit: Option<CommitBufferConfig>,
 	pub persistent: Option<PersistentConfig>,
 	pub retention: RetentionConfig,
 	pub merge_config: MergeConfig,
@@ -24,8 +24,8 @@ pub struct MultiStoreConfig {
 impl MultiStoreConfig {
 	pub fn memory(actor_system: ActorSystem, clock: Clock, event_bus: EventBus) -> Self {
 		Self {
-			buffer: Some(BufferConfig {
-				storage: MultiBufferTier::memory(),
+			commit: Some(CommitBufferConfig {
+				storage: MultiCommitBufferTier::memory(),
 			}),
 			persistent: None,
 			retention: Default::default(),
@@ -44,8 +44,8 @@ impl MultiStoreConfig {
 		event_bus: EventBus,
 	) -> Self {
 		Self {
-			buffer: Some(BufferConfig {
-				storage: MultiBufferTier::memory(),
+			commit: Some(CommitBufferConfig {
+				storage: MultiCommitBufferTier::memory(),
 			}),
 			persistent: Some(persistent),
 			retention: Default::default(),
@@ -64,7 +64,7 @@ impl MultiStoreConfig {
 		event_bus: EventBus,
 	) -> Self {
 		Self {
-			buffer: None,
+			commit: None,
 			persistent: Some(persistent),
 			retention: Default::default(),
 			merge_config: Default::default(),
@@ -76,8 +76,8 @@ impl MultiStoreConfig {
 }
 
 #[derive(Clone)]
-pub struct BufferConfig {
-	pub storage: MultiBufferTier,
+pub struct CommitBufferConfig {
+	pub storage: MultiCommitBufferTier,
 }
 
 #[derive(Clone)]

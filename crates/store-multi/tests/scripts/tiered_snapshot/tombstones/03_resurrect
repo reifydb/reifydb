@@ -1,35 +1,54 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-# Defect targets:
-#   - upsert_pending coalescing logic preferring an older tombstone over a
-#     newer set
-#   - persistent row not being overwritten by a subsequent set at higher version
-#   - drain emitting only the tombstone and dropping the resurrection
+# Defect targets (coupled-flush model):
+#   - sweep persisting an older live value (A) instead of the tombstone that is the
+#     actual latest-<=W value
+#   - the persisted tombstone leaking past W and masking a later resurrection that
+#     lives only in the commit tier
+#   - a resurrection committed above W being lost during the sweep
 
 set k=A     version=1
 unset k=A   version=2
-set k=B     version=3
+watermark 2
 flush
 ---
 ok
+ok
 
-# Persistent holds the resurrected value at the highest version
+# Resurrect ABOVE the watermark: v3 stays resident in the commit tier (v3 > W=2).
+set k=B     version=3
+---
+ok
+
+# The sweep persisted the v2 tombstone (latest-<=W), NOT the older live A.
+# At v2 persistent reports None - the delete did not resurrect into A.
+persistent_get k version=2
+---
+"k" => None
+
+# Persistent has no knowledge of the resurrection: at v3 it still sees the
+# tombstone (stored v2 <= 3) -> None. The live B lives only in the commit tier.
 persistent_get k version=3
+---
+"k" => None
+
+# The resurrection is readable straight from the commit tier (version > W).
+buffer_get k version=3
 ---
 "k" => "B"
 
-# Cascade at v=3 sees B
+# Cascade at v=3 sees B from the commit tier.
 get k version=3
 ---
 "k" => "B"
 
-# Cascade at v=2 sees the tombstone via buffer's __historical
+# Cascade at v=2 sees the persisted tombstone -> None (no resurrection).
 get k version=2
 ---
 "k" => None
 
-# Cascade at v=1 sees A
+# Cascade at v=1: A was evicted below W and persistent rejects below v2 -> unreachable.
 get k version=1
 ---
-"k" => "A"
+"k" => None

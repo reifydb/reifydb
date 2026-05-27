@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-//! Background flusher that migrates writes from the buffer tier to the persistent tier. The actor decides when to
-//! flush (size, age, explicit request) and the listener exposes flush events to anything that wants to track
-//! progress, like the admin UI or test harnesses waiting for durability.
+//! Background flusher that migrates writes from the buffer tier to the persistent tier. Flush is the
+//! watermark-coupled eviction sweep: on each tick (or explicit request) it persists the latest-<=W value per key of
+//! every persistent shape, then drops all <=W versions from the commit tier, bounding the commit tier's RAM.
 
 pub mod actor;
-pub mod listener;
 
 use reifydb_core::interface::catalog::shape::ShapeId;
 

@@ -42,9 +42,9 @@ use reifydb_runtime::{
 };
 use reifydb_store_multi::{
 	MultiStore,
-	buffer::tier::MultiBufferTier,
-	config::{BufferConfig, MultiStoreConfig},
+	config::{CommitBufferConfig, MultiStoreConfig},
 	store::StandardMultiStore,
+	tier::commit::buffer::MultiCommitBufferTier,
 };
 use reifydb_store_single::SingleStore;
 use reifydb_sub_metric::{
@@ -61,7 +61,7 @@ use test_each_file::test_each_path;
 test_each_path! { in "crates/sub-metric/tests/scripts/storage" as metric_memory => test_memory }
 
 fn test_memory(path: &Path) {
-	let data_storage = MultiBufferTier::memory();
+	let data_storage = MultiCommitBufferTier::memory();
 	runner::run_path(&mut Runner::new(data_storage), path).expect("test failed")
 }
 
@@ -112,7 +112,7 @@ pub struct Runner {
 }
 
 impl Runner {
-	fn new(data_storage: MultiBufferTier) -> Self {
+	fn new(data_storage: MultiCommitBufferTier) -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let event_bus = EventBus::new(&actor_system);
@@ -121,7 +121,7 @@ impl Runner {
 
 		let multi_store = MultiStore::Standard(
 			StandardMultiStore::new(MultiStoreConfig {
-				buffer: Some(BufferConfig {
+				commit: Some(CommitBufferConfig {
 					storage: data_storage,
 				}),
 				persistent: None,
@@ -235,7 +235,8 @@ impl TestRunner for Runner {
 				};
 				args.reject_rest()?;
 
-				self.multi_store.commit(
+				MultiVersionCommit::commit(
+					&self.multi_store,
 					cow_vec![
 						(Delta::Set {
 							key,
@@ -269,7 +270,8 @@ impl TestRunner for Runner {
 					.map(|mv| mv.row)
 					.unwrap_or_else(|| EncodedRow(cow_vec![]));
 
-				self.multi_store.commit(
+				MultiVersionCommit::commit(
+					&self.multi_store,
 					cow_vec![
 						(Delta::Unset {
 							key,
@@ -297,7 +299,8 @@ impl TestRunner for Runner {
 				};
 				args.reject_rest()?;
 
-				self.multi_store.commit(
+				MultiVersionCommit::commit(
+					&self.multi_store,
 					cow_vec![
 						(Delta::Drop {
 							key,

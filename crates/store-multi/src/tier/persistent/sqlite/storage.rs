@@ -31,19 +31,18 @@ use reifydb_type::{Result, error, util::cowvec::CowVec};
 use rusqlite::{Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, params, params_from_iter};
 use tracing::{instrument, warn};
 
-use super::{
-	entry::current_table_name,
-	query::{
-		build_create_current_sql, build_delete_expired_sql, build_delete_keys_sql, build_get_current_sql,
-		build_get_many_current_sql, build_range_current_sql, build_upsert_current_sql, prefix_upper_bound,
-		version_from_bytes, version_to_bytes,
-	},
-};
-use crate::{
-	persistent::CheckpointOutcome,
-	tier::{
-		HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage,
-		VersionedGetResult,
+use crate::tier::{
+	HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage, VersionedGetResult,
+	persistent::{
+		CheckpointOutcome,
+		sqlite::{
+			entry::current_table_name,
+			query::{
+				build_create_current_sql, build_delete_expired_sql, build_delete_keys_sql,
+				build_get_current_sql, build_get_many_current_sql, build_range_current_sql,
+				build_upsert_current_sql, prefix_upper_bound, version_from_bytes, version_to_bytes,
+			},
+		},
 	},
 };
 

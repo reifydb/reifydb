@@ -25,9 +25,8 @@ use tracing::{debug, trace, warn};
 
 use super::{GcStats, QueryWatermark};
 use crate::{
-	buffer::tier::MultiBufferTier,
 	store::StandardMultiStore,
-	tier::{HistoricalCursor, TierStorage},
+	tier::{HistoricalCursor, TierStorage, commit::buffer::MultiCommitBufferTier},
 };
 
 struct SweepProgress {
@@ -72,7 +71,7 @@ impl<W: QueryWatermark> Actor<W> {
 			trace!("Historical GC sweep already in progress, skipping tick");
 			return;
 		}
-		let Some(buffer) = self.store.buffer() else {
+		let Some(buffer) = self.store.commit() else {
 			warn!("Historical GC sweep skipped: buffer tier is not configured");
 			return;
 		};
@@ -105,7 +104,7 @@ impl<W: QueryWatermark> Actor<W> {
 	}
 
 	fn step_sweep(&self, state: &mut ActorState, ctx: &Context<Message>) {
-		let Some(buffer) = self.store.buffer() else {
+		let Some(buffer) = self.store.commit() else {
 			state.in_progress = None;
 			return;
 		};
@@ -152,7 +151,7 @@ impl<W: QueryWatermark> Actor<W> {
 	}
 
 	#[inline]
-	fn finish_sweep(&self, buffer: &MultiBufferTier, cutoff: CommitVersion, stats: &GcStats) {
+	fn finish_sweep(&self, buffer: &MultiCommitBufferTier, cutoff: CommitVersion, stats: &GcStats) {
 		if stats.versions_dropped > 0 {
 			buffer.maintenance();
 			debug!(
@@ -174,7 +173,7 @@ impl<W: QueryWatermark> Actor<W> {
 
 	fn sweep_shape(
 		&self,
-		buffer: &MultiBufferTier,
+		buffer: &MultiCommitBufferTier,
 		entry_kind: EntryKind,
 		cutoff: CommitVersion,
 		batch_size: usize,

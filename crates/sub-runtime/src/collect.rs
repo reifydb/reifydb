@@ -85,7 +85,7 @@ pub fn collect_watermarks(c: &Collectors) -> Vec<Sample> {
 }
 
 fn collect_buffer(c: &Collectors, out: &mut Vec<Sample>) {
-	let Some(buffer) = c.multi_store.buffer() else {
+	let Some(buffer) = c.multi_store.commit() else {
 		out.push(Sample::new("buffer", "buffer_table_count", 0.0, "count"));
 		return;
 	};

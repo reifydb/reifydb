@@ -8,8 +8,6 @@ use std::{
 };
 
 use reifydb_core::event::EventBus;
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_core::event::metric::MultiCommittedEvent;
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSystem},
 	context::clock::Clock,
@@ -19,17 +17,19 @@ use reifydb_runtime::{
 use tracing::instrument;
 
 use crate::{
-	BufferConfig,
-	buffer::tier::MultiBufferTier,
+	CommitBufferConfig,
 	config::MultiStoreConfig,
 	flush::{ShapePersistence, actor::FlushMessage},
-	persistent::MultiPersistentTier,
+	gc::EvictionWatermark,
+	tier::{
+		commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier,
+		read::buffer::MultiReadBufferTier,
+	},
 };
+
+pub const DEFAULT_READ_BUFFER_CAPACITY: usize = 4096;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::{
-	config::PersistentConfig,
-	flush::{actor::FlushActor, listener::FlushEventListener},
-};
+use crate::{config::PersistentConfig, flush::actor::FlushActor};
 
 pub mod drop;
 pub mod multi;
@@ -45,16 +45,17 @@ use crate::Result;
 pub struct StandardMultiStore(Arc<StandardMultiStoreInner>);
 
 pub struct StandardMultiStoreInner {
-	pub(crate) buffer: Option<MultiBufferTier>,
+	pub(crate) commit: Option<MultiCommitBufferTier>,
 	pub(crate) persistent: Option<MultiPersistentTier>,
-
+	pub(crate) read: Option<MultiReadBufferTier>,
 	pub(crate) drop_actor: Option<ActorRef<DropMessage>>,
 
 	#[allow(dead_code)]
 	pub(crate) flush_actor: Option<ActorRef<FlushMessage>>,
-
 	#[allow(dead_code)]
 	pub(crate) row_settings_provider: Arc<OnceLock<Arc<dyn ShapePersistence>>>,
+	#[allow(dead_code)]
+	pub(crate) eviction_watermark: Arc<OnceLock<Arc<dyn EvictionWatermark>>>,
 
 	actor_system: ActorSystem,
 
@@ -70,17 +71,19 @@ impl Drop for StandardMultiStoreInner {
 
 impl StandardMultiStore {
 	#[instrument(name = "store::multi::new", level = "debug", skip(config), fields(
-		has_buffer = config.buffer.is_some(),
+		has_commit = config.commit.is_some(),
 		has_persistent = config.persistent.is_some(),
 	))]
 	pub fn new(config: MultiStoreConfig) -> Result<Self> {
-		let buffer = config.buffer.map(|c| c.storage);
+		let commit = config.commit.map(|c| c.storage);
 
 		let actor_system = config.actor_system.clone();
 
 		let row_settings_provider: Arc<OnceLock<Arc<dyn ShapePersistence>>> = Arc::new(OnceLock::new());
 
-		let drop_actor = buffer.as_ref().map(|storage| {
+		let eviction_watermark: Arc<OnceLock<Arc<dyn EvictionWatermark>>> = Arc::new(OnceLock::new());
+
+		let drop_actor = commit.as_ref().map(|storage| {
 			let drop_config = DropWorkerConfig::default();
 			DropActor::spawn(
 				&actor_system,
@@ -91,11 +94,16 @@ impl StandardMultiStore {
 			)
 		});
 
+		let read = match (commit.as_ref(), config.persistent.is_some()) {
+			(Some(_), true) => Some(MultiReadBufferTier::new(DEFAULT_READ_BUFFER_CAPACITY)),
+			_ => None,
+		};
+
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let (persistent, flush_actor) = {
 			let persistent_config = config.persistent.clone();
 			let persistent = persistent_config.as_ref().map(|c| c.storage.clone());
-			let flush_actor = match (buffer.as_ref(), persistent.as_ref(), persistent_config.as_ref()) {
+			let flush_actor = match (commit.as_ref(), persistent.as_ref(), persistent_config.as_ref()) {
 				(Some(buf), Some(persistent_storage), Some(persistent_cfg)) => {
 					let actor_ref = FlushActor::spawn(
 						&actor_system,
@@ -103,10 +111,9 @@ impl StandardMultiStore {
 						persistent_storage.clone(),
 						persistent_cfg.flush_interval,
 						row_settings_provider.clone(),
+						eviction_watermark.clone(),
+						read.clone(),
 					);
-					config.event_bus.register::<MultiCommittedEvent, _>(FlushEventListener::new(
-						actor_ref.clone(),
-					));
 					Some(actor_ref)
 				}
 				_ => None,
@@ -120,23 +127,49 @@ impl StandardMultiStore {
 			(None, None)
 		};
 
+		let read = persistent.as_ref().and(read);
+
 		Ok(Self(Arc::new(StandardMultiStoreInner {
-			buffer,
+			commit,
 			persistent,
+			read,
 			drop_actor,
 			flush_actor,
 			row_settings_provider,
+			eviction_watermark,
 			actor_system,
 			event_bus: config.event_bus,
 		})))
+	}
+
+	pub fn configure_read_buffer_capacity(&self, capacity: usize) {
+		if let Some(read) = &self.read {
+			read.set_capacity(capacity);
+		}
+	}
+
+	pub fn invalidate_read_key(&self, key: &reifydb_core::encoded::key::EncodedKey) {
+		if let Some(read) = &self.read {
+			read.invalidate(key);
+		}
+	}
+
+	pub fn clear_read(&self) {
+		if let Some(read) = &self.read {
+			read.clear();
+		}
 	}
 
 	pub fn set_row_settings_provider(&self, provider: Arc<dyn ShapePersistence>) {
 		let _ = self.row_settings_provider.set(provider);
 	}
 
-	pub fn buffer(&self) -> Option<&MultiBufferTier> {
-		self.buffer.as_ref()
+	pub fn set_eviction_watermark(&self, watermark: Arc<dyn EvictionWatermark>) {
+		let _ = self.eviction_watermark.set(watermark);
+	}
+
+	pub fn commit(&self) -> Option<&MultiCommitBufferTier> {
+		self.commit.as_ref()
 	}
 
 	pub fn persistent(&self) -> Option<&MultiPersistentTier> {
@@ -180,8 +213,8 @@ impl StandardMultiStore {
 		let actor_system = ActorSystem::new(pools, clock.clone());
 		let event_bus = EventBus::new(&actor_system);
 		Self::new(MultiStoreConfig {
-			buffer: Some(BufferConfig {
-				storage: MultiBufferTier::memory(),
+			commit: Some(CommitBufferConfig {
+				storage: MultiCommitBufferTier::memory(),
 			}),
 			persistent: None,
 			retention: Default::default(),
@@ -198,8 +231,8 @@ impl StandardMultiStore {
 		let clock = Clock::testing();
 		let actor_system = ActorSystem::new(pools, clock.clone());
 		Self::new(MultiStoreConfig {
-			buffer: Some(BufferConfig {
-				storage: MultiBufferTier::memory(),
+			commit: Some(CommitBufferConfig {
+				storage: MultiCommitBufferTier::memory(),
 			}),
 			persistent: None,
 			retention: Default::default(),
@@ -218,8 +251,8 @@ impl StandardMultiStore {
 		let actor_system = ActorSystem::new(pools, clock.clone());
 		let event_bus = EventBus::new(&actor_system);
 		Self::new(MultiStoreConfig {
-			buffer: Some(BufferConfig {
-				storage: MultiBufferTier::memory(),
+			commit: Some(CommitBufferConfig {
+				storage: MultiCommitBufferTier::memory(),
 			}),
 			persistent: Some(PersistentConfig::sqlite_in_memory()),
 			retention: Default::default(),
@@ -237,8 +270,8 @@ impl StandardMultiStore {
 		let clock = Clock::testing();
 		let actor_system = ActorSystem::new(pools, clock.clone());
 		Self::new(MultiStoreConfig {
-			buffer: Some(BufferConfig {
-				storage: MultiBufferTier::memory(),
+			commit: Some(CommitBufferConfig {
+				storage: MultiCommitBufferTier::memory(),
 			}),
 			persistent: Some(PersistentConfig::sqlite_in_memory()),
 			retention: Default::default(),

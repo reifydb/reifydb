@@ -1,33 +1,44 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-# Defect targets:
-#   - persistent storing the wrong version (e.g. an earlier one)
-#   - drain mishandling a key written multiple times in one batch (last-write-wins
-#     in upsert_pending should pick the highest version)
-#   - persistent overwriting itself with stale data instead of latest
+# Defect targets (coupled-flush model):
+#   - sweep persisting the wrong version when a key is written several times below W
+#     (must persist the highest version <= W, here v3="C", not an earlier one)
+#   - sweep persisting more than one version per key
+#   - persistent overwriting itself with stale data instead of the latest-<=W value
 
 set k=A   version=1
 set k=B   version=2
 set k=C   version=3
+watermark 3
 flush
 ---
 ok
+ok
 
-# Persistent stores ONLY the latest committed value
+# The sweep at W=3 persists ONLY the latest-<=W value (v3="C") and evicts every
+# <=W version (v1, v2, v3) from the commit tier.
 persistent_get k version=3
 ---
 "k" => "C"
 
-# Cascade reads at older versions still find A and B via buffer's __historical
-get k version=1
+# Every <=W version is gone from the commit tier - including the latest.
+buffer_get k version=3
 ---
-"k" => "A"
+"k" => None
 
-get k version=2
----
-"k" => "B"
-
+# Reads at the watermark resolve to the persisted latest value from persistent.
 get k version=3
 ---
 "k" => "C"
+
+# Reads below the latest-<=W version are NotFound: those older versions were
+# evicted from the commit tier and persistent rejects stored_version(3) > requested.
+# This is correct - no live reader sits below W, so that history is unreachable.
+get k version=1
+---
+"k" => None
+
+get k version=2
+---
+"k" => None

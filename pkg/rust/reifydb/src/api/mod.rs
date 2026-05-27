@@ -11,8 +11,11 @@ use reifydb_runtime::{
 use reifydb_sqlite::{DbPath, SqliteConfig};
 use reifydb_store_multi::{
 	MultiStore,
-	buffer::tier::MultiBufferTier,
-	config::{BufferConfig as MultiBufferConfig, MultiStoreConfig, PersistentConfig as MultiPersistentConfig},
+	config::{
+		CommitBufferConfig as MultiCommitBufferConfig, MultiStoreConfig,
+		PersistentConfig as MultiPersistentConfig,
+	},
+	tier::commit::buffer::MultiCommitBufferTier,
 };
 use reifydb_store_single::{
 	SingleStore,
@@ -40,19 +43,19 @@ pub enum StorageFactory {
 }
 
 impl StorageFactory {
-	pub(crate) fn open_multi_buffer(&self) -> MultiBufferTier {
-		MultiBufferTier::memory()
+	pub(crate) fn open_multi_commit_buffer(&self) -> MultiCommitBufferTier {
+		MultiCommitBufferTier::memory()
 	}
 
-	pub(crate) fn create_with_multi_buffer(
+	pub(crate) fn create_with_multi_commit_buffer(
 		&self,
-		multi_buffer: MultiBufferTier,
+		multi_commit_buffer: MultiCommitBufferTier,
 		actor_system: &ActorSystem,
 	) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
 		match self {
-			StorageFactory::Memory => create_memory_store_with(multi_buffer, actor_system),
+			StorageFactory::Memory => create_memory_store_with(multi_commit_buffer, actor_system),
 			StorageFactory::Sqlite(config) => {
-				create_sqlite_store_with(multi_buffer, config.clone(), actor_system)
+				create_sqlite_store_with(multi_commit_buffer, config.clone(), actor_system)
 			}
 			StorageFactory::SqliteWithoutBuffer(config) => {
 				create_sqlite_without_buffer_store_with(config.clone(), actor_system)
@@ -62,14 +65,14 @@ impl StorageFactory {
 }
 
 fn create_memory_store_with(
-	multi_buffer: MultiBufferTier,
+	multi_commit_buffer: MultiCommitBufferTier,
 	actor_system: &ActorSystem,
 ) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
 	let eventbus = EventBus::new(actor_system);
 
 	let multi_store = MultiStore::standard(MultiStoreConfig {
-		buffer: Some(MultiBufferConfig {
-			storage: multi_buffer,
+		commit: Some(MultiCommitBufferConfig {
+			storage: multi_commit_buffer,
 		}),
 		persistent: None,
 		retention: Default::default(),
@@ -93,7 +96,7 @@ fn create_memory_store_with(
 }
 
 fn create_sqlite_store_with(
-	multi_buffer: MultiBufferTier,
+	multi_commit_buffer: MultiCommitBufferTier,
 	config: SqliteConfig,
 	actor_system: &ActorSystem,
 ) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
@@ -110,8 +113,8 @@ fn create_sqlite_store_with(
 	};
 
 	let multi_store = MultiStore::standard(MultiStoreConfig {
-		buffer: Some(MultiBufferConfig {
-			storage: multi_buffer,
+		commit: Some(MultiCommitBufferConfig {
+			storage: multi_commit_buffer,
 		}),
 		persistent: Some(MultiPersistentConfig::sqlite(multi_config)),
 		retention: Default::default(),
@@ -160,7 +163,7 @@ fn create_sqlite_without_buffer_store_with(
 	};
 
 	let multi_store = MultiStore::standard(MultiStoreConfig {
-		buffer: None,
+		commit: None,
 		persistent: Some(MultiPersistentConfig::sqlite(multi_config)),
 		retention: Default::default(),
 		merge_config: Default::default(),

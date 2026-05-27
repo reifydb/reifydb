@@ -14,9 +14,8 @@ use reifydb_type::Result;
 
 use super::OperatorScanStats;
 use crate::{
-	buffer::tier::MultiBufferTier,
 	gc::row::scanner::ScanResult,
-	tier::{RangeCursor, TierStorage},
+	tier::{RangeCursor, TierStorage, commit::buffer::MultiCommitBufferTier},
 };
 
 pub struct ExpiredOperatorState {
@@ -26,7 +25,7 @@ pub struct ExpiredOperatorState {
 }
 
 pub fn scan_operator_by_created_at(
-	storage: &MultiBufferTier,
+	storage: &MultiCommitBufferTier,
 	node_id: FlowNodeId,
 	ttl: &Ttl,
 	now_nanos: u64,
@@ -66,7 +65,7 @@ pub fn scan_operator_by_created_at(
 }
 
 pub fn scan_operator_by_updated_at(
-	storage: &MultiBufferTier,
+	storage: &MultiCommitBufferTier,
 	node_id: FlowNodeId,
 	ttl: &Ttl,
 	now_nanos: u64,
@@ -109,7 +108,7 @@ pub(crate) const JOIN_LEFT_PREFIX: u8 = 0x01;
 pub(crate) const JOIN_RIGHT_PREFIX: u8 = 0x02;
 
 pub fn scan_operator_join(
-	storage: &MultiBufferTier,
+	storage: &MultiCommitBufferTier,
 	node_id: FlowNodeId,
 	left: Option<&Ttl>,
 	right: Option<&Ttl>,
@@ -173,7 +172,7 @@ fn bound_as_ref(bound: &Bound<impl AsRef<[u8]>>) -> Bound<&[u8]> {
 }
 
 pub fn drop_expired_operator_keys(
-	storage: &MultiBufferTier,
+	storage: &MultiCommitBufferTier,
 	expired: &[ExpiredOperatorState],
 	stats: &mut OperatorScanStats,
 ) -> Result<()> {
@@ -219,7 +218,7 @@ mod tests {
 	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;
-	use crate::{buffer::tier::MultiBufferTier, tier::TierStorage};
+	use crate::tier::{TierStorage, commit::buffer::MultiCommitBufferTier};
 
 	fn row_with_created(payload: &[u8], created_at: u64) -> CowVec<u8> {
 		row_with(payload, created_at, created_at)
@@ -235,7 +234,7 @@ mod tests {
 
 	#[test]
 	fn scan_drops_expired_data_state_but_never_internal_state() {
-		let storage = MultiBufferTier::memory();
+		let storage = MultiCommitBufferTier::memory();
 		let node = FlowNodeId(1);
 		let table = EntryKind::Operator(node);
 
@@ -292,7 +291,7 @@ mod tests {
 
 	#[test]
 	fn join_scan_evicts_per_side_and_never_touches_schema_rows() {
-		let storage = MultiBufferTier::memory();
+		let storage = MultiCommitBufferTier::memory();
 		let node = FlowNodeId(2);
 		let table = EntryKind::Operator(node);
 
@@ -353,7 +352,7 @@ mod tests {
 	fn join_scan_respects_the_configured_anchor() {
 		// A row created long ago but updated recently must be evicted under a Created anchor and
 		// kept under an Updated anchor - the scan must honor the per-side anchor, not force one.
-		let storage = MultiBufferTier::memory();
+		let storage = MultiCommitBufferTier::memory();
 		let node = FlowNodeId(3);
 		let table = EntryKind::Operator(node);
 		let left = FlowNodeStateKey::encoded(node, vec![JOIN_LEFT_PREFIX, 1]);

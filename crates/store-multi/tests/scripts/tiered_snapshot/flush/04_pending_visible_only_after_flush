@@ -1,35 +1,48 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-# Defect targets:
-#   - speculative persistent updates on commit
-#   - drain firing without an explicit trigger (background timer racing in)
+# Defect targets (coupled-flush model):
+#   - speculative persistent updates on commit (persistent must stay empty until a sweep)
+#   - a sweep firing without an explicit trigger (background timer racing in)
+#
+# The old "pending-vs-flushed" distinction becomes "commit-tier-vs-persistent": a
+# committed value is served from the commit tier BEFORE any sweep and is absent from
+# persistent; after a sweep at W it lands in persistent and is evicted from commit.
 
 set k=A   version=1
-flush
----
-ok
-
-# Subsequent writes accumulate in pending but persistent should still report A
 set k=B   version=2
 set k=C   version=3
 ---
 ok
 
+# Before any sweep: the commit tier serves the latest value, persistent is empty
+# (commit alone must never write through to persistent).
+buffer_get k version=3
+---
+"k" => "C"
+
 persistent_get k version=3
 ---
-"k" => "A"
+"k" => None
 
-# After explicit flush, persistent jumps to C (latest current)
+# Pin W=3 and sweep. The latest-<=W value (v3="C") moves to persistent and every
+# <=W version is evicted from the commit tier.
+watermark 3
 flush
 ---
 ok
+ok
 
+# Persistent now holds C; the commit tier no longer holds it.
 persistent_get k version=3
 ---
 "k" => "C"
 
-# At older versions persistent rejects (stored_version=3 > requested)
+buffer_get k version=3
+---
+"k" => None
+
+# Older versions are rejected by persistent's regression guard (stored 3 > requested).
 persistent_get k version=1
 ---
 "k" => None

@@ -60,7 +60,7 @@ impl<P: ListRowSettings> Actor<P> {
 			return;
 		}
 
-		let buffer = self.store.buffer();
+		let buffer = self.store.commit();
 		let persistent = self.store.persistent();
 		if buffer.is_none() && persistent.is_none() {
 			warn!("Row TTL scan skipped: no storage tier is configured");
@@ -128,6 +128,7 @@ impl<P: ListRowSettings> Actor<P> {
 								*stats.bytes_discovered
 									.entry(row.shape_id)
 									.or_insert(0) += row.scanned_bytes;
+								self.store.invalidate_read_key(&row.key);
 							}
 
 							match scanner::drop_expired_keys(buffer, &expired, &mut stats) {
@@ -166,6 +167,7 @@ impl<P: ListRowSettings> Actor<P> {
 					Ok(deleted) => {
 						persistent_rows_deleted += deleted;
 						if deleted > 0 {
+							self.store.clear_read();
 							debug!(
 								?shape_id,
 								deleted, "Evicted expired rows from persistent tier"

@@ -13,10 +13,7 @@ use reifydb_core::{
 use reifydb_type::Result;
 
 use super::ScanStats;
-use crate::{
-	buffer::tier::MultiBufferTier,
-	tier::{RangeCursor, TierStorage},
-};
+use crate::tier::{RangeCursor, TierStorage, commit::buffer::MultiCommitBufferTier};
 
 pub struct ExpiredRow {
 	pub shape_id: ShapeId,
@@ -31,7 +28,7 @@ pub enum ScanResult {
 }
 
 pub fn scan_shape_by_created_at(
-	storage: &MultiBufferTier,
+	storage: &MultiCommitBufferTier,
 	shape_id: ShapeId,
 	ttl: &Ttl,
 	now_nanos: u64,
@@ -76,7 +73,7 @@ pub fn scan_shape_by_created_at(
 }
 
 pub fn scan_shape_by_updated_at(
-	storage: &MultiBufferTier,
+	storage: &MultiCommitBufferTier,
 	shape_id: ShapeId,
 	ttl: &Ttl,
 	now_nanos: u64,
@@ -130,7 +127,7 @@ fn bound_as_ref(bound: &Bound<impl AsRef<[u8]>>) -> Bound<&[u8]> {
 
 // TODO: batch version lookups - currently O(N) individual get_all_versions
 
-pub fn drop_expired_keys(storage: &MultiBufferTier, expired: &[ExpiredRow], stats: &mut ScanStats) -> Result<()> {
+pub fn drop_expired_keys(storage: &MultiCommitBufferTier, expired: &[ExpiredRow], stats: &mut ScanStats) -> Result<()> {
 	if expired.is_empty() {
 		return Ok(());
 	}

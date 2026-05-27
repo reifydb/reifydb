@@ -41,6 +41,7 @@ pub mod test_harness;
 pub mod test_prelude;
 pub mod transaction;
 pub mod vm;
+pub mod watermark;
 
 pub struct EngineVersion;
 

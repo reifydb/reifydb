@@ -6,22 +6,24 @@ use std::{collections::HashMap, ops::Bound};
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
 use reifydb_type::{Result, util::cowvec::CowVec};
 
-use super::memory::storage::MemoryPrimitiveStorage;
-use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage, VersionedGetResult};
+use crate::tier::{
+	HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage, VersionedGetResult,
+	commit::memory::storage::MemoryPrimitiveStorage,
+};
 
 #[derive(Clone)]
 #[repr(u8)]
-pub enum MultiBufferTier {
+pub enum MultiCommitBufferTier {
 	Memory(MemoryPrimitiveStorage) = 0,
 }
 
-impl MultiBufferTier {
+impl MultiCommitBufferTier {
 	pub fn memory() -> Self {
 		Self::Memory(MemoryPrimitiveStorage::new())
 	}
 }
 
-impl MultiBufferTier {
+impl MultiCommitBufferTier {
 	pub fn maintenance(&self) {
 		match self {
 			Self::Memory(_) => {}
@@ -47,7 +49,7 @@ impl MultiBufferTier {
 	}
 }
 
-impl TierStorage for MultiBufferTier {
+impl TierStorage for MultiCommitBufferTier {
 	#[inline]
 	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
 		match self {
@@ -141,7 +143,7 @@ impl TierStorage for MultiBufferTier {
 	}
 }
 
-impl TierBackend for MultiBufferTier {}
+impl TierBackend for MultiCommitBufferTier {}
 
 #[cfg(test)]
 pub mod tests {
@@ -149,7 +151,7 @@ pub mod tests {
 
 	#[test]
 	fn test_memory_backend() {
-		let storage = MultiBufferTier::memory();
+		let storage = MultiCommitBufferTier::memory();
 
 		let key = EncodedKey::new(b"key".to_vec());
 		let version = CommitVersion(1);
@@ -167,7 +169,7 @@ pub mod tests {
 
 	#[test]
 	fn test_range_next_memory() {
-		let storage = MultiBufferTier::memory();
+		let storage = MultiCommitBufferTier::memory();
 
 		let version = CommitVersion(1);
 		storage.set(

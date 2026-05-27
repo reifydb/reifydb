@@ -1,10 +1,6 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-# Defect targets:
-#   - listener silently dropping MultiCommittedEvent
-#   - drain skipping kinds in pending
-#   - flush_pending_blocking being a no-op
 
 set k=1     version=1
 ---
@@ -15,10 +11,15 @@ persistent_get k version=1
 ---
 "k" => None
 
+# Pin the eviction watermark at W=1. v1 <= W, so the coupled sweep both persists
+# the latest-<=W value AND evicts it from the commit tier.
+watermark 1
 flush
 ---
 ok
+ok
 
+# The swept value now lives in the persistent tier at its committed version.
 persistent_get k version=1
 ---
 "k" => "1"

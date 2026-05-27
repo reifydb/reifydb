@@ -67,10 +67,10 @@ pub mod tests {
 	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;
-	use crate::buffer::tier::MultiBufferTier;
+	use crate::tier::commit::buffer::MultiCommitBufferTier;
 
 	/// Create versioned test entries for a key
-	fn setup_versioned_entries(storage: &MultiBufferTier, table: EntryKind, key: &[u8], versions: &[u64]) {
+	fn setup_versioned_entries(storage: &MultiCommitBufferTier, table: EntryKind, key: &[u8], versions: &[u64]) {
 		for v in versions {
 			let entries = vec![(EncodedKey::new(key.to_vec()), Some(CowVec::new(vec![*v as u8])))];
 			storage.set(CommitVersion(*v), HashMap::from([(table, entries)])).unwrap();
@@ -84,7 +84,7 @@ pub mod tests {
 
 	#[test]
 	fn test_drop_historical_versions() {
-		let storage = MultiBufferTier::memory();
+		let storage = MultiCommitBufferTier::memory();
 		let table = EntryKind::Multi;
 		let key = b"test_key";
 
@@ -105,7 +105,7 @@ pub mod tests {
 
 	#[test]
 	fn test_keep_latest_with_pending() {
-		let storage = MultiBufferTier::memory();
+		let storage = MultiCommitBufferTier::memory();
 		let table = EntryKind::Multi;
 		let key = b"test_key";
 
@@ -125,7 +125,7 @@ pub mod tests {
 
 	#[test]
 	fn test_single_version_no_drop() {
-		let storage = MultiBufferTier::memory();
+		let storage = MultiCommitBufferTier::memory();
 		let table = EntryKind::Multi;
 		let key = b"test_key";
 
@@ -138,7 +138,7 @@ pub mod tests {
 
 	#[test]
 	fn test_empty_storage() {
-		let storage = MultiBufferTier::memory();
+		let storage = MultiCommitBufferTier::memory();
 		let table = EntryKind::Multi;
 		let key = b"nonexistent";
 

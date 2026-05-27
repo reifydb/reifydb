@@ -61,7 +61,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 			return;
 		}
 
-		let buffer = self.store.buffer();
+		let buffer = self.store.commit();
 		let persistent = self.store.persistent();
 		if buffer.is_none() && persistent.is_none() {
 			warn!("Operator TTL scan skipped: no storage tier is configured");

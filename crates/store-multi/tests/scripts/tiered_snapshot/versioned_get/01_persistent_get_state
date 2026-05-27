@@ -1,16 +1,24 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-# Verifies SqlitePersistentStorage::get classifies Value / Tombstone / NotFound in a single
+# Verifies storage classifies Value / Tombstone / NotFound in a single
 # query (the non-lossy get). An absent key and an in-range delete must be distinguishable -
 # the old Option<value> return collapsed both to None.
+#
+# Coupled-flush model: a single watermark W=2 governs every sweep below. The first
+# sweep persists the live v1 row; the second sweep (after the delete) persists the
+# v2 tombstone as the new latest-<=W row.
+
+watermark 2
+---
+ok
 
 # Absent key -> notfound, not tombstone
 persistent_get_state k version=1
 ---
 "k" => notfound
 
-# Value written and flushed at v1
+# Value written and swept into persistent at v1 (v1 <= W)
 set k=alive version=1
 flush
 ---
@@ -30,7 +38,7 @@ persistent_get_state k version=0
 ---
 "k" => notfound
 
-# Delete at v2, flushed -> the single current row becomes a tombstone
+# Delete at v2; sweep at W=2 persists the tombstone as the latest-<=W row
 unset k=alive version=2
 flush
 ---

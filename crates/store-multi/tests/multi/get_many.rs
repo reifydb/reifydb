@@ -36,7 +36,8 @@ fn check_get_many_across_tables(store: &StandardMultiStore, flush: bool) {
 	let absent_op = fns(1, b"ghost");
 	let absent_multi = EncodedKey::new(b"nope".to_vec());
 
-	store.commit(
+	MultiVersionCommit::commit(
+		store,
 		CowVec::new(vec![
 			Delta::Set {
 				key: k1.clone(),

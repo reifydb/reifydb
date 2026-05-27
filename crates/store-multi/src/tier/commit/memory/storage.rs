@@ -12,9 +12,9 @@ use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::s
 use reifydb_type::{Result, util::cowvec::CowVec};
 use tracing::{Span, field, instrument};
 
-use super::entry::{CurrentMap, Entries, Entry, HistoricalMap};
 use crate::tier::{
 	HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage, VersionedGetResult,
+	commit::memory::entry::{CurrentMap, Entries, Entry, HistoricalMap},
 };
 
 #[derive(Clone)]
@@ -110,6 +110,45 @@ impl MemoryPrimitiveStorage {
 				current.insert(key, (version, value));
 			}
 		}
+	}
+
+	pub fn collect_evictable_below(
+		&self,
+		table: EntryKind,
+		cutoff: CommitVersion,
+	) -> (Vec<(EncodedKey, CommitVersion, Option<CowVec<u8>>)>, Vec<(EncodedKey, CommitVersion)>) {
+		let entry = match self.inner.entries.data.get(&table) {
+			Some(e) => e,
+			None => return (Vec::new(), Vec::new()),
+		};
+		let current = entry.current.read();
+		let historical = entry.historical.read();
+
+		let mut latest: HashMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)> = HashMap::new();
+		let mut to_drop: Vec<(EncodedKey, CommitVersion)> = Vec::new();
+
+		for (key, (v, val)) in current.iter() {
+			if *v <= cutoff {
+				to_drop.push((key.clone(), *v));
+				latest.insert(key.clone(), (*v, val.clone()));
+			}
+		}
+		for (key, versions) in historical.iter() {
+			for (Reverse(v), val) in versions.iter() {
+				if *v <= cutoff {
+					to_drop.push((key.clone(), *v));
+					match latest.get(key) {
+						Some((best, _)) if *best >= *v => {}
+						_ => {
+							latest.insert(key.clone(), (*v, val.clone()));
+						}
+					}
+				}
+			}
+		}
+
+		let to_persist = latest.into_iter().map(|(key, (v, val))| (key, v, val)).collect();
+		(to_persist, to_drop)
 	}
 }
 
@@ -988,5 +1027,171 @@ pub mod tests {
 			storage.get(EntryKind::Multi, &key, CommitVersion(1)).unwrap().value().as_deref(),
 			Some(b"value".as_slice())
 		);
+	}
+
+	#[test]
+	fn test_collect_evictable_below_keeps_versions_above_cutoff() {
+		let storage = MemoryPrimitiveStorage::new();
+		let key = EncodedKey::new(b"k".to_vec());
+		for v in 1..=3u64 {
+			storage.set(
+				CommitVersion(v),
+				HashMap::from([(
+					EntryKind::Multi,
+					vec![(key.clone(), Some(CowVec::new(format!("v{v}").into_bytes())))],
+				)]),
+			)
+			.unwrap();
+		}
+
+		// cutoff = 2: the latest version <= 2 is v2 (what a reader in [2, 3) resolves to, so it
+		// must be persisted); both v1 and v2 are dropped; v3 (> cutoff) stays resident.
+		let (to_persist, to_drop) = storage.collect_evictable_below(EntryKind::Multi, CommitVersion(2));
+		assert_eq!(to_persist.len(), 1);
+		assert_eq!(to_persist[0].0, key);
+		assert_eq!(to_persist[0].1, CommitVersion(2));
+		assert_eq!(to_persist[0].2.as_deref(), Some(b"v2".as_slice()));
+		let dropped: HashSet<CommitVersion> = to_drop.iter().map(|(_, v)| *v).collect();
+		assert_eq!(dropped, HashSet::from([CommitVersion(1), CommitVersion(2)]));
+
+		// After dropping the <= cutoff versions from the buffer (in the real pass v2 is persisted
+		// to sqlite first), v3 stays readable while v1/v2 are gone from the buffer.
+		storage.drop(HashMap::from([(EntryKind::Multi, to_drop)])).unwrap();
+		assert_eq!(
+			storage.get(EntryKind::Multi, &key, CommitVersion(3)).unwrap().value().as_deref(),
+			Some(b"v3".as_slice())
+		);
+		assert!(storage.get(EntryKind::Multi, &key, CommitVersion(2)).unwrap().value().is_none());
+		assert!(storage.get(EntryKind::Multi, &key, CommitVersion(1)).unwrap().value().is_none());
+	}
+
+	#[test]
+	fn test_collect_evictable_below_empty_when_all_above_cutoff() {
+		let storage = MemoryPrimitiveStorage::new();
+		let key = EncodedKey::new(b"k".to_vec());
+		storage.set(
+			CommitVersion(5),
+			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v".to_vec())))])]),
+		)
+		.unwrap();
+		let (to_persist, to_drop) = storage.collect_evictable_below(EntryKind::Multi, CommitVersion(3));
+		assert!(to_persist.is_empty());
+		assert!(to_drop.is_empty());
+	}
+
+	#[test]
+	fn test_collect_evictable_below_persists_exactly_one_value_per_key() {
+		// With several historical versions <= cutoff, only the LATEST-<=cutoff value may be persisted: that
+		// is the single value a reader at the cutoff snapshot resolves to. Persisting an older one (or more
+		// than one) would either corrupt the resolved value or bloat the persistent tier. This guards the
+		// inner "best >= v" tie-break in collect_evictable_below.
+		let storage = MemoryPrimitiveStorage::new();
+		let key = EncodedKey::new(b"k".to_vec());
+		for v in 1..=5u64 {
+			storage.set(
+				CommitVersion(v),
+				HashMap::from([(
+					EntryKind::Multi,
+					vec![(key.clone(), Some(CowVec::new(format!("v{v}").into_bytes())))],
+				)]),
+			)
+			.unwrap();
+		}
+
+		// cutoff = 4: v1..=v4 are all evictable, but the persisted value must be exactly v4.
+		let (to_persist, to_drop) = storage.collect_evictable_below(EntryKind::Multi, CommitVersion(4));
+		assert_eq!(to_persist.len(), 1, "exactly one value persisted per key");
+		assert_eq!(to_persist[0].1, CommitVersion(4), "the latest version <= cutoff");
+		assert_eq!(to_persist[0].2.as_deref(), Some(b"v4".as_slice()));
+
+		// All four <= cutoff versions are scheduled to drop; v5 (> cutoff) is not.
+		let dropped: HashSet<CommitVersion> = to_drop.iter().map(|(_, v)| *v).collect();
+		assert_eq!(
+			dropped,
+			HashSet::from([CommitVersion(1), CommitVersion(2), CommitVersion(3), CommitVersion(4)])
+		);
+	}
+
+	#[test]
+	fn test_collect_evictable_below_persists_tombstone_when_it_is_the_latest() {
+		// If the latest-<=cutoff version is a tombstone, the eviction must carry the tombstone (None) to the
+		// persistent tier - otherwise a later read would resurrect the pre-delete value. This guards against
+		// the sweep silently dropping deletes.
+		let storage = MemoryPrimitiveStorage::new();
+		let key = EncodedKey::new(b"k".to_vec());
+		storage.set(
+			CommitVersion(1),
+			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v1".to_vec())))])]),
+		)
+		.unwrap();
+		storage.set(CommitVersion(2), HashMap::from([(EntryKind::Multi, vec![(key.clone(), None)])])).unwrap();
+
+		let (to_persist, to_drop) = storage.collect_evictable_below(EntryKind::Multi, CommitVersion(2));
+		assert_eq!(to_persist.len(), 1);
+		assert_eq!(to_persist[0].1, CommitVersion(2), "the tombstone is the latest version");
+		assert!(to_persist[0].2.is_none(), "the persisted latest value must be the tombstone, not v1");
+		assert_eq!(to_drop.len(), 2, "both v1 and the tombstone are dropped from the buffer");
+	}
+
+	#[test]
+	fn test_collect_evictable_below_only_drops_historical_when_current_is_above_cutoff() {
+		// Current is v5 (> cutoff) but a historical v2 (<= cutoff) exists. Only the historical version may be
+		// evicted; the current version stays resident and must NOT be persisted (it is still hot). This is the
+		// path where a key is actively written but old snapshots are aging out.
+		let storage = MemoryPrimitiveStorage::new();
+		let key = EncodedKey::new(b"k".to_vec());
+		storage.set(
+			CommitVersion(2),
+			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v2".to_vec())))])]),
+		)
+		.unwrap();
+		storage.set(
+			CommitVersion(5),
+			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v5".to_vec())))])]),
+		)
+		.unwrap();
+
+		let (to_persist, to_drop) = storage.collect_evictable_below(EntryKind::Multi, CommitVersion(3));
+		assert_eq!(to_persist.len(), 1);
+		assert_eq!(to_persist[0].1, CommitVersion(2), "only the aged-out historical version is persisted");
+		assert_eq!(to_persist[0].2.as_deref(), Some(b"v2".as_slice()));
+		let dropped: HashSet<CommitVersion> = to_drop.iter().map(|(_, v)| *v).collect();
+		assert_eq!(dropped, HashSet::from([CommitVersion(2)]), "v5 (current, > cutoff) is never dropped");
+
+		// After dropping v2, v5 still reads and v3 falls through (no resident historical anymore).
+		storage.drop(HashMap::from([(EntryKind::Multi, to_drop)])).unwrap();
+		assert_eq!(
+			storage.get(EntryKind::Multi, &key, CommitVersion(5)).unwrap().value().as_deref(),
+			Some(b"v5".as_slice())
+		);
+		assert!(
+			storage.get(EntryKind::Multi, &key, CommitVersion(3)).unwrap().value().is_none(),
+			"the v2 a reader at snapshot 3 used to see is gone from the buffer after eviction"
+		);
+	}
+
+	#[test]
+	fn test_collect_evictable_below_handles_multiple_keys_independently() {
+		// The cutoff applies per version, not per key. A key whose only version is above the cutoff must be
+		// left fully resident even while a sibling key is evicted. This guards a regression where a shared
+		// scan could over-collect across keys.
+		let storage = MemoryPrimitiveStorage::new();
+		let cold = EncodedKey::new(b"cold".to_vec());
+		let hot = EncodedKey::new(b"hot".to_vec());
+		storage.set(
+			CommitVersion(1),
+			HashMap::from([(EntryKind::Multi, vec![(cold.clone(), Some(CowVec::new(b"cold1".to_vec())))])]),
+		)
+		.unwrap();
+		storage.set(
+			CommitVersion(9),
+			HashMap::from([(EntryKind::Multi, vec![(hot.clone(), Some(CowVec::new(b"hot9".to_vec())))])]),
+		)
+		.unwrap();
+
+		let (to_persist, to_drop) = storage.collect_evictable_below(EntryKind::Multi, CommitVersion(5));
+		assert_eq!(to_persist.len(), 1, "only the cold key is evictable below the cutoff");
+		assert_eq!(to_persist[0].0, cold);
+		assert!(to_drop.iter().all(|(k, _)| *k == cold), "the hot key must not be scheduled for drop");
 	}
 }

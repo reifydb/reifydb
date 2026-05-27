@@ -26,7 +26,8 @@ fn concurrent_reads_during_writes_no_deadlock() {
 	let store = StandardMultiStore::testing_persistent_sqlite_only();
 	let key = EncodedKey::new(b"k".to_vec());
 
-	store.commit(
+	MultiVersionCommit::commit(
+		&store,
 		CowVec::new(vec![Delta::Set {
 			key: key.clone(),
 			row: row(b"v0"),
@@ -53,7 +54,8 @@ fn concurrent_reads_during_writes_no_deadlock() {
 		.collect();
 
 	for v in 2..=last {
-		store.commit(
+		MultiVersionCommit::commit(
+			&store,
 			CowVec::new(vec![Delta::Set {
 				key: key.clone(),
 				row: row(format!("v{v}").as_bytes()),
