@@ -17,6 +17,9 @@ use crate::tier::{
 	commit::memory::entry::{CurrentMap, Entries, Entry, HistoricalMap},
 };
 
+type EvictablePersist = Vec<(EncodedKey, CommitVersion, Option<CowVec<u8>>)>;
+type EvictableDrop = Vec<(EncodedKey, CommitVersion)>;
+
 #[derive(Clone)]
 pub struct MemoryPrimitiveStorage {
 	inner: Arc<MemoryPrimitiveStorageInner>,
@@ -116,7 +119,7 @@ impl MemoryPrimitiveStorage {
 		&self,
 		table: EntryKind,
 		cutoff: CommitVersion,
-	) -> (Vec<(EncodedKey, CommitVersion, Option<CowVec<u8>>)>, Vec<(EncodedKey, CommitVersion)>) {
+	) -> (EvictablePersist, EvictableDrop) {
 		let entry = match self.inner.entries.data.get(&table) {
 			Some(e) => e,
 			None => return (Vec::new(), Vec::new()),

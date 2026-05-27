@@ -75,9 +75,55 @@ fn check_get_many_across_tables(store: &StandardMultiStore, flush: bool) {
 	assert!(!found.contains_key(&absent_multi));
 }
 
+// Persistent get_many rounds chunk.len() up to a fixed placeholder bucket {1,8,64,512,900} and pads
+// the extra IN-list slots with a repeat of the first key, so distinct prepared SQL stays O(tables).
+// This guards that padding never drops a present key, never invents a phantom result for an absent
+// key, and returns the right value per key across counts that sit just below, exactly on, and just
+// above the 1/8/64 bucket edges - the exact place the round-up + pad-with-duplicate could go wrong.
+fn check_get_many_bucket_boundaries(store: &StandardMultiStore) {
+	let mut deltas = Vec::new();
+	let mut present: Vec<EncodedKey> = Vec::new();
+	for i in 0u64..130 {
+		let key = fns(7, format!("k{:04}", i).as_bytes());
+		deltas.push(Delta::Set {
+			key: key.clone(),
+			row: row(format!("v{}", i).as_bytes()),
+		});
+		present.push(key);
+	}
+	MultiVersionCommit::commit(store, CowVec::new(deltas), CommitVersion(1)).unwrap();
+	store.flush_pending_blocking();
+
+	for count in [1usize, 2, 7, 8, 9, 63, 64, 65, 129, 130] {
+		let absent = fns(7, format!("ghost{:04}", count).as_bytes());
+		let mut lookup: Vec<EncodedKey> = present[..count].to_vec();
+		lookup.push(absent.clone());
+
+		let found = store.get_many(&lookup, CommitVersion(1)).unwrap();
+
+		assert_eq!(found.len(), count, "count={}: expected exactly {} resolved keys", count, count);
+		assert!(!found.contains_key(&absent), "count={}: absent key must not resolve via padding", count);
+		for (i, key) in present[..count].iter().enumerate() {
+			assert_eq!(
+				found.get(key).map(|r| r.row.to_vec()),
+				Some(format!("v{}", i).into_bytes()),
+				"count={}: key index {} returned wrong value",
+				count,
+				i
+			);
+		}
+	}
+}
+
 #[test]
 fn get_many_across_tables_memory_only() {
 	check_get_many_across_tables(&StandardMultiStore::testing_memory(), false);
+}
+
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+#[test]
+fn get_many_bucket_boundaries_sqlite() {
+	check_get_many_bucket_boundaries(&StandardMultiStore::testing_memory_with_persistent_sqlite());
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]

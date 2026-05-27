@@ -3,6 +3,7 @@
 
 use std::{
 	collections::HashMap,
+	iter::repeat_n,
 	ops::Bound,
 	sync::{
 		Arc,
@@ -47,6 +48,17 @@ use crate::tier::{
 };
 
 const GET_MANY_CHUNK: usize = 900;
+
+const GET_MANY_BUCKETS: [usize; 5] = [1, 8, 64, 512, GET_MANY_CHUNK];
+
+fn bucket_key_count(len: usize) -> usize {
+	for &bucket in GET_MANY_BUCKETS.iter() {
+		if len <= bucket {
+			return bucket;
+		}
+	}
+	GET_MANY_CHUNK
+}
 
 const WRITER_BUSY_TIMEOUT: Duration = Duration::from_millis(200);
 
@@ -389,7 +401,8 @@ impl TierStorage for SqlitePersistentStorage {
 		let conn = self.inner.readers.acquire();
 
 		for chunk in keys.chunks(GET_MANY_CHUNK) {
-			let sql = build_get_many_current_sql(&table_sql.table_name, chunk.len());
+			let bucket = bucket_key_count(chunk.len());
+			let sql = build_get_many_current_sql(&table_sql.table_name, bucket);
 			let mut stmt = match conn.prepare_cached(&sql) {
 				Ok(stmt) => stmt,
 				Err(e) if e.to_string().contains("no such table") => return Ok(out),
@@ -401,8 +414,10 @@ impl TierStorage for SqlitePersistentStorage {
 				}
 			};
 
+			let pad_key = chunk[0];
+			let padded = chunk.iter().copied().chain(repeat_n(pad_key, bucket - chunk.len()));
 			let mut rows = stmt
-				.query(params_from_iter(chunk.iter().copied()))
+				.query(params_from_iter(padded))
 				.map_err(|e| error!(internal(format!("Failed to query persistent get_many: {}", e))))?;
 
 			while let Some(row) = rows.next().map_err(|e| {

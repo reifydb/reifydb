@@ -226,7 +226,7 @@ impl Serialize for DateTime {
 	where
 		S: Serializer,
 	{
-		serializer.serialize_str(&self.to_string())
+		serializer.serialize_u64(self.nanos)
 	}
 }
 
@@ -236,73 +236,14 @@ impl<'de> Visitor<'de> for DateTimeVisitor {
 	type Value = DateTime;
 
 	fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-		formatter.write_str("a datetime in ISO 8601 format (YYYY-MM-DDTHH:MM:SS[.nnnnnnnnn]Z)")
+		formatter.write_str("a datetime as nanoseconds since the Unix epoch (u64)")
 	}
 
-	fn visit_str<E>(self, value: &str) -> Result<DateTime, E>
+	fn visit_u64<E>(self, value: u64) -> Result<DateTime, E>
 	where
 		E: de::Error,
 	{
-		let value = value.strip_suffix('Z').unwrap_or(value);
-
-		let mut t_parts = value.split('T');
-		let (Some(date_part), Some(time_full), None) = (t_parts.next(), t_parts.next(), t_parts.next()) else {
-			return Err(E::custom(format!("invalid datetime format: {}", value)));
-		};
-
-		let mut date_parts = date_part.split('-');
-		let (Some(year_str), Some(month_str), Some(day_str), None) =
-			(date_parts.next(), date_parts.next(), date_parts.next(), date_parts.next())
-		else {
-			return Err(E::custom(format!("invalid date format: {}", date_part)));
-		};
-
-		let year = year_str.parse::<i32>().map_err(|_| E::custom(format!("invalid year: {}", year_str)))?;
-		if year < 1970 {
-			return Err(E::custom(format!("DateTime does not support pre-epoch years: {}", year)));
-		}
-		let month = month_str.parse::<u32>().map_err(|_| E::custom(format!("invalid month: {}", month_str)))?;
-		let day = day_str.parse::<u32>().map_err(|_| E::custom(format!("invalid day: {}", day_str)))?;
-
-		let (time_part, nano_part) = if let Some(dot_pos) = time_full.find('.') {
-			(&time_full[..dot_pos], Some(&time_full[dot_pos + 1..]))
-		} else {
-			(time_full, None)
-		};
-
-		let mut time_parts = time_part.split(':');
-		let (Some(hour_str), Some(minute_str), Some(second_str), None) =
-			(time_parts.next(), time_parts.next(), time_parts.next(), time_parts.next())
-		else {
-			return Err(E::custom(format!("invalid time format: {}", time_full)));
-		};
-
-		let hour = hour_str.parse::<u32>().map_err(|_| E::custom(format!("invalid hour: {}", hour_str)))?;
-		let minute =
-			minute_str.parse::<u32>().map_err(|_| E::custom(format!("invalid minute: {}", minute_str)))?;
-		let second =
-			second_str.parse::<u32>().map_err(|_| E::custom(format!("invalid second: {}", second_str)))?;
-
-		let nano = if let Some(nano_str) = nano_part {
-			if nano_str.is_empty() {
-				0
-			} else {
-				let digits = nano_str.len().min(9);
-				let value = nano_str[..digits]
-					.parse::<u32>()
-					.map_err(|_| E::custom(format!("invalid nanoseconds: {}", nano_str)))?;
-				value * 10u32.pow((9 - digits) as u32)
-			}
-		} else {
-			0
-		};
-
-		DateTime::new(year, month, day, hour, minute, second, nano).ok_or_else(|| {
-			E::custom(format!(
-				"invalid datetime: {}-{:02}-{:02}T{:02}:{:02}:{:02}.{:09}Z",
-				year, month, day, hour, minute, second, nano
-			))
-		})
+		Ok(DateTime::from_nanos(value))
 	}
 }
 
@@ -311,7 +252,7 @@ impl<'de> Deserialize<'de> for DateTime {
 	where
 		D: Deserializer<'de>,
 	{
-		deserializer.deserialize_str(DateTimeVisitor)
+		deserializer.deserialize_u64(DateTimeVisitor)
 	}
 }
 
@@ -319,6 +260,7 @@ impl<'de> Deserialize<'de> for DateTime {
 pub mod tests {
 	use std::fmt::Debug;
 
+	use postcard::{from_bytes, to_allocvec};
 	use serde_json::{from_str, to_string};
 
 	use crate::{
@@ -547,54 +489,35 @@ pub mod tests {
 	fn test_serde_roundtrip() {
 		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 123456789).unwrap();
 		let json = to_string(&datetime).unwrap();
-		assert_eq!(json, "\"2024-03-15T14:30:45.123456789Z\"");
+		// Wire format is the raw nanos-since-epoch integer, not an ISO-8601 string.
+		assert_eq!(json, datetime.to_nanos().to_string());
 
 		let recovered: DateTime = from_str(&json).unwrap();
 		assert_eq!(datetime, recovered);
 	}
 
 	#[test]
-	fn test_deserialize_subsecond_digit_counts() {
-		// Fewer than 9 fractional digits are right-padded with zeros to nanoseconds.
-		let dt: DateTime = from_str("\"2024-03-15T14:30:45.5Z\"").unwrap();
-		assert_eq!(dt.nanosecond(), 500_000_000);
-
-		let dt: DateTime = from_str("\"2024-03-15T14:30:45.123Z\"").unwrap();
-		assert_eq!(dt.nanosecond(), 123_000_000);
-
-		// Leading zeros in the fraction are preserved.
-		let dt: DateTime = from_str("\"2024-03-15T14:30:45.001Z\"").unwrap();
-		assert_eq!(dt.nanosecond(), 1_000_000);
-
-		// Exactly 9 digits map verbatim.
-		let dt: DateTime = from_str("\"2024-03-15T14:30:45.123456789Z\"").unwrap();
-		assert_eq!(dt.nanosecond(), 123_456_789);
-
-		// More than 9 digits truncate to the first 9 (sub-nanosecond ignored).
-		let dt: DateTime = from_str("\"2024-03-15T14:30:45.123456789999Z\"").unwrap();
-		assert_eq!(dt.nanosecond(), 123_456_789);
-
-		// A trailing dot with no fractional digits is zero nanoseconds.
-		let dt: DateTime = from_str("\"2024-03-15T14:30:45.Z\"").unwrap();
-		assert_eq!(dt.nanosecond(), 0);
-	}
-
-	#[test]
-	fn test_deserialize_rejects_non_numeric_fraction() {
-		assert!(from_str::<DateTime>("\"2024-03-15T14:30:45.12xZ\"").is_err());
-	}
-
-	#[test]
-	fn test_deserialize_rejects_malformed_field_counts() {
-		// Missing the T separator, or wrong date/time field counts, must all error -
-		// guards the split-iterator parsing against accepting malformed input.
-		assert!(from_str::<DateTime>("\"2024-03-15 14:30:45Z\"").is_err());
-		assert!(from_str::<DateTime>("\"2024-03T14:30:45Z\"").is_err());
-		assert!(from_str::<DateTime>("\"2024-03-15-01T14:30:45Z\"").is_err());
-		assert!(from_str::<DateTime>("\"2024-03-15T14:30Z\"").is_err());
-		assert!(from_str::<DateTime>("\"2024-03-15T14:30:45:99Z\"").is_err());
-		let dt: DateTime = from_str("\"2024-03-15T14:30:45Z\"").unwrap();
-		assert_eq!(dt, DateTime::new(2024, 3, 15, 14, 30, 45, 0).unwrap());
+	fn test_serde_postcard_roundtrip_preserves_all_components() {
+		// Binary (postcard) is the hot CDC path; every date/time component (incl. sub-second nanos)
+		// must survive the integer encoding so CDC consumers reconstruct the exact instant.
+		for (y, mo, d, h, mi, s, n) in [
+			(1970u32 as i32, 1u32, 1u32, 0u32, 0u32, 0u32, 0u32),
+			(2024, 3, 15, 14, 30, 45, 123456789),
+			(1999, 12, 31, 23, 59, 59, 999999999),
+			(2024, 3, 15, 14, 30, 45, 1),
+		] {
+			let dt = DateTime::new(y, mo, d, h, mi, s, n).unwrap();
+			let bytes = to_allocvec(&dt).unwrap();
+			let recovered: DateTime = from_bytes(&bytes).unwrap();
+			assert_eq!(dt, recovered);
+			assert_eq!(recovered.year(), y);
+			assert_eq!(recovered.month(), mo);
+			assert_eq!(recovered.day(), d);
+			assert_eq!(recovered.hour(), h);
+			assert_eq!(recovered.minute(), mi);
+			assert_eq!(recovered.second(), s);
+			assert_eq!(recovered.nanosecond(), n);
+		}
 	}
 
 	fn assert_datetime_overflow<T: Debug>(result: Result<T, Box<TypeError>>) {

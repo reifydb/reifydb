@@ -55,24 +55,25 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]
 
 	let mut result_columns = Vec::with_capacity(target_columns.len());
 
+	// FIXME how to handle failing views ?!
+	let session = EvalContext {
+		params: &EMPTY_PARAMS,
+		symbols: &EMPTY_SYMBOL_TABLE,
+		routines: &EMPTY_ROUTINES,
+		runtime_context: &DEFAULT_RUNTIME_CONTEXT,
+		arena: None,
+		identity: IdentityId::root(),
+		is_aggregate_context: false,
+		columns: Columns::empty(),
+		row_count: 1,
+		target: None,
+		take: None,
+	};
+	let mut ctx = session.with_eval(columns.clone(), row_count);
+
 	for target_col in target_columns {
 		let target_type = target_col.constraint.get_type();
 
-		// FIXME how to handle failing views ?!
-		let session = EvalContext {
-			params: &EMPTY_PARAMS,
-			symbols: &EMPTY_SYMBOL_TABLE,
-			routines: &EMPTY_ROUTINES,
-			runtime_context: &DEFAULT_RUNTIME_CONTEXT,
-			arena: None,
-			identity: IdentityId::root(),
-			is_aggregate_context: false,
-			columns: Columns::empty(),
-			row_count: 1,
-			target: None,
-			take: None,
-		};
-		let mut ctx = session.with_eval(columns.clone(), row_count);
 		ctx.target = Some(TargetColumn::Partial {
 			source_name: None,
 			column_name: Some(target_col.name.clone()),

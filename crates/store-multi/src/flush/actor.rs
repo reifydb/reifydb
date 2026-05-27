@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use std::collections::HashMap;
 use std::{
-	collections::HashMap,
 	sync::{Arc, OnceLock},
 	time::Duration,
 };
 
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_runtime::actor::{

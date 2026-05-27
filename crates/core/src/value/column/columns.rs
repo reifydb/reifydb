@@ -418,11 +418,11 @@ impl Columns {
 impl Columns {
 	pub fn empty() -> Self {
 		Self {
-			row_numbers: CowVec::with_capacity(1),
-			created_at: CowVec::with_capacity(1),
-			updated_at: CowVec::with_capacity(1),
-			columns: CowVec::with_capacity(16),
-			names: CowVec::with_capacity(16),
+			row_numbers: CowVec::new(Vec::new()),
+			created_at: CowVec::new(Vec::new()),
+			updated_at: CowVec::new(Vec::new()),
+			columns: CowVec::new(Vec::new()),
+			names: CowVec::new(Vec::new()),
 		}
 	}
 }

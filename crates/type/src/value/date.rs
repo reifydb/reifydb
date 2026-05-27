@@ -159,7 +159,7 @@ impl Serialize for Date {
 	where
 		S: Serializer,
 	{
-		serializer.serialize_str(&self.to_string())
+		serializer.serialize_i32(self.days_since_epoch)
 	}
 }
 
@@ -169,26 +169,31 @@ impl<'de> Visitor<'de> for DateVisitor {
 	type Value = Date;
 
 	fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-		formatter.write_str("a date in ISO 8601 format (YYYY-MM-DD)")
+		formatter.write_str("a date as days since the Unix epoch (i32)")
 	}
 
-	fn visit_str<E>(self, value: &str) -> Result<Date, E>
+	fn visit_i32<E>(self, value: i32) -> Result<Date, E>
 	where
 		E: de::Error,
 	{
-		let mut parts = value.split('-');
-		let (Some(year_str), Some(month_str), Some(day_str), None) =
-			(parts.next(), parts.next(), parts.next(), parts.next())
-		else {
-			return Err(E::custom(format!("invalid date format: {}", value)));
-		};
+		Date::from_days_since_epoch(value)
+			.ok_or_else(|| E::custom(format!("date days out of range: {}", value)))
+	}
 
-		let year = year_str.parse::<i32>().map_err(|_| E::custom(format!("invalid year: {}", year_str)))?;
-		let month = month_str.parse::<u32>().map_err(|_| E::custom(format!("invalid month: {}", month_str)))?;
-		let day = day_str.parse::<u32>().map_err(|_| E::custom(format!("invalid day: {}", day_str)))?;
+	fn visit_i64<E>(self, value: i64) -> Result<Date, E>
+	where
+		E: de::Error,
+	{
+		let days = i32::try_from(value).map_err(|_| E::custom(format!("date days out of range: {}", value)))?;
+		self.visit_i32(days)
+	}
 
-		Date::new(year, month, day)
-			.ok_or_else(|| E::custom(format!("invalid date: {}-{:02}-{:02}", year, month, day)))
+	fn visit_u64<E>(self, value: u64) -> Result<Date, E>
+	where
+		E: de::Error,
+	{
+		let days = i32::try_from(value).map_err(|_| E::custom(format!("date days out of range: {}", value)))?;
+		self.visit_i32(days)
 	}
 }
 
@@ -197,7 +202,7 @@ impl<'de> Deserialize<'de> for Date {
 	where
 		D: Deserializer<'de>,
 	{
-		deserializer.deserialize_str(DateVisitor)
+		deserializer.deserialize_i32(DateVisitor)
 	}
 }
 
@@ -205,6 +210,7 @@ impl<'de> Deserialize<'de> for Date {
 pub mod tests {
 	use std::fmt::Debug;
 
+	use postcard::{from_bytes, to_allocvec};
 	use serde_json::{from_str, to_string};
 
 	use super::*;
@@ -369,21 +375,32 @@ pub mod tests {
 	fn test_serde_roundtrip() {
 		let date = Date::new(2024, 3, 15).unwrap();
 		let json = to_string(&date).unwrap();
-		assert_eq!(json, "\"2024-03-15\"");
+		// Wire format is the raw days-since-epoch integer, not an ISO-8601 string.
+		assert_eq!(json, date.to_days_since_epoch().to_string());
 
 		let recovered: Date = from_str(&json).unwrap();
 		assert_eq!(date, recovered);
 	}
 
 	#[test]
-	fn test_deserialize_requires_exactly_three_parts() {
-		assert!(from_str::<Date>("\"2024-03\"").is_err());
-		assert!(from_str::<Date>("\"2024-03-15-99\"").is_err());
-		// A leading '-' yields an empty first field (4 parts) and is rejected,
-		// not treated as a negative year - matching the previous behavior.
-		assert!(from_str::<Date>("\"-2024-03-15\"").is_err());
-		let date: Date = from_str("\"2024-03-15\"").unwrap();
-		assert_eq!(date, Date::new(2024, 3, 15).unwrap());
+	fn test_serde_postcard_roundtrip_negative_years() {
+		// Binary (postcard) is the hot CDC path; negative days (pre-epoch) must survive the i32 encoding.
+		for (y, m, d) in [(-100, 12, 31), (0, 1, 1), (1970, 1, 1), (2024, 3, 15), (9999, 12, 31)] {
+			let date = Date::new(y, m, d).unwrap();
+			let bytes = to_allocvec(&date).unwrap();
+			let recovered: Date = from_bytes(&bytes).unwrap();
+			assert_eq!(date, recovered);
+			assert_eq!(recovered.year(), y);
+			assert_eq!(recovered.month(), m);
+			assert_eq!(recovered.day(), d);
+		}
+	}
+
+	#[test]
+	fn test_deserialize_rejects_out_of_range_days() {
+		// Days beyond the supported Date range must not decode.
+		let json = 400_000_000i64.to_string();
+		assert!(from_str::<Date>(&json).is_err());
 	}
 
 	fn assert_date_overflow<T: Debug>(result: Result<T, Box<TypeError>>) {

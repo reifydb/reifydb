@@ -69,7 +69,7 @@ impl SqliteConfig {
 			wal_autocheckpoint: 1000,
 			page_size: 4096,
 			mmap_size: 64 * 1024 * 1024,
-			prepared_statement_cache_capacity: 128,
+			prepared_statement_cache_capacity: 1024,
 			read_pool_size: 4,
 		}
 	}

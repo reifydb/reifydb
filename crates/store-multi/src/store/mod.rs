@@ -7,7 +7,7 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::event::EventBus;
+use reifydb_core::{encoded::key::EncodedKey, event::EventBus};
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSystem},
 	context::clock::Clock,
@@ -148,7 +148,7 @@ impl StandardMultiStore {
 		}
 	}
 
-	pub fn invalidate_read_key(&self, key: &reifydb_core::encoded::key::EncodedKey) {
+	pub fn invalidate_read_key(&self, key: &EncodedKey) {
 		if let Some(read) = &self.read {
 			read.invalidate(key);
 		}

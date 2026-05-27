@@ -21,7 +21,7 @@ use reifydb_core::{
 			config::{ConfigKey, GetConfig},
 			ringbuffer::RingBuffer,
 		},
-		store::{MultiVersionGetPrevious, Tier},
+		store::Tier,
 	},
 	profiler::ProfilerCategoryId,
 };
@@ -120,15 +120,30 @@ impl MetricCollectorActor {
 		dropped_keys: &HashSet<EncodedKey>,
 		version: CommitVersion,
 	) {
+		let mut pre_sizes: HashMap<EncodedKey, u64> = HashMap::new();
+		if version.0 > 0 {
+			let lookup_keys: Vec<EncodedKey> = writes
+				.iter()
+				.filter(|w| !dropped_keys.contains(&w.key))
+				.map(|w| w.key.clone())
+				.collect();
+			if !lookup_keys.is_empty() {
+				match self.resolver.get_many(&lookup_keys, CommitVersion(version.0 - 1)) {
+					Ok(rows) => {
+						for (key, row) in rows {
+							pre_sizes.insert(key, row.row.len() as u64);
+						}
+					}
+					Err(e) => error!("Failed to read previous versions for write metrics: {}", e),
+				}
+			}
+		}
+
 		for write in writes {
 			let pre_value_bytes = if dropped_keys.contains(&write.key) {
 				None
 			} else {
-				self.resolver
-					.get_previous_version(&write.key, version)
-					.ok()
-					.flatten()
-					.map(|v| v.row.len() as u64)
+				pre_sizes.get(&write.key).copied()
 			};
 			if let Err(e) = state.storage_writer.record_write(
 				Tier::Buffer,

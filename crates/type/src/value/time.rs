@@ -123,7 +123,7 @@ impl Serialize for Time {
 	where
 		S: Serializer,
 	{
-		serializer.serialize_str(&self.to_string())
+		serializer.serialize_u64(self.nanos_since_midnight)
 	}
 }
 
@@ -133,49 +133,15 @@ impl<'de> Visitor<'de> for TimeVisitor {
 	type Value = Time;
 
 	fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-		formatter.write_str("a time in ISO 8601 format (HH:MM:SS or HH:MM:SS.nnnnnnnnn)")
+		formatter.write_str("a time as nanoseconds since midnight (u64)")
 	}
 
-	fn visit_str<E>(self, value: &str) -> Result<Time, E>
+	fn visit_u64<E>(self, value: u64) -> Result<Time, E>
 	where
 		E: de::Error,
 	{
-		let (time_part, nano_part) = if let Some(dot_pos) = value.find('.') {
-			(&value[..dot_pos], Some(&value[dot_pos + 1..]))
-		} else {
-			(value, None)
-		};
-
-		let mut time_parts = time_part.split(':');
-		let (Some(hour_str), Some(minute_str), Some(second_str), None) =
-			(time_parts.next(), time_parts.next(), time_parts.next(), time_parts.next())
-		else {
-			return Err(E::custom(format!("invalid time format: {}", value)));
-		};
-
-		let hour = hour_str.parse::<u32>().map_err(|_| E::custom(format!("invalid hour: {}", hour_str)))?;
-		let minute =
-			minute_str.parse::<u32>().map_err(|_| E::custom(format!("invalid minute: {}", minute_str)))?;
-		let second =
-			second_str.parse::<u32>().map_err(|_| E::custom(format!("invalid second: {}", second_str)))?;
-
-		let nano = if let Some(nano_str) = nano_part {
-			if nano_str.is_empty() {
-				0
-			} else {
-				let digits = nano_str.len().min(9);
-				let value = nano_str[..digits]
-					.parse::<u32>()
-					.map_err(|_| E::custom(format!("invalid nanoseconds: {}", nano_str)))?;
-				value * 10u32.pow((9 - digits) as u32)
-			}
-		} else {
-			0
-		};
-
-		Time::new(hour, minute, second, nano).ok_or_else(|| {
-			E::custom(format!("invalid time: {:02}:{:02}:{:02}.{:09}", hour, minute, second, nano))
-		})
+		Time::from_nanos_since_midnight(value)
+			.ok_or_else(|| E::custom(format!("time nanoseconds out of range: {}", value)))
 	}
 }
 
@@ -184,7 +150,7 @@ impl<'de> Deserialize<'de> for Time {
 	where
 		D: Deserializer<'de>,
 	{
-		deserializer.deserialize_str(TimeVisitor)
+		deserializer.deserialize_u64(TimeVisitor)
 	}
 }
 
@@ -192,6 +158,7 @@ impl<'de> Deserialize<'de> for Time {
 pub mod tests {
 	use std::fmt::Debug;
 
+	use postcard::{from_bytes, to_allocvec};
 	use serde_json::{from_str, to_string};
 
 	use super::*;
@@ -440,34 +407,33 @@ pub mod tests {
 	fn test_serde_roundtrip() {
 		let time = Time::new(14, 30, 45, 123456789).unwrap();
 		let json = to_string(&time).unwrap();
-		assert_eq!(json, "\"14:30:45.123456789\"");
+		// Wire format is the raw nanos-since-midnight integer, not an ISO-8601 string.
+		assert_eq!(json, time.to_nanos_since_midnight().to_string());
 
 		let recovered: Time = from_str(&json).unwrap();
 		assert_eq!(time, recovered);
 	}
 
 	#[test]
-	fn test_deserialize_requires_exactly_three_parts() {
-		assert!(from_str::<Time>("\"14:30\"").is_err());
-		assert!(from_str::<Time>("\"14:30:45:99\"").is_err());
-		let time: Time = from_str("\"14:30:45\"").unwrap();
-		assert_eq!(time, Time::new(14, 30, 45, 0).unwrap());
+	fn test_serde_postcard_roundtrip_preserves_all_fields() {
+		// Binary (postcard) is the hot CDC path; verify every component survives the integer encoding.
+		for (h, m, s, n) in [(0u32, 0u32, 0u32, 0u32), (14, 30, 45, 123456789), (23, 59, 59, 999999999)] {
+			let time = Time::new(h, m, s, n).unwrap();
+			let bytes = to_allocvec(&time).unwrap();
+			let recovered: Time = from_bytes(&bytes).unwrap();
+			assert_eq!(time, recovered);
+			assert_eq!(recovered.hour(), h);
+			assert_eq!(recovered.minute(), m);
+			assert_eq!(recovered.second(), s);
+			assert_eq!(recovered.nanosecond(), n);
+		}
 	}
 
 	#[test]
-	fn test_deserialize_subsecond_digit_counts() {
-		// Fewer than 9 fractional digits are right-padded with zeros to nanoseconds.
-		assert_eq!(from_str::<Time>("\"14:30:45.5\"").unwrap().nanosecond(), 500_000_000);
-		assert_eq!(from_str::<Time>("\"14:30:45.123\"").unwrap().nanosecond(), 123_000_000);
-		// Leading zeros in the fraction are preserved.
-		assert_eq!(from_str::<Time>("\"14:30:45.001\"").unwrap().nanosecond(), 1_000_000);
-		// Exactly 9 map verbatim; more than 9 truncate to the first 9.
-		assert_eq!(from_str::<Time>("\"14:30:45.123456789\"").unwrap().nanosecond(), 123_456_789);
-		assert_eq!(from_str::<Time>("\"14:30:45.123456789999\"").unwrap().nanosecond(), 123_456_789);
-		// A trailing dot with no digits is zero nanoseconds.
-		assert_eq!(from_str::<Time>("\"14:30:45.\"").unwrap().nanosecond(), 0);
-		// A non-numeric fraction is rejected.
-		assert!(from_str::<Time>("\"14:30:45.12x\"").is_err());
+	fn test_deserialize_rejects_out_of_range_nanos() {
+		// Nanos beyond the last instant of the day must not decode to a Time.
+		let json = (Time::MAX_NANOS_IN_DAY + 1).to_string();
+		assert!(from_str::<Time>(&json).is_err());
 	}
 
 	fn assert_time_overflow<T: Debug>(result: Result<T, Box<TypeError>>) {
