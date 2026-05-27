@@ -395,7 +395,7 @@ mod tests {
 	}
 
 	#[test]
-	fn forget_mapping_removes_forward_reverse_and_timestamp_entries() {
+	fn forget_mapping_removes_forward_and_timestamp_entries() {
 		let engine = TestEngine::new();
 		let admin = engine.begin_admin(IdentityId::system()).unwrap();
 		let mut txn = FlowTransaction::deferred(
@@ -408,18 +408,16 @@ mod tests {
 		let op = AppendOperator::new_for_state_tests(FlowNodeId(2), Some(1_000), TtlAnchor::Created);
 
 		let key = composite(1, 7);
-		let (assigned, _) = op.row_number_provider.get_or_create_row_number(&mut txn, &key).unwrap();
+		let (_assigned, _) = op.row_number_provider.get_or_create_row_number(&mut txn, &key).unwrap();
 		op.touch_timestamp(&mut txn, &key).unwrap();
 
 		assert!(op.row_number_provider.get_row_number(&mut txn, &key).unwrap().is_some());
-		assert!(op.row_number_provider.get_key_for_row_number(&mut txn, assigned).unwrap().is_some());
 		let ts_key = AppendOperator::make_timestamp_key(&key);
 		assert!(internal_state_get(op.node, &mut txn, &ts_key).unwrap().is_some());
 
 		op.forget_mapping(&mut txn, &key).unwrap();
 
 		assert!(op.row_number_provider.get_row_number(&mut txn, &key).unwrap().is_none());
-		assert!(op.row_number_provider.get_key_for_row_number(&mut txn, assigned).unwrap().is_none());
 		assert!(internal_state_get(op.node, &mut txn, &ts_key).unwrap().is_none());
 	}
 

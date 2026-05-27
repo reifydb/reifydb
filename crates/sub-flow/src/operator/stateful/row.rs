@@ -59,9 +59,6 @@ impl RowNumberProvider {
 
 			internal_state_set(self.node, txn, &map_key, encode_payload(&new_row_number.0, now)?)?;
 
-			let reverse_key = self.make_reverse_map_key(new_row_number);
-			internal_state_set(self.node, txn, &reverse_key, encode_payload(&key.as_ref().to_vec(), now)?)?;
-
 			results.push((new_row_number, true));
 		}
 
@@ -86,40 +83,17 @@ impl RowNumberProvider {
 
 	pub fn remove_for_key(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<bool> {
 		let map_key = self.make_map_key(key);
-		let Some(existing_row) = internal_state_get(self.node, txn, &map_key)? else {
+		if internal_state_get(self.node, txn, &map_key)?.is_none() {
 			return Ok(false);
-		};
-		let row_num = decode_payload::<u64>(&existing_row)?;
-		let reverse_key = self.make_reverse_map_key(RowNumber(row_num));
-		internal_state_drop(self.node, txn, &map_key)?;
-		internal_state_drop(self.node, txn, &reverse_key)?;
-		Ok(true)
-	}
-
-	pub fn get_key_for_row_number(
-		&self,
-		txn: &mut FlowTransaction,
-		row_number: RowNumber,
-	) -> Result<Option<EncodedKey>> {
-		let reverse_key = self.make_reverse_map_key(row_number);
-		if let Some(encoded) = internal_state_get(self.node, txn, &reverse_key)? {
-			Ok(Some(EncodedKey::new(decode_payload::<Vec<u8>>(&encoded)?)))
-		} else {
-			Ok(None)
 		}
+		internal_state_drop(self.node, txn, &map_key)?;
+		Ok(true)
 	}
 
 	fn make_map_key(&self, key: &EncodedKey) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG);
 		serializer.extend_bytes(key.as_ref());
-		serializer.finish()
-	}
-
-	fn make_reverse_map_key(&self, row_number: RowNumber) -> EncodedKey {
-		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(FlowNodeInternalStateKey::ROW_NUMBER_REVERSE_TAG);
-		serializer.extend_u64(row_number.0);
 		serializer.finish()
 	}
 
@@ -439,20 +413,6 @@ pub mod tests {
 		let (check_rn5, is_new5) = provider.get_or_create_row_number(&mut txn, &key5).unwrap();
 		assert_eq!(check_rn5.0, 5);
 		assert!(!is_new5);
-
-		// Verify reverse mappings exist for the new keys created in batch
-		let reverse_key4 = provider.get_key_for_row_number(&mut txn, RowNumber(4)).unwrap();
-		assert_eq!(reverse_key4, Some(key4));
-
-		let reverse_key5 = provider.get_key_for_row_number(&mut txn, RowNumber(5)).unwrap();
-		assert_eq!(reverse_key5, Some(key5));
-
-		// Verify reverse mappings also exist for keys created before batch
-		let reverse_key1 = provider.get_key_for_row_number(&mut txn, RowNumber(1)).unwrap();
-		assert_eq!(reverse_key1, Some(key1));
-
-		let reverse_key2 = provider.get_key_for_row_number(&mut txn, RowNumber(2)).unwrap();
-		assert_eq!(reverse_key2, Some(key2));
 	}
 
 	#[test]
@@ -498,7 +458,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_remove_for_key_clears_both_indices() {
+	fn test_remove_for_key_clears_mapping() {
 		let mut txn = create_test_transaction();
 		let mut txn = FlowTransaction::deferred(
 			&mut txn,
@@ -510,14 +470,13 @@ pub mod tests {
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
 		let key = test_key("to_remove");
-		let (assigned, _) = provider.get_or_create_row_number(&mut txn, &key).unwrap();
-		assert_eq!(provider.get_key_for_row_number(&mut txn, assigned).unwrap(), Some(key.clone()));
+		let (_assigned, _) = provider.get_or_create_row_number(&mut txn, &key).unwrap();
+		assert!(provider.get_row_number(&mut txn, &key).unwrap().is_some());
 
 		let removed = provider.remove_for_key(&mut txn, &key).unwrap();
 		assert!(removed);
 
 		assert_eq!(provider.get_row_number(&mut txn, &key).unwrap(), None);
-		assert_eq!(provider.get_key_for_row_number(&mut txn, assigned).unwrap(), None);
 	}
 
 	#[test]
@@ -563,7 +522,7 @@ pub mod tests {
 
 	#[test]
 	fn internal_state_tags_are_pairwise_distinct() {
-		// The row-number counter/forward-map/reverse-map keys share the per-node
+		// The row-number counter/forward-map keys share the per-node
 		// FlowNodeInternalState namespace with window-meta and gate-visibility keys.
 		// Every tag must be pairwise distinct, or an operator that mixes them (e.g. a
 		// windowed operator that also assigns row numbers) would overwrite another's
@@ -571,7 +530,6 @@ pub mod tests {
 		let tags = [
 			FlowNodeInternalStateKey::ROW_NUMBER_COUNTER_TAG,
 			FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG,
-			FlowNodeInternalStateKey::ROW_NUMBER_REVERSE_TAG,
 			FlowNodeInternalStateKey::WINDOW_META_TAG,
 			FlowNodeInternalStateKey::GATE_VISIBILITY_TAG,
 		];
@@ -584,10 +542,9 @@ pub mod tests {
 
 	#[test]
 	fn mapping_values_are_postcard_encoded() {
-		// Both row-number providers must encode their stored values via postcard
-		// (encode_payload), not raw big-endian / raw bytes. This pins it: the forward
-		// map value decodes as a u64 and the reverse map value decodes as the key
-		// bytes via decode_payload. RED on the old raw-be/raw encoding.
+		// The forward map value must be encoded via postcard (encode_payload), not raw
+		// big-endian / raw bytes. This pins it: the forward map value decodes as a u64
+		// via decode_payload. RED on the old raw-be encoding.
 		let mut txn = create_test_transaction();
 		let mut txn = FlowTransaction::deferred(
 			&mut txn,
@@ -604,11 +561,6 @@ pub mod tests {
 		let forward =
 			internal_state_get(FlowNodeId(1), &mut txn, &provider.make_map_key(&key)).unwrap().unwrap();
 		assert_eq!(decode_payload::<u64>(&forward).unwrap(), rn.0);
-
-		let reverse = internal_state_get(FlowNodeId(1), &mut txn, &provider.make_reverse_map_key(rn))
-			.unwrap()
-			.unwrap();
-		assert_eq!(decode_payload::<Vec<u8>>(&reverse).unwrap(), key.as_ref().to_vec());
 	}
 
 	#[test]
