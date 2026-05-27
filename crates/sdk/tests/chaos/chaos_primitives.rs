@@ -14,6 +14,7 @@
 use reifydb_sdk::testing::chaos::{
 	ChaosHarness,
 	config::{BatchSizeDist, ChaosConfig, SupportedOps},
+	event::ChaosEvent,
 	schema::KeyStrategy,
 	strategy::samplers,
 };
@@ -69,9 +70,25 @@ chaos_test!(duplicate_burst_at_one_passthrough_matches, |seed| {
 		.expect("build")
 		.run();
 	outcome.assert_matches();
-	// Sanity: at p=1.0, many Updates should be duplicate no-ops.
-	let updates: usize = outcome.events().filter(|e| e.is_update()).count();
-	assert!(updates > 50, "expected duplicate-burst to inflate Update count; got {updates}");
+	// Sanity: at p=1.0 the generator spawns exactly one no-op duplicate
+	// (pre == post) for every real Update, so the two counts must be equal.
+	// A magnitude threshold here is flaky - the number of Update decisions in a
+	// 200-op stream is seed-dependent and its tail can dip to any value.
+	let (noop, real) = outcome.events().fold((0usize, 0usize), |(noop, real), e| match e {
+		ChaosEvent::Update {
+			pre,
+			post,
+			..
+		} if pre.encoded == post.encoded => (noop + 1, real),
+		ChaosEvent::Update {
+			..
+		} => (noop, real + 1),
+		_ => (noop, real),
+	});
+	assert_eq!(
+		noop, real,
+		"duplicate-burst at p=1.0 must spawn one no-op duplicate per real Update; got {noop} no-ops vs {real} reals"
+	);
 });
 
 chaos_test!(rewrite_at_one_passthrough_matches, |seed| {

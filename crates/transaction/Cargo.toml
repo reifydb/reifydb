@@ -11,6 +11,7 @@ description = "Transaction management and concurrency control for ReifyDB"
 default = ["test-stress"]
 test-stress = []
 worker_pool = []
+chaos = []
 
 [build-dependencies]
 reifydb-build = { workspace = true }
