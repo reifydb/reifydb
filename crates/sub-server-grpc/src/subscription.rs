@@ -2,20 +2,26 @@
 
 use std::{
 	mem,
-	sync::atomic::{AtomicUsize, Ordering},
+	sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+	},
 	time::Duration,
 };
 
 use dashmap::DashMap;
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
-use reifydb_runtime::context::{clock::Clock, rng::Rng};
+use reifydb_runtime::{
+	context::{clock::Clock, rng::Rng},
+	sync::mutex::Mutex,
+};
 use reifydb_subscription::{
 	batch::BatchId,
 	delivery::{DeliveryResult, SubscriptionDelivery},
 };
 use reifydb_type::value::{frame::frame::Frame, uuid::Uuid7};
 use reifydb_wire_format::{encode::encode_frames, options::EncodeOptions};
-use tokio::sync::mpsc;
+use tokio::sync::{Notify, mpsc};
 use tonic::Status;
 use tracing::{debug, warn};
 
@@ -100,6 +106,7 @@ pub struct GrpcSubscriptionRegistry {
 	batches: DashMap<BatchId, BatchState>,
 	clock: Clock,
 	throttle_pending: AtomicUsize,
+	wakers: Mutex<Vec<Arc<Notify>>>,
 }
 
 impl GrpcSubscriptionRegistry {
@@ -109,6 +116,7 @@ impl GrpcSubscriptionRegistry {
 			batches: DashMap::new(),
 			clock,
 			throttle_pending: AtomicUsize::new(0),
+			wakers: Mutex::new(Vec::new()),
 		}
 	}
 
@@ -145,10 +153,10 @@ impl GrpcSubscriptionRegistry {
 	}
 
 	pub fn unregister(&self, subscription_id: &SubscriptionId) {
-		if let Some((_, state)) = self.subscriptions.remove(subscription_id) {
-			if !state.throttle.pending.is_empty() {
-				self.throttle_pending.fetch_sub(1, Ordering::AcqRel);
-			}
+		if let Some((_, state)) = self.subscriptions.remove(subscription_id)
+			&& !state.throttle.pending.is_empty()
+		{
+			self.throttle_pending.fetch_sub(1, Ordering::AcqRel);
 		}
 		debug!("Unregistered gRPC subscription {}", subscription_id);
 	}
@@ -208,9 +216,14 @@ impl GrpcSubscriptionRegistry {
 		let Some(batch) = self.batches.get(&batch_id) else {
 			return false;
 		};
-		let mut entry = batch.pending.entry(subscription_id).or_default();
-		for frame in frames {
-			entry.push(frame);
+		{
+			let mut entry = batch.pending.entry(subscription_id).or_default();
+			for frame in frames {
+				entry.push(frame);
+			}
+		}
+		for waker in self.wakers.lock().iter() {
+			waker.notify_one();
 		}
 		true
 	}
@@ -282,6 +295,10 @@ impl SubscriptionDelivery for GrpcSubscriptionRegistry {
 
 	fn active_subscriptions_into(&self, out: &mut Vec<SubscriptionId>) {
 		out.extend(self.subscriptions.iter().map(|entry| *entry.key()));
+	}
+
+	fn register_waker(&self, waker: Arc<Notify>) {
+		self.wakers.lock().push(waker);
 	}
 
 	fn flush(&self) -> Option<Duration> {

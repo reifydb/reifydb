@@ -102,7 +102,7 @@ impl TierStorage for MultiPersistentTier {
 		table: EntryKind,
 		keys: &[&[u8]],
 		version: CommitVersion,
-	) -> Result<HashMap<Vec<u8>, VersionedGetResult>> {
+	) -> Result<Vec<VersionedGetResult>> {
 		match self {
 			Self::Sqlite(s) => s.get_many(table, keys, version),
 		}

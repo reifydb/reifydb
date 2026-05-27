@@ -110,15 +110,10 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 		table: EntryKind,
 		keys: &[&[u8]],
 		version: CommitVersion,
-	) -> Result<HashMap<Vec<u8>, VersionedGetResult>> {
-		let mut out = HashMap::with_capacity(keys.len());
+	) -> Result<Vec<VersionedGetResult>> {
+		let mut out = Vec::with_capacity(keys.len());
 		for &key in keys {
-			match self.get(table, key, version)? {
-				VersionedGetResult::NotFound => {}
-				resolved => {
-					out.insert(key.to_vec(), resolved);
-				}
-			}
+			out.push(self.get(table, key, version)?);
 		}
 		Ok(out)
 	}

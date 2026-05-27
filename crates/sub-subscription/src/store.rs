@@ -3,12 +3,18 @@
 
 use std::{
 	collections::{HashMap, VecDeque},
-	sync::atomic::{AtomicU64, Ordering},
+	sync::{
+		Arc,
+		atomic::{AtomicU64, Ordering},
+	},
 };
 
 use dashmap::DashMap;
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
-use reifydb_runtime::sync::rwlock::{RwLock, RwLockReadGuard};
+use reifydb_runtime::sync::{
+	mutex::Mutex,
+	rwlock::{RwLock, RwLockReadGuard},
+};
 use tokio::sync::Notify;
 
 struct SubscriptionBuffer {
@@ -24,7 +30,7 @@ pub struct SubscriptionStore {
 	default_capacity: usize,
 
 	coord: RwLock<()>,
-	wake: Notify,
+	wakers: Mutex<Vec<Arc<Notify>>>,
 }
 
 impl SubscriptionStore {
@@ -34,12 +40,12 @@ impl SubscriptionStore {
 			next_id: AtomicU64::new(1),
 			default_capacity,
 			coord: RwLock::new(()),
-			wake: Notify::new(),
+			wakers: Mutex::new(Vec::new()),
 		}
 	}
 
-	pub fn wake(&self) -> &Notify {
-		&self.wake
+	pub fn register_waker(&self, waker: Arc<Notify>) {
+		self.wakers.lock().push(waker);
 	}
 
 	pub fn next_id(&self) -> SubscriptionId {
@@ -113,7 +119,9 @@ impl SubscriptionStore {
 				}
 			}
 		}
-		self.wake.notify_one();
+		for waker in self.wakers.lock().iter() {
+			waker.notify_one();
+		}
 	}
 
 	pub fn begin_poll(&self) -> RwLockReadGuard<'_, ()> {

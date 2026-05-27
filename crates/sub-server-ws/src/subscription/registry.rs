@@ -4,13 +4,19 @@
 use std::{
 	collections::{HashMap, HashSet},
 	mem,
-	sync::atomic::{AtomicUsize, Ordering},
+	sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+	},
 	time::Duration,
 };
 
 use dashmap::DashMap;
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
-use reifydb_runtime::context::{clock::Clock, rng::Rng};
+use reifydb_runtime::{
+	context::{clock::Clock, rng::Rng},
+	sync::mutex::Mutex,
+};
 use reifydb_sub_server::{
 	format::WireFormat,
 	response::{CONTENT_TYPE_FRAMES, CONTENT_TYPE_JSON, resolve_response_json},
@@ -22,7 +28,7 @@ use reifydb_subscription::{
 use reifydb_type::value::{frame::frame::Frame, uuid::Uuid7};
 use reifydb_wire_format::{encode::encode_frames, json::to::convert_frames, options::EncodeOptions};
 use serde_json::{Value as JsonValue, from_str, json};
-use tokio::sync::mpsc;
+use tokio::sync::{Notify, mpsc};
 use tracing::{debug, info, warn};
 
 use crate::handler::{BinaryKind, encode_rbcf_envelope};
@@ -179,6 +185,7 @@ pub struct SubscriptionRegistry {
 
 	clock: Clock,
 	throttle_pending: AtomicUsize,
+	wakers: Mutex<Vec<Arc<Notify>>>,
 }
 
 impl SubscriptionRegistry {
@@ -190,6 +197,7 @@ impl SubscriptionRegistry {
 			connection_batches: DashMap::new(),
 			clock,
 			throttle_pending: AtomicUsize::new(0),
+			wakers: Mutex::new(Vec::new()),
 		}
 	}
 
@@ -350,9 +358,14 @@ impl SubscriptionRegistry {
 		let Some(batch) = self.batches.get(&batch_id) else {
 			return false;
 		};
-		let mut entry = batch.pending.entry(subscription_id).or_default();
-		for frame in frames {
-			entry.push(frame);
+		{
+			let mut entry = batch.pending.entry(subscription_id).or_default();
+			for frame in frames {
+				entry.push(frame);
+			}
+		}
+		for waker in self.wakers.lock().iter() {
+			waker.notify_one();
 		}
 		true
 	}
@@ -523,6 +536,10 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 
 	fn active_subscriptions_into(&self, out: &mut Vec<SubscriptionId>) {
 		out.extend(self.subscriptions.iter().map(|entry| *entry.key()));
+	}
+
+	fn register_waker(&self, waker: Arc<Notify>) {
+		self.wakers.lock().push(waker);
 	}
 
 	fn flush(&self) -> Option<Duration> {

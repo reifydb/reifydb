@@ -60,6 +60,7 @@ pub enum ConfigKey {
 	ThreadsCommit,
 	ThreadsBackground,
 	RuntimeMetricsInterval,
+	MetricFlushInterval,
 }
 
 impl ConfigKey {
@@ -89,6 +90,7 @@ impl ConfigKey {
 			Self::ThreadsCommit,
 			Self::ThreadsBackground,
 			Self::RuntimeMetricsInterval,
+			Self::MetricFlushInterval,
 		]
 	}
 
@@ -120,6 +122,7 @@ impl ConfigKey {
 			Self::ThreadsCommit => Value::Uint2(2),
 			Self::ThreadsBackground => Value::Uint2(1),
 			Self::RuntimeMetricsInterval => Value::Duration(Duration::from_seconds(5).unwrap()),
+			Self::MetricFlushInterval => Value::Duration(Duration::from_seconds(10).unwrap()),
 		}
 	}
 
@@ -195,6 +198,10 @@ impl ConfigKey {
 				 system::metrics::runtime::memory::snapshots. When unset, the history sampler is \
 				 dormant and only the live ::current view is available; when set, must be > 0."
 			}
+			Self::MetricFlushInterval => {
+				"How often the metric collector flushes accumulated storage and CDC stats into the \
+				 system::metrics views. Must be > 0."
+			}
 		}
 	}
 
@@ -224,6 +231,7 @@ impl ConfigKey {
 			Self::ThreadsCommit => true,
 			Self::ThreadsBackground => true,
 			Self::RuntimeMetricsInterval => false,
+			Self::MetricFlushInterval => false,
 		}
 	}
 
@@ -253,6 +261,7 @@ impl ConfigKey {
 			Self::ThreadsCommit => &[Type::Uint2],
 			Self::ThreadsBackground => &[Type::Uint2],
 			Self::RuntimeMetricsInterval => &[Type::Duration],
+			Self::MetricFlushInterval => &[Type::Duration],
 		}
 	}
 
@@ -282,6 +291,7 @@ impl ConfigKey {
 			Self::ThreadsCommit => false,
 			Self::ThreadsBackground => false,
 			Self::RuntimeMetricsInterval => true,
+			Self::MetricFlushInterval => false,
 		}
 	}
 
@@ -384,6 +394,16 @@ impl ConfigKey {
 						Ok(())
 					} else {
 						Err("RUNTIME_METRICS_INTERVAL must be greater than zero".to_string())
+					}
+				}
+				_ => Ok(()),
+			},
+			Self::MetricFlushInterval => match value {
+				Value::Duration(d) => {
+					if d.is_positive() {
+						Ok(())
+					} else {
+						Err("METRIC_FLUSH_INTERVAL must be greater than zero".to_string())
 					}
 				}
 				_ => Ok(()),
@@ -498,6 +518,7 @@ impl fmt::Display for ConfigKey {
 			Self::ThreadsCommit => write!(f, "THREADS_COMMIT"),
 			Self::ThreadsBackground => write!(f, "THREADS_BACKGROUND"),
 			Self::RuntimeMetricsInterval => write!(f, "RUNTIME_METRICS_INTERVAL"),
+			Self::MetricFlushInterval => write!(f, "METRIC_FLUSH_INTERVAL"),
 		}
 	}
 }
@@ -531,6 +552,7 @@ impl FromStr for ConfigKey {
 			"THREADS_COMMIT" => Ok(Self::ThreadsCommit),
 			"THREADS_BACKGROUND" => Ok(Self::ThreadsBackground),
 			"RUNTIME_METRICS_INTERVAL" => Ok(Self::RuntimeMetricsInterval),
+			"METRIC_FLUSH_INTERVAL" => Ok(Self::MetricFlushInterval),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
 		}
 	}
@@ -680,7 +702,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 24);
+		assert_eq!(all.len(), 25);
 		assert!(all.contains(&ConfigKey::CdcCompactInterval));
 		assert!(all.contains(&ConfigKey::CdcCompactBlockSize));
 		assert!(all.contains(&ConfigKey::CdcCompactSafetyLag));
@@ -695,6 +717,7 @@ mod tests {
 		assert!(all.contains(&ConfigKey::ThreadsCommit));
 		assert!(all.contains(&ConfigKey::ThreadsBackground));
 		assert!(all.contains(&ConfigKey::RuntimeMetricsInterval));
+		assert!(all.contains(&ConfigKey::MetricFlushInterval));
 	}
 
 	#[test]
@@ -726,6 +749,33 @@ mod tests {
 
 		let zero = Value::Duration(Duration::from_seconds(0).unwrap());
 		assert!(matches!(ConfigKey::RuntimeMetricsInterval.accept(zero), Err(AcceptError::InvalidValue(_))));
+	}
+
+	#[test]
+	fn test_metric_flush_interval_metadata() {
+		// Always-on (non-optional) Duration knob defaulting to the historical 10s flush cadence.
+		assert_eq!(
+			ConfigKey::MetricFlushInterval.default_value(),
+			Value::Duration(Duration::from_seconds(10).unwrap())
+		);
+		assert_eq!(ConfigKey::MetricFlushInterval.expected_types(), &[Type::Duration]);
+		assert!(!ConfigKey::MetricFlushInterval.is_optional());
+		assert!(!ConfigKey::MetricFlushInterval.requires_restart());
+	}
+
+	#[test]
+	fn test_metric_flush_interval_round_trip() {
+		assert_eq!("METRIC_FLUSH_INTERVAL".parse::<ConfigKey>().unwrap(), ConfigKey::MetricFlushInterval);
+		assert_eq!(format!("{}", ConfigKey::MetricFlushInterval), "METRIC_FLUSH_INTERVAL");
+	}
+
+	#[test]
+	fn test_metric_flush_interval_accepts_positive_rejects_zero() {
+		let ten = Value::Duration(Duration::from_seconds(10).unwrap());
+		assert_eq!(ConfigKey::MetricFlushInterval.accept(ten.clone()).unwrap(), ten);
+
+		let zero = Value::Duration(Duration::from_seconds(0).unwrap());
+		assert!(matches!(ConfigKey::MetricFlushInterval.accept(zero), Err(AcceptError::InvalidValue(_))));
 	}
 
 	#[test]

@@ -237,40 +237,42 @@ impl StandardMultiStore {
 
 			let buffer_results = match &self.buffer {
 				Some(buffer) => buffer.get_many(table, &key_slices, version)?,
-				None => HashMap::new(),
+				None => vec![VersionedGetResult::NotFound; key_slices.len()],
 			};
 
-			let persistent_slices: Vec<&[u8]> = table_keys
-				.iter()
-				.filter(|k| !buffer_results.contains_key(k.as_ref()))
-				.map(|k| k.as_ref())
-				.collect();
-
-			let persistent_results = if persistent_slices.is_empty() {
-				HashMap::new()
-			} else {
-				match &self.persistent {
-					Some(persistent) => persistent.get_many(table, &persistent_slices, version)?,
-					None => HashMap::new(),
+			let mut persistent_idx: Vec<usize> = Vec::new();
+			let mut persistent_slices: Vec<&[u8]> = Vec::new();
+			for (i, result) in buffer_results.iter().enumerate() {
+				if matches!(result, VersionedGetResult::NotFound) {
+					persistent_idx.push(i);
+					persistent_slices.push(key_slices[i]);
 				}
-			};
+			}
 
-			for key in table_keys {
-				let resolved = match buffer_results.get(key.as_ref()) {
-					Some(VersionedGetResult::Value {
+			let mut persistent_aligned = vec![VersionedGetResult::NotFound; key_slices.len()];
+			if !persistent_slices.is_empty()
+				&& let Some(persistent) = &self.persistent
+			{
+				let persistent_results = persistent.get_many(table, &persistent_slices, version)?;
+				for (slot, result) in persistent_idx.into_iter().zip(persistent_results) {
+					persistent_aligned[slot] = result;
+				}
+			}
+
+			for (i, key) in table_keys.into_iter().enumerate() {
+				let resolved = match &buffer_results[i] {
+					VersionedGetResult::Value {
 						value,
 						version: v,
-					}) => Some((value.clone(), *v)),
-					Some(VersionedGetResult::Tombstone) => None,
-					Some(VersionedGetResult::NotFound) | None => {
-						match persistent_results.get(key.as_ref()) {
-							Some(VersionedGetResult::Value {
-								value,
-								version: v,
-							}) => Some((value.clone(), *v)),
-							_ => None,
-						}
-					}
+					} => Some((value.clone(), *v)),
+					VersionedGetResult::Tombstone => None,
+					VersionedGetResult::NotFound => match &persistent_aligned[i] {
+						VersionedGetResult::Value {
+							value,
+							version: v,
+						} => Some((value.clone(), *v)),
+						_ => None,
+					},
 				};
 
 				if let Some((value, v)) = resolved {

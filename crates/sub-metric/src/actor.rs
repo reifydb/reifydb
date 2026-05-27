@@ -17,7 +17,10 @@ use reifydb_core::{
 		store::StatsProcessedEvent,
 	},
 	interface::{
-		catalog::ringbuffer::RingBuffer,
+		catalog::{
+			config::{ConfigKey, GetConfig},
+			ringbuffer::RingBuffer,
+		},
 		store::{MultiVersionGetPrevious, Tier},
 	},
 	profiler::ProfilerCategoryId,
@@ -38,6 +41,8 @@ use tracing::{error, trace};
 
 use crate::profiler_gauges;
 
+const DEFAULT_FLUSH_INTERVAL: StdDuration = StdDuration::from_secs(10);
+
 #[allow(dead_code)]
 pub struct MetricCollectorActor {
 	registry: Arc<MetricRegistry>,
@@ -46,7 +51,8 @@ pub struct MetricCollectorActor {
 	event_bus: EventBus,
 	single_store: SingleStore,
 	resolver: MultiStore,
-	flush_interval: StdDuration,
+	config: Option<Arc<dyn GetConfig>>,
+	flush_interval_override: Option<StdDuration>,
 }
 
 impl MetricCollectorActor {
@@ -65,13 +71,25 @@ impl MetricCollectorActor {
 			event_bus,
 			single_store,
 			resolver,
-			flush_interval: StdDuration::from_secs(10),
+			config: None,
+			flush_interval_override: None,
 		}
 	}
 
 	pub fn with_flush_interval(mut self, interval: StdDuration) -> Self {
-		self.flush_interval = interval;
+		self.flush_interval_override = Some(interval);
 		self
+	}
+
+	pub fn with_config(mut self, config: Arc<dyn GetConfig>) -> Self {
+		self.config = Some(config);
+		self
+	}
+
+	fn effective_interval(&self) -> StdDuration {
+		self.flush_interval_override
+			.or_else(|| self.config.as_ref().map(|c| c.get_config_duration(ConfigKey::MetricFlushInterval)))
+			.unwrap_or(DEFAULT_FLUSH_INTERVAL)
 	}
 
 	fn process_multi_committed(&self, state: &mut MetricActorState, event: MultiCommittedEvent) {
@@ -235,7 +253,7 @@ impl Actor for MetricCollectorActor {
 	type State = MetricActorState;
 
 	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
-		ctx.schedule_tick(self.flush_interval, |nanos| MetricMessage::Tick(DateTime::from_nanos(nanos)));
+		ctx.schedule_once(self.effective_interval(), || MetricMessage::Tick(DateTime::from_nanos(0)));
 
 		MetricActorState {
 			storage_writer: StorageStatsWriter::new(self.single_store.clone()),
@@ -247,7 +265,7 @@ impl Actor for MetricCollectorActor {
 		}
 	}
 
-	fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
+	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
 		match msg {
 			MetricMessage::Tick(_) => {
 				if let Err(e) = state.storage_writer.flush() {
@@ -258,6 +276,9 @@ impl Actor for MetricCollectorActor {
 				}
 				let _ = mem::take(&mut state.pending);
 				emit_stats_processed(&self.event_bus, &mut state.max_version);
+				ctx.schedule_once(self.effective_interval(), || {
+					MetricMessage::Tick(DateTime::from_nanos(0))
+				});
 			}
 			MetricMessage::RequestExecuted(event) => state.pending.push(event),
 			MetricMessage::MultiCommitted(event) => self.process_multi_committed(state, event),

@@ -58,7 +58,7 @@ pub struct WsClient {
 	shutdown_tx: Option<mpsc::Sender<()>>,
 	is_authenticated: bool,
 	/// Channel for receiving server-initiated Change messages.
-	change_rx: mpsc::Receiver<ChangePayload>,
+	change_rx: mpsc::UnboundedReceiver<ChangePayload>,
 	batch_routers: BatchRouters,
 	format: WireFormat,
 }
@@ -95,7 +95,7 @@ impl WsClient {
 		let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>(1);
 
 		// Channel for receiving server-initiated Change messages
-		let (change_tx, change_rx) = mpsc::channel::<ChangePayload>(100);
+		let (change_tx, change_rx) = mpsc::unbounded_channel::<ChangePayload>();
 
 		// Pending requests map
 		let pending: PendingRequests = Arc::new(Mutex::new(HashMap::new()));
@@ -136,7 +136,7 @@ impl WsClient {
 		mut request_rx: mpsc::Receiver<(Request, oneshot::Sender<ClientResponse>)>,
 		mut shutdown_rx: mpsc::Receiver<()>,
 		pending: PendingRequests,
-		change_tx: mpsc::Sender<ChangePayload>,
+		change_tx: mpsc::UnboundedSender<ChangePayload>,
 		batch_routers: BatchRouters,
 	) {
 		loop {
@@ -156,7 +156,7 @@ impl WsClient {
 							else if let Ok(push) = from_str::<ServerPush>(&text) {
 								match push {
 									ServerPush::Change(wire) => {
-										let _ = change_tx.send(payload_from_json_change(wire)).await;
+										let _ = change_tx.send(payload_from_json_change(wire));
 									}
 									ServerPush::BatchChange(wire) => {
 										let payload = batch_change_from_json(wire);
@@ -252,7 +252,7 @@ impl WsClient {
 										content_type: "application/vnd.reifydb.rbcf".to_string(),
 										body: Value::Null,
 										frames: Some(stripped),
-									}).await;
+									});
 								}
 								_ => {}
 							}

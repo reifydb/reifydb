@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
+use tokio::sync::Notify;
 
 #[derive(Debug)]
 pub enum DeliveryResult {
@@ -24,4 +25,6 @@ pub trait SubscriptionDelivery: Send + Sync {
 	fn flush(&self) -> Option<Duration> {
 		None
 	}
+
+	fn register_waker(&self, _waker: Arc<Notify>) {}
 }

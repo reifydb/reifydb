@@ -3,7 +3,10 @@
 
 use std::{sync::Arc, thread, time::Duration};
 
-use reifydb::{Database, Params, SharedRuntimeConfig, WithSubsystem, embedded as db_embedded};
+use reifydb::{
+	ConfigKey, Database, Params, SharedRuntimeConfig, Value, WithSubsystem, embedded as db_embedded,
+	value::duration::Duration as ConfigDuration,
+};
 use reifydb_metric::{
 	accumulator::StatementStatsAccumulator,
 	registry::{MetricRegistry, StaticMetricRegistry},
@@ -23,6 +26,9 @@ fn new_db_with_metrics() -> Database {
 
 	let mut db = db_embedded::memory()
 		.with_runtime_config(SharedRuntimeConfig::default().seeded(0))
+		// Seed a fast flush interval so the collector populates system::metrics::storage::table
+		// well within wait_for_metrics_processing(); the default 10s cadence would leave it empty.
+		.with_config(ConfigKey::MetricFlushInterval, Value::Duration(ConfigDuration::from_milliseconds(10).unwrap()))
 		.with_subsystem(factory)
 		.build()
 		.expect("build");

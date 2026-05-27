@@ -35,8 +35,19 @@ pub(super) fn build_get_current_sql(table_name: &str) -> String {
 }
 
 pub(super) fn build_get_many_current_sql(table_name: &str, key_count: usize) -> String {
-	let placeholders = (1..=key_count).map(|i| format!("?{i}")).collect::<Vec<_>>().join(",");
+	let placeholders = build_placeholders(key_count);
 	format!("SELECT key, version, value FROM \"{}\" WHERE key IN ({})", table_name, placeholders)
+}
+
+fn build_placeholders(key_count: usize) -> String {
+	let mut placeholders = String::with_capacity(key_count.saturating_mul(2));
+	for i in 0..key_count {
+		if i > 0 {
+			placeholders.push(',');
+		}
+		placeholders.push('?');
+	}
+	placeholders
 }
 
 pub(super) fn build_upsert_current_sql(table_name: &str) -> String {
@@ -76,7 +87,7 @@ pub(super) fn prefix_upper_bound(prefix: &[u8]) -> Vec<u8> {
 }
 
 pub(super) fn build_delete_keys_sql(table_name: &str, key_count: usize) -> String {
-	let placeholders = (1..=key_count).map(|i| format!("?{i}")).collect::<Vec<_>>().join(",");
+	let placeholders = build_placeholders(key_count);
 	format!("DELETE FROM \"{}\" WHERE key IN ({})", table_name, placeholders)
 }
 

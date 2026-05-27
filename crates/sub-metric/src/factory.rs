@@ -11,7 +11,7 @@ use reifydb_core::{
 			RequestExecutedEvent,
 		},
 	},
-	interface::catalog::id::NamespaceId,
+	interface::catalog::{config::GetConfig, id::NamespaceId},
 	util::ioc::IocContainer,
 };
 use reifydb_engine::engine::StandardEngine;
@@ -64,7 +64,9 @@ impl SubsystemFactory for MetricSubsystemFactory {
 		let multi_store = ioc.resolve::<MultiStore>()?;
 		let actor_system = runtime.actor_system();
 
-		let actor = MetricCollectorActor::new(
+		let engine = ioc.resolve::<StandardEngine>();
+
+		let mut actor = MetricCollectorActor::new(
 			self.registry,
 			self.static_registry,
 			self.accumulator,
@@ -72,6 +74,9 @@ impl SubsystemFactory for MetricSubsystemFactory {
 			single_store,
 			multi_store,
 		);
+		if let Ok(engine) = &engine {
+			actor = actor.with_config(Arc::new(engine.catalog()) as Arc<dyn GetConfig>);
+		}
 		let handle = actor_system.spawn_background("metric-collector", actor);
 		let actor_ref = handle.actor_ref().clone();
 
@@ -81,7 +86,7 @@ impl SubsystemFactory for MetricSubsystemFactory {
 		event_bus.register::<CdcEvictedEvent, _>(CdcEvictedListener::new(actor_ref.clone()));
 		event_bus.register::<ProfilerSnapshotEvent, _>(ProfilerSnapshotListener::new(actor_ref));
 
-		match ioc.resolve::<StandardEngine>() {
+		match engine {
 			Ok(engine) => {
 				engine.register_virtual_table(
 					NamespaceId::SYSTEM_METRICS_PROFILER,
