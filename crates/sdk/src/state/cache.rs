@@ -5,7 +5,7 @@ use std::{collections::HashMap, hash::Hash, mem, sync::Arc};
 
 use reifydb_core::{
 	encoded::key::{EncodedKey, IntoEncodedKey},
-	util::lru::LruCache,
+	util::lru::slab::SlabLru,
 };
 use serde::{Serialize, de::DeserializeOwned};
 
@@ -22,7 +22,7 @@ pub enum StateBackend {
 }
 
 pub struct StateCache<K, V> {
-	cache: LruCache<K, Arc<V>>,
+	cache: SlabLru<K, Arc<V>>,
 	dirty: HashMap<K, Option<Arc<V>>>,
 	backend: StateBackend,
 }
@@ -43,7 +43,7 @@ where
 
 	fn with_backend(capacity: usize, backend: StateBackend) -> Self {
 		Self {
-			cache: LruCache::new(capacity),
+			cache: SlabLru::new(capacity),
 			dirty: HashMap::new(),
 			backend,
 		}

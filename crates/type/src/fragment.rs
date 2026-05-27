@@ -8,9 +8,10 @@ use std::{
 	fmt,
 	fmt::{Display, Formatter},
 	ops::Deref,
-	sync::{Arc, Mutex, OnceLock},
+	sync::{Arc, OnceLock},
 };
 
+use reifydb_runtime::sync::mutex::Mutex;
 use serde::{
 	Deserialize, Serialize,
 	de::{self, EnumAccess, MapAccess, VariantAccess, Visitor},
@@ -22,7 +23,7 @@ static INTERN: OnceLock<Mutex<HashMap<Arc<str>, ()>>> = OnceLock::new();
 
 fn intern(text: &str) -> Arc<str> {
 	let table = INTERN.get_or_init(|| Mutex::new(HashMap::new()));
-	let mut guard = table.lock().unwrap();
+	let mut guard = table.lock();
 	if let Some((existing, _)) = guard.get_key_value(text) {
 		return existing.clone();
 	}

@@ -8,7 +8,7 @@ use reifydb_core::{
 	error::diagnostic::query,
 	fingerprint::{CompilationFingerprint, StatementFingerprint},
 	interface::catalog::series::{SeriesKey, TimestampPrecision},
-	util::lru::LruCache,
+	util::lru::arc::ArcLru,
 };
 use reifydb_runtime::hash::xxh3_128;
 use reifydb_transaction::transaction::Transaction;
@@ -77,7 +77,7 @@ pub struct Compiler(Arc<CompilerInner>);
 
 struct CompilerInner {
 	catalog: Catalog,
-	cache: LruCache<CompilationFingerprint, Arc<Vec<Compiled>>>,
+	cache: ArcLru<CompilationFingerprint, Arc<Vec<Compiled>>>,
 }
 
 impl Debug for CompilerInner {
@@ -94,7 +94,7 @@ impl Compiler {
 	pub fn new(catalog: Catalog) -> Self {
 		Self(Arc::new(CompilerInner {
 			catalog,
-			cache: LruCache::new(DEFAULT_CAPACITY),
+			cache: ArcLru::new(DEFAULT_CAPACITY),
 		}))
 	}
 
