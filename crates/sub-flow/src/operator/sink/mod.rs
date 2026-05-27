@@ -53,6 +53,14 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]
 		return Ok(columns.clone());
 	}
 
+	if columns.len() == target_columns.len()
+		&& target_columns.iter().enumerate().all(|(i, target_col)| {
+			columns.name_at(i).text() == target_col.name.as_str()
+				&& columns.data_at(i).get_type() == target_col.constraint.get_type()
+		}) {
+		return Ok(columns.clone());
+	}
+
 	let mut result_columns = Vec::with_capacity(target_columns.len());
 
 	// FIXME how to handle failing views ?!

@@ -127,8 +127,12 @@ impl MemoryPrimitiveStorage {
 		let current = entry.current.read();
 		let historical = entry.historical.read();
 
-		let mut latest: HashMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)> = HashMap::new();
-		let mut to_drop: Vec<(EncodedKey, CommitVersion)> = Vec::new();
+		let historical_entries: usize = historical.values().map(|versions| versions.len()).sum();
+
+		let mut latest: HashMap<EncodedKey, (CommitVersion, Option<CowVec<u8>>)> =
+			HashMap::with_capacity(current.len() + historical.len());
+		let mut to_drop: Vec<(EncodedKey, CommitVersion)> =
+			Vec::with_capacity(current.len() + historical_entries);
 
 		for (key, (v, val)) in current.iter() {
 			if *v <= cutoff {
@@ -543,16 +547,19 @@ impl TierStorage for MemoryPrimitiveStorage {
 			None => return Ok(Vec::new()),
 		};
 
-		let mut versions: Vec<(CommitVersion, Option<CowVec<u8>>)> = Vec::new();
-
 		let current = entry.current.read();
-		if let Some((cur_version, value)) = current.get(key) {
-			versions.push((*cur_version, value.clone()));
-		}
+		let current_hit = current.get(key).map(|(cur_version, value)| (*cur_version, value.clone()));
 		drop(current);
 
 		let historical = entry.historical.read();
-		if let Some(hist_versions) = historical.get(key) {
+		let hist_versions = historical.get(key);
+
+		let mut versions: Vec<(CommitVersion, Option<CowVec<u8>>)> =
+			Vec::with_capacity(current_hit.is_some() as usize + hist_versions.map_or(0, |v| v.len()));
+		if let Some(hit) = current_hit {
+			versions.push(hit);
+		}
+		if let Some(hist_versions) = hist_versions {
 			for (Reverse(v), value) in hist_versions.iter() {
 				versions.push((*v, value.clone()));
 			}

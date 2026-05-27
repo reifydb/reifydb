@@ -136,6 +136,7 @@ impl WsClient {
 	}
 
 	/// Connection management loop
+	#[allow(clippy::too_many_arguments)]
 	async fn connection_loop(
 		mut write: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
 		mut read: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,

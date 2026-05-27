@@ -25,6 +25,7 @@ use reifydb_core::{
 		EncodableKey, Key, cdc_exclude::should_exclude_from_cdc, kind::KeyKind, row::RowKey,
 		series_row::SeriesRowKey,
 	},
+	row::Row,
 	value::column::columns::Columns,
 };
 use reifydb_runtime::{
@@ -53,22 +54,12 @@ const CLEANUP_INTERVAL: Duration = Duration::from_secs(30);
 
 use reifydb_core::actors::cdc::{CdcProduceHandle, CdcProduceMessage};
 
+#[derive(Default)]
 struct ShapeChanges {
-	insert_post: Columns,
-	update_pre: Columns,
-	update_post: Columns,
-	remove_pre: Columns,
-}
-
-impl Default for ShapeChanges {
-	fn default() -> Self {
-		Self {
-			insert_post: Columns::empty(),
-			update_pre: Columns::empty(),
-			update_post: Columns::empty(),
-			remove_pre: Columns::empty(),
-		}
-	}
+	insert_post: Vec<Row>,
+	update_pre: Vec<Row>,
+	update_post: Vec<Row>,
+	remove_pre: Vec<Row>,
 }
 
 pub struct CdcProducerActor<S, T, H> {
@@ -200,14 +191,14 @@ where
 					let Some(post_row) = decode_row(catalog, row_number, row.clone()) else {
 						return false;
 					};
-					acc.update_pre.push_row(&pre_row);
-					acc.update_post.push_row(&post_row);
+					acc.update_pre.push(pre_row);
+					acc.update_post.push(post_row);
 					true
 				} else {
 					let Some(post_row) = decode_row(catalog, row_number, row.clone()) else {
 						return false;
 					};
-					acc.insert_post.push_row(&post_row);
+					acc.insert_post.push(post_row);
 					true
 				}
 			}
@@ -218,7 +209,7 @@ where
 				let Some(pre_row) = decode_row(catalog, row_number, row.clone()) else {
 					return false;
 				};
-				acc.remove_pre.push_row(&pre_row);
+				acc.remove_pre.push(pre_row);
 				true
 			}
 			_ => false,
@@ -265,13 +256,16 @@ where
 		for (shape, acc) in changes_by_shape {
 			let mut diffs: Vec<Diff> = Vec::with_capacity(3);
 			if !acc.insert_post.is_empty() {
-				diffs.push(Diff::insert(acc.insert_post));
+				diffs.push(Diff::insert(columns_from_rows(&acc.insert_post)));
 			}
 			if !acc.update_pre.is_empty() {
-				diffs.push(Diff::update(acc.update_pre, acc.update_post));
+				diffs.push(Diff::update(
+					columns_from_rows(&acc.update_pre),
+					columns_from_rows(&acc.update_post),
+				));
 			}
 			if !acc.remove_pre.is_empty() {
-				diffs.push(Diff::remove(acc.remove_pre));
+				diffs.push(Diff::remove(columns_from_rows(&acc.remove_pre)));
 			}
 			if !diffs.is_empty() {
 				changes.push(Change::from_shape(shape, version, diffs, changed_at));
@@ -372,6 +366,13 @@ where
 	fn on_tick(&self) {
 		self.try_cleanup();
 	}
+}
+
+#[inline]
+fn columns_from_rows(rows: &[Row]) -> Columns {
+	let mut columns = Columns::empty();
+	columns.push_rows(rows);
+	columns
 }
 
 fn push_raw_system_change(

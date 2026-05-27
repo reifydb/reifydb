@@ -23,8 +23,7 @@ use reifydb_sqlite::{
 };
 use reifydb_type::value::datetime::DateTime;
 use rusqlite::{
-	Connection, Error::QueryReturnedNoRows, Result as RusqliteResult, Transaction, params, params_from_iter,
-	types::Value as SqlValue,
+	Connection, Error::QueryReturnedNoRows, Transaction, params, params_from_iter, types::Value as SqlValue,
 };
 
 use crate::{
@@ -94,6 +93,7 @@ impl SqliteCdcStorage {
 
 	fn ensure_schema(conn: &Connection) {
 		create_cdc_table(conn);
+		create_cdc_created_at_index(conn);
 		create_cdc_block_table(conn);
 		create_block_timestamp_index(conn);
 	}
@@ -145,53 +145,6 @@ impl SqliteCdcStorage {
 		let arc = Arc::new(entries);
 		self.inner.block_cache.put(block_max, arc.clone());
 		Ok(arc)
-	}
-
-	fn read_range_live(
-		&self,
-		start: Bound<CommitVersion>,
-		end: Bound<CommitVersion>,
-		batch_size: u64,
-	) -> CdcStorageResult<CdcBatch> {
-		let (lower_sql, lower_bytes) = lower_bind_clause(start);
-		let (upper_sql, upper_bytes) = upper_bind_clause(end);
-		let sql = format!(
-			r#"SELECT payload FROM "cdc" WHERE 1=1{lower_sql}{upper_sql} ORDER BY version ASC LIMIT ?"#
-		);
-		let limit = (batch_size as i64).saturating_add(1);
-
-		let conn = self.inner.conn.lock();
-		let mut stmt = conn.prepare(&sql).map_err(|e| CdcError::Internal(format!("range prepare: {e}")))?;
-		let values = build_range_params(lower_bytes, upper_bytes, limit);
-		let rows = stmt
-			.query_map(params_from_iter(values.iter()), |row| row.get::<_, Vec<u8>>(0))
-			.map_err(|e| CdcError::Internal(format!("range rows: {e}")))?;
-
-		let (items, has_more) = decode_payload_rows(rows, batch_size as usize)?;
-		Ok(CdcBatch {
-			items,
-			has_more,
-		})
-	}
-
-	fn min_version_live(&self) -> CdcStorageResult<Option<CommitVersion>> {
-		let conn = self.inner.conn.lock();
-		let r: Option<Vec<u8>> = conn
-			.query_row(r#"SELECT MIN(version) FROM "cdc""#, [], |row| row.get::<_, Option<Vec<u8>>>(0))
-			.ok()
-			.flatten();
-		r.map(|b| bytes_to_version(&b)).transpose()
-	}
-
-	fn max_version_blocks(&self) -> CdcStorageResult<Option<CommitVersion>> {
-		let conn = self.inner.conn.lock();
-		let r: Option<Vec<u8>> = conn
-			.query_row(r#"SELECT MAX(max_version) FROM "cdc_block""#, [], |row| {
-				row.get::<_, Option<Vec<u8>>>(0)
-			})
-			.ok()
-			.flatten();
-		r.map(|b| bytes_to_version(&b)).transpose()
 	}
 
 	pub fn compact_oldest(
@@ -459,11 +412,21 @@ fn create_cdc_table(conn: &Connection) {
 	conn.execute(
 		r#"CREATE TABLE IF NOT EXISTS "cdc" (
 			version BLOB PRIMARY KEY,
-			payload BLOB NOT NULL
+			payload BLOB NOT NULL,
+			created_at INTEGER NOT NULL
 		) WITHOUT ROWID"#,
 		[],
 	)
 	.expect("Failed to create cdc table");
+}
+
+fn create_cdc_created_at_index(conn: &Connection) {
+	conn.execute(
+		r#"CREATE INDEX IF NOT EXISTS "cdc_created_at_idx"
+		   ON "cdc"(created_at)"#,
+		[],
+	)
+	.expect("Failed to create cdc_created_at index");
 }
 
 fn create_cdc_block_table(conn: &Connection) {
@@ -488,56 +451,6 @@ fn create_block_timestamp_index(conn: &Connection) {
 		[],
 	)
 	.expect("Failed to create cdc_block_max_ts index");
-}
-
-#[inline]
-fn lower_bind_clause(start: Bound<CommitVersion>) -> (&'static str, Option<[u8; 8]>) {
-	match start {
-		Bound::Included(v) => (" AND version >= ?", Some(version_to_bytes(v))),
-		Bound::Excluded(v) => (" AND version > ?", Some(version_to_bytes(v))),
-		Bound::Unbounded => ("", None),
-	}
-}
-
-#[inline]
-fn upper_bind_clause(end: Bound<CommitVersion>) -> (&'static str, Option<[u8; 8]>) {
-	match end {
-		Bound::Included(v) => (" AND version <= ?", Some(version_to_bytes(v))),
-		Bound::Excluded(v) => (" AND version < ?", Some(version_to_bytes(v))),
-		Bound::Unbounded => ("", None),
-	}
-}
-
-#[inline]
-fn build_range_params(lower_bytes: Option<[u8; 8]>, upper_bytes: Option<[u8; 8]>, limit: i64) -> Vec<SqlValue> {
-	let mut values: Vec<SqlValue> = Vec::new();
-	if let Some(b) = lower_bytes {
-		values.push(SqlValue::Blob(b.to_vec()));
-	}
-	if let Some(b) = upper_bytes {
-		values.push(SqlValue::Blob(b.to_vec()));
-	}
-	values.push(SqlValue::Integer(limit));
-	values
-}
-
-#[inline]
-fn decode_payload_rows<I>(rows: I, batch_size: usize) -> CdcStorageResult<(Vec<Cdc>, bool)>
-where
-	I: IntoIterator<Item = RusqliteResult<Vec<u8>>>,
-{
-	let mut items: Vec<Cdc> = Vec::new();
-	for row in rows {
-		let bytes = row.map_err(|e| CdcError::Internal(format!("range row: {e}")))?;
-		let cdc: Cdc =
-			from_bytes(&bytes).map_err(|e| CdcError::Codec(format!("postcard decode range: {e}")))?;
-		items.push(cdc);
-	}
-	let has_more = items.len() > batch_size;
-	if has_more {
-		items.truncate(batch_size);
-	}
-	Ok((items, has_more))
 }
 
 #[inline]
@@ -898,8 +811,12 @@ impl CdcStorage for SqliteCdcStorage {
 		let bytes = to_stdvec(cdc).map_err(|e| CdcError::Codec(format!("postcard encode: {e}")))?;
 		let conn = self.inner.conn.lock();
 		conn.execute(
-			r#"INSERT OR REPLACE INTO "cdc" (version, payload) VALUES (?1, ?2)"#,
-			params![version_to_bytes(cdc.version).as_slice(), bytes.as_slice()],
+			r#"INSERT OR REPLACE INTO "cdc" (version, payload, created_at) VALUES (?1, ?2, ?3)"#,
+			params![
+				version_to_bytes(cdc.version).as_slice(),
+				bytes.as_slice(),
+				datetime_to_nanos(&cdc.timestamp)
+			],
 		)
 		.map_err(|e| CdcError::Internal(format!("insert cdc: {e}")))?;
 		Ok(())
@@ -984,10 +901,10 @@ impl CdcStorage for SqliteCdcStorage {
 		if let Some(v) = self.try_block_index_cutoff(cutoff_nanos)? {
 			return Ok(Some(v));
 		}
-		let Some(start) = self.pick_scan_start()? else {
-			return self.max_version_blocks().map(|opt| opt.map(|v| CommitVersion(v.0.saturating_add(1))));
-		};
-		self.scan_live_for_cutoff(start, cutoff_nanos)
+		if let Some(v) = self.scan_live_cutoff_indexed(cutoff_nanos)? {
+			return Ok(Some(v));
+		}
+		self.max_version().map(|opt| opt.map(|v| CommitVersion(v.0.saturating_add(1))))
 	}
 }
 
@@ -1008,33 +925,18 @@ impl SqliteCdcStorage {
 	}
 
 	#[inline]
-	fn pick_scan_start(&self) -> CdcStorageResult<Option<CommitVersion>> {
-		self.min_version_live()
-	}
-
-	#[inline]
-	fn scan_live_for_cutoff(
-		&self,
-		start: CommitVersion,
-		cutoff_nanos: i64,
-	) -> CdcStorageResult<Option<CommitVersion>> {
-		let mut next_start = Bound::Included(start);
-		loop {
-			let batch = self.read_range_live(next_start, Bound::Unbounded, 256)?;
-			if batch.items.is_empty() {
-				let last = self.max_version()?.unwrap_or(CommitVersion(0));
-				return Ok(Some(CommitVersion(last.0.saturating_add(1))));
-			}
-			for cdc in &batch.items {
-				if datetime_to_nanos(&cdc.timestamp) >= cutoff_nanos {
-					return Ok(Some(cdc.version));
-				}
-			}
-			if !batch.has_more {
-				let last = batch.items.last().unwrap().version;
-				return Ok(Some(CommitVersion(last.0.saturating_add(1))));
-			}
-			next_start = Bound::Excluded(batch.items.last().unwrap().version);
+	fn scan_live_cutoff_indexed(&self, cutoff_nanos: i64) -> CdcStorageResult<Option<CommitVersion>> {
+		let conn = self.inner.conn.lock();
+		let result = conn.query_row(
+			r#"SELECT version FROM "cdc"
+			   WHERE created_at >= ?1 ORDER BY created_at ASC LIMIT 1"#,
+			params![cutoff_nanos],
+			|row| row.get::<_, Vec<u8>>(0),
+		);
+		match result {
+			Ok(bytes) => Ok(Some(bytes_to_version(&bytes)?)),
+			Err(QueryReturnedNoRows) => Ok(None),
+			Err(e) => Err(CdcError::Internal(format!("ttl cutoff query: {e}"))),
 		}
 	}
 

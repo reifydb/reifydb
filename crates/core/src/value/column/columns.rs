@@ -810,6 +810,61 @@ impl Columns {
 		}
 	}
 
+	pub fn push_rows(&mut self, rows: &[Row]) {
+		let Some(first) = rows.first() else {
+			return;
+		};
+		if !self.columns.is_empty() {
+			for row in rows {
+				self.push_row(row);
+			}
+			return;
+		}
+
+		let capacity = rows.len();
+		let field_count = first.shape.fields().len();
+		self.columns.make_mut().reserve(field_count);
+		self.names.make_mut().reserve(field_count);
+		self.row_numbers.make_mut().reserve(capacity);
+		self.created_at.make_mut().reserve(capacity);
+		self.updated_at.make_mut().reserve(capacity);
+
+		for (idx, field) in first.shape.fields().iter().enumerate() {
+			let value = first.shape.get_value(&first.encoded, idx);
+
+			let column_type = if matches!(value, Value::None { .. }) {
+				field.constraint.get_type()
+			} else {
+				value.get_type()
+			};
+
+			let mut data = ColumnBuffer::with_capacity(column_type.clone(), capacity);
+
+			if column_type == Type::DictionaryId
+				&& let ColumnBuffer::DictionaryId(container) = &mut data
+				&& let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
+			{
+				container.set_dictionary_id(*dict_id);
+			}
+
+			let name = first.shape.get_field_name(idx).expect("RowShape missing name for field");
+			self.names.push(Fragment::internal(name));
+			self.columns.push(data);
+		}
+
+		let columns_vec = self.columns.make_mut();
+		for row in rows {
+			for (idx, column) in columns_vec.iter_mut().enumerate() {
+				column.push_value(row.shape.get_value(&row.encoded, idx));
+			}
+		}
+		for row in rows {
+			self.row_numbers.push(row.number);
+			self.created_at.push(DateTime::from_nanos(row.encoded.created_at_nanos()));
+			self.updated_at.push(DateTime::from_nanos(row.encoded.updated_at_nanos()));
+		}
+	}
+
 	pub fn to_single_row(&self) -> Row {
 		assert_eq!(self.row_count(), 1, "to_row() requires exactly 1 row, got {}", self.row_count());
 		assert_eq!(
@@ -844,7 +899,9 @@ impl Columns {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
+	use reifydb_type::value::{
+		date::Date, datetime::DateTime, duration::Duration, ordered_f64::OrderedF64, time::Time,
+	};
 
 	use super::*;
 
@@ -901,5 +958,116 @@ pub mod tests {
 		let columns = Columns::single_row([("normal_column", Value::Int4(42))]);
 		assert_eq!(columns.len(), 1);
 		assert_eq!(columns.column("normal_column").unwrap().data().get_value(0), Value::Int4(42));
+	}
+
+	#[test]
+	fn push_rows_matches_sequential_push_row_for_multiple_rows() {
+		// push_rows pre-sizes the column buffers to the row count instead of growing them
+		// one row at a time like push_row. The CDC producer relies on the two producing an
+		// identical Columns; this pins that invariant for the multi-row case, which is the
+		// only case where push_rows takes its own (pre-sizing) branch.
+		let shape = RowShape::new(vec![
+			RowShapeField::unconstrained("id".to_string(), Type::Int4),
+			RowShapeField::unconstrained("label".to_string(), Type::Utf8),
+		]);
+
+		let make = |number: u64, id: i32, label: &str| {
+			let mut encoded = shape.allocate();
+			shape.set_values(&mut encoded, &[Value::Int4(id), Value::Utf8(label.to_string())]);
+			Row {
+				number: RowNumber::from(number),
+				encoded,
+				shape: shape.clone(),
+			}
+		};
+
+		let rows = vec![make(1, 10, "a"), make(2, 20, "bb"), make(3, 30, "ccc")];
+
+		let mut sequential = Columns::empty();
+		for row in &rows {
+			sequential.push_row(row);
+		}
+
+		let mut bulk = Columns::empty();
+		bulk.push_rows(&rows);
+
+		assert_eq!(bulk.row_count(), 3);
+		assert_eq!(bulk.len(), sequential.len());
+		assert_eq!(bulk.row_count(), sequential.row_count());
+
+		for i in 0..sequential.len() {
+			assert_eq!(bulk.name_at(i), sequential.name_at(i), "column {i} name diverged");
+			assert_eq!(
+				bulk.data_at(i).get_type(),
+				sequential.data_at(i).get_type(),
+				"column {i} type diverged"
+			);
+		}
+		for r in 0..sequential.row_count() {
+			assert_eq!(bulk.get_row(r), sequential.get_row(r), "row {r} values diverged");
+		}
+
+		let bulk_numbers: Vec<RowNumber> = bulk.row_numbers.iter().cloned().collect();
+		let seq_numbers: Vec<RowNumber> = sequential.row_numbers.iter().cloned().collect();
+		assert_eq!(bulk_numbers, seq_numbers, "row numbers diverged");
+	}
+
+	#[test]
+	fn push_rows_on_empty_slice_is_a_noop() {
+		let mut columns = Columns::empty();
+		columns.push_rows(&[]);
+		assert!(columns.is_empty());
+		assert_eq!(columns.row_count(), 0);
+	}
+
+	#[test]
+	fn push_rows_preserves_values_when_first_row_is_none_on_option_field() {
+		// Regression: push_rows used to pre-size Option columns to length=capacity (all
+		// None), then push capacity more values on top, producing a 2x-long buffer whose
+		// first half (the readable half) was all None. Manifested when projecting sumtype
+		// variant fields through a deferred view: the row at index 1 of an INSERT batch
+		// would lose its variant payload whenever row 0's value for that field was None
+		// (because row 0 carried a different variant). The bulk and sequential paths must
+		// produce identical Columns even when the first row's value at an Option field is
+		// None, since field.constraint.get_type() is consulted in that case and would hit
+		// the Option branch.
+		let shape = RowShape::new(vec![
+			RowShapeField::unconstrained("id".to_string(), Type::Int4),
+			RowShapeField::unconstrained("opt_val".to_string(), Type::Option(Box::new(Type::Float8))),
+		]);
+
+		let make = |number: u64, id: i32, opt: Value| {
+			let mut encoded = shape.allocate();
+			shape.set_values(&mut encoded, &[Value::Int4(id), opt]);
+			Row {
+				number: RowNumber::from(number),
+				encoded,
+				shape: shape.clone(),
+			}
+		};
+
+		let v = Value::Float8(OrderedF64::try_from(3.0).unwrap());
+		let rows = vec![make(1, 1, Value::none()), make(2, 2, v.clone()), make(3, 3, Value::none())];
+
+		let mut sequential = Columns::empty();
+		for row in &rows {
+			sequential.push_row(row);
+		}
+
+		let mut bulk = Columns::empty();
+		bulk.push_rows(&rows);
+
+		assert_eq!(bulk.row_count(), 3);
+		assert_eq!(bulk.row_count(), sequential.row_count());
+		for r in 0..sequential.row_count() {
+			assert_eq!(bulk.get_row(r), sequential.get_row(r), "row {r} values diverged");
+		}
+
+		// The defining assertion: the real value at row 1 must survive the bulk path.
+		let opt_col = bulk.column("opt_val").unwrap();
+		assert_eq!(opt_col.data().get_value(0), Value::none());
+		assert_eq!(opt_col.data().get_value(1), v);
+		assert_eq!(opt_col.data().get_value(2), Value::none());
+		assert_eq!(opt_col.data().len(), 3, "Option column has more entries than rows pushed");
 	}
 }

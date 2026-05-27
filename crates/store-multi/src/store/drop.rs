@@ -38,7 +38,7 @@ pub(crate) fn find_keys_to_drop<S: TierStorage>(
 
 	versioned_entries.sort_by(|a, b| b.0.cmp(&a.0));
 
-	let mut entries_to_drop = Vec::new();
+	let mut entries_to_drop = Vec::with_capacity(versioned_entries.len().saturating_sub(1));
 	let drop_key = EncodedKey::new(key.to_vec());
 
 	for (idx, (entry_version, value_bytes)) in versioned_entries.into_iter().enumerate() {
