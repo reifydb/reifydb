@@ -48,6 +48,9 @@ impl StoreBackedPoller {
 			drained,
 		} = &mut *scratch;
 		for sub_id in active.iter() {
+			if self.store.is_hydrating(sub_id) {
+				continue;
+			}
 			drained.clear();
 			self.store.drain_into(sub_id, self.batch_size, drained);
 			for columns in drained.drain(..) {

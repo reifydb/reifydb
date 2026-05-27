@@ -215,6 +215,7 @@ impl SubscriptionService for SubscriptionServiceImpl {
 
 		drop(flow_engine);
 
+		self.state.store.begin_hydration(sub_id);
 		self.state.delivery.commit_batch();
 
 		drop(outer);
@@ -231,6 +232,7 @@ impl SubscriptionService for SubscriptionServiceImpl {
 		};
 
 		let batches = self.state.store.drain(&sub_id, usize::MAX);
+		self.state.store.end_hydration(&sub_id);
 		Ok(HydrateOutcome {
 			version,
 			batches,

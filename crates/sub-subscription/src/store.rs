@@ -9,7 +9,7 @@ use std::{
 	},
 };
 
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_runtime::sync::{
 	mutex::Mutex,
@@ -31,6 +31,8 @@ pub struct SubscriptionStore {
 
 	coord: RwLock<()>,
 	wakers: Mutex<Vec<Arc<Notify>>>,
+
+	hydrating: DashSet<SubscriptionId>,
 }
 
 impl SubscriptionStore {
@@ -41,7 +43,20 @@ impl SubscriptionStore {
 			default_capacity,
 			coord: RwLock::new(()),
 			wakers: Mutex::new(Vec::new()),
+			hydrating: DashSet::new(),
 		}
+	}
+
+	pub fn begin_hydration(&self, id: SubscriptionId) {
+		self.hydrating.insert(id);
+	}
+
+	pub fn end_hydration(&self, id: &SubscriptionId) {
+		self.hydrating.remove(id);
+	}
+
+	pub fn is_hydrating(&self, id: &SubscriptionId) -> bool {
+		self.hydrating.contains(id)
 	}
 
 	pub fn register_waker(&self, waker: Arc<Notify>) {
