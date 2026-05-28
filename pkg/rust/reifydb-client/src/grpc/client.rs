@@ -32,7 +32,7 @@ use reifydb_type::{
 	},
 };
 use reifydb_wire_format::decode::decode_frames;
-use serde_json::from_str as serde_json_from_str;
+use serde_json::{Value as JsonValue, from_str as serde_json_from_str};
 use tonic::{
 	Request, Status,
 	codec::Streaming,
@@ -53,8 +53,10 @@ use super::generated::{
 	reify_db_client::ReifyDbClient, subscription_event,
 };
 use crate::{
-	AdminResult, ChangeKind, CommandResult, LoginResult, QueryResult, ResponseMeta, WireFormat,
+	AdminResult, BatchChangeEntry, BatchChangePayload, BatchMemberClosedPayload, BatchMemberInfo, BatchPushEvent,
+	ChangeKind, ChangePayload, CommandResult, LoginResult, QueryResult, ResponseMeta, WireFormat,
 	changes::{read_op_kind, strip_op_column},
+	client::{BatchSubscription as ClientBatchSubscription, ReifyClient, Subscription as ClientSubscription},
 	subscription::{BatchItem, SubscriptionConfig, build_subscription_rql},
 };
 
@@ -1162,4 +1164,168 @@ fn status_to_error(status: Status) -> Error {
 		message: status.message().to_string(),
 		..Default::default()
 	}))
+}
+
+pub struct GrpcSubscriptionAdapter {
+	inner: GrpcSubscription,
+}
+
+#[async_trait::async_trait]
+impl ClientSubscription for GrpcSubscriptionAdapter {
+	fn subscription_id(&self) -> &str {
+		self.inner.subscription_id()
+	}
+
+	async fn recv(&mut self) -> Option<ChangePayload> {
+		let change = self.inner.recv().await?;
+		Some(ChangePayload {
+			subscription_id: self.inner.subscription_id().to_string(),
+			kind: change.kind,
+			content_type: "application/vnd.reifydb.grpc".to_string(),
+			body: JsonValue::Null,
+			frames: Some(change.frames),
+		})
+	}
+}
+
+pub struct BatchGrpcSubscriptionAdapter {
+	inner: BatchGrpcSubscription,
+	members_info: Vec<BatchMemberInfo>,
+}
+
+#[async_trait::async_trait]
+impl ClientBatchSubscription for BatchGrpcSubscriptionAdapter {
+	fn batch_id(&self) -> &str {
+		self.inner.batch_id()
+	}
+
+	fn members(&self) -> &[BatchMemberInfo] {
+		&self.members_info
+	}
+
+	async fn recv(&mut self) -> Option<BatchPushEvent> {
+		let event = self.inner.recv().await?;
+		Some(match event {
+			BatchStreamEvent::Change(env) => {
+				let batch_id = env.batch_id.clone();
+				let entries = env
+					.entries
+					.into_iter()
+					.map(|(sub_id, change)| BatchChangeEntry {
+						subscription_id: sub_id,
+						kind: change.kind,
+						content_type: "application/vnd.reifydb.grpc".to_string(),
+						body: JsonValue::Null,
+						frames: Some(change.frames),
+						decode_error: None,
+					})
+					.collect();
+				BatchPushEvent::Change(BatchChangePayload {
+					batch_id,
+					entries,
+				})
+			}
+			BatchStreamEvent::MemberClosed {
+				batch_id,
+				subscription_id,
+			} => BatchPushEvent::MemberClosed(BatchMemberClosedPayload {
+				batch_id,
+				subscription_id,
+			}),
+		})
+	}
+}
+
+#[async_trait::async_trait]
+impl ReifyClient for GrpcClient {
+	fn wire_format(&self) -> WireFormat {
+		self.format
+	}
+
+	fn is_authenticated(&self) -> bool {
+		self.token.is_some()
+	}
+
+	async fn authenticate(&mut self, token: &str) -> Result<(), Error> {
+		GrpcClient::authenticate(self, token);
+		Ok(())
+	}
+
+	async fn login_with_password(&mut self, identifier: &str, password: &str) -> Result<LoginResult, Error> {
+		GrpcClient::login_with_password(self, identifier, password).await
+	}
+
+	async fn login_with_token(&mut self, token: &str) -> Result<LoginResult, Error> {
+		GrpcClient::login_with_token(self, token).await
+	}
+
+	async fn logout(&mut self) -> Result<(), Error> {
+		GrpcClient::logout(self).await
+	}
+
+	async fn admin(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		GrpcClient::admin(self, rql, params).await
+	}
+
+	async fn admin_with_meta(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
+		GrpcClient::admin_with_meta(self, rql, params).await
+	}
+
+	async fn command(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		GrpcClient::command(self, rql, params).await
+	}
+
+	async fn command_with_meta(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
+		GrpcClient::command_with_meta(self, rql, params).await
+	}
+
+	async fn query(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		GrpcClient::query(self, rql, params).await
+	}
+
+	async fn query_with_meta(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
+		GrpcClient::query_with_meta(self, rql, params).await
+	}
+
+	async fn call(&self, name: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		GrpcClient::call(self, name, params).await
+	}
+
+	async fn call_with_meta(&self, name: &str, params: Option<Params>) -> Result<CommandResult, Error> {
+		GrpcClient::call_with_meta(self, name, params).await
+	}
+
+	async fn subscribe(&self, rql: &str, config: SubscriptionConfig) -> Result<Box<dyn ClientSubscription>, Error> {
+		let inner = GrpcClient::subscribe(self, rql, config).await?;
+		Ok(Box::new(GrpcSubscriptionAdapter {
+			inner,
+		}))
+	}
+
+	async fn unsubscribe(&self, subscription_id: &str) -> Result<(), Error> {
+		GrpcClient::unsubscribe(self, subscription_id).await
+	}
+
+	async fn batch_subscribe<'a>(
+		&self,
+		items: &[BatchItem<'a>],
+	) -> Result<Box<dyn ClientBatchSubscription>, Error> {
+		let inner = GrpcClient::batch_subscribe(self, items).await?;
+		let members_info: Vec<BatchMemberInfo> = inner
+			.members()
+			.iter()
+			.map(|m| BatchMemberInfo {
+				index: m.index,
+				subscription_id: m.subscription_id.clone(),
+			})
+			.collect();
+		Ok(Box::new(BatchGrpcSubscriptionAdapter {
+			inner,
+			members_info,
+		}))
+	}
+
+	async fn batch_unsubscribe(&self, batch_id: &str) -> Result<(), Error> {
+		GrpcClient::batch_unsubscribe(self, batch_id).await
+	}
 }

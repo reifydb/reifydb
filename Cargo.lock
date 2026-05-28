@@ -2670,6 +2670,7 @@ dependencies = [
 name = "reifydb-client"
 version = "0.5.6"
 dependencies = [
+ "async-trait",
  "futures-util",
  "num-bigint",
  "prost",
@@ -3192,12 +3193,16 @@ dependencies = [
 name = "reifydb-sub-server"
 version = "0.5.6"
 dependencies = [
+ "dashmap",
  "futures-util",
  "reifydb-auth",
  "reifydb-build",
+ "reifydb-client",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-remote-proxy",
  "reifydb-runtime",
+ "reifydb-subscription",
  "reifydb-transaction",
  "reifydb-type",
  "reifydb-wire-format",

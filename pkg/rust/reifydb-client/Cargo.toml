@@ -31,6 +31,7 @@ reifydb-build = { workspace = true }
 reifydb-type = { workspace = true }
 reifydb-wire-format = { workspace = true }
 reifydb-client-derive = { workspace = true }
+async-trait = { workspace = true }
 
 # The `dst` (deterministic simulation testing) feature links AGPL-3.0-or-later
 # reifydb-core; it is an internal testing aid and is NOT part of this crate's
