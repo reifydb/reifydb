@@ -171,6 +171,7 @@ mod tests {
 				series_id,
 				bucket,
 				sequence_counter: seq,
+				sealed_at_commit_version: CommitVersion(0),
 			},
 			namespace: "test".into(),
 			name: "s".into(),

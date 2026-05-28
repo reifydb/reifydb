@@ -1,22 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::util::ioc::IocContainer;
+use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
+use reifydb_type::Result;
+
+#[cfg(feature = "column")]
 use reifydb_column::{
 	compress::{CompressConfig, Compressor},
 	registry::SnapshotRegistry,
 };
-use reifydb_core::util::ioc::IocContainer;
+#[cfg(feature = "column")]
 use reifydb_engine::engine::StandardEngine;
+#[cfg(feature = "column")]
 use reifydb_runtime::SharedRuntime;
-use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
-use reifydb_type::Result;
 
-use crate::{
-	actor::{series::SeriesMaterializationActor, table::TableMaterializationActor},
-	subsystem::{StorageConfig, StorageSubsystem},
-};
+#[cfg(feature = "column")]
+use crate::column::actor::{series::SeriesMaterializationActor, table::TableMaterializationActor};
+use crate::subsystem::{StorageConfig, StorageSubsystem};
 
 pub struct StorageSubsystemFactory {
+	#[cfg_attr(not(feature = "column"), allow(dead_code))]
 	config: StorageConfig,
 }
 
@@ -35,6 +39,7 @@ impl Default for StorageSubsystemFactory {
 }
 
 impl SubsystemFactory for StorageSubsystemFactory {
+	#[cfg(feature = "column")]
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		let runtime = ioc.resolve::<SharedRuntime>()?;
 		let engine = ioc.resolve::<StandardEngine>()?;
@@ -62,5 +67,10 @@ impl SubsystemFactory for StorageSubsystemFactory {
 		let series_ref = series_handle.actor_ref().clone();
 
 		Ok(Box::new(StorageSubsystem::new(registry, table_ref, series_ref)))
+	}
+
+	#[cfg(not(feature = "column"))]
+	fn create(self: Box<Self>, _ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+		Ok(Box::new(StorageSubsystem::new()))
 	}
 }

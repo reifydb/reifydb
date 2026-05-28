@@ -41,7 +41,7 @@ parking_lot = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, optional = true }
 reifydb-sub-api = { workspace = true }
-reifydb-sub-column = { workspace = true, optional = true }
+reifydb-sub-store = { workspace = true }
 reifydb-sub-server-admin = { workspace = true, optional = true }
 reifydb-sub-flow = { workspace = true, optional = true }
 reifydb-sub-subscription = { workspace = true, optional = true }
@@ -78,7 +78,7 @@ default = []
 alloc-jemalloc = ["reifydb-allocator/alloc-jemalloc"]
 
 # Subsystem features
-sub_column = ["dep:reifydb-sub-column"]
+column = ["reifydb-sub-store/column"]
 sub_flow = ["dep:reifydb-sub-flow", "dep:reifydb-sub-subscription"]
 sub_tracing = ["dep:reifydb-sub-tracing"]
 sub_profiler = ["dep:reifydb-sub-profiler", "dep:tracing-subscriber"]

@@ -2558,7 +2558,6 @@ dependencies = [
  "reifydb-store-multi",
  "reifydb-store-single",
  "reifydb-sub-api",
- "reifydb-sub-column",
  "reifydb-sub-flow",
  "reifydb-sub-metric",
  "reifydb-sub-profiler",
@@ -2571,6 +2570,7 @@ dependencies = [
  "reifydb-sub-server-http",
  "reifydb-sub-server-otel",
  "reifydb-sub-server-ws",
+ "reifydb-sub-store",
  "reifydb-sub-subscription",
  "reifydb-sub-task",
  "reifydb-sub-tracing",
@@ -3005,6 +3005,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-store"
+version = "0.5.6"
+dependencies = [
+ "reifydb-core",
+ "reifydb-type",
+]
+
+[[package]]
 name = "reifydb-store-multi"
 version = "0.5.6"
 dependencies = [
@@ -3044,26 +3052,6 @@ dependencies = [
  "reifydb-engine",
  "reifydb-transaction",
  "reifydb-type",
-]
-
-[[package]]
-name = "reifydb-sub-column"
-version = "0.5.6"
-dependencies = [
- "reifydb",
- "reifydb-build",
- "reifydb-catalog",
- "reifydb-column",
- "reifydb-core",
- "reifydb-engine",
- "reifydb-runtime",
- "reifydb-sub-api",
- "reifydb-transaction",
- "reifydb-type",
- "serde",
- "thiserror 2.0.18",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -3344,6 +3332,26 @@ dependencies = [
  "tokio-tungstenite",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "reifydb-sub-store"
+version = "0.5.6"
+dependencies = [
+ "reifydb",
+ "reifydb-build",
+ "reifydb-catalog",
+ "reifydb-column",
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-runtime",
+ "reifydb-sub-api",
+ "reifydb-transaction",
+ "reifydb-type",
+ "serde",
+ "thiserror 2.0.18",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

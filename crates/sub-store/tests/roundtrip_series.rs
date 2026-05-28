@@ -5,7 +5,7 @@ use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
 use reifydb::{Params, WithSubsystem, embedded as db_embedded};
 use reifydb_column::reader::SnapshotReader;
-use reifydb_sub_column::{
+use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
@@ -76,7 +76,7 @@ fn series_materialization_produces_snapshot_in_registry() {
 		let snap = registry.get(&meta.id).expect("snapshot fetchable by id");
 
 		let schema_names: Vec<&str> = snap.block.schema.iter().map(|(n, _, _)| n.as_str()).collect();
-		assert_eq!(schema_names, vec!["k", "value"]);
+		assert_eq!(schema_names, vec!["k", "value", "#rownum", "#created_at", "#updated_at"]);
 
 		let mut reader = SnapshotReader::new(Arc::clone(&snap), 100);
 		let batch = reader.next().expect("batch present").expect("read batch");

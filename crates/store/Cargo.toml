@@ -1,0 +1,12 @@
+[package]
+name = "reifydb-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Row-tier store layer: page model and residency traits"
+
+[dependencies]
+reifydb-core = { workspace = true }
+reifydb-type = { workspace = true }

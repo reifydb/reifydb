@@ -6,7 +6,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use reifydb_column::{
 	compress::Compressor,
 	registry::SnapshotRegistry,
-	snapshot::{Snapshot, SnapshotId, SnapshotSource},
+	snapshot::{Snapshot, SnapshotId, SnapshotSource, SystemColumn},
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -32,11 +32,11 @@ use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
 use reifydb_type::{
 	Result,
 	params::Params,
-	value::{datetime::DateTime, identity::IdentityId},
+	value::{datetime::DateTime, identity::IdentityId, r#type::Type},
 };
 use tracing::{debug, warn};
 
-use crate::actor::{TableMessage, batches::column_block_from_batches};
+use crate::column::actor::{TableMessage, batches::column_block_from_batches};
 
 pub struct TableMaterializationState {
 	pub last_seen: HashMap<TableId, CommitVersion>,
@@ -129,7 +129,11 @@ impl TableMaterializationActor {
 			batches.push(batch);
 		}
 
-		let schema: Vec<_> = table.columns.iter().map(|c| (c.name.clone(), c.constraint.get_type())).collect();
+		let mut schema: Vec<(String, Type)> =
+			table.columns.iter().map(|c| (c.name.clone(), c.constraint.get_type())).collect();
+		for sc in SystemColumn::ALL {
+			schema.push((sc.name().to_string(), sc.ty()));
+		}
 		let block = column_block_from_batches(schema, batches, &self.compressor)?;
 
 		let namespace = self

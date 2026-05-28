@@ -11,6 +11,10 @@ use crate::{
 		row::EncodedRow,
 	},
 	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
+	key::{
+		EncodableKeyRange, Key, flow_node_internal_state::FlowNodeInternalStateKeyRange,
+		flow_node_state::FlowNodeStateKeyRange, kind::KeyKind, row::RowKeyRange,
+	},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -26,6 +30,35 @@ pub enum EntryKind {
 	Source(ShapeId),
 
 	Operator(FlowNodeId),
+}
+
+pub fn classify_key(key: &EncodedKey) -> EntryKind {
+	match Key::decode(key) {
+		Some(Key::Row(row_key)) => EntryKind::Source(row_key.shape),
+		Some(Key::FlowNodeState(state_key)) => EntryKind::Operator(state_key.node),
+		Some(Key::FlowNodeInternalState(internal_key)) => EntryKind::Operator(internal_key.node),
+		_ => EntryKind::Multi,
+	}
+}
+
+pub fn is_single_version_semantics_key(key: &EncodedKey) -> bool {
+	Key::kind(key).is_some_and(|kind| matches!(kind, KeyKind::FlowNodeState | KeyKind::FlowNodeInternalState))
+}
+
+pub fn classify_range(range: &EncodedKeyRange) -> Option<EntryKind> {
+	if let (Some(start), Some(_end)) = RowKeyRange::decode(range) {
+		return Some(EntryKind::Source(start.shape));
+	}
+
+	if let (Some(start), Some(_end)) = FlowNodeStateKeyRange::decode(range) {
+		return Some(EntryKind::Operator(start.node));
+	}
+
+	if let (Some(start), Some(_end)) = FlowNodeInternalStateKeyRange::decode(range) {
+		return Some(EntryKind::Operator(start.node));
+	}
+
+	None
 }
 
 #[derive(Debug, Clone)]
@@ -65,12 +98,35 @@ pub trait MultiVersionCommit: Send + Sync {
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()>;
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ReadOptions {
+	pub bypass_buffer: bool,
+}
+
 pub trait MultiVersionGet: Send + Sync {
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>>;
+
+	fn get_with_options(
+		&self,
+		key: &EncodedKey,
+		version: CommitVersion,
+		_options: ReadOptions,
+	) -> Result<Option<MultiVersionRow>> {
+		self.get(key, version)
+	}
 }
 
 pub trait MultiVersionContains: Send + Sync {
 	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool>;
+
+	fn contains_with_options(
+		&self,
+		key: &EncodedKey,
+		version: CommitVersion,
+		_options: ReadOptions,
+	) -> Result<bool> {
+		self.contains(key, version)
+	}
 }
 
 pub trait MultiVersionGetPrevious: Send + Sync {

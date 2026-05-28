@@ -1,11 +1,11 @@
 [package]
-name = "reifydb-sub-column"
+name = "reifydb-sub-store"
 authors.workspace = true
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Storage materialization subsystem for ReifyDB."
+description = "General storage subsystem for ReifyDB."
 
 [build-dependencies]
 reifydb-build = { workspace = true }
@@ -22,6 +22,10 @@ reifydb-type = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+
+[features]
+default = ["column"]
+column = []
 
 [dev-dependencies]
 reifydb = { workspace = true }

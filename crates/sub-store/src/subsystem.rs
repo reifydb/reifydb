@@ -10,14 +10,18 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_column::registry::SnapshotRegistry;
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
-use reifydb_runtime::actor::mailbox::ActorRef;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_type::Result;
 use tracing::{debug, info};
 
-use crate::actor::{SeriesMessage, TableMessage};
+#[cfg(feature = "column")]
+use reifydb_column::registry::SnapshotRegistry;
+#[cfg(feature = "column")]
+use reifydb_runtime::actor::mailbox::ActorRef;
+
+#[cfg(feature = "column")]
+use crate::column::actor::{SeriesMessage, TableMessage};
 
 #[derive(Clone, Debug)]
 pub struct StorageConfig {
@@ -42,13 +46,17 @@ impl Default for StorageConfig {
 }
 
 pub struct StorageSubsystem {
+	#[cfg(feature = "column")]
 	registry: SnapshotRegistry,
+	#[cfg(feature = "column")]
 	table_ref: ActorRef<TableMessage>,
+	#[cfg(feature = "column")]
 	series_ref: ActorRef<SeriesMessage>,
 	running: Arc<AtomicBool>,
 }
 
 impl StorageSubsystem {
+	#[cfg(feature = "column")]
 	pub fn new(
 		registry: SnapshotRegistry,
 		table_ref: ActorRef<TableMessage>,
@@ -62,17 +70,32 @@ impl StorageSubsystem {
 		}
 	}
 
+	#[cfg(not(feature = "column"))]
+	pub fn new() -> Self {
+		Self {
+			running: Arc::new(AtomicBool::new(false)),
+		}
+	}
+
+	#[cfg(feature = "column")]
 	pub fn registry(&self) -> SnapshotRegistry {
 		self.registry.clone()
+	}
+}
+
+#[cfg(not(feature = "column"))]
+impl Default for StorageSubsystem {
+	fn default() -> Self {
+		Self::new()
 	}
 }
 
 impl HasVersion for StorageSubsystem {
 	fn version(&self) -> SystemVersion {
 		SystemVersion {
-			name: "sub-column".to_string(),
+			name: "sub-store".to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
-			description: "Columnar snapshot materialization subsystem".to_string(),
+			description: "General storage subsystem".to_string(),
 			r#type: ComponentType::Subsystem,
 		}
 	}
@@ -87,7 +110,7 @@ impl Subsystem for StorageSubsystem {
 		if self.running.swap(true, Ordering::SeqCst) {
 			return Ok(());
 		}
-		info!("Storage (columnar materialization) subsystem started");
+		info!("Storage subsystem started");
 		Ok(())
 	}
 
@@ -96,8 +119,11 @@ impl Subsystem for StorageSubsystem {
 			return Ok(());
 		}
 
-		let _ = self.table_ref.send(TableMessage::Shutdown);
-		let _ = self.series_ref.send(SeriesMessage::Shutdown);
+		#[cfg(feature = "column")]
+		{
+			let _ = self.table_ref.send(TableMessage::Shutdown);
+			let _ = self.series_ref.send(SeriesMessage::Shutdown);
+		}
 		debug!("Storage subsystem shutdown signalled");
 		Ok(())
 	}

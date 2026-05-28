@@ -13,6 +13,43 @@ use reifydb_type::{Result, value::r#type::Type};
 
 use crate::bucket::{Bucket, BucketId};
 
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum SystemColumn {
+	RowNumber = 0,
+	CreatedAt = 1,
+	UpdatedAt = 2,
+}
+
+impl SystemColumn {
+	pub const ALL: [SystemColumn; 3] = [SystemColumn::RowNumber, SystemColumn::CreatedAt, SystemColumn::UpdatedAt];
+
+	pub const fn name(self) -> &'static str {
+		match self {
+			SystemColumn::RowNumber => "#rownum",
+			SystemColumn::CreatedAt => "#created_at",
+			SystemColumn::UpdatedAt => "#updated_at",
+		}
+	}
+
+	pub const fn ty(self) -> Type {
+		match self {
+			SystemColumn::RowNumber => Type::Uint8,
+			SystemColumn::CreatedAt => Type::DateTime,
+			SystemColumn::UpdatedAt => Type::DateTime,
+		}
+	}
+
+	pub fn from_name(name: &str) -> Option<SystemColumn> {
+		match name {
+			"#rownum" => Some(SystemColumn::RowNumber),
+			"#created_at" => Some(SystemColumn::CreatedAt),
+			"#updated_at" => Some(SystemColumn::UpdatedAt),
+			_ => None,
+		}
+	}
+}
+
 #[derive(Clone)]
 pub struct ColumnChunks {
 	pub ty: Type,
@@ -148,6 +185,7 @@ pub enum SnapshotSource {
 		series_id: SeriesId,
 		bucket: Bucket,
 		sequence_counter: u64,
+		sealed_at_commit_version: CommitVersion,
 	},
 }
 

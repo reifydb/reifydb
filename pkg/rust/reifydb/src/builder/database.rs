@@ -57,8 +57,6 @@ use reifydb_sqlite::SqliteConfig;
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::SubsystemFactory;
-#[cfg(feature = "sub_column")]
-use reifydb_sub_column::factory::StorageSubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::{builder::FlowConfigurator, subsystem::factory::FlowSubsystemFactory};
 #[cfg(feature = "sub_profiler")]
@@ -70,6 +68,7 @@ use reifydb_sub_replication::factory::ReplicationSubsystemFactory;
 use reifydb_sub_runtime::factory::RuntimeSubsystemFactory;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_sub_server::interceptor::RequestInterceptorChain;
+use reifydb_sub_store::factory::StorageSubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystemFactory;
 #[cfg(not(reifydb_single_threaded))]
@@ -569,7 +568,6 @@ impl DatabaseBuilder {
 			subsystems.add_subsystem(subsystem);
 		}
 
-		#[cfg(feature = "sub_column")]
 		{
 			let factory: Box<dyn SubsystemFactory> = Box::new(StorageSubsystemFactory::default());
 			let subsystem = factory.create(&self.ioc)?;

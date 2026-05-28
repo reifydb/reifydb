@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 //! Storage-materialization subsystem: the actor that turns committed deltas into materialized columns in the columnar
-//! store. Subscribes to CDC, batches writes per shape, drives the encoders in `column/`, and updates the catalog
+//! store. Subscribes to CDC, batches writes per shape, drives the encoders in `reifydb-column`, and updates the catalog
 //! registry so newly-written columns are visible to readers.
 //!
 //! The subsystem owns the trade-off between materialization latency and write amplification - too aggressive and
@@ -11,5 +11,3 @@
 
 pub mod actor;
 pub mod error;
-pub mod factory;
-pub mod subsystem;
