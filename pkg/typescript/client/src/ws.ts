@@ -206,6 +206,8 @@ export class WsClient {
     private reconnect_attempts: number = 0;
     private should_reconnect: boolean = true;
     private is_reconnecting: boolean = false;
+    private reconnect_timer: ReturnType<typeof setTimeout> | null = null;
+    private reconnect_cancel: (() => void) | null = null;
     private subscriptions = new Map<string, SubscriptionState>();
     private batches = new Map<string, BatchState>();
     private sub_to_batch = new Map<string, string>();
@@ -863,12 +865,46 @@ export class WsClient {
         this.options = {...this.options, token: undefined};
     }
 
-    disconnect() {
+    async disconnect(): Promise<void> {
         this.should_reconnect = false;
         this.subscriptions.clear();
         this.batches.clear();
         this.sub_to_batch.clear();
-        this.socket.close();
+
+        if (this.reconnect_timer !== null) {
+            clearTimeout(this.reconnect_timer);
+            this.reconnect_timer = null;
+        }
+        if (this.reconnect_cancel !== null) {
+            const cancel = this.reconnect_cancel;
+            this.reconnect_cancel = null;
+            cancel();
+        }
+
+        const socket = this.socket;
+        if (socket.readyState === 3) {
+            return;
+        }
+
+        await new Promise<void>(resolve => {
+            const close_timeout_ms = 250;
+            let settled = false;
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeout);
+                socket.removeEventListener("close", on_close);
+                resolve();
+            };
+            const on_close = () => finish();
+            const timeout = setTimeout(finish, close_timeout_ms);
+            socket.addEventListener("close", on_close);
+            try {
+                socket.close();
+            } catch {
+                finish();
+            }
+        });
     }
 
     private handle_disconnect() {
@@ -896,7 +932,26 @@ export class WsClient {
 
         console.log(`Attempting reconnection in ${delay}ms`);
 
-        await new Promise(resolve => setTimeout(resolve, delay));
+        const cancelled = await new Promise<boolean>(resolve => {
+            this.reconnect_cancel = () => {
+                if (this.reconnect_timer !== null) {
+                    clearTimeout(this.reconnect_timer);
+                    this.reconnect_timer = null;
+                }
+                this.reconnect_cancel = null;
+                resolve(true);
+            };
+            this.reconnect_timer = setTimeout(() => {
+                this.reconnect_timer = null;
+                this.reconnect_cancel = null;
+                resolve(false);
+            }, delay);
+        });
+
+        if (cancelled || !this.should_reconnect) {
+            this.is_reconnecting = false;
+            return;
+        }
 
         try {
             const socket = await create_web_socket(this.options.url);
@@ -928,6 +983,12 @@ export class WsClient {
                     socket.addEventListener("open", on_open);
                     socket.addEventListener("error", on_error);
                 });
+            }
+
+            if (!this.should_reconnect) {
+                socket.close();
+                this.is_reconnecting = false;
+                return;
             }
 
             if (this.options.token) {

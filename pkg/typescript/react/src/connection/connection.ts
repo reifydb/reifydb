@@ -109,9 +109,7 @@ export class Connection {
         if (this.state.client) {
             try {
                 if ('disconnect' in this.state.client) {
-                    (this.state.client as WsClient).disconnect();
-                    // Small delay to ensure WebSocket closes cleanly
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    await (this.state.client as WsClient).disconnect();
                 }
             } catch (err) {
                 console.error('Error disconnecting:', err);
