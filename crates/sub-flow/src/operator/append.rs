@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::RefCell, ops::Bound, sync::Arc, time::Duration};
+use std::{cell::RefCell, ops::Bound, time::Duration};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
@@ -295,13 +295,13 @@ impl AppendOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		parent_index: usize,
-		post: Arc<Columns>,
+		post: Columns,
 	) -> Result<Option<Diff>> {
 		if post.row_count() == 0 {
 			return Ok(None);
 		}
 		let output_row_numbers = self.translate_create_row_numbers(txn, parent_index, &post)?;
-		let output = Arc::unwrap_or_clone(post).with_row_numbers(output_row_numbers);
+		let output = post.with_row_numbers(output_row_numbers);
 		Ok(Some(Diff::insert(output)))
 	}
 
@@ -310,8 +310,8 @@ impl AppendOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		parent_index: usize,
-		pre: Arc<Columns>,
-		post: Arc<Columns>,
+		pre: Columns,
+		post: Columns,
 	) -> Result<Option<Diff>> {
 		if post.row_count() == 0 {
 			return Ok(None);
@@ -323,8 +323,8 @@ impl AppendOperator {
 		for composite_key in &composite_keys {
 			self.touch_timestamp(txn, composite_key)?;
 		}
-		let pre_output = Arc::unwrap_or_clone(pre).with_row_numbers(output_row_numbers.clone());
-		let post_output = Arc::unwrap_or_clone(post).with_row_numbers(output_row_numbers);
+		let pre_output = pre.with_row_numbers(output_row_numbers.clone());
+		let post_output = post.with_row_numbers(output_row_numbers);
 		Ok(Some(Diff::update(pre_output, post_output)))
 	}
 
@@ -333,7 +333,7 @@ impl AppendOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		parent_index: usize,
-		pre: Arc<Columns>,
+		pre: Columns,
 	) -> Result<Option<Diff>> {
 		if pre.row_count() == 0 {
 			return Ok(None);
@@ -345,7 +345,7 @@ impl AppendOperator {
 		for composite_key in &composite_keys {
 			self.forget_mapping(txn, composite_key)?;
 		}
-		let output = Arc::unwrap_or_clone(pre).with_row_numbers(output_row_numbers);
+		let output = pre.with_row_numbers(output_row_numbers);
 		Ok(Some(Diff::remove(output)))
 	}
 }

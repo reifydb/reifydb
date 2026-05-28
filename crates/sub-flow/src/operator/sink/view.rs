@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
-
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	encoded::{
@@ -101,7 +99,7 @@ impl SinkTableViewOperator {
 		txn: &mut FlowTransaction,
 		view: &View,
 		shape: &RowShape,
-		post: &Arc<Columns>,
+		post: &Columns,
 	) -> Result<()> {
 		let coerced = coerce_columns(post, view.columns())?;
 		let row_count = coerced.row_count();
@@ -131,8 +129,8 @@ impl SinkTableViewOperator {
 		txn: &mut FlowTransaction,
 		view: &View,
 		shape: &RowShape,
-		pre: &Arc<Columns>,
-		post: &Arc<Columns>,
+		pre: &Columns,
+		post: &Columns,
 	) -> Result<()> {
 		let coerced_pre = coerce_columns(pre, view.columns())?;
 		let coerced_post = coerce_columns(post, view.columns())?;
@@ -191,7 +189,7 @@ impl SinkTableViewOperator {
 	}
 
 	#[inline]
-	fn apply_table_view_remove(&self, txn: &mut FlowTransaction, view: &View, pre: &Arc<Columns>) -> Result<()> {
+	fn apply_table_view_remove(&self, txn: &mut FlowTransaction, view: &View, pre: &Columns) -> Result<()> {
 		let coerced = coerce_columns(pre, view.columns())?;
 		let row_count = coerced.row_count();
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);

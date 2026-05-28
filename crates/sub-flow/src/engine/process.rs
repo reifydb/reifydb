@@ -81,9 +81,8 @@ impl FlowEngine {
 					continue;
 				}
 
-				let arc = Arc::new(combined_output);
 				for child_id in &node.outputs {
-					pending.entry(*child_id).or_default().push((*arc).clone());
+					pending.entry(*child_id).or_default().push(combined_output.clone());
 				}
 			}
 		}
@@ -131,7 +130,7 @@ impl FlowEngine {
 		let merged = Change::merge(inbox)?;
 		let version = merged.version;
 		let changed_at = merged.changed_at;
-		let result = self.apply(txn, node, Arc::new(merged))?;
+		let result = self.apply(txn, node, merged)?;
 		let combined = Change::from_flow(node.id, version, result.diffs, changed_at.max(result.changed_at));
 		Ok(combined)
 	}
@@ -149,17 +148,15 @@ impl FlowEngine {
 		apply_time_us = field::Empty,
 		coalesce_time_us = field::Empty
 	))]
-	fn apply(&self, txn: &mut FlowTransaction, node: &FlowNode, change: Arc<Change>) -> Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, node: &FlowNode, change: Change) -> Result<Change> {
 		let lock_start = self.runtime_context.clock.instant();
 		let operator = self.operators.get(&node.id).unwrap().clone();
 		Span::current().record("lock_wait_us", lock_start.elapsed().as_micros() as u64);
 
 		Span::current().record("input_rows", change.row_count());
 
-		let owned = Arc::try_unwrap(change).unwrap_or_else(|arc| (*arc).clone());
-
 		let apply_start = self.runtime_context.clock.instant();
-		let result = operator.apply(txn, owned)?;
+		let result = operator.apply(txn, change)?;
 		Span::current().record("apply_time_us", apply_start.elapsed().as_micros() as u64);
 		Span::current().record("output_diffs_raw", result.diffs.len());
 
@@ -190,9 +187,8 @@ impl FlowEngine {
 			if let Some(inbox) = pending.remove(&node_id).filter(|v| !v.is_empty()) {
 				let combined_output = self.dispatch_node(txn, &node, inbox)?;
 				if !combined_output.diffs.is_empty() {
-					let arc = Arc::new(combined_output);
 					for child_id in &node.outputs {
-						pending.entry(*child_id).or_default().push((*arc).clone());
+						pending.entry(*child_id).or_default().push(combined_output.clone());
 					}
 				}
 			}
@@ -217,9 +213,8 @@ impl FlowEngine {
 				},
 			)? && !tick_emission.diffs.is_empty()
 			{
-				let arc = Arc::new(tick_emission);
 				for child_id in &node.outputs {
-					pending.entry(*child_id).or_default().push((*arc).clone());
+					pending.entry(*child_id).or_default().push(tick_emission.clone());
 				}
 			}
 		}

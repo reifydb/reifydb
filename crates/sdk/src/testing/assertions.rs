@@ -75,7 +75,7 @@ impl<'a> ChangeAssertion<'a> {
 				Diff::Insert {
 					post,
 					..
-				} => Some(post.as_ref()),
+				} => Some(post),
 				_ => None,
 			})
 			.collect()
@@ -90,7 +90,7 @@ impl<'a> ChangeAssertion<'a> {
 					pre,
 					post,
 					..
-				} => Some((pre.as_ref(), post.as_ref())),
+				} => Some((pre, post)),
 				_ => None,
 			})
 			.collect()
@@ -104,7 +104,7 @@ impl<'a> ChangeAssertion<'a> {
 				Diff::Remove {
 					pre,
 					..
-				} => Some(pre.as_ref()),
+				} => Some(pre),
 				_ => None,
 			})
 			.collect()

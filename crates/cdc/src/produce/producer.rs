@@ -265,13 +265,13 @@ where
 		for (shape, acc) in changes_by_shape {
 			let mut diffs: Vec<Diff> = Vec::with_capacity(3);
 			if !acc.insert_post.is_empty() {
-				diffs.push(Diff::insert_arc(Arc::new(acc.insert_post)));
+				diffs.push(Diff::insert(acc.insert_post));
 			}
 			if !acc.update_pre.is_empty() {
-				diffs.push(Diff::update_arc(Arc::new(acc.update_pre), Arc::new(acc.update_post)));
+				diffs.push(Diff::update(acc.update_pre, acc.update_post));
 			}
 			if !acc.remove_pre.is_empty() {
-				diffs.push(Diff::remove_arc(Arc::new(acc.remove_pre)));
+				diffs.push(Diff::remove(acc.remove_pre));
 			}
 			if !diffs.is_empty() {
 				changes.push(Change::from_shape(shape, version, diffs, changed_at));

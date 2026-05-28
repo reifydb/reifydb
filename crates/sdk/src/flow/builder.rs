@@ -83,19 +83,19 @@ impl ChangeBuilder {
 				Diff::Insert {
 					post,
 					..
-				} => Diff::insert(Self::ensure_timestamps((*post).clone(), timestamp)),
+				} => Diff::insert(Self::ensure_timestamps(post, timestamp)),
 				Diff::Update {
 					pre,
 					post,
 					..
 				} => Diff::update(
-					Self::ensure_timestamps((*pre).clone(), timestamp),
-					Self::ensure_timestamps((*post).clone(), timestamp),
+					Self::ensure_timestamps(pre, timestamp),
+					Self::ensure_timestamps(post, timestamp),
 				),
 				Diff::Remove {
 					pre,
 					..
-				} => Diff::remove(Self::ensure_timestamps((*pre).clone(), timestamp)),
+				} => Diff::remove(Self::ensure_timestamps(pre, timestamp)),
 			})
 			.collect();
 		Change::from_flow(self.operator_id, self.version, diffs, self.changed_at)

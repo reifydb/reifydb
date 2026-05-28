@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem, sync::Arc};
+use std::mem;
 
 use reifydb_abi::flow::diff::DiffType;
 use reifydb_type::{Result, value::datetime::DateTime};
@@ -25,16 +25,16 @@ pub enum ChangeOrigin {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Diff {
 	Insert {
-		post: Arc<Columns>,
+		post: Columns,
 		origin: Option<ChangeOrigin>,
 	},
 	Update {
-		pre: Arc<Columns>,
-		post: Arc<Columns>,
+		pre: Columns,
+		post: Columns,
 		origin: Option<ChangeOrigin>,
 	},
 	Remove {
-		pre: Arc<Columns>,
+		pre: Columns,
 		origin: Option<ChangeOrigin>,
 	},
 }
@@ -42,34 +42,12 @@ pub enum Diff {
 impl Diff {
 	pub fn insert(post: Columns) -> Self {
 		Self::Insert {
-			post: Arc::new(post),
-			origin: None,
-		}
-	}
-
-	pub fn update(pre: Columns, post: Columns) -> Self {
-		Self::Update {
-			pre: Arc::new(pre),
-			post: Arc::new(post),
-			origin: None,
-		}
-	}
-
-	pub fn remove(pre: Columns) -> Self {
-		Self::Remove {
-			pre: Arc::new(pre),
-			origin: None,
-		}
-	}
-
-	pub fn insert_arc(post: Arc<Columns>) -> Self {
-		Self::Insert {
 			post,
 			origin: None,
 		}
 	}
 
-	pub fn update_arc(pre: Arc<Columns>, post: Arc<Columns>) -> Self {
+	pub fn update(pre: Columns, post: Columns) -> Self {
 		Self::Update {
 			pre,
 			post,
@@ -77,7 +55,7 @@ impl Diff {
 		}
 	}
 
-	pub fn remove_arc(pre: Arc<Columns>) -> Self {
+	pub fn remove(pre: Columns) -> Self {
 		Self::Remove {
 			pre,
 			origin: None,
@@ -277,9 +255,6 @@ impl Change {
 }
 
 fn merge_into(target: &mut Diff, source: Diff) -> Result<()> {
-	fn unwrap_or_clone(arc: Arc<Columns>) -> Columns {
-		Arc::try_unwrap(arc).unwrap_or_else(|arc| (*arc).clone())
-	}
 	match (target, source) {
 		(
 			Diff::Insert {
@@ -290,7 +265,7 @@ fn merge_into(target: &mut Diff, source: Diff) -> Result<()> {
 				post: s,
 				..
 			},
-		) => Arc::make_mut(t).append_all(unwrap_or_clone(s)),
+		) => t.append_all(s),
 		(
 			Diff::Update {
 				pre: tp,
@@ -303,8 +278,8 @@ fn merge_into(target: &mut Diff, source: Diff) -> Result<()> {
 				..
 			},
 		) => {
-			Arc::make_mut(tp).append_all(unwrap_or_clone(sp))?;
-			Arc::make_mut(tpost).append_all(unwrap_or_clone(spost))
+			tp.append_all(sp)?;
+			tpost.append_all(spost)
 		}
 		(
 			Diff::Remove {
@@ -315,7 +290,7 @@ fn merge_into(target: &mut Diff, source: Diff) -> Result<()> {
 				pre: s,
 				..
 			},
-		) => Arc::make_mut(t).append_all(unwrap_or_clone(s)),
+		) => t.append_all(s),
 		_ => unreachable!("merge_into requires matching diff kinds"),
 	}
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
@@ -175,12 +175,7 @@ impl Operator for GateOperator {
 
 impl GateOperator {
 	#[inline]
-	fn apply_gate_insert(
-		&self,
-		txn: &mut FlowTransaction,
-		post: &Arc<Columns>,
-		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	fn apply_gate_insert(&self, txn: &mut FlowTransaction, post: &Columns, result: &mut Vec<Diff>) -> Result<()> {
 		if post.row_numbers.is_empty() {
 			let mask = self.evaluate(post)?;
 			let passing_indices: Vec<usize> =
@@ -210,8 +205,8 @@ impl GateOperator {
 	fn apply_gate_update(
 		&self,
 		txn: &mut FlowTransaction,
-		pre: Arc<Columns>,
-		post: Arc<Columns>,
+		pre: Columns,
+		post: Columns,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
 		if post.row_numbers.is_empty() {
@@ -249,12 +244,7 @@ impl GateOperator {
 	}
 
 	#[inline]
-	fn apply_gate_remove(
-		&self,
-		txn: &mut FlowTransaction,
-		pre: Arc<Columns>,
-		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	fn apply_gate_remove(&self, txn: &mut FlowTransaction, pre: Columns, result: &mut Vec<Diff>) -> Result<()> {
 		if pre.row_numbers.is_empty() {
 			result.push(Diff::Remove {
 				pre,

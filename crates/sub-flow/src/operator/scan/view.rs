@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
-
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::{
@@ -47,8 +45,8 @@ impl Operator for PrimitiveViewOperator {
 					..
 				} => {
 					let mut decoded = post;
-					decode_dictionary_columns(Arc::make_mut(&mut decoded), txn)?;
-					Diff::insert_arc(decoded)
+					decode_dictionary_columns(&mut decoded, txn)?;
+					Diff::insert(decoded)
 				}
 				Diff::Update {
 					pre,
@@ -57,17 +55,17 @@ impl Operator for PrimitiveViewOperator {
 				} => {
 					let mut decoded_pre = pre;
 					let mut decoded_post = post;
-					decode_dictionary_columns(Arc::make_mut(&mut decoded_pre), txn)?;
-					decode_dictionary_columns(Arc::make_mut(&mut decoded_post), txn)?;
-					Diff::update_arc(decoded_pre, decoded_post)
+					decode_dictionary_columns(&mut decoded_pre, txn)?;
+					decode_dictionary_columns(&mut decoded_post, txn)?;
+					Diff::update(decoded_pre, decoded_post)
 				}
 				Diff::Remove {
 					pre,
 					..
 				} => {
 					let mut decoded = pre;
-					decode_dictionary_columns(Arc::make_mut(&mut decoded), txn)?;
-					Diff::remove_arc(decoded)
+					decode_dictionary_columns(&mut decoded, txn)?;
+					Diff::remove(decoded)
 				}
 			});
 		}

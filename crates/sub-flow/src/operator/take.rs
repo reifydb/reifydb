@@ -4,7 +4,6 @@
 use std::{
 	collections::{BTreeMap, HashMap},
 	slice::from_ref,
-	sync::Arc,
 };
 
 use postcard::{from_bytes, to_stdvec};
@@ -200,7 +199,7 @@ impl TakeOperator {
 	}
 
 	#[inline]
-	fn apply_insert_diff(&self, state: &mut TakeState, post: Arc<Columns>, output_diffs: &mut Vec<Diff>) {
+	fn apply_insert_diff(&self, state: &mut TakeState, post: Columns, output_diffs: &mut Vec<Diff>) {
 		let schema = row_shape_from_columns(&post);
 		let row_count = post.row_count();
 		for row_idx in 0..row_count {
@@ -222,13 +221,7 @@ impl TakeOperator {
 	}
 
 	#[inline]
-	fn apply_update_diff(
-		&self,
-		state: &mut TakeState,
-		pre: Arc<Columns>,
-		post: Arc<Columns>,
-		output_diffs: &mut Vec<Diff>,
-	) {
+	fn apply_update_diff(&self, state: &mut TakeState, pre: Columns, post: Columns, output_diffs: &mut Vec<Diff>) {
 		let schema = row_shape_from_columns(&post);
 		let row_count = post.row_count();
 		let mut update_indices: Vec<usize> = Vec::new();
@@ -260,7 +253,7 @@ impl TakeOperator {
 	}
 
 	#[inline]
-	fn apply_remove_diff(&self, state: &mut TakeState, pre: Arc<Columns>, output_diffs: &mut Vec<Diff>) {
+	fn apply_remove_diff(&self, state: &mut TakeState, pre: Columns, output_diffs: &mut Vec<Diff>) {
 		let schema = row_shape_from_columns(&pre);
 		let row_count = pre.row_count();
 		for row_idx in 0..row_count {

@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{BTreeMap, HashSet},
-	sync::Arc,
-};
+use std::collections::{BTreeMap, HashSet};
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::operator::capabilities::OperatorCapability;
@@ -188,7 +185,7 @@ impl SinkRingBufferViewOperator {
 		object_id: ShapeId,
 		metadata: &mut RingBufferMetadata,
 		state: &mut RingBufferState,
-		post: &Arc<Columns>,
+		post: &Columns,
 	) -> Result<()> {
 		let coerced = coerce_columns(post, view.columns())?;
 		let row_count = coerced.row_count();
@@ -252,8 +249,8 @@ impl SinkRingBufferViewOperator {
 		shape: &RowShape,
 		object_id: ShapeId,
 		state: &RingBufferState,
-		pre: &Arc<Columns>,
-		post: &Arc<Columns>,
+		pre: &Columns,
+		post: &Columns,
 	) -> Result<()> {
 		let coerced_pre = coerce_columns(pre, view.columns())?;
 		let coerced_post = coerce_columns(post, view.columns())?;
@@ -290,7 +287,7 @@ impl SinkRingBufferViewOperator {
 		view: &View,
 		object_id: ShapeId,
 		state: &mut RingBufferState,
-		pre: &Arc<Columns>,
+		pre: &Columns,
 	) -> Result<()> {
 		let coerced = coerce_columns(pre, view.columns())?;
 		let row_count = coerced.row_count();

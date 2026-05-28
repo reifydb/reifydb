@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, mem, sync::Arc};
+use std::{collections::BTreeMap, mem};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -93,7 +93,7 @@ fn build_changes(entries: Vec<(ShapeId, Diff)>, version: CommitVersion, changed_
 
 fn coalesce_inserts(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 	let mut result: Vec<Diff> = Vec::with_capacity(diffs.len());
-	let mut current_run: Vec<Arc<Columns>> = Vec::new();
+	let mut current_run: Vec<Columns> = Vec::new();
 
 	for diff in diffs {
 		match diff {
@@ -112,21 +112,20 @@ fn coalesce_inserts(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 	Ok(result)
 }
 
-fn flush_insert_run(run: &mut Vec<Arc<Columns>>, result: &mut Vec<Diff>) -> Result<()> {
+fn flush_insert_run(run: &mut Vec<Columns>, result: &mut Vec<Diff>) -> Result<()> {
 	if run.is_empty() {
 		return Ok(());
 	}
 	if run.len() == 1 {
 		let only = run.pop().unwrap();
-		result.push(Diff::insert_arc(only));
+		result.push(Diff::insert(only));
 		return Ok(());
 	}
 	let mut iter = run.drain(..);
-	let first = iter.next().unwrap();
-	let mut merged = (*first).clone();
+	let mut merged = iter.next().unwrap();
 	for next in iter {
-		merged.append_all((*next).clone())?;
+		merged.append_all(next)?;
 	}
-	result.push(Diff::insert_arc(Arc::new(merged)));
+	result.push(Diff::insert(merged));
 	Ok(())
 }

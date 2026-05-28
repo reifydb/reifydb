@@ -218,16 +218,16 @@ fn build_output_columns(entries: &[MutationEntry]) -> Result<Columns, Error> {
 			Diff::Insert {
 				post,
 				..
-			} => ("insert", &empty, post.as_ref()),
+			} => ("insert", &empty, post),
 			Diff::Update {
 				pre,
 				post,
 				..
-			} => ("update", pre.as_ref(), post.as_ref()),
+			} => ("update", pre, post),
 			Diff::Remove {
 				pre,
 				..
-			} => ("delete", pre.as_ref(), &empty),
+			} => ("delete", pre, &empty),
 		};
 
 		let row_count = match &entry.diff {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeSet, sync::Arc};
+use std::collections::BTreeSet;
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
@@ -212,7 +212,7 @@ impl SinkSubscriptionOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		state: &mut DeliveredState,
-		post: &Arc<Columns>,
+		post: &Columns,
 		subscription_id: SubscriptionId,
 	) -> Result<()> {
 		let row_count = post.row_count();
@@ -227,8 +227,8 @@ impl SinkSubscriptionOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		state: &mut DeliveredState,
-		pre: &Arc<Columns>,
-		post: &Arc<Columns>,
+		pre: &Columns,
+		post: &Columns,
 		subscription_id: SubscriptionId,
 	) -> Result<()> {
 		let row_count = post.row_count();
@@ -264,7 +264,7 @@ impl SinkSubscriptionOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		state: &mut DeliveredState,
-		pre: &Arc<Columns>,
+		pre: &Columns,
 		subscription_id: SubscriptionId,
 	) -> Result<()> {
 		let row_count = pre.row_count();
