@@ -60,6 +60,7 @@ pub struct WsClient {
 	/// Channel for receiving server-initiated Change messages.
 	change_rx: mpsc::UnboundedReceiver<ChangePayload>,
 	batch_routers: BatchRouters,
+	pending_batch_routers: BatchRouters,
 	format: WireFormat,
 }
 
@@ -103,9 +104,12 @@ impl WsClient {
 		// Dispatcher for routing batch push messages to per-batch subscription handles
 		let batch_routers: BatchRouters = Arc::new(Mutex::new(HashMap::new()));
 
+		let pending_batch_routers: BatchRouters = Arc::new(Mutex::new(HashMap::new()));
+
 		// Spawn the connection management task
 		let pending_clone = pending.clone();
 		let batch_routers_clone = batch_routers.clone();
+		let pending_batch_routers_clone = pending_batch_routers.clone();
 		spawn(async move {
 			Self::connection_loop(
 				write,
@@ -115,6 +119,7 @@ impl WsClient {
 				pending_clone,
 				change_tx,
 				batch_routers_clone,
+				pending_batch_routers_clone,
 			)
 			.await;
 		});
@@ -125,6 +130,7 @@ impl WsClient {
 			is_authenticated: false,
 			change_rx,
 			batch_routers,
+			pending_batch_routers,
 			format,
 		})
 	}
@@ -138,6 +144,7 @@ impl WsClient {
 		pending: PendingRequests,
 		change_tx: mpsc::UnboundedSender<ChangePayload>,
 		batch_routers: BatchRouters,
+		pending_batch_routers: BatchRouters,
 	) {
 		loop {
 			select! {
@@ -147,6 +154,28 @@ impl WsClient {
 						Ok(Message::Text(text)) => {
 							// First try to parse as Response (has id field)
 							if let Ok(response) = from_str::<Response>(&text) {
+								match response.payload {
+									ResponsePayload::BatchSubscribed(ref ack) => {
+										let mut pending_routers =
+											pending_batch_routers.lock().await;
+										if let Some(push_tx) =
+											pending_routers.remove(&response.id)
+										{
+											drop(pending_routers);
+											batch_routers
+												.lock()
+												.await
+												.insert(ack.batch_id.clone(), push_tx);
+										}
+									}
+									ResponsePayload::Err(_) => {
+										pending_batch_routers
+											.lock()
+											.await
+											.remove(&response.id);
+									}
+									_ => {}
+								}
 								let mut pending_guard = pending.lock().await;
 								if let Some(tx) = pending_guard.remove(&response.id) {
 									let _ = tx.send(ClientResponse::Json(Box::new(response)));
@@ -555,34 +584,45 @@ impl WsClient {
 	/// receives coalesced per-tick envelopes.
 	pub async fn batch_subscribe(&self, items: &[BatchItem<'_>]) -> Result<WsBatchSubscription, Error> {
 		let id = generate_request_id();
+		let (push_tx, push_rx) = mpsc::channel::<BatchPushEvent>(100);
+		{
+			let mut pending_routers = self.pending_batch_routers.lock().await;
+			pending_routers.insert(id.clone(), push_tx);
+		}
+
 		let request = Request {
-			id,
+			id: id.clone(),
 			payload: RequestPayload::BatchSubscribe(BatchSubscribeRequest {
 				queries: items.iter().map(|i| build_subscription_rql(i.rql, &i.config)).collect(),
 				format: self.wire_format(),
 			}),
 		};
 
-		let response = self.send_request_json(request).await?;
-		match response.payload {
-			ResponsePayload::BatchSubscribed(ack) => {
-				let (push_tx, push_rx) = mpsc::channel::<BatchPushEvent>(100);
-				{
-					let mut routers = self.batch_routers.lock().await;
-					routers.insert(ack.batch_id.clone(), push_tx);
-				}
-				Ok(WsBatchSubscription {
-					batch_id: ack.batch_id,
-					members: ack.members,
-					push_rx,
-				})
+		let response = match self.send_request_json(request).await {
+			Ok(r) => r,
+			Err(e) => {
+				self.pending_batch_routers.lock().await.remove(&id);
+				return Err(e);
 			}
-			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
-			_ => Err(Error(Box::new(Diagnostic {
-				code: "UNEXPECTED_RESPONSE".to_string(),
-				message: "Unexpected response type for BatchSubscribe".to_string(),
-				..Default::default()
-			}))),
+		};
+		match response.payload {
+			ResponsePayload::BatchSubscribed(ack) => Ok(WsBatchSubscription {
+				batch_id: ack.batch_id,
+				members: ack.members,
+				push_rx,
+			}),
+			ResponsePayload::Err(err) => {
+				self.pending_batch_routers.lock().await.remove(&id);
+				Err(Error(Box::new(err.diagnostic)))
+			}
+			_ => {
+				self.pending_batch_routers.lock().await.remove(&id);
+				Err(Error(Box::new(Diagnostic {
+					code: "UNEXPECTED_RESPONSE".to_string(),
+					message: "Unexpected response type for BatchSubscribe".to_string(),
+					..Default::default()
+				})))
+			}
 		}
 	}
 
