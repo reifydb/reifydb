@@ -18,14 +18,21 @@ use std::{
 	time::Duration,
 };
 
-use reifydb::{server, value::identity::IdentityId};
-use reifydb_sub_raft::{
-	config::{PeerConfig, RaftConfig},
-	node::NodeId,
+use reifydb::{
+	allocator, server,
+	sub_raft::{
+		config::{PeerConfig, RaftConfig},
+		node::NodeId,
+	},
+	r#type::params::Params,
+	value::identity::IdentityId,
 };
-use reifydb_type::params::Params;
+
+allocator::set_global_allocator!();
 
 fn main() {
+	allocator::verify();
+
 	let args: Vec<String> = env::args().collect();
 
 	let mut node_id: Option<NodeId> = None;

@@ -27,7 +27,10 @@ use metrics::Metrics;
 use num_cpus::get as get_num_cpus;
 use output::{clear_progress, print_header, print_progress, print_summary};
 use rand::random;
+use reifydb::allocator;
 use reqwest::Client as ReqwestClient;
+
+allocator::set_global_allocator!();
 use tokio::{runtime::Builder, spawn, task::JoinSet, time};
 use worker::Worker;
 use workload::create_workload;
@@ -35,6 +38,8 @@ use workload::create_workload;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 fn main() {
+	allocator::verify();
+
 	Builder::new_multi_thread()
 		.worker_threads(get_num_cpus())
 		.max_blocking_threads(256)

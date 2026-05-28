@@ -1,0 +1,18 @@
+[package]
+name = "reifydb-allocator"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Facade crate selecting a process-wide global allocator with shared-heap support for dlopened operator modules"
+
+[features]
+default = []
+alloc-jemalloc = ["dep:reifydb-allocator-jemalloc"]
+
+[build-dependencies]
+reifydb-build = { workspace = true }
+
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+reifydb-allocator-jemalloc = { workspace = true, optional = true }

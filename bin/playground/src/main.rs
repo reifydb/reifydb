@@ -5,8 +5,9 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-use reifydb::{Database, server};
-use reifydb_type::params::Params;
+use reifydb::{Database, allocator, server, r#type::params::Params};
+
+allocator::set_global_allocator!();
 
 fn admin(db: &Database, label: &str, cmd: &str) {
 	println!("\n--- {label} ---");
@@ -35,6 +36,8 @@ fn query(db: &Database, label: &str, cmd: &str) {
 }
 
 fn main() {
+	allocator::verify();
+
 	let db = server::memory().build().unwrap();
 
 	// ── Shape ──────────────────────────────────────────────

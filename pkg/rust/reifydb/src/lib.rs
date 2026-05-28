@@ -29,9 +29,12 @@ pub use builder::{
 pub use context::{RuntimeProvider, SyncContext, SystemContext};
 pub use database::Database;
 pub use health::HealthMonitor;
+pub use reifydb_abi as abi;
+pub use reifydb_allocator as allocator;
 pub use reifydb_auth as auth;
 pub use reifydb_catalog as catalog;
 pub use reifydb_cdc as cdc;
+pub use reifydb_column as column;
 pub use reifydb_core as core;
 #[cfg(feature = "sub_server")]
 pub use reifydb_core::actors::server::Operation;
@@ -42,21 +45,32 @@ pub use reifydb_core::{
 pub use reifydb_derive as derive;
 pub use reifydb_derive::FromFrame;
 pub use reifydb_engine as engine;
+pub use reifydb_extension as extension;
+pub use reifydb_macro as r#macro;
+pub use reifydb_metric as metric;
+pub use reifydb_policy as policy;
 pub use reifydb_profiler as profiler;
-pub use reifydb_routine::{function, procedure, routine};
+pub use reifydb_remote_proxy as remote_proxy;
+pub use reifydb_routine as routine;
+pub use reifydb_routine::{function, procedure};
 pub use reifydb_rql as rql;
+pub use reifydb_runtime as runtime;
 pub use reifydb_runtime::{
 	SharedRuntime, SharedRuntimeConfig,
 	actor::{mailbox::ActorRef, system::ActorSystem},
 	context::clock::{Clock, MockClock},
 	pool::PoolConfig,
 };
+pub use reifydb_sdk as sdk;
+pub use reifydb_sqlite as sqlite;
 pub use reifydb_sqlite::SqliteConfig;
 pub use reifydb_store_multi as multi_storage;
 pub use reifydb_store_multi::tier::commit::buffer::MultiCommitBufferTier;
 pub use reifydb_store_single as single_storage;
 // subsystems
 pub use reifydb_sub_api as sub;
+#[cfg(feature = "sub_column")]
+pub use reifydb_sub_column as sub_column;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_flow as sub_flow;
 #[cfg(feature = "sub_flow")]
@@ -68,12 +82,14 @@ pub use reifydb_sub_flow::{
 	operator::{BoxedOperator, Operator, Operators},
 	transaction::FlowTransaction,
 };
+pub use reifydb_sub_metric as sub_metric;
 #[cfg(feature = "sub_profiler")]
 pub use reifydb_sub_profiler as sub_profiler;
 #[cfg(feature = "sub_raft")]
 pub use reifydb_sub_raft as sub_raft;
 #[cfg(feature = "sub_replication")]
 pub use reifydb_sub_replication as sub_replication;
+pub use reifydb_sub_runtime as sub_runtime;
 #[cfg(feature = "sub_server")]
 pub use reifydb_sub_server as sub_server;
 #[cfg(feature = "sub_server")]
@@ -90,11 +106,15 @@ pub use reifydb_sub_server_http as sub_server_http;
 pub use reifydb_sub_server_otel as sub_server_otel;
 #[cfg(feature = "sub_server_ws")]
 pub use reifydb_sub_server_ws as sub_server_ws;
+#[cfg(feature = "sub_flow")]
+pub use reifydb_sub_subscription as sub_subscription;
 #[cfg(not(reifydb_single_threaded))]
 pub use reifydb_sub_task as sub_task;
 #[cfg(feature = "sub_tracing")]
 pub use reifydb_sub_tracing as sub_tracing;
 pub use reifydb_subscription as subscription;
+#[cfg(feature = "testing")]
+pub use reifydb_testing as testing;
 pub use reifydb_transaction as transaction;
 pub use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
 pub use reifydb_type as r#type;
@@ -120,5 +140,6 @@ pub use reifydb_type::{
 		r#type::Type,
 	},
 };
+pub use reifydb_wire_format as wire_format;
 pub mod test;
 pub use session::{Backoff, RetryStrategy, Session};

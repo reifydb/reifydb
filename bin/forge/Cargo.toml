@@ -9,13 +9,7 @@ name = "reifydb-forge"
 path = "src/main.rs"
 
 [dependencies]
-reifydb = { workspace = true }
-reifydb-routine = { workspace = true }
-reifydb-catalog = { workspace = true }
-reifydb-core = { workspace = true }
-reifydb-type = { workspace = true }
-reifydb-engine = { workspace = true }
-reifydb-transaction = { workspace = true }
+reifydb = { workspace = true, features = ["alloc-jemalloc"] }
 reifydb-client = { workspace = true, features = ["grpc"] }
 clap = { version = "4", features = ["derive"] }
 tokio = { workspace = true }

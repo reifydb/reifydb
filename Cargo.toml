@@ -4,6 +4,8 @@ exclude = ["fuzz"]
 
 members = [
     # Core crates
+    "crates/allocator",
+    "crates/allocator-jemalloc",
     "crates/auth",
     "crates/build",
     "crates/routine",
@@ -76,6 +78,8 @@ members = [
 
 default-members = [
     # Core crates
+    "crates/allocator",
+    "crates/allocator-jemalloc",
     "crates/auth",
     "crates/routine",
     "crates/catalog",
@@ -180,6 +184,8 @@ reifydb = { version = "0.5.6", path = "pkg/rust/reifydb", features = [
 ] }
 reifydb-derive = { version = "0.5.6", path = "pkg/rust/reifydb-derive" }
 reifydb-build = { version = "0.5.6", path = "crates/build" }
+reifydb-allocator = { version = "0.5.6", path = "crates/allocator" }
+reifydb-allocator-jemalloc = { version = "0.5.6", path = "crates/allocator-jemalloc" }
 
 reifydb-client = { version = "0.5.6", path = "pkg/rust/reifydb-client" }
 reifydb-client-derive = { version = "0.5.6", path = "pkg/rust/reifydb-client-derive" }
@@ -247,6 +253,8 @@ tracing-opentelemetry = { version = "0.32" , features = ["default"]}
 
 libc = { version = "0.2.186" }
 libloading = { version = "0.9" }
+tikv-jemallocator = { version = "0.6", features = ["unprefixed_malloc_on_supported_platforms"] }
+tikv-jemalloc-ctl = { version = "0.6", features = ["stats"] }
 libm = { version = "0.2.16" }
 
 once_cell = { version = "1.21.4" }

@@ -7,6 +7,9 @@ mod ws;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 use clap::{Parser, Subcommand};
+use reifydb::allocator;
+
+allocator::set_global_allocator!();
 
 #[derive(Parser)]
 #[command(name = "reifydb")]
@@ -161,6 +164,8 @@ struct ReplArgs {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+	allocator::verify();
+
 	let cli = Cli::parse();
 
 	match cli.protocol {

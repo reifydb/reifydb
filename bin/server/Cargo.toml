@@ -12,5 +12,5 @@ name = "reifydb-server"
 path = "src/main.rs"
 
 [dependencies]
-reifydb = { workspace = true }
+reifydb = { workspace = true, features = ["alloc-jemalloc"] }
 tokio = { workspace = true }

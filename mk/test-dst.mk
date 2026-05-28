@@ -8,5 +8,5 @@
 .PHONY: test-dst
 test-dst:
 	@echo "🧪 Running DST tests..."
-	REIFYDB_DST=1 cargo test --release -p reifydb-runtime --no-fail-fast $(CARGO_OFFLINE)
-	REIFYDB_DST=1 cargo test --release -p reifydb-client --features dst --no-fail-fast $(CARGO_OFFLINE)
+	MAKEFLAGS= REIFYDB_DST=1 cargo test --release -p reifydb-runtime --no-fail-fast $(CARGO_OFFLINE)
+	MAKEFLAGS= REIFYDB_DST=1 cargo test --release -p reifydb-client --features dst --no-fail-fast $(CARGO_OFFLINE)

@@ -12,6 +12,7 @@ name = "reifydb-cli"
 path = "src/main.rs"
 
 [dependencies]
+reifydb = { workspace = true, features = ["alloc-jemalloc"] }
 reifydb-client = { workspace = true, features = ["ws"] }
 clap = { version = "4.6", features = ["derive", "env"] }
 rustyline = "18.0"

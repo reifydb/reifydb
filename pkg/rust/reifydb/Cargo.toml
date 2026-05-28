@@ -8,26 +8,34 @@ repository.workspace = true
 description = "A modern, real-time database with streaming and analytical capabilities"
 
 [dependencies]
+reifydb-abi = { workspace = true }
+reifydb-allocator = { workspace = true }
 reifydb-auth = { workspace = true }
-reifydb-routine = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-cdc = { workspace = true }
+reifydb-column = { workspace = true }
 reifydb-core = { workspace = true }
+reifydb-derive = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-extension = { workspace = true }
-reifydb-runtime = { workspace = true }
+reifydb-macro = { workspace = true }
+reifydb-metric = { workspace = true }
+reifydb-policy = { workspace = true }
+reifydb-profiler = { workspace = true }
+reifydb-remote-proxy = { workspace = true }
+reifydb-routine = { workspace = true }
 reifydb-rql = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-sdk = { workspace = true }
 reifydb-sqlite = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
+reifydb-sub-metric = { workspace = true }
+reifydb-sub-runtime = { workspace = true }
 reifydb-subscription = { workspace = true}
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
-reifydb-metric = { workspace = true }
-reifydb-sub-metric = { workspace = true }
-reifydb-sub-runtime = { workspace = true }
-reifydb-profiler = { workspace = true }
-reifydb-derive = { workspace = true }
+reifydb-wire-format = { workspace = true }
 parking_lot = { workspace = true }
 
 tracing = { workspace = true }
@@ -47,6 +55,7 @@ reifydb-sub-server-otel = { workspace = true, optional = true }
 reifydb-sub-raft = { workspace = true, optional = true }
 reifydb-sub-server-ws = { workspace = true, optional = true }
 reifydb-sub-replication = { workspace = true, optional = true }
+reifydb-testing = { workspace = true, optional = true }
 
 rayon = { workspace = true }
 tokio = { workspace = true }
@@ -65,6 +74,9 @@ reifydb-build = { workspace = true }
 [features]
 default = []
 
+# Allocator selection - forwards to the reifydb-allocator facade's backend gate.
+alloc-jemalloc = ["reifydb-allocator/alloc-jemalloc"]
+
 # Subsystem features
 sub_column = ["dep:reifydb-sub-column"]
 sub_flow = ["dep:reifydb-sub-flow", "dep:reifydb-sub-subscription"]
@@ -78,3 +90,4 @@ sub_server_otel = ["dep:reifydb-sub-server-otel", "dep:opentelemetry", "dep:trac
 sub_raft = ["dep:reifydb-sub-raft"]
 sub_server_ws = ["dep:reifydb-sub-server-ws", "sub_server"]
 sub_replication = ["dep:reifydb-sub-replication"]
+testing = ["dep:reifydb-testing"]

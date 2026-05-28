@@ -10,8 +10,13 @@ mod shared;
 
 use clap::Parser;
 use cli::Cli;
+use reifydb::allocator;
+
+allocator::set_global_allocator!();
 
 fn main() {
+	allocator::verify();
+
 	let cli = Cli::parse();
 
 	if let Some(ref url) = cli.runner {

@@ -3,15 +3,18 @@
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 
-use reifydb::{WithSubsystem, server, sub_tracing::builder::TracingConfigurator};
-use reifydb_type::params::Params;
+use reifydb::{WithSubsystem, allocator, server, sub_tracing::builder::TracingConfigurator, r#type::params::Params};
 use tracing::info;
+
+allocator::set_global_allocator!();
 
 fn tracing_configuration(tracing: TracingConfigurator) -> TracingConfigurator {
 	tracing.with_console(|console| console.color(true).stderr_for_errors(true)).with_filter("debug,reifydb=trace")
 }
 
 fn main() {
+	allocator::verify();
+
 	let mut db = server::memory()
 		.with_tracing(tracing_configuration)
 		.with_http(|c| c.admin_bind_addr("0.0.0.0:18091"))

@@ -8,7 +8,7 @@ use std::{
 };
 
 use hdrhistogram::Histogram;
-use reifydb_runtime::sync::mutex::Mutex;
+use reifydb::runtime::sync::mutex::Mutex;
 
 /// Metrics collector for benchmark results
 pub struct Metrics {

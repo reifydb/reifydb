@@ -464,6 +464,7 @@ name = "cli"
 version = "0.5.6"
 dependencies = [
  "clap",
+ "reifydb",
  "reifydb-client",
  "rustyline",
  "terminal_size",
@@ -1068,13 +1069,7 @@ dependencies = [
  "axum",
  "clap",
  "reifydb",
- "reifydb-catalog",
  "reifydb-client",
- "reifydb-core",
- "reifydb-engine",
- "reifydb-routine",
- "reifydb-transaction",
- "reifydb-type",
  "tokio",
  "tower-http",
  "tracing",
@@ -1817,8 +1812,8 @@ dependencies = [
  "hdrhistogram",
  "num_cpus",
  "rand 0.10.1",
+ "reifydb",
  "reifydb-client",
- "reifydb-runtime",
  "reqwest 0.13.2",
  "tokio",
 ]
@@ -2235,12 +2230,7 @@ version = "0.5.6"
 dependencies = [
  "futures-util",
  "reifydb",
- "reifydb-catalog",
  "reifydb-client",
- "reifydb-core",
- "reifydb-engine",
- "reifydb-transaction",
- "reifydb-type",
  "tokio",
  "tracing-subscriber",
 ]
@@ -2377,8 +2367,6 @@ name = "raft"
 version = "0.5.6"
 dependencies = [
  "reifydb",
- "reifydb-sub-raft",
- "reifydb-type",
  "tokio",
 ]
 
@@ -2546,19 +2534,26 @@ dependencies = [
  "opentelemetry",
  "parking_lot",
  "rayon",
+ "reifydb-abi",
+ "reifydb-allocator",
  "reifydb-auth",
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-cdc",
+ "reifydb-column",
  "reifydb-core",
  "reifydb-derive",
  "reifydb-engine",
  "reifydb-extension",
+ "reifydb-macro",
  "reifydb-metric",
+ "reifydb-policy",
  "reifydb-profiler",
+ "reifydb-remote-proxy",
  "reifydb-routine",
  "reifydb-rql",
  "reifydb-runtime",
+ "reifydb-sdk",
  "reifydb-sqlite",
  "reifydb-store-multi",
  "reifydb-store-single",
@@ -2580,8 +2575,10 @@ dependencies = [
  "reifydb-sub-task",
  "reifydb-sub-tracing",
  "reifydb-subscription",
+ "reifydb-testing",
  "reifydb-transaction",
  "reifydb-type",
+ "reifydb-wire-format",
  "test_each_file",
  "tokio",
  "tracing",
@@ -2592,6 +2589,23 @@ dependencies = [
 [[package]]
 name = "reifydb-abi"
 version = "0.5.6"
+
+[[package]]
+name = "reifydb-allocator"
+version = "0.5.6"
+dependencies = [
+ "reifydb-allocator-jemalloc",
+ "reifydb-build",
+]
+
+[[package]]
+name = "reifydb-allocator-jemalloc"
+version = "0.5.6"
+dependencies = [
+ "reifydb-build",
+ "tikv-jemalloc-ctl",
+ "tikv-jemallocator",
+]
 
 [[package]]
 name = "reifydb-auth"
@@ -4081,7 +4095,6 @@ name = "testcontainer"
 version = "0.5.6"
 dependencies = [
  "reifydb",
- "reifydb-type",
  "tracing",
 ]
 
@@ -4166,6 +4179,37 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f60246a4944f24f6e018aa17cdeffb7818b76356965d03b07d6a9886e8962185"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "tikv-jemalloc-ctl"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "661f1f6a57b3a36dc9174a2c10f19513b4866816e13425d3e418b11cc37bc24c"
+dependencies = [
+ "libc",
+ "paste",
+ "tikv-jemalloc-sys",
+]
+
+[[package]]
+name = "tikv-jemalloc-sys"
+version = "0.6.1+5.3.0-1-ge13ca993e8ccb9ba9847cc330696e02839f328f7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd8aa5b2ab86a2cefa406d889139c162cbb230092f7d1d7cbc1716405d852a3b"
+dependencies = [
+ "cc",
+ "libc",
+]
+
+[[package]]
+name = "tikv-jemallocator"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0359b4327f954e0567e69fb191cf1436617748813819c94b8cd4a431422d053a"
+dependencies = [
+ "libc",
+ "tikv-jemalloc-sys",
 ]
 
 [[package]]

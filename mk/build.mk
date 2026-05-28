@@ -16,10 +16,10 @@ build-workspace:
 	@echo "🏗️ Building Rust workspace..."
 	@if [ -d "vendor" ]; then \
 		echo "Using vendored dependencies (offline mode)"; \
-		cargo build --release --workspace --offline; \
+		MAKEFLAGS= cargo build --release --workspace --offline; \
 	else \
 		echo "Using network dependencies"; \
-		cargo build --release --workspace; \
+		MAKEFLAGS= cargo build --release --workspace; \
 	fi
 
 # Build pkg/typescript packages
@@ -35,7 +35,7 @@ build-pkg-typescript:
 # Build with vendored dependencies
 build-vendored:
 	@echo "🏗️ Building with vendored dependencies..."
-	@cargo build --release --workspace --offline
+	@MAKEFLAGS= cargo build --release --workspace --offline
 
 # Build WebAssembly packages
 build-wasm:

@@ -3,8 +3,8 @@
 
 use std::fs;
 
+use reifydb::r#type::{error::Error, value::Value};
 use reifydb_client::GrpcClient;
-use reifydb_type::{error::Error, value::Value};
 use tracing::{error, info};
 use uuid::Uuid;
 

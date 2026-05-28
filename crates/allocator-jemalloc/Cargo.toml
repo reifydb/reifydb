@@ -1,0 +1,15 @@
+[package]
+name = "reifydb-allocator-jemalloc"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "jemalloc backend for reifydb-allocator (Linux + macOS only)"
+
+[build-dependencies]
+reifydb-build = { workspace = true }
+
+[target.'cfg(not(target_env = "msvc"))'.dependencies]
+tikv-jemallocator = { workspace = true }
+tikv-jemalloc-ctl = { workspace = true }

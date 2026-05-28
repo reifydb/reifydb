@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb::Database;
-use reifydb_type::params::Params;
+use reifydb::{Database, r#type::params::Params};
 use tracing::{debug, info};
 
 const PIPELINE_ID: &str = "00000000-0000-4000-a000-000000000001";
