@@ -22,6 +22,8 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 	sync::{mutex::Mutex, waiter::WaiterHandle},
 };
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_type::util::{cowvec::CowVec, hex};
 use tracing::instrument;
 
@@ -149,19 +151,21 @@ impl StandardSingleStore {
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn testing_memory_with_persistent_sqlite() -> Self {
+	pub fn testing_memory_with_persistent_sqlite() -> (Self, SqliteTempPathGuard) {
 		let pools = Pools::new(PoolConfig::default());
 		let clock = Clock::testing();
 		let actor_system = ActorSystem::new(pools, clock.clone());
-		Self::new(SingleStoreConfig {
+		let (persistent, guard) = PersistentConfig::sqlite_in_memory();
+		let store = Self::new(SingleStoreConfig {
 			buffer: Some(BufferConfig {
 				storage: SingleBufferTier::memory(),
 			}),
-			persistent: Some(PersistentConfig::sqlite_in_memory()),
+			persistent: Some(persistent),
 			actor_system,
 			clock,
 		})
-		.unwrap()
+		.unwrap();
+		(store, guard)
 	}
 }
 

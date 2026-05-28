@@ -9,7 +9,7 @@ use std::{collections::HashMap, ops::Bound};
 
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind, row::TtlAnchor};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_sqlite::SqliteConfig;
+use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_type::{Result, util::cowvec::CowVec};
 
 use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage, VersionedGetResult};
@@ -39,8 +39,9 @@ impl MultiPersistentTier {
 		Self::Sqlite(SqlitePersistentStorage::new(config))
 	}
 
-	pub fn sqlite_in_memory() -> Self {
-		Self::Sqlite(SqlitePersistentStorage::in_memory())
+	pub fn sqlite_in_memory() -> (Self, SqliteTempPathGuard) {
+		let (storage, guard) = SqlitePersistentStorage::in_memory();
+		(Self::Sqlite(storage), guard)
 	}
 
 	pub fn maybe_checkpoint(&self) -> Result<CheckpointOutcome> {

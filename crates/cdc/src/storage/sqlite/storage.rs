@@ -17,7 +17,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sqlite::{
-	SqliteConfig,
+	SqliteConfig, SqliteTempPathGuard,
 	connection::{connect, convert_flags, resolve_db_path},
 	pragma,
 };
@@ -88,8 +88,9 @@ impl SqliteCdcStorage {
 		}
 	}
 
-	pub fn in_memory() -> Self {
-		Self::new(SqliteConfig::in_memory())
+	pub fn in_memory() -> (Self, SqliteTempPathGuard) {
+		let (config, guard) = SqliteConfig::in_memory();
+		(Self::new(config), guard)
 	}
 
 	fn ensure_schema(conn: &Connection) {

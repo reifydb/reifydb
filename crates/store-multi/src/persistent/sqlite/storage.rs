@@ -23,7 +23,7 @@ use reifydb_runtime::sync::{
 	mutex::{Mutex, MutexGuard},
 };
 use reifydb_sqlite::{
-	SqliteConfig,
+	SqliteConfig, SqliteTempPathGuard,
 	connection::{connect, convert_flags, resolve_db_path},
 	pragma,
 };
@@ -171,8 +171,9 @@ impl SqlitePersistentStorage {
 		})
 	}
 
-	pub fn in_memory() -> Self {
-		Self::new(SqliteConfig::in_memory())
+	pub fn in_memory() -> (Self, SqliteTempPathGuard) {
+		let (config, guard) = SqliteConfig::in_memory();
+		(Self::new(config), guard)
 	}
 
 	fn table_sql(&self, table: EntryKind) -> Arc<TableSql> {
@@ -636,7 +637,7 @@ mod tests {
 
 	#[test]
 	fn delete_expired_created_anchor_removes_only_rows_at_or_below_cutoff() {
-		let s = SqlitePersistentStorage::in_memory();
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		s.set(
 			CommitVersion(1),
 			HashMap::from([(
@@ -666,7 +667,7 @@ mod tests {
 
 	#[test]
 	fn delete_expired_updated_anchor_keeps_recently_updated_rows() {
-		let s = SqlitePersistentStorage::in_memory();
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		s.set(
 			CommitVersion(1),
 			HashMap::from([(
@@ -691,7 +692,7 @@ mod tests {
 
 	#[test]
 	fn delete_expired_skips_rows_with_unset_anchor() {
-		let s = SqlitePersistentStorage::in_memory();
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		s.set(
 			CommitVersion(1),
 			HashMap::from([(table(), vec![(key(1), None), (key(2), Some(row(0, 0, b"no-anchor")))])]),
@@ -707,7 +708,7 @@ mod tests {
 
 	#[test]
 	fn delete_expired_on_missing_table_is_noop() {
-		let s = SqlitePersistentStorage::in_memory();
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		let deleted = s
 			.delete_expired(EntryKind::Source(ShapeId::Table(TableId(999))), TtlAnchor::Created, 100, None)
 			.unwrap();
@@ -716,7 +717,7 @@ mod tests {
 
 	#[test]
 	fn delete_expired_with_prefix_only_touches_matching_keys() {
-		let s = SqlitePersistentStorage::in_memory();
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		// Two "sides" distinguished by a leading prefix byte, both stale by the cutoff.
 		let left = EncodedKey::new(vec![0x01, 0xAA]);
 		let right = EncodedKey::new(vec![0x02, 0xBB]);

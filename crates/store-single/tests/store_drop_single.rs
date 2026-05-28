@@ -19,6 +19,9 @@ fn test_memory(path: &Path) {
 }
 
 fn test_sqlite_unbuffered(path: &Path) {
-	temp_dir(|_db_path| run_path(&mut Runner::sqlite_unbuffered(PersistentConfig::sqlite_in_memory()), path))
-		.expect("test failed")
+	temp_dir(|_db_path| {
+		let (config, _guard) = PersistentConfig::sqlite_in_memory();
+		run_path(&mut Runner::sqlite_unbuffered(config), path)
+	})
+	.expect("test failed")
 }

@@ -5,7 +5,7 @@ use std::ops::Bound;
 
 use reifydb_core::encoded::key::EncodedKey;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_sqlite::SqliteConfig;
+use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_type::{Result, util::cowvec::CowVec};
 
 use crate::tier::{RangeBatch, RangeCursor, TierBackend, TierStorage};
@@ -29,8 +29,9 @@ impl SinglePersistentTier {
 		Self::Sqlite(SqlitePersistentStorage::new(config))
 	}
 
-	pub fn sqlite_in_memory() -> Self {
-		Self::Sqlite(SqlitePersistentStorage::in_memory())
+	pub fn sqlite_in_memory() -> (Self, SqliteTempPathGuard) {
+		let (storage, guard) = SqlitePersistentStorage::in_memory();
+		(Self::Sqlite(storage), guard)
 	}
 }
 

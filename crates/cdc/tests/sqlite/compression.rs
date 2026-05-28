@@ -64,7 +64,7 @@ fn block_encode_decode_roundtrip_across_all_levels() {
 #[test]
 fn compact_all_roundtrip_per_level() {
 	for &level in TEST_LEVELS {
-		let store = SqliteCdcStorage::in_memory();
+		let (store, _guard) = SqliteCdcStorage::in_memory();
 		let entries: Vec<Cdc> = (1..=1024u64).map(cdc_diverse).collect();
 		for cdc in &entries {
 			store.write(cdc).unwrap();
@@ -88,7 +88,7 @@ fn compact_all_roundtrip_per_level() {
 
 #[test]
 fn read_back_mixed_compression_levels() {
-	let store = SqliteCdcStorage::in_memory();
+	let (store, _guard) = SqliteCdcStorage::in_memory();
 	let all_entries: Vec<Cdc> = (1..=1024u64).map(cdc_diverse).collect();
 
 	for cdc in &all_entries[..512] {

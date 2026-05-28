@@ -240,75 +240,95 @@ macro_rules! storage_trait_tests {
 			use super::*;
 			#[test]
 			fn write_read_round_trip() {
-				super::assert_write_read_round_trip($fresh);
+				let (storage, _guard) = $fresh();
+				super::assert_write_read_round_trip(storage);
 			}
 			#[test]
 			fn read_nonexistent() {
-				super::assert_read_nonexistent($fresh);
+				let (storage, _guard) = $fresh();
+				super::assert_read_nonexistent(storage);
 			}
 			#[test]
 			fn range_inclusive() {
-				super::assert_range_inclusive($fresh);
+				let (storage, _guard) = $fresh();
+				super::assert_range_inclusive(storage);
 			}
 			#[test]
 			fn range_exclusive() {
-				super::assert_range_exclusive($fresh);
+				let (storage, _guard) = $fresh();
+				super::assert_range_exclusive(storage);
 			}
 			#[test]
 			fn range_batch_size_has_more() {
-				super::assert_range_batch_size_has_more($fresh);
+				let (storage, _guard) = $fresh();
+				super::assert_range_batch_size_has_more(storage);
 			}
 			#[test]
 			fn range_inverted_returns_empty() {
-				super::assert_range_inverted_returns_empty($fresh);
+				let (storage, _guard) = $fresh();
+				super::assert_range_inverted_returns_empty(storage);
 			}
 			#[test]
 			fn range_excluded_zero_end_returns_empty() {
-				super::assert_range_excluded_zero_end_returns_empty($fresh);
+				let (storage, _guard) = $fresh();
+				super::assert_range_excluded_zero_end_returns_empty(storage);
 			}
 			#[test]
 			fn range_excluded_pair_collapsing() {
-				super::assert_range_excluded_pair_collapsing($fresh);
+				let (storage, _guard) = $fresh();
+				super::assert_range_excluded_pair_collapsing(storage);
 			}
 			#[test]
 			fn count() {
-				super::assert_count($fresh);
+				let (storage, _guard) = $fresh();
+				super::assert_count(storage);
 			}
 			#[test]
 			fn min_max_version() {
-				super::assert_min_max_version($fresh);
+				let (storage, _guard) = $fresh();
+				super::assert_min_max_version(storage);
 			}
 			#[test]
 			fn overwrite_entry() {
-				super::assert_overwrite($fresh);
+				let (storage, _guard) = $fresh();
+				super::assert_overwrite(storage);
 			}
 			#[test]
 			fn drop_before_empty() {
-				super::assert_drop_before_empty($fresh);
+				let (storage, _guard) = $fresh();
+				super::assert_drop_before_empty(storage);
 			}
 			#[test]
 			fn drop_before_some() {
-				super::assert_drop_before_some($fresh);
+				let (storage, _guard) = $fresh();
+				super::assert_drop_before_some(storage);
 			}
 			#[test]
 			fn drop_before_all() {
-				super::assert_drop_before_all($fresh);
+				let (storage, _guard) = $fresh();
+				super::assert_drop_before_all(storage);
 			}
 			#[test]
 			fn drop_before_none_when_too_low() {
-				super::assert_drop_before_none_when_too_low($fresh);
+				let (storage, _guard) = $fresh();
+				super::assert_drop_before_none_when_too_low(storage);
 			}
 			#[test]
 			fn drop_before_boundary() {
-				super::assert_drop_before_boundary($fresh);
+				let (storage, _guard) = $fresh();
+				super::assert_drop_before_boundary(storage);
 			}
 			#[test]
 			fn drop_before_entry_stats() {
-				super::assert_drop_before_entry_stats($fresh);
+				let (storage, _guard) = $fresh();
+				super::assert_drop_before_entry_stats(storage);
 			}
 		}
 	};
 }
 
-storage_trait_tests!(memory, MemoryCdcStorage::new());
-storage_trait_tests!(sqlite, SqliteCdcStorage::new(SqliteConfig::test()));
+storage_trait_tests!(memory, || (MemoryCdcStorage::new(), ()));
+storage_trait_tests!(sqlite, || {
+	let (config, guard) = SqliteConfig::test();
+	(SqliteCdcStorage::new(config), guard)
+});

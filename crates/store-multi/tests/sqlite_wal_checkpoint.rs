@@ -43,7 +43,8 @@ fn maybe_checkpoint_resets_wal_only_after_reader_released() {
 	const THRESHOLD: u32 = 16;
 	const WRITES: u64 = 200;
 
-	let config = SqliteConfig::test().read_pool_size(1).wal_autocheckpoint(THRESHOLD);
+	let (config, _guard) = SqliteConfig::test();
+	let config = config.read_pool_size(1).wal_autocheckpoint(THRESHOLD);
 	let tier = MultiPersistentTier::sqlite(config.clone());
 
 	write(&tier, 1, "seed");

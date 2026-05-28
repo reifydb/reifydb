@@ -82,17 +82,20 @@ fn get_many_across_tables_memory_only() {
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 #[test]
 fn get_many_across_tables_sqlite_only() {
-	check_get_many_across_tables(&StandardMultiStore::testing_persistent_sqlite_only(), false);
+	let (store, _guard) = StandardMultiStore::testing_persistent_sqlite_only();
+	check_get_many_across_tables(&store, false);
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 #[test]
 fn get_many_across_tables_memory_with_sqlite_flush() {
-	check_get_many_across_tables(&StandardMultiStore::testing_memory_with_persistent_sqlite(), true);
+	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+	check_get_many_across_tables(&store, true);
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 #[test]
 fn get_many_across_tables_memory_with_sqlite_no_flush() {
-	check_get_many_across_tables(&StandardMultiStore::testing_memory_with_persistent_sqlite(), false);
+	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+	check_get_many_across_tables(&store, false);
 }
