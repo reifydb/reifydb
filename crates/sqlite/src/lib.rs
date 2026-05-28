@@ -11,7 +11,10 @@
 
 #[cfg(not(target_os = "linux"))]
 use std::env;
-use std::path::{Path, PathBuf};
+use std::{
+	fs::{remove_dir_all, remove_file},
+	path::{Path, PathBuf},
+};
 
 use uuid::Uuid;
 
@@ -29,6 +32,56 @@ pub enum DbPath {
 	Tmpfs(PathBuf),
 
 	Memory(PathBuf),
+}
+
+/// RAII guard returned by `SqliteConfig::test()` / `SqliteConfig::in_memory()` that removes
+/// the on-disk artifacts created under a temp / shared-memory directory when dropped.
+///
+/// Two artifact families are cleaned up:
+/// - the file at the base path itself (used by the CDC backend), and
+/// - the directory at `base.with_extension("")` (where the embedded API factory drops `multi.db` / `single.db` and
+///   their `-wal` / `-shm` companions, see `pkg/rust/reifydb/src/api/mod.rs`).
+///
+/// `DbPath::File` paths are left alone; the caller owns those.
+#[derive(Debug)]
+pub struct SqliteTempPathGuard {
+	base_path: Option<PathBuf>,
+}
+
+impl SqliteTempPathGuard {
+	pub fn new(path: &DbPath) -> Self {
+		let base_path = match path {
+			DbPath::Memory(p) | DbPath::Tmpfs(p) => Some(p.clone()),
+			DbPath::File(_) => None,
+		};
+		Self {
+			base_path,
+		}
+	}
+
+	/// Disarm the guard so Drop becomes a no-op. Use when the underlying database
+	/// has been intentionally moved elsewhere and you do not want the files removed.
+	pub fn disarm(&mut self) {
+		self.base_path = None;
+	}
+}
+
+impl Drop for SqliteTempPathGuard {
+	fn drop(&mut self) {
+		let Some(base) = self.base_path.take() else {
+			return;
+		};
+		let _ = remove_file(&base);
+		for suffix in ["-shm", "-wal", "-journal"] {
+			let mut companion = base.clone().into_os_string();
+			companion.push(suffix);
+			let _ = remove_file(PathBuf::from(companion));
+		}
+		let derived_dir = base.with_extension("");
+		if derived_dir != base {
+			let _ = remove_dir_all(&derived_dir);
+		}
+	}
 }
 
 fn memory_dir() -> PathBuf {
@@ -122,36 +175,46 @@ impl SqliteConfig {
 		}
 	}
 
-	pub fn in_memory() -> Self {
-		Self {
-			path: DbPath::Memory(memory_dir().join(format!("reifydb_{}.db", Uuid::new_v4()))),
-			flags: OpenFlags::default(),
-			journal_mode: JournalMode::Wal,
-			synchronous_mode: SynchronousMode::Off,
-			temp_store: TempStore::Memory,
-			cache_size: 2000,
-			wal_autocheckpoint: 10000,
-			page_size: 16384,
-			mmap_size: 0,
-			prepared_statement_cache_capacity: 128,
-			read_pool_size: 2,
-		}
+	pub fn in_memory() -> (Self, SqliteTempPathGuard) {
+		let path = DbPath::Memory(memory_dir().join(format!("reifydb_{}.db", Uuid::new_v4())));
+		let guard = SqliteTempPathGuard::new(&path);
+		(
+			Self {
+				path,
+				flags: OpenFlags::default(),
+				journal_mode: JournalMode::Wal,
+				synchronous_mode: SynchronousMode::Off,
+				temp_store: TempStore::Memory,
+				cache_size: 2000,
+				wal_autocheckpoint: 10000,
+				page_size: 16384,
+				mmap_size: 0,
+				prepared_statement_cache_capacity: 128,
+				read_pool_size: 2,
+			},
+			guard,
+		)
 	}
 
-	pub fn test() -> Self {
-		Self {
-			path: DbPath::Memory(memory_dir().join(format!("reifydb_{}.db", Uuid::new_v4()))),
-			flags: OpenFlags::default(),
-			journal_mode: JournalMode::Wal,
-			synchronous_mode: SynchronousMode::Off,
-			temp_store: TempStore::Memory,
-			cache_size: 1000,
-			wal_autocheckpoint: 10000,
-			page_size: 4096,
-			mmap_size: 0,
-			prepared_statement_cache_capacity: 32,
-			read_pool_size: 2,
-		}
+	pub fn test() -> (Self, SqliteTempPathGuard) {
+		let path = DbPath::Memory(memory_dir().join(format!("reifydb_{}.db", Uuid::new_v4())));
+		let guard = SqliteTempPathGuard::new(&path);
+		(
+			Self {
+				path,
+				flags: OpenFlags::default(),
+				journal_mode: JournalMode::Wal,
+				synchronous_mode: SynchronousMode::Off,
+				temp_store: TempStore::Memory,
+				cache_size: 1000,
+				wal_autocheckpoint: 10000,
+				page_size: 4096,
+				mmap_size: 0,
+				prepared_statement_cache_capacity: 32,
+				read_pool_size: 2,
+			},
+			guard,
+		)
 	}
 
 	pub fn path<P: AsRef<Path>>(mut self, path: P) -> Self {

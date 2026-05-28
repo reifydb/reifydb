@@ -1,35 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::{
-	mem,
-	sync::{
-		Arc,
-		atomic::{AtomicUsize, Ordering},
-	},
-	time::Duration,
-};
-
-use dashmap::DashMap;
+use reifydb_client::{RawChangePayload, WireFormat as ClientWireFormat};
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
-use reifydb_runtime::{
-	context::{clock::Clock, rng::Rng},
-	sync::mutex::Mutex,
-};
-use reifydb_subscription::{
-	batch::BatchId,
-	delivery::{DeliveryResult, SubscriptionDelivery},
-};
-use reifydb_type::value::{frame::frame::Frame, uuid::Uuid7};
+use reifydb_sub_server::subscription::wire_sink::{BatchSubscribedMember, WireSink};
+use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
+use reifydb_type::value::frame::frame::Frame;
 use reifydb_wire_format::{encode::encode_frames, options::EncodeOptions};
-use tokio::sync::{Notify, mpsc};
+use tokio::sync::mpsc;
 use tonic::Status;
-use tracing::{debug, warn};
 
 use crate::{
 	convert::frames_to_proto,
 	generated::{
-		BatchChangeEntry, BatchChangeEvent, BatchMemberClosedEvent, BatchSubscriptionEvent, ChangeEvent,
-		Format, FramesPayload, SubscriptionEvent, batch_subscription_event, change_event, subscription_event,
+		BatchChangeEntry, BatchChangeEvent, BatchMember, BatchMemberClosedEvent, BatchSubscribedEvent,
+		BatchSubscriptionEvent, ChangeEvent, Format, FramesPayload, SubscribedEvent, SubscriptionEvent,
+		batch_subscription_event, change_event, subscription_event,
 	},
 };
 
@@ -49,365 +34,188 @@ impl WireFormat {
 	}
 }
 
-struct SubscriptionState {
-	tx: Option<mpsc::UnboundedSender<Result<SubscriptionEvent, Status>>>,
-	format: WireFormat,
-	batch_id: Option<BatchId>,
-	throttle: ThrottleState,
+pub type SubscriptionRegistry = reifydb_sub_server::subscription::registry::SubscriptionRegistry<GrpcWireSink>;
+
+#[derive(Clone)]
+pub enum GrpcWireSink {
+	Single(mpsc::UnboundedSender<Result<SubscriptionEvent, Status>>),
+	Batch(mpsc::UnboundedSender<Result<BatchSubscriptionEvent, Status>>),
 }
 
-struct ThrottleState {
-	interval_millis: u64,
-	last_sent_at: Option<u64>,
-	pending: Vec<Columns>,
-}
+impl WireSink for GrpcWireSink {
+	type Format = WireFormat;
 
-impl ThrottleState {
-	fn new(interval: Duration) -> Self {
-		Self {
-			interval_millis: interval.as_millis() as u64,
-			last_sent_at: None,
-			pending: Vec::new(),
+	fn client_wire_format(format: Self::Format) -> ClientWireFormat {
+		match format {
+			WireFormat::Rbcf => ClientWireFormat::Rbcf,
+			WireFormat::Proto => ClientWireFormat::Proto,
 		}
 	}
 
-	fn enabled(&self) -> bool {
-		self.interval_millis != 0
-	}
-
-	fn ready(&self, now_millis: u64) -> bool {
-		match self.last_sent_at {
-			None => true,
-			Some(prev) => now_millis.saturating_sub(prev) >= self.interval_millis,
-		}
-	}
-
-	fn remaining_millis(&self, now_millis: u64) -> u64 {
-		match self.last_sent_at {
-			None => 0,
-			Some(prev) => self.interval_millis.saturating_sub(now_millis.saturating_sub(prev)),
-		}
-	}
-}
-
-struct BatchState {
-	tx: mpsc::UnboundedSender<Result<BatchSubscriptionEvent, Status>>,
-	format: WireFormat,
-	member_ids: Vec<SubscriptionId>,
-
-	pending: DashMap<SubscriptionId, Vec<Frame>>,
-}
-
-type ThrottleReady =
-	(SubscriptionId, Vec<Columns>, WireFormat, mpsc::UnboundedSender<Result<SubscriptionEvent, Status>>);
-
-pub struct GrpcSubscriptionRegistry {
-	subscriptions: DashMap<SubscriptionId, SubscriptionState>,
-	batches: DashMap<BatchId, BatchState>,
-	clock: Clock,
-	throttle_pending: AtomicUsize,
-	wakers: Mutex<Vec<Arc<Notify>>>,
-}
-
-impl GrpcSubscriptionRegistry {
-	pub fn new(clock: Clock) -> Self {
-		Self {
-			subscriptions: DashMap::new(),
-			batches: DashMap::new(),
-			clock,
-			throttle_pending: AtomicUsize::new(0),
-			wakers: Mutex::new(Vec::new()),
-		}
-	}
-
-	pub fn register(
-		&self,
-		subscription_id: SubscriptionId,
-		tx: mpsc::UnboundedSender<Result<SubscriptionEvent, Status>>,
-		format: WireFormat,
-		throttle: Duration,
-	) {
-		self.subscriptions.insert(
-			subscription_id,
-			SubscriptionState {
-				tx: Some(tx),
-				format,
-				batch_id: None,
-				throttle: ThrottleState::new(throttle),
-			},
-		);
-		debug!("Registered gRPC subscription {} (format={:?})", subscription_id, format);
-	}
-
-	pub fn register_batch_member(&self, subscription_id: SubscriptionId, format: WireFormat, throttle: Duration) {
-		self.subscriptions.insert(
-			subscription_id,
-			SubscriptionState {
-				tx: None,
-				format,
-				batch_id: None,
-				throttle: ThrottleState::new(throttle),
-			},
-		);
-		debug!("Registered gRPC batch member {} (format={:?})", subscription_id, format);
-	}
-
-	pub fn unregister(&self, subscription_id: &SubscriptionId) {
-		if let Some((_, state)) = self.subscriptions.remove(subscription_id)
-			&& !state.throttle.pending.is_empty()
-		{
-			self.throttle_pending.fetch_sub(1, Ordering::AcqRel);
-		}
-		debug!("Unregistered gRPC subscription {}", subscription_id);
-	}
-
-	pub fn close_all(&self) {
-		self.subscriptions.clear();
-		self.batches.clear();
-	}
-
-	pub fn register_batch(
-		&self,
-		member_ids: Vec<SubscriptionId>,
-		tx: mpsc::UnboundedSender<Result<BatchSubscriptionEvent, Status>>,
-		format: WireFormat,
-		clock: &Clock,
-		rng: &Rng,
-	) -> BatchId {
-		let batch_id = BatchId(Uuid7::generate(clock, rng));
-		for member_id in &member_ids {
-			if let Some(mut state) = self.subscriptions.get_mut(member_id) {
-				state.batch_id = Some(batch_id);
+	fn send_subscribed(&self, sub_id: SubscriptionId) -> DeliveryResult {
+		match self {
+			Self::Single(tx) => {
+				let event = SubscriptionEvent {
+					event: Some(subscription_event::Event::Subscribed(SubscribedEvent {
+						subscription_id: sub_id.0.to_string(),
+					})),
+				};
+				if tx.send(Ok(event)).is_ok() {
+					DeliveryResult::Delivered
+				} else {
+					DeliveryResult::Disconnected
+				}
 			}
+			Self::Batch(_) => DeliveryResult::Disconnected,
 		}
-		self.batches.insert(
-			batch_id,
-			BatchState {
-				tx,
-				format,
-				member_ids: member_ids.clone(),
-				pending: DashMap::new(),
-			},
-		);
-		debug!("Registered gRPC batch {} with {} members (format={:?})", batch_id, member_ids.len(), format);
-		batch_id
 	}
 
-	pub fn unsubscribe_batch(&self, batch_id: BatchId) -> Option<Vec<SubscriptionId>> {
-		let (_, state) = self.batches.remove(&batch_id)?;
-		let members = state.member_ids.clone();
-		for member_id in &members {
-			self.subscriptions.remove(member_id);
+	fn send_batch_subscribed(&self, batch_id: BatchId, members: &[BatchSubscribedMember]) -> DeliveryResult {
+		match self {
+			Self::Batch(tx) => {
+				let members_wire: Vec<BatchMember> = members
+					.iter()
+					.map(|m| BatchMember {
+						index: m.index as u32,
+						subscription_id: m.subscription_id.to_string(),
+					})
+					.collect();
+				let event = BatchSubscriptionEvent {
+					event: Some(batch_subscription_event::Event::Subscribed(
+						BatchSubscribedEvent {
+							batch_id: batch_id.to_string(),
+							members: members_wire,
+						},
+					)),
+				};
+				if tx.send(Ok(event)).is_ok() {
+					DeliveryResult::Delivered
+				} else {
+					DeliveryResult::Disconnected
+				}
+			}
+			Self::Single(_) => DeliveryResult::Disconnected,
 		}
-		debug!("Unregistered gRPC batch {} ({} members)", batch_id, members.len());
-		Some(members)
 	}
 
-	pub fn batch_for(&self, subscription_id: &SubscriptionId) -> Option<BatchId> {
-		self.subscriptions.get(subscription_id).and_then(|state| state.batch_id)
+	fn send_change(&self, _sub_id: SubscriptionId, columns: Columns, format: Self::Format) -> DeliveryResult {
+		match self {
+			Self::Single(tx) => {
+				let event = encode_change_event(columns, format);
+				if tx.send(Ok(event)).is_ok() {
+					DeliveryResult::Delivered
+				} else {
+					DeliveryResult::Disconnected
+				}
+			}
+			Self::Batch(_) => DeliveryResult::Disconnected,
+		}
 	}
 
-	pub fn push_batch_frames(
+	fn send_remote_change(
+		&self,
+		_sub_id: SubscriptionId,
+		payload: RawChangePayload,
+		format: Self::Format,
+	) -> DeliveryResult {
+		match self {
+			Self::Single(tx) => {
+				let proto_payload = match (format, payload) {
+					(WireFormat::Rbcf, RawChangePayload::Rbcf(bytes)) => {
+						change_event::Payload::Rbcf(bytes)
+					}
+					(WireFormat::Rbcf, other) => {
+						let frames = other.into_frames();
+						change_event::Payload::Rbcf(
+							encode_frames(&frames, &EncodeOptions::fast())
+								.unwrap_or_default(),
+						)
+					}
+					(WireFormat::Proto, payload) => {
+						let frames = payload.into_frames();
+						change_event::Payload::Frames(FramesPayload {
+							frames: frames_to_proto(frames),
+						})
+					}
+				};
+				let event = SubscriptionEvent {
+					event: Some(subscription_event::Event::Change(ChangeEvent {
+						payload: Some(proto_payload),
+					})),
+				};
+				if tx.send(Ok(event)).is_ok() {
+					DeliveryResult::Delivered
+				} else {
+					DeliveryResult::Disconnected
+				}
+			}
+			Self::Batch(_) => DeliveryResult::Disconnected,
+		}
+	}
+
+	fn send_batch_envelope(
 		&self,
 		batch_id: BatchId,
-		subscription_id: SubscriptionId,
-		frames: Vec<Frame>,
-	) -> bool {
-		let Some(batch) = self.batches.get(&batch_id) else {
-			return false;
-		};
-		{
-			let mut entry = batch.pending.entry(subscription_id).or_default();
-			for frame in frames {
-				entry.push(frame);
-			}
-		}
-		for waker in self.wakers.lock().iter() {
-			waker.notify_one();
-		}
-		true
-	}
-
-	pub fn emit_batch_member_closed(&self, batch_id: BatchId, subscription_id: SubscriptionId) -> bool {
-		let Some(batch) = self.batches.get(&batch_id) else {
-			return false;
-		};
-		let event = BatchSubscriptionEvent {
-			event: Some(batch_subscription_event::Event::MemberClosed(BatchMemberClosedEvent {
-				batch_id: batch_id.to_string(),
-				subscription_id: subscription_id.to_string(),
-			})),
-		};
-		batch.tx.send(Ok(event)).is_ok()
-	}
-}
-
-impl SubscriptionDelivery for GrpcSubscriptionRegistry {
-	fn try_deliver(&self, subscription_id: &SubscriptionId, columns: Columns) -> DeliveryResult {
-		if let Some(batch_id) = self.batch_for(subscription_id) {
-			if let Some(batch) = self.batches.get(&batch_id) {
-				batch.pending.entry(*subscription_id).or_default().push(Frame::from(columns));
-				return DeliveryResult::Delivered;
-			}
-			return DeliveryResult::Disconnected;
-		}
-
-		let mut state = match self.subscriptions.get_mut(subscription_id) {
-			Some(s) => s,
-			None => return DeliveryResult::Disconnected,
-		};
-		let tx = match state.tx.clone() {
-			Some(tx) => tx,
-			None => return DeliveryResult::Disconnected,
-		};
-
-		if state.throttle.enabled() {
-			let now = self.clock.now_millis();
-			if state.throttle.ready(now) && state.throttle.pending.is_empty() {
-				let event = encode_change_event(columns, state.format);
-				match tx.send(Ok(event)) {
-					Ok(_) => {
-						state.throttle.last_sent_at = Some(now);
-						DeliveryResult::Delivered
-					}
-					Err(_) => DeliveryResult::Disconnected,
-				}
-			} else {
-				let was_empty = state.throttle.pending.is_empty();
-				state.throttle.pending.push(columns);
-				if was_empty {
-					self.throttle_pending.fetch_add(1, Ordering::AcqRel);
-				}
-				DeliveryResult::Delivered
-			}
-		} else {
-			let event = encode_change_event(columns, state.format);
-			match tx.send(Ok(event)) {
-				Ok(_) => DeliveryResult::Delivered,
-				Err(_) => DeliveryResult::Disconnected,
-			}
-		}
-	}
-
-	fn active_subscriptions(&self) -> Vec<SubscriptionId> {
-		self.subscriptions.iter().map(|entry| *entry.key()).collect()
-	}
-
-	fn active_subscriptions_into(&self, out: &mut Vec<SubscriptionId>) {
-		out.extend(self.subscriptions.iter().map(|entry| *entry.key()));
-	}
-
-	fn register_waker(&self, waker: Arc<Notify>) {
-		self.wakers.lock().push(waker);
-	}
-
-	fn flush(&self) -> Option<Duration> {
-		let now = self.clock.now_millis();
-		let mut next_deadline: Option<u64> = None;
-
-		if self.throttle_pending.load(Ordering::Acquire) > 0 {
-			let mut throttle_ready: Vec<ThrottleReady> = Vec::new();
-			for mut entry in self.subscriptions.iter_mut() {
-				let sub_id = *entry.key();
-				let state = entry.value_mut();
-				if state.batch_id.is_some() {
-					continue;
-				}
-				if !state.throttle.enabled() || state.throttle.pending.is_empty() {
-					continue;
-				}
-				if !state.throttle.ready(now) {
-					let rem = state.throttle.remaining_millis(now);
-					next_deadline = Some(next_deadline.map_or(rem, |d| d.min(rem)));
-					continue;
-				}
-				let tx = match state.tx.clone() {
-					Some(tx) => tx,
-					None => continue,
+		format: Self::Format,
+		entries: Vec<(SubscriptionId, Vec<Frame>)>,
+	) -> DeliveryResult {
+		match self {
+			Self::Batch(tx) => {
+				let proto_entries: Vec<BatchChangeEntry> = entries
+					.into_iter()
+					.map(|(sub_id, frames)| {
+						let payload = encode_change_payload(frames, format);
+						BatchChangeEntry {
+							subscription_id: sub_id.to_string(),
+							change: Some(ChangeEvent {
+								payload: Some(payload),
+							}),
+						}
+					})
+					.collect();
+				let event = BatchSubscriptionEvent {
+					event: Some(batch_subscription_event::Event::Change(BatchChangeEvent {
+						batch_id: batch_id.to_string(),
+						entries: proto_entries,
+					})),
 				};
-				let drained = mem::take(&mut state.throttle.pending);
-				self.throttle_pending.fetch_sub(1, Ordering::AcqRel);
-				state.throttle.last_sent_at = Some(now);
-				throttle_ready.push((sub_id, drained, state.format, tx));
-			}
-
-			let mut dead_subs: Vec<SubscriptionId> = Vec::new();
-			for (sub_id, drained, format, tx) in throttle_ready {
-				for columns in drained {
-					let event = encode_change_event(columns, format);
-					if tx.send(Ok(event)).is_err() {
-						dead_subs.push(sub_id);
-						break;
-					}
+				if tx.send(Ok(event)).is_ok() {
+					DeliveryResult::Delivered
+				} else {
+					DeliveryResult::Disconnected
 				}
 			}
-			for sub_id in dead_subs {
-				self.unregister(&sub_id);
-			}
+			Self::Single(_) => DeliveryResult::Disconnected,
 		}
+	}
 
-		if self.batches.is_empty() {
-			return next_deadline.map(Duration::from_millis);
-		}
-
-		let mut dead_batches: Vec<BatchId> = Vec::new();
-
-		for entry in self.batches.iter() {
-			let batch_id = *entry.key();
-			let batch = entry.value();
-
-			let taken: Vec<(SubscriptionId, Vec<Frame>)> = batch
-				.pending
-				.iter_mut()
-				.filter_map(|mut e| {
-					let v = mem::take(e.value_mut());
-					if v.is_empty() {
-						None
-					} else {
-						Some((*e.key(), v))
-					}
-				})
-				.collect();
-			if taken.is_empty() {
-				continue;
+	fn send_batch_member_closed(&self, batch_id: BatchId, subscription_id: SubscriptionId) -> DeliveryResult {
+		match self {
+			Self::Batch(tx) => {
+				let event = BatchSubscriptionEvent {
+					event: Some(batch_subscription_event::Event::MemberClosed(
+						BatchMemberClosedEvent {
+							batch_id: batch_id.to_string(),
+							subscription_id: subscription_id.to_string(),
+						},
+					)),
+				};
+				if tx.send(Ok(event)).is_ok() {
+					DeliveryResult::Delivered
+				} else {
+					DeliveryResult::Disconnected
+				}
 			}
-
-			let entries: Vec<BatchChangeEntry> = taken
-				.into_iter()
-				.map(|(sub_id, frames)| {
-					let payload = encode_change_payload(frames, batch.format);
-					BatchChangeEntry {
-						subscription_id: sub_id.to_string(),
-						change: Some(ChangeEvent {
-							payload: Some(payload),
-						}),
-					}
-				})
-				.collect();
-
-			let event = BatchSubscriptionEvent {
-				event: Some(batch_subscription_event::Event::Change(BatchChangeEvent {
-					batch_id: batch_id.to_string(),
-					entries,
-				})),
-			};
-
-			if batch.tx.send(Ok(event)).is_err() {
-				dead_batches.push(batch_id);
-			}
+			Self::Single(_) => DeliveryResult::Disconnected,
 		}
+	}
 
-		for batch_id in dead_batches {
-			if let Some(members) = self.unsubscribe_batch(batch_id) {
-				warn!("gRPC batch {} tx closed; cascaded {} members", batch_id, members.len());
-			}
-		}
-
-		next_deadline.map(Duration::from_millis)
+	fn send_closed(&self, _sub_id: SubscriptionId) -> DeliveryResult {
+		DeliveryResult::Delivered
 	}
 }
 
-fn encode_change_event(columns: Columns, format: WireFormat) -> SubscriptionEvent {
+pub fn encode_change_event(columns: Columns, format: WireFormat) -> SubscriptionEvent {
 	let payload = encode_change_payload(vec![Frame::from(columns)], format);
 	SubscriptionEvent {
 		event: Some(subscription_event::Event::Change(ChangeEvent {
@@ -416,7 +224,7 @@ fn encode_change_event(columns: Columns, format: WireFormat) -> SubscriptionEven
 	}
 }
 
-fn encode_change_payload(frames: Vec<Frame>, format: WireFormat) -> change_event::Payload {
+pub fn encode_change_payload(frames: Vec<Frame>, format: WireFormat) -> change_event::Payload {
 	match format {
 		WireFormat::Rbcf => {
 			let rbcf = encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default();
@@ -430,8 +238,15 @@ fn encode_change_payload(frames: Vec<Frame>, format: WireFormat) -> change_event
 
 #[cfg(test)]
 mod tests {
-	use reifydb_runtime::context::{clock::MockClock, rng::Rng};
-	use reifydb_type::value::Value;
+	use std::time::Duration;
+
+	use reifydb_runtime::context::{
+		clock::{Clock, MockClock},
+		rng::Rng,
+	};
+	use reifydb_sub_server::subscription::registry::PromoteResult;
+	use reifydb_subscription::delivery::SubscriptionDelivery;
+	use reifydb_type::value::{Value, uuid::Uuid7};
 
 	use super::*;
 
@@ -448,16 +263,41 @@ mod tests {
 	#[tokio::test]
 	async fn test_batch_flush_coalesces_two_members() {
 		let (clock, rng) = test_clock_and_rng();
-		let registry = GrpcSubscriptionRegistry::new(clock.clone());
+		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
+		let connection_id = Uuid7::generate(&clock, &rng);
 		let (batch_tx, mut batch_rx) = mpsc::unbounded_channel::<Result<BatchSubscriptionEvent, Status>>();
+		let batch_sink = GrpcWireSink::Batch(batch_tx);
 
 		let sub_a = SubscriptionId(1);
 		let sub_b = SubscriptionId(2);
 
-		registry.register_batch_member(sub_a, WireFormat::Proto, Duration::ZERO);
-		registry.register_batch_member(sub_b, WireFormat::Proto, Duration::ZERO);
+		registry.subscribe(
+			sub_a,
+			connection_id,
+			"FROM a".to_string(),
+			batch_sink.clone(),
+			WireFormat::Proto,
+			None,
+			Duration::ZERO,
+		);
+		registry.subscribe(
+			sub_b,
+			connection_id,
+			"FROM b".to_string(),
+			batch_sink.clone(),
+			WireFormat::Proto,
+			None,
+			Duration::ZERO,
+		);
 
-		let batch_id = registry.register_batch(vec![sub_a, sub_b], batch_tx, WireFormat::Proto, &clock, &rng);
+		let batch_id = registry.register_batch(
+			connection_id,
+			vec![sub_a, sub_b],
+			batch_sink,
+			WireFormat::Proto,
+			&clock,
+			&rng,
+		);
 		assert_eq!(registry.batch_for(&sub_a), Some(batch_id));
 
 		assert!(matches!(registry.try_deliver(&sub_a, single_int_columns("v", 1)), DeliveryResult::Delivered));
@@ -479,28 +319,23 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn test_batch_flush_empty_tick_is_noop() {
-		let (clock, rng) = test_clock_and_rng();
-		let registry = GrpcSubscriptionRegistry::new(clock.clone());
-		let (batch_tx, mut batch_rx) = mpsc::unbounded_channel::<Result<BatchSubscriptionEvent, Status>>();
-		let sub_a = SubscriptionId(77);
-		registry.register_batch_member(sub_a, WireFormat::Proto, Duration::ZERO);
-		registry.register_batch(vec![sub_a], batch_tx, WireFormat::Proto, &clock, &rng);
-
-		registry.flush();
-		assert!(batch_rx.try_recv().is_err());
-	}
-
-	#[tokio::test]
 	async fn test_push_batch_frames_for_remote_member() {
 		let (clock, rng) = test_clock_and_rng();
-		let registry = GrpcSubscriptionRegistry::new(clock.clone());
+		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
+		let connection_id = Uuid7::generate(&clock, &rng);
 		let (batch_tx, mut batch_rx) = mpsc::unbounded_channel::<Result<BatchSubscriptionEvent, Status>>();
+		let batch_sink = GrpcWireSink::Batch(batch_tx);
 		let sub_remote = SubscriptionId(42);
-		// Remote member: not in subscriptions map.
-		let batch_id = registry.register_batch(vec![sub_remote], batch_tx, WireFormat::Proto, &clock, &rng);
 
-		// Simulate frames arriving from the remote proxy.
+		let batch_id = registry.register_batch(
+			connection_id,
+			vec![sub_remote],
+			batch_sink,
+			WireFormat::Proto,
+			&clock,
+			&rng,
+		);
+
 		let frames = vec![Frame::from(single_int_columns("v", 99))];
 		assert!(registry.push_batch_frames(batch_id, sub_remote, frames));
 
@@ -518,10 +353,14 @@ mod tests {
 	#[tokio::test]
 	async fn test_emit_batch_member_closed() {
 		let (clock, rng) = test_clock_and_rng();
-		let registry = GrpcSubscriptionRegistry::new(clock.clone());
+		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
+		let connection_id = Uuid7::generate(&clock, &rng);
 		let (batch_tx, mut batch_rx) = mpsc::unbounded_channel::<Result<BatchSubscriptionEvent, Status>>();
+		let batch_sink = GrpcWireSink::Batch(batch_tx);
 		let sub = SubscriptionId(123);
-		let batch_id = registry.register_batch(vec![sub], batch_tx, WireFormat::Proto, &clock, &rng);
+
+		let batch_id =
+			registry.register_batch(connection_id, vec![sub], batch_sink, WireFormat::Proto, &clock, &rng);
 
 		assert!(registry.emit_batch_member_closed(batch_id, sub));
 
@@ -533,9 +372,73 @@ mod tests {
 			}
 			_ => panic!("expected MemberClosed"),
 		}
+	}
 
-		// Batch still alive.
-		assert_eq!(registry.batch_for(&SubscriptionId(999)), None);
+	#[tokio::test]
+	async fn test_warming_buffers_until_promote() {
+		let (clock, rng) = test_clock_and_rng();
+		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
+		let connection_id = Uuid7::generate(&clock, &rng);
+		let (tx, mut rx) = mpsc::unbounded_channel::<Result<SubscriptionEvent, Status>>();
+		let sink = GrpcWireSink::Single(tx);
+
+		let sub = SubscriptionId(7001);
+		registry.subscribe(
+			sub,
+			connection_id,
+			"FROM warm".to_string(),
+			sink,
+			WireFormat::Proto,
+			Some(16),
+			Duration::ZERO,
+		);
+
+		assert!(matches!(registry.try_deliver(&sub, single_int_columns("v", 1)), DeliveryResult::Delivered));
+		assert!(matches!(registry.try_deliver(&sub, single_int_columns("v", 2)), DeliveryResult::Delivered));
+		assert!(rx.try_recv().is_err(), "no pushes while warming");
+
+		match registry.promote_to_live(sub) {
+			PromoteResult::Promoted(n) => assert_eq!(n, 2),
+			other => panic!("unexpected promote result: {:?}", other),
+		}
+
+		let first = rx.try_recv().expect("expected first buffered push after promote").expect("ok");
+		assert!(matches!(first.event, Some(subscription_event::Event::Change(_))));
+		let second = rx.try_recv().expect("expected second buffered push after promote").expect("ok");
+		assert!(matches!(second.event, Some(subscription_event::Event::Change(_))));
+
+		assert!(matches!(registry.try_deliver(&sub, single_int_columns("v", 3)), DeliveryResult::Delivered));
+		let live = rx.try_recv().expect("expected live push after promote").expect("ok");
+		assert!(matches!(live.event, Some(subscription_event::Event::Change(_))));
+	}
+
+	#[tokio::test]
+	async fn test_warming_overflow_marks_subscription() {
+		let (clock, rng) = test_clock_and_rng();
+		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
+		let connection_id = Uuid7::generate(&clock, &rng);
+		let (tx, _rx) = mpsc::unbounded_channel::<Result<SubscriptionEvent, Status>>();
+		let sink = GrpcWireSink::Single(tx);
+
+		let sub = SubscriptionId(7002);
+		registry.subscribe(
+			sub,
+			connection_id,
+			"FROM warm".to_string(),
+			sink,
+			WireFormat::Proto,
+			Some(2),
+			Duration::ZERO,
+		);
+
+		registry.try_deliver(&sub, single_int_columns("v", 1));
+		registry.try_deliver(&sub, single_int_columns("v", 2));
+		registry.try_deliver(&sub, single_int_columns("v", 3));
+
+		match registry.promote_to_live(sub) {
+			PromoteResult::Overflowed => {}
+			other => panic!("expected Overflowed, got {:?}", other),
+		}
 	}
 
 	#[test]

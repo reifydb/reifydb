@@ -54,28 +54,30 @@ use reifydb_type::{cow_vec, util::cowvec::CowVec};
 
 const SHAPE: ShapeId = ShapeId::Table(TableId(1));
 
-fn store_with_persistent() -> StandardMultiStore {
+fn store_with_persistent() -> (StandardMultiStore, impl Drop) {
 	StandardMultiStore::testing_memory_with_persistent_sqlite()
 }
 
 /// Build a store whose flush actor ticks quickly, so a set eviction watermark drives the real sweep promptly.
-fn store_with_fast_flush() -> StandardMultiStore {
+fn store_with_fast_flush() -> (StandardMultiStore, impl Drop) {
 	let pools = Pools::new(PoolConfig::default());
 	let clock = Clock::Real;
 	let actor_system = ActorSystem::new(pools, clock.clone());
 	let event_bus = EventBus::new(&actor_system);
-	StandardMultiStore::new(MultiStoreConfig {
+	let (persistent, guard) = PersistentConfig::sqlite_in_memory();
+	let store = StandardMultiStore::new(MultiStoreConfig {
 		commit: Some(CommitBufferConfig {
 			storage: MultiCommitBufferTier::memory(),
 		}),
-		persistent: Some(PersistentConfig::sqlite_in_memory().flush_interval(Duration::from_millis(25))),
+		persistent: Some(persistent.flush_interval(Duration::from_millis(25))),
 		retention: Default::default(),
 		merge_config: Default::default(),
 		event_bus,
 		actor_system,
 		clock,
 	})
-	.unwrap()
+	.unwrap();
+	(store, guard)
 }
 
 fn row_key(row: u64) -> EncodedKey {
@@ -148,7 +150,7 @@ fn eviction_persists_latest_below_w_and_drops_them_from_commit_tier() {
 	// Test 1 (a,b,c,d): commit v1<v2<v3 for one persistent key, evict <= 2. The latest-<=2 value (v2) must
 	// be persisted; the commit tier must no longer hold v1/v2 (counts drop) while v3 stays resident; and both
 	// point reads and range scans must still return the correct values across the tier boundary.
-	let store = store_with_persistent();
+	let (store, _guard) = store_with_persistent();
 	let kind = EntryKind::Source(SHAPE);
 	let k = row_key(1);
 
@@ -200,7 +202,7 @@ fn persistent_false_shape_is_dropped_without_persisting() {
 	// NOT be written to the persistent tier. A read after eviction returns NotFound - it was RAM-only ephemeral.
 	// This guards the bug where persistent:false shapes were never evicted (unbounded RAM) or were wrongly
 	// flushed to disk.
-	let store = store_with_persistent();
+	let (store, _guard) = store_with_persistent();
 	let kind = EntryKind::Source(SHAPE);
 	let k = row_key(1);
 
@@ -230,8 +232,8 @@ fn mvcc_view_after_eviction_matches_a_never_evicted_store() {
 	// Test 3: versions v1<v2<v3; evict <= v2 in one store, leave an identical store untouched. Every snapshot
 	// read (including a between-version snapshot) must resolve identically. This is the parity check that the
 	// tier boundary introduced by eviction is invisible to MVCC semantics.
-	let evicted = store_with_persistent();
-	let intact = store_with_persistent();
+	let (evicted, _evicted_guard) = store_with_persistent();
+	let (intact, _intact_guard) = store_with_persistent();
 	let k = row_key(1);
 
 	for store in [&evicted, &intact] {
@@ -274,7 +276,7 @@ fn mvcc_view_after_eviction_matches_a_never_evicted_store() {
 fn versions_above_w_are_left_entirely_resident() {
 	// Guards the converse of eviction: with W below all committed versions, nothing is persisted and nothing is
 	// dropped. A regression that evicted too eagerly would surface here.
-	let store = store_with_persistent();
+	let (store, _guard) = store_with_persistent();
 	let kind = EntryKind::Source(SHAPE);
 	let k = row_key(1);
 	commit(&store, &k, 5, "v5");
@@ -322,7 +324,7 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 	// correct v2 was then rejected as a lower version, leaving a read at the W snapshot returning NotFound. With
 	// the drain gone, persistent holds v2: a read at W (v2) resolves to v2 from persistent, a read at v3 resolves
 	// to v3 from the commit tier, and the <= W history is gone from the commit tier (RAM bounded).
-	let store = store_with_fast_flush();
+	let (store, _guard) = store_with_fast_flush();
 	let kind = EntryKind::Source(SHAPE);
 	let k = row_key(1);
 
@@ -397,7 +399,7 @@ fn row_ttl_deletes_from_persistent_and_invalidated_read_tier_does_not_serve_it()
 	// returned by a subsequent read, AND a stale read-tier entry for that key must not resurrect it. The row
 	// GC actor invalidates the read tier (clear_read / invalidate_read_key) precisely so this can't happen;
 	// this pins that the invalidation is load-bearing for correctness, not just a cache-freshness nicety.
-	let store = store_with_persistent();
+	let (store, _guard) = store_with_persistent();
 	let kind = EntryKind::Source(SHAPE);
 	let k = row_key(1);
 

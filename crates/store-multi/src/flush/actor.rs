@@ -234,6 +234,7 @@ impl Actor for FlushActor {
 #[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
 mod tests {
 	use reifydb_core::interface::catalog::{id::TableId, shape::ShapeId};
+	use reifydb_sqlite::SqliteTempPathGuard;
 	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;
@@ -276,54 +277,70 @@ mod tests {
 		}
 	}
 
-	fn build_actor(persistence: Arc<dyn ShapePersistence>, watermark: Option<CommitVersion>) -> FlushActor {
+	fn build_actor(
+		persistence: Arc<dyn ShapePersistence>,
+		watermark: Option<CommitVersion>,
+	) -> (FlushActor, SqliteTempPathGuard) {
 		let buffer = MultiCommitBufferTier::memory();
-		let persistent = MultiPersistentTier::sqlite_in_memory();
+		let (persistent, guard) = MultiPersistentTier::sqlite_in_memory();
 		let persistence_lock: Arc<OnceLock<Arc<dyn ShapePersistence>>> = Arc::new(OnceLock::new());
 		let _ = persistence_lock.set(persistence);
 		let watermark_lock: Arc<OnceLock<Arc<dyn EvictionWatermark>>> = Arc::new(OnceLock::new());
 		if let Some(w) = watermark {
 			let _ = watermark_lock.set(Arc::new(StaticWatermark(w)));
 		}
-		FlushActor::new(buffer, persistent, Duration::from_secs(5), persistence_lock, watermark_lock, None)
+		(
+			FlushActor::new(
+				buffer,
+				persistent,
+				Duration::from_secs(5),
+				persistence_lock,
+				watermark_lock,
+				None,
+			),
+			guard,
+		)
 	}
 
 	fn build_actor_with_read(
 		persistence: Arc<dyn ShapePersistence>,
 		watermark: CommitVersion,
 		read: MultiReadBufferTier,
-	) -> FlushActor {
+	) -> (FlushActor, SqliteTempPathGuard) {
 		let buffer = MultiCommitBufferTier::memory();
-		let persistent = MultiPersistentTier::sqlite_in_memory();
+		let (persistent, guard) = MultiPersistentTier::sqlite_in_memory();
 		let persistence_lock: Arc<OnceLock<Arc<dyn ShapePersistence>>> = Arc::new(OnceLock::new());
 		let _ = persistence_lock.set(persistence);
 		let watermark_lock: Arc<OnceLock<Arc<dyn EvictionWatermark>>> = Arc::new(OnceLock::new());
 		let _ = watermark_lock.set(Arc::new(StaticWatermark(watermark)));
-		FlushActor::new(
-			buffer,
-			persistent,
-			Duration::from_secs(5),
-			persistence_lock,
-			watermark_lock,
-			Some(read),
+		(
+			FlushActor::new(
+				buffer,
+				persistent,
+				Duration::from_secs(5),
+				persistence_lock,
+				watermark_lock,
+				Some(read),
+			),
+			guard,
 		)
 	}
 
 	#[test]
 	fn eviction_cutoff_is_none_without_watermark() {
-		let actor = build_actor(Arc::new(AllPersistent), None);
+		let (actor, _guard) = build_actor(Arc::new(AllPersistent), None);
 		assert!(actor.eviction_cutoff().is_none(), "no watermark set => no eviction");
 	}
 
 	#[test]
 	fn eviction_cutoff_is_none_at_zero() {
-		let actor = build_actor(Arc::new(AllPersistent), Some(CommitVersion(0)));
+		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(0)));
 		assert!(actor.eviction_cutoff().is_none());
 	}
 
 	#[test]
 	fn sweep_persists_then_evicts_persistent_shape_below_watermark() {
-		let actor = build_actor(Arc::new(AllPersistent), Some(CommitVersion(2)));
+		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(2)));
 		let kind = EntryKind::Source(ShapeId::Table(TableId(1)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 1, "v1");
@@ -356,7 +373,7 @@ mod tests {
 
 	#[test]
 	fn sweep_evicts_non_persistent_shape_without_persisting() {
-		let actor = build_actor(Arc::new(NonePersistent), Some(CommitVersion(2)));
+		let (actor, _guard) = build_actor(Arc::new(NonePersistent), Some(CommitVersion(2)));
 		let kind = EntryKind::Source(ShapeId::Table(TableId(7)));
 		let key = ek("ephemeral");
 		write(&actor.commit, kind, &key, 1, "v1");
@@ -388,7 +405,7 @@ mod tests {
 
 	#[test]
 	fn sweep_keeps_everything_when_all_above_watermark() {
-		let actor = build_actor(Arc::new(AllPersistent), Some(CommitVersion(1)));
+		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(1)));
 		let kind = EntryKind::Source(ShapeId::Table(TableId(3)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 5, "v5");
@@ -412,7 +429,7 @@ mod tests {
 	#[test]
 	fn sweep_invalidates_evicted_keys_in_the_read_tier() {
 		let read = MultiReadBufferTier::new(16);
-		let actor = build_actor_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
+		let (actor, _guard) = build_actor_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
 		let kind = EntryKind::Source(ShapeId::Table(TableId(11)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 1, "v1");
@@ -431,7 +448,7 @@ mod tests {
 
 	#[test]
 	fn sweep_persists_tombstone_so_deleted_keys_stay_deleted_after_eviction() {
-		let actor = build_actor(Arc::new(AllPersistent), Some(CommitVersion(2)));
+		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(2)));
 		let kind = EntryKind::Source(ShapeId::Table(TableId(12)));
 		let key = ek("k");
 		write(&actor.commit, kind, &key, 1, "v1");
@@ -457,7 +474,7 @@ mod tests {
 
 	#[test]
 	fn sweep_evicts_below_and_keeps_above_across_multiple_keys() {
-		let actor = build_actor(Arc::new(AllPersistent), Some(CommitVersion(2)));
+		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(2)));
 		let kind = EntryKind::Source(ShapeId::Table(TableId(13)));
 		let cold = ek("cold");
 		let hot = ek("hot");

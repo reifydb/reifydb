@@ -23,7 +23,7 @@ fn row(bytes: &[u8]) -> EncodedRow {
 // access (the same code path used for on-disk File configs).
 #[test]
 fn concurrent_reads_during_writes_no_deadlock() {
-	let store = StandardMultiStore::testing_persistent_sqlite_only();
+	let (store, _guard) = StandardMultiStore::testing_persistent_sqlite_only();
 	let key = EncodedKey::new(b"k".to_vec());
 
 	MultiVersionCommit::commit(

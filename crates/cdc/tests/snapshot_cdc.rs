@@ -13,7 +13,8 @@ mod common;
 test_each_path! { in "crates/cdc/tests/scripts/cdc" as snapshot_cdc => run_sqlite }
 
 fn run_sqlite(path: &Path) {
-	let engine = TestEngine::builder().with_sqlite_cdc(SqliteConfig::test()).build();
+	let (config, _guard) = SqliteConfig::test();
+	let engine = TestEngine::builder().with_sqlite_cdc(config).build();
 	let cdc_store = engine.inner().cdc_store();
 	let mock_clock = engine.mock_clock();
 	let mut runner = common::Runner::new(engine.inner().clone(), cdc_store, mock_clock);

@@ -20,7 +20,8 @@ fn row_count(frames: &[Frame]) -> usize {
 
 #[test]
 fn persistent_false_rejected_when_store_has_no_buffer() {
-	let mut db = embedded::sqlite_without_buffer(SqliteConfig::in_memory()).build().unwrap();
+	let (config, _guard) = SqliteConfig::in_memory();
+	let mut db = embedded::sqlite_without_buffer(config).build().unwrap();
 	db.start().unwrap();
 
 	db.admin_as_root("create namespace demo", Params::None).unwrap();

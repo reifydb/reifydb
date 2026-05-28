@@ -21,12 +21,13 @@ use tokio::{
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async_with_config, tungstenite::Message};
 
 use crate::{
-	AdminRequest, AdminResult, AuthRequest, BatchChangeEntry, BatchChangePayload, BatchClosedPayload,
-	BatchMemberClosedPayload, BatchMemberInfo, BatchSubscribeRequest, BatchUnsubscribeRequest, CallRequest,
-	ChangeKind, ChangePayload, CommandRequest, CommandResult, LoginResult, QueryRequest, QueryResult, Request,
-	RequestPayload, Response, ResponseMeta, ResponsePayload, ServerPush, SubscribeRequest, UnsubscribeRequest,
-	WireBatchChangePayload, WireChangePayload, WireFormat,
+	AdminRequest, AdminResult, AuthRequest, BatchChangeEntry, BatchChangePayload, BatchMemberInfo, BatchPushEvent,
+	BatchSubscribeRequest, BatchUnsubscribeRequest, CallRequest, ChangeKind, ChangePayload, CommandRequest,
+	CommandResult, LoginResult, QueryRequest, QueryResult, Request, RequestPayload, Response, ResponseMeta,
+	ResponsePayload, ServerPush, SubscribeRequest, UnsubscribeRequest, WireBatchChangePayload, WireChangePayload,
+	WireFormat,
 	changes::{read_op_kind, strip_op_column},
+	client::{BatchSubscription as ClientBatchSubscription, ReifyClient, Subscription as ClientSubscription},
 	params_to_wire,
 	session::{parse_admin_response, parse_call_response, parse_command_response, parse_query_response},
 	subscription::{BatchItem, SubscriptionConfig, build_subscription_rql},
@@ -41,16 +42,13 @@ enum ClientResponse {
 
 type PendingRequests = Arc<Mutex<HashMap<String, oneshot::Sender<ClientResponse>>>>;
 
-/// A server-initiated push event delivered out of band from request/response.
-#[derive(Debug, Clone)]
-pub enum BatchPushEvent {
-	Change(BatchChangePayload),
-	MemberClosed(BatchMemberClosedPayload),
-	Closed(BatchClosedPayload),
-}
-
 /// Dispatcher for routing batch push messages to per-batch subscription handles.
 type BatchRouters = Arc<Mutex<HashMap<String, mpsc::Sender<BatchPushEvent>>>>;
+
+/// Dispatcher for routing single-subscription change messages to per-subscription handles
+/// created via `ReifyClient::subscribe`. Inherent `WsClient::subscribe` does not register a
+/// router; its changes fall through to the shared `change_tx`.
+pub(crate) type SubscriptionRouters = Arc<Mutex<HashMap<String, mpsc::Sender<ChangePayload>>>>;
 
 /// Async WebSocket client for ReifyDB
 pub struct WsClient {
@@ -61,6 +59,8 @@ pub struct WsClient {
 	change_rx: mpsc::UnboundedReceiver<ChangePayload>,
 	batch_routers: BatchRouters,
 	pending_batch_routers: BatchRouters,
+	subscription_routers: SubscriptionRouters,
+	pending_subscription_routers: SubscriptionRouters,
 	format: WireFormat,
 }
 
@@ -106,10 +106,15 @@ impl WsClient {
 
 		let pending_batch_routers: BatchRouters = Arc::new(Mutex::new(HashMap::new()));
 
+		let subscription_routers: SubscriptionRouters = Arc::new(Mutex::new(HashMap::new()));
+		let pending_subscription_routers: SubscriptionRouters = Arc::new(Mutex::new(HashMap::new()));
+
 		// Spawn the connection management task
 		let pending_clone = pending.clone();
 		let batch_routers_clone = batch_routers.clone();
 		let pending_batch_routers_clone = pending_batch_routers.clone();
+		let subscription_routers_clone = subscription_routers.clone();
+		let pending_subscription_routers_clone = pending_subscription_routers.clone();
 		spawn(async move {
 			Self::connection_loop(
 				write,
@@ -120,6 +125,8 @@ impl WsClient {
 				change_tx,
 				batch_routers_clone,
 				pending_batch_routers_clone,
+				subscription_routers_clone,
+				pending_subscription_routers_clone,
 			)
 			.await;
 		});
@@ -131,6 +138,8 @@ impl WsClient {
 			change_rx,
 			batch_routers,
 			pending_batch_routers,
+			subscription_routers,
+			pending_subscription_routers,
 			format,
 		})
 	}
@@ -146,6 +155,8 @@ impl WsClient {
 		change_tx: mpsc::UnboundedSender<ChangePayload>,
 		batch_routers: BatchRouters,
 		pending_batch_routers: BatchRouters,
+		subscription_routers: SubscriptionRouters,
+		pending_subscription_routers: SubscriptionRouters,
 	) {
 		loop {
 			select! {
@@ -169,8 +180,25 @@ impl WsClient {
 												.insert(ack.batch_id.clone(), push_tx);
 										}
 									}
+									ResponsePayload::Subscribed(ref ack) => {
+										let mut pending_routers =
+											pending_subscription_routers.lock().await;
+										if let Some(change_tx) =
+											pending_routers.remove(&response.id)
+										{
+											drop(pending_routers);
+											subscription_routers
+												.lock()
+												.await
+												.insert(ack.subscription_id.clone(), change_tx);
+										}
+									}
 									ResponsePayload::Err(_) => {
 										pending_batch_routers
+											.lock()
+											.await
+											.remove(&response.id);
+										pending_subscription_routers
 											.lock()
 											.await
 											.remove(&response.id);
@@ -186,7 +214,16 @@ impl WsClient {
 							else if let Ok(push) = from_str::<ServerPush>(&text) {
 								match push {
 									ServerPush::Change(wire) => {
-										let _ = change_tx.send(payload_from_json_change(wire));
+										let payload = payload_from_json_change(wire);
+										let routed = {
+											let routers = subscription_routers.lock().await;
+											routers.get(&payload.subscription_id).cloned()
+										};
+										if let Some(tx) = routed {
+											let _ = tx.send(payload).await;
+										} else {
+											let _ = change_tx.send(payload);
+										}
 									}
 									ServerPush::BatchChange(wire) => {
 										let payload = batch_change_from_json(wire);
@@ -276,13 +313,22 @@ impl WsClient {
 								0x01 => {
 									let kind = frames.first().map(read_op_kind).unwrap_or(ChangeKind::Insert);
 									let stripped: Vec<Frame> = frames.into_iter().map(strip_op_column).collect();
-									let _ = change_tx.send(ChangePayload {
-										subscription_id: id,
+									let payload = ChangePayload {
+										subscription_id: id.clone(),
 										kind,
 										content_type: "application/vnd.reifydb.rbcf".to_string(),
 										body: Value::Null,
 										frames: Some(stripped),
-									});
+									};
+									let routed = {
+										let routers = subscription_routers.lock().await;
+										routers.get(&id).cloned()
+									};
+									if let Some(tx) = routed {
+										let _ = tx.send(payload).await;
+									} else {
+										let _ = change_tx.send(payload);
+									}
 								}
 								_ => {}
 							}
@@ -819,5 +865,158 @@ fn batch_change_from_json(wire: WireBatchChangePayload) -> BatchChangePayload {
 	BatchChangePayload {
 		batch_id: wire.batch_id,
 		entries,
+	}
+}
+
+pub struct WsSubscription {
+	subscription_id: String,
+	change_rx: mpsc::Receiver<ChangePayload>,
+}
+
+#[async_trait::async_trait]
+impl ClientSubscription for WsSubscription {
+	fn subscription_id(&self) -> &str {
+		&self.subscription_id
+	}
+
+	async fn recv(&mut self) -> Option<ChangePayload> {
+		self.change_rx.recv().await
+	}
+}
+
+#[async_trait::async_trait]
+impl ClientBatchSubscription for WsBatchSubscription {
+	fn batch_id(&self) -> &str {
+		WsBatchSubscription::batch_id(self)
+	}
+
+	fn members(&self) -> &[BatchMemberInfo] {
+		WsBatchSubscription::members(self)
+	}
+
+	async fn recv(&mut self) -> Option<BatchPushEvent> {
+		WsBatchSubscription::recv(self).await
+	}
+}
+
+#[async_trait::async_trait]
+impl ReifyClient for WsClient {
+	fn wire_format(&self) -> WireFormat {
+		self.format
+	}
+
+	fn is_authenticated(&self) -> bool {
+		WsClient::is_authenticated(self)
+	}
+
+	async fn authenticate(&mut self, token: &str) -> Result<(), Error> {
+		WsClient::authenticate(self, token).await
+	}
+
+	async fn login_with_password(&mut self, identifier: &str, password: &str) -> Result<LoginResult, Error> {
+		WsClient::login_with_password(self, identifier, password).await
+	}
+
+	async fn login_with_token(&mut self, token: &str) -> Result<LoginResult, Error> {
+		WsClient::login_with_token(self, token).await
+	}
+
+	async fn logout(&mut self) -> Result<(), Error> {
+		WsClient::logout(self).await
+	}
+
+	async fn admin(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		WsClient::admin(self, rql, params).await
+	}
+
+	async fn admin_with_meta(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
+		WsClient::admin_with_meta(self, rql, params).await
+	}
+
+	async fn command(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		WsClient::command(self, rql, params).await
+	}
+
+	async fn command_with_meta(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
+		WsClient::command_with_meta(self, rql, params).await
+	}
+
+	async fn query(&self, rql: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		WsClient::query(self, rql, params).await
+	}
+
+	async fn query_with_meta(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
+		WsClient::query_with_meta(self, rql, params).await
+	}
+
+	async fn call(&self, name: &str, params: Option<Params>) -> Result<Vec<Frame>, Error> {
+		WsClient::call(self, name, params).await
+	}
+
+	async fn call_with_meta(&self, name: &str, params: Option<Params>) -> Result<CommandResult, Error> {
+		WsClient::call_with_meta(self, name, params).await
+	}
+
+	async fn subscribe(&self, rql: &str, config: SubscriptionConfig) -> Result<Box<dyn ClientSubscription>, Error> {
+		let id = generate_request_id();
+		let (change_tx, change_rx) = mpsc::channel::<ChangePayload>(100);
+		{
+			let mut pending = self.pending_subscription_routers.lock().await;
+			pending.insert(id.clone(), change_tx);
+		}
+
+		let request = Request {
+			id: id.clone(),
+			payload: RequestPayload::Subscribe(SubscribeRequest {
+				rql: build_subscription_rql(rql, &config),
+				format: self.wire_format(),
+			}),
+		};
+
+		let response = match self.send_request_json(request).await {
+			Ok(r) => r,
+			Err(e) => {
+				self.pending_subscription_routers.lock().await.remove(&id);
+				return Err(e);
+			}
+		};
+		match response.payload {
+			ResponsePayload::Subscribed(ack) => Ok(Box::new(WsSubscription {
+				subscription_id: ack.subscription_id,
+				change_rx,
+			})),
+			ResponsePayload::Err(err) => {
+				self.pending_subscription_routers.lock().await.remove(&id);
+				Err(Error(Box::new(err.diagnostic)))
+			}
+			_ => {
+				self.pending_subscription_routers.lock().await.remove(&id);
+				Err(Error(Box::new(Diagnostic {
+					code: "UNEXPECTED_RESPONSE".to_string(),
+					message: "Unexpected response type for Subscribe".to_string(),
+					..Default::default()
+				})))
+			}
+		}
+	}
+
+	async fn unsubscribe(&self, subscription_id: &str) -> Result<(), Error> {
+		{
+			let mut routers = self.subscription_routers.lock().await;
+			routers.remove(subscription_id);
+		}
+		WsClient::unsubscribe(self, subscription_id).await
+	}
+
+	async fn batch_subscribe<'a>(
+		&self,
+		items: &[BatchItem<'a>],
+	) -> Result<Box<dyn ClientBatchSubscription>, Error> {
+		let sub = WsClient::batch_subscribe(self, items).await?;
+		Ok(Box::new(sub))
+	}
+
+	async fn batch_unsubscribe(&self, batch_id: &str) -> Result<(), Error> {
+		WsClient::batch_unsubscribe(self, batch_id).await
 	}
 }

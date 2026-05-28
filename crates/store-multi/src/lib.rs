@@ -44,6 +44,8 @@ use reifydb_core::{
 		MultiVersionStore,
 	},
 };
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_type::util::cowvec::CowVec;
 use store::StandardMultiStore;
 
@@ -88,13 +90,15 @@ impl MultiStore {
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn testing_memory_with_persistent_sqlite() -> Self {
-		MultiStore::Standard(StandardMultiStore::testing_memory_with_persistent_sqlite())
+	pub fn testing_memory_with_persistent_sqlite() -> (Self, SqliteTempPathGuard) {
+		let (store, guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+		(MultiStore::Standard(store), guard)
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn testing_memory_with_persistent_sqlite_with_eventbus(event_bus: EventBus) -> Self {
-		MultiStore::Standard(StandardMultiStore::testing_memory_with_persistent_sqlite_with_eventbus(event_bus))
+	pub fn testing_memory_with_persistent_sqlite_with_eventbus(event_bus: EventBus) -> (Self, SqliteTempPathGuard) {
+		let (store, guard) = StandardMultiStore::testing_memory_with_persistent_sqlite_with_eventbus(event_bus);
+		(MultiStore::Standard(store), guard)
 	}
 
 	pub fn flush_pending_blocking(&self) {

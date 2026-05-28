@@ -2,16 +2,16 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
+	cell::RefCell,
 	cmp,
 	cmp::Ordering,
 	collections::HashMap,
 	fmt,
 	fmt::{Display, Formatter},
 	ops::Deref,
-	sync::{Arc, OnceLock},
+	sync::Arc,
 };
 
-use reifydb_runtime::sync::mutex::Mutex;
 use serde::{
 	Deserialize, Serialize,
 	de::{self, EnumAccess, MapAccess, VariantAccess, Visitor},
@@ -19,20 +19,23 @@ use serde::{
 
 const INTERN_CAP: usize = 4096;
 
-static INTERN: OnceLock<Mutex<HashMap<Arc<str>, ()>>> = OnceLock::new();
+thread_local! {
+	static INTERN: RefCell<HashMap<Arc<str>, ()>> = RefCell::new(HashMap::new());
+}
 
 fn intern(text: &str) -> Arc<str> {
-	let table = INTERN.get_or_init(|| Mutex::new(HashMap::new()));
-	let mut guard = table.lock();
-	if let Some((existing, _)) = guard.get_key_value(text) {
-		return existing.clone();
-	}
-	if guard.len() >= INTERN_CAP {
-		return Arc::from(text);
-	}
-	let arc: Arc<str> = Arc::from(text);
-	guard.insert(arc.clone(), ());
-	arc
+	INTERN.with(|table| {
+		let mut guard = table.borrow_mut();
+		if let Some((existing, _)) = guard.get_key_value(text) {
+			return existing.clone();
+		}
+		if guard.len() >= INTERN_CAP {
+			return Arc::from(text);
+		}
+		let arc: Arc<str> = Arc::from(text);
+		guard.insert(arc.clone(), ());
+		arc
+	})
 }
 
 #[repr(transparent)]

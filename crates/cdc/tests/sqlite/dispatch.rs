@@ -26,7 +26,8 @@ fn cdc_at(version: u64) -> Cdc {
 
 #[test]
 fn dispatch_through_cdcstore_enum() {
-	let store = CdcStore::sqlite(SqliteConfig::test(), RecentCdcCache::DEFAULT_CAPACITY);
+	let (config, _guard) = SqliteConfig::test();
+	let store = CdcStore::sqlite(config, RecentCdcCache::DEFAULT_CAPACITY);
 	store.write(&cdc_at(1)).unwrap();
 	store.write(&cdc_at(2)).unwrap();
 	store.write(&cdc_at(3)).unwrap();

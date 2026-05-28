@@ -6,7 +6,7 @@ use std::{ops::Bound, sync::Arc};
 use reifydb_core::{encoded::key::EncodedKey, internal_error};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sqlite::{
-	SqliteConfig,
+	SqliteConfig, SqliteTempPathGuard,
 	connection::{connect, convert_flags, resolve_db_path},
 	pragma,
 };
@@ -50,8 +50,9 @@ impl SqlitePersistentStorage {
 		}
 	}
 
-	pub fn in_memory() -> Self {
-		Self::new(SqliteConfig::in_memory())
+	pub fn in_memory() -> (Self, SqliteTempPathGuard) {
+		let (config, guard) = SqliteConfig::in_memory();
+		(Self::new(config), guard)
 	}
 }
 

@@ -55,7 +55,7 @@ fn get(store: &StandardMultiStore, k: &EncodedKey, version: u64) -> Option<Vec<u
 
 #[test]
 fn cache_serves_cold_persistent_value_after_first_read_populates_it() {
-	let store = StandardMultiStore::testing_memory_with_persistent_sqlite();
+	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let k = key("cold");
 
 	persistent_only_set(&store, &k, 5, "v5");
@@ -72,7 +72,7 @@ fn cache_serves_cold_persistent_value_after_first_read_populates_it() {
 fn cache_miss_below_stored_version_does_not_leak_a_newer_value() {
 	// The persistent current is v5. A reader whose snapshot is below 5 must NOT see v5. The cache must
 	// decline to serve (stored_version > requested), and persistent's version guard returns NotFound too.
-	let store = StandardMultiStore::testing_memory_with_persistent_sqlite();
+	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let k = key("k");
 	persistent_only_set(&store, &k, 5, "v5");
 
@@ -85,7 +85,7 @@ fn cache_miss_below_stored_version_does_not_leak_a_newer_value() {
 
 #[test]
 fn commit_invalidates_a_stale_cached_value() {
-	let store = StandardMultiStore::testing_memory_with_persistent_sqlite();
+	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let k = key("k");
 
 	persistent_only_set(&store, &k, 5, "v5");
@@ -107,7 +107,7 @@ fn commit_invalidates_a_stale_cached_value() {
 fn buffer_shadows_cache_for_freshly_committed_keys() {
 	// A key written through the normal commit path lives in the buffer; the buffer is consulted first, so
 	// the cache can never shadow a fresher buffered value.
-	let store = StandardMultiStore::testing_memory_with_persistent_sqlite();
+	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let k = key("k");
 
 	commit(&store, &k, 3, "v3");
@@ -134,7 +134,7 @@ fn range_scan_does_not_consult_the_read_tier() {
 	// value that lives ONLY in the read tier (never written to persistent) must be invisible to a scan. If a
 	// scan ever consulted the read tier, capacity eviction of a cached entry would silently change scan
 	// results, so the cache must be strictly bypassed here.
-	let store = StandardMultiStore::testing_memory_with_persistent_sqlite();
+	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let k = key("only_in_cache");
 
 	// Populate the persistent tier and prime the read cache via a point read.
@@ -168,7 +168,7 @@ fn capacity_eviction_of_a_cache_entry_never_changes_a_read_result() {
 	// Shrinking the read buffer to capacity 1 forces eviction of all but one cached entry. Every key must
 	// still read correctly afterwards: an evicted entry simply falls through to persistent. Capacity is a
 	// RAM/CPU trade and must never affect correctness (parity with a never-cached store).
-	let store = StandardMultiStore::testing_memory_with_persistent_sqlite();
+	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let keys = ["a", "b", "c", "d"];
 	for (i, name) in keys.iter().enumerate() {
 		persistent_only_set(&store, &key(name), 5, &format!("val{i}"));

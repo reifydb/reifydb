@@ -603,11 +603,7 @@ impl StandardEngine {
 
 	#[inline]
 	pub fn cdc_producer_watermark(&self) -> CommitVersion {
-		self.executor
-			.ioc
-			.resolve::<CdcProducerWatermark>()
-			.expect("CdcProducerWatermark must be registered")
-			.get()
+		self.executor.ioc.try_resolve::<CdcProducerWatermark>().map(|w| w.get()).unwrap_or(CommitVersion(0))
 	}
 
 	#[inline]

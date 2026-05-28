@@ -30,13 +30,13 @@ fn test_tiered(path: &Path) {
 			let pools = Pools::new(PoolConfig::default());
 			let actor_system = ActorSystem::new(pools, Clock::Real);
 			let event_bus = EventBus::new(&actor_system);
+			let (sqlite_config, _guard) = SqliteConfig::in_memory();
+			let sqlite_config = sqlite_config.read_pool_size(read_pool_size);
 			let store = StandardMultiStore::new(MultiStoreConfig {
 				commit: Some(CommitBufferConfig {
 					storage: MultiCommitBufferTier::memory(),
 				}),
-				persistent: Some(PersistentConfig::sqlite(
-					SqliteConfig::in_memory().read_pool_size(read_pool_size),
-				)),
+				persistent: Some(PersistentConfig::sqlite(sqlite_config)),
 				retention: Default::default(),
 				merge_config: Default::default(),
 				event_bus,

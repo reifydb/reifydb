@@ -30,7 +30,7 @@ use tracing::{error, info};
 
 use crate::{
 	generated::reify_db_server::ReifyDbServer, server_state::GrpcServerState, service::ReifyDbService,
-	subscription::GrpcSubscriptionRegistry,
+	subscription::SubscriptionRegistry,
 };
 
 pub struct GrpcSubsystem {
@@ -46,7 +46,7 @@ pub struct GrpcSubsystem {
 	admin_shutdown_complete_rx: Option<oneshot::Receiver<()>>,
 	runtime: SharedRuntime,
 	poll_batch_size: usize,
-	registry: Option<Arc<GrpcSubscriptionRegistry>>,
+	registry: Option<Arc<SubscriptionRegistry>>,
 	subscription_shutdown_tx: Option<watch::Sender<bool>>,
 	poller_stop_tx: Option<watch::Sender<bool>>,
 	subscription_store: Option<Arc<SubscriptionStore>>,
@@ -102,8 +102,8 @@ impl GrpcSubsystem {
 	}
 
 	#[inline]
-	fn init_subscription_registry(&mut self) -> Arc<GrpcSubscriptionRegistry> {
-		let registry = Arc::new(GrpcSubscriptionRegistry::new(self.state.clock().clone()));
+	fn init_subscription_registry(&mut self) -> Arc<SubscriptionRegistry> {
+		let registry = Arc::new(SubscriptionRegistry::new(self.state.clock().clone()));
 		self.registry = Some(registry.clone());
 		registry
 	}
@@ -118,7 +118,7 @@ impl GrpcSubsystem {
 	#[inline]
 	fn spawn_subscription_poller_if_configured(
 		&self,
-		registry: Arc<GrpcSubscriptionRegistry>,
+		registry: Arc<SubscriptionRegistry>,
 		poller_stop_rx: watch::Receiver<bool>,
 	) {
 		let Some(ref store) = self.subscription_store else {
@@ -132,7 +132,7 @@ impl GrpcSubsystem {
 
 	fn spawn_main_server(
 		&mut self,
-		registry: Arc<GrpcSubscriptionRegistry>,
+		registry: Arc<SubscriptionRegistry>,
 		sub_shutdown_rx: watch::Receiver<bool>,
 		poller_stop_tx: watch::Sender<bool>,
 	) -> Result<()> {

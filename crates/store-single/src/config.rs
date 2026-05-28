@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_sqlite::SqliteConfig;
+use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 
 use crate::{buffer::tier::SingleBufferTier, persistent::SinglePersistentTier};
 
@@ -73,11 +73,15 @@ impl PersistentConfig {
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn sqlite_in_memory() -> Self {
-		Self {
-			storage: SinglePersistentTier::sqlite_in_memory(),
-			flush_interval: Duration::from_secs(5),
-		}
+	pub fn sqlite_in_memory() -> (Self, SqliteTempPathGuard) {
+		let (storage, guard) = SinglePersistentTier::sqlite_in_memory();
+		(
+			Self {
+				storage,
+				flush_interval: Duration::from_secs(5),
+			},
+			guard,
+		)
 	}
 
 	pub fn flush_interval(mut self, interval: Duration) -> Self {

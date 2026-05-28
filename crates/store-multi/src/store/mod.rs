@@ -14,6 +14,8 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 	sync::waiter::WaiterHandle,
 };
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_sqlite::SqliteTempPathGuard;
 use tracing::instrument;
 
 use crate::{
@@ -245,56 +247,57 @@ impl StandardMultiStore {
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn testing_memory_with_persistent_sqlite() -> Self {
+	pub fn testing_memory_with_persistent_sqlite() -> (Self, SqliteTempPathGuard) {
 		let pools = Pools::new(PoolConfig::default());
 		let clock = Clock::testing();
 		let actor_system = ActorSystem::new(pools, clock.clone());
 		let event_bus = EventBus::new(&actor_system);
-		Self::new(MultiStoreConfig {
+		let (persistent, guard) = PersistentConfig::sqlite_in_memory();
+		let store = Self::new(MultiStoreConfig {
 			commit: Some(CommitBufferConfig {
 				storage: MultiCommitBufferTier::memory(),
 			}),
-			persistent: Some(PersistentConfig::sqlite_in_memory()),
+			persistent: Some(persistent),
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,
 			actor_system,
 			clock,
 		})
-		.unwrap()
+		.unwrap();
+		(store, guard)
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn testing_memory_with_persistent_sqlite_with_eventbus(event_bus: EventBus) -> Self {
+	pub fn testing_memory_with_persistent_sqlite_with_eventbus(event_bus: EventBus) -> (Self, SqliteTempPathGuard) {
 		let pools = Pools::new(PoolConfig::default());
 		let clock = Clock::testing();
 		let actor_system = ActorSystem::new(pools, clock.clone());
-		Self::new(MultiStoreConfig {
+		let (persistent, guard) = PersistentConfig::sqlite_in_memory();
+		let store = Self::new(MultiStoreConfig {
 			commit: Some(CommitBufferConfig {
 				storage: MultiCommitBufferTier::memory(),
 			}),
-			persistent: Some(PersistentConfig::sqlite_in_memory()),
+			persistent: Some(persistent),
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,
 			actor_system,
 			clock,
 		})
-		.unwrap()
+		.unwrap();
+		(store, guard)
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn testing_persistent_sqlite_only() -> Self {
+	pub fn testing_persistent_sqlite_only() -> (Self, SqliteTempPathGuard) {
 		let pools = Pools::new(PoolConfig::default());
 		let clock = Clock::testing();
 		let actor_system = ActorSystem::new(pools, clock.clone());
 		let event_bus = EventBus::new(&actor_system);
-		Self::new(MultiStoreConfig::sqlite_unbuffered(
-			PersistentConfig::sqlite_in_memory(),
-			actor_system,
-			clock,
-			event_bus,
-		))
-		.unwrap()
+		let (persistent, guard) = PersistentConfig::sqlite_in_memory();
+		let store = Self::new(MultiStoreConfig::sqlite_unbuffered(persistent, actor_system, clock, event_bus))
+			.unwrap();
+		(store, guard)
 	}
 }

@@ -5,4 +5,8 @@ pub mod cleanup;
 pub mod create;
 pub mod errors;
 pub mod extract;
+#[cfg(not(reifydb_single_threaded))]
+pub mod handler;
 pub mod hydrate;
+pub mod registry;
+pub mod wire_sink;
