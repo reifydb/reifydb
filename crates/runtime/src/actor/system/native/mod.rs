@@ -8,7 +8,7 @@ use std::{
 	error, fmt,
 	fmt::{Debug, Formatter},
 	mem,
-	sync::Arc,
+	sync::{Arc, Weak},
 	time,
 	time::Duration,
 };
@@ -80,6 +80,13 @@ impl ActorSystem {
 		self.inner.pools.clone()
 	}
 
+	pub fn spawner(&self) -> ActorSpawner {
+		ActorSpawner {
+			inner: Arc::downgrade(&self.inner),
+			clock: self.inner.clock.clone(),
+		}
+	}
+
 	pub fn cancellation_token(&self) -> CancellationToken {
 		self.inner.cancel.clone()
 	}
@@ -91,8 +98,12 @@ impl ActorSystem {
 	pub fn shutdown(&self) {
 		self.inner.cancel.cancel();
 
-		for child in self.inner.children.lock().iter() {
-			child.shutdown();
+		{
+			let mut children = self.inner.children.lock();
+			for child in children.iter() {
+				child.shutdown();
+			}
+			children.clear();
 		}
 
 		let wakers = mem::take(&mut *self.inner.wakers.lock());
@@ -177,6 +188,83 @@ impl ActorSystem {
 impl Debug for ActorSystem {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.debug_struct("ActorSystem").field("cancelled", &self.is_cancelled()).finish_non_exhaustive()
+	}
+}
+
+#[derive(Clone)]
+pub struct ActorSpawner {
+	inner: Weak<ActorSystemInner>,
+	clock: Clock,
+}
+
+impl ActorSpawner {
+	fn system(&self) -> ActorSystem {
+		ActorSystem {
+			inner: self.inner.upgrade().expect("runtime already shut down: cannot spawn actor"),
+		}
+	}
+
+	pub fn clock(&self) -> &Clock {
+		&self.clock
+	}
+
+	pub fn pools(&self) -> Pools {
+		self.system().pools()
+	}
+
+	pub fn is_alive(&self) -> bool {
+		self.inner.strong_count() > 0
+	}
+
+	pub fn cancellation_token(&self) -> Option<CancellationToken> {
+		self.inner.upgrade().map(|inner| inner.cancel.clone())
+	}
+
+	pub fn scope(&self) -> ActorSpawner {
+		self.system().scope().spawner()
+	}
+
+	pub fn shutdown(&self) {
+		if let Some(inner) = self.inner.upgrade() {
+			ActorSystem {
+				inner,
+			}
+			.shutdown();
+		}
+	}
+
+	pub fn spawn_system<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
+	where
+		A::State: Send,
+	{
+		self.system().spawn_system(name, actor)
+	}
+
+	pub fn spawn_query<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
+	where
+		A::State: Send,
+	{
+		self.system().spawn_query(name, actor)
+	}
+
+	pub fn spawn_commit<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
+	where
+		A::State: Send,
+	{
+		self.system().spawn_commit(name, actor)
+	}
+
+	pub fn spawn_background<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
+	where
+		A::State: Send,
+	{
+		self.system().spawn_background(name, actor)
+	}
+}
+
+impl Debug for ActorSpawner {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		f.debug_struct("ActorSpawner").field("alive", &self.is_alive()).finish_non_exhaustive()
 	}
 }
 

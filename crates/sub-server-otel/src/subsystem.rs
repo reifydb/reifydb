@@ -24,9 +24,10 @@ use reifydb_core::{
 	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_runtime::{SharedRuntime, sync::mutex::Mutex};
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_value::Result;
+use tokio::runtime::Handle;
 use tracing::{debug, error, info};
 
 use crate::config::OtelConfig;
@@ -38,16 +39,16 @@ pub struct OtelSubsystem {
 
 	tracer_provider: Arc<Mutex<Option<SdkTracerProvider>>>,
 
-	runtime: SharedRuntime,
+	handle: Handle,
 }
 
 impl OtelSubsystem {
-	pub fn new(config: OtelConfig, runtime: SharedRuntime) -> Self {
+	pub fn new(config: OtelConfig, handle: Handle) -> Self {
 		Self {
 			config,
 			running: Arc::new(AtomicBool::new(false)),
 			tracer_provider: Arc::new(Mutex::new(None)),
-			runtime,
+			handle,
 		}
 	}
 
@@ -71,7 +72,7 @@ impl OtelSubsystem {
 		}
 		#[cfg(feature = "otlp")]
 		{
-			let _guard = self.runtime.handle().enter();
+			let _guard = self.handle.enter();
 			self.build_otlp_tracer_provider().map_err(|e| {
 				CoreError::SubsystemInitFailed {
 					subsystem: "OpenTelemetry".to_string(),

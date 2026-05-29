@@ -7,6 +7,7 @@ use std::{
 };
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
+use reifydb_runtime::{Runtime, actor::system::ActorSpawner};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_value::Result;
 use tracing::info;
@@ -14,13 +15,17 @@ use tracing::info;
 pub struct RuntimeSubsystem {
 	running: AtomicBool,
 	sampling: bool,
+	sampler_scope: Option<ActorSpawner>,
+	runtime: Option<Runtime>,
 }
 
 impl RuntimeSubsystem {
-	pub fn new(sampling: bool) -> Self {
+	pub fn new(sampler_scope: Option<ActorSpawner>, runtime: Runtime) -> Self {
 		Self {
 			running: AtomicBool::new(false),
-			sampling,
+			sampling: sampler_scope.is_some(),
+			sampler_scope,
+			runtime: Some(runtime),
 		}
 	}
 }
@@ -41,6 +46,10 @@ impl Subsystem for RuntimeSubsystem {
 			return Ok(());
 		}
 		info!("Runtime metrics subsystem shutting down");
+		drop(self.sampler_scope.take());
+		if let Some(runtime) = self.runtime.take() {
+			runtime.shutdown();
+		}
 		Ok(())
 	}
 

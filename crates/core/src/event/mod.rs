@@ -22,7 +22,7 @@ use std::{
 use reifydb_runtime::actor::{
 	context::Context,
 	mailbox::ActorRef,
-	system::ActorSystem,
+	system::ActorSpawner,
 	traits::{Actor, Directive},
 };
 use sync::mpsc::Sender;
@@ -138,15 +138,15 @@ impl Actor for EventBusActor {
 #[derive(Clone)]
 pub struct EventBus {
 	actor_ref: ActorRef<EventBusMessage>,
-	_actor_system: ActorSystem,
+	_spawner: ActorSpawner,
 }
 
 impl EventBus {
-	pub fn new(actor_system: &ActorSystem) -> Self {
-		let handle = actor_system.spawn_system("event-bus", EventBusActor);
+	pub fn new(spawner: &ActorSpawner) -> Self {
+		let handle = spawner.spawn_system("event-bus", EventBusActor);
 		Self {
 			actor_ref: handle.actor_ref().clone(),
-			_actor_system: actor_system.clone(),
+			_spawner: spawner.clone(),
 		}
 	}
 

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{event::EventBus, interface::catalog::config::GetConfig};
 use reifydb_runtime::{
-	actor::system::ActorSystem,
+	actor::system::ActorSpawner,
 	context::{clock::Clock, rng::Rng},
 };
 use reifydb_sqlite::{DbPath, SqliteConfig};
@@ -50,15 +50,15 @@ impl StorageFactory {
 	pub(crate) fn create_with_multi_commit_buffer(
 		&self,
 		multi_commit_buffer: MultiCommitBufferTier,
-		actor_system: &ActorSystem,
+		spawner: &ActorSpawner,
 	) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
 		match self {
-			StorageFactory::Memory => create_memory_store_with(multi_commit_buffer, actor_system),
+			StorageFactory::Memory => create_memory_store_with(multi_commit_buffer, spawner),
 			StorageFactory::Sqlite(config) => {
-				create_sqlite_store_with(multi_commit_buffer, config.clone(), actor_system)
+				create_sqlite_store_with(multi_commit_buffer, config.clone(), spawner)
 			}
 			StorageFactory::SqliteWithoutBuffer(config) => {
-				create_sqlite_without_buffer_store_with(config.clone(), actor_system)
+				create_sqlite_without_buffer_store_with(config.clone(), spawner)
 			}
 		}
 	}
@@ -66,9 +66,9 @@ impl StorageFactory {
 
 fn create_memory_store_with(
 	multi_commit_buffer: MultiCommitBufferTier,
-	actor_system: &ActorSystem,
+	spawner: &ActorSpawner,
 ) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
-	let eventbus = EventBus::new(actor_system);
+	let eventbus = EventBus::new(spawner);
 
 	let multi_store = MultiStore::standard(MultiStoreConfig {
 		commit: Some(MultiCommitBufferConfig {
@@ -78,7 +78,7 @@ fn create_memory_store_with(
 		retention: Default::default(),
 		merge_config: Default::default(),
 		event_bus: eventbus.clone(),
-		actor_system: actor_system.clone(),
+		spawner: spawner.clone(),
 		clock: Clock::Real,
 	});
 
@@ -87,7 +87,7 @@ fn create_memory_store_with(
 			storage: SingleBufferTier::memory(),
 		}),
 		persistent: None,
-		actor_system: actor_system.clone(),
+		spawner: spawner.clone(),
 		clock: Clock::Real,
 	});
 
@@ -98,9 +98,9 @@ fn create_memory_store_with(
 fn create_sqlite_store_with(
 	multi_commit_buffer: MultiCommitBufferTier,
 	config: SqliteConfig,
-	actor_system: &ActorSystem,
+	spawner: &ActorSpawner,
 ) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
-	let eventbus = EventBus::new(actor_system);
+	let eventbus = EventBus::new(spawner);
 
 	let multi_path = match &config.path {
 		DbPath::File(p) => DbPath::File(p.with_extension("").join("multi.db")),
@@ -120,7 +120,7 @@ fn create_sqlite_store_with(
 		retention: Default::default(),
 		merge_config: Default::default(),
 		event_bus: eventbus.clone(),
-		actor_system: actor_system.clone(),
+		spawner: spawner.clone(),
 		clock: Clock::Real,
 	});
 
@@ -138,7 +138,7 @@ fn create_sqlite_store_with(
 			storage: SingleBufferTier::memory(),
 		}),
 		persistent: Some(SinglePersistentConfig::sqlite(single_config)),
-		actor_system: actor_system.clone(),
+		spawner: spawner.clone(),
 		clock: Clock::Real,
 	});
 
@@ -148,9 +148,9 @@ fn create_sqlite_store_with(
 
 fn create_sqlite_without_buffer_store_with(
 	config: SqliteConfig,
-	actor_system: &ActorSystem,
+	spawner: &ActorSpawner,
 ) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
-	let eventbus = EventBus::new(actor_system);
+	let eventbus = EventBus::new(spawner);
 
 	let multi_path = match &config.path {
 		DbPath::File(p) => DbPath::File(p.with_extension("").join("multi.db")),
@@ -168,7 +168,7 @@ fn create_sqlite_without_buffer_store_with(
 		retention: Default::default(),
 		merge_config: Default::default(),
 		event_bus: eventbus.clone(),
-		actor_system: actor_system.clone(),
+		spawner: spawner.clone(),
 		clock: Clock::Real,
 	});
 
@@ -184,7 +184,7 @@ fn create_sqlite_without_buffer_store_with(
 	let single_store = SingleStore::standard(SingleStoreConfig {
 		buffer: None,
 		persistent: Some(SinglePersistentConfig::sqlite(single_config)),
-		actor_system: actor_system.clone(),
+		spawner: spawner.clone(),
 		clock: Clock::Real,
 	});
 
@@ -195,12 +195,12 @@ fn create_sqlite_without_buffer_store_with(
 /// Convenience function to create a transaction layer
 pub(crate) fn transaction(
 	input: (MultiStore, SingleStore, SingleTransaction, EventBus),
-	actor_system: ActorSystem,
+	spawner: ActorSpawner,
 	clock: Clock,
 	rng: Rng,
 	config: Arc<dyn GetConfig>,
 ) -> (MultiTransaction, SingleTransaction, EventBus) {
-	let multi = MultiTransaction::new(input.0, input.2.clone(), input.3.clone(), actor_system, clock, rng, config)
-		.unwrap();
+	let multi =
+		MultiTransaction::new(input.0, input.2.clone(), input.3.clone(), spawner, clock, rng, config).unwrap();
 	(multi, input.2, input.3)
 }

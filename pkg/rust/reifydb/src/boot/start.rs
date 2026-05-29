@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::actor::system::ActorSystem;
+use reifydb_runtime::actor::system::ActorSpawner;
 use reifydb_store_multi::{
 	MultiStore,
 	gc::{
@@ -56,7 +56,7 @@ pub(crate) fn ensure_storage_version(single: &SingleTransaction) -> Result<()> {
 }
 
 /// Spawns background actors during the bootload phase.
-pub(crate) fn spawn_actors(engine: &StandardEngine, actor_system: &ActorSystem) -> Result<()> {
+pub(crate) fn spawn_actors(engine: &StandardEngine, spawner: &ActorSpawner) -> Result<()> {
 	// Spawn background actors
 	let store = match engine.multi_owned().store() {
 		MultiStore::Standard(s) => s.clone(),
@@ -67,13 +67,13 @@ pub(crate) fn spawn_actors(engine: &StandardEngine, actor_system: &ActorSystem) 
 	store.configure_read_buffer_capacity(catalog.get_config_uint8(ConfigKey::MultiReadBufferCapacity) as usize);
 	store.set_row_settings_provider(Arc::new(catalog.clone()));
 
-	let _ttl_actor = spawn_row_settings_actor(store.clone(), actor_system.clone(), catalog.clone());
-	let _operator_ttl_actor = spawn_operator_settings_actor(store.clone(), actor_system.clone(), catalog.clone());
+	let _ttl_actor = spawn_row_settings_actor(store.clone(), spawner.clone(), catalog.clone());
+	let _operator_ttl_actor = spawn_operator_settings_actor(store.clone(), spawner.clone(), catalog.clone());
 
 	store.set_eviction_watermark(Arc::new(engine.clone()));
 
 	let config: Arc<dyn GetConfig> = Arc::new(catalog);
-	let _gc_actor = spawn_historical_gc_actor(store, actor_system.clone(), engine.clone(), config);
+	let _gc_actor = spawn_historical_gc_actor(store, spawner.clone(), engine.clone(), config);
 
 	Ok(())
 }

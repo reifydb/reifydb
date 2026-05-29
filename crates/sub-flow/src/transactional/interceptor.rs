@@ -107,7 +107,7 @@ pub(crate) fn execute_inline_flow_changes(
 		}),
 	};
 
-	let pools = engine.actor_system().pools();
+	let pools = engine.spawner().pools();
 	pools.commit_pool().install(|| {
 		scope(|s| {
 			for root in &schedule.roots {

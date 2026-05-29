@@ -8,7 +8,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
 	actor::{
 		mailbox::ActorRef,
-		system::{ActorHandle, ActorSystem},
+		system::{ActorHandle, ActorSpawner},
 	},
 	context::clock::Clock,
 };
@@ -23,7 +23,7 @@ pub struct AdminState {
 	auth_required: bool,
 	auth_token: Option<String>,
 	clock: Clock,
-	actor_system: ActorSystem,
+	spawner: ActorSpawner,
 }
 
 impl AdminState {
@@ -34,7 +34,7 @@ impl AdminState {
 		auth_required: bool,
 		auth_token: Option<String>,
 		clock: Clock,
-		actor_system: ActorSystem,
+		spawner: ActorSpawner,
 	) -> Self {
 		Self {
 			engine,
@@ -43,7 +43,7 @@ impl AdminState {
 			auth_required,
 			auth_token,
 			clock,
-			actor_system,
+			spawner,
 		}
 	}
 
@@ -54,7 +54,7 @@ impl AdminState {
 			self.auth_token.clone(),
 			self.clock.clone(),
 		);
-		let handle = self.actor_system.spawn_query("admin-req", actor);
+		let handle = self.spawner.spawn_query("admin-req", actor);
 		let actor_ref = handle.actor_ref().clone();
 		(actor_ref, handle)
 	}

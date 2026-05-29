@@ -43,7 +43,7 @@ use reifydb_routine::{
 	function::default_native_functions, procedure::default_native_procedures, routine::registry::Routines,
 };
 use reifydb_rql::RqlVersion;
-use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, context::clock::Clock, pool::PoolConfig};
+use reifydb_runtime::{Runtime, RuntimeConfig, context::clock::Clock, pool::PoolConfig};
 use reifydb_store_multi::{
 	MultiStore, MultiStoreVersion,
 	config::{CommitBufferConfig, MultiStoreConfig},
@@ -171,6 +171,7 @@ pub struct WasmDB {
 	flow_subsystem: FlowSubsystem,
 	auth_service: AuthService,
 	session: WasmSession,
+	_runtime: Runtime,
 }
 
 #[wasm_bindgen]
@@ -192,8 +193,8 @@ impl WasmDB {
 		#[cfg(feature = "console_error_panic_hook")]
 		set_panic_hook();
 
-		let runtime = SharedRuntime::from_config(
-			SharedRuntimeConfig::default().seeded(0),
+		let runtime = Runtime::from_config(
+			RuntimeConfig::default().seeded(0),
 			PoolConfig {
 				async_threads: 1,
 				system_threads: 1,
@@ -203,12 +204,12 @@ impl WasmDB {
 			},
 		);
 
-		// Create actor system at the top level - this will be shared by
-		// the transaction manager (watermark actors) and flow subsystem (poll/coordinator actors)
-		let actor_system = runtime.actor_system();
+		let spawner = runtime.spawner();
+		let clock = runtime.clock().clone();
+		let rng = runtime.rng().clone();
 
 		// Create event bus and stores
-		let eventbus = EventBus::new(&actor_system);
+		let eventbus = EventBus::new(&spawner);
 		let multi_store = MultiStore::standard(MultiStoreConfig {
 			commit: Some(CommitBufferConfig {
 				storage: MultiCommitBufferTier::memory(),
@@ -217,7 +218,7 @@ impl WasmDB {
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus: eventbus.clone(),
-			actor_system: actor_system.clone(),
+			spawner: spawner.clone(),
 			clock: Clock::Real,
 		});
 		let single_store = SingleStore::testing_memory();
@@ -229,9 +230,9 @@ impl WasmDB {
 			multi_store.clone(),
 			single.clone(),
 			eventbus.clone(),
-			actor_system.clone(),
-			runtime.clock().clone(),
-			runtime.rng().clone(),
+			spawner.clone(),
+			clock.clone(),
+			rng.clone(),
 			Arc::new(catalog_cache.clone()),
 		)
 		.map_err(|e| JsError::from_error(&e))?;
@@ -241,7 +242,7 @@ impl WasmDB {
 
 		ioc = ioc.register(catalog_cache.clone());
 
-		ioc = ioc.register(runtime.clone());
+		ioc = ioc.register(spawner.clone()).register(clock.clone()).register(rng.clone());
 
 		// Register metrics store for engine
 		ioc = ioc.register(single_store.clone());
@@ -279,7 +280,7 @@ impl WasmDB {
 			InterceptorFactory::default(),
 			Catalog::new(catalog_cache),
 			EngineConfig {
-				runtime_context: RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
+				runtime_context: RuntimeContext::new(clock.clone(), rng.clone()),
 				routines,
 				transforms: Transforms::empty(),
 				ioc,
@@ -291,19 +292,19 @@ impl WasmDB {
 		// Spawn CDC producer actor on the shared runtime, passing engine as CdcHost
 		console_log("[WASM] Spawning CDC producer actor...");
 		let cdc_producer_handle = spawn_cdc_producer(
-			&actor_system,
+			&spawner,
 			cdc_store,
 			multi_store.clone(),
 			inner.clone(),
 			eventbus_clone.clone(),
-			runtime.clock().clone(),
+			clock.clone(),
 			cdc_producer_watermark,
 			cdc_wake_registry,
 		);
 
 		// Register event listener to forward PostCommitEvent to CDC producer
 		let cdc_listener =
-			CdcProducerEventListener::new(cdc_producer_handle.actor_ref().clone(), runtime.clock().clone());
+			CdcProducerEventListener::new(cdc_producer_handle.actor_ref().clone(), clock.clone());
 		eventbus_clone.register::<PostCommitEvent, _>(cdc_listener);
 		console_log("[WASM] CDC producer actor registered!");
 
@@ -343,9 +344,9 @@ impl WasmDB {
 
 		let auth_service = AuthService::new(
 			Arc::new(inner.clone()),
-			Arc::new(AuthenticationRegistry::new(runtime.clock().clone())),
-			runtime.rng().clone(),
-			runtime.clock().clone(),
+			Arc::new(AuthenticationRegistry::new(clock.clone())),
+			rng.clone(),
+			clock.clone(),
 			AuthServiceConfig::default(),
 		);
 
@@ -354,6 +355,7 @@ impl WasmDB {
 			flow_subsystem,
 			auth_service,
 			session: WasmSession::new(),
+			_runtime: runtime,
 		})
 	}
 

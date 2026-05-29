@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use reifydb_core::event::EventBus;
-use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
+use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 
@@ -17,12 +17,12 @@ pub struct MultiStoreConfig {
 	pub retention: RetentionConfig,
 	pub merge_config: MergeConfig,
 	pub event_bus: EventBus,
-	pub actor_system: ActorSystem,
+	pub spawner: ActorSpawner,
 	pub clock: Clock,
 }
 
 impl MultiStoreConfig {
-	pub fn memory(actor_system: ActorSystem, clock: Clock, event_bus: EventBus) -> Self {
+	pub fn memory(spawner: ActorSpawner, clock: Clock, event_bus: EventBus) -> Self {
 		Self {
 			commit: Some(CommitBufferConfig {
 				storage: MultiCommitBufferTier::memory(),
@@ -31,18 +31,13 @@ impl MultiStoreConfig {
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,
-			actor_system,
+			spawner,
 			clock,
 		}
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn sqlite(
-		persistent: PersistentConfig,
-		actor_system: ActorSystem,
-		clock: Clock,
-		event_bus: EventBus,
-	) -> Self {
+	pub fn sqlite(persistent: PersistentConfig, spawner: ActorSpawner, clock: Clock, event_bus: EventBus) -> Self {
 		Self {
 			commit: Some(CommitBufferConfig {
 				storage: MultiCommitBufferTier::memory(),
@@ -51,7 +46,7 @@ impl MultiStoreConfig {
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,
-			actor_system,
+			spawner,
 			clock,
 		}
 	}
@@ -59,7 +54,7 @@ impl MultiStoreConfig {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite_unbuffered(
 		persistent: PersistentConfig,
-		actor_system: ActorSystem,
+		spawner: ActorSpawner,
 		clock: Clock,
 		event_bus: EventBus,
 	) -> Self {
@@ -69,7 +64,7 @@ impl MultiStoreConfig {
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,
-			actor_system,
+			spawner,
 			clock,
 		}
 	}

@@ -30,10 +30,9 @@ use reifydb_core::{
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::loader::load_flow_dag;
 use reifydb_runtime::{
-	SharedRuntime,
 	actor::{
 		mailbox::ActorRef,
-		system::{ActorHandle, ActorSystem},
+		system::{ActorHandle, ActorSpawner},
 	},
 	context::{RuntimeContext, clock::Clock},
 	sync::rwlock::RwLock,
@@ -111,6 +110,7 @@ impl CdcConsume for FlowConsumeDispatcher {
 
 pub struct FlowSubsystem {
 	consumer: PollConsumer<StandardEngine, FlowConsumeDispatcher>,
+	flow_scope: ActorSpawner,
 	worker_handles: Vec<FlowHandle>,
 	pool_handle: Option<FlowPoolHandle>,
 	coordinator_handle: Option<FlowCoordinatorHandle>,
@@ -123,15 +123,14 @@ impl FlowSubsystem {
 	pub fn new(config: FlowConfig, engine: StandardEngine, ioc: &IocContainer) -> Self {
 		Self::maybe_load_ffi_operators(&config, &engine);
 
-		let runtime = ioc.resolve::<SharedRuntime>().expect("SharedRuntime must be registered");
-		let clock = runtime.clock().clone();
+		let clock = ioc.resolve::<Clock>().expect("Clock must be registered");
+		let spawner = ioc.resolve::<ActorSpawner>().expect("ActorSpawner must be registered");
 		let custom_operators = Arc::new(config.custom_operators);
 		let primitive_tracker = Arc::new(ShapeVersionTracker::new());
 		let cdc_store = ioc.resolve::<CdcStore>().expect("CdcStore must be registered");
 
-		let actor_system = engine.actor_system();
-		let flow_scope = actor_system.scope();
-		let num_workers = actor_system.pools().system_thread_count();
+		let flow_scope = spawner.scope();
+		let num_workers = spawner.pools().system_thread_count();
 		info!(num_workers, "initializing flow coordinator with {} workers", num_workers);
 
 		let flow_catalog = FlowCatalog::new(engine.catalog());
@@ -211,10 +210,11 @@ impl FlowSubsystem {
 			flow_catalog,
 			engine: engine.clone(),
 		};
-		let consumer = PollConsumer::new(poll_config, engine, dispatcher, cdc_store, flow_scope);
+		let consumer = PollConsumer::new(poll_config, engine, dispatcher, cdc_store, flow_scope.clone());
 
 		Self {
 			consumer,
+			flow_scope,
 			worker_handles,
 			pool_handle: Some(pool_handle),
 			coordinator_handle: Some(coordinator_handle),
@@ -245,7 +245,7 @@ impl FlowSubsystem {
 
 	#[inline]
 	fn spawn_flow_workers(
-		actor_system: &ActorSystem,
+		spawner: &ActorSpawner,
 		num_workers: usize,
 		engine: &StandardEngine,
 		flow_catalog: &FlowCatalog,
@@ -269,7 +269,7 @@ impl FlowSubsystem {
 				engine.catalog(),
 				flow_catalog.clone(),
 			);
-			let handle = actor_system.spawn_system(&format!("flow-worker-{}", i), worker);
+			let handle = spawner.spawn_system(&format!("flow-worker-{}", i), worker);
 			worker_refs.push(handle.actor_ref().clone());
 			worker_handles.push(handle);
 		}
@@ -372,6 +372,8 @@ impl Subsystem for FlowSubsystem {
 		}
 
 		self.consumer.stop()?;
+
+		self.flow_scope.shutdown();
 
 		if let Some(handle) = self.coordinator_handle.take() {
 			let _ = handle.join();

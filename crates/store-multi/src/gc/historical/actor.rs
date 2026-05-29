@@ -16,7 +16,7 @@ use reifydb_core::{
 use reifydb_runtime::actor::{
 	context::Context,
 	mailbox::ActorRef,
-	system::{ActorConfig, ActorSystem},
+	system::{ActorConfig, ActorSpawner},
 	timers::TimerHandle,
 	traits::{Actor as ActorTrait, Directive},
 };
@@ -57,13 +57,13 @@ impl<W: QueryWatermark> Actor<W> {
 	}
 
 	pub fn spawn(
-		system: &ActorSystem,
+		spawner: &ActorSpawner,
 		store: StandardMultiStore,
 		watermark: W,
 		config: Arc<dyn GetConfig>,
 	) -> ActorRef<Message> {
 		let actor = Self::new(store, watermark, config);
-		system.spawn_background("historical-historical", actor).actor_ref().clone()
+		spawner.spawn_background("historical-historical", actor).actor_ref().clone()
 	}
 
 	fn start_sweep(&self, state: &mut ActorState, ctx: &Context<Message>) {
@@ -240,9 +240,9 @@ impl<W: QueryWatermark> ActorTrait for Actor<W> {
 
 pub fn spawn_historical_gc_actor<W: QueryWatermark>(
 	store: StandardMultiStore,
-	system: ActorSystem,
+	spawner: ActorSpawner,
 	watermark: W,
 	config: Arc<dyn GetConfig>,
 ) -> ActorRef<Message> {
-	Actor::spawn(&system, store, watermark, config)
+	Actor::spawn(&spawner, store, watermark, config)
 }

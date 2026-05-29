@@ -9,13 +9,17 @@ use reifydb_auth::{
 };
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::{
+	actor::system::ActorSpawner,
+	context::{clock::Clock, rng::Rng},
+};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_sub_server::{
 	interceptor::RequestInterceptorChain,
 	state::{AppState, StateConfig},
 };
 use reifydb_value::Result;
+use tokio::runtime::Handle;
 
 use crate::subsystem::HttpSubsystem;
 
@@ -25,7 +29,10 @@ pub struct HttpConfigurator {
 	max_connections: usize,
 	query_timeout: Duration,
 	request_timeout: Duration,
-	runtime: Option<SharedRuntime>,
+	spawner: Option<ActorSpawner>,
+	clock: Option<Clock>,
+	rng: Option<Rng>,
+	handle: Option<Handle>,
 }
 
 impl Default for HttpConfigurator {
@@ -42,7 +49,10 @@ impl HttpConfigurator {
 			max_connections: 10_000,
 			query_timeout: Duration::from_secs(30),
 			request_timeout: Duration::from_secs(60),
-			runtime: None,
+			spawner: None,
+			clock: None,
+			rng: None,
+			handle: None,
 		}
 	}
 
@@ -71,8 +81,23 @@ impl HttpConfigurator {
 		self
 	}
 
-	pub fn runtime(mut self, runtime: SharedRuntime) -> Self {
-		self.runtime = Some(runtime);
+	pub fn spawner(mut self, spawner: ActorSpawner) -> Self {
+		self.spawner = Some(spawner);
+		self
+	}
+
+	pub fn clock(mut self, clock: Clock) -> Self {
+		self.clock = Some(clock);
+		self
+	}
+
+	pub fn rng(mut self, rng: Rng) -> Self {
+		self.rng = Some(rng);
+		self
+	}
+
+	pub fn handle(mut self, handle: Handle) -> Self {
+		self.handle = Some(handle);
 		self
 	}
 
@@ -83,12 +108,15 @@ impl HttpConfigurator {
 			max_connections: self.max_connections,
 			query_timeout: self.query_timeout,
 			request_timeout: self.request_timeout,
-			runtime: self.runtime,
+			spawner: self.spawner,
+			clock: self.clock,
+			rng: self.rng,
+			handle: self.handle,
 		}
 	}
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct HttpConfig {
 	pub bind_addr: Option<String>,
 
@@ -100,7 +128,13 @@ pub struct HttpConfig {
 
 	pub request_timeout: Duration,
 
-	pub runtime: Option<SharedRuntime>,
+	pub spawner: Option<ActorSpawner>,
+
+	pub clock: Option<Clock>,
+
+	pub rng: Option<Rng>,
+
+	pub handle: Option<Handle>,
 }
 
 impl Default for HttpConfig {
@@ -129,35 +163,41 @@ impl SubsystemFactory for HttpSubsystemFactory {
 		let config = (self.config_fn)();
 
 		let engine = ioc.resolve::<StandardEngine>()?;
-		let ioc_runtime = ioc.resolve::<SharedRuntime>()?;
 		let interceptors = ioc.resolve::<RequestInterceptorChain>().unwrap_or_default();
+
+		let spawner = match config.spawner {
+			Some(spawner) => spawner,
+			None => ioc.resolve::<ActorSpawner>()?,
+		};
+		let clock = match config.clock {
+			Some(clock) => clock,
+			None => ioc.resolve::<Clock>()?,
+		};
+		let rng = match config.rng {
+			Some(rng) => rng,
+			None => ioc.resolve::<Rng>()?,
+		};
+		let handle = match config.handle {
+			Some(handle) => handle,
+			None => ioc.resolve::<Handle>()?,
+		};
 
 		let query_config = StateConfig::new()
 			.query_timeout(config.query_timeout)
 			.request_timeout(config.request_timeout)
 			.max_connections(config.max_connections);
 
-		let runtime = config.runtime.unwrap_or(ioc_runtime);
-
 		let auth_service = AuthService::new(
 			Arc::new(engine.clone()),
-			Arc::new(AuthenticationRegistry::new(runtime.clock().clone())),
-			runtime.rng().clone(),
-			runtime.clock().clone(),
+			Arc::new(AuthenticationRegistry::new(clock.clone())),
+			rng.clone(),
+			clock.clone(),
 			AuthServiceConfig::default(),
 		);
 
-		let state = AppState::new(
-			runtime.actor_system(),
-			engine,
-			auth_service,
-			query_config,
-			interceptors,
-			runtime.clock().clone(),
-			runtime.rng().clone(),
-		);
+		let state = AppState::new(spawner, engine, auth_service, query_config, interceptors, clock, rng);
 		let subsystem =
-			HttpSubsystem::new(config.bind_addr.clone(), config.admin_bind_addr.clone(), state, runtime);
+			HttpSubsystem::new(config.bind_addr.clone(), config.admin_bind_addr.clone(), state, handle);
 
 		Ok(Box::new(subsystem))
 	}

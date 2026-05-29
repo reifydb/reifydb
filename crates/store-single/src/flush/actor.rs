@@ -11,7 +11,7 @@ use reifydb_core::encoded::key::EncodedKey;
 use reifydb_runtime::actor::{
 	context::Context,
 	mailbox::ActorRef,
-	system::{ActorConfig, ActorSystem},
+	system::{ActorConfig, ActorSpawner},
 	traits::{Actor, Directive},
 };
 use reifydb_runtime::{
@@ -61,13 +61,13 @@ impl FlushActor {
 	}
 
 	pub fn spawn(
-		system: &ActorSystem,
+		spawner: &ActorSpawner,
 		dirty: Arc<Mutex<DirtyMap>>,
 		persistent: SinglePersistentTier,
 		flush_interval: Duration,
 	) -> ActorRef<FlushMessage> {
 		let actor = Self::new(dirty, persistent, flush_interval);
-		system.spawn_background("single-persistent-flush", actor).actor_ref().clone()
+		spawner.spawn_background("single-persistent-flush", actor).actor_ref().clone()
 	}
 
 	fn drain(&self, state: &mut FlushActorState) {

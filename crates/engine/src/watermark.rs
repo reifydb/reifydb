@@ -24,7 +24,7 @@ impl EvictionWatermark for StandardEngine {
 }
 
 impl StandardEngine {
-	fn consumer_watermark(&self) -> CommitVersion {
+	pub fn consumer_watermark(&self) -> CommitVersion {
 		let mut txn = match self.begin_query(IdentityId::system()) {
 			Ok(txn) => txn,
 			Err(_) => return CommitVersion(0),

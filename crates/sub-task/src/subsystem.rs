@@ -17,7 +17,7 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::context::clock::Clock;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_value::Result;
 use tokio::{sync::mpsc, task::JoinHandle};
@@ -40,7 +40,9 @@ pub struct TaskSubsystem {
 
 	coordinator_handle: Option<JoinHandle<()>>,
 
-	runtime: SharedRuntime,
+	clock: Clock,
+
+	handle_tokio: tokio::runtime::Handle,
 
 	engine: StandardEngine,
 
@@ -52,7 +54,9 @@ pub struct TaskSubsystem {
 impl TaskSubsystem {
 	#[instrument(name = "task::subsystem::new", level = "debug", skip(ioc, initial_tasks))]
 	pub fn new(ioc: &IocContainer, initial_tasks: Vec<ScheduledTask>) -> Self {
-		let runtime = ioc.resolve::<SharedRuntime>().expect("SharedRuntime not registered in IoC");
+		let clock = ioc.resolve::<Clock>().expect("Clock not registered in IoC");
+		let handle_tokio =
+			ioc.resolve::<tokio::runtime::Handle>().expect("tokio::runtime::Handle not registered in IoC");
 		let engine = ioc.resolve::<StandardEngine>().expect("StandardEngine not registered in IoC");
 		let registry = Arc::new(DashMap::new());
 
@@ -61,7 +65,8 @@ impl TaskSubsystem {
 			handle: None,
 			coordinator_tx: None,
 			coordinator_handle: None,
-			runtime,
+			clock,
+			handle_tokio,
 			engine,
 			registry,
 			initial_tasks,
@@ -89,7 +94,7 @@ impl Subsystem for TaskSubsystem {
 		let (coordinator_tx, coordinator_rx) = mpsc::channel(100);
 
 		for task in self.initial_tasks.drain(..) {
-			let next_execution = self.runtime.clock().instant() + task.schedule.initial_delay();
+			let next_execution = self.clock.instant() + task.schedule.initial_delay();
 			self.registry.insert(
 				task.id,
 				TaskEntry {
@@ -102,11 +107,12 @@ impl Subsystem for TaskSubsystem {
 		let handle = TaskHandle::new(self.registry.clone(), coordinator_tx.clone());
 
 		let registry = self.registry.clone();
-		let runtime = self.runtime.clone();
+		let clock = self.clock.clone();
+		let handle_tokio = self.handle_tokio.clone();
 		let engine = self.engine.clone();
 
-		let join_handle = self.runtime.spawn(async move {
-			coordinator::run_coordinator(registry, coordinator_rx, runtime, engine).await;
+		let join_handle = self.handle_tokio.spawn(async move {
+			coordinator::run_coordinator(registry, coordinator_rx, clock, handle_tokio, engine).await;
 		});
 
 		self.handle = Some(handle);
@@ -129,13 +135,13 @@ impl Subsystem for TaskSubsystem {
 
 		let coordinator_tx = self.coordinator_tx.take();
 		let coordinator_handle = self.coordinator_handle.take();
-		let runtime = self.runtime.clone();
+		let handle_tokio = self.handle_tokio.clone();
 		let worker = thread::spawn(move || {
 			if let Some(coordinator_tx) = coordinator_tx {
 				let _ = coordinator_tx.blocking_send(TaskCoordinatorMessage::Shutdown);
 			}
 			if let Some(join_handle) = coordinator_handle {
-				let _ = runtime.block_on(join_handle);
+				let _ = handle_tokio.block_on(join_handle);
 			}
 		});
 		let _ = worker.join();

@@ -3,7 +3,7 @@
 
 use std::{error::Error, fmt::Write, path::Path, sync::Arc};
 
-use reifydb::{Database, Params, SharedRuntimeConfig, embedded as db_embedded};
+use reifydb::{Database, Params, RuntimeConfig, embedded as db_embedded};
 use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
@@ -16,7 +16,7 @@ impl Runner {
 	pub fn new() -> Self {
 		Self {
 			instance: db_embedded::memory()
-				.with_runtime_config(SharedRuntimeConfig::default().seeded(0))
+				.with_runtime_config(RuntimeConfig::default().seeded(0))
 				.build()
 				.unwrap(),
 		}

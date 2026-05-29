@@ -3,7 +3,8 @@
 
 use std::{fmt, time::Duration};
 
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
+use tokio::runtime::Handle;
 
 pub struct AdminConfigurator {
 	bind_addr: String,
@@ -11,7 +12,9 @@ pub struct AdminConfigurator {
 	request_timeout: Duration,
 	auth_required: bool,
 	auth_token: Option<String>,
-	runtime: Option<SharedRuntime>,
+	spawner: Option<ActorSpawner>,
+	clock: Option<Clock>,
+	handle: Option<Handle>,
 }
 
 impl Default for AdminConfigurator {
@@ -28,7 +31,9 @@ impl AdminConfigurator {
 			request_timeout: Duration::from_secs(30),
 			auth_required: false,
 			auth_token: None,
-			runtime: None,
+			spawner: None,
+			clock: None,
+			handle: None,
 		}
 	}
 
@@ -53,8 +58,10 @@ impl AdminConfigurator {
 		self
 	}
 
-	pub fn runtime(mut self, runtime: SharedRuntime) -> Self {
-		self.runtime = Some(runtime);
+	pub fn runtime(mut self, spawner: ActorSpawner, clock: Clock, handle: Handle) -> Self {
+		self.spawner = Some(spawner);
+		self.clock = Some(clock);
+		self.handle = Some(handle);
 		self
 	}
 
@@ -65,7 +72,9 @@ impl AdminConfigurator {
 			request_timeout: self.request_timeout,
 			auth_required: self.auth_required,
 			auth_token: self.auth_token,
-			runtime: self.runtime,
+			spawner: self.spawner,
+			clock: self.clock,
+			handle: self.handle,
 		}
 	}
 }
@@ -82,7 +91,11 @@ pub struct AdminConfig {
 
 	pub auth_token: Option<String>,
 
-	pub runtime: Option<SharedRuntime>,
+	pub spawner: Option<ActorSpawner>,
+
+	pub clock: Option<Clock>,
+
+	pub handle: Option<Handle>,
 }
 
 impl fmt::Debug for AdminConfig {

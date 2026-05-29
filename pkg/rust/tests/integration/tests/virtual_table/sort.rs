@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb::{Database, Params, SharedRuntimeConfig, embedded as db_embedded};
+use reifydb::{Database, Params, RuntimeConfig, embedded as db_embedded};
 use reifydb_value::value::frame::frame::Frame;
 
 fn new_db() -> Database {
-	let mut db = db_embedded::memory()
-		.with_runtime_config(SharedRuntimeConfig::default().seeded(0))
-		.build()
-		.expect("build");
+	let mut db =
+		db_embedded::memory().with_runtime_config(RuntimeConfig::default().seeded(0)).build().expect("build");
 	db.start().expect("start");
 	db
 }

@@ -15,13 +15,14 @@ use reifydb_core::{
 	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_runtime::{SharedRuntime, sync::rwlock::RwLock};
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_sub_server::state::AppState;
 use reifydb_sub_subscription::{poller::StoreBackedPoller, store::SubscriptionStore};
 use reifydb_value::Result;
 use tokio::{
 	net::TcpListener,
+	runtime::Handle,
 	sync::{oneshot, watch},
 };
 use tokio_stream::{StreamExt, wrappers::TcpListenerStream};
@@ -44,7 +45,7 @@ pub struct GrpcSubsystem {
 	shutdown_complete_rx: Option<oneshot::Receiver<()>>,
 	admin_shutdown_tx: Option<oneshot::Sender<()>>,
 	admin_shutdown_complete_rx: Option<oneshot::Receiver<()>>,
-	runtime: SharedRuntime,
+	handle: Handle,
 	poll_batch_size: usize,
 	registry: Option<Arc<SubscriptionRegistry>>,
 	subscription_shutdown_tx: Option<watch::Sender<bool>>,
@@ -57,7 +58,7 @@ impl GrpcSubsystem {
 		bind_addr: Option<String>,
 		admin_bind_addr: Option<String>,
 		state: AppState,
-		runtime: SharedRuntime,
+		handle: Handle,
 		poll_batch_size: usize,
 		subscription_store: Option<Arc<SubscriptionStore>>,
 	) -> Self {
@@ -72,7 +73,7 @@ impl GrpcSubsystem {
 			shutdown_complete_rx: None,
 			admin_shutdown_tx: None,
 			admin_shutdown_complete_rx: None,
-			runtime,
+			handle,
 			poll_batch_size,
 			registry: None,
 			subscription_shutdown_tx: None,
@@ -125,7 +126,7 @@ impl GrpcSubsystem {
 			return;
 		};
 		let poller = Arc::new(StoreBackedPoller::new(store.clone(), self.poll_batch_size));
-		self.runtime.spawn(async move {
+		self.handle.spawn(async move {
 			poller.run_loop(registry, poller_stop_rx).await;
 		});
 	}
@@ -150,7 +151,7 @@ impl GrpcSubsystem {
 		let (complete_tx, complete_rx) = oneshot::channel();
 		let state = self.state.clone();
 		let running = self.running.clone();
-		self.runtime.spawn(async move {
+		self.handle.spawn(async move {
 			running.store(true, Ordering::SeqCst);
 			let server_state = GrpcServerState::new(state);
 			let service = ReifyDbService::new(server_state, false, registry, sub_shutdown_rx);
@@ -182,7 +183,7 @@ impl GrpcSubsystem {
 		let admin_server_state = GrpcServerState::new(self.state.clone());
 		let admin_registry = self.registry.as_ref().unwrap().clone();
 		let admin_sub_shutdown_rx = self.subscription_shutdown_tx.as_ref().unwrap().subscribe();
-		self.runtime.spawn(async move {
+		self.handle.spawn(async move {
 			let admin_service =
 				ReifyDbService::new(admin_server_state, true, admin_registry, admin_sub_shutdown_rx);
 			let result = serve_grpc(listener, admin_service, admin_shutdown_rx, "gRPC admin server").await;
@@ -199,7 +200,7 @@ impl GrpcSubsystem {
 
 	#[inline]
 	fn bind_listener(&self, addr: &str) -> Result<TcpListener> {
-		self.runtime.block_on(TcpListener::bind(addr)).map_err(|e| {
+		self.handle.block_on(TcpListener::bind(addr)).map_err(|e| {
 			CoreError::SubsystemBindFailed {
 				addr: addr.to_string(),
 				reason: e.to_string(),
@@ -258,14 +259,14 @@ impl Subsystem for GrpcSubsystem {
 			let _ = tx.send(());
 		}
 		if let Some(rx) = self.admin_shutdown_complete_rx.take() {
-			let _ = self.runtime.block_on(rx);
+			let _ = self.handle.block_on(rx);
 		}
 
 		if let Some(tx) = self.shutdown_tx.take() {
 			let _ = tx.send(());
 		}
 		if let Some(rx) = self.shutdown_complete_rx.take() {
-			let _ = self.runtime.block_on(rx);
+			let _ = self.handle.block_on(rx);
 		}
 		self.running.store(false, Ordering::SeqCst);
 		Ok(())

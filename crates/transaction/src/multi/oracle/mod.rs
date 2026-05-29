@@ -14,7 +14,7 @@ use reifydb_core::{
 	util::bloom::BloomFilter,
 };
 use reifydb_runtime::{
-	actor::system::ActorSystem,
+	actor::system::ActorSpawner,
 	context::{clock::Clock, rng::Rng},
 	sync::rwlock::RwLock,
 };
@@ -100,7 +100,7 @@ where
 	pub(crate) command: WaterMark,
 	pub(crate) leases: Arc<VersionLeases>,
 	shutdown_signal: Arc<RwLock<bool>>,
-	actor_system: ActorSystem,
+	spawner: ActorSpawner,
 	metrics_clock: Clock,
 	rng: Rng,
 	config: Arc<dyn GetConfig>,
@@ -112,7 +112,7 @@ where
 {
 	pub fn new(
 		clock: L,
-		actor_system: ActorSystem,
+		spawner: ActorSpawner,
 		metrics_clock: Clock,
 		rng: Rng,
 		config: Arc<dyn GetConfig>,
@@ -125,11 +125,11 @@ where
 				time_windows: BTreeMap::new(),
 				evicted_up_through: CommitVersion(0),
 			}),
-			query: WaterMark::new("txn-mark-query".into(), &actor_system),
-			command: WaterMark::new("txn-mark-cmd".into(), &actor_system),
+			query: WaterMark::new("txn-mark-query".into(), &spawner),
+			command: WaterMark::new("txn-mark-cmd".into(), &spawner),
 			leases: VersionLeases::new(),
 			shutdown_signal,
-			actor_system,
+			spawner,
 			metrics_clock,
 			rng,
 			config,
@@ -140,8 +140,8 @@ where
 		self.config.clone()
 	}
 
-	pub fn actor_system(&self) -> ActorSystem {
-		self.actor_system.clone()
+	pub fn spawner(&self) -> ActorSpawner {
+		self.spawner.clone()
 	}
 
 	pub fn metrics_clock(&self) -> &Clock {
@@ -336,7 +336,6 @@ where
 			let mut inner = self.inner.write();
 			inner.time_windows.clear();
 		}
-		self.actor_system.shutdown();
 	}
 
 	pub(crate) fn done_query(&self, version: CommitVersion) {

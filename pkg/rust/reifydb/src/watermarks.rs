@@ -123,7 +123,7 @@ impl CdcWatermarks<'_> {
 		if self.consumer() >= version {
 			return true;
 		}
-		let clock = self.db.shared_runtime().clock().clone();
+		let clock = self.db.clock().clone();
 		let deadline = clock.instant() + timeout;
 		loop {
 			if self.consumer() >= version {

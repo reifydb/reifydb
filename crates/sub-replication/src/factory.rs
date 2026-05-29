@@ -4,9 +4,9 @@
 use reifydb_cdc::storage::CdcStore;
 use reifydb_core::{event::EventBus, util::ioc::IocContainer};
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::Result;
+use tokio::runtime::Handle;
 
 use crate::{
 	builder::{ReplicationConfig, ReplicationConfigurator},
@@ -37,7 +37,7 @@ impl ReplicationSubsystemFactory {
 
 impl SubsystemFactory for ReplicationSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
-		let runtime = ioc.resolve::<SharedRuntime>()?;
+		let runtime = ioc.resolve::<Handle>()?;
 		let engine = ioc.resolve::<StandardEngine>()?;
 
 		let config = (self.config_fn)();

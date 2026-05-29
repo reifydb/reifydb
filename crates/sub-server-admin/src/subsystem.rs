@@ -15,10 +15,10 @@ use reifydb_core::{
 	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_runtime::{SharedRuntime, sync::rwlock::RwLock};
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_value::{Result, error::Error};
-use tokio::{net::TcpListener, sync::oneshot};
+use tokio::{net::TcpListener, runtime::Handle, sync::oneshot};
 use tracing::{error, info, warn};
 
 use crate::{routes::router, state::AdminState};
@@ -36,11 +36,11 @@ pub struct AdminSubsystem {
 
 	shutdown_complete_rx: Option<oneshot::Receiver<()>>,
 
-	runtime: SharedRuntime,
+	handle: Handle,
 }
 
 impl AdminSubsystem {
-	pub fn new(bind_addr: String, state: AdminState, runtime: SharedRuntime) -> Self {
+	pub fn new(bind_addr: String, state: AdminState, handle: Handle) -> Self {
 		Self {
 			bind_addr,
 			actual_addr: RwLock::new(None),
@@ -48,7 +48,7 @@ impl AdminSubsystem {
 			running: Arc::new(AtomicBool::new(false)),
 			shutdown_tx: None,
 			shutdown_complete_rx: None,
-			runtime,
+			handle,
 		}
 	}
 
@@ -90,8 +90,8 @@ impl Subsystem for AdminSubsystem {
 		}
 
 		let addr = self.bind_addr.clone();
-		let runtime = self.runtime.clone();
-		let listener = runtime.block_on(TcpListener::bind(&addr)).map_err(|e| {
+		let handle = self.handle.clone();
+		let listener = handle.block_on(TcpListener::bind(&addr)).map_err(|e| {
 			let err: Error = CoreError::SubsystemBindFailed {
 				addr: addr.clone(),
 				reason: e.to_string(),
@@ -115,9 +115,9 @@ impl Subsystem for AdminSubsystem {
 
 		let state = self.state.clone();
 		let running = self.running.clone();
-		let runtime = self.runtime.clone();
+		let handle = self.handle.clone();
 
-		runtime.spawn(async move {
+		handle.spawn(async move {
 			running.store(true, Ordering::SeqCst);
 
 			let app = router(state);
@@ -150,7 +150,7 @@ impl Subsystem for AdminSubsystem {
 			let _ = tx.send(());
 		}
 		if let Some(rx) = self.shutdown_complete_rx.take() {
-			let _ = self.runtime.block_on(rx);
+			let _ = self.handle.block_on(rx);
 		}
 		Ok(())
 	}

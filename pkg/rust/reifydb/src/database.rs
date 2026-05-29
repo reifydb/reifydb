@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+use std::time::Instant;
 use std::{
 	collections::HashMap,
 	sync::{
@@ -16,8 +18,8 @@ use reifydb_auth::service::AuthService;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_engine::{engine::StandardEngine, session::RetryStrategy};
 use reifydb_runtime::{
-	SharedRuntime,
-	actor::{mailbox::ActorRef, system::ActorSystem},
+	actor::{mailbox::ActorRef, system::ActorSpawner},
+	context::clock::Clock,
 	pool::Pools,
 };
 use reifydb_store_multi::MultiStore;
@@ -51,14 +53,16 @@ use crate::{
 	watermarks::Watermarks,
 };
 
+const SHUTDOWN_DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
+
 pub struct Database {
 	engine: StandardEngine,
 	auth_service: AuthService,
 	bootloader: Bootloader,
 	subsystems: Subsystems,
 	health_monitor: Arc<HealthMonitor>,
-	shared_runtime: SharedRuntime,
-	actor_system: ActorSystem,
+	spawner: ActorSpawner,
+	clock: Clock,
 	running: bool,
 	migrations: Vec<MigrationStatement>,
 }
@@ -104,18 +108,18 @@ impl Database {
 		auth_service: AuthService,
 		subsystem_manager: Subsystems,
 		health_monitor: Arc<HealthMonitor>,
-		shared_runtime: SharedRuntime,
-		actor_system: ActorSystem,
+		spawner: ActorSpawner,
+		clock: Clock,
 		migrations: Vec<MigrationStatement>,
 	) -> Self {
 		Self {
 			engine: engine.clone(),
 			auth_service,
-			bootloader: Bootloader::new(engine, actor_system.clone()),
+			bootloader: Bootloader::new(engine, spawner.clone()),
 			subsystems: subsystem_manager,
 			health_monitor,
-			shared_runtime,
-			actor_system,
+			spawner,
+			clock,
 			running: false,
 			migrations,
 		}
@@ -149,12 +153,12 @@ impl Database {
 		&self.auth_service
 	}
 
-	pub fn shared_runtime(&self) -> &SharedRuntime {
-		&self.shared_runtime
+	pub fn clock(&self) -> &Clock {
+		&self.clock
 	}
 
 	pub fn pools(&self) -> Pools {
-		self.actor_system.pools()
+		self.spawner.pools()
 	}
 
 	pub fn is_running(&self) -> bool {
@@ -211,8 +215,12 @@ impl Database {
 
 		debug!("Stopping system gracefully");
 
+		self.engine.set_shutting_down();
+
+		self.drain_cdc_consumers(SHUTDOWN_DRAIN_TIMEOUT);
+
 		if let Some(multi_store) = self.engine.ioc().try_resolve::<MultiStore>() {
-			multi_store.flush_pending_blocking();
+			multi_store.flush_all_blocking();
 		}
 
 		if let Some(single_store) = self.engine.ioc().try_resolve::<SingleStore>() {
@@ -221,9 +229,6 @@ impl Database {
 
 		self.subsystems.stop_all()?;
 
-		self.actor_system.shutdown();
-		let _ = self.actor_system.join();
-
 		self.engine.shutdown();
 
 		self.running = false;
@@ -231,6 +236,44 @@ impl Database {
 		self.health_monitor.update_component_health("system".to_string(), HealthStatus::Healthy, false);
 		Ok(())
 	}
+
+	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+	fn drain_cdc_consumers(&self, timeout: Duration) {
+		if self.sub_flow().is_none() {
+			return;
+		}
+
+		let deadline = Instant::now() + timeout;
+		let mut last_producer = 0u64;
+		let mut stable = 0u32;
+		loop {
+			let producer = self.engine.cdc_producer_watermark().0;
+			let consumer = self.engine.consumer_watermark().0;
+			if consumer >= producer && producer == last_producer {
+				stable += 1;
+				if stable >= 2 {
+					return;
+				}
+			} else {
+				stable = 0;
+			}
+			last_producer = producer;
+
+			if Instant::now() >= deadline {
+				warn!(
+					producer,
+					consumer, "shutdown drain timed out; flushing already-committed data anyway"
+				);
+				return;
+			}
+
+			self.engine.notify_cdc_consumers();
+			sleep(Duration::from_millis(50));
+		}
+	}
+
+	#[cfg(not(all(feature = "sub_flow", not(reifydb_single_threaded))))]
+	fn drain_cdc_consumers(&self, _timeout: Duration) {}
 
 	pub fn health_status(&self) -> HealthStatus {
 		self.health_monitor.get_system_health()
@@ -448,9 +491,6 @@ impl Drop for Database {
 			warn!("System being dropped while running, attempting graceful shutdown");
 			let _ = self.stop();
 		}
-		// Always break the Engine ↔ IoC cycle, even if we were never started.
-		// Without this, the engine→IoC→engine reference cycle keeps SharedRuntime
-		// (and the tokio runtime's FDs) alive indefinitely.
 		self.engine.shutdown();
 	}
 }

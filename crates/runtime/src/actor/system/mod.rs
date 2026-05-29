@@ -11,11 +11,11 @@ pub mod native;
 pub mod wasm;
 
 #[cfg(reifydb_target = "dst")]
-pub use dst::{ActorHandle, ActorSystem, JoinError};
+pub use dst::{ActorHandle, ActorSpawner, ActorSystem, JoinError};
 #[cfg(all(not(reifydb_single_threaded), not(reifydb_target = "dst")))]
-pub use native::{ActorHandle, ActorSystem, JoinError};
+pub use native::{ActorHandle, ActorSpawner, ActorSystem, JoinError};
 #[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
-pub use wasm::{ActorHandle, ActorSystem, JoinError};
+pub use wasm::{ActorHandle, ActorSpawner, ActorSystem, JoinError};
 
 #[derive(Debug, Clone, Default)]
 pub struct ActorConfig {

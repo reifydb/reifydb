@@ -32,8 +32,8 @@ use reifydb_routine::{
 	function::default_native_functions, procedure::default_native_procedures, routine::registry::Routines,
 };
 use reifydb_runtime::{
-	SharedRuntime, SharedRuntimeConfig,
-	actor::system::ActorSystem,
+	Runtime, RuntimeConfig,
+	actor::system::{ActorSpawner, ActorSystem},
 	context::{
 		RuntimeContext,
 		clock::{Clock, MockClock},
@@ -62,6 +62,7 @@ use crate::{engine::StandardEngine, vm::services::EngineConfig};
 pub struct TestEngine {
 	engine: StandardEngine,
 	mock_clock: MockClock,
+	_runtime: Runtime,
 }
 
 impl Default for TestEngine {
@@ -174,28 +175,30 @@ impl TestEngineBuilder {
 
 	pub fn build(self) -> TestEngine {
 		let mock_clock = MockClock::from_millis(1000);
-		let pools = Pools::new(PoolConfig::default());
-		let actor_system = ActorSystem::new(pools, Clock::Mock(mock_clock.clone()));
-		let eventbus = EventBus::new(&actor_system);
+		let runtime = make_test_runtime(&mock_clock);
+		let spawner = runtime.spawner();
+		let clock = runtime.clock().clone();
+		let rng = runtime.rng().clone();
+
+		let eventbus = EventBus::new(&spawner);
 		let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
 		let single_store = SingleStore::testing_memory();
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
-		let runtime = make_test_runtime(&mock_clock);
 		let catalog_cache = CatalogCache::new();
 		let multi = MultiTransaction::new(
 			multi_store.clone(),
 			single.clone(),
 			eventbus.clone(),
-			actor_system,
-			runtime.clock().clone(),
-			runtime.rng().clone(),
+			spawner.clone(),
+			clock.clone(),
+			rng.clone(),
 			Arc::new(catalog_cache.clone()),
 		)
 		.unwrap();
 
 		let mut ioc = IocContainer::new();
 		ioc = ioc.register(catalog_cache.clone());
-		ioc = ioc.register(runtime.clone());
+		ioc = ioc.register(spawner.clone()).register(clock.clone()).register(rng.clone());
 		ioc = ioc.register(single_store.clone());
 		ioc = ioc.register(eventbus.clone());
 
@@ -223,7 +226,7 @@ impl TestEngineBuilder {
 			InterceptorFactory::default(),
 			Catalog::new(catalog_cache),
 			EngineConfig {
-				runtime_context: RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
+				runtime_context: RuntimeContext::new(clock.clone(), rng.clone()),
 				routines: {
 					let b = Routines::builder();
 					let b = default_native_functions(b);
@@ -238,7 +241,8 @@ impl TestEngineBuilder {
 
 		if self.cdc {
 			register_cdc_producer(
-				&runtime,
+				&spawner,
+				clock.clone(),
 				cdc_store,
 				multi_store,
 				&engine,
@@ -252,14 +256,15 @@ impl TestEngineBuilder {
 		TestEngine {
 			engine,
 			mock_clock,
+			_runtime: runtime,
 		}
 	}
 }
 
 #[inline]
-fn make_test_runtime(mock_clock: &MockClock) -> SharedRuntime {
-	let config = SharedRuntimeConfig::default().seeded(1000);
-	let config = SharedRuntimeConfig {
+fn make_test_runtime(mock_clock: &MockClock) -> Runtime {
+	let config = RuntimeConfig::default().seeded(1000);
+	let config = RuntimeConfig {
 		clock: Clock::Mock(mock_clock.clone()),
 		..config
 	};
@@ -270,12 +275,13 @@ fn make_test_runtime(mock_clock: &MockClock) -> SharedRuntime {
 		commit_threads: 2,
 		background_threads: 1,
 	};
-	SharedRuntime::from_config(config, pools)
+	Runtime::from_config(config, pools)
 }
 
 #[allow(clippy::too_many_arguments)]
 fn register_cdc_producer(
-	runtime: &SharedRuntime,
+	spawner: &ActorSpawner,
+	clock: Clock,
 	cdc_store: CdcStore,
 	multi_store: MultiStore,
 	engine: &StandardEngine,
@@ -285,19 +291,16 @@ fn register_cdc_producer(
 	wake_registry: CdcWakeRegistry,
 ) {
 	let cdc_handle = spawn_cdc_producer(
-		&runtime.actor_system(),
+		spawner,
 		cdc_store,
 		multi_store,
 		engine.clone(),
 		eventbus.clone(),
-		runtime.clock().clone(),
+		clock.clone(),
 		watermark,
 		wake_registry,
 	);
-	eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
-		cdc_handle.actor_ref().clone(),
-		runtime.clock().clone(),
-	));
+	eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(cdc_handle.actor_ref().clone(), clock));
 	ioc_for_cdc.register_service::<Arc<CdcProduceHandle>>(Arc::new(cdc_handle));
 }
 
@@ -307,13 +310,15 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 
 	let pools = Pools::new(PoolConfig::sync_only());
 	let actor_system = ActorSystem::new(pools, Clock::Real);
-	let event_bus = EventBus::new(&actor_system);
+	let spawner = actor_system.spawner();
+	std::mem::forget(actor_system);
+	let event_bus = EventBus::new(&spawner);
 	let single = SingleTransaction::new(single_store, event_bus.clone());
 	let multi = MultiTransaction::new(
 		multi_store,
 		single.clone(),
 		event_bus.clone(),
-		actor_system,
+		spawner,
 		Clock::Mock(MockClock::from_millis(1000)),
 		Rng::seeded(42),
 		Arc::new(CatalogCache::new()),
@@ -337,13 +342,15 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 
 	let pools = Pools::new(PoolConfig::sync_only());
 	let actor_system = ActorSystem::new(pools, Clock::Real);
-	let event_bus = EventBus::new(&actor_system);
+	let spawner = actor_system.spawner();
+	std::mem::forget(actor_system);
+	let event_bus = EventBus::new(&spawner);
 	let single = SingleTransaction::new(single_store, event_bus.clone());
 	let multi = MultiTransaction::new(
 		multi_store,
 		single.clone(),
 		event_bus.clone(),
-		actor_system,
+		spawner,
 		Clock::Mock(MockClock::from_millis(1000)),
 		Rng::seeded(42),
 		Arc::new(CatalogCache::new()),

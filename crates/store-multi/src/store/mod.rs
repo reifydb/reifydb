@@ -59,16 +59,7 @@ pub struct StandardMultiStoreInner {
 	#[allow(dead_code)]
 	pub(crate) eviction_watermark: Arc<OnceLock<Arc<dyn EvictionWatermark>>>,
 
-	actor_system: ActorSystem,
-
 	pub(crate) event_bus: EventBus,
-}
-
-impl Drop for StandardMultiStoreInner {
-	fn drop(&mut self) {
-		self.actor_system.shutdown();
-		let _ = self.actor_system.join_timeout(Duration::from_secs(5));
-	}
 }
 
 impl StandardMultiStore {
@@ -79,7 +70,7 @@ impl StandardMultiStore {
 	pub fn new(config: MultiStoreConfig) -> Result<Self> {
 		let commit = config.commit.map(|c| c.storage);
 
-		let actor_system = config.actor_system.clone();
+		let spawner = config.spawner.clone();
 
 		let row_settings_provider: Arc<OnceLock<Arc<dyn ShapePersistence>>> = Arc::new(OnceLock::new());
 
@@ -87,13 +78,7 @@ impl StandardMultiStore {
 
 		let drop_actor = commit.as_ref().map(|storage| {
 			let drop_config = DropWorkerConfig::default();
-			DropActor::spawn(
-				&actor_system,
-				drop_config,
-				storage.clone(),
-				config.event_bus.clone(),
-				config.clock,
-			)
+			DropActor::spawn(&spawner, drop_config, storage.clone(), config.event_bus.clone(), config.clock)
 		});
 
 		let read = match (commit.as_ref(), config.persistent.is_some()) {
@@ -108,7 +93,7 @@ impl StandardMultiStore {
 			let flush_actor = match (commit.as_ref(), persistent.as_ref(), persistent_config.as_ref()) {
 				(Some(buf), Some(persistent_storage), Some(persistent_cfg)) => {
 					let actor_ref = FlushActor::spawn(
-						&actor_system,
+						&spawner,
 						buf.clone(),
 						persistent_storage.clone(),
 						persistent_cfg.flush_interval,
@@ -139,7 +124,6 @@ impl StandardMultiStore {
 			flush_actor,
 			row_settings_provider,
 			eviction_watermark,
-			actor_system,
 			event_bus: config.event_bus,
 		})))
 	}
@@ -198,6 +182,27 @@ impl StandardMultiStore {
 
 		waiter.wait_timeout(Duration::from_secs(60));
 	}
+
+	pub fn flush_all_blocking(&self) {
+		let Some(actor_ref) = self.flush_actor.as_ref() else {
+			return;
+		};
+
+		self.event_bus.wait_for_completion();
+
+		let waiter = Arc::new(WaiterHandle::new());
+		let waiter_for_msg = Arc::clone(&waiter);
+		if actor_ref
+			.send_blocking(FlushMessage::FlushAll {
+				waiter: waiter_for_msg,
+			})
+			.is_err()
+		{
+			return;
+		}
+
+		waiter.wait_timeout(Duration::from_secs(60));
+	}
 }
 
 impl Deref for StandardMultiStore {
@@ -213,7 +218,9 @@ impl StandardMultiStore {
 		let pools = Pools::new(PoolConfig::sync_only());
 		let clock = Clock::testing();
 		let actor_system = ActorSystem::new(pools, clock.clone());
-		let event_bus = EventBus::new(&actor_system);
+		let spawner = actor_system.spawner();
+		let event_bus = EventBus::new(&spawner);
+		std::mem::forget(actor_system);
 		Self::new(MultiStoreConfig {
 			commit: Some(CommitBufferConfig {
 				storage: MultiCommitBufferTier::memory(),
@@ -222,7 +229,7 @@ impl StandardMultiStore {
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,
-			actor_system,
+			spawner,
 			clock,
 		})
 		.unwrap()
@@ -232,6 +239,8 @@ impl StandardMultiStore {
 		let pools = Pools::new(PoolConfig::sync_only());
 		let clock = Clock::testing();
 		let actor_system = ActorSystem::new(pools, clock.clone());
+		let spawner = actor_system.spawner();
+		std::mem::forget(actor_system);
 		Self::new(MultiStoreConfig {
 			commit: Some(CommitBufferConfig {
 				storage: MultiCommitBufferTier::memory(),
@@ -240,7 +249,7 @@ impl StandardMultiStore {
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,
-			actor_system,
+			spawner,
 			clock,
 		})
 		.unwrap()
@@ -251,7 +260,9 @@ impl StandardMultiStore {
 		let pools = Pools::new(PoolConfig::default());
 		let clock = Clock::testing();
 		let actor_system = ActorSystem::new(pools, clock.clone());
-		let event_bus = EventBus::new(&actor_system);
+		let spawner = actor_system.spawner();
+		let event_bus = EventBus::new(&spawner);
+		std::mem::forget(actor_system);
 		let (persistent, guard) = PersistentConfig::sqlite_in_memory();
 		let store = Self::new(MultiStoreConfig {
 			commit: Some(CommitBufferConfig {
@@ -261,7 +272,7 @@ impl StandardMultiStore {
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,
-			actor_system,
+			spawner,
 			clock,
 		})
 		.unwrap();
@@ -273,6 +284,8 @@ impl StandardMultiStore {
 		let pools = Pools::new(PoolConfig::default());
 		let clock = Clock::testing();
 		let actor_system = ActorSystem::new(pools, clock.clone());
+		let spawner = actor_system.spawner();
+		std::mem::forget(actor_system);
 		let (persistent, guard) = PersistentConfig::sqlite_in_memory();
 		let store = Self::new(MultiStoreConfig {
 			commit: Some(CommitBufferConfig {
@@ -282,7 +295,7 @@ impl StandardMultiStore {
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus,
-			actor_system,
+			spawner,
 			clock,
 		})
 		.unwrap();
@@ -294,10 +307,12 @@ impl StandardMultiStore {
 		let pools = Pools::new(PoolConfig::default());
 		let clock = Clock::testing();
 		let actor_system = ActorSystem::new(pools, clock.clone());
-		let event_bus = EventBus::new(&actor_system);
+		let spawner = actor_system.spawner();
+		let event_bus = EventBus::new(&spawner);
+		std::mem::forget(actor_system);
 		let (persistent, guard) = PersistentConfig::sqlite_in_memory();
-		let store = Self::new(MultiStoreConfig::sqlite_unbuffered(persistent, actor_system, clock, event_bus))
-			.unwrap();
+		let store =
+			Self::new(MultiStoreConfig::sqlite_unbuffered(persistent, spawner, clock, event_bus)).unwrap();
 		(store, guard)
 	}
 }

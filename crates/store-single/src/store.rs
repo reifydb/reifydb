@@ -17,7 +17,10 @@ use reifydb_core::{
 	interface::store::SingleVersionRow,
 };
 use reifydb_runtime::{
-	actor::{mailbox::ActorRef, system::ActorSystem},
+	actor::{
+		mailbox::ActorRef,
+		system::{ActorSpawner, ActorSystem},
+	},
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
 	sync::{mutex::Mutex, waiter::WaiterHandle},
@@ -50,7 +53,7 @@ pub struct StandardSingleStoreInner {
 	#[allow(dead_code)]
 	pub(crate) flush_actor: Option<ActorRef<FlushMessage>>,
 	pub(crate) dirty: Arc<Mutex<DirtyMap>>,
-	_actor_system: ActorSystem,
+	_spawner: ActorSpawner,
 }
 
 impl StandardSingleStore {
@@ -60,7 +63,7 @@ impl StandardSingleStore {
 	))]
 	pub fn new(config: SingleStoreConfig) -> Result<Self> {
 		let buffer = config.buffer.map(|c| c.storage);
-		let actor_system = config.actor_system.clone();
+		let spawner = config.spawner.clone();
 		let dirty: Arc<Mutex<DirtyMap>> = Arc::new(Mutex::new(HashMap::new()));
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -69,7 +72,7 @@ impl StandardSingleStore {
 			let persistent = persistent_cfg.as_ref().map(|c| c.storage.clone());
 			let flush_actor = match (persistent.as_ref(), persistent_cfg.as_ref()) {
 				(Some(p), Some(cfg)) => Some(FlushActor::spawn(
-					&actor_system,
+					&spawner,
 					Arc::clone(&dirty),
 					p.clone(),
 					cfg.flush_interval,
@@ -90,7 +93,7 @@ impl StandardSingleStore {
 			persistent,
 			flush_actor,
 			dirty,
-			_actor_system: actor_system,
+			_spawner: spawner,
 		})))
 	}
 
@@ -139,15 +142,18 @@ impl StandardSingleStore {
 		let pools = Pools::new(PoolConfig::sync_only());
 		let clock = Clock::testing();
 		let actor_system = ActorSystem::new(pools, clock.clone());
-		Self::new(SingleStoreConfig {
+		let spawner = actor_system.spawner();
+		let store = Self::new(SingleStoreConfig {
 			buffer: Some(BufferConfig {
 				storage: SingleBufferTier::memory(),
 			}),
 			persistent: None,
-			actor_system,
+			spawner,
 			clock,
 		})
-		.unwrap()
+		.unwrap();
+		std::mem::forget(actor_system);
+		store
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -155,16 +161,18 @@ impl StandardSingleStore {
 		let pools = Pools::new(PoolConfig::default());
 		let clock = Clock::testing();
 		let actor_system = ActorSystem::new(pools, clock.clone());
+		let spawner = actor_system.spawner();
 		let (persistent, guard) = PersistentConfig::sqlite_in_memory();
 		let store = Self::new(SingleStoreConfig {
 			buffer: Some(BufferConfig {
 				storage: SingleBufferTier::memory(),
 			}),
 			persistent: Some(persistent),
-			actor_system,
+			spawner,
 			clock,
 		})
 		.unwrap();
+		std::mem::forget(actor_system);
 		(store, guard)
 	}
 }

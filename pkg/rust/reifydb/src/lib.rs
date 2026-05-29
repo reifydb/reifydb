@@ -56,8 +56,11 @@ pub use reifydb_routine::{function, procedure};
 pub use reifydb_rql as rql;
 pub use reifydb_runtime as runtime;
 pub use reifydb_runtime::{
-	SharedRuntime, SharedRuntimeConfig,
-	actor::{mailbox::ActorRef, system::ActorSystem},
+	Runtime, RuntimeConfig,
+	actor::{
+		mailbox::ActorRef,
+		system::{ActorSpawner, ActorSystem},
+	},
 	context::clock::{Clock, MockClock},
 	pool::PoolConfig,
 };

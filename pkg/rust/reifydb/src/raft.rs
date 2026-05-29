@@ -17,7 +17,6 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	util::ioc::IocContainer,
 };
-use reifydb_runtime::SharedRuntime;
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
@@ -31,7 +30,7 @@ use reifydb_sub_raft::{
 };
 use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
 use reifydb_value::Result;
-use tokio::task::JoinHandle;
+use tokio::{runtime::Handle, task::JoinHandle};
 
 pub struct RaftSubsystemFactory {
 	config: RaftConfig,
@@ -53,7 +52,7 @@ impl SubsystemFactory for RaftSubsystemFactory {
 		let single_tx = ioc.resolve::<SingleTransaction>()?;
 		let catalog = ioc.resolve::<CatalogCache>()?;
 		let eventbus = ioc.resolve::<EventBus>()?;
-		let runtime = ioc.resolve::<SharedRuntime>()?;
+		let handle = ioc.resolve::<Handle>()?;
 
 		Ok(Box::new(RaftSubsystem::new(
 			self.config,
@@ -63,7 +62,7 @@ impl SubsystemFactory for RaftSubsystemFactory {
 			single_tx,
 			catalog,
 			eventbus,
-			runtime,
+			handle,
 		)))
 	}
 }
@@ -76,7 +75,7 @@ pub struct RaftSubsystem {
 	single_tx: SingleTransaction,
 	catalog: CatalogCache,
 	eventbus: EventBus,
-	runtime: SharedRuntime,
+	handle: Handle,
 	running: Arc<AtomicBool>,
 	raft_handle: Option<Raft>,
 	driver_join: Option<JoinHandle<()>>,
@@ -93,7 +92,7 @@ impl RaftSubsystem {
 		single_tx: SingleTransaction,
 		catalog: CatalogCache,
 		eventbus: EventBus,
-		runtime: SharedRuntime,
+		handle: Handle,
 	) -> Self {
 		Self {
 			config,
@@ -103,7 +102,7 @@ impl RaftSubsystem {
 			single_tx,
 			catalog,
 			eventbus,
-			runtime,
+			handle,
 			running: Arc::new(AtomicBool::new(false)),
 			raft_handle: None,
 			driver_join: None,
@@ -172,7 +171,7 @@ impl Subsystem for RaftSubsystem {
 		);
 
 		let (transport, transport_join) = self
-			.runtime
+			.handle
 			.block_on(GrpcTransport::start(self.config.bind_addr, self.config.peers.clone()))
 			.expect("failed to start raft gRPC transport");
 
@@ -182,7 +181,7 @@ impl Subsystem for RaftSubsystem {
 			proposal_channel_capacity: self.config.proposal_channel_capacity,
 		};
 		let (driver, handle) = RaftDriver::new(node, transport, driver_config);
-		let driver_join = self.runtime.spawn(driver.run());
+		let driver_join = self.handle.spawn(driver.run());
 
 		self.multi_tx.set_raft(handle.clone());
 		self.single_tx.set_raft(handle.clone());
@@ -206,12 +205,12 @@ impl Subsystem for RaftSubsystem {
 
 		if let Some(join) = self.driver_join.take() {
 			join.abort();
-			let _ = self.runtime.block_on(join);
+			let _ = self.handle.block_on(join);
 		}
 
 		if let Some(join) = self.transport_join.take() {
 			join.abort();
-			let _ = self.runtime.block_on(join);
+			let _ = self.handle.block_on(join);
 		}
 
 		self.running.store(false, Ordering::SeqCst);

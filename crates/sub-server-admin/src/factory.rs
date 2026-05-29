@@ -3,9 +3,10 @@
 
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::Result;
+use tokio::runtime::Handle;
 
 use crate::{
 	config::{AdminConfig, AdminConfigurator},
@@ -31,13 +32,15 @@ impl AdminSubsystemFactory {
 impl SubsystemFactory for AdminSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
-		let ioc_runtime = ioc.resolve::<SharedRuntime>()?;
+		let ioc_spawner = ioc.resolve::<ActorSpawner>()?;
+		let ioc_clock = ioc.resolve::<Clock>()?;
+		let ioc_handle = ioc.resolve::<Handle>()?;
 
 		let config = (self.config_fn)();
 
-		let runtime = config.runtime.as_ref().unwrap_or(&ioc_runtime);
-		let actor_system = runtime.actor_system();
-		let clock = runtime.clock().clone();
+		let spawner = config.spawner.clone().unwrap_or(ioc_spawner);
+		let clock = config.clock.clone().unwrap_or(ioc_clock);
+		let handle = config.handle.clone().unwrap_or(ioc_handle);
 
 		let state = AdminState::new(
 			engine,
@@ -46,11 +49,10 @@ impl SubsystemFactory for AdminSubsystemFactory {
 			config.auth_required,
 			config.auth_token.clone(),
 			clock,
-			actor_system,
+			spawner,
 		);
 
-		let subsystem =
-			AdminSubsystem::new(config.bind_addr.clone(), state, config.runtime.unwrap_or(ioc_runtime));
+		let subsystem = AdminSubsystem::new(config.bind_addr.clone(), state, handle);
 
 		Ok(Box::new(subsystem))
 	}

@@ -16,7 +16,7 @@ use reifydb_runtime::{
 	actor::{
 		context::Context,
 		mailbox::ActorRef,
-		system::{ActorConfig, ActorSystem},
+		system::{ActorConfig, ActorSpawner},
 		timers::TimerHandle,
 		traits::{Actor, Directive},
 	},
@@ -78,14 +78,14 @@ impl DropActor {
 	}
 
 	pub fn spawn(
-		system: &ActorSystem,
+		spawner: &ActorSpawner,
 		config: DropWorkerConfig,
 		storage: MultiCommitBufferTier,
 		event_bus: EventBus,
 		clock: Clock,
 	) -> ActorRef<DropMessage> {
 		let actor = Self::new(config, storage, event_bus, clock);
-		system.spawn_system("drop-worker", actor).actor_ref().clone()
+		spawner.spawn_system("drop-worker", actor).actor_ref().clone()
 	}
 
 	fn maybe_flush(&self, state: &mut DropActorState) {

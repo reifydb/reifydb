@@ -15,6 +15,14 @@ pub struct ExecutionResult {
 }
 
 impl ExecutionResult {
+	pub fn from_error(error: Error) -> Self {
+		Self {
+			frames: vec![],
+			error: Some(error),
+			metrics: ExecutionMetrics::default(),
+		}
+	}
+
 	pub fn is_ok(&self) -> bool {
 		self.error.is_none()
 	}

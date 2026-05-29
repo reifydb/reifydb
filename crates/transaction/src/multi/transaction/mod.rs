@@ -23,7 +23,7 @@ use reifydb_core::{
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_runtime::{
-	actor::system::ActorSystem,
+	actor::system::{ActorSpawner, ActorSystem},
 	context::{
 		clock::{Clock, MockClock},
 		rng::Rng,
@@ -79,17 +79,17 @@ where
 	#[instrument(
 		name = "transaction::manager::new",
 		level = "debug",
-		skip(clock, actor_system, metrics_clock, rng, config)
+		skip(clock, spawner, metrics_clock, rng, config)
 	)]
 	pub fn new(
 		clock: L,
-		actor_system: ActorSystem,
+		spawner: ActorSpawner,
 		metrics_clock: Clock,
 		rng: Rng,
 		config: Arc<dyn GetConfig>,
 	) -> Result<Self> {
 		let version = clock.next()?;
-		let oracle = Oracle::new(clock, actor_system, metrics_clock, rng, config);
+		let oracle = Oracle::new(clock, spawner, metrics_clock, rng, config);
 		oracle.query.mark_finished(version);
 		oracle.command.mark_finished(version);
 		Ok(Self {
@@ -97,8 +97,8 @@ where
 		})
 	}
 
-	pub fn actor_system(&self) -> ActorSystem {
-		self.inner.actor_system()
+	pub fn spawner(&self) -> ActorSpawner {
+		self.inner.spawner()
 	}
 
 	pub fn config(&self) -> Arc<dyn GetConfig> {
@@ -231,13 +231,13 @@ impl Inner {
 		store: MultiStore,
 		single: SingleTransaction,
 		event_bus: EventBus,
-		actor_system: ActorSystem,
+		spawner: ActorSpawner,
 		metrics_clock: Clock,
 		rng: Rng,
 		config: Arc<dyn GetConfig>,
 	) -> Result<Self> {
 		let version_provider = StandardVersionProvider::new(single)?;
-		let tm = TransactionManager::new(version_provider, actor_system, metrics_clock, rng, config)?;
+		let tm = TransactionManager::new(version_provider, spawner, metrics_clock, rng, config)?;
 
 		Ok(Self {
 			tm,
@@ -252,8 +252,8 @@ impl Inner {
 		self.tm.version()
 	}
 
-	fn actor_system(&self) -> ActorSystem {
-		self.tm.actor_system()
+	fn spawner(&self) -> ActorSpawner {
+		self.tm.spawner()
 	}
 
 	fn bootstrapping_completed(&self) {
@@ -275,7 +275,9 @@ impl MultiTransaction {
 		let single_store = SingleStore::testing_memory();
 		let pools = Pools::new(PoolConfig::sync_only());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
-		let event_bus = EventBus::new(&actor_system);
+		let spawner = actor_system.spawner();
+		std::mem::forget(actor_system);
+		let event_bus = EventBus::new(&spawner);
 
 		struct DummyConfig;
 		impl GetConfig for DummyConfig {
@@ -292,7 +294,7 @@ impl MultiTransaction {
 			multi_store,
 			SingleTransaction::new(single_store, event_bus.clone()),
 			event_bus,
-			actor_system,
+			spawner,
 			Clock::Mock(MockClock::from_millis(1000)),
 			Rng::seeded(42),
 			config,
@@ -305,22 +307,22 @@ impl MultiTransaction {
 	#[instrument(
 		name = "transaction::new",
 		level = "debug",
-		skip(store, single, event_bus, actor_system, metrics_clock, rng, config)
+		skip(store, single, event_bus, spawner, metrics_clock, rng, config)
 	)]
 	pub fn new(
 		store: MultiStore,
 		single: SingleTransaction,
 		event_bus: EventBus,
-		actor_system: ActorSystem,
+		spawner: ActorSpawner,
 		metrics_clock: Clock,
 		rng: Rng,
 		config: Arc<dyn GetConfig>,
 	) -> Result<Self> {
-		Ok(Self(Arc::new(Inner::new(store, single, event_bus, actor_system, metrics_clock, rng, config)?)))
+		Ok(Self(Arc::new(Inner::new(store, single, event_bus, spawner, metrics_clock, rng, config)?)))
 	}
 
-	pub fn actor_system(&self) -> ActorSystem {
-		self.0.actor_system()
+	pub fn spawner(&self) -> ActorSpawner {
+		self.0.spawner()
 	}
 
 	pub fn config(&self) -> Arc<dyn GetConfig> {

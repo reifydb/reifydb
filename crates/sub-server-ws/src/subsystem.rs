@@ -15,7 +15,7 @@ use reifydb_core::{
 	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_runtime::{SharedRuntime, sync::rwlock::RwLock};
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_sub_server::state::AppState;
 use reifydb_sub_subscription::{poller::StoreBackedPoller, store::SubscriptionStore};
@@ -52,7 +52,7 @@ pub struct WsSubsystem {
 
 	connection_semaphore: Arc<Semaphore>,
 
-	runtime: SharedRuntime,
+	runtime: tokio::runtime::Handle,
 
 	registry: Arc<SubscriptionRegistry>,
 
@@ -66,7 +66,7 @@ impl WsSubsystem {
 		bind_addr: Option<String>,
 		admin_bind_addr: Option<String>,
 		state: AppState,
-		runtime: SharedRuntime,
+		runtime: tokio::runtime::Handle,
 		poll_batch_size: usize,
 		subscription_store: Option<Arc<SubscriptionStore>>,
 	) -> Self {
@@ -314,7 +314,7 @@ async fn run_accept_loop(
 	semaphore: Arc<Semaphore>,
 	active_connections: Arc<AtomicUsize>,
 	mut shutdown_rx: watch::Receiver<bool>,
-	runtime: SharedRuntime,
+	runtime: tokio::runtime::Handle,
 	name: &'static str,
 ) {
 	loop {
@@ -349,7 +349,7 @@ fn handle_accept_result(
 	semaphore: &Arc<Semaphore>,
 	active_connections: &Arc<AtomicUsize>,
 	shutdown_rx: &watch::Receiver<bool>,
-	runtime: &SharedRuntime,
+	runtime: &tokio::runtime::Handle,
 ) {
 	let (stream, peer) = match accept {
 		Ok(pair) => pair,

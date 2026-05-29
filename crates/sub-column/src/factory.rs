@@ -7,7 +7,7 @@ use reifydb_column::{
 };
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::actor::system::ActorSpawner;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::Result;
 
@@ -36,9 +36,8 @@ impl Default for StorageSubsystemFactory {
 
 impl SubsystemFactory for StorageSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
-		let runtime = ioc.resolve::<SharedRuntime>()?;
+		let spawner = ioc.resolve::<ActorSpawner>()?;
 		let engine = ioc.resolve::<StandardEngine>()?;
-		let actor_system = runtime.actor_system();
 		let registry = SnapshotRegistry::new();
 
 		let table_actor = TableMaterializationActor::new(
@@ -47,7 +46,7 @@ impl SubsystemFactory for StorageSubsystemFactory {
 			Compressor::new(CompressConfig::default()),
 			self.config.table_tick_interval,
 		);
-		let table_handle = actor_system.spawn_system("storage-materialize-table", table_actor);
+		let table_handle = spawner.spawn_system("storage-materialize-table", table_actor);
 		let table_ref = table_handle.actor_ref().clone();
 
 		let series_actor = SeriesMaterializationActor::new(
@@ -58,7 +57,7 @@ impl SubsystemFactory for StorageSubsystemFactory {
 			self.config.series_bucket_width,
 			self.config.series_grace,
 		);
-		let series_handle = actor_system.spawn_system("storage-materialize-series", series_actor);
+		let series_handle = spawner.spawn_system("storage-materialize-series", series_actor);
 		let series_ref = series_handle.actor_ref().clone();
 
 		Ok(Box::new(StorageSubsystem::new(registry, table_ref, series_ref)))

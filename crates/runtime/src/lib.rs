@@ -31,7 +31,6 @@ pub mod actor;
 
 #[cfg(not(reifydb_target = "dst"))]
 use std::future::Future;
-use std::sync::Arc;
 
 use crate::{
 	actor::system::ActorSystem,
@@ -40,12 +39,12 @@ use crate::{
 };
 
 #[derive(Clone)]
-pub struct SharedRuntimeConfig {
+pub struct RuntimeConfig {
 	pub clock: Clock,
 	pub rng: context::rng::Rng,
 }
 
-impl Default for SharedRuntimeConfig {
+impl Default for RuntimeConfig {
 	fn default() -> Self {
 		Self {
 			clock: Clock::Real,
@@ -54,7 +53,7 @@ impl Default for SharedRuntimeConfig {
 	}
 }
 
-impl SharedRuntimeConfig {
+impl RuntimeConfig {
 	pub fn seeded(mut self, seed: u64) -> Self {
 		self.clock = Clock::Mock(MockClock::from_millis(seed));
 		self.rng = context::rng::Rng::seeded(seed);
@@ -114,73 +113,53 @@ use std::error::Error;
 #[cfg(target_arch = "wasm32")]
 impl Error for WasmJoinError {}
 
-#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
-struct SharedRuntimeInner {
+use crate::actor::system::ActorSpawner;
+
+pub struct Runtime {
 	system: ActorSystem,
 	pools: Pools,
 	clock: Clock,
 	rng: context::rng::Rng,
 }
 
-#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
-impl Drop for SharedRuntimeInner {
-	fn drop(&mut self) {
-		self.system.shutdown();
-		let _ = self.system.join();
-	}
-}
-
-#[cfg(target_arch = "wasm32")]
-struct SharedRuntimeInner {
-	system: ActorSystem,
-	pools: Pools,
-	clock: Clock,
-	rng: context::rng::Rng,
-}
-
-#[cfg(reifydb_target = "dst")]
-struct SharedRuntimeInner {
-	system: ActorSystem,
-	pools: Pools,
-	clock: Clock,
-	rng: context::rng::Rng,
-}
-
-#[derive(Clone)]
-pub struct SharedRuntime(Arc<SharedRuntimeInner>);
-
-impl SharedRuntime {
-	pub fn from_config(config: SharedRuntimeConfig, pools: PoolConfig) -> Self {
+impl Runtime {
+	pub fn from_config(config: RuntimeConfig, pools: PoolConfig) -> Self {
 		let pools = Pools::new(pools);
 		let system = ActorSystem::new(pools.clone(), config.clock.clone());
 
-		Self(Arc::new(SharedRuntimeInner {
+		Self {
 			system,
 			pools,
 			clock: config.clock,
 			rng: config.rng,
-		}))
+		}
 	}
 
 	pub fn actor_system(&self) -> ActorSystem {
-		self.0.system.clone()
+		self.system.clone()
+	}
+
+	pub fn spawner(&self) -> ActorSpawner {
+		self.system.spawner()
+	}
+
+	pub fn shutdown(&self) {
+		self.system.shutdown();
+		let _ = self.system.join();
+		self.pools.shutdown();
 	}
 
 	pub fn clock(&self) -> &Clock {
-		&self.0.clock
+		&self.clock
 	}
 
 	pub fn rng(&self) -> &context::rng::Rng {
-		&self.0.rng
-	}
-
-	pub fn pools(&self) -> Pools {
-		self.0.pools.clone()
+		&self.rng
 	}
 
 	#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
 	pub fn handle(&self) -> tokio_runtime::Handle {
-		self.0.pools.handle()
+		self.pools.handle()
 	}
 
 	#[cfg(target_arch = "wasm32")]
@@ -194,7 +173,7 @@ impl SharedRuntime {
 		F: Future + Send + 'static,
 		F::Output: Send + 'static,
 	{
-		self.0.pools.spawn(future)
+		self.pools.spawn(future)
 	}
 
 	#[cfg(target_arch = "wasm32")]
@@ -213,7 +192,7 @@ impl SharedRuntime {
 	where
 		F: Future,
 	{
-		self.0.pools.block_on(future)
+		self.pools.block_on(future)
 	}
 
 	#[cfg(target_arch = "wasm32")]
@@ -225,9 +204,16 @@ impl SharedRuntime {
 	}
 }
 
-impl fmt::Debug for SharedRuntime {
+impl Drop for Runtime {
+	fn drop(&mut self) {
+		eprintln!("[chaos-leak] Runtime::drop running");
+		self.shutdown();
+	}
+}
+
+impl fmt::Debug for Runtime {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("SharedRuntime").finish_non_exhaustive()
+		f.debug_struct("Runtime").finish_non_exhaustive()
 	}
 }
 
@@ -235,8 +221,8 @@ impl fmt::Debug for SharedRuntime {
 mod tests {
 	use super::*;
 
-	fn test_config() -> SharedRuntimeConfig {
-		SharedRuntimeConfig::default()
+	fn test_config() -> RuntimeConfig {
+		RuntimeConfig::default()
 	}
 
 	fn test_pools() -> PoolConfig {
@@ -251,21 +237,14 @@ mod tests {
 
 	#[test]
 	fn test_runtime_creation() {
-		let runtime = SharedRuntime::from_config(test_config(), test_pools());
+		let runtime = Runtime::from_config(test_config(), test_pools());
 		let result = runtime.block_on(async { 42 });
 		assert_eq!(result, 42);
 	}
 
 	#[test]
-	fn test_runtime_clone_shares_same_runtime() {
-		let rt1 = SharedRuntime::from_config(test_config(), test_pools());
-		let rt2 = rt1.clone();
-		assert!(Arc::ptr_eq(&rt1.0, &rt2.0));
-	}
-
-	#[test]
 	fn test_spawn() {
-		let runtime = SharedRuntime::from_config(test_config(), test_pools());
+		let runtime = Runtime::from_config(test_config(), test_pools());
 		let handle = runtime.spawn(async { 123 });
 		let result = runtime.block_on(handle).unwrap();
 		assert_eq!(result, 123);
@@ -273,7 +252,16 @@ mod tests {
 
 	#[test]
 	fn test_actor_system_accessible() {
-		let runtime = SharedRuntime::from_config(test_config(), test_pools());
+		let runtime = Runtime::from_config(test_config(), test_pools());
 		let _system = runtime.actor_system();
+	}
+
+	#[test]
+	fn test_shutdown_drops_runtime() {
+		let runtime = Runtime::from_config(test_config(), test_pools());
+		let spawner = runtime.spawner();
+		assert!(spawner.is_alive());
+		drop(runtime);
+		assert!(!spawner.is_alive());
 	}
 }

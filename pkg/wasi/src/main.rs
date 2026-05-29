@@ -43,7 +43,7 @@ use reifydb_routine::{
 };
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{
-	SharedRuntime, SharedRuntimeConfig,
+	Runtime, RuntimeConfig,
 	actor::timers::drain_expired_timers,
 	context::{RuntimeContext, clock::Clock},
 	pool::PoolConfig,
@@ -72,12 +72,13 @@ struct Bridge {
 	engine: StandardEngine,
 	flow_subsystem: FlowSubsystem,
 	profile: BridgeProfile,
+	_runtime: Runtime,
 }
 
 impl Bridge {
 	fn new(profile: BridgeProfile) -> Result<Self, Box<dyn Error>> {
-		let runtime = SharedRuntime::from_config(
-			SharedRuntimeConfig::default().seeded(0),
+		let runtime = Runtime::from_config(
+			RuntimeConfig::default().seeded(0),
 			PoolConfig {
 				async_threads: 1,
 				system_threads: 1,
@@ -87,8 +88,10 @@ impl Bridge {
 			},
 		);
 
-		let actor_system = runtime.actor_system();
-		let eventbus = EventBus::new(&actor_system);
+		let spawner = runtime.spawner();
+		let clock = runtime.clock().clone();
+		let rng = runtime.rng().clone();
+		let eventbus = EventBus::new(&spawner);
 
 		let multi_store = MultiStore::standard(MultiStoreConfig {
 			commit: Some(CommitBufferConfig {
@@ -98,7 +101,7 @@ impl Bridge {
 			retention: Default::default(),
 			merge_config: Default::default(),
 			event_bus: eventbus.clone(),
-			actor_system: actor_system.clone(),
+			spawner: spawner.clone(),
 			clock: Clock::Real,
 		});
 		let single_store = SingleStore::testing_memory();
@@ -109,15 +112,15 @@ impl Bridge {
 			multi_store.clone(),
 			single.clone(),
 			eventbus.clone(),
-			actor_system.clone(),
-			runtime.clock().clone(),
-			runtime.rng().clone(),
+			spawner.clone(),
+			clock.clone(),
+			rng.clone(),
 			Arc::new(catalog_cache.clone()),
 		)?;
 
 		let mut ioc = IocContainer::new();
 		ioc = ioc.register(catalog_cache.clone());
-		ioc = ioc.register(runtime.clone());
+		ioc = ioc.register(spawner.clone()).register(clock.clone()).register(rng.clone());
 		ioc = ioc.register(single_store.clone());
 
 		let cdc_store = CdcStore::memory();
@@ -148,7 +151,7 @@ impl Bridge {
 			InterceptorFactory::default(),
 			Catalog::new(catalog_cache),
 			EngineConfig {
-				runtime_context: RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
+				runtime_context: RuntimeContext::new(clock.clone(), rng.clone()),
 				routines,
 				transforms: Transforms::empty(),
 				ioc,
@@ -159,18 +162,18 @@ impl Bridge {
 
 		eprintln!("[WASI] Spawning CDC producer actor...");
 		let cdc_producer_handle = spawn_cdc_producer(
-			&actor_system,
+			&spawner,
 			cdc_store,
 			multi_store.clone(),
 			engine.clone(),
 			eventbus_clone.clone(),
-			runtime.clock().clone(),
+			clock.clone(),
 			cdc_producer_watermark,
 			cdc_wake_registry,
 		);
 
 		let cdc_listener =
-			CdcProducerEventListener::new(cdc_producer_handle.actor_ref().clone(), runtime.clock().clone());
+			CdcProducerEventListener::new(cdc_producer_handle.actor_ref().clone(), clock.clone());
 		eventbus_clone.register::<PostCommitEvent, _>(cdc_listener);
 		eprintln!("[WASI] CDC producer actor registered!");
 
@@ -210,6 +213,7 @@ impl Bridge {
 			engine,
 			flow_subsystem,
 			profile,
+			_runtime: runtime,
 		})
 	}
 }

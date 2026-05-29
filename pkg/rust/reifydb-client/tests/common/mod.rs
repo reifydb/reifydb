@@ -5,7 +5,7 @@ use std::{collections::HashMap, error::Error, fmt::Write, sync::Arc};
 
 // === Native (network) test helpers ===
 #[cfg(not(reifydb_single_threaded))]
-use reifydb::{Database, SharedRuntimeConfig, WithSubsystem, server};
+use reifydb::{Database, RuntimeConfig, WithSubsystem, server};
 use reifydb_client::{Frame, Params, Value};
 use reifydb_testing::testscript::command::Command;
 #[cfg(not(reifydb_single_threaded))]
@@ -14,7 +14,7 @@ use tokio::runtime::Runtime;
 #[cfg(not(reifydb_single_threaded))]
 pub fn create_server_instance(_runtime: &Arc<Runtime>) -> Database {
 	server::memory()
-		.with_runtime_config(SharedRuntimeConfig::default().seeded(0))
+		.with_runtime_config(RuntimeConfig::default().seeded(0))
 		.with_flow(|f| f)
 		.with_grpc(|grpc| grpc.admin_bind_addr("[::1]:0"))
 		.with_http(|http| http.admin_bind_addr("::1:0"))
@@ -74,7 +74,7 @@ pub fn cleanup_server(mut server: Option<Database>) {
 // === DST test helpers ===
 
 #[cfg(reifydb_single_threaded)]
-use reifydb::{Database, SharedRuntimeConfig, embedded};
+use reifydb::{Database, RuntimeConfig, embedded};
 #[cfg(reifydb_single_threaded)]
 use reifydb_client::DstClient;
 #[cfg(reifydb_single_threaded)]
@@ -98,10 +98,7 @@ pub struct DstTestContext {
 #[cfg(reifydb_single_threaded)]
 impl DstTestContext {
 	pub fn new() -> Self {
-		let db = embedded::memory()
-			.with_runtime_config(SharedRuntimeConfig::default().seeded(0))
-			.build()
-			.unwrap();
+		let db = embedded::memory().with_runtime_config(RuntimeConfig::default().seeded(0)).build().unwrap();
 
 		db.admin_as_root(
 			"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",

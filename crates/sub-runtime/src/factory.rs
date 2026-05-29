@@ -6,7 +6,7 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::{Runtime, actor::system::ActorSpawner, context::clock::Clock};
 use reifydb_store_multi::MultiStore;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::Result;
@@ -16,17 +16,15 @@ use crate::{
 	vtable::RuntimeVTable,
 };
 
-pub struct RuntimeSubsystemFactory;
-
-impl RuntimeSubsystemFactory {
-	pub fn new() -> Self {
-		Self
-	}
+pub struct RuntimeSubsystemFactory {
+	runtime: Runtime,
 }
 
-impl Default for RuntimeSubsystemFactory {
-	fn default() -> Self {
-		Self::new()
+impl RuntimeSubsystemFactory {
+	pub fn new(runtime: Runtime) -> Self {
+		Self {
+			runtime,
+		}
 	}
 }
 
@@ -34,7 +32,8 @@ impl SubsystemFactory for RuntimeSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let multi_store = ioc.resolve::<MultiStore>()?;
-		let runtime = ioc.resolve::<SharedRuntime>()?;
+		let spawner = ioc.resolve::<ActorSpawner>()?;
+		let clock = ioc.resolve::<Clock>()?;
 
 		let collectors = Collectors {
 			engine: engine.clone(),
@@ -42,16 +41,18 @@ impl SubsystemFactory for RuntimeSubsystemFactory {
 		};
 
 		for domain in Domain::ALL {
-			let vtable = RuntimeVTable::new(collectors.clone(), runtime.clock().clone(), domain);
+			let vtable = RuntimeVTable::new(collectors.clone(), clock.clone(), domain);
 			engine.register_virtual_table(domain.namespace(), "current", vtable)?;
 		}
 
 		let interval = engine.catalog().get_config_duration_opt(ConfigKey::RuntimeMetricsInterval);
-		if let Some(interval) = interval {
+		let sampler_scope = interval.map(|interval| {
+			let scope = spawner.scope();
 			let actor = RuntimeSamplerActor::new(collectors, engine, interval);
-			runtime.actor_system().spawn_background("runtime-sampler", actor);
-		}
+			scope.spawn_background("runtime-sampler", actor);
+			scope
+		});
 
-		Ok(Box::new(RuntimeSubsystem::new(interval.is_some())))
+		Ok(Box::new(RuntimeSubsystem::new(sampler_scope, self.runtime)))
 	}
 }

@@ -7,27 +7,29 @@ use std::{collections::HashMap, sync::mpsc};
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_client::{GrpcClient, WireFormat};
 #[cfg(not(reifydb_single_threaded))]
-use reifydb_runtime::{SharedRuntime, sync::mutex::Mutex};
+use reifydb_runtime::sync::mutex::Mutex;
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_value::error::Diagnostic;
 use reifydb_value::error::Error;
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_value::{params::Params, value::frame::frame::Frame};
+#[cfg(not(reifydb_single_threaded))]
+use tokio::runtime::Handle;
 
 #[cfg(not(reifydb_single_threaded))]
 type CacheKey = (String, Option<String>);
 
 #[cfg(not(reifydb_single_threaded))]
 pub struct RemoteRegistry {
-	runtime: SharedRuntime,
+	handle: Handle,
 	clients: Mutex<HashMap<CacheKey, GrpcClient>>,
 }
 
 #[cfg(not(reifydb_single_threaded))]
 impl RemoteRegistry {
-	pub fn new(runtime: SharedRuntime) -> Self {
+	pub fn new(handle: Handle) -> Self {
 		Self {
-			runtime,
+			handle,
 			clients: Mutex::new(HashMap::new()),
 		}
 	}
@@ -61,7 +63,7 @@ impl RemoteRegistry {
 		let rql = rql.to_string();
 		let (tx, rx) = mpsc::sync_channel(1);
 
-		self.runtime.spawn(async move {
+		self.handle.spawn(async move {
 			let result = client.query(&rql, params).await;
 			let _ = tx.send(result);
 		});
@@ -98,7 +100,7 @@ impl RemoteRegistry {
 		let address_owned = address.to_string();
 		let (tx, rx) = mpsc::sync_channel(1);
 
-		self.runtime.spawn(async move {
+		self.handle.spawn(async move {
 			let result = GrpcClient::connect(&address_owned, WireFormat::Proto).await;
 			let _ = tx.send(result);
 		});
@@ -141,7 +143,7 @@ pub fn extract_remote_token(err: &Error) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, pool::PoolConfig};
+	use reifydb_runtime::{RuntimeConfig, SharedRuntime, pool::PoolConfig};
 	use reifydb_value::{error::Diagnostic, fragment::Fragment};
 
 	use super::*;
@@ -245,7 +247,7 @@ mod tests {
 
 	#[test]
 	fn test_connect_failure_does_not_pollute_cache() {
-		let runtime = SharedRuntime::from_config(SharedRuntimeConfig::default(), PoolConfig::default());
+		let runtime = SharedRuntime::from_config(RuntimeConfig::default(), PoolConfig::default());
 		let registry = RemoteRegistry::new(runtime);
 
 		// 127.0.0.1:1 is reserved; connect must fail fast.
@@ -256,7 +258,7 @@ mod tests {
 
 	#[test]
 	fn test_evict_missing_key_is_noop() {
-		let runtime = SharedRuntime::from_config(SharedRuntimeConfig::default(), PoolConfig::default());
+		let runtime = SharedRuntime::from_config(RuntimeConfig::default(), PoolConfig::default());
 		let registry = RemoteRegistry::new(runtime);
 		registry.evict("http://127.0.0.1:1", None);
 		registry.evict("http://127.0.0.1:1", Some("tok"));

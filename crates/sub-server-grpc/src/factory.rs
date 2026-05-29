@@ -9,7 +9,10 @@ use reifydb_auth::{
 };
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::{
+	actor::system::ActorSpawner,
+	context::{clock::Clock, rng::Rng},
+};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_sub_server::{
 	interceptor::RequestInterceptorChain,
@@ -17,6 +20,7 @@ use reifydb_sub_server::{
 };
 use reifydb_sub_subscription::store::SubscriptionStore;
 use reifydb_value::Result;
+use tokio::runtime::Handle;
 
 use crate::subsystem::GrpcSubsystem;
 
@@ -26,7 +30,6 @@ pub struct GrpcConfigurator {
 	max_connections: usize,
 	query_timeout: Duration,
 	request_timeout: Duration,
-	runtime: Option<SharedRuntime>,
 	poll_batch_size: usize,
 }
 
@@ -44,7 +47,6 @@ impl GrpcConfigurator {
 			max_connections: 10_000,
 			query_timeout: Duration::from_secs(30),
 			request_timeout: Duration::from_secs(60),
-			runtime: None,
 			poll_batch_size: 100,
 		}
 	}
@@ -74,11 +76,6 @@ impl GrpcConfigurator {
 		self
 	}
 
-	pub fn runtime(mut self, runtime: SharedRuntime) -> Self {
-		self.runtime = Some(runtime);
-		self
-	}
-
 	pub fn poll_batch_size(mut self, size: usize) -> Self {
 		self.poll_batch_size = size;
 		self
@@ -91,7 +88,6 @@ impl GrpcConfigurator {
 			max_connections: self.max_connections,
 			query_timeout: self.query_timeout,
 			request_timeout: self.request_timeout,
-			runtime: self.runtime,
 			poll_batch_size: self.poll_batch_size,
 		}
 	}
@@ -105,7 +101,6 @@ pub struct GrpcConfig {
 	pub max_connections: usize,
 	pub query_timeout: Duration,
 	pub request_timeout: Duration,
-	pub runtime: Option<SharedRuntime>,
 	pub poll_batch_size: usize,
 }
 
@@ -133,7 +128,10 @@ impl GrpcSubsystemFactory {
 impl SubsystemFactory for GrpcSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
-		let ioc_runtime = ioc.resolve::<SharedRuntime>()?;
+		let spawner = ioc.resolve::<ActorSpawner>()?;
+		let clock = ioc.resolve::<Clock>()?;
+		let rng = ioc.resolve::<Rng>()?;
+		let handle = ioc.resolve::<Handle>()?;
 
 		let config = (self.config_fn)();
 
@@ -143,31 +141,30 @@ impl SubsystemFactory for GrpcSubsystemFactory {
 			.max_connections(config.max_connections);
 
 		let interceptors = ioc.resolve::<RequestInterceptorChain>().unwrap_or_default();
-		let runtime = config.runtime.unwrap_or(ioc_runtime);
 
 		let auth_service = AuthService::new(
 			Arc::new(engine.clone()),
-			Arc::new(AuthenticationRegistry::new(runtime.clock().clone())),
-			runtime.rng().clone(),
-			runtime.clock().clone(),
+			Arc::new(AuthenticationRegistry::new(clock.clone())),
+			rng.clone(),
+			clock.clone(),
 			AuthServiceConfig::default(),
 		);
 
 		let state = AppState::new(
-			runtime.actor_system(),
+			spawner,
 			engine,
 			auth_service,
 			query_config,
 			interceptors,
-			runtime.clock().clone(),
-			runtime.rng().clone(),
+			clock.clone(),
+			rng.clone(),
 		);
 		let subscription_store = ioc.resolve::<Arc<SubscriptionStore>>().ok();
 		let subsystem = GrpcSubsystem::new(
 			config.bind_addr.clone(),
 			config.admin_bind_addr.clone(),
 			state,
-			runtime,
+			handle,
 			config.poll_batch_size,
 			subscription_store,
 		);

@@ -17,6 +17,8 @@ impl Pools {
 		Self
 	}
 
+	pub fn shutdown(&self) {}
+
 	pub fn system_pool(&self) -> StubPool {
 		StubPool
 	}

@@ -23,7 +23,7 @@ use reifydb_routine::routine::registry::RoutinesConfigurator;
 use reifydb_runtime::context::clock::Clock;
 #[cfg(feature = "sub_profiler")]
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, pool::PoolConfig};
+use reifydb_runtime::{Runtime, RuntimeConfig, pool::PoolConfig};
 use reifydb_store_multi::tier::commit::buffer::MultiCommitBufferTier;
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
@@ -122,7 +122,7 @@ type OtelTracingConfig = (
 
 pub struct ServerBuilder {
 	storage_factory: StorageFactory,
-	runtime_config: Option<SharedRuntimeConfig>,
+	runtime_config: Option<RuntimeConfig>,
 	migrations: Option<MigrationSource>,
 	interceptors: InterceptorBuilder,
 	#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
@@ -186,7 +186,7 @@ impl ServerBuilder {
 	/// Configure the shared runtime.
 	///
 	/// If not set, a default configuration will be used.
-	pub fn with_runtime_config(mut self, config: SharedRuntimeConfig) -> Self {
+	pub fn with_runtime_config(mut self, config: RuntimeConfig) -> Self {
 		self.runtime_config = Some(config);
 		self
 	}
@@ -351,17 +351,20 @@ impl ServerBuilder {
 			pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
 
 		let runtime_config = self.runtime_config.unwrap_or_default();
-		let runtime = SharedRuntime::from_config(runtime_config, pool_config);
+		let runtime = Runtime::from_config(runtime_config, pool_config);
 
-		let actor_system = runtime.actor_system().scope();
+		let spawner = runtime.spawner();
+		let clock = runtime.clock().clone();
+		let rng = runtime.rng().clone();
+
 		let (multi_store, single_store, transaction_single, eventbus) =
-			self.storage_factory.create_with_multi_commit_buffer(multi_commit_buffer, &actor_system);
+			self.storage_factory.create_with_multi_commit_buffer(multi_commit_buffer, &spawner);
 		let catalog_cache = CatalogCache::new();
 		let (multi, single, eventbus) = transaction(
 			(multi_store.clone(), single_store.clone(), transaction_single, eventbus),
-			actor_system.clone(),
-			runtime.clock().clone(),
-			runtime.rng().clone(),
+			spawner.clone(),
+			clock.clone(),
+			rng,
 			Arc::new(catalog_cache.clone()),
 		);
 
@@ -375,8 +378,6 @@ impl ServerBuilder {
 
 		let mut database_builder = DatabaseBuilder::new(catalog_cache, multi, single, eventbus.clone())
 			.with_interceptor_builder(self.interceptors)
-			.with_runtime(runtime.clone())
-			.with_actor_system(actor_system.clone())
 			.with_stores(multi_store, single_store)
 			.with_cdc_backend(cdc_backend);
 
@@ -429,7 +430,7 @@ impl ServerBuilder {
 			let sink: Arc<dyn ProfilerSink> = if cfg.enabled {
 				let actor =
 					ProfilerCollectorActor::new(Arc::clone(&accumulator), Arc::clone(&interner));
-				let handle = runtime.actor_system().spawn_system("profile-collector", actor);
+				let handle = spawner.spawn_system("profile-collector", actor);
 				let actor_ref = handle.actor_ref().clone();
 				eventbus.register::<ProfilerScopeClosedEvent, _>(ProfilerScopeClosedListener::new(
 					actor_ref.clone(),
@@ -447,7 +448,7 @@ impl ServerBuilder {
 				interner,
 				accumulator,
 				sink,
-				runtime.clock().clone(),
+				clock.clone(),
 			);
 			let layer = subsystem.layer();
 			database_builder = database_builder
@@ -476,7 +477,7 @@ impl ServerBuilder {
 			use tracing_opentelemetry::layer as otel_layer_fn;
 
 			let otel_config = otel_configurator(OtelConfigurator::new()).configure();
-			let mut otel_subsystem = OtelSubsystem::new(otel_config, runtime.clone());
+			let mut otel_subsystem = OtelSubsystem::new(otel_config, runtime.handle());
 			otel_subsystem.start().expect("Failed to start OpenTelemetry subsystem");
 
 			let tracer =
@@ -548,6 +549,8 @@ impl ServerBuilder {
 		for factory in self.subsystem_factories {
 			database_builder = database_builder.add_subsystem_factory(factory);
 		}
+
+		database_builder = database_builder.with_runtime(runtime);
 
 		database_builder.build()
 	}

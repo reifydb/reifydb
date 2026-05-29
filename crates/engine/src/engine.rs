@@ -21,7 +21,7 @@ use reifydb_catalog::{
 	},
 };
 use reifydb_cdc::{
-	consume::{host::CdcHost, watermark::CdcConsumerWatermark},
+	consume::{host::CdcHost, wake::CdcWakeRegistry, watermark::CdcConsumerWatermark},
 	produce::watermark::CdcProducerWatermark,
 	storage::CdcStore,
 };
@@ -38,16 +38,16 @@ use reifydb_core::{
 			vtable::{VTable, VTableId},
 		},
 	},
-	metric::ExecutionMetrics,
 	util::ioc::IocContainer,
 };
 use reifydb_metric::storage::metric::MetricReader;
 use reifydb_runtime::{
-	actor::{mailbox::ActorRef, system::ActorSystem},
+	actor::{mailbox::ActorRef, system::ActorSpawner},
 	context::{clock::Clock, rng::Rng},
 };
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
+	error::TransactionError,
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
 	multi::{lease::VersionLeaseGuard, transaction::MultiTransaction},
 	single::SingleTransaction,
@@ -150,21 +150,16 @@ impl StandardEngine {
 	#[instrument(name = "engine::admin_as", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn admin_as(&self, identity: IdentityId, rql: &str, params: Params) -> ExecutionResult {
 		if let Err(e) = self.reject_if_read_only() {
-			return ExecutionResult {
-				frames: vec![],
-				error: Some(e),
-				metrics: ExecutionMetrics::default(),
-			};
+			return ExecutionResult::from_error(e);
+		}
+		if let Err(e) = self.reject_if_shutting_down(identity) {
+			return ExecutionResult::from_error(e);
 		}
 		let mut txn = match self.begin_admin(identity) {
 			Ok(t) => t,
 			Err(mut e) => {
 				e.with_rql(rql.to_string());
-				return ExecutionResult {
-					frames: vec![],
-					error: Some(e),
-					metrics: ExecutionMetrics::default(),
-				};
+				return ExecutionResult::from_error(e);
 			}
 		};
 		let mut outcome = self.executor.admin(
@@ -189,21 +184,16 @@ impl StandardEngine {
 	#[instrument(name = "engine::command_as", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn command_as(&self, identity: IdentityId, rql: &str, params: Params) -> ExecutionResult {
 		if let Err(e) = self.reject_if_read_only() {
-			return ExecutionResult {
-				frames: vec![],
-				error: Some(e),
-				metrics: ExecutionMetrics::default(),
-			};
+			return ExecutionResult::from_error(e);
+		}
+		if let Err(e) = self.reject_if_shutting_down(identity) {
+			return ExecutionResult::from_error(e);
 		}
 		let mut txn = match self.begin_command(identity) {
 			Ok(t) => t,
 			Err(mut e) => {
 				e.with_rql(rql.to_string());
-				return ExecutionResult {
-					frames: vec![],
-					error: Some(e),
-					metrics: ExecutionMetrics::default(),
-				};
+				return ExecutionResult::from_error(e);
 			}
 		};
 		let mut outcome = self.executor.command(
@@ -231,11 +221,7 @@ impl StandardEngine {
 			Ok(t) => t,
 			Err(mut e) => {
 				e.with_rql(rql.to_string());
-				return ExecutionResult {
-					frames: vec![],
-					error: Some(e),
-					metrics: ExecutionMetrics::default(),
-				};
+				return ExecutionResult::from_error(e);
 			}
 		};
 		let mut outcome = self.executor.query(
@@ -263,11 +249,7 @@ impl StandardEngine {
 			Ok(t) => t,
 			Err(mut e) => {
 				e.with_rql(rql.to_string());
-				return ExecutionResult {
-					frames: vec![],
-					error: Some(e),
-					metrics: ExecutionMetrics::default(),
-				};
+				return ExecutionResult::from_error(e);
 			}
 		};
 		let mut outcome = self.executor.query(
@@ -304,11 +286,7 @@ impl StandardEngine {
 			Ok(t) => t,
 			Err(mut e) => {
 				e.with_rql(rql.to_string());
-				return ExecutionResult {
-					frames: vec![],
-					error: Some(e),
-					metrics: ExecutionMetrics::default(),
-				};
+				return ExecutionResult::from_error(e);
 			}
 		};
 		let mut outcome = self.executor.subscription(
@@ -327,20 +305,15 @@ impl StandardEngine {
 	#[instrument(name = "engine::procedure_as", level = "debug", skip(self, params), fields(name = %name))]
 	pub fn procedure_as(&self, identity: IdentityId, name: &str, params: Params) -> ExecutionResult {
 		if let Err(e) = self.reject_if_read_only() {
-			return ExecutionResult {
-				frames: vec![],
-				error: Some(e),
-				metrics: ExecutionMetrics::default(),
-			};
+			return ExecutionResult::from_error(e);
+		}
+		if let Err(e) = self.reject_if_shutting_down(identity) {
+			return ExecutionResult::from_error(e);
 		}
 		let mut txn = match self.begin_command(identity) {
 			Ok(t) => t,
 			Err(e) => {
-				return ExecutionResult {
-					frames: vec![],
-					error: Some(e),
-					metrics: ExecutionMetrics::default(),
-				};
+				return ExecutionResult::from_error(e);
 			}
 		};
 		let mut outcome = self.executor.call_procedure(&mut txn, name, &params);
@@ -437,6 +410,7 @@ pub struct Inner {
 	catalog: Catalog,
 	flow_operator_store: SystemFlowOperatorStore,
 	read_only: AtomicBool,
+	shutting_down: AtomicBool,
 }
 
 impl StandardEngine {
@@ -474,6 +448,7 @@ impl StandardEngine {
 			catalog,
 			flow_operator_store,
 			read_only: AtomicBool::new(false),
+			shutting_down: AtomicBool::new(false),
 		}))
 	}
 
@@ -519,8 +494,8 @@ impl StandardEngine {
 	}
 
 	#[inline]
-	pub fn actor_system(&self) -> ActorSystem {
-		self.multi.actor_system()
+	pub fn spawner(&self) -> ActorSpawner {
+		self.multi.spawner()
 	}
 
 	#[inline]
@@ -611,6 +586,13 @@ impl StandardEngine {
 		self.executor.ioc.try_resolve::<CdcConsumerWatermark>().map(|w| w.get()).unwrap_or(CommitVersion(0))
 	}
 
+	#[inline]
+	pub fn notify_cdc_consumers(&self) {
+		if let Some(registry) = self.executor.ioc.try_resolve::<CdcWakeRegistry>() {
+			registry.notify_all();
+		}
+	}
+
 	pub fn set_read_only(&self) {
 		self.read_only.store(true, Ordering::SeqCst);
 	}
@@ -622,6 +604,21 @@ impl StandardEngine {
 	pub(crate) fn reject_if_read_only(&self) -> Result<()> {
 		if self.is_read_only() {
 			return Err(Error(Box::new(read_only_rejection(Fragment::None))));
+		}
+		Ok(())
+	}
+
+	pub fn set_shutting_down(&self) {
+		self.shutting_down.store(true, Ordering::SeqCst);
+	}
+
+	pub fn is_shutting_down(&self) -> bool {
+		self.shutting_down.load(Ordering::SeqCst)
+	}
+
+	pub(crate) fn reject_if_shutting_down(&self, identity: IdentityId) -> Result<()> {
+		if self.is_shutting_down() && !identity.is_system() {
+			return Err(TransactionError::ShuttingDown.into());
 		}
 		Ok(())
 	}

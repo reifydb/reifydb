@@ -32,7 +32,7 @@ use reifydb_runtime::{
 	actor::{
 		context::Context,
 		mailbox::ActorRef,
-		system::{ActorConfig, ActorSystem},
+		system::{ActorConfig, ActorSpawner},
 		timers::TimerHandle,
 		traits::{Actor, Directive},
 	},
@@ -502,7 +502,7 @@ impl EventListener<PostCommitEvent> for CdcProducerEventListener {
 
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_cdc_producer<S, T, H>(
-	system: &ActorSystem,
+	spawner: &ActorSpawner,
 	storage: S,
 	transaction_store: T,
 	host: H,
@@ -517,7 +517,7 @@ where
 	H: CdcHost,
 {
 	let actor = CdcProducerActor::new(storage, transaction_store, host, event_bus, clock, watermark, wake_registry);
-	system.spawn_system("cdc-producer", actor)
+	spawner.spawn_system("cdc-producer", actor)
 }
 
 #[cfg(test)]

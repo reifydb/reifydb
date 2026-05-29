@@ -10,7 +10,7 @@ use std::{
 };
 
 use reifydb_core::{actors::cdc::CdcPollHandle, interface::cdc::CdcConsumerId};
-use reifydb_runtime::actor::system::ActorSystem;
+use reifydb_runtime::actor::system::ActorSpawner;
 use reifydb_value::Result;
 
 use super::{
@@ -71,26 +71,20 @@ pub struct PollConsumer<H: CdcHost, C: CdcConsume + Send + 'static> {
 	consumer: Option<C>,
 	store: Option<CdcStore>,
 	running: Arc<AtomicBool>,
-	actor_system: ActorSystem,
+	spawner: ActorSpawner,
 
 	handle: Option<CdcPollHandle>,
 }
 
 impl<H: CdcHost, C: CdcConsume + Send + 'static> PollConsumer<H, C> {
-	pub fn new(
-		config: PollConsumerConfig,
-		host: H,
-		consume: C,
-		store: CdcStore,
-		actor_system: ActorSystem,
-	) -> Self {
+	pub fn new(config: PollConsumerConfig, host: H, consume: C, store: CdcStore, spawner: ActorSpawner) -> Self {
 		Self {
 			config,
 			host: Some(host),
 			consumer: Some(consume),
 			store: Some(store),
 			running: Arc::new(AtomicBool::new(false)),
-			actor_system,
+			spawner,
 			handle: None,
 		}
 	}
@@ -121,7 +115,7 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> CdcConsumer for PollCons
 		let wake_armed = Arc::new(AtomicBool::new(false));
 		let actor =
 			PollActor::new(self.build_actor_config(), host, consumer, store, watermark, wake_armed.clone());
-		let handle = self.actor_system.spawn_system(&self.config.thread_name, actor);
+		let handle = self.spawner.spawn_system(&self.config.thread_name, actor);
 		if let Some(registry) = &self.config.wake_registry {
 			registry.register(wake_armed, handle.actor_ref().clone());
 		}
@@ -134,11 +128,7 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> CdcConsumer for PollCons
 			return Ok(());
 		}
 
-		self.actor_system.shutdown();
-
-		if let Some(handle) = self.handle.take() {
-			let _ = handle.join();
-		}
+		self.handle.take();
 
 		Ok(())
 	}

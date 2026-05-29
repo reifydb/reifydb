@@ -18,11 +18,12 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::{SharedRuntime, sync::rwlock::RwLock};
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_value::{Result, error::Error};
 use tokio::{
 	net::TcpListener,
+	runtime::Handle,
 	sync::{Notify, oneshot, watch},
 };
 use tokio_stream::{StreamExt, wrappers::TcpListenerStream};
@@ -41,7 +42,7 @@ pub struct ReplicationSubsystem {
 	cdc_store: Option<CdcStore>,
 	event_bus: Option<EventBus>,
 	engine: Option<StandardEngine>,
-	runtime: SharedRuntime,
+	runtime: Handle,
 	running: Arc<AtomicBool>,
 	actual_addr: RwLock<Option<SocketAddr>>,
 
@@ -54,12 +55,7 @@ pub struct ReplicationSubsystem {
 }
 
 impl ReplicationSubsystem {
-	pub fn primary(
-		config: PrimaryConfig,
-		cdc_store: CdcStore,
-		event_bus: EventBus,
-		runtime: SharedRuntime,
-	) -> Self {
+	pub fn primary(config: PrimaryConfig, cdc_store: CdcStore, event_bus: EventBus, runtime: Handle) -> Self {
 		Self {
 			config: ReplicationConfig::Primary(config),
 			cdc_store: Some(cdc_store),
@@ -76,7 +72,7 @@ impl ReplicationSubsystem {
 		}
 	}
 
-	pub fn replica(config: ReplicaConfig, engine: StandardEngine, runtime: SharedRuntime) -> Self {
+	pub fn replica(config: ReplicaConfig, engine: StandardEngine, runtime: Handle) -> Self {
 		Self {
 			config: ReplicationConfig::Replica(config),
 			cdc_store: None,

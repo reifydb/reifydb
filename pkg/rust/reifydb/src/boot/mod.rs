@@ -4,7 +4,7 @@
 mod start;
 
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::actor::system::ActorSystem;
+use reifydb_runtime::actor::system::ActorSpawner;
 
 use crate::{
 	Result,
@@ -13,14 +13,14 @@ use crate::{
 
 pub struct Bootloader {
 	engine: StandardEngine,
-	actor_system: ActorSystem,
+	spawner: ActorSpawner,
 }
 
 impl Bootloader {
-	pub fn new(engine: StandardEngine, actor_system: ActorSystem) -> Self {
+	pub fn new(engine: StandardEngine, spawner: ActorSpawner) -> Self {
 		Self {
 			engine: engine.clone(),
-			actor_system,
+			spawner,
 		}
 	}
 }
@@ -28,7 +28,7 @@ impl Bootloader {
 impl Bootloader {
 	pub fn load(&self) -> Result<()> {
 		ensure_storage_version(&self.engine.single_owned())?;
-		spawn_actors(&self.engine, &self.actor_system)?;
+		spawn_actors(&self.engine, &self.spawner)?;
 		Ok(())
 	}
 }

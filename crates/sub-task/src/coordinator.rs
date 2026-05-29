@@ -5,7 +5,7 @@ use std::{cmp::Ordering, collections::BinaryHeap, error::Error, future, io, sync
 
 use reifydb_core::interface::catalog::task::TaskId;
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::{SharedRuntime, context::clock::Instant};
+use reifydb_runtime::context::clock::{Clock, Instant};
 use tokio::{select, sync::mpsc, task::spawn_blocking, time};
 use tracing::{debug, error, info};
 
@@ -52,7 +52,8 @@ impl PartialOrd for HeapEntry {
 pub async fn run_coordinator(
 	registry: TaskRegistry,
 	mut rx: mpsc::Receiver<TaskCoordinatorMessage>,
-	runtime: SharedRuntime,
+	clock: Clock,
+	handle: tokio::runtime::Handle,
 	engine: StandardEngine,
 ) {
 	info!("Task coordinator started");
@@ -70,7 +71,7 @@ pub async fn run_coordinator(
 
 	loop {
 		let sleep_duration = heap.peek().map(|entry| {
-			let now = runtime.clock().instant();
+			let now = clock.instant();
 			if entry.next_execution > now {
 				&entry.next_execution - &now
 			} else {
@@ -97,7 +98,8 @@ pub async fn run_coordinator(
 				spawn_task(
 				    task_id,
 				    task,
-				    runtime.clone(),
+				    clock.clone(),
+				    handle.clone(),
 				    engine.clone(),
 				    completion_tx.clone(),
 				);
@@ -144,7 +146,7 @@ pub async fn run_coordinator(
 			match msg {
 			    TaskCoordinatorMessage::Register(task) => {
 				let task_id = task.id;
-				let next_execution = runtime.clock().instant() + task.schedule.initial_delay();
+				let next_execution = clock.instant() + task.schedule.initial_delay();
 
 				info!("Registering task: {} (id: {})", task.name, task_id);
 
@@ -198,18 +200,17 @@ pub async fn run_coordinator(
 fn spawn_task(
 	task_id: TaskId,
 	task: Arc<ScheduledTask>,
-	runtime: SharedRuntime,
+	clock: Clock,
+	handle: tokio::runtime::Handle,
 	engine: StandardEngine,
 	completion_tx: mpsc::UnboundedSender<(TaskId, Instant)>,
 ) {
 	let task_name = task.name.clone();
 	let executor = task.executor;
 	let work = task.work.clone();
-	let runtime_clone = runtime.clone();
 
-	runtime.spawn(async move {
-		let runtime = runtime_clone;
-		let start = runtime.clock().instant();
+	handle.spawn(async move {
+		let start = clock.instant();
 		let ctx = TaskContext::new(engine);
 
 		let result = match (&work, executor) {
@@ -233,7 +234,7 @@ fn spawn_task(
 		};
 
 		let duration = start.elapsed();
-		let completed_at = runtime.clock().instant();
+		let completed_at = clock.instant();
 
 		match result {
 			Ok(()) => {

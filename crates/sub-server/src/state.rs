@@ -9,7 +9,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
 	actor::{
 		mailbox::ActorRef,
-		system::{ActorHandle, ActorSystem},
+		system::{ActorHandle, ActorSpawner},
 	},
 	context::{clock::Clock, rng::Rng},
 };
@@ -83,7 +83,7 @@ impl StateConfig {
 
 #[derive(Clone)]
 pub struct AppState {
-	actor_system: ActorSystem,
+	spawner: ActorSpawner,
 	engine: StandardEngine,
 	auth_service: AuthService,
 	config: StateConfig,
@@ -94,7 +94,7 @@ pub struct AppState {
 
 impl AppState {
 	pub fn new(
-		actor_system: ActorSystem,
+		spawner: ActorSpawner,
 		engine: StandardEngine,
 		auth_service: AuthService,
 		config: StateConfig,
@@ -103,7 +103,7 @@ impl AppState {
 		rng: Rng,
 	) -> Self {
 		Self {
-			actor_system,
+			spawner,
 			engine,
 			auth_service,
 			config,
@@ -115,7 +115,7 @@ impl AppState {
 
 	pub fn clone_with_config(&self, config: StateConfig) -> Self {
 		Self {
-			actor_system: self.actor_system.clone(),
+			spawner: self.spawner.clone(),
 			engine: self.engine.clone(),
 			auth_service: self.auth_service.clone(),
 			config,
@@ -126,8 +126,8 @@ impl AppState {
 	}
 
 	#[inline]
-	pub fn actor_system(&self) -> ActorSystem {
-		self.actor_system.clone()
+	pub fn spawner(&self) -> ActorSpawner {
+		self.spawner.clone()
 	}
 
 	#[inline]
@@ -205,7 +205,7 @@ impl AppState {
 	#[instrument(name = "actor::spawn_server", level = "debug", skip_all)]
 	pub fn spawn_server_actor(&self) -> (ActorRef<ServerMessage>, ActorHandle<ServerMessage>) {
 		let actor = ServerActor::new(self.engine.clone(), self.auth_service.clone(), self.clock.clone());
-		let handle = self.actor_system.spawn_query("server-req", actor);
+		let handle = self.spawner.spawn_query("server-req", actor);
 		let actor_ref = handle.actor_ref().clone();
 		(actor_ref, handle)
 	}

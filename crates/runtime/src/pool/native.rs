@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use std::{future::Future, mem::ManuallyDrop, sync::Arc, time::Duration};
+use std::{
+	future::Future,
+	sync::{Arc, Mutex},
+	time::Duration,
+};
 
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use tokio::{
-	runtime::{self, Runtime},
+	runtime::{self, Handle, Runtime},
 	task::JoinHandle,
 };
 
@@ -16,14 +20,20 @@ struct PoolsInner {
 	query: Arc<ThreadPool>,
 	commit: Arc<ThreadPool>,
 	background: Arc<ThreadPool>,
-	tokio: Option<ManuallyDrop<Runtime>>,
+	tokio_handle: Option<Handle>,
+	tokio: Mutex<Option<Runtime>>,
+}
+
+impl PoolsInner {
+	fn take_tokio(&self) -> Option<Runtime> {
+		self.tokio.lock().unwrap_or_else(|e| e.into_inner()).take()
+	}
 }
 
 impl Drop for PoolsInner {
 	fn drop(&mut self) {
-		if let Some(rt) = self.tokio.as_mut() {
-			let rt = unsafe { ManuallyDrop::take(rt) };
-
+		eprintln!("[chaos-leak] PoolsInner::drop running");
+		if let Some(rt) = self.take_tokio() {
 			if runtime::Handle::try_current().is_err() {
 				rt.shutdown_timeout(Duration::from_secs(5));
 			} else {
@@ -74,16 +84,17 @@ impl Pools {
 				.build()
 				.expect("failed to build background thread pool"),
 		);
-		let tokio = if config.async_threads > 0 {
+		let (tokio_handle, tokio) = if config.async_threads > 0 {
 			let rt = runtime::Builder::new_multi_thread()
 				.worker_threads(config.async_threads)
 				.thread_name("async")
 				.enable_all()
 				.build()
 				.expect("failed to build tokio runtime");
-			Some(ManuallyDrop::new(rt))
+			let handle = rt.handle().clone();
+			(Some(handle), Mutex::new(Some(rt)))
 		} else {
-			None
+			(None, Mutex::new(None))
 		};
 
 		Self {
@@ -92,8 +103,19 @@ impl Pools {
 				query,
 				commit,
 				background,
+				tokio_handle,
 				tokio,
 			}),
+		}
+	}
+
+	pub fn shutdown(&self) {
+		if let Some(rt) = self.inner.take_tokio() {
+			if runtime::Handle::try_current().is_err() {
+				rt.shutdown_timeout(Duration::from_secs(5));
+			} else {
+				rt.shutdown_background();
+			}
 		}
 	}
 
@@ -129,12 +151,12 @@ impl Pools {
 		self.inner.background.current_num_threads()
 	}
 
-	fn tokio(&self) -> &Runtime {
-		self.inner.tokio.as_ref().expect("no tokio runtime configured (async_threads = 0)")
+	fn tokio_handle(&self) -> Handle {
+		self.inner.tokio_handle.clone().expect("no tokio runtime configured (async_threads = 0)")
 	}
 
-	pub fn handle(&self) -> runtime::Handle {
-		self.tokio().handle().clone()
+	pub fn handle(&self) -> Handle {
+		self.tokio_handle()
 	}
 
 	pub fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
@@ -142,13 +164,13 @@ impl Pools {
 		F: Future + Send + 'static,
 		F::Output: Send + 'static,
 	{
-		self.tokio().spawn(future)
+		self.tokio_handle().spawn(future)
 	}
 
 	pub fn block_on<F>(&self, future: F) -> F::Output
 	where
 		F: Future,
 	{
-		self.tokio().block_on(future)
+		self.tokio_handle().block_on(future)
 	}
 }

@@ -47,6 +47,9 @@ pub enum TransactionError {
 		version: CommitVersion,
 		cutoff: CommitVersion,
 	},
+
+	#[error("Database is shutting down; new transactions are rejected")]
+	ShuttingDown,
 }
 
 impl IntoDiagnostic for TransactionError {
@@ -186,6 +189,19 @@ impl IntoDiagnostic for TransactionError {
 					"Acquire the hydration lease against a more recent version, or subscribe with WITH { hydration: { enabled: false } }."
 						.to_string(),
 				),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			TransactionError::ShuttingDown => Diagnostic {
+				code: "TXN_014".to_string(),
+				rql: None,
+				message: "Database is shutting down; new transactions are rejected".to_string(),
+				column: None,
+				fragment: Fragment::None,
+				label: Some("shutdown in progress".to_string()),
+				help: Some("Retry once the instance has finished shutting down or restarted".to_string()),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

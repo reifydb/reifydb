@@ -11,7 +11,7 @@ use reifydb_profiler::{
 	intern::DimInterner,
 	sink::{NoopSink, ProfilerSink},
 };
-use reifydb_runtime::{SharedRuntime, sync::rwlock::RwLock};
+use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock, sync::rwlock::RwLock};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::Result;
 
@@ -80,12 +80,13 @@ impl SubsystemFactory for ProfilerSubsystemFactory {
 				cfg.min_calls_for_retention,
 			)));
 			let event_bus = ioc.resolve::<EventBus>()?;
-			let runtime = ioc.resolve::<SharedRuntime>()?;
+			let clock = ioc.resolve::<Clock>()?;
 
 			if cfg.enabled {
+				let spawner = ioc.resolve::<ActorSpawner>()?;
 				let actor =
 					ProfilerCollectorActor::new(Arc::clone(&accumulator), Arc::clone(&interner));
-				let handle = runtime.actor_system().spawn_background("profile-collector", actor);
+				let handle = spawner.spawn_background("profile-collector", actor);
 				let actor_ref = handle.actor_ref().clone();
 
 				event_bus.register::<ProfilerScopeClosedEvent, _>(ProfilerScopeClosedListener::new(
@@ -102,23 +103,16 @@ impl SubsystemFactory for ProfilerSubsystemFactory {
 				Arc::new(NoopSink)
 			};
 
-			ProfilerSubsystem::new(
-				cfg.enabled,
-				cfg.categories,
-				interner,
-				accumulator,
-				sink,
-				runtime.clock().clone(),
-			)
+			ProfilerSubsystem::new(cfg.enabled, cfg.categories, interner, accumulator, sink, clock.clone())
 		};
 
 		let engine = ioc.resolve::<StandardEngine>()?;
 		register_profile_aggregates_vtables(&engine, &subsystem.reader())?;
 
-		let runtime = ioc.resolve::<SharedRuntime>()?;
+		let spawner = ioc.resolve::<ActorSpawner>()?;
 		let event_bus = ioc.resolve::<EventBus>()?;
 		let snapshot_actor = ProfilerSnapshotActor::new(subsystem.accumulator(), engine, event_bus);
-		runtime.actor_system().spawn_background("profile-snapshot", snapshot_actor);
+		spawner.spawn_background("profile-snapshot", snapshot_actor);
 
 		Ok(Box::new(subsystem))
 	}

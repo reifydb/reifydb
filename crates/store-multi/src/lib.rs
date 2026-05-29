@@ -107,6 +107,12 @@ impl MultiStore {
 		}
 	}
 
+	pub fn flush_all_blocking(&self) {
+		match self {
+			MultiStore::Standard(store) => store.flush_all_blocking(),
+		}
+	}
+
 	pub fn commit(&self) -> Option<&tier::commit::buffer::MultiCommitBufferTier> {
 		match self {
 			MultiStore::Standard(store) => store.commit(),

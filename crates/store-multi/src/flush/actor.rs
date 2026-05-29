@@ -14,7 +14,7 @@ use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::s
 use reifydb_runtime::actor::{
 	context::Context,
 	mailbox::ActorRef,
-	system::{ActorConfig, ActorSystem},
+	system::{ActorConfig, ActorSpawner},
 	traits::{Actor, Directive},
 };
 use reifydb_runtime::{actor::timers::TimerHandle, sync::waiter::WaiterHandle};
@@ -39,6 +39,10 @@ pub enum FlushMessage {
 	Shutdown,
 
 	FlushPending {
+		waiter: Arc<WaiterHandle>,
+	},
+
+	FlushAll {
 		waiter: Arc<WaiterHandle>,
 	},
 }
@@ -79,7 +83,7 @@ impl FlushActor {
 	}
 
 	pub fn spawn(
-		system: &ActorSystem,
+		spawner: &ActorSpawner,
 		commit: MultiCommitBufferTier,
 		persistent: MultiPersistentTier,
 		flush_interval: Duration,
@@ -88,7 +92,7 @@ impl FlushActor {
 		read: Option<MultiReadBufferTier>,
 	) -> ActorRef<FlushMessage> {
 		let actor = Self::new(commit, persistent, flush_interval, persistence, eviction_watermark, read);
-		system.spawn_background("persistent-flush", actor).actor_ref().clone()
+		spawner.spawn_background("persistent-flush", actor).actor_ref().clone()
 	}
 
 	fn eviction_cutoff(&self) -> Option<CommitVersion> {
@@ -216,6 +220,12 @@ impl Actor for FlushActor {
 				if let Some(cutoff) = self.eviction_cutoff() {
 					self.sweep(cutoff);
 				}
+				waiter.notify();
+			}
+			FlushMessage::FlushAll {
+				waiter,
+			} => {
+				self.sweep(CommitVersion(u64::MAX));
 				waiter.notify();
 			}
 		}
@@ -508,6 +518,55 @@ mod tests {
 				VersionedGetResult::NotFound
 			),
 			"hot must not be persisted - it is above the watermark"
+		);
+	}
+
+	#[test]
+	fn flush_all_persists_every_key_regardless_of_watermark() {
+		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(1)));
+		let kind = EntryKind::Source(ShapeId::Table(TableId(101)));
+		let cold = ek("cold");
+		let hot = ek("hot");
+		write(&actor.commit, kind, &cold, 2, "cold2");
+		write(&actor.commit, kind, &hot, 50, "hot50");
+
+		actor.sweep(CommitVersion(u64::MAX));
+
+		assert_eq!(
+			actor.persistent.get(kind, cold.as_ref(), CommitVersion(u64::MAX)).unwrap().value().as_deref(),
+			Some(b"cold2".as_slice()),
+			"a key committed above the watermark must be persisted by a full flush"
+		);
+		assert_eq!(
+			actor.persistent.get(kind, hot.as_ref(), CommitVersion(u64::MAX)).unwrap().value().as_deref(),
+			Some(b"hot50".as_slice()),
+			"the latest committed value of every key must survive a full flush"
+		);
+		assert!(
+			matches!(
+				actor.commit.get(kind, hot.as_ref(), CommitVersion(u64::MAX)).unwrap(),
+				VersionedGetResult::NotFound
+			),
+			"a full flush drains the buffer after persisting"
+		);
+	}
+
+	#[test]
+	fn flush_all_persists_latest_tombstone_above_watermark() {
+		let (actor, _guard) = build_actor(Arc::new(AllPersistent), Some(CommitVersion(1)));
+		let kind = EntryKind::Source(ShapeId::Table(TableId(102)));
+		let key = ek("k");
+		write(&actor.commit, kind, &key, 5, "v5");
+		actor.commit.set(CommitVersion(9), HashMap::from([(kind, vec![(key.clone(), None)])])).unwrap();
+
+		actor.sweep(CommitVersion(u64::MAX));
+
+		assert!(
+			matches!(
+				actor.persistent.get(kind, key.as_ref(), CommitVersion(u64::MAX)).unwrap(),
+				VersionedGetResult::Tombstone
+			),
+			"a delete committed above the watermark must persist as a tombstone, not resurrect"
 		);
 	}
 }

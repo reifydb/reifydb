@@ -9,7 +9,10 @@ use reifydb_auth::{
 };
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::{
+	actor::system::ActorSpawner,
+	context::{clock::Clock, rng::Rng},
+};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_sub_server::{
 	interceptor::RequestInterceptorChain,
@@ -31,7 +34,7 @@ pub struct WsConfigurator {
 
 	max_frame_size: usize,
 
-	runtime: Option<SharedRuntime>,
+	runtime: Option<tokio::runtime::Handle>,
 
 	poll_batch_size: usize,
 }
@@ -80,7 +83,7 @@ impl WsConfigurator {
 		self
 	}
 
-	pub fn runtime(mut self, runtime: SharedRuntime) -> Self {
+	pub fn runtime(mut self, runtime: tokio::runtime::Handle) -> Self {
 		self.runtime = Some(runtime);
 		self
 	}
@@ -115,7 +118,7 @@ pub struct WsConfig {
 
 	pub max_frame_size: usize,
 
-	pub runtime: Option<SharedRuntime>,
+	pub runtime: Option<tokio::runtime::Handle>,
 
 	pub poll_batch_size: usize,
 }
@@ -146,37 +149,40 @@ impl SubsystemFactory for WsSubsystemFactory {
 		let config = (self.config_fn)();
 
 		let engine = ioc.resolve::<StandardEngine>()?;
-		let ioc_runtime = ioc.resolve::<SharedRuntime>()?;
+		let spawner = ioc.resolve::<ActorSpawner>()?;
+		let clock = ioc.resolve::<Clock>()?;
+		let rng = ioc.resolve::<Rng>()?;
+		let ioc_handle = ioc.resolve::<tokio::runtime::Handle>()?;
 
 		let query_config =
 			StateConfig::new().query_timeout(config.query_timeout).max_connections(config.max_connections);
 
 		let interceptors = ioc.resolve::<RequestInterceptorChain>().unwrap_or_default();
-		let runtime = config.runtime.unwrap_or(ioc_runtime);
+		let handle = config.runtime.unwrap_or(ioc_handle);
 
 		let auth_service = AuthService::new(
 			Arc::new(engine.clone()),
-			Arc::new(AuthenticationRegistry::new(runtime.clock().clone())),
-			runtime.rng().clone(),
-			runtime.clock().clone(),
+			Arc::new(AuthenticationRegistry::new(clock.clone())),
+			rng.clone(),
+			clock.clone(),
 			AuthServiceConfig::default(),
 		);
 
 		let state = AppState::new(
-			runtime.actor_system(),
+			spawner,
 			engine,
 			auth_service,
 			query_config,
 			interceptors,
-			runtime.clock().clone(),
-			runtime.rng().clone(),
+			clock.clone(),
+			rng.clone(),
 		);
 		let subscription_store = ioc.resolve::<Arc<SubscriptionStore>>().ok();
 		let subsystem = WsSubsystem::new(
 			config.bind_addr.clone(),
 			config.admin_bind_addr.clone(),
 			state,
-			runtime,
+			handle,
 			config.poll_batch_size,
 			subscription_store,
 		);

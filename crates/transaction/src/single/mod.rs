@@ -89,7 +89,9 @@ impl SingleTransaction {
 	pub fn testing() -> Self {
 		let pools = Pools::new(PoolConfig::sync_only());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
-		Self::new(SingleStore::testing_memory(), EventBus::new(&actor_system))
+		let spawner = actor_system.spawner();
+		std::mem::forget(actor_system);
+		Self::new(SingleStore::testing_memory(), EventBus::new(&spawner))
 	}
 
 	pub fn with_query<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>

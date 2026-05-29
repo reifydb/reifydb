@@ -16,11 +16,11 @@ use reifydb_core::{
 	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_runtime::{SharedRuntime, sync::rwlock::RwLock};
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_sub_server::state::AppState;
 use reifydb_value::Result;
-use tokio::{net::TcpListener, sync::oneshot};
+use tokio::{net::TcpListener, runtime::Handle, sync::oneshot};
 use tracing::{error, info, warn};
 
 use crate::{routes::router, state::HttpServerState};
@@ -46,7 +46,7 @@ pub struct HttpSubsystem {
 
 	admin_shutdown_complete_rx: Option<oneshot::Receiver<()>>,
 
-	runtime: SharedRuntime,
+	handle: Handle,
 }
 
 impl HttpSubsystem {
@@ -54,7 +54,7 @@ impl HttpSubsystem {
 		bind_addr: Option<String>,
 		admin_bind_addr: Option<String>,
 		state: AppState,
-		runtime: SharedRuntime,
+		handle: Handle,
 	) -> Self {
 		Self {
 			bind_addr,
@@ -67,7 +67,7 @@ impl HttpSubsystem {
 			shutdown_complete_rx: None,
 			admin_shutdown_tx: None,
 			admin_shutdown_complete_rx: None,
-			runtime,
+			handle,
 		}
 	}
 
@@ -105,7 +105,7 @@ impl HttpSubsystem {
 		let (complete_tx, complete_rx) = oneshot::channel();
 		let server_state = HttpServerState::new(self.state.clone());
 		let running = self.running.clone();
-		self.runtime.spawn(async move {
+		self.handle.spawn(async move {
 			running.store(true, Ordering::SeqCst);
 			let result = serve_http(listener, server_state, shutdown_rx, "HTTP server").await;
 			if let Err(e) = result {
@@ -134,7 +134,7 @@ impl HttpSubsystem {
 		let admin_config = self.state.config().clone().admin_enabled(true);
 		let admin_app_state = self.state.clone_with_config(admin_config);
 		let admin_server_state = HttpServerState::new(admin_app_state);
-		self.runtime.spawn(async move {
+		self.handle.spawn(async move {
 			let result =
 				serve_http(listener, admin_server_state, admin_shutdown_rx, "HTTP admin server").await;
 			if let Err(e) = result {
@@ -150,7 +150,7 @@ impl HttpSubsystem {
 
 	#[inline]
 	fn bind_listener(&self, addr: &str) -> Result<TcpListener> {
-		self.runtime.block_on(TcpListener::bind(addr)).map_err(|e| {
+		self.handle.block_on(TcpListener::bind(addr)).map_err(|e| {
 			CoreError::SubsystemBindFailed {
 				addr: addr.to_string(),
 				reason: e.to_string(),
@@ -193,14 +193,14 @@ impl Subsystem for HttpSubsystem {
 			let _ = tx.send(());
 		}
 		if let Some(rx) = self.admin_shutdown_complete_rx.take() {
-			let _ = self.runtime.block_on(rx);
+			let _ = self.handle.block_on(rx);
 		}
 
 		if let Some(tx) = self.shutdown_tx.take() {
 			let _ = tx.send(());
 		}
 		if let Some(rx) = self.shutdown_complete_rx.take() {
-			let _ = self.runtime.block_on(rx);
+			let _ = self.handle.block_on(rx);
 		}
 		self.running.store(false, Ordering::SeqCst);
 		Ok(())

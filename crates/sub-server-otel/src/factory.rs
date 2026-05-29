@@ -2,9 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::util::ioc::IocContainer;
-use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::Result;
+use tokio::runtime::Handle;
 
 use crate::{
 	config::{OtelConfig, OtelConfigurator},
@@ -40,9 +40,9 @@ impl SubsystemFactory for OtelSubsystemFactory {
 		if let Some(subsystem) = self.subsystem {
 			Ok(Box::new(subsystem))
 		} else if let Some(config_fn) = self.config_fn {
-			let runtime = ioc.resolve::<SharedRuntime>()?;
+			let handle = ioc.resolve::<Handle>()?;
 			let config = config_fn();
-			let subsystem = OtelSubsystem::new(config, runtime);
+			let subsystem = OtelSubsystem::new(config, handle);
 			Ok(Box::new(subsystem))
 		} else {
 			unreachable!("OtelSubsystemFactory must have either subsystem or config_fn")

@@ -42,7 +42,10 @@ use reifydb_rql::{
 	fingerprint::request::fingerprint_request,
 	flow::{flow::FlowDag, node::FlowNodeType},
 };
-use reifydb_runtime::{SharedRuntime, context::RuntimeContext, sync::rwlock::RwLock};
+use reifydb_runtime::{
+	context::{RuntimeContext, clock::Clock},
+	sync::rwlock::RwLock,
+};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
 use reifydb_sub_flow::{
 	builder::OperatorFactory,
@@ -465,7 +468,7 @@ impl SubscriptionSubsystem {
 		let executor = engine.executor();
 		let event_bus = engine.event_bus().clone();
 		let multi = engine.multi_owned();
-		let actor_system = engine.actor_system();
+		let spawner = engine.spawner();
 
 		let flow_engine = Arc::new(RwLock::new(FlowEngine::new(
 			catalog.clone(),
@@ -508,7 +511,7 @@ impl SubscriptionSubsystem {
 		)
 		.with_consumer_watermark(consumer_watermark);
 
-		let consumer = PollConsumer::new(config, engine, cdc_consumer, cdc_store, actor_system);
+		let consumer = PollConsumer::new(config, engine, cdc_consumer, cdc_store, spawner);
 
 		Self {
 			consumer,
@@ -641,9 +644,9 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let cdc_store = ioc.resolve::<CdcStore>()?;
-		let runtime = ioc.resolve::<SharedRuntime>()?;
+		let clock = ioc.resolve::<Clock>()?;
 
-		let runtime_context = RuntimeContext::with_clock(runtime.clock().clone());
+		let runtime_context = RuntimeContext::with_clock(clock);
 		let store = Arc::new(SubscriptionStore::new(1024));
 		let custom_operators = Arc::new(HashMap::new());
 

@@ -44,7 +44,9 @@ impl TestCdcHost {
 		let multi_store = MultiStore::testing_memory();
 		let single_store = SingleStore::testing_memory();
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
-		let event_bus = EventBus::new(&actor_system);
+		let spawner = actor_system.spawner();
+		std::mem::forget(actor_system);
+		let event_bus = EventBus::new(&spawner);
 		let single = SingleTransaction::new(single_store, event_bus.clone());
 		let catalog_cache = CatalogCache::new();
 		let mock = MockClock::new(initial_nanos);
@@ -53,7 +55,7 @@ impl TestCdcHost {
 			multi_store,
 			single.clone(),
 			event_bus.clone(),
-			actor_system,
+			spawner,
 			clock.clone(),
 			Rng::seeded(42),
 			Arc::new(catalog_cache.clone()),

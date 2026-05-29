@@ -19,7 +19,7 @@ use reifydb_metric::{
 	accumulator::StatementStatsAccumulator,
 	registry::{MetricRegistry, StaticMetricRegistry},
 };
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::actor::system::ActorSpawner;
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
@@ -58,11 +58,10 @@ impl MetricSubsystemFactory {
 
 impl SubsystemFactory for MetricSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
-		let runtime = ioc.resolve::<SharedRuntime>()?;
+		let spawner = ioc.resolve::<ActorSpawner>()?;
 		let event_bus = ioc.resolve::<EventBus>()?;
 		let single_store = ioc.resolve::<SingleStore>()?;
 		let multi_store = ioc.resolve::<MultiStore>()?;
-		let actor_system = runtime.actor_system();
 
 		let engine = ioc.resolve::<StandardEngine>();
 
@@ -77,7 +76,7 @@ impl SubsystemFactory for MetricSubsystemFactory {
 		if let Ok(engine) = &engine {
 			actor = actor.with_config(Arc::new(engine.catalog()) as Arc<dyn GetConfig>);
 		}
-		let handle = actor_system.spawn_background("metric-collector", actor);
+		let handle = spawner.spawn_background("metric-collector", actor);
 		let actor_ref = handle.actor_ref().clone();
 
 		event_bus.register::<RequestExecutedEvent, _>(RequestMetricsEventListener::new(actor_ref.clone()));

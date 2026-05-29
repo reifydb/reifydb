@@ -8,7 +8,7 @@ use reifydb_catalog::{bootstrap::read_configs, cache::CatalogCache};
 use reifydb_core::interface::catalog::config::ConfigKey;
 use reifydb_extension::transform::registry::TransformsConfigurator;
 use reifydb_routine::routine::registry::RoutinesConfigurator;
-use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, pool::PoolConfig};
+use reifydb_runtime::{Runtime, RuntimeConfig, pool::PoolConfig};
 use reifydb_store_multi::tier::commit::buffer::MultiCommitBufferTier;
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
@@ -72,8 +72,7 @@ use crate::{
 
 pub struct EmbeddedBuilder {
 	storage_factory: StorageFactory,
-	runtime: Option<SharedRuntime>,
-	runtime_config: Option<SharedRuntimeConfig>,
+	runtime_config: Option<RuntimeConfig>,
 	interceptors: InterceptorBuilder,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
 	routines_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
@@ -98,7 +97,6 @@ impl EmbeddedBuilder {
 	pub fn new(storage_factory: StorageFactory) -> Self {
 		Self {
 			storage_factory,
-			runtime: None,
 			runtime_config: None,
 			interceptors: InterceptorBuilder::new(),
 			subsystem_factories: Vec::new(),
@@ -120,19 +118,10 @@ impl EmbeddedBuilder {
 		}
 	}
 
-	/// Provide a pre-built shared runtime.
-	///
-	/// When set, this runtime is used directly and `with_runtime_config` is ignored.
-	pub fn with_runtime(mut self, runtime: SharedRuntime) -> Self {
-		self.runtime = Some(runtime);
-		self
-	}
-
-	/// Configure the shared runtime.
+	/// Configure the process runtime (clock + rng).
 	///
 	/// If not set, a default configuration will be used.
-	/// Ignored if `with_runtime` was called.
-	pub fn with_runtime_config(mut self, config: SharedRuntimeConfig) -> Self {
+	pub fn with_runtime_config(mut self, config: RuntimeConfig) -> Self {
 		self.runtime_config = Some(config);
 		self
 	}
@@ -204,28 +193,22 @@ impl EmbeddedBuilder {
 	}
 
 	pub fn build(self) -> Result<Database> {
-		let (runtime, multi_commit_buffer) = match self.runtime {
-			Some(rt) => (rt, self.storage_factory.open_multi_commit_buffer()),
-			None => {
-				let (multi_commit_buffer, pool_config) =
-					pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
-				let rt = SharedRuntime::from_config(
-					self.runtime_config.unwrap_or_default(),
-					pool_config,
-				);
-				(rt, multi_commit_buffer)
-			}
-		};
+		let (multi_commit_buffer, pool_config) =
+			pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
+		let runtime = Runtime::from_config(self.runtime_config.unwrap_or_default(), pool_config);
 
-		let actor_system = runtime.actor_system().scope();
+		let spawner = runtime.spawner();
+		let clock = runtime.clock().clone();
+		let rng = runtime.rng().clone();
+
 		let (multi_store, single_store, transaction_single, eventbus) =
-			self.storage_factory.create_with_multi_commit_buffer(multi_commit_buffer, &actor_system);
+			self.storage_factory.create_with_multi_commit_buffer(multi_commit_buffer, &spawner);
 		let catalog_cache = CatalogCache::new();
 		let (multi, single, eventbus) = transaction(
 			(multi_store.clone(), single_store.clone(), transaction_single, eventbus),
-			actor_system.clone(),
-			runtime.clock().clone(),
-			runtime.rng().clone(),
+			spawner,
+			clock,
+			rng,
 			Arc::new(catalog_cache.clone()),
 		);
 
@@ -239,8 +222,7 @@ impl EmbeddedBuilder {
 
 		let mut builder = DatabaseBuilder::new(catalog_cache, multi, single, eventbus)
 			.with_interceptor_builder(self.interceptors)
-			.with_runtime(runtime.clone())
-			.with_actor_system(actor_system)
+			.with_runtime(runtime)
 			.with_stores(multi_store, single_store)
 			.with_cdc_backend(cdc_backend);
 

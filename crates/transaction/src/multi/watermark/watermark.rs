@@ -13,7 +13,7 @@ use std::{
 
 use reifydb_core::{actors::watermark::WatermarkMessage, common::CommitVersion};
 use reifydb_runtime::{
-	actor::{mailbox::ActorRef, system::ActorSystem},
+	actor::{mailbox::ActorRef, system::ActorSpawner},
 	sync::waiter::WaiterHandle,
 };
 use tracing::instrument;
@@ -35,8 +35,8 @@ impl Debug for WaterMark {
 }
 
 impl WaterMark {
-	#[instrument(name = "transaction::watermark::new", level = "debug", skip(system), fields(task_name = %task_name))]
-	pub fn new(task_name: String, system: &ActorSystem) -> Self {
+	#[instrument(name = "transaction::watermark::new", level = "debug", skip(spawner), fields(task_name = %task_name))]
+	pub fn new(task_name: String, spawner: &ActorSpawner) -> Self {
 		let shared = Arc::new(WatermarkShared {
 			done_until: AtomicU64::new(0),
 			last_index: AtomicU64::new(0),
@@ -45,7 +45,7 @@ impl WaterMark {
 		let actor = WatermarkActor {
 			shared: shared.clone(),
 		};
-		let actor_ref = system.spawn_system(&task_name, actor).actor_ref().clone();
+		let actor_ref = spawner.spawn_system(&task_name, actor).actor_ref().clone();
 
 		Self {
 			actor: actor_ref,

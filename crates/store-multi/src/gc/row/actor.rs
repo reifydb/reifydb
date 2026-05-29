@@ -15,7 +15,7 @@ use reifydb_core::{
 use reifydb_runtime::actor::{
 	context::Context,
 	mailbox::ActorRef,
-	system::{ActorConfig, ActorSystem},
+	system::{ActorConfig, ActorSpawner},
 	timers::TimerHandle,
 	traits::{Actor as ActorTrait, Directive},
 };
@@ -49,9 +49,9 @@ impl<P: ListRowSettings> Actor<P> {
 		}
 	}
 
-	pub fn spawn(system: &ActorSystem, store: StandardMultiStore, provider: P) -> ActorRef<Message> {
+	pub fn spawn(spawner: &ActorSpawner, store: StandardMultiStore, provider: P) -> ActorRef<Message> {
 		let actor = Self::new(store, provider);
-		system.spawn_background("row-row", actor).actor_ref().clone()
+		spawner.spawn_background("row-row", actor).actor_ref().clone()
 	}
 
 	fn run_scan(&self, state: &mut ActorState, now: DateTime) {
@@ -271,8 +271,8 @@ impl<P: ListRowSettings> ActorTrait for Actor<P> {
 
 pub fn spawn_row_settings_actor<P: ListRowSettings>(
 	store: StandardMultiStore,
-	system: ActorSystem,
+	spawner: ActorSpawner,
 	provider: P,
 ) -> ActorRef<Message> {
-	Actor::spawn(&system, store, provider)
+	Actor::spawn(&spawner, store, provider)
 }

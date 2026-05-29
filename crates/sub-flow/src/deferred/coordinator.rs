@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	cmp::min,
 	collections,
 	collections::BTreeMap,
 	fmt, mem,
@@ -834,20 +833,25 @@ impl CoordinatorActor {
 				continue;
 			}
 
-			let to_version =
-				CommitVersion(min(from_version.0 + BACKFILL_CHUNK_SIZE, consume_ctx.current_version.0));
-			let batch = self.read_backfill_chunk(from_version, to_version, BACKFILL_CHUNK_SIZE);
+			let batch = self.read_backfill_chunk(
+				from_version,
+				consume_ctx.current_version,
+				BACKFILL_CHUNK_SIZE,
+			);
 
 			if batch.items.is_empty() {
+				let target = consume_ctx.current_version;
 				self.record_chunk_checkpoint(
 					state,
 					&mut consume_ctx,
 					flow_id,
-					to_version,
-					"backfill complete after empty chunk, flow now active",
+					target,
+					"backfill complete: no CDC up to current version (version gap skipped), flow now active",
 				);
 				continue;
 			}
+
+			let to_version = batch.items.iter().map(|cdc| cdc.version).max().unwrap_or(from_version);
 
 			let chunk_changes = collect_chunk_changes(&batch);
 			let flow_changes = self.filter_cdc_for_flow(state, flow_id, &chunk_changes);
@@ -858,7 +862,7 @@ impl CoordinatorActor {
 					&mut consume_ctx,
 					flow_id,
 					to_version,
-					"backfill complete after no-op chunk, flow now active",
+					"backfill advanced past no-op chunk, flow now active",
 				);
 				continue;
 			}

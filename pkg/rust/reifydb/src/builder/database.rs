@@ -51,7 +51,7 @@ use reifydb_routine::{
 	routine::registry::{Routines, RoutinesConfigurator},
 };
 use reifydb_rql::RqlVersion;
-use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem, context::RuntimeContext};
+use reifydb_runtime::{Runtime, context::RuntimeContext};
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sqlite::SqliteConfig;
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};
@@ -104,7 +104,7 @@ pub struct DatabaseBuilder {
 	interceptors: InterceptorBuilder,
 	factories: Vec<Box<dyn SubsystemFactory>>,
 	ioc: IocContainer,
-	actor_system: Option<ActorSystem>,
+	runtime: Option<Runtime>,
 	routines_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
 	handlers_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
 	#[cfg(reifydb_target = "native")]
@@ -144,7 +144,7 @@ impl DatabaseBuilder {
 			interceptors: InterceptorBuilder::new(),
 			factories: Vec::new(),
 			ioc,
-			actor_system: None,
+			runtime: None,
 			routines_configurator: None,
 			handlers_configurator: None,
 			#[cfg(reifydb_target = "native")]
@@ -276,16 +276,14 @@ impl DatabaseBuilder {
 		self
 	}
 
-	/// Set the shared runtime for the database.
+	/// Provide the owned process runtime.
 	///
-	/// This registers the runtime in the IoC container so subsystems can resolve it.
-	pub fn with_runtime(mut self, runtime: SharedRuntime) -> Self {
-		self.ioc = self.ioc.register(runtime);
-		self
-	}
-
-	pub fn with_actor_system(mut self, system: ActorSystem) -> Self {
-		self.actor_system = Some(system);
+	/// The builder derives the narrow handles (clock, rng, actor spawner, tokio
+	/// handle) from it, registers those in the IoC container, then moves the
+	/// runtime into the always-on `RuntimeSubsystem` which owns it and tears it
+	/// down last on shutdown.
+	pub fn with_runtime(mut self, runtime: Runtime) -> Self {
+		self.runtime = Some(runtime);
 		self
 	}
 
@@ -365,8 +363,18 @@ impl DatabaseBuilder {
 		// don't participate in conflict detection.
 		multi.bootstrapping_completed();
 
-		let runtime = self.ioc.resolve::<SharedRuntime>()?;
-		let actor_system = self.actor_system.unwrap_or_else(|| runtime.actor_system().scope());
+		let runtime = self.runtime.take().expect("Runtime must be set via with_runtime()");
+		let spawner = runtime.spawner();
+		let clock = runtime.clock().clone();
+		let rng = runtime.rng().clone();
+		#[cfg(not(reifydb_single_threaded))]
+		let tokio_handle = runtime.handle();
+
+		self.ioc = self.ioc.register(spawner.clone()).register(clock.clone()).register(rng.clone());
+		#[cfg(not(reifydb_single_threaded))]
+		{
+			self.ioc = self.ioc.register(tokio_handle.clone());
+		}
 
 		// Create and register CdcStore for CDC storage.
 		let cdc_recent_cache_capacity =
@@ -402,7 +410,7 @@ impl DatabaseBuilder {
 				cached_store.inner().clone(),
 				cdc_producer_watermark.clone(),
 			);
-			let cdc_compact_handle = actor_system.spawn_system("cdc-compact", actor);
+			let cdc_compact_handle = spawner.spawn_system("cdc-compact", actor);
 			self.ioc = self.ioc.register(cdc_compact_handle.actor_ref().clone());
 		}
 
@@ -446,7 +454,7 @@ impl DatabaseBuilder {
 
 		// Create RemoteRegistry for forwarding queries to remote namespaces
 		#[cfg(not(reifydb_single_threaded))]
-		let remote_registry = RemoteRegistry::new(runtime.clone());
+		let remote_registry = RemoteRegistry::new(tokio_handle.clone());
 
 		// Create engine and CDC producer BEFORE bootstrap so that bootstrap
 		// commits produce CDC entries (PostCommitEvent is captured).
@@ -457,7 +465,7 @@ impl DatabaseBuilder {
 			self.interceptors.build(),
 			Catalog::new(catalog.clone()),
 			EngineConfig {
-				runtime_context: RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
+				runtime_context: RuntimeContext::new(clock.clone(), rng.clone()),
 				routines,
 				transforms,
 				ioc: self.ioc.clone(),
@@ -471,9 +479,9 @@ impl DatabaseBuilder {
 		// Create AuthService for token validation
 		let auth_service = AuthService::new(
 			Arc::new(engine.clone()),
-			Arc::new(AuthenticationRegistry::new(runtime.clock().clone())),
-			runtime.rng().clone(),
-			runtime.clock().clone(),
+			Arc::new(AuthenticationRegistry::new(clock.clone())),
+			rng.clone(),
+			clock.clone(),
 			match self.auth_configurator {
 				Some(configurator) => configurator(AuthConfigurator::new()).configure(),
 				None => AuthServiceConfig::default(),
@@ -484,18 +492,18 @@ impl DatabaseBuilder {
 		// Spawn CDC producer and register PostCommitEvent listener BEFORE
 		// bootstrap so that bootstrap commits generate CDC entries.
 		let cdc_handle = spawn_cdc_producer(
-			&actor_system,
+			&spawner,
 			cdc_store,
 			multi_store,
 			engine.clone(),
 			eventbus.clone(),
-			runtime.clock().clone(),
+			clock.clone(),
 			cdc_producer_watermark,
 			cdc_wake_registry,
 		);
 		eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
 			cdc_handle.actor_ref().clone(),
-			runtime.clock().clone(),
+			clock.clone(),
 		));
 		self.ioc.register_service::<Arc<CdcProduceHandle>>(Arc::new(cdc_handle));
 
@@ -527,8 +535,15 @@ impl DatabaseBuilder {
 		// Create subsystems from factories and collect their versions
 		// IMPORTANT: Order matters for shutdown! Subsystems are stopped in REVERSE order.
 		// Add logging FIRST so it's stopped LAST and can log shutdown messages from other subsystems.
-		let health_monitor = Arc::new(HealthMonitor::new(runtime.clock().clone()));
+		let health_monitor = Arc::new(HealthMonitor::new(clock.clone()));
 		let mut subsystems = Subsystems::new(Arc::clone(&health_monitor));
+
+		{
+			let factory = Box::new(RuntimeSubsystemFactory::new(runtime));
+			let subsystem = factory.create(&self.ioc)?;
+			all_versions.push(subsystem.version());
+			subsystems.add_subsystem(subsystem);
+		}
 
 		#[cfg(feature = "sub_tracing")]
 		if let Some(factory) = self.tracing_factory {
@@ -577,13 +592,6 @@ impl DatabaseBuilder {
 			subsystems.add_subsystem(subsystem);
 		}
 
-		{
-			let factory: Box<dyn SubsystemFactory> = Box::new(RuntimeSubsystemFactory::new());
-			let subsystem = factory.create(&self.ioc)?;
-			all_versions.push(subsystem.version());
-			subsystems.add_subsystem(subsystem);
-		}
-
 		for factory in self.factories {
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
@@ -602,14 +610,6 @@ impl DatabaseBuilder {
 		let system_catalog = SystemCatalog::new(all_versions);
 		self.ioc.register(system_catalog);
 
-		Ok(Database::new(
-			engine,
-			auth_service,
-			subsystems,
-			health_monitor,
-			runtime,
-			actor_system,
-			self.migrations,
-		))
+		Ok(Database::new(engine, auth_service, subsystems, health_monitor, spawner, clock, self.migrations))
 	}
 }
