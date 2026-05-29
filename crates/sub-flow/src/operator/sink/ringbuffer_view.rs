@@ -27,7 +27,7 @@ use reifydb_value::{
 use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
-use super::{coerce_columns, encode_row_at_index};
+use super::{coerce_columns, encode_row_at_index, shape_field_columns};
 use crate::{
 	Operator,
 	operator::{
@@ -189,6 +189,7 @@ impl SinkRingBufferViewOperator {
 	) -> Result<()> {
 		let coerced = coerce_columns(post, view.columns())?;
 		let row_count = coerced.row_count();
+		let field_columns = shape_field_columns(&coerced, shape);
 		let mut assigned_ids: Vec<RowNumber> = Vec::with_capacity(row_count);
 		let mut encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
 		let mut evicted_in_batch: HashSet<RowNumber> = HashSet::new();
@@ -210,7 +211,7 @@ impl SinkRingBufferViewOperator {
 
 			let source_rn = coerced.row_numbers[row_idx];
 			let assigned_rn = RowNumber(metadata.tail);
-			let (_, encoded) = encode_row_at_index(&coerced, row_idx, shape, assigned_rn)?;
+			let (_, encoded) = encode_row_at_index(&coerced, row_idx, shape, assigned_rn, &field_columns)?;
 
 			if source_rn != assigned_rn {
 				state.forward.insert(source_rn, assigned_rn);
@@ -255,6 +256,7 @@ impl SinkRingBufferViewOperator {
 		let coerced_pre = coerce_columns(pre, view.columns())?;
 		let coerced_post = coerce_columns(post, view.columns())?;
 		let row_count = coerced_post.row_count();
+		let field_columns = shape_field_columns(&coerced_post, shape);
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
@@ -263,7 +265,8 @@ impl SinkRingBufferViewOperator {
 			let post_source_rn = coerced_post.row_numbers[row_idx];
 			let pre_storage_rn = state.forward.get(&pre_source_rn).copied().unwrap_or(pre_source_rn);
 			let post_storage_rn = state.forward.get(&post_source_rn).copied().unwrap_or(post_source_rn);
-			let (_, post_encoded) = encode_row_at_index(&coerced_post, row_idx, shape, post_storage_rn)?;
+			let (_, post_encoded) =
+				encode_row_at_index(&coerced_post, row_idx, shape, post_storage_rn, &field_columns)?;
 
 			pre_keys.push(RowKey::encoded(object_id, pre_storage_rn));
 			post_keys.push(RowKey::encoded(object_id, post_storage_rn));

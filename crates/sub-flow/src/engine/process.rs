@@ -81,7 +81,12 @@ impl FlowEngine {
 					continue;
 				}
 
-				for child_id in &node.outputs {
+				let child_count = node.outputs.len();
+				for (child_idx, child_id) in node.outputs.iter().enumerate() {
+					if child_idx + 1 == child_count {
+						pending.entry(*child_id).or_default().push(combined_output);
+						break;
+					}
 					pending.entry(*child_id).or_default().push(combined_output.clone());
 				}
 			}

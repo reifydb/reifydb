@@ -121,23 +121,25 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]
 	})
 }
 
+pub(crate) fn shape_field_columns(columns: &Columns, shape: &RowShape) -> Vec<usize> {
+	shape.field_names()
+		.map(|field_name| {
+			columns.iter()
+				.position(|col| col.name().as_ref() == field_name)
+				.unwrap_or_else(|| panic!("Column '{}' not found in Columns", field_name))
+		})
+		.collect()
+}
+
 pub(crate) fn encode_row_at_index(
 	columns: &Columns,
 	row_idx: usize,
 	shape: &RowShape,
 	row_number: RowNumber,
+	field_columns: &[usize],
 ) -> Result<(RowNumber, EncodedRow)> {
-	let values: Vec<Value> = shape
-		.field_names()
-		.map(|field_name| {
-			let col = columns
-				.iter()
-				.find(|col| col.name().as_ref() == field_name)
-				.unwrap_or_else(|| panic!("Column '{}' not found in Columns", field_name));
-
-			col.data().get_value(row_idx)
-		})
-		.collect();
+	let values: Vec<Value> =
+		field_columns.iter().map(|&col_idx| columns.data_at(col_idx).get_value(row_idx)).collect();
 
 	let mut encoded = shape.allocate();
 	shape.set_values(&mut encoded, &values);
