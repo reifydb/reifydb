@@ -23,7 +23,7 @@ use reifydb_value::{
 };
 use smallvec::smallvec;
 
-use super::{coerce_columns, encode_row_at_index};
+use super::{coerce_columns, encode_row_at_index, shape_field_columns};
 use crate::{Operator, operator::OperatorCell, transaction::FlowTransaction};
 
 pub struct SinkTableViewOperator {
@@ -33,6 +33,7 @@ pub struct SinkTableViewOperator {
 	view: ResolvedView,
 
 	key_prefix: Vec<u8>,
+	shape: RowShape,
 }
 
 impl SinkTableViewOperator {
@@ -40,11 +41,13 @@ impl SinkTableViewOperator {
 		let mut key_prefix: Vec<u8> = Vec::with_capacity(10);
 		key_prefix.push(encode_u8(KeyKind::Row as u8));
 		serialize_shape_id(&ShapeId::table(underlying), &mut key_prefix);
+		let shape: RowShape = view.def().columns().into();
 		Self {
 			parent,
 			node,
 			view,
 			key_prefix,
+			shape,
 		}
 	}
 
@@ -67,24 +70,24 @@ impl Operator for SinkTableViewOperator {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		let view = self.view.def().clone();
-		let shape: RowShape = view.columns().into();
+		let view = self.view.def();
+		let shape = &self.shape;
 
 		for diff in change.diffs.iter() {
 			match diff {
 				Diff::Insert {
 					post,
 					..
-				} => self.apply_table_view_insert(txn, &view, &shape, post)?,
+				} => self.apply_table_view_insert(txn, view, shape, post)?,
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => self.apply_table_view_update(txn, &view, &shape, pre, post)?,
+				} => self.apply_table_view_update(txn, view, shape, pre, post)?,
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_table_view_remove(txn, &view, pre)?,
+				} => self.apply_table_view_remove(txn, view, pre)?,
 			}
 		}
 
@@ -103,12 +106,13 @@ impl SinkTableViewOperator {
 	) -> Result<()> {
 		let coerced = coerce_columns(post, view.columns())?;
 		let row_count = coerced.row_count();
+		let field_columns = shape_field_columns(&coerced, shape);
 		let mut ids: Vec<RowNumber> = Vec::with_capacity(row_count);
 		let mut encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
 
 		for row_idx in 0..row_count {
 			let row_number = coerced.row_numbers[row_idx];
-			let (_, encoded) = encode_row_at_index(&coerced, row_idx, shape, row_number)?;
+			let (_, encoded) = encode_row_at_index(&coerced, row_idx, shape, row_number, &field_columns)?;
 			ids.push(row_number);
 			encoded_rows.push(encoded);
 		}
@@ -135,6 +139,7 @@ impl SinkTableViewOperator {
 		let coerced_pre = coerce_columns(pre, view.columns())?;
 		let coerced_post = coerce_columns(post, view.columns())?;
 		let row_count = coerced_post.row_count();
+		let field_columns = shape_field_columns(&coerced_post, shape);
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
@@ -142,7 +147,7 @@ impl SinkTableViewOperator {
 			let pre_row_number = coerced_pre.row_numbers[row_idx];
 			let post_row_number = coerced_post.row_numbers[row_idx];
 			let (_, mut post_encoded) =
-				encode_row_at_index(&coerced_post, row_idx, shape, post_row_number)?;
+				encode_row_at_index(&coerced_post, row_idx, shape, post_row_number, &field_columns)?;
 
 			let pre_key = self.row_key(pre_row_number);
 			let post_key = self.row_key(post_row_number);

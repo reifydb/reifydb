@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-pub use reifydb_core::interface::store::{classify_key, classify_range, is_single_version_semantics_key};
 #[cfg(test)]
-use reifydb_core::{encoded::key::EncodedKey, interface::store::EntryKind};
+use reifydb_core::{
+	encoded::key::EncodedKey,
+	interface::store::{EntryKind, classify_key, is_single_version_semantics_key},
+};
 
 #[cfg(test)]
 pub mod tests {

@@ -33,7 +33,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::{
 		catalog::{id::TableId, shape::ShapeId},
-		store::{EntryKind, MultiVersionCommit, MultiVersionGet},
+		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 	},
 	key::row::RowKey,
 	row::TtlAnchor,
@@ -48,7 +48,7 @@ use reifydb_store_multi::{
 	config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
 	flush::ShapePersistence,
 	gc::EvictionWatermark,
-	store::{StandardMultiStore, router::classify_key},
+	store::StandardMultiStore,
 	tier::{TierStorage, VersionedGetResult, commit::buffer::MultiCommitBufferTier},
 };
 use reifydb_value::{cow_vec, util::cowvec::CowVec};

@@ -35,6 +35,8 @@ impl PageState {
 
 #[cfg(test)]
 mod tests {
+	use std::sync::atomic::Ordering;
+
 	use super::PageState;
 
 	#[test]
@@ -43,11 +45,11 @@ mod tests {
 		assert!(!state.looks_evictable(), "an empty page is not evictable");
 
 		state.add_committed(3);
-		assert_eq!(state.unpersisted_keys.load(std::sync::atomic::Ordering::Relaxed), 3);
+		assert_eq!(state.unpersisted_keys.load(Ordering::Relaxed), 3);
 		assert!(!state.looks_evictable(), "unpersisted keys must block eviction");
 
 		state.mark_persisted(3);
-		assert_eq!(state.unpersisted_keys.load(std::sync::atomic::Ordering::Relaxed), 0);
+		assert_eq!(state.unpersisted_keys.load(Ordering::Relaxed), 0);
 		assert!(state.looks_evictable(), "fully persisted resident page is evictable");
 	}
 
@@ -56,6 +58,6 @@ mod tests {
 		let state = PageState::default();
 		state.add_committed(1);
 		state.mark_persisted(5);
-		assert_eq!(state.unpersisted_keys.load(std::sync::atomic::Ordering::Relaxed), 0);
+		assert_eq!(state.unpersisted_keys.load(Ordering::Relaxed), 0);
 	}
 }

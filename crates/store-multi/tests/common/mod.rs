@@ -19,7 +19,9 @@ use reifydb_core::{
 		row::EncodedRow,
 	},
 	event::EventBus,
-	interface::store::{EntryKind, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow},
+	interface::store::{
+		EntryKind, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow, classify_key,
+	},
 	util::encoding::{
 		binary::decode_binary,
 		format::{Formatter, raw::Raw},
@@ -34,7 +36,7 @@ use reifydb_store_multi::{
 	MultiVersionScope,
 	config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
 	gc::EvictionWatermark,
-	store::{StandardMultiStore, router::classify_key},
+	store::StandardMultiStore,
 	tier::{TierStorage, VersionedGetResult, commit::buffer::MultiCommitBufferTier},
 };
 use reifydb_testing::testscript;

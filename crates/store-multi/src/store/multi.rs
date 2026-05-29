@@ -17,16 +17,14 @@ use reifydb_core::{
 	event::metric::{MultiCommittedEvent, MultiDelete, MultiWrite},
 	interface::store::{
 		EntryKind, MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet,
-		MultiVersionGetPrevious, MultiVersionRow, MultiVersionStore,
+		MultiVersionGetPrevious, MultiVersionRow, MultiVersionStore, classify_key, classify_range,
+		is_single_version_semantics_key,
 	},
 };
 use reifydb_value::util::{cowvec::CowVec, hex};
 use tracing::{instrument, warn};
 
-use super::{
-	StandardMultiStore,
-	router::{classify_key, classify_range, is_single_version_semantics_key},
-};
+use super::StandardMultiStore;
 use crate::{
 	MultiVersionScope, Result,
 	tier::{

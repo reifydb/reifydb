@@ -32,7 +32,7 @@ use reifydb_value::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::encode_row_at_index;
+use super::{encode_row_at_index, shape_field_columns};
 use crate::{
 	Operator,
 	operator::{
@@ -127,10 +127,11 @@ impl SinkSubscriptionOperator {
 		};
 
 		let row_count = with_implicit.row_count();
+		let field_columns = shape_field_columns(&with_implicit, &shape);
 		for row_idx in 0..row_count {
 			let row_number = self.counter.next(txn)?;
 
-			let (_, encoded) = encode_row_at_index(&with_implicit, row_idx, &shape, row_number)?;
+			let (_, encoded) = encode_row_at_index(&with_implicit, row_idx, &shape, row_number, &field_columns)?;
 
 			let key = SubscriptionRowKey::encoded(subscription_id, row_number);
 			txn.set(&key, encoded)?;

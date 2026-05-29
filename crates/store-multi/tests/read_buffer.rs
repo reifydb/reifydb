@@ -17,12 +17,9 @@ use reifydb_core::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
 	},
-	interface::store::{EntryKind, MultiVersionCommit, MultiVersionGet},
+	interface::store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 };
-use reifydb_store_multi::{
-	MultiVersionScope,
-	store::{StandardMultiStore, router::classify_key},
-};
+use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore};
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
 fn key(s: &str) -> EncodedKey {
