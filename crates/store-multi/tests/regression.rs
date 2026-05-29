@@ -41,7 +41,17 @@ fn drain_forward(
 		let RangeBatch {
 			entries,
 			has_more,
-		} = s.range_next(kind, &mut cursor, Bound::Unbounded, Bound::Unbounded, MultiVersionScope::AsOf { read: version }, batch_size).unwrap();
+		} = s.range_next(
+			kind,
+			&mut cursor,
+			Bound::Unbounded,
+			Bound::Unbounded,
+			MultiVersionScope::AsOf {
+				read: version,
+			},
+			batch_size,
+		)
+		.unwrap();
 		for e in entries {
 			out.push(e.key.as_slice().to_vec());
 		}

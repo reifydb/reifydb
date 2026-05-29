@@ -34,12 +34,12 @@ use reifydb_core::{
 };
 use reifydb_extension::loader::ffi::LibraryCache;
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_transaction::multi::RangeScope;
 use reifydb_sdk::{
 	config::Config,
 	error::{Result as SdkResult, SdkError},
 	operator::{OperatorLogic, Tick, view::native::NativeChangeView},
 };
+use reifydb_transaction::multi::RangeScope;
 use reifydb_type::{Result, error::Error, value::constraint::TypeConstraint};
 use tracing::error;
 

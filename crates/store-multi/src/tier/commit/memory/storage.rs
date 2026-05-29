@@ -15,7 +15,8 @@ use tracing::{Span, field, instrument};
 use crate::{
 	MultiVersionScope,
 	tier::{
-		HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage, VersionedGetResult,
+		HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage,
+		VersionedGetResult,
 		commit::memory::entry::{CurrentMap, Entries, Entry, HistoricalMap},
 	},
 };
@@ -318,8 +319,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 						if let MultiVersionScope::Between {
 							after,
 							..
-						} = scope
-							&& *v <= after
+						} = scope && *v <= after
 						{
 							break;
 						}
@@ -348,8 +348,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 					if let MultiVersionScope::Between {
 						after,
 						..
-					} = scope
-						&& *v <= after
+					} = scope && *v <= after
 					{
 						break;
 					}
@@ -448,8 +447,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 						if let MultiVersionScope::Between {
 							after,
 							..
-						} = scope
-							&& *v <= after
+						} = scope && *v <= after
 						{
 							break;
 						}
@@ -478,8 +476,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 					if let MultiVersionScope::Between {
 						after,
 						..
-					} = scope
-						&& *v <= after
+					} = scope && *v <= after
 					{
 						break;
 					}

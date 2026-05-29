@@ -81,6 +81,9 @@ pub enum KeyKind {
 	Binding = 0x47,
 	NamespaceBinding = 0x48,
 	OperatorSettings = 0x49,
+	ColumnSnapshot = 0x4A,
+	SeriesColumnSnapshot = 0x4B,
+	TableColumnSnapshot = 0x4C,
 }
 
 impl From<KeyKind> for u8 {
@@ -166,6 +169,9 @@ impl TryFrom<u8> for KeyKind {
 			0x47 => Ok(Self::Binding),
 			0x48 => Ok(Self::NamespaceBinding),
 			0x49 => Ok(Self::OperatorSettings),
+			0x4A => Ok(Self::ColumnSnapshot),
+			0x4B => Ok(Self::SeriesColumnSnapshot),
+			0x4C => Ok(Self::TableColumnSnapshot),
 			_ => Err(de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

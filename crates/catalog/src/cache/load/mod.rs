@@ -3,6 +3,7 @@
 
 pub mod authentication;
 pub mod binding;
+pub mod column_snapshot;
 pub mod config;
 pub mod dictionary;
 pub mod flow;
@@ -27,6 +28,7 @@ pub mod view;
 
 use authentication::load_authentications;
 use binding::load_bindings;
+use column_snapshot::load_column_snapshots;
 use config::load_configs;
 use dictionary::load_dictionaries;
 use flow::load_flows;
@@ -74,6 +76,7 @@ impl CatalogCacheLoader {
 		load_operator_settings(rx, catalog)?;
 
 		load_dictionaries(rx, catalog)?;
+		load_column_snapshots(rx, catalog)?;
 		load_sumtypes(rx, catalog)?;
 		load_procedures(rx, catalog)?;
 

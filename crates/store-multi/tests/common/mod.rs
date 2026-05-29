@@ -177,13 +177,25 @@ impl testscript::runner::Runner for Runner {
 				if !reverse {
 					let items: Vec<_> = self
 						.store
-						.range(EncodedKeyRange::all(), MultiVersionScope::AsOf { read: version }, 1024)
+						.range(
+							EncodedKeyRange::all(),
+							MultiVersionScope::AsOf {
+								read: version,
+							},
+							1024,
+						)
 						.collect::<Result<Vec<_>, _>>()?;
 					print(&mut output, items.into_iter())
 				} else {
 					let items: Vec<_> = self
 						.store
-						.range_rev(EncodedKeyRange::all(), MultiVersionScope::AsOf { read: version }, 1024)
+						.range_rev(
+							EncodedKeyRange::all(),
+							MultiVersionScope::AsOf {
+								read: version,
+							},
+							1024,
+						)
 						.collect::<Result<Vec<_>, _>>()?;
 					print(&mut output, items.into_iter())
 				};
@@ -200,13 +212,25 @@ impl testscript::runner::Runner for Runner {
 				if !reverse {
 					let items: Vec<_> = self
 						.store
-						.range(range, MultiVersionScope::AsOf { read: version }, 1024)
+						.range(
+							range,
+							MultiVersionScope::AsOf {
+								read: version,
+							},
+							1024,
+						)
 						.collect::<Result<Vec<_>, _>>()?;
 					print(&mut output, items.into_iter())
 				} else {
 					let items: Vec<_> = self
 						.store
-						.range_rev(range, MultiVersionScope::AsOf { read: version }, 1024)
+						.range_rev(
+							range,
+							MultiVersionScope::AsOf {
+								read: version,
+							},
+							1024,
+						)
 						.collect::<Result<Vec<_>, _>>()?;
 					print(&mut output, items.into_iter())
 				};
@@ -225,13 +249,25 @@ impl testscript::runner::Runner for Runner {
 				if !reverse {
 					let items: Vec<_> = self
 						.store
-						.range(range, MultiVersionScope::AsOf { read: version }, 1024)
+						.range(
+							range,
+							MultiVersionScope::AsOf {
+								read: version,
+							},
+							1024,
+						)
 						.collect::<Result<Vec<_>, _>>()?;
 					print(&mut output, items.into_iter())
 				} else {
 					let items: Vec<_> = self
 						.store
-						.range_rev(range, MultiVersionScope::AsOf { read: version }, 1024)
+						.range_rev(
+							range,
+							MultiVersionScope::AsOf {
+								read: version,
+							},
+							1024,
+						)
 						.collect::<Result<Vec<_>, _>>()?;
 					print(&mut output, items.into_iter())
 				};

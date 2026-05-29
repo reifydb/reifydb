@@ -35,7 +35,8 @@ use tracing::{instrument, warn};
 use crate::{
 	MultiVersionScope,
 	tier::{
-		HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage, VersionedGetResult,
+		HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage,
+		VersionedGetResult,
 		persistent::{
 			CheckpointOutcome,
 			sqlite::{
@@ -43,7 +44,8 @@ use crate::{
 				query::{
 					build_create_current_sql, build_delete_expired_sql, build_delete_keys_sql,
 					build_get_current_sql, build_get_many_current_sql, build_range_current_sql,
-					build_upsert_current_sql, prefix_upper_bound, version_from_bytes, version_to_bytes,
+					build_upsert_current_sql, prefix_upper_bound, version_from_bytes,
+					version_to_bytes,
 				},
 			},
 		},

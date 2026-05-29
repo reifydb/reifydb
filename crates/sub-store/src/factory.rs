@@ -1,19 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::util::ioc::IocContainer;
-use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
-use reifydb_type::Result;
-
 #[cfg(feature = "column")]
 use reifydb_column::{
 	compress::{CompressConfig, Compressor},
 	registry::SnapshotRegistry,
 };
+use reifydb_core::util::ioc::IocContainer;
 #[cfg(feature = "column")]
 use reifydb_engine::engine::StandardEngine;
 #[cfg(feature = "column")]
 use reifydb_runtime::SharedRuntime;
+use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
+use reifydb_type::Result;
 
 #[cfg(feature = "column")]
 use crate::column::actor::{series::SeriesMaterializationActor, table::TableMaterializationActor};

@@ -102,12 +102,18 @@ fn get(store: &StandardMultiStore, k: &EncodedKey, version: u64) -> Option<Vec<u
 }
 
 fn scan_keys(store: &StandardMultiStore, version: u64) -> Vec<(Vec<u8>, Vec<u8>)> {
-	store.range(RowKey::full_scan(SHAPE), MultiVersionScope::AsOf { read: CommitVersion(version) }, 1024)
-		.collect::<Result<Vec<_>, _>>()
-		.unwrap()
-		.into_iter()
-		.map(|r| (r.key.to_vec(), r.row.to_vec()))
-		.collect()
+	store.range(
+		RowKey::full_scan(SHAPE),
+		MultiVersionScope::AsOf {
+			read: CommitVersion(version),
+		},
+		1024,
+	)
+	.collect::<Result<Vec<_>, _>>()
+	.unwrap()
+	.into_iter()
+	.map(|r| (r.key.to_vec(), r.row.to_vec()))
+	.collect()
 }
 
 /// Deterministic stand-in for FlushActor::sweep: collects evictable-below-W per entry kind, persists the
