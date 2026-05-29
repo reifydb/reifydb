@@ -3198,6 +3198,7 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-sub-api",
+ "reifydb-testing",
  "reifydb-value",
  "tracing",
 ]
