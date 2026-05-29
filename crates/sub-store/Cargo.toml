@@ -11,6 +11,7 @@ description = "General storage subsystem for ReifyDB."
 reifydb-build = { workspace = true }
 
 [dependencies]
+dashmap = { workspace = true, optional = true }
 reifydb-catalog = { workspace = true, optional = true }
 reifydb-column = { workspace = true, optional = true }
 reifydb-core = { workspace = true }
@@ -26,6 +27,7 @@ tracing = { workspace = true }
 [features]
 default = []
 column = [
+	"dep:dashmap",
 	"dep:reifydb-catalog",
 	"dep:reifydb-column",
 	"dep:reifydb-engine",

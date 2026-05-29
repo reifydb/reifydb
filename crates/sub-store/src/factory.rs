@@ -2,10 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 #[cfg(feature = "column")]
-use reifydb_column::{
-	compress::{CompressConfig, Compressor},
-	registry::SnapshotRegistry,
-};
+use std::sync::Arc;
+
+#[cfg(feature = "column")]
+use reifydb_column::compress::{CompressConfig, Compressor};
 use reifydb_core::util::ioc::IocContainer;
 #[cfg(feature = "column")]
 use reifydb_engine::engine::StandardEngine;
@@ -15,7 +15,10 @@ use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_type::Result;
 
 #[cfg(feature = "column")]
-use crate::column::actor::{series::SeriesMaterializationActor, table::TableMaterializationActor};
+use crate::column::{
+	actor::{series::SeriesMaterializationActor, table::TableMaterializationActor},
+	block_store::ColumnBlockStore,
+};
 use crate::subsystem::{StorageConfig, StorageSubsystem};
 
 pub struct StorageSubsystemFactory {
@@ -43,11 +46,12 @@ impl SubsystemFactory for StorageSubsystemFactory {
 		let runtime = ioc.resolve::<SharedRuntime>()?;
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let actor_system = runtime.actor_system();
-		let registry = SnapshotRegistry::new();
+		let block_store = ColumnBlockStore::new();
+		ioc.register_service::<Arc<ColumnBlockStore>>(Arc::new(block_store.clone()));
 
 		let table_actor = TableMaterializationActor::new(
 			engine.clone(),
-			registry.clone(),
+			block_store.clone(),
 			Compressor::new(CompressConfig::default()),
 			self.config.table_tick_interval,
 		);
@@ -56,7 +60,7 @@ impl SubsystemFactory for StorageSubsystemFactory {
 
 		let series_actor = SeriesMaterializationActor::new(
 			engine,
-			registry.clone(),
+			block_store.clone(),
 			Compressor::new(CompressConfig::default()),
 			self.config.series_tick_interval,
 			self.config.series_bucket_width,
@@ -65,7 +69,7 @@ impl SubsystemFactory for StorageSubsystemFactory {
 		let series_handle = actor_system.spawn_system("storage-materialize-series", series_actor);
 		let series_ref = series_handle.actor_ref().clone();
 
-		Ok(Box::new(StorageSubsystem::new(registry, table_ref, series_ref)))
+		Ok(Box::new(StorageSubsystem::new(block_store, table_ref, series_ref)))
 	}
 
 	#[cfg(not(feature = "column"))]

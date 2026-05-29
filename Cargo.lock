@@ -3338,6 +3338,7 @@ dependencies = [
 name = "reifydb-sub-store"
 version = "0.5.6"
 dependencies = [
+ "dashmap",
  "reifydb",
  "reifydb-build",
  "reifydb-catalog",

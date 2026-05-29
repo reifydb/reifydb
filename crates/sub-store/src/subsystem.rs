@@ -10,8 +10,6 @@ use std::{
 	time::Duration,
 };
 
-#[cfg(feature = "column")]
-use reifydb_column::registry::SnapshotRegistry;
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 #[cfg(feature = "column")]
 use reifydb_runtime::actor::mailbox::ActorRef;
@@ -20,7 +18,10 @@ use reifydb_type::Result;
 use tracing::{debug, info};
 
 #[cfg(feature = "column")]
-use crate::column::actor::{SeriesMessage, TableMessage};
+use crate::column::{
+	actor::{SeriesMessage, TableMessage},
+	block_store::ColumnBlockStore,
+};
 
 #[derive(Clone, Debug)]
 pub struct StorageConfig {
@@ -46,7 +47,7 @@ impl Default for StorageConfig {
 
 pub struct StorageSubsystem {
 	#[cfg(feature = "column")]
-	registry: SnapshotRegistry,
+	block_store: ColumnBlockStore,
 	#[cfg(feature = "column")]
 	table_ref: ActorRef<TableMessage>,
 	#[cfg(feature = "column")]
@@ -57,12 +58,12 @@ pub struct StorageSubsystem {
 impl StorageSubsystem {
 	#[cfg(feature = "column")]
 	pub fn new(
-		registry: SnapshotRegistry,
+		block_store: ColumnBlockStore,
 		table_ref: ActorRef<TableMessage>,
 		series_ref: ActorRef<SeriesMessage>,
 	) -> Self {
 		Self {
-			registry,
+			block_store,
 			table_ref,
 			series_ref,
 			running: Arc::new(AtomicBool::new(false)),
@@ -77,8 +78,8 @@ impl StorageSubsystem {
 	}
 
 	#[cfg(feature = "column")]
-	pub fn registry(&self) -> SnapshotRegistry {
-		self.registry.clone()
+	pub fn block_store(&self) -> ColumnBlockStore {
+		self.block_store.clone()
 	}
 }
 

@@ -3,8 +3,7 @@
 
 //! Columnar storage engine: the immutable, on-disk representation of materialized columns plus the read-time
 //! machinery (compute kernels, predicates, scans, selection vectors, snapshots) the engine uses to query them. This
-//! crate owns the bucket layout, the per-column compression and encoding schemes, and the registry that tracks which
-//! columns are present and at what version.
+//! crate owns the bucket layout and the per-column compression and encoding schemes.
 //!
 //! Read paths come in here, get a column reader, and stream values through compute kernels that operate directly on
 //! the encoded bytes where possible - decoding only when a kernel cannot run on the encoded form. The snapshot type
@@ -23,7 +22,6 @@ pub mod encoding;
 pub mod error;
 pub mod predicate;
 pub mod reader;
-pub mod registry;
 pub mod scan;
 pub mod selection;
 pub mod snapshot;
