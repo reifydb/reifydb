@@ -14,7 +14,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::constraint::{FFITypeConstraint, TypeConstraint};
+use reifydb_value::value::constraint::{FFITypeConstraint, TypeConstraint};
 
 use super::CatalogChangeApplier;
 use crate::{

@@ -12,7 +12,7 @@ use reifydb_core::{
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 use tracing::instrument;
 
 use crate::{

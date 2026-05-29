@@ -19,7 +19,7 @@ use reifydb_core::{
 		table::Table,
 	},
 };
-use reifydb_type::value::row_number::RowNumber;
+use reifydb_value::value::row_number::RowNumber;
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{

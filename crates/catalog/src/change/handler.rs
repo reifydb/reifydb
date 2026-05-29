@@ -10,7 +10,7 @@ use reifydb_core::{
 	key::{EncodableKey, handler::HandlerKey, kind::KeyKind},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::sumtype::{SumTypeId, VariantRef};
+use reifydb_value::value::sumtype::{SumTypeId, VariantRef};
 
 use super::CatalogChangeApplier;
 use crate::{

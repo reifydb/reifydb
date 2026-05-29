@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::error::{AstErrorKind, Error, TypeError};
+use reifydb_value::error::{AstErrorKind, Error, TypeError};
 
 pub mod cursor;
 pub mod identifier;
@@ -15,7 +15,7 @@ pub mod variable;
 
 use cursor::Cursor;
 use identifier::{is_identifier_char, is_identifier_start};
-use reifydb_type::fragment::Fragment;
+use reifydb_value::fragment::Fragment;
 use token::{Token, TokenKind};
 use variable::scan_variable;
 

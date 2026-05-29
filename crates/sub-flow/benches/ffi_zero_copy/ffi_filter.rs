@@ -20,7 +20,7 @@ use reifydb_sdk::{
 	},
 	testing::{builders::TestChangeBuilder, harness::FFIOperatorHarnessBuilder},
 };
-use reifydb_type::value::{Value, row_number::RowNumber};
+use reifydb_value::value::{Value, row_number::RowNumber};
 
 struct EvenFilter;
 

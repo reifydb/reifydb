@@ -7,7 +7,7 @@ use std::fmt::Write;
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_core::{actors::server::Operation, metric::ExecutionMetrics};
 #[cfg(not(reifydb_single_threaded))]
-use reifydb_type::{
+use reifydb_value::{
 	params::Params,
 	value::{frame::frame::Frame, identity::IdentityId},
 };

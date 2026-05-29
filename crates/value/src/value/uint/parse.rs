@@ -1,0 +1,240 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
+
+use std::borrow::Cow;
+
+use num_bigint::{BigInt, Sign};
+
+use crate::{
+	error::{Error, TypeError},
+	fragment::Fragment,
+	value::{uint::Uint, value_type::ValueType},
+};
+
+pub fn parse_uint(fragment: Fragment) -> Result<Uint, Error> {
+	let raw_value = fragment.text();
+
+	let needs_trimming = raw_value.as_bytes().first().is_some_and(|&b| b.is_ascii_whitespace())
+		|| raw_value.as_bytes().last().is_some_and(|&b| b.is_ascii_whitespace());
+
+	let has_underscores = raw_value.as_bytes().contains(&b'_');
+
+	let value = match (needs_trimming, has_underscores) {
+		(false, false) => Cow::Borrowed(raw_value),
+
+		(true, false) => Cow::Borrowed(raw_value.trim()),
+		(false, true) => Cow::Owned(raw_value.replace('_', "")),
+		(true, true) => Cow::Owned(raw_value.trim().replace('_', "")),
+	};
+
+	if value.is_empty() {
+		return Err(TypeError::InvalidNumberFormat {
+			target: ValueType::Uint,
+			fragment,
+		}
+		.into());
+	}
+
+	if value.starts_with('-')
+		&& value != "-0.0"
+		&& value != "-0"
+		&& let Ok(bigint) = value.parse::<BigInt>()
+		&& bigint.sign() == Sign::Minus
+	{
+		return Err(TypeError::NumberOutOfRange {
+			target: ValueType::Uint,
+			fragment,
+			descriptor: None,
+		}
+		.into());
+	}
+
+	match value.parse::<BigInt>() {
+		Ok(v) => {
+			if v.sign() == Sign::Minus {
+				return Err(TypeError::NumberOutOfRange {
+					target: ValueType::Uint,
+					fragment,
+					descriptor: None,
+				}
+				.into());
+			}
+			Ok(Uint::from(v))
+		}
+		Err(_) => {
+			if let Ok(f) = value.parse::<f64>() {
+				if f.is_infinite() {
+					Err(TypeError::NumberOutOfRange {
+						target: ValueType::Uint,
+						fragment,
+						descriptor: None,
+					}
+					.into())
+				} else {
+					let truncated = f.trunc();
+
+					if truncated < 0.0 && truncated != -0.0 {
+						return Err(TypeError::NumberOutOfRange {
+							target: ValueType::Uint,
+							fragment,
+							descriptor: None,
+						}
+						.into());
+					}
+
+					let abs_truncated = if truncated == -0.0 {
+						0.0
+					} else {
+						truncated
+					};
+					if let Ok(bigint) = format!("{:.0}", abs_truncated).parse::<BigInt>() {
+						Ok(Uint::from(bigint))
+					} else {
+						Err(TypeError::InvalidNumberFormat {
+							target: ValueType::Uint,
+							fragment,
+						}
+						.into())
+					}
+				}
+			} else if value.contains('-') {
+				Err(TypeError::NumberOutOfRange {
+					target: ValueType::Uint,
+					fragment,
+					descriptor: None,
+				}
+				.into())
+			} else {
+				Err(TypeError::InvalidNumberFormat {
+					target: ValueType::Uint,
+					fragment,
+				}
+				.into())
+			}
+		}
+	}
+}
+
+#[cfg(test)]
+pub mod tests {
+	use super::*;
+
+	#[test]
+	fn test_parse_uint_valid_zero() {
+		assert_eq!(parse_uint(Fragment::testing("0")).unwrap(), Uint::zero());
+	}
+
+	#[test]
+	fn test_parse_uint_valid_positive() {
+		let result = parse_uint(Fragment::testing("12345")).unwrap();
+		assert_eq!(format!("{}", result), "12345");
+	}
+
+	#[test]
+	fn test_parse_uint_large_positive() {
+		let large_num = "123456789012345678901234567890";
+		let result = parse_uint(Fragment::testing(large_num)).unwrap();
+		assert_eq!(format!("{}", result), large_num);
+	}
+
+	#[test]
+	fn test_parse_uint_scientific_notation() {
+		let result = parse_uint(Fragment::testing("1e5")).unwrap();
+		assert_eq!(format!("{}", result), "100000");
+	}
+
+	#[test]
+	fn test_parse_uint_scientific_decimal() {
+		let result = parse_uint(Fragment::testing("2.5e3")).unwrap();
+		assert_eq!(format!("{}", result), "2500");
+	}
+
+	#[test]
+	fn test_parse_uint_float_truncation() {
+		let result = parse_uint(Fragment::testing("123.789")).unwrap();
+		assert_eq!(format!("{}", result), "123");
+	}
+
+	#[test]
+	fn test_parse_uint_float_truncation_zero() {
+		let result = parse_uint(Fragment::testing("0.999")).unwrap();
+		assert_eq!(format!("{}", result), "0");
+	}
+
+	#[test]
+	fn test_parse_uint_with_underscores() {
+		let result = parse_uint(Fragment::testing("1_234_567")).unwrap();
+		assert_eq!(format!("{}", result), "1234567");
+	}
+
+	#[test]
+	fn test_parse_uint_with_leading_space() {
+		let result = parse_uint(Fragment::testing(" 12345")).unwrap();
+		assert_eq!(format!("{}", result), "12345");
+	}
+
+	#[test]
+	fn test_parse_uint_with_trailing_space() {
+		let result = parse_uint(Fragment::testing("12345 ")).unwrap();
+		assert_eq!(format!("{}", result), "12345");
+	}
+
+	#[test]
+	fn test_parse_uint_with_both_spaces() {
+		let result = parse_uint(Fragment::testing(" 12345 ")).unwrap();
+		assert_eq!(format!("{}", result), "12345");
+	}
+
+	#[test]
+	fn test_parse_uint_negative_integer() {
+		assert!(parse_uint(Fragment::testing("-12345")).is_err());
+	}
+
+	#[test]
+	fn test_parse_uint_negative_float() {
+		assert!(parse_uint(Fragment::testing("-123.45")).is_err());
+	}
+
+	#[test]
+	fn test_parse_uint_negative_scientific() {
+		assert!(parse_uint(Fragment::testing("-1e5")).is_err());
+	}
+
+	#[test]
+	fn test_parse_uint_negative_zero_float() {
+		// This should be handled gracefully - negative zero should
+		// become positive zero
+		let result = parse_uint(Fragment::testing("-0.0")).unwrap();
+		assert_eq!(format!("{}", result), "0");
+	}
+
+	#[test]
+	fn test_parse_uint_invalid_empty() {
+		assert!(parse_uint(Fragment::testing("")).is_err());
+	}
+
+	#[test]
+	fn test_parse_uint_invalid_whitespace() {
+		assert!(parse_uint(Fragment::testing("   ")).is_err());
+	}
+
+	#[test]
+	fn test_parse_uint_invalid_text() {
+		assert!(parse_uint(Fragment::testing("abc")).is_err());
+	}
+
+	#[test]
+	fn test_parse_uint_invalid_multiple_dots() {
+		assert!(parse_uint(Fragment::testing("1.2.3")).is_err());
+	}
+
+	#[test]
+	fn test_parse_uint_infinity() {
+		assert!(parse_uint(Fragment::testing("inf")).is_err());
+	}
+
+	#[test]
+	fn test_parse_uint_negative_infinity() {
+		assert!(parse_uint(Fragment::testing("-inf")).is_err());
+	}
+}

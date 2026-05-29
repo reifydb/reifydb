@@ -22,7 +22,7 @@ reifydb-sqlite = { workspace = true, optional = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-transaction = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 postcard = { workspace = true }
 serde = { workspace = true }
 tracing = { workspace = true }

@@ -26,7 +26,7 @@ use reifydb::{Params, embedded as db_embedded};
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_engine::subscription::SubscriptionServiceRef;
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
-use reifydb_type::value::{Value, identity::IdentityId, row_number::RowNumber};
+use reifydb_value::value::{Value, identity::IdentityId, row_number::RowNumber};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Row {
@@ -35,7 +35,7 @@ pub struct Row {
 	pub ts_ms: i64,
 }
 
-pub fn extract_sub_id(frames: &[reifydb_type::value::frame::frame::Frame]) -> SubscriptionId {
+pub fn extract_sub_id(frames: &[reifydb_value::value::frame::frame::Frame]) -> SubscriptionId {
 	let frame = frames.first().expect("subscription frame");
 	let value = frame
 		.columns

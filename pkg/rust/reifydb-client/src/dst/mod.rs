@@ -8,7 +8,7 @@ use reifydb_core::actors::server::{
 	build_server_message,
 };
 use reifydb_runtime::actor::{mailbox::ActorRef, reply::reply_channel, system::ActorSystem};
-use reifydb_type::{params::Params, value::identity::IdentityId};
+use reifydb_value::{params::Params, value::identity::IdentityId};
 
 pub struct DstClient {
 	actor_ref: ActorRef<ServerMessage>,

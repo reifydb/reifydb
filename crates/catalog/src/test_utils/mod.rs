@@ -16,7 +16,7 @@ use reifydb_core::interface::catalog::{
 	view::View,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		blob::Blob,

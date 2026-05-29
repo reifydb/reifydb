@@ -2,50 +2,71 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::buffer::ColumnBuffer;
-use reifydb_type::value::{decimal::Decimal, int::Int, number::safe::convert::SafeConvert, r#type::Type, uint::Uint};
+use reifydb_value::value::{
+	decimal::Decimal, int::Int, number::safe::convert::SafeConvert, uint::Uint, value_type::ValueType,
+};
 
-pub fn promote_two(left: Type, right: Type) -> Type {
+pub fn promote_two(left: ValueType, right: ValueType) -> ValueType {
 	if left == right {
 		return left;
 	}
-	if left == Type::Decimal || right == Type::Decimal {
-		return Type::Decimal;
+	if left == ValueType::Decimal || right == ValueType::Decimal {
+		return ValueType::Decimal;
 	}
-	if matches!(left, Type::Float4 | Type::Float8) || matches!(right, Type::Float4 | Type::Float8) {
-		return Type::Float8;
+	if matches!(left, ValueType::Float4 | ValueType::Float8)
+		|| matches!(right, ValueType::Float4 | ValueType::Float8)
+	{
+		return ValueType::Float8;
 	}
-	if left == Type::Int || right == Type::Int {
-		return Type::Int;
+	if left == ValueType::Int || right == ValueType::Int {
+		return ValueType::Int;
 	}
-	if left == Type::Uint || right == Type::Uint {
-		let is_signed_primitive =
-			|t: &Type| matches!(t, Type::Int1 | Type::Int2 | Type::Int4 | Type::Int8 | Type::Int16);
+	if left == ValueType::Uint || right == ValueType::Uint {
+		let is_signed_primitive = |t: &ValueType| {
+			matches!(
+				t,
+				ValueType::Int1
+					| ValueType::Int2 | ValueType::Int4 | ValueType::Int8
+					| ValueType::Int16
+			)
+		};
 		if is_signed_primitive(&left) || is_signed_primitive(&right) {
-			return Type::Int;
+			return ValueType::Int;
 		}
-		return Type::Uint;
+		return ValueType::Uint;
 	}
 
-	let rank = |t: &Type| match t {
-		Type::Int1 | Type::Uint1 => 0,
-		Type::Int2 | Type::Uint2 => 1,
-		Type::Int4 | Type::Uint4 => 2,
-		Type::Int8 | Type::Uint8 => 3,
-		Type::Int16 | Type::Uint16 => 4,
+	let rank = |t: &ValueType| match t {
+		ValueType::Int1 | ValueType::Uint1 => 0,
+		ValueType::Int2 | ValueType::Uint2 => 1,
+		ValueType::Int4 | ValueType::Uint4 => 2,
+		ValueType::Int8 | ValueType::Uint8 => 3,
+		ValueType::Int16 | ValueType::Uint16 => 4,
 		_ => 0,
 	};
-	let is_signed = |t: &Type| matches!(t, Type::Int1 | Type::Int2 | Type::Int4 | Type::Int8 | Type::Int16);
-	let is_unsigned = |t: &Type| matches!(t, Type::Uint1 | Type::Uint2 | Type::Uint4 | Type::Uint8 | Type::Uint16);
+	let is_signed = |t: &ValueType| {
+		matches!(t, ValueType::Int1 | ValueType::Int2 | ValueType::Int4 | ValueType::Int8 | ValueType::Int16)
+	};
+	let is_unsigned = |t: &ValueType| {
+		matches!(
+			t,
+			ValueType::Uint1 | ValueType::Uint2 | ValueType::Uint4 | ValueType::Uint8 | ValueType::Uint16
+		)
+	};
 
 	let max_rank = rank(&left).max(rank(&right));
 	if is_signed(&left) && is_signed(&right) {
-		return [Type::Int1, Type::Int2, Type::Int4, Type::Int8, Type::Int16][max_rank].clone();
+		return [ValueType::Int1, ValueType::Int2, ValueType::Int4, ValueType::Int8, ValueType::Int16]
+			[max_rank]
+			.clone();
 	}
 	if is_unsigned(&left) && is_unsigned(&right) {
-		return [Type::Uint1, Type::Uint2, Type::Uint4, Type::Uint8, Type::Uint16][max_rank].clone();
+		return [ValueType::Uint1, ValueType::Uint2, ValueType::Uint4, ValueType::Uint8, ValueType::Uint16]
+			[max_rank]
+			.clone();
 	}
 	let bumped = (max_rank + 1).min(4);
-	[Type::Int1, Type::Int2, Type::Int4, Type::Int8, Type::Int16][bumped].clone()
+	[ValueType::Int1, ValueType::Int2, ValueType::Int4, ValueType::Int8, ValueType::Int16][bumped].clone()
 }
 
 macro_rules! make_extract {
@@ -157,23 +178,23 @@ make_convert!(to_int, Int, int_with_bitvec, get_as_big_int, Int::zero());
 make_convert!(to_uint, Uint, uint_with_bitvec, get_as_big_uint, Uint::zero());
 make_convert!(to_decimal, Decimal, decimal_with_bitvec, get_as_decimal, Decimal::default());
 
-pub fn convert_column_to_type(data: &ColumnBuffer, target: Type, row_count: usize) -> ColumnBuffer {
+pub fn convert_column_to_type(data: &ColumnBuffer, target: ValueType, row_count: usize) -> ColumnBuffer {
 	match target {
-		Type::Int1 => to_int1(data, row_count),
-		Type::Int2 => to_int2(data, row_count),
-		Type::Int4 => to_int4(data, row_count),
-		Type::Int8 => to_int8(data, row_count),
-		Type::Int16 => to_int16(data, row_count),
-		Type::Uint1 => to_uint1(data, row_count),
-		Type::Uint2 => to_uint2(data, row_count),
-		Type::Uint4 => to_uint4(data, row_count),
-		Type::Uint8 => to_uint8(data, row_count),
-		Type::Uint16 => to_uint16(data, row_count),
-		Type::Float4 => to_float4(data, row_count),
-		Type::Float8 => to_float8(data, row_count),
-		Type::Int => to_int(data, row_count),
-		Type::Uint => to_uint(data, row_count),
-		Type::Decimal => to_decimal(data, row_count),
+		ValueType::Int1 => to_int1(data, row_count),
+		ValueType::Int2 => to_int2(data, row_count),
+		ValueType::Int4 => to_int4(data, row_count),
+		ValueType::Int8 => to_int8(data, row_count),
+		ValueType::Int16 => to_int16(data, row_count),
+		ValueType::Uint1 => to_uint1(data, row_count),
+		ValueType::Uint2 => to_uint2(data, row_count),
+		ValueType::Uint4 => to_uint4(data, row_count),
+		ValueType::Uint8 => to_uint8(data, row_count),
+		ValueType::Uint16 => to_uint16(data, row_count),
+		ValueType::Float4 => to_float4(data, row_count),
+		ValueType::Float8 => to_float8(data, row_count),
+		ValueType::Int => to_int(data, row_count),
+		ValueType::Uint => to_uint(data, row_count),
+		ValueType::Decimal => to_decimal(data, row_count),
 		_ => data.clone(),
 	}
 }

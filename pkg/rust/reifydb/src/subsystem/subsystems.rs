@@ -11,7 +11,7 @@ use std::{
 };
 
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_type::Result;
+use reifydb_value::Result;
 use tracing::{debug, error};
 
 use crate::health::HealthMonitor;

@@ -18,7 +18,7 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::{CompiledViewStorageKind, CreateDeferredViewNode};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{fragment::Fragment, return_error, value::Value};
+use reifydb_value::{fragment::Fragment, return_error, value::Value};
 
 use super::{create_deferred_view_flow, require_buffer_for_non_persistent};
 use crate::{Result, vm::services::Services};
@@ -208,7 +208,7 @@ fn create_underlying_primitive(
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::{params::Params, value::Value};
+	use reifydb_value::{params::Params, value::Value};
 
 	use crate::{
 		test_harness::create_test_admin_transaction_with_internal_shape,

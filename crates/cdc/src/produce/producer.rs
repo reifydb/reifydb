@@ -38,7 +38,7 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 };
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
@@ -526,7 +526,7 @@ pub mod tests {
 
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 	use reifydb_store_multi::MultiStore;
-	use reifydb_type::value::datetime::DateTime;
+	use reifydb_value::value::datetime::DateTime;
 
 	use super::*;
 	use crate::{

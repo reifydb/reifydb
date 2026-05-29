@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 use crate::error::EncodeError;
 

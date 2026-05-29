@@ -5,7 +5,7 @@ pub mod batches;
 pub mod series;
 pub mod table;
 
-use reifydb_type::value::datetime::DateTime;
+use reifydb_value::value::datetime::DateTime;
 
 #[derive(Clone, Debug)]
 pub enum TableMessage {

@@ -8,7 +8,7 @@ use std::{
 };
 
 use reifydb_core::encoded::shape::RowShape;
-use reifydb_type::value::{Value, row_number::RowNumber};
+use reifydb_value::value::{Value, row_number::RowNumber};
 
 use super::strategy::RowContent;
 
@@ -155,11 +155,11 @@ impl ChaosSchema {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::encoded::shape::RowShapeField;
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
 
-	fn shape(fields: &[(&str, Type)]) -> RowShape {
+	fn shape(fields: &[(&str, ValueType)]) -> RowShape {
 		RowShape::new(fields.iter().map(|(n, t)| RowShapeField::unconstrained(*n, t.clone())).collect())
 	}
 
@@ -222,8 +222,8 @@ mod tests {
 	#[test]
 	fn schema_validate_catches_missing_output_key_columns() {
 		let schema = ChaosSchema {
-			input_shape: shape(&[("a", Type::Int8)]),
-			output_shape: shape(&[("a", Type::Int8), ("b", Type::Int8)]),
+			input_shape: shape(&[("a", ValueType::Int8)]),
+			output_shape: shape(&[("a", ValueType::Int8), ("b", ValueType::Int8)]),
 			key_strategy: KeyStrategy::Sequential,
 			output_key_columns: vec!["a".into(), "missing".into()],
 		};
@@ -234,8 +234,8 @@ mod tests {
 	#[test]
 	fn schema_validate_accepts_well_formed() {
 		let schema = ChaosSchema {
-			input_shape: shape(&[("a", Type::Int8)]),
-			output_shape: shape(&[("a", Type::Int8), ("b", Type::Int8)]),
+			input_shape: shape(&[("a", ValueType::Int8)]),
+			output_shape: shape(&[("a", ValueType::Int8), ("b", ValueType::Int8)]),
 			key_strategy: KeyStrategy::Sequential,
 			output_key_columns: vec!["a".into(), "b".into()],
 		};

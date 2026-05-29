@@ -2,14 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, push::Push};
-use reifydb_type::{
+use reifydb_value::{
 	error::{BinaryOp, TypeError},
 	fragment::LazyFragment,
 	value::{
 		container::number::NumberContainer,
 		is::IsNumber,
 		number::{promote::Promote, safe::mul::SafeMul},
-		r#type::{Type, get::GetType},
+		value_type::{ValueType, get::GetType},
 	},
 };
 
@@ -25,7 +25,7 @@ pub(crate) fn mul_columns(
 	fragment: impl LazyFragment + Copy,
 ) -> Result<ColumnWithName> {
 	binary_op_unwrap_option(left, right, fragment.fragment(), |left, right| {
-		let target = Type::promote(left.get_type(), right.get_type());
+		let target = ValueType::promote(left.get_type(), right.get_type());
 
 		dispatch_arith!(
 			&left.data(), &right.data();
@@ -45,7 +45,7 @@ fn mul_numeric<L, R>(
 	ctx: &EvalContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
-	target: Type,
+	target: ValueType,
 	fragment: impl LazyFragment + Copy,
 ) -> Result<ColumnWithName>
 where
@@ -77,7 +77,7 @@ fn mul_numeric_clone<L, R>(
 	ctx: &EvalContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
-	target: Type,
+	target: ValueType,
 	fragment: impl LazyFragment + Copy,
 ) -> Result<ColumnWithName>
 where

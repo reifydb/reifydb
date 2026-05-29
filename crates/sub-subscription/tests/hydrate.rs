@@ -10,7 +10,7 @@ use reifydb_engine::{
 	subscription::{HydrateError, SubscriptionServiceRef},
 };
 use reifydb_transaction::multi::lease::VersionLeaseGuard;
-use reifydb_type::value::{Value, frame::frame::Frame, identity::IdentityId};
+use reifydb_value::value::{Value, frame::frame::Frame, identity::IdentityId};
 
 fn extract_sub_id(frames: &[Frame]) -> SubscriptionId {
 	let frame = frames.first().expect("subscription frame");

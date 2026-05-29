@@ -11,7 +11,7 @@ use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
 	rng::Rng,
 };
-use reifydb_type::value::{
+use reifydb_value::value::{
 	date::Date,
 	datetime::DateTime,
 	frame::from_frame::{FromFrame as _, FromFrameError},

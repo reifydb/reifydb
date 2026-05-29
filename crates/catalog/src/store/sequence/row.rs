@@ -8,7 +8,7 @@ use reifydb_core::{
 	},
 	key::row_sequence::RowSequenceKey,
 };
-use reifydb_type::value::row_number::RowNumber;
+use reifydb_value::value::row_number::RowNumber;
 
 use super::generator::SequenceTransaction;
 use crate::{Result, store::sequence::generator::u64::GeneratorU64};

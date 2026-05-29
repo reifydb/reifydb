@@ -15,9 +15,9 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, identity::IdentityId, r#type::Type},
+	value::{constraint::TypeConstraint, identity::IdentityId, value_type::ValueType},
 };
 use tracing::info;
 
@@ -99,7 +99,7 @@ pub fn bootstrap_profiler(
 	Ok(())
 }
 
-fn profiler_col(name: &str, ty: Type) -> SeriesColumnToCreate {
+fn profiler_col(name: &str, ty: ValueType) -> SeriesColumnToCreate {
 	SeriesColumnToCreate {
 		name: Fragment::internal(name),
 		fragment: Fragment::internal(name),
@@ -112,27 +112,27 @@ fn profiler_col(name: &str, ty: Type) -> SeriesColumnToCreate {
 
 fn profiler_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 	vec![
-		profiler_col("ts", Type::DateTime),
-		profiler_col("span_name", Type::Utf8),
-		profiler_col("dim_1", Type::Utf8),
-		profiler_col("dim_2", Type::Utf8),
-		profiler_col("calls", Type::Uint8),
-		profiler_col("total", Type::Duration),
-		profiler_col("min", Type::Duration),
-		profiler_col("max", Type::Duration),
-		profiler_col("p50", Type::Duration),
-		profiler_col("p60", Type::Duration),
-		profiler_col("p70", Type::Duration),
-		profiler_col("p75", Type::Duration),
-		profiler_col("p80", Type::Duration),
-		profiler_col("p85", Type::Duration),
-		profiler_col("p90", Type::Duration),
-		profiler_col("p95", Type::Duration),
-		profiler_col("p98", Type::Duration),
-		profiler_col("p99", Type::Duration),
-		profiler_col("extra_0", Type::Uint8),
-		profiler_col("extra_1", Type::Uint8),
-		profiler_col("extra_2", Type::Uint8),
-		profiler_col("extra_3", Type::Uint8),
+		profiler_col("ts", ValueType::DateTime),
+		profiler_col("span_name", ValueType::Utf8),
+		profiler_col("dim_1", ValueType::Utf8),
+		profiler_col("dim_2", ValueType::Utf8),
+		profiler_col("calls", ValueType::Uint8),
+		profiler_col("total", ValueType::Duration),
+		profiler_col("min", ValueType::Duration),
+		profiler_col("max", ValueType::Duration),
+		profiler_col("p50", ValueType::Duration),
+		profiler_col("p60", ValueType::Duration),
+		profiler_col("p70", ValueType::Duration),
+		profiler_col("p75", ValueType::Duration),
+		profiler_col("p80", ValueType::Duration),
+		profiler_col("p85", ValueType::Duration),
+		profiler_col("p90", ValueType::Duration),
+		profiler_col("p95", ValueType::Duration),
+		profiler_col("p98", ValueType::Duration),
+		profiler_col("p99", ValueType::Duration),
+		profiler_col("extra_0", ValueType::Uint8),
+		profiler_col("extra_1", ValueType::Uint8),
+		profiler_col("extra_2", ValueType::Uint8),
+		profiler_col("extra_3", ValueType::Uint8),
 	]
 }

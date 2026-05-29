@@ -15,9 +15,9 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, identity::IdentityId, r#type::Type},
+	value::{constraint::TypeConstraint, identity::IdentityId, value_type::ValueType},
 };
 use tracing::info;
 
@@ -94,7 +94,7 @@ const RUNTIME_DOMAINS: [(NamespaceId, &str, &str); 2] = [
 	(NamespaceId::SYSTEM_METRICS_RUNTIME_WATERMARKS, "system::metrics::runtime::watermarks", "watermarks"),
 ];
 
-fn runtime_col(name: &str, ty: Type) -> SeriesColumnToCreate {
+fn runtime_col(name: &str, ty: ValueType) -> SeriesColumnToCreate {
 	SeriesColumnToCreate {
 		name: Fragment::internal(name),
 		fragment: Fragment::internal(name),
@@ -107,10 +107,10 @@ fn runtime_col(name: &str, ty: Type) -> SeriesColumnToCreate {
 
 fn runtime_columns() -> Vec<SeriesColumnToCreate> {
 	vec![
-		runtime_col("ts", Type::DateTime),
-		runtime_col("scope", Type::Utf8),
-		runtime_col("metric", Type::Utf8),
-		runtime_col("value", Type::Float8),
-		runtime_col("unit", Type::Utf8),
+		runtime_col("ts", ValueType::DateTime),
+		runtime_col("scope", ValueType::Utf8),
+		runtime_col("metric", ValueType::Utf8),
+		runtime_col("value", ValueType::Float8),
+		runtime_col("unit", ValueType::Utf8),
 	]
 }

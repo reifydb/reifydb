@@ -5,7 +5,7 @@ use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::change::Change,
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::change::RowChange;
 

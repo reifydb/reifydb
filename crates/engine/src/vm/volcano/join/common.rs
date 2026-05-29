@@ -7,7 +7,7 @@ use postcard::to_stdvec;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, value::Value};
+use reifydb_value::{fragment::Fragment, value::Value};
 
 use crate::{
 	Result,

@@ -13,7 +13,7 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::fragment::Fragment;
+use reifydb_value::fragment::Fragment;
 
 use crate::{
 	CatalogStore, Result,
@@ -106,9 +106,9 @@ pub mod tests {
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_type::{
+	use reifydb_value::{
 		fragment::Fragment,
-		value::{constraint::TypeConstraint, r#type::Type},
+		value::{constraint::TypeConstraint, value_type::ValueType},
 	};
 
 	use super::PrimaryKeyToCreate;
@@ -136,7 +136,7 @@ pub mod tests {
 				namespace_name: "test_namespace".to_string(),
 				shape_name: "test_table".to_string(),
 				column: "id".to_string(),
-				constraint: TypeConstraint::unconstrained(Type::Uint8),
+				constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 				properties: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
@@ -153,7 +153,7 @@ pub mod tests {
 				namespace_name: "test_namespace".to_string(),
 				shape_name: "test_table".to_string(),
 				column: "tenant_id".to_string(),
-				constraint: TypeConstraint::unconstrained(Type::Uint8),
+				constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 				properties: vec![],
 				index: ColumnIndex(1),
 				auto_increment: false,
@@ -203,12 +203,12 @@ pub mod tests {
 					ViewColumnToCreate {
 						name: Fragment::internal("id"),
 						fragment: Fragment::None,
-						constraint: TypeConstraint::unconstrained(Type::Uint8),
+						constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					},
 					ViewColumnToCreate {
 						name: Fragment::internal("name"),
 						fragment: Fragment::None,
-						constraint: TypeConstraint::unconstrained(Type::Utf8),
+						constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					},
 				],
 				storage: ViewStorageConfig::default(),
@@ -260,7 +260,7 @@ pub mod tests {
 					namespace_name: "test_namespace".to_string(),
 					shape_name: "test_table".to_string(),
 					column: format!("col_{}", i),
-					constraint: TypeConstraint::unconstrained(Type::Uint8),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
 					index: ColumnIndex(i as u8),
 					auto_increment: false,
@@ -312,7 +312,7 @@ pub mod tests {
 				namespace_name: "test_namespace".to_string(),
 				shape_name: "test_table".to_string(),
 				column: "id".to_string(),
-				constraint: TypeConstraint::unconstrained(Type::Uint8),
+				constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 				properties: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
@@ -435,7 +435,7 @@ pub mod tests {
 				namespace_name: "test_namespace".to_string(),
 				shape_name: "test_table".to_string(),
 				column: "id".to_string(),
-				constraint: TypeConstraint::unconstrained(Type::Uint8),
+				constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 				properties: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
@@ -468,7 +468,7 @@ pub mod tests {
 				namespace_name: "test_namespace".to_string(),
 				shape_name: "test_table2".to_string(),
 				column: "id".to_string(),
-				constraint: TypeConstraint::unconstrained(Type::Uint8),
+				constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 				properties: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,

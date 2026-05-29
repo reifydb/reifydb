@@ -19,7 +19,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_sdk::operator::Tick;
-use reifydb_type::{Result, error::Error, value::row_number::RowNumber};
+use reifydb_value::{Result, error::Error, value::row_number::RowNumber};
 
 use crate::{
 	operator::{
@@ -358,7 +358,7 @@ mod tests {
 	use reifydb_runtime::context::clock::Clock;
 	use reifydb_sdk::operator::Tick;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_type::value::{datetime::DateTime, identity::IdentityId};
+	use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
 
 	use super::*;
 	use crate::operator::stateful::utils::internal_state_get;

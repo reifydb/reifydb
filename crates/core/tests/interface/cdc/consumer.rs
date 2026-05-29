@@ -8,7 +8,7 @@
 // use reifydb_engine::test_harness::TestEngine;
 //
 // #[test]
-// fn test_get_all_consumer_states_with_single_consumer() -> reifydb_type::Result<()> {
+// fn test_get_all_consumer_states_with_single_consumer() -> reifydb_value::Result<()> {
 // 	let engine = create_test_engine();
 // 	let mut txn = engine.begin_command()?;
 // 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(42))?;
@@ -24,7 +24,7 @@
 // }
 //
 // #[test]
-// fn test_get_all_consumer_states_with_multiple_consumers() -> reifydb_type::Result<()> {
+// fn test_get_all_consumer_states_with_multiple_consumers() -> reifydb_value::Result<()> {
 // 	let engine = create_test_engine();
 //
 // 	let mut txn = engine.begin_command()?;
@@ -50,7 +50,7 @@
 // }
 //
 // #[test]
-// fn test_get_all_consumer_states_returns_all_consumer_ids() -> reifydb_type::Result<()> {
+// fn test_get_all_consumer_states_returns_all_consumer_ids() -> reifydb_value::Result<()> {
 // 	let engine = create_test_engine();
 //
 // 	let mut txn = engine.begin_command()?;
@@ -77,7 +77,7 @@
 // }
 //
 // #[test]
-// fn test_get_all_consumer_states_updates_after_checkpoint_change() -> reifydb_type::Result<()> {
+// fn test_get_all_consumer_states_updates_after_checkpoint_change() -> reifydb_value::Result<()> {
 // 	let engine = create_test_engine();
 //
 // 	let mut txn = engine.begin_command()?;
@@ -102,7 +102,7 @@
 // }
 //
 // #[test]
-// fn test_get_all_consumer_states_with_new_consumer_added() -> reifydb_type::Result<()> {
+// fn test_get_all_consumer_states_with_new_consumer_added() -> reifydb_value::Result<()> {
 // 	let engine = create_test_engine();
 //
 // 	let mut txn = engine.begin_command()?;
@@ -132,7 +132,7 @@
 // }
 //
 // #[test]
-// fn test_get_all_consumer_states_with_large_version_numbers() -> reifydb_type::Result<()> {
+// fn test_get_all_consumer_states_with_large_version_numbers() -> reifydb_value::Result<()> {
 // 	let engine = create_test_engine();
 //
 // 	let mut txn = engine.begin_command()?;
@@ -157,7 +157,7 @@
 // }
 //
 // #[test]
-// fn test_get_all_consumer_states_with_many_consumers() -> reifydb_type::Result<()> {
+// fn test_get_all_consumer_states_with_many_consumers() -> reifydb_value::Result<()> {
 // 	let engine = create_test_engine();
 //
 // 	let mut txn = engine.begin_command()?;
@@ -186,7 +186,7 @@
 // }
 //
 // #[test]
-// fn test_get_all_consumer_states_with_consumer_at_version_one() -> reifydb_type::Result<()> {
+// fn test_get_all_consumer_states_with_consumer_at_version_one() -> reifydb_value::Result<()> {
 // 	let engine = create_test_engine();
 // 	let mut txn = engine.begin_command()?;
 // 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(1))?;
@@ -201,7 +201,7 @@
 // }
 //
 // #[test]
-// fn test_get_all_consumer_states_preserves_order_independence() -> reifydb_type::Result<()> {
+// fn test_get_all_consumer_states_preserves_order_independence() -> reifydb_value::Result<()> {
 // 	let engine = create_test_engine();
 //
 // 	let mut txn = engine.begin_command()?;

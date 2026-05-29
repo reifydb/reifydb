@@ -6,7 +6,7 @@ use reifydb_catalog::{
 	error::{CatalogError, CatalogObjectKind},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	value::constraint::{Constraint, TypeConstraint},
 };

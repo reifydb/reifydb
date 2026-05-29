@@ -3,9 +3,9 @@
 
 use std::{fmt, str::FromStr, time::Duration as StdDuration};
 
-use reifydb_type::value::{
+use reifydb_value::value::{
 	Value, decimal::Decimal, duration::Duration, int::Int, ordered_f32::OrderedF32, ordered_f64::OrderedF64,
-	r#type::Type, uint::Uint,
+	uint::Uint, value_type::ValueType,
 };
 
 use crate::common::CommitVersion;
@@ -13,8 +13,8 @@ use crate::common::CommitVersion;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AcceptError {
 	TypeMismatch {
-		expected: Vec<Type>,
-		actual: Type,
+		expected: Vec<ValueType>,
+		actual: ValueType,
 	},
 
 	InvalidValue(String),
@@ -108,7 +108,7 @@ impl ConfigKey {
 			Self::HistoricalGcBatchSize => Value::Uint8(50_000),
 			Self::HistoricalGcInterval => Value::Duration(Duration::from_seconds(30).unwrap()),
 			Self::CdcTtlDuration => Value::None {
-				inner: Type::Duration,
+				inner: ValueType::Duration,
 			},
 			Self::CdcCompactInterval => Value::Duration(Duration::from_seconds(60).unwrap()),
 			Self::CdcCompactBlockSize => Value::Uint8(1024),
@@ -243,34 +243,34 @@ impl ConfigKey {
 		}
 	}
 
-	pub fn expected_types(&self) -> &'static [Type] {
+	pub fn expected_types(&self) -> &'static [ValueType] {
 		match self {
-			Self::OracleWindowSize => &[Type::Uint8],
-			Self::OracleWaterMark => &[Type::Uint8],
-			Self::QueryRowBatchSize => &[Type::Uint2],
-			Self::RowTtlScanBatchSize => &[Type::Uint8],
-			Self::RowTtlScanInterval => &[Type::Duration],
-			Self::OperatorTtlScanBatchSize => &[Type::Uint8],
-			Self::OperatorTtlScanInterval => &[Type::Duration],
-			Self::HistoricalGcBatchSize => &[Type::Uint8],
-			Self::HistoricalGcInterval => &[Type::Duration],
-			Self::CdcTtlDuration => &[Type::Duration],
-			Self::CdcCompactInterval => &[Type::Duration],
-			Self::CdcCompactBlockSize => &[Type::Uint8],
-			Self::CdcCompactSafetyLag => &[Type::Uint8],
-			Self::CdcCompactMaxBlocksPerTick => &[Type::Uint8],
-			Self::CdcCompactBlockCacheCapacity => &[Type::Uint8],
-			Self::CdcCompactZstdLevel => &[Type::Uint1],
-			Self::CdcRecentCacheCapacity => &[Type::Uint8],
-			Self::MultiReadBufferCapacity => &[Type::Uint8],
-			Self::FlowTick => &[Type::Duration],
-			Self::ThreadsAsync => &[Type::Uint2],
-			Self::ThreadsSystem => &[Type::Uint2],
-			Self::ThreadsQuery => &[Type::Uint2],
-			Self::ThreadsCommit => &[Type::Uint2],
-			Self::ThreadsBackground => &[Type::Uint2],
-			Self::RuntimeMetricsInterval => &[Type::Duration],
-			Self::MetricFlushInterval => &[Type::Duration],
+			Self::OracleWindowSize => &[ValueType::Uint8],
+			Self::OracleWaterMark => &[ValueType::Uint8],
+			Self::QueryRowBatchSize => &[ValueType::Uint2],
+			Self::RowTtlScanBatchSize => &[ValueType::Uint8],
+			Self::RowTtlScanInterval => &[ValueType::Duration],
+			Self::OperatorTtlScanBatchSize => &[ValueType::Uint8],
+			Self::OperatorTtlScanInterval => &[ValueType::Duration],
+			Self::HistoricalGcBatchSize => &[ValueType::Uint8],
+			Self::HistoricalGcInterval => &[ValueType::Duration],
+			Self::CdcTtlDuration => &[ValueType::Duration],
+			Self::CdcCompactInterval => &[ValueType::Duration],
+			Self::CdcCompactBlockSize => &[ValueType::Uint8],
+			Self::CdcCompactSafetyLag => &[ValueType::Uint8],
+			Self::CdcCompactMaxBlocksPerTick => &[ValueType::Uint8],
+			Self::CdcCompactBlockCacheCapacity => &[ValueType::Uint8],
+			Self::CdcCompactZstdLevel => &[ValueType::Uint1],
+			Self::CdcRecentCacheCapacity => &[ValueType::Uint8],
+			Self::MultiReadBufferCapacity => &[ValueType::Uint8],
+			Self::FlowTick => &[ValueType::Duration],
+			Self::ThreadsAsync => &[ValueType::Uint2],
+			Self::ThreadsSystem => &[ValueType::Uint2],
+			Self::ThreadsQuery => &[ValueType::Uint2],
+			Self::ThreadsCommit => &[ValueType::Uint2],
+			Self::ThreadsBackground => &[ValueType::Uint2],
+			Self::RuntimeMetricsInterval => &[ValueType::Duration],
+			Self::MetricFlushInterval => &[ValueType::Duration],
 		}
 	}
 
@@ -456,45 +456,47 @@ impl ConfigKey {
 	}
 }
 
-fn try_coerce_numeric(value: &Value, expected: &[Type]) -> Option<Value> {
+fn try_coerce_numeric(value: &Value, expected: &[ValueType]) -> Option<Value> {
 	for target in expected {
 		let coerced = match target {
-			Type::Uint1 => {
+			ValueType::Uint1 => {
 				value.to_usize().filter(|&v| v <= u8::MAX as usize).map(|v| Value::Uint1(v as u8))
 			}
-			Type::Uint2 => {
+			ValueType::Uint2 => {
 				value.to_usize().filter(|&v| v <= u16::MAX as usize).map(|v| Value::Uint2(v as u16))
 			}
-			Type::Uint4 => {
+			ValueType::Uint4 => {
 				value.to_usize().filter(|&v| v <= u32::MAX as usize).map(|v| Value::Uint4(v as u32))
 			}
-			Type::Uint8 => {
+			ValueType::Uint8 => {
 				value.to_usize().filter(|&v| v <= u64::MAX as usize).map(|v| Value::Uint8(v as u64))
 			}
-			Type::Uint16 => value.to_usize().map(|v| Value::Uint16(v as u128)),
-			Type::Int1 => value.to_usize().filter(|&v| v <= i8::MAX as usize).map(|v| Value::Int1(v as i8)),
-			Type::Int2 => {
+			ValueType::Uint16 => value.to_usize().map(|v| Value::Uint16(v as u128)),
+			ValueType::Int1 => {
+				value.to_usize().filter(|&v| v <= i8::MAX as usize).map(|v| Value::Int1(v as i8))
+			}
+			ValueType::Int2 => {
 				value.to_usize().filter(|&v| v <= i16::MAX as usize).map(|v| Value::Int2(v as i16))
 			}
-			Type::Int4 => {
+			ValueType::Int4 => {
 				value.to_usize().filter(|&v| v <= i32::MAX as usize).map(|v| Value::Int4(v as i32))
 			}
-			Type::Int8 => {
+			ValueType::Int8 => {
 				value.to_usize().filter(|&v| v <= i64::MAX as usize).map(|v| Value::Int8(v as i64))
 			}
-			Type::Int16 => {
+			ValueType::Int16 => {
 				value.to_usize().filter(|&v| v <= i128::MAX as usize).map(|v| Value::Int16(v as i128))
 			}
-			Type::Uint => value.to_usize().map(|v| Value::Uint(Uint::from_u64(v as u64))),
-			Type::Int => value.to_usize().map(|v| Value::Int(Int::from_i64(v as i64))),
-			Type::Decimal => value.to_usize().map(|v| Value::Decimal(Decimal::from_i64(v as i64))),
-			Type::Float4 => {
+			ValueType::Uint => value.to_usize().map(|v| Value::Uint(Uint::from_u64(v as u64))),
+			ValueType::Int => value.to_usize().map(|v| Value::Int(Int::from_i64(v as i64))),
+			ValueType::Decimal => value.to_usize().map(|v| Value::Decimal(Decimal::from_i64(v as i64))),
+			ValueType::Float4 => {
 				value.to_usize().and_then(|v| OrderedF32::try_from(v as f32).ok()).map(Value::Float4)
 			}
-			Type::Float8 => {
+			ValueType::Float8 => {
 				value.to_usize().and_then(|v| OrderedF64::try_from(v as f64).ok()).map(Value::Float8)
 			}
-			Type::Duration => value
+			ValueType::Duration => value
 				.to_usize()
 				.and_then(|v| Duration::from_seconds(v as i64).ok())
 				.map(Value::Duration),
@@ -656,7 +658,7 @@ mod tests {
 		assert!(matches!(
 			default,
 			Value::None {
-				inner: Type::Duration
+				inner: ValueType::Duration
 			}
 		));
 	}
@@ -664,7 +666,7 @@ mod tests {
 	#[test]
 	fn test_cdc_ttl_accept_passes_typed_null() {
 		let none = Value::None {
-			inner: Type::Duration,
+			inner: ValueType::Duration,
 		};
 		let v = ConfigKey::CdcTtlDuration.accept(none.clone()).unwrap();
 		assert_eq!(v, none);
@@ -746,7 +748,7 @@ mod tests {
 			ConfigKey::RuntimeMetricsInterval.default_value(),
 			Value::Duration(Duration::from_seconds(5).unwrap())
 		);
-		assert_eq!(ConfigKey::RuntimeMetricsInterval.expected_types(), &[Type::Duration]);
+		assert_eq!(ConfigKey::RuntimeMetricsInterval.expected_types(), &[ValueType::Duration]);
 		assert!(ConfigKey::RuntimeMetricsInterval.is_optional());
 	}
 
@@ -759,7 +761,7 @@ mod tests {
 	#[test]
 	fn test_runtime_metrics_interval_accepts_none_and_positive_rejects_zero() {
 		let none = Value::None {
-			inner: Type::Duration,
+			inner: ValueType::Duration,
 		};
 		assert_eq!(ConfigKey::RuntimeMetricsInterval.accept(none.clone()).unwrap(), none);
 
@@ -777,7 +779,7 @@ mod tests {
 			ConfigKey::MetricFlushInterval.default_value(),
 			Value::Duration(Duration::from_seconds(10).unwrap())
 		);
-		assert_eq!(ConfigKey::MetricFlushInterval.expected_types(), &[Type::Duration]);
+		assert_eq!(ConfigKey::MetricFlushInterval.expected_types(), &[ValueType::Duration]);
 		assert!(!ConfigKey::MetricFlushInterval.is_optional());
 		assert!(!ConfigKey::MetricFlushInterval.requires_restart());
 	}
@@ -809,7 +811,7 @@ mod tests {
 	#[test]
 	fn test_cdc_recent_cache_capacity_metadata() {
 		assert_eq!(ConfigKey::CdcRecentCacheCapacity.default_value(), Value::Uint8(128));
-		assert_eq!(ConfigKey::CdcRecentCacheCapacity.expected_types(), &[Type::Uint8]);
+		assert_eq!(ConfigKey::CdcRecentCacheCapacity.expected_types(), &[ValueType::Uint8]);
 		assert!(ConfigKey::CdcRecentCacheCapacity.requires_restart());
 		assert!(!ConfigKey::CdcRecentCacheCapacity.is_optional());
 	}
@@ -826,7 +828,7 @@ mod tests {
 	#[test]
 	fn test_multi_read_cache_capacity_metadata_and_rejects_zero() {
 		assert_eq!(ConfigKey::MultiReadBufferCapacity.default_value(), Value::Uint8(4096));
-		assert_eq!(ConfigKey::MultiReadBufferCapacity.expected_types(), &[Type::Uint8]);
+		assert_eq!(ConfigKey::MultiReadBufferCapacity.expected_types(), &[ValueType::Uint8]);
 		assert!(ConfigKey::MultiReadBufferCapacity.requires_restart());
 		assert!(!ConfigKey::MultiReadBufferCapacity.is_optional());
 		match ConfigKey::MultiReadBufferCapacity.accept(Value::Uint8(0)).unwrap_err() {
@@ -1098,7 +1100,7 @@ mod tests {
 	fn test_accept_rejects_typed_null_for_non_optional_key() {
 		let err = ConfigKey::CdcCompactBlockSize
 			.accept(Value::None {
-				inner: Type::Uint8,
+				inner: ValueType::Uint8,
 			})
 			.unwrap_err();
 		assert!(matches!(err, AcceptError::TypeMismatch { .. }));
@@ -1107,7 +1109,7 @@ mod tests {
 	#[test]
 	fn test_accept_passes_typed_null_for_optional_key() {
 		let none = Value::None {
-			inner: Type::Duration,
+			inner: ValueType::Duration,
 		};
 		assert_eq!(ConfigKey::CdcTtlDuration.accept(none.clone()).unwrap(), none);
 	}
@@ -1117,7 +1119,7 @@ mod tests {
 		// Optional key still rejects typed-null whose inner doesn't match expected_types.
 		let err = ConfigKey::CdcTtlDuration
 			.accept(Value::None {
-				inner: Type::Uint8,
+				inner: ValueType::Uint8,
 			})
 			.unwrap_err();
 		assert!(matches!(err, AcceptError::TypeMismatch { .. }));

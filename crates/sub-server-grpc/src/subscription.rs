@@ -4,7 +4,7 @@ use reifydb_client::{RawChangePayload, WireFormat as ClientWireFormat};
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_sub_server::subscription::wire_sink::{BatchSubscribedMember, WireSink};
 use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
-use reifydb_type::value::frame::frame::Frame;
+use reifydb_value::value::frame::frame::Frame;
 use reifydb_wire_format::{encode::encode_frames, options::EncodeOptions};
 use tokio::sync::mpsc;
 use tonic::Status;
@@ -246,7 +246,7 @@ mod tests {
 	};
 	use reifydb_sub_server::subscription::registry::PromoteResult;
 	use reifydb_subscription::delivery::SubscriptionDelivery;
-	use reifydb_type::value::{Value, uuid::Uuid7};
+	use reifydb_value::value::{Value, uuid::Uuid7};
 
 	use super::*;
 

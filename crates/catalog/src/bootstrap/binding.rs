@@ -7,7 +7,7 @@ use reifydb_transaction::{
 	interceptor::interceptors::Interceptors, multi::transaction::MultiTransaction, single::SingleTransaction,
 	transaction::admin::AdminTransaction,
 };
-use reifydb_type::value::identity::IdentityId;
+use reifydb_value::value::identity::IdentityId;
 
 use super::ensure_namespace;
 use crate::{Result, cache::CatalogCache, catalog::Catalog};

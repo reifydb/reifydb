@@ -12,10 +12,10 @@
 //! `diagnostic/`. Surfacing an error with no diagnostic produces a "no diagnostic" rendering on the client and a
 //! useless support ticket.
 
-use reifydb_type::{
+use reifydb_value::{
 	error::{Error, IntoDiagnostic, TypeError},
 	fragment::Fragment,
-	value::r#type::Type,
+	value::value_type::ValueType,
 };
 
 pub mod diagnostic;
@@ -101,7 +101,7 @@ pub enum CoreError {
 
 	#[error("sequence generator of type `{value_type}` is exhausted")]
 	SequenceExhausted {
-		value_type: Type,
+		value_type: ValueType,
 	},
 
 	#[error("cannot alter sequence for non-AUTO INCREMENT column")]

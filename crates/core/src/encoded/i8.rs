@@ -3,7 +3,7 @@
 
 use std::ptr;
 
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
@@ -11,7 +11,7 @@ impl RowShape {
 	pub fn set_i8(&self, row: &mut EncodedRow, index: usize, value: impl Into<i8>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Int1);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Int1);
 		row.set_valid(index, true);
 		unsafe {
 			ptr::write_unaligned(
@@ -24,12 +24,12 @@ impl RowShape {
 	pub fn get_i8(&self, row: &EncodedRow, index: usize) -> i8 {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Int1);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Int1);
 		unsafe { (row.as_ptr().add(field.offset as usize) as *const i8).read_unaligned() }
 	}
 
 	pub fn try_get_i8(&self, row: &EncodedRow, index: usize) -> Option<i8> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Int1 {
+		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Int1 {
 			Some(self.get_i8(row, index))
 		} else {
 			None
@@ -39,13 +39,13 @@ impl RowShape {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_set_get_i8() {
-		let shape = RowShape::testing(&[Type::Int1]);
+		let shape = RowShape::testing(&[ValueType::Int1]);
 		let mut row = shape.allocate();
 		shape.set_i8(&mut row, 0, 42i8);
 		assert_eq!(shape.get_i8(&row, 0), 42i8);
@@ -53,7 +53,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_i8() {
-		let shape = RowShape::testing(&[Type::Int1]);
+		let shape = RowShape::testing(&[ValueType::Int1]);
 		let mut row = shape.allocate();
 
 		assert_eq!(shape.try_get_i8(&row, 0), None);
@@ -64,7 +64,7 @@ pub mod tests {
 
 	#[test]
 	fn test_extremes() {
-		let shape = RowShape::testing(&[Type::Int1]);
+		let shape = RowShape::testing(&[ValueType::Int1]);
 		let mut row = shape.allocate();
 
 		shape.set_i8(&mut row, 0, i8::MAX);
@@ -81,7 +81,7 @@ pub mod tests {
 
 	#[test]
 	fn test_negative_positive() {
-		let shape = RowShape::testing(&[Type::Int1, Type::Int1]);
+		let shape = RowShape::testing(&[ValueType::Int1, ValueType::Int1]);
 		let mut row = shape.allocate();
 
 		shape.set_i8(&mut row, 0, -100i8);
@@ -93,7 +93,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let shape = RowShape::testing(&[Type::Int1, Type::Boolean, Type::Int1]);
+		let shape = RowShape::testing(&[ValueType::Int1, ValueType::Boolean, ValueType::Int1]);
 		let mut row = shape.allocate();
 
 		shape.set_i8(&mut row, 0, -50i8);
@@ -107,7 +107,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let shape = RowShape::testing(&[Type::Int1, Type::Int1]);
+		let shape = RowShape::testing(&[ValueType::Int1, ValueType::Int1]);
 		let mut row = shape.allocate();
 
 		shape.set_i8(&mut row, 0, 42);
@@ -121,7 +121,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_i8_wrong_type() {
-		let shape = RowShape::testing(&[Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
 		shape.set_bool(&mut row, 0, true);

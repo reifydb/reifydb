@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::{
+use reifydb_value::{
 	util::bitvec::BitVec,
 	value::{
 		Value,
@@ -20,9 +20,9 @@ use reifydb_type::{
 		identity::IdentityId,
 		int::Int,
 		time::Time,
-		r#type::Type,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
 	},
 };
 
@@ -795,47 +795,47 @@ impl ColumnBuffer {
 		}
 	}
 
-	pub fn typed_none(ty: &Type) -> Self {
+	pub fn typed_none(ty: &ValueType) -> Self {
 		match ty {
-			Type::Option(inner) => Self::typed_none(inner),
+			ValueType::Option(inner) => Self::typed_none(inner),
 			_ => Self::none_typed(ty.clone(), 1),
 		}
 	}
 
-	pub fn none_typed(ty: Type, len: usize) -> Self {
+	pub fn none_typed(ty: ValueType, len: usize) -> Self {
 		let bitvec = BitVec::repeat(len, false);
 		let inner = match ty {
-			Type::Boolean => Self::bool(vec![false; len]),
-			Type::Float4 => Self::float4(vec![0.0f32; len]),
-			Type::Float8 => Self::float8(vec![0.0f64; len]),
-			Type::Int1 => Self::int1(vec![0i8; len]),
-			Type::Int2 => Self::int2(vec![0i16; len]),
-			Type::Int4 => Self::int4(vec![0i32; len]),
-			Type::Int8 => Self::int8(vec![0i64; len]),
-			Type::Int16 => Self::int16(vec![0i128; len]),
-			Type::Utf8 => Self::utf8(vec![String::new(); len]),
-			Type::Uint1 => Self::uint1(vec![0u8; len]),
-			Type::Uint2 => Self::uint2(vec![0u16; len]),
-			Type::Uint4 => Self::uint4(vec![0u32; len]),
-			Type::Uint8 => Self::uint8(vec![0u64; len]),
-			Type::Uint16 => Self::uint16(vec![0u128; len]),
-			Type::Date => Self::date(vec![Date::default(); len]),
-			Type::DateTime => Self::datetime(vec![DateTime::default(); len]),
-			Type::Time => Self::time(vec![Time::default(); len]),
-			Type::Duration => Self::duration(vec![Duration::default(); len]),
-			Type::Blob => Self::blob(vec![Blob::new(vec![]); len]),
-			Type::Uuid4 => Self::uuid4(vec![Uuid4::default(); len]),
-			Type::Uuid7 => Self::uuid7(vec![Uuid7::default(); len]),
-			Type::IdentityId => Self::identity_id(vec![IdentityId::default(); len]),
-			Type::Int => Self::int(vec![Int::default(); len]),
-			Type::Uint => Self::uint(vec![Uint::default(); len]),
-			Type::Decimal => Self::decimal(vec![Decimal::from(0); len]),
-			Type::Any => Self::any(vec![Box::new(Value::none()); len]),
-			Type::DictionaryId => Self::dictionary_id(vec![DictionaryEntryId::default(); len]),
-			Type::List(_) => Self::any(vec![Box::new(Value::List(vec![])); len]),
-			Type::Record(_) => Self::any(vec![Box::new(Value::Record(vec![])); len]),
-			Type::Tuple(_) => Self::any(vec![Box::new(Value::Tuple(vec![])); len]),
-			Type::Option(inner) => return Self::none_typed(*inner, len),
+			ValueType::Boolean => Self::bool(vec![false; len]),
+			ValueType::Float4 => Self::float4(vec![0.0f32; len]),
+			ValueType::Float8 => Self::float8(vec![0.0f64; len]),
+			ValueType::Int1 => Self::int1(vec![0i8; len]),
+			ValueType::Int2 => Self::int2(vec![0i16; len]),
+			ValueType::Int4 => Self::int4(vec![0i32; len]),
+			ValueType::Int8 => Self::int8(vec![0i64; len]),
+			ValueType::Int16 => Self::int16(vec![0i128; len]),
+			ValueType::Utf8 => Self::utf8(vec![String::new(); len]),
+			ValueType::Uint1 => Self::uint1(vec![0u8; len]),
+			ValueType::Uint2 => Self::uint2(vec![0u16; len]),
+			ValueType::Uint4 => Self::uint4(vec![0u32; len]),
+			ValueType::Uint8 => Self::uint8(vec![0u64; len]),
+			ValueType::Uint16 => Self::uint16(vec![0u128; len]),
+			ValueType::Date => Self::date(vec![Date::default(); len]),
+			ValueType::DateTime => Self::datetime(vec![DateTime::default(); len]),
+			ValueType::Time => Self::time(vec![Time::default(); len]),
+			ValueType::Duration => Self::duration(vec![Duration::default(); len]),
+			ValueType::Blob => Self::blob(vec![Blob::new(vec![]); len]),
+			ValueType::Uuid4 => Self::uuid4(vec![Uuid4::default(); len]),
+			ValueType::Uuid7 => Self::uuid7(vec![Uuid7::default(); len]),
+			ValueType::IdentityId => Self::identity_id(vec![IdentityId::default(); len]),
+			ValueType::Int => Self::int(vec![Int::default(); len]),
+			ValueType::Uint => Self::uint(vec![Uint::default(); len]),
+			ValueType::Decimal => Self::decimal(vec![Decimal::from(0); len]),
+			ValueType::Any => Self::any(vec![Box::new(Value::none()); len]),
+			ValueType::DictionaryId => Self::dictionary_id(vec![DictionaryEntryId::default(); len]),
+			ValueType::List(_) => Self::any(vec![Box::new(Value::List(vec![])); len]),
+			ValueType::Record(_) => Self::any(vec![Box::new(Value::Record(vec![])); len]),
+			ValueType::Tuple(_) => Self::any(vec![Box::new(Value::Tuple(vec![])); len]),
+			ValueType::Option(inner) => return Self::none_typed(*inner, len),
 		};
 		ColumnBuffer::Option {
 			inner: Box::new(inner),

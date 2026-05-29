@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, replica::ReplicaTransaction};
-use reifydb_type::value::identity::IdentityId;
+use reifydb_value::value::identity::IdentityId;
 
 #[test]
 fn test_row_settings_sync_to_catalog_cache() {

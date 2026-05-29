@@ -27,7 +27,7 @@ use reifydb_runtime::{
 	},
 	context::clock::{Clock, Instant},
 };
-use reifydb_type::{util::hex::encode, value::datetime::DateTime};
+use reifydb_value::{util::hex::encode, value::datetime::DateTime};
 use tracing::{Span, error, field, instrument};
 
 enum Phase {

@@ -18,7 +18,7 @@ reifydb-build = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-sqlite = { workspace = true, optional = true }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 
 tracing = { workspace = true }
 uuid = { workspace = true }

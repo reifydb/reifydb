@@ -20,7 +20,7 @@ use reifydb_abi::{
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::error::{Result as FFIResult, SdkError};
-use reifydb_type::value::constraint::{FFITypeConstraint, TypeConstraint};
+use reifydb_value::value::constraint::{FFITypeConstraint, TypeConstraint};
 
 use crate::loader::ffi::{LibraryCache, buffer_to_string, validate_api_version};
 

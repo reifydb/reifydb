@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider};
 use reifydb_runtime::context::rng::Rng;
-use reifydb_type::{Result, error::Error};
+use reifydb_value::{Result, error::Error};
 use subtle::ConstantTimeEq;
 
 use crate::error::AuthError;

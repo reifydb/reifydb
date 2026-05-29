@@ -29,11 +29,11 @@ use reifydb_runtime::{
 	context::RuntimeContext,
 	hash::{Hash128, xxh3_128},
 };
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	error::Error,
 	params::Params,
-	value::{Value, datetime::DateTime, identity::IdentityId, row_number::RowNumber, r#type::Type},
+	value::{Value, datetime::DateTime, identity::IdentityId, row_number::RowNumber, value_type::ValueType},
 };
 
 use super::{
@@ -165,7 +165,7 @@ impl JoinOperator {
 				columns.column(col_name)
 					.map(|c| ColumnWithName::new(c.name().clone(), c.data().clone()))
 					.unwrap_or_else(|| {
-						ColumnWithName::undefined_typed(col_name, Type::Boolean, row_count)
+						ColumnWithName::undefined_typed(col_name, ValueType::Boolean, row_count)
 					})
 			} else {
 				compiled_expr.execute(&exec_ctx)?

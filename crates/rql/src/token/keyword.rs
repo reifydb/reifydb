@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, sync::LazyLock};
 
-use reifydb_type::{
+use reifydb_value::{
 	error::{AstErrorKind, Error, TypeError},
 	fragment::Fragment,
 };

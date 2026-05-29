@@ -79,7 +79,7 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 	transaction::{admin::AdminTransaction, command::CommandTransaction},
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 use tracing::instrument;
 
 pub mod read;

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::{
+use reifydb_value::{
 	error::{Diagnostic, util::value_max},
 	fragment::Fragment,
-	value::r#type::Type,
+	value::value_type::ValueType,
 };
 
-pub fn sequence_exhausted(value: Type) -> Diagnostic {
+pub fn sequence_exhausted(value: ValueType) -> Diagnostic {
 	Diagnostic {
 		code: "SEQUENCE_001".to_string(),
 		rql: None,

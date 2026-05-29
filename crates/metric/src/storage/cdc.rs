@@ -10,7 +10,7 @@ use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::store::SingleVersionStore,
 };
-use reifydb_type::{Result, util::cowvec::CowVec};
+use reifydb_value::{Result, util::cowvec::CowVec};
 
 use crate::{
 	MetricId,

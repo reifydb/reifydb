@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::catalog::{column::Column, ringbuffer::RingBuffer, series::Series, table::Table},
 	value::column::buffer::ColumnBuffer,
 };
-use reifydb_type::{fragment::Fragment, params::Params, value::Value};
+use reifydb_value::{fragment::Fragment, params::Params, value::Value};
 
 use super::coerce::coerce_columns;
 use crate::{Result, error::EngineError};

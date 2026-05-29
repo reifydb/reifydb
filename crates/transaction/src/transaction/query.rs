@@ -38,7 +38,7 @@ use reifydb_core::{
 	},
 	row::{OperatorSettings, RowSettings},
 };
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	params::Params,
 	value::{dictionary::DictionaryId, identity::IdentityId, sumtype::SumTypeId},

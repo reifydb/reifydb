@@ -6,7 +6,7 @@ use reifydb_core::interface::catalog::{
 	id::{NamespaceId, ProcedureId},
 	procedure::Procedure,
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::{
 	change::{

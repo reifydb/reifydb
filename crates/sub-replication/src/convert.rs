@@ -7,7 +7,7 @@ use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::cdc::{Cdc, SystemChange},
 };
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_value::util::cowvec::CowVec;
 
 use crate::generated::{
 	CdcEntry, DeleteChange, InsertChange, SystemChangeProto, UpdateChange, system_change_proto::Change,

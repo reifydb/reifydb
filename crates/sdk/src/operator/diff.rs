@@ -5,7 +5,7 @@ use std::{collections::HashMap, thread};
 
 use postcard::to_allocvec;
 use reifydb_abi::data::column::ColumnTypeCode;
-use reifydb_type::value::{Value, decimal::Decimal, row_number::RowNumber, r#type::Type};
+use reifydb_value::value::{Value, decimal::Decimal, row_number::RowNumber, value_type::ValueType};
 
 use crate::{
 	error::SdkError,
@@ -516,24 +516,24 @@ fn value_to_type_code(value: &Value) -> Option<ColumnTypeCode> {
 	Some(code)
 }
 
-fn type_to_column_code(ty: Type) -> Option<ColumnTypeCode> {
+fn type_to_column_code(ty: ValueType) -> Option<ColumnTypeCode> {
 	let code = match ty {
-		Type::Boolean => ColumnTypeCode::Bool,
-		Type::Float4 => ColumnTypeCode::Float4,
-		Type::Float8 => ColumnTypeCode::Float8,
-		Type::Int1 => ColumnTypeCode::Int1,
-		Type::Int2 => ColumnTypeCode::Int2,
-		Type::Int4 => ColumnTypeCode::Int4,
-		Type::Int8 => ColumnTypeCode::Int8,
-		Type::Int16 => ColumnTypeCode::Int16,
-		Type::Uint1 => ColumnTypeCode::Uint1,
-		Type::Uint2 => ColumnTypeCode::Uint2,
-		Type::Uint4 => ColumnTypeCode::Uint4,
-		Type::Uint8 => ColumnTypeCode::Uint8,
-		Type::Uint16 => ColumnTypeCode::Uint16,
-		Type::Utf8 => ColumnTypeCode::Utf8,
-		Type::Decimal => ColumnTypeCode::Decimal,
-		Type::Blob => ColumnTypeCode::Blob,
+		ValueType::Boolean => ColumnTypeCode::Bool,
+		ValueType::Float4 => ColumnTypeCode::Float4,
+		ValueType::Float8 => ColumnTypeCode::Float8,
+		ValueType::Int1 => ColumnTypeCode::Int1,
+		ValueType::Int2 => ColumnTypeCode::Int2,
+		ValueType::Int4 => ColumnTypeCode::Int4,
+		ValueType::Int8 => ColumnTypeCode::Int8,
+		ValueType::Int16 => ColumnTypeCode::Int16,
+		ValueType::Uint1 => ColumnTypeCode::Uint1,
+		ValueType::Uint2 => ColumnTypeCode::Uint2,
+		ValueType::Uint4 => ColumnTypeCode::Uint4,
+		ValueType::Uint8 => ColumnTypeCode::Uint8,
+		ValueType::Uint16 => ColumnTypeCode::Uint16,
+		ValueType::Utf8 => ColumnTypeCode::Utf8,
+		ValueType::Decimal => ColumnTypeCode::Decimal,
+		ValueType::Blob => ColumnTypeCode::Blob,
 		_ => return Option::None,
 	};
 	Some(code)

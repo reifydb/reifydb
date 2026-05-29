@@ -7,7 +7,7 @@ use reifydb_core::{
 	key::{EncodableKey, dictionary::DictionaryKey, kind::KeyKind},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::{dictionary::DictionaryId, r#type::Type};
+use reifydb_value::value::{dictionary::DictionaryId, value_type::ValueType};
 
 use super::CatalogChangeApplier;
 use crate::{
@@ -43,8 +43,8 @@ fn decode_dictionary(row: &EncodedRow) -> Dictionary {
 	let id = DictionaryId(SHAPE.get_u64(row, ID));
 	let namespace = NamespaceId(SHAPE.get_u64(row, NAMESPACE));
 	let name = SHAPE.get_utf8(row, NAME).to_string();
-	let value_type = Type::from_u8(SHAPE.get_u8(row, VALUE_TYPE));
-	let id_type = Type::from_u8(SHAPE.get_u8(row, ID_TYPE));
+	let value_type = ValueType::from_u8(SHAPE.get_u8(row, VALUE_TYPE));
+	let id_type = ValueType::from_u8(SHAPE.get_u8(row, ID_TYPE));
 
 	Dictionary {
 		id,

@@ -11,7 +11,7 @@ use std::{
 
 use reifydb_core::{actors::cdc::CdcPollHandle, interface::cdc::CdcConsumerId};
 use reifydb_runtime::actor::system::ActorSystem;
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use super::{
 	actor::{PollActor, PollActorConfig},

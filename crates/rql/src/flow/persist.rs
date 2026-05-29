@@ -10,7 +10,7 @@ use reifydb_core::{
 	internal,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::{error::Error, value::blob::Blob};
+use reifydb_value::{error::Error, value::blob::Blob};
 
 use super::plan::{CompiledFlowPlan, LocalNodeId};
 use crate::{

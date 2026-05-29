@@ -6,7 +6,7 @@ use reifydb_core::{
 	internal,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::error::Error;
+use reifydb_value::error::Error;
 
 use crate::{CatalogStore, Result};
 

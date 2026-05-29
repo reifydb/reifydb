@@ -4,7 +4,7 @@
 use std::{error::Error, io};
 
 use reifydb_sdk::error::SdkError;
-use reifydb_type::error::Error as TypeError;
+use reifydb_value::error::Error as TypeError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExtensionError {

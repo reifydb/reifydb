@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::{container::number::NumberContainer, frame::data::FrameColumnData, r#type::Type};
+use reifydb_value::value::{container::number::NumberContainer, frame::data::FrameColumnData, value_type::ValueType};
 
 fn make(v: Vec<i64>) -> FrameColumnData {
 	FrameColumnData::Int8(NumberContainer::new(v))
@@ -9,5 +9,5 @@ fn make(v: Vec<i64>) -> FrameColumnData {
 
 crate::nones_tests! {
 	values: vec![-9_000_000_000i64, 0, 42, 9_000_000_000, i64::MAX],
-	inner_type: Type::Int8,
+	inner_type: ValueType::Int8,
 }

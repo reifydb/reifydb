@@ -1,0 +1,320 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
+
+use serde::{Deserialize, Serialize};
+
+use crate::{
+	storage::DataBitVec,
+	util::{
+		bitvec::BitVec,
+		float_format::{format_f32, format_f64},
+	},
+	value::{
+		Value,
+		container::{
+			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, dictionary::DictionaryContainer,
+			identity_id::IdentityIdContainer, number::NumberContainer, temporal::TemporalContainer,
+			utf8::Utf8Container, uuid::UuidContainer,
+		},
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		duration::Duration,
+		int::Int,
+		time::Time,
+		uint::Uint,
+		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
+	},
+};
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum FrameColumnData {
+	Bool(BoolContainer),
+	Float4(NumberContainer<f32>),
+	Float8(NumberContainer<f64>),
+	Int1(NumberContainer<i8>),
+	Int2(NumberContainer<i16>),
+	Int4(NumberContainer<i32>),
+	Int8(NumberContainer<i64>),
+	Int16(NumberContainer<i128>),
+	Uint1(NumberContainer<u8>),
+	Uint2(NumberContainer<u16>),
+	Uint4(NumberContainer<u32>),
+	Uint8(NumberContainer<u64>),
+	Uint16(NumberContainer<u128>),
+	Utf8(Utf8Container),
+	Date(TemporalContainer<Date>),
+	DateTime(TemporalContainer<DateTime>),
+	Time(TemporalContainer<Time>),
+	Duration(TemporalContainer<Duration>),
+	IdentityId(IdentityIdContainer),
+	Uuid4(UuidContainer<Uuid4>),
+	Uuid7(UuidContainer<Uuid7>),
+	Blob(BlobContainer),
+	Int(NumberContainer<Int>),
+	Uint(NumberContainer<Uint>),
+	Decimal(NumberContainer<Decimal>),
+	Any(AnyContainer),
+	DictionaryId(DictionaryContainer),
+
+	Option {
+		inner: Box<FrameColumnData>,
+		bitvec: BitVec,
+	},
+}
+
+impl FrameColumnData {
+	pub fn get_type(&self) -> ValueType {
+		match self {
+			FrameColumnData::Bool(_) => ValueType::Boolean,
+			FrameColumnData::Float4(_) => ValueType::Float4,
+			FrameColumnData::Float8(_) => ValueType::Float8,
+			FrameColumnData::Int1(_) => ValueType::Int1,
+			FrameColumnData::Int2(_) => ValueType::Int2,
+			FrameColumnData::Int4(_) => ValueType::Int4,
+			FrameColumnData::Int8(_) => ValueType::Int8,
+			FrameColumnData::Int16(_) => ValueType::Int16,
+			FrameColumnData::Uint1(_) => ValueType::Uint1,
+			FrameColumnData::Uint2(_) => ValueType::Uint2,
+			FrameColumnData::Uint4(_) => ValueType::Uint4,
+			FrameColumnData::Uint8(_) => ValueType::Uint8,
+			FrameColumnData::Uint16(_) => ValueType::Uint16,
+			FrameColumnData::Utf8(_) => ValueType::Utf8,
+			FrameColumnData::Date(_) => ValueType::Date,
+			FrameColumnData::DateTime(_) => ValueType::DateTime,
+			FrameColumnData::Time(_) => ValueType::Time,
+			FrameColumnData::Duration(_) => ValueType::Duration,
+			FrameColumnData::IdentityId(_) => ValueType::IdentityId,
+			FrameColumnData::Uuid4(_) => ValueType::Uuid4,
+			FrameColumnData::Uuid7(_) => ValueType::Uuid7,
+			FrameColumnData::Blob(_) => ValueType::Blob,
+			FrameColumnData::Int(_) => ValueType::Int,
+			FrameColumnData::Uint(_) => ValueType::Uint,
+			FrameColumnData::Decimal(_) => ValueType::Decimal,
+			FrameColumnData::Any(_) => ValueType::Any,
+			FrameColumnData::DictionaryId(_) => ValueType::DictionaryId,
+			FrameColumnData::Option {
+				inner,
+				..
+			} => ValueType::Option(Box::new(inner.get_type())),
+		}
+	}
+
+	pub fn is_defined(&self, idx: usize) -> bool {
+		match self {
+			FrameColumnData::Bool(container) => container.is_defined(idx),
+			FrameColumnData::Float4(container) => container.is_defined(idx),
+			FrameColumnData::Float8(container) => container.is_defined(idx),
+			FrameColumnData::Int1(container) => container.is_defined(idx),
+			FrameColumnData::Int2(container) => container.is_defined(idx),
+			FrameColumnData::Int4(container) => container.is_defined(idx),
+			FrameColumnData::Int8(container) => container.is_defined(idx),
+			FrameColumnData::Int16(container) => container.is_defined(idx),
+			FrameColumnData::Uint1(container) => container.is_defined(idx),
+			FrameColumnData::Uint2(container) => container.is_defined(idx),
+			FrameColumnData::Uint4(container) => container.is_defined(idx),
+			FrameColumnData::Uint8(container) => container.is_defined(idx),
+			FrameColumnData::Uint16(container) => container.is_defined(idx),
+			FrameColumnData::Utf8(container) => container.is_defined(idx),
+			FrameColumnData::Date(container) => container.is_defined(idx),
+			FrameColumnData::DateTime(container) => container.is_defined(idx),
+			FrameColumnData::Time(container) => container.is_defined(idx),
+			FrameColumnData::Duration(container) => container.is_defined(idx),
+			FrameColumnData::IdentityId(container) => container.is_defined(idx),
+			FrameColumnData::Uuid4(container) => container.is_defined(idx),
+			FrameColumnData::Uuid7(container) => container.is_defined(idx),
+			FrameColumnData::Blob(container) => container.is_defined(idx),
+			FrameColumnData::Int(container) => container.is_defined(idx),
+			FrameColumnData::Uint(container) => container.is_defined(idx),
+			FrameColumnData::Decimal(container) => container.is_defined(idx),
+			FrameColumnData::Any(container) => container.is_defined(idx),
+			FrameColumnData::DictionaryId(container) => container.is_defined(idx),
+			FrameColumnData::Option {
+				bitvec,
+				..
+			} => idx < DataBitVec::len(bitvec) && DataBitVec::get(bitvec, idx),
+		}
+	}
+
+	pub fn is_bool(&self) -> bool {
+		self.get_type() == ValueType::Boolean
+	}
+
+	pub fn is_float(&self) -> bool {
+		self.get_type() == ValueType::Float4 || self.get_type() == ValueType::Float8
+	}
+
+	pub fn is_utf8(&self) -> bool {
+		self.get_type() == ValueType::Utf8
+	}
+
+	pub fn is_number(&self) -> bool {
+		matches!(
+			self.get_type(),
+			ValueType::Float4
+				| ValueType::Float8 | ValueType::Int1
+				| ValueType::Int2 | ValueType::Int4
+				| ValueType::Int8 | ValueType::Int16
+				| ValueType::Uint1 | ValueType::Uint2
+				| ValueType::Uint4 | ValueType::Uint8
+				| ValueType::Uint16
+		)
+	}
+
+	pub fn is_text(&self) -> bool {
+		self.get_type() == ValueType::Utf8
+	}
+
+	pub fn is_temporal(&self) -> bool {
+		matches!(self.get_type(), ValueType::Date | ValueType::DateTime | ValueType::Time | ValueType::Duration)
+	}
+
+	pub fn is_uuid(&self) -> bool {
+		matches!(self.get_type(), ValueType::Uuid4 | ValueType::Uuid7)
+	}
+
+	pub fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = Value> + 'a> {
+		Box::new((0..self.len()).map(move |i| self.get_value(i)))
+	}
+}
+
+impl FrameColumnData {
+	pub fn len(&self) -> usize {
+		match self {
+			FrameColumnData::Bool(container) => container.len(),
+			FrameColumnData::Float4(container) => container.len(),
+			FrameColumnData::Float8(container) => container.len(),
+			FrameColumnData::Int1(container) => container.len(),
+			FrameColumnData::Int2(container) => container.len(),
+			FrameColumnData::Int4(container) => container.len(),
+			FrameColumnData::Int8(container) => container.len(),
+			FrameColumnData::Int16(container) => container.len(),
+			FrameColumnData::Uint1(container) => container.len(),
+			FrameColumnData::Uint2(container) => container.len(),
+			FrameColumnData::Uint4(container) => container.len(),
+			FrameColumnData::Uint8(container) => container.len(),
+			FrameColumnData::Uint16(container) => container.len(),
+			FrameColumnData::Utf8(container) => container.len(),
+			FrameColumnData::Date(container) => container.len(),
+			FrameColumnData::DateTime(container) => container.len(),
+			FrameColumnData::Time(container) => container.len(),
+			FrameColumnData::Duration(container) => container.len(),
+			FrameColumnData::IdentityId(container) => container.len(),
+			FrameColumnData::Uuid4(container) => container.len(),
+			FrameColumnData::Uuid7(container) => container.len(),
+			FrameColumnData::Blob(container) => container.len(),
+			FrameColumnData::Int(container) => container.len(),
+			FrameColumnData::Uint(container) => container.len(),
+			FrameColumnData::Decimal(container) => container.len(),
+			FrameColumnData::Any(container) => container.len(),
+			FrameColumnData::DictionaryId(container) => container.len(),
+			FrameColumnData::Option {
+				inner,
+				..
+			} => inner.len(),
+		}
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
+
+	pub fn as_string(&self, index: usize) -> String {
+		match self {
+			FrameColumnData::Bool(container) => container.as_string(index),
+			FrameColumnData::Float4(container) => {
+				if let Some(&v) = container.get(index) {
+					format_f32(v)
+				} else {
+					"none".to_string()
+				}
+			}
+			FrameColumnData::Float8(container) => {
+				if let Some(&v) = container.get(index) {
+					format_f64(v)
+				} else {
+					"none".to_string()
+				}
+			}
+			FrameColumnData::Int1(container) => container.as_string(index),
+			FrameColumnData::Int2(container) => container.as_string(index),
+			FrameColumnData::Int4(container) => container.as_string(index),
+			FrameColumnData::Int8(container) => container.as_string(index),
+			FrameColumnData::Int16(container) => container.as_string(index),
+			FrameColumnData::Uint1(container) => container.as_string(index),
+			FrameColumnData::Uint2(container) => container.as_string(index),
+			FrameColumnData::Uint4(container) => container.as_string(index),
+			FrameColumnData::Uint8(container) => container.as_string(index),
+			FrameColumnData::Uint16(container) => container.as_string(index),
+			FrameColumnData::Utf8(container) => container.as_string(index),
+			FrameColumnData::Date(container) => container.as_string(index),
+			FrameColumnData::DateTime(container) => container.as_string(index),
+			FrameColumnData::Time(container) => container.as_string(index),
+			FrameColumnData::Duration(container) => container.as_string(index),
+			FrameColumnData::IdentityId(container) => container.as_string(index),
+			FrameColumnData::Uuid4(container) => container.as_string(index),
+			FrameColumnData::Uuid7(container) => container.as_string(index),
+			FrameColumnData::Blob(container) => container.as_string(index),
+			FrameColumnData::Int(container) => container.as_string(index),
+			FrameColumnData::Uint(container) => container.as_string(index),
+			FrameColumnData::Decimal(container) => container.as_string(index),
+			FrameColumnData::Any(container) => container.as_string(index),
+			FrameColumnData::DictionaryId(container) => container.as_string(index),
+			FrameColumnData::Option {
+				inner,
+				bitvec,
+			} => {
+				if DataBitVec::get(bitvec, index) {
+					inner.as_string(index)
+				} else {
+					"none".to_string()
+				}
+			}
+		}
+	}
+}
+
+impl FrameColumnData {
+	pub fn get_value(&self, index: usize) -> Value {
+		match self {
+			FrameColumnData::Bool(container) => container.get_value(index),
+			FrameColumnData::Float4(container) => container.get_value(index),
+			FrameColumnData::Float8(container) => container.get_value(index),
+			FrameColumnData::Int1(container) => container.get_value(index),
+			FrameColumnData::Int2(container) => container.get_value(index),
+			FrameColumnData::Int4(container) => container.get_value(index),
+			FrameColumnData::Int8(container) => container.get_value(index),
+			FrameColumnData::Int16(container) => container.get_value(index),
+			FrameColumnData::Uint1(container) => container.get_value(index),
+			FrameColumnData::Uint2(container) => container.get_value(index),
+			FrameColumnData::Uint4(container) => container.get_value(index),
+			FrameColumnData::Uint8(container) => container.get_value(index),
+			FrameColumnData::Uint16(container) => container.get_value(index),
+			FrameColumnData::Utf8(container) => container.get_value(index),
+			FrameColumnData::Date(container) => container.get_value(index),
+			FrameColumnData::DateTime(container) => container.get_value(index),
+			FrameColumnData::Time(container) => container.get_value(index),
+			FrameColumnData::Duration(container) => container.get_value(index),
+			FrameColumnData::IdentityId(container) => container.get_value(index),
+			FrameColumnData::Uuid4(container) => container.get_value(index),
+			FrameColumnData::Uuid7(container) => container.get_value(index),
+			FrameColumnData::Blob(container) => container.get_value(index),
+			FrameColumnData::Int(container) => container.get_value(index),
+			FrameColumnData::Uint(container) => container.get_value(index),
+			FrameColumnData::Decimal(container) => container.get_value(index),
+			FrameColumnData::Any(container) => container.get_value(index),
+			FrameColumnData::DictionaryId(container) => container.get_value(index),
+			FrameColumnData::Option {
+				inner,
+				bitvec,
+			} => {
+				if DataBitVec::get(bitvec, index) {
+					inner.get_value(index)
+				} else {
+					Value::none_of(inner.get_type())
+				}
+			}
+		}
+	}
+}

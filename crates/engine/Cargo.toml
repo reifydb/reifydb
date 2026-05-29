@@ -30,7 +30,7 @@ reifydb-sqlite = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-transaction = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 thiserror = { workspace = true }
 bumpalo = { workspace = true }
 smallvec = { workspace = true }

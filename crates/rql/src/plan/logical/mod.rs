@@ -35,7 +35,7 @@ use reifydb_core::{
 	sort::{SortDirection, SortKey},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction, query::QueryTransaction};
-use reifydb_type::fragment::Fragment;
+use reifydb_value::fragment::Fragment;
 use tracing::instrument;
 
 use crate::{

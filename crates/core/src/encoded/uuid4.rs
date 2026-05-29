@@ -3,7 +3,7 @@
 
 use std::ptr;
 
-use reifydb_type::value::{r#type::Type, uuid::Uuid4};
+use reifydb_value::value::{uuid::Uuid4, value_type::ValueType};
 use uuid::Uuid;
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
@@ -12,7 +12,7 @@ impl RowShape {
 	pub fn set_uuid4(&self, row: &mut EncodedRow, index: usize, value: Uuid4) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uuid4);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Uuid4);
 		row.set_valid(index, true);
 		unsafe {
 			ptr::write_unaligned(
@@ -25,7 +25,7 @@ impl RowShape {
 	pub fn get_uuid4(&self, row: &EncodedRow, index: usize) -> Uuid4 {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uuid4);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Uuid4);
 		unsafe {
 			let bytes: [u8; 16] =
 				ptr::read_unaligned(row.as_ptr().add(field.offset as usize) as *const [u8; 16]);
@@ -34,7 +34,7 @@ impl RowShape {
 	}
 
 	pub fn try_get_uuid4(&self, row: &EncodedRow, index: usize) -> Option<Uuid4> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Uuid4 {
+		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Uuid4 {
 			Some(self.get_uuid4(row, index))
 		} else {
 			None
@@ -44,13 +44,13 @@ impl RowShape {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::{r#type::Type, uuid::Uuid4};
+	use reifydb_value::value::{uuid::Uuid4, value_type::ValueType};
 
 	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_set_get_uuid4() {
-		let shape = RowShape::testing(&[Type::Uuid4]);
+		let shape = RowShape::testing(&[ValueType::Uuid4]);
 		let mut row = shape.allocate();
 
 		let uuid = Uuid4::generate();
@@ -60,7 +60,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_uuid4() {
-		let shape = RowShape::testing(&[Type::Uuid4]);
+		let shape = RowShape::testing(&[ValueType::Uuid4]);
 		let mut row = shape.allocate();
 
 		assert_eq!(shape.try_get_uuid4(&row, 0), None);
@@ -72,7 +72,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_generations() {
-		let shape = RowShape::testing(&[Type::Uuid4]);
+		let shape = RowShape::testing(&[ValueType::Uuid4]);
 
 		// Generate multiple UUIDs and ensure they're different
 		let mut uuids = Vec::new();
@@ -95,7 +95,7 @@ pub mod tests {
 
 	#[test]
 	fn test_version_check() {
-		let shape = RowShape::testing(&[Type::Uuid4]);
+		let shape = RowShape::testing(&[ValueType::Uuid4]);
 		let mut row = shape.allocate();
 
 		let uuid = Uuid4::generate();
@@ -108,7 +108,8 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let shape = RowShape::testing(&[Type::Uuid4, Type::Boolean, Type::Uuid4, Type::Int4]);
+		let shape =
+			RowShape::testing(&[ValueType::Uuid4, ValueType::Boolean, ValueType::Uuid4, ValueType::Int4]);
 		let mut row = shape.allocate();
 
 		let uuid1 = Uuid4::generate();
@@ -127,7 +128,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let shape = RowShape::testing(&[Type::Uuid4, Type::Uuid4]);
+		let shape = RowShape::testing(&[ValueType::Uuid4, ValueType::Uuid4]);
 		let mut row = shape.allocate();
 
 		let uuid = Uuid4::generate();
@@ -142,7 +143,7 @@ pub mod tests {
 
 	#[test]
 	fn test_persistence() {
-		let shape = RowShape::testing(&[Type::Uuid4]);
+		let shape = RowShape::testing(&[ValueType::Uuid4]);
 		let mut row = shape.allocate();
 
 		let uuid = Uuid4::generate();
@@ -158,7 +159,7 @@ pub mod tests {
 
 	#[test]
 	fn test_clone_consistency() {
-		let shape = RowShape::testing(&[Type::Uuid4]);
+		let shape = RowShape::testing(&[ValueType::Uuid4]);
 		let mut row = shape.allocate();
 
 		let original_uuid = Uuid4::generate();
@@ -173,7 +174,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_fields() {
-		let shape = RowShape::testing(&[Type::Uuid4, Type::Uuid4, Type::Uuid4]);
+		let shape = RowShape::testing(&[ValueType::Uuid4, ValueType::Uuid4, ValueType::Uuid4]);
 		let mut row = shape.allocate();
 
 		let uuid1 = Uuid4::generate();
@@ -196,7 +197,7 @@ pub mod tests {
 
 	#[test]
 	fn test_format_consistency() {
-		let shape = RowShape::testing(&[Type::Uuid4]);
+		let shape = RowShape::testing(&[ValueType::Uuid4]);
 		let mut row = shape.allocate();
 
 		let uuid = Uuid4::generate();
@@ -215,7 +216,7 @@ pub mod tests {
 
 	#[test]
 	fn test_byte_level_storage() {
-		let shape = RowShape::testing(&[Type::Uuid4]);
+		let shape = RowShape::testing(&[ValueType::Uuid4]);
 		let mut row = shape.allocate();
 
 		let uuid = Uuid4::generate();
@@ -234,7 +235,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_uuid4_wrong_type() {
-		let shape = RowShape::testing(&[Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
 		shape.set_bool(&mut row, 0, true);

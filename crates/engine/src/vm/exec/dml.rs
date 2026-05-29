@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{internal_error, value::column::columns::Columns};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::params::Params;
+use reifydb_value::params::Params;
 
 use crate::{
 	Result,

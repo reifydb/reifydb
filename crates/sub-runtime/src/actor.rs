@@ -8,9 +8,9 @@ use reifydb_runtime::actor::{
 	context::Context,
 	traits::{Actor, Directive},
 };
-use reifydb_type::{
+use reifydb_value::{
 	params::Params,
-	value::{Value, datetime::DateTime, identity::IdentityId, ordered_f64::OrderedF64, r#type::Type},
+	value::{Value, datetime::DateTime, identity::IdentityId, ordered_f64::OrderedF64, value_type::ValueType},
 };
 use tracing::{error, info};
 
@@ -108,6 +108,6 @@ impl Actor for RuntimeSamplerActor {
 
 fn f64_value(v: f64) -> Value {
 	OrderedF64::try_from(v).map(Value::Float8).unwrap_or(Value::None {
-		inner: Type::Float8,
+		inner: ValueType::Float8,
 	})
 }

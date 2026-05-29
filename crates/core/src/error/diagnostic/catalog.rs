@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::{error::Diagnostic, fragment::Fragment, value::r#type::Type};
+use reifydb_value::{error::Diagnostic, fragment::Fragment, value::value_type::ValueType};
 
 pub fn namespace_already_exists(fragment: Fragment, namespace: &str) -> Diagnostic {
 	Diagnostic {
@@ -224,9 +224,9 @@ pub fn dictionary_not_found(fragment: Fragment, namespace: &str, dictionary: &st
 pub fn dictionary_type_mismatch(
 	fragment: Fragment,
 	column: &str,
-	column_type: Type,
+	column_type: ValueType,
 	dictionary: &str,
-	dictionary_value_type: Type,
+	dictionary_value_type: ValueType,
 ) -> Diagnostic {
 	Diagnostic {
 		code: "CA_008".to_string(),
@@ -308,7 +308,7 @@ pub fn view_column_already_exists(fragment: Fragment, namespace: &str, view: &st
 	}
 }
 
-pub fn auto_increment_invalid_type(fragment: Fragment, column: &str, ty: Type) -> Diagnostic {
+pub fn auto_increment_invalid_type(fragment: Fragment, column: &str, ty: ValueType) -> Diagnostic {
 	Diagnostic {
 		code: "CA_006".to_string(),
 		rql: None,

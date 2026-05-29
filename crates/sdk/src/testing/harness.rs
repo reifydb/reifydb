@@ -22,7 +22,7 @@ use reifydb_core::{
 	row::Row,
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
-use reifydb_type::{util::cowvec::CowVec, value::Value};
+use reifydb_value::{util::cowvec::CowVec, value::Value};
 use serde::de::DeserializeOwned;
 
 use crate::{
@@ -422,7 +422,7 @@ pub mod tests {
 		operator::capabilities::OperatorCapability,
 	};
 	use reifydb_core::{common::CommitVersion, encoded::key::IntoEncodedKey, interface::catalog::flow::FlowNodeId};
-	use reifydb_type::value::row_number::RowNumber;
+	use reifydb_value::value::row_number::RowNumber;
 
 	use super::{super::helpers::encode_key, *};
 	use crate::{

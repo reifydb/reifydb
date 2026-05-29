@@ -26,7 +26,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::{SharedRuntime, sync::mutex::Mutex};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_type::Result;
+use reifydb_value::Result;
 use tracing::{debug, error, info};
 
 use crate::config::OtelConfig;

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::profiler::ProfilerCategoryId;
-use reifydb_type::value::duration::Duration;
+use reifydb_value::value::duration::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::{

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use num_traits::NumCast;
-use reifydb_type::{
+use reifydb_value::{
 	storage::DataBitVec,
 	value::{
 		Value,

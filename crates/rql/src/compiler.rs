@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::hash::xxh3_128;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	Result, error,
 	fragment::Fragment,
 	value::{Value, duration::Duration},

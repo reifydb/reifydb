@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_abi::data::column::ColumnTypeCode;
-use reifydb_type::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
+use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
 
 use crate::{
 	error::SdkError,

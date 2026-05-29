@@ -8,7 +8,7 @@ use reifydb_core::interface::catalog::{
 	id::NamespaceId,
 	vtable::VTable,
 };
-use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 use super::ids::{columns::shape_fields::*, vtable::SHAPE_FIELDS};
 
@@ -24,7 +24,7 @@ pub fn shape_fields() -> Arc<VTable> {
 				Column {
 					id: SHAPE_FINGERPRINT,
 					name: "fingerprint".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint8),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
@@ -33,7 +33,7 @@ pub fn shape_fields() -> Arc<VTable> {
 				Column {
 					id: FIELD_INDEX,
 					name: "field_index".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint2),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint2),
 					properties: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,
@@ -42,7 +42,7 @@ pub fn shape_fields() -> Arc<VTable> {
 				Column {
 					id: NAME,
 					name: "name".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Utf8),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(2),
 					auto_increment: false,
@@ -51,7 +51,7 @@ pub fn shape_fields() -> Arc<VTable> {
 				Column {
 					id: TYPE,
 					name: "type".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint1),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint1),
 					properties: vec![],
 					index: ColumnIndex(3),
 					auto_increment: false,
@@ -60,7 +60,7 @@ pub fn shape_fields() -> Arc<VTable> {
 				Column {
 					id: CONSTRAINT_TYPE,
 					name: "constraint_type".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint1),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint1),
 					properties: vec![],
 					index: ColumnIndex(4),
 					auto_increment: false,
@@ -69,7 +69,7 @@ pub fn shape_fields() -> Arc<VTable> {
 				Column {
 					id: CONSTRAINT_P1,
 					name: "constraint_p1".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint4),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint4),
 					properties: vec![],
 					index: ColumnIndex(5),
 					auto_increment: false,
@@ -78,7 +78,7 @@ pub fn shape_fields() -> Arc<VTable> {
 				Column {
 					id: CONSTRAINT_P2,
 					name: "constraint_p2".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint4),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint4),
 					properties: vec![],
 					index: ColumnIndex(6),
 					auto_increment: false,
@@ -87,7 +87,7 @@ pub fn shape_fields() -> Arc<VTable> {
 				Column {
 					id: OFFSET,
 					name: "offset".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint4),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint4),
 					properties: vec![],
 					index: ColumnIndex(7),
 					auto_increment: false,
@@ -96,7 +96,7 @@ pub fn shape_fields() -> Arc<VTable> {
 				Column {
 					id: SIZE,
 					name: "size".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint4),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint4),
 					properties: vec![],
 					index: ColumnIndex(8),
 					auto_increment: false,
@@ -105,7 +105,7 @@ pub fn shape_fields() -> Arc<VTable> {
 				Column {
 					id: ALIGN,
 					name: "align".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint1),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint1),
 					properties: vec![],
 					index: ColumnIndex(9),
 					auto_increment: false,

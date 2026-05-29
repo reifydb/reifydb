@@ -12,9 +12,9 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
-	value::{Value, dictionary::DictionaryEntryId, r#type::Type},
+	value::{Value, dictionary::DictionaryEntryId, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -134,25 +134,25 @@ impl QueryNode for DictionaryScanNode {
 	}
 }
 
-fn build_id_column(ids: &[DictionaryEntryId], id_type: Type) -> Result<ColumnWithName> {
+fn build_id_column(ids: &[DictionaryEntryId], id_type: ValueType) -> Result<ColumnWithName> {
 	let data = match id_type {
-		Type::Uint1 => {
+		ValueType::Uint1 => {
 			let vals: Vec<u8> = ids.iter().map(|id| id.to_u128() as u8).collect();
 			ColumnBuffer::uint1(vals)
 		}
-		Type::Uint2 => {
+		ValueType::Uint2 => {
 			let vals: Vec<u16> = ids.iter().map(|id| id.to_u128() as u16).collect();
 			ColumnBuffer::uint2(vals)
 		}
-		Type::Uint4 => {
+		ValueType::Uint4 => {
 			let vals: Vec<u32> = ids.iter().map(|id| id.to_u128() as u32).collect();
 			ColumnBuffer::uint4(vals)
 		}
-		Type::Uint8 => {
+		ValueType::Uint8 => {
 			let vals: Vec<u64> = ids.iter().map(|id| id.to_u128() as u64).collect();
 			ColumnBuffer::uint8(vals)
 		}
-		Type::Uint16 => {
+		ValueType::Uint16 => {
 			let vals: Vec<u128> = ids.iter().map(|id| id.to_u128()).collect();
 			ColumnBuffer::uint16(vals)
 		}
@@ -165,9 +165,9 @@ fn build_id_column(ids: &[DictionaryEntryId], id_type: Type) -> Result<ColumnWit
 	})
 }
 
-fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithName> {
+fn build_value_column(values: &[Value], value_type: ValueType) -> Result<ColumnWithName> {
 	let data = match value_type {
-		Type::Utf8 => {
+		ValueType::Utf8 => {
 			let vals: Vec<String> = values
 				.iter()
 				.map(|v| match v {
@@ -177,7 +177,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithNa
 				.collect();
 			ColumnBuffer::utf8(vals)
 		}
-		Type::Int1 => {
+		ValueType::Int1 => {
 			let vals: Vec<i8> = values
 				.iter()
 				.map(|v| match v {
@@ -187,7 +187,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithNa
 				.collect();
 			ColumnBuffer::int1(vals)
 		}
-		Type::Int2 => {
+		ValueType::Int2 => {
 			let vals: Vec<i16> = values
 				.iter()
 				.map(|v| match v {
@@ -197,7 +197,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithNa
 				.collect();
 			ColumnBuffer::int2(vals)
 		}
-		Type::Int4 => {
+		ValueType::Int4 => {
 			let vals: Vec<i32> = values
 				.iter()
 				.map(|v| match v {
@@ -207,7 +207,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithNa
 				.collect();
 			ColumnBuffer::int4(vals)
 		}
-		Type::Int8 => {
+		ValueType::Int8 => {
 			let vals: Vec<i64> = values
 				.iter()
 				.map(|v| match v {
@@ -217,7 +217,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithNa
 				.collect();
 			ColumnBuffer::int8(vals)
 		}
-		Type::Uint1 => {
+		ValueType::Uint1 => {
 			let vals: Vec<u8> = values
 				.iter()
 				.map(|v| match v {
@@ -227,7 +227,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithNa
 				.collect();
 			ColumnBuffer::uint1(vals)
 		}
-		Type::Uint2 => {
+		ValueType::Uint2 => {
 			let vals: Vec<u16> = values
 				.iter()
 				.map(|v| match v {
@@ -237,7 +237,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithNa
 				.collect();
 			ColumnBuffer::uint2(vals)
 		}
-		Type::Uint4 => {
+		ValueType::Uint4 => {
 			let vals: Vec<u32> = values
 				.iter()
 				.map(|v| match v {
@@ -247,7 +247,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithNa
 				.collect();
 			ColumnBuffer::uint4(vals)
 		}
-		Type::Uint8 => {
+		ValueType::Uint8 => {
 			let vals: Vec<u64> = values
 				.iter()
 				.map(|v| match v {

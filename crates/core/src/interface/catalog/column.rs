@@ -3,7 +3,7 @@
 
 use std::ops::Deref;
 
-use reifydb_type::value::{constraint::TypeConstraint, dictionary::DictionaryId};
+use reifydb_value::value::{constraint::TypeConstraint, dictionary::DictionaryId};
 use serde::{Deserialize, Serialize};
 
 use crate::interface::catalog::{id::ColumnId, property::ColumnProperty};

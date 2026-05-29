@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	util::cowvec::CowVec,
 	value::{Value, datetime::DateTime, row_number::RowNumber},

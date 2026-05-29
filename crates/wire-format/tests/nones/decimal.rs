@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::{
-	container::number::NumberContainer, decimal::Decimal, frame::data::FrameColumnData, r#type::Type,
+use reifydb_value::value::{
+	container::number::NumberContainer, decimal::Decimal, frame::data::FrameColumnData, value_type::ValueType,
 };
 
 fn make(v: Vec<Decimal>) -> FrameColumnData {
@@ -17,5 +17,5 @@ crate::nones_tests! {
 		Decimal::new("0.000001".parse().unwrap()),
 		Decimal::new("-999999999.999999999".parse().unwrap()),
 	],
-	inner_type: Type::Decimal,
+	inner_type: ValueType::Decimal,
 }

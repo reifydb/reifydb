@@ -21,7 +21,7 @@ use std::{
 };
 
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::internal_error;
 
@@ -66,11 +66,9 @@ impl IocContainer {
 	}
 
 	pub fn resolve<T: Clone + Any + Send + Sync + 'static>(&self) -> Result<T> {
-		self.dependencies
-			.read()
-			.get(&TypeId::of::<T>())
-			.and_then(|boxed| boxed.value::<T>())
-			.ok_or_else(|| internal_error!("Type {} not registered in IoC container", type_name::<T>()))
+		self.dependencies.read().get(&TypeId::of::<T>()).and_then(|boxed| boxed.value::<T>()).ok_or_else(|| {
+			internal_error!("ValueType {} not registered in IoC container", type_name::<T>())
+		})
 	}
 
 	pub fn try_resolve<T: Clone + Any + Send + Sync + 'static>(&self) -> Option<T> {

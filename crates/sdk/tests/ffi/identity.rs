@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::buffer::ColumnBuffer;
-use reifydb_type::value::{identity::IdentityId, uuid::Uuid7};
+use reifydb_value::value::{identity::IdentityId, uuid::Uuid7};
 use uuid::Uuid;
 
 use super::common::{assert_column_eq, round_trip_column};

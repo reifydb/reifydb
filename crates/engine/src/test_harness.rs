@@ -51,10 +51,10 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 	transaction::admin::AdminTransaction,
 };
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
-	value::{constraint::TypeConstraint, frame::frame::Frame, identity::IdentityId, r#type::Type},
+	value::{constraint::TypeConstraint, frame::frame::Frame, identity::IdentityId, value_type::ValueType},
 };
 
 use crate::{engine::StandardEngine, vm::services::EngineConfig};
@@ -385,7 +385,7 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 				TableColumnToCreate {
 					name: Fragment::internal("id"),
 					fragment: Fragment::None,
-					constraint: TypeConstraint::unconstrained(Type::Int8),
+					constraint: TypeConstraint::unconstrained(ValueType::Int8),
 					properties: vec![],
 					auto_increment: true,
 					dictionary_id: None,
@@ -393,7 +393,7 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 				TableColumnToCreate {
 					name: Fragment::internal("data"),
 					fragment: Fragment::None,
-					constraint: TypeConstraint::unconstrained(Type::Blob),
+					constraint: TypeConstraint::unconstrained(ValueType::Blob),
 					properties: vec![],
 					auto_increment: false,
 					dictionary_id: None,

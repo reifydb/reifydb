@@ -28,7 +28,7 @@ use reifydb_core::interface::{
 	version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::value::{datetime::DateTime, identity::IdentityId};
+use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
 pub mod bootstrap;
 pub mod cache;
 pub mod catalog;
@@ -41,7 +41,7 @@ pub mod system;
 pub mod test_utils;
 pub mod vtable;
 
-pub type Result<T> = reifydb_type::Result<T>;
+pub type Result<T> = reifydb_value::Result<T>;
 
 pub(crate) struct CatalogStore;
 

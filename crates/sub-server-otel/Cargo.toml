@@ -11,7 +11,7 @@ description = "OpenTelemetry/Jaeger tracing subsystem for ReifyDB"
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-runtime = { workspace = true}
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-sub-server = { workspace = true }
 

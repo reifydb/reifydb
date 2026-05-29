@@ -10,7 +10,7 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::AlterSequenceNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::{
+use reifydb_value::{
 	params::Params,
 	return_error,
 	value::{Value, identity::IdentityId},

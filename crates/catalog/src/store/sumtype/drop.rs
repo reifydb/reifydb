@@ -3,7 +3,7 @@
 
 use reifydb_core::key::{namespace_sumtype::NamespaceSumTypeKey, sumtype::SumTypeKey};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::value::sumtype::SumTypeId;
+use reifydb_value::value::sumtype::SumTypeId;
 
 use crate::{CatalogStore, Result};
 
@@ -23,7 +23,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_type::value::sumtype::SumTypeId;
+	use reifydb_value::value::sumtype::SumTypeId;
 
 	use crate::{CatalogStore, test_utils::ensure_test_sumtype};
 

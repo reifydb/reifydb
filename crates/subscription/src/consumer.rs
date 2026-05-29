@@ -15,10 +15,10 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, columns::Columns, buffer::ColumnBuffer},
 };
-use reifydb_type::value::datetime::DateTime;
+use reifydb_value::value::datetime::DateTime;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, error::Error, fragment::Fragment, value::identity::IdentityId};
+use reifydb_value::{Result, error::Error, fragment::Fragment, value::identity::IdentityId};
 use tracing::{debug, warn};
 
 

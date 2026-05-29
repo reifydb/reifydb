@@ -26,7 +26,7 @@ use reifydb_core::{
 };
 use reifydb_rql::{nodes::DeleteSeriesNode, query::QueryPlan};
 use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,

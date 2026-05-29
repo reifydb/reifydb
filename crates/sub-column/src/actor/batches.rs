@@ -8,12 +8,12 @@ use reifydb_column::{
 	snapshot::{ColumnBlock, ColumnChunks},
 };
 use reifydb_core::value::column::{buffer::ColumnBuffer, columns::Columns, data::canonical::Canonical};
-use reifydb_type::{Result, value::r#type::Type};
+use reifydb_value::{Result, value::value_type::ValueType};
 
 use crate::error::SubColumnError;
 
 pub fn column_block_from_batches(
-	schema: Vec<(String, Type)>,
+	schema: Vec<(String, ValueType)>,
 	batches: Vec<Columns>,
 	compressor: &Compressor,
 ) -> Result<ColumnBlock> {

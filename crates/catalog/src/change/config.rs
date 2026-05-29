@@ -6,7 +6,7 @@ use reifydb_core::{
 	key::{EncodableKey, config::ConfigStorageKey},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 use super::CatalogChangeApplier;
 use crate::{

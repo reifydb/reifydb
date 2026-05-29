@@ -7,7 +7,7 @@ use std::{
 	ops::Deref,
 };
 
-use reifydb_type::value::blob::Blob;
+use reifydb_value::value::blob::Blob;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
 use crate::interface::catalog::id::NamespaceId;

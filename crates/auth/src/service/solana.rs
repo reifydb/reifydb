@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_core::interface::auth::AuthStep;
-use reifydb_type::error::Error;
+use reifydb_value::error::Error;
 
 use super::{AuthResponse, AuthService, generate_session_token};
 use crate::error::AuthError;

@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use super::{
 	authentication::{AuthenticationPostCreateInterceptor, AuthenticationPreDeleteInterceptor},

@@ -5,7 +5,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 };
-use reifydb_type::value::dictionary::DictionaryId;
+use reifydb_value::value::dictionary::DictionaryId;
 
 use crate::cache::{CatalogCache, MultiVersionDictionary};
 
@@ -62,7 +62,7 @@ impl CatalogCache {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
 
@@ -71,8 +71,8 @@ pub mod tests {
 			id,
 			namespace,
 			name: name.to_string(),
-			value_type: Type::Utf8,
-			id_type: Type::Uint4,
+			value_type: ValueType::Utf8,
+			id_type: ValueType::Uint4,
 		}
 	}
 

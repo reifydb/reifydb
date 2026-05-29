@@ -3,10 +3,10 @@
 
 use num_traits::ToPrimitive;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_type::value::{
+use reifydb_value::value::{
 	container::number::NumberContainer,
 	decimal::Decimal,
-	r#type::{Type, input_types::InputTypes},
+	value_type::{ValueType, input_types::InputTypes},
 };
 
 use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
@@ -34,8 +34,8 @@ impl<'a> Routine<FunctionContext<'a>> for Ceil {
 		&self.info
 	}
 
-	fn return_type(&self, input_types: &[Type]) -> Type {
-		input_types.first().cloned().unwrap_or(Type::Float8)
+	fn return_type(&self, input_types: &[ValueType]) -> ValueType {
+		input_types.first().cloned().unwrap_or(ValueType::Float8)
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {

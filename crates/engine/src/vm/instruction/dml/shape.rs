@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::catalog::{ringbuffer::RingBuffer, series::Series, table::Table},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 use crate::Result;
 
@@ -61,7 +61,7 @@ pub fn get_or_create_series_shape(catalog: &Catalog, series: &Series, txn: &mut 
 	let key_column = series.key.column();
 	let key_col = series.columns.iter().find(|c| c.name == key_column);
 	let key_type =
-		key_col.map(|c| c.constraint.clone()).unwrap_or_else(|| TypeConstraint::unconstrained(Type::Int8));
+		key_col.map(|c| c.constraint.clone()).unwrap_or_else(|| TypeConstraint::unconstrained(ValueType::Int8));
 	fields.push(RowShapeField::new(key_column.to_string(), key_type));
 	for col in series.data_columns() {
 		let constraint = if let Some(dict_id) = col.dictionary_id {

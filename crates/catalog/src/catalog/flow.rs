@@ -13,7 +13,7 @@ use reifydb_transaction::{
 	change::TransactionalFlowChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_type::{error, fragment::Fragment};
+use reifydb_value::{error, fragment::Fragment};
 use tracing::{instrument, warn};
 
 use crate::{

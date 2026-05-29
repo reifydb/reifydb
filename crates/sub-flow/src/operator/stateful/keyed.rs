@@ -5,9 +5,9 @@ use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	util::encoding::keycode::serializer::KeySerializer,
 };
-use reifydb_type::{
+use reifydb_value::{
 	Result,
-	value::{Value, r#type::Type},
+	value::{Value, value_type::ValueType},
 };
 
 use super::utils;
@@ -16,7 +16,7 @@ use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTrans
 pub trait KeyedStateful: RawStatefulOperator {
 	fn layout(&self) -> RowShape;
 
-	fn key_types(&self) -> &[Type];
+	fn key_types(&self) -> &[ValueType];
 
 	fn encode_key(&self, key_values: &[Value]) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
@@ -66,7 +66,7 @@ pub mod tests {
 	use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_type::value::{Value, r#type::Type};
+	use reifydb_value::value::{Value, value_type::ValueType};
 
 	use super::*;
 	#[cfg(test)]
@@ -79,14 +79,14 @@ pub mod tests {
 			self.layout.clone()
 		}
 
-		fn key_types(&self) -> &[Type] {
+		fn key_types(&self) -> &[ValueType] {
 			&self.key_types
 		}
 	}
 
 	#[test]
 	fn test_encode_key() {
-		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
+		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![ValueType::Int4, ValueType::Utf8]);
 
 		// Test encoding with different key values
 		let key1 = vec![Value::Int4(42), Value::Utf8("test".to_string())];
@@ -122,13 +122,13 @@ pub mod tests {
 			Interceptors::new(),
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
-		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
+		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![ValueType::Int4, ValueType::Utf8]);
 		let key = vec![Value::Int4(100), Value::Utf8("key1".to_string())];
 
 		// Initially should create new state
 		let state1 = operator.load_state(&mut txn, &key).unwrap();
 
-		// Modify and save - with_key_types uses [Type::Blob, Type::Int4]
+		// Modify and save - with_key_types uses [ValueType::Blob, ValueType::Int4]
 		let mut modified = state1.clone();
 		let layout = operator.layout();
 		layout.set_i32(&mut modified, 1, 0x42); // Modify second field (Int4)
@@ -149,7 +149,7 @@ pub mod tests {
 			Interceptors::new(),
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
-		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
+		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![ValueType::Int4, ValueType::Utf8]);
 		let key = vec![Value::Int4(200), Value::Utf8("update_key".to_string())];
 
 		// Update with a function
@@ -179,7 +179,7 @@ pub mod tests {
 			Interceptors::new(),
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
-		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
+		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![ValueType::Int4, ValueType::Utf8]);
 		let key = vec![Value::Int4(300), Value::Utf8("remove_key".to_string())];
 
 		// Create and save state
@@ -205,7 +205,7 @@ pub mod tests {
 			Interceptors::new(),
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
-		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
+		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![ValueType::Int4, ValueType::Utf8]);
 
 		// Create multiple keys with different states
 		for i in 0..5 {
@@ -228,7 +228,7 @@ pub mod tests {
 
 	#[test]
 	fn test_key_ordering() {
-		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![Type::Int4, Type::Utf8]);
+		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![ValueType::Int4, ValueType::Utf8]);
 
 		// Test that keys maintain order
 		let key1 = vec![Value::Int4(1), Value::Utf8("a".to_string())];

@@ -14,7 +14,7 @@ use reifydb_rql::{
 	nodes::{RunTestsNode, RunTestsScope},
 };
 use reifydb_transaction::transaction::{TestTransaction, Transaction};
-use reifydb_type::value::{Value, duration::Duration as RqlDuration, frame::frame::Frame};
+use reifydb_value::value::{Value, duration::Duration as RqlDuration, frame::frame::Frame};
 
 use crate::{
 	Result,

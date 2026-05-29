@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
+use reifydb_value::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, value_type::ValueType};
 
 use crate::{
 	function::text::format_bytes::{
@@ -36,8 +36,8 @@ impl<'a> Routine<FunctionContext<'a>> for FormatBytesSi {
 		&self.info
 	}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Utf8
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Utf8
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
@@ -79,17 +79,17 @@ impl<'a> Routine<FunctionContext<'a>> for FormatBytesSi {
 					function: ctx.fragment.clone(),
 					argument_index: 0,
 					expected: vec![
-						Type::Int1,
-						Type::Int2,
-						Type::Int4,
-						Type::Int8,
-						Type::Uint1,
-						Type::Uint2,
-						Type::Uint4,
-						Type::Uint8,
-						Type::Float4,
-						Type::Float8,
-						Type::Decimal,
+						ValueType::Int1,
+						ValueType::Int2,
+						ValueType::Int4,
+						ValueType::Int8,
+						ValueType::Uint1,
+						ValueType::Uint2,
+						ValueType::Uint4,
+						ValueType::Uint8,
+						ValueType::Float4,
+						ValueType::Float8,
+						ValueType::Decimal,
 					],
 					actual: other.get_type(),
 				});

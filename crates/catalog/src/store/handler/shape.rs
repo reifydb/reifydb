@@ -3,7 +3,7 @@
 
 use once_cell::sync::Lazy;
 use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 pub(crate) mod handler {
 	use super::*;
@@ -17,12 +17,12 @@ pub(crate) mod handler {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("namespace", Type::Uint8),
-			RowShapeField::unconstrained("name", Type::Utf8),
-			RowShapeField::unconstrained("on_sumtype_id", Type::Uint8),
-			RowShapeField::unconstrained("on_variant_tag", Type::Uint1),
-			RowShapeField::unconstrained("body_source", Type::Utf8),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("namespace", ValueType::Uint8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
+			RowShapeField::unconstrained("on_sumtype_id", ValueType::Uint8),
+			RowShapeField::unconstrained("on_variant_tag", ValueType::Uint1),
+			RowShapeField::unconstrained("body_source", ValueType::Utf8),
 		])
 	});
 }
@@ -35,8 +35,8 @@ pub(crate) mod handler_namespace {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("name", Type::Utf8),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
 		])
 	});
 }

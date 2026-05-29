@@ -6,7 +6,7 @@ use futures_util::{
 	SinkExt, StreamExt,
 	stream::{SplitSink, SplitStream},
 };
-use reifydb_type::{
+use reifydb_value::{
 	error::{Diagnostic, Error},
 	params::Params,
 	value::frame::frame::Frame,

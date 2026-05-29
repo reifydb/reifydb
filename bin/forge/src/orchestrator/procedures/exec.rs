@@ -6,10 +6,10 @@ use std::{fs, process::Command, sync::LazyLock};
 use reifydb::{
 	core::value::column::columns::Columns,
 	routine::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError},
-	r#type::{
+	value::{
 		fragment::Fragment,
 		params::Params,
-		value::{Value, r#type::Type},
+		value::{Value, value_type::ValueType},
 	},
 };
 
@@ -37,8 +37,8 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ExecProcedure {
 	fn info(&self) -> &RoutineInfo {
 		&INFO
 	}
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Any
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Any
 	}
 	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
 		let (command_str, workspace) = match ctx.params {
@@ -49,7 +49,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ExecProcedure {
 						return Err(RoutineError::ProcedureInvalidArgumentType {
 							procedure: Fragment::internal("forge::exec"),
 							argument_index: 0,
-							expected: vec![Type::Utf8],
+							expected: vec![ValueType::Utf8],
 							actual: args[0].get_type(),
 						});
 					}
@@ -60,7 +60,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ExecProcedure {
 						return Err(RoutineError::ProcedureInvalidArgumentType {
 							procedure: Fragment::internal("forge::exec"),
 							argument_index: 1,
-							expected: vec![Type::Utf8],
+							expected: vec![ValueType::Utf8],
 							actual: args[1].get_type(),
 						});
 					}

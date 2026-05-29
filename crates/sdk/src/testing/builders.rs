@@ -11,7 +11,7 @@ use reifydb_core::{
 	row::Row,
 	value::column::columns::Columns,
 };
-use reifydb_type::value::{Value, datetime::DateTime, row_number::RowNumber, r#type::Type};
+use reifydb_value::value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType};
 
 pub struct TestRowBuilder {
 	row_number: RowNumber,
@@ -174,13 +174,13 @@ impl TestLayoutBuilder {
 		}
 	}
 
-	pub fn add_type(mut self, ty: Type) -> Self {
+	pub fn add_type(mut self, ty: ValueType) -> Self {
 		let field_name = format!("field{}", self.fields.len());
 		self.fields.push(RowShapeField::unconstrained(field_name, ty));
 		self
 	}
 
-	pub fn add_field(mut self, name: impl Into<String>, ty: Type) -> Self {
+	pub fn add_field(mut self, name: impl Into<String>, ty: ValueType) -> Self {
 		self.fields.push(RowShapeField::unconstrained(name, ty));
 		self
 	}
@@ -196,20 +196,23 @@ impl TestLayoutBuilder {
 
 pub mod helpers {
 	use reifydb_core::{encoded::shape::RowShape, interface::change::Change, row::Row};
-	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
+	use reifydb_value::value::{row_number::RowNumber, value_type::ValueType};
 
 	use super::*;
 
 	pub fn counter_layout() -> RowShape {
-		TestLayoutBuilder::new().add_type(Type::Int8).build()
+		TestLayoutBuilder::new().add_type(ValueType::Int8).build()
 	}
 
 	pub fn key_value_layout() -> RowShape {
-		TestLayoutBuilder::new().add_type(Type::Utf8).add_type(Type::Int8).build()
+		TestLayoutBuilder::new().add_type(ValueType::Utf8).add_type(ValueType::Int8).build()
 	}
 
 	pub fn named_key_value_layout() -> RowShape {
-		TestLayoutBuilder::new().add_field("key", Type::Utf8).add_field("value", Type::Int8).build_named()
+		TestLayoutBuilder::new()
+			.add_field("key", ValueType::Utf8)
+			.add_field("value", ValueType::Int8)
+			.build_named()
 	}
 
 	pub fn int_row(row_number: impl Into<RowNumber>, value: i8) -> Row {
@@ -245,7 +248,7 @@ pub mod tests {
 		common::CommitVersion,
 		interface::{catalog::shape::ShapeId, change::ChangeOrigin},
 	};
-	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
+	use reifydb_value::value::{row_number::RowNumber, value_type::ValueType};
 
 	use super::{helpers::*, *};
 
@@ -283,13 +286,13 @@ pub mod tests {
 
 	#[test]
 	fn test_layout_builder() {
-		let unnamed = TestLayoutBuilder::new().add_type(Type::Int8).add_type(Type::Utf8).build();
+		let unnamed = TestLayoutBuilder::new().add_type(ValueType::Int8).add_type(ValueType::Utf8).build();
 
 		assert_eq!(unnamed.field_count(), 2);
 
 		let named = TestLayoutBuilder::new()
-			.add_field("count", Type::Int8)
-			.add_field("name", Type::Utf8)
+			.add_field("count", ValueType::Int8)
+			.add_field("name", ValueType::Utf8)
 			.build_named();
 
 		assert_eq!(named.field_count(), 2);

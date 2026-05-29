@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{data::canonical::Canonical, nones::NoneBitmap};
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 pub fn slice(array: &Canonical, start: usize, end: usize) -> Result<Canonical> {
 	assert!(start <= end);

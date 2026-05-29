@@ -11,7 +11,7 @@ use std::{
 };
 
 use bumpalo::Bump as BumpAlloc;
-use reifydb_type::storage::{DataBitVec, DataVec, Storage};
+use reifydb_value::storage::{DataBitVec, DataVec, Storage};
 
 type BumpaloVec<'bump, T> = bumpalo::collections::Vec<'bump, T>;
 
@@ -290,7 +290,7 @@ impl Default for QueryArena {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_type::storage::{DataBitVec, DataVec};
+	use reifydb_value::storage::{DataBitVec, DataVec};
 
 	use super::*;
 
@@ -569,7 +569,7 @@ mod tests {
 	}
 
 	mod bump_storage {
-		use reifydb_type::value::container::{bool::BoolContainer, number::NumberContainer};
+		use reifydb_value::value::container::{bool::BoolContainer, number::NumberContainer};
 
 		use super::*;
 

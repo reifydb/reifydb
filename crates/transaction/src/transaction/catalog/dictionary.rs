@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackDictionaryChangeOperations, dictionary::Dictionary, id::NamespaceId,
 };
-use reifydb_type::{Result, value::dictionary::DictionaryId};
+use reifydb_value::{Result, value::dictionary::DictionaryId};
 
 use crate::{
 	change::{

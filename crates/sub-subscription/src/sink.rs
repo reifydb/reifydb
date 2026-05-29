@@ -26,11 +26,11 @@ use reifydb_sub_flow::{
 	},
 	transaction::{FlowTransaction, slot::PersistFn},
 };
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	error::Error,
 	fragment::Fragment,
-	value::{blob::Blob, row_number::RowNumber, r#type::Type},
+	value::{blob::Blob, row_number::RowNumber, value_type::ValueType},
 };
 use serde::{Deserialize, Serialize};
 
@@ -88,7 +88,7 @@ impl EphemeralSinkSubscriptionOperator {
 			node,
 			subscription_id,
 			delivery,
-			shape: RowShape::testing(&[Type::Blob]),
+			shape: RowShape::testing(&[ValueType::Blob]),
 		}
 	}
 

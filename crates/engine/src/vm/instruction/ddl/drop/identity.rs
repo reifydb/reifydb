@@ -5,7 +5,7 @@ use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::value::column::columns::Columns;
 use reifydb_rql::nodes::DropIdentityNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 use crate::{Result, vm::services::Services};
 

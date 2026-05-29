@@ -20,7 +20,7 @@ use reifydb_core::{
 	internal,
 	value::column::columns::Columns,
 };
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	error::Error,
 	value::{Value, blob::Blob, row_number::RowNumber},

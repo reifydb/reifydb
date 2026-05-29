@@ -4,7 +4,7 @@
 use std::slice::Iter;
 
 use reifydb_core::row::Row;
-use reifydb_type::value::row_number::RowNumber;
+use reifydb_value::value::row_number::RowNumber;
 
 #[derive(Debug, Clone)]
 pub enum ChaosEvent {

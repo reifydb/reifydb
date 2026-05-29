@@ -10,7 +10,7 @@ license = "MIT"
 reifydb-build = { workspace = true }
 
 [dependencies]
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 num-bigint = { workspace = true }
 bigdecimal = { workspace = true }
 uuid = { workspace = true }

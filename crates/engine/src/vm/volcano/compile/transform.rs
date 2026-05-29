@@ -13,7 +13,7 @@ use reifydb_rql::{
 	},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, value::constraint::Constraint};
+use reifydb_value::{fragment::Fragment, value::constraint::Constraint};
 
 use super::{compile, extract_resolved_source};
 use crate::vm::volcano::{

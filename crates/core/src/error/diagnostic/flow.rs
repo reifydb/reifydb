@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::{error::Diagnostic, fragment::Fragment, value::r#type::Type};
+use reifydb_value::{error::Diagnostic, fragment::Fragment, value::value_type::ValueType};
 
 pub fn flow_error(message: String) -> Diagnostic {
 	Diagnostic {
@@ -148,7 +148,7 @@ pub fn flow_window_timestamp_column_not_found(column: &str) -> Diagnostic {
 	}
 }
 
-pub fn flow_window_timestamp_column_type_mismatch(column: &str, found: Type) -> Diagnostic {
+pub fn flow_window_timestamp_column_type_mismatch(column: &str, found: ValueType) -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_010".to_string(),
 		rql: None,

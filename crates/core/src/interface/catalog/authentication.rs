@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_type::value::identity::IdentityId;
+use reifydb_value::value::identity::IdentityId;
 use serde::{Deserialize, Serialize};
 
 pub type AuthenticationId = u64;

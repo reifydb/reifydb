@@ -4,7 +4,7 @@
 use std::{error::Error as StdError, fmt};
 
 use reifydb_auth::service::AuthService;
-use reifydb_type::value::identity::IdentityId;
+use reifydb_value::value::identity::IdentityId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthError {

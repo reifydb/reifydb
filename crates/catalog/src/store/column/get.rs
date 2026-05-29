@@ -3,13 +3,13 @@
 
 use reifydb_core::{internal, key::columns::ColumnsKey};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	error::Error,
 	value::{
 		constraint::{Constraint, TypeConstraint},
 		dictionary::DictionaryId,
 		sumtype::SumTypeId,
-		r#type::Type,
+		value_type::ValueType,
 	},
 };
 
@@ -35,7 +35,7 @@ fn decode_constraint(bytes: &[u8]) -> Option<Constraint> {
 			let dict_id = u64::from_le_bytes([
 				bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8],
 			]);
-			let id_type = Type::from_u8(bytes[9]);
+			let id_type = ValueType::from_u8(bytes[9]);
 			Some(Constraint::Dictionary(DictionaryId(dict_id), id_type))
 		}
 		4 if bytes.len() >= 9 => {
@@ -71,7 +71,7 @@ impl CatalogStore {
 
 		let id = ColumnId(SHAPE.get_u64(&row, ID));
 		let name = SHAPE.get_utf8(&row, NAME).to_string();
-		let base_type = Type::from_u8(SHAPE.get_u8(&row, VALUE));
+		let base_type = ValueType::from_u8(SHAPE.get_u8(&row, VALUE));
 		let index = ColumnIndex(SHAPE.get_u8(&row, INDEX));
 		let auto_increment = SHAPE.get_bool(&row, AUTO_INCREMENT);
 
@@ -128,31 +128,31 @@ pub mod tests {
 	use reifydb_core::interface::catalog::id::ColumnId;
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+	use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 	use crate::{CatalogStore, test_utils::create_test_column};
 
 	#[test]
 	fn test_ok() {
 		let mut txn = create_test_admin_transaction();
-		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]);
-		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]);
-		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]);
+		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(ValueType::Int1), vec![]);
+		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(ValueType::Int2), vec![]);
+		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(ValueType::Int4), vec![]);
 
 		let result = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(16386)).unwrap();
 
 		assert_eq!(result.id, ColumnId(16386));
 		assert_eq!(result.name, "col_2");
-		assert_eq!(result.constraint.get_type(), Type::Int2);
+		assert_eq!(result.constraint.get_type(), ValueType::Int2);
 		assert_eq!(result.auto_increment, false);
 	}
 
 	#[test]
 	fn test_not_found() {
 		let mut txn = create_test_admin_transaction();
-		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]);
-		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]);
-		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]);
+		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(ValueType::Int1), vec![]);
+		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(ValueType::Int2), vec![]);
+		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(ValueType::Int4), vec![]);
 
 		let err = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(4)).unwrap_err();
 		assert_eq!(err.code, "INTERNAL_ERROR");

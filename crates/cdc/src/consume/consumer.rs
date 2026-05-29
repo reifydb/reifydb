@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::cdc::Cdc;
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 pub trait CdcConsume: Send + Sync + 'static {
 	fn consume(&self, cdcs: Vec<Cdc>, reply: Box<dyn FnOnce(Result<()>) + Send>);

@@ -43,7 +43,7 @@ use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 #[cfg(reifydb_target = "native")]
 use reifydb_sdk::config::Config;
 #[cfg(reifydb_target = "native")]
-use reifydb_type::{Result, error::Error, value::Value};
+use reifydb_value::{Result, error::Error, value::Value};
 use tracing::instrument;
 
 #[cfg(reifydb_target = "native")]

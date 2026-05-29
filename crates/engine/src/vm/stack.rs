@@ -8,7 +8,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_rql::instruction::{CompiledClosure, CompiledFunction, ScopeType};
-use reifydb_type::{error, fragment::Fragment, value::Value};
+use reifydb_value::{error, fragment::Fragment, value::Value};
 
 use crate::{Result, error::EngineError};
 
@@ -356,19 +356,19 @@ impl Default for SymbolTable {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
-	use reifydb_type::value::{Value, r#type::Type};
+	use reifydb_value::value::{Value, value_type::ValueType};
 
 	use super::*;
 
 	// Helper function to create test columns
 	fn create_test_columns(values: Vec<Value>) -> Columns {
 		if values.is_empty() {
-			let column_data = ColumnBuffer::none_typed(Type::Boolean, 0);
+			let column_data = ColumnBuffer::none_typed(ValueType::Boolean, 0);
 			let column = ColumnWithName::new("test_col", column_data);
 			return Columns::new(vec![column]);
 		}
 
-		let mut column_data = ColumnBuffer::none_typed(Type::Boolean, 0);
+		let mut column_data = ColumnBuffer::none_typed(ValueType::Boolean, 0);
 		for value in values {
 			column_data.push_value(value);
 		}

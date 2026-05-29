@@ -7,7 +7,7 @@ use reifydb_core::{
 	key::shape::{RowShapeFieldKey, RowShapeKey},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	error::Error,
 	value::constraint::{FFITypeConstraint, TypeConstraint},
 };

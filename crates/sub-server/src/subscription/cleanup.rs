@@ -6,8 +6,8 @@ use reifydb_core::error::diagnostic::internal::internal;
 use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_engine::engine::StandardEngine;
 #[cfg(not(reifydb_single_threaded))]
-use reifydb_type::error::Error;
-use reifydb_type::{Result as TypeResult, params::Params, value::identity::IdentityId};
+use reifydb_value::error::Error;
+use reifydb_value::{Result as TypeResult, params::Params, value::identity::IdentityId};
 #[cfg(not(reifydb_single_threaded))]
 use tokio::task::spawn_blocking;
 

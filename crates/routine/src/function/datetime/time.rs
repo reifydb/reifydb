@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_type::value::{container::temporal::TemporalContainer, r#type::Type};
+use reifydb_value::value::{container::temporal::TemporalContainer, value_type::ValueType};
 
 use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
@@ -29,8 +29,8 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeTime {
 		&self.info
 	}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Time
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Time
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
@@ -64,7 +64,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeTime {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 0,
-					expected: vec![Type::DateTime],
+					expected: vec![ValueType::DateTime],
 					actual: other.get_type(),
 				});
 			}

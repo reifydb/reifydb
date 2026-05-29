@@ -5,14 +5,14 @@ use std::str;
 
 use bigdecimal::BigDecimal;
 use num_bigint::BigInt;
-use reifydb_type::value::{
+use reifydb_value::value::{
 	blob::Blob,
 	container::{blob::BlobContainer, number::NumberContainer, utf8::Utf8Container},
 	decimal::Decimal,
 	frame::data::FrameColumnData,
 	int::Int,
-	r#type::Type,
 	uint::Uint,
+	value_type::ValueType,
 };
 
 use crate::{encoding::rle::decode_rle_varlen, error::DecodeError};
@@ -23,24 +23,24 @@ pub(crate) fn decode_varlen_plain(
 	data: &[u8],
 	offsets: &[u8],
 ) -> Option<Result<FrameColumnData, DecodeError>> {
-	let ty = Type::from_u8(type_code);
+	let ty = ValueType::from_u8(type_code);
 
 	let result = match ty {
-		Type::Utf8 => {
+		ValueType::Utf8 => {
 			let strings = decode_varlen_strings(data, offsets, row_count);
 			match strings {
 				Ok(s) => Ok(FrameColumnData::Utf8(Utf8Container::new(s))),
 				Err(e) => Err(e),
 			}
 		}
-		Type::Blob => {
+		ValueType::Blob => {
 			let blobs = decode_varlen_blobs(data, offsets, row_count);
 			match blobs {
 				Ok(b) => Ok(FrameColumnData::Blob(BlobContainer::new(b))),
 				Err(e) => Err(e),
 			}
 		}
-		Type::Int => {
+		ValueType::Int => {
 			let mut values = Vec::with_capacity(row_count);
 			let offset_arr = decode_u32_offsets(offsets, row_count);
 			for i in 0..row_count {
@@ -51,7 +51,7 @@ pub(crate) fn decode_varlen_plain(
 			}
 			Ok(FrameColumnData::Int(NumberContainer::new(values)))
 		}
-		Type::Uint => {
+		ValueType::Uint => {
 			let mut values = Vec::with_capacity(row_count);
 			let offset_arr = decode_u32_offsets(offsets, row_count);
 			for i in 0..row_count {
@@ -62,7 +62,7 @@ pub(crate) fn decode_varlen_plain(
 			}
 			Ok(FrameColumnData::Uint(NumberContainer::new(values)))
 		}
-		Type::Decimal => decode_decimal(data, offsets, row_count),
+		ValueType::Decimal => decode_decimal(data, offsets, row_count),
 		_ => return None,
 	};
 
@@ -74,21 +74,21 @@ pub(crate) fn decode_rle_varlen_column(
 	row_count: usize,
 	data: &[u8],
 ) -> Result<FrameColumnData, DecodeError> {
-	let ty = Type::from_u8(type_code);
+	let ty = ValueType::from_u8(type_code);
 	let entries = decode_rle_varlen(data, row_count)?;
 
 	match ty {
-		Type::Int => {
+		ValueType::Int => {
 			let values: Vec<Int> =
 				entries.into_iter().map(|bytes| Int(BigInt::from_signed_bytes_le(&bytes))).collect();
 			Ok(FrameColumnData::Int(NumberContainer::new(values)))
 		}
-		Type::Uint => {
+		ValueType::Uint => {
 			let values: Vec<Uint> =
 				entries.into_iter().map(|bytes| Uint(BigInt::from_signed_bytes_le(&bytes))).collect();
 			Ok(FrameColumnData::Uint(NumberContainer::new(values)))
 		}
-		Type::Decimal => {
+		ValueType::Decimal => {
 			let mut values = Vec::with_capacity(row_count);
 			for bytes in entries {
 				let s = str::from_utf8(&bytes).map_err(|e| {

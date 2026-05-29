@@ -14,7 +14,7 @@ pub mod wait;
 use std::{error::Error, ops::Bound};
 
 use reifydb_core::util::encoding::binary::decode_binary;
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_value::util::cowvec::CowVec;
 
 type KeyRange = (Bound<CowVec<u8>>, Bound<CowVec<u8>>);
 

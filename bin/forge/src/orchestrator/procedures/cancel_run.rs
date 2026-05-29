@@ -6,10 +6,10 @@ use std::sync::LazyLock;
 use reifydb::{
 	core::value::column::columns::Columns,
 	routine::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError},
-	r#type::{
+	value::{
 		fragment::Fragment,
 		params::Params,
-		value::{Value, r#type::Type},
+		value::{Value, value_type::ValueType},
 	},
 };
 
@@ -36,8 +36,8 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for CancelRunProcedure {
 	fn info(&self) -> &RoutineInfo {
 		&INFO
 	}
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Any
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Any
 	}
 	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
 		let run_id = match ctx.params {
@@ -65,7 +65,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for CancelRunProcedure {
 				return Err(RoutineError::ProcedureInvalidArgumentType {
 					procedure: Fragment::internal("forge::cancel_run"),
 					argument_index: 0,
-					expected: vec![Type::Uuid4, Type::Utf8],
+					expected: vec![ValueType::Uuid4, ValueType::Utf8],
 					actual: run_id.get_type(),
 				});
 			}

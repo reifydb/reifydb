@@ -4,7 +4,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use num_bigint::BigInt;
-use reifydb_type::{
+use reifydb_value::{
 	error::{Diagnostic, Error},
 	fragment::Fragment,
 	params::Params,
@@ -26,9 +26,9 @@ use reifydb_type::{
 		row_number::RowNumber,
 		temporal::parse::datetime::parse_datetime,
 		time::Time,
-		r#type::Type,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
 	},
 };
 use reifydb_wire_format::decode::decode_frames;
@@ -647,40 +647,42 @@ fn value_to_typed_value(value: Value) -> TypedValue {
 		Value::None {
 			inner,
 		} => ((0x80 | inner.to_u8()) as u32, vec![]),
-		Value::Boolean(b) => (Type::Boolean.to_u8() as u32, vec![b as u8]),
-		Value::Float4(f) => (Type::Float4.to_u8() as u32, f.to_le_bytes().to_vec()),
-		Value::Float8(f) => (Type::Float8.to_u8() as u32, f.to_le_bytes().to_vec()),
-		Value::Int1(v) => (Type::Int1.to_u8() as u32, v.to_le_bytes().to_vec()),
-		Value::Int2(v) => (Type::Int2.to_u8() as u32, v.to_le_bytes().to_vec()),
-		Value::Int4(v) => (Type::Int4.to_u8() as u32, v.to_le_bytes().to_vec()),
-		Value::Int8(v) => (Type::Int8.to_u8() as u32, v.to_le_bytes().to_vec()),
-		Value::Int16(v) => (Type::Int16.to_u8() as u32, v.to_le_bytes().to_vec()),
-		Value::Uint1(v) => (Type::Uint1.to_u8() as u32, v.to_le_bytes().to_vec()),
-		Value::Uint2(v) => (Type::Uint2.to_u8() as u32, v.to_le_bytes().to_vec()),
-		Value::Uint4(v) => (Type::Uint4.to_u8() as u32, v.to_le_bytes().to_vec()),
-		Value::Uint8(v) => (Type::Uint8.to_u8() as u32, v.to_le_bytes().to_vec()),
-		Value::Uint16(v) => (Type::Uint16.to_u8() as u32, v.to_le_bytes().to_vec()),
-		Value::Utf8(s) => (Type::Utf8.to_u8() as u32, s.into_bytes()),
-		Value::Uuid4(u) => (Type::Uuid4.to_u8() as u32, u.0.as_bytes().to_vec()),
-		Value::Uuid7(u) => (Type::Uuid7.to_u8() as u32, u.0.as_bytes().to_vec()),
-		Value::Date(d) => (Type::Date.to_u8() as u32, d.to_days_since_epoch().to_le_bytes().to_vec()),
-		Value::DateTime(dt) => (Type::DateTime.to_u8() as u32, dt.to_nanos().to_le_bytes().to_vec()),
-		Value::Time(t) => (Type::Time.to_u8() as u32, t.to_nanos_since_midnight().to_le_bytes().to_vec()),
+		Value::Boolean(b) => (ValueType::Boolean.to_u8() as u32, vec![b as u8]),
+		Value::Float4(f) => (ValueType::Float4.to_u8() as u32, f.to_le_bytes().to_vec()),
+		Value::Float8(f) => (ValueType::Float8.to_u8() as u32, f.to_le_bytes().to_vec()),
+		Value::Int1(v) => (ValueType::Int1.to_u8() as u32, v.to_le_bytes().to_vec()),
+		Value::Int2(v) => (ValueType::Int2.to_u8() as u32, v.to_le_bytes().to_vec()),
+		Value::Int4(v) => (ValueType::Int4.to_u8() as u32, v.to_le_bytes().to_vec()),
+		Value::Int8(v) => (ValueType::Int8.to_u8() as u32, v.to_le_bytes().to_vec()),
+		Value::Int16(v) => (ValueType::Int16.to_u8() as u32, v.to_le_bytes().to_vec()),
+		Value::Uint1(v) => (ValueType::Uint1.to_u8() as u32, v.to_le_bytes().to_vec()),
+		Value::Uint2(v) => (ValueType::Uint2.to_u8() as u32, v.to_le_bytes().to_vec()),
+		Value::Uint4(v) => (ValueType::Uint4.to_u8() as u32, v.to_le_bytes().to_vec()),
+		Value::Uint8(v) => (ValueType::Uint8.to_u8() as u32, v.to_le_bytes().to_vec()),
+		Value::Uint16(v) => (ValueType::Uint16.to_u8() as u32, v.to_le_bytes().to_vec()),
+		Value::Utf8(s) => (ValueType::Utf8.to_u8() as u32, s.into_bytes()),
+		Value::Uuid4(u) => (ValueType::Uuid4.to_u8() as u32, u.0.as_bytes().to_vec()),
+		Value::Uuid7(u) => (ValueType::Uuid7.to_u8() as u32, u.0.as_bytes().to_vec()),
+		Value::Date(d) => (ValueType::Date.to_u8() as u32, d.to_days_since_epoch().to_le_bytes().to_vec()),
+		Value::DateTime(dt) => (ValueType::DateTime.to_u8() as u32, dt.to_nanos().to_le_bytes().to_vec()),
+		Value::Time(t) => (ValueType::Time.to_u8() as u32, t.to_nanos_since_midnight().to_le_bytes().to_vec()),
 		Value::Duration(d) => {
 			let mut buf = Vec::with_capacity(16);
 			buf.extend_from_slice(&d.get_months().to_le_bytes());
 			buf.extend_from_slice(&d.get_days().to_le_bytes());
 			buf.extend_from_slice(&d.get_nanos().to_le_bytes());
-			(Type::Duration.to_u8() as u32, buf)
+			(ValueType::Duration.to_u8() as u32, buf)
 		}
-		Value::Blob(b) => (Type::Blob.to_u8() as u32, b.as_bytes().to_vec()),
-		Value::Decimal(d) => (Type::Decimal.to_u8() as u32, d.to_string().into_bytes()),
-		Value::IdentityId(id) => (Type::IdentityId.to_u8() as u32, id.0.0.as_bytes().to_vec()),
-		Value::Int(big) => (Type::Int.to_u8() as u32, big.0.to_signed_bytes_le()),
-		Value::Uint(big) => (Type::Uint.to_u8() as u32, big.0.to_signed_bytes_le()),
+		Value::Blob(b) => (ValueType::Blob.to_u8() as u32, b.as_bytes().to_vec()),
+		Value::Decimal(d) => (ValueType::Decimal.to_u8() as u32, d.to_string().into_bytes()),
+		Value::IdentityId(id) => (ValueType::IdentityId.to_u8() as u32, id.0.0.as_bytes().to_vec()),
+		Value::Int(big) => (ValueType::Int.to_u8() as u32, big.0.to_signed_bytes_le()),
+		Value::Uint(big) => (ValueType::Uint.to_u8() as u32, big.0.to_signed_bytes_le()),
 		Value::Any(inner) => return value_to_typed_value(*inner),
-		Value::DictionaryId(id) => (Type::DictionaryId.to_u8() as u32, id.to_u128().to_le_bytes().to_vec()),
-		Value::Type(t) => (Type::Any.to_u8() as u32, vec![t.to_u8()]),
+		Value::DictionaryId(id) => {
+			(ValueType::DictionaryId.to_u8() as u32, id.to_u128().to_le_bytes().to_vec())
+		}
+		Value::Type(t) => (ValueType::Any.to_u8() as u32, vec![t.to_u8()]),
 		Value::List(items) | Value::Tuple(items) => {
 			let mut buf = Vec::new();
 			buf.extend_from_slice(&(items.len() as u32).to_le_bytes());
@@ -690,7 +692,7 @@ fn value_to_typed_value(value: Value) -> TypedValue {
 				buf.extend_from_slice(&(tv.value.len() as u32).to_le_bytes());
 				buf.extend_from_slice(&tv.value);
 			}
-			(Type::Any.to_u8() as u32, buf)
+			(ValueType::Any.to_u8() as u32, buf)
 		}
 		Value::Record(fields) => {
 			let mut buf = Vec::new();
@@ -704,7 +706,7 @@ fn value_to_typed_value(value: Value) -> TypedValue {
 				buf.extend_from_slice(&(tv.value.len() as u32).to_le_bytes());
 				buf.extend_from_slice(&tv.value);
 			}
-			(Type::Any.to_u8() as u32, buf)
+			(ValueType::Any.to_u8() as u32, buf)
 		}
 	};
 	TypedValue {
@@ -721,7 +723,7 @@ fn proto_frames_to_frames(frames: Vec<ProtoFrame>) -> Vec<Frame> {
 				.columns
 				.into_iter()
 				.map(|c| {
-					let ty = Type::from_u8(c.r#type as u8);
+					let ty = ValueType::from_u8(c.r#type as u8);
 					let data = decode_column_data(ty, &c.payload, &c.bitvec);
 					FrameColumn {
 						name: c.name,
@@ -749,9 +751,9 @@ fn proto_frames_to_frames(frames: Vec<ProtoFrame>) -> Vec<Frame> {
 		.collect()
 }
 
-fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumnData {
+fn decode_column_data(ty: ValueType, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumnData {
 	match ty {
-		Type::Option(inner_type) => {
+		ValueType::Option(inner_type) => {
 			let bitvec = decode_bitvec(bitvec_bytes);
 			let inner = decode_column_data(*inner_type, data, &[]);
 			FrameColumnData::Option {
@@ -759,94 +761,94 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 				bitvec,
 			}
 		}
-		Type::Boolean => {
+		ValueType::Boolean => {
 			let bitvec = decode_bitvec(data);
 			let values: Vec<bool> = bitvec.iter().collect();
 			FrameColumnData::Bool(BoolContainer::new(values))
 		}
-		Type::Float4 => {
+		ValueType::Float4 => {
 			let values: Vec<f32> = data
 				.chunks_exact(4)
 				.map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
 				.collect();
 			FrameColumnData::Float4(NumberContainer::new(values))
 		}
-		Type::Float8 => {
+		ValueType::Float8 => {
 			let values: Vec<f64> = data
 				.chunks_exact(8)
 				.map(|chunk| f64::from_le_bytes(chunk.try_into().unwrap()))
 				.collect();
 			FrameColumnData::Float8(NumberContainer::new(values))
 		}
-		Type::Int1 => {
+		ValueType::Int1 => {
 			let values: Vec<i8> = data.iter().map(|&b| b as i8).collect();
 			FrameColumnData::Int1(NumberContainer::new(values))
 		}
-		Type::Int2 => {
+		ValueType::Int2 => {
 			let values: Vec<i16> = data
 				.chunks_exact(2)
 				.map(|chunk| i16::from_le_bytes(chunk.try_into().unwrap()))
 				.collect();
 			FrameColumnData::Int2(NumberContainer::new(values))
 		}
-		Type::Int4 => {
+		ValueType::Int4 => {
 			let values: Vec<i32> = data
 				.chunks_exact(4)
 				.map(|chunk| i32::from_le_bytes(chunk.try_into().unwrap()))
 				.collect();
 			FrameColumnData::Int4(NumberContainer::new(values))
 		}
-		Type::Int8 => {
+		ValueType::Int8 => {
 			let values: Vec<i64> = data
 				.chunks_exact(8)
 				.map(|chunk| i64::from_le_bytes(chunk.try_into().unwrap()))
 				.collect();
 			FrameColumnData::Int8(NumberContainer::new(values))
 		}
-		Type::Int16 => {
+		ValueType::Int16 => {
 			let values: Vec<i128> = data
 				.chunks_exact(16)
 				.map(|chunk| i128::from_le_bytes(chunk.try_into().unwrap()))
 				.collect();
 			FrameColumnData::Int16(NumberContainer::new(values))
 		}
-		Type::Uint1 => {
+		ValueType::Uint1 => {
 			let values: Vec<u8> = data.to_vec();
 			FrameColumnData::Uint1(NumberContainer::new(values))
 		}
-		Type::Uint2 => {
+		ValueType::Uint2 => {
 			let values: Vec<u16> = data
 				.chunks_exact(2)
 				.map(|chunk| u16::from_le_bytes(chunk.try_into().unwrap()))
 				.collect();
 			FrameColumnData::Uint2(NumberContainer::new(values))
 		}
-		Type::Uint4 => {
+		ValueType::Uint4 => {
 			let values: Vec<u32> = data
 				.chunks_exact(4)
 				.map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
 				.collect();
 			FrameColumnData::Uint4(NumberContainer::new(values))
 		}
-		Type::Uint8 => {
+		ValueType::Uint8 => {
 			let values: Vec<u64> = data
 				.chunks_exact(8)
 				.map(|chunk| u64::from_le_bytes(chunk.try_into().unwrap()))
 				.collect();
 			FrameColumnData::Uint8(NumberContainer::new(values))
 		}
-		Type::Uint16 => {
+		ValueType::Uint16 => {
 			let values: Vec<u128> = data
 				.chunks_exact(16)
 				.map(|chunk| u128::from_le_bytes(chunk.try_into().unwrap()))
 				.collect();
 			FrameColumnData::Uint16(NumberContainer::new(values))
 		}
-		Type::Utf8 => {
+		ValueType::Utf8 => {
 			let values = decode_length_prefixed_strings(data);
 			FrameColumnData::Utf8(Utf8Container::new(values))
 		}
-		Type::Date => {
+		ValueType::Date => {
 			let values: Vec<Date> = data
 				.chunks_exact(4)
 				.map(|chunk| {
@@ -857,7 +859,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 				.collect();
 			FrameColumnData::Date(TemporalContainer::new(values))
 		}
-		Type::DateTime => {
+		ValueType::DateTime => {
 			let values: Vec<DateTime> = data
 				.chunks_exact(8)
 				.map(|chunk| {
@@ -867,7 +869,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 				.collect();
 			FrameColumnData::DateTime(TemporalContainer::new(values))
 		}
-		Type::Time => {
+		ValueType::Time => {
 			let values: Vec<Time> = data
 				.chunks_exact(8)
 				.map(|chunk| {
@@ -878,7 +880,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 				.collect();
 			FrameColumnData::Time(TemporalContainer::new(values))
 		}
-		Type::Duration => {
+		ValueType::Duration => {
 			let values: Vec<Duration> = data
 				.chunks_exact(16)
 				.map(|chunk| {
@@ -890,7 +892,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 				.collect();
 			FrameColumnData::Duration(TemporalContainer::new(values))
 		}
-		Type::IdentityId => {
+		ValueType::IdentityId => {
 			let values: Vec<IdentityId> = data
 				.chunks_exact(16)
 				.map(|chunk| {
@@ -900,7 +902,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 				.collect();
 			FrameColumnData::IdentityId(IdentityIdContainer::new(values))
 		}
-		Type::Uuid4 => {
+		ValueType::Uuid4 => {
 			let values: Vec<Uuid4> = data
 				.chunks_exact(16)
 				.map(|chunk| {
@@ -910,7 +912,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 				.collect();
 			FrameColumnData::Uuid4(UuidContainer::new(values))
 		}
-		Type::Uuid7 => {
+		ValueType::Uuid7 => {
 			let values: Vec<Uuid7> = data
 				.chunks_exact(16)
 				.map(|chunk| {
@@ -920,7 +922,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 				.collect();
 			FrameColumnData::Uuid7(UuidContainer::new(values))
 		}
-		Type::Blob => {
+		ValueType::Blob => {
 			let mut values = Vec::new();
 			let mut pos = 0;
 			while pos + 4 <= data.len() {
@@ -932,7 +934,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 			}
 			FrameColumnData::Blob(BlobContainer::new(values))
 		}
-		Type::Int => {
+		ValueType::Int => {
 			let mut values = Vec::new();
 			let mut pos = 0;
 			while pos + 4 <= data.len() {
@@ -944,7 +946,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 			}
 			FrameColumnData::Int(NumberContainer::new(values))
 		}
-		Type::Uint => {
+		ValueType::Uint => {
 			let mut values = Vec::new();
 			let mut pos = 0;
 			while pos + 4 <= data.len() {
@@ -956,7 +958,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 			}
 			FrameColumnData::Uint(NumberContainer::new(values))
 		}
-		Type::Decimal => {
+		ValueType::Decimal => {
 			let strings = decode_length_prefixed_strings(data);
 			let values: Vec<Decimal> = strings
 				.into_iter()
@@ -964,7 +966,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 				.collect();
 			FrameColumnData::Decimal(NumberContainer::new(values))
 		}
-		Type::Any => {
+		ValueType::Any => {
 			let mut values: Vec<Box<Value>> = Vec::new();
 			let mut pos = 0;
 			while pos < data.len() {
@@ -974,11 +976,13 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 			}
 			FrameColumnData::Any(AnyContainer::new(values))
 		}
-		Type::DictionaryId => {
+		ValueType::DictionaryId => {
 			// Fallback: store as Utf8 for now (dictionary IDs need context)
 			FrameColumnData::Utf8(Utf8Container::new(vec![]))
 		}
-		Type::List(_) | Type::Record(_) | Type::Tuple(_) => FrameColumnData::Utf8(Utf8Container::new(vec![])),
+		ValueType::List(_) | ValueType::Record(_) | ValueType::Tuple(_) => {
+			FrameColumnData::Utf8(Utf8Container::new(vec![]))
+		}
 	}
 }
 
@@ -1007,11 +1011,11 @@ fn decode_length_prefixed_strings(data: &[u8]) -> Vec<String> {
 
 fn decode_any_value(data: &[u8]) -> (Value, usize) {
 	let type_tag = data[0];
-	let ty = Type::from_u8(type_tag);
+	let ty = ValueType::from_u8(type_tag);
 	let mut pos = 1;
 
 	match ty {
-		Type::Option(inner) => {
+		ValueType::Option(inner) => {
 			// None value - the type tag has 0x80 set
 			(
 				Value::None {
@@ -1020,130 +1024,130 @@ fn decode_any_value(data: &[u8]) -> (Value, usize) {
 				pos,
 			)
 		}
-		Type::Boolean => {
+		ValueType::Boolean => {
 			let v = data[pos] != 0;
 			(Value::Boolean(v), pos + 1)
 		}
-		Type::Float4 => {
+		ValueType::Float4 => {
 			let v = f32::from_le_bytes(data[pos..pos + 4].try_into().unwrap());
 			(Value::float4(v), pos + 4)
 		}
-		Type::Float8 => {
+		ValueType::Float8 => {
 			let v = f64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
 			(Value::float8(v), pos + 8)
 		}
-		Type::Int1 => {
+		ValueType::Int1 => {
 			let v = data[pos] as i8;
 			(Value::Int1(v), pos + 1)
 		}
-		Type::Int2 => {
+		ValueType::Int2 => {
 			let v = i16::from_le_bytes(data[pos..pos + 2].try_into().unwrap());
 			(Value::Int2(v), pos + 2)
 		}
-		Type::Int4 => {
+		ValueType::Int4 => {
 			let v = i32::from_le_bytes(data[pos..pos + 4].try_into().unwrap());
 			(Value::Int4(v), pos + 4)
 		}
-		Type::Int8 => {
+		ValueType::Int8 => {
 			let v = i64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
 			(Value::Int8(v), pos + 8)
 		}
-		Type::Int16 => {
+		ValueType::Int16 => {
 			let v = i128::from_le_bytes(data[pos..pos + 16].try_into().unwrap());
 			(Value::Int16(v), pos + 16)
 		}
-		Type::Uint1 => {
+		ValueType::Uint1 => {
 			let v = data[pos];
 			(Value::Uint1(v), pos + 1)
 		}
-		Type::Uint2 => {
+		ValueType::Uint2 => {
 			let v = u16::from_le_bytes(data[pos..pos + 2].try_into().unwrap());
 			(Value::Uint2(v), pos + 2)
 		}
-		Type::Uint4 => {
+		ValueType::Uint4 => {
 			let v = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap());
 			(Value::Uint4(v), pos + 4)
 		}
-		Type::Uint8 => {
+		ValueType::Uint8 => {
 			let v = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
 			(Value::Uint8(v), pos + 8)
 		}
-		Type::Uint16 => {
+		ValueType::Uint16 => {
 			let v = u128::from_le_bytes(data[pos..pos + 16].try_into().unwrap());
 			(Value::Uint16(v), pos + 16)
 		}
-		Type::Utf8 => {
+		ValueType::Utf8 => {
 			let len = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
 			pos += 4;
 			let s = String::from_utf8_lossy(&data[pos..pos + len]).into_owned();
 			(Value::Utf8(s), pos + len)
 		}
-		Type::Date => {
+		ValueType::Date => {
 			let days = i32::from_le_bytes(data[pos..pos + 4].try_into().unwrap());
 			let d = Date::from_days_since_epoch(days)
 				.unwrap_or_else(|| Date::from_ymd(1970, 1, 1).unwrap());
 			(Value::Date(d), pos + 4)
 		}
-		Type::DateTime => {
+		ValueType::DateTime => {
 			let nanos = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
 			let dt = DateTime::from_nanos(nanos);
 			(Value::DateTime(dt), pos + 8)
 		}
-		Type::Time => {
+		ValueType::Time => {
 			let nanos = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
 			let t = Time::from_nanos_since_midnight(nanos)
 				.unwrap_or_else(|| Time::from_hms(0, 0, 0).unwrap());
 			(Value::Time(t), pos + 8)
 		}
-		Type::Duration => {
+		ValueType::Duration => {
 			let months = i32::from_le_bytes(data[pos..pos + 4].try_into().unwrap());
 			let days = i32::from_le_bytes(data[pos + 4..pos + 8].try_into().unwrap());
 			let nanos = i64::from_le_bytes(data[pos + 8..pos + 16].try_into().unwrap());
 			(Value::Duration(Duration::new(months, days, nanos).unwrap()), pos + 16)
 		}
-		Type::IdentityId => {
+		ValueType::IdentityId => {
 			let uuid = Uuid::from_bytes(data[pos..pos + 16].try_into().unwrap());
 			(Value::IdentityId(IdentityId(Uuid7(uuid))), pos + 16)
 		}
-		Type::Uuid4 => {
+		ValueType::Uuid4 => {
 			let uuid = Uuid::from_bytes(data[pos..pos + 16].try_into().unwrap());
 			(Value::Uuid4(Uuid4(uuid)), pos + 16)
 		}
-		Type::Uuid7 => {
+		ValueType::Uuid7 => {
 			let uuid = Uuid::from_bytes(data[pos..pos + 16].try_into().unwrap());
 			(Value::Uuid7(Uuid7(uuid)), pos + 16)
 		}
-		Type::Blob => {
+		ValueType::Blob => {
 			let len = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
 			pos += 4;
 			let bytes = data[pos..pos + len].to_vec();
 			(Value::Blob(Blob::new(bytes)), pos + len)
 		}
-		Type::Int => {
+		ValueType::Int => {
 			let len = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
 			pos += 4;
 			let bytes = &data[pos..pos + len];
 			(Value::Int(Int(BigInt::from_signed_bytes_le(bytes))), pos + len)
 		}
-		Type::Uint => {
+		ValueType::Uint => {
 			let len = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
 			pos += 4;
 			let bytes = &data[pos..pos + len];
 			(Value::Uint(Uint(BigInt::from_signed_bytes_le(bytes))), pos + len)
 		}
-		Type::Decimal => {
+		ValueType::Decimal => {
 			let len = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
 			pos += 4;
 			let s = String::from_utf8_lossy(&data[pos..pos + len]).into_owned();
 			let d = s.parse::<Decimal>().unwrap_or_else(|_| Decimal::from_i64(0));
 			(Value::Decimal(d), pos + len)
 		}
-		Type::Any => {
+		ValueType::Any => {
 			// Any wraps another value - recursively decode the inner
 			let (inner_val, consumed) = decode_any_value(&data[pos..]);
 			(Value::Any(Box::new(inner_val)), pos + consumed)
 		}
-		Type::DictionaryId | Type::List(_) | Type::Record(_) | Type::Tuple(_) => {
+		ValueType::DictionaryId | ValueType::List(_) | ValueType::Record(_) | ValueType::Tuple(_) => {
 			// Shouldn't be nested in Any but handle gracefully
 			(
 				Value::None {

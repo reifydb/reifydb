@@ -5,7 +5,7 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-use reifydb::{Database, allocator, server, r#type::params::Params};
+use reifydb::{Database, allocator, server, value::params::Params};
 
 allocator::set_global_allocator!();
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::{Value, ordered_f32::OrderedF32, ordered_f64::OrderedF64, r#type::Type};
+use reifydb_value::value::{Value, ordered_f32::OrderedF32, ordered_f64::OrderedF64, value_type::ValueType};
 
 use super::shape::RowShape;
 use crate::encoded::row::EncodedRow;
@@ -19,225 +19,225 @@ impl RowShape {
 		debug_assert!(row.len() >= self.total_static_size());
 
 		let field_type = match field.constraint.get_type() {
-			Type::Option(inner) => *inner,
+			ValueType::Option(inner) => *inner,
 			other => other,
 		};
 
 		match (field_type, val) {
-			(Type::Boolean, Value::Boolean(v)) => self.set_bool(row, index, *v),
+			(ValueType::Boolean, Value::Boolean(v)) => self.set_bool(row, index, *v),
 			(
-				Type::Boolean,
+				ValueType::Boolean,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
-			(Type::Float4, Value::Float4(v)) => self.set_f32(row, index, v.value()),
+			(ValueType::Float4, Value::Float4(v)) => self.set_f32(row, index, v.value()),
 			(
-				Type::Float4,
+				ValueType::Float4,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
-			(Type::Float8, Value::Float8(v)) => self.set_f64(row, index, v.value()),
+			(ValueType::Float8, Value::Float8(v)) => self.set_f64(row, index, v.value()),
 			(
-				Type::Float8,
+				ValueType::Float8,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
-			(Type::Int1, Value::Int1(v)) => self.set_i8(row, index, *v),
+			(ValueType::Int1, Value::Int1(v)) => self.set_i8(row, index, *v),
 			(
-				Type::Int1,
+				ValueType::Int1,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
-			(Type::Int2, Value::Int2(v)) => self.set_i16(row, index, *v),
+			(ValueType::Int2, Value::Int2(v)) => self.set_i16(row, index, *v),
 			(
-				Type::Int2,
+				ValueType::Int2,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
-			(Type::Int4, Value::Int4(v)) => self.set_i32(row, index, *v),
+			(ValueType::Int4, Value::Int4(v)) => self.set_i32(row, index, *v),
 			(
-				Type::Int4,
+				ValueType::Int4,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
-			(Type::Int8, Value::Int8(v)) => self.set_i64(row, index, *v),
+			(ValueType::Int8, Value::Int8(v)) => self.set_i64(row, index, *v),
 			(
-				Type::Int8,
+				ValueType::Int8,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
-			(Type::Int16, Value::Int16(v)) => self.set_i128(row, index, *v),
+			(ValueType::Int16, Value::Int16(v)) => self.set_i128(row, index, *v),
 			(
-				Type::Int16,
+				ValueType::Int16,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
-			(Type::Utf8, Value::Utf8(v)) => self.set_utf8(row, index, v),
+			(ValueType::Utf8, Value::Utf8(v)) => self.set_utf8(row, index, v),
 			(
-				Type::Utf8,
+				ValueType::Utf8,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
-			(Type::Uint1, Value::Uint1(v)) => self.set_u8(row, index, *v),
+			(ValueType::Uint1, Value::Uint1(v)) => self.set_u8(row, index, *v),
 			(
-				Type::Uint1,
+				ValueType::Uint1,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
-			(Type::Uint2, Value::Uint2(v)) => self.set_u16(row, index, *v),
+			(ValueType::Uint2, Value::Uint2(v)) => self.set_u16(row, index, *v),
 			(
-				Type::Uint2,
+				ValueType::Uint2,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
-			(Type::Uint4, Value::Uint4(v)) => self.set_u32(row, index, *v),
+			(ValueType::Uint4, Value::Uint4(v)) => self.set_u32(row, index, *v),
 			(
-				Type::Uint4,
+				ValueType::Uint4,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
-			(Type::Uint8, Value::Uint8(v)) => self.set_u64(row, index, *v),
+			(ValueType::Uint8, Value::Uint8(v)) => self.set_u64(row, index, *v),
 			(
-				Type::Uint8,
+				ValueType::Uint8,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
-			(Type::Uint16, Value::Uint16(v)) => self.set_u128(row, index, *v),
+			(ValueType::Uint16, Value::Uint16(v)) => self.set_u128(row, index, *v),
 			(
-				Type::Uint16,
+				ValueType::Uint16,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
-			(Type::Date, Value::Date(v)) => self.set_date(row, index, *v),
+			(ValueType::Date, Value::Date(v)) => self.set_date(row, index, *v),
 			(
-				Type::Date,
+				ValueType::Date,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
-			(Type::DateTime, Value::DateTime(v)) => self.set_datetime(row, index, *v),
+			(ValueType::DateTime, Value::DateTime(v)) => self.set_datetime(row, index, *v),
 			(
-				Type::DateTime,
+				ValueType::DateTime,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
-			(Type::Time, Value::Time(v)) => self.set_time(row, index, *v),
+			(ValueType::Time, Value::Time(v)) => self.set_time(row, index, *v),
 			(
-				Type::Time,
+				ValueType::Time,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
-			(Type::Duration, Value::Duration(v)) => self.set_duration(row, index, *v),
+			(ValueType::Duration, Value::Duration(v)) => self.set_duration(row, index, *v),
 			(
-				Type::Duration,
+				ValueType::Duration,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
-			(Type::Uuid4, Value::Uuid4(v)) => self.set_uuid4(row, index, *v),
+			(ValueType::Uuid4, Value::Uuid4(v)) => self.set_uuid4(row, index, *v),
 			(
-				Type::Uuid4,
+				ValueType::Uuid4,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
-			(Type::Uuid7, Value::Uuid7(v)) => self.set_uuid7(row, index, *v),
+			(ValueType::Uuid7, Value::Uuid7(v)) => self.set_uuid7(row, index, *v),
 			(
-				Type::Uuid7,
+				ValueType::Uuid7,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
-			(Type::Blob, Value::Blob(v)) => self.set_blob(row, index, v),
+			(ValueType::Blob, Value::Blob(v)) => self.set_blob(row, index, v),
 			(
-				Type::Blob,
+				ValueType::Blob,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
-			(Type::Int, Value::Int(v)) => self.set_int(row, index, v),
-			(Type::Uint, Value::Uint(v)) => self.set_uint(row, index, v),
+			(ValueType::Int, Value::Int(v)) => self.set_int(row, index, v),
+			(ValueType::Uint, Value::Uint(v)) => self.set_uint(row, index, v),
 			(
-				Type::Int,
+				ValueType::Int,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 			(
-				Type::Uint,
-				Value::None {
-					..
-				},
-			) => self.set_none(row, index),
-
-			(Type::Decimal, Value::Decimal(v)) => self.set_decimal(row, index, v),
-			(
-				Type::Decimal,
-				Value::None {
-					..
-				},
-			) => self.set_none(row, index),
-			(Type::DictionaryId, Value::DictionaryId(id)) => self.set_dictionary_id(row, index, id),
-
-			(
-				Type::DictionaryId,
+				ValueType::Uint,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
-			(Type::IdentityId, Value::IdentityId(id)) => self.set_identity_id(row, index, *id),
+			(ValueType::Decimal, Value::Decimal(v)) => self.set_decimal(row, index, v),
 			(
-				Type::IdentityId,
+				ValueType::Decimal,
+				Value::None {
+					..
+				},
+			) => self.set_none(row, index),
+			(ValueType::DictionaryId, Value::DictionaryId(id)) => self.set_dictionary_id(row, index, id),
+
+			(
+				ValueType::DictionaryId,
+				Value::None {
+					..
+				},
+			) => self.set_none(row, index),
+
+			(ValueType::IdentityId, Value::IdentityId(id)) => self.set_identity_id(row, index, *id),
+			(
+				ValueType::IdentityId,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
 
 			(
-				Type::Any,
+				ValueType::Any,
 				Value::None {
 					..
 				},
 			) => self.set_none(row, index),
-			(Type::Any, Value::Any(inner)) => self.set_any(row, index, inner),
+			(ValueType::Any, Value::Any(inner)) => self.set_any(row, index, inner),
 			(ty, val) => unreachable!(
 				"set_value type mismatch at index {index}: column name={:?} declared_type={ty:?}, value={val:?}",
 				field.name,
@@ -251,46 +251,46 @@ impl RowShape {
 			return Value::none();
 		}
 		let field_type = match field.constraint.get_type() {
-			Type::Option(inner) => *inner,
+			ValueType::Option(inner) => *inner,
 			other => other,
 		};
 
 		match field_type {
-			Type::Boolean => Value::Boolean(self.get_bool(row, index)),
-			Type::Float4 => OrderedF32::try_from(self.get_f32(row, index))
+			ValueType::Boolean => Value::Boolean(self.get_bool(row, index)),
+			ValueType::Float4 => OrderedF32::try_from(self.get_f32(row, index))
 				.map(Value::Float4)
 				.unwrap_or(Value::none()),
-			Type::Float8 => OrderedF64::try_from(self.get_f64(row, index))
+			ValueType::Float8 => OrderedF64::try_from(self.get_f64(row, index))
 				.map(Value::Float8)
 				.unwrap_or(Value::none()),
-			Type::Int1 => Value::Int1(self.get_i8(row, index)),
-			Type::Int2 => Value::Int2(self.get_i16(row, index)),
-			Type::Int4 => Value::Int4(self.get_i32(row, index)),
-			Type::Int8 => Value::Int8(self.get_i64(row, index)),
-			Type::Int16 => Value::Int16(self.get_i128(row, index)),
-			Type::Utf8 => Value::Utf8(self.get_utf8(row, index).to_string()),
-			Type::Uint1 => Value::Uint1(self.get_u8(row, index)),
-			Type::Uint2 => Value::Uint2(self.get_u16(row, index)),
-			Type::Uint4 => Value::Uint4(self.get_u32(row, index)),
-			Type::Uint8 => Value::Uint8(self.get_u64(row, index)),
-			Type::Uint16 => Value::Uint16(self.get_u128(row, index)),
-			Type::Date => Value::Date(self.get_date(row, index)),
-			Type::DateTime => Value::DateTime(self.get_datetime(row, index)),
-			Type::Time => Value::Time(self.get_time(row, index)),
-			Type::Duration => Value::Duration(self.get_duration(row, index)),
-			Type::IdentityId => Value::IdentityId(self.get_identity_id(row, index)),
-			Type::Uuid4 => Value::Uuid4(self.get_uuid4(row, index)),
-			Type::Uuid7 => Value::Uuid7(self.get_uuid7(row, index)),
-			Type::Blob => Value::Blob(self.get_blob(row, index)),
-			Type::Int => Value::Int(self.get_int(row, index)),
-			Type::Uint => Value::Uint(self.get_uint(row, index)),
-			Type::Decimal => Value::Decimal(self.get_decimal(row, index)),
-			Type::DictionaryId => Value::DictionaryId(self.get_dictionary_id(row, index)),
-			Type::Option(_) => unreachable!("Option type already unwrapped"),
-			Type::Any => Value::Any(Box::new(self.get_any(row, index))),
-			Type::List(_) => unreachable!("List type cannot be stored in database"),
-			Type::Record(_) => unreachable!("Record type cannot be stored in database"),
-			Type::Tuple(_) => unreachable!("Tuple type cannot be stored in database"),
+			ValueType::Int1 => Value::Int1(self.get_i8(row, index)),
+			ValueType::Int2 => Value::Int2(self.get_i16(row, index)),
+			ValueType::Int4 => Value::Int4(self.get_i32(row, index)),
+			ValueType::Int8 => Value::Int8(self.get_i64(row, index)),
+			ValueType::Int16 => Value::Int16(self.get_i128(row, index)),
+			ValueType::Utf8 => Value::Utf8(self.get_utf8(row, index).to_string()),
+			ValueType::Uint1 => Value::Uint1(self.get_u8(row, index)),
+			ValueType::Uint2 => Value::Uint2(self.get_u16(row, index)),
+			ValueType::Uint4 => Value::Uint4(self.get_u32(row, index)),
+			ValueType::Uint8 => Value::Uint8(self.get_u64(row, index)),
+			ValueType::Uint16 => Value::Uint16(self.get_u128(row, index)),
+			ValueType::Date => Value::Date(self.get_date(row, index)),
+			ValueType::DateTime => Value::DateTime(self.get_datetime(row, index)),
+			ValueType::Time => Value::Time(self.get_time(row, index)),
+			ValueType::Duration => Value::Duration(self.get_duration(row, index)),
+			ValueType::IdentityId => Value::IdentityId(self.get_identity_id(row, index)),
+			ValueType::Uuid4 => Value::Uuid4(self.get_uuid4(row, index)),
+			ValueType::Uuid7 => Value::Uuid7(self.get_uuid7(row, index)),
+			ValueType::Blob => Value::Blob(self.get_blob(row, index)),
+			ValueType::Int => Value::Int(self.get_int(row, index)),
+			ValueType::Uint => Value::Uint(self.get_uint(row, index)),
+			ValueType::Decimal => Value::Decimal(self.get_decimal(row, index)),
+			ValueType::DictionaryId => Value::DictionaryId(self.get_dictionary_id(row, index)),
+			ValueType::Option(_) => unreachable!("Option type already unwrapped"),
+			ValueType::Any => Value::Any(Box::new(self.get_any(row, index))),
+			ValueType::List(_) => unreachable!("List type cannot be stored in database"),
+			ValueType::Record(_) => unreachable!("Record type cannot be stored in database"),
+			ValueType::Tuple(_) => unreachable!("Tuple type cannot be stored in database"),
 		}
 	}
 }
@@ -304,7 +304,7 @@ pub mod tests {
 		clock::{Clock, MockClock},
 		rng::Rng,
 	};
-	use reifydb_type::value::{
+	use reifydb_value::value::{
 		Value,
 		blob::Blob,
 		constraint::TypeConstraint,
@@ -315,8 +315,8 @@ pub mod tests {
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
 		time::Time,
-		r#type::Type,
 		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
 	};
 
 	use crate::encoded::shape::{RowShape, RowShapeField};
@@ -330,7 +330,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_utf8_with_dynamic_content() {
-		let shape = RowShape::testing(&[Type::Utf8, Type::Int4, Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Int4, ValueType::Utf8]);
 		let mut row = shape.allocate();
 
 		let value1 = Value::Utf8("hello".to_string());
@@ -348,7 +348,13 @@ pub mod tests {
 
 	#[test]
 	fn test_set_values_with_mixed_dynamic_content() {
-		let shape = RowShape::testing(&[Type::Boolean, Type::Utf8, Type::Float4, Type::Utf8, Type::Int2]);
+		let shape = RowShape::testing(&[
+			ValueType::Boolean,
+			ValueType::Utf8,
+			ValueType::Float4,
+			ValueType::Utf8,
+			ValueType::Int2,
+		]);
 		let mut row = shape.allocate();
 
 		let values = vec![
@@ -370,7 +376,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_with_empty_and_large_utf8() {
-		let shape = RowShape::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
 		let mut row = shape.allocate();
 
 		let large_string = "X".repeat(2000);
@@ -390,7 +396,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_from_dynamic_content() {
-		let shape = RowShape::testing(&[Type::Utf8, Type::Int8, Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Int8, ValueType::Utf8]);
 		let mut row = shape.allocate();
 
 		shape.set_utf8(&mut row, 0, "test_string");
@@ -419,7 +425,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_none_with_utf8_fields() {
-		let shape = RowShape::testing(&[Type::Utf8, Type::Boolean, Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Boolean, ValueType::Utf8]);
 		let mut row = shape.allocate();
 
 		// Set some values
@@ -445,18 +451,18 @@ pub mod tests {
 	#[test]
 	fn test_get_all_types_including_utf8() {
 		let shape = RowShape::testing(&[
-			Type::Boolean,
-			Type::Int1,
-			Type::Int2,
-			Type::Int4,
-			Type::Int8,
-			Type::Uint1,
-			Type::Uint2,
-			Type::Uint4,
-			Type::Uint8,
-			Type::Float4,
-			Type::Float8,
-			Type::Utf8,
+			ValueType::Boolean,
+			ValueType::Int1,
+			ValueType::Int2,
+			ValueType::Int4,
+			ValueType::Int8,
+			ValueType::Uint1,
+			ValueType::Uint2,
+			ValueType::Uint4,
+			ValueType::Uint8,
+			ValueType::Float4,
+			ValueType::Float8,
+			ValueType::Utf8,
 		]);
 		let mut row = shape.allocate();
 
@@ -491,7 +497,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_values_sparse_with_utf8() {
-		let shape = RowShape::testing(&[Type::Utf8, Type::Utf8, Type::Utf8, Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
 		let mut row = shape.allocate();
 
 		// Only set some values
@@ -515,7 +521,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_values_unicode_strings() {
-		let shape = RowShape::testing(&[Type::Utf8, Type::Int4, Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Int4, ValueType::Utf8]);
 		let mut row = shape.allocate();
 
 		let values = vec![
@@ -533,7 +539,7 @@ pub mod tests {
 
 	#[test]
 	fn test_static_fields_only_no_dynamic_with_values() {
-		let shape = RowShape::testing(&[Type::Boolean, Type::Int4, Type::Float8]);
+		let shape = RowShape::testing(&[ValueType::Boolean, ValueType::Int4, ValueType::Float8]);
 		let mut row = shape.allocate();
 
 		let values =
@@ -552,7 +558,12 @@ pub mod tests {
 
 	#[test]
 	fn test_temporal_types_roundtrip() {
-		let shape = RowShape::testing(&[Type::Date, Type::DateTime, Type::Time, Type::Duration]);
+		let shape = RowShape::testing(&[
+			ValueType::Date,
+			ValueType::DateTime,
+			ValueType::Time,
+			ValueType::Duration,
+		]);
 		let mut row = shape.allocate();
 
 		let original_values = vec![
@@ -571,7 +582,12 @@ pub mod tests {
 
 	#[test]
 	fn test_temporal_types_with_undefined() {
-		let shape = RowShape::testing(&[Type::Date, Type::DateTime, Type::Time, Type::Duration]);
+		let shape = RowShape::testing(&[
+			ValueType::Date,
+			ValueType::DateTime,
+			ValueType::Time,
+			ValueType::Duration,
+		]);
 		let mut row = shape.allocate();
 
 		let values = vec![
@@ -599,13 +615,13 @@ pub mod tests {
 	#[test]
 	fn test_mixed_temporal_and_regular_types() {
 		let shape = RowShape::testing(&[
-			Type::Boolean,
-			Type::Date,
-			Type::Utf8,
-			Type::DateTime,
-			Type::Int4,
-			Type::Time,
-			Type::Duration,
+			ValueType::Boolean,
+			ValueType::Date,
+			ValueType::Utf8,
+			ValueType::DateTime,
+			ValueType::Int4,
+			ValueType::Time,
+			ValueType::Duration,
 		]);
 		let mut row = shape.allocate();
 
@@ -628,7 +644,7 @@ pub mod tests {
 
 	#[test]
 	fn test_roundtrip_with_dynamic_content() {
-		let shape = RowShape::testing(&[Type::Utf8, Type::Int2, Type::Utf8, Type::Float4]);
+		let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Int2, ValueType::Utf8, ValueType::Float4]);
 		let mut row = shape.allocate();
 
 		let original_values = vec![
@@ -649,7 +665,7 @@ pub mod tests {
 
 	#[test]
 	fn test_blob_roundtrip() {
-		let shape = RowShape::testing(&[Type::Blob, Type::Int4, Type::Blob]);
+		let shape = RowShape::testing(&[ValueType::Blob, ValueType::Int4, ValueType::Blob]);
 		let mut row = shape.allocate();
 
 		let blob1 = Blob::new(vec![0xDE, 0xAD, 0xBE, 0xEF]);
@@ -676,7 +692,7 @@ pub mod tests {
 
 	#[test]
 	fn test_blob_with_undefined() {
-		let shape = RowShape::testing(&[Type::Blob, Type::Blob, Type::Blob]);
+		let shape = RowShape::testing(&[ValueType::Blob, ValueType::Blob, ValueType::Blob]);
 		let mut row = shape.allocate();
 
 		let values = vec![
@@ -701,7 +717,7 @@ pub mod tests {
 	#[test]
 	fn test_uuid_roundtrip() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::Uuid4, Type::Uuid7, Type::Int4]);
+		let shape = RowShape::testing(&[ValueType::Uuid4, ValueType::Uuid7, ValueType::Int4]);
 		let mut row = shape.allocate();
 
 		let uuid4 = Uuid4::generate();
@@ -718,7 +734,7 @@ pub mod tests {
 	#[test]
 	fn test_uuid_with_undefined() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::Uuid4, Type::Uuid7]);
+		let shape = RowShape::testing(&[ValueType::Uuid4, ValueType::Uuid7]);
 		let mut row = shape.allocate();
 
 		let values = vec![Value::none(), Value::Uuid7(Uuid7::generate(&clock, &rng))];
@@ -737,8 +753,14 @@ pub mod tests {
 	#[test]
 	fn test_mixed_blob_row_number_uuid_types() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let shape =
-			RowShape::testing(&[Type::Blob, Type::Int16, Type::Uuid4, Type::Utf8, Type::Uuid7, Type::Int4]);
+		let shape = RowShape::testing(&[
+			ValueType::Blob,
+			ValueType::Int16,
+			ValueType::Uuid4,
+			ValueType::Utf8,
+			ValueType::Uuid7,
+			ValueType::Int4,
+		]);
 		let mut row = shape.allocate();
 
 		let values = vec![
@@ -766,27 +788,27 @@ pub mod tests {
 		let (_, clock, rng) = test_clock_and_rng();
 
 		let shape = RowShape::testing(&[
-			Type::Boolean,
-			Type::Int1,
-			Type::Int2,
-			Type::Int4,
-			Type::Int8,
-			Type::Int16,
-			Type::Uint1,
-			Type::Uint2,
-			Type::Uint4,
-			Type::Uint8,
-			Type::Uint16,
-			Type::Float4,
-			Type::Float8,
-			Type::Utf8,
-			Type::Date,
-			Type::DateTime,
-			Type::Time,
-			Type::Duration,
-			Type::Uuid4,
-			Type::Uuid7,
-			Type::Blob,
+			ValueType::Boolean,
+			ValueType::Int1,
+			ValueType::Int2,
+			ValueType::Int4,
+			ValueType::Int8,
+			ValueType::Int16,
+			ValueType::Uint1,
+			ValueType::Uint2,
+			ValueType::Uint4,
+			ValueType::Uint8,
+			ValueType::Uint16,
+			ValueType::Float4,
+			ValueType::Float8,
+			ValueType::Utf8,
+			ValueType::Date,
+			ValueType::DateTime,
+			ValueType::Time,
+			ValueType::Duration,
+			ValueType::Uuid4,
+			ValueType::Uuid7,
+			ValueType::Blob,
 		]);
 		let mut row = shape.allocate();
 
@@ -831,7 +853,7 @@ pub mod tests {
 
 	#[test]
 	fn test_dictionary_id_roundtrip_u4() {
-		let constraint = TypeConstraint::dictionary(DictionaryId::from(42u64), Type::Uint4);
+		let constraint = TypeConstraint::dictionary(DictionaryId::from(42u64), ValueType::Uint4);
 		let shape = RowShape::new(vec![RowShapeField::new("status", constraint)]);
 
 		let mut row = shape.allocate();
@@ -845,7 +867,7 @@ pub mod tests {
 
 	#[test]
 	fn test_dictionary_id_roundtrip_u2() {
-		let constraint = TypeConstraint::dictionary(DictionaryId::from(10u64), Type::Uint2);
+		let constraint = TypeConstraint::dictionary(DictionaryId::from(10u64), ValueType::Uint2);
 		let shape = RowShape::new(vec![RowShapeField::new("category", constraint)]);
 
 		let mut row = shape.allocate();
@@ -859,7 +881,7 @@ pub mod tests {
 
 	#[test]
 	fn test_dictionary_id_roundtrip_u8() {
-		let constraint = TypeConstraint::dictionary(DictionaryId::from(99u64), Type::Uint8);
+		let constraint = TypeConstraint::dictionary(DictionaryId::from(99u64), ValueType::Uint8);
 		let shape = RowShape::new(vec![RowShapeField::new("tag", constraint)]);
 
 		let mut row = shape.allocate();
@@ -873,10 +895,10 @@ pub mod tests {
 
 	#[test]
 	fn test_dictionary_id_with_undefined() {
-		let constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), Type::Uint4);
+		let constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), ValueType::Uint4);
 		let shape = RowShape::new(vec![
 			RowShapeField::new("dict_col", constraint),
-			RowShapeField::unconstrained("int_col", Type::Int4),
+			RowShapeField::unconstrained("int_col", ValueType::Int4),
 		]);
 
 		let mut row = shape.allocate();
@@ -892,11 +914,11 @@ pub mod tests {
 
 	#[test]
 	fn test_dictionary_id_mixed_with_other_types() {
-		let dict_constraint = TypeConstraint::dictionary(DictionaryId::from(5u64), Type::Uint4);
+		let dict_constraint = TypeConstraint::dictionary(DictionaryId::from(5u64), ValueType::Uint4);
 		let shape = RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Int4),
+			RowShapeField::unconstrained("id", ValueType::Int4),
 			RowShapeField::new("status", dict_constraint),
-			RowShapeField::unconstrained("name", Type::Utf8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
 		]);
 
 		let mut row = shape.allocate();

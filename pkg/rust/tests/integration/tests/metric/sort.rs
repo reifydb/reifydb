@@ -5,14 +5,14 @@ use std::{sync::Arc, thread, time::Duration};
 
 use reifydb::{
 	ConfigKey, Database, Params, SharedRuntimeConfig, Value, WithSubsystem, embedded as db_embedded,
-	value::duration::Duration as ConfigDuration,
+	value::value::duration::Duration as ConfigDuration,
 };
 use reifydb_metric::{
 	accumulator::StatementStatsAccumulator,
 	registry::{MetricRegistry, StaticMetricRegistry},
 };
 use reifydb_sub_metric::factory::MetricSubsystemFactory;
-use reifydb_type::value::frame::frame::Frame;
+use reifydb_value::value::frame::frame::Frame;
 
 fn wait_for_metrics_processing() {
 	thread::sleep(Duration::from_millis(150));

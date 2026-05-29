@@ -9,7 +9,7 @@ use reifydb_abi::{
 	data::buffer::BufferFFI,
 };
 use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_value::util::cowvec::CowVec;
 use tracing::{Span, instrument};
 
 use crate::{

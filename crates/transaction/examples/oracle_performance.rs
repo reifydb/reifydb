@@ -9,7 +9,7 @@ use reifydb_core::{
 	util::encoding,
 };
 use reifydb_transaction::multi::transaction::MultiTransaction;
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_value::util::cowvec::CowVec;
 
 macro_rules! as_key {
 	($key:expr) => {{ EncodedKey::new(keycode::serialize(&$key)) }};

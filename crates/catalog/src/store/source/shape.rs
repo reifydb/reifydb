@@ -4,7 +4,7 @@
 pub(crate) mod source {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const NAMESPACE: usize = 1;
@@ -17,14 +17,14 @@ pub(crate) mod source {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("namespace", Type::Uint8),
-			RowShapeField::unconstrained("name", Type::Utf8),
-			RowShapeField::unconstrained("connector", Type::Utf8),
-			RowShapeField::unconstrained("config", Type::Utf8),
-			RowShapeField::unconstrained("target_namespace", Type::Uint8),
-			RowShapeField::unconstrained("target_name", Type::Utf8),
-			RowShapeField::unconstrained("status", Type::Uint1),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("namespace", ValueType::Uint8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
+			RowShapeField::unconstrained("connector", ValueType::Utf8),
+			RowShapeField::unconstrained("config", ValueType::Utf8),
+			RowShapeField::unconstrained("target_namespace", ValueType::Uint8),
+			RowShapeField::unconstrained("target_name", ValueType::Utf8),
+			RowShapeField::unconstrained("status", ValueType::Uint1),
 		])
 	});
 }
@@ -32,15 +32,15 @@ pub(crate) mod source {
 pub(crate) mod source_namespace {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const NAME: usize = 1;
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("name", Type::Utf8),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
 		])
 	});
 }

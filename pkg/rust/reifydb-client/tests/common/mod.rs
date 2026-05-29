@@ -30,7 +30,7 @@ pub fn start_server_and_get_ws_port(_runtime: &Arc<Runtime>, server: &mut Databa
 	server.start()?;
 	server.admin_as_root(
 		"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
-		reifydb_type::params::Params::None,
+		reifydb_value::params::Params::None,
 	)
 	.unwrap();
 	Ok(server.sub_server_ws().unwrap().admin_port().unwrap())
@@ -43,7 +43,7 @@ pub fn start_server_and_get_grpc_port(_runtime: &Arc<Runtime>, server: &mut Data
 	server.start()?;
 	server.admin_as_root(
 		"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
-		reifydb_type::params::Params::None,
+		reifydb_value::params::Params::None,
 	)
 	.unwrap();
 	Ok(server.sub_server_grpc().unwrap().admin_port().unwrap())
@@ -56,7 +56,7 @@ pub fn start_server_and_get_http_port(_runtime: &Arc<Runtime>, server: &mut Data
 	server.start()?;
 	server.admin_as_root(
 		"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
-		reifydb_type::params::Params::None,
+		reifydb_value::params::Params::None,
 	)
 	.unwrap();
 	Ok(server.sub_server_http().unwrap().admin_port().unwrap())
@@ -84,7 +84,7 @@ use reifydb_runtime::actor::system::{ActorHandle, ActorSystem};
 #[cfg(reifydb_single_threaded)]
 use reifydb_sub_server::actor::ServerActor;
 #[cfg(reifydb_single_threaded)]
-use reifydb_type::value::identity::IdentityId;
+use reifydb_value::value::identity::IdentityId;
 
 #[cfg(reifydb_single_threaded)]
 pub struct DstTestContext {
@@ -105,7 +105,7 @@ impl DstTestContext {
 
 		db.admin_as_root(
 			"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
-			reifydb_type::params::Params::None,
+			reifydb_value::params::Params::None,
 		)
 		.unwrap();
 
@@ -157,7 +157,7 @@ pub fn dst_response_to_result(response: ServerResponse) -> Result<Vec<Frame>, Bo
 			diagnostic,
 			..
 		} => {
-			let err = reifydb_type::error::Error(diagnostic);
+			let err = reifydb_value::error::Error(diagnostic);
 			Err(err.to_string().into())
 		}
 	}

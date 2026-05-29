@@ -4,7 +4,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 pub(crate) use bumpalo::{Bump, collections::Vec as BumpVec};
-use reifydb_type::fragment::{Fragment, StatementColumn, StatementLine};
+use reifydb_value::fragment::{Fragment, StatementColumn, StatementLine};
 
 pub type BumpBox<'b, T> = bumpalo::boxed::Box<'b, T>;
 

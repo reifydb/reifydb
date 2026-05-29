@@ -3,11 +3,11 @@
 
 use reifydb_abi::data::column::ColumnTypeCode;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value, blob::Blob, date::Date, datetime::DateTime, duration::Duration, ordered_f32::OrderedF32,
-		ordered_f64::OrderedF64, row_number::RowNumber, time::Time, r#type::Type,
+		ordered_f64::OrderedF64, row_number::RowNumber, time::Time, value_type::ValueType,
 	},
 };
 
@@ -15,7 +15,7 @@ use crate::{error::SdkError, operator::column::sink::RowSink};
 
 pub struct NativeRowSink {
 	names: Vec<&'static str>,
-	types: Vec<Type>,
+	types: Vec<ValueType>,
 	cols: Vec<ColumnBuffer>,
 }
 
@@ -58,27 +58,27 @@ impl NativeRowSink {
 	}
 }
 
-fn code_to_type(code: ColumnTypeCode) -> Result<Type, SdkError> {
+fn code_to_type(code: ColumnTypeCode) -> Result<ValueType, SdkError> {
 	Ok(match code {
-		ColumnTypeCode::Bool => Type::Boolean,
-		ColumnTypeCode::Uint1 => Type::Uint1,
-		ColumnTypeCode::Uint2 => Type::Uint2,
-		ColumnTypeCode::Uint4 => Type::Uint4,
-		ColumnTypeCode::Uint8 => Type::Uint8,
-		ColumnTypeCode::Uint16 => Type::Uint16,
-		ColumnTypeCode::Int1 => Type::Int1,
-		ColumnTypeCode::Int2 => Type::Int2,
-		ColumnTypeCode::Int4 => Type::Int4,
-		ColumnTypeCode::Int8 => Type::Int8,
-		ColumnTypeCode::Int16 => Type::Int16,
-		ColumnTypeCode::Float4 => Type::Float4,
-		ColumnTypeCode::Float8 => Type::Float8,
-		ColumnTypeCode::Date => Type::Date,
-		ColumnTypeCode::DateTime => Type::DateTime,
-		ColumnTypeCode::Time => Type::Time,
-		ColumnTypeCode::Duration => Type::Duration,
-		ColumnTypeCode::Utf8 => Type::Utf8,
-		ColumnTypeCode::Blob => Type::Blob,
+		ColumnTypeCode::Bool => ValueType::Boolean,
+		ColumnTypeCode::Uint1 => ValueType::Uint1,
+		ColumnTypeCode::Uint2 => ValueType::Uint2,
+		ColumnTypeCode::Uint4 => ValueType::Uint4,
+		ColumnTypeCode::Uint8 => ValueType::Uint8,
+		ColumnTypeCode::Uint16 => ValueType::Uint16,
+		ColumnTypeCode::Int1 => ValueType::Int1,
+		ColumnTypeCode::Int2 => ValueType::Int2,
+		ColumnTypeCode::Int4 => ValueType::Int4,
+		ColumnTypeCode::Int8 => ValueType::Int8,
+		ColumnTypeCode::Int16 => ValueType::Int16,
+		ColumnTypeCode::Float4 => ValueType::Float4,
+		ColumnTypeCode::Float8 => ValueType::Float8,
+		ColumnTypeCode::Date => ValueType::Date,
+		ColumnTypeCode::DateTime => ValueType::DateTime,
+		ColumnTypeCode::Time => ValueType::Time,
+		ColumnTypeCode::Duration => ValueType::Duration,
+		ColumnTypeCode::Utf8 => ValueType::Utf8,
+		ColumnTypeCode::Blob => ValueType::Blob,
 		other => {
 			return Err(SdkError::NotImplemented(format!(
 				"native sink does not support column type {:?} (Decimal and others deferred)",
@@ -132,14 +132,14 @@ impl RowSink for NativeRowSink {
 	#[inline]
 	fn push_f32(&mut self, col: usize, v: f32) {
 		let value = OrderedF32::try_from(v).map(Value::Float4).unwrap_or(Value::None {
-			inner: Type::Float4,
+			inner: ValueType::Float4,
 		});
 		self.push(col, value);
 	}
 	#[inline]
 	fn push_f64(&mut self, col: usize, v: f64) {
 		let value = OrderedF64::try_from(v).map(Value::Float8).unwrap_or(Value::None {
-			inner: Type::Float8,
+			inner: ValueType::Float8,
 		});
 		self.push(col, value);
 	}

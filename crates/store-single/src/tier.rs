@@ -4,7 +4,7 @@
 use std::ops::Bound;
 
 use reifydb_core::encoded::key::EncodedKey;
-use reifydb_type::{Result, util::cowvec::CowVec};
+use reifydb_value::{Result, util::cowvec::CowVec};
 
 #[derive(Debug, Clone)]
 pub struct RawEntry {

@@ -49,7 +49,7 @@ use reifydb_sdk::{
 		strategy::{ColumnSampler, samplers},
 	},
 };
-use reifydb_type::value::{Value, r#type::Type};
+use reifydb_value::value::{Value, value_type::ValueType};
 use serde::{Deserialize, Serialize};
 
 /// Window duration shared by every tumbling-grid fixture.
@@ -98,7 +98,7 @@ pub fn maybe_none_f64(lo: f64, hi: f64) -> ColumnSampler {
 		Value::float8(lo),
 		Value::float8((lo + hi) / 2.0),
 		Value::float8(hi),
-		Value::none_of(Type::Float8),
+		Value::none_of(ValueType::Float8),
 	])
 }
 
@@ -809,50 +809,50 @@ impl RollingRegistration for VelocityIncremental {
 /// `(group: Utf8, slot: Uint8, size: Float8)` - the tumbling volume/min input.
 pub fn tumbling_shape() -> RowShape {
 	RowShape::new(vec![
-		RowShapeField::unconstrained("group", Type::Utf8),
-		RowShapeField::unconstrained("slot", Type::Uint8),
-		RowShapeField::unconstrained("size", Type::Float8),
+		RowShapeField::unconstrained("group", ValueType::Utf8),
+		RowShapeField::unconstrained("slot", ValueType::Uint8),
+		RowShapeField::unconstrained("size", ValueType::Float8),
 	])
 }
 
 /// `(group: Utf8, slot: Uint8, price: Float8)` - the sealing OHLCV input.
 pub fn ohlcv_shape() -> RowShape {
 	RowShape::new(vec![
-		RowShapeField::unconstrained("group", Type::Utf8),
-		RowShapeField::unconstrained("slot", Type::Uint8),
-		RowShapeField::unconstrained("price", Type::Float8),
+		RowShapeField::unconstrained("group", ValueType::Utf8),
+		RowShapeField::unconstrained("slot", ValueType::Uint8),
+		RowShapeField::unconstrained("price", ValueType::Float8),
 	])
 }
 
 /// `(group: Utf8, window_start: Uint8, value: Float8)` - rolling/incremental input.
 pub fn rolling_shape() -> RowShape {
 	RowShape::new(vec![
-		RowShapeField::unconstrained("group", Type::Utf8),
-		RowShapeField::unconstrained("window_start", Type::Uint8),
-		RowShapeField::unconstrained("value", Type::Float8),
+		RowShapeField::unconstrained("group", ValueType::Utf8),
+		RowShapeField::unconstrained("window_start", ValueType::Uint8),
+		RowShapeField::unconstrained("value", ValueType::Float8),
 	])
 }
 
 /// `(group: Utf8, window_start: Uint8, trader: Uint8, volume: Float8)` - top-K input.
 pub fn multi_rolling_shape() -> RowShape {
 	RowShape::new(vec![
-		RowShapeField::unconstrained("group", Type::Utf8),
-		RowShapeField::unconstrained("window_start", Type::Uint8),
-		RowShapeField::unconstrained("trader", Type::Uint8),
-		RowShapeField::unconstrained("volume", Type::Float8),
+		RowShapeField::unconstrained("group", ValueType::Utf8),
+		RowShapeField::unconstrained("window_start", ValueType::Uint8),
+		RowShapeField::unconstrained("trader", ValueType::Uint8),
+		RowShapeField::unconstrained("volume", ValueType::Float8),
 	])
 }
 
 /// `(group: Utf8, ts: Uint8, price: Float8)` - carry-forward input.
 pub fn carry_shape() -> RowShape {
 	RowShape::new(vec![
-		RowShapeField::unconstrained("group", Type::Utf8),
-		RowShapeField::unconstrained("ts", Type::Uint8),
-		RowShapeField::unconstrained("price", Type::Float8),
+		RowShapeField::unconstrained("group", ValueType::Utf8),
+		RowShapeField::unconstrained("ts", ValueType::Uint8),
+		RowShapeField::unconstrained("price", ValueType::Float8),
 	])
 }
 
-fn field(name: &str, ty: Type) -> RowShapeField {
+fn field(name: &str, ty: ValueType) -> RowShapeField {
 	RowShapeField::unconstrained(name, ty)
 }
 
@@ -861,59 +861,63 @@ fn field(name: &str, ty: Type) -> RowShapeField {
 /// full here for documentation.
 pub fn volume_out_shape() -> RowShape {
 	RowShape::new(vec![
-		field("group", Type::Utf8),
-		field("window_start", Type::Uint8),
-		field("volume", Type::Float8),
+		field("group", ValueType::Utf8),
+		field("window_start", ValueType::Uint8),
+		field("volume", ValueType::Float8),
 	])
 }
 
 pub fn min_out_shape() -> RowShape {
-	RowShape::new(vec![field("group", Type::Utf8), field("window_start", Type::Uint8), field("min", Type::Float8)])
+	RowShape::new(vec![
+		field("group", ValueType::Utf8),
+		field("window_start", ValueType::Uint8),
+		field("min", ValueType::Float8),
+	])
 }
 
 pub fn ohlcv_out_shape() -> RowShape {
 	RowShape::new(vec![
-		field("group", Type::Utf8),
-		field("window_start", Type::Uint8),
-		field("open", Type::Float8),
-		field("high", Type::Float8),
-		field("low", Type::Float8),
-		field("close", Type::Float8),
+		field("group", ValueType::Utf8),
+		field("window_start", ValueType::Uint8),
+		field("open", ValueType::Float8),
+		field("high", ValueType::Float8),
+		field("low", ValueType::Float8),
+		field("close", ValueType::Float8),
 	])
 }
 
 pub fn rolling_out_shape() -> RowShape {
 	RowShape::new(vec![
-		field("group", Type::Utf8),
-		field("rolling_sum", Type::Float8),
-		field("windows", Type::Uint4),
+		field("group", ValueType::Utf8),
+		field("rolling_sum", ValueType::Float8),
+		field("windows", ValueType::Uint4),
 	])
 }
 
 pub fn top_out_shape() -> RowShape {
 	RowShape::new(vec![
-		field("group", Type::Utf8),
-		field("rank", Type::Uint4),
-		field("trader", Type::Uint8),
-		field("volume", Type::Float8),
+		field("group", ValueType::Utf8),
+		field("rank", ValueType::Uint4),
+		field("trader", ValueType::Uint8),
+		field("volume", ValueType::Float8),
 	])
 }
 
 pub fn carry_out_shape() -> RowShape {
 	RowShape::new(vec![
-		field("group", Type::Utf8),
-		field("window_start", Type::Uint8),
-		field("sum", Type::Float8),
-		field("carry_in", Type::Float8),
-		field("has_carry", Type::Boolean),
+		field("group", ValueType::Utf8),
+		field("window_start", ValueType::Uint8),
+		field("sum", ValueType::Float8),
+		field("carry_in", ValueType::Float8),
+		field("has_carry", ValueType::Boolean),
 	])
 }
 
 pub fn velocity_out_shape() -> RowShape {
 	RowShape::new(vec![
-		field("group", Type::Utf8),
-		field("recent", Type::Float8),
-		field("baseline", Type::Float8),
-		field("windows", Type::Uint4),
+		field("group", ValueType::Utf8),
+		field("recent", ValueType::Float8),
+		field("baseline", ValueType::Float8),
+		field("windows", ValueType::Uint4),
 	])
 }

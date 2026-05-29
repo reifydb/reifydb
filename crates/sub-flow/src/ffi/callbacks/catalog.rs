@@ -27,7 +27,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_extension::procedure::ffi_callbacks::memory::{host_alloc, host_free};
-use reifydb_type::value::constraint::{Constraint, TypeConstraint};
+use reifydb_value::value::constraint::{Constraint, TypeConstraint};
 
 use crate::ffi::context::get_transaction_mut;
 
@@ -497,7 +497,7 @@ fn encode_type_constraint(constraint: &TypeConstraint) -> (u8, u8, u32, u32) {
 mod tests {
 	use std::{slice::from_raw_parts, str::from_utf8};
 
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
 
@@ -507,9 +507,9 @@ mod tests {
 		// reorders the (offset, size, align) triple, every downstream FFI operator silently decodes
 		// into the wrong slots - exactly the panic class this feature exists to prevent.
 		let shape = RowShape::new(vec![
-			RowShapeField::new("id", TypeConstraint::unconstrained(Type::Uint8)),
-			RowShapeField::new("mint", TypeConstraint::unconstrained(Type::Utf8)),
-			RowShapeField::new("decimals", TypeConstraint::unconstrained(Type::Uint1)),
+			RowShapeField::new("id", TypeConstraint::unconstrained(ValueType::Uint8)),
+			RowShapeField::new("mint", TypeConstraint::unconstrained(ValueType::Utf8)),
+			RowShapeField::new("decimals", TypeConstraint::unconstrained(ValueType::Uint1)),
 		]);
 
 		let ffi = marshal_row_shape(&shape).expect("marshal must not allocate-fail for a 3-field shape");

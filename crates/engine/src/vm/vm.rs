@@ -8,7 +8,7 @@ use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::instruction::{Instruction, ScopeType};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	params::Params,
 	util::bitvec::BitVec,
 	value::{Value, frame::frame::Frame, identity::IdentityId},

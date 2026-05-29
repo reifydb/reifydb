@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::{
+use reifydb_value::value::{
 	container::dictionary::DictionaryContainer, dictionary::DictionaryEntryId, frame::data::FrameColumnData,
 };
 

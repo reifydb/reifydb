@@ -25,7 +25,7 @@ use reifydb_sub_flow::{
 	transaction::FlowTransaction,
 };
 use reifydb_transaction::{interceptor::interceptors::Interceptors, transaction::admin::AdminTransaction};
-use reifydb_type::{
+use reifydb_value::{
 	Result as TypeResult,
 	fragment::Fragment,
 	util::cowvec::CowVec,

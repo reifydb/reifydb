@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
-use reifydb_type::{fragment::Fragment, util::bitvec::BitVec, value::r#type::Type};
+use reifydb_value::{fragment::Fragment, util::bitvec::BitVec, value::value_type::ValueType};
 
 use crate::Result;
 
@@ -52,7 +52,7 @@ pub(crate) fn binary_op_unwrap_option(
 
 	if is_all_none(left_bv) || is_all_none(right_bv) {
 		let len = left_data.len();
-		return Ok(ColumnWithName::new(fragment, ColumnBuffer::none_typed(Type::Boolean, len)));
+		return Ok(ColumnWithName::new(fragment, ColumnBuffer::none_typed(ValueType::Boolean, len)));
 	}
 
 	let combined_bv = combine_option_bitvecs(left_bv, right_bv);
@@ -76,7 +76,7 @@ pub(crate) fn unary_op_unwrap_option(
 
 	if is_all_none(bv) {
 		let len = inner_data.len();
-		return Ok(ColumnWithName::new(col.name().clone(), ColumnBuffer::none_typed(Type::Boolean, len)));
+		return Ok(ColumnWithName::new(col.name().clone(), ColumnBuffer::none_typed(ValueType::Boolean, len)));
 	}
 
 	let unwrapped = ColumnWithName::new(col.name().clone(), inner_data.clone());

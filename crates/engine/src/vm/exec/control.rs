@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_rql::instruction::ScopeType;
-use reifydb_type::error::{RuntimeErrorKind, TypeError};
+use reifydb_value::error::{RuntimeErrorKind, TypeError};
 
 use crate::{
 	Result,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::{container::number::NumberContainer, frame::data::FrameColumnData};
+use reifydb_value::value::{container::number::NumberContainer, frame::data::FrameColumnData};
 
 fn make(v: Vec<u8>) -> FrameColumnData {
 	FrameColumnData::Uint1(NumberContainer::new(v))

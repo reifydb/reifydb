@@ -3,7 +3,7 @@
 
 use once_cell::sync::Lazy;
 use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 pub(crate) mod dictionary {
 	use super::*;
@@ -16,11 +16,11 @@ pub(crate) mod dictionary {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("namespace", Type::Uint8),
-			RowShapeField::unconstrained("name", Type::Utf8),
-			RowShapeField::unconstrained("value_type", Type::Uint1),
-			RowShapeField::unconstrained("id_type", Type::Uint1),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("namespace", ValueType::Uint8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
+			RowShapeField::unconstrained("value_type", ValueType::Uint1),
+			RowShapeField::unconstrained("id_type", ValueType::Uint1),
 		])
 	});
 }
@@ -33,8 +33,8 @@ pub(crate) mod dictionary_namespace {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("name", Type::Utf8),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
 		])
 	});
 }

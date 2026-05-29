@@ -24,7 +24,7 @@ use column::operator::OperatorColumn;
 use context::{OperatorContext, ffi::FFIOperatorContext};
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::interface::catalog::flow::FlowNodeId;
-use reifydb_type::value::datetime::DateTime;
+use reifydb_value::value::datetime::DateTime;
 use view::ChangeView;
 
 use crate::error::Result;

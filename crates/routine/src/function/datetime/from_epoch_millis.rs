@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_type::value::{container::temporal::TemporalContainer, datetime::DateTime, r#type::Type};
+use reifydb_value::value::{container::temporal::TemporalContainer, datetime::DateTime, value_type::ValueType};
 
 use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
@@ -61,8 +61,8 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeFromEpochMillis {
 		&self.info
 	}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::DateTime
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::DateTime
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
@@ -83,16 +83,16 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeFromEpochMillis {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![
-					Type::Int1,
-					Type::Int2,
-					Type::Int4,
-					Type::Int8,
-					Type::Int16,
-					Type::Uint1,
-					Type::Uint2,
-					Type::Uint4,
-					Type::Uint8,
-					Type::Uint16,
+					ValueType::Int1,
+					ValueType::Int2,
+					ValueType::Int4,
+					ValueType::Int8,
+					ValueType::Int16,
+					ValueType::Uint1,
+					ValueType::Uint2,
+					ValueType::Uint4,
+					ValueType::Uint8,
+					ValueType::Uint16,
 				],
 				actual: data.get_type(),
 			});

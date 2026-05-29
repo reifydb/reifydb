@@ -27,7 +27,7 @@ use reifydb_core::value::column::{
 	encoding::EncodingId,
 	stats::StatsSet,
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::{
 	compress::CompressConfig,

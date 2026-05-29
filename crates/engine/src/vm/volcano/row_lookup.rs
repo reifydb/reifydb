@@ -11,9 +11,9 @@ use reifydb_core::{
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
-	value::{row_number::RowNumber, r#type::Type},
+	value::{row_number::RowNumber, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -292,7 +292,7 @@ impl QueryNode for RowRangeScanNode {
 	}
 }
 
-fn build_headers_and_storage_types(source: &ResolvedShape) -> Result<(ColumnHeaders, Vec<Type>)> {
+fn build_headers_and_storage_types(source: &ResolvedShape) -> Result<(ColumnHeaders, Vec<ValueType>)> {
 	let columns = match source {
 		ResolvedShape::Table(table) => table.columns(),
 		ResolvedShape::View(view) => view.columns(),

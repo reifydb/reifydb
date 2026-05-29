@@ -7,7 +7,7 @@ use std::{
 };
 
 use reifydb::{Params, SqliteConfig, embedded};
-use reifydb_type::value::frame::frame::Frame;
+use reifydb_value::value::frame::frame::Frame;
 
 fn unique_db_path(tag: &str) -> std::path::PathBuf {
 	let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();

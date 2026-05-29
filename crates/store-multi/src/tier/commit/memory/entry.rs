@@ -5,7 +5,7 @@ use std::{cmp::Reverse, collections::BTreeMap, sync::Arc};
 
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
 use reifydb_runtime::sync::{map::Map, rwlock::RwLock};
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_value::util::cowvec::CowVec;
 
 pub(super) type Value = Option<CowVec<u8>>;
 

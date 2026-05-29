@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, columns::Columns, buffer::ColumnBuffer};
-use reifydb_type::value::r#type::{Type, input_types::InputTypes};
+use reifydb_value::value::value_type::{ValueType, input_types::InputTypes};
 
 use crate::function::{
 	Function, FunctionCapability, FunctionContext, FunctionInfo,
@@ -32,8 +32,8 @@ impl<'a> Routine<FunctionContext<'a>> for DateTime {
 		&INFO
 	}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Time
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Time
 	}
 
 	fn accepted_types(&self) -> InputTypes {

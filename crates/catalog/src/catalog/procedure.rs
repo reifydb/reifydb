@@ -13,7 +13,7 @@ use reifydb_transaction::{
 	change::TransactionalProcedureChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	value::{constraint::TypeConstraint, sumtype::VariantRef},
 };

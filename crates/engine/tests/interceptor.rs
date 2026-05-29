@@ -12,7 +12,7 @@ use reifydb_transaction::interceptor::{
 	series_row::{series_row_pre_insert, series_row_pre_update},
 	table_row::{table_row_pre_insert, table_row_pre_update},
 };
-use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 const MUTATED_VALUE: i64 = 999;
 
@@ -124,8 +124,8 @@ fn test_dictionary_row_pre_insert_mutates_value() {
 
 fn series_shape() -> RowShape {
 	RowShape::new(vec![
-		RowShapeField::new("ts", TypeConstraint::unconstrained(Type::Int8)),
-		RowShapeField::new("val", TypeConstraint::unconstrained(Type::Int8)),
+		RowShapeField::new("ts", TypeConstraint::unconstrained(ValueType::Int8)),
+		RowShapeField::new("val", TypeConstraint::unconstrained(ValueType::Int8)),
 	])
 }
 

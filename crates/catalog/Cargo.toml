@@ -21,7 +21,7 @@ reifydb-runtime = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-transaction = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 
 futures-util = { workspace = true }
 crossbeam-skiplist = {workspace = true}

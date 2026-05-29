@@ -2,9 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_type::{
+use reifydb_value::{
 	util::bitvec::BitVec,
-	value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type},
+	value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, value_type::ValueType},
 };
 
 use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
@@ -32,8 +32,8 @@ impl<'a> Routine<FunctionContext<'a>> for TextPadRight {
 		&self.info
 	}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Utf8
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Utf8
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
@@ -63,7 +63,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextPadRight {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 2,
-					expected: vec![Type::Utf8],
+					expected: vec![ValueType::Utf8],
 					actual: other.get_type(),
 				});
 			}
@@ -95,10 +95,10 @@ impl<'a> Routine<FunctionContext<'a>> for TextPadRight {
 								function: ctx.fragment.clone(),
 								argument_index: 1,
 								expected: vec![
-									Type::Int1,
-									Type::Int2,
-									Type::Int4,
-									Type::Int8,
+									ValueType::Int1,
+									ValueType::Int2,
+									ValueType::Int4,
+									ValueType::Int8,
 								],
 								actual: len_data.get_type(),
 							});
@@ -168,7 +168,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextPadRight {
 			other => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
-				expected: vec![Type::Utf8],
+				expected: vec![ValueType::Utf8],
 				actual: other.get_type(),
 			}),
 		}

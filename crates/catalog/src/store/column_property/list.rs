@@ -64,7 +64,7 @@ pub mod tests {
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+	use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 	use crate::{CatalogStore, store::column::create::ColumnToCreate, test_utils::ensure_test_table};
 
@@ -81,7 +81,7 @@ pub mod tests {
 				namespace_name: "test_namespace".to_string(),
 				shape_name: "test_table".to_string(),
 				column: "with_policy".to_string(),
-				constraint: TypeConstraint::unconstrained(Type::Int2),
+				constraint: TypeConstraint::unconstrained(ValueType::Int2),
 				properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationStrategy::None)],
 				index: ColumnIndex(0),
 				auto_increment: false,

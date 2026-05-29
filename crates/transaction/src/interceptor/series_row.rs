@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{encoded::row::EncodedRow, interface::catalog::series::Series};
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use super::WithInterceptors;
 use crate::interceptor::chain::InterceptorChain;

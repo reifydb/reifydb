@@ -147,7 +147,7 @@ impl SubscriptionStore {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
-	use reifydb_type::fragment::Fragment;
+	use reifydb_value::fragment::Fragment;
 
 	use super::*;
 

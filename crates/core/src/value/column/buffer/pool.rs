@@ -4,14 +4,14 @@
 use std::collections::HashMap;
 
 use reifydb_runtime::sync::mutex::Mutex;
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 use crate::value::column::buffer::ColumnBuffer;
 
 const CAP_PER_TYPE: usize = 64;
 
 pub struct ColumnBufferPool {
-	inner: Mutex<HashMap<Type, Vec<ColumnBuffer>>>,
+	inner: Mutex<HashMap<ValueType, Vec<ColumnBuffer>>>,
 }
 
 impl Default for ColumnBufferPool {
@@ -27,7 +27,7 @@ impl ColumnBufferPool {
 		}
 	}
 
-	pub fn acquire(&self, target: &Type, min_capacity: usize) -> ColumnBuffer {
+	pub fn acquire(&self, target: &ValueType, min_capacity: usize) -> ColumnBuffer {
 		if is_poolable(target) {
 			let mut pool = self.inner.lock();
 			if let Some(bucket) = pool.get_mut(target) {
@@ -70,29 +70,29 @@ impl ColumnBufferPool {
 	}
 }
 
-fn is_poolable(t: &Type) -> bool {
+fn is_poolable(t: &ValueType) -> bool {
 	matches!(
 		t,
-		Type::Boolean
-			| Type::Float4 | Type::Float8
-			| Type::Int1 | Type::Int2
-			| Type::Int4 | Type::Int8
-			| Type::Int16 | Type::Uint1
-			| Type::Uint2 | Type::Uint4
-			| Type::Uint8 | Type::Uint16
-			| Type::Utf8 | Type::Date
-			| Type::DateTime | Type::Time
-			| Type::Duration | Type::IdentityId
-			| Type::Uuid4 | Type::Uuid7
-			| Type::Blob | Type::Int
-			| Type::Uint | Type::Decimal
-			| Type::DictionaryId
+		ValueType::Boolean
+			| ValueType::Float4 | ValueType::Float8
+			| ValueType::Int1 | ValueType::Int2
+			| ValueType::Int4 | ValueType::Int8
+			| ValueType::Int16 | ValueType::Uint1
+			| ValueType::Uint2 | ValueType::Uint4
+			| ValueType::Uint8 | ValueType::Uint16
+			| ValueType::Utf8 | ValueType::Date
+			| ValueType::DateTime | ValueType::Time
+			| ValueType::Duration | ValueType::IdentityId
+			| ValueType::Uuid4 | ValueType::Uuid7
+			| ValueType::Blob | ValueType::Int
+			| ValueType::Uint | ValueType::Decimal
+			| ValueType::DictionaryId
 	)
 }
 
 #[cfg(test)]
 mod tests {
-	use reifydb_type::value::{Value, r#type::Type};
+	use reifydb_value::value::{Value, value_type::ValueType};
 
 	use super::{ColumnBufferPool, is_poolable};
 	use crate::value::column::buffer::ColumnBuffer;
@@ -100,8 +100,8 @@ mod tests {
 	#[test]
 	fn acquire_from_empty_pool_allocates_fresh() {
 		let pool = ColumnBufferPool::new();
-		let buf = pool.acquire(&Type::Int8, 4);
-		assert_eq!(buf.get_type(), Type::Int8);
+		let buf = pool.acquire(&ValueType::Int8, 4);
+		assert_eq!(buf.get_type(), ValueType::Int8);
 		assert!(buf.capacity() >= 4);
 		assert!(pool.is_empty());
 	}
@@ -109,7 +109,7 @@ mod tests {
 	#[test]
 	fn release_then_acquire_reuses_same_allocation() {
 		let pool = ColumnBufferPool::new();
-		let mut buf = ColumnBuffer::with_capacity(Type::Int8, 16);
+		let mut buf = ColumnBuffer::with_capacity(ValueType::Int8, 16);
 		// Push then clear to mark the buffer non-empty before release
 		// (so the capacity assertion below checks reuse, not freshness).
 		for i in 0..8i64 {
@@ -119,8 +119,8 @@ mod tests {
 		pool.release(buf);
 		assert_eq!(pool.len(), 1);
 
-		let reused = pool.acquire(&Type::Int8, 1);
-		assert_eq!(reused.get_type(), Type::Int8);
+		let reused = pool.acquire(&ValueType::Int8, 1);
+		assert_eq!(reused.get_type(), ValueType::Int8);
 		assert_eq!(reused.capacity(), original_capacity);
 		assert_eq!(reused.len(), 0);
 		assert!(pool.is_empty());
@@ -129,16 +129,16 @@ mod tests {
 	#[test]
 	fn best_fit_prefers_smallest_qualifying_buffer() {
 		let pool = ColumnBufferPool::new();
-		pool.release(ColumnBuffer::with_capacity(Type::Int8, 4));
-		pool.release(ColumnBuffer::with_capacity(Type::Int8, 32));
-		pool.release(ColumnBuffer::with_capacity(Type::Int8, 16));
-		pool.release(ColumnBuffer::with_capacity(Type::Int8, 64));
+		pool.release(ColumnBuffer::with_capacity(ValueType::Int8, 4));
+		pool.release(ColumnBuffer::with_capacity(ValueType::Int8, 32));
+		pool.release(ColumnBuffer::with_capacity(ValueType::Int8, 16));
+		pool.release(ColumnBuffer::with_capacity(ValueType::Int8, 64));
 		assert_eq!(pool.len(), 4);
 
 		// Need >= 10. The smallest qualifying buffer in the pool
 		// is the 16-capacity one. Aligned-capacity quirks may round
 		// up a bit but it should pick the buffer closest to 10.
-		let pick = pool.acquire(&Type::Int8, 10);
+		let pick = pool.acquire(&ValueType::Int8, 10);
 		assert!(pick.capacity() >= 10);
 		assert!(pick.capacity() < 32);
 		assert_eq!(pool.len(), 3);
@@ -149,7 +149,7 @@ mod tests {
 		let pool = ColumnBufferPool::new();
 		// CAP_PER_TYPE is 64; release 65 to overflow by one.
 		for _ in 0..65 {
-			pool.release(ColumnBuffer::with_capacity(Type::Int8, 1));
+			pool.release(ColumnBuffer::with_capacity(ValueType::Int8, 1));
 		}
 		assert_eq!(pool.len(), 64);
 	}
@@ -157,16 +157,16 @@ mod tests {
 	#[test]
 	fn buffers_do_not_cross_pollute_across_types() {
 		let pool = ColumnBufferPool::new();
-		pool.release(ColumnBuffer::with_capacity(Type::Int8, 16));
-		pool.release(ColumnBuffer::with_capacity(Type::Utf8, 16));
+		pool.release(ColumnBuffer::with_capacity(ValueType::Int8, 16));
+		pool.release(ColumnBuffer::with_capacity(ValueType::Utf8, 16));
 		assert_eq!(pool.len(), 2);
 
-		let int8 = pool.acquire(&Type::Int8, 1);
-		assert_eq!(int8.get_type(), Type::Int8);
+		let int8 = pool.acquire(&ValueType::Int8, 1);
+		assert_eq!(int8.get_type(), ValueType::Int8);
 		assert_eq!(pool.len(), 1);
 
-		let utf8 = pool.acquire(&Type::Utf8, 1);
-		assert_eq!(utf8.get_type(), Type::Utf8);
+		let utf8 = pool.acquire(&ValueType::Utf8, 1);
+		assert_eq!(utf8.get_type(), ValueType::Utf8);
 		assert!(pool.is_empty());
 	}
 
@@ -174,7 +174,7 @@ mod tests {
 	fn non_poolable_types_bypass_pool() {
 		let pool = ColumnBufferPool::new();
 		// Option(Int8) is not poolable.
-		let opt_ty = Type::Option(Box::new(Type::Int8));
+		let opt_ty = ValueType::Option(Box::new(ValueType::Int8));
 		let opt_buf = ColumnBuffer::with_capacity(opt_ty.clone(), 8);
 		pool.release(opt_buf);
 		assert!(pool.is_empty(), "Option-wrapped buffers must not enter the pool");
@@ -187,37 +187,37 @@ mod tests {
 
 	#[test]
 	fn is_poolable_matrix() {
-		assert!(is_poolable(&Type::Boolean));
-		assert!(is_poolable(&Type::Float4));
-		assert!(is_poolable(&Type::Float8));
-		assert!(is_poolable(&Type::Int1));
-		assert!(is_poolable(&Type::Int2));
-		assert!(is_poolable(&Type::Int4));
-		assert!(is_poolable(&Type::Int8));
-		assert!(is_poolable(&Type::Int16));
-		assert!(is_poolable(&Type::Uint1));
-		assert!(is_poolable(&Type::Uint2));
-		assert!(is_poolable(&Type::Uint4));
-		assert!(is_poolable(&Type::Uint8));
-		assert!(is_poolable(&Type::Uint16));
-		assert!(is_poolable(&Type::Utf8));
-		assert!(is_poolable(&Type::Date));
-		assert!(is_poolable(&Type::DateTime));
-		assert!(is_poolable(&Type::Time));
-		assert!(is_poolable(&Type::Duration));
-		assert!(is_poolable(&Type::IdentityId));
-		assert!(is_poolable(&Type::Uuid4));
-		assert!(is_poolable(&Type::Uuid7));
-		assert!(is_poolable(&Type::Blob));
-		assert!(is_poolable(&Type::Int));
-		assert!(is_poolable(&Type::Uint));
-		assert!(is_poolable(&Type::Decimal));
-		assert!(is_poolable(&Type::DictionaryId));
+		assert!(is_poolable(&ValueType::Boolean));
+		assert!(is_poolable(&ValueType::Float4));
+		assert!(is_poolable(&ValueType::Float8));
+		assert!(is_poolable(&ValueType::Int1));
+		assert!(is_poolable(&ValueType::Int2));
+		assert!(is_poolable(&ValueType::Int4));
+		assert!(is_poolable(&ValueType::Int8));
+		assert!(is_poolable(&ValueType::Int16));
+		assert!(is_poolable(&ValueType::Uint1));
+		assert!(is_poolable(&ValueType::Uint2));
+		assert!(is_poolable(&ValueType::Uint4));
+		assert!(is_poolable(&ValueType::Uint8));
+		assert!(is_poolable(&ValueType::Uint16));
+		assert!(is_poolable(&ValueType::Utf8));
+		assert!(is_poolable(&ValueType::Date));
+		assert!(is_poolable(&ValueType::DateTime));
+		assert!(is_poolable(&ValueType::Time));
+		assert!(is_poolable(&ValueType::Duration));
+		assert!(is_poolable(&ValueType::IdentityId));
+		assert!(is_poolable(&ValueType::Uuid4));
+		assert!(is_poolable(&ValueType::Uuid7));
+		assert!(is_poolable(&ValueType::Blob));
+		assert!(is_poolable(&ValueType::Int));
+		assert!(is_poolable(&ValueType::Uint));
+		assert!(is_poolable(&ValueType::Decimal));
+		assert!(is_poolable(&ValueType::DictionaryId));
 
-		assert!(!is_poolable(&Type::Option(Box::new(Type::Int8))));
-		assert!(!is_poolable(&Type::Any));
-		assert!(!is_poolable(&Type::List(Box::new(Type::Int8))));
-		assert!(!is_poolable(&Type::Record(vec![])));
-		assert!(!is_poolable(&Type::Tuple(vec![])));
+		assert!(!is_poolable(&ValueType::Option(Box::new(ValueType::Int8))));
+		assert!(!is_poolable(&ValueType::Any));
+		assert!(!is_poolable(&ValueType::List(Box::new(ValueType::Int8))));
+		assert!(!is_poolable(&ValueType::Record(vec![])));
+		assert!(!is_poolable(&ValueType::Tuple(vec![])));
 	}
 }

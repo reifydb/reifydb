@@ -3,7 +3,7 @@
 
 use std::ptr;
 
-use reifydb_type::value::{time::Time, r#type::Type};
+use reifydb_value::value::{time::Time, value_type::ValueType};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
@@ -11,7 +11,7 @@ impl RowShape {
 	pub fn set_time(&self, row: &mut EncodedRow, index: usize, value: Time) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Time);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Time);
 		row.set_valid(index, true);
 		unsafe {
 			ptr::write_unaligned(
@@ -24,7 +24,7 @@ impl RowShape {
 	pub fn get_time(&self, row: &EncodedRow, index: usize) -> Time {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Time);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Time);
 		unsafe {
 			Time::from_nanos_since_midnight(
 				(row.as_ptr().add(field.offset as usize) as *const u64).read_unaligned(),
@@ -34,7 +34,7 @@ impl RowShape {
 	}
 
 	pub fn try_get_time(&self, row: &EncodedRow, index: usize) -> Option<Time> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Time {
+		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Time {
 			Some(self.get_time(row, index))
 		} else {
 			None
@@ -44,13 +44,13 @@ impl RowShape {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::{time::Time, r#type::Type};
+	use reifydb_value::value::{time::Time, value_type::ValueType};
 
 	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_set_get_time() {
-		let shape = RowShape::testing(&[Type::Time]);
+		let shape = RowShape::testing(&[ValueType::Time]);
 		let mut row = shape.allocate();
 
 		let value = Time::new(20, 50, 0, 0).unwrap();
@@ -60,7 +60,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_time() {
-		let shape = RowShape::testing(&[Type::Time]);
+		let shape = RowShape::testing(&[ValueType::Time]);
 		let mut row = shape.allocate();
 
 		assert_eq!(shape.try_get_time(&row, 0), None);
@@ -72,7 +72,7 @@ pub mod tests {
 
 	#[test]
 	fn test_time_midnight() {
-		let shape = RowShape::testing(&[Type::Time]);
+		let shape = RowShape::testing(&[ValueType::Time]);
 		let mut row = shape.allocate();
 
 		let midnight = Time::default(); // 00:00:00
@@ -82,7 +82,7 @@ pub mod tests {
 
 	#[test]
 	fn test_time_with_nanoseconds() {
-		let shape = RowShape::testing(&[Type::Time]);
+		let shape = RowShape::testing(&[ValueType::Time]);
 		let mut row = shape.allocate();
 
 		// Test with high precision nanoseconds
@@ -93,7 +93,7 @@ pub mod tests {
 
 	#[test]
 	fn test_time_various_times() {
-		let shape = RowShape::testing(&[Type::Time]);
+		let shape = RowShape::testing(&[ValueType::Time]);
 
 		let test_times = [
 			Time::new(0, 0, 0, 0).unwrap(),            // Midnight
@@ -112,7 +112,7 @@ pub mod tests {
 
 	#[test]
 	fn test_time_boundary_cases() {
-		let shape = RowShape::testing(&[Type::Time]);
+		let shape = RowShape::testing(&[ValueType::Time]);
 
 		let boundary_times = [
 			Time::new(0, 0, 0, 0).unwrap(), // Start of day
@@ -131,7 +131,7 @@ pub mod tests {
 
 	#[test]
 	fn test_time_mixed_with_other_types() {
-		let shape = RowShape::testing(&[Type::Time, Type::Boolean, Type::Time, Type::Int4]);
+		let shape = RowShape::testing(&[ValueType::Time, ValueType::Boolean, ValueType::Time, ValueType::Int4]);
 		let mut row = shape.allocate();
 
 		let time1 = Time::new(9, 15, 30, 0).unwrap();
@@ -150,7 +150,7 @@ pub mod tests {
 
 	#[test]
 	fn test_time_undefined_handling() {
-		let shape = RowShape::testing(&[Type::Time, Type::Time]);
+		let shape = RowShape::testing(&[ValueType::Time, ValueType::Time]);
 		let mut row = shape.allocate();
 
 		let time = Time::new(16, 20, 45, 333000000).unwrap();
@@ -165,7 +165,7 @@ pub mod tests {
 
 	#[test]
 	fn test_time_precision_preservation() {
-		let shape = RowShape::testing(&[Type::Time]);
+		let shape = RowShape::testing(&[ValueType::Time]);
 		let mut row = shape.allocate();
 
 		// Test that nanosecond precision is preserved
@@ -179,7 +179,7 @@ pub mod tests {
 
 	#[test]
 	fn test_time_microsecond_precision() {
-		let shape = RowShape::testing(&[Type::Time]);
+		let shape = RowShape::testing(&[ValueType::Time]);
 		let mut row = shape.allocate();
 
 		// Test microsecond precision (common in databases)
@@ -190,7 +190,7 @@ pub mod tests {
 
 	#[test]
 	fn test_time_millisecond_precision() {
-		let shape = RowShape::testing(&[Type::Time]);
+		let shape = RowShape::testing(&[ValueType::Time]);
 		let mut row = shape.allocate();
 
 		// Test millisecond precision
@@ -201,7 +201,7 @@ pub mod tests {
 
 	#[test]
 	fn test_time_common_times() {
-		let shape = RowShape::testing(&[Type::Time]);
+		let shape = RowShape::testing(&[ValueType::Time]);
 
 		// Test common business/system times
 		let common_times = [
@@ -221,7 +221,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_time_wrong_type() {
-		let shape = RowShape::testing(&[Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
 		shape.set_bool(&mut row, 0, true);

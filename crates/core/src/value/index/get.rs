@@ -3,14 +3,14 @@
 
 use std::ptr;
 
-use reifydb_type::value::{
+use reifydb_value::value::{
 	date::Date,
 	datetime::DateTime,
 	duration::Duration,
 	identity::IdentityId,
 	time::Time,
-	r#type::Type,
 	uuid::{Uuid4, Uuid7},
+	value_type::ValueType,
 };
 use uuid::Uuid;
 
@@ -22,7 +22,7 @@ use crate::{
 impl IndexShape {
 	pub fn get_bool(&self, key: &EncodedIndexKey, index: usize) -> bool {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Boolean);
+		debug_assert_eq!(field.value, ValueType::Boolean);
 
 		let byte = unsafe { *key.as_ptr().add(field.offset) };
 
@@ -34,7 +34,7 @@ impl IndexShape {
 
 	pub fn get_f32(&self, key: &EncodedIndexKey, index: usize) -> f32 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Float4);
+		debug_assert_eq!(field.value, ValueType::Float4);
 
 		let mut bytes = [0u8; 4];
 		unsafe {
@@ -60,7 +60,7 @@ impl IndexShape {
 
 	pub fn get_f64(&self, key: &EncodedIndexKey, index: usize) -> f64 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Float8);
+		debug_assert_eq!(field.value, ValueType::Float8);
 
 		let mut bytes = [0u8; 8];
 		unsafe {
@@ -86,7 +86,7 @@ impl IndexShape {
 
 	pub fn get_i8(&self, key: &EncodedIndexKey, index: usize) -> i8 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Int1);
+		debug_assert_eq!(field.value, ValueType::Int1);
 
 		let mut byte = unsafe { *key.as_ptr().add(field.offset) };
 
@@ -105,7 +105,7 @@ impl IndexShape {
 
 	pub fn get_i16(&self, key: &EncodedIndexKey, index: usize) -> i16 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Int2);
+		debug_assert_eq!(field.value, ValueType::Int2);
 
 		let mut bytes = [0u8; 2];
 		unsafe {
@@ -129,7 +129,7 @@ impl IndexShape {
 
 	pub fn get_i32(&self, key: &EncodedIndexKey, index: usize) -> i32 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Int4);
+		debug_assert_eq!(field.value, ValueType::Int4);
 
 		let mut bytes = [0u8; 4];
 		unsafe {
@@ -153,7 +153,7 @@ impl IndexShape {
 
 	pub fn get_i64(&self, key: &EncodedIndexKey, index: usize) -> i64 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Int8);
+		debug_assert_eq!(field.value, ValueType::Int8);
 
 		let mut bytes = [0u8; 8];
 		unsafe {
@@ -177,7 +177,7 @@ impl IndexShape {
 
 	pub fn get_i128(&self, key: &EncodedIndexKey, index: usize) -> i128 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Int16);
+		debug_assert_eq!(field.value, ValueType::Int16);
 
 		let mut bytes = [0u8; 16];
 		unsafe {
@@ -201,7 +201,7 @@ impl IndexShape {
 
 	pub fn get_u8(&self, key: &EncodedIndexKey, index: usize) -> u8 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Uint1);
+		debug_assert_eq!(field.value, ValueType::Uint1);
 
 		let byte = unsafe { *key.as_ptr().add(field.offset) };
 
@@ -213,7 +213,7 @@ impl IndexShape {
 
 	pub fn get_u16(&self, key: &EncodedIndexKey, index: usize) -> u16 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Uint2);
+		debug_assert_eq!(field.value, ValueType::Uint2);
 
 		let mut bytes = [0u8; 2];
 		unsafe {
@@ -228,7 +228,7 @@ impl IndexShape {
 
 	pub fn get_u32(&self, key: &EncodedIndexKey, index: usize) -> u32 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Uint4);
+		debug_assert_eq!(field.value, ValueType::Uint4);
 
 		let mut bytes = [0u8; 4];
 		unsafe {
@@ -243,7 +243,7 @@ impl IndexShape {
 
 	pub fn get_u64(&self, key: &EncodedIndexKey, index: usize) -> u64 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Uint8);
+		debug_assert_eq!(field.value, ValueType::Uint8);
 
 		let mut bytes = [0u8; 8];
 		unsafe {
@@ -258,7 +258,7 @@ impl IndexShape {
 
 	pub fn get_u128(&self, key: &EncodedIndexKey, index: usize) -> u128 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Uint16);
+		debug_assert_eq!(field.value, ValueType::Uint16);
 
 		let mut bytes = [0u8; 16];
 		unsafe {
@@ -273,7 +273,7 @@ impl IndexShape {
 
 	pub fn get_row_number(&self, key: &EncodedIndexKey, index: usize) -> u64 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Uint8);
+		debug_assert_eq!(field.value, ValueType::Uint8);
 
 		let mut bytes = [0u8; 8];
 		unsafe {
@@ -288,7 +288,7 @@ impl IndexShape {
 
 	pub fn get_date(&self, key: &EncodedIndexKey, index: usize) -> Date {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Date);
+		debug_assert_eq!(field.value, ValueType::Date);
 
 		let mut bytes = [0u8; 4];
 		unsafe {
@@ -313,7 +313,7 @@ impl IndexShape {
 
 	pub fn get_datetime(&self, key: &EncodedIndexKey, index: usize) -> DateTime {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::DateTime);
+		debug_assert_eq!(field.value, ValueType::DateTime);
 
 		let mut bytes = [0u8; 8];
 
@@ -331,7 +331,7 @@ impl IndexShape {
 
 	pub fn get_time(&self, key: &EncodedIndexKey, index: usize) -> Time {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Time);
+		debug_assert_eq!(field.value, ValueType::Time);
 
 		let mut bytes = [0u8; 8];
 		unsafe {
@@ -348,7 +348,7 @@ impl IndexShape {
 
 	pub fn get_duration(&self, key: &EncodedIndexKey, index: usize) -> Duration {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Duration);
+		debug_assert_eq!(field.value, ValueType::Duration);
 
 		let mut months_bytes = [0u8; 4];
 		let mut days_bytes = [0u8; 4];
@@ -390,7 +390,7 @@ impl IndexShape {
 
 	pub fn get_uuid4(&self, key: &EncodedIndexKey, index: usize) -> Uuid4 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Uuid4);
+		debug_assert_eq!(field.value, ValueType::Uuid4);
 
 		let mut bytes = [0u8; 16];
 		unsafe {
@@ -409,7 +409,7 @@ impl IndexShape {
 
 	pub fn get_uuid7(&self, key: &EncodedIndexKey, index: usize) -> Uuid7 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Uuid7);
+		debug_assert_eq!(field.value, ValueType::Uuid7);
 
 		let mut bytes = [0u8; 16];
 		unsafe {
@@ -428,7 +428,7 @@ impl IndexShape {
 
 	pub fn get_identity_id(&self, key: &EncodedIndexKey, index: usize) -> IdentityId {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::IdentityId);
+		debug_assert_eq!(field.value, ValueType::IdentityId);
 
 		let mut bytes = [0u8; 16];
 		unsafe {
@@ -449,7 +449,7 @@ impl IndexShape {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use crate::{sort::SortDirection, value::index::shape::IndexShape};
 
@@ -458,7 +458,7 @@ pub mod tests {
 
 		#[test]
 		fn test_asc() {
-			let layout = IndexShape::new(&[Type::Boolean], &[SortDirection::Asc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::Boolean], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
@@ -472,7 +472,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = IndexShape::new(&[Type::Boolean], &[SortDirection::Desc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::Boolean], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
@@ -486,13 +486,13 @@ pub mod tests {
 	}
 
 	mod i8 {
-		use reifydb_type::value::r#type::Type;
+		use reifydb_value::value::value_type::ValueType;
 
 		use crate::{sort::SortDirection, value::index::shape::IndexShape};
 
 		#[test]
 		fn test_asc() {
-			let layout = IndexShape::new(&[Type::Int1], &[SortDirection::Asc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::Int1], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -510,7 +510,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = IndexShape::new(&[Type::Int1], &[SortDirection::Desc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::Int1], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -528,13 +528,13 @@ pub mod tests {
 	}
 
 	mod i32 {
-		use reifydb_type::value::r#type::Type;
+		use reifydb_value::value::value_type::ValueType;
 
 		use crate::{sort::SortDirection, value::index::shape::IndexShape};
 
 		#[test]
 		fn test_asc() {
-			let layout = IndexShape::new(&[Type::Int4], &[SortDirection::Asc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::Int4], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -552,7 +552,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = IndexShape::new(&[Type::Int4], &[SortDirection::Desc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::Int4], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -570,13 +570,13 @@ pub mod tests {
 	}
 
 	mod i64 {
-		use reifydb_type::value::r#type::Type;
+		use reifydb_value::value::value_type::ValueType;
 
 		use crate::{sort::SortDirection, value::index::shape::IndexShape};
 
 		#[test]
 		fn test_asc() {
-			let layout = IndexShape::new(&[Type::Int8], &[SortDirection::Asc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::Int8], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -594,7 +594,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = IndexShape::new(&[Type::Int8], &[SortDirection::Desc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::Int8], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -612,13 +612,13 @@ pub mod tests {
 	}
 
 	mod u8 {
-		use reifydb_type::value::r#type::Type;
+		use reifydb_value::value::value_type::ValueType;
 
 		use crate::{sort::SortDirection, value::index::shape::IndexShape};
 
 		#[test]
 		fn test_asc() {
-			let layout = IndexShape::new(&[Type::Uint1], &[SortDirection::Asc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::Uint1], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -636,7 +636,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = IndexShape::new(&[Type::Uint1], &[SortDirection::Desc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::Uint1], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -654,13 +654,13 @@ pub mod tests {
 	}
 
 	mod u32 {
-		use reifydb_type::value::r#type::Type;
+		use reifydb_value::value::value_type::ValueType;
 
 		use crate::{sort::SortDirection, value::index::shape::IndexShape};
 
 		#[test]
 		fn test_asc() {
-			let layout = IndexShape::new(&[Type::Uint4], &[SortDirection::Asc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::Uint4], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -678,7 +678,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = IndexShape::new(&[Type::Uint4], &[SortDirection::Desc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::Uint4], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -696,13 +696,13 @@ pub mod tests {
 	}
 
 	mod u64 {
-		use reifydb_type::value::r#type::Type;
+		use reifydb_value::value::value_type::ValueType;
 
 		use crate::{sort::SortDirection, value::index::shape::IndexShape};
 
 		#[test]
 		fn test_asc() {
-			let layout = IndexShape::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::Uint8], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -720,7 +720,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = IndexShape::new(&[Type::Uint8], &[SortDirection::Desc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::Uint8], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -738,13 +738,13 @@ pub mod tests {
 	}
 
 	mod f32 {
-		use reifydb_type::value::r#type::Type;
+		use reifydb_value::value::value_type::ValueType;
 
 		use crate::{sort::SortDirection, value::index::shape::IndexShape};
 
 		#[test]
 		fn test_asc() {
-			let layout = IndexShape::new(&[Type::Float4], &[SortDirection::Asc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::Float4], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -762,7 +762,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = IndexShape::new(&[Type::Float4], &[SortDirection::Desc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::Float4], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -780,13 +780,13 @@ pub mod tests {
 	}
 
 	mod f64 {
-		use reifydb_type::value::r#type::Type;
+		use reifydb_value::value::value_type::ValueType;
 
 		use crate::{sort::SortDirection, value::index::shape::IndexShape};
 
 		#[test]
 		fn test_asc() {
-			let layout = IndexShape::new(&[Type::Float8], &[SortDirection::Asc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::Float8], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -804,7 +804,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = IndexShape::new(&[Type::Float8], &[SortDirection::Desc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::Float8], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -822,13 +822,13 @@ pub mod tests {
 	}
 
 	mod date {
-		use reifydb_type::value::{date::Date, r#type::Type};
+		use reifydb_value::value::{date::Date, value_type::ValueType};
 
 		use crate::{sort::SortDirection, value::index::shape::IndexShape};
 
 		#[test]
 		fn test_asc() {
-			let layout = IndexShape::new(&[Type::Date], &[SortDirection::Asc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::Date], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -850,7 +850,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = IndexShape::new(&[Type::Date], &[SortDirection::Desc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::Date], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -872,13 +872,13 @@ pub mod tests {
 	}
 
 	mod row_number {
-		use reifydb_type::value::r#type::Type;
+		use reifydb_value::value::value_type::ValueType;
 
 		use crate::{sort::SortDirection, value::index::shape::IndexShape};
 
 		#[test]
 		fn test_asc() {
-			let layout = IndexShape::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::Uint8], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -896,7 +896,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = IndexShape::new(&[Type::Uint8], &[SortDirection::Desc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::Uint8], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -918,7 +918,7 @@ pub mod tests {
 			clock::{Clock, MockClock},
 			rng::Rng,
 		};
-		use reifydb_type::value::{identity::IdentityId, r#type::Type};
+		use reifydb_value::value::{identity::IdentityId, value_type::ValueType};
 
 		use crate::{sort::SortDirection, value::index::shape::IndexShape};
 
@@ -932,7 +932,7 @@ pub mod tests {
 		#[test]
 		fn test_asc() {
 			let (mock, clock, rng) = test_clock_and_rng();
-			let layout = IndexShape::new(&[Type::IdentityId], &[SortDirection::Asc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::IdentityId], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
@@ -954,7 +954,7 @@ pub mod tests {
 		#[test]
 		fn test_desc() {
 			let (mock, clock, rng) = test_clock_and_rng();
-			let layout = IndexShape::new(&[Type::IdentityId], &[SortDirection::Desc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::IdentityId], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
@@ -976,7 +976,7 @@ pub mod tests {
 		#[test]
 		fn test_roundtrip() {
 			let (_mock, clock, rng) = test_clock_and_rng();
-			let layout = IndexShape::new(&[Type::IdentityId], &[SortDirection::Asc]).unwrap();
+			let layout = IndexShape::new(&[ValueType::IdentityId], &[SortDirection::Asc]).unwrap();
 
 			let id = IdentityId::generate(&clock, &rng);
 			let mut key = layout.allocate_key();
@@ -989,14 +989,14 @@ pub mod tests {
 	}
 
 	mod composite {
-		use reifydb_type::value::r#type::Type;
+		use reifydb_value::value::value_type::ValueType;
 
 		use crate::{sort::SortDirection, value::index::shape::IndexShape};
 
 		#[test]
 		fn test_mixed_directions() {
 			let layout = IndexShape::new(
-				&[Type::Int4, Type::Uint8, Type::Uint8],
+				&[ValueType::Int4, ValueType::Uint8, ValueType::Uint8],
 				&[SortDirection::Desc, SortDirection::Asc, SortDirection::Asc],
 			)
 			.unwrap();

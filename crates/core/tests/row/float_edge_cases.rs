@@ -2,11 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::encoded::shape::RowShape;
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 #[test]
 fn test_float_special_values_preservation() {
-	let shape = RowShape::testing(&[Type::Float4, Type::Float8]);
+	let shape = RowShape::testing(&[ValueType::Float4, ValueType::Float8]);
 	let mut row = shape.allocate();
 
 	// Test f32 special values
@@ -72,7 +72,7 @@ fn test_float_special_values_preservation() {
 
 #[test]
 fn test_float_precision_boundaries() {
-	let shape = RowShape::testing(&[Type::Float4, Type::Float8]);
+	let shape = RowShape::testing(&[ValueType::Float4, ValueType::Float8]);
 	let mut row = shape.allocate();
 
 	// Test f32 precision boundary (about 7 decimal digits)

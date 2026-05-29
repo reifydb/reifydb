@@ -18,7 +18,7 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 };
 use reifydb_extension::procedure::ffi_callbacks::memory::{host_alloc, host_free};
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_value::util::cowvec::CowVec;
 
 use super::state_iterator::{self, StateIteratorHandle};
 use crate::ffi::context::get_transaction_mut;

@@ -8,7 +8,7 @@ use reifydb_core::{
 		id::{HandlerId, NamespaceId},
 	},
 };
-use reifydb_type::value::sumtype::VariantRef;
+use reifydb_value::value::sumtype::VariantRef;
 
 use crate::cache::{CatalogCache, MultiVersionHandler};
 

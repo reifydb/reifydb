@@ -227,15 +227,18 @@ impl IndexEntryKey {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
 	use crate::{sort::SortDirection, value::index::shape::IndexShape};
 
 	#[test]
 	fn test_encode_decode() {
-		let layout = IndexShape::new(&[Type::Uint8, Type::Uint8], &[SortDirection::Asc, SortDirection::Asc])
-			.unwrap();
+		let layout = IndexShape::new(
+			&[ValueType::Uint8, ValueType::Uint8],
+			&[SortDirection::Asc, SortDirection::Asc],
+		)
+		.unwrap();
 
 		let mut index_key = layout.allocate_key();
 		layout.set_u64(&mut index_key, 0, 100u64);
@@ -257,7 +260,7 @@ pub mod tests {
 
 	#[test]
 	fn test_ordering() {
-		let layout = IndexShape::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
+		let layout = IndexShape::new(&[ValueType::Uint8], &[SortDirection::Asc]).unwrap();
 
 		let mut key1 = layout.allocate_key();
 		layout.set_u64(&mut key1, 0, 100u64);
@@ -287,7 +290,7 @@ pub mod tests {
 	fn test_index_range() {
 		let range = IndexEntryKey::index_range(ShapeId::table(10), IndexId::primary(5));
 
-		let layout = IndexShape::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
+		let layout = IndexShape::new(&[ValueType::Uint8], &[SortDirection::Asc]).unwrap();
 
 		let mut key = layout.allocate_key();
 		layout.set_u64(&mut key, 0, 50u64);
@@ -322,8 +325,11 @@ pub mod tests {
 
 	#[test]
 	fn test_key_prefix_range() {
-		let layout = IndexShape::new(&[Type::Uint8, Type::Uint8], &[SortDirection::Asc, SortDirection::Asc])
-			.unwrap();
+		let layout = IndexShape::new(
+			&[ValueType::Uint8, ValueType::Uint8],
+			&[SortDirection::Asc, SortDirection::Asc],
+		)
+		.unwrap();
 
 		let mut key = layout.allocate_key();
 		layout.set_u64(&mut key, 0, 100u64);

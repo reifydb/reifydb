@@ -28,7 +28,7 @@ reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-transaction = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 
 serde = { workspace = true }
 serde_bytes = { workspace = true }
@@ -68,7 +68,7 @@ path = "benches/ffi_zero_copy/distinct_warm_cache.rs"
 [dev-dependencies]
 reifydb-sdk = { workspace = true }
 reifydb-core = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 reifydb-abi = { workspace = true }
 reifydb-sub-subscription = { workspace = true }
 reifydb-rql = { workspace = true }

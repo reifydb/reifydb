@@ -11,7 +11,7 @@ use reifydb_transaction::{
 	change::TransactionalAuthenticationChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_type::value::identity::IdentityId;
+use reifydb_value::value::identity::IdentityId;
 use tracing::{instrument, warn};
 
 use crate::{CatalogStore, Result, catalog::Catalog};

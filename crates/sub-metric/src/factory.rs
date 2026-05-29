@@ -23,7 +23,7 @@ use reifydb_runtime::SharedRuntime;
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
-use reifydb_type::Result;
+use reifydb_value::Result;
 use tracing::warn;
 
 use crate::{

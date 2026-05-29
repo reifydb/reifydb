@@ -25,7 +25,7 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 	transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction},
 };
-use reifydb_type::value::{Value, identity::IdentityId};
+use reifydb_value::value::{Value, identity::IdentityId};
 use tracing::{info, warn};
 
 use crate::{
@@ -142,7 +142,7 @@ mod read_configs_tests {
 		key::config::ConfigStorageKey,
 	};
 	use reifydb_store_multi::tier::{TierStorage, commit::buffer::MultiCommitBufferTier};
-	use reifydb_type::value::Value;
+	use reifydb_value::value::Value;
 
 	use super::read_configs;
 	use crate::store::config::shape::config::{SHAPE, VALUE};

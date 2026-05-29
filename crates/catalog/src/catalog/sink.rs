@@ -6,7 +6,7 @@ use reifydb_transaction::{
 	change::TransactionalSinkChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_type::fragment::Fragment;
+use reifydb_value::fragment::Fragment;
 use tracing::{instrument, warn};
 
 use crate::{CatalogStore, Result, catalog::Catalog, store::sink::create::SinkToCreate as StoreSinkToCreate};

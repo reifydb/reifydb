@@ -4,7 +4,7 @@
 pub(crate) mod binding {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const NAMESPACE: usize = 1;
@@ -18,15 +18,15 @@ pub(crate) mod binding {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("namespace", Type::Uint8),
-			RowShapeField::unconstrained("name", Type::Utf8),
-			RowShapeField::unconstrained("procedure_id", Type::Uint8),
-			RowShapeField::unconstrained("protocol", Type::Utf8),
-			RowShapeField::unconstrained("http_method", Type::Utf8),
-			RowShapeField::unconstrained("http_path", Type::Utf8),
-			RowShapeField::unconstrained("rpc_name", Type::Utf8),
-			RowShapeField::unconstrained("format", Type::Utf8),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("namespace", ValueType::Uint8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
+			RowShapeField::unconstrained("procedure_id", ValueType::Uint8),
+			RowShapeField::unconstrained("protocol", ValueType::Utf8),
+			RowShapeField::unconstrained("http_method", ValueType::Utf8),
+			RowShapeField::unconstrained("http_path", ValueType::Utf8),
+			RowShapeField::unconstrained("rpc_name", ValueType::Utf8),
+			RowShapeField::unconstrained("format", ValueType::Utf8),
 		])
 	});
 }
@@ -34,15 +34,15 @@ pub(crate) mod binding {
 pub(crate) mod binding_namespace {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const NAME: usize = 1;
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("name", Type::Utf8),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
 		])
 	});
 }

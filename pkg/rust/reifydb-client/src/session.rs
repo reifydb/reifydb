@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::{err, error::Error};
+use reifydb_value::{err, error::Error};
 use reifydb_wire_format::json::from::convert_envelope_response;
 
 use crate::{AdminResult, CommandResult, QueryResult, Response, ResponsePayload};

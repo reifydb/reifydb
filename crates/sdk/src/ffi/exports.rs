@@ -15,7 +15,7 @@ use reifydb_abi::{
 	},
 };
 use reifydb_core::interface::catalog::flow::FlowNodeId;
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 use crate::{
 	config::Config,

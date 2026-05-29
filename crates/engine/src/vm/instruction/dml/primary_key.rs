@@ -9,7 +9,7 @@ use reifydb_core::{
 	value::index::{encoded::EncodedIndexKey, shape::IndexShape},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 use crate::Result;
 
@@ -19,7 +19,7 @@ pub fn encode_primary_key(
 	table: &Table,
 	shape: &RowShape,
 ) -> Result<EncodedIndexKey> {
-	let types: Vec<Type> = pk_def.columns.iter().map(|c| c.constraint.get_type()).collect();
+	let types: Vec<ValueType> = pk_def.columns.iter().map(|c| c.constraint.get_type()).collect();
 	let directions = vec![SortDirection::Asc; types.len()];
 	let index_shape = IndexShape::new(&types, &directions)?;
 
@@ -33,117 +33,117 @@ pub fn encode_primary_key(
 			.expect("Primary key column not found in table");
 
 		match pk_column.constraint.get_type() {
-			Type::Boolean => {
+			ValueType::Boolean => {
 				let val = shape.get_bool(row, table_idx);
 				index_shape.set_bool(&mut index_key, pk_idx, val);
 			}
-			Type::Int1 => {
+			ValueType::Int1 => {
 				let val = shape.get_i8(row, table_idx);
 				index_shape.set_i8(&mut index_key, pk_idx, val);
 			}
-			Type::Int2 => {
+			ValueType::Int2 => {
 				let val = shape.get_i16(row, table_idx);
 				index_shape.set_i16(&mut index_key, pk_idx, val);
 			}
-			Type::Int4 => {
+			ValueType::Int4 => {
 				let val = shape.get_i32(row, table_idx);
 				index_shape.set_i32(&mut index_key, pk_idx, val);
 			}
-			Type::Int8 => {
+			ValueType::Int8 => {
 				let val = shape.get_i64(row, table_idx);
 				index_shape.set_i64(&mut index_key, pk_idx, val);
 			}
-			Type::Int16 => {
+			ValueType::Int16 => {
 				let val = shape.get_i128(row, table_idx);
 				index_shape.set_i128(&mut index_key, pk_idx, val);
 			}
-			Type::Uint1 => {
+			ValueType::Uint1 => {
 				let val = shape.get_u8(row, table_idx);
 				index_shape.set_u8(&mut index_key, pk_idx, val);
 			}
-			Type::Uint2 => {
+			ValueType::Uint2 => {
 				let val = shape.get_u16(row, table_idx);
 				index_shape.set_u16(&mut index_key, pk_idx, val);
 			}
-			Type::Uint4 => {
+			ValueType::Uint4 => {
 				let val = shape.get_u32(row, table_idx);
 				index_shape.set_u32(&mut index_key, pk_idx, val);
 			}
-			Type::Uint8 => {
+			ValueType::Uint8 => {
 				let val = shape.get_u64(row, table_idx);
 				index_shape.set_u64(&mut index_key, pk_idx, val);
 			}
-			Type::Uint16 => {
+			ValueType::Uint16 => {
 				let val = shape.get_u128(row, table_idx);
 				index_shape.set_u128(&mut index_key, pk_idx, val);
 			}
-			Type::Float4 => {
+			ValueType::Float4 => {
 				let val = shape.get_f32(row, table_idx);
 				index_shape.set_f32(&mut index_key, pk_idx, val);
 			}
-			Type::Float8 => {
+			ValueType::Float8 => {
 				let val = shape.get_f64(row, table_idx);
 				index_shape.set_f64(&mut index_key, pk_idx, val);
 			}
-			Type::Utf8 => {
+			ValueType::Utf8 => {
 				panic!("UTF8 columns in primary keys not yet supported");
 			}
-			Type::Blob => {
+			ValueType::Blob => {
 				panic!("Blob columns cannot be used in primary keys");
 			}
-			Type::Date => {
+			ValueType::Date => {
 				let val = shape.get_date(row, table_idx);
 				index_shape.set_date(&mut index_key, pk_idx, val);
 			}
-			Type::Time => {
+			ValueType::Time => {
 				let val = shape.get_time(row, table_idx);
 				index_shape.set_time(&mut index_key, pk_idx, val);
 			}
-			Type::DateTime => {
+			ValueType::DateTime => {
 				let val = shape.get_datetime(row, table_idx);
 				index_shape.set_datetime(&mut index_key, pk_idx, val);
 			}
-			Type::Duration => {
+			ValueType::Duration => {
 				let val = shape.get_duration(row, table_idx);
 				index_shape.set_duration(&mut index_key, pk_idx, val);
 			}
-			Type::Uuid4 => {
+			ValueType::Uuid4 => {
 				let val = shape.get_uuid4(row, table_idx);
 				index_shape.set_uuid4(&mut index_key, pk_idx, val);
 			}
-			Type::Uuid7 => {
+			ValueType::Uuid7 => {
 				let val = shape.get_uuid7(row, table_idx);
 				index_shape.set_uuid7(&mut index_key, pk_idx, val);
 			}
-			Type::IdentityId => {
+			ValueType::IdentityId => {
 				let val = shape.get_identity_id(row, table_idx);
 				index_shape.set_identity_id(&mut index_key, pk_idx, val);
 			}
-			Type::Int => {
+			ValueType::Int => {
 				panic!("Int columns in primary keys not yet supported");
 			}
-			Type::Uint => {
+			ValueType::Uint => {
 				panic!("Uint columns in primary keys not yet supported");
 			}
-			Type::Decimal => {
+			ValueType::Decimal => {
 				panic!("Decimal columns in primary keys not yet supported");
 			}
-			Type::Option(_) => {
+			ValueType::Option(_) => {
 				index_shape.set_none(&mut index_key, pk_idx);
 			}
-			Type::DictionaryId => {
+			ValueType::DictionaryId => {
 				panic!("DictionaryId columns cannot be used in primary keys");
 			}
-			Type::Any => {
+			ValueType::Any => {
 				panic!("Any type cannot be used in primary keys");
 			}
-			Type::List(_) => {
+			ValueType::List(_) => {
 				panic!("List type cannot be used in primary keys");
 			}
-			Type::Record(_) => {
+			ValueType::Record(_) => {
 				panic!("Record type cannot be used in primary keys");
 			}
-			Type::Tuple(_) => {
+			ValueType::Tuple(_) => {
 				panic!("Tuple type cannot be used in primary keys");
 			}
 		}

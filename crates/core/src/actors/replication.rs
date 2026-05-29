@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_runtime::actor::{reply::Reply, system::ActorHandle};
-use reifydb_type::error::Error;
+use reifydb_value::error::Error;
 
 use crate::{
 	common::CommitVersion,

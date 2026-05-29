@@ -4,7 +4,7 @@
 use std::{fs, path::Path};
 
 use reifydb_sdk::error::SdkError;
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use super::{registry::Transforms, wasm::WasmTransform};
 

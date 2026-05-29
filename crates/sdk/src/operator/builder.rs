@@ -8,7 +8,7 @@ use reifydb_abi::{
 	context::context::ContextFFI,
 	data::column::ColumnTypeCode,
 };
-use reifydb_type::value::row_number::RowNumber;
+use reifydb_value::value::row_number::RowNumber;
 
 use crate::{error::SdkError, operator::context::ffi::FFIOperatorContext};
 

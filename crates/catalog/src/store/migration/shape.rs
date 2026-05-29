@@ -3,7 +3,7 @@
 
 use once_cell::sync::Lazy;
 use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 pub(crate) mod migration {
 	use super::*;
@@ -16,11 +16,11 @@ pub(crate) mod migration {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("name", Type::Utf8),
-			RowShapeField::unconstrained("body", Type::Utf8),
-			RowShapeField::unconstrained("rollback_body", Type::Utf8),
-			RowShapeField::unconstrained("hash", Type::Uint16),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
+			RowShapeField::unconstrained("body", ValueType::Utf8),
+			RowShapeField::unconstrained("rollback_body", ValueType::Utf8),
+			RowShapeField::unconstrained("hash", ValueType::Uint16),
 		])
 	});
 }
@@ -34,9 +34,9 @@ pub(crate) mod migration_event {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("migration_id", Type::Uint8),
-			RowShapeField::unconstrained("action", Type::Uint1),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("migration_id", ValueType::Uint8),
+			RowShapeField::unconstrained("action", ValueType::Uint1),
 		])
 	});
 }

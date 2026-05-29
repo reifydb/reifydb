@@ -3,7 +3,7 @@
 
 use reifydb_core::{interface::catalog::identity::Role, key::role::RoleKey};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::fragment::Fragment;
+use reifydb_value::fragment::Fragment;
 
 use crate::{
 	CatalogStore, Result,

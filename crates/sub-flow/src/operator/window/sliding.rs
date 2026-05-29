@@ -10,7 +10,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_runtime::hash::Hash128;
-use reifydb_type::{Result, value::datetime::DateTime};
+use reifydb_value::{Result, value::datetime::DateTime};
 
 use super::{WindowEvent, WindowLayout, WindowOperator};
 use crate::transaction::FlowTransaction;

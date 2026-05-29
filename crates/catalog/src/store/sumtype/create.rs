@@ -9,7 +9,7 @@ use reifydb_core::{
 	key::{namespace_sumtype::NamespaceSumTypeKey, sumtype::SumTypeKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::fragment::Fragment;
+use reifydb_value::fragment::Fragment;
 use serde_json::to_string;
 
 use super::shape::{sumtype as sumtype_shape, sumtype_namespace};
@@ -79,7 +79,7 @@ pub mod tests {
 		key::namespace_sumtype::NamespaceSumTypeKey,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
-	use reifydb_type::{fragment::Fragment, value::sumtype::SumTypeId};
+	use reifydb_value::{fragment::Fragment, value::sumtype::SumTypeId};
 
 	use super::*;
 	use crate::{CatalogStore, store::sumtype::shape::sumtype_namespace, test_utils::ensure_test_namespace};

@@ -3,7 +3,7 @@
 
 use std::{alloc, ops::Deref, sync::Arc};
 
-use reifydb_type::{Result, value::r#type::Type};
+use reifydb_value::{Result, value::value_type::ValueType};
 
 use crate::{error::CoreError, sort::SortDirection, value::index::encoded::EncodedIndexKey};
 
@@ -19,7 +19,7 @@ impl Deref for IndexShape {
 }
 
 impl IndexShape {
-	pub fn new(types: &[Type], directions: &[SortDirection]) -> Result<Self> {
+	pub fn new(types: &[ValueType], directions: &[SortDirection]) -> Result<Self> {
 		if types.len() != directions.len() {
 			return Err(CoreError::IndexTypesDirectionsMismatch {
 				types_len: types.len(),
@@ -29,7 +29,7 @@ impl IndexShape {
 		}
 
 		for typ in types {
-			if matches!(typ, Type::Utf8 | Type::Blob) {
+			if matches!(typ, ValueType::Utf8 | ValueType::Blob) {
 				return Err(CoreError::IndexVariableLengthNotSupported.into());
 			}
 		}
@@ -51,12 +51,12 @@ pub struct IndexField {
 	pub offset: usize,
 	pub size: usize,
 	pub align: usize,
-	pub value: Type,
+	pub value: ValueType,
 	pub direction: SortDirection,
 }
 
 impl IndexShapeInner {
-	fn new(types: &[Type], directions: &[SortDirection]) -> Self {
+	fn new(types: &[ValueType], directions: &[SortDirection]) -> Self {
 		assert!(!types.is_empty());
 		assert_eq!(types.len(), directions.len());
 
@@ -137,7 +137,7 @@ impl IndexShapeInner {
 		true
 	}
 
-	pub fn value(&self, index: usize) -> Type {
+	pub fn value(&self, index: usize) -> ValueType {
 		self.fields[index].value.clone()
 	}
 
@@ -157,12 +157,12 @@ pub mod tests {
 
 	#[test]
 	fn test_single_field_int() {
-		let layout = IndexShape::new(&[Type::Int4], &[SortDirection::Asc]).unwrap();
+		let layout = IndexShape::new(&[ValueType::Int4], &[SortDirection::Asc]).unwrap();
 
 		assert_eq!(layout.bitvec_size, 1);
 		assert_eq!(layout.fields.len(), 1);
 		assert_eq!(layout.fields[0].offset, 4); // aligned to 4 bytes
-		assert_eq!(layout.fields[0].value, Type::Int4);
+		assert_eq!(layout.fields[0].value, ValueType::Int4);
 		assert_eq!(layout.fields[0].direction, SortDirection::Asc);
 		assert_eq!(layout.alignment, 4);
 		assert_eq!(layout.total_size, 8); // 1 bitvec + 3 padding + 4 int
@@ -171,7 +171,7 @@ pub mod tests {
 	#[test]
 	fn test_multiple_fields_mixed_directions() {
 		let layout = IndexShape::new(
-			&[Type::Int4, Type::Int8, Type::Uint8],
+			&[ValueType::Int4, ValueType::Int8, ValueType::Uint8],
 			&[SortDirection::Desc, SortDirection::Asc, SortDirection::Asc],
 		)
 		.unwrap();
@@ -179,13 +179,13 @@ pub mod tests {
 		assert_eq!(layout.bitvec_size, 1);
 		assert_eq!(layout.fields.len(), 3);
 
-		assert_eq!(layout.fields[0].value, Type::Int4);
+		assert_eq!(layout.fields[0].value, ValueType::Int4);
 		assert_eq!(layout.fields[0].direction, SortDirection::Desc);
 
-		assert_eq!(layout.fields[1].value, Type::Int8);
+		assert_eq!(layout.fields[1].value, ValueType::Int8);
 		assert_eq!(layout.fields[1].direction, SortDirection::Asc);
 
-		assert_eq!(layout.fields[2].value, Type::Uint8);
+		assert_eq!(layout.fields[2].value, ValueType::Uint8);
 		assert_eq!(layout.fields[2].direction, SortDirection::Asc);
 
 		assert_eq!(layout.alignment, 8);
@@ -193,17 +193,21 @@ pub mod tests {
 
 	#[test]
 	fn test_reject_variable_length_types() {
-		let result = IndexShape::new(&[Type::Int4, Type::Utf8], &[SortDirection::Asc, SortDirection::Asc]);
+		let result =
+			IndexShape::new(&[ValueType::Int4, ValueType::Utf8], &[SortDirection::Asc, SortDirection::Asc]);
 		assert!(result.is_err());
 
-		let result = IndexShape::new(&[Type::Blob], &[SortDirection::Desc]);
+		let result = IndexShape::new(&[ValueType::Blob], &[SortDirection::Desc]);
 		assert!(result.is_err());
 	}
 
 	#[test]
 	fn test_allocate_key() {
-		let layout = IndexShape::new(&[Type::Boolean, Type::Int4], &[SortDirection::Asc, SortDirection::Desc])
-			.unwrap();
+		let layout = IndexShape::new(
+			&[ValueType::Boolean, ValueType::Int4],
+			&[SortDirection::Asc, SortDirection::Desc],
+		)
+		.unwrap();
 
 		let key = layout.allocate_key();
 		assert_eq!(key.len(), layout.total_size);

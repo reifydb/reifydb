@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::{Result, value::dictionary::DictionaryId};
+use reifydb_value::{Result, value::dictionary::DictionaryId};
 
 use super::{ByteSink, decode_u64_varint, encode_u64_varint};
 use crate::{

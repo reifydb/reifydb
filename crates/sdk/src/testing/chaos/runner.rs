@@ -110,7 +110,7 @@ fn derive_seed(master: u64, salt: u64) -> u64 {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_type::value::Value;
+	use reifydb_value::value::Value;
 
 	use super::{
 		super::oracle::{MaterializedRow, OutputKey},

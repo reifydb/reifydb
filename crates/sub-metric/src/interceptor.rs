@@ -16,7 +16,7 @@ use reifydb_sub_server::{
 	execute::ExecuteError,
 	interceptor::{RequestContext, RequestInterceptor, ResponseContext},
 };
-use reifydb_type::value::datetime::DateTime;
+use reifydb_value::value::datetime::DateTime;
 
 pub struct RequestMetricsInterceptor {
 	event_bus: EventBus,

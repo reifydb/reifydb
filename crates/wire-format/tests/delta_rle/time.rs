@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::{container::temporal::TemporalContainer, frame::data::FrameColumnData, time::Time};
+use reifydb_value::value::{container::temporal::TemporalContainer, frame::data::FrameColumnData, time::Time};
 
 fn make(v: Vec<Time>) -> FrameColumnData {
 	FrameColumnData::Time(TemporalContainer::new(v))

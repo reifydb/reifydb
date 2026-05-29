@@ -7,7 +7,7 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::CreatePolicyNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 use crate::{Result, vm::services::Services};
 

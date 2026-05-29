@@ -15,7 +15,7 @@ use reifydb_core::{
 		MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow,
 	},
 };
-use reifydb_type::{Result, util::cowvec::CowVec};
+use reifydb_value::{Result, util::cowvec::CowVec};
 use tracing::instrument;
 
 use super::{MultiTransaction, version::StandardVersionProvider};

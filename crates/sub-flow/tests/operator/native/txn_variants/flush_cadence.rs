@@ -19,7 +19,7 @@ use reifydb_sub_flow::{
 	},
 	transaction::FlowTransaction,
 };
-use reifydb_type::value::datetime::DateTime;
+use reifydb_value::value::datetime::DateTime;
 
 use super::fixtures::{NODE_ID, deferred_txn, engine, ephemeral_txn, transactional_txn};
 use crate::common::{FlushProbe, flush_probe_key};

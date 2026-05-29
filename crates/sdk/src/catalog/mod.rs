@@ -19,9 +19,9 @@ use reifydb_core::{
 		table::Table,
 	},
 };
-use reifydb_type::value::{
+use reifydb_value::value::{
 	constraint::{Constraint, TypeConstraint, bytes::MaxBytes, precision::Precision, scale::Scale},
-	r#type::Type,
+	value_type::ValueType,
 };
 
 use crate::{error::SdkError, operator::context::ffi::FFIOperatorContext};
@@ -113,7 +113,7 @@ pub(crate) unsafe fn unmarshal_primary_key(ffi_pk: &PrimaryKeyFFI) -> Result<Pri
 		.map(|(idx, col_id)| Column {
 			id: ColumnId(col_id),
 			name: format!("col_{}", col_id),
-			constraint: TypeConstraint::unconstrained(Type::Int4),
+			constraint: TypeConstraint::unconstrained(ValueType::Int4),
 			properties: Vec::new(),
 			index: ColumnIndex(idx as u8),
 			auto_increment: false,
@@ -133,7 +133,7 @@ pub(crate) fn decode_type_constraint(
 	param1: u32,
 	param2: u32,
 ) -> Result<TypeConstraint, SdkError> {
-	let ty = Type::from_u8(base_type);
+	let ty = ValueType::from_u8(base_type);
 
 	match constraint_type {
 		0 => Ok(TypeConstraint::unconstrained(ty)),

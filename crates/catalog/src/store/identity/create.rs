@@ -4,7 +4,7 @@
 use reifydb_core::{interface::catalog::identity::Identity, key::identity::IdentityKey};
 use reifydb_runtime::context::{clock::Clock, rng::Rng};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{fragment::Fragment, value::identity::IdentityId};
+use reifydb_value::{fragment::Fragment, value::identity::IdentityId};
 
 use crate::{
 	CatalogStore, Result,

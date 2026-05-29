@@ -7,7 +7,7 @@ use std::{
 	rc::Rc,
 };
 
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use super::IocContainer;
 use crate::internal_error;

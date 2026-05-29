@@ -90,14 +90,14 @@ pub fn compute_fingerprint(fields: &[RowShapeField]) -> RowShapeFingerprint {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_type::value::{
+	use reifydb_value::value::{
 		constraint::{Constraint, TypeConstraint, bytes::MaxBytes, precision::Precision, scale::Scale},
-		r#type::Type,
+		value_type::ValueType,
 	};
 
 	use super::*;
 
-	fn make_field(name: &str, field_type: Type) -> RowShapeField {
+	fn make_field(name: &str, field_type: ValueType) -> RowShapeField {
 		RowShapeField {
 			name: name.to_string(),
 			constraint: TypeConstraint::unconstrained(field_type),
@@ -119,34 +119,34 @@ mod tests {
 
 	#[test]
 	fn test_fingerprint_deterministic() {
-		let fields1 = vec![make_field("a", Type::Int4), make_field("b", Type::Utf8)];
+		let fields1 = vec![make_field("a", ValueType::Int4), make_field("b", ValueType::Utf8)];
 
-		let fields2 = vec![make_field("a", Type::Int4), make_field("b", Type::Utf8)];
+		let fields2 = vec![make_field("a", ValueType::Int4), make_field("b", ValueType::Utf8)];
 
 		assert_eq!(compute_fingerprint(&fields1), compute_fingerprint(&fields2));
 	}
 
 	#[test]
 	fn test_fingerprint_different_names() {
-		let fields1 = vec![make_field("a", Type::Int4)];
-		let fields2 = vec![make_field("b", Type::Int4)];
+		let fields1 = vec![make_field("a", ValueType::Int4)];
+		let fields2 = vec![make_field("b", ValueType::Int4)];
 
 		assert_ne!(compute_fingerprint(&fields1), compute_fingerprint(&fields2));
 	}
 
 	#[test]
 	fn test_fingerprint_different_types() {
-		let fields1 = vec![make_field("a", Type::Int4)];
-		let fields2 = vec![make_field("a", Type::Int8)];
+		let fields1 = vec![make_field("a", ValueType::Int4)];
+		let fields2 = vec![make_field("a", ValueType::Int8)];
 
 		assert_ne!(compute_fingerprint(&fields1), compute_fingerprint(&fields2));
 	}
 
 	#[test]
 	fn test_fingerprint_different_order() {
-		let fields1 = vec![make_field("a", Type::Int4), make_field("b", Type::Utf8)];
+		let fields1 = vec![make_field("a", ValueType::Int4), make_field("b", ValueType::Utf8)];
 
-		let fields2 = vec![make_field("b", Type::Utf8), make_field("a", Type::Int4)];
+		let fields2 = vec![make_field("b", ValueType::Utf8), make_field("a", ValueType::Int4)];
 
 		assert_ne!(compute_fingerprint(&fields1), compute_fingerprint(&fields2));
 	}
@@ -161,10 +161,10 @@ mod tests {
 
 	#[test]
 	fn test_fingerprint_utf8_constrained_vs_unconstrained() {
-		let unconstrained = vec![make_field("text", Type::Utf8)];
+		let unconstrained = vec![make_field("text", ValueType::Utf8)];
 		let constrained = vec![make_constrained_field(
 			"text",
-			TypeConstraint::with_constraint(Type::Utf8, Constraint::MaxBytes(MaxBytes::new(255))),
+			TypeConstraint::with_constraint(ValueType::Utf8, Constraint::MaxBytes(MaxBytes::new(255))),
 		)];
 
 		assert_ne!(
@@ -178,11 +178,11 @@ mod tests {
 	fn test_fingerprint_utf8_same_constraint_deterministic() {
 		let fields1 = vec![make_constrained_field(
 			"text",
-			TypeConstraint::with_constraint(Type::Utf8, Constraint::MaxBytes(MaxBytes::new(100))),
+			TypeConstraint::with_constraint(ValueType::Utf8, Constraint::MaxBytes(MaxBytes::new(100))),
 		)];
 		let fields2 = vec![make_constrained_field(
 			"text",
-			TypeConstraint::with_constraint(Type::Utf8, Constraint::MaxBytes(MaxBytes::new(100))),
+			TypeConstraint::with_constraint(ValueType::Utf8, Constraint::MaxBytes(MaxBytes::new(100))),
 		)];
 
 		assert_eq!(
@@ -196,11 +196,11 @@ mod tests {
 	fn test_fingerprint_utf8_different_max_bytes() {
 		let small = vec![make_constrained_field(
 			"text",
-			TypeConstraint::with_constraint(Type::Utf8, Constraint::MaxBytes(MaxBytes::new(50))),
+			TypeConstraint::with_constraint(ValueType::Utf8, Constraint::MaxBytes(MaxBytes::new(50))),
 		)];
 		let large = vec![make_constrained_field(
 			"text",
-			TypeConstraint::with_constraint(Type::Utf8, Constraint::MaxBytes(MaxBytes::new(500))),
+			TypeConstraint::with_constraint(ValueType::Utf8, Constraint::MaxBytes(MaxBytes::new(500))),
 		)];
 
 		assert_ne!(
@@ -212,10 +212,10 @@ mod tests {
 
 	#[test]
 	fn test_fingerprint_int_constrained_vs_unconstrained() {
-		let unconstrained = vec![make_field("num", Type::Int)];
+		let unconstrained = vec![make_field("num", ValueType::Int)];
 		let constrained = vec![make_constrained_field(
 			"num",
-			TypeConstraint::with_constraint(Type::Int, Constraint::MaxBytes(MaxBytes::new(8))),
+			TypeConstraint::with_constraint(ValueType::Int, Constraint::MaxBytes(MaxBytes::new(8))),
 		)];
 
 		assert_ne!(
@@ -229,11 +229,11 @@ mod tests {
 	fn test_fingerprint_int_same_constraint_deterministic() {
 		let fields1 = vec![make_constrained_field(
 			"num",
-			TypeConstraint::with_constraint(Type::Int, Constraint::MaxBytes(MaxBytes::new(16))),
+			TypeConstraint::with_constraint(ValueType::Int, Constraint::MaxBytes(MaxBytes::new(16))),
 		)];
 		let fields2 = vec![make_constrained_field(
 			"num",
-			TypeConstraint::with_constraint(Type::Int, Constraint::MaxBytes(MaxBytes::new(16))),
+			TypeConstraint::with_constraint(ValueType::Int, Constraint::MaxBytes(MaxBytes::new(16))),
 		)];
 
 		assert_eq!(
@@ -247,11 +247,11 @@ mod tests {
 	fn test_fingerprint_int_different_max_bytes() {
 		let small = vec![make_constrained_field(
 			"num",
-			TypeConstraint::with_constraint(Type::Int, Constraint::MaxBytes(MaxBytes::new(4))),
+			TypeConstraint::with_constraint(ValueType::Int, Constraint::MaxBytes(MaxBytes::new(4))),
 		)];
 		let large = vec![make_constrained_field(
 			"num",
-			TypeConstraint::with_constraint(Type::Int, Constraint::MaxBytes(MaxBytes::new(32))),
+			TypeConstraint::with_constraint(ValueType::Int, Constraint::MaxBytes(MaxBytes::new(32))),
 		)];
 
 		assert_ne!(
@@ -263,10 +263,10 @@ mod tests {
 
 	#[test]
 	fn test_fingerprint_uint_constrained_vs_unconstrained() {
-		let unconstrained = vec![make_field("num", Type::Uint)];
+		let unconstrained = vec![make_field("num", ValueType::Uint)];
 		let constrained = vec![make_constrained_field(
 			"num",
-			TypeConstraint::with_constraint(Type::Uint, Constraint::MaxBytes(MaxBytes::new(8))),
+			TypeConstraint::with_constraint(ValueType::Uint, Constraint::MaxBytes(MaxBytes::new(8))),
 		)];
 
 		assert_ne!(
@@ -280,11 +280,11 @@ mod tests {
 	fn test_fingerprint_uint_same_constraint_deterministic() {
 		let fields1 = vec![make_constrained_field(
 			"num",
-			TypeConstraint::with_constraint(Type::Uint, Constraint::MaxBytes(MaxBytes::new(64))),
+			TypeConstraint::with_constraint(ValueType::Uint, Constraint::MaxBytes(MaxBytes::new(64))),
 		)];
 		let fields2 = vec![make_constrained_field(
 			"num",
-			TypeConstraint::with_constraint(Type::Uint, Constraint::MaxBytes(MaxBytes::new(64))),
+			TypeConstraint::with_constraint(ValueType::Uint, Constraint::MaxBytes(MaxBytes::new(64))),
 		)];
 
 		assert_eq!(
@@ -298,11 +298,11 @@ mod tests {
 	fn test_fingerprint_uint_different_max_bytes() {
 		let small = vec![make_constrained_field(
 			"num",
-			TypeConstraint::with_constraint(Type::Uint, Constraint::MaxBytes(MaxBytes::new(2))),
+			TypeConstraint::with_constraint(ValueType::Uint, Constraint::MaxBytes(MaxBytes::new(2))),
 		)];
 		let large = vec![make_constrained_field(
 			"num",
-			TypeConstraint::with_constraint(Type::Uint, Constraint::MaxBytes(MaxBytes::new(128))),
+			TypeConstraint::with_constraint(ValueType::Uint, Constraint::MaxBytes(MaxBytes::new(128))),
 		)];
 
 		assert_ne!(
@@ -314,10 +314,10 @@ mod tests {
 
 	#[test]
 	fn test_fingerprint_blob_constrained_vs_unconstrained() {
-		let unconstrained = vec![make_field("data", Type::Blob)];
+		let unconstrained = vec![make_field("data", ValueType::Blob)];
 		let constrained = vec![make_constrained_field(
 			"data",
-			TypeConstraint::with_constraint(Type::Blob, Constraint::MaxBytes(MaxBytes::new(1024))),
+			TypeConstraint::with_constraint(ValueType::Blob, Constraint::MaxBytes(MaxBytes::new(1024))),
 		)];
 
 		assert_ne!(
@@ -331,11 +331,11 @@ mod tests {
 	fn test_fingerprint_blob_same_constraint_deterministic() {
 		let fields1 = vec![make_constrained_field(
 			"data",
-			TypeConstraint::with_constraint(Type::Blob, Constraint::MaxBytes(MaxBytes::new(4096))),
+			TypeConstraint::with_constraint(ValueType::Blob, Constraint::MaxBytes(MaxBytes::new(4096))),
 		)];
 		let fields2 = vec![make_constrained_field(
 			"data",
-			TypeConstraint::with_constraint(Type::Blob, Constraint::MaxBytes(MaxBytes::new(4096))),
+			TypeConstraint::with_constraint(ValueType::Blob, Constraint::MaxBytes(MaxBytes::new(4096))),
 		)];
 
 		assert_eq!(
@@ -349,11 +349,11 @@ mod tests {
 	fn test_fingerprint_blob_different_max_bytes() {
 		let small = vec![make_constrained_field(
 			"data",
-			TypeConstraint::with_constraint(Type::Blob, Constraint::MaxBytes(MaxBytes::new(256))),
+			TypeConstraint::with_constraint(ValueType::Blob, Constraint::MaxBytes(MaxBytes::new(256))),
 		)];
 		let large = vec![make_constrained_field(
 			"data",
-			TypeConstraint::with_constraint(Type::Blob, Constraint::MaxBytes(MaxBytes::new(65536))),
+			TypeConstraint::with_constraint(ValueType::Blob, Constraint::MaxBytes(MaxBytes::new(65536))),
 		)];
 
 		assert_ne!(
@@ -365,11 +365,11 @@ mod tests {
 
 	#[test]
 	fn test_fingerprint_decimal_constrained_vs_unconstrained() {
-		let unconstrained = vec![make_field("amount", Type::Decimal)];
+		let unconstrained = vec![make_field("amount", ValueType::Decimal)];
 		let constrained = vec![make_constrained_field(
 			"amount",
 			TypeConstraint::with_constraint(
-				Type::Decimal,
+				ValueType::Decimal,
 				Constraint::PrecisionScale(Precision::new(10), Scale::new(2)),
 			),
 		)];
@@ -386,14 +386,14 @@ mod tests {
 		let fields1 = vec![make_constrained_field(
 			"amount",
 			TypeConstraint::with_constraint(
-				Type::Decimal,
+				ValueType::Decimal,
 				Constraint::PrecisionScale(Precision::new(18), Scale::new(6)),
 			),
 		)];
 		let fields2 = vec![make_constrained_field(
 			"amount",
 			TypeConstraint::with_constraint(
-				Type::Decimal,
+				ValueType::Decimal,
 				Constraint::PrecisionScale(Precision::new(18), Scale::new(6)),
 			),
 		)];
@@ -410,14 +410,14 @@ mod tests {
 		let low_precision = vec![make_constrained_field(
 			"amount",
 			TypeConstraint::with_constraint(
-				Type::Decimal,
+				ValueType::Decimal,
 				Constraint::PrecisionScale(Precision::new(5), Scale::new(2)),
 			),
 		)];
 		let high_precision = vec![make_constrained_field(
 			"amount",
 			TypeConstraint::with_constraint(
-				Type::Decimal,
+				ValueType::Decimal,
 				Constraint::PrecisionScale(Precision::new(38), Scale::new(2)),
 			),
 		)];
@@ -434,14 +434,14 @@ mod tests {
 		let low_scale = vec![make_constrained_field(
 			"amount",
 			TypeConstraint::with_constraint(
-				Type::Decimal,
+				ValueType::Decimal,
 				Constraint::PrecisionScale(Precision::new(10), Scale::new(0)),
 			),
 		)];
 		let high_scale = vec![make_constrained_field(
 			"amount",
 			TypeConstraint::with_constraint(
-				Type::Decimal,
+				ValueType::Decimal,
 				Constraint::PrecisionScale(Precision::new(10), Scale::new(8)),
 			),
 		)];
@@ -458,14 +458,14 @@ mod tests {
 		let fields1 = vec![make_constrained_field(
 			"amount",
 			TypeConstraint::with_constraint(
-				Type::Decimal,
+				ValueType::Decimal,
 				Constraint::PrecisionScale(Precision::new(10), Scale::new(2)),
 			),
 		)];
 		let fields2 = vec![make_constrained_field(
 			"amount",
 			TypeConstraint::with_constraint(
-				Type::Decimal,
+				ValueType::Decimal,
 				Constraint::PrecisionScale(Precision::new(15), Scale::new(4)),
 			),
 		)];
@@ -482,19 +482,19 @@ mod tests {
 		// Same MaxBytes value but different base types should produce different fingerprints
 		let utf8 = vec![make_constrained_field(
 			"field",
-			TypeConstraint::with_constraint(Type::Utf8, Constraint::MaxBytes(MaxBytes::new(100))),
+			TypeConstraint::with_constraint(ValueType::Utf8, Constraint::MaxBytes(MaxBytes::new(100))),
 		)];
 		let blob = vec![make_constrained_field(
 			"field",
-			TypeConstraint::with_constraint(Type::Blob, Constraint::MaxBytes(MaxBytes::new(100))),
+			TypeConstraint::with_constraint(ValueType::Blob, Constraint::MaxBytes(MaxBytes::new(100))),
 		)];
 		let int = vec![make_constrained_field(
 			"field",
-			TypeConstraint::with_constraint(Type::Int, Constraint::MaxBytes(MaxBytes::new(100))),
+			TypeConstraint::with_constraint(ValueType::Int, Constraint::MaxBytes(MaxBytes::new(100))),
 		)];
 		let uint = vec![make_constrained_field(
 			"field",
-			TypeConstraint::with_constraint(Type::Uint, Constraint::MaxBytes(MaxBytes::new(100))),
+			TypeConstraint::with_constraint(ValueType::Uint, Constraint::MaxBytes(MaxBytes::new(100))),
 		)];
 
 		let fp_utf8 = compute_fingerprint(&utf8);
@@ -515,36 +515,48 @@ mod tests {
 		let fields1 = vec![
 			make_constrained_field(
 				"name",
-				TypeConstraint::with_constraint(Type::Utf8, Constraint::MaxBytes(MaxBytes::new(255))),
+				TypeConstraint::with_constraint(
+					ValueType::Utf8,
+					Constraint::MaxBytes(MaxBytes::new(255)),
+				),
 			),
 			make_constrained_field(
 				"price",
 				TypeConstraint::with_constraint(
-					Type::Decimal,
+					ValueType::Decimal,
 					Constraint::PrecisionScale(Precision::new(10), Scale::new(2)),
 				),
 			),
 			make_constrained_field(
 				"data",
-				TypeConstraint::with_constraint(Type::Blob, Constraint::MaxBytes(MaxBytes::new(1024))),
+				TypeConstraint::with_constraint(
+					ValueType::Blob,
+					Constraint::MaxBytes(MaxBytes::new(1024)),
+				),
 			),
 		];
 
 		let fields2 = vec![
 			make_constrained_field(
 				"name",
-				TypeConstraint::with_constraint(Type::Utf8, Constraint::MaxBytes(MaxBytes::new(255))),
+				TypeConstraint::with_constraint(
+					ValueType::Utf8,
+					Constraint::MaxBytes(MaxBytes::new(255)),
+				),
 			),
 			make_constrained_field(
 				"price",
 				TypeConstraint::with_constraint(
-					Type::Decimal,
+					ValueType::Decimal,
 					Constraint::PrecisionScale(Precision::new(10), Scale::new(2)),
 				),
 			),
 			make_constrained_field(
 				"data",
-				TypeConstraint::with_constraint(Type::Blob, Constraint::MaxBytes(MaxBytes::new(1024))),
+				TypeConstraint::with_constraint(
+					ValueType::Blob,
+					Constraint::MaxBytes(MaxBytes::new(1024)),
+				),
 			),
 		];
 
@@ -560,12 +572,15 @@ mod tests {
 		let fields1 = vec![
 			make_constrained_field(
 				"name",
-				TypeConstraint::with_constraint(Type::Utf8, Constraint::MaxBytes(MaxBytes::new(255))),
+				TypeConstraint::with_constraint(
+					ValueType::Utf8,
+					Constraint::MaxBytes(MaxBytes::new(255)),
+				),
 			),
 			make_constrained_field(
 				"price",
 				TypeConstraint::with_constraint(
-					Type::Decimal,
+					ValueType::Decimal,
 					Constraint::PrecisionScale(Precision::new(10), Scale::new(2)),
 				),
 			),
@@ -574,12 +589,15 @@ mod tests {
 		let fields2 = vec![
 			make_constrained_field(
 				"name",
-				TypeConstraint::with_constraint(Type::Utf8, Constraint::MaxBytes(MaxBytes::new(255))),
+				TypeConstraint::with_constraint(
+					ValueType::Utf8,
+					Constraint::MaxBytes(MaxBytes::new(255)),
+				),
 			),
 			make_constrained_field(
 				"price",
 				TypeConstraint::with_constraint(
-					Type::Decimal,
+					ValueType::Decimal,
 					Constraint::PrecisionScale(Precision::new(10), Scale::new(4)), /* Different scale */
 				),
 			),
@@ -595,18 +613,21 @@ mod tests {
 	#[test]
 	fn test_fingerprint_mixed_constrained_and_unconstrained() {
 		let fields1 = vec![
-			make_field("id", Type::Int8),
+			make_field("id", ValueType::Int8),
 			make_constrained_field(
 				"name",
-				TypeConstraint::with_constraint(Type::Utf8, Constraint::MaxBytes(MaxBytes::new(100))),
+				TypeConstraint::with_constraint(
+					ValueType::Utf8,
+					Constraint::MaxBytes(MaxBytes::new(100)),
+				),
 			),
-			make_field("active", Type::Boolean),
+			make_field("active", ValueType::Boolean),
 		];
 
 		let fields2 = vec![
-			make_field("id", Type::Int8),
-			make_field("name", Type::Utf8), // Unconstrained
-			make_field("active", Type::Boolean),
+			make_field("id", ValueType::Int8),
+			make_field("name", ValueType::Utf8), // Unconstrained
+			make_field("active", ValueType::Boolean),
 		];
 
 		assert_ne!(
@@ -620,11 +641,11 @@ mod tests {
 	fn test_fingerprint_max_bytes_edge_values() {
 		let min_value = vec![make_constrained_field(
 			"data",
-			TypeConstraint::with_constraint(Type::Blob, Constraint::MaxBytes(MaxBytes::new(1))),
+			TypeConstraint::with_constraint(ValueType::Blob, Constraint::MaxBytes(MaxBytes::new(1))),
 		)];
 		let max_value = vec![make_constrained_field(
 			"data",
-			TypeConstraint::with_constraint(Type::Blob, Constraint::MaxBytes(MaxBytes::new(u32::MAX))),
+			TypeConstraint::with_constraint(ValueType::Blob, Constraint::MaxBytes(MaxBytes::new(u32::MAX))),
 		)];
 
 		assert_ne!(
@@ -639,14 +660,14 @@ mod tests {
 		let min_precision = vec![make_constrained_field(
 			"amount",
 			TypeConstraint::with_constraint(
-				Type::Decimal,
+				ValueType::Decimal,
 				Constraint::PrecisionScale(Precision::new(1), Scale::new(0)),
 			),
 		)];
 		let max_precision = vec![make_constrained_field(
 			"amount",
 			TypeConstraint::with_constraint(
-				Type::Decimal,
+				ValueType::Decimal,
 				Constraint::PrecisionScale(Precision::new(255), Scale::new(255)),
 			),
 		)];
@@ -663,15 +684,15 @@ mod tests {
 		// Test that even adjacent values produce different fingerprints
 		let value_99 = vec![make_constrained_field(
 			"text",
-			TypeConstraint::with_constraint(Type::Utf8, Constraint::MaxBytes(MaxBytes::new(99))),
+			TypeConstraint::with_constraint(ValueType::Utf8, Constraint::MaxBytes(MaxBytes::new(99))),
 		)];
 		let value_100 = vec![make_constrained_field(
 			"text",
-			TypeConstraint::with_constraint(Type::Utf8, Constraint::MaxBytes(MaxBytes::new(100))),
+			TypeConstraint::with_constraint(ValueType::Utf8, Constraint::MaxBytes(MaxBytes::new(100))),
 		)];
 		let value_101 = vec![make_constrained_field(
 			"text",
-			TypeConstraint::with_constraint(Type::Utf8, Constraint::MaxBytes(MaxBytes::new(101))),
+			TypeConstraint::with_constraint(ValueType::Utf8, Constraint::MaxBytes(MaxBytes::new(101))),
 		)];
 
 		let fp_99 = compute_fingerprint(&value_99);

@@ -6,7 +6,7 @@ use reifydb_core::{
 	key::{policy::PolicyKey, policy_op::PolicyOpKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::fragment::Fragment;
+use reifydb_value::fragment::Fragment;
 
 use crate::{
 	CatalogStore, Result,

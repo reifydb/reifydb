@@ -3,9 +3,9 @@
 
 use std::{any::Any, sync::Arc};
 
-use reifydb_type::{
+use reifydb_value::{
 	Result,
-	value::{Value, r#type::Type},
+	value::{Value, value_type::ValueType},
 };
 
 use crate::value::column::{
@@ -18,7 +18,7 @@ use crate::value::column::{
 
 #[derive(Clone, Debug)]
 pub struct Canonical {
-	pub ty: Type,
+	pub ty: ValueType,
 	pub nullable: bool,
 	pub nones: Option<NoneBitmap>,
 	pub buffer: ColumnBuffer,
@@ -26,7 +26,7 @@ pub struct Canonical {
 }
 
 impl Canonical {
-	pub fn new(ty: Type, nullable: bool, nones: Option<NoneBitmap>, buffer: ColumnBuffer) -> Self {
+	pub fn new(ty: ValueType, nullable: bool, nones: Option<NoneBitmap>, buffer: ColumnBuffer) -> Self {
 		debug_assert!(
 			!matches!(buffer, ColumnBuffer::Option { .. }),
 			"Canonical.buffer must not be a ColumnBuffer::Option; nullability is lifted"
@@ -105,11 +105,11 @@ impl Canonical {
 	}
 }
 
-fn encoding_for_type(ty: &Type) -> EncodingId {
+fn encoding_for_type(ty: &ValueType) -> EncodingId {
 	match ty {
-		Type::Boolean => EncodingId::CANONICAL_BOOL,
-		Type::Utf8 | Type::Blob => EncodingId::CANONICAL_VARLEN,
-		Type::Int | Type::Uint | Type::Decimal => EncodingId::CANONICAL_BIGNUM,
+		ValueType::Boolean => EncodingId::CANONICAL_BOOL,
+		ValueType::Utf8 | ValueType::Blob => EncodingId::CANONICAL_VARLEN,
+		ValueType::Int | ValueType::Uint | ValueType::Decimal => EncodingId::CANONICAL_BIGNUM,
 		_ => EncodingId::CANONICAL_FIXED,
 	}
 }
@@ -118,7 +118,7 @@ static UNIT_METADATA: () = ();
 static EMPTY_CHILDREN: Vec<Column> = Vec::new();
 
 impl ColumnData for Canonical {
-	fn ty(&self) -> Type {
+	fn ty(&self) -> ValueType {
 		self.ty.clone()
 	}
 

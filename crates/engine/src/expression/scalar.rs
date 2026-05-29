@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::catalog::property::ColumnSaturationStrategy;
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	error::TypeError,
 	fragment::LazyFragment,
@@ -12,7 +12,7 @@ use reifydb_type::{
 			promote::Promote,
 			safe::{add::SafeAdd, div::SafeDiv, mul::SafeMul, remainder::SafeRemainder, sub::SafeSub},
 		},
-		r#type::get::GetType,
+		value_type::get::GetType,
 	},
 };
 
@@ -156,7 +156,7 @@ impl_scalar_divisive_op!(remainder, SafeRemainder, checked_rem);
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::fragment::Fragment;
+	use reifydb_value::fragment::Fragment;
 
 	use crate::expression::context::EvalContext;
 

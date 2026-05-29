@@ -19,7 +19,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_store_multi::tier::{HistoricalCursor, TierStorage, commit::buffer::MultiCommitBufferTier};
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_value::util::cowvec::CowVec;
 
 fn shape() -> EntryKind {
 	EntryKind::Source(ShapeId::Table(TableId(42)))

@@ -9,7 +9,7 @@ use argon2::{
 };
 use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider};
 use reifydb_runtime::context::rng::Rng;
-use reifydb_type::{Result, error::Error};
+use reifydb_value::{Result, error::Error};
 
 use crate::error::AuthError;
 

@@ -11,7 +11,7 @@ use std::{
 use reifydb_catalog::catalog::Catalog;
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::sumtype::VariantRef;
+use reifydb_value::value::sumtype::VariantRef;
 
 use super::{Function, FunctionKind, Procedure};
 

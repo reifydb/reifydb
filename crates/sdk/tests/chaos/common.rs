@@ -24,7 +24,7 @@ use reifydb_sdk::{
 		context::ChaosContext, event::ChaosBatch, materialize::materialize_batches, oracle::MaterializedTable,
 	},
 };
-use reifydb_type::value::{Value, row_number::RowNumber, r#type::Type};
+use reifydb_value::value::{Value, row_number::RowNumber, value_type::ValueType};
 
 /// Operator that echoes every input diff back unchanged through
 /// `ctx.builder()`. Modeled on `tests/ffi/common.rs:39-106`. Used by every
@@ -185,8 +185,8 @@ fn byte_clone_columns(
 /// Output key projects on `k`.
 pub fn simple_kv_shape() -> RowShape {
 	RowShape::new(vec![
-		RowShapeField::unconstrained("k", Type::Uint8),
-		RowShapeField::unconstrained("v", Type::Float8),
+		RowShapeField::unconstrained("k", ValueType::Uint8),
+		RowShapeField::unconstrained("v", ValueType::Float8),
 	])
 }
 
@@ -194,11 +194,11 @@ pub fn simple_kv_shape() -> RowShape {
 /// and tolerance scenarios. Output key projects on `(base, quote, slot)`.
 pub fn wide_shape() -> RowShape {
 	RowShape::new(vec![
-		RowShapeField::unconstrained("base", Type::Utf8),
-		RowShapeField::unconstrained("quote", Type::Utf8),
-		RowShapeField::unconstrained("slot", Type::Uint8),
-		RowShapeField::unconstrained("vol", Type::Float8),
-		RowShapeField::unconstrained("price", Type::Float8),
+		RowShapeField::unconstrained("base", ValueType::Utf8),
+		RowShapeField::unconstrained("quote", ValueType::Utf8),
+		RowShapeField::unconstrained("slot", ValueType::Uint8),
+		RowShapeField::unconstrained("vol", ValueType::Float8),
+		RowShapeField::unconstrained("price", ValueType::Float8),
 	])
 }
 

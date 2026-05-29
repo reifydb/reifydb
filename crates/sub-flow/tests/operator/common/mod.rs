@@ -35,9 +35,9 @@ use reifydb_sdk::{
 	state::{RawStatefulOperator, window::WindowStateful},
 	testing::builders::TestChangeBuilder,
 };
-use reifydb_type::{
+use reifydb_value::{
 	util::cowvec::CowVec,
-	value::{Value, constraint::TypeConstraint, row_number::RowNumber, r#type::Type},
+	value::{Value, constraint::TypeConstraint, row_number::RowNumber, value_type::ValueType},
 };
 
 pub const WINDOW_SIZE: i64 = 100;
@@ -54,19 +54,19 @@ row!(WindowRow {
 
 const WINDOW_INPUT_COLUMNS: &[OperatorColumn] = &[OperatorColumn {
 	name: "timestamp",
-	type_constraint: TypeConstraint::unconstrained(Type::Int8),
+	type_constraint: TypeConstraint::unconstrained(ValueType::Int8),
 	description: "Event timestamp",
 }];
 
 const WINDOW_OUTPUT_COLUMNS: &[OperatorColumn] = &[
 	OperatorColumn {
 		name: "window_start",
-		type_constraint: TypeConstraint::unconstrained(Type::Int8),
+		type_constraint: TypeConstraint::unconstrained(ValueType::Int8),
 		description: "Window start time",
 	},
 	OperatorColumn {
 		name: "count",
-		type_constraint: TypeConstraint::unconstrained(Type::Int8),
+		type_constraint: TypeConstraint::unconstrained(ValueType::Int8),
 		description: "Event count in window",
 	},
 ];
@@ -152,12 +152,12 @@ row!(ProbeRow {
 const PROBE_OUTPUT_COLUMNS: &[OperatorColumn] = &[
 	OperatorColumn {
 		name: "row_number",
-		type_constraint: TypeConstraint::unconstrained(Type::Int8),
+		type_constraint: TypeConstraint::unconstrained(ValueType::Int8),
 		description: "Allocated row number for the fixed key",
 	},
 	OperatorColumn {
 		name: "is_new",
-		type_constraint: TypeConstraint::unconstrained(Type::Int8),
+		type_constraint: TypeConstraint::unconstrained(ValueType::Int8),
 		description: "1 if the key was freshly allocated on this apply",
 	},
 ];
@@ -279,7 +279,7 @@ impl OperatorLogic for ErroringOperator {
 }
 
 pub fn ts_row(row_number: u64, timestamp: i64) -> Row {
-	let shape = RowShape::new(vec![RowShapeField::unconstrained("timestamp", Type::Int8)]);
+	let shape = RowShape::new(vec![RowShapeField::unconstrained("timestamp", ValueType::Int8)]);
 	let mut encoded = shape.allocate();
 	shape.set_values(&mut encoded, &[Value::Int8(timestamp)]);
 	Row {

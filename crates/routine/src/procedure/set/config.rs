@@ -6,11 +6,11 @@ use std::{str::FromStr, sync::LazyLock};
 use reifydb_catalog::error::CatalogError;
 use reifydb_core::{interface::catalog::config::ConfigKey, value::column::columns::Columns};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	error::Error as TypeError,
 	fragment::Fragment,
 	params::Params,
-	value::{Value, r#type::Type},
+	value::{Value, value_type::ValueType},
 };
 
 use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
@@ -36,8 +36,8 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for SetConfigProcedure {
 		&INFO
 	}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Any
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Any
 	}
 
 	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
@@ -65,7 +65,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for SetConfigProcedure {
 				return Err(RoutineError::ProcedureInvalidArgumentType {
 					procedure: Fragment::internal("system::config::set"),
 					argument_index: 0,
-					expected: vec![Type::Utf8],
+					expected: vec![ValueType::Utf8],
 					actual: key.get_type(),
 				});
 			}

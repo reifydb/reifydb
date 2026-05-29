@@ -7,7 +7,7 @@ use reifydb_core::{
 	row::Row,
 	value::column::columns::Columns,
 };
-use reifydb_type::value::{Value, row_number::RowNumber};
+use reifydb_value::value::{Value, row_number::RowNumber};
 
 use super::helpers::get_values;
 use crate::testing::state::TestStateStore;
@@ -310,7 +310,7 @@ impl Assertable for TestStateStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::encoded::shape::RowShape;
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
 	use crate::testing::{
@@ -359,7 +359,7 @@ pub mod tests {
 	#[test]
 	fn test_state_assertions() {
 		let mut store = TestStateStore::new();
-		let shape = RowShape::testing(&[Type::Int8]);
+		let shape = RowShape::testing(&[ValueType::Int8]);
 		let key1 = encode_key("key1");
 		let key2 = encode_key("key2");
 

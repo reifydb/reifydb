@@ -9,7 +9,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, columns::Columns, buffer::ColumnBuffer},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, value::Value};
+use reifydb_value::{fragment::Fragment, value::Value};
 
 use super::{BaseVTable, VTableContext};
 use crate::vtable::user::{

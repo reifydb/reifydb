@@ -18,7 +18,7 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 pub mod buffer;
 pub mod config;
@@ -38,7 +38,7 @@ use reifydb_core::{
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_value::util::cowvec::CowVec;
 use store::StandardSingleStore;
 
 pub struct SingleStoreVersion;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
@@ -9,7 +9,7 @@ impl RowShape {
 	pub fn set_u8(&self, row: &mut EncodedRow, index: usize, value: impl Into<u8>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uint1);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Uint1);
 		row.set_valid(index, true);
 		unsafe {
 			row.make_mut().as_mut_ptr().add(field.offset as usize).write_unaligned(value.into());
@@ -19,12 +19,12 @@ impl RowShape {
 	pub fn get_u8(&self, row: &EncodedRow, index: usize) -> u8 {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uint1);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Uint1);
 		unsafe { row.as_ptr().add(field.offset as usize).read_unaligned() }
 	}
 
 	pub fn try_get_u8(&self, row: &EncodedRow, index: usize) -> Option<u8> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Uint1 {
+		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Uint1 {
 			Some(self.get_u8(row, index))
 		} else {
 			None
@@ -34,13 +34,13 @@ impl RowShape {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_set_get_u8() {
-		let shape = RowShape::testing(&[Type::Uint1]);
+		let shape = RowShape::testing(&[ValueType::Uint1]);
 		let mut row = shape.allocate();
 		shape.set_u8(&mut row, 0, 255u8);
 		assert_eq!(shape.get_u8(&row, 0), 255u8);
@@ -48,7 +48,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_u8() {
-		let shape = RowShape::testing(&[Type::Uint1]);
+		let shape = RowShape::testing(&[ValueType::Uint1]);
 		let mut row = shape.allocate();
 
 		assert_eq!(shape.try_get_u8(&row, 0), None);
@@ -59,7 +59,7 @@ pub mod tests {
 
 	#[test]
 	fn test_extremes() {
-		let shape = RowShape::testing(&[Type::Uint1]);
+		let shape = RowShape::testing(&[ValueType::Uint1]);
 		let mut row = shape.allocate();
 
 		shape.set_u8(&mut row, 0, u8::MAX);
@@ -76,7 +76,7 @@ pub mod tests {
 
 	#[test]
 	fn test_various_values() {
-		let shape = RowShape::testing(&[Type::Uint1]);
+		let shape = RowShape::testing(&[ValueType::Uint1]);
 
 		let test_values = [0u8, 1u8, 127u8, 128u8, 254u8, 255u8];
 
@@ -89,7 +89,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let shape = RowShape::testing(&[Type::Uint1, Type::Boolean, Type::Uint1]);
+		let shape = RowShape::testing(&[ValueType::Uint1, ValueType::Boolean, ValueType::Uint1]);
 		let mut row = shape.allocate();
 
 		shape.set_u8(&mut row, 0, 200u8);
@@ -103,7 +103,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let shape = RowShape::testing(&[Type::Uint1, Type::Uint1]);
+		let shape = RowShape::testing(&[ValueType::Uint1, ValueType::Uint1]);
 		let mut row = shape.allocate();
 
 		shape.set_u8(&mut row, 0, 42);
@@ -117,7 +117,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_u8_wrong_type() {
-		let shape = RowShape::testing(&[Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
 		shape.set_bool(&mut row, 0, true);

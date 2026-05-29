@@ -29,7 +29,7 @@ use reifydb_sdk::{
 	},
 	state::{StateEntry, decode_payload, encode_payload, row::RowNumberProvider},
 };
-use reifydb_type::{Result, value::row_number::RowNumber};
+use reifydb_value::{Result, value::row_number::RowNumber};
 use serde::{Serialize, de::DeserializeOwned};
 
 pub trait NativeBridge {

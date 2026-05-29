@@ -8,7 +8,7 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::CreateNamespaceNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 use crate::{Result, vm::services::Services};
 
@@ -75,7 +75,7 @@ pub(crate) fn create_namespace(
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::{params::Params, value::Value};
+	use reifydb_value::{params::Params, value::Value};
 
 	use crate::{
 		test_harness::create_test_admin_transaction,

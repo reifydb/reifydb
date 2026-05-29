@@ -16,7 +16,7 @@ use reifydb_rql::{
 	query::QueryPlan,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, fragment::Fragment};
+use reifydb_value::{Result, fragment::Fragment};
 
 use crate::flow::compiler::{CompileOperator, FlowCompiler};
 

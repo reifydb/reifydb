@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_runtime::context::rng::Rng;
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthStep {

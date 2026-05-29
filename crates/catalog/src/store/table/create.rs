@@ -13,7 +13,7 @@ use reifydb_core::{
 	retention::RetentionStrategy,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	value::{constraint::TypeConstraint, dictionary::DictionaryId},
 };
@@ -204,7 +204,7 @@ pub mod tests {
 		key::namespace_table::NamespaceTableKey,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
-	use reifydb_type::fragment::Fragment;
+	use reifydb_value::fragment::Fragment;
 
 	use crate::{
 		CatalogStore,

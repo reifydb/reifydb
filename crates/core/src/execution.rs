@@ -3,7 +3,7 @@
 
 use std::ops::Deref;
 
-use reifydb_type::{error::Error, value::frame::frame::Frame};
+use reifydb_value::{error::Error, value::frame::frame::Frame};
 
 use crate::metric::ExecutionMetrics;
 

@@ -8,7 +8,7 @@ use reifydb_core::event::{
 	flow::{FlowOperatorLoadedEvent, OperatorColumn},
 };
 use reifydb_extension::operator::ffi_loader::{ColumnInfo, ffi_operator_loader};
-use reifydb_type::Result;
+use reifydb_value::Result;
 use tracing::{debug, instrument};
 
 use crate::operator::native::{NativeOperatorColumn, native_operator_loader};

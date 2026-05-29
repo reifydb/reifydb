@@ -4,7 +4,7 @@
 use std::{collections::HashMap, iter, sync::Arc};
 
 use num_bigint::BigInt;
-use reifydb_type::{
+use reifydb_value::{
 	params::Params,
 	util::bitvec::BitVec,
 	value::{
@@ -19,9 +19,9 @@ use reifydb_type::{
 		identity::IdentityId,
 		int::Int,
 		time::Time,
-		r#type::Type,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
 	},
 };
 use uuid::Uuid;
@@ -53,7 +53,7 @@ pub fn proto_params_to_params(proto: generated::Params) -> Result<Params, GrpcEr
 	}
 }
 
-fn expect_bytes(ty: Type, expected: usize, actual: usize) -> Result<(), GrpcError> {
+fn expect_bytes(ty: ValueType, expected: usize, actual: usize) -> Result<(), GrpcError> {
 	if actual != expected {
 		return Err(GrpcError::InvalidByteLength {
 			r#type: ty,
@@ -65,69 +65,69 @@ fn expect_bytes(ty: Type, expected: usize, actual: usize) -> Result<(), GrpcErro
 }
 
 fn typed_value_to_value(tv: TypedValue) -> Result<Value, GrpcError> {
-	let ty = Type::from_u8(tv.r#type as u8);
+	let ty = ValueType::from_u8(tv.r#type as u8);
 	let data = &tv.value;
 	match ty {
-		Type::Option(inner) => Ok(Value::None {
+		ValueType::Option(inner) => Ok(Value::None {
 			inner: *inner,
 		}),
-		Type::Boolean => {
+		ValueType::Boolean => {
 			expect_bytes(ty, 1, data.len())?;
 			Ok(Value::Boolean(data[0] != 0))
 		}
-		Type::Float4 => {
+		ValueType::Float4 => {
 			expect_bytes(ty, 4, data.len())?;
 			Ok(Value::float4(f32::from_le_bytes(data.as_slice().try_into().unwrap())))
 		}
-		Type::Float8 => {
+		ValueType::Float8 => {
 			expect_bytes(ty, 8, data.len())?;
 			Ok(Value::float8(f64::from_le_bytes(data.as_slice().try_into().unwrap())))
 		}
-		Type::Int1 => {
+		ValueType::Int1 => {
 			expect_bytes(ty, 1, data.len())?;
 			Ok(Value::Int1(data[0] as i8))
 		}
-		Type::Int2 => {
+		ValueType::Int2 => {
 			expect_bytes(ty, 2, data.len())?;
 			Ok(Value::Int2(i16::from_le_bytes(data.as_slice().try_into().unwrap())))
 		}
-		Type::Int4 => {
+		ValueType::Int4 => {
 			expect_bytes(ty, 4, data.len())?;
 			Ok(Value::Int4(i32::from_le_bytes(data.as_slice().try_into().unwrap())))
 		}
-		Type::Int8 => {
+		ValueType::Int8 => {
 			expect_bytes(ty, 8, data.len())?;
 			Ok(Value::Int8(i64::from_le_bytes(data.as_slice().try_into().unwrap())))
 		}
-		Type::Int16 => {
+		ValueType::Int16 => {
 			expect_bytes(ty, 16, data.len())?;
 			Ok(Value::Int16(i128::from_le_bytes(data.as_slice().try_into().unwrap())))
 		}
-		Type::Uint1 => {
+		ValueType::Uint1 => {
 			expect_bytes(ty, 1, data.len())?;
 			Ok(Value::Uint1(data[0]))
 		}
-		Type::Uint2 => {
+		ValueType::Uint2 => {
 			expect_bytes(ty, 2, data.len())?;
 			Ok(Value::Uint2(u16::from_le_bytes(data.as_slice().try_into().unwrap())))
 		}
-		Type::Uint4 => {
+		ValueType::Uint4 => {
 			expect_bytes(ty, 4, data.len())?;
 			Ok(Value::Uint4(u32::from_le_bytes(data.as_slice().try_into().unwrap())))
 		}
-		Type::Uint8 => {
+		ValueType::Uint8 => {
 			expect_bytes(ty, 8, data.len())?;
 			Ok(Value::Uint8(u64::from_le_bytes(data.as_slice().try_into().unwrap())))
 		}
-		Type::Uint16 => {
+		ValueType::Uint16 => {
 			expect_bytes(ty, 16, data.len())?;
 			Ok(Value::Uint16(u128::from_le_bytes(data.as_slice().try_into().unwrap())))
 		}
-		Type::Utf8 => {
+		ValueType::Utf8 => {
 			let s = String::from_utf8(data.clone()).map_err(GrpcError::InvalidUtf8)?;
 			Ok(Value::Utf8(s))
 		}
-		Type::Date => {
+		ValueType::Date => {
 			expect_bytes(ty, 4, data.len())?;
 			let days = i32::from_le_bytes(data.as_slice().try_into().unwrap());
 			let d = Date::from_days_since_epoch(days).ok_or(GrpcError::InvalidDate {
@@ -135,12 +135,12 @@ fn typed_value_to_value(tv: TypedValue) -> Result<Value, GrpcError> {
 			})?;
 			Ok(Value::Date(d))
 		}
-		Type::DateTime => {
+		ValueType::DateTime => {
 			expect_bytes(ty, 8, data.len())?;
 			let nanos = u64::from_le_bytes(data[..8].try_into().unwrap());
 			Ok(Value::DateTime(DateTime::from_nanos(nanos)))
 		}
-		Type::Time => {
+		ValueType::Time => {
 			expect_bytes(ty, 8, data.len())?;
 			let nanos = u64::from_le_bytes(data.as_slice().try_into().unwrap());
 			let t = Time::from_nanos_since_midnight(nanos).ok_or(GrpcError::InvalidTime {
@@ -148,45 +148,47 @@ fn typed_value_to_value(tv: TypedValue) -> Result<Value, GrpcError> {
 			})?;
 			Ok(Value::Time(t))
 		}
-		Type::Duration => {
+		ValueType::Duration => {
 			expect_bytes(ty, 16, data.len())?;
 			let months = i32::from_le_bytes(data[..4].try_into().unwrap());
 			let days = i32::from_le_bytes(data[4..8].try_into().unwrap());
 			let nanos = i64::from_le_bytes(data[8..16].try_into().unwrap());
 			Ok(Value::Duration(Duration::new(months, days, nanos).unwrap()))
 		}
-		Type::Blob => Ok(Value::Blob(Blob::new(data.clone()))),
-		Type::IdentityId => {
+		ValueType::Blob => Ok(Value::Blob(Blob::new(data.clone()))),
+		ValueType::IdentityId => {
 			expect_bytes(ty, 16, data.len())?;
 			let uuid = Uuid::from_bytes(data.as_slice().try_into().unwrap());
 			Ok(Value::IdentityId(IdentityId(Uuid7(uuid))))
 		}
-		Type::Uuid4 => {
+		ValueType::Uuid4 => {
 			expect_bytes(ty, 16, data.len())?;
 			let uuid = Uuid::from_bytes(data.as_slice().try_into().unwrap());
 			Ok(Value::Uuid4(Uuid4(uuid)))
 		}
-		Type::Uuid7 => {
+		ValueType::Uuid7 => {
 			expect_bytes(ty, 16, data.len())?;
 			let uuid = Uuid::from_bytes(data.as_slice().try_into().unwrap());
 			Ok(Value::Uuid7(Uuid7(uuid)))
 		}
-		Type::Decimal => {
+		ValueType::Decimal => {
 			let s = String::from_utf8(data.clone()).map_err(GrpcError::InvalidUtf8)?;
 			let d = s.parse::<Decimal>().map_err(|e| GrpcError::InvalidDecimal(e.to_string()))?;
 			Ok(Value::Decimal(d))
 		}
-		Type::Int => {
+		ValueType::Int => {
 			let big = BigInt::from_signed_bytes_le(data);
 			Ok(Value::Int(Int(big)))
 		}
-		Type::Uint => {
+		ValueType::Uint => {
 			let big = BigInt::from_signed_bytes_le(data);
 			Ok(Value::Uint(Uint(big)))
 		}
-		Type::Any | Type::DictionaryId | Type::List(_) | Type::Record(_) | Type::Tuple(_) => {
-			Err(GrpcError::UnsupportedParamType(ty))
-		}
+		ValueType::Any
+		| ValueType::DictionaryId
+		| ValueType::List(_)
+		| ValueType::Record(_)
+		| ValueType::Tuple(_) => Err(GrpcError::UnsupportedParamType(ty)),
 	}
 }
 
@@ -224,7 +226,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 		FrameColumnData::Bool(c) => {
 			let bv: &BitVec = c;
 			let encoded = encode_bitvec(bv);
-			(Type::Boolean.to_u8(), encoded, vec![])
+			(ValueType::Boolean.to_u8(), encoded, vec![])
 		}
 		FrameColumnData::Float4(c) => {
 			let slice: &[f32] = c;
@@ -232,7 +234,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 			for v in slice {
 				buf.extend_from_slice(&v.to_le_bytes());
 			}
-			(Type::Float4.to_u8(), buf, vec![])
+			(ValueType::Float4.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Float8(c) => {
 			let slice: &[f64] = c;
@@ -240,7 +242,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 			for v in slice {
 				buf.extend_from_slice(&v.to_le_bytes());
 			}
-			(Type::Float8.to_u8(), buf, vec![])
+			(ValueType::Float8.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Int1(c) => {
 			let slice: &[i8] = c;
@@ -248,7 +250,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 			for v in slice {
 				buf.extend_from_slice(&v.to_le_bytes());
 			}
-			(Type::Int1.to_u8(), buf, vec![])
+			(ValueType::Int1.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Int2(c) => {
 			let slice: &[i16] = c;
@@ -256,7 +258,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 			for v in slice {
 				buf.extend_from_slice(&v.to_le_bytes());
 			}
-			(Type::Int2.to_u8(), buf, vec![])
+			(ValueType::Int2.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Int4(c) => {
 			let slice: &[i32] = c;
@@ -264,7 +266,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 			for v in slice {
 				buf.extend_from_slice(&v.to_le_bytes());
 			}
-			(Type::Int4.to_u8(), buf, vec![])
+			(ValueType::Int4.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Int8(c) => {
 			let slice: &[i64] = c;
@@ -272,7 +274,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 			for v in slice {
 				buf.extend_from_slice(&v.to_le_bytes());
 			}
-			(Type::Int8.to_u8(), buf, vec![])
+			(ValueType::Int8.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Int16(c) => {
 			let slice: &[i128] = c;
@@ -280,13 +282,13 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 			for v in slice {
 				buf.extend_from_slice(&v.to_le_bytes());
 			}
-			(Type::Int16.to_u8(), buf, vec![])
+			(ValueType::Int16.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Uint1(c) => {
 			let slice: &[u8] = c;
 			let mut buf = Vec::with_capacity(slice.len());
 			buf.extend_from_slice(slice);
-			(Type::Uint1.to_u8(), buf, vec![])
+			(ValueType::Uint1.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Uint2(c) => {
 			let slice: &[u16] = c;
@@ -294,7 +296,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 			for v in slice {
 				buf.extend_from_slice(&v.to_le_bytes());
 			}
-			(Type::Uint2.to_u8(), buf, vec![])
+			(ValueType::Uint2.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Uint4(c) => {
 			let slice: &[u32] = c;
@@ -302,7 +304,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 			for v in slice {
 				buf.extend_from_slice(&v.to_le_bytes());
 			}
-			(Type::Uint4.to_u8(), buf, vec![])
+			(ValueType::Uint4.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Uint8(c) => {
 			let slice: &[u64] = c;
@@ -310,7 +312,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 			for v in slice {
 				buf.extend_from_slice(&v.to_le_bytes());
 			}
-			(Type::Uint8.to_u8(), buf, vec![])
+			(ValueType::Uint8.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Uint16(c) => {
 			let slice: &[u128] = c;
@@ -318,7 +320,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 			for v in slice {
 				buf.extend_from_slice(&v.to_le_bytes());
 			}
-			(Type::Uint16.to_u8(), buf, vec![])
+			(ValueType::Uint16.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Utf8(c) => {
 			let mut buf = Vec::new();
@@ -327,7 +329,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 				buf.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
 				buf.extend_from_slice(bytes);
 			}
-			(Type::Utf8.to_u8(), buf, vec![])
+			(ValueType::Utf8.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Date(c) => {
 			let slice: &[Date] = c;
@@ -335,7 +337,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 			for v in slice {
 				buf.extend_from_slice(&v.to_days_since_epoch().to_le_bytes());
 			}
-			(Type::Date.to_u8(), buf, vec![])
+			(ValueType::Date.to_u8(), buf, vec![])
 		}
 		FrameColumnData::DateTime(c) => {
 			let slice: &[DateTime] = c;
@@ -343,7 +345,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 			for v in slice {
 				buf.extend_from_slice(&v.to_nanos().to_le_bytes());
 			}
-			(Type::DateTime.to_u8(), buf, vec![])
+			(ValueType::DateTime.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Time(c) => {
 			let slice: &[Time] = c;
@@ -351,7 +353,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 			for v in slice {
 				buf.extend_from_slice(&v.to_nanos_since_midnight().to_le_bytes());
 			}
-			(Type::Time.to_u8(), buf, vec![])
+			(ValueType::Time.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Duration(c) => {
 			let slice: &[Duration] = c;
@@ -361,7 +363,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 				buf.extend_from_slice(&v.get_days().to_le_bytes());
 				buf.extend_from_slice(&v.get_nanos().to_le_bytes());
 			}
-			(Type::Duration.to_u8(), buf, vec![])
+			(ValueType::Duration.to_u8(), buf, vec![])
 		}
 		FrameColumnData::IdentityId(c) => {
 			let slice: &[IdentityId] = c;
@@ -369,7 +371,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 			for v in slice {
 				buf.extend_from_slice(v.0.0.as_bytes());
 			}
-			(Type::IdentityId.to_u8(), buf, vec![])
+			(ValueType::IdentityId.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Uuid4(c) => {
 			let slice: &[Uuid4] = c;
@@ -377,7 +379,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 			for v in slice {
 				buf.extend_from_slice(v.0.as_bytes());
 			}
-			(Type::Uuid4.to_u8(), buf, vec![])
+			(ValueType::Uuid4.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Uuid7(c) => {
 			let slice: &[Uuid7] = c;
@@ -385,7 +387,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 			for v in slice {
 				buf.extend_from_slice(v.0.as_bytes());
 			}
-			(Type::Uuid7.to_u8(), buf, vec![])
+			(ValueType::Uuid7.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Blob(c) => {
 			let mut buf = Vec::new();
@@ -393,7 +395,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 				buf.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
 				buf.extend_from_slice(bytes);
 			}
-			(Type::Blob.to_u8(), buf, vec![])
+			(ValueType::Blob.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Int(c) => {
 			let slice: &[Int] = c;
@@ -403,7 +405,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 				buf.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
 				buf.extend_from_slice(&bytes);
 			}
-			(Type::Int.to_u8(), buf, vec![])
+			(ValueType::Int.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Uint(c) => {
 			let slice: &[Uint] = c;
@@ -413,7 +415,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 				buf.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
 				buf.extend_from_slice(&bytes);
 			}
-			(Type::Uint.to_u8(), buf, vec![])
+			(ValueType::Uint.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Decimal(c) => {
 			let slice: &[Decimal] = c;
@@ -424,7 +426,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 				buf.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
 				buf.extend_from_slice(bytes);
 			}
-			(Type::Decimal.to_u8(), buf, vec![])
+			(ValueType::Decimal.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Any(c) => {
 			let mut buf = Vec::new();
@@ -432,7 +434,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 				let val = c.get_value(i);
 				encode_any_value(&val, &mut buf);
 			}
-			(Type::Any.to_u8(), buf, vec![])
+			(ValueType::Any.to_u8(), buf, vec![])
 		}
 		FrameColumnData::DictionaryId(c) => {
 			let mut buf = Vec::new();
@@ -469,7 +471,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 					}
 				}
 			}
-			(Type::DictionaryId.to_u8(), buf, vec![])
+			(ValueType::DictionaryId.to_u8(), buf, vec![])
 		}
 		FrameColumnData::Option {
 			inner,

@@ -64,7 +64,7 @@ pub(crate) fn find_keys_to_drop<S: TierStorage>(
 pub mod tests {
 	use std::collections::HashMap;
 
-	use reifydb_type::util::cowvec::CowVec;
+	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
 	use crate::tier::commit::buffer::MultiCommitBufferTier;

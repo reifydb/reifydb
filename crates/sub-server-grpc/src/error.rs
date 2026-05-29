@@ -4,13 +4,13 @@
 use std::{error, fmt, string::FromUtf8Error};
 
 use reifydb_sub_server::{auth::AuthError, execute::ExecuteError, subscription::errors::CreateSubscriptionError};
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 use serde_json::to_string as to_json;
 use tonic::Status;
 
 pub enum GrpcError {
 	InvalidByteLength {
-		r#type: Type,
+		r#type: ValueType,
 		expected: usize,
 		actual: usize,
 	},
@@ -29,7 +29,7 @@ pub enum GrpcError {
 
 	InvalidDecimal(String),
 
-	UnsupportedParamType(Type),
+	UnsupportedParamType(ValueType),
 
 	Unauthenticated(AuthError),
 

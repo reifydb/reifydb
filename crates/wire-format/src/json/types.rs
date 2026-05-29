@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -19,6 +19,6 @@ pub struct ResponseFrame {
 pub struct ResponseColumn {
 	pub name: String,
 	#[serde(rename = "type")]
-	pub r#type: Type,
+	pub r#type: ValueType,
 	pub payload: Vec<String>,
 }

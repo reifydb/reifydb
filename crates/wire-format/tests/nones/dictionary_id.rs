@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::{
+use reifydb_value::value::{
 	container::dictionary::DictionaryContainer, dictionary::DictionaryEntryId, frame::data::FrameColumnData,
-	r#type::Type,
+	value_type::ValueType,
 };
 
 fn make(v: Vec<DictionaryEntryId>) -> FrameColumnData {
@@ -18,5 +18,5 @@ crate::nones_tests! {
 		DictionaryEntryId::U16(0),
 		DictionaryEntryId::U16(u16::MAX as u128),
 	],
-	inner_type: Type::DictionaryId,
+	inner_type: ValueType::DictionaryId,
 }

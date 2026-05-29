@@ -4,13 +4,13 @@
 use std::str::FromStr;
 
 use reifydb_core::encoded::shape::RowShape;
-use reifydb_type::value::{blob::Blob, decimal::Decimal, int::Int, r#type::Type};
+use reifydb_value::value::{blob::Blob, decimal::Decimal, int::Int, value_type::ValueType};
 
 #[test]
 fn test_massive_field_count() {
 	// Test with an extreme number of fields
 	let field_count = 10000;
-	let types: Vec<Type> = vec![Type::Int4; field_count];
+	let types: Vec<ValueType> = vec![ValueType::Int4; field_count];
 	let shape = RowShape::testing(&types);
 	let mut row = shape.allocate();
 
@@ -27,12 +27,12 @@ fn test_massive_field_count() {
 #[test]
 fn test_mixed_static_dynamic_stress() {
 	// Stress test with alternating static and dynamic fields
-	let types: Vec<Type> = (0..100)
+	let types: Vec<ValueType> = (0..100)
 		.map(|i| {
 			if i % 2 == 0 {
-				Type::Int8
+				ValueType::Int8
 			} else {
-				Type::Utf8
+				ValueType::Utf8
 			}
 		})
 		.collect();
@@ -106,7 +106,7 @@ fn test_mixed_static_dynamic_stress() {
 #[test]
 fn test_repeated_clone_stability() {
 	// Test that cloning doesn't degrade or corrupt data
-	let shape = RowShape::testing(&[Type::Utf8, Type::Blob, Type::Int, Type::Decimal]);
+	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob, ValueType::Int, ValueType::Decimal]);
 
 	let mut original = shape.allocate();
 	shape.set_utf8(&mut original, 0, &"x".repeat(1000));
@@ -133,7 +133,7 @@ fn test_repeated_clone_stability() {
 fn test_validity_bit_stress() {
 	// Test validity bit handling under stress
 	let field_count = 1000;
-	let types: Vec<Type> = vec![Type::Int4; field_count];
+	let types: Vec<ValueType> = vec![ValueType::Int4; field_count];
 	let shape = RowShape::testing(&types);
 	let mut row = shape.allocate();
 
@@ -181,7 +181,7 @@ fn test_validity_bit_stress() {
 #[test]
 fn test_extreme_string_sizes() {
 	// Test handling of very large strings
-	let shape = RowShape::testing(&[Type::Utf8]);
+	let shape = RowShape::testing(&[ValueType::Utf8]);
 
 	// Test various string sizes - use separate rows since dynamic fields
 	// can only be set once
@@ -209,7 +209,7 @@ fn test_extreme_string_sizes() {
 fn test_concurrent_field_updates() {
 	// Simulate concurrent-like updates - test rapid field setting across
 	// different rows since dynamic fields can only be set once per encoded
-	let shape = RowShape::testing(&[Type::Int8, Type::Utf8, Type::Int8, Type::Utf8]);
+	let shape = RowShape::testing(&[ValueType::Int8, ValueType::Utf8, ValueType::Int8, ValueType::Utf8]);
 
 	let iterations = 1000;
 	let mut rows = Vec::with_capacity(iterations);
@@ -262,7 +262,7 @@ fn test_concurrent_field_updates() {
 #[test]
 fn test_row_size_stability() {
 	// Ensure encoded sizes are stable and predictable for dynamic fields
-	let shape = RowShape::testing(&[Type::Utf8, Type::Blob]);
+	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob]);
 
 	// Test that rows with similar sized content have similar sizes
 	let sizes = [10, 100, 1000];

@@ -18,7 +18,7 @@ pub mod parse;
 use proc_macro2::TokenStream;
 
 pub fn derive_from_frame(input: TokenStream) -> TokenStream {
-	derive_from_frame_with_crate(input, "reifydb_type")
+	derive_from_frame_with_crate(input, "reifydb_value")
 }
 
 pub fn derive_from_frame_with_crate(input: TokenStream, crate_path: &str) -> TokenStream {

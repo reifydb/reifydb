@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::int::Int;
+use reifydb_value::value::int::Int;
 
 use super::Config;
 
@@ -21,7 +21,7 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_type::value::{Value, int::Int};
+	use reifydb_value::value::{Value, int::Int};
 
 	use super::super::testutil::config;
 

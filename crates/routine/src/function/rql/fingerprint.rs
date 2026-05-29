@@ -7,7 +7,7 @@ use reifydb_rql::{
 	ast::parse_str,
 	fingerprint::{request::fingerprint_request, statement::fingerprint_statement},
 };
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
@@ -34,8 +34,8 @@ impl<'a> Routine<FunctionContext<'a>> for RqlFingerprint {
 		&self.info
 	}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Utf8
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Utf8
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
@@ -94,7 +94,7 @@ impl<'a> Routine<FunctionContext<'a>> for RqlFingerprint {
 			other => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
-				expected: vec![Type::Utf8],
+				expected: vec![ValueType::Utf8],
 				actual: other.get_type(),
 			}),
 		}

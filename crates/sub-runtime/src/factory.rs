@@ -9,7 +9,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::SharedRuntime;
 use reifydb_store_multi::MultiStore;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::{
 	actor::RuntimeSamplerActor, collect::Collectors, domain::Domain, subsystem::RuntimeSubsystem,

@@ -12,9 +12,9 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, identity::IdentityId, r#type::Type},
+	value::{constraint::TypeConstraint, identity::IdentityId, value_type::ValueType},
 };
 use tracing::info;
 
@@ -119,7 +119,7 @@ pub fn bootstrap_metric_ringbuffers(
 	Ok(())
 }
 
-fn metric_col(name: &str, ty: Type) -> RingBufferColumnToCreate {
+fn metric_col(name: &str, ty: ValueType) -> RingBufferColumnToCreate {
 	RingBufferColumnToCreate {
 		name: Fragment::internal(name),
 		fragment: Fragment::internal(name),
@@ -135,14 +135,14 @@ fn request_history_schema(namespace: NamespaceId) -> RingBufferToCreate {
 		name: Fragment::internal("request_history"),
 		namespace,
 		columns: vec![
-			metric_col("timestamp", Type::DateTime),
-			metric_col("operation", Type::Utf8),
-			metric_col("fingerprint", Type::Utf8),
-			metric_col("total_duration", Type::Duration),
-			metric_col("compute_duration", Type::Duration),
-			metric_col("success", Type::Boolean),
-			metric_col("statement_count", Type::Int8),
-			metric_col("normalized_rql", Type::Utf8),
+			metric_col("timestamp", ValueType::DateTime),
+			metric_col("operation", ValueType::Utf8),
+			metric_col("fingerprint", ValueType::Utf8),
+			metric_col("total_duration", ValueType::Duration),
+			metric_col("compute_duration", ValueType::Duration),
+			metric_col("success", ValueType::Boolean),
+			metric_col("statement_count", ValueType::Int8),
+			metric_col("normalized_rql", ValueType::Utf8),
 		],
 		capacity: REQUEST_HISTORY_CAPACITY,
 		partition_by: vec![],
@@ -155,16 +155,16 @@ fn statement_stats_schema(namespace: NamespaceId) -> RingBufferToCreate {
 		name: Fragment::internal("statement_stats"),
 		namespace,
 		columns: vec![
-			metric_col("snapshot_timestamp", Type::DateTime),
-			metric_col("fingerprint", Type::Utf8),
-			metric_col("normalized_rql", Type::Utf8),
-			metric_col("calls", Type::Int8),
-			metric_col("total_duration", Type::Duration),
-			metric_col("mean_duration", Type::Duration),
-			metric_col("max_duration", Type::Duration),
-			metric_col("min_duration", Type::Duration),
-			metric_col("total_rows", Type::Int8),
-			metric_col("errors", Type::Int8),
+			metric_col("snapshot_timestamp", ValueType::DateTime),
+			metric_col("fingerprint", ValueType::Utf8),
+			metric_col("normalized_rql", ValueType::Utf8),
+			metric_col("calls", ValueType::Int8),
+			metric_col("total_duration", ValueType::Duration),
+			metric_col("mean_duration", ValueType::Duration),
+			metric_col("max_duration", ValueType::Duration),
+			metric_col("min_duration", ValueType::Duration),
+			metric_col("total_rows", ValueType::Int8),
+			metric_col("errors", ValueType::Int8),
 		],
 		capacity: STATEMENT_STATS_CAPACITY,
 		partition_by: vec![],

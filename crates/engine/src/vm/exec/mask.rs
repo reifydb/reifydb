@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_type::{
+use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
 	util::bitvec::BitVec,
 	value::Value,
@@ -477,16 +477,16 @@ impl<'a> Vm<'a> {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-	use reifydb_type::{
+	use reifydb_value::{
 		fragment::Fragment,
 		util::bitvec::BitVec,
-		value::{Value, r#type::Type},
+		value::{Value, value_type::ValueType},
 	};
 
 	use super::*;
 
 	fn int4_column(name: &str, values: &[i32]) -> ColumnWithName {
-		let mut data = ColumnBuffer::with_capacity(Type::Int4, values.len());
+		let mut data = ColumnBuffer::with_capacity(ValueType::Int4, values.len());
 		for &v in values {
 			data.push(v);
 		}

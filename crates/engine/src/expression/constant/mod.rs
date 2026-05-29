@@ -9,14 +9,14 @@ pub mod uuid;
 use number::NumberParser;
 use reifydb_core::value::column::buffer::ColumnBuffer;
 use reifydb_rql::expression::ConstantExpression;
-use reifydb_type::{
+use reifydb_value::{
 	error::TypeError,
 	return_error,
 	value::{
 		boolean::parse::parse_bool,
 		decimal::parse::parse_decimal,
 		number::parse::{parse_primitive_int, parse_primitive_uint},
-		r#type::Type,
+		value_type::ValueType,
 	},
 };
 use temporal::TemporalParser;
@@ -86,11 +86,15 @@ pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> Res
 		} => TemporalParser::parse_temporal(fragment.clone(), row_count)?,
 		ConstantExpression::None {
 			..
-		} => ColumnBuffer::none_typed(Type::Any, row_count),
+		} => ColumnBuffer::none_typed(ValueType::Any, row_count),
 	})
 }
 
-pub(crate) fn constant_value_of(expr: &ConstantExpression, target: Type, row_count: usize) -> Result<ColumnBuffer> {
+pub(crate) fn constant_value_of(
+	expr: &ConstantExpression,
+	target: ValueType,
+	row_count: usize,
+) -> Result<ColumnBuffer> {
 	Ok(match (expr, target) {
 		(
 			ConstantExpression::Number {
@@ -105,7 +109,7 @@ pub(crate) fn constant_value_of(expr: &ConstantExpression, target: Type, row_cou
 			target,
 		) if target.is_bool()
 			|| target.is_number() || target.is_temporal()
-			|| target.is_uuid() || target == Type::IdentityId =>
+			|| target.is_uuid() || target == ValueType::IdentityId =>
 		{
 			TextParser::from_text(fragment.clone(), target, row_count)?
 		}
@@ -127,19 +131,19 @@ pub(crate) fn constant_value_of(expr: &ConstantExpression, target: Type, row_cou
 			let shape_type = match expr {
 				ConstantExpression::Bool {
 					..
-				} => Type::Boolean,
+				} => ValueType::Boolean,
 				ConstantExpression::Number {
 					..
-				} => Type::Float8,
+				} => ValueType::Float8,
 				ConstantExpression::Text {
 					..
-				} => Type::Utf8,
+				} => ValueType::Utf8,
 				ConstantExpression::Temporal {
 					..
-				} => Type::DateTime,
+				} => ValueType::DateTime,
 				ConstantExpression::None {
 					..
-				} => Type::Option(Box::new(Type::Any)),
+				} => ValueType::Option(Box::new(ValueType::Any)),
 			};
 			return Err(TypeError::UnsupportedCast {
 				from: shape_type,

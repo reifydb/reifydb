@@ -11,7 +11,7 @@ use reifydb_sdk::{
 		source::{FFISource, FFISourceMetadata},
 	},
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::{connector::ConnectorRegistry, operator::BoxedOperator};
 

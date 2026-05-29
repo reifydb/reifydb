@@ -14,7 +14,7 @@ use reifydb_engine::subscription::{HydrateError, SubscriptionServiceRef};
 use reifydb_remote_proxy::{RemoteSubscription, connect_remote, proxy_remote_to_sink};
 use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
 use reifydb_transaction::multi::lease::VersionLeaseGuard;
-use reifydb_type::value::{frame::frame::Frame, identity::IdentityId};
+use reifydb_value::value::{frame::frame::Frame, identity::IdentityId};
 use tokio::{spawn, sync::watch::Receiver as WatchReceiver, task::JoinHandle};
 use tracing::{info, warn};
 

@@ -31,7 +31,7 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_runtime::context::{clock::Clock, rng::Rng};
-use reifydb_type::{error::Error, value::uuid::Uuid7};
+use reifydb_value::{error::Error, value::uuid::Uuid7};
 use uuid::{Builder, Uuid};
 
 pub mod change;

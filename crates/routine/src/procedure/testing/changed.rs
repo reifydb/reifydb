@@ -8,10 +8,10 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	error::Error,
 	params::Params,
-	value::{Value, r#type::Type},
+	value::{Value, value_type::ValueType},
 };
 
 use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
@@ -35,8 +35,8 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for TestingChanged {
 		&self.info
 	}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Any
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Any
 	}
 
 	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
@@ -294,6 +294,6 @@ fn column_for_values(values: &[Value]) -> ColumnBuffer {
 	});
 	match first_type {
 		Some(ty) => ColumnBuffer::with_capacity(ty, values.len()),
-		None => ColumnBuffer::none_typed(Type::Boolean, 0),
+		None => ColumnBuffer::none_typed(ValueType::Boolean, 0),
 	}
 }

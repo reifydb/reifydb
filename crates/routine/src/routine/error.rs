@@ -2,10 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::error::CatalogError;
-use reifydb_type::{
+use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic, TypeError},
 	fragment::Fragment,
-	value::r#type::Type,
+	value::value_type::ValueType,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -21,8 +21,8 @@ pub enum RoutineError {
 	FunctionInvalidArgumentType {
 		function: Fragment,
 		argument_index: usize,
-		expected: Vec<Type>,
-		actual: Type,
+		expected: Vec<ValueType>,
+		actual: ValueType,
 	},
 
 	#[error("function {} execution failed: {reason}", function.text())]
@@ -47,8 +47,8 @@ pub enum RoutineError {
 	ProcedureInvalidArgumentType {
 		procedure: Fragment,
 		argument_index: usize,
-		expected: Vec<Type>,
-		actual: Type,
+		expected: Vec<ValueType>,
+		actual: ValueType,
 	},
 
 	#[error("procedure {} execution failed: {reason}", procedure.text())]

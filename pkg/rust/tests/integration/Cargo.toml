@@ -11,6 +11,6 @@ publish = false
 reifydb = { workspace = true }
 reifydb-metric = { workspace = true }
 reifydb-sub-metric = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 reifydb-wire-format = { workspace = true }
 tokio = { workspace = true }

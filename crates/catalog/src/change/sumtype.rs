@@ -10,7 +10,7 @@ use reifydb_core::{
 	key::{EncodableKey, kind::KeyKind, sumtype::SumTypeKey},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::sumtype::SumTypeId;
+use reifydb_value::value::sumtype::SumTypeId;
 use serde_json::from_str;
 use tracing::warn;
 

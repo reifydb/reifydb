@@ -18,7 +18,7 @@ use reifydb_core::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sub_raft::message::Command;
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	util::{cowvec::CowVec, hex},
 };

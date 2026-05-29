@@ -22,7 +22,7 @@ use reifydb_sub_server::{
 	subscription::cleanup::cleanup_subscription,
 };
 use reifydb_subscription::batch::BatchId;
-use reifydb_type::{
+use reifydb_value::{
 	params::Params,
 	value::{frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
 };

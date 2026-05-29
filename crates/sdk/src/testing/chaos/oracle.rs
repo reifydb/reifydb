@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct OutputKey(pub Vec<Value>);

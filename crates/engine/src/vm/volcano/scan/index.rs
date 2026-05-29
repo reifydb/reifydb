@@ -9,7 +9,7 @@ use reifydb_core::{
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, value::r#type::Type};
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	Result,
@@ -21,7 +21,7 @@ pub(crate) struct IndexScanNode {
 	_index_id: IndexId,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
-	_storage_types: Vec<Type>,
+	_storage_types: Vec<ValueType>,
 	_shape: Option<RowShape>,
 	_last_key: Option<EncodedKey>,
 	_exhausted: bool,

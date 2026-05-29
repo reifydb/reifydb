@@ -5,7 +5,7 @@ use std::mem;
 
 use reifydb_core::interface::store::{SingleVersionContains, SingleVersionGet, SingleVersionRow};
 use reifydb_runtime::sync::rwlock::{RwLock, RwLockReadGuard};
-use reifydb_type::{Result, util::hex};
+use reifydb_value::{Result, util::hex};
 
 use super::*;
 use crate::error::TransactionError;

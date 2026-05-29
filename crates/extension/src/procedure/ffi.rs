@@ -17,7 +17,7 @@ use reifydb_routine::routine::{Routine, RoutineInfo, context::ProcedureContext, 
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sdk::{error::SdkError, ffi::arena::Arena};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 use tracing::instrument;
 
 use super::ffi_callbacks::{logging, memory, rql};
@@ -120,8 +120,8 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for NativeProcedureFFI {
 		&self.info
 	}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Any
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Any
 	}
 
 	#[instrument(name = "procedure::ffi::execute", level = "debug", skip_all)]

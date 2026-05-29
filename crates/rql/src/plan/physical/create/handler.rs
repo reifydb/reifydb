@@ -7,7 +7,7 @@ use reifydb_core::{
 	internal_error,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, value::sumtype::VariantRef};
+use reifydb_value::{fragment::Fragment, value::sumtype::VariantRef};
 
 use crate::{
 	Result,

@@ -20,7 +20,7 @@ use reifydb_core::{
 	interface::store::{EntryKind, MultiVersionCommit, MultiVersionGet},
 };
 use reifydb_store_multi::store::{StandardMultiStore, router::classify_key};
-use reifydb_type::{cow_vec, util::cowvec::CowVec};
+use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
 fn key(s: &str) -> EncodedKey {
 	EncodedKey::new(s.as_bytes().to_vec())

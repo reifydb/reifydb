@@ -15,7 +15,7 @@ use reifydb_core::{
 	key::{namespace_view::NamespaceViewKey, view::ViewKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	value::{constraint::TypeConstraint, sumtype::SumTypeId},
 };
@@ -236,7 +236,7 @@ pub mod tests {
 		key::namespace_view::NamespaceViewKey,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
-	use reifydb_type::fragment::Fragment;
+	use reifydb_value::fragment::Fragment;
 
 	use super::ViewStorageConfig;
 	use crate::{

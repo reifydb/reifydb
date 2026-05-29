@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::buffer::ColumnBuffer;
-use reifydb_type::value::{
+use reifydb_value::value::{
 	Value,
 	blob::Blob,
 	date::Date,

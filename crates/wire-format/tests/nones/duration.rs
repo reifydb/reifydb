@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::{
-	container::temporal::TemporalContainer, duration::Duration, frame::data::FrameColumnData, r#type::Type,
+use reifydb_value::value::{
+	container::temporal::TemporalContainer, duration::Duration, frame::data::FrameColumnData, value_type::ValueType,
 };
 
 fn make(v: Vec<Duration>) -> FrameColumnData {
@@ -17,5 +17,5 @@ crate::nones_tests! {
 		Duration::new(12, 365, 86_400_000_000_000).unwrap(),
 		Duration::new(-12, -365, -86_400_000_000_000).unwrap(),
 	],
-	inner_type: Type::Duration,
+	inner_type: ValueType::Duration,
 }

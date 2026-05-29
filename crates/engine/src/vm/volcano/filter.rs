@@ -11,7 +11,7 @@ use reifydb_core::{
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{util::bitvec::BitVec, value::constraint::Constraint};
+use reifydb_value::{util::bitvec::BitVec, value::constraint::Constraint};
 use tracing::instrument;
 
 use super::NoopNode;

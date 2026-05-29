@@ -12,7 +12,7 @@ use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
 };
 use reifydb_runtime::sync::mutex::Mutex;
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_value::util::cowvec::CowVec;
 
 #[derive(Clone)]
 pub struct TestContext {

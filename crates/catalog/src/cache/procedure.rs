@@ -8,7 +8,7 @@ use reifydb_core::{
 		procedure::Procedure,
 	},
 };
-use reifydb_type::value::sumtype::VariantRef;
+use reifydb_value::value::sumtype::VariantRef;
 
 use crate::cache::{CatalogCache, MultiVersionProcedure};
 

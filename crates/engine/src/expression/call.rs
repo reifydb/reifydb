@@ -6,10 +6,10 @@ use reifydb_core::value::column::{
 };
 use reifydb_routine::routine::{FunctionKind, context::FunctionContext, error::RoutineError};
 use reifydb_rql::expression::{CallExpression, Expression, name::display_label};
-use reifydb_type::{
+use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
-	value::{Value, r#type::Type},
+	value::{Value, value_type::ValueType},
 };
 
 use crate::{Result, error::EngineError, expression::context::EvalContext};
@@ -50,7 +50,7 @@ pub(crate) fn call_builtin(ctx: &EvalContext, call: &CallExpression, arguments: 
 		let column = if call.args.is_empty() {
 			ColumnWithName {
 				name: Fragment::internal("dummy"),
-				data: ColumnBuffer::with_capacity(Type::Int4, ctx.row_count),
+				data: ColumnBuffer::with_capacity(ValueType::Int4, ctx.row_count),
 			}
 		} else {
 			ColumnWithName::new(arguments.name_at(0).clone(), arguments[0].clone())

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use num_traits::Zero;
-use reifydb_type::value::{decimal::Decimal, int::Int, uint::Uint};
+use reifydb_value::value::{decimal::Decimal, int::Int, uint::Uint};
 
 pub trait BinaryOp {
 	const NAME: &'static str;

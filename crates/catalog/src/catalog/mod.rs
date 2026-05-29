@@ -76,7 +76,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::config::{ConfigKey, GetConfig},
 };
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 impl GetConfig for Catalog {
 	fn get_config(&self, key: ConfigKey) -> Value {

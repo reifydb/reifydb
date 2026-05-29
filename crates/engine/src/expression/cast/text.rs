@@ -4,7 +4,7 @@
 use std::fmt::Display;
 
 use reifydb_core::value::column::buffer::ColumnBuffer;
-use reifydb_type::{
+use reifydb_value::{
 	error::TypeError,
 	fragment::LazyFragment,
 	value::{
@@ -14,7 +14,7 @@ use reifydb_type::{
 			number::NumberContainer, temporal::TemporalContainer, uuid::UuidContainer,
 		},
 		is::{IsNumber, IsTemporal, IsUuid},
-		r#type::Type,
+		value_type::ValueType,
 	},
 };
 
@@ -50,7 +50,7 @@ pub fn to_text(data: &ColumnBuffer, lazy_fragment: impl LazyFragment) -> Result<
 			let from = data.get_type();
 			Err(TypeError::UnsupportedCast {
 				from,
-				to: Type::Utf8,
+				to: ValueType::Utf8,
 				fragment: lazy_fragment.fragment(),
 			}
 			.into())
@@ -60,7 +60,7 @@ pub fn to_text(data: &ColumnBuffer, lazy_fragment: impl LazyFragment) -> Result<
 
 #[inline]
 pub fn from_blob(container: &BlobContainer, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
-	let mut out = ColumnBuffer::with_capacity(Type::Utf8, container.len());
+	let mut out = ColumnBuffer::with_capacity(ValueType::Utf8, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			let blob = Blob::new(container.get(idx).unwrap_or(&[]).to_vec());
@@ -83,7 +83,7 @@ pub fn from_blob(container: &BlobContainer, lazy_fragment: impl LazyFragment) ->
 
 #[inline]
 fn from_bool(container: &BoolContainer) -> Result<ColumnBuffer> {
-	let mut out = ColumnBuffer::with_capacity(Type::Utf8, container.len());
+	let mut out = ColumnBuffer::with_capacity(ValueType::Utf8, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			out.push::<String>(container.data().get(idx).to_string());
@@ -99,7 +99,7 @@ fn from_number<T>(container: &NumberContainer<T>) -> Result<ColumnBuffer>
 where
 	T: Copy + Display + IsNumber + Default,
 {
-	let mut out = ColumnBuffer::with_capacity(Type::Utf8, container.len());
+	let mut out = ColumnBuffer::with_capacity(ValueType::Utf8, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			out.push::<String>(container[idx].to_string());
@@ -115,7 +115,7 @@ fn from_temporal<T>(container: &TemporalContainer<T>) -> Result<ColumnBuffer>
 where
 	T: Copy + Display + IsTemporal + Default,
 {
-	let mut out = ColumnBuffer::with_capacity(Type::Utf8, container.len());
+	let mut out = ColumnBuffer::with_capacity(ValueType::Utf8, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			out.push::<String>(container[idx].to_string());
@@ -131,7 +131,7 @@ fn from_uuid<T>(container: &UuidContainer<T>) -> Result<ColumnBuffer>
 where
 	T: Copy + Display + IsUuid + Default,
 {
-	let mut out = ColumnBuffer::with_capacity(Type::Utf8, container.len());
+	let mut out = ColumnBuffer::with_capacity(ValueType::Utf8, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			out.push::<String>(container[idx].to_string());
@@ -144,7 +144,7 @@ where
 
 #[inline]
 fn from_identity_id(container: &IdentityIdContainer) -> Result<ColumnBuffer> {
-	let mut out = ColumnBuffer::with_capacity(Type::Utf8, container.len());
+	let mut out = ColumnBuffer::with_capacity(ValueType::Utf8, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			out.push::<String>(container[idx].to_string());
@@ -158,7 +158,7 @@ fn from_identity_id(container: &IdentityIdContainer) -> Result<ColumnBuffer> {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::value::column::buffer::ColumnBuffer;
-	use reifydb_type::{
+	use reifydb_value::{
 		fragment::Fragment,
 		value::{blob::Blob, container::blob::BlobContainer},
 	};

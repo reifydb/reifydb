@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use postcard::to_allocvec;
 use reifydb_abi::data::column::ColumnTypeCode;
-use reifydb_type::value::{date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, time::Time};
+use reifydb_value::value::{date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, time::Time};
 
 use crate::{
 	error::SdkError,

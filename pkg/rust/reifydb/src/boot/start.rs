@@ -21,7 +21,7 @@ use reifydb_store_multi::{
 	},
 };
 use reifydb_transaction::single::SingleTransaction;
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 use crate::Result;
 
@@ -30,7 +30,7 @@ const CURRENT_STORAGE_VERSION: u8 = 0x01;
 /// Ensures the storage version key exists and matches the expected version.
 /// On first boot, creates the version entry.
 pub(crate) fn ensure_storage_version(single: &SingleTransaction) -> Result<()> {
-	let shape = RowShape::testing(&[Type::Uint1]);
+	let shape = RowShape::testing(&[ValueType::Uint1]);
 	let key = SystemVersionKey {
 		version: SystemVersion::Storage,
 	}

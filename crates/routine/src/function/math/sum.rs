@@ -10,14 +10,14 @@ use reifydb_core::value::column::{
 	columns::Columns,
 	view::group_by::{GroupByView, GroupKey},
 };
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value,
 		decimal::Decimal,
 		int::Int,
-		r#type::{Type, input_types::InputTypes},
 		uint::Uint,
+		value_type::{ValueType, input_types::InputTypes},
 	},
 };
 
@@ -49,8 +49,8 @@ impl<'a> Routine<FunctionContext<'a>> for Sum {
 		&self.info
 	}
 
-	fn return_type(&self, input_types: &[Type]) -> Type {
-		input_types.first().cloned().unwrap_or(Type::Int8)
+	fn return_type(&self, input_types: &[ValueType]) -> ValueType {
+		input_types.first().cloned().unwrap_or(ValueType::Int8)
 	}
 
 	fn accepted_types(&self) -> InputTypes {
@@ -94,7 +94,7 @@ impl Function for Sum {
 
 struct SumAccumulator {
 	pub sums: IndexMap<Vec<Value>, Value>,
-	input_type: Option<Type>,
+	input_type: Option<ValueType>,
 }
 
 impl SumAccumulator {
@@ -347,7 +347,7 @@ impl Accumulator for SumAccumulator {
 	}
 
 	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnBuffer), RoutineError> {
-		let ty = self.input_type.take().unwrap_or(Type::Int8);
+		let ty = self.input_type.take().unwrap_or(ValueType::Int8);
 		let mut keys = Vec::with_capacity(self.sums.len());
 		let mut data = ColumnBuffer::with_capacity(ty, self.sums.len());
 

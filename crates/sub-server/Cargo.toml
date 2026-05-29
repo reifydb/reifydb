@@ -19,7 +19,7 @@ reifydb-remote-proxy = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-subscription = { workspace = true }
 reifydb-transaction = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 reifydb-wire-format = { workspace = true }
 
 dashmap = { workspace = true }

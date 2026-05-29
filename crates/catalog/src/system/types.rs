@@ -8,7 +8,7 @@ use reifydb_core::interface::catalog::{
 	id::{ColumnId, NamespaceId},
 	vtable::VTable,
 };
-use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 use super::ids::vtable::TYPES;
 
@@ -24,7 +24,7 @@ pub fn types() -> Arc<VTable> {
 				Column {
 					id: ColumnId(1),
 					name: "id".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint1),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint1),
 					properties: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
@@ -33,7 +33,7 @@ pub fn types() -> Arc<VTable> {
 				Column {
 					id: ColumnId(2),
 					name: "name".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Utf8),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,

@@ -6,7 +6,7 @@ use reifydb_core::{event::EventBus, util::ioc::IocContainer};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::{
 	builder::{ReplicationConfig, ReplicationConfigurator},

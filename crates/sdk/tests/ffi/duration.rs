@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::buffer::ColumnBuffer;
-use reifydb_type::value::duration::Duration;
+use reifydb_value::value::duration::Duration;
 
 use super::common::{assert_column_eq, round_trip_column};
 

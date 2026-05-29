@@ -3,7 +3,7 @@
 
 use reifydb_core::{common::CommitVersion, encoded::row::EncodedRow, key::cdc_consumer::ToConsumerKey};
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
-use reifydb_type::{Result, util::cowvec::CowVec};
+use reifydb_value::{Result, util::cowvec::CowVec};
 
 pub struct CdcCheckpoint {}
 

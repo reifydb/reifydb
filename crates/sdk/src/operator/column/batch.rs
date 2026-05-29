@@ -3,7 +3,7 @@
 
 use std::marker::PhantomData;
 
-use reifydb_type::value::row_number::RowNumber;
+use reifydb_value::value::row_number::RowNumber;
 
 use crate::{
 	error::SdkError,
@@ -135,7 +135,7 @@ impl<'a, R: Row, O: OperatorContext + 'a> RemoveBatch<'a, R, O> {
 mod tests {
 	use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 	use reifydb_core::interface::catalog::flow::FlowNodeId;
-	use reifydb_type::value::row_number::RowNumber;
+	use reifydb_value::value::row_number::RowNumber;
 
 	use crate::{
 		config::Config,

@@ -12,7 +12,7 @@ use reifydb_rql::{
 	nodes::{AssertBlockNode, DispatchNode, MigrateNode, RollbackMigrationNode},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{error::Diagnostic, fragment::Fragment, params::Params, value::r#type::Type};
+use reifydb_value::{error::Diagnostic, fragment::Fragment, params::Params, value::value_type::ValueType};
 
 use crate::{
 	Result,
@@ -166,21 +166,21 @@ fn diagnostic_to_columns(diag: &Diagnostic) -> Columns {
 		"rql",
 		match &diag.rql {
 			Some(s) => ColumnBuffer::utf8([s.as_str()]),
-			None => ColumnBuffer::none_typed(Type::Utf8, 1),
+			None => ColumnBuffer::none_typed(ValueType::Utf8, 1),
 		},
 	);
 	let label_col = ColumnWithName::new(
 		"label",
 		match &diag.label {
 			Some(s) => ColumnBuffer::utf8([s.as_str()]),
-			None => ColumnBuffer::none_typed(Type::Utf8, 1),
+			None => ColumnBuffer::none_typed(ValueType::Utf8, 1),
 		},
 	);
 	let help_col = ColumnWithName::new(
 		"help",
 		match &diag.help {
 			Some(s) => ColumnBuffer::utf8([s.as_str()]),
-			None => ColumnBuffer::none_typed(Type::Utf8, 1),
+			None => ColumnBuffer::none_typed(ValueType::Utf8, 1),
 		},
 	);
 	Columns::new(vec![code_col, message_col, rql_col, label_col, help_col])

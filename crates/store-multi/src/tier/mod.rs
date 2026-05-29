@@ -8,7 +8,7 @@ pub mod read;
 use std::{collections::HashMap, ops::Bound};
 
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
-use reifydb_type::{Result, util::cowvec::CowVec};
+use reifydb_value::{Result, util::cowvec::CowVec};
 
 pub type TierBatch = HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>>;
 

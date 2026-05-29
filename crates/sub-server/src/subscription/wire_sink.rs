@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use reifydb_client::{RawChangePayload, WireFormat as ClientWireFormat};
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
-use reifydb_type::value::frame::frame::Frame;
+use reifydb_value::value::frame::frame::Frame;
 
 pub struct BatchSubscribedMember {
 	pub index: usize,

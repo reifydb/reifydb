@@ -3,7 +3,7 @@
 
 use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
 use reifydb_transaction::multi::transaction::MultiTransaction;
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_value::util::cowvec::CowVec;
 
 fn test_multi() -> MultiTransaction {
 	MultiTransaction::testing()
@@ -17,7 +17,7 @@ fn make_row(s: &str) -> EncodedRow {
 	EncodedRow(CowVec::new(s.as_bytes().to_vec()))
 }
 
-fn is_conflict_error(err: &reifydb_type::error::Error) -> bool {
+fn is_conflict_error(err: &reifydb_value::error::Error) -> bool {
 	let msg = err.to_string();
 	msg.contains("Conflict") || msg.contains("conflict")
 }

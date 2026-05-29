@@ -6,7 +6,7 @@ use reifydb_core::interface::catalog::{
 	shape::ShapeId,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::{Value, row_number::RowNumber};
+use reifydb_value::value::{Value, row_number::RowNumber};
 use tracing::instrument;
 
 use crate::{

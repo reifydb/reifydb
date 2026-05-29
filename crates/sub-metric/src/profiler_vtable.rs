@@ -6,7 +6,7 @@ use reifydb_core::{
 	profiler::ProfilerCategoryId,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_type::{fragment::Fragment, value::r#type::Type};
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::profiler_gauges::{CategoryGauges, gauges_for};
 
@@ -20,13 +20,13 @@ impl MetricsProfilerCategoriesVTable {
 
 	pub fn columns_spec() -> Vec<UserVTableColumn> {
 		vec![
-			UserVTableColumn::new("category", Type::Utf8),
-			UserVTableColumn::new("calls", Type::Uint8),
-			UserVTableColumn::new("p50_us", Type::Uint8),
-			UserVTableColumn::new("p75_us", Type::Uint8),
-			UserVTableColumn::new("p90_us", Type::Uint8),
-			UserVTableColumn::new("p95_us", Type::Uint8),
-			UserVTableColumn::new("p99_us", Type::Uint8),
+			UserVTableColumn::new("category", ValueType::Utf8),
+			UserVTableColumn::new("calls", ValueType::Uint8),
+			UserVTableColumn::new("p50_us", ValueType::Uint8),
+			UserVTableColumn::new("p75_us", ValueType::Uint8),
+			UserVTableColumn::new("p90_us", ValueType::Uint8),
+			UserVTableColumn::new("p95_us", ValueType::Uint8),
+			UserVTableColumn::new("p99_us", ValueType::Uint8),
 		]
 	}
 }

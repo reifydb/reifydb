@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use reifydb_type::value::{constraint::TypeConstraint, sumtype::VariantRef};
+use reifydb_value::value::{constraint::TypeConstraint, sumtype::VariantRef};
 use serde::{Deserialize, Serialize};
 
 use crate::interface::catalog::id::{NamespaceId, ProcedureId};

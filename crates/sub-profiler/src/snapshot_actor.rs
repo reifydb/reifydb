@@ -19,9 +19,9 @@ use reifydb_runtime::{
 	},
 	sync::rwlock::RwLock,
 };
-use reifydb_type::{
+use reifydb_value::{
 	params::Params,
-	value::{Value, datetime::DateTime, identity::IdentityId, r#type::Type},
+	value::{Value, datetime::DateTime, identity::IdentityId, value_type::ValueType},
 };
 use tracing::error;
 
@@ -154,11 +154,17 @@ fn record_to_params(record: &AggregateRecord, ts: DateTime) -> Params {
 	map.insert("span_name".to_string(), Value::Utf8(record.span_name.clone()));
 	map.insert(
 		"dim_1".to_string(),
-		record.dimensions.first().map(|s| Value::Utf8(s.clone())).unwrap_or_else(|| Value::none_of(Type::Utf8)),
+		record.dimensions
+			.first()
+			.map(|s| Value::Utf8(s.clone()))
+			.unwrap_or_else(|| Value::none_of(ValueType::Utf8)),
 	);
 	map.insert(
 		"dim_2".to_string(),
-		record.dimensions.get(1).map(|s| Value::Utf8(s.clone())).unwrap_or_else(|| Value::none_of(Type::Utf8)),
+		record.dimensions
+			.get(1)
+			.map(|s| Value::Utf8(s.clone()))
+			.unwrap_or_else(|| Value::none_of(ValueType::Utf8)),
 	);
 	map.insert("calls".to_string(), Value::Uint8(record.calls));
 	map.insert("total".to_string(), Value::Duration(record.total()));

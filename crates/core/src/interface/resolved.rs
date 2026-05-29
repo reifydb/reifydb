@@ -3,10 +3,10 @@
 
 use std::sync::Arc;
 
-use reifydb_type::{
+use reifydb_value::{
 	error::NumberOutOfRangeDescriptor,
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, r#type::Type},
+	value::{constraint::TypeConstraint, value_type::ValueType},
 };
 use serde::{Deserialize, Serialize};
 
@@ -761,7 +761,7 @@ impl ResolvedColumn {
 		&self.0.def.constraint
 	}
 
-	pub fn column_type(&self) -> Type {
+	pub fn column_type(&self) -> ValueType {
 		self.0.def.constraint.get_type()
 	}
 
@@ -854,9 +854,9 @@ pub struct Function {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::{
+	use reifydb_value::{
 		fragment::Fragment,
-		value::{constraint::TypeConstraint, r#type::Type},
+		value::{constraint::TypeConstraint, value_type::ValueType},
 	};
 
 	use super::*;
@@ -883,7 +883,7 @@ pub mod tests {
 				Column {
 					id: ColumnId(1),
 					name: "id".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Int8),
+					constraint: TypeConstraint::unconstrained(ValueType::Int8),
 					properties: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
@@ -892,7 +892,7 @@ pub mod tests {
 				Column {
 					id: ColumnId(2),
 					name: "name".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Utf8),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,
@@ -959,7 +959,7 @@ pub mod tests {
 		let column = Column {
 			id: ColumnId(1),
 			name: "id".to_string(),
-			constraint: TypeConstraint::unconstrained(Type::Int8),
+			constraint: TypeConstraint::unconstrained(ValueType::Int8),
 			properties: vec![],
 			index: ColumnIndex(0),
 			auto_increment: false,
@@ -969,7 +969,7 @@ pub mod tests {
 		let column = ResolvedColumn::new(column_ident, shape, column);
 
 		assert_eq!(column.name(), "id");
-		assert_eq!(column.type_constraint(), &TypeConstraint::unconstrained(Type::Int8));
+		assert_eq!(column.type_constraint(), &TypeConstraint::unconstrained(ValueType::Int8));
 		assert!(!column.is_auto_increment());
 		assert_eq!(column.qualified_name(), "public::users.id");
 	}

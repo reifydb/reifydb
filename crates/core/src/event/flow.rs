@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use reifydb_type::value::constraint::TypeConstraint;
+use reifydb_value::value::constraint::TypeConstraint;
 
 use crate::define_event;
 

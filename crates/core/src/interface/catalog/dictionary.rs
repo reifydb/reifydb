@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::{dictionary::DictionaryId, r#type::Type};
+use reifydb_value::value::{dictionary::DictionaryId, value_type::ValueType};
 use serde::{Deserialize, Serialize};
 
 use crate::interface::catalog::id::NamespaceId;
@@ -11,8 +11,8 @@ pub struct Dictionary {
 	pub id: DictionaryId,
 	pub namespace: NamespaceId,
 	pub name: String,
-	pub value_type: Type,
-	pub id_type: Type,
+	pub value_type: ValueType,
+	pub id_type: ValueType,
 }
 
 impl Dictionary {

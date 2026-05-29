@@ -19,7 +19,7 @@ use reifydb_transaction::{
 	interceptor::interceptors::Interceptors, multi::transaction::MultiTransaction, single::SingleTransaction,
 	transaction::admin::AdminTransaction,
 };
-use reifydb_type::value::{constraint::TypeConstraint, identity::IdentityId, r#type::Type};
+use reifydb_value::value::{constraint::TypeConstraint, identity::IdentityId, value_type::ValueType};
 
 use super::ensure_namespace;
 use crate::{Result, cache::CatalogCache, catalog::Catalog};
@@ -162,7 +162,7 @@ pub fn bootstrap_system_procedures(
 
 	let rql_query_param = || ProcedureParam {
 		name: "query".to_string(),
-		param_type: TypeConstraint::unconstrained(Type::Utf8),
+		param_type: TypeConstraint::unconstrained(ValueType::Utf8),
 	};
 
 	let descriptors = vec![
@@ -179,11 +179,11 @@ pub fn bootstrap_system_procedures(
 			params: vec![
 				ProcedureParam {
 					name: "key".to_string(),
-					param_type: TypeConstraint::unconstrained(Type::Utf8),
+					param_type: TypeConstraint::unconstrained(ValueType::Utf8),
 				},
 				ProcedureParam {
 					name: "value".to_string(),
-					param_type: TypeConstraint::unconstrained(Type::Any),
+					param_type: TypeConstraint::unconstrained(ValueType::Any),
 				},
 			],
 			return_type: None,

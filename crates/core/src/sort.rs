@@ -6,7 +6,7 @@ use std::{
 	fmt::{Display, Formatter},
 };
 
-use reifydb_type::fragment::Fragment;
+use reifydb_value::fragment::Fragment;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

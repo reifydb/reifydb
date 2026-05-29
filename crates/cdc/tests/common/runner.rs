@@ -21,7 +21,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::context::clock::MockClock;
 use reifydb_testing::testscript::{command::Command, runner::Runner as TsRunner};
 use reifydb_transaction::transaction::command::CommandTransaction;
-use reifydb_type::{util::cowvec::CowVec, value::identity::IdentityId};
+use reifydb_value::{util::cowvec::CowVec, value::identity::IdentityId};
 
 /// Runs commands from `tests/scripts/cdc/*` against a `StandardEngine` +
 /// `CdcStore`. Buffers row mutations into a transaction and commits on the

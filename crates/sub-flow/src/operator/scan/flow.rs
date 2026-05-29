@@ -6,7 +6,7 @@ use reifydb_core::interface::{
 	catalog::flow::{Flow, FlowNodeId},
 	change::Change,
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::{Operator, transaction::FlowTransaction};
 

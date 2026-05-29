@@ -15,7 +15,7 @@ use reifydb_core::{
 	},
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 use tracing::{Span, field, instrument};
 
 use super::FlowTransaction;
@@ -447,9 +447,9 @@ pub mod tests {
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_type::{
+	use reifydb_value::{
 		util::cowvec::CowVec,
-		value::{identity::IdentityId, r#type::Type},
+		value::{identity::IdentityId, value_type::ValueType},
 	};
 
 	use super::*;
@@ -775,7 +775,7 @@ pub mod tests {
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
 		let value = make_value("existing");
-		let shape = RowShape::testing(&[Type::Int8, Type::Float8]);
+		let shape = RowShape::testing(&[ValueType::Int8, ValueType::Float8]);
 
 		// Set existing state
 		txn.state_set(node_id, &key, value.clone()).unwrap();
@@ -798,7 +798,7 @@ pub mod tests {
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
-		let shape = RowShape::testing(&[Type::Int8, Type::Float8]);
+		let shape = RowShape::testing(&[ValueType::Int8, ValueType::Float8]);
 
 		// load_or_create should allocate new row
 		let result = txn.load_or_create_row(node_id, &key, &shape).unwrap();

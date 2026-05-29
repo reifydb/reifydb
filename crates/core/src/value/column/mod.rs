@@ -12,13 +12,13 @@
 
 use std::fmt;
 
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	util::bitvec::BitVec,
 	value::{
 		dictionary::DictionaryEntryId,
-		r#type::Type,
 		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
 	},
 };
 
@@ -85,7 +85,7 @@ impl ColumnWithName {
 		}
 	}
 
-	pub fn get_type(&self) -> Type {
+	pub fn get_type(&self) -> ValueType {
 		self.data.get_type()
 	}
 
@@ -428,7 +428,7 @@ impl ColumnWithName {
 		}
 	}
 
-	pub fn undefined_typed(name: impl Into<Fragment>, ty: Type, row_count: usize) -> Self {
+	pub fn undefined_typed(name: impl Into<Fragment>, ty: ValueType, row_count: usize) -> Self {
 		ColumnWithName {
 			name: name.into(),
 			data: ColumnBuffer::none_typed(ty, row_count),

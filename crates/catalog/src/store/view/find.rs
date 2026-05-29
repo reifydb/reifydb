@@ -10,7 +10,7 @@ use reifydb_core::{
 	key::{namespace_view::NamespaceViewKey, view::ViewKey},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::sumtype::SumTypeId;
+use reifydb_value::value::sumtype::SumTypeId;
 
 use crate::{
 	CatalogStore, Result,
@@ -64,7 +64,7 @@ use reifydb_core::{
 	encoded::row::EncodedRow,
 	interface::catalog::{column::Column, key::PrimaryKey},
 };
-use reifydb_type::{
+use reifydb_value::{
 	error::{Diagnostic, Error},
 	fragment::Fragment,
 };

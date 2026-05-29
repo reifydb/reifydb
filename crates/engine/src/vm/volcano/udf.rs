@@ -9,7 +9,7 @@ use reifydb_rql::{
 	instruction::{Instruction, ScopeType},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::{Value, frame::frame::Frame, r#type::Type};
+use reifydb_value::value::{Value, frame::frame::Frame, value_type::ValueType};
 use tracing::instrument;
 
 use crate::{
@@ -159,7 +159,7 @@ impl QueryNode for UdfEvalNode {
 						ColumnWithName::new(name, data)
 					}
 					_ => {
-						let data = ColumnBuffer::none_typed(Type::Any, row_count);
+						let data = ColumnBuffer::none_typed(ValueType::Any, row_count);
 						ColumnWithName {
 							name: call.udf.result_column.clone(),
 							data,
@@ -202,7 +202,7 @@ impl QueryNode for UdfEvalNode {
 					results.push(result);
 				}
 
-				let col_type = results.first().map(|v| v.get_type()).unwrap_or(Type::Any);
+				let col_type = results.first().map(|v| v.get_type()).unwrap_or(ValueType::Any);
 				let mut data = ColumnBuffer::none_typed(col_type, 0);
 				for value in &results {
 					data.push_value(value.clone());

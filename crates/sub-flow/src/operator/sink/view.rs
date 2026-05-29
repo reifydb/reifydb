@@ -17,7 +17,7 @@ use reifydb_core::{
 	util::encoding::keycode::{catalog::serialize_shape_id, encode_u8, encode_u64_varint},
 	value::column::columns::Columns,
 };
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, row_number::RowNumber},
 };

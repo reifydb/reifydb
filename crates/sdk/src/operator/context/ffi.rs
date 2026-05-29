@@ -18,7 +18,7 @@ use reifydb_core::{
 		table::Table,
 	},
 };
-use reifydb_type::{
+use reifydb_value::{
 	params::Params,
 	value::{frame::frame::Frame, row_number::RowNumber},
 };

@@ -4,7 +4,7 @@
 use std::{error::Error as StdError, fmt, fmt::Display};
 
 use reifydb_core::common::CommitVersion;
-use reifydb_type::{error, error::Error};
+use reifydb_value::{error, error::Error};
 
 #[derive(Debug, Clone)]
 pub enum ReplicationError {
@@ -44,7 +44,7 @@ impl From<ReplicationError> for Error {
 
 pub mod diagnostic {
 	use reifydb_core::common::CommitVersion;
-	use reifydb_type::{error::Diagnostic, fragment::Fragment};
+	use reifydb_value::{error::Diagnostic, fragment::Fragment};
 
 	pub fn out_of_order_version(version: CommitVersion, last_applied: CommitVersion) -> Diagnostic {
 		Diagnostic {

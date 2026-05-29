@@ -3,7 +3,7 @@
 
 use std::ops::Deref;
 
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_value::util::cowvec::CowVec;
 use serde::{Deserialize, Serialize};
 
 use crate::encoded::shape::fingerprint::RowShapeFingerprint;

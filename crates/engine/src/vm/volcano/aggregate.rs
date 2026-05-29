@@ -15,10 +15,10 @@ use reifydb_routine::routine::{
 };
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	error,
 	fragment::Fragment,
-	value::{Value, r#type::Type},
+	value::{Value, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -136,7 +136,7 @@ impl QueryNode for AggregateNode {
 					let mut c = ColumnWithName {
 						name: Fragment::internal(alias.fragment()),
 						data: ColumnBuffer::none_typed(
-							first_key_type.unwrap_or(Type::Boolean),
+							first_key_type.unwrap_or(ValueType::Boolean),
 							0,
 						),
 					};

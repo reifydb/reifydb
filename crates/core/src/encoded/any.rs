@@ -3,7 +3,7 @@
 
 use std::str;
 
-use reifydb_type::value::{
+use reifydb_value::value::{
 	Value,
 	blob::Blob,
 	date::Date,
@@ -13,8 +13,8 @@ use reifydb_type::value::{
 	ordered_f32::OrderedF32,
 	ordered_f64::OrderedF64,
 	time::Time,
-	r#type::Type,
 	uuid::{Uuid4, Uuid7},
+	value_type::ValueType,
 };
 use uuid::Uuid;
 
@@ -22,80 +22,80 @@ use crate::encoded::{row::EncodedRow, shape::RowShape};
 
 pub fn encode_value(value: &Value) -> Vec<u8> {
 	match value {
-		Value::Boolean(v) => vec![Type::Boolean.to_u8(), *v as u8],
+		Value::Boolean(v) => vec![ValueType::Boolean.to_u8(), *v as u8],
 
-		Value::Uint1(v) => vec![Type::Uint1.to_u8(), *v],
+		Value::Uint1(v) => vec![ValueType::Uint1.to_u8(), *v],
 		Value::Uint2(v) => {
-			let mut b = vec![Type::Uint2.to_u8()];
+			let mut b = vec![ValueType::Uint2.to_u8()];
 			b.extend_from_slice(&v.to_le_bytes());
 			b
 		}
 		Value::Uint4(v) => {
-			let mut b = vec![Type::Uint4.to_u8()];
+			let mut b = vec![ValueType::Uint4.to_u8()];
 			b.extend_from_slice(&v.to_le_bytes());
 			b
 		}
 		Value::Uint8(v) => {
-			let mut b = vec![Type::Uint8.to_u8()];
+			let mut b = vec![ValueType::Uint8.to_u8()];
 			b.extend_from_slice(&v.to_le_bytes());
 			b
 		}
 		Value::Uint16(v) => {
-			let mut b = vec![Type::Uint16.to_u8()];
+			let mut b = vec![ValueType::Uint16.to_u8()];
 			b.extend_from_slice(&v.to_le_bytes());
 			b
 		}
 
-		Value::Int1(v) => vec![Type::Int1.to_u8(), *v as u8],
+		Value::Int1(v) => vec![ValueType::Int1.to_u8(), *v as u8],
 		Value::Int2(v) => {
-			let mut b = vec![Type::Int2.to_u8()];
+			let mut b = vec![ValueType::Int2.to_u8()];
 			b.extend_from_slice(&v.to_le_bytes());
 			b
 		}
 		Value::Int4(v) => {
-			let mut b = vec![Type::Int4.to_u8()];
+			let mut b = vec![ValueType::Int4.to_u8()];
 			b.extend_from_slice(&v.to_le_bytes());
 			b
 		}
 		Value::Int8(v) => {
-			let mut b = vec![Type::Int8.to_u8()];
+			let mut b = vec![ValueType::Int8.to_u8()];
 			b.extend_from_slice(&v.to_le_bytes());
 			b
 		}
 		Value::Int16(v) => {
-			let mut b = vec![Type::Int16.to_u8()];
+			let mut b = vec![ValueType::Int16.to_u8()];
 			b.extend_from_slice(&v.to_le_bytes());
 			b
 		}
 
 		Value::Float4(v) => {
-			let mut b = vec![Type::Float4.to_u8()];
+			let mut b = vec![ValueType::Float4.to_u8()];
 			b.extend_from_slice(&v.value().to_bits().to_le_bytes());
 			b
 		}
 		Value::Float8(v) => {
-			let mut b = vec![Type::Float8.to_u8()];
+			let mut b = vec![ValueType::Float8.to_u8()];
 			b.extend_from_slice(&v.value().to_bits().to_le_bytes());
 			b
 		}
 
 		Value::Date(v) => {
-			let mut b = vec![Type::Date.to_u8()];
+			let mut b = vec![ValueType::Date.to_u8()];
 			b.extend_from_slice(&v.to_days_since_epoch().to_le_bytes());
 			b
 		}
 		Value::DateTime(v) => {
-			let mut b = vec![Type::DateTime.to_u8()];
+			let mut b = vec![ValueType::DateTime.to_u8()];
 			b.extend_from_slice(&v.to_nanos().to_le_bytes());
 			b
 		}
 		Value::Time(v) => {
-			let mut b = vec![Type::Time.to_u8()];
+			let mut b = vec![ValueType::Time.to_u8()];
 			b.extend_from_slice(&v.to_nanos_since_midnight().to_le_bytes());
 			b
 		}
 		Value::Duration(v) => {
-			let mut b = vec![Type::Duration.to_u8()];
+			let mut b = vec![ValueType::Duration.to_u8()];
 			b.extend_from_slice(&v.get_months().to_le_bytes());
 			b.extend_from_slice(&v.get_days().to_le_bytes());
 			b.extend_from_slice(&v.get_nanos().to_le_bytes());
@@ -103,31 +103,31 @@ pub fn encode_value(value: &Value) -> Vec<u8> {
 		}
 
 		Value::Uuid4(v) => {
-			let mut b = vec![Type::Uuid4.to_u8()];
+			let mut b = vec![ValueType::Uuid4.to_u8()];
 			b.extend_from_slice(v.as_bytes());
 			b
 		}
 		Value::Uuid7(v) => {
-			let mut b = vec![Type::Uuid7.to_u8()];
+			let mut b = vec![ValueType::Uuid7.to_u8()];
 			b.extend_from_slice(v.as_bytes());
 			b
 		}
 		Value::IdentityId(v) => {
-			let mut b = vec![Type::IdentityId.to_u8()];
+			let mut b = vec![ValueType::IdentityId.to_u8()];
 			b.extend_from_slice(v.as_bytes());
 			b
 		}
 
 		Value::Utf8(v) => {
 			let s = v.as_bytes();
-			let mut b = vec![Type::Utf8.to_u8()];
+			let mut b = vec![ValueType::Utf8.to_u8()];
 			b.extend_from_slice(&(s.len() as u32).to_le_bytes());
 			b.extend_from_slice(s);
 			b
 		}
 		Value::Blob(v) => {
 			let s = v.as_bytes();
-			let mut b = vec![Type::Blob.to_u8()];
+			let mut b = vec![ValueType::Blob.to_u8()];
 			b.extend_from_slice(&(s.len() as u32).to_le_bytes());
 			b.extend_from_slice(s);
 			b
@@ -151,70 +151,70 @@ pub fn encode_value(value: &Value) -> Vec<u8> {
 pub fn decode_value(bytes: &[u8]) -> Value {
 	let type_byte = bytes[0];
 	let p = &bytes[1..];
-	let ty = Type::from_u8(type_byte);
+	let ty = ValueType::from_u8(type_byte);
 
 	match ty {
-		Type::Boolean => Value::Boolean(p[0] != 0),
+		ValueType::Boolean => Value::Boolean(p[0] != 0),
 
-		Type::Uint1 => Value::Uint1(p[0]),
-		Type::Uint2 => Value::Uint2(u16::from_le_bytes([p[0], p[1]])),
-		Type::Uint4 => Value::Uint4(u32::from_le_bytes([p[0], p[1], p[2], p[3]])),
-		Type::Uint8 => Value::Uint8(u64::from_le_bytes(p[..8].try_into().unwrap())),
-		Type::Uint16 => Value::Uint16(u128::from_le_bytes(p[..16].try_into().unwrap())),
+		ValueType::Uint1 => Value::Uint1(p[0]),
+		ValueType::Uint2 => Value::Uint2(u16::from_le_bytes([p[0], p[1]])),
+		ValueType::Uint4 => Value::Uint4(u32::from_le_bytes([p[0], p[1], p[2], p[3]])),
+		ValueType::Uint8 => Value::Uint8(u64::from_le_bytes(p[..8].try_into().unwrap())),
+		ValueType::Uint16 => Value::Uint16(u128::from_le_bytes(p[..16].try_into().unwrap())),
 
-		Type::Int1 => Value::Int1(p[0] as i8),
-		Type::Int2 => Value::Int2(i16::from_le_bytes([p[0], p[1]])),
-		Type::Int4 => Value::Int4(i32::from_le_bytes([p[0], p[1], p[2], p[3]])),
-		Type::Int8 => Value::Int8(i64::from_le_bytes(p[..8].try_into().unwrap())),
-		Type::Int16 => Value::Int16(i128::from_le_bytes(p[..16].try_into().unwrap())),
+		ValueType::Int1 => Value::Int1(p[0] as i8),
+		ValueType::Int2 => Value::Int2(i16::from_le_bytes([p[0], p[1]])),
+		ValueType::Int4 => Value::Int4(i32::from_le_bytes([p[0], p[1], p[2], p[3]])),
+		ValueType::Int8 => Value::Int8(i64::from_le_bytes(p[..8].try_into().unwrap())),
+		ValueType::Int16 => Value::Int16(i128::from_le_bytes(p[..16].try_into().unwrap())),
 
-		Type::Float4 => {
+		ValueType::Float4 => {
 			let bits = u32::from_le_bytes([p[0], p[1], p[2], p[3]]);
 			Value::Float4(OrderedF32::try_from(f32::from_bits(bits)).unwrap())
 		}
-		Type::Float8 => {
+		ValueType::Float8 => {
 			let bits = u64::from_le_bytes(p[..8].try_into().unwrap());
 			Value::Float8(OrderedF64::try_from(f64::from_bits(bits)).unwrap())
 		}
 
-		Type::Date => {
+		ValueType::Date => {
 			let days = i32::from_le_bytes([p[0], p[1], p[2], p[3]]);
 			Value::Date(Date::from_days_since_epoch(days).unwrap())
 		}
-		Type::DateTime => {
+		ValueType::DateTime => {
 			let nanos = u64::from_le_bytes(p[..8].try_into().unwrap());
 			Value::DateTime(DateTime::from_nanos(nanos))
 		}
-		Type::Time => {
+		ValueType::Time => {
 			let nanos = u64::from_le_bytes(p[..8].try_into().unwrap());
 			Value::Time(Time::from_nanos_since_midnight(nanos).unwrap())
 		}
-		Type::Duration => {
+		ValueType::Duration => {
 			let months = i32::from_le_bytes([p[0], p[1], p[2], p[3]]);
 			let days = i32::from_le_bytes([p[4], p[5], p[6], p[7]]);
 			let nanos = i64::from_le_bytes(p[8..16].try_into().unwrap());
 			Value::Duration(Duration::new(months, days, nanos).unwrap())
 		}
 
-		Type::Uuid4 => {
+		ValueType::Uuid4 => {
 			let b: [u8; 16] = p[..16].try_into().unwrap();
 			Value::Uuid4(Uuid4::from(Uuid::from_bytes(b)))
 		}
-		Type::Uuid7 => {
+		ValueType::Uuid7 => {
 			let b: [u8; 16] = p[..16].try_into().unwrap();
 			Value::Uuid7(Uuid7::from(Uuid::from_bytes(b)))
 		}
-		Type::IdentityId => {
+		ValueType::IdentityId => {
 			let b: [u8; 16] = p[..16].try_into().unwrap();
 			Value::IdentityId(IdentityId::from(Uuid7::from(Uuid::from_bytes(b))))
 		}
 
-		Type::Utf8 => {
+		ValueType::Utf8 => {
 			let len = u32::from_le_bytes([p[0], p[1], p[2], p[3]]) as usize;
 			let s = str::from_utf8(&p[4..4 + len]).unwrap();
 			Value::Utf8(s.to_string())
 		}
-		Type::Blob => {
+		ValueType::Blob => {
 			let len = u32::from_le_bytes([p[0], p[1], p[2], p[3]]) as usize;
 			Value::Blob(Blob::from_slice(&p[4..4 + len]))
 		}
@@ -225,14 +225,14 @@ pub fn decode_value(bytes: &[u8]) -> Value {
 
 impl RowShape {
 	pub fn set_any(&self, row: &mut EncodedRow, index: usize, value: &Value) {
-		debug_assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), Type::Any);
+		debug_assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), ValueType::Any);
 		let encoded = encode_value(value);
 		self.replace_dynamic_data(row, index, &encoded);
 	}
 
 	pub fn get_any(&self, row: &EncodedRow, index: usize) -> Value {
 		let field = &self.fields()[index];
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Any);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Any);
 
 		let ref_slice = &row.as_slice()[field.offset as usize..field.offset as usize + 8];
 		let offset = u32::from_le_bytes([ref_slice[0], ref_slice[1], ref_slice[2], ref_slice[3]]) as usize;
@@ -254,7 +254,7 @@ pub mod tests {
 		clock::{Clock, MockClock},
 		rng::Rng,
 	};
-	use reifydb_type::value::{
+	use reifydb_value::value::{
 		Value,
 		blob::Blob,
 		date::Date,
@@ -263,8 +263,8 @@ pub mod tests {
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
 		time::Time,
-		r#type::Type,
 		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
 	};
 
 	use crate::encoded::shape::RowShape;
@@ -278,7 +278,7 @@ pub mod tests {
 
 	#[test]
 	fn test_any_boolean() {
-		let shape = RowShape::testing(&[Type::Any]);
+		let shape = RowShape::testing(&[ValueType::Any]);
 		let mut row = shape.allocate();
 		shape.set_any(&mut row, 0, &Value::Boolean(true));
 		assert_eq!(shape.get_any(&row, 0), Value::Boolean(true));
@@ -286,7 +286,7 @@ pub mod tests {
 
 	#[test]
 	fn test_any_integers() {
-		let shape = RowShape::testing(&[Type::Any]);
+		let shape = RowShape::testing(&[ValueType::Any]);
 
 		let cases: &[Value] = &[
 			Value::Int1(-42),
@@ -310,7 +310,7 @@ pub mod tests {
 
 	#[test]
 	fn test_any_floats() {
-		let shape = RowShape::testing(&[Type::Any]);
+		let shape = RowShape::testing(&[ValueType::Any]);
 
 		let f4 = Value::Float4(OrderedF32::try_from(3.14f32).unwrap());
 		let mut row = shape.allocate();
@@ -325,7 +325,7 @@ pub mod tests {
 
 	#[test]
 	fn test_any_temporal() {
-		let shape = RowShape::testing(&[Type::Any]);
+		let shape = RowShape::testing(&[ValueType::Any]);
 
 		let date = Value::Date(Date::new(2025, 7, 4).unwrap());
 		let mut row = shape.allocate();
@@ -351,7 +351,7 @@ pub mod tests {
 	#[test]
 	fn test_any_uuid() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::Any]);
+		let shape = RowShape::testing(&[ValueType::Any]);
 
 		let u4 = Value::Uuid4(Uuid4::generate());
 		let mut row = shape.allocate();
@@ -366,7 +366,7 @@ pub mod tests {
 
 	#[test]
 	fn test_any_utf8() {
-		let shape = RowShape::testing(&[Type::Any]);
+		let shape = RowShape::testing(&[ValueType::Any]);
 		let v = Value::Utf8("hello, world!".to_string());
 		let mut row = shape.allocate();
 		shape.set_any(&mut row, 0, &v);
@@ -375,7 +375,7 @@ pub mod tests {
 
 	#[test]
 	fn test_any_blob() {
-		let shape = RowShape::testing(&[Type::Any]);
+		let shape = RowShape::testing(&[ValueType::Any]);
 		let v = Value::Blob(Blob::from_slice(&[0xDE, 0xAD, 0xBE, 0xEF]));
 		let mut row = shape.allocate();
 		shape.set_any(&mut row, 0, &v);
@@ -384,7 +384,7 @@ pub mod tests {
 
 	#[test]
 	fn test_any_none_via_set_value() {
-		let shape = RowShape::testing(&[Type::Any]);
+		let shape = RowShape::testing(&[ValueType::Any]);
 		let mut row = shape.allocate();
 		shape.set_value(&mut row, 0, &Value::none());
 		assert!(!row.is_defined(0));
@@ -393,7 +393,7 @@ pub mod tests {
 
 	#[test]
 	fn test_any_roundtrip_via_set_get_value() {
-		let shape = RowShape::testing(&[Type::Any]);
+		let shape = RowShape::testing(&[ValueType::Any]);
 
 		let cases: &[Value] = &[
 			Value::Boolean(false),
@@ -413,7 +413,7 @@ pub mod tests {
 
 	#[test]
 	fn test_any_multiple_fields() {
-		let shape = RowShape::testing(&[Type::Any, Type::Int4, Type::Any]);
+		let shape = RowShape::testing(&[ValueType::Any, ValueType::Int4, ValueType::Any]);
 		let mut row = shape.allocate();
 
 		shape.set_any(&mut row, 0, &Value::Utf8("first".to_string()));
@@ -427,7 +427,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_any() {
-		let shape = RowShape::testing(&[Type::Any]);
+		let shape = RowShape::testing(&[ValueType::Any]);
 		let mut row = shape.allocate();
 
 		shape.set_any(&mut row, 0, &Value::Int4(42));
@@ -444,7 +444,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_any_with_other_dynamic_fields() {
-		let shape = RowShape::testing(&[Type::Any, Type::Utf8, Type::Any]);
+		let shape = RowShape::testing(&[ValueType::Any, ValueType::Utf8, ValueType::Any]);
 		let mut row = shape.allocate();
 
 		shape.set_any(&mut row, 0, &Value::Int4(1));

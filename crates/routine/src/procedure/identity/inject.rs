@@ -4,10 +4,10 @@
 use std::sync::LazyLock;
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
-	value::{Value, r#type::Type},
+	value::{Value, value_type::ValueType},
 };
 
 use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
@@ -33,8 +33,8 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for IdentityInject {
 		&INFO
 	}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::IdentityId
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::IdentityId
 	}
 
 	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
@@ -45,7 +45,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for IdentityInject {
 					return Err(RoutineError::ProcedureInvalidArgumentType {
 						procedure: Fragment::internal("identity::inject"),
 						argument_index: 0,
-						expected: vec![Type::IdentityId],
+						expected: vec![ValueType::IdentityId],
 						actual: other.get_type(),
 					});
 				}

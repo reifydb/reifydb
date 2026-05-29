@@ -5,7 +5,7 @@ use std::{fs, path::Path, sync::Arc};
 
 use reifydb_routine::routine::registry::RoutinesConfigurator;
 use reifydb_sdk::error::SdkError;
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use super::wasm::WasmScalarFunction;
 

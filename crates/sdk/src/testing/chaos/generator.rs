@@ -8,7 +8,7 @@ use std::{
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb_core::row::Row;
-use reifydb_type::value::row_number::RowNumber;
+use reifydb_value::value::row_number::RowNumber;
 
 use super::{
 	config::ChaosConfig,
@@ -257,7 +257,7 @@ mod tests {
 	use std::{iter::from_fn, ops::Range};
 
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use super::{
 		super::{
@@ -267,14 +267,14 @@ mod tests {
 		*,
 	};
 
-	fn shape(fields: &[(&str, Type)]) -> RowShape {
+	fn shape(fields: &[(&str, ValueType)]) -> RowShape {
 		RowShape::new(fields.iter().map(|(n, t)| RowShapeField::unconstrained(*n, t.clone())).collect())
 	}
 
 	fn schema_hashof() -> Arc<ChaosSchema> {
 		Arc::new(ChaosSchema {
-			input_shape: shape(&[("k", Type::Uint8), ("v", Type::Float8)]),
-			output_shape: shape(&[("k", Type::Uint8), ("v", Type::Float8)]),
+			input_shape: shape(&[("k", ValueType::Uint8), ("v", ValueType::Float8)]),
+			output_shape: shape(&[("k", ValueType::Uint8), ("v", ValueType::Float8)]),
 			key_strategy: KeyStrategy::hash_of(["k"]),
 			output_key_columns: vec!["k".into()],
 		})
@@ -282,8 +282,8 @@ mod tests {
 
 	fn schema_sequential() -> Arc<ChaosSchema> {
 		Arc::new(ChaosSchema {
-			input_shape: shape(&[("k", Type::Uint8), ("v", Type::Float8)]),
-			output_shape: shape(&[("k", Type::Uint8), ("v", Type::Float8)]),
+			input_shape: shape(&[("k", ValueType::Uint8), ("v", ValueType::Float8)]),
+			output_shape: shape(&[("k", ValueType::Uint8), ("v", ValueType::Float8)]),
 			key_strategy: KeyStrategy::Sequential,
 			output_key_columns: vec!["k".into()],
 		})

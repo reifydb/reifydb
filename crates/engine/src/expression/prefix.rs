@@ -6,7 +6,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer},
 };
 use reifydb_rql::expression::PrefixOperator;
-use reifydb_type::{
+use reifydb_value::{
 	error::{LogicalOp, OperandCategory, TypeError},
 	fragment::Fragment,
 	value::{decimal::Decimal, int::Int, uint::Uint},

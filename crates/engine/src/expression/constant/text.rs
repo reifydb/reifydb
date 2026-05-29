@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::buffer::ColumnBuffer;
-use reifydb_type::{
+use reifydb_value::{
 	error::TypeError,
 	fragment::Fragment,
 	value::{
@@ -10,8 +10,8 @@ use reifydb_type::{
 		decimal::parse::parse_decimal,
 		int::Int,
 		number::parse::{parse_float, parse_primitive_int, parse_primitive_uint},
-		r#type::Type,
 		uint::Uint,
+		value_type::ValueType,
 	},
 };
 use temporal::TemporalParser;
@@ -22,69 +22,73 @@ use crate::{Result, error::CastError};
 pub(crate) struct TextParser;
 
 impl TextParser {
-	pub(crate) fn from_text(fragment: Fragment, target: Type, row_count: usize) -> Result<ColumnBuffer> {
+	pub(crate) fn from_text(fragment: Fragment, target: ValueType, row_count: usize) -> Result<ColumnBuffer> {
 		match target {
-			Type::Boolean => Self::parse_bool(fragment, row_count),
-			Type::Float4 => Self::parse_float4(fragment, row_count),
-			Type::Float8 => Self::parse_float8(fragment, row_count),
-			Type::Int1 => Self::parse_int1(fragment, row_count),
-			Type::Int2 => Self::parse_int2(fragment, row_count),
-			Type::Int4 => Self::parse_int4(fragment, row_count),
-			Type::Int8 => Self::parse_int8(fragment, row_count),
-			Type::Int16 => Self::parse_int16(fragment, row_count),
-			Type::Uint1 => Self::parse_uint1(fragment, row_count),
-			Type::Uint2 => Self::parse_uint2(fragment, row_count),
-			Type::Uint4 => Self::parse_uint4(fragment, row_count),
-			Type::Uint8 => Self::parse_uint8(fragment, row_count),
-			Type::Uint16 => Self::parse_uint16(fragment, row_count),
-			Type::Int => Self::parse_int(fragment, row_count),
-			Type::Uint => Self::parse_uint(fragment, row_count),
-			Type::Decimal => Self::parse_decimal(fragment, target, row_count),
-			Type::Date => TemporalParser::parse_temporal_type(fragment.clone(), Type::Date, row_count)
-				.map_err(|e| {
-					CastError::InvalidTemporal {
-						fragment,
-						target: Type::Date,
-						cause: e.diagnostic(),
-					}
-					.into()
-				}),
-			Type::DateTime => {
-				TemporalParser::parse_temporal_type(fragment.clone(), Type::DateTime, row_count)
+			ValueType::Boolean => Self::parse_bool(fragment, row_count),
+			ValueType::Float4 => Self::parse_float4(fragment, row_count),
+			ValueType::Float8 => Self::parse_float8(fragment, row_count),
+			ValueType::Int1 => Self::parse_int1(fragment, row_count),
+			ValueType::Int2 => Self::parse_int2(fragment, row_count),
+			ValueType::Int4 => Self::parse_int4(fragment, row_count),
+			ValueType::Int8 => Self::parse_int8(fragment, row_count),
+			ValueType::Int16 => Self::parse_int16(fragment, row_count),
+			ValueType::Uint1 => Self::parse_uint1(fragment, row_count),
+			ValueType::Uint2 => Self::parse_uint2(fragment, row_count),
+			ValueType::Uint4 => Self::parse_uint4(fragment, row_count),
+			ValueType::Uint8 => Self::parse_uint8(fragment, row_count),
+			ValueType::Uint16 => Self::parse_uint16(fragment, row_count),
+			ValueType::Int => Self::parse_int(fragment, row_count),
+			ValueType::Uint => Self::parse_uint(fragment, row_count),
+			ValueType::Decimal => Self::parse_decimal(fragment, target, row_count),
+			ValueType::Date => {
+				TemporalParser::parse_temporal_type(fragment.clone(), ValueType::Date, row_count)
 					.map_err(|e| {
 						CastError::InvalidTemporal {
 							fragment,
-							target: Type::DateTime,
+							target: ValueType::Date,
 							cause: e.diagnostic(),
 						}
 						.into()
 					})
 			}
-			Type::Time => TemporalParser::parse_temporal_type(fragment.clone(), Type::Time, row_count)
-				.map_err(|e| {
-					CastError::InvalidTemporal {
-						fragment,
-						target: Type::Time,
-						cause: e.diagnostic(),
-					}
-					.into()
-				}),
-			Type::Duration => {
-				TemporalParser::parse_temporal_type(fragment.clone(), Type::Duration, row_count)
+			ValueType::DateTime => {
+				TemporalParser::parse_temporal_type(fragment.clone(), ValueType::DateTime, row_count)
 					.map_err(|e| {
 						CastError::InvalidTemporal {
 							fragment,
-							target: Type::Duration,
+							target: ValueType::DateTime,
 							cause: e.diagnostic(),
 						}
 						.into()
 					})
 			}
-			Type::Uuid4 => UuidParser::from_text(fragment, Type::Uuid4, row_count),
-			Type::Uuid7 => UuidParser::from_text(fragment, Type::Uuid7, row_count),
-			Type::IdentityId => UuidParser::from_text(fragment, Type::IdentityId, row_count),
+			ValueType::Time => {
+				TemporalParser::parse_temporal_type(fragment.clone(), ValueType::Time, row_count)
+					.map_err(|e| {
+						CastError::InvalidTemporal {
+							fragment,
+							target: ValueType::Time,
+							cause: e.diagnostic(),
+						}
+						.into()
+					})
+			}
+			ValueType::Duration => {
+				TemporalParser::parse_temporal_type(fragment.clone(), ValueType::Duration, row_count)
+					.map_err(|e| {
+						CastError::InvalidTemporal {
+							fragment,
+							target: ValueType::Duration,
+							cause: e.diagnostic(),
+						}
+						.into()
+					})
+			}
+			ValueType::Uuid4 => UuidParser::from_text(fragment, ValueType::Uuid4, row_count),
+			ValueType::Uuid7 => UuidParser::from_text(fragment, ValueType::Uuid7, row_count),
+			ValueType::IdentityId => UuidParser::from_text(fragment, ValueType::IdentityId, row_count),
 			_ => Err(TypeError::UnsupportedCast {
-				from: Type::Utf8,
+				from: ValueType::Utf8,
 				to: target,
 				fragment,
 			}
@@ -108,7 +112,7 @@ impl TextParser {
 			Ok(v) => Ok(ColumnBuffer::float4(vec![v; row_count])),
 			Err(err) => Err(CastError::InvalidNumber {
 				fragment,
-				target: Type::Float4,
+				target: ValueType::Float4,
 				cause: err.diagnostic(),
 			}
 			.into()),
@@ -120,7 +124,7 @@ impl TextParser {
 			Ok(v) => Ok(ColumnBuffer::float8(vec![v; row_count])),
 			Err(err) => Err(CastError::InvalidNumber {
 				fragment,
-				target: Type::Float8,
+				target: ValueType::Float8,
 				cause: err.diagnostic(),
 			}
 			.into()),
@@ -134,7 +138,7 @@ impl TextParser {
 				Err(e) =>
 					return Err(CastError::InvalidNumber {
 						fragment,
-						target: Type::Int1,
+						target: ValueType::Int1,
 						cause: e.diagnostic()
 					}
 					.into()),
@@ -150,7 +154,7 @@ impl TextParser {
 				Err(e) =>
 					return Err(CastError::InvalidNumber {
 						fragment,
-						target: Type::Int2,
+						target: ValueType::Int2,
 						cause: e.diagnostic()
 					}
 					.into()),
@@ -166,7 +170,7 @@ impl TextParser {
 				Err(e) =>
 					return Err(CastError::InvalidNumber {
 						fragment,
-						target: Type::Int4,
+						target: ValueType::Int4,
 						cause: e.diagnostic()
 					}
 					.into()),
@@ -182,7 +186,7 @@ impl TextParser {
 				Err(e) =>
 					return Err(CastError::InvalidNumber {
 						fragment,
-						target: Type::Int8,
+						target: ValueType::Int8,
 						cause: e.diagnostic()
 					}
 					.into()),
@@ -198,7 +202,7 @@ impl TextParser {
 				Err(e) =>
 					return Err(CastError::InvalidNumber {
 						fragment,
-						target: Type::Int16,
+						target: ValueType::Int16,
 						cause: e.diagnostic()
 					}
 					.into()),
@@ -214,7 +218,7 @@ impl TextParser {
 				Err(e) =>
 					return Err(CastError::InvalidNumber {
 						fragment,
-						target: Type::Uint1,
+						target: ValueType::Uint1,
 						cause: e.diagnostic()
 					}
 					.into()),
@@ -230,7 +234,7 @@ impl TextParser {
 				Err(e) =>
 					return Err(CastError::InvalidNumber {
 						fragment,
-						target: Type::Uint2,
+						target: ValueType::Uint2,
 						cause: e.diagnostic()
 					}
 					.into()),
@@ -246,7 +250,7 @@ impl TextParser {
 				Err(e) =>
 					return Err(CastError::InvalidNumber {
 						fragment,
-						target: Type::Uint4,
+						target: ValueType::Uint4,
 						cause: e.diagnostic()
 					}
 					.into()),
@@ -262,7 +266,7 @@ impl TextParser {
 				Err(e) =>
 					return Err(CastError::InvalidNumber {
 						fragment,
-						target: Type::Uint8,
+						target: ValueType::Uint8,
 						cause: e.diagnostic()
 					}
 					.into()),
@@ -278,7 +282,7 @@ impl TextParser {
 				Err(e) =>
 					return Err(CastError::InvalidNumber {
 						fragment,
-						target: Type::Uint16,
+						target: ValueType::Uint16,
 						cause: e.diagnostic()
 					}
 					.into()),
@@ -292,7 +296,7 @@ impl TextParser {
 			Ok(v) => Ok(ColumnBuffer::int(vec![v; row_count])),
 			Err(e) => Err(CastError::InvalidNumber {
 				fragment,
-				target: Type::Int,
+				target: ValueType::Int,
 				cause: e.diagnostic(),
 			}
 			.into()),
@@ -304,14 +308,14 @@ impl TextParser {
 			Ok(v) => Ok(ColumnBuffer::uint(vec![v; row_count])),
 			Err(e) => Err(CastError::InvalidNumber {
 				fragment,
-				target: Type::Uint,
+				target: ValueType::Uint,
 				cause: e.diagnostic(),
 			}
 			.into()),
 		}
 	}
 
-	fn parse_decimal(fragment: Fragment, target: Type, row_count: usize) -> Result<ColumnBuffer> {
+	fn parse_decimal(fragment: Fragment, target: ValueType, row_count: usize) -> Result<ColumnBuffer> {
 		match parse_decimal(fragment.clone()) {
 			Ok(v) => Ok(ColumnBuffer::decimal(vec![v; row_count])),
 			Err(e) => Err(CastError::InvalidNumber {

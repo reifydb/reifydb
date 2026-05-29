@@ -12,7 +12,7 @@
 use std::time::Duration;
 
 use reifydb_core::common::CommitVersion;
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::multi::transaction::{
 	MultiTransaction, read::MultiReadTransaction, replica::MultiReplicaTransaction, write::MultiWriteTransaction,

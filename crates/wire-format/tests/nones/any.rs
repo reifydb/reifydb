@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::{
-	Value, container::any::AnyContainer, frame::data::FrameColumnData, ordered_f64::OrderedF64, r#type::Type,
+use reifydb_value::value::{
+	Value, container::any::AnyContainer, frame::data::FrameColumnData, ordered_f64::OrderedF64,
+	value_type::ValueType,
 };
 
 fn make(v: Vec<Value>) -> FrameColumnData {
@@ -17,5 +18,5 @@ crate::nones_tests! {
 		Value::Float8(OrderedF64::try_from(3.14).unwrap()),
 		Value::Int8(i64::MIN),
 	],
-	inner_type: Type::Any,
+	inner_type: ValueType::Any,
 }

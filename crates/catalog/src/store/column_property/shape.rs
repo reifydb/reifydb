@@ -4,7 +4,7 @@
 pub(crate) mod column_property {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const COLUMN: usize = 1;
@@ -13,10 +13,10 @@ pub(crate) mod column_property {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("column", Type::Uint8),
-			RowShapeField::unconstrained("policy", Type::Uint1),
-			RowShapeField::unconstrained("value", Type::Uint1),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("column", ValueType::Uint8),
+			RowShapeField::unconstrained("policy", ValueType::Uint1),
+			RowShapeField::unconstrained("value", ValueType::Uint1),
 		])
 	});
 }

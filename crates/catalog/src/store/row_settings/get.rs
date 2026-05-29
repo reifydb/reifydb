@@ -3,7 +3,7 @@
 
 use reifydb_core::{interface::catalog::shape::ShapeId, internal, row::RowSettings};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::error::Error;
+use reifydb_value::error::Error;
 
 use crate::{CatalogStore, Result};
 

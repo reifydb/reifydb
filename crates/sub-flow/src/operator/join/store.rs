@@ -14,7 +14,7 @@ use reifydb_core::{
 	internal,
 };
 use reifydb_runtime::hash::Hash128;
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	error::Error,
 	value::{blob::Blob, row_number::RowNumber},
@@ -208,7 +208,7 @@ mod tests {
 	use reifydb_core::{common::CommitVersion, encoded::row::EncodedRow};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_type::value::{identity::IdentityId, r#type::Type};
+	use reifydb_value::value::{identity::IdentityId, value_type::ValueType};
 
 	use super::*;
 
@@ -333,7 +333,7 @@ mod tests {
 		);
 		let store = Store::new(FlowNodeId(20), JoinSide::Left);
 
-		let shape = RowShape::testing(&[Type::Int4, Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Int4, ValueType::Utf8]);
 		store.set_row_shape(&mut txn, &shape).unwrap();
 
 		let got = store.get_row_shape(&mut txn, shape.fingerprint()).unwrap();
@@ -352,7 +352,7 @@ mod tests {
 			engine.clock().clone(),
 		);
 		let node = FlowNodeId(21);
-		let shape = RowShape::testing(&[Type::Int4]);
+		let shape = RowShape::testing(&[ValueType::Int4]);
 
 		let writer = Store::new(node, JoinSide::Left);
 		writer.set_row_shape(&mut txn, &shape).unwrap();
@@ -375,7 +375,7 @@ mod tests {
 		);
 		let store = Store::new(FlowNodeId(22), JoinSide::Right);
 
-		let fp = RowShape::testing(&[Type::Int4]).fingerprint();
+		let fp = RowShape::testing(&[ValueType::Int4]).fingerprint();
 		assert_eq!(store.get_row_shape(&mut txn, fp).unwrap(), None);
 	}
 }

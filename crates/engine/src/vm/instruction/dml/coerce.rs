@@ -5,9 +5,9 @@ use reifydb_core::{
 	interface::{evaluate::TargetColumn, resolved::ResolvedColumn},
 	value::column::buffer::ColumnBuffer,
 };
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
-	value::{Value, r#type::Type},
+	value::{Value, value_type::ValueType},
 };
 
 use crate::{
@@ -19,7 +19,7 @@ use crate::{
 
 pub(crate) fn coerce_value_to_column_type(
 	value: Value,
-	target: Type,
+	target: ValueType,
 	column: ResolvedColumn,
 	ctx: &QueryContext,
 ) -> Result<Value> {
@@ -27,7 +27,7 @@ pub(crate) fn coerce_value_to_column_type(
 		return Ok(value);
 	}
 
-	if let Type::Option(inner) = &target
+	if let ValueType::Option(inner) = &target
 		&& value.get_type() == **inner
 	{
 		return Ok(value);

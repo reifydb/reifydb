@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb::r#type::value::r#type::Type;
+use reifydb::value::value::value_type::ValueType;
 
 use super::common::{admin, fresh_db};
 
@@ -18,6 +18,6 @@ fn create_dictionary_propagates_to_materialized_cache() {
 	let dict = mat.find_dictionary_by_name(ns.id(), "d").unwrap();
 	assert_eq!(dict.name, "d");
 	assert_eq!(dict.namespace, ns.id());
-	assert_eq!(dict.value_type, Type::Utf8);
-	assert_eq!(dict.id_type, Type::Uint4);
+	assert_eq!(dict.value_type, ValueType::Utf8);
+	assert_eq!(dict.id_type, ValueType::Uint4);
 }

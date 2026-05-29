@@ -9,7 +9,7 @@ use reifydb_core::{
 	key::{subscription::SubscriptionKey, subscription_column::SubscriptionColumnKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 use crate::{
 	CatalogStore, Result,
@@ -22,7 +22,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct SubscriptionColumnToCreate {
 	pub name: String,
-	pub ty: Type,
+	pub ty: ValueType,
 }
 
 #[derive(Debug, Clone)]
@@ -93,7 +93,7 @@ impl CatalogStore {
 			let id = SubscriptionColumnId(subscription_column::SHAPE.get_u64(row, subscription_column::ID));
 			let name = subscription_column::SHAPE.get_utf8(row, subscription_column::NAME).to_string();
 			let ty_u8 = subscription_column::SHAPE.get_u8(row, subscription_column::TYPE);
-			let ty = Type::from_u8(ty_u8);
+			let ty = ValueType::from_u8(ty_u8);
 
 			columns.push(SubscriptionColumn {
 				id,
@@ -113,7 +113,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::id::SubscriptionColumnId;
 	use reifydb_engine::test_harness::create_test_admin_transaction;
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use crate::{
 		CatalogStore,
@@ -142,11 +142,11 @@ pub mod tests {
 			columns: vec![
 				SubscriptionColumnToCreate {
 					name: "id".to_string(),
-					ty: Type::Int8,
+					ty: ValueType::Int8,
 				},
 				SubscriptionColumnToCreate {
 					name: "name".to_string(),
-					ty: Type::Utf8,
+					ty: ValueType::Utf8,
 				},
 			],
 		};
@@ -157,11 +157,11 @@ pub mod tests {
 		// Column IDs are indices
 		assert_eq!(result.columns[0].id, SubscriptionColumnId(0));
 		assert_eq!(result.columns[0].name, "id");
-		assert_eq!(result.columns[0].ty, Type::Int8);
+		assert_eq!(result.columns[0].ty, ValueType::Int8);
 
 		assert_eq!(result.columns[1].id, SubscriptionColumnId(1));
 		assert_eq!(result.columns[1].name, "name");
-		assert_eq!(result.columns[1].ty, Type::Utf8);
+		assert_eq!(result.columns[1].ty, ValueType::Utf8);
 	}
 
 	#[test]

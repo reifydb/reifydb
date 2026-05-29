@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
-use reifydb_type::{Result, value::datetime::DateTime};
+use reifydb_value::{Result, value::datetime::DateTime};
 
 #[derive(Debug, Default)]
 pub struct ChangeAccumulator {

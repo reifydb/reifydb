@@ -9,7 +9,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::{flow::FlowDag, loader::load_flow_dag, node::FlowNodeType};
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, value::identity::IdentityId};
+use reifydb_value::{Result, value::identity::IdentityId};
 
 use crate::engine::FlowEngine;
 

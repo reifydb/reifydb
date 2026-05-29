@@ -4,7 +4,7 @@
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::{
 	config::{OtelConfig, OtelConfigurator},

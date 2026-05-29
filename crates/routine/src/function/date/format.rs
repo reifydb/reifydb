@@ -2,7 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, date::Date, r#type::Type};
+use reifydb_value::value::{
+	constraint::bytes::MaxBytes, container::utf8::Utf8Container, date::Date, value_type::ValueType,
+};
 
 use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
@@ -60,8 +62,8 @@ impl<'a> Routine<FunctionContext<'a>> for DateFormat {
 		&self.info
 	}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Utf8
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Utf8
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
@@ -123,7 +125,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateFormat {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 1,
-					expected: vec![Type::Utf8],
+					expected: vec![ValueType::Utf8],
 					actual: other.get_type(),
 				});
 			}
@@ -131,7 +133,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateFormat {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 0,
-					expected: vec![Type::Date],
+					expected: vec![ValueType::Date],
 					actual: other.get_type(),
 				});
 			}

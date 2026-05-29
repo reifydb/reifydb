@@ -60,7 +60,7 @@ use reifydb_transaction::{
 	TransactionVersion, interceptor::factory::InterceptorFactory, multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 };
-use reifydb_type::{params::Params, value::identity::IdentityId};
+use reifydb_value::{params::Params, value::identity::IdentityId};
 use serde_json::{Value as JsonValue, from_str as json_from_str, json, to_writer as json_to_writer};
 
 enum BridgeProfile {

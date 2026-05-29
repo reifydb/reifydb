@@ -34,7 +34,7 @@ reifydb-sub-metric = { workspace = true }
 reifydb-sub-runtime = { workspace = true }
 reifydb-subscription = { workspace = true}
 reifydb-transaction = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 reifydb-wire-format = { workspace = true }
 parking_lot = { workspace = true }
 

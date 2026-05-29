@@ -20,7 +20,7 @@ use reifydb_runtime::actor::{
 	timers::TimerHandle,
 	traits::{Actor as ActorTrait, Directive},
 };
-use reifydb_type::{Result, value::datetime::DateTime};
+use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::{debug, trace, warn};
 
 use super::{GcStats, QueryWatermark};

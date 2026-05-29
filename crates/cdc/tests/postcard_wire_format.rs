@@ -3,7 +3,7 @@
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::encoded::key::EncodedKey;
-use reifydb_type::util::hex;
+use reifydb_value::util::hex;
 
 #[test]
 fn empty_key_roundtrip() {

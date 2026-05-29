@@ -19,7 +19,7 @@ use reifydb_runtime::{SharedRuntime, sync::rwlock::RwLock};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_sub_server::state::AppState;
 use reifydb_sub_subscription::{poller::StoreBackedPoller, store::SubscriptionStore};
-use reifydb_type::Result;
+use reifydb_value::Result;
 use tokio::{
 	net::TcpListener,
 	sync::{oneshot, watch},

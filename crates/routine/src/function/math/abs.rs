@@ -3,7 +3,9 @@
 
 use num_traits::sign::Signed;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_type::value::{container::number::NumberContainer, decimal::Decimal, int::Int, r#type::Type, uint::Uint};
+use reifydb_value::value::{
+	container::number::NumberContainer, decimal::Decimal, int::Int, uint::Uint, value_type::ValueType,
+};
 
 use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
@@ -30,8 +32,8 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 		&self.info
 	}
 
-	fn return_type(&self, input_types: &[Type]) -> Type {
-		input_types.first().cloned().unwrap_or(Type::Float8)
+	fn return_type(&self, input_types: &[ValueType]) -> ValueType {
+		input_types.first().cloned().unwrap_or(ValueType::Float8)
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
@@ -274,21 +276,21 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 					function: ctx.fragment.clone(),
 					argument_index: 0,
 					expected: vec![
-						Type::Int1,
-						Type::Int2,
-						Type::Int4,
-						Type::Int8,
-						Type::Int16,
-						Type::Uint1,
-						Type::Uint2,
-						Type::Uint4,
-						Type::Uint8,
-						Type::Uint16,
-						Type::Float4,
-						Type::Float8,
-						Type::Int,
-						Type::Uint,
-						Type::Decimal,
+						ValueType::Int1,
+						ValueType::Int2,
+						ValueType::Int4,
+						ValueType::Int8,
+						ValueType::Int16,
+						ValueType::Uint1,
+						ValueType::Uint2,
+						ValueType::Uint4,
+						ValueType::Uint8,
+						ValueType::Uint16,
+						ValueType::Float4,
+						ValueType::Float8,
+						ValueType::Int,
+						ValueType::Uint,
+						ValueType::Decimal,
 					],
 					actual: other.get_type(),
 				});

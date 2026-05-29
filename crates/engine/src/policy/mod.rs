@@ -21,7 +21,7 @@ use reifydb_policy::{
 };
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, params::Params, value::identity::IdentityId};
+use reifydb_value::{Result, params::Params, value::identity::IdentityId};
 
 use crate::{
 	expression::{

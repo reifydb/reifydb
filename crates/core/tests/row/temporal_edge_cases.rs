@@ -2,11 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::encoded::shape::RowShape;
-use reifydb_type::value::{date::Date, datetime::DateTime, duration::Duration, time::Time, r#type::Type};
+use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, time::Time, value_type::ValueType};
 
 #[test]
 fn test_date_boundaries() {
-	let shape = RowShape::testing(&[Type::Date]);
+	let shape = RowShape::testing(&[ValueType::Date]);
 	let mut row = shape.allocate();
 
 	let dates = [
@@ -25,7 +25,7 @@ fn test_date_boundaries() {
 
 #[test]
 fn test_datetime_precision_limits() {
-	let shape = RowShape::testing(&[Type::DateTime]);
+	let shape = RowShape::testing(&[ValueType::DateTime]);
 	let mut row = shape.allocate();
 
 	// Test nanosecond precision preservation
@@ -40,7 +40,7 @@ fn test_datetime_precision_limits() {
 
 #[test]
 fn test_time_edge_values() {
-	let shape = RowShape::testing(&[Type::Time]);
+	let shape = RowShape::testing(&[ValueType::Time]);
 	let mut row = shape.allocate();
 
 	let times = [
@@ -59,7 +59,7 @@ fn test_time_edge_values() {
 
 #[test]
 fn test_interval_combinations() {
-	let shape = RowShape::testing(&[Type::Duration]);
+	let shape = RowShape::testing(&[ValueType::Duration]);
 	let mut row = shape.allocate();
 
 	let intervals = [

@@ -29,7 +29,7 @@ use reifydb_runtime::actor::{
 	traits::{Actor, Directive},
 };
 use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	params::Params,
 	value::{datetime::DateTime, identity::IdentityId},

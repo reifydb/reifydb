@@ -25,7 +25,7 @@ use reifydb_sub_server::{
 	},
 };
 use reifydb_subscription::batch::BatchId;
-use reifydb_type::{
+use reifydb_value::{
 	params::Params,
 	value::{identity::IdentityId, uuid::Uuid7},
 };

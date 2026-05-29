@@ -26,7 +26,7 @@ use reifydb_rql::flow::{
 };
 use reifydb_sdk::config::Config;
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
-use reifydb_type::{Result, error::Error};
+use reifydb_value::{Result, error::Error};
 use tracing::instrument;
 
 use super::eval::evaluate_operator_config;

@@ -3,7 +3,7 @@
 
 use std::fmt;
 
-use reifydb_type::{error::Diagnostic, fragment::Fragment};
+use reifydb_value::{error::Diagnostic, fragment::Fragment};
 
 pub fn init_failed(subsystem: impl fmt::Display, reason: impl fmt::Display) -> Diagnostic {
 	Diagnostic {

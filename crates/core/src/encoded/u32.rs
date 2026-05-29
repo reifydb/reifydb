@@ -3,7 +3,7 @@
 
 use std::ptr;
 
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
@@ -11,7 +11,7 @@ impl RowShape {
 	pub fn set_u32(&self, row: &mut EncodedRow, index: usize, value: impl Into<u32>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uint4);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Uint4);
 		row.set_valid(index, true);
 		unsafe {
 			ptr::write_unaligned(
@@ -24,12 +24,12 @@ impl RowShape {
 	pub fn get_u32(&self, row: &EncodedRow, index: usize) -> u32 {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uint4);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Uint4);
 		unsafe { (row.as_ptr().add(field.offset as usize) as *const u32).read_unaligned() }
 	}
 
 	pub fn try_get_u32(&self, row: &EncodedRow, index: usize) -> Option<u32> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Uint4 {
+		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Uint4 {
 			Some(self.get_u32(row, index))
 		} else {
 			None
@@ -39,13 +39,13 @@ impl RowShape {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_set_get_u32() {
-		let shape = RowShape::testing(&[Type::Uint4]);
+		let shape = RowShape::testing(&[ValueType::Uint4]);
 		let mut row = shape.allocate();
 		shape.set_u32(&mut row, 0, 4294967295u32);
 		assert_eq!(shape.get_u32(&row, 0), 4294967295u32);
@@ -53,7 +53,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_u32() {
-		let shape = RowShape::testing(&[Type::Uint4]);
+		let shape = RowShape::testing(&[ValueType::Uint4]);
 		let mut row = shape.allocate();
 
 		assert_eq!(shape.try_get_u32(&row, 0), None);
@@ -64,7 +64,7 @@ pub mod tests {
 
 	#[test]
 	fn test_extremes() {
-		let shape = RowShape::testing(&[Type::Uint4]);
+		let shape = RowShape::testing(&[ValueType::Uint4]);
 		let mut row = shape.allocate();
 
 		shape.set_u32(&mut row, 0, u32::MAX);
@@ -81,7 +81,7 @@ pub mod tests {
 
 	#[test]
 	fn test_large_values() {
-		let shape = RowShape::testing(&[Type::Uint4]);
+		let shape = RowShape::testing(&[ValueType::Uint4]);
 
 		let test_values = [
 			0u32,
@@ -104,7 +104,7 @@ pub mod tests {
 
 	#[test]
 	fn test_timestamp_values() {
-		let shape = RowShape::testing(&[Type::Uint4]);
+		let shape = RowShape::testing(&[ValueType::Uint4]);
 
 		// Test Unix timestamp values that fit in u32
 		let timestamps = [
@@ -123,7 +123,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let shape = RowShape::testing(&[Type::Uint4, Type::Float4, Type::Uint4]);
+		let shape = RowShape::testing(&[ValueType::Uint4, ValueType::Float4, ValueType::Uint4]);
 		let mut row = shape.allocate();
 
 		shape.set_u32(&mut row, 0, 3_000_000_000u32);
@@ -137,7 +137,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let shape = RowShape::testing(&[Type::Uint4, Type::Uint4]);
+		let shape = RowShape::testing(&[ValueType::Uint4, ValueType::Uint4]);
 		let mut row = shape.allocate();
 
 		shape.set_u32(&mut row, 0, 123456789u32);
@@ -151,7 +151,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_u32_wrong_type() {
-		let shape = RowShape::testing(&[Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
 		shape.set_bool(&mut row, 0, true);

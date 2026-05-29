@@ -21,7 +21,7 @@ reifydb-core = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-transaction = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 reifydb-wasm = { workspace = true }
 reifydb-wire-format = { workspace = true }
 reifydb-sdk = { workspace = true }

@@ -13,7 +13,7 @@ use reifydb_rql::{
 	expression::{Expression, ExpressionCompiler},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, error::Error};
+use reifydb_value::{Result, error::Error};
 
 use crate::{error::PolicyError, evaluate::PolicyEvaluator, resolve_write_policies};
 

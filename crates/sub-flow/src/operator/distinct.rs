@@ -30,12 +30,15 @@ use reifydb_runtime::{
 	hash::{Hash128, xxh3_128},
 };
 use reifydb_sdk::operator::Tick;
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	error::Error,
 	fragment::Fragment,
 	params::Params,
-	value::{Value, blob::Blob, datetime::DateTime, identity::IdentityId, row_number::RowNumber, r#type::Type},
+	value::{
+		Value, blob::Blob, datetime::DateTime, identity::IdentityId, row_number::RowNumber,
+		value_type::ValueType,
+	},
 };
 use serde::{Deserialize, Serialize};
 
@@ -53,7 +56,7 @@ static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::ne
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DistinctLayout {
 	names: Vec<String>,
-	types: Vec<Type>,
+	types: Vec<ValueType>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -126,7 +129,7 @@ impl DistinctLayout {
 		}
 
 		let names: Vec<String> = columns.iter().map(|c| c.name().text().to_string()).collect();
-		let types: Vec<Type> = columns.iter().map(|c| c.data().get_type()).collect();
+		let types: Vec<ValueType> = columns.iter().map(|c| c.data().get_type()).collect();
 
 		if self.names.is_empty() {
 			self.names = names;
@@ -750,7 +753,7 @@ mod ttl_tests {
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_type::{
+	use reifydb_value::{
 		fragment::Fragment,
 		util::cowvec::CowVec,
 		value::{container::number::NumberContainer, identity::IdentityId},

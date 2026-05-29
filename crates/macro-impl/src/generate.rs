@@ -57,10 +57,21 @@ pub fn path_sep() -> impl Iterator<Item = TokenTree> {
 }
 
 pub fn path(segments: &[&str]) -> Vec<TokenTree> {
+	let mut expanded: Vec<&str> = Vec::new();
+	for seg in segments {
+		if seg.is_empty() {
+			expanded.push("");
+		} else {
+			for part in seg.split("::") {
+				expanded.push(part);
+			}
+		}
+	}
+
 	let mut tokens = Vec::new();
 	let mut prev_was_empty = false;
 
-	for (i, seg) in segments.iter().enumerate() {
+	for (i, seg) in expanded.iter().enumerate() {
 		let need_sep = if i == 0 {
 			seg.is_empty()
 		} else {

@@ -103,7 +103,7 @@ mod tests {
 		},
 		value::column::columns::Columns,
 	};
-	use reifydb_type::value::datetime::DateTime;
+	use reifydb_value::value::datetime::DateTime;
 
 	use super::*;
 

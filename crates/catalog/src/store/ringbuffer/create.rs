@@ -14,7 +14,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	value::{constraint::TypeConstraint, dictionary::DictionaryId},
 };
@@ -239,9 +239,9 @@ pub mod tests {
 	use reifydb_core::key::namespace_ringbuffer::NamespaceRingBufferKey;
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_type::{
+	use reifydb_value::{
 		fragment::Fragment,
-		value::{constraint::TypeConstraint, r#type::Type},
+		value::{constraint::TypeConstraint, value_type::ValueType},
 	};
 
 	use super::*;
@@ -260,7 +260,7 @@ pub mod tests {
 				RingBufferColumnToCreate {
 					name: Fragment::internal("symbol"),
 					fragment: Fragment::None,
-					constraint: TypeConstraint::unconstrained(Type::Utf8),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					auto_increment: false,
 					dictionary_id: None,
@@ -268,7 +268,7 @@ pub mod tests {
 				RingBufferColumnToCreate {
 					name: Fragment::internal("price"),
 					fragment: Fragment::None,
-					constraint: TypeConstraint::unconstrained(Type::Float8),
+					constraint: TypeConstraint::unconstrained(ValueType::Float8),
 					properties: vec![],
 					auto_increment: false,
 					dictionary_id: None,
@@ -472,7 +472,7 @@ pub mod tests {
 			RingBufferColumnToCreate {
 				fragment: Fragment::None,
 				name: Fragment::internal("first"),
-				constraint: TypeConstraint::unconstrained(Type::Uint8),
+				constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 				properties: vec![],
 				auto_increment: false,
 				dictionary_id: None,
@@ -480,7 +480,7 @@ pub mod tests {
 			RingBufferColumnToCreate {
 				fragment: Fragment::None,
 				name: Fragment::internal("second"),
-				constraint: TypeConstraint::unconstrained(Type::Uint16),
+				constraint: TypeConstraint::unconstrained(ValueType::Uint16),
 				properties: vec![],
 				auto_increment: false,
 				dictionary_id: None,
@@ -488,7 +488,7 @@ pub mod tests {
 			RingBufferColumnToCreate {
 				fragment: Fragment::None,
 				name: Fragment::internal("third"),
-				constraint: TypeConstraint::unconstrained(Type::Uint4),
+				constraint: TypeConstraint::unconstrained(ValueType::Uint4),
 				properties: vec![],
 				auto_increment: false,
 				dictionary_id: None,

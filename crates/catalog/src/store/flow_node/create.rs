@@ -37,7 +37,7 @@ pub mod tests {
 	use reifydb_core::interface::catalog::flow::FlowNode;
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_type::value::blob::Blob;
+	use reifydb_value::value::blob::Blob;
 
 	use crate::{
 		CatalogStore,

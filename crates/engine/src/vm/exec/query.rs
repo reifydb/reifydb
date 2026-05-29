@@ -9,7 +9,7 @@ use reifydb_core::{
 };
 use reifydb_rql::query::QueryPlan;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{params::Params, value::r#type::Type};
+use reifydb_value::{params::Params, value::value_type::ValueType};
 
 use crate::{
 	Result,
@@ -82,7 +82,7 @@ pub(crate) fn run_query_plan(
 			.into_iter()
 			.map(|name| ColumnWithName {
 				name,
-				data: ColumnBuffer::none_typed(Type::Boolean, 0),
+				data: ColumnBuffer::none_typed(ValueType::Boolean, 0),
 			})
 			.collect();
 		return Ok(Some(Columns::new(empty_columns)));

@@ -9,10 +9,10 @@ pub mod test {
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
-	use reifydb_type::{
+	use reifydb_value::{
 		Result,
 		util::cowvec::CowVec,
-		value::{identity::IdentityId, r#type::Type},
+		value::{identity::IdentityId, value_type::ValueType},
 	};
 
 	use crate::{operator::Operator, transaction::FlowTransaction};
@@ -20,30 +20,30 @@ pub mod test {
 	pub struct TestOperator {
 		pub id: FlowNodeId,
 		pub layout: RowShape,
-		pub key_types: Vec<Type>,
+		pub key_types: Vec<ValueType>,
 	}
 
 	impl TestOperator {
 		pub fn new(id: FlowNodeId) -> Self {
 			Self {
 				id,
-				layout: RowShape::testing(&[Type::Int8, Type::Float8, Type::Utf8]),
-				key_types: vec![Type::Utf8, Type::Int4],
+				layout: RowShape::testing(&[ValueType::Int8, ValueType::Float8, ValueType::Utf8]),
+				key_types: vec![ValueType::Utf8, ValueType::Int4],
 			}
 		}
 
 		pub fn simple(id: FlowNodeId) -> Self {
 			Self {
 				id,
-				layout: RowShape::testing(&[Type::Int8]),
+				layout: RowShape::testing(&[ValueType::Int8]),
 				key_types: vec![],
 			}
 		}
 
-		pub fn with_key_types(id: FlowNodeId, key_types: Vec<Type>) -> Self {
+		pub fn with_key_types(id: FlowNodeId, key_types: Vec<ValueType>) -> Self {
 			Self {
 				id,
-				layout: RowShape::testing(&[Type::Blob, Type::Int4]),
+				layout: RowShape::testing(&[ValueType::Blob, ValueType::Int4]),
 				key_types,
 			}
 		}

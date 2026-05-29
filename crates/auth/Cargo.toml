@@ -18,7 +18,7 @@ reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-transaction = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 argon2 = { workspace = true }
 ed25519-dalek = { workspace = true }
 bs58 = { workspace = true }

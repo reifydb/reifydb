@@ -4,7 +4,7 @@
 pub mod ffi;
 pub mod native;
 
-use reifydb_type::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
+use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
 
 use crate::error::SdkError;
 

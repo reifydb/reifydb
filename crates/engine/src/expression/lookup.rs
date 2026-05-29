@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
 use reifydb_rql::expression::ColumnExpression;
-use reifydb_type::value::{
+use reifydb_value::value::{
 	Value,
 	blob::Blob,
 	date::Date,
@@ -15,9 +15,9 @@ use reifydb_type::value::{
 	int::Int,
 	row_number::ROW_NUMBER_COLUMN_NAME,
 	time::Time,
-	r#type::Type,
 	uint::Uint,
 	uuid::{Uuid4, Uuid7},
+	value_type::ValueType,
 };
 
 use crate::{Result, expression::context::EvalContext, vm::stack::Variable};
@@ -84,7 +84,7 @@ pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> Res
 		return extract_column_data(&owned, ctx);
 	}
 
-	Ok(ColumnWithName::new(name.to_string(), ColumnBuffer::none_typed(Type::Boolean, ctx.row_count)))
+	Ok(ColumnWithName::new(name.to_string(), ColumnBuffer::none_typed(ValueType::Boolean, ctx.row_count)))
 }
 
 fn extract_column_data(col: &ColumnWithName, ctx: &EvalContext) -> Result<ColumnWithName> {
@@ -96,68 +96,76 @@ fn extract_column_data(col: &ColumnWithName, ctx: &EvalContext) -> Result<Column
 
 	let col_type = col.data().get_type();
 	let effective_type = match col_type {
-		Type::Option(inner) => *inner,
+		ValueType::Option(inner) => *inner,
 		other => other,
 	};
 
 	extract_column_data_by_type(col, take, effective_type)
 }
 
-fn extract_column_data_by_type(col: &ColumnWithName, take: usize, col_type: Type) -> Result<ColumnWithName> {
+fn extract_column_data_by_type(col: &ColumnWithName, take: usize, col_type: ValueType) -> Result<ColumnWithName> {
 	match col_type {
-		Type::Boolean => extract_typed_column!(col, take, Boolean(b) => b, false, bool_with_bitvec),
-		Type::Float4 => extract_typed_column!(col, take, Float4(v) => v.value(), 0.0f32, float4_with_bitvec),
-		Type::Float8 => extract_typed_column!(col, take, Float8(v) => v.value(), 0.0f64, float8_with_bitvec),
-		Type::Int1 => extract_typed_column!(col, take, Int1(n) => n, 0, int1_with_bitvec),
-		Type::Int2 => extract_typed_column!(col, take, Int2(n) => n, 0, int2_with_bitvec),
-		Type::Int4 => extract_typed_column!(col, take, Int4(n) => n, 0, int4_with_bitvec),
-		Type::Int8 => extract_typed_column!(col, take, Int8(n) => n, 0, int8_with_bitvec),
-		Type::Int16 => extract_typed_column!(col, take, Int16(n) => n, 0, int16_with_bitvec),
-		Type::Utf8 => extract_typed_column!(col, take, Utf8(s) => s.clone(), "".to_string(), utf8_with_bitvec),
-		Type::Uint1 => extract_typed_column!(col, take, Uint1(n) => n, 0, uint1_with_bitvec),
-		Type::Uint2 => extract_typed_column!(col, take, Uint2(n) => n, 0, uint2_with_bitvec),
-		Type::Uint4 => extract_typed_column!(col, take, Uint4(n) => n, 0, uint4_with_bitvec),
-		Type::Uint8 => extract_typed_column!(col, take, Uint8(n) => n, 0, uint8_with_bitvec),
-		Type::Uint16 => extract_typed_column!(col, take, Uint16(n) => n, 0, uint16_with_bitvec),
-		Type::Date => extract_typed_column!(col, take, Date(d) => d, Date::default(), date_with_bitvec),
-		Type::DateTime => {
+		ValueType::Boolean => extract_typed_column!(col, take, Boolean(b) => b, false, bool_with_bitvec),
+		ValueType::Float4 => {
+			extract_typed_column!(col, take, Float4(v) => v.value(), 0.0f32, float4_with_bitvec)
+		}
+		ValueType::Float8 => {
+			extract_typed_column!(col, take, Float8(v) => v.value(), 0.0f64, float8_with_bitvec)
+		}
+		ValueType::Int1 => extract_typed_column!(col, take, Int1(n) => n, 0, int1_with_bitvec),
+		ValueType::Int2 => extract_typed_column!(col, take, Int2(n) => n, 0, int2_with_bitvec),
+		ValueType::Int4 => extract_typed_column!(col, take, Int4(n) => n, 0, int4_with_bitvec),
+		ValueType::Int8 => extract_typed_column!(col, take, Int8(n) => n, 0, int8_with_bitvec),
+		ValueType::Int16 => extract_typed_column!(col, take, Int16(n) => n, 0, int16_with_bitvec),
+		ValueType::Utf8 => {
+			extract_typed_column!(col, take, Utf8(s) => s.clone(), "".to_string(), utf8_with_bitvec)
+		}
+		ValueType::Uint1 => extract_typed_column!(col, take, Uint1(n) => n, 0, uint1_with_bitvec),
+		ValueType::Uint2 => extract_typed_column!(col, take, Uint2(n) => n, 0, uint2_with_bitvec),
+		ValueType::Uint4 => extract_typed_column!(col, take, Uint4(n) => n, 0, uint4_with_bitvec),
+		ValueType::Uint8 => extract_typed_column!(col, take, Uint8(n) => n, 0, uint8_with_bitvec),
+		ValueType::Uint16 => extract_typed_column!(col, take, Uint16(n) => n, 0, uint16_with_bitvec),
+		ValueType::Date => extract_typed_column!(col, take, Date(d) => d, Date::default(), date_with_bitvec),
+		ValueType::DateTime => {
 			extract_typed_column!(col, take, DateTime(dt) => dt, DateTime::default(), datetime_with_bitvec)
 		}
-		Type::Time => extract_typed_column!(col, take, Time(t) => t, Time::default(), time_with_bitvec),
-		Type::Duration => {
+		ValueType::Time => extract_typed_column!(col, take, Time(t) => t, Time::default(), time_with_bitvec),
+		ValueType::Duration => {
 			extract_typed_column!(col, take, Duration(i) => i, Duration::default(), duration_with_bitvec)
 		}
-		Type::IdentityId => {
+		ValueType::IdentityId => {
 			extract_typed_column!(col, take, IdentityId(i) => i, IdentityId::default(), identity_id_with_bitvec)
 		}
-		Type::Uuid4 => {
+		ValueType::Uuid4 => {
 			extract_typed_column!(col, take, Uuid4(i) => i, Uuid4::default(), uuid4_with_bitvec)
 		}
-		Type::Uuid7 => {
+		ValueType::Uuid7 => {
 			extract_typed_column!(col, take, Uuid7(i) => i, Uuid7::default(), uuid7_with_bitvec)
 		}
-		Type::DictionaryId => {
+		ValueType::DictionaryId => {
 			extract_typed_column!(col, take, DictionaryId(i) => i, DictionaryEntryId::default(), dictionary_id_with_bitvec)
 		}
-		Type::Blob => {
+		ValueType::Blob => {
 			extract_typed_column!(col, take, Blob(b) => b.clone(), Blob::new(vec![]), blob_with_bitvec)
 		}
-		Type::Int => extract_typed_column!(col, take, Int(b) => b.clone(), Int::zero(), int_with_bitvec),
-		Type::Uint => extract_typed_column!(col, take, Uint(b) => b.clone(), Uint::zero(), uint_with_bitvec),
-		Type::Any => {
+		ValueType::Int => extract_typed_column!(col, take, Int(b) => b.clone(), Int::zero(), int_with_bitvec),
+		ValueType::Uint => {
+			extract_typed_column!(col, take, Uint(b) => b.clone(), Uint::zero(), uint_with_bitvec)
+		}
+		ValueType::Any => {
 			extract_typed_column!(col, take, Any(boxed) => Box::new(*boxed.clone()), Box::new(Value::none()), any_with_bitvec)
 		}
-		Type::Decimal => {
+		ValueType::Decimal => {
 			extract_typed_column!(col, take, Decimal(b) => b.clone(), Decimal::from_i64(0), decimal_with_bitvec)
 		}
-		Type::Option(inner) => extract_column_data_by_type(col, take, *inner),
-		Type::List(_) => {
+		ValueType::Option(inner) => extract_column_data_by_type(col, take, *inner),
+		ValueType::List(_) => {
 			extract_typed_column!(col, take, Any(boxed) => Box::new(*boxed.clone()), Box::new(Value::none()), any_with_bitvec)
 		}
-		Type::Record(_) => {
+		ValueType::Record(_) => {
 			extract_typed_column!(col, take, Any(boxed) => Box::new(*boxed.clone()), Box::new(Value::none()), any_with_bitvec)
 		}
-		Type::Tuple(_) => {
+		ValueType::Tuple(_) => {
 			extract_typed_column!(col, take, Any(boxed) => Box::new(*boxed.clone()), Box::new(Value::none()), any_with_bitvec)
 		}
 	}
@@ -172,7 +180,7 @@ pub mod tests {
 	use reifydb_routine::routine::registry::Routines;
 	use reifydb_rql::expression::ColumnExpression;
 	use reifydb_runtime::context::{RuntimeContext, clock::Clock};
-	use reifydb_type::{fragment::Fragment, params::Params, value::identity::IdentityId};
+	use reifydb_value::{fragment::Fragment, params::Params, value::identity::IdentityId};
 
 	use super::column_lookup;
 	use crate::{expression::context::EvalContext, vm::stack::SymbolTable};

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::frame::frame::Frame;
+use reifydb_value::value::frame::frame::Frame;
 use reifydb_wire_format::{encode::encode_frames, options::EncodeOptions};
 use serde_json::{self, Map, Value as JsonValue, to_string as json_to_string};
 

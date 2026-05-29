@@ -3,7 +3,7 @@
 
 use std::collections::Bound;
 
-use reifydb_type::value::row_number::RowNumber;
+use reifydb_value::value::row_number::RowNumber;
 
 use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
@@ -146,7 +146,7 @@ impl RowKey {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::row_number::RowNumber;
+	use reifydb_value::value::row_number::RowNumber;
 
 	use super::{EncodableKey, RowKey};
 	use crate::interface::catalog::shape::ShapeId;

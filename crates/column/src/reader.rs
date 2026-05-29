@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::value::column::{
 	ColumnWithName, buffer::ColumnBuffer, columns::Columns, data::Column, mask::RowMask,
 };
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	fragment::Fragment,
 	value::{datetime::DateTime, row_number::RowNumber},
@@ -181,7 +181,7 @@ mod tests {
 		value::column::data::{Column, canonical::Canonical},
 	};
 	use reifydb_runtime::context::clock::Clock;
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
 	use crate::snapshot::{ColumnBlock, ColumnChunks, SnapshotId, SnapshotSource};
@@ -195,10 +195,13 @@ mod tests {
 		let a_col = ColumnBuffer::int4((0..rows as i32).collect::<Vec<_>>());
 		let b_col = ColumnBuffer::utf8((0..rows).map(|i| format!("row-{i}")).collect::<Vec<_>>());
 
-		let chunked_a = ColumnChunks::single(Type::Int4, false, array_from_column_data(&a_col));
-		let chunked_b = ColumnChunks::single(Type::Utf8, false, array_from_column_data(&b_col));
+		let chunked_a = ColumnChunks::single(ValueType::Int4, false, array_from_column_data(&a_col));
+		let chunked_b = ColumnChunks::single(ValueType::Utf8, false, array_from_column_data(&b_col));
 
-		let schema = Arc::new(vec![("a".to_string(), Type::Int4, false), ("b".to_string(), Type::Utf8, false)]);
+		let schema = Arc::new(vec![
+			("a".to_string(), ValueType::Int4, false),
+			("b".to_string(), ValueType::Utf8, false),
+		]);
 		let block = ColumnBlock::new(schema, vec![chunked_a, chunked_b]);
 
 		let now = Clock::Real.instant();
@@ -257,8 +260,8 @@ mod tests {
 	fn mk_chunked_snapshot(parts: &[&[i32]]) -> Arc<Snapshot> {
 		let chunks: Vec<Column> =
 			parts.iter().map(|p| array_from_column_data(&ColumnBuffer::int4(p.to_vec()))).collect();
-		let chunked_a = ColumnChunks::new(Type::Int4, false, chunks);
-		let schema = Arc::new(vec![("a".to_string(), Type::Int4, false)]);
+		let chunked_a = ColumnChunks::new(ValueType::Int4, false, chunks);
+		let schema = Arc::new(vec![("a".to_string(), ValueType::Int4, false)]);
 		let block = ColumnBlock::new(schema, vec![chunked_a]);
 		let now = Clock::Real.instant();
 		Arc::new(Snapshot {
@@ -331,7 +334,7 @@ mod tests {
 		assert_eq!(a.data().get_value(2).to_string(), "6");
 	}
 
-	use reifydb_type::value::Value;
+	use reifydb_value::value::Value;
 
 	use crate::predicate::{ColRef, Predicate};
 
@@ -414,8 +417,8 @@ mod tests {
 		b.push_none();
 		b.push::<i32>(60);
 		let chunks = vec![array_from_column_data(&a), array_from_column_data(&b)];
-		let id_col = ColumnChunks::new(Type::Int4, true, chunks);
-		let schema = Arc::new(vec![("a".to_string(), Type::Int4, true)]);
+		let id_col = ColumnChunks::new(ValueType::Int4, true, chunks);
+		let schema = Arc::new(vec![("a".to_string(), ValueType::Int4, true)]);
 		let block = ColumnBlock::new(schema, vec![id_col]);
 		let now = Clock::Real.instant();
 		let snap = Arc::new(Snapshot {

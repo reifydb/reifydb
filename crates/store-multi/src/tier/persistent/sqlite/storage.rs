@@ -28,7 +28,7 @@ use reifydb_sqlite::{
 	connection::{connect, convert_flags, resolve_db_path},
 	pragma,
 };
-use reifydb_type::{Result, error, util::cowvec::CowVec};
+use reifydb_value::{Result, error, util::cowvec::CowVec};
 use rusqlite::{Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, params, params_from_iter};
 use tracing::{instrument, warn};
 

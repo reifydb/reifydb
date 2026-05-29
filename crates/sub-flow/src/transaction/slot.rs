@@ -3,7 +3,7 @@
 
 use std::any::Any;
 
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use super::FlowTransaction;
 

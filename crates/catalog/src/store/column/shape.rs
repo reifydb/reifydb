@@ -4,7 +4,7 @@
 pub(crate) mod column {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const PRIMITIVE: usize = 1;
@@ -17,14 +17,14 @@ pub(crate) mod column {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("primitive", Type::Uint8),
-			RowShapeField::unconstrained("name", Type::Utf8),
-			RowShapeField::unconstrained("value", Type::Uint1),
-			RowShapeField::unconstrained("index", Type::Uint1),
-			RowShapeField::unconstrained("auto_increment", Type::Boolean),
-			RowShapeField::unconstrained("constraint", Type::Blob),
-			RowShapeField::unconstrained("dictionary_id", Type::Uint8),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("primitive", ValueType::Uint8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
+			RowShapeField::unconstrained("value", ValueType::Uint1),
+			RowShapeField::unconstrained("index", ValueType::Uint1),
+			RowShapeField::unconstrained("auto_increment", ValueType::Boolean),
+			RowShapeField::unconstrained("constraint", ValueType::Blob),
+			RowShapeField::unconstrained("dictionary_id", ValueType::Uint8),
 		])
 	});
 }
@@ -32,7 +32,7 @@ pub(crate) mod column {
 pub(crate) mod primitive_column {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const NAME: usize = 1;
@@ -40,9 +40,9 @@ pub(crate) mod primitive_column {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("name", Type::Utf8),
-			RowShapeField::unconstrained("index", Type::Uint1),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
+			RowShapeField::unconstrained("index", ValueType::Uint1),
 		])
 	});
 }

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::encoded::shape::RowShape;
-use reifydb_type::value::{blob::Blob, date::Date, int::Int, r#type::Type, uuid::Uuid4};
+use reifydb_value::value::{blob::Blob, date::Date, int::Int, uuid::Uuid4, value_type::ValueType};
 
 #[test]
 fn test_large_row() {
@@ -10,18 +10,18 @@ fn test_large_row() {
 	let field_counts = [10, 50, 100, 200, 500];
 
 	for count in field_counts {
-		let types: Vec<Type> = (0..count)
+		let types: Vec<ValueType> = (0..count)
 			.map(|i| match i % 10 {
-				0 => Type::Boolean,
-				1 => Type::Int1,
-				2 => Type::Int2,
-				3 => Type::Int4,
-				4 => Type::Int8,
-				5 => Type::Float4,
-				6 => Type::Float8,
-				7 => Type::Date,
-				8 => Type::Uuid4,
-				_ => Type::Utf8,
+				0 => ValueType::Boolean,
+				1 => ValueType::Int1,
+				2 => ValueType::Int2,
+				3 => ValueType::Int4,
+				4 => ValueType::Int8,
+				5 => ValueType::Float4,
+				6 => ValueType::Float8,
+				7 => ValueType::Date,
+				8 => ValueType::Uuid4,
+				_ => ValueType::Utf8,
 			})
 			.collect();
 
@@ -84,7 +84,7 @@ fn test_large_row() {
 
 #[test]
 fn test_dynamic_field_reallocation() {
-	let shape = RowShape::testing(&[Type::Utf8, Type::Blob, Type::Int]);
+	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob, ValueType::Int]);
 
 	let iterations = 1000;
 
@@ -125,9 +125,9 @@ fn test_memory_efficiency() {
 
 	// Static types should have predictable size
 	let shape = RowShape::testing(&[
-		Type::Boolean, // 1 bit validity + 1 byte
-		Type::Int4,    // 1 bit validity + 4 bytes
-		Type::Float8,  // 1 bit validity + 8 bytes
+		ValueType::Boolean, // 1 bit validity + 1 byte
+		ValueType::Int4,    // 1 bit validity + 4 bytes
+		ValueType::Float8,  // 1 bit validity + 8 bytes
 	]);
 	let row = shape.allocate();
 
@@ -138,7 +138,7 @@ fn test_memory_efficiency() {
 
 	// Dynamic types should grow as needed - test with separate rows since
 	// dynamic fields can only be set once
-	let shape = RowShape::testing(&[Type::Utf8]);
+	let shape = RowShape::testing(&[ValueType::Utf8]);
 
 	let initial_size = shape.allocate().len();
 

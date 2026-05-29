@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::{Database, Params, SharedRuntimeConfig, embedded as db_embedded};
-use reifydb_type::value::frame::{data::FrameColumnData, frame::Frame};
+use reifydb_value::value::frame::{data::FrameColumnData, frame::Frame};
 use reifydb_wire_format::{decode::decode_frames, encode::encode_frames, options::EncodeOptions};
 
 fn new_db() -> Database {

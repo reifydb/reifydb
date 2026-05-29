@@ -6,7 +6,7 @@ use reifydb_rql::{
 	expression::Expression, flow::node::FlowNodeType::Aggregate, nodes::AggregateNode, query::QueryPlan,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::flow::compiler::{CompileOperator, FlowCompiler};
 

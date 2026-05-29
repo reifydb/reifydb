@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::columns::Columns;
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 use crate::{
 	function::math::arith::{dispatch::dispatch_strict, op::Rem},
@@ -32,8 +32,8 @@ impl<'a> Routine<FunctionContext<'a>> for RemStrict {
 		&self.info
 	}
 
-	fn return_type(&self, input_types: &[Type]) -> Type {
-		input_types.first().cloned().unwrap_or(Type::Float8)
+	fn return_type(&self, input_types: &[ValueType]) -> ValueType {
+		input_types.first().cloned().unwrap_or(ValueType::Float8)
 	}
 
 	fn propagates_options(&self) -> bool {

@@ -86,7 +86,7 @@ impl testscript::runner::Runner for GrpcRunner {
 		server.start()?;
 		server.admin_as_root(
 			"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
-			reifydb_type::params::Params::None,
+			reifydb_value::params::Params::None,
 		)
 		.unwrap();
 

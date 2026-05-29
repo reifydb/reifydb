@@ -16,7 +16,7 @@ use reifydb_core::{
 	util::encoding::keycode,
 };
 use reifydb_transaction::multi::transaction::MultiTransaction;
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_value::util::cowvec::CowVec;
 
 pub fn test_multi() -> MultiTransaction {
 	MultiTransaction::testing()

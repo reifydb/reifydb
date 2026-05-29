@@ -9,7 +9,7 @@ use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
 	rng::Rng,
 };
-use reifydb_type::value::{
+use reifydb_value::value::{
 	Value,
 	blob::Blob,
 	date::Date,
@@ -21,9 +21,9 @@ use reifydb_type::value::{
 	ordered_f32::OrderedF32,
 	ordered_f64::OrderedF64,
 	time::Time,
-	r#type::Type,
 	uint::Uint,
 	uuid::{Uuid4, Uuid7},
+	value_type::ValueType,
 };
 
 fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
@@ -35,7 +35,7 @@ fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
 
 #[test]
 fn test_utf8_update_same_size() {
-	let shape = RowShape::testing(&[Type::Utf8]);
+	let shape = RowShape::testing(&[ValueType::Utf8]);
 	let mut row = shape.allocate();
 	shape.set_utf8(&mut row, 0, "abcde");
 	let size = row.len();
@@ -51,7 +51,7 @@ fn test_utf8_update_same_size() {
 
 #[test]
 fn test_utf8_update_larger() {
-	let shape = RowShape::testing(&[Type::Utf8]);
+	let shape = RowShape::testing(&[ValueType::Utf8]);
 	let mut row = shape.allocate();
 	shape.set_utf8(&mut row, 0, "hi");
 	shape.set_utf8(&mut row, 0, "hello world");
@@ -65,7 +65,7 @@ fn test_utf8_update_larger() {
 
 #[test]
 fn test_utf8_update_smaller() {
-	let shape = RowShape::testing(&[Type::Utf8]);
+	let shape = RowShape::testing(&[ValueType::Utf8]);
 	let mut row = shape.allocate();
 	shape.set_utf8(&mut row, 0, "hello world");
 	shape.set_utf8(&mut row, 0, "hi");
@@ -79,7 +79,7 @@ fn test_utf8_update_smaller() {
 
 #[test]
 fn test_utf8_update_to_empty() {
-	let shape = RowShape::testing(&[Type::Utf8]);
+	let shape = RowShape::testing(&[ValueType::Utf8]);
 	let mut row = shape.allocate();
 	shape.set_utf8(&mut row, 0, "hello");
 	shape.set_utf8(&mut row, 0, "");
@@ -93,7 +93,7 @@ fn test_utf8_update_to_empty() {
 
 #[test]
 fn test_utf8_update_from_empty() {
-	let shape = RowShape::testing(&[Type::Utf8]);
+	let shape = RowShape::testing(&[ValueType::Utf8]);
 	let mut row = shape.allocate();
 	shape.set_utf8(&mut row, 0, "");
 	assert_eq!(row.len(), shape.total_static_size());
@@ -109,7 +109,7 @@ fn test_utf8_update_from_empty() {
 
 #[test]
 fn test_utf8_alternating_sizes() {
-	let shape = RowShape::testing(&[Type::Utf8]);
+	let shape = RowShape::testing(&[ValueType::Utf8]);
 	let mut row = shape.allocate();
 
 	let values = ["a", "hello world this is long", "xy", "medium string", "z"];
@@ -126,7 +126,7 @@ fn test_utf8_alternating_sizes() {
 
 #[test]
 fn test_blob_update_same_size() {
-	let shape = RowShape::testing(&[Type::Blob]);
+	let shape = RowShape::testing(&[ValueType::Blob]);
 	let mut row = shape.allocate();
 	shape.set_blob(&mut row, 0, &Blob::from_slice(&[1, 2, 3]));
 	let size = row.len();
@@ -142,7 +142,7 @@ fn test_blob_update_same_size() {
 
 #[test]
 fn test_blob_update_larger() {
-	let shape = RowShape::testing(&[Type::Blob]);
+	let shape = RowShape::testing(&[ValueType::Blob]);
 	let mut row = shape.allocate();
 	shape.set_blob(&mut row, 0, &Blob::from_slice(&[1]));
 	shape.set_blob(&mut row, 0, &Blob::from_slice(&[1, 2, 3, 4, 5]));
@@ -156,7 +156,7 @@ fn test_blob_update_larger() {
 
 #[test]
 fn test_blob_update_smaller() {
-	let shape = RowShape::testing(&[Type::Blob]);
+	let shape = RowShape::testing(&[ValueType::Blob]);
 	let mut row = shape.allocate();
 	shape.set_blob(&mut row, 0, &Blob::from_slice(&[1, 2, 3, 4, 5]));
 	shape.set_blob(&mut row, 0, &Blob::from_slice(&[9]));
@@ -170,7 +170,7 @@ fn test_blob_update_smaller() {
 
 #[test]
 fn test_blob_update_to_empty() {
-	let shape = RowShape::testing(&[Type::Blob]);
+	let shape = RowShape::testing(&[ValueType::Blob]);
 	let mut row = shape.allocate();
 	shape.set_blob(&mut row, 0, &Blob::from_slice(&[1, 2, 3]));
 	shape.set_blob(&mut row, 0, &Blob::from_slice(&[]));
@@ -184,7 +184,7 @@ fn test_blob_update_to_empty() {
 
 #[test]
 fn test_blob_alternating_sizes() {
-	let shape = RowShape::testing(&[Type::Blob]);
+	let shape = RowShape::testing(&[ValueType::Blob]);
 	let mut row = shape.allocate();
 
 	let values: Vec<Vec<u8>> = vec![vec![1], vec![0; 100], vec![2, 3], vec![0; 50], vec![4]];
@@ -202,7 +202,7 @@ fn test_blob_alternating_sizes() {
 
 #[test]
 fn test_update_first_of_three_dynamic_fields() {
-	let shape = RowShape::testing(&[Type::Utf8, Type::Blob, Type::Utf8]);
+	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob, ValueType::Utf8]);
 	let mut row = shape.allocate();
 
 	shape.set_utf8(&mut row, 0, "aaa");
@@ -226,7 +226,7 @@ fn test_update_first_of_three_dynamic_fields() {
 
 #[test]
 fn test_update_middle_of_four_dynamic_fields() {
-	let shape = RowShape::testing(&[Type::Utf8, Type::Blob, Type::Utf8, Type::Blob]);
+	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob, ValueType::Utf8, ValueType::Blob]);
 	let mut row = shape.allocate();
 
 	shape.set_utf8(&mut row, 0, "first");
@@ -253,7 +253,7 @@ fn test_update_middle_of_four_dynamic_fields() {
 
 #[test]
 fn test_update_mixed_dynamic_types_each_in_turn() {
-	let shape = RowShape::testing(&[Type::Utf8, Type::Blob, Type::Decimal, Type::Any]);
+	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob, ValueType::Decimal, ValueType::Any]);
 	let mut row = shape.allocate();
 
 	shape.set_utf8(&mut row, 0, "text");
@@ -299,7 +299,7 @@ fn test_update_mixed_dynamic_types_each_in_turn() {
 
 #[test]
 fn test_update_fields_forward_order() {
-	let shape = RowShape::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
 	let mut row = shape.allocate();
 
 	shape.set_utf8(&mut row, 0, "aaa");
@@ -324,7 +324,7 @@ fn test_update_fields_forward_order() {
 
 #[test]
 fn test_update_fields_reverse_order() {
-	let shape = RowShape::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
 	let mut row = shape.allocate();
 
 	shape.set_utf8(&mut row, 0, "aaa");
@@ -349,7 +349,7 @@ fn test_update_fields_reverse_order() {
 
 #[test]
 fn test_update_fields_interleaved_order() {
-	let shape = RowShape::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
 	let mut row = shape.allocate();
 
 	shape.set_utf8(&mut row, 0, "aaa");
@@ -387,7 +387,7 @@ fn huge_uint() -> Uint {
 
 #[test]
 fn test_int_multiple_transitions() {
-	let shape = RowShape::testing(&[Type::Int]);
+	let shape = RowShape::testing(&[ValueType::Int]);
 	let mut row = shape.allocate();
 
 	// inline
@@ -417,7 +417,7 @@ fn test_int_multiple_transitions() {
 
 #[test]
 fn test_uint_multiple_transitions() {
-	let shape = RowShape::testing(&[Type::Uint]);
+	let shape = RowShape::testing(&[ValueType::Uint]);
 	let mut row = shape.allocate();
 
 	// inline
@@ -442,7 +442,7 @@ fn test_uint_multiple_transitions() {
 
 #[test]
 fn test_int_transition_with_other_dynamic_fields() {
-	let shape = RowShape::testing(&[Type::Utf8, Type::Int, Type::Blob]);
+	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Int, ValueType::Blob]);
 	let mut row = shape.allocate();
 
 	shape.set_utf8(&mut row, 0, "hello");
@@ -475,7 +475,7 @@ fn test_int_transition_with_other_dynamic_fields() {
 
 #[test]
 fn test_int_dynamic_to_dynamic() {
-	let shape = RowShape::testing(&[Type::Int]);
+	let shape = RowShape::testing(&[ValueType::Int]);
 	let mut row = shape.allocate();
 
 	shape.set_int(&mut row, 0, &huge_int());
@@ -491,7 +491,7 @@ fn test_int_dynamic_to_dynamic() {
 
 #[test]
 fn test_decimal_update_different_sizes() {
-	let shape = RowShape::testing(&[Type::Decimal]);
+	let shape = RowShape::testing(&[ValueType::Decimal]);
 	let mut row = shape.allocate();
 
 	// Small decimal
@@ -513,7 +513,7 @@ fn test_decimal_update_different_sizes() {
 
 #[test]
 fn test_decimal_multiple_sequential_updates() {
-	let shape = RowShape::testing(&[Type::Decimal]);
+	let shape = RowShape::testing(&[ValueType::Decimal]);
 	let mut row = shape.allocate();
 
 	let values = ["1.0", "2.5", "100.001", "0.000001", "9999.99", "3.14159"];
@@ -530,7 +530,7 @@ fn test_decimal_multiple_sequential_updates() {
 
 #[test]
 fn test_decimal_update_with_other_dynamic_fields() {
-	let shape = RowShape::testing(&[Type::Utf8, Type::Decimal, Type::Blob]);
+	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Decimal, ValueType::Blob]);
 	let mut row = shape.allocate();
 
 	shape.set_utf8(&mut row, 0, "price");
@@ -554,7 +554,7 @@ fn test_decimal_update_with_other_dynamic_fields() {
 #[test]
 fn test_any_cycle_all_types() {
 	let (_, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[Type::Any]);
+	let shape = RowShape::testing(&[ValueType::Any]);
 	let mut row = shape.allocate();
 
 	let values: Vec<Value> = vec![
@@ -595,7 +595,7 @@ fn test_any_cycle_all_types() {
 
 #[test]
 fn test_any_small_to_large_encoding() {
-	let shape = RowShape::testing(&[Type::Any]);
+	let shape = RowShape::testing(&[ValueType::Any]);
 	let mut row = shape.allocate();
 
 	// Boolean = 2 bytes encoded
@@ -614,7 +614,7 @@ fn test_any_small_to_large_encoding() {
 
 #[test]
 fn test_any_large_to_small_encoding() {
-	let shape = RowShape::testing(&[Type::Any]);
+	let shape = RowShape::testing(&[ValueType::Any]);
 	let mut row = shape.allocate();
 
 	let long_str = Value::Utf8("x".repeat(1000));
@@ -633,7 +633,7 @@ fn test_any_large_to_small_encoding() {
 
 #[test]
 fn test_any_same_size_encoding() {
-	let shape = RowShape::testing(&[Type::Any]);
+	let shape = RowShape::testing(&[ValueType::Any]);
 	let mut row = shape.allocate();
 
 	// Int4 = 5 bytes (1 type + 4 data)
@@ -657,7 +657,7 @@ fn test_any_same_size_encoding() {
 
 #[test]
 fn test_any_update_with_other_dynamic_fields() {
-	let shape = RowShape::testing(&[Type::Utf8, Type::Any, Type::Blob]);
+	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Any, ValueType::Blob]);
 	let mut row = shape.allocate();
 
 	shape.set_utf8(&mut row, 0, "prefix");
@@ -686,7 +686,13 @@ fn test_any_update_with_other_dynamic_fields() {
 
 #[test]
 fn test_update_dynamic_preserves_static() {
-	let shape = RowShape::testing(&[Type::Boolean, Type::Int4, Type::Utf8, Type::Float8, Type::Blob]);
+	let shape = RowShape::testing(&[
+		ValueType::Boolean,
+		ValueType::Int4,
+		ValueType::Utf8,
+		ValueType::Float8,
+		ValueType::Blob,
+	]);
 	let mut row = shape.allocate();
 
 	shape.set_bool(&mut row, 0, true);
@@ -721,14 +727,14 @@ fn test_update_dynamic_preserves_static() {
 #[test]
 fn test_all_dynamic_types_in_one_row() {
 	let shape = RowShape::testing(&[
-		Type::Utf8,
-		Type::Blob,
-		Type::Decimal,
-		Type::Int,
-		Type::Uint,
-		Type::Any,
-		Type::Boolean, // static
-		Type::Int4,    // static
+		ValueType::Utf8,
+		ValueType::Blob,
+		ValueType::Decimal,
+		ValueType::Int,
+		ValueType::Uint,
+		ValueType::Any,
+		ValueType::Boolean, // static
+		ValueType::Int4,    // static
 	]);
 	let mut row = shape.allocate();
 
@@ -774,7 +780,7 @@ fn test_all_dynamic_types_in_one_row() {
 
 #[test]
 fn test_set_value_update_utf8() {
-	let shape = RowShape::testing(&[Type::Utf8, Type::Int4]);
+	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Int4]);
 	let mut row = shape.allocate();
 
 	shape.set_value(&mut row, 0, &Value::Utf8("first".to_string()));
@@ -794,7 +800,7 @@ fn test_set_value_update_utf8() {
 
 #[test]
 fn test_set_values_overwrite_entire_row() {
-	let shape = RowShape::testing(&[Type::Utf8, Type::Int4, Type::Blob]);
+	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Int4, ValueType::Blob]);
 	let mut row = shape.allocate();
 
 	let values1 =
@@ -826,7 +832,7 @@ fn test_set_values_overwrite_entire_row() {
 
 #[test]
 fn testined_undefined_defined_cycle() {
-	let shape = RowShape::testing(&[Type::Utf8]);
+	let shape = RowShape::testing(&[ValueType::Utf8]);
 	let mut row = shape.allocate();
 
 	shape.set_utf8(&mut row, 0, "hello");
@@ -847,7 +853,7 @@ fn testined_undefined_defined_cycle() {
 
 #[test]
 fn test_set_none_then_set_different_dynamic_field() {
-	let shape = RowShape::testing(&[Type::Utf8, Type::Blob]);
+	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob]);
 	let mut row = shape.allocate();
 
 	shape.set_utf8(&mut row, 0, "hello");
@@ -867,7 +873,7 @@ fn test_set_none_then_set_different_dynamic_field() {
 
 #[test]
 fn test_interleaved_none_and_set() {
-	let shape = RowShape::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
 	let mut row = shape.allocate();
 
 	shape.set_utf8(&mut row, 0, "aaa");
@@ -897,7 +903,7 @@ fn test_interleaved_none_and_set() {
 
 #[test]
 fn test_clone_update_clone_original_unchanged() {
-	let shape = RowShape::testing(&[Type::Utf8, Type::Blob]);
+	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob]);
 	let mut row = shape.allocate();
 	shape.set_utf8(&mut row, 0, "original");
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[1, 2, 3]));
@@ -929,7 +935,7 @@ fn test_clone_update_clone_original_unchanged() {
 
 #[test]
 fn test_clone_update_original_clone_unchanged() {
-	let shape = RowShape::testing(&[Type::Utf8]);
+	let shape = RowShape::testing(&[ValueType::Utf8]);
 	let mut row = shape.allocate();
 	shape.set_utf8(&mut row, 0, "original");
 
@@ -953,7 +959,7 @@ fn test_clone_update_original_clone_unchanged() {
 
 #[test]
 fn test_no_orphan_data_after_many_updates() {
-	let shape = RowShape::testing(&[Type::Utf8, Type::Blob]);
+	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob]);
 	let mut row = shape.allocate();
 
 	for i in 0..100 {
@@ -982,7 +988,7 @@ fn test_no_orphan_data_after_many_updates() {
 
 #[test]
 fn test_no_orphan_data_three_dynamic_fields() {
-	let shape = RowShape::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
 	let mut row = shape.allocate();
 
 	shape.set_utf8(&mut row, 0, "aaaa");
@@ -1009,7 +1015,7 @@ fn test_no_orphan_data_three_dynamic_fields() {
 
 #[test]
 fn test_no_orphan_data_mixed_types() {
-	let shape = RowShape::testing(&[Type::Utf8, Type::Blob, Type::Any]);
+	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob, ValueType::Any]);
 	let mut row = shape.allocate();
 
 	shape.set_utf8(&mut row, 0, "hello"); // 5 bytes
@@ -1041,7 +1047,7 @@ fn test_no_orphan_data_mixed_types() {
 
 #[test]
 fn test_repeated_set_unset_utf8() {
-	let shape = RowShape::testing(&[Type::Utf8]);
+	let shape = RowShape::testing(&[ValueType::Utf8]);
 	let mut row = shape.allocate();
 
 	for i in 0..10 {
@@ -1066,7 +1072,7 @@ fn test_repeated_set_unset_utf8() {
 
 #[test]
 fn test_repeated_set_unset_blob() {
-	let shape = RowShape::testing(&[Type::Blob]);
+	let shape = RowShape::testing(&[ValueType::Blob]);
 	let mut row = shape.allocate();
 
 	for i in 0..10 {
@@ -1093,7 +1099,7 @@ fn test_repeated_set_unset_blob() {
 
 #[test]
 fn test_repeated_set_unset_mixed_dynamic() {
-	let shape = RowShape::testing(&[Type::Utf8, Type::Blob, Type::Decimal, Type::Any]);
+	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob, ValueType::Decimal, ValueType::Any]);
 	let mut row = shape.allocate();
 
 	for i in 0..5 {
@@ -1155,7 +1161,13 @@ fn test_repeated_set_unset_mixed_dynamic() {
 
 #[test]
 fn test_set_unset_all_fields_then_reset() {
-	let shape = RowShape::testing(&[Type::Utf8, Type::Blob, Type::Any, Type::Int, Type::Decimal]);
+	let shape = RowShape::testing(&[
+		ValueType::Utf8,
+		ValueType::Blob,
+		ValueType::Any,
+		ValueType::Int,
+		ValueType::Decimal,
+	]);
 	let mut row = shape.allocate();
 
 	// Set all

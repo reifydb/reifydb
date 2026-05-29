@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::{Value, container::any::AnyContainer, frame::data::FrameColumnData, ordered_f64::OrderedF64};
+use reifydb_value::value::{
+	Value, container::any::AnyContainer, frame::data::FrameColumnData, ordered_f64::OrderedF64,
+};
 
 fn make(v: Vec<Value>) -> FrameColumnData {
 	FrameColumnData::Any(AnyContainer::new(v.into_iter().map(Box::new).collect()))

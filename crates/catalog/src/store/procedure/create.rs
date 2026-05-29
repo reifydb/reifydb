@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::value::constraint::TypeConstraint;
+use reifydb_value::value::constraint::TypeConstraint;
 use serde_json::to_string;
 
 use crate::{

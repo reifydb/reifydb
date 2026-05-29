@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::interface::catalog::{namespace::Namespace, ringbuffer::RingBuffer, series::Series, table::Table};
-use reifydb_type::fragment::Fragment;
+use reifydb_value::fragment::Fragment;
 
 use crate::vm::{services::Services, stack::SymbolTable};
 

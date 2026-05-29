@@ -2,14 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, push::Push};
-use reifydb_type::{
+use reifydb_value::{
 	error::{BinaryOp, TypeError},
 	fragment::{Fragment, LazyFragment},
 	value::{
 		container::{number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container},
 		is::IsNumber,
 		number::{promote::Promote, safe::add::SafeAdd},
-		r#type::{Type, get::GetType},
+		value_type::{ValueType, get::GetType},
 	},
 };
 
@@ -25,7 +25,7 @@ pub(crate) fn add_columns(
 	fragment: impl LazyFragment + Copy,
 ) -> Result<ColumnWithName> {
 	binary_op_unwrap_option(left, right, fragment.fragment(), |left, right| {
-		let target = Type::promote(left.get_type(), right.get_type());
+		let target = ValueType::promote(left.get_type(), right.get_type());
 
 		dispatch_arith!(
 			&left.data(), &right.data();
@@ -87,7 +87,7 @@ fn add_numeric<L, R>(
 	ctx: &EvalContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
-	target: Type,
+	target: ValueType,
 	fragment: impl LazyFragment + Copy,
 ) -> Result<ColumnWithName>
 where
@@ -119,7 +119,7 @@ fn add_numeric_clone<L, R>(
 	ctx: &EvalContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
-	target: Type,
+	target: ValueType,
 	fragment: impl LazyFragment + Copy,
 ) -> Result<ColumnWithName>
 where
@@ -181,7 +181,12 @@ fn can_promote_to_string(data: &ColumnBuffer) -> bool {
 	)
 }
 
-fn concat_strings(l: &Utf8Container, r: &Utf8Container, target: Type, fragment: Fragment) -> Result<ColumnWithName> {
+fn concat_strings(
+	l: &Utf8Container,
+	r: &Utf8Container,
+	target: ValueType,
+	fragment: Fragment,
+) -> Result<ColumnWithName> {
 	debug_assert_eq!(l.len(), r.len());
 
 	let mut data = ColumnBuffer::with_capacity(target, l.len());
@@ -204,7 +209,7 @@ fn concat_string_with_other(
 	string_data: &Utf8Container,
 	other_data: &ColumnBuffer,
 	string_is_left: bool,
-	target: Type,
+	target: ValueType,
 	fragment: Fragment,
 ) -> Result<ColumnWithName> {
 	debug_assert_eq!(string_data.len(), other_data.len());

@@ -12,7 +12,7 @@
 pub mod canonical;
 
 use reifydb_core::value::column::{data::Column, mask::RowMask};
-use reifydb_type::{Result, value::Value};
+use reifydb_value::{Result, value::Value};
 
 use crate::encoding;
 

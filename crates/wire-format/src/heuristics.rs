@@ -3,7 +3,7 @@
 
 use std::collections::HashSet;
 
-use reifydb_type::value::frame::data::FrameColumnData;
+use reifydb_value::value::frame::data::FrameColumnData;
 
 use crate::{format::Encoding, options::CompressionLevel};
 

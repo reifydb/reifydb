@@ -4,7 +4,7 @@
 use std::{collections::HashMap, time::Duration};
 
 use reifydb_runtime::actor::{reply::Reply, system::ActorHandle};
-use reifydb_type::{
+use reifydb_value::{
 	error::Diagnostic,
 	params::Params,
 	value::{frame::frame::Frame, identity::IdentityId},

@@ -27,7 +27,7 @@ use reifydb_sdk::{
 	testing::builders::TestChangeBuilder,
 };
 use reifydb_transaction::interceptor::interceptors::Interceptors;
-use reifydb_type::{Result, value::Value};
+use reifydb_value::{Result, value::Value};
 use serde::de::DeserializeOwned;
 
 use crate::{

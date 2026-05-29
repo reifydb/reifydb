@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{change::CatalogTrackOperatorSettingsChangeOperations, flow::FlowNodeId},
 	row::OperatorSettings,
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::{
 	change::{

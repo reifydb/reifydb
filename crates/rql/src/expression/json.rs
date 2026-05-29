@@ -7,11 +7,11 @@ use reifydb_core::{
 	interface::identifier::{ColumnIdentifier, ColumnShape},
 	internal,
 };
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	error::{Error, TypeError},
 	fragment::Fragment,
-	value::r#type::Type,
+	value::value_type::ValueType,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{from_str, to_string, to_string_pretty};
@@ -752,40 +752,40 @@ impl TryFrom<JsonExpression> for Expression {
 	}
 }
 
-fn parse_type(s: &str) -> Result<Type> {
+fn parse_type(s: &str) -> Result<ValueType> {
 	let ty = match s.to_lowercase().as_str() {
-		"boolean" => Type::Boolean,
-		"bool" => Type::Boolean,
-		"int1" => Type::Int1,
-		"int2" => Type::Int2,
-		"int4" => Type::Int4,
-		"int8" => Type::Int8,
-		"int16" => Type::Int16,
-		"int32" => Type::Int4,
-		"int64" => Type::Int8,
-		"uint1" => Type::Uint1,
-		"uint2" => Type::Uint2,
-		"uint4" => Type::Uint4,
-		"uint8" => Type::Uint8,
-		"uint16" => Type::Uint16,
-		"float4" => Type::Float4,
-		"float8" => Type::Float8,
-		"float32" => Type::Float4,
-		"float64" => Type::Float8,
-		"utf8" => Type::Utf8,
-		"string" => Type::Utf8,
-		"text" => Type::Utf8,
-		"blob" => Type::Blob,
-		"uuid4" => Type::Uuid4,
-		"uuid7" => Type::Uuid7,
-		"date" => Type::Date,
-		"time" => Type::Time,
-		"datetime" => Type::DateTime,
-		"duration" => Type::Duration,
-		"identityid" => Type::IdentityId,
-		"int" => Type::Int,
-		"uint" => Type::Uint,
-		"decimal" => Type::Decimal,
+		"boolean" => ValueType::Boolean,
+		"bool" => ValueType::Boolean,
+		"int1" => ValueType::Int1,
+		"int2" => ValueType::Int2,
+		"int4" => ValueType::Int4,
+		"int8" => ValueType::Int8,
+		"int16" => ValueType::Int16,
+		"int32" => ValueType::Int4,
+		"int64" => ValueType::Int8,
+		"uint1" => ValueType::Uint1,
+		"uint2" => ValueType::Uint2,
+		"uint4" => ValueType::Uint4,
+		"uint8" => ValueType::Uint8,
+		"uint16" => ValueType::Uint16,
+		"float4" => ValueType::Float4,
+		"float8" => ValueType::Float8,
+		"float32" => ValueType::Float4,
+		"float64" => ValueType::Float8,
+		"utf8" => ValueType::Utf8,
+		"string" => ValueType::Utf8,
+		"text" => ValueType::Utf8,
+		"blob" => ValueType::Blob,
+		"uuid4" => ValueType::Uuid4,
+		"uuid7" => ValueType::Uuid7,
+		"date" => ValueType::Date,
+		"time" => ValueType::Time,
+		"datetime" => ValueType::DateTime,
+		"duration" => ValueType::Duration,
+		"identityid" => ValueType::IdentityId,
+		"int" => ValueType::Int,
+		"uint" => ValueType::Uint,
+		"decimal" => ValueType::Decimal,
 		_ => {
 			return Err(Error(Box::new(internal!("Unknown type: {}", s))));
 		}
@@ -1238,7 +1238,7 @@ pub mod tests {
 		let expr = Expression::Cast(CastExpression {
 			expression: Box::new(column_expr("value")),
 			to: TypeExpression {
-				ty: Type::Int4,
+				ty: ValueType::Int4,
 				fragment: internal_fragment("Int4"),
 			},
 			fragment: Fragment::None,
@@ -1496,7 +1496,7 @@ pub mod tests {
 	#[test]
 	fn test_type_expression() {
 		let expr = Expression::Type(TypeExpression {
-			ty: Type::Utf8,
+			ty: ValueType::Utf8,
 			fragment: internal_fragment("Utf8"),
 		});
 

@@ -10,7 +10,7 @@ use reifydb_transaction::{
 	change::TransactionalHandlerChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_type::{fragment::Fragment, value::sumtype::VariantRef};
+use reifydb_value::{fragment::Fragment, value::sumtype::VariantRef};
 use tracing::instrument;
 
 use crate::{CatalogStore, Result, catalog::Catalog, store::handler::create::HandlerToCreate as StoreHandlerToCreate};

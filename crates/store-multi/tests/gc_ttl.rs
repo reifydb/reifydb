@@ -35,7 +35,7 @@ use reifydb_testing::{
 		runner::run_path,
 	},
 };
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_value::util::cowvec::CowVec;
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/store-multi/tests/scripts/buffer/ttl" as buffer_ttl_memory => test_memory }

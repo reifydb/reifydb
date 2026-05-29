@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use super::FlowTransaction;
 
@@ -110,7 +110,7 @@ pub mod tests {
 	};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::{interceptor::interceptors::Interceptors, transaction::admin::AdminTransaction};
-	use reifydb_type::util::cowvec::CowVec;
+	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
 	use crate::operator::stateful::test_utils::test::create_test_transaction;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	util::{bitvec::BitVec, hex},
 	value::{
@@ -20,9 +20,9 @@ use reifydb_type::{
 		row_number::RowNumber,
 		temporal::parse::{datetime::parse_datetime, duration::parse_duration},
 		time::Time,
-		r#type::Type,
 		uint::{Uint, parse::parse_uint},
 		uuid::parse::{parse_uuid4, parse_uuid7},
+		value_type::ValueType,
 	},
 };
 use serde_json::{Error, Value, from_str, from_value};
@@ -70,9 +70,9 @@ fn response_frame_to_frame(frame: ResponseFrame) -> Frame {
 	}
 }
 
-pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnData {
+pub fn convert_column_to_data(target: ValueType, data: Vec<String>) -> FrameColumnData {
 	match target {
-		Type::Option(inner_type) => {
+		ValueType::Option(inner_type) => {
 			let defined: Vec<bool> = data.iter().map(|s| s != "⟪none⟫").collect();
 
 			if defined.iter().all(|&b| !b) {
@@ -95,11 +95,11 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				bitvec,
 			}
 		}
-		Type::Boolean => {
+		ValueType::Boolean => {
 			let values: Vec<_> = data.into_iter().map(|s| s != "⟪none⟫" && s == "true").collect();
 			FrameColumnData::Bool(BoolContainer::new(values))
 		}
-		Type::Float4 => {
+		ValueType::Float4 => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -112,7 +112,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Float4(NumberContainer::new(values))
 		}
-		Type::Float8 => {
+		ValueType::Float8 => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -125,7 +125,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Float8(NumberContainer::new(values))
 		}
-		Type::Int1 => {
+		ValueType::Int1 => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -138,7 +138,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Int1(NumberContainer::new(values))
 		}
-		Type::Int2 => {
+		ValueType::Int2 => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -151,7 +151,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Int2(NumberContainer::new(values))
 		}
-		Type::Int4 => {
+		ValueType::Int4 => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -164,7 +164,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Int4(NumberContainer::new(values))
 		}
-		Type::Int8 => {
+		ValueType::Int8 => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -177,7 +177,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Int8(NumberContainer::new(values))
 		}
-		Type::Int16 => {
+		ValueType::Int16 => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -190,7 +190,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Int16(NumberContainer::new(values))
 		}
-		Type::Uint1 => {
+		ValueType::Uint1 => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -203,7 +203,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Uint1(NumberContainer::new(values))
 		}
-		Type::Uint2 => {
+		ValueType::Uint2 => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -216,7 +216,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Uint2(NumberContainer::new(values))
 		}
-		Type::Uint4 => {
+		ValueType::Uint4 => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -229,7 +229,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Uint4(NumberContainer::new(values))
 		}
-		Type::Uint8 => {
+		ValueType::Uint8 => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -242,7 +242,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Uint8(NumberContainer::new(values))
 		}
-		Type::Uint16 => {
+		ValueType::Uint16 => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -255,7 +255,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Uint16(NumberContainer::new(values))
 		}
-		Type::Utf8 => {
+		ValueType::Utf8 => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -268,7 +268,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Utf8(Utf8Container::new(values))
 		}
-		Type::Date => {
+		ValueType::Date => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -290,7 +290,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Date(TemporalContainer::new(values))
 		}
-		Type::DateTime => {
+		ValueType::DateTime => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -308,7 +308,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::DateTime(TemporalContainer::new(values))
 		}
-		Type::Time => {
+		ValueType::Time => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -342,7 +342,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Time(TemporalContainer::new(values))
 		}
-		Type::Duration => {
+		ValueType::Duration => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -355,7 +355,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Duration(TemporalContainer::new(values))
 		}
-		Type::Uuid4 => {
+		ValueType::Uuid4 => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -370,7 +370,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Uuid4(UuidContainer::new(values))
 		}
-		Type::Uuid7 => {
+		ValueType::Uuid7 => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -385,7 +385,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Uuid7(UuidContainer::new(values))
 		}
-		Type::IdentityId => {
+		ValueType::IdentityId => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -406,7 +406,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::IdentityId(IdentityIdContainer::new(values))
 		}
-		Type::Blob => {
+		ValueType::Blob => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -425,7 +425,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Blob(BlobContainer::new(values))
 		}
-		Type::Int => {
+		ValueType::Int => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -438,7 +438,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Int(NumberContainer::new(values))
 		}
-		Type::Uint => {
+		ValueType::Uint => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -451,7 +451,7 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Uint(NumberContainer::new(values))
 		}
-		Type::Decimal => {
+		ValueType::Decimal => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {
@@ -464,7 +464,11 @@ pub fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnDat
 				.collect();
 			FrameColumnData::Decimal(NumberContainer::new(values))
 		}
-		Type::Any | Type::DictionaryId | Type::List(_) | Type::Record(_) | Type::Tuple(_) => {
+		ValueType::Any
+		| ValueType::DictionaryId
+		| ValueType::List(_)
+		| ValueType::Record(_)
+		| ValueType::Tuple(_) => {
 			let values: Vec<_> = data
 				.into_iter()
 				.map(|s| {

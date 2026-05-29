@@ -5,7 +5,7 @@ use reifydb_core::interface::catalog::{
 	change::CatalogTrackConfigChangeOperations,
 	config::{Config, ConfigKey},
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::{
 	change::{Change, OperationType::Update, TransactionalConfigChanges},

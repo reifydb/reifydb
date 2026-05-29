@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::duration::Duration;
+use reifydb_value::value::duration::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::fingerprint::{RequestFingerprint, StatementFingerprint};

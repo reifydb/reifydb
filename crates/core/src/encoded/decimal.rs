@@ -3,7 +3,7 @@
 
 use bigdecimal::BigDecimal as StdBigDecimal;
 use num_bigint::BigInt as StdBigInt;
-use reifydb_type::value::{decimal::Decimal, r#type::Type};
+use reifydb_value::value::{decimal::Decimal, value_type::ValueType};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
@@ -15,7 +15,7 @@ const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
 
 impl RowShape {
 	pub fn set_decimal(&self, row: &mut EncodedRow, index: usize, value: &Decimal) {
-		debug_assert!(matches!(self.fields()[index].constraint.get_type().inner_type(), Type::Decimal));
+		debug_assert!(matches!(self.fields()[index].constraint.get_type().inner_type(), ValueType::Decimal));
 
 		let (mantissa, original_scale) = value.inner().as_bigint_and_exponent();
 		let scale_bytes = original_scale.to_le_bytes();
@@ -30,7 +30,7 @@ impl RowShape {
 
 	pub fn get_decimal(&self, row: &EncodedRow, index: usize) -> Decimal {
 		let field = &self.fields()[index];
-		debug_assert!(matches!(field.constraint.get_type().inner_type(), Type::Decimal));
+		debug_assert!(matches!(field.constraint.get_type().inner_type(), ValueType::Decimal));
 
 		let packed = unsafe { (row.as_ptr().add(field.offset as usize) as *const u128).read_unaligned() };
 		let packed = u128::from_le(packed);
@@ -53,7 +53,7 @@ impl RowShape {
 
 	pub fn try_get_decimal(&self, row: &EncodedRow, index: usize) -> Option<Decimal> {
 		if row.is_defined(index)
-			&& matches!(self.fields()[index].constraint.get_type().inner_type(), Type::Decimal)
+			&& matches!(self.fields()[index].constraint.get_type().inner_type(), ValueType::Decimal)
 		{
 			Some(self.get_decimal(row, index))
 		} else {
@@ -67,13 +67,13 @@ pub mod tests {
 	use std::str::FromStr;
 
 	use num_traits::Zero;
-	use reifydb_type::value::{decimal::Decimal, r#type::Type};
+	use reifydb_value::value::{decimal::Decimal, value_type::ValueType};
 
 	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_compact_inline() {
-		let shape = RowShape::testing(&[Type::Decimal]);
+		let shape = RowShape::testing(&[ValueType::Decimal]);
 		let mut row = shape.allocate();
 
 		// Test simple decimal
@@ -94,7 +94,7 @@ pub mod tests {
 	#[test]
 	fn test_compact_boundaries() {
 		// Test high precision decimal
-		let shape1 = RowShape::testing(&[Type::Decimal]);
+		let shape1 = RowShape::testing(&[ValueType::Decimal]);
 		let mut row1 = shape1.allocate();
 		let high_precision = Decimal::from_str("1.0000000000000000000000000000001").unwrap();
 		shape1.set_decimal(&mut row1, 0, &high_precision);
@@ -102,7 +102,7 @@ pub mod tests {
 		assert_eq!(retrieved.to_string(), "1.0000000000000000000000000000001");
 
 		// Test large integer (scale 0)
-		let shape2 = RowShape::testing(&[Type::Decimal]);
+		let shape2 = RowShape::testing(&[ValueType::Decimal]);
 		let mut row2 = shape2.allocate();
 		let large_int = Decimal::from_str("100000000000000000000000000000000").unwrap();
 		shape2.set_decimal(&mut row2, 0, &large_int);
@@ -111,7 +111,7 @@ pub mod tests {
 
 	#[test]
 	fn test_extended_i128() {
-		let shape = RowShape::testing(&[Type::Decimal]);
+		let shape = RowShape::testing(&[ValueType::Decimal]);
 		let mut row = shape.allocate();
 
 		// Value that needs i128 mantissa
@@ -127,7 +127,7 @@ pub mod tests {
 	fn test_dynamic_storage() {
 		// Use a smaller test that will still trigger dynamic storage
 		// due to large mantissa
-		let shape = RowShape::testing(&[Type::Decimal]);
+		let shape = RowShape::testing(&[ValueType::Decimal]);
 		let mut row = shape.allocate();
 
 		// Create a value with large precision that will exceed i128
@@ -143,7 +143,7 @@ pub mod tests {
 
 	#[test]
 	fn test_zero() {
-		let shape = RowShape::testing(&[Type::Decimal]);
+		let shape = RowShape::testing(&[ValueType::Decimal]);
 		let mut row = shape.allocate();
 
 		let zero = Decimal::from_str("0.0").unwrap();
@@ -156,7 +156,7 @@ pub mod tests {
 
 	#[test]
 	fn test_currency_values() {
-		let shape = RowShape::testing(&[Type::Decimal]);
+		let shape = RowShape::testing(&[ValueType::Decimal]);
 
 		// Test typical currency value (2 decimal places)
 		let mut row1 = shape.allocate();
@@ -179,7 +179,7 @@ pub mod tests {
 
 	#[test]
 	fn test_scientific_notation() {
-		let shape = RowShape::testing(&[Type::Decimal]);
+		let shape = RowShape::testing(&[ValueType::Decimal]);
 		let mut row = shape.allocate();
 
 		let scientific = Decimal::from_str("1.23456e10").unwrap();
@@ -191,7 +191,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get() {
-		let shape = RowShape::testing(&[Type::Decimal]);
+		let shape = RowShape::testing(&[ValueType::Decimal]);
 		let mut row = shape.allocate();
 
 		// Undefined initially
@@ -208,7 +208,7 @@ pub mod tests {
 
 	#[test]
 	fn test_clone_on_write() {
-		let shape = RowShape::testing(&[Type::Decimal]);
+		let shape = RowShape::testing(&[ValueType::Decimal]);
 		let row1 = shape.allocate();
 		let mut row2 = row1.clone();
 
@@ -223,7 +223,13 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let shape = RowShape::testing(&[Type::Boolean, Type::Decimal, Type::Utf8, Type::Decimal, Type::Int4]);
+		let shape = RowShape::testing(&[
+			ValueType::Boolean,
+			ValueType::Decimal,
+			ValueType::Utf8,
+			ValueType::Decimal,
+			ValueType::Int4,
+		]);
 		let mut row = shape.allocate();
 
 		shape.set_bool(&mut row, 0, true);
@@ -248,7 +254,7 @@ pub mod tests {
 	#[test]
 	fn test_negative_values() {
 		// Small negative (compact inline) - needs scale 2
-		let shape1 = RowShape::testing(&[Type::Decimal]);
+		let shape1 = RowShape::testing(&[ValueType::Decimal]);
 
 		let mut row1 = shape1.allocate();
 		let small_neg = Decimal::from_str("-0.01").unwrap();
@@ -256,14 +262,14 @@ pub mod tests {
 		assert_eq!(shape1.get_decimal(&row1, 0).to_string(), "-0.01");
 
 		// Large negative (extended i128) - needs scale 3
-		let shape2 = RowShape::testing(&[Type::Decimal]);
+		let shape2 = RowShape::testing(&[ValueType::Decimal]);
 		let mut row2 = shape2.allocate();
 		let large_neg = Decimal::from_str("-999999999999999999.999").unwrap();
 		shape2.set_decimal(&mut row2, 0, &large_neg);
 		assert_eq!(shape2.get_decimal(&row2, 0).to_string(), "-999999999999999999.999");
 
 		// Huge negative (dynamic) - needs scale 9
-		let shape3 = RowShape::testing(&[Type::Decimal]);
+		let shape3 = RowShape::testing(&[ValueType::Decimal]);
 		let mut row3 = shape3.allocate();
 		let huge_neg = Decimal::from_str("-99999999999999999999999999999.999999999").unwrap();
 		shape3.set_decimal(&mut row3, 0, &huge_neg);
@@ -272,7 +278,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_decimal_wrong_type() {
-		let shape = RowShape::testing(&[Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
 		shape.set_bool(&mut row, 0, true);
@@ -282,7 +288,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_decimal() {
-		let shape = RowShape::testing(&[Type::Decimal]);
+		let shape = RowShape::testing(&[ValueType::Decimal]);
 		let mut row = shape.allocate();
 
 		let d1 = Decimal::from_str("123.45").unwrap();
@@ -302,7 +308,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_decimal_with_other_dynamic_fields() {
-		let shape = RowShape::testing(&[Type::Decimal, Type::Utf8, Type::Decimal]);
+		let shape = RowShape::testing(&[ValueType::Decimal, ValueType::Utf8, ValueType::Decimal]);
 		let mut row = shape.allocate();
 
 		shape.set_decimal(&mut row, 0, &Decimal::from_str("1.0").unwrap());

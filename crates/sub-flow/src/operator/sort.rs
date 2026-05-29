@@ -7,7 +7,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::expression::Expression;
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::{
 	operator::{Operator, OperatorCell},

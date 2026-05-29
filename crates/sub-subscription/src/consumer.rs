@@ -18,7 +18,7 @@ use reifydb_core::{
 use reifydb_runtime::sync::rwlock::{RwLock, RwLockReadGuard};
 use reifydb_sub_flow::{engine::FlowEngine, transaction::FlowTransaction};
 use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::sink::DeliveryBuffer;
 

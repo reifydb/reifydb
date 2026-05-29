@@ -6,7 +6,7 @@ use std::{
 	sync::{Arc, OnceLock},
 };
 
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use super::IocContainer;
 use crate::internal_error;

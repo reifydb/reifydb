@@ -26,11 +26,11 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::UpdateTableNode;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, identity::IdentityId, row_number::RowNumber, r#type::Type},
+	value::{Value, identity::IdentityId, row_number::RowNumber, value_type::ValueType},
 };
 
 use super::{
@@ -266,7 +266,7 @@ fn rotate_table_pk_index(
 	}
 
 	let post_key = primary_key::encode_primary_key(pk_def, new_row, table, shape)?;
-	let row_number_shape = RowShape::testing(&[Type::Uint8]);
+	let row_number_shape = RowShape::testing(&[ValueType::Uint8]);
 	let mut row_number_encoded = row_number_shape.allocate();
 	row_number_shape.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
 	txn.set(&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), post_key).encode(), row_number_encoded)?;

@@ -5,7 +5,7 @@ use reifydb_core::interface::catalog::{
 	authentication::{Authentication, AuthenticationId},
 	change::CatalogTrackAuthenticationChangeOperations,
 };
-use reifydb_type::{Result, value::identity::IdentityId};
+use reifydb_value::{Result, value::identity::IdentityId};
 
 use crate::{
 	change::{

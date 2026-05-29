@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_runtime::actor::system::ActorHandle;
-use reifydb_type::{Result, value::datetime::DateTime};
+use reifydb_value::{Result, value::datetime::DateTime};
 
 use crate::{common::CommitVersion, delta::Delta};
 

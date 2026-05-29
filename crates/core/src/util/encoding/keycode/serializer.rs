@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use num_bigint::Sign;
-use reifydb_type::value::{
+use reifydb_value::value::{
 	Value,
 	blob::Blob,
 	date::Date,
@@ -14,9 +14,9 @@ use reifydb_type::value::{
 	int::Int,
 	row_number::RowNumber,
 	time::Time,
-	r#type::Type,
 	uint::Uint,
 	uuid::{Uuid4, Uuid7},
+	value_type::ValueType,
 };
 use serde::Serialize;
 
@@ -228,33 +228,33 @@ impl KeySerializer {
 			} => {
 				self.buffer.push(0x00);
 				self.buffer.push(match inner {
-					Type::Any => 0x00,
-					Type::Boolean => 0x01,
-					Type::Float4 => 0x02,
-					Type::Float8 => 0x03,
-					Type::Int1 => 0x04,
-					Type::Int2 => 0x05,
-					Type::Int4 => 0x06,
-					Type::Int8 => 0x07,
-					Type::Int16 => 0x08,
-					Type::Utf8 => 0x09,
-					Type::Uint1 => 0x0a,
-					Type::Uint2 => 0x0b,
-					Type::Uint4 => 0x0c,
-					Type::Uint8 => 0x0d,
-					Type::Uint16 => 0x0e,
-					Type::Date => 0x0f,
-					Type::DateTime => 0x10,
-					Type::Time => 0x11,
-					Type::Duration => 0x12,
-					Type::IdentityId => 0x14,
-					Type::Uuid4 => 0x15,
-					Type::Uuid7 => 0x16,
-					Type::Blob => 0x17,
-					Type::Int => 0x18,
-					Type::Uint => 0x19,
-					Type::Decimal => 0x1a,
-					Type::DictionaryId => 0x1b,
+					ValueType::Any => 0x00,
+					ValueType::Boolean => 0x01,
+					ValueType::Float4 => 0x02,
+					ValueType::Float8 => 0x03,
+					ValueType::Int1 => 0x04,
+					ValueType::Int2 => 0x05,
+					ValueType::Int4 => 0x06,
+					ValueType::Int8 => 0x07,
+					ValueType::Int16 => 0x08,
+					ValueType::Utf8 => 0x09,
+					ValueType::Uint1 => 0x0a,
+					ValueType::Uint2 => 0x0b,
+					ValueType::Uint4 => 0x0c,
+					ValueType::Uint8 => 0x0d,
+					ValueType::Uint16 => 0x0e,
+					ValueType::Date => 0x0f,
+					ValueType::DateTime => 0x10,
+					ValueType::Time => 0x11,
+					ValueType::Duration => 0x12,
+					ValueType::IdentityId => 0x14,
+					ValueType::Uuid4 => 0x15,
+					ValueType::Uuid7 => 0x16,
+					ValueType::Blob => 0x17,
+					ValueType::Int => 0x18,
+					ValueType::Uint => 0x19,
+					ValueType::Decimal => 0x1a,
+					ValueType::DictionaryId => 0x1b,
 					_ => unreachable!(
 						"Option/List/Record/Tuple types cannot be encoded as None inner type in keys"
 					),
@@ -361,7 +361,7 @@ impl KeySerializer {
 				self.extend_decimal(d);
 			}
 			Value::Any(_) | Value::Type(_) | Value::List(_) | Value::Record(_) | Value::Tuple(_) => {
-				unreachable!("Any/Type/List/Record/Tuple values cannot be serialized in keys");
+				unreachable!("Any/ValueType/List/Record/Tuple values cannot be serialized in keys");
 			}
 			Value::DictionaryId(id) => {
 				self.buffer.push(0x1b);
@@ -408,7 +408,7 @@ pub mod tests {
 		clock::{Clock, MockClock},
 		rng::Rng,
 	};
-	use reifydb_type::{
+	use reifydb_value::{
 		util::hex,
 		value::{
 			Value,
@@ -424,9 +424,9 @@ pub mod tests {
 			ordered_f64::OrderedF64,
 			row_number::RowNumber,
 			time::Time,
-			r#type::Type,
 			uint::Uint,
 			uuid::{Uuid4, Uuid7},
+			value_type::ValueType,
 		},
 	};
 
@@ -1023,7 +1023,7 @@ pub mod tests {
 
 		// Test None with typed inner
 		let mut serializer = KeySerializer::new();
-		serializer.extend_value(&Value::none_of(Type::Int4));
+		serializer.extend_value(&Value::none_of(ValueType::Int4));
 		let result = serializer.finish();
 		assert_eq!(result, vec![0x00, 0x06]); // marker + Int4 inner type marker
 
@@ -1062,7 +1062,7 @@ pub mod tests {
 
 	#[test]
 	fn test_roundtrip_none_typed() {
-		let value = Value::none_of(Type::Int4);
+		let value = Value::none_of(ValueType::Int4);
 		let mut ser = KeySerializer::new();
 		ser.extend_value(&value);
 		let bytes = ser.finish();
@@ -1419,7 +1419,7 @@ pub mod tests {
 		let (_, clock, rng) = test_clock_and_rng();
 		let values = vec![
 			Value::none(),
-			Value::none_of(Type::Int4),
+			Value::none_of(ValueType::Int4),
 			Value::Boolean(true),
 			Value::Boolean(false),
 			Value::Float4(OrderedF32::try_from(3.14f32).unwrap()),

@@ -9,7 +9,7 @@ pub mod tests {
 		clock::{Clock, MockClock},
 		rng::Rng,
 	};
-	use reifydb_type::value::{
+	use reifydb_value::value::{
 		blob::Blob,
 		date::Date,
 		datetime::DateTime,
@@ -18,9 +18,9 @@ pub mod tests {
 		identity::IdentityId,
 		int::Int,
 		time::Time,
-		r#type::Type,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
 	};
 
 	use crate::encoded::shape::RowShape;
@@ -34,7 +34,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_bool() {
-		let shape = RowShape::testing(&[Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
 		// Set a value
@@ -50,7 +50,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_integer() {
-		let shape = RowShape::testing(&[Type::Int4]);
+		let shape = RowShape::testing(&[ValueType::Int4]);
 		let mut row = shape.allocate();
 
 		// Set a value
@@ -66,7 +66,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_dynamic_type() {
-		let shape = RowShape::testing(&[Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Utf8]);
 		let mut row = shape.allocate();
 
 		// Set a string value
@@ -82,7 +82,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_multiple_fields() {
-		let shape = RowShape::testing(&[Type::Boolean, Type::Int4, Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Boolean, ValueType::Int4, ValueType::Utf8]);
 		let mut row = shape.allocate();
 
 		// Set all fields
@@ -108,7 +108,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_all_fields() {
-		let shape = RowShape::testing(&[Type::Boolean, Type::Int4, Type::Float8]);
+		let shape = RowShape::testing(&[ValueType::Boolean, ValueType::Int4, ValueType::Float8]);
 		let mut row = shape.allocate();
 
 		// Set all fields
@@ -133,7 +133,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_reuse_field() {
-		let shape = RowShape::testing(&[Type::Int8]);
+		let shape = RowShape::testing(&[ValueType::Int8]);
 		let mut row = shape.allocate();
 
 		// Set, unset, then set again
@@ -149,7 +149,12 @@ pub mod tests {
 
 	#[test]
 	fn test_set_temporal_types() {
-		let shape = RowShape::testing(&[Type::Date, Type::DateTime, Type::Time, Type::Duration]);
+		let shape = RowShape::testing(&[
+			ValueType::Date,
+			ValueType::DateTime,
+			ValueType::Time,
+			ValueType::Duration,
+		]);
 		let mut row = shape.allocate();
 
 		// Set temporal values
@@ -187,7 +192,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_uuid_types() {
-		let shape = RowShape::testing(&[Type::Uuid4, Type::Uuid7, Type::IdentityId]);
+		let shape = RowShape::testing(&[ValueType::Uuid4, ValueType::Uuid7, ValueType::IdentityId]);
 		let mut row = shape.allocate();
 		let (_mock, clock, rng) = test_clock_and_rng();
 
@@ -220,7 +225,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_decimal_int_uint() {
-		let shape = RowShape::testing(&[Type::Decimal, Type::Int, Type::Uint]);
+		let shape = RowShape::testing(&[ValueType::Decimal, ValueType::Int, ValueType::Uint]);
 		let mut row = shape.allocate();
 
 		// Set values
@@ -253,7 +258,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_blob() {
-		let shape = RowShape::testing(&[Type::Blob]);
+		let shape = RowShape::testing(&[ValueType::Blob]);
 		let mut row = shape.allocate();
 
 		// Set a blob value
@@ -276,8 +281,13 @@ pub mod tests {
 
 	#[test]
 	fn test_set_pattern() {
-		let shape =
-			RowShape::testing(&[Type::Boolean, Type::Boolean, Type::Boolean, Type::Boolean, Type::Boolean]);
+		let shape = RowShape::testing(&[
+			ValueType::Boolean,
+			ValueType::Boolean,
+			ValueType::Boolean,
+			ValueType::Boolean,
+			ValueType::Boolean,
+		]);
 		let mut row = shape.allocate();
 
 		// Set all as true

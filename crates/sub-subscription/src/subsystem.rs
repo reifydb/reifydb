@@ -55,7 +55,7 @@ use reifydb_transaction::{
 	multi::{lease::VersionLeaseGuard, transaction::MultiTransaction},
 	transaction::{Transaction, query::QueryTransaction},
 };
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	error::Error,
 	fragment::Fragment,

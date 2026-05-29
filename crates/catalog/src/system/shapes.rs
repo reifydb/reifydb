@@ -8,7 +8,7 @@ use reifydb_core::interface::catalog::{
 	id::NamespaceId,
 	vtable::VTable,
 };
-use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 use super::ids::{columns::shapes::*, vtable::SHAPES};
 
@@ -24,7 +24,7 @@ pub fn shapes() -> Arc<VTable> {
 				Column {
 					id: FINGERPRINT,
 					name: "fingerprint".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint8),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
@@ -33,7 +33,7 @@ pub fn shapes() -> Arc<VTable> {
 				Column {
 					id: FIELD_COUNT,
 					name: "field_count".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint2),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint2),
 					properties: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,

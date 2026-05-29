@@ -11,7 +11,7 @@ use reifydb_core::{
 use reifydb_rql::flow::{flow::FlowDag, loader::load_flow_dag};
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 pub struct FlowCatalog {
 	catalog: Catalog,

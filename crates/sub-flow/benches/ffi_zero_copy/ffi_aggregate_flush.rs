@@ -21,7 +21,7 @@ use reifydb_sdk::{
 	state::cache::StateCache,
 	testing::{builders::TestChangeBuilder, harness::FFIOperatorHarnessBuilder},
 };
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default, Clone, Serialize, Deserialize)]

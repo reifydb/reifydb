@@ -5,7 +5,7 @@ use reifydb_auth::error::AuthError;
 use reifydb_core::value::column::columns::Columns;
 use reifydb_rql::nodes::CreateAuthenticationNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{error::Error, value::Value};
+use reifydb_value::{error::Error, value::Value};
 
 use crate::{Result, vm::services::Services};
 

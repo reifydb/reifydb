@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::{
-	container::temporal::TemporalContainer, datetime::DateTime, frame::data::FrameColumnData, r#type::Type,
+use reifydb_value::value::{
+	container::temporal::TemporalContainer, datetime::DateTime, frame::data::FrameColumnData, value_type::ValueType,
 };
 
 fn make(v: Vec<DateTime>) -> FrameColumnData {
@@ -17,5 +17,5 @@ crate::nones_tests! {
 		DateTime::from_nanos(u64::MAX / 2),
 		DateTime::from_nanos(u64::MAX),
 	],
-	inner_type: Type::DateTime,
+	inner_type: ValueType::DateTime,
 }

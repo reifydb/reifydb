@@ -8,7 +8,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, value::r#type::Type};
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	Result,
@@ -53,7 +53,7 @@ impl BaseVTable for SystemTypes {
 		let mut names = ColumnBuffer::utf8_with_capacity(TYPE_COUNT);
 
 		for i in 1..=TYPE_COUNT as u8 {
-			let ty = Type::from_u8(i);
+			let ty = ValueType::from_u8(i);
 			ids.push(i);
 			names.push(ty.to_string().to_lowercase().as_str());
 		}

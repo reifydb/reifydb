@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::storage::DataBitVec;
+use reifydb_value::storage::DataBitVec;
 
 use crate::value::column::{ColumnBuffer, buffer::with_container};
 
@@ -34,7 +34,7 @@ pub mod tests {
 		clock::{Clock, MockClock},
 		rng::Rng,
 	};
-	use reifydb_type::value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, r#type::Type};
+	use reifydb_value::value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, value_type::ValueType};
 
 	use crate::value::column::ColumnBuffer;
 
@@ -101,7 +101,7 @@ pub mod tests {
 
 	#[test]
 	fn test_reorder_none() {
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 3);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 3);
 		col.reorder(&[2, 0, 1]);
 		assert_eq!(col.len(), 3);
 

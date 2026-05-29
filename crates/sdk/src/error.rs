@@ -4,7 +4,7 @@
 use std::{error, fmt};
 
 use reifydb_core::internal;
-use reifydb_type::error::Error;
+use reifydb_value::error::Error;
 
 #[derive(Debug)]
 pub enum SdkError {

@@ -14,7 +14,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{error, fragment::Fragment, util::cowvec::CowVec, value::r#type::Type};
+use reifydb_value::{error, fragment::Fragment, util::cowvec::CowVec, value::value_type::ValueType};
 use tracing::instrument;
 
 use super::super::decode_dictionary_columns;
@@ -28,7 +28,7 @@ pub struct TableScanNode {
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
 
-	storage_types: Vec<Type>,
+	storage_types: Vec<ValueType>,
 
 	dictionaries: Vec<Option<Dictionary>>,
 
@@ -45,7 +45,7 @@ impl TableScanNode {
 		for col in table.columns() {
 			if let Some(dict_id) = col.dictionary_id {
 				if let Some(dict) = context.services.catalog.find_dictionary(rx, dict_id)? {
-					storage_types.push(Type::DictionaryId);
+					storage_types.push(ValueType::DictionaryId);
 					dictionaries.push(Some(dict));
 				} else {
 					storage_types.push(col.constraint.get_type());

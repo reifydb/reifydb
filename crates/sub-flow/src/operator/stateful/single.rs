@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape};
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use super::utils;
 use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTransaction};

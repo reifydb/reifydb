@@ -39,7 +39,7 @@ use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	operator::{OperatorLogic, Tick, view::native::NativeChangeView},
 };
-use reifydb_type::{Result, error::Error, value::constraint::TypeConstraint};
+use reifydb_value::{Result, error::Error, value::constraint::TypeConstraint};
 use tracing::error;
 
 use crate::{

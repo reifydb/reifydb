@@ -4,7 +4,7 @@
 pub(crate) mod identity {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const IDENTITY: usize = 0;
 	pub(crate) const NAME: usize = 1;
@@ -12,9 +12,9 @@ pub(crate) mod identity {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("identity", Type::IdentityId),
-			RowShapeField::unconstrained("name", Type::Utf8),
-			RowShapeField::unconstrained("enabled", Type::Boolean),
+			RowShapeField::unconstrained("identity", ValueType::IdentityId),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
+			RowShapeField::unconstrained("enabled", ValueType::Boolean),
 		])
 	});
 }

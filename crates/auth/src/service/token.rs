@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use reifydb_catalog::{drop_expired_tokens, drop_token, drop_tokens_by_identity, find_token_by_value};
 use reifydb_core::interface::{auth::AuthStep, catalog::token::Token};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::{datetime::DateTime, identity::IdentityId};
+use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
 
 use super::AuthService;
 

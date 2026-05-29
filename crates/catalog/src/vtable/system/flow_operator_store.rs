@@ -5,7 +5,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use reifydb_core::event::{EventListener, flow::FlowOperatorLoadedEvent};
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_type::value::constraint::TypeConstraint;
+use reifydb_value::value::constraint::TypeConstraint;
 
 #[derive(Clone, Debug)]
 pub struct SystemOperatorColumnInfo {

@@ -10,7 +10,7 @@ use reifydb_core::{
 	value::column::{buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::{Value, dictionary::DictionaryEntryId};
+use reifydb_value::value::{Value, dictionary::DictionaryEntryId};
 
 use crate::{Result, transaction::operation::dictionary::DictionaryOperations};
 

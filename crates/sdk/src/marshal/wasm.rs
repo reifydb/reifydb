@@ -9,7 +9,7 @@ use reifydb_abi::data::{
 	wasm::{COLUMN_WASM_SIZE, COLUMNS_WASM_HEADER_SIZE, ColumnWasm, ColumnsWasm},
 };
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	util::bitvec::BitVec,
 	value::{
@@ -31,9 +31,9 @@ use reifydb_type::{
 		is::IsNumber,
 		row_number::RowNumber,
 		time::Time,
-		r#type::Type,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
 	},
 };
 use serde::{Serialize, de::DeserializeOwned};
@@ -473,7 +473,7 @@ fn unmarshal_column_data(
 	offsets_bytes: &[u8],
 ) -> ColumnBuffer {
 	if row_count == 0 {
-		return ColumnBuffer::none_typed(Type::Any, 0);
+		return ColumnBuffer::none_typed(ValueType::Any, 0);
 	}
 
 	let inner = match type_code {
@@ -553,7 +553,7 @@ fn unmarshal_column_data(
 				u128_container.iter().map(|v| DictionaryEntryId::U16(v.unwrap_or_default())).collect();
 			ColumnBuffer::DictionaryId(DictionaryContainer::new(entries))
 		}
-		ColumnTypeCode::Undefined => return ColumnBuffer::none_typed(Type::Any, row_count),
+		ColumnTypeCode::Undefined => return ColumnBuffer::none_typed(ValueType::Any, row_count),
 	};
 
 	maybe_wrap_option(inner, bitvec)

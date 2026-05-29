@@ -6,7 +6,7 @@ use reifydb_core::interface::catalog::{
 	config::{Config, ConfigKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 use super::Catalog;
 use crate::{CatalogStore, Result, error::CatalogError};

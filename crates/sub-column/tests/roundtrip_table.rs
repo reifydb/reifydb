@@ -9,7 +9,7 @@ use reifydb_sub_column::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 mod common;
 use common::poll_until;

@@ -24,7 +24,7 @@ use reifydb_core::{
 	testing::{CapturedEvent, CapturedInvocation},
 	value::column::columns::Columns,
 };
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	error::Diagnostic,
 	params::Params,

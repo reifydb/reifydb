@@ -14,7 +14,7 @@ use std::str;
 
 use bigdecimal::BigDecimal;
 use num_bigint::BigInt;
-use reifydb_type::{
+use reifydb_value::{
 	util::bitvec::BitVec,
 	value::{
 		container::{blob::BlobContainer, number::NumberContainer, utf8::Utf8Container},
@@ -23,8 +23,8 @@ use reifydb_type::{
 		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
 		int::Int,
 		row_number::RowNumber,
-		r#type::Type,
 		uint::Uint,
+		value_type::ValueType,
 	},
 };
 
@@ -293,11 +293,11 @@ fn decode_column_dispatch(
 	extra: &[u8],
 ) -> Result<FrameColumnData, DecodeError> {
 	let type_code = type_code & 0x7F;
-	let ty = Type::from_u8(type_code);
+	let ty = ValueType::from_u8(type_code);
 
 	match encoding {
 		Encoding::Plain | Encoding::BitPack => {
-			if ty == Type::Any {
+			if ty == ValueType::Any {
 				return any::decode_any_column(row_count, data);
 			}
 
@@ -311,17 +311,17 @@ fn decode_column_dispatch(
 			Err(DecodeError::UnsupportedType(format!("{:?}", ty)))
 		}
 		Encoding::Dict => match ty {
-			Type::Utf8 => {
+			ValueType::Utf8 => {
 				let index_width = dict_index_width_from_flags(flags);
 				let strings = decode_dict_utf8(data, extra, row_count, index_width)?;
 				Ok(FrameColumnData::Utf8(Utf8Container::new(strings)))
 			}
-			Type::Blob => {
+			ValueType::Blob => {
 				let index_width = dict_index_width_from_flags(flags);
 				let blobs = decode_dict_blob(data, extra, row_count, index_width)?;
 				Ok(FrameColumnData::Blob(BlobContainer::new(blobs)))
 			}
-			Type::Int => {
+			ValueType::Int => {
 				let index_width = dict_index_width_from_flags(flags);
 				let dict_entries = decode_dict_table_bytes(extra)?;
 				let mut values = Vec::with_capacity(row_count);
@@ -339,7 +339,7 @@ fn decode_column_dispatch(
 				}
 				Ok(FrameColumnData::Int(NumberContainer::new(values)))
 			}
-			Type::Uint => {
+			ValueType::Uint => {
 				let index_width = dict_index_width_from_flags(flags);
 				let dict_entries = decode_dict_table_bytes(extra)?;
 				let mut values = Vec::with_capacity(row_count);
@@ -357,7 +357,7 @@ fn decode_column_dispatch(
 				}
 				Ok(FrameColumnData::Uint(NumberContainer::new(values)))
 			}
-			Type::Decimal => {
+			ValueType::Decimal => {
 				let index_width = dict_index_width_from_flags(flags);
 				let dict_entries = decode_dict_table_bytes(extra)?;
 				let mut values = Vec::with_capacity(row_count);
@@ -383,7 +383,7 @@ fn decode_column_dispatch(
 			_ => Err(DecodeError::InvalidData(format!("Dict encoding not supported for type {:?}", ty))),
 		},
 		Encoding::Rle => match ty {
-			Type::Int | Type::Uint | Type::Decimal => {
+			ValueType::Int | ValueType::Uint | ValueType::Decimal => {
 				varlen::decode_rle_varlen_column(type_code, row_count, data)
 			}
 			_ => fixed::decode_rle_column(type_code, row_count, data),

@@ -6,7 +6,7 @@ use reifydb_routine::routine::{
 	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_sdk::marshal::wasm::{marshal_columns_to_bytes, unmarshal_columns_from_bytes};
-use reifydb_type::{fragment::Fragment, value::r#type::Type};
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::loader::wasm::invoke_wasm_module;
 
@@ -46,8 +46,8 @@ impl<'a> Routine<FunctionContext<'a>> for WasmScalarFunction {
 		&self.info
 	}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Any
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Any
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
@@ -65,7 +65,7 @@ impl<'a> Routine<FunctionContext<'a>> for WasmScalarFunction {
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), data)]))
 			}
 			None => {
-				let data = ColumnBuffer::none_typed(Type::Any, args.row_count());
+				let data = ColumnBuffer::none_typed(ValueType::Any, args.row_count());
 				Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), data)]))
 			}
 		}

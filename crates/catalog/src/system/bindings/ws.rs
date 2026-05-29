@@ -8,7 +8,7 @@ use reifydb_core::interface::catalog::{
 	id::NamespaceId,
 	vtable::VTable,
 };
-use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 use crate::system::{
 	bindings::common_columns,
@@ -24,7 +24,7 @@ pub fn bindings_ws() -> Arc<VTable> {
 			Column {
 				id: RPC_NAME,
 				name: "rpc_name".to_string(),
-				constraint: TypeConstraint::unconstrained(Type::Utf8),
+				constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 				properties: vec![],
 				index: ColumnIndex(4),
 				auto_increment: false,
@@ -33,7 +33,7 @@ pub fn bindings_ws() -> Arc<VTable> {
 			Column {
 				id: FORMAT,
 				name: "format".to_string(),
-				constraint: TypeConstraint::unconstrained(Type::Utf8),
+				constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 				properties: vec![],
 				index: ColumnIndex(5),
 				auto_increment: false,

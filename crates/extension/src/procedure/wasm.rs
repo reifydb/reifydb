@@ -5,7 +5,7 @@ use postcard::to_stdvec;
 use reifydb_core::value::column::columns::Columns;
 use reifydb_routine::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_sdk::{error::SdkError, marshal::wasm::unmarshal_columns_from_bytes};
-use reifydb_type::{error::Error, value::r#type::Type};
+use reifydb_value::{error::Error, value::value_type::ValueType};
 
 use crate::{error::ExtensionError, loader::wasm::invoke_wasm_module};
 
@@ -42,8 +42,8 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for WasmProcedure {
 		&self.info
 	}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Any
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Any
 	}
 
 	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {

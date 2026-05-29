@@ -19,7 +19,7 @@ use reifydb_core::{
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_type::Result;
+use reifydb_value::Result;
 use tokio::{sync::mpsc, task::JoinHandle};
 use tracing::{info, instrument};
 

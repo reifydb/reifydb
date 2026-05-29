@@ -7,7 +7,7 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::DropSubscriptionNode;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{error::Error, value::Value};
+use reifydb_value::{error::Error, value::Value};
 
 use crate::{Result, subscription::SubscriptionServiceRef, vm::services::Services};
 

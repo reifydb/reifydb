@@ -16,7 +16,7 @@ use reifydb_sub_server::{
 	state::{AppState, StateConfig},
 };
 use reifydb_sub_subscription::store::SubscriptionStore;
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::subsystem::WsSubsystem;
 

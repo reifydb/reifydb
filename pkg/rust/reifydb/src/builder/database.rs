@@ -82,7 +82,7 @@ use reifydb_transaction::{
 	TransactionVersion, interceptor::builder::InterceptorBuilder, multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 };
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 #[cfg(not(reifydb_single_threaded))]
 use crate::system::tasks::create_system_tasks;

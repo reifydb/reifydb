@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{err, error::Diagnostic, fragment::Fragment};
+use reifydb_value::{err, error::Diagnostic, fragment::Fragment};
 
 use crate::{
 	Result,

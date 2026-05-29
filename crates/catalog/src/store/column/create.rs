@@ -6,13 +6,13 @@ use reifydb_core::{
 	key::{column::ColumnKey, columns::ColumnsKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		blob::Blob,
 		constraint::{Constraint, TypeConstraint},
 		dictionary::DictionaryId,
-		r#type::Type,
+		value_type::ValueType,
 	},
 };
 
@@ -98,10 +98,11 @@ impl CatalogStore {
 			let base_type = column_to_create.constraint.get_type();
 			let is_integer_type = matches!(
 				base_type,
-				Type::Int1
-					| Type::Int2 | Type::Int4 | Type::Int8
-					| Type::Int16 | Type::Uint1 | Type::Uint2
-					| Type::Uint4 | Type::Uint8 | Type::Uint16
+				ValueType::Int1
+					| ValueType::Int2 | ValueType::Int4 | ValueType::Int8
+					| ValueType::Int16 | ValueType::Uint1
+					| ValueType::Uint2 | ValueType::Uint4
+					| ValueType::Uint8 | ValueType::Uint16
 			);
 
 			if !is_integer_type {
@@ -209,7 +210,7 @@ pub mod test {
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+	use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 	use crate::{CatalogStore, store::column::create::ColumnToCreate, test_utils::ensure_test_table};
 
@@ -226,7 +227,7 @@ pub mod test {
 				namespace_name: "test_namespace".to_string(),
 				shape_name: "test_table".to_string(),
 				column: "col_1".to_string(),
-				constraint: TypeConstraint::unconstrained(Type::Boolean),
+				constraint: TypeConstraint::unconstrained(ValueType::Boolean),
 				properties: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
@@ -243,7 +244,7 @@ pub mod test {
 				namespace_name: "test_namespace".to_string(),
 				shape_name: "test_table".to_string(),
 				column: "col_2".to_string(),
-				constraint: TypeConstraint::unconstrained(Type::Int2),
+				constraint: TypeConstraint::unconstrained(ValueType::Int2),
 				properties: vec![],
 				index: ColumnIndex(1),
 				auto_increment: false,
@@ -256,14 +257,14 @@ pub mod test {
 
 		assert_eq!(column_1.id, 16385);
 		assert_eq!(column_1.name, "col_1");
-		assert_eq!(column_1.constraint.get_type(), Type::Boolean);
+		assert_eq!(column_1.constraint.get_type(), ValueType::Boolean);
 		assert_eq!(column_1.auto_increment, false);
 
 		let column_2 = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(16386)).unwrap();
 
 		assert_eq!(column_2.id, 16386);
 		assert_eq!(column_2.name, "col_2");
-		assert_eq!(column_2.constraint.get_type(), Type::Int2);
+		assert_eq!(column_2.constraint.get_type(), ValueType::Int2);
 		assert_eq!(column_2.auto_increment, false);
 	}
 
@@ -280,7 +281,7 @@ pub mod test {
 				namespace_name: "test_namespace".to_string(),
 				shape_name: "test_table".to_string(),
 				column: "id".to_string(),
-				constraint: TypeConstraint::unconstrained(Type::Uint8),
+				constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 				properties: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
@@ -293,7 +294,7 @@ pub mod test {
 
 		assert_eq!(column.id, ColumnId(16385));
 		assert_eq!(column.name, "id");
-		assert_eq!(column.constraint.get_type(), Type::Uint8);
+		assert_eq!(column.constraint.get_type(), ValueType::Uint8);
 		assert_eq!(column.auto_increment, true);
 	}
 
@@ -312,7 +313,7 @@ pub mod test {
 				namespace_name: "test_namespace".to_string(),
 				shape_name: "test_table".to_string(),
 				column: "name".to_string(),
-				constraint: TypeConstraint::unconstrained(Type::Utf8),
+				constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 				properties: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
@@ -334,7 +335,7 @@ pub mod test {
 				namespace_name: "test_namespace".to_string(),
 				shape_name: "test_table".to_string(),
 				column: "is_active".to_string(),
-				constraint: TypeConstraint::unconstrained(Type::Boolean),
+				constraint: TypeConstraint::unconstrained(ValueType::Boolean),
 				properties: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
@@ -354,7 +355,7 @@ pub mod test {
 				namespace_name: "test_namespace".to_string(),
 				shape_name: "test_table".to_string(),
 				column: "price".to_string(),
-				constraint: TypeConstraint::unconstrained(Type::Float8),
+				constraint: TypeConstraint::unconstrained(ValueType::Float8),
 				properties: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
@@ -379,7 +380,7 @@ pub mod test {
 				namespace_name: "test_namespace".to_string(),
 				shape_name: "test_table".to_string(),
 				column: "col_1".to_string(),
-				constraint: TypeConstraint::unconstrained(Type::Boolean),
+				constraint: TypeConstraint::unconstrained(ValueType::Boolean),
 				properties: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
@@ -397,7 +398,7 @@ pub mod test {
 				namespace_name: "test_namespace".to_string(),
 				shape_name: "test_table".to_string(),
 				column: "col_1".to_string(),
-				constraint: TypeConstraint::unconstrained(Type::Boolean),
+				constraint: TypeConstraint::unconstrained(ValueType::Boolean),
 				properties: vec![],
 				index: ColumnIndex(1),
 				auto_increment: false,

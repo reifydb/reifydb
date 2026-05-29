@@ -8,11 +8,11 @@ use std::{
 };
 
 use indexmap::IndexMap;
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	fragment::Fragment,
 	util::cowvec::CowVec,
-	value::{Value, constraint::Constraint, datetime::DateTime, row_number::RowNumber, r#type::Type},
+	value::{Value, constraint::Constraint, datetime::DateTime, row_number::RowNumber, value_type::ValueType},
 };
 use serde::{Deserialize, Serialize};
 
@@ -74,7 +74,7 @@ impl<'a> ColumnRef<'a> {
 		self.data
 	}
 
-	pub fn get_type(&self) -> Type {
+	pub fn get_type(&self) -> ValueType {
 		self.data.get_type()
 	}
 
@@ -91,7 +91,7 @@ fn value_to_buffer(value: Value) -> ColumnBuffer {
 	match value {
 		Value::None {
 			..
-		} => ColumnBuffer::none_typed(Type::Boolean, 1),
+		} => ColumnBuffer::none_typed(ValueType::Boolean, 1),
 		Value::Boolean(v) => ColumnBuffer::bool([v]),
 		Value::Float4(v) => ColumnBuffer::float4([v.into()]),
 		Value::Float8(v) => ColumnBuffer::float8([v.into()]),
@@ -367,7 +367,7 @@ impl Columns {
 
 		let mut name_vec: Vec<Fragment> = names.iter().map(Fragment::internal).collect();
 		let mut buffers: Vec<ColumnBuffer> =
-			(0..column_count).map(|_| ColumnBuffer::none_typed(Type::Boolean, 0)).collect();
+			(0..column_count).map(|_| ColumnBuffer::none_typed(ValueType::Boolean, 0)).collect();
 
 		for row in result_rows {
 			assert_eq!(row.len(), column_count, "row length does not match column count");
@@ -679,7 +679,7 @@ impl Columns {
 			};
 			data.push_value(value);
 
-			if column_type == Type::DictionaryId
+			if column_type == ValueType::DictionaryId
 				&& let ColumnBuffer::DictionaryId(container) = &mut data
 				&& let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
 			{
@@ -749,7 +749,7 @@ impl Columns {
 
 			columns_vec[idx].push_value(value);
 
-			if column_type == Type::DictionaryId
+			if column_type == ValueType::DictionaryId
 				&& let ColumnBuffer::DictionaryId(container) = &mut columns_vec[idx]
 				&& let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
 			{
@@ -787,7 +787,7 @@ impl Columns {
 				};
 				data.push_value(value);
 
-				if column_type == Type::DictionaryId
+				if column_type == ValueType::DictionaryId
 					&& let ColumnBuffer::DictionaryId(container) = &mut data
 					&& let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
 				{
@@ -840,7 +840,7 @@ impl Columns {
 
 			let mut data = ColumnBuffer::with_capacity(column_type.clone(), capacity);
 
-			if column_type == Type::DictionaryId
+			if column_type == ValueType::DictionaryId
 				&& let ColumnBuffer::DictionaryId(container) = &mut data
 				&& let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
 			{
@@ -899,7 +899,7 @@ impl Columns {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::{
+	use reifydb_value::value::{
 		date::Date, datetime::DateTime, duration::Duration, ordered_f64::OrderedF64, time::Time,
 	};
 
@@ -967,8 +967,8 @@ pub mod tests {
 		// identical Columns; this pins that invariant for the multi-row case, which is the
 		// only case where push_rows takes its own (pre-sizing) branch.
 		let shape = RowShape::new(vec![
-			RowShapeField::unconstrained("id".to_string(), Type::Int4),
-			RowShapeField::unconstrained("label".to_string(), Type::Utf8),
+			RowShapeField::unconstrained("id".to_string(), ValueType::Int4),
+			RowShapeField::unconstrained("label".to_string(), ValueType::Utf8),
 		]);
 
 		let make = |number: u64, id: i32, label: &str| {
@@ -1032,8 +1032,11 @@ pub mod tests {
 		// None, since field.constraint.get_type() is consulted in that case and would hit
 		// the Option branch.
 		let shape = RowShape::new(vec![
-			RowShapeField::unconstrained("id".to_string(), Type::Int4),
-			RowShapeField::unconstrained("opt_val".to_string(), Type::Option(Box::new(Type::Float8))),
+			RowShapeField::unconstrained("id".to_string(), ValueType::Int4),
+			RowShapeField::unconstrained(
+				"opt_val".to_string(),
+				ValueType::Option(Box::new(ValueType::Float8)),
+			),
 		]);
 
 		let make = |number: u64, id: i32, opt: Value| {

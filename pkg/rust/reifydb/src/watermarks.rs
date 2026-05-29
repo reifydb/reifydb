@@ -9,7 +9,7 @@ use reifydb_core::{
 };
 #[cfg(feature = "sub_replication")]
 use reifydb_sub_replication::replica::watermark::ReplicaWatermark;
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::Database;
 

@@ -45,16 +45,16 @@ pub mod tests {
 	use reifydb_core::interface::catalog::id::{ColumnId, TableId};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+	use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 	use crate::{CatalogStore, test_utils::create_test_column};
 
 	#[test]
 	fn test_ok() {
 		let mut txn = create_test_admin_transaction();
-		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]);
-		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]);
-		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]);
+		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(ValueType::Int1), vec![]);
+		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(ValueType::Int2), vec![]);
+		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(ValueType::Int4), vec![]);
 
 		let result = CatalogStore::find_column_by_name(&mut Transaction::Admin(&mut txn), TableId(1), "col_3")
 			.unwrap()
@@ -62,14 +62,14 @@ pub mod tests {
 
 		assert_eq!(result.id, ColumnId(16387));
 		assert_eq!(result.name, "col_3");
-		assert_eq!(result.constraint.get_type(), Type::Int4);
+		assert_eq!(result.constraint.get_type(), ValueType::Int4);
 		assert_eq!(result.auto_increment, false);
 	}
 
 	#[test]
 	fn test_not_found() {
 		let mut txn = create_test_admin_transaction();
-		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]);
+		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(ValueType::Int1), vec![]);
 
 		let result =
 			CatalogStore::find_column_by_name(&mut Transaction::Admin(&mut txn), TableId(1), "not_found")

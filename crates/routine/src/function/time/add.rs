@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_type::value::{container::temporal::TemporalContainer, time::Time, r#type::Type};
+use reifydb_value::value::{container::temporal::TemporalContainer, time::Time, value_type::ValueType};
 
 use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
@@ -31,8 +31,8 @@ impl<'a> Routine<FunctionContext<'a>> for TimeAdd {
 		&self.info
 	}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Time
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Time
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
@@ -90,13 +90,13 @@ impl<'a> Routine<FunctionContext<'a>> for TimeAdd {
 			(ColumnBuffer::Time(_), other) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 1,
-				expected: vec![Type::Duration],
+				expected: vec![ValueType::Duration],
 				actual: other.get_type(),
 			}),
 			(other, _) => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
-				expected: vec![Type::Time],
+				expected: vec![ValueType::Time],
 				actual: other.get_type(),
 			}),
 		}

@@ -38,11 +38,11 @@ use reifydb_runtime::actor::{
 	traits::{Actor, Directive},
 };
 use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	fragment::Fragment,
 	params::Params,
-	value::{datetime::DateTime, identity::IdentityId, r#type::Type},
+	value::{datetime::DateTime, identity::IdentityId, value_type::ValueType},
 };
 use tracing::{debug, warn};
 
@@ -275,19 +275,19 @@ impl SeriesMaterializationActor {
 	}
 }
 
-fn scan_output_schema(series: &Series) -> Vec<(String, Type)> {
+fn scan_output_schema(series: &Series) -> Vec<(String, ValueType)> {
 	let key_name = series.key.column().to_string();
 	let key_ty = series
 		.columns
 		.iter()
 		.find(|c| c.name == key_name)
 		.map(|c| c.constraint.get_type())
-		.unwrap_or(Type::Uint8);
+		.unwrap_or(ValueType::Uint8);
 
 	let mut schema = Vec::with_capacity(series.columns.len() + 1);
 	schema.push((key_name.clone(), key_ty));
 	if series.tag.is_some() {
-		schema.push(("tag".to_string(), Type::Uint1));
+		schema.push(("tag".to_string(), ValueType::Uint1));
 	}
 	for col in series.data_columns() {
 		schema.push((col.name.clone(), col.constraint.get_type()));

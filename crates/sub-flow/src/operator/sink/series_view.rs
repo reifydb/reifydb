@@ -12,7 +12,7 @@ use reifydb_core::{
 	key::row::RowKey,
 	value::column::columns::Columns,
 };
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, row_number::RowNumber},
 };

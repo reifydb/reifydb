@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{encoded::row::EncodedRow, interface::catalog::ringbuffer::RingBuffer};
-use reifydb_type::{Result, value::row_number::RowNumber};
+use reifydb_value::{Result, value::row_number::RowNumber};
 
 use super::WithInterceptors;
 use crate::interceptor::chain::InterceptorChain;

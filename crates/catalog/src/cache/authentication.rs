@@ -5,7 +5,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::authentication::{Authentication, AuthenticationId},
 };
-use reifydb_type::value::identity::IdentityId;
+use reifydb_value::value::identity::IdentityId;
 
 use crate::cache::{CatalogCache, MultiVersionAuthentication};
 

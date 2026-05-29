@@ -12,7 +12,7 @@ default = []
 
 [dependencies]
 reifydb-client = { workspace = true, features = ["grpc"] }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 
 tokio = { workspace = true }
 

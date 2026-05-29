@@ -15,7 +15,7 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_type::value::{
+use reifydb_value::value::{
 	Value,
 	blob::Blob,
 	date::Date,

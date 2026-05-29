@@ -13,7 +13,7 @@
 //! carry populated `row_numbers` / `created_at` / `updated_at` metadata
 //! arrays - the shape an operator like `sort | take` produces.
 
-use reifydb_type::value::{
+use reifydb_value::value::{
 	container::{number::NumberContainer, utf8::Utf8Container},
 	datetime::DateTime,
 	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},

@@ -8,7 +8,7 @@ use reifydb_core::interface::catalog::{
 	id::NamespaceId,
 	vtable::VTable,
 };
-use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 use super::ids::{columns::flow_edges::*, vtable::FLOW_EDGES};
 
@@ -24,7 +24,7 @@ pub fn flow_edges() -> Arc<VTable> {
 				Column {
 					id: ID,
 					name: "id".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint8),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
@@ -33,7 +33,7 @@ pub fn flow_edges() -> Arc<VTable> {
 				Column {
 					id: FLOW_ID,
 					name: "flow_id".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint8),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,
@@ -42,7 +42,7 @@ pub fn flow_edges() -> Arc<VTable> {
 				Column {
 					id: SOURCE,
 					name: "source".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint8),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
 					index: ColumnIndex(2),
 					auto_increment: false,
@@ -51,7 +51,7 @@ pub fn flow_edges() -> Arc<VTable> {
 				Column {
 					id: TARGET,
 					name: "target".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint8),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
 					index: ColumnIndex(3),
 					auto_increment: false,

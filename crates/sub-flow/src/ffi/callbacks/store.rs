@@ -15,7 +15,7 @@ use reifydb_core::{
 	interface::store::MultiVersionBatch,
 };
 use reifydb_extension::procedure::ffi_callbacks::memory::{host_alloc, host_free};
-use reifydb_type::error::Error;
+use reifydb_value::error::Error;
 
 use super::store_iterator::{self, StoreIteratorHandle};
 use crate::ffi::context::get_transaction_mut;

@@ -5,9 +5,9 @@ use std::time::Duration;
 
 use reifydb_core::interface::catalog::{id::SubscriptionId, subscription::HydrationConfig};
 #[cfg(not(reifydb_single_threaded))]
-use reifydb_type::value::frame::{column::FrameColumn, frame::Frame};
+use reifydb_value::value::frame::{column::FrameColumn, frame::Frame};
 #[cfg(not(reifydb_single_threaded))]
-use reifydb_type::{
+use reifydb_value::{
 	params::Params,
 	value::{Value, identity::IdentityId},
 };

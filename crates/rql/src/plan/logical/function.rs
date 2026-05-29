@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::constraint::TypeConstraint;
+use reifydb_value::value::constraint::TypeConstraint;
 
 use super::LogicalPlan;
 use crate::{

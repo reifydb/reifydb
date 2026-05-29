@@ -9,7 +9,7 @@ use reifydb_transaction::{
 	change::TransactionalPolicyChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_type::fragment::Fragment;
+use reifydb_value::fragment::Fragment;
 use tracing::{instrument, warn};
 
 use crate::{

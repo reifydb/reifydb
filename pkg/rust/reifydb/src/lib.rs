@@ -117,12 +117,11 @@ pub use reifydb_subscription as subscription;
 pub use reifydb_testing as testing;
 pub use reifydb_transaction as transaction;
 pub use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
-pub use reifydb_type as r#type;
-pub use reifydb_type::{
+pub use reifydb_value as value;
+pub use reifydb_value::{
 	Result,
 	error::Error,
 	params::Params,
-	value,
 	value::{
 		Value,
 		frame::{
@@ -137,7 +136,7 @@ pub use reifydb_type::{
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
 		try_from::{FromValueError, TryFromValue, TryFromValueCoerce},
-		r#type::Type,
+		value_type::ValueType,
 	},
 };
 pub use reifydb_wire_format as wire_format;

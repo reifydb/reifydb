@@ -22,7 +22,7 @@ pub mod take;
 
 use std::fmt;
 
-use reifydb_type::{
+use reifydb_value::{
 	storage::{Cow, DataBitVec, Storage},
 	util::bitvec::BitVec,
 	value::{
@@ -39,9 +39,9 @@ use reifydb_type::{
 		duration::Duration,
 		int::Int,
 		time::Time,
-		r#type::Type,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
 	},
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -649,49 +649,49 @@ impl<S: Storage> ColumnBuffer<S> {
 		}
 	}
 
-	pub fn get_type(&self) -> Type {
+	pub fn get_type(&self) -> ValueType {
 		match self {
-			ColumnBuffer::Bool(_) => Type::Boolean,
-			ColumnBuffer::Float4(_) => Type::Float4,
-			ColumnBuffer::Float8(_) => Type::Float8,
-			ColumnBuffer::Int1(_) => Type::Int1,
-			ColumnBuffer::Int2(_) => Type::Int2,
-			ColumnBuffer::Int4(_) => Type::Int4,
-			ColumnBuffer::Int8(_) => Type::Int8,
-			ColumnBuffer::Int16(_) => Type::Int16,
-			ColumnBuffer::Uint1(_) => Type::Uint1,
-			ColumnBuffer::Uint2(_) => Type::Uint2,
-			ColumnBuffer::Uint4(_) => Type::Uint4,
-			ColumnBuffer::Uint8(_) => Type::Uint8,
-			ColumnBuffer::Uint16(_) => Type::Uint16,
+			ColumnBuffer::Bool(_) => ValueType::Boolean,
+			ColumnBuffer::Float4(_) => ValueType::Float4,
+			ColumnBuffer::Float8(_) => ValueType::Float8,
+			ColumnBuffer::Int1(_) => ValueType::Int1,
+			ColumnBuffer::Int2(_) => ValueType::Int2,
+			ColumnBuffer::Int4(_) => ValueType::Int4,
+			ColumnBuffer::Int8(_) => ValueType::Int8,
+			ColumnBuffer::Int16(_) => ValueType::Int16,
+			ColumnBuffer::Uint1(_) => ValueType::Uint1,
+			ColumnBuffer::Uint2(_) => ValueType::Uint2,
+			ColumnBuffer::Uint4(_) => ValueType::Uint4,
+			ColumnBuffer::Uint8(_) => ValueType::Uint8,
+			ColumnBuffer::Uint16(_) => ValueType::Uint16,
 			ColumnBuffer::Utf8 {
 				..
-			} => Type::Utf8,
-			ColumnBuffer::Date(_) => Type::Date,
-			ColumnBuffer::DateTime(_) => Type::DateTime,
-			ColumnBuffer::Time(_) => Type::Time,
-			ColumnBuffer::Duration(_) => Type::Duration,
-			ColumnBuffer::IdentityId(_) => Type::IdentityId,
-			ColumnBuffer::Uuid4(_) => Type::Uuid4,
-			ColumnBuffer::Uuid7(_) => Type::Uuid7,
+			} => ValueType::Utf8,
+			ColumnBuffer::Date(_) => ValueType::Date,
+			ColumnBuffer::DateTime(_) => ValueType::DateTime,
+			ColumnBuffer::Time(_) => ValueType::Time,
+			ColumnBuffer::Duration(_) => ValueType::Duration,
+			ColumnBuffer::IdentityId(_) => ValueType::IdentityId,
+			ColumnBuffer::Uuid4(_) => ValueType::Uuid4,
+			ColumnBuffer::Uuid7(_) => ValueType::Uuid7,
 			ColumnBuffer::Blob {
 				..
-			} => Type::Blob,
+			} => ValueType::Blob,
 			ColumnBuffer::Int {
 				..
-			} => Type::Int,
+			} => ValueType::Int,
 			ColumnBuffer::Uint {
 				..
-			} => Type::Uint,
+			} => ValueType::Uint,
 			ColumnBuffer::Decimal {
 				..
-			} => Type::Decimal,
-			ColumnBuffer::DictionaryId(_) => Type::DictionaryId,
-			ColumnBuffer::Any(_) => Type::Any,
+			} => ValueType::Decimal,
+			ColumnBuffer::DictionaryId(_) => ValueType::DictionaryId,
+			ColumnBuffer::Any(_) => ValueType::Any,
 			ColumnBuffer::Option {
 				inner,
 				..
-			} => Type::Option(Box::new(inner.get_type())),
+			} => ValueType::Option(Box::new(inner.get_type())),
 		}
 	}
 
@@ -747,39 +747,41 @@ impl<S: Storage> ColumnBuffer<S> {
 	}
 
 	pub fn is_bool(&self) -> bool {
-		self.get_type() == Type::Boolean
+		self.get_type() == ValueType::Boolean
 	}
 
 	pub fn is_float(&self) -> bool {
-		self.get_type() == Type::Float4 || self.get_type() == Type::Float8
+		self.get_type() == ValueType::Float4 || self.get_type() == ValueType::Float8
 	}
 
 	pub fn is_utf8(&self) -> bool {
-		self.get_type() == Type::Utf8
+		self.get_type() == ValueType::Utf8
 	}
 
 	pub fn is_number(&self) -> bool {
 		matches!(
 			self.get_type(),
-			Type::Float4
-				| Type::Float8 | Type::Int1 | Type::Int2
-				| Type::Int4 | Type::Int8 | Type::Int16
-				| Type::Uint1 | Type::Uint2 | Type::Uint4
-				| Type::Uint8 | Type::Uint16 | Type::Int
-				| Type::Uint | Type::Decimal
+			ValueType::Float4
+				| ValueType::Float8 | ValueType::Int1
+				| ValueType::Int2 | ValueType::Int4
+				| ValueType::Int8 | ValueType::Int16
+				| ValueType::Uint1 | ValueType::Uint2
+				| ValueType::Uint4 | ValueType::Uint8
+				| ValueType::Uint16 | ValueType::Int
+				| ValueType::Uint | ValueType::Decimal
 		)
 	}
 
 	pub fn is_text(&self) -> bool {
-		self.get_type() == Type::Utf8
+		self.get_type() == ValueType::Utf8
 	}
 
 	pub fn is_temporal(&self) -> bool {
-		matches!(self.get_type(), Type::Date | Type::DateTime | Type::Time | Type::Duration)
+		matches!(self.get_type(), ValueType::Date | ValueType::DateTime | ValueType::Time | ValueType::Duration)
 	}
 
 	pub fn is_uuid(&self) -> bool {
-		matches!(self.get_type(), Type::Uuid4 | Type::Uuid7)
+		matches!(self.get_type(), ValueType::Uuid4 | ValueType::Uuid7)
 	}
 }
 
@@ -851,39 +853,39 @@ impl<S: Storage> ColumnBuffer<S> {
 }
 
 impl ColumnBuffer {
-	pub fn with_capacity(target: Type, capacity: usize) -> Self {
+	pub fn with_capacity(target: ValueType, capacity: usize) -> Self {
 		match target {
-			Type::Boolean => Self::bool_with_capacity(capacity),
-			Type::Float4 => Self::float4_with_capacity(capacity),
-			Type::Float8 => Self::float8_with_capacity(capacity),
-			Type::Int1 => Self::int1_with_capacity(capacity),
-			Type::Int2 => Self::int2_with_capacity(capacity),
-			Type::Int4 => Self::int4_with_capacity(capacity),
-			Type::Int8 => Self::int8_with_capacity(capacity),
-			Type::Int16 => Self::int16_with_capacity(capacity),
-			Type::Uint1 => Self::uint1_with_capacity(capacity),
-			Type::Uint2 => Self::uint2_with_capacity(capacity),
-			Type::Uint4 => Self::uint4_with_capacity(capacity),
-			Type::Uint8 => Self::uint8_with_capacity(capacity),
-			Type::Uint16 => Self::uint16_with_capacity(capacity),
-			Type::Utf8 => Self::utf8_with_capacity(capacity),
-			Type::Date => Self::date_with_capacity(capacity),
-			Type::DateTime => Self::datetime_with_capacity(capacity),
-			Type::Time => Self::time_with_capacity(capacity),
-			Type::Duration => Self::duration_with_capacity(capacity),
-			Type::IdentityId => Self::identity_id_with_capacity(capacity),
-			Type::Uuid4 => Self::uuid4_with_capacity(capacity),
-			Type::Uuid7 => Self::uuid7_with_capacity(capacity),
-			Type::Blob => Self::blob_with_capacity(capacity),
-			Type::Int => Self::int_with_capacity(capacity),
-			Type::Uint => Self::uint_with_capacity(capacity),
-			Type::Decimal => Self::decimal_with_capacity(capacity),
-			Type::DictionaryId => Self::dictionary_id_with_capacity(capacity),
-			Type::Option(inner) => ColumnBuffer::Option {
+			ValueType::Boolean => Self::bool_with_capacity(capacity),
+			ValueType::Float4 => Self::float4_with_capacity(capacity),
+			ValueType::Float8 => Self::float8_with_capacity(capacity),
+			ValueType::Int1 => Self::int1_with_capacity(capacity),
+			ValueType::Int2 => Self::int2_with_capacity(capacity),
+			ValueType::Int4 => Self::int4_with_capacity(capacity),
+			ValueType::Int8 => Self::int8_with_capacity(capacity),
+			ValueType::Int16 => Self::int16_with_capacity(capacity),
+			ValueType::Uint1 => Self::uint1_with_capacity(capacity),
+			ValueType::Uint2 => Self::uint2_with_capacity(capacity),
+			ValueType::Uint4 => Self::uint4_with_capacity(capacity),
+			ValueType::Uint8 => Self::uint8_with_capacity(capacity),
+			ValueType::Uint16 => Self::uint16_with_capacity(capacity),
+			ValueType::Utf8 => Self::utf8_with_capacity(capacity),
+			ValueType::Date => Self::date_with_capacity(capacity),
+			ValueType::DateTime => Self::datetime_with_capacity(capacity),
+			ValueType::Time => Self::time_with_capacity(capacity),
+			ValueType::Duration => Self::duration_with_capacity(capacity),
+			ValueType::IdentityId => Self::identity_id_with_capacity(capacity),
+			ValueType::Uuid4 => Self::uuid4_with_capacity(capacity),
+			ValueType::Uuid7 => Self::uuid7_with_capacity(capacity),
+			ValueType::Blob => Self::blob_with_capacity(capacity),
+			ValueType::Int => Self::int_with_capacity(capacity),
+			ValueType::Uint => Self::uint_with_capacity(capacity),
+			ValueType::Decimal => Self::decimal_with_capacity(capacity),
+			ValueType::DictionaryId => Self::dictionary_id_with_capacity(capacity),
+			ValueType::Option(inner) => ColumnBuffer::Option {
 				inner: Box::new(ColumnBuffer::with_capacity(*inner, capacity)),
 				bitvec: BitVec::with_capacity(capacity),
 			},
-			Type::Any | Type::List(_) | Type::Record(_) | Type::Tuple(_) => {
+			ValueType::Any | ValueType::List(_) | ValueType::Record(_) | ValueType::Tuple(_) => {
 				Self::any_with_capacity(capacity)
 			}
 		}

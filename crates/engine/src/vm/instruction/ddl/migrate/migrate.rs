@@ -13,7 +13,7 @@ use reifydb_rql::{
 	nodes::MigrateNode,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 use crate::{
 	Result,

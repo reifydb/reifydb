@@ -3,7 +3,7 @@
 
 use std::{f32, ptr};
 
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
@@ -11,7 +11,7 @@ impl RowShape {
 	pub fn set_f32(&self, row: &mut EncodedRow, index: usize, value: impl Into<f32>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Float4);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Float4);
 		row.set_valid(index, true);
 		unsafe {
 			ptr::write_unaligned(
@@ -24,12 +24,12 @@ impl RowShape {
 	pub fn get_f32(&self, row: &EncodedRow, index: usize) -> f32 {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Float4);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Float4);
 		unsafe { (row.as_ptr().add(field.offset as usize) as *const f32).read_unaligned() }
 	}
 
 	pub fn try_get_f32(&self, row: &EncodedRow, index: usize) -> Option<f32> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Float4 {
+		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Float4 {
 			Some(self.get_f32(row, index))
 		} else {
 			None
@@ -42,13 +42,13 @@ impl RowShape {
 pub mod tests {
 	use std::f32::consts::{E, PI};
 
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_set_get_f32() {
-		let shape = RowShape::testing(&[Type::Float4]);
+		let shape = RowShape::testing(&[ValueType::Float4]);
 		let mut row = shape.allocate();
 		shape.set_f32(&mut row, 0, 1.25f32);
 		assert_eq!(shape.get_f32(&row, 0), 1.25f32);
@@ -56,7 +56,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_f32() {
-		let shape = RowShape::testing(&[Type::Float4]);
+		let shape = RowShape::testing(&[ValueType::Float4]);
 		let mut row = shape.allocate();
 
 		assert_eq!(shape.try_get_f32(&row, 0), None);
@@ -67,7 +67,7 @@ pub mod tests {
 
 	#[test]
 	fn test_special_values() {
-		let shape = RowShape::testing(&[Type::Float4]);
+		let shape = RowShape::testing(&[ValueType::Float4]);
 		let mut row = shape.allocate();
 
 		// Test zero
@@ -97,7 +97,7 @@ pub mod tests {
 
 	#[test]
 	fn test_extreme_values() {
-		let shape = RowShape::testing(&[Type::Float4]);
+		let shape = RowShape::testing(&[ValueType::Float4]);
 		let mut row = shape.allocate();
 
 		shape.set_f32(&mut row, 0, f32::MAX);
@@ -114,7 +114,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let shape = RowShape::testing(&[Type::Float4, Type::Int4, Type::Float4]);
+		let shape = RowShape::testing(&[ValueType::Float4, ValueType::Int4, ValueType::Float4]);
 		let mut row = shape.allocate();
 
 		shape.set_f32(&mut row, 0, 3.14f32);
@@ -128,7 +128,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let shape = RowShape::testing(&[Type::Float4, Type::Float4]);
+		let shape = RowShape::testing(&[ValueType::Float4, ValueType::Float4]);
 		let mut row = shape.allocate();
 
 		shape.set_f32(&mut row, 0, 3.14f32);
@@ -142,7 +142,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_f32_wrong_type() {
-		let shape = RowShape::testing(&[Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
 		shape.set_bool(&mut row, 0, true);
@@ -152,7 +152,7 @@ pub mod tests {
 
 	#[test]
 	fn test_subnormal_values() {
-		let shape = RowShape::testing(&[Type::Float4]);
+		let shape = RowShape::testing(&[ValueType::Float4]);
 		let mut row = shape.allocate();
 
 		// Test smallest positive subnormal
@@ -173,7 +173,7 @@ pub mod tests {
 
 	#[test]
 	fn test_nan_payload_preservation() {
-		let shape = RowShape::testing(&[Type::Float4]);
+		let shape = RowShape::testing(&[ValueType::Float4]);
 		let mut row = shape.allocate();
 
 		// Test different NaN representations
@@ -194,7 +194,7 @@ pub mod tests {
 
 	#[test]
 	fn test_repeated_operations() {
-		let shape = RowShape::testing(&[Type::Float4]);
+		let shape = RowShape::testing(&[ValueType::Float4]);
 		let mut row = shape.allocate();
 		let initial_len = row.len();
 
@@ -211,7 +211,7 @@ pub mod tests {
 
 	#[test]
 	fn test_unaligned_access() {
-		let shape = create_unaligned_layout(Type::Float4);
+		let shape = create_unaligned_layout(ValueType::Float4);
 		let mut row = shape.allocate();
 
 		// Test at odd offset (index 1)
@@ -229,7 +229,7 @@ pub mod tests {
 
 	#[test]
 	fn test_denormalized_transitions() {
-		let shape = RowShape::testing(&[Type::Float4]);
+		let shape = RowShape::testing(&[ValueType::Float4]);
 		let mut row = shape.allocate();
 
 		// Test transition from normal to subnormal
@@ -254,12 +254,12 @@ pub mod tests {
 	}
 
 	/// Creates a layout with odd alignment to test unaligned access
-	pub fn create_unaligned_layout(target_type: Type) -> RowShape {
+	pub fn create_unaligned_layout(target_type: ValueType) -> RowShape {
 		// Use Int1 (1 byte) to create odd alignment
 		RowShape::testing(&[
-			Type::Int1,          // 1 byte offset
+			ValueType::Int1,     // 1 byte offset
 			target_type.clone(), // Now at odd offset
-			Type::Int1,          // Another odd-sized field
+			ValueType::Int1,     // Another odd-sized field
 			target_type,         /* Another instance at different odd
 			                      * offset */
 		])

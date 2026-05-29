@@ -10,7 +10,7 @@ use reifydb_core::{
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, util::cowvec::CowVec};
+use reifydb_value::{fragment::Fragment, util::cowvec::CowVec};
 use tracing::instrument;
 
 use super::NoopNode;

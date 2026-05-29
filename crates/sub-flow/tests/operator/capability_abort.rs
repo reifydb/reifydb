@@ -18,7 +18,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_sub_flow::operator::guard::enforce_apply_capabilities;
-use reifydb_type::value::datetime::DateTime;
+use reifydb_value::value::datetime::DateTime;
 
 const CHILD_ENV: &str = "REIFYDB_CAPABILITY_ABORT_CHILD";
 const CHILD_TEST_NAME: &str = "capability_abort::aborts_when_operator_receives_undeclared_diff_kind";

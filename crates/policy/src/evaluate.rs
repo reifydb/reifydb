@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::columns::Columns;
 use reifydb_rql::expression::Expression;
-use reifydb_type::{Result, value::identity::IdentityId};
+use reifydb_value::{Result, value::identity::IdentityId};
 
 pub trait PolicyEvaluator {
 	fn evaluate_condition(

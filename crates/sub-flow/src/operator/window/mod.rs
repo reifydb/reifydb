@@ -61,19 +61,22 @@ use reifydb_runtime::{
 	context::RuntimeContext,
 	hash::{Hash128, xxh3_128},
 };
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	error::Error,
 	fragment::Fragment,
 	params::Params,
 	util::cowvec::CowVec,
-	value::{Value, blob::Blob, datetime::DateTime, identity::IdentityId, row_number::RowNumber, r#type::Type},
+	value::{
+		Value, blob::Blob, datetime::DateTime, identity::IdentityId, row_number::RowNumber,
+		value_type::ValueType,
+	},
 };
 
 use crate::operator::stateful::{raw::RawStatefulOperator, row::RowNumberProvider, window::WindowStateful};
 
 #[inline]
-fn build_aggregation_shape(names: &[String], types: &[Type]) -> RowShape {
+fn build_aggregation_shape(names: &[String], types: &[ValueType]) -> RowShape {
 	let fields: Vec<RowShapeField> = names
 		.iter()
 		.zip(types.iter())
@@ -87,7 +90,7 @@ static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::ne
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowLayout {
 	pub names: Vec<String>,
-	pub types: Vec<Type>,
+	pub types: Vec<ValueType>,
 }
 
 impl WindowLayout {
@@ -214,7 +217,7 @@ fn make_single_row_columns_for_agg(layout: &WindowLayout, row: &Row, kind: &Fast
 			}]))
 		}
 		None => {
-			let mut buf = ColumnBuffer::with_capacity(Type::Int4, 1);
+			let mut buf = ColumnBuffer::with_capacity(ValueType::Int4, 1);
 			buf.push_value(Value::Int4(0));
 			Some(Columns::new(vec![ColumnWithName {
 				name: Fragment::internal("dummy"),
@@ -248,7 +251,7 @@ fn events_to_agg_columns(layout: &WindowLayout, events: &[WindowEvent], kind: &F
 			}]))
 		}
 		None => {
-			let mut buf = ColumnBuffer::with_capacity(Type::Int4, events.len());
+			let mut buf = ColumnBuffer::with_capacity(ValueType::Int4, events.len());
 			for _ in events {
 				buf.push_value(Value::Int4(0));
 			}
@@ -984,7 +987,7 @@ impl WindowOperator {
 		&self,
 		window_layout: &WindowLayout,
 		events: &[WindowEvent],
-	) -> Result<(Vec<Value>, Vec<String>, Vec<Type>)> {
+	) -> Result<(Vec<Value>, Vec<String>, Vec<ValueType>)> {
 		let columns = self.events_to_columns(window_layout, events)?;
 		let (group_values, group_names) = self.extract_group_values(&columns)?;
 		let agg_session = self.eval_session(true);

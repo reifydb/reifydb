@@ -29,7 +29,7 @@ use reifydb_runtime::{
 	sync::mutex::Mutex,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, identity::IdentityId},
 };

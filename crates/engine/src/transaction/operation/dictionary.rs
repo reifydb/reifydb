@@ -21,7 +21,7 @@ use reifydb_transaction::{
 	interceptor::dictionary_row::DictionaryRowInterceptor,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
-use reifydb_type::{
+use reifydb_value::{
 	util::cowvec::CowVec,
 	value::{Value, datetime::DateTime, dictionary::DictionaryEntryId},
 };
@@ -226,10 +226,10 @@ impl DictionaryOperations for Transaction<'_> {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::{dictionary::Dictionary, id::NamespaceId};
-	use reifydb_type::value::{
+	use reifydb_value::value::{
 		Value,
 		dictionary::{DictionaryEntryId, DictionaryId},
-		r#type::Type,
+		value_type::ValueType,
 	};
 
 	use super::DictionaryOperations;
@@ -240,8 +240,8 @@ pub mod tests {
 			id: DictionaryId(1),
 			namespace: NamespaceId::SYSTEM,
 			name: "test_dict".to_string(),
-			value_type: Type::Utf8,
-			id_type: Type::Uint8,
+			value_type: ValueType::Utf8,
+			id_type: ValueType::Uint8,
 		}
 	}
 
@@ -338,13 +338,13 @@ pub mod tests {
 			id: DictionaryId(2),
 			namespace: NamespaceId::SYSTEM,
 			name: "dict_u1".to_string(),
-			value_type: Type::Utf8,
-			id_type: Type::Uint1,
+			value_type: ValueType::Utf8,
+			id_type: ValueType::Uint1,
 		};
 
 		let id = txn.insert_into_dictionary(&dict, &Value::Utf8("test".to_string())).unwrap();
 		assert_eq!(id, DictionaryEntryId::U1(1));
-		assert_eq!(id.id_type(), Type::Uint1);
+		assert_eq!(id.id_type(), ValueType::Uint1);
 	}
 
 	#[test]
@@ -354,13 +354,13 @@ pub mod tests {
 			id: DictionaryId(3),
 			namespace: NamespaceId::SYSTEM,
 			name: "dict_u2".to_string(),
-			value_type: Type::Utf8,
-			id_type: Type::Uint2,
+			value_type: ValueType::Utf8,
+			id_type: ValueType::Uint2,
 		};
 
 		let id = txn.insert_into_dictionary(&dict, &Value::Utf8("test".to_string())).unwrap();
 		assert_eq!(id, DictionaryEntryId::U2(1));
-		assert_eq!(id.id_type(), Type::Uint2);
+		assert_eq!(id.id_type(), ValueType::Uint2);
 	}
 
 	#[test]
@@ -370,12 +370,12 @@ pub mod tests {
 			id: DictionaryId(4),
 			namespace: NamespaceId::SYSTEM,
 			name: "dict_u4".to_string(),
-			value_type: Type::Utf8,
-			id_type: Type::Uint4,
+			value_type: ValueType::Utf8,
+			id_type: ValueType::Uint4,
 		};
 
 		let id = txn.insert_into_dictionary(&dict, &Value::Utf8("test".to_string())).unwrap();
 		assert_eq!(id, DictionaryEntryId::U4(1));
-		assert_eq!(id.id_type(), Type::Uint4);
+		assert_eq!(id.id_type(), ValueType::Uint4);
 	}
 }

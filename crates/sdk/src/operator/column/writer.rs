@@ -4,7 +4,7 @@
 use core::marker::PhantomData;
 
 use reifydb_abi::data::column::ColumnTypeCode;
-use reifydb_type::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
+use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
 
 use crate::{
 	error::SdkError,
@@ -321,7 +321,7 @@ impl<'a> ColumnsBuilder<'a> {
 mod tests {
 	use reifydb_abi::operator::capabilities::OperatorCapability;
 	use reifydb_core::interface::catalog::flow::FlowNodeId;
-	use reifydb_type::value::{
+	use reifydb_value::value::{
 		date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, row_number::RowNumber, time::Time,
 	};
 

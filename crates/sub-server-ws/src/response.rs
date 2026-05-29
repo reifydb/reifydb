@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_type::{error::Diagnostic, fragment::Fragment};
+use reifydb_value::{error::Diagnostic, fragment::Fragment};
 use serde::Serialize;
 use serde_json::{Value as JsonValue, to_string};
 

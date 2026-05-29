@@ -10,7 +10,7 @@ use reifydb_abi::{
 };
 use reifydb_core::value::column::columns::Columns;
 use reifydb_sdk::{error::SdkError, ffi::arena::Arena};
-use reifydb_type::{self, Result};
+use reifydb_value::{self, Result};
 use tracing::instrument;
 
 use super::{Transform, context::TransformContext};

@@ -6,7 +6,7 @@ use reifydb_core::interface::catalog::{
 	handler::Handler,
 	id::{HandlerId, NamespaceId},
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::{
 	change::{

@@ -32,7 +32,7 @@ use reifydb_core::{
 use reifydb_engine::vm::executor::Executor;
 use reifydb_extension::ffi_callbacks::builder::{BuilderRegistry, with_registry};
 use reifydb_sdk::{error::SdkError, ffi::arena::Arena, operator::Tick};
-use reifydb_type::{Result, value::datetime::DateTime};
+use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::{Span, error, field, instrument};
 
 use crate::{

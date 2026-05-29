@@ -8,7 +8,7 @@ use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
 	rng::Rng,
 };
-use reifydb_type::value::{
+use reifydb_value::value::{
 	blob::Blob,
 	date::Date,
 	datetime::DateTime,
@@ -17,9 +17,9 @@ use reifydb_type::value::{
 	identity::IdentityId,
 	int::Int,
 	time::Time,
-	r#type::Type,
 	uint::Uint,
 	uuid::{Uuid4, Uuid7},
+	value_type::ValueType,
 };
 
 fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
@@ -34,31 +34,31 @@ fn test_mixed_type_stress() {
 	let (_, clock, rng) = test_clock_and_rng();
 	// Comprehensive test with all types interacting
 	let shape = RowShape::testing(&[
-		Type::Boolean,
-		Type::Int1,
-		Type::Int2,
-		Type::Int4,
-		Type::Int8,
-		Type::Int16,
-		Type::Uint1,
-		Type::Uint2,
-		Type::Uint4,
-		Type::Uint8,
-		Type::Uint16,
-		Type::Float4,
-		Type::Float8,
-		Type::Utf8,
-		Type::Blob,
-		Type::Date,
-		Type::DateTime,
-		Type::Time,
-		Type::Duration,
-		Type::Uuid4,
-		Type::Uuid7,
-		Type::IdentityId,
-		Type::Int,
-		Type::Uint,
-		Type::Decimal,
+		ValueType::Boolean,
+		ValueType::Int1,
+		ValueType::Int2,
+		ValueType::Int4,
+		ValueType::Int8,
+		ValueType::Int16,
+		ValueType::Uint1,
+		ValueType::Uint2,
+		ValueType::Uint4,
+		ValueType::Uint8,
+		ValueType::Uint16,
+		ValueType::Float4,
+		ValueType::Float8,
+		ValueType::Utf8,
+		ValueType::Blob,
+		ValueType::Date,
+		ValueType::DateTime,
+		ValueType::Time,
+		ValueType::Duration,
+		ValueType::Uuid4,
+		ValueType::Uuid7,
+		ValueType::IdentityId,
+		ValueType::Int,
+		ValueType::Uint,
+		ValueType::Decimal,
 	]);
 
 	let mut row = shape.allocate();

@@ -6,7 +6,7 @@ use reifydb_core::key::{
 	namespace_dictionary::NamespaceDictionaryKey,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::value::dictionary::DictionaryId;
+use reifydb_value::value::dictionary::DictionaryId;
 
 use crate::{CatalogStore, Result};
 
@@ -54,10 +54,10 @@ pub mod tests {
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_type::{
+	use reifydb_value::{
 		fragment::Fragment,
 		util::cowvec::CowVec,
-		value::{dictionary::DictionaryId, r#type::Type},
+		value::{dictionary::DictionaryId, value_type::ValueType},
 	};
 
 	use crate::{CatalogStore, store::dictionary::create::DictionaryToCreate, test_utils::ensure_test_namespace};
@@ -72,8 +72,8 @@ pub mod tests {
 			DictionaryToCreate {
 				namespace: namespace.id(),
 				name: Fragment::internal("test_dict"),
-				value_type: Type::Utf8,
-				id_type: Type::Uint2,
+				value_type: ValueType::Utf8,
+				id_type: ValueType::Uint2,
 			},
 		)
 		.unwrap();
@@ -110,8 +110,8 @@ pub mod tests {
 			DictionaryToCreate {
 				namespace: namespace.id(),
 				name: Fragment::internal("entry_dict"),
-				value_type: Type::Utf8,
-				id_type: Type::Uint2,
+				value_type: ValueType::Utf8,
+				id_type: ValueType::Uint2,
 			},
 		)
 		.unwrap();

@@ -4,7 +4,7 @@
 use std::{error::Error as StdError, fmt, fmt::Display};
 
 use reifydb_core::common::CommitVersion;
-use reifydb_type::{error, error::Error};
+use reifydb_value::{error, error::Error};
 
 #[derive(Debug, Clone)]
 pub enum CdcError {
@@ -41,7 +41,7 @@ pub type CdcResult<T> = Result<T, CdcError>;
 
 pub mod diagnostic {
 
-	use reifydb_type::{error::Diagnostic, fragment::Fragment};
+	use reifydb_value::{error::Diagnostic, fragment::Fragment};
 
 	pub fn storage_error(msg: impl Into<String>) -> Diagnostic {
 		Diagnostic {

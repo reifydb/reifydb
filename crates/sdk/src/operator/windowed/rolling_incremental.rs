@@ -13,7 +13,7 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::flow_node_internal_state::FlowNodeInternalStateKey,
 };
-use reifydb_type::value::row_number::RowNumber;
+use reifydb_value::value::row_number::RowNumber;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -403,7 +403,7 @@ mod tests {
 		interface::catalog::flow::FlowNodeId,
 		row::Row as CoreRow,
 	};
-	use reifydb_type::value::{Value, r#type::Type};
+	use reifydb_value::value::{Value, value_type::ValueType};
 
 	use super::*;
 	use crate::{
@@ -542,9 +542,9 @@ mod tests {
 
 	fn input_shape() -> RowShape {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("group", Type::Utf8),
-			RowShapeField::unconstrained("window_start", Type::Uint8),
-			RowShapeField::unconstrained("value", Type::Float8),
+			RowShapeField::unconstrained("group", ValueType::Utf8),
+			RowShapeField::unconstrained("window_start", ValueType::Uint8),
+			RowShapeField::unconstrained("value", ValueType::Float8),
 		])
 	}
 

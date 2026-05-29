@@ -5,7 +5,7 @@ use std::{collections::HashMap, fmt::Debug};
 
 use postcard::from_bytes;
 use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape};
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 use serde::de::DeserializeOwned;
 
 use super::helpers::get_values;
@@ -130,7 +130,7 @@ pub mod tests {
 		row::EncodedRow,
 		shape::{RowShape, RowShapeField},
 	};
-	use reifydb_type::{util::cowvec::CowVec, value::r#type::Type};
+	use reifydb_value::{util::cowvec::CowVec, value::value_type::ValueType};
 
 	use super::*;
 	use crate::testing::helpers::encode_key;
@@ -156,7 +156,7 @@ pub mod tests {
 	#[test]
 	fn test_state_store_with_shape() {
 		let mut store = TestStateStore::new();
-		let shape = RowShape::testing(&[Type::Int8, Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Int8, ValueType::Utf8]);
 		let key = encode_key("test_key");
 		let values = vec![Value::Int8(42i64), Value::Utf8("hello".into())];
 
@@ -170,8 +170,8 @@ pub mod tests {
 	fn test_state_store_with_named_shape() {
 		let mut store = TestStateStore::new();
 		let shape = RowShape::new(vec![
-			RowShapeField::unconstrained("count", Type::Int8),
-			RowShapeField::unconstrained("name", Type::Utf8),
+			RowShapeField::unconstrained("count", ValueType::Int8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
 		]);
 		let key = encode_key("test_key");
 
@@ -209,7 +209,7 @@ pub mod tests {
 	#[test]
 	fn test_state_store_assertions() {
 		let mut store = TestStateStore::new();
-		let shape = RowShape::testing(&[Type::Int8]);
+		let shape = RowShape::testing(&[ValueType::Int8]);
 		let key = encode_key("test_key");
 		let values = vec![Value::Int8(100i64)];
 

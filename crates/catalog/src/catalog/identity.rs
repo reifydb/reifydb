@@ -15,7 +15,7 @@ use reifydb_transaction::{
 	change::{TransactionalGrantedRoleChanges, TransactionalIdentityChanges, TransactionalRoleChanges},
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_type::{fragment::Fragment, value::identity::IdentityId};
+use reifydb_value::{fragment::Fragment, value::identity::IdentityId};
 use tracing::{instrument, warn};
 
 use crate::{

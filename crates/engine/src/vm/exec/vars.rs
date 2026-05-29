@@ -5,7 +5,7 @@ use reifydb_core::{
 	internal_error,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_type::{
+use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
 	fragment::Fragment,
 };
