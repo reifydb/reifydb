@@ -959,15 +959,15 @@ dependencies = [
 
 [[package]]
 name = "reifydb-abi"
-version = "0.5.6"
+version = "0.6.0"
 
 [[package]]
 name = "reifydb-build"
-version = "0.5.6"
+version = "0.6.0"
 
 [[package]]
 name = "reifydb-catalog"
-version = "0.5.6"
+version = "0.6.0"
 dependencies = [
  "crossbeam-skiplist",
  "futures-util",
@@ -980,7 +980,7 @@ dependencies = [
  "reifydb-store-multi",
  "reifydb-store-single",
  "reifydb-transaction",
- "reifydb-type",
+ "reifydb-value",
  "serde",
  "serde_json",
  "subtle",
@@ -990,7 +990,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-core"
-version = "0.5.6"
+version = "0.6.0"
 dependencies = [
  "bigdecimal",
  "crossbeam-skiplist",
@@ -1005,7 +1005,7 @@ dependencies = [
  "reifydb-abi",
  "reifydb-build",
  "reifydb-runtime",
- "reifydb-type",
+ "reifydb-value",
  "serde",
  "serde_bytes",
  "smallvec",
@@ -1025,26 +1025,26 @@ dependencies = [
  "reifydb-core",
  "reifydb-rql",
  "reifydb-sql",
- "reifydb-type",
+ "reifydb-value",
  "serde",
  "serde_bytes",
 ]
 
 [[package]]
 name = "reifydb-metric"
-version = "0.5.6"
+version = "0.6.0"
 dependencies = [
  "dashmap",
  "reifydb-build",
  "reifydb-core",
  "reifydb-runtime",
- "reifydb-type",
+ "reifydb-value",
  "serde",
 ]
 
 [[package]]
 name = "reifydb-rql"
-version = "0.5.6"
+version = "0.6.0"
 dependencies = [
  "bumpalo",
  "postcard",
@@ -1053,7 +1053,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-transaction",
- "reifydb-type",
+ "reifydb-value",
  "serde",
  "serde_json",
  "thiserror",
@@ -1062,7 +1062,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-runtime"
-version = "0.5.6"
+version = "0.6.0"
 dependencies = [
  "cfg-if",
  "crossbeam-channel",
@@ -1085,14 +1085,14 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sql"
-version = "0.5.6"
+version = "0.6.0"
 dependencies = [
  "reifydb-build",
 ]
 
 [[package]]
 name = "reifydb-sqlite"
-version = "0.5.6"
+version = "0.6.0"
 dependencies = [
  "reifydb-build",
  "rusqlite",
@@ -1102,13 +1102,13 @@ dependencies = [
 
 [[package]]
 name = "reifydb-store-multi"
-version = "0.5.6"
+version = "0.6.0"
 dependencies = [
  "reifydb-build",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-sqlite",
- "reifydb-type",
+ "reifydb-value",
  "rusqlite",
  "tracing",
  "uuid",
@@ -1116,13 +1116,13 @@ dependencies = [
 
 [[package]]
 name = "reifydb-store-single"
-version = "0.5.6"
+version = "0.6.0"
 dependencies = [
  "reifydb-build",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-sqlite",
- "reifydb-type",
+ "reifydb-value",
  "rusqlite",
  "tracing",
  "uuid",
@@ -1130,7 +1130,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sub-raft"
-version = "0.5.6"
+version = "0.6.0"
 dependencies = [
  "postcard",
  "prost",
@@ -1138,7 +1138,7 @@ dependencies = [
  "reifydb-build",
  "reifydb-core",
  "reifydb-runtime",
- "reifydb-type",
+ "reifydb-value",
  "serde",
  "tokio",
  "tokio-stream",
@@ -1148,7 +1148,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-transaction"
-version = "0.5.6"
+version = "0.6.0"
 dependencies = [
  "crossbeam-channel",
  "crossbeam-skiplist",
@@ -1159,15 +1159,15 @@ dependencies = [
  "reifydb-store-multi",
  "reifydb-store-single",
  "reifydb-sub-raft",
- "reifydb-type",
+ "reifydb-value",
  "thiserror",
  "tracing",
  "uuid",
 ]
 
 [[package]]
-name = "reifydb-type"
-version = "0.5.6"
+name = "reifydb-value"
+version = "0.6.0"
 dependencies = [
  "bigdecimal",
  "num-bigint",

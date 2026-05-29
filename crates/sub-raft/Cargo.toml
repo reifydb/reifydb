@@ -1,5 +1,6 @@
 [package]
 name = "reifydb-sub-raft"
+description = "Raft consensus subsystem for ReifyDB"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

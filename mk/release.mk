@@ -171,7 +171,10 @@ release:
 	echo "$(YELLOW)[4/7] Updating all package versions...$(NC)"; \
 	make set-version "VERSION=$$NEW_VERSION" || exit 1; \
 	echo "$(BLUE)  Updating fuzz/Cargo.lock...$(NC)"; \
-	(cd fuzz && cargo update --workspace) || exit 1; \
+	if [ -f .cargo/config.toml ]; then mv .cargo/config.toml .cargo/config.toml.fuzz-bak; fi; \
+	(cd fuzz && cargo update --workspace); fuzz_ret=$$?; \
+	if [ -f .cargo/config.toml.fuzz-bak ]; then mv .cargo/config.toml.fuzz-bak .cargo/config.toml; fi; \
+	if [ $$fuzz_ret -ne 0 ]; then exit 1; fi; \
 	echo "$(GREEN)✓ Versions updated$(NC)"; \
 	echo ""; \
 	echo "$(YELLOW)[5/7] Creating git commit and tag...$(NC)"; \
