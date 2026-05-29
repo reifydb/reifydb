@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{id::NamespaceId, table::Table},
 	key::{Key, table::TableKey},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{CatalogStore, Result, store::table::shape::table};
 
@@ -15,7 +15,7 @@ impl CatalogStore {
 
 		let mut table_ids = Vec::new();
 		{
-			let stream = rx.range(TableKey::full_scan(), 1024)?;
+			let stream = rx.range(TableKey::full_scan(), RangeScope::All, 1024)?;
 			for entry in stream {
 				let entry = entry?;
 				if let Some(key) = Key::decode(&entry.key)

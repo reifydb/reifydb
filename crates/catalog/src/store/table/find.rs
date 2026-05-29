@@ -8,7 +8,7 @@ use reifydb_core::{
 	},
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{
 	CatalogStore, Result,
@@ -43,7 +43,7 @@ impl CatalogStore {
 		name: impl AsRef<str>,
 	) -> Result<Option<Table>> {
 		let name = name.as_ref();
-		let mut stream = rx.range(NamespaceTableKey::full_scan(namespace), 1024)?;
+		let mut stream = rx.range(NamespaceTableKey::full_scan(namespace), RangeScope::All, 1024)?;
 
 		let mut found_table = None;
 		for entry in stream.by_ref() {

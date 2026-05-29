@@ -26,7 +26,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::{nodes::DeleteTableNode, query::QueryPlan};
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
@@ -225,7 +225,11 @@ fn run_table_delete_all(
 	};
 	let pk_def = primary_key::get_primary_key(&services.catalog, txn, table)?;
 	let rows: Vec<_> = txn
-		.range(EncodedKeyRange::new(Included(range.start().unwrap()), Included(range.end().unwrap())), 32)?
+		.range(
+			EncodedKeyRange::new(Included(range.start().unwrap()), Included(range.end().unwrap())),
+			RangeScope::All,
+			32,
+		)?
 		.collect::<Result<Vec<_>>>()?;
 
 	let mut filtered_ids: Vec<RowNumber> = Vec::with_capacity(rows.len());

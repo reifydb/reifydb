@@ -56,6 +56,7 @@ enum TransactionHandle {
 	Write(MultiWriteTransaction),
 	Replica(MultiReplicaTransaction),
 }
+use reifydb_transaction::multi::RangeScope;
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/transaction/tests/scripts/multi" as serializable_multi => test_serializable }
@@ -355,7 +356,7 @@ impl<'a> Runner for MvccRunner {
 				match &mut t {
 					TransactionHandle::Read(rx) => {
 						let items: Vec<_> = rx
-							.range(EncodedKeyRange::all(), 1024)
+							.range(EncodedKeyRange::all(), RangeScope::All, 1024)
 							.collect::<Result<Vec<_>, _>>()
 							.unwrap();
 						for multi in items {
@@ -364,7 +365,7 @@ impl<'a> Runner for MvccRunner {
 					}
 					TransactionHandle::Write(tx) => {
 						let items: Vec<_> = tx
-							.range(EncodedKeyRange::all(), 1024)
+							.range(EncodedKeyRange::all(), RangeScope::All, 1024)
 							.collect::<Result<Vec<_>, _>>()
 							.unwrap();
 						for item in items {
@@ -373,7 +374,7 @@ impl<'a> Runner for MvccRunner {
 					}
 					TransactionHandle::Replica(tx) => {
 						let items: Vec<_> = tx
-							.range(EncodedKeyRange::all(), 1024)
+							.range(EncodedKeyRange::all(), RangeScope::All, 1024)
 							.collect::<Result<Vec<_>, _>>()
 							.unwrap();
 						for item in items {
@@ -405,13 +406,13 @@ impl<'a> Runner for MvccRunner {
 					TransactionHandle::Read(rx) => {
 						if !reverse {
 							let items: Vec<_> = rx
-								.range(range, 1024)
+								.range(range, RangeScope::All, 1024)
 								.collect::<Result<Vec<_>, _>>()
 								.unwrap();
 							print_rx(&mut output, items.into_iter())
 						} else {
 							let items: Vec<_> = rx
-								.range_rev(range, 1024)
+								.range_rev(range, RangeScope::All, 1024)
 								.collect::<Result<Vec<_>, _>>()
 								.unwrap();
 							print_rx(&mut output, items.into_iter())
@@ -420,13 +421,13 @@ impl<'a> Runner for MvccRunner {
 					TransactionHandle::Write(tx) => {
 						if !reverse {
 							let items: Vec<_> = tx
-								.range(range, 1024)
+								.range(range, RangeScope::All, 1024)
 								.collect::<Result<Vec<_>, _>>()
 								.unwrap();
 							print_rx(&mut output, items.into_iter())
 						} else {
 							let items: Vec<_> = tx
-								.range_rev(range, 1024)
+								.range_rev(range, RangeScope::All, 1024)
 								.collect::<Result<Vec<_>, _>>()
 								.unwrap();
 							print_rx(&mut output, items.into_iter())
@@ -435,13 +436,13 @@ impl<'a> Runner for MvccRunner {
 					TransactionHandle::Replica(tx) => {
 						if !reverse {
 							let items: Vec<_> = tx
-								.range(range, 1024)
+								.range(range, RangeScope::All, 1024)
 								.collect::<Result<Vec<_>, _>>()
 								.unwrap();
 							print_rx(&mut output, items.into_iter())
 						} else {
 							let items: Vec<_> = tx
-								.range_rev(range, 1024)
+								.range_rev(range, RangeScope::All, 1024)
 								.collect::<Result<Vec<_>, _>>()
 								.unwrap();
 							print_rx(&mut output, items.into_iter())

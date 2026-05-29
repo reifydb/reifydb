@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::policy::{Policy, PolicyId},
 	key::policy::PolicyKey,
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{
 	CatalogStore, Result,
@@ -18,7 +18,7 @@ impl CatalogStore {
 	}
 
 	pub(crate) fn find_policy_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Policy>> {
-		let stream = rx.range(PolicyKey::full_scan(), 1024)?;
+		let stream = rx.range(PolicyKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let multi = entry?;

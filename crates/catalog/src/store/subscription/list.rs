@@ -9,13 +9,14 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, Result, store::subscription::shape::subscription};
+use reifydb_transaction::multi::RangeScope;
 
 impl CatalogStore {
 	pub(crate) fn list_subscriptions_all(rx: &mut Transaction<'_>) -> Result<Vec<Subscription>> {
 
 		let mut subscription_data = Vec::new();
 		{
-			let mut stream = rx.range(SubscriptionKey::full_scan(), 1024)?;
+			let mut stream = rx.range(SubscriptionKey::full_scan(), RangeScope::All, 1024)?;
 
 			while let Some(result_entry) = stream.next() {
 				let entry = result_entry?;

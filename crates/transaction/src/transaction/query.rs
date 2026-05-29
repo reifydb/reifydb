@@ -11,13 +11,14 @@ use reifydb_core::{
 		catalog::{
 			authentication::{Authentication, AuthenticationId},
 			binding::Binding,
+			column_snapshot::ColumnSnapshot,
 			config::{Config, ConfigKey},
 			dictionary::Dictionary,
 			flow::{Flow, FlowId, FlowNodeId},
 			handler::Handler,
 			id::{
-				BindingId, HandlerId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId,
-				SinkId, SourceId, TableId, TestId, ViewId,
+				BindingId, ColumnSnapshotId, HandlerId, MigrationId, NamespaceId, ProcedureId,
+				RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
 			},
 			identity::{GrantedRole, Identity, Role, RoleId},
 			migration::Migration,
@@ -49,15 +50,16 @@ use crate::{
 	TransactionId,
 	change::{
 		TransactionalAuthenticationChanges, TransactionalBindingChanges, TransactionalChanges,
-		TransactionalConfigChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
-		TransactionalGrantedRoleChanges, TransactionalHandlerChanges, TransactionalIdentityChanges,
-		TransactionalMigrationChanges, TransactionalNamespaceChanges, TransactionalOperatorSettingsChanges,
-		TransactionalPolicyChanges, TransactionalProcedureChanges, TransactionalRingBufferChanges,
-		TransactionalRoleChanges, TransactionalRowSettingsChanges, TransactionalSeriesChanges,
-		TransactionalSinkChanges, TransactionalSourceChanges, TransactionalSumTypeChanges,
-		TransactionalTableChanges, TransactionalTestChanges, TransactionalViewChanges,
+		TransactionalColumnSnapshotChanges, TransactionalConfigChanges, TransactionalDictionaryChanges,
+		TransactionalFlowChanges, TransactionalGrantedRoleChanges, TransactionalHandlerChanges,
+		TransactionalIdentityChanges, TransactionalMigrationChanges, TransactionalNamespaceChanges,
+		TransactionalOperatorSettingsChanges, TransactionalPolicyChanges, TransactionalProcedureChanges,
+		TransactionalRingBufferChanges, TransactionalRoleChanges, TransactionalRowSettingsChanges,
+		TransactionalSeriesChanges, TransactionalSinkChanges, TransactionalSourceChanges,
+		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalTestChanges,
+		TransactionalViewChanges,
 	},
-	multi::transaction::read::MultiReadTransaction,
+	multi::{RangeScope, transaction::read::MultiReadTransaction},
 	single::{SingleTransaction, read::SingleReadTransaction},
 	transaction::{RqlExecutor, Transaction},
 };
@@ -140,18 +142,20 @@ impl QueryTransaction {
 	pub fn range(
 		&self,
 		range: EncodedKeyRange,
+		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
-		self.multi.range(range, batch_size)
+		self.multi.range(range, scope, batch_size)
 	}
 
 	#[inline]
 	pub fn range_rev(
 		&self,
 		range: EncodedKeyRange,
+		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
-		self.multi.range_rev(range, batch_size)
+		self.multi.range_rev(range, scope, batch_size)
 	}
 
 	#[instrument(name = "transaction::query::with_single_query", level = "trace", skip(self, keys, f))]
@@ -195,6 +199,16 @@ impl TransactionalDictionaryChanges for QueryTransaction {
 	}
 
 	fn is_dictionary_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
+		false
+	}
+}
+
+impl TransactionalColumnSnapshotChanges for QueryTransaction {
+	fn find_column_snapshot(&self, _id: ColumnSnapshotId) -> Option<&ColumnSnapshot> {
+		None
+	}
+
+	fn is_column_snapshot_deleted(&self, _id: ColumnSnapshotId) -> bool {
 		false
 	}
 }

@@ -8,7 +8,7 @@ use reifydb_value::{
 };
 
 #[derive(Debug, thiserror::Error)]
-pub enum SubColumnError {
+pub enum SubStoreError {
 	#[error("column_block_from_batches: scan output missing column '{column}'")]
 	MissingColumnInBatch {
 		column: String,
@@ -26,16 +26,16 @@ pub enum SubColumnError {
 	},
 }
 
-impl From<SubColumnError> for Error {
-	fn from(err: SubColumnError) -> Self {
+impl From<SubStoreError> for Error {
+	fn from(err: SubStoreError) -> Self {
 		Error(Box::new(err.into_diagnostic()))
 	}
 }
 
-impl IntoDiagnostic for SubColumnError {
+impl IntoDiagnostic for SubStoreError {
 	fn into_diagnostic(self) -> Diagnostic {
 		match self {
-			SubColumnError::MissingColumnInBatch {
+			SubStoreError::MissingColumnInBatch {
 				column,
 			} => Diagnostic {
 				code: "SCOL_001".to_string(),
@@ -50,7 +50,7 @@ impl IntoDiagnostic for SubColumnError {
 				operator_chain: None,
 			},
 
-			SubColumnError::NoBatchesForMaterialization {
+			SubStoreError::NoBatchesForMaterialization {
 				column,
 			} => Diagnostic {
 				code: "SCOL_002".to_string(),
@@ -65,7 +65,7 @@ impl IntoDiagnostic for SubColumnError {
 				operator_chain: None,
 			},
 
-			SubColumnError::NamespaceMissing {
+			SubStoreError::NamespaceMissing {
 				namespace,
 				series,
 			} => Diagnostic {

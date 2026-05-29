@@ -6,6 +6,7 @@ use binding::BindingKey;
 use cdc_consumer::CdcConsumerKey;
 use column::ColumnKey;
 use column_sequence::ColumnSequenceKey;
+use column_snapshot::{ColumnSnapshotKey, SeriesColumnSnapshotKey, TableColumnSnapshotKey};
 use columns::ColumnsKey;
 use dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey, DictionarySequenceKey};
 use flow::FlowKey;
@@ -63,6 +64,7 @@ pub mod cdc_consumer;
 pub mod cdc_exclude;
 pub mod column;
 pub mod column_sequence;
+pub mod column_snapshot;
 pub mod columns;
 pub mod config;
 pub mod dictionary;
@@ -176,6 +178,9 @@ pub enum Key {
 	ProcedureParam(ProcedureParamKey),
 	Binding(BindingKey),
 	NamespaceBinding(NamespaceBindingKey),
+	ColumnSnapshot(ColumnSnapshotKey),
+	SeriesColumnSnapshot(SeriesColumnSnapshotKey),
+	TableColumnSnapshot(TableColumnSnapshotKey),
 }
 
 impl Key {
@@ -236,6 +241,9 @@ impl Key {
 			Key::ProcedureParam(key) => key.encode(),
 			Key::Binding(key) => key.encode(),
 			Key::NamespaceBinding(key) => key.encode(),
+			Key::ColumnSnapshot(key) => key.encode(),
+			Key::SeriesColumnSnapshot(key) => key.encode(),
+			Key::TableColumnSnapshot(key) => key.encode(),
 		}
 	}
 }
@@ -360,6 +368,13 @@ impl Key {
 			KeyKind::ProcedureParam => ProcedureParamKey::decode(key).map(Self::ProcedureParam),
 			KeyKind::Binding => BindingKey::decode(key).map(Self::Binding),
 			KeyKind::NamespaceBinding => None,
+			KeyKind::ColumnSnapshot => ColumnSnapshotKey::decode(key).map(Self::ColumnSnapshot),
+			KeyKind::SeriesColumnSnapshot => {
+				SeriesColumnSnapshotKey::decode(key).map(Self::SeriesColumnSnapshot)
+			}
+			KeyKind::TableColumnSnapshot => {
+				TableColumnSnapshotKey::decode(key).map(Self::TableColumnSnapshot)
+			}
 		}
 	}
 }

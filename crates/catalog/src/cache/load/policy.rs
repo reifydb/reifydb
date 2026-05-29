@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::key::{policy::PolicyKey, policy_op::PolicyOpKey};
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use super::CatalogCache;
 use crate::{
@@ -12,7 +12,7 @@ use crate::{
 
 pub(crate) fn load_policies(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = PolicyKey::full_scan();
-	let mut stream = rx.range(range, 1024)?;
+	let mut stream = rx.range(range, RangeScope::All, 1024)?;
 
 	for entry in stream.by_ref() {
 		let multi = entry?;
@@ -23,7 +23,7 @@ pub(crate) fn load_policies(rx: &mut Transaction<'_>, catalog: &CatalogCache) ->
 	drop(stream);
 
 	let op_range = PolicyOpKey::full_scan();
-	let op_stream = rx.range(op_range, 1024)?;
+	let op_stream = rx.range(op_range, RangeScope::All, 1024)?;
 
 	for entry in op_stream {
 		let multi = entry?;

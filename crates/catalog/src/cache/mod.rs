@@ -12,6 +12,7 @@
 
 pub mod authentication;
 pub mod binding;
+pub mod column_snapshot;
 pub mod config;
 pub mod dictionary;
 pub mod flow;
@@ -39,7 +40,11 @@ pub mod table;
 pub mod test;
 pub mod view;
 
-use std::{ops, sync::Arc};
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	ops,
+	sync::Arc,
+};
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
@@ -48,13 +53,14 @@ use reifydb_core::{
 	interface::catalog::{
 		authentication::{Authentication, AuthenticationId},
 		binding::Binding,
+		column_snapshot::ColumnSnapshot,
 		config::{Config, ConfigKey, GetConfig},
 		dictionary::Dictionary,
 		flow::{Flow, FlowId, FlowNodeId},
 		handler::Handler,
 		id::{
-			BindingId, HandlerId, MigrationEventId, MigrationId, NamespaceId, PrimaryKeyId, ProcedureId,
-			RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
+			BindingId, ColumnSnapshotId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
+			PrimaryKeyId, ProcedureId, RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
 		},
 		identity::{GrantedRole, Identity, Role, RoleId},
 		key::PrimaryKey,
@@ -100,6 +106,7 @@ pub type MultiVersionFlow = MultiVersionContainer<Flow>;
 pub type MultiVersionPrimaryKey = MultiVersionContainer<PrimaryKey>;
 pub type MultiVersionRetentionStrategy = MultiVersionContainer<RetentionStrategy>;
 pub type MultiVersionDictionary = MultiVersionContainer<Dictionary>;
+pub type MultiVersionColumnSnapshot = MultiVersionContainer<ColumnSnapshot>;
 pub type MultiVersionHandler = MultiVersionContainer<Handler>;
 pub type MultiVersionMigration = MultiVersionContainer<Migration>;
 pub type MultiVersionMigrationEvent = MultiVersionContainer<MigrationEvent>;
@@ -237,6 +244,16 @@ pub struct CatalogCacheInner {
 	pub(crate) vtable_user_by_name: SkipMap<(NamespaceId, String), VTableId>,
 
 	pub(crate) row_shapes: SkipMap<RowShapeFingerprint, RowShape>,
+	/// MultiVersion column snapshot rows indexed by snapshot ID
+	pub(crate) column_snapshots: SkipMap<ColumnSnapshotId, MultiVersionColumnSnapshot>,
+	/// Per-series index of `(bucket_start, snapshot_id)` pairs. The
+	/// `BTreeSet` keeps the ordering by `bucket_start` ascending so the
+	/// merge planner can iterate in key order.
+	pub(crate) column_snapshots_for_series: SkipMap<SeriesId, BTreeSet<(u64, ColumnSnapshotId)>>,
+	/// Per-table index of `commit_version -> snapshot_id`. Ordering is by
+	/// commit version so callers can pick the latest by reading the max
+	/// key.
+	pub(crate) column_snapshots_for_table: SkipMap<TableId, BTreeMap<CommitVersion, ColumnSnapshotId>>,
 }
 
 impl ops::Deref for CatalogCache {
@@ -331,6 +348,9 @@ impl CatalogCache {
 			vtable_user: SkipMap::new(),
 			vtable_user_by_name: SkipMap::new(),
 			row_shapes: SkipMap::new(),
+			column_snapshots: SkipMap::new(),
+			column_snapshots_for_series: SkipMap::new(),
+			column_snapshots_for_table: SkipMap::new(),
 		};
 
 		Self(Arc::new(inner))

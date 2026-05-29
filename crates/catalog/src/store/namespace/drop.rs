@@ -10,7 +10,7 @@ use reifydb_core::{
 		namespace_view::NamespaceViewKey,
 	},
 };
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
 
 use crate::{CatalogStore, Result};
 
@@ -18,7 +18,7 @@ impl CatalogStore {
 	pub(crate) fn drop_namespace(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
 		{
 			let range = NamespaceTableKey::full_scan(namespace);
-			let mut stream = txn.range(range, 1024)?;
+			let mut stream = txn.range(range, RangeScope::All, 1024)?;
 			let mut table_ids = Vec::new();
 			for entry in stream.by_ref() {
 				let entry = entry?;
@@ -34,7 +34,7 @@ impl CatalogStore {
 
 		{
 			let range = NamespaceViewKey::full_scan(namespace);
-			let mut stream = txn.range(range, 1024)?;
+			let mut stream = txn.range(range, RangeScope::All, 1024)?;
 			let mut view_ids = Vec::new();
 			for entry in stream.by_ref() {
 				let entry = entry?;
@@ -50,7 +50,7 @@ impl CatalogStore {
 
 		{
 			let range = NamespaceRingBufferKey::full_scan(namespace);
-			let mut stream = txn.range(range, 1024)?;
+			let mut stream = txn.range(range, RangeScope::All, 1024)?;
 			let mut rb_ids = Vec::new();
 			for entry in stream.by_ref() {
 				let entry = entry?;
@@ -66,7 +66,7 @@ impl CatalogStore {
 
 		{
 			let range = NamespaceFlowKey::full_scan(namespace);
-			let mut stream = txn.range(range, 1024)?;
+			let mut stream = txn.range(range, RangeScope::All, 1024)?;
 			let mut flow_ids = Vec::new();
 			for entry in stream.by_ref() {
 				let entry = entry?;
@@ -82,7 +82,7 @@ impl CatalogStore {
 
 		{
 			let range = NamespaceDictionaryKey::full_scan(namespace);
-			let mut stream = txn.range(range, 1024)?;
+			let mut stream = txn.range(range, RangeScope::All, 1024)?;
 			let mut dict_ids = Vec::new();
 			for entry in stream.by_ref() {
 				let entry = entry?;
@@ -98,7 +98,7 @@ impl CatalogStore {
 
 		{
 			let range = NamespaceSumTypeKey::full_scan(namespace);
-			let mut stream = txn.range(range, 1024)?;
+			let mut stream = txn.range(range, RangeScope::All, 1024)?;
 			let mut st_ids = Vec::new();
 			for entry in stream.by_ref() {
 				let entry = entry?;

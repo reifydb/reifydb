@@ -112,6 +112,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_transaction::multi::RangeScope;
 	use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 	use super::*;
@@ -186,7 +187,7 @@ pub mod tests {
 
 		// Check namespace links
 		let links: Vec<_> = txn
-			.range(NamespaceDictionaryKey::full_scan(test_namespace.id()), 1024)
+			.range(NamespaceDictionaryKey::full_scan(test_namespace.id()), RangeScope::All, 1024)
 			.unwrap()
 			.collect::<Result<Vec<_>>>()
 			.unwrap();

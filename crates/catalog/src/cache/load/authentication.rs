@@ -2,14 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::key::authentication::AuthenticationKey;
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use super::CatalogCache;
 use crate::{Result, store::authentication::convert_authentication};
 
 pub(crate) fn load_authentications(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = AuthenticationKey::full_scan();
-	let stream = rx.range(range, 1024)?;
+	let stream = rx.range(range, RangeScope::All, 1024)?;
 
 	for entry in stream {
 		let multi = entry?;

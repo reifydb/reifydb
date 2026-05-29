@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 	key::table::TableKey,
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use super::CatalogCache;
 use crate::{
@@ -25,7 +25,7 @@ use crate::{
 
 pub(crate) fn load_tables(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = TableKey::full_scan();
-	let mut stream = rx.range(range, 1024)?;
+	let mut stream = rx.range(range, RangeScope::All, 1024)?;
 
 	let mut tables = Vec::new();
 	for entry in stream.by_ref() {

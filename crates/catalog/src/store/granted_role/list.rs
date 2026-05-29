@@ -2,14 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{interface::catalog::identity::GrantedRole, key::granted_role::GrantedRoleKey};
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{CatalogStore, Result, store::granted_role::convert_granted_role};
 
 impl CatalogStore {
 	pub(crate) fn list_all_granted_roles(rx: &mut Transaction<'_>) -> Result<Vec<GrantedRole>> {
 		let mut result = Vec::new();
-		let stream = rx.range(GrantedRoleKey::full_scan(), 1024)?;
+		let stream = rx.range(GrantedRoleKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let multi = entry?;

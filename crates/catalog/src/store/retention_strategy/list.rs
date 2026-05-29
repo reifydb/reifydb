@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 	retention::RetentionStrategy,
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use super::decode_retention_strategy;
 use crate::{CatalogStore, Result};
@@ -35,7 +35,7 @@ impl CatalogStore {
 	) -> Result<Vec<ShapeRetentionStrategyEntry>> {
 		let mut result = Vec::new();
 
-		let stream = rx.range(ShapeRetentionStrategyKeyRange::full_scan(), 1024)?;
+		let stream = rx.range(ShapeRetentionStrategyKeyRange::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let entry = entry?;
@@ -57,7 +57,7 @@ impl CatalogStore {
 	) -> Result<Vec<OperatorRetentionStrategyEntry>> {
 		let mut result = Vec::new();
 
-		let stream = rx.range(OperatorRetentionStrategyKeyRange::full_scan(), 1024)?;
+		let stream = rx.range(OperatorRetentionStrategyKeyRange::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let entry = entry?;

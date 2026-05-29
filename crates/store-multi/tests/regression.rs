@@ -11,7 +11,10 @@ use reifydb_core::{
 		store::EntryKind,
 	},
 };
-use reifydb_store_multi::tier::{RangeBatch, RangeCursor, TierStorage, commit::buffer::MultiCommitBufferTier};
+use reifydb_store_multi::{
+	MultiVersionScope,
+	tier::{RangeBatch, RangeCursor, TierStorage, commit::buffer::MultiCommitBufferTier},
+};
 use reifydb_value::util::cowvec::CowVec;
 
 fn k(s: &str) -> EncodedKey {
@@ -38,7 +41,17 @@ fn drain_forward(
 		let RangeBatch {
 			entries,
 			has_more,
-		} = s.range_next(kind, &mut cursor, Bound::Unbounded, Bound::Unbounded, version, batch_size).unwrap();
+		} = s.range_next(
+			kind,
+			&mut cursor,
+			Bound::Unbounded,
+			Bound::Unbounded,
+			MultiVersionScope::AsOf {
+				read: version,
+			},
+			batch_size,
+		)
+		.unwrap();
 		for e in entries {
 			out.push(e.key.as_slice().to_vec());
 		}

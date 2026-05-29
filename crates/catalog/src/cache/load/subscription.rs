@@ -20,10 +20,11 @@ use crate::{
 	Result,
 	store::subscription::shape::subscription::{self, ACKNOWLEDGED_VERSION, ID, PRIMARY_KEY},
 };
+use reifydb_transaction::multi::RangeScope;
 
 pub(crate) fn load_subscriptions(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = SubscriptionKey::full_scan();
-	let mut stream = rx.range(range, 1024)?;
+	let mut stream = rx.range(range, RangeScope::All, 1024)?;
 
 	while let Some(result) = stream.next() {
 		let multi = result?;

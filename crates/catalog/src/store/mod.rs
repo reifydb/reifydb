@@ -10,6 +10,7 @@ pub(crate) mod authentication;
 pub(crate) mod binding;
 pub mod column;
 pub(crate) mod column_property;
+pub mod column_snapshot;
 pub(crate) mod config;
 pub(crate) mod dictionary;
 pub(crate) mod flow;

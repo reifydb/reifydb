@@ -30,6 +30,7 @@ use crate::{
 	delta::optimize_deltas,
 	error::TransactionError,
 	multi::{
+		RangeScope,
 		conflict::ConflictManager,
 		marker::Marker,
 		oracle::{CreateCommitResult, Oracle},
@@ -573,7 +574,9 @@ impl MultiWriteTransaction {
 
 impl MultiWriteTransaction {
 	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
-		let items: Vec<_> = self.range(EncodedKeyRange::prefix(prefix), 1024).collect::<Result<Vec<_>>>()?;
+		let items: Vec<_> = self
+			.range(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
+			.collect::<Result<Vec<_>>>()?;
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
@@ -581,8 +584,9 @@ impl MultiWriteTransaction {
 	}
 
 	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
-		let items: Vec<_> =
-			self.range_rev(EncodedKeyRange::prefix(prefix), 1024).collect::<Result<Vec<_>>>()?;
+		let items: Vec<_> = self
+			.range_rev(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
+			.collect::<Result<Vec<_>>>()?;
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
@@ -592,9 +596,10 @@ impl MultiWriteTransaction {
 	pub fn range(
 		&mut self,
 		range: EncodedKeyRange,
+		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
-		let version = self.version();
+		let multi_scope = scope.into_multi(self.version());
 		let (mut marker, pw) = self.marker_with_pending_writes();
 		let start = range.start_bound();
 		let end = range.end_bound();
@@ -604,7 +609,7 @@ impl MultiWriteTransaction {
 		let pending: Vec<(EncodedKey, DeltaEntry)> =
 			pw.range((start, end)).map(|(k, v)| (k.clone(), v.clone())).collect();
 
-		let storage_iter = self.engine.store.range(range, version, batch_size);
+		let storage_iter = self.engine.store.range(range, multi_scope, batch_size);
 
 		Box::new(MergePendingIterator::new(pending, storage_iter, false))
 	}
@@ -612,9 +617,10 @@ impl MultiWriteTransaction {
 	pub fn range_rev(
 		&mut self,
 		range: EncodedKeyRange,
+		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
-		let version = self.version();
+		let multi_scope = scope.into_multi(self.version());
 		let (mut marker, pw) = self.marker_with_pending_writes();
 		let start = range.start_bound();
 		let end = range.end_bound();
@@ -624,7 +630,7 @@ impl MultiWriteTransaction {
 		let pending: Vec<(EncodedKey, DeltaEntry)> =
 			pw.range((start, end)).rev().map(|(k, v)| (k.clone(), v.clone())).collect();
 
-		let storage_iter = self.engine.store.range_rev(range, version, batch_size);
+		let storage_iter = self.engine.store.range_rev(range, multi_scope, batch_size);
 
 		Box::new(MergePendingIterator::new(pending, storage_iter, true))
 	}

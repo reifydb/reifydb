@@ -3,14 +3,11 @@
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use reifydb_column::{
-	compress::Compressor,
-	registry::SnapshotRegistry,
-	snapshot::{Snapshot, SnapshotId, SnapshotSource},
-};
+use reifydb_catalog::store::column_snapshot::create::ColumnSnapshotToCreate;
+use reifydb_column::{compress::Compressor, snapshot::SystemColumn};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::{id::TableId, table::Table},
+	interface::catalog::{column_snapshot::ColumnSnapshotSource, id::TableId, table::Table},
 };
 use reifydb_engine::{
 	engine::StandardEngine,
@@ -28,15 +25,18 @@ use reifydb_runtime::actor::{
 	timers::TimerHandle,
 	traits::{Actor, Directive},
 };
-use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction};
 use reifydb_value::{
 	Result,
 	params::Params,
-	value::{datetime::DateTime, identity::IdentityId},
+	value::{datetime::DateTime, identity::IdentityId, value_type::ValueType},
 };
 use tracing::{debug, warn};
 
-use crate::actor::{TableMessage, batches::column_block_from_batches};
+use crate::column::{
+	actor::{TableMessage, batches::column_block_from_batches},
+	block_store::ColumnBlockStore,
+};
 
 pub struct TableMaterializationState {
 	pub last_seen: HashMap<TableId, CommitVersion>,
@@ -45,7 +45,7 @@ pub struct TableMaterializationState {
 
 pub struct TableMaterializationActor {
 	engine: StandardEngine,
-	registry: SnapshotRegistry,
+	block_store: ColumnBlockStore,
 	compressor: Compressor,
 	tick_interval: Duration,
 }
@@ -53,20 +53,20 @@ pub struct TableMaterializationActor {
 impl TableMaterializationActor {
 	pub fn new(
 		engine: StandardEngine,
-		registry: SnapshotRegistry,
+		block_store: ColumnBlockStore,
 		compressor: Compressor,
 		tick_interval: Duration,
 	) -> Self {
 		Self {
 			engine,
-			registry,
+			block_store,
 			compressor,
 			tick_interval,
 		}
 	}
 
-	pub fn registry(&self) -> &SnapshotRegistry {
-		&self.registry
+	pub fn block_store(&self) -> &ColumnBlockStore {
+		&self.block_store
 	}
 
 	fn run_tick(&self, state: &mut TableMaterializationState, _now: DateTime) {
@@ -129,35 +129,37 @@ impl TableMaterializationActor {
 			batches.push(batch);
 		}
 
-		let schema: Vec<_> = table.columns.iter().map(|c| (c.name.clone(), c.constraint.get_type())).collect();
+		let mut schema: Vec<(String, ValueType)> =
+			table.columns.iter().map(|c| (c.name.clone(), c.constraint.get_type())).collect();
+		for sc in SystemColumn::ALL {
+			schema.push((sc.name().to_string(), sc.ty()));
+		}
 		let block = column_block_from_batches(schema, batches, &self.compressor)?;
+		let row_count = block.len() as u64;
+		let block_arc = Arc::new(block);
 
-		let namespace = self
-			.engine
-			.catalog()
-			.find_namespace(&mut Transaction::Query(&mut *query_txn), table.namespace)
-			.ok()
-			.flatten()
-			.map(|ns| ns.name().to_string())
-			.unwrap_or_default();
+		let mut admin = self.engine.begin_admin(IdentityId::system())?;
+		let column_snapshot = self.engine.catalog().create_column_snapshot(
+			&mut admin,
+			ColumnSnapshotToCreate {
+				namespace: table.namespace,
+				source: ColumnSnapshotSource::Table {
+					table_id: table.id,
+					commit_version: version,
+				},
+				row_count,
+			},
+		)?;
+		commit_admin(admin)?;
+		self.block_store.put(column_snapshot.id, block_arc);
 
-		let snapshot = Snapshot {
-			id: SnapshotId::Table {
-				table_id: table.id,
-				commit_version: version,
-			},
-			source: SnapshotSource::Table {
-				table_id: table.id,
-				commit_version: version,
-			},
-			namespace,
-			name: table.name.clone(),
-			created_at: self.engine.clock().instant(),
-			block,
-		};
-		self.registry.insert(Arc::new(snapshot));
 		Ok(())
 	}
+}
+
+fn commit_admin(mut admin: AdminTransaction) -> Result<()> {
+	admin.commit()?;
+	Ok(())
 }
 
 impl Actor for TableMaterializationActor {

@@ -27,6 +27,7 @@ members = [
     "crates/rql",
     "crates/sql",
     "crates/sqlite",
+    "crates/store",
     "crates/store-multi",
     "crates/store-single",
     "crates/testing",
@@ -36,7 +37,7 @@ members = [
     "crates/wire-format",
     # Subsystem crates
     "crates/sub-api",
-    "crates/sub-column",
+    "crates/sub-store",
     "crates/sub-metric",
     "crates/sub-profiler",
     "crates/sub-runtime",
@@ -99,6 +100,7 @@ default-members = [
     "crates/rql",
     "crates/sql",
     "crates/sqlite",
+    "crates/store",
     "crates/store-multi",
     "crates/store-single",
     "crates/testing",
@@ -109,7 +111,7 @@ default-members = [
     "crates/wire-format",
     # Subsystem crates
     "crates/sub-api",
-    "crates/sub-column",
+    "crates/sub-store",
     "crates/sub-metric",
     "crates/sub-profiler",
     "crates/sub-runtime",
@@ -178,7 +180,7 @@ strip = true
 
 [workspace.dependencies]
 reifydb = { version = "0.6.0", path = "pkg/rust/reifydb", features = [
-    "sub_column", "sub_flow", "sub_tracing", "sub_server", "sub_server_admin",
+    "column", "sub_flow", "sub_tracing", "sub_server", "sub_server_admin",
     "sub_server_grpc", "sub_server_http", "sub_server_ws",
     "sub_server_otel", "sub_replication",
 ] }
@@ -208,6 +210,7 @@ reifydb-sdk = { version = "0.6.0", path = "crates/sdk" }
 reifydb-rql = { version = "0.6.0", path = "crates/rql" }
 reifydb-sql = { version = "0.6.0", path = "crates/sql" }
 reifydb-sqlite = { version = "0.6.0", path = "crates/sqlite" }
+reifydb-store = { version = "0.6.0", path = "crates/store" }
 reifydb-store-multi = { version = "0.6.0", path = "crates/store-multi" }
 reifydb-store-single = { version = "0.6.0", path = "crates/store-single" }
 reifydb-sub-raft = { version = "0.6.0", path = "crates/sub-raft" }
@@ -221,7 +224,7 @@ reifydb-macro-impl = { version = "0.6.0", path = "crates/macro-impl" }
 
 # Subsystems
 reifydb-sub-api = { version = "0.6.0", path = "crates/sub-api" }
-reifydb-sub-column = { version = "0.6.0", path = "crates/sub-column" }
+reifydb-sub-store = { version = "0.6.0", path = "crates/sub-store", default-features = false }
 reifydb-sub-metric = { version = "0.6.0", path = "crates/sub-metric" }
 reifydb-sub-profiler = { version = "0.6.0", path = "crates/sub-profiler" }
 reifydb-sub-runtime = { version = "0.6.0", path = "crates/sub-runtime" }

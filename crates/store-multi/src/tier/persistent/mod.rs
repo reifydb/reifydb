@@ -12,7 +12,10 @@ use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::s
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_value::{Result, util::cowvec::CowVec};
 
-use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage, VersionedGetResult};
+use crate::{
+	MultiVersionScope,
+	tier::{HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage, VersionedGetResult},
+};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 pub mod sqlite;
@@ -121,11 +124,11 @@ impl TierStorage for MultiPersistentTier {
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		match self {
-			Self::Sqlite(s) => s.range_next(table, cursor, start, end, version, batch_size),
+			Self::Sqlite(s) => s.range_next(table, cursor, start, end, scope, batch_size),
 		}
 	}
 
@@ -135,11 +138,11 @@ impl TierStorage for MultiPersistentTier {
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		match self {
-			Self::Sqlite(s) => s.range_rev_next(table, cursor, start, end, version, batch_size),
+			Self::Sqlite(s) => s.range_rev_next(table, cursor, start, end, scope, batch_size),
 		}
 	}
 
@@ -196,7 +199,7 @@ impl TierStorage for MultiPersistentTier {
 		_cursor: &mut RangeCursor,
 		_start: Bound<&[u8]>,
 		_end: Bound<&[u8]>,
-		_version: CommitVersion,
+		_scope: MultiVersionScope,
 		_batch_size: usize,
 	) -> Result<RangeBatch> {
 		match *self {}
@@ -208,7 +211,7 @@ impl TierStorage for MultiPersistentTier {
 		_cursor: &mut RangeCursor,
 		_start: Bound<&[u8]>,
 		_end: Bound<&[u8]>,
-		_version: CommitVersion,
+		_scope: MultiVersionScope,
 		_batch_size: usize,
 	) -> Result<RangeBatch> {
 		match *self {}
