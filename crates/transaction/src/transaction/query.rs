@@ -57,7 +57,7 @@ use crate::{
 		TransactionalSinkChanges, TransactionalSourceChanges, TransactionalSumTypeChanges,
 		TransactionalTableChanges, TransactionalTestChanges, TransactionalViewChanges,
 	},
-	multi::transaction::read::MultiReadTransaction,
+	multi::{RangeScope, transaction::read::MultiReadTransaction},
 	single::{SingleTransaction, read::SingleReadTransaction},
 	transaction::{RqlExecutor, Transaction},
 };
@@ -140,18 +140,20 @@ impl QueryTransaction {
 	pub fn range(
 		&self,
 		range: EncodedKeyRange,
+		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
-		self.multi.range(range, batch_size)
+		self.multi.range(range, scope, batch_size)
 	}
 
 	#[inline]
 	pub fn range_rev(
 		&self,
 		range: EncodedKeyRange,
+		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
-		self.multi.range_rev(range, batch_size)
+		self.multi.range_rev(range, scope, batch_size)
 	}
 
 	#[instrument(name = "transaction::query::with_single_query", level = "trace", skip(self, keys, f))]

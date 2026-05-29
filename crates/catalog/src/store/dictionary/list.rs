@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 	key::{dictionary::DictionaryKey, namespace_dictionary::NamespaceDictionaryKey},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_type::value::{dictionary::DictionaryId, r#type::Type};
 
 use crate::{
@@ -17,7 +17,7 @@ impl CatalogStore {
 	pub(crate) fn list_dictionaries(rx: &mut Transaction<'_>, namespace: NamespaceId) -> Result<Vec<Dictionary>> {
 		let mut dictionary_ids = Vec::new();
 		{
-			let stream = rx.range(NamespaceDictionaryKey::full_scan(namespace), 1024)?;
+			let stream = rx.range(NamespaceDictionaryKey::full_scan(namespace), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
 				let row = &multi.row;
@@ -40,7 +40,7 @@ impl CatalogStore {
 	pub(crate) fn list_all_dictionaries(rx: &mut Transaction<'_>) -> Result<Vec<Dictionary>> {
 		let mut dictionaries = Vec::new();
 
-		let stream = rx.range(DictionaryKey::full_scan(), 1024)?;
+		let stream = rx.range(DictionaryKey::full_scan(), RangeScope::All, 1024)?;
 		for entry in stream {
 			let multi = entry?;
 			let row = &multi.row;

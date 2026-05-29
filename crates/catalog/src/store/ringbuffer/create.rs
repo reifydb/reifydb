@@ -238,7 +238,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::key::namespace_ringbuffer::NamespaceRingBufferKey;
 	use reifydb_engine::test_harness::create_test_admin_transaction;
-	use reifydb_transaction::transaction::Transaction;
+	use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 	use reifydb_type::{
 		fragment::Fragment,
 		value::{constraint::TypeConstraint, r#type::Type},
@@ -367,7 +367,7 @@ pub mod tests {
 
 		// Check namespace links
 		let links: Vec<_> = txn
-			.range(NamespaceRingBufferKey::full_scan(test_namespace.id()), 1024)
+			.range(NamespaceRingBufferKey::full_scan(test_namespace.id()), RangeScope::All, 1024)
 			.unwrap()
 			.collect::<Result<Vec<_>>>()
 			.unwrap();

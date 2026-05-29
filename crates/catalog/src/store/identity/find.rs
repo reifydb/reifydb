@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{interface::catalog::identity::Identity, key::identity::IdentityKey};
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_type::value::identity::IdentityId;
 
 use crate::{
@@ -17,7 +17,7 @@ impl CatalogStore {
 	}
 
 	pub(crate) fn find_identity_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Identity>> {
-		let stream = rx.range(IdentityKey::full_scan(), 1024)?;
+		let stream = rx.range(IdentityKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let multi = entry?;

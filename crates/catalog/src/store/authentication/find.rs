@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::authentication::{Authentication, AuthenticationId},
 	key::authentication::AuthenticationKey,
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_type::value::identity::IdentityId;
 
 use crate::{
@@ -26,7 +26,7 @@ impl CatalogStore {
 		identity: IdentityId,
 		method: &str,
 	) -> Result<Option<Authentication>> {
-		let stream = rx.range(AuthenticationKey::full_scan(), 1024)?;
+		let stream = rx.range(AuthenticationKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let multi = entry?;

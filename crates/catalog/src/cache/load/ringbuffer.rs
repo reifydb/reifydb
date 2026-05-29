@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 	key::ringbuffer::RingBufferKey,
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use super::CatalogCache;
 use crate::{
@@ -25,7 +25,7 @@ use crate::{
 
 pub(crate) fn load_ringbuffers(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = RingBufferKey::full_scan();
-	let stream = rx.range(range, 1024)?;
+	let stream = rx.range(range, RangeScope::All, 1024)?;
 
 	for entry in stream {
 		let multi = entry?;

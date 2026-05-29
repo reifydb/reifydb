@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::key::config::ConfigStorageKey;
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use super::CatalogCache;
 use crate::{Result, store::config};
@@ -10,7 +10,7 @@ use crate::{Result, store::config};
 pub(crate) fn load_configs(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let version = rx.version();
 	let range = ConfigStorageKey::full_scan();
-	let stream = rx.range(range, 1024)?;
+	let stream = rx.range(range, RangeScope::All, 1024)?;
 
 	for entry in stream {
 		let multi = entry?;

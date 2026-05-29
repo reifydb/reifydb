@@ -34,6 +34,7 @@ use reifydb_core::{
 };
 use reifydb_extension::loader::ffi::LibraryCache;
 use reifydb_runtime::sync::rwlock::RwLock;
+use reifydb_transaction::multi::RangeScope;
 use reifydb_sdk::{
 	config::Config,
 	error::{Result as SdkResult, SdkError},
@@ -192,7 +193,7 @@ impl NativeBridge for FlowNativeBridge<'_> {
 		Ok(self.txn.prefix(prefix)?.items.into_iter().map(|r| (r.key, r.row)).collect())
 	}
 	fn store_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>> {
-		let rows = self.txn.range(range, 1024).collect::<Result<Vec<_>>>()?;
+		let rows = self.txn.range(range, RangeScope::All, 1024).collect::<Result<Vec<_>>>()?;
 		Ok(rows.into_iter().map(|r| (r.key, r.row)).collect())
 	}
 	fn catalog_find_namespace(
@@ -264,7 +265,7 @@ impl NativeBridge for FlowNativeBridge<'_> {
 		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		let rows =
-			self.txn.range(range, 1024)
+			self.txn.range(range, RangeScope::All, 1024)
 				.collect::<Result<Vec<_>>>()
 				.map_err(|e| SdkError::Other(e.to_string()))?;
 		for r in &rows {

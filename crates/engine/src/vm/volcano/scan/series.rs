@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_type::{
 	fragment::Fragment,
 	value::{Value, datetime::DateTime, row_number::RowNumber, r#type::Type},
@@ -107,7 +107,7 @@ impl QueryNode for SeriesScanNode {
 
 		let read_shape = get_or_create_series_shape(&stored_ctx.services.catalog, self.series.def(), rx)?;
 
-		let mut stream = rx.range(range, batch_size as usize)?;
+		let mut stream = rx.range(range, RangeScope::All, batch_size as usize)?;
 		let mut count = 0;
 
 		for entry in stream.by_ref() {

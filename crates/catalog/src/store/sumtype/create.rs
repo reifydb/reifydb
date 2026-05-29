@@ -79,6 +79,7 @@ pub mod tests {
 		key::namespace_sumtype::NamespaceSumTypeKey,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_transaction::multi::RangeScope;
 	use reifydb_type::{fragment::Fragment, value::sumtype::SumTypeId};
 
 	use super::*;
@@ -206,7 +207,7 @@ pub mod tests {
 		CatalogStore::create_sumtype(&mut txn, to_create2).unwrap();
 
 		let links: Vec<_> = txn
-			.range(NamespaceSumTypeKey::full_scan(test_namespace.id()), 1024)
+			.range(NamespaceSumTypeKey::full_scan(test_namespace.id()), RangeScope::All, 1024)
 			.unwrap()
 			.collect::<Result<Vec<_>>>()
 			.unwrap();

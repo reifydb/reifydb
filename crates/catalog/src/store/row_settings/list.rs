@@ -9,7 +9,7 @@ use reifydb_core::{
 	},
 	row::RowSettings,
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use super::decode_row_settings;
 use crate::{CatalogStore, Result};
@@ -25,7 +25,7 @@ impl CatalogStore {
 	pub fn list_row_settings(rx: &mut Transaction<'_>) -> Result<Vec<RowSettingsEntry>> {
 		let mut result = Vec::new();
 
-		let stream = rx.range(RowSettingsKeyRange::full_scan(), 1024)?;
+		let stream = rx.range(RowSettingsKeyRange::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let entry = entry?;

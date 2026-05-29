@@ -8,7 +8,7 @@ use reifydb_core::{
 	},
 	key::view::ViewKey,
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{
 	CatalogStore, Result,
@@ -21,7 +21,7 @@ use crate::{
 
 pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = ViewKey::full_scan();
-	let mut stream = rx.range(range, 1024)?;
+	let mut stream = rx.range(range, RangeScope::All, 1024)?;
 
 	let mut views = Vec::new();
 	for entry in stream.by_ref() {

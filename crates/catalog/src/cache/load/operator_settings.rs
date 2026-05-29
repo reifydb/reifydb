@@ -5,7 +5,7 @@ use reifydb_core::key::{
 	EncodableKey,
 	operator_settings::{OperatorSettingsKey, OperatorSettingsKeyRange},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use tracing::warn;
 
 use super::CatalogCache;
@@ -13,7 +13,7 @@ use crate::{Result, store::operator_settings::decode_operator_settings};
 
 pub(crate) fn load_operator_settings(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = OperatorSettingsKeyRange::full_scan();
-	let stream = rx.range(range, 1024)?;
+	let stream = rx.range(range, RangeScope::All, 1024)?;
 
 	for entry in stream {
 		let multi = entry?;

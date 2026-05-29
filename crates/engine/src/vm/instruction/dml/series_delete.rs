@@ -25,7 +25,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_rql::{nodes::DeleteSeriesNode, query::QueryPlan};
-use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
+use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, multi::RangeScope, transaction::Transaction};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -225,7 +225,7 @@ fn run_series_delete_all(
 	let range = SeriesRowKeyRange::full_scan(series.id, None);
 	let mut entries_to_delete: Vec<(EncodedKey, EncodedRow)> = Vec::new();
 
-	let mut stream = txn.range(range, 32)?;
+	let mut stream = txn.range(range, RangeScope::All, 32)?;
 	for entry in stream.by_ref() {
 		let entry = entry?;
 		entries_to_delete.push((entry.key, entry.row));

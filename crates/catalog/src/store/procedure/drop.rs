@@ -8,7 +8,10 @@ use reifydb_core::{
 		procedure_param::ProcedureParamKey,
 	},
 };
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_transaction::{
+	multi::RangeScope,
+	transaction::{Transaction, admin::AdminTransaction},
+};
 
 use crate::{CatalogStore, Result};
 
@@ -20,7 +23,7 @@ impl CatalogStore {
 
 		let mut param_keys: Vec<ProcedureParamKey> = Vec::new();
 		{
-			let stream = txn.range(ProcedureParamKey::full_scan(procedure), 1024)?;
+			let stream = txn.range(ProcedureParamKey::full_scan(procedure), RangeScope::All, 1024)?;
 			for entry in stream {
 				let entry = entry?;
 				if let Some(Key::ProcedureParam(k)) = Key::decode(&entry.key) {

@@ -10,6 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKeyRange};
+use reifydb_transaction::multi::RangeScope;
 
 use super::test_multi;
 use crate::{as_key, as_values, from_row, multi::transaction::FromRow};
@@ -24,14 +25,16 @@ fn test_iter() {
 	txn.commit().unwrap();
 
 	let txn = engine.begin_query().unwrap();
-	let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 
 	for (expected, tv) in (1..=3).rev().zip(items) {
 		assert_eq!(tv.key, as_key!(expected));
 		assert_eq!(tv.row, as_values!(expected));
 	}
 
-	let items: Vec<_> = txn.range_rev(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, tv) in (1..=3).zip(items) {
 		assert_eq!(tv.key, as_key!(expected));
 		assert_eq!(tv.row, as_values!(expected));
@@ -46,14 +49,16 @@ fn test_iter2() {
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
 	txn.set(&as_key!(3), as_values!(3)).unwrap();
 
-	let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, tv) in (1..=3).rev().zip(items) {
 		assert_eq!(tv.key, as_key!(expected));
 		assert_eq!(tv.row, as_values!(expected));
 		assert_eq!(tv.version, 1);
 	}
 
-	let items: Vec<_> = txn.range_rev(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, tv) in (1..=3).zip(items) {
 		assert_eq!(tv.key, as_key!(expected));
 		assert_eq!(tv.row, as_values!(expected));
@@ -66,14 +71,16 @@ fn test_iter2() {
 	txn.set(&as_key!(5), as_values!(5)).unwrap();
 	txn.set(&as_key!(6), as_values!(6)).unwrap();
 
-	let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, tv) in (1..=6).rev().zip(items) {
 		assert_eq!(tv.key, as_key!(expected));
 		assert_eq!(tv.row, as_values!(expected));
 		assert_eq!(tv.version, 2);
 	}
 
-	let items: Vec<_> = txn.range_rev(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, tv) in (1..=6).zip(items) {
 		assert_eq!(tv.key, as_key!(expected));
 		assert_eq!(tv.row, as_values!(expected));
@@ -89,14 +96,16 @@ fn test_iter3() {
 	txn.set(&as_key!(5), as_values!(5)).unwrap();
 	txn.set(&as_key!(6), as_values!(6)).unwrap();
 
-	let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, tv) in (4..=6).rev().zip(items) {
 		assert_eq!(tv.key, as_key!(expected));
 		assert_eq!(tv.row, as_values!(expected));
 		assert_eq!(tv.version, 1);
 	}
 
-	let items: Vec<_> = txn.range_rev(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, tv) in (4..=6).zip(items) {
 		assert_eq!(tv.key, as_key!(expected));
 		assert_eq!(tv.row, as_values!(expected));
@@ -110,14 +119,16 @@ fn test_iter3() {
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
 	txn.set(&as_key!(3), as_values!(3)).unwrap();
 
-	let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, tv) in (1..=6).rev().zip(items) {
 		assert_eq!(tv.key, as_key!(expected));
 		assert_eq!(tv.row, as_values!(expected));
 		assert_eq!(tv.version, 2);
 	}
 
-	let items: Vec<_> = txn.range_rev(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, tv) in (1..=6).zip(items) {
 		assert_eq!(tv.key, as_key!(expected));
 		assert_eq!(tv.row, as_values!(expected));
@@ -194,32 +205,42 @@ fn test_iter_edge_case() {
 	};
 
 	let mut txn = engine.begin_command().unwrap();
-	let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_iter(items, &[32, 13]);
-	let items: Vec<_> = txn4.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn4.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_iter(items, &[24, 13]);
 
-	let items: Vec<_> = txn.range_rev(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_rev_iter(items, &[13, 32]);
-	let items: Vec<_> = txn4.range_rev(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn4.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_rev_iter(items, &[13, 24]);
 
 	txn.read_as_of_version_exclusive(CommitVersion(4));
-	let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_iter(items, &[32, 23, 13]);
-	let items: Vec<_> = txn.range_rev(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_rev_iter(items, &[13, 23, 32]);
 
 	txn.read_as_of_version_exclusive(CommitVersion(3));
-	let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_iter(items, &[32, 12]);
-	let items: Vec<_> = txn.range_rev(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_rev_iter(items, &[12, 32]);
 
 	txn.read_as_of_version_exclusive(CommitVersion(2));
-	let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_iter(items, &[31]);
-	let items: Vec<_> = txn.range_rev(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_rev_iter(items, &[31]);
 }
 
@@ -285,28 +306,36 @@ fn test_iter_edge_case2() {
 	};
 
 	let mut txn = engine.begin_command().unwrap();
-	let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_iter(items, &[32, 13]);
-	let items: Vec<_> = txn.range_rev(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_rev_iter(items, &[13, 32]);
 
 	txn.read_as_of_version_exclusive(CommitVersion(4));
-	let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_iter(items, &[32, 23, 13]);
 
-	let items: Vec<_> = txn.range_rev(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_rev_iter(items, &[13, 23, 32]);
 
 	txn.read_as_of_version_exclusive(CommitVersion(3));
-	let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_iter(items, &[32, 12]);
 
-	let items: Vec<_> = txn.range_rev(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_rev_iter(items, &[12, 32]);
 
 	txn.read_as_of_version_exclusive(CommitVersion(2));
-	let items: Vec<_> = txn.range(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_iter(items, &[31]);
-	let items: Vec<_> = txn.range_rev(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
+	let items: Vec<_> =
+		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	check_rev_iter(items, &[31]);
 }

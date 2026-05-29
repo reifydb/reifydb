@@ -8,7 +8,7 @@ use reifydb_core::{
 	},
 	key::{flow::FlowKey, namespace_flow::NamespaceFlowKey},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{
 	CatalogStore, Result,
@@ -42,7 +42,7 @@ impl CatalogStore {
 		name: impl AsRef<str>,
 	) -> Result<Option<Flow>> {
 		let name = name.as_ref();
-		let mut stream = rx.range(NamespaceFlowKey::full_scan(namespace), 1024)?;
+		let mut stream = rx.range(NamespaceFlowKey::full_scan(namespace), RangeScope::All, 1024)?;
 
 		let mut found_flow = None;
 		for entry in stream.by_ref() {

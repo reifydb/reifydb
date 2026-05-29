@@ -7,7 +7,7 @@ use std::sync::{
 };
 
 use reifydb_core::{common::CommitVersion, key::cdc_consumer::CdcConsumerKeyRange};
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_type::Result;
 
 #[derive(Debug, Clone, Default)]
@@ -29,7 +29,7 @@ impl CdcConsumerWatermark {
 
 pub fn compute_watermark(txn: &mut Transaction<'_>) -> Result<Option<CommitVersion>> {
 	let mut min_version: Option<CommitVersion> = None;
-	for multi in txn.range(CdcConsumerKeyRange::full_scan(), 1024)? {
+	for multi in txn.range(CdcConsumerKeyRange::full_scan(), RangeScope::All, 1024)? {
 		let multi = multi?;
 		if let Some(version) = decode_checkpoint_row(&multi.row) {
 			min_version = Some(min_version.map_or(version, |m| m.min(version)));

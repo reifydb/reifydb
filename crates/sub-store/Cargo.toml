@@ -11,21 +11,28 @@ description = "General storage subsystem for ReifyDB."
 reifydb-build = { workspace = true }
 
 [dependencies]
-reifydb-catalog = { workspace = true }
-reifydb-column = { workspace = true }
+reifydb-catalog = { workspace = true, optional = true }
+reifydb-column = { workspace = true, optional = true }
 reifydb-core = { workspace = true }
-reifydb-engine = { workspace = true }
-reifydb-runtime = { workspace = true }
+reifydb-engine = { workspace = true, optional = true }
+reifydb-runtime = { workspace = true, optional = true }
 reifydb-sub-api = { workspace = true }
-reifydb-transaction = { workspace = true }
+reifydb-transaction = { workspace = true, optional = true }
 reifydb-type = { workspace = true }
 serde = { workspace = true }
-thiserror = { workspace = true }
+thiserror = { workspace = true, optional = true }
 tracing = { workspace = true }
 
 [features]
-default = ["column"]
-column = []
+default = []
+column = [
+	"dep:reifydb-catalog",
+	"dep:reifydb-column",
+	"dep:reifydb-engine",
+	"dep:reifydb-runtime",
+	"dep:reifydb-transaction",
+	"dep:thiserror",
+]
 
 [dev-dependencies]
 reifydb = { workspace = true }

@@ -12,7 +12,10 @@ use reifydb_core::{
 	},
 	util::encoding::{binary::decode_binary, format::raw::Raw},
 };
-use reifydb_store_multi::tier::{RangeCursor, TierStorage, commit::buffer::MultiCommitBufferTier};
+use reifydb_store_multi::{
+	MultiVersionScope,
+	tier::{RangeCursor, TierStorage, commit::buffer::MultiCommitBufferTier},
+};
 use reifydb_testing::{
 	testscript,
 	testscript::{
@@ -85,7 +88,16 @@ impl Runner {
 		let version = CommitVersion(u64::MAX); // Get latest version
 
 		while !cursor.exhausted {
-			let batch = self.storage.range_next(table, &mut cursor, start, end, version, 1000)?;
+			let batch = self.storage.range_next(
+				table,
+				&mut cursor,
+				start,
+				end,
+				MultiVersionScope::AsOf {
+					read: version,
+				},
+				1000,
+			)?;
 			for entry in batch.entries {
 				results.push((entry.key, entry.value));
 			}

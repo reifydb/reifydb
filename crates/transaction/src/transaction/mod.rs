@@ -91,7 +91,7 @@ use crate::{
 			ViewPreUpdateInterceptor,
 		},
 	},
-	multi::transaction::write::WriteSavepoint,
+	multi::{RangeScope, transaction::write::WriteSavepoint},
 	single::{read::SingleReadTransaction, write::SingleWriteTransaction},
 	transaction::{
 		admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
@@ -376,28 +376,30 @@ impl<'a> Transaction<'a> {
 	pub fn range(
 		&mut self,
 		range: EncodedKeyRange,
+		scope: RangeScope,
 		batch_size: usize,
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_>> {
 		match self {
-			Transaction::Command(txn) => txn.range(range, batch_size),
-			Transaction::Admin(txn) => txn.range(range, batch_size),
-			Transaction::Query(txn) => Ok(txn.range(range, batch_size)),
-			Transaction::Test(t) => t.inner.range(range, batch_size),
-			Transaction::Replica(txn) => txn.range(range, batch_size),
+			Transaction::Command(txn) => txn.range(range, scope, batch_size),
+			Transaction::Admin(txn) => txn.range(range, scope, batch_size),
+			Transaction::Query(txn) => Ok(txn.range(range, scope, batch_size)),
+			Transaction::Test(t) => t.inner.range(range, scope, batch_size),
+			Transaction::Replica(txn) => txn.range(range, scope, batch_size),
 		}
 	}
 
 	pub fn range_rev(
 		&mut self,
 		range: EncodedKeyRange,
+		scope: RangeScope,
 		batch_size: usize,
 	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_>> {
 		match self {
-			Transaction::Command(txn) => txn.range_rev(range, batch_size),
-			Transaction::Admin(txn) => txn.range_rev(range, batch_size),
-			Transaction::Query(txn) => Ok(txn.range_rev(range, batch_size)),
-			Transaction::Test(t) => t.inner.range_rev(range, batch_size),
-			Transaction::Replica(txn) => txn.range_rev(range, batch_size),
+			Transaction::Command(txn) => txn.range_rev(range, scope, batch_size),
+			Transaction::Admin(txn) => txn.range_rev(range, scope, batch_size),
+			Transaction::Query(txn) => Ok(txn.range_rev(range, scope, batch_size)),
+			Transaction::Test(t) => t.inner.range_rev(range, scope, batch_size),
+			Transaction::Replica(txn) => txn.range_rev(range, scope, batch_size),
 		}
 	}
 }

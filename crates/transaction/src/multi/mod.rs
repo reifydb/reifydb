@@ -12,11 +12,42 @@
 use std::time::Duration;
 
 use reifydb_core::common::CommitVersion;
+use reifydb_store_multi::MultiVersionScope;
 use reifydb_type::Result;
 
 use crate::multi::transaction::{
 	MultiTransaction, read::MultiReadTransaction, replica::MultiReplicaTransaction, write::MultiWriteTransaction,
 };
+
+/// Watermark choice for a transaction-level range scan.
+///
+/// The read version is taken from the transaction's `tm.version()`; this enum
+/// captures only whether a lower-bound watermark applies.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum RangeScope {
+	/// Yield all visible versions per key (existing behavior).
+	All,
+	/// Skip rows with `commit_version <= after`. Used by the
+	/// Delta + Main merge to avoid double-emitting rows already in a snapshot.
+	After(CommitVersion),
+}
+
+impl RangeScope {
+	/// Lift to a storage-layer `MultiVersionScope` given the transaction's
+	/// read version.
+	#[inline]
+	pub fn into_multi(self, read: CommitVersion) -> MultiVersionScope {
+		match self {
+			Self::All => MultiVersionScope::AsOf {
+				read,
+			},
+			Self::After(after) => MultiVersionScope::Between {
+				after,
+				read,
+			},
+		}
+	}
+}
 
 pub mod conflict;
 pub mod lease;

@@ -162,26 +162,71 @@ impl MultiVersionGetPrevious for MultiStore {
 
 pub type MultiVersionRangeIterator<'a> = Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a>;
 
+/// Version scope for a multi-version range scan.
+///
+/// Selects which version is returned for each key during a range walk.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum MultiVersionScope {
+	/// For each key, yield the highest version `v` with `v <= read`.
+	AsOf {
+		read: CommitVersion,
+	},
+	/// For each key, yield the highest version `v` with `after < v <= read`.
+	/// Keys with no qualifying version are dropped from the output.
+	Between {
+		after: CommitVersion,
+		read: CommitVersion,
+	},
+}
+
+impl MultiVersionScope {
+	#[inline]
+	pub fn read(&self) -> CommitVersion {
+		match self {
+			Self::AsOf {
+				read,
+			}
+			| Self::Between {
+				read,
+				..
+			} => *read,
+		}
+	}
+
+	#[inline]
+	pub fn contains(&self, v: CommitVersion) -> bool {
+		match self {
+			Self::AsOf {
+				read,
+			} => v <= *read,
+			Self::Between {
+				after,
+				read,
+			} => v > *after && v <= *read,
+		}
+	}
+}
+
 impl MultiStore {
 	pub fn range(
 		&self,
 		range: EncodedKeyRange,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> MultiVersionRangeIterator<'_> {
 		match self {
-			MultiStore::Standard(store) => Box::new(store.range(range, version, batch_size)),
+			MultiStore::Standard(store) => Box::new(store.range(range, scope, batch_size)),
 		}
 	}
 
 	pub fn range_rev(
 		&self,
 		range: EncodedKeyRange,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> MultiVersionRangeIterator<'_> {
 		match self {
-			MultiStore::Standard(store) => Box::new(store.range_rev(range, version, batch_size)),
+			MultiStore::Standard(store) => Box::new(store.range_rev(range, scope, batch_size)),
 		}
 	}
 

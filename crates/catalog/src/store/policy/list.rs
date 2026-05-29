@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::policy::{Policy, PolicyId, PolicyOperation},
 	key::{policy::PolicyKey, policy_op::PolicyOpKey},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{
 	CatalogStore, Result,
@@ -15,7 +15,7 @@ use crate::{
 impl CatalogStore {
 	pub(crate) fn list_all_policies(rx: &mut Transaction<'_>) -> Result<Vec<Policy>> {
 		let mut result = Vec::new();
-		let stream = rx.range(PolicyKey::full_scan(), 1024)?;
+		let stream = rx.range(PolicyKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let multi = entry?;
@@ -32,7 +32,7 @@ impl CatalogStore {
 	) -> Result<Vec<PolicyOperation>> {
 		let mut result = Vec::new();
 		let range = PolicyOpKey::policy_scan(policy);
-		let stream = rx.range(range, 1024)?;
+		let stream = rx.range(range, RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let multi = entry?;
@@ -44,7 +44,7 @@ impl CatalogStore {
 
 	pub(crate) fn list_all_policy_operations(rx: &mut Transaction<'_>) -> Result<Vec<PolicyOperation>> {
 		let mut result = Vec::new();
-		let stream = rx.range(PolicyOpKey::full_scan(), 1024)?;
+		let stream = rx.range(PolicyOpKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let multi = entry?;

@@ -8,7 +8,7 @@ use reifydb_core::{
 	},
 	key::{Key, ringbuffer::RingBufferKey},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{CatalogStore, Result, store::ringbuffer::shape::ringbuffer};
 
@@ -18,7 +18,7 @@ impl CatalogStore {
 
 		let mut ringbuffer_data: Vec<(RingBufferId, NamespaceId, String, u64, Vec<String>, bool)> = Vec::new();
 		{
-			let stream = rx.range(RingBufferKey::full_scan(), 1024)?;
+			let stream = rx.range(RingBufferKey::full_scan(), RangeScope::All, 1024)?;
 
 			for entry in stream {
 				let entry = entry?;

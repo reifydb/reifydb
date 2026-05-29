@@ -11,7 +11,7 @@ use reifydb_core::{
 		namespace_procedure::NamespaceProcedureKey, procedure::ProcedureKey, procedure_param::ProcedureParamKey,
 	},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_type::value::{
 	constraint::TypeConstraint,
 	sumtype::{SumTypeId, VariantRef},
@@ -38,7 +38,7 @@ impl CatalogStore {
 		name: &str,
 	) -> Result<Option<Procedure>> {
 		let mut found_id = None;
-		let mut stream = rx.range(NamespaceProcedureKey::full_scan(namespace), 1024)?;
+		let mut stream = rx.range(NamespaceProcedureKey::full_scan(namespace), RangeScope::All, 1024)?;
 		for entry in stream.by_ref() {
 			let multi = entry?;
 			let row = &multi.row;
@@ -61,7 +61,7 @@ impl CatalogStore {
 
 pub(crate) fn load_params(rx: &mut Transaction<'_>, procedure_id: ProcedureId) -> Result<Vec<ProcedureParam>> {
 	let mut entries: Vec<(u16, ProcedureParam)> = Vec::new();
-	let mut stream = rx.range(ProcedureParamKey::full_scan(procedure_id), 1024)?;
+	let mut stream = rx.range(ProcedureParamKey::full_scan(procedure_id), RangeScope::All, 1024)?;
 	for entry in stream.by_ref() {
 		let multi = entry?;
 		let row = &multi.row;

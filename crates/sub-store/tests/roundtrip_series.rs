@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
+#![cfg(feature = "column")]
+
 use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
 use reifydb::{Params, WithSubsystem, embedded as db_embedded};

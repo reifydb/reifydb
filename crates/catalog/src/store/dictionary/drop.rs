@@ -5,7 +5,10 @@ use reifydb_core::key::{
 	dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey, DictionarySequenceKey},
 	namespace_dictionary::NamespaceDictionaryKey,
 };
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_transaction::{
+	multi::RangeScope,
+	transaction::{Transaction, admin::AdminTransaction},
+};
 use reifydb_type::value::dictionary::DictionaryId;
 
 use crate::{CatalogStore, Result};
@@ -17,7 +20,7 @@ impl CatalogStore {
 		}
 
 		let entry_range = DictionaryEntryKey::full_scan(dictionary);
-		let mut entry_stream = txn.range(entry_range, 1024)?;
+		let mut entry_stream = txn.range(entry_range, RangeScope::All, 1024)?;
 		let mut entry_keys = Vec::new();
 		for entry in entry_stream.by_ref() {
 			entry_keys.push(entry?.key.clone());
@@ -28,7 +31,7 @@ impl CatalogStore {
 		}
 
 		let index_range = DictionaryEntryIndexKey::full_scan(dictionary);
-		let mut index_stream = txn.range(index_range, 1024)?;
+		let mut index_stream = txn.range(index_range, RangeScope::All, 1024)?;
 		let mut index_keys = Vec::new();
 		for entry in index_stream.by_ref() {
 			index_keys.push(entry?.key.clone());

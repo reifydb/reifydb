@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::identity::RoleId,
 	key::{EncodableKey, granted_role::GrantedRoleKey, role::RoleKey},
 };
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
 
 use crate::{CatalogStore, Result};
 
@@ -13,7 +13,7 @@ impl CatalogStore {
 	pub(crate) fn drop_role(txn: &mut AdminTransaction, role: RoleId) -> Result<()> {
 		{
 			let range = GrantedRoleKey::full_scan();
-			let mut stream = txn.range(range, 1024)?;
+			let mut stream = txn.range(range, RangeScope::All, 1024)?;
 			let mut keys_to_remove = Vec::new();
 			for entry in stream.by_ref() {
 				let entry = entry?;

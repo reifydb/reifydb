@@ -44,6 +44,7 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 };
 use reifydb_store_multi::{
+	MultiVersionScope,
 	config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
 	flush::ShapePersistence,
 	gc::EvictionWatermark,
@@ -101,7 +102,7 @@ fn get(store: &StandardMultiStore, k: &EncodedKey, version: u64) -> Option<Vec<u
 }
 
 fn scan_keys(store: &StandardMultiStore, version: u64) -> Vec<(Vec<u8>, Vec<u8>)> {
-	store.range(RowKey::full_scan(SHAPE), CommitVersion(version), 1024)
+	store.range(RowKey::full_scan(SHAPE), MultiVersionScope::AsOf { read: CommitVersion(version) }, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
