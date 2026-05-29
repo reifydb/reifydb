@@ -4,7 +4,7 @@
 pub(crate) mod procedure {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const NAMESPACE: usize = 1;
@@ -29,15 +29,15 @@ pub(crate) mod procedure {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("namespace", Type::Uint8),
-			RowShapeField::unconstrained("name", Type::Utf8),
-			RowShapeField::unconstrained("variant", Type::Uint1),
-			RowShapeField::unconstrained("body", Type::Utf8),
-			RowShapeField::unconstrained("trigger_kind", Type::Uint1),
-			RowShapeField::unconstrained("trigger_variant_sumtype", Type::Uint8),
-			RowShapeField::unconstrained("trigger_variant_index", Type::Uint2),
-			RowShapeField::unconstrained("return_type", Type::Utf8),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("namespace", ValueType::Uint8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
+			RowShapeField::unconstrained("variant", ValueType::Uint1),
+			RowShapeField::unconstrained("body", ValueType::Utf8),
+			RowShapeField::unconstrained("trigger_kind", ValueType::Uint1),
+			RowShapeField::unconstrained("trigger_variant_sumtype", ValueType::Uint8),
+			RowShapeField::unconstrained("trigger_variant_index", ValueType::Uint2),
+			RowShapeField::unconstrained("return_type", ValueType::Utf8),
 		])
 	});
 }
@@ -45,15 +45,15 @@ pub(crate) mod procedure {
 pub(crate) mod namespace_procedure {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const NAME: usize = 1;
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("name", Type::Utf8),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
 		])
 	});
 }
@@ -61,7 +61,7 @@ pub(crate) mod namespace_procedure {
 pub(crate) mod procedure_param {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const PROCEDURE_ID: usize = 0;
 	pub(crate) const INDEX: usize = 1;
@@ -71,10 +71,10 @@ pub(crate) mod procedure_param {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("procedure_id", Type::Uint8),
-			RowShapeField::unconstrained("index", Type::Uint2),
-			RowShapeField::unconstrained("name", Type::Utf8),
-			RowShapeField::unconstrained("type_constraint", Type::Utf8),
+			RowShapeField::unconstrained("procedure_id", ValueType::Uint8),
+			RowShapeField::unconstrained("index", ValueType::Uint2),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
+			RowShapeField::unconstrained("type_constraint", ValueType::Utf8),
 		])
 	});
 }

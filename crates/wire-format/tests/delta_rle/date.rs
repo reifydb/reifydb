@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::{container::temporal::TemporalContainer, date::Date, frame::data::FrameColumnData};
+use reifydb_value::value::{container::temporal::TemporalContainer, date::Date, frame::data::FrameColumnData};
 
 fn make(v: Vec<Date>) -> FrameColumnData {
 	FrameColumnData::Date(TemporalContainer::new(v))

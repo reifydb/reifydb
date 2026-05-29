@@ -21,7 +21,7 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::InsertRingBufferNode;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,

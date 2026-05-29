@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackNamespaceChangeOperations, id::NamespaceId, namespace::Namespace,
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::{
 	change::{

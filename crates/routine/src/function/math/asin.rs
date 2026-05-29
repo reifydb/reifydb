@@ -3,7 +3,7 @@
 
 use num_traits::ToPrimitive;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_type::value::r#type::{Type, input_types::InputTypes};
+use reifydb_value::value::value_type::{ValueType, input_types::InputTypes};
 
 use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
@@ -60,8 +60,8 @@ impl<'a> Routine<FunctionContext<'a>> for Asin {
 		&self.info
 	}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Float8
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Float8
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {

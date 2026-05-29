@@ -9,10 +9,10 @@ use reifydb_client::{GrpcClient, WireFormat};
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_runtime::{SharedRuntime, sync::mutex::Mutex};
 #[cfg(not(reifydb_single_threaded))]
-use reifydb_type::error::Diagnostic;
-use reifydb_type::error::Error;
+use reifydb_value::error::Diagnostic;
+use reifydb_value::error::Error;
 #[cfg(not(reifydb_single_threaded))]
-use reifydb_type::{params::Params, value::frame::frame::Frame};
+use reifydb_value::{params::Params, value::frame::frame::Frame};
 
 #[cfg(not(reifydb_single_threaded))]
 type CacheKey = (String, Option<String>);
@@ -142,7 +142,7 @@ pub fn extract_remote_token(err: &Error) -> Option<String> {
 #[cfg(test)]
 mod tests {
 	use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, pool::PoolConfig};
-	use reifydb_type::{error::Diagnostic, fragment::Fragment};
+	use reifydb_value::{error::Diagnostic, fragment::Fragment};
 
 	use super::*;
 

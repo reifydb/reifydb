@@ -21,7 +21,7 @@ use reifydb_rql::{
 	},
 	query::QueryPlan,
 };
-use reifydb_type::{Result, error::Error, value::blob::Blob};
+use reifydb_value::{Result, error::Error, value::blob::Blob};
 
 pub mod operator;
 pub mod primitive;

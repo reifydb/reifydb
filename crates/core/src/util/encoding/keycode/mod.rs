@@ -31,7 +31,7 @@ pub(crate) mod varint;
 
 use std::{f32, f64};
 
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	error::{Error, TypeError},
 };
@@ -336,7 +336,7 @@ pub mod tests {
 	const PI_F32: f32 = f32::consts::PI;
 	const PI_F64: f64 = f64::consts::PI;
 
-	use reifydb_type::{
+	use reifydb_value::{
 		util::hex::encode,
 		value::{Value, ordered_f32::OrderedF32, ordered_f64::OrderedF64},
 	};

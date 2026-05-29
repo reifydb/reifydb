@@ -123,7 +123,7 @@ pub mod tests {
 	use reifydb_core::interface::catalog::id::NamespaceId;
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_type::{fragment::Fragment, value::r#type::Type};
+	use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 	use crate::{
 		CatalogStore,
@@ -186,8 +186,8 @@ pub mod tests {
 			DictionaryToCreate {
 				namespace: ns.id(),
 				name: Fragment::internal("child_dict"),
-				value_type: Type::Utf8,
-				id_type: Type::Uint2,
+				value_type: ValueType::Utf8,
+				id_type: ValueType::Uint2,
 			},
 		)
 		.unwrap();

@@ -9,7 +9,7 @@ use reifydb_core::{
 	key::dictionary::DictionaryKey,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::{dictionary::DictionaryId, r#type::Type};
+use reifydb_value::value::{dictionary::DictionaryId, value_type::ValueType};
 
 use super::CatalogCache;
 use crate::{
@@ -43,7 +43,7 @@ fn convert_dictionary(multi: MultiVersionRow) -> Dictionary {
 		id,
 		namespace,
 		name,
-		value_type: Type::from_u8(value_type_ordinal),
-		id_type: Type::from_u8(id_type_ordinal),
+		value_type: ValueType::from_u8(value_type_ordinal),
+		id_type: ValueType::from_u8(id_type_ordinal),
 	}
 }

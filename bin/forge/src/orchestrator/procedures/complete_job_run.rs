@@ -7,12 +7,12 @@ use reifydb::{
 	core::value::column::columns::Columns,
 	routine::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError},
 	transaction::transaction::Transaction,
-	r#type::{
+	value::{
 		Result as TypeResult,
 		error::Error as TypeError,
 		fragment::Fragment,
 		params::Params,
-		value::{Value, r#type::Type},
+		value::{Value, value_type::ValueType},
 	},
 };
 
@@ -42,8 +42,8 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for CompleteJobRunProcedure {
 	fn info(&self) -> &RoutineInfo {
 		&INFO
 	}
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Any
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Any
 	}
 	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
 		let (job_run_id_str, status_str) = match ctx.params {
@@ -55,7 +55,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for CompleteJobRunProcedure {
 						return Err(RoutineError::ProcedureInvalidArgumentType {
 							procedure: Fragment::internal("forge::complete_job_run"),
 							argument_index: 0,
-							expected: vec![Type::Uuid4, Type::Utf8],
+							expected: vec![ValueType::Uuid4, ValueType::Utf8],
 							actual: args[0].get_type(),
 						});
 					}
@@ -66,7 +66,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for CompleteJobRunProcedure {
 						return Err(RoutineError::ProcedureInvalidArgumentType {
 							procedure: Fragment::internal("forge::complete_job_run"),
 							argument_index: 1,
-							expected: vec![Type::Utf8],
+							expected: vec![ValueType::Utf8],
 							actual: args[1].get_type(),
 						});
 					}

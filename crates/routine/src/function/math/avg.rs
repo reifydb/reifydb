@@ -10,11 +10,11 @@ use reifydb_core::value::column::{
 	columns::Columns,
 	view::group_by::{GroupByView, GroupKey},
 };
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		decimal::Decimal,
-		r#type::{Type, input_types::InputTypes},
+		value_type::{ValueType, input_types::InputTypes},
 	},
 };
 
@@ -40,11 +40,11 @@ impl Avg {
 	}
 }
 
-fn avg_return_type(input_type: &Type) -> Type {
+fn avg_return_type(input_type: &ValueType) -> ValueType {
 	match input_type {
-		Type::Float4 => Type::Float4,
-		Type::Float8 => Type::Float8,
-		_ => Type::Decimal,
+		ValueType::Float4 => ValueType::Float4,
+		ValueType::Float8 => ValueType::Float8,
+		_ => ValueType::Decimal,
 	}
 }
 
@@ -92,8 +92,8 @@ impl<'a> Routine<FunctionContext<'a>> for Avg {
 		&self.info
 	}
 
-	fn return_type(&self, input_types: &[Type]) -> Type {
-		input_types.first().map(avg_return_type).unwrap_or(Type::Decimal)
+	fn return_type(&self, input_types: &[ValueType]) -> ValueType {
+		input_types.first().map(avg_return_type).unwrap_or(ValueType::Decimal)
 	}
 
 	fn accepted_types(&self) -> InputTypes {
@@ -114,8 +114,8 @@ impl<'a> Routine<FunctionContext<'a>> for Avg {
 		let result_type = avg_return_type(&input_type);
 
 		match result_type {
-			Type::Float4 => execute_float4(ctx, args, row_count),
-			Type::Float8 => execute_float8(ctx, args, row_count),
+			ValueType::Float4 => execute_float4(ctx, args, row_count),
+			ValueType::Float8 => execute_float8(ctx, args, row_count),
 			_ => execute_decimal(ctx, args, row_count),
 		}
 	}
@@ -142,7 +142,7 @@ fn execute_float4<'a>(
 			return Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
-				expected: vec![Type::Float4],
+				expected: vec![ValueType::Float4],
 				actual: data.get_type(),
 			});
 		}
@@ -187,7 +187,7 @@ fn execute_float8<'a>(
 			return Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
-				expected: vec![Type::Float8],
+				expected: vec![ValueType::Float8],
 				actual: data.get_type(),
 			});
 		}
@@ -308,7 +308,7 @@ impl Function for Avg {
 struct AvgAccumulator {
 	state: AvgState,
 	counts: IndexMap<GroupKey, u64>,
-	input_type: Option<Type>,
+	input_type: Option<ValueType>,
 }
 
 enum AvgState {
@@ -338,9 +338,9 @@ impl Accumulator for AvgAccumulator {
 		if self.input_type.is_none() {
 			self.input_type = Some(input_type.clone());
 			self.state = match input_type {
-				Type::Float4 => AvgState::Float4(IndexMap::new()),
-				Type::Float8 => AvgState::Float8(IndexMap::new()),
-				Type::Decimal => AvgState::Decimal(IndexMap::new()),
+				ValueType::Float4 => AvgState::Float4(IndexMap::new()),
+				ValueType::Float8 => AvgState::Float8(IndexMap::new()),
+				ValueType::Decimal => AvgState::Decimal(IndexMap::new()),
 				_ => AvgState::Int(IndexMap::new()),
 			};
 		}
@@ -530,7 +530,7 @@ impl Accumulator for AvgAccumulator {
 		let counts = mem::take(&mut self.counts);
 
 		match state {
-			AvgState::Unset => Ok((Vec::new(), ColumnBuffer::with_capacity(Type::Decimal, 0))),
+			AvgState::Unset => Ok((Vec::new(), ColumnBuffer::with_capacity(ValueType::Decimal, 0))),
 			AvgState::Int(sums) | AvgState::Decimal(sums) => {
 				let mut keys = Vec::with_capacity(sums.len());
 				let mut out = Vec::with_capacity(sums.len());

@@ -3,7 +3,7 @@
 
 use once_cell::sync::Lazy;
 use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 pub(crate) mod ringbuffer {
 	use super::*;
@@ -18,13 +18,13 @@ pub(crate) mod ringbuffer {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("namespace", Type::Uint8),
-			RowShapeField::unconstrained("name", Type::Utf8),
-			RowShapeField::unconstrained("capacity", Type::Uint8),
-			RowShapeField::unconstrained("primary_key", Type::Uint8),
-			RowShapeField::unconstrained("partition_by", Type::Utf8),
-			RowShapeField::unconstrained("underlying", Type::Uint1),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("namespace", ValueType::Uint8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
+			RowShapeField::unconstrained("capacity", ValueType::Uint8),
+			RowShapeField::unconstrained("primary_key", ValueType::Uint8),
+			RowShapeField::unconstrained("partition_by", ValueType::Utf8),
+			RowShapeField::unconstrained("underlying", ValueType::Uint1),
 		])
 	});
 }
@@ -37,8 +37,8 @@ pub(crate) mod ringbuffer_namespace {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("name", Type::Utf8),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
 		])
 	});
 }
@@ -54,11 +54,11 @@ pub(crate) mod ringbuffer_metadata {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("capacity", Type::Uint8),
-			RowShapeField::unconstrained("head", Type::Uint8),
-			RowShapeField::unconstrained("tail", Type::Uint8),
-			RowShapeField::unconstrained("count", Type::Uint8),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("capacity", ValueType::Uint8),
+			RowShapeField::unconstrained("head", ValueType::Uint8),
+			RowShapeField::unconstrained("tail", ValueType::Uint8),
+			RowShapeField::unconstrained("count", ValueType::Uint8),
 		])
 	});
 }

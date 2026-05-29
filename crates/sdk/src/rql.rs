@@ -3,7 +3,7 @@
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::{constants::FFI_OK, data::buffer::BufferFFI};
-use reifydb_type::{params::Params, value::frame::frame::Frame};
+use reifydb_value::{params::Params, value::frame::frame::Frame};
 
 use crate::{
 	error::{Result, SdkError},

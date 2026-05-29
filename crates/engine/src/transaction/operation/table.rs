@@ -16,7 +16,7 @@ use reifydb_transaction::{
 	interceptor::table_row::TableRowInterceptor,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
-use reifydb_type::value::{datetime::DateTime, row_number::RowNumber};
+use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 use smallvec::smallvec;
 
 use crate::Result;

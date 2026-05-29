@@ -10,7 +10,7 @@ use reifydb_sqlite::{
 	connection::{connect, convert_flags, resolve_db_path},
 	pragma,
 };
-use reifydb_type::{Result, util::cowvec::CowVec};
+use reifydb_value::{Result, util::cowvec::CowVec};
 use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, Transaction as SqliteTransaction, params,
 };

@@ -25,7 +25,7 @@ use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sub_profiler::{
 	accumulator::ProfilerAccumulator, snapshot_actor::ProfilerSnapshotActor, vtable::ProfilerAggregatesVTable,
 };
-use reifydb_type::value::datetime::DateTime;
+use reifydb_value::value::datetime::DateTime;
 
 fn upsert(
 	accumulator: &Arc<RwLock<ProfilerAccumulator>>,

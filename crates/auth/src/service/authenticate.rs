@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{error::Error, value::identity::IdentityId};
+use reifydb_value::{error::Error, value::identity::IdentityId};
 use tracing::instrument;
 
 use super::{AuthResponse, AuthService, generate_session_token};

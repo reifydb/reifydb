@@ -10,7 +10,7 @@ use reifydb_core::{
 	key::ringbuffer::RingBufferMetadataKey,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction};
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 use crate::{CatalogStore, Result, store::ringbuffer::shape::ringbuffer_metadata};
 

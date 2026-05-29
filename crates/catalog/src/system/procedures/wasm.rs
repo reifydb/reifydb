@@ -8,7 +8,7 @@ use reifydb_core::interface::catalog::{
 	id::NamespaceId,
 	vtable::VTable,
 };
-use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 use crate::system::ids::{columns::procedures::wasm::*, vtable::PROCEDURES_WASM};
 
@@ -24,7 +24,7 @@ pub fn procedures_wasm() -> Arc<VTable> {
 				Column {
 					id: ID,
 					name: "id".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint8),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
@@ -33,7 +33,7 @@ pub fn procedures_wasm() -> Arc<VTable> {
 				Column {
 					id: NAMESPACE_ID,
 					name: "namespace_id".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint8),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,
@@ -42,7 +42,7 @@ pub fn procedures_wasm() -> Arc<VTable> {
 				Column {
 					id: NAME,
 					name: "name".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Utf8),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(2),
 					auto_increment: false,
@@ -51,7 +51,7 @@ pub fn procedures_wasm() -> Arc<VTable> {
 				Column {
 					id: NATIVE_NAME,
 					name: "native_name".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Utf8),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(3),
 					auto_increment: false,
@@ -60,7 +60,7 @@ pub fn procedures_wasm() -> Arc<VTable> {
 				Column {
 					id: MODULE_ID,
 					name: "module_id".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint8),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
 					index: ColumnIndex(4),
 					auto_increment: false,

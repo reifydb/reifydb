@@ -3,7 +3,7 @@
 
 use std::ptr;
 
-use reifydb_type::value::{datetime::DateTime, r#type::Type};
+use reifydb_value::value::{datetime::DateTime, value_type::ValueType};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
@@ -11,7 +11,7 @@ impl RowShape {
 	pub fn set_datetime(&self, row: &mut EncodedRow, index: usize, value: DateTime) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::DateTime);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::DateTime);
 		row.set_valid(index, true);
 
 		let nanos = value.to_nanos();
@@ -23,7 +23,7 @@ impl RowShape {
 	pub fn get_datetime(&self, row: &EncodedRow, index: usize) -> DateTime {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::DateTime);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::DateTime);
 		unsafe {
 			let nanos = (row.as_ptr().add(field.offset as usize) as *const u64).read_unaligned();
 			DateTime::from_nanos(nanos)
@@ -31,7 +31,7 @@ impl RowShape {
 	}
 
 	pub fn try_get_datetime(&self, row: &EncodedRow, index: usize) -> Option<DateTime> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::DateTime {
+		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::DateTime {
 			Some(self.get_datetime(row, index))
 		} else {
 			None
@@ -41,13 +41,13 @@ impl RowShape {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::{datetime::DateTime, r#type::Type};
+	use reifydb_value::value::{datetime::DateTime, value_type::ValueType};
 
 	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_set_get_datetime() {
-		let shape = RowShape::testing(&[Type::DateTime]);
+		let shape = RowShape::testing(&[ValueType::DateTime]);
 		let mut row = shape.allocate();
 
 		let value = DateTime::new(2024, 9, 9, 08, 17, 0, 1234).unwrap();
@@ -57,7 +57,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_datetime() {
-		let shape = RowShape::testing(&[Type::DateTime]);
+		let shape = RowShape::testing(&[ValueType::DateTime]);
 		let mut row = shape.allocate();
 
 		assert_eq!(shape.try_get_datetime(&row, 0), None);
@@ -69,7 +69,7 @@ pub mod tests {
 
 	#[test]
 	fn test_epoch() {
-		let shape = RowShape::testing(&[Type::DateTime]);
+		let shape = RowShape::testing(&[ValueType::DateTime]);
 		let mut row = shape.allocate();
 
 		let epoch = DateTime::default(); // Unix epoch
@@ -79,7 +79,7 @@ pub mod tests {
 
 	#[test]
 	fn test_with_nanoseconds() {
-		let shape = RowShape::testing(&[Type::DateTime]);
+		let shape = RowShape::testing(&[ValueType::DateTime]);
 		let mut row = shape.allocate();
 
 		// Test with high precision nanoseconds
@@ -90,7 +90,7 @@ pub mod tests {
 
 	#[test]
 	fn test_various_timestamps() {
-		let shape = RowShape::testing(&[Type::DateTime]);
+		let shape = RowShape::testing(&[ValueType::DateTime]);
 
 		let test_datetimes = [
 			DateTime::from_timestamp(0).unwrap(),          // Unix epoch
@@ -108,7 +108,12 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let shape = RowShape::testing(&[Type::DateTime, Type::Boolean, Type::DateTime, Type::Int8]);
+		let shape = RowShape::testing(&[
+			ValueType::DateTime,
+			ValueType::Boolean,
+			ValueType::DateTime,
+			ValueType::Int8,
+		]);
 		let mut row = shape.allocate();
 
 		let datetime1 = DateTime::new(2025, 6, 15, 12, 0, 0, 0).unwrap();
@@ -127,7 +132,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let shape = RowShape::testing(&[Type::DateTime, Type::DateTime]);
+		let shape = RowShape::testing(&[ValueType::DateTime, ValueType::DateTime]);
 		let mut row = shape.allocate();
 
 		let datetime = DateTime::new(2025, 7, 4, 16, 20, 15, 750000000).unwrap();
@@ -142,7 +147,7 @@ pub mod tests {
 
 	#[test]
 	fn test_precision_preservation() {
-		let shape = RowShape::testing(&[Type::DateTime]);
+		let shape = RowShape::testing(&[ValueType::DateTime]);
 		let mut row = shape.allocate();
 
 		// Test that nanosecond precision is preserved
@@ -159,7 +164,7 @@ pub mod tests {
 
 	#[test]
 	fn test_year_2038_problem() {
-		let shape = RowShape::testing(&[Type::DateTime]);
+		let shape = RowShape::testing(&[ValueType::DateTime]);
 		let mut row = shape.allocate();
 
 		// Test the Y2038 boundary (beyond 32-bit timestamp limits)
@@ -170,7 +175,7 @@ pub mod tests {
 
 	#[test]
 	fn test_far_future() {
-		let shape = RowShape::testing(&[Type::DateTime]);
+		let shape = RowShape::testing(&[ValueType::DateTime]);
 		let mut row = shape.allocate();
 
 		// Test a far future date
@@ -181,7 +186,7 @@ pub mod tests {
 
 	#[test]
 	fn test_microsecond_precision() {
-		let shape = RowShape::testing(&[Type::DateTime]);
+		let shape = RowShape::testing(&[ValueType::DateTime]);
 		let mut row = shape.allocate();
 
 		// Test microsecond precision (common in databases)
@@ -192,7 +197,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_datetime_wrong_type() {
-		let shape = RowShape::testing(&[Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
 		shape.set_bool(&mut row, 0, true);

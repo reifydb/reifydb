@@ -15,7 +15,7 @@ use reifydb_transaction::{
 	interceptor::ringbuffer_row::RingBufferRowInterceptor,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
-use reifydb_type::{
+use reifydb_value::{
 	util::cowvec::CowVec,
 	value::{datetime::DateTime, row_number::RowNumber},
 };

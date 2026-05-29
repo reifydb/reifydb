@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use reifydb_runtime::actor::system::ActorHandle;
-use reifydb_type::{Result, value::datetime::DateTime};
+use reifydb_value::{Result, value::datetime::DateTime};
 
 use super::pending::Pending;
 use crate::{

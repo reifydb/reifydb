@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::{catalog::config::ConfigKey, store::MultiVersionRow},
 	key::{EncodableKey, config::ConfigStorageKey},
 };
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 use crate::store::config::shape::config::{SHAPE, VALUE};
 

@@ -4,7 +4,7 @@
 use reifydb_core::value::column::columns::Columns;
 use reifydb_rql::nodes::CreateIdentityNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 use crate::{Result, vm::services::Services};
 

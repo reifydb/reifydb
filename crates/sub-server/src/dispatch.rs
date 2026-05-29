@@ -13,7 +13,7 @@ mod native {
 		metric::ExecutionMetrics,
 	};
 	use reifydb_runtime::{actor::reply::reply_channel, context::clock::Instant};
-	use reifydb_type::value::{duration::Duration as ReifyDuration, frame::frame::Frame};
+	use reifydb_value::value::{duration::Duration as ReifyDuration, frame::frame::Frame};
 	use tokio::time::timeout;
 	use tracing::instrument;
 

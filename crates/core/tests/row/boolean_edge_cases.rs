@@ -2,11 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::encoded::shape::RowShape;
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 #[test]
 fn test_boolean_bit_patterns() {
-	let shape = RowShape::testing(&[Type::Boolean]);
+	let shape = RowShape::testing(&[ValueType::Boolean]);
 	let mut row = shape.allocate();
 
 	// Test transaction values
@@ -25,14 +25,14 @@ fn test_boolean_bit_patterns() {
 fn test_boolean_field_independence() {
 	// Test that boolean fields don't interfere with each other
 	let shape = RowShape::testing(&[
-		Type::Boolean,
-		Type::Boolean,
-		Type::Boolean,
-		Type::Boolean,
-		Type::Boolean,
-		Type::Boolean,
-		Type::Boolean,
-		Type::Boolean,
+		ValueType::Boolean,
+		ValueType::Boolean,
+		ValueType::Boolean,
+		ValueType::Boolean,
+		ValueType::Boolean,
+		ValueType::Boolean,
+		ValueType::Boolean,
+		ValueType::Boolean,
 	]);
 	let mut row = shape.allocate();
 

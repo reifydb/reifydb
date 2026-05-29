@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_catalog::vtable::{VTableContext, tables::VTables};
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::fragment::Fragment;
+use reifydb_value::fragment::Fragment;
 use tracing::instrument;
 
 use crate::{

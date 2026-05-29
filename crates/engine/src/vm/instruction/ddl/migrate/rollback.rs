@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_rql::{compiler::CompilationResult, nodes::RollbackMigrationNode};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, value::Value};
+use reifydb_value::{fragment::Fragment, value::Value};
 
 use crate::{
 	Result,

@@ -9,7 +9,7 @@ use reifydb_abi::data::{
 	column::{ColumnDataFFI, ColumnFFI, ColumnTypeCode, ColumnsFFI},
 };
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	util::bitvec::BitVec,
 	value::{
@@ -24,9 +24,9 @@ use reifydb_type::{
 		int::Int,
 		row_number::RowNumber,
 		time::Time,
-		r#type::Type,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
 	},
 };
 use serde::Serialize;
@@ -200,7 +200,7 @@ impl Arena {
 
 	pub(super) fn unmarshal_column_data(&self, ffi: &ColumnDataFFI, row_count: usize) -> ColumnBuffer {
 		if row_count == 0 {
-			return ColumnBuffer::none_typed(Type::Boolean, 0);
+			return ColumnBuffer::none_typed(ValueType::Boolean, 0);
 		}
 
 		let inner = match ffi.type_code {
@@ -328,7 +328,7 @@ impl Arena {
 				let container = self.unmarshal_dictionary_id_data(ffi);
 				ColumnBuffer::DictionaryId(container)
 			}
-			ColumnTypeCode::Undefined => ColumnBuffer::none_typed(Type::Boolean, row_count),
+			ColumnTypeCode::Undefined => ColumnBuffer::none_typed(ValueType::Boolean, row_count),
 		};
 
 		if !ffi.defined_bitvec.is_empty() {

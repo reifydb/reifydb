@@ -5,7 +5,7 @@ use std::any::Any;
 
 use reifydb_core::{interface::version::HasVersion, util::ioc::IocContainer};
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 pub trait Subsystem: Any + HasVersion {
 	fn name(&self) -> &'static str;

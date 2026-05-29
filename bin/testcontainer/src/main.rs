@@ -3,7 +3,7 @@
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 
-use reifydb::{WithSubsystem, allocator, server, sub_tracing::builder::TracingConfigurator, r#type::params::Params};
+use reifydb::{WithSubsystem, allocator, server, sub_tracing::builder::TracingConfigurator, value::params::Params};
 use tracing::info;
 
 allocator::set_global_allocator!();

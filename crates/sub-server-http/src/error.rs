@@ -9,7 +9,7 @@ use axum::{
 	response::{IntoResponse, Response},
 };
 use reifydb_sub_server::{auth::AuthError, execute::ExecuteError};
-use reifydb_type::error::Diagnostic;
+use reifydb_value::error::Diagnostic;
 use serde::Serialize;
 use tracing::{debug, error};
 

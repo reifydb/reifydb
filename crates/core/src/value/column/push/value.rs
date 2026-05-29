@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::{
+use reifydb_value::{
 	storage::DataBitVec,
 	util::bitvec::BitVec,
 	value::{
@@ -193,7 +193,7 @@ pub mod tests {
 		clock::{Clock, MockClock},
 		rng::Rng,
 	};
-	use reifydb_type::value::{
+	use reifydb_value::value::{
 		Value,
 		date::Date,
 		datetime::DateTime,
@@ -203,8 +203,8 @@ pub mod tests {
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
 		time::Time,
-		r#type::Type,
 		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
 	};
 
 	use crate::value::column::ColumnBuffer;
@@ -238,7 +238,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_bool() {
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 2);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 2);
 		col.push_value(Value::Boolean(true));
 		assert_eq!(col.len(), 3);
 		assert!(!col.is_defined(0));
@@ -268,7 +268,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_float4() {
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 1);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
 		col.push_value(Value::Float4(OrderedF32::try_from(3.14).unwrap()));
 		assert_eq!(col.len(), 2);
 		assert!(!col.is_defined(0));
@@ -296,7 +296,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_float8() {
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 1);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
 		col.push_value(Value::Float8(OrderedF64::try_from(2.718).unwrap()));
 		assert_eq!(col.len(), 2);
 		assert!(!col.is_defined(0));
@@ -324,7 +324,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_int1() {
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 1);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
 		col.push_value(Value::Int1(5));
 		assert_eq!(col.len(), 2);
 		assert!(!col.is_defined(0));
@@ -353,7 +353,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_int2() {
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 1);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
 		col.push_value(Value::Int2(10));
 		assert_eq!(col.len(), 2);
 		assert!(!col.is_defined(0));
@@ -382,7 +382,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_int4() {
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 1);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
 		col.push_value(Value::Int4(20));
 		assert_eq!(col.len(), 2);
 		assert!(!col.is_defined(0));
@@ -411,7 +411,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_int8() {
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 1);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
 		col.push_value(Value::Int8(30));
 		assert_eq!(col.len(), 2);
 		assert!(!col.is_defined(0));
@@ -440,7 +440,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_int16() {
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 1);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
 		col.push_value(Value::Int16(40));
 		assert_eq!(col.len(), 2);
 		assert!(!col.is_defined(0));
@@ -469,7 +469,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_uint1() {
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 1);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
 		col.push_value(Value::Uint1(1));
 		assert_eq!(col.len(), 2);
 		assert!(!col.is_defined(0));
@@ -498,7 +498,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_uint2() {
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 1);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
 		col.push_value(Value::Uint2(2));
 		assert_eq!(col.len(), 2);
 		assert!(!col.is_defined(0));
@@ -527,7 +527,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_uint4() {
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 1);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
 		col.push_value(Value::Uint4(3));
 		assert_eq!(col.len(), 2);
 		assert!(!col.is_defined(0));
@@ -556,7 +556,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_uint8() {
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 1);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
 		col.push_value(Value::Uint8(4));
 		assert_eq!(col.len(), 2);
 		assert!(!col.is_defined(0));
@@ -585,7 +585,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_uint16() {
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 1);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
 		col.push_value(Value::Uint16(5));
 		assert_eq!(col.len(), 2);
 		assert!(!col.is_defined(0));
@@ -619,7 +619,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_utf8() {
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 1);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
 		col.push_value(Value::Utf8("ok".to_string()));
 		assert_eq!(col.len(), 2);
 		assert!(!col.is_defined(0));
@@ -661,7 +661,7 @@ pub mod tests {
 	#[test]
 	fn test_push_value_to_none_date() {
 		let date = Date::from_ymd(2023, 6, 15).unwrap();
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 1);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
 		col.push_value(Value::Date(date));
 		assert_eq!(col.len(), 2);
 		assert!(!col.is_defined(0));
@@ -694,7 +694,7 @@ pub mod tests {
 	#[test]
 	fn test_push_value_to_none_datetime() {
 		let dt = DateTime::from_timestamp(1672531200).unwrap();
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 1);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
 		col.push_value(Value::DateTime(dt));
 		assert_eq!(col.len(), 2);
 		assert!(!col.is_defined(0));
@@ -727,7 +727,7 @@ pub mod tests {
 	#[test]
 	fn test_push_value_to_none_time() {
 		let time = Time::from_hms(15, 20, 10).unwrap();
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 1);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
 		col.push_value(Value::Time(time));
 		assert_eq!(col.len(), 2);
 		assert!(!col.is_defined(0));
@@ -760,7 +760,7 @@ pub mod tests {
 	#[test]
 	fn test_push_value_to_none_duration() {
 		let duration = Duration::from_minutes(90).unwrap();
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 1);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
 		col.push_value(Value::Duration(duration));
 		assert_eq!(col.len(), 2);
 		assert!(!col.is_defined(0));
@@ -797,7 +797,7 @@ pub mod tests {
 	fn test_push_value_to_none_identity_id() {
 		let (_, clock, rng) = test_clock_and_rng();
 		let id = IdentityId::generate(&clock, &rng);
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 1);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
 		col.push_value(Value::IdentityId(id));
 		assert_eq!(col.len(), 2);
 		assert!(!col.is_defined(0));
@@ -830,7 +830,7 @@ pub mod tests {
 	#[test]
 	fn test_push_value_to_none_uuid4() {
 		let uuid = Uuid4::generate();
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 1);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
 		col.push_value(Value::Uuid4(uuid));
 		assert_eq!(col.len(), 2);
 		assert!(!col.is_defined(0));
@@ -867,7 +867,7 @@ pub mod tests {
 	fn test_push_value_to_none_uuid7() {
 		let (_, clock, rng) = test_clock_and_rng();
 		let uuid = Uuid7::generate(&clock, &rng);
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 1);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
 		col.push_value(Value::Uuid7(uuid));
 		assert_eq!(col.len(), 2);
 		assert!(!col.is_defined(0));
@@ -900,7 +900,7 @@ pub mod tests {
 	#[test]
 	fn test_push_value_to_none_dictionary_id() {
 		let e = DictionaryEntryId::U4(42);
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 1);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
 		col.push_value(Value::DictionaryId(e));
 		assert_eq!(col.len(), 2);
 		assert!(!col.is_defined(0));

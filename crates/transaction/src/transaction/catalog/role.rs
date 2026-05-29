@@ -5,7 +5,7 @@ use reifydb_core::interface::catalog::{
 	change::CatalogTrackRoleChangeOperations,
 	identity::{Role, RoleId},
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::{
 	change::{

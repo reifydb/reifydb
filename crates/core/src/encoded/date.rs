@@ -3,7 +3,7 @@
 
 use std::ptr;
 
-use reifydb_type::value::{date::Date, r#type::Type};
+use reifydb_value::value::{date::Date, value_type::ValueType};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
@@ -11,7 +11,7 @@ impl RowShape {
 	pub fn set_date(&self, row: &mut EncodedRow, index: usize, value: Date) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Date);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Date);
 		row.set_valid(index, true);
 		unsafe {
 			ptr::write_unaligned(
@@ -24,7 +24,7 @@ impl RowShape {
 	pub fn get_date(&self, row: &EncodedRow, index: usize) -> Date {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Date);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Date);
 		unsafe {
 			Date::from_days_since_epoch(
 				(row.as_ptr().add(field.offset as usize) as *const i32).read_unaligned(),
@@ -34,7 +34,7 @@ impl RowShape {
 	}
 
 	pub fn try_get_date(&self, row: &EncodedRow, index: usize) -> Option<Date> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Date {
+		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Date {
 			Some(self.get_date(row, index))
 		} else {
 			None
@@ -44,13 +44,13 @@ impl RowShape {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::{date::Date, r#type::Type};
+	use reifydb_value::value::{date::Date, value_type::ValueType};
 
 	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_set_get_date() {
-		let shape = RowShape::testing(&[Type::Date]);
+		let shape = RowShape::testing(&[ValueType::Date]);
 		let mut row = shape.allocate();
 
 		let value = Date::new(2021, 1, 1).unwrap();
@@ -60,7 +60,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_date() {
-		let shape = RowShape::testing(&[Type::Date]);
+		let shape = RowShape::testing(&[ValueType::Date]);
 		let mut row = shape.allocate();
 
 		assert_eq!(shape.try_get_date(&row, 0), None);
@@ -72,7 +72,7 @@ pub mod tests {
 
 	#[test]
 	fn test_epoch() {
-		let shape = RowShape::testing(&[Type::Date]);
+		let shape = RowShape::testing(&[ValueType::Date]);
 		let mut row = shape.allocate();
 
 		let epoch = Date::default(); // Unix epoch
@@ -82,7 +82,7 @@ pub mod tests {
 
 	#[test]
 	fn test_various_dates() {
-		let shape = RowShape::testing(&[Type::Date]);
+		let shape = RowShape::testing(&[ValueType::Date]);
 
 		let test_dates = [
 			Date::new(1970, 1, 1).unwrap(),   // Unix epoch
@@ -100,7 +100,7 @@ pub mod tests {
 
 	#[test]
 	fn test_boundaries() {
-		let shape = RowShape::testing(&[Type::Date]);
+		let shape = RowShape::testing(&[ValueType::Date]);
 
 		// Test various boundary dates that should work
 		let boundary_dates = [
@@ -119,7 +119,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let shape = RowShape::testing(&[Type::Date, Type::Boolean, Type::Date, Type::Int4]);
+		let shape = RowShape::testing(&[ValueType::Date, ValueType::Boolean, ValueType::Date, ValueType::Int4]);
 		let mut row = shape.allocate();
 
 		let date1 = Date::new(2025, 6, 15).unwrap();
@@ -138,7 +138,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let shape = RowShape::testing(&[Type::Date, Type::Date]);
+		let shape = RowShape::testing(&[ValueType::Date, ValueType::Date]);
 		let mut row = shape.allocate();
 
 		let date = Date::new(2025, 7, 4).unwrap();
@@ -153,7 +153,7 @@ pub mod tests {
 
 	#[test]
 	fn test_clone_consistency() {
-		let shape = RowShape::testing(&[Type::Date]);
+		let shape = RowShape::testing(&[ValueType::Date]);
 		let mut row = shape.allocate();
 
 		let original_date = Date::new(2023, 9, 15).unwrap();
@@ -168,7 +168,7 @@ pub mod tests {
 
 	#[test]
 	fn test_special_years() {
-		let shape = RowShape::testing(&[Type::Date]);
+		let shape = RowShape::testing(&[ValueType::Date]);
 
 		// Test leap years and century boundaries
 		let special_dates = [
@@ -189,7 +189,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_date_wrong_type() {
-		let shape = RowShape::testing(&[Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
 		shape.set_bool(&mut row, 0, true);

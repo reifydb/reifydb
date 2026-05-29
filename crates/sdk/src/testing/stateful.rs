@@ -8,9 +8,9 @@ use reifydb_core::encoded::{
 	row::EncodedRow,
 	shape::RowShape,
 };
-use reifydb_type::{
+use reifydb_value::{
 	util::cowvec::CowVec,
-	value::{Value, r#type::Type},
+	value::{Value, value_type::ValueType},
 };
 
 use super::helpers::get_values;
@@ -29,7 +29,7 @@ impl SingleStatefulTestHelper {
 	}
 
 	pub fn counter() -> Self {
-		Self::new(RowShape::testing(&[Type::Int8]))
+		Self::new(RowShape::testing(&[ValueType::Int8]))
 	}
 
 	pub fn set_state(&mut self, values: &[Value]) {
@@ -73,11 +73,11 @@ impl KeyedStatefulTestHelper {
 	}
 
 	pub fn counter() -> Self {
-		Self::new(RowShape::testing(&[Type::Int8]))
+		Self::new(RowShape::testing(&[ValueType::Int8]))
 	}
 
 	pub fn sum() -> Self {
-		Self::new(RowShape::testing(&[Type::Int4]))
+		Self::new(RowShape::testing(&[ValueType::Int4]))
 	}
 
 	pub fn set_state<K>(&mut self, key: K, values: &[Value])
@@ -156,11 +156,11 @@ impl WindowStatefulTestHelper {
 	}
 
 	pub fn time_window_counter(window_size_seconds: i64) -> Self {
-		Self::new(RowShape::testing(&[Type::Int8]), window_size_seconds)
+		Self::new(RowShape::testing(&[ValueType::Int8]), window_size_seconds)
 	}
 
 	pub fn count_window_sum(window_size_count: i64) -> Self {
-		Self::new(RowShape::testing(&[Type::Int4]), window_size_count)
+		Self::new(RowShape::testing(&[ValueType::Int4]), window_size_count)
 	}
 
 	pub fn set_window_state<K>(&mut self, window_id: i64, key: K, values: &[Value])
@@ -244,7 +244,7 @@ impl WindowStatefulTestHelper {
 
 pub mod scenarios {
 	use reifydb_core::interface::change::Change;
-	use reifydb_type::value::row_number::RowNumber;
+	use reifydb_value::value::row_number::RowNumber;
 
 	use super::*;
 	use crate::testing::builders::TestChangeBuilder;

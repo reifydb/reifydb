@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackSumTypeChangeOperations, id::NamespaceId, sumtype::SumType,
 };
-use reifydb_type::{Result, value::sumtype::SumTypeId};
+use reifydb_value::{Result, value::sumtype::SumTypeId};
 
 use crate::{
 	change::{

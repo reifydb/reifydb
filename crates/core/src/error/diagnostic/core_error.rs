@@ -3,7 +3,7 @@
 
 use std::env;
 
-use reifydb_type::{
+use reifydb_value::{
 	error::{Diagnostic, IntoDiagnostic, util::value_max},
 	fragment::Fragment,
 };

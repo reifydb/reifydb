@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	storage::DataBitVec,
 	util::bitvec::BitVec,
@@ -16,9 +16,9 @@ use reifydb_type::{
 		int::Int,
 		row_number::RowNumber,
 		time::Time,
-		r#type::Type,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
 	},
 };
 use uuid::Uuid;
@@ -122,108 +122,108 @@ impl Columns {
 			if is_all_none {
 				let size = column.len();
 				let new_data = match field.constraint.get_type() {
-					Type::Boolean => ColumnBuffer::bool_with_bitvec(
+					ValueType::Boolean => ColumnBuffer::bool_with_bitvec(
 						vec![false; size],
 						BitVec::repeat(size, false),
 					),
-					Type::Float4 => ColumnBuffer::float4_with_bitvec(
+					ValueType::Float4 => ColumnBuffer::float4_with_bitvec(
 						vec![0.0f32; size],
 						BitVec::repeat(size, false),
 					),
-					Type::Float8 => ColumnBuffer::float8_with_bitvec(
+					ValueType::Float8 => ColumnBuffer::float8_with_bitvec(
 						vec![0.0f64; size],
 						BitVec::repeat(size, false),
 					),
-					Type::Int1 => ColumnBuffer::int1_with_bitvec(
+					ValueType::Int1 => ColumnBuffer::int1_with_bitvec(
 						vec![0i8; size],
 						BitVec::repeat(size, false),
 					),
-					Type::Int2 => ColumnBuffer::int2_with_bitvec(
+					ValueType::Int2 => ColumnBuffer::int2_with_bitvec(
 						vec![0i16; size],
 						BitVec::repeat(size, false),
 					),
-					Type::Int4 => ColumnBuffer::int4_with_bitvec(
+					ValueType::Int4 => ColumnBuffer::int4_with_bitvec(
 						vec![0i32; size],
 						BitVec::repeat(size, false),
 					),
-					Type::Int8 => ColumnBuffer::int8_with_bitvec(
+					ValueType::Int8 => ColumnBuffer::int8_with_bitvec(
 						vec![0i64; size],
 						BitVec::repeat(size, false),
 					),
-					Type::Int16 => ColumnBuffer::int16_with_bitvec(
+					ValueType::Int16 => ColumnBuffer::int16_with_bitvec(
 						vec![0i128; size],
 						BitVec::repeat(size, false),
 					),
-					Type::Utf8 => ColumnBuffer::utf8_with_bitvec(
+					ValueType::Utf8 => ColumnBuffer::utf8_with_bitvec(
 						vec![String::new(); size],
 						BitVec::repeat(size, false),
 					),
-					Type::Uint1 => ColumnBuffer::uint1_with_bitvec(
+					ValueType::Uint1 => ColumnBuffer::uint1_with_bitvec(
 						vec![0u8; size],
 						BitVec::repeat(size, false),
 					),
-					Type::Uint2 => ColumnBuffer::uint2_with_bitvec(
+					ValueType::Uint2 => ColumnBuffer::uint2_with_bitvec(
 						vec![0u16; size],
 						BitVec::repeat(size, false),
 					),
-					Type::Uint4 => ColumnBuffer::uint4_with_bitvec(
+					ValueType::Uint4 => ColumnBuffer::uint4_with_bitvec(
 						vec![0u32; size],
 						BitVec::repeat(size, false),
 					),
-					Type::Uint8 => ColumnBuffer::uint8_with_bitvec(
+					ValueType::Uint8 => ColumnBuffer::uint8_with_bitvec(
 						vec![0u64; size],
 						BitVec::repeat(size, false),
 					),
-					Type::Uint16 => ColumnBuffer::uint16_with_bitvec(
+					ValueType::Uint16 => ColumnBuffer::uint16_with_bitvec(
 						vec![0u128; size],
 						BitVec::repeat(size, false),
 					),
-					Type::Date => ColumnBuffer::date_with_bitvec(
+					ValueType::Date => ColumnBuffer::date_with_bitvec(
 						vec![Date::default(); size],
 						BitVec::repeat(size, false),
 					),
-					Type::DateTime => ColumnBuffer::datetime_with_bitvec(
+					ValueType::DateTime => ColumnBuffer::datetime_with_bitvec(
 						vec![DateTime::default(); size],
 						BitVec::repeat(size, false),
 					),
-					Type::Time => ColumnBuffer::time_with_bitvec(
+					ValueType::Time => ColumnBuffer::time_with_bitvec(
 						vec![Time::default(); size],
 						BitVec::repeat(size, false),
 					),
-					Type::Duration => ColumnBuffer::duration_with_bitvec(
+					ValueType::Duration => ColumnBuffer::duration_with_bitvec(
 						vec![Duration::default(); size],
 						BitVec::repeat(size, false),
 					),
-					Type::Option(_) => column.clone(),
-					Type::IdentityId => ColumnBuffer::identity_id_with_bitvec(
+					ValueType::Option(_) => column.clone(),
+					ValueType::IdentityId => ColumnBuffer::identity_id_with_bitvec(
 						vec![Default::default(); size],
 						BitVec::repeat(size, false),
 					),
-					Type::Uuid4 => ColumnBuffer::uuid4_with_bitvec(
+					ValueType::Uuid4 => ColumnBuffer::uuid4_with_bitvec(
 						vec![Uuid4::from(Uuid::nil()); size],
 						BitVec::repeat(size, false),
 					),
-					Type::Uuid7 => ColumnBuffer::uuid7_with_bitvec(
+					ValueType::Uuid7 => ColumnBuffer::uuid7_with_bitvec(
 						vec![Uuid7::from(Uuid::nil()); size],
 						BitVec::repeat(size, false),
 					),
-					Type::Blob => ColumnBuffer::blob_with_bitvec(
+					ValueType::Blob => ColumnBuffer::blob_with_bitvec(
 						vec![Blob::new(vec![]); size],
 						BitVec::repeat(size, false),
 					),
-					Type::Int => ColumnBuffer::int_with_bitvec(
+					ValueType::Int => ColumnBuffer::int_with_bitvec(
 						vec![Int::default(); size],
 						BitVec::repeat(size, false),
 					),
-					Type::Uint => ColumnBuffer::uint_with_bitvec(
+					ValueType::Uint => ColumnBuffer::uint_with_bitvec(
 						vec![Uint::default(); size],
 						BitVec::repeat(size, false),
 					),
-					Type::Decimal => ColumnBuffer::decimal_with_bitvec(
+					ValueType::Decimal => ColumnBuffer::decimal_with_bitvec(
 						vec![Decimal::from(0); size],
 						BitVec::repeat(size, false),
 					),
-					Type::DictionaryId => {
+					ValueType::DictionaryId => {
 						let mut col_data = ColumnBuffer::dictionary_id_with_bitvec(
 							vec![Default::default(); size],
 							BitVec::repeat(size, false),
@@ -236,12 +236,13 @@ impl Columns {
 						}
 						col_data
 					}
-					Type::Any | Type::List(_) | Type::Record(_) | Type::Tuple(_) => {
-						ColumnBuffer::any_with_bitvec(
-							vec![Box::new(Value::none()); size],
-							BitVec::repeat(size, false),
-						)
-					}
+					ValueType::Any
+					| ValueType::List(_)
+					| ValueType::Record(_)
+					| ValueType::Tuple(_) => ColumnBuffer::any_with_bitvec(
+						vec![Box::new(Value::none()); size],
+						BitVec::repeat(size, false),
+					),
 				};
 
 				*column = new_data;
@@ -290,28 +291,28 @@ impl Columns {
 						DataBitVec::push(bitvec, true);
 					}
 				}
-				(ColumnBuffer::Bool(container), Type::Boolean) => {
+				(ColumnBuffer::Bool(container), ValueType::Boolean) => {
 					container.push(shape.get_bool(row, index));
 				}
-				(ColumnBuffer::Float4(container), Type::Float4) => {
+				(ColumnBuffer::Float4(container), ValueType::Float4) => {
 					container.push(shape.get_f32(row, index));
 				}
-				(ColumnBuffer::Float8(container), Type::Float8) => {
+				(ColumnBuffer::Float8(container), ValueType::Float8) => {
 					container.push(shape.get_f64(row, index));
 				}
-				(ColumnBuffer::Int1(container), Type::Int1) => {
+				(ColumnBuffer::Int1(container), ValueType::Int1) => {
 					container.push(shape.get_i8(row, index));
 				}
-				(ColumnBuffer::Int2(container), Type::Int2) => {
+				(ColumnBuffer::Int2(container), ValueType::Int2) => {
 					container.push(shape.get_i16(row, index));
 				}
-				(ColumnBuffer::Int4(container), Type::Int4) => {
+				(ColumnBuffer::Int4(container), ValueType::Int4) => {
 					container.push(shape.get_i32(row, index));
 				}
-				(ColumnBuffer::Int8(container), Type::Int8) => {
+				(ColumnBuffer::Int8(container), ValueType::Int8) => {
 					container.push(shape.get_i64(row, index));
 				}
-				(ColumnBuffer::Int16(container), Type::Int16) => {
+				(ColumnBuffer::Int16(container), ValueType::Int16) => {
 					container.push(shape.get_i128(row, index));
 				}
 				(
@@ -319,44 +320,44 @@ impl Columns {
 						container,
 						..
 					},
-					Type::Utf8,
+					ValueType::Utf8,
 				) => {
 					container.push(shape.get_utf8(row, index).to_string());
 				}
-				(ColumnBuffer::Uint1(container), Type::Uint1) => {
+				(ColumnBuffer::Uint1(container), ValueType::Uint1) => {
 					container.push(shape.get_u8(row, index));
 				}
-				(ColumnBuffer::Uint2(container), Type::Uint2) => {
+				(ColumnBuffer::Uint2(container), ValueType::Uint2) => {
 					container.push(shape.get_u16(row, index));
 				}
-				(ColumnBuffer::Uint4(container), Type::Uint4) => {
+				(ColumnBuffer::Uint4(container), ValueType::Uint4) => {
 					container.push(shape.get_u32(row, index));
 				}
-				(ColumnBuffer::Uint8(container), Type::Uint8) => {
+				(ColumnBuffer::Uint8(container), ValueType::Uint8) => {
 					container.push(shape.get_u64(row, index));
 				}
-				(ColumnBuffer::Uint16(container), Type::Uint16) => {
+				(ColumnBuffer::Uint16(container), ValueType::Uint16) => {
 					container.push(shape.get_u128(row, index));
 				}
-				(ColumnBuffer::Date(container), Type::Date) => {
+				(ColumnBuffer::Date(container), ValueType::Date) => {
 					container.push(shape.get_date(row, index));
 				}
-				(ColumnBuffer::DateTime(container), Type::DateTime) => {
+				(ColumnBuffer::DateTime(container), ValueType::DateTime) => {
 					container.push(shape.get_datetime(row, index));
 				}
-				(ColumnBuffer::Time(container), Type::Time) => {
+				(ColumnBuffer::Time(container), ValueType::Time) => {
 					container.push(shape.get_time(row, index));
 				}
-				(ColumnBuffer::Duration(container), Type::Duration) => {
+				(ColumnBuffer::Duration(container), ValueType::Duration) => {
 					container.push(shape.get_duration(row, index));
 				}
-				(ColumnBuffer::Uuid4(container), Type::Uuid4) => {
+				(ColumnBuffer::Uuid4(container), ValueType::Uuid4) => {
 					container.push(shape.get_uuid4(row, index));
 				}
-				(ColumnBuffer::Uuid7(container), Type::Uuid7) => {
+				(ColumnBuffer::Uuid7(container), ValueType::Uuid7) => {
 					container.push(shape.get_uuid7(row, index));
 				}
-				(ColumnBuffer::IdentityId(container), Type::IdentityId) => {
+				(ColumnBuffer::IdentityId(container), ValueType::IdentityId) => {
 					container.push(shape.get_identity_id(row, index));
 				}
 				(
@@ -364,7 +365,7 @@ impl Columns {
 						container,
 						..
 					},
-					Type::Blob,
+					ValueType::Blob,
 				) => {
 					container.push(shape.get_blob(row, index));
 				}
@@ -373,7 +374,7 @@ impl Columns {
 						container,
 						..
 					},
-					Type::Int,
+					ValueType::Int,
 				) => {
 					container.push(shape.get_int(row, index));
 				}
@@ -382,7 +383,7 @@ impl Columns {
 						container,
 						..
 					},
-					Type::Uint,
+					ValueType::Uint,
 				) => {
 					container.push(shape.get_uint(row, index));
 				}
@@ -391,11 +392,11 @@ impl Columns {
 						container,
 						..
 					},
-					Type::Decimal,
+					ValueType::Decimal,
 				) => {
 					container.push(shape.get_decimal(row, index));
 				}
-				(ColumnBuffer::DictionaryId(container), Type::DictionaryId) => {
+				(ColumnBuffer::DictionaryId(container), ValueType::DictionaryId) => {
 					match shape.get_value(row, index) {
 						Value::DictionaryId(id) => container.push(id),
 						_ => container.push_default(),
@@ -439,28 +440,28 @@ impl Columns {
 					inner.push_value(value);
 					DataBitVec::push(bitvec, true);
 				}
-				(ColumnBuffer::Bool(container), Type::Boolean) => {
+				(ColumnBuffer::Bool(container), ValueType::Boolean) => {
 					container.push(shape.get_bool(row, index));
 				}
-				(ColumnBuffer::Float4(container), Type::Float4) => {
+				(ColumnBuffer::Float4(container), ValueType::Float4) => {
 					container.push(shape.get_f32(row, index));
 				}
-				(ColumnBuffer::Float8(container), Type::Float8) => {
+				(ColumnBuffer::Float8(container), ValueType::Float8) => {
 					container.push(shape.get_f64(row, index));
 				}
-				(ColumnBuffer::Int1(container), Type::Int1) => {
+				(ColumnBuffer::Int1(container), ValueType::Int1) => {
 					container.push(shape.get_i8(row, index));
 				}
-				(ColumnBuffer::Int2(container), Type::Int2) => {
+				(ColumnBuffer::Int2(container), ValueType::Int2) => {
 					container.push(shape.get_i16(row, index));
 				}
-				(ColumnBuffer::Int4(container), Type::Int4) => {
+				(ColumnBuffer::Int4(container), ValueType::Int4) => {
 					container.push(shape.get_i32(row, index));
 				}
-				(ColumnBuffer::Int8(container), Type::Int8) => {
+				(ColumnBuffer::Int8(container), ValueType::Int8) => {
 					container.push(shape.get_i64(row, index));
 				}
-				(ColumnBuffer::Int16(container), Type::Int16) => {
+				(ColumnBuffer::Int16(container), ValueType::Int16) => {
 					container.push(shape.get_i128(row, index));
 				}
 				(
@@ -468,44 +469,44 @@ impl Columns {
 						container,
 						..
 					},
-					Type::Utf8,
+					ValueType::Utf8,
 				) => {
 					container.push(shape.get_utf8(row, index).to_string());
 				}
-				(ColumnBuffer::Uint1(container), Type::Uint1) => {
+				(ColumnBuffer::Uint1(container), ValueType::Uint1) => {
 					container.push(shape.get_u8(row, index));
 				}
-				(ColumnBuffer::Uint2(container), Type::Uint2) => {
+				(ColumnBuffer::Uint2(container), ValueType::Uint2) => {
 					container.push(shape.get_u16(row, index));
 				}
-				(ColumnBuffer::Uint4(container), Type::Uint4) => {
+				(ColumnBuffer::Uint4(container), ValueType::Uint4) => {
 					container.push(shape.get_u32(row, index));
 				}
-				(ColumnBuffer::Uint8(container), Type::Uint8) => {
+				(ColumnBuffer::Uint8(container), ValueType::Uint8) => {
 					container.push(shape.get_u64(row, index));
 				}
-				(ColumnBuffer::Uint16(container), Type::Uint16) => {
+				(ColumnBuffer::Uint16(container), ValueType::Uint16) => {
 					container.push(shape.get_u128(row, index));
 				}
-				(ColumnBuffer::Date(container), Type::Date) => {
+				(ColumnBuffer::Date(container), ValueType::Date) => {
 					container.push(shape.get_date(row, index));
 				}
-				(ColumnBuffer::DateTime(container), Type::DateTime) => {
+				(ColumnBuffer::DateTime(container), ValueType::DateTime) => {
 					container.push(shape.get_datetime(row, index));
 				}
-				(ColumnBuffer::Time(container), Type::Time) => {
+				(ColumnBuffer::Time(container), ValueType::Time) => {
 					container.push(shape.get_time(row, index));
 				}
-				(ColumnBuffer::Duration(container), Type::Duration) => {
+				(ColumnBuffer::Duration(container), ValueType::Duration) => {
 					container.push(shape.get_duration(row, index));
 				}
-				(ColumnBuffer::Uuid4(container), Type::Uuid4) => {
+				(ColumnBuffer::Uuid4(container), ValueType::Uuid4) => {
 					container.push(shape.get_uuid4(row, index));
 				}
-				(ColumnBuffer::Uuid7(container), Type::Uuid7) => {
+				(ColumnBuffer::Uuid7(container), ValueType::Uuid7) => {
 					container.push(shape.get_uuid7(row, index));
 				}
-				(ColumnBuffer::IdentityId(container), Type::IdentityId) => {
+				(ColumnBuffer::IdentityId(container), ValueType::IdentityId) => {
 					container.push(shape.get_identity_id(row, index));
 				}
 				(
@@ -513,7 +514,7 @@ impl Columns {
 						container,
 						..
 					},
-					Type::Blob,
+					ValueType::Blob,
 				) => {
 					container.push(shape.get_blob(row, index));
 				}
@@ -522,7 +523,7 @@ impl Columns {
 						container,
 						..
 					},
-					Type::Int,
+					ValueType::Int,
 				) => {
 					container.push(shape.get_int(row, index));
 				}
@@ -531,7 +532,7 @@ impl Columns {
 						container,
 						..
 					},
-					Type::Uint,
+					ValueType::Uint,
 				) => {
 					container.push(shape.get_uint(row, index));
 				}
@@ -540,11 +541,11 @@ impl Columns {
 						container,
 						..
 					},
-					Type::Decimal,
+					ValueType::Decimal,
 				) => {
 					container.push(shape.get_decimal(row, index));
 				}
-				(ColumnBuffer::DictionaryId(container), Type::DictionaryId) => {
+				(ColumnBuffer::DictionaryId(container), ValueType::DictionaryId) => {
 					match shape.get_value(row, index) {
 						Value::DictionaryId(id) => container.push(id),
 						_ => container.push_default(),
@@ -560,9 +561,9 @@ impl Columns {
 #[cfg(test)]
 pub mod tests {
 	mod columns {
-		use reifydb_type::value::{
-			r#type::Type,
+		use reifydb_value::value::{
 			uuid::{Uuid4, Uuid7},
+			value_type::ValueType,
 		};
 		use uuid::{Timestamp, Uuid};
 
@@ -850,7 +851,7 @@ pub mod tests {
 				Columns::new(vec![ColumnWithName::int2_with_bitvec("id", [1, 2], [true, false])]);
 
 			let test_instance2 =
-				Columns::new(vec![ColumnWithName::undefined_typed("id", Type::Boolean, 2)]);
+				Columns::new(vec![ColumnWithName::undefined_typed("id", ValueType::Boolean, 2)]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
@@ -863,7 +864,7 @@ pub mod tests {
 		#[test]
 		fn test_with_undefined_l_promotes_correctly() {
 			let mut test_instance1 =
-				Columns::new(vec![ColumnWithName::undefined_typed("score", Type::Boolean, 2)]);
+				Columns::new(vec![ColumnWithName::undefined_typed("score", ValueType::Boolean, 2)]);
 
 			let test_instance2 =
 				Columns::new(vec![ColumnWithName::int2_with_bitvec("score", [10, 20], [true, false])]);
@@ -911,7 +912,7 @@ pub mod tests {
 	}
 
 	mod row {
-		use reifydb_type::{
+		use reifydb_value::{
 			fragment::Fragment,
 			util::bitvec::BitVec,
 			value::{
@@ -922,7 +923,7 @@ pub mod tests {
 				identity::IdentityId,
 				ordered_f32::OrderedF32,
 				ordered_f64::OrderedF64,
-				r#type::Type,
+				value_type::ValueType,
 			},
 		};
 
@@ -934,9 +935,9 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_bool() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", Type::Boolean, 2)]);
+				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
 
-			let shape = RowShape::testing(&[Type::Boolean]);
+			let shape = RowShape::testing(&[ValueType::Boolean]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Boolean(true)]);
 
@@ -954,8 +955,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_float4() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", Type::Boolean, 2)]);
-			let shape = RowShape::testing(&[Type::Float4]);
+				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+			let shape = RowShape::testing(&[ValueType::Float4]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Float4(OrderedF32::try_from(1.5).unwrap())]);
 			test_instance.append_rows(&shape, [row], vec![]).unwrap();
@@ -972,8 +973,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_float8() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", Type::Boolean, 2)]);
-			let shape = RowShape::testing(&[Type::Float8]);
+				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+			let shape = RowShape::testing(&[ValueType::Float8]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Float8(OrderedF64::try_from(2.25).unwrap())]);
 			test_instance.append_rows(&shape, [row], vec![]).unwrap();
@@ -990,8 +991,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int1() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", Type::Boolean, 2)]);
-			let shape = RowShape::testing(&[Type::Int1]);
+				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+			let shape = RowShape::testing(&[ValueType::Int1]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Int1(42)]);
 			test_instance.append_rows(&shape, [row], vec![]).unwrap();
@@ -1005,8 +1006,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int2() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", Type::Boolean, 2)]);
-			let shape = RowShape::testing(&[Type::Int2]);
+				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+			let shape = RowShape::testing(&[ValueType::Int2]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Int2(-1234)]);
 			test_instance.append_rows(&shape, [row], vec![]).unwrap();
@@ -1023,8 +1024,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int4() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", Type::Boolean, 2)]);
-			let shape = RowShape::testing(&[Type::Int4]);
+				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+			let shape = RowShape::testing(&[ValueType::Int4]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Int4(56789)]);
 			test_instance.append_rows(&shape, [row], vec![]).unwrap();
@@ -1041,8 +1042,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int8() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", Type::Boolean, 2)]);
-			let shape = RowShape::testing(&[Type::Int8]);
+				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+			let shape = RowShape::testing(&[ValueType::Int8]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Int8(-987654321)]);
 			test_instance.append_rows(&shape, [row], vec![]).unwrap();
@@ -1059,8 +1060,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_int16() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", Type::Boolean, 2)]);
-			let shape = RowShape::testing(&[Type::Int16]);
+				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+			let shape = RowShape::testing(&[ValueType::Int16]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Int16(123456789012345678901234567890i128)]);
 			test_instance.append_rows(&shape, [row], vec![]).unwrap();
@@ -1077,8 +1078,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_string() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", Type::Boolean, 2)]);
-			let shape = RowShape::testing(&[Type::Utf8]);
+				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+			let shape = RowShape::testing(&[ValueType::Utf8]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Utf8("reifydb".into())]);
 			test_instance.append_rows(&shape, [row], vec![]).unwrap();
@@ -1095,8 +1096,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint1() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", Type::Boolean, 2)]);
-			let shape = RowShape::testing(&[Type::Uint1]);
+				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+			let shape = RowShape::testing(&[ValueType::Uint1]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Uint1(255)]);
 			test_instance.append_rows(&shape, [row], vec![]).unwrap();
@@ -1110,8 +1111,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint2() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", Type::Boolean, 2)]);
-			let shape = RowShape::testing(&[Type::Uint2]);
+				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+			let shape = RowShape::testing(&[ValueType::Uint2]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Uint2(65535)]);
 			test_instance.append_rows(&shape, [row], vec![]).unwrap();
@@ -1128,8 +1129,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint4() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", Type::Boolean, 2)]);
-			let shape = RowShape::testing(&[Type::Uint4]);
+				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+			let shape = RowShape::testing(&[ValueType::Uint4]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Uint4(4294967295)]);
 			test_instance.append_rows(&shape, [row], vec![]).unwrap();
@@ -1146,8 +1147,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint8() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", Type::Boolean, 2)]);
-			let shape = RowShape::testing(&[Type::Uint8]);
+				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+			let shape = RowShape::testing(&[ValueType::Uint8]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Uint8(18446744073709551615)]);
 			test_instance.append_rows(&shape, [row], vec![]).unwrap();
@@ -1164,8 +1165,8 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_uint16() {
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("test_col", Type::Boolean, 2)]);
-			let shape = RowShape::testing(&[Type::Uint16]);
+				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
+			let shape = RowShape::testing(&[ValueType::Uint16]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Uint16(340282366920938463463374607431768211455u128)]);
 			test_instance.append_rows(&shape, [row], vec![]).unwrap();
@@ -1183,7 +1184,7 @@ pub mod tests {
 		fn test_mismatched_columns() {
 			let mut test_instance = Columns::new(vec![]);
 
-			let shape = RowShape::testing(&[Type::Int2]);
+			let shape = RowShape::testing(&[ValueType::Int2]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Int2(2)]);
 
@@ -1195,7 +1196,7 @@ pub mod tests {
 		fn test_ok() {
 			let mut test_instance = test_instance_with_columns();
 
-			let shape = RowShape::testing(&[Type::Int2, Type::Boolean]);
+			let shape = RowShape::testing(&[ValueType::Int2, ValueType::Boolean]);
 			let mut row_one = shape.allocate();
 			shape.set_values(&mut row_one, &[Value::Int2(2), Value::Boolean(true)]);
 			let mut row_two = shape.allocate();
@@ -1212,7 +1213,7 @@ pub mod tests {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::bool("test_col", Vec::<bool>::new())]);
 
-			let shape = RowShape::testing(&[Type::Boolean]);
+			let shape = RowShape::testing(&[ValueType::Boolean]);
 			let mut row_one = shape.allocate();
 			shape.set_bool(&mut row_one, 0, true);
 			let mut row_two = shape.allocate();
@@ -1228,7 +1229,7 @@ pub mod tests {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::float4("test_col", Vec::<f32>::new())]);
 
-			let shape = RowShape::testing(&[Type::Float4]);
+			let shape = RowShape::testing(&[ValueType::Float4]);
 			let mut row_one = shape.allocate();
 			shape.set_values(&mut row_one, &[Value::Float4(OrderedF32::try_from(1.0).unwrap())]);
 			let mut row_two = shape.allocate();
@@ -1244,7 +1245,7 @@ pub mod tests {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::float8("test_col", Vec::<f64>::new())]);
 
-			let shape = RowShape::testing(&[Type::Float8]);
+			let shape = RowShape::testing(&[ValueType::Float8]);
 			let mut row_one = shape.allocate();
 			shape.set_values(&mut row_one, &[Value::Float8(OrderedF64::try_from(1.0).unwrap())]);
 			let mut row_two = shape.allocate();
@@ -1259,7 +1260,7 @@ pub mod tests {
 		fn test_all_defined_int1() {
 			let mut test_instance = Columns::new(vec![ColumnWithName::int1("test_col", Vec::<i8>::new())]);
 
-			let shape = RowShape::testing(&[Type::Int1]);
+			let shape = RowShape::testing(&[ValueType::Int1]);
 			let mut row_one = shape.allocate();
 			shape.set_values(&mut row_one, &[Value::Int1(1)]);
 			let mut row_two = shape.allocate();
@@ -1274,7 +1275,7 @@ pub mod tests {
 		fn test_all_defined_int2() {
 			let mut test_instance = Columns::new(vec![ColumnWithName::int2("test_col", Vec::<i16>::new())]);
 
-			let shape = RowShape::testing(&[Type::Int2]);
+			let shape = RowShape::testing(&[ValueType::Int2]);
 			let mut row_one = shape.allocate();
 			shape.set_values(&mut row_one, &[Value::Int2(100)]);
 			let mut row_two = shape.allocate();
@@ -1289,7 +1290,7 @@ pub mod tests {
 		fn test_all_defined_int4() {
 			let mut test_instance = Columns::new(vec![ColumnWithName::int4("test_col", Vec::<i32>::new())]);
 
-			let shape = RowShape::testing(&[Type::Int4]);
+			let shape = RowShape::testing(&[ValueType::Int4]);
 			let mut row_one = shape.allocate();
 			shape.set_values(&mut row_one, &[Value::Int4(1000)]);
 			let mut row_two = shape.allocate();
@@ -1304,7 +1305,7 @@ pub mod tests {
 		fn test_all_defined_int8() {
 			let mut test_instance = Columns::new(vec![ColumnWithName::int8("test_col", Vec::<i64>::new())]);
 
-			let shape = RowShape::testing(&[Type::Int8]);
+			let shape = RowShape::testing(&[ValueType::Int8]);
 			let mut row_one = shape.allocate();
 			shape.set_values(&mut row_one, &[Value::Int8(10000)]);
 			let mut row_two = shape.allocate();
@@ -1320,7 +1321,7 @@ pub mod tests {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::int16("test_col", Vec::<i128>::new())]);
 
-			let shape = RowShape::testing(&[Type::Int16]);
+			let shape = RowShape::testing(&[ValueType::Int16]);
 			let mut row_one = shape.allocate();
 			shape.set_values(&mut row_one, &[Value::Int16(1000)]);
 			let mut row_two = shape.allocate();
@@ -1336,7 +1337,7 @@ pub mod tests {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::utf8("test_col", Vec::<String>::new())]);
 
-			let shape = RowShape::testing(&[Type::Utf8]);
+			let shape = RowShape::testing(&[ValueType::Utf8]);
 			let mut row_one = shape.allocate();
 			shape.set_values(&mut row_one, &[Value::Utf8("a".into())]);
 			let mut row_two = shape.allocate();
@@ -1351,7 +1352,7 @@ pub mod tests {
 		fn test_all_defined_uint1() {
 			let mut test_instance = Columns::new(vec![ColumnWithName::uint1("test_col", Vec::<u8>::new())]);
 
-			let shape = RowShape::testing(&[Type::Uint1]);
+			let shape = RowShape::testing(&[ValueType::Uint1]);
 			let mut row_one = shape.allocate();
 			shape.set_values(&mut row_one, &[Value::Uint1(1)]);
 			let mut row_two = shape.allocate();
@@ -1367,7 +1368,7 @@ pub mod tests {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::uint2("test_col", Vec::<u16>::new())]);
 
-			let shape = RowShape::testing(&[Type::Uint2]);
+			let shape = RowShape::testing(&[ValueType::Uint2]);
 			let mut row_one = shape.allocate();
 			shape.set_values(&mut row_one, &[Value::Uint2(100)]);
 			let mut row_two = shape.allocate();
@@ -1383,7 +1384,7 @@ pub mod tests {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::uint4("test_col", Vec::<u32>::new())]);
 
-			let shape = RowShape::testing(&[Type::Uint4]);
+			let shape = RowShape::testing(&[ValueType::Uint4]);
 			let mut row_one = shape.allocate();
 			shape.set_values(&mut row_one, &[Value::Uint4(1000)]);
 			let mut row_two = shape.allocate();
@@ -1399,7 +1400,7 @@ pub mod tests {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::uint8("test_col", Vec::<u64>::new())]);
 
-			let shape = RowShape::testing(&[Type::Uint8]);
+			let shape = RowShape::testing(&[ValueType::Uint8]);
 			let mut row_one = shape.allocate();
 			shape.set_values(&mut row_one, &[Value::Uint8(10000)]);
 			let mut row_two = shape.allocate();
@@ -1415,7 +1416,7 @@ pub mod tests {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::uint16("test_col", Vec::<u128>::new())]);
 
-			let shape = RowShape::testing(&[Type::Uint16]);
+			let shape = RowShape::testing(&[ValueType::Uint16]);
 			let mut row_one = shape.allocate();
 			shape.set_values(&mut row_one, &[Value::Uint16(1000)]);
 			let mut row_two = shape.allocate();
@@ -1430,7 +1431,7 @@ pub mod tests {
 		fn test_row_with_undefined() {
 			let mut test_instance = test_instance_with_columns();
 
-			let shape = RowShape::testing(&[Type::Int2, Type::Boolean]);
+			let shape = RowShape::testing(&[ValueType::Int2, ValueType::Boolean]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::none(), Value::Boolean(false)]);
 
@@ -1444,7 +1445,7 @@ pub mod tests {
 		fn test_row_with_type_mismatch_fails() {
 			let mut test_instance = test_instance_with_columns();
 
-			let shape = RowShape::testing(&[Type::Boolean, Type::Boolean]);
+			let shape = RowShape::testing(&[ValueType::Boolean, ValueType::Boolean]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Boolean(true), Value::Boolean(true)]);
 
@@ -1457,7 +1458,7 @@ pub mod tests {
 		fn test_row_wrong_length_fails() {
 			let mut test_instance = test_instance_with_columns();
 
-			let shape = RowShape::testing(&[Type::Int2]);
+			let shape = RowShape::testing(&[ValueType::Int2]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Int2(2)]);
 
@@ -1473,7 +1474,7 @@ pub mod tests {
 				ColumnWithName::bool("none", Vec::<bool>::new()),
 			]);
 
-			let shape = RowShape::testing(&[Type::Boolean, Type::Boolean]);
+			let shape = RowShape::testing(&[ValueType::Boolean, ValueType::Boolean]);
 			let mut row_one = shape.allocate();
 			shape.set_bool(&mut row_one, 0, true);
 			shape.set_none(&mut row_one, 1);
@@ -1492,7 +1493,7 @@ pub mod tests {
 				ColumnWithName::float4("none", Vec::<f32>::new()),
 			]);
 
-			let shape = RowShape::testing(&[Type::Float4, Type::Float4]);
+			let shape = RowShape::testing(&[ValueType::Float4, ValueType::Float4]);
 			let mut row = shape.allocate();
 			shape.set_f32(&mut row, 0, 1.5);
 			shape.set_none(&mut row, 1);
@@ -1510,7 +1511,7 @@ pub mod tests {
 				ColumnWithName::float8("none", Vec::<f64>::new()),
 			]);
 
-			let shape = RowShape::testing(&[Type::Float8, Type::Float8]);
+			let shape = RowShape::testing(&[ValueType::Float8, ValueType::Float8]);
 			let mut row = shape.allocate();
 			shape.set_f64(&mut row, 0, 2.5);
 			shape.set_none(&mut row, 1);
@@ -1528,7 +1529,7 @@ pub mod tests {
 				ColumnWithName::int1("none", Vec::<i8>::new()),
 			]);
 
-			let shape = RowShape::testing(&[Type::Int1, Type::Int1]);
+			let shape = RowShape::testing(&[ValueType::Int1, ValueType::Int1]);
 			let mut row = shape.allocate();
 			shape.set_i8(&mut row, 0, 42);
 			shape.set_none(&mut row, 1);
@@ -1546,7 +1547,7 @@ pub mod tests {
 				ColumnWithName::int2("none", Vec::<i16>::new()),
 			]);
 
-			let shape = RowShape::testing(&[Type::Int2, Type::Int2]);
+			let shape = RowShape::testing(&[ValueType::Int2, ValueType::Int2]);
 			let mut row = shape.allocate();
 			shape.set_i16(&mut row, 0, -1234i16);
 			shape.set_none(&mut row, 1);
@@ -1564,7 +1565,7 @@ pub mod tests {
 				ColumnWithName::int4("none", Vec::<i32>::new()),
 			]);
 
-			let shape = RowShape::testing(&[Type::Int4, Type::Int4]);
+			let shape = RowShape::testing(&[ValueType::Int4, ValueType::Int4]);
 			let mut row = shape.allocate();
 			shape.set_i32(&mut row, 0, 56789);
 			shape.set_none(&mut row, 1);
@@ -1582,7 +1583,7 @@ pub mod tests {
 				ColumnWithName::int8("none", Vec::<i64>::new()),
 			]);
 
-			let shape = RowShape::testing(&[Type::Int8, Type::Int8]);
+			let shape = RowShape::testing(&[ValueType::Int8, ValueType::Int8]);
 			let mut row = shape.allocate();
 			shape.set_i64(&mut row, 0, -987654321);
 			shape.set_none(&mut row, 1);
@@ -1600,7 +1601,7 @@ pub mod tests {
 				ColumnWithName::int16("none", Vec::<i128>::new()),
 			]);
 
-			let shape = RowShape::testing(&[Type::Int16, Type::Int16]);
+			let shape = RowShape::testing(&[ValueType::Int16, ValueType::Int16]);
 			let mut row = shape.allocate();
 			shape.set_i128(&mut row, 0, 123456789012345678901234567890i128);
 			shape.set_none(&mut row, 1);
@@ -1621,7 +1622,7 @@ pub mod tests {
 				ColumnWithName::utf8("none", Vec::<String>::new()),
 			]);
 
-			let shape = RowShape::testing(&[Type::Utf8, Type::Utf8]);
+			let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Utf8]);
 			let mut row = shape.allocate();
 			shape.set_utf8(&mut row, 0, "reifydb");
 			shape.set_none(&mut row, 1);
@@ -1639,7 +1640,7 @@ pub mod tests {
 				ColumnWithName::uint1("none", Vec::<u8>::new()),
 			]);
 
-			let shape = RowShape::testing(&[Type::Uint1, Type::Uint1]);
+			let shape = RowShape::testing(&[ValueType::Uint1, ValueType::Uint1]);
 			let mut row = shape.allocate();
 			shape.set_u8(&mut row, 0, 255);
 			shape.set_none(&mut row, 1);
@@ -1657,7 +1658,7 @@ pub mod tests {
 				ColumnWithName::uint2("none", Vec::<u16>::new()),
 			]);
 
-			let shape = RowShape::testing(&[Type::Uint2, Type::Uint2]);
+			let shape = RowShape::testing(&[ValueType::Uint2, ValueType::Uint2]);
 			let mut row = shape.allocate();
 			shape.set_u16(&mut row, 0, 65535u16);
 			shape.set_none(&mut row, 1);
@@ -1675,7 +1676,7 @@ pub mod tests {
 				ColumnWithName::uint4("none", Vec::<u32>::new()),
 			]);
 
-			let shape = RowShape::testing(&[Type::Uint4, Type::Uint4]);
+			let shape = RowShape::testing(&[ValueType::Uint4, ValueType::Uint4]);
 			let mut row = shape.allocate();
 			shape.set_u32(&mut row, 0, 4294967295u32);
 			shape.set_none(&mut row, 1);
@@ -1693,7 +1694,7 @@ pub mod tests {
 				ColumnWithName::uint8("none", Vec::<u64>::new()),
 			]);
 
-			let shape = RowShape::testing(&[Type::Uint8, Type::Uint8]);
+			let shape = RowShape::testing(&[ValueType::Uint8, ValueType::Uint8]);
 			let mut row = shape.allocate();
 			shape.set_u64(&mut row, 0, 18446744073709551615u64);
 			shape.set_none(&mut row, 1);
@@ -1711,7 +1712,7 @@ pub mod tests {
 				ColumnWithName::uint16("none", Vec::<u128>::new()),
 			]);
 
-			let shape = RowShape::testing(&[Type::Uint16, Type::Uint16]);
+			let shape = RowShape::testing(&[ValueType::Uint16, ValueType::Uint16]);
 			let mut row = shape.allocate();
 			shape.set_u128(&mut row, 0, 340282366920938463463374607431768211455u128);
 			shape.set_none(&mut row, 1);
@@ -1727,7 +1728,7 @@ pub mod tests {
 
 		#[test]
 		fn test_all_defined_dictionary_id() {
-			let constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), Type::Uint4);
+			let constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), ValueType::Uint4);
 			let shape = RowShape::new(vec![RowShapeField::new("status", constraint)]);
 
 			let mut test_instance = Columns::new(vec![ColumnWithName::dictionary_id(
@@ -1748,10 +1749,10 @@ pub mod tests {
 
 		#[test]
 		fn test_fallback_dictionary_id() {
-			let dict_constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), Type::Uint4);
+			let dict_constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), ValueType::Uint4);
 			let shape = RowShape::new(vec![
 				RowShapeField::new("dict_col", dict_constraint),
-				RowShapeField::unconstrained("bool_col", Type::Boolean),
+				RowShapeField::unconstrained("bool_col", ValueType::Boolean),
 			]);
 
 			let mut test_instance = Columns::new(vec![
@@ -1772,11 +1773,11 @@ pub mod tests {
 
 		#[test]
 		fn test_before_undefined_dictionary_id() {
-			let constraint = TypeConstraint::dictionary(DictionaryId::from(2u64), Type::Uint4);
+			let constraint = TypeConstraint::dictionary(DictionaryId::from(2u64), ValueType::Uint4);
 			let shape = RowShape::new(vec![RowShapeField::new("tag", constraint)]);
 
 			let mut test_instance =
-				Columns::new(vec![ColumnWithName::undefined_typed("tag", Type::Boolean, 2)]);
+				Columns::new(vec![ColumnWithName::undefined_typed("tag", ValueType::Boolean, 2)]);
 
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::DictionaryId(DictionaryEntryId::U4(5))]);
@@ -1795,7 +1796,7 @@ pub mod tests {
 			let id1 = IdentityId::anonymous();
 			let id2 = IdentityId::root();
 
-			let shape = RowShape::testing(&[Type::IdentityId]);
+			let shape = RowShape::testing(&[ValueType::IdentityId]);
 			let mut test_instance = Columns::new(vec![ColumnWithName::new(
 				Fragment::internal("id_col"),
 				ColumnBuffer::identity_id(Vec::<IdentityId>::new()),
@@ -1816,7 +1817,7 @@ pub mod tests {
 		fn test_fallback_identity_id() {
 			let id = IdentityId::anonymous();
 
-			let shape = RowShape::testing(&[Type::IdentityId, Type::Boolean]);
+			let shape = RowShape::testing(&[ValueType::IdentityId, ValueType::Boolean]);
 			let mut test_instance = Columns::new(vec![
 				ColumnWithName::new(
 					Fragment::internal("id_col"),
@@ -1841,7 +1842,7 @@ pub mod tests {
 			let blob1 = Blob::new(vec![1, 2, 3]);
 			let blob2 = Blob::new(vec![4, 5]);
 
-			let shape = RowShape::testing(&[Type::Blob]);
+			let shape = RowShape::testing(&[ValueType::Blob]);
 			let mut test_instance = Columns::new(vec![ColumnWithName::new(
 				Fragment::internal("blob_col"),
 				ColumnBuffer::blob(Vec::<Blob>::new()),
@@ -1862,7 +1863,7 @@ pub mod tests {
 		fn test_fallback_blob() {
 			let blob = Blob::new(vec![10, 20, 30]);
 
-			let shape = RowShape::testing(&[Type::Blob, Type::Boolean]);
+			let shape = RowShape::testing(&[ValueType::Blob, ValueType::Boolean]);
 			let mut test_instance = Columns::new(vec![
 				ColumnWithName::new(
 					Fragment::internal("blob_col"),

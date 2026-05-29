@@ -33,7 +33,7 @@ use reifydb_sub_server_http::subsystem::HttpSubsystem;
 use reifydb_sub_server_ws::subsystem::WsSubsystem;
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_sub_task::{handle::TaskHandle, subsystem::TaskSubsystem};
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	params::Params,
 	value::{frame::frame::Frame, identity::IdentityId},

@@ -22,7 +22,7 @@ reifydb-runtime = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-transaction = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 
 # gRPC
 tonic = { workspace = true }

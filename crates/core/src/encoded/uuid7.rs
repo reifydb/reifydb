@@ -3,7 +3,7 @@
 
 use std::ptr;
 
-use reifydb_type::value::{r#type::Type, uuid::Uuid7};
+use reifydb_value::value::{uuid::Uuid7, value_type::ValueType};
 use uuid::Uuid;
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
@@ -12,7 +12,7 @@ impl RowShape {
 	pub fn set_uuid7(&self, row: &mut EncodedRow, index: usize, value: Uuid7) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uuid7);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Uuid7);
 		row.set_valid(index, true);
 		unsafe {
 			ptr::write_unaligned(
@@ -25,7 +25,7 @@ impl RowShape {
 	pub fn get_uuid7(&self, row: &EncodedRow, index: usize) -> Uuid7 {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uuid7);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Uuid7);
 		unsafe {
 			let bytes: [u8; 16] =
 				ptr::read_unaligned(row.as_ptr().add(field.offset as usize) as *const [u8; 16]);
@@ -34,7 +34,7 @@ impl RowShape {
 	}
 
 	pub fn try_get_uuid7(&self, row: &EncodedRow, index: usize) -> Option<Uuid7> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Uuid7 {
+		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Uuid7 {
 			Some(self.get_uuid7(row, index))
 		} else {
 			None
@@ -48,7 +48,7 @@ pub mod tests {
 		clock::{Clock, MockClock},
 		rng::Rng,
 	};
-	use reifydb_type::value::{r#type::Type, uuid::Uuid7};
+	use reifydb_value::value::{uuid::Uuid7, value_type::ValueType};
 
 	use crate::encoded::shape::RowShape;
 
@@ -62,7 +62,7 @@ pub mod tests {
 	#[test]
 	fn test_set_get_uuid7() {
 		let (_mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::Uuid7]);
+		let shape = RowShape::testing(&[ValueType::Uuid7]);
 		let mut row = shape.allocate();
 
 		let uuid = Uuid7::generate(&clock, &rng);
@@ -73,7 +73,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_uuid7() {
 		let (_mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::Uuid7]);
+		let shape = RowShape::testing(&[ValueType::Uuid7]);
 		let mut row = shape.allocate();
 
 		assert_eq!(shape.try_get_uuid7(&row, 0), None);
@@ -86,7 +86,7 @@ pub mod tests {
 	#[test]
 	fn test_multiple_generations() {
 		let (mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::Uuid7]);
+		let shape = RowShape::testing(&[ValueType::Uuid7]);
 
 		// Generate multiple UUIDs and ensure they're different
 		let mut uuids = Vec::new();
@@ -111,7 +111,7 @@ pub mod tests {
 	#[test]
 	fn test_version_check() {
 		let (_mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::Uuid7]);
+		let shape = RowShape::testing(&[ValueType::Uuid7]);
 		let mut row = shape.allocate();
 
 		let uuid = Uuid7::generate(&clock, &rng);
@@ -125,7 +125,7 @@ pub mod tests {
 	#[test]
 	fn test_timestamp_ordering() {
 		let (mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::Uuid7]);
+		let shape = RowShape::testing(&[ValueType::Uuid7]);
 
 		// Generate UUIDs in sequence - they should be ordered by
 		// timestamp
@@ -151,7 +151,8 @@ pub mod tests {
 	#[test]
 	fn test_mixed_with_other_types() {
 		let (mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::Uuid7, Type::Boolean, Type::Uuid7, Type::Int4]);
+		let shape =
+			RowShape::testing(&[ValueType::Uuid7, ValueType::Boolean, ValueType::Uuid7, ValueType::Int4]);
 		let mut row = shape.allocate();
 
 		let uuid1 = Uuid7::generate(&clock, &rng);
@@ -172,7 +173,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_handling() {
 		let (_mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::Uuid7, Type::Uuid7]);
+		let shape = RowShape::testing(&[ValueType::Uuid7, ValueType::Uuid7]);
 		let mut row = shape.allocate();
 
 		let uuid = Uuid7::generate(&clock, &rng);
@@ -188,7 +189,7 @@ pub mod tests {
 	#[test]
 	fn test_persistence() {
 		let (_mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::Uuid7]);
+		let shape = RowShape::testing(&[ValueType::Uuid7]);
 		let mut row = shape.allocate();
 
 		let uuid = Uuid7::generate(&clock, &rng);
@@ -205,7 +206,7 @@ pub mod tests {
 	#[test]
 	fn test_clone_consistency() {
 		let (_mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::Uuid7]);
+		let shape = RowShape::testing(&[ValueType::Uuid7]);
 		let mut row = shape.allocate();
 
 		let original_uuid = Uuid7::generate(&clock, &rng);
@@ -221,7 +222,7 @@ pub mod tests {
 	#[test]
 	fn test_multiple_fields() {
 		let (mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::Uuid7, Type::Uuid7, Type::Uuid7]);
+		let shape = RowShape::testing(&[ValueType::Uuid7, ValueType::Uuid7, ValueType::Uuid7]);
 		let mut row = shape.allocate();
 
 		let uuid1 = Uuid7::generate(&clock, &rng);
@@ -247,7 +248,7 @@ pub mod tests {
 	#[test]
 	fn test_format_consistency() {
 		let (_mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::Uuid7]);
+		let shape = RowShape::testing(&[ValueType::Uuid7]);
 		let mut row = shape.allocate();
 
 		let uuid = Uuid7::generate(&clock, &rng);
@@ -267,7 +268,7 @@ pub mod tests {
 	#[test]
 	fn test_byte_level_storage() {
 		let (_mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::Uuid7]);
+		let shape = RowShape::testing(&[ValueType::Uuid7]);
 		let mut row = shape.allocate();
 
 		let uuid = Uuid7::generate(&clock, &rng);
@@ -287,7 +288,7 @@ pub mod tests {
 	#[test]
 	fn test_time_based_properties() {
 		let (mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::Uuid7]);
+		let shape = RowShape::testing(&[ValueType::Uuid7]);
 
 		// Generate UUIDs at different times
 		let uuid1 = Uuid7::generate(&clock, &rng);
@@ -309,7 +310,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_uuid7_wrong_type() {
-		let shape = RowShape::testing(&[Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
 		shape.set_bool(&mut row, 0, true);

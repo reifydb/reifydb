@@ -10,7 +10,7 @@ use reifydb_sdk::{
 	operator::{FFIOperatorAdapter, OperatorLogic, OperatorMetadata},
 	testing::harness::FFIOperatorHarness,
 };
-use reifydb_type::value::{Value, row_number::RowNumber};
+use reifydb_value::value::{Value, row_number::RowNumber};
 
 #[derive(Debug, PartialEq)]
 struct ColumnsRender {

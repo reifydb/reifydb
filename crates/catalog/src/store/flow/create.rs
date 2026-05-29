@@ -9,7 +9,7 @@ use reifydb_core::{
 	key::{flow::FlowKey, namespace_flow::NamespaceFlowKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::fragment::Fragment;
+use reifydb_value::fragment::Fragment;
 
 use crate::{
 	CatalogStore, Result,
@@ -118,7 +118,7 @@ pub mod tests {
 		key::namespace_flow::NamespaceFlowKey,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
-	use reifydb_type::fragment::Fragment;
+	use reifydb_value::fragment::Fragment;
 
 	use crate::{
 		CatalogStore,

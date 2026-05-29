@@ -13,9 +13,9 @@ use reifydb_core::{
 };
 use reifydb_rql::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
-	value::{Value, constraint::Constraint, r#type::Type},
+	value::{Value, constraint::Constraint, value_type::ValueType},
 };
 
 use crate::{
@@ -295,7 +295,7 @@ impl QueryNode for InlineDataNode {
 }
 
 impl InlineDataNode {
-	fn find_optimal_integer_type(column: &ColumnBuffer) -> Type {
+	fn find_optimal_integer_type(column: &ColumnBuffer) -> ValueType {
 		let mut min_val = i128::MAX;
 		let mut max_val = i128::MIN;
 		let mut has_values = false;
@@ -311,25 +311,25 @@ impl InlineDataNode {
 					..
 				} => {}
 				_ => {
-					return Type::Int16;
+					return ValueType::Int16;
 				}
 			}
 		}
 
 		if !has_values {
-			return Type::Int1;
+			return ValueType::Int1;
 		}
 
 		if min_val >= i8::MIN as i128 && max_val <= i8::MAX as i128 {
-			Type::Int1
+			ValueType::Int1
 		} else if min_val >= i16::MIN as i128 && max_val <= i16::MAX as i128 {
-			Type::Int2
+			ValueType::Int2
 		} else if min_val >= i32::MIN as i128 && max_val <= i32::MAX as i128 {
-			Type::Int4
+			ValueType::Int4
 		} else if min_val >= i64::MIN as i128 && max_val <= i64::MAX as i128 {
-			Type::Int8
+			ValueType::Int8
 		} else {
-			Type::Int16
+			ValueType::Int16
 		}
 	}
 
@@ -360,7 +360,7 @@ impl InlineDataNode {
 
 		for column_name in all_columns {
 			let mut all_values = Vec::new();
-			let mut first_value_type: Option<Type> = None;
+			let mut first_value_type: Option<ValueType> = None;
 			let mut column_fragment: Option<Fragment> = None;
 
 			for row_data in &rows_data {
@@ -387,20 +387,20 @@ impl InlineDataNode {
 			}
 
 			let wide_type = if let Some(ref fvt) = first_value_type {
-				if *fvt == Type::Decimal {
-					Some(Type::Decimal)
-				} else if *fvt == Type::Int {
-					Some(Type::Int)
-				} else if *fvt == Type::Uint {
-					Some(Type::Uint)
+				if *fvt == ValueType::Decimal {
+					Some(ValueType::Decimal)
+				} else if *fvt == ValueType::Int {
+					Some(ValueType::Int)
+				} else if *fvt == ValueType::Uint {
+					Some(ValueType::Uint)
 				} else if fvt.is_integer() {
-					Some(Type::Int16)
+					Some(ValueType::Int16)
 				} else if fvt.is_floating_point() {
-					Some(Type::Float8)
-				} else if *fvt == Type::Utf8 {
-					Some(Type::Utf8)
-				} else if *fvt == Type::Boolean {
-					Some(Type::Boolean)
+					Some(ValueType::Float8)
+				} else if *fvt == ValueType::Utf8 {
+					Some(ValueType::Utf8)
+				} else if *fvt == ValueType::Boolean {
+					Some(ValueType::Boolean)
 				} else {
 					None
 				}
@@ -409,7 +409,7 @@ impl InlineDataNode {
 			};
 
 			let mut column_data = if wide_type.is_none() {
-				ColumnBuffer::none_typed(Type::Boolean, all_values.len())
+				ColumnBuffer::none_typed(ValueType::Boolean, all_values.len())
 			} else {
 				let mut data = ColumnBuffer::with_capacity(wide_type.clone().unwrap(), 0);
 
@@ -445,9 +445,9 @@ impl InlineDataNode {
 				data
 			};
 
-			if wide_type == Some(Type::Int16) {
+			if wide_type == Some(ValueType::Int16) {
 				let optimal_type = Self::find_optimal_integer_type(&column_data);
-				if optimal_type != Type::Int16 {
+				if optimal_type != ValueType::Int16 {
 					let eval_ctx = session.with_eval(Columns::empty(), column_data.len());
 
 					if let Ok(demoted) =
@@ -495,7 +495,7 @@ impl InlineDataNode {
 			let mut column_data = if let Some(tc) = table_column {
 				ColumnBuffer::none_typed(tc.constraint.get_type(), 0)
 			} else {
-				ColumnBuffer::with_capacity(Type::Int16, 0)
+				ColumnBuffer::with_capacity(ValueType::Int16, 0)
 			};
 			let mut column_fragment: Option<Fragment> = None;
 
@@ -545,7 +545,7 @@ impl InlineDataNode {
 								match cast_column_data(
 									&eval_ctx,
 									&temp,
-									Type::Int16,
+									ValueType::Int16,
 									Fragment::none,
 								) {
 									Ok(casted) => {
@@ -567,7 +567,7 @@ impl InlineDataNode {
 
 			if table_column.is_none() {
 				let optimal_type = Self::find_optimal_integer_type(&column_data);
-				if optimal_type != Type::Int16 {
+				if optimal_type != ValueType::Int16 {
 					let eval_ctx = session.with_eval(Columns::empty(), column_data.len());
 					if let Ok(demoted) =
 						cast_column_data(&eval_ctx, &column_data, optimal_type, || {

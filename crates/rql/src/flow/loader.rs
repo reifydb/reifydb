@@ -5,7 +5,7 @@ use postcard::from_bytes;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{interface::catalog::flow::FlowId, internal};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::error::Error;
+use reifydb_value::error::Error;
 
 use crate::{
 	Result,

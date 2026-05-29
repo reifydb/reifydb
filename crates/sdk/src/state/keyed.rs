@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{encoded::key::EncodedKey, util::encoding::keycode::serializer::KeySerializer};
-use reifydb_type::value::{Value, r#type::Type};
+use reifydb_value::value::{Value, value_type::ValueType};
 use serde::{Serialize, de::DeserializeOwned};
 
 use super::RawStatefulOperator;
@@ -14,7 +14,7 @@ use crate::{
 pub trait KeyedStateful: RawStatefulOperator {
 	type State: Serialize + DeserializeOwned;
 
-	fn key_types(&self) -> &[Type];
+	fn key_types(&self) -> &[ValueType];
 
 	fn encode_key(&self, key_values: &[Value]) -> EncodedKey {
 		let mut serializer = KeySerializer::new();

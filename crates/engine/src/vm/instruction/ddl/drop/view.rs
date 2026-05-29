@@ -5,7 +5,7 @@ use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::{interface::catalog::view::View, value::column::columns::Columns};
 use reifydb_rql::{flow::node::FlowNodeType, nodes::DropViewNode};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 use super::dependent::find_flow_dependents;
 use crate::{Result, vm::services::Services};

@@ -10,7 +10,7 @@ use reifydb_transaction::{
 	change::TransactionalSumTypeChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_type::{fragment::Fragment, value::sumtype::SumTypeId};
+use reifydb_value::{fragment::Fragment, value::sumtype::SumTypeId};
 use tracing::{instrument, warn};
 
 use crate::{CatalogStore, Result, catalog::Catalog, store::sumtype::create::SumTypeToCreate as StoreSumTypeToCreate};

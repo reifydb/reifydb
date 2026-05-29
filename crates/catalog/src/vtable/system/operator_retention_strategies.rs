@@ -9,7 +9,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, value::Value};
+use reifydb_value::{fragment::Fragment, value::Value};
 
 use crate::{
 	CatalogStore, Result,

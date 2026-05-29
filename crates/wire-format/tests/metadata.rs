@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::{
+use reifydb_value::{
 	util::bitvec::BitVec,
 	value::{
 		container::{

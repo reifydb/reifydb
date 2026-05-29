@@ -4,7 +4,7 @@
 use std::f64::consts::E;
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
@@ -31,8 +31,8 @@ impl<'a> Routine<FunctionContext<'a>> for Euler {
 		&self.info
 	}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Float8
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Float8
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {

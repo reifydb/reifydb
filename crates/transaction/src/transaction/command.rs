@@ -18,7 +18,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_runtime::context::clock::Clock;
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	error::Diagnostic,
 	params::Params,

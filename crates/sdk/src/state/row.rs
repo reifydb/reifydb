@@ -7,7 +7,7 @@ use reifydb_core::{
 	encoded::key::EncodedKey, interface::catalog::flow::FlowNodeId,
 	key::flow_node_internal_state::FlowNodeInternalStateKey, util::encoding::keycode::serializer::KeySerializer,
 };
-use reifydb_type::value::row_number::RowNumber;
+use reifydb_value::value::row_number::RowNumber;
 
 use crate::{
 	error::Result,

@@ -33,7 +33,7 @@ use reifydb_runtime::{
 use reifydb_store_multi::MultiStore;
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sub_raft::driver::Raft;
-use reifydb_type::{Result, util::hex, value::Value};
+use reifydb_value::{Result, util::hex, value::Value};
 use tracing::instrument;
 use version::{StandardVersionProvider, VersionProvider};
 

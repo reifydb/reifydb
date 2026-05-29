@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_sqlite::SqliteConfig;
 use reifydb_testing::tempdir::temp_dir;
-use reifydb_type::{util::cowvec::CowVec, value::datetime::DateTime};
+use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
 
 fn cdc_at(version: u64) -> Cdc {
 	Cdc::new(

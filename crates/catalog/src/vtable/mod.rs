@@ -14,7 +14,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::params::Params;
+use reifydb_value::params::Params;
 
 use crate::{
 	Result,

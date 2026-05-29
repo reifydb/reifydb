@@ -103,7 +103,7 @@ pub mod tests {
 	use reifydb_core::interface::catalog::{column::ColumnIndex, id::TableId};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+	use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 	use crate::{CatalogStore, store::column::create::ColumnToCreate, test_utils::ensure_test_table};
 
@@ -121,7 +121,7 @@ pub mod tests {
 				namespace_name: "test_namespace".to_string(),
 				shape_name: "test_table".to_string(),
 				column: "b_col".to_string(),
-				constraint: TypeConstraint::unconstrained(Type::Int4),
+				constraint: TypeConstraint::unconstrained(ValueType::Int4),
 				properties: vec![],
 				index: ColumnIndex(1),
 				auto_increment: true,
@@ -138,7 +138,7 @@ pub mod tests {
 				namespace_name: "test_namespace".to_string(),
 				shape_name: "test_table".to_string(),
 				column: "a_col".to_string(),
-				constraint: TypeConstraint::unconstrained(Type::Boolean),
+				constraint: TypeConstraint::unconstrained(ValueType::Boolean),
 				properties: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,

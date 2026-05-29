@@ -5,10 +5,10 @@ use reifydb_core::{
 	internal_error,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_type::{
+use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
 	fragment::Fragment,
-	value::{Value, frame::frame::Frame, r#type::Type},
+	value::{Value, frame::frame::Frame, value_type::ValueType},
 };
 
 use crate::{
@@ -32,7 +32,7 @@ impl<'a> Vm<'a> {
 
 	pub(crate) fn exec_push_none(&mut self) {
 		if self.batch_size > 1 {
-			let data = ColumnBuffer::none_typed(Type::Any, self.batch_size);
+			let data = ColumnBuffer::none_typed(ValueType::Any, self.batch_size);
 			let col = ColumnWithName::new(Fragment::internal("none"), data);
 			self.stack.push(Variable::columns(Columns::new(vec![col])));
 		} else {

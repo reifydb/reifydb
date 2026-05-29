@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::{blob::Blob, r#type::Type};
+use reifydb_value::value::{blob::Blob, value_type::ValueType};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
 impl RowShape {
 	pub fn set_blob(&self, row: &mut EncodedRow, index: usize, value: &Blob) {
-		debug_assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), Type::Blob);
+		debug_assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), ValueType::Blob);
 		self.replace_dynamic_data(row, index, value.as_bytes());
 	}
 
 	pub fn get_blob(&self, row: &EncodedRow, index: usize) -> Blob {
 		let field = &self.fields()[index];
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Blob);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Blob);
 
 		let ref_slice = &row.as_slice()[field.offset as usize..field.offset as usize + 8];
 		let offset = u32::from_le_bytes([ref_slice[0], ref_slice[1], ref_slice[2], ref_slice[3]]) as usize;
@@ -27,7 +27,7 @@ impl RowShape {
 	}
 
 	pub fn try_get_blob(&self, row: &EncodedRow, index: usize) -> Option<Blob> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Blob {
+		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Blob {
 			Some(self.get_blob(row, index))
 		} else {
 			None
@@ -37,13 +37,13 @@ impl RowShape {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::{blob::Blob, r#type::Type};
+	use reifydb_value::value::{blob::Blob, value_type::ValueType};
 
 	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_set_get_blob() {
-		let shape = RowShape::testing(&[Type::Blob]);
+		let shape = RowShape::testing(&[ValueType::Blob]);
 		let mut row = shape.allocate();
 
 		let blob = Blob::from_slice(&[1, 2, 3, 4, 5]);
@@ -53,7 +53,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_blob() {
-		let shape = RowShape::testing(&[Type::Blob]);
+		let shape = RowShape::testing(&[ValueType::Blob]);
 		let mut row = shape.allocate();
 
 		assert_eq!(shape.try_get_blob(&row, 0), None);
@@ -65,7 +65,7 @@ pub mod tests {
 
 	#[test]
 	fn test_empty() {
-		let shape = RowShape::testing(&[Type::Blob]);
+		let shape = RowShape::testing(&[ValueType::Blob]);
 		let mut row = shape.allocate();
 
 		let empty_blob = Blob::from_slice(&[]);
@@ -76,7 +76,7 @@ pub mod tests {
 
 	#[test]
 	fn test_binary_data() {
-		let shape = RowShape::testing(&[Type::Blob]);
+		let shape = RowShape::testing(&[ValueType::Blob]);
 		let mut row = shape.allocate();
 
 		// Test with various binary data patterns
@@ -90,7 +90,7 @@ pub mod tests {
 
 	#[test]
 	fn test_large_data() {
-		let shape = RowShape::testing(&[Type::Blob]);
+		let shape = RowShape::testing(&[ValueType::Blob]);
 		let mut row = shape.allocate();
 
 		// Create a large blob (1KB)
@@ -102,7 +102,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_fields() {
-		let shape = RowShape::testing(&[Type::Blob, Type::Blob, Type::Blob]);
+		let shape = RowShape::testing(&[ValueType::Blob, ValueType::Blob, ValueType::Blob]);
 		let mut row = shape.allocate();
 
 		let blob1 = Blob::from_slice(&[1, 2, 3]);
@@ -120,7 +120,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_static_fields() {
-		let shape = RowShape::testing(&[Type::Boolean, Type::Blob, Type::Int4, Type::Blob]);
+		let shape = RowShape::testing(&[ValueType::Boolean, ValueType::Blob, ValueType::Int4, ValueType::Blob]);
 		let mut row = shape.allocate();
 
 		let blob1 = Blob::from_slice(&[0xFF, 0x00, 0xAA]);
@@ -139,7 +139,7 @@ pub mod tests {
 
 	#[test]
 	fn test_different_sizes() {
-		let shape = RowShape::testing(&[Type::Blob, Type::Blob, Type::Blob]);
+		let shape = RowShape::testing(&[ValueType::Blob, ValueType::Blob, ValueType::Blob]);
 		let mut row = shape.allocate();
 
 		let empty_blob = Blob::from_slice(&[]);
@@ -157,7 +157,7 @@ pub mod tests {
 
 	#[test]
 	fn test_arbitrary_setting_order() {
-		let shape = RowShape::testing(&[Type::Blob, Type::Blob, Type::Blob, Type::Blob]);
+		let shape = RowShape::testing(&[ValueType::Blob, ValueType::Blob, ValueType::Blob, ValueType::Blob]);
 		let mut row = shape.allocate();
 
 		let blob0 = Blob::from_slice(&[10, 20]);
@@ -179,7 +179,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let shape = RowShape::testing(&[Type::Blob, Type::Blob, Type::Blob]);
+		let shape = RowShape::testing(&[ValueType::Blob, ValueType::Blob, ValueType::Blob]);
 		let mut row = shape.allocate();
 
 		let blob = Blob::from_slice(&[1, 2, 3, 4]);
@@ -200,7 +200,7 @@ pub mod tests {
 
 	#[test]
 	fn test_all_byte_values() {
-		let shape = RowShape::testing(&[Type::Blob]);
+		let shape = RowShape::testing(&[ValueType::Blob]);
 		let mut row = shape.allocate();
 
 		// Create blob with all possible byte values (0-255)
@@ -212,7 +212,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_blob_wrong_type() {
-		let shape = RowShape::testing(&[Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
 		shape.set_bool(&mut row, 0, true);
@@ -222,7 +222,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_blob() {
-		let shape = RowShape::testing(&[Type::Blob]);
+		let shape = RowShape::testing(&[ValueType::Blob]);
 		let mut row = shape.allocate();
 
 		let blob1 = Blob::from_slice(&[1, 2, 3]);
@@ -249,7 +249,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_blob_with_other_dynamic_fields() {
-		let shape = RowShape::testing(&[Type::Blob, Type::Utf8, Type::Blob]);
+		let shape = RowShape::testing(&[ValueType::Blob, ValueType::Utf8, ValueType::Blob]);
 		let mut row = shape.allocate();
 
 		shape.set_blob(&mut row, 0, &Blob::from_slice(&[1, 2, 3]));

@@ -22,7 +22,7 @@ use reifydb_transaction::{
 	multi::transaction::read::MultiReadTransaction,
 	transaction::Transaction,
 };
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	error::Error,
 	value::{datetime::DateTime, identity::IdentityId},

@@ -20,7 +20,7 @@ use reifydb_core::{
 		MultiVersionGetPrevious, MultiVersionRow, MultiVersionStore,
 	},
 };
-use reifydb_type::util::{cowvec::CowVec, hex};
+use reifydb_value::util::{cowvec::CowVec, hex};
 use tracing::{instrument, warn};
 
 use super::{

@@ -366,7 +366,7 @@ impl Key {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::{row_number::RowNumber, sumtype::SumTypeId};
+	use reifydb_value::value::{row_number::RowNumber, sumtype::SumTypeId};
 
 	use crate::{
 		interface::catalog::{

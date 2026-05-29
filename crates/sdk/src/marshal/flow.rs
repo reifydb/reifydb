@@ -25,7 +25,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff, Diffs},
 	},
 };
-use reifydb_type::value::{datetime::DateTime, dictionary::DictionaryId};
+use reifydb_value::value::{datetime::DateTime, dictionary::DictionaryId};
 use tracing::instrument;
 
 use crate::ffi::arena::Arena;

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{buffer::ColumnBuffer, data::canonical::Canonical, nones::NoneBitmap};
-use reifydb_type::{Result, value::Value};
+use reifydb_value::{Result, value::Value};
 
 use crate::error::ColumnError;
 

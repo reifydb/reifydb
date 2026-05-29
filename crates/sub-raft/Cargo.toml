@@ -11,7 +11,7 @@ reifydb-build = { workspace = true }
 [dependencies]
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true }
 postcard = { workspace = true }

@@ -4,7 +4,7 @@
 use reifydb_core::value::column::columns::Columns;
 use reifydb_rql::nodes::{AlterTableAction, AlterTableNode};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 use crate::{Result, vm::services::Services};
 
@@ -62,7 +62,7 @@ pub(crate) fn execute_alter_table(
 #[cfg(test)]
 mod tests {
 	use reifydb_transaction::transaction::admin::AdminTransaction;
-	use reifydb_type::{params::Params, value::Value};
+	use reifydb_value::{params::Params, value::Value};
 
 	use crate::{
 		test_harness::create_test_admin_transaction,

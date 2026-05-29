@@ -11,9 +11,9 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
-use reifydb_type::{
+use reifydb_value::{
 	params::Params,
-	value::{constraint::TypeConstraint, r#type::Type},
+	value::{constraint::TypeConstraint, value_type::ValueType},
 };
 
 use super::UserVTableColumn;
@@ -34,7 +34,7 @@ impl UserVTableBuilder {
 		}
 	}
 
-	pub fn column(mut self, name: impl Into<String>, data_type: Type) -> Self {
+	pub fn column(mut self, name: impl Into<String>, data_type: ValueType) -> Self {
 		self.columns.push(UserVTableColumn::new(name, data_type));
 		self
 	}

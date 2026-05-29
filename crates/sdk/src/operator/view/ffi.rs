@@ -3,9 +3,9 @@
 
 use postcard::from_bytes;
 use reifydb_abi::{data::column::ColumnTypeCode, flow::diff::DiffType};
-use reifydb_type::value::{
+use reifydb_value::value::{
 	Value, date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, ordered_f32::OrderedF32,
-	ordered_f64::OrderedF64, row_number::RowNumber, time::Time, r#type::Type,
+	ordered_f64::OrderedF64, row_number::RowNumber, time::Time, value_type::ValueType,
 };
 use serde::de::DeserializeOwned;
 
@@ -282,25 +282,25 @@ where
 	from_bytes::<T>(&data[start..end]).ok()
 }
 
-fn type_for_code(code: ColumnTypeCode) -> Type {
+fn type_for_code(code: ColumnTypeCode) -> ValueType {
 	match code {
-		ColumnTypeCode::Bool => Type::Boolean,
-		ColumnTypeCode::Float4 => Type::Float4,
-		ColumnTypeCode::Float8 => Type::Float8,
-		ColumnTypeCode::Int1 => Type::Int1,
-		ColumnTypeCode::Int2 => Type::Int2,
-		ColumnTypeCode::Int4 => Type::Int4,
-		ColumnTypeCode::Int8 => Type::Int8,
-		ColumnTypeCode::Int16 => Type::Int16,
-		ColumnTypeCode::Uint1 => Type::Uint1,
-		ColumnTypeCode::Uint2 => Type::Uint2,
-		ColumnTypeCode::Uint4 => Type::Uint4,
-		ColumnTypeCode::Uint8 => Type::Uint8,
-		ColumnTypeCode::Uint16 => Type::Uint16,
-		ColumnTypeCode::Utf8 => Type::Utf8,
-		ColumnTypeCode::Decimal => Type::Decimal,
-		ColumnTypeCode::Blob => Type::Blob,
-		_ => Type::Any,
+		ColumnTypeCode::Bool => ValueType::Boolean,
+		ColumnTypeCode::Float4 => ValueType::Float4,
+		ColumnTypeCode::Float8 => ValueType::Float8,
+		ColumnTypeCode::Int1 => ValueType::Int1,
+		ColumnTypeCode::Int2 => ValueType::Int2,
+		ColumnTypeCode::Int4 => ValueType::Int4,
+		ColumnTypeCode::Int8 => ValueType::Int8,
+		ColumnTypeCode::Int16 => ValueType::Int16,
+		ColumnTypeCode::Uint1 => ValueType::Uint1,
+		ColumnTypeCode::Uint2 => ValueType::Uint2,
+		ColumnTypeCode::Uint4 => ValueType::Uint4,
+		ColumnTypeCode::Uint8 => ValueType::Uint8,
+		ColumnTypeCode::Uint16 => ValueType::Uint16,
+		ColumnTypeCode::Utf8 => ValueType::Utf8,
+		ColumnTypeCode::Decimal => ValueType::Decimal,
+		ColumnTypeCode::Blob => ValueType::Blob,
+		_ => ValueType::Any,
 	}
 }
 

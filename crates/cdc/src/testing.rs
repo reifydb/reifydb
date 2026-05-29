@@ -25,7 +25,7 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 	transaction::{command::CommandTransaction, query::QueryTransaction},
 };
-use reifydb_type::{Result, util::cowvec::CowVec, value::identity::IdentityId};
+use reifydb_value::{Result, util::cowvec::CowVec, value::identity::IdentityId};
 
 use crate::consume::host::CdcHost;
 

@@ -3,7 +3,7 @@
 
 use reifydb_routine::routine::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_type::params::Params;
+use reifydb_value::params::Params;
 
 pub struct TransformContext<'a> {
 	pub routines: &'a Routines,

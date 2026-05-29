@@ -29,7 +29,7 @@ use reifydb_runtime::{
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
 };
-use reifydb_type::{
+use reifydb_value::{
 	error::{Diagnostic, Error},
 	fragment::Fragment,
 	util::cowvec::CowVec,
@@ -710,7 +710,7 @@ impl Clone for TestConsumer {
 }
 
 impl CdcConsume for TestConsumer {
-	fn consume(&self, transactions: Vec<Cdc>, reply: Box<dyn FnOnce(reifydb_type::Result<()>) + Send>) {
+	fn consume(&self, transactions: Vec<Cdc>, reply: Box<dyn FnOnce(reifydb_value::Result<()>) + Send>) {
 		if self.should_fail.load(Ordering::SeqCst) {
 			(reply)(Err(Error(Box::new(Diagnostic {
 				code: "TEST_ERROR".to_string(),

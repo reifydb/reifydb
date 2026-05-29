@@ -22,7 +22,7 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 pub mod arena;
 pub mod bulk_insert;

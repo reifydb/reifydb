@@ -6,7 +6,7 @@ use reifydb_core::{
 	key::{dictionary::DictionaryKey, namespace_dictionary::NamespaceDictionaryKey},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::{dictionary::DictionaryId, r#type::Type};
+use reifydb_value::value::{dictionary::DictionaryId, value_type::ValueType};
 
 use crate::{
 	CatalogStore, Result,
@@ -54,8 +54,8 @@ impl CatalogStore {
 				id,
 				namespace,
 				name,
-				value_type: Type::from_u8(value_type_ordinal),
-				id_type: Type::from_u8(id_type_ordinal),
+				value_type: ValueType::from_u8(value_type_ordinal),
+				id_type: ValueType::from_u8(id_type_ordinal),
 			});
 		}
 
@@ -68,7 +68,7 @@ pub mod tests {
 	use reifydb_core::interface::catalog::id::NamespaceId;
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_type::{fragment::Fragment, value::r#type::Type};
+	use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 	use crate::{
 		CatalogStore,
@@ -97,8 +97,8 @@ pub mod tests {
 			let to_create = DictionaryToCreate {
 				namespace: namespace.id(),
 				name: Fragment::internal(format!("dict_{}", i)),
-				value_type: Type::Utf8,
-				id_type: Type::Uint2,
+				value_type: ValueType::Utf8,
+				id_type: ValueType::Uint2,
 			};
 			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		}
@@ -132,8 +132,8 @@ pub mod tests {
 			let to_create = DictionaryToCreate {
 				namespace: namespace1.id(),
 				name: Fragment::internal(format!("ns1_dict_{}", i)),
-				value_type: Type::Utf8,
-				id_type: Type::Uint2,
+				value_type: ValueType::Utf8,
+				id_type: ValueType::Uint2,
 			};
 			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		}
@@ -143,8 +143,8 @@ pub mod tests {
 			let to_create = DictionaryToCreate {
 				namespace: namespace2.id(),
 				name: Fragment::internal(format!("ns2_dict_{}", i)),
-				value_type: Type::Uint8,
-				id_type: Type::Uint4,
+				value_type: ValueType::Uint8,
+				id_type: ValueType::Uint4,
 			};
 			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		}
@@ -183,8 +183,8 @@ pub mod tests {
 			let to_create = DictionaryToCreate {
 				namespace: namespace1.id(),
 				name: Fragment::internal(format!("ns1_dict_{}", i)),
-				value_type: Type::Utf8,
-				id_type: Type::Uint2,
+				value_type: ValueType::Utf8,
+				id_type: ValueType::Uint2,
 			};
 			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		}
@@ -193,8 +193,8 @@ pub mod tests {
 			let to_create = DictionaryToCreate {
 				namespace: namespace2.id(),
 				name: Fragment::internal(format!("ns2_dict_{}", i)),
-				value_type: Type::Uint8,
-				id_type: Type::Uint4,
+				value_type: ValueType::Uint8,
+				id_type: ValueType::Uint4,
 			};
 			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		}

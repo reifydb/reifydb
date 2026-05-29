@@ -3,11 +3,11 @@
 
 use num_bigint::BigInt;
 use reifydb_core::encoded::shape::RowShape;
-use reifydb_type::value::{int::Int, r#type::Type};
+use reifydb_value::value::{int::Int, value_type::ValueType};
 
 #[test]
 fn test_int_storage_modes() {
-	let shape = RowShape::testing(&[Type::Int]);
+	let shape = RowShape::testing(&[ValueType::Int]);
 
 	// Test inline storage (fits in 127 bits)
 	let mut row1 = shape.allocate();

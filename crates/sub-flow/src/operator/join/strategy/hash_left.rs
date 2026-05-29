@@ -3,7 +3,7 @@
 
 use reifydb_core::{interface::change::Diff, value::column::columns::Columns};
 use reifydb_runtime::hash::Hash128;
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use super::{
 	JoinContext, UpdateKeys,

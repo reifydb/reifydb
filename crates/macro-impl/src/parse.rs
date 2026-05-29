@@ -26,7 +26,7 @@ pub struct FieldAttrs {
 }
 
 pub fn parse_struct(input: TokenStream) -> Result<ParsedStruct, TokenStream> {
-	parse_struct_with_crate(input, "reifydb_type")
+	parse_struct_with_crate(input, "reifydb_value")
 }
 
 pub fn parse_struct_with_crate(input: TokenStream, crate_path: &str) -> Result<ParsedStruct, TokenStream> {

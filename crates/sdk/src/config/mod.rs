@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_type::value::{
+use reifydb_value::value::{
 	Value,
 	try_from::{TryFromValue, TryFromValueCoerce},
 };
@@ -80,7 +80,7 @@ impl Config {
 pub(super) mod testutil {
 	use std::collections::BTreeMap;
 
-	use reifydb_type::value::Value;
+	use reifydb_value::value::Value;
 
 	use super::Config;
 

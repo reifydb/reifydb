@@ -4,14 +4,14 @@
 use std::{fmt::Display, sync::Arc};
 
 use reifydb_core::value::column::buffer::ColumnBuffer;
-use reifydb_type::{
+use reifydb_value::{
 	error::TypeError,
 	fragment::{Fragment, LazyFragment},
 	value::{
 		boolean::parse::parse_bool,
 		container::{number::NumberContainer, utf8::Utf8Container},
 		is::IsNumber,
-		r#type::Type,
+		value_type::ValueType,
 	},
 };
 
@@ -39,7 +39,7 @@ pub fn to_boolean(data: &ColumnBuffer, lazy_fragment: impl LazyFragment) -> Resu
 			let from = data.get_type();
 			Err(TypeError::UnsupportedCast {
 				from,
-				to: Type::Boolean,
+				to: ValueType::Boolean,
 				fragment: lazy_fragment.fragment(),
 			}
 			.into())
@@ -55,7 +55,7 @@ fn to_bool<T>(
 where
 	T: Copy + Display + IsNumber + Default,
 {
-	let mut out = ColumnBuffer::with_capacity(Type::Boolean, container.len());
+	let mut out = ColumnBuffer::with_capacity(ValueType::Boolean, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			match validate(container[idx]) {
@@ -130,7 +130,7 @@ impl_float_to_bool!(from_float4, f32);
 impl_float_to_bool!(from_float8, f64);
 
 fn from_utf8(container: &Utf8Container, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
-	let mut out = ColumnBuffer::with_capacity(Type::Boolean, container.len());
+	let mut out = ColumnBuffer::with_capacity(ValueType::Boolean, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			let temp_fragment = Fragment::internal(container.get(idx).unwrap());

@@ -32,7 +32,7 @@ use reifydb_core::{
 	},
 	row::{OperatorSettings, RowSettings},
 };
-use reifydb_type::value::{dictionary::DictionaryId, identity::IdentityId, row_number::RowNumber, sumtype::SumTypeId};
+use reifydb_value::value::{dictionary::DictionaryId, identity::IdentityId, row_number::RowNumber, sumtype::SumTypeId};
 
 use crate::TransactionId;
 

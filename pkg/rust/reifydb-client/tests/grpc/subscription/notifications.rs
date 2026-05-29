@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_client::{ChangeKind, SubscriptionConfig, Type, Value};
+use reifydb_client::{ChangeKind, SubscriptionConfig, Value, ValueType};
 
 use super::{SubscriptionTestHarness, TestContext, find_column};
 
@@ -103,15 +103,15 @@ fn test_recv_preserves_data_types() {
 
 		let id_col = find_column(frame, "id").unwrap();
 		assert_eq!(id_col.data.get_value(0), Value::Int4(42));
-		assert_eq!(id_col.data.get_type(), Type::Int4, "id should be Int4");
+		assert_eq!(id_col.data.get_type(), ValueType::Int4, "id should be Int4");
 
 		let value_col = find_column(frame, "value").unwrap();
 		assert_eq!(value_col.data.get_value(0), Value::Int8(9999999999));
-		assert_eq!(value_col.data.get_type(), Type::Int8, "value should be Int8");
+		assert_eq!(value_col.data.get_type(), ValueType::Int8, "value should be Int8");
 
 		let name_col = find_column(frame, "name").unwrap();
 		assert_eq!(name_col.data.get_value(0), Value::Utf8("test".to_string()));
-		assert_eq!(name_col.data.get_type(), Type::Utf8, "name should be Utf8");
+		assert_eq!(name_col.data.get_type(), ValueType::Utf8, "name should be Utf8");
 
 		Ok(())
 	});

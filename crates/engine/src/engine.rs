@@ -53,7 +53,7 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 	transaction::{admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction},
 };
-use reifydb_type::{
+use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
 	params::Params,

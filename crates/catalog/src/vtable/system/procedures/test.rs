@@ -8,9 +8,9 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
-	value::{Value, r#type::Type},
+	value::{Value, value_type::ValueType},
 };
 use serde_json::to_string;
 
@@ -79,7 +79,7 @@ impl BaseVTable for SystemProceduresTest {
 			names.push(name.as_str());
 			return_types.push_value(match return_type {
 				Some(rt) => Value::Utf8(to_string(&rt).expect("TypeConstraint serializes")),
-				None => Value::none_of(Type::Utf8),
+				None => Value::none_of(ValueType::Utf8),
 			});
 			bodies.push(body.as_str());
 		}

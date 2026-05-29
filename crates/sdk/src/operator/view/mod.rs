@@ -5,7 +5,7 @@ pub mod ffi;
 pub mod native;
 
 use reifydb_abi::flow::diff::DiffType;
-use reifydb_type::value::{
+use reifydb_value::value::{
 	Value, date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, row_number::RowNumber, time::Time,
 };
 

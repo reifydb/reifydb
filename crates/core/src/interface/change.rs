@@ -4,7 +4,7 @@
 use std::mem;
 
 use reifydb_abi::flow::diff::DiffType;
-use reifydb_type::{Result, value::datetime::DateTime};
+use reifydb_value::{Result, value::datetime::DateTime};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 

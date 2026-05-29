@@ -9,7 +9,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_rql::{expression::json::JsonExpression, flow::node::FlowNodeType};
-use reifydb_type::{error::Error, value::r#type::Type};
+use reifydb_value::{error::Error, value::value_type::ValueType};
 use serde::Serialize;
 use serde_json::{Value as JsonValue, to_string, to_value};
 
@@ -234,8 +234,8 @@ impl<'a> Routine<FunctionContext<'a>> for FlowNodeToJson {
 		&self.info
 	}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Utf8
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Utf8
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {

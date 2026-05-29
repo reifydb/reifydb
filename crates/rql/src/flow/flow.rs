@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::catalog::flow::{FlowId, FlowNodeId},
 	internal,
 };
-use reifydb_type::{Result, error::Error};
+use reifydb_value::{Result, error::Error};
 
 use super::{
 	graph::DirectedGraph,

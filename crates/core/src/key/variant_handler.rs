@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::sumtype::SumTypeId;
+use reifydb_value::value::sumtype::SumTypeId;
 
 use crate::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
@@ -101,7 +101,7 @@ impl EncodableKey for VariantHandlerKey {
 pub mod tests {
 	use std::ops::Bound;
 
-	use reifydb_type::value::sumtype::SumTypeId;
+	use reifydb_value::value::sumtype::SumTypeId;
 
 	use super::{EncodableKey, VariantHandlerKey};
 	use crate::interface::catalog::id::{HandlerId, NamespaceId};

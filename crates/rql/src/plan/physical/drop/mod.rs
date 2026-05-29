@@ -6,7 +6,7 @@ use reifydb_core::error::diagnostic::catalog::{
 	series_not_found, sumtype_not_found, table_not_found, test_not_found, view_not_found,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, return_error};
+use reifydb_value::{fragment::Fragment, return_error};
 
 use crate::{
 	Result, nodes,

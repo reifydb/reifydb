@@ -12,7 +12,7 @@ use reifydb_core::{
 	row::Row as CoreRow,
 	value::column::columns::Columns,
 };
-use reifydb_type::value::{datetime::DateTime, row_number::RowNumber};
+use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use super::{
 	context::ChaosContext,

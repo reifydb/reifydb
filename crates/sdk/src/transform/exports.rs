@@ -9,7 +9,7 @@ use reifydb_abi::{
 	data::buffer::BufferFFI,
 	transform::{descriptor::TransformDescriptorFFI, types::TRANSFORM_MAGIC},
 };
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 use crate::{
 	config::Config,

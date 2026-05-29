@@ -29,7 +29,7 @@ use reifydb_runtime::{
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 use write::{KeyWriteLock, SingleWriteTransaction};
 
 #[derive(Clone)]
@@ -174,7 +174,7 @@ pub mod tests {
 		time::Duration,
 	};
 
-	use reifydb_type::util::cowvec::CowVec;
+	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
 

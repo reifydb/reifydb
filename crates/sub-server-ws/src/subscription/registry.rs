@@ -9,7 +9,7 @@ use reifydb_sub_server::{
 	subscription::wire_sink::{BatchSubscribedMember, WireSink},
 };
 use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
-use reifydb_type::value::{frame::frame::Frame, uuid::Uuid7};
+use reifydb_value::value::{frame::frame::Frame, uuid::Uuid7};
 use reifydb_wire_format::{encode::encode_frames, json::to::convert_frames, options::EncodeOptions};
 use serde_json::{Value as JsonValue, from_str, json};
 use tokio::sync::mpsc;
@@ -378,7 +378,7 @@ pub mod tests {
 	};
 	use reifydb_sub_server::subscription::registry::PromoteResult;
 	use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
-	use reifydb_type::value::{Value, uuid::Uuid7};
+	use reifydb_value::value::{Value, uuid::Uuid7};
 
 	use super::*;
 

@@ -24,7 +24,7 @@ use reifydb_runtime::{
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
-use reifydb_type::util::{cowvec::CowVec, hex};
+use reifydb_value::util::{cowvec::CowVec, hex};
 use tracing::instrument;
 
 use crate::{

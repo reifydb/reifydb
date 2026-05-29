@@ -20,7 +20,7 @@ use reifydb_rql::compiler::Compiler;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::sumtype::VariantRef;
+use reifydb_value::value::sumtype::VariantRef;
 
 #[cfg(not(reifydb_single_threaded))]
 use crate::remote::RemoteRegistry;

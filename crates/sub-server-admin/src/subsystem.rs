@@ -17,7 +17,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::{SharedRuntime, sync::rwlock::RwLock};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_type::{Result, error::Error};
+use reifydb_value::{Result, error::Error};
 use tokio::{net::TcpListener, sync::oneshot};
 use tracing::{error, info, warn};
 

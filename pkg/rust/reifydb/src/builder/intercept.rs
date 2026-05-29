@@ -42,7 +42,7 @@ use reifydb_transaction::interceptor::{
 	},
 	view::{ViewPostCreateContext, ViewPostUpdateContext, ViewPreDeleteContext, ViewPreUpdateContext},
 };
-use reifydb_type::Result as TypeResult;
+use reifydb_value::Result as TypeResult;
 
 /// Trait for builders that support interceptor registration.
 pub trait WithInterceptorBuilder: Sized {

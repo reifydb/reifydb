@@ -26,11 +26,11 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::InsertTableNode;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, identity::IdentityId, row_number::RowNumber, r#type::Type},
+	value::{Value, identity::IdentityId, row_number::RowNumber, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -97,7 +97,7 @@ pub(crate) fn insert_table(
 	assert_eq!(row_numbers.len(), validated_rows.len());
 
 	let pk_def = primary_key::get_primary_key(&services.catalog, txn, &table)?;
-	let row_number_shape = pk_def.as_ref().map(|_| RowShape::testing(&[Type::Uint8]));
+	let row_number_shape = pk_def.as_ref().map(|_| RowShape::testing(&[ValueType::Uint8]));
 	let pk_ctx = pk_def.as_ref().map(|pk| PkContext {
 		pk_def: pk,
 		row_number_shape: row_number_shape.as_ref().unwrap(),

@@ -2,11 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::catalog::property::ColumnSaturationStrategy;
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	error::TypeError,
 	fragment::Fragment,
-	value::{number::safe::convert::SafeConvert, r#type::get::GetType},
+	value::{number::safe::convert::SafeConvert, value_type::get::GetType},
 };
 
 use crate::expression::context::EvalContext;

@@ -19,8 +19,8 @@ use reifydb_runtime::{
 	sync::{mutex::Mutex, waiter::WaiterHandle},
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_type::util::cowvec::CowVec;
-use reifydb_type::value::datetime::DateTime;
+use reifydb_value::util::cowvec::CowVec;
+use reifydb_value::value::datetime::DateTime;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use tracing::{debug, error};
 

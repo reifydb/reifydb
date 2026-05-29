@@ -5,7 +5,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, params::Params, value::identity::IdentityId};
+use reifydb_value::{fragment::Fragment, params::Params, value::identity::IdentityId};
 
 use super::{Context, sealed};
 

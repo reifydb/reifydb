@@ -11,10 +11,10 @@ pub mod canonical;
 use std::{any::Any, sync::Arc};
 
 use canonical::Canonical;
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	util::bitvec::BitVec,
-	value::{Value, r#type::Type},
+	value::{Value, value_type::ValueType},
 };
 
 use crate::value::column::{
@@ -38,7 +38,7 @@ pub enum SearchResult {
 }
 
 pub trait ColumnData: Send + Sync + 'static {
-	fn ty(&self) -> Type;
+	fn ty(&self) -> ValueType;
 	fn len(&self) -> usize;
 	fn is_empty(&self) -> bool {
 		self.len() == 0
@@ -104,7 +104,7 @@ impl Column {
 		&*self.0
 	}
 
-	pub fn ty(&self) -> Type {
+	pub fn ty(&self) -> ValueType {
 		self.0.ty()
 	}
 

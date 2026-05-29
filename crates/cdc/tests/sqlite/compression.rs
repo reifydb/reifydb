@@ -12,7 +12,7 @@ use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::cdc::{Cdc, SystemChange},
 };
-use reifydb_type::{util::cowvec::CowVec, value::datetime::DateTime};
+use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
 
 const TEST_LEVELS: &[u8] = &[1, 3, 7, 19, 22];
 

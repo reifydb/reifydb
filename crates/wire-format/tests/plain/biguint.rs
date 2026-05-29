@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use num_bigint::BigInt;
-use reifydb_type::value::{container::number::NumberContainer, frame::data::FrameColumnData, uint::Uint};
+use reifydb_value::value::{container::number::NumberContainer, frame::data::FrameColumnData, uint::Uint};
 
 fn make(v: Vec<Uint>) -> FrameColumnData {
 	FrameColumnData::Uint(NumberContainer::new(v))

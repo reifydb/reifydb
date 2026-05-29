@@ -9,7 +9,7 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::CreateRingBufferNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 use super::require_buffer_for_non_persistent;
 use crate::{Result, vm::services::Services};
@@ -71,7 +71,7 @@ pub(crate) fn create_ringbuffer(
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::{params::Params, value::Value};
+	use reifydb_value::{params::Params, value::Value};
 
 	use crate::{
 		test_harness::create_test_admin_transaction,

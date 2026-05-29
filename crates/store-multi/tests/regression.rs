@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_store_multi::tier::{RangeBatch, RangeCursor, TierStorage, commit::buffer::MultiCommitBufferTier};
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_value::util::cowvec::CowVec;
 
 fn k(s: &str) -> EncodedKey {
 	EncodedKey::new(s.as_bytes().to_vec())

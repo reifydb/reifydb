@@ -13,7 +13,7 @@ use reifydb_profiler::{
 };
 use reifydb_runtime::{SharedRuntime, sync::rwlock::RwLock};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::{
 	accumulator::ProfilerAccumulator,

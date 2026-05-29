@@ -3,7 +3,7 @@
 
 use std::fmt;
 
-use reifydb_type::{Result, value::dictionary::DictionaryId};
+use reifydb_value::{Result, value::dictionary::DictionaryId};
 use serde::{Deserialize, Serialize};
 
 use crate::{

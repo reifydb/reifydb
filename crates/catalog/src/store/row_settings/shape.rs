@@ -4,7 +4,7 @@
 pub(crate) mod row_settings {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const ANCHOR_CREATED: u8 = 0;
 	pub(crate) const ANCHOR_UPDATED: u8 = 1;
@@ -19,10 +19,10 @@ pub(crate) mod row_settings {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("anchor", Type::Uint1),
-			RowShapeField::unconstrained("cleanup_mode", Type::Uint1),
-			RowShapeField::unconstrained("duration_nanos", Type::Uint8),
-			RowShapeField::unconstrained("persistent", Type::Uint1),
+			RowShapeField::unconstrained("anchor", ValueType::Uint1),
+			RowShapeField::unconstrained("cleanup_mode", ValueType::Uint1),
+			RowShapeField::unconstrained("duration_nanos", ValueType::Uint8),
+			RowShapeField::unconstrained("persistent", ValueType::Uint1),
 		])
 	});
 }

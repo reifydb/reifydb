@@ -68,7 +68,7 @@ pub mod tests {
 		property::{ColumnPropertyKind, ColumnSaturationStrategy},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
-	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+	use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 	use crate::{
 		CatalogStore,
@@ -80,7 +80,7 @@ pub mod tests {
 	fn test_ok() {
 		let mut txn = create_test_admin_transaction();
 		ensure_test_table(&mut txn);
-		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int2), vec![]);
+		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(ValueType::Int2), vec![]);
 
 		let policy = Saturation(Error);
 
@@ -102,7 +102,7 @@ pub mod tests {
 				namespace_name: "namespace".to_string(),
 				shape_name: "table".to_string(),
 				column: "col1".to_string(),
-				constraint: TypeConstraint::unconstrained(Type::Int2),
+				constraint: TypeConstraint::unconstrained(ValueType::Int2),
 				properties: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,

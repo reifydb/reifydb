@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::{storage::DataBitVec, value::int::Int};
+use reifydb_value::{storage::DataBitVec, value::int::Int};
 
 use crate::value::column::{ColumnBuffer, push::Push};
 

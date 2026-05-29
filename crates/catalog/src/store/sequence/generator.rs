@@ -10,7 +10,7 @@ use reifydb_transaction::{
 	single::write::SingleWriteTransaction,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
-use reifydb_type::{Result as TxResult, value::r#type::Type};
+use reifydb_value::{Result as TxResult, value::value_type::ValueType};
 
 pub trait SequenceTransaction: Send {
 	fn begin_single_command<'a, I>(&self, keys: I) -> TxResult<SingleWriteTransaction<'_>>
@@ -161,7 +161,7 @@ macro_rules! impl_generator {
 			mod tests {
 				use reifydb_core::{encoded::key::EncodedKey, error::CoreError};
 				use reifydb_engine::test_harness::create_test_admin_transaction;
-				use reifydb_type::{error::IntoDiagnostic, value::r#type::Type};
+				use reifydb_value::{error::IntoDiagnostic, value::value_type::ValueType};
 
 				use super::{SHAPE, $generator};
 
@@ -402,7 +402,7 @@ impl_generator!(
 	module: u8,
 	name: GeneratorU8,
 	type: u8,
-	type_enum: Type::Uint1,
+	type_enum: ValueType::Uint1,
 	getter: get_u8,
 	setter: set_u8,
 	start_value: 1u8,
@@ -413,7 +413,7 @@ impl_generator!(
 	module: u16,
 	name: GeneratorU16,
 	type: u16,
-	type_enum: Type::Uint2,
+	type_enum: ValueType::Uint2,
 	getter: get_u16,
 	setter: set_u16,
 	start_value: 1u16,
@@ -424,7 +424,7 @@ impl_generator!(
 	module: u32,
 	name: GeneratorU32,
 	type: u32,
-	type_enum: Type::Uint4,
+	type_enum: ValueType::Uint4,
 	getter: get_u32,
 	setter: set_u32,
 	start_value: 1u32,
@@ -435,7 +435,7 @@ impl_generator!(
 	module: u64,
 	name: GeneratorU64,
 	type: u64,
-	type_enum: Type::Uint8,
+	type_enum: ValueType::Uint8,
 	getter: get_u64,
 	setter: set_u64,
 	start_value: 1u64,
@@ -446,7 +446,7 @@ impl_generator!(
 	module: u128,
 	name: GeneratorU128,
 	type: u128,
-	type_enum: Type::Uint16,
+	type_enum: ValueType::Uint16,
 	getter: get_u128,
 	setter: set_u128,
 	start_value: 1u128,
@@ -457,7 +457,7 @@ impl_generator!(
 	module: i8,
 	name: GeneratorI8,
 	type: i8,
-	type_enum: Type::Int1,
+	type_enum: ValueType::Int1,
 	getter: get_i8,
 	setter: set_i8,
 	start_value: 1i8,
@@ -468,7 +468,7 @@ impl_generator!(
 	module: i16,
 	name: GeneratorI16,
 	type: i16,
-	type_enum: Type::Int2,
+	type_enum: ValueType::Int2,
 	getter: get_i16,
 	setter: set_i16,
 	start_value: 1i16,
@@ -479,7 +479,7 @@ impl_generator!(
 	module: i32,
 	name: GeneratorI32,
 	type: i32,
-	type_enum: Type::Int4,
+	type_enum: ValueType::Int4,
 	getter: get_i32,
 	setter: set_i32,
 	start_value: 1i32,
@@ -490,7 +490,7 @@ impl_generator!(
 	module: i64,
 	name: GeneratorI64,
 	type: i64,
-	type_enum: Type::Int8,
+	type_enum: ValueType::Int8,
 	getter: get_i64,
 	setter: set_i64,
 	start_value: 1i64,
@@ -501,7 +501,7 @@ impl_generator!(
 	module: i128,
 	name: GeneratorI128,
 	type: i128,
-	type_enum: Type::Int16,
+	type_enum: ValueType::Int16,
 	getter: get_i128,
 	setter: set_i128,
 	start_value: 1i128,

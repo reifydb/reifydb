@@ -10,7 +10,7 @@ pub(crate) mod any;
 mod fixed;
 mod varlen;
 
-use reifydb_type::value::frame::{data::FrameColumnData, frame::Frame};
+use reifydb_value::value::frame::{data::FrameColumnData, frame::Frame};
 use tracing::{Span, instrument};
 
 use crate::{

@@ -8,7 +8,7 @@
 
 use reifydb_engine::test_prelude::*;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::sumtype::VariantRef;
+use reifydb_value::value::sumtype::VariantRef;
 
 #[test]
 fn uncommitted_drop_is_reflected_within_txn() {

@@ -20,7 +20,7 @@ set -e
 # Path prefixes (relative to repo root, trailing slash) whose files must be MIT.
 # Everything not listed here defaults to AGPL-3.0-or-later.
 MIT_PATHS=(
-    "crates/type/"
+    "crates/value/"
     "crates/runtime/"
     "crates/wire-format/"
     "crates/macro-impl/"

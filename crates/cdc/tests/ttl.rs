@@ -30,7 +30,7 @@ use reifydb_runtime::{
 	pool::Pools,
 };
 use reifydb_store_multi::MultiStore;
-use reifydb_type::{
+use reifydb_value::{
 	util::cowvec::CowVec,
 	value::{Value, datetime::DateTime, duration::Duration as TypeDuration},
 };

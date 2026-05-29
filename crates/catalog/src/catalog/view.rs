@@ -14,7 +14,7 @@ use reifydb_transaction::{
 	change::TransactionalViewChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_type::{error, fragment::Fragment, value::constraint::TypeConstraint};
+use reifydb_value::{error, fragment::Fragment, value::constraint::TypeConstraint};
 use tracing::{instrument, warn};
 
 use crate::{

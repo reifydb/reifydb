@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, ops::Bound, sync::Arc};
 
 use reifydb_core::encoded::key::EncodedKey;
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_type::{Result, util::cowvec::CowVec};
+use reifydb_value::{Result, util::cowvec::CowVec};
 use tracing::instrument;
 
 use crate::tier::{RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};

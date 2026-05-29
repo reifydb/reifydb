@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::{error::Diagnostic, fragment::Fragment};
+use reifydb_value::{error::Diagnostic, fragment::Fragment};
 
 pub fn transaction_conflict() -> Diagnostic {
 	Diagnostic {

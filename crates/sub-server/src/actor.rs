@@ -17,7 +17,7 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 };
-use reifydb_type::{params::Params, value::identity::IdentityId};
+use reifydb_value::{params::Params, value::identity::IdentityId};
 
 pub struct ServerActor {
 	engine: StandardEngine,

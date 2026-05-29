@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_core::common::CommitVersion;
 use reifydb_runtime::sync::mutex::Mutex;
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::error::TransactionError;
 

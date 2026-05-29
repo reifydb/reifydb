@@ -14,7 +14,7 @@ use reifydb_core::{
 	key::kind::KeyKind,
 	profiler::ProfilerCategoryId,
 };
-use reifydb_type::value::dictionary::DictionaryId;
+use reifydb_value::value::dictionary::DictionaryId;
 
 use crate::{
 	MetricId,
@@ -333,7 +333,7 @@ pub mod tests {
 		let storage_prefix = storage_stats_key_prefix();
 		let cdc_prefix = cdc_stats_key_prefix();
 
-		// Type stats key should start with type prefix
+		// ValueType stats key should start with type prefix
 		let type_key = encode_type_stats_key(Tier::Buffer, KeyKind::Row);
 		assert!(type_key.starts_with(&type_prefix));
 

@@ -8,7 +8,7 @@ use reifydb_core::{
 	},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use super::utils;
 use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTransaction};

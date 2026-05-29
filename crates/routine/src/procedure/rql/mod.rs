@@ -6,10 +6,10 @@ pub mod explain;
 pub mod logical;
 pub mod tokenize;
 
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
-	value::{Value, r#type::Type},
+	value::{Value, value_type::ValueType},
 };
 
 use crate::routine::error::RoutineError;
@@ -21,7 +21,7 @@ pub(super) fn extract_query(params: &Params, procedure: &'static str) -> Result<
 			other => Err(RoutineError::ProcedureInvalidArgumentType {
 				procedure: Fragment::internal(procedure),
 				argument_index: 0,
-				expected: vec![Type::Utf8],
+				expected: vec![ValueType::Utf8],
 				actual: other.get_type(),
 			}),
 		},

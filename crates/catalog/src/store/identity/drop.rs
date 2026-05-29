@@ -3,7 +3,7 @@
 
 use reifydb_core::key::{EncodableKey, granted_role::GrantedRoleKey, identity::IdentityKey};
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::value::identity::IdentityId;
+use reifydb_value::value::identity::IdentityId;
 
 use crate::{CatalogStore, Result};
 

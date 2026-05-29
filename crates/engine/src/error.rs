@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::{
+use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
-	value::r#type::Type,
+	value::value_type::ValueType,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -12,14 +12,14 @@ pub enum CastError {
 	#[error("unsupported cast from {from_type} to {to_type}")]
 	UnsupportedCast {
 		fragment: Fragment,
-		from_type: Type,
-		to_type: Type,
+		from_type: ValueType,
+		to_type: ValueType,
 	},
 
 	#[error("failed to cast to {target}")]
 	InvalidNumber {
 		fragment: Fragment,
-		target: Type,
+		target: ValueType,
 		cause: Diagnostic,
 	},
 
@@ -32,14 +32,14 @@ pub enum CastError {
 	#[error("failed to cast to {target}")]
 	InvalidUuid {
 		fragment: Fragment,
-		target: Type,
+		target: ValueType,
 		cause: Diagnostic,
 	},
 
 	#[error("failed to cast to {target}")]
 	InvalidTemporal {
 		fragment: Fragment,
-		target: Type,
+		target: ValueType,
 		cause: Diagnostic,
 	},
 
@@ -169,7 +169,7 @@ pub enum EngineError {
 	#[error("Cannot insert none into non-optional column of type {column_type}")]
 	NoneNotAllowed {
 		fragment: Fragment,
-		column_type: Type,
+		column_type: ValueType,
 	},
 
 	#[error("Unknown function: {name}")]

@@ -5,7 +5,7 @@ use reifydb_cdc::consume::watermark::compute_watermark;
 use reifydb_core::common::CommitVersion;
 use reifydb_store_multi::gc::{EvictionWatermark, historical::QueryWatermark};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::identity::IdentityId;
+use reifydb_value::value::identity::IdentityId;
 
 use crate::engine::StandardEngine;
 

@@ -24,7 +24,7 @@ use reifydb_sdk::{
 	},
 	testing::harness::FFIOperatorHarnessBuilder,
 };
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	value::{Value, datetime::DateTime, row_number::RowNumber},
 };

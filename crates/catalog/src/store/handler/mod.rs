@@ -8,7 +8,7 @@ use reifydb_core::{
 		id::{HandlerId, NamespaceId},
 	},
 };
-use reifydb_type::value::sumtype::{SumTypeId, VariantRef};
+use reifydb_value::value::sumtype::{SumTypeId, VariantRef};
 use shape::handler;
 
 pub mod create;

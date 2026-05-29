@@ -11,9 +11,9 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
-	value::{Value, r#type::Type},
+	value::{Value, value_type::ValueType},
 };
 
 use crate::{
@@ -67,7 +67,9 @@ impl BaseVTable for SystemSeries {
 			ids.push(s.id.0);
 			namespaces.push(s.namespace.0);
 			names.push(s.name.as_str());
-			tag_ids.push_value(s.tag.map(|t| Value::Uint8(t.0)).unwrap_or(Value::none_of(Type::Uint8)));
+			tag_ids.push_value(
+				s.tag.map(|t| Value::Uint8(t.0)).unwrap_or(Value::none_of(ValueType::Uint8)),
+			);
 			key_columns.push(s.key.column());
 			key_kinds.push(match &s.key {
 				SeriesKey::DateTime {

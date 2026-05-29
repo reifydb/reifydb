@@ -3,7 +3,7 @@
 
 use std::ptr;
 
-use reifydb_type::value::{duration::Duration, r#type::Type};
+use reifydb_value::value::{duration::Duration, value_type::ValueType};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
@@ -11,7 +11,7 @@ impl RowShape {
 	pub fn set_duration(&self, row: &mut EncodedRow, index: usize, value: Duration) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Duration);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Duration);
 		row.set_valid(index, true);
 
 		let months = value.get_months();
@@ -38,7 +38,7 @@ impl RowShape {
 	pub fn get_duration(&self, row: &EncodedRow, index: usize) -> Duration {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Duration);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Duration);
 		unsafe {
 			let months = (row.as_ptr().add(field.offset as usize) as *const i32).read_unaligned();
 
@@ -50,7 +50,7 @@ impl RowShape {
 	}
 
 	pub fn try_get_duration(&self, row: &EncodedRow, index: usize) -> Option<Duration> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Duration {
+		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Duration {
 			Some(self.get_duration(row, index))
 		} else {
 			None
@@ -60,13 +60,13 @@ impl RowShape {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::{duration::Duration, r#type::Type};
+	use reifydb_value::value::{duration::Duration, value_type::ValueType};
 
 	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_set_get_duration() {
-		let shape = RowShape::testing(&[Type::Duration]);
+		let shape = RowShape::testing(&[ValueType::Duration]);
 		let mut row = shape.allocate();
 
 		let value = Duration::from_seconds(-7200).unwrap();
@@ -76,7 +76,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_duration() {
-		let shape = RowShape::testing(&[Type::Duration]);
+		let shape = RowShape::testing(&[ValueType::Duration]);
 		let mut row = shape.allocate();
 
 		assert_eq!(shape.try_get_duration(&row, 0), None);
@@ -88,7 +88,7 @@ pub mod tests {
 
 	#[test]
 	fn test_zero() {
-		let shape = RowShape::testing(&[Type::Duration]);
+		let shape = RowShape::testing(&[ValueType::Duration]);
 		let mut row = shape.allocate();
 
 		let zero = Duration::default(); // Zero duration
@@ -98,7 +98,7 @@ pub mod tests {
 
 	#[test]
 	fn test_various_durations() {
-		let shape = RowShape::testing(&[Type::Duration]);
+		let shape = RowShape::testing(&[ValueType::Duration]);
 
 		let test_durations = [
 			Duration::from_seconds(0).unwrap(),     // Zero
@@ -119,7 +119,7 @@ pub mod tests {
 
 	#[test]
 	fn test_negative_durations() {
-		let shape = RowShape::testing(&[Type::Duration]);
+		let shape = RowShape::testing(&[ValueType::Duration]);
 
 		let negative_durations = [
 			Duration::from_seconds(-60).unwrap(),    // -1 minute
@@ -138,7 +138,7 @@ pub mod tests {
 
 	#[test]
 	fn test_complex_parts() {
-		let shape = RowShape::testing(&[Type::Duration]);
+		let shape = RowShape::testing(&[ValueType::Duration]);
 		let mut row = shape.allocate();
 
 		// Create a duration with all components
@@ -154,7 +154,12 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let shape = RowShape::testing(&[Type::Duration, Type::Boolean, Type::Duration, Type::Int8]);
+		let shape = RowShape::testing(&[
+			ValueType::Duration,
+			ValueType::Boolean,
+			ValueType::Duration,
+			ValueType::Int8,
+		]);
 		let mut row = shape.allocate();
 
 		let duration1 = Duration::from_hours(24).unwrap();
@@ -173,7 +178,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let shape = RowShape::testing(&[Type::Duration, Type::Duration]);
+		let shape = RowShape::testing(&[ValueType::Duration, ValueType::Duration]);
 		let mut row = shape.allocate();
 
 		let duration = Duration::from_days(100).unwrap();
@@ -188,7 +193,7 @@ pub mod tests {
 
 	#[test]
 	fn test_large_values() {
-		let shape = RowShape::testing(&[Type::Duration]);
+		let shape = RowShape::testing(&[ValueType::Duration]);
 		let mut row = shape.allocate();
 
 		// Test with large values
@@ -204,7 +209,7 @@ pub mod tests {
 
 	#[test]
 	fn test_precision_preservation() {
-		let shape = RowShape::testing(&[Type::Duration]);
+		let shape = RowShape::testing(&[ValueType::Duration]);
 		let mut row = shape.allocate();
 
 		// Test that all components are preserved exactly
@@ -232,7 +237,7 @@ pub mod tests {
 
 	#[test]
 	fn test_common_durations() {
-		let shape = RowShape::testing(&[Type::Duration]);
+		let shape = RowShape::testing(&[ValueType::Duration]);
 
 		// Test common durations used in applications
 		let common_durations = [
@@ -256,7 +261,7 @@ pub mod tests {
 
 	#[test]
 	fn test_boundary_values() {
-		let shape = RowShape::testing(&[Type::Duration]);
+		let shape = RowShape::testing(&[ValueType::Duration]);
 
 		// Test boundary values for each component
 		let boundary_durations = [
@@ -277,7 +282,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_duration_wrong_type() {
-		let shape = RowShape::testing(&[Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
 		shape.set_bool(&mut row, 0, true);

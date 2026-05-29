@@ -10,7 +10,7 @@ use reifydb_core::{
 	interface::store::{MultiVersionCommit, MultiVersionGet},
 };
 use reifydb_store_multi::store::StandardMultiStore;
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_value::util::cowvec::CowVec;
 
 fn row(bytes: &[u8]) -> EncodedRow {
 	EncodedRow(CowVec::new(bytes.to_vec()))

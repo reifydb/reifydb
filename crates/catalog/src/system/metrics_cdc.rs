@@ -8,7 +8,7 @@ use reifydb_core::interface::catalog::{
 	id::{ColumnId, NamespaceId},
 	vtable::{VTable, VTableId},
 };
-use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 pub fn metrics_cdc_vtable(id: VTableId, local_name: &str) -> Arc<VTable> {
 	Arc::new(VTable {
@@ -16,17 +16,17 @@ pub fn metrics_cdc_vtable(id: VTableId, local_name: &str) -> Arc<VTable> {
 		namespace: NamespaceId::SYSTEM_METRICS_CDC,
 		name: local_name.to_string(),
 		columns: vec![
-			col(1, 0, "id", Type::Uint8),
-			col(2, 1, "namespace_id", Type::Uint8),
-			col(3, 2, "key_bytes", Type::Uint8),
-			col(4, 3, "value_bytes", Type::Uint8),
-			col(5, 4, "total_bytes", Type::Uint8),
-			col(6, 5, "count", Type::Uint8),
+			col(1, 0, "id", ValueType::Uint8),
+			col(2, 1, "namespace_id", ValueType::Uint8),
+			col(3, 2, "key_bytes", ValueType::Uint8),
+			col(4, 3, "value_bytes", ValueType::Uint8),
+			col(5, 4, "total_bytes", ValueType::Uint8),
+			col(6, 5, "count", ValueType::Uint8),
 		],
 	})
 }
 
-fn col(id: u64, index: u8, name: &str, ty: Type) -> Column {
+fn col(id: u64, index: u8, name: &str, ty: ValueType) -> Column {
 	Column {
 		id: ColumnId(id),
 		name: name.to_string(),

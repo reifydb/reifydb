@@ -31,9 +31,9 @@ pub mod tests {
 	use reifydb_core::interface::catalog::id::ViewId;
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_type::{
+	use reifydb_value::{
 		fragment::Fragment,
-		value::{constraint::TypeConstraint, r#type::Type},
+		value::{constraint::TypeConstraint, value_type::ValueType},
 	};
 
 	use crate::{
@@ -88,12 +88,12 @@ pub mod tests {
 				ViewColumnToCreate {
 					name: Fragment::internal("col_a"),
 					fragment: Fragment::None,
-					constraint: TypeConstraint::unconstrained(Type::Int4),
+					constraint: TypeConstraint::unconstrained(ValueType::Int4),
 				},
 				ViewColumnToCreate {
 					name: Fragment::internal("col_b"),
 					fragment: Fragment::None,
-					constraint: TypeConstraint::unconstrained(Type::Utf8),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 				},
 			],
 		);

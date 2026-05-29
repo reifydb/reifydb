@@ -6,7 +6,7 @@ pub mod wrapper;
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::{constants::FFI_OK, context::context::ContextFFI, data::buffer::BufferFFI};
-use reifydb_type::{params::Params, value::frame::frame::Frame};
+use reifydb_value::{params::Params, value::frame::frame::Frame};
 
 use crate::{
 	config::Config,

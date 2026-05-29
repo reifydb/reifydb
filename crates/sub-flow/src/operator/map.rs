@@ -21,7 +21,7 @@ use reifydb_engine::{
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_type::{Result, fragment::Fragment, params::Params, value::identity::IdentityId};
+use reifydb_value::{Result, fragment::Fragment, params::Params, value::identity::IdentityId};
 
 use crate::{Operator, operator::OperatorCell, transaction::FlowTransaction};
 

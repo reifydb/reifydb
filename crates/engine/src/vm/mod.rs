@@ -9,7 +9,7 @@
 //! opcode does. Adding a new instruction means writing a handler and wiring it in - planner output never reaches
 //! storage without first being interpreted here.
 
-use reifydb_type::params::Params;
+use reifydb_value::params::Params;
 
 #[derive(Debug)]
 pub struct Admin<'a> {

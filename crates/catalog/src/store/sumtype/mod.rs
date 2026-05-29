@@ -8,7 +8,7 @@ use reifydb_core::{
 		sumtype::{SumType, SumTypeKind, Variant},
 	},
 };
-use reifydb_type::value::sumtype::SumTypeId;
+use reifydb_value::value::sumtype::SumTypeId;
 use serde_json::from_str;
 use tracing::warn;
 

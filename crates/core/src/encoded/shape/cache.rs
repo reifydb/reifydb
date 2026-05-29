@@ -113,18 +113,18 @@ impl RowShapeCacheCell {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
 
-	fn shape(types: &[Type]) -> RowShape {
+	fn shape(types: &[ValueType]) -> RowShape {
 		RowShape::testing(types)
 	}
 
 	#[test]
 	fn insert_then_get_returns_same_shape() {
 		let cache = RowShapeCacheCell::new(2);
-		let s = shape(&[Type::Int4]);
+		let s = shape(&[ValueType::Int4]);
 		let fp = s.fingerprint();
 
 		cache.insert(s.clone());
@@ -135,7 +135,7 @@ mod tests {
 	#[test]
 	fn get_absent_fingerprint_returns_none() {
 		let cache = RowShapeCacheCell::new(2);
-		let absent = shape(&[Type::Int4]).fingerprint();
+		let absent = shape(&[ValueType::Int4]).fingerprint();
 
 		assert_eq!(cache.get(&absent), None);
 	}
@@ -143,9 +143,9 @@ mod tests {
 	#[test]
 	fn evicts_least_recently_used_when_at_capacity() {
 		let cache = RowShapeCacheCell::new(2);
-		let a = shape(&[Type::Int4]);
-		let b = shape(&[Type::Int8]);
-		let c = shape(&[Type::Utf8]);
+		let a = shape(&[ValueType::Int4]);
+		let b = shape(&[ValueType::Int8]);
+		let c = shape(&[ValueType::Utf8]);
 
 		cache.insert(a.clone());
 		cache.insert(b.clone());
@@ -160,9 +160,9 @@ mod tests {
 	#[test]
 	fn get_promotes_recency_and_protects_from_eviction() {
 		let cache = RowShapeCacheCell::new(2);
-		let a = shape(&[Type::Int4]);
-		let b = shape(&[Type::Int8]);
-		let c = shape(&[Type::Utf8]);
+		let a = shape(&[ValueType::Int4]);
+		let b = shape(&[ValueType::Int8]);
+		let c = shape(&[ValueType::Utf8]);
 
 		cache.insert(a.clone());
 		cache.insert(b.clone());
@@ -178,7 +178,7 @@ mod tests {
 	#[test]
 	fn insert_existing_fingerprint_updates_in_place_without_growing() {
 		let cache = RowShapeCacheCell::new(2);
-		let s = shape(&[Type::Int4]);
+		let s = shape(&[ValueType::Int4]);
 
 		cache.insert(s.clone());
 		cache.insert(s.clone());
@@ -193,11 +193,11 @@ mod tests {
 		assert!(cache.is_empty());
 		assert_eq!(cache.capacity(), 3);
 
-		let s = shape(&[Type::Int4]);
+		let s = shape(&[ValueType::Int4]);
 		cache.insert(s.clone());
 
 		assert!(cache.contains_key(&s.fingerprint()));
-		assert!(!cache.contains_key(&shape(&[Type::Int8]).fingerprint()));
+		assert!(!cache.contains_key(&shape(&[ValueType::Int8]).fingerprint()));
 		assert_eq!(cache.len(), 1);
 		assert!(!cache.is_empty());
 	}
@@ -205,8 +205,8 @@ mod tests {
 	#[test]
 	fn clear_removes_all_entries() {
 		let cache = RowShapeCacheCell::new(2);
-		cache.insert(shape(&[Type::Int4]));
-		cache.insert(shape(&[Type::Int8]));
+		cache.insert(shape(&[ValueType::Int4]));
+		cache.insert(shape(&[ValueType::Int8]));
 
 		cache.clear();
 

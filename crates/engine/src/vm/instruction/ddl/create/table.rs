@@ -12,12 +12,12 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::CreateTableNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value,
 		constraint::{Constraint, TypeConstraint},
-		r#type::Type,
+		value_type::ValueType,
 	},
 };
 
@@ -92,7 +92,7 @@ fn expand_sumtype_columns(
 					name: Fragment::internal(format!("{col_name}_tag")),
 					fragment: col.fragment.clone(),
 					constraint: TypeConstraint::with_constraint(
-						Type::Uint1,
+						ValueType::Uint1,
 						Constraint::SumType(*id),
 					),
 					properties: vec![],
@@ -102,7 +102,8 @@ fn expand_sumtype_columns(
 
 				for variant in &def.variants {
 					for field in &variant.fields {
-						let field_type = Type::Option(Box::new(field.field_type.get_type()));
+						let field_type =
+							ValueType::Option(Box::new(field.field_type.get_type()));
 						expanded.push(TableColumnToCreate {
 							name: Fragment::internal(format!(
 								"{col_name}_{}_{}",
@@ -128,7 +129,7 @@ fn expand_sumtype_columns(
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::{params::Params, value::Value};
+	use reifydb_value::{params::Params, value::Value};
 
 	use crate::{
 		test_harness::create_test_admin_transaction,

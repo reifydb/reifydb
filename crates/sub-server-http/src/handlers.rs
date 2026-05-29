@@ -24,9 +24,9 @@ use reifydb_sub_server::{
 	response::{CONTENT_TYPE_FRAMES, CONTENT_TYPE_RBCF, encode_frames_rbcf, resolve_response_json},
 	wire::WireParams,
 };
-use reifydb_type::{
+use reifydb_value::{
 	params::Params,
-	value::{Value, frame::frame::Frame, identity::IdentityId, r#type::Type},
+	value::{Value, frame::frame::Frame, identity::IdentityId, value_type::ValueType},
 };
 use reifydb_wire_format::json::{to::convert_frames, types::ResponseFrame};
 use serde::{Deserialize, Serialize};
@@ -443,29 +443,29 @@ fn match_http_path(template: &str, request: &str) -> Option<HashMap<String, Stri
 	Some(captures)
 }
 
-fn coerce_str_to_value(s: &str, ty: Type) -> Result<Value, String> {
+fn coerce_str_to_value(s: &str, ty: ValueType) -> Result<Value, String> {
 	match ty {
-		Type::Boolean => match s {
+		ValueType::Boolean => match s {
 			"true" | "1" => Ok(Value::Boolean(true)),
 			"false" | "0" => Ok(Value::Boolean(false)),
 			_ => Err("expected `true`/`false`".into()),
 		},
-		Type::Utf8 => Ok(Value::Utf8(s.to_string())),
-		Type::Int1 => s.parse::<i8>().map(Value::Int1).map_err(|e| e.to_string()),
-		Type::Int2 => s.parse::<i16>().map(Value::Int2).map_err(|e| e.to_string()),
-		Type::Int4 => s.parse::<i32>().map(Value::Int4).map_err(|e| e.to_string()),
-		Type::Int8 => s.parse::<i64>().map(Value::Int8).map_err(|e| e.to_string()),
-		Type::Int16 => s.parse::<i128>().map(Value::Int16).map_err(|e| e.to_string()),
-		Type::Uint1 => s.parse::<u8>().map(Value::Uint1).map_err(|e| e.to_string()),
-		Type::Uint2 => s.parse::<u16>().map(Value::Uint2).map_err(|e| e.to_string()),
-		Type::Uint4 => s.parse::<u32>().map(Value::Uint4).map_err(|e| e.to_string()),
-		Type::Uint8 => s.parse::<u64>().map(Value::Uint8).map_err(|e| e.to_string()),
-		Type::Uint16 => s.parse::<u128>().map(Value::Uint16).map_err(|e| e.to_string()),
-		Type::Float4 => s
+		ValueType::Utf8 => Ok(Value::Utf8(s.to_string())),
+		ValueType::Int1 => s.parse::<i8>().map(Value::Int1).map_err(|e| e.to_string()),
+		ValueType::Int2 => s.parse::<i16>().map(Value::Int2).map_err(|e| e.to_string()),
+		ValueType::Int4 => s.parse::<i32>().map(Value::Int4).map_err(|e| e.to_string()),
+		ValueType::Int8 => s.parse::<i64>().map(Value::Int8).map_err(|e| e.to_string()),
+		ValueType::Int16 => s.parse::<i128>().map(Value::Int16).map_err(|e| e.to_string()),
+		ValueType::Uint1 => s.parse::<u8>().map(Value::Uint1).map_err(|e| e.to_string()),
+		ValueType::Uint2 => s.parse::<u16>().map(Value::Uint2).map_err(|e| e.to_string()),
+		ValueType::Uint4 => s.parse::<u32>().map(Value::Uint4).map_err(|e| e.to_string()),
+		ValueType::Uint8 => s.parse::<u64>().map(Value::Uint8).map_err(|e| e.to_string()),
+		ValueType::Uint16 => s.parse::<u128>().map(Value::Uint16).map_err(|e| e.to_string()),
+		ValueType::Float4 => s
 			.parse::<f32>()
 			.map_err(|e| e.to_string())
 			.and_then(|v| v.try_into().map(Value::Float4).map_err(|_| "invalid f32".to_string())),
-		Type::Float8 => s
+		ValueType::Float8 => s
 			.parse::<f64>()
 			.map_err(|e| e.to_string())
 			.and_then(|v| v.try_into().map(Value::Float8).map_err(|_| "invalid f64".to_string())),
@@ -520,14 +520,14 @@ pub mod tests {
 
 	#[test]
 	fn test_coerce_numeric() {
-		assert_eq!(coerce_str_to_value("42", Type::Int8).unwrap(), Value::Int8(42));
-		assert!(coerce_str_to_value("xx", Type::Int8).is_err());
+		assert_eq!(coerce_str_to_value("42", ValueType::Int8).unwrap(), Value::Int8(42));
+		assert!(coerce_str_to_value("xx", ValueType::Int8).is_err());
 	}
 
 	#[test]
 	fn test_coerce_bool() {
-		assert_eq!(coerce_str_to_value("true", Type::Boolean).unwrap(), Value::Boolean(true));
-		assert!(coerce_str_to_value("maybe", Type::Boolean).is_err());
+		assert_eq!(coerce_str_to_value("true", ValueType::Boolean).unwrap(), Value::Boolean(true));
+		assert!(coerce_str_to_value("maybe", ValueType::Boolean).is_err());
 	}
 
 	#[test]

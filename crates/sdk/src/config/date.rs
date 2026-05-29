@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::date::Date;
+use reifydb_value::value::date::Date;
 
 use super::Config;
 
@@ -21,7 +21,7 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_type::value::{Value, date::Date, datetime::DateTime};
+	use reifydb_value::value::{Value, date::Date, datetime::DateTime};
 
 	use super::super::testutil::config;
 

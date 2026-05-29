@@ -8,7 +8,7 @@
 //! available before resolution (`TargetColumn::Partial`). Number-out-of-range descriptor construction lives here too so
 //! range-violation diagnostics are assembled identically by every evaluator.
 
-use reifydb_type::{error::NumberOutOfRangeDescriptor, value::r#type::Type};
+use reifydb_value::{error::NumberOutOfRangeDescriptor, value::value_type::ValueType};
 
 use crate::interface::{
 	catalog::property::ColumnPropertyKind,
@@ -22,13 +22,13 @@ pub enum TargetColumn {
 	Partial {
 		source_name: Option<String>,
 		column_name: Option<String>,
-		column_type: Type,
+		column_type: ValueType,
 		properties: Vec<ColumnPropertyKind>,
 	},
 }
 
 impl TargetColumn {
-	pub fn column_type(&self) -> Type {
+	pub fn column_type(&self) -> ValueType {
 		match self {
 			Self::Resolved(col) => col.column_type(),
 			Self::Partial {

@@ -9,19 +9,19 @@ use reifydb_core::{
 	value::column::data::Column,
 };
 use reifydb_runtime::context::clock::Instant;
-use reifydb_type::{Result, value::r#type::Type};
+use reifydb_value::{Result, value::value_type::ValueType};
 
 use crate::bucket::{Bucket, BucketId};
 
 #[derive(Clone)]
 pub struct ColumnChunks {
-	pub ty: Type,
+	pub ty: ValueType,
 	pub nullable: bool,
 	pub chunks: Vec<Column>,
 }
 
 impl ColumnChunks {
-	pub fn new(ty: Type, nullable: bool, chunks: Vec<Column>) -> Self {
+	pub fn new(ty: ValueType, nullable: bool, chunks: Vec<Column>) -> Self {
 		Self {
 			ty,
 			nullable,
@@ -29,7 +29,7 @@ impl ColumnChunks {
 		}
 	}
 
-	pub fn single(ty: Type, nullable: bool, array: Column) -> Self {
+	pub fn single(ty: ValueType, nullable: bool, array: Column) -> Self {
 		Self {
 			ty,
 			nullable,
@@ -73,7 +73,7 @@ impl ColumnChunks {
 	}
 }
 
-pub type Schema = Arc<Vec<(String, Type, bool)>>;
+pub type Schema = Arc<Vec<(String, ValueType, bool)>>;
 
 #[derive(Clone)]
 pub struct ColumnBlock {
@@ -185,7 +185,7 @@ pub struct SnapshotMeta {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::value::column::{buffer::ColumnBuffer, data::canonical::Canonical};
-	use reifydb_type::value::Value;
+	use reifydb_value::value::Value;
 
 	use super::*;
 
@@ -198,7 +198,7 @@ mod tests {
 				)
 			})
 			.collect();
-		ColumnChunks::new(Type::Int4, false, chunks)
+		ColumnChunks::new(ValueType::Int4, false, chunks)
 	}
 
 	#[test]
@@ -233,7 +233,7 @@ mod tests {
 
 	fn block_with_columns(named: &[(&str, &[&[i32]])]) -> ColumnBlock {
 		let schema: Schema =
-			Arc::new(named.iter().map(|(n, _)| ((*n).to_string(), Type::Int4, false)).collect());
+			Arc::new(named.iter().map(|(n, _)| ((*n).to_string(), ValueType::Int4, false)).collect());
 		let cols = named.iter().map(|(_, parts)| chunked_int4(parts)).collect();
 		ColumnBlock::new(schema, cols)
 	}

@@ -12,7 +12,7 @@ use reifydb_core::{
 	internal,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{
+use reifydb_value::{
 	error,
 	fragment::Fragment,
 	value::{constraint::TypeConstraint, dictionary::DictionaryId, sumtype::SumTypeId},

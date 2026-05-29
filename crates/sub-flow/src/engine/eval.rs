@@ -14,7 +14,7 @@ use reifydb_engine::{
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	params::Params,
 	value::{Value, identity::IdentityId},
@@ -75,7 +75,7 @@ pub mod tests {
 	use reifydb_routine::routine::registry::Routines;
 	use reifydb_rql::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
 	use reifydb_runtime::context::{RuntimeContext, clock::Clock};
-	use reifydb_type::{fragment::Fragment, value::Value};
+	use reifydb_value::{fragment::Fragment, value::Value};
 
 	use super::evaluate_operator_config;
 

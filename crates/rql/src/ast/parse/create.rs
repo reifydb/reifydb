@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use reifydb_core::sort::SortDirection;
-use reifydb_type::{
+use reifydb_value::{
 	error::{AstErrorKind, Error, TypeError},
 	fragment::Fragment,
 };

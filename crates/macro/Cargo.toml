@@ -15,4 +15,4 @@ reifydb-macro-impl = { workspace = true }
 
 [dev-dependencies]
 reifydb-runtime = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }

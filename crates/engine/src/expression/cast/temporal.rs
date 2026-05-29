@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::buffer::ColumnBuffer;
-use reifydb_type::{
+use reifydb_value::{
 	error::{Error, TypeError},
 	fragment::{Fragment, LazyFragment},
 	value::{
@@ -14,23 +14,23 @@ use reifydb_type::{
 			date::parse_date, datetime::parse_datetime, duration::parse_duration, time::parse_time,
 		},
 		time::Time,
-		r#type::Type,
+		value_type::ValueType,
 	},
 };
 
 use crate::{Result, error::CastError};
 
-pub fn to_temporal(data: &ColumnBuffer, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
+pub fn to_temporal(data: &ColumnBuffer, target: ValueType, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
 	if let ColumnBuffer::Utf8 {
 		container,
 		..
 	} = data
 	{
 		match target {
-			Type::Date => to_date(container, lazy_fragment),
-			Type::DateTime => to_datetime(container, lazy_fragment),
-			Type::Time => to_time(container, lazy_fragment),
-			Type::Duration => to_duration(container, lazy_fragment),
+			ValueType::Date => to_date(container, lazy_fragment),
+			ValueType::DateTime => to_datetime(container, lazy_fragment),
+			ValueType::Time => to_time(container, lazy_fragment),
+			ValueType::Duration => to_duration(container, lazy_fragment),
 			_ => {
 				let shape_type = data.get_type();
 				Err(TypeError::UnsupportedCast {
@@ -107,7 +107,7 @@ macro_rules! impl_to_temporal {
 	};
 }
 
-impl_to_temporal!(to_date, Date, Type::Date, parse_date);
-impl_to_temporal!(to_datetime, DateTime, Type::DateTime, parse_datetime);
-impl_to_temporal!(to_time, Time, Type::Time, parse_time);
-impl_to_temporal!(to_duration, Duration, Type::Duration, parse_duration);
+impl_to_temporal!(to_date, Date, ValueType::Date, parse_date);
+impl_to_temporal!(to_datetime, DateTime, ValueType::DateTime, parse_datetime);
+impl_to_temporal!(to_time, Time, ValueType::Time, parse_time);
+impl_to_temporal!(to_duration, Duration, ValueType::Duration, parse_duration);

@@ -2,10 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::buffer::ColumnBuffer;
-use reifydb_type::{
+use reifydb_value::{
 	error::TypeError,
 	fragment::LazyFragment,
-	value::{blob::Blob, r#type::Type},
+	value::{blob::Blob, value_type::ValueType},
 };
 
 use super::cast_column_data;
@@ -14,7 +14,7 @@ use crate::{Result, expression::context::EvalContext};
 pub fn from_any(
 	ctx: &EvalContext,
 	data: &ColumnBuffer,
-	target: Type,
+	target: ValueType,
 	lazy_fragment: impl LazyFragment + Clone,
 ) -> Result<ColumnBuffer> {
 	let any_container = match data {

@@ -77,7 +77,7 @@ use reifydb_core::{
 	row::{OperatorSettings, RowSettings},
 	util::multi::MultiVersionContainer,
 };
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value,
@@ -455,7 +455,7 @@ mod config_validation_tests {
 	use std::time::Duration as StdDuration;
 
 	use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
-	use reifydb_type::value::{Value, duration::Duration as TypeDuration, r#type::Type};
+	use reifydb_value::value::{Value, duration::Duration as TypeDuration, value_type::ValueType};
 
 	use super::{CatalogCache, CatalogError, CommitVersion};
 
@@ -473,7 +473,7 @@ mod config_validation_tests {
 		assert!(matches!(
 			catalog.get_config(ConfigKey::CdcTtlDuration),
 			Value::None {
-				inner: Type::Duration
+				inner: ValueType::Duration
 			}
 		));
 	}
@@ -513,7 +513,7 @@ mod config_validation_tests {
 			ConfigKey::CdcTtlDuration,
 			CommitVersion(2),
 			Value::None {
-				inner: Type::Duration,
+				inner: ValueType::Duration,
 			},
 		)
 		.unwrap();
@@ -523,7 +523,7 @@ mod config_validation_tests {
 
 	#[test]
 	fn test_set_cdc_ttl_wrong_type_returns_type_mismatch_not_validate_error() {
-		// A non-numeric, non-Duration value cannot coerce to Type::Duration
+		// A non-numeric, non-Duration value cannot coerce to ValueType::Duration
 		// and must surface as ConfigTypeMismatch.
 		let catalog = CatalogCache::new();
 		let bad = Value::Boolean(true);

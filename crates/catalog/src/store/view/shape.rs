@@ -4,7 +4,7 @@
 pub(crate) mod view {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const NAMESPACE: usize = 1;
@@ -22,19 +22,19 @@ pub(crate) mod view {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("namespace", Type::Uint8),
-			RowShapeField::unconstrained("name", Type::Utf8),
-			RowShapeField::unconstrained("kind", Type::Uint1),
-			RowShapeField::unconstrained("primary_key", Type::Uint8),
-			RowShapeField::unconstrained("storage_kind", Type::Uint1),
-			RowShapeField::unconstrained("underlying_shape_id", Type::Uint8),
-			RowShapeField::unconstrained("capacity", Type::Uint8),
-			RowShapeField::unconstrained("propagate_evictions", Type::Uint1),
-			RowShapeField::unconstrained("key_column", Type::Utf8),
-			RowShapeField::unconstrained("key_kind", Type::Uint1),
-			RowShapeField::unconstrained("precision", Type::Uint1),
-			RowShapeField::unconstrained("tag_id", Type::Uint8),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("namespace", ValueType::Uint8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
+			RowShapeField::unconstrained("kind", ValueType::Uint1),
+			RowShapeField::unconstrained("primary_key", ValueType::Uint8),
+			RowShapeField::unconstrained("storage_kind", ValueType::Uint1),
+			RowShapeField::unconstrained("underlying_shape_id", ValueType::Uint8),
+			RowShapeField::unconstrained("capacity", ValueType::Uint8),
+			RowShapeField::unconstrained("propagate_evictions", ValueType::Uint1),
+			RowShapeField::unconstrained("key_column", ValueType::Utf8),
+			RowShapeField::unconstrained("key_kind", ValueType::Uint1),
+			RowShapeField::unconstrained("precision", ValueType::Uint1),
+			RowShapeField::unconstrained("tag_id", ValueType::Uint8),
 		])
 	});
 }
@@ -42,15 +42,15 @@ pub(crate) mod view {
 pub(crate) mod view_namespace {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const NAME: usize = 1;
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("name", Type::Utf8),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
 		])
 	});
 }

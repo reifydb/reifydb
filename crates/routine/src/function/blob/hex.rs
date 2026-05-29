@@ -2,9 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
-	value::{blob::Blob, r#type::Type},
+	value::{blob::Blob, value_type::ValueType},
 };
 
 use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
@@ -32,8 +32,8 @@ impl<'a> Routine<FunctionContext<'a>> for BlobHex {
 		&self.info
 	}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Blob
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Blob
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
@@ -82,7 +82,7 @@ impl<'a> Routine<FunctionContext<'a>> for BlobHex {
 			other => Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
-				expected: vec![Type::Utf8],
+				expected: vec![ValueType::Utf8],
 				actual: other.get_type(),
 			}),
 		}

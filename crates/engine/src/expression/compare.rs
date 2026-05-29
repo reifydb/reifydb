@@ -4,7 +4,7 @@
 use std::cmp::Ordering;
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
-use reifydb_type::{
+use reifydb_value::{
 	error::Diagnostic,
 	fragment::Fragment,
 	return_error,
@@ -17,8 +17,8 @@ use reifydb_type::{
 		int::Int,
 		is::{IsNumber, IsTemporal, IsUuid},
 		number::{compare::partial_cmp, promote::Promote},
-		r#type::Type,
 		uint::Uint,
+		value_type::ValueType,
 	},
 };
 
@@ -323,7 +323,7 @@ pub(crate) fn compare_columns<Op: CompareOp>(
 	left: &ColumnWithName,
 	right: &ColumnWithName,
 	fragment: Fragment,
-	error_fn: impl FnOnce(Fragment, Type, Type) -> Diagnostic,
+	error_fn: impl FnOnce(Fragment, ValueType, ValueType) -> Diagnostic,
 ) -> Result<ColumnWithName> {
 	binary_op_unwrap_option(left, right, fragment.clone(), |left, right| {
 		dispatch_compare!(

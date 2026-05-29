@@ -16,7 +16,7 @@ use reifydb_catalog::{catalog::Catalog, create_token};
 use reifydb_core::interface::catalog::token::Token;
 use reifydb_runtime::context::{clock::Clock, rng::Rng as SystemRng};
 use reifydb_transaction::transaction::{admin::AdminTransaction, query::QueryTransaction};
-use reifydb_type::{
+use reifydb_value::{
 	error::Error,
 	value::{datetime::DateTime, identity::IdentityId},
 };

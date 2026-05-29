@@ -9,14 +9,14 @@ use reifydb_core::interface::catalog::{
 	column::{Column, ColumnIndex},
 	id::ColumnId,
 };
-use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 pub(crate) fn common_columns() -> Vec<Column> {
 	vec![
 		Column {
 			id: ColumnId(1),
 			name: "id".to_string(),
-			constraint: TypeConstraint::unconstrained(Type::Uint8),
+			constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 			properties: vec![],
 			index: ColumnIndex(0),
 			auto_increment: false,
@@ -25,7 +25,7 @@ pub(crate) fn common_columns() -> Vec<Column> {
 		Column {
 			id: ColumnId(2),
 			name: "namespace_id".to_string(),
-			constraint: TypeConstraint::unconstrained(Type::Uint8),
+			constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 			properties: vec![],
 			index: ColumnIndex(1),
 			auto_increment: false,
@@ -34,7 +34,7 @@ pub(crate) fn common_columns() -> Vec<Column> {
 		Column {
 			id: ColumnId(3),
 			name: "procedure_id".to_string(),
-			constraint: TypeConstraint::unconstrained(Type::Uint8),
+			constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 			properties: vec![],
 			index: ColumnIndex(2),
 			auto_increment: false,
@@ -43,7 +43,7 @@ pub(crate) fn common_columns() -> Vec<Column> {
 		Column {
 			id: ColumnId(4),
 			name: "name".to_string(),
-			constraint: TypeConstraint::unconstrained(Type::Utf8),
+			constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 			properties: vec![],
 			index: ColumnIndex(3),
 			auto_increment: false,

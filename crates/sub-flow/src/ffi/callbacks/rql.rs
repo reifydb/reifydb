@@ -12,7 +12,7 @@ use reifydb_abi::{
 use reifydb_engine::vm::executor::Executor;
 use reifydb_extension::procedure::ffi_callbacks::memory::host_alloc;
 use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
-use reifydb_type::{params::Params, value::identity::IdentityId};
+use reifydb_value::{params::Params, value::identity::IdentityId};
 use tracing::error;
 
 use crate::ffi::context::get_transaction_mut;

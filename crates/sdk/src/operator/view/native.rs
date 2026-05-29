@@ -9,7 +9,7 @@ use reifydb_core::{
 		columns::Columns,
 	},
 };
-use reifydb_type::value::{
+use reifydb_value::value::{
 	Value, date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, row_number::RowNumber, time::Time,
 };
 

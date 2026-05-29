@@ -18,7 +18,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_sdk::ffi::arena::Arena;
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	util::cowvec::CowVec,
 	value::{

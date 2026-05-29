@@ -7,7 +7,7 @@ use std::{
 	str::FromStr,
 };
 
-use reifydb_type::value::uuid::Uuid7;
+use reifydb_value::value::uuid::Uuid7;
 use uuid::Uuid as StdUuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

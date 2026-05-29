@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::dictionary::DictionaryEntryId;
+use reifydb_value::value::dictionary::DictionaryEntryId;
 
 use super::Config;
 
@@ -21,7 +21,7 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_type::value::{Value, dictionary::DictionaryEntryId};
+	use reifydb_value::value::{Value, dictionary::DictionaryEntryId};
 
 	use super::super::testutil::config;
 

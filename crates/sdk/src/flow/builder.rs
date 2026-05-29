@@ -10,7 +10,7 @@ use reifydb_core::{
 	row::Row,
 	value::column::columns::Columns,
 };
-use reifydb_type::{util::cowvec::CowVec, value::datetime::DateTime};
+use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
 
 pub struct ChangeBuilder {
 	operator_id: FlowNodeId,

@@ -7,7 +7,7 @@ use reifydb_cdc::consume::checkpoint::CdcCheckpoint;
 use reifydb_core::{common::CommitVersion, interface::flow::FlowWatermarkRow};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::identity::IdentityId;
+use reifydb_value::value::identity::IdentityId;
 
 use super::tracker::ShapeVersionTracker;
 use crate::catalog::FlowCatalog;

@@ -3,7 +3,7 @@
 
 use std::ptr;
 
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
@@ -11,7 +11,7 @@ impl RowShape {
 	pub fn set_u128(&self, row: &mut EncodedRow, index: usize, value: impl Into<u128>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uint16);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Uint16);
 		row.set_valid(index, true);
 		unsafe {
 			ptr::write_unaligned(
@@ -24,12 +24,12 @@ impl RowShape {
 	pub fn get_u128(&self, row: &EncodedRow, index: usize) -> u128 {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uint16);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Uint16);
 		unsafe { (row.as_ptr().add(field.offset as usize) as *const u128).read_unaligned() }
 	}
 
 	pub fn try_get_u128(&self, row: &EncodedRow, index: usize) -> Option<u128> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Uint16 {
+		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Uint16 {
 			Some(self.get_u128(row, index))
 		} else {
 			None
@@ -39,13 +39,13 @@ impl RowShape {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_set_get_u128() {
-		let shape = RowShape::testing(&[Type::Uint16]);
+		let shape = RowShape::testing(&[ValueType::Uint16]);
 		let mut row = shape.allocate();
 		shape.set_u128(&mut row, 0, 340282366920938463463374607431768211455u128);
 		assert_eq!(shape.get_u128(&row, 0), 340282366920938463463374607431768211455u128);
@@ -53,7 +53,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_u128() {
-		let shape = RowShape::testing(&[Type::Uint16]);
+		let shape = RowShape::testing(&[ValueType::Uint16]);
 		let mut row = shape.allocate();
 
 		assert_eq!(shape.try_get_u128(&row, 0), None);
@@ -64,7 +64,7 @@ pub mod tests {
 
 	#[test]
 	fn test_extremes() {
-		let shape = RowShape::testing(&[Type::Uint16]);
+		let shape = RowShape::testing(&[ValueType::Uint16]);
 		let mut row = shape.allocate();
 
 		shape.set_u128(&mut row, 0, u128::MAX);
@@ -81,7 +81,7 @@ pub mod tests {
 
 	#[test]
 	fn test_very_large_values() {
-		let shape = RowShape::testing(&[Type::Uint16]);
+		let shape = RowShape::testing(&[ValueType::Uint16]);
 
 		let test_values = [
 			0u128,
@@ -103,7 +103,7 @@ pub mod tests {
 
 	#[test]
 	fn test_powers_of_two() {
-		let shape = RowShape::testing(&[Type::Uint16]);
+		let shape = RowShape::testing(&[ValueType::Uint16]);
 
 		let powers = [
 			1u128, 2u128, 4u128, 8u128, 16u128, 32u128, 64u128, 128u128, 256u128, 512u128, 1024u128,
@@ -119,7 +119,7 @@ pub mod tests {
 
 	#[test]
 	fn test_ipv6_addresses() {
-		let shape = RowShape::testing(&[Type::Uint16]);
+		let shape = RowShape::testing(&[ValueType::Uint16]);
 
 		// Test values representing IPv6 addresses as u128
 		let ipv6_values = [
@@ -138,7 +138,7 @@ pub mod tests {
 
 	#[test]
 	fn test_uuid_values() {
-		let shape = RowShape::testing(&[Type::Uint16]);
+		let shape = RowShape::testing(&[ValueType::Uint16]);
 
 		// Test values that could represent UUIDs as u128
 		let uuid_values = [
@@ -156,7 +156,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let shape = RowShape::testing(&[Type::Uint16, Type::Boolean, Type::Uint16]);
+		let shape = RowShape::testing(&[ValueType::Uint16, ValueType::Boolean, ValueType::Uint16]);
 		let mut row = shape.allocate();
 
 		let large_value1 = 200000000000000000000000000000000000000u128;
@@ -173,7 +173,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let shape = RowShape::testing(&[Type::Uint16, Type::Uint16]);
+		let shape = RowShape::testing(&[ValueType::Uint16, ValueType::Uint16]);
 		let mut row = shape.allocate();
 
 		let value = 340282366920938463463374607431768211455u128;
@@ -188,7 +188,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_u128_wrong_type() {
-		let shape = RowShape::testing(&[Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
 		shape.set_bool(&mut row, 0, true);

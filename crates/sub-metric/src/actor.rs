@@ -36,7 +36,7 @@ use reifydb_runtime::actor::{
 };
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
-use reifydb_type::value::datetime::DateTime;
+use reifydb_value::value::datetime::DateTime;
 use tracing::{error, trace};
 
 use crate::profiler_gauges;
@@ -322,7 +322,7 @@ mod tests {
 		fingerprint::{RequestFingerprint, StatementFingerprint},
 		metric::StatementMetric,
 	};
-	use reifydb_type::value::{datetime::DateTime, duration::Duration};
+	use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 	#[test]
 	fn test_metric_message_construction() {

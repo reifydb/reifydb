@@ -30,7 +30,7 @@ use reifydb_sub_raft::{
 	state::apply::Apply,
 };
 use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
-use reifydb_type::Result;
+use reifydb_value::Result;
 use tokio::task::JoinHandle;
 
 pub struct RaftSubsystemFactory {

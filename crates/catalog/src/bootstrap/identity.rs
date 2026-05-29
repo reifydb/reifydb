@@ -9,7 +9,7 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 	transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction},
 };
-use reifydb_type::value::identity::IdentityId;
+use reifydb_value::value::identity::IdentityId;
 
 use crate::{
 	CatalogStore, Result,

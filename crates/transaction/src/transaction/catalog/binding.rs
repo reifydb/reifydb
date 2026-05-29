@@ -6,7 +6,7 @@ use reifydb_core::interface::catalog::{
 	change::CatalogTrackBindingChangeOperations,
 	id::{BindingId, NamespaceId},
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::{
 	change::{Change, OperationType::*, TransactionalBindingChanges},

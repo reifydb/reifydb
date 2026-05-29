@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
-	value::{Value, constraint::TypeConstraint, r#type::Type},
+	value::{Value, constraint::TypeConstraint, value_type::ValueType},
 };
 
 use crate::{
@@ -95,7 +95,7 @@ pub enum Instruction {
 		count: u16,
 		negated: bool,
 	},
-	Cast(Type),
+	Cast(ValueType),
 
 	Jump(Addr),
 	JumpIfFalsePop(Addr),

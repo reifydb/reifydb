@@ -12,7 +12,7 @@
 //! widening that representation requires a coordinated bump on both sides.
 //!
 //! Invariant: the FFI layer does not leak engine-internal types; everything an extension sees comes either from
-//! `reifydb-type` or from this crate's own re-exports. Reaching for an internal engine type from inside an SDK module
+//! `reifydb-value` or from this crate's own re-exports. Reaching for an internal engine type from inside an SDK module
 //! ties extension ABI to engine refactors.
 
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]

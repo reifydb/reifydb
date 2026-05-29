@@ -4,7 +4,7 @@
 use reifydb_core::{error::diagnostic::catalog::procedure_has_live_bindings, value::column::columns::Columns};
 use reifydb_rql::nodes::DropProcedureNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{return_error, value::Value};
+use reifydb_value::{return_error, value::Value};
 
 use crate::{Result, vm::services::Services};
 

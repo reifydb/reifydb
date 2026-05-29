@@ -3,10 +3,10 @@
 
 #![allow(dead_code)]
 
-use reifydb_type::value::{
+use reifydb_value::value::{
 	Value,
 	frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
-	r#type::Type,
+	value_type::ValueType,
 };
 use reifydb_wire_format::{decode::decode_frames, encode::encode_frames, options::EncodeOptions};
 
@@ -75,7 +75,7 @@ pub fn assert_compresses_well(name: &str, data: FrameColumnData) {
 ///
 /// The calling module must define:
 /// - `fn make(Vec<T>) -> FrameColumnData`
-/// - `use reifydb_type::value::frame::data::FrameColumnData;`
+/// - `use reifydb_value::value::frame::data::FrameColumnData;`
 #[macro_export]
 macro_rules! plain_tests {
 	(typical: $typical:expr, boundary: $boundary:expr, single: $single:expr $(,)?) => {
@@ -108,7 +108,7 @@ macro_rules! plain_tests {
 				"test",
 				FrameColumnData::Option {
 					inner: Box::new(make(values)),
-					bitvec: reifydb_type::util::bitvec::BitVec::from_slice(&defined),
+					bitvec: reifydb_value::util::bitvec::BitVec::from_slice(&defined),
 				},
 			);
 		}
@@ -122,7 +122,7 @@ macro_rules! plain_tests {
 				"test",
 				FrameColumnData::Option {
 					inner: Box::new(make(values)),
-					bitvec: reifydb_type::util::bitvec::BitVec::from_slice(&defined),
+					bitvec: reifydb_value::util::bitvec::BitVec::from_slice(&defined),
 				},
 			);
 		}
@@ -136,7 +136,7 @@ macro_rules! plain_tests {
 				"test",
 				FrameColumnData::Option {
 					inner: Box::new(make(values)),
-					bitvec: reifydb_type::util::bitvec::BitVec::from_slice(&defined),
+					bitvec: reifydb_value::util::bitvec::BitVec::from_slice(&defined),
 				},
 			);
 		}
@@ -180,7 +180,7 @@ macro_rules! dict_tests {
 				"test",
 				FrameColumnData::Option {
 					inner: Box::new(make(values)),
-					bitvec: reifydb_type::util::bitvec::BitVec::from_slice(&defined),
+					bitvec: reifydb_value::util::bitvec::BitVec::from_slice(&defined),
 				},
 			);
 		}
@@ -228,7 +228,7 @@ macro_rules! rle_tests {
 				"test",
 				FrameColumnData::Option {
 					inner: Box::new(make(values)),
-					bitvec: reifydb_type::util::bitvec::BitVec::from_slice(&defined),
+					bitvec: reifydb_value::util::bitvec::BitVec::from_slice(&defined),
 				},
 			);
 		}
@@ -281,7 +281,7 @@ macro_rules! delta_tests {
 				"test",
 				FrameColumnData::Option {
 					inner: Box::new(make(values)),
-					bitvec: reifydb_type::util::bitvec::BitVec::from_slice(&defined),
+					bitvec: reifydb_value::util::bitvec::BitVec::from_slice(&defined),
 				},
 			);
 		}
@@ -291,12 +291,12 @@ macro_rules! delta_tests {
 /// Round-trip an Option-wrapped column and assert the decoded side matches expectations.
 ///
 /// Asserts:
-/// - The decoded column type is `Type::Option(expected_inner_type)`.
+/// - The decoded column type is `ValueType::Option(expected_inner_type)`.
 /// - The decoded length matches `expected_defined.len()`.
 /// - For each row, `is_defined(i)` matches `expected_defined[i]`.
 /// - Defined rows round-trip to the same `Value` as the original.
 /// - Undefined rows decode to `Value::None { inner: expected_inner_type }`.
-pub fn assert_option_round_trip(col: FrameColumnData, expected_inner_type: Type, expected_defined: &[bool]) {
+pub fn assert_option_round_trip(col: FrameColumnData, expected_inner_type: ValueType, expected_defined: &[bool]) {
 	let frame = Frame::new(vec![FrameColumn {
 		name: "test".to_string(),
 		data: col.clone(),
@@ -308,7 +308,7 @@ pub fn assert_option_round_trip(col: FrameColumnData, expected_inner_type: Type,
 	let decoded_col = &decoded_frames[0].columns[0].data;
 	assert_eq!(
 		decoded_col.get_type(),
-		Type::Option(Box::new(expected_inner_type.clone())),
+		ValueType::Option(Box::new(expected_inner_type.clone())),
 		"decoded column type should be Option(inner)"
 	);
 	assert_eq!(decoded_col.len(), expected_defined.len(), "length mismatch");
@@ -344,16 +344,16 @@ pub fn assert_option_round_trip(col: FrameColumnData, expected_inner_type: Type,
 ///
 /// The calling module must define:
 /// - `fn make(Vec<T>) -> FrameColumnData`
-/// - have `reifydb_type::value::r#type::Type` in scope via the `inner_type` argument
+/// - have `reifydb_value::value::value_type::ValueType` in scope via the `inner_type` argument
 #[macro_export]
 macro_rules! nones_tests {
 	(values: $values:expr, inner_type: $inner_type:expr $(,)?) => {
 		// Wraps `make($values)` in `FrameColumnData::Option` with the given bitvec.
 		macro_rules! __opt_col {
 			($defined:expr) => {
-				reifydb_type::value::frame::data::FrameColumnData::Option {
+				reifydb_value::value::frame::data::FrameColumnData::Option {
 					inner: Box::new(make($values)),
-					bitvec: reifydb_type::util::bitvec::BitVec::from_slice(&$defined),
+					bitvec: reifydb_value::util::bitvec::BitVec::from_slice(&$defined),
 				}
 			};
 		}
@@ -412,9 +412,9 @@ macro_rules! nones_tests {
 				let mut v = $values;
 				v.truncate(1);
 				assert_eq!(v.len(), 1);
-				reifydb_type::value::frame::data::FrameColumnData::Option {
+				reifydb_value::value::frame::data::FrameColumnData::Option {
 					inner: Box::new(make(v)),
-					bitvec: reifydb_type::util::bitvec::BitVec::from_slice(&defined),
+					bitvec: reifydb_value::util::bitvec::BitVec::from_slice(&defined),
 				}
 			};
 			crate::utils::assert_option_round_trip(col, $inner_type, &defined);
@@ -427,9 +427,9 @@ macro_rules! nones_tests {
 				let mut v = $values;
 				v.truncate(1);
 				assert_eq!(v.len(), 1);
-				reifydb_type::value::frame::data::FrameColumnData::Option {
+				reifydb_value::value::frame::data::FrameColumnData::Option {
 					inner: Box::new(make(v)),
-					bitvec: reifydb_type::util::bitvec::BitVec::from_slice(&defined),
+					bitvec: reifydb_value::util::bitvec::BitVec::from_slice(&defined),
 				}
 			};
 			crate::utils::assert_option_round_trip(col, $inner_type, &defined);
@@ -440,8 +440,8 @@ macro_rules! nones_tests {
 			let values = $values;
 			let defined = vec![true; values.len()];
 			let col = __opt_col!(defined);
-			let frame = reifydb_type::value::frame::frame::Frame::new(vec![
-				reifydb_type::value::frame::column::FrameColumn {
+			let frame = reifydb_value::value::frame::frame::Frame::new(vec![
+				reifydb_value::value::frame::column::FrameColumn {
 					name: "test".to_string(),
 					data: col,
 				},
@@ -490,7 +490,7 @@ macro_rules! delta_rle_tests {
 				"test",
 				FrameColumnData::Option {
 					inner: Box::new(make(values)),
-					bitvec: reifydb_type::util::bitvec::BitVec::from_slice(&defined),
+					bitvec: reifydb_value::util::bitvec::BitVec::from_slice(&defined),
 				},
 			);
 		}

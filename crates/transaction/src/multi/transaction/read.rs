@@ -8,7 +8,7 @@ use reifydb_core::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::store::{MultiVersionBatch, MultiVersionRow},
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use super::{MultiTransaction, manager::TransactionManagerQuery, version::StandardVersionProvider};
 use crate::multi::{lease::VersionLeaseGuard, types::TransactionValue};

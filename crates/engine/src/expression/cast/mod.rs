@@ -10,8 +10,9 @@ pub mod text;
 pub mod uuid;
 
 use reifydb_core::value::column::buffer::ColumnBuffer;
-use reifydb_type::{
-	error::TypeError, fragment::LazyFragment, storage::DataBitVec, util::bitvec::BitVec, value::r#type::Type,
+use reifydb_value::{
+	error::TypeError, fragment::LazyFragment, storage::DataBitVec, util::bitvec::BitVec,
+	value::value_type::ValueType,
 };
 
 use crate::{
@@ -22,7 +23,7 @@ use crate::{
 pub fn cast_column_data(
 	ctx: &EvalContext,
 	data: &ColumnBuffer,
-	target: Type,
+	target: ValueType,
 	lazy_fragment: impl LazyFragment + Clone,
 ) -> Result<ColumnBuffer> {
 	if let ColumnBuffer::Option {
@@ -31,7 +32,7 @@ pub fn cast_column_data(
 	} = data
 	{
 		let inner_target = match &target {
-			Type::Option(t) => t.as_ref().clone(),
+			ValueType::Option(t) => t.as_ref().clone(),
 			other => other.clone(),
 		};
 		let total_len = inner.len();
@@ -83,7 +84,7 @@ pub fn cast_column_data(
 		});
 	}
 
-	if let Type::Option(inner_target) = &target {
+	if let ValueType::Option(inner_target) = &target {
 		let cast_inner = cast_column_data(ctx, data, *inner_target.clone(), lazy_fragment)?;
 		return Ok(match cast_inner {
 			already @ ColumnBuffer::Option {
@@ -104,14 +105,14 @@ pub fn cast_column_data(
 		return Ok(data.clone());
 	}
 	match (&shape_type, &target) {
-		(Type::Any, _) => any::from_any(ctx, data, target, lazy_fragment),
+		(ValueType::Any, _) => any::from_any(ctx, data, target, lazy_fragment),
 		(_, t) if t.is_number() => number::to_number(ctx, data, target, lazy_fragment),
 		(_, t) if t.is_blob() => blob::to_blob(data, lazy_fragment),
 		(_, t) if t.is_bool() => boolean::to_boolean(data, lazy_fragment),
 		(_, t) if t.is_utf8() => text::to_text(data, lazy_fragment),
 		(_, t) if t.is_temporal() => temporal::to_temporal(data, target, lazy_fragment),
-		(_, Type::IdentityId) => to_uuid(data, target, lazy_fragment),
-		(Type::IdentityId, _) => to_uuid(data, target, lazy_fragment),
+		(_, ValueType::IdentityId) => to_uuid(data, target, lazy_fragment),
+		(ValueType::IdentityId, _) => to_uuid(data, target, lazy_fragment),
 		(_, t) if t.is_uuid() => to_uuid(data, target, lazy_fragment),
 		(source, t) if source.is_uuid() || t.is_uuid() => to_uuid(data, target, lazy_fragment),
 		_ => Err(TypeError::UnsupportedCast {
@@ -132,7 +133,7 @@ pub mod tests {
 		Expression::{Cast, Constant, Prefix},
 		PrefixExpression, PrefixOperator, TypeExpression,
 	};
-	use reifydb_type::{fragment::Fragment, value::r#type::Type};
+	use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 	use crate::expression::{context::EvalContext, eval::evaluate};
 
@@ -148,7 +149,7 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: Type::Int4,
+					ty: ValueType::Int4,
 				},
 			}),
 		)
@@ -173,7 +174,7 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: Type::Int4,
+					ty: ValueType::Int4,
 				},
 			}),
 		)
@@ -198,7 +199,7 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: Type::Int1,
+					ty: ValueType::Int1,
 				},
 			}),
 		)
@@ -219,7 +220,7 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: Type::Float8,
+					ty: ValueType::Float8,
 				},
 			}),
 		)
@@ -240,7 +241,7 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: Type::Float4,
+					ty: ValueType::Float4,
 				},
 			}),
 		)
@@ -261,7 +262,7 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: Type::Float4,
+					ty: ValueType::Float4,
 				},
 			}),
 		)
@@ -282,7 +283,7 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: Type::Float8,
+					ty: ValueType::Float8,
 				},
 			}),
 		)
@@ -303,7 +304,7 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: Type::Boolean,
+					ty: ValueType::Boolean,
 				},
 			}),
 		)
@@ -324,7 +325,7 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: Type::Boolean,
+					ty: ValueType::Boolean,
 				},
 			}),
 		);
@@ -353,7 +354,7 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: Type::Date,
+					ty: ValueType::Date,
 				},
 			}),
 		);
@@ -379,7 +380,7 @@ pub mod tests {
 				})),
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
-					ty: Type::Decimal,
+					ty: ValueType::Decimal,
 				},
 			}),
 		)

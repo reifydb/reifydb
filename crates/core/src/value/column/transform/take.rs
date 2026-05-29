@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::{Result, util::cowvec::CowVec};
+use reifydb_value::{Result, util::cowvec::CowVec};
 
 use crate::value::column::columns::Columns;
 
@@ -39,7 +39,7 @@ impl Columns {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::{Value, r#type::Type};
+	use reifydb_value::value::{Value, value_type::ValueType};
 
 	use super::*;
 	use crate::value::column::{ColumnBuffer, ColumnWithName};
@@ -207,7 +207,7 @@ pub mod tests {
 
 	#[test]
 	fn test_none_column() {
-		let mut test_instance = Columns::new(vec![ColumnWithName::undefined_typed("u", Type::Boolean, 3)]);
+		let mut test_instance = Columns::new(vec![ColumnWithName::undefined_typed("u", ValueType::Boolean, 3)]);
 
 		test_instance.take(2).unwrap();
 
@@ -218,7 +218,7 @@ pub mod tests {
 
 	#[test]
 	fn test_handles_none() {
-		let mut test_instance = Columns::new(vec![ColumnWithName::undefined_typed("u", Type::Boolean, 5)]);
+		let mut test_instance = Columns::new(vec![ColumnWithName::undefined_typed("u", ValueType::Boolean, 5)]);
 
 		test_instance.take(3).unwrap();
 

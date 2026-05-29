@@ -6,7 +6,7 @@ use std::{
 	fmt::Write,
 };
 
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 use super::oracle::{MaterializedRow, MaterializedTable, OutputKey};
 

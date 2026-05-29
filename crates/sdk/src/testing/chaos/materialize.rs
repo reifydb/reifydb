@@ -5,7 +5,9 @@ use reifydb_abi::flow::diff::DiffType;
 use reifydb_core::{
 	encoded::shape::SHAPE_HEADER_SIZE, interface::change::Change, row::Row, value::column::columns::Columns,
 };
-use reifydb_type::value::{Value, date::Date, datetime::DateTime, duration::Duration, time::Time, r#type::Type};
+use reifydb_value::value::{
+	Value, date::Date, datetime::DateTime, duration::Duration, time::Time, value_type::ValueType,
+};
 
 use super::{
 	event::{ChaosBatch, ChaosEvent},
@@ -107,42 +109,42 @@ fn row_to_materialized(row: &Row) -> MaterializedRow {
 		let size = field.size as usize;
 		let buf = &row.encoded.as_slice()[off..off + size];
 		let v = match field.constraint.get_type() {
-			Type::Boolean => {
+			ValueType::Boolean => {
 				let b = buf[0] != 0;
 				Value::Boolean(b)
 			}
-			Type::Int1 => Value::int8(buf[0] as i8 as i64),
-			Type::Int2 => Value::int8(i16::from_le_bytes([buf[0], buf[1]]) as i64),
-			Type::Int4 => Value::int8(i32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as i64),
-			Type::Int8 => {
+			ValueType::Int1 => Value::int8(buf[0] as i8 as i64),
+			ValueType::Int2 => Value::int8(i16::from_le_bytes([buf[0], buf[1]]) as i64),
+			ValueType::Int4 => Value::int8(i32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as i64),
+			ValueType::Int8 => {
 				let mut b = [0u8; 8];
 				b.copy_from_slice(&buf[..8]);
 				Value::int8(i64::from_le_bytes(b))
 			}
-			Type::Uint1 => Value::uint8(buf[0] as u64),
-			Type::Uint2 => Value::uint8(u16::from_le_bytes([buf[0], buf[1]]) as u64),
-			Type::Uint4 => Value::uint8(u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as u64),
-			Type::Uint8 => {
+			ValueType::Uint1 => Value::uint8(buf[0] as u64),
+			ValueType::Uint2 => Value::uint8(u16::from_le_bytes([buf[0], buf[1]]) as u64),
+			ValueType::Uint4 => Value::uint8(u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as u64),
+			ValueType::Uint8 => {
 				let mut b = [0u8; 8];
 				b.copy_from_slice(&buf[..8]);
 				Value::uint8(u64::from_le_bytes(b))
 			}
-			Type::Float4 => {
+			ValueType::Float4 => {
 				let mut b = [0u8; 4];
 				b.copy_from_slice(&buf[..4]);
 				Value::float4(f32::from_le_bytes(b))
 			}
-			Type::Float8 => {
+			ValueType::Float8 => {
 				let mut b = [0u8; 8];
 				b.copy_from_slice(&buf[..8]);
 				Value::float8(f64::from_le_bytes(b))
 			}
-			Type::DateTime => {
+			ValueType::DateTime => {
 				let mut b = [0u8; 8];
 				b.copy_from_slice(&buf[..8]);
 				Value::datetime(DateTime::from_nanos(u64::from_le_bytes(b)))
 			}
-			Type::Duration => {
+			ValueType::Duration => {
 				let mut months_b = [0u8; 4];
 				months_b.copy_from_slice(&buf[..4]);
 				let mut days_b = [0u8; 4];
@@ -154,24 +156,24 @@ fn row_to_materialized(row: &Row) -> MaterializedRow {
 				let nanos = i64::from_le_bytes(nanos_b);
 				match Duration::new(months, days, nanos) {
 					Ok(d) => Value::duration(d),
-					Err(_) => Value::none_of(Type::Duration),
+					Err(_) => Value::none_of(ValueType::Duration),
 				}
 			}
 
-			Type::Date => {
+			ValueType::Date => {
 				let mut b = [0u8; 4];
 				b.copy_from_slice(&buf[..4]);
 				match Date::from_days_since_epoch(i32::from_le_bytes(b)) {
 					Some(d) => Value::date(d),
-					None => Value::none_of(Type::Date),
+					None => Value::none_of(ValueType::Date),
 				}
 			}
-			Type::Time => {
+			ValueType::Time => {
 				let mut b = [0u8; 8];
 				b.copy_from_slice(&buf[..8]);
 				match Time::from_nanos_since_midnight(u64::from_le_bytes(b)) {
 					Some(t) => Value::time(t),
-					None => Value::none_of(Type::Time),
+					None => Value::none_of(ValueType::Time),
 				}
 			}
 			other => Value::none_of(other),
@@ -199,9 +201,9 @@ mod tests {
 		row::Row,
 		value::column::columns::Columns,
 	};
-	use reifydb_type::value::{
+	use reifydb_value::value::{
 		Value, date::Date, datetime::DateTime, duration::Duration, row_number::RowNumber, time::Time,
-		r#type::Type,
+		value_type::ValueType,
 	};
 
 	use super::*;
@@ -209,8 +211,8 @@ mod tests {
 
 	fn shape() -> RowShape {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("k", Type::Uint8),
-			RowShapeField::unconstrained("v", Type::Float8),
+			RowShapeField::unconstrained("k", ValueType::Uint8),
+			RowShapeField::unconstrained("v", ValueType::Float8),
 		])
 	}
 
@@ -283,9 +285,9 @@ mod tests {
 	#[test]
 	fn multi_column_output_key() {
 		let s = RowShape::new(vec![
-			RowShapeField::unconstrained("base", Type::Uint8),
-			RowShapeField::unconstrained("quote", Type::Uint8),
-			RowShapeField::unconstrained("v", Type::Float8),
+			RowShapeField::unconstrained("base", ValueType::Uint8),
+			RowShapeField::unconstrained("quote", ValueType::Uint8),
+			RowShapeField::unconstrained("v", ValueType::Float8),
 		]);
 		fn r(s: &RowShape, rn: u64, base: u64, quote: u64, v: f64) -> Row {
 			TestRowBuilder::new(RowNumber(rn))
@@ -350,9 +352,9 @@ mod tests {
 		// operator's emitted window_start and breaking output-key
 		// comparison.
 		let s = RowShape::new(vec![
-			RowShapeField::unconstrained("window_start", Type::DateTime),
-			RowShapeField::unconstrained("window_duration", Type::Duration),
-			RowShapeField::unconstrained("v", Type::Float8),
+			RowShapeField::unconstrained("window_start", ValueType::DateTime),
+			RowShapeField::unconstrained("window_duration", ValueType::Duration),
+			RowShapeField::unconstrained("v", ValueType::Float8),
 		]);
 		let window_start = DateTime::from_timestamp(1_700_000_000).unwrap();
 		let window_duration = Duration::from_seconds(60).unwrap();
@@ -386,9 +388,9 @@ mod tests {
 		// Before Date/Time cases existed they fell through to Value::none_of,
 		// nulling emitted columns and breaking output-key comparison.
 		let s = RowShape::new(vec![
-			RowShapeField::unconstrained("window_date", Type::Date),
-			RowShapeField::unconstrained("window_time", Type::Time),
-			RowShapeField::unconstrained("v", Type::Float8),
+			RowShapeField::unconstrained("window_date", ValueType::Date),
+			RowShapeField::unconstrained("window_time", ValueType::Time),
+			RowShapeField::unconstrained("v", ValueType::Float8),
 		]);
 		let window_date = Date::new(2024, 3, 15).unwrap();
 		let window_time = Time::new(14, 30, 45, 0).unwrap();

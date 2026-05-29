@@ -124,7 +124,7 @@ pub mod tests {
 		},
 		key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 	};
-	use reifydb_type::util::cowvec::CowVec;
+	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
 

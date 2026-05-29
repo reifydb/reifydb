@@ -3,7 +3,7 @@
 
 use std::mem;
 
-use reifydb_type::{fragment::Fragment, value::Value};
+use reifydb_value::{fragment::Fragment, value::Value};
 
 use crate::expression::{
 	AliasExpression, ConstantExpression, Expression, IdentExpression, IfExpression, PrefixExpression,
@@ -375,7 +375,7 @@ fn bool_constant(b: bool) -> Expression {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnShape};
-	use reifydb_type::fragment::Fragment;
+	use reifydb_value::fragment::Fragment;
 
 	use super::*;
 	use crate::expression::{

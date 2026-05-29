@@ -13,11 +13,11 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::InsertDictionaryNode;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, r#type::Type},
+	value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, value_type::ValueType},
 };
 
 use super::returning::evaluate_returning;
@@ -154,38 +154,38 @@ pub(crate) fn insert_dictionary(
 	]))
 }
 
-fn coerce_value_to_dictionary_type(value: Value, target_type: Type) -> Result<Value> {
+fn coerce_value_to_dictionary_type(value: Value, target_type: ValueType) -> Result<Value> {
 	match (&value, target_type) {
-		(Value::Utf8(_), Type::Utf8) => Ok(value),
-		(Value::Int1(_), Type::Int1) => Ok(value),
-		(Value::Int2(_), Type::Int2) => Ok(value),
-		(Value::Int4(_), Type::Int4) => Ok(value),
-		(Value::Int8(_), Type::Int8) => Ok(value),
-		(Value::Int16(_), Type::Int16) => Ok(value),
-		(Value::Uint1(_), Type::Uint1) => Ok(value),
-		(Value::Uint2(_), Type::Uint2) => Ok(value),
-		(Value::Uint4(_), Type::Uint4) => Ok(value),
-		(Value::Uint8(_), Type::Uint8) => Ok(value),
-		(Value::Uint16(_), Type::Uint16) => Ok(value),
-		(Value::Float4(_), Type::Float4) => Ok(value),
-		(Value::Float8(_), Type::Float8) => Ok(value),
-		(Value::Boolean(_), Type::Boolean) => Ok(value),
-		(Value::Date(_), Type::Date) => Ok(value),
-		(Value::DateTime(_), Type::DateTime) => Ok(value),
-		(Value::Time(_), Type::Time) => Ok(value),
-		(Value::Duration(_), Type::Duration) => Ok(value),
-		(Value::Uuid4(_), Type::Uuid4) => Ok(value),
-		(Value::Uuid7(_), Type::Uuid7) => Ok(value),
-		(Value::Blob(_), Type::Blob) => Ok(value),
-		(Value::Decimal(_), Type::Decimal) => Ok(value),
+		(Value::Utf8(_), ValueType::Utf8) => Ok(value),
+		(Value::Int1(_), ValueType::Int1) => Ok(value),
+		(Value::Int2(_), ValueType::Int2) => Ok(value),
+		(Value::Int4(_), ValueType::Int4) => Ok(value),
+		(Value::Int8(_), ValueType::Int8) => Ok(value),
+		(Value::Int16(_), ValueType::Int16) => Ok(value),
+		(Value::Uint1(_), ValueType::Uint1) => Ok(value),
+		(Value::Uint2(_), ValueType::Uint2) => Ok(value),
+		(Value::Uint4(_), ValueType::Uint4) => Ok(value),
+		(Value::Uint8(_), ValueType::Uint8) => Ok(value),
+		(Value::Uint16(_), ValueType::Uint16) => Ok(value),
+		(Value::Float4(_), ValueType::Float4) => Ok(value),
+		(Value::Float8(_), ValueType::Float8) => Ok(value),
+		(Value::Boolean(_), ValueType::Boolean) => Ok(value),
+		(Value::Date(_), ValueType::Date) => Ok(value),
+		(Value::DateTime(_), ValueType::DateTime) => Ok(value),
+		(Value::Time(_), ValueType::Time) => Ok(value),
+		(Value::Duration(_), ValueType::Duration) => Ok(value),
+		(Value::Uuid4(_), ValueType::Uuid4) => Ok(value),
+		(Value::Uuid7(_), ValueType::Uuid7) => Ok(value),
+		(Value::Blob(_), ValueType::Blob) => Ok(value),
+		(Value::Decimal(_), ValueType::Decimal) => Ok(value),
 		// TODO: Add more coercion cases as needed
 		_ => Ok(value),
 	}
 }
 
-fn build_id_column(ids: &[Value], id_type: Type) -> Result<ColumnWithName> {
+fn build_id_column(ids: &[Value], id_type: ValueType) -> Result<ColumnWithName> {
 	let data = match id_type {
-		Type::Uint1 => {
+		ValueType::Uint1 => {
 			let vals: Vec<u8> = ids
 				.iter()
 				.map(|v| match v {
@@ -195,7 +195,7 @@ fn build_id_column(ids: &[Value], id_type: Type) -> Result<ColumnWithName> {
 				.collect();
 			ColumnBuffer::uint1(vals)
 		}
-		Type::Uint2 => {
+		ValueType::Uint2 => {
 			let vals: Vec<u16> = ids
 				.iter()
 				.map(|v| match v {
@@ -205,7 +205,7 @@ fn build_id_column(ids: &[Value], id_type: Type) -> Result<ColumnWithName> {
 				.collect();
 			ColumnBuffer::uint2(vals)
 		}
-		Type::Uint4 => {
+		ValueType::Uint4 => {
 			let vals: Vec<u32> = ids
 				.iter()
 				.map(|v| match v {
@@ -215,7 +215,7 @@ fn build_id_column(ids: &[Value], id_type: Type) -> Result<ColumnWithName> {
 				.collect();
 			ColumnBuffer::uint4(vals)
 		}
-		Type::Uint8 => {
+		ValueType::Uint8 => {
 			let vals: Vec<u64> = ids
 				.iter()
 				.map(|v| match v {
@@ -225,7 +225,7 @@ fn build_id_column(ids: &[Value], id_type: Type) -> Result<ColumnWithName> {
 				.collect();
 			ColumnBuffer::uint8(vals)
 		}
-		Type::Uint16 => {
+		ValueType::Uint16 => {
 			let vals: Vec<u128> = ids
 				.iter()
 				.map(|v| match v {
@@ -253,9 +253,9 @@ fn build_id_column(ids: &[Value], id_type: Type) -> Result<ColumnWithName> {
 	})
 }
 
-fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithName> {
+fn build_value_column(values: &[Value], value_type: ValueType) -> Result<ColumnWithName> {
 	let data = match value_type {
-		Type::Utf8 => {
+		ValueType::Utf8 => {
 			let vals: Vec<String> = values
 				.iter()
 				.map(|v| match v {
@@ -265,7 +265,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithNa
 				.collect();
 			ColumnBuffer::utf8(vals)
 		}
-		Type::Int1 => {
+		ValueType::Int1 => {
 			let vals: Vec<i8> = values
 				.iter()
 				.map(|v| match v {
@@ -275,7 +275,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithNa
 				.collect();
 			ColumnBuffer::int1(vals)
 		}
-		Type::Int2 => {
+		ValueType::Int2 => {
 			let vals: Vec<i16> = values
 				.iter()
 				.map(|v| match v {
@@ -285,7 +285,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithNa
 				.collect();
 			ColumnBuffer::int2(vals)
 		}
-		Type::Int4 => {
+		ValueType::Int4 => {
 			let vals: Vec<i32> = values
 				.iter()
 				.map(|v| match v {
@@ -295,7 +295,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithNa
 				.collect();
 			ColumnBuffer::int4(vals)
 		}
-		Type::Int8 => {
+		ValueType::Int8 => {
 			let vals: Vec<i64> = values
 				.iter()
 				.map(|v| match v {
@@ -305,7 +305,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithNa
 				.collect();
 			ColumnBuffer::int8(vals)
 		}
-		Type::Uint1 => {
+		ValueType::Uint1 => {
 			let vals: Vec<u8> = values
 				.iter()
 				.map(|v| match v {
@@ -315,7 +315,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithNa
 				.collect();
 			ColumnBuffer::uint1(vals)
 		}
-		Type::Uint2 => {
+		ValueType::Uint2 => {
 			let vals: Vec<u16> = values
 				.iter()
 				.map(|v| match v {
@@ -325,7 +325,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithNa
 				.collect();
 			ColumnBuffer::uint2(vals)
 		}
-		Type::Uint4 => {
+		ValueType::Uint4 => {
 			let vals: Vec<u32> = values
 				.iter()
 				.map(|v| match v {
@@ -335,7 +335,7 @@ fn build_value_column(values: &[Value], value_type: Type) -> Result<ColumnWithNa
 				.collect();
 			ColumnBuffer::uint4(vals)
 		}
-		Type::Uint8 => {
+		ValueType::Uint8 => {
 			let vals: Vec<u64> = values
 				.iter()
 				.map(|v| match v {

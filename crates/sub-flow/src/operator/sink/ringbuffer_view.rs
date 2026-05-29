@@ -19,7 +19,7 @@ use reifydb_core::{
 	key::{ringbuffer::RingBufferMetadataKey, row::RowKey},
 	value::column::columns::Columns,
 };
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	error::Error,
 	value::{blob::Blob, datetime::DateTime, row_number::RowNumber},

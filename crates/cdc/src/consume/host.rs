@@ -6,7 +6,7 @@ use std::time::Duration;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::common::CommitVersion;
 use reifydb_transaction::transaction::{command::CommandTransaction, query::QueryTransaction};
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 pub trait CdcHost: Clone + Send + Sync + 'static {
 	fn begin_command(&self) -> Result<CommandTransaction>;

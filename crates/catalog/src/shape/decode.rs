@@ -5,7 +5,7 @@ use reifydb_core::{
 	encoded::row::{EncodedRow, SHAPE_HEADER_SIZE},
 	row::Row,
 };
-use reifydb_type::value::row_number::RowNumber;
+use reifydb_value::value::row_number::RowNumber;
 use tracing::warn;
 
 use crate::catalog::Catalog;

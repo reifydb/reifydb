@@ -11,7 +11,7 @@ use reifydb_core::{
 use reifydb_routine::routine::context::ProcedureContext;
 use reifydb_rql::{compiler::CompilationResult, instruction::ScopeType, nodes::DispatchNode};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	value::{Value, sumtype::VariantRef},

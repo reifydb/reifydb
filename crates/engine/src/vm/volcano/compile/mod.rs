@@ -18,7 +18,7 @@ use reifydb_rql::{
 	query::QueryPlan as RqlQueryPlan,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::fragment::Fragment;
+use reifydb_value::fragment::Fragment;
 use tracing::instrument;
 
 use super::{apply_transform::ApplyTransformNode, run_tests::RunTestsQueryNode};

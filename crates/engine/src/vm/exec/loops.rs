@@ -5,7 +5,7 @@ use reifydb_core::{
 	internal_error,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_type::{fragment::Fragment, value::r#type::Type};
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	Result,
@@ -68,7 +68,7 @@ impl<'a> Vm<'a> {
 			let mut row_columns = Vec::new();
 			for (name, col) in columns.names.iter().zip(columns.columns.iter()) {
 				let value = col.get_value(index);
-				let mut data = ColumnBuffer::none_typed(Type::Boolean, 0);
+				let mut data = ColumnBuffer::none_typed(ValueType::Boolean, 0);
 				data.push_value(value);
 				row_columns.push(ColumnWithName::new(name.clone(), data));
 			}

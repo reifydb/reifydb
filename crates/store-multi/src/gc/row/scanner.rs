@@ -10,7 +10,7 @@ use reifydb_core::{
 	key::row::RowKey,
 	row::Ttl,
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use super::ScanStats;
 use crate::tier::{RangeCursor, TierStorage, commit::buffer::MultiCommitBufferTier};

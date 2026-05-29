@@ -87,7 +87,7 @@ mod tests {
 
 	use reifydb_abi::data::buffer::BufferFFI;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+	use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 	use super::*;
 
@@ -110,9 +110,9 @@ mod tests {
 		// RowShapeFieldFFI entries. If unmarshal misinterprets type constraints or offsets, downstream
 		// operators silently read the wrong bytes - the bug class this whole feature exists to prevent.
 		let original = RowShape::new(vec![
-			RowShapeField::new("id", TypeConstraint::unconstrained(Type::Uint8)),
-			RowShapeField::new("mint", TypeConstraint::unconstrained(Type::Utf8)),
-			RowShapeField::new("decimals", TypeConstraint::unconstrained(Type::Uint1)),
+			RowShapeField::new("id", TypeConstraint::unconstrained(ValueType::Uint8)),
+			RowShapeField::new("mint", TypeConstraint::unconstrained(ValueType::Utf8)),
+			RowShapeField::new("decimals", TypeConstraint::unconstrained(ValueType::Uint1)),
 		]);
 
 		let (id_name, _id_keep) = make_name_buffer("id");

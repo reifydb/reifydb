@@ -7,7 +7,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::cdc::{Cdc, CdcBatch},
 };
-use reifydb_type::value::datetime::DateTime;
+use reifydb_value::value::datetime::DateTime;
 
 use super::{CdcStorage, CdcStorageResult, DropBeforeResult, normalize_range_inclusive, recent_cache::RecentCdcCache};
 
@@ -87,7 +87,7 @@ mod tests {
 	use std::collections::Bound;
 
 	use reifydb_core::{common::CommitVersion, interface::cdc::Cdc};
-	use reifydb_type::value::datetime::DateTime;
+	use reifydb_value::value::datetime::DateTime;
 
 	use super::*;
 	use crate::storage::memory::MemoryCdcStorage;

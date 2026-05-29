@@ -35,7 +35,7 @@ use reifydb_rql::{
 	plan::logical::{FilterNode, LogicalPlan, PipelineNode, ShapeScanNode, compile_logical},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, fragment::Fragment};
+use reifydb_value::{Result, fragment::Fragment};
 
 pub fn inject_from_policies<'a>(
 	plans: BumpVec<'a, LogicalPlan<'a>>,

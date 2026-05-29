@@ -4,7 +4,7 @@
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::{error::diagnostic::catalog::namespace_not_found, interface::resolved::ResolvedNamespace};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, return_error};
+use reifydb_value::{fragment::Fragment, return_error};
 
 use crate::{
 	Result,

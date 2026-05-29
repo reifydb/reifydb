@@ -39,7 +39,7 @@ pub mod tests {
 		column::{Column, ColumnIndex},
 		id::{ColumnId, PrimaryKeyId},
 	};
-	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+	use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 	use super::*;
 	use crate::cache::CatalogCache;
@@ -50,7 +50,7 @@ pub mod tests {
 			columns: vec![Column {
 				id: ColumnId(1),
 				name: "id".to_string(),
-				constraint: TypeConstraint::unconstrained(Type::Int4),
+				constraint: TypeConstraint::unconstrained(ValueType::Int4),
 				properties: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
@@ -96,7 +96,7 @@ pub mod tests {
 		pk_v2.columns.push(Column {
 			id: ColumnId(2),
 			name: "name".to_string(),
-			constraint: TypeConstraint::unconstrained(Type::Utf8),
+			constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 			properties: vec![],
 			index: ColumnIndex(1),
 			auto_increment: false,
@@ -143,7 +143,7 @@ pub mod tests {
 		let mut pk_v2 = pk_v1.clone();
 		pk_v2.columns[0].name = "pk_id".to_string();
 		let mut pk_v3 = pk_v2.clone();
-		pk_v3.columns[0].constraint = TypeConstraint::unconstrained(Type::Int8);
+		pk_v3.columns[0].constraint = TypeConstraint::unconstrained(ValueType::Int8);
 
 		// Set at different versions
 		catalog.set_primary_key(pk_id, CommitVersion(10), Some(pk_v1.clone()));

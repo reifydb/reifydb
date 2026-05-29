@@ -16,7 +16,7 @@ use reifydb_sqlite::{
 	connection::{connect, convert_flags, resolve_db_path},
 };
 use reifydb_store_multi::tier::{TierStorage, persistent::MultiPersistentTier};
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_value::util::cowvec::CowVec;
 
 fn kind() -> EntryKind {
 	EntryKind::Source(ShapeId::Table(TableId(7000)))

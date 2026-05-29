@@ -55,7 +55,7 @@ use reifydb_transaction::{
 	multi::lease::VersionLeaseGuard,
 	transaction::{Transaction, command::CommandTransaction},
 };
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	error::Error,
 	value::{datetime::DateTime, identity::IdentityId},

@@ -8,7 +8,7 @@ use std::sync::{
 
 use reifydb_core::{common::CommitVersion, key::cdc_consumer::CdcConsumerKeyRange};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 #[derive(Debug, Clone, Default)]
 pub struct CdcConsumerWatermark(Arc<AtomicU64>);

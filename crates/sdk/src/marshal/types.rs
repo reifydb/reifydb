@@ -5,7 +5,7 @@ use std::{slice::from_raw_parts, str::from_utf8};
 
 use postcard::from_bytes;
 use reifydb_abi::data::{buffer::BufferFFI, column::ColumnDataFFI};
-use reifydb_type::value::{
+use reifydb_value::value::{
 	Value,
 	blob::Blob,
 	container::{
@@ -322,7 +322,7 @@ impl Arena {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::value::column::buffer::ColumnBuffer;
-	use reifydb_type::value::{
+	use reifydb_value::value::{
 		container::temporal::TemporalContainer, date::Date, datetime::DateTime, duration::Duration, time::Time,
 	};
 

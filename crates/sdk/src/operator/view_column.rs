@@ -3,7 +3,7 @@
 
 use postcard::from_bytes;
 use reifydb_abi::data::column::ColumnTypeCode;
-use reifydb_type::value::decimal::Decimal;
+use reifydb_value::value::decimal::Decimal;
 
 use crate::operator::change::{BorrowedColumn, BorrowedColumns};
 

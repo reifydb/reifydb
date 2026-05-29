@@ -5,7 +5,7 @@ use reifydb_core::{
 	error::diagnostic::query::unsupported_source_qualification,
 	interface::identifier::{ColumnIdentifier, ColumnShape},
 };
-use reifydb_type::{fragment::Fragment, return_error};
+use reifydb_value::{fragment::Fragment, return_error};
 
 use crate::{
 	Result,

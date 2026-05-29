@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::columns::Columns;
-use reifydb_type::{
+use reifydb_value::{
 	error::{BinaryOp, IntoDiagnostic, LogicalOp, TypeError},
 	fragment::Fragment,
 };

@@ -4,7 +4,7 @@
 use std::{fs::read_to_string, path::Path};
 
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, pool::PoolConfig};
-use reifydb_type::{params::Params, value::Value};
+use reifydb_value::{params::Params, value::Value};
 
 #[cfg(feature = "sub_flow")]
 use crate::WithSubsystem;

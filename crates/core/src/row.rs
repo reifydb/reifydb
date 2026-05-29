@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::row_number::RowNumber;
+use reifydb_value::value::row_number::RowNumber;
 use serde::{Deserialize, Serialize};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};

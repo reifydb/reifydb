@@ -10,7 +10,7 @@ use reifydb_core::{
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 	row::{Ttl, TtlAnchor},
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use super::OperatorScanStats;
 use crate::{
@@ -215,7 +215,7 @@ mod tests {
 		key::{flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
 		row::{Ttl, TtlAnchor, TtlCleanupMode},
 	};
-	use reifydb_type::util::cowvec::CowVec;
+	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
 	use crate::tier::{TierStorage, commit::buffer::MultiCommitBufferTier};

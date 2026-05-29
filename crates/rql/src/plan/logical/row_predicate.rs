@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::row_number::ROW_NUMBER_COLUMN_NAME;
+use reifydb_value::value::row_number::ROW_NUMBER_COLUMN_NAME;
 
 use crate::expression::{
 	BetweenExpression, ColumnExpression, ConstantExpression, EqExpression, Expression, InExpression,
@@ -121,7 +121,7 @@ pub mod tests {
 	use std::sync::Arc;
 
 	use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnShape};
-	use reifydb_type::fragment::Fragment;
+	use reifydb_value::fragment::Fragment;
 
 	use super::*;
 	use crate::expression::ListExpression;

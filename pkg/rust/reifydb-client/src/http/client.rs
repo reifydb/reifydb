@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 use std::{collections::HashMap, time::Duration};
 
-use reifydb_type::{
+use reifydb_value::{
 	error::{Diagnostic, Error},
 	params::Params,
 	value::frame::frame::Frame,

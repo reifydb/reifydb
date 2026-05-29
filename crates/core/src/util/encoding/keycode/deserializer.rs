@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use num_bigint::{BigInt, Sign};
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	error::{Error, TypeError},
 	value::{
@@ -19,9 +19,9 @@ use reifydb_type::{
 		ordered_f64::OrderedF64,
 		row_number::RowNumber,
 		time::Time,
-		r#type::Type,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
 	},
 };
 use uuid::Uuid;
@@ -339,33 +339,33 @@ impl<'a> KeyDeserializer<'a> {
 				let inner_marker = self.buffer[self.position];
 				self.position += 1;
 				let inner = match inner_marker {
-					0x01 => Type::Boolean,
-					0x02 => Type::Float4,
-					0x03 => Type::Float8,
-					0x04 => Type::Int1,
-					0x05 => Type::Int2,
-					0x06 => Type::Int4,
-					0x07 => Type::Int8,
-					0x08 => Type::Int16,
-					0x09 => Type::Utf8,
-					0x0a => Type::Uint1,
-					0x0b => Type::Uint2,
-					0x0c => Type::Uint4,
-					0x0d => Type::Uint8,
-					0x0e => Type::Uint16,
-					0x0f => Type::Date,
-					0x10 => Type::DateTime,
-					0x11 => Type::Time,
-					0x12 => Type::Duration,
-					0x14 => Type::IdentityId,
-					0x15 => Type::Uuid4,
-					0x16 => Type::Uuid7,
-					0x17 => Type::Blob,
-					0x18 => Type::Int,
-					0x19 => Type::Uint,
-					0x1a => Type::Decimal,
-					0x1b => Type::DictionaryId,
-					_ => Type::Any,
+					0x01 => ValueType::Boolean,
+					0x02 => ValueType::Float4,
+					0x03 => ValueType::Float8,
+					0x04 => ValueType::Int1,
+					0x05 => ValueType::Int2,
+					0x06 => ValueType::Int4,
+					0x07 => ValueType::Int8,
+					0x08 => ValueType::Int16,
+					0x09 => ValueType::Utf8,
+					0x0a => ValueType::Uint1,
+					0x0b => ValueType::Uint2,
+					0x0c => ValueType::Uint4,
+					0x0d => ValueType::Uint8,
+					0x0e => ValueType::Uint16,
+					0x0f => ValueType::Date,
+					0x10 => ValueType::DateTime,
+					0x11 => ValueType::Time,
+					0x12 => ValueType::Duration,
+					0x14 => ValueType::IdentityId,
+					0x15 => ValueType::Uuid4,
+					0x16 => ValueType::Uuid7,
+					0x17 => ValueType::Blob,
+					0x18 => ValueType::Int,
+					0x19 => ValueType::Uint,
+					0x1a => ValueType::Decimal,
+					0x1b => ValueType::DictionaryId,
+					_ => ValueType::Any,
 				};
 				Ok(Value::none_of(inner))
 			}
@@ -450,7 +450,7 @@ impl<'a> KeyDeserializer<'a> {
 				Ok(Value::Duration(i))
 			}
 
-			0x13 => panic!("Type code 0x13 (RowNumber) is no longer supported"),
+			0x13 => panic!("ValueType code 0x13 (RowNumber) is no longer supported"),
 			0x14 => {
 				let id = self.read_identity_id()?;
 				Ok(Value::IdentityId(id))
@@ -515,7 +515,7 @@ impl<'a> KeyDeserializer<'a> {
 pub mod tests {
 	use std::f64::consts::E;
 
-	use reifydb_type::value::{
+	use reifydb_value::value::{
 		date::Date, datetime::DateTime, duration::Duration, row_number::RowNumber, time::Time,
 	};
 

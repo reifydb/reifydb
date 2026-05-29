@@ -24,11 +24,11 @@ use reifydb_core::{
 	util::encoding::keycode::serializer::KeySerializer,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	error::Error,
 	fragment::Fragment,
-	value::{blob::Blob, row_number::RowNumber, r#type::Type},
+	value::{blob::Blob, row_number::RowNumber, value_type::ValueType},
 };
 use serde::{Deserialize, Serialize};
 

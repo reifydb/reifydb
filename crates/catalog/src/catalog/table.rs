@@ -18,7 +18,7 @@ use reifydb_transaction::{
 	change::TransactionalTableChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_type::{
+use reifydb_value::{
 	error,
 	fragment::Fragment,
 	value::{constraint::TypeConstraint, dictionary::DictionaryId},

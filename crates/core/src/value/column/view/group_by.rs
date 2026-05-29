@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use indexmap::IndexMap;
-use reifydb_type::{Result, error::Error, value::Value};
+use reifydb_value::{Result, error::Error, value::Value};
 
 use crate::{
 	error::CoreError,

@@ -8,9 +8,9 @@ use reifydb_transaction::{
 	change::TransactionalDictionaryChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
-	value::{dictionary::DictionaryId, r#type::Type},
+	value::{dictionary::DictionaryId, value_type::ValueType},
 };
 use tracing::{instrument, warn};
 
@@ -23,8 +23,8 @@ use crate::{
 pub struct DictionaryToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
-	pub value_type: Type,
-	pub id_type: Type,
+	pub value_type: ValueType,
+	pub id_type: ValueType,
 }
 
 impl From<DictionaryToCreate> for StoreDictionaryToCreate {

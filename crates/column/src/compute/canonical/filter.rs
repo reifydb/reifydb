@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{data::canonical::Canonical, mask::RowMask, nones::NoneBitmap};
-use reifydb_type::{Result, util::bitvec::BitVec};
+use reifydb_value::{Result, util::bitvec::BitVec};
 
 pub fn filter(array: &Canonical, mask: &RowMask) -> Result<Canonical> {
 	assert_eq!(array.len(), mask.len(), "filter: array len {} vs mask len {}", array.len(), mask.len());

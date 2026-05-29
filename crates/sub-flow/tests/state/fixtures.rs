@@ -19,7 +19,7 @@ use reifydb_engine::test_harness::TestEngine;
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sub_flow::transaction::{FlowTransaction, TransactionalParams};
 use reifydb_transaction::interceptor::interceptors::Interceptors;
-use reifydb_type::{util::cowvec::CowVec, value::identity::IdentityId};
+use reifydb_value::{util::cowvec::CowVec, value::identity::IdentityId};
 
 pub const NODE_ID: FlowNodeId = FlowNodeId(1);
 

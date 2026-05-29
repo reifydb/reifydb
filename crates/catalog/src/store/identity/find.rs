@@ -3,7 +3,7 @@
 
 use reifydb_core::{interface::catalog::identity::Identity, key::identity::IdentityKey};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::identity::IdentityId;
+use reifydb_value::value::identity::IdentityId;
 
 use crate::{
 	CatalogStore, Result,

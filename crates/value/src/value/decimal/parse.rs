@@ -1,0 +1,91 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 ReifyDB
+
+use std::{borrow::Cow, str::FromStr};
+
+use bigdecimal::BigDecimal as BigDecimalInner;
+
+use crate::{
+	error::{Error, TypeError},
+	fragment::Fragment,
+	value::{decimal::Decimal, value_type::ValueType},
+};
+
+pub fn parse_decimal(fragment: Fragment) -> Result<Decimal, Error> {
+	let fragment_owned = fragment.clone();
+	let raw_value = fragment.text();
+
+	let needs_trimming = raw_value.as_bytes().first().is_some_and(|&b| b.is_ascii_whitespace())
+		|| raw_value.as_bytes().last().is_some_and(|&b| b.is_ascii_whitespace());
+	let has_underscores = raw_value.as_bytes().contains(&b'_');
+
+	let value = match (needs_trimming, has_underscores) {
+		(false, false) => Cow::Borrowed(raw_value),
+		(true, false) => Cow::Borrowed(raw_value.trim()),
+		(false, true) => Cow::Owned(raw_value.replace('_', "")),
+		(true, true) => Cow::Owned(raw_value.trim().replace('_', "")),
+	};
+
+	if value.is_empty() {
+		return Err(TypeError::InvalidNumberFormat {
+			target: ValueType::Decimal,
+			fragment: fragment_owned,
+		}
+		.into());
+	}
+
+	let big_decimal = BigDecimalInner::from_str(&value).map_err(|_| -> Error {
+		TypeError::InvalidNumberFormat {
+			target: ValueType::Decimal,
+			fragment: fragment_owned,
+		}
+		.into()
+	})?;
+
+	Ok(Decimal::new(big_decimal))
+}
+
+#[cfg(test)]
+pub mod tests {
+	use super::*;
+
+	#[test]
+	fn test_parse_decimal_integer() {
+		let decimal = parse_decimal(Fragment::testing("123")).unwrap();
+		assert_eq!(decimal.to_string(), "123");
+	}
+
+	#[test]
+	fn test_parse_decimal_with_fractional() {
+		let decimal = parse_decimal(Fragment::testing("123.45")).unwrap();
+		assert_eq!(decimal.to_string(), "123.45");
+	}
+
+	#[test]
+	fn test_parse_decimal_with_underscores() {
+		let decimal = parse_decimal(Fragment::testing("1_234.56")).unwrap();
+		assert_eq!(decimal.to_string(), "1234.56");
+	}
+
+	#[test]
+	fn test_parse_decimal_negative() {
+		let decimal = parse_decimal(Fragment::testing("-123.45")).unwrap();
+		assert_eq!(decimal.to_string(), "-123.45");
+	}
+
+	#[test]
+	fn test_parse_decimal_empty() {
+		assert!(parse_decimal(Fragment::testing("")).is_err());
+	}
+
+	#[test]
+	fn test_parse_decimal_invalid() {
+		assert!(parse_decimal(Fragment::testing("not_a_number")).is_err());
+	}
+
+	#[test]
+	fn test_parse_decimal_scientific_notation() {
+		let decimal = parse_decimal(Fragment::testing("1.23e2")).unwrap();
+		assert_eq!(decimal.to_string(), "123");
+	}
+}

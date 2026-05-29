@@ -20,7 +20,7 @@ reifydb-build = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 reifydb-runtime = { workspace = true }
 
 thiserror = { workspace = true }

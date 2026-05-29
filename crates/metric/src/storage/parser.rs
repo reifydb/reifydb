@@ -6,7 +6,7 @@ use reifydb_core::{
 	key::{Key, kind::KeyKind},
 	util::encoding::keycode::deserializer::KeyDeserializer,
 };
-use reifydb_type::value::dictionary::DictionaryId;
+use reifydb_value::value::dictionary::DictionaryId;
 
 use crate::MetricId;
 
@@ -68,7 +68,7 @@ pub mod tests {
 		interface::catalog::{flow::FlowNodeId, shape::ShapeId},
 		key::{EncodableKey, dictionary::DictionaryEntryKey, flow_node_state::FlowNodeStateKey, row::RowKey},
 	};
-	use reifydb_type::value::{dictionary::DictionaryId, row_number::RowNumber};
+	use reifydb_value::value::{dictionary::DictionaryId, row_number::RowNumber};
 
 	use super::*;
 

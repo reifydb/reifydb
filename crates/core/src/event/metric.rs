@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::{datetime::DateTime, duration::Duration};
+use reifydb_value::value::{datetime::DateTime, duration::Duration};
 use serde::{Deserialize, Serialize};
 
 use crate::{

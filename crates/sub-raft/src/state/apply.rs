@@ -8,7 +8,7 @@ use reifydb_core::{
 	interface::store::{MultiVersionCommit, SingleVersionCommit},
 	key::{Key, kind::KeyKind},
 };
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_value::util::cowvec::CowVec;
 
 use super::State;
 use crate::{

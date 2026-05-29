@@ -30,7 +30,7 @@ use reifydb_testing::{
 	testscript,
 	testscript::{command::Command, runner::run_path},
 };
-use reifydb_type::{cow_vec, util::cowvec::CowVec};
+use reifydb_value::{cow_vec, util::cowvec::CowVec};
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/store-multi/tests/scripts/drop" as store_drop_multi_memory => test_memory }

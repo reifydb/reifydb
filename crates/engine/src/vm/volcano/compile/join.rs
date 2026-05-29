@@ -9,7 +9,7 @@ use reifydb_rql::{
 	query::QueryPlan,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::fragment::Fragment;
+use reifydb_value::fragment::Fragment;
 
 use super::{compile, extract_source_name_from_query};
 use crate::vm::volcano::{

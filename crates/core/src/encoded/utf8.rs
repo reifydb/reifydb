@@ -3,19 +3,19 @@
 
 use std::str;
 
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
 impl RowShape {
 	pub fn set_utf8(&self, row: &mut EncodedRow, index: usize, value: impl AsRef<str>) {
-		debug_assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), Type::Utf8);
+		debug_assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), ValueType::Utf8);
 		self.replace_dynamic_data(row, index, value.as_ref().as_bytes());
 	}
 
 	pub fn get_utf8<'a>(&'a self, row: &'a EncodedRow, index: usize) -> &'a str {
 		let field = &self.fields()[index];
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Utf8);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Utf8);
 
 		let ref_slice = &row.as_slice()[field.offset as usize..field.offset as usize + 8];
 		let offset = u32::from_le_bytes([ref_slice[0], ref_slice[1], ref_slice[2], ref_slice[3]]) as usize;
@@ -29,7 +29,7 @@ impl RowShape {
 	}
 
 	pub fn try_get_utf8<'a>(&'a self, row: &'a EncodedRow, index: usize) -> Option<&'a str> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Utf8 {
+		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Utf8 {
 			Some(self.get_utf8(row, index))
 		} else {
 			None
@@ -39,13 +39,13 @@ impl RowShape {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_set_get_utf8() {
-		let shape = RowShape::testing(&[Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Utf8]);
 		let mut row = shape.allocate();
 		shape.set_utf8(&mut row, 0, "reifydb");
 		assert_eq!(shape.get_utf8(&row, 0), "reifydb");
@@ -53,7 +53,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_utf8() {
-		let shape = RowShape::testing(&[Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Utf8]);
 		let mut row = shape.allocate();
 
 		assert_eq!(shape.try_get_utf8(&row, 0), None);
@@ -64,7 +64,7 @@ pub mod tests {
 
 	#[test]
 	fn test_empty_string() {
-		let shape = RowShape::testing(&[Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Utf8]);
 		let mut row = shape.allocate();
 		shape.set_utf8(&mut row, 0, "");
 		assert_eq!(shape.get_utf8(&row, 0), "");
@@ -73,7 +73,7 @@ pub mod tests {
 
 	#[test]
 	fn test_unicode() {
-		let shape = RowShape::testing(&[Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Utf8]);
 		let mut row = shape.allocate();
 
 		let unicode_text = "🚀✨🌟 Hello 世界 🎉";
@@ -84,7 +84,7 @@ pub mod tests {
 
 	#[test]
 	fn test_large_string() {
-		let shape = RowShape::testing(&[Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Utf8]);
 		let mut row = shape.allocate();
 
 		let large_string = "A".repeat(1000);
@@ -95,7 +95,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_fields() {
-		let shape = RowShape::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
 		let mut row = shape.allocate();
 
 		shape.set_utf8(&mut row, 0, "first");
@@ -109,7 +109,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_static_fields() {
-		let shape = RowShape::testing(&[Type::Boolean, Type::Utf8, Type::Int4, Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Boolean, ValueType::Utf8, ValueType::Int4, ValueType::Utf8]);
 		let mut row = shape.allocate();
 
 		shape.set_bool(&mut row, 0, true);
@@ -125,7 +125,7 @@ pub mod tests {
 
 	#[test]
 	fn test_different_sizes() {
-		let shape = RowShape::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
 		let mut row = shape.allocate();
 
 		shape.set_utf8(&mut row, 0, "");
@@ -139,7 +139,7 @@ pub mod tests {
 
 	#[test]
 	fn test_arbitrary_setting_order() {
-		let shape = RowShape::testing(&[Type::Utf8, Type::Utf8, Type::Utf8, Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
 		let mut row = shape.allocate();
 
 		// Set in reverse order
@@ -156,7 +156,7 @@ pub mod tests {
 
 	#[test]
 	fn test_special_characters() {
-		let shape = RowShape::testing(&[Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Utf8]);
 
 		let special_strings = [
 			"",
@@ -180,7 +180,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let shape = RowShape::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
 		let mut row = shape.allocate();
 
 		// Set only some fields
@@ -199,7 +199,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_utf8_wrong_type() {
-		let shape = RowShape::testing(&[Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
 		shape.set_bool(&mut row, 0, true);
@@ -209,7 +209,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_utf8() {
-		let shape = RowShape::testing(&[Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Utf8]);
 		let mut row = shape.allocate();
 
 		shape.set_utf8(&mut row, 0, "hello");
@@ -233,7 +233,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_utf8_with_other_dynamic_fields() {
-		let shape = RowShape::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
 		let mut row = shape.allocate();
 
 		shape.set_utf8(&mut row, 0, "first");

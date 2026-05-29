@@ -18,7 +18,7 @@ use reifydb_core::{
 };
 use reifydb_rql::flow::{flow::FlowDag, node::FlowNode};
 use reifydb_sdk::operator::Tick;
-use reifydb_type::{Result, value::datetime::DateTime};
+use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::{Span, field, instrument};
 
 use crate::{engine::FlowEngine, operator::Operators, transaction::FlowTransaction};

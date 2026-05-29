@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::error::Error;
+use reifydb_value::error::Error;
 use serde::{Deserialize, Serialize, de};
 
 #[repr(u8)]

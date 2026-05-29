@@ -2,12 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::buffer::ColumnBuffer;
-use reifydb_type::{
+use reifydb_value::{
 	error::TypeError,
 	fragment::Fragment,
 	value::{
-		r#type::Type,
 		uuid::parse::{parse_identity_id, parse_uuid4, parse_uuid7},
+		value_type::ValueType,
 	},
 };
 
@@ -16,14 +16,18 @@ use crate::{Result, error::CastError};
 pub(crate) struct UuidParser;
 
 impl UuidParser {
-	pub(crate) fn from_text(fragment: impl Into<Fragment>, target: Type, row_count: usize) -> Result<ColumnBuffer> {
+	pub(crate) fn from_text(
+		fragment: impl Into<Fragment>,
+		target: ValueType,
+		row_count: usize,
+	) -> Result<ColumnBuffer> {
 		let fragment = fragment.into();
 		match target {
-			Type::Uuid4 => Self::parse_uuid4(fragment, row_count),
-			Type::Uuid7 => Self::parse_uuid7(fragment, row_count),
-			Type::IdentityId => Self::parse_identity_id(fragment, row_count),
+			ValueType::Uuid4 => Self::parse_uuid4(fragment, row_count),
+			ValueType::Uuid7 => Self::parse_uuid7(fragment, row_count),
+			ValueType::IdentityId => Self::parse_identity_id(fragment, row_count),
 			_ => Err(TypeError::UnsupportedCast {
-				from: Type::Utf8,
+				from: ValueType::Utf8,
 				to: target,
 				fragment,
 			}
@@ -37,7 +41,7 @@ impl UuidParser {
 			Ok(uuid) => Ok(ColumnBuffer::uuid4(vec![uuid; row_count])),
 			Err(err) => Err(CastError::InvalidUuid {
 				fragment,
-				target: Type::Uuid4,
+				target: ValueType::Uuid4,
 				cause: err.diagnostic(),
 			}
 			.into()),
@@ -50,7 +54,7 @@ impl UuidParser {
 			Ok(uuid) => Ok(ColumnBuffer::uuid7(vec![uuid; row_count])),
 			Err(err) => Err(CastError::InvalidUuid {
 				fragment,
-				target: Type::Uuid7,
+				target: ValueType::Uuid7,
 				cause: err.diagnostic(),
 			}
 			.into()),
@@ -63,7 +67,7 @@ impl UuidParser {
 			Ok(id) => Ok(ColumnBuffer::identity_id(vec![id; row_count])),
 			Err(err) => Err(CastError::InvalidUuid {
 				fragment,
-				target: Type::IdentityId,
+				target: ValueType::IdentityId,
 				cause: err.diagnostic(),
 			}
 			.into()),

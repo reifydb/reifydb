@@ -9,7 +9,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_sdk::operator::Tick;
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::{
 	operator::{BoxedOperator, Operator, OperatorCell},

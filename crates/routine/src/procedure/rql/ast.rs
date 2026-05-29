@@ -14,7 +14,7 @@ use reifydb_rql::{
 	bump::BumpFragment,
 	token::token::{Token, TokenKind},
 };
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 use crate::{
 	procedure::rql::extract_query,
@@ -42,8 +42,8 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for RqlAst {
 		&INFO
 	}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Any
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Any
 	}
 
 	fn attaches_row_metadata(&self) -> bool {

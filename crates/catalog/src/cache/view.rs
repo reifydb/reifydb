@@ -64,7 +64,7 @@ pub mod tests {
 		id::{ColumnId, TableId},
 		view::{TableView, ViewKind},
 	};
-	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+	use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 	use super::*;
 
@@ -78,7 +78,7 @@ pub mod tests {
 				Column {
 					id: ColumnId(1),
 					name: "id".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Int1),
+					constraint: TypeConstraint::unconstrained(ValueType::Int1),
 					properties: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
@@ -87,7 +87,7 @@ pub mod tests {
 				Column {
 					id: ColumnId(2),
 					name: "name".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Utf8),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,

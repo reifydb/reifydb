@@ -5,10 +5,10 @@ use std::{mem::discriminant, slice::from_ref};
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_rql::expression::{Expression, name::display_label};
-use reifydb_type::{
+use reifydb_value::{
 	error::{BinaryOp, Error, IntoDiagnostic, LogicalOp, RuntimeErrorKind, TypeError},
 	fragment::Fragment,
-	value::{Value, r#type::Type},
+	value::{Value, value_type::ValueType},
 };
 
 use super::{
@@ -83,7 +83,10 @@ impl CompiledExpr {
 				let columns = f(ctx)?;
 				Ok(columns.into_iter().next().unwrap_or_else(|| ColumnWithName {
 					name: Fragment::internal("none"),
-					data: ColumnBuffer::with_capacity(Type::Option(Box::new(Type::Boolean)), 0),
+					data: ColumnBuffer::with_capacity(
+						ValueType::Option(Box::new(ValueType::Boolean)),
+						0,
+					),
 				}))
 			}
 		}
@@ -698,13 +701,16 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 						}
 						_ => Ok(ColumnWithName {
 							name: fragment.clone(),
-							data: ColumnBuffer::none_typed(Type::Boolean, ctx.row_count),
+							data: ColumnBuffer::none_typed(
+								ValueType::Boolean,
+								ctx.row_count,
+							),
 						}),
 					}
 				} else {
 					Ok(ColumnWithName {
 						name: fragment.clone(),
-						data: ColumnBuffer::none_typed(Type::Boolean, ctx.row_count),
+						data: ColumnBuffer::none_typed(ValueType::Boolean, ctx.row_count),
 					})
 				}
 			})
@@ -1142,7 +1148,7 @@ fn execute_if_multi(
 	if result.is_empty() {
 		Ok(vec![ColumnWithName {
 			name: Fragment::internal("none"),
-			data: ColumnBuffer::none_typed(Type::Boolean, ctx.row_count),
+			data: ColumnBuffer::none_typed(ValueType::Boolean, ctx.row_count),
 		}])
 	} else {
 		Ok(result)

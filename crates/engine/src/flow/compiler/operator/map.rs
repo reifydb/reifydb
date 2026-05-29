@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_rql::{expression::Expression, flow::node::FlowNodeType::Map, nodes::MapNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::flow::compiler::{CompileOperator, FlowCompiler};
 

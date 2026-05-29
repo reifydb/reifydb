@@ -8,7 +8,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_rql::expression::Expression;
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	value::{datetime::DateTime, identity::IdentityId, row_number::RowNumber},

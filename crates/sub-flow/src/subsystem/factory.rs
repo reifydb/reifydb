@@ -5,7 +5,7 @@ use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use super::FlowSubsystem;
 use crate::builder::FlowConfigurator;

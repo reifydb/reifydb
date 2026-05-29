@@ -4,18 +4,18 @@
 pub(crate) mod shape_header {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const FIELD_COUNT: usize = 0;
 
 	pub(crate) static SHAPE: Lazy<RowShape> =
-		Lazy::new(|| RowShape::new(vec![RowShapeField::unconstrained("field_count", Type::Uint2)]));
+		Lazy::new(|| RowShape::new(vec![RowShapeField::unconstrained("field_count", ValueType::Uint2)]));
 }
 
 pub(crate) mod shape_field {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const NAME: usize = 0;
 
@@ -35,14 +35,14 @@ pub(crate) mod shape_field {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("name", Type::Utf8),
-			RowShapeField::unconstrained("base_type", Type::Uint1),
-			RowShapeField::unconstrained("constraint_type", Type::Uint1),
-			RowShapeField::unconstrained("constraint_p1", Type::Uint4),
-			RowShapeField::unconstrained("constraint_p2", Type::Uint4),
-			RowShapeField::unconstrained("offset", Type::Uint4),
-			RowShapeField::unconstrained("size", Type::Uint4),
-			RowShapeField::unconstrained("align", Type::Uint1),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
+			RowShapeField::unconstrained("base_type", ValueType::Uint1),
+			RowShapeField::unconstrained("constraint_type", ValueType::Uint1),
+			RowShapeField::unconstrained("constraint_p1", ValueType::Uint4),
+			RowShapeField::unconstrained("constraint_p2", ValueType::Uint4),
+			RowShapeField::unconstrained("offset", ValueType::Uint4),
+			RowShapeField::unconstrained("size", ValueType::Uint4),
+			RowShapeField::unconstrained("align", ValueType::Uint1),
 		])
 	});
 }

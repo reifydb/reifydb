@@ -11,7 +11,7 @@ use reifydb_testing::testscript::{
 	runner::{Runner, run_path},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, replica::ReplicaTransaction};
-use reifydb_type::{params::Params, value::identity::IdentityId};
+use reifydb_value::{params::Params, value::identity::IdentityId};
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/catalog/tests/scripts/change" as change => test_catalog_change }

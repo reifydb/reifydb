@@ -3,7 +3,7 @@
 
 use once_cell::sync::Lazy;
 use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 pub(crate) mod series {
 	use super::*;
@@ -20,15 +20,15 @@ pub(crate) mod series {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("namespace", Type::Uint8),
-			RowShapeField::unconstrained("name", Type::Utf8),
-			RowShapeField::unconstrained("tag", Type::Uint8),
-			RowShapeField::unconstrained("key_column", Type::Utf8),
-			RowShapeField::unconstrained("key_kind", Type::Uint1),
-			RowShapeField::unconstrained("precision", Type::Uint1),
-			RowShapeField::unconstrained("primary_key", Type::Uint8),
-			RowShapeField::unconstrained("underlying", Type::Uint1),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("namespace", ValueType::Uint8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
+			RowShapeField::unconstrained("tag", ValueType::Uint8),
+			RowShapeField::unconstrained("key_column", ValueType::Utf8),
+			RowShapeField::unconstrained("key_kind", ValueType::Uint1),
+			RowShapeField::unconstrained("precision", ValueType::Uint1),
+			RowShapeField::unconstrained("primary_key", ValueType::Uint8),
+			RowShapeField::unconstrained("underlying", ValueType::Uint1),
 		])
 	});
 }
@@ -41,8 +41,8 @@ pub(crate) mod series_namespace {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("name", Type::Utf8),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
 		])
 	});
 }
@@ -58,11 +58,11 @@ pub(crate) mod series_metadata {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("row_count", Type::Uint8),
-			RowShapeField::unconstrained("oldest_key", Type::Uint8),
-			RowShapeField::unconstrained("newest_key", Type::Uint8),
-			RowShapeField::unconstrained("sequence_counter", Type::Uint8),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("row_count", ValueType::Uint8),
+			RowShapeField::unconstrained("oldest_key", ValueType::Uint8),
+			RowShapeField::unconstrained("newest_key", ValueType::Uint8),
+			RowShapeField::unconstrained("sequence_counter", ValueType::Uint8),
 		])
 	});
 }

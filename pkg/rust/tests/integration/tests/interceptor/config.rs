@@ -3,7 +3,7 @@
 
 use reifydb::{
 	ConfigKey,
-	value::{Value, duration::Duration},
+	value::value::{Value, duration::Duration},
 };
 
 use super::common::{admin, fresh_db};

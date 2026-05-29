@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::{container::uuid::UuidContainer, frame::data::FrameColumnData, uuid::Uuid7};
+use reifydb_value::value::{container::uuid::UuidContainer, frame::data::FrameColumnData, uuid::Uuid7};
 
 fn make(v: Vec<Uuid7>) -> FrameColumnData {
 	FrameColumnData::Uuid7(UuidContainer::new(v))

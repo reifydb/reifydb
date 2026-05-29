@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::{ColumnWithName, columns::Columns};
 use reifydb_rql::expression::PrefixOperator;
-use reifydb_type::fragment::Fragment;
+use reifydb_value::fragment::Fragment;
 
 use super::broadcast::broadcast_to_match;
 use crate::{

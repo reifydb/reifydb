@@ -13,7 +13,7 @@ use reifydb_core::{
 	util::encoding::keycode::deserializer::KeyDeserializer,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 use crate::{
 	CatalogStore, Result,
@@ -191,9 +191,9 @@ pub mod tests {
 	use reifydb_core::interface::catalog::id::{NamespaceId, RingBufferId};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_type::{
+	use reifydb_value::{
 		fragment::Fragment,
-		value::{constraint::TypeConstraint, r#type::Type},
+		value::{constraint::TypeConstraint, value_type::ValueType},
 	};
 
 	use crate::{
@@ -271,7 +271,7 @@ pub mod tests {
 			columns: vec![RingBufferColumnToCreate {
 				name: Fragment::internal("symbol"),
 				fragment: Fragment::None,
-				constraint: TypeConstraint::unconstrained(Type::Utf8),
+				constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 				properties: vec![],
 				auto_increment: false,
 				dictionary_id: None,
@@ -378,7 +378,7 @@ pub mod tests {
 				RingBufferColumnToCreate {
 					name: Fragment::internal("id"),
 					fragment: Fragment::None,
-					constraint: TypeConstraint::unconstrained(Type::Uint8),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
 					auto_increment: true,
 					dictionary_id: None,
@@ -386,7 +386,7 @@ pub mod tests {
 				RingBufferColumnToCreate {
 					name: Fragment::internal("value"),
 					fragment: Fragment::None,
-					constraint: TypeConstraint::unconstrained(Type::Float8),
+					constraint: TypeConstraint::unconstrained(ValueType::Float8),
 					properties: vec![],
 					auto_increment: false,
 					dictionary_id: None,

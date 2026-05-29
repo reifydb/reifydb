@@ -13,7 +13,7 @@ use reifydb_sub_server::{
 	},
 };
 use reifydb_subscription::batch::BatchId;
-use reifydb_type::value::identity::IdentityId;
+use reifydb_value::value::identity::IdentityId;
 
 use crate::{
 	handler::{ConnectionContext, error_to_response},

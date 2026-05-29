@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 
 use reifydb_core::interface::identifier::ColumnShape;
-use reifydb_type::fragment::Fragment;
+use reifydb_value::fragment::Fragment;
 
 use crate::expression::{AccessShapeExpression, ConstantExpression, Expression, ParameterExpression, PrefixOperator};
 
@@ -420,7 +420,7 @@ mod tests {
 	use std::{collections::HashSet, sync::Arc};
 
 	use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnShape};
-	use reifydb_type::{fragment::Fragment, value::r#type::Type};
+	use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 	use super::{canonical_name, collect_all_column_names, collect_column_names, display_label};
 	use crate::expression::{
@@ -686,7 +686,7 @@ mod tests {
 			expression: Box::new(col("y")),
 			to: TypeExpression {
 				fragment: frag("Int4"),
-				ty: Type::Int4,
+				ty: ValueType::Int4,
 			},
 		});
 		assert_eq!(canonical_name(&e).text(), "cast(y, Int4)");
@@ -994,7 +994,7 @@ mod tests {
 
 		let ty = Expression::Type(TypeExpression {
 			fragment: frag("Int4"),
-			ty: Type::Int4,
+			ty: ValueType::Int4,
 		});
 		assert!(collect(&ty).is_empty());
 	}
@@ -1023,7 +1023,7 @@ mod tests {
 			expression: Box::new(col("y")),
 			to: TypeExpression {
 				fragment: frag("Int4"),
-				ty: Type::Int4,
+				ty: ValueType::Int4,
 			},
 		});
 		let result = collect(&expr);

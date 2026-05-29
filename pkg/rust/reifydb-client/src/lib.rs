@@ -49,10 +49,9 @@ pub use grpc::{
 pub use http::HttpClient;
 // Re-export derive macro
 pub use reifydb_client_derive::FromFrame;
-pub use reifydb_type as r#type;
-pub use reifydb_type::{
+pub use reifydb_value as value;
+pub use reifydb_value::{
 	params::Params,
-	value,
 	value::{
 		Value,
 		frame::{
@@ -66,7 +65,7 @@ pub use reifydb_type::{
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
 		try_from::{FromValueError, TryFromValue, TryFromValueCoerce},
-		r#type::Type,
+		value_type::ValueType,
 	},
 };
 #[cfg(any(feature = "http", feature = "ws"))]
@@ -170,7 +169,7 @@ fn value_to_wire(value: Value) -> WireValue {
 		Value::Decimal(d) => ("Decimal", d.to_string()),
 		Value::Any(v) => return value_to_wire(*v.clone()),
 		Value::DictionaryId(id) => ("DictionaryId", id.to_string()),
-		Value::Type(t) => ("Type", t.to_string()),
+		Value::Type(t) => ("ValueType", t.to_string()),
 		Value::List(items) => ("List", format!("{}", Value::List(items.clone()))),
 		Value::Record(fields) => ("Record", format!("{}", Value::Record(fields.clone()))),
 		Value::Tuple(items) => ("Tuple", format!("{}", Value::Tuple(items.clone()))),
@@ -326,7 +325,7 @@ pub struct AdminResponse {
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
-use reifydb_type::error::Diagnostic;
+use reifydb_value::error::Diagnostic;
 
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]

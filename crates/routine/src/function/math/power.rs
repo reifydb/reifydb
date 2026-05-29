@@ -3,14 +3,14 @@
 
 use num_traits::ToPrimitive;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		container::number::NumberContainer,
 		decimal::Decimal,
 		int::Int,
-		r#type::{Type, input_types::InputTypes},
 		uint::Uint,
+		value_type::{ValueType, input_types::InputTypes},
 	},
 };
 
@@ -34,9 +34,9 @@ impl Power {
 	}
 }
 
-fn convert_column_to_type(data: &ColumnBuffer, target: Type, row_count: usize) -> ColumnBuffer {
+fn convert_column_to_type(data: &ColumnBuffer, target: ValueType, row_count: usize) -> ColumnBuffer {
 	match target {
-		Type::Int1 => {
+		ValueType::Int1 => {
 			let mut result = Vec::with_capacity(row_count);
 			let mut bitvec = Vec::with_capacity(row_count);
 			for i in 0..row_count {
@@ -50,7 +50,7 @@ fn convert_column_to_type(data: &ColumnBuffer, target: Type, row_count: usize) -
 			}
 			ColumnBuffer::int1_with_bitvec(result, bitvec)
 		}
-		Type::Int2 => {
+		ValueType::Int2 => {
 			let mut result = Vec::with_capacity(row_count);
 			let mut bitvec = Vec::with_capacity(row_count);
 			for i in 0..row_count {
@@ -64,7 +64,7 @@ fn convert_column_to_type(data: &ColumnBuffer, target: Type, row_count: usize) -
 			}
 			ColumnBuffer::int2_with_bitvec(result, bitvec)
 		}
-		Type::Int4 => {
+		ValueType::Int4 => {
 			let mut result = Vec::with_capacity(row_count);
 			let mut bitvec = Vec::with_capacity(row_count);
 			for i in 0..row_count {
@@ -78,7 +78,7 @@ fn convert_column_to_type(data: &ColumnBuffer, target: Type, row_count: usize) -
 			}
 			ColumnBuffer::int4_with_bitvec(result, bitvec)
 		}
-		Type::Int8 => {
+		ValueType::Int8 => {
 			let mut result = Vec::with_capacity(row_count);
 			let mut bitvec = Vec::with_capacity(row_count);
 			for i in 0..row_count {
@@ -92,7 +92,7 @@ fn convert_column_to_type(data: &ColumnBuffer, target: Type, row_count: usize) -
 			}
 			ColumnBuffer::int8_with_bitvec(result, bitvec)
 		}
-		Type::Int16 => {
+		ValueType::Int16 => {
 			let mut result = Vec::with_capacity(row_count);
 			let mut bitvec = Vec::with_capacity(row_count);
 			for i in 0..row_count {
@@ -106,7 +106,7 @@ fn convert_column_to_type(data: &ColumnBuffer, target: Type, row_count: usize) -
 			}
 			ColumnBuffer::int16_with_bitvec(result, bitvec)
 		}
-		Type::Uint1 => {
+		ValueType::Uint1 => {
 			let mut result = Vec::with_capacity(row_count);
 			let mut bitvec = Vec::with_capacity(row_count);
 			for i in 0..row_count {
@@ -120,7 +120,7 @@ fn convert_column_to_type(data: &ColumnBuffer, target: Type, row_count: usize) -
 			}
 			ColumnBuffer::uint1_with_bitvec(result, bitvec)
 		}
-		Type::Uint2 => {
+		ValueType::Uint2 => {
 			let mut result = Vec::with_capacity(row_count);
 			let mut bitvec = Vec::with_capacity(row_count);
 			for i in 0..row_count {
@@ -134,7 +134,7 @@ fn convert_column_to_type(data: &ColumnBuffer, target: Type, row_count: usize) -
 			}
 			ColumnBuffer::uint2_with_bitvec(result, bitvec)
 		}
-		Type::Uint4 => {
+		ValueType::Uint4 => {
 			let mut result = Vec::with_capacity(row_count);
 			let mut bitvec = Vec::with_capacity(row_count);
 			for i in 0..row_count {
@@ -148,7 +148,7 @@ fn convert_column_to_type(data: &ColumnBuffer, target: Type, row_count: usize) -
 			}
 			ColumnBuffer::uint4_with_bitvec(result, bitvec)
 		}
-		Type::Uint8 => {
+		ValueType::Uint8 => {
 			let mut result = Vec::with_capacity(row_count);
 			let mut bitvec = Vec::with_capacity(row_count);
 			for i in 0..row_count {
@@ -162,7 +162,7 @@ fn convert_column_to_type(data: &ColumnBuffer, target: Type, row_count: usize) -
 			}
 			ColumnBuffer::uint8_with_bitvec(result, bitvec)
 		}
-		Type::Uint16 => {
+		ValueType::Uint16 => {
 			let mut result = Vec::with_capacity(row_count);
 			let mut bitvec = Vec::with_capacity(row_count);
 			for i in 0..row_count {
@@ -176,7 +176,7 @@ fn convert_column_to_type(data: &ColumnBuffer, target: Type, row_count: usize) -
 			}
 			ColumnBuffer::uint16_with_bitvec(result, bitvec)
 		}
-		Type::Float4 => {
+		ValueType::Float4 => {
 			let mut result = Vec::with_capacity(row_count);
 			let mut bitvec = Vec::with_capacity(row_count);
 			for i in 0..row_count {
@@ -190,7 +190,7 @@ fn convert_column_to_type(data: &ColumnBuffer, target: Type, row_count: usize) -
 			}
 			ColumnBuffer::float4_with_bitvec(result, bitvec)
 		}
-		Type::Float8 => {
+		ValueType::Float8 => {
 			let mut result = Vec::with_capacity(row_count);
 			let mut bitvec = Vec::with_capacity(row_count);
 			for i in 0..row_count {
@@ -204,7 +204,7 @@ fn convert_column_to_type(data: &ColumnBuffer, target: Type, row_count: usize) -
 			}
 			ColumnBuffer::float8_with_bitvec(result, bitvec)
 		}
-		Type::Int => {
+		ValueType::Int => {
 			let mut result = Vec::with_capacity(row_count);
 			let mut bitvec = Vec::with_capacity(row_count);
 			for i in 0..row_count {
@@ -218,7 +218,7 @@ fn convert_column_to_type(data: &ColumnBuffer, target: Type, row_count: usize) -
 			}
 			ColumnBuffer::int_with_bitvec(result, bitvec)
 		}
-		Type::Uint => {
+		ValueType::Uint => {
 			let mut result = Vec::with_capacity(row_count);
 			let mut bitvec = Vec::with_capacity(row_count);
 			for i in 0..row_count {
@@ -232,7 +232,7 @@ fn convert_column_to_type(data: &ColumnBuffer, target: Type, row_count: usize) -
 			}
 			ColumnBuffer::uint_with_bitvec(result, bitvec)
 		}
-		Type::Decimal => {
+		ValueType::Decimal => {
 			let mut result = Vec::with_capacity(row_count);
 			let mut bitvec = Vec::with_capacity(row_count);
 			for i in 0..row_count {
@@ -412,33 +412,37 @@ fn get_as_f64(data: &ColumnBuffer, i: usize) -> f64 {
 	}
 }
 
-fn promote_two(left: Type, right: Type) -> Type {
-	if matches!(left, Type::Any) && matches!(right, Type::Any) {
-		return Type::Any;
+fn promote_two(left: ValueType, right: ValueType) -> ValueType {
+	if matches!(left, ValueType::Any) && matches!(right, ValueType::Any) {
+		return ValueType::Any;
 	}
-	if matches!(left, Type::Any) && right.is_number() {
+	if matches!(left, ValueType::Any) && right.is_number() {
 		return right;
 	}
-	if left.is_number() && matches!(right, Type::Any) {
+	if left.is_number() && matches!(right, ValueType::Any) {
 		return left;
 	}
-	if matches!(left, Type::Float4 | Type::Float8 | Type::Decimal)
-		|| matches!(right, Type::Float4 | Type::Float8 | Type::Decimal)
+	if matches!(left, ValueType::Float4 | ValueType::Float8 | ValueType::Decimal)
+		|| matches!(right, ValueType::Float4 | ValueType::Float8 | ValueType::Decimal)
 	{
-		return Type::Decimal;
+		return ValueType::Decimal;
 	}
-	if left == Type::Int || right == Type::Int {
-		return Type::Int16;
+	if left == ValueType::Int || right == ValueType::Int {
+		return ValueType::Int16;
 	}
-	if left == Type::Uint || right == Type::Uint {
-		if matches!(left, Type::Int1 | Type::Int2 | Type::Int4 | Type::Int8 | Type::Int16)
-			|| matches!(right, Type::Int1 | Type::Int2 | Type::Int4 | Type::Int8 | Type::Int16)
-		{
-			return Type::Int16;
+	if left == ValueType::Uint || right == ValueType::Uint {
+		if matches!(
+			left,
+			ValueType::Int1 | ValueType::Int2 | ValueType::Int4 | ValueType::Int8 | ValueType::Int16
+		) || matches!(
+			right,
+			ValueType::Int1 | ValueType::Int2 | ValueType::Int4 | ValueType::Int8 | ValueType::Int16
+		) {
+			return ValueType::Int16;
 		}
-		return Type::Uint16;
+		return ValueType::Uint16;
 	}
-	Type::promote(left, right)
+	ValueType::promote(left, right)
 }
 
 impl<'a> Routine<FunctionContext<'a>> for Power {
@@ -446,11 +450,11 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 		&self.info
 	}
 
-	fn return_type(&self, input_types: &[Type]) -> Type {
+	fn return_type(&self, input_types: &[ValueType]) -> ValueType {
 		if input_types.len() >= 2 {
 			promote_two(input_types[0].clone(), input_types[1].clone())
 		} else {
-			Type::Float8
+			ValueType::Float8
 		}
 	}
 

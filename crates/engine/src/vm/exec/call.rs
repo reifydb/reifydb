@@ -21,11 +21,11 @@ use reifydb_rql::{
 	nodes::FunctionParameter,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	error::{Error as ReifyError, ProcedureErrorKind, TypeError},
 	fragment::Fragment,
 	params::Params,
-	value::{Value, constraint::TypeConstraint, frame::frame::Frame, row_number::RowNumber, r#type::Type},
+	value::{Value, constraint::TypeConstraint, frame::frame::Frame, row_number::RowNumber, value_type::ValueType},
 };
 
 use super::stack::strip_dollar_prefix;
@@ -79,7 +79,7 @@ impl<'a> Vm<'a> {
 		}
 	}
 
-	fn coerce_value(&self, value: Value, target: &Type) -> Result<Value> {
+	fn coerce_value(&self, value: Value, target: &ValueType) -> Result<Value> {
 		let mut data = ColumnBuffer::with_capacity(value.get_type(), 1);
 		data.push_value(value);
 		let ctx = self.eval_ctx();
@@ -373,7 +373,7 @@ impl<'a> Vm<'a> {
 
 		let col_type = match return_type {
 			Some(tc) => tc.get_type(),
-			None => Type::super_type_of(results.iter().map(|v| v.get_type())),
+			None => ValueType::super_type_of(results.iter().map(|v| v.get_type())),
 		};
 
 		let mut data = ColumnBuffer::with_capacity(col_type.clone(), row_count);

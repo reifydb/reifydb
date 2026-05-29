@@ -14,7 +14,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	value::{constraint::TypeConstraint, dictionary::DictionaryId, sumtype::SumTypeId},
 };

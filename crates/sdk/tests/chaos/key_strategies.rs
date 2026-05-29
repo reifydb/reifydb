@@ -17,7 +17,7 @@ use reifydb_sdk::testing::chaos::{
 	strategy::{RowContent, samplers},
 };
 use reifydb_testing::chaos_test;
-use reifydb_type::value::row_number::RowNumber;
+use reifydb_value::value::row_number::RowNumber;
 
 use super::common::{PassthroughOperator, passthrough_oracle, simple_kv_shape};
 

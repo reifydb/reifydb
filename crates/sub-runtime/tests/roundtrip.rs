@@ -15,7 +15,7 @@ use reifydb_engine::test_harness::TestEngine;
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_multi::MultiStore;
 use reifydb_sub_runtime::{actor::RuntimeSamplerActor, collect::Collectors, domain::Domain, vtable::RuntimeVTable};
-use reifydb_type::value::datetime::DateTime;
+use reifydb_value::value::datetime::DateTime;
 
 const WATERMARK_METRICS: usize = 9; // mvcc(6) + cdc(3), platform-independent
 

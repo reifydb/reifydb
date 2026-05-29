@@ -18,7 +18,7 @@ use reifydb_runtime::{
 	context::{clock::Clock, rng::Rng},
 	sync::rwlock::RwLock,
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 use tracing::{Span, field, instrument};
 
 use crate::multi::{
@@ -408,7 +408,7 @@ mod tests {
 
 	use reifydb_core::encoded::key::EncodedKeyRange;
 	use reifydb_runtime::{context::clock::MockClock, pool::Pools};
-	use reifydb_type::value::Value;
+	use reifydb_value::value::Value;
 
 	use super::*;
 	use crate::multi::transaction::version::VersionProvider;

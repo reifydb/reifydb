@@ -3,10 +3,10 @@
 
 use std::{collections::HashMap, str};
 
-use reifydb_type::value::{
+use reifydb_value::value::{
 	blob::Blob,
 	container::{blob::BlobContainer, utf8::Utf8Container},
-	r#type::Type,
+	value_type::ValueType,
 };
 
 use super::plain::PlainEncoded;
@@ -81,7 +81,7 @@ pub fn try_dict_encode_utf8(container: &Utf8Container, min_ratio: f64) -> Option
 	Some(DictEncoded {
 		data,
 		extra,
-		type_code: Type::Utf8.to_u8(),
+		type_code: ValueType::Utf8.to_u8(),
 		flags_bits,
 	})
 }
@@ -144,7 +144,7 @@ pub fn try_dict_encode_blob(container: &BlobContainer, min_ratio: f64) -> Option
 	Some(DictEncoded {
 		data,
 		extra,
-		type_code: Type::Blob.to_u8(),
+		type_code: ValueType::Blob.to_u8(),
 		flags_bits,
 	})
 }

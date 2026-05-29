@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::error::{AstErrorKind, Error, TypeError};
+use reifydb_value::error::{AstErrorKind, Error, TypeError};
 
 use crate::{
 	Result,

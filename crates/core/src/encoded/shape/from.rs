@@ -1,7 +1,7 @@
 //  SPDX-License-Identifier: AGPL-3.0-or-later
 //  Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::constraint::{Constraint, TypeConstraint};
+use reifydb_value::value::constraint::{Constraint, TypeConstraint};
 
 use crate::{
 	encoded::shape::{RowShape, RowShapeField},
@@ -39,7 +39,7 @@ mod tests {
 	}
 
 	mod from_column {
-		use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+		use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 		use crate::{
 			encoded::shape::{RowShape, RowShapeField},
@@ -49,7 +49,7 @@ mod tests {
 			},
 		};
 
-		fn make_column(id: u64, name: &str, ty: Type, index: u8) -> Column {
+		fn make_column(id: u64, name: &str, ty: ValueType, index: u8) -> Column {
 			Column {
 				id: ColumnId(id),
 				name: name.to_string(),
@@ -63,69 +63,69 @@ mod tests {
 
 		#[test]
 		fn test_from_column_single_field() {
-			let columns = vec![make_column(1, "id", Type::Int8, 0)];
+			let columns = vec![make_column(1, "id", ValueType::Int8, 0)];
 
 			let shape = RowShape::from(columns.as_slice());
 
 			assert_eq!(shape.fields().len(), 1);
 			assert_eq!(shape.fields()[0].name, "id");
-			assert_eq!(shape.fields()[0].constraint.get_type(), Type::Int8);
+			assert_eq!(shape.fields()[0].constraint.get_type(), ValueType::Int8);
 		}
 
 		#[test]
 		fn test_from_column_multiple_fields() {
 			let columns = vec![
-				make_column(1, "a", Type::Int1, 0),
-				make_column(2, "b", Type::Int2, 1),
-				make_column(3, "c", Type::Int4, 2),
+				make_column(1, "a", ValueType::Int1, 0),
+				make_column(2, "b", ValueType::Int2, 1),
+				make_column(3, "c", ValueType::Int4, 2),
 			];
 
 			let shape = RowShape::from(columns.as_slice());
 
 			assert_eq!(shape.fields().len(), 3);
 			assert_eq!(shape.fields()[0].name, "a");
-			assert_eq!(shape.fields()[0].constraint.get_type(), Type::Int1);
+			assert_eq!(shape.fields()[0].constraint.get_type(), ValueType::Int1);
 			assert_eq!(shape.fields()[1].name, "b");
-			assert_eq!(shape.fields()[1].constraint.get_type(), Type::Int2);
+			assert_eq!(shape.fields()[1].constraint.get_type(), ValueType::Int2);
 			assert_eq!(shape.fields()[2].name, "c");
-			assert_eq!(shape.fields()[2].constraint.get_type(), Type::Int4);
+			assert_eq!(shape.fields()[2].constraint.get_type(), ValueType::Int4);
 		}
 
 		#[test]
 		fn test_from_column_preserves_field_order() {
 			let columns = vec![
-				make_column(1, "first", Type::Utf8, 0),
-				make_column(2, "second", Type::Int4, 1),
-				make_column(3, "third", Type::Boolean, 2),
+				make_column(1, "first", ValueType::Utf8, 0),
+				make_column(2, "second", ValueType::Int4, 1),
+				make_column(3, "third", ValueType::Boolean, 2),
 			];
 
 			let shape = RowShape::from(columns.as_slice());
 
 			assert_eq!(shape.fields()[0].name, "first");
-			assert_eq!(shape.fields()[0].constraint.get_type(), Type::Utf8);
+			assert_eq!(shape.fields()[0].constraint.get_type(), ValueType::Utf8);
 			assert_eq!(shape.fields()[1].name, "second");
-			assert_eq!(shape.fields()[1].constraint.get_type(), Type::Int4);
+			assert_eq!(shape.fields()[1].constraint.get_type(), ValueType::Int4);
 			assert_eq!(shape.fields()[2].name, "third");
-			assert_eq!(shape.fields()[2].constraint.get_type(), Type::Boolean);
+			assert_eq!(shape.fields()[2].constraint.get_type(), ValueType::Boolean);
 		}
 
 		#[test]
 		fn test_from_column_equivalence_with_direct_construction() {
 			let columns = vec![
-				make_column(1, "f0", Type::Uint1, 0),
-				make_column(2, "f1", Type::Uint2, 1),
-				make_column(3, "f2", Type::Uint4, 2),
-				make_column(4, "f3", Type::Uint8, 3),
-				make_column(5, "f4", Type::Uint16, 4),
+				make_column(1, "f0", ValueType::Uint1, 0),
+				make_column(2, "f1", ValueType::Uint2, 1),
+				make_column(3, "f2", ValueType::Uint4, 2),
+				make_column(4, "f3", ValueType::Uint8, 3),
+				make_column(5, "f4", ValueType::Uint16, 4),
 			];
 
 			let shape_from_columns = RowShape::from(columns.as_slice());
 			let shape_direct = RowShape::new(vec![
-				RowShapeField::unconstrained("f0", Type::Uint1),
-				RowShapeField::unconstrained("f1", Type::Uint2),
-				RowShapeField::unconstrained("f2", Type::Uint4),
-				RowShapeField::unconstrained("f3", Type::Uint8),
-				RowShapeField::unconstrained("f4", Type::Uint16),
+				RowShapeField::unconstrained("f0", ValueType::Uint1),
+				RowShapeField::unconstrained("f1", ValueType::Uint2),
+				RowShapeField::unconstrained("f2", ValueType::Uint4),
+				RowShapeField::unconstrained("f3", ValueType::Uint8),
+				RowShapeField::unconstrained("f4", ValueType::Uint16),
 			]);
 
 			// Full equivalence check
@@ -159,15 +159,15 @@ mod tests {
 		#[test]
 		fn test_from_column_nine_fields() {
 			let columns = vec![
-				make_column(1, "f0", Type::Boolean, 0),
-				make_column(2, "f1", Type::Int1, 1),
-				make_column(3, "f2", Type::Int2, 2),
-				make_column(4, "f3", Type::Int4, 3),
-				make_column(5, "f4", Type::Int8, 4),
-				make_column(6, "f5", Type::Uint1, 5),
-				make_column(7, "f6", Type::Uint2, 6),
-				make_column(8, "f7", Type::Uint4, 7),
-				make_column(9, "f8", Type::Uint8, 8),
+				make_column(1, "f0", ValueType::Boolean, 0),
+				make_column(2, "f1", ValueType::Int1, 1),
+				make_column(3, "f2", ValueType::Int2, 2),
+				make_column(4, "f3", ValueType::Int4, 3),
+				make_column(5, "f4", ValueType::Int8, 4),
+				make_column(6, "f5", ValueType::Uint1, 5),
+				make_column(7, "f6", ValueType::Uint2, 6),
+				make_column(8, "f7", ValueType::Uint4, 7),
+				make_column(9, "f8", ValueType::Uint8, 8),
 			];
 
 			let shape = RowShape::from(columns.as_slice());

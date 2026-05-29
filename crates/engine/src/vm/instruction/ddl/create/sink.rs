@@ -5,7 +5,7 @@ use reifydb_catalog::catalog::sink::SinkToCreate;
 use reifydb_core::{interface::catalog::flow::FlowStatus, value::column::columns::Columns};
 use reifydb_rql::nodes::CreateSinkNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 use crate::{Result, vm::services::Services};
 

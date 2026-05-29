@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::{container::utf8::Utf8Container, frame::data::FrameColumnData};
+use reifydb_value::value::{container::utf8::Utf8Container, frame::data::FrameColumnData};
 
 fn make(v: Vec<String>) -> FrameColumnData {
 	FrameColumnData::Utf8(Utf8Container::new(v))

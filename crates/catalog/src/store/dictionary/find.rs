@@ -6,7 +6,7 @@ use reifydb_core::{
 	key::{dictionary::DictionaryKey, namespace_dictionary::NamespaceDictionaryKey},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::{dictionary::DictionaryId, r#type::Type};
+use reifydb_value::value::{dictionary::DictionaryId, value_type::ValueType};
 
 use crate::{
 	CatalogStore, Result,
@@ -33,8 +33,8 @@ impl CatalogStore {
 			id,
 			namespace,
 			name,
-			value_type: Type::from_u8(value_type_ordinal),
-			id_type: Type::from_u8(id_type_ordinal),
+			value_type: ValueType::from_u8(value_type_ordinal),
+			id_type: ValueType::from_u8(id_type_ordinal),
 		}))
 	}
 
@@ -74,9 +74,9 @@ pub mod tests {
 	use reifydb_core::interface::catalog::id::NamespaceId;
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_type::{
+	use reifydb_value::{
 		fragment::Fragment,
-		value::{dictionary::DictionaryId, r#type::Type},
+		value::{dictionary::DictionaryId, value_type::ValueType},
 	};
 
 	use crate::{
@@ -93,8 +93,8 @@ pub mod tests {
 		let to_create = DictionaryToCreate {
 			namespace: test_namespace.id(),
 			name: Fragment::internal("test_dict"),
-			value_type: Type::Utf8,
-			id_type: Type::Uint2,
+			value_type: ValueType::Utf8,
+			id_type: ValueType::Uint2,
 		};
 
 		let created = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
@@ -106,8 +106,8 @@ pub mod tests {
 		assert_eq!(found.id, created.id);
 		assert_eq!(found.name, created.name);
 		assert_eq!(found.namespace, created.namespace);
-		assert_eq!(found.value_type, Type::Utf8);
-		assert_eq!(found.id_type, Type::Uint2);
+		assert_eq!(found.value_type, ValueType::Utf8);
+		assert_eq!(found.id_type, ValueType::Uint2);
 	}
 
 	#[test]
@@ -128,8 +128,8 @@ pub mod tests {
 		let to_create = DictionaryToCreate {
 			namespace: namespace.id(),
 			name: Fragment::internal("token_mints"),
-			value_type: Type::Utf8,
-			id_type: Type::Uint4,
+			value_type: ValueType::Utf8,
+			id_type: ValueType::Uint4,
 		};
 
 		let created = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
@@ -144,8 +144,8 @@ pub mod tests {
 
 		assert_eq!(found.id, created.id);
 		assert_eq!(found.name, "token_mints");
-		assert_eq!(found.value_type, Type::Utf8);
-		assert_eq!(found.id_type, Type::Uint4);
+		assert_eq!(found.value_type, ValueType::Utf8);
+		assert_eq!(found.id_type, ValueType::Uint4);
 	}
 
 	#[test]
@@ -186,8 +186,8 @@ pub mod tests {
 		let to_create = DictionaryToCreate {
 			namespace: namespace1.id(),
 			name: Fragment::internal("shared_name"),
-			value_type: Type::Utf8,
-			id_type: Type::Uint2,
+			value_type: ValueType::Utf8,
+			id_type: ValueType::Uint2,
 		};
 
 		CatalogStore::create_dictionary(&mut txn, to_create).unwrap();

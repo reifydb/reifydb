@@ -10,7 +10,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	error::Error,
 	value::constraint::{FFITypeConstraint, TypeConstraint},
 };

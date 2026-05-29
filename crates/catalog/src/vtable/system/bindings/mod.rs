@@ -9,7 +9,7 @@ use reifydb_core::{
 	interface::catalog::binding::Binding,
 	value::column::{ColumnWithName, buffer::ColumnBuffer},
 };
-use reifydb_type::fragment::Fragment;
+use reifydb_value::fragment::Fragment;
 
 pub(crate) fn common_vtable_columns(bindings: &[Binding]) -> Vec<ColumnWithName> {
 	let mut ids = ColumnBuffer::uint8_with_capacity(bindings.len());

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::constraint::TypeConstraint;
+use reifydb_value::value::constraint::TypeConstraint;
 
 use crate::encoded::shape::RowShape;
 
@@ -93,7 +93,7 @@ impl ShapeResolver {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
 	use crate::encoded::shape::RowShapeField;
@@ -101,8 +101,8 @@ mod tests {
 	#[test]
 	fn test_resolver_identity() {
 		let fields = vec![
-			RowShapeField::unconstrained("a", Type::Int4),
-			RowShapeField::unconstrained("b", Type::Utf8),
+			RowShapeField::unconstrained("a", ValueType::Int4),
+			RowShapeField::unconstrained("b", ValueType::Utf8),
 		];
 
 		let shape = RowShape::new(fields);
@@ -114,11 +114,11 @@ mod tests {
 
 	#[test]
 	fn test_resolver_added_field() {
-		let source_fields = vec![RowShapeField::unconstrained("a", Type::Int4)];
+		let source_fields = vec![RowShapeField::unconstrained("a", ValueType::Int4)];
 
 		let target_fields = vec![
-			RowShapeField::unconstrained("a", Type::Int4),
-			RowShapeField::unconstrained("b", Type::Utf8), // new field
+			RowShapeField::unconstrained("a", ValueType::Int4),
+			RowShapeField::unconstrained("b", ValueType::Utf8), // new field
 		];
 
 		let source = RowShape::new(source_fields);
@@ -138,8 +138,8 @@ mod tests {
 
 	#[test]
 	fn test_resolver_incompatible_types() {
-		let source_fields = vec![RowShapeField::unconstrained("a", Type::Int4)];
-		let target_fields = vec![RowShapeField::unconstrained("a", Type::Utf8)]; // type changed
+		let source_fields = vec![RowShapeField::unconstrained("a", ValueType::Int4)];
+		let target_fields = vec![RowShapeField::unconstrained("a", ValueType::Utf8)]; // type changed
 
 		let source = RowShape::new(source_fields);
 		let target = RowShape::new(target_fields);

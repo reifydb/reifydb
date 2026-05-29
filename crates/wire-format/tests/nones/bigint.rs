@@ -2,7 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use num_bigint::BigInt;
-use reifydb_type::value::{container::number::NumberContainer, frame::data::FrameColumnData, int::Int, r#type::Type};
+use reifydb_value::value::{
+	container::number::NumberContainer, frame::data::FrameColumnData, int::Int, value_type::ValueType,
+};
 
 fn make(v: Vec<Int>) -> FrameColumnData {
 	FrameColumnData::Int(NumberContainer::new(v))
@@ -16,5 +18,5 @@ crate::nones_tests! {
 		Int(BigInt::from(42)),
 		Int(BigInt::from(-999)),
 	],
-	inner_type: Type::Int,
+	inner_type: ValueType::Int,
 }

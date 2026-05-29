@@ -13,7 +13,7 @@ use reifydb_core::{
 use reifydb_extension::transform::context::TransformContext;
 use reifydb_routine::routine::registry::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
-use reifydb_type::{params::Params, value::identity::IdentityId};
+use reifydb_value::{params::Params, value::identity::IdentityId};
 
 use crate::{
 	arena::QueryArena,

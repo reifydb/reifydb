@@ -31,10 +31,10 @@ use reifydb_core::{
 	sort::SortKey,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	return_error,
-	value::{constraint::TypeConstraint, r#type::Type},
+	value::{constraint::TypeConstraint, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -1830,7 +1830,7 @@ impl<'bump> Compiler<'bump> {
 						let column_def = Column {
 							id: ColumnId(1),
 							name: col.name.text().to_string(),
-							constraint: TypeConstraint::unconstrained(Type::Utf8),
+							constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 							properties: vec![],
 							index: ColumnIndex(0),
 							auto_increment: false,

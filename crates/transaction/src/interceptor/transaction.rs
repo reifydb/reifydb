@@ -9,7 +9,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 	},
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::{
 	TransactionId,

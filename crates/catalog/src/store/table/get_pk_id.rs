@@ -31,7 +31,7 @@ pub mod tests {
 	use reifydb_core::interface::catalog::{column::ColumnIndex, id::TableId, shape::ShapeId};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+	use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 	use crate::{
 		CatalogStore,
@@ -53,7 +53,7 @@ pub mod tests {
 				namespace_name: "test_namespace".to_string(),
 				shape_name: "test_table".to_string(),
 				column: "id".to_string(),
-				constraint: TypeConstraint::unconstrained(Type::Uint8),
+				constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 				properties: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,

@@ -19,7 +19,7 @@ reifydb-sub-api = { workspace = true }
 reifydb-sub-server = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-transaction = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 serde = { workspace = true }
 tracing = { workspace = true }
 futures-util = { workspace = true }

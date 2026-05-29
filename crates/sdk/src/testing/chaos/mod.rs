@@ -25,7 +25,7 @@ use std::{
 };
 
 use reifydb_core::{common::CommitVersion, encoded::shape::RowShape, interface::catalog::flow::FlowNodeId};
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 pub mod accumulator_oracle;
 pub mod batcher;
@@ -345,7 +345,7 @@ impl IntoColumnSampler for Range<f64> {
 mod tests {
 	use reifydb_abi::operator::capabilities::OperatorCapability;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use super::{config::BatchSizeDist, *};
 	use crate::{
@@ -383,7 +383,7 @@ mod tests {
 		}
 	}
 
-	fn shape(fields: &[(&str, Type)]) -> RowShape {
+	fn shape(fields: &[(&str, ValueType)]) -> RowShape {
 		RowShape::new(fields.iter().map(|(n, t)| RowShapeField::unconstrained(*n, t.clone())).collect())
 	}
 
@@ -446,8 +446,8 @@ mod tests {
 	/// the validation path of interest.
 	fn well_formed_builder() -> ChaosHarnessBuilder<NoOpOperator> {
 		ChaosHarness::<NoOpOperator>::builder()
-			.with_input_shape(shape(&[("k", Type::Uint8), ("v", Type::Float8)]))
-			.with_output_shape(shape(&[("k", Type::Uint8), ("v", Type::Float8)]))
+			.with_input_shape(shape(&[("k", ValueType::Uint8), ("v", ValueType::Float8)]))
+			.with_output_shape(shape(&[("k", ValueType::Uint8), ("v", ValueType::Float8)]))
 			.with_key_strategy(KeyStrategy::Sequential)
 			.with_output_key(["k"])
 			.with_column("k", samplers::u64_range(1..1000))
@@ -493,8 +493,8 @@ mod tests {
 		// with an input shape that has a column not registered in the
 		// sampler registry.
 		let result = ChaosHarness::<NoOpOperator>::builder()
-			.with_input_shape(shape(&[("k", Type::Uint8), ("v", Type::Float8), ("missing", Type::Int8)]))
-			.with_output_shape(shape(&[("k", Type::Uint8)]))
+			.with_input_shape(shape(&[("k", ValueType::Uint8), ("v", ValueType::Float8), ("missing", ValueType::Int8)]))
+			.with_output_shape(shape(&[("k", ValueType::Uint8)]))
 			.with_key_strategy(KeyStrategy::Sequential)
 			.with_output_key(["k"])
 			.with_column("k", samplers::u64_range(1..1000))
@@ -518,7 +518,9 @@ mod tests {
 
 		// input_shape only -> MissingField("output_shape").
 		let err = expect_build_err(
-			ChaosHarness::<NoOpOperator>::builder().with_input_shape(shape(&[("k", Type::Uint8)])).build(),
+			ChaosHarness::<NoOpOperator>::builder()
+				.with_input_shape(shape(&[("k", ValueType::Uint8)]))
+				.build(),
 			"no output_shape",
 		);
 		assert!(matches!(err, ChaosError::MissingField("output_shape")), "{err:?}");
@@ -526,8 +528,8 @@ mod tests {
 		// shapes only -> MissingField("key_strategy").
 		let err = expect_build_err(
 			ChaosHarness::<NoOpOperator>::builder()
-				.with_input_shape(shape(&[("k", Type::Uint8)]))
-				.with_output_shape(shape(&[("k", Type::Uint8)]))
+				.with_input_shape(shape(&[("k", ValueType::Uint8)]))
+				.with_output_shape(shape(&[("k", ValueType::Uint8)]))
 				.build(),
 			"no key_strategy",
 		);
@@ -536,8 +538,8 @@ mod tests {
 		// key but no output_key -> MissingField("output_key").
 		let err = expect_build_err(
 			ChaosHarness::<NoOpOperator>::builder()
-				.with_input_shape(shape(&[("k", Type::Uint8)]))
-				.with_output_shape(shape(&[("k", Type::Uint8)]))
+				.with_input_shape(shape(&[("k", ValueType::Uint8)]))
+				.with_output_shape(shape(&[("k", ValueType::Uint8)]))
 				.with_key_strategy(KeyStrategy::Sequential)
 				.build(),
 			"no output_key",
@@ -550,8 +552,8 @@ mod tests {
 		// earlier check.
 		let err = expect_build_err(
 			ChaosHarness::<NoOpOperator>::builder()
-				.with_input_shape(shape(&[("k", Type::Uint8)]))
-				.with_output_shape(shape(&[("k", Type::Uint8)]))
+				.with_input_shape(shape(&[("k", ValueType::Uint8)]))
+				.with_output_shape(shape(&[("k", ValueType::Uint8)]))
 				.with_key_strategy(KeyStrategy::Sequential)
 				.with_output_key(["k"])
 				.with_column("k", samplers::u64_range(1..1000))

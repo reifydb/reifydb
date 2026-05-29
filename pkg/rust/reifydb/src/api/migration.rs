@@ -7,7 +7,7 @@ use std::{
 };
 
 use reifydb_core::internal_error;
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 #[derive(Debug, Clone)]
 pub struct Migration {

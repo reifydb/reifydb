@@ -35,7 +35,7 @@ pub async fn start_repl(host: &str, port: u16, token: Option<String>) -> Result<
 	let mut display_mode = DisplayMode::Truncate; // Default to truncate
 
 	println!("Connected to ws://{}:{}", host, port);
-	println!("Type .help for help, .quit to exit\n");
+	println!("ValueType .help for help, .quit to exit\n");
 
 	let mut rl = DefaultEditor::new().map_err(|e| format!("Failed to initialize readline: {}", e))?;
 
@@ -187,7 +187,7 @@ fn handle_dot_command(
 			}
 		}
 		_ => {
-			println!("Unknown command: {}. Type .help for available commands.", cmd);
+			println!("Unknown command: {}. ValueType .help for available commands.", cmd);
 			DotCommandResult::Continue
 		}
 	}
@@ -234,7 +234,7 @@ fn print_query_result(frames: &[Frame], display_mode: DisplayMode) {
 }
 
 fn print_frame_truncated(frame: &Frame, max_width: usize) {
-	use reifydb_client::r#type::util::unicode::UnicodeWidthStr;
+	use reifydb_client::value::util::unicode::UnicodeWidthStr;
 
 	let row_count = frame.first().map_or(0, |c| c.data.len());
 	let has_row_numbers = !frame.row_numbers.is_empty();

@@ -10,7 +10,7 @@ use reifydb_engine::{
 	subscription::{HydrateError, SubscriptionServiceRef},
 };
 use reifydb_transaction::multi::lease::VersionLeaseGuard;
-use reifydb_type::value::identity::IdentityId;
+use reifydb_value::value::identity::IdentityId;
 use tokio::task::spawn_blocking;
 
 pub async fn run_hydrate(

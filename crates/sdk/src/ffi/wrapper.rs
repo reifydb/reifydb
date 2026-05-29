@@ -21,7 +21,7 @@ use reifydb_abi::{
 	},
 	operator::vtable::OperatorVTableFFI,
 };
-use reifydb_type::value::datetime::DateTime;
+use reifydb_value::value::datetime::DateTime;
 use tracing::{error, instrument, warn};
 
 use crate::operator::{FFIOperator, Tick, change::BorrowedChange, context::ffi::FFIOperatorContext};

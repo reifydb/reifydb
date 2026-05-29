@@ -106,14 +106,14 @@ impl From<EncodedIndexKeyRange> for EncodedKeyRange {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
 	use crate::{sort::SortDirection, value::index::shape::IndexShape};
 
 	#[test]
 	fn test_start_end() {
-		let layout = IndexShape::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
+		let layout = IndexShape::new(&[ValueType::Uint8], &[SortDirection::Asc]).unwrap();
 
 		let mut key1 = layout.allocate_key();
 		layout.set_u64(&mut key1, 0, 100u64);
@@ -140,7 +140,7 @@ pub mod tests {
 
 	#[test]
 	fn test_start_end_inclusive() {
-		let layout = IndexShape::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
+		let layout = IndexShape::new(&[ValueType::Uint8], &[SortDirection::Asc]).unwrap();
 
 		let mut key1 = layout.allocate_key();
 		layout.set_u64(&mut key1, 0, 100u64);
@@ -221,7 +221,7 @@ pub mod tests {
 
 	#[test]
 	fn test_to_encoded_key_range() {
-		let layout = IndexShape::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
+		let layout = IndexShape::new(&[ValueType::Uint8], &[SortDirection::Asc]).unwrap();
 
 		let mut key = layout.allocate_key();
 		layout.set_u64(&mut key, 0, 100u64);

@@ -14,10 +14,10 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	util::cowvec::CowVec,
-	value::{Value, row_number::RowNumber, r#type::Type},
+	value::{Value, row_number::RowNumber, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -35,7 +35,7 @@ pub struct RingBufferScan {
 	headers: ColumnHeaders,
 	shape: Option<RowShape>,
 
-	storage_types: Vec<Type>,
+	storage_types: Vec<ValueType>,
 
 	dictionaries: Vec<Option<Dictionary>>,
 
@@ -58,7 +58,7 @@ impl RingBufferScan {
 		for col in ringbuffer.columns() {
 			if let Some(dict_id) = col.dictionary_id {
 				if let Some(dict) = context.services.catalog.find_dictionary(rx, dict_id)? {
-					storage_types.push(Type::DictionaryId);
+					storage_types.push(ValueType::DictionaryId);
 					dictionaries.push(Some(dict));
 				} else {
 					storage_types.push(col.constraint.get_type());

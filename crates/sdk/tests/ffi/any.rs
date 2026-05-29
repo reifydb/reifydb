@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::buffer::ColumnBuffer;
-use reifydb_type::value::{
+use reifydb_value::value::{
 	Value,
 	blob::Blob,
 	date::Date,
@@ -15,9 +15,9 @@ use reifydb_type::value::{
 	ordered_f32::OrderedF32,
 	ordered_f64::OrderedF64,
 	time::Time,
-	r#type::Type,
 	uint::Uint,
 	uuid::{Uuid4, Uuid7},
+	value_type::ValueType,
 };
 use uuid::Uuid;
 
@@ -67,7 +67,7 @@ fn any_none() {
 
 #[test]
 fn any_none_of_int8() {
-	let input = ColumnBuffer::any([Box::new(Value::none_of(Type::Int8))]);
+	let input = ColumnBuffer::any([Box::new(Value::none_of(ValueType::Int8))]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_none_of_int8", &input, &output);
 }
@@ -565,25 +565,27 @@ fn any_dictionary_id_each_variant() {
 	assert_column_eq("any_dict_id_each_variant", &input, &output);
 }
 
-// Type (meta).
+// ValueType (meta).
 #[test]
 fn any_type_simple() {
-	let input = ColumnBuffer::any([Box::new(Value::Type(Type::Int8)), Box::new(Value::Type(Type::Utf8))]);
+	let input = ColumnBuffer::any([Box::new(Value::Type(ValueType::Int8)), Box::new(Value::Type(ValueType::Utf8))]);
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_type_simple", &input, &output);
 }
 
 #[test]
 fn any_type_recursive_list() {
-	let input = one_row(Value::Type(Type::List(Box::new(Type::Int8))));
+	let input = one_row(Value::Type(ValueType::List(Box::new(ValueType::Int8))));
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_type_list", &input, &output);
 }
 
 #[test]
 fn any_type_recursive_record() {
-	let input =
-		one_row(Value::Type(Type::Record(vec![("x".to_string(), Type::Int4), ("y".to_string(), Type::Utf8)])));
+	let input = one_row(Value::Type(ValueType::Record(vec![
+		("x".to_string(), ValueType::Int4),
+		("y".to_string(), ValueType::Utf8),
+	])));
 	let output = round_trip_column("a", input.clone());
 	assert_column_eq("any_type_record", &input, &output);
 }
@@ -751,7 +753,7 @@ fn any_one_per_variant_in_one_column() {
 		Box::new(Value::Decimal(Decimal::from_i64(7))),
 		Box::new(Value::Any(Box::new(Value::Int8(42)))),
 		Box::new(Value::DictionaryId(DictionaryEntryId::U4(7))),
-		Box::new(Value::Type(Type::Int8)),
+		Box::new(Value::Type(ValueType::Int8)),
 		Box::new(Value::List(vec![Value::Int8(1), Value::Int8(2)])),
 		Box::new(Value::Record(vec![("k".to_string(), Value::Int8(1))])),
 		Box::new(Value::Tuple(vec![Value::Int8(1), Value::Boolean(false)])),

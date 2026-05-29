@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::{
-	container::identity_id::IdentityIdContainer, frame::data::FrameColumnData, identity::IdentityId, r#type::Type,
-	uuid::Uuid7,
+use reifydb_value::value::{
+	container::identity_id::IdentityIdContainer, frame::data::FrameColumnData, identity::IdentityId, uuid::Uuid7,
+	value_type::ValueType,
 };
 
 fn make(v: Vec<IdentityId>) -> FrameColumnData {
@@ -18,5 +18,5 @@ crate::nones_tests! {
 		IdentityId::new(Uuid7(uuid::Uuid::from_u128(42))),
 		IdentityId::new(Uuid7(uuid::Uuid::from_u128(u128::MAX - 1))),
 	],
-	inner_type: Type::IdentityId,
+	inner_type: ValueType::IdentityId,
 }

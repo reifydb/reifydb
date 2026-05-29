@@ -2,14 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::buffer::ColumnBuffer;
-use reifydb_type::{
+use reifydb_value::{
 	error::{TemporalKind, TypeError},
 	fragment::Fragment,
 	value::{
 		temporal::parse::{
 			date::parse_date, datetime::parse_datetime, duration::parse_duration, time::parse_time,
 		},
-		r#type::Type,
+		value_type::ValueType,
 	},
 };
 
@@ -18,7 +18,7 @@ use crate::Result;
 pub struct TemporalParser;
 
 impl TemporalParser {
-	pub fn from_temporal(fragment: Fragment, target: Type, row_count: usize) -> Result<ColumnBuffer> {
+	pub fn from_temporal(fragment: Fragment, target: ValueType, row_count: usize) -> Result<ColumnBuffer> {
 		Self::parse_temporal_type(fragment, target, row_count)
 	}
 
@@ -47,26 +47,26 @@ impl TemporalParser {
 		}
 	}
 
-	pub fn parse_temporal_type(fragment: Fragment, target: Type, row_count: usize) -> Result<ColumnBuffer> {
+	pub fn parse_temporal_type(fragment: Fragment, target: ValueType, row_count: usize) -> Result<ColumnBuffer> {
 		match target {
-			Type::Date => {
+			ValueType::Date => {
 				let date = parse_date(fragment.clone())?;
 				Ok(ColumnBuffer::date(vec![date; row_count]))
 			}
-			Type::DateTime => {
+			ValueType::DateTime => {
 				let datetime = parse_datetime(fragment.clone())?;
 				Ok(ColumnBuffer::datetime(vec![datetime; row_count]))
 			}
-			Type::Time => {
+			ValueType::Time => {
 				let time = parse_time(fragment.clone())?;
 				Ok(ColumnBuffer::time(vec![time; row_count]))
 			}
-			Type::Duration => {
+			ValueType::Duration => {
 				let duration = parse_duration(fragment.clone())?;
 				Ok(ColumnBuffer::duration(vec![duration; row_count]))
 			}
 			_ => Err(TypeError::UnsupportedCast {
-				from: Type::DateTime,
+				from: ValueType::DateTime,
 				to: target,
 				fragment,
 			}

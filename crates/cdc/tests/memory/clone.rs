@@ -7,7 +7,7 @@ use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::cdc::{Cdc, SystemChange},
 };
-use reifydb_type::{util::cowvec::CowVec, value::datetime::DateTime};
+use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
 
 fn cdc_at(version: u64) -> Cdc {
 	Cdc::new(

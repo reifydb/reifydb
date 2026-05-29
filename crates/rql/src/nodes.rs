@@ -27,11 +27,11 @@ use reifydb_core::{
 	row::{JoinTtl, Ttl},
 	sort::{SortDirection, SortKey},
 };
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		constraint::TypeConstraint, dictionary::DictionaryId, duration::Duration, sumtype::SumTypeId,
-		r#type::Type,
+		value_type::ValueType,
 	},
 };
 
@@ -237,8 +237,8 @@ pub struct CreateDictionaryNode {
 	pub namespace: Namespace,
 	pub dictionary: Fragment,
 	pub if_not_exists: bool,
-	pub value_type: Type,
-	pub id_type: Type,
+	pub value_type: ValueType,
+	pub id_type: ValueType,
 }
 
 #[derive(Debug, Clone)]
@@ -264,7 +264,7 @@ pub struct CreateSumTypeColumn {
 #[derive(Debug, Clone)]
 pub struct SubscriptionColumnToCreate {
 	pub name: String,
-	pub ty: Type,
+	pub ty: ValueType,
 }
 
 #[derive(Debug, Clone)]

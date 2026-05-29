@@ -10,7 +10,7 @@ use reifydb_core::{
 	key::{namespace_sink::NamespaceSinkKey, sink::SinkKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::fragment::Fragment;
+use reifydb_value::fragment::Fragment;
 use serde_json::to_string;
 
 use crate::{
@@ -106,7 +106,7 @@ pub mod tests {
 		key::namespace_sink::NamespaceSinkKey,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
-	use reifydb_type::fragment::Fragment;
+	use reifydb_value::fragment::Fragment;
 
 	use crate::{
 		CatalogStore,

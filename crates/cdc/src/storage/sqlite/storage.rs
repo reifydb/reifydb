@@ -21,7 +21,7 @@ use reifydb_sqlite::{
 	connection::{connect, convert_flags, resolve_db_path},
 	pragma,
 };
-use reifydb_type::value::datetime::DateTime;
+use reifydb_value::value::datetime::DateTime;
 use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, Transaction, params, params_from_iter, types::Value as SqlValue,
 };

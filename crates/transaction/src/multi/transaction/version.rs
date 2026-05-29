@@ -12,7 +12,7 @@ use reifydb_core::{
 	key::{EncodableKey, transaction_version::TransactionVersionKey},
 };
 use reifydb_runtime::sync::mutex::Mutex;
-use reifydb_type::{Result, value::r#type::Type};
+use reifydb_value::{Result, value::value_type::ValueType};
 
 use crate::single::SingleTransaction;
 
@@ -54,7 +54,7 @@ pub struct StandardVersionProvider {
 
 impl StandardVersionProvider {
 	pub fn new(single: SingleTransaction) -> Result<Self> {
-		let shape = RowShape::new(vec![RowShapeField::unconstrained("version", Type::Uint8)]);
+		let shape = RowShape::new(vec![RowShapeField::unconstrained("version", ValueType::Uint8)]);
 
 		let current_version = Self::load_current_version(&shape, &single)?;
 		let first_block = VersionBlock::new(current_version);
@@ -268,7 +268,7 @@ pub mod tests {
 		let single = SingleTransaction::testing();
 
 		// Manually set a version in storage
-		let shape = RowShape::testing(&[Type::Uint8]);
+		let shape = RowShape::testing(&[ValueType::Uint8]);
 		let key = TransactionVersionKey {}.encode();
 		let mut row = shape.allocate();
 		shape.set_u64(&mut row, 0, 500u64);

@@ -10,9 +10,9 @@ use reifydb_core::value::column::{
 	columns::Columns,
 	view::group_by::{GroupByView, GroupKey},
 };
-use reifydb_type::value::{
+use reifydb_value::value::{
 	Value,
-	r#type::{Type, input_types::InputTypes},
+	value_type::{ValueType, input_types::InputTypes},
 };
 
 use crate::routine::{
@@ -43,8 +43,8 @@ impl<'a> Routine<FunctionContext<'a>> for Count {
 		&self.info
 	}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Int8
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Int8
 	}
 
 	fn accepted_types(&self) -> InputTypes {

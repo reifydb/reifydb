@@ -6,7 +6,7 @@ use reifydb_core::value::column::{
 	encoding::EncodingId,
 	stats::{Stat, StatsSet},
 };
-use reifydb_type::{Result, value::Value};
+use reifydb_value::{Result, value::Value};
 
 use crate::{compress::CompressConfig, encoding::Encoding};
 

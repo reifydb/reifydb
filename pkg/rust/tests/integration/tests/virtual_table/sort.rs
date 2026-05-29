@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::{Database, Params, SharedRuntimeConfig, embedded as db_embedded};
-use reifydb_type::value::frame::frame::Frame;
+use reifydb_value::value::frame::frame::Frame;
 
 fn new_db() -> Database {
 	let mut db = db_embedded::memory()

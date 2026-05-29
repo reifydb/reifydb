@@ -13,7 +13,7 @@ use std::ops::Bound;
 
 use postcard::{from_bytes, to_allocvec};
 use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape};
-use reifydb_type::value::blob::Blob;
+use reifydb_value::value::blob::Blob;
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{

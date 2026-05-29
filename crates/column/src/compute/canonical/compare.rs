@@ -4,9 +4,9 @@
 use std::cmp::{Ordering, Ordering::*};
 
 use reifydb_core::value::column::{buffer::ColumnBuffer, data::canonical::Canonical};
-use reifydb_type::{
+use reifydb_value::{
 	Result,
-	value::{Value, r#type::Type},
+	value::{Value, value_type::ValueType},
 };
 
 use crate::compute::CompareOp;
@@ -21,7 +21,7 @@ pub fn compare(array: &Canonical, rhs: &Value, op: CompareOp) -> Result<Canonica
 	}
 	let new_buffer = ColumnBuffer::bool(out);
 	let new_nones = array.nones.clone();
-	Ok(Canonical::new(Type::Boolean, array.nullable, new_nones, new_buffer))
+	Ok(Canonical::new(ValueType::Boolean, array.nullable, new_nones, new_buffer))
 }
 
 fn cmp_values(lhs: &Value, rhs: &Value) -> Ordering {

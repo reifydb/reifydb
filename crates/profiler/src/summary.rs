@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_type::value::duration::Duration;
+use reifydb_value::value::duration::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::{

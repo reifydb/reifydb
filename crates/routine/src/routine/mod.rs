@@ -17,12 +17,12 @@ use reifydb_core::value::column::{
 	columns::Columns,
 	view::group_by::{GroupByView, GroupKey},
 };
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	util::bitvec::BitVec,
 	value::{
 		Value,
-		r#type::{Type, input_types::InputTypes},
+		value_type::{ValueType, input_types::InputTypes},
 	},
 };
 use serde::{Deserialize, Serialize};
@@ -60,7 +60,7 @@ impl RoutineInfo {
 pub trait Routine<C: Context>: Send + Sync {
 	fn info(&self) -> &RoutineInfo;
 
-	fn return_type(&self, input_types: &[Type]) -> Type;
+	fn return_type(&self, input_types: &[ValueType]) -> ValueType;
 
 	fn accepted_types(&self) -> InputTypes {
 		InputTypes::any()
@@ -103,7 +103,7 @@ pub trait Routine<C: Context>: Send + Sync {
 			&& bv.count_ones() == 0
 		{
 			let row_count = args.row_count();
-			let input_types: Vec<Type> = unwrapped.iter().map(|c| c.data.get_type()).collect();
+			let input_types: Vec<ValueType> = unwrapped.iter().map(|c| c.data.get_type()).collect();
 			let result_type = self.return_type(&input_types);
 			let result_data = ColumnBuffer::none_typed(result_type, row_count);
 			return Ok(Columns::new(vec![ColumnWithName::new(

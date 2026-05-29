@@ -3,7 +3,7 @@
 
 use std::iter;
 
-use reifydb_type::{
+use reifydb_value::{
 	util::bitvec::BitVec,
 	value::{
 		Value,
@@ -17,9 +17,9 @@ use reifydb_type::{
 		identity::IdentityId,
 		int::Int,
 		time::Time,
-		r#type::Type,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
 	},
 };
 
@@ -77,22 +77,22 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 				data: encode_bitvec(bv),
 				offsets: vec![],
 				nones: vec![],
-				type_code: Type::Boolean.to_u8(),
+				type_code: ValueType::Boolean.to_u8(),
 				has_nones: false,
 			}
 		}
-		FrameColumnData::Float4(c) => encode_fixed!(c, Type::Float4, 4),
-		FrameColumnData::Float8(c) => encode_fixed!(c, Type::Float8, 8),
-		FrameColumnData::Int1(c) => encode_fixed!(c, Type::Int1, 1),
-		FrameColumnData::Int2(c) => encode_fixed!(c, Type::Int2, 2),
-		FrameColumnData::Int4(c) => encode_fixed!(c, Type::Int4, 4),
-		FrameColumnData::Int8(c) => encode_fixed!(c, Type::Int8, 8),
-		FrameColumnData::Int16(c) => encode_fixed!(c, Type::Int16, 16),
-		FrameColumnData::Uint1(c) => encode_fixed!(c, Type::Uint1, 1),
-		FrameColumnData::Uint2(c) => encode_fixed!(c, Type::Uint2, 2),
-		FrameColumnData::Uint4(c) => encode_fixed!(c, Type::Uint4, 4),
-		FrameColumnData::Uint8(c) => encode_fixed!(c, Type::Uint8, 8),
-		FrameColumnData::Uint16(c) => encode_fixed!(c, Type::Uint16, 16),
+		FrameColumnData::Float4(c) => encode_fixed!(c, ValueType::Float4, 4),
+		FrameColumnData::Float8(c) => encode_fixed!(c, ValueType::Float8, 8),
+		FrameColumnData::Int1(c) => encode_fixed!(c, ValueType::Int1, 1),
+		FrameColumnData::Int2(c) => encode_fixed!(c, ValueType::Int2, 2),
+		FrameColumnData::Int4(c) => encode_fixed!(c, ValueType::Int4, 4),
+		FrameColumnData::Int8(c) => encode_fixed!(c, ValueType::Int8, 8),
+		FrameColumnData::Int16(c) => encode_fixed!(c, ValueType::Int16, 16),
+		FrameColumnData::Uint1(c) => encode_fixed!(c, ValueType::Uint1, 1),
+		FrameColumnData::Uint2(c) => encode_fixed!(c, ValueType::Uint2, 2),
+		FrameColumnData::Uint4(c) => encode_fixed!(c, ValueType::Uint4, 4),
+		FrameColumnData::Uint8(c) => encode_fixed!(c, ValueType::Uint8, 8),
+		FrameColumnData::Uint16(c) => encode_fixed!(c, ValueType::Uint16, 16),
 		FrameColumnData::Date(c) => {
 			let slice: &[Date] = c;
 			let mut buf = Vec::with_capacity(slice.len() * 4);
@@ -103,7 +103,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 				data: buf,
 				offsets: vec![],
 				nones: vec![],
-				type_code: Type::Date.to_u8(),
+				type_code: ValueType::Date.to_u8(),
 				has_nones: false,
 			}
 		}
@@ -117,7 +117,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 				data: buf,
 				offsets: vec![],
 				nones: vec![],
-				type_code: Type::DateTime.to_u8(),
+				type_code: ValueType::DateTime.to_u8(),
 				has_nones: false,
 			}
 		}
@@ -131,7 +131,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 				data: buf,
 				offsets: vec![],
 				nones: vec![],
-				type_code: Type::Time.to_u8(),
+				type_code: ValueType::Time.to_u8(),
 				has_nones: false,
 			}
 		}
@@ -147,7 +147,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 				data: buf,
 				offsets: vec![],
 				nones: vec![],
-				type_code: Type::Duration.to_u8(),
+				type_code: ValueType::Duration.to_u8(),
 				has_nones: false,
 			}
 		}
@@ -161,7 +161,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 				data: buf,
 				offsets: vec![],
 				nones: vec![],
-				type_code: Type::IdentityId.to_u8(),
+				type_code: ValueType::IdentityId.to_u8(),
 				has_nones: false,
 			}
 		}
@@ -175,7 +175,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 				data: buf,
 				offsets: vec![],
 				nones: vec![],
-				type_code: Type::Uuid4.to_u8(),
+				type_code: ValueType::Uuid4.to_u8(),
 				has_nones: false,
 			}
 		}
@@ -189,23 +189,23 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 				data: buf,
 				offsets: vec![],
 				nones: vec![],
-				type_code: Type::Uuid7.to_u8(),
+				type_code: ValueType::Uuid7.to_u8(),
 				has_nones: false,
 			}
 		}
-		FrameColumnData::Utf8(c) => encode_varlen_strings(c, Type::Utf8),
-		FrameColumnData::Blob(c) => encode_varlen_blobs(c, Type::Blob),
+		FrameColumnData::Utf8(c) => encode_varlen_strings(c, ValueType::Utf8),
+		FrameColumnData::Blob(c) => encode_varlen_blobs(c, ValueType::Blob),
 		FrameColumnData::Int(c) => {
 			let slice: &[Int] = c;
-			encode_varlen(slice.len(), |i| slice[i].0.to_signed_bytes_le(), Type::Int)
+			encode_varlen(slice.len(), |i| slice[i].0.to_signed_bytes_le(), ValueType::Int)
 		}
 		FrameColumnData::Uint(c) => {
 			let slice: &[Uint] = c;
-			encode_varlen(slice.len(), |i| slice[i].0.to_signed_bytes_le(), Type::Uint)
+			encode_varlen(slice.len(), |i| slice[i].0.to_signed_bytes_le(), ValueType::Uint)
 		}
 		FrameColumnData::Decimal(c) => {
 			let slice: &[Decimal] = c;
-			encode_varlen(slice.len(), |i| slice[i].to_string().into_bytes(), Type::Decimal)
+			encode_varlen(slice.len(), |i| slice[i].to_string().into_bytes(), ValueType::Decimal)
 		}
 		FrameColumnData::Any(c) => {
 			let mut data = Vec::new();
@@ -218,7 +218,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 				data,
 				offsets: vec![],
 				nones: vec![],
-				type_code: Type::Any.to_u8(),
+				type_code: ValueType::Any.to_u8(),
 				has_nones: false,
 			});
 		}
@@ -230,7 +230,7 @@ fn encode_plain_inner(col: &FrameColumnData) -> Result<PlainEncoded, EncodeError
 	Ok(result)
 }
 
-fn encode_varlen(count: usize, get_bytes: impl Fn(usize) -> Vec<u8>, ty: Type) -> PlainEncoded {
+fn encode_varlen(count: usize, get_bytes: impl Fn(usize) -> Vec<u8>, ty: ValueType) -> PlainEncoded {
 	let mut offsets = Vec::with_capacity((count + 1) * 4);
 	let mut data = Vec::new();
 	let mut offset: u32 = 0;
@@ -250,11 +250,11 @@ fn encode_varlen(count: usize, get_bytes: impl Fn(usize) -> Vec<u8>, ty: Type) -
 	}
 }
 
-fn encode_varlen_strings(c: &Utf8Container, ty: Type) -> PlainEncoded {
+fn encode_varlen_strings(c: &Utf8Container, ty: ValueType) -> PlainEncoded {
 	encode_varlen(c.len(), |i| c.get(i).unwrap().as_bytes().to_vec(), ty)
 }
 
-fn encode_varlen_blobs(c: &BlobContainer, ty: Type) -> PlainEncoded {
+fn encode_varlen_blobs(c: &BlobContainer, ty: ValueType) -> PlainEncoded {
 	encode_varlen(c.len(), |i| c.get(i).unwrap_or(&[]).to_vec(), ty)
 }
 
@@ -297,7 +297,7 @@ fn encode_dictionary_ids(c: &DictionaryContainer) -> PlainEncoded {
 		data: buf,
 		offsets: vec![],
 		nones: vec![],
-		type_code: Type::DictionaryId.to_u8(),
+		type_code: ValueType::DictionaryId.to_u8(),
 		has_nones: false,
 	}
 }

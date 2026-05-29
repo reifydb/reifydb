@@ -17,6 +17,6 @@ reifydb-core = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-transaction = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

@@ -61,7 +61,7 @@ use reifydb_sub_server_ws::factory::{WsConfigurator, WsSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 #[cfg(feature = "sub_profiler")]
 use tracing_subscriber::filter::LevelFilter;
 

@@ -2,23 +2,23 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::buffer::ColumnBuffer;
-use reifydb_type::{
+use reifydb_value::{
 	error::{Error, TypeError},
 	fragment::{Fragment, LazyFragment},
 	value::{
 		container::{identity_id::IdentityIdContainer, utf8::Utf8Container, uuid::UuidContainer},
 		identity::IdentityId,
-		r#type::Type,
 		uuid::{
 			Uuid4, Uuid7,
 			parse::{parse_identity_id, parse_uuid4, parse_uuid7},
 		},
+		value_type::ValueType,
 	},
 };
 
 use crate::{Result, error::CastError};
 
-pub fn to_uuid(data: &ColumnBuffer, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
+pub fn to_uuid(data: &ColumnBuffer, target: ValueType, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
 	match data {
 		ColumnBuffer::Utf8 {
 			container,
@@ -40,13 +40,13 @@ pub fn to_uuid(data: &ColumnBuffer, target: Type, lazy_fragment: impl LazyFragme
 }
 
 #[inline]
-fn from_text(container: &Utf8Container, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
+fn from_text(container: &Utf8Container, target: ValueType, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
 	match target {
-		Type::Uuid4 => to_uuid4(container, lazy_fragment),
-		Type::Uuid7 => to_uuid7(container, lazy_fragment),
-		Type::IdentityId => to_identity_id(container, lazy_fragment),
+		ValueType::Uuid4 => to_uuid4(container, lazy_fragment),
+		ValueType::Uuid7 => to_uuid7(container, lazy_fragment),
+		ValueType::IdentityId => to_identity_id(container, lazy_fragment),
 		_ => {
-			let shape_type = Type::Utf8;
+			let shape_type = ValueType::Utf8;
 			Err(TypeError::UnsupportedCast {
 				from: shape_type,
 				to: target,
@@ -89,20 +89,20 @@ macro_rules! impl_to_uuid {
 	};
 }
 
-impl_to_uuid!(to_uuid4, Uuid4, Type::Uuid4, parse_uuid4);
-impl_to_uuid!(to_uuid7, Uuid7, Type::Uuid7, parse_uuid7);
-impl_to_uuid!(to_identity_id, IdentityId, Type::IdentityId, parse_identity_id);
+impl_to_uuid!(to_uuid4, Uuid4, ValueType::Uuid4, parse_uuid4);
+impl_to_uuid!(to_uuid7, Uuid7, ValueType::Uuid7, parse_uuid7);
+impl_to_uuid!(to_identity_id, IdentityId, ValueType::IdentityId, parse_identity_id);
 
 #[inline]
 fn from_uuid4(
 	container: &UuidContainer<Uuid4>,
-	target: Type,
+	target: ValueType,
 	lazy_fragment: impl LazyFragment,
 ) -> Result<ColumnBuffer> {
 	match target {
-		Type::Uuid4 => Ok(ColumnBuffer::Uuid4(UuidContainer::new(container.data().to_vec()))),
+		ValueType::Uuid4 => Ok(ColumnBuffer::Uuid4(UuidContainer::new(container.data().to_vec()))),
 		_ => {
-			let shape_type = Type::Uuid4;
+			let shape_type = ValueType::Uuid4;
 			Err(TypeError::UnsupportedCast {
 				from: shape_type,
 				to: target,
@@ -116,13 +116,13 @@ fn from_uuid4(
 #[inline]
 fn from_uuid7(
 	container: &UuidContainer<Uuid7>,
-	target: Type,
+	target: ValueType,
 	lazy_fragment: impl LazyFragment,
 ) -> Result<ColumnBuffer> {
 	match target {
-		Type::Uuid7 => Ok(ColumnBuffer::Uuid7(UuidContainer::new(container.data().to_vec()))),
+		ValueType::Uuid7 => Ok(ColumnBuffer::Uuid7(UuidContainer::new(container.data().to_vec()))),
 		_ => {
-			let shape_type = Type::Uuid7;
+			let shape_type = ValueType::Uuid7;
 			Err(TypeError::UnsupportedCast {
 				from: shape_type,
 				to: target,
@@ -136,15 +136,15 @@ fn from_uuid7(
 #[inline]
 fn from_identity_id(
 	container: &IdentityIdContainer,
-	target: Type,
+	target: ValueType,
 	lazy_fragment: impl LazyFragment,
 ) -> Result<ColumnBuffer> {
 	match target {
-		Type::IdentityId => {
+		ValueType::IdentityId => {
 			Ok(ColumnBuffer::IdentityId(IdentityIdContainer::from_vec(container.data().to_vec())))
 		}
 		_ => Err(TypeError::UnsupportedCast {
-			from: Type::IdentityId,
+			from: ValueType::IdentityId,
 			to: target,
 			fragment: lazy_fragment.fragment(),
 		}

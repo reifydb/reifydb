@@ -3,7 +3,7 @@
 
 use reifydb_core::{interface::catalog::config::ConfigKey, key::config::ConfigStorageKey};
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 use crate::{CatalogStore, Result, store::config::shape::config};
 

@@ -112,7 +112,7 @@ mod tests {
 	use std::sync::Arc;
 
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use super::{
 		super::{
@@ -125,8 +125,8 @@ mod tests {
 
 	fn schema_basic() -> Arc<ChaosSchema> {
 		let s = RowShape::new(vec![
-			RowShapeField::unconstrained("k", Type::Uint8),
-			RowShapeField::unconstrained("v", Type::Float8),
+			RowShapeField::unconstrained("k", ValueType::Uint8),
+			RowShapeField::unconstrained("v", ValueType::Float8),
 		]);
 		Arc::new(ChaosSchema {
 			input_shape: s.clone(),

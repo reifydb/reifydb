@@ -16,7 +16,7 @@ pub(crate) mod hash;
 pub mod hash_inner;
 pub mod hash_left;
 
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::operator::join::strategy::{hash_inner::InnerHashJoin, hash_left::LeftHashJoin};
 

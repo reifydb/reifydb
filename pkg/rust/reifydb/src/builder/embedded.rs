@@ -22,7 +22,7 @@ use reifydb_sub_replication::factory::ReplicationSubsystemFactory;
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 fn pool_config_from_sources(
 	factory: &StorageFactory,

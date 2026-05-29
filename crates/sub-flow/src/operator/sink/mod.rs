@@ -28,7 +28,7 @@ use reifydb_engine::{
 };
 use reifydb_routine::routine::registry::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	fragment::Fragment,
 	params::Params,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::{Result, storage::DataBitVec, util::bitvec::BitVec};
+use reifydb_value::{Result, storage::DataBitVec, util::bitvec::BitVec};
 
 use crate::value::column::{ColumnBuffer, ColumnWithName, buffer::with_container};
 
@@ -39,9 +39,9 @@ pub mod tests {
 		clock::{Clock, MockClock},
 		rng::Rng,
 	};
-	use reifydb_type::{
+	use reifydb_value::{
 		util::bitvec::BitVec,
-		value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, r#type::Type},
+		value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, value_type::ValueType},
 	};
 
 	use crate::value::column::ColumnBuffer;
@@ -110,7 +110,7 @@ pub mod tests {
 
 	#[test]
 	fn test_filter_none() {
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 5);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 5);
 		let mask = BitVec::from_slice(&[true, false, true, false, false]);
 
 		col.filter(&mask).unwrap();

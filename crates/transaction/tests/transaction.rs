@@ -48,7 +48,7 @@ use reifydb_transaction::{
 	},
 	single::SingleTransaction,
 };
-use reifydb_type::{util::cowvec::CowVec, value::Value};
+use reifydb_value::{util::cowvec::CowVec, value::Value};
 
 /// A handle to either a read, write, or replica transaction for test tracking
 enum TransactionHandle {

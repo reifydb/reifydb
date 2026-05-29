@@ -3,7 +3,7 @@
 
 use reifydb_core::{interface::catalog::dictionary::Dictionary, return_internal_error};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::dictionary::DictionaryId;
+use reifydb_value::value::dictionary::DictionaryId;
 
 use crate::{CatalogStore, Result};
 
@@ -23,9 +23,9 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_type::{
+	use reifydb_value::{
 		fragment::Fragment,
-		value::{dictionary::DictionaryId, r#type::Type},
+		value::{dictionary::DictionaryId, value_type::ValueType},
 	};
 
 	use crate::{CatalogStore, store::dictionary::create::DictionaryToCreate, test_utils::ensure_test_namespace};
@@ -38,8 +38,8 @@ pub mod tests {
 		let to_create = DictionaryToCreate {
 			namespace: test_namespace.id(),
 			name: Fragment::internal("test_dict"),
-			value_type: Type::Utf8,
-			id_type: Type::Uint2,
+			value_type: ValueType::Utf8,
+			id_type: ValueType::Uint2,
 		};
 
 		let created = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
@@ -48,8 +48,8 @@ pub mod tests {
 
 		assert_eq!(result.id, created.id);
 		assert_eq!(result.name, "test_dict");
-		assert_eq!(result.value_type, Type::Utf8);
-		assert_eq!(result.id_type, Type::Uint2);
+		assert_eq!(result.value_type, ValueType::Utf8);
+		assert_eq!(result.id_type, ValueType::Uint2);
 	}
 
 	#[test]

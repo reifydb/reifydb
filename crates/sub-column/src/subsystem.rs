@@ -14,7 +14,7 @@ use reifydb_column::registry::SnapshotRegistry;
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_runtime::actor::mailbox::ActorRef;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_type::Result;
+use reifydb_value::Result;
 use tracing::{debug, info};
 
 use crate::actor::{SeriesMessage, TableMessage};

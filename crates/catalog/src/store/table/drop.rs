@@ -35,9 +35,9 @@ pub mod tests {
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_type::{
+	use reifydb_value::{
 		fragment::Fragment,
-		value::{constraint::TypeConstraint, r#type::Type},
+		value::{constraint::TypeConstraint, value_type::ValueType},
 	};
 
 	use crate::{
@@ -127,7 +127,7 @@ pub mod tests {
 				TableColumnToCreate {
 					name: Fragment::internal("col_a"),
 					fragment: Fragment::None,
-					constraint: TypeConstraint::unconstrained(Type::Int4),
+					constraint: TypeConstraint::unconstrained(ValueType::Int4),
 					properties: vec![],
 					auto_increment: false,
 					dictionary_id: None,
@@ -135,7 +135,7 @@ pub mod tests {
 				TableColumnToCreate {
 					name: Fragment::internal("col_b"),
 					fragment: Fragment::None,
-					constraint: TypeConstraint::unconstrained(Type::Utf8),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					auto_increment: false,
 					dictionary_id: None,

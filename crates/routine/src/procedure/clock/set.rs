@@ -5,10 +5,10 @@ use std::sync::LazyLock;
 
 use reifydb_core::value::column::columns::Columns;
 use reifydb_runtime::context::clock::Clock;
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
-	value::{Value, datetime::DateTime, r#type::Type},
+	value::{Value, datetime::DateTime, value_type::ValueType},
 };
 
 use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
@@ -34,8 +34,8 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ClockSetProcedure {
 		&INFO
 	}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::DateTime
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::DateTime
 	}
 
 	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
@@ -92,19 +92,19 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ClockSetProcedure {
 	}
 }
 
-const EXPECTED_SET_TYPES: &[Type] = &[
-	Type::DateTime,
-	Type::Duration,
-	Type::Int1,
-	Type::Int2,
-	Type::Int4,
-	Type::Int8,
-	Type::Int16,
-	Type::Uint1,
-	Type::Uint2,
-	Type::Uint4,
-	Type::Uint8,
-	Type::Uint16,
+const EXPECTED_SET_TYPES: &[ValueType] = &[
+	ValueType::DateTime,
+	ValueType::Duration,
+	ValueType::Int1,
+	ValueType::Int2,
+	ValueType::Int4,
+	ValueType::Int8,
+	ValueType::Int16,
+	ValueType::Uint1,
+	ValueType::Uint2,
+	ValueType::Uint4,
+	ValueType::Uint8,
+	ValueType::Uint16,
 ];
 
 pub fn extract_millis(value: &Value) -> Option<u64> {

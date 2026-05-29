@@ -11,10 +11,10 @@ use reifydb_core::{
 	key::kind::KeyKind,
 };
 use reifydb_runtime::hash::Hash128;
-use reifydb_type::{
+use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
-	value::r#type::Type,
+	value::value_type::ValueType,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -120,16 +120,16 @@ pub enum CatalogError {
 	)]
 	DictionaryTypeMismatch {
 		column: String,
-		column_type: Type,
+		column_type: ValueType,
 		dictionary: String,
-		dictionary_value_type: Type,
+		dictionary_value_type: ValueType,
 		fragment: Fragment,
 	},
 
 	#[error("auto increment is not supported for type `{ty}`")]
 	AutoIncrementInvalidType {
 		column: String,
-		ty: Type,
+		ty: ValueType,
 		fragment: Fragment,
 	},
 
@@ -227,8 +227,8 @@ pub enum CatalogError {
 	#[error("config value for key `{key}` must be of type `{expected:?}`, got `{actual}`")]
 	ConfigTypeMismatch {
 		key: String,
-		expected: Vec<Type>,
-		actual: Type,
+		expected: Vec<ValueType>,
+		actual: ValueType,
 	},
 
 	#[error("config value for key `{key}` is invalid: {reason}")]

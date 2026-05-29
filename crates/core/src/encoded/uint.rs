@@ -5,7 +5,7 @@ use std::ptr;
 
 use num_bigint::{BigInt, BigUint};
 use num_traits::ToPrimitive;
-use reifydb_type::value::{r#type::Type, uint::Uint};
+use reifydb_value::value::{uint::Uint, value_type::ValueType};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
@@ -20,7 +20,7 @@ const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
 impl RowShape {
 	pub fn set_uint(&self, row: &mut EncodedRow, index: usize, value: &Uint) {
 		let field = &self.fields()[index];
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uint);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Uint);
 
 		let unsigned_value = value.0.to_biguint().unwrap_or(BigUint::from(0u32));
 
@@ -46,7 +46,7 @@ impl RowShape {
 
 	pub fn get_uint(&self, row: &EncodedRow, index: usize) -> Uint {
 		let field = &self.fields()[index];
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uint);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Uint);
 
 		let packed = unsafe { (row.as_ptr().add(field.offset as usize) as *const u128).read_unaligned() };
 		let packed = u128::from_le(packed);
@@ -71,7 +71,7 @@ impl RowShape {
 	}
 
 	pub fn try_get_uint(&self, row: &EncodedRow, index: usize) -> Option<Uint> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Uint {
+		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Uint {
 			Some(self.get_uint(row, index))
 		} else {
 			None
@@ -83,13 +83,13 @@ impl RowShape {
 pub mod tests {
 	use num_bigint::BigInt;
 	use num_traits::Zero;
-	use reifydb_type::value::{r#type::Type, uint::Uint};
+	use reifydb_value::value::{uint::Uint, value_type::ValueType};
 
 	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_u64_inline() {
-		let shape = RowShape::testing(&[Type::Uint]);
+		let shape = RowShape::testing(&[ValueType::Uint]);
 		let mut row = shape.allocate();
 
 		// Test simple unsigned value
@@ -109,7 +109,7 @@ pub mod tests {
 
 	#[test]
 	fn test_u128_boundary() {
-		let shape = RowShape::testing(&[Type::Uint]);
+		let shape = RowShape::testing(&[ValueType::Uint]);
 		let mut row = shape.allocate();
 
 		// Value that needs u128 storage
@@ -129,7 +129,7 @@ pub mod tests {
 
 	#[test]
 	fn test_dynamic_storage() {
-		let shape = RowShape::testing(&[Type::Uint]);
+		let shape = RowShape::testing(&[ValueType::Uint]);
 		let mut row = shape.allocate();
 
 		// Create a value that requires dynamic storage (>127 bits)
@@ -148,7 +148,7 @@ pub mod tests {
 
 	#[test]
 	fn test_zero() {
-		let shape = RowShape::testing(&[Type::Uint]);
+		let shape = RowShape::testing(&[ValueType::Uint]);
 		let mut row = shape.allocate();
 
 		let zero = Uint::from(0);
@@ -161,7 +161,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get() {
-		let shape = RowShape::testing(&[Type::Uint]);
+		let shape = RowShape::testing(&[ValueType::Uint]);
 		let mut row = shape.allocate();
 
 		// Undefined initially
@@ -175,7 +175,7 @@ pub mod tests {
 
 	#[test]
 	fn test_clone_on_write() {
-		let shape = RowShape::testing(&[Type::Uint]);
+		let shape = RowShape::testing(&[ValueType::Uint]);
 		let row1 = shape.allocate();
 		let mut row2 = row1.clone();
 
@@ -190,7 +190,13 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_fields() {
-		let shape = RowShape::testing(&[Type::Boolean, Type::Uint, Type::Utf8, Type::Uint, Type::Int4]);
+		let shape = RowShape::testing(&[
+			ValueType::Boolean,
+			ValueType::Uint,
+			ValueType::Utf8,
+			ValueType::Uint,
+			ValueType::Int4,
+		]);
 		let mut row = shape.allocate();
 
 		shape.set_bool(&mut row, 0, true);
@@ -214,7 +220,7 @@ pub mod tests {
 
 	#[test]
 	fn test_negative_input_handling() {
-		let shape = RowShape::testing(&[Type::Uint]);
+		let shape = RowShape::testing(&[ValueType::Uint]);
 
 		// Test how negative values are handled (should be converted to
 		// 0 or error)
@@ -229,7 +235,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_uint_wrong_type() {
-		let shape = RowShape::testing(&[Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
 		shape.set_bool(&mut row, 0, true);
@@ -239,7 +245,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_uint_inline_to_inline() {
-		let shape = RowShape::testing(&[Type::Uint]);
+		let shape = RowShape::testing(&[ValueType::Uint]);
 		let mut row = shape.allocate();
 
 		shape.set_uint(&mut row, 0, &Uint::from(42u64));
@@ -251,7 +257,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_uint_inline_to_dynamic() {
-		let shape = RowShape::testing(&[Type::Uint]);
+		let shape = RowShape::testing(&[ValueType::Uint]);
 		let mut row = shape.allocate();
 
 		shape.set_uint(&mut row, 0, &Uint::from(42u64));
@@ -265,7 +271,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_uint_dynamic_to_inline() {
-		let shape = RowShape::testing(&[Type::Uint]);
+		let shape = RowShape::testing(&[ValueType::Uint]);
 		let mut row = shape.allocate();
 
 		let huge = Uint::from(
@@ -280,7 +286,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_uint_with_other_dynamic_fields() {
-		let shape = RowShape::testing(&[Type::Uint, Type::Utf8]);
+		let shape = RowShape::testing(&[ValueType::Uint, ValueType::Utf8]);
 		let mut row = shape.allocate();
 
 		let huge = Uint::from(

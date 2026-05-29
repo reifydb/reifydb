@@ -7,7 +7,7 @@ use reifydb_core::{
 };
 use reifydb_rql::{nodes::CreateSubscriptionNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{error::Error, fragment::Fragment, value::Value};
+use reifydb_value::{error::Error, fragment::Fragment, value::Value};
 
 use crate::{
 	Result, flow::compiler::compile_subscription_flow_ephemeral, subscription::SubscriptionServiceRef,

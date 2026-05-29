@@ -8,7 +8,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, return_error};
+use reifydb_value::{fragment::Fragment, return_error};
 
 use crate::{
 	Result,

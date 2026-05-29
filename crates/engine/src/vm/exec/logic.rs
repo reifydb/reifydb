@@ -3,10 +3,10 @@
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_rql::expression::PrefixOperator;
-use reifydb_type::{
+use reifydb_value::{
 	error::{BinaryOp, IntoDiagnostic, LogicalOp, TypeError},
 	fragment::Fragment,
-	value::r#type::Type,
+	value::value_type::ValueType,
 };
 
 use super::broadcast::broadcast_many;
@@ -108,7 +108,7 @@ impl<'a> Vm<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn exec_cast(&mut self, target: &Type) -> Result<()> {
+	pub(crate) fn exec_cast(&mut self, target: &ValueType) -> Result<()> {
 		let col = self.pop_as_column()?;
 		let frag = Fragment::internal("vm_cast");
 		let ctx = self.eval_ctx();

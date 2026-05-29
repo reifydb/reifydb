@@ -2,13 +2,13 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_type::{
+use reifydb_value::{
 	util::bitvec::BitVec,
 	value::{
 		decimal::Decimal,
 		int::Int,
-		r#type::{Type, input_types::InputTypes},
 		uint::Uint,
+		value_type::{ValueType, input_types::InputTypes},
 	},
 };
 
@@ -131,11 +131,11 @@ pub fn dispatch_strict<Op: BinaryOp>(ctx: &mut FunctionContext, args: &Columns) 
 
 	ensure_numeric(ctx, a_data, 0)?;
 	ensure_numeric(ctx, b_data, 1)?;
-	if msg_data.get_type() != Type::Utf8 {
+	if msg_data.get_type() != ValueType::Utf8 {
 		return Err(RoutineError::FunctionInvalidArgumentType {
 			function: ctx.fragment.clone(),
 			argument_index: 2,
-			expected: vec![Type::Utf8],
+			expected: vec![ValueType::Utf8],
 			actual: msg_data.get_type(),
 		});
 	}
@@ -214,7 +214,7 @@ fn compute<Op: BinaryOp>(
 	a: &ColumnBuffer,
 	b: &ColumnBuffer,
 	strategy: &Strategy,
-	promoted: Type,
+	promoted: ValueType,
 	row_count: usize,
 	input_bv: Option<&BitVec>,
 ) -> Result<ColumnBuffer, RoutineError> {
@@ -334,17 +334,19 @@ fn compute<Op: BinaryOp>(
 	}
 
 	let result_data = match promoted {
-		Type::Int1 => per_int!(i8, int1_with_bitvec, checked_i8, saturating_i8, wrapping_i8, get_as_i8, 0i8),
-		Type::Int2 => {
+		ValueType::Int1 => {
+			per_int!(i8, int1_with_bitvec, checked_i8, saturating_i8, wrapping_i8, get_as_i8, 0i8)
+		}
+		ValueType::Int2 => {
 			per_int!(i16, int2_with_bitvec, checked_i16, saturating_i16, wrapping_i16, get_as_i16, 0i16)
 		}
-		Type::Int4 => {
+		ValueType::Int4 => {
 			per_int!(i32, int4_with_bitvec, checked_i32, saturating_i32, wrapping_i32, get_as_i32, 0i32)
 		}
-		Type::Int8 => {
+		ValueType::Int8 => {
 			per_int!(i64, int8_with_bitvec, checked_i64, saturating_i64, wrapping_i64, get_as_i64, 0i64)
 		}
-		Type::Int16 => per_int!(
+		ValueType::Int16 => per_int!(
 			i128,
 			int16_with_bitvec,
 			checked_i128,
@@ -353,17 +355,19 @@ fn compute<Op: BinaryOp>(
 			get_as_i128,
 			0i128
 		),
-		Type::Uint1 => per_int!(u8, uint1_with_bitvec, checked_u8, saturating_u8, wrapping_u8, get_as_u8, 0u8),
-		Type::Uint2 => {
+		ValueType::Uint1 => {
+			per_int!(u8, uint1_with_bitvec, checked_u8, saturating_u8, wrapping_u8, get_as_u8, 0u8)
+		}
+		ValueType::Uint2 => {
 			per_int!(u16, uint2_with_bitvec, checked_u16, saturating_u16, wrapping_u16, get_as_u16, 0u16)
 		}
-		Type::Uint4 => {
+		ValueType::Uint4 => {
 			per_int!(u32, uint4_with_bitvec, checked_u32, saturating_u32, wrapping_u32, get_as_u32, 0u32)
 		}
-		Type::Uint8 => {
+		ValueType::Uint8 => {
 			per_int!(u64, uint8_with_bitvec, checked_u64, saturating_u64, wrapping_u64, get_as_u64, 0u64)
 		}
-		Type::Uint16 => per_int!(
+		ValueType::Uint16 => per_int!(
 			u128,
 			uint16_with_bitvec,
 			checked_u128,
@@ -372,11 +376,11 @@ fn compute<Op: BinaryOp>(
 			get_as_u128,
 			0u128
 		),
-		Type::Float4 => per_float!(f32, float4_with_bitvec, f32_eval, get_as_f32, f32::MAX, f32::MIN),
-		Type::Float8 => per_float!(f64, float8_with_bitvec, f64_eval, get_as_f64, f64::MAX, f64::MIN),
-		Type::Int => compute_big_int::<Op>(ctx, a, b, strategy, row_count, input_bv)?,
-		Type::Uint => compute_big_uint::<Op>(ctx, a, b, strategy, row_count, input_bv)?,
-		Type::Decimal => compute_decimal::<Op>(ctx, a, b, strategy, row_count, input_bv)?,
+		ValueType::Float4 => per_float!(f32, float4_with_bitvec, f32_eval, get_as_f32, f32::MAX, f32::MIN),
+		ValueType::Float8 => per_float!(f64, float8_with_bitvec, f64_eval, get_as_f64, f64::MAX, f64::MIN),
+		ValueType::Int => compute_big_int::<Op>(ctx, a, b, strategy, row_count, input_bv)?,
+		ValueType::Uint => compute_big_uint::<Op>(ctx, a, b, strategy, row_count, input_bv)?,
+		ValueType::Decimal => compute_decimal::<Op>(ctx, a, b, strategy, row_count, input_bv)?,
 		other => {
 			return Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),

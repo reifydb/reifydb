@@ -8,9 +8,9 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
-	value::{Value, r#type::Type},
+	value::{Value, value_type::ValueType},
 };
 
 use crate::{
@@ -66,7 +66,7 @@ impl BaseVTable for SystemTables {
 				table.primary_key
 					.map(|pk| pk.id.0)
 					.map(Value::Uint8)
-					.unwrap_or(Value::none_of(Type::Uint8)),
+					.unwrap_or(Value::none_of(ValueType::Uint8)),
 			);
 		}
 

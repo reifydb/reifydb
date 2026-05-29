@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{change::CatalogTrackRowSettingsChangeOperations, shape::ShapeId},
 	row::RowSettings,
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::{
 	change::{

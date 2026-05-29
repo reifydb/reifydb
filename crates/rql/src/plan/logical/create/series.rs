@@ -7,10 +7,10 @@ use reifydb_catalog::{
 };
 use reifydb_core::interface::catalog::series::{SeriesKey, TimestampPrecision};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	error::{AstErrorKind, TypeError},
 	fragment::Fragment,
-	value::r#type::Type,
+	value::value_type::ValueType,
 };
 
 use crate::{
@@ -123,7 +123,7 @@ impl<'bump> Compiler<'bump> {
 
 		let key_type = key_col.constraint.get_type();
 		let key = match key_type {
-			Type::DateTime => {
+			ValueType::DateTime => {
 				let precision = match ast.precision {
 					Some(AstTimestampPrecision::Second) => TimestampPrecision::Second,
 					Some(AstTimestampPrecision::Millisecond) => TimestampPrecision::Millisecond,
@@ -136,16 +136,16 @@ impl<'bump> Compiler<'bump> {
 					precision,
 				}
 			}
-			Type::Int1
-			| Type::Int2
-			| Type::Int4
-			| Type::Int8
-			| Type::Int16
-			| Type::Uint1
-			| Type::Uint2
-			| Type::Uint4
-			| Type::Uint8
-			| Type::Uint16 => {
+			ValueType::Int1
+			| ValueType::Int2
+			| ValueType::Int4
+			| ValueType::Int8
+			| ValueType::Int16
+			| ValueType::Uint1
+			| ValueType::Uint2
+			| ValueType::Uint4
+			| ValueType::Uint8
+			| ValueType::Uint16 => {
 				if ast.precision.is_some() {
 					return Err(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {

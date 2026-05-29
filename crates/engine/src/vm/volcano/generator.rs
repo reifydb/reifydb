@@ -10,7 +10,7 @@ use reifydb_routine::routine::{
 };
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, params::Params, value::Value};
+use reifydb_value::{fragment::Fragment, params::Params, value::Value};
 
 use crate::{
 	Result,

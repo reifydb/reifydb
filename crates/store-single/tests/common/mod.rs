@@ -38,7 +38,7 @@ use reifydb_store_single::{
 	tier::TierStorage,
 };
 use reifydb_testing::testscript;
-use reifydb_type::{cow_vec, util::cowvec::CowVec};
+use reifydb_value::{cow_vec, util::cowvec::CowVec};
 use testscript::command::Command;
 
 /// Shared testscript runner used by every per-backend integration test

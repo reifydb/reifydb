@@ -7,7 +7,7 @@ use bs58::decode as bs58_decode;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider};
 use reifydb_runtime::context::{clock::Clock, rng::Rng};
-use reifydb_type::{Result, error::Error};
+use reifydb_value::{Result, error::Error};
 
 use crate::error::AuthError;
 

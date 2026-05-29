@@ -11,7 +11,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_runtime::hash::Hash128;
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	error::Error,
 	value::{Value, row_number::RowNumber},

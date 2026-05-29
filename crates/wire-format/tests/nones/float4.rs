@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::{container::number::NumberContainer, frame::data::FrameColumnData, r#type::Type};
+use reifydb_value::value::{container::number::NumberContainer, frame::data::FrameColumnData, value_type::ValueType};
 
 fn make(v: Vec<f32>) -> FrameColumnData {
 	FrameColumnData::Float4(NumberContainer::new(v))
@@ -9,5 +9,5 @@ fn make(v: Vec<f32>) -> FrameColumnData {
 
 crate::nones_tests! {
 	values: vec![0.0f32, 1.5, -3.14, 1e10, f32::MAX],
-	inner_type: Type::Float4,
+	inner_type: ValueType::Float4,
 }

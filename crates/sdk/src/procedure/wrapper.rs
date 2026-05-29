@@ -10,7 +10,7 @@ use std::{
 
 use postcard::from_bytes;
 use reifydb_abi::{context::context::ContextFFI, procedure::vtable::ProcedureVTableFFI};
-use reifydb_type::params::Params;
+use reifydb_value::params::Params;
 use tracing::error;
 
 use crate::procedure::{FFIProcedure, FFIProcedureContext};

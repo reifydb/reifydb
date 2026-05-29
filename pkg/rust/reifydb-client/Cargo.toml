@@ -28,7 +28,7 @@ ws = ["dep:tokio-tungstenite", "dep:futures-util"]
 reifydb-build = { workspace = true }
 
 [dependencies]
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 reifydb-wire-format = { workspace = true }
 reifydb-client-derive = { workspace = true }
 async-trait = { workspace = true }

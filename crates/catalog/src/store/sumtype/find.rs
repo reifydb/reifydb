@@ -6,7 +6,7 @@ use reifydb_core::{
 	key::{namespace_sumtype::NamespaceSumTypeKey, sumtype::SumTypeKey},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::sumtype::SumTypeId;
+use reifydb_value::value::sumtype::SumTypeId;
 
 use super::sumtype_from_row;
 use crate::{CatalogStore, Result, store::sumtype::shape::sumtype_namespace};
@@ -55,7 +55,7 @@ pub mod tests {
 	use reifydb_core::interface::catalog::{id::NamespaceId, sumtype::SumTypeKind};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_type::value::sumtype::SumTypeId;
+	use reifydb_value::value::sumtype::SumTypeId;
 
 	use crate::{
 		CatalogStore,

@@ -10,7 +10,7 @@ use reifydb_abi::{
 	data::buffer::BufferFFI,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::params::Params;
+use reifydb_value::params::Params;
 use tracing::error;
 
 use super::memory::host_alloc;

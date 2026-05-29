@@ -3,7 +3,7 @@
 
 use std::mem;
 
-use reifydb_type::{storage::DataBitVec, util::bitvec::BitVec};
+use reifydb_value::{storage::DataBitVec, util::bitvec::BitVec};
 
 use crate::value::column::buffer::{ColumnBuffer, with_container};
 
@@ -39,7 +39,7 @@ pub mod tests {
 		clock::{Clock, MockClock},
 		rng::Rng,
 	};
-	use reifydb_type::value::{dictionary::DictionaryEntryId, identity::IdentityId, r#type::Type};
+	use reifydb_value::value::{dictionary::DictionaryEntryId, identity::IdentityId, value_type::ValueType};
 
 	use crate::value::column::ColumnBuffer;
 
@@ -198,7 +198,7 @@ pub mod tests {
 
 	#[test]
 	fn test_none_on_option() {
-		let mut col = ColumnBuffer::none_typed(Type::Boolean, 5);
+		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 5);
 		col.push_none();
 		assert_eq!(col.len(), 6);
 		assert!(!col.is_defined(0));

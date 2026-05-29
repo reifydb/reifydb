@@ -17,7 +17,7 @@ reifydb-build = { workspace = true }
 dashmap = { workspace = true }
 reifydb-abi = { workspace = true }
 reifydb-runtime = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 crossbeam-skiplist = { workspace = true }

@@ -4,7 +4,7 @@
 pub mod subscription {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	pub const ID: usize = 0;
 	pub const ACKNOWLEDGED_VERSION: usize = 1;
@@ -12,9 +12,9 @@ pub mod subscription {
 
 	pub static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("acknowledged_version", Type::Uint8),
-			RowShapeField::unconstrained("primary_key", Type::Uint8),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("acknowledged_version", ValueType::Uint8),
+			RowShapeField::unconstrained("primary_key", ValueType::Uint8),
 		])
 	});
 }
@@ -22,7 +22,7 @@ pub mod subscription {
 pub mod subscription_column {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	pub const ID: usize = 0;
 	pub const NAME: usize = 1;
@@ -30,9 +30,9 @@ pub mod subscription_column {
 
 	pub static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("name", Type::Utf8),
-			RowShapeField::unconstrained("type", Type::Uint1),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
+			RowShapeField::unconstrained("type", ValueType::Uint1),
 		])
 	});
 }

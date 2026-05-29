@@ -22,10 +22,10 @@ use reifydb_engine::{
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	params::Params,
-	value::{Value, identity::IdentityId, r#type::Type},
+	value::{Value, identity::IdentityId, value_type::ValueType},
 };
 
 use crate::{
@@ -101,7 +101,7 @@ impl FilterOperator {
 						Value::Boolean(true) => {}
 						Value::Boolean(false) => *mask_val = false,
 						Value::None {
-							inner: Type::Boolean,
+							inner: ValueType::Boolean,
 						} => *mask_val = false,
 						result => {
 							return internal_err!(

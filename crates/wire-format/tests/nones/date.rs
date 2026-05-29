@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::{
-	container::temporal::TemporalContainer, date::Date, frame::data::FrameColumnData, r#type::Type,
+use reifydb_value::value::{
+	container::temporal::TemporalContainer, date::Date, frame::data::FrameColumnData, value_type::ValueType,
 };
 
 fn make(v: Vec<Date>) -> FrameColumnData {
@@ -17,5 +17,5 @@ crate::nones_tests! {
 		Date::from_days_since_epoch(100_000).unwrap(),
 		Date::from_days_since_epoch(-100_000).unwrap(),
 	],
-	inner_type: Type::Date,
+	inner_type: ValueType::Date,
 }

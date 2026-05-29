@@ -5,8 +5,9 @@ use std::{collections::HashMap, ops::Range, sync::Arc};
 
 use rand::{RngExt, rngs::StdRng};
 use reifydb_core::{encoded::shape::RowShape, row::Row};
-use reifydb_type::value::{
-	Value, date::Date, datetime::DateTime, duration::Duration, row_number::RowNumber, time::Time, r#type::Type,
+use reifydb_value::value::{
+	Value, date::Date, datetime::DateTime, duration::Duration, row_number::RowNumber, time::Time,
+	value_type::ValueType,
 };
 
 use super::schema::{ChaosSchema, KeyStrategy};
@@ -257,7 +258,7 @@ pub mod samplers {
 		Arc::new(move |_rng| value.clone())
 	}
 
-	pub fn always_none(field_type: Type) -> ColumnSampler {
+	pub fn always_none(field_type: ValueType) -> ColumnSampler {
 		Arc::new(move |_rng| Value::none_of(field_type.clone()))
 	}
 }
@@ -271,19 +272,23 @@ mod tests {
 
 	use super::*;
 
-	fn shape(fields: &[(&str, Type)]) -> RowShape {
+	fn shape(fields: &[(&str, ValueType)]) -> RowShape {
 		RowShape::new(fields.iter().map(|(n, t)| RowShapeField::unconstrained(*n, t.clone())).collect())
 	}
 
 	fn schema_basic() -> ChaosSchema {
 		ChaosSchema {
 			input_shape: shape(&[
-				("base", Type::Utf8),
-				("quote", Type::Utf8),
-				("slot", Type::Uint8),
-				("price", Type::Float8),
+				("base", ValueType::Utf8),
+				("quote", ValueType::Utf8),
+				("slot", ValueType::Uint8),
+				("price", ValueType::Float8),
 			]),
-			output_shape: shape(&[("base", Type::Utf8), ("quote", Type::Utf8), ("slot", Type::Uint8)]),
+			output_shape: shape(&[
+				("base", ValueType::Utf8),
+				("quote", ValueType::Utf8),
+				("slot", ValueType::Uint8),
+			]),
 			key_strategy: KeyStrategy::hash_of(["base", "quote", "slot"]),
 			output_key_columns: vec!["base".into(), "quote".into(), "slot".into()],
 		}
@@ -359,11 +364,11 @@ mod tests {
 	fn row_constraint_overrides_sampled_values() {
 		let schema = ChaosSchema {
 			input_shape: shape(&[
-				("base_volume", Type::Float8),
-				("price", Type::Float8),
-				("quote_volume", Type::Float8),
+				("base_volume", ValueType::Float8),
+				("price", ValueType::Float8),
+				("quote_volume", ValueType::Float8),
 			]),
-			output_shape: shape(&[("base_volume", Type::Float8)]),
+			output_shape: shape(&[("base_volume", ValueType::Float8)]),
 			key_strategy: KeyStrategy::Sequential,
 			output_key_columns: vec!["base_volume".into()],
 		};
@@ -397,7 +402,7 @@ mod tests {
 
 	#[test]
 	fn registry_validate_catches_missing_sampler() {
-		let s = shape(&[("a", Type::Int8), ("b", Type::Int8)]);
+		let s = shape(&[("a", ValueType::Int8), ("b", ValueType::Int8)]);
 		let mut reg = ColumnRegistry::new();
 		reg.register("a", samplers::constant(Value::int8(0_i64)));
 		// "b" intentionally omitted.
@@ -407,7 +412,7 @@ mod tests {
 
 	#[test]
 	fn registry_validate_reports_all_missing_columns() {
-		let s = shape(&[("a", Type::Int8), ("b", Type::Int8), ("c", Type::Int8)]);
+		let s = shape(&[("a", ValueType::Int8), ("b", ValueType::Int8), ("c", ValueType::Int8)]);
 		let reg = ColumnRegistry::new();
 		// Nothing registered.
 		let missing = reg.validate(&s).expect_err("should reject");
@@ -417,7 +422,7 @@ mod tests {
 
 	#[test]
 	fn registry_validate_accepts_full_coverage() {
-		let s = shape(&[("a", Type::Int8)]);
+		let s = shape(&[("a", ValueType::Int8)]);
 		let mut reg = ColumnRegistry::new();
 		reg.register("a", samplers::constant(Value::int8(0_i64)));
 		assert!(reg.validate(&s).is_ok());

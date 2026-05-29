@@ -5,7 +5,7 @@ pub mod builder;
 pub mod registry;
 
 use reifydb_core::value::column::columns::Columns;
-use reifydb_type::value::{Value, r#type::Type};
+use reifydb_value::value::{Value, value_type::ValueType};
 
 use crate::Result;
 
@@ -13,13 +13,13 @@ use crate::Result;
 pub struct UserVTableColumn {
 	pub name: String,
 
-	pub data_type: Type,
+	pub data_type: ValueType,
 
 	pub undefined: bool,
 }
 
 impl UserVTableColumn {
-	pub fn new(name: impl Into<String>, data_type: Type) -> Self {
+	pub fn new(name: impl Into<String>, data_type: ValueType) -> Self {
 		Self {
 			name: name.into(),
 			data_type,

@@ -6,7 +6,7 @@ use reifydb_core::interface::{
 	resolved::{ResolvedNamespace, ResolvedRingBuffer, ResolvedTable, ResolvedView},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::fragment::Fragment;
+use reifydb_value::fragment::Fragment;
 use tracing::instrument;
 
 use super::Catalog;

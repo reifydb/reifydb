@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use async_trait::async_trait;
-use reifydb_type::{error::Error, params::Params, value::frame::frame::Frame};
+use reifydb_value::{error::Error, params::Params, value::frame::frame::Frame};
 
 use crate::{
 	AdminResult, BatchMemberInfo, BatchPushEvent, ChangePayload, CommandResult, LoginResult, QueryResult,

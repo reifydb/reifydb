@@ -3,7 +3,7 @@
 
 use std::env;
 
-use reifydb_type::{error::Diagnostic, fragment::Fragment};
+use reifydb_value::{error::Diagnostic, fragment::Fragment};
 
 pub fn internal_with_context(
 	reason: impl Into<String>,
@@ -131,10 +131,10 @@ macro_rules! internal {
 #[macro_export]
 macro_rules! internal_error {
     ($reason:expr) => {
-        reifydb_type::error::Error(Box::new($crate::internal!($reason)))
+        reifydb_value::error::Error(Box::new($crate::internal!($reason)))
     };
     ($fmt:expr, $($arg:tt)*) => {
-        reifydb_type::error::Error(Box::new($crate::internal!($fmt, $($arg)*)))
+        reifydb_value::error::Error(Box::new($crate::internal!($fmt, $($arg)*)))
     };
 }
 

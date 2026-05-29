@@ -50,7 +50,7 @@ use reifydb_store_multi::{
 	store::{StandardMultiStore, router::classify_key},
 	tier::{TierStorage, VersionedGetResult, commit::buffer::MultiCommitBufferTier},
 };
-use reifydb_type::{cow_vec, util::cowvec::CowVec};
+use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
 const SHAPE: ShapeId = ShapeId::Table(TableId(1));
 

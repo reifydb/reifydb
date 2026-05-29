@@ -6,7 +6,7 @@ use reifydb_core::{
 	key::{namespace_sumtype::NamespaceSumTypeKey, sumtype::SumTypeKey},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::sumtype::SumTypeId;
+use reifydb_value::value::sumtype::SumTypeId;
 
 use super::sumtype_from_row;
 use crate::{CatalogStore, Result, store::sumtype::shape::sumtype_namespace};

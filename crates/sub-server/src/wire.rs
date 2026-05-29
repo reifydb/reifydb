@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	value::{

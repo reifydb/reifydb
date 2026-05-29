@@ -19,5 +19,5 @@ use reifydb_macro_impl::derive_from_frame_with_crate;
 /// - `#[frame(skip)]` - Skip this field (must implement Default)
 #[proc_macro_derive(FromFrame, attributes(frame))]
 pub fn derive_from_frame(input: TokenStream) -> TokenStream {
-	derive_from_frame_with_crate(input.into(), "reifydb").into()
+	derive_from_frame_with_crate(input.into(), "reifydb::value").into()
 }

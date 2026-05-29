@@ -25,10 +25,10 @@ use reifydb_transaction::{
 	interceptor::series_row::SeriesRowInterceptor,
 	transaction::{Transaction, command::CommandTransaction},
 };
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
-	value::{Value, identity::IdentityId, row_number::RowNumber, r#type::Type},
+	value::{Value, identity::IdentityId, row_number::RowNumber, value_type::ValueType},
 };
 
 use super::{
@@ -251,7 +251,7 @@ fn write_table_rows(
 	let total_rows = encoded_rows.len();
 	let row_numbers = catalog.next_row_number_batch(txn, table.id, total_rows as u64)?;
 	let pk_def = primary_key::get_primary_key(catalog, &mut Transaction::Command(txn), table)?;
-	let row_number_shape = pk_def.as_ref().map(|_| RowShape::testing(&[Type::Uint8]));
+	let row_number_shape = pk_def.as_ref().map(|_| RowShape::testing(&[ValueType::Uint8]));
 
 	let mut owned_rows = encoded_rows;
 	txn.insert_table(table, shape, &row_numbers, &mut owned_rows)?;

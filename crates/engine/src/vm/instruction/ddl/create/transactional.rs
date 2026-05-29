@@ -18,7 +18,7 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::{CompiledViewStorageKind, CreateTransactionalViewNode};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{fragment::Fragment, return_error, value::Value};
+use reifydb_value::{fragment::Fragment, return_error, value::Value};
 
 use super::{create_deferred_view_flow, require_buffer_for_non_persistent};
 use crate::{Result, vm::services::Services};

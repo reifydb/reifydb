@@ -14,7 +14,7 @@ use reifydb_core::{
 use reifydb_transaction::multi::transaction::{
 	MultiTransaction, read::MultiReadTransaction, write::MultiWriteTransaction,
 };
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_value::util::cowvec::CowVec;
 
 use super::schedule::{Op, Schedule, Step, TxId};
 

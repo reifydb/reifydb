@@ -5,7 +5,7 @@ use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::value::column::columns::Columns;
 use reifydb_rql::nodes::DropSumTypeNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::value::{Value, constraint::Constraint};
+use reifydb_value::value::{Value, constraint::Constraint};
 
 use super::dependent::find_column_dependents;
 use crate::{Result, vm::services::Services};

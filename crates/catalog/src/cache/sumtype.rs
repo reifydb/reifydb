@@ -5,7 +5,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{id::NamespaceId, sumtype::SumType},
 };
-use reifydb_type::value::sumtype::SumTypeId;
+use reifydb_value::value::sumtype::SumTypeId;
 
 use crate::cache::{CatalogCache, MultiVersionSumType};
 

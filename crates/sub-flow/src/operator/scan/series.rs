@@ -3,7 +3,7 @@
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::interface::{catalog::flow::FlowNodeId, change::Change};
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::{Operator, transaction::FlowTransaction};
 

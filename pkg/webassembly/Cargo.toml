@@ -22,7 +22,7 @@ reifydb-extension = { workspace = true }
 reifydb-routine = {workspace = true}
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-wire-format = { workspace = true }
 reifydb-catalog = { workspace = true }

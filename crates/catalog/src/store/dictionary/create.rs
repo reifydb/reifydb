@@ -10,10 +10,10 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
 	util::cowvec::CowVec,
-	value::{dictionary::DictionaryId, r#type::Type},
+	value::{dictionary::DictionaryId, value_type::ValueType},
 };
 
 use crate::{
@@ -29,8 +29,8 @@ use crate::{
 pub struct DictionaryToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
-	pub value_type: Type,
-	pub id_type: Type,
+	pub value_type: ValueType,
+	pub id_type: ValueType,
 }
 
 impl CatalogStore {
@@ -112,7 +112,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_engine::test_harness::create_test_admin_transaction;
-	use reifydb_type::{fragment::Fragment, value::r#type::Type};
+	use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 	use super::*;
 	use crate::{store::dictionary::shape::dictionary_namespace, test_utils::ensure_test_namespace};
@@ -125,8 +125,8 @@ pub mod tests {
 		let to_create = DictionaryToCreate {
 			namespace: test_namespace.id(),
 			name: Fragment::internal("token_mints"),
-			value_type: Type::Utf8,
-			id_type: Type::Uint2,
+			value_type: ValueType::Utf8,
+			id_type: ValueType::Uint2,
 		};
 
 		let result = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
@@ -134,8 +134,8 @@ pub mod tests {
 		assert!(result.id.0 > 0);
 		assert_eq!(result.namespace, test_namespace.id());
 		assert_eq!(result.name, "token_mints");
-		assert_eq!(result.value_type, Type::Utf8);
-		assert_eq!(result.id_type, Type::Uint2);
+		assert_eq!(result.value_type, ValueType::Utf8);
+		assert_eq!(result.id_type, ValueType::Uint2);
 	}
 
 	#[test]
@@ -146,8 +146,8 @@ pub mod tests {
 		let to_create = DictionaryToCreate {
 			namespace: test_namespace.id(),
 			name: Fragment::internal("test_dict"),
-			value_type: Type::Utf8,
-			id_type: Type::Uint4,
+			value_type: ValueType::Utf8,
+			id_type: ValueType::Uint4,
 		};
 
 		// First creation should succeed
@@ -169,8 +169,8 @@ pub mod tests {
 		let to_create1 = DictionaryToCreate {
 			namespace: test_namespace.id(),
 			name: Fragment::internal("dict1"),
-			value_type: Type::Utf8,
-			id_type: Type::Uint1,
+			value_type: ValueType::Utf8,
+			id_type: ValueType::Uint1,
 		};
 
 		CatalogStore::create_dictionary(&mut txn, to_create1).unwrap();
@@ -178,8 +178,8 @@ pub mod tests {
 		let to_create2 = DictionaryToCreate {
 			namespace: test_namespace.id(),
 			name: Fragment::internal("dict2"),
-			value_type: Type::Uint8,
-			id_type: Type::Uint2,
+			value_type: ValueType::Uint8,
+			id_type: ValueType::Uint2,
 		};
 
 		CatalogStore::create_dictionary(&mut txn, to_create2).unwrap();
@@ -216,21 +216,21 @@ pub mod tests {
 		let to_create = DictionaryToCreate {
 			namespace: test_namespace.id(),
 			name: Fragment::internal("small_dict"),
-			value_type: Type::Utf8,
-			id_type: Type::Uint1,
+			value_type: ValueType::Utf8,
+			id_type: ValueType::Uint1,
 		};
 		let result = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
-		assert_eq!(result.id_type, Type::Uint1);
+		assert_eq!(result.id_type, ValueType::Uint1);
 
 		// Test with Uint8 ID type
 		let to_create = DictionaryToCreate {
 			namespace: test_namespace.id(),
 			name: Fragment::internal("large_dict"),
-			value_type: Type::Blob,
-			id_type: Type::Uint8,
+			value_type: ValueType::Blob,
+			id_type: ValueType::Uint8,
 		};
 		let result = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
-		assert_eq!(result.id_type, Type::Uint8);
-		assert_eq!(result.value_type, Type::Blob);
+		assert_eq!(result.id_type, ValueType::Uint8);
+		assert_eq!(result.value_type, ValueType::Blob);
 	}
 }

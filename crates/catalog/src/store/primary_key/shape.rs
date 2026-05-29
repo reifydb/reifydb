@@ -7,7 +7,7 @@ pub(crate) mod primary_key {
 		encoded::shape::{RowShape, RowShapeField},
 		interface::catalog::id::ColumnId,
 	};
-	use reifydb_type::value::{blob::Blob, r#type::Type};
+	use reifydb_value::value::{blob::Blob, value_type::ValueType};
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const SOURCE: usize = 1;
@@ -15,9 +15,9 @@ pub(crate) mod primary_key {
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
-			RowShapeField::unconstrained("id", Type::Uint8),
-			RowShapeField::unconstrained("source", Type::Uint8),
-			RowShapeField::unconstrained("column_ids", Type::Blob),
+			RowShapeField::unconstrained("id", ValueType::Uint8),
+			RowShapeField::unconstrained("source", ValueType::Uint8),
+			RowShapeField::unconstrained("column_ids", ValueType::Blob),
 		])
 	});
 

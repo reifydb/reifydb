@@ -20,7 +20,7 @@ use reifydb::Database;
 pub fn start_server_with_auth_users(server: &mut Database) -> Result<(u16, u16, u16), Box<dyn Error>> {
 	server.start()?;
 
-	let params = reifydb_type::params::Params::None;
+	let params = reifydb_value::params::Params::None;
 
 	// Root token auth (for admin setup)
 	server.admin_as_root(

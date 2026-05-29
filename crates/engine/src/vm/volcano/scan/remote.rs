@@ -10,9 +10,9 @@ use std::sync::Arc;
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_transaction::transaction::Transaction;
 #[cfg(not(reifydb_single_threaded))]
-use reifydb_type::fragment::Fragment;
+use reifydb_value::fragment::Fragment;
 #[cfg(not(reifydb_single_threaded))]
-use reifydb_type::{params::Params, value::Value};
+use reifydb_value::{params::Params, value::Value};
 
 #[cfg(not(reifydb_single_threaded))]
 use crate::vm::stack::Variable;

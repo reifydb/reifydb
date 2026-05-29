@@ -24,7 +24,7 @@ use reifydb_runtime::{
 	context::clock::{Clock, Instant},
 	sync::rwlock::RwLock,
 };
-use reifydb_type::value::{datetime::DateTime, identity::IdentityId};
+use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
 use tracing::{error, warn};
 
 use crate::{

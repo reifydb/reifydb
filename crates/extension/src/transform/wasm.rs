@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::columns::Columns;
 use reifydb_sdk::marshal::wasm::{marshal_columns_to_bytes, unmarshal_columns_from_bytes};
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use super::{Transform, context::TransformContext};
 use crate::loader::wasm::invoke_wasm_module;

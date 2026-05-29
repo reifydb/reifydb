@@ -13,9 +13,9 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
-	value::{Value, datetime::DateTime, row_number::RowNumber, r#type::Type},
+	value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -146,7 +146,7 @@ impl QueryNode for SeriesScanNode {
 					.iter()
 					.find(|c| c.name == series.key.column())
 					.map(|c| c.constraint.get_type())
-					.unwrap_or(Type::Int8);
+					.unwrap_or(ValueType::Int8);
 				let mut result_columns = Vec::new();
 				result_columns.push(ColumnWithName {
 					name: Fragment::internal(series.key.column()),
@@ -155,7 +155,7 @@ impl QueryNode for SeriesScanNode {
 				if has_tag {
 					result_columns.push(ColumnWithName {
 						name: Fragment::internal("tag"),
-						data: ColumnBuffer::none_typed(Type::Uint1, 0),
+						data: ColumnBuffer::none_typed(ValueType::Uint1, 0),
 					});
 				}
 				for col_def in series.data_columns() {
@@ -206,9 +206,9 @@ impl QueryNode for SeriesScanNode {
 	}
 }
 
-pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) -> Result<ColumnWithName> {
+pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: ValueType) -> Result<ColumnWithName> {
 	let data = match col_type {
-		Type::Boolean => {
+		ValueType::Boolean => {
 			let vals: Vec<bool> = values
 				.iter()
 				.map(|v| match v {
@@ -218,7 +218,7 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 				.collect();
 			ColumnBuffer::bool(vals)
 		}
-		Type::Int1 => {
+		ValueType::Int1 => {
 			let vals: Vec<i8> = values
 				.iter()
 				.map(|v| match v {
@@ -228,7 +228,7 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 				.collect();
 			ColumnBuffer::int1(vals)
 		}
-		Type::Int2 => {
+		ValueType::Int2 => {
 			let vals: Vec<i16> = values
 				.iter()
 				.map(|v| match v {
@@ -238,7 +238,7 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 				.collect();
 			ColumnBuffer::int2(vals)
 		}
-		Type::Int4 => {
+		ValueType::Int4 => {
 			let vals: Vec<i32> = values
 				.iter()
 				.map(|v| match v {
@@ -248,7 +248,7 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 				.collect();
 			ColumnBuffer::int4(vals)
 		}
-		Type::Int8 => {
+		ValueType::Int8 => {
 			let vals: Vec<i64> = values
 				.iter()
 				.map(|v| match v {
@@ -258,7 +258,7 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 				.collect();
 			ColumnBuffer::int8(vals)
 		}
-		Type::Uint1 => {
+		ValueType::Uint1 => {
 			let vals: Vec<u8> = values
 				.iter()
 				.map(|v| match v {
@@ -268,7 +268,7 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 				.collect();
 			ColumnBuffer::uint1(vals)
 		}
-		Type::Uint2 => {
+		ValueType::Uint2 => {
 			let vals: Vec<u16> = values
 				.iter()
 				.map(|v| match v {
@@ -278,7 +278,7 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 				.collect();
 			ColumnBuffer::uint2(vals)
 		}
-		Type::Uint4 => {
+		ValueType::Uint4 => {
 			let vals: Vec<u32> = values
 				.iter()
 				.map(|v| match v {
@@ -288,7 +288,7 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 				.collect();
 			ColumnBuffer::uint4(vals)
 		}
-		Type::Uint8 => {
+		ValueType::Uint8 => {
 			let vals: Vec<u64> = values
 				.iter()
 				.map(|v| match v {
@@ -298,7 +298,7 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 				.collect();
 			ColumnBuffer::uint8(vals)
 		}
-		Type::Float4 => {
+		ValueType::Float4 => {
 			let vals: Vec<f32> = values
 				.iter()
 				.map(|v| match v {
@@ -308,7 +308,7 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 				.collect();
 			ColumnBuffer::float4(vals)
 		}
-		Type::Float8 => {
+		ValueType::Float8 => {
 			let vals: Vec<f64> = values
 				.iter()
 				.map(|v| match v {
@@ -318,7 +318,7 @@ pub(crate) fn build_data_column(name: &str, values: &[Value], col_type: Type) ->
 				.collect();
 			ColumnBuffer::float8(vals)
 		}
-		Type::Utf8 => {
+		ValueType::Utf8 => {
 			let vals: Vec<String> = values
 				.iter()
 				.map(|v| match v {

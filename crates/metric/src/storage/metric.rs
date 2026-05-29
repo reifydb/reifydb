@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_core::interface::store::{SingleVersionStore, Tier};
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::{
 	MetricId,

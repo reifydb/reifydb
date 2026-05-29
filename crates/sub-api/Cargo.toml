@@ -11,6 +11,6 @@ description = "Subsystem API and interfaces for ReifyDB"
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-transaction = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 
 [dev-dependencies]

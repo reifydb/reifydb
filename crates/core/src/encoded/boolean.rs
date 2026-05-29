@@ -3,7 +3,7 @@
 
 use std::ptr;
 
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
@@ -11,7 +11,7 @@ impl RowShape {
 	pub fn set_bool(&self, row: &mut EncodedRow, index: usize, value: impl Into<bool>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Boolean);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Boolean);
 		row.set_valid(index, true);
 		unsafe {
 			ptr::write_unaligned(
@@ -24,12 +24,12 @@ impl RowShape {
 	pub fn get_bool(&self, row: &EncodedRow, index: usize) -> bool {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Boolean);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Boolean);
 		unsafe { (row.as_ptr().add(field.offset as usize) as *const bool).read_unaligned() }
 	}
 
 	pub fn try_get_bool(&self, row: &EncodedRow, index: usize) -> Option<bool> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Boolean {
+		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Boolean {
 			Some(self.get_bool(row, index))
 		} else {
 			None
@@ -39,13 +39,13 @@ impl RowShape {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_set_get_bool() {
-		let shape = RowShape::testing(&[Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 		shape.set_bool(&mut row, 0, true);
 		assert!(shape.get_bool(&row, 0));
@@ -53,7 +53,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_bool() {
-		let shape = RowShape::testing(&[Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
 		assert_eq!(shape.try_get_bool(&row, 0), None);
@@ -64,7 +64,7 @@ pub mod tests {
 
 	#[test]
 	fn test_false() {
-		let shape = RowShape::testing(&[Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 		shape.set_bool(&mut row, 0, false);
 		assert!(!shape.get_bool(&row, 0));
@@ -73,7 +73,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let shape = RowShape::testing(&[Type::Boolean, Type::Int4, Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean, ValueType::Int4, ValueType::Boolean]);
 		let mut row = shape.allocate();
 
 		shape.set_bool(&mut row, 0, true);
@@ -87,7 +87,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let shape = RowShape::testing(&[Type::Boolean, Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean, ValueType::Boolean]);
 		let mut row = shape.allocate();
 
 		shape.set_bool(&mut row, 0, true);
@@ -101,7 +101,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_bool_wrong_type() {
-		let shape = RowShape::testing(&[Type::Int1]);
+		let shape = RowShape::testing(&[ValueType::Int1]);
 		let mut row = shape.allocate();
 
 		shape.set_i8(&mut row, 0, 42);

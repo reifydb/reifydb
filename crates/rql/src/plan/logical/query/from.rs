@@ -3,7 +3,7 @@
 
 use reifydb_core::error::diagnostic::query;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{err, error, error::Diagnostic, fragment::Fragment};
+use reifydb_value::{err, error, error::Diagnostic, fragment::Fragment};
 
 use crate::{
 	Result,

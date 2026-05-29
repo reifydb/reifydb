@@ -23,7 +23,7 @@ use reifydb_engine::{
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	params::Params,
 	util::cowvec::CowVec,

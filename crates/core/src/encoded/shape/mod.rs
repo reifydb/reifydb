@@ -28,9 +28,9 @@ use std::{
 	sync::{Arc, LazyLock, OnceLock},
 };
 
-use reifydb_type::{
+use reifydb_value::{
 	util::cowvec::CowVec,
-	value::{constraint::TypeConstraint, r#type::Type},
+	value::{constraint::TypeConstraint, value_type::ValueType},
 };
 use serde::{Deserialize, Serialize};
 
@@ -69,7 +69,7 @@ impl RowShapeField {
 		}
 	}
 
-	pub fn unconstrained(name: impl Into<String>, field_type: Type) -> Self {
+	pub fn unconstrained(name: impl Into<String>, field_type: ValueType) -> Self {
 		Self::new(name, TypeConstraint::unconstrained(field_type))
 	}
 }
@@ -238,7 +238,7 @@ impl RowShape {
 		}
 		let field = &self.fields()[index];
 		match field.constraint.get_type().inner_type() {
-			Type::Utf8 | Type::Blob | Type::Any => {
+			ValueType::Utf8 | ValueType::Blob | ValueType::Any => {
 				let ref_slice = &row.as_slice()[field.offset as usize..field.offset as usize + 8];
 				let offset =
 					u32::from_le_bytes([ref_slice[0], ref_slice[1], ref_slice[2], ref_slice[3]])
@@ -248,7 +248,7 @@ impl RowShape {
 						as usize;
 				Some((offset, length))
 			}
-			Type::Int | Type::Uint | Type::Decimal => {
+			ValueType::Int | ValueType::Uint | ValueType::Decimal => {
 				let packed = unsafe {
 					(row.as_ptr().add(field.offset as usize) as *const u128).read_unaligned()
 				};
@@ -268,12 +268,12 @@ impl RowShape {
 	pub(crate) fn write_dynamic_ref(&self, row: &mut EncodedRow, index: usize, offset: usize, length: usize) {
 		let field = &self.fields()[index];
 		match field.constraint.get_type().inner_type() {
-			Type::Utf8 | Type::Blob | Type::Any => {
+			ValueType::Utf8 | ValueType::Blob | ValueType::Any => {
 				let ref_slice = &mut row.0.make_mut()[field.offset as usize..field.offset as usize + 8];
 				ref_slice[0..4].copy_from_slice(&(offset as u32).to_le_bytes());
 				ref_slice[4..8].copy_from_slice(&(length as u32).to_le_bytes());
 			}
-			Type::Int | Type::Uint | Type::Decimal => {
+			ValueType::Int | ValueType::Uint | ValueType::Decimal => {
 				let offset_part = (offset as u128) & PACKED_OFFSET_MASK;
 				let length_part = ((length as u128) << 64) & PACKED_LENGTH_MASK;
 				let packed = PACKED_MODE_DYNAMIC | offset_part | length_part;
@@ -385,7 +385,7 @@ impl RowShape {
 		row.set_valid(index, false);
 	}
 
-	pub fn testing(types: &[Type]) -> Self {
+	pub fn testing(types: &[ValueType]) -> Self {
 		RowShape::new(
 			types.iter()
 				.enumerate()
@@ -400,7 +400,7 @@ impl RowShape {
 }
 
 static OPERATOR_STATE_SHAPE: LazyLock<RowShape> =
-	LazyLock::new(|| RowShape::new(vec![RowShapeField::unconstrained("state", Type::Blob)]));
+	LazyLock::new(|| RowShape::new(vec![RowShapeField::unconstrained("state", ValueType::Blob)]));
 
 #[cfg(test)]
 mod tests {
@@ -409,9 +409,9 @@ mod tests {
 	#[test]
 	fn test_shape_creation() {
 		let fields = vec![
-			RowShapeField::unconstrained("id", Type::Int8),
-			RowShapeField::unconstrained("name", Type::Utf8),
-			RowShapeField::unconstrained("active", Type::Boolean),
+			RowShapeField::unconstrained("id", ValueType::Int8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
+			RowShapeField::unconstrained("active", ValueType::Boolean),
 		];
 
 		let shape = RowShape::new(fields);
@@ -425,13 +425,13 @@ mod tests {
 	#[test]
 	fn test_shape_fingerprint_deterministic() {
 		let fields1 = vec![
-			RowShapeField::unconstrained("a", Type::Int4),
-			RowShapeField::unconstrained("b", Type::Utf8),
+			RowShapeField::unconstrained("a", ValueType::Int4),
+			RowShapeField::unconstrained("b", ValueType::Utf8),
 		];
 
 		let fields2 = vec![
-			RowShapeField::unconstrained("a", Type::Int4),
-			RowShapeField::unconstrained("b", Type::Utf8),
+			RowShapeField::unconstrained("a", ValueType::Int4),
+			RowShapeField::unconstrained("b", ValueType::Utf8),
 		];
 
 		let shape1 = RowShape::new(fields1);
@@ -442,8 +442,8 @@ mod tests {
 
 	#[test]
 	fn test_shape_fingerprint_different_for_different_shapes() {
-		let fields1 = vec![RowShapeField::unconstrained("a", Type::Int4)];
-		let fields2 = vec![RowShapeField::unconstrained("a", Type::Int8)];
+		let fields1 = vec![RowShapeField::unconstrained("a", ValueType::Int4)];
+		let fields2 = vec![RowShapeField::unconstrained("a", ValueType::Int8)];
 
 		let shape1 = RowShape::new(fields1);
 		let shape2 = RowShape::new(fields2);
@@ -454,8 +454,8 @@ mod tests {
 	#[test]
 	fn test_find_field() {
 		let fields = vec![
-			RowShapeField::unconstrained("id", Type::Int8),
-			RowShapeField::unconstrained("name", Type::Utf8),
+			RowShapeField::unconstrained("id", ValueType::Int8),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
 		];
 
 		let shape = RowShape::new(fields);

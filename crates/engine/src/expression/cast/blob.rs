@@ -2,10 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::buffer::ColumnBuffer;
-use reifydb_type::{
+use reifydb_value::{
 	error::TypeError,
 	fragment::{Fragment, LazyFragment},
-	value::{blob::Blob, r#type::Type},
+	value::{blob::Blob, value_type::ValueType},
 };
 
 use crate::Result;
@@ -16,7 +16,7 @@ pub fn to_blob(data: &ColumnBuffer, lazy_fragment: impl LazyFragment) -> Result<
 			container,
 			..
 		} => {
-			let mut out = ColumnBuffer::with_capacity(Type::Blob, container.len());
+			let mut out = ColumnBuffer::with_capacity(ValueType::Blob, container.len());
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
 					let temp_fragment = Fragment::internal(container.get(idx).unwrap());
@@ -31,7 +31,7 @@ pub fn to_blob(data: &ColumnBuffer, lazy_fragment: impl LazyFragment) -> Result<
 			let from = data.get_type();
 			Err(TypeError::UnsupportedCast {
 				from,
-				to: Type::Blob,
+				to: ValueType::Blob,
 				fragment: lazy_fragment.fragment(),
 			}
 			.into())
@@ -41,7 +41,7 @@ pub fn to_blob(data: &ColumnBuffer, lazy_fragment: impl LazyFragment) -> Result<
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::{fragment::Fragment, util::bitvec::BitVec};
+	use reifydb_value::{fragment::Fragment, util::bitvec::BitVec};
 
 	use super::*;
 

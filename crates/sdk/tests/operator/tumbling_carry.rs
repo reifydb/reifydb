@@ -18,7 +18,7 @@ use reifydb_sdk::{
 		strategy::{ColumnSampler, samplers},
 	},
 };
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 use super::common::{self, TwapCarry};
 

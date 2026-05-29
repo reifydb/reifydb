@@ -65,7 +65,7 @@ impl RecentCdcCache {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_type::value::datetime::DateTime;
+	use reifydb_value::value::datetime::DateTime;
 
 	use super::*;
 

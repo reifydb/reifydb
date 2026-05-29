@@ -8,7 +8,7 @@ use std::{
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::internal_error;
-use reifydb_type::{
+use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
 };

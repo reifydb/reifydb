@@ -3,7 +3,7 @@
 
 use std::{error, fmt, sync::Arc};
 
-use reifydb_type::error::Diagnostic;
+use reifydb_value::error::Diagnostic;
 
 #[derive(Debug)]
 pub enum ExecuteError {

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::catalog::namespace::Namespace;
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::interceptor::chain::InterceptorChain;
 

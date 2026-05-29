@@ -8,7 +8,7 @@ use reifydb_core::{
 };
 use reifydb_rql::query::QueryPlan;
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::{fragment::Fragment, return_error};
+use reifydb_value::{fragment::Fragment, return_error};
 
 use crate::{Result, flow::compiler::compile_flow};
 

@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Stat {

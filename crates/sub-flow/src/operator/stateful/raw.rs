@@ -5,7 +5,7 @@ use reifydb_core::encoded::{
 	key::{EncodedKey, EncodedKeyRange},
 	row::EncodedRow,
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use super::{StateIterator, utils};
 use crate::{Operator, transaction::FlowTransaction};
@@ -56,7 +56,7 @@ pub mod tests {
 	use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_type::util::cowvec::CowVec;
+	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
 	use crate::{operator::stateful::test_utils::test::*, transaction::FlowTransaction};

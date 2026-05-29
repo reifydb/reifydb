@@ -10,7 +10,7 @@ use reifydb_core::{
 	interface::cdc::{Cdc, SystemChange},
 };
 use reifydb_sqlite::SqliteConfig;
-use reifydb_type::{util::cowvec::CowVec, value::datetime::DateTime};
+use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
 
 fn cdc_minimal(version: u64) -> Cdc {
 	Cdc::new(

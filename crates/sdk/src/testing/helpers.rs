@@ -6,7 +6,7 @@ use reifydb_core::encoded::{
 	row::EncodedRow,
 	shape::RowShape,
 };
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 pub fn get_values(shape: &RowShape, row: &EncodedRow) -> Vec<Value> {
 	(0..shape.field_count()).map(|i| shape.get_value(row, i)).collect()

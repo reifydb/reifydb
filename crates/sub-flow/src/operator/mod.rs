@@ -6,7 +6,7 @@ use std::{ops::Deref, sync::Arc, time::Duration};
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
 use reifydb_sdk::operator::Tick;
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::transaction::FlowTransaction;
 

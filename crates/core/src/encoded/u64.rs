@@ -3,7 +3,7 @@
 
 use std::ptr;
 
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
@@ -11,7 +11,7 @@ impl RowShape {
 	pub fn set_u64(&self, row: &mut EncodedRow, index: usize, value: impl Into<u64>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uint8);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Uint8);
 		row.set_valid(index, true);
 		unsafe {
 			ptr::write_unaligned(
@@ -24,12 +24,12 @@ impl RowShape {
 	pub fn get_u64(&self, row: &EncodedRow, index: usize) -> u64 {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uint8);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Uint8);
 		unsafe { (row.as_ptr().add(field.offset as usize) as *const u64).read_unaligned() }
 	}
 
 	pub fn try_get_u64(&self, row: &EncodedRow, index: usize) -> Option<u64> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Uint8 {
+		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Uint8 {
 			Some(self.get_u64(row, index))
 		} else {
 			None
@@ -39,13 +39,13 @@ impl RowShape {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_set_get_u64() {
-		let shape = RowShape::testing(&[Type::Uint8]);
+		let shape = RowShape::testing(&[ValueType::Uint8]);
 		let mut row = shape.allocate();
 		shape.set_u64(&mut row, 0, 18446744073709551615u64);
 		assert_eq!(shape.get_u64(&row, 0), 18446744073709551615u64);
@@ -53,7 +53,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_u64() {
-		let shape = RowShape::testing(&[Type::Uint8]);
+		let shape = RowShape::testing(&[ValueType::Uint8]);
 		let mut row = shape.allocate();
 
 		assert_eq!(shape.try_get_u64(&row, 0), None);
@@ -64,7 +64,7 @@ pub mod tests {
 
 	#[test]
 	fn test_extremes() {
-		let shape = RowShape::testing(&[Type::Uint8]);
+		let shape = RowShape::testing(&[ValueType::Uint8]);
 		let mut row = shape.allocate();
 
 		shape.set_u64(&mut row, 0, u64::MAX);
@@ -81,7 +81,7 @@ pub mod tests {
 
 	#[test]
 	fn test_large_values() {
-		let shape = RowShape::testing(&[Type::Uint8]);
+		let shape = RowShape::testing(&[ValueType::Uint8]);
 
 		let test_values = [
 			0u64,
@@ -104,7 +104,7 @@ pub mod tests {
 
 	#[test]
 	fn test_memory_sizes() {
-		let shape = RowShape::testing(&[Type::Uint8]);
+		let shape = RowShape::testing(&[ValueType::Uint8]);
 
 		// Test values representing memory sizes in bytes
 		let memory_sizes = [
@@ -125,7 +125,7 @@ pub mod tests {
 
 	#[test]
 	fn test_nanosecond_timestamps() {
-		let shape = RowShape::testing(&[Type::Uint8]);
+		let shape = RowShape::testing(&[ValueType::Uint8]);
 
 		// Test nanosecond precision timestamps
 		let ns_timestamps = [
@@ -144,7 +144,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let shape = RowShape::testing(&[Type::Uint8, Type::Float8, Type::Uint8]);
+		let shape = RowShape::testing(&[ValueType::Uint8, ValueType::Float8, ValueType::Uint8]);
 		let mut row = shape.allocate();
 
 		shape.set_u64(&mut row, 0, 15_000_000_000_000_000_000u64);
@@ -158,7 +158,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let shape = RowShape::testing(&[Type::Uint8, Type::Uint8]);
+		let shape = RowShape::testing(&[ValueType::Uint8, ValueType::Uint8]);
 		let mut row = shape.allocate();
 
 		shape.set_u64(&mut row, 0, 1234567890123456789u64);
@@ -172,7 +172,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_u64_wrong_type() {
-		let shape = RowShape::testing(&[Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
 		shape.set_bool(&mut row, 0, true);

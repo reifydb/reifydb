@@ -3,7 +3,7 @@
 
 use std::ptr;
 
-use reifydb_type::value::{identity::IdentityId, r#type::Type, uuid::Uuid7};
+use reifydb_value::value::{identity::IdentityId, uuid::Uuid7, value_type::ValueType};
 use uuid::Uuid;
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
@@ -12,7 +12,7 @@ impl RowShape {
 	pub fn set_identity_id(&self, row: &mut EncodedRow, index: usize, value: IdentityId) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::IdentityId);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::IdentityId);
 		row.set_valid(index, true);
 		unsafe {
 			ptr::write_unaligned(
@@ -25,7 +25,7 @@ impl RowShape {
 	pub fn get_identity_id(&self, row: &EncodedRow, index: usize) -> IdentityId {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::IdentityId);
+		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::IdentityId);
 		unsafe {
 			let bytes: [u8; 16] =
 				ptr::read_unaligned(row.as_ptr().add(field.offset as usize) as *const [u8; 16]);
@@ -36,7 +36,7 @@ impl RowShape {
 	}
 
 	pub fn try_get_identity_id(&self, row: &EncodedRow, index: usize) -> Option<IdentityId> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::IdentityId {
+		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::IdentityId {
 			Some(self.get_identity_id(row, index))
 		} else {
 			None
@@ -50,7 +50,7 @@ pub mod tests {
 		clock::{Clock, MockClock},
 		rng::Rng,
 	};
-	use reifydb_type::value::{identity::IdentityId, r#type::Type};
+	use reifydb_value::value::{identity::IdentityId, value_type::ValueType};
 
 	use crate::encoded::shape::RowShape;
 
@@ -64,7 +64,7 @@ pub mod tests {
 	#[test]
 	fn test_set_get_identity_id() {
 		let (_mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::IdentityId]);
+		let shape = RowShape::testing(&[ValueType::IdentityId]);
 		let mut row = shape.allocate();
 
 		let id = IdentityId::generate(&clock, &rng);
@@ -75,7 +75,7 @@ pub mod tests {
 	#[test]
 	fn test_try_get_identity_id() {
 		let (_mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::IdentityId]);
+		let shape = RowShape::testing(&[ValueType::IdentityId]);
 		let mut row = shape.allocate();
 
 		assert_eq!(shape.try_get_identity_id(&row, 0), None);
@@ -88,7 +88,7 @@ pub mod tests {
 	#[test]
 	fn test_multiple_generations() {
 		let (mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::IdentityId]);
+		let shape = RowShape::testing(&[ValueType::IdentityId]);
 
 		// Generate multiple Identity IDs and ensure they're different
 		let mut ids = Vec::new();
@@ -113,7 +113,7 @@ pub mod tests {
 	#[test]
 	fn test_uuid7_properties() {
 		let (_mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::IdentityId]);
+		let shape = RowShape::testing(&[ValueType::IdentityId]);
 		let mut row = shape.allocate();
 
 		let id = IdentityId::generate(&clock, &rng);
@@ -128,7 +128,7 @@ pub mod tests {
 	#[test]
 	fn test_timestamp_ordering() {
 		let (mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::IdentityId]);
+		let shape = RowShape::testing(&[ValueType::IdentityId]);
 
 		// Generate Identity IDs in sequence - they should be ordered by
 		// timestamp
@@ -154,7 +154,12 @@ pub mod tests {
 	#[test]
 	fn test_mixed_with_other_types() {
 		let (mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::IdentityId, Type::Boolean, Type::IdentityId, Type::Int4]);
+		let shape = RowShape::testing(&[
+			ValueType::IdentityId,
+			ValueType::Boolean,
+			ValueType::IdentityId,
+			ValueType::Int4,
+		]);
 		let mut row = shape.allocate();
 
 		let id1 = IdentityId::generate(&clock, &rng);
@@ -175,7 +180,7 @@ pub mod tests {
 	#[test]
 	fn test_undefined_handling() {
 		let (_mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::IdentityId, Type::IdentityId]);
+		let shape = RowShape::testing(&[ValueType::IdentityId, ValueType::IdentityId]);
 		let mut row = shape.allocate();
 
 		let id = IdentityId::generate(&clock, &rng);
@@ -191,7 +196,7 @@ pub mod tests {
 	#[test]
 	fn test_persistence() {
 		let (_mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::IdentityId]);
+		let shape = RowShape::testing(&[ValueType::IdentityId]);
 		let mut row = shape.allocate();
 
 		let id = IdentityId::generate(&clock, &rng);
@@ -208,7 +213,7 @@ pub mod tests {
 	#[test]
 	fn test_clone_consistency() {
 		let (_mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::IdentityId]);
+		let shape = RowShape::testing(&[ValueType::IdentityId]);
 		let mut row = shape.allocate();
 
 		let original_id = IdentityId::generate(&clock, &rng);
@@ -225,7 +230,7 @@ pub mod tests {
 	#[test]
 	fn test_multiple_fields() {
 		let (mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::IdentityId, Type::IdentityId, Type::IdentityId]);
+		let shape = RowShape::testing(&[ValueType::IdentityId, ValueType::IdentityId, ValueType::IdentityId]);
 		let mut row = shape.allocate();
 
 		let id1 = IdentityId::generate(&clock, &rng);
@@ -251,7 +256,7 @@ pub mod tests {
 	#[test]
 	fn test_format_consistency() {
 		let (_mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::IdentityId]);
+		let shape = RowShape::testing(&[ValueType::IdentityId]);
 		let mut row = shape.allocate();
 
 		let id = IdentityId::generate(&clock, &rng);
@@ -272,7 +277,7 @@ pub mod tests {
 	#[test]
 	fn test_byte_level_storage() {
 		let (_mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::IdentityId]);
+		let shape = RowShape::testing(&[ValueType::IdentityId]);
 		let mut row = shape.allocate();
 
 		let id = IdentityId::generate(&clock, &rng);
@@ -292,7 +297,7 @@ pub mod tests {
 	#[test]
 	fn test_time_based_properties() {
 		let (mock, clock, rng) = test_clock_and_rng();
-		let shape = RowShape::testing(&[Type::IdentityId]);
+		let shape = RowShape::testing(&[ValueType::IdentityId]);
 
 		// Generate Identity IDs at different times
 		let id1 = IdentityId::generate(&clock, &rng);
@@ -317,9 +322,9 @@ pub mod tests {
 	fn test_as_primary_key() {
 		let (_mock, clock, rng) = test_clock_and_rng();
 		let shape = RowShape::testing(&[
-			Type::IdentityId, // Primary key
-			Type::Utf8,       // Name field
-			Type::Int4,       // Age field
+			ValueType::IdentityId, // Primary key
+			ValueType::Utf8,       // Name field
+			ValueType::Int4,       // Age field
 		]);
 		let mut row = shape.allocate();
 
@@ -339,7 +344,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_identity_id_wrong_type() {
-		let shape = RowShape::testing(&[Type::Boolean]);
+		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
 		shape.set_bool(&mut row, 0, true);

@@ -23,7 +23,7 @@ use reifydb_core::{
 	interface::store::{MultiVersionBatch, MultiVersionRow},
 	key::{Key, kind::KeyKind},
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 use vec::IntoIter;
 
 use super::FlowTransaction;
@@ -619,7 +619,7 @@ pub mod tests {
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_type::{util::cowvec::CowVec, value::identity::IdentityId};
+	use reifydb_value::{util::cowvec::CowVec, value::identity::IdentityId};
 
 	use super::*;
 	use crate::operator::stateful::test_utils::test::create_test_transaction;

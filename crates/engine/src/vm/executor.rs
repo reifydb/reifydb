@@ -26,11 +26,11 @@ use reifydb_transaction::transaction::{
 	query::QueryTransaction,
 };
 #[cfg(not(reifydb_single_threaded))]
-use reifydb_type::error::Diagnostic;
-use reifydb_type::{
+use reifydb_value::error::Diagnostic;
+use reifydb_value::{
 	error::Error,
 	params::Params,
-	value::{Value, frame::frame::Frame, r#type::Type},
+	value::{Value, frame::frame::Frame, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -131,7 +131,7 @@ fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Tran
 	if identity.is_anonymous() {
 		let columns = Columns::single_row([
 			("id", Value::IdentityId(identity)),
-			("name", Value::none_of(Type::Utf8)),
+			("name", Value::none_of(ValueType::Utf8)),
 			("roles", Value::List(vec![])),
 		]);
 		symbols.set("identity".to_string(), Variable::columns(columns), false)?;

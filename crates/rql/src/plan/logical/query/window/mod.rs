@@ -7,7 +7,7 @@ use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	internal_error,
 };
-use reifydb_type::fragment::Fragment;
+use reifydb_value::fragment::Fragment;
 
 use crate::{
 	Result,

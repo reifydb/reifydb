@@ -19,11 +19,11 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 use reifydb_core::internal_error;
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	value::{
 		constraint::{Constraint, TypeConstraint},
-		r#type::Type,
+		value_type::ValueType,
 	},
 };
 
@@ -49,35 +49,35 @@ pub mod plan;
 pub mod query;
 pub mod token;
 
-pub(crate) fn convert_data_type(ast: &BumpFragment<'_>) -> Result<Type> {
+pub(crate) fn convert_data_type(ast: &BumpFragment<'_>) -> Result<ValueType> {
 	Ok(match ast.text().to_ascii_lowercase().as_str() {
-		"bool" => Type::Boolean,
-		"boolean" => Type::Boolean,
-		"float4" => Type::Float4,
-		"float8" => Type::Float8,
-		"int1" => Type::Int1,
-		"int2" => Type::Int2,
-		"int4" => Type::Int4,
-		"int8" => Type::Int8,
-		"int16" => Type::Int16,
-		"uint1" => Type::Uint1,
-		"uint2" => Type::Uint2,
-		"uint4" => Type::Uint4,
-		"uint8" => Type::Uint8,
-		"uint16" => Type::Uint16,
-		"utf8" => Type::Utf8,
-		"text" => Type::Utf8,
-		"date" => Type::Date,
-		"datetime" => Type::DateTime,
-		"time" => Type::Time,
-		"duration" => Type::Duration,
-		"uuid4" => Type::Uuid4,
-		"uuid7" => Type::Uuid7,
-		"identityid" | "identity_id" => Type::IdentityId,
-		"blob" => Type::Blob,
-		"int" => Type::Int,
-		"uint" => Type::Uint,
-		"decimal" => Type::Decimal,
+		"bool" => ValueType::Boolean,
+		"boolean" => ValueType::Boolean,
+		"float4" => ValueType::Float4,
+		"float8" => ValueType::Float8,
+		"int1" => ValueType::Int1,
+		"int2" => ValueType::Int2,
+		"int4" => ValueType::Int4,
+		"int8" => ValueType::Int8,
+		"int16" => ValueType::Int16,
+		"uint1" => ValueType::Uint1,
+		"uint2" => ValueType::Uint2,
+		"uint4" => ValueType::Uint4,
+		"uint8" => ValueType::Uint8,
+		"uint16" => ValueType::Uint16,
+		"utf8" => ValueType::Utf8,
+		"text" => ValueType::Utf8,
+		"date" => ValueType::Date,
+		"datetime" => ValueType::DateTime,
+		"time" => ValueType::Time,
+		"duration" => ValueType::Duration,
+		"uuid4" => ValueType::Uuid4,
+		"uuid7" => ValueType::Uuid7,
+		"identityid" | "identity_id" => ValueType::IdentityId,
+		"blob" => ValueType::Blob,
+		"int" => ValueType::Int,
+		"uint" => ValueType::Uint,
+		"decimal" => ValueType::Decimal,
 		_ => {
 			return Err(AstError::UnrecognizedType {
 				fragment: ast.to_owned(),
@@ -100,23 +100,23 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 			let base_type = convert_data_type(name)?;
 
 			let constraint = match (base_type.clone(), params.as_slice()) {
-				(Type::Utf8, [AstLiteral::Number(n)]) => {
+				(ValueType::Utf8, [AstLiteral::Number(n)]) => {
 					let max_bytes = parse_number_literal(n.value())? as u32;
 					Some(Constraint::MaxBytes(max_bytes.into()))
 				}
-				(Type::Blob, [AstLiteral::Number(n)]) => {
+				(ValueType::Blob, [AstLiteral::Number(n)]) => {
 					let max_bytes = parse_number_literal(n.value())? as u32;
 					Some(Constraint::MaxBytes(max_bytes.into()))
 				}
-				(Type::Int, [AstLiteral::Number(n)]) => {
+				(ValueType::Int, [AstLiteral::Number(n)]) => {
 					let max_bytes = parse_number_literal(n.value())? as u32;
 					Some(Constraint::MaxBytes(max_bytes.into()))
 				}
-				(Type::Uint, [AstLiteral::Number(n)]) => {
+				(ValueType::Uint, [AstLiteral::Number(n)]) => {
 					let max_bytes = parse_number_literal(n.value())? as u32;
 					Some(Constraint::MaxBytes(max_bytes.into()))
 				}
-				(Type::Decimal, [AstLiteral::Number(p), AstLiteral::Number(s)]) => {
+				(ValueType::Decimal, [AstLiteral::Number(p), AstLiteral::Number(s)]) => {
 					let precision = parse_number_literal(p.value())? as u8;
 					let scale = parse_number_literal(s.value())? as u8;
 					Some(Constraint::PrecisionScale(precision.into(), scale.into()))
@@ -132,7 +132,7 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 		}
 		AstType::Optional(inner) => {
 			let inner_tc = convert_data_type_with_constraints(inner)?;
-			Ok(TypeConstraint::unconstrained(Type::Option(Box::new(inner_tc.get_type()))))
+			Ok(TypeConstraint::unconstrained(ValueType::Option(Box::new(inner_tc.get_type()))))
 		}
 		AstType::Qualified {
 			name,

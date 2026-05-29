@@ -23,7 +23,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 pub mod flush;
 pub mod gc;
@@ -46,7 +46,7 @@ use reifydb_core::{
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_value::util::cowvec::CowVec;
 use store::StandardMultiStore;
 
 pub mod memory {}

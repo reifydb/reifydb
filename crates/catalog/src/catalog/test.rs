@@ -10,7 +10,7 @@ use reifydb_transaction::{
 	change::TransactionalTestChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_type::fragment::Fragment;
+use reifydb_value::fragment::Fragment;
 use tracing::instrument;
 
 use crate::{Result, catalog::Catalog, store::sequence::system::SystemSequence};

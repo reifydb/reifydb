@@ -3,7 +3,7 @@
 
 use reifydb_core::{interface::catalog::token::TokenId, key::token::TokenKey};
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::value::{datetime::DateTime, identity::IdentityId};
+use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
 
 use crate::{CatalogStore, Result, store::token::shape::token};
 

@@ -19,7 +19,7 @@ use reifydb_runtime::actor::{
 	timers::TimerHandle,
 	traits::{Actor as ActorTrait, Directive},
 };
-use reifydb_type::value::datetime::DateTime;
+use reifydb_value::value::datetime::DateTime;
 use tracing::{debug, info, trace, warn};
 
 use super::{ListRowSettings, ScanStats, scanner};

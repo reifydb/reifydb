@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb::{ConfigKey, GetConfig, Value, embedded, value::duration::Duration};
+use reifydb::{ConfigKey, GetConfig, Value, embedded, value::value::duration::Duration};
 
 #[test]
 fn test_with_config_applied_at_bootstrap() {

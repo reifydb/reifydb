@@ -9,7 +9,7 @@ use reifydb_core::{
 };
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transaction};
-use reifydb_type::{Result, error::Error as TypeError, value::identity::IdentityId};
+use reifydb_value::{Result, error::Error as TypeError, value::identity::IdentityId};
 
 use crate::engine::StandardEngine;
 

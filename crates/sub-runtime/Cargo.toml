@@ -14,7 +14,7 @@ reifydb-engine = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-sub-api = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 
 tracing = { workspace = true }
 

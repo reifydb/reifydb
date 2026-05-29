@@ -18,7 +18,7 @@ use reifydb_runtime::actor::{
 	traits::{Actor, Directive},
 };
 use reifydb_runtime::{actor::timers::TimerHandle, sync::waiter::WaiterHandle};
-use reifydb_type::value::datetime::DateTime;
+use reifydb_value::value::datetime::DateTime;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use tracing::{debug, error, warn};
 
@@ -235,7 +235,7 @@ impl Actor for FlushActor {
 mod tests {
 	use reifydb_core::interface::catalog::{id::TableId, shape::ShapeId};
 	use reifydb_sqlite::SqliteTempPathGuard;
-	use reifydb_type::util::cowvec::CowVec;
+	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
 	use crate::tier::VersionedGetResult;

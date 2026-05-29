@@ -9,7 +9,7 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_type::{Result, fragment::Fragment};
+use reifydb_value::{Result, fragment::Fragment};
 
 use crate::{Operator, operator::sink::decode_dictionary_columns, transaction::FlowTransaction};
 

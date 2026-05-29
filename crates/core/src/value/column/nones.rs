@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::{storage::DataBitVec, util::bitvec::BitVec};
+use reifydb_value::{storage::DataBitVec, util::bitvec::BitVec};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NoneBitmap {

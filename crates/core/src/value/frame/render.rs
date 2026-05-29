@@ -3,7 +3,7 @@
 
 use std::fmt::{self, Write};
 
-use reifydb_type::{
+use reifydb_value::{
 	util::unicode::UnicodeWidthStr,
 	value::frame::{column::FrameColumn, frame::Frame},
 };

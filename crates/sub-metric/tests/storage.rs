@@ -55,7 +55,7 @@ use reifydb_testing::testscript::{
 	command::Command,
 	runner::{self, Runner as TestRunner},
 };
-use reifydb_type::{cow_vec, util::cowvec::CowVec};
+use reifydb_value::{cow_vec, util::cowvec::CowVec};
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/sub-metric/tests/scripts/storage" as metric_memory => test_memory }

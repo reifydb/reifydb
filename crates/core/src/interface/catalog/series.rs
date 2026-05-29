@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::{Value, datetime::DateTime, sumtype::SumTypeId, r#type::Type};
+use reifydb_value::value::{Value, datetime::DateTime, sumtype::SumTypeId, value_type::ValueType};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -86,7 +86,7 @@ impl Series {
 		&self.name
 	}
 
-	pub fn key_column_type(&self) -> Option<Type> {
+	pub fn key_column_type(&self) -> Option<ValueType> {
 		let key_col_name = self.key.column();
 		self.columns.iter().find(|c| c.name == key_col_name).map(|c| c.constraint.get_type())
 	}
@@ -125,17 +125,17 @@ impl Series {
 	pub fn key_from_u64(&self, v: u64) -> Value {
 		let ty = self.key_column_type();
 		match ty.as_ref() {
-			Some(Type::Int1) => Value::Int1(v as i8),
-			Some(Type::Int2) => Value::Int2(v as i16),
-			Some(Type::Int4) => Value::Int4(v as i32),
-			Some(Type::Int8) => Value::Int8(v as i64),
-			Some(Type::Uint1) => Value::Uint1(v as u8),
-			Some(Type::Uint2) => Value::Uint2(v as u16),
-			Some(Type::Uint4) => Value::Uint4(v as u32),
-			Some(Type::Uint8) => Value::Uint8(v),
-			Some(Type::Uint16) => Value::Uint16(v as u128),
-			Some(Type::Int16) => Value::Int16(v as i128),
-			Some(Type::DateTime) => {
+			Some(ValueType::Int1) => Value::Int1(v as i8),
+			Some(ValueType::Int2) => Value::Int2(v as i16),
+			Some(ValueType::Int4) => Value::Int4(v as i32),
+			Some(ValueType::Int8) => Value::Int8(v as i64),
+			Some(ValueType::Uint1) => Value::Uint1(v as u8),
+			Some(ValueType::Uint2) => Value::Uint2(v as u16),
+			Some(ValueType::Uint4) => Value::Uint4(v as u32),
+			Some(ValueType::Uint8) => Value::Uint8(v),
+			Some(ValueType::Uint16) => Value::Uint16(v as u128),
+			Some(ValueType::Int16) => Value::Int16(v as i128),
+			Some(ValueType::DateTime) => {
 				let nanos: u64 = match &self.key {
 					SeriesKey::DateTime {
 						precision,

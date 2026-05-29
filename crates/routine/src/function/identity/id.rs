@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_type::value::r#type::Type;
+use reifydb_value::value::value_type::ValueType;
 
 use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
@@ -29,8 +29,8 @@ impl<'a> Routine<FunctionContext<'a>> for Id {
 		&self.info
 	}
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::IdentityId
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::IdentityId
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
@@ -47,7 +47,7 @@ impl<'a> Routine<FunctionContext<'a>> for Id {
 		if identity.is_anonymous() {
 			return Ok(Columns::new(vec![ColumnWithName::new(
 				ctx.fragment.clone(),
-				ColumnBuffer::none_typed(Type::IdentityId, row_count),
+				ColumnBuffer::none_typed(ValueType::IdentityId, row_count),
 			)]));
 		}
 

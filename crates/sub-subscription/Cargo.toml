@@ -25,7 +25,7 @@ reifydb-sub-api = { workspace = true }
 reifydb-sub-flow = { workspace = true }
 reifydb-subscription = { workspace = true }
 reifydb-transaction = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-value = { workspace = true }
 
 dashmap = { workspace = true }
 postcard = { workspace = true }

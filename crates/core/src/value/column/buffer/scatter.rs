@@ -3,7 +3,7 @@
 
 use std::fmt::Debug;
 
-use reifydb_type::{
+use reifydb_value::{
 	storage::{DataBitVec, DataVec},
 	util::bitvec::BitVec,
 	value::{
@@ -346,7 +346,7 @@ where
 
 #[cfg(test)]
 mod tests {
-	use reifydb_type::{util::bitvec::BitVec, value::Value};
+	use reifydb_value::{util::bitvec::BitVec, value::Value};
 
 	use crate::value::column::ColumnBuffer;
 

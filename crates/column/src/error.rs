@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::{
+use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
-	value::r#type::Type,
+	value::value_type::ValueType,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -33,12 +33,12 @@ pub enum ColumnError {
 
 	#[error("Canonical::to_column_buffer: unexpected VarLen type {ty}")]
 	ToColumnDataUnexpectedVarLen {
-		ty: Type,
+		ty: ValueType,
 	},
 
 	#[error("Canonical::to_column_buffer: unexpected BigNum type {ty}")]
 	ToColumnDataUnexpectedBigNum {
-		ty: Type,
+		ty: ValueType,
 	},
 
 	#[error("Canonical::to_column_buffer: invalid UTF-8: {reason}")]

@@ -8,10 +8,10 @@ use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
 	rng::Rng,
 };
-use reifydb_type::value::{
+use reifydb_value::value::{
 	identity::IdentityId,
-	r#type::Type,
 	uuid::{Uuid4, Uuid7},
+	value_type::ValueType,
 };
 
 fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
@@ -24,7 +24,7 @@ fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
 #[test]
 fn test_uuid_uniqueness() {
 	let (mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[Type::Uuid4, Type::Uuid7, Type::IdentityId]);
+	let shape = RowShape::testing(&[ValueType::Uuid4, ValueType::Uuid7, ValueType::IdentityId]);
 
 	// Generate many UUIDs and verify uniqueness
 	let mut uuid4_set = HashSet::new();
@@ -58,7 +58,7 @@ fn test_uuid_uniqueness() {
 #[test]
 fn test_uuid7_timestamp_ordering() {
 	let (mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[Type::Uuid7]);
+	let shape = RowShape::testing(&[ValueType::Uuid7]);
 
 	let mut uuids = Vec::new();
 	for _ in 0..10 {

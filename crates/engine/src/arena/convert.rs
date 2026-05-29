@@ -5,7 +5,7 @@ use std::fmt::Debug;
 
 use bumpalo::Bump as BumpAlloc;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
-use reifydb_type::{
+use reifydb_value::{
 	storage::{Cow, DataBitVec, DataVec, Storage},
 	util::{bitvec::BitVec, cowvec::CowVec},
 	value::{
@@ -311,7 +311,7 @@ pub fn column_to_bump(src: &ColumnWithName, _bump: &BumpAlloc) -> ColumnWithName
 #[cfg(test)]
 mod tests {
 	use reifydb_core::value::column::ColumnWithName;
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
 
@@ -361,7 +361,7 @@ mod tests {
 
 	#[test]
 	fn test_column_data_none_roundtrip() {
-		let original = ColumnBuffer::none_typed(Type::Boolean, 5);
+		let original = ColumnBuffer::none_typed(ValueType::Boolean, 5);
 		let bump_alloc = BumpAlloc::new();
 
 		let bump_data = column_data_to_bump::<Cow>(&original, &bump_alloc);

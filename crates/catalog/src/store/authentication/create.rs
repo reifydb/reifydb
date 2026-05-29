@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use reifydb_core::{interface::catalog::authentication::Authentication, key::authentication::AuthenticationKey};
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::{
+use reifydb_value::{
 	error::{Diagnostic, Error},
 	fragment::Fragment,
 	value::identity::IdentityId,

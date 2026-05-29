@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::value::{
-	container::temporal::TemporalContainer, frame::data::FrameColumnData, time::Time, r#type::Type,
+use reifydb_value::value::{
+	container::temporal::TemporalContainer, frame::data::FrameColumnData, time::Time, value_type::ValueType,
 };
 
 fn make(v: Vec<Time>) -> FrameColumnData {
@@ -17,5 +17,5 @@ crate::nones_tests! {
 		Time::from_nanos_since_midnight(86_399_999_999_999).unwrap(),
 		Time::from_nanos_since_midnight(21_600_000_000_000).unwrap(),
 	],
-	inner_type: Type::Time,
+	inner_type: ValueType::Time,
 }

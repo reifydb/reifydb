@@ -6,7 +6,7 @@ use reifydb_core::{
 	internal,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::error::Error;
+use reifydb_value::error::Error;
 
 use crate::{CatalogStore, Result};
 
@@ -41,9 +41,9 @@ pub mod tests {
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_type::{
+	use reifydb_value::{
 		fragment::Fragment,
-		value::{constraint::TypeConstraint, r#type::Type},
+		value::{constraint::TypeConstraint, value_type::ValueType},
 	};
 
 	use crate::{
@@ -93,7 +93,7 @@ pub mod tests {
 				columns: vec![ViewColumnToCreate {
 					name: Fragment::internal("id"),
 					fragment: Fragment::None,
-					constraint: TypeConstraint::unconstrained(Type::Uint8),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 				}],
 				storage: ViewStorageConfig::default(),
 			},

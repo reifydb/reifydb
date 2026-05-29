@@ -8,7 +8,7 @@ use reifydb_core::interface::catalog::{
 	id::NamespaceId,
 	vtable::VTable,
 };
-use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
+use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 use crate::system::ids::{columns::procedures::rql::*, vtable::PROCEDURES_RQL};
 
@@ -24,7 +24,7 @@ pub fn procedures_rql() -> Arc<VTable> {
 				Column {
 					id: ID,
 					name: "id".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint8),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
@@ -33,7 +33,7 @@ pub fn procedures_rql() -> Arc<VTable> {
 				Column {
 					id: NAMESPACE_ID,
 					name: "namespace_id".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint8),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,
@@ -42,7 +42,7 @@ pub fn procedures_rql() -> Arc<VTable> {
 				Column {
 					id: NAME,
 					name: "name".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Utf8),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(2),
 					auto_increment: false,
@@ -51,7 +51,7 @@ pub fn procedures_rql() -> Arc<VTable> {
 				Column {
 					id: RETURN_TYPE,
 					name: "return_type".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Utf8),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(3),
 					auto_increment: false,
@@ -60,7 +60,7 @@ pub fn procedures_rql() -> Arc<VTable> {
 				Column {
 					id: BODY,
 					name: "body".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Utf8),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(4),
 					auto_increment: false,
@@ -69,7 +69,7 @@ pub fn procedures_rql() -> Arc<VTable> {
 				Column {
 					id: TRIGGER_KIND,
 					name: "trigger_kind".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Utf8),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(5),
 					auto_increment: false,
@@ -78,7 +78,7 @@ pub fn procedures_rql() -> Arc<VTable> {
 				Column {
 					id: EVENT_VARIANT_SUMTYPE_ID,
 					name: "event_variant_sumtype_id".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint8),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 					properties: vec![],
 					index: ColumnIndex(6),
 					auto_increment: false,
@@ -87,7 +87,7 @@ pub fn procedures_rql() -> Arc<VTable> {
 				Column {
 					id: EVENT_VARIANT_INDEX,
 					name: "event_variant_index".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint2),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint2),
 					properties: vec![],
 					index: ColumnIndex(7),
 					auto_increment: false,

@@ -2,11 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::encoded::shape::RowShape;
-use reifydb_type::value::{blob::Blob, int::Int, r#type::Type};
+use reifydb_value::value::{blob::Blob, int::Int, value_type::ValueType};
 
 #[test]
 fn test_utf8_special_sequences() {
-	let shape = RowShape::testing(&[Type::Utf8]);
+	let shape = RowShape::testing(&[ValueType::Utf8]);
 
 	let test_strings = [
 		"",                 // Empty string
@@ -33,7 +33,7 @@ fn test_utf8_special_sequences() {
 
 #[test]
 fn test_blob_all_byte_values() {
-	let shape = RowShape::testing(&[Type::Blob]);
+	let shape = RowShape::testing(&[ValueType::Blob]);
 
 	// Test all possible byte values
 	let mut row = shape.allocate();
@@ -61,7 +61,7 @@ fn test_blob_all_byte_values() {
 #[test]
 fn test_dynamic_field_interleaving() {
 	// Tests multiple dynamic fields to ensure they don't corrupt each other
-	let shape = RowShape::testing(&[Type::Utf8, Type::Blob, Type::Utf8, Type::Int]);
+	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob, ValueType::Utf8, ValueType::Int]);
 
 	// Test initial setting with various sizes
 	let mut row = shape.allocate();

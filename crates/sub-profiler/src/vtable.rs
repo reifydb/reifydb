@@ -4,7 +4,7 @@
 use reifydb_catalog::vtable::user::{UserVTable, UserVTableColumn};
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_profiler::category::ProfilerCategory;
-use reifydb_type::{fragment::Fragment, value::r#type::Type};
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::reader::ProfilerReader;
 
@@ -24,27 +24,27 @@ impl ProfilerAggregatesVTable {
 
 	pub fn columns_spec() -> Vec<UserVTableColumn> {
 		vec![
-			UserVTableColumn::new("span_name", Type::Utf8),
-			UserVTableColumn::new("dim_1", Type::Utf8),
-			UserVTableColumn::new("dim_2", Type::Utf8),
-			UserVTableColumn::new("calls", Type::Uint8),
-			UserVTableColumn::new("total", Type::Duration),
-			UserVTableColumn::new("min", Type::Duration),
-			UserVTableColumn::new("max", Type::Duration),
-			UserVTableColumn::new("p50", Type::Duration),
-			UserVTableColumn::new("p60", Type::Duration),
-			UserVTableColumn::new("p70", Type::Duration),
-			UserVTableColumn::new("p75", Type::Duration),
-			UserVTableColumn::new("p80", Type::Duration),
-			UserVTableColumn::new("p85", Type::Duration),
-			UserVTableColumn::new("p90", Type::Duration),
-			UserVTableColumn::new("p95", Type::Duration),
-			UserVTableColumn::new("p98", Type::Duration),
-			UserVTableColumn::new("p99", Type::Duration),
-			UserVTableColumn::new("extra_0", Type::Uint8),
-			UserVTableColumn::new("extra_1", Type::Uint8),
-			UserVTableColumn::new("extra_2", Type::Uint8),
-			UserVTableColumn::new("extra_3", Type::Uint8),
+			UserVTableColumn::new("span_name", ValueType::Utf8),
+			UserVTableColumn::new("dim_1", ValueType::Utf8),
+			UserVTableColumn::new("dim_2", ValueType::Utf8),
+			UserVTableColumn::new("calls", ValueType::Uint8),
+			UserVTableColumn::new("total", ValueType::Duration),
+			UserVTableColumn::new("min", ValueType::Duration),
+			UserVTableColumn::new("max", ValueType::Duration),
+			UserVTableColumn::new("p50", ValueType::Duration),
+			UserVTableColumn::new("p60", ValueType::Duration),
+			UserVTableColumn::new("p70", ValueType::Duration),
+			UserVTableColumn::new("p75", ValueType::Duration),
+			UserVTableColumn::new("p80", ValueType::Duration),
+			UserVTableColumn::new("p85", ValueType::Duration),
+			UserVTableColumn::new("p90", ValueType::Duration),
+			UserVTableColumn::new("p95", ValueType::Duration),
+			UserVTableColumn::new("p98", ValueType::Duration),
+			UserVTableColumn::new("p99", ValueType::Duration),
+			UserVTableColumn::new("extra_0", ValueType::Uint8),
+			UserVTableColumn::new("extra_1", ValueType::Uint8),
+			UserVTableColumn::new("extra_2", ValueType::Uint8),
+			UserVTableColumn::new("extra_3", ValueType::Uint8),
 		]
 	}
 }

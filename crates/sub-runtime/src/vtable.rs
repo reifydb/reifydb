@@ -4,9 +4,9 @@
 use reifydb_catalog::vtable::user::{UserVTable, UserVTableColumn};
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_runtime::context::clock::Clock;
-use reifydb_type::{
+use reifydb_value::{
 	fragment::Fragment,
-	value::{datetime::DateTime, r#type::Type},
+	value::{datetime::DateTime, value_type::ValueType},
 };
 
 use crate::{collect::Collectors, domain::Domain};
@@ -29,11 +29,11 @@ impl RuntimeVTable {
 
 	pub fn columns_spec() -> Vec<UserVTableColumn> {
 		vec![
-			UserVTableColumn::new("ts", Type::DateTime),
-			UserVTableColumn::new("scope", Type::Utf8),
-			UserVTableColumn::new("metric", Type::Utf8),
-			UserVTableColumn::new("value", Type::Float8),
-			UserVTableColumn::new("unit", Type::Utf8),
+			UserVTableColumn::new("ts", ValueType::DateTime),
+			UserVTableColumn::new("scope", ValueType::Utf8),
+			UserVTableColumn::new("metric", ValueType::Utf8),
+			UserVTableColumn::new("value", ValueType::Float8),
+			UserVTableColumn::new("unit", ValueType::Utf8),
 		]
 	}
 }

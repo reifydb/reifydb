@@ -10,7 +10,7 @@
 
 use std::fmt::Debug;
 
-use reifydb_type::{
+use reifydb_value::{
 	storage::DataBitVec,
 	value::{
 		blob::Blob, date::Date, datetime::DateTime, dictionary::DictionaryEntryId, duration::Duration,

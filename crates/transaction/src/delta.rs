@@ -205,7 +205,7 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::util::cowvec::CowVec;
+	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
 

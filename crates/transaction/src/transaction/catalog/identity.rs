@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::catalog::{change::CatalogTrackIdentityChangeOperations, identity::Identity};
-use reifydb_type::{Result, value::identity::IdentityId};
+use reifydb_value::{Result, value::identity::IdentityId};
 
 use crate::{
 	change::{

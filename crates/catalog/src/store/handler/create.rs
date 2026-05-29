@@ -6,7 +6,7 @@ use reifydb_core::{
 	key::{handler::HandlerKey, namespace_handler::NamespaceHandlerKey, variant_handler::VariantHandlerKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{fragment::Fragment, value::sumtype::VariantRef};
+use reifydb_value::{fragment::Fragment, value::sumtype::VariantRef};
 
 use crate::{
 	CatalogStore, Result,
@@ -93,7 +93,7 @@ pub mod tests {
 		key::namespace_handler::NamespaceHandlerKey,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
-	use reifydb_type::{
+	use reifydb_value::{
 		fragment::Fragment,
 		value::sumtype::{SumTypeId, VariantRef},
 	};

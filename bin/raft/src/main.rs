@@ -24,8 +24,7 @@ use reifydb::{
 		config::{PeerConfig, RaftConfig},
 		node::NodeId,
 	},
-	r#type::params::Params,
-	value::identity::IdentityId,
+	value::{params::Params, value::identity::IdentityId},
 };
 
 allocator::set_global_allocator!();

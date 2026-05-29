@@ -182,7 +182,7 @@ impl IntoIterator for PendingWrites {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{common::CommitVersion, delta::Delta, encoded::key::EncodedKey};
-	use reifydb_type::util::cowvec::CowVec;
+	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_type::{Result, error::Error};
+use reifydb_value::{Result, error::Error};
 use serde::{
 	Serialize, ser,
 	ser::{Impossible, SerializeSeq, SerializeStructVariant, SerializeTuple, SerializeTupleVariant},

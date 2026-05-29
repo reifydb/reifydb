@@ -15,7 +15,7 @@ use reifydb_sub_server::{
 	interceptor::RequestInterceptorChain,
 	state::{AppState, StateConfig},
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use crate::subsystem::HttpSubsystem;
 

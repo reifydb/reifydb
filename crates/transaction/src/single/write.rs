@@ -8,7 +8,7 @@ use reifydb_core::interface::store::{SingleVersionCommit, SingleVersionContains,
 use reifydb_runtime::sync::rwlock::{RwLock, RwLockWriteGuard};
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sub_raft::message::Command;
-use reifydb_type::{
+use reifydb_value::{
 	Result,
 	util::{cowvec::CowVec, hex},
 };

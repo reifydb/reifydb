@@ -6,7 +6,7 @@ use reifydb_core::{
 	util::encoding::keycode::serializer::KeySerializer,
 };
 use reifydb_sdk::state::{decode_payload, encode_payload};
-use reifydb_type::{Result, value::row_number::RowNumber};
+use reifydb_value::{Result, value::row_number::RowNumber};
 
 use crate::{
 	operator::stateful::utils::{internal_state_get, internal_state_set},

@@ -3,7 +3,7 @@
 
 use std::mem;
 
-use reifydb_type::{Result, storage::DataBitVec, util::bitvec::BitVec};
+use reifydb_value::{Result, storage::DataBitVec, util::bitvec::BitVec};
 
 use crate::{
 	return_internal_error,

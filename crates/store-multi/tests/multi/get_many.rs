@@ -9,7 +9,7 @@ use reifydb_core::{
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };
 use reifydb_store_multi::store::StandardMultiStore;
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_value::util::cowvec::CowVec;
 
 fn fns(node: u64, payload: &[u8]) -> EncodedKey {
 	FlowNodeStateKey::new(FlowNodeId(node), payload.to_vec()).encode()

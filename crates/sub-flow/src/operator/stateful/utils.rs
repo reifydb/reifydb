@@ -10,7 +10,7 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
 };
-use reifydb_type::Result;
+use reifydb_value::Result;
 
 use super::StateIterator;
 use crate::transaction::FlowTransaction;
@@ -157,7 +157,7 @@ pub mod tests {
 	use reifydb_core::common::CommitVersion;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_type::{util::cowvec::CowVec, value::r#type::Type};
+	use reifydb_value::{util::cowvec::CowVec, value::value_type::ValueType};
 
 	use super::*;
 	use crate::{operator::stateful::test_utils::test::*, transaction::FlowTransaction};
@@ -437,7 +437,7 @@ pub mod tests {
 		);
 		let node_id = FlowNodeId(1);
 		let key = test_key("load_new");
-		let shape = RowShape::testing(&[Type::Int4]);
+		let shape = RowShape::testing(&[ValueType::Int4]);
 
 		// Load non-existing should create new
 		let result = load_or_create_row(node_id, &mut txn, &key, &shape).unwrap();

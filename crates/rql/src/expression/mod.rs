@@ -47,11 +47,11 @@ use std::{
 
 use ast::ast::AstMatchArm;
 use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnShape};
-use reifydb_type::{
+use reifydb_value::{
 	err,
 	error::Diagnostic,
 	fragment::Fragment,
-	value::{row_number::ROW_NUMBER_COLUMN_NAME, r#type::Type},
+	value::{row_number::ROW_NUMBER_COLUMN_NAME, value_type::ValueType},
 };
 use serde::{Deserialize, Serialize};
 
@@ -199,29 +199,29 @@ impl Display for ConstantExpression {
 }
 
 impl ConstantExpression {
-	pub fn infer_type(&self) -> Type {
+	pub fn infer_type(&self) -> ValueType {
 		match self {
 			ConstantExpression::None {
 				..
-			} => Type::Any,
+			} => ValueType::Any,
 			ConstantExpression::Bool {
 				..
-			} => Type::Boolean,
+			} => ValueType::Boolean,
 			ConstantExpression::Number {
 				..
-			} => Type::Int4,
+			} => ValueType::Int4,
 			ConstantExpression::Text {
 				..
-			} => Type::Utf8,
+			} => ValueType::Utf8,
 			ConstantExpression::Temporal {
 				..
-			} => Type::DateTime,
+			} => ValueType::DateTime,
 		}
 	}
 }
 
 impl Expression {
-	pub fn infer_type(&self) -> Option<Type> {
+	pub fn infer_type(&self) -> Option<ValueType> {
 		match self {
 			Expression::Constant(c) => Some(c.infer_type()),
 			_ => None,
@@ -253,7 +253,7 @@ impl CastExpression {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypeExpression {
 	pub fragment: Fragment,
-	pub ty: Type,
+	pub ty: ValueType,
 }
 
 impl TypeExpression {
@@ -996,7 +996,7 @@ impl ExpressionCompiler {
 					let compiled = Self::compile(arg_ast)?;
 					let compiled = match &compiled {
 						Expression::Column(col_expr) => {
-							if let Ok(ty) = Type::from_str(col_expr.0.name.text()) {
+							if let Ok(ty) = ValueType::from_str(col_expr.0.name.text()) {
 								Expression::Type(TypeExpression {
 									fragment: col_expr.0.name.clone(),
 									ty,
@@ -1914,7 +1914,7 @@ impl ExpressionCompiler {
 					let compiled = Self::compile(arg_ast)?;
 					let compiled = match &compiled {
 						Expression::Column(col_expr) => {
-							if let Ok(ty) = Type::from_str(col_expr.0.name.text()) {
+							if let Ok(ty) = ValueType::from_str(col_expr.0.name.text()) {
 								Expression::Type(TypeExpression {
 									fragment: col_expr.0.name.clone(),
 									ty,

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{buffer::ColumnBuffer, data::Column, mask::RowMask};
-use reifydb_type::{Result, value::Value};
+use reifydb_value::{Result, value::Value};
 
 use crate::{
 	compute::{self, CompareOp},
@@ -159,7 +159,7 @@ mod tests {
 		buffer::ColumnBuffer,
 		data::{Column, canonical::Canonical},
 	};
-	use reifydb_type::value::r#type::Type;
+	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
 
@@ -167,18 +167,18 @@ mod tests {
 		let ids = ColumnBuffer::int4(rows.map(|(v, _)| v).to_vec());
 		let flags = ColumnBuffer::bool(rows.map(|(_, v)| v).to_vec());
 		let id_col = ColumnChunks::single(
-			Type::Int4,
+			ValueType::Int4,
 			false,
 			Column::from_canonical(Canonical::from_column_buffer(&ids).unwrap()),
 		);
 		let flag_col = ColumnChunks::single(
-			Type::Boolean,
+			ValueType::Boolean,
 			false,
 			Column::from_canonical(Canonical::from_column_buffer(&flags).unwrap()),
 		);
 		let schema = Arc::new(vec![
-			("id".to_string(), Type::Int4, false),
-			("flag".to_string(), Type::Boolean, false),
+			("id".to_string(), ValueType::Int4, false),
+			("flag".to_string(), ValueType::Boolean, false),
 		]);
 		ColumnBlock::new(schema, vec![id_col, flag_col])
 	}
@@ -244,11 +244,11 @@ mod tests {
 		nullable_ids.push::<i32>(30);
 		nullable_ids.push_none();
 		let id_col = ColumnChunks::single(
-			Type::Int4,
+			ValueType::Int4,
 			true,
 			Column::from_canonical(Canonical::from_column_buffer(&nullable_ids).unwrap()),
 		);
-		let schema = Arc::new(vec![("id".to_string(), Type::Int4, true)]);
+		let schema = Arc::new(vec![("id".to_string(), ValueType::Int4, true)]);
 		let t = ColumnBlock::new(schema, vec![id_col]);
 
 		let Selection::Mask(m) = evaluate(&t, &Predicate::IsNone(ColRef::from("id"))).unwrap() else {
@@ -268,12 +268,12 @@ mod tests {
 				)
 			})
 			.collect();
-		ColumnChunks::new(Type::Int4, false, chunks)
+		ColumnChunks::new(ValueType::Int4, false, chunks)
 	}
 
 	fn mkblock_chunked(id_parts: &[&[i32]]) -> ColumnBlock {
 		let id_col = int4_chunked(id_parts);
-		let schema = Arc::new(vec![("id".to_string(), Type::Int4, false)]);
+		let schema = Arc::new(vec![("id".to_string(), ValueType::Int4, false)]);
 		ColumnBlock::new(schema, vec![id_col])
 	}
 
@@ -298,8 +298,10 @@ mod tests {
 		// Both columns are 2 chunks of length 3. AND/OR must align across chunk boundaries.
 		let id_col = int4_chunked(&[&[1, 2, 3], &[4, 5, 6]]);
 		let other_col = int4_chunked(&[&[10, 20, 10], &[20, 10, 20]]);
-		let schema =
-			Arc::new(vec![("id".to_string(), Type::Int4, false), ("other".to_string(), Type::Int4, false)]);
+		let schema = Arc::new(vec![
+			("id".to_string(), ValueType::Int4, false),
+			("other".to_string(), ValueType::Int4, false),
+		]);
 		let t = ColumnBlock::new(schema, vec![id_col, other_col]);
 
 		let p = Predicate::And(vec![
@@ -331,8 +333,8 @@ mod tests {
 			Column::from_canonical(Canonical::from_column_buffer(&a).unwrap()),
 			Column::from_canonical(Canonical::from_column_buffer(&b).unwrap()),
 		];
-		let id_col = ColumnChunks::new(Type::Int4, true, chunks);
-		let schema = Arc::new(vec![("id".to_string(), Type::Int4, true)]);
+		let id_col = ColumnChunks::new(ValueType::Int4, true, chunks);
+		let schema = Arc::new(vec![("id".to_string(), ValueType::Int4, true)]);
 		let t = ColumnBlock::new(schema, vec![id_col]);
 
 		let Selection::Mask(m) = evaluate(&t, &Predicate::IsNone(ColRef::from("id"))).unwrap() else {

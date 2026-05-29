@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey};
 use reifydb_runtime::sync::mutex::Mutex;
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_value::util::cowvec::CowVec;
 
 use crate::tier::VersionedGetResult;
 

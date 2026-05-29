@@ -21,7 +21,7 @@ use reifydb_subscription::{
 	batch::BatchId,
 	delivery::{DeliveryResult, SubscriptionDelivery},
 };
-use reifydb_type::value::{frame::frame::Frame, uuid::Uuid7};
+use reifydb_value::value::{frame::frame::Frame, uuid::Uuid7};
 use tokio::sync::Notify;
 use tracing::{debug, info};
 

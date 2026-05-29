@@ -5,7 +5,7 @@ use reifydb_catalog::{catalog::series::SeriesToCreate, store::row_settings::crea
 use reifydb_core::{interface::catalog::shape::ShapeId, row::RowSettings, value::column::columns::Columns};
 use reifydb_rql::nodes::CreateSeriesNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::value::Value;
+use reifydb_value::value::Value;
 
 use super::require_buffer_for_non_persistent;
 use crate::{Result, vm::services::Services};

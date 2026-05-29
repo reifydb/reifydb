@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::value::{
+use reifydb_value::value::{
 	constraint::TypeConstraint,
 	sumtype::{SumTypeId, VariantRef},
 };
