@@ -7,13 +7,31 @@ use crate::encoded::{row::EncodedRow, shape::RowShape};
 
 impl RowShape {
 	pub fn set_blob(&self, row: &mut EncodedRow, index: usize, value: &Blob) {
-		debug_assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), ValueType::Blob);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				row.len() >= self.total_static_size(),
+				"row/shape size mismatch: row.len()={} < total_static_size()={}",
+				row.len(),
+				self.total_static_size()
+			);
+			assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), ValueType::Blob);
+		}
 		self.replace_dynamic_data(row, index, value.as_bytes());
 	}
 
 	pub fn get_blob(&self, row: &EncodedRow, index: usize) -> Blob {
 		let field = &self.fields()[index];
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Blob);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				row.len() >= self.total_static_size(),
+				"row/shape size mismatch: row.len()={} < total_static_size()={}",
+				row.len(),
+				self.total_static_size()
+			);
+			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Blob);
+		}
 
 		let ref_slice = &row.as_slice()[field.offset as usize..field.offset as usize + 8];
 		let offset = u32::from_le_bytes([ref_slice[0], ref_slice[1], ref_slice[2], ref_slice[3]]) as usize;

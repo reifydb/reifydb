@@ -20,7 +20,16 @@ const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
 impl RowShape {
 	pub fn set_int(&self, row: &mut EncodedRow, index: usize, value: &Int) {
 		let field = &self.fields()[index];
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Int);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				row.len() >= self.total_static_size(),
+				"row/shape size mismatch: row.len()={} < total_static_size()={}",
+				row.len(),
+				self.total_static_size()
+			);
+			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Int);
+		}
 
 		if let Some(i128_val) = value.0.to_i128()
 			&& (-(1i128 << 126)..(1i128 << 126)).contains(&i128_val)
@@ -44,7 +53,16 @@ impl RowShape {
 
 	pub fn get_int(&self, row: &EncodedRow, index: usize) -> Int {
 		let field = &self.fields()[index];
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Int);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				row.len() >= self.total_static_size(),
+				"row/shape size mismatch: row.len()={} < total_static_size()={}",
+				row.len(),
+				self.total_static_size()
+			);
+			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Int);
+		}
 
 		let packed = unsafe { (row.as_ptr().add(field.offset as usize) as *const u128).read_unaligned() };
 		let packed = u128::from_le(packed);

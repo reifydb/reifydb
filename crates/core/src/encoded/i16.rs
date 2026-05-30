@@ -10,8 +10,16 @@ use crate::encoded::{row::EncodedRow, shape::RowShape};
 impl RowShape {
 	pub fn set_i16(&self, row: &mut EncodedRow, index: usize, value: impl Into<i16>) {
 		let field = &self.fields()[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Int2);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				row.len() >= self.total_static_size(),
+				"row/shape size mismatch: row.len()={} < total_static_size()={}",
+				row.len(),
+				self.total_static_size()
+			);
+			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Int2);
+		}
 		row.set_valid(index, true);
 		unsafe {
 			ptr::write_unaligned(
@@ -23,8 +31,16 @@ impl RowShape {
 
 	pub fn get_i16(&self, row: &EncodedRow, index: usize) -> i16 {
 		let field = &self.fields()[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Int2);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				row.len() >= self.total_static_size(),
+				"row/shape size mismatch: row.len()={} < total_static_size()={}",
+				row.len(),
+				self.total_static_size()
+			);
+			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Int2);
+		}
 		unsafe { (row.as_ptr().add(field.offset as usize) as *const i16).read_unaligned() }
 	}
 

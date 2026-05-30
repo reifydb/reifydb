@@ -182,7 +182,7 @@ strip = true
 
 [workspace.dependencies]
 reifydb = { version = "0.6.0", path = "pkg/rust/reifydb", features = [
-    "column", "sub_flow", "sub_tracing", "sub_server", "sub_server_admin",
+    "sub_flow", "sub_tracing", "sub_server", "sub_server_admin",
     "sub_server_grpc", "sub_server_http", "sub_server_ws",
     "sub_server_otel", "sub_replication",
 ] }

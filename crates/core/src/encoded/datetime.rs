@@ -10,8 +10,16 @@ use crate::encoded::{row::EncodedRow, shape::RowShape};
 impl RowShape {
 	pub fn set_datetime(&self, row: &mut EncodedRow, index: usize, value: DateTime) {
 		let field = &self.fields()[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::DateTime);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				row.len() >= self.total_static_size(),
+				"row/shape size mismatch: row.len()={} < total_static_size()={}",
+				row.len(),
+				self.total_static_size()
+			);
+			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::DateTime);
+		}
 		row.set_valid(index, true);
 
 		let nanos = value.to_nanos();
@@ -22,8 +30,16 @@ impl RowShape {
 
 	pub fn get_datetime(&self, row: &EncodedRow, index: usize) -> DateTime {
 		let field = &self.fields()[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::DateTime);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				row.len() >= self.total_static_size(),
+				"row/shape size mismatch: row.len()={} < total_static_size()={}",
+				row.len(),
+				self.total_static_size()
+			);
+			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::DateTime);
+		}
 		unsafe {
 			let nanos = (row.as_ptr().add(field.offset as usize) as *const u64).read_unaligned();
 			DateTime::from_nanos(nanos)

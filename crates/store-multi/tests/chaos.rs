@@ -171,12 +171,7 @@ chaos_test!(multi_store_snapshot_chaos, |seed| {
 	);
 });
 
-// Multi-threaded concurrency stress (NON-deterministic; #[ignore]d so it never runs in the deterministic
-// suite). Real threads + background flush/drop actors under default pools; disjoint key ownership makes the
-// final per-key state deterministic while readers assert structural invariants under live churn. Run on
-// demand: `cargo test -p reifydb-store-multi --features chaos -- --ignored` (or `make test-chaos-concurrency`).
 #[test]
-#[ignore = "non-deterministic multi-threaded stress; run explicitly with --ignored"]
 fn multi_store_concurrency_stress() {
 	// A fixed seed keeps each thread's INTENDED op stream reproducible; thread scheduling is not. The run
 	// loop varies CONC_SEED across invocations for broader coverage; on failure the seed is in the message.

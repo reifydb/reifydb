@@ -1101,6 +1101,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-store"
+version = "0.6.0"
+dependencies = [
+ "reifydb-core",
+ "reifydb-value",
+]
+
+[[package]]
 name = "reifydb-store-multi"
 version = "0.6.0"
 dependencies = [
@@ -1108,6 +1116,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-sqlite",
+ "reifydb-store",
  "reifydb-value",
  "rusqlite",
  "tracing",

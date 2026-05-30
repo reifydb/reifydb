@@ -10,8 +10,16 @@ use crate::encoded::{row::EncodedRow, shape::RowShape};
 impl RowShape {
 	pub fn set_dictionary_id(&self, row: &mut EncodedRow, index: usize, entry: &DictionaryEntryId) {
 		let field = &self.fields()[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::DictionaryId);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				row.len() >= self.total_static_size(),
+				"row/shape size mismatch: row.len()={} < total_static_size()={}",
+				row.len(),
+				self.total_static_size()
+			);
+			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::DictionaryId);
+		}
 		row.set_valid(index, true);
 		unsafe {
 			let ptr = row.make_mut().as_mut_ptr().add(field.offset as usize);
@@ -27,8 +35,16 @@ impl RowShape {
 
 	pub fn get_dictionary_id(&self, row: &EncodedRow, index: usize) -> DictionaryEntryId {
 		let field = &self.fields()[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::DictionaryId);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				row.len() >= self.total_static_size(),
+				"row/shape size mismatch: row.len()={} < total_static_size()={}",
+				row.len(),
+				self.total_static_size()
+			);
+			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::DictionaryId);
+		}
 		let id_type = match field.constraint.constraint() {
 			Some(Constraint::Dictionary(_, id_type)) => id_type.clone(),
 			_ => ValueType::Uint4,

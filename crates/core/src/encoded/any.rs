@@ -225,14 +225,32 @@ pub fn decode_value(bytes: &[u8]) -> Value {
 
 impl RowShape {
 	pub fn set_any(&self, row: &mut EncodedRow, index: usize, value: &Value) {
-		debug_assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), ValueType::Any);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				row.len() >= self.total_static_size(),
+				"row/shape size mismatch: row.len()={} < total_static_size()={}",
+				row.len(),
+				self.total_static_size()
+			);
+			assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), ValueType::Any);
+		}
 		let encoded = encode_value(value);
 		self.replace_dynamic_data(row, index, &encoded);
 	}
 
 	pub fn get_any(&self, row: &EncodedRow, index: usize) -> Value {
 		let field = &self.fields()[index];
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Any);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				row.len() >= self.total_static_size(),
+				"row/shape size mismatch: row.len()={} < total_static_size()={}",
+				row.len(),
+				self.total_static_size()
+			);
+			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Any);
+		}
 
 		let ref_slice = &row.as_slice()[field.offset as usize..field.offset as usize + 8];
 		let offset = u32::from_le_bytes([ref_slice[0], ref_slice[1], ref_slice[2], ref_slice[3]]) as usize;

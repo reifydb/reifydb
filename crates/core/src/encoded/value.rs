@@ -8,7 +8,10 @@ use crate::encoded::row::EncodedRow;
 
 impl RowShape {
 	pub fn set_values(&self, row: &mut EncodedRow, values: &[Value]) {
-		debug_assert!(values.len() == self.fields().len());
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(values.len() == self.fields().len());
+		}
 		for (idx, value) in values.iter().enumerate() {
 			self.set_value(row, idx, value)
 		}
@@ -16,7 +19,15 @@ impl RowShape {
 
 	pub fn set_value(&self, row: &mut EncodedRow, index: usize, val: &Value) {
 		let field = &self.fields()[index];
-		debug_assert!(row.len() >= self.total_static_size());
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				row.len() >= self.total_static_size(),
+				"row/shape size mismatch: row.len()={} < total_static_size()={}",
+				row.len(),
+				self.total_static_size()
+			);
+		}
 
 		let field_type = match field.constraint.get_type() {
 			ValueType::Option(inner) => *inner,
