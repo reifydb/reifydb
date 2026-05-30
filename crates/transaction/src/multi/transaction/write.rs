@@ -102,12 +102,15 @@ impl MultiWriteTransaction {
 	}
 
 	fn transition_to(&mut self, next: Lifecycle) {
-		debug_assert!(matches!(
-			(self.lifecycle, next),
-			(Lifecycle::Active, Lifecycle::QueryDone)
-				| (Lifecycle::Active, Lifecycle::Discarded)
-				| (Lifecycle::QueryDone, Lifecycle::Discarded)
-		));
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(matches!(
+				(self.lifecycle, next),
+				(Lifecycle::Active, Lifecycle::QueryDone)
+					| (Lifecycle::Active, Lifecycle::Discarded)
+					| (Lifecycle::QueryDone, Lifecycle::Discarded)
+			));
+		}
 		self.lifecycle = next;
 	}
 }
@@ -463,7 +466,10 @@ impl MultiWriteTransaction {
 
 	#[inline]
 	fn assemble_committed_deltas(&mut self, version: CommitVersion) -> Vec<DeltaEntry> {
-		debug_assert_ne!(version, 0);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_ne!(version, 0);
+		}
 		let _ = mem::take(&mut self.pending_writes);
 		let duplicate_writes = mem::take(&mut self.duplicates);
 		let mut all = mem::take(&mut self.delta_log);

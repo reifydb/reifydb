@@ -265,7 +265,10 @@ impl QueryNode for InlineDataNode {
 	}
 
 	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		debug_assert!(self.context.is_some(), "InlineDataNode::next() called before initialize()");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(self.context.is_some(), "InlineDataNode::next() called before initialize()");
+		}
 		let stored_ctx = self.context.as_ref().unwrap().clone();
 
 		if self.executed {

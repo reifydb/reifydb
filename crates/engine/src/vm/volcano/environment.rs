@@ -33,7 +33,10 @@ impl QueryNode for EnvironmentNode {
 	}
 
 	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		debug_assert!(self.context.is_some(), "EnvironmentNode::next() called before initialize()");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(self.context.is_some(), "EnvironmentNode::next() called before initialize()");
+		}
 
 		if self.executed {
 			return Ok(None);

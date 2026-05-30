@@ -32,7 +32,9 @@ pub fn emit_target_cfg() {
 	if single_threaded {
 		println!("cargo:rustc-cfg=reifydb_single_threaded");
 	}
-	if env::var("REIFYDB_ASSERTIONS").ok().is_some_and(|v| v == "1") {
+	let assertions = env::var("REIFYDB_ASSERTIONS").ok().is_some_and(|v| v == "1")
+		|| env::var("PROFILE").is_ok_and(|p| p == "debug");
+	if assertions {
 		println!("cargo:rustc-cfg=reifydb_assertions");
 	}
 	println!("cargo:rerun-if-changed=build.rs");

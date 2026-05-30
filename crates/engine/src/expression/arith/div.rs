@@ -55,7 +55,10 @@ where
 	<L as Promote<R>>::Output: SafeDiv,
 	ColumnBuffer: Push<<L as Promote<R>>::Output>,
 {
-	debug_assert_eq!(l.len(), r.len());
+	#[cfg(reifydb_assertions)]
+	{
+		assert_eq!(l.len(), r.len());
+	}
 
 	let mut data = ColumnBuffer::with_capacity(target, l.len());
 	let l_data = l.data();
@@ -87,7 +90,10 @@ where
 	<L as Promote<R>>::Output: SafeDiv,
 	ColumnBuffer: Push<<L as Promote<R>>::Output>,
 {
-	debug_assert_eq!(l.len(), r.len());
+	#[cfg(reifydb_assertions)]
+	{
+		assert_eq!(l.len(), r.len());
+	}
 
 	let mut data = ColumnBuffer::with_capacity(target, l.len());
 	let l_data = l.data();

@@ -70,7 +70,10 @@ fn apply_columns(table: &mut MaterializedTable, columns: &Columns, output_key_co
 	let column_names: Vec<String> = columns.iter().map(|c| c.name().text().to_string()).collect();
 	for i in 0..columns.row_count() {
 		let values = columns.row(i);
-		debug_assert_eq!(values.len(), column_names.len());
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(values.len(), column_names.len());
+		}
 		let mat = MaterializedRow::from_pairs(column_names.iter().cloned().zip(values.into_iter()));
 		let key = project_key(&mat, output_key_columns);
 		if remove {

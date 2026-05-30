@@ -89,7 +89,10 @@ impl Utf8Container<Cow> {
 	}
 
 	pub fn from_bytes_offsets(data: Vec<u8>, offsets: Vec<u64>) -> Self {
-		debug_assert!(str::from_utf8(&data).is_ok(), "Utf8Container data must be valid UTF-8");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(str::from_utf8(&data).is_ok(), "Utf8Container data must be valid UTF-8");
+		}
 		Self {
 			inner: VarlenContainer::from_raw_parts(data, offsets),
 		}

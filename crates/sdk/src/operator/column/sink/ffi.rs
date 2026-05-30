@@ -350,5 +350,12 @@ impl RowSink for FFIRowSink<'_> {
 
 #[inline]
 fn debug_panic(msg: &'static str) {
-	debug_assert!(false, "{}", msg);
+	#[cfg(reifydb_assertions)]
+	{
+		assert!(false, "{}", msg);
+	}
+	#[cfg(not(reifydb_assertions))]
+	{
+		let _ = msg;
+	}
 }

@@ -72,7 +72,10 @@ impl QueryNode for FilterNode {
 
 	#[instrument(level = "trace", skip_all, name = "volcano::filter::next")]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		debug_assert!(self.context.is_some(), "FilterNode::next() called before initialize()");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(self.context.is_some(), "FilterNode::next() called before initialize()");
+		}
 		let (stored_ctx, _) = self.context.as_ref().unwrap();
 		let stored_ctx = stored_ctx.clone();
 

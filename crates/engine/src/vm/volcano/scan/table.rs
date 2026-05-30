@@ -112,7 +112,10 @@ impl QueryNode for TableScanNode {
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::next")]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		debug_assert!(self.context.is_some(), "TableScanNode::next() called before initialize()");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(self.context.is_some(), "TableScanNode::next() called before initialize()");
+		}
 		let stored_ctx = self.context.as_ref().unwrap();
 
 		if self.exhausted {

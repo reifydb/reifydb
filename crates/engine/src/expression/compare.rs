@@ -215,7 +215,10 @@ where
 	R: IsNumber,
 	<L as Promote<R>>::Output: IsNumber,
 {
-	debug_assert_eq!(l.len(), r.len());
+	#[cfg(reifydb_assertions)]
+	{
+		assert_eq!(l.len(), r.len());
+	}
 
 	let data: Vec<bool> =
 		l.data().iter()
@@ -235,7 +238,10 @@ fn compare_temporal<Op: CompareOp, T>(
 where
 	T: IsTemporal + Copy + PartialOrd,
 {
-	debug_assert_eq!(l.len(), r.len());
+	#[cfg(reifydb_assertions)]
+	{
+		assert_eq!(l.len(), r.len());
+	}
 
 	let data: Vec<bool> =
 		l.data().iter()
@@ -251,7 +257,10 @@ fn compare_uuid<Op: CompareOp, T>(l: &UuidContainer<T>, r: &UuidContainer<T>, fr
 where
 	T: IsUuid + PartialOrd,
 {
-	debug_assert_eq!(l.len(), r.len());
+	#[cfg(reifydb_assertions)]
+	{
+		assert_eq!(l.len(), r.len());
+	}
 
 	let data: Vec<bool> =
 		l.data().iter()
@@ -268,7 +277,10 @@ fn compare_identity_id<Op: CompareOp>(
 	r: &IdentityIdContainer,
 	fragment: Fragment,
 ) -> ColumnWithName {
-	debug_assert_eq!(l.len(), r.len());
+	#[cfg(reifydb_assertions)]
+	{
+		assert_eq!(l.len(), r.len());
+	}
 
 	let data: Vec<bool> =
 		l.iter().zip(r.iter()).map(|(l_val, r_val)| Op::compare_ordering(l_val.partial_cmp(&r_val))).collect();
@@ -278,7 +290,10 @@ fn compare_identity_id<Op: CompareOp>(
 
 #[inline]
 fn compare_blob<Op: CompareOp>(l: &BlobContainer, r: &BlobContainer, fragment: Fragment) -> ColumnWithName {
-	debug_assert_eq!(l.len(), r.len());
+	#[cfg(reifydb_assertions)]
+	{
+		assert_eq!(l.len(), r.len());
+	}
 
 	let data: Vec<bool> = l
 		.iter_bytes()
@@ -291,7 +306,10 @@ fn compare_blob<Op: CompareOp>(l: &BlobContainer, r: &BlobContainer, fragment: F
 
 #[inline]
 fn compare_utf8<Op: CompareOp>(l: &Utf8Container, r: &Utf8Container, fragment: Fragment) -> ColumnWithName {
-	debug_assert_eq!(l.len(), r.len());
+	#[cfg(reifydb_assertions)]
+	{
+		assert_eq!(l.len(), r.len());
+	}
 
 	let data: Vec<bool> = l
 		.iter_str()
@@ -304,7 +322,10 @@ fn compare_utf8<Op: CompareOp>(l: &Utf8Container, r: &Utf8Container, fragment: F
 
 #[inline]
 fn compare_bool<Op: CompareOp>(l: &BoolContainer, r: &BoolContainer, fragment: Fragment) -> Option<ColumnWithName> {
-	debug_assert_eq!(l.len(), r.len());
+	#[cfg(reifydb_assertions)]
+	{
+		assert_eq!(l.len(), r.len());
+	}
 
 	let data: Vec<bool> =
 		l.data().iter()

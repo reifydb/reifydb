@@ -59,7 +59,10 @@ impl JoinedColumnsBuilder {
 		right: &Columns,
 	) -> Columns {
 		let right_count = right.row_count();
-		debug_assert_eq!(row_numbers.len(), right_count, "row_numbers must match right row count");
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(row_numbers.len(), right_count, "row_numbers must match right row count");
+		}
 
 		let total_columns = self.left_column_count + self.right_column_names.len();
 		let mut result_columns = Vec::with_capacity(total_columns);
@@ -97,7 +100,10 @@ impl JoinedColumnsBuilder {
 		right_idx: usize,
 	) -> Columns {
 		let left_count = left.row_count();
-		debug_assert_eq!(row_numbers.len(), left_count, "row_numbers must match left row count");
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(row_numbers.len(), left_count, "row_numbers must match left row count");
+		}
 
 		let total_columns = self.left_column_count + self.right_column_names.len();
 		let mut result_columns = Vec::with_capacity(total_columns);
@@ -138,7 +144,10 @@ impl JoinedColumnsBuilder {
 		let left_count = left_indices.len();
 		let right_count = right_indices.len();
 		let result_count = left_count * right_count;
-		debug_assert_eq!(row_numbers.len(), result_count, "row_numbers must match cartesian product size");
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(row_numbers.len(), result_count, "row_numbers must match cartesian product size");
+		}
 
 		let total_columns = self.left_column_count + self.right_column_names.len();
 		let mut result_columns = Vec::with_capacity(total_columns);
@@ -210,7 +219,10 @@ impl JoinedColumnsBuilder {
 		right_shape: &Columns,
 	) -> Columns {
 		let count = left_indices.len();
-		debug_assert_eq!(row_numbers.len(), count, "row_numbers must match indices count");
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(row_numbers.len(), count, "row_numbers must match indices count");
+		}
 
 		let total_columns = self.left_column_count + self.right_column_names.len();
 		let mut result_columns = Vec::with_capacity(total_columns);

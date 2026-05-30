@@ -14,6 +14,7 @@ use crate::{
 pub struct ScalarWriter<'a, T: Copy> {
 	inner: ColumnBuilder<'a>,
 	cursor: usize,
+	#[cfg_attr(not(reifydb_assertions), allow(dead_code))]
 	capacity: usize,
 	defined: Option<Vec<bool>>,
 	_t: PhantomData<T>,
@@ -32,7 +33,10 @@ impl<'a, T: Copy> ScalarWriter<'a, T> {
 
 	#[inline]
 	pub fn push(&mut self, v: T) {
-		debug_assert!(self.cursor < self.capacity, "ScalarWriter::push past capacity");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(self.cursor < self.capacity, "ScalarWriter::push past capacity");
+		}
 		unsafe {
 			let data = self.inner.data_ptr() as *mut T;
 			core::ptr::write_unaligned(data.add(self.cursor), v);
@@ -48,7 +52,10 @@ impl<'a, T: Copy> ScalarWriter<'a, T> {
 	where
 		T: Default,
 	{
-		debug_assert!(self.cursor < self.capacity, "ScalarWriter::push_none past capacity");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(self.cursor < self.capacity, "ScalarWriter::push_none past capacity");
+		}
 		unsafe {
 			let data = self.inner.data_ptr() as *mut T;
 			core::ptr::write_unaligned(data.add(self.cursor), T::default());
@@ -129,18 +136,26 @@ pub struct VarLenWriter<'a> {
 	item_cursor: usize,
 	byte_cursor: usize,
 	data_capacity: usize,
+	#[cfg_attr(not(reifydb_assertions), allow(dead_code))]
 	capacity: usize,
 	defined: Option<Vec<bool>>,
+	#[cfg_attr(not(reifydb_assertions), allow(dead_code))]
 	type_code: ColumnTypeCode,
 }
 
 impl<'a> VarLenWriter<'a> {
 	fn new(inner: ColumnBuilder<'a>, capacity: usize, expected_bytes: usize) -> Result<Self, SdkError> {
 		let type_code = inner.type_code();
-		debug_assert!(
-			matches!(type_code, ColumnTypeCode::Utf8 | ColumnTypeCode::Blob | ColumnTypeCode::Decimal),
-			"VarLenWriter requires Utf8, Blob, or Decimal",
-		);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				matches!(
+					type_code,
+					ColumnTypeCode::Utf8 | ColumnTypeCode::Blob | ColumnTypeCode::Decimal
+				),
+				"VarLenWriter requires Utf8, Blob, or Decimal",
+			);
+		}
 		let initial = expected_bytes.max(capacity);
 		if initial > 0 {
 			inner.grow(initial)?;
@@ -172,7 +187,10 @@ impl<'a> VarLenWriter<'a> {
 
 	#[inline]
 	fn push_bytes_internal(&mut self, bytes: &[u8]) -> Result<(), SdkError> {
-		debug_assert!(self.item_cursor < self.capacity, "VarLenWriter::push past capacity");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(self.item_cursor < self.capacity, "VarLenWriter::push past capacity");
+		}
 		self.ensure_capacity(bytes.len())?;
 		unsafe {
 			let data = self.inner.data_ptr();
@@ -191,17 +209,26 @@ impl<'a> VarLenWriter<'a> {
 	}
 
 	pub fn push_str(&mut self, s: &str) -> Result<(), SdkError> {
-		debug_assert_eq!(self.type_code, ColumnTypeCode::Utf8);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(self.type_code, ColumnTypeCode::Utf8);
+		}
 		self.push_bytes_internal(s.as_bytes())
 	}
 
 	pub fn push_bytes(&mut self, b: &[u8]) -> Result<(), SdkError> {
-		debug_assert!(matches!(self.type_code, ColumnTypeCode::Blob | ColumnTypeCode::Decimal));
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(matches!(self.type_code, ColumnTypeCode::Blob | ColumnTypeCode::Decimal));
+		}
 		self.push_bytes_internal(b)
 	}
 
 	pub fn push_none(&mut self) -> Result<(), SdkError> {
-		debug_assert!(self.item_cursor < self.capacity, "VarLenWriter::push_none past capacity");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(self.item_cursor < self.capacity, "VarLenWriter::push_none past capacity");
+		}
 		unsafe {
 			let offsets = self.inner.offsets_ptr();
 			core::ptr::write(offsets.add(self.item_cursor + 1), self.byte_cursor as u64);

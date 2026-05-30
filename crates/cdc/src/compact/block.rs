@@ -16,11 +16,14 @@ pub struct CompactBlockSummary {
 }
 
 pub fn encode(entries: &[Cdc], zstd_level: u8) -> Result<Vec<u8>, CdcError> {
-	debug_assert!(!entries.is_empty(), "cannot encode an empty block");
-	debug_assert!(
-		entries.windows(2).all(|w| w[0].version < w[1].version),
-		"block entries must be strictly ascending by version"
-	);
+	#[cfg(reifydb_assertions)]
+	{
+		assert!(!entries.is_empty(), "cannot encode an empty block");
+		assert!(
+			entries.windows(2).all(|w| w[0].version < w[1].version),
+			"block entries must be strictly ascending by version"
+		);
+	}
 	let raw = to_stdvec(entries).map_err(|e| CdcError::Codec(format!("postcard encode block: {e}")))?;
 	let compressed = encode_all(&raw[..], zstd_level as i32)
 		.map_err(|e| CdcError::Codec(format!("zstd encode block: {e}")))?;

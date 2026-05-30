@@ -54,7 +54,10 @@ impl ColumnSequence {
 			unimplemented!()
 		}
 
-		debug_assert!(value.get_type() == column.constraint.get_type());
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(value.get_type() == column.constraint.get_type());
+		}
 
 		let key = ColumnSequenceKey::encoded(shape, column.id);
 		match value {

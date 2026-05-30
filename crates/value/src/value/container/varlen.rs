@@ -107,9 +107,12 @@ impl VarlenContainer<Cow> {
 	}
 
 	pub fn from_raw_parts(data: Vec<u8>, offsets: Vec<u64>) -> Self {
-		debug_assert!(!offsets.is_empty(), "offsets must always have offsets[0] = 0");
-		debug_assert_eq!(offsets[0], 0, "offsets[0] must be 0");
-		debug_assert_eq!(*offsets.last().unwrap() as usize, data.len(), "offsets[len] must equal data.len()");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(!offsets.is_empty(), "offsets must always have offsets[0] = 0");
+			assert_eq!(offsets[0], 0, "offsets[0] must be 0");
+			assert_eq!(*offsets.last().unwrap() as usize, data.len(), "offsets[len] must equal data.len()");
+		}
 		Self {
 			data: CowVec::new(data),
 			offsets: CowVec::new(offsets),
@@ -119,10 +122,13 @@ impl VarlenContainer<Cow> {
 
 impl<S: Storage> VarlenContainer<S> {
 	pub fn from_storage_parts(data: S::Vec<u8>, offsets: S::Vec<u64>) -> Self {
-		debug_assert!(
-			DataVec::len(&offsets) >= 1,
-			"offsets must always include the leading 0; got empty offsets"
-		);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				DataVec::len(&offsets) >= 1,
+				"offsets must always include the leading 0; got empty offsets"
+			);
+		}
 		Self {
 			data,
 			offsets,

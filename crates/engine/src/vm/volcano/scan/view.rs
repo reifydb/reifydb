@@ -77,7 +77,10 @@ impl QueryNode for ViewScanNode {
 
 	#[instrument(name = "volcano::scan::view::next", level = "trace", skip_all)]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		debug_assert!(self.context.is_some(), "ViewScanNode::next() called before initialize()");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(self.context.is_some(), "ViewScanNode::next() called before initialize()");
+		}
 		let stored_ctx = self.context.as_ref().unwrap();
 
 		if self.exhausted {

@@ -19,6 +19,7 @@ use crate::{
 pub(crate) struct IndexScanNode {
 	_table: Table, // FIXME needs to work with different sources
 	_index_id: IndexId,
+	#[cfg_attr(not(reifydb_assertions), allow(dead_code))]
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
 	_storage_types: Vec<ValueType>,
@@ -54,7 +55,10 @@ impl QueryNode for IndexScanNode {
 	}
 
 	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		debug_assert!(self.context.is_some(), "IndexScanNode::next() called before initialize()");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(self.context.is_some(), "IndexScanNode::next() called before initialize()");
+		}
 		unimplemented!()
 
 		// 	// TODO: Update IndexScanNode to use ResolvedTable instead of Table

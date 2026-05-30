@@ -50,7 +50,10 @@ impl QueryNode for VirtualScanNode {
 
 	#[instrument(name = "volcano::scan::virtual::next", level = "trace", skip_all)]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		debug_assert!(self.context.is_some(), "VirtualScanNode::next() called before initialize()");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(self.context.is_some(), "VirtualScanNode::next() called before initialize()");
+		}
 		match self.virtual_table.next(rx)? {
 			Some(vtable_batch) => Ok(Some(vtable_batch.columns)),
 			None => Ok(None),

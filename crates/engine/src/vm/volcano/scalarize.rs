@@ -38,7 +38,10 @@ impl QueryNode for ScalarizeNode {
 	}
 
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		debug_assert!(self.initialized.is_some(), "ScalarizeNode::next() called before initialize()");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(self.initialized.is_some(), "ScalarizeNode::next() called before initialize()");
+		}
 
 		if self.frame_consumed {
 			return Ok(None);

@@ -64,7 +64,10 @@ impl Moments {
 
 	#[inline]
 	pub fn remove(&mut self, x: f64) {
-		debug_assert!(self.n > 0, "Moments::remove on empty accumulator");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(self.n > 0, "Moments::remove on empty accumulator");
+		}
 		self.n -= 1;
 		if self.n == 0 {
 			self.sum = 0.0;
@@ -173,15 +176,16 @@ impl<V: Ord + Clone> Multiset<V> {
 	}
 
 	pub fn remove(&mut self, value: &V) {
-		match self.counts.get_mut(value) {
-			Some(count) => {
-				*count -= 1;
-				self.total -= 1;
-				if *count == 0 {
-					self.counts.remove(value);
-				}
-			}
-			None => debug_assert!(false, "Multiset::remove of absent value"),
+		let Some(count) = self.counts.get_mut(value) else {
+			#[cfg(reifydb_assertions)]
+			panic!("Multiset::remove of absent value");
+			#[cfg(not(reifydb_assertions))]
+			return;
+		};
+		*count -= 1;
+		self.total -= 1;
+		if *count == 0 {
+			self.counts.remove(value);
 		}
 	}
 

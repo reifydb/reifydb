@@ -37,12 +37,18 @@ impl RowMask {
 	}
 
 	pub fn get(&self, row: usize) -> bool {
-		debug_assert!(row < self.len);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(row < self.len);
+		}
 		(self.words[row / 64] >> (row % 64)) & 1 == 1
 	}
 
 	pub fn set(&mut self, row: usize, value: bool) {
-		debug_assert!(row < self.len);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(row < self.len);
+		}
 		let word = &mut self.words[row / 64];
 		let bit = 1u64 << (row % 64);
 		if value {
@@ -103,8 +109,11 @@ impl RowMask {
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
-		debug_assert!(start <= end, "RowMask::slice: start {start} > end {end}");
-		debug_assert!(end <= self.len, "RowMask::slice: end {end} > len {}", self.len);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(start <= end, "RowMask::slice: start {start} > end {end}");
+			assert!(end <= self.len, "RowMask::slice: end {end} > len {}", self.len);
+		}
 		let new_len = end - start;
 		let mut out = Self::none_set(new_len);
 		for i in 0..new_len {

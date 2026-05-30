@@ -27,10 +27,13 @@ pub struct Canonical {
 
 impl Canonical {
 	pub fn new(ty: ValueType, nullable: bool, nones: Option<NoneBitmap>, buffer: ColumnBuffer) -> Self {
-		debug_assert!(
-			!matches!(buffer, ColumnBuffer::Option { .. }),
-			"Canonical.buffer must not be a ColumnBuffer::Option; nullability is lifted"
-		);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				!matches!(buffer, ColumnBuffer::Option { .. }),
+				"Canonical.buffer must not be a ColumnBuffer::Option; nullability is lifted"
+			);
+		}
 		Self {
 			ty,
 			nullable,

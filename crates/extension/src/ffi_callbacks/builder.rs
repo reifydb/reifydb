@@ -110,7 +110,10 @@ struct Handle {
 
 impl Handle {
 	fn encode(self) -> *mut ColumnBufferHandle {
-		debug_assert!(self.id != 0, "handle id 0 reserved");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(self.id != 0, "handle id 0 reserved");
+		}
 
 		assert!(self.id < (1 << 48), "handle id overflow");
 		assert!(self.generation < (1 << 16), "handle generation overflow");

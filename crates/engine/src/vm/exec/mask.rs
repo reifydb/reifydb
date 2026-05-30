@@ -72,8 +72,11 @@ pub(crate) struct LoopMaskState {
 
 pub(crate) fn merge_by_mask(existing: &Columns, new_value: &Columns, mask: &BitVec) -> Result<Columns> {
 	let len = existing.row_count();
-	debug_assert_eq!(new_value.row_count(), len);
-	debug_assert_eq!(mask.len(), len);
+	#[cfg(reifydb_assertions)]
+	{
+		assert_eq!(new_value.row_count(), len);
+		assert_eq!(mask.len(), len);
+	}
 
 	let merged_columns: Vec<ColumnWithName> = existing
 		.columns

@@ -29,7 +29,10 @@ pub(crate) fn broadcast_to_match(left: ColumnWithName, right: ColumnWithName) ->
 }
 
 pub(crate) fn broadcast_column(col: &ColumnWithName, target_len: usize) -> ColumnWithName {
-	debug_assert_eq!(col.data.len(), 1);
+	#[cfg(reifydb_assertions)]
+	{
+		assert_eq!(col.data.len(), 1);
+	}
 	let value = col.data.get_value(0);
 	let mut data = ColumnBuffer::with_capacity(col.data.get_type(), target_len);
 	for _ in 0..target_len {

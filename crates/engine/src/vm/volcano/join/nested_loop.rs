@@ -88,7 +88,10 @@ impl QueryNode for NestedLoopJoinNode {
 
 	#[instrument(level = "trace", skip_all, name = "volcano::join::nested_loop::next")]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		debug_assert!(self.context.is_initialized(), "NestedLoopJoinNode::next() called before initialize()");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(self.context.is_initialized(), "NestedLoopJoinNode::next() called before initialize()");
+		}
 		let _stored_ctx = self.context.get();
 
 		if self.headers.is_some() {

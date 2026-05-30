@@ -3,6 +3,8 @@
 
 use std::ptr;
 
+#[cfg(reifydb_assertions)]
+use reifydb_value::value::value_type::ValueType;
 use reifydb_value::value::{
 	date::Date,
 	datetime::DateTime,
@@ -10,7 +12,6 @@ use reifydb_value::value::{
 	identity::IdentityId,
 	time::Time,
 	uuid::{Uuid4, Uuid7},
-	value_type::ValueType,
 };
 use uuid::Uuid;
 
@@ -22,7 +23,10 @@ use crate::{
 impl IndexShape {
 	pub fn get_bool(&self, key: &EncodedIndexKey, index: usize) -> bool {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Boolean);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Boolean);
+		}
 
 		let byte = unsafe { *key.as_ptr().add(field.offset) };
 
@@ -34,7 +38,10 @@ impl IndexShape {
 
 	pub fn get_f32(&self, key: &EncodedIndexKey, index: usize) -> f32 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Float4);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Float4);
+		}
 
 		let mut bytes = [0u8; 4];
 		unsafe {
@@ -60,7 +67,10 @@ impl IndexShape {
 
 	pub fn get_f64(&self, key: &EncodedIndexKey, index: usize) -> f64 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Float8);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Float8);
+		}
 
 		let mut bytes = [0u8; 8];
 		unsafe {
@@ -86,7 +96,10 @@ impl IndexShape {
 
 	pub fn get_i8(&self, key: &EncodedIndexKey, index: usize) -> i8 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Int1);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Int1);
+		}
 
 		let mut byte = unsafe { *key.as_ptr().add(field.offset) };
 
@@ -105,7 +118,10 @@ impl IndexShape {
 
 	pub fn get_i16(&self, key: &EncodedIndexKey, index: usize) -> i16 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Int2);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Int2);
+		}
 
 		let mut bytes = [0u8; 2];
 		unsafe {
@@ -129,7 +145,10 @@ impl IndexShape {
 
 	pub fn get_i32(&self, key: &EncodedIndexKey, index: usize) -> i32 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Int4);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Int4);
+		}
 
 		let mut bytes = [0u8; 4];
 		unsafe {
@@ -153,7 +172,10 @@ impl IndexShape {
 
 	pub fn get_i64(&self, key: &EncodedIndexKey, index: usize) -> i64 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Int8);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Int8);
+		}
 
 		let mut bytes = [0u8; 8];
 		unsafe {
@@ -177,7 +199,10 @@ impl IndexShape {
 
 	pub fn get_i128(&self, key: &EncodedIndexKey, index: usize) -> i128 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Int16);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Int16);
+		}
 
 		let mut bytes = [0u8; 16];
 		unsafe {
@@ -201,7 +226,10 @@ impl IndexShape {
 
 	pub fn get_u8(&self, key: &EncodedIndexKey, index: usize) -> u8 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Uint1);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Uint1);
+		}
 
 		let byte = unsafe { *key.as_ptr().add(field.offset) };
 
@@ -213,7 +241,10 @@ impl IndexShape {
 
 	pub fn get_u16(&self, key: &EncodedIndexKey, index: usize) -> u16 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Uint2);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Uint2);
+		}
 
 		let mut bytes = [0u8; 2];
 		unsafe {
@@ -228,7 +259,10 @@ impl IndexShape {
 
 	pub fn get_u32(&self, key: &EncodedIndexKey, index: usize) -> u32 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Uint4);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Uint4);
+		}
 
 		let mut bytes = [0u8; 4];
 		unsafe {
@@ -243,7 +277,10 @@ impl IndexShape {
 
 	pub fn get_u64(&self, key: &EncodedIndexKey, index: usize) -> u64 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Uint8);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Uint8);
+		}
 
 		let mut bytes = [0u8; 8];
 		unsafe {
@@ -258,7 +295,10 @@ impl IndexShape {
 
 	pub fn get_u128(&self, key: &EncodedIndexKey, index: usize) -> u128 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Uint16);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Uint16);
+		}
 
 		let mut bytes = [0u8; 16];
 		unsafe {
@@ -273,7 +313,10 @@ impl IndexShape {
 
 	pub fn get_row_number(&self, key: &EncodedIndexKey, index: usize) -> u64 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Uint8);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Uint8);
+		}
 
 		let mut bytes = [0u8; 8];
 		unsafe {
@@ -288,7 +331,10 @@ impl IndexShape {
 
 	pub fn get_date(&self, key: &EncodedIndexKey, index: usize) -> Date {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Date);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Date);
+		}
 
 		let mut bytes = [0u8; 4];
 		unsafe {
@@ -313,7 +359,10 @@ impl IndexShape {
 
 	pub fn get_datetime(&self, key: &EncodedIndexKey, index: usize) -> DateTime {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::DateTime);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::DateTime);
+		}
 
 		let mut bytes = [0u8; 8];
 
@@ -331,7 +380,10 @@ impl IndexShape {
 
 	pub fn get_time(&self, key: &EncodedIndexKey, index: usize) -> Time {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Time);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Time);
+		}
 
 		let mut bytes = [0u8; 8];
 		unsafe {
@@ -348,7 +400,10 @@ impl IndexShape {
 
 	pub fn get_duration(&self, key: &EncodedIndexKey, index: usize) -> Duration {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Duration);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Duration);
+		}
 
 		let mut months_bytes = [0u8; 4];
 		let mut days_bytes = [0u8; 4];
@@ -390,7 +445,10 @@ impl IndexShape {
 
 	pub fn get_uuid4(&self, key: &EncodedIndexKey, index: usize) -> Uuid4 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Uuid4);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Uuid4);
+		}
 
 		let mut bytes = [0u8; 16];
 		unsafe {
@@ -409,7 +467,10 @@ impl IndexShape {
 
 	pub fn get_uuid7(&self, key: &EncodedIndexKey, index: usize) -> Uuid7 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Uuid7);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Uuid7);
+		}
 
 		let mut bytes = [0u8; 16];
 		unsafe {
@@ -428,7 +489,10 @@ impl IndexShape {
 
 	pub fn get_identity_id(&self, key: &EncodedIndexKey, index: usize) -> IdentityId {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::IdentityId);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::IdentityId);
+		}
 
 		let mut bytes = [0u8; 16];
 		unsafe {

@@ -78,7 +78,10 @@ impl QueryNode for MapNode {
 
 	#[instrument(name = "volcano::map::next", level = "trace", skip_all)]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		debug_assert!(self.context.is_some(), "MapNode::next() called before initialize()");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(self.context.is_some(), "MapNode::next() called before initialize()");
+		}
 
 		if let Some(columns) = self.input.next(rx, ctx)? {
 			let stored_ctx = &self.context.as_ref().unwrap().0;
@@ -196,7 +199,10 @@ impl QueryNode for MapWithoutInputNode {
 
 	#[instrument(name = "volcano::map::noinput::next", level = "trace", skip_all)]
 	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		debug_assert!(self.context.is_some(), "MapWithoutInputNode::next() called before initialize()");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(self.context.is_some(), "MapWithoutInputNode::next() called before initialize()");
+		}
 		let (stored_ctx, compiled) = self.context.as_ref().unwrap();
 
 		if self.headers.is_some() {

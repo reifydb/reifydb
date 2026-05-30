@@ -55,7 +55,10 @@ impl QueryNode for DictionaryScanNode {
 
 	#[instrument(name = "volcano::scan::dictionary::next", level = "trace", skip_all)]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		debug_assert!(self.context.is_some(), "DictionaryScan::next() called before initialize()");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(self.context.is_some(), "DictionaryScan::next() called before initialize()");
+		}
 		let stored_ctx = self.context.as_ref().unwrap();
 
 		if self.exhausted {

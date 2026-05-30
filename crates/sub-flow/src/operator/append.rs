@@ -58,8 +58,11 @@ impl AppendOperator {
 		ttl_nanos: Option<u64>,
 		ttl_anchor: TtlAnchor,
 	) -> Self {
-		debug_assert_eq!(parents.len(), input_nodes.len());
-		debug_assert!(parents.len() >= 2, "Append requires at least 2 inputs");
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(parents.len(), input_nodes.len());
+			assert!(parents.len() >= 2, "Append requires at least 2 inputs");
+		}
 
 		Self {
 			node,

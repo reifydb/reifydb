@@ -55,7 +55,10 @@ impl QueryNode for SortNode {
 
 	#[instrument(level = "trace", skip_all, name = "volcano::sort::next")]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		debug_assert!(self.initialized.is_some(), "SortNode::next() called before initialize()");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(self.initialized.is_some(), "SortNode::next() called before initialize()");
+		}
 
 		let mut columns_opt: Option<Columns> = None;
 

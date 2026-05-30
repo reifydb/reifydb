@@ -3,6 +3,8 @@
 
 use std::{f64, ptr};
 
+#[cfg(reifydb_assertions)]
+use reifydb_value::value::value_type::ValueType;
 use reifydb_value::value::{
 	date::Date,
 	datetime::DateTime,
@@ -10,7 +12,6 @@ use reifydb_value::value::{
 	identity::IdentityId,
 	time::Time,
 	uuid::{Uuid4, Uuid7},
-	value_type::ValueType,
 };
 use uuid::Uuid;
 
@@ -22,7 +23,10 @@ use crate::{
 impl IndexShape {
 	pub fn set_bool(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<bool>) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Boolean);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Boolean);
+		}
 		key.set_valid(index, true);
 
 		let byte_value = match field.direction {
@@ -47,7 +51,10 @@ impl IndexShape {
 
 	pub fn set_f32(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<f32>) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Float4);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Float4);
+		}
 		key.set_valid(index, true);
 
 		let v = value.into();
@@ -74,7 +81,10 @@ impl IndexShape {
 
 	pub fn set_f64(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<f64>) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Float8);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Float8);
+		}
 		key.set_valid(index, true);
 
 		let v = value.into();
@@ -101,7 +111,10 @@ impl IndexShape {
 
 	pub fn set_i8(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<i8>) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Int1);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Int1);
+		}
 		key.set_valid(index, true);
 
 		let mut bytes = value.into().to_be_bytes();
@@ -123,7 +136,10 @@ impl IndexShape {
 
 	pub fn set_i16(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<i16>) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Int2);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Int2);
+		}
 		key.set_valid(index, true);
 
 		let mut bytes = value.into().to_be_bytes();
@@ -147,7 +163,10 @@ impl IndexShape {
 
 	pub fn set_i32(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<i32>) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Int4);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Int4);
+		}
 		key.set_valid(index, true);
 
 		let mut bytes = value.into().to_be_bytes();
@@ -171,7 +190,10 @@ impl IndexShape {
 
 	pub fn set_i64(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<i64>) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Int8);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Int8);
+		}
 		key.set_valid(index, true);
 
 		let mut bytes = value.into().to_be_bytes();
@@ -195,7 +217,10 @@ impl IndexShape {
 
 	pub fn set_i128(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<i128>) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Int16);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Int16);
+		}
 		key.set_valid(index, true);
 
 		let mut bytes = value.into().to_be_bytes();
@@ -219,7 +244,10 @@ impl IndexShape {
 
 	pub fn set_u8(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<u8>) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Uint1);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Uint1);
+		}
 		key.set_valid(index, true);
 
 		let byte = match field.direction {
@@ -232,7 +260,10 @@ impl IndexShape {
 
 	pub fn set_u16(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<u16>) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Uint2);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Uint2);
+		}
 		key.set_valid(index, true);
 
 		let bytes = match field.direction {
@@ -247,7 +278,10 @@ impl IndexShape {
 
 	pub fn set_u32(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<u32>) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Uint4);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Uint4);
+		}
 		key.set_valid(index, true);
 
 		let bytes = match field.direction {
@@ -262,7 +296,10 @@ impl IndexShape {
 
 	pub fn set_u64(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<u64>) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Uint8);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Uint8);
+		}
 		key.set_valid(index, true);
 
 		let bytes = match field.direction {
@@ -277,7 +314,10 @@ impl IndexShape {
 
 	pub fn set_u128(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<u128>) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Uint16);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Uint16);
+		}
 		key.set_valid(index, true);
 
 		let bytes = match field.direction {
@@ -292,7 +332,10 @@ impl IndexShape {
 
 	pub fn set_row_number(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<u64>) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Uint8);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Uint8);
+		}
 		key.set_valid(index, true);
 
 		let bytes = match field.direction {
@@ -307,7 +350,10 @@ impl IndexShape {
 
 	pub fn set_date(&self, key: &mut EncodedIndexKey, index: usize, value: Date) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Date);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Date);
+		}
 		key.set_valid(index, true);
 
 		let days = value.to_days_since_epoch();
@@ -332,7 +378,10 @@ impl IndexShape {
 
 	pub fn set_datetime(&self, key: &mut EncodedIndexKey, index: usize, value: DateTime) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::DateTime);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::DateTime);
+		}
 		key.set_valid(index, true);
 
 		let nanos = value.to_nanos();
@@ -348,7 +397,10 @@ impl IndexShape {
 
 	pub fn set_time(&self, key: &mut EncodedIndexKey, index: usize, value: Time) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Time);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Time);
+		}
 		key.set_valid(index, true);
 
 		let nanos = value.to_nanos_since_midnight();
@@ -364,7 +416,10 @@ impl IndexShape {
 
 	pub fn set_duration(&self, key: &mut EncodedIndexKey, index: usize, value: Duration) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Duration);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Duration);
+		}
 		key.set_valid(index, true);
 
 		let mut months_bytes = value.get_months().to_be_bytes();
@@ -414,7 +469,10 @@ impl IndexShape {
 
 	pub fn set_uuid4(&self, key: &mut EncodedIndexKey, index: usize, value: Uuid4) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Uuid4);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Uuid4);
+		}
 		key.set_valid(index, true);
 
 		let uuid: Uuid = value.into();
@@ -435,7 +493,10 @@ impl IndexShape {
 
 	pub fn set_uuid7(&self, key: &mut EncodedIndexKey, index: usize, value: Uuid7) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::Uuid7);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::Uuid7);
+		}
 		key.set_valid(index, true);
 
 		let uuid: Uuid = value.into();
@@ -456,7 +517,10 @@ impl IndexShape {
 
 	pub fn set_identity_id(&self, key: &mut EncodedIndexKey, index: usize, value: IdentityId) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, ValueType::IdentityId);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(field.value, ValueType::IdentityId);
+		}
 		key.set_valid(index, true);
 
 		let uuid: Uuid = value.0.into();

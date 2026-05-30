@@ -854,13 +854,13 @@ impl WindowOperator {
 
 		let (result_row_number, is_new) = self.row_number_provider.get_or_create_row_number(txn, window_key)?;
 
-		#[cfg(debug_assertions)]
+		#[cfg(reifydb_assertions)]
 		{
 			let (slow_values, slow_names, slow_types) =
 				self.compute_aggregation_outputs(window_layout, events)?;
-			debug_assert_eq!(names, slow_names, "fast-path output names diverge from slow path");
-			debug_assert_eq!(types, slow_types, "fast-path output types diverge from slow path");
-			debug_assert_eq!(values, slow_values, "fast-path output values diverge from slow path");
+			assert_eq!(names, slow_names, "fast-path output names diverge from slow path");
+			assert_eq!(types, slow_types, "fast-path output types diverge from slow path");
+			assert_eq!(values, slow_values, "fast-path output values diverge from slow path");
 		}
 
 		Ok(Some((

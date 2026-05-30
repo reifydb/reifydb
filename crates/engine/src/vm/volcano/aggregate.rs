@@ -75,7 +75,10 @@ impl QueryNode for AggregateNode {
 
 	#[instrument(level = "trace", skip_all, name = "volcano::aggregate::next")]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		debug_assert!(self.context.is_some(), "AggregateNode::next() called before initialize()");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(self.context.is_some(), "AggregateNode::next() called before initialize()");
+		}
 		let stored_ctx = self.context.as_ref().unwrap();
 
 		if self.headers.is_some() {

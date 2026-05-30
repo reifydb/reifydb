@@ -80,7 +80,10 @@ impl ColumnChunks {
 	}
 
 	pub fn iter_range_chunks(&self, start: usize, end: usize) -> Vec<(usize, usize, usize)> {
-		debug_assert!(start <= end, "iter_range_chunks: start {start} > end {end}");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(start <= end, "iter_range_chunks: start {start} > end {end}");
+		}
 		let mut out = Vec::new();
 		if start == end {
 			return out;
@@ -113,7 +116,10 @@ pub struct ColumnBlock {
 
 impl ColumnBlock {
 	pub fn new(schema: Schema, columns: Vec<ColumnChunks>) -> Self {
-		debug_assert_eq!(schema.len(), columns.len(), "ColumnBlock::new: schema and columns length mismatch");
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(schema.len(), columns.len(), "ColumnBlock::new: schema and columns length mismatch");
+		}
 		Self {
 			schema,
 			columns,
@@ -133,7 +139,10 @@ impl ColumnBlock {
 	}
 
 	pub fn view_range(&self, start: usize, end: usize) -> Result<ColumnBlock> {
-		debug_assert!(start <= end, "view_range: start {start} > end {end}");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(start <= end, "view_range: start {start} > end {end}");
+		}
 		let mut sliced_columns = Vec::with_capacity(self.columns.len());
 		for column in &self.columns {
 			let ranges = column.iter_range_chunks(start, end);

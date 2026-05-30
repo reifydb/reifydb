@@ -97,7 +97,10 @@ where
 	<L as Promote<R>>::Output: SafeAdd,
 	ColumnBuffer: Push<<L as Promote<R>>::Output>,
 {
-	debug_assert_eq!(l.len(), r.len());
+	#[cfg(reifydb_assertions)]
+	{
+		assert_eq!(l.len(), r.len());
+	}
 
 	let mut data = ColumnBuffer::with_capacity(target, l.len());
 	let l_data = l.data();
@@ -129,7 +132,10 @@ where
 	<L as Promote<R>>::Output: SafeAdd,
 	ColumnBuffer: Push<<L as Promote<R>>::Output>,
 {
-	debug_assert_eq!(l.len(), r.len());
+	#[cfg(reifydb_assertions)]
+	{
+		assert_eq!(l.len(), r.len());
+	}
 
 	let mut data = ColumnBuffer::with_capacity(target, l.len());
 	for i in 0..l.len() {
@@ -187,7 +193,10 @@ fn concat_strings(
 	target: ValueType,
 	fragment: Fragment,
 ) -> Result<ColumnWithName> {
-	debug_assert_eq!(l.len(), r.len());
+	#[cfg(reifydb_assertions)]
+	{
+		assert_eq!(l.len(), r.len());
+	}
 
 	let mut data = ColumnBuffer::with_capacity(target, l.len());
 	for i in 0..l.len() {
@@ -212,7 +221,10 @@ fn concat_string_with_other(
 	target: ValueType,
 	fragment: Fragment,
 ) -> Result<ColumnWithName> {
-	debug_assert_eq!(string_data.len(), other_data.len());
+	#[cfg(reifydb_assertions)]
+	{
+		assert_eq!(string_data.len(), other_data.len());
+	}
 
 	let mut data = ColumnBuffer::with_capacity(target, string_data.len());
 	for i in 0..string_data.len() {

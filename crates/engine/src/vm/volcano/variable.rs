@@ -39,7 +39,10 @@ impl QueryNode for VariableNode {
 	}
 
 	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		debug_assert!(self.context.is_some(), "VariableNode::next() called before initialize()");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(self.context.is_some(), "VariableNode::next() called before initialize()");
+		}
 
 		if self.executed {
 			return Ok(None);

@@ -81,12 +81,15 @@ impl MultiReplicaTransaction {
 	}
 
 	fn transition_to(&mut self, next: Lifecycle) {
-		debug_assert!(matches!(
-			(self.lifecycle, next),
-			(Lifecycle::Active, Lifecycle::QueryDone)
-				| (Lifecycle::Active, Lifecycle::Discarded)
-				| (Lifecycle::QueryDone, Lifecycle::Discarded)
-		));
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(matches!(
+				(self.lifecycle, next),
+				(Lifecycle::Active, Lifecycle::QueryDone)
+					| (Lifecycle::Active, Lifecycle::Discarded)
+					| (Lifecycle::QueryDone, Lifecycle::Discarded)
+			));
+		}
 		self.lifecycle = next;
 	}
 }

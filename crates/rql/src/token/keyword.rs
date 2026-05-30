@@ -37,7 +37,10 @@ macro_rules! keyword {
             type Error = Error;
 
             fn try_from(value: &str) -> Result<Self> {
-                debug_assert!(value.chars().all(|c| c.is_uppercase()), "keyword must be uppercase");
+                #[cfg(reifydb_assertions)]
+                {
+                    assert!(value.chars().all(|c| c.is_uppercase()), "keyword must be uppercase");
+                }
                 match value {
                     $( $string => Ok(Keyword::$variant) ),*,
                     _ => {

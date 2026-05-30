@@ -39,17 +39,26 @@ impl NoneBitmap {
 	}
 
 	pub fn is_none(&self, row: usize) -> bool {
-		debug_assert!(row < self.len, "row {} out of bounds for len {}", row, self.len);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(row < self.len, "row {} out of bounds for len {}", row, self.len);
+		}
 		(self.words[row / 64] >> (row % 64)) & 1 == 1
 	}
 
 	pub fn set_none(&mut self, row: usize) {
-		debug_assert!(row < self.len);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(row < self.len);
+		}
 		self.words[row / 64] |= 1u64 << (row % 64);
 	}
 
 	pub fn clear_none(&mut self, row: usize) {
-		debug_assert!(row < self.len);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(row < self.len);
+		}
 		self.words[row / 64] &= !(1u64 << (row % 64));
 	}
 

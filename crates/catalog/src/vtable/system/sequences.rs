@@ -57,7 +57,10 @@ impl BaseVTable for SystemSequences {
 		for sequence in sequences {
 			sequence_ids.push(sequence.id.0);
 
-			debug_assert_eq!(sequence.namespace, 1);
+			#[cfg(reifydb_assertions)]
+			{
+				assert_eq!(sequence.namespace, 1);
+			}
 			namespace_ids.push(sequence.namespace.0);
 			namespace_names.push("system".to_string());
 

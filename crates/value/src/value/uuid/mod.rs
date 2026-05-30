@@ -53,7 +53,10 @@ impl Ord for Uuid4 {
 
 impl From<StdUuid> for Uuid4 {
 	fn from(uuid: StdUuid) -> Self {
-		debug_assert!(uuid.get_version_num() == 4 || uuid.get_version_num() == 0);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(uuid.get_version_num() == 4 || uuid.get_version_num() == 0);
+		}
 		Uuid4(uuid)
 	}
 }
@@ -110,7 +113,10 @@ impl Ord for Uuid7 {
 
 impl From<StdUuid> for Uuid7 {
 	fn from(uuid: StdUuid) -> Self {
-		debug_assert!(uuid.get_version_num() == 7 || uuid.get_version_num() == 0);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(uuid.get_version_num() == 7 || uuid.get_version_num() == 0);
+		}
 		Uuid7(uuid)
 	}
 }

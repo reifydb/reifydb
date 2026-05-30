@@ -128,13 +128,16 @@ fn value_to_buffer(value: Value) -> ColumnBuffer {
 
 impl Columns {
 	pub fn scalar_value(&self) -> Value {
-		debug_assert_eq!(self.len(), 1, "scalar_value() requires exactly 1 column, got {}", self.len());
-		debug_assert_eq!(
-			self.row_count(),
-			1,
-			"scalar_value() requires exactly 1 row, got {}",
-			self.row_count()
-		);
+		#[cfg(reifydb_assertions)]
+		{
+			assert_eq!(self.len(), 1, "scalar_value() requires exactly 1 column, got {}", self.len());
+			assert_eq!(
+				self.row_count(),
+				1,
+				"scalar_value() requires exactly 1 row, got {}",
+				self.row_count()
+			);
+		}
 		self.columns[0].get_value(0)
 	}
 

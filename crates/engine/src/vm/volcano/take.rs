@@ -37,7 +37,10 @@ impl QueryNode for TakeNode {
 
 	#[instrument(name = "volcano::take::next", level = "trace", skip_all)]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		debug_assert!(self.initialized.is_some(), "TakeNode::next() called before initialize()");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(self.initialized.is_some(), "TakeNode::next() called before initialize()");
+		}
 
 		if self.remaining == 0 {
 			return Ok(None);

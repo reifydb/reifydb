@@ -64,7 +64,10 @@ pub(crate) fn alter_table_sequence(
 	let value = evaluate(&eval_ctx, &plan.value)?;
 
 	let data = value.data();
-	debug_assert_eq!(data.len(), 1);
+	#[cfg(reifydb_assertions)]
+	{
+		assert_eq!(data.len(), 1);
+	}
 
 	let value = data.get_value(0);
 	services.catalog.column_sequence_set_value(txn, table.id, column.id, value.clone())?;
