@@ -4,8 +4,7 @@
 use reifydb::{Database, Params, embedded};
 
 pub fn fresh_db() -> Database {
-	let mut db = embedded::memory().build().unwrap();
-	db.start().unwrap();
+	let db = embedded::memory().build().unwrap();
 	db
 }
 

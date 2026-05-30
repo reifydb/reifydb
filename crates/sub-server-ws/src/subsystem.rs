@@ -15,7 +15,10 @@ use reifydb_core::{
 	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_runtime::sync::rwlock::RwLock;
+use reifydb_runtime::{
+	shutdown::Shutdown,
+	sync::{mutex::Mutex, rwlock::RwLock},
+};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_sub_server::state::AppState;
 use reifydb_sub_subscription::{poller::StoreBackedPoller, store::SubscriptionStore};
@@ -44,11 +47,11 @@ pub struct WsSubsystem {
 
 	active_connections: Arc<AtomicUsize>,
 
-	shutdown_tx: Option<watch::Sender<bool>>,
+	shutdown_tx: Mutex<Option<watch::Sender<bool>>>,
 
-	shutdown_complete_rx: Option<oneshot::Receiver<()>>,
+	shutdown_complete_rx: Mutex<Option<oneshot::Receiver<()>>>,
 
-	admin_shutdown_complete_rx: Option<oneshot::Receiver<()>>,
+	admin_shutdown_complete_rx: Mutex<Option<oneshot::Receiver<()>>>,
 
 	connection_semaphore: Arc<Semaphore>,
 
@@ -69,10 +72,10 @@ impl WsSubsystem {
 		runtime: tokio::runtime::Handle,
 		poll_batch_size: usize,
 		subscription_store: Option<Arc<SubscriptionStore>>,
-	) -> Self {
+	) -> Result<Self> {
 		let max_connections = state.max_connections();
 		let clock = state.clock().clone();
-		Self {
+		let subsystem = Self {
 			bind_addr,
 			admin_bind_addr,
 			actual_addr: RwLock::new(None),
@@ -80,15 +83,22 @@ impl WsSubsystem {
 			state,
 			running: Arc::new(AtomicBool::new(false)),
 			active_connections: Arc::new(AtomicUsize::new(0)),
-			shutdown_tx: None,
-			shutdown_complete_rx: None,
-			admin_shutdown_complete_rx: None,
+			shutdown_tx: Mutex::new(None),
+			shutdown_complete_rx: Mutex::new(None),
+			admin_shutdown_complete_rx: Mutex::new(None),
 			connection_semaphore: Arc::new(Semaphore::new(max_connections)),
 			runtime,
 			registry: Arc::new(SubscriptionRegistry::new(clock)),
 			poll_batch_size,
 			subscription_store,
-		}
+		};
+
+		let (shutdown_tx, shutdown_rx) = watch::channel(false);
+		subsystem.spawn_subscription_poller_if_configured(shutdown_rx.clone());
+		subsystem.spawn_main_server(shutdown_rx)?;
+		*subsystem.shutdown_tx.lock() = Some(shutdown_tx);
+		subsystem.spawn_admin_server()?;
+		Ok(subsystem)
 	}
 
 	pub fn bind_addr(&self) -> Option<&str> {
@@ -127,7 +137,7 @@ impl WsSubsystem {
 		});
 	}
 
-	fn spawn_main_server(&mut self, shutdown_rx: watch::Receiver<bool>) -> Result<()> {
+	fn spawn_main_server(&self, shutdown_rx: watch::Receiver<bool>) -> Result<()> {
 		let Some(addr) = self.bind_addr.clone() else {
 			self.running.store(true, Ordering::SeqCst);
 			return Ok(());
@@ -161,11 +171,11 @@ impl WsSubsystem {
 			let _ = complete_tx.send(());
 			info!("WebSocket server stopped");
 		});
-		self.shutdown_complete_rx = Some(complete_rx);
+		*self.shutdown_complete_rx.lock() = Some(complete_rx);
 		Ok(())
 	}
 
-	fn spawn_admin_server(&mut self) -> Result<()> {
+	fn spawn_admin_server(&self) -> Result<()> {
 		let Some(admin_addr) = self.admin_bind_addr.clone() else {
 			return Ok(());
 		};
@@ -180,7 +190,7 @@ impl WsSubsystem {
 		let admin_registry = self.registry.clone();
 		let admin_semaphore = self.connection_semaphore.clone();
 		let admin_active = self.active_connections.clone();
-		let admin_shutdown_rx = self.shutdown_tx.as_ref().unwrap().subscribe();
+		let admin_shutdown_rx = self.shutdown_tx.lock().as_ref().unwrap().subscribe();
 		let runtime_inner = self.runtime.clone();
 		self.runtime.spawn(async move {
 			run_accept_loop(
@@ -197,7 +207,7 @@ impl WsSubsystem {
 			let _ = admin_complete_tx.send(());
 			info!("WebSocket admin server stopped");
 		});
-		self.admin_shutdown_complete_rx = Some(admin_complete_rx);
+		*self.admin_shutdown_complete_rx.lock() = Some(admin_complete_rx);
 		Ok(())
 	}
 
@@ -227,37 +237,28 @@ impl HasVersion for WsSubsystem {
 	}
 }
 
-impl Subsystem for WsSubsystem {
-	fn name(&self) -> &'static str {
-		"WebSocket"
-	}
-
-	fn start(&mut self) -> Result<()> {
-		if self.running.load(Ordering::SeqCst) {
-			return Ok(());
-		}
-		let (shutdown_tx, shutdown_rx) = watch::channel(false);
-		self.spawn_subscription_poller_if_configured(shutdown_rx.clone());
-		self.spawn_main_server(shutdown_rx)?;
-		self.shutdown_tx = Some(shutdown_tx);
-		self.spawn_admin_server()?;
-		Ok(())
-	}
-
-	fn shutdown(&mut self) -> Result<()> {
-		if let Some(tx) = self.shutdown_tx.take() {
+impl Shutdown for WsSubsystem {
+	fn shutdown(&self) {
+		if let Some(tx) = self.shutdown_tx.lock().take() {
 			let _ = tx.send(true);
 		}
 
-		if let Some(rx) = self.admin_shutdown_complete_rx.take() {
+		let admin_rx = self.admin_shutdown_complete_rx.lock().take();
+		if let Some(rx) = admin_rx {
 			let _ = self.runtime.block_on(rx);
 		}
 
-		if let Some(rx) = self.shutdown_complete_rx.take() {
+		let main_rx = self.shutdown_complete_rx.lock().take();
+		if let Some(rx) = main_rx {
 			let _ = self.runtime.block_on(rx);
 		}
 		self.running.store(false, Ordering::SeqCst);
-		Ok(())
+	}
+}
+
+impl Subsystem for WsSubsystem {
+	fn name(&self) -> &'static str {
+		"WebSocket"
 	}
 
 	fn is_running(&self) -> bool {
@@ -276,7 +277,7 @@ impl Subsystem for WsSubsystem {
 			} else {
 				HealthStatus::Healthy
 			}
-		} else if self.shutdown_tx.is_some() {
+		} else if self.shutdown_tx.lock().is_some() {
 			HealthStatus::Warning {
 				description: "Starting up".to_string(),
 			}
@@ -288,10 +289,6 @@ impl Subsystem for WsSubsystem {
 	}
 
 	fn as_any(&self) -> &dyn Any {
-		self
-	}
-
-	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
 }

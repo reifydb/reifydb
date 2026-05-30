@@ -53,8 +53,7 @@ fn create_and_setup(
 
 #[test]
 fn hydrate_returns_existing_rows_at_pinned_version() {
-	let mut db = db_embedded::memory().build().expect("build");
-	db.start().expect("start");
+	let db = db_embedded::memory().build().expect("build");
 
 	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
 	db.admin_as_root("CREATE TABLE app::orders { id: int4, qty: int4 }", Params::None).expect("create table");
@@ -72,8 +71,7 @@ fn hydrate_returns_existing_rows_at_pinned_version() {
 
 #[test]
 fn hydrate_fails_when_row_cap_exceeded() {
-	let mut db = db_embedded::memory().build().expect("build");
-	db.start().expect("start");
+	let db = db_embedded::memory().build().expect("build");
 
 	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
 	db.admin_as_root("CREATE TABLE app::big { id: int4 }", Params::None).expect("create table");
@@ -104,8 +102,7 @@ fn hydrate_fails_when_row_cap_exceeded() {
 
 #[test]
 fn hydrate_pushes_take_into_source_query() {
-	let mut db = db_embedded::memory().build().expect("build");
-	db.start().expect("start");
+	let db = db_embedded::memory().build().expect("build");
 
 	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
 	db.admin_as_root("CREATE TABLE app::big { id: int4 }", Params::None).expect("create table");
@@ -129,8 +126,7 @@ fn hydrate_pushes_take_into_source_query() {
 
 #[test]
 fn hydrate_pushes_filter_into_source_query() {
-	let mut db = db_embedded::memory().build().expect("build");
-	db.start().expect("start");
+	let db = db_embedded::memory().build().expect("build");
 
 	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
 	db.admin_as_root("CREATE TABLE app::events { id: int4, kind: utf8 }", Params::None).expect("create table");
@@ -181,8 +177,7 @@ fn hydrate_pushes_filter_into_source_query() {
 
 #[test]
 fn hydrate_returns_subscription_not_found_for_unknown_id() {
-	let mut db = db_embedded::memory().build().expect("build");
-	db.start().expect("start");
+	let db = db_embedded::memory().build().expect("build");
 
 	let (engine, lease, sub_service) = engine_lease_service(&db);
 
@@ -207,8 +202,7 @@ fn first_value(frames: &[Frame], name: &str) -> Option<Value> {
 
 #[test]
 fn create_subscription_default_returns_hydration_enabled_true_with_no_max_rows() {
-	let mut db = db_embedded::memory().build().expect("build");
-	db.start().expect("start");
+	let db = db_embedded::memory().build().expect("build");
 	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
 	db.admin_as_root("CREATE TABLE app::orders { id: int4, qty: int4 }", Params::None).expect("create table");
 
@@ -231,8 +225,7 @@ fn create_subscription_default_returns_hydration_enabled_true_with_no_max_rows()
 
 #[test]
 fn create_subscription_with_disabled_returns_hydration_enabled_false() {
-	let mut db = db_embedded::memory().build().expect("build");
-	db.start().expect("start");
+	let db = db_embedded::memory().build().expect("build");
 	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
 	db.admin_as_root("CREATE TABLE app::orders { id: int4, qty: int4 }", Params::None).expect("create table");
 
@@ -251,8 +244,7 @@ fn create_subscription_with_disabled_returns_hydration_enabled_false() {
 
 #[test]
 fn create_subscription_with_max_rows_returns_max_rows_uint8() {
-	let mut db = db_embedded::memory().build().expect("build");
-	db.start().expect("start");
+	let db = db_embedded::memory().build().expect("build");
 	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
 	db.admin_as_root("CREATE TABLE app::orders { id: int4, qty: int4 }", Params::None).expect("create table");
 

@@ -60,7 +60,6 @@ impl testscript::runner::Runner for Runner {
 	}
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
-		self.instance.start()?;
 		Ok(())
 	}
 

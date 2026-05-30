@@ -27,7 +27,6 @@ pub fn create_server_instance(_runtime: &Arc<Runtime>) -> Database {
 #[allow(dead_code)]
 #[cfg(not(reifydb_single_threaded))]
 pub fn start_server_and_get_ws_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
-	server.start()?;
 	server.admin_as_root(
 		"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
 		reifydb_value::params::Params::None,
@@ -40,7 +39,6 @@ pub fn start_server_and_get_ws_port(_runtime: &Arc<Runtime>, server: &mut Databa
 #[allow(dead_code)]
 #[cfg(not(reifydb_single_threaded))]
 pub fn start_server_and_get_grpc_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
-	server.start()?;
 	server.admin_as_root(
 		"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
 		reifydb_value::params::Params::None,
@@ -53,7 +51,6 @@ pub fn start_server_and_get_grpc_port(_runtime: &Arc<Runtime>, server: &mut Data
 #[allow(dead_code)]
 #[cfg(not(reifydb_single_threaded))]
 pub fn start_server_and_get_http_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
-	server.start()?;
 	server.admin_as_root(
 		"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
 		reifydb_value::params::Params::None,

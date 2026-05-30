@@ -185,7 +185,7 @@ impl SubsystemFactory for WsSubsystemFactory {
 			handle,
 			config.poll_batch_size,
 			subscription_store,
-		);
+		)?;
 
 		Ok(Box::new(subsystem))
 	}

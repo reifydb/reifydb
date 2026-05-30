@@ -29,7 +29,7 @@ pub fn start(cli: &Cli) {
 	let grpc_addr = cli.grpc_addr.clone();
 	let ws_addr = cli.ws_addr.clone();
 
-	let mut db = server::memory()
+	let db = server::memory()
 		.with_grpc(|c| c.bind_addr(grpc_addr))
 		.with_ws(|ws| ws.bind_addr(ws_addr))
 		.with_tracing(tracing_configuration)
@@ -54,7 +54,6 @@ pub fn start(cli: &Cli) {
 		});
 	});
 
-	db.start().unwrap();
 	seed::seed_default_pipeline(&db);
 	db.await_signal().unwrap();
 }

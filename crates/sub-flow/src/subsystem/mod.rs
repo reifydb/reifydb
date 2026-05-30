@@ -5,7 +5,15 @@ pub mod factory;
 #[cfg(reifydb_target = "native")]
 pub mod ffi;
 
-use std::{any::Any, collections::HashMap, sync::Arc, time::Duration};
+use std::{
+	any::Any,
+	collections::HashMap,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
+	time::Duration,
+};
 
 #[cfg(reifydb_target = "native")]
 use ffi::{load_ffi_operators, load_native_operators};
@@ -35,7 +43,8 @@ use reifydb_runtime::{
 		system::{ActorHandle, ActorSpawner},
 	},
 	context::{RuntimeContext, clock::Clock},
-	sync::rwlock::RwLock,
+	shutdown::Shutdown,
+	sync::{mutex::Mutex, rwlock::RwLock},
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_transaction::{
@@ -109,18 +118,18 @@ impl CdcConsume for FlowConsumeDispatcher {
 }
 
 pub struct FlowSubsystem {
-	consumer: PollConsumer<StandardEngine, FlowConsumeDispatcher>,
+	consumer: Mutex<PollConsumer<StandardEngine, FlowConsumeDispatcher>>,
 	flow_scope: ActorSpawner,
-	worker_handles: Vec<FlowHandle>,
-	pool_handle: Option<FlowPoolHandle>,
-	coordinator_handle: Option<FlowCoordinatorHandle>,
-	transactional_tick_handle: Option<ActorHandle<TransactionalTickMessage>>,
+	worker_handles: Mutex<Vec<FlowHandle>>,
+	pool_handle: Mutex<Option<FlowPoolHandle>>,
+	coordinator_handle: Mutex<Option<FlowCoordinatorHandle>>,
+	transactional_tick_handle: Mutex<Option<ActorHandle<TransactionalTickMessage>>>,
 	transactional_flow_engine: Arc<RwLock<FlowEngine>>,
-	running: bool,
+	running: AtomicBool,
 }
 
 impl FlowSubsystem {
-	pub fn new(config: FlowConfig, engine: StandardEngine, ioc: &IocContainer) -> Self {
+	pub fn new(config: FlowConfig, engine: StandardEngine, ioc: &IocContainer) -> Result<Self> {
 		Self::maybe_load_ffi_operators(&config, &engine);
 
 		let clock = ioc.resolve::<Clock>().expect("Clock must be registered");
@@ -210,18 +219,19 @@ impl FlowSubsystem {
 			flow_catalog,
 			engine: engine.clone(),
 		};
-		let consumer = PollConsumer::new(poll_config, engine, dispatcher, cdc_store, flow_scope.clone());
+		let mut consumer = PollConsumer::new(poll_config, engine, dispatcher, cdc_store, flow_scope.clone());
+		consumer.start()?;
 
-		Self {
-			consumer,
+		Ok(Self {
+			consumer: Mutex::new(consumer),
 			flow_scope,
-			worker_handles,
-			pool_handle: Some(pool_handle),
-			coordinator_handle: Some(coordinator_handle),
-			transactional_tick_handle: Some(transactional_tick_handle),
+			worker_handles: Mutex::new(worker_handles),
+			pool_handle: Mutex::new(Some(pool_handle)),
+			coordinator_handle: Mutex::new(Some(coordinator_handle)),
+			transactional_tick_handle: Mutex::new(Some(transactional_tick_handle)),
 			transactional_flow_engine,
-			running: false,
-		}
+			running: AtomicBool::new(true),
+		})
 	}
 
 	#[inline]
@@ -351,54 +361,46 @@ impl FlowSubsystem {
 	}
 }
 
+impl Shutdown for FlowSubsystem {
+	fn shutdown(&self) {
+		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
+			return;
+		}
+
+		if let Err(e) = self.consumer.lock().stop() {
+			warn!(error = %e, "flow consumer stop failed during shutdown");
+		}
+
+		self.flow_scope.shutdown();
+
+		if let Some(handle) = self.coordinator_handle.lock().take() {
+			let _ = handle.join();
+		}
+
+		if let Some(handle) = self.pool_handle.lock().take() {
+			let _ = handle.join();
+		}
+
+		if let Some(handle) = self.transactional_tick_handle.lock().take() {
+			let _ = handle.join();
+		}
+
+		let workers: Vec<_> = self.worker_handles.lock().drain(..).collect();
+		for handle in workers {
+			let _ = handle.join();
+		}
+
+		self.transactional_flow_engine.write().clear();
+	}
+}
+
 impl Subsystem for FlowSubsystem {
 	fn name(&self) -> &'static str {
 		"sub-flow"
 	}
 
-	fn start(&mut self) -> Result<()> {
-		if self.running {
-			return Ok(());
-		}
-
-		self.consumer.start()?;
-		self.running = true;
-		Ok(())
-	}
-
-	fn shutdown(&mut self) -> Result<()> {
-		if !self.running {
-			return Ok(());
-		}
-
-		self.consumer.stop()?;
-
-		self.flow_scope.shutdown();
-
-		if let Some(handle) = self.coordinator_handle.take() {
-			let _ = handle.join();
-		}
-
-		if let Some(handle) = self.pool_handle.take() {
-			let _ = handle.join();
-		}
-
-		if let Some(handle) = self.transactional_tick_handle.take() {
-			let _ = handle.join();
-		}
-
-		for handle in self.worker_handles.drain(..) {
-			let _ = handle.join();
-		}
-
-		self.transactional_flow_engine.write().clear();
-
-		self.running = false;
-		Ok(())
-	}
-
 	fn is_running(&self) -> bool {
-		self.running
+		self.running.load(Ordering::Acquire)
 	}
 
 	fn health_status(&self) -> HealthStatus {
@@ -410,10 +412,6 @@ impl Subsystem for FlowSubsystem {
 	}
 
 	fn as_any(&self) -> &dyn Any {
-		self
-	}
-
-	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
 }
@@ -434,8 +432,6 @@ impl HasVersion for FlowSubsystem {
 
 impl Drop for FlowSubsystem {
 	fn drop(&mut self) {
-		if self.running {
-			let _ = self.shutdown();
-		}
+		self.shutdown();
 	}
 }

@@ -15,7 +15,10 @@ use reifydb_core::{
 	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_runtime::sync::rwlock::RwLock;
+use reifydb_runtime::{
+	shutdown::Shutdown,
+	sync::{mutex::Mutex, rwlock::RwLock},
+};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_sub_server::state::AppState;
 use reifydb_sub_subscription::{poller::StoreBackedPoller, store::SubscriptionStore};
@@ -41,15 +44,15 @@ pub struct GrpcSubsystem {
 	admin_actual_addr: RwLock<Option<SocketAddr>>,
 	state: AppState,
 	running: Arc<AtomicBool>,
-	shutdown_tx: Option<oneshot::Sender<()>>,
-	shutdown_complete_rx: Option<oneshot::Receiver<()>>,
-	admin_shutdown_tx: Option<oneshot::Sender<()>>,
-	admin_shutdown_complete_rx: Option<oneshot::Receiver<()>>,
+	shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
+	shutdown_complete_rx: Mutex<Option<oneshot::Receiver<()>>>,
+	admin_shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
+	admin_shutdown_complete_rx: Mutex<Option<oneshot::Receiver<()>>>,
 	handle: Handle,
 	poll_batch_size: usize,
-	registry: Option<Arc<SubscriptionRegistry>>,
-	subscription_shutdown_tx: Option<watch::Sender<bool>>,
-	poller_stop_tx: Option<watch::Sender<bool>>,
+	registry: Mutex<Option<Arc<SubscriptionRegistry>>>,
+	subscription_shutdown_tx: Mutex<Option<watch::Sender<bool>>>,
+	poller_stop_tx: Mutex<Option<watch::Sender<bool>>>,
 	subscription_store: Option<Arc<SubscriptionStore>>,
 }
 
@@ -61,25 +64,33 @@ impl GrpcSubsystem {
 		handle: Handle,
 		poll_batch_size: usize,
 		subscription_store: Option<Arc<SubscriptionStore>>,
-	) -> Self {
-		Self {
+	) -> Result<Self> {
+		let subsystem = Self {
 			bind_addr,
 			admin_bind_addr,
 			actual_addr: RwLock::new(None),
 			admin_actual_addr: RwLock::new(None),
 			state,
 			running: Arc::new(AtomicBool::new(false)),
-			shutdown_tx: None,
-			shutdown_complete_rx: None,
-			admin_shutdown_tx: None,
-			admin_shutdown_complete_rx: None,
+			shutdown_tx: Mutex::new(None),
+			shutdown_complete_rx: Mutex::new(None),
+			admin_shutdown_tx: Mutex::new(None),
+			admin_shutdown_complete_rx: Mutex::new(None),
 			handle,
 			poll_batch_size,
-			registry: None,
-			subscription_shutdown_tx: None,
-			poller_stop_tx: None,
+			registry: Mutex::new(None),
+			subscription_shutdown_tx: Mutex::new(None),
+			poller_stop_tx: Mutex::new(None),
 			subscription_store,
-		}
+		};
+
+		let registry = subsystem.init_subscription_registry();
+		let sub_shutdown_rx = subsystem.create_subscription_shutdown_channel();
+		let (poller_stop_tx, poller_stop_rx) = watch::channel(false);
+		subsystem.spawn_subscription_poller_if_configured(registry.clone(), poller_stop_rx);
+		subsystem.spawn_main_server(registry, sub_shutdown_rx, poller_stop_tx)?;
+		subsystem.spawn_admin_server()?;
+		Ok(subsystem)
 	}
 
 	pub fn bind_addr(&self) -> Option<&str> {
@@ -103,16 +114,16 @@ impl GrpcSubsystem {
 	}
 
 	#[inline]
-	fn init_subscription_registry(&mut self) -> Arc<SubscriptionRegistry> {
+	fn init_subscription_registry(&self) -> Arc<SubscriptionRegistry> {
 		let registry = Arc::new(SubscriptionRegistry::new(self.state.clock().clone()));
-		self.registry = Some(registry.clone());
+		*self.registry.lock() = Some(registry.clone());
 		registry
 	}
 
 	#[inline]
-	fn create_subscription_shutdown_channel(&mut self) -> watch::Receiver<bool> {
+	fn create_subscription_shutdown_channel(&self) -> watch::Receiver<bool> {
 		let (sub_shutdown_tx, sub_shutdown_rx) = watch::channel(false);
-		self.subscription_shutdown_tx = Some(sub_shutdown_tx);
+		*self.subscription_shutdown_tx.lock() = Some(sub_shutdown_tx);
 		sub_shutdown_rx
 	}
 
@@ -132,14 +143,14 @@ impl GrpcSubsystem {
 	}
 
 	fn spawn_main_server(
-		&mut self,
+		&self,
 		registry: Arc<SubscriptionRegistry>,
 		sub_shutdown_rx: watch::Receiver<bool>,
 		poller_stop_tx: watch::Sender<bool>,
 	) -> Result<()> {
 		let Some(addr) = self.bind_addr.clone() else {
 			self.running.store(true, Ordering::SeqCst);
-			self.poller_stop_tx = Some(poller_stop_tx);
+			*self.poller_stop_tx.lock() = Some(poller_stop_tx);
 			return Ok(());
 		};
 		let listener = self.bind_listener(&addr)?;
@@ -164,12 +175,12 @@ impl GrpcSubsystem {
 			let _ = complete_tx.send(());
 			info!("gRPC server stopped");
 		});
-		self.shutdown_tx = Some(shutdown_tx);
-		self.shutdown_complete_rx = Some(complete_rx);
+		*self.shutdown_tx.lock() = Some(shutdown_tx);
+		*self.shutdown_complete_rx.lock() = Some(complete_rx);
 		Ok(())
 	}
 
-	fn spawn_admin_server(&mut self) -> Result<()> {
+	fn spawn_admin_server(&self) -> Result<()> {
 		let Some(admin_addr) = self.admin_bind_addr.clone() else {
 			return Ok(());
 		};
@@ -181,8 +192,8 @@ impl GrpcSubsystem {
 		let (admin_shutdown_tx, admin_shutdown_rx) = oneshot::channel();
 		let (admin_complete_tx, admin_complete_rx) = oneshot::channel();
 		let admin_server_state = GrpcServerState::new(self.state.clone());
-		let admin_registry = self.registry.as_ref().unwrap().clone();
-		let admin_sub_shutdown_rx = self.subscription_shutdown_tx.as_ref().unwrap().subscribe();
+		let admin_registry = self.registry.lock().as_ref().unwrap().clone();
+		let admin_sub_shutdown_rx = self.subscription_shutdown_tx.lock().as_ref().unwrap().subscribe();
 		self.handle.spawn(async move {
 			let admin_service =
 				ReifyDbService::new(admin_server_state, true, admin_registry, admin_sub_shutdown_rx);
@@ -193,8 +204,8 @@ impl GrpcSubsystem {
 			let _ = admin_complete_tx.send(());
 			info!("gRPC admin server stopped");
 		});
-		self.admin_shutdown_tx = Some(admin_shutdown_tx);
-		self.admin_shutdown_complete_rx = Some(admin_complete_rx);
+		*self.admin_shutdown_tx.lock() = Some(admin_shutdown_tx);
+		*self.admin_shutdown_complete_rx.lock() = Some(admin_complete_rx);
 		Ok(())
 	}
 
@@ -224,52 +235,44 @@ impl HasVersion for GrpcSubsystem {
 	}
 }
 
-impl Subsystem for GrpcSubsystem {
-	fn name(&self) -> &'static str {
-		"Grpc"
-	}
-
-	fn start(&mut self) -> Result<()> {
-		if self.running.load(Ordering::SeqCst) {
-			return Ok(());
-		}
-		let registry = self.init_subscription_registry();
-		let sub_shutdown_rx = self.create_subscription_shutdown_channel();
-		let (poller_stop_tx, poller_stop_rx) = watch::channel(false);
-		self.spawn_subscription_poller_if_configured(registry.clone(), poller_stop_rx);
-		self.spawn_main_server(registry, sub_shutdown_rx, poller_stop_tx)?;
-		self.spawn_admin_server()?;
-		Ok(())
-	}
-
-	fn shutdown(&mut self) -> Result<()> {
-		if let Some(registry) = self.registry.take() {
+impl Shutdown for GrpcSubsystem {
+	fn shutdown(&self) {
+		if let Some(registry) = self.registry.lock().take() {
 			registry.close_all();
 		}
 
-		if let Some(tx) = self.subscription_shutdown_tx.take() {
+		if let Some(tx) = self.subscription_shutdown_tx.lock().take() {
 			let _ = tx.send(true);
 		}
 
-		if let Some(tx) = self.poller_stop_tx.take() {
+		if let Some(tx) = self.poller_stop_tx.lock().take() {
 			let _ = tx.send(true);
 		}
 
-		if let Some(tx) = self.admin_shutdown_tx.take() {
+		let admin_tx = self.admin_shutdown_tx.lock().take();
+		if let Some(tx) = admin_tx {
 			let _ = tx.send(());
 		}
-		if let Some(rx) = self.admin_shutdown_complete_rx.take() {
+		let admin_rx = self.admin_shutdown_complete_rx.lock().take();
+		if let Some(rx) = admin_rx {
 			let _ = self.handle.block_on(rx);
 		}
 
-		if let Some(tx) = self.shutdown_tx.take() {
+		let main_tx = self.shutdown_tx.lock().take();
+		if let Some(tx) = main_tx {
 			let _ = tx.send(());
 		}
-		if let Some(rx) = self.shutdown_complete_rx.take() {
+		let main_rx = self.shutdown_complete_rx.lock().take();
+		if let Some(rx) = main_rx {
 			let _ = self.handle.block_on(rx);
 		}
 		self.running.store(false, Ordering::SeqCst);
-		Ok(())
+	}
+}
+
+impl Subsystem for GrpcSubsystem {
+	fn name(&self) -> &'static str {
+		"Grpc"
 	}
 
 	fn is_running(&self) -> bool {
@@ -279,7 +282,7 @@ impl Subsystem for GrpcSubsystem {
 	fn health_status(&self) -> HealthStatus {
 		if self.running.load(Ordering::SeqCst) {
 			HealthStatus::Healthy
-		} else if self.shutdown_tx.is_some() {
+		} else if self.shutdown_tx.lock().is_some() {
 			HealthStatus::Warning {
 				description: "Starting up".to_string(),
 			}
@@ -291,10 +294,6 @@ impl Subsystem for GrpcSubsystem {
 	}
 
 	fn as_any(&self) -> &dyn Any {
-		self
-	}
-
-	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
 }

@@ -12,9 +12,8 @@ use std::{
 
 use reifydb_column::registry::SnapshotRegistry;
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
-use reifydb_runtime::actor::mailbox::ActorRef;
+use reifydb_runtime::{actor::mailbox::ActorRef, shutdown::Shutdown};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_value::Result;
 use tracing::{debug, info};
 
 use crate::actor::{SeriesMessage, TableMessage};
@@ -54,11 +53,12 @@ impl StorageSubsystem {
 		table_ref: ActorRef<TableMessage>,
 		series_ref: ActorRef<SeriesMessage>,
 	) -> Self {
+		info!("Storage (columnar materialization) subsystem started");
 		Self {
 			registry,
 			table_ref,
 			series_ref,
-			running: Arc::new(AtomicBool::new(false)),
+			running: Arc::new(AtomicBool::new(true)),
 		}
 	}
 
@@ -78,28 +78,21 @@ impl HasVersion for StorageSubsystem {
 	}
 }
 
-impl Subsystem for StorageSubsystem {
-	fn name(&self) -> &'static str {
-		"Storage"
-	}
-
-	fn start(&mut self) -> Result<()> {
-		if self.running.swap(true, Ordering::SeqCst) {
-			return Ok(());
-		}
-		info!("Storage (columnar materialization) subsystem started");
-		Ok(())
-	}
-
-	fn shutdown(&mut self) -> Result<()> {
+impl Shutdown for StorageSubsystem {
+	fn shutdown(&self) {
 		if !self.running.swap(false, Ordering::SeqCst) {
-			return Ok(());
+			return;
 		}
 
 		let _ = self.table_ref.send(TableMessage::Shutdown);
 		let _ = self.series_ref.send(SeriesMessage::Shutdown);
 		debug!("Storage subsystem shutdown signalled");
-		Ok(())
+	}
+}
+
+impl Subsystem for StorageSubsystem {
+	fn name(&self) -> &'static str {
+		"Storage"
 	}
 
 	fn is_running(&self) -> bool {
@@ -117,10 +110,6 @@ impl Subsystem for StorageSubsystem {
 	}
 
 	fn as_any(&self) -> &dyn Any {
-		self
-	}
-
-	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
 }

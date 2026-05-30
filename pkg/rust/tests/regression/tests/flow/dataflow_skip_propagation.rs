@@ -15,8 +15,7 @@
 use reifydb::{Database, Params, WithSubsystem, embedded};
 
 fn setup() -> Database {
-	let mut db = embedded::memory().with_flow(|c| c).build().unwrap();
-	db.start().unwrap();
+	let db = embedded::memory().with_flow(|c| c).build().unwrap();
 	db
 }
 

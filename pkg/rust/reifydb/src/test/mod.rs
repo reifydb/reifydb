@@ -27,8 +27,6 @@ pub fn run_test_str(content: &str) -> Result<(), String> {
 	let builder = builder.with_flow(|flow| flow);
 	let mut db = builder.build().map_err(|e| format!("failed to create database: {}", e))?;
 
-	db.start().map_err(|e| format!("failed to start database: {}", e))?;
-
 	let result = db.admin_as_root(content, Params::None);
 
 	let _ = db.stop();

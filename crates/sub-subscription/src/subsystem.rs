@@ -1,7 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{any::Any, collections::HashMap, result::Result as StdResult, sync::Arc, time::Duration};
+use std::{
+	any::Any,
+	collections::HashMap,
+	result::Result as StdResult,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
+	time::Duration,
+};
 
 use dashmap::DashMap;
 use reifydb_catalog::catalog::Catalog;
@@ -44,7 +53,8 @@ use reifydb_rql::{
 };
 use reifydb_runtime::{
 	context::{RuntimeContext, clock::Clock},
-	sync::rwlock::RwLock,
+	shutdown::Shutdown,
+	sync::{mutex::Mutex, rwlock::RwLock},
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
 use reifydb_sub_flow::{
@@ -450,9 +460,9 @@ fn register_ephemeral_flow(
 }
 
 pub struct SubscriptionSubsystem {
-	consumer: PollConsumer<StandardEngine, SubscriptionCdcConsumer>,
+	consumer: Mutex<PollConsumer<StandardEngine, SubscriptionCdcConsumer>>,
 	state: Arc<SubscriptionState>,
-	running: bool,
+	running: AtomicBool,
 }
 
 impl SubscriptionSubsystem {
@@ -463,7 +473,7 @@ impl SubscriptionSubsystem {
 		runtime_context: RuntimeContext,
 		custom_operators: Arc<HashMap<String, OperatorFactory>>,
 		consumer_watermark: CdcConsumerWatermark,
-	) -> Self {
+	) -> Result<Self> {
 		let catalog = engine.catalog();
 		let executor = engine.executor();
 		let event_bus = engine.event_bus().clone();
@@ -511,13 +521,14 @@ impl SubscriptionSubsystem {
 		)
 		.with_consumer_watermark(consumer_watermark);
 
-		let consumer = PollConsumer::new(config, engine, cdc_consumer, cdc_store, spawner);
+		let mut consumer = PollConsumer::new(config, engine, cdc_consumer, cdc_store, spawner);
+		consumer.start()?;
 
-		Self {
-			consumer,
+		Ok(Self {
+			consumer: Mutex::new(consumer),
 			state,
-			running: false,
-		}
+			running: AtomicBool::new(true),
+		})
 	}
 
 	pub fn service_handle(&self) -> SubscriptionServiceRef {
@@ -531,35 +542,26 @@ impl SubscriptionSubsystem {
 	}
 }
 
+impl Shutdown for SubscriptionSubsystem {
+	fn shutdown(&self) {
+		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
+			return;
+		}
+		let _ = self.consumer.lock().stop();
+	}
+}
+
 impl Subsystem for SubscriptionSubsystem {
 	fn name(&self) -> &'static str {
 		"sub-subscription"
 	}
 
-	fn start(&mut self) -> Result<()> {
-		if self.running {
-			return Ok(());
-		}
-		self.consumer.start()?;
-		self.running = true;
-		Ok(())
-	}
-
-	fn shutdown(&mut self) -> Result<()> {
-		if !self.running {
-			return Ok(());
-		}
-		self.consumer.stop()?;
-		self.running = false;
-		Ok(())
-	}
-
 	fn is_running(&self) -> bool {
-		self.running
+		self.running.load(Ordering::Acquire)
 	}
 
 	fn health_status(&self) -> HealthStatus {
-		if self.running {
+		if self.is_running() {
 			HealthStatus::Healthy
 		} else {
 			HealthStatus::Unknown
@@ -567,10 +569,6 @@ impl Subsystem for SubscriptionSubsystem {
 	}
 
 	fn as_any(&self) -> &dyn Any {
-		self
-	}
-
-	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
 }
@@ -660,7 +658,7 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 			runtime_context,
 			custom_operators,
 			consumer_watermark,
-		);
+		)?;
 
 		let service = subsystem.service_handle();
 		ioc.register_service::<SubscriptionServiceRef>(service);

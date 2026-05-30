@@ -10,9 +10,8 @@ use std::{
 	},
 };
 
-use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_value::Result;
-use tracing::{debug, error};
+use reifydb_sub_api::subsystem::Subsystem;
+use tracing::debug;
 
 use crate::health::HealthMonitor;
 
@@ -28,12 +27,13 @@ impl Subsystems {
 		Self {
 			subsystems: Vec::new(),
 			index: HashMap::new(),
-			running: Arc::new(AtomicBool::new(false)),
+			running: Arc::new(AtomicBool::new(true)),
 			health_monitor,
 		}
 	}
 
-	/// Add a subsystem to be managed
+	/// Add a born-running subsystem to be managed. Subsystems are shut down in
+	/// reverse insertion order, so callers control teardown order by add order.
 	pub fn add_subsystem(&mut self, subsystem: Box<dyn Subsystem>) {
 		self.health_monitor.update_component_health(
 			subsystem.name().to_string(),
@@ -53,100 +53,26 @@ impl Subsystems {
 		self.subsystems.len()
 	}
 
-	pub fn start_all(&mut self) -> Result<()> {
-		if self.running.load(Ordering::Relaxed) {
-			return Ok(()); // Already running
+	pub fn shutdown_all(&self) {
+		if self.running.compare_exchange(true, false, Ordering::Relaxed, Ordering::Relaxed).is_err() {
+			return;
 		}
 
-		debug!("Starting {} subsystems...", self.subsystems.len());
-
-		let mut started_subsystems = Vec::new();
-
-		for subsystem in &mut self.subsystems {
-			let name = subsystem.name().to_string();
-			debug!("Starting subsystem: {}", name);
-
-			match subsystem.start() {
-				Ok(()) => {
-					self.health_monitor.update_component_health(
-						name.clone(),
-						subsystem.health_status(),
-						subsystem.is_running(),
-					);
-					started_subsystems.push(name.clone());
-					debug!("Successfully started: {}", name);
-				}
-				Err(e) => {
-					error!("Failed to start subsystem '{}': {}", name, e);
-					self.health_monitor.update_component_health(
-						name.clone(),
-						HealthStatus::Failed {
-							description: format!("Startup failed: {}", e),
-						},
-						false,
-					);
-					self.stop_started_subsystems(&started_subsystems)?;
-					return Err(e);
-				}
-			}
-		}
-
-		self.running.store(true, Ordering::Relaxed);
-		debug!("All {} subsystems started successfully", started_subsystems.len());
-		Ok(())
-	}
-
-	pub fn stop_all(&mut self) -> Result<()> {
-		if !self.running.load(Ordering::Relaxed) {
-			return Ok(()); // Already stopped
-		}
-
-		debug!("Stopping {} subsystems...", self.subsystems.len());
+		debug!("Shutting down {} subsystems...", self.subsystems.len());
 
 		for subsystem in self.subsystems.iter().rev() {
-			debug!("Stopping subsystem: {}", subsystem.name());
+			let name = subsystem.name();
+			debug!("Shutting down subsystem: {}", name);
+			subsystem.shutdown();
+			self.health_monitor.update_component_health(
+				name.to_string(),
+				subsystem.health_status(),
+				subsystem.is_running(),
+			);
+			debug!("Successfully shut down: {}", name);
 		}
 
-		let mut errors = Vec::new();
-
-		for subsystem in self.subsystems.iter_mut().rev() {
-			let name = subsystem.name().to_string();
-
-			match subsystem.shutdown() {
-				Ok(()) => {
-					// Update health monitoring
-					self.health_monitor.update_component_health(
-						name.clone(),
-						subsystem.health_status(),
-						subsystem.is_running(),
-					);
-					debug!("Successfully stopped: {}", name);
-				}
-				Err(e) => {
-					error!("Error stopping subsystem '{}': {}", name, e);
-					self.health_monitor.update_component_health(
-						name.clone(),
-						HealthStatus::Failed {
-							description: format!("Shutdown failed: {}", e),
-						},
-						subsystem.is_running(),
-					);
-					errors.push((name.clone(), e));
-				}
-			}
-		}
-
-		self.running.store(false, Ordering::Relaxed);
-
-		if errors.is_empty() {
-			debug!("All subsystems stopped successfully");
-			Ok(())
-		} else {
-			let error_msg =
-				format!("Errors occurred while stopping {} subsystems: {:?}", errors.len(), errors);
-			error!("{}", error_msg);
-			panic!("Errors occurred during shutdown: {:?}", errors)
-		}
+		debug!("All subsystems shut down");
 	}
 
 	pub fn update_health_monitoring(&mut self) {
@@ -168,41 +94,10 @@ impl Subsystems {
 		let index = *self.index.get(&type_id)?;
 		self.subsystems.get(index)?.as_any().downcast_ref::<T>()
 	}
+}
 
-	#[allow(dead_code)]
-	pub fn get_mut<T: 'static>(&mut self) -> Option<&mut T> {
-		let type_id = TypeId::of::<T>();
-		let index = *self.index.get(&type_id)?;
-		self.subsystems.get_mut(index)?.as_any_mut().downcast_mut::<T>()
-	}
-
-	fn stop_started_subsystems(&mut self, started_names: &[String]) -> Result<()> {
-		let mut errors = Vec::new();
-
-		// Stop the started subsystems in reverse order
-		for name in started_names.iter().rev() {
-			// Find and stop the subsystem by name
-			for subsystem in &mut self.subsystems {
-				if subsystem.name() == name {
-					if let Err(e) = subsystem.shutdown() {
-						error!("Error stopping '{}' during rollback: {}", name, e);
-						errors.push((name.clone(), e));
-					}
-					// Update health monitoring
-					self.health_monitor.update_component_health(
-						name.clone(),
-						subsystem.health_status(),
-						subsystem.is_running(),
-					);
-					break;
-				}
-			}
-		}
-
-		if errors.is_empty() {
-			Ok(())
-		} else {
-			panic!("Rollback errors: {:?}", errors)
-		}
+impl Drop for Subsystems {
+	fn drop(&mut self) {
+		self.shutdown_all();
 	}
 }

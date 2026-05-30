@@ -10,8 +10,8 @@ use std::{
 };
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
+use reifydb_runtime::shutdown::Shutdown;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_value::Result;
 use tracing::info;
 
 pub struct MetricSubsystem {
@@ -20,8 +20,9 @@ pub struct MetricSubsystem {
 
 impl Default for MetricSubsystem {
 	fn default() -> Self {
+		info!("Metric subsystem started");
 		Self {
-			running: Arc::new(AtomicBool::new(false)),
+			running: Arc::new(AtomicBool::new(true)),
 		}
 	}
 }
@@ -46,24 +47,15 @@ impl HasVersion for MetricSubsystem {
 	}
 }
 
+impl Shutdown for MetricSubsystem {
+	fn shutdown(&self) {
+		self.running.store(false, Ordering::SeqCst);
+	}
+}
+
 impl Subsystem for MetricSubsystem {
 	fn name(&self) -> &'static str {
 		"Metric"
-	}
-
-	fn start(&mut self) -> Result<()> {
-		if self.running.load(Ordering::SeqCst) {
-			return Ok(());
-		}
-
-		self.running.store(true, Ordering::SeqCst);
-		info!("Metric subsystem started");
-		Ok(())
-	}
-
-	fn shutdown(&mut self) -> Result<()> {
-		self.running.store(false, Ordering::SeqCst);
-		Ok(())
 	}
 
 	fn is_running(&self) -> bool {
@@ -81,10 +73,6 @@ impl Subsystem for MetricSubsystem {
 	}
 
 	fn as_any(&self) -> &dyn Any {
-		self
-	}
-
-	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
 }

@@ -7,8 +7,8 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::actor::system::ActorSpawner;
 
 use crate::{
-	Result,
-	boot::start::{ensure_storage_version, spawn_actors},
+	MigrationStatement, Result,
+	boot::start::{apply_migrations, ensure_storage_version, spawn_actors},
 };
 
 pub struct Bootloader {
@@ -30,5 +30,9 @@ impl Bootloader {
 		ensure_storage_version(&self.engine.single_owned())?;
 		spawn_actors(&self.engine, &self.spawner)?;
 		Ok(())
+	}
+
+	pub fn apply_migrations(&self, migrations: &[MigrationStatement]) -> Result<()> {
+		apply_migrations(&self.engine, migrations)
 	}
 }

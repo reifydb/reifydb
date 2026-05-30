@@ -8,8 +8,8 @@ use std::{
 };
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
+use reifydb_runtime::shutdown::Shutdown;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_value::Result;
 use tracing::{info, instrument};
 
 pub struct TracingSubsystem {
@@ -19,8 +19,9 @@ pub struct TracingSubsystem {
 impl TracingSubsystem {
 	#[instrument(name = "tracing::subsystem::new", level = "debug")]
 	pub fn new() -> Self {
+		info!("Tracing subsystem started");
 		Self {
-			running: AtomicBool::new(false),
+			running: AtomicBool::new(true),
 		}
 	}
 }
@@ -31,32 +32,23 @@ impl Default for TracingSubsystem {
 	}
 }
 
-impl Subsystem for TracingSubsystem {
-	fn name(&self) -> &'static str {
-		"sub-tracing"
-	}
-
-	#[instrument(name = "tracing::subsystem::start", level = "debug", skip(self))]
-	fn start(&mut self) -> Result<()> {
-		self.running.store(true, Ordering::Release);
-
-		info!("Tracing subsystem started");
-
-		Ok(())
-	}
-
+impl Shutdown for TracingSubsystem {
 	#[instrument(name = "tracing::subsystem::shutdown", level = "debug", skip(self))]
-	fn shutdown(&mut self) -> Result<()> {
+	fn shutdown(&self) {
 		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
-			return Ok(());
+			return;
 		}
 
 		info!("Tracing subsystem shutting down");
 
 		let _ = stdout().flush();
 		let _ = stderr().flush();
+	}
+}
 
-		Ok(())
+impl Subsystem for TracingSubsystem {
+	fn name(&self) -> &'static str {
+		"sub-tracing"
 	}
 
 	#[instrument(name = "tracing::subsystem::is_running", level = "trace", skip(self))]
@@ -74,10 +66,6 @@ impl Subsystem for TracingSubsystem {
 	}
 
 	fn as_any(&self) -> &dyn Any {
-		self
-	}
-
-	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
 }

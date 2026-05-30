@@ -17,7 +17,7 @@ use libc::{SIGHUP, SIGINT, SIGQUIT, SIGTERM, c_int, sighandler_t, signal};
 use reifydb_auth::service::AuthService;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_cdc::storage::CdcStore;
-use reifydb_engine::{engine::StandardEngine, session::RetryStrategy};
+use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSpawner},
 	context::clock::Clock,
@@ -42,13 +42,11 @@ use reifydb_value::{
 	params::Params,
 	value::{frame::frame::Frame, identity::IdentityId},
 };
-use tracing::{debug, error, instrument, warn};
+use tracing::{debug, instrument, warn};
 
 #[cfg(feature = "sub_raft")]
 use crate::raft::RaftSubsystem;
 use crate::{
-	MigrationStatement,
-	boot::Bootloader,
 	health::{ComponentHealth, HealthMonitor},
 	session::Session,
 	subsystem::Subsystems,
@@ -60,13 +58,11 @@ const SHUTDOWN_DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
 pub struct Database {
 	engine: StandardEngine,
 	auth_service: AuthService,
-	bootloader: Bootloader,
 	subsystems: Subsystems,
 	health_monitor: Arc<HealthMonitor>,
 	spawner: ActorSpawner,
 	clock: Clock,
 	running: bool,
-	migrations: Vec<MigrationStatement>,
 }
 
 impl Database {
@@ -112,18 +108,15 @@ impl Database {
 		health_monitor: Arc<HealthMonitor>,
 		spawner: ActorSpawner,
 		clock: Clock,
-		migrations: Vec<MigrationStatement>,
 	) -> Self {
 		Self {
-			engine: engine.clone(),
+			engine,
 			auth_service,
-			bootloader: Bootloader::new(engine, spawner.clone()),
 			subsystems: subsystem_manager,
 			health_monitor,
 			spawner,
 			clock,
-			running: false,
-			migrations,
+			running: true,
 		}
 	}
 
@@ -171,44 +164,6 @@ impl Database {
 		self.subsystems.subsystem_count()
 	}
 
-	#[instrument(name = "api::database::start", level = "debug", skip(self))]
-	pub fn start(&mut self) -> Result<()> {
-		if self.running {
-			return Ok(()); // Already running
-		}
-
-		self.bootloader.load()?;
-
-		// Apply pending migrations if any were registered
-		if !self.migrations.is_empty() {
-			self.apply_migrations()?;
-		}
-
-		debug!("Starting system with {} subsystems", self.subsystem_count());
-
-		// Start all subsystems
-		match self.subsystems.start_all() {
-			Ok(()) => {
-				self.running = true;
-				debug!("System started successfully");
-				self.update_health_monitoring();
-				Ok(())
-			}
-			Err(e) => {
-				error!("System startup failed: {}", e);
-				// Update system health to reflect failure
-				self.health_monitor.update_component_health(
-					"system".to_string(),
-					HealthStatus::Failed {
-						description: format!("Startup failed: {}", e),
-					},
-					false,
-				);
-				Err(e)
-			}
-		}
-	}
-
 	#[instrument(name = "api::database::stop", level = "debug", skip(self))]
 	pub fn stop(&mut self) -> Result<()> {
 		if !self.running {
@@ -229,7 +184,7 @@ impl Database {
 			single_store.flush_pending_blocking();
 		}
 
-		self.subsystems.stop_all()?;
+		self.subsystems.shutdown_all();
 
 		if let Some(multi_store) = self.engine.ioc().try_resolve::<MultiStore>() {
 			multi_store.shutdown();
@@ -323,68 +278,6 @@ impl Database {
 		};
 
 		self.health_monitor.update_component_health("system".to_string(), system_health, self.running);
-	}
-
-	/// Register migrations via idempotent `CREATE MIGRATION` and then run `MIGRATE;`
-	/// to apply any pending ones.
-	///
-	/// Each `CREATE MIGRATION` is a no-op when a migration with the same name
-	/// and identical content hash is already registered, and returns
-	/// `MigrationHashMismatch` when the content has changed since registration.
-	fn apply_migrations(&self) -> Result<()> {
-		debug!("Applying {} registered migrations", self.migrations.len());
-
-		for migration in &self.migrations {
-			match migration {
-				MigrationStatement::Wrapped {
-					name,
-					body,
-					rollback_body,
-				} => {
-					let mut rql = format!("CREATE MIGRATION '{}' {{", name);
-					rql.push_str(body);
-					rql.push('}');
-					if let Some(rollback) = rollback_body.as_deref() {
-						rql.push_str(" ROLLBACK {");
-						rql.push_str(rollback);
-						rql.push('}');
-					}
-					rql.push(';');
-					self.admin_as_root(&rql, Params::None)?;
-					debug!("Registered migration '{}'", name);
-				}
-				MigrationStatement::Raw(stmt) => {
-					self.admin_as_root(stmt, Params::None)?;
-					debug!("Registered raw migration statement ({} bytes)", stmt.len());
-				}
-			}
-		}
-
-		debug!("Running MIGRATE to apply pending migrations");
-		let result = self.migrate_frames()?;
-		if let Some(frame) = result.first()
-			&& let Ok(Some(count)) = frame.get::<u32>("migrations_applied", 0)
-		{
-			debug!("Applied {} pending migrations", count);
-		}
-
-		Ok(())
-	}
-
-	fn migrate_frames(&self) -> Result<Vec<Frame>> {
-		let strategy = RetryStrategy::with_jittered_backoff(
-			30,
-			Duration::from_millis(10),
-			Duration::from_millis(2_000),
-		);
-		let rng = self.engine.rng();
-		let result = strategy.execute(rng, "MIGRATE;", || {
-			self.engine.admin_as(IdentityId::root(), "MIGRATE;", Params::None)
-		});
-		match result.error {
-			Some(e) => Err(e),
-			None => Ok(result.frames),
-		}
 	}
 
 	pub fn get_subsystem_names(&self) -> Vec<String> {
@@ -498,8 +391,7 @@ impl Database {
 	where
 		F: FnOnce() -> Result<()>,
 	{
-		self.start()?;
-		debug!("Database started, waiting for termination signal...");
+		debug!("Database running, waiting for termination signal...");
 
 		self.await_signal()?;
 

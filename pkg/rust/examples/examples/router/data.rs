@@ -5,13 +5,11 @@ use reifydb::{Params, WithSubsystem, server};
 use tracing::info;
 
 fn main() {
-	let mut db = server::memory()
+	let db = server::memory()
 		.with_tracing(|c| c.with_console(|f| f.color(true)))
 		.with_grpc(|c| c.bind_addr("[::1]:50052"))
 		.build()
 		.unwrap();
-
-	db.start().unwrap();
 
 	let port = db.sub_server_grpc().unwrap().port().unwrap();
 	info!("Data server gRPC listening on [::1]:{}", port);

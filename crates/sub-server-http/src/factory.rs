@@ -197,7 +197,7 @@ impl SubsystemFactory for HttpSubsystemFactory {
 
 		let state = AppState::new(spawner, engine, auth_service, query_config, interceptors, clock, rng);
 		let subsystem =
-			HttpSubsystem::new(config.bind_addr.clone(), config.admin_bind_addr.clone(), state, handle);
+			HttpSubsystem::new(config.bind_addr.clone(), config.admin_bind_addr.clone(), state, handle)?;
 
 		Ok(Box::new(subsystem))
 	}

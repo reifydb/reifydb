@@ -10,11 +10,10 @@ fn main() {
 	// The embedded::memory() builder creates a database that:
 	// - Stores all data in memory (no persistence)
 	// - Operates asynchronously
-	let mut db = embedded::memory().build().unwrap();
+	let db = embedded::memory().build().unwrap();
 
 	// Start the database engine - this initializes internal structures
 	// and makes the database ready to accept commands and queries
-	db.start().unwrap();
 
 	// Step 2: Execute a COMMAND (write operation) as root user
 	// Commands can modify the database state and return results

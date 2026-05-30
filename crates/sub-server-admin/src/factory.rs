@@ -52,7 +52,7 @@ impl SubsystemFactory for AdminSubsystemFactory {
 			spawner,
 		);
 
-		let subsystem = AdminSubsystem::new(config.bind_addr.clone(), state, handle);
+		let subsystem = AdminSubsystem::new(config.bind_addr.clone(), state, handle)?;
 
 		Ok(Box::new(subsystem))
 	}

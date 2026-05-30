@@ -7,25 +7,36 @@ use std::{
 };
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
-use reifydb_runtime::{Runtime, actor::system::ActorSpawner, shutdown::Shutdown};
+use reifydb_runtime::{Runtime, actor::system::ActorSpawner, shutdown::Shutdown, sync::mutex::Mutex};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_value::Result;
 use tracing::info;
 
 pub struct RuntimeSubsystem {
 	running: AtomicBool,
-	sampling: bool,
-	sampler_scope: Option<ActorSpawner>,
-	runtime: Option<Runtime>,
+	sampler_scope: Mutex<Option<ActorSpawner>>,
+	runtime: Mutex<Option<Runtime>>,
 }
 
 impl RuntimeSubsystem {
 	pub fn new(sampler_scope: Option<ActorSpawner>, runtime: Runtime) -> Self {
+		info!("Runtime metrics subsystem started (history sampling={})", sampler_scope.is_some());
 		Self {
-			running: AtomicBool::new(false),
-			sampling: sampler_scope.is_some(),
-			sampler_scope,
-			runtime: Some(runtime),
+			running: AtomicBool::new(true),
+			sampler_scope: Mutex::new(sampler_scope),
+			runtime: Mutex::new(Some(runtime)),
+		}
+	}
+}
+
+impl Shutdown for RuntimeSubsystem {
+	fn shutdown(&self) {
+		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
+			return;
+		}
+		info!("Runtime metrics subsystem shutting down");
+		drop(self.sampler_scope.lock().take());
+		if let Some(runtime) = self.runtime.lock().take() {
+			runtime.shutdown();
 		}
 	}
 }
@@ -33,24 +44,6 @@ impl RuntimeSubsystem {
 impl Subsystem for RuntimeSubsystem {
 	fn name(&self) -> &'static str {
 		"sub-runtime"
-	}
-
-	fn start(&mut self) -> Result<()> {
-		self.running.store(true, Ordering::Release);
-		info!("Runtime metrics subsystem started (history sampling={})", self.sampling);
-		Ok(())
-	}
-
-	fn shutdown(&mut self) -> Result<()> {
-		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
-			return Ok(());
-		}
-		info!("Runtime metrics subsystem shutting down");
-		drop(self.sampler_scope.take());
-		if let Some(runtime) = self.runtime.take() {
-			runtime.shutdown();
-		}
-		Ok(())
 	}
 
 	fn is_running(&self) -> bool {
@@ -66,10 +59,6 @@ impl Subsystem for RuntimeSubsystem {
 	}
 
 	fn as_any(&self) -> &dyn Any {
-		self
-	}
-
-	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
 }

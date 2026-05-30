@@ -15,7 +15,10 @@ use reifydb_core::{
 	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_runtime::sync::rwlock::RwLock;
+use reifydb_runtime::{
+	shutdown::Shutdown,
+	sync::{mutex::Mutex, rwlock::RwLock},
+};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_value::{Result, error::Error};
 use tokio::{net::TcpListener, runtime::Handle, sync::oneshot};
@@ -32,63 +35,29 @@ pub struct AdminSubsystem {
 
 	running: Arc<AtomicBool>,
 
-	shutdown_tx: Option<oneshot::Sender<()>>,
+	shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
 
-	shutdown_complete_rx: Option<oneshot::Receiver<()>>,
+	shutdown_complete_rx: Mutex<Option<oneshot::Receiver<()>>>,
 
 	handle: Handle,
 }
 
 impl AdminSubsystem {
-	pub fn new(bind_addr: String, state: AdminState, handle: Handle) -> Self {
-		Self {
+	pub fn new(bind_addr: String, state: AdminState, handle: Handle) -> Result<Self> {
+		let subsystem = Self {
 			bind_addr,
 			actual_addr: RwLock::new(None),
 			state,
 			running: Arc::new(AtomicBool::new(false)),
-			shutdown_tx: None,
-			shutdown_complete_rx: None,
+			shutdown_tx: Mutex::new(None),
+			shutdown_complete_rx: Mutex::new(None),
 			handle,
-		}
+		};
+		subsystem.spawn_server()?;
+		Ok(subsystem)
 	}
 
-	pub fn bind_addr(&self) -> &str {
-		&self.bind_addr
-	}
-
-	pub fn local_addr(&self) -> Option<SocketAddr> {
-		*self.actual_addr.read()
-	}
-
-	pub fn port(&self) -> Option<u16> {
-		self.local_addr().map(|a| a.port())
-	}
-}
-
-impl HasVersion for AdminSubsystem {
-	fn version(&self) -> SystemVersion {
-		SystemVersion {
-			name: env!("CARGO_PKG_NAME")
-				.strip_prefix("reifydb-")
-				.unwrap_or(env!("CARGO_PKG_NAME"))
-				.to_string(),
-			version: env!("CARGO_PKG_VERSION").to_string(),
-			description: "Admin server subsystem for web-based administration".to_string(),
-			r#type: ComponentType::Subsystem,
-		}
-	}
-}
-
-impl Subsystem for AdminSubsystem {
-	fn name(&self) -> &'static str {
-		"Admin"
-	}
-
-	fn start(&mut self) -> Result<()> {
-		if self.running.load(Ordering::SeqCst) {
-			return Ok(());
-		}
-
+	fn spawn_server(&self) -> Result<()> {
 		let addr = self.bind_addr.clone();
 		let handle = self.handle.clone();
 		let listener = handle.block_on(TcpListener::bind(&addr)).map_err(|e| {
@@ -140,19 +109,54 @@ impl Subsystem for AdminSubsystem {
 			info!("Admin server stopped");
 		});
 
-		self.shutdown_tx = Some(shutdown_tx);
-		self.shutdown_complete_rx = Some(complete_rx);
+		*self.shutdown_tx.lock() = Some(shutdown_tx);
+		*self.shutdown_complete_rx.lock() = Some(complete_rx);
 		Ok(())
 	}
 
-	fn shutdown(&mut self) -> Result<()> {
-		if let Some(tx) = self.shutdown_tx.take() {
+	pub fn bind_addr(&self) -> &str {
+		&self.bind_addr
+	}
+
+	pub fn local_addr(&self) -> Option<SocketAddr> {
+		*self.actual_addr.read()
+	}
+
+	pub fn port(&self) -> Option<u16> {
+		self.local_addr().map(|a| a.port())
+	}
+}
+
+impl HasVersion for AdminSubsystem {
+	fn version(&self) -> SystemVersion {
+		SystemVersion {
+			name: env!("CARGO_PKG_NAME")
+				.strip_prefix("reifydb-")
+				.unwrap_or(env!("CARGO_PKG_NAME"))
+				.to_string(),
+			version: env!("CARGO_PKG_VERSION").to_string(),
+			description: "Admin server subsystem for web-based administration".to_string(),
+			r#type: ComponentType::Subsystem,
+		}
+	}
+}
+
+impl Shutdown for AdminSubsystem {
+	fn shutdown(&self) {
+		let tx = self.shutdown_tx.lock().take();
+		if let Some(tx) = tx {
 			let _ = tx.send(());
 		}
-		if let Some(rx) = self.shutdown_complete_rx.take() {
+		let rx = self.shutdown_complete_rx.lock().take();
+		if let Some(rx) = rx {
 			let _ = self.handle.block_on(rx);
 		}
-		Ok(())
+	}
+}
+
+impl Subsystem for AdminSubsystem {
+	fn name(&self) -> &'static str {
+		"Admin"
 	}
 
 	fn is_running(&self) -> bool {
@@ -162,7 +166,7 @@ impl Subsystem for AdminSubsystem {
 	fn health_status(&self) -> HealthStatus {
 		if self.running.load(Ordering::SeqCst) {
 			HealthStatus::Healthy
-		} else if self.shutdown_tx.is_some() {
+		} else if self.shutdown_tx.lock().is_some() {
 			HealthStatus::Warning {
 				description: "Starting up".to_string(),
 			}
@@ -174,10 +178,6 @@ impl Subsystem for AdminSubsystem {
 	}
 
 	fn as_any(&self) -> &dyn Any {
-		self
-	}
-
-	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
 }

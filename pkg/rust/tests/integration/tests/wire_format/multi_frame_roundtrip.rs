@@ -6,9 +6,7 @@ use reifydb_value::value::frame::{data::FrameColumnData, frame::Frame};
 use reifydb_wire_format::{decode::decode_frames, encode::encode_frames, options::EncodeOptions};
 
 fn new_db() -> Database {
-	let mut db =
-		db_embedded::memory().with_runtime_config(RuntimeConfig::default().seeded(0)).build().expect("build");
-	db.start().expect("start");
+	let db = db_embedded::memory().with_runtime_config(RuntimeConfig::default().seeded(0)).build().expect("build");
 	db
 }
 

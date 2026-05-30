@@ -13,8 +13,6 @@ fn create_db_with_mock_clock(mock: &MockClock, session_ttl: Duration) -> reifydb
 }
 
 fn setup_user_and_login(db: &mut reifydb::Database) -> String {
-	db.start().unwrap();
-
 	db.admin_as_root("CREATE USER alice", Params::None).unwrap();
 	db.admin_as_root("CREATE AUTHENTICATION FOR alice { method: password; password: 'alice-pass' }", Params::None)
 		.unwrap();

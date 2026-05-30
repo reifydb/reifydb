@@ -42,7 +42,7 @@ impl SubsystemFactory for OtelSubsystemFactory {
 		} else if let Some(config_fn) = self.config_fn {
 			let handle = ioc.resolve::<Handle>()?;
 			let config = config_fn();
-			let subsystem = OtelSubsystem::new(config, handle);
+			let subsystem = OtelSubsystem::new(config, handle)?;
 			Ok(Box::new(subsystem))
 		} else {
 			unreachable!("OtelSubsystemFactory must have either subsystem or config_fn")

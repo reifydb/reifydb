@@ -24,8 +24,7 @@ fn main() {
 	{
 		// Create database (will be saved to disk)
 		info!("Creating SQLite database...");
-		let mut db = embedded::sqlite(SqliteConfig::new(db_path)).build().unwrap();
-		db.start().unwrap();
+		let db = embedded::sqlite(SqliteConfig::new(db_path)).build().unwrap();
 		info!("✓ Database created and started\n");
 
 		// Create namespace
@@ -103,8 +102,7 @@ fn main() {
 	{
 		// Open existing database
 		info!("Opening existing database at: {}", db_path);
-		let mut db = embedded::sqlite(SqliteConfig::new(db_path)).build().unwrap();
-		db.start().unwrap();
+		let db = embedded::sqlite(SqliteConfig::new(db_path)).build().unwrap();
 		info!("✓ Database reopened successfully\n");
 
 		// Verify data persisted

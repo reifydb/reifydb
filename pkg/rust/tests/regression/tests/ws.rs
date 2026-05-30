@@ -83,7 +83,6 @@ impl testscript::runner::Runner for WsRunner {
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		let server = self.instance.as_mut().unwrap();
-		server.start()?;
 		server.admin_as_root(
 			"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
 			reifydb_value::params::Params::None,

@@ -16,7 +16,10 @@ use reifydb_core::{
 	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_runtime::sync::rwlock::RwLock;
+use reifydb_runtime::{
+	shutdown::Shutdown,
+	sync::{mutex::Mutex, rwlock::RwLock},
+};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_sub_server::state::AppState;
 use reifydb_value::Result;
@@ -38,13 +41,13 @@ pub struct HttpSubsystem {
 
 	running: Arc<AtomicBool>,
 
-	shutdown_tx: Option<oneshot::Sender<()>>,
+	shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
 
-	shutdown_complete_rx: Option<oneshot::Receiver<()>>,
+	shutdown_complete_rx: Mutex<Option<oneshot::Receiver<()>>>,
 
-	admin_shutdown_tx: Option<oneshot::Sender<()>>,
+	admin_shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
 
-	admin_shutdown_complete_rx: Option<oneshot::Receiver<()>>,
+	admin_shutdown_complete_rx: Mutex<Option<oneshot::Receiver<()>>>,
 
 	handle: Handle,
 }
@@ -55,20 +58,23 @@ impl HttpSubsystem {
 		admin_bind_addr: Option<String>,
 		state: AppState,
 		handle: Handle,
-	) -> Self {
-		Self {
+	) -> Result<Self> {
+		let subsystem = Self {
 			bind_addr,
 			admin_bind_addr,
 			actual_addr: RwLock::new(None),
 			admin_actual_addr: RwLock::new(None),
 			state,
 			running: Arc::new(AtomicBool::new(false)),
-			shutdown_tx: None,
-			shutdown_complete_rx: None,
-			admin_shutdown_tx: None,
-			admin_shutdown_complete_rx: None,
+			shutdown_tx: Mutex::new(None),
+			shutdown_complete_rx: Mutex::new(None),
+			admin_shutdown_tx: Mutex::new(None),
+			admin_shutdown_complete_rx: Mutex::new(None),
 			handle,
-		}
+		};
+		subsystem.spawn_main_server()?;
+		subsystem.spawn_admin_server()?;
+		Ok(subsystem)
 	}
 
 	pub fn bind_addr(&self) -> Option<&str> {
@@ -91,7 +97,7 @@ impl HttpSubsystem {
 		self.admin_local_addr().map(|a| a.port())
 	}
 
-	fn spawn_main_server(&mut self) -> Result<()> {
+	fn spawn_main_server(&self) -> Result<()> {
 		let Some(addr) = self.bind_addr.clone() else {
 			self.running.store(true, Ordering::SeqCst);
 			return Ok(());
@@ -115,12 +121,12 @@ impl HttpSubsystem {
 			let _ = complete_tx.send(());
 			info!("HTTP server stopped");
 		});
-		self.shutdown_tx = Some(shutdown_tx);
-		self.shutdown_complete_rx = Some(complete_rx);
+		*self.shutdown_tx.lock() = Some(shutdown_tx);
+		*self.shutdown_complete_rx.lock() = Some(complete_rx);
 		Ok(())
 	}
 
-	fn spawn_admin_server(&mut self) -> Result<()> {
+	fn spawn_admin_server(&self) -> Result<()> {
 		let Some(admin_addr) = self.admin_bind_addr.clone() else {
 			return Ok(());
 		};
@@ -143,8 +149,8 @@ impl HttpSubsystem {
 			let _ = admin_complete_tx.send(());
 			info!("HTTP admin server stopped");
 		});
-		self.admin_shutdown_tx = Some(admin_shutdown_tx);
-		self.admin_shutdown_complete_rx = Some(admin_complete_rx);
+		*self.admin_shutdown_tx.lock() = Some(admin_shutdown_tx);
+		*self.admin_shutdown_complete_rx.lock() = Some(admin_complete_rx);
 		Ok(())
 	}
 
@@ -174,36 +180,32 @@ impl HasVersion for HttpSubsystem {
 	}
 }
 
-impl Subsystem for HttpSubsystem {
-	fn name(&self) -> &'static str {
-		"Http"
-	}
-
-	fn start(&mut self) -> Result<()> {
-		if self.running.load(Ordering::SeqCst) {
-			return Ok(());
-		}
-		self.spawn_main_server()?;
-		self.spawn_admin_server()?;
-		Ok(())
-	}
-
-	fn shutdown(&mut self) -> Result<()> {
-		if let Some(tx) = self.admin_shutdown_tx.take() {
+impl Shutdown for HttpSubsystem {
+	fn shutdown(&self) {
+		let admin_tx = self.admin_shutdown_tx.lock().take();
+		if let Some(tx) = admin_tx {
 			let _ = tx.send(());
 		}
-		if let Some(rx) = self.admin_shutdown_complete_rx.take() {
+		let admin_rx = self.admin_shutdown_complete_rx.lock().take();
+		if let Some(rx) = admin_rx {
 			let _ = self.handle.block_on(rx);
 		}
 
-		if let Some(tx) = self.shutdown_tx.take() {
+		let main_tx = self.shutdown_tx.lock().take();
+		if let Some(tx) = main_tx {
 			let _ = tx.send(());
 		}
-		if let Some(rx) = self.shutdown_complete_rx.take() {
+		let main_rx = self.shutdown_complete_rx.lock().take();
+		if let Some(rx) = main_rx {
 			let _ = self.handle.block_on(rx);
 		}
 		self.running.store(false, Ordering::SeqCst);
-		Ok(())
+	}
+}
+
+impl Subsystem for HttpSubsystem {
+	fn name(&self) -> &'static str {
+		"Http"
 	}
 
 	fn is_running(&self) -> bool {
@@ -213,7 +215,7 @@ impl Subsystem for HttpSubsystem {
 	fn health_status(&self) -> HealthStatus {
 		if self.running.load(Ordering::SeqCst) {
 			HealthStatus::Healthy
-		} else if self.shutdown_tx.is_some() {
+		} else if self.shutdown_tx.lock().is_some() {
 			HealthStatus::Warning {
 				description: "Starting up".to_string(),
 			}
@@ -225,10 +227,6 @@ impl Subsystem for HttpSubsystem {
 	}
 
 	fn as_any(&self) -> &dyn Any {
-		self
-	}
-
-	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
 }

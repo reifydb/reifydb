@@ -11,16 +11,14 @@ use std::{
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_profiler::{category::CategorySet, intern::DimInterner, layer::ProfilerLayer, sink::ProfilerSink};
-use reifydb_runtime::{context::clock::Clock, sync::rwlock::RwLock};
+use reifydb_runtime::{context::clock::Clock, shutdown::Shutdown, sync::rwlock::RwLock};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_value::Result;
 use tracing::{info, instrument};
 
 use crate::{accumulator::ProfilerAccumulator, histograms, reader::ProfilerReader};
 
 pub struct ProfilerSubsystem {
 	running: AtomicBool,
-	enabled: bool,
 	categories: CategorySet,
 	interner: Arc<DimInterner>,
 	accumulator: Arc<RwLock<ProfilerAccumulator>>,
@@ -37,9 +35,12 @@ impl ProfilerSubsystem {
 		sink: Arc<dyn ProfilerSink>,
 		clock: Clock,
 	) -> Self {
+		if enabled {
+			histograms::register_all();
+		}
+		info!("Profiler subsystem started (enabled={}, categories={:?})", enabled, categories);
 		Self {
-			running: AtomicBool::new(false),
-			enabled,
+			running: AtomicBool::new(true),
 			categories,
 			interner,
 			accumulator,
@@ -74,28 +75,19 @@ impl ProfilerSubsystem {
 	}
 }
 
+impl Shutdown for ProfilerSubsystem {
+	#[instrument(name = "profiler::subsystem::shutdown", level = "debug", skip(self))]
+	fn shutdown(&self) {
+		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
+			return;
+		}
+		info!("Profiler subsystem shutting down");
+	}
+}
+
 impl Subsystem for ProfilerSubsystem {
 	fn name(&self) -> &'static str {
 		"sub-profiler"
-	}
-
-	#[instrument(name = "profiler::subsystem::start", level = "debug", skip(self))]
-	fn start(&mut self) -> Result<()> {
-		if self.enabled {
-			histograms::register_all();
-		}
-		self.running.store(true, Ordering::Release);
-		info!("Profiler subsystem started (enabled={}, categories={:?})", self.enabled, self.categories);
-		Ok(())
-	}
-
-	#[instrument(name = "profiler::subsystem::shutdown", level = "debug", skip(self))]
-	fn shutdown(&mut self) -> Result<()> {
-		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
-			return Ok(());
-		}
-		info!("Profiler subsystem shutting down");
-		Ok(())
 	}
 
 	fn is_running(&self) -> bool {
@@ -111,10 +103,6 @@ impl Subsystem for ProfilerSubsystem {
 	}
 
 	fn as_any(&self) -> &dyn Any {
-		self
-	}
-
-	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
 }

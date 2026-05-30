@@ -10,8 +10,7 @@ fn main() {
 
 	// Create an in-memory database
 	info!("Creating in-memory database...");
-	let mut db = embedded::memory().build().unwrap();
-	db.start().unwrap();
+	let db = embedded::memory().build().unwrap();
 	info!("✓ Database created and started\n");
 
 	// Create a namespace

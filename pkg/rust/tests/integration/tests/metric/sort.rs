@@ -24,7 +24,7 @@ fn new_db_with_metrics() -> Database {
 	let accumulator = Arc::new(StatementStatsAccumulator::new());
 	let factory = Box::new(MetricSubsystemFactory::new(registry, static_registry, accumulator));
 
-	let mut db = db_embedded::memory()
+	let db = db_embedded::memory()
 		.with_runtime_config(RuntimeConfig::default().seeded(0))
 		// Seed a fast flush interval so the collector populates system::metrics::storage::table
 		// well within wait_for_metrics_processing(); the default 10s cadence would leave it empty.
@@ -32,7 +32,6 @@ fn new_db_with_metrics() -> Database {
 		.with_subsystem(factory)
 		.build()
 		.expect("build");
-	db.start().expect("start");
 	db
 }
 

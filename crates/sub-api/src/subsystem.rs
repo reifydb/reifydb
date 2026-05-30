@@ -4,23 +4,18 @@
 use std::any::Any;
 
 use reifydb_core::{interface::version::HasVersion, util::ioc::IocContainer};
+use reifydb_runtime::shutdown::Shutdown;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 use reifydb_value::Result;
 
-pub trait Subsystem: Any + HasVersion {
+pub trait Subsystem: Any + HasVersion + Shutdown {
 	fn name(&self) -> &'static str;
-
-	fn start(&mut self) -> Result<()>;
-
-	fn shutdown(&mut self) -> Result<()>;
 
 	fn is_running(&self) -> bool;
 
 	fn health_status(&self) -> HealthStatus;
 
 	fn as_any(&self) -> &dyn Any;
-
-	fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 pub trait SubsystemFactory: Send {

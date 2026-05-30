@@ -22,7 +22,6 @@ fn row_count(frames: &[Frame]) -> usize {
 fn persistent_false_rejected_when_store_has_no_buffer() {
 	let (config, _guard) = SqliteConfig::in_memory();
 	let mut db = embedded::sqlite_without_buffer(config).build().unwrap();
-	db.start().unwrap();
 
 	db.admin_as_root("create namespace demo", Params::None).unwrap();
 
@@ -46,7 +45,6 @@ fn persistent_false_rows_are_not_durable_after_reopen() {
 
 	{
 		let mut db = embedded::sqlite(SqliteConfig::new(&path)).build().unwrap();
-		db.start().unwrap();
 
 		db.admin_as_root("create namespace demo", Params::None).unwrap();
 		db.admin_as_root("create table demo::keep { id: uint8 }", Params::None).unwrap();
@@ -72,7 +70,6 @@ fn persistent_false_rows_are_not_durable_after_reopen() {
 
 	{
 		let mut db = embedded::sqlite(SqliteConfig::new(&path)).build().unwrap();
-		db.start().unwrap();
 
 		assert_eq!(
 			row_count(&db.query_as_root("from demo::keep", Params::None).unwrap()),

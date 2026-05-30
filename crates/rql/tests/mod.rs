@@ -53,7 +53,6 @@ impl testscript::runner::Runner for Runner {
 	}
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
-		self.instance.start()?;
 		self.instance.admin_as_root(
 			"create table users { id: int4, name: utf8, age: int4, email: utf8, status: utf8, active: bool, amount: int4, price: int4, created_at: datetime }",
 			Params::None,

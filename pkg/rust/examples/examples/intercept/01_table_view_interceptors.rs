@@ -17,7 +17,7 @@ fn main() {
 	// The fluent API allows chaining interceptor registrations
 	info!("Creating database with interceptors...");
 
-	let mut db = embedded::memory()
+	let db = embedded::memory()
 		.intercept()
 		.table_row("test::users")
 			.pre_insert(|ctx| {
@@ -34,8 +34,6 @@ fn main() {
 		.with_flow(|f| f) // Required for deferred views
 		.build()
 		.unwrap();
-
-	db.start().unwrap();
 
 	// Step 2: Create namespace and table
 	info!("\n--- Creating namespace and table ---");

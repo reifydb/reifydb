@@ -43,14 +43,13 @@ use reifydb_routine::{
 	function::default_native_functions, procedure::default_native_procedures, routine::registry::Routines,
 };
 use reifydb_rql::RqlVersion;
-use reifydb_runtime::{Runtime, RuntimeConfig, context::clock::Clock, pool::PoolConfig};
+use reifydb_runtime::{Runtime, RuntimeConfig, context::clock::Clock, pool::PoolConfig, shutdown::Shutdown};
 use reifydb_store_multi::{
 	MultiStore, MultiStoreVersion,
 	config::{CommitBufferConfig, MultiStoreConfig},
 	tier::commit::buffer::MultiCommitBufferTier,
 };
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
-use reifydb_sub_api::subsystem::Subsystem;
 use reifydb_sub_flow::{builder::FlowConfig, subsystem::FlowSubsystem};
 use reifydb_transaction::{
 	TransactionVersion, interceptor::factory::InterceptorFactory, multi::transaction::MultiTransaction,
@@ -315,9 +314,8 @@ impl WasmDB {
 			connector_registry: Default::default(),
 		};
 		console_log("[WASM] Creating FlowSubsystem...");
-		let mut flow_subsystem = FlowSubsystem::new(flow_config, inner.clone(), &ioc_ref);
-		console_log("[WASM] Starting FlowSubsystem...");
-		flow_subsystem.start().map_err(|e| JsError::from_error(&e))?;
+		let flow_subsystem = FlowSubsystem::new(flow_config, inner.clone(), &ioc_ref)
+			.map_err(|e| JsError::from_error(&e))?;
 		console_log("[WASM] FlowSubsystem started successfully!");
 
 		// Collect all versions and register SystemCatalog
@@ -585,7 +583,7 @@ impl WasmDB {
 
 impl Drop for WasmDB {
 	fn drop(&mut self) {
-		let _ = self.flow_subsystem.shutdown();
+		self.flow_subsystem.shutdown();
 	}
 }
 

@@ -18,7 +18,10 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::sync::rwlock::RwLock;
+use reifydb_runtime::{
+	shutdown::Shutdown,
+	sync::{mutex::Mutex, rwlock::RwLock},
+};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_value::{Result, error::Error};
 use tokio::{
@@ -46,17 +49,22 @@ pub struct ReplicationSubsystem {
 	running: Arc<AtomicBool>,
 	actual_addr: RwLock<Option<SocketAddr>>,
 
-	shutdown_tx: Option<oneshot::Sender<()>>,
-	shutdown_complete_rx: Option<oneshot::Receiver<()>>,
-	stream_shutdown_tx: Option<watch::Sender<bool>>,
+	shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
+	shutdown_complete_rx: Mutex<Option<oneshot::Receiver<()>>>,
+	stream_shutdown_tx: Mutex<Option<watch::Sender<bool>>>,
 
-	replica_shutdown_tx: Option<watch::Sender<bool>>,
-	replica_complete_rx: Option<oneshot::Receiver<()>>,
+	replica_shutdown_tx: Mutex<Option<watch::Sender<bool>>>,
+	replica_complete_rx: Mutex<Option<oneshot::Receiver<()>>>,
 }
 
 impl ReplicationSubsystem {
-	pub fn primary(config: PrimaryConfig, cdc_store: CdcStore, event_bus: EventBus, runtime: Handle) -> Self {
-		Self {
+	pub fn primary(
+		config: PrimaryConfig,
+		cdc_store: CdcStore,
+		event_bus: EventBus,
+		runtime: Handle,
+	) -> Result<Self> {
+		let subsystem = Self {
 			config: ReplicationConfig::Primary(config),
 			cdc_store: Some(cdc_store),
 			event_bus: Some(event_bus),
@@ -64,16 +72,18 @@ impl ReplicationSubsystem {
 			runtime,
 			running: Arc::new(AtomicBool::new(false)),
 			actual_addr: RwLock::new(None),
-			shutdown_tx: None,
-			shutdown_complete_rx: None,
-			stream_shutdown_tx: None,
-			replica_shutdown_tx: None,
-			replica_complete_rx: None,
-		}
+			shutdown_tx: Mutex::new(None),
+			shutdown_complete_rx: Mutex::new(None),
+			stream_shutdown_tx: Mutex::new(None),
+			replica_shutdown_tx: Mutex::new(None),
+			replica_complete_rx: Mutex::new(None),
+		};
+		subsystem.start_primary()?;
+		Ok(subsystem)
 	}
 
-	pub fn replica(config: ReplicaConfig, engine: StandardEngine, runtime: Handle) -> Self {
-		Self {
+	pub fn replica(config: ReplicaConfig, engine: StandardEngine, runtime: Handle) -> Result<Self> {
+		let subsystem = Self {
 			config: ReplicationConfig::Replica(config),
 			cdc_store: None,
 			event_bus: None,
@@ -81,12 +91,14 @@ impl ReplicationSubsystem {
 			runtime,
 			running: Arc::new(AtomicBool::new(false)),
 			actual_addr: RwLock::new(None),
-			shutdown_tx: None,
-			shutdown_complete_rx: None,
-			stream_shutdown_tx: None,
-			replica_shutdown_tx: None,
-			replica_complete_rx: None,
-		}
+			shutdown_tx: Mutex::new(None),
+			shutdown_complete_rx: Mutex::new(None),
+			stream_shutdown_tx: Mutex::new(None),
+			replica_shutdown_tx: Mutex::new(None),
+			replica_complete_rx: Mutex::new(None),
+		};
+		subsystem.start_replica()?;
+		Ok(subsystem)
 	}
 
 	pub fn local_addr(&self) -> Option<SocketAddr> {
@@ -97,7 +109,7 @@ impl ReplicationSubsystem {
 		self.local_addr().map(|a| a.port())
 	}
 
-	fn start_primary(&mut self) -> Result<()> {
+	fn start_primary(&self) -> Result<()> {
 		let ReplicationConfig::Primary(config) = &self.config else {
 			unreachable!()
 		};
@@ -128,9 +140,9 @@ impl ReplicationSubsystem {
 			info!("Replication server stopped");
 		});
 
-		self.shutdown_tx = Some(shutdown_tx);
-		self.shutdown_complete_rx = Some(complete_rx);
-		self.stream_shutdown_tx = Some(stream_shutdown_tx);
+		*self.shutdown_tx.lock() = Some(shutdown_tx);
+		*self.shutdown_complete_rx.lock() = Some(complete_rx);
+		*self.stream_shutdown_tx.lock() = Some(stream_shutdown_tx);
 		Ok(())
 	}
 
@@ -158,7 +170,7 @@ impl ReplicationSubsystem {
 		Ok(())
 	}
 
-	fn start_replica(&mut self) -> Result<()> {
+	fn start_replica(&self) -> Result<()> {
 		let ReplicationConfig::Replica(config) = &self.config else {
 			unreachable!()
 		};
@@ -185,8 +197,8 @@ impl ReplicationSubsystem {
 			info!("Replication client stopped");
 		});
 
-		self.replica_shutdown_tx = Some(shutdown_tx);
-		self.replica_complete_rx = Some(complete_rx);
+		*self.replica_shutdown_tx.lock() = Some(shutdown_tx);
+		*self.replica_complete_rx.lock() = Some(complete_rx);
 		self.running.store(true, Ordering::SeqCst);
 		Ok(())
 	}
@@ -235,46 +247,38 @@ impl HasVersion for ReplicationSubsystem {
 	}
 }
 
-impl Subsystem for ReplicationSubsystem {
-	fn name(&self) -> &'static str {
-		"Replication"
-	}
-
-	fn start(&mut self) -> Result<()> {
-		if self.running.load(Ordering::SeqCst) {
-			return Ok(());
-		}
-
-		match &self.config {
-			ReplicationConfig::Primary(_) => self.start_primary(),
-			ReplicationConfig::Replica(_) => self.start_replica(),
-		}
-	}
-
-	fn shutdown(&mut self) -> Result<()> {
+impl Shutdown for ReplicationSubsystem {
+	fn shutdown(&self) {
 		match &self.config {
 			ReplicationConfig::Primary(_) => {
-				if let Some(tx) = self.stream_shutdown_tx.take() {
+				if let Some(tx) = self.stream_shutdown_tx.lock().take() {
 					let _ = tx.send(true);
 				}
-				if let Some(tx) = self.shutdown_tx.take() {
+				if let Some(tx) = self.shutdown_tx.lock().take() {
 					let _ = tx.send(());
 				}
-				if let Some(rx) = self.shutdown_complete_rx.take() {
+				let rx = self.shutdown_complete_rx.lock().take();
+				if let Some(rx) = rx {
 					let _ = self.runtime.block_on(rx);
 				}
 			}
 			ReplicationConfig::Replica(_) => {
-				if let Some(tx) = self.replica_shutdown_tx.take() {
+				if let Some(tx) = self.replica_shutdown_tx.lock().take() {
 					let _ = tx.send(true);
 				}
-				if let Some(rx) = self.replica_complete_rx.take() {
+				let rx = self.replica_complete_rx.lock().take();
+				if let Some(rx) = rx {
 					let _ = self.runtime.block_on(rx);
 				}
 			}
 		}
 		self.running.store(false, Ordering::SeqCst);
-		Ok(())
+	}
+}
+
+impl Subsystem for ReplicationSubsystem {
+	fn name(&self) -> &'static str {
+		"Replication"
 	}
 
 	fn is_running(&self) -> bool {
@@ -292,10 +296,6 @@ impl Subsystem for ReplicationSubsystem {
 	}
 
 	fn as_any(&self) -> &dyn Any {
-		self
-	}
-
-	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
 }

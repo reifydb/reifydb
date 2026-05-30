@@ -84,7 +84,6 @@ fn main() {
 	let mut db = server::memory().with_raft(raft_config).build().expect("failed to build database");
 
 	eprintln!("node {node_id}: starting...");
-	db.start().expect("failed to start database");
 
 	let raft = db.sub_raft().expect("raft subsystem not found");
 	let handle = raft.raft().expect("raft handle not available").clone();

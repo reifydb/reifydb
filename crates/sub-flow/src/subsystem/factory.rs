@@ -51,6 +51,6 @@ impl SubsystemFactory for FlowSubsystemFactory {
 			FlowConfigurator::new().configure()
 		};
 
-		Ok(Box::new(FlowSubsystem::new(config, engine, ioc)))
+		Ok(Box::new(FlowSubsystem::new(config, engine, ioc)?))
 	}
 }

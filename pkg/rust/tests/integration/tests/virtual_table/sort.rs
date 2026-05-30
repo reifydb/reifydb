@@ -5,9 +5,7 @@ use reifydb::{Database, Params, RuntimeConfig, embedded as db_embedded};
 use reifydb_value::value::frame::frame::Frame;
 
 fn new_db() -> Database {
-	let mut db =
-		db_embedded::memory().with_runtime_config(RuntimeConfig::default().seeded(0)).build().expect("build");
-	db.start().expect("start");
+	let db = db_embedded::memory().with_runtime_config(RuntimeConfig::default().seeded(0)).build().expect("build");
 	db
 }
 

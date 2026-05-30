@@ -47,6 +47,7 @@ use reifydb_runtime::{
 	actor::timers::drain_expired_timers,
 	context::{RuntimeContext, clock::Clock},
 	pool::PoolConfig,
+	shutdown::Shutdown,
 };
 use reifydb_store_multi::{
 	MultiStore, MultiStoreVersion,
@@ -54,7 +55,6 @@ use reifydb_store_multi::{
 	tier::commit::buffer::MultiCommitBufferTier,
 };
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
-use reifydb_sub_api::subsystem::Subsystem;
 use reifydb_sub_flow::{builder::FlowConfig, subsystem::FlowSubsystem};
 use reifydb_transaction::{
 	TransactionVersion, interceptor::factory::InterceptorFactory, multi::transaction::MultiTransaction,
@@ -183,9 +183,7 @@ impl Bridge {
 			connector_registry: Default::default(),
 		};
 		eprintln!("[WASI] Creating FlowSubsystem...");
-		let mut flow_subsystem = FlowSubsystem::new(flow_config, engine.clone(), &ioc_ref);
-		eprintln!("[WASI] Starting FlowSubsystem...");
-		flow_subsystem.start()?;
+		let flow_subsystem = FlowSubsystem::new(flow_config, engine.clone(), &ioc_ref)?;
 		eprintln!("[WASI] FlowSubsystem started successfully!");
 
 		let all_versions = vec![
@@ -220,7 +218,7 @@ impl Bridge {
 
 impl Drop for Bridge {
 	fn drop(&mut self) {
-		let _ = self.flow_subsystem.shutdown();
+		self.flow_subsystem.shutdown();
 	}
 }
 

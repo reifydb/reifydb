@@ -15,7 +15,7 @@ fn tracing_configuration(tracing: TracingConfigurator) -> TracingConfigurator {
 fn main() {
 	allocator::verify();
 
-	let mut db = server::memory()
+	let db = server::memory()
 		.with_tracing(tracing_configuration)
 		.with_http(|c| c.admin_bind_addr("0.0.0.0:18091"))
 		.with_ws(|c| c.admin_bind_addr("0.0.0.0:18090"))
@@ -30,8 +30,6 @@ fn main() {
 	println!("WebSocket server: ws://0.0.0.0:18090");
 	println!();
 	println!("Press Ctrl+C to stop...");
-
-	db.start().unwrap();
 
 	db.admin_as_root("CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }", Params::None)
 		.unwrap();

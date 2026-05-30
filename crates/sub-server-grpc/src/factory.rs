@@ -167,7 +167,7 @@ impl SubsystemFactory for GrpcSubsystemFactory {
 			handle,
 			config.poll_batch_size,
 			subscription_store,
-		);
+		)?;
 
 		Ok(Box::new(subsystem))
 	}

@@ -86,7 +86,9 @@ use reifydb_value::value::Value;
 
 #[cfg(not(reifydb_single_threaded))]
 use crate::system::tasks::create_system_tasks;
-use crate::{MigrationStatement, Result, database::Database, health::HealthMonitor, subsystem::Subsystems};
+use crate::{
+	MigrationStatement, Result, boot::Bootloader, database::Database, health::HealthMonitor, subsystem::Subsystems,
+};
 
 /// Backend selection for the CDC store.
 ///
@@ -513,6 +515,10 @@ impl DatabaseBuilder {
 			apply_bootstrap_configs(&multi, &single, &catalog, &eventbus, &self.bootstrap_configs)?;
 		}
 
+		let bootloader = Bootloader::new(engine.clone(), spawner.clone());
+		bootloader.load()?;
+		bootloader.apply_migrations(&self.migrations)?;
+
 		// Collect all versions
 		let mut all_versions = vec![
 			SystemVersion {
@@ -610,6 +616,6 @@ impl DatabaseBuilder {
 		let system_catalog = SystemCatalog::new(all_versions);
 		self.ioc.register(system_catalog);
 
-		Ok(Database::new(engine, auth_service, subsystems, health_monitor, spawner, clock, self.migrations))
+		Ok(Database::new(engine, auth_service, subsystems, health_monitor, spawner, clock))
 	}
 }

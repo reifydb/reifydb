@@ -45,7 +45,7 @@ fn with_subsystem_returns_provided_and_registers_vtables() {
 
 	let downcast = result.as_any().downcast_ref::<ProfilerSubsystem>();
 	assert!(downcast.is_some(), "returned subsystem must be ProfilerSubsystem");
-	assert!(!downcast.unwrap().is_running());
+	assert!(downcast.unwrap().is_running());
 
 	// Verify each per-category aggregates vtable was registered under the matching namespace.
 	for name in ["query", "txn", "storage", "plan", "cdc", "flow"] {

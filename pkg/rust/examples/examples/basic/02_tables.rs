@@ -7,8 +7,7 @@ use tracing::info;
 
 fn main() {
 	// Create and start an in-memory database with logging
-	let mut db = embedded::memory().build().unwrap();
-	db.start().unwrap();
+	let db = embedded::memory().build().unwrap();
 
 	// Create a namespace to organize our tables
 	info!("Creating namespace...");

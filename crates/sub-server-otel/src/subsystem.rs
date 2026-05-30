@@ -24,7 +24,7 @@ use reifydb_core::{
 	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_runtime::{shutdown::Shutdown, sync::mutex::Mutex};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_value::Result;
 use tokio::runtime::Handle;
@@ -43,13 +43,23 @@ pub struct OtelSubsystem {
 }
 
 impl OtelSubsystem {
-	pub fn new(config: OtelConfig, handle: Handle) -> Self {
-		Self {
+	pub fn new(config: OtelConfig, handle: Handle) -> Result<Self> {
+		let subsystem = Self {
 			config,
 			running: Arc::new(AtomicBool::new(false)),
 			tracer_provider: Arc::new(Mutex::new(None)),
 			handle,
-		}
+		};
+		let provider = subsystem.build_provider_in_runtime()?;
+		subsystem.install_provider(provider);
+		subsystem.running.store(true, Ordering::SeqCst);
+		info!(
+			service = %subsystem.config.service_name,
+			endpoint = %subsystem.config.endpoint,
+			exporter = ?subsystem.config.exporter_type,
+			"OpenTelemetry subsystem started"
+		);
+		Ok(subsystem)
 	}
 
 	pub fn config(&self) -> &OtelConfig {
@@ -135,30 +145,10 @@ impl HasVersion for OtelSubsystem {
 	}
 }
 
-impl Subsystem for OtelSubsystem {
-	fn name(&self) -> &'static str {
-		"OpenTelemetry"
-	}
-
-	fn start(&mut self) -> Result<()> {
-		if self.running.load(Ordering::SeqCst) {
-			return Ok(());
-		}
-		let provider = self.build_provider_in_runtime()?;
-		self.install_provider(provider);
-		self.running.store(true, Ordering::SeqCst);
-		info!(
-			service = %self.config.service_name,
-			endpoint = %self.config.endpoint,
-			exporter = ?self.config.exporter_type,
-			"OpenTelemetry subsystem started"
-		);
-		Ok(())
-	}
-
-	fn shutdown(&mut self) -> Result<()> {
+impl Shutdown for OtelSubsystem {
+	fn shutdown(&self) {
 		if self.running.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
-			return Ok(());
+			return;
 		}
 
 		if let Some(provider) = self.tracer_provider.lock().take() {
@@ -168,8 +158,12 @@ impl Subsystem for OtelSubsystem {
 				debug!("Tracer provider shutdown complete");
 			}
 		}
+	}
+}
 
-		Ok(())
+impl Subsystem for OtelSubsystem {
+	fn name(&self) -> &'static str {
+		"OpenTelemetry"
 	}
 
 	fn is_running(&self) -> bool {
@@ -187,10 +181,6 @@ impl Subsystem for OtelSubsystem {
 	}
 
 	fn as_any(&self) -> &dyn Any {
-		self
-	}
-
-	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
 }

@@ -14,7 +14,6 @@ fn main() {
 		.with_replication(|c| c.primary().bind_addr("127.0.0.1:0"))
 		.build()
 		.unwrap();
-	primary.start().unwrap();
 
 	// Discover the port the replication server bound to
 	let repl_port = primary
@@ -69,11 +68,10 @@ fn main() {
 	// Schema and data replicate automatically - no need to create
 	// tables on the replica.
 	info!("Starting replica instance...");
-	let mut replica = server::memory()
+	let replica = server::memory()
 		.with_replication(move |c| c.replica().primary_addr(format!("http://127.0.0.1:{}", repl_port)))
 		.build()
 		.unwrap();
-	replica.start().unwrap();
 
 	// Give the replica time to connect and replicate
 	info!("Waiting for replication to catch up...");

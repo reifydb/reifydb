@@ -6,8 +6,7 @@ use reifydb_examples::log_query;
 use tracing::info;
 
 fn main() {
-	let mut db = embedded::memory().build().unwrap();
-	db.start().unwrap();
+	let db = embedded::memory().build().unwrap();
 
 	info!("Creating namespace...");
 	log_query("CREATE NAMESPACE shop");

@@ -46,11 +46,11 @@ impl SubsystemFactory for ReplicationSubsystemFactory {
 			ReplicationConfig::Primary(config) => {
 				let cdc_store = ioc.resolve::<CdcStore>()?;
 				let event_bus = ioc.resolve::<EventBus>()?;
-				ReplicationSubsystem::primary(config, cdc_store, event_bus, runtime)
+				ReplicationSubsystem::primary(config, cdc_store, event_bus, runtime)?
 			}
 			ReplicationConfig::Replica(config) => {
 				engine.set_read_only();
-				ReplicationSubsystem::replica(config, engine, runtime)
+				ReplicationSubsystem::replica(config, engine, runtime)?
 			}
 		};
 

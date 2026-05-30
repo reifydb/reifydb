@@ -7,8 +7,7 @@ use tracing::info;
 
 fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory().build().unwrap();
-	db.start().unwrap();
+	let db = embedded::memory().build().unwrap();
 
 	// Example 1: Standalone EXTEND with constants (creates a single-encoded
 	// frame)

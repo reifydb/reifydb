@@ -17,6 +17,7 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	util::ioc::IocContainer,
 };
+use reifydb_runtime::{shutdown::Shutdown, sync::mutex::Mutex};
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
@@ -68,18 +69,13 @@ impl SubsystemFactory for RaftSubsystemFactory {
 }
 
 pub struct RaftSubsystem {
-	config: RaftConfig,
-	multi_store: MultiStore,
-	single_store: SingleStore,
 	multi_tx: MultiTransaction,
 	single_tx: SingleTransaction,
-	catalog: CatalogCache,
-	eventbus: EventBus,
 	handle: Handle,
 	running: Arc<AtomicBool>,
-	raft_handle: Option<Raft>,
-	driver_join: Option<JoinHandle<()>>,
-	transport_join: Option<JoinHandle<()>>,
+	raft_handle: Mutex<Option<Raft>>,
+	driver_join: Mutex<Option<JoinHandle<()>>>,
+	transport_join: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl RaftSubsystem {
@@ -94,24 +90,68 @@ impl RaftSubsystem {
 		eventbus: EventBus,
 		handle: Handle,
 	) -> Self {
-		Self {
-			config,
+		let catalog_for_cb = catalog.clone();
+		let multi_for_cb = multi_tx.clone();
+		let single_for_cb = single_tx.clone();
+		let multi_for_ver = multi_tx.clone();
+
+		let raft_state = Apply::with_callbacks(
 			multi_store,
 			single_store,
+			eventbus,
+			move || {
+				if let Err(e) = load_catalog_cache(&multi_for_cb, &single_for_cb, &catalog_for_cb) {
+					eprintln!("warning: catalog refresh failed: {e:?}");
+				}
+			},
+			move |version| {
+				multi_for_ver.advance_version_to(CommitVersion(version));
+			},
+		);
+
+		let peer_ids: HashSet<NodeId> = config.peers.iter().map(|p| p.node_id).collect();
+		let opts = Options {
+			heartbeat_interval: config.heartbeat_interval,
+			election_timeout_range: config.election_timeout_range.clone(),
+			max_append_entries: config.max_append_entries,
+		};
+		let node = Node::new_seeded(
+			config.node_id,
+			peer_ids,
+			Log::new(),
+			Box::new(raft_state),
+			opts,
+			config.node_id as u64,
+		);
+
+		let (transport, transport_join) = handle
+			.block_on(GrpcTransport::start(config.bind_addr, config.peers.clone()))
+			.expect("failed to start raft gRPC transport");
+
+		let driver_config = DriverConfig {
+			tick_interval: config.tick_interval,
+			recv_interval: config.recv_interval,
+			proposal_channel_capacity: config.proposal_channel_capacity,
+		};
+		let (driver, raft) = RaftDriver::new(node, transport, driver_config);
+		let driver_join = handle.spawn(driver.run());
+
+		multi_tx.set_raft(raft.clone());
+		single_tx.set_raft(raft.clone());
+
+		Self {
 			multi_tx,
 			single_tx,
-			catalog,
-			eventbus,
 			handle,
-			running: Arc::new(AtomicBool::new(false)),
-			raft_handle: None,
-			driver_join: None,
-			transport_join: None,
+			running: Arc::new(AtomicBool::new(true)),
+			raft_handle: Mutex::new(Some(raft)),
+			driver_join: Mutex::new(Some(driver_join)),
+			transport_join: Mutex::new(Some(transport_join)),
 		}
 	}
 
-	pub fn raft(&self) -> Option<&Raft> {
-		self.raft_handle.as_ref()
+	pub fn raft(&self) -> Option<Raft> {
+		self.raft_handle.lock().clone()
 	}
 }
 
@@ -126,95 +166,33 @@ impl HasVersion for RaftSubsystem {
 	}
 }
 
-impl Subsystem for RaftSubsystem {
-	fn name(&self) -> &'static str {
-		"Raft"
-	}
-
-	fn start(&mut self) -> Result<()> {
-		if self.running.load(Ordering::SeqCst) {
-			return Ok(());
-		}
-
-		let catalog_for_cb = self.catalog.clone();
-		let multi_for_cb = self.multi_tx.clone();
-		let single_for_cb = self.single_tx.clone();
-		let multi_for_ver = self.multi_tx.clone();
-
-		let raft_state = Apply::with_callbacks(
-			self.multi_store.clone(),
-			self.single_store.clone(),
-			self.eventbus.clone(),
-			move || {
-				if let Err(e) = load_catalog_cache(&multi_for_cb, &single_for_cb, &catalog_for_cb) {
-					eprintln!("warning: catalog refresh failed: {e:?}");
-				}
-			},
-			move |version| {
-				multi_for_ver.advance_version_to(CommitVersion(version));
-			},
-		);
-
-		let peer_ids: HashSet<NodeId> = self.config.peers.iter().map(|p| p.node_id).collect();
-		let opts = Options {
-			heartbeat_interval: self.config.heartbeat_interval,
-			election_timeout_range: self.config.election_timeout_range.clone(),
-			max_append_entries: self.config.max_append_entries,
-		};
-		let node = Node::new_seeded(
-			self.config.node_id,
-			peer_ids,
-			Log::new(),
-			Box::new(raft_state),
-			opts,
-			self.config.node_id as u64,
-		);
-
-		let (transport, transport_join) = self
-			.handle
-			.block_on(GrpcTransport::start(self.config.bind_addr, self.config.peers.clone()))
-			.expect("failed to start raft gRPC transport");
-
-		let driver_config = DriverConfig {
-			tick_interval: self.config.tick_interval,
-			recv_interval: self.config.recv_interval,
-			proposal_channel_capacity: self.config.proposal_channel_capacity,
-		};
-		let (driver, handle) = RaftDriver::new(node, transport, driver_config);
-		let driver_join = self.handle.spawn(driver.run());
-
-		self.multi_tx.set_raft(handle.clone());
-		self.single_tx.set_raft(handle.clone());
-
-		self.raft_handle = Some(handle);
-		self.driver_join = Some(driver_join);
-		self.transport_join = Some(transport_join);
-		self.running.store(true, Ordering::SeqCst);
-
-		Ok(())
-	}
-
-	fn shutdown(&mut self) -> Result<()> {
-		if !self.running.load(Ordering::SeqCst) {
-			return Ok(());
+impl Shutdown for RaftSubsystem {
+	fn shutdown(&self) {
+		if self.running.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+			return;
 		}
 
 		self.multi_tx.clear_raft();
 		self.single_tx.clear_raft();
-		self.raft_handle.take();
+		self.raft_handle.lock().take();
 
-		if let Some(join) = self.driver_join.take() {
+		let driver_join = self.driver_join.lock().take();
+		if let Some(join) = driver_join {
 			join.abort();
 			let _ = self.handle.block_on(join);
 		}
 
-		if let Some(join) = self.transport_join.take() {
+		let transport_join = self.transport_join.lock().take();
+		if let Some(join) = transport_join {
 			join.abort();
 			let _ = self.handle.block_on(join);
 		}
+	}
+}
 
-		self.running.store(false, Ordering::SeqCst);
-		Ok(())
+impl Subsystem for RaftSubsystem {
+	fn name(&self) -> &'static str {
+		"Raft"
 	}
 
 	fn is_running(&self) -> bool {
@@ -230,10 +208,6 @@ impl Subsystem for RaftSubsystem {
 	}
 
 	fn as_any(&self) -> &dyn Any {
-		self
-	}
-
-	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
 	}
 }

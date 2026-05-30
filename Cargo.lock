@@ -3043,6 +3043,7 @@ version = "0.6.0"
 dependencies = [
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-runtime",
  "reifydb-transaction",
  "reifydb-value",
 ]
@@ -3393,6 +3394,7 @@ version = "0.6.0"
 dependencies = [
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-runtime",
  "reifydb-sub-api",
  "reifydb-testing",
  "reifydb-transaction",

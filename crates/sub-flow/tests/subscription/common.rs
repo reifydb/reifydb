@@ -56,8 +56,7 @@ pub fn extract_sub_id(frames: &[reifydb_value::value::frame::frame::Frame]) -> S
 }
 
 pub fn make_db() -> reifydb::Database {
-	let mut db = db_embedded::memory().build().expect("build");
-	db.start().expect("start");
+	let db = db_embedded::memory().build().expect("build");
 	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
 	db.admin_as_root("CREATE TABLE app::t { id: int4, qty: int4, ts_ms: int8 }", Params::None)
 		.expect("create table");

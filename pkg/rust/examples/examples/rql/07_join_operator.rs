@@ -7,8 +7,7 @@ use tracing::info;
 
 fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory().build().unwrap();
-	db.start().unwrap();
+	let db = embedded::memory().build().unwrap();
 
 	// Set up sample data with relationships
 	db.admin_as_root("create namespace company", Params::None).unwrap();

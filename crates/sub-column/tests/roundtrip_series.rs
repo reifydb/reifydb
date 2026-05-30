@@ -34,7 +34,6 @@ fn series_materialization_produces_snapshot_in_registry() {
 		.with_subsystem(Box::new(StorageSubsystemFactory::new(fast_config)))
 		.build()
 		.expect("build");
-	db.start().expect("start");
 
 	db.admin_as_root("CREATE NAMESPACE test", Params::None).expect("create namespace");
 	db.admin_as_root("CREATE SERIES test::s { k: uint8, value: float8 } WITH { key: k }", Params::None)

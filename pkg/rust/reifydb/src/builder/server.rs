@@ -473,12 +473,11 @@ impl ServerBuilder {
 
 		#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel", not(reifydb_single_threaded)))]
 		if let Some((otel_configurator, tracing_configurator)) = self.otel_tracing_config {
-			use reifydb_sub_api::subsystem::Subsystem;
 			use tracing_opentelemetry::layer as otel_layer_fn;
 
 			let otel_config = otel_configurator(OtelConfigurator::new()).configure();
-			let mut otel_subsystem = OtelSubsystem::new(otel_config, runtime.handle());
-			otel_subsystem.start().expect("Failed to start OpenTelemetry subsystem");
+			let otel_subsystem = OtelSubsystem::new(otel_config, runtime.handle())
+				.expect("Failed to start OpenTelemetry subsystem");
 
 			let tracer =
 				otel_subsystem.tracer().expect("Tracer not available after starting OtelSubsystem");
