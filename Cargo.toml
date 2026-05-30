@@ -31,6 +31,7 @@ members = [
     "crates/store-multi",
     "crates/store-single",
     "crates/testing",
+    "crates/testing-macro",
     "crates/transaction",
     "crates/value",
     "crates/wasm",
@@ -104,6 +105,7 @@ default-members = [
     "crates/store-multi",
     "crates/store-single",
     "crates/testing",
+    "crates/testing-macro",
     "crates/transaction",
     "crates/value",
     "crates/wasm",
@@ -215,6 +217,7 @@ reifydb-store-multi = { version = "0.6.0", path = "crates/store-multi" }
 reifydb-store-single = { version = "0.6.0", path = "crates/store-single" }
 reifydb-sub-raft = { version = "0.6.0", path = "crates/sub-raft" }
 reifydb-testing = { version = "0.6.0", path = "crates/testing" }
+reifydb-testing-macro = { version = "0.6.0", path = "crates/testing-macro" }
 reifydb-transaction = { version = "0.6.0", path = "crates/transaction" }
 reifydb-value = { version = "0.6.0", path = "crates/value" }
 reifydb-wasm = { version = "0.6.0", path = "crates/wasm" }

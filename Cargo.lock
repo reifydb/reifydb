@@ -2978,6 +2978,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-testing",
+ "reifydb-testing-macro",
  "reifydb-value",
  "serde",
  "tracing",
@@ -3023,6 +3024,7 @@ dependencies = [
  "reifydb-sqlite",
  "reifydb-store",
  "reifydb-testing",
+ "reifydb-testing-macro",
  "reifydb-value",
  "rusqlite",
  "test_each_file",
@@ -3432,11 +3434,16 @@ version = "0.6.0"
 dependencies = [
  "reifydb-core",
  "reifydb-runtime",
+ "reifydb-testing-macro",
  "reifydb-value",
  "test_each_file",
  "tokio",
  "uuid",
 ]
+
+[[package]]
+name = "reifydb-testing-macro"
+version = "0.6.0"
 
 [[package]]
 name = "reifydb-transaction"
@@ -3454,6 +3461,7 @@ dependencies = [
  "reifydb-store-single",
  "reifydb-sub-raft",
  "reifydb-testing",
+ "reifydb-testing-macro",
  "reifydb-value",
  "test_each_file",
  "thiserror 2.0.18",

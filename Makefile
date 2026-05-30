@@ -52,7 +52,7 @@ help:
 	@printf "  %-25s %s\n" "test-full" "Same as 'make test'"
 	@printf "  %-25s %s\n" "test-workspace" "Run only workspace tests (N=K to repeat K times)"
 	@printf "  %-25s %s\n" "test-dst" "Run deterministic simulation tests"
-	@printf "  %-25s %s\n" "test-chaos N=1234" "Run randomized chaos tests (seed-reproducible; FILTER=)"
+	@printf "  %-25s %s\n" "test-chaos N=64" "Run chaos tests (N= per workload, FILTER=, SEED=)"
 	@printf "  %-25s %s\n" "list-chaos" "List chaos tests (CHAOS_PACKAGES=, FILTER=)"
 	@echo ""
 	@echo "  🔧 Test Components"

@@ -35,6 +35,7 @@ crossbeam-channel = { workspace = true }
 
 [dev-dependencies]
 reifydb-testing = { workspace = true }
+reifydb-testing-macro = { workspace = true }
 reifydb-engine = { workspace = true, features = ["tokio"] }
 test_each_file = { workspace = true }
 rand = { workspace = true }

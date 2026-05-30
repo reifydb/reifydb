@@ -1,0 +1,11 @@
+[package]
+name = "reifydb-testing-macro"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Proc-macro backing reifydb-testing's chaos_test! (internal testing utility)"
+
+[lib]
+proc-macro = true

@@ -43,7 +43,7 @@ mod snapshot;
 mod workload;
 
 use reifydb_core::interface::catalog::{id::TableId, shape::ShapeId};
-use reifydb_testing::chaos_test;
+use reifydb_testing_macro::chaos_test;
 
 use crate::workload::{Params, drive};
 
