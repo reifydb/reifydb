@@ -6,9 +6,10 @@
 use std::{
 	fmt,
 	ops::{Deref, DerefMut},
+	sync::Arc,
 };
 
-use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use parking_lot::{ArcRwLockReadGuard, ArcRwLockWriteGuard, RawRwLock, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 pub struct RwLockInner<T> {
 	inner: RwLock<T>,
@@ -89,6 +90,68 @@ impl<'a, T> Deref for RwLockWriteGuardInner<'a, T> {
 }
 
 impl<'a, T> DerefMut for RwLockWriteGuardInner<'a, T> {
+	fn deref_mut(&mut self) -> &mut T {
+		&mut self.inner
+	}
+}
+
+pub struct ArcRwLockInner<T> {
+	inner: Arc<RwLock<T>>,
+}
+
+impl<T> Clone for ArcRwLockInner<T> {
+	fn clone(&self) -> Self {
+		Self {
+			inner: self.inner.clone(),
+		}
+	}
+}
+
+impl<T> ArcRwLockInner<T> {
+	pub fn new(value: T) -> Self {
+		Self {
+			inner: Arc::new(RwLock::new(value)),
+		}
+	}
+
+	pub fn read(&self) -> OwnedRwLockReadGuardInner<T> {
+		OwnedRwLockReadGuardInner {
+			inner: self.inner.read_arc(),
+		}
+	}
+
+	pub fn write(&self) -> OwnedRwLockWriteGuardInner<T> {
+		OwnedRwLockWriteGuardInner {
+			inner: self.inner.write_arc(),
+		}
+	}
+}
+
+pub struct OwnedRwLockReadGuardInner<T> {
+	inner: ArcRwLockReadGuard<RawRwLock, T>,
+}
+
+impl<T> Deref for OwnedRwLockReadGuardInner<T> {
+	type Target = T;
+
+	fn deref(&self) -> &T {
+		&self.inner
+	}
+}
+
+pub struct OwnedRwLockWriteGuardInner<T> {
+	inner: ArcRwLockWriteGuard<RawRwLock, T>,
+}
+
+impl<T> Deref for OwnedRwLockWriteGuardInner<T> {
+	type Target = T;
+
+	fn deref(&self) -> &T {
+		&self.inner
+	}
+}
+
+impl<T> DerefMut for OwnedRwLockWriteGuardInner<T> {
 	fn deref_mut(&mut self) -> &mut T {
 		&mut self.inner
 	}

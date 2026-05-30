@@ -1,31 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::mem;
-
 use reifydb_core::interface::store::{SingleVersionContains, SingleVersionGet, SingleVersionRow};
-use reifydb_runtime::sync::rwlock::{RwLock, RwLockReadGuard};
+use reifydb_runtime::sync::rwlock::{ArcRwLock, OwnedRwLockReadGuard};
 use reifydb_value::{Result, util::hex};
 
 use super::*;
 use crate::error::TransactionError;
 
 pub struct KeyReadLock {
-	pub(super) _guard: RwLockReadGuard<'static, ()>,
-	pub(super) _arc: Arc<RwLock<()>>,
+	pub(super) _guard: OwnedRwLockReadGuard<()>,
 }
 
 impl KeyReadLock {
-	pub(super) fn new(arc: Arc<RwLock<()>>) -> Self {
-		let guard = arc.read();
-
-		// SAFETY: We're extending the guard's lifetime to 'static.
-
-		let guard = unsafe { mem::transmute::<RwLockReadGuard<'_, ()>, RwLockReadGuard<'static, ()>>(guard) };
-
+	pub(super) fn new(lock: ArcRwLock<()>) -> Self {
 		Self {
-			_arc: arc,
-			_guard: guard,
+			_guard: lock.read(),
 		}
 	}
 }

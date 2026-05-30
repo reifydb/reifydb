@@ -15,7 +15,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::WithEventBus,
 };
-use reifydb_runtime::sync::rwlock::RwLock;
+use reifydb_runtime::sync::rwlock::{ArcRwLock, RwLock};
 use reifydb_store_single::SingleStore;
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sub_raft::driver::Raft;
@@ -40,18 +40,18 @@ pub struct SingleTransaction {
 pub(crate) struct SingleTransactionInner {
 	pub(crate) store: RwLock<SingleStore>,
 	pub(crate) event_bus: EventBus,
-	pub(crate) key_locks: SkipMap<EncodedKey, Arc<RwLock<()>>>,
+	pub(crate) key_locks: SkipMap<EncodedKey, ArcRwLock<()>>,
 	#[cfg(not(target_arch = "wasm32"))]
 	pub(crate) raft: RwLock<Option<Raft>>,
 }
 
 impl SingleTransactionInner {
-	fn get_or_create_lock(&self, key: &EncodedKey) -> Arc<RwLock<()>> {
+	fn get_or_create_lock(&self, key: &EncodedKey) -> ArcRwLock<()> {
 		if let Some(entry) = self.key_locks.get(key) {
 			return entry.value().clone();
 		}
 
-		let lock = Arc::new(RwLock::new(()));
+		let lock = ArcRwLock::new(());
 		self.key_locks.insert(key.clone(), lock.clone());
 		lock
 	}
@@ -126,8 +126,8 @@ impl SingleTransaction {
 
 		let mut locks = Vec::new();
 		for key in &keys_vec {
-			let arc = self.inner.get_or_create_lock(key);
-			locks.push(KeyReadLock::new(arc));
+			let lock = self.inner.get_or_create_lock(key);
+			locks.push(KeyReadLock::new(lock));
 		}
 
 		Ok(SingleReadTransaction {
@@ -151,8 +151,8 @@ impl SingleTransaction {
 
 		let mut locks = Vec::new();
 		for key in &keys_vec {
-			let arc = self.inner.get_or_create_lock(key);
-			locks.push(KeyWriteLock::new(arc));
+			let lock = self.inner.get_or_create_lock(key);
+			locks.push(KeyWriteLock::new(lock));
 		}
 
 		Ok(SingleWriteTransaction::new(&self.inner, keys_vec, locks))

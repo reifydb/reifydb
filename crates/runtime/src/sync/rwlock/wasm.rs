@@ -4,8 +4,9 @@
 use std::{
 	cell,
 	cell::{Ref, RefMut},
-	fmt,
+	fmt, mem,
 	ops::{Deref, DerefMut},
+	sync::Arc,
 };
 
 pub struct RwLockInner<T> {
@@ -89,5 +90,85 @@ impl<'a, T> Deref for RwLockWriteGuardInner<'a, T> {
 impl<'a, T> DerefMut for RwLockWriteGuardInner<'a, T> {
 	fn deref_mut(&mut self) -> &mut T {
 		&mut self.inner
+	}
+}
+
+pub struct ArcRwLockInner<T> {
+	inner: Arc<cell::RefCell<T>>,
+}
+
+impl<T> Clone for ArcRwLockInner<T> {
+	fn clone(&self) -> Self {
+		Self {
+			inner: self.inner.clone(),
+		}
+	}
+}
+
+impl<T: 'static> ArcRwLockInner<T> {
+	pub fn new(value: T) -> Self {
+		Self {
+			inner: Arc::new(cell::RefCell::new(value)),
+		}
+	}
+
+	pub fn read(&self) -> OwnedRwLockReadGuardInner<T> {
+		let arc = self.inner.clone();
+		let guard = arc.borrow();
+
+		// SAFETY: reifydb_single_threaded targets have no real concurrency, so no data race is
+
+		let guard = unsafe { mem::transmute::<Ref<'_, T>, Ref<'static, T>>(guard) };
+
+		OwnedRwLockReadGuardInner {
+			_guard: guard,
+			_arc: arc,
+		}
+	}
+
+	pub fn write(&self) -> OwnedRwLockWriteGuardInner<T> {
+		let arc = self.inner.clone();
+		let guard = arc.borrow_mut();
+
+		// SAFETY: reifydb_single_threaded targets have no real concurrency, so no data race is
+
+		let guard = unsafe { mem::transmute::<RefMut<'_, T>, RefMut<'static, T>>(guard) };
+
+		OwnedRwLockWriteGuardInner {
+			_guard: guard,
+			_arc: arc,
+		}
+	}
+}
+
+pub struct OwnedRwLockReadGuardInner<T: 'static> {
+	_guard: Ref<'static, T>,
+	_arc: Arc<cell::RefCell<T>>,
+}
+
+impl<T: 'static> Deref for OwnedRwLockReadGuardInner<T> {
+	type Target = T;
+
+	fn deref(&self) -> &T {
+		&self._guard
+	}
+}
+
+pub struct OwnedRwLockWriteGuardInner<T: 'static> {
+	_guard: RefMut<'static, T>,
+	_arc: Arc<cell::RefCell<T>>,
+}
+
+impl<T: 'static> Deref for OwnedRwLockWriteGuardInner<T> {
+	type Target = T;
+
+	fn deref(&self) -> &T {
+		&self._guard
+	}
+}
+
+impl<T: 'static> DerefMut for OwnedRwLockWriteGuardInner<T> {
+	fn deref_mut(&mut self) -> &mut T {
+		&mut self._guard
 	}
 }
