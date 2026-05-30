@@ -236,6 +236,7 @@ pub mod tests {
 		key::namespace_view::NamespaceViewKey,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_transaction::multi::RangeScope;
 	use reifydb_value::fragment::Fragment;
 
 	use super::ViewStorageConfig;
@@ -292,7 +293,7 @@ pub mod tests {
 		CatalogStore::create_deferred_view(&mut txn, to_create).unwrap();
 
 		let links: Vec<_> = txn
-			.range(NamespaceViewKey::full_scan(namespace.id()), 1024)
+			.range(NamespaceViewKey::full_scan(namespace.id()), RangeScope::All, 1024)
 			.unwrap()
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap();

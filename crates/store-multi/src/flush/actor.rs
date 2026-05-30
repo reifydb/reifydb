@@ -30,10 +30,7 @@ use crate::tier::{TierBatch, TierStorage};
 use crate::{
 	flush::ShapePersistence,
 	gc::EvictionWatermark,
-	tier::{
-		commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier,
-		read::buffer::MultiReadBufferTier,
-	},
+	tier::{commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::MultiReadBufferTier},
 };
 
 #[derive(Clone)]
@@ -251,7 +248,7 @@ mod tests {
 	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
-	use crate::tier::VersionedGetResult;
+	use crate::tier::{VersionedGetResult, read::ReadBufferConfig};
 
 	fn ek(s: &str) -> EncodedKey {
 		EncodedKey::new(s.as_bytes().to_vec())
@@ -441,7 +438,10 @@ mod tests {
 
 	#[test]
 	fn sweep_invalidates_evicted_keys_in_the_read_tier() {
-		let read = MultiReadBufferTier::new(16);
+		let read = MultiReadBufferTier::new(ReadBufferConfig {
+			resident_pages: 16,
+			..Default::default()
+		});
 		let (actor, _guard) = build_actor_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
 		let kind = EntryKind::Source(ShapeId::Table(TableId(11)));
 		let key = ek("k");

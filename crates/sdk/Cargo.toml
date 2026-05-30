@@ -30,6 +30,7 @@ chaos = []
 
 [dev-dependencies]
 reifydb-testing = { workspace = true }
+reifydb-testing-macro = { workspace = true }
 
 [[test]]
 name = "ffi"

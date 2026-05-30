@@ -35,16 +35,21 @@ use reifydb_value::{Result, error, util::cowvec::CowVec};
 use rusqlite::{Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, params, params_from_iter};
 use tracing::{instrument, warn};
 
-use crate::tier::{
-	HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage, VersionedGetResult,
-	persistent::{
-		CheckpointOutcome,
-		sqlite::{
-			entry::current_table_name,
-			query::{
-				build_create_current_sql, build_delete_expired_sql, build_delete_keys_sql,
-				build_get_current_sql, build_get_many_current_sql, build_range_current_sql,
-				build_upsert_current_sql, prefix_upper_bound, version_from_bytes, version_to_bytes,
+use crate::{
+	MultiVersionScope,
+	tier::{
+		HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage,
+		VersionedGetResult,
+		persistent::{
+			CheckpointOutcome,
+			sqlite::{
+				entry::current_table_name,
+				query::{
+					build_create_current_sql, build_delete_expired_sql, build_delete_keys_sql,
+					build_get_current_sql, build_get_many_current_sql, build_range_consistent_sql,
+					build_range_current_sql, build_upsert_current_sql, prefix_upper_bound,
+					version_from_bytes, version_to_bytes,
+				},
 			},
 		},
 	},
@@ -314,7 +319,7 @@ impl SqlitePersistentStorage {
 			Err(e) => return Err(error!(internal(format!("Failed to prepare persistent range: {}", e)))),
 		};
 
-		let version_bytes = version_to_bytes(req.version).to_vec();
+		let version_bytes = version_to_bytes(req.scope.read()).to_vec();
 		let limit_i64 = req.batch_size as i64;
 		let mut params: Vec<Box<dyn ToSql>> = Vec::new();
 		match req.start {
@@ -331,7 +336,7 @@ impl SqlitePersistentStorage {
 		params.push(Box::new(version_bytes));
 		params.push(Box::new(limit_i64));
 
-		let entries = match stmt.query_map(params_from_iter(params), |row| {
+		let raw: Vec<RawEntry> = match stmt.query_map(params_from_iter(params), |row| {
 			let key: Vec<u8> = row.get(0)?;
 			let version_blob: Vec<u8> = row.get(1)?;
 			let value: Option<Vec<u8>> = row.get(2)?;
@@ -350,6 +355,7 @@ impl SqlitePersistentStorage {
 			}
 			Err(e) => return Err(error!(internal(format!("Failed to scan persistent range: {}", e)))),
 		};
+		let entries: Vec<RawEntry> = raw.into_iter().filter(|e| req.scope.contains(e.version)).collect();
 
 		if entries.len() < req.batch_size {
 			cursor.exhausted = true;
@@ -363,6 +369,69 @@ impl SqlitePersistentStorage {
 			entries,
 			has_more,
 		})
+	}
+
+	pub fn load_range_consistent(
+		&self,
+		table: EntryKind,
+		start: Bound<&[u8]>,
+		end: Bound<&[u8]>,
+		read: CommitVersion,
+	) -> Result<Vec<RawEntry>> {
+		let table_sql = self.table_sql(table);
+		let guard = self.inner.readers.acquire();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(Vec::new());
+		};
+
+		let sql = build_range_consistent_sql(&table_sql.table_name, bound_shape(start), bound_shape(end));
+
+		let mut stmt = match conn.prepare_cached(&sql) {
+			Ok(s) => s,
+			Err(e) if e.to_string().contains("no such table") => return Ok(Vec::new()),
+			Err(e) => {
+				return Err(error!(internal(format!(
+					"Failed to prepare persistent consistent range: {}",
+					e
+				))));
+			}
+		};
+
+		let version_bytes = version_to_bytes(read).to_vec();
+		let mut params: Vec<Box<dyn ToSql>> = Vec::new();
+		match start {
+			Bound::Included(s) | Bound::Excluded(s) => params.push(Box::new(s.to_vec())),
+			Bound::Unbounded => {}
+		}
+		match end {
+			Bound::Included(e) | Bound::Excluded(e) => params.push(Box::new(e.to_vec())),
+			Bound::Unbounded => {}
+		}
+		params.push(Box::new(version_bytes));
+
+		let raw: Vec<RawEntry> = match stmt.query_map(params_from_iter(params), |row| {
+			let key: Vec<u8> = row.get(0)?;
+			let version_blob: Vec<u8> = row.get(1)?;
+			let value: Option<Vec<u8>> = row.get(2)?;
+			Ok(RawEntry {
+				key: EncodedKey::new(key),
+				version: version_from_bytes(&version_blob),
+				value: value.map(CowVec::new),
+			})
+		}) {
+			Ok(rows) => rows.collect::<SqliteResult<Vec<_>>>().map_err(|e| {
+				error!(internal(format!("Failed to read persistent consistent row: {}", e)))
+			})?,
+			Err(e) if e.to_string().contains("no such table") => return Ok(Vec::new()),
+			Err(e) => {
+				return Err(error!(internal(format!(
+					"Failed to scan persistent consistent range: {}",
+					e
+				))));
+			}
+		};
+
+		Ok(raw)
 	}
 }
 
@@ -378,7 +447,7 @@ struct RangeChunkRequest<'a> {
 	table: EntryKind,
 	start: Bound<&'a [u8]>,
 	end: Bound<&'a [u8]>,
-	version: CommitVersion,
+	scope: MultiVersionScope,
 	batch_size: usize,
 	descending: bool,
 }
@@ -548,7 +617,7 @@ impl TierStorage for SqlitePersistentStorage {
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		self.range_chunk(
@@ -557,7 +626,7 @@ impl TierStorage for SqlitePersistentStorage {
 				table,
 				start,
 				end,
-				version,
+				scope,
 				batch_size,
 				descending: false,
 			},
@@ -570,7 +639,7 @@ impl TierStorage for SqlitePersistentStorage {
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		self.range_chunk(
@@ -579,7 +648,7 @@ impl TierStorage for SqlitePersistentStorage {
 				table,
 				start,
 				end,
-				version,
+				scope,
 				batch_size,
 				descending: true,
 			},

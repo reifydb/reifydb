@@ -19,4 +19,5 @@ tokio = {workspace = true}
 
 [dev-dependencies]
 test_each_file = { workspace = true }
+reifydb-testing-macro = { workspace = true }
 

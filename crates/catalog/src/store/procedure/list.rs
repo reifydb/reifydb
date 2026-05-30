@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::procedure::Procedure,
 	key::{Key, procedure::ProcedureKey},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{CatalogStore, Result};
 
@@ -13,7 +13,7 @@ impl CatalogStore {
 	pub(crate) fn list_procedures_all(rx: &mut Transaction<'_>) -> Result<Vec<Procedure>> {
 		let mut ids = Vec::new();
 		{
-			let stream = rx.range(ProcedureKey::full_scan(), 1024)?;
+			let stream = rx.range(ProcedureKey::full_scan(), RangeScope::All, 1024)?;
 			for entry in stream {
 				let entry = entry?;
 				if let Some(Key::Procedure(k)) = Key::decode(&entry.key) {

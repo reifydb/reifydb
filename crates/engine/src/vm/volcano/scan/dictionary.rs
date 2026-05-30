@@ -11,7 +11,7 @@ use reifydb_core::{
 	key::{EncodableKey, dictionary::DictionaryEntryIndexKey},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,
 	value::{Value, dictionary::DictionaryEntryId, value_type::ValueType},
@@ -71,7 +71,7 @@ impl QueryNode for DictionaryScanNode {
 		let mut values: Vec<Value> = Vec::new();
 		let mut new_last_key = None;
 
-		let stream = rx.range(range, batch_size as usize)?;
+		let stream = rx.range(range, RangeScope::All, batch_size as usize)?;
 		let mut count = 0;
 
 		for entry in stream {

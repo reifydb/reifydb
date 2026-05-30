@@ -41,7 +41,7 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 };
 use reifydb_store_multi::{
-	MultiStore,
+	MultiStore, MultiVersionScope,
 	config::{CommitBufferConfig, MultiStoreConfig},
 	store::StandardMultiStore,
 	tier::commit::buffer::MultiCommitBufferTier,
@@ -204,16 +204,19 @@ impl TestRunner for Runner {
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
+				let scope = MultiVersionScope::AsOf {
+					read: version,
+				};
 				if !reverse {
 					let items: Vec<_> = self
 						.multi_store
-						.range(EncodedKeyRange::all(), version, 1024)
+						.range(EncodedKeyRange::all(), scope, 1024)
 						.collect::<Result<Vec<_>, _>>()?;
 					print(&mut output, items.into_iter())
 				} else {
 					let items: Vec<_> = self
 						.multi_store
-						.range_rev(EncodedKeyRange::all(), version, 1024)
+						.range_rev(EncodedKeyRange::all(), scope, 1024)
 						.collect::<Result<Vec<_>, _>>()?;
 
 					print(&mut output, items.into_iter())

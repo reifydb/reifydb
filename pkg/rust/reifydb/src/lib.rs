@@ -72,8 +72,6 @@ pub use reifydb_store_multi::tier::commit::buffer::MultiCommitBufferTier;
 pub use reifydb_store_single as single_storage;
 // subsystems
 pub use reifydb_sub_api as sub;
-#[cfg(feature = "sub_column")]
-pub use reifydb_sub_column as sub_column;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_flow as sub_flow;
 #[cfg(feature = "sub_flow")]

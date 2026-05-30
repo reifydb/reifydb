@@ -106,6 +106,7 @@ pub mod tests {
 		key::namespace_sink::NamespaceSinkKey,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_transaction::multi::RangeScope;
 	use reifydb_value::fragment::Fragment;
 
 	use crate::{
@@ -185,7 +186,7 @@ pub mod tests {
 
 		// Verify both are linked to namespace
 		let links: Vec<_> = txn
-			.range(NamespaceSinkKey::full_scan(test_namespace.id()), 1024)
+			.range(NamespaceSinkKey::full_scan(test_namespace.id()), RangeScope::All, 1024)
 			.unwrap()
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap();

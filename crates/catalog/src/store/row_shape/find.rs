@@ -9,7 +9,7 @@ use reifydb_core::{
 		shape::{RowShapeFieldKey, RowShapeKey},
 	},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	error::Error,
 	value::constraint::{FFITypeConstraint, TypeConstraint},
@@ -98,7 +98,7 @@ pub fn load_all_row_shapes(rx: &mut Transaction<'_>) -> Result<Vec<RowShape>> {
 
 	{
 		let range = RowShapeKey::full_scan();
-		let stream = rx.range(range, 1024)?;
+		let stream = rx.range(range, RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let entry = entry?;

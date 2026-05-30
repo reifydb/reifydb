@@ -6,9 +6,12 @@ use std::{collections::HashMap, ops::Bound};
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
 use reifydb_value::{Result, util::cowvec::CowVec};
 
-use crate::tier::{
-	HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage, VersionedGetResult,
-	commit::memory::storage::MemoryPrimitiveStorage,
+use crate::{
+	MultiVersionScope,
+	tier::{
+		HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage, VersionedGetResult,
+		commit::memory::storage::MemoryPrimitiveStorage,
+	},
 };
 
 #[derive(Clone)]
@@ -78,11 +81,11 @@ impl TierStorage for MultiCommitBufferTier {
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		match self {
-			Self::Memory(s) => s.range_next(table, cursor, start, end, version, batch_size),
+			Self::Memory(s) => s.range_next(table, cursor, start, end, scope, batch_size),
 		}
 	}
 
@@ -93,11 +96,11 @@ impl TierStorage for MultiCommitBufferTier {
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		match self {
-			Self::Memory(s) => s.range_rev_next(table, cursor, start, end, version, batch_size),
+			Self::Memory(s) => s.range_rev_next(table, cursor, start, end, scope, batch_size),
 		}
 	}
 
@@ -187,7 +190,16 @@ pub mod tests {
 
 		let mut cursor = RangeCursor::new();
 		let batch = storage
-			.range_next(EntryKind::Multi, &mut cursor, Bound::Unbounded, Bound::Unbounded, version, 100)
+			.range_next(
+				EntryKind::Multi,
+				&mut cursor,
+				Bound::Unbounded,
+				Bound::Unbounded,
+				MultiVersionScope::AsOf {
+					read: version,
+				},
+				100,
+			)
 			.unwrap();
 
 		assert_eq!(batch.entries.len(), 3);

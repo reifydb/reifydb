@@ -26,12 +26,11 @@ use crate::{
 	flush::{ShapePersistence, actor::FlushMessage},
 	gc::EvictionWatermark,
 	tier::{
-		commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier,
-		read::buffer::MultiReadBufferTier,
+		commit::buffer::MultiCommitBufferTier,
+		persistent::MultiPersistentTier,
+		read::{MultiReadBufferTier, ReadBufferConfig},
 	},
 };
-
-pub const DEFAULT_READ_BUFFER_CAPACITY: usize = 4096;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::{config::PersistentConfig, flush::actor::FlushActor};
 
@@ -84,7 +83,7 @@ impl StandardMultiStore {
 		});
 
 		let read = match (commit.as_ref(), config.persistent.is_some()) {
-			(Some(_), true) => Some(MultiReadBufferTier::new(DEFAULT_READ_BUFFER_CAPACITY)),
+			(Some(_), true) => Some(MultiReadBufferTier::new(ReadBufferConfig::default())),
 			_ => None,
 		};
 
@@ -133,6 +132,12 @@ impl StandardMultiStore {
 	pub fn configure_read_buffer_capacity(&self, capacity: usize) {
 		if let Some(read) = &self.read {
 			read.set_capacity(capacity);
+		}
+	}
+
+	pub fn configure_read_buffer(&self, resident_pages: usize, page_size_rows: u64) {
+		if let Some(read) = &self.read {
+			read.reconfigure(resident_pages, page_size_rows);
 		}
 	}
 

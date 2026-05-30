@@ -341,8 +341,13 @@ mod tests {
 			true // Continue
 		});
 
-		// Wait for several iterations
-		thread::sleep(Duration::from_millis(50));
+		// Wait until the repeating timer has fired several times, with a timeout
+		// so a "never repeats" regression still fails loud rather than racing a
+		// fixed sleep window.
+		let deadline = Instant::now() + Duration::from_secs(5);
+		while counter.load(Ordering::SeqCst) < 3 && Instant::now() < deadline {
+			thread::sleep(Duration::from_millis(10));
+		}
 		handle.cancel();
 
 		let count = counter.load(Ordering::SeqCst);

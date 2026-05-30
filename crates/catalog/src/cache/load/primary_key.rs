@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{column::Column, id::PrimaryKeyId, key::PrimaryKey},
 	key::primary_key::PrimaryKeyKey,
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use super::CatalogCache;
 use crate::{
@@ -21,7 +21,7 @@ pub fn load_primary_keys(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 
 	let mut entries = Vec::new();
 	{
-		let stream = rx.range(range, 1024)?;
+		let stream = rx.range(range, RangeScope::All, 1024)?;
 		for entry in stream {
 			entries.push(entry?);
 		}

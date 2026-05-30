@@ -10,8 +10,16 @@ use crate::encoded::{row::EncodedRow, shape::RowShape};
 impl RowShape {
 	pub fn set_duration(&self, row: &mut EncodedRow, index: usize, value: Duration) {
 		let field = &self.fields()[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Duration);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				row.len() >= self.total_static_size(),
+				"row/shape size mismatch: row.len()={} < total_static_size()={}",
+				row.len(),
+				self.total_static_size()
+			);
+			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Duration);
+		}
 		row.set_valid(index, true);
 
 		let months = value.get_months();
@@ -37,8 +45,16 @@ impl RowShape {
 
 	pub fn get_duration(&self, row: &EncodedRow, index: usize) -> Duration {
 		let field = &self.fields()[index];
-		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Duration);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				row.len() >= self.total_static_size(),
+				"row/shape size mismatch: row.len()={} < total_static_size()={}",
+				row.len(),
+				self.total_static_size()
+			);
+			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Duration);
+		}
 		unsafe {
 			let months = (row.as_ptr().add(field.offset as usize) as *const i32).read_unaligned();
 

@@ -10,6 +10,7 @@ description = "Multi-version storage for OLTP operations with MVCC support"
 [features]
 default = ["sqlite"]
 sqlite = ["rusqlite", "reifydb-sqlite"]
+chaos = ["sqlite"]
 
 [build-dependencies]
 reifydb-build = { workspace = true }
@@ -18,6 +19,7 @@ reifydb-build = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-sqlite = { workspace = true, optional = true }
+reifydb-store = { workspace = true }
 reifydb-value = { workspace = true }
 
 tracing = { workspace = true }
@@ -29,9 +31,5 @@ rusqlite = { workspace = true, features = ["bundled"], optional = true }
 [dev-dependencies]
 test_each_file = { workspace = true }
 reifydb-testing = { workspace = true }
-
-
-[[bench]]
-name = "buffer_memory_scan"
-harness = false
-path = "benches/buffer_memory_scan.rs"
+reifydb-testing-macro = { workspace = true }
+rand = { workspace = true }

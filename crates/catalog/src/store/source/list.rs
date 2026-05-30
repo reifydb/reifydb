@@ -9,7 +9,7 @@ use reifydb_core::{
 	},
 	key::source::SourceKey,
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use serde_json::from_str;
 
 use crate::{CatalogStore, Result, store::source::shape::source};
@@ -18,7 +18,7 @@ impl CatalogStore {
 	pub(crate) fn list_sources_all(rx: &mut Transaction<'_>) -> Result<Vec<Source>> {
 		let mut result = Vec::new();
 
-		let stream = rx.range(SourceKey::full_scan(), 1024)?;
+		let stream = rx.range(SourceKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let entry = entry?;

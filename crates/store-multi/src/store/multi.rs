@@ -17,25 +17,28 @@ use reifydb_core::{
 	event::metric::{MultiCommittedEvent, MultiDelete, MultiWrite},
 	interface::store::{
 		EntryKind, MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet,
-		MultiVersionGetPrevious, MultiVersionRow, MultiVersionStore,
+		MultiVersionGetPrevious, MultiVersionRow, MultiVersionStore, classify_key, classify_range,
+		is_single_version_semantics_key,
 	},
 };
+use reifydb_store::row::page::PageId;
 use reifydb_value::util::{cowvec::CowVec, hex};
 use tracing::{instrument, warn};
 
-use super::{
-	StandardMultiStore,
-	router::{classify_key, classify_range, is_single_version_semantics_key},
-};
+use super::StandardMultiStore;
 use crate::{
-	Result,
+	MultiVersionScope, Result,
 	tier::{
 		RangeBatch, RangeCursor, TierBatch, TierStorage, VersionedGetResult,
-		commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier,
+		commit::buffer::MultiCommitBufferTier,
+		persistent::MultiPersistentTier,
+		read::{MultiReadBufferTier, ServedChunk},
 	},
 };
 
 const TIER_SCAN_CHUNK_SIZE: usize = 32;
+
+pub(crate) const WARM_THRESHOLD: u64 = 4 * TIER_SCAN_CHUNK_SIZE as u64;
 
 impl MultiVersionGet for StandardMultiStore {
 	#[instrument(name = "store::multi::get", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref()), version = version.0))]
@@ -378,12 +381,6 @@ impl StandardMultiStore {
 			return Ok(());
 		}
 
-		if let Some(read) = &self.read {
-			for (_, key) in drops {
-				read.invalidate(key);
-			}
-		}
-
 		if let Some(commit) = &self.commit {
 			let mut batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
 			for (table, key) in drops {
@@ -406,6 +403,12 @@ impl StandardMultiStore {
 			}
 		}
 
+		if let Some(read) = &self.read {
+			for (_, key) in drops {
+				read.invalidate(key);
+			}
+		}
+
 		Ok(())
 	}
 
@@ -425,6 +428,10 @@ pub struct MultiVersionRangeCursor {
 	pub persistent: RangeCursor,
 
 	pub exhausted: bool,
+
+	warm_bucket: Option<PageId>,
+
+	warm_consumed: u64,
 }
 
 impl MultiVersionRangeCursor {
@@ -441,7 +448,7 @@ pub struct TierScanQuery<'a> {
 	pub table: EntryKind,
 	pub start: &'a [u8],
 	pub end: &'a [u8],
-	pub version: CommitVersion,
+	pub scope: MultiVersionScope,
 	pub range: &'a EncodedKeyRange,
 }
 
@@ -456,7 +463,7 @@ pub fn scan_tier_chunk<S: TierStorage>(
 		cursor,
 		Bound::Included(scan.start),
 		Bound::Included(scan.end),
-		scan.version,
+		scan.scope,
 		TIER_SCAN_CHUNK_SIZE,
 	)?;
 	merge_tier_batch(batch, scan.range, collected)
@@ -473,7 +480,7 @@ pub fn scan_tier_chunk_rev<S: TierStorage>(
 		cursor,
 		Bound::Included(scan.start),
 		Bound::Included(scan.end),
-		scan.version,
+		scan.scope,
 		TIER_SCAN_CHUNK_SIZE,
 	)?;
 	merge_tier_batch(batch, scan.range, collected)
@@ -560,7 +567,7 @@ pub fn scan_tiers_latest(
 	buffer: Option<&MultiCommitBufferTier>,
 	persistent: Option<&MultiPersistentTier>,
 	range: EncodedKeyRange,
-	version: CommitVersion,
+	scope: MultiVersionScope,
 	max_keys: usize,
 ) -> Result<MultiVersionBatch> {
 	let table = classify_key_range(&range);
@@ -569,7 +576,7 @@ pub fn scan_tiers_latest(
 		table,
 		start: &start,
 		end: &end,
-		version,
+		scope,
 		range: &range,
 	};
 
@@ -601,7 +608,7 @@ impl StandardMultiStore {
 		&self,
 		cursor: &mut MultiVersionRangeCursor,
 		range: EncodedKeyRange,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: u64,
 	) -> Result<MultiVersionBatch> {
 		if cursor.exhausted {
@@ -620,22 +627,26 @@ impl StandardMultiStore {
 			table,
 			start: &start,
 			end: &end,
-			version,
+			scope,
 			range: &range,
 		};
 
 		let mut collected: BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
 
 		while collected.len() < batch_size {
-			let progress = step_all_tiers(
-				self.commit.as_ref(),
-				&mut cursor.commit,
-				self.persistent.as_ref(),
-				&mut cursor.persistent,
-				&scan,
-				&mut collected,
-			)?;
-			if !progress {
+			let mut any_progress = false;
+
+			if let Some(commit) = &self.commit
+				&& !cursor.commit.exhausted
+			{
+				any_progress |= scan_tier_chunk(commit, &mut cursor.commit, &scan, &mut collected)?;
+			}
+
+			if self.persistent.is_some() && !cursor.persistent.exhausted {
+				any_progress |= self.step_persistent_cached(&scan, cursor, &mut collected, false)?;
+			}
+
+			if !any_progress {
 				cursor.exhausted = true;
 				break;
 			}
@@ -665,14 +676,14 @@ impl StandardMultiStore {
 	pub fn range(
 		&self,
 		range: EncodedKeyRange,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> MultiVersionRangeIter {
 		MultiVersionRangeIter {
 			store: self.clone(),
 			cursor: MultiVersionRangeCursor::new(),
 			range,
-			version,
+			scope,
 			batch_size,
 			current_batch: Vec::new(),
 			current_index: 0,
@@ -682,14 +693,14 @@ impl StandardMultiStore {
 	pub fn range_rev(
 		&self,
 		range: EncodedKeyRange,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> MultiVersionRangeRevIter {
 		MultiVersionRangeRevIter {
 			store: self.clone(),
 			cursor: MultiVersionRangeCursor::new(),
 			range,
-			version,
+			scope,
 			batch_size,
 			current_batch: Vec::new(),
 			current_index: 0,
@@ -700,7 +711,7 @@ impl StandardMultiStore {
 		&self,
 		cursor: &mut MultiVersionRangeCursor,
 		range: EncodedKeyRange,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: u64,
 	) -> Result<MultiVersionBatch> {
 		if cursor.exhausted {
@@ -719,7 +730,7 @@ impl StandardMultiStore {
 			table,
 			start: &start,
 			end: &end,
-			version,
+			scope,
 			range: &range,
 		};
 
@@ -734,11 +745,8 @@ impl StandardMultiStore {
 				any_progress |= scan_tier_chunk_rev(commit, &mut cursor.commit, &scan, &mut collected)?;
 			}
 
-			if let Some(persistent) = &self.persistent
-				&& !cursor.persistent.exhausted
-			{
-				any_progress |=
-					scan_tier_chunk_rev(persistent, &mut cursor.persistent, &scan, &mut collected)?;
+			if self.persistent.is_some() && !cursor.persistent.exhausted {
+				any_progress |= self.step_persistent_cached(&scan, cursor, &mut collected, true)?;
 			}
 
 			if !any_progress {
@@ -768,6 +776,109 @@ impl StandardMultiStore {
 			has_more,
 		})
 	}
+
+	fn step_persistent_cached(
+		&self,
+		scan: &TierScanQuery,
+		cursor: &mut MultiVersionRangeCursor,
+		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+		descending: bool,
+	) -> Result<bool> {
+		let Some(persistent) = &self.persistent else {
+			return Ok(false);
+		};
+
+		if let (Some(read), EntryKind::Source(_)) = (&self.read, scan.table) {
+			match read.serve_persistent_chunk(
+				scan.table,
+				&mut cursor.persistent,
+				scan.start,
+				scan.end,
+				scan.scope,
+				TIER_SCAN_CHUNK_SIZE,
+				descending,
+			) {
+				ServedChunk::Served(batch) => {
+					return merge_tier_batch(batch, scan.range, collected);
+				}
+				ServedChunk::Gap => {}
+			}
+		}
+
+		let batch = if descending {
+			persistent.range_rev_next(
+				scan.table,
+				&mut cursor.persistent,
+				Bound::Included(scan.start),
+				Bound::Included(scan.end),
+				scan.scope,
+				TIER_SCAN_CHUNK_SIZE,
+			)?
+		} else {
+			persistent.range_next(
+				scan.table,
+				&mut cursor.persistent,
+				Bound::Included(scan.start),
+				Bound::Included(scan.end),
+				scan.scope,
+				TIER_SCAN_CHUNK_SIZE,
+			)?
+		};
+		let consumed = batch.entries.len();
+		let progressed = merge_tier_batch(batch, scan.range, collected)?;
+
+		if let (Some(read), EntryKind::Source(_)) = (&self.read, scan.table) {
+			maybe_warm_bucket(read, persistent, cursor, scan.table, consumed)?;
+		}
+
+		Ok(progressed)
+	}
+}
+
+fn maybe_warm_bucket(
+	read: &MultiReadBufferTier,
+	persistent: &MultiPersistentTier,
+	cursor: &mut MultiVersionRangeCursor,
+	table: EntryKind,
+	consumed: usize,
+) -> Result<()> {
+	let page = {
+		let Some(last) = cursor.persistent.last_key.as_ref() else {
+			return Ok(());
+		};
+		read.page_of_key(last)
+	};
+	if !matches!(page.kind, EntryKind::Source(_)) {
+		return Ok(());
+	}
+
+	if cursor.warm_bucket == Some(page) {
+		cursor.warm_consumed = cursor.warm_consumed.saturating_add(consumed as u64);
+	} else {
+		cursor.warm_bucket = Some(page);
+		cursor.warm_consumed = consumed as u64;
+	}
+
+	if cursor.warm_consumed <= WARM_THRESHOLD {
+		return Ok(());
+	}
+
+	let Some(range) = read.page_key_range(page) else {
+		return Ok(());
+	};
+	let (Bound::Included(lo), Bound::Included(hi)) = (range.start, range.end) else {
+		return Ok(());
+	};
+	let entries = persistent.load_range_consistent(
+		table,
+		Bound::Included(lo.as_slice()),
+		Bound::Included(hi.as_slice()),
+		CommitVersion(u64::MAX),
+	)?;
+	read.populate_page(page, entries, true);
+	cursor.warm_bucket = None;
+	cursor.warm_consumed = 0;
+	Ok(())
 }
 
 fn mark_unconfigured_exhausted(store: &StandardMultiStore, cursor: &mut MultiVersionRangeCursor) {
@@ -852,26 +963,22 @@ fn reverse_horizon(cursor: &MultiVersionRangeCursor) -> Option<EncodedKey> {
 
 fn rewind_over_advanced_forward(cursor: &mut MultiVersionRangeCursor, horizon: &EncodedKey) {
 	for tier in [&mut cursor.commit, &mut cursor.persistent] {
-		if tier.exhausted {
-			continue;
-		}
 		if let Some(last) = &tier.last_key
 			&& last.as_slice() > horizon.as_slice()
 		{
 			tier.last_key = Some(horizon.clone());
+			tier.exhausted = false;
 		}
 	}
 }
 
 fn rewind_over_advanced_reverse(cursor: &mut MultiVersionRangeCursor, horizon: &EncodedKey) {
 	for tier in [&mut cursor.commit, &mut cursor.persistent] {
-		if tier.exhausted {
-			continue;
-		}
 		if let Some(last) = &tier.last_key
 			&& last.as_slice() < horizon.as_slice()
 		{
 			tier.last_key = Some(horizon.clone());
+			tier.exhausted = false;
 		}
 	}
 }
@@ -953,7 +1060,7 @@ pub struct MultiVersionRangeIter {
 	store: StandardMultiStore,
 	cursor: MultiVersionRangeCursor,
 	range: EncodedKeyRange,
-	version: CommitVersion,
+	scope: MultiVersionScope,
 	batch_size: usize,
 	current_batch: Vec<MultiVersionRow>,
 	current_index: usize,
@@ -973,8 +1080,7 @@ impl Iterator for MultiVersionRangeIter {
 			return None;
 		}
 
-		match self.store.range_next(&mut self.cursor, self.range.clone(), self.version, self.batch_size as u64)
-		{
+		match self.store.range_next(&mut self.cursor, self.range.clone(), self.scope, self.batch_size as u64) {
 			Ok(batch) => {
 				if batch.items.is_empty() {
 					if self.cursor.exhausted {
@@ -995,7 +1101,7 @@ pub struct MultiVersionRangeRevIter {
 	store: StandardMultiStore,
 	cursor: MultiVersionRangeCursor,
 	range: EncodedKeyRange,
-	version: CommitVersion,
+	scope: MultiVersionScope,
 	batch_size: usize,
 	current_batch: Vec<MultiVersionRow>,
 	current_index: usize,
@@ -1018,7 +1124,7 @@ impl Iterator for MultiVersionRangeRevIter {
 		match self.store.range_rev_next(
 			&mut self.cursor,
 			self.range.clone(),
-			self.version,
+			self.scope,
 			self.batch_size as u64,
 		) {
 			Ok(batch) => {
@@ -1055,4 +1161,114 @@ fn make_range_bounds(range: &EncodedKeyRange) -> (Vec<u8>, Vec<u8>) {
 	};
 
 	(start, end)
+}
+
+#[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
+mod cache_tests {
+	use std::collections::HashMap;
+
+	use reifydb_core::{
+		common::CommitVersion,
+		delta::Delta,
+		encoded::{key::EncodedKey, row::EncodedRow},
+		interface::{
+			catalog::{id::TableId, shape::ShapeId},
+			store::{EntryKind, MultiVersionCommit},
+		},
+		key::row::RowKey,
+	};
+	use reifydb_value::{cow_vec, util::cowvec::CowVec};
+
+	use crate::{
+		MultiVersionScope,
+		store::{StandardMultiStore, multi::WARM_THRESHOLD},
+		tier::{TierStorage, commit::buffer::MultiCommitBufferTier},
+	};
+
+	const SHAPE: ShapeId = ShapeId::Table(TableId(1));
+
+	fn commit_row(store: &StandardMultiStore, n: u64, version: u64) {
+		MultiVersionCommit::commit(
+			store,
+			cow_vec![Delta::Set {
+				key: RowKey::encoded(SHAPE, n),
+				row: EncodedRow(CowVec::new(format!("v{n}").into_bytes())),
+			}],
+			CommitVersion(version),
+		)
+		.unwrap();
+	}
+
+	fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
+		let commit = store.commit().expect("commit tier");
+		for kind in commit.list_all_entry_kinds().unwrap() {
+			let (to_persist, to_drop) = match commit {
+				MultiCommitBufferTier::Memory(s) => s.collect_evictable_below(kind, cutoff),
+			};
+			if to_drop.is_empty() {
+				continue;
+			}
+			if !to_persist.is_empty() {
+				let persistent = store.persistent().expect("persistent tier");
+				let mut by_version: HashMap<
+					CommitVersion,
+					HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>>,
+				> = HashMap::new();
+				for (key, version, value) in to_persist {
+					by_version
+						.entry(version)
+						.or_default()
+						.entry(kind)
+						.or_default()
+						.push((key, value));
+				}
+				for (version, batch) in by_version {
+					persistent.set(version, batch).unwrap();
+				}
+			}
+			for (key, _) in &to_drop {
+				store.invalidate_read_key(key);
+			}
+			commit.drop(HashMap::from([(kind, to_drop)])).unwrap();
+		}
+	}
+
+	#[test]
+	fn warm_threshold_warms_only_buckets_above_threshold() {
+		const HEAVY: u64 = WARM_THRESHOLD + 64;
+		const LIGHT: u64 = 20;
+		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+
+		for n in 1..=HEAVY {
+			commit_row(&store, n, 1);
+		}
+		for n in 0..LIGHT {
+			commit_row(&store, (1u64 << 16) + n, 1);
+		}
+		flush(&store, CommitVersion(1));
+
+		let read = store.read.clone().expect("read tier configured");
+		let heavy_bucket = read.page_of_key(&RowKey::encoded(SHAPE, 1));
+		let light_bucket = read.page_of_key(&RowKey::encoded(SHAPE, 1u64 << 16));
+		assert_ne!(heavy_bucket, light_bucket, "the two row groups must land in different buckets");
+		assert!(!read.page_is_complete(heavy_bucket), "nothing is warm before the scan");
+
+		let scanned = store
+			.range(
+				RowKey::full_scan(SHAPE),
+				MultiVersionScope::AsOf {
+					read: CommitVersion(10),
+				},
+				32,
+			)
+			.collect::<Result<Vec<_>, _>>()
+			.unwrap();
+		assert_eq!(scanned.len() as u64, HEAVY + LIGHT, "the scan returns every row regardless of warming");
+
+		assert!(read.page_is_complete(heavy_bucket), "a bucket scanned past the threshold must be warmed");
+		assert!(
+			!read.page_is_complete(light_bucket),
+			"a bucket scanned below the threshold must not be warmed"
+		);
+	}
 }

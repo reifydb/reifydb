@@ -1,43 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(test)]
 use reifydb_core::{
-	encoded::key::{EncodedKey, EncodedKeyRange},
-	interface::store::EntryKind,
-	key::{
-		EncodableKeyRange, Key, flow_node_internal_state::FlowNodeInternalStateKeyRange,
-		flow_node_state::FlowNodeStateKeyRange, kind::KeyKind, row::RowKeyRange,
-	},
+	encoded::key::EncodedKey,
+	interface::store::{EntryKind, classify_key, is_single_version_semantics_key},
 };
-
-pub fn classify_key(key: &EncodedKey) -> EntryKind {
-	match Key::decode(key) {
-		Some(Key::Row(row_key)) => EntryKind::Source(row_key.shape),
-		Some(Key::FlowNodeState(state_key)) => EntryKind::Operator(state_key.node),
-		Some(Key::FlowNodeInternalState(internal_key)) => EntryKind::Operator(internal_key.node),
-		_ => EntryKind::Multi,
-	}
-}
-
-pub fn is_single_version_semantics_key(key: &EncodedKey) -> bool {
-	Key::kind(key).is_some_and(|kind| matches!(kind, KeyKind::FlowNodeState | KeyKind::FlowNodeInternalState))
-}
-
-pub fn classify_range(range: &EncodedKeyRange) -> Option<EntryKind> {
-	if let (Some(start), Some(_end)) = RowKeyRange::decode(range) {
-		return Some(EntryKind::Source(start.shape));
-	}
-
-	if let (Some(start), Some(_end)) = FlowNodeStateKeyRange::decode(range) {
-		return Some(EntryKind::Operator(start.node));
-	}
-
-	if let (Some(start), Some(_end)) = FlowNodeInternalStateKeyRange::decode(range) {
-		return Some(EntryKind::Operator(start.node));
-	}
-
-	None
-}
 
 #[cfg(test)]
 pub mod tests {

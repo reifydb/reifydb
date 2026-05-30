@@ -19,10 +19,16 @@ cfg_if! {
 		type RwLockInnerImpl<T> = native::RwLockInner<T>;
 		type RwLockReadGuardInnerImpl<'a, T> = native::RwLockReadGuardInner<'a, T>;
 		type RwLockWriteGuardInnerImpl<'a, T> = native::RwLockWriteGuardInner<'a, T>;
+		type ArcRwLockInnerImpl<T> = native::ArcRwLockInner<T>;
+		type OwnedRwLockReadGuardInnerImpl<T> = native::OwnedRwLockReadGuardInner<T>;
+		type OwnedRwLockWriteGuardInnerImpl<T> = native::OwnedRwLockWriteGuardInner<T>;
 	} else {
 		type RwLockInnerImpl<T> = wasm::RwLockInner<T>;
 		type RwLockReadGuardInnerImpl<'a, T> = wasm::RwLockReadGuardInner<'a, T>;
 		type RwLockWriteGuardInnerImpl<'a, T> = wasm::RwLockWriteGuardInner<'a, T>;
+		type ArcRwLockInnerImpl<T> = wasm::ArcRwLockInner<T>;
+		type OwnedRwLockReadGuardInnerImpl<T> = wasm::OwnedRwLockReadGuardInner<T>;
+		type OwnedRwLockWriteGuardInnerImpl<T> = wasm::OwnedRwLockWriteGuardInner<T>;
 	}
 }
 
@@ -143,5 +149,79 @@ impl<'a, T: Debug> Debug for RwLockWriteGuard<'a, T> {
 	#[inline]
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		(**self).fmt(f)
+	}
+}
+
+pub struct ArcRwLock<T> {
+	inner: ArcRwLockInnerImpl<T>,
+}
+
+impl<T> Clone for ArcRwLock<T> {
+	#[inline]
+	fn clone(&self) -> Self {
+		Self {
+			inner: self.inner.clone(),
+		}
+	}
+}
+
+#[cfg(reifydb_single_threaded)]
+unsafe impl<T> Send for ArcRwLock<T> {}
+#[cfg(reifydb_single_threaded)]
+unsafe impl<T> Sync for ArcRwLock<T> {}
+
+impl<T: 'static> ArcRwLock<T> {
+	#[inline]
+	pub fn new(value: T) -> Self {
+		Self {
+			inner: ArcRwLockInnerImpl::new(value),
+		}
+	}
+
+	#[inline]
+	pub fn read(&self) -> OwnedRwLockReadGuard<T> {
+		OwnedRwLockReadGuard {
+			inner: self.inner.read(),
+		}
+	}
+
+	#[inline]
+	pub fn write(&self) -> OwnedRwLockWriteGuard<T> {
+		OwnedRwLockWriteGuard {
+			inner: self.inner.write(),
+		}
+	}
+}
+
+pub struct OwnedRwLockReadGuard<T: 'static> {
+	inner: OwnedRwLockReadGuardInnerImpl<T>,
+}
+
+impl<T: 'static> Deref for OwnedRwLockReadGuard<T> {
+	type Target = T;
+
+	#[inline]
+	fn deref(&self) -> &T {
+		&self.inner
+	}
+}
+
+pub struct OwnedRwLockWriteGuard<T: 'static> {
+	inner: OwnedRwLockWriteGuardInnerImpl<T>,
+}
+
+impl<T: 'static> Deref for OwnedRwLockWriteGuard<T> {
+	type Target = T;
+
+	#[inline]
+	fn deref(&self) -> &T {
+		&self.inner
+	}
+}
+
+impl<T: 'static> DerefMut for OwnedRwLockWriteGuard<T> {
+	#[inline]
+	fn deref_mut(&mut self) -> &mut T {
+		&mut self.inner
 	}
 }

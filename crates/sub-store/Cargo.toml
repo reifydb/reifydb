@@ -1,0 +1,40 @@
+[package]
+name = "reifydb-sub-store"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "General storage subsystem for ReifyDB."
+
+[build-dependencies]
+reifydb-build = { workspace = true }
+
+[dependencies]
+dashmap = { workspace = true, optional = true }
+reifydb-catalog = { workspace = true, optional = true }
+reifydb-column = { workspace = true, optional = true }
+reifydb-core = { workspace = true }
+reifydb-engine = { workspace = true, optional = true }
+reifydb-runtime = { workspace = true }
+reifydb-sub-api = { workspace = true }
+reifydb-transaction = { workspace = true, optional = true }
+reifydb-value = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true, optional = true }
+tracing = { workspace = true }
+
+[features]
+default = []
+column = [
+	"dep:dashmap",
+	"dep:reifydb-catalog",
+	"dep:reifydb-column",
+	"dep:reifydb-engine",
+	"dep:reifydb-transaction",
+	"dep:thiserror",
+]
+
+[dev-dependencies]
+reifydb = { workspace = true }
+tracing-subscriber = { workspace = true }

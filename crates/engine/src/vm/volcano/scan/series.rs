@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
+	common::CommitVersion,
 	encoded::key::EncodedKey,
 	interface::resolved::ResolvedSeries,
 	key::{
@@ -12,7 +13,7 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,
 	value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType},
@@ -36,9 +37,16 @@ pub struct SeriesScanNode {
 	headers: ColumnHeaders,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
+
+	min_commit_version: Option<CommitVersion>,
 }
 
 impl SeriesScanNode {
+	pub fn with_min_commit_version(mut self, min_commit_version: Option<CommitVersion>) -> Self {
+		self.min_commit_version = min_commit_version;
+		self
+	}
+
 	pub fn new(
 		series: ResolvedSeries,
 		key_range_start: Option<u64>,
@@ -66,6 +74,7 @@ impl SeriesScanNode {
 			headers,
 			last_key: None,
 			exhausted: false,
+			min_commit_version: None,
 		})
 	}
 }
@@ -107,7 +116,12 @@ impl QueryNode for SeriesScanNode {
 
 		let read_shape = get_or_create_series_shape(&stored_ctx.services.catalog, self.series.def(), rx)?;
 
-		let mut stream = rx.range(range, batch_size as usize)?;
+		let scope = match self.min_commit_version {
+			Some(v) => RangeScope::After(v),
+			None => RangeScope::All,
+		};
+
+		let mut stream = rx.range(range, scope, batch_size as usize)?;
 		let mut count = 0;
 
 		for entry in stream.by_ref() {

@@ -9,7 +9,7 @@ use reifydb_core::{
 	},
 	key::{namespace_source::NamespaceSourceKey, source::SourceKey},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use serde_json::from_str;
 
 use crate::{
@@ -53,7 +53,7 @@ impl CatalogStore {
 		name: impl AsRef<str>,
 	) -> Result<Option<Source>> {
 		let name = name.as_ref();
-		let mut stream = rx.range(NamespaceSourceKey::full_scan(namespace), 1024)?;
+		let mut stream = rx.range(NamespaceSourceKey::full_scan(namespace), RangeScope::All, 1024)?;
 
 		let mut found_source = None;
 		for entry in stream.by_ref() {

@@ -17,9 +17,9 @@ use reifydb_core::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
 	},
-	interface::store::{EntryKind, MultiVersionCommit, MultiVersionGet},
+	interface::store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 };
-use reifydb_store_multi::store::{StandardMultiStore, router::classify_key};
+use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore};
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
 fn key(s: &str) -> EncodedKey {
@@ -120,12 +120,18 @@ fn buffer_shadows_cache_for_freshly_committed_keys() {
 
 /// Drain a forward range scan into (key, value) pairs at the given snapshot.
 fn scan(store: &StandardMultiStore, version: u64) -> Vec<(Vec<u8>, Vec<u8>)> {
-	store.range(EncodedKeyRange::all(), CommitVersion(version), 1024)
-		.collect::<Result<Vec<_>, _>>()
-		.unwrap()
-		.into_iter()
-		.map(|r| (r.key.to_vec(), r.row.to_vec()))
-		.collect()
+	store.range(
+		EncodedKeyRange::all(),
+		MultiVersionScope::AsOf {
+			read: CommitVersion(version),
+		},
+		1024,
+	)
+	.collect::<Result<Vec<_>, _>>()
+	.unwrap()
+	.into_iter()
+	.map(|r| (r.key.to_vec(), r.row.to_vec()))
+	.collect()
 }
 
 #[test]

@@ -7,7 +7,7 @@ use std::{
 		atomic::{AtomicBool, AtomicUsize, Ordering},
 	},
 	thread::sleep,
-	time::Duration,
+	time::{Duration, Instant},
 };
 
 use reifydb_cdc::consume::{
@@ -132,7 +132,7 @@ fn test_checkpoint_persistence() {
 		PollConsumer::new(config, t.inner().clone(), consumer, cdc_store.clone(), runtime.clone());
 
 	test_instance.start().expect("Failed to start consumer");
-	sleep(Duration::from_millis(150));
+	await_until("first run processes 3", || consumer_clone.get_total_changes() >= 3);
 	test_instance.stop().expect("Failed to stop consumer");
 
 	let changes_first_run = consumer_clone.get_total_changes();
@@ -149,7 +149,7 @@ fn test_checkpoint_persistence() {
 	let mut test_instance2 = PollConsumer::new(config2, t.inner().clone(), consumer2, cdc_store, runtime2);
 
 	test_instance2.start().expect("Failed to start consumer");
-	sleep(Duration::from_millis(150));
+	await_until("second run processes 2 new", || consumer2_clone.get_total_changes() >= 2);
 	test_instance2.stop().expect("Failed to stop consumer");
 
 	let changes_second_run = consumer2_clone.get_total_changes();
@@ -770,6 +770,20 @@ impl CdcConsume for TestConsumer {
 		self.process_count.fetch_add(1, Ordering::SeqCst);
 		(reply)(Ok(()));
 	}
+}
+
+const POLL_TIMEOUT: Duration = Duration::from_secs(5);
+const POLL_INTERVAL: Duration = Duration::from_millis(10);
+
+fn await_until<F: Fn() -> bool>(label: &str, check: F) {
+	let deadline = Instant::now() + POLL_TIMEOUT;
+	while Instant::now() < deadline {
+		if check() {
+			return;
+		}
+		sleep(POLL_INTERVAL);
+	}
+	panic!("await_until({label}) timed out after {POLL_TIMEOUT:?}");
 }
 
 fn insert_test_events(engine: &StandardEngine, count: usize) {

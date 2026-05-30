@@ -33,7 +33,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::{
 		catalog::{id::TableId, shape::ShapeId},
-		store::{EntryKind, MultiVersionCommit, MultiVersionGet},
+		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 	},
 	key::row::RowKey,
 	row::TtlAnchor,
@@ -44,10 +44,11 @@ use reifydb_runtime::{
 	pool::{PoolConfig, Pools},
 };
 use reifydb_store_multi::{
+	MultiVersionScope,
 	config::{CommitBufferConfig, MultiStoreConfig, PersistentConfig},
 	flush::ShapePersistence,
 	gc::EvictionWatermark,
-	store::{StandardMultiStore, router::classify_key},
+	store::StandardMultiStore,
 	tier::{TierStorage, VersionedGetResult, commit::buffer::MultiCommitBufferTier},
 };
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
@@ -103,12 +104,18 @@ fn get(store: &StandardMultiStore, k: &EncodedKey, version: u64) -> Option<Vec<u
 }
 
 fn scan_keys(store: &StandardMultiStore, version: u64) -> Vec<(Vec<u8>, Vec<u8>)> {
-	store.range(RowKey::full_scan(SHAPE), CommitVersion(version), 1024)
-		.collect::<Result<Vec<_>, _>>()
-		.unwrap()
-		.into_iter()
-		.map(|r| (r.key.to_vec(), r.row.to_vec()))
-		.collect()
+	store.range(
+		RowKey::full_scan(SHAPE),
+		MultiVersionScope::AsOf {
+			read: CommitVersion(version),
+		},
+		1024,
+	)
+	.collect::<Result<Vec<_>, _>>()
+	.unwrap()
+	.into_iter()
+	.map(|r| (r.key.to_vec(), r.row.to_vec()))
+	.collect()
 }
 
 /// Deterministic stand-in for FlushActor::sweep: collects evictable-below-W per entry kind, persists the

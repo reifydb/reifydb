@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{interface::catalog::authentication::Authentication, key::authentication::AuthenticationKey};
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::identity::IdentityId;
 
 use crate::{
@@ -13,7 +13,7 @@ use crate::{
 impl CatalogStore {
 	pub(crate) fn list_all_authentications(rx: &mut Transaction<'_>) -> Result<Vec<Authentication>> {
 		let mut result = Vec::new();
-		let stream = rx.range(AuthenticationKey::full_scan(), 1024)?;
+		let stream = rx.range(AuthenticationKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let multi = entry?;
@@ -29,7 +29,7 @@ impl CatalogStore {
 		identity: IdentityId,
 	) -> Result<Vec<Authentication>> {
 		let mut result = Vec::new();
-		let stream = rx.range(AuthenticationKey::full_scan(), 1024)?;
+		let stream = rx.range(AuthenticationKey::full_scan(), RangeScope::All, 1024)?;
 
 		for entry in stream {
 			let multi = entry?;

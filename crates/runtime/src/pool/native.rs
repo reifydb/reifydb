@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	future::Future,
-	sync::Arc,
-	time::Duration,
-};
+use std::{future::Future, sync::Arc, time::Duration};
 
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use tokio::{

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::key::{Key, procedure::ProcedureKey};
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use super::CatalogCache;
 use crate::{CatalogStore, Result};
@@ -10,7 +10,7 @@ use crate::{CatalogStore, Result};
 pub(crate) fn load_procedures(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let mut entries = Vec::new();
 	{
-		let stream = rx.range(ProcedureKey::full_scan(), 1024)?;
+		let stream = rx.range(ProcedureKey::full_scan(), RangeScope::All, 1024)?;
 		for entry in stream {
 			let entry = entry?;
 			let version = entry.version;

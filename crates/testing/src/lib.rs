@@ -14,6 +14,8 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
+extern crate self as reifydb_testing;
+
 pub mod chaos;
 pub mod goldenfile;
 pub mod network;

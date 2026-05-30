@@ -18,7 +18,7 @@ use reifydb_sdk::testing::chaos::{
 	schema::KeyStrategy,
 	strategy::samplers,
 };
-use reifydb_testing::chaos_test;
+use reifydb_testing_macro::chaos_test;
 
 use super::common::{SwallowsRemoveOperator, passthrough_oracle, simple_kv_shape};
 

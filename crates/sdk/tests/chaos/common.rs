@@ -3,8 +3,6 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
-
 use reifydb_abi::{data::column::ColumnTypeCode, flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_core::{
 	encoded::shape::{RowShape, RowShapeField},
@@ -24,7 +22,7 @@ use reifydb_sdk::{
 		context::ChaosContext, event::ChaosBatch, materialize::materialize_batches, oracle::MaterializedTable,
 	},
 };
-use reifydb_value::value::{Value, row_number::RowNumber, value_type::ValueType};
+use reifydb_value::value::{row_number::RowNumber, value_type::ValueType};
 
 /// Operator that echoes every input diff back unchanged through
 /// `ctx.builder()`. Modeled on `tests/ffi/common.rs:39-106`. Used by every

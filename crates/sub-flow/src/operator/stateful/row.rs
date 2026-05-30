@@ -9,6 +9,7 @@ use reifydb_core::{
 	util::encoding::keycode::serializer::KeySerializer,
 };
 use reifydb_sdk::state::{decode_payload, encode_payload};
+use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{Result, value::row_number::RowNumber};
 
 use crate::{
@@ -108,7 +109,7 @@ impl RowNumberProvider {
 		let full_range = EncodedKeyRange::prefix(&state_prefix.encode());
 
 		let keys_to_remove = {
-			let stream = txn.range(full_range, 1024);
+			let stream = txn.range(full_range, RangeScope::All, 1024);
 			let mut keys = Vec::new();
 			for result in stream {
 				let multi = result?;

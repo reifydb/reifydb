@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::mem::{take, transmute};
+use std::mem::take;
 
 use indexmap::IndexMap;
 use reifydb_core::interface::store::{SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRow};
-use reifydb_runtime::sync::rwlock::{RwLock, RwLockWriteGuard};
+use reifydb_runtime::sync::rwlock::{ArcRwLock, OwnedRwLockWriteGuard};
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sub_raft::message::Command;
 use reifydb_value::{
@@ -17,21 +17,13 @@ use super::*;
 use crate::error::TransactionError;
 
 pub struct KeyWriteLock {
-	pub(super) _guard: RwLockWriteGuard<'static, ()>,
-	pub(super) _arc: Arc<RwLock<()>>,
+	pub(super) _guard: OwnedRwLockWriteGuard<()>,
 }
 
 impl KeyWriteLock {
-	pub(super) fn new(arc: Arc<RwLock<()>>) -> Self {
-		let guard = arc.write();
-
-		// SAFETY: We're extending the guard's lifetime to 'static.
-
-		let guard = unsafe { transmute::<RwLockWriteGuard<'_, ()>, RwLockWriteGuard<'static, ()>>(guard) };
-
+	pub(super) fn new(lock: ArcRwLock<()>) -> Self {
 		Self {
-			_arc: arc,
-			_guard: guard,
+			_guard: lock.write(),
 		}
 	}
 }

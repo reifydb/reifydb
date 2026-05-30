@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use reifydb_testing::chaos_test;
+use reifydb_testing_macro::chaos_test;
 
 #[allow(dead_code)]
 #[path = "simulation/simulator/mod.rs"]

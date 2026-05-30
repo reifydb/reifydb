@@ -93,6 +93,7 @@ pub mod tests {
 		key::namespace_handler::NamespaceHandlerKey,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_transaction::multi::RangeScope;
 	use reifydb_value::{
 		fragment::Fragment,
 		value::sumtype::{SumTypeId, VariantRef},
@@ -159,7 +160,7 @@ pub mod tests {
 		CatalogStore::create_handler(&mut txn, to_create).unwrap(); // HandlerId(16386)
 
 		let links: Vec<_> = txn
-			.range(NamespaceHandlerKey::full_scan(namespace.id()), 1024)
+			.range(NamespaceHandlerKey::full_scan(namespace.id()), RangeScope::All, 1024)
 			.unwrap()
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap();

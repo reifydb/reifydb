@@ -7,7 +7,9 @@ use reifydb_value::value::{decimal::Decimal, value_type::ValueType};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
+#[cfg(reifydb_assertions)]
 const MODE_DYNAMIC: u128 = 0x80000000000000000000000000000000;
+#[cfg(reifydb_assertions)]
 const MODE_MASK: u128 = 0x80000000000000000000000000000000;
 
 const DYNAMIC_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF;
@@ -15,7 +17,16 @@ const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
 
 impl RowShape {
 	pub fn set_decimal(&self, row: &mut EncodedRow, index: usize, value: &Decimal) {
-		debug_assert!(matches!(self.fields()[index].constraint.get_type().inner_type(), ValueType::Decimal));
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				row.len() >= self.total_static_size(),
+				"row/shape size mismatch: row.len()={} < total_static_size()={}",
+				row.len(),
+				self.total_static_size()
+			);
+			assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), ValueType::Decimal);
+		}
 
 		let (mantissa, original_scale) = value.inner().as_bigint_and_exponent();
 		let scale_bytes = original_scale.to_le_bytes();
@@ -30,12 +41,24 @@ impl RowShape {
 
 	pub fn get_decimal(&self, row: &EncodedRow, index: usize) -> Decimal {
 		let field = &self.fields()[index];
-		debug_assert!(matches!(field.constraint.get_type().inner_type(), ValueType::Decimal));
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				row.len() >= self.total_static_size(),
+				"row/shape size mismatch: row.len()={} < total_static_size()={}",
+				row.len(),
+				self.total_static_size()
+			);
+			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Decimal);
+		}
 
 		let packed = unsafe { (row.as_ptr().add(field.offset as usize) as *const u128).read_unaligned() };
 		let packed = u128::from_le(packed);
 
-		debug_assert!(packed & MODE_MASK == MODE_DYNAMIC, "Expected dynamic storage");
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(packed & MODE_MASK == MODE_DYNAMIC, "Expected dynamic storage");
+		}
 
 		let offset = (packed & DYNAMIC_OFFSET_MASK) as usize;
 		let length = ((packed & DYNAMIC_LENGTH_MASK) >> 64) as usize;

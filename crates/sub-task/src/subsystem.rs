@@ -46,8 +46,7 @@ impl TaskSubsystem {
 	#[instrument(name = "task::subsystem::new", level = "debug", skip(ioc, initial_tasks))]
 	pub fn new(ioc: &IocContainer, initial_tasks: Vec<ScheduledTask>) -> Self {
 		let clock = ioc.resolve::<Clock>().expect("Clock not registered in IoC");
-		let handle_tokio =
-			ioc.resolve::<Handle>().expect("tokio::runtime::Handle not registered in IoC");
+		let handle_tokio = ioc.resolve::<Handle>().expect("tokio::runtime::Handle not registered in IoC");
 		let engine = ioc.resolve::<StandardEngine>().expect("StandardEngine not registered in IoC");
 		let registry: TaskRegistry = Arc::new(DashMap::new());
 

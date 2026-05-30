@@ -5,14 +5,14 @@ use reifydb_core::key::{
 	EncodableKey,
 	retention_strategy::{ShapeRetentionStrategyKey, ShapeRetentionStrategyKeyRange},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use super::CatalogCache;
 use crate::{Result, store::retention_strategy::decode_retention_strategy};
 
 pub(crate) fn load_shape_retention_strategies(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = ShapeRetentionStrategyKeyRange::full_scan();
-	let stream = rx.range(range, 1024)?;
+	let stream = rx.range(range, RangeScope::All, 1024)?;
 
 	for entry in stream {
 		let multi = entry?;

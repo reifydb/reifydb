@@ -2558,7 +2558,6 @@ dependencies = [
  "reifydb-store-multi",
  "reifydb-store-single",
  "reifydb-sub-api",
- "reifydb-sub-column",
  "reifydb-sub-flow",
  "reifydb-sub-metric",
  "reifydb-sub-profiler",
@@ -2571,6 +2570,7 @@ dependencies = [
  "reifydb-sub-server-http",
  "reifydb-sub-server-otel",
  "reifydb-sub-server-ws",
+ "reifydb-sub-store",
  "reifydb-sub-subscription",
  "reifydb-sub-task",
  "reifydb-sub-tracing",
@@ -2979,6 +2979,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-testing",
+ "reifydb-testing-macro",
  "reifydb-value",
  "serde",
  "tracing",
@@ -3006,14 +3007,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-store"
+version = "0.6.0"
+dependencies = [
+ "reifydb-core",
+ "reifydb-value",
+]
+
+[[package]]
 name = "reifydb-store-multi"
 version = "0.6.0"
 dependencies = [
+ "rand 0.10.1",
  "reifydb-build",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-sqlite",
+ "reifydb-store",
  "reifydb-testing",
+ "reifydb-testing-macro",
  "reifydb-value",
  "rusqlite",
  "test_each_file",
@@ -3046,26 +3058,6 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-transaction",
  "reifydb-value",
-]
-
-[[package]]
-name = "reifydb-sub-column"
-version = "0.6.0"
-dependencies = [
- "reifydb",
- "reifydb-build",
- "reifydb-catalog",
- "reifydb-column",
- "reifydb-core",
- "reifydb-engine",
- "reifydb-runtime",
- "reifydb-sub-api",
- "reifydb-transaction",
- "reifydb-value",
- "serde",
- "thiserror 2.0.18",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -3349,6 +3341,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-sub-store"
+version = "0.6.0"
+dependencies = [
+ "dashmap",
+ "reifydb",
+ "reifydb-build",
+ "reifydb-catalog",
+ "reifydb-column",
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-runtime",
+ "reifydb-sub-api",
+ "reifydb-transaction",
+ "reifydb-value",
+ "serde",
+ "thiserror 2.0.18",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "reifydb-sub-subscription"
 version = "0.6.0"
 dependencies = [
@@ -3424,11 +3437,16 @@ version = "0.6.0"
 dependencies = [
  "reifydb-core",
  "reifydb-runtime",
+ "reifydb-testing-macro",
  "reifydb-value",
  "test_each_file",
  "tokio",
  "uuid",
 ]
+
+[[package]]
+name = "reifydb-testing-macro"
+version = "0.6.0"
 
 [[package]]
 name = "reifydb-transaction"
@@ -3446,6 +3464,7 @@ dependencies = [
  "reifydb-store-single",
  "reifydb-sub-raft",
  "reifydb-testing",
+ "reifydb-testing-macro",
  "reifydb-value",
  "test_each_file",
  "thiserror 2.0.18",

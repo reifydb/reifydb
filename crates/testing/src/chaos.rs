@@ -1,95 +1,60 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(target_os = "linux")]
+use std::fs;
 use std::{
 	collections::hash_map::{DefaultHasher, RandomState},
 	env,
-	fs,
 	hash::{BuildHasher, Hash, Hasher},
 	panic::{self, AssertUnwindSafe},
+	sync::LazyLock,
 };
 
-const DEFAULT_ITERATIONS: u64 = 100;
+static PROCESS_BASE_SEED: LazyLock<u64> = LazyLock::new(random_base_seed);
 
-pub struct Chaos {
-	name: String,
-	iterations: u64,
-	base_seed: u64,
+pub fn run_iteration(name: &str, index: u64, body: fn(u64)) {
+	let seed = iteration_seed(index);
+	#[cfg(target_os = "linux")]
+	let fds_before = open_fd_count();
+	let outcome = panic::catch_unwind(AssertUnwindSafe(|| body(seed)));
+	if let Err(payload) = outcome {
+		report_failure(name, index, seed);
+		panic::resume_unwind(payload);
+	}
+	#[cfg(target_os = "linux")]
+	assert_no_fd_leak(name, index, seed, fds_before);
 }
 
-pub fn chaos(name: impl Into<String>) -> Chaos {
-	Chaos {
-		name: name.into(),
-		iterations: env_iterations().unwrap_or(DEFAULT_ITERATIONS),
-		base_seed: env_seed().unwrap_or_else(random_base_seed),
-	}
+#[cfg(target_os = "linux")]
+fn open_fd_count() -> usize {
+	fs::read_dir("/proc/self/fd").map(|d| d.count()).unwrap_or(0)
 }
 
-impl Chaos {
-	pub fn iterations(mut self, iterations: u64) -> Self {
-		self.iterations = iterations;
-		self
-	}
-
-	pub fn seed(mut self, base_seed: u64) -> Self {
-		self.base_seed = base_seed;
-		self
-	}
-
-	pub fn run(self, body: impl Fn(u64)) {
-		eprintln!("chaos \"{}\": {} iterations, base seed {}", self.name, self.iterations, self.base_seed);
-
-		#[cfg(target_os = "linux")]
-		let mut fd_baseline: Option<usize> = None;
-		for i in 0..self.iterations {
-			let seed = derive_seed(self.base_seed, i);
-			let result = panic::catch_unwind(AssertUnwindSafe(|| body(seed)));
-			if let Err(payload) = result {
-				eprintln!(
-					"\nchaos \"{}\" FAILED on iteration {} of {}\n  base seed:      {}\n  iteration seed: {}\n  reproduce:      make test-chaos SEED={} N={}",
-					self.name,
-					i,
-					self.iterations,
-					self.base_seed,
-					seed,
-					self.base_seed,
-					self.iterations
-				);
-				panic::resume_unwind(payload);
-			}
-			#[cfg(target_os = "linux")]
-			{
-				const FD_SLACK: usize = 64;
-				let fds = fs::read_dir("/proc/self/fd").map(|d| d.count()).unwrap_or(0);
-				match fd_baseline {
-					None => fd_baseline = Some(fds),
-					Some(base) => assert!(
-						fds <= base + FD_SLACK,
-						"chaos \"{}\": open file descriptors grew from {} (after iteration 0) to {} by \
-						 iteration {} (slack {}); a database lifecycle is leaking fds, the \
-						 SQLITE_CANTOPEN failure mode (reproduce: make test-chaos SEED={} N={})",
-						self.name,
-						base,
-						fds,
-						i,
-						FD_SLACK,
-						self.base_seed,
-						self.iterations
-					),
-				}
-			}
-		}
-	}
+#[cfg(target_os = "linux")]
+fn assert_no_fd_leak(name: &str, index: u64, seed: u64, fds_before: usize) {
+	const FD_SLACK: usize = 64;
+	let fds_after = open_fd_count();
+	assert!(
+		fds_after <= fds_before + FD_SLACK,
+		"chaos \"{name}\" iteration {index}: open file descriptors grew from {fds_before} to {fds_after} (slack \
+		 {FD_SLACK}) across one iteration; a database lifecycle is leaking fds, the SQLITE_CANTOPEN failure mode \
+		 (reproduce: make test-chaos SEED={seed} FILTER={name}_{index})"
+	);
 }
 
-#[macro_export]
-macro_rules! chaos_test {
-	($name:ident, |$seed:ident| $body:block) => {
-		#[test]
-		fn $name() {
-			$crate::chaos::chaos(stringify!($name)).run(|$seed: u64| $body);
-		}
-	};
+fn iteration_seed(index: u64) -> u64 {
+	resolve_seed(env_seed(), *PROCESS_BASE_SEED, index)
+}
+
+fn resolve_seed(pinned: Option<u64>, base: u64, index: u64) -> u64 {
+	pinned.unwrap_or_else(|| derive_seed(base, index))
+}
+
+fn report_failure(name: &str, index: u64, seed: u64) {
+	eprintln!(
+		"\nchaos \"{name}\" iteration {index} FAILED\n  seed:      {seed}\n  reproduce: make test-chaos SEED={seed} FILTER={name}_{index}"
+	);
 }
 
 fn derive_seed(base: u64, salt: u64) -> u64 {
@@ -103,37 +68,30 @@ fn random_base_seed() -> u64 {
 	RandomState::new().build_hasher().finish()
 }
 
-fn env_iterations() -> Option<u64> {
-	env::var("CHAOS_ITERATIONS").ok().and_then(|s| s.trim().parse::<u64>().ok())
-}
-
 fn env_seed() -> Option<u64> {
 	env::var("CHAOS_SEED").ok().and_then(|s| s.trim().parse::<u64>().ok())
 }
 
 #[cfg(test)]
 mod tests {
-	use std::{
-		panic::{AssertUnwindSafe, catch_unwind},
-		sync::atomic::{AtomicU64, Ordering},
-	};
+	use reifydb_testing_macro::chaos_test;
 
-	use super::{chaos, derive_seed};
+	use super::{derive_seed, resolve_seed};
 
-	// The macro must expand to a real `#[test] fn` that runs the body with
-	// the iteration seed. If expansion breaks (wrong path, hygiene), this
-	// fails to compile; if the seed is not threaded, the arithmetic check
-	// would still hold, so the value here is the compile-time guard plus
-	// proof the body executes under the runner.
-	chaos_test!(macro_expands_to_a_runnable_test, |seed| {
+	// The macro must expand to real `#[test] fn`s, one per index, each running
+	// the body with its iteration seed. An explicit count (3-arg form) pins this
+	// self-test to 3 generated cases regardless of CHAOS_ITERATIONS. If expansion
+	// breaks (wrong path, hygiene, or proc-macro wiring) this fails to compile;
+	// the arithmetic on `seed` proves the seed is threaded into the body.
+	chaos_test!(macro_expands_to_a_runnable_test, 3, |seed| {
 		assert_eq!(seed.wrapping_mul(2), seed.wrapping_add(seed));
 	});
 
 	#[test]
 	fn derive_seed_is_deterministic_and_decorrelated() {
 		// Same inputs hash identically; changing base or salt changes the
-		// stream. Reproduction relies on this: a fixed base seed replays
-		// the exact same iteration-seed sequence.
+		// stream. Reproduction relies on this: a fixed base seed replays the
+		// exact same per-index seed.
 		assert_eq!(derive_seed(1, 1), derive_seed(1, 1));
 		assert_ne!(derive_seed(1, 1), derive_seed(1, 2));
 		assert_ne!(derive_seed(1, 1), derive_seed(2, 1));
@@ -141,8 +99,8 @@ mod tests {
 
 	#[test]
 	fn derived_iteration_seeds_are_distinct() {
-		// Across a long run, no two iterations should share a seed, or
-		// the run would be silently re-exploring the same point.
+		// Across many indices from one base, no two iterations should share a
+		// seed, or the suite would silently re-explore the same point.
 		let mut seeds: Vec<u64> = (0..1000u64).map(|i| derive_seed(42, i)).collect();
 		let total = seeds.len();
 		seeds.sort_unstable();
@@ -151,53 +109,24 @@ mod tests {
 	}
 
 	#[test]
-	fn passing_body_runs_exactly_iterations_times() {
-		// A body that never panics is invoked once per iteration.
-		let count = AtomicU64::new(0);
-		chaos("passing").seed(7).iterations(50).run(|_seed| {
-			count.fetch_add(1, Ordering::SeqCst);
-		});
-		assert_eq!(count.load(Ordering::SeqCst), 50);
+	fn pinned_seed_reproduces_exactly() {
+		// With CHAOS_SEED set, every index resolves to that exact seed, so a
+		// reported failure replays by pinning the printed value - regardless
+		// of which index originally ran it.
+		assert_eq!(resolve_seed(Some(42), 7, 3), 42);
+		assert_eq!(resolve_seed(Some(42), 0, 0), 42);
+		assert_eq!(resolve_seed(Some(42), 999, 31), 42);
 	}
 
 	#[test]
-	#[should_panic(expected = "boom")]
-	fn failing_iteration_is_caught_and_reraised_with_original_payload() {
-		// The body panics on the seed for iteration 3. The runner must
-		// catch it and re-raise the original payload so the test still
-		// fails with "boom" (not a wrapped message).
-		let target = derive_seed(123, 3);
-		chaos("failing").seed(123).iterations(100).run(move |seed| {
-			if seed == target {
-				panic!("boom");
-			}
-		});
-	}
-
-	#[test]
-	fn fixed_base_seed_stops_on_the_same_iteration() {
-		// Reproduction contract: re-running with the same base seed fails
-		// on the same iteration. invocations_until_panic counts how many
-		// times the body ran before the runner re-raised; that count is
-		// (failing index + 1) and must be stable across runs.
-		let target = derive_seed(999, 17);
-		let first = invocations_until_panic(999, target);
-		let second = invocations_until_panic(999, target);
-		assert_eq!(first, 18, "should panic on iteration index 17 (18th invocation)");
-		assert_eq!(first, second, "same base seed must stop on the same iteration");
-	}
-
-	fn invocations_until_panic(base: u64, target: u64) -> u64 {
-		let count = AtomicU64::new(0);
-		let outcome = catch_unwind(AssertUnwindSafe(|| {
-			chaos("probe").seed(base).iterations(100).run(|seed| {
-				count.fetch_add(1, Ordering::SeqCst);
-				if seed == target {
-					panic!("probe hit");
-				}
-			});
-		}));
-		assert!(outcome.is_err(), "expected the probe to hit its target seed within the run");
-		count.load(Ordering::SeqCst)
+	fn unpinned_seed_is_per_index_and_per_base() {
+		// Without a pin, each index derives a distinct seed from the base,
+		// and a different base yields a different seed for the same index.
+		// The latter is the deterministic core of "different seeds every
+		// run": random_base_seed() supplies a fresh base per run, so the
+		// same-named test explores a new seed each time.
+		assert_eq!(resolve_seed(None, 7, 3), derive_seed(7, 3));
+		assert_ne!(resolve_seed(None, 7, 3), resolve_seed(None, 7, 4));
+		assert_ne!(resolve_seed(None, 7, 3), resolve_seed(None, 8, 3));
 	}
 }

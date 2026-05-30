@@ -15,6 +15,7 @@ use reifydb_core::{
 	},
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
 };
+use reifydb_transaction::multi::RangeScope;
 use reifydb_value::Result;
 use tracing::{Span, field, instrument};
 
@@ -338,7 +339,7 @@ impl FlowTransaction {
 	))]
 	pub fn state_scan_all(&mut self, id: FlowNodeId) -> Result<MultiVersionBatch> {
 		let range = FlowNodeStateKey::node_range(id);
-		let iter = self.range(range, 1024);
+		let iter = self.range(range, RangeScope::All, 1024);
 		let mut items = Vec::new();
 		for result in iter {
 			items.push(result?);
@@ -355,7 +356,7 @@ impl FlowTransaction {
 	))]
 	pub fn state_range_all(&mut self, id: FlowNodeId, range: EncodedKeyRange) -> Result<MultiVersionBatch> {
 		let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(id, vec![]));
-		let iter = self.range(prefixed_range, 1024);
+		let iter = self.range(prefixed_range, RangeScope::All, 1024);
 		let mut items = Vec::new();
 		for result in iter {
 			items.push(result?);
@@ -384,7 +385,7 @@ impl FlowTransaction {
 	#[instrument(name = "flow::state::clear::scan", level = "trace", skip(self), fields(node_id = id.0))]
 	fn scan_keys_for_clear(&mut self, id: FlowNodeId) -> Result<Vec<EncodedKey>> {
 		let range = FlowNodeStateKey::node_range(id);
-		let iter = self.range(range, 1024);
+		let iter = self.range(range, RangeScope::All, 1024);
 		let mut keys = Vec::new();
 		for result in iter {
 			let multi = result?;

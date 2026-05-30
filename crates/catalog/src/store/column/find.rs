@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{column::Column, id::ColumnId, shape::ShapeId},
 	key::column::ColumnKey,
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{CatalogStore, Result, store::column::shape::primitive_column};
 
@@ -15,7 +15,7 @@ impl CatalogStore {
 		shape: impl Into<ShapeId>,
 		column_name: &str,
 	) -> Result<Option<Column>> {
-		let mut stream = rx.range(ColumnKey::full_scan(shape), 1024)?;
+		let mut stream = rx.range(ColumnKey::full_scan(shape), RangeScope::All, 1024)?;
 
 		let mut found_id = None;
 		for entry in stream.by_ref() {

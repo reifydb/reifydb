@@ -9,13 +9,31 @@ use crate::encoded::{row::EncodedRow, shape::RowShape};
 
 impl RowShape {
 	pub fn set_utf8(&self, row: &mut EncodedRow, index: usize, value: impl AsRef<str>) {
-		debug_assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), ValueType::Utf8);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				row.len() >= self.total_static_size(),
+				"row/shape size mismatch: row.len()={} < total_static_size()={}",
+				row.len(),
+				self.total_static_size()
+			);
+			assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), ValueType::Utf8);
+		}
 		self.replace_dynamic_data(row, index, value.as_ref().as_bytes());
 	}
 
 	pub fn get_utf8<'a>(&'a self, row: &'a EncodedRow, index: usize) -> &'a str {
 		let field = &self.fields()[index];
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Utf8);
+		#[cfg(reifydb_assertions)]
+		{
+			assert!(
+				row.len() >= self.total_static_size(),
+				"row/shape size mismatch: row.len()={} < total_static_size()={}",
+				row.len(),
+				self.total_static_size()
+			);
+			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Utf8);
+		}
 
 		let ref_slice = &row.as_slice()[field.offset as usize..field.offset as usize + 8];
 		let offset = u32::from_le_bytes([ref_slice[0], ref_slice[1], ref_slice[2], ref_slice[3]]) as usize;

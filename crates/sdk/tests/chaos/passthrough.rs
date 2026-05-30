@@ -6,9 +6,10 @@
 //! valid `ChaosConfig`. If any of these fail, the harness has a bug -
 //! tighten the harness, do not loosen the test.
 //!
-//! Each `chaos_test!` runs `CHAOS_ITERATIONS` randomized seeds via the shared
-//! chaos runner; a failure reports the base seed for replay (`make test-chaos
-//! SEED=... N=...`).
+//! Each `chaos_test!` expands to N separate `#[test]` cases (`make test-chaos
+//! N=`, default 32), one per index; each draws a fresh random seed per run
+//! unless `CHAOS_SEED` pins it. A failure reports its seed for replay (`make
+//! test-chaos SEED=... FILTER=...`).
 
 use reifydb_sdk::testing::chaos::{
 	ChaosHarness,
@@ -16,7 +17,7 @@ use reifydb_sdk::testing::chaos::{
 	schema::KeyStrategy,
 	strategy::samplers,
 };
-use reifydb_testing::chaos_test;
+use reifydb_testing_macro::chaos_test;
 
 use super::common::{PassthroughOperator, passthrough_oracle, simple_kv_shape};
 

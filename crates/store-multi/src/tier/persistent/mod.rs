@@ -13,7 +13,13 @@ use reifydb_runtime::shutdown::Shutdown;
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_value::{Result, util::cowvec::CowVec};
 
-use crate::tier::{HistoricalCursor, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage, VersionedGetResult};
+use crate::{
+	MultiVersionScope,
+	tier::{
+		HistoricalCursor, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage,
+		VersionedGetResult,
+	},
+};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 pub mod sqlite;
@@ -79,6 +85,18 @@ impl MultiPersistentTier {
 			Self::Sqlite(s) => s.delete_keys(table, keys),
 		}
 	}
+
+	pub fn load_range_consistent(
+		&self,
+		table: EntryKind,
+		start: Bound<&[u8]>,
+		end: Bound<&[u8]>,
+		read: CommitVersion,
+	) -> Result<Vec<RawEntry>> {
+		match self {
+			Self::Sqlite(s) => s.load_range_consistent(table, start, end, read),
+		}
+	}
 }
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
@@ -98,6 +116,16 @@ impl MultiPersistentTier {
 	}
 
 	pub fn delete_keys(&self, _table: EntryKind, _keys: &[EncodedKey]) -> Result<u64> {
+		match *self {}
+	}
+
+	pub fn load_range_consistent(
+		&self,
+		_table: EntryKind,
+		_start: Bound<&[u8]>,
+		_end: Bound<&[u8]>,
+		_read: CommitVersion,
+	) -> Result<Vec<RawEntry>> {
 		match *self {}
 	}
 }
@@ -133,11 +161,11 @@ impl TierStorage for MultiPersistentTier {
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		match self {
-			Self::Sqlite(s) => s.range_next(table, cursor, start, end, version, batch_size),
+			Self::Sqlite(s) => s.range_next(table, cursor, start, end, scope, batch_size),
 		}
 	}
 
@@ -147,11 +175,11 @@ impl TierStorage for MultiPersistentTier {
 		cursor: &mut RangeCursor,
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
-		version: CommitVersion,
+		scope: MultiVersionScope,
 		batch_size: usize,
 	) -> Result<RangeBatch> {
 		match self {
-			Self::Sqlite(s) => s.range_rev_next(table, cursor, start, end, version, batch_size),
+			Self::Sqlite(s) => s.range_rev_next(table, cursor, start, end, scope, batch_size),
 		}
 	}
 
@@ -208,7 +236,7 @@ impl TierStorage for MultiPersistentTier {
 		_cursor: &mut RangeCursor,
 		_start: Bound<&[u8]>,
 		_end: Bound<&[u8]>,
-		_version: CommitVersion,
+		_scope: MultiVersionScope,
 		_batch_size: usize,
 	) -> Result<RangeBatch> {
 		match *self {}
@@ -220,7 +248,7 @@ impl TierStorage for MultiPersistentTier {
 		_cursor: &mut RangeCursor,
 		_start: Bound<&[u8]>,
 		_end: Bound<&[u8]>,
-		_version: CommitVersion,
+		_scope: MultiVersionScope,
 		_batch_size: usize,
 	) -> Result<RangeBatch> {
 		match *self {}
