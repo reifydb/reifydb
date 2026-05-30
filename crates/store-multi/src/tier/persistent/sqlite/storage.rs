@@ -32,7 +32,10 @@ use reifydb_sqlite::{
 	pragma,
 };
 use reifydb_value::{Result, error, util::cowvec::CowVec};
-use rusqlite::{Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, params, params_from_iter};
+use rusqlite::{
+	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, Transaction, TransactionBehavior,
+	params, params_from_iter,
+};
 use tracing::{instrument, warn};
 
 use crate::{
@@ -68,7 +71,7 @@ fn bucket_key_count(len: usize) -> usize {
 	GET_MANY_CHUNK
 }
 
-const WRITER_BUSY_TIMEOUT: Duration = Duration::from_millis(200);
+const BUSY_TIMEOUT: Duration = Duration::from_millis(200);
 
 #[derive(Clone)]
 pub struct SqlitePersistentStorage {
@@ -140,7 +143,7 @@ impl SqlitePersistentStorage {
 
 		let conn = connect(&db_path, flags).expect("Failed to connect to persistent database");
 		pragma::apply(&conn, &config).expect("Failed to configure persistent SQLite pragmas");
-		conn.busy_timeout(WRITER_BUSY_TIMEOUT).expect("Failed to set persistent busy timeout");
+		conn.busy_timeout(BUSY_TIMEOUT).expect("Failed to set persistent busy timeout");
 
 		let pool_size = config.read_pool_size.max(1) as usize;
 		let mut conns = Vec::with_capacity(pool_size);
@@ -148,6 +151,7 @@ impl SqlitePersistentStorage {
 			let reader = connect(&db_path, flags).expect("Failed to open persistent read connection");
 			pragma::apply_read_only(&reader, &config)
 				.expect("Failed to configure persistent read connection");
+			reader.busy_timeout(BUSY_TIMEOUT).expect("Failed to set persistent read busy timeout");
 			conns.push(Mutex::new(Some(reader)));
 		}
 
@@ -572,8 +576,7 @@ impl TierStorage for SqlitePersistentStorage {
 		let Some(conn) = guard.as_ref() else {
 			return Ok(());
 		};
-		let tx = conn
-			.unchecked_transaction()
+		let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
 			.map_err(|e| error!(internal(format!("Failed to start persistent transaction: {}", e))))?;
 
 		let new_version_bytes = version_to_bytes(version);
