@@ -3016,6 +3016,7 @@ dependencies = [
 name = "reifydb-store-multi"
 version = "0.6.0"
 dependencies = [
+ "rand 0.10.1",
  "reifydb-build",
  "reifydb-core",
  "reifydb-runtime",
