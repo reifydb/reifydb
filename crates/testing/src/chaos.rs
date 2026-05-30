@@ -4,6 +4,7 @@
 use std::{
 	collections::hash_map::{DefaultHasher, RandomState},
 	env,
+	fs,
 	hash::{BuildHasher, Hash, Hasher},
 	panic::{self, AssertUnwindSafe},
 };
@@ -59,7 +60,7 @@ impl Chaos {
 			#[cfg(target_os = "linux")]
 			{
 				const FD_SLACK: usize = 64;
-				let fds = std::fs::read_dir("/proc/self/fd").map(|d| d.count()).unwrap_or(0);
+				let fds = fs::read_dir("/proc/self/fd").map(|d| d.count()).unwrap_or(0);
 				match fd_baseline {
 					None => fd_baseline = Some(fds),
 					Some(base) => assert!(

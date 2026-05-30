@@ -395,7 +395,7 @@ where
 #[cfg(test)]
 mod tests {
 	use std::{
-		mem::discriminant,
+		mem::{self, discriminant},
 		sync::{
 			Arc, Barrier,
 			atomic::{AtomicU64, Ordering},
@@ -448,7 +448,7 @@ mod tests {
 		let clock = MockVersionProvider::new(start);
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 		let spawner = actor_system.spawner();
-		std::mem::forget(actor_system);
+		mem::forget(actor_system);
 
 		struct DummyConfig;
 		impl GetConfig for DummyConfig {

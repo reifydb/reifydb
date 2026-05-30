@@ -19,7 +19,7 @@ use reifydb_core::{
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{context::clock::Clock, shutdown::Shutdown, sync::mutex::Mutex};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use tokio::{sync::mpsc, task::JoinHandle};
+use tokio::{runtime::Handle, sync::mpsc, task::JoinHandle};
 use tracing::{info, instrument};
 
 use crate::{
@@ -39,7 +39,7 @@ pub struct TaskSubsystem {
 
 	coordinator_handle: Mutex<Option<JoinHandle<()>>>,
 
-	handle_tokio: tokio::runtime::Handle,
+	handle_tokio: Handle,
 }
 
 impl TaskSubsystem {
@@ -47,7 +47,7 @@ impl TaskSubsystem {
 	pub fn new(ioc: &IocContainer, initial_tasks: Vec<ScheduledTask>) -> Self {
 		let clock = ioc.resolve::<Clock>().expect("Clock not registered in IoC");
 		let handle_tokio =
-			ioc.resolve::<tokio::runtime::Handle>().expect("tokio::runtime::Handle not registered in IoC");
+			ioc.resolve::<Handle>().expect("tokio::runtime::Handle not registered in IoC");
 		let engine = ioc.resolve::<StandardEngine>().expect("StandardEngine not registered in IoC");
 		let registry: TaskRegistry = Arc::new(DashMap::new());
 

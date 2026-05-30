@@ -6,7 +6,7 @@ use std::{cmp::Ordering, collections::BinaryHeap, error::Error, future, io, sync
 use reifydb_core::interface::catalog::task::TaskId;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::context::clock::{Clock, Instant};
-use tokio::{select, sync::mpsc, task::spawn_blocking, time};
+use tokio::{runtime::Handle, select, sync::mpsc, task::spawn_blocking, time};
 use tracing::{debug, error, info};
 
 #[cfg(reifydb_assertions)]
@@ -53,7 +53,7 @@ pub async fn run_coordinator(
 	registry: TaskRegistry,
 	mut rx: mpsc::Receiver<TaskCoordinatorMessage>,
 	clock: Clock,
-	handle: tokio::runtime::Handle,
+	handle: Handle,
 	engine: StandardEngine,
 ) {
 	info!("Task coordinator started");
@@ -201,7 +201,7 @@ fn spawn_task(
 	task_id: TaskId,
 	task: Arc<ScheduledTask>,
 	clock: Clock,
-	handle: tokio::runtime::Handle,
+	handle: Handle,
 	engine: StandardEngine,
 	completion_tx: mpsc::UnboundedSender<(TaskId, Instant)>,
 ) {

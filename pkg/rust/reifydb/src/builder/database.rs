@@ -129,6 +129,7 @@ pub struct DatabaseBuilder {
 	is_replica: bool,
 	bootstrap_configs: Vec<(ConfigKey, Value)>,
 	cdc_backend: CdcBackend,
+	fast_shutdown: bool,
 }
 
 impl DatabaseBuilder {
@@ -168,12 +169,18 @@ impl DatabaseBuilder {
 			is_replica: false,
 			bootstrap_configs: Vec::new(),
 			cdc_backend: CdcBackend::default(),
+			fast_shutdown: false,
 		}
 	}
 
 	/// Select the CDC storage backend. Defaults to `CdcBackend::Memory`.
 	pub fn with_cdc_backend(mut self, backend: CdcBackend) -> Self {
 		self.cdc_backend = backend;
+		self
+	}
+
+	pub fn with_fast_shutdown(mut self) -> Self {
+		self.fast_shutdown = true;
 		self
 	}
 
@@ -616,6 +623,7 @@ impl DatabaseBuilder {
 		let system_catalog = SystemCatalog::new(all_versions);
 		self.ioc.register(system_catalog);
 
-		Ok(Database::new(engine, auth_service, subsystems, health_monitor, spawner, clock))
+		Ok(Database::new(engine, auth_service, subsystems, health_monitor, spawner, clock)
+			.fast_shutdown_on_drop(self.fast_shutdown))
 	}
 }

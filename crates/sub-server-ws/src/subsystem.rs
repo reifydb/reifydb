@@ -25,6 +25,7 @@ use reifydb_sub_subscription::{poller::StoreBackedPoller, store::SubscriptionSto
 use reifydb_value::Result;
 use tokio::{
 	net::{TcpListener, TcpStream},
+	runtime::Handle,
 	select,
 	sync::{Semaphore, oneshot, watch},
 };
@@ -55,7 +56,7 @@ pub struct WsSubsystem {
 
 	connection_semaphore: Arc<Semaphore>,
 
-	runtime: tokio::runtime::Handle,
+	runtime: Handle,
 
 	registry: Arc<SubscriptionRegistry>,
 
@@ -69,7 +70,7 @@ impl WsSubsystem {
 		bind_addr: Option<String>,
 		admin_bind_addr: Option<String>,
 		state: AppState,
-		runtime: tokio::runtime::Handle,
+		runtime: Handle,
 		poll_batch_size: usize,
 		subscription_store: Option<Arc<SubscriptionStore>>,
 	) -> Result<Self> {
@@ -311,7 +312,7 @@ async fn run_accept_loop(
 	semaphore: Arc<Semaphore>,
 	active_connections: Arc<AtomicUsize>,
 	mut shutdown_rx: watch::Receiver<bool>,
-	runtime: tokio::runtime::Handle,
+	runtime: Handle,
 	name: &'static str,
 ) {
 	loop {
@@ -346,7 +347,7 @@ fn handle_accept_result(
 	semaphore: &Arc<Semaphore>,
 	active_connections: &Arc<AtomicUsize>,
 	shutdown_rx: &watch::Receiver<bool>,
-	runtime: &tokio::runtime::Handle,
+	runtime: &Handle,
 ) {
 	let (stream, peer) = match accept {
 		Ok(pair) => pair,

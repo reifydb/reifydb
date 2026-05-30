@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
-use std::time::Instant;
 use std::{
 	collections::HashMap,
 	sync::{
@@ -63,6 +61,7 @@ pub struct Database {
 	spawner: ActorSpawner,
 	clock: Clock,
 	running: bool,
+	fast_shutdown: bool,
 }
 
 impl Database {
@@ -117,7 +116,13 @@ impl Database {
 			spawner,
 			clock,
 			running: true,
+			fast_shutdown: false,
 		}
+	}
+
+	pub(crate) fn fast_shutdown_on_drop(mut self, v: bool) -> Self {
+		self.fast_shutdown = v;
+		self
 	}
 
 	pub fn engine(&self) -> &StandardEngine {
@@ -166,22 +171,33 @@ impl Database {
 
 	#[instrument(name = "api::database::stop", level = "debug", skip(self))]
 	pub fn stop(&mut self) -> Result<()> {
+		self.shutdown_internal(!self.fast_shutdown)
+	}
+
+	#[instrument(name = "api::database::stop_fast", level = "debug", skip(self))]
+	pub fn stop_fast(&mut self) -> Result<()> {
+		self.shutdown_internal(false)
+	}
+
+	fn shutdown_internal(&mut self, drain: bool) -> Result<()> {
 		if !self.running {
 			return Ok(()); // Already stopped
 		}
 
-		debug!("Stopping system gracefully");
+		debug!("Stopping system");
 
 		self.engine.set_shutting_down();
 
-		self.drain_cdc_consumers(SHUTDOWN_DRAIN_TIMEOUT);
+		if drain {
+			self.drain_cdc_consumers(SHUTDOWN_DRAIN_TIMEOUT);
 
-		if let Some(multi_store) = self.engine.ioc().try_resolve::<MultiStore>() {
-			multi_store.flush_all_blocking();
-		}
+			if let Some(multi_store) = self.engine.ioc().try_resolve::<MultiStore>() {
+				multi_store.flush_all_blocking();
+			}
 
-		if let Some(single_store) = self.engine.ioc().try_resolve::<SingleStore>() {
-			single_store.flush_pending_blocking();
+			if let Some(single_store) = self.engine.ioc().try_resolve::<SingleStore>() {
+				single_store.flush_pending_blocking();
+			}
 		}
 
 		self.subsystems.shutdown_all();
@@ -212,7 +228,7 @@ impl Database {
 
 		const PLATEAU_ROUNDS: u32 = 6;
 
-		let deadline = Instant::now() + timeout;
+		let deadline = self.clock.instant() + timeout;
 		let mut last_producer = u64::MAX;
 		let mut last_consumer = u64::MAX;
 		let mut caught_up = 0u32;
@@ -242,7 +258,7 @@ impl Database {
 			last_producer = producer;
 			last_consumer = consumer;
 
-			if Instant::now() >= deadline {
+			if self.clock.instant() >= deadline {
 				warn!(
 					producer,
 					consumer, "shutdown drain timed out; flushing already-committed data anyway"
@@ -409,7 +425,7 @@ impl Drop for Database {
 	fn drop(&mut self) {
 		if self.running {
 			warn!("System being dropped while running, attempting graceful shutdown");
-			let _ = self.stop();
+			let _ = self.shutdown_internal(!self.fast_shutdown);
 		}
 		self.engine.shutdown();
 	}

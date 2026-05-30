@@ -3,7 +3,7 @@
 
 use std::{
 	future::Future,
-	sync::{Arc, Mutex},
+	sync::Arc,
 	time::Duration,
 };
 
@@ -14,6 +14,7 @@ use tokio::{
 };
 
 use super::PoolConfig;
+use crate::sync::mutex::Mutex;
 
 struct PoolsInner {
 	system: Arc<ThreadPool>,
@@ -26,7 +27,7 @@ struct PoolsInner {
 
 impl PoolsInner {
 	fn take_tokio(&self) -> Option<Runtime> {
-		self.tokio.lock().unwrap_or_else(|e| e.into_inner()).take()
+		self.tokio.lock().take()
 	}
 }
 

@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::{ops::Deref, sync::Arc, time::Duration};
+use std::{mem, ops::Deref, sync::Arc, time::Duration};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -276,7 +276,7 @@ impl MultiTransaction {
 		let pools = Pools::new(PoolConfig::sync_only());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let spawner = actor_system.spawner();
-		std::mem::forget(actor_system);
+		mem::forget(actor_system);
 		let event_bus = EventBus::new(&spawner);
 
 		struct DummyConfig;

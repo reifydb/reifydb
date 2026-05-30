@@ -3,6 +3,7 @@
 
 use std::{
 	collections::{BTreeMap, HashMap},
+	mem,
 	ops::{Bound, Deref},
 	sync::Arc,
 	time::Duration,
@@ -161,7 +162,7 @@ impl StandardSingleStore {
 			clock,
 		})
 		.unwrap();
-		std::mem::forget(actor_system);
+		mem::forget(actor_system);
 		store
 	}
 
@@ -181,7 +182,7 @@ impl StandardSingleStore {
 			clock,
 		})
 		.unwrap();
-		std::mem::forget(actor_system);
+		mem::forget(actor_system);
 		(store, guard)
 	}
 }

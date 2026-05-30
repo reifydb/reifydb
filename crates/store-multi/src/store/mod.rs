@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
+	mem,
 	ops::Deref,
 	sync::{Arc, OnceLock},
 	time::Duration,
@@ -233,7 +234,7 @@ impl StandardMultiStore {
 		let actor_system = ActorSystem::new(pools, clock.clone());
 		let spawner = actor_system.spawner();
 		let event_bus = EventBus::new(&spawner);
-		std::mem::forget(actor_system);
+		mem::forget(actor_system);
 		Self::new(MultiStoreConfig {
 			commit: Some(CommitBufferConfig {
 				storage: MultiCommitBufferTier::memory(),
@@ -253,7 +254,7 @@ impl StandardMultiStore {
 		let clock = Clock::testing();
 		let actor_system = ActorSystem::new(pools, clock.clone());
 		let spawner = actor_system.spawner();
-		std::mem::forget(actor_system);
+		mem::forget(actor_system);
 		Self::new(MultiStoreConfig {
 			commit: Some(CommitBufferConfig {
 				storage: MultiCommitBufferTier::memory(),
@@ -275,7 +276,7 @@ impl StandardMultiStore {
 		let actor_system = ActorSystem::new(pools, clock.clone());
 		let spawner = actor_system.spawner();
 		let event_bus = EventBus::new(&spawner);
-		std::mem::forget(actor_system);
+		mem::forget(actor_system);
 		let (persistent, guard) = PersistentConfig::sqlite_in_memory();
 		let store = Self::new(MultiStoreConfig {
 			commit: Some(CommitBufferConfig {
@@ -298,7 +299,7 @@ impl StandardMultiStore {
 		let clock = Clock::testing();
 		let actor_system = ActorSystem::new(pools, clock.clone());
 		let spawner = actor_system.spawner();
-		std::mem::forget(actor_system);
+		mem::forget(actor_system);
 		let (persistent, guard) = PersistentConfig::sqlite_in_memory();
 		let store = Self::new(MultiStoreConfig {
 			commit: Some(CommitBufferConfig {
@@ -322,7 +323,7 @@ impl StandardMultiStore {
 		let actor_system = ActorSystem::new(pools, clock.clone());
 		let spawner = actor_system.spawner();
 		let event_bus = EventBus::new(&spawner);
-		std::mem::forget(actor_system);
+		mem::forget(actor_system);
 		let (persistent, guard) = PersistentConfig::sqlite_in_memory();
 		let store =
 			Self::new(MultiStoreConfig::sqlite_unbuffered(persistent, spawner, clock, event_bus)).unwrap();

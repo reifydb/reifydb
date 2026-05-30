@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Deref, sync::Arc};
+use std::{mem, ops::Deref, sync::Arc};
 
 use reifydb_catalog::{
 	cache::CatalogCache,
@@ -311,7 +311,7 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	let pools = Pools::new(PoolConfig::sync_only());
 	let actor_system = ActorSystem::new(pools, Clock::Real);
 	let spawner = actor_system.spawner();
-	std::mem::forget(actor_system);
+	mem::forget(actor_system);
 	let event_bus = EventBus::new(&spawner);
 	let single = SingleTransaction::new(single_store, event_bus.clone());
 	let multi = MultiTransaction::new(
@@ -343,7 +343,7 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 	let pools = Pools::new(PoolConfig::sync_only());
 	let actor_system = ActorSystem::new(pools, Clock::Real);
 	let spawner = actor_system.spawner();
-	std::mem::forget(actor_system);
+	mem::forget(actor_system);
 	let event_bus = EventBus::new(&spawner);
 	let single = SingleTransaction::new(single_store, event_bus.clone());
 	let multi = MultiTransaction::new(

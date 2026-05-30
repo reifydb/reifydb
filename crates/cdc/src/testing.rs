@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{sync::Arc, time::Duration};
+use std::{mem, sync::Arc, time::Duration};
 
 use reifydb_catalog::{cache::CatalogCache, catalog::Catalog};
 use reifydb_core::{
@@ -45,7 +45,7 @@ impl TestCdcHost {
 		let single_store = SingleStore::testing_memory();
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 		let spawner = actor_system.spawner();
-		std::mem::forget(actor_system);
+		mem::forget(actor_system);
 		let event_bus = EventBus::new(&spawner);
 		let single = SingleTransaction::new(single_store, event_bus.clone());
 		let catalog_cache = CatalogCache::new();

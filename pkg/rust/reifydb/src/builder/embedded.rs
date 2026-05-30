@@ -91,6 +91,7 @@ pub struct EmbeddedBuilder {
 	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
 	migrations: Option<MigrationSource>,
 	bootstrap_configs: Vec<(ConfigKey, Value)>,
+	fast_shutdown: bool,
 }
 
 impl EmbeddedBuilder {
@@ -115,7 +116,13 @@ impl EmbeddedBuilder {
 			auth_configurator: None,
 			migrations: None,
 			bootstrap_configs: Vec::new(),
+			fast_shutdown: false,
 		}
+	}
+
+	pub fn with_fast_shutdown(mut self) -> Self {
+		self.fast_shutdown = true;
+		self
 	}
 
 	/// Configure the process runtime (clock + rng).
@@ -225,6 +232,10 @@ impl EmbeddedBuilder {
 			.with_runtime(runtime)
 			.with_stores(multi_store, single_store)
 			.with_cdc_backend(cdc_backend);
+
+		if self.fast_shutdown {
+			builder = builder.with_fast_shutdown();
+		}
 
 		if let Some(configurator) = self.auth_configurator {
 			builder = builder.with_auth(configurator);

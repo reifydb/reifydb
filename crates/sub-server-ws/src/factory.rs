@@ -20,6 +20,7 @@ use reifydb_sub_server::{
 };
 use reifydb_sub_subscription::store::SubscriptionStore;
 use reifydb_value::Result;
+use tokio::runtime::Handle;
 
 use crate::subsystem::WsSubsystem;
 
@@ -34,7 +35,7 @@ pub struct WsConfigurator {
 
 	max_frame_size: usize,
 
-	runtime: Option<tokio::runtime::Handle>,
+	runtime: Option<Handle>,
 
 	poll_batch_size: usize,
 }
@@ -83,7 +84,7 @@ impl WsConfigurator {
 		self
 	}
 
-	pub fn runtime(mut self, runtime: tokio::runtime::Handle) -> Self {
+	pub fn runtime(mut self, runtime: Handle) -> Self {
 		self.runtime = Some(runtime);
 		self
 	}
@@ -118,7 +119,7 @@ pub struct WsConfig {
 
 	pub max_frame_size: usize,
 
-	pub runtime: Option<tokio::runtime::Handle>,
+	pub runtime: Option<Handle>,
 
 	pub poll_batch_size: usize,
 }
@@ -152,7 +153,7 @@ impl SubsystemFactory for WsSubsystemFactory {
 		let spawner = ioc.resolve::<ActorSpawner>()?;
 		let clock = ioc.resolve::<Clock>()?;
 		let rng = ioc.resolve::<Rng>()?;
-		let ioc_handle = ioc.resolve::<tokio::runtime::Handle>()?;
+		let ioc_handle = ioc.resolve::<Handle>()?;
 
 		let query_config =
 			StateConfig::new().query_timeout(config.query_timeout).max_connections(config.max_connections);
