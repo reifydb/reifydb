@@ -963,26 +963,22 @@ fn reverse_horizon(cursor: &MultiVersionRangeCursor) -> Option<EncodedKey> {
 
 fn rewind_over_advanced_forward(cursor: &mut MultiVersionRangeCursor, horizon: &EncodedKey) {
 	for tier in [&mut cursor.commit, &mut cursor.persistent] {
-		if tier.exhausted {
-			continue;
-		}
 		if let Some(last) = &tier.last_key
 			&& last.as_slice() > horizon.as_slice()
 		{
 			tier.last_key = Some(horizon.clone());
+			tier.exhausted = false;
 		}
 	}
 }
 
 fn rewind_over_advanced_reverse(cursor: &mut MultiVersionRangeCursor, horizon: &EncodedKey) {
 	for tier in [&mut cursor.commit, &mut cursor.persistent] {
-		if tier.exhausted {
-			continue;
-		}
 		if let Some(last) = &tier.last_key
 			&& last.as_slice() < horizon.as_slice()
 		{
 			tier.last_key = Some(horizon.clone());
+			tier.exhausted = false;
 		}
 	}
 }

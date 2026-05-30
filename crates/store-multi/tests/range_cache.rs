@@ -37,6 +37,11 @@ const SHAPE: ShapeId = ShapeId::Table(TableId(1));
 /// so the second scan actually serves from a range_complete page rather than reading through again.
 const BUCKET_ROWS: u64 = 200;
 
+/// Below WARM_THRESHOLD (4 * TIER_SCAN_CHUNK_SIZE = 128) so the read cache never warms: the cold-merge
+/// regressions are a pure persistent read-through, isolating the commit<->persistent horizon defect from
+/// the page cache.
+const COLD_ROWS: u64 = 100;
+
 fn store() -> (StandardMultiStore, impl Drop) {
 	StandardMultiStore::testing_memory_with_persistent_sqlite()
 }
@@ -406,4 +411,87 @@ fn cache_cleared_mid_scan_reads_through_without_corruption() {
 	sorted.sort();
 	assert_eq!(sorted, expected, "no row lost or corrupted by a mid-scan cache clear");
 	assert_eq!(all.len(), BUCKET_ROWS as usize, "no duplicated row across the eviction boundary");
+}
+
+#[test]
+fn multi_batch_cold_merge_keeps_sparse_commit_over_dense_persistent() {
+	// After a flush drains the buffer, a single LOW-row-number update is the only entry in the commit buffer
+	// over a dense persistent tier. Rows encode descending, so row 5 sorts LATE in the forward
+	// (ascending-encoded) scan. A scan that paginates past the row-5 boundary used to drop the committed v5:
+	// batch 1's forward horizon trims row5@v5 out of `collected` (its key is above the persistent cursor's
+	// last_key) and the rewind skips the already-exhausted commit cursor, so v5 is never re-produced and the
+	// later persistent read returns the stale v1. A single-batch scan masks this (no horizon trim), so the
+	// batch (16) MUST be small enough to page past row 5. COLD_ROWS (100) stays below WARM_THRESHOLD (128) so
+	// the read cache never warms - a pure cold read-through, with the defect isolated from the page cache.
+	let (store, _g) = store();
+	for n in 1..=COLD_ROWS {
+		commit(&store, n, 1, &format!("v{n}"));
+	}
+	flush(&store, CommitVersion(1));
+
+	commit(&store, 5, 5, "updated");
+
+	let rows = scan_fwd(&store, 1000, 16);
+	let by_key: HashMap<Vec<u8>, (Vec<u8>, CommitVersion)> =
+		rows.iter().map(|(k, v, ver)| (k.clone(), (v.clone(), *ver))).collect();
+
+	assert_eq!(rows.len(), COLD_ROWS as usize, "every row exactly once across batches - no drop or duplicate");
+	assert_eq!(
+		by_key.get(&RowKey::encoded(SHAPE, 5).to_vec()),
+		Some(&(b"updated".to_vec(), CommitVersion(5))),
+		"the sparse committed v5 must win over the persisted v1 even when the scan paginates past its key"
+	);
+	assert_eq!(
+		by_key.get(&RowKey::encoded(SHAPE, 6).to_vec()),
+		Some(&(b"v6".to_vec(), CommitVersion(1))),
+		"an untouched neighbour keeps its persisted value (guards against over-trimming)"
+	);
+}
+
+#[test]
+fn multi_batch_cold_merge_keeps_sparse_commit_reverse() {
+	// Reverse twin of multi_batch_cold_merge_keeps_sparse_commit_over_dense_persistent, exercising
+	// reverse_horizon / rewind_over_advanced_reverse. A reverse scan walks ascending row number, so a HIGH row
+	// number (95) sorts late: batch 1's reverse horizon trims row95@v5 (its key is below the persistent
+	// cursor's last_key) and the exhausted commit cursor is skipped on rewind, so the later persistent read
+	// returns the stale v1.
+	let (store, _g) = store();
+	for n in 1..=COLD_ROWS {
+		commit(&store, n, 1, &format!("v{n}"));
+	}
+	flush(&store, CommitVersion(1));
+
+	commit(&store, 95, 5, "updated");
+
+	let rows: Vec<(Vec<u8>, Vec<u8>, CommitVersion)> = store
+		.range_rev(
+			RowKey::full_scan(SHAPE),
+			MultiVersionScope::AsOf {
+				read: CommitVersion(1000),
+			},
+			16,
+		)
+		.collect::<Result<Vec<_>, _>>()
+		.unwrap()
+		.into_iter()
+		.map(|r| (r.key.to_vec(), r.row.to_vec(), r.version))
+		.collect();
+	let by_key: HashMap<Vec<u8>, (Vec<u8>, CommitVersion)> =
+		rows.iter().map(|(k, v, ver)| (k.clone(), (v.clone(), *ver))).collect();
+
+	assert_eq!(
+		rows.len(),
+		COLD_ROWS as usize,
+		"every row exactly once across reverse batches - no drop or duplicate"
+	);
+	assert_eq!(
+		by_key.get(&RowKey::encoded(SHAPE, 95).to_vec()),
+		Some(&(b"updated".to_vec(), CommitVersion(5))),
+		"the sparse committed v5 must win in a reverse paginated scan too"
+	);
+	assert_eq!(
+		by_key.get(&RowKey::encoded(SHAPE, 96).to_vec()),
+		Some(&(b"v96".to_vec(), CommitVersion(1))),
+		"an untouched neighbour keeps its persisted value in reverse"
+	);
 }
