@@ -40,11 +40,7 @@ use crate::{
 	workload::distinct_rows,
 };
 
-const SHAPES: [ShapeId; 3] = [
-	ShapeId::Table(TableId(1)),
-	ShapeId::Table(TableId(2)),
-	ShapeId::Table(TableId(3)),
-];
+const SHAPES: [ShapeId; 3] = [ShapeId::Table(TableId(1)), ShapeId::Table(TableId(2)), ShapeId::Table(TableId(3))];
 
 fn shape(idx: usize) -> ShapeId {
 	SHAPES[idx]
@@ -77,7 +73,9 @@ impl MsOracle {
 			.current
 			.iter()
 			.filter(|((shape_idx, _), _)| *shape_idx == s)
-			.map(|((_, row), (value, version))| (RowKey::encoded(shape(s), *row).to_vec(), value.clone(), *version))
+			.map(|((_, row), (value, version))| {
+				(RowKey::encoded(shape(s), *row).to_vec(), value.clone(), *version)
+			})
 			.collect();
 		rows.sort_by(|a, b| a.0.cmp(&b.0));
 		if reverse {
@@ -97,12 +95,24 @@ fn ttl_sweep_shape(store: &StandardMultiStore, shape_id: ShapeId, ttl: &Ttl, now
 			let mut removed_any = false;
 			loop {
 				let (expired, result) = match ttl.anchor {
-					TtlAnchor::Created => {
-						scan_shape_by_created_at(buffer, shape_id, ttl, now_nanos, 64, &mut cursor).unwrap()
-					}
-					TtlAnchor::Updated => {
-						scan_shape_by_updated_at(buffer, shape_id, ttl, now_nanos, 64, &mut cursor).unwrap()
-					}
+					TtlAnchor::Created => scan_shape_by_created_at(
+						buffer,
+						shape_id,
+						ttl,
+						now_nanos,
+						64,
+						&mut cursor,
+					)
+					.unwrap(),
+					TtlAnchor::Updated => scan_shape_by_updated_at(
+						buffer,
+						shape_id,
+						ttl,
+						now_nanos,
+						64,
+						&mut cursor,
+					)
+					.unwrap(),
 				};
 				if !expired.is_empty() {
 					removed_any = true;
@@ -163,7 +173,13 @@ fn check_get_ms(configs: &[(&str, StandardMultiStore)], oracle: &MsOracle, s: us
 	}
 }
 
-fn collect_range_ms(store: &StandardMultiStore, s: usize, read: u64, batch: usize, reverse: bool) -> Vec<(Vec<u8>, Vec<u8>, u64)> {
+fn collect_range_ms(
+	store: &StandardMultiStore,
+	s: usize,
+	read: u64,
+	batch: usize,
+	reverse: bool,
+) -> Vec<(Vec<u8>, Vec<u8>, u64)> {
 	let scope = MultiVersionScope::AsOf {
 		read: CommitVersion(read),
 	};
@@ -175,27 +191,39 @@ fn collect_range_ms(store: &StandardMultiStore, s: usize, read: u64, batch: usiz
 	rows.into_iter().map(|r| (r.key.to_vec(), r.row.to_vec(), r.version.0)).collect()
 }
 
-fn check_range_ms(configs: &[(&str, StandardMultiStore)], oracle: &MsOracle, s: usize, read: u64, batch: usize, step: u32) {
+fn check_range_ms(
+	configs: &[(&str, StandardMultiStore)],
+	oracle: &MsOracle,
+	s: usize,
+	read: u64,
+	batch: usize,
+	step: u32,
+) {
 	let expected_fwd = oracle.scan(s, false);
 	let expected_rev = oracle.scan(s, true);
 	for (name, store) in configs {
 		let fwd = collect_range_ms(store, s, read, batch, false);
 		let rev = collect_range_ms(store, s, read, batch, true);
 		assert_eq!(
-			fwd, expected_fwd,
+			fwd,
+			expected_fwd,
 			"MS RANGE fwd mismatch: config={name} step={step} shape={s} batch={batch} (store {} vs oracle {} rows)",
 			fwd.len(),
 			expected_fwd.len()
 		);
 		assert_eq!(
-			rev, expected_rev,
+			rev,
+			expected_rev,
 			"MS RANGE rev mismatch: config={name} step={step} shape={s} batch={batch} (store {} vs oracle {} rows)",
 			rev.len(),
 			expected_rev.len()
 		);
 		let mut rev_reversed = rev.clone();
 		rev_reversed.reverse();
-		assert_eq!(fwd, rev_reversed, "MS RANGE fwd != rev-reversed: config={name} step={step} shape={s} batch={batch}");
+		assert_eq!(
+			fwd, rev_reversed,
+			"MS RANGE fwd != rev-reversed: config={name} step={step} shape={s} batch={batch}"
+		);
 	}
 }
 

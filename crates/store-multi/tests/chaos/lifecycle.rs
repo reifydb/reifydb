@@ -69,10 +69,12 @@ fn ttl_sweep(store: &StandardMultiStore, ttl: &Ttl, now_nanos: u64) {
 			loop {
 				let (expired, result) = match ttl.anchor {
 					TtlAnchor::Created => {
-						scan_shape_by_created_at(buffer, SHAPE, ttl, now_nanos, 64, &mut cursor).unwrap()
+						scan_shape_by_created_at(buffer, SHAPE, ttl, now_nanos, 64, &mut cursor)
+							.unwrap()
 					}
 					TtlAnchor::Updated => {
-						scan_shape_by_updated_at(buffer, SHAPE, ttl, now_nanos, 64, &mut cursor).unwrap()
+						scan_shape_by_updated_at(buffer, SHAPE, ttl, now_nanos, 64, &mut cursor)
+							.unwrap()
 					}
 				};
 				if !expired.is_empty() {
@@ -206,7 +208,8 @@ pub fn drive(seed: u64, p: Params) {
 						},
 					})
 					.collect();
-				MultiVersionCommit::commit(store, CowVec::new(store_deltas), CommitVersion(version)).unwrap();
+				MultiVersionCommit::commit(store, CowVec::new(store_deltas), CommitVersion(version))
+					.unwrap();
 			}
 		} else if roll < flush_hi {
 			let cutoff = rng.random_range(1..=version);
@@ -275,9 +278,15 @@ pub fn drive(seed: u64, p: Params) {
 				}
 				_ => {
 					let batch = rng.random_range(1..=p.max_batch) as usize;
-					check_range(&configs, &oracle, Scope::AsOf {
-						read: version,
-					}, batch, step);
+					check_range(
+						&configs,
+						&oracle,
+						Scope::AsOf {
+							read: version,
+						},
+						batch,
+						step,
+					);
 				}
 			}
 		}

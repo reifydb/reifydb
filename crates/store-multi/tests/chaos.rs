@@ -25,18 +25,22 @@
 //! > W are never flushed) or as the persisted base (latest-<=W) - so the full-history oracle stays exact.
 //! This mirrors the real contract that a reader never reads below the eviction watermark.
 
+#[path = "chaos/concurrency.rs"]
+mod concurrency;
 #[path = "chaos/fixtures.rs"]
 mod fixtures;
-#[path = "chaos/oracle.rs"]
-mod oracle;
-#[path = "chaos/workload.rs"]
-mod workload;
 #[path = "chaos/lifecycle.rs"]
 mod lifecycle;
-#[path = "chaos/operator.rs"]
-mod operator;
 #[path = "chaos/multishape.rs"]
 mod multishape;
+#[path = "chaos/operator.rs"]
+mod operator;
+#[path = "chaos/oracle.rs"]
+mod oracle;
+#[path = "chaos/snapshot.rs"]
+mod snapshot;
+#[path = "chaos/workload.rs"]
+mod workload;
 
 use reifydb_core::interface::catalog::{id::TableId, shape::ShapeId};
 use reifydb_testing::chaos_test;
@@ -149,3 +153,33 @@ chaos_test!(multi_shape_isolation_chaos, |seed| {
 		},
 	);
 });
+
+// Mid-scan snapshot stability: a paginated AsOf{V} scan, drained one item at a time, must return the exact
+// snapshot as-of V even when commits (version > V) and bounded flushes (cutoff <= V) are interleaved between
+// batch pulls. Targets the merge/cursor/horizon under live tier migration mid-scan.
+chaos_test!(multi_store_snapshot_chaos, |seed| {
+	snapshot::drive(
+		seed,
+		snapshot::Params {
+			keyspace: 220,
+			seed_commits: 60,
+			max_deltas: 12,
+			remove_pct: 22,
+			interleave_pct: 70,
+			commit_vs_flush_pct: 60,
+		},
+	);
+});
+
+// Multi-threaded concurrency stress (NON-deterministic; #[ignore]d so it never runs in the deterministic
+// suite). Real threads + background flush/drop actors under default pools; disjoint key ownership makes the
+// final per-key state deterministic while readers assert structural invariants under live churn. Run on
+// demand: `cargo test -p reifydb-store-multi --features chaos -- --ignored` (or `make test-chaos-concurrency`).
+#[test]
+#[ignore = "non-deterministic multi-threaded stress; run explicitly with --ignored"]
+fn multi_store_concurrency_stress() {
+	// A fixed seed keeps each thread's INTENDED op stream reproducible; thread scheduling is not. The run
+	// loop varies CONC_SEED across invocations for broader coverage; on failure the seed is in the message.
+	let seed = std::env::var("CONC_SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(0xC0FFEE);
+	concurrency::run(seed, concurrency::Config::default());
+}

@@ -26,7 +26,7 @@ CHAOS_PACKAGES ?= reifydb-sdk reifydb-transaction reifydb-store-multi
 
 CHAOS_SELECT = (binary(chaos) or test(chaos))$(if $(FILTER), and test($(FILTER)),)
 
-.PHONY: test-chaos list-chaos
+.PHONY: test-chaos list-chaos test-chaos-concurrency
 test-chaos:
 	@echo "🌀 Running chaos tests (N=$(N)$(if $(SEED), SEED=$(SEED),)$(if $(FILTER), FILTER=$(FILTER),))..."
 	@CHAOS_ITERATIONS=$(N) $(if $(SEED),CHAOS_SEED=$(SEED),) \

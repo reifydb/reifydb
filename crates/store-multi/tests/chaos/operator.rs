@@ -26,7 +26,9 @@ use reifydb_store_multi::{
 	gc::{
 		operator::{
 			OperatorScanStats,
-			scanner::{drop_expired_operator_keys, scan_operator_by_created_at, scan_operator_by_updated_at},
+			scanner::{
+				drop_expired_operator_keys, scan_operator_by_created_at, scan_operator_by_updated_at,
+			},
 		},
 		row::scanner::ScanResult,
 	},
@@ -92,12 +94,24 @@ fn ttl_sweep_op(store: &StandardMultiStore, ttl: &Ttl, now_nanos: u64) {
 			let mut removed_any = false;
 			loop {
 				let (expired, result) = match ttl.anchor {
-					TtlAnchor::Created => {
-						scan_operator_by_created_at(buffer, NODE, ttl, now_nanos, 64, &mut cursor).unwrap()
-					}
-					TtlAnchor::Updated => {
-						scan_operator_by_updated_at(buffer, NODE, ttl, now_nanos, 64, &mut cursor).unwrap()
-					}
+					TtlAnchor::Created => scan_operator_by_created_at(
+						buffer,
+						NODE,
+						ttl,
+						now_nanos,
+						64,
+						&mut cursor,
+					)
+					.unwrap(),
+					TtlAnchor::Updated => scan_operator_by_updated_at(
+						buffer,
+						NODE,
+						ttl,
+						now_nanos,
+						64,
+						&mut cursor,
+					)
+					.unwrap(),
 				};
 				if !expired.is_empty() {
 					removed_any = true;
@@ -134,12 +148,19 @@ fn check_get_op(configs: &[(&str, StandardMultiStore)], oracle: &OpOracle, id: u
 	}
 }
 
-fn collect_range_op(store: &StandardMultiStore, read: u64, batch: usize, reverse: bool) -> Vec<(Vec<u8>, Vec<u8>, u64)> {
+fn collect_range_op(
+	store: &StandardMultiStore,
+	read: u64,
+	batch: usize,
+	reverse: bool,
+) -> Vec<(Vec<u8>, Vec<u8>, u64)> {
 	let scope = MultiVersionScope::AsOf {
 		read: CommitVersion(read),
 	};
 	let rows = if reverse {
-		store.range_rev(FlowNodeStateKey::node_range(NODE), scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
+		store.range_rev(FlowNodeStateKey::node_range(NODE), scope, batch)
+			.collect::<Result<Vec<_>, _>>()
+			.unwrap()
 	} else {
 		store.range(FlowNodeStateKey::node_range(NODE), scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
 	};
@@ -153,13 +174,15 @@ fn check_range_op(configs: &[(&str, StandardMultiStore)], oracle: &OpOracle, rea
 		let fwd = collect_range_op(store, read, batch, false);
 		let rev = collect_range_op(store, read, batch, true);
 		assert_eq!(
-			fwd, expected_fwd,
+			fwd,
+			expected_fwd,
 			"OP RANGE fwd mismatch: config={name} step={step} batch={batch} (store {} vs oracle {} rows)",
 			fwd.len(),
 			expected_fwd.len()
 		);
 		assert_eq!(
-			rev, expected_rev,
+			rev,
+			expected_rev,
 			"OP RANGE rev mismatch: config={name} step={step} batch={batch} (store {} vs oracle {} rows)",
 			rev.len(),
 			expected_rev.len()
@@ -266,7 +289,12 @@ pub fn drive(seed: u64, p: Params) {
 			let count = rng.random_range(1u64..=4);
 			let ids = distinct_rows(&mut rng, count, p.keyspace);
 			for (_, store) in &configs {
-				let deltas: Vec<Delta> = ids.iter().map(|id| Delta::Drop { key: op_key(*id) }).collect();
+				let deltas: Vec<Delta> = ids
+					.iter()
+					.map(|id| Delta::Drop {
+						key: op_key(*id),
+					})
+					.collect();
 				MultiVersionCommit::commit(store, CowVec::new(deltas), CommitVersion(version)).unwrap();
 			}
 			for id in ids {

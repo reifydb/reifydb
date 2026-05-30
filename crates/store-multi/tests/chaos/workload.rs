@@ -1,14 +1,19 @@
- // SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
 //! Seeded operation generator + the per-read differential checks against the oracle.
+
+use std::ops::Bound;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	encoded::{key::EncodedKey, row::EncodedRow},
-	interface::store::{MultiVersionCommit, MultiVersionGet},
+	encoded::{
+		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
+	},
+	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious},
 	key::row::RowKey,
 };
 use reifydb_store_multi::store::StandardMultiStore;
@@ -17,7 +22,7 @@ use reifydb_value::util::cowvec::CowVec;
 use crate::{
 	SHAPE,
 	fixtures::{flush, sync_persistent_store},
-	oracle::{Oracle, Scope},
+	oracle::{Oracle, RangeFilter, Scope},
 };
 
 pub struct Params {
@@ -63,8 +68,31 @@ pub fn check_get(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, row: u
 
 pub fn check_get_many(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, rows: &[u64], read: u64, step: u32) {
 	let keys: Vec<EncodedKey> = rows.iter().map(|&row| RowKey::encoded(SHAPE, row)).collect();
+	// Distinct rows that resolve to a present value - the exact set get_many must return, regardless of how
+	// many duplicates the input `rows` contained.
+	let mut distinct_present: std::collections::BTreeSet<u64> = std::collections::BTreeSet::new();
+	for &row in rows {
+		if oracle
+			.resolve(
+				row,
+				Scope::AsOf {
+					read,
+				},
+			)
+			.is_some()
+		{
+			distinct_present.insert(row);
+		}
+	}
 	for (name, store) in configs {
 		let found = store.get_many(&keys, CommitVersion(read)).unwrap();
+		assert_eq!(
+			found.len(),
+			distinct_present.len(),
+			"GET_MANY count mismatch: config={name} step={step} read={read} store returned {} distinct, oracle {} (dups in input must collapse, absent keys must not appear)",
+			found.len(),
+			distinct_present.len()
+		);
 		for &row in rows {
 			let key = RowKey::encoded(SHAPE, row);
 			let expected = oracle.resolve(
@@ -84,35 +112,108 @@ pub fn check_get_many(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, r
 
 fn collect_range(
 	store: &StandardMultiStore,
+	range: EncodedKeyRange,
 	scope: Scope,
 	batch: usize,
 	reverse: bool,
 ) -> Vec<(Vec<u8>, Vec<u8>, u64)> {
 	let rows = if reverse {
-		store.range_rev(RowKey::full_scan(SHAPE), scope.store(), batch).collect::<Result<Vec<_>, _>>().unwrap()
+		store.range_rev(range, scope.store(), batch).collect::<Result<Vec<_>, _>>().unwrap()
 	} else {
-		store.range(RowKey::full_scan(SHAPE), scope.store(), batch).collect::<Result<Vec<_>, _>>().unwrap()
+		store.range(range, scope.store(), batch).collect::<Result<Vec<_>, _>>().unwrap()
 	};
 	rows.into_iter().map(|r| (r.key.to_vec(), r.row.to_vec(), r.version.0)).collect()
 }
 
 pub fn check_range(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, scope: Scope, batch: usize, step: u32) {
-	let expected_fwd = oracle.scan(scope, false);
-	let expected_rev = oracle.scan(scope, true);
+	check_range_inner(configs, oracle, scope, batch, step, RowKey::full_scan(SHAPE), None);
+}
+
+/// A random sub-range over the keyspace: returns the store's `EncodedKeyRange` and the oracle's matching
+/// `RangeFilter` (both in encoded-key space, so descending row encoding is handled identically). Endpoints
+/// are built from `RowKey::encoded` of two random rows, each side independently Included/Excluded; the
+/// "open" choice uses the shape's own start/end key (what `RowKey::full_scan` uses) rather than a raw
+/// `Bound::Unbounded`. A shapeless `Unbounded` endpoint classifies to the catch-all Multi table by design
+/// (see range_cache.rs `non_source_range_reads_through_with_warm_cache`), so to scan a shape's rows the
+/// endpoints must carry the shape - which `shape_start`/`shape_end` do.
+pub fn random_sub_range(rng: &mut StdRng, keyspace: u64) -> (EncodedKeyRange, RangeFilter) {
+	let a = RowKey::encoded(SHAPE, rng.random_range(1..=keyspace)).to_vec();
+	let b = RowKey::encoded(SHAPE, rng.random_range(1..=keyspace)).to_vec();
+	let (lo, hi) = if a <= b {
+		(a, b)
+	} else {
+		(b, a)
+	};
+	let shape_lo = RowKey::shape_start(SHAPE).to_vec();
+	let shape_hi = RowKey::shape_end(SHAPE).to_vec();
+	let start = match rng.random_range(0u32..3) {
+		0 => Bound::Included(lo),
+		1 => Bound::Excluded(lo),
+		_ => Bound::Included(shape_lo),
+	};
+	let end = match rng.random_range(0u32..3) {
+		0 => Bound::Included(hi),
+		1 => Bound::Excluded(hi),
+		_ => Bound::Included(shape_hi),
+	};
+	let store_range = EncodedKeyRange::new(
+		match &start {
+			Bound::Included(k) => Bound::Included(EncodedKey::new(k.clone())),
+			Bound::Excluded(k) => Bound::Excluded(EncodedKey::new(k.clone())),
+			Bound::Unbounded => Bound::Unbounded,
+		},
+		match &end {
+			Bound::Included(k) => Bound::Included(EncodedKey::new(k.clone())),
+			Bound::Excluded(k) => Bound::Excluded(EncodedKey::new(k.clone())),
+			Bound::Unbounded => Bound::Unbounded,
+		},
+	);
+	(
+		store_range,
+		RangeFilter {
+			start,
+			end,
+		},
+	)
+}
+
+pub fn check_range_filtered(
+	configs: &[(&str, StandardMultiStore)],
+	oracle: &Oracle,
+	scope: Scope,
+	batch: usize,
+	step: u32,
+	store_range: EncodedKeyRange,
+	filter: RangeFilter,
+) {
+	check_range_inner(configs, oracle, scope, batch, step, store_range, Some(filter));
+}
+
+fn check_range_inner(
+	configs: &[(&str, StandardMultiStore)],
+	oracle: &Oracle,
+	scope: Scope,
+	batch: usize,
+	step: u32,
+	store_range: EncodedKeyRange,
+	filter: Option<RangeFilter>,
+) {
+	let expected_fwd = oracle.scan_range(scope, false, filter.as_ref());
+	let expected_rev = oracle.scan_range(scope, true, filter.as_ref());
 	for (name, store) in configs {
-		let fwd = collect_range(store, scope, batch, false);
-		let rev = collect_range(store, scope, batch, true);
+		let fwd = collect_range(store, store_range.clone(), scope, batch, false);
+		let rev = collect_range(store, store_range.clone(), scope, batch, true);
 		assert_eq!(
 			fwd,
 			expected_fwd,
-			"RANGE fwd mismatch: config={name} step={step} scope={scope:?} batch={batch} (store {} vs oracle {} rows)",
+			"RANGE fwd mismatch: config={name} step={step} scope={scope:?} batch={batch} filter={filter:?} (store {} vs oracle {} rows)",
 			fwd.len(),
 			expected_fwd.len()
 		);
 		assert_eq!(
 			rev,
 			expected_rev,
-			"RANGE rev mismatch: config={name} step={step} scope={scope:?} batch={batch} (store {} vs oracle {} rows)",
+			"RANGE rev mismatch: config={name} step={step} scope={scope:?} batch={batch} filter={filter:?} (store {} vs oracle {} rows)",
 			rev.len(),
 			expected_rev.len()
 		);
@@ -120,7 +221,41 @@ pub fn check_range(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, scop
 		rev_reversed.reverse();
 		assert_eq!(
 			fwd, rev_reversed,
-			"RANGE fwd != rev-reversed: config={name} step={step} scope={scope:?} batch={batch}"
+			"RANGE fwd != rev-reversed: config={name} step={step} scope={scope:?} batch={batch} filter={filter:?}"
+		);
+	}
+}
+
+pub fn check_contains(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, row: u64, read: u64, step: u32) {
+	let key = RowKey::encoded(SHAPE, row);
+	let expected = oracle
+		.resolve(
+			row,
+			Scope::AsOf {
+				read,
+			},
+		)
+		.is_some();
+	for (name, store) in configs {
+		let got = store.contains(&key, CommitVersion(read)).unwrap();
+		assert_eq!(
+			got, expected,
+			"CONTAINS mismatch: config={name} step={step} row={row} read={read} store={got} oracle={expected}"
+		);
+	}
+}
+
+pub fn check_prev(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, row: u64, before: u64, step: u32) {
+	let key = RowKey::encoded(SHAPE, row);
+	let expected = oracle.prev(row, before);
+	for (name, store) in configs {
+		let got = store
+			.get_previous_version(&key, CommitVersion(before))
+			.unwrap()
+			.map(|r| (r.row.to_vec(), r.version.0));
+		assert_eq!(
+			got, expected,
+			"PREV mismatch: config={name} step={step} row={row} before={before} store={got:?} oracle={expected:?}"
 		);
 	}
 }
@@ -186,15 +321,31 @@ pub fn drive(seed: u64, p: Params) {
 			}
 		} else {
 			let read = rng.random_range(watermark.max(1)..=version);
-			match rng.random_range(0u32..4) {
+			match rng.random_range(0u32..6) {
 				0 => {
 					let row = rng.random_range(1..=p.keyspace);
 					check_get(&configs, &oracle, row, read, step);
 				}
 				1 => {
 					let count = rng.random_range(1u64..=8);
-					let rows = distinct_rows(&mut rng, count, p.keyspace);
+					let mut rows = distinct_rows(&mut rng, count, p.keyspace);
+					// Sometimes inject duplicate keys to exercise get_many's dedup.
+					if !rows.is_empty() && rng.random_range(0u32..2) == 0 {
+						let dup = rows[rng.random_range(0..rows.len() as u32) as usize];
+						rows.push(dup);
+					}
 					check_get_many(&configs, &oracle, &rows, read, step);
+				}
+				2 => {
+					let row = rng.random_range(1..=p.keyspace);
+					check_contains(&configs, &oracle, row, read, step);
+				}
+				3 => {
+					// before-1 must stay >= watermark for the oracle's prev() to be sound; allow
+					// before = version+1 so "previous of the current version" is covered.
+					let before = rng.random_range((watermark + 1)..=(version + 1));
+					let row = rng.random_range(1..=p.keyspace);
+					check_prev(&configs, &oracle, row, before, step);
 				}
 				_ => {
 					let scope = if rng.random_range(0u32..2) == 0 {
@@ -209,7 +360,21 @@ pub fn drive(seed: u64, p: Params) {
 						}
 					};
 					let batch = rng.random_range(1..=p.max_batch) as usize;
-					check_range(&configs, &oracle, scope, batch, step);
+					// Half full-scan, half random sub-range (bounded scan path).
+					if rng.random_range(0u32..2) == 0 {
+						check_range(&configs, &oracle, scope, batch, step);
+					} else {
+						let (store_range, filter) = random_sub_range(&mut rng, p.keyspace);
+						check_range_filtered(
+							&configs,
+							&oracle,
+							scope,
+							batch,
+							step,
+							store_range,
+							filter,
+						);
+					}
 				}
 			}
 		}
