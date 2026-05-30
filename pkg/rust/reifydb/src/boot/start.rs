@@ -64,7 +64,10 @@ pub(crate) fn spawn_actors(engine: &StandardEngine, actor_system: &ActorSystem) 
 
 	let catalog = engine.catalog();
 
-	store.configure_read_buffer_capacity(catalog.get_config_uint8(ConfigKey::MultiReadBufferCapacity) as usize);
+	store.configure_read_buffer(
+		catalog.get_config_uint8(ConfigKey::MultiReadBufferPages) as usize,
+		catalog.get_config_uint8(ConfigKey::MultiReadBufferPageSize),
+	);
 	store.set_row_settings_provider(Arc::new(catalog.clone()));
 
 	let _ttl_actor = spawn_row_settings_actor(store.clone(), actor_system.clone(), catalog.clone());

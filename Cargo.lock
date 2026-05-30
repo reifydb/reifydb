@@ -3020,6 +3020,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-sqlite",
+ "reifydb-store",
  "reifydb-testing",
  "reifydb-value",
  "rusqlite",

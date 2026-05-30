@@ -53,7 +53,8 @@ pub enum ConfigKey {
 	CdcCompactBlockCacheCapacity,
 	CdcCompactZstdLevel,
 	CdcRecentCacheCapacity,
-	MultiReadBufferCapacity,
+	MultiReadBufferPages,
+	MultiReadBufferPageSize,
 	FlowTick,
 	ThreadsAsync,
 	ThreadsSystem,
@@ -84,7 +85,8 @@ impl ConfigKey {
 			Self::CdcCompactBlockCacheCapacity,
 			Self::CdcCompactZstdLevel,
 			Self::CdcRecentCacheCapacity,
-			Self::MultiReadBufferCapacity,
+			Self::MultiReadBufferPages,
+			Self::MultiReadBufferPageSize,
 			Self::FlowTick,
 			Self::ThreadsAsync,
 			Self::ThreadsSystem,
@@ -117,7 +119,8 @@ impl ConfigKey {
 			Self::CdcCompactBlockCacheCapacity => Value::Uint8(8),
 			Self::CdcCompactZstdLevel => Value::Uint1(7),
 			Self::CdcRecentCacheCapacity => Value::Uint8(128),
-			Self::MultiReadBufferCapacity => Value::Uint8(4096),
+			Self::MultiReadBufferPages => Value::Uint8(1024),
+			Self::MultiReadBufferPageSize => Value::Uint8(65536),
 			Self::FlowTick => Value::Duration(Duration::from_seconds(1).unwrap()),
 			Self::ThreadsAsync => Value::Uint2(1),
 			Self::ThreadsSystem => Value::Uint2(2),
@@ -172,9 +175,13 @@ impl ConfigKey {
 				"Number of most-recent decoded CDC entries held in memory so a caught-up consumer \
 				 is served without re-reading and re-deserializing from the backend."
 			}
-			Self::MultiReadBufferCapacity => {
-				"Number of keys held in the multi-version store read buffer so cold reads \
-				 evicted from the commit buffer are served without a persistent-tier lookup."
+			Self::MultiReadBufferPages => {
+				"Number of pages (contiguous row-number buckets) the multi-version read cache keeps \
+				 resident before eviction. Raising it trades RAM for fewer persistent-tier reads."
+			}
+			Self::MultiReadBufferPageSize => {
+				"Number of rows per cached page (bucket) in the multi-version read cache. Must be a \
+				 power of two; sets the granularity of whole-page read-ahead and completeness tracking."
 			}
 			Self::FlowTick => {
 				"How often the deferred and transactional flow tick coordinators wake up to dispatch \
@@ -231,7 +238,8 @@ impl ConfigKey {
 			Self::CdcCompactBlockCacheCapacity => true,
 			Self::CdcCompactZstdLevel => false,
 			Self::CdcRecentCacheCapacity => true,
-			Self::MultiReadBufferCapacity => true,
+			Self::MultiReadBufferPages => true,
+			Self::MultiReadBufferPageSize => true,
 			Self::FlowTick => false,
 			Self::ThreadsAsync => true,
 			Self::ThreadsSystem => true,
@@ -262,7 +270,8 @@ impl ConfigKey {
 			Self::CdcCompactBlockCacheCapacity => &[ValueType::Uint8],
 			Self::CdcCompactZstdLevel => &[ValueType::Uint1],
 			Self::CdcRecentCacheCapacity => &[ValueType::Uint8],
-			Self::MultiReadBufferCapacity => &[ValueType::Uint8],
+			Self::MultiReadBufferPages => &[ValueType::Uint8],
+			Self::MultiReadBufferPageSize => &[ValueType::Uint8],
 			Self::FlowTick => &[ValueType::Duration],
 			Self::ThreadsAsync => &[ValueType::Uint2],
 			Self::ThreadsSystem => &[ValueType::Uint2],
@@ -293,7 +302,8 @@ impl ConfigKey {
 			Self::CdcCompactBlockCacheCapacity => false,
 			Self::CdcCompactZstdLevel => false,
 			Self::CdcRecentCacheCapacity => false,
-			Self::MultiReadBufferCapacity => false,
+			Self::MultiReadBufferPages => false,
+			Self::MultiReadBufferPageSize => false,
 			Self::FlowTick => false,
 			Self::ThreadsAsync => false,
 			Self::ThreadsSystem => false,
@@ -344,9 +354,14 @@ impl ConfigKey {
 				}
 				_ => Ok(()),
 			},
-			Self::MultiReadBufferCapacity => match value {
-				Value::Uint8(0) => {
-					Err("MULTI_READ_BUFFER_CAPACITY must be greater than zero".to_string())
+			Self::MultiReadBufferPages => match value {
+				Value::Uint8(0) => Err("MULTI_READ_BUFFER_PAGES must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::MultiReadBufferPageSize => match value {
+				Value::Uint8(v) if v.is_power_of_two() => Ok(()),
+				Value::Uint8(_) => {
+					Err("MULTI_READ_BUFFER_PAGE_SIZE must be a power of two".to_string())
 				}
 				_ => Ok(()),
 			},
@@ -529,7 +544,8 @@ impl fmt::Display for ConfigKey {
 			Self::CdcCompactBlockCacheCapacity => write!(f, "CDC_COMPACT_BLOCK_CACHE_CAPACITY"),
 			Self::CdcCompactZstdLevel => write!(f, "CDC_COMPACT_ZSTD_LEVEL"),
 			Self::CdcRecentCacheCapacity => write!(f, "CDC_RECENT_CACHE_CAPACITY"),
-			Self::MultiReadBufferCapacity => write!(f, "MULTI_READ_BUFFER_CAPACITY"),
+			Self::MultiReadBufferPages => write!(f, "MULTI_READ_BUFFER_PAGES"),
+			Self::MultiReadBufferPageSize => write!(f, "MULTI_READ_BUFFER_PAGE_SIZE"),
 			Self::FlowTick => write!(f, "FLOW_TICK"),
 			Self::ThreadsAsync => write!(f, "THREADS_ASYNC"),
 			Self::ThreadsSystem => write!(f, "THREADS_SYSTEM"),
@@ -564,7 +580,8 @@ impl FromStr for ConfigKey {
 			"CDC_COMPACT_BLOCK_CACHE_CAPACITY" => Ok(Self::CdcCompactBlockCacheCapacity),
 			"CDC_COMPACT_ZSTD_LEVEL" => Ok(Self::CdcCompactZstdLevel),
 			"CDC_RECENT_CACHE_CAPACITY" => Ok(Self::CdcRecentCacheCapacity),
-			"MULTI_READ_BUFFER_CAPACITY" => Ok(Self::MultiReadBufferCapacity),
+			"MULTI_READ_BUFFER_PAGES" => Ok(Self::MultiReadBufferPages),
+			"MULTI_READ_BUFFER_PAGE_SIZE" => Ok(Self::MultiReadBufferPageSize),
 			"FLOW_TICK" => Ok(Self::FlowTick),
 			"THREADS_ASYNC" => Ok(Self::ThreadsAsync),
 			"THREADS_SYSTEM" => Ok(Self::ThreadsSystem),
@@ -722,7 +739,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 26);
+		assert_eq!(all.len(), 27);
 		assert!(all.contains(&ConfigKey::CdcCompactInterval));
 		assert!(all.contains(&ConfigKey::CdcCompactBlockSize));
 		assert!(all.contains(&ConfigKey::CdcCompactSafetyLag));
@@ -730,7 +747,8 @@ mod tests {
 		assert!(all.contains(&ConfigKey::CdcCompactBlockCacheCapacity));
 		assert!(all.contains(&ConfigKey::CdcCompactZstdLevel));
 		assert!(all.contains(&ConfigKey::CdcRecentCacheCapacity));
-		assert!(all.contains(&ConfigKey::MultiReadBufferCapacity));
+		assert!(all.contains(&ConfigKey::MultiReadBufferPages));
+		assert!(all.contains(&ConfigKey::MultiReadBufferPageSize));
 		assert!(all.contains(&ConfigKey::QueryRowBatchSize));
 		assert!(all.contains(&ConfigKey::ThreadsAsync));
 		assert!(all.contains(&ConfigKey::ThreadsSystem));
@@ -817,23 +835,50 @@ mod tests {
 	}
 
 	#[test]
-	fn test_multi_read_cache_capacity_round_trip() {
-		assert_eq!(
-			"MULTI_READ_BUFFER_CAPACITY".parse::<ConfigKey>().unwrap(),
-			ConfigKey::MultiReadBufferCapacity
-		);
-		assert_eq!(format!("{}", ConfigKey::MultiReadBufferCapacity), "MULTI_READ_BUFFER_CAPACITY");
+	fn test_multi_read_buffer_pages_round_trip() {
+		assert_eq!("MULTI_READ_BUFFER_PAGES".parse::<ConfigKey>().unwrap(), ConfigKey::MultiReadBufferPages);
+		assert_eq!(format!("{}", ConfigKey::MultiReadBufferPages), "MULTI_READ_BUFFER_PAGES");
 	}
 
 	#[test]
-	fn test_multi_read_cache_capacity_metadata_and_rejects_zero() {
-		assert_eq!(ConfigKey::MultiReadBufferCapacity.default_value(), Value::Uint8(4096));
-		assert_eq!(ConfigKey::MultiReadBufferCapacity.expected_types(), &[ValueType::Uint8]);
-		assert!(ConfigKey::MultiReadBufferCapacity.requires_restart());
-		assert!(!ConfigKey::MultiReadBufferCapacity.is_optional());
-		match ConfigKey::MultiReadBufferCapacity.accept(Value::Uint8(0)).unwrap_err() {
+	fn test_multi_read_buffer_pages_metadata_and_rejects_zero() {
+		assert_eq!(ConfigKey::MultiReadBufferPages.default_value(), Value::Uint8(1024));
+		assert_eq!(ConfigKey::MultiReadBufferPages.expected_types(), &[ValueType::Uint8]);
+		assert!(ConfigKey::MultiReadBufferPages.requires_restart());
+		assert!(!ConfigKey::MultiReadBufferPages.is_optional());
+		match ConfigKey::MultiReadBufferPages.accept(Value::Uint8(0)).unwrap_err() {
 			AcceptError::InvalidValue(reason) => {
 				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
+			}
+			other => panic!("expected InvalidValue, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn test_multi_read_buffer_page_size_round_trip() {
+		assert_eq!(
+			"MULTI_READ_BUFFER_PAGE_SIZE".parse::<ConfigKey>().unwrap(),
+			ConfigKey::MultiReadBufferPageSize
+		);
+		assert_eq!(format!("{}", ConfigKey::MultiReadBufferPageSize), "MULTI_READ_BUFFER_PAGE_SIZE");
+	}
+
+	#[test]
+	fn test_multi_read_buffer_page_size_metadata_and_rejects_non_power_of_two() {
+		// Page size must be a power of two because pages are addressed by a row-number bit shift
+		// (bucket = row >> shift); a non-power-of-two would not map to a single shift.
+		assert_eq!(ConfigKey::MultiReadBufferPageSize.default_value(), Value::Uint8(65536));
+		assert_eq!(ConfigKey::MultiReadBufferPageSize.expected_types(), &[ValueType::Uint8]);
+		assert!(ConfigKey::MultiReadBufferPageSize.requires_restart());
+		assert!(!ConfigKey::MultiReadBufferPageSize.is_optional());
+		assert_eq!(
+			ConfigKey::MultiReadBufferPageSize.accept(Value::Uint8(4096)).unwrap(),
+			Value::Uint8(4096),
+			"a power-of-two page size is accepted"
+		);
+		match ConfigKey::MultiReadBufferPageSize.accept(Value::Uint8(1000)).unwrap_err() {
+			AcceptError::InvalidValue(reason) => {
+				assert!(reason.contains("power of two"), "unexpected reason: {reason}");
 			}
 			other => panic!("expected InvalidValue, got {other:?}"),
 		}
