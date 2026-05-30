@@ -62,6 +62,7 @@ pub use reifydb_value::{
 			from_frame::FromFrameError,
 			row::{FrameRow, FrameRows},
 		},
+		iso::{IsoDate, IsoDateTime, IsoDuration, IsoTime},
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
 		try_from::{FromValueError, TryFromValue, TryFromValueCoerce},

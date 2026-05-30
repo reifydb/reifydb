@@ -134,6 +134,7 @@ pub use reifydb_value::{
 			row::{FrameRow, FrameRows},
 		},
 		identity::IdentityId,
+		iso::{IsoDate, IsoDateTime, IsoDuration, IsoTime},
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
 		try_from::{FromValueError, TryFromValue, TryFromValueCoerce},

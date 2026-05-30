@@ -32,6 +32,7 @@ pub mod identity;
 pub mod int;
 pub mod into;
 pub mod is;
+pub mod iso;
 pub mod json;
 pub mod number;
 pub mod ordered_f32;
