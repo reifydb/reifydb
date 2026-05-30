@@ -462,7 +462,7 @@ unsafe impl Send for ActorSpawner {}
 unsafe impl Sync for ActorSpawner {}
 
 impl ActorSpawner {
-	fn system(&self) -> ActorSystem {
+	pub fn system(&self) -> ActorSystem {
 		ActorSystem {
 			inner: self.inner.upgrade().expect("runtime already shut down: cannot spawn actor"),
 		}

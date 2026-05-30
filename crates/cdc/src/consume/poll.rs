@@ -9,7 +9,10 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::{actors::cdc::CdcPollHandle, interface::cdc::CdcConsumerId};
+use reifydb_core::{
+	actors::cdc::{CdcPollHandle, CdcPollMessage},
+	interface::cdc::CdcConsumerId,
+};
 use reifydb_runtime::actor::system::ActorSpawner;
 use reifydb_value::Result;
 
@@ -128,7 +131,10 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> CdcConsumer for PollCons
 			return Ok(());
 		}
 
-		self.handle.take();
+		if let Some(handle) = self.handle.take() {
+			let _ = handle.actor_ref().send(CdcPollMessage::Shutdown);
+			let _ = handle.join();
+		}
 
 		Ok(())
 	}

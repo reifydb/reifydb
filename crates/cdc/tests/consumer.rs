@@ -559,8 +559,9 @@ fn test_batch_size_with_checkpoint_resume() {
 
 	test_instance.start().expect("Failed to start consumer");
 
-	// Wait for partial processing
-	sleep(Duration::from_millis(180));
+	// Wait for at least one batch, then a real stop() drains the actor so the durable
+	// checkpoint cannot run ahead of what this run actually recorded.
+	await_until("first run processes a batch", || consumer_clone.get_total_changes() >= 5);
 	test_instance.stop().expect("Failed to stop consumer");
 
 	let changes_first_run = consumer_clone.get_total_changes();
@@ -578,15 +579,14 @@ fn test_batch_size_with_checkpoint_resume() {
 	let runtime2 = actor_system2.spawner();
 	let mut test_instance2 = PollConsumer::new(config2, t.inner().clone(), consumer2, cdc_store, runtime2);
 
+	// Resume must process exactly the leftover events plus the 3 new ones, each once.
+	let total_expected = 18 - changes_first_run;
 	test_instance2.start().expect("Failed to start consumer");
-	sleep(Duration::from_millis(250));
+	await_until("second run drains remainder", || consumer2_clone.get_total_changes() >= total_expected);
 	test_instance2.stop().expect("Failed to stop consumer");
 
 	let changes_second_run = consumer2_clone.get_total_changes();
-	let total_expected = 18 - changes_first_run;
 	assert_eq!(changes_second_run, total_expected, "Should have processed remaining events plus new ones");
-
-	test_instance2.stop().expect("Failed to stop consumer");
 }
 
 #[test]

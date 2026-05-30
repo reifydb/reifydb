@@ -105,8 +105,8 @@ impl DstTestContext {
 
 		let engine = db.engine().clone();
 		let auth_service = db.auth_service().clone();
-		let system = db.shared_runtime().actor_system();
-		let clock = db.shared_runtime().clock().clone();
+		let system = db.engine().spawner().system();
+		let clock = db.clock().clone();
 
 		let handle = system.spawn_query("server", ServerActor::new(engine, auth_service, clock));
 		let client = DstClient::new(handle.actor_ref().clone(), system.clone());

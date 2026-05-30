@@ -126,6 +126,10 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C
 			CdcPollMessage::Poll => self.on_poll(state, ctx),
 			CdcPollMessage::CheckWatermark => self.on_check_watermark(state, ctx),
 			CdcPollMessage::ConsumeResponse(result) => self.on_consume_response(state, ctx, result),
+			CdcPollMessage::Shutdown => {
+				debug!("[Consumer {:?}] Shutdown", self.config.consumer_id);
+				Directive::Stop
+			}
 		}
 	}
 

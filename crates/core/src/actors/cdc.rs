@@ -26,4 +26,6 @@ pub enum CdcPollMessage {
 	CheckWatermark,
 
 	ConsumeResponse(Result<()>),
+
+	Shutdown,
 }
