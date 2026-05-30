@@ -23,6 +23,7 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
+	shutdown::Shutdown,
 	sync::{mutex::Mutex, waiter::WaiterHandle},
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -134,6 +135,14 @@ impl Deref for StandardSingleStore {
 
 	fn deref(&self) -> &Self::Target {
 		&self.0
+	}
+}
+
+impl Shutdown for StandardSingleStore {
+	fn shutdown(&self) {
+		if let Some(persistent) = self.persistent.as_ref() {
+			persistent.shutdown();
+		}
 	}
 }
 

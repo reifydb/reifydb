@@ -19,9 +19,12 @@ use reifydb_core::{
 	interface::store::EntryKind,
 	row::TtlAnchor,
 };
-use reifydb_runtime::sync::{
-	map::Map,
-	mutex::{Mutex, MutexGuard},
+use reifydb_runtime::{
+	shutdown::Shutdown,
+	sync::{
+		map::Map,
+		mutex::{Mutex, MutexGuard},
+	},
 };
 use reifydb_sqlite::{
 	SqliteConfig, SqliteTempPathGuard,
@@ -68,7 +71,7 @@ pub struct SqlitePersistentStorage {
 }
 
 struct SqlitePersistentStorageInner {
-	conn: Mutex<Connection>,
+	conn: Mutex<Option<Connection>>,
 	readers: ReadPool,
 	checkpoint_threshold_frames: u32,
 	table_sql: Map<EntryKind, Arc<TableSql>>,
@@ -97,12 +100,12 @@ impl TableSql {
 }
 
 struct ReadPool {
-	conns: Vec<Mutex<Connection>>,
+	conns: Vec<Mutex<Option<Connection>>>,
 	next: AtomicUsize,
 }
 
 impl ReadPool {
-	fn acquire(&self) -> MutexGuard<'_, Connection> {
+	fn acquire(&self) -> MutexGuard<'_, Option<Connection>> {
 		let n = self.conns.len();
 		let start = self.next.fetch_add(1, Ordering::Relaxed) % n;
 		for i in 0..n {
@@ -111,6 +114,12 @@ impl ReadPool {
 			}
 		}
 		self.conns[start].lock()
+	}
+
+	fn shutdown(&self) {
+		for slot in &self.conns {
+			drop(slot.lock().take());
+		}
 	}
 }
 
@@ -134,12 +143,12 @@ impl SqlitePersistentStorage {
 			let reader = connect(&db_path, flags).expect("Failed to open persistent read connection");
 			pragma::apply_read_only(&reader, &config)
 				.expect("Failed to configure persistent read connection");
-			conns.push(Mutex::new(reader));
+			conns.push(Mutex::new(Some(reader)));
 		}
 
 		Self {
 			inner: Arc::new(SqlitePersistentStorageInner {
-				conn: Mutex::new(conn),
+				conn: Mutex::new(Some(conn)),
 				readers: ReadPool {
 					conns,
 					next: AtomicUsize::new(0),
@@ -151,7 +160,13 @@ impl SqlitePersistentStorage {
 	}
 
 	pub fn maybe_checkpoint(&self) -> Result<CheckpointOutcome> {
-		let conn = self.inner.conn.lock();
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(CheckpointOutcome {
+				log_frames: 0,
+				restarted: false,
+			});
+		};
 
 		let mut log_frames: i64 = 0;
 		conn.pragma(None, "wal_checkpoint", "PASSIVE", |row| {
@@ -193,7 +208,10 @@ impl SqlitePersistentStorage {
 
 	pub fn count_current(&self, table: EntryKind) -> Result<u64> {
 		let table_sql = self.table_sql(table);
-		let conn = self.inner.readers.acquire();
+		let guard = self.inner.readers.acquire();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(0);
+		};
 		let sql = format!("SELECT COUNT(*) FROM \"{}\"", table_sql.table_name);
 		match conn.query_row(&sql, [], |row| row.get::<_, i64>(0)) {
 			Ok(c) => Ok(c as u64),
@@ -215,7 +233,10 @@ impl SqlitePersistentStorage {
 			TtlAnchor::Updated => "updated_nanos",
 		};
 		let sql = build_delete_expired_sql(&table_sql.table_name, anchor_column, prefix.is_some());
-		let conn = self.inner.conn.lock();
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(0);
+		};
 		let result = match prefix {
 			Some(prefix) => {
 				let upper = prefix_upper_bound(prefix);
@@ -238,7 +259,10 @@ impl SqlitePersistentStorage {
 			return Ok(0);
 		}
 		let table_sql = self.table_sql(table);
-		let conn = self.inner.conn.lock();
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(0);
+		};
 		let mut total = 0u64;
 		for chunk in keys.chunks(GET_MANY_CHUNK) {
 			let sql = build_delete_keys_sql(&table_sql.table_name, chunk.len());
@@ -267,7 +291,11 @@ impl SqlitePersistentStorage {
 		}
 
 		let table_sql = self.table_sql(req.table);
-		let conn = self.inner.readers.acquire();
+		let guard = self.inner.readers.acquire();
+		let Some(conn) = guard.as_ref() else {
+			cursor.exhausted = true;
+			return Ok(RangeBatch::empty());
+		};
 
 		let sql = build_range_current_sql(
 			&table_sql.table_name,
@@ -359,7 +387,10 @@ impl TierStorage for SqlitePersistentStorage {
 	#[instrument(name = "store::multi::persistent::sqlite::get", level = "trace", skip(self), fields(table = ?table, key_len = key.len(), version = version.0))]
 	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
 		let table_sql = self.table_sql(table);
-		let conn = self.inner.readers.acquire();
+		let guard = self.inner.readers.acquire();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(VersionedGetResult::NotFound);
+		};
 
 		let result = match conn.prepare_cached(&table_sql.get_sql) {
 			Ok(mut stmt) => stmt.query_row(params![key], |row| {
@@ -399,7 +430,10 @@ impl TierStorage for SqlitePersistentStorage {
 
 		let index: HashMap<&[u8], usize> = keys.iter().enumerate().map(|(i, &k)| (k, i)).collect();
 		let table_sql = self.table_sql(table);
-		let conn = self.inner.readers.acquire();
+		let guard = self.inner.readers.acquire();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(out);
+		};
 
 		for chunk in keys.chunks(GET_MANY_CHUNK) {
 			let bucket = bucket_key_count(chunk.len());
@@ -465,7 +499,10 @@ impl TierStorage for SqlitePersistentStorage {
 			return Ok(());
 		}
 
-		let conn = self.inner.conn.lock();
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(());
+		};
 		let tx = conn
 			.unchecked_transaction()
 			.map_err(|e| error!(internal(format!("Failed to start persistent transaction: {}", e))))?;
@@ -551,14 +588,20 @@ impl TierStorage for SqlitePersistentStorage {
 
 	fn ensure_table(&self, table: EntryKind) -> Result<()> {
 		let table_sql = self.table_sql(table);
-		let conn = self.inner.conn.lock();
-		Self::create_table_if_needed(&conn, &table_sql.create_sql)
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(());
+		};
+		Self::create_table_if_needed(conn, &table_sql.create_sql)
 			.map_err(|e| error!(internal(format!("Failed to ensure persistent table: {}", e))))
 	}
 
 	fn clear_table(&self, table: EntryKind) -> Result<()> {
 		let table_sql = self.table_sql(table);
-		let conn = self.inner.conn.lock();
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(());
+		};
 		let result = conn.execute(&format!("DELETE FROM \"{}\"", table_sql.table_name), []);
 		if let Err(e) = result
 			&& !e.to_string().contains("no such table")
@@ -581,7 +624,10 @@ impl TierStorage for SqlitePersistentStorage {
 		// TODO: change the TierStorage interface to remove the
 
 		let table_sql = self.table_sql(table);
-		let conn = self.inner.readers.acquire();
+		let guard = self.inner.readers.acquire();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(Vec::new());
+		};
 
 		let result = match conn.prepare_cached(&table_sql.get_sql) {
 			Ok(mut stmt) => stmt.query_row(params![key], |row| {
@@ -620,6 +666,18 @@ impl TierStorage for SqlitePersistentStorage {
 }
 
 impl TierBackend for SqlitePersistentStorage {}
+
+impl Shutdown for SqlitePersistentStorage {
+	fn shutdown(&self) {
+		if let Some(conn) = self.inner.conn.lock().take() {
+			if let Err(e) = pragma::shutdown(&conn) {
+				warn!(error = %e, "persistent close: pragma shutdown failed");
+			}
+			drop(conn);
+		}
+		self.inner.readers.shutdown();
+	}
+}
 
 #[cfg(test)]
 mod tests {

@@ -540,11 +540,12 @@ pub mod tests {
 		let store = MultiStore::testing_memory();
 		let resolver = store;
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
-		let event_bus = EventBus::new(&actor_system);
+		let spawner = actor_system.spawner();
+		let event_bus = EventBus::new(&spawner);
 		let host = TestCdcHost::new();
 		let clock = host.clock.clone();
 		let handle = spawn_cdc_producer(
-			&actor_system,
+			&spawner,
 			storage.clone(),
 			resolver,
 			host,
@@ -594,11 +595,12 @@ pub mod tests {
 		let store = MultiStore::testing_memory();
 		let resolver = store;
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
-		let event_bus = EventBus::new(&actor_system);
+		let spawner = actor_system.spawner();
+		let event_bus = EventBus::new(&spawner);
 		let host = TestCdcHost::new();
 		let clock = host.clock.clone();
 		let handle = spawn_cdc_producer(
-			&actor_system,
+			&spawner,
 			storage.clone(),
 			resolver,
 			host,

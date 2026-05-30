@@ -97,4 +97,10 @@ impl UserVTableRegistry {
 		let inner = self.inner.read();
 		inner.entries.values().map(|e| e.def.clone()).collect()
 	}
+
+	pub fn clear(&self) {
+		let mut inner = self.inner.write();
+		inner.entries.clear();
+		inner.entries_by_id.clear();
+	}
 }

@@ -21,7 +21,7 @@ type CacheKey = (String, Option<String>);
 
 #[cfg(not(reifydb_single_threaded))]
 pub struct RemoteRegistry {
-	handle: Handle,
+	handle: Mutex<Option<Handle>>,
 	clients: Mutex<HashMap<CacheKey, GrpcClient>>,
 }
 
@@ -29,9 +29,24 @@ pub struct RemoteRegistry {
 impl RemoteRegistry {
 	pub fn new(handle: Handle) -> Self {
 		Self {
-			handle,
+			handle: Mutex::new(Some(handle)),
 			clients: Mutex::new(HashMap::new()),
 		}
+	}
+
+	pub fn shutdown(&self) {
+		self.clients.lock().clear();
+		*self.handle.lock() = None;
+	}
+
+	fn handle(&self) -> Result<Handle, Error> {
+		self.handle.lock().clone().ok_or_else(|| {
+			Error(Box::new(Diagnostic {
+				code: "REMOTE_002".to_string(),
+				message: "remote runtime has been shut down".to_string(),
+				..Default::default()
+			}))
+		})
 	}
 
 	pub fn forward_query(
@@ -63,7 +78,7 @@ impl RemoteRegistry {
 		let rql = rql.to_string();
 		let (tx, rx) = mpsc::sync_channel(1);
 
-		self.handle.spawn(async move {
+		self.handle()?.spawn(async move {
 			let result = client.query(&rql, params).await;
 			let _ = tx.send(result);
 		});
@@ -100,7 +115,7 @@ impl RemoteRegistry {
 		let address_owned = address.to_string();
 		let (tx, rx) = mpsc::sync_channel(1);
 
-		self.handle.spawn(async move {
+		self.handle()?.spawn(async move {
 			let result = GrpcClient::connect(&address_owned, WireFormat::Proto).await;
 			let _ = tx.send(result);
 		});
@@ -143,7 +158,7 @@ pub fn extract_remote_token(err: &Error) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_runtime::{RuntimeConfig, SharedRuntime, pool::PoolConfig};
+	use reifydb_runtime::{Runtime, RuntimeConfig, pool::PoolConfig};
 	use reifydb_value::{error::Diagnostic, fragment::Fragment};
 
 	use super::*;
@@ -247,8 +262,8 @@ mod tests {
 
 	#[test]
 	fn test_connect_failure_does_not_pollute_cache() {
-		let runtime = SharedRuntime::from_config(RuntimeConfig::default(), PoolConfig::default());
-		let registry = RemoteRegistry::new(runtime);
+		let runtime = Runtime::from_config(RuntimeConfig::default(), PoolConfig::default());
+		let registry = RemoteRegistry::new(runtime.handle());
 
 		// 127.0.0.1:1 is reserved; connect must fail fast.
 		let err = registry.forward_query("http://127.0.0.1:1", "FROM x", Params::None, None).unwrap_err();
@@ -258,8 +273,8 @@ mod tests {
 
 	#[test]
 	fn test_evict_missing_key_is_noop() {
-		let runtime = SharedRuntime::from_config(RuntimeConfig::default(), PoolConfig::default());
-		let registry = RemoteRegistry::new(runtime);
+		let runtime = Runtime::from_config(RuntimeConfig::default(), PoolConfig::default());
+		let registry = RemoteRegistry::new(runtime.handle());
 		registry.evict("http://127.0.0.1:1", None);
 		registry.evict("http://127.0.0.1:1", Some("tok"));
 		assert_eq!(registry.cache_len(), 0);

@@ -25,13 +25,15 @@ fn test_tiered(path: &Path) {
 	temp_dir(|_db_path| {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
+		let spawner = actor_system.spawner();
+		std::mem::forget(actor_system);
 		let (persistent, _guard) = PersistentConfig::sqlite_in_memory();
 		let store = StandardSingleStore::new(SingleStoreConfig {
 			buffer: Some(BufferConfig {
 				storage: SingleBufferTier::memory(),
 			}),
 			persistent: Some(persistent),
-			actor_system,
+			spawner,
 			clock: Clock::Real,
 		})
 		.unwrap();

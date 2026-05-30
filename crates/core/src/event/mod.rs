@@ -239,7 +239,7 @@ pub mod tests {
 	#[test]
 	fn test_event_bus_new() {
 		let actor_system = test_actor_system();
-		let event_bus = EventBus::new(&actor_system);
+		let event_bus = EventBus::new(&actor_system.spawner());
 		event_bus.emit(TestEvent::new());
 		event_bus.wait_for_completion();
 	}
@@ -247,7 +247,7 @@ pub mod tests {
 	#[test]
 	fn test_register_single_listener() {
 		let actor_system = test_actor_system();
-		let event_bus = EventBus::new(&actor_system);
+		let event_bus = EventBus::new(&actor_system.spawner());
 		let listener = TestEventListener::default();
 
 		event_bus.register::<TestEvent, TestEventListener>(listener.clone());
@@ -259,7 +259,7 @@ pub mod tests {
 	#[test]
 	fn test_emit_unregistered_event() {
 		let actor_system = test_actor_system();
-		let event_bus = EventBus::new(&actor_system);
+		let event_bus = EventBus::new(&actor_system.spawner());
 		event_bus.emit(TestEvent::new());
 		event_bus.wait_for_completion();
 	}
@@ -267,7 +267,7 @@ pub mod tests {
 	#[test]
 	fn test_multiple_listeners_same_event() {
 		let actor_system = test_actor_system();
-		let event_bus = EventBus::new(&actor_system);
+		let event_bus = EventBus::new(&actor_system.spawner());
 		let listener1 = TestEventListener::default();
 		let listener2 = TestEventListener::default();
 
@@ -283,7 +283,7 @@ pub mod tests {
 	#[test]
 	fn test_event_bus_clone() {
 		let actor_system = test_actor_system();
-		let event_bus1 = EventBus::new(&actor_system);
+		let event_bus1 = EventBus::new(&actor_system.spawner());
 		let listener = TestEventListener::default();
 		event_bus1.register::<TestEvent, TestEventListener>(listener.clone());
 
@@ -296,7 +296,7 @@ pub mod tests {
 	#[test]
 	fn test_concurrent_registration() {
 		let actor_system = test_actor_system();
-		let event_bus = Arc::new(EventBus::new(&actor_system));
+		let event_bus = Arc::new(EventBus::new(&actor_system.spawner()));
 		let mut handles = Vec::new();
 
 		for _ in 0..10 {
@@ -318,7 +318,7 @@ pub mod tests {
 	#[test]
 	fn test_concurrent_emitting() {
 		let actor_system = test_actor_system();
-		let event_bus = Arc::new(EventBus::new(&actor_system));
+		let event_bus = Arc::new(EventBus::new(&actor_system.spawner()));
 		let listener = TestEventListener::default();
 		event_bus.register::<TestEvent, TestEventListener>(listener.clone());
 		event_bus.wait_for_completion();
@@ -357,7 +357,7 @@ pub mod tests {
 	#[test]
 	fn test_multi_event_listener() {
 		let actor_system = test_actor_system();
-		let event_bus = EventBus::new(&actor_system);
+		let event_bus = EventBus::new(&actor_system.spawner());
 		let listener = TestEventListener::default();
 
 		event_bus.register::<TestEvent, TestEventListener>(listener.clone());

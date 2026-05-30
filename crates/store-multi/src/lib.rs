@@ -44,6 +44,7 @@ use reifydb_core::{
 		MultiVersionStore,
 	},
 };
+use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_value::util::cowvec::CowVec;
@@ -122,6 +123,20 @@ impl MultiStore {
 	pub fn persistent(&self) -> Option<&tier::persistent::MultiPersistentTier> {
 		match self {
 			MultiStore::Standard(store) => store.persistent(),
+		}
+	}
+
+	pub fn clear_eviction_watermark(&self) {
+		match self {
+			MultiStore::Standard(store) => store.clear_eviction_watermark(),
+		}
+	}
+}
+
+impl Shutdown for MultiStore {
+	fn shutdown(&self) {
+		match self {
+			MultiStore::Standard(store) => store.shutdown(),
 		}
 	}
 }

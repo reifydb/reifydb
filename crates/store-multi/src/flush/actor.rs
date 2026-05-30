@@ -17,7 +17,10 @@ use reifydb_runtime::actor::{
 	system::{ActorConfig, ActorSpawner},
 	traits::{Actor, Directive},
 };
-use reifydb_runtime::{actor::timers::TimerHandle, sync::waiter::WaiterHandle};
+use reifydb_runtime::{
+	actor::timers::TimerHandle,
+	sync::{rwlock::RwLock, waiter::WaiterHandle},
+};
 use reifydb_value::value::datetime::DateTime;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use tracing::{debug, error, warn};
@@ -58,7 +61,7 @@ pub struct FlushActor {
 	persistent: MultiPersistentTier,
 	flush_interval: Duration,
 	persistence: Arc<OnceLock<Arc<dyn ShapePersistence>>>,
-	eviction_watermark: Arc<OnceLock<Arc<dyn EvictionWatermark>>>,
+	eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 	read: Option<MultiReadBufferTier>,
 }
 
@@ -69,7 +72,7 @@ impl FlushActor {
 		persistent: MultiPersistentTier,
 		flush_interval: Duration,
 		persistence: Arc<OnceLock<Arc<dyn ShapePersistence>>>,
-		eviction_watermark: Arc<OnceLock<Arc<dyn EvictionWatermark>>>,
+		eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 		read: Option<MultiReadBufferTier>,
 	) -> Self {
 		Self {
@@ -88,7 +91,7 @@ impl FlushActor {
 		persistent: MultiPersistentTier,
 		flush_interval: Duration,
 		persistence: Arc<OnceLock<Arc<dyn ShapePersistence>>>,
-		eviction_watermark: Arc<OnceLock<Arc<dyn EvictionWatermark>>>,
+		eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 		read: Option<MultiReadBufferTier>,
 	) -> ActorRef<FlushMessage> {
 		let actor = Self::new(commit, persistent, flush_interval, persistence, eviction_watermark, read);
@@ -96,7 +99,7 @@ impl FlushActor {
 	}
 
 	fn eviction_cutoff(&self) -> Option<CommitVersion> {
-		let cutoff = self.eviction_watermark.get()?.watermark();
+		let cutoff = self.eviction_watermark.read().as_ref()?.watermark();
 		if cutoff.0 == 0 {
 			return None;
 		}
@@ -295,9 +298,9 @@ mod tests {
 		let (persistent, guard) = MultiPersistentTier::sqlite_in_memory();
 		let persistence_lock: Arc<OnceLock<Arc<dyn ShapePersistence>>> = Arc::new(OnceLock::new());
 		let _ = persistence_lock.set(persistence);
-		let watermark_lock: Arc<OnceLock<Arc<dyn EvictionWatermark>>> = Arc::new(OnceLock::new());
+		let watermark_lock: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
 		if let Some(w) = watermark {
-			let _ = watermark_lock.set(Arc::new(StaticWatermark(w)));
+			*watermark_lock.write() = Some(Arc::new(StaticWatermark(w)));
 		}
 		(
 			FlushActor::new(
@@ -321,8 +324,8 @@ mod tests {
 		let (persistent, guard) = MultiPersistentTier::sqlite_in_memory();
 		let persistence_lock: Arc<OnceLock<Arc<dyn ShapePersistence>>> = Arc::new(OnceLock::new());
 		let _ = persistence_lock.set(persistence);
-		let watermark_lock: Arc<OnceLock<Arc<dyn EvictionWatermark>>> = Arc::new(OnceLock::new());
-		let _ = watermark_lock.set(Arc::new(StaticWatermark(watermark)));
+		let watermark_lock: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
+		*watermark_lock.write() = Some(Arc::new(StaticWatermark(watermark)));
 		(
 			FlushActor::new(
 				buffer,

@@ -165,7 +165,7 @@ pub mod tests {
 	#[test]
 	fn test_high_concurrency() {
 		let system = ActorSystem::new(Pools::default(), Clock::Real);
-		let watermark = Arc::new(WaterMark::new("concurrent".into(), &system));
+		let watermark = Arc::new(WaterMark::new("concurrent".into(), &system.spawner()));
 
 		const NUM_TASKS: usize = 50;
 		const OPS_PER_TASK: usize = 100;
@@ -202,7 +202,7 @@ pub mod tests {
 	#[test]
 	fn test_concurrent_wait_for_mark() {
 		let system = ActorSystem::new(Pools::default(), Clock::Real);
-		let watermark = Arc::new(WaterMark::new("wait_concurrent".into(), &system));
+		let watermark = Arc::new(WaterMark::new("wait_concurrent".into(), &system.spawner()));
 		let success_count = Arc::new(AtomicUsize::new(0));
 
 		// Start some versions
@@ -360,7 +360,7 @@ pub mod tests {
 		F: FnOnce(Arc<WaterMark>),
 	{
 		let system = ActorSystem::new(Pools::default(), Clock::Real);
-		let watermark = Arc::new(WaterMark::new("watermark".into(), &system));
+		let watermark = Arc::new(WaterMark::new("watermark".into(), &system.spawner()));
 
 		f(watermark);
 

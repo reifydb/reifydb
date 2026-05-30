@@ -4,6 +4,7 @@
 use std::ops::Bound;
 
 use reifydb_core::encoded::key::EncodedKey;
+use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_value::{Result, util::cowvec::CowVec};
@@ -21,6 +22,17 @@ use sqlite::storage::SqlitePersistentStorage;
 pub enum SinglePersistentTier {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	Sqlite(SqlitePersistentStorage) = 0,
+}
+
+impl Shutdown for SinglePersistentTier {
+	fn shutdown(&self) {
+		match self {
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+			Self::Sqlite(s) => s.shutdown(),
+			#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
+			_ => {}
+		}
+	}
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]

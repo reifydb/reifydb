@@ -3,16 +3,13 @@
 
 use std::time::Duration;
 
-use reifydb::{
-	Clock, MockClock, Params, PoolConfig, RuntimeConfig, SharedRuntime, auth::service::AuthResponse, embedded,
-};
+use reifydb::{Clock, MockClock, Params, RuntimeConfig, auth::service::AuthResponse, embedded};
 
 fn create_db_with_mock_clock(mock: &MockClock, session_ttl: Duration) -> reifydb::Database {
 	let mut config = RuntimeConfig::default();
 	config.clock = Clock::Mock(mock.clone());
-	let runtime = SharedRuntime::from_config(config, PoolConfig::default());
 
-	embedded::memory().with_runtime(runtime).with_auth(move |a| a.session_ttl(session_ttl)).build().unwrap()
+	embedded::memory().with_runtime_config(config).with_auth(move |a| a.session_ttl(session_ttl)).build().unwrap()
 }
 
 fn setup_user_and_login(db: &mut reifydb::Database) -> String {
@@ -74,9 +71,8 @@ fn test_token_no_ttl_never_expires() {
 	let mock = MockClock::from_millis(1_700_000_000_000);
 	let mut config = RuntimeConfig::default();
 	config.clock = Clock::Mock(mock.clone());
-	let runtime = SharedRuntime::from_config(config, PoolConfig::default());
 
-	let mut db = embedded::memory().with_runtime(runtime).with_auth(|a| a.no_session_ttl()).build().unwrap();
+	let mut db = embedded::memory().with_runtime_config(config).with_auth(|a| a.no_session_ttl()).build().unwrap();
 
 	let token = setup_user_and_login(&mut db);
 

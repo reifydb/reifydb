@@ -43,7 +43,8 @@ fn test_consumer_lifecycle() {
 	let consumer_id = CdcConsumerId::flow_consumer();
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let pools = Pools::new(PoolConfig::default());
-	let runtime = ActorSystem::new(pools, Clock::Real);
+	let actor_system = ActorSystem::new(pools, Clock::Real);
+	let runtime = actor_system.spawner();
 
 	let config = PollConsumerConfig::new(consumer_id, "cdc-poll-test", Duration::from_millis(100), None);
 	let mut test_instance = PollConsumer::new(config, t.inner().clone(), consumer, cdc_store, runtime);
@@ -73,7 +74,8 @@ fn test_event_processing() {
 	let consumer_clone = consumer.clone();
 
 	let pools = Pools::new(PoolConfig::default());
-	let runtime = ActorSystem::new(pools, Clock::Real);
+	let actor_system = ActorSystem::new(pools, Clock::Real);
+	let runtime = actor_system.spawner();
 
 	insert_test_events(&t, 5);
 
@@ -120,7 +122,8 @@ fn test_checkpoint_persistence() {
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let consumer_clone = consumer.clone();
 	let pools = Pools::new(PoolConfig::default());
-	let runtime = ActorSystem::new(pools, Clock::Real);
+	let actor_system = ActorSystem::new(pools, Clock::Real);
+	let runtime = actor_system.spawner();
 
 	insert_test_events(&t, 3);
 
@@ -141,7 +144,8 @@ fn test_checkpoint_persistence() {
 	let consumer2_clone = consumer2.clone();
 	let config2 = PollConsumerConfig::new(consumer_id.clone(), "cdc-poll-test", Duration::from_millis(50), None);
 	let pools2 = Pools::new(PoolConfig::default());
-	let runtime2 = ActorSystem::new(pools2, Clock::Real);
+	let actor_system2 = ActorSystem::new(pools2, Clock::Real);
+	let runtime2 = actor_system2.spawner();
 	let mut test_instance2 = PollConsumer::new(config2, t.inner().clone(), consumer2, cdc_store, runtime2);
 
 	test_instance2.start().expect("Failed to start consumer");
@@ -174,7 +178,8 @@ fn test_error_handling() {
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let consumer_clone = consumer.clone();
 	let pools = Pools::new(PoolConfig::default());
-	let runtime = ActorSystem::new(pools, Clock::Real);
+	let actor_system = ActorSystem::new(pools, Clock::Real);
+	let runtime = actor_system.spawner();
 
 	insert_test_events(&t, 3);
 
@@ -212,7 +217,8 @@ fn test_empty_events_handling() {
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let consumer_clone = consumer.clone();
 	let pools = Pools::new(PoolConfig::default());
-	let runtime = ActorSystem::new(pools, Clock::Real);
+	let actor_system = ActorSystem::new(pools, Clock::Real);
+	let runtime = actor_system.spawner();
 
 	let config = PollConsumerConfig::new(consumer_id, "cdc-poll-test", Duration::from_millis(50), None);
 	let mut test_instance = PollConsumer::new(config, t.inner().clone(), consumer, cdc_store, runtime);
@@ -240,7 +246,8 @@ fn test_multiple_consumers() {
 	let t = TestEngine::new();
 	let cdc_store = t.cdc_store();
 	let pools = Pools::new(PoolConfig::default());
-	let runtime = ActorSystem::new(pools, Clock::Real);
+	let actor_system = ActorSystem::new(pools, Clock::Real);
+	let runtime = actor_system.spawner();
 
 	let consumer_id1 = CdcConsumerId::new("consumer-1");
 	let consumer1 = TestConsumer::new(t.inner().clone(), consumer_id1.clone());
@@ -334,7 +341,8 @@ fn test_non_table_events_filtered() {
 	txn.commit().expect("Failed to commit transaction");
 
 	let pools = Pools::new(PoolConfig::default());
-	let runtime = ActorSystem::new(pools, Clock::Real);
+	let actor_system = ActorSystem::new(pools, Clock::Real);
+	let runtime = actor_system.spawner();
 	let config = PollConsumerConfig::new(consumer_id, "cdc-poll-test", Duration::from_millis(50), None);
 	let mut test_instance = PollConsumer::new(config, t.inner().clone(), consumer, cdc_store, runtime);
 
@@ -378,7 +386,8 @@ fn test_rapid_start_stop() {
 	let consumer_id = CdcConsumerId::flow_consumer();
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let pools = Pools::new(PoolConfig::default());
-	let runtime = ActorSystem::new(pools, Clock::Real);
+	let actor_system = ActorSystem::new(pools, Clock::Real);
+	let runtime = actor_system.spawner();
 
 	for _ in 0..5 {
 		let config =
@@ -409,7 +418,8 @@ fn test_batch_size_limits_processing() {
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let consumer_clone = consumer.clone();
 	let pools = Pools::new(PoolConfig::default());
-	let runtime = ActorSystem::new(pools, Clock::Real);
+	let actor_system = ActorSystem::new(pools, Clock::Real);
+	let runtime = actor_system.spawner();
 
 	// Insert 25 events
 	insert_test_events(&t, 25);
@@ -440,7 +450,8 @@ fn test_batch_size_one_processes_sequentially() {
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let consumer_clone = consumer.clone();
 	let pools = Pools::new(PoolConfig::default());
-	let runtime = ActorSystem::new(pools, Clock::Real);
+	let actor_system = ActorSystem::new(pools, Clock::Real);
+	let runtime = actor_system.spawner();
 
 	// Insert 5 events
 	insert_test_events(&t, 5);
@@ -471,7 +482,8 @@ fn test_batch_size_none_processes_all_at_once() {
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let consumer_clone = consumer.clone();
 	let pools = Pools::new(PoolConfig::default());
-	let runtime = ActorSystem::new(pools, Clock::Real);
+	let actor_system = ActorSystem::new(pools, Clock::Real);
+	let runtime = actor_system.spawner();
 
 	// Insert 20 events
 	insert_test_events(&t, 20);
@@ -502,7 +514,8 @@ fn test_batch_size_larger_than_events() {
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let consumer_clone = consumer.clone();
 	let pools = Pools::new(PoolConfig::default());
-	let runtime = ActorSystem::new(pools, Clock::Real);
+	let actor_system = ActorSystem::new(pools, Clock::Real);
+	let runtime = actor_system.spawner();
 
 	// Insert 5 events
 	insert_test_events(&t, 5);
@@ -533,7 +546,8 @@ fn test_batch_size_with_checkpoint_resume() {
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let consumer_clone = consumer.clone();
 	let pools = Pools::new(PoolConfig::default());
-	let runtime = ActorSystem::new(pools, Clock::Real);
+	let actor_system = ActorSystem::new(pools, Clock::Real);
+	let runtime = actor_system.spawner();
 
 	// Insert 15 events
 	insert_test_events(&t, 15);
@@ -560,7 +574,8 @@ fn test_batch_size_with_checkpoint_resume() {
 	let consumer2_clone = consumer2.clone();
 	let config2 = PollConsumerConfig::new(consumer_id.clone(), "cdc-poll-test", Duration::from_millis(50), Some(5));
 	let pools2 = Pools::new(PoolConfig::default());
-	let runtime2 = ActorSystem::new(pools2, Clock::Real);
+	let actor_system2 = ActorSystem::new(pools2, Clock::Real);
+	let runtime2 = actor_system2.spawner();
 	let mut test_instance2 = PollConsumer::new(config2, t.inner().clone(), consumer2, cdc_store, runtime2);
 
 	test_instance2.start().expect("Failed to start consumer");
@@ -582,7 +597,8 @@ fn test_batch_size_exact_match() {
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let consumer_clone = consumer.clone();
 	let pools = Pools::new(PoolConfig::default());
-	let runtime = ActorSystem::new(pools, Clock::Real);
+	let actor_system = ActorSystem::new(pools, Clock::Real);
+	let runtime = actor_system.spawner();
 
 	// Insert exactly 10 events
 	insert_test_events(&t, 10);
@@ -610,7 +626,8 @@ fn test_multiple_consumers_different_batch_sizes() {
 	let t = TestEngine::new();
 	let cdc_store = t.cdc_store();
 	let pools = Pools::new(PoolConfig::default());
-	let runtime = ActorSystem::new(pools, Clock::Real);
+	let actor_system = ActorSystem::new(pools, Clock::Real);
+	let runtime = actor_system.spawner();
 
 	let consumer_id1 = CdcConsumerId::new("consumer-batch-3");
 	let consumer1 = TestConsumer::new(t.inner().clone(), consumer_id1.clone());

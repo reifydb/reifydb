@@ -406,7 +406,7 @@ mod tests {
 	};
 
 	use reifydb_core::encoded::key::EncodedKeyRange;
-	use reifydb_runtime::{context::clock::MockClock, pool::Pools};
+	use reifydb_runtime::{actor::system::ActorSystem, context::clock::MockClock, pool::Pools};
 	use reifydb_value::value::Value;
 
 	use super::*;
@@ -447,6 +447,8 @@ mod tests {
 	fn create_test_oracle(start: impl Into<CommitVersion>) -> Oracle<MockVersionProvider> {
 		let clock = MockVersionProvider::new(start);
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
+		let spawner = actor_system.spawner();
+		std::mem::forget(actor_system);
 
 		struct DummyConfig;
 		impl GetConfig for DummyConfig {
@@ -459,7 +461,7 @@ mod tests {
 		}
 		let config = Arc::new(DummyConfig);
 
-		Oracle::new(clock, actor_system, Clock::Mock(MockClock::from_millis(1000)), Rng::seeded(42), config)
+		Oracle::new(clock, spawner, Clock::Mock(MockClock::from_millis(1000)), Rng::seeded(42), config)
 	}
 
 	#[test]

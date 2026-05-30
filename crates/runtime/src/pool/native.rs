@@ -32,7 +32,6 @@ impl PoolsInner {
 
 impl Drop for PoolsInner {
 	fn drop(&mut self) {
-		eprintln!("[chaos-leak] PoolsInner::drop running");
 		if let Some(rt) = self.take_tokio() {
 			if runtime::Handle::try_current().is_err() {
 				rt.shutdown_timeout(Duration::from_secs(5));

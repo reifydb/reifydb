@@ -64,8 +64,9 @@ test_each_path! { in "crates/transaction/tests/scripts/all" as serializable_all 
 fn test_serializable(path: &Path) {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
-	let bus = EventBus::new(&ActorSystem::new(Pools::default(), Clock::Real));
 	let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
+	let spawner = actor_system.spawner();
+	let bus = EventBus::new(&spawner);
 	struct DefaultConfig;
 	impl GetConfig for DefaultConfig {
 		fn get_config(&self, key: ConfigKey) -> Value {
@@ -79,7 +80,7 @@ fn test_serializable(path: &Path) {
 		multi_store,
 		SingleTransaction::new(single_store, bus.clone()),
 		bus,
-		actor_system,
+		spawner,
 		Clock::Mock(MockClock::from_millis(1000)),
 		Rng::seeded(42),
 		Arc::new(DefaultConfig),

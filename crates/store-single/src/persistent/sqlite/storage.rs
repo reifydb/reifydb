@@ -4,7 +4,7 @@
 use std::{ops::Bound, sync::Arc};
 
 use reifydb_core::{encoded::key::EncodedKey, internal_error};
-use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_runtime::{shutdown::Shutdown, sync::mutex::Mutex};
 use reifydb_sqlite::{
 	SqliteConfig, SqliteTempPathGuard,
 	connection::{connect, convert_flags, resolve_db_path},
@@ -14,7 +14,7 @@ use reifydb_value::{Result, util::cowvec::CowVec};
 use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, Transaction as SqliteTransaction, params,
 };
-use tracing::instrument;
+use tracing::{instrument, warn};
 
 use super::query::build_range_query;
 use crate::tier::{RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
@@ -27,7 +27,7 @@ pub struct SqlitePersistentStorage {
 }
 
 struct SqlitePersistentStorageInner {
-	conn: Mutex<Connection>,
+	conn: Mutex<Option<Connection>>,
 }
 
 impl SqlitePersistentStorage {
@@ -45,7 +45,7 @@ impl SqlitePersistentStorage {
 
 		Self {
 			inner: Arc::new(SqlitePersistentStorageInner {
-				conn: Mutex::new(conn),
+				conn: Mutex::new(Some(conn)),
 			}),
 		}
 	}
@@ -59,7 +59,10 @@ impl SqlitePersistentStorage {
 impl TierStorage for SqlitePersistentStorage {
 	#[instrument(name = "store::single::persistent::get", level = "trace", skip(self, key), fields(key_len = key.len()))]
 	fn get(&self, key: &[u8]) -> Result<Option<CowVec<u8>>> {
-		let conn = self.inner.conn.lock();
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(None);
+		};
 
 		let result = conn.query_row(
 			&format!("SELECT value FROM \"{}\" WHERE key = ?1", TABLE_NAME),
@@ -78,7 +81,10 @@ impl TierStorage for SqlitePersistentStorage {
 
 	#[instrument(name = "store::single::persistent::get_with_tombstone", level = "trace", skip(self, key), fields(key_len = key.len()))]
 	fn get_with_tombstone(&self, key: &[u8]) -> Result<Option<Option<CowVec<u8>>>> {
-		let conn = self.inner.conn.lock();
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(None);
+		};
 
 		let result = conn.query_row(
 			&format!("SELECT value FROM \"{}\" WHERE key = ?1", TABLE_NAME),
@@ -96,7 +102,10 @@ impl TierStorage for SqlitePersistentStorage {
 
 	#[instrument(name = "store::single::persistent::contains", level = "trace", skip(self, key), fields(key_len = key.len()), ret)]
 	fn contains(&self, key: &[u8]) -> Result<bool> {
-		let conn = self.inner.conn.lock();
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(false);
+		};
 
 		let result = conn.query_row(
 			&format!("SELECT value IS NOT NULL FROM \"{}\" WHERE key = ?1", TABLE_NAME),
@@ -118,7 +127,10 @@ impl TierStorage for SqlitePersistentStorage {
 			return Ok(());
 		}
 
-		let conn = self.inner.conn.lock();
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(());
+		};
 		let tx = conn
 			.unchecked_transaction()
 			.map_err(|e| internal_error!("Failed to start transaction: {}", e))?;
@@ -165,7 +177,11 @@ impl TierStorage for SqlitePersistentStorage {
 		};
 		let end_owned = bound_to_owned(end);
 
-		let conn = self.inner.conn.lock();
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			cursor.exhausted = true;
+			return Ok(RangeBatch::empty());
+		};
 
 		let start_ref = bound_as_ref(&effective_start);
 		let end_ref = bound_as_ref(&end_owned);
@@ -249,7 +265,11 @@ impl TierStorage for SqlitePersistentStorage {
 			None => bound_to_owned(end),
 		};
 
-		let conn = self.inner.conn.lock();
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			cursor.exhausted = true;
+			return Ok(RangeBatch::empty());
+		};
 
 		let start_ref = bound_as_ref(&start_owned);
 		let end_ref = bound_as_ref(&effective_end);
@@ -317,7 +337,10 @@ impl TierStorage for SqlitePersistentStorage {
 
 	#[instrument(name = "store::single::persistent::ensure_table", level = "trace", skip(self))]
 	fn ensure_table(&self) -> Result<()> {
-		let conn = self.inner.conn.lock();
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(());
+		};
 
 		conn.execute(
 			&format!(
@@ -335,7 +358,10 @@ impl TierStorage for SqlitePersistentStorage {
 
 	#[instrument(name = "store::single::persistent::clear_table", level = "debug", skip(self))]
 	fn clear_table(&self) -> Result<()> {
-		let conn = self.inner.conn.lock();
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(());
+		};
 
 		let result = conn.execute(&format!("DELETE FROM \"{}\"", TABLE_NAME), []);
 
@@ -348,6 +374,17 @@ impl TierStorage for SqlitePersistentStorage {
 }
 
 impl TierBackend for SqlitePersistentStorage {}
+
+impl Shutdown for SqlitePersistentStorage {
+	fn shutdown(&self) {
+		if let Some(conn) = self.inner.conn.lock().take() {
+			if let Err(e) = pragma::shutdown(&conn) {
+				warn!(error = %e, "single persistent close: pragma shutdown failed");
+			}
+			drop(conn);
+		}
+	}
+}
 
 fn bound_as_ref(bound: &Bound<Vec<u8>>) -> Bound<&[u8]> {
 	match bound {

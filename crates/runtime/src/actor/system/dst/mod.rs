@@ -8,7 +8,7 @@ use std::{
 	collections::{BinaryHeap, VecDeque},
 	error, fmt,
 	panic::{AssertUnwindSafe, catch_unwind},
-	rc::Rc,
+	rc::{Rc, Weak},
 	time::Duration,
 };
 
@@ -143,8 +143,11 @@ impl Clone for ActorSystem {
 	}
 }
 
-// SAFETY: DST is single-threaded. These impls are required because the Actor
-
+// SAFETY: on the dst target the executor is single-threaded - no thread pool is compiled in (the
+// real-thread `pool` module is native-only) and actors run inline via step(), so the Rc/RefCell-backed
+// inner is only ever accessed from the one thread that drives the system. These impls exist solely to
+// satisfy Send + Sync bounds on Actor and container types (Database, EventBus, Subsystems) and are
+// never used to perform a real cross-thread transfer.
 unsafe impl Send for ActorSystem {}
 unsafe impl Sync for ActorSystem {}
 
@@ -195,6 +198,13 @@ impl ActorSystem {
 
 	pub fn pools(&self) -> Pools {
 		Pools::default()
+	}
+
+	pub fn spawner(&self) -> ActorSpawner {
+		ActorSpawner {
+			inner: Rc::downgrade(&self.inner),
+			clock: self.inner.clock.clone(),
+		}
 	}
 
 	pub fn cancellation_token(&self) -> CancellationToken {
@@ -433,6 +443,80 @@ impl fmt::Debug for ActorSystem {
 			.field("cancelled", &self.is_cancelled())
 			.field("alive_count", &self.alive_count())
 			.finish_non_exhaustive()
+	}
+}
+
+#[derive(Clone)]
+pub struct ActorSpawner {
+	inner: Weak<DstActorSystemInner>,
+	clock: Clock,
+}
+
+// SAFETY: on the dst target the executor is single-threaded - no thread pool is compiled in (the
+// real-thread `pool` module is native-only) and actors run inline via ActorSystem::step(), so the
+// Rc/RefCell-backed Weak<DstActorSystemInner> is only ever accessed from the one thread that drives
+// the system. These impls exist solely to satisfy Send + Sync bounds on container types (Database,
+// EventBus, Subsystems) and are never used to perform a real cross-thread transfer. This mirrors the
+// unsafe Send/Sync on ActorSystem above.
+unsafe impl Send for ActorSpawner {}
+unsafe impl Sync for ActorSpawner {}
+
+impl ActorSpawner {
+	fn system(&self) -> ActorSystem {
+		ActorSystem {
+			inner: self.inner.upgrade().expect("runtime already shut down: cannot spawn actor"),
+		}
+	}
+
+	pub fn clock(&self) -> &Clock {
+		&self.clock
+	}
+
+	pub fn pools(&self) -> Pools {
+		self.system().pools()
+	}
+
+	pub fn is_alive(&self) -> bool {
+		self.inner.strong_count() > 0
+	}
+
+	pub fn cancellation_token(&self) -> Option<CancellationToken> {
+		self.inner.upgrade().map(|inner| inner.cancel.clone())
+	}
+
+	pub fn scope(&self) -> ActorSpawner {
+		self.system().scope().spawner()
+	}
+
+	pub fn shutdown(&self) {
+		if let Some(inner) = self.inner.upgrade() {
+			ActorSystem {
+				inner,
+			}
+			.shutdown();
+		}
+	}
+
+	pub fn spawn_system<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+		self.system().spawn_system(name, actor)
+	}
+
+	pub fn spawn_query<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+		self.system().spawn_query(name, actor)
+	}
+
+	pub fn spawn_commit<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+		self.system().spawn_commit(name, actor)
+	}
+
+	pub fn spawn_background<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+		self.system().spawn_background(name, actor)
+	}
+}
+
+impl fmt::Debug for ActorSpawner {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("ActorSpawner").field("alive", &self.is_alive()).finish_non_exhaustive()
 	}
 }
 
@@ -865,6 +949,39 @@ mod tests {
 		system.run_until_idle();
 
 		assert_eq!(*log.lock(), vec!["a1", "b1", "c1", "a2", "b2"]);
+	}
+
+	#[test]
+	fn test_spawner_tracks_system_liveness() {
+		// A spawner is a Weak handle: while the ActorSystem is alive it reports alive and hands out
+		// a cancellation token; once the system is dropped the Weak must observe it. No actor is
+		// spawned here, so no ctx cycle keeps the inner Rc alive - this isolates the Weak/strong_count
+		// contract, which the compiler cannot check (a spawner that accidentally held a strong Rc
+		// would still build but would report alive forever).
+		let system = test_system();
+		let spawner = system.spawner();
+		assert!(spawner.is_alive());
+		assert!(spawner.cancellation_token().is_some());
+
+		drop(system);
+
+		assert!(!spawner.is_alive(), "spawner must observe the system drop");
+		assert!(spawner.cancellation_token().is_none());
+	}
+
+	#[test]
+	fn test_spawner_spawns_onto_the_same_system() {
+		// Spawning through the spawner must upgrade to the originating system, so the actor is driven
+		// by that system's step loop and counts toward its alive_count.
+		let system = test_system();
+		let spawner = system.spawner();
+
+		let handle = spawner.spawn_system("via-spawner", CounterActor);
+		handle.actor_ref.send(CounterMessage::Inc).unwrap();
+		handle.actor_ref.send(CounterMessage::Inc).unwrap();
+		system.run_until_idle();
+
+		assert_eq!(system.alive_count(), 1);
 	}
 
 	// Allow debug formatting for StepResult in test assertions.

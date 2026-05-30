@@ -16,11 +16,13 @@ use std::{
 use libc::{SIGHUP, SIGINT, SIGQUIT, SIGTERM, c_int, sighandler_t, signal};
 use reifydb_auth::service::AuthService;
 use reifydb_catalog::catalog::Catalog;
+use reifydb_cdc::storage::CdcStore;
 use reifydb_engine::{engine::StandardEngine, session::RetryStrategy};
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSpawner},
 	context::clock::Clock,
 	pool::Pools,
+	shutdown::Shutdown,
 };
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
@@ -229,6 +231,16 @@ impl Database {
 
 		self.subsystems.stop_all()?;
 
+		if let Some(multi_store) = self.engine.ioc().try_resolve::<MultiStore>() {
+			multi_store.shutdown();
+		}
+		if let Some(single_store) = self.engine.ioc().try_resolve::<SingleStore>() {
+			single_store.shutdown();
+		}
+		if let Some(cdc_store) = self.engine.ioc().try_resolve::<CdcStore>() {
+			cdc_store.shutdown();
+		}
+
 		self.engine.shutdown();
 
 		self.running = false;
@@ -243,21 +255,37 @@ impl Database {
 			return;
 		}
 
+		const PLATEAU_ROUNDS: u32 = 6;
+
 		let deadline = Instant::now() + timeout;
-		let mut last_producer = 0u64;
-		let mut stable = 0u32;
+		let mut last_producer = u64::MAX;
+		let mut last_consumer = u64::MAX;
+		let mut caught_up = 0u32;
+		let mut plateaued = 0u32;
 		loop {
 			let producer = self.engine.cdc_producer_watermark().0;
 			let consumer = self.engine.consumer_watermark().0;
+
 			if consumer >= producer && producer == last_producer {
-				stable += 1;
-				if stable >= 2 {
+				caught_up += 1;
+				if caught_up >= 2 {
 					return;
 				}
 			} else {
-				stable = 0;
+				caught_up = 0;
 			}
+
+			if producer == last_producer && consumer == last_consumer {
+				plateaued += 1;
+				if plateaued >= PLATEAU_ROUNDS {
+					return;
+				}
+			} else {
+				plateaued = 0;
+			}
+
 			last_producer = producer;
+			last_consumer = consumer;
 
 			if Instant::now() >= deadline {
 				warn!(

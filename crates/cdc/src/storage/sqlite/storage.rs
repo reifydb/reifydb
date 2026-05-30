@@ -38,7 +38,7 @@ pub struct SqliteCdcStorage {
 }
 
 struct Inner {
-	conn: Mutex<Connection>,
+	conn: Mutex<Option<Connection>>,
 	block_cache: BlockCache,
 	last_zstd_level: AtomicU8,
 }
@@ -80,7 +80,7 @@ impl SqliteCdcStorage {
 		let conn = open_connection(&config);
 		Self {
 			inner: Arc::new(Inner {
-				conn: Mutex::new(conn),
+				conn: Mutex::new(Some(conn)),
 				block_cache: BlockCache::new(cache_capacity),
 				last_zstd_level: AtomicU8::new(3),
 			}),
@@ -100,15 +100,24 @@ impl SqliteCdcStorage {
 	}
 
 	pub fn incremental_vacuum(&self) {
-		let _ = pragma::incremental_vacuum(&self.inner.conn.lock());
+		let guard = self.inner.conn.lock();
+		if let Some(conn) = guard.as_ref() {
+			let _ = pragma::incremental_vacuum(conn);
+		}
 	}
 
 	pub fn shrink_memory(&self) {
-		let _ = pragma::shrink_memory(&self.inner.conn.lock());
+		let guard = self.inner.conn.lock();
+		if let Some(conn) = guard.as_ref() {
+			let _ = pragma::shrink_memory(conn);
+		}
 	}
 
 	pub fn shutdown(&self) {
-		let _ = pragma::shutdown(&self.inner.conn.lock());
+		if let Some(conn) = self.inner.conn.lock().take() {
+			let _ = pragma::shutdown(&conn);
+			drop(conn);
+		}
 	}
 
 	fn read_from_blocks(&self, version: CommitVersion) -> CdcStorageResult<Option<Cdc>> {
@@ -123,7 +132,10 @@ impl SqliteCdcStorage {
 
 	#[inline]
 	fn find_block_for_version(&self, v_bytes: &[u8; 8]) -> CdcStorageResult<Option<(Vec<u8>, Vec<u8>)>> {
-		let conn = self.inner.conn.lock();
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(None);
+		};
 		conn.query_row(
 			r#"SELECT max_version, payload FROM "cdc_block"
 			   WHERE max_version >= ?1 AND min_version <= ?1
@@ -221,14 +233,17 @@ impl SqliteCdcStorage {
 		allow_partial: bool,
 		producer_watermark: CommitVersion,
 	) -> CdcStorageResult<Option<CompactionCandidates>> {
-		let conn = self.inner.conn.lock();
-		let Some(max_v) = query_max_live_version(&conn)? else {
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(None);
+		};
+		let Some(max_v) = query_max_live_version(conn)? else {
 			return Ok(None);
 		};
 		let Some(eligible_max) = compute_eligible_max(max_v, safety_lag, producer_watermark) else {
 			return Ok(None);
 		};
-		let (entries, version_blobs) = query_oldest_candidates(&conn, eligible_max, target_size)?;
+		let (entries, version_blobs) = query_oldest_candidates(conn, eligible_max, target_size)?;
 		if entries.is_empty() {
 			return Ok(None);
 		}
@@ -249,7 +264,10 @@ impl SqliteCdcStorage {
 		max_ts_nanos: i64,
 		num_entries: usize,
 	) -> CdcStorageResult<bool> {
-		let conn = self.inner.conn.lock();
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(false);
+		};
 		let tx = conn
 			.unchecked_transaction()
 			.map_err(|e| CdcError::Internal(format!("compact tx begin: {e}")))?;
@@ -281,10 +299,13 @@ impl SqliteCdcStorage {
 		let lo_b = version_to_bytes(lo_inc);
 		let hi_b = version_to_bytes(hi_inc);
 		let limit = (batch_size as i64).saturating_add(1);
-		let conn = self.inner.conn.lock();
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok((Vec::new(), Vec::new()));
+		};
 
-		let block_rows = read_block_index_rows(&conn, &lo_b, &hi_b)?;
-		let live_payloads = read_live_payloads(&conn, &lo_b, &hi_b, limit)?;
+		let block_rows = read_block_index_rows(conn, &lo_b, &hi_b)?;
+		let live_payloads = read_live_payloads(conn, &lo_b, &hi_b, limit)?;
 		Ok((block_rows, live_payloads))
 	}
 
@@ -810,7 +831,10 @@ fn insert_compacted_block(
 impl CdcStorage for SqliteCdcStorage {
 	fn write(&self, cdc: &Cdc) -> CdcStorageResult<()> {
 		let bytes = to_stdvec(cdc).map_err(|e| CdcError::Codec(format!("postcard encode: {e}")))?;
-		let conn = self.inner.conn.lock();
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(());
+		};
 		conn.execute(
 			r#"INSERT OR REPLACE INTO "cdc" (version, payload, created_at) VALUES (?1, ?2, ?3)"#,
 			params![
@@ -862,31 +886,43 @@ impl CdcStorage for SqliteCdcStorage {
 	}
 
 	fn min_version(&self) -> CdcStorageResult<Option<CommitVersion>> {
-		let conn = self.inner.conn.lock();
-		let block_min = query_min_block(&conn)?;
-		let live_min = query_min_live(&conn)?;
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(None);
+		};
+		let block_min = query_min_block(conn)?;
+		let live_min = query_min_live(conn)?;
 		Ok([block_min, live_min].into_iter().flatten().min())
 	}
 
 	fn max_version(&self) -> CdcStorageResult<Option<CommitVersion>> {
-		let conn = self.inner.conn.lock();
-		if let Some(v) = query_max_live(&conn)? {
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(None);
+		};
+		if let Some(v) = query_max_live(conn)? {
 			return Ok(Some(v));
 		}
-		query_max_block(&conn)
+		query_max_block(conn)
 	}
 
 	fn drop_before(&self, version: CommitVersion) -> CdcStorageResult<DropBeforeResult> {
-		let conn = self.inner.conn.lock();
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(DropBeforeResult {
+				count: 0,
+				entries: Vec::new(),
+			});
+		};
 		let version_bytes = version_to_bytes(version);
 		let zstd_level = self.inner.last_zstd_level.load(Ordering::Relaxed);
 
-		let full_blocks = self.scan_full_blocks_below(&conn, &version_bytes)?;
-		let straddle = self.scan_straddle_blocks(&conn, version, &version_bytes)?;
-		let live = scan_live_rows_below(&conn, &version_bytes)?;
+		let full_blocks = self.scan_full_blocks_below(conn, &version_bytes)?;
+		let straddle = self.scan_straddle_blocks(conn, version, &version_bytes)?;
+		let live = scan_live_rows_below(conn, &version_bytes)?;
 
-		apply_drop_before(&conn, &full_blocks.pks, &straddle.actions, &version_bytes, zstd_level)?;
-		let _ = pragma::incremental_vacuum(&conn);
+		apply_drop_before(conn, &full_blocks.pks, &straddle.actions, &version_bytes, zstd_level)?;
+		let _ = pragma::incremental_vacuum(conn);
 
 		let mut entries = full_blocks.entries;
 		entries.extend(straddle.entries);
@@ -913,7 +949,10 @@ impl SqliteCdcStorage {
 	#[inline]
 	fn try_block_index_cutoff(&self, cutoff_nanos: i64) -> CdcStorageResult<Option<CommitVersion>> {
 		let block_hit: Option<Vec<u8>> = {
-			let conn = self.inner.conn.lock();
+			let guard = self.inner.conn.lock();
+			let Some(conn) = guard.as_ref() else {
+				return Ok(None);
+			};
 			conn.query_row(
 				r#"SELECT min_version FROM "cdc_block"
 				   WHERE max_timestamp >= ?1 ORDER BY max_timestamp ASC LIMIT 1"#,
@@ -927,7 +966,10 @@ impl SqliteCdcStorage {
 
 	#[inline]
 	fn scan_live_cutoff_indexed(&self, cutoff_nanos: i64) -> CdcStorageResult<Option<CommitVersion>> {
-		let conn = self.inner.conn.lock();
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(None);
+		};
 		let result = conn.query_row(
 			r#"SELECT version FROM "cdc"
 			   WHERE created_at >= ?1 ORDER BY created_at ASC LIMIT 1"#,
@@ -943,7 +985,10 @@ impl SqliteCdcStorage {
 
 	#[inline]
 	fn read_live(&self, version: CommitVersion) -> CdcStorageResult<Option<Cdc>> {
-		let conn = self.inner.conn.lock();
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(None);
+		};
 		let result = conn.query_row(
 			r#"SELECT payload FROM "cdc" WHERE version = ?1"#,
 			params![version_to_bytes(version).as_slice()],

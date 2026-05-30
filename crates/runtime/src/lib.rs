@@ -25,6 +25,8 @@ pub mod hash;
 
 pub mod pool;
 
+pub mod shutdown;
+
 pub mod sync;
 
 pub mod actor;
@@ -36,6 +38,7 @@ use crate::{
 	actor::system::ActorSystem,
 	context::clock::{Clock, MockClock},
 	pool::{PoolConfig, Pools},
+	shutdown::Shutdown,
 };
 
 #[derive(Clone)]
@@ -143,12 +146,6 @@ impl Runtime {
 		self.system.spawner()
 	}
 
-	pub fn shutdown(&self) {
-		self.system.shutdown();
-		let _ = self.system.join();
-		self.pools.shutdown();
-	}
-
 	pub fn clock(&self) -> &Clock {
 		&self.clock
 	}
@@ -204,9 +201,16 @@ impl Runtime {
 	}
 }
 
+impl Shutdown for Runtime {
+	fn shutdown(&self) {
+		self.system.shutdown();
+		let _ = self.system.join();
+		self.pools.shutdown();
+	}
+}
+
 impl Drop for Runtime {
 	fn drop(&mut self) {
-		eprintln!("[chaos-leak] Runtime::drop running");
 		self.shutdown();
 	}
 }

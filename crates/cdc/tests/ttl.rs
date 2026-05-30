@@ -59,14 +59,15 @@ impl TtlFixture {
 		let storage = MemoryCdcStorage::new();
 		let resolver = MultiStore::testing_memory();
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
-		let event_bus = EventBus::new(&actor_system);
+		let spawner = actor_system.spawner();
+		let event_bus = EventBus::new(&spawner);
 		let host = TestCdcHost::with_clock(initial_nanos);
 		let catalog = host.catalog.cache().clone();
 		let mock = host.mock.clone();
 		let clock = host.clock.clone();
 
 		let handle = spawn_cdc_producer(
-			&actor_system,
+			&spawner,
 			storage.clone(),
 			resolver,
 			host,

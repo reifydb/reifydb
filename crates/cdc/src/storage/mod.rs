@@ -21,6 +21,7 @@ use reifydb_core::{
 	encoded::key::EncodedKey,
 	interface::cdc::{Cdc, CdcBatch},
 };
+use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteConfig;
 use reifydb_value::value::datetime::DateTime;
@@ -189,6 +190,16 @@ pub enum CdcStore {
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	Sqlite(CachedCdcStorage<sqlite::storage::SqliteCdcStorage>),
+}
+
+impl Shutdown for CdcStore {
+	fn shutdown(&self) {
+		match self {
+			Self::Memory(_) => {}
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+			Self::Sqlite(s) => s.inner().shutdown(),
+		}
+	}
 }
 
 impl CdcStore {

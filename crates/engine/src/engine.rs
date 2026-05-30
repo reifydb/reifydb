@@ -44,6 +44,7 @@ use reifydb_metric::storage::metric::MetricReader;
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSpawner},
 	context::{clock::Clock, rng::Rng},
+	shutdown::Shutdown,
 };
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
@@ -623,17 +624,25 @@ impl StandardEngine {
 		Ok(())
 	}
 
-	pub fn shutdown(&self) {
-		self.interceptors.clear_late();
-		self.executor.ioc.clear();
-	}
-
 	pub fn bulk_insert<'e>(&'e self, identity: IdentityId) -> BulkInsertBuilder<'e, Validated> {
 		BulkInsertBuilder::new(self, identity)
 	}
 
 	pub fn bulk_insert_unchecked<'e>(&'e self, identity: IdentityId) -> BulkInsertBuilder<'e, Unchecked> {
 		BulkInsertBuilder::new_unchecked(self, identity)
+	}
+}
+
+impl Shutdown for StandardEngine {
+	fn shutdown(&self) {
+		self.interceptors.clear_late();
+		self.executor.ioc.clear();
+		self.executor.virtual_table_registry.clear();
+		self.multi().store().clear_eviction_watermark();
+		#[cfg(not(reifydb_single_threaded))]
+		if let Some(registry) = self.executor.remote_registry.as_ref() {
+			registry.shutdown();
+		}
 	}
 }
 

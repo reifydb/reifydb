@@ -12,7 +12,8 @@ use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSystem},
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
-	sync::waiter::WaiterHandle,
+	shutdown::Shutdown,
+	sync::{rwlock::RwLock, waiter::WaiterHandle},
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
@@ -57,7 +58,7 @@ pub struct StandardMultiStoreInner {
 	#[allow(dead_code)]
 	pub(crate) row_settings_provider: Arc<OnceLock<Arc<dyn ShapePersistence>>>,
 	#[allow(dead_code)]
-	pub(crate) eviction_watermark: Arc<OnceLock<Arc<dyn EvictionWatermark>>>,
+	pub(crate) eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 
 	pub(crate) event_bus: EventBus,
 }
@@ -74,7 +75,7 @@ impl StandardMultiStore {
 
 		let row_settings_provider: Arc<OnceLock<Arc<dyn ShapePersistence>>> = Arc::new(OnceLock::new());
 
-		let eviction_watermark: Arc<OnceLock<Arc<dyn EvictionWatermark>>> = Arc::new(OnceLock::new());
+		let eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
 
 		let drop_actor = commit.as_ref().map(|storage| {
 			let drop_config = DropWorkerConfig::default();
@@ -151,7 +152,11 @@ impl StandardMultiStore {
 	}
 
 	pub fn set_eviction_watermark(&self, watermark: Arc<dyn EvictionWatermark>) {
-		let _ = self.eviction_watermark.set(watermark);
+		*self.eviction_watermark.write() = Some(watermark);
+	}
+
+	pub fn clear_eviction_watermark(&self) {
+		*self.eviction_watermark.write() = None;
 	}
 
 	pub fn commit(&self) -> Option<&MultiCommitBufferTier> {
@@ -210,6 +215,14 @@ impl Deref for StandardMultiStore {
 
 	fn deref(&self) -> &Self::Target {
 		&self.0
+	}
+}
+
+impl Shutdown for StandardMultiStore {
+	fn shutdown(&self) {
+		if let Some(persistent) = self.persistent.as_ref() {
+			persistent.shutdown();
+		}
 	}
 }
 

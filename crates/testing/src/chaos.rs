@@ -37,17 +37,10 @@ impl Chaos {
 
 	pub fn run(self, body: impl Fn(u64)) {
 		eprintln!("chaos \"{}\": {} iterations, base seed {}", self.name, self.iterations, self.base_seed);
+
+		#[cfg(target_os = "linux")]
+		let mut fd_baseline: Option<usize> = None;
 		for i in 0..self.iterations {
-			eprintln!(
-				"[chaos-leak] {} iter={} open_fds={} threads={}",
-				self.name,
-				i,
-				debug_count_open_fds(),
-				debug_count_threads()
-			);
-			if i == 3 {
-				debug_dump_thread_names();
-			}
 			let seed = derive_seed(self.base_seed, i);
 			let result = panic::catch_unwind(AssertUnwindSafe(|| body(seed)));
 			if let Err(payload) = result {
@@ -63,6 +56,27 @@ impl Chaos {
 				);
 				panic::resume_unwind(payload);
 			}
+			#[cfg(target_os = "linux")]
+			{
+				const FD_SLACK: usize = 64;
+				let fds = std::fs::read_dir("/proc/self/fd").map(|d| d.count()).unwrap_or(0);
+				match fd_baseline {
+					None => fd_baseline = Some(fds),
+					Some(base) => assert!(
+						fds <= base + FD_SLACK,
+						"chaos \"{}\": open file descriptors grew from {} (after iteration 0) to {} by \
+						 iteration {} (slack {}); a database lifecycle is leaking fds, the \
+						 SQLITE_CANTOPEN failure mode (reproduce: make test-chaos SEED={} N={})",
+						self.name,
+						base,
+						fds,
+						i,
+						FD_SLACK,
+						self.base_seed,
+						self.iterations
+					),
+				}
+			}
 		}
 	}
 }
@@ -75,27 +89,6 @@ macro_rules! chaos_test {
 			$crate::chaos::chaos(stringify!($name)).run(|$seed: u64| $body);
 		}
 	};
-}
-
-fn debug_count_open_fds() -> usize {
-	std::fs::read_dir("/proc/self/fd").map(|d| d.count()).unwrap_or(0)
-}
-
-fn debug_count_threads() -> usize {
-	std::fs::read_dir("/proc/self/task").map(|d| d.count()).unwrap_or(0)
-}
-
-fn debug_dump_thread_names() {
-	let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
-	if let Ok(dir) = std::fs::read_dir("/proc/self/task") {
-		for entry in dir.flatten() {
-			let comm = entry.path().join("comm");
-			if let Ok(name) = std::fs::read_to_string(&comm) {
-				*counts.entry(name.trim().to_string()).or_default() += 1;
-			}
-		}
-	}
-	eprintln!("[chaos-leak] thread-name histogram: {counts:?}");
 }
 
 fn derive_seed(base: u64, salt: u64) -> u64 {

@@ -61,12 +61,14 @@ impl Runner {
 	pub fn new(storage: SingleBufferTier) -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
+		let spawner = actor_system.spawner();
+		std::mem::forget(actor_system);
 		let store = StandardSingleStore::new(SingleStoreConfig {
 			buffer: Some(BufferConfig {
 				storage,
 			}),
 			persistent: None,
-			actor_system,
+			spawner,
 			clock: Clock::Real,
 		})
 		.unwrap();
@@ -82,9 +84,11 @@ impl Runner {
 	pub fn sqlite_unbuffered(persistent: PersistentConfig) -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
+		let spawner = actor_system.spawner();
+		std::mem::forget(actor_system);
 		let store = StandardSingleStore::new(SingleStoreConfig::sqlite_unbuffered(
 			persistent,
-			actor_system,
+			spawner,
 			Clock::Real,
 		))
 		.unwrap();

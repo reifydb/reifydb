@@ -210,7 +210,7 @@ mod tests {
 	fn testine_event_with_event_bus() {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
-		let event_bus = EventBus::new(&actor_system);
+		let event_bus = EventBus::new(&actor_system.spawner());
 
 		// Create a listener for DefineTestEvent
 		#[derive(Clone)]

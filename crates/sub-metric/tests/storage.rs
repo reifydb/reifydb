@@ -115,7 +115,9 @@ impl Runner {
 	fn new(data_storage: MultiCommitBufferTier) -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
-		let event_bus = EventBus::new(&actor_system);
+		let spawner = actor_system.spawner();
+		std::mem::forget(actor_system);
+		let event_bus = EventBus::new(&spawner);
 
 		let metrics_storage = SingleStore::testing_memory();
 
@@ -128,7 +130,7 @@ impl Runner {
 				retention: Default::default(),
 				merge_config: Default::default(),
 				event_bus: event_bus.clone(),
-				actor_system: actor_system.clone(),
+				spawner: spawner.clone(),
 				clock: Clock::Real,
 			})
 			.unwrap(),
@@ -144,7 +146,7 @@ impl Runner {
 		)
 		.with_flush_interval(Duration::from_millis(10));
 
-		let handle = actor_system.spawn_system("metric-collector", actor);
+		let handle = spawner.spawn_system("metric-collector", actor);
 		let actor_ref = handle.actor_ref().clone();
 
 		event_bus.register::<MultiCommittedEvent, _>(MultiCommittedListener::new(actor_ref.clone()));

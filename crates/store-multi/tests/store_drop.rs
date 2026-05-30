@@ -50,6 +50,8 @@ impl Runner {
 	fn new(storage: MultiCommitBufferTier) -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
+		let spawner = actor_system.spawner();
+		std::mem::forget(actor_system);
 		let store = StandardMultiStore::new(MultiStoreConfig {
 			commit: Some(CommitBufferConfig {
 				storage,
@@ -57,8 +59,8 @@ impl Runner {
 			persistent: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
-			event_bus: reifydb_core::event::EventBus::new(&actor_system),
-			actor_system,
+			event_bus: reifydb_core::event::EventBus::new(&spawner),
+			spawner,
 			clock: Clock::Real,
 		})
 		.unwrap();

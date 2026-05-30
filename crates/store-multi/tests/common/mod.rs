@@ -64,6 +64,8 @@ impl Runner {
 	pub fn new(storage: MultiCommitBufferTier) -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
+		let spawner = actor_system.spawner();
+		std::mem::forget(actor_system);
 		let store = StandardMultiStore::new(MultiStoreConfig {
 			commit: Some(CommitBufferConfig {
 				storage,
@@ -71,8 +73,8 @@ impl Runner {
 			persistent: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
-			event_bus: EventBus::new(&actor_system),
-			actor_system,
+			event_bus: EventBus::new(&spawner),
+			spawner,
 			clock: Clock::Real,
 		})
 		.unwrap();
@@ -85,10 +87,12 @@ impl Runner {
 	pub fn sqlite_unbuffered(persistent: PersistentConfig) -> Self {
 		let pools = Pools::new(PoolConfig::default());
 		let actor_system = ActorSystem::new(pools, Clock::Real);
-		let event_bus = EventBus::new(&actor_system);
+		let spawner = actor_system.spawner();
+		std::mem::forget(actor_system);
+		let event_bus = EventBus::new(&spawner);
 		let store = StandardMultiStore::new(MultiStoreConfig::sqlite_unbuffered(
 			persistent,
-			actor_system,
+			spawner,
 			Clock::Real,
 			event_bus,
 		))

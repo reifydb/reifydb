@@ -63,7 +63,9 @@ fn store_with_fast_flush() -> (StandardMultiStore, impl Drop) {
 	let pools = Pools::new(PoolConfig::default());
 	let clock = Clock::Real;
 	let actor_system = ActorSystem::new(pools, clock.clone());
-	let event_bus = EventBus::new(&actor_system);
+	let spawner = actor_system.spawner();
+	std::mem::forget(actor_system);
+	let event_bus = EventBus::new(&spawner);
 	let (persistent, guard) = PersistentConfig::sqlite_in_memory();
 	let store = StandardMultiStore::new(MultiStoreConfig {
 		commit: Some(CommitBufferConfig {
@@ -73,7 +75,7 @@ fn store_with_fast_flush() -> (StandardMultiStore, impl Drop) {
 		retention: Default::default(),
 		merge_config: Default::default(),
 		event_bus,
-		actor_system,
+		spawner,
 		clock,
 	})
 	.unwrap();

@@ -7,7 +7,7 @@ use std::{
 };
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
-use reifydb_runtime::{Runtime, actor::system::ActorSpawner};
+use reifydb_runtime::{Runtime, actor::system::ActorSpawner, shutdown::Shutdown};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_value::Result;
 use tracing::info;

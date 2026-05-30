@@ -36,6 +36,7 @@ use reifydb_core::{
 		SingleVersionRangeRev, SingleVersionRemove, SingleVersionRow, SingleVersionSet, SingleVersionStore,
 	},
 };
+use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_value::util::cowvec::CowVec;
@@ -96,6 +97,14 @@ impl SingleStore {
 	pub fn testing_memory_with_persistent_sqlite() -> (Self, SqliteTempPathGuard) {
 		let (store, guard) = StandardSingleStore::testing_memory_with_persistent_sqlite();
 		(SingleStore::Standard(store), guard)
+	}
+}
+
+impl Shutdown for SingleStore {
+	fn shutdown(&self) {
+		match self {
+			SingleStore::Standard(store) => store.shutdown(),
+		}
 	}
 }
 
