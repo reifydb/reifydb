@@ -1,0 +1,20 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+[package]
+name = "view-latency-bench"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "view-latency-bench"
+path = "src/main.rs"
+
+[dependencies]
+reifydb = { workspace = true, features = ["sub_flow"] }
+clap = { version = "4.6", features = ["derive", "env"] }
+hdrhistogram = { workspace = true }

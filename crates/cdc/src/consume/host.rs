@@ -21,5 +21,7 @@ pub trait CdcHost: Clone + Send + Sync + 'static {
 
 	fn wait_for_mark_timeout(&self, version: CommitVersion, timeout: Duration) -> bool;
 
+	fn notify_on_mark(&self, version: CommitVersion, callback: Box<dyn FnOnce() + Send>);
+
 	fn catalog(&self) -> &Catalog;
 }

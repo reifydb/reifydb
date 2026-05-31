@@ -177,6 +177,10 @@ where
 		self.inner.command.wait_for_mark_timeout(version, timeout)
 	}
 
+	pub fn notify_on_mark(&self, version: CommitVersion, callback: Box<dyn FnOnce() + Send>) {
+		self.inner.command.notify_on_mark(version, callback);
+	}
+
 	pub fn advance_version_for_replica(&self, version: CommitVersion) {
 		self.inner.advance_version_for_replica(version);
 		self.inner.command.advance_to(version);

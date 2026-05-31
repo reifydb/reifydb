@@ -114,6 +114,10 @@ impl CdcHost for TestCdcHost {
 		true
 	}
 
+	fn notify_on_mark(&self, _version: CommitVersion, callback: Box<dyn FnOnce() + Send>) {
+		callback();
+	}
+
 	fn catalog(&self) -> &Catalog {
 		&self.catalog
 	}

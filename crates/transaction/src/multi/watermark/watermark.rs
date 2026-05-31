@@ -86,25 +86,32 @@ impl WaterMark {
 		self.wait_for_mark_timeout(CommitVersion(index), Duration::from_secs(30));
 	}
 
-	pub fn wait_for_mark_timeout(&self, index: CommitVersion, timeout: Duration) -> bool {
+	pub fn register_mark_waiter(&self, index: CommitVersion, waiter: Arc<WaiterHandle>) -> bool {
 		let current_done = self.shared.done_until.load(Ordering::SeqCst);
 		if current_done >= index.0 {
+			waiter.notify();
 			return true;
 		}
 
-		let waiter = Arc::new(WaiterHandle::new());
-
-		if self.actor
+		self.actor
 			.send(WatermarkMessage::WaitFor {
 				version: index.0,
-				waiter: waiter.clone(),
+				waiter,
 			})
-			.is_err()
-		{
+			.is_ok()
+	}
+
+	pub fn wait_for_mark_timeout(&self, index: CommitVersion, timeout: Duration) -> bool {
+		let waiter = Arc::new(WaiterHandle::new());
+		if !self.register_mark_waiter(index, waiter.clone()) {
 			return false;
 		}
-
 		waiter.wait_timeout(timeout)
+	}
+
+	pub fn notify_on_mark(&self, index: CommitVersion, callback: Box<dyn FnOnce() + Send>) {
+		let waiter = Arc::new(WaiterHandle::with_callback(callback));
+		let _ = self.register_mark_waiter(index, waiter);
 	}
 }
 
@@ -353,6 +360,47 @@ pub mod tests {
 			let done = watermark.done_until();
 			assert_eq!(done.0, 3, "Watermark should advance to 3, got {}", done.0);
 		});
+	}
+
+	#[test]
+	fn test_notify_on_mark_event_driven() {
+		let system = ActorSystem::new(Pools::default(), Clock::Real);
+		let watermark = Arc::new(WaterMark::new("notify_on_mark".into(), &system.spawner()));
+		let fired = Arc::new(AtomicUsize::new(0));
+
+		watermark.register_in_flight(CommitVersion(1));
+
+		let f = fired.clone();
+		watermark.notify_on_mark(
+			CommitVersion(1),
+			Box::new(move || {
+				f.fetch_add(1, Ordering::SeqCst);
+			}),
+		);
+
+		sleep(Duration::from_millis(20));
+		assert_eq!(fired.load(Ordering::SeqCst), 0, "callback must not fire before the mark is reached");
+
+		watermark.mark_finished(CommitVersion(1));
+		sleep(Duration::from_millis(50));
+		assert_eq!(fired.load(Ordering::SeqCst), 1, "callback fires once when the mark advances");
+
+		let f2 = fired.clone();
+		watermark.notify_on_mark(
+			CommitVersion(1),
+			Box::new(move || {
+				f2.fetch_add(1, Ordering::SeqCst);
+			}),
+		);
+		sleep(Duration::from_millis(20));
+		assert_eq!(
+			fired.load(Ordering::SeqCst),
+			2,
+			"callback fires immediately if the mark is already reached"
+		);
+
+		system.shutdown();
+		sleep(Duration::from_millis(150));
 	}
 
 	fn init_and_close<F>(f: F)

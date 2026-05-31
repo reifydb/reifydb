@@ -61,6 +61,7 @@ members = [
     "bin/playground",
     "bin/testcontainer",
     "bin/load-test",
+    "bin/view-latency-bench",
     "bin/forge",
     "pkg/rust/examples/raft",
     "bin/raft",

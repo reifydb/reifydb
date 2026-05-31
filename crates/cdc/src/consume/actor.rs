@@ -15,7 +15,10 @@ use reifydb_core::{
 	actors::cdc::CdcPollMessage,
 	common::CommitVersion,
 	encoded::key::EncodedKey,
-	interface::cdc::{Cdc, CdcConsumerId, SystemChange},
+	interface::{
+		catalog::config::{ConfigKey, GetConfig},
+		cdc::{Cdc, CdcConsumerId, SystemChange},
+	},
 	key::{EncodableKey, Key, cdc_consumer::CdcConsumerKey, kind::KeyKind},
 };
 use reifydb_runtime::actor::{
@@ -80,15 +83,17 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			wm.store(version);
 		}
 	}
+
+	#[inline]
+	fn watermark_wait_timeout(&self) -> Duration {
+		self.host.catalog().get_config_duration(ConfigKey::CdcWatermarkWaitTimeout)
+	}
 }
 
 pub enum Phase {
 	Ready,
 
-	WaitingForWatermark {
-		current_version: CommitVersion,
-		retries_remaining: u8,
-	},
+	WaitingForWatermark,
 
 	WaitingForConsume {
 		latest_version: CommitVersion,
@@ -159,40 +164,30 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		if self.host.done_until() >= current_version {
 			self.start_consume(state, ctx);
 		} else {
-			state.phase = Phase::WaitingForWatermark {
+			state.phase = Phase::WaitingForWatermark;
+			let self_ref = ctx.self_ref();
+			self.host.notify_on_mark(
 				current_version,
-				retries_remaining: 4,
-			};
-			ctx.schedule_once(Duration::from_millis(50), || CdcPollMessage::CheckWatermark);
+				Box::new(move || {
+					let _ = self_ref.send(CdcPollMessage::CheckWatermark);
+				}),
+			);
+			ctx.schedule_once(self.watermark_wait_timeout(), || CdcPollMessage::CheckWatermark);
 		}
 		Directive::Continue
 	}
 
 	#[inline]
 	fn on_check_watermark(&self, state: &mut PollState, ctx: &Context<CdcPollMessage>) -> Directive {
-		let Phase::WaitingForWatermark {
-			current_version,
-			retries_remaining,
-		} = state.phase
-		else {
+		if !matches!(state.phase, Phase::WaitingForWatermark) {
 			return Directive::Continue;
-		};
+		}
 		if ctx.is_cancelled() {
 			debug!("[Consumer {:?}] Stopped", self.config.consumer_id);
 			return Directive::Stop;
 		}
-		let watermark_ready = self.host.done_until() >= current_version;
-		let timed_out = retries_remaining == 0;
-		if watermark_ready || timed_out {
-			state.phase = Phase::Ready;
-			self.start_consume(state, ctx);
-		} else {
-			state.phase = Phase::WaitingForWatermark {
-				current_version,
-				retries_remaining: retries_remaining - 1,
-			};
-			ctx.schedule_once(Duration::from_millis(50), || CdcPollMessage::CheckWatermark);
-		}
+		state.phase = Phase::Ready;
+		self.start_consume(state, ctx);
 		Directive::Continue
 	}
 

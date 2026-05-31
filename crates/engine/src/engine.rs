@@ -383,6 +383,10 @@ impl CdcHost for StandardEngine {
 		StandardEngine::wait_for_mark_timeout(self, version, timeout)
 	}
 
+	fn notify_on_mark(&self, version: CommitVersion, callback: Box<dyn FnOnce() + Send>) {
+		StandardEngine::notify_on_mark(self, version, callback);
+	}
+
 	fn catalog(&self) -> &Catalog {
 		&self.catalog
 	}
@@ -552,6 +556,11 @@ impl StandardEngine {
 	#[inline]
 	pub fn wait_for_mark_timeout(&self, version: CommitVersion, timeout: Duration) -> bool {
 		self.multi.wait_for_mark_timeout(version, timeout)
+	}
+
+	#[inline]
+	pub fn notify_on_mark(&self, version: CommitVersion, callback: Box<dyn FnOnce() + Send>) {
+		self.multi.notify_on_mark(version, callback);
 	}
 
 	#[inline]

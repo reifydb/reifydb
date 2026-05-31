@@ -73,6 +73,10 @@ impl MultiTransaction {
 		self.tm.wait_for_mark_timeout(version, timeout)
 	}
 
+	pub fn notify_on_mark(&self, version: CommitVersion, callback: Box<dyn FnOnce() + Send>) {
+		self.tm.notify_on_mark(version, callback);
+	}
+
 	pub fn advance_version_for_replica(&self, version: CommitVersion) {
 		self.tm.advance_version_for_replica(version);
 	}
