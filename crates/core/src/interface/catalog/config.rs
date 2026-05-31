@@ -62,6 +62,7 @@ pub enum ConfigKey {
 	ThreadsQuery,
 	ThreadsCommit,
 	ThreadsBackground,
+	FlowWorkerThreads,
 	RuntimeMetricsInterval,
 	MetricFlushInterval,
 }
@@ -95,6 +96,7 @@ impl ConfigKey {
 			Self::ThreadsQuery,
 			Self::ThreadsCommit,
 			Self::ThreadsBackground,
+			Self::FlowWorkerThreads,
 			Self::RuntimeMetricsInterval,
 			Self::MetricFlushInterval,
 		]
@@ -130,6 +132,7 @@ impl ConfigKey {
 			Self::ThreadsQuery => Value::Uint2(1),
 			Self::ThreadsCommit => Value::Uint2(2),
 			Self::ThreadsBackground => Value::Uint2(1),
+			Self::FlowWorkerThreads => Value::Uint2(0),
 			Self::RuntimeMetricsInterval => Value::Duration(Duration::from_seconds(5).unwrap()),
 			Self::MetricFlushInterval => Value::Duration(Duration::from_seconds(10).unwrap()),
 		}
@@ -215,6 +218,11 @@ impl ConfigKey {
 				"Number of worker threads for the background pool (non-critical cleanup and metrics actors). \
 				 Must be >= 1. Changes require restart."
 			}
+			Self::FlowWorkerThreads => {
+				"Number of deferred-flow worker actors that maintain deferred views in parallel. \
+				 0 means auto (size to the system thread pool). Higher values raise fan-out parallelism \
+				 for many independent views. Changes require restart."
+			}
 			Self::RuntimeMetricsInterval => {
 				"How often the runtime-metrics sampler records a memory snapshot into \
 				 system::metrics::runtime::memory::snapshots. When unset, the history sampler is \
@@ -255,6 +263,7 @@ impl ConfigKey {
 			Self::ThreadsQuery => true,
 			Self::ThreadsCommit => true,
 			Self::ThreadsBackground => true,
+			Self::FlowWorkerThreads => true,
 			Self::RuntimeMetricsInterval => false,
 			Self::MetricFlushInterval => false,
 		}
@@ -288,6 +297,7 @@ impl ConfigKey {
 			Self::ThreadsQuery => &[ValueType::Uint2],
 			Self::ThreadsCommit => &[ValueType::Uint2],
 			Self::ThreadsBackground => &[ValueType::Uint2],
+			Self::FlowWorkerThreads => &[ValueType::Uint2],
 			Self::RuntimeMetricsInterval => &[ValueType::Duration],
 			Self::MetricFlushInterval => &[ValueType::Duration],
 		}
@@ -321,6 +331,7 @@ impl ConfigKey {
 			Self::ThreadsQuery => false,
 			Self::ThreadsCommit => false,
 			Self::ThreadsBackground => false,
+			Self::FlowWorkerThreads => false,
 			Self::RuntimeMetricsInterval => true,
 			Self::MetricFlushInterval => false,
 		}
@@ -437,6 +448,7 @@ impl ConfigKey {
 				Value::Uint2(0) => Err("THREADS_BACKGROUND must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
+			Self::FlowWorkerThreads => Ok(()),
 			Self::RuntimeMetricsInterval => match value {
 				Value::None {
 					..
@@ -574,6 +586,7 @@ impl fmt::Display for ConfigKey {
 			Self::ThreadsQuery => write!(f, "THREADS_QUERY"),
 			Self::ThreadsCommit => write!(f, "THREADS_COMMIT"),
 			Self::ThreadsBackground => write!(f, "THREADS_BACKGROUND"),
+			Self::FlowWorkerThreads => write!(f, "FLOW_WORKER_THREADS"),
 			Self::RuntimeMetricsInterval => write!(f, "RUNTIME_METRICS_INTERVAL"),
 			Self::MetricFlushInterval => write!(f, "METRIC_FLUSH_INTERVAL"),
 		}
@@ -611,6 +624,7 @@ impl FromStr for ConfigKey {
 			"THREADS_QUERY" => Ok(Self::ThreadsQuery),
 			"THREADS_COMMIT" => Ok(Self::ThreadsCommit),
 			"THREADS_BACKGROUND" => Ok(Self::ThreadsBackground),
+			"FLOW_WORKER_THREADS" => Ok(Self::FlowWorkerThreads),
 			"RUNTIME_METRICS_INTERVAL" => Ok(Self::RuntimeMetricsInterval),
 			"METRIC_FLUSH_INTERVAL" => Ok(Self::MetricFlushInterval),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
@@ -762,7 +776,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 28);
+		assert_eq!(all.len(), 29);
 		assert!(all.contains(&ConfigKey::CdcCompactInterval));
 		assert!(all.contains(&ConfigKey::CdcCompactBlockSize));
 		assert!(all.contains(&ConfigKey::CdcCompactSafetyLag));

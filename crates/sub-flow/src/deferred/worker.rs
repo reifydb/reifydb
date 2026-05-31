@@ -266,6 +266,10 @@ impl FlowWorkerActor {
 		let mut all_view_changes: Vec<Change> = Vec::new();
 		let interceptors = self.engine.create_interceptors();
 
+		let state_lease = self.engine.multi().acquire_version_lease(batch.state_version)?;
+		let base_query = self.engine.multi().begin_query_at_version(&state_lease)?;
+		let base_state_query = self.engine.multi().begin_query_at_version(&state_lease)?;
+
 		for instruction in batch.instructions {
 			let flow_id = instruction.flow_id;
 
@@ -275,10 +279,9 @@ impl FlowWorkerActor {
 
 			let primitive_version = instruction.to_version;
 
-			let state_lease = self.engine.multi().acquire_version_lease(batch.state_version)?;
-			let mut query = self.engine.multi().begin_query_at_version(&state_lease)?;
+			let mut query = base_query.clone();
 			query.read_as_of_version_inclusive(primitive_version);
-			let state_query = self.engine.multi().begin_query_at_version(&state_lease)?;
+			let state_query = base_state_query.clone();
 
 			let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 				version: primitive_version,

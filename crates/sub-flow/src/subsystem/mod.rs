@@ -29,6 +29,7 @@ use reifydb_core::{
 	actors::flow::{FlowCoordinatorHandle, FlowHandle, FlowMessage, FlowPoolHandle},
 	interface::{
 		WithEventBus,
+		catalog::config::{ConfigKey, GetConfig},
 		cdc::{Cdc, CdcConsumerId},
 		flow::FlowWatermarkSampler,
 		version::{ComponentType, HasVersion, SystemVersion},
@@ -139,7 +140,13 @@ impl FlowSubsystem {
 		let cdc_store = ioc.resolve::<CdcStore>().expect("CdcStore must be registered");
 
 		let flow_scope = spawner.scope();
-		let num_workers = spawner.pools().system_thread_count();
+		let configured_workers = engine.catalog().get_config_uint2(ConfigKey::FlowWorkerThreads) as usize;
+		let num_workers = if configured_workers == 0 {
+			spawner.pools().system_thread_count()
+		} else {
+			configured_workers
+		}
+		.max(2);
 		info!(num_workers, "initializing flow coordinator with {} workers", num_workers);
 
 		let flow_catalog = FlowCatalog::new(engine.catalog());

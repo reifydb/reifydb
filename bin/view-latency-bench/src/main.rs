@@ -8,10 +8,10 @@ mod workload;
 use std::{
 	fs,
 	path::{Path, PathBuf},
-	time::Instant,
 };
 
 use clap::{Parser, ValueEnum};
+use reifydb::Clock;
 
 use crate::{
 	measure::Stats,
@@ -107,11 +107,12 @@ fn main() {
 		cli.flow_tick_ms, cli.threads, cli.iterations, cli.warmup
 	);
 
+	let clock = Clock::Real;
 	let mut rows = Vec::new();
 	for &n in &cli.views {
 		for &kind in &kinds {
 			eprintln!("running workload={:?} kind={} N={} ...", workload, kind.label(), n);
-			let started = Instant::now();
+			let started = clock.instant();
 			let mut db = db::build(workload, kind, n, operators_dir.clone(), &config);
 			let outcome = measure::pass_a(&db, workload, cli.iterations, cli.warmup);
 			db.stop().expect("db stop failed");

@@ -4,11 +4,11 @@
 use std::{
 	hint::spin_loop,
 	thread::yield_now,
-	time::{Duration, Instant},
+	time::Duration,
 };
 
 use hdrhistogram::Histogram;
-use reifydb::{Database, Params};
+use reifydb::{Clock, Database, Params};
 
 use crate::workload::{self, Workload};
 
@@ -44,6 +44,7 @@ pub fn pass_a(db: &Database, workload: Workload, iterations: u64, warmup: u64) -
 	let mut commit = Histogram::<u64>::new_with_bounds(1, HIST_MAX_US, 3).unwrap();
 	let mut fresh = Histogram::<u64>::new_with_bounds(1, HIST_MAX_US, 3).unwrap();
 	let mut timeouts = 0u64;
+	let clock = Clock::Real;
 
 	let total = warmup + iterations;
 	for i in 0..total {
@@ -51,9 +52,9 @@ pub fn pass_a(db: &Database, workload: Workload, iterations: u64, warmup: u64) -
 		let measured = i >= warmup;
 
 		let insert = workload::insert_row(workload, id);
-		let t0 = Instant::now();
+		let t0 = clock.instant();
 		db.command_as_root(&insert, Params::None).expect("insert failed");
-		let t_commit = Instant::now();
+		let t_commit = clock.instant();
 
 		let probe = workload::probe_query(id);
 		let mut spins = 0u32;
@@ -74,16 +75,16 @@ pub fn pass_a(db: &Database, workload: Workload, iterations: u64, warmup: u64) -
 				yield_now();
 			}
 		}
-		let t_visible = Instant::now();
+		let t_visible = clock.instant();
 
 		if measured {
-			let c = ((t_commit - t0).as_micros() as u64).clamp(1, HIST_MAX_US);
+			let c = ((&t_commit - &t0).as_micros() as u64).clamp(1, HIST_MAX_US);
 			commit.record(c).ok();
 			if timed_out {
 				timeouts += 1;
 				fresh.record(HIST_MAX_US).ok();
 			} else {
-				let v = ((t_visible - t0).as_micros() as u64).clamp(1, HIST_MAX_US);
+				let v = ((&t_visible - &t0).as_micros() as u64).clamp(1, HIST_MAX_US);
 				fresh.record(v).ok();
 			}
 		}

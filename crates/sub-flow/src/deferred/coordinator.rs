@@ -299,6 +299,8 @@ pub struct CoordinatorState {
 	tick_schedules: BTreeMap<FlowId, TickSchedule>,
 
 	flow_assignments: BTreeMap<FlowId, usize>,
+
+	flows_changed: bool,
 }
 
 impl Actor for CoordinatorActor {
@@ -315,6 +317,7 @@ impl Actor for CoordinatorActor {
 			phase_entered_at: None,
 			tick_schedules: BTreeMap::new(),
 			flow_assignments: BTreeMap::new(),
+			flows_changed: false,
 		}
 	}
 
@@ -447,6 +450,7 @@ impl CoordinatorActor {
 						new_flows.push(flow);
 					} else {
 						state.analyzer.add(flow);
+						state.flows_changed = true;
 
 						self.catalog.remove(flow_id);
 					}
@@ -479,6 +483,7 @@ impl CoordinatorActor {
 		let flow_id = flow.id;
 
 		state.analyzer.add(flow.clone());
+		state.flows_changed = true;
 		self.maybe_register_tick_schedule(state, &flow);
 		if flow.is_subscription() {
 			state.states.register_active(flow_id, consume_ctx.current_version);
@@ -570,6 +575,7 @@ impl CoordinatorActor {
 		let flow_id = flow.id;
 
 		state.analyzer.add(flow.clone());
+		state.flows_changed = true;
 		self.maybe_register_tick_schedule(state, &flow);
 		if flow.is_subscription() {
 			state.states.register_active(flow_id, consume_ctx.current_version);
@@ -622,7 +628,7 @@ impl CoordinatorActor {
 		}
 	}
 
-	#[inline]
+		#[inline]
 	fn continue_submitting(
 		&self,
 		state: &mut CoordinatorState,
@@ -720,10 +726,13 @@ impl CoordinatorActor {
 		ctx: &Context<FlowCoordinatorMessage>,
 		mut consume_ctx: ConsumeContext,
 	) {
-		let optimal = self.compute_flow_assignments(state);
-		if optimal != state.flow_assignments {
-			self.rebalance_flows(state, ctx, consume_ctx);
-			return;
+		if state.flows_changed {
+			state.flows_changed = false;
+			let optimal = self.compute_flow_assignments(state);
+			if optimal != state.flow_assignments {
+				self.rebalance_flows(state, ctx, consume_ctx);
+				return;
+			}
 		}
 
 		if let Some(to_version) = consume_ctx.latest_version {
@@ -1103,6 +1112,74 @@ impl CoordinatorActor {
 		}
 	}
 
+	fn build_routing_index(
+		&self,
+		state: &CoordinatorState,
+		active: &collections::HashSet<FlowId>,
+	) -> collections::HashMap<ShapeId, Vec<FlowId>> {
+		let g = state.analyzer.get_dependency_graph();
+		let mut index: collections::HashMap<ShapeId, Vec<FlowId>> = collections::HashMap::new();
+
+		let add = |index: &mut collections::HashMap<ShapeId, Vec<FlowId>>, shape: ShapeId, flows: &[FlowId]| {
+			for f in flows {
+				if active.contains(f) {
+					index.entry(shape).or_default().push(*f);
+				}
+			}
+		};
+
+		for (table_id, flows) in &g.source_tables {
+			add(&mut index, ShapeId::Table(*table_id), flows);
+		}
+		for (view_id, flows) in &g.source_views {
+			add(&mut index, ShapeId::View(*view_id), flows);
+		}
+		for (rb_id, flows) in &g.source_ringbuffers {
+			add(&mut index, ShapeId::RingBuffer(*rb_id), flows);
+		}
+		for (series_id, flows) in &g.source_series {
+			add(&mut index, ShapeId::Series(*series_id), flows);
+		}
+
+		for (view_id, consumer_flows) in &g.source_views {
+			let active_consumers: Vec<FlowId> =
+				consumer_flows.iter().copied().filter(|f| active.contains(f)).collect();
+			if active_consumers.is_empty() {
+				continue;
+			}
+			let Some(producer_flow_id) = g.sink_views.get(view_id) else {
+				continue;
+			};
+			if state.states.contains(producer_flow_id) {
+				if let Some(view) = self.catalog.find_view(*view_id) {
+					add(&mut index, view.underlying_id(), &active_consumers);
+				}
+				continue;
+			}
+			for (table_id, flow_ids) in &g.source_tables {
+				if flow_ids.contains(producer_flow_id) {
+					add(&mut index, ShapeId::Table(*table_id), &active_consumers);
+				}
+			}
+			for (rb_id, flow_ids) in &g.source_ringbuffers {
+				if flow_ids.contains(producer_flow_id) {
+					add(&mut index, ShapeId::RingBuffer(*rb_id), &active_consumers);
+				}
+			}
+			for (series_id, flow_ids) in &g.source_series {
+				if flow_ids.contains(producer_flow_id) {
+					add(&mut index, ShapeId::Series(*series_id), &active_consumers);
+				}
+			}
+		}
+
+		for flows in index.values_mut() {
+			flows.sort_unstable_by_key(|f| f.0);
+			flows.dedup();
+		}
+		index
+	}
+
 	#[instrument(name = "flow::coordinator::route_and_group", level = "debug", skip(self, state, changes), fields(
 		changes = changes.len(),
 		active_flows = field::Empty,
@@ -1117,38 +1194,52 @@ impl CoordinatorActor {
 		state_version: CommitVersion,
 	) -> BTreeMap<usize, WorkerBatch> {
 		let start = self.clock.instant();
-		let dependency_graph = state.analyzer.get_dependency_graph();
 
-		let active_flow_ids: Vec<_> = state.states.active_flow_ids();
-		Span::current().record("active_flows", active_flow_ids.len());
+		let active_vec: Vec<FlowId> = state.states.active_flow_ids();
+		let active: collections::HashSet<FlowId> = active_vec.iter().copied().collect();
+		Span::current().record("active_flows", active.len());
 
-		let mut flow_instructions: BTreeMap<FlowId, FlowInstruction> = BTreeMap::new();
-		for flow_id in active_flow_ids {
-			let flow_changes = self.filter_cdc_for_flow(state, flow_id, changes);
-			if flow_changes.is_empty() {
-				continue;
+		let index = self.build_routing_index(state, &active);
+
+		let mut per_flow: BTreeMap<FlowId, Vec<Change>> = BTreeMap::new();
+		for change in changes {
+			match change.origin {
+				ChangeOrigin::Shape(source) => {
+					if let Some(flows) = index.get(&source) {
+						for f in flows {
+							per_flow.entry(*f).or_default().push(change.clone());
+						}
+					}
+				}
+				_ => {
+					for f in &active_vec {
+						per_flow.entry(*f).or_default().push(change.clone());
+					}
+				}
 			}
-			flow_instructions.insert(flow_id, FlowInstruction::new(flow_id, to_version, flow_changes));
 		}
-		let submitted: collections::HashSet<FlowId> = flow_instructions.keys().copied().collect();
 
-		let levels = state.analyzer.calculate_execution_levels(dependency_graph);
-		let ordered: Vec<FlowId> = levels
-			.iter()
-			.flat_map(|level| level.iter().filter(|id| submitted.contains(id)).copied())
-			.collect();
-
-		let flow_to_worker = &state.flow_assignments;
 		let mut worker_batches: BTreeMap<usize, WorkerBatch> = BTreeMap::new();
-		for fid in ordered {
-			if let Some(instruction) = flow_instructions.remove(&fid) {
-				let worker_id = *flow_to_worker
-					.get(&fid)
-					.expect("flow must be in flow_assignments after registration");
-				let batch = worker_batches
-					.entry(worker_id)
-					.or_insert_with(|| WorkerBatch::new(state_version));
-				batch.add_instruction(instruction);
+		if per_flow.is_empty() {
+			Span::current().record("batches", 0usize);
+			Span::current().record("elapsed_us", start.elapsed().as_micros() as u64);
+			return worker_batches;
+		}
+
+		let dependency_graph = state.analyzer.get_dependency_graph();
+		let levels = state.analyzer.calculate_execution_levels(dependency_graph);
+		for level in &levels {
+			for fid in level {
+				if let Some(flow_changes) = per_flow.remove(fid) {
+					let worker_id = *state
+						.flow_assignments
+						.get(fid)
+						.expect("flow must be in flow_assignments after registration");
+					let batch = worker_batches
+						.entry(worker_id)
+						.or_insert_with(|| WorkerBatch::new(state_version));
+					batch.add_instruction(FlowInstruction::new(*fid, to_version, flow_changes));
+				}
 			}
 		}
 
