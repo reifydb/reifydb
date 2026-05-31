@@ -476,7 +476,7 @@ impl ServerBuilder {
 			use tracing_opentelemetry::layer as otel_layer_fn;
 
 			let otel_config = otel_configurator(OtelConfigurator::new()).configure();
-			let otel_subsystem = OtelSubsystem::new(otel_config, runtime.handle())
+			let otel_subsystem = OtelSubsystem::new(otel_config, runtime.tokio())
 				.expect("Failed to start OpenTelemetry subsystem");
 
 			let tracer =

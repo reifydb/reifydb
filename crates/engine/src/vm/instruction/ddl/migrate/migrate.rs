@@ -50,7 +50,7 @@ fn require_admin_txn<'a>(tx: &'a mut Transaction<'_>) -> Result<&'a mut AdminTra
 #[inline]
 fn list_pending_migrations(services: &Arc<Services>, txn: &mut AdminTransaction) -> Result<Vec<Migration>> {
 	let mut migrations = services.catalog.list_migrations(&mut Transaction::Admin(&mut *txn))?;
-	migrations.sort_by(|a, b| a.name.cmp(&b.name));
+	migrations.sort_by(|a, b| a.id.cmp(&b.id));
 	let events = services.catalog.list_migration_events(&mut Transaction::Admin(&mut *txn))?;
 	Ok(migrations
 		.into_iter()

@@ -263,7 +263,7 @@ mod tests {
 	#[test]
 	fn test_connect_failure_does_not_pollute_cache() {
 		let runtime = Runtime::from_config(RuntimeConfig::default(), PoolConfig::default());
-		let registry = RemoteRegistry::new(runtime.handle());
+		let registry = RemoteRegistry::new(runtime.tokio());
 
 		// 127.0.0.1:1 is reserved; connect must fail fast.
 		let err = registry.forward_query("http://127.0.0.1:1", "FROM x", Params::None, None).unwrap_err();
@@ -274,7 +274,7 @@ mod tests {
 	#[test]
 	fn test_evict_missing_key_is_noop() {
 		let runtime = Runtime::from_config(RuntimeConfig::default(), PoolConfig::default());
-		let registry = RemoteRegistry::new(runtime.handle());
+		let registry = RemoteRegistry::new(runtime.tokio());
 		registry.evict("http://127.0.0.1:1", None);
 		registry.evict("http://127.0.0.1:1", Some("tok"));
 		assert_eq!(registry.cache_len(), 0);

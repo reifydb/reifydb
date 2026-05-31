@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Deref;
+use std::{mem::take, ops::Deref};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
@@ -243,7 +243,7 @@ fn split_components(s: &str) -> Result<Vec<(String, char)>, String> {
 			if number.is_empty() {
 				return Err(format!("missing number before '{ch}'"));
 			}
-			components.push((std::mem::take(&mut number), ch));
+			components.push((take(&mut number), ch));
 		} else {
 			return Err(format!("unexpected character '{ch}' in duration"));
 		}
@@ -256,6 +256,8 @@ fn split_components(s: &str) -> Result<Vec<(String, char)>, String> {
 
 #[cfg(test)]
 mod tests {
+	use serde_json::{from_value, json, to_value};
+
 	use super::*;
 
 	fn datetime() -> DateTime {
@@ -265,47 +267,44 @@ mod tests {
 	#[test]
 	fn serializes_each_wrapper_as_iso8601() {
 		let date = IsoDate(Date::from_ymd(2024, 3, 15).unwrap());
-		assert_eq!(serde_json::to_value(date).unwrap(), serde_json::json!("2024-03-15"));
+		assert_eq!(to_value(date).unwrap(), json!("2024-03-15"));
 
 		let time = IsoTime(Time::from_hms_nano(14, 30, 15, 123_456_789).unwrap());
-		assert_eq!(serde_json::to_value(time).unwrap(), serde_json::json!("14:30:15.123456789"));
+		assert_eq!(to_value(time).unwrap(), json!("14:30:15.123456789"));
 
 		let dt = IsoDateTime(datetime());
-		let json = serde_json::to_value(dt).unwrap();
+		let json = to_value(dt).unwrap();
 		let rendered = json.as_str().unwrap();
 		assert!(rendered.contains('T') && rendered.ends_with('Z'), "got {rendered}");
 
+		assert_eq!(to_value(IsoDuration(Duration::from_seconds(90).unwrap())).unwrap(), json!("PT1M30S"));
 		assert_eq!(
-			serde_json::to_value(IsoDuration(Duration::from_seconds(90).unwrap())).unwrap(),
-			serde_json::json!("PT1M30S")
+			to_value(IsoDuration(Duration::new(14, 3, 3_661_000_000_000).unwrap())).unwrap(),
+			json!("P1Y2M3DT1H1M1S")
 		);
-		assert_eq!(
-			serde_json::to_value(IsoDuration(Duration::new(14, 3, 3_661_000_000_000).unwrap())).unwrap(),
-			serde_json::json!("P1Y2M3DT1H1M1S")
-		);
-		assert_eq!(serde_json::to_value(IsoDuration(Duration::zero())).unwrap(), serde_json::json!("PT0S"));
+		assert_eq!(to_value(IsoDuration(Duration::zero())).unwrap(), json!("PT0S"));
 	}
 
 	#[test]
 	fn round_trips_through_serde() {
 		let values: Vec<IsoDate> = vec![IsoDate(Date::from_ymd(2024, 3, 15).unwrap())];
 		for v in values {
-			let json = serde_json::to_value(v).unwrap();
-			assert_eq!(serde_json::from_value::<IsoDate>(json).unwrap(), v);
+			let json = to_value(v).unwrap();
+			assert_eq!(from_value::<IsoDate>(json).unwrap(), v);
 		}
 
 		let time = IsoTime(Time::from_hms_nano(14, 30, 15, 123_456_789).unwrap());
-		assert_eq!(serde_json::from_value::<IsoTime>(serde_json::to_value(time).unwrap()).unwrap(), time);
+		assert_eq!(from_value::<IsoTime>(to_value(time).unwrap()).unwrap(), time);
 
 		let dt = IsoDateTime(datetime());
-		assert_eq!(serde_json::from_value::<IsoDateTime>(serde_json::to_value(dt).unwrap()).unwrap(), dt);
+		assert_eq!(from_value::<IsoDateTime>(to_value(dt).unwrap()).unwrap(), dt);
 
 		for d in [
 			IsoDuration(Duration::from_seconds(90).unwrap()),
 			IsoDuration(Duration::new(14, 3, 3_661_000_000_000).unwrap()),
 			IsoDuration(Duration::zero()),
 		] {
-			assert_eq!(serde_json::from_value::<IsoDuration>(serde_json::to_value(d).unwrap()).unwrap(), d);
+			assert_eq!(from_value::<IsoDuration>(to_value(d).unwrap()).unwrap(), d);
 		}
 	}
 
@@ -320,8 +319,8 @@ mod tests {
 
 	#[test]
 	fn deserialize_rejects_malformed_input_without_panicking() {
-		assert!(serde_json::from_value::<IsoDate>(serde_json::json!("not-a-date")).is_err());
-		assert!(serde_json::from_value::<IsoDuration>(serde_json::json!("90s")).is_err());
-		assert!(serde_json::from_value::<IsoDateTime>(serde_json::json!("2024-03-15")).is_err());
+		assert!(from_value::<IsoDate>(json!("not-a-date")).is_err());
+		assert!(from_value::<IsoDuration>(json!("90s")).is_err());
+		assert!(from_value::<IsoDateTime>(json!("2024-03-15")).is_err());
 	}
 }

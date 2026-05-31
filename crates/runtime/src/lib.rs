@@ -138,6 +138,15 @@ impl Runtime {
 		}
 	}
 
+	pub fn handle(&self) -> RuntimeHandle {
+		RuntimeHandle {
+			system: self.system.clone(),
+			pools: self.pools.clone(),
+			clock: self.clock.clone(),
+			rng: self.rng.clone(),
+		}
+	}
+
 	pub fn actor_system(&self) -> ActorSystem {
 		self.system.clone()
 	}
@@ -155,12 +164,12 @@ impl Runtime {
 	}
 
 	#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
-	pub fn handle(&self) -> tokio_runtime::Handle {
+	pub fn tokio(&self) -> tokio_runtime::Handle {
 		self.pools.handle()
 	}
 
 	#[cfg(target_arch = "wasm32")]
-	pub fn handle(&self) -> WasmHandle {
+	pub fn tokio(&self) -> WasmHandle {
 		WasmHandle
 	}
 
@@ -218,6 +227,88 @@ impl Drop for Runtime {
 impl fmt::Debug for Runtime {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("Runtime").finish_non_exhaustive()
+	}
+}
+
+#[derive(Clone)]
+pub struct RuntimeHandle {
+	system: ActorSystem,
+	pools: Pools,
+	clock: Clock,
+	rng: context::rng::Rng,
+}
+
+impl RuntimeHandle {
+	pub fn actor_system(&self) -> ActorSystem {
+		self.system.clone()
+	}
+
+	pub fn spawner(&self) -> ActorSpawner {
+		self.system.spawner()
+	}
+
+	pub fn pools(&self) -> Pools {
+		self.pools.clone()
+	}
+
+	pub fn clock(&self) -> &Clock {
+		&self.clock
+	}
+
+	pub fn rng(&self) -> &context::rng::Rng {
+		&self.rng
+	}
+
+	#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
+	pub fn tokio(&self) -> tokio_runtime::Handle {
+		self.pools.handle()
+	}
+
+	#[cfg(target_arch = "wasm32")]
+	pub fn tokio(&self) -> WasmHandle {
+		WasmHandle
+	}
+
+	#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
+	pub fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
+	where
+		F: Future + Send + 'static,
+		F::Output: Send + 'static,
+	{
+		self.pools.spawn(future)
+	}
+
+	#[cfg(target_arch = "wasm32")]
+	pub fn spawn<F>(&self, future: F) -> WasmJoinHandle<F::Output>
+	where
+		F: Future + 'static,
+		F::Output: 'static,
+	{
+		WasmJoinHandle {
+			future: Box::pin(future),
+		}
+	}
+
+	#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
+	pub fn block_on<F>(&self, future: F) -> F::Output
+	where
+		F: Future,
+	{
+		self.pools.block_on(future)
+	}
+
+	#[cfg(target_arch = "wasm32")]
+	pub fn block_on<F>(&self, _future: F) -> F::Output
+	where
+		F: Future,
+	{
+		unimplemented!("block_on not supported in WASM - use async execution instead")
+	}
+}
+
+impl fmt::Debug for RuntimeHandle {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("RuntimeHandle").finish_non_exhaustive()
 	}
 }
 

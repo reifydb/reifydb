@@ -17,6 +17,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_cdc::storage::CdcStore;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
+	RuntimeHandle,
 	actor::{mailbox::ActorRef, system::ActorSpawner},
 	context::clock::Clock,
 	pool::Pools,
@@ -60,6 +61,7 @@ pub struct Database {
 	health_monitor: Arc<HealthMonitor>,
 	spawner: ActorSpawner,
 	clock: Clock,
+	runtime: RuntimeHandle,
 	running: bool,
 	fast_shutdown: bool,
 }
@@ -107,6 +109,7 @@ impl Database {
 		health_monitor: Arc<HealthMonitor>,
 		spawner: ActorSpawner,
 		clock: Clock,
+		runtime: RuntimeHandle,
 	) -> Self {
 		Self {
 			engine,
@@ -115,6 +118,7 @@ impl Database {
 			health_monitor,
 			spawner,
 			clock,
+			runtime,
 			running: true,
 			fast_shutdown: false,
 		}
@@ -159,6 +163,10 @@ impl Database {
 
 	pub fn pools(&self) -> Pools {
 		self.spawner.pools()
+	}
+
+	pub fn runtime(&self) -> &RuntimeHandle {
+		&self.runtime
 	}
 
 	pub fn is_running(&self) -> bool {

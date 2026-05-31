@@ -56,7 +56,7 @@ pub use reifydb_routine::{function, procedure};
 pub use reifydb_rql as rql;
 pub use reifydb_runtime as runtime;
 pub use reifydb_runtime::{
-	Runtime, RuntimeConfig,
+	Runtime, RuntimeConfig, RuntimeHandle,
 	actor::{
 		mailbox::ActorRef,
 		system::{ActorSpawner, ActorSystem},

@@ -375,10 +375,15 @@ impl DatabaseBuilder {
 		let spawner = runtime.spawner();
 		let clock = runtime.clock().clone();
 		let rng = runtime.rng().clone();
+		let runtime_handle = runtime.handle();
 		#[cfg(not(reifydb_single_threaded))]
-		let tokio_handle = runtime.handle();
+		let tokio_handle = runtime.tokio();
 
-		self.ioc = self.ioc.register(spawner.clone()).register(clock.clone()).register(rng.clone());
+		self.ioc =
+			self.ioc.register(spawner.clone())
+				.register(clock.clone())
+				.register(rng.clone())
+				.register(runtime_handle.clone());
 		#[cfg(not(reifydb_single_threaded))]
 		{
 			self.ioc = self.ioc.register(tokio_handle.clone());
@@ -621,7 +626,7 @@ impl DatabaseBuilder {
 		let system_catalog = SystemCatalog::new(all_versions);
 		self.ioc.register(system_catalog);
 
-		Ok(Database::new(engine, auth_service, subsystems, health_monitor, spawner, clock)
+		Ok(Database::new(engine, auth_service, subsystems, health_monitor, spawner, clock, runtime_handle)
 			.fast_shutdown_on_drop(self.fast_shutdown))
 	}
 }
