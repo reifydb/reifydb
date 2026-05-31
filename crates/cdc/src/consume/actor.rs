@@ -217,16 +217,9 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		state.phase = Phase::Ready;
 		self.wake_armed.store(false, Ordering::Release);
 		let safe_version = self.host.cdc_producer_watermark();
-		#[cfg(reifydb_assertions)]
-		{
-			let done = self.host.done_until();
-			assert!(
-				safe_version <= done,
-				"the producer's visible-CDC watermark is ahead of the commit watermark, so the consumer \
-				 would fetch CDC for versions that have not committed yet (producer safe={}, commit done={})",
-				safe_version.0,
-				done.0
-			);
+		if safe_version > self.host.done_until() {
+			ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
+			return;
 		}
 
 		let Some(checkpoint) = self.resolve_checkpoint(state, ctx) else {
