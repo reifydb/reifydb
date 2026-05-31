@@ -16,13 +16,25 @@ use super::{WindowEvent, WindowLayout, WindowOperator, WindowState};
 use crate::transaction::FlowTransaction;
 
 impl WindowOperator {
+	pub fn rolling_lag_ms(&self) -> u64 {
+		match &self.kind {
+			WindowKind::Rolling {
+				lag: Some(lag),
+				..
+			} => lag.as_millis() as u64,
+			_ => 0,
+		}
+	}
+
 	pub fn evict_old_events(&self, state: &mut WindowState, current_timestamp: u64) {
 		match &self.kind {
 			WindowKind::Rolling {
 				size: WindowSize::Duration(duration),
+				lag,
 			} => {
 				let window_size_ms = duration.as_millis() as u64;
-				let cutoff_time = current_timestamp.saturating_sub(window_size_ms);
+				let lag_ms = lag.map(|l| l.as_millis() as u64).unwrap_or(0);
+				let cutoff_time = current_timestamp.saturating_sub(window_size_ms + lag_ms);
 				let layout_opt = state.window_layout.clone();
 				let totals_intact_before = self
 					.fast_aggregations
@@ -48,6 +60,7 @@ impl WindowOperator {
 			}
 			WindowKind::Rolling {
 				size: WindowSize::Count(count),
+				..
 			} => {
 				if state.events.len() > *count as usize {
 					let excess = state.events.len() - *count as usize;

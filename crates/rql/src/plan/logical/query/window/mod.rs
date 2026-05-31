@@ -29,6 +29,7 @@ struct ParsedConfig {
 	pub slide_duration: Option<Duration>,
 	pub slide_count: Option<u64>,
 	pub gap: Option<Duration>,
+	pub lag: Option<Duration>,
 	pub ts: Option<String>,
 }
 
@@ -62,6 +63,14 @@ impl<'bump> Compiler<'bump> {
 			aggregations.push(agg_expr);
 		}
 
+		if parsed.lag.is_some() && !matches!(ast.kind, AstWindowKind::Rolling) {
+			return Err(AstError::UnexpectedToken {
+				expected: "lag is only supported for rolling windows".to_string(),
+				fragment: Fragment::None,
+			}
+			.into());
+		}
+
 		let kind = match ast.kind {
 			AstWindowKind::Tumbling => {
 				let size = Self::build_measure(&parsed)?;
@@ -89,8 +98,23 @@ impl<'bump> Compiler<'bump> {
 			}
 			AstWindowKind::Rolling => {
 				let size = Self::build_measure(&parsed)?;
+				if parsed.lag.is_some() && !matches!(size, WindowSize::Duration(_)) {
+					return Err(AstError::UnexpectedToken {
+						expected: "lag is only supported with a duration interval".to_string(),
+						fragment: Fragment::None,
+					}
+					.into());
+				}
+				if parsed.lag.is_some() && parsed.ts.is_none() {
+					return Err(AstError::UnexpectedToken {
+						expected: "lag requires a ts column (event-time rolling)".to_string(),
+						fragment: Fragment::None,
+					}
+					.into());
+				}
 				WindowKind::Rolling {
 					size,
+					lag: parsed.lag,
 				}
 			}
 			AstWindowKind::Session => {
@@ -177,6 +201,17 @@ impl<'bump> Compiler<'bump> {
 					.into());
 				}
 			}
+			"lag" => {
+				if let Some(duration_str) = Self::extract_literal_string(&config_item.value) {
+					config.lag = Some(Self::parse_duration(&duration_str)?);
+				} else {
+					return Err(AstError::UnexpectedToken {
+						expected: "duration string".to_string(),
+						fragment: config_item.value.token().fragment.to_owned(),
+					}
+					.into());
+				}
+			}
 			"ts" => {
 				if let Some(ts_str) = Self::extract_literal_string(&config_item.value) {
 					config.ts = Some(ts_str);
@@ -190,7 +225,7 @@ impl<'bump> Compiler<'bump> {
 			}
 			_ => {
 				return Err(AstError::UnexpectedToken {
-					expected: "interval, count, slide, or gap".to_string(),
+					expected: "interval, count, slide, gap, lag, or ts".to_string(),
 					fragment: config_item.key.token.fragment.to_owned(),
 				}
 				.into());

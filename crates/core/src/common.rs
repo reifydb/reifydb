@@ -151,6 +151,8 @@ pub enum WindowKind {
 
 	Rolling {
 		size: WindowSize,
+		#[serde(default)]
+		lag: Option<Duration>,
 	},
 
 	Session {
@@ -170,6 +172,7 @@ impl WindowKind {
 			} => Some(size),
 			WindowKind::Rolling {
 				size,
+				..
 			} => Some(size),
 			WindowKind::Session {
 				..

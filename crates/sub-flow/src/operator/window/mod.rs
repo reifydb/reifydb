@@ -313,13 +313,21 @@ impl WindowOperator {
 		let mut projected_columns: Vec<String> = needed.into_iter().collect();
 		projected_columns.sort();
 
+		let lagged_rolling = matches!(
+			&config.kind,
+			WindowKind::Rolling {
+				lag: Some(_),
+				..
+			}
+		);
 		let detected: Vec<Option<FastAgg>> =
 			config.aggregations.iter().map(|e| detect_fast_agg(&config.routines, e)).collect();
-		let fast_aggregations = if !detected.is_empty() && detected.iter().all(Option::is_some) {
-			Some(detected.into_iter().map(Option::unwrap).collect())
-		} else {
-			None
-		};
+		let fast_aggregations =
+			if !lagged_rolling && !detected.is_empty() && detected.iter().all(Option::is_some) {
+				Some(detected.into_iter().map(Option::unwrap).collect())
+			} else {
+				None
+			};
 		let agg_output_names: Vec<String> =
 			config.aggregations.iter().map(|e| display_label(e).text().to_string()).collect();
 
@@ -773,6 +781,20 @@ impl WindowOperator {
 		if events.is_empty() {
 			return Ok(None);
 		}
+
+		let lag_ms = self.rolling_lag_ms();
+		let lagged_events: Vec<WindowEvent>;
+		let events: &[WindowEvent] = if lag_ms > 0 {
+			let max_ts = events.iter().map(|e| e.timestamp).max().unwrap_or(0);
+			let boundary = max_ts.saturating_sub(lag_ms);
+			lagged_events = events.iter().filter(|e| e.timestamp <= boundary).cloned().collect();
+			if lagged_events.is_empty() {
+				return Ok(None);
+			}
+			&lagged_events
+		} else {
+			events
+		};
 
 		if self.aggregations.is_empty() {
 			let (result_row_number, is_new) =
@@ -1393,9 +1415,11 @@ impl Operator for WindowOperator {
 			}
 			| WindowKind::Rolling {
 				size: WindowSize::Duration(_),
+				..
 			} => Some(Duration::from_secs(1)),
 			WindowKind::Rolling {
 				size: WindowSize::Count(_),
+				..
 			} => None,
 		}
 	}
@@ -1428,6 +1452,7 @@ impl Operator for WindowOperator {
 			} => self.tick_expire_windows(txn, current_timestamp)?,
 			WindowKind::Rolling {
 				size: WindowSize::Duration(_),
+				..
 			} => self.tick_rolling_eviction(txn, current_timestamp)?,
 			WindowKind::Session {
 				..
