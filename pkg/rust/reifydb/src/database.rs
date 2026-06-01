@@ -15,6 +15,8 @@ use libc::{SIGHUP, SIGINT, SIGQUIT, SIGTERM, c_int, sighandler_t, signal};
 use reifydb_auth::service::AuthService;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_cdc::storage::CdcStore;
+#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+use reifydb_core::{error::diagnostic::subsystem::feature_disabled, interface::catalog::id::SubscriptionId, internal};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
 	RuntimeHandle,
@@ -34,17 +36,23 @@ use reifydb_sub_server_grpc::subsystem::GrpcSubsystem;
 use reifydb_sub_server_http::subsystem::HttpSubsystem;
 #[cfg(all(feature = "sub_server_ws", not(reifydb_single_threaded)))]
 use reifydb_sub_server_ws::subsystem::WsSubsystem;
+#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_sub_task::{handle::TaskHandle, subsystem::TaskSubsystem};
+#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+use reifydb_value::error::Error;
 use reifydb_value::{
 	Result,
 	params::Params,
-	value::{frame::frame::Frame, identity::IdentityId},
+	value::{Value, frame::frame::Frame, identity::IdentityId},
 };
 use tracing::{debug, instrument, warn};
 
 #[cfg(feature = "sub_raft")]
 use crate::raft::RaftSubsystem;
+#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+use crate::subscribe::Subscription;
 use crate::{
 	health::{ComponentHealth, HealthMonitor},
 	session::Session,
@@ -364,6 +372,58 @@ impl Database {
 			Some(e) => Err(e),
 			None => Ok(r.frames),
 		}
+	}
+
+	/// Create a subscription over `query` as root user and return a handle to drain its deliveries.
+	/// `query` is the subscription body, e.g. `from ns::t | map { id, score }`.
+	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+	pub fn subscribe_as_root(&self, query: &str, params: impl Into<Params>) -> Result<Subscription> {
+		self.subscribe_as(IdentityId::root(), query, params)
+	}
+
+	/// Create a subscription over `query` as a specific identity and return a handle to drain its
+	/// deliveries. `query` is the subscription body, e.g. `from ns::t | map { id, score }`.
+	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+	pub fn subscribe_as(
+		&self,
+		identity: IdentityId,
+		query: &str,
+		params: impl Into<Params>,
+	) -> Result<Subscription> {
+		let store = self
+			.subsystem::<SubscriptionSubsystem>()
+			.ok_or_else(|| Error(Box::new(feature_disabled("subscription"))))?
+			.store()
+			.clone();
+		let frames = self.admin_as(identity, &format!("CREATE SUBSCRIPTION AS {{ {query} }}"), params)?;
+		let id = frames
+			.first()
+			.and_then(|f| f.columns.iter().find(|c| c.name == "subscription_id"))
+			.filter(|c| !c.data.is_empty())
+			.map(|c| c.data.get_value(0))
+			.and_then(|v| match v {
+				Value::Uint8(n) => Some(SubscriptionId(n)),
+				_ => None,
+			})
+			.ok_or_else(|| {
+				Error(Box::new(internal!(
+					"CREATE SUBSCRIPTION succeeded but returned no subscription_id"
+				)))
+			})?;
+		let column_names = store.column_names(&id).unwrap_or_default();
+		Ok(Subscription::new(id, store, column_names))
+	}
+
+	/// Re-attach a handle to an already-created subscription `id` on the current delivery store.
+	/// Returns `None` if the subscription subsystem is not running. Use this after `stop()` +
+	/// reopen to keep draining the same persisted subscription (a handle from `subscribe_as` holds
+	/// a reference to the pre-restart store and is stale afterwards).
+	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+	pub fn subscription(&self, id: SubscriptionId) -> Option<Subscription> {
+		let subsystem = self.subsystem::<SubscriptionSubsystem>()?;
+		let store = subsystem.store().clone();
+		let column_names = store.column_names(&id).unwrap_or_default();
+		Some(Subscription::new(id, store, column_names))
 	}
 
 	pub fn await_signal(&self) -> Result<()> {

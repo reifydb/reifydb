@@ -14,6 +14,8 @@ mod health;
 #[cfg(feature = "sub_raft")]
 pub mod raft;
 mod session;
+#[cfg(feature = "sub_flow")]
+mod subscribe;
 pub mod subsystem;
 pub mod system;
 pub mod vendor;
@@ -142,5 +144,7 @@ pub use reifydb_value::{
 	},
 };
 pub use reifydb_wire_format as wire_format;
+#[cfg(feature = "sub_flow")]
+pub use subscribe::Subscription;
 pub mod test;
 pub use session::{Backoff, RetryStrategy, Session};
