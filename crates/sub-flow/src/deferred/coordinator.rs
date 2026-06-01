@@ -172,6 +172,12 @@ struct TickSchedule {
 	last_tick: Instant,
 }
 
+struct PendingConsume {
+	cdcs: Vec<Cdc>,
+	current_version: CommitVersion,
+	reply: Box<dyn FnOnce(Result<()>) + Send>,
+}
+
 fn coordinator_error(msg: impl fmt::Display) -> Result<()> {
 	Err(Error(Box::new(internal!("{}", msg))))
 }
@@ -317,6 +323,7 @@ pub struct CoordinatorState {
 	analyzer: FlowGraphAnalyzer,
 	phase: Phase,
 	phase_entered_at: Option<Instant>,
+	pending_consume: Option<PendingConsume>,
 	tick_schedules: BTreeMap<FlowId, TickSchedule>,
 
 	flow_assignments: BTreeMap<FlowId, usize>,
@@ -325,6 +332,29 @@ pub struct CoordinatorState {
 
 	cached_active: Arc<Vec<FlowId>>,
 	cached_routing_index: Arc<collections::HashMap<ShapeId, Vec<FlowId>>>,
+}
+
+impl CoordinatorState {
+	fn set_phase(&mut self, phase: Phase, now: Instant) {
+		self.phase_entered_at = if matches!(phase, Phase::Idle) {
+			None
+		} else {
+			Some(now)
+		};
+		self.phase = phase;
+	}
+
+	fn stash_consume(&mut self, pending: PendingConsume) {
+		self.pending_consume = Some(pending);
+	}
+
+	fn take_pending_consume(&mut self) -> Option<PendingConsume> {
+		if matches!(self.phase, Phase::Idle) {
+			self.pending_consume.take()
+		} else {
+			None
+		}
+	}
 }
 
 impl Actor for CoordinatorActor {
@@ -339,6 +369,7 @@ impl Actor for CoordinatorActor {
 			analyzer: FlowGraphAnalyzer::new(),
 			phase: Phase::Idle,
 			phase_entered_at: None,
+			pending_consume: None,
 			tick_schedules: BTreeMap::new(),
 			flow_assignments: BTreeMap::new(),
 			flows_changed: false,
@@ -409,7 +440,20 @@ impl CoordinatorActor {
 		reply: Box<dyn FnOnce(Result<()>) + Send>,
 	) {
 		if !matches!(state.phase, Phase::Idle) {
-			(reply)(coordinator_error("Coordinator busy"));
+			#[cfg(reifydb_assertions)]
+			assert!(
+				state.pending_consume.is_none(),
+				"poll actor must not have more than one consume in flight, yet a second arrived while one was already deferred"
+			);
+			if state.pending_consume.is_some() {
+				(reply)(coordinator_error("Coordinator busy"));
+				return;
+			}
+			state.stash_consume(PendingConsume {
+				cdcs,
+				current_version,
+				reply,
+			});
 			return;
 		}
 		record_version_range_span(&cdcs);
@@ -540,10 +584,13 @@ impl CoordinatorActor {
 			(consume_ctx.original_reply)(coordinator_error("Pool actor stopped"));
 			return;
 		}
-		state.phase = Phase::RegisteringFlows {
-			flows: new_flows,
-			ctx: consume_ctx,
-		};
+		state.set_phase(
+			Phase::RegisteringFlows {
+				flows: new_flows,
+				ctx: consume_ctx,
+			},
+			self.clock.instant(),
+		);
 	}
 
 	fn handle_pool_reply(
@@ -578,6 +625,13 @@ impl CoordinatorActor {
 				..
 			} => self.continue_ticking(response),
 			Phase::Idle => {}
+		}
+		self.drain_pending_consume(state, ctx);
+	}
+
+	fn drain_pending_consume(&self, state: &mut CoordinatorState, ctx: &Context<FlowCoordinatorMessage>) {
+		if let Some(pending) = state.take_pending_consume() {
+			self.handle_consume(state, ctx, pending.cdcs, pending.current_version, pending.reply);
 		}
 	}
 
@@ -639,10 +693,13 @@ impl CoordinatorActor {
 			return;
 		}
 
-		state.phase = Phase::RegisteringFlows {
-			flows: remaining_flows,
-			ctx: consume_ctx,
-		};
+		state.set_phase(
+			Phase::RegisteringFlows {
+				flows: remaining_flows,
+				ctx: consume_ctx,
+			},
+			self.clock.instant(),
+		);
 	}
 
 	#[inline]
@@ -806,9 +863,12 @@ impl CoordinatorActor {
 				return;
 			}
 
-			state.phase = Phase::SubmittingBatches {
-				ctx: consume_ctx,
-			};
+			state.set_phase(
+				Phase::SubmittingBatches {
+					ctx: consume_ctx,
+				},
+				self.clock.instant(),
+			);
 			return;
 		}
 
@@ -945,10 +1005,13 @@ impl CoordinatorActor {
 				info!(flow_id = flow_id.0, "backfill complete, flow now active");
 			}
 
-			state.phase = Phase::AdvancingBackfill {
-				flows,
-				ctx: consume_ctx,
-			};
+			state.set_phase(
+				Phase::AdvancingBackfill {
+					flows,
+					ctx: consume_ctx,
+				},
+				self.clock.instant(),
+			);
 			return;
 		}
 
@@ -1048,7 +1111,7 @@ impl CoordinatorActor {
 			return;
 		}
 
-		state.phase = Phase::BootstrapRebalancing;
+		state.set_phase(Phase::BootstrapRebalancing, self.clock.instant());
 	}
 
 	#[inline]
@@ -1140,7 +1203,7 @@ impl CoordinatorActor {
 
 	fn finish_consume(&self, state: &mut CoordinatorState, consume_ctx: ConsumeContext) {
 		Span::current().record("elapsed_us", consume_ctx.consume_start.elapsed().as_micros() as u64);
-		state.phase = Phase::Idle;
+		state.set_phase(Phase::Idle, self.clock.instant());
 
 		if consume_ctx.is_empty() {
 			(consume_ctx.original_reply)(Ok(()));
@@ -1417,9 +1480,12 @@ impl CoordinatorActor {
 			return;
 		}
 
-		state.phase = Phase::Rebalancing {
-			ctx: consume_ctx,
-		};
+		state.set_phase(
+			Phase::Rebalancing {
+				ctx: consume_ctx,
+			},
+			self.clock.instant(),
+		);
 	}
 
 	fn maybe_register_tick_schedule(&self, state: &mut CoordinatorState, flow: &FlowDag) {
@@ -1488,10 +1554,12 @@ impl CoordinatorActor {
 			return;
 		}
 
-		state.phase = Phase::Ticking {
-			state_lease,
-		};
-		state.phase_entered_at = Some(self.clock.instant());
+		state.set_phase(
+			Phase::Ticking {
+				state_lease,
+			},
+			self.clock.instant(),
+		);
 	}
 
 	fn commit_tick_writes(&self, pending: Pending, pending_shapes: Vec<RowShape>) {
@@ -1553,4 +1621,84 @@ pub fn extract_new_flow_ids(cdcs: &[Cdc]) -> Vec<FlowId> {
 	}
 
 	flow_ids
+}
+
+#[cfg(test)]
+mod tests {
+	use std::sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+	};
+
+	use reifydb_runtime::context::clock::{Clock, MockClock};
+
+	use super::*;
+
+	fn idle_state() -> CoordinatorState {
+		CoordinatorState {
+			states: FlowStates::new(),
+			analyzer: FlowGraphAnalyzer::new(),
+			phase: Phase::Idle,
+			phase_entered_at: None,
+			pending_consume: None,
+			tick_schedules: BTreeMap::new(),
+			flow_assignments: BTreeMap::new(),
+			flows_changed: false,
+			cached_active: Arc::new(Vec::new()),
+			cached_routing_index: Arc::new(collections::HashMap::new()),
+		}
+	}
+
+	fn now() -> Instant {
+		Clock::Mock(MockClock::from_millis(1000)).instant()
+	}
+
+	fn counting_reply(counter: &Arc<AtomicUsize>) -> Box<dyn FnOnce(Result<()>) + Send> {
+		let counter = counter.clone();
+		Box::new(move |_result| {
+			counter.fetch_add(1, Ordering::SeqCst);
+		})
+	}
+
+	// A consume that arrives while the coordinator is busy must be stashed, not
+	// rejected, and its reply must stay un-fired until the consume is replayed.
+	#[test]
+	fn busy_consume_is_deferred_then_replayed_exactly_once() {
+		let mut state = idle_state();
+		state.set_phase(Phase::BootstrapRebalancing, now());
+
+		let counter = Arc::new(AtomicUsize::new(0));
+		state.stash_consume(PendingConsume {
+			cdcs: Vec::new(),
+			current_version: CommitVersion(0),
+			reply: counting_reply(&counter),
+		});
+
+		// While still busy the reply has not fired and the slot is not drainable.
+		assert_eq!(counter.load(Ordering::SeqCst), 0);
+		assert!(state.take_pending_consume().is_none());
+
+		// Returning to Idle makes the deferred consume drainable; replaying fires the reply once.
+		state.set_phase(Phase::Idle, now());
+		let pending = state.take_pending_consume().expect("deferred consume must be drainable once idle");
+		(pending.reply)(Ok(()));
+		assert_eq!(counter.load(Ordering::SeqCst), 1);
+
+		// The slot is empty after draining.
+		assert!(state.take_pending_consume().is_none());
+	}
+
+	// The watchdog reads phase_entered_at; it must be stamped for every non-Idle
+	// phase (the bug was that only the Tick path stamped it) and cleared on Idle.
+	#[test]
+	fn set_phase_stamps_entered_at_for_non_idle_phases() {
+		let mut state = idle_state();
+		assert!(state.phase_entered_at.is_none());
+
+		state.set_phase(Phase::BootstrapRebalancing, now());
+		assert!(state.phase_entered_at.is_some());
+
+		state.set_phase(Phase::Idle, now());
+		assert!(state.phase_entered_at.is_none());
+	}
 }
