@@ -22,7 +22,7 @@ fn test_range() {
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
 	txn.set(&as_key!(3), as_values!(3)).unwrap();
-	txn.commit().unwrap();
+	txn.commit(vec![]).unwrap();
 
 	let four_to_one = EncodedKeyRange::start_end(Some(as_key!(4)), Some(as_key!(1)));
 
@@ -69,7 +69,7 @@ fn test_range2() {
 		assert_eq!(v.version, 1);
 	}
 
-	txn.commit().unwrap();
+	txn.commit(vec![]).unwrap();
 
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!(4), as_values!(4)).unwrap();
@@ -121,7 +121,7 @@ fn test_range3() {
 		assert_eq!(v.version, 1);
 	}
 
-	txn.commit().unwrap();
+	txn.commit(vec![]).unwrap();
 
 	let five_to_one = EncodedKeyRange::start_end(Some(as_key!(5)), Some(as_key!(1)));
 
@@ -164,7 +164,7 @@ fn test_range_edge() {
 		txn.set(&as_key!(u64::MAX), as_values!(u64::MAX)).unwrap();
 
 		txn.set(&as_key!(3), as_values!(31u64)).unwrap();
-		txn.commit().unwrap();
+		txn.commit(vec![]).unwrap();
 		assert_eq!(2, engine.version().unwrap());
 	}
 
@@ -173,7 +173,7 @@ fn test_range_edge() {
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(&as_key!(1), as_values!(12u64)).unwrap();
 		txn.set(&as_key!(3), as_values!(32u64)).unwrap();
-		txn.commit().unwrap();
+		txn.commit(vec![]).unwrap();
 		assert_eq!(3, engine.version().unwrap());
 	}
 
@@ -182,7 +182,7 @@ fn test_range_edge() {
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(&as_key!(1), as_values!(13u64)).unwrap();
 		txn.set(&as_key!(2), as_values!(23u64)).unwrap();
-		txn.commit().unwrap();
+		txn.commit(vec![]).unwrap();
 		assert_eq!(4, engine.version().unwrap());
 	}
 
@@ -190,7 +190,7 @@ fn test_range_edge() {
 	{
 		let mut txn = engine.begin_command().unwrap();
 		txn.remove(&as_key!(2)).unwrap();
-		txn.commit().unwrap();
+		txn.commit(vec![]).unwrap();
 		assert_eq!(5, engine.version().unwrap());
 	}
 
@@ -304,7 +304,7 @@ fn test_range_stream_returns_newest_version() {
 	for i in 1..=NUM_VERSIONS {
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(&as_key!(1), as_values!(i)).unwrap();
-		txn.commit().unwrap();
+		txn.commit(vec![]).unwrap();
 	}
 
 	// Query with small batch_size
@@ -336,7 +336,7 @@ fn test_range_stream_multiple_keys_many_versions() {
 			// Value encodes both key and version for verification
 			txn.set(&as_key!(key), as_values!(key * 1000 + version)).unwrap();
 		}
-		txn.commit().unwrap();
+		txn.commit(vec![]).unwrap();
 	}
 
 	// Query with streaming

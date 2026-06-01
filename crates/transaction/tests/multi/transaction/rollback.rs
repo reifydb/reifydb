@@ -46,7 +46,7 @@ fn test_savepoint_restore_drops_post_savepoint_writes() {
 	txn.restore_savepoint(sp);
 
 	// Commit the restored transaction.
-	let v = txn.commit().unwrap();
+	let v = txn.commit(vec![]).unwrap();
 	assert!(v.0 > 0, "commit should produce a non-zero version");
 
 	// Verify what landed in storage.

@@ -7,6 +7,7 @@ use reifydb_core::interface::catalog::{
 	flow::{FlowId, FlowNodeId},
 	id::{RingBufferId, SeriesId, TableId, ViewId},
 };
+use reifydb_value::value::dictionary::DictionaryId;
 use serde::{Deserialize, Serialize};
 
 use crate::flow::{flow::FlowDag, node::FlowNodeType};
@@ -17,6 +18,7 @@ pub enum ShapeReference {
 	View(ViewId),
 	RingBuffer(RingBufferId),
 	Series(SeriesId),
+	Dictionary(DictionaryId),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -49,6 +51,7 @@ pub struct FlowDependencyGraph {
 	pub source_views: BTreeMap<ViewId, Vec<FlowId>>,
 	pub source_ringbuffers: BTreeMap<RingBufferId, Vec<FlowId>>,
 	pub source_series: BTreeMap<SeriesId, Vec<FlowId>>,
+	pub source_dictionaries: BTreeMap<DictionaryId, Vec<FlowId>>,
 	pub sink_views: BTreeMap<ViewId, FlowId>,
 }
 
@@ -75,6 +78,7 @@ impl FlowGraphAnalyzer {
 				source_views: BTreeMap::new(),
 				source_ringbuffers: BTreeMap::new(),
 				source_series: BTreeMap::new(),
+				source_dictionaries: BTreeMap::new(),
 				sink_views: BTreeMap::new(),
 			},
 		}
@@ -134,6 +138,11 @@ impl FlowGraphAnalyzer {
 					} => {
 						sources.push(ShapeReference::Series(*series));
 					}
+					FlowNodeType::SourceDictionary {
+						dictionary,
+					} => {
+						sources.push(ShapeReference::Dictionary(*dictionary));
+					}
 					_ => {}
 				}
 			}
@@ -181,6 +190,7 @@ impl FlowGraphAnalyzer {
 		let mut source_views: BTreeMap<ViewId, Vec<FlowId>> = BTreeMap::new();
 		let mut source_ringbuffers: BTreeMap<RingBufferId, Vec<FlowId>> = BTreeMap::new();
 		let mut source_series: BTreeMap<SeriesId, Vec<FlowId>> = BTreeMap::new();
+		let mut source_dictionaries: BTreeMap<DictionaryId, Vec<FlowId>> = BTreeMap::new();
 		let mut sink_views: BTreeMap<ViewId, FlowId> = BTreeMap::new();
 
 		for flow in &self.flows {
@@ -199,6 +209,9 @@ impl FlowGraphAnalyzer {
 					}
 					ShapeReference::Series(series_id) => {
 						source_series.entry(*series_id).or_default().push(flow.id());
+					}
+					ShapeReference::Dictionary(dict_id) => {
+						source_dictionaries.entry(*dict_id).or_default().push(flow.id());
 					}
 				}
 			}
@@ -223,6 +236,7 @@ impl FlowGraphAnalyzer {
 			source_views,
 			source_ringbuffers,
 			source_series,
+			source_dictionaries,
 			sink_views,
 		}
 	}
@@ -293,6 +307,7 @@ impl FlowGraphAnalyzer {
 			source_views: BTreeMap::new(),
 			source_ringbuffers: BTreeMap::new(),
 			source_series: BTreeMap::new(),
+			source_dictionaries: BTreeMap::new(),
 			sink_views: BTreeMap::new(),
 		};
 	}

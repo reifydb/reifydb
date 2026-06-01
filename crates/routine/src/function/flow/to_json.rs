@@ -34,6 +34,9 @@ pub enum JsonFlowNodeType {
 	SourceSeries {
 		series: u64,
 	},
+	SourceDictionary {
+		dictionary: u64,
+	},
 	Filter {
 		conditions: Vec<JsonExpression>,
 	},
@@ -112,6 +115,11 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 				series,
 			} => JsonFlowNodeType::SourceSeries {
 				series: series.0,
+			},
+			FlowNodeType::SourceDictionary {
+				dictionary,
+			} => JsonFlowNodeType::SourceDictionary {
+				dictionary: dictionary.0,
 			},
 			FlowNodeType::Filter {
 				conditions,

@@ -27,7 +27,7 @@ fn test_oracle_committed_txns_cleanup() {
 		tx.set(&key, value).unwrap();
 
 		// Commit the transaction - this adds to Oracle's committed list
-		tx.commit().unwrap();
+		tx.commit(vec![]).unwrap();
 
 		// Every 1000 transactions, verify memory is being managed
 		if i > 0 && i % 1000 == 0 {
@@ -44,7 +44,7 @@ fn test_oracle_committed_txns_cleanup() {
 	let final_key = as_key!("final");
 	let final_value = as_values!("test".to_string());
 	final_tx.set(&final_key, final_value).unwrap();
-	final_tx.commit().unwrap();
+	final_tx.commit(vec![]).unwrap();
 }
 
 /// Test high concurrency with many simultaneous transactions
@@ -68,7 +68,7 @@ fn test_oracle_high_concurrency() {
 
 				tx.set(&key, value).unwrap();
 
-				match tx.commit() {
+				match tx.commit(vec![]) {
 					Ok(_) => {}
 					Err(e) => panic!("Unexpected error: {:?}", e),
 				}
@@ -85,7 +85,7 @@ fn test_oracle_high_concurrency() {
 	let final_key = as_key!("concurrent_test");
 	let final_value = as_values!("passed".to_string());
 	final_tx.set(&final_key, final_value).unwrap();
-	final_tx.commit().unwrap();
+	final_tx.commit(vec![]).unwrap();
 }
 
 /// Test that Oracle handles version overflow gracefully
@@ -99,7 +99,7 @@ fn test_oracle_version_boundaries() {
 		let key = as_key!(format!("boundary_{}", i));
 		let value = as_values!("test".to_string());
 		tx.set(&key, value).unwrap();
-		tx.commit().unwrap();
+		tx.commit(vec![]).unwrap();
 	}
 
 	// System should handle version numbers without panic

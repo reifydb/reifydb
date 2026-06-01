@@ -29,7 +29,7 @@ fn test_oracle_initial_version_and_first_commit() {
 
 	let mut tx = engine.begin_command().unwrap();
 	tx.set(&make_key("k"), make_row("v")).unwrap();
-	let committed = tx.commit().unwrap();
+	let committed = tx.commit(vec![]).unwrap();
 
 	assert!(committed.0 > v0.0);
 }
@@ -46,9 +46,9 @@ fn test_conflict_detection_between_transactions() {
 	t2.get(&key).unwrap();
 	t2.set(&key, make_row("v2")).unwrap();
 
-	t1.commit().unwrap();
+	t1.commit(vec![]).unwrap();
 
-	let err = t2.commit().expect_err("t2 must conflict with t1's write of `shared`");
+	let err = t2.commit(vec![]).expect_err("t2 must conflict with t1's write of `shared`");
 	assert!(is_conflict_error(&err), "expected Conflict error, got {err}");
 }
 
@@ -62,8 +62,8 @@ fn test_no_conflict_different_keys() {
 	t1.set(&make_key("k1"), make_row("v1")).unwrap();
 	t2.set(&make_key("k2"), make_row("v2")).unwrap();
 
-	t1.commit().unwrap();
-	t2.commit().unwrap();
+	t1.commit(vec![]).unwrap();
+	t2.commit(vec![]).unwrap();
 }
 
 #[test]
@@ -73,12 +73,12 @@ fn test_version_filtering_in_conflict_detection() {
 
 	let mut t1 = engine.begin_command().unwrap();
 	t1.set(&key, make_row("v1")).unwrap();
-	t1.commit().unwrap();
+	t1.commit(vec![]).unwrap();
 
 	let mut t2 = engine.begin_command().unwrap();
 	t2.get(&key).unwrap();
 	t2.set(&key, make_row("v2")).unwrap();
-	t2.commit().unwrap();
+	t2.commit(vec![]).unwrap();
 }
 
 #[test]
@@ -89,12 +89,12 @@ fn test_sequential_transactions_no_conflict() {
 	let mut t1 = engine.begin_command().unwrap();
 	t1.get(&key).unwrap();
 	t1.set(&key, make_row("v1")).unwrap();
-	t1.commit().unwrap();
+	t1.commit(vec![]).unwrap();
 
 	let mut t2 = engine.begin_command().unwrap();
 	t2.get(&key).unwrap();
 	t2.set(&key, make_row("v2")).unwrap();
-	t2.commit().unwrap();
+	t2.commit(vec![]).unwrap();
 }
 
 #[test]
@@ -117,10 +117,10 @@ fn test_multi_key_chain_detects_dependency_conflict() {
 	t3.get(&key_c).unwrap();
 	t3.set(&key_a, make_row("va")).unwrap();
 
-	t1.commit().unwrap();
+	t1.commit(vec![]).unwrap();
 
-	let err = t2.commit().expect_err("t2 read `b` which t1 wrote; commit must conflict");
+	let err = t2.commit(vec![]).expect_err("t2 read `b` which t1 wrote; commit must conflict");
 	assert!(is_conflict_error(&err), "expected Conflict error, got {err}");
 
-	t3.commit().unwrap();
+	t3.commit(vec![]).unwrap();
 }

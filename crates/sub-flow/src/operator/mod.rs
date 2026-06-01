@@ -43,8 +43,8 @@ use join::operator::JoinOperator;
 use map::MapOperator;
 use reifydb_core::interface::change::Change;
 use scan::{
-	flow::PrimitiveFlowOperator, ringbuffer::PrimitiveRingBufferOperator, series::PrimitiveSeriesOperator,
-	table::PrimitiveTableOperator, view::PrimitiveViewOperator,
+	dictionary::PrimitiveDictionaryOperator, flow::PrimitiveFlowOperator, ringbuffer::PrimitiveRingBufferOperator,
+	series::PrimitiveSeriesOperator, table::PrimitiveTableOperator, view::PrimitiveViewOperator,
 };
 use sink::{
 	ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator, view::SinkTableViewOperator,
@@ -103,6 +103,7 @@ pub enum Operators {
 	SourceFlow(PrimitiveFlowOperator),
 	SourceRingBuffer(PrimitiveRingBufferOperator),
 	SourceSeries(PrimitiveSeriesOperator),
+	SourceDictionary(PrimitiveDictionaryOperator),
 	Filter(FilterOperator),
 	Gate(GateOperator),
 	Map(MapOperator),
@@ -142,6 +143,7 @@ impl Operators {
 			Operators::SourceFlow(op) => op.id(),
 			Operators::SourceRingBuffer(op) => op.id(),
 			Operators::SourceSeries(op) => op.id(),
+			Operators::SourceDictionary(op) => op.id(),
 			Operators::Custom(op) => op.id(),
 		}
 	}
@@ -167,6 +169,7 @@ impl Operators {
 			Operators::SourceFlow(op) => op.capabilities(),
 			Operators::SourceRingBuffer(op) => op.capabilities(),
 			Operators::SourceSeries(op) => op.capabilities(),
+			Operators::SourceDictionary(op) => op.capabilities(),
 			Operators::Custom(op) => op.capabilities(),
 		}
 	}
@@ -192,6 +195,7 @@ impl Operators {
 			Operators::SourceFlow(op) => op.ticks(),
 			Operators::SourceRingBuffer(op) => op.ticks(),
 			Operators::SourceSeries(op) => op.ticks(),
+			Operators::SourceDictionary(op) => op.ticks(),
 			Operators::Custom(op) => op.ticks(),
 		}
 	}
@@ -218,6 +222,7 @@ impl Operators {
 			Operators::SourceFlow(op) => op.apply(txn, change),
 			Operators::SourceRingBuffer(op) => op.apply(txn, change),
 			Operators::SourceSeries(op) => op.apply(txn, change),
+			Operators::SourceDictionary(op) => op.apply(txn, change),
 			Operators::Custom(op) => op.apply(txn, change),
 		}
 	}
@@ -258,6 +263,7 @@ impl Operators {
 			Operators::SourceView(op) => Some(op.output_schema()),
 			Operators::SourceRingBuffer(op) => Some(op.output_schema()),
 			Operators::SourceSeries(_) => Some(Columns::empty()),
+			Operators::SourceDictionary(_) => Some(Columns::empty()),
 			Operators::SourceFlow(_) => Some(Columns::empty()),
 			Operators::Filter(op) => op.output_schema(),
 			Operators::Gate(op) => op.output_schema(),

@@ -16,7 +16,7 @@ fn test_write() {
 		tx.set(&key, as_values!("foo1".to_string())).unwrap();
 		let value: String = from_row!(String, *tx.get(&key).unwrap().unwrap().row());
 		assert_eq!(value.as_str(), "foo1");
-		tx.commit().unwrap();
+		tx.commit(vec![]).unwrap();
 	}
 
 	{
@@ -47,7 +47,7 @@ fn test_multiple_write() {
 
 		assert!(txn.contains_key(&as_key!(8)).unwrap());
 
-		txn.commit().unwrap();
+		txn.commit(vec![]).unwrap();
 	}
 
 	let k = 8;

@@ -19,8 +19,8 @@ use reifydb_rql::flow::{
 		FlowNode,
 		FlowNodeType::{
 			self, Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Map, SinkRingBufferView,
-			SinkSeriesView, SinkSubscription, SinkTableView, Sort, SourceFlow, SourceInlineData,
-			SourceRingBuffer, SourceSeries, SourceTable, SourceView, Take, Window,
+			SinkSeriesView, SinkSubscription, SinkTableView, Sort, SourceDictionary, SourceFlow,
+			SourceInlineData, SourceRingBuffer, SourceSeries, SourceTable, SourceView, Take, Window,
 		},
 	},
 };
@@ -44,8 +44,9 @@ use crate::{
 		join::operator::{JoinOperator, JoinSideConfig},
 		map::MapOperator,
 		scan::{
-			flow::PrimitiveFlowOperator, ringbuffer::PrimitiveRingBufferOperator,
-			series::PrimitiveSeriesOperator, table::PrimitiveTableOperator, view::PrimitiveViewOperator,
+			dictionary::PrimitiveDictionaryOperator, flow::PrimitiveFlowOperator,
+			ringbuffer::PrimitiveRingBufferOperator, series::PrimitiveSeriesOperator,
+			table::PrimitiveTableOperator, view::PrimitiveViewOperator,
 		},
 		sink::{
 			ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator,
@@ -162,6 +163,17 @@ impl FlowEngine {
 					OperatorCell::new(Operators::SourceSeries(PrimitiveSeriesOperator::new(
 						node.id,
 					))),
+				);
+			}
+			SourceDictionary {
+				dictionary,
+			} => {
+				self.add_source(flow.id, node.id, ShapeId::dictionary(*dictionary));
+				self.operators.insert(
+					node.id,
+					OperatorCell::new(Operators::SourceDictionary(
+						PrimitiveDictionaryOperator::new(node.id),
+					)),
 				);
 			}
 			SinkTableView {

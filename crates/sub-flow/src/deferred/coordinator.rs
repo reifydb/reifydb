@@ -246,6 +246,11 @@ fn collect_direct_flow_sources(
 			flow_sources.insert(ShapeId::Series(*series_id));
 		}
 	}
+	for (dict_id, flow_ids) in &dependency_graph.source_dictionaries {
+		if flow_ids.contains(&flow_id) {
+			flow_sources.insert(ShapeId::Dictionary(*dict_id));
+		}
+	}
 
 	(flow_sources, view_sources)
 }
@@ -1265,6 +1270,11 @@ impl CoordinatorActor {
 					flow_sources.insert(ShapeId::Series(*series_id));
 				}
 			}
+			for (dict_id, flow_ids) in &dependency_graph.source_dictionaries {
+				if flow_ids.contains(producer_flow_id) {
+					flow_sources.insert(ShapeId::Dictionary(*dict_id));
+				}
+			}
 		}
 	}
 
@@ -1304,6 +1314,9 @@ impl CoordinatorActor {
 		for (series_id, flows) in &g.source_series {
 			add(&mut index, ShapeId::Series(*series_id), flows);
 		}
+		for (dict_id, flows) in &g.source_dictionaries {
+			add(&mut index, ShapeId::Dictionary(*dict_id), flows);
+		}
 
 		for (view_id, consumer_flows) in &g.source_views {
 			let active_consumers: Vec<FlowId> =
@@ -1333,6 +1346,11 @@ impl CoordinatorActor {
 			for (series_id, flow_ids) in &g.source_series {
 				if flow_ids.contains(producer_flow_id) {
 					add(&mut index, ShapeId::Series(*series_id), &active_consumers);
+				}
+			}
+			for (dict_id, flow_ids) in &g.source_dictionaries {
+				if flow_ids.contains(producer_flow_id) {
+					add(&mut index, ShapeId::Dictionary(*dict_id), &active_consumers);
 				}
 			}
 		}

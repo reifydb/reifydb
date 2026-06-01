@@ -30,7 +30,7 @@ fn test_write_skew() {
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&a999, as_values!(100u64)).unwrap();
 	txn.set(&a888, as_values!(100u64)).unwrap();
-	txn.commit().unwrap();
+	txn.commit(vec![]).unwrap();
 	assert_eq!(2, engine.version().unwrap());
 
 	fn get_bal(txn: &mut MultiWriteTransaction, k: &EncodedKey) -> u64 {
@@ -69,8 +69,8 @@ fn test_write_skew() {
 	assert_eq!(100, sum);
 
 	// Commit both now.
-	txn1.commit().unwrap();
-	let err = txn2.commit().unwrap_err();
+	txn1.commit(vec![]).unwrap();
+	let err = txn2.commit(vec![]).unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
 	assert_eq!(3, engine.version().unwrap());
@@ -90,7 +90,7 @@ fn test_black_white() {
 			txn.set(&as_key!(i), as_values!("white".to_string())).unwrap();
 		}
 	}
-	txn.commit().unwrap();
+	txn.commit(vec![]).unwrap();
 
 	let mut white = engine.begin_command().unwrap();
 	let indices = white
@@ -130,8 +130,8 @@ fn test_black_white() {
 		black.set(&i, as_values!("black".to_string())).unwrap();
 	}
 
-	black.commit().unwrap();
-	let err = white.commit().unwrap_err();
+	black.commit(vec![]).unwrap();
+	let err = white.commit(vec![]).unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
 	let rx = engine.begin_query().unwrap();
@@ -154,7 +154,7 @@ fn test_overdraft_protection() {
 	// Setup
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&key, as_values!(1000)).unwrap();
-	txn.commit().unwrap();
+	txn.commit(vec![]).unwrap();
 
 	// txn1
 	let mut txn1 = engine.begin_command().unwrap();
@@ -166,8 +166,8 @@ fn test_overdraft_protection() {
 	let money = from_row!(i32, *txn2.get(&key).unwrap().unwrap().row());
 	txn2.set(&key, as_values!(money - 500)).unwrap();
 
-	txn1.commit().unwrap();
-	let err = txn2.commit().unwrap_err();
+	txn1.commit(vec![]).unwrap();
+	let err = txn2.commit(vec![]).unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
 	let rx = engine.begin_query().unwrap();
@@ -191,7 +191,7 @@ fn test_primary_colors() {
 			txn.set(&as_key!(i), as_values!("blue".to_string())).unwrap();
 		}
 	}
-	txn.commit().unwrap();
+	txn.commit(vec![]).unwrap();
 
 	let mut red = engine.begin_command().unwrap();
 	let indices: Vec<_> = red
@@ -247,11 +247,11 @@ fn test_primary_colors() {
 		red_two.set(&i, as_values!("red".to_string())).unwrap();
 	}
 
-	red.commit().unwrap();
-	let err = red_two.commit().unwrap_err();
+	red.commit(vec![]).unwrap();
+	let err = red_two.commit(vec![]).unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
-	let err = yellow.commit().unwrap_err();
+	let err = yellow.commit(vec![]).unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
 	let rx = engine.begin_query().unwrap();
@@ -289,7 +289,7 @@ fn test_intersecting_data() {
 	txn.set(&as_key!("a2"), as_values!(20u64)).unwrap();
 	txn.set(&as_key!("b1"), as_values!(100u64)).unwrap();
 	txn.set(&as_key!("b2"), as_values!(200u64)).unwrap();
-	txn.commit().unwrap();
+	txn.commit(vec![]).unwrap();
 	assert_eq!(2, engine.version().unwrap());
 
 	let mut txn1 = engine.begin_command().unwrap();
@@ -332,8 +332,8 @@ fn test_intersecting_data() {
 	txn2.set(&as_key!("a3"), as_values!(300u64)).unwrap();
 	assert_eq!(300, val);
 
-	txn2.commit().unwrap();
-	let err = txn1.commit().unwrap_err();
+	txn2.commit(vec![]).unwrap();
+	let err = txn1.commit(vec![]).unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
 	let mut txn3 = engine.begin_command().unwrap();
@@ -366,7 +366,7 @@ fn test_intersecting_data2() {
 	txn.set(&as_key!("a1"), as_values!(10u64)).unwrap();
 	txn.set(&as_key!("b1"), as_values!(100u64)).unwrap();
 	txn.set(&as_key!("b2"), as_values!(200u64)).unwrap();
-	txn.commit().unwrap();
+	txn.commit(vec![]).unwrap();
 	assert_eq!(2, engine.version().unwrap());
 
 	let mut txn1 = engine.begin_command().unwrap();
@@ -392,9 +392,9 @@ fn test_intersecting_data2() {
 
 	assert_eq!(300, val);
 	txn2.set(&as_key!("a3"), as_values!(300u64)).unwrap();
-	txn2.commit().unwrap();
+	txn2.commit(vec![]).unwrap();
 
-	let err = txn1.commit().unwrap_err();
+	let err = txn1.commit(vec![]).unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
 	let mut txn3 = engine.begin_command().unwrap();
@@ -425,7 +425,7 @@ fn test_intersecting_data3() {
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!("b1"), as_values!(100u64)).unwrap();
 	txn.set(&as_key!("b2"), as_values!(200u64)).unwrap();
-	txn.commit().unwrap();
+	txn.commit(vec![]).unwrap();
 	assert_eq!(2, engine.version().unwrap());
 
 	let mut txn1 = engine.begin_command().unwrap();
@@ -450,8 +450,8 @@ fn test_intersecting_data3() {
 
 	txn2.set(&as_key!("a3"), as_values!(300u64)).unwrap();
 	assert_eq!(300, val);
-	txn2.commit().unwrap();
-	let err = txn1.commit().unwrap_err();
+	txn2.commit(vec![]).unwrap();
+	let err = txn1.commit(vec![]).unwrap_err();
 	assert!(err.to_string().contains("conflict"));
 
 	let mut txn3 = engine.begin_command().unwrap();

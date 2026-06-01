@@ -36,8 +36,9 @@ use crate::flow::compiler::{
 		map::MapCompiler, sort::SortCompiler, take::TakeCompiler, window::WindowCompiler,
 	},
 	primitive::{
-		inline_data::InlineDataCompiler, ringbuffer_scan::RingBufferScanCompiler,
-		series_scan::SeriesScanCompiler, table_scan::TableScanCompiler, view_scan::ViewScanCompiler,
+		dictionary_scan::DictionaryScanCompiler, inline_data::InlineDataCompiler,
+		ringbuffer_scan::RingBufferScanCompiler, series_scan::SeriesScanCompiler,
+		table_scan::TableScanCompiler, view_scan::ViewScanCompiler,
 	},
 };
 
@@ -342,9 +343,8 @@ impl FlowCompiler {
 				// TODO: Implement optimized row range scan for flow graphs
 				unimplemented!("RowRangeScan compilation not yet implemented for flow")
 			}
-			QueryPlan::DictionaryScan(_) => {
-				// TODO: Implement DictionaryScan for flow graphs
-				unimplemented!("DictionaryScan compilation not yet implemented for flow")
+			QueryPlan::DictionaryScan(dictionary_scan) => {
+				DictionaryScanCompiler::from(dictionary_scan).compile(self, txn)
 			}
 			QueryPlan::Assert(_) => {
 				unimplemented!("Assert compilation not yet implemented for flow")
@@ -369,7 +369,7 @@ fn has_real_source(flow: &FlowDag) -> bool {
 				FlowNodeType::SourceTable { .. }
 					| FlowNodeType::SourceView { .. } | FlowNodeType::SourceFlow { .. }
 					| FlowNodeType::SourceRingBuffer { .. }
-					| FlowNodeType::SourceSeries { .. }
+					| FlowNodeType::SourceSeries { .. } | FlowNodeType::SourceDictionary { .. }
 			)
 		} else {
 			false

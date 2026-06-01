@@ -22,7 +22,7 @@ fn test_iter() {
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
 	txn.set(&as_key!(3), as_values!(3)).unwrap();
-	txn.commit().unwrap();
+	txn.commit(vec![]).unwrap();
 
 	let txn = engine.begin_query().unwrap();
 	let items: Vec<_> =
@@ -64,7 +64,7 @@ fn test_iter2() {
 		assert_eq!(tv.row, as_values!(expected));
 		assert_eq!(tv.version, 1);
 	}
-	txn.commit().unwrap();
+	txn.commit(vec![]).unwrap();
 
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!(4), as_values!(4)).unwrap();
@@ -112,7 +112,7 @@ fn test_iter3() {
 		assert_eq!(tv.version, 1);
 	}
 
-	txn.commit().unwrap();
+	txn.commit(vec![]).unwrap();
 
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
@@ -150,7 +150,7 @@ fn test_iter_edge_case() {
 	{
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(&as_key!(3), as_values!(31u64)).unwrap();
-		txn.commit().unwrap();
+		txn.commit(vec![]).unwrap();
 		assert_eq!(2, engine.version().unwrap());
 	}
 
@@ -159,7 +159,7 @@ fn test_iter_edge_case() {
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(&as_key!(1), as_values!(12u64)).unwrap();
 		txn.set(&as_key!(3), as_values!(32u64)).unwrap();
-		txn.commit().unwrap();
+		txn.commit(vec![]).unwrap();
 		assert_eq!(3, engine.version().unwrap());
 	}
 
@@ -168,7 +168,7 @@ fn test_iter_edge_case() {
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(&as_key!(1), as_values!(13u64)).unwrap();
 		txn.set(&as_key!(2), as_values!(23u64)).unwrap();
-		txn.commit().unwrap();
+		txn.commit(vec![]).unwrap();
 		assert_eq!(4, engine.version().unwrap());
 	}
 
@@ -182,7 +182,7 @@ fn test_iter_edge_case() {
 	{
 		let mut txn = engine.begin_command().unwrap();
 		txn.remove(&as_key!(2)).unwrap();
-		txn.commit().unwrap();
+		txn.commit(vec![]).unwrap();
 		assert_eq!(5, engine.version().unwrap());
 	}
 
@@ -257,7 +257,7 @@ fn test_iter_edge_case2() {
 	{
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(&as_key!(3), as_values!(31u64)).unwrap();
-		txn.commit().unwrap();
+		txn.commit(vec![]).unwrap();
 		assert_eq!(2, engine.version().unwrap());
 	}
 
@@ -266,7 +266,7 @@ fn test_iter_edge_case2() {
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(&as_key!(1), as_values!(12u64)).unwrap();
 		txn.set(&as_key!(3), as_values!(32u64)).unwrap();
-		txn.commit().unwrap();
+		txn.commit(vec![]).unwrap();
 		assert_eq!(3, engine.version().unwrap());
 	}
 
@@ -275,7 +275,7 @@ fn test_iter_edge_case2() {
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(&as_key!(1), as_values!(13u64)).unwrap();
 		txn.set(&as_key!(2), as_values!(23u64)).unwrap();
-		txn.commit().unwrap();
+		txn.commit(vec![]).unwrap();
 		assert_eq!(4, engine.version().unwrap());
 	}
 
@@ -283,7 +283,7 @@ fn test_iter_edge_case2() {
 	{
 		let mut txn = engine.begin_command().unwrap();
 		txn.remove(&as_key!(2)).unwrap();
-		txn.commit().unwrap();
+		txn.commit(vec![]).unwrap();
 		assert_eq!(5, engine.version().unwrap());
 	}
 

@@ -24,7 +24,7 @@ fn test_versions() {
 	for i in 1..10 {
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(&k0, as_values!(i)).unwrap();
-		txn.commit().unwrap();
+		txn.commit(vec![]).unwrap();
 		assert_eq!(i + 1, engine.version().unwrap());
 	}
 

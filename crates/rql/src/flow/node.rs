@@ -11,6 +11,7 @@ use reifydb_core::{
 	},
 	sort::SortKey,
 };
+use reifydb_value::value::dictionary::DictionaryId;
 use serde::{Deserialize, Serialize};
 
 use crate::expression::Expression;
@@ -95,6 +96,9 @@ pub enum FlowNodeType {
 		aggregations: Vec<Expression>,
 		ts: Option<String>,
 	},
+	SourceDictionary {
+		dictionary: DictionaryId,
+	},
 }
 
 impl FlowNodeType {
@@ -128,6 +132,9 @@ impl FlowNodeType {
 			FlowNodeType::SourceSeries {
 				..
 			} => "SourceSeries".into(),
+			FlowNodeType::SourceDictionary {
+				..
+			} => "SourceDictionary".into(),
 			FlowNodeType::Filter {
 				..
 			} => "Filter".into(),
@@ -248,6 +255,9 @@ impl FlowNodeType {
 			FlowNodeType::SinkSeriesView {
 				..
 			} => 21,
+			FlowNodeType::SourceDictionary {
+				..
+			} => 22,
 		}
 	}
 
@@ -262,6 +272,9 @@ impl FlowNodeType {
 			FlowNodeType::SourceSeries {
 				series,
 			} => Some(ShapeId::series(*series)),
+			FlowNodeType::SourceDictionary {
+				dictionary,
+			} => Some(ShapeId::dictionary(*dictionary)),
 			FlowNodeType::SourceInlineData {
 				..
 			}

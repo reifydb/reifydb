@@ -233,7 +233,15 @@ impl CommandTransaction {
 
 		let changes = TransactionalCatalogChanges::default();
 		let row_changes = take(&mut self.row_changes);
-		let flow_changes = ctx.flow_changes;
+		let mut flow_changes = ctx.flow_changes;
+		if !ctx.view_entries.is_empty() {
+			let mut accumulator = ChangeAccumulator::new();
+			for (shape, diff) in ctx.view_entries {
+				accumulator.track(shape, diff);
+			}
+			let changed_at = DateTime::from_nanos(self.clock.now_nanos());
+			flow_changes.extend(accumulator.take_changes(CommitVersion(0), changed_at)?);
+		}
 		let version = if unchecked {
 			multi.commit_unchecked(flow_changes)?
 		} else {

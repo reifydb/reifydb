@@ -23,7 +23,7 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	util::cowvec::CowVec,
-	value::{Value, datetime::DateTime, dictionary::DictionaryEntryId},
+	value::{Value, datetime::DateTime, dictionary::DictionaryEntryId, row_number::RowNumber},
 };
 use smallvec::smallvec;
 
@@ -73,6 +73,16 @@ impl DictionaryOperations for CommandTransaction {
 		let ids = [entry_id];
 		let values = [value.clone()];
 		DictionaryRowInterceptor::post_insert(self, dictionary, &ids, &values)?;
+
+		self.track_flow_change(Change {
+			origin: ChangeOrigin::Shape(ShapeId::Dictionary(dictionary.id)),
+			version: CommitVersion(0),
+			diffs: smallvec![Diff::insert(
+				Columns::single_row([("value", value)])
+					.with_row_numbers(vec![RowNumber(next_id as u64)])
+			)],
+			changed_at: DateTime::default(),
+		});
 
 		Ok(entry_id)
 	}
@@ -145,7 +155,10 @@ impl DictionaryOperations for AdminTransaction {
 		self.track_flow_change(Change {
 			origin: ChangeOrigin::Shape(ShapeId::Dictionary(dictionary.id)),
 			version: CommitVersion(0),
-			diffs: smallvec![Diff::insert(Columns::single_row([("value", value)]))],
+			diffs: smallvec![Diff::insert(
+				Columns::single_row([("value", value)])
+					.with_row_numbers(vec![RowNumber(next_id as u64)])
+			)],
 			changed_at: DateTime::default(),
 		});
 
