@@ -61,7 +61,10 @@ use reifydb_value::{
 };
 use tracing::{Span, debug, error, field, info, instrument, warn};
 
-use super::{state::FlowStates, tracker::ShapeVersionTracker};
+use super::{
+	state::FlowStates,
+	tracker::{FlowPositionTracker, ShapeVersionTracker},
+};
 use crate::catalog::FlowCatalog;
 
 pub(crate) struct FlowConsumeRef {
@@ -107,6 +110,8 @@ struct ConsumeContext {
 	combined: Pending,
 	pending_shapes: Vec<RowShape>,
 	checkpoints: Vec<(FlowId, CommitVersion)>,
+	positions: Vec<(FlowId, CommitVersion)>,
+	checkpoint_deletes: Vec<FlowId>,
 	original_reply: Box<dyn FnOnce(Result<()>) + Send>,
 	consume_start: Instant,
 
@@ -127,6 +132,8 @@ impl ConsumeContext {
 		self.combined.iter_sorted().next().is_none()
 			&& self.view_changes.is_empty()
 			&& self.checkpoints.is_empty()
+			&& self.positions.is_empty()
+			&& self.checkpoint_deletes.is_empty()
 			&& self.pending_shapes.is_empty()
 	}
 }
@@ -260,6 +267,7 @@ pub struct CoordinatorActor {
 	catalog: FlowCatalog,
 	pool: ActorRef<FlowPoolMessage>,
 	tracker: Arc<ShapeVersionTracker>,
+	flow_tracker: Arc<FlowPositionTracker>,
 	cdc_store: CdcStore,
 	num_workers: usize,
 	clock: Clock,
@@ -273,6 +281,7 @@ impl CoordinatorActor {
 		catalog: FlowCatalog,
 		pool_ref: ActorRef<FlowPoolMessage>,
 		tracker: Arc<ShapeVersionTracker>,
+		flow_tracker: Arc<FlowPositionTracker>,
 		cdc_store: CdcStore,
 		num_workers: usize,
 		clock: Clock,
@@ -283,6 +292,7 @@ impl CoordinatorActor {
 			catalog,
 			pool: pool_ref,
 			tracker,
+			flow_tracker,
 			cdc_store,
 			num_workers,
 			clock,
@@ -305,6 +315,10 @@ pub struct CoordinatorState {
 	flow_assignments: BTreeMap<FlowId, usize>,
 
 	flows_changed: bool,
+
+	cached_active: Vec<FlowId>,
+	cached_routing_index: collections::HashMap<ShapeId, Vec<FlowId>>,
+	cached_levels: Vec<Vec<FlowId>>,
 }
 
 impl Actor for CoordinatorActor {
@@ -322,6 +336,9 @@ impl Actor for CoordinatorActor {
 			tick_schedules: BTreeMap::new(),
 			flow_assignments: BTreeMap::new(),
 			flows_changed: false,
+			cached_active: Vec::new(),
+			cached_routing_index: collections::HashMap::new(),
+			cached_levels: Vec::new(),
 		}
 	}
 
@@ -410,6 +427,8 @@ impl CoordinatorActor {
 			combined: Pending::new(),
 			pending_shapes: Vec::new(),
 			checkpoints: Vec::new(),
+			positions: Vec::new(),
+			checkpoint_deletes: Vec::new(),
 			original_reply: reply,
 			consume_start,
 			all_changes,
@@ -664,7 +683,7 @@ impl CoordinatorActor {
 
 		if let Some(to_version) = consume_ctx.latest_version {
 			for flow_id in state.states.active_flow_ids() {
-				consume_ctx.checkpoints.push((flow_id, to_version));
+				consume_ctx.positions.push((flow_id, to_version));
 			}
 		}
 
@@ -737,6 +756,7 @@ impl CoordinatorActor {
 	) {
 		if state.flows_changed {
 			state.flows_changed = false;
+			self.rebuild_routing_cache(state);
 			let optimal = self.compute_flow_assignments(state);
 			if optimal != state.flow_assignments {
 				self.rebalance_flows(state, ctx, consume_ctx);
@@ -783,7 +803,7 @@ impl CoordinatorActor {
 		if let Some(to_version) = consume_ctx.latest_version {
 			for flow_id in state.states.active_flow_ids() {
 				if !consume_ctx.downstream_flows.contains(&flow_id) {
-					consume_ctx.checkpoints.push((flow_id, to_version));
+					consume_ctx.positions.push((flow_id, to_version));
 				}
 			}
 		}
@@ -848,6 +868,8 @@ impl CoordinatorActor {
 			};
 			if from_version >= consume_ctx.current_version {
 				self.mark_already_caught_up(state, flow_id, consume_ctx.current_version);
+				consume_ctx.checkpoint_deletes.push(flow_id);
+				consume_ctx.positions.push((flow_id, consume_ctx.current_version));
 				continue;
 			}
 
@@ -906,6 +928,8 @@ impl CoordinatorActor {
 				if let Some(flow_state) = state.states.get_mut(&flow_id) {
 					flow_state.activate();
 				}
+				state.flows_changed = true;
+				consume_ctx.checkpoint_deletes.push(flow_id);
 				info!(flow_id = flow_id.0, "backfill complete, flow now active");
 			}
 
@@ -961,18 +985,19 @@ impl CoordinatorActor {
 
 			self.maybe_register_tick_schedule(state, &flow);
 
-			let flow_checkpoint = CdcCheckpoint::fetch(&mut Transaction::Query(&mut query), &flow_id)
-				.unwrap_or(CommitVersion(0));
+			let has_durable_checkpoint = CdcCheckpoint::fetch_opt(&mut Transaction::Query(&mut query), &flow_id)
+				.unwrap_or(None)
+				.is_some();
 
-			if flow.is_subscription() || flow_checkpoint == coordinator_checkpoint {
-				state.states.register_active(flow_id, coordinator_checkpoint);
-			} else {
+			if !flow.is_subscription() && has_durable_checkpoint {
 				state.states.register_backfilling(flow_id);
+			} else {
+				state.states.register_active(flow_id, coordinator_checkpoint);
 			}
 
 			info!(
 				flow_id = flow_id.0,
-				checkpoint = flow_checkpoint.0,
+				backfilling = has_durable_checkpoint,
 				coordinator_checkpoint = coordinator_checkpoint.0,
 				"bootstrapped deferred flow on startup"
 			);
@@ -1005,6 +1030,7 @@ impl CoordinatorActor {
 			flow_state.activate();
 			flow_state.update_checkpoint(current_version);
 		}
+		state.flows_changed = true;
 		info!(flow_id = flow_id.0, "backfill complete, flow now active");
 	}
 
@@ -1018,13 +1044,16 @@ impl CoordinatorActor {
 		caught_up_message: &'static str,
 	) {
 		consume_ctx.checkpoints.push((flow_id, to_version));
+		let activated = to_version >= consume_ctx.current_version;
 		if let Some(flow_state) = state.states.get_mut(&flow_id) {
 			flow_state.update_checkpoint(to_version);
-			if to_version >= consume_ctx.current_version {
+			if activated {
 				flow_state.activate();
 			}
 		}
-		if to_version >= consume_ctx.current_version {
+		if activated {
+			state.flows_changed = true;
+			consume_ctx.checkpoint_deletes.push(flow_id);
 			info!(flow_id = flow_id.0, "{}", caught_up_message);
 		}
 	}
@@ -1075,6 +1104,8 @@ impl CoordinatorActor {
 			combined,
 			pending_shapes,
 			checkpoints,
+			positions,
+			checkpoint_deletes,
 			original_reply,
 			view_changes,
 			current_version,
@@ -1111,6 +1142,14 @@ impl CoordinatorActor {
 			return;
 		}
 
+		for flow_id in &checkpoint_deletes {
+			if let Err(e) = CdcCheckpoint::delete(&mut transaction, flow_id) {
+				let _ = transaction.rollback();
+				(original_reply)(coordinator_error(e));
+				return;
+			}
+		}
+
 		if let Err(e) = CdcCheckpoint::persist(&mut transaction, &self.consumer_id, current_version) {
 			let _ = transaction.rollback();
 			(original_reply)(coordinator_error(e));
@@ -1126,7 +1165,12 @@ impl CoordinatorActor {
 		}
 
 		match transaction.commit_unchecked() {
-			Ok(_) => (original_reply)(Ok(())),
+			Ok(_) => {
+				for (flow_id, version) in checkpoints.iter().chain(positions.iter()) {
+					self.flow_tracker.update(*flow_id, *version);
+				}
+				(original_reply)(Ok(()))
+			}
 			Err(e) => (original_reply)(coordinator_error(e)),
 		}
 	}
@@ -1180,6 +1224,16 @@ impl CoordinatorActor {
 				}
 			}
 		}
+	}
+
+	fn rebuild_routing_cache(&self, state: &mut CoordinatorState) {
+		let active_vec = state.states.active_flow_ids();
+		let active: collections::HashSet<FlowId> = active_vec.iter().copied().collect();
+		let index = self.build_routing_index(state, &active);
+		let levels = state.analyzer.calculate_execution_levels(state.analyzer.get_dependency_graph());
+		state.cached_active = active_vec;
+		state.cached_routing_index = index;
+		state.cached_levels = levels;
 	}
 
 	fn build_routing_index(
@@ -1265,11 +1319,17 @@ impl CoordinatorActor {
 	) -> BTreeMap<usize, WorkerBatch> {
 		let start = self.clock.instant();
 
-		let active_vec: Vec<FlowId> = state.states.active_flow_ids();
-		let active: collections::HashSet<FlowId> = active_vec.iter().copied().collect();
-		Span::current().record("active_flows", active.len());
+		#[cfg(reifydb_assertions)]
+		assert_eq!(
+			state.states.active_flow_ids(),
+			state.cached_active,
+			"routing cache is stale: the active flow set changed without flows_changed being set, so an activation or registration site is missing cache invalidation"
+		);
 
-		let index = self.build_routing_index(state, &active);
+		let active_vec = &state.cached_active;
+		Span::current().record("active_flows", active_vec.len());
+
+		let index = &state.cached_routing_index;
 
 		let mut per_flow: BTreeMap<FlowId, Vec<Change>> = BTreeMap::new();
 		for change in changes {
@@ -1282,7 +1342,7 @@ impl CoordinatorActor {
 					}
 				}
 				_ => {
-					for f in &active_vec {
+					for f in active_vec {
 						per_flow.entry(*f).or_default().push(change.clone());
 					}
 				}
@@ -1296,9 +1356,8 @@ impl CoordinatorActor {
 			return worker_batches;
 		}
 
-		let dependency_graph = state.analyzer.get_dependency_graph();
-		let levels = state.analyzer.calculate_execution_levels(dependency_graph);
-		for level in &levels {
+		let levels = &state.cached_levels;
+		for level in levels {
 			for fid in level {
 				if let Some(flow_changes) = per_flow.remove(fid) {
 					let worker_id = *state

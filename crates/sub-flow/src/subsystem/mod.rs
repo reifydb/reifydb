@@ -61,7 +61,7 @@ use crate::{
 	deferred::{
 		coordinator::{CoordinatorActor, FlowConsumeRef, extract_new_flow_ids},
 		pool::PoolActor,
-		tracker::ShapeVersionTracker,
+		tracker::{FlowPositionTracker, ShapeVersionTracker},
 		watermark::compute_flow_watermarks,
 		worker::FlowWorkerActor,
 	},
@@ -137,6 +137,7 @@ impl FlowSubsystem {
 		let spawner = ioc.resolve::<ActorSpawner>().expect("ActorSpawner must be registered");
 		let custom_operators = Arc::new(config.custom_operators);
 		let primitive_tracker = Arc::new(ShapeVersionTracker::new());
+		let flow_tracker = Arc::new(FlowPositionTracker::new());
 		let cdc_store = ioc.resolve::<CdcStore>().expect("CdcStore must be registered");
 
 		let flow_scope = spawner.scope();
@@ -171,6 +172,7 @@ impl FlowSubsystem {
 				flow_catalog.clone(),
 				pool_ref,
 				primitive_tracker.clone(),
+				flow_tracker.clone(),
 				cdc_store.clone(),
 				num_workers,
 				clock.clone(),
@@ -209,9 +211,9 @@ impl FlowSubsystem {
 
 		ioc.register_service::<FlowWatermarkSampler>(FlowWatermarkSampler::new({
 			let tracker = primitive_tracker.clone();
-			let engine = engine.clone();
+			let flow_tracker = flow_tracker.clone();
 			let flow_catalog = flow_catalog.clone();
-			move || compute_flow_watermarks(&tracker, &engine, &flow_catalog)
+			move || compute_flow_watermarks(&tracker, &flow_tracker, &flow_catalog)
 		}));
 
 		let cdc_wake_registry = ioc.resolve::<CdcWakeRegistry>().expect("CdcWakeRegistry must be registered");

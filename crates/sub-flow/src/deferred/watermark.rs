@@ -3,34 +3,25 @@
 
 use std::sync::Arc;
 
-use reifydb_cdc::consume::checkpoint::CdcCheckpoint;
 use reifydb_core::{common::CommitVersion, interface::flow::FlowWatermarkRow};
-use reifydb_engine::engine::StandardEngine;
-use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::identity::IdentityId;
 
-use super::tracker::ShapeVersionTracker;
+use super::tracker::{FlowPositionTracker, ShapeVersionTracker};
 use crate::catalog::FlowCatalog;
 
 pub(crate) fn compute_flow_watermarks(
 	primitive_tracker: &Arc<ShapeVersionTracker>,
-	engine: &StandardEngine,
+	flow_tracker: &Arc<FlowPositionTracker>,
 	catalog: &FlowCatalog,
 ) -> Vec<FlowWatermarkRow> {
 	let primitive_versions = primitive_tracker.all();
-
-	let mut txn = match engine.begin_query(IdentityId::system()) {
-		Ok(txn) => txn,
-		Err(_) => return Vec::new(),
-	};
+	let flow_positions = flow_tracker.all();
 
 	let mut rows = Vec::new();
 
 	let registered = catalog.get_flow_ids();
 
 	for flow_id in &registered {
-		let flow_version =
-			CdcCheckpoint::fetch(&mut Transaction::Query(&mut txn), flow_id).unwrap_or(CommitVersion(0)).0;
+		let flow_version = flow_positions.get(flow_id).copied().unwrap_or(CommitVersion(0)).0;
 
 		for (shape_id, version) in &primitive_versions {
 			let lag = version.0.saturating_sub(flow_version);
