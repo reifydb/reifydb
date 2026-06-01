@@ -23,6 +23,7 @@ pub fn write(key: &str, value: &str, version: u64) -> Command {
 			row: EncodedRow(CowVec::new(value.as_bytes().to_vec())),
 		}],
 		version: CommitVersion(version),
+		changes: vec![],
 	}
 }
 

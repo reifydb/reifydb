@@ -241,7 +241,7 @@ impl AdminTransaction {
 
 		let changes = take(&mut self.changes);
 		let row_changes = take(&mut self.row_changes);
-		let version = multi.commit()?;
+		let version = multi.commit(ctx.flow_changes)?;
 		self.interceptors.post_commit.execute(PostCommitContext::new(id, version, changes, row_changes))?;
 		Ok(version)
 	}

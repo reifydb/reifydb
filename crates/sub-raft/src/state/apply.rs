@@ -78,12 +78,13 @@ impl<M: MultiVersionCommit + 'static, S: SingleVersionCommit + 'static> State fo
 			Command::WriteMulti {
 				deltas,
 				version,
+				changes,
 			} => {
 				let cow_deltas = CowVec::new(deltas.clone());
 				self.multi_store
 					.commit(cow_deltas.clone(), *version)
 					.expect("multi-store commit failed during raft apply");
-				self.event_bus.emit(PostCommitEvent::new(cow_deltas, *version));
+				self.event_bus.emit(PostCommitEvent::new(cow_deltas, *version, changes.clone()));
 
 				if let Some(cb) = &self.on_version_advance {
 					cb(version.0);

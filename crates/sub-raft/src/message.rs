@@ -1,7 +1,7 @@
 // Copyright (c) 2026 ReifyDB
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use reifydb_core::{common::CommitVersion, delta::Delta};
+use reifydb_core::{common::CommitVersion, delta::Delta, interface::change::Change};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -9,11 +9,12 @@ use crate::{
 	node::{NodeId, Term},
 };
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Command {
 	WriteMulti {
 		deltas: Vec<Delta>,
 		version: CommitVersion,
+		changes: Vec<Change>,
 	},
 
 	WriteSingle {
@@ -21,6 +22,35 @@ pub enum Command {
 	},
 
 	Noop,
+}
+
+impl PartialEq for Command {
+	fn eq(&self, other: &Self) -> bool {
+		match (self, other) {
+			(
+				Command::WriteMulti {
+					deltas: a_deltas,
+					version: a_version,
+					..
+				},
+				Command::WriteMulti {
+					deltas: b_deltas,
+					version: b_version,
+					..
+				},
+			) => a_deltas == b_deltas && a_version == b_version,
+			(
+				Command::WriteSingle {
+					deltas: a,
+				},
+				Command::WriteSingle {
+					deltas: b,
+				},
+			) => a == b,
+			(Command::Noop, Command::Noop) => true,
+			_ => false,
+		}
+	}
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

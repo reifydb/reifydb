@@ -233,10 +233,11 @@ impl CommandTransaction {
 
 		let changes = TransactionalCatalogChanges::default();
 		let row_changes = take(&mut self.row_changes);
+		let flow_changes = ctx.flow_changes;
 		let version = if unchecked {
-			multi.commit_unchecked()?
+			multi.commit_unchecked(flow_changes)?
 		} else {
-			multi.commit()?
+			multi.commit(flow_changes)?
 		};
 		self.interceptors.post_commit.execute(PostCommitContext::new(id, version, changes, row_changes))?;
 		Ok(version)

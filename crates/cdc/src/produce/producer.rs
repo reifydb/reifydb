@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
-use reifydb_catalog::{catalog::Catalog, shape::decode::decode_row};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -13,20 +12,12 @@ use reifydb_core::{
 		transaction::PostCommitEvent,
 	},
 	interface::{
-		catalog::{
-			config::{ConfigKey, GetConfig},
-			shape::ShapeId,
-		},
+		catalog::config::{ConfigKey, GetConfig},
 		cdc::{Cdc, SystemChange},
-		change::{Change, Diff},
+		change::Change,
 		store::MultiVersionGetPrevious,
 	},
-	key::{
-		EncodableKey, Key, cdc_exclude::should_exclude_from_cdc, kind::KeyKind, row::RowKey,
-		series_row::SeriesRowKey,
-	},
-	row::Row,
-	value::column::columns::Columns,
+	key::{Key, cdc_exclude::should_exclude_from_cdc},
 };
 use reifydb_runtime::{
 	actor::{
@@ -38,10 +29,7 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 };
-use reifydb_value::{
-	Result,
-	value::{datetime::DateTime, row_number::RowNumber},
-};
+use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::{debug, error, trace};
 
 use crate::{
@@ -53,14 +41,6 @@ use crate::{
 const CLEANUP_INTERVAL: Duration = Duration::from_secs(30);
 
 use reifydb_core::actors::cdc::{CdcProduceHandle, CdcProduceMessage};
-
-#[derive(Default)]
-struct ShapeChanges {
-	insert_post: Vec<Row>,
-	update_pre: Vec<Row>,
-	update_post: Vec<Row>,
-	remove_pre: Vec<Row>,
-}
 
 pub struct CdcProducerActor<S, T, H> {
 	storage: Arc<S>,
@@ -99,11 +79,8 @@ where
 		}
 	}
 
-	fn process(&self, version: CommitVersion, changed_at: DateTime, deltas: Vec<Delta>) {
-		let mut changes_by_shape: BTreeMap<ShapeId, ShapeChanges> = BTreeMap::new();
+	fn process(&self, version: CommitVersion, changed_at: DateTime, deltas: Vec<Delta>, flow_changes: Vec<Change>) {
 		let mut system_changes: Vec<SystemChange> = Vec::new();
-
-		let catalog = self.host.catalog();
 
 		trace!(version = version.0, delta_count = deltas.len(), "Processing CDC");
 
@@ -111,109 +88,25 @@ where
 			if Self::is_excluded_kind(&delta) {
 				continue;
 			}
-			if self.try_decode_row_delta(
-				&delta,
-				version,
-				catalog,
-				&mut changes_by_shape,
-				&mut system_changes,
-			) {
-				continue;
-			}
 			if let Some(change) = self.delta_to_system_change(delta, version) {
 				system_changes.push(change);
 			}
 		}
 
-		let changes = self.finalize(changes_by_shape, version, changed_at);
+		let changes: Vec<Change> = flow_changes
+			.into_iter()
+			.map(|mut change| {
+				change.version = version;
+				change.changed_at = changed_at;
+				change
+			})
+			.collect();
 		self.write_and_emit(version, changed_at, changes, system_changes);
 	}
 
 	#[inline]
 	fn is_excluded_kind(delta: &Delta) -> bool {
 		Key::kind(delta.key()).map(should_exclude_from_cdc).unwrap_or(false)
-	}
-
-	#[inline]
-	fn try_decode_row_delta(
-		&self,
-		delta: &Delta,
-		version: CommitVersion,
-		catalog: &Catalog,
-		changes_by_shape: &mut BTreeMap<ShapeId, ShapeChanges>,
-		system_changes: &mut Vec<SystemChange>,
-	) -> bool {
-		let key = delta.key();
-		if Key::kind(key) != Some(KeyKind::Row) {
-			return false;
-		}
-
-		let (shape, row_number) = if let Some(sk) = SeriesRowKey::decode(key) {
-			(ShapeId::Series(sk.series), RowNumber::from(sk.sequence))
-		} else if let Some(rk) = RowKey::decode(key) {
-			(rk.shape, rk.row)
-		} else {
-			return false;
-		};
-
-		if !self.accumulate_row_delta(
-			delta,
-			row_number,
-			version,
-			catalog,
-			changes_by_shape.entry(shape).or_default(),
-		) {
-			return false;
-		}
-		push_raw_system_change(delta, self.transaction_store.as_ref(), version, system_changes);
-		true
-	}
-
-	#[inline]
-	fn accumulate_row_delta(
-		&self,
-		delta: &Delta,
-		row_number: RowNumber,
-		version: CommitVersion,
-		catalog: &Catalog,
-		acc: &mut ShapeChanges,
-	) -> bool {
-		match delta {
-			Delta::Set {
-				key,
-				row,
-			} => {
-				let pre = self.transaction_store.get_previous_version(key, version).ok().flatten();
-				if let Some(prev) = pre {
-					let Some(pre_row) = decode_row(catalog, row_number, prev.row) else {
-						return false;
-					};
-					let Some(post_row) = decode_row(catalog, row_number, row.clone()) else {
-						return false;
-					};
-					acc.update_pre.push(pre_row);
-					acc.update_post.push(post_row);
-					true
-				} else {
-					let Some(post_row) = decode_row(catalog, row_number, row.clone()) else {
-						return false;
-					};
-					acc.insert_post.push(post_row);
-					true
-				}
-			}
-			Delta::Unset {
-				row,
-				..
-			} if !row.is_empty() => {
-				let Some(pre_row) = decode_row(catalog, row_number, row.clone()) else {
-					return false;
-				};
-				acc.remove_pre.push(pre_row);
-				true
-			}
-			_ => false,
-		}
 	}
 
 	#[inline]
@@ -243,35 +136,6 @@ where
 				..
 			} => None,
 		}
-	}
-
-	#[inline]
-	fn finalize(
-		&self,
-		changes_by_shape: BTreeMap<ShapeId, ShapeChanges>,
-		version: CommitVersion,
-		changed_at: DateTime,
-	) -> Vec<Change> {
-		let mut changes = Vec::with_capacity(changes_by_shape.len());
-		for (shape, acc) in changes_by_shape {
-			let mut diffs: Vec<Diff> = Vec::with_capacity(3);
-			if !acc.insert_post.is_empty() {
-				diffs.push(Diff::insert(columns_from_rows(&acc.insert_post)));
-			}
-			if !acc.update_pre.is_empty() {
-				diffs.push(Diff::update(
-					columns_from_rows(&acc.update_pre),
-					columns_from_rows(&acc.update_post),
-				));
-			}
-			if !acc.remove_pre.is_empty() {
-				diffs.push(Diff::remove(columns_from_rows(&acc.remove_pre)));
-			}
-			if !diffs.is_empty() {
-				changes.push(Change::from_shape(shape, version, diffs, changed_at));
-			}
-		}
-		changes
 	}
 
 	#[inline]
@@ -355,8 +219,14 @@ where
 	}
 
 	#[inline]
-	fn on_produce(&self, version: CommitVersion, changed_at: DateTime, deltas: Vec<Delta>) {
-		self.process(version, changed_at, deltas);
+	fn on_produce(
+		&self,
+		version: CommitVersion,
+		changed_at: DateTime,
+		deltas: Vec<Delta>,
+		flow_changes: Vec<Change>,
+	) {
+		self.process(version, changed_at, deltas, flow_changes);
 
 		self.watermark.advance(version);
 		self.wake_registry.notify_all();
@@ -365,24 +235,6 @@ where
 	#[inline]
 	fn on_tick(&self) {
 		self.try_cleanup();
-	}
-}
-
-#[inline]
-fn columns_from_rows(rows: &[Row]) -> Columns {
-	let mut columns = Columns::empty();
-	columns.push_rows(rows);
-	columns
-}
-
-fn push_raw_system_change(
-	delta: &Delta,
-	transaction_store: &dyn MultiVersionGetPrevious,
-	version: CommitVersion,
-	system_changes: &mut Vec<SystemChange>,
-) {
-	if let Some(change) = delta_to_raw_system_change(delta, transaction_store, version) {
-		system_changes.push(change);
 	}
 }
 
@@ -457,7 +309,8 @@ where
 				version,
 				changed_at,
 				deltas,
-			} => self.on_produce(version, changed_at, deltas),
+				flow_changes,
+			} => self.on_produce(version, changed_at, deltas, flow_changes),
 			CdcProduceMessage::Tick => self.on_tick(),
 		}
 		Directive::Continue
@@ -492,6 +345,7 @@ impl EventListener<PostCommitEvent> for CdcProducerEventListener {
 			version: *event.version(),
 			changed_at: DateTime::from_nanos(self.clock.now_nanos()),
 			deltas: event.deltas().iter().cloned().collect(),
+			flow_changes: event.flow_changes().clone(),
 		};
 
 		if let Err(e) = self.actor_ref.send(msg) {
@@ -565,6 +419,7 @@ pub mod tests {
 				version: CommitVersion(1),
 				changed_at: DateTime::from_nanos(12345000),
 				deltas,
+				flow_changes: vec![],
 			})
 			.unwrap();
 
@@ -625,6 +480,7 @@ pub mod tests {
 				version: CommitVersion(2),
 				changed_at: DateTime::from_nanos(12345000),
 				deltas,
+				flow_changes: vec![],
 			})
 			.unwrap();
 

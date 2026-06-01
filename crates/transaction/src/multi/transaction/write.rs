@@ -12,8 +12,11 @@ use reifydb_core::{
 		row::EncodedRow,
 	},
 	event::transaction::PostCommitEvent,
-	interface::store::{
-		MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow,
+	interface::{
+		change::Change,
+		store::{
+			MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow,
+		},
 	},
 };
 #[cfg(not(target_arch = "wasm32"))]
@@ -488,23 +491,23 @@ impl MultiWriteTransaction {
 
 impl MultiWriteTransaction {
 	#[instrument(name = "transaction::command::commit", level = "debug", skip(self), fields(pending_count = self.pending_writes().len()))]
-	pub fn commit(&mut self) -> Result<CommitVersion> {
+	pub fn commit(&mut self, flow_changes: Vec<Change>) -> Result<CommitVersion> {
 		if self.pending_writes.is_empty() {
 			self.discard();
 			return Ok(CommitVersion(0));
 		}
 		let (commit_version, entries) = self.commit_pending()?;
-		self.finalize_commit(commit_version, entries)
+		self.finalize_commit(commit_version, entries, flow_changes)
 	}
 
 	#[instrument(name = "transaction::command::commit_unchecked", level = "debug", skip(self), fields(pending_count = self.pending_writes().len()))]
-	pub(crate) fn commit_unchecked(&mut self) -> Result<CommitVersion> {
+	pub(crate) fn commit_unchecked(&mut self, flow_changes: Vec<Change>) -> Result<CommitVersion> {
 		if self.pending_writes.is_empty() {
 			self.discard();
 			return Ok(CommitVersion(0));
 		}
 		let (commit_version, entries) = self.commit_pending_unchecked()?;
-		self.finalize_commit(commit_version, entries)
+		self.finalize_commit(commit_version, entries, flow_changes)
 	}
 
 	#[inline]
@@ -512,6 +515,7 @@ impl MultiWriteTransaction {
 		&mut self,
 		commit_version: CommitVersion,
 		entries: Vec<DeltaEntry>,
+		flow_changes: Vec<Change>,
 	) -> Result<CommitVersion> {
 		if entries.is_empty() {
 			self.discard();
@@ -525,6 +529,7 @@ impl MultiWriteTransaction {
 				let cmd = Command::WriteMulti {
 					deltas: deltas.to_vec(),
 					version: commit_version,
+					changes: flow_changes,
 				};
 				if let Err(e) = raft.propose(cmd) {
 					self.oracle.done_commit(commit_version);
@@ -541,7 +546,7 @@ impl MultiWriteTransaction {
 		}
 		MultiVersionCommit::commit(&self.engine.store, deltas.clone(), commit_version)?;
 		self.discard();
-		self.publish(commit_version, deltas);
+		self.publish(commit_version, deltas, flow_changes);
 		Ok(commit_version)
 	}
 
@@ -556,8 +561,8 @@ impl MultiWriteTransaction {
 	}
 
 	#[inline]
-	fn publish(&self, commit_version: CommitVersion, deltas: CowVec<Delta>) {
-		self.engine.event_bus.emit(PostCommitEvent::new(deltas, commit_version));
+	fn publish(&self, commit_version: CommitVersion, deltas: CowVec<Delta>, flow_changes: Vec<Change>) {
+		self.engine.event_bus.emit(PostCommitEvent::new(deltas, commit_version, flow_changes));
 		self.oracle.done_commit(commit_version);
 	}
 }
