@@ -7,7 +7,7 @@ use reifydb_core::{
 	common::JoinType,
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_runtime::hash::Hash128;
+use reifydb_runtime::{hash::Hash128, reifydb_assertions};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
@@ -73,8 +73,7 @@ impl QueryNode for NaturalJoinNode {
 
 	#[instrument(name = "volcano::join::natural::next", level = "trace", skip_all)]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(self.context.is_initialized(), "NaturalJoinNode::next() called before initialize()");
 		}
 

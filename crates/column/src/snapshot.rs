@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::value::column::data::Column;
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{Result, value::value_type::ValueType};
 
 #[repr(u8)]
@@ -80,8 +81,7 @@ impl ColumnChunks {
 	}
 
 	pub fn iter_range_chunks(&self, start: usize, end: usize) -> Vec<(usize, usize, usize)> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(start <= end, "iter_range_chunks: start {start} > end {end}");
 		}
 		let mut out = Vec::new();
@@ -116,8 +116,7 @@ pub struct ColumnBlock {
 
 impl ColumnBlock {
 	pub fn new(schema: Schema, columns: Vec<ColumnChunks>) -> Self {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(schema.len(), columns.len(), "ColumnBlock::new: schema and columns length mismatch");
 		}
 		Self {
@@ -139,8 +138,7 @@ impl ColumnBlock {
 	}
 
 	pub fn view_range(&self, start: usize, end: usize) -> Result<ColumnBlock> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(start <= end, "view_range: start {start} > end {end}");
 		}
 		let mut sliced_columns = Vec::with_capacity(self.columns.len());

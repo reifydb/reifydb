@@ -3,6 +3,7 @@
 
 use std::{any::Any, sync::Arc};
 
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{
 	Result,
 	value::{Value, value_type::ValueType},
@@ -27,8 +28,7 @@ pub struct Canonical {
 
 impl Canonical {
 	pub fn new(ty: ValueType, nullable: bool, nones: Option<NoneBitmap>, buffer: ColumnBuffer) -> Self {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				!matches!(buffer, ColumnBuffer::Option { .. }),
 				"Canonical.buffer must not be a ColumnBuffer::Option; nullability is lifted"

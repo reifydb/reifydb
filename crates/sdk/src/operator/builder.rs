@@ -8,6 +8,7 @@ use reifydb_abi::{
 	context::context::ContextFFI,
 	data::column::ColumnTypeCode,
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::value::row_number::RowNumber;
 
 use crate::{error::SdkError, operator::context::ffi::FFIOperatorContext};
@@ -79,8 +80,7 @@ impl<'a> ColumnBuilder<'a> {
 	}
 
 	pub fn write_bool(self, values: &[bool]) -> Result<CommittedColumn, SdkError> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Bool, "write_bool requires a Bool ColumnBuilder");
 		}
 
@@ -101,112 +101,98 @@ impl<'a> ColumnBuilder<'a> {
 	}
 
 	pub fn write_f32(self, values: &[f32]) -> Result<CommittedColumn, SdkError> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Float4);
 		}
 		unsafe { write_scalar(self, values) }
 	}
 
 	pub fn write_f64(self, values: &[f64]) -> Result<CommittedColumn, SdkError> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Float8);
 		}
 		unsafe { write_scalar(self, values) }
 	}
 
 	pub fn write_i8(self, values: &[i8]) -> Result<CommittedColumn, SdkError> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Int1);
 		}
 		unsafe { write_scalar(self, values) }
 	}
 
 	pub fn write_i16(self, values: &[i16]) -> Result<CommittedColumn, SdkError> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Int2);
 		}
 		unsafe { write_scalar(self, values) }
 	}
 
 	pub fn write_i32(self, values: &[i32]) -> Result<CommittedColumn, SdkError> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Int4);
 		}
 		unsafe { write_scalar(self, values) }
 	}
 
 	pub fn write_i64(self, values: &[i64]) -> Result<CommittedColumn, SdkError> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Int8);
 		}
 		unsafe { write_scalar(self, values) }
 	}
 
 	pub fn write_i128(self, values: &[i128]) -> Result<CommittedColumn, SdkError> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Int16);
 		}
 		unsafe { write_scalar(self, values) }
 	}
 
 	pub fn write_u8(self, values: &[u8]) -> Result<CommittedColumn, SdkError> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Uint1);
 		}
 		unsafe { write_scalar(self, values) }
 	}
 
 	pub fn write_u16(self, values: &[u16]) -> Result<CommittedColumn, SdkError> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Uint2);
 		}
 		unsafe { write_scalar(self, values) }
 	}
 
 	pub fn write_u32(self, values: &[u32]) -> Result<CommittedColumn, SdkError> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Uint4);
 		}
 		unsafe { write_scalar(self, values) }
 	}
 
 	pub fn write_u64(self, values: &[u64]) -> Result<CommittedColumn, SdkError> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Uint8);
 		}
 		unsafe { write_scalar(self, values) }
 	}
 
 	pub fn write_u128(self, values: &[u128]) -> Result<CommittedColumn, SdkError> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Uint16);
 		}
 		unsafe { write_scalar(self, values) }
 	}
 
 	pub fn write_utf8<S: AsRef<str>>(self, values: &[S]) -> Result<CommittedColumn, SdkError> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Utf8, "write_utf8 requires a Utf8 ColumnBuilder");
 		}
 		write_var_len(self, values.iter().map(|s| s.as_ref().as_bytes()))
 	}
 
 	pub fn write_blob<B: AsRef<[u8]>>(self, values: &[B]) -> Result<CommittedColumn, SdkError> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Blob, "write_blob requires a Blob ColumnBuilder");
 		}
 		write_var_len(self, values.iter().map(|b| b.as_ref()))

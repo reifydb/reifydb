@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::value::{Value, ordered_f32::OrderedF32, ordered_f64::OrderedF64, value_type::ValueType};
 
 use super::shape::RowShape;
@@ -8,8 +9,7 @@ use crate::encoded::row::EncodedRow;
 
 impl RowShape {
 	pub fn set_values(&self, row: &mut EncodedRow, values: &[Value]) {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(values.len() == self.fields().len());
 		}
 		for (idx, value) in values.iter().enumerate() {
@@ -19,8 +19,7 @@ impl RowShape {
 
 	pub fn set_value(&self, row: &mut EncodedRow, index: usize, val: &Value) {
 		let field = &self.fields()[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				row.len() >= self.total_static_size(),
 				"row/shape size mismatch: row.len()={} < total_static_size()={}",

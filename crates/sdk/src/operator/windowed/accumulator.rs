@@ -9,6 +9,7 @@ use std::{
 	marker::PhantomData,
 };
 
+use reifydb_runtime::reifydb_assertions;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::operator::windowed::span::Slot;
@@ -64,8 +65,7 @@ impl Moments {
 
 	#[inline]
 	pub fn remove(&mut self, x: f64) {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(self.n > 0, "Moments::remove on empty accumulator");
 		}
 		self.n -= 1;

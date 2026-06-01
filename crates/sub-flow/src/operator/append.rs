@@ -18,6 +18,7 @@ use reifydb_core::{
 	util::encoding::keycode::serializer::KeySerializer,
 	value::column::columns::Columns,
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_sdk::operator::Tick;
 use reifydb_value::{Result, error::Error, value::row_number::RowNumber};
 
@@ -58,8 +59,7 @@ impl AppendOperator {
 		ttl_nanos: Option<u64>,
 		ttl_anchor: TtlAnchor,
 	) -> Self {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(parents.len(), input_nodes.len());
 			assert!(parents.len() >= 2, "Append requires at least 2 inputs");
 		}

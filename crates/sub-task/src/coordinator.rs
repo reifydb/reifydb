@@ -5,7 +5,10 @@ use std::{cmp::Ordering, collections::BinaryHeap, error::Error, future, io, sync
 
 use reifydb_core::interface::catalog::task::TaskId;
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::context::clock::{Clock, Instant};
+use reifydb_runtime::{
+	context::clock::{Clock, Instant},
+	reifydb_assertions,
+};
 use tokio::{runtime::Handle, select, sync::mpsc, task::spawn_blocking, time};
 use tracing::{debug, error, info};
 
@@ -113,8 +116,7 @@ pub async fn run_coordinator(
 
 			if let Some(mut entry) = registry.get_mut(&task_id) {
 			    if let Some(next_exec) = entry.task.schedule.next_execution(completed_at) {
-				#[cfg(reifydb_assertions)]
-				{
+				reifydb_assertions! {
 					assert!(
 						!matches!(entry.task.schedule, Schedule::Once(_)),
 						"a Schedule::Once task entered the reschedule path after completing, so a one-shot task would run repeatedly and duplicate its side effects (task={})",

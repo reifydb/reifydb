@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use reifydb_catalog::change::apply_system_change;
 use reifydb_core::{common::CommitVersion, interface::cdc::SystemChange};
 use reifydb_engine::engine::StandardEngine;
+use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::{Transaction, replica::ReplicaTransaction};
 use reifydb_value::Result;
 use tracing::debug;
@@ -71,8 +72,7 @@ impl ReplicaApplier {
 
 	#[inline]
 	fn advance_to(&self, version: CommitVersion) {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			let prev = self.last_applied.load(Ordering::Acquire);
 			let new = version.0;
 			assert!(

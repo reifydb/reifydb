@@ -9,6 +9,7 @@ use reifydb_core::{
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::{Expression, name::display_label};
+use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{fragment::Fragment, util::cowvec::CowVec};
 use tracing::instrument;
@@ -78,8 +79,7 @@ impl QueryNode for MapNode {
 
 	#[instrument(name = "volcano::map::next", level = "trace", skip_all)]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(self.context.is_some(), "MapNode::next() called before initialize()");
 		}
 
@@ -199,8 +199,7 @@ impl QueryNode for MapWithoutInputNode {
 
 	#[instrument(name = "volcano::map::noinput::next", level = "trace", skip_all)]
 	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(self.context.is_some(), "MapWithoutInputNode::next() called before initialize()");
 		}
 		let (stored_ctx, compiled) = self.context.as_ref().unwrap();

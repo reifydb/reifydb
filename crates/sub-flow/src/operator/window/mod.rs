@@ -7,8 +7,9 @@ use reifydb_core::{
 	error::diagnostic::flow::{flow_window_timestamp_column_not_found, flow_window_timestamp_column_type_mismatch},
 	interface::catalog::flow::FlowNodeId,
 	internal,
-	key::{flow_node_state::FlowNodeStateKey, EncodableKey},
+	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_sdk::operator::Tick;
 use serde::{Deserialize, Serialize};
 
@@ -31,7 +32,6 @@ static EMPTY_PARAMS: Params = Params::None;
 
 use std::{ops, sync::LazyLock, time::Duration};
 
-use crate::operator::stateful::{raw::RawStatefulOperator, row::RowNumberProvider, window::WindowStateful};
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
 	encoded::{
@@ -42,38 +42,39 @@ use reifydb_core::{
 	interface::change::{Change, Diff},
 	row::Row,
 	util::encoding::keycode::serializer::KeySerializer,
-	value::column::{buffer::ColumnBuffer, columns::Columns, view::group_by::GroupByView, ColumnWithName},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, view::group_by::GroupByView},
 };
 use reifydb_engine::{
 	expression::{
-		compile::{compile_expression, CompiledExpr},
+		compile::{CompiledExpr, compile_expression},
 		context::{CompileContext, EvalContext},
 	},
 	vm::stack::SymbolTable,
 };
 use reifydb_routine::routine::{
-	context::FunctionContext, registry::Routines, Accumulator, AggregateFunctionCapability,
+	Accumulator, AggregateFunctionCapability, context::FunctionContext, registry::Routines,
 };
 use reifydb_rql::expression::{
-	name::{collect_all_column_names, display_label},
 	Expression,
+	name::{collect_all_column_names, display_label},
 };
 use reifydb_runtime::{
 	context::RuntimeContext,
-	hash::{xxh3_128, Hash128},
+	hash::{Hash128, xxh3_128},
 };
-use reifydb_value::value::assert_equal_with_tolerance;
 use reifydb_value::{
+	Result,
 	error::Error,
 	fragment::Fragment,
 	params::Params,
 	util::cowvec::CowVec,
 	value::{
-		blob::Blob, datetime::DateTime, identity::IdentityId, row_number::RowNumber, value_type::ValueType,
-		Value,
+		Value, assert_equal_with_tolerance, blob::Blob, datetime::DateTime, identity::IdentityId,
+		row_number::RowNumber, value_type::ValueType,
 	},
-	Result,
 };
+
+use crate::operator::stateful::{raw::RawStatefulOperator, row::RowNumberProvider, window::WindowStateful};
 
 #[inline]
 fn build_aggregation_shape(names: &[String], types: &[ValueType]) -> RowShape {
@@ -876,8 +877,7 @@ impl WindowOperator {
 
 		let (result_row_number, is_new) = self.row_number_provider.get_or_create_row_number(txn, window_key)?;
 
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			let (slow_values, slow_names, slow_types) =
 				self.compute_aggregation_outputs(window_layout, events)?;
 			assert_eq!(names, slow_names, "fast-path output names diverge from slow path");

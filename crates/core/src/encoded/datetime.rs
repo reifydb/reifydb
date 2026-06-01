@@ -3,6 +3,7 @@
 
 use std::ptr;
 
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::value::{datetime::DateTime, value_type::ValueType};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
@@ -10,8 +11,7 @@ use crate::encoded::{row::EncodedRow, shape::RowShape};
 impl RowShape {
 	pub fn set_datetime(&self, row: &mut EncodedRow, index: usize, value: DateTime) {
 		let field = &self.fields()[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				row.len() >= self.total_static_size(),
 				"row/shape size mismatch: row.len()={} < total_static_size()={}",
@@ -30,8 +30,7 @@ impl RowShape {
 
 	pub fn get_datetime(&self, row: &EncodedRow, index: usize) -> DateTime {
 		let field = &self.fields()[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				row.len() >= self.total_static_size(),
 				"row/shape size mismatch: row.len()={} < total_static_size()={}",

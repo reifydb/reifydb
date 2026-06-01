@@ -5,6 +5,7 @@ use reifydb_abi::flow::diff::DiffType;
 use reifydb_core::{
 	encoded::shape::SHAPE_HEADER_SIZE, interface::change::Change, row::Row, value::column::columns::Columns,
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::value::{
 	Value, date::Date, datetime::DateTime, duration::Duration, time::Time, value_type::ValueType,
 };
@@ -70,8 +71,7 @@ fn apply_columns(table: &mut MaterializedTable, columns: &Columns, output_key_co
 	let column_names: Vec<String> = columns.iter().map(|c| c.name().text().to_string()).collect();
 	for i in 0..columns.row_count() {
 		let values = columns.row(i);
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(values.len(), column_names.len());
 		}
 		let mat = MaterializedRow::from_pairs(column_names.iter().cloned().zip(values.into_iter()));

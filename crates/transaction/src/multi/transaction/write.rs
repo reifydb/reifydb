@@ -19,6 +19,7 @@ use reifydb_core::{
 		},
 	},
 };
+use reifydb_runtime::reifydb_assertions;
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sub_raft::message::Command;
 use reifydb_value::{
@@ -105,8 +106,7 @@ impl MultiWriteTransaction {
 	}
 
 	fn transition_to(&mut self, next: Lifecycle) {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(matches!(
 				(self.lifecycle, next),
 				(Lifecycle::Active, Lifecycle::QueryDone)
@@ -469,8 +469,7 @@ impl MultiWriteTransaction {
 
 	#[inline]
 	fn assemble_committed_deltas(&mut self, version: CommitVersion) -> Vec<DeltaEntry> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_ne!(version, 0);
 		}
 		let _ = mem::take(&mut self.pending_writes);

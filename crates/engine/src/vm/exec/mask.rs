@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
 	util::bitvec::BitVec,
@@ -72,8 +73,7 @@ pub(crate) struct LoopMaskState {
 
 pub(crate) fn merge_by_mask(existing: &Columns, new_value: &Columns, mask: &BitVec) -> Result<Columns> {
 	let len = existing.row_count();
-	#[cfg(reifydb_assertions)]
-	{
+	reifydb_assertions! {
 		assert_eq!(new_value.row_count(), len);
 		assert_eq!(mask.len(), len);
 	}

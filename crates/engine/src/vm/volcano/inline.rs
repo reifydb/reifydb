@@ -12,6 +12,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
+use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
@@ -265,8 +266,7 @@ impl QueryNode for InlineDataNode {
 	}
 
 	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(self.context.is_some(), "InlineDataNode::next() called before initialize()");
 		}
 		let stored_ctx = self.context.as_ref().unwrap().clone();

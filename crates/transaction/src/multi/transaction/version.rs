@@ -11,7 +11,7 @@ use reifydb_core::{
 	encoded::shape::{RowShape, RowShapeField},
 	key::{EncodableKey, transaction_version::TransactionVersionKey},
 };
-use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_runtime::{reifydb_assertions, sync::mutex::Mutex};
 use reifydb_value::{Result, value::value_type::ValueType};
 
 use crate::single::SingleTransaction;
@@ -114,8 +114,7 @@ impl VersionProvider for StandardVersionProvider {
 
 		self.current_block_end.store(new_block_end, Ordering::SeqCst);
 
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				version <= new_block_end,
 				"handed out a commit version past the block end that was just persisted, so a crash could re-issue \

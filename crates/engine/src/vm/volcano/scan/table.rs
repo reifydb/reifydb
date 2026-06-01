@@ -14,6 +14,7 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{error, fragment::Fragment, util::cowvec::CowVec, value::value_type::ValueType};
 use tracing::instrument;
@@ -112,8 +113,7 @@ impl QueryNode for TableScanNode {
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::next")]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(self.context.is_some(), "TableScanNode::next() called before initialize()");
 		}
 		let stored_ctx = self.context.as_ref().unwrap();

@@ -4,6 +4,7 @@
 use std::collections::BTreeMap;
 
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
+use reifydb_runtime::reifydb_assertions;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FlowStatus {
@@ -43,8 +44,7 @@ impl FlowState {
 	}
 
 	pub fn activate(&mut self) {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			let current = self.status;
 			assert!(
 				matches!(current, FlowStatus::Backfilling),
@@ -55,8 +55,7 @@ impl FlowState {
 	}
 
 	pub fn update_checkpoint(&mut self, version: CommitVersion) {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			let prev = self.checkpoint.0;
 			let new = version.0;
 			assert!(

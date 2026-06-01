@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider};
+use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{error::Error, value::identity::IdentityId};
 use tracing::instrument;
@@ -101,8 +102,7 @@ impl AuthService {
 
 	#[inline]
 	fn finalize_authentication(&self, identity: IdentityId) -> Result<AuthResponse, Error> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				identity != IdentityId::default(),
 				"authentication finalized for the nil placeholder identity instead of a resolved one, so an unauthenticated principal would receive a valid session token and gain authorization (identity={:?})",

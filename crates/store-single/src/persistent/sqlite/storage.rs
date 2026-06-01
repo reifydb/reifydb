@@ -4,7 +4,7 @@
 use std::{ops::Bound, sync::Arc};
 
 use reifydb_core::{encoded::key::EncodedKey, internal_error};
-use reifydb_runtime::{shutdown::Shutdown, sync::mutex::Mutex};
+use reifydb_runtime::{reifydb_assertions, shutdown::Shutdown, sync::mutex::Mutex};
 use reifydb_sqlite::{
 	SqliteConfig, SqliteTempPathGuard,
 	connection::{connect, convert_flags, resolve_db_path},
@@ -223,8 +223,7 @@ impl TierStorage for SqlitePersistentStorage {
 			has_more,
 		};
 
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			if let (Some(prev), Some(first)) = (cursor.last_key.as_ref(), batch.entries.first()) {
 				let prev_key = prev.as_slice();
 				let first_key = first.key.as_slice();
@@ -311,8 +310,7 @@ impl TierStorage for SqlitePersistentStorage {
 			has_more,
 		};
 
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			if let (Some(prev), Some(first)) = (cursor.last_key.as_ref(), batch.entries.first()) {
 				let prev_key = prev.as_slice();
 				let first_key = first.key.as_slice();

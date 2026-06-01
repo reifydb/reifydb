@@ -17,6 +17,7 @@ use crate::{
 		mailbox::{ActorRef, create_mailbox},
 		traits::{Actor, Directive},
 	},
+	reifydb_assertions,
 	sync::mutex::Mutex,
 };
 
@@ -54,8 +55,7 @@ fn run_batch<A: Actor>(cell: Arc<ActorCell<A>>)
 where
 	A::State: Send,
 {
-	#[cfg(reifydb_assertions)]
-	{
+	reifydb_assertions! {
 		let s = cell.schedule_state.load(Ordering::Acquire);
 		assert!(
 			s == SCHEDULED || s == NOTIFIED,

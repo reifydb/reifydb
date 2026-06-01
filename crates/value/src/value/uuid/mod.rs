@@ -9,7 +9,10 @@ use std::{
 };
 
 use ::uuid::{Builder, Uuid as StdUuid};
-use reifydb_runtime::context::{clock::Clock, rng::Rng};
+use reifydb_runtime::{
+	context::{clock::Clock, rng::Rng},
+	reifydb_assertions,
+};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -53,8 +56,7 @@ impl Ord for Uuid4 {
 
 impl From<StdUuid> for Uuid4 {
 	fn from(uuid: StdUuid) -> Self {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(uuid.get_version_num() == 4 || uuid.get_version_num() == 0);
 		}
 		Uuid4(uuid)
@@ -113,8 +115,7 @@ impl Ord for Uuid7 {
 
 impl From<StdUuid> for Uuid7 {
 	fn from(uuid: StdUuid) -> Self {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(uuid.get_version_num() == 7 || uuid.get_version_num() == 0);
 		}
 		Uuid7(uuid)

@@ -7,7 +7,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{flow::FlowId, shape::ShapeId},
 };
-use reifydb_runtime::sync::rwlock::RwLock;
+use reifydb_runtime::{reifydb_assertions, sync::rwlock::RwLock};
 
 pub struct ShapeVersionTracker {
 	versions: Arc<RwLock<BTreeMap<ShapeId, CommitVersion>>>,
@@ -24,8 +24,7 @@ impl ShapeVersionTracker {
 		let mut versions = self.versions.write();
 		versions.entry(object_id)
 			.and_modify(|v| {
-				#[cfg(reifydb_assertions)]
-				{
+				reifydb_assertions! {
 					let prev = v.0;
 					let new = version.0;
 					assert!(

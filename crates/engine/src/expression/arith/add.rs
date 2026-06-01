@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, push::Push};
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{
 	error::{BinaryOp, TypeError},
 	fragment::{Fragment, LazyFragment},
@@ -97,8 +98,7 @@ where
 	<L as Promote<R>>::Output: SafeAdd,
 	ColumnBuffer: Push<<L as Promote<R>>::Output>,
 {
-	#[cfg(reifydb_assertions)]
-	{
+	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
 
@@ -132,8 +132,7 @@ where
 	<L as Promote<R>>::Output: SafeAdd,
 	ColumnBuffer: Push<<L as Promote<R>>::Output>,
 {
-	#[cfg(reifydb_assertions)]
-	{
+	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
 
@@ -193,8 +192,7 @@ fn concat_strings(
 	target: ValueType,
 	fragment: Fragment,
 ) -> Result<ColumnWithName> {
-	#[cfg(reifydb_assertions)]
-	{
+	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
 
@@ -221,8 +219,7 @@ fn concat_string_with_other(
 	target: ValueType,
 	fragment: Fragment,
 ) -> Result<ColumnWithName> {
-	#[cfg(reifydb_assertions)]
-	{
+	reifydb_assertions! {
 		assert_eq!(string_data.len(), other_data.len());
 	}
 

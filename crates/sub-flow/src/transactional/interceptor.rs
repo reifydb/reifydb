@@ -15,7 +15,10 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::sync::{mutex::Mutex, rwlock::RwLock};
+use reifydb_runtime::{
+	reifydb_assertions,
+	sync::{mutex::Mutex, rwlock::RwLock},
+};
 use reifydb_transaction::{
 	change::OperationType,
 	interceptor::transaction::{PostCommitContext, PostCommitInterceptor, PreCommitContext, PreCommitInterceptor},
@@ -122,8 +125,7 @@ pub(crate) fn execute_inline_flow_changes(
 		return Err(err);
 	}
 
-	#[cfg(reifydb_assertions)]
-	{
+	reifydb_assertions! {
 		let unscheduled: Vec<u64> =
 			state.in_degree.iter().filter(|&(_, deg)| *deg > 0).map(|(id, _)| id.0).collect();
 		assert!(
@@ -316,8 +318,7 @@ impl<'a> Scheduler<'a> {
 		let mut newly_ready = Vec::new();
 		for consumer in consumers {
 			let degree = state.in_degree.get_mut(&consumer).expect("consumer must have an in_degree entry");
-			#[cfg(reifydb_assertions)]
-			{
+			reifydb_assertions! {
 				assert!(
 					*degree > 0,
 					"dataflow scheduler decremented in_degree of flow {} below zero while settling \

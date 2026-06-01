@@ -3,14 +3,14 @@
 
 use std::str;
 
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::value::value_type::ValueType;
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
 impl RowShape {
 	pub fn set_utf8(&self, row: &mut EncodedRow, index: usize, value: impl AsRef<str>) {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				row.len() >= self.total_static_size(),
 				"row/shape size mismatch: row.len()={} < total_static_size()={}",
@@ -24,8 +24,7 @@ impl RowShape {
 
 	pub fn get_utf8<'a>(&'a self, row: &'a EncodedRow, index: usize) -> &'a str {
 		let field = &self.fields()[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				row.len() >= self.total_static_size(),
 				"row/shape size mismatch: row.len()={} < total_static_size()={}",

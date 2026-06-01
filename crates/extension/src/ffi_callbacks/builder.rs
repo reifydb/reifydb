@@ -11,7 +11,7 @@ use reifydb_abi::{
 	data::column::ColumnTypeCode,
 };
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_runtime::{reifydb_assertions, sync::mutex::Mutex};
 use reifydb_value::{
 	fragment::Fragment,
 	util::{bitvec::BitVec, cowvec::CowVec},
@@ -110,8 +110,7 @@ struct Handle {
 
 impl Handle {
 	fn encode(self) -> *mut ColumnBufferHandle {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(self.id != 0, "handle id 0 reserved");
 		}
 

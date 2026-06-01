@@ -8,6 +8,7 @@ use std::{
 };
 
 use indexmap::IndexMap;
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{
 	Result,
 	fragment::Fragment,
@@ -128,8 +129,7 @@ fn value_to_buffer(value: Value) -> ColumnBuffer {
 
 impl Columns {
 	pub fn scalar_value(&self) -> Value {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(self.len(), 1, "scalar_value() requires exactly 1 column, got {}", self.len());
 			assert_eq!(
 				self.row_count(),

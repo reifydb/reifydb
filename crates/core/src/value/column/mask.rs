@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_runtime::reifydb_assertions;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RowMask {
 	words: Vec<u64>,
@@ -37,16 +39,14 @@ impl RowMask {
 	}
 
 	pub fn get(&self, row: usize) -> bool {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(row < self.len);
 		}
 		(self.words[row / 64] >> (row % 64)) & 1 == 1
 	}
 
 	pub fn set(&mut self, row: usize, value: bool) {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(row < self.len);
 		}
 		let word = &mut self.words[row / 64];
@@ -109,8 +109,7 @@ impl RowMask {
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(start <= end, "RowMask::slice: start {start} > end {end}");
 			assert!(end <= self.len, "RowMask::slice: end {end} > len {}", self.len);
 		}

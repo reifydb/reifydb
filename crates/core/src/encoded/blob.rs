@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::value::{blob::Blob, value_type::ValueType};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 
 impl RowShape {
 	pub fn set_blob(&self, row: &mut EncodedRow, index: usize, value: &Blob) {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				row.len() >= self.total_static_size(),
 				"row/shape size mismatch: row.len()={} < total_static_size()={}",
@@ -22,8 +22,7 @@ impl RowShape {
 
 	pub fn get_blob(&self, row: &EncodedRow, index: usize) -> Blob {
 		let field = &self.fields()[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				row.len() >= self.total_static_size(),
 				"row/shape size mismatch: row.len()={} < total_static_size()={}",

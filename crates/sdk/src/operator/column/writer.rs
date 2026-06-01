@@ -4,6 +4,7 @@
 use core::marker::PhantomData;
 
 use reifydb_abi::data::column::ColumnTypeCode;
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
 
 use crate::{
@@ -33,8 +34,7 @@ impl<'a, T: Copy> ScalarWriter<'a, T> {
 
 	#[inline]
 	pub fn push(&mut self, v: T) {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(self.cursor < self.capacity, "ScalarWriter::push past capacity");
 		}
 		unsafe {
@@ -52,8 +52,7 @@ impl<'a, T: Copy> ScalarWriter<'a, T> {
 	where
 		T: Default,
 	{
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(self.cursor < self.capacity, "ScalarWriter::push_none past capacity");
 		}
 		unsafe {
@@ -146,8 +145,7 @@ pub struct VarLenWriter<'a> {
 impl<'a> VarLenWriter<'a> {
 	fn new(inner: ColumnBuilder<'a>, capacity: usize, expected_bytes: usize) -> Result<Self, SdkError> {
 		let type_code = inner.type_code();
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				matches!(
 					type_code,
@@ -187,8 +185,7 @@ impl<'a> VarLenWriter<'a> {
 
 	#[inline]
 	fn push_bytes_internal(&mut self, bytes: &[u8]) -> Result<(), SdkError> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(self.item_cursor < self.capacity, "VarLenWriter::push past capacity");
 		}
 		self.ensure_capacity(bytes.len())?;
@@ -209,24 +206,21 @@ impl<'a> VarLenWriter<'a> {
 	}
 
 	pub fn push_str(&mut self, s: &str) -> Result<(), SdkError> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Utf8);
 		}
 		self.push_bytes_internal(s.as_bytes())
 	}
 
 	pub fn push_bytes(&mut self, b: &[u8]) -> Result<(), SdkError> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(matches!(self.type_code, ColumnTypeCode::Blob | ColumnTypeCode::Decimal));
 		}
 		self.push_bytes_internal(b)
 	}
 
 	pub fn push_none(&mut self) -> Result<(), SdkError> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(self.item_cursor < self.capacity, "VarLenWriter::push_none past capacity");
 		}
 		unsafe {

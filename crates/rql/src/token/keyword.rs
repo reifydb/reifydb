@@ -3,6 +3,7 @@
 
 use std::{collections::HashMap, sync::LazyLock};
 
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{
 	error::{AstErrorKind, Error, TypeError},
 	fragment::Fragment,
@@ -37,8 +38,7 @@ macro_rules! keyword {
             type Error = Error;
 
             fn try_from(value: &str) -> Result<Self> {
-                #[cfg(reifydb_assertions)]
-                {
+                reifydb_assertions! {
                     assert!(value.chars().all(|c| c.is_uppercase()), "keyword must be uppercase");
                 }
                 match value {

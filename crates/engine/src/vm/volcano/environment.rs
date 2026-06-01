@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
+use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
@@ -33,8 +34,7 @@ impl QueryNode for EnvironmentNode {
 	}
 
 	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(self.context.is_some(), "EnvironmentNode::next() called before initialize()");
 		}
 

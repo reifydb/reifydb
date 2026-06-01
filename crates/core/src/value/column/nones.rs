@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{storage::DataBitVec, util::bitvec::BitVec};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -39,24 +40,21 @@ impl NoneBitmap {
 	}
 
 	pub fn is_none(&self, row: usize) -> bool {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(row < self.len, "row {} out of bounds for len {}", row, self.len);
 		}
 		(self.words[row / 64] >> (row % 64)) & 1 == 1
 	}
 
 	pub fn set_none(&mut self, row: usize) {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(row < self.len);
 		}
 		self.words[row / 64] |= 1u64 << (row % 64);
 	}
 
 	pub fn clear_none(&mut self, row: usize) {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(row < self.len);
 		}
 		self.words[row / 64] &= !(1u64 << (row % 64));

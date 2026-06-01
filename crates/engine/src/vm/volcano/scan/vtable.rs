@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use reifydb_catalog::vtable::{VTableContext, tables::VTables};
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
+use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::fragment::Fragment;
 use tracing::instrument;
@@ -50,8 +51,7 @@ impl QueryNode for VirtualScanNode {
 
 	#[instrument(name = "volcano::scan::virtual::next", level = "trace", skip_all)]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(self.context.is_some(), "VirtualScanNode::next() called before initialize()");
 		}
 		match self.virtual_table.next(rx)? {

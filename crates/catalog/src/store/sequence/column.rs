@@ -5,6 +5,7 @@ use reifydb_core::{
 	interface::catalog::{id::ColumnId, shape::ShapeId},
 	key::column_sequence::ColumnSequenceKey,
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::value::{Value, value_type::ValueType};
 
 use super::generator::SequenceTransaction;
@@ -54,8 +55,7 @@ impl ColumnSequence {
 			unimplemented!()
 		}
 
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(value.get_type() == column.constraint.get_type());
 		}
 

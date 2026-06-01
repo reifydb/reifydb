@@ -14,6 +14,7 @@ use reifydb_routine::routine::{
 	Accumulator, FunctionKind, context::FunctionContext, error::RoutineError, registry::Routines,
 };
 use reifydb_rql::expression::{Expression, name::display_label};
+use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error,
@@ -75,8 +76,7 @@ impl QueryNode for AggregateNode {
 
 	#[instrument(level = "trace", skip_all, name = "volcano::aggregate::next")]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(self.context.is_some(), "AggregateNode::next() called before initialize()");
 		}
 		let stored_ctx = self.context.as_ref().unwrap();

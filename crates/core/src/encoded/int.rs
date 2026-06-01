@@ -5,6 +5,7 @@ use std::ptr;
 
 use num_bigint::BigInt as StdBigInt;
 use num_traits::ToPrimitive;
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::value::{int::Int, value_type::ValueType};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
@@ -20,8 +21,7 @@ const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
 impl RowShape {
 	pub fn set_int(&self, row: &mut EncodedRow, index: usize, value: &Int) {
 		let field = &self.fields()[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				row.len() >= self.total_static_size(),
 				"row/shape size mismatch: row.len()={} < total_static_size()={}",
@@ -53,8 +53,7 @@ impl RowShape {
 
 	pub fn get_int(&self, row: &EncodedRow, index: usize) -> Int {
 		let field = &self.fields()[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				row.len() >= self.total_static_size(),
 				"row/shape size mismatch: row.len()={} < total_static_size()={}",

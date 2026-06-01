@@ -10,7 +10,7 @@ use std::{
 };
 
 use reifydb_core::common::CommitVersion;
-use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_runtime::{reifydb_assertions, sync::mutex::Mutex};
 
 #[derive(Clone, Default)]
 pub struct CdcProducerWatermark {
@@ -44,8 +44,7 @@ impl CdcProducerWatermark {
 		while state.pending.remove(&(hi + 1)) {
 			hi += 1;
 		}
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			let prev = self.published.load(Ordering::SeqCst);
 			assert!(
 				hi >= prev,

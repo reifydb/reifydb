@@ -6,6 +6,7 @@ use std::{
 	result::Result as StdResult,
 };
 
+use reifydb_runtime::reifydb_assertions;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, ser::SerializeSeq};
 use serde_bytes::{ByteBuf, Bytes};
 
@@ -107,8 +108,7 @@ impl VarlenContainer<Cow> {
 	}
 
 	pub fn from_raw_parts(data: Vec<u8>, offsets: Vec<u64>) -> Self {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(!offsets.is_empty(), "offsets must always have offsets[0] = 0");
 			assert_eq!(offsets[0], 0, "offsets[0] must be 0");
 			assert_eq!(*offsets.last().unwrap() as usize, data.len(), "offsets[len] must equal data.len()");
@@ -122,8 +122,7 @@ impl VarlenContainer<Cow> {
 
 impl<S: Storage> VarlenContainer<S> {
 	pub fn from_storage_parts(data: S::Vec<u8>, offsets: S::Vec<u64>) -> Self {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				DataVec::len(&offsets) >= 1,
 				"offsets must always include the leading 0; got empty offsets"

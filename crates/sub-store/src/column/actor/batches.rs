@@ -8,6 +8,7 @@ use reifydb_column::{
 	snapshot::{ColumnBlock, ColumnChunks, SystemColumn},
 };
 use reifydb_core::value::column::{buffer::ColumnBuffer, columns::Columns, data::canonical::Canonical};
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{Result, value::value_type::ValueType};
 
 use crate::column::error::SubStoreError;
@@ -28,8 +29,7 @@ pub fn column_block_from_batches(
 			None => user_column_buffer(name, &batches)?,
 		};
 		let canonical = Canonical::from_column_buffer(&combined)?;
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			let rows = canonical.len();
 			match block_rows {
 				None => block_rows = Some(rows),

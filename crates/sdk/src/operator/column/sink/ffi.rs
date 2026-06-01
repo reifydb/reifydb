@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_abi::data::column::ColumnTypeCode;
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
 
 use crate::{
@@ -350,8 +351,7 @@ impl RowSink for FFIRowSink<'_> {
 
 #[inline]
 fn debug_panic(msg: &'static str) {
-	#[cfg(reifydb_assertions)]
-	{
+	reifydb_assertions! {
 		assert!(false, "{}", msg);
 	}
 	#[cfg(not(reifydb_assertions))]

@@ -3,6 +3,8 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use reifydb_runtime::reifydb_assertions;
+
 use crate::snapshot::{HistogramSnapshot, Percentiles};
 
 pub struct Histogram {
@@ -30,8 +32,7 @@ impl Histogram {
 	#[inline]
 	pub fn observe(&self, value: f64) {
 		let idx = self.boundaries.partition_point(|&b| b < value);
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				idx < self.buckets.len(),
 				"histogram bucket index from partition_point exceeds the bucket array length, which means the histogram was constructed with a mismatched boundaries/buckets pair and any observation silently corrupts adjacent memory (idx={} buckets_len={} boundaries_len={})",

@@ -15,6 +15,7 @@ use reifydb_core::{
 		MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow,
 	},
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{Result, util::cowvec::CowVec};
 use tracing::instrument;
 
@@ -81,8 +82,7 @@ impl MultiReplicaTransaction {
 	}
 
 	fn transition_to(&mut self, next: Lifecycle) {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(matches!(
 				(self.lifecycle, next),
 				(Lifecycle::Active, Lifecycle::QueryDone)

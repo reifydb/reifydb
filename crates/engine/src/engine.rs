@@ -44,6 +44,7 @@ use reifydb_metric::storage::metric::MetricReader;
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSpawner},
 	context::{clock::Clock, rng::Rng},
+	reifydb_assertions,
 	shutdown::Shutdown,
 };
 use reifydb_store_single::SingleStore;
@@ -97,8 +98,7 @@ impl AuthEngine for StandardEngine {
 impl StandardEngine {
 	#[instrument(name = "engine::transaction::begin_command", level = "debug", skip(self))]
 	pub fn begin_command(&self, identity: IdentityId) -> Result<CommandTransaction> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				!self.is_read_only(),
 				"begin_command called on a read-only engine: writes are permanently disabled after set_read_only(), so any caller reaching this point has bypassed the reject_if_read_only guard (identity={:?})",

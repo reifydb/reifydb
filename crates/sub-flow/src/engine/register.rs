@@ -24,6 +24,7 @@ use reifydb_rql::flow::{
 		},
 	},
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_sdk::config::Config;
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_value::{Result, error::Error};
@@ -66,8 +67,7 @@ impl FlowEngine {
 
 	#[instrument(name = "flow::register_with_transaction", level = "debug", skip(self, txn), fields(flow_id = ?flow.id))]
 	pub fn register_with_transaction(&mut self, txn: &mut Transaction<'_>, flow: Arc<FlowDag>) -> Result<()> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(!self.flows.contains_key(&flow.id), "Flow already registered");
 		}
 
@@ -101,8 +101,7 @@ impl FlowEngine {
 
 	#[instrument(name = "flow::add", level = "debug", skip(self, txn, flow), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?mem::discriminant(&node.ty)))]
 	pub fn add(&mut self, txn: &mut Transaction<'_>, flow: &FlowDag, node: &FlowNode) -> Result<()> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(!self.operators.contains_key(&node.id), "Operator already registered");
 		}
 		let node = node.clone();

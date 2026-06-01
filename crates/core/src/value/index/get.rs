@@ -3,6 +3,7 @@
 
 use std::ptr;
 
+use reifydb_runtime::reifydb_assertions;
 #[cfg(reifydb_assertions)]
 use reifydb_value::value::value_type::ValueType;
 use reifydb_value::value::{
@@ -23,8 +24,7 @@ use crate::{
 impl IndexShape {
 	pub fn get_bool(&self, key: &EncodedIndexKey, index: usize) -> bool {
 		let field = &self.fields[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::Boolean);
 		}
 
@@ -38,8 +38,7 @@ impl IndexShape {
 
 	pub fn get_f32(&self, key: &EncodedIndexKey, index: usize) -> f32 {
 		let field = &self.fields[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::Float4);
 		}
 
@@ -67,8 +66,7 @@ impl IndexShape {
 
 	pub fn get_f64(&self, key: &EncodedIndexKey, index: usize) -> f64 {
 		let field = &self.fields[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::Float8);
 		}
 
@@ -96,8 +94,7 @@ impl IndexShape {
 
 	pub fn get_i8(&self, key: &EncodedIndexKey, index: usize) -> i8 {
 		let field = &self.fields[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::Int1);
 		}
 
@@ -118,8 +115,7 @@ impl IndexShape {
 
 	pub fn get_i16(&self, key: &EncodedIndexKey, index: usize) -> i16 {
 		let field = &self.fields[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::Int2);
 		}
 
@@ -145,8 +141,7 @@ impl IndexShape {
 
 	pub fn get_i32(&self, key: &EncodedIndexKey, index: usize) -> i32 {
 		let field = &self.fields[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::Int4);
 		}
 
@@ -172,8 +167,7 @@ impl IndexShape {
 
 	pub fn get_i64(&self, key: &EncodedIndexKey, index: usize) -> i64 {
 		let field = &self.fields[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::Int8);
 		}
 
@@ -199,8 +193,7 @@ impl IndexShape {
 
 	pub fn get_i128(&self, key: &EncodedIndexKey, index: usize) -> i128 {
 		let field = &self.fields[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::Int16);
 		}
 
@@ -226,8 +219,7 @@ impl IndexShape {
 
 	pub fn get_u8(&self, key: &EncodedIndexKey, index: usize) -> u8 {
 		let field = &self.fields[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::Uint1);
 		}
 
@@ -241,8 +233,7 @@ impl IndexShape {
 
 	pub fn get_u16(&self, key: &EncodedIndexKey, index: usize) -> u16 {
 		let field = &self.fields[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::Uint2);
 		}
 
@@ -259,8 +250,7 @@ impl IndexShape {
 
 	pub fn get_u32(&self, key: &EncodedIndexKey, index: usize) -> u32 {
 		let field = &self.fields[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::Uint4);
 		}
 
@@ -277,8 +267,7 @@ impl IndexShape {
 
 	pub fn get_u64(&self, key: &EncodedIndexKey, index: usize) -> u64 {
 		let field = &self.fields[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::Uint8);
 		}
 
@@ -295,8 +284,7 @@ impl IndexShape {
 
 	pub fn get_u128(&self, key: &EncodedIndexKey, index: usize) -> u128 {
 		let field = &self.fields[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::Uint16);
 		}
 
@@ -313,8 +301,7 @@ impl IndexShape {
 
 	pub fn get_row_number(&self, key: &EncodedIndexKey, index: usize) -> u64 {
 		let field = &self.fields[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::Uint8);
 		}
 
@@ -331,8 +318,7 @@ impl IndexShape {
 
 	pub fn get_date(&self, key: &EncodedIndexKey, index: usize) -> Date {
 		let field = &self.fields[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::Date);
 		}
 
@@ -359,8 +345,7 @@ impl IndexShape {
 
 	pub fn get_datetime(&self, key: &EncodedIndexKey, index: usize) -> DateTime {
 		let field = &self.fields[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::DateTime);
 		}
 
@@ -380,8 +365,7 @@ impl IndexShape {
 
 	pub fn get_time(&self, key: &EncodedIndexKey, index: usize) -> Time {
 		let field = &self.fields[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::Time);
 		}
 
@@ -400,8 +384,7 @@ impl IndexShape {
 
 	pub fn get_duration(&self, key: &EncodedIndexKey, index: usize) -> Duration {
 		let field = &self.fields[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::Duration);
 		}
 
@@ -445,8 +428,7 @@ impl IndexShape {
 
 	pub fn get_uuid4(&self, key: &EncodedIndexKey, index: usize) -> Uuid4 {
 		let field = &self.fields[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::Uuid4);
 		}
 
@@ -467,8 +449,7 @@ impl IndexShape {
 
 	pub fn get_uuid7(&self, key: &EncodedIndexKey, index: usize) -> Uuid7 {
 		let field = &self.fields[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::Uuid7);
 		}
 
@@ -489,8 +470,7 @@ impl IndexShape {
 
 	pub fn get_identity_id(&self, key: &EncodedIndexKey, index: usize) -> IdentityId {
 		let field = &self.fields[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::IdentityId);
 		}
 

@@ -13,6 +13,7 @@ use reifydb_abi::{
 		diff::{DiffFFI, DiffType},
 	},
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
 
 #[derive(Clone, Copy)]
@@ -26,8 +27,7 @@ impl<'a> BorrowedChange<'a> {
 	/// `ptr` must be non-null and point to a valid `ChangeFFI` whose backing
 	/// buffers remain live for the lifetime `'a`.
 	pub unsafe fn from_raw(ptr: *const ChangeFFI) -> Self {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(!ptr.is_null(), "BorrowedChange::from_raw: null pointer");
 		}
 		Self {
@@ -97,8 +97,7 @@ impl<'a> BorrowedColumns<'a> {
 	/// # Safety
 	/// - `ptr` must be non-null and point at a `ColumnsFFI` whose buffer pointers are valid for at least `'a`.
 	pub unsafe fn from_ffi(ptr: *const ColumnsFFI) -> Self {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(!ptr.is_null(), "BorrowedColumns::from_ffi: null pointer");
 		}
 		Self {

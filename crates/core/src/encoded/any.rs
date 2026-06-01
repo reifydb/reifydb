@@ -3,6 +3,7 @@
 
 use std::str;
 
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::value::{
 	Value,
 	blob::Blob,
@@ -225,8 +226,7 @@ pub fn decode_value(bytes: &[u8]) -> Value {
 
 impl RowShape {
 	pub fn set_any(&self, row: &mut EncodedRow, index: usize, value: &Value) {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				row.len() >= self.total_static_size(),
 				"row/shape size mismatch: row.len()={} < total_static_size()={}",
@@ -241,8 +241,7 @@ impl RowShape {
 
 	pub fn get_any(&self, row: &EncodedRow, index: usize) -> Value {
 		let field = &self.fields()[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				row.len() >= self.total_static_size(),
 				"row/shape size mismatch: row.len()={} < total_static_size()={}",

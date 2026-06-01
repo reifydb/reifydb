@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_extension::transform::{Transform, context::TransformContext};
+use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
 use tracing::instrument;
 
@@ -39,8 +40,7 @@ impl QueryNode for ApplyTransformNode {
 
 	#[instrument(level = "trace", skip_all, name = "volcano::apply_transform::next")]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(self.context.is_some(), "ApplyTransformNode::next() called before initialize()");
 		}
 		let stored_ctx = self.context.as_ref().unwrap();

@@ -8,6 +8,7 @@ use reifydb_core::{
 	interface::catalog::{id::IndexId, table::Table},
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
@@ -55,8 +56,7 @@ impl QueryNode for IndexScanNode {
 	}
 
 	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(self.context.is_some(), "IndexScanNode::next() called before initialize()");
 		}
 		unimplemented!()

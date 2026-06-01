@@ -13,6 +13,7 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,
@@ -87,8 +88,7 @@ impl QueryNode for SeriesScanNode {
 
 	#[instrument(name = "volcano::scan::series::next", level = "trace", skip_all)]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(self.context.is_some(), "SeriesScanNode::next() called before initialize()");
 		}
 		let stored_ctx = self.context.as_ref().unwrap();

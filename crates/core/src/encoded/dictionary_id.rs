@@ -3,6 +3,7 @@
 
 use std::ptr;
 
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::value::{constraint::Constraint, dictionary::DictionaryEntryId, value_type::ValueType};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
@@ -10,8 +11,7 @@ use crate::encoded::{row::EncodedRow, shape::RowShape};
 impl RowShape {
 	pub fn set_dictionary_id(&self, row: &mut EncodedRow, index: usize, entry: &DictionaryEntryId) {
 		let field = &self.fields()[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				row.len() >= self.total_static_size(),
 				"row/shape size mismatch: row.len()={} < total_static_size()={}",
@@ -35,8 +35,7 @@ impl RowShape {
 
 	pub fn get_dictionary_id(&self, row: &EncodedRow, index: usize) -> DictionaryEntryId {
 		let field = &self.fields()[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				row.len() >= self.total_static_size(),
 				"row/shape size mismatch: row.len()={} < total_static_size()={}",

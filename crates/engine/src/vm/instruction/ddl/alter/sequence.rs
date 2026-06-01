@@ -9,6 +9,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::AlterSequenceNode;
+use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_value::{
 	params::Params,
@@ -64,8 +65,7 @@ pub(crate) fn alter_table_sequence(
 	let value = evaluate(&eval_ctx, &plan.value)?;
 
 	let data = value.data();
-	#[cfg(reifydb_assertions)]
-	{
+	reifydb_assertions! {
 		assert_eq!(data.len(), 1);
 	}
 

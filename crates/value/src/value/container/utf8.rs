@@ -7,6 +7,7 @@ use std::{
 	str,
 };
 
+use reifydb_runtime::reifydb_assertions;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
@@ -89,8 +90,7 @@ impl Utf8Container<Cow> {
 	}
 
 	pub fn from_bytes_offsets(data: Vec<u8>, offsets: Vec<u64>) -> Self {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(str::from_utf8(&data).is_ok(), "Utf8Container data must be valid UTF-8");
 		}
 		Self {

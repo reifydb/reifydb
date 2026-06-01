@@ -8,6 +8,7 @@ use reifydb_core::{
 	interface::store::{MultiVersionCommit, SingleVersionCommit},
 	key::{Key, kind::KeyKind},
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::util::cowvec::CowVec;
 
 use super::State;
@@ -65,8 +66,7 @@ impl<M: MultiVersionCommit + 'static, S: SingleVersionCommit + 'static> State fo
 	}
 
 	fn apply(&mut self, entry: &Entry) {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			let prev = self.applied_index;
 			let new = entry.index;
 			assert!(

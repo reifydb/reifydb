@@ -11,9 +11,12 @@ use std::{
 
 use dashmap::{DashMap, DashSet};
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
-use reifydb_runtime::sync::{
-	mutex::Mutex,
-	rwlock::{RwLock, RwLockReadGuard},
+use reifydb_runtime::{
+	reifydb_assertions,
+	sync::{
+		mutex::Mutex,
+		rwlock::{RwLock, RwLockReadGuard},
+	},
 };
 use tokio::sync::Notify;
 
@@ -65,8 +68,7 @@ impl SubscriptionStore {
 
 	pub fn next_id(&self) -> SubscriptionId {
 		let raw = self.next_id.fetch_add(1, Ordering::Relaxed);
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				raw != 0,
 				"the subscription id counter wrapped past u64::MAX and issued 0, so a new subscriber collides with the reserved initial id and would receive another subscriber's delivery stream (issued={})",

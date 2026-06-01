@@ -11,6 +11,7 @@ use reifydb_core::{
 	key::{EncodableKey, dictionary::DictionaryEntryIndexKey},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,
@@ -55,8 +56,7 @@ impl QueryNode for DictionaryScanNode {
 
 	#[instrument(name = "volcano::scan::dictionary::next", level = "trace", skip_all)]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(self.context.is_some(), "DictionaryScan::next() called before initialize()");
 		}
 		let stored_ctx = self.context.as_ref().unwrap();

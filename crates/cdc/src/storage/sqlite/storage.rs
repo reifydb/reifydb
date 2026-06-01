@@ -15,7 +15,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::cdc::{Cdc, CdcBatch, SystemChange},
 };
-use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_runtime::{reifydb_assertions, sync::mutex::Mutex};
 use reifydb_sqlite::{
 	SqliteConfig, SqliteTempPathGuard,
 	connection::{connect, convert_flags, resolve_db_path},
@@ -755,8 +755,7 @@ fn rewrite_straddle_block(
 	let new_min = survivors.first().unwrap().version;
 	#[cfg(reifydb_assertions)]
 	let new_max = survivors.last().unwrap().version;
-	#[cfg(reifydb_assertions)]
-	{
+	reifydb_assertions! {
 		assert_eq!(new_max, bytes_to_version(max_bytes)?, "max_version is the block PK and must be preserved");
 	}
 	let (min_ts_nanos, max_ts_nanos) = summarize_timestamps(survivors);

@@ -12,6 +12,7 @@ use reifydb_core::{
 	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
+use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error,
@@ -55,8 +56,7 @@ impl QueryNode for SortNode {
 
 	#[instrument(level = "trace", skip_all, name = "volcano::sort::next")]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(self.initialized.is_some(), "SortNode::next() called before initialize()");
 		}
 

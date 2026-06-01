@@ -7,6 +7,7 @@ use reifydb_core::{
 	interface::catalog::vtable::VTable,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::fragment::Fragment;
 
@@ -57,8 +58,7 @@ impl BaseVTable for SystemSequences {
 		for sequence in sequences {
 			sequence_ids.push(sequence.id.0);
 
-			#[cfg(reifydb_assertions)]
-			{
+			reifydb_assertions! {
 				assert_eq!(sequence.namespace, 1);
 			}
 			namespace_ids.push(sequence.namespace.0);

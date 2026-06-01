@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{
 	fragment::Fragment,
 	util::cowvec::CowVec,
@@ -59,8 +60,7 @@ impl JoinedColumnsBuilder {
 		right: &Columns,
 	) -> Columns {
 		let right_count = right.row_count();
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(row_numbers.len(), right_count, "row_numbers must match right row count");
 		}
 
@@ -100,8 +100,7 @@ impl JoinedColumnsBuilder {
 		right_idx: usize,
 	) -> Columns {
 		let left_count = left.row_count();
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(row_numbers.len(), left_count, "row_numbers must match left row count");
 		}
 
@@ -144,8 +143,7 @@ impl JoinedColumnsBuilder {
 		let left_count = left_indices.len();
 		let right_count = right_indices.len();
 		let result_count = left_count * right_count;
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(row_numbers.len(), result_count, "row_numbers must match cartesian product size");
 		}
 
@@ -219,8 +217,7 @@ impl JoinedColumnsBuilder {
 		right_shape: &Columns,
 	) -> Columns {
 		let count = left_indices.len();
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert_eq!(row_numbers.len(), count, "row_numbers must match indices count");
 		}
 

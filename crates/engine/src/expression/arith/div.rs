@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, push::Push};
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{
 	error::{BinaryOp, TypeError},
 	fragment::LazyFragment,
@@ -55,8 +56,7 @@ where
 	<L as Promote<R>>::Output: SafeDiv,
 	ColumnBuffer: Push<<L as Promote<R>>::Output>,
 {
-	#[cfg(reifydb_assertions)]
-	{
+	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
 
@@ -90,8 +90,7 @@ where
 	<L as Promote<R>>::Output: SafeDiv,
 	ColumnBuffer: Push<<L as Promote<R>>::Output>,
 {
-	#[cfg(reifydb_assertions)]
-	{
+	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
 

@@ -5,6 +5,7 @@ use reifydb_core::{
 	encoded::shape::RowShape,
 	key::shape::{RowShapeFieldKey, RowShapeKey},
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
 use tracing::instrument;
 
@@ -20,8 +21,7 @@ use crate::Result;
 pub(crate) fn create_row_shape(txn: &mut Transaction<'_>, shape: &RowShape) -> Result<()> {
 	let fingerprint = shape.fingerprint();
 
-	#[cfg(reifydb_assertions)]
-	{
+	reifydb_assertions! {
 		assert!(
 			shape.field_count() <= u16::MAX as usize,
 			"shape field_count exceeds u16::MAX so the header FIELD_COUNT cell silently truncates and readers reconstruct a schema with the wrong number of fields (field_count={})",

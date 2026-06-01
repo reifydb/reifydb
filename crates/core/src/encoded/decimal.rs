@@ -3,6 +3,7 @@
 
 use bigdecimal::BigDecimal as StdBigDecimal;
 use num_bigint::BigInt as StdBigInt;
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::value::{decimal::Decimal, value_type::ValueType};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
@@ -17,8 +18,7 @@ const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
 
 impl RowShape {
 	pub fn set_decimal(&self, row: &mut EncodedRow, index: usize, value: &Decimal) {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				row.len() >= self.total_static_size(),
 				"row/shape size mismatch: row.len()={} < total_static_size()={}",
@@ -41,8 +41,7 @@ impl RowShape {
 
 	pub fn get_decimal(&self, row: &EncodedRow, index: usize) -> Decimal {
 		let field = &self.fields()[index];
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(
 				row.len() >= self.total_static_size(),
 				"row/shape size mismatch: row.len()={} < total_static_size()={}",
@@ -55,8 +54,7 @@ impl RowShape {
 		let packed = unsafe { (row.as_ptr().add(field.offset as usize) as *const u128).read_unaligned() };
 		let packed = u128::from_le(packed);
 
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(packed & MODE_MASK == MODE_DYNAMIC, "Expected dynamic storage");
 		}
 

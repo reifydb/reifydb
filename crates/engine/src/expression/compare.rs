@@ -4,6 +4,7 @@
 use std::cmp::Ordering;
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{
 	error::Diagnostic,
 	fragment::Fragment,
@@ -215,8 +216,7 @@ where
 	R: IsNumber,
 	<L as Promote<R>>::Output: IsNumber,
 {
-	#[cfg(reifydb_assertions)]
-	{
+	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
 
@@ -238,8 +238,7 @@ fn compare_temporal<Op: CompareOp, T>(
 where
 	T: IsTemporal + Copy + PartialOrd,
 {
-	#[cfg(reifydb_assertions)]
-	{
+	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
 
@@ -257,8 +256,7 @@ fn compare_uuid<Op: CompareOp, T>(l: &UuidContainer<T>, r: &UuidContainer<T>, fr
 where
 	T: IsUuid + PartialOrd,
 {
-	#[cfg(reifydb_assertions)]
-	{
+	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
 
@@ -277,8 +275,7 @@ fn compare_identity_id<Op: CompareOp>(
 	r: &IdentityIdContainer,
 	fragment: Fragment,
 ) -> ColumnWithName {
-	#[cfg(reifydb_assertions)]
-	{
+	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
 
@@ -290,8 +287,7 @@ fn compare_identity_id<Op: CompareOp>(
 
 #[inline]
 fn compare_blob<Op: CompareOp>(l: &BlobContainer, r: &BlobContainer, fragment: Fragment) -> ColumnWithName {
-	#[cfg(reifydb_assertions)]
-	{
+	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
 
@@ -306,8 +302,7 @@ fn compare_blob<Op: CompareOp>(l: &BlobContainer, r: &BlobContainer, fragment: F
 
 #[inline]
 fn compare_utf8<Op: CompareOp>(l: &Utf8Container, r: &Utf8Container, fragment: Fragment) -> ColumnWithName {
-	#[cfg(reifydb_assertions)]
-	{
+	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
 
@@ -322,8 +317,7 @@ fn compare_utf8<Op: CompareOp>(l: &Utf8Container, r: &Utf8Container, fragment: F
 
 #[inline]
 fn compare_bool<Op: CompareOp>(l: &BoolContainer, r: &BoolContainer, fragment: Fragment) -> Option<ColumnWithName> {
-	#[cfg(reifydb_assertions)]
-	{
+	reifydb_assertions! {
 		assert_eq!(l.len(), r.len());
 	}
 

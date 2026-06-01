@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
+use reifydb_runtime::reifydb_assertions;
 
 use crate::{Result, vm::vm::Vm};
 
@@ -29,8 +30,7 @@ pub(crate) fn broadcast_to_match(left: ColumnWithName, right: ColumnWithName) ->
 }
 
 pub(crate) fn broadcast_column(col: &ColumnWithName, target_len: usize) -> ColumnWithName {
-	#[cfg(reifydb_assertions)]
-	{
+	reifydb_assertions! {
 		assert_eq!(col.data.len(), 1);
 	}
 	let value = col.data.get_value(0);

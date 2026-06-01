@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders};
 use reifydb_rql::expression::{Expression, name::display_label};
+use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
 use tracing::instrument;
 
@@ -43,8 +44,7 @@ impl QueryNode for AssertNode {
 
 	#[instrument(level = "trace", skip_all, name = "volcano::assert::next")]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(self.context.is_some(), "AssertNode::next() called before initialize()");
 		}
 		let stored_ctx = self.context.as_ref().unwrap();
@@ -167,8 +167,7 @@ impl QueryNode for AssertWithoutInputNode {
 		}
 		self.done = true;
 
-		#[cfg(reifydb_assertions)]
-		{
+		reifydb_assertions! {
 			assert!(self.context.is_some(), "AssertWithoutInputNode::next() called before initialize()");
 		}
 		let stored_ctx = self.context.as_ref().unwrap();

@@ -3,6 +3,7 @@
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{common::CommitVersion, interface::cdc::Cdc};
+use reifydb_runtime::reifydb_assertions;
 use zstd::{decode_all, encode_all};
 
 use crate::error::CdcError;
@@ -16,8 +17,7 @@ pub struct CompactBlockSummary {
 }
 
 pub fn encode(entries: &[Cdc], zstd_level: u8) -> Result<Vec<u8>, CdcError> {
-	#[cfg(reifydb_assertions)]
-	{
+	reifydb_assertions! {
 		assert!(!entries.is_empty(), "cannot encode an empty block");
 		assert!(
 			entries.windows(2).all(|w| w[0].version < w[1].version),
