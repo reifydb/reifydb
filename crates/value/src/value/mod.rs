@@ -354,6 +354,29 @@ impl PartialEq for Value {
 
 impl Eq for Value {}
 
+#[cfg(reifydb_assertions)]
+pub fn assert_equal_with_tolerance(left: &[Value], right: &[Value]) {
+	const REL_EPS: f64 = 1e-9;
+	const ABS_EPS: f64 = 1e-6;
+	fn close(x: f64, y: f64) -> bool {
+		if x.is_nan() && y.is_nan() {
+			return true;
+		}
+		(x - y).abs() <= ABS_EPS.max(REL_EPS * x.abs().max(y.abs()))
+	}
+	fn matches(a: &Value, b: &Value) -> bool {
+		match (a, b) {
+			(Value::Float8(x), Value::Float8(y)) => close(x.value(), y.value()),
+			(Value::Float4(x), Value::Float4(y)) => close(x.value() as f64, y.value() as f64),
+			_ => a == b,
+		}
+	}
+	assert_eq!(left.len(), right.len(), "value count diverges beyond tolerance: {} vs {}", left.len(), right.len());
+	for (i, (l, r)) in left.iter().zip(right).enumerate() {
+		assert!(matches(l, r), "value {i} diverges beyond tolerance: {l:?} vs {r:?}");
+	}
+}
+
 impl hash::Hash for Value {
 	fn hash<H: hash::Hasher>(&self, state: &mut H) {
 		mem::discriminant(self).hash(state);

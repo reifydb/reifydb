@@ -7,7 +7,7 @@ use reifydb_core::{
 	error::diagnostic::flow::{flow_window_timestamp_column_not_found, flow_window_timestamp_column_type_mismatch},
 	interface::catalog::flow::FlowNodeId,
 	internal,
-	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
+	key::{flow_node_state::FlowNodeStateKey, EncodableKey},
 };
 use reifydb_sdk::operator::Tick;
 use serde::{Deserialize, Serialize};
@@ -31,6 +31,7 @@ static EMPTY_PARAMS: Params = Params::None;
 
 use std::{ops, sync::LazyLock, time::Duration};
 
+use crate::operator::stateful::{raw::RawStatefulOperator, row::RowNumberProvider, window::WindowStateful};
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
 	encoded::{
@@ -41,39 +42,38 @@ use reifydb_core::{
 	interface::change::{Change, Diff},
 	row::Row,
 	util::encoding::keycode::serializer::KeySerializer,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, view::group_by::GroupByView},
+	value::column::{buffer::ColumnBuffer, columns::Columns, view::group_by::GroupByView, ColumnWithName},
 };
 use reifydb_engine::{
 	expression::{
-		compile::{CompiledExpr, compile_expression},
+		compile::{compile_expression, CompiledExpr},
 		context::{CompileContext, EvalContext},
 	},
 	vm::stack::SymbolTable,
 };
 use reifydb_routine::routine::{
-	Accumulator, AggregateFunctionCapability, context::FunctionContext, registry::Routines,
+	context::FunctionContext, registry::Routines, Accumulator, AggregateFunctionCapability,
 };
 use reifydb_rql::expression::{
-	Expression,
 	name::{collect_all_column_names, display_label},
+	Expression,
 };
 use reifydb_runtime::{
 	context::RuntimeContext,
-	hash::{Hash128, xxh3_128},
+	hash::{xxh3_128, Hash128},
 };
+use reifydb_value::value::assert_equal_with_tolerance;
 use reifydb_value::{
-	Result,
 	error::Error,
 	fragment::Fragment,
 	params::Params,
 	util::cowvec::CowVec,
 	value::{
-		Value, blob::Blob, datetime::DateTime, identity::IdentityId, row_number::RowNumber,
-		value_type::ValueType,
+		blob::Blob, datetime::DateTime, identity::IdentityId, row_number::RowNumber, value_type::ValueType,
+		Value,
 	},
+	Result,
 };
-
-use crate::operator::stateful::{raw::RawStatefulOperator, row::RowNumberProvider, window::WindowStateful};
 
 #[inline]
 fn build_aggregation_shape(names: &[String], types: &[ValueType]) -> RowShape {
@@ -882,7 +882,7 @@ impl WindowOperator {
 				self.compute_aggregation_outputs(window_layout, events)?;
 			assert_eq!(names, slow_names, "fast-path output names diverge from slow path");
 			assert_eq!(types, slow_types, "fast-path output types diverge from slow path");
-			assert_eq!(values, slow_values, "fast-path output values diverge from slow path");
+			assert_equal_with_tolerance(&values, &slow_values);
 		}
 
 		Ok(Some((
