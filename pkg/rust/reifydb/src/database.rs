@@ -16,8 +16,14 @@ use reifydb_auth::service::AuthService;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_cdc::storage::CdcStore;
 #[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
-use reifydb_core::{error::diagnostic::subsystem::feature_disabled, interface::catalog::id::SubscriptionId, internal};
+use reifydb_core::{
+	error::diagnostic::subsystem::feature_disabled,
+	interface::catalog::{id::SubscriptionId, subscription::HydrationConfig},
+	internal,
+};
 use reifydb_engine::engine::StandardEngine;
+#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+use reifydb_engine::subscription::{HydrateError, SubscriptionServiceRef};
 use reifydb_runtime::{
 	RuntimeHandle,
 	actor::{mailbox::ActorRef, system::ActorSpawner},
@@ -61,6 +67,23 @@ use crate::{
 };
 
 const SHUTDOWN_DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
+
+#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+fn hydrate_error_to_error(e: HydrateError) -> Error {
+	match e {
+		HydrateError::Engine(err) => err,
+		HydrateError::SubscriptionNotFound => {
+			Error(Box::new(internal!("subscription not found at hydration time")))
+		}
+		HydrateError::UnsupportedSourceType => Error(Box::new(internal!(
+			"hydration is not supported for this source type; subscribe with hydration disabled"
+		))),
+		HydrateError::RowCapExceeded {
+			cap,
+		} => Error(Box::new(internal!("subscription hydration exceeds max_rows={}", cap))),
+		HydrateError::Internal(s) => Error(Box::new(internal!("subscription hydration failed: {}", s))),
+	}
+}
 
 pub struct Database {
 	engine: StandardEngine,
@@ -375,20 +398,31 @@ impl Database {
 	}
 
 	/// Create a subscription over `query` as root user and return a handle to drain its deliveries.
-	/// `query` is the subscription body, e.g. `from ns::t | map { id, score }`.
+	/// `query` is the subscription body, e.g. `from ns::t | map { id, score }`. `hydration` controls
+	/// whether the current snapshot is delivered before forward changes (mirrors the WebSocket
+	/// subscription's `WITH { hydration: ... }`); pass `HydrationConfig::default()` to hydrate.
 	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
-	pub fn subscribe_as_root(&self, query: &str, params: impl Into<Params>) -> Result<Subscription> {
-		self.subscribe_as(IdentityId::root(), query, params)
+	pub fn subscribe_as_root(
+		&self,
+		query: &str,
+		params: impl Into<Params>,
+		hydration: HydrationConfig,
+	) -> Result<Subscription> {
+		self.subscribe_as(IdentityId::root(), query, params, hydration)
 	}
 
 	/// Create a subscription over `query` as a specific identity and return a handle to drain its
-	/// deliveries. `query` is the subscription body, e.g. `from ns::t | map { id, score }`.
+	/// deliveries. `query` is the subscription body, e.g. `from ns::t | map { id, score }`. When
+	/// `hydration.enabled`, the base snapshot at subscribe time is read and delivered first (so a
+	/// subscription created against a non-empty source still observes the existing rows), then
+	/// forward CDC changes follow; when disabled, only forward changes are delivered.
 	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
 	pub fn subscribe_as(
 		&self,
 		identity: IdentityId,
 		query: &str,
 		params: impl Into<Params>,
+		hydration: HydrationConfig,
 	) -> Result<Subscription> {
 		let store = self
 			.subsystem::<SubscriptionSubsystem>()
@@ -411,7 +445,24 @@ impl Database {
 				)))
 			})?;
 		let column_names = store.column_names(&id).unwrap_or_default();
-		Ok(Subscription::new(id, store, column_names))
+
+		let prelude = if hydration.enabled {
+			let service = self
+				.engine
+				.ioc()
+				.try_resolve::<SubscriptionServiceRef>()
+				.ok_or_else(|| Error(Box::new(feature_disabled("subscription"))))?;
+			let (_, lease) = self.engine.acquire_current_snapshot_lease()?;
+			let max_rows = hydration.max_rows.unwrap_or(u64::MAX);
+			let outcome = service
+				.hydrate(id, &self.engine, identity, lease, max_rows)
+				.map_err(hydrate_error_to_error)?;
+			outcome.batches.into_iter().map(Frame::from).collect()
+		} else {
+			Vec::new()
+		};
+
+		Ok(Subscription::new(id, store, column_names, prelude))
 	}
 
 	/// Re-attach a handle to an already-created subscription `id` on the current delivery store.
@@ -423,7 +474,7 @@ impl Database {
 		let subsystem = self.subsystem::<SubscriptionSubsystem>()?;
 		let store = subsystem.store().clone();
 		let column_names = store.column_names(&id).unwrap_or_default();
-		Some(Subscription::new(id, store, column_names))
+		Some(Subscription::new(id, store, column_names, Vec::new()))
 	}
 
 	pub fn await_signal(&self) -> Result<()> {

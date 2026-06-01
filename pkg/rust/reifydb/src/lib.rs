@@ -42,7 +42,10 @@ pub use reifydb_core as core;
 pub use reifydb_core::actors::server::Operation;
 pub use reifydb_core::{
 	event::EventBus,
-	interface::catalog::config::{ConfigKey, GetConfig},
+	interface::catalog::{
+		config::{ConfigKey, GetConfig},
+		subscription::HydrationConfig,
+	},
 };
 pub use reifydb_derive as derive;
 pub use reifydb_derive::FromFrame;

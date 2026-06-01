@@ -33,3 +33,6 @@ mod gate;
 
 #[path = "subscription/extend.rs"]
 mod extend;
+
+#[path = "subscription/embedded_hydration.rs"]
+mod embedded_hydration;
