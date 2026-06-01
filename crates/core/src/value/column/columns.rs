@@ -396,9 +396,16 @@ impl Columns {
 
 		let mut columns_vec: Vec<ColumnWithName> = Vec::with_capacity(fields.len());
 		for field in fields.iter() {
+			let mut data = ColumnBuffer::with_capacity(field.constraint.get_type(), row_count);
+			if field.constraint.get_type() == ValueType::DictionaryId
+				&& let ColumnBuffer::DictionaryId(container) = &mut data
+				&& let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
+			{
+				container.set_dictionary_id(*dict_id);
+			}
 			columns_vec.push(ColumnWithName {
 				name: Fragment::internal(&field.name),
-				data: ColumnBuffer::with_capacity(field.constraint.get_type(), row_count),
+				data,
 			});
 		}
 
