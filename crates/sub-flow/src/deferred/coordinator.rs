@@ -159,6 +159,8 @@ enum Phase {
 		ctx: ConsumeContext,
 	},
 
+	BootstrapRebalancing,
+
 	Ticking {
 		#[allow(dead_code)]
 		state_lease: VersionLeaseGuard,
@@ -356,7 +358,7 @@ impl Actor for CoordinatorActor {
 				FlowCoordinatorMessage::Bootstrap {
 					flows,
 				} => {
-					self.handle_bootstrap(state, flows);
+					self.handle_bootstrap(state, ctx, flows);
 				}
 				FlowCoordinatorMessage::Tick => {
 					if matches!(state.phase, Phase::Idle) {
@@ -555,6 +557,11 @@ impl CoordinatorActor {
 			Phase::Rebalancing {
 				ctx: cctx,
 			} => self.continue_rebalancing(state, ctx, response, cctx),
+			Phase::BootstrapRebalancing => {
+				if let PoolResponse::Error(e) = response {
+					warn!(error = %e, "bootstrap rebalance failed");
+				}
+			}
 			Phase::SubmittingBatches {
 				ctx: cctx,
 			} => self.continue_submitting(state, ctx, response, cctx),
@@ -956,7 +963,12 @@ impl CoordinatorActor {
 			.unwrap_or(CommitVersion(0)))
 	}
 
-	fn handle_bootstrap(&self, state: &mut CoordinatorState, flows: Vec<(FlowId, bool)>) {
+	fn handle_bootstrap(
+		&self,
+		state: &mut CoordinatorState,
+		ctx: &Context<FlowCoordinatorMessage>,
+		flows: Vec<(FlowId, bool)>,
+	) {
 		let coordinator_checkpoint = self.fetch_coordinator_checkpoint().unwrap_or(CommitVersion(0));
 
 		let mut query = match self.engine.begin_query(IdentityId::system()) {
@@ -1003,6 +1015,35 @@ impl CoordinatorActor {
 				"bootstrapped deferred flow on startup"
 			);
 		}
+
+		let assignments = self.compute_flow_assignments(state);
+		if assignments.is_empty() {
+			return;
+		}
+		state.flow_assignments = assignments.clone();
+
+		let mut by_worker: BTreeMap<usize, Vec<FlowId>> = BTreeMap::new();
+		for (fid, wid) in &assignments {
+			by_worker.entry(*wid).or_default().push(*fid);
+		}
+
+		let self_ref = ctx.self_ref().clone();
+		let callback: Box<dyn FnOnce(PoolResponse) + Send> = Box::new(move |resp| {
+			let _ = self_ref.send(FlowCoordinatorMessage::PoolReply(resp));
+		});
+
+		if self.pool
+			.send(FlowPoolMessage::Rebalance {
+				assignments: by_worker,
+				reply: callback,
+			})
+			.is_err()
+		{
+			warn!("pool actor stopped during bootstrap rebalance");
+			return;
+		}
+
+		state.phase = Phase::BootstrapRebalancing;
 	}
 
 	#[inline]
