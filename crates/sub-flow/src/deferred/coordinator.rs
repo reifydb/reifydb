@@ -985,9 +985,10 @@ impl CoordinatorActor {
 
 			self.maybe_register_tick_schedule(state, &flow);
 
-			let has_durable_checkpoint = CdcCheckpoint::fetch_opt(&mut Transaction::Query(&mut query), &flow_id)
-				.unwrap_or(None)
-				.is_some();
+			let has_durable_checkpoint =
+				CdcCheckpoint::fetch_opt(&mut Transaction::Query(&mut query), &flow_id)
+					.unwrap_or(None)
+					.is_some();
 
 			if !flow.is_subscription() && has_durable_checkpoint {
 				state.states.register_backfilling(flow_id);

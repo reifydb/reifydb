@@ -97,7 +97,15 @@ impl Actor for FlowWorkerActor {
 					index,
 					active,
 					reply,
-				} => self.handle_dispatch(state, state_version, to_version, changes, index, active, reply),
+				} => self.handle_dispatch(
+					state,
+					state_version,
+					to_version,
+					changes,
+					index,
+					active,
+					reply,
+				),
 				FlowMessage::Tick {
 					flow_ids,
 					timestamp,

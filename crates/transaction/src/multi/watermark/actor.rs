@@ -81,7 +81,7 @@ impl Actor for WatermarkActor {
 	}
 
 	fn config(&self) -> ActorConfig {
-		ActorConfig::new().mailbox_capacity(4096)
+		ActorConfig::new()
 	}
 }
 

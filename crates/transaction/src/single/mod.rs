@@ -51,9 +51,7 @@ impl SingleTransactionInner {
 			return entry.value().clone();
 		}
 
-		let lock = ArcRwLock::new(());
-		self.key_locks.insert(key.clone(), lock.clone());
-		lock
+		self.key_locks.get_or_insert(key.clone(), ArcRwLock::new(())).value().clone()
 	}
 }
 
