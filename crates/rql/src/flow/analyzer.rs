@@ -82,6 +82,7 @@ impl FlowGraphAnalyzer {
 
 	pub fn add(&mut self, flow: FlowDag) -> FlowSummary {
 		let result = Self::analyze_flow(&flow);
+		self.flows.retain(|f| f.id() != flow.id());
 		self.flows.push(flow);
 		self.dependency_graph = self.calculate();
 		result

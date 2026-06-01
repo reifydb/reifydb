@@ -1,7 +1,12 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (c) 2026 ReifyDB
+
 use std::path::PathBuf;
 
-use reifydb::value::value::duration::Duration;
-use reifydb::{Database, Params, Value, WithSubsystem, core::interface::catalog::config::ConfigKey, embedded};
+use reifydb::{
+	Database, Params, Value, WithSubsystem, core::interface::catalog::config::ConfigKey, embedded,
+	value::value::duration::Duration,
+};
 
 use crate::workload::{self, Kind, Workload};
 

@@ -147,4 +147,8 @@ pub enum FlowCoordinatorMessage {
 	PoolReply(PoolResponse),
 
 	Tick,
+
+	Bootstrap {
+		flows: Vec<(FlowId, bool)>,
+	},
 }

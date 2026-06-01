@@ -30,7 +30,7 @@ use reifydb_core::{
 			id::ViewId,
 			shape::ShapeId,
 		},
-		cdc::{Cdc, CdcBatch, SystemChange},
+		cdc::{Cdc, CdcBatch, CdcConsumerId, SystemChange},
 		change::{Change, ChangeOrigin},
 	},
 	internal,
@@ -263,9 +263,11 @@ pub struct CoordinatorActor {
 	cdc_store: CdcStore,
 	num_workers: usize,
 	clock: Clock,
+	consumer_id: CdcConsumerId,
 }
 
 impl CoordinatorActor {
+	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		engine: StandardEngine,
 		catalog: FlowCatalog,
@@ -274,6 +276,7 @@ impl CoordinatorActor {
 		cdc_store: CdcStore,
 		num_workers: usize,
 		clock: Clock,
+		consumer_id: CdcConsumerId,
 	) -> Self {
 		Self {
 			engine,
@@ -283,6 +286,7 @@ impl CoordinatorActor {
 			cdc_store,
 			num_workers,
 			clock,
+			consumer_id,
 		}
 	}
 
@@ -333,6 +337,11 @@ impl Actor for CoordinatorActor {
 				}
 				FlowCoordinatorMessage::PoolReply(response) => {
 					self.handle_pool_reply(state, ctx, response);
+				}
+				FlowCoordinatorMessage::Bootstrap {
+					flows,
+				} => {
+					self.handle_bootstrap(state, flows);
 				}
 				FlowCoordinatorMessage::Tick => {
 					if matches!(state.phase, Phase::Idle) {
@@ -628,7 +637,7 @@ impl CoordinatorActor {
 		}
 	}
 
-		#[inline]
+	#[inline]
 	fn continue_submitting(
 		&self,
 		state: &mut CoordinatorState,
@@ -917,6 +926,60 @@ impl CoordinatorActor {
 	}
 
 	#[inline]
+	fn fetch_coordinator_checkpoint(&self) -> Result<CommitVersion> {
+		let mut query = self.engine.begin_query(IdentityId::system())?;
+		Ok(CdcCheckpoint::fetch(&mut Transaction::Query(&mut query), &self.consumer_id)
+			.unwrap_or(CommitVersion(0)))
+	}
+
+	fn handle_bootstrap(&self, state: &mut CoordinatorState, flows: Vec<(FlowId, bool)>) {
+		let coordinator_checkpoint = self.fetch_coordinator_checkpoint().unwrap_or(CommitVersion(0));
+
+		let mut query = match self.engine.begin_query(IdentityId::system()) {
+			Ok(query) => query,
+			Err(e) => {
+				error!(error = %e, "failed to begin query during flow bootstrap");
+				return;
+			}
+		};
+
+		for (flow_id, is_deferred) in flows {
+			let flow = match self.catalog.get_or_load_flow(&mut Transaction::Query(&mut query), flow_id) {
+				Ok((flow, _)) => flow,
+				Err(e) => {
+					warn!(flow_id = flow_id.0, error = %e, "failed to load flow during bootstrap, skipping");
+					continue;
+				}
+			};
+
+			state.analyzer.add(flow.clone());
+			state.flows_changed = true;
+
+			if !is_deferred {
+				continue;
+			}
+
+			self.maybe_register_tick_schedule(state, &flow);
+
+			let flow_checkpoint = CdcCheckpoint::fetch(&mut Transaction::Query(&mut query), &flow_id)
+				.unwrap_or(CommitVersion(0));
+
+			if flow.is_subscription() || flow_checkpoint == coordinator_checkpoint {
+				state.states.register_active(flow_id, coordinator_checkpoint);
+			} else {
+				state.states.register_backfilling(flow_id);
+			}
+
+			info!(
+				flow_id = flow_id.0,
+				checkpoint = flow_checkpoint.0,
+				coordinator_checkpoint = coordinator_checkpoint.0,
+				"bootstrapped deferred flow on startup"
+			);
+		}
+	}
+
+	#[inline]
 	fn read_backfill_chunk(
 		&self,
 		from_version: CommitVersion,
@@ -1014,6 +1077,7 @@ impl CoordinatorActor {
 			checkpoints,
 			original_reply,
 			view_changes,
+			current_version,
 			..
 		} = consume_ctx;
 
@@ -1042,6 +1106,12 @@ impl CoordinatorActor {
 		}
 
 		if let Err(e) = persist_flow_checkpoints(&mut transaction, &checkpoints) {
+			let _ = transaction.rollback();
+			(original_reply)(coordinator_error(e));
+			return;
+		}
+
+		if let Err(e) = CdcCheckpoint::persist(&mut transaction, &self.consumer_id, current_version) {
 			let _ = transaction.rollback();
 			(original_reply)(coordinator_error(e));
 			return;

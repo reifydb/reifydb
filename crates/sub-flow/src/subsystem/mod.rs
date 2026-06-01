@@ -26,7 +26,7 @@ use reifydb_cdc::{
 	storage::CdcStore,
 };
 use reifydb_core::{
-	actors::flow::{FlowCoordinatorHandle, FlowHandle, FlowMessage, FlowPoolHandle},
+	actors::flow::{FlowCoordinatorHandle, FlowCoordinatorMessage, FlowHandle, FlowMessage, FlowPoolHandle},
 	interface::{
 		WithEventBus,
 		catalog::config::{ConfigKey, GetConfig},
@@ -163,6 +163,7 @@ impl FlowSubsystem {
 		let pool_handle = flow_scope.spawn_system("flow-pool", PoolActor::new(worker_refs, clock.clone()));
 		let pool_ref = pool_handle.actor_ref().clone();
 
+		let flow_consumer_id = CdcConsumerId::new("flow-coordinator");
 		let coordinator_handle = flow_scope.spawn_system(
 			"flow-coordinator",
 			CoordinatorActor::new(
@@ -173,6 +174,7 @@ impl FlowSubsystem {
 				cdc_store.clone(),
 				num_workers,
 				clock.clone(),
+				flow_consumer_id.clone(),
 			),
 		);
 		let consume_ref = FlowConsumeRef {
@@ -213,13 +215,43 @@ impl FlowSubsystem {
 		}));
 
 		let cdc_wake_registry = ioc.resolve::<CdcWakeRegistry>().expect("CdcWakeRegistry must be registered");
-		let poll_config = PollConsumerConfig::new(
-			CdcConsumerId::new("flow-coordinator"),
-			"flow-cdc-poll",
-			Duration::from_secs(1),
-			Some(100),
-		)
-		.with_wake_registry(cdc_wake_registry);
+		let poll_config =
+			PollConsumerConfig::new(flow_consumer_id, "flow-cdc-poll", Duration::from_secs(1), Some(100))
+				.with_wake_registry(cdc_wake_registry);
+
+		let mut bootstrap_flows = Vec::new();
+		if let Ok(mut query) = engine.begin_query(IdentityId::system()) {
+			match engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)) {
+				Ok(existing_flows) => {
+					for existing in existing_flows {
+						match flow_catalog.get_or_load_flow(
+							&mut Transaction::Query(&mut query),
+							existing.id,
+						) {
+							Ok((flow, _)) => match registrar.try_register(flow) {
+								Ok(is_transactional) => bootstrap_flows
+									.push((existing.id, !is_transactional)),
+								Err(e) => warn!(
+									flow_id = existing.id.0,
+									error = %e,
+									"failed to register transactional flow during bootstrap"
+								),
+							},
+							Err(e) => warn!(
+								flow_id = existing.id.0,
+								error = %e,
+								"failed to load flow during bootstrap"
+							),
+						}
+					}
+				}
+				Err(e) => warn!(error = %e, "failed to list flows during bootstrap"),
+			}
+		}
+		let _ = coordinator_handle.actor_ref().send(FlowCoordinatorMessage::Bootstrap {
+			flows: bootstrap_flows,
+		});
+
 		let dispatcher = FlowConsumeDispatcher {
 			coordinator: consume_ref,
 			registrar,

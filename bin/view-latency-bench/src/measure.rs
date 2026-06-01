@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	hint::spin_loop,
-	thread::yield_now,
-	time::Duration,
-};
+use std::{hint::spin_loop, thread::yield_now, time::Duration};
 
 use hdrhistogram::Histogram;
 use reifydb::{Clock, Database, Params};
