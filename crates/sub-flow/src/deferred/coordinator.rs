@@ -316,9 +316,8 @@ pub struct CoordinatorState {
 
 	flows_changed: bool,
 
-	cached_active: Vec<FlowId>,
-	cached_routing_index: collections::HashMap<ShapeId, Vec<FlowId>>,
-	cached_levels: Vec<Vec<FlowId>>,
+	cached_active: Arc<Vec<FlowId>>,
+	cached_routing_index: Arc<collections::HashMap<ShapeId, Vec<FlowId>>>,
 }
 
 impl Actor for CoordinatorActor {
@@ -336,9 +335,8 @@ impl Actor for CoordinatorActor {
 			tick_schedules: BTreeMap::new(),
 			flow_assignments: BTreeMap::new(),
 			flows_changed: false,
-			cached_active: Vec::new(),
-			cached_routing_index: collections::HashMap::new(),
-			cached_levels: Vec::new(),
+			cached_active: Arc::new(Vec::new()),
+			cached_routing_index: Arc::new(collections::HashMap::new()),
 		}
 	}
 
@@ -764,40 +762,42 @@ impl CoordinatorActor {
 			}
 		}
 
-		if let Some(to_version) = consume_ctx.latest_version {
-			let worker_batches = self.route_and_group_changes(
-				state,
-				&consume_ctx.all_changes,
-				to_version,
-				consume_ctx.state_version,
+		if let Some(to_version) = consume_ctx.latest_version
+			&& !state.cached_active.is_empty()
+			&& !consume_ctx.all_changes.is_empty()
+		{
+			#[cfg(reifydb_assertions)]
+			assert_eq!(
+				state.states.active_flow_ids(),
+				*state.cached_active,
+				"routing cache is stale: the active flow set changed without flows_changed being set"
 			);
 
-			Span::current().record("batch_count", worker_batches.len());
+			let changes = Arc::new(mem::take(&mut consume_ctx.all_changes));
+			let self_ref = ctx.self_ref().clone();
+			let callback: Box<dyn FnOnce(PoolResponse) + Send> = Box::new(move |resp| {
+				let _ = self_ref.send(FlowCoordinatorMessage::PoolReply(resp));
+			});
 
-			if !worker_batches.is_empty() {
-				let self_ref = ctx.self_ref().clone();
-				let callback: Box<dyn FnOnce(PoolResponse) + Send> = Box::new(move |resp| {
-					let _ = self_ref.send(FlowCoordinatorMessage::PoolReply(resp));
-				});
-
-				if self.pool
-					.send(FlowPoolMessage::Submit {
-						batches: worker_batches,
-						reply: callback,
-					})
-					.is_err()
-				{
-					(consume_ctx.original_reply)(coordinator_error("Pool actor stopped"));
-					return;
-				}
-
-				state.phase = Phase::SubmittingBatches {
-					ctx: consume_ctx,
-				};
+			if self.pool
+				.send(FlowPoolMessage::Broadcast {
+					state_version: consume_ctx.state_version,
+					to_version,
+					changes,
+					index: state.cached_routing_index.clone(),
+					active: state.cached_active.clone(),
+					reply: callback,
+				})
+				.is_err()
+			{
+				(consume_ctx.original_reply)(coordinator_error("Pool actor stopped"));
 				return;
 			}
-		} else {
-			Span::current().record("batch_count", 0usize);
+
+			state.phase = Phase::SubmittingBatches {
+				ctx: consume_ctx,
+			};
+			return;
 		}
 
 		if let Some(to_version) = consume_ctx.latest_version {
@@ -1230,10 +1230,8 @@ impl CoordinatorActor {
 		let active_vec = state.states.active_flow_ids();
 		let active: collections::HashSet<FlowId> = active_vec.iter().copied().collect();
 		let index = self.build_routing_index(state, &active);
-		let levels = state.analyzer.calculate_execution_levels(state.analyzer.get_dependency_graph());
-		state.cached_active = active_vec;
-		state.cached_routing_index = index;
-		state.cached_levels = levels;
+		state.cached_active = Arc::new(active_vec);
+		state.cached_routing_index = Arc::new(index);
 	}
 
 	fn build_routing_index(
@@ -1302,79 +1300,6 @@ impl CoordinatorActor {
 			flows.dedup();
 		}
 		index
-	}
-
-	#[instrument(name = "flow::coordinator::route_and_group", level = "debug", skip(self, state, changes), fields(
-		changes = changes.len(),
-		active_flows = field::Empty,
-		batches = field::Empty,
-		elapsed_us = field::Empty
-	))]
-	fn route_and_group_changes(
-		&self,
-		state: &CoordinatorState,
-		changes: &[Change],
-		to_version: CommitVersion,
-		state_version: CommitVersion,
-	) -> BTreeMap<usize, WorkerBatch> {
-		let start = self.clock.instant();
-
-		#[cfg(reifydb_assertions)]
-		assert_eq!(
-			state.states.active_flow_ids(),
-			state.cached_active,
-			"routing cache is stale: the active flow set changed without flows_changed being set, so an activation or registration site is missing cache invalidation"
-		);
-
-		let active_vec = &state.cached_active;
-		Span::current().record("active_flows", active_vec.len());
-
-		let index = &state.cached_routing_index;
-
-		let mut per_flow: BTreeMap<FlowId, Vec<Change>> = BTreeMap::new();
-		for change in changes {
-			match change.origin {
-				ChangeOrigin::Shape(source) => {
-					if let Some(flows) = index.get(&source) {
-						for f in flows {
-							per_flow.entry(*f).or_default().push(change.clone());
-						}
-					}
-				}
-				_ => {
-					for f in active_vec {
-						per_flow.entry(*f).or_default().push(change.clone());
-					}
-				}
-			}
-		}
-
-		let mut worker_batches: BTreeMap<usize, WorkerBatch> = BTreeMap::new();
-		if per_flow.is_empty() {
-			Span::current().record("batches", 0usize);
-			Span::current().record("elapsed_us", start.elapsed().as_micros() as u64);
-			return worker_batches;
-		}
-
-		let levels = &state.cached_levels;
-		for level in levels {
-			for fid in level {
-				if let Some(flow_changes) = per_flow.remove(fid) {
-					let worker_id = *state
-						.flow_assignments
-						.get(fid)
-						.expect("flow must be in flow_assignments after registration");
-					let batch = worker_batches
-						.entry(worker_id)
-						.or_insert_with(|| WorkerBatch::new(state_version));
-					batch.add_instruction(FlowInstruction::new(*fid, to_version, flow_changes));
-				}
-			}
-		}
-
-		Span::current().record("batches", worker_batches.len());
-		Span::current().record("elapsed_us", start.elapsed().as_micros() as u64);
-		worker_batches
 	}
 
 	fn compute_flow_assignments(&self, state: &CoordinatorState) -> BTreeMap<FlowId, usize> {

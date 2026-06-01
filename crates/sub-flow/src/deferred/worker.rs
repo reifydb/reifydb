@@ -2,8 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
+	collections::{BTreeMap, HashMap},
 	panic::{AssertUnwindSafe, catch_unwind},
 	process,
+	sync::Arc,
 };
 
 use reifydb_catalog::catalog::Catalog;
@@ -15,7 +17,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	encoded::shape::RowShape,
 	interface::{
-		catalog::flow::FlowId,
+		catalog::{flow::FlowId, shape::ShapeId},
 		change::{Change, ChangeOrigin},
 	},
 };
@@ -88,6 +90,14 @@ impl Actor for FlowWorkerActor {
 					batch,
 					reply,
 				} => self.handle_process(state, batch, reply),
+				FlowMessage::Dispatch {
+					state_version,
+					to_version,
+					changes,
+					index,
+					active,
+					reply,
+				} => self.handle_dispatch(state, state_version, to_version, changes, index, active, reply),
 				FlowMessage::Tick {
 					flow_ids,
 					timestamp,
@@ -125,6 +135,36 @@ impl FlowWorkerActor {
 		reply: Box<dyn FnOnce(FlowResponse) + Send>,
 	) {
 		let resp = match self.process_request(&mut state.flow_engine, batch) {
+			Ok((pending, pending_shapes, view_changes)) => FlowResponse::Success {
+				pending,
+				pending_shapes,
+				view_changes,
+			},
+			Err(e) => FlowResponse::Error(e.to_string()),
+		};
+		(reply)(resp);
+	}
+
+	#[inline]
+	#[allow(clippy::too_many_arguments)]
+	fn handle_dispatch(
+		&self,
+		state: &mut FlowState,
+		state_version: CommitVersion,
+		to_version: CommitVersion,
+		changes: Arc<Vec<Change>>,
+		index: Arc<HashMap<ShapeId, Vec<FlowId>>>,
+		active: Arc<Vec<FlowId>>,
+		reply: Box<dyn FnOnce(FlowResponse) + Send>,
+	) {
+		let resp = match self.process_dispatch(
+			&mut state.flow_engine,
+			state_version,
+			to_version,
+			&changes,
+			&index,
+			&active,
+		) {
 			Ok((pending, pending_shapes, view_changes)) => FlowResponse::Success {
 				pending,
 				pending_shapes,
@@ -306,6 +346,95 @@ impl FlowWorkerActor {
 				all_view_changes.push(Change {
 					origin: ChangeOrigin::Shape(id),
 					version: primitive_version,
+					diffs: smallvec![diff],
+					changed_at,
+				});
+			}
+
+			all_pending_shapes.extend(txn.take_pending_shapes());
+			pending = txn.take_pending();
+		}
+
+		Ok((pending, all_pending_shapes, all_view_changes))
+	}
+
+	#[instrument(name = "flow::actor::dispatch", level = "debug", skip(self, flow_engine, changes, index, active), fields(
+		changes = changes.len(),
+		flows = field::Empty
+	))]
+	fn process_dispatch(
+		&self,
+		flow_engine: &mut FlowEngine,
+		state_version: CommitVersion,
+		to_version: CommitVersion,
+		changes: &[Change],
+		index: &HashMap<ShapeId, Vec<FlowId>>,
+		active: &[FlowId],
+	) -> Result<(Pending, Vec<RowShape>, Vec<Change>)> {
+		let mut per_flow: BTreeMap<FlowId, Vec<Change>> = BTreeMap::new();
+		for change in changes {
+			match change.origin {
+				ChangeOrigin::Shape(source) => {
+					if let Some(flows) = index.get(&source) {
+						for f in flows {
+							if flow_engine.flows.contains_key(f) {
+								per_flow.entry(*f).or_default().push(change.clone());
+							}
+						}
+					}
+				}
+				_ => {
+					for f in active {
+						if flow_engine.flows.contains_key(f) {
+							per_flow.entry(*f).or_default().push(change.clone());
+						}
+					}
+				}
+			}
+		}
+		Span::current().record("flows", per_flow.len());
+
+		let mut pending = Pending::new();
+		let mut all_pending_shapes: Vec<RowShape> = Vec::new();
+		let mut all_view_changes: Vec<Change> = Vec::new();
+		let interceptors = self.engine.create_interceptors();
+
+		let state_lease = self.engine.multi().acquire_version_lease(state_version)?;
+		let base_query = self.engine.multi().begin_query_at_version(&state_lease)?;
+		let base_state_query = self.engine.multi().begin_query_at_version(&state_lease)?;
+
+		for (flow_id, flow_changes) in per_flow {
+			if flow_changes.is_empty() {
+				continue;
+			}
+
+			let mut query = base_query.clone();
+			query.read_as_of_version_inclusive(to_version);
+			let state_query = base_state_query.clone();
+
+			let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+				version: to_version,
+				pending,
+				query,
+				state_query,
+				single: self.engine.single().clone(),
+				catalog: self.catalog.clone(),
+				interceptors: interceptors.clone(),
+				clock: self.engine.clock().clone(),
+			});
+
+			if let Err(e) = flow_engine.process_batch(&mut txn, flow_changes, flow_id) {
+				error!(flow_id = flow_id.0, error = %e, "failed to process flow");
+			}
+
+			txn.flush_operator_states()?;
+
+			let view_entries = txn.take_accumulator_entries();
+			let changed_at = DateTime::from_nanos(self.engine.clock().now_nanos());
+			for (id, diff) in view_entries {
+				all_view_changes.push(Change {
+					origin: ChangeOrigin::Shape(id),
+					version: to_version,
 					diffs: smallvec![diff],
 					changed_at,
 				});

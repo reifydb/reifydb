@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeMap;
+use std::{
+	collections::{BTreeMap, HashMap},
+	sync::Arc,
+};
 
 use reifydb_runtime::actor::system::ActorHandle;
 use reifydb_value::{Result, value::datetime::DateTime};
@@ -10,7 +13,11 @@ use super::pending::Pending;
 use crate::{
 	common::CommitVersion,
 	encoded::shape::RowShape,
-	interface::{catalog::flow::FlowId, cdc::Cdc, change::Change},
+	interface::{
+		catalog::{flow::FlowId, shape::ShapeId},
+		cdc::Cdc,
+		change::Change,
+	},
 };
 
 #[derive(Clone, Debug)]
@@ -70,6 +77,15 @@ pub enum FlowMessage {
 		reply: Box<dyn FnOnce(FlowResponse) + Send>,
 	},
 
+	Dispatch {
+		state_version: CommitVersion,
+		to_version: CommitVersion,
+		changes: Arc<Vec<Change>>,
+		index: Arc<HashMap<ShapeId, Vec<FlowId>>>,
+		active: Arc<Vec<FlowId>>,
+		reply: Box<dyn FnOnce(FlowResponse) + Send>,
+	},
+
 	Register {
 		flow_id: FlowId,
 		reply: Box<dyn FnOnce(FlowResponse) + Send>,
@@ -109,6 +125,15 @@ pub enum FlowPoolMessage {
 
 	Submit {
 		batches: BTreeMap<usize, WorkerBatch>,
+		reply: Box<dyn FnOnce(PoolResponse) + Send>,
+	},
+
+	Broadcast {
+		state_version: CommitVersion,
+		to_version: CommitVersion,
+		changes: Arc<Vec<Change>>,
+		index: Arc<HashMap<ShapeId, Vec<FlowId>>>,
+		active: Arc<Vec<FlowId>>,
 		reply: Box<dyn FnOnce(PoolResponse) + Send>,
 	},
 

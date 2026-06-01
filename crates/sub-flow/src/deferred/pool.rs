@@ -2,10 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::BTreeMap,
+	collections::{BTreeMap, HashMap},
 	mem::replace,
 	panic::{AssertUnwindSafe, catch_unwind},
 	process,
+	sync::Arc,
 };
 
 use reifydb_core::{
@@ -15,7 +16,10 @@ use reifydb_core::{
 	},
 	common::CommitVersion,
 	encoded::shape::RowShape,
-	interface::{catalog::flow::FlowId, change::Change},
+	interface::{
+		catalog::{flow::FlowId, shape::ShapeId},
+		change::Change,
+	},
 	internal,
 };
 use reifydb_runtime::{
@@ -109,6 +113,28 @@ impl Actor for PoolActor {
 						return Directive::Continue;
 					};
 					self.handle_submit_async(state, ctx, batches, reply);
+				}
+				FlowPoolMessage::Broadcast {
+					state_version,
+					to_version,
+					changes,
+					index,
+					active,
+					reply,
+				} => {
+					let Some(reply) = reject_if_busy(state, reply) else {
+						return Directive::Continue;
+					};
+					self.handle_broadcast(
+						state,
+						ctx,
+						state_version,
+						to_version,
+						changes,
+						index,
+						active,
+						reply,
+					);
 				}
 				FlowPoolMessage::SubmitToWorker {
 					worker_id,
@@ -282,6 +308,56 @@ impl PoolActor {
 		state.phase = Phase::WaitingForWorkers {
 			pending_count: batch_count,
 			results: Vec::with_capacity(batch_count),
+			pending_shapes: Vec::new(),
+			view_changes: Vec::new(),
+			reply,
+			started_at: start,
+		};
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	fn handle_broadcast(
+		&self,
+		state: &mut PoolState,
+		ctx: &Context<FlowPoolMessage>,
+		state_version: CommitVersion,
+		to_version: CommitVersion,
+		changes: Arc<Vec<Change>>,
+		index: Arc<HashMap<ShapeId, Vec<FlowId>>>,
+		active: Arc<Vec<FlowId>>,
+		reply: Box<dyn FnOnce(PoolResponse) + Send>,
+	) {
+		let start = self.clock.instant();
+		let worker_count = self.refs.len();
+
+		for worker_id in 0..worker_count {
+			let self_ref = ctx.self_ref().clone();
+			let callback: Box<dyn FnOnce(FlowResponse) + Send> = Box::new(move |resp| {
+				let _ = self_ref.send(FlowPoolMessage::WorkerReply {
+					worker_id,
+					response: resp,
+				});
+			});
+
+			if self.refs[worker_id]
+				.send(FlowMessage::Dispatch {
+					state_version,
+					to_version,
+					changes: changes.clone(),
+					index: index.clone(),
+					active: active.clone(),
+					reply: callback,
+				})
+				.is_err()
+			{
+				(reply)(PoolResponse::Error(format!("Worker {} stopped", worker_id)));
+				return;
+			}
+		}
+
+		state.phase = Phase::WaitingForWorkers {
+			pending_count: worker_count,
+			results: Vec::with_capacity(worker_count),
 			pending_shapes: Vec::new(),
 			view_changes: Vec::new(),
 			reply,
