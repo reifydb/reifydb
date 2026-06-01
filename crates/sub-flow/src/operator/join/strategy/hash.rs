@@ -6,7 +6,10 @@ use reifydb_core::{
 		row::EncodedRow,
 		shape::{RowShape, RowShapeField},
 	},
-	interface::change::Diff,
+	interface::{
+		catalog::config::{ConfigKey, GetConfig},
+		change::Diff,
+	},
 	internal,
 	value::column::columns::Columns,
 };
@@ -98,18 +101,49 @@ pub(crate) fn is_first_right_row(txn: &mut FlowTransaction, right_store: &Store,
 	Ok(!right_store.contains_key(txn, key_hash)?)
 }
 
-pub(crate) fn pull_from_store(txn: &mut FlowTransaction, store: &Store, key_hash: &Hash128) -> Result<Columns> {
-	let rows = store.rows_for_key(txn, key_hash)?;
-	if rows.is_empty() {
-		return Ok(Columns::empty());
-	}
-	let ids: Vec<RowNumber> = rows.iter().map(|(rn, _)| *rn).collect();
-	let encoded: Vec<EncodedRow> = rows.into_iter().map(|(_, r)| r).collect();
+fn columns_from_block(
+	txn: &mut FlowTransaction,
+	store: &Store,
+	block: Vec<(RowNumber, EncodedRow)>,
+) -> Result<Columns> {
+	let ids: Vec<RowNumber> = block.iter().map(|(rn, _)| *rn).collect();
+	let encoded: Vec<EncodedRow> = block.into_iter().map(|(_, r)| r).collect();
 	let fingerprint = encoded[0].fingerprint();
 	let shape = store
 		.get_row_shape(txn, fingerprint)?
 		.ok_or_else(|| Error(Box::new(internal!("Row shape not found in store"))))?;
 	Ok(Columns::from_encoded_rows(&shape, &ids, &encoded))
+}
+
+fn stream_join_blocks<F>(
+	txn: &mut FlowTransaction,
+	store: &Store,
+	key_hash: &Hash128,
+	mut join_block: F,
+) -> Result<Vec<Diff>>
+where
+	F: FnMut(&mut FlowTransaction, &Columns) -> Result<Option<Diff>>,
+{
+	let limit = txn.catalog().get_config_uint8(ConfigKey::FlowJoinProbeBlockSize) as usize;
+	let mut out = Vec::new();
+	let mut after: Option<RowNumber> = None;
+	loop {
+		let block = store.rows_for_key_block(txn, key_hash, after.as_ref(), limit)?;
+		if block.is_empty() {
+			break;
+		}
+		let last = block.last().unwrap().0;
+		let exhausted = block.len() < limit;
+		let opposite = columns_from_block(txn, store, block)?;
+		if let Some(diff) = join_block(txn, &opposite)? {
+			out.push(diff);
+		}
+		if exhausted {
+			break;
+		}
+		after = Some(last);
+	}
+	Ok(out)
 }
 
 pub(crate) struct JoinEmitContext<'a> {
@@ -125,28 +159,25 @@ pub(crate) fn emit_update_joined_columns(
 	row_idx: usize,
 	primary_side: JoinSide,
 	ctx: &JoinEmitContext<'_>,
-) -> Result<Option<Diff>> {
-	let opposite = pull_from_store(txn, ctx.opposite_store, ctx.key_hash)?;
-	if opposite.is_empty() {
-		return Ok(None);
-	}
+) -> Result<Vec<Diff>> {
+	stream_join_blocks(txn, ctx.opposite_store, ctx.key_hash, |txn, opposite| {
+		let (pre_joined, post_joined) = match primary_side {
+			JoinSide::Left => (
+				ctx.operator.join_columns_one_to_many(txn, pre, row_idx, opposite)?,
+				ctx.operator.join_columns_one_to_many(txn, post, row_idx, opposite)?,
+			),
+			JoinSide::Right => (
+				ctx.operator.join_columns_many_to_one(txn, opposite, pre, row_idx)?,
+				ctx.operator.join_columns_many_to_one(txn, opposite, post, row_idx)?,
+			),
+		};
 
-	let (pre_joined, post_joined) = match primary_side {
-		JoinSide::Left => (
-			ctx.operator.join_columns_one_to_many(txn, pre, row_idx, &opposite)?,
-			ctx.operator.join_columns_one_to_many(txn, post, row_idx, &opposite)?,
-		),
-		JoinSide::Right => (
-			ctx.operator.join_columns_many_to_one(txn, &opposite, pre, row_idx)?,
-			ctx.operator.join_columns_many_to_one(txn, &opposite, post, row_idx)?,
-		),
-	};
-
-	if pre_joined.is_empty() || post_joined.is_empty() {
-		Ok(None)
-	} else {
-		Ok(Some(Diff::update(pre_joined, post_joined)))
-	}
+		if pre_joined.is_empty() || post_joined.is_empty() {
+			Ok(None)
+		} else {
+			Ok(Some(Diff::update(pre_joined, post_joined)))
+		}
+	})
 }
 
 pub(crate) fn emit_joined_columns_batch(
@@ -155,44 +186,36 @@ pub(crate) fn emit_joined_columns_batch(
 	primary_indices: &[usize],
 	primary_side: JoinSide,
 	ctx: &JoinEmitContext<'_>,
-) -> Result<Option<Diff>> {
+) -> Result<Vec<Diff>> {
 	if primary_indices.is_empty() {
-		return Ok(None);
+		return Ok(Vec::new());
 	}
 
-	let opposite = pull_from_store(txn, ctx.opposite_store, ctx.key_hash)?;
-	if opposite.is_empty() {
-		return Ok(None);
-	}
-
-	let joined = match primary_side {
-		JoinSide::Left => {
-			let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
-			ctx.operator.join_columns_cartesian(
+	stream_join_blocks(txn, ctx.opposite_store, ctx.key_hash, |txn, opposite| {
+		let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
+		let joined = match primary_side {
+			JoinSide::Left => ctx.operator.join_columns_cartesian(
 				txn,
 				primary,
 				primary_indices,
-				&opposite,
+				opposite,
 				&opposite_indices,
-			)?
-		}
-		JoinSide::Right => {
-			let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
-			ctx.operator.join_columns_cartesian(
+			)?,
+			JoinSide::Right => ctx.operator.join_columns_cartesian(
 				txn,
-				&opposite,
+				opposite,
 				&opposite_indices,
 				primary,
 				primary_indices,
-			)?
-		}
-	};
+			)?,
+		};
 
-	if joined.is_empty() {
-		Ok(None)
-	} else {
-		Ok(Some(Diff::insert(joined)))
-	}
+		if joined.is_empty() {
+			Ok(None)
+		} else {
+			Ok(Some(Diff::insert(joined)))
+		}
+	})
 }
 
 pub(crate) fn emit_remove_joined_columns_batch(
@@ -201,46 +224,62 @@ pub(crate) fn emit_remove_joined_columns_batch(
 	primary_indices: &[usize],
 	primary_side: JoinSide,
 	ctx: &JoinEmitContext<'_>,
-) -> Result<Option<Diff>> {
+) -> Result<Vec<Diff>> {
 	if primary_indices.is_empty() {
-		return Ok(None);
+		return Ok(Vec::new());
 	}
 
-	let opposite = pull_from_store(txn, ctx.opposite_store, ctx.key_hash)?;
-	if opposite.is_empty() {
-		return Ok(None);
-	}
-
-	let joined = match primary_side {
-		JoinSide::Left => {
-			let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
-			ctx.operator.join_columns_cartesian(
+	stream_join_blocks(txn, ctx.opposite_store, ctx.key_hash, |txn, opposite| {
+		let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
+		let joined = match primary_side {
+			JoinSide::Left => ctx.operator.join_columns_cartesian(
 				txn,
 				primary,
 				primary_indices,
-				&opposite,
+				opposite,
 				&opposite_indices,
-			)?
-		}
-		JoinSide::Right => {
-			let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
-			ctx.operator.join_columns_cartesian(
+			)?,
+			JoinSide::Right => ctx.operator.join_columns_cartesian(
 				txn,
-				&opposite,
+				opposite,
 				&opposite_indices,
 				primary,
 				primary_indices,
-			)?
-		}
-	};
+			)?,
+		};
 
-	if joined.is_empty() {
-		Ok(None)
-	} else {
-		Ok(Some(Diff::remove(joined)))
-	}
+		if joined.is_empty() {
+			Ok(None)
+		} else {
+			Ok(Some(Diff::remove(joined)))
+		}
+	})
 }
 
-pub(crate) fn pull_left_columns(txn: &mut FlowTransaction, left_store: &Store, key_hash: &Hash128) -> Result<Columns> {
-	pull_from_store(txn, left_store, key_hash)
+pub(crate) fn for_each_left_block<F>(
+	txn: &mut FlowTransaction,
+	left_store: &Store,
+	key_hash: &Hash128,
+	mut on_block: F,
+) -> Result<()>
+where
+	F: FnMut(&mut FlowTransaction, &Columns) -> Result<()>,
+{
+	let limit = txn.catalog().get_config_uint8(ConfigKey::FlowJoinProbeBlockSize) as usize;
+	let mut after: Option<RowNumber> = None;
+	loop {
+		let block = left_store.rows_for_key_block(txn, key_hash, after.as_ref(), limit)?;
+		if block.is_empty() {
+			break;
+		}
+		let last = block.last().unwrap().0;
+		let exhausted = block.len() < limit;
+		let left_columns = columns_from_block(txn, left_store, block)?;
+		on_block(txn, &left_columns)?;
+		if exhausted {
+			break;
+		}
+		after = Some(last);
+	}
+	Ok(())
 }

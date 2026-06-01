@@ -9,7 +9,7 @@ use super::{
 	JoinContext, UpdateKeys,
 	hash::{
 		JoinEmitContext, add_to_state_entry_batch, emit_joined_columns_batch, emit_remove_joined_columns_batch,
-		emit_update_joined_columns, is_first_right_row, pull_left_columns, remove_from_state_entry,
+		emit_update_joined_columns, for_each_left_block, is_first_right_row, remove_from_state_entry,
 		update_row_in_entry,
 	},
 };
@@ -105,8 +105,9 @@ impl LeftHashJoin {
 			operator: ctx.operator,
 		};
 
-		if let Some(diff) = emit_joined_columns_batch(txn, post, indices, JoinSide::Left, &emit_ctx)? {
-			return Ok(vec![diff]);
+		let joined = emit_joined_columns_batch(txn, post, indices, JoinSide::Left, &emit_ctx)?;
+		if !joined.is_empty() {
+			return Ok(joined);
 		}
 		let unmatched = ctx.operator.unmatched_left_columns_batch(txn, post, indices)?;
 		Ok(vec![Diff::insert(unmatched)])
@@ -131,13 +132,14 @@ impl LeftHashJoin {
 		}
 
 		if is_first && ctx.state.left.contains_key(txn, key_hash)? {
-			let left_columns = pull_left_columns(txn, &ctx.state.left, key_hash)?;
-			if left_columns.has_rows() {
+			let operator = ctx.operator;
+			for_each_left_block(txn, &ctx.state.left, key_hash, |txn, left_columns| {
 				let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
 				let unmatched =
-					ctx.operator.unmatched_left_columns_batch(txn, &left_columns, &left_indices)?;
+					operator.unmatched_left_columns_batch(txn, left_columns, &left_indices)?;
 				result.push(Diff::remove(unmatched));
-			}
+				Ok(())
+			})?;
 		}
 
 		let emit_ctx = JoinEmitContext {
@@ -146,9 +148,7 @@ impl LeftHashJoin {
 			operator: ctx.operator,
 		};
 
-		if let Some(diff) = emit_joined_columns_batch(txn, post, indices, JoinSide::Right, &emit_ctx)? {
-			result.push(diff);
-		}
+		result.extend(emit_joined_columns_batch(txn, post, indices, JoinSide::Right, &emit_ctx)?);
 		Ok(result)
 	}
 
@@ -184,10 +184,8 @@ impl LeftHashJoin {
 			operator: ctx.operator,
 		};
 
-		let mut result = Vec::new();
-		if let Some(diff) = emit_remove_joined_columns_batch(txn, pre, indices, JoinSide::Left, &emit_ctx)? {
-			result.push(diff);
-		} else {
+		let mut result = emit_remove_joined_columns_batch(txn, pre, indices, JoinSide::Left, &emit_ctx)?;
+		if result.is_empty() {
 			let unmatched = ctx.operator.unmatched_left_columns_batch(txn, pre, indices)?;
 			result.push(Diff::remove(unmatched));
 		}
@@ -218,11 +216,7 @@ impl LeftHashJoin {
 				operator: ctx.operator,
 			};
 
-			if let Some(diff) =
-				emit_remove_joined_columns_batch(txn, pre, indices, JoinSide::Right, &emit_ctx)?
-			{
-				result.push(diff);
-			}
+			result.extend(emit_remove_joined_columns_batch(txn, pre, indices, JoinSide::Right, &emit_ctx)?);
 		}
 
 		for &idx in indices {
@@ -231,13 +225,14 @@ impl LeftHashJoin {
 		}
 
 		if !ctx.operator.snapshot && !ctx.state.right.contains_key(txn, key_hash)? {
-			let left_columns = pull_left_columns(txn, &ctx.state.left, key_hash)?;
-			if left_columns.has_rows() {
+			let operator = ctx.operator;
+			for_each_left_block(txn, &ctx.state.left, key_hash, |txn, left_columns| {
 				let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
 				let unmatched =
-					ctx.operator.unmatched_left_columns_batch(txn, &left_columns, &left_indices)?;
+					operator.unmatched_left_columns_batch(txn, left_columns, &left_indices)?;
 				result.push(Diff::insert(unmatched));
-			}
+				Ok(())
+			})?;
 		}
 		Ok(result)
 	}
@@ -294,8 +289,9 @@ impl LeftHashJoin {
 			operator: ctx.operator,
 		};
 
-		if let Some(diff) = emit_update_joined_columns(txn, pre, post, row_idx, JoinSide::Left, &emit_ctx)? {
-			return Ok(vec![diff]);
+		let joined = emit_update_joined_columns(txn, pre, post, row_idx, JoinSide::Left, &emit_ctx)?;
+		if !joined.is_empty() {
+			return Ok(joined);
 		}
 		let unmatched_pre = ctx.operator.unmatched_left_columns(txn, pre, row_idx)?;
 		let unmatched_post = ctx.operator.unmatched_left_columns(txn, post, row_idx)?;
@@ -328,9 +324,6 @@ impl LeftHashJoin {
 			operator: ctx.operator,
 		};
 
-		match emit_update_joined_columns(txn, pre, post, row_idx, JoinSide::Right, &emit_ctx)? {
-			Some(diff) => Ok(vec![diff]),
-			None => Ok(Vec::new()),
-		}
+		emit_update_joined_columns(txn, pre, post, row_idx, JoinSide::Right, &emit_ctx)
 	}
 }

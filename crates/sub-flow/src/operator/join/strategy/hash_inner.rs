@@ -84,9 +84,7 @@ impl InnerHashJoin {
 			operator: ctx.operator,
 		};
 
-		if let Some(diff) = emit_joined_columns_batch(txn, post, indices, ctx.side, &emit_ctx)? {
-			result.push(diff);
-		}
+		result.extend(emit_joined_columns_batch(txn, post, indices, ctx.side, &emit_ctx)?);
 
 		Ok(result)
 	}
@@ -117,9 +115,7 @@ impl InnerHashJoin {
 				operator: ctx.operator,
 			};
 
-			if let Some(diff) = emit_remove_joined_columns_batch(txn, pre, indices, ctx.side, &emit_ctx)? {
-				result.push(diff);
-			}
+			result.extend(emit_remove_joined_columns_batch(txn, pre, indices, ctx.side, &emit_ctx)?);
 		}
 
 		for &idx in indices {
@@ -206,9 +202,6 @@ impl InnerHashJoin {
 			operator: ctx.operator,
 		};
 
-		match emit_update_joined_columns(txn, pre, post, row_idx, ctx.side, &emit_ctx)? {
-			Some(diff) => Ok(vec![diff]),
-			None => Ok(Vec::new()),
-		}
+		emit_update_joined_columns(txn, pre, post, row_idx, ctx.side, &emit_ctx)
 	}
 }

@@ -57,6 +57,7 @@ pub enum ConfigKey {
 	MultiReadBufferPageSize,
 	FlowTick,
 	CdcWatermarkWaitTimeout,
+	FlowJoinProbeBlockSize,
 	ThreadsAsync,
 	ThreadsSystem,
 	ThreadsQuery,
@@ -91,6 +92,7 @@ impl ConfigKey {
 			Self::MultiReadBufferPageSize,
 			Self::FlowTick,
 			Self::CdcWatermarkWaitTimeout,
+			Self::FlowJoinProbeBlockSize,
 			Self::ThreadsAsync,
 			Self::ThreadsSystem,
 			Self::ThreadsQuery,
@@ -127,6 +129,7 @@ impl ConfigKey {
 			Self::MultiReadBufferPageSize => Value::Uint8(65536),
 			Self::FlowTick => Value::Duration(Duration::from_seconds(1).unwrap()),
 			Self::CdcWatermarkWaitTimeout => Value::Duration(Duration::from_seconds(1).unwrap()),
+			Self::FlowJoinProbeBlockSize => Value::Uint8(1024),
 			Self::ThreadsAsync => Value::Uint2(1),
 			Self::ThreadsSystem => Value::Uint2(2),
 			Self::ThreadsQuery => Value::Uint2(1),
@@ -198,6 +201,11 @@ impl ConfigKey {
 				 latest commit before consuming; catch-up is event-driven, so this only bounds a missed \
 				 wakeup. Must be > 0."
 			}
+			Self::FlowJoinProbeBlockSize => {
+				"Number of opposite-side rows a streaming join pulls per block when probing its stored \
+				 state. Bounds resident probe memory without dropping matches; smaller trades fewer \
+				 resident rows for more scan round-trips."
+			}
 			Self::ThreadsAsync => {
 				"Number of worker threads for the async runtime. Must be >= 1. \
 				 Read at boot before the runtime starts; changes require restart."
@@ -258,6 +266,7 @@ impl ConfigKey {
 			Self::MultiReadBufferPageSize => true,
 			Self::FlowTick => false,
 			Self::CdcWatermarkWaitTimeout => false,
+			Self::FlowJoinProbeBlockSize => false,
 			Self::ThreadsAsync => true,
 			Self::ThreadsSystem => true,
 			Self::ThreadsQuery => true,
@@ -292,6 +301,7 @@ impl ConfigKey {
 			Self::MultiReadBufferPageSize => &[ValueType::Uint8],
 			Self::FlowTick => &[ValueType::Duration],
 			Self::CdcWatermarkWaitTimeout => &[ValueType::Duration],
+			Self::FlowJoinProbeBlockSize => &[ValueType::Uint8],
 			Self::ThreadsAsync => &[ValueType::Uint2],
 			Self::ThreadsSystem => &[ValueType::Uint2],
 			Self::ThreadsQuery => &[ValueType::Uint2],
@@ -326,6 +336,7 @@ impl ConfigKey {
 			Self::MultiReadBufferPageSize => false,
 			Self::FlowTick => false,
 			Self::CdcWatermarkWaitTimeout => false,
+			Self::FlowJoinProbeBlockSize => false,
 			Self::ThreadsAsync => false,
 			Self::ThreadsSystem => false,
 			Self::ThreadsQuery => false,
@@ -425,6 +436,12 @@ impl ConfigKey {
 					} else {
 						Err("CDC_WATERMARK_WAIT_TIMEOUT must be greater than zero".to_string())
 					}
+				}
+				_ => Ok(()),
+			},
+			Self::FlowJoinProbeBlockSize => match value {
+				Value::Uint8(0) => {
+					Err("FLOW_JOIN_PROBE_BLOCK_SIZE must be greater than zero".to_string())
 				}
 				_ => Ok(()),
 			},
@@ -581,6 +598,7 @@ impl fmt::Display for ConfigKey {
 			Self::MultiReadBufferPageSize => write!(f, "MULTI_READ_BUFFER_PAGE_SIZE"),
 			Self::FlowTick => write!(f, "FLOW_TICK"),
 			Self::CdcWatermarkWaitTimeout => write!(f, "CDC_WATERMARK_WAIT_TIMEOUT"),
+			Self::FlowJoinProbeBlockSize => write!(f, "FLOW_JOIN_PROBE_BLOCK_SIZE"),
 			Self::ThreadsAsync => write!(f, "THREADS_ASYNC"),
 			Self::ThreadsSystem => write!(f, "THREADS_SYSTEM"),
 			Self::ThreadsQuery => write!(f, "THREADS_QUERY"),
@@ -619,6 +637,7 @@ impl FromStr for ConfigKey {
 			"MULTI_READ_BUFFER_PAGE_SIZE" => Ok(Self::MultiReadBufferPageSize),
 			"FLOW_TICK" => Ok(Self::FlowTick),
 			"CDC_WATERMARK_WAIT_TIMEOUT" => Ok(Self::CdcWatermarkWaitTimeout),
+			"FLOW_JOIN_PROBE_BLOCK_SIZE" => Ok(Self::FlowJoinProbeBlockSize),
 			"THREADS_ASYNC" => Ok(Self::ThreadsAsync),
 			"THREADS_SYSTEM" => Ok(Self::ThreadsSystem),
 			"THREADS_QUERY" => Ok(Self::ThreadsQuery),
@@ -776,7 +795,9 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 29);
+		assert_eq!(all.len(), 30);
+		assert!(all.contains(&ConfigKey::CdcWatermarkWaitTimeout));
+		assert!(all.contains(&ConfigKey::FlowJoinProbeBlockSize));
 		assert!(all.contains(&ConfigKey::CdcCompactInterval));
 		assert!(all.contains(&ConfigKey::CdcCompactBlockSize));
 		assert!(all.contains(&ConfigKey::CdcCompactSafetyLag));

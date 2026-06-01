@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::cell::Cell;
+use std::{cell::Cell, ops::Bound};
 
 use postcard::{from_bytes, to_stdvec};
+#[cfg(test)]
+use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
 use reifydb_core::{
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
@@ -114,19 +116,52 @@ impl Store {
 		Ok(existed)
 	}
 
-	pub(crate) fn rows_for_key(
+	pub(crate) fn rows_for_key_block(
 		&self,
 		txn: &mut FlowTransaction,
 		hash: &Hash128,
+		after: Option<&RowNumber>,
+		limit: usize,
 	) -> Result<Vec<(RowNumber, EncodedRow)>> {
 		let prefix = self.hash_prefix(hash);
-		let range = EncodedKeyRange::prefix(&prefix);
+		let mut range = EncodedKeyRange::prefix(&prefix);
+		if let Some(after) = after {
+			range.start = Bound::Excluded(self.row_key(hash, *after));
+		}
 		let mut out = Vec::new();
 		for entry in state_range(self.node_id, txn, range) {
 			let (full_key, row) = entry?;
 			if let Some(rn) = row_number_from_key(full_key.as_slice()) {
 				out.push((rn, row));
+				if out.len() >= limit {
+					break;
+				}
 			}
+		}
+		Ok(out)
+	}
+
+	#[cfg(test)]
+	pub(crate) fn rows_for_key(
+		&self,
+		txn: &mut FlowTransaction,
+		hash: &Hash128,
+	) -> Result<Vec<(RowNumber, EncodedRow)>> {
+		let limit = txn.catalog().get_config_uint8(ConfigKey::FlowJoinProbeBlockSize) as usize;
+		let mut out = Vec::new();
+		let mut after: Option<RowNumber> = None;
+		loop {
+			let block = self.rows_for_key_block(txn, hash, after.as_ref(), limit)?;
+			if block.is_empty() {
+				break;
+			}
+			let last = block.last().unwrap().0;
+			let exhausted = block.len() < limit;
+			out.extend(block);
+			if exhausted {
+				break;
+			}
+			after = Some(last);
 		}
 		Ok(out)
 	}
@@ -360,6 +395,66 @@ mod tests {
 		let reader = Store::new(node, JoinSide::Left);
 		let got = reader.get_row_shape(&mut txn, shape.fingerprint()).unwrap();
 		assert_eq!(got, Some(shape), "a cold in-memory cache must fall back to the persisted shape");
+	}
+
+	#[test]
+	fn rows_for_key_block_pages_with_resume_cursor() {
+		let engine = TestEngine::new();
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+		let store = Store::new(FlowNodeId(30), JoinSide::Left);
+
+		for i in 1..=4u64 {
+			store.put_row(&mut txn, &h(0xAAA), rn(i), &row(i as u8)).unwrap();
+		}
+		// A different hash must not leak into the scanned key's blocks.
+		store.put_row(&mut txn, &h(0xBBB), rn(99), &row(0xFF)).unwrap();
+
+		let page1 = store.rows_for_key_block(&mut txn, &h(0xAAA), None, 2).unwrap();
+		assert_eq!(page1.iter().map(|(rn, _)| *rn).collect::<Vec<_>>(), vec![rn(1), rn(2)]);
+
+		let after = page1.last().unwrap().0;
+		let page2 = store.rows_for_key_block(&mut txn, &h(0xAAA), Some(&after), 2).unwrap();
+		assert_eq!(page2.iter().map(|(rn, _)| *rn).collect::<Vec<_>>(), vec![rn(3), rn(4)]);
+
+		// Resuming past the last row of an exact-multiple key must terminate, not wrap or
+		// pull a neighbouring key's rows.
+		let after = page2.last().unwrap().0;
+		let page3 = store.rows_for_key_block(&mut txn, &h(0xAAA), Some(&after), 2).unwrap();
+		assert!(page3.is_empty(), "scan must end exactly at the key's last row");
+	}
+
+	#[test]
+	fn rows_for_key_stitches_full_and_partial_blocks_without_loss() {
+		let engine = TestEngine::new();
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+		let store = Store::new(FlowNodeId(31), JoinSide::Right);
+
+		// One full block plus a partial block: the wrapper must walk both, in order, with
+		// no dropped or duplicated rows - the exact failure mode a blocked probe risks.
+		let block_size = txn.catalog().get_config_uint8(ConfigKey::FlowJoinProbeBlockSize);
+		let total = block_size + 3;
+		for i in 1..=total {
+			store.put_row(&mut txn, &h(0xCCC), rn(i), &row(0x01)).unwrap();
+		}
+
+		let rows = store.rows_for_key(&mut txn, &h(0xCCC)).unwrap();
+		let got: Vec<u64> = rows.iter().map(|(rn, _)| rn.0).collect();
+		let expected: Vec<u64> = (1..=total).collect();
+		assert_eq!(got, expected, "every match exactly once, in row-number order, across the block boundary");
 	}
 
 	#[test]
