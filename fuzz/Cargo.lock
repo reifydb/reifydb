@@ -1024,7 +1024,6 @@ dependencies = [
  "reifydb-abi",
  "reifydb-core",
  "reifydb-rql",
- "reifydb-sql",
  "reifydb-value",
  "serde",
  "serde_bytes",
@@ -1081,13 +1080,6 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "xxhash-rust",
-]
-
-[[package]]
-name = "reifydb-sql"
-version = "0.6.0"
-dependencies = [
- "reifydb-build",
 ]
 
 [[package]]
