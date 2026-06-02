@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use reifydb_core::interface::catalog::id::SubscriptionId;
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sub_subscription::store::SubscriptionStore;
 use reifydb_value::value::frame::frame::Frame;
 
@@ -52,7 +53,7 @@ impl Subscription {
 	pub fn drain(&self, max: usize) -> Vec<Frame> {
 		let mut out: Vec<Frame> = Vec::new();
 		{
-			let mut prelude = self.prelude.lock().expect("subscription prelude lock poisoned");
+			let mut prelude = self.prelude.lock();
 			if !prelude.is_empty() {
 				let take = max.min(prelude.len());
 				out.extend(prelude.drain(..take));

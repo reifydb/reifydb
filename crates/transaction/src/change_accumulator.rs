@@ -3,6 +3,7 @@
 
 use std::{collections::BTreeMap, mem};
 
+use indexmap::IndexMap;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -11,7 +12,10 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{
+	Result,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 
 #[derive(Debug, Default)]
 pub struct ChangeAccumulator {
@@ -80,7 +84,10 @@ fn build_changes(entries: Vec<(ShapeId, Diff)>, version: CommitVersion, changed_
 
 	let mut result: Vec<Change> = Vec::with_capacity(grouped.len());
 	for (id, diffs) in grouped {
-		let coalesced = coalesce_inserts(diffs)?;
+		let coalesced = coalesce_diffs(diffs)?;
+		if coalesced.is_empty() {
+			continue;
+		}
 		result.push(Change {
 			origin: ChangeOrigin::Shape(id),
 			diffs: coalesced.into(),
@@ -128,4 +135,203 @@ fn flush_insert_run(run: &mut Vec<Columns>, result: &mut Vec<Diff>) -> Result<()
 	}
 	result.push(Diff::insert(merged));
 	Ok(())
+}
+
+enum RowState {
+	Inserted {
+		post: Columns,
+	},
+	Updated {
+		pre: Columns,
+		post: Columns,
+	},
+	Removed {
+		pre: Columns,
+	},
+}
+
+fn coalesce_diffs(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
+	if !diffs.iter().all(diff_is_row_keyed) {
+		return coalesce_inserts(diffs);
+	}
+
+	let mut states: IndexMap<RowNumber, RowState> = IndexMap::new();
+	for diff in diffs {
+		match diff {
+			Diff::Insert {
+				post,
+				..
+			} => {
+				for i in 0..post.row_count() {
+					apply_insert(&mut states, post.row_numbers[i], post.extract_row(i));
+				}
+			}
+			Diff::Update {
+				pre,
+				post,
+				..
+			} => {
+				for i in 0..post.row_count() {
+					apply_update(
+						&mut states,
+						post.row_numbers[i],
+						pre.extract_row(i),
+						post.extract_row(i),
+					);
+				}
+			}
+			Diff::Remove {
+				pre,
+				..
+			} => {
+				for i in 0..pre.row_count() {
+					apply_remove(&mut states, pre.row_numbers[i], pre.extract_row(i));
+				}
+			}
+		}
+	}
+
+	let mut inserts: Option<Columns> = None;
+	let mut update_pre: Option<Columns> = None;
+	let mut update_post: Option<Columns> = None;
+	let mut removes: Option<Columns> = None;
+
+	for (_, state) in states {
+		match state {
+			RowState::Inserted {
+				post,
+			} => append_into(&mut inserts, post)?,
+			RowState::Updated {
+				pre,
+				post,
+			} => {
+				append_into(&mut update_pre, pre)?;
+				append_into(&mut update_post, post)?;
+			}
+			RowState::Removed {
+				pre,
+			} => append_into(&mut removes, pre)?,
+		}
+	}
+
+	let mut result: Vec<Diff> = Vec::with_capacity(3);
+	if let Some(post) = inserts {
+		result.push(Diff::insert(post));
+	}
+	if let (Some(pre), Some(post)) = (update_pre, update_post) {
+		result.push(Diff::update(pre, post));
+	}
+	if let Some(pre) = removes {
+		result.push(Diff::remove(pre));
+	}
+	Ok(result)
+}
+
+fn diff_is_row_keyed(diff: &Diff) -> bool {
+	match diff {
+		Diff::Insert {
+			post,
+			..
+		} => columns_row_keyed(post),
+		Diff::Update {
+			pre,
+			post,
+			..
+		} => columns_row_keyed(pre) && columns_row_keyed(post) && pre.row_count() == post.row_count(),
+		Diff::Remove {
+			pre,
+			..
+		} => columns_row_keyed(pre),
+	}
+}
+
+fn columns_row_keyed(columns: &Columns) -> bool {
+	columns.row_count() > 0 && columns.row_numbers.len() == columns.row_count()
+}
+
+fn apply_insert(states: &mut IndexMap<RowNumber, RowState>, row: RowNumber, post: Columns) {
+	let next = match states.get(&row) {
+		Some(RowState::Updated {
+			pre,
+			..
+		})
+		| Some(RowState::Removed {
+			pre,
+		}) => RowState::Updated {
+			pre: pre.clone(),
+			post,
+		},
+		_ => RowState::Inserted {
+			post,
+		},
+	};
+	states.insert(row, next);
+}
+
+fn apply_update(states: &mut IndexMap<RowNumber, RowState>, row: RowNumber, pre: Columns, post: Columns) {
+	let next = match states.get(&row) {
+		None => RowState::Updated {
+			pre,
+			post,
+		},
+		Some(RowState::Inserted {
+			..
+		}) => RowState::Inserted {
+			post,
+		},
+		Some(RowState::Updated {
+			pre: pre0,
+			..
+		})
+		| Some(RowState::Removed {
+			pre: pre0,
+		}) => RowState::Updated {
+			pre: pre0.clone(),
+			post,
+		},
+	};
+	states.insert(row, next);
+}
+
+fn apply_remove(states: &mut IndexMap<RowNumber, RowState>, row: RowNumber, pre: Columns) {
+	match states.get(&row) {
+		None => {
+			states.insert(
+				row,
+				RowState::Removed {
+					pre,
+				},
+			);
+		}
+		Some(RowState::Inserted {
+			..
+		}) => {
+			states.shift_remove(&row);
+		}
+		Some(RowState::Updated {
+			pre: pre0,
+			..
+		}) => {
+			let pre0 = pre0.clone();
+			states.insert(
+				row,
+				RowState::Removed {
+					pre: pre0,
+				},
+			);
+		}
+		Some(RowState::Removed {
+			..
+		}) => {}
+	}
+}
+
+fn append_into(target: &mut Option<Columns>, source: Columns) -> Result<()> {
+	match target {
+		Some(existing) => existing.append_all(source),
+		None => {
+			*target = Some(source);
+			Ok(())
+		}
+	}
 }
