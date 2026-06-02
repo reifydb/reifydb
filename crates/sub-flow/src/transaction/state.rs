@@ -21,6 +21,21 @@ use tracing::{Span, field, instrument};
 
 use super::FlowTransaction;
 
+#[derive(Clone, Copy)]
+enum StateScope {
+	Public,
+	Internal,
+}
+
+impl StateScope {
+	fn encode(self, id: FlowNodeId, key: &EncodedKey) -> EncodedKey {
+		match self {
+			StateScope::Public => FlowNodeStateKey::new(id, key.as_ref().to_vec()).encode(),
+			StateScope::Internal => FlowNodeInternalStateKey::new(id, key.as_ref().to_vec()).encode(),
+		}
+	}
+}
+
 impl FlowTransaction {
 	#[instrument(name = "flow::state::get", level = "trace", skip(self), fields(
 		node_id = id.0,
@@ -28,9 +43,7 @@ impl FlowTransaction {
 		found = field::Empty
 	))]
 	pub fn state_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<Option<EncodedRow>> {
-		let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
-		let encoded_key = state_key.encode();
-		let result = self.get(&encoded_key)?;
+		let result = self.scoped_get(StateScope::Public, id, key)?;
 		Span::current().record("found", result.is_some());
 		Ok(result)
 	}
@@ -41,96 +54,9 @@ impl FlowTransaction {
 		found_count = field::Empty
 	))]
 	pub fn state_get_many(&mut self, id: FlowNodeId, keys: &[EncodedKey]) -> Result<MultiVersionBatch> {
-		let version = self.version();
-		let encoded: Vec<EncodedKey> =
-			keys.iter().map(|key| FlowNodeStateKey::new(id, key.as_ref().to_vec()).encode()).collect();
-
-		let mut items: Vec<MultiVersionRow> = Vec::new();
-		let mut to_batch: Vec<EncodedKey> = Vec::new();
-
-		for encoded_key in &encoded {
-			let pending = {
-				let inner = self.inner();
-				if inner.pending.is_removed(encoded_key) {
-					Some(None)
-				} else {
-					inner.pending.get(encoded_key).map(|row| Some(row.clone()))
-				}
-			};
-			match pending {
-				Some(None) => continue,
-				Some(Some(row)) => {
-					items.push(MultiVersionRow {
-						key: encoded_key.clone(),
-						row,
-						version,
-					});
-					continue;
-				}
-				None => {}
-			}
-
-			let base = if let Self::Transactional {
-				base_pending,
-				..
-			} = &*self
-			{
-				if base_pending.is_removed(encoded_key) {
-					Some(None)
-				} else {
-					base_pending.get(encoded_key).map(|row| Some(row.clone()))
-				}
-			} else {
-				None
-			};
-			match base {
-				Some(None) => continue,
-				Some(Some(row)) => {
-					items.push(MultiVersionRow {
-						key: encoded_key.clone(),
-						row,
-						version,
-					});
-					continue;
-				}
-				None => {}
-			}
-
-			to_batch.push(encoded_key.clone());
-		}
-
-		if !to_batch.is_empty() {
-			if let Self::Ephemeral {
-				inner,
-				state,
-			} = self
-			{
-				let version = inner.version;
-				for encoded_key in &to_batch {
-					if let Some(row) = state.get(encoded_key) {
-						items.push(MultiVersionRow {
-							key: encoded_key.clone(),
-							row: row.clone(),
-							version,
-						});
-					}
-				}
-			} else {
-				let inner = self.inner_mut();
-				let found = inner.state_query.as_ref().unwrap().get_many(&to_batch)?;
-				for encoded_key in &to_batch {
-					if let Some(multi) = found.get(encoded_key) {
-						items.push(multi.clone());
-					}
-				}
-			}
-		}
-
-		Span::current().record("found_count", items.len());
-		Ok(MultiVersionBatch {
-			items,
-			has_more: false,
-		})
+		let batch = self.scoped_get_many(StateScope::Public, id, keys)?;
+		Span::current().record("found_count", batch.items.len());
+		Ok(batch)
 	}
 
 	#[instrument(name = "flow::state::prefetch", level = "debug", skip(self, keys), fields(node_id = id.0, key_count = keys.len()))]
@@ -147,7 +73,7 @@ impl FlowTransaction {
 
 		let inner = self.inner_mut();
 		for key in keys {
-			let encoded_key = FlowNodeStateKey::new(id, key.as_ref().to_vec()).encode();
+			let encoded_key = StateScope::Public.encode(id, key);
 			let value = found.get(&encoded_key).cloned();
 			inner.prefetch.insert(encoded_key, value);
 		}
@@ -159,22 +85,8 @@ impl FlowTransaction {
 		key_len = key.as_bytes().len(),
 		value_len = value.len()
 	))]
-	pub fn state_set(&mut self, id: FlowNodeId, key: &EncodedKey, mut value: EncodedRow) -> Result<()> {
-		let state_key = FlowNodeStateKey::new(id, key.to_vec());
-		let encoded_key = state_key.encode();
-
-		if value.len() >= SHAPE_HEADER_SIZE
-			&& let Some(prior) = self.get(&encoded_key)?
-			&& prior.len() >= SHAPE_HEADER_SIZE
-		{
-			let prior_created = prior.created_at_nanos();
-			if prior_created != 0 {
-				let updated = value.updated_at_nanos();
-				value.set_timestamps(prior_created, updated);
-			}
-		}
-
-		self.set(&encoded_key, value)
+	pub fn state_set(&mut self, id: FlowNodeId, key: &EncodedKey, value: EncodedRow) -> Result<()> {
+		self.scoped_set(StateScope::Public, id, key, value)
 	}
 
 	#[instrument(name = "flow::state::remove", level = "trace", skip(self), fields(
@@ -182,9 +94,7 @@ impl FlowTransaction {
 		key_len = key.as_bytes().len()
 	))]
 	pub fn state_remove(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<()> {
-		let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
-		let encoded_key = state_key.encode();
-		self.remove(&encoded_key)
+		self.scoped_remove(StateScope::Public, id, key)
 	}
 
 	#[instrument(name = "flow::internal_state::get", level = "trace", skip(self), fields(
@@ -193,9 +103,7 @@ impl FlowTransaction {
 		found = field::Empty
 	))]
 	pub fn internal_state_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<Option<EncodedRow>> {
-		let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
-		let encoded_key = state_key.encode();
-		let result = self.get(&encoded_key)?;
+		let result = self.scoped_get(StateScope::Internal, id, key)?;
 		Span::current().record("found", result.is_some());
 		Ok(result)
 	}
@@ -206,98 +114,9 @@ impl FlowTransaction {
 		found_count = field::Empty
 	))]
 	pub fn internal_state_get_many(&mut self, id: FlowNodeId, keys: &[EncodedKey]) -> Result<MultiVersionBatch> {
-		let version = self.version();
-		let encoded: Vec<EncodedKey> = keys
-			.iter()
-			.map(|key| FlowNodeInternalStateKey::new(id, key.as_ref().to_vec()).encode())
-			.collect();
-
-		let mut items: Vec<MultiVersionRow> = Vec::new();
-		let mut to_batch: Vec<EncodedKey> = Vec::new();
-
-		for encoded_key in &encoded {
-			let pending = {
-				let inner = self.inner();
-				if inner.pending.is_removed(encoded_key) {
-					Some(None)
-				} else {
-					inner.pending.get(encoded_key).map(|row| Some(row.clone()))
-				}
-			};
-			match pending {
-				Some(None) => continue,
-				Some(Some(row)) => {
-					items.push(MultiVersionRow {
-						key: encoded_key.clone(),
-						row,
-						version,
-					});
-					continue;
-				}
-				None => {}
-			}
-
-			let base = if let Self::Transactional {
-				base_pending,
-				..
-			} = &*self
-			{
-				if base_pending.is_removed(encoded_key) {
-					Some(None)
-				} else {
-					base_pending.get(encoded_key).map(|row| Some(row.clone()))
-				}
-			} else {
-				None
-			};
-			match base {
-				Some(None) => continue,
-				Some(Some(row)) => {
-					items.push(MultiVersionRow {
-						key: encoded_key.clone(),
-						row,
-						version,
-					});
-					continue;
-				}
-				None => {}
-			}
-
-			to_batch.push(encoded_key.clone());
-		}
-
-		if !to_batch.is_empty() {
-			if let Self::Ephemeral {
-				inner,
-				state,
-			} = self
-			{
-				let version = inner.version;
-				for encoded_key in &to_batch {
-					if let Some(row) = state.get(encoded_key) {
-						items.push(MultiVersionRow {
-							key: encoded_key.clone(),
-							row: row.clone(),
-							version,
-						});
-					}
-				}
-			} else {
-				let inner = self.inner_mut();
-				let found = inner.state_query.as_ref().unwrap().get_many(&to_batch)?;
-				for encoded_key in &to_batch {
-					if let Some(multi) = found.get(encoded_key) {
-						items.push(multi.clone());
-					}
-				}
-			}
-		}
-
-		Span::current().record("found_count", items.len());
-		Ok(MultiVersionBatch {
-			items,
-			has_more: false,
-		})
+		let batch = self.scoped_get_many(StateScope::Internal, id, keys)?;
+		Span::current().record("found_count", batch.items.len());
+		Ok(batch)
 	}
 
 	#[instrument(name = "flow::internal_state::set", level = "trace", skip(self, value), fields(
@@ -305,22 +124,8 @@ impl FlowTransaction {
 		key_len = key.as_bytes().len(),
 		value_len = value.len()
 	))]
-	pub fn internal_state_set(&mut self, id: FlowNodeId, key: &EncodedKey, mut value: EncodedRow) -> Result<()> {
-		let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
-		let encoded_key = state_key.encode();
-
-		if value.len() >= SHAPE_HEADER_SIZE
-			&& let Some(prior) = self.get(&encoded_key)?
-			&& prior.len() >= SHAPE_HEADER_SIZE
-		{
-			let prior_created = prior.created_at_nanos();
-			if prior_created != 0 {
-				let updated = value.updated_at_nanos();
-				value.set_timestamps(prior_created, updated);
-			}
-		}
-
-		self.set(&encoded_key, value)
+	pub fn internal_state_set(&mut self, id: FlowNodeId, key: &EncodedKey, value: EncodedRow) -> Result<()> {
+		self.scoped_set(StateScope::Internal, id, key, value)
 	}
 
 	#[instrument(name = "flow::internal_state::remove", level = "trace", skip(self), fields(
@@ -328,9 +133,7 @@ impl FlowTransaction {
 		key_len = key.as_bytes().len()
 	))]
 	pub fn internal_state_remove(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<()> {
-		let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
-		let encoded_key = state_key.encode();
-		self.remove(&encoded_key)
+		self.scoped_remove(StateScope::Internal, id, key)
 	}
 
 	#[instrument(name = "flow::state::scan", level = "debug", skip(self), fields(
@@ -427,6 +230,135 @@ impl FlowTransaction {
 	))]
 	pub fn save_row(&mut self, id: FlowNodeId, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		self.state_set(id, key, row)
+	}
+
+	fn scoped_get(&mut self, scope: StateScope, id: FlowNodeId, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+		let encoded_key = scope.encode(id, key);
+		self.get(&encoded_key)
+	}
+
+	fn scoped_get_many(
+		&mut self,
+		scope: StateScope,
+		id: FlowNodeId,
+		keys: &[EncodedKey],
+	) -> Result<MultiVersionBatch> {
+		let version = self.version();
+		let encoded: Vec<EncodedKey> = keys.iter().map(|key| scope.encode(id, key)).collect();
+
+		let mut items: Vec<MultiVersionRow> = Vec::new();
+		let mut to_batch: Vec<EncodedKey> = Vec::new();
+
+		for encoded_key in &encoded {
+			let pending = {
+				let inner = self.inner();
+				if inner.pending.is_removed(encoded_key) {
+					Some(None)
+				} else {
+					inner.pending.get(encoded_key).map(|row| Some(row.clone()))
+				}
+			};
+			match pending {
+				Some(None) => continue,
+				Some(Some(row)) => {
+					items.push(MultiVersionRow {
+						key: encoded_key.clone(),
+						row,
+						version,
+					});
+					continue;
+				}
+				None => {}
+			}
+
+			let base = if let Self::Transactional {
+				base_pending,
+				..
+			} = &*self
+			{
+				if base_pending.is_removed(encoded_key) {
+					Some(None)
+				} else {
+					base_pending.get(encoded_key).map(|row| Some(row.clone()))
+				}
+			} else {
+				None
+			};
+			match base {
+				Some(None) => continue,
+				Some(Some(row)) => {
+					items.push(MultiVersionRow {
+						key: encoded_key.clone(),
+						row,
+						version,
+					});
+					continue;
+				}
+				None => {}
+			}
+
+			to_batch.push(encoded_key.clone());
+		}
+
+		if !to_batch.is_empty() {
+			if let Self::Ephemeral {
+				inner,
+				state,
+			} = self
+			{
+				let version = inner.version;
+				for encoded_key in &to_batch {
+					if let Some(row) = state.get(encoded_key) {
+						items.push(MultiVersionRow {
+							key: encoded_key.clone(),
+							row: row.clone(),
+							version,
+						});
+					}
+				}
+			} else {
+				let inner = self.inner_mut();
+				let found = inner.state_query.as_ref().unwrap().get_many(&to_batch)?;
+				for encoded_key in &to_batch {
+					if let Some(multi) = found.get(encoded_key) {
+						items.push(multi.clone());
+					}
+				}
+			}
+		}
+
+		Ok(MultiVersionBatch {
+			items,
+			has_more: false,
+		})
+	}
+
+	fn scoped_set(
+		&mut self,
+		scope: StateScope,
+		id: FlowNodeId,
+		key: &EncodedKey,
+		mut value: EncodedRow,
+	) -> Result<()> {
+		let encoded_key = scope.encode(id, key);
+
+		if value.len() >= SHAPE_HEADER_SIZE
+			&& let Some(prior) = self.get(&encoded_key)?
+			&& prior.len() >= SHAPE_HEADER_SIZE
+		{
+			let prior_created = prior.created_at_nanos();
+			if prior_created != 0 {
+				let updated = value.updated_at_nanos();
+				value.set_timestamps(prior_created, updated);
+			}
+		}
+
+		self.set(&encoded_key, value)
+	}
+
+	fn scoped_remove(&mut self, scope: StateScope, id: FlowNodeId, key: &EncodedKey) -> Result<()> {
+		let encoded_key = scope.encode(id, key);
+		self.remove(&encoded_key)
 	}
 }
 
