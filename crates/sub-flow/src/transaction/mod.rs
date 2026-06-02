@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, mem, sync::Arc};
 
-use read::ReadFrom;
+use read::{ReadFrom, read_from};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
@@ -393,7 +393,7 @@ impl FlowTransaction {
 		} = self
 		{
 			for (key, write) in inner.pending.iter_sorted() {
-				if matches!(Self::read_from(key), ReadFrom::StateQuery) {
+				if matches!(read_from(key), ReadFrom::StateQuery) {
 					match write {
 						PendingWrite::Set(row) => {
 							state.insert(key.clone(), row.clone());
