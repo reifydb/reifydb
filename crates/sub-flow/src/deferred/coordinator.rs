@@ -29,6 +29,7 @@ use reifydb_core::{
 			flow::FlowId,
 			id::ViewId,
 			shape::ShapeId,
+			view::ViewKind,
 		},
 		cdc::{Cdc, CdcBatch, CdcConsumerId, SystemChange},
 		change::{Change, ChangeOrigin},
@@ -1385,6 +1386,9 @@ impl CoordinatorActor {
 			let active_consumers: Vec<FlowId> =
 				consumer_flows.iter().copied().filter(|f| active.contains(f)).collect();
 			if active_consumers.is_empty() {
+				continue;
+			}
+			if self.catalog.find_view(*view_id).map(|v| v.kind()) == Some(ViewKind::Transactional) {
 				continue;
 			}
 			let Some(producer_flow_id) = g.sink_views.get(view_id) else {

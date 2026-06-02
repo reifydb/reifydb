@@ -1,0 +1,41 @@
+# Create transactional view, delete, recreate with different columns
+
+admin 'CREATE NAMESPACE vw'
+admin 'CREATE TABLE vw::employees { id: int4, name: utf8, dept: utf8, active: bool }'
+admin 'CREATE TRANSACTIONAL VIEW vw::staff { id: int4 } AS { FROM vw::employees MAP { id: id } }'
+replicate
+---
+version: 2
+
+query 'FROM system::views FILTER {name == "staff"}'
+---
++---------+----------------+---------+------------------+
+|   id    |  namespace_id  |  name   |  primary_key_id  |
++---------+----------------+---------+------------------+
+|  16387  |     16385      |  staff  |       none       |
++---------+----------------+---------+------------------+
+
+(admin 'DROP VIEW vw::staff')
+replicate
+---
+version: 3
+
+query 'FROM system::views FILTER {name == "staff"}'
+---
++------+----------------+--------+--------+------------------+
+|  id  |  namespace_id  |  name  |  kind  |  primary_key_id  |
++------+----------------+--------+--------+------------------+
++------+----------------+--------+--------+------------------+
+
+admin 'CREATE TRANSACTIONAL VIEW vw::staff { id: int4, name: utf8, dept: utf8 } AS { FROM vw::employees FILTER {active == true} MAP { id: id, name: name, dept: dept } }'
+replicate
+---
+version: 4
+
+query 'FROM system::views FILTER {name == "staff"}'
+---
++---------+----------------+---------+------------------+
+|   id    |  namespace_id  |  name   |  primary_key_id  |
++---------+----------------+---------+------------------+
+|  16389  |     16385      |  staff  |       none       |
++---------+----------------+---------+------------------+

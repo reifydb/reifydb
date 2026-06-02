@@ -4,5 +4,8 @@
 #[path = "subscription/common.rs"]
 mod common;
 
+#[path = "regression/append_multiplicity.rs"]
+mod append_multiplicity;
+
 #[path = "regression/update_diff_kind.rs"]
 mod update_diff_kind;

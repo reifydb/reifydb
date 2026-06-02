@@ -263,8 +263,12 @@ impl AppendOperator {
 		for row_idx in 0..row_count {
 			let source_row_number = source.row_numbers[row_idx];
 			let composite_key = Self::make_composite_key(parent_index as u8, source_row_number);
-			let (output_row_number, _) =
+			let (output_row_number, was_new) =
 				self.row_number_provider.get_or_create_row_number(txn, &composite_key)?;
+			eprintln!(
+				"DBG2     APPEND node={} parent={} src_rn={} -> out_rn={} new={was_new}",
+				self.node.0, parent_index, source_row_number.0, output_row_number.0
+			);
 			self.touch_timestamp(txn, &composite_key)?;
 			output_row_numbers.push(output_row_number);
 		}

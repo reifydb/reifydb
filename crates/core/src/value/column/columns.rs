@@ -451,7 +451,7 @@ impl Columns {
 
 		let mut new_buffers: Vec<ColumnBuffer> = Vec::with_capacity(self.columns.len());
 		for col in self.columns.iter() {
-			let mut new_data = ColumnBuffer::with_capacity(col.get_type(), indices.len());
+			let mut new_data = col.empty_like(indices.len());
 			for &idx in indices {
 				new_data.push_value(col.get_value(idx));
 			}
@@ -909,11 +909,490 @@ impl Columns {
 
 #[cfg(test)]
 pub mod tests {
+	use std::str::FromStr;
+
 	use reifydb_value::value::{
-		date::Date, datetime::DateTime, duration::Duration, ordered_f64::OrderedF64, time::Time,
+		blob::Blob,
+		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		dictionary::{DictionaryEntryId, DictionaryId},
+		duration::Duration,
+		identity::IdentityId,
+		int::Int,
+		ordered_f64::OrderedF64,
+		time::Time,
+		uint::Uint,
+		uuid::{Uuid4, Uuid7},
 	};
+	use uuid::{Timestamp, Uuid};
 
 	use super::*;
+
+	fn uuid7_at(a: u64, b: u16) -> Uuid7 {
+		Uuid7::from(Uuid::new_v7(Timestamp::from_gregorian_time(a, b)))
+	}
+
+	/// Builds a one-column `Columns` from `buffer`, extracts `indices`, and asserts the extracted
+	/// column reports the right row count, keeps its value type, and reproduces the source value at
+	/// every requested index in order. This is the type-agnostic core check: it compares
+	/// `get_value` of the extraction against `get_value` of the source so it works for every
+	/// `ColumnBuffer` variant without hand-constructing each `Value`.
+	fn assert_extract_preserves_values(buffer: ColumnBuffer, indices: &[usize]) {
+		let original = Columns::new(vec![ColumnWithName::new("c", buffer)]);
+		let extracted = original.extract_by_indices(indices);
+
+		assert_eq!(extracted.len(), 1, "column count must be preserved");
+		assert_eq!(extracted.row_count(), indices.len(), "row count must equal number of indices");
+
+		let src = original.data_at(0);
+		let dst = extracted.data_at(0);
+		assert_eq!(dst.get_type(), src.get_type(), "value type must be preserved");
+		for (j, &idx) in indices.iter().enumerate() {
+			assert_eq!(
+				dst.get_value(j),
+				src.get_value(idx),
+				"value at extracted row {j} must equal source row {idx}"
+			);
+		}
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_bool_values() {
+		assert_extract_preserves_values(ColumnBuffer::bool([true, false, true, false]), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_float4_values() {
+		assert_extract_preserves_values(ColumnBuffer::float4([1.0f32, 2.5, -3.0, 4.25]), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_float8_values() {
+		assert_extract_preserves_values(ColumnBuffer::float8([1.0f64, 2.5, -3.0, 4.25]), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_int1_values() {
+		assert_extract_preserves_values(ColumnBuffer::int1([-1i8, 2, -3, 4]), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_int2_values() {
+		assert_extract_preserves_values(ColumnBuffer::int2([-1i16, 2, -3, 4]), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_int4_values() {
+		assert_extract_preserves_values(ColumnBuffer::int4([-1i32, 2, -3, 4]), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_int8_values() {
+		assert_extract_preserves_values(ColumnBuffer::int8([-1i64, 2, -3, 4]), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_int16_values() {
+		assert_extract_preserves_values(ColumnBuffer::int16([-1i128, 2, -3, 4]), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_uint1_values() {
+		assert_extract_preserves_values(ColumnBuffer::uint1([1u8, 2, 3, 4]), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_uint2_values() {
+		assert_extract_preserves_values(ColumnBuffer::uint2([1u16, 2, 3, 4]), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_uint4_values() {
+		assert_extract_preserves_values(ColumnBuffer::uint4([1u32, 2, 3, 4]), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_uint8_values() {
+		assert_extract_preserves_values(ColumnBuffer::uint8([1u64, 2, 3, 4]), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_uint16_values() {
+		assert_extract_preserves_values(ColumnBuffer::uint16([1u128, 2, 3, 4]), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_utf8_values() {
+		assert_extract_preserves_values(ColumnBuffer::utf8(["a", "bb", "ccc", "dddd"]), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_date_values() {
+		let data = [
+			Date::from_ymd(2025, 1, 1).unwrap(),
+			Date::from_ymd(2025, 6, 15).unwrap(),
+			Date::from_ymd(2024, 12, 31).unwrap(),
+			Date::from_ymd(2000, 2, 29).unwrap(),
+		];
+		assert_extract_preserves_values(ColumnBuffer::date(data), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_datetime_values() {
+		let data = [
+			DateTime::from_timestamp(1000).unwrap(),
+			DateTime::from_timestamp(2000).unwrap(),
+			DateTime::from_timestamp(3000).unwrap(),
+			DateTime::from_timestamp(4000).unwrap(),
+		];
+		assert_extract_preserves_values(ColumnBuffer::datetime(data), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_time_values() {
+		let data = [
+			Time::from_hms(0, 0, 0).unwrap(),
+			Time::from_hms(12, 30, 45).unwrap(),
+			Time::from_hms(23, 59, 59).unwrap(),
+			Time::from_hms(6, 15, 0).unwrap(),
+		];
+		assert_extract_preserves_values(ColumnBuffer::time(data), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_duration_values() {
+		let data = [
+			Duration::from_days(1).unwrap(),
+			Duration::from_days(7).unwrap(),
+			Duration::from_days(30).unwrap(),
+			Duration::from_days(365).unwrap(),
+		];
+		assert_extract_preserves_values(ColumnBuffer::duration(data), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_identity_id_values() {
+		let data = [IdentityId::root(), IdentityId::system(), IdentityId::anonymous(), IdentityId::root()];
+		assert_extract_preserves_values(ColumnBuffer::identity_id(data), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_uuid4_values() {
+		let data = [Uuid4::generate(), Uuid4::generate(), Uuid4::generate(), Uuid4::generate()];
+		assert_extract_preserves_values(ColumnBuffer::uuid4(data), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_uuid7_values() {
+		let data = [uuid7_at(1, 1), uuid7_at(1, 2), uuid7_at(2, 1), uuid7_at(2, 2)];
+		assert_extract_preserves_values(ColumnBuffer::uuid7(data), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_blob_values() {
+		let data = [
+			Blob::new(vec![1]),
+			Blob::new(vec![2, 3]),
+			Blob::new(vec![4, 5, 6]),
+			Blob::new(vec![7, 8, 9, 10]),
+		];
+		assert_extract_preserves_values(ColumnBuffer::blob(data), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_int_values() {
+		let data = [Int::from(-1i64), Int::from(2i64), Int::from(-3i64), Int::from(4i64)];
+		assert_extract_preserves_values(ColumnBuffer::int(data), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_uint_values() {
+		let data = [Uint::from(1u64), Uint::from(2u64), Uint::from(3u64), Uint::from(4u64)];
+		assert_extract_preserves_values(ColumnBuffer::uint(data), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_decimal_values() {
+		let data = [
+			Decimal::from_str("1.50").unwrap(),
+			Decimal::from_str("2.25").unwrap(),
+			Decimal::from_str("-3.75").unwrap(),
+			Decimal::from_str("4.00").unwrap(),
+		];
+		assert_extract_preserves_values(ColumnBuffer::decimal(data), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_any_values() {
+		let data = [
+			Box::new(Value::Int4(1)),
+			Box::new(Value::Utf8("two".to_string())),
+			Box::new(Value::Boolean(true)),
+			Box::new(Value::none()),
+		];
+		assert_extract_preserves_values(ColumnBuffer::any(data), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_dictionary_id_values() {
+		let data = [
+			DictionaryEntryId::U2(10),
+			DictionaryEntryId::U2(20),
+			DictionaryEntryId::U2(30),
+			DictionaryEntryId::U2(40),
+		];
+		assert_extract_preserves_values(ColumnBuffer::dictionary_id(data), &[3, 1, 2]);
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_option_values_including_none() {
+		let mut buffer = ColumnBuffer::with_capacity(ValueType::Option(Box::new(ValueType::Int4)), 0);
+		buffer.push_value(Value::Int4(1));
+		buffer.push_value(Value::none());
+		buffer.push_value(Value::Int4(3));
+		buffer.push_value(Value::none());
+		assert_extract_preserves_values(buffer, &[3, 1, 2, 0]);
+	}
+
+	#[test]
+	fn extract_by_indices_empty_indices_yields_empty_columns() {
+		let original = Columns::new(vec![ColumnWithName::int4("c", [1, 2, 3])]);
+		let extracted = original.extract_by_indices(&[]);
+		assert_eq!(extracted.row_count(), 0);
+		assert!(extracted.is_empty());
+	}
+
+	#[test]
+	fn extract_by_indices_full_identity_reproduces_all_rows() {
+		assert_extract_preserves_values(ColumnBuffer::int4([10, 20, 30, 40]), &[0, 1, 2, 3]);
+	}
+
+	#[test]
+	fn extract_by_indices_duplicate_index_duplicates_row() {
+		let original = Columns::new(vec![ColumnWithName::int4("c", [10, 20, 30])]);
+		let extracted = original.extract_by_indices(&[1, 1, 1]);
+		assert_eq!(extracted.row_count(), 3);
+		assert_eq!(extracted.data_at(0).get_value(0), Value::Int4(20));
+		assert_eq!(extracted.data_at(0).get_value(1), Value::Int4(20));
+		assert_eq!(extracted.data_at(0).get_value(2), Value::Int4(20));
+	}
+
+	#[test]
+	fn extract_by_indices_extracts_multiple_columns_consistently() {
+		let original = Columns::new(vec![
+			ColumnWithName::int4("id", [1, 2, 3, 4]),
+			ColumnWithName::utf8(
+				"name",
+				["a".to_string(), "b".to_string(), "c".to_string(), "d".to_string()],
+			),
+			ColumnWithName::bool("flag", [true, false, true, false]),
+		]);
+		let extracted = original.extract_by_indices(&[2, 0]);
+
+		assert_eq!(extracted.len(), 3);
+		assert_eq!(extracted.row_count(), 2);
+		assert_eq!(extracted.column("id").unwrap().data().get_value(0), Value::Int4(3));
+		assert_eq!(extracted.column("id").unwrap().data().get_value(1), Value::Int4(1));
+		assert_eq!(extracted.column("name").unwrap().data().get_value(0), Value::Utf8("c".to_string()));
+		assert_eq!(extracted.column("name").unwrap().data().get_value(1), Value::Utf8("a".to_string()));
+		assert_eq!(extracted.column("flag").unwrap().data().get_value(0), Value::Boolean(true));
+		assert_eq!(extracted.column("flag").unwrap().data().get_value(1), Value::Boolean(true));
+	}
+
+	#[test]
+	fn extract_by_indices_extracts_system_columns_in_order() {
+		let columns = vec![ColumnWithName::int4("id", [10, 20, 30, 40])];
+		let row_numbers = vec![RowNumber::from(1), RowNumber::from(2), RowNumber::from(3), RowNumber::from(4)];
+		let created_at = vec![
+			DateTime::from_timestamp(1000).unwrap(),
+			DateTime::from_timestamp(2000).unwrap(),
+			DateTime::from_timestamp(3000).unwrap(),
+			DateTime::from_timestamp(4000).unwrap(),
+		];
+		let updated_at = vec![
+			DateTime::from_timestamp(1100).unwrap(),
+			DateTime::from_timestamp(2200).unwrap(),
+			DateTime::from_timestamp(3300).unwrap(),
+			DateTime::from_timestamp(4400).unwrap(),
+		];
+		let original = Columns::with_system_columns(columns, row_numbers, created_at, updated_at);
+
+		let extracted = original.extract_by_indices(&[3, 0]);
+
+		let rns: Vec<RowNumber> = extracted.row_numbers.iter().cloned().collect();
+		assert_eq!(rns, vec![RowNumber::from(4), RowNumber::from(1)], "row_numbers must follow indices");
+		assert_eq!(
+			extracted.created_at.iter().cloned().collect::<Vec<_>>(),
+			vec![DateTime::from_timestamp(4000).unwrap(), DateTime::from_timestamp(1000).unwrap()],
+			"created_at must follow indices"
+		);
+		assert_eq!(
+			extracted.updated_at.iter().cloned().collect::<Vec<_>>(),
+			vec![DateTime::from_timestamp(4400).unwrap(), DateTime::from_timestamp(1100).unwrap()],
+			"updated_at must follow indices"
+		);
+	}
+
+	/// Regression: the change accumulator coalesces row-keyed inserts by calling `extract_row`
+	/// per row, and a deferred view over a dictionary-encoded column then decodes using the
+	/// buffer's `dictionary_id`. If extraction drops that metadata the view can no longer resolve
+	/// the dictionary and inserts are silently lost. This pins that `extract_by_indices` carries
+	/// the `dictionary_id` through.
+	#[test]
+	fn extract_by_indices_preserves_dictionary_id_metadata() {
+		let mut buffer = ColumnBuffer::dictionary_id([
+			DictionaryEntryId::U2(10),
+			DictionaryEntryId::U2(20),
+			DictionaryEntryId::U2(30),
+		]);
+		match &mut buffer {
+			ColumnBuffer::DictionaryId(container) => container.set_dictionary_id(DictionaryId(42)),
+			_ => unreachable!("dictionary_id factory must build a DictionaryId buffer"),
+		}
+
+		let original = Columns::new(vec![ColumnWithName::new("token", buffer)]);
+		let extracted = original.extract_by_indices(&[2, 0]);
+
+		match extracted.data_at(0) {
+			ColumnBuffer::DictionaryId(container) => {
+				assert_eq!(
+					container.dictionary_id(),
+					Some(DictionaryId(42)),
+					"dictionary_id metadata must survive extraction"
+				);
+			}
+			other => panic!("expected DictionaryId buffer, got {:?}", other.get_type()),
+		}
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_utf8_max_bytes_metadata() {
+		let mut buffer = ColumnBuffer::utf8(["a", "bb", "ccc"]);
+		match &mut buffer {
+			ColumnBuffer::Utf8 {
+				max_bytes,
+				..
+			} => *max_bytes = MaxBytes::new(255),
+			_ => unreachable!(),
+		}
+
+		let original = Columns::new(vec![ColumnWithName::new("c", buffer)]);
+		let extracted = original.extract_by_indices(&[2, 0]);
+
+		match extracted.data_at(0) {
+			ColumnBuffer::Utf8 {
+				max_bytes,
+				..
+			} => assert_eq!(*max_bytes, MaxBytes::new(255), "Utf8 max_bytes must survive extraction"),
+			other => panic!("expected Utf8 buffer, got {:?}", other.get_type()),
+		}
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_blob_max_bytes_metadata() {
+		let mut buffer = ColumnBuffer::blob([Blob::new(vec![1]), Blob::new(vec![2, 3]), Blob::new(vec![4])]);
+		match &mut buffer {
+			ColumnBuffer::Blob {
+				max_bytes,
+				..
+			} => *max_bytes = MaxBytes::new(1024),
+			_ => unreachable!(),
+		}
+
+		let original = Columns::new(vec![ColumnWithName::new("c", buffer)]);
+		let extracted = original.extract_by_indices(&[2, 0]);
+
+		match extracted.data_at(0) {
+			ColumnBuffer::Blob {
+				max_bytes,
+				..
+			} => assert_eq!(*max_bytes, MaxBytes::new(1024), "Blob max_bytes must survive extraction"),
+			other => panic!("expected Blob buffer, got {:?}", other.get_type()),
+		}
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_int_max_bytes_metadata() {
+		let mut buffer = ColumnBuffer::int([Int::from(1i64), Int::from(2i64), Int::from(3i64)]);
+		match &mut buffer {
+			ColumnBuffer::Int {
+				max_bytes,
+				..
+			} => *max_bytes = MaxBytes::new(16),
+			_ => unreachable!(),
+		}
+
+		let original = Columns::new(vec![ColumnWithName::new("c", buffer)]);
+		let extracted = original.extract_by_indices(&[2, 0]);
+
+		match extracted.data_at(0) {
+			ColumnBuffer::Int {
+				max_bytes,
+				..
+			} => assert_eq!(*max_bytes, MaxBytes::new(16), "Int max_bytes must survive extraction"),
+			other => panic!("expected Int buffer, got {:?}", other.get_type()),
+		}
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_uint_max_bytes_metadata() {
+		let mut buffer = ColumnBuffer::uint([Uint::from(1u64), Uint::from(2u64), Uint::from(3u64)]);
+		match &mut buffer {
+			ColumnBuffer::Uint {
+				max_bytes,
+				..
+			} => *max_bytes = MaxBytes::new(8),
+			_ => unreachable!(),
+		}
+
+		let original = Columns::new(vec![ColumnWithName::new("c", buffer)]);
+		let extracted = original.extract_by_indices(&[2, 0]);
+
+		match extracted.data_at(0) {
+			ColumnBuffer::Uint {
+				max_bytes,
+				..
+			} => assert_eq!(*max_bytes, MaxBytes::new(8), "Uint max_bytes must survive extraction"),
+			other => panic!("expected Uint buffer, got {:?}", other.get_type()),
+		}
+	}
+
+	#[test]
+	fn extract_by_indices_preserves_decimal_precision_and_scale_metadata() {
+		let mut buffer = ColumnBuffer::decimal([
+			Decimal::from_str("1.50").unwrap(),
+			Decimal::from_str("2.25").unwrap(),
+			Decimal::from_str("3.75").unwrap(),
+		]);
+		match &mut buffer {
+			ColumnBuffer::Decimal {
+				precision,
+				scale,
+				..
+			} => {
+				*precision = Precision::new(10);
+				*scale = Scale::new(2);
+			}
+			_ => unreachable!(),
+		}
+
+		let original = Columns::new(vec![ColumnWithName::new("c", buffer)]);
+		let extracted = original.extract_by_indices(&[2, 0]);
+
+		match extracted.data_at(0) {
+			ColumnBuffer::Decimal {
+				precision,
+				scale,
+				..
+			} => {
+				assert_eq!(*precision, Precision::new(10), "Decimal precision must survive extraction");
+				assert_eq!(*scale, Scale::new(2), "Decimal scale must survive extraction");
+			}
+			other => panic!("expected Decimal buffer, got {:?}", other.get_type()),
+		}
+	}
 
 	#[test]
 	fn test_single_row_temporal_types() {

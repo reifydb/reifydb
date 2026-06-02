@@ -891,6 +891,86 @@ impl ColumnBuffer {
 		}
 	}
 
+	pub fn empty_like(&self, capacity: usize) -> Self {
+		let mut buffer = Self::with_capacity(self.get_type(), capacity);
+		match (self, &mut buffer) {
+			(
+				ColumnBuffer::Utf8 {
+					max_bytes: src,
+					..
+				},
+				ColumnBuffer::Utf8 {
+					max_bytes: dst,
+					..
+				},
+			)
+			| (
+				ColumnBuffer::Blob {
+					max_bytes: src,
+					..
+				},
+				ColumnBuffer::Blob {
+					max_bytes: dst,
+					..
+				},
+			)
+			| (
+				ColumnBuffer::Int {
+					max_bytes: src,
+					..
+				},
+				ColumnBuffer::Int {
+					max_bytes: dst,
+					..
+				},
+			)
+			| (
+				ColumnBuffer::Uint {
+					max_bytes: src,
+					..
+				},
+				ColumnBuffer::Uint {
+					max_bytes: dst,
+					..
+				},
+			) => *dst = *src,
+			(
+				ColumnBuffer::Decimal {
+					precision: src_precision,
+					scale: src_scale,
+					..
+				},
+				ColumnBuffer::Decimal {
+					precision: dst_precision,
+					scale: dst_scale,
+					..
+				},
+			) => {
+				*dst_precision = *src_precision;
+				*dst_scale = *src_scale;
+			}
+			(ColumnBuffer::DictionaryId(src), ColumnBuffer::DictionaryId(dst)) => {
+				if let Some(dictionary_id) = src.dictionary_id() {
+					dst.set_dictionary_id(dictionary_id);
+				}
+			}
+			(
+				ColumnBuffer::Option {
+					inner: src_inner,
+					..
+				},
+				ColumnBuffer::Option {
+					inner: dst_inner,
+					..
+				},
+			) => {
+				**dst_inner = src_inner.empty_like(capacity);
+			}
+			_ => {}
+		}
+		buffer
+	}
+
 	pub fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = Value> + 'a> {
 		Box::new((0..self.len()).map(move |i| self.get_value(i)))
 	}
