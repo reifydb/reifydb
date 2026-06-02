@@ -164,7 +164,10 @@ fn resolve_shape_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &ShapeId
 
 fn build_output_columns(entries: &[MutationEntry]) -> Result<Columns, Error> {
 	if entries.is_empty() {
-		return Ok(Columns::empty());
+		return Ok(Columns::new(vec![
+			ColumnWithName::new("op", ColumnBuffer::utf8_with_capacity(0)),
+			ColumnWithName::new("target", ColumnBuffer::utf8_with_capacity(0)),
+		]));
 	}
 
 	let mut op_data = ColumnBuffer::utf8_with_capacity(entries.len());

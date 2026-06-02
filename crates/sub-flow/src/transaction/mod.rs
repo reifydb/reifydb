@@ -106,7 +106,7 @@ pub struct TransactionalParams {
 
 	pub view_overlay: Arc<Vec<Change>>,
 
-	pub row_allocators: Arc<RowAllocatorRegistry>,
+	pub row_allocators: RowAllocatorRegistry,
 }
 
 pub struct DeferredParams {
@@ -119,7 +119,7 @@ pub struct DeferredParams {
 	pub interceptors: Interceptors,
 	pub clock: Clock,
 
-	pub row_allocators: Arc<RowAllocatorRegistry>,
+	pub row_allocators: RowAllocatorRegistry,
 }
 
 pub struct CommittingParams {
@@ -128,7 +128,7 @@ pub struct CommittingParams {
 	pub interceptors: Interceptors,
 	pub clock: Clock,
 
-	pub row_allocators: Arc<RowAllocatorRegistry>,
+	pub row_allocators: RowAllocatorRegistry,
 }
 
 pub struct FlowTransactionInner {
@@ -148,7 +148,7 @@ pub struct FlowTransactionInner {
 
 	pub prefetch: HashMap<EncodedKey, Option<EncodedRow>>,
 
-	pub row_allocators: Arc<RowAllocatorRegistry>,
+	pub row_allocators: RowAllocatorRegistry,
 }
 
 pub enum FlowTransaction {
@@ -247,7 +247,7 @@ impl FlowTransaction {
 				clock,
 				operator_states: HashMap::new(),
 				prefetch: HashMap::new(),
-				row_allocators: Arc::new(RowAllocatorRegistry::new()),
+				row_allocators: RowAllocatorRegistry::new(),
 			},
 		}
 	}
@@ -340,7 +340,7 @@ impl FlowTransaction {
 		}
 	}
 
-	pub fn row_allocators(&self) -> Arc<RowAllocatorRegistry> {
+	pub fn row_allocators(&self) -> RowAllocatorRegistry {
 		self.inner().row_allocators.clone()
 	}
 
@@ -380,7 +380,7 @@ impl FlowTransaction {
 				clock,
 				operator_states: HashMap::new(),
 				prefetch: HashMap::new(),
-				row_allocators: Arc::new(RowAllocatorRegistry::new()),
+				row_allocators: RowAllocatorRegistry::new(),
 			},
 			state,
 		}

@@ -21,10 +21,13 @@ use reifydb_core::{
 	},
 	key::{EncodableKey, Key, cdc_consumer::CdcConsumerKey, kind::KeyKind},
 };
-use reifydb_runtime::actor::{
-	context::Context,
-	system::ActorConfig,
-	traits::{Actor, Directive},
+use reifydb_runtime::{
+	actor::{
+		context::Context,
+		system::ActorConfig,
+		traits::{Actor, Directive},
+	},
+	reifydb_assertions,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, error::Error};
@@ -255,15 +258,16 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		ctx: &Context<CdcPollMessage>,
 		latest_version: CommitVersion,
 	) {
-		#[cfg(reifydb_assertions)]
-		if let Some(prev) = state.cached_checkpoint {
-			assert!(
-				latest_version >= prev,
-				"the consumer checkpoint moved backwards, so CDC that was already consumed would be \
-				 re-delivered (cached checkpoint prev={}, new latest={})",
-				prev.0,
-				latest_version.0
-			);
+		reifydb_assertions! {
+			if let Some(prev) = state.cached_checkpoint {
+				assert!(
+					latest_version >= prev,
+					"the consumer checkpoint moved backwards, so CDC that was already consumed would be \
+					 re-delivered (cached checkpoint prev={}, new latest={})",
+					prev.0,
+					latest_version.0
+				);
+			}
 		}
 		state.cached_checkpoint = Some(latest_version);
 		self.publish_watermark(latest_version);
@@ -352,15 +356,16 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		latest_version: CommitVersion,
 		count: usize,
 	) {
-		#[cfg(reifydb_assertions)]
-		if let Some(prev) = state.cached_checkpoint {
-			assert!(
-				latest_version >= prev,
-				"the consumer checkpoint moved backwards, so CDC that was already consumed would be \
-				 re-delivered (cached checkpoint prev={}, new latest={})",
-				prev.0,
-				latest_version.0
-			);
+		reifydb_assertions! {
+			if let Some(prev) = state.cached_checkpoint {
+				assert!(
+					latest_version >= prev,
+					"the consumer checkpoint moved backwards, so CDC that was already consumed would be \
+					 re-delivered (cached checkpoint prev={}, new latest={})",
+					prev.0,
+					latest_version.0
+				);
+			}
 		}
 		state.cached_checkpoint = Some(latest_version);
 		self.publish_watermark(latest_version);

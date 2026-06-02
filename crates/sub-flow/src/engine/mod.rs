@@ -11,7 +11,7 @@ pub mod eval;
 pub mod register;
 
 use std::{
-	collections::{BTreeMap, BTreeSet, HashMap},
+	collections::{BTreeMap, BTreeSet},
 	sync::Arc,
 	time::Duration,
 };
@@ -38,8 +38,10 @@ use reifydb_rql::flow::{
 	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer, FlowSchedule},
 	flow::FlowDag,
 };
-use reifydb_runtime::context::{RuntimeContext, clock::Clock};
-use reifydb_runtime::sync::rwlock::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use reifydb_runtime::{
+	context::{RuntimeContext, clock::Clock},
+	sync::rwlock::{RwLock, RwLockReadGuard, RwLockWriteGuard},
+};
 #[cfg(reifydb_target = "native")]
 use reifydb_sdk::config::Config;
 #[cfg(reifydb_target = "native")]
@@ -53,7 +55,7 @@ use crate::operator::ffi::FFIOperator;
 #[cfg(reifydb_target = "native")]
 use crate::operator::native::native_operator_loader;
 use crate::{
-	builder::OperatorFactory,
+	builder::CustomOperators,
 	engine::cache::{ExecutionLevelCache, ScheduleCache},
 	operator::OperatorCell,
 	transaction::row_allocator::RowAllocatorRegistry,
@@ -63,7 +65,7 @@ pub struct FlowEngineInner {
 	pub(crate) catalog: Catalog,
 	pub(crate) executor: Executor,
 	pub(crate) operators: BTreeMap<FlowNodeId, OperatorCell>,
-	pub(crate) flows: BTreeMap<FlowId, Arc<FlowDag>>,
+	pub(crate) flows: BTreeMap<FlowId, FlowDag>,
 	pub(crate) sources: BTreeMap<ShapeId, Vec<(FlowId, FlowNodeId)>>,
 	pub(crate) sinks: BTreeMap<ShapeId, Vec<(FlowId, FlowNodeId)>>,
 	pub(crate) analyzer: FlowGraphAnalyzer,
@@ -73,9 +75,9 @@ pub struct FlowEngineInner {
 	pub(crate) event_bus: EventBus,
 	pub(crate) flow_creation_versions: BTreeMap<FlowId, CommitVersion>,
 	pub(crate) runtime_context: RuntimeContext,
-	pub(crate) custom_operators: Arc<HashMap<String, OperatorFactory>>,
+	pub(crate) custom_operators: CustomOperators,
 	operator_tick_times: DashMap<FlowNodeId, u64>,
-	pub(crate) row_allocators: Arc<RowAllocatorRegistry>,
+	pub(crate) row_allocators: RowAllocatorRegistry,
 }
 
 #[derive(Clone)]
@@ -89,8 +91,8 @@ impl FlowEngine {
 		executor: Executor,
 		event_bus: EventBus,
 		runtime_context: RuntimeContext,
-		custom_operators: Arc<HashMap<String, OperatorFactory>>,
-		row_allocators: Arc<RowAllocatorRegistry>,
+		custom_operators: CustomOperators,
+		row_allocators: RowAllocatorRegistry,
 	) -> Self {
 		Self {
 			inner: Arc::new(RwLock::new(FlowEngineInner::new(
@@ -128,8 +130,8 @@ impl FlowEngineInner {
 		executor: Executor,
 		event_bus: EventBus,
 		runtime_context: RuntimeContext,
-		custom_operators: Arc<HashMap<String, OperatorFactory>>,
-		row_allocators: Arc<RowAllocatorRegistry>,
+		custom_operators: CustomOperators,
+		row_allocators: RowAllocatorRegistry,
 	) -> Self {
 		Self {
 			catalog,
@@ -162,12 +164,12 @@ impl FlowEngineInner {
 		self.operators.insert(node_id, operator);
 	}
 
-	pub fn register_flow_dag(&mut self, flow: Arc<FlowDag>) {
-		self.analyzer.add((*flow).clone());
+	pub fn register_flow_dag(&mut self, flow: FlowDag) {
+		self.analyzer.add(flow.clone());
 		self.flows.insert(flow.id, flow);
 	}
 
-	pub fn flow_by_id(&self, flow_id: FlowId) -> Option<Arc<FlowDag>> {
+	pub fn flow_by_id(&self, flow_id: FlowId) -> Option<FlowDag> {
 		self.flows.get(&flow_id).cloned()
 	}
 

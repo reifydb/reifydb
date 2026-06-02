@@ -30,7 +30,10 @@ use reifydb_runtime::{
 	},
 	sync::mutex::Mutex,
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{
+	interceptor::interceptors::Interceptors, multi::transaction::read::MultiReadTransaction,
+	transaction::Transaction,
+};
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, identity::IdentityId},
@@ -217,7 +220,7 @@ impl FlowWorkerActor {
 		let result = self.engine.begin_command(IdentityId::system()).and_then(|mut txn| {
 			let (flow, _) =
 				self.flow_catalog.get_or_load_flow(&mut Transaction::Command(&mut txn), flow_id)?;
-			state.flow_engine.register(&mut txn, flow.into())
+			state.flow_engine.register(&mut txn, flow)
 		});
 
 		let resp = match result {
@@ -243,7 +246,7 @@ impl FlowWorkerActor {
 			for fid in flow_ids {
 				let (flow, _) =
 					self.flow_catalog.get_or_load_flow(&mut Transaction::Command(&mut txn), fid)?;
-				state.flow_engine.register(&mut txn, flow.into())?;
+				state.flow_engine.register(&mut txn, flow)?;
 			}
 			Ok(())
 		});
@@ -270,12 +273,24 @@ impl FlowWorkerActor {
 		timestamp: DateTime,
 		state_version: CommitVersion,
 	) -> Result<(Pending, Vec<RowShape>)> {
+		let mut txn = self.build_tick_transaction(flow_engine, state_version)?;
+		run_flow_ticks(flow_engine, &mut txn, flow_ids, timestamp);
+		txn.flush_operator_states()?;
+		Ok((txn.take_pending(), txn.take_pending_shapes()))
+	}
+
+	#[inline]
+	fn build_tick_transaction(
+		&self,
+		flow_engine: &FlowEngineInner,
+		state_version: CommitVersion,
+	) -> Result<FlowTransaction> {
 		let lease = self.engine.multi().acquire_version_lease(state_version)?;
 		let query = self.engine.multi().begin_query_at_version(&lease)?;
 		let state_query = self.engine.multi().begin_query_at_version(&lease)?;
 		let interceptors = self.engine.create_interceptors();
 
-		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+		Ok(FlowTransaction::deferred_from_parts(DeferredParams {
 			version: state_version,
 			pending: Pending::new(),
 			query,
@@ -285,17 +300,7 @@ impl FlowWorkerActor {
 			interceptors,
 			clock: self.engine.clock().clone(),
 			row_allocators: flow_engine.row_allocators.clone(),
-		});
-
-		for flow_id in flow_ids {
-			if let Err(e) = flow_engine.process_tick(&mut txn, flow_id, timestamp) {
-				error!(flow_id = flow_id.0, error = %e, "failed to process tick");
-			}
-		}
-
-		txn.flush_operator_states()?;
-
-		Ok((txn.take_pending(), txn.take_pending_shapes()))
+		}))
 	}
 
 	#[instrument(name = "flow::actor::process", level = "debug", skip(self, flow_engine, batch), fields(
@@ -378,43 +383,86 @@ impl FlowWorkerActor {
 				continue;
 			}
 
-			let mut query = base_query.clone();
-			query.read_as_of_version_inclusive(version);
-			let state_query = base_state_query.clone();
-
-			let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+			pending = self.process_deferred_item(
+				flow_engine,
+				&base_query,
+				&base_state_query,
+				&interceptors,
+				flow_id,
 				version,
+				changes,
 				pending,
-				query,
-				state_query,
-				single: self.engine.single().clone(),
-				catalog: self.catalog.clone(),
-				interceptors: interceptors.clone(),
-				clock: self.engine.clock().clone(),
-				row_allocators: flow_engine.row_allocators.clone(),
-			});
-
-			if let Err(e) = flow_engine.process_batch(&mut txn, changes, flow_id) {
-				error!(flow_id = flow_id.0, error = %e, "failed to process flow");
-			}
-
-			txn.flush_operator_states()?;
-
-			let view_entries = txn.take_accumulator_entries();
-			let changed_at = DateTime::from_nanos(self.engine.clock().now_nanos());
-			for (id, diff) in view_entries {
-				all_view_changes.push(Change {
-					origin: ChangeOrigin::Shape(id),
-					version,
-					diffs: smallvec![diff],
-					changed_at,
-				});
-			}
-
-			all_pending_shapes.extend(txn.take_pending_shapes());
-			pending = txn.take_pending();
+				&mut all_pending_shapes,
+				&mut all_view_changes,
+			)?;
 		}
 
 		Ok((pending, all_pending_shapes, all_view_changes))
+	}
+
+	#[inline]
+	#[allow(clippy::too_many_arguments)]
+	fn process_deferred_item(
+		&self,
+		flow_engine: &mut FlowEngineInner,
+		base_query: &MultiReadTransaction,
+		base_state_query: &MultiReadTransaction,
+		interceptors: &Interceptors,
+		flow_id: FlowId,
+		version: CommitVersion,
+		changes: Vec<Change>,
+		pending: Pending,
+		all_pending_shapes: &mut Vec<RowShape>,
+		all_view_changes: &mut Vec<Change>,
+	) -> Result<Pending> {
+		let mut query = base_query.clone();
+		query.read_as_of_version_inclusive(version);
+		let state_query = base_state_query.clone();
+
+		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+			version,
+			pending,
+			query,
+			state_query,
+			single: self.engine.single().clone(),
+			catalog: self.catalog.clone(),
+			interceptors: interceptors.clone(),
+			clock: self.engine.clock().clone(),
+			row_allocators: flow_engine.row_allocators.clone(),
+		});
+
+		if let Err(e) = flow_engine.process_batch(&mut txn, changes, flow_id) {
+			error!(flow_id = flow_id.0, error = %e, "failed to process flow");
+		}
+
+		txn.flush_operator_states()?;
+
+		let view_entries = txn.take_accumulator_entries();
+		let changed_at = DateTime::from_nanos(self.engine.clock().now_nanos());
+		for (id, diff) in view_entries {
+			all_view_changes.push(Change {
+				origin: ChangeOrigin::Shape(id),
+				version,
+				diffs: smallvec![diff],
+				changed_at,
+			});
+		}
+
+		all_pending_shapes.extend(txn.take_pending_shapes());
+		Ok(txn.take_pending())
+	}
+}
+
+#[inline]
+fn run_flow_ticks(
+	flow_engine: &mut FlowEngineInner,
+	txn: &mut FlowTransaction,
+	flow_ids: Vec<FlowId>,
+	timestamp: DateTime,
+) {
+	for flow_id in flow_ids {
+		if let Err(e) = flow_engine.process_tick(txn, flow_id, timestamp) {
+			error!(flow_id = flow_id.0, error = %e, "failed to process tick");
+		}
 	}
 }

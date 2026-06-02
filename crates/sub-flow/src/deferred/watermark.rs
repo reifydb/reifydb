@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
-
 use reifydb_core::{common::CommitVersion, interface::flow::FlowWatermarkRow};
 
 use super::tracker::{FlowPositionTracker, ShapeVersionTracker};
 use crate::catalog::FlowCatalog;
 
 pub(crate) fn compute_flow_watermarks(
-	primitive_tracker: &Arc<ShapeVersionTracker>,
-	flow_tracker: &Arc<FlowPositionTracker>,
+	primitive_tracker: &ShapeVersionTracker,
+	flow_tracker: &FlowPositionTracker,
 	catalog: &FlowCatalog,
 ) -> Vec<FlowWatermarkRow> {
 	let primitive_versions = primitive_tracker.all();

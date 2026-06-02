@@ -3511,6 +3511,7 @@ name = "reifydb-wasm"
 version = "0.6.0"
 dependencies = [
  "reifydb-build",
+ "reifydb-runtime",
  "wasmtime",
  "wasmtime-wasi",
  "wat",
@@ -3555,6 +3556,7 @@ dependencies = [
  "bigdecimal",
  "num-bigint",
  "reifydb-build",
+ "reifydb-runtime",
  "reifydb-value",
  "serde",
  "serde_json",

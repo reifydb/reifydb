@@ -9,19 +9,25 @@ use reifydb_core::{
 };
 use reifydb_runtime::{reifydb_assertions, sync::rwlock::RwLock};
 
+#[derive(Clone)]
 pub struct ShapeVersionTracker {
-	versions: Arc<RwLock<BTreeMap<ShapeId, CommitVersion>>>,
+	inner: Arc<ShapeVersionTrackerInner>,
+}
+
+#[derive(Default)]
+struct ShapeVersionTrackerInner {
+	versions: RwLock<BTreeMap<ShapeId, CommitVersion>>,
 }
 
 impl ShapeVersionTracker {
 	pub fn new() -> Self {
 		Self {
-			versions: Arc::new(RwLock::new(BTreeMap::new())),
+			inner: Arc::new(ShapeVersionTrackerInner::default()),
 		}
 	}
 
 	pub fn update(&self, object_id: ShapeId, version: CommitVersion) {
-		let mut versions = self.versions.write();
+		let mut versions = self.inner.versions.write();
 		versions.entry(object_id)
 			.and_modify(|v| {
 				reifydb_assertions! {
@@ -41,7 +47,7 @@ impl ShapeVersionTracker {
 	}
 
 	pub fn all(&self) -> BTreeMap<ShapeId, CommitVersion> {
-		let versions = self.versions.read();
+		let versions = self.inner.versions.read();
 		versions.clone()
 	}
 }
@@ -52,19 +58,25 @@ impl Default for ShapeVersionTracker {
 	}
 }
 
+#[derive(Clone)]
 pub struct FlowPositionTracker {
-	positions: Arc<RwLock<BTreeMap<FlowId, CommitVersion>>>,
+	inner: Arc<FlowPositionTrackerInner>,
+}
+
+#[derive(Default)]
+struct FlowPositionTrackerInner {
+	positions: RwLock<BTreeMap<FlowId, CommitVersion>>,
 }
 
 impl FlowPositionTracker {
 	pub fn new() -> Self {
 		Self {
-			positions: Arc::new(RwLock::new(BTreeMap::new())),
+			inner: Arc::new(FlowPositionTrackerInner::default()),
 		}
 	}
 
 	pub fn update(&self, flow_id: FlowId, version: CommitVersion) {
-		let mut positions = self.positions.write();
+		let mut positions = self.inner.positions.write();
 		positions
 			.entry(flow_id)
 			.and_modify(|v| {
@@ -76,7 +88,7 @@ impl FlowPositionTracker {
 	}
 
 	pub fn all(&self) -> BTreeMap<FlowId, CommitVersion> {
-		let positions = self.positions.read();
+		let positions = self.inner.positions.read();
 		positions.clone()
 	}
 }

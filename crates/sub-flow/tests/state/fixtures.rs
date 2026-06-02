@@ -64,7 +64,7 @@ pub fn transactional_txn(engine: &TestEngine) -> FlowTransaction {
 		interceptors: Interceptors::new(),
 		clock: Clock::Mock(MockClock::from_millis(1000)),
 		view_overlay: Arc::new(Vec::new()),
-		row_allocators: Arc::new(reifydb_sub_flow::transaction::row_allocator::RowAllocatorRegistry::new()),
+		row_allocators: reifydb_sub_flow::transaction::row_allocator::RowAllocatorRegistry::new(),
 	})
 }
 

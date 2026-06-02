@@ -58,7 +58,7 @@ use reifydb_runtime::{
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
 use reifydb_sub_flow::{
-	builder::OperatorFactory,
+	builder::CustomOperators,
 	engine::{FlowEngine, FlowEngineInner},
 	operator::{OperatorCell, Operators},
 	transaction::{FlowTransaction, row_allocator::RowAllocatorRegistry},
@@ -450,7 +450,7 @@ fn register_ephemeral_flow(
 			}
 		}
 	}
-	engine.register_flow_dag(Arc::new(flow));
+	engine.register_flow_dag(flow);
 	Ok(())
 }
 
@@ -466,7 +466,7 @@ impl SubscriptionSubsystem {
 		cdc_store: CdcStore,
 		store: Arc<SubscriptionStore>,
 		runtime_context: RuntimeContext,
-		custom_operators: Arc<HashMap<String, OperatorFactory>>,
+		custom_operators: CustomOperators,
 		consumer_watermark: CdcConsumerWatermark,
 	) -> Result<Self> {
 		let catalog = engine.catalog();
@@ -481,7 +481,7 @@ impl SubscriptionSubsystem {
 			event_bus,
 			runtime_context,
 			custom_operators,
-			Arc::new(RowAllocatorRegistry::new()),
+			RowAllocatorRegistry::new(),
 		);
 
 		let flow_states = Arc::new(DashMap::new());
@@ -642,7 +642,7 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 
 		let runtime_context = RuntimeContext::with_clock(clock);
 		let store = Arc::new(SubscriptionStore::new(1024));
-		let custom_operators = Arc::new(HashMap::new());
+		let custom_operators = CustomOperators::new(HashMap::new());
 
 		let consumer_watermark = CdcConsumerWatermark::new();
 		ioc.register_service::<CdcConsumerWatermark>(consumer_watermark.clone());

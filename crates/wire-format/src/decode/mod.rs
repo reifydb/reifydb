@@ -14,6 +14,7 @@ use std::str;
 
 use bigdecimal::BigDecimal;
 use num_bigint::BigInt;
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{
 	util::bitvec::BitVec,
 	value::{
@@ -66,13 +67,14 @@ pub fn decode_frames(data: &[u8]) -> Result<Vec<Frame>, DecodeError> {
 		pos = new_pos;
 	}
 
-	#[cfg(reifydb_assertions)]
-	assert!(
-		pos == _total_size,
-		"the RBCF message header declared a total size that disagrees with the bytes consumed while decoding, so the message is truncated or carries trailing bytes and a peer would mis-frame the following message (declared={} consumed={})",
-		_total_size,
-		pos
-	);
+	reifydb_assertions! {
+		assert!(
+			pos == _total_size,
+			"the RBCF message header declared a total size that disagrees with the bytes consumed while decoding, so the message is truncated or carries trailing bytes and a peer would mis-frame the following message (declared={} consumed={})",
+			_total_size,
+			pos
+		);
+	}
 
 	Ok(frames)
 }

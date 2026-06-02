@@ -29,7 +29,7 @@ impl TransactionalFlowRegistry {
 		}
 
 		let mut cmd = self.engine.begin_command(IdentityId::system())?;
-		engine.register(&mut cmd, flow.into())?;
+		engine.register(&mut cmd, flow)?;
 
 		Ok(true)
 	}

@@ -15,7 +15,8 @@ use reifydb_core::{
 	},
 };
 use reifydb_rql::flow::flow::FlowDag;
-use reifydb_runtime::{actor::context::Context, context::clock::Instant};
+use reifydb_runtime::{actor::context::Context, context::clock::Instant, reifydb_assertions};
+use reifydb_transaction::multi::lease::VersionLeaseGuard;
 use reifydb_value::Result;
 use tracing::{Span, debug, field, instrument};
 
@@ -71,11 +72,12 @@ impl CoordinatorActor {
 		reply: Box<dyn FnOnce(Result<()>) + Send>,
 	) {
 		if !matches!(state.phase, Phase::Idle) {
-			#[cfg(reifydb_assertions)]
-			assert!(
-				state.pending_consume.is_none(),
-				"poll actor must not have more than one consume in flight, yet a second arrived while one was already deferred"
-			);
+			reifydb_assertions! {
+				assert!(
+					state.pending_consume.is_none(),
+					"poll actor must not have more than one consume in flight, yet a second arrived while one was already deferred"
+				);
+			}
 			if state.pending_consume.is_some() {
 				(reply)(coordinator_error("Coordinator busy"));
 				return;
@@ -89,9 +91,6 @@ impl CoordinatorActor {
 		}
 		record_version_range_span(&cdcs);
 
-		let consume_start = self.clock.instant();
-		let latest_version = cdcs.last().map(|c| c.version);
-
 		let (state_version, state_lease) = match self.engine.acquire_current_snapshot_lease() {
 			Ok(pair) => pair,
 			Err(e) => {
@@ -100,8 +99,32 @@ impl CoordinatorActor {
 			}
 		};
 
-		let all_changes = self.update_tracker_and_collect(&cdcs);
-		let consume_ctx = ConsumeContext {
+		let consume_ctx = self.build_consume_context(&cdcs, current_version, state_version, state_lease, reply);
+
+		let new_flows = match self.discover_and_load_new_flows(state, &cdcs) {
+			Ok(flows) => flows,
+			Err(e) => {
+				(consume_ctx.original_reply)(coordinator_error(e));
+				return;
+			}
+		};
+
+		self.start_registration_or_submit(state, ctx, consume_ctx, new_flows);
+	}
+
+	#[inline]
+	fn build_consume_context(
+		&self,
+		cdcs: &[Cdc],
+		current_version: CommitVersion,
+		state_version: CommitVersion,
+		state_lease: VersionLeaseGuard,
+		reply: Box<dyn FnOnce(Result<()>) + Send>,
+	) -> ConsumeContext {
+		let consume_start = self.clock.instant();
+		let latest_version = cdcs.last().map(|c| c.version);
+		let all_changes = self.update_tracker_and_collect(cdcs);
+		ConsumeContext {
 			state_version,
 			current_version,
 			combined: Pending::new(),
@@ -116,17 +139,7 @@ impl CoordinatorActor {
 			downstream_flows: collections::HashSet::new(),
 			view_changes: Vec::new(),
 			state_lease,
-		};
-
-		let new_flows = match self.discover_and_load_new_flows(state, &cdcs) {
-			Ok(flows) => flows,
-			Err(e) => {
-				(consume_ctx.original_reply)(coordinator_error(e));
-				return;
-			}
-		};
-
-		self.start_registration_or_submit(state, ctx, consume_ctx, new_flows);
+		}
 	}
 
 	#[inline]
@@ -256,40 +269,7 @@ impl CoordinatorActor {
 			&& !state.cached_active.is_empty()
 			&& !consume_ctx.all_changes.is_empty()
 		{
-			#[cfg(reifydb_assertions)]
-			assert_eq!(
-				state.states.active_flow_ids(),
-				*state.cached_active,
-				"routing cache is stale: the active flow set changed without flows_changed being set"
-			);
-
-			let changes = Arc::new(mem::take(&mut consume_ctx.all_changes));
-			let self_ref = ctx.self_ref().clone();
-			let callback: Box<dyn FnOnce(PoolResponse) + Send> = Box::new(move |resp| {
-				let _ = self_ref.send(FlowCoordinatorMessage::PoolReply(resp));
-			});
-
-			if self.pool
-				.send(FlowPoolMessage::Broadcast {
-					state_version: consume_ctx.state_version,
-					to_version,
-					changes,
-					index: state.cached_routing_index.clone(),
-					active: state.cached_active.clone(),
-					reply: callback,
-				})
-				.is_err()
-			{
-				(consume_ctx.original_reply)(coordinator_error("Pool actor stopped"));
-				return;
-			}
-
-			state.set_phase(
-				Phase::SubmittingBatches {
-					ctx: consume_ctx,
-				},
-				self.clock.instant(),
-			);
+			self.submit_broadcast(state, ctx, to_version, consume_ctx);
 			return;
 		}
 
@@ -302,6 +282,51 @@ impl CoordinatorActor {
 		}
 
 		self.proceed_to_backfill(state, ctx, consume_ctx);
+	}
+
+	#[inline]
+	fn submit_broadcast(
+		&self,
+		state: &mut CoordinatorState,
+		ctx: &Context<FlowCoordinatorMessage>,
+		to_version: CommitVersion,
+		mut consume_ctx: ConsumeContext,
+	) {
+		reifydb_assertions! {
+			assert_eq!(
+				state.states.active_flow_ids(),
+				*state.cached_active,
+				"routing cache is stale: the active flow set changed without flows_changed being set"
+			);
+		}
+
+		let changes = Arc::new(mem::take(&mut consume_ctx.all_changes));
+		let self_ref = ctx.self_ref().clone();
+		let callback: Box<dyn FnOnce(PoolResponse) + Send> = Box::new(move |resp| {
+			let _ = self_ref.send(FlowCoordinatorMessage::PoolReply(resp));
+		});
+
+		if self.pool
+			.send(FlowPoolMessage::Broadcast {
+				state_version: consume_ctx.state_version,
+				to_version,
+				changes,
+				index: state.cached_routing_index.clone(),
+				active: state.cached_active.clone(),
+				reply: callback,
+			})
+			.is_err()
+		{
+			(consume_ctx.original_reply)(coordinator_error("Pool actor stopped"));
+			return;
+		}
+
+		state.set_phase(
+			Phase::SubmittingBatches {
+				ctx: consume_ctx,
+			},
+			self.clock.instant(),
+		);
 	}
 }
 

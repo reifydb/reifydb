@@ -1,31 +1,37 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem, sync::Arc};
+use std::mem;
 
 use reifydb_core::{
+	common::{JoinType, WindowKind},
 	interface::catalog::{
 		flow::{FlowId, FlowNodeId},
-		id::ViewId,
+		id::{RingBufferId, SeriesId, TableId, ViewId},
+		series::SeriesKey,
 		shape::ShapeId,
 	},
 	internal,
 };
-use reifydb_rql::flow::{
-	flow::FlowDag,
-	node::{
-		FlowNode,
-		FlowNodeType::{
-			Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Map, SinkRingBufferView,
-			SinkSeriesView, SinkSubscription, SinkTableView, Sort, SourceDictionary, SourceFlow,
-			SourceInlineData, SourceRingBuffer, SourceSeries, SourceTable, SourceView, Take, Window,
+use reifydb_rql::{
+	expression::Expression,
+	flow::{
+		flow::FlowDag,
+		node::{
+			FlowNode,
+			FlowNodeType::{
+				Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Map,
+				SinkRingBufferView, SinkSeriesView, SinkSubscription, SinkTableView, Sort,
+				SourceDictionary, SourceFlow, SourceInlineData, SourceRingBuffer, SourceSeries,
+				SourceTable, SourceView, Take, Window,
+			},
 		},
 	},
 };
 use reifydb_runtime::reifydb_assertions;
 use reifydb_sdk::config::Config;
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
-use reifydb_value::{Result, error::Error};
+use reifydb_value::{Result, error::Error, value::dictionary::DictionaryId};
 use tracing::instrument;
 
 use super::eval::evaluate_operator_config;
@@ -59,12 +65,12 @@ use crate::{
 
 impl FlowEngineInner {
 	#[instrument(name = "flow::register", level = "debug", skip(self, txn), fields(flow_id = ?flow.id))]
-	pub fn register(&mut self, txn: &mut CommandTransaction, flow: Arc<FlowDag>) -> Result<()> {
+	pub fn register(&mut self, txn: &mut CommandTransaction, flow: FlowDag) -> Result<()> {
 		self.register_with_transaction(&mut Transaction::Command(txn), flow)
 	}
 
 	#[instrument(name = "flow::register_with_transaction", level = "debug", skip(self, txn), fields(flow_id = ?flow.id))]
-	pub fn register_with_transaction(&mut self, txn: &mut Transaction<'_>, flow: Arc<FlowDag>) -> Result<()> {
+	pub fn register_with_transaction(&mut self, txn: &mut Transaction<'_>, flow: FlowDag) -> Result<()> {
 		reifydb_assertions! {
 			assert!(!self.flows.contains_key(&flow.id), "Flow already registered");
 		}
@@ -89,7 +95,7 @@ impl FlowEngineInner {
 			added.push(node_id);
 		}
 
-		self.analyzer.add((*flow).clone());
+		self.analyzer.add(flow.clone());
 		self.flows.insert(flow.id, flow.clone());
 		self.execution_level_cache.invalidate();
 		self.schedule_cache.invalidate();
@@ -103,133 +109,55 @@ impl FlowEngineInner {
 			assert!(!self.operators.contains_key(&node.id), "Operator already registered");
 		}
 		let node = node.clone();
+		let node_id = node.id;
+		let inputs = node.inputs;
 
 		match node.ty {
 			SourceInlineData {
 				..
-			} => {
-				unimplemented!()
-			}
+			} => unimplemented!(),
 			SourceTable {
 				table,
-			} => {
-				let table = self.catalog.get_table(&mut txn.reborrow(), table)?;
-
-				self.add_source(flow.id, node.id, ShapeId::table(table.id));
-				self.operators.insert(
-					node.id,
-					OperatorCell::new(Operators::SourceTable(PrimitiveTableOperator::new(
-						node.id, table,
-					))),
-				);
-			}
+			} => self.add_source_table(txn, flow, node_id, table)?,
 			SourceView {
 				view,
-			} => self.register_source_view(txn, flow, &node, view)?,
+			} => self.register_source_view(txn, flow, node_id, view)?,
 			SourceFlow {
 				flow: source_flow,
-			} => {
-				let source_flow = self.catalog.get_flow(&mut txn.reborrow(), source_flow)?;
-				self.operators.insert(
-					node.id,
-					OperatorCell::new(Operators::SourceFlow(PrimitiveFlowOperator::new(
-						node.id,
-						source_flow,
-					))),
-				);
-			}
+			} => self.add_source_flow(txn, node_id, source_flow)?,
 			SourceRingBuffer {
 				ringbuffer,
-			} => {
-				let rb = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?;
-				self.add_source(flow.id, node.id, ShapeId::ringbuffer(rb.id));
-				self.operators.insert(
-					node.id,
-					OperatorCell::new(Operators::SourceRingBuffer(
-						PrimitiveRingBufferOperator::new(node.id, rb),
-					)),
-				);
-			}
+			} => self.add_source_ringbuffer(txn, flow, node_id, ringbuffer)?,
 			SourceSeries {
 				series,
-			} => {
-				let s = self.catalog.get_series(&mut txn.reborrow(), series)?;
-				self.add_source(flow.id, node.id, ShapeId::series(s.id));
-				self.operators.insert(
-					node.id,
-					OperatorCell::new(Operators::SourceSeries(PrimitiveSeriesOperator::new(
-						node.id,
-					))),
-				);
-			}
+			} => self.add_source_series(txn, flow, node_id, series)?,
 			SourceDictionary {
 				dictionary,
-			} => {
-				self.add_source(flow.id, node.id, ShapeId::dictionary(*dictionary));
-				self.operators.insert(
-					node.id,
-					OperatorCell::new(Operators::SourceDictionary(
-						PrimitiveDictionaryOperator::new(node.id),
-					)),
-				);
-			}
+			} => self.add_source_dictionary(flow, node_id, dictionary),
 			SinkTableView {
 				view,
 				table,
-			} => {
-				let parent = self.parent(node.inputs[0])?;
-
-				self.add_sink(flow.id, node.id, ShapeId::view(*view));
-				let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
-				self.operators.insert(
-					node.id,
-					OperatorCell::new(Operators::SinkTableView(SinkTableViewOperator::new(
-						parent, node.id, resolved, table,
-					))),
-				);
-			}
+			} => self.add_sink_table_view(txn, flow, node_id, &inputs, view, table)?,
 			SinkRingBufferView {
 				view,
 				ringbuffer,
 				capacity,
 				propagate_evictions,
-			} => {
-				let parent = self.parent(node.inputs[0])?;
-				self.add_sink(flow.id, node.id, ShapeId::view(*view));
-				let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
-				self.operators.insert(
-					node.id,
-					OperatorCell::new(Operators::SinkRingBufferView(
-						SinkRingBufferViewOperator::new(
-							parent,
-							node.id,
-							resolved,
-							ringbuffer,
-							capacity,
-							propagate_evictions,
-						),
-					)),
-				);
-			}
+			} => self.add_sink_ringbuffer_view(
+				txn,
+				flow,
+				node_id,
+				&inputs,
+				view,
+				ringbuffer,
+				capacity,
+				propagate_evictions,
+			)?,
 			SinkSeriesView {
 				view,
 				series,
 				key,
-			} => {
-				let parent = self.parent(node.inputs[0])?;
-				self.add_sink(flow.id, node.id, ShapeId::view(*view));
-				let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
-				self.operators.insert(
-					node.id,
-					OperatorCell::new(Operators::SinkSeriesView(SinkSeriesViewOperator::new(
-						parent,
-						node.id,
-						resolved,
-						series,
-						key.clone(),
-					))),
-				);
-			}
+			} => self.add_sink_series_view(txn, flow, node_id, &inputs, view, series, key)?,
 			SinkSubscription {
 				..
 			} => {
@@ -239,235 +167,37 @@ impl FlowEngineInner {
 			}
 			Filter {
 				conditions,
-			} => {
-				let parent = self.parent(node.inputs[0])?;
-				self.operators.insert(
-					node.id,
-					OperatorCell::new(Operators::Filter(FilterOperator::new(
-						parent,
-						node.id,
-						conditions,
-						self.executor.routines.clone(),
-						self.runtime_context.clone(),
-					))),
-				);
-			}
+			} => self.add_filter(node_id, &inputs, conditions)?,
 			Gate {
 				conditions,
-			} => {
-				let parent = self.parent(node.inputs[0])?;
-				self.operators.insert(
-					node.id,
-					OperatorCell::new(Operators::Gate(GateOperator::new(
-						parent,
-						node.id,
-						conditions,
-						self.executor.routines.clone(),
-						self.runtime_context.clone(),
-					))),
-				);
-			}
+			} => self.add_gate(node_id, &inputs, conditions)?,
 			Map {
 				expressions,
-			} => {
-				let parent = self.parent(node.inputs[0])?;
-				self.operators.insert(
-					node.id,
-					OperatorCell::new(Operators::Map(MapOperator::new(
-						parent,
-						node.id,
-						expressions,
-						self.executor.routines.clone(),
-						self.runtime_context.clone(),
-					))),
-				);
-			}
+			} => self.add_map(node_id, &inputs, expressions)?,
 			Extend {
 				expressions,
-			} => {
-				let parent = self.parent(node.inputs[0])?;
-				self.operators.insert(
-					node.id,
-					OperatorCell::new(Operators::Extend(ExtendOperator::new(
-						parent,
-						node.id,
-						expressions,
-					))),
-				);
-			}
+			} => self.add_extend(node_id, &inputs, expressions)?,
 			Sort {
 				by: _,
-			} => {
-				let parent = self.parent(node.inputs[0])?;
-				self.operators.insert(
-					node.id,
-					OperatorCell::new(Operators::Sort(SortOperator::new(
-						parent,
-						node.id,
-						Vec::new(),
-					))),
-				);
-			}
+			} => self.add_sort(node_id, &inputs)?,
 			Take {
 				limit,
-			} => {
-				let parent = self.parent(node.inputs[0])?;
-				self.operators.insert(
-					node.id,
-					OperatorCell::new(Operators::Take(TakeOperator::new(parent, node.id, limit))),
-				);
-			}
+			} => self.add_take(node_id, &inputs, limit)?,
 			Join {
 				join_type,
 				left,
 				right,
 				alias,
 				snapshot,
-			} => {
-				if node.inputs.len() != 2 {
-					return Err(Error(Box::new(internal!("Join node must have exactly 2 inputs"))));
-				}
-
-				let left_node = node.inputs[0];
-				let right_node = node.inputs[1];
-
-				let left_parent = self
-					.operators
-					.get(&left_node)
-					.ok_or_else(|| Error(Box::new(internal!("Left parent operator not found"))))?
-					.clone();
-
-				let right_parent = self
-					.operators
-					.get(&right_node)
-					.ok_or_else(|| Error(Box::new(internal!("Right parent operator not found"))))?
-					.clone();
-
-				self.operators.insert(
-					node.id,
-					OperatorCell::new(Operators::Join(JoinOperator::new(
-						JoinSideConfig {
-							schema: left_parent.output_schema().unwrap_or_default(),
-							node: left_node,
-							exprs: left,
-						},
-						JoinSideConfig {
-							schema: right_parent.output_schema().expect(
-								"right side of join must have a statically known schema",
-							),
-							node: right_node,
-							exprs: right,
-						},
-						node.id,
-						join_type,
-						alias,
-						self.executor.clone(),
-						snapshot,
-					))),
-				);
-			}
+			} => self.add_join(node_id, &inputs, join_type, left, right, alias, snapshot)?,
 			Distinct {
 				expressions,
-			} => {
-				let parent = self.parent(node.inputs[0])?;
-				let ttl = self.catalog.find_operator_settings_latest(node.id).and_then(|s| s.ttl);
-				self.operators.insert(
-					node.id,
-					OperatorCell::new(Operators::Distinct(DistinctOperator::new(
-						parent,
-						node.id,
-						expressions,
-						self.executor.routines.clone(),
-						self.runtime_context.clone(),
-						ttl.map(|t| t.duration_nanos),
-					))),
-				);
-			}
-			Append {} => {
-				if node.inputs.len() < 2 {
-					return Err(Error(Box::new(internal!(
-						"Append node must have at least 2 inputs"
-					))));
-				}
-
-				let mut parents = Vec::with_capacity(node.inputs.len());
-
-				for input_node_id in &node.inputs {
-					let parent = self
-						.operators
-						.get(input_node_id)
-						.ok_or_else(|| {
-							Error(Box::new(internal!(
-								"Parent operator not found for input {:?}",
-								input_node_id
-							)))
-						})?
-						.clone();
-					parents.push(parent);
-				}
-
-				let ttl = self.catalog.find_operator_settings_latest(node.id).and_then(|s| s.ttl);
-				let ttl_nanos = ttl.as_ref().map(|t| t.duration_nanos);
-				let ttl_anchor = ttl.as_ref().map(|t| t.anchor).unwrap_or_default();
-
-				self.operators.insert(
-					node.id,
-					OperatorCell::new(Operators::Append(AppendOperator::new(
-						node.id,
-						parents,
-						node.inputs.clone(),
-						ttl_nanos,
-						ttl_anchor,
-					))),
-				);
-			}
+			} => self.add_distinct(node_id, &inputs, expressions)?,
+			Append {} => self.add_append(node_id, &inputs)?,
 			Apply {
 				operator,
 				expressions,
-			} => {
-				let config = evaluate_operator_config(
-					expressions.as_slice(),
-					&self.executor.routines,
-					&self.runtime_context,
-				)?;
-				let cfg = Config::new(operator.as_str(), config.clone());
-
-				if let Some(factory) = self.custom_operators.get(operator.as_str()) {
-					let op = factory(node.id, &cfg)?;
-					self.operators.insert(node.id, OperatorCell::new(Operators::Custom(op)));
-				} else {
-					#[cfg(reifydb_target = "native")]
-					{
-						let parent = self.parent(node.inputs[0])?;
-
-						let inner = if self.is_native_operator(operator.as_str()) {
-							self.create_native_operator(operator.as_str(), node.id, &cfg)?
-						} else if self.is_ffi_operator(operator.as_str()) {
-							self.create_ffi_operator(operator.as_str(), node.id, &config)?
-						} else {
-							return Err(Error(Box::new(internal!(
-								"Unknown operator: {}",
-								operator
-							))));
-						};
-
-						self.operators.insert(
-							node.id,
-							OperatorCell::new(Operators::Apply(ApplyOperator::new(
-								parent, node.id, inner,
-							))),
-						);
-					}
-					#[cfg(not(reifydb_target = "native"))]
-					{
-						let _ = operator;
-
-						return Err(Error(Box::new(internal!(
-							"FFI operators are not supported in WASM"
-						))));
-					}
-				}
-			}
+			} => self.add_apply(node_id, &inputs, operator, expressions)?,
 			Aggregate {
 				..
 			} => unimplemented!(),
@@ -476,22 +206,441 @@ impl FlowEngineInner {
 				group_by,
 				aggregations,
 				ts,
-			} => {
-				let parent = self.parent(node.inputs[0])?;
-				let operator = WindowOperator::new(WindowConfig {
-					parent,
-					node: node.id,
-					kind: kind.clone(),
-					group_by: group_by.clone(),
-					aggregations: aggregations.clone(),
-					ts: ts.clone(),
-					runtime_context: self.runtime_context.clone(),
-					routines: self.executor.routines.clone(),
-				});
-				self.operators.insert(node.id, OperatorCell::new(Operators::Window(operator)));
-			}
+			} => self.add_window(node_id, &inputs, kind, group_by, aggregations, ts)?,
 		}
 
+		Ok(())
+	}
+
+	#[inline]
+	fn add_source_table(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		flow: &FlowDag,
+		node_id: FlowNodeId,
+		table: TableId,
+	) -> Result<()> {
+		let table = self.catalog.get_table(&mut txn.reborrow(), table)?;
+
+		self.add_source(flow.id, node_id, ShapeId::table(table.id));
+		self.operators.insert(
+			node_id,
+			OperatorCell::new(Operators::SourceTable(PrimitiveTableOperator::new(node_id, table))),
+		);
+		Ok(())
+	}
+
+	#[inline]
+	fn add_source_flow(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		node_id: FlowNodeId,
+		source_flow: FlowId,
+	) -> Result<()> {
+		let source_flow = self.catalog.get_flow(&mut txn.reborrow(), source_flow)?;
+		self.operators.insert(
+			node_id,
+			OperatorCell::new(Operators::SourceFlow(PrimitiveFlowOperator::new(node_id, source_flow))),
+		);
+		Ok(())
+	}
+
+	#[inline]
+	fn add_source_ringbuffer(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		flow: &FlowDag,
+		node_id: FlowNodeId,
+		ringbuffer: RingBufferId,
+	) -> Result<()> {
+		let rb = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?;
+		self.add_source(flow.id, node_id, ShapeId::ringbuffer(rb.id));
+		self.operators.insert(
+			node_id,
+			OperatorCell::new(Operators::SourceRingBuffer(PrimitiveRingBufferOperator::new(node_id, rb))),
+		);
+		Ok(())
+	}
+
+	#[inline]
+	fn add_source_series(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		flow: &FlowDag,
+		node_id: FlowNodeId,
+		series: SeriesId,
+	) -> Result<()> {
+		let s = self.catalog.get_series(&mut txn.reborrow(), series)?;
+		self.add_source(flow.id, node_id, ShapeId::series(s.id));
+		self.operators.insert(
+			node_id,
+			OperatorCell::new(Operators::SourceSeries(PrimitiveSeriesOperator::new(node_id))),
+		);
+		Ok(())
+	}
+
+	#[inline]
+	fn add_source_dictionary(&mut self, flow: &FlowDag, node_id: FlowNodeId, dictionary: DictionaryId) {
+		self.add_source(flow.id, node_id, ShapeId::dictionary(dictionary));
+		self.operators.insert(
+			node_id,
+			OperatorCell::new(Operators::SourceDictionary(PrimitiveDictionaryOperator::new(node_id))),
+		);
+	}
+
+	#[inline]
+	fn add_sink_table_view(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		flow: &FlowDag,
+		node_id: FlowNodeId,
+		inputs: &[FlowNodeId],
+		view: ViewId,
+		table: TableId,
+	) -> Result<()> {
+		let parent = self.parent(inputs[0])?;
+
+		self.add_sink(flow.id, node_id, ShapeId::view(*view));
+		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
+		self.operators.insert(
+			node_id,
+			OperatorCell::new(Operators::SinkTableView(SinkTableViewOperator::new(
+				parent, node_id, resolved, table,
+			))),
+		);
+		Ok(())
+	}
+
+	#[inline]
+	#[allow(clippy::too_many_arguments)]
+	fn add_sink_ringbuffer_view(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		flow: &FlowDag,
+		node_id: FlowNodeId,
+		inputs: &[FlowNodeId],
+		view: ViewId,
+		ringbuffer: RingBufferId,
+		capacity: u64,
+		propagate_evictions: bool,
+	) -> Result<()> {
+		let parent = self.parent(inputs[0])?;
+		self.add_sink(flow.id, node_id, ShapeId::view(*view));
+		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
+		self.operators.insert(
+			node_id,
+			OperatorCell::new(Operators::SinkRingBufferView(SinkRingBufferViewOperator::new(
+				parent,
+				node_id,
+				resolved,
+				ringbuffer,
+				capacity,
+				propagate_evictions,
+			))),
+		);
+		Ok(())
+	}
+
+	#[inline]
+	#[allow(clippy::too_many_arguments)]
+	fn add_sink_series_view(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		flow: &FlowDag,
+		node_id: FlowNodeId,
+		inputs: &[FlowNodeId],
+		view: ViewId,
+		series: SeriesId,
+		key: SeriesKey,
+	) -> Result<()> {
+		let parent = self.parent(inputs[0])?;
+		self.add_sink(flow.id, node_id, ShapeId::view(*view));
+		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
+		self.operators.insert(
+			node_id,
+			OperatorCell::new(Operators::SinkSeriesView(SinkSeriesViewOperator::new(
+				parent,
+				node_id,
+				resolved,
+				series,
+				key.clone(),
+			))),
+		);
+		Ok(())
+	}
+
+	#[inline]
+	fn add_filter(
+		&mut self,
+		node_id: FlowNodeId,
+		inputs: &[FlowNodeId],
+		conditions: Vec<Expression>,
+	) -> Result<()> {
+		let parent = self.parent(inputs[0])?;
+		self.operators.insert(
+			node_id,
+			OperatorCell::new(Operators::Filter(FilterOperator::new(
+				parent,
+				node_id,
+				conditions,
+				self.executor.routines.clone(),
+				self.runtime_context.clone(),
+			))),
+		);
+		Ok(())
+	}
+
+	#[inline]
+	fn add_gate(&mut self, node_id: FlowNodeId, inputs: &[FlowNodeId], conditions: Vec<Expression>) -> Result<()> {
+		let parent = self.parent(inputs[0])?;
+		self.operators.insert(
+			node_id,
+			OperatorCell::new(Operators::Gate(GateOperator::new(
+				parent,
+				node_id,
+				conditions,
+				self.executor.routines.clone(),
+				self.runtime_context.clone(),
+			))),
+		);
+		Ok(())
+	}
+
+	#[inline]
+	fn add_map(&mut self, node_id: FlowNodeId, inputs: &[FlowNodeId], expressions: Vec<Expression>) -> Result<()> {
+		let parent = self.parent(inputs[0])?;
+		self.operators.insert(
+			node_id,
+			OperatorCell::new(Operators::Map(MapOperator::new(
+				parent,
+				node_id,
+				expressions,
+				self.executor.routines.clone(),
+				self.runtime_context.clone(),
+			))),
+		);
+		Ok(())
+	}
+
+	#[inline]
+	fn add_extend(
+		&mut self,
+		node_id: FlowNodeId,
+		inputs: &[FlowNodeId],
+		expressions: Vec<Expression>,
+	) -> Result<()> {
+		let parent = self.parent(inputs[0])?;
+		self.operators.insert(
+			node_id,
+			OperatorCell::new(Operators::Extend(ExtendOperator::new(parent, node_id, expressions))),
+		);
+		Ok(())
+	}
+
+	#[inline]
+	fn add_sort(&mut self, node_id: FlowNodeId, inputs: &[FlowNodeId]) -> Result<()> {
+		let parent = self.parent(inputs[0])?;
+		self.operators.insert(
+			node_id,
+			OperatorCell::new(Operators::Sort(SortOperator::new(parent, node_id, Vec::new()))),
+		);
+		Ok(())
+	}
+
+	#[inline]
+	fn add_take(&mut self, node_id: FlowNodeId, inputs: &[FlowNodeId], limit: usize) -> Result<()> {
+		let parent = self.parent(inputs[0])?;
+		self.operators
+			.insert(node_id, OperatorCell::new(Operators::Take(TakeOperator::new(parent, node_id, limit))));
+		Ok(())
+	}
+
+	#[inline]
+	#[allow(clippy::too_many_arguments)]
+	fn add_join(
+		&mut self,
+		node_id: FlowNodeId,
+		inputs: &[FlowNodeId],
+		join_type: JoinType,
+		left: Vec<Expression>,
+		right: Vec<Expression>,
+		alias: Option<String>,
+		snapshot: bool,
+	) -> Result<()> {
+		if inputs.len() != 2 {
+			return Err(Error(Box::new(internal!("Join node must have exactly 2 inputs"))));
+		}
+
+		let left_node = inputs[0];
+		let right_node = inputs[1];
+
+		let left_parent = self
+			.operators
+			.get(&left_node)
+			.ok_or_else(|| Error(Box::new(internal!("Left parent operator not found"))))?
+			.clone();
+
+		let right_parent = self
+			.operators
+			.get(&right_node)
+			.ok_or_else(|| Error(Box::new(internal!("Right parent operator not found"))))?
+			.clone();
+
+		self.operators.insert(
+			node_id,
+			OperatorCell::new(Operators::Join(JoinOperator::new(
+				JoinSideConfig {
+					schema: left_parent.output_schema().unwrap_or_default(),
+					node: left_node,
+					exprs: left,
+				},
+				JoinSideConfig {
+					schema: right_parent
+						.output_schema()
+						.expect("right side of join must have a statically known schema"),
+					node: right_node,
+					exprs: right,
+				},
+				node_id,
+				join_type,
+				alias,
+				self.executor.clone(),
+				snapshot,
+			))),
+		);
+		Ok(())
+	}
+
+	#[inline]
+	fn add_distinct(
+		&mut self,
+		node_id: FlowNodeId,
+		inputs: &[FlowNodeId],
+		expressions: Vec<Expression>,
+	) -> Result<()> {
+		let parent = self.parent(inputs[0])?;
+		let ttl = self.catalog.find_operator_settings_latest(node_id).and_then(|s| s.ttl);
+		self.operators.insert(
+			node_id,
+			OperatorCell::new(Operators::Distinct(DistinctOperator::new(
+				parent,
+				node_id,
+				expressions,
+				self.executor.routines.clone(),
+				self.runtime_context.clone(),
+				ttl.map(|t| t.duration_nanos),
+			))),
+		);
+		Ok(())
+	}
+
+	#[inline]
+	fn add_append(&mut self, node_id: FlowNodeId, inputs: &[FlowNodeId]) -> Result<()> {
+		if inputs.len() < 2 {
+			return Err(Error(Box::new(internal!("Append node must have at least 2 inputs"))));
+		}
+
+		let mut parents = Vec::with_capacity(inputs.len());
+
+		for input_node_id in inputs {
+			let parent = self
+				.operators
+				.get(input_node_id)
+				.ok_or_else(|| {
+					Error(Box::new(internal!(
+						"Parent operator not found for input {:?}",
+						input_node_id
+					)))
+				})?
+				.clone();
+			parents.push(parent);
+		}
+
+		let ttl = self.catalog.find_operator_settings_latest(node_id).and_then(|s| s.ttl);
+		let ttl_nanos = ttl.as_ref().map(|t| t.duration_nanos);
+		let ttl_anchor = ttl.as_ref().map(|t| t.anchor).unwrap_or_default();
+
+		self.operators.insert(
+			node_id,
+			OperatorCell::new(Operators::Append(AppendOperator::new(
+				node_id,
+				parents,
+				inputs.to_vec(),
+				ttl_nanos,
+				ttl_anchor,
+			))),
+		);
+		Ok(())
+	}
+
+	#[inline]
+	fn add_apply(
+		&mut self,
+		node_id: FlowNodeId,
+		inputs: &[FlowNodeId],
+		operator: String,
+		expressions: Vec<Expression>,
+	) -> Result<()> {
+		let config = evaluate_operator_config(
+			expressions.as_slice(),
+			&self.executor.routines,
+			&self.runtime_context,
+		)?;
+		let cfg = Config::new(operator.as_str(), config.clone());
+
+		if let Some(factory) = self.custom_operators.get(operator.as_str()) {
+			let op = factory(node_id, &cfg)?;
+			self.operators.insert(node_id, OperatorCell::new(Operators::Custom(op)));
+		} else {
+			#[cfg(reifydb_target = "native")]
+			{
+				let parent = self.parent(inputs[0])?;
+
+				let inner = if self.is_native_operator(operator.as_str()) {
+					self.create_native_operator(operator.as_str(), node_id, &cfg)?
+				} else if self.is_ffi_operator(operator.as_str()) {
+					self.create_ffi_operator(operator.as_str(), node_id, &config)?
+				} else {
+					return Err(Error(Box::new(internal!("Unknown operator: {}", operator))));
+				};
+
+				self.operators.insert(
+					node_id,
+					OperatorCell::new(Operators::Apply(ApplyOperator::new(parent, node_id, inner))),
+				);
+			}
+			#[cfg(not(reifydb_target = "native"))]
+			{
+				let _ = (operator, inputs);
+
+				return Err(Error(Box::new(internal!("FFI operators are not supported in WASM"))));
+			}
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn add_window(
+		&mut self,
+		node_id: FlowNodeId,
+		inputs: &[FlowNodeId],
+		kind: WindowKind,
+		group_by: Vec<Expression>,
+		aggregations: Vec<Expression>,
+		ts: Option<String>,
+	) -> Result<()> {
+		let parent = self.parent(inputs[0])?;
+		let operator = WindowOperator::new(WindowConfig {
+			parent,
+			node: node_id,
+			kind: kind.clone(),
+			group_by: group_by.clone(),
+			aggregations: aggregations.clone(),
+			ts: ts.clone(),
+			runtime_context: self.runtime_context.clone(),
+			routines: self.executor.routines.clone(),
+		});
+		self.operators.insert(node_id, OperatorCell::new(Operators::Window(operator)));
 		Ok(())
 	}
 
@@ -507,17 +656,17 @@ impl FlowEngineInner {
 		&mut self,
 		txn: &mut Transaction<'_>,
 		flow: &FlowDag,
-		node: &FlowNode,
+		node_id: FlowNodeId,
 		view: ViewId,
 	) -> Result<()> {
 		let view = self.catalog.get_view(&mut txn.reborrow(), view)?;
-		self.add_source(flow.id, node.id, ShapeId::view(view.id()));
+		self.add_source(flow.id, node_id, ShapeId::view(view.id()));
 
-		self.add_source(flow.id, node.id, view.underlying_id());
+		self.add_source(flow.id, node_id, view.underlying_id());
 
 		self.operators.insert(
-			node.id,
-			OperatorCell::new(Operators::SourceView(PrimitiveViewOperator::new(node.id, view))),
+			node_id,
+			OperatorCell::new(Operators::SourceView(PrimitiveViewOperator::new(node_id, view))),
 		);
 		Ok(())
 	}

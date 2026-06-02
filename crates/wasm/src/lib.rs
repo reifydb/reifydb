@@ -94,6 +94,7 @@ pub trait SpawnBinary<SOURCE> {
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native {
+	use reifydb_runtime::reifydb_assertions;
 	use wasmtime::{Config, Engine as WtEngine, Instance, Linker, Module, ResourceLimiter, Result, Store, Val};
 
 	use crate::{EnvironmentError, LoadError, SpawnBinary, Trap, config::WasmConfig, module::value::Value, source};
@@ -166,8 +167,7 @@ mod native {
 			})?;
 
 			let wt_args: Vec<Val> = args.as_ref().iter().map(|v| v.clone().into()).collect();
-			#[cfg(reifydb_assertions)]
-			{
+			reifydb_assertions! {
 				let expected = func.ty(&self.store).params().len();
 				assert!(
 					wt_args.len() == expected,

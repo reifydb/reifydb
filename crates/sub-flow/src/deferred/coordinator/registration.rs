@@ -60,21 +60,12 @@ impl CoordinatorActor {
 		state: &mut CoordinatorState,
 		ctx: &Context<FlowCoordinatorMessage>,
 		response: PoolResponse,
-		mut remaining_flows: Vec<FlowDag>,
+		remaining_flows: Vec<FlowDag>,
 		mut consume_ctx: ConsumeContext,
 	) {
-		match response {
-			PoolResponse::RegisterSuccess => {}
-			PoolResponse::Success {
-				pending_shapes,
-				..
-			} => {
-				consume_ctx.pending_shapes.extend(pending_shapes);
-			}
-			PoolResponse::Error(e) => {
-				(consume_ctx.original_reply)(coordinator_error(e));
-				return;
-			}
+		if let Err(e) = absorb_register_reply(&mut consume_ctx, response) {
+			(consume_ctx.original_reply)(Err(e));
+			return;
 		}
 
 		if remaining_flows.is_empty() {
@@ -82,6 +73,17 @@ impl CoordinatorActor {
 			return;
 		}
 
+		self.register_next_flow(state, ctx, remaining_flows, consume_ctx);
+	}
+
+	#[inline]
+	fn register_next_flow(
+		&self,
+		state: &mut CoordinatorState,
+		ctx: &Context<FlowCoordinatorMessage>,
+		mut remaining_flows: Vec<FlowDag>,
+		consume_ctx: ConsumeContext,
+	) {
 		let flow = remaining_flows.remove(0);
 		let flow_id = flow.id;
 
@@ -119,6 +121,21 @@ impl CoordinatorActor {
 			},
 			self.clock.instant(),
 		);
+	}
+}
+
+#[inline]
+fn absorb_register_reply(consume_ctx: &mut ConsumeContext, response: PoolResponse) -> Result<()> {
+	match response {
+		PoolResponse::RegisterSuccess => Ok(()),
+		PoolResponse::Success {
+			pending_shapes,
+			..
+		} => {
+			consume_ctx.pending_shapes.extend(pending_shapes);
+			Ok(())
+		}
+		PoolResponse::Error(e) => coordinator_error(e),
 	}
 }
 

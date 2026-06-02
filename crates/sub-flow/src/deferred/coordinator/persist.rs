@@ -57,6 +57,11 @@ impl CoordinatorActor {
 			return;
 		}
 
+		self.persist_consume(consume_ctx);
+	}
+
+	#[inline]
+	fn persist_consume(&self, consume_ctx: ConsumeContext) {
 		let ConsumeContext {
 			combined,
 			pending_shapes,

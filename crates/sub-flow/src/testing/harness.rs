@@ -6,7 +6,6 @@ use std::{
 	marker::PhantomData,
 	mem,
 	ops::{Bound, Index},
-	sync::Arc,
 };
 
 use reifydb_catalog::catalog::Catalog;
@@ -46,7 +45,7 @@ pub struct NativeOperatorHarness<C: OperatorLogic + OperatorMetadata + 'static> 
 	node_id: FlowNodeId,
 	version: u64,
 	pending: Pending,
-	row_allocators: Arc<RowAllocatorRegistry>,
+	row_allocators: RowAllocatorRegistry,
 	current: Option<FlowTransaction>,
 	history: Vec<Change>,
 	_phantom: PhantomData<C>,
@@ -252,7 +251,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarnessBuilder
 			node_id: self.node_id,
 			version: self.version.0,
 			pending: Pending::new(),
-			row_allocators: Arc::new(RowAllocatorRegistry::new()),
+			row_allocators: RowAllocatorRegistry::new(),
 			current: None,
 			history: Vec::new(),
 			_phantom: PhantomData,

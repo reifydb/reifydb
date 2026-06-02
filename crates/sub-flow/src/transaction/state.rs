@@ -250,87 +250,86 @@ impl FlowTransaction {
 		let mut to_batch: Vec<EncodedKey> = Vec::new();
 
 		for encoded_key in &encoded {
-			let pending = {
-				let inner = self.inner();
-				if inner.pending.is_removed(encoded_key) {
-					Some(None)
-				} else {
-					inner.pending.get(encoded_key).map(|row| Some(row.clone()))
-				}
-			};
-			match pending {
+			match self.lookup_overlays(encoded_key) {
 				Some(None) => continue,
-				Some(Some(row)) => {
-					items.push(MultiVersionRow {
-						key: encoded_key.clone(),
-						row,
-						version,
-					});
-					continue;
-				}
-				None => {}
+				Some(Some(row)) => items.push(MultiVersionRow {
+					key: encoded_key.clone(),
+					row,
+					version,
+				}),
+				None => to_batch.push(encoded_key.clone()),
 			}
-
-			let base = if let Self::Transactional {
-				base_pending,
-				..
-			} = &*self
-			{
-				if base_pending.is_removed(encoded_key) {
-					Some(None)
-				} else {
-					base_pending.get(encoded_key).map(|row| Some(row.clone()))
-				}
-			} else {
-				None
-			};
-			match base {
-				Some(None) => continue,
-				Some(Some(row)) => {
-					items.push(MultiVersionRow {
-						key: encoded_key.clone(),
-						row,
-						version,
-					});
-					continue;
-				}
-				None => {}
-			}
-
-			to_batch.push(encoded_key.clone());
 		}
 
-		if !to_batch.is_empty() {
-			if let Self::Ephemeral {
-				inner,
-				state,
-			} = self
-			{
-				let version = inner.version;
-				for encoded_key in &to_batch {
-					if let Some(row) = state.get(encoded_key) {
-						items.push(MultiVersionRow {
-							key: encoded_key.clone(),
-							row: row.clone(),
-							version,
-						});
-					}
-				}
-			} else {
-				let inner = self.inner_mut();
-				let found = inner.state_query.as_ref().unwrap().get_many(&to_batch)?;
-				for encoded_key in &to_batch {
-					if let Some(multi) = found.get(encoded_key) {
-						items.push(multi.clone());
-					}
-				}
-			}
-		}
+		self.fetch_external(&to_batch, &mut items)?;
 
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,
 		})
+	}
+
+	#[inline]
+	fn lookup_overlays(&self, encoded_key: &EncodedKey) -> Option<Option<EncodedRow>> {
+		let pending = {
+			let inner = self.inner();
+			if inner.pending.is_removed(encoded_key) {
+				Some(None)
+			} else {
+				inner.pending.get(encoded_key).map(|row| Some(row.clone()))
+			}
+		};
+		if pending.is_some() {
+			return pending;
+		}
+
+		if let Self::Transactional {
+			base_pending,
+			..
+		} = self
+		{
+			if base_pending.is_removed(encoded_key) {
+				Some(None)
+			} else {
+				base_pending.get(encoded_key).map(|row| Some(row.clone()))
+			}
+		} else {
+			None
+		}
+	}
+
+	#[inline]
+	fn fetch_external(&mut self, to_batch: &[EncodedKey], items: &mut Vec<MultiVersionRow>) -> Result<()> {
+		if to_batch.is_empty() {
+			return Ok(());
+		}
+
+		if let Self::Ephemeral {
+			inner,
+			state,
+		} = self
+		{
+			let version = inner.version;
+			for encoded_key in to_batch {
+				if let Some(row) = state.get(encoded_key) {
+					items.push(MultiVersionRow {
+						key: encoded_key.clone(),
+						row: row.clone(),
+						version,
+					});
+				}
+			}
+		} else {
+			let inner = self.inner_mut();
+			let found = inner.state_query.as_ref().unwrap().get_many(to_batch)?;
+			for encoded_key in to_batch {
+				if let Some(multi) = found.get(encoded_key) {
+					items.push(multi.clone());
+				}
+			}
+		}
+
+		Ok(())
 	}
 
 	fn scoped_set(
@@ -835,7 +834,7 @@ pub mod tests {
 			catalog: Catalog::testing(),
 			interceptors: engine.create_interceptors(),
 			clock: engine.clock().clone(),
-			row_allocators: Arc::new(RowAllocatorRegistry::new()),
+			row_allocators: RowAllocatorRegistry::new(),
 		});
 
 		let batch = txn.state_get_many(node_id, &[inner_key]).unwrap();
@@ -869,7 +868,7 @@ pub mod tests {
 				catalog: Catalog::testing(),
 				interceptors: engine.create_interceptors(),
 				clock: engine.clock().clone(),
-				row_allocators: Arc::new(RowAllocatorRegistry::new()),
+				row_allocators: RowAllocatorRegistry::new(),
 			})
 			.unwrap();
 			txn.state_set(node_id, &written_key, written_value.clone()).unwrap();
@@ -932,7 +931,7 @@ pub mod tests {
 			interceptors: engine.create_interceptors(),
 			clock: engine.clock().clone(),
 			view_overlay: Arc::new(Vec::new()),
-			row_allocators: Arc::new(RowAllocatorRegistry::new()),
+			row_allocators: RowAllocatorRegistry::new(),
 		});
 
 		// Committed state above the txn version is visible (state_query is at the snapshot).

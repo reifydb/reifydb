@@ -76,17 +76,7 @@ impl CoordinatorActor {
 		}
 
 		let backfilling_flows: Vec<_> = state.states.backfilling_flow_ids();
-
-		let dependency_graph = state.analyzer.get_dependency_graph();
-		for (view_id, producer_flow_id) in &dependency_graph.sink_views {
-			if backfilling_flows.contains(producer_flow_id)
-				&& let Some(consumer_flow_ids) = dependency_graph.source_views.get(view_id)
-			{
-				for fid in consumer_flow_ids {
-					consume_ctx.downstream_flows.insert(*fid);
-				}
-			}
-		}
+		collect_downstream_flows(state, &backfilling_flows, &mut consume_ctx);
 
 		if backfilling_flows.is_empty() {
 			self.finish_consume(state, consume_ctx);
@@ -165,26 +155,7 @@ impl CoordinatorActor {
 				return;
 			}
 
-			consume_ctx.checkpoints.push((flow_id, to_version));
-			if let Some(flow_state) = state.states.get_mut(&flow_id) {
-				flow_state.update_checkpoint(to_version);
-			}
-
-			debug!(
-				flow_id = flow_id.0,
-				from = from_version.0,
-				to = to_version.0,
-				"advanced backfilling flow by one chunk"
-			);
-
-			if to_version >= consume_ctx.current_version {
-				if let Some(flow_state) = state.states.get_mut(&flow_id) {
-					flow_state.activate();
-				}
-				state.flows_changed = true;
-				consume_ctx.checkpoint_deletes.push(flow_id);
-				info!(flow_id = flow_id.0, "backfill complete, flow now active");
-			}
+			self.record_advanced_chunk(state, &mut consume_ctx, flow_id, from_version, to_version);
 
 			state.set_phase(
 				Phase::AdvancingBackfill {
@@ -197,6 +168,37 @@ impl CoordinatorActor {
 		}
 
 		self.finish_consume(state, consume_ctx);
+	}
+
+	#[inline]
+	fn record_advanced_chunk(
+		&self,
+		state: &mut CoordinatorState,
+		consume_ctx: &mut ConsumeContext,
+		flow_id: FlowId,
+		from_version: CommitVersion,
+		to_version: CommitVersion,
+	) {
+		consume_ctx.checkpoints.push((flow_id, to_version));
+		if let Some(flow_state) = state.states.get_mut(&flow_id) {
+			flow_state.update_checkpoint(to_version);
+		}
+
+		debug!(
+			flow_id = flow_id.0,
+			from = from_version.0,
+			to = to_version.0,
+			"advanced backfilling flow by one chunk"
+		);
+
+		if to_version >= consume_ctx.current_version {
+			if let Some(flow_state) = state.states.get_mut(&flow_id) {
+				flow_state.activate();
+			}
+			state.flows_changed = true;
+			consume_ctx.checkpoint_deletes.push(flow_id);
+			info!(flow_id = flow_id.0, "backfill complete, flow now active");
+		}
 	}
 
 	#[inline]
@@ -297,5 +299,19 @@ impl CoordinatorActor {
 				reply: callback,
 			})
 			.is_ok()
+	}
+}
+
+#[inline]
+fn collect_downstream_flows(state: &CoordinatorState, backfilling_flows: &[FlowId], consume_ctx: &mut ConsumeContext) {
+	let dependency_graph = state.analyzer.get_dependency_graph();
+	for (view_id, producer_flow_id) in &dependency_graph.sink_views {
+		if backfilling_flows.contains(producer_flow_id)
+			&& let Some(consumer_flow_ids) = dependency_graph.source_views.get(view_id)
+		{
+			for fid in consumer_flow_ids {
+				consume_ctx.downstream_flows.insert(*fid);
+			}
+		}
 	}
 }

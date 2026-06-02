@@ -7,7 +7,6 @@ pub mod ffi;
 
 use std::{
 	any::Any,
-	collections::HashMap,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
@@ -29,7 +28,10 @@ use reifydb_core::{
 	actors::flow::{FlowCoordinatorHandle, FlowCoordinatorMessage, FlowHandle, FlowMessage, FlowPoolHandle},
 	interface::{
 		WithEventBus,
-		catalog::config::{ConfigKey, GetConfig},
+		catalog::{
+			config::{ConfigKey, GetConfig},
+			flow::FlowId,
+		},
 		cdc::{Cdc, CdcConsumerId},
 		flow::FlowWatermarkSampler,
 		version::{ComponentType, HasVersion, SystemVersion},
@@ -56,7 +58,7 @@ use reifydb_value::{Result, value::identity::IdentityId};
 use tracing::{info, warn};
 
 use crate::{
-	builder::{FlowConfig, OperatorFactory},
+	builder::{CustomOperators, FlowConfig},
 	catalog::FlowCatalog,
 	deferred::{
 		coordinator::{CoordinatorActor, FlowConsumeRef, registration::extract_new_flow_ids},
@@ -136,10 +138,10 @@ impl FlowSubsystem {
 
 		let clock = ioc.resolve::<Clock>().expect("Clock must be registered");
 		let spawner = ioc.resolve::<ActorSpawner>().expect("ActorSpawner must be registered");
-		let custom_operators = Arc::new(config.custom_operators);
-		let row_allocators = Arc::new(RowAllocatorRegistry::new());
-		let primitive_tracker = Arc::new(ShapeVersionTracker::new());
-		let flow_tracker = Arc::new(FlowPositionTracker::new());
+		let custom_operators = CustomOperators::new(config.custom_operators);
+		let row_allocators = RowAllocatorRegistry::new();
+		let primitive_tracker = ShapeVersionTracker::new();
+		let flow_tracker = FlowPositionTracker::new();
 		let cdc_store = ioc.resolve::<CdcStore>().expect("CdcStore must be registered");
 
 		let flow_scope = spawner.scope();
@@ -186,14 +188,8 @@ impl FlowSubsystem {
 			actor_ref: coordinator_handle.actor_ref().clone(),
 		};
 
-		let transactional_flow_engine = FlowEngine::new(
-			engine.catalog(),
-			engine.executor(),
-			engine.event_bus().clone(),
-			RuntimeContext::with_clock(clock.clone()),
-			custom_operators.clone(),
-			row_allocators.clone(),
-		);
+		let transactional_flow_engine =
+			Self::build_transactional_engine(&engine, &clock, &custom_operators, &row_allocators);
 
 		let registrar = TransactionalFlowRegistry {
 			flow_engine: transactional_flow_engine.clone(),
@@ -213,47 +209,14 @@ impl FlowSubsystem {
 			),
 		);
 
-		ioc.register_service::<FlowWatermarkSampler>(FlowWatermarkSampler::new({
-			let tracker = primitive_tracker.clone();
-			let flow_tracker = flow_tracker.clone();
-			let flow_catalog = flow_catalog.clone();
-			move || compute_flow_watermarks(&tracker, &flow_tracker, &flow_catalog)
-		}));
+		Self::register_watermark_sampler(ioc, &primitive_tracker, &flow_tracker, &flow_catalog);
 
 		let cdc_wake_registry = ioc.resolve::<CdcWakeRegistry>().expect("CdcWakeRegistry must be registered");
 		let poll_config =
 			PollConsumerConfig::new(flow_consumer_id, "flow-cdc-poll", Duration::from_secs(1), Some(100))
 				.with_wake_registry(cdc_wake_registry);
 
-		let mut bootstrap_flows = Vec::new();
-		if let Ok(mut query) = engine.begin_query(IdentityId::system()) {
-			match engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)) {
-				Ok(existing_flows) => {
-					for existing in existing_flows {
-						match flow_catalog.get_or_load_flow(
-							&mut Transaction::Query(&mut query),
-							existing.id,
-						) {
-							Ok((flow, _)) => match registrar.try_register(flow) {
-								Ok(is_transactional) => bootstrap_flows
-									.push((existing.id, !is_transactional)),
-								Err(e) => warn!(
-									flow_id = existing.id.0,
-									error = %e,
-									"failed to register transactional flow during bootstrap"
-								),
-							},
-							Err(e) => warn!(
-								flow_id = existing.id.0,
-								error = %e,
-								"failed to load flow during bootstrap"
-							),
-						}
-					}
-				}
-				Err(e) => warn!(error = %e, "failed to list flows during bootstrap"),
-			}
-		}
+		let bootstrap_flows = Self::bootstrap_flows(&engine, &flow_catalog, &registrar);
 		let _ = coordinator_handle.actor_ref().send(FlowCoordinatorMessage::Bootstrap {
 			flows: bootstrap_flows,
 		});
@@ -305,8 +268,8 @@ impl FlowSubsystem {
 		engine: &StandardEngine,
 		flow_catalog: &FlowCatalog,
 		clock: &Clock,
-		custom_operators: &Arc<HashMap<String, OperatorFactory>>,
-		row_allocators: &Arc<RowAllocatorRegistry>,
+		custom_operators: &CustomOperators,
+		row_allocators: &RowAllocatorRegistry,
 	) -> (Vec<ActorRef<FlowMessage>>, Vec<FlowHandle>) {
 		let mut worker_refs = Vec::with_capacity(num_workers);
 		let mut worker_handles = Vec::with_capacity(num_workers);
@@ -335,11 +298,81 @@ impl FlowSubsystem {
 	}
 
 	#[inline]
+	fn build_transactional_engine(
+		engine: &StandardEngine,
+		clock: &Clock,
+		custom_operators: &CustomOperators,
+		row_allocators: &RowAllocatorRegistry,
+	) -> FlowEngine {
+		FlowEngine::new(
+			engine.catalog(),
+			engine.executor(),
+			engine.event_bus().clone(),
+			RuntimeContext::with_clock(clock.clone()),
+			custom_operators.clone(),
+			row_allocators.clone(),
+		)
+	}
+
+	#[inline]
+	fn register_watermark_sampler(
+		ioc: &IocContainer,
+		primitive_tracker: &ShapeVersionTracker,
+		flow_tracker: &FlowPositionTracker,
+		flow_catalog: &FlowCatalog,
+	) {
+		ioc.register_service::<FlowWatermarkSampler>(FlowWatermarkSampler::new({
+			let tracker = primitive_tracker.clone();
+			let flow_tracker = flow_tracker.clone();
+			let flow_catalog = flow_catalog.clone();
+			move || compute_flow_watermarks(&tracker, &flow_tracker, &flow_catalog)
+		}));
+	}
+
+	#[inline]
+	fn bootstrap_flows(
+		engine: &StandardEngine,
+		flow_catalog: &FlowCatalog,
+		registrar: &TransactionalFlowRegistry,
+	) -> Vec<(FlowId, bool)> {
+		let mut bootstrap_flows = Vec::new();
+		if let Ok(mut query) = engine.begin_query(IdentityId::system()) {
+			match engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)) {
+				Ok(existing_flows) => {
+					for existing in existing_flows {
+						match flow_catalog.get_or_load_flow(
+							&mut Transaction::Query(&mut query),
+							existing.id,
+						) {
+							Ok((flow, _)) => match registrar.try_register(flow) {
+								Ok(is_transactional) => bootstrap_flows
+									.push((existing.id, !is_transactional)),
+								Err(e) => warn!(
+									flow_id = existing.id.0,
+									error = %e,
+									"failed to register transactional flow during bootstrap"
+								),
+							},
+							Err(e) => warn!(
+								flow_id = existing.id.0,
+								error = %e,
+								"failed to load flow during bootstrap"
+							),
+						}
+					}
+				}
+				Err(e) => warn!(error = %e, "failed to list flows during bootstrap"),
+			}
+		}
+		bootstrap_flows
+	}
+
+	#[inline]
 	fn register_flow_interceptors(
 		engine: &StandardEngine,
 		transactional_flow_engine: &FlowEngine,
 		clock: &Clock,
-		custom_operators: &Arc<HashMap<String, OperatorFactory>>,
+		custom_operators: &CustomOperators,
 	) {
 		let flow_engine_for_pre = transactional_flow_engine.clone();
 		let engine_for_pre = engine.clone();
@@ -384,7 +417,7 @@ impl FlowSubsystem {
 					hook_event_bus.clone(),
 					hook_runtime_context.clone(),
 					hook_custom_operators.clone(),
-					Arc::new(RowAllocatorRegistry::new()),
+					RowAllocatorRegistry::new(),
 				);
 
 				let flows = hook_catalog
@@ -398,7 +431,7 @@ impl FlowSubsystem {
 					)?;
 					fresh_engine.register_with_transaction(
 						&mut Transaction::Test(Box::new(test_txn.reborrow())),
-						Arc::new(dag),
+						dag,
 					)?;
 				}
 

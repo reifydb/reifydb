@@ -17,6 +17,23 @@ use crate::{connector::ConnectorRegistry, operator::BoxedOperator};
 
 pub type OperatorFactory = Arc<dyn Fn(FlowNodeId, &Config) -> Result<BoxedOperator> + Send + Sync>;
 
+#[derive(Clone)]
+pub struct CustomOperators {
+	inner: Arc<HashMap<String, OperatorFactory>>,
+}
+
+impl CustomOperators {
+	pub fn new(map: HashMap<String, OperatorFactory>) -> Self {
+		Self {
+			inner: Arc::new(map),
+		}
+	}
+
+	pub fn get(&self, name: &str) -> Option<&OperatorFactory> {
+		self.inner.get(name)
+	}
+}
+
 pub struct FlowConfigurator {
 	operators_dir: Option<PathBuf>,
 	custom_operators: HashMap<String, OperatorFactory>,

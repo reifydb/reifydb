@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{BTreeMap, HashMap},
-	sync::Arc,
-};
+use std::collections::{BTreeMap, HashMap};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -13,6 +10,7 @@ use reifydb_core::{
 		change::Change,
 	},
 };
+use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::Result;
 use tracing::{Span, field, instrument};
 
@@ -40,7 +38,7 @@ impl FlowEngineInner {
 	))]
 	pub fn process_batch(&self, txn: &mut FlowTransaction, changes: Vec<Change>, flow_id: FlowId) -> Result<()> {
 		let flow = match self.flows.get(&flow_id) {
-			Some(f) => Arc::clone(f),
+			Some(f) => f.clone(),
 			None => return Ok(()),
 		};
 
@@ -54,40 +52,54 @@ impl FlowEngineInner {
 		let mut nodes_processed = 0u32;
 
 		for (_, version_changes) in by_version {
-			let mut pending: HashMap<FlowNodeId, Vec<Change>> = HashMap::new();
-			for change in version_changes {
-				self.seed_entry_nodes(&flow, flow_id, change, &mut pending);
-			}
-
-			for node_id in &topo {
-				let inbox = match pending.remove(node_id) {
-					Some(v) if !v.is_empty() => v,
-					_ => continue,
-				};
-
-				let node = match flow.get_node(node_id) {
-					Some(n) => n.clone(),
-					None => continue,
-				};
-
-				let combined_output = self.dispatch_node(txn, &node, inbox)?;
-				nodes_processed += 1;
-				if combined_output.diffs.is_empty() {
-					continue;
-				}
-
-				let child_count = node.outputs.len();
-				for (child_idx, child_id) in node.outputs.iter().enumerate() {
-					if child_idx + 1 == child_count {
-						pending.entry(*child_id).or_default().push(combined_output);
-						break;
-					}
-					pending.entry(*child_id).or_default().push(combined_output.clone());
-				}
-			}
+			nodes_processed += self.process_version(txn, &flow, flow_id, version_changes, &topo)?;
 		}
 
 		Span::current().record("nodes_processed", nodes_processed);
 		Ok(())
+	}
+
+	#[inline]
+	fn process_version(
+		&self,
+		txn: &mut FlowTransaction,
+		flow: &FlowDag,
+		flow_id: FlowId,
+		version_changes: Vec<Change>,
+		topo: &[FlowNodeId],
+	) -> Result<u32> {
+		let mut pending: HashMap<FlowNodeId, Vec<Change>> = HashMap::new();
+		for change in version_changes {
+			self.seed_entry_nodes(flow, flow_id, change, &mut pending);
+		}
+
+		let mut nodes_processed = 0u32;
+		for node_id in topo {
+			let inbox = match pending.remove(node_id) {
+				Some(v) if !v.is_empty() => v,
+				_ => continue,
+			};
+
+			let node = match flow.get_node(node_id) {
+				Some(n) => n.clone(),
+				None => continue,
+			};
+
+			let combined_output = self.dispatch_node(txn, &node, inbox)?;
+			nodes_processed += 1;
+			if combined_output.diffs.is_empty() {
+				continue;
+			}
+
+			let child_count = node.outputs.len();
+			for (child_idx, child_id) in node.outputs.iter().enumerate() {
+				if child_idx + 1 == child_count {
+					pending.entry(*child_id).or_default().push(combined_output);
+					break;
+				}
+				pending.entry(*child_id).or_default().push(combined_output.clone());
+			}
+		}
+		Ok(nodes_processed)
 	}
 }

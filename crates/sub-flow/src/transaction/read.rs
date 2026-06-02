@@ -3,8 +3,9 @@
 
 use std::{
 	cmp::Ordering,
-	collections::BTreeMap,
+	collections::{BTreeMap, HashMap},
 	ops::{
+		Bound,
 		Bound::{Excluded, Included, Unbounded},
 		RangeBounds,
 	},
@@ -12,16 +13,17 @@ use std::{
 
 use reifydb_core::{
 	actors::pending::PendingWrite,
+	common::CommitVersion,
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
 	},
 	interface::store::{MultiVersionBatch, MultiVersionRow},
 };
-use reifydb_transaction::multi::RangeScope;
+use reifydb_transaction::multi::{RangeScope, transaction::read::MultiReadTransaction};
 use reifydb_value::Result;
 
-use super::FlowTransaction;
+use super::{FlowTransaction, FlowTransactionInner};
 
 mod merge;
 mod source;
@@ -172,22 +174,8 @@ impl FlowTransaction {
 					.collect();
 				let pending_vec = ordered_pending(merged, forward);
 
-				let query = match range.start.as_ref() {
-					Included(start) | Excluded(start) => match read_from(start) {
-						ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
-						ReadFrom::Query => &inner.query,
-					},
-					Unbounded => &inner.query,
-				};
-
-				let v = inner.version;
-				if forward {
-					let storage_iter = query.range(range, scope, batch_size);
-					Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, v))
-				} else {
-					let storage_iter = query.range_rev(range, scope, batch_size);
-					Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, v))
-				}
+				let query = select_query(inner, range.start.as_ref());
+				merge_query_range(pending_vec, query, range, scope, batch_size, inner.version, forward)
 			}
 			Self::Transactional {
 				inner,
@@ -203,22 +191,8 @@ impl FlowTransaction {
 				}
 				let pending_vec = ordered_pending(merged, forward);
 
-				let query = match range.start.as_ref() {
-					Included(start) | Excluded(start) => match read_from(start) {
-						ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
-						ReadFrom::Query => &inner.query,
-					},
-					Unbounded => &inner.query,
-				};
-
-				let v = inner.version;
-				if forward {
-					let storage_iter = query.range(range, scope, batch_size);
-					Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, v))
-				} else {
-					let storage_iter = query.range_rev(range, scope, batch_size);
-					Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, v))
-				}
+				let query = select_query(inner, range.start.as_ref());
+				merge_query_range(pending_vec, query, range, scope, batch_size, inner.version, forward)
 			}
 			Self::Ephemeral {
 				inner,
@@ -240,48 +214,85 @@ impl FlowTransaction {
 
 				let v = inner.version;
 				if is_state_range {
-					let mut state_items: Vec<Result<MultiVersionRow>> = state
-						.iter()
-						.filter(|(k, _)| range.contains(k))
-						.map(|(k, v)| {
-							Ok(MultiVersionRow {
-								key: k.clone(),
-								row: v.clone(),
-								version: inner.version,
-							})
-						})
-						.collect();
-
-					if forward {
-						state_items.sort_by(|a, b| match (a, b) {
-							(Ok(a), Ok(b)) => a.key.cmp(&b.key),
-							_ => Ordering::Equal,
-						});
-						Box::new(flow_merge_pending_iterator(
-							pending_vec,
-							state_items.into_iter(),
-							v,
-						))
-					} else {
-						state_items.sort_by(|a, b| match (a, b) {
-							(Ok(a), Ok(b)) => b.key.cmp(&a.key),
-							_ => Ordering::Equal,
-						});
-						Box::new(flow_merge_pending_iterator_rev(
-							pending_vec,
-							state_items.into_iter(),
-							v,
-						))
-					}
-				} else if forward {
-					let storage_iter = inner.query.range(range, scope, batch_size);
-					Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, v))
+					merge_state_range(pending_vec, state, &range, v, forward)
 				} else {
-					let storage_iter = inner.query.range_rev(range, scope, batch_size);
-					Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, v))
+					merge_query_range(
+						pending_vec,
+						&inner.query,
+						range,
+						scope,
+						batch_size,
+						v,
+						forward,
+					)
 				}
 			}
 		}
+	}
+}
+
+#[inline]
+fn select_query<'a>(inner: &'a FlowTransactionInner, start: Bound<&EncodedKey>) -> &'a MultiReadTransaction {
+	match start {
+		Included(start) | Excluded(start) => match read_from(start) {
+			ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
+			ReadFrom::Query => &inner.query,
+		},
+		Unbounded => &inner.query,
+	}
+}
+
+#[inline]
+fn merge_query_range<'a>(
+	pending_vec: Vec<(EncodedKey, PendingWrite)>,
+	query: &'a MultiReadTransaction,
+	range: EncodedKeyRange,
+	scope: RangeScope,
+	batch_size: usize,
+	version: CommitVersion,
+	forward: bool,
+) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a> {
+	if forward {
+		let storage_iter = query.range(range, scope, batch_size);
+		Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, version))
+	} else {
+		let storage_iter = query.range_rev(range, scope, batch_size);
+		Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, version))
+	}
+}
+
+#[inline]
+fn merge_state_range(
+	pending_vec: Vec<(EncodedKey, PendingWrite)>,
+	state: &HashMap<EncodedKey, EncodedRow>,
+	range: &EncodedKeyRange,
+	version: CommitVersion,
+	forward: bool,
+) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send> {
+	let mut state_items: Vec<Result<MultiVersionRow>> = state
+		.iter()
+		.filter(|(k, _)| range.contains(k))
+		.map(|(k, v)| {
+			Ok(MultiVersionRow {
+				key: k.clone(),
+				row: v.clone(),
+				version,
+			})
+		})
+		.collect();
+
+	if forward {
+		state_items.sort_by(|a, b| match (a, b) {
+			(Ok(a), Ok(b)) => a.key.cmp(&b.key),
+			_ => Ordering::Equal,
+		});
+		Box::new(flow_merge_pending_iterator(pending_vec, state_items.into_iter(), version))
+	} else {
+		state_items.sort_by(|a, b| match (a, b) {
+			(Ok(a), Ok(b)) => b.key.cmp(&a.key),
+			_ => Ordering::Equal,
+		});
+		Box::new(flow_merge_pending_iterator_rev(pending_vec, state_items.into_iter(), version))
 	}
 }
 

@@ -20,8 +20,7 @@ use super::{
 	marshal::{encoded_key, encoded_row, write_buffer},
 	state_iterator::{self, StateIteratorHandle},
 };
-use crate::ffi::context::get_transaction_mut;
-use crate::operator::stateful::row::allocate_row_numbers;
+use crate::{ffi::context::get_transaction_mut, operator::stateful::row::allocate_row_numbers};
 
 #[repr(C)]
 struct StateIteratorInternal {

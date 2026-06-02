@@ -5,6 +5,7 @@ use std::mem;
 
 use rayon::scope;
 use reifydb_catalog::catalog::Catalog;
+use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{reifydb_assertions, sync::mutex::Mutex};
 use reifydb_transaction::{
@@ -64,14 +65,7 @@ pub(crate) fn execute_inline_flow_changes(
 		return Ok(());
 	}
 
-	let base_query = engine.multi().begin_query()?;
-	let base_state_query = engine.multi().begin_query()?;
-
-	let read_version = {
-		let q: MultiReadTransaction = engine.multi().begin_query()?;
-		q.version()
-	};
-
+	let (base_query, base_state_query, read_version) = prepare_inline_queries(engine)?;
 	let available_changes = prepare_available_changes(&ctx.flow_changes, read_version);
 	let base_pending = build_base_pending(&ctx.transaction_writes);
 
@@ -95,17 +89,36 @@ pub(crate) fn execute_inline_flow_changes(
 		}),
 	};
 
+	dispatch_scheduler(engine, &scheduler, &schedule.roots);
+
+	let mut state = scheduler.state.lock();
+	merge_scheduler_results(&mut state, ctx)
+}
+
+fn prepare_inline_queries(
+	engine: &StandardEngine,
+) -> Result<(MultiReadTransaction, MultiReadTransaction, CommitVersion)> {
+	let base_query = engine.multi().begin_query()?;
+	let base_state_query = engine.multi().begin_query()?;
+	let read_version = {
+		let q: MultiReadTransaction = engine.multi().begin_query()?;
+		q.version()
+	};
+	Ok((base_query, base_state_query, read_version))
+}
+
+fn dispatch_scheduler(engine: &StandardEngine, scheduler: &Scheduler<'_>, roots: &[FlowId]) {
 	let pools = engine.spawner().pools();
 	pools.commit_pool().install(|| {
 		scope(|s| {
-			for root in &schedule.roots {
+			for root in roots {
 				scheduler.dispatch(s, *root);
 			}
 		})
 	});
+}
 
-	let mut state = scheduler.state.lock();
-
+fn merge_scheduler_results(state: &mut SchedulerState, ctx: &mut PreCommitContext) -> Result<()> {
 	if let Some(err) = state.first_error.take() {
 		return Err(err);
 	}
