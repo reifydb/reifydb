@@ -5,7 +5,12 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
-	interface::catalog::{binding::BindingFormat, id::SubscriptionId},
+	interface::catalog::{
+		binding::{Binding, BindingFormat},
+		id::SubscriptionId,
+		namespace::Namespace,
+		procedure::Procedure,
+	},
 	metric::ExecutionMetrics,
 };
 use reifydb_engine::subscription::HydrateError;
@@ -19,15 +24,15 @@ use reifydb_sub_server::{
 		cleanup::cleanup_subscription_sync,
 		errors::CreateSubscriptionError,
 		handler::{
-			BatchSubscribeError, SubscribeError, handle_batch_subscribe as shared_batch_subscribe,
-			handle_subscribe as shared_subscribe,
+			BatchAck, BatchSubscribeError, SubscribeAck, SubscribeError,
+			handle_batch_subscribe as shared_batch_subscribe, handle_subscribe as shared_subscribe,
 		},
 	},
 };
 use reifydb_subscription::batch::BatchId;
 use reifydb_value::{
 	params::Params,
-	value::{identity::IdentityId, uuid::Uuid7},
+	value::{frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
 };
 use reifydb_wire_format::{encode::encode_frames, options::EncodeOptions};
 use tokio::{
@@ -56,6 +61,20 @@ use crate::{
 	server_state::GrpcServerState,
 	subscription::{GrpcWireSink, SubscriptionRegistry, WireFormat},
 };
+
+type SingleSink = (
+	mpsc::UnboundedSender<Result<SubscriptionEvent, Status>>,
+	mpsc::UnboundedReceiver<Result<SubscriptionEvent, Status>>,
+	Uuid7,
+	GrpcWireSink,
+);
+
+type BatchSink = (
+	mpsc::UnboundedSender<Result<BatchSubscriptionEvent, Status>>,
+	mpsc::UnboundedReceiver<Result<BatchSubscriptionEvent, Status>>,
+	Uuid7,
+	GrpcWireSink,
+);
 
 pub struct ReifyDbService {
 	state: GrpcServerState,
@@ -108,6 +127,320 @@ impl ReifyDbService {
 			Some(p) => proto_params_to_params(p),
 		}
 	}
+
+	#[inline]
+	fn admin_context(&self, request: Request<AdminRequest>) -> Result<(RequestContext, WireFormat), GrpcError> {
+		let identity = self.extract_identity(&request)?;
+		let metadata = Self::build_metadata(&request);
+		let inner = request.into_inner();
+		let params = Self::extract_params(inner.params)?;
+		let format = WireFormat::from_proto_i32(inner.format);
+		let ctx = RequestContext {
+			identity,
+			operation: Operation::Admin,
+			rql: inner.rql,
+			params,
+			metadata,
+		};
+		Ok((ctx, format))
+	}
+
+	#[inline]
+	fn encode_admin_payload(format: WireFormat, frames: Vec<Frame>) -> admin_response::Payload {
+		match format {
+			WireFormat::Rbcf => admin_response::Payload::Rbcf(
+				encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default(),
+			),
+			WireFormat::Proto => admin_response::Payload::Frames(FramesPayload {
+				frames: frames_to_proto(frames),
+			}),
+		}
+	}
+
+	#[inline]
+	fn build_admin_response(
+		payload: admin_response::Payload,
+		metrics: &ExecutionMetrics,
+	) -> Response<AdminResponse> {
+		let mut response = Response::new(AdminResponse {
+			payload: Some(payload),
+		});
+		insert_meta_headers(response.metadata_mut(), metrics);
+		response
+	}
+
+	#[inline]
+	fn command_context(&self, request: Request<CommandRequest>) -> Result<(RequestContext, WireFormat), GrpcError> {
+		let identity = self.extract_identity(&request)?;
+		let metadata = Self::build_metadata(&request);
+		let inner = request.into_inner();
+		let params = Self::extract_params(inner.params)?;
+		let format = WireFormat::from_proto_i32(inner.format);
+		let ctx = RequestContext {
+			identity,
+			operation: Operation::Command,
+			rql: inner.rql,
+			params,
+			metadata,
+		};
+		Ok((ctx, format))
+	}
+
+	#[inline]
+	fn encode_command_payload(format: WireFormat, frames: Vec<Frame>) -> command_response::Payload {
+		match format {
+			WireFormat::Rbcf => command_response::Payload::Rbcf(
+				encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default(),
+			),
+			WireFormat::Proto => command_response::Payload::Frames(FramesPayload {
+				frames: frames_to_proto(frames),
+			}),
+		}
+	}
+
+	#[inline]
+	fn build_command_response(
+		payload: command_response::Payload,
+		metrics: &ExecutionMetrics,
+	) -> Response<CommandResponse> {
+		let mut response = Response::new(CommandResponse {
+			payload: Some(payload),
+		});
+		insert_meta_headers(response.metadata_mut(), metrics);
+		response
+	}
+
+	#[inline]
+	fn query_context(&self, request: Request<QueryRequest>) -> Result<(RequestContext, WireFormat), GrpcError> {
+		let identity = self.extract_identity(&request)?;
+		let metadata = Self::build_metadata(&request);
+		let inner = request.into_inner();
+		let params = Self::extract_params(inner.params)?;
+		let format = WireFormat::from_proto_i32(inner.format);
+		let ctx = RequestContext {
+			identity,
+			operation: Operation::Query,
+			rql: inner.rql,
+			params,
+			metadata,
+		};
+		Ok((ctx, format))
+	}
+
+	#[inline]
+	fn encode_query_payload(format: WireFormat, frames: Vec<Frame>) -> query_response::Payload {
+		match format {
+			WireFormat::Rbcf => query_response::Payload::Rbcf(
+				encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default(),
+			),
+			WireFormat::Proto => query_response::Payload::Frames(FramesPayload {
+				frames: frames_to_proto(frames),
+			}),
+		}
+	}
+
+	#[inline]
+	fn build_query_response(
+		payload: query_response::Payload,
+		metrics: &ExecutionMetrics,
+	) -> Response<QueryResponse> {
+		let mut response = Response::new(QueryResponse {
+			payload: Some(payload),
+		});
+		insert_meta_headers(response.metadata_mut(), metrics);
+		response
+	}
+
+	#[inline]
+	fn build_single_sink(&self) -> SingleSink {
+		let (tx, rx) = mpsc::unbounded_channel();
+		let connection_id = Uuid7::generate(self.state.clock(), self.state.rng());
+		let sink = GrpcWireSink::Single(tx.clone());
+		(tx, rx, connection_id, sink)
+	}
+
+	#[inline]
+	fn spawn_single_cleanup(
+		&self,
+		ack: SubscribeAck,
+		tx: mpsc::UnboundedSender<Result<SubscriptionEvent, Status>>,
+		rx: mpsc::UnboundedReceiver<Result<SubscriptionEvent, Status>>,
+		connection_id: Uuid7,
+	) -> Response<UnboundedReceiverStream<Result<SubscriptionEvent, Status>>> {
+		let subscription_id = ack.subscription_id;
+		let registry = self.registry.clone();
+		let engine = self.state.engine_clone();
+		let mut shutdown_rx = self.shutdown_rx.clone();
+		let remote_handle = ack.remote_handle;
+		spawn(async move {
+			let client_disconnected = select! {
+				_ = tx.closed() => true,
+				_ = shutdown_rx.changed() => { drop(tx); false }
+			};
+
+			debug!(
+				"gRPC subscription {} stream closed, cleaning up (client_disconnected={})",
+				subscription_id, client_disconnected
+			);
+
+			if let Some(handle) = remote_handle {
+				handle.abort();
+			}
+			registry.cleanup_connection(connection_id);
+
+			if client_disconnected {
+				let engine_clone = engine.clone();
+				let _ = spawn_blocking(move || {
+					cleanup_subscription_sync(&engine_clone, subscription_id)
+				})
+				.await;
+			}
+		});
+
+		info!("gRPC subscription created: {}", subscription_id);
+		Response::new(UnboundedReceiverStream::new(rx))
+	}
+
+	#[inline]
+	fn build_batch_sink(&self) -> BatchSink {
+		let (batch_tx, batch_rx) = mpsc::unbounded_channel::<Result<BatchSubscriptionEvent, Status>>();
+		let connection_id = Uuid7::generate(self.state.clock(), self.state.rng());
+		let batch_sink = GrpcWireSink::Batch(batch_tx.clone());
+		(batch_tx, batch_rx, connection_id, batch_sink)
+	}
+
+	#[inline]
+	fn spawn_batch_cleanup(
+		&self,
+		ack: BatchAck,
+		batch_tx: mpsc::UnboundedSender<Result<BatchSubscriptionEvent, Status>>,
+		batch_rx: mpsc::UnboundedReceiver<Result<BatchSubscriptionEvent, Status>>,
+		connection_id: Uuid7,
+		format: WireFormat,
+	) -> Response<UnboundedReceiverStream<Result<BatchSubscriptionEvent, Status>>> {
+		let batch_id = ack.batch_id;
+		let registry = self.registry.clone();
+		let engine = self.state.engine_clone();
+		let batch_tx_for_close = batch_tx.clone();
+		let mut shutdown_rx = self.shutdown_rx.clone();
+		let remote_handles = ack.remote_handles;
+		spawn(async move {
+			let client_disconnected = select! {
+				_ = batch_tx_for_close.closed() => true,
+				_ = shutdown_rx.changed() => false,
+			};
+
+			debug!("gRPC batch {} stream closed (client_disconnected={})", batch_id, client_disconnected);
+
+			for handle in remote_handles {
+				handle.abort();
+			}
+
+			let removed_members = registry.cleanup_connection(connection_id);
+
+			if client_disconnected && !removed_members.is_empty() {
+				for member in removed_members {
+					let engine_clone = engine.clone();
+					let _ = spawn_blocking(move || {
+						cleanup_subscription_sync(&engine_clone, member)
+					})
+					.await;
+				}
+			}
+		});
+
+		info!("gRPC batch {} created ({} members, format={:?})", batch_id, ack.members.len(), format);
+		Response::new(UnboundedReceiverStream::new(batch_rx))
+	}
+
+	#[inline]
+	fn resolve_binding(&self, name: &str) -> Result<Binding, Status> {
+		self.state
+			.engine()
+			.catalog()
+			.cache()
+			.find_grpc_binding_by_name(name)
+			.ok_or_else(|| Status::not_found(format!("no gRPC binding named `{}`", name)))
+	}
+
+	#[inline]
+	fn resolve_procedure_namespace(&self, binding: &Binding) -> Result<(Procedure, Namespace), Status> {
+		let procedure = self
+			.state
+			.engine()
+			.catalog()
+			.cache()
+			.find_procedure(binding.procedure_id)
+			.ok_or_else(|| Status::internal("binding references missing procedure"))?;
+		let namespace = self
+			.state
+			.engine()
+			.catalog()
+			.cache()
+			.find_namespace(binding.namespace)
+			.ok_or_else(|| Status::internal("binding references missing namespace"))?;
+		Ok((procedure, namespace))
+	}
+
+	#[inline]
+	fn validate_call_params(procedure: &Procedure, params: &Params) -> Result<(), Status> {
+		match params {
+			Params::None => {
+				if let Some(p) = procedure.params().first() {
+					return Err(Status::invalid_argument(format!(
+						"missing required parameter `{}`",
+						p.name
+					)));
+				}
+			}
+			Params::Named(map) => {
+				for k in map.keys() {
+					if !procedure.params().iter().any(|p| &p.name == k) {
+						return Err(Status::invalid_argument(format!(
+							"unknown parameter `{}`",
+							k
+						)));
+					}
+				}
+				for p in procedure.params() {
+					if !map.contains_key(&p.name) {
+						return Err(Status::invalid_argument(format!(
+							"missing required parameter `{}`",
+							p.name
+						)));
+					}
+				}
+			}
+			Params::Positional(_) => {
+				return Err(Status::invalid_argument("Call requires named params"));
+			}
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn encode_call_payload(format: BindingFormat, frames: Vec<Frame>) -> operation_response::Payload {
+		match format {
+			BindingFormat::Rbcf => operation_response::Payload::Rbcf(
+				encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default(),
+			),
+			_ => operation_response::Payload::Frames(FramesPayload {
+				frames: frames_to_proto(frames),
+			}),
+		}
+	}
+
+	#[inline]
+	fn build_call_response(
+		payload: operation_response::Payload,
+		metrics: &ExecutionMetrics,
+	) -> Response<OperationResponse> {
+		let mut response = Response::new(OperationResponse {
+			payload: Some(payload),
+		});
+		insert_meta_headers(response.metadata_mut(), metrics);
+		response
+	}
 }
 
 #[tonic::async_trait]
@@ -116,99 +449,24 @@ impl ReifyDb for ReifyDbService {
 		if !self.admin_enabled {
 			return Err(Status::not_found("not found"));
 		}
-		let identity = self.extract_identity(&request)?;
-		let metadata = Self::build_metadata(&request);
-		let inner = request.into_inner();
-		let params = Self::extract_params(inner.params)?;
-		let ctx = RequestContext {
-			identity,
-			operation: Operation::Admin,
-			rql: inner.rql,
-			params,
-			metadata,
-		};
-
-		let format = WireFormat::from_proto_i32(inner.format);
+		let (ctx, format) = self.admin_context(request)?;
 		let (frames, metrics) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
-
-		let payload = match format {
-			WireFormat::Rbcf => admin_response::Payload::Rbcf(
-				encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default(),
-			),
-			WireFormat::Proto => admin_response::Payload::Frames(FramesPayload {
-				frames: frames_to_proto(frames),
-			}),
-		};
-
-		let mut response = Response::new(AdminResponse {
-			payload: Some(payload),
-		});
-		insert_meta_headers(response.metadata_mut(), &metrics);
-		Ok(response)
+		let payload = Self::encode_admin_payload(format, frames);
+		Ok(Self::build_admin_response(payload, &metrics))
 	}
 
 	async fn command(&self, request: Request<CommandRequest>) -> Result<Response<CommandResponse>, Status> {
-		let identity = self.extract_identity(&request)?;
-		let metadata = Self::build_metadata(&request);
-		let inner = request.into_inner();
-		let params = Self::extract_params(inner.params)?;
-		let ctx = RequestContext {
-			identity,
-			operation: Operation::Command,
-			rql: inner.rql,
-			params,
-			metadata,
-		};
-
-		let format = WireFormat::from_proto_i32(inner.format);
+		let (ctx, format) = self.command_context(request)?;
 		let (frames, metrics) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
-
-		let payload = match format {
-			WireFormat::Rbcf => command_response::Payload::Rbcf(
-				encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default(),
-			),
-			WireFormat::Proto => command_response::Payload::Frames(FramesPayload {
-				frames: frames_to_proto(frames),
-			}),
-		};
-
-		let mut response = Response::new(CommandResponse {
-			payload: Some(payload),
-		});
-		insert_meta_headers(response.metadata_mut(), &metrics);
-		Ok(response)
+		let payload = Self::encode_command_payload(format, frames);
+		Ok(Self::build_command_response(payload, &metrics))
 	}
 
 	async fn query(&self, request: Request<QueryRequest>) -> Result<Response<QueryResponse>, Status> {
-		let identity = self.extract_identity(&request)?;
-		let metadata = Self::build_metadata(&request);
-		let inner = request.into_inner();
-		let params = Self::extract_params(inner.params)?;
-		let ctx = RequestContext {
-			identity,
-			operation: Operation::Query,
-			rql: inner.rql,
-			params,
-			metadata,
-		};
-
-		let format = WireFormat::from_proto_i32(inner.format);
+		let (ctx, format) = self.query_context(request)?;
 		let (frames, metrics) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
-
-		let payload = match format {
-			WireFormat::Rbcf => query_response::Payload::Rbcf(
-				encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default(),
-			),
-			WireFormat::Proto => query_response::Payload::Frames(FramesPayload {
-				frames: frames_to_proto(frames),
-			}),
-		};
-
-		let mut response = Response::new(QueryResponse {
-			payload: Some(payload),
-		});
-		insert_meta_headers(response.metadata_mut(), &metrics);
-		Ok(response)
+		let payload = Self::encode_query_payload(format, frames);
+		Ok(Self::build_query_response(payload, &metrics))
 	}
 
 	type SubscribeStream = UnboundedReceiverStream<Result<SubscriptionEvent, Status>>;
@@ -222,9 +480,7 @@ impl ReifyDb for ReifyDbService {
 		let inner = request.into_inner();
 		let format = WireFormat::from_proto_i32(inner.format);
 
-		let (tx, rx) = mpsc::unbounded_channel();
-		let connection_id = Uuid7::generate(self.state.clock(), self.state.rng());
-		let sink = GrpcWireSink::Single(tx.clone());
+		let (tx, rx, connection_id, sink) = self.build_single_sink();
 
 		match shared_subscribe(
 			&self.state,
@@ -239,40 +495,7 @@ impl ReifyDb for ReifyDbService {
 		)
 		.await
 		{
-			Ok(ack) => {
-				let subscription_id = ack.subscription_id;
-				let registry = self.registry.clone();
-				let engine = self.state.engine_clone();
-				let mut shutdown_rx = self.shutdown_rx.clone();
-				let remote_handle = ack.remote_handle;
-				spawn(async move {
-					let client_disconnected = select! {
-						_ = tx.closed() => true,
-						_ = shutdown_rx.changed() => { drop(tx); false }
-					};
-
-					debug!(
-						"gRPC subscription {} stream closed, cleaning up (client_disconnected={})",
-						subscription_id, client_disconnected
-					);
-
-					if let Some(handle) = remote_handle {
-						handle.abort();
-					}
-					registry.cleanup_connection(connection_id);
-
-					if client_disconnected {
-						let engine_clone = engine.clone();
-						let _ = spawn_blocking(move || {
-							cleanup_subscription_sync(&engine_clone, subscription_id)
-						})
-						.await;
-					}
-				});
-
-				info!("gRPC subscription created: {}", subscription_id);
-				Ok(Response::new(UnboundedReceiverStream::new(rx)))
-			}
+			Ok(ack) => Ok(self.spawn_single_cleanup(ack, tx, rx, connection_id)),
 			Err(err) => Err(subscribe_error_to_status(err)),
 		}
 	}
@@ -317,9 +540,7 @@ impl ReifyDb for ReifyDbService {
 		let inner = request.into_inner();
 		let format = WireFormat::from_proto_i32(inner.format);
 
-		let (batch_tx, batch_rx) = mpsc::unbounded_channel::<Result<BatchSubscriptionEvent, Status>>();
-		let connection_id = Uuid7::generate(self.state.clock(), self.state.rng());
-		let batch_sink = GrpcWireSink::Batch(batch_tx.clone());
+		let (batch_tx, batch_rx, connection_id, batch_sink) = self.build_batch_sink();
 
 		match shared_batch_subscribe(
 			&self.state,
@@ -334,49 +555,7 @@ impl ReifyDb for ReifyDbService {
 		)
 		.await
 		{
-			Ok(ack) => {
-				let batch_id = ack.batch_id;
-				let registry = self.registry.clone();
-				let engine = self.state.engine_clone();
-				let batch_tx_for_close = batch_tx.clone();
-				let mut shutdown_rx = self.shutdown_rx.clone();
-				let remote_handles = ack.remote_handles;
-				spawn(async move {
-					let client_disconnected = select! {
-						_ = batch_tx_for_close.closed() => true,
-						_ = shutdown_rx.changed() => false,
-					};
-
-					debug!(
-						"gRPC batch {} stream closed (client_disconnected={})",
-						batch_id, client_disconnected
-					);
-
-					for handle in remote_handles {
-						handle.abort();
-					}
-
-					let removed_members = registry.cleanup_connection(connection_id);
-
-					if client_disconnected && !removed_members.is_empty() {
-						for member in removed_members {
-							let engine_clone = engine.clone();
-							let _ = spawn_blocking(move || {
-								cleanup_subscription_sync(&engine_clone, member)
-							})
-							.await;
-						}
-					}
-				});
-
-				info!(
-					"gRPC batch {} created ({} members, format={:?})",
-					batch_id,
-					ack.members.len(),
-					format
-				);
-				Ok(Response::new(UnboundedReceiverStream::new(batch_rx)))
-			}
+			Ok(ack) => Ok(self.spawn_batch_cleanup(ack, batch_tx, batch_rx, connection_id, format)),
 			Err(err) => Err(batch_subscribe_error_to_status(err)),
 		}
 	}
@@ -490,81 +669,17 @@ impl ReifyDb for ReifyDbService {
 		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
 
-		let binding = self
-			.state
-			.engine()
-			.catalog()
-			.cache()
-			.find_grpc_binding_by_name(&inner.name)
-			.ok_or_else(|| Status::not_found(format!("no gRPC binding named `{}`", inner.name)))?;
-
-		let procedure = self
-			.state
-			.engine()
-			.catalog()
-			.cache()
-			.find_procedure(binding.procedure_id)
-			.ok_or_else(|| Status::internal("binding references missing procedure"))?;
-		let namespace = self
-			.state
-			.engine()
-			.catalog()
-			.cache()
-			.find_namespace(binding.namespace)
-			.ok_or_else(|| Status::internal("binding references missing namespace"))?;
-
+		let binding = self.resolve_binding(&inner.name)?;
+		let (procedure, namespace) = self.resolve_procedure_namespace(&binding)?;
 		let params = Self::extract_params(inner.params)?;
-		match &params {
-			Params::None => {
-				if let Some(p) = procedure.params().first() {
-					return Err(Status::invalid_argument(format!(
-						"missing required parameter `{}`",
-						p.name
-					)));
-				}
-			}
-			Params::Named(map) => {
-				for k in map.keys() {
-					if !procedure.params().iter().any(|p| &p.name == k) {
-						return Err(Status::invalid_argument(format!(
-							"unknown parameter `{}`",
-							k
-						)));
-					}
-				}
-				for p in procedure.params() {
-					if !map.contains_key(&p.name) {
-						return Err(Status::invalid_argument(format!(
-							"missing required parameter `{}`",
-							p.name
-						)));
-					}
-				}
-			}
-			Params::Positional(_) => {
-				return Err(Status::invalid_argument("Call requires named params"));
-			}
-		}
+		Self::validate_call_params(&procedure, &params)?;
 
 		let (frames, metrics) =
 			dispatch_binding(&self.state, namespace.name(), procedure.name(), params, identity, metadata)
 				.await
 				.map_err(GrpcError::from)?;
-
-		let payload = match binding.format {
-			BindingFormat::Rbcf => operation_response::Payload::Rbcf(
-				encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default(),
-			),
-			_ => operation_response::Payload::Frames(FramesPayload {
-				frames: frames_to_proto(frames),
-			}),
-		};
-
-		let mut response = Response::new(OperationResponse {
-			payload: Some(payload),
-		});
-		insert_meta_headers(response.metadata_mut(), &metrics);
-		Ok(response)
+		let payload = Self::encode_call_payload(binding.format, frames);
+		Ok(Self::build_call_response(payload, &metrics))
 	}
 }
 

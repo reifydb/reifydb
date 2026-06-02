@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
+use std::collections::HashMap;
+
 use reifydb_auth::service::{AuthResponse, AuthService};
 use reifydb_core::{
 	actors::server::{
@@ -61,6 +63,64 @@ impl ServerActor {
 			});
 		}
 	}
+
+	#[inline]
+	fn handle_subscribe(&self, identity: IdentityId, rql: String, reply: Reply<ServerSubscribeResponse>) {
+		let t = self.clock.instant();
+		let result = self.engine.subscribe_as(identity, &rql, Params::None);
+		if let Some(err) = result.error {
+			reply.send(ServerSubscribeResponse::EngineError {
+				diagnostic: Box::new(err.diagnostic()),
+				rql,
+			});
+		} else {
+			reply.send(ServerSubscribeResponse::Subscribed {
+				frames: result.frames,
+				duration: t.elapsed(),
+				metrics: result.metrics,
+			});
+		}
+	}
+
+	#[inline]
+	fn handle_authenticate(
+		&self,
+		method: String,
+		credentials: HashMap<String, String>,
+		reply: Reply<ServerAuthResponse>,
+	) {
+		match self.auth_service.authenticate(&method, credentials) {
+			Ok(AuthResponse::Authenticated {
+				identity,
+				token,
+			}) => reply.send(ServerAuthResponse::Authenticated {
+				identity,
+				token,
+			}),
+			Ok(AuthResponse::Challenge {
+				challenge_id,
+				payload,
+			}) => reply.send(ServerAuthResponse::Challenge {
+				challenge_id,
+				payload,
+			}),
+			Ok(AuthResponse::Failed {
+				reason,
+			}) => reply.send(ServerAuthResponse::Failed {
+				reason,
+			}),
+			Err(e) => reply.send(ServerAuthResponse::Error(e.to_string())),
+		}
+	}
+
+	#[inline]
+	fn handle_logout(&self, token: String, reply: Reply<ServerLogoutResponse>) {
+		if self.auth_service.revoke_token(&token) {
+			reply.send(ServerLogoutResponse::Ok);
+		} else {
+			reply.send(ServerLogoutResponse::InvalidToken);
+		}
+	}
 }
 
 impl Actor for ServerActor {
@@ -102,56 +162,20 @@ impl Actor for ServerActor {
 				rql,
 				reply,
 			} => {
-				let t = self.clock.instant();
-				let result = self.engine.subscribe_as(identity, &rql, Params::None);
-				if let Some(err) = result.error {
-					reply.send(ServerSubscribeResponse::EngineError {
-						diagnostic: Box::new(err.diagnostic()),
-						rql,
-					});
-				} else {
-					reply.send(ServerSubscribeResponse::Subscribed {
-						frames: result.frames,
-						duration: t.elapsed(),
-						metrics: result.metrics,
-					});
-				}
+				self.handle_subscribe(identity, rql, reply);
 			}
 			ServerMessage::Authenticate {
 				method,
 				credentials,
 				reply,
-			} => match self.auth_service.authenticate(&method, credentials) {
-				Ok(AuthResponse::Authenticated {
-					identity,
-					token,
-				}) => reply.send(ServerAuthResponse::Authenticated {
-					identity,
-					token,
-				}),
-				Ok(AuthResponse::Challenge {
-					challenge_id,
-					payload,
-				}) => reply.send(ServerAuthResponse::Challenge {
-					challenge_id,
-					payload,
-				}),
-				Ok(AuthResponse::Failed {
-					reason,
-				}) => reply.send(ServerAuthResponse::Failed {
-					reason,
-				}),
-				Err(e) => reply.send(ServerAuthResponse::Error(e.to_string())),
-			},
+			} => {
+				self.handle_authenticate(method, credentials, reply);
+			}
 			ServerMessage::Logout {
 				token,
 				reply,
 			} => {
-				if self.auth_service.revoke_token(&token) {
-					reply.send(ServerLogoutResponse::Ok);
-				} else {
-					reply.send(ServerLogoutResponse::InvalidToken);
-				}
+				self.handle_logout(token, reply);
 			}
 		}
 		Directive::Continue

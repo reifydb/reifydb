@@ -52,7 +52,11 @@ use reifydb_rql::{
 	flow::{flow::FlowDag, node::FlowNodeType},
 };
 use reifydb_runtime::{
-	context::{RuntimeContext, clock::Clock},
+	context::{
+		RuntimeContext,
+		clock::{Clock, Instant},
+	},
+	reifydb_assertions,
 	shutdown::Shutdown,
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
@@ -112,14 +116,8 @@ impl SubscriptionService for SubscriptionServiceImpl {
 		self.state.store.register(id, column_names);
 
 		let flow_id = flow_dag.id;
-		{
-			let mut engine = self.state.flow_engine.write();
-			register_ephemeral_flow(&mut engine, txn, flow_dag, id, self.state.delivery.clone())?;
-		}
-
-		self.state.subscription_flows.write().insert(id, flow_id);
-
-		self.state.flow_states.insert(flow_id, HashMap::new());
+		self.register_flow(flow_dag, id, txn)?;
+		self.track_subscription(id, flow_id);
 
 		Ok(())
 	}
@@ -156,28 +154,63 @@ impl SubscriptionService for SubscriptionServiceImpl {
 		lease: VersionLeaseGuard,
 		max_rows: u64,
 	) -> StdResult<HydrateOutcome, HydrateError> {
-		let flow_id = self
-			.state
-			.subscription_flows
-			.read()
-			.get(&sub_id)
-			.copied()
-			.ok_or(HydrateError::SubscriptionNotFound)?;
+		let flow_id = self.resolve_flow_id(sub_id)?;
 
 		let version = lease.version();
 		self.state.hydration_versions.insert(flow_id, version);
 		let hydrate_start = engine.clock().instant();
 
 		let mut outer = engine.begin_query_at_version(&lease, identity)?;
-
 		let sources =
 			collect_source_descriptors(&self.state.flow_engine, flow_id, &self.state.catalog, &mut outer)?;
+		let (source_frames, statements) = self.run_source_queries(engine, &mut outer, sources, max_rows)?;
 
+		let now = DateTime::from_nanos(engine.clock().now_nanos());
+		let flow_engine = self.state.flow_engine.write();
+		self.apply_source_frames(&flow_engine, engine, flow_id, version, source_frames, now)?;
+		drop(flow_engine);
+
+		self.state.store.begin_hydration(sub_id);
+		self.state.delivery.commit_batch();
+		drop(outer);
+
+		Ok(self.build_outcome(sub_id, version, hydrate_start, statements))
+	}
+}
+
+type SourceFrames = Vec<(ShapeId, Vec<Columns>)>;
+
+impl SubscriptionServiceImpl {
+	#[inline]
+	fn register_flow(&self, flow_dag: FlowDag, id: SubscriptionId, txn: &mut Transaction<'_>) -> Result<()> {
+		let mut engine = self.state.flow_engine.write();
+		register_ephemeral_flow(&mut engine, txn, flow_dag, id, self.state.delivery.clone())
+	}
+
+	#[inline]
+	fn track_subscription(&self, id: SubscriptionId, flow_id: FlowId) {
+		self.state.subscription_flows.write().insert(id, flow_id);
+		self.state.flow_states.insert(flow_id, HashMap::new());
+	}
+
+	#[inline]
+	fn resolve_flow_id(&self, sub_id: SubscriptionId) -> StdResult<FlowId, HydrateError> {
+		self.state.subscription_flows.read().get(&sub_id).copied().ok_or(HydrateError::SubscriptionNotFound)
+	}
+
+	#[inline]
+	fn run_source_queries(
+		&self,
+		engine: &StandardEngine,
+		outer: &mut QueryTransaction,
+		sources: Vec<(ShapeId, String)>,
+		max_rows: u64,
+	) -> StdResult<(SourceFrames, Vec<StatementMetric>), HydrateError> {
 		let mut total_rows: u64 = 0;
-		let mut source_frames: Vec<(ShapeId, Vec<Columns>)> = Vec::with_capacity(sources.len());
+		let mut source_frames: SourceFrames = Vec::with_capacity(sources.len());
 		let mut statements: Vec<StatementMetric> = Vec::new();
 		for (shape, query_string) in sources {
-			let result = engine.query_in_txn(&mut outer, &query_string, Params::None);
+			let result = engine.query_in_txn(outer, &query_string, Params::None);
 			if let Some(err) = result.error {
 				return Err(err.into());
 			}
@@ -196,10 +229,30 @@ impl SubscriptionService for SubscriptionServiceImpl {
 			}
 			source_frames.push((shape, shape_columns));
 		}
+		Ok((source_frames, statements))
+	}
 
-		let now = DateTime::from_nanos(engine.clock().now_nanos());
+	#[inline]
+	fn apply_source_frames(
+		&self,
+		flow_engine: &FlowEngineInner,
+		engine: &StandardEngine,
+		flow_id: FlowId,
+		version: CommitVersion,
+		source_frames: SourceFrames,
+		now: DateTime,
+	) -> Result<()> {
+		reifydb_assertions! {
+			assert!(
+				self.state.flow_states.contains_key(&flow_id),
+				"flow_states is missing flow {:?}; register_subscription inserts an empty state for \
+				 every flow it records in subscription_flows, and resolve_flow_id found this flow \
+				 there, so a missing entry means the two maps diverged and hydration would silently \
+				 restart from a default-empty operator state, discarding prior incremental flow state",
+				flow_id
+			);
+		}
 
-		let flow_engine = self.state.flow_engine.write();
 		let flow_state = self.state.flow_states.remove(&flow_id).map(|(_, v)| v).unwrap_or_default();
 		let primitive_query = self.state.multi.begin_query()?;
 		let mut txn = FlowTransaction::ephemeral(
@@ -225,14 +278,17 @@ impl SubscriptionService for SubscriptionServiceImpl {
 		txn.flush_operator_states()?;
 		txn.merge_state();
 		self.state.flow_states.insert(flow_id, txn.take_state());
+		Ok(())
+	}
 
-		drop(flow_engine);
-
-		self.state.store.begin_hydration(sub_id);
-		self.state.delivery.commit_batch();
-
-		drop(outer);
-
+	#[inline]
+	fn build_outcome(
+		&self,
+		sub_id: SubscriptionId,
+		version: CommitVersion,
+		hydrate_start: Instant,
+		statements: Vec<StatementMetric>,
+	) -> HydrateOutcome {
 		let elapsed = hydrate_start.elapsed();
 		let elapsed_nanos = elapsed.as_nanos() as i64;
 		let total = ReifyDuration::from_nanoseconds(elapsed_nanos).unwrap_or_default();
@@ -246,11 +302,11 @@ impl SubscriptionService for SubscriptionServiceImpl {
 
 		let batches = self.state.store.drain(&sub_id, usize::MAX);
 		self.state.store.end_hydration(&sub_id);
-		Ok(HydrateOutcome {
+		HydrateOutcome {
 			version,
 			batches,
 			metrics,
-		})
+		}
 	}
 }
 

@@ -6,7 +6,12 @@ use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::{
 	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
-	interface::catalog::{binding::BindingFormat, id::SubscriptionId},
+	interface::catalog::{
+		binding::{Binding, BindingFormat},
+		id::SubscriptionId,
+		namespace::Namespace,
+		procedure::Procedure,
+	},
 };
 use reifydb_runtime::actor::{mailbox::ActorRef, reply::reply_channel, system::ActorHandle};
 use reifydb_sub_server::{
@@ -20,6 +25,7 @@ use reifydb_sub_server::{
 	response::{CONTENT_TYPE_FRAMES, CONTENT_TYPE_JSON, encode_frames_rbcf, resolve_response_json},
 	state::AppState,
 	subscription::cleanup::cleanup_subscription,
+	wire::WireParams,
 };
 use reifydb_subscription::batch::BatchId;
 use reifydb_value::{
@@ -40,7 +46,10 @@ use tracing::{debug, error, info, warn};
 use uuid::Builder;
 
 use crate::{
-	protocol::{CallRequest, Request, RequestPayload},
+	protocol::{
+		AdminRequest, AuthRequest, CallRequest, CommandRequest, QueryRequest, Request, RequestPayload,
+		UnsubscribeRequest,
+	},
 	response::{BatchChangeEntry, Response, ResponseMeta, ServerPush},
 	subscription::{
 		handler::{handle_batch_subscribe, handle_batch_unsubscribe, handle_subscribe},
@@ -338,205 +347,13 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 	};
 
 	match request.payload {
-		RequestPayload::Auth(auth) => {
-			if let Some(method) = auth.method.as_deref() {
-				let credentials = auth.credentials.unwrap_or_default();
-
-				let (reply, receiver) = reply_channel();
-				conn.actor_ref
-					.send(ServerMessage::Authenticate {
-						method: method.to_string(),
-						credentials,
-						reply,
-					})
-					.ok()
-					.expect("actor mailbox closed");
-
-				match receiver.recv().await {
-					Ok(ServerAuthResponse::Authenticated {
-						identity: id,
-						token,
-					}) => {
-						*conn.identity = Some(id);
-						*conn.auth_token = Some(token.clone());
-						Some(WsResponse::Text(
-							Response::auth_authenticated(
-								&request.id,
-								token,
-								id.to_string(),
-							)
-							.to_json(),
-						))
-					}
-					Ok(ServerAuthResponse::Challenge {
-						challenge_id,
-						payload,
-					}) => Some(WsResponse::Text(
-						Response::auth_challenge(&request.id, challenge_id, payload).to_json(),
-					)),
-					Ok(ServerAuthResponse::Failed {
-						reason,
-					}) => Some(WsResponse::Text(build_error(&request.id, "AUTH_FAILED", &reason))),
-					Ok(ServerAuthResponse::Error(reason)) => {
-						Some(WsResponse::Text(build_error(&request.id, "AUTH_ERROR", &reason)))
-					}
-					Err(_) => Some(WsResponse::Text(build_error(
-						&request.id,
-						"INTERNAL_ERROR",
-						"actor stopped",
-					))),
-				}
-			} else {
-				match extract_identity_from_ws_auth(conn.state.auth_service(), auth.token.as_deref()) {
-					Ok(id) => {
-						*conn.identity = Some(id);
-						*conn.auth_token = auth.token;
-						Some(WsResponse::Text(Response::auth(&request.id).to_json()))
-					}
-					Err(e) => {
-						*conn.identity = None;
-						Some(WsResponse::Text(build_error(
-							&request.id,
-							"AUTH_FAILED",
-							&format!("{:?}", e),
-						)))
-					}
-				}
-			}
-		}
-
+		RequestPayload::Auth(auth) => handle_auth(&request.id, auth, conn).await,
 		RequestPayload::Admin(_) if !conn.state.admin_enabled() => {
 			Some(WsResponse::Text(build_error(&request.id, "NOT_FOUND", "Unknown request type")))
 		}
-
-		RequestPayload::Admin(a) => {
-			let id: IdentityId = match conn.identity.as_ref() {
-				Some(id) => *id,
-				None => {
-					return Some(WsResponse::Text(build_error(
-						&request.id,
-						"AUTH_REQUIRED",
-						"Authentication required",
-					)));
-				}
-			};
-
-			let format = a.format;
-			let unwrap = a.unwrap.unwrap_or(false);
-			let params = match a.params {
-				None => Params::None,
-				Some(wp) => match wp.into_params() {
-					Ok(p) => p,
-					Err(e) => {
-						return Some(WsResponse::Text(build_error(
-							&request.id,
-							"INVALID_PARAMS",
-							&e,
-						)));
-					}
-				},
-			};
-
-			execute_via_dispatch(
-				conn,
-				&request.id,
-				id,
-				Operation::Admin,
-				a.rql,
-				params,
-				format,
-				unwrap,
-				|id, content_type, body, meta| Response::admin(id, content_type, body, meta).to_json(),
-			)
-			.await
-		}
-
-		RequestPayload::Query(q) => {
-			let id: IdentityId = match conn.identity.as_ref() {
-				Some(id) => *id,
-				None => {
-					return Some(WsResponse::Text(build_error(
-						&request.id,
-						"AUTH_REQUIRED",
-						"Authentication required",
-					)));
-				}
-			};
-
-			let format = q.format;
-			let unwrap = q.unwrap.unwrap_or(false);
-			let params = match q.params {
-				None => Params::None,
-				Some(wp) => match wp.into_params() {
-					Ok(p) => p,
-					Err(e) => {
-						return Some(WsResponse::Text(build_error(
-							&request.id,
-							"INVALID_PARAMS",
-							&e,
-						)));
-					}
-				},
-			};
-
-			execute_via_dispatch(
-				conn,
-				&request.id,
-				id,
-				Operation::Query,
-				q.rql,
-				params,
-				format,
-				unwrap,
-				|id, content_type, body, meta| Response::query(id, content_type, body, meta).to_json(),
-			)
-			.await
-		}
-
-		RequestPayload::Command(c) => {
-			let id: IdentityId = match conn.identity.as_ref() {
-				Some(id) => *id,
-				None => {
-					return Some(WsResponse::Text(build_error(
-						&request.id,
-						"AUTH_REQUIRED",
-						"Authentication required",
-					)));
-				}
-			};
-
-			let format = c.format;
-			let unwrap = c.unwrap.unwrap_or(false);
-			let params = match c.params {
-				None => Params::None,
-				Some(wp) => match wp.into_params() {
-					Ok(p) => p,
-					Err(e) => {
-						return Some(WsResponse::Text(build_error(
-							&request.id,
-							"INVALID_PARAMS",
-							&e,
-						)));
-					}
-				},
-			};
-
-			execute_via_dispatch(
-				conn,
-				&request.id,
-				id,
-				Operation::Command,
-				c.rql,
-				params,
-				format,
-				unwrap,
-				|id, content_type, body, meta| {
-					Response::command(id, content_type, body, meta).to_json()
-				},
-			)
-			.await
-		}
-
+		RequestPayload::Admin(a) => handle_admin(&request.id, a, conn).await,
+		RequestPayload::Query(q) => handle_query(&request.id, q, conn).await,
+		RequestPayload::Command(c) => handle_command(&request.id, c, conn).await,
 		RequestPayload::Call(co) => {
 			let identity: IdentityId = conn.identity.unwrap_or(IdentityId::anonymous());
 			match handle_call(&request.id, identity, co, conn).await {
@@ -544,106 +361,227 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 				Err(msg) => Some(WsResponse::Text(msg)),
 			}
 		}
-
 		RequestPayload::Subscribe(sub) => handle_subscribe(&request.id, sub, conn).await.map(WsResponse::Text),
-
 		RequestPayload::BatchSubscribe(req) => {
 			handle_batch_subscribe(&request.id, req, conn).await.map(WsResponse::Text)
 		}
-
 		RequestPayload::BatchUnsubscribe(req) => {
 			handle_batch_unsubscribe(&request.id, req, conn).await.map(WsResponse::Text)
 		}
+		RequestPayload::Logout => handle_logout(&request.id, conn).await,
+		RequestPayload::Unsubscribe(unsub) => handle_unsubscribe(&request.id, unsub, conn).await,
+	}
+}
 
-		RequestPayload::Logout => {
-			if let Some(token) = conn.auth_token.as_ref() {
-				let (reply, receiver) = reply_channel();
-				conn.actor_ref
-					.send(ServerMessage::Logout {
-						token: token.clone(),
-						reply,
-					})
-					.ok()
-					.expect("actor mailbox closed");
+#[inline]
+async fn handle_auth(request_id: &str, auth: AuthRequest, conn: &mut ConnectionContext<'_>) -> Option<WsResponse> {
+	if let Some(method) = auth.method.as_deref() {
+		let credentials = auth.credentials.unwrap_or_default();
 
-				match receiver.recv().await {
-					Ok(ServerLogoutResponse::Ok) => {
-						*conn.identity = Some(IdentityId::anonymous());
-						*conn.auth_token = None;
-						Some(WsResponse::Text(Response::logout(&request.id).to_json()))
-					}
-					Ok(ServerLogoutResponse::InvalidToken) => Some(WsResponse::Text(build_error(
-						&request.id,
-						"LOGOUT_FAILED",
-						"Token revocation failed",
-					))),
-					Ok(ServerLogoutResponse::Error(reason)) => Some(WsResponse::Text(build_error(
-						&request.id,
-						"LOGOUT_FAILED",
-						&reason,
-					))),
-					Err(_) => Some(WsResponse::Text(build_error(
-						&request.id,
-						"INTERNAL_ERROR",
-						"actor stopped",
-					))),
-				}
-			} else {
-				Some(WsResponse::Text(build_error(
-					&request.id,
-					"AUTH_REQUIRED",
-					"No active session to logout",
-				)))
-			}
-		}
+		let (reply, receiver) = reply_channel();
+		conn.actor_ref
+			.send(ServerMessage::Authenticate {
+				method: method.to_string(),
+				credentials,
+				reply,
+			})
+			.ok()
+			.expect("actor mailbox closed");
 
-		RequestPayload::Unsubscribe(unsub) => {
-			if let Some(handle) = conn.remote_tasks.remove(&unsub.subscription_id) {
-				handle.abort();
-				info!(
-					"Connection {} unsubscribed from remote {}",
-					conn.connection_id, unsub.subscription_id
-				);
-				return Some(WsResponse::Text(
-					Response::unsubscribed(&request.id, unsub.subscription_id).to_json(),
-				));
-			}
-
-			let subscription_id = match unsub.subscription_id.parse::<u64>() {
-				Ok(id) => SubscriptionId(id),
-				Err(_) => {
-					return Some(WsResponse::Text(build_error(
-						&request.id,
-						"INVALID_SUBSCRIPTION_ID",
-						"Invalid subscription ID format",
-					)));
-				}
-			};
-
-			let removed = conn.registry.unsubscribe(subscription_id);
-
-			if removed {
-				if let Err(e) = cleanup_subscription(conn.state, subscription_id).await {
-					warn!(
-						"Failed to cleanup subscription {} from database: {:?}",
-						subscription_id, e
-					);
-				}
-
-				info!("Connection {} unsubscribed from {}", conn.connection_id, subscription_id);
+		match receiver.recv().await {
+			Ok(ServerAuthResponse::Authenticated {
+				identity: id,
+				token,
+			}) => {
+				*conn.identity = Some(id);
+				*conn.auth_token = Some(token.clone());
 				Some(WsResponse::Text(
-					Response::unsubscribed(&request.id, subscription_id.to_string()).to_json(),
-				))
-			} else {
-				info!(
-					"Connection {} unsubscribe for {} (already removed)",
-					conn.connection_id, subscription_id
-				);
-				Some(WsResponse::Text(
-					Response::unsubscribed(&request.id, subscription_id.to_string()).to_json(),
+					Response::auth_authenticated(request_id, token, id.to_string()).to_json(),
 				))
 			}
+			Ok(ServerAuthResponse::Challenge {
+				challenge_id,
+				payload,
+			}) => Some(WsResponse::Text(
+				Response::auth_challenge(request_id, challenge_id, payload).to_json(),
+			)),
+			Ok(ServerAuthResponse::Failed {
+				reason,
+			}) => Some(WsResponse::Text(build_error(request_id, "AUTH_FAILED", &reason))),
+			Ok(ServerAuthResponse::Error(reason)) => {
+				Some(WsResponse::Text(build_error(request_id, "AUTH_ERROR", &reason)))
+			}
+			Err(_) => Some(WsResponse::Text(build_error(request_id, "INTERNAL_ERROR", "actor stopped"))),
 		}
+	} else {
+		match extract_identity_from_ws_auth(conn.state.auth_service(), auth.token.as_deref()) {
+			Ok(id) => {
+				*conn.identity = Some(id);
+				*conn.auth_token = auth.token;
+				Some(WsResponse::Text(Response::auth(request_id).to_json()))
+			}
+			Err(e) => {
+				*conn.identity = None;
+				Some(WsResponse::Text(build_error(request_id, "AUTH_FAILED", &format!("{:?}", e))))
+			}
+		}
+	}
+}
+
+#[inline]
+async fn handle_admin(request_id: &str, a: AdminRequest, conn: &mut ConnectionContext<'_>) -> Option<WsResponse> {
+	let id = match require_identity(request_id, &*conn.identity) {
+		Ok(id) => id,
+		Err(resp) => return Some(resp),
+	};
+	let params = match parse_wire_params(request_id, a.params) {
+		Ok(p) => p,
+		Err(resp) => return Some(resp),
+	};
+	execute_via_dispatch(
+		conn,
+		request_id,
+		id,
+		Operation::Admin,
+		a.rql,
+		params,
+		a.format,
+		a.unwrap.unwrap_or(false),
+		|id, content_type, body, meta| Response::admin(id, content_type, body, meta).to_json(),
+	)
+	.await
+}
+
+#[inline]
+async fn handle_query(request_id: &str, q: QueryRequest, conn: &mut ConnectionContext<'_>) -> Option<WsResponse> {
+	let id = match require_identity(request_id, &*conn.identity) {
+		Ok(id) => id,
+		Err(resp) => return Some(resp),
+	};
+	let params = match parse_wire_params(request_id, q.params) {
+		Ok(p) => p,
+		Err(resp) => return Some(resp),
+	};
+	execute_via_dispatch(
+		conn,
+		request_id,
+		id,
+		Operation::Query,
+		q.rql,
+		params,
+		q.format,
+		q.unwrap.unwrap_or(false),
+		|id, content_type, body, meta| Response::query(id, content_type, body, meta).to_json(),
+	)
+	.await
+}
+
+#[inline]
+async fn handle_command(request_id: &str, c: CommandRequest, conn: &mut ConnectionContext<'_>) -> Option<WsResponse> {
+	let id = match require_identity(request_id, &*conn.identity) {
+		Ok(id) => id,
+		Err(resp) => return Some(resp),
+	};
+	let params = match parse_wire_params(request_id, c.params) {
+		Ok(p) => p,
+		Err(resp) => return Some(resp),
+	};
+	execute_via_dispatch(
+		conn,
+		request_id,
+		id,
+		Operation::Command,
+		c.rql,
+		params,
+		c.format,
+		c.unwrap.unwrap_or(false),
+		|id, content_type, body, meta| Response::command(id, content_type, body, meta).to_json(),
+	)
+	.await
+}
+
+fn require_identity(request_id: &str, identity: &Option<IdentityId>) -> Result<IdentityId, WsResponse> {
+	match identity.as_ref() {
+		Some(id) => Ok(*id),
+		None => Err(WsResponse::Text(build_error(request_id, "AUTH_REQUIRED", "Authentication required"))),
+	}
+}
+
+fn parse_wire_params(request_id: &str, params: Option<WireParams>) -> Result<Params, WsResponse> {
+	match params {
+		None => Ok(Params::None),
+		Some(wp) => {
+			wp.into_params().map_err(|e| WsResponse::Text(build_error(request_id, "INVALID_PARAMS", &e)))
+		}
+	}
+}
+
+#[inline]
+async fn handle_logout(request_id: &str, conn: &mut ConnectionContext<'_>) -> Option<WsResponse> {
+	let Some(token) = conn.auth_token.as_ref() else {
+		return Some(WsResponse::Text(build_error(request_id, "AUTH_REQUIRED", "No active session to logout")));
+	};
+
+	let (reply, receiver) = reply_channel();
+	conn.actor_ref
+		.send(ServerMessage::Logout {
+			token: token.clone(),
+			reply,
+		})
+		.ok()
+		.expect("actor mailbox closed");
+
+	match receiver.recv().await {
+		Ok(ServerLogoutResponse::Ok) => {
+			*conn.identity = Some(IdentityId::anonymous());
+			*conn.auth_token = None;
+			Some(WsResponse::Text(Response::logout(request_id).to_json()))
+		}
+		Ok(ServerLogoutResponse::InvalidToken) => {
+			Some(WsResponse::Text(build_error(request_id, "LOGOUT_FAILED", "Token revocation failed")))
+		}
+		Ok(ServerLogoutResponse::Error(reason)) => {
+			Some(WsResponse::Text(build_error(request_id, "LOGOUT_FAILED", &reason)))
+		}
+		Err(_) => Some(WsResponse::Text(build_error(request_id, "INTERNAL_ERROR", "actor stopped"))),
+	}
+}
+
+#[inline]
+async fn handle_unsubscribe(
+	request_id: &str,
+	unsub: UnsubscribeRequest,
+	conn: &mut ConnectionContext<'_>,
+) -> Option<WsResponse> {
+	if let Some(handle) = conn.remote_tasks.remove(&unsub.subscription_id) {
+		handle.abort();
+		info!("Connection {} unsubscribed from remote {}", conn.connection_id, unsub.subscription_id);
+		return Some(WsResponse::Text(Response::unsubscribed(request_id, unsub.subscription_id).to_json()));
+	}
+
+	let subscription_id = match unsub.subscription_id.parse::<u64>() {
+		Ok(id) => SubscriptionId(id),
+		Err(_) => {
+			return Some(WsResponse::Text(build_error(
+				request_id,
+				"INVALID_SUBSCRIPTION_ID",
+				"Invalid subscription ID format",
+			)));
+		}
+	};
+
+	let removed = conn.registry.unsubscribe(subscription_id);
+
+	if removed {
+		if let Err(e) = cleanup_subscription(conn.state, subscription_id).await {
+			warn!("Failed to cleanup subscription {} from database: {:?}", subscription_id, e);
+		}
+
+		info!("Connection {} unsubscribed from {}", conn.connection_id, subscription_id);
+		Some(WsResponse::Text(Response::unsubscribed(request_id, subscription_id.to_string()).to_json()))
+	} else {
+		info!("Connection {} unsubscribe for {} (already removed)", conn.connection_id, subscription_id);
+		Some(WsResponse::Text(Response::unsubscribed(request_id, subscription_id.to_string()).to_json()))
 	}
 }
 
@@ -740,27 +678,40 @@ pub(crate) fn build_error(id: &str, code: &str, message: &str) -> String {
 	Response::internal_error(id, code, message).to_json()
 }
 
+type CallTarget = (Binding, Procedure, Namespace);
+
 async fn handle_call(
 	request_id: &str,
 	identity: IdentityId,
 	req: CallRequest,
 	conn: &mut ConnectionContext<'_>,
 ) -> Result<WsResponse, String> {
-	let binding =
-		conn.state.engine().catalog().cache().find_ws_binding_by_name(&req.name).ok_or_else(|| {
-			build_error(request_id, "NOT_FOUND", &format!("no WS binding named `{}`", req.name))
-		})?;
+	let (binding, procedure, namespace) = resolve_call_target(request_id, conn.state, &req.name)?;
+	let params = parse_call_params(request_id, req.params, &procedure)?;
+	let (frames, meta) = dispatch_call(request_id, conn, &namespace, &procedure, params, identity).await?;
+	encode_call_response(request_id, binding.format, frames, meta)
+}
 
+#[inline]
+fn resolve_call_target(request_id: &str, state: &AppState, name: &str) -> Result<CallTarget, String> {
+	let binding =
+		state.engine().catalog().cache().find_ws_binding_by_name(name).ok_or_else(|| {
+			build_error(request_id, "NOT_FOUND", &format!("no WS binding named `{}`", name))
+		})?;
 	let procedure =
-		conn.state.engine().catalog().cache().find_procedure(binding.procedure_id).ok_or_else(|| {
+		state.engine().catalog().cache().find_procedure(binding.procedure_id).ok_or_else(|| {
 			build_error(request_id, "INTERNAL_ERROR", "binding references missing procedure")
 		})?;
 	let namespace =
-		conn.state.engine().catalog().cache().find_namespace(binding.namespace).ok_or_else(|| {
+		state.engine().catalog().cache().find_namespace(binding.namespace).ok_or_else(|| {
 			build_error(request_id, "INTERNAL_ERROR", "binding references missing namespace")
 		})?;
+	Ok((binding, procedure, namespace))
+}
 
-	let params = match req.params {
+#[inline]
+fn parse_call_params(request_id: &str, params: Option<WireParams>, procedure: &Procedure) -> Result<Params, String> {
+	let params = match params {
 		None => Params::None,
 		Some(wp) => wp.into_params().map_err(|e| build_error(request_id, "INVALID_PARAMS", &e))?,
 	};
@@ -798,8 +749,19 @@ async fn handle_call(
 			return Err(build_error(request_id, "INVALID_PARAMS", "Call requires named params"));
 		}
 	}
+	Ok(params)
+}
 
-	let metadata = build_ws_metadata(conn.auth_token);
+#[inline]
+async fn dispatch_call(
+	request_id: &str,
+	conn: &ConnectionContext<'_>,
+	namespace: &Namespace,
+	procedure: &Procedure,
+	params: Params,
+	identity: IdentityId,
+) -> Result<(Vec<Frame>, ResponseMeta), String> {
+	let metadata = build_ws_metadata(&*conn.auth_token);
 	let (frames, metrics) =
 		dispatch_binding(conn.state, namespace.name(), procedure.name(), params, identity, metadata)
 			.await
@@ -809,8 +771,17 @@ async fn handle_call(
 		fingerprint: metrics.fingerprint.to_hex(),
 		duration: metrics.total.to_string(),
 	};
+	Ok((frames, meta))
+}
 
-	match binding.format {
+#[inline]
+fn encode_call_response(
+	request_id: &str,
+	format: BindingFormat,
+	frames: Vec<Frame>,
+	meta: ResponseMeta,
+) -> Result<WsResponse, String> {
+	match format {
 		BindingFormat::Rbcf => match encode_frames_rbcf(&frames) {
 			Ok(rbcf) => Ok(WsResponse::Binary(encode_rbcf_envelope(
 				BinaryKind::Response,

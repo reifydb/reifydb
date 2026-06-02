@@ -9,6 +9,7 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
+	time::Duration,
 };
 
 use reifydb_cdc::storage::CdcStore;
@@ -19,6 +20,7 @@ use reifydb_core::{
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
+	reifydb_assertions,
 	shutdown::Shutdown,
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
@@ -39,6 +41,11 @@ use crate::{
 	primary::{CdcNotifyListener, service::ReplicationService},
 	replica::{applier::ReplicaApplier, client::ReplicationClient, watermark::ReplicaWatermark},
 };
+
+type PrimaryInputs = (CdcStore, EventBus, String, u64);
+type PrimaryHandles = (oneshot::Sender<()>, oneshot::Receiver<()>, watch::Sender<bool>);
+type ReplicaInputs = (StandardEngine, String, Duration, u64);
+type ReplicaHandles = (watch::Sender<bool>, oneshot::Receiver<()>);
 
 pub struct ReplicationSubsystem {
 	config: ReplicationConfig,
@@ -110,19 +117,36 @@ impl ReplicationSubsystem {
 	}
 
 	fn start_primary(&self) -> Result<()> {
-		let ReplicationConfig::Primary(config) = &self.config else {
-			unreachable!()
-		};
-
-		let cdc_store = self.cdc_store.clone().expect("CdcStore required for primary mode");
-		let event_bus = self.event_bus.clone().expect("EventBus required for primary mode");
-		let bind_addr = config.bind_addr.clone().unwrap_or_else(|| "0.0.0.0:0".to_string());
-		let batch_size = config.batch_size;
+		let (cdc_store, event_bus, bind_addr, batch_size) = self.resolve_primary_inputs();
 
 		let notify = register_cdc_notify_listener(&event_bus);
 		let listener = self.bind_replication_listener(&bind_addr)?;
 		self.record_bound_addr(&listener)?;
 
+		let handles = self.spawn_primary_server(listener, cdc_store, notify, batch_size);
+		self.stash_primary_handles(handles);
+		Ok(())
+	}
+
+	#[inline]
+	fn resolve_primary_inputs(&self) -> PrimaryInputs {
+		let ReplicationConfig::Primary(config) = &self.config else {
+			unreachable!()
+		};
+		let cdc_store = self.cdc_store.clone().expect("CdcStore required for primary mode");
+		let event_bus = self.event_bus.clone().expect("EventBus required for primary mode");
+		let bind_addr = config.bind_addr.clone().unwrap_or_else(|| "0.0.0.0:0".to_string());
+		(cdc_store, event_bus, bind_addr, config.batch_size)
+	}
+
+	#[inline]
+	fn spawn_primary_server(
+		&self,
+		listener: TcpListener,
+		cdc_store: CdcStore,
+		notify: Arc<Notify>,
+		batch_size: u64,
+	) -> PrimaryHandles {
 		let (shutdown_tx, shutdown_rx) = oneshot::channel();
 		let (complete_tx, complete_rx) = oneshot::channel();
 		let (stream_shutdown_tx, stream_shutdown_rx) = watch::channel(false);
@@ -139,11 +163,15 @@ impl ReplicationSubsystem {
 			let _ = complete_tx.send(());
 			info!("Replication server stopped");
 		});
+		(shutdown_tx, complete_rx, stream_shutdown_tx)
+	}
 
+	#[inline]
+	fn stash_primary_handles(&self, handles: PrimaryHandles) {
+		let (shutdown_tx, complete_rx, stream_shutdown_tx) = handles;
 		*self.shutdown_tx.lock() = Some(shutdown_tx);
 		*self.shutdown_complete_rx.lock() = Some(complete_rx);
 		*self.stream_shutdown_tx.lock() = Some(stream_shutdown_tx);
-		Ok(())
 	}
 
 	#[inline]
@@ -171,20 +199,42 @@ impl ReplicationSubsystem {
 	}
 
 	fn start_replica(&self) -> Result<()> {
+		let (engine, primary_addr, reconnect_interval, batch_size) = self.resolve_replica_inputs();
+
+		let client = self.build_replica_client(engine, primary_addr, reconnect_interval, batch_size);
+
+		let handles = self.spawn_replica_client(client);
+		self.stash_replica_handles(handles);
+		self.running.store(true, Ordering::SeqCst);
+		Ok(())
+	}
+
+	#[inline]
+	fn resolve_replica_inputs(&self) -> ReplicaInputs {
 		let ReplicationConfig::Replica(config) = &self.config else {
 			unreachable!()
 		};
-
 		let engine = self.engine.clone().expect("StandardEngine required for replica mode");
 		let primary_addr = config.primary_addr.clone().expect("primary_addr required for replica mode");
-		let reconnect_interval = config.reconnect_interval;
-		let batch_size = config.batch_size;
+		(engine, primary_addr, config.reconnect_interval, config.batch_size)
+	}
 
+	#[inline]
+	fn build_replica_client(
+		&self,
+		engine: StandardEngine,
+		primary_addr: String,
+		reconnect_interval: Duration,
+		batch_size: u64,
+	) -> ReplicationClient {
 		let watermark = ReplicaWatermark::new();
 		engine.ioc().register_service(watermark.clone());
 		let applier = ReplicaApplier::new(engine.clone(), watermark);
-		let client = ReplicationClient::new(primary_addr, applier, reconnect_interval, batch_size);
+		ReplicationClient::new(primary_addr, applier, reconnect_interval, batch_size)
+	}
 
+	#[inline]
+	fn spawn_replica_client(&self, client: ReplicationClient) -> ReplicaHandles {
 		let (shutdown_tx, shutdown_rx) = watch::channel(false);
 		let (complete_tx, complete_rx) = oneshot::channel();
 		let running = self.running.clone();
@@ -196,11 +246,57 @@ impl ReplicationSubsystem {
 			let _ = complete_tx.send(());
 			info!("Replication client stopped");
 		});
+		(shutdown_tx, complete_rx)
+	}
 
+	#[inline]
+	fn stash_replica_handles(&self, handles: ReplicaHandles) {
+		let (shutdown_tx, complete_rx) = handles;
 		*self.replica_shutdown_tx.lock() = Some(shutdown_tx);
 		*self.replica_complete_rx.lock() = Some(complete_rx);
-		self.running.store(true, Ordering::SeqCst);
-		Ok(())
+	}
+
+	#[inline]
+	fn shutdown_primary(&self) {
+		reifydb_assertions! {
+			let is_primary = matches!(self.config, ReplicationConfig::Primary(_));
+			assert!(
+				is_primary,
+				"shutdown_primary acquires the primary shutdown channels (stream/server) but the config is \
+				 the replica variant, so it would take the never-populated primary mutexes and silently skip \
+				 stopping the running replica client task (is_primary={is_primary})"
+			);
+		}
+		if let Some(tx) = self.stream_shutdown_tx.lock().take() {
+			let _ = tx.send(true);
+		}
+		if let Some(tx) = self.shutdown_tx.lock().take() {
+			let _ = tx.send(());
+		}
+		let rx = self.shutdown_complete_rx.lock().take();
+		if let Some(rx) = rx {
+			let _ = self.runtime.block_on(rx);
+		}
+	}
+
+	#[inline]
+	fn shutdown_replica(&self) {
+		reifydb_assertions! {
+			let is_replica = matches!(self.config, ReplicationConfig::Replica(_));
+			assert!(
+				is_replica,
+				"shutdown_replica acquires the replica shutdown channels but the config is the primary \
+				 variant, so it would take the never-populated replica mutexes and leave the running \
+				 replication server task alive after shutdown returns (is_replica={is_replica})"
+			);
+		}
+		if let Some(tx) = self.replica_shutdown_tx.lock().take() {
+			let _ = tx.send(true);
+		}
+		let rx = self.replica_complete_rx.lock().take();
+		if let Some(rx) = rx {
+			let _ = self.runtime.block_on(rx);
+		}
 	}
 }
 
@@ -250,27 +346,8 @@ impl HasVersion for ReplicationSubsystem {
 impl Shutdown for ReplicationSubsystem {
 	fn shutdown(&self) {
 		match &self.config {
-			ReplicationConfig::Primary(_) => {
-				if let Some(tx) = self.stream_shutdown_tx.lock().take() {
-					let _ = tx.send(true);
-				}
-				if let Some(tx) = self.shutdown_tx.lock().take() {
-					let _ = tx.send(());
-				}
-				let rx = self.shutdown_complete_rx.lock().take();
-				if let Some(rx) = rx {
-					let _ = self.runtime.block_on(rx);
-				}
-			}
-			ReplicationConfig::Replica(_) => {
-				if let Some(tx) = self.replica_shutdown_tx.lock().take() {
-					let _ = tx.send(true);
-				}
-				let rx = self.replica_complete_rx.lock().take();
-				if let Some(rx) = rx {
-					let _ = self.runtime.block_on(rx);
-				}
-			}
+			ReplicationConfig::Primary(_) => self.shutdown_primary(),
+			ReplicationConfig::Replica(_) => self.shutdown_replica(),
 		}
 		self.running.store(false, Ordering::SeqCst);
 	}

@@ -125,41 +125,18 @@ impl GrpcSubsystemFactory {
 	}
 }
 
+type ResolvedDeps =
+	(StandardEngine, ActorSpawner, Clock, Rng, Handle, RequestInterceptorChain, Option<Arc<SubscriptionStore>>);
+
 impl SubsystemFactory for GrpcSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
-		let engine = ioc.resolve::<StandardEngine>()?;
-		let spawner = ioc.resolve::<ActorSpawner>()?;
-		let clock = ioc.resolve::<Clock>()?;
-		let rng = ioc.resolve::<Rng>()?;
-		let handle = ioc.resolve::<Handle>()?;
+		let (engine, spawner, clock, rng, handle, interceptors, subscription_store) =
+			Self::resolve_dependencies(ioc)?;
 
 		let config = (self.config_fn)();
 
-		let query_config = StateConfig::new()
-			.query_timeout(config.query_timeout)
-			.request_timeout(config.request_timeout)
-			.max_connections(config.max_connections);
+		let state = Self::build_app_state(&config, engine, spawner, interceptors, &clock, &rng);
 
-		let interceptors = ioc.resolve::<RequestInterceptorChain>().unwrap_or_default();
-
-		let auth_service = AuthService::new(
-			Arc::new(engine.clone()),
-			Arc::new(AuthenticationRegistry::new(clock.clone())),
-			rng.clone(),
-			clock.clone(),
-			AuthServiceConfig::default(),
-		);
-
-		let state = AppState::new(
-			spawner,
-			engine,
-			auth_service,
-			query_config,
-			interceptors,
-			clock.clone(),
-			rng.clone(),
-		);
-		let subscription_store = ioc.resolve::<Arc<SubscriptionStore>>().ok();
 		let subsystem = GrpcSubsystem::new(
 			config.bind_addr.clone(),
 			config.admin_bind_addr.clone(),
@@ -170,5 +147,45 @@ impl SubsystemFactory for GrpcSubsystemFactory {
 		)?;
 
 		Ok(Box::new(subsystem))
+	}
+}
+
+impl GrpcSubsystemFactory {
+	#[inline]
+	fn resolve_dependencies(ioc: &IocContainer) -> Result<ResolvedDeps> {
+		let engine = ioc.resolve::<StandardEngine>()?;
+		let spawner = ioc.resolve::<ActorSpawner>()?;
+		let clock = ioc.resolve::<Clock>()?;
+		let rng = ioc.resolve::<Rng>()?;
+		let handle = ioc.resolve::<Handle>()?;
+		let interceptors = ioc.resolve::<RequestInterceptorChain>().unwrap_or_default();
+		let subscription_store = ioc.resolve::<Arc<SubscriptionStore>>().ok();
+
+		Ok((engine, spawner, clock, rng, handle, interceptors, subscription_store))
+	}
+
+	#[inline]
+	fn build_app_state(
+		config: &GrpcConfig,
+		engine: StandardEngine,
+		spawner: ActorSpawner,
+		interceptors: RequestInterceptorChain,
+		clock: &Clock,
+		rng: &Rng,
+	) -> AppState {
+		let query_config = StateConfig::new()
+			.query_timeout(config.query_timeout)
+			.request_timeout(config.request_timeout)
+			.max_connections(config.max_connections);
+
+		let auth_service = AuthService::new(
+			Arc::new(engine.clone()),
+			Arc::new(AuthenticationRegistry::new(clock.clone())),
+			rng.clone(),
+			clock.clone(),
+			AuthServiceConfig::default(),
+		);
+
+		AppState::new(spawner, engine, auth_service, query_config, interceptors, clock.clone(), rng.clone())
 	}
 }

@@ -52,14 +52,19 @@ impl OtelSubsystem {
 		};
 		let provider = subsystem.build_provider_in_runtime()?;
 		subsystem.install_provider(provider);
-		subsystem.running.store(true, Ordering::SeqCst);
+		subsystem.mark_started();
+		Ok(subsystem)
+	}
+
+	#[inline]
+	fn mark_started(&self) {
+		self.running.store(true, Ordering::SeqCst);
 		info!(
-			service = %subsystem.config.service_name,
-			endpoint = %subsystem.config.endpoint,
-			exporter = ?subsystem.config.exporter_type,
+			service = %self.config.service_name,
+			endpoint = %self.config.endpoint,
+			exporter = ?self.config.exporter_type,
 			"OpenTelemetry subsystem started"
 		);
-		Ok(subsystem)
 	}
 
 	pub fn config(&self) -> &OtelConfig {

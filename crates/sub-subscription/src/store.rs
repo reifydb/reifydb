@@ -122,20 +122,36 @@ impl SubscriptionStore {
 		if staged.is_empty() {
 			return;
 		}
-		{
-			let _write = self.coord.write();
-			for (id, columns_vec) in staged {
-				let Some(mut buf) = self.inner.get_mut(&id) else {
-					continue;
-				};
-				for columns in columns_vec {
-					if buf.queue.len() >= buf.capacity {
-						buf.queue.pop_front();
-					}
-					buf.queue.push_back(columns);
+		self.append_staged_under_coord(staged);
+		self.notify_wakers();
+	}
+
+	#[inline]
+	fn append_staged_under_coord(&self, staged: HashMap<SubscriptionId, Vec<Columns>>) {
+		let _write = self.coord.write();
+		for (id, columns_vec) in staged {
+			let Some(mut buf) = self.inner.get_mut(&id) else {
+				continue;
+			};
+			for columns in columns_vec {
+				reifydb_assertions! {
+					let cap = buf.capacity;
+					assert!(
+						cap != 0,
+						"subscription {:?} ring buffer has zero capacity, so the eviction branch can never run and push_back grows the queue without bound, leaking memory per committed batch",
+						id
+					);
 				}
+				if buf.queue.len() >= buf.capacity {
+					buf.queue.pop_front();
+				}
+				buf.queue.push_back(columns);
 			}
 		}
+	}
+
+	#[inline]
+	fn notify_wakers(&self) {
 		for waker in self.wakers.lock().iter() {
 			waker.notify_one();
 		}

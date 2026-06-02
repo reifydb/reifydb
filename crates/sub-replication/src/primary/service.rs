@@ -5,6 +5,7 @@ use std::{ops::Bound, sync::Arc};
 
 use reifydb_cdc::storage::CdcStore;
 use reifydb_core::common::CommitVersion;
+use reifydb_runtime::reifydb_assertions;
 use tokio::{
 	select, spawn,
 	sync::{Notify, mpsc, watch},
@@ -20,6 +21,14 @@ use crate::{
 		reify_db_replication_server::ReifyDbReplication,
 	},
 };
+
+type StreamResources = (
+	mpsc::Sender<Result<CdcEntry, Status>>,
+	mpsc::Receiver<Result<CdcEntry, Status>>,
+	Arc<CdcStore>,
+	Arc<Notify>,
+	watch::Receiver<bool>,
+);
 
 pub struct ReplicationService {
 	cdc_store: Arc<CdcStore>,
@@ -42,16 +51,9 @@ impl ReplicationService {
 			batch_size,
 		}
 	}
-}
 
-#[tonic::async_trait]
-impl ReifyDbReplication for ReplicationService {
-	type StreamCdcStream = ReceiverStream<Result<CdcEntry, Status>>;
-
-	async fn stream_cdc(
-		&self,
-		request: Request<StreamCdcRequest>,
-	) -> Result<Response<Self::StreamCdcStream>, Status> {
+	#[inline]
+	fn parse_stream_request(&self, request: Request<StreamCdcRequest>) -> (CommitVersion, u64) {
 		let req = request.into_inner();
 		let since = CommitVersion(req.since_version);
 		let batch_size = if req.batch_size > 0 {
@@ -60,13 +62,40 @@ impl ReifyDbReplication for ReplicationService {
 			self.batch_size
 		};
 
+		reifydb_assertions! {
+			assert!(
+				batch_size > 0,
+				"streaming batch_size resolved to zero, so read_range would return empty batches forever and \
+				 the replica would stall without ever making progress (requested req.batch_size={}, \
+				 service default self.batch_size={})",
+				req.batch_size,
+				self.batch_size
+			);
+		}
+
+		(since, batch_size)
+	}
+
+	#[inline]
+	fn clone_stream_resources(&self) -> StreamResources {
 		let (tx, rx) = mpsc::channel(256);
 		let store = self.cdc_store.clone();
 		let notify = self.notify.clone();
-		let mut shutdown_rx = self.shutdown_rx.clone();
+		let shutdown_rx = self.shutdown_rx.clone();
+		(tx, rx, store, notify, shutdown_rx)
+	}
 
-		debug!(since_version = since.0, "Replica connected for CDC streaming");
-
+	#[inline]
+	#[allow(clippy::too_many_arguments)]
+	fn spawn_streaming_loop(
+		&self,
+		since: CommitVersion,
+		batch_size: u64,
+		tx: mpsc::Sender<Result<CdcEntry, Status>>,
+		store: Arc<CdcStore>,
+		notify: Arc<Notify>,
+		mut shutdown_rx: watch::Receiver<bool>,
+	) {
 		spawn(async move {
 			let mut cursor = since;
 
@@ -105,6 +134,24 @@ impl ReifyDbReplication for ReplicationService {
 				}
 			}
 		});
+	}
+}
+
+#[tonic::async_trait]
+impl ReifyDbReplication for ReplicationService {
+	type StreamCdcStream = ReceiverStream<Result<CdcEntry, Status>>;
+
+	async fn stream_cdc(
+		&self,
+		request: Request<StreamCdcRequest>,
+	) -> Result<Response<Self::StreamCdcStream>, Status> {
+		let (since, batch_size) = self.parse_stream_request(request);
+
+		let (tx, rx, store, notify, shutdown_rx) = self.clone_stream_resources();
+
+		debug!(since_version = since.0, "Replica connected for CDC streaming");
+
+		self.spawn_streaming_loop(since, batch_size, tx, store, notify, shutdown_rx);
 
 		Ok(Response::new(ReceiverStream::new(rx)))
 	}

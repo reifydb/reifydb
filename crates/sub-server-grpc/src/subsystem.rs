@@ -237,18 +237,34 @@ impl HasVersion for GrpcSubsystem {
 
 impl Shutdown for GrpcSubsystem {
 	fn shutdown(&self) {
+		self.close_registry();
+		self.signal_subscription_and_poller_stop();
+		self.shutdown_admin_server_and_wait();
+		self.shutdown_main_server_and_wait();
+		self.running.store(false, Ordering::SeqCst);
+	}
+}
+
+impl GrpcSubsystem {
+	#[inline]
+	fn close_registry(&self) {
 		if let Some(registry) = self.registry.lock().take() {
 			registry.close_all();
 		}
+	}
 
+	#[inline]
+	fn signal_subscription_and_poller_stop(&self) {
 		if let Some(tx) = self.subscription_shutdown_tx.lock().take() {
 			let _ = tx.send(true);
 		}
-
 		if let Some(tx) = self.poller_stop_tx.lock().take() {
 			let _ = tx.send(true);
 		}
+	}
 
+	#[inline]
+	fn shutdown_admin_server_and_wait(&self) {
 		let admin_tx = self.admin_shutdown_tx.lock().take();
 		if let Some(tx) = admin_tx {
 			let _ = tx.send(());
@@ -257,7 +273,10 @@ impl Shutdown for GrpcSubsystem {
 		if let Some(rx) = admin_rx {
 			let _ = self.handle.block_on(rx);
 		}
+	}
 
+	#[inline]
+	fn shutdown_main_server_and_wait(&self) {
 		let main_tx = self.shutdown_tx.lock().take();
 		if let Some(tx) = main_tx {
 			let _ = tx.send(());
@@ -266,7 +285,6 @@ impl Shutdown for GrpcSubsystem {
 		if let Some(rx) = main_rx {
 			let _ = self.handle.block_on(rx);
 		}
-		self.running.store(false, Ordering::SeqCst);
 	}
 }
 

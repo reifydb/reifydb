@@ -99,27 +99,32 @@ pub(crate) async fn handle_batch_unsubscribe(
 	req: BatchUnsubscribeRequest,
 	conn: &mut ConnectionContext<'_>,
 ) -> Option<String> {
-	let batch_id = match req.batch_id.parse::<BatchId>() {
+	let batch_id = match parse_batch_id(request_id, &req.batch_id) {
 		Ok(id) => id,
-		Err(_) => {
-			return Some(Response::internal_error(
-				request_id,
-				"INVALID_BATCH_ID",
-				"Invalid batch ID format",
-			)
-			.to_json());
-		}
+		Err(response) => return Some(response),
 	};
 
-	if let Some(handles) = conn.batch_remote_tasks.remove(&batch_id) {
-		for handle in handles {
-			handle.abort();
-		}
-	}
+	abort_local_batch_handles(conn, &batch_id);
 
 	let _ = shared_batch_unsubscribe(conn.state, conn.registry, batch_id).await;
 
 	Some(Response::batch_unsubscribed(request_id, batch_id.to_string()).to_json())
+}
+
+#[inline]
+fn parse_batch_id(request_id: &str, raw: &str) -> Result<BatchId, String> {
+	raw.parse::<BatchId>().map_err(|_| {
+		Response::internal_error(request_id, "INVALID_BATCH_ID", "Invalid batch ID format").to_json()
+	})
+}
+
+#[inline]
+fn abort_local_batch_handles(conn: &mut ConnectionContext<'_>, batch_id: &BatchId) {
+	if let Some(handles) = conn.batch_remote_tasks.remove(batch_id) {
+		for handle in handles {
+			handle.abort();
+		}
+	}
 }
 
 fn subscribe_error_to_response(request_id: &str, err: SubscribeError) -> String {

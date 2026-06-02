@@ -18,7 +18,7 @@ use reifydb_core::{
 	internal,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_runtime::{reifydb_assertions, sync::mutex::Mutex};
 use reifydb_sub_flow::{
 	operator::{
 		Operator, OperatorCell,
@@ -151,10 +151,39 @@ impl Operator for EphemeralSinkSubscriptionOperator {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+		let (mut state, persist) = self.take_delivered_state(txn)?;
+
+		for diff in change.diffs.iter() {
+			match diff {
+				Diff::Insert {
+					post,
+					..
+				} => self.apply_insert(&mut state, post),
+				Diff::Update {
+					pre,
+					post,
+					..
+				} => self.apply_update(&mut state, pre, post),
+				Diff::Remove {
+					pre,
+					..
+				} => self.apply_remove(&mut state, pre),
+			}
+		}
+
+		txn.put_operator_state(self.node, state, persist);
+
+		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))
+	}
+}
+
+impl EphemeralSinkSubscriptionOperator {
+	#[inline]
+	fn take_delivered_state(&self, txn: &mut FlowTransaction) -> Result<(DeliveredState, PersistFn)> {
 		let node_id = self.node;
 		let shape_for_persist = self.shape.clone();
 
-		let (mut state, persist) = txn.take_operator_state::<DeliveredState, _>(node_id, |txn| {
+		txn.take_operator_state::<DeliveredState, _>(node_id, |txn| {
 			let s = self.load_delivered_state(txn)?;
 			let shape = shape_for_persist.clone();
 			let persist: PersistFn = Box::new(move |txn, value| {
@@ -170,81 +199,83 @@ impl Operator for EphemeralSinkSubscriptionOperator {
 				Ok(())
 			});
 			Ok((s, persist))
-		})?;
+		})
+	}
 
-		for diff in change.diffs.iter() {
-			match diff {
-				Diff::Insert {
-					post,
-					..
-				} => {
-					let row_count = post.row_count();
-					let mut new_indices: Vec<usize> = Vec::with_capacity(row_count);
-					for row_idx in 0..row_count {
-						if state.rows.insert(post.row_numbers[row_idx]) {
-							new_indices.push(row_idx);
-						}
-					}
-					if new_indices.len() == row_count {
-						self.stage(post, DiffType::Insert);
-					} else if !new_indices.is_empty() {
-						let sub_post = post.extract_by_indices(&new_indices);
-						self.stage(&sub_post, DiffType::Insert);
-					}
-				}
-				Diff::Update {
-					pre,
-					post,
-					..
-				} => {
-					let row_count = post.row_count();
-					let mut update_indices: Vec<usize> = Vec::new();
-					let mut insert_indices: Vec<usize> = Vec::new();
-					for row_idx in 0..row_count {
-						let pre_rn = pre.row_numbers[row_idx];
-						let post_rn = post.row_numbers[row_idx];
-						if state.rows.contains(&pre_rn) {
-							if pre_rn != post_rn {
-								state.rows.remove(&pre_rn);
-								state.rows.insert(post_rn);
-							}
-							update_indices.push(row_idx);
-						} else {
-							state.rows.insert(post_rn);
-							insert_indices.push(row_idx);
-						}
-					}
-					if !update_indices.is_empty() {
-						let sub_post = post.extract_by_indices(&update_indices);
-						self.stage(&sub_post, DiffType::Update);
-					}
-					if !insert_indices.is_empty() {
-						let sub_post = post.extract_by_indices(&insert_indices);
-						self.stage(&sub_post, DiffType::Insert);
-					}
-				}
-				Diff::Remove {
-					pre,
-					..
-				} => {
-					let row_count = pre.row_count();
-					let mut remove_indices: Vec<usize> = Vec::new();
-					for row_idx in 0..row_count {
-						let pre_rn = pre.row_numbers[row_idx];
-						if state.rows.remove(&pre_rn) {
-							remove_indices.push(row_idx);
-						}
-					}
-					if !remove_indices.is_empty() {
-						let sub_pre = pre.extract_by_indices(&remove_indices);
-						self.stage(&sub_pre, DiffType::Remove);
-					}
-				}
+	fn apply_insert(&self, state: &mut DeliveredState, post: &Columns) {
+		let row_count = post.row_count();
+		let mut new_indices: Vec<usize> = Vec::with_capacity(row_count);
+		for row_idx in 0..row_count {
+			if state.rows.insert(post.row_numbers[row_idx]) {
+				new_indices.push(row_idx);
 			}
 		}
+		reifydb_assertions! {
+			assert!(
+				new_indices.len() <= row_count,
+				"insert staged more rows than the diff carried, so a subscriber would receive phantom \
+				 inserts not present in the source change (new_indices={}, row_count={row_count})",
+				new_indices.len()
+			);
+		}
+		if new_indices.len() == row_count {
+			self.stage(post, DiffType::Insert);
+		} else if !new_indices.is_empty() {
+			let sub_post = post.extract_by_indices(&new_indices);
+			self.stage(&sub_post, DiffType::Insert);
+		}
+	}
 
-		txn.put_operator_state(node_id, state, persist);
+	fn apply_update(&self, state: &mut DeliveredState, pre: &Columns, post: &Columns) {
+		let row_count = post.row_count();
+		let mut update_indices: Vec<usize> = Vec::new();
+		let mut insert_indices: Vec<usize> = Vec::new();
+		for row_idx in 0..row_count {
+			let pre_rn = pre.row_numbers[row_idx];
+			let post_rn = post.row_numbers[row_idx];
+			if state.rows.contains(&pre_rn) {
+				if pre_rn != post_rn {
+					state.rows.remove(&pre_rn);
+					state.rows.insert(post_rn);
+				}
+				update_indices.push(row_idx);
+			} else {
+				state.rows.insert(post_rn);
+				insert_indices.push(row_idx);
+			}
+		}
+		reifydb_assertions! {
+			assert!(
+				update_indices.len() + insert_indices.len() == row_count,
+				"update classification dropped or double-counted a post row, so a subscriber would miss a \
+				 change or see it twice; every post row must be exactly one of update-or-insert \
+				 (update={}, insert={}, row_count={row_count})",
+				update_indices.len(),
+				insert_indices.len()
+			);
+		}
+		if !update_indices.is_empty() {
+			let sub_post = post.extract_by_indices(&update_indices);
+			self.stage(&sub_post, DiffType::Update);
+		}
+		if !insert_indices.is_empty() {
+			let sub_post = post.extract_by_indices(&insert_indices);
+			self.stage(&sub_post, DiffType::Insert);
+		}
+	}
 
-		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))
+	fn apply_remove(&self, state: &mut DeliveredState, pre: &Columns) {
+		let row_count = pre.row_count();
+		let mut remove_indices: Vec<usize> = Vec::new();
+		for row_idx in 0..row_count {
+			let pre_rn = pre.row_numbers[row_idx];
+			if state.rows.remove(&pre_rn) {
+				remove_indices.push(row_idx);
+			}
+		}
+		if !remove_indices.is_empty() {
+			let sub_pre = pre.extract_by_indices(&remove_indices);
+			self.stage(&sub_pre, DiffType::Remove);
+		}
 	}
 }

@@ -11,7 +11,11 @@ use axum::{
 };
 use reifydb_core::{
 	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
-	interface::catalog::binding::{Binding, BindingFormat, BindingProtocol, HttpMethod},
+	interface::catalog::{
+		binding::{Binding, BindingFormat, BindingProtocol, HttpMethod},
+		namespace::Namespace,
+		procedure::Procedure,
+	},
 	metric::ExecutionMetrics,
 };
 use reifydb_runtime::actor::reply::reply_channel;
@@ -106,18 +110,7 @@ pub async fn handle_authenticate(
 	State(state): State<HttpServerState>,
 	Json(request): Json<AuthenticateRequest>,
 ) -> Result<Response, AppError> {
-	let (reply, receiver) = reply_channel();
-	let (actor_ref, _handle) = state.spawn_actor();
-	actor_ref
-		.send(ServerMessage::Authenticate {
-			method: request.method,
-			credentials: request.credentials,
-			reply,
-		})
-		.ok()
-		.ok_or_else(|| AppError::Internal("actor mailbox closed".into()))?;
-
-	let auth_response = receiver.recv().await.map_err(|_| AppError::Internal("actor stopped".into()))?;
+	let auth_response = send_authenticate(&state, request).await?;
 
 	match auth_response {
 		ServerAuthResponse::Authenticated {
@@ -179,26 +172,28 @@ pub async fn handle_authenticate(
 	}
 }
 
-pub async fn handle_logout(State(state): State<HttpServerState>, headers: HeaderMap) -> Result<Response, AppError> {
-	let auth_header = headers.get("authorization").ok_or(AppError::Auth(AuthError::MissingCredentials))?;
-	let auth_str = auth_header.to_str().map_err(|_| AppError::Auth(AuthError::InvalidHeader))?;
-	let token = auth_str.strip_prefix("Bearer ").ok_or(AppError::Auth(AuthError::InvalidHeader))?.trim();
-
-	if token.is_empty() {
-		return Err(AppError::Auth(AuthError::InvalidToken));
-	}
-
+#[inline]
+async fn send_authenticate(
+	state: &HttpServerState,
+	request: AuthenticateRequest,
+) -> Result<ServerAuthResponse, AppError> {
 	let (reply, receiver) = reply_channel();
 	let (actor_ref, _handle) = state.spawn_actor();
 	actor_ref
-		.send(ServerMessage::Logout {
-			token: token.to_string(),
+		.send(ServerMessage::Authenticate {
+			method: request.method,
+			credentials: request.credentials,
 			reply,
 		})
 		.ok()
 		.ok_or_else(|| AppError::Internal("actor mailbox closed".into()))?;
 
-	let logout_response = receiver.recv().await.map_err(|_| AppError::Internal("actor stopped".into()))?;
+	receiver.recv().await.map_err(|_| AppError::Internal("actor stopped".into()))
+}
+
+pub async fn handle_logout(State(state): State<HttpServerState>, headers: HeaderMap) -> Result<Response, AppError> {
+	let token = extract_bearer_token(&headers)?;
+	let logout_response = send_logout(&state, token).await?;
 
 	match logout_response {
 		ServerLogoutResponse::Ok => Ok((
@@ -211,6 +206,33 @@ pub async fn handle_logout(State(state): State<HttpServerState>, headers: Header
 		ServerLogoutResponse::InvalidToken => Err(AppError::Auth(AuthError::InvalidToken)),
 		ServerLogoutResponse::Error(reason) => Err(AppError::Internal(reason)),
 	}
+}
+
+#[inline]
+fn extract_bearer_token(headers: &HeaderMap) -> Result<&str, AppError> {
+	let auth_header = headers.get("authorization").ok_or(AppError::Auth(AuthError::MissingCredentials))?;
+	let auth_str = auth_header.to_str().map_err(|_| AppError::Auth(AuthError::InvalidHeader))?;
+	let token = auth_str.strip_prefix("Bearer ").ok_or(AppError::Auth(AuthError::InvalidHeader))?.trim();
+
+	if token.is_empty() {
+		return Err(AppError::Auth(AuthError::InvalidToken));
+	}
+	Ok(token)
+}
+
+#[inline]
+async fn send_logout(state: &HttpServerState, token: &str) -> Result<ServerLogoutResponse, AppError> {
+	let (reply, receiver) = reply_channel();
+	let (actor_ref, _handle) = state.spawn_actor();
+	actor_ref
+		.send(ServerMessage::Logout {
+			token: token.to_string(),
+			reply,
+		})
+		.ok()
+		.ok_or_else(|| AppError::Internal("actor mailbox closed".into()))?;
+
+	receiver.recv().await.map_err(|_| AppError::Internal("actor stopped".into()))
 }
 
 fn build_metadata(headers: &HeaderMap) -> RequestMetadata {
@@ -261,52 +283,64 @@ async fn execute_and_respond(
 	request: StatementRequest,
 	format_params: &FormatParams,
 ) -> Result<Response, AppError> {
+	let ctx = build_request_context(state, operation, headers, request)?;
+
+	let (frames, metrics) = dispatch(state, ctx).await?;
+
+	let mut response = encode_query_response(frames, format_params)?;
+	insert_meta_headers(response.headers_mut(), &metrics);
+	Ok(response)
+}
+
+#[inline]
+fn build_request_context(
+	state: &HttpServerState,
+	operation: Operation,
+	headers: &HeaderMap,
+	request: StatementRequest,
+) -> Result<RequestContext, AppError> {
 	let identity = extract_identity(state, headers)?;
 	let metadata = build_metadata(headers);
 	let params = match request.params {
 		None => Params::None,
 		Some(wp) => wp.into_params().map_err(AppError::InvalidParams)?,
 	};
-	let ctx = RequestContext {
+	Ok(RequestContext {
 		identity,
 		operation,
 		rql: request.rql,
 		params,
 		metadata,
-	};
+	})
+}
 
-	let (frames, metrics) = dispatch(state, ctx).await?;
-
-	let mut response = {
-		let _encode_span =
-			debug_span!("http::encode", format = ?format_params.format, frame_count = frames.len())
-				.entered();
-		match format_params.format {
-			WireFormat::Rbcf => match encode_frames_rbcf(&frames) {
-				Ok(bytes) => {
-					(StatusCode::OK, [(header::CONTENT_TYPE, CONTENT_TYPE_RBCF.to_string())], bytes)
-						.into_response()
-				}
-				Err(e) => return Err(AppError::BadRequest(format!("RBCF encode error: {}", e))),
-			},
-			WireFormat::Json => {
-				let resolved = resolve_response_json(frames, format_params.unwrap.unwrap_or(false))
-					.map_err(AppError::BadRequest)?;
-				(StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body)
-					.into_response()
+#[inline]
+fn encode_query_response(frames: Vec<Frame>, format_params: &FormatParams) -> Result<Response, AppError> {
+	let _encode_span =
+		debug_span!("http::encode", format = ?format_params.format, frame_count = frames.len()).entered();
+	match format_params.format {
+		WireFormat::Rbcf => match encode_frames_rbcf(&frames) {
+			Ok(bytes) => {
+				Ok((StatusCode::OK, [(header::CONTENT_TYPE, CONTENT_TYPE_RBCF.to_string())], bytes)
+					.into_response())
 			}
-			WireFormat::Frames => {
-				let body = to_string(&QueryResponse {
-					frames: convert_frames(&frames),
-				})
-				.map_err(|e| AppError::BadRequest(format!("JSON encode error: {}", e)))?;
-				(StatusCode::OK, [(header::CONTENT_TYPE, CONTENT_TYPE_FRAMES.to_string())], body)
-					.into_response()
-			}
+			Err(e) => Err(AppError::BadRequest(format!("RBCF encode error: {}", e))),
+		},
+		WireFormat::Json => {
+			let resolved = resolve_response_json(frames, format_params.unwrap.unwrap_or(false))
+				.map_err(AppError::BadRequest)?;
+			Ok((StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body)
+				.into_response())
 		}
-	};
-	insert_meta_headers(response.headers_mut(), &metrics);
-	Ok(response)
+		WireFormat::Frames => {
+			let body = to_string(&QueryResponse {
+				frames: convert_frames(&frames),
+			})
+			.map_err(|e| AppError::BadRequest(format!("JSON encode error: {}", e)))?;
+			Ok((StatusCode::OK, [(header::CONTENT_TYPE, CONTENT_TYPE_FRAMES.to_string())], body)
+				.into_response())
+		}
+	}
 }
 
 #[instrument(name = "http::extract_identity", level = "debug", skip_all)]
@@ -327,16 +361,43 @@ pub async fn handle_binding(
 	Query(query_params): Query<HashMap<String, String>>,
 	headers: HeaderMap,
 ) -> Result<Response, AppError> {
-	let http_method = match method.as_str() {
-		"GET" => HttpMethod::Get,
-		"POST" => HttpMethod::Post,
-		"PUT" => HttpMethod::Put,
-		"PATCH" => HttpMethod::Patch,
-		"DELETE" => HttpMethod::Delete,
-		_ => return Err(AppError::MethodNotAllowed(format!("method `{}` is not supported", method))),
-	};
+	let http_method = resolve_http_method(&method)?;
 	let request_path = format!("/{}", path);
 
+	let (binding, path_captures) = resolve_binding(&state, http_method, &method, &request_path)?;
+	let (procedure, namespace) = find_binding_targets(&state, &binding)?;
+	let params = coerce_binding_params(&procedure, &path_captures, &query_params)?;
+
+	let identity = extract_identity(&state, &headers)?;
+	let metadata = build_metadata(&headers);
+
+	let (frames, metrics) =
+		dispatch_binding(&state, namespace.name(), procedure.name(), params, identity, metadata).await?;
+
+	let mut response = encode_binding_response(frames, binding.format)?;
+	insert_meta_headers(response.headers_mut(), &metrics);
+	Ok(response)
+}
+
+#[inline]
+fn resolve_http_method(method: &Method) -> Result<HttpMethod, AppError> {
+	match method.as_str() {
+		"GET" => Ok(HttpMethod::Get),
+		"POST" => Ok(HttpMethod::Post),
+		"PUT" => Ok(HttpMethod::Put),
+		"PATCH" => Ok(HttpMethod::Patch),
+		"DELETE" => Ok(HttpMethod::Delete),
+		_ => Err(AppError::MethodNotAllowed(format!("method `{}` is not supported", method))),
+	}
+}
+
+#[inline]
+fn resolve_binding(
+	state: &HttpServerState,
+	http_method: HttpMethod,
+	method: &Method,
+	request_path: &str,
+) -> Result<(Binding, HashMap<String, String>), AppError> {
 	let bindings = state.engine().catalog().cache().list_http_bindings();
 	let mut any_path_match = false;
 	let mut matched: Option<(Binding, HashMap<String, String>)> = None;
@@ -348,7 +409,7 @@ pub async fn handle_binding(
 		else {
 			unreachable!("list_http_bindings returns only HTTP bindings")
 		};
-		if let Some(captures) = match_http_path(binding_path, &request_path) {
+		if let Some(captures) = match_http_path(binding_path, request_path) {
 			any_path_match = true;
 			if binding_method == &http_method {
 				matched = Some((b.clone(), captures));
@@ -356,24 +417,33 @@ pub async fn handle_binding(
 			}
 		}
 	}
-	let (binding, path_captures) = match matched {
-		Some(m) => m,
-		None if any_path_match => {
-			return Err(AppError::MethodNotAllowed(format!(
-				"no binding for method `{}` at `{}`",
-				method, request_path
-			)));
-		}
-		None => return Err(AppError::NotFound(format!("no binding for `{}`", request_path))),
-	};
+	match matched {
+		Some(m) => Ok(m),
+		None if any_path_match => Err(AppError::MethodNotAllowed(format!(
+			"no binding for method `{}` at `{}`",
+			method, request_path
+		))),
+		None => Err(AppError::NotFound(format!("no binding for `{}`", request_path))),
+	}
+}
 
+#[inline]
+fn find_binding_targets(state: &HttpServerState, binding: &Binding) -> Result<(Procedure, Namespace), AppError> {
 	let procedure = state.engine().catalog().cache().find_procedure(binding.procedure_id).ok_or_else(|| {
 		AppError::Internal(format!("binding references missing procedure id {:?}", binding.procedure_id))
 	})?;
 	let namespace = state.engine().catalog().cache().find_namespace(binding.namespace).ok_or_else(|| {
 		AppError::Internal(format!("binding references missing namespace id {:?}", binding.namespace))
 	})?;
+	Ok((procedure, namespace))
+}
 
+#[inline]
+fn coerce_binding_params(
+	procedure: &Procedure,
+	path_captures: &HashMap<String, String>,
+	query_params: &HashMap<String, String>,
+) -> Result<Params, AppError> {
 	let param_names: Vec<&str> = procedure.params().iter().map(|p| p.name.as_str()).collect();
 	for key in query_params.keys() {
 		if !param_names.contains(&key.as_str()) {
@@ -403,21 +473,11 @@ pub async fn handle_binding(
 		})?;
 		params.insert(p.name.clone(), value);
 	}
-	let params = if params.is_empty() {
-		Params::None
+	if params.is_empty() {
+		Ok(Params::None)
 	} else {
-		Params::Named(Arc::new(params))
-	};
-
-	let identity = extract_identity(&state, &headers)?;
-	let metadata = build_metadata(&headers);
-
-	let (frames, metrics) =
-		dispatch_binding(&state, namespace.name(), procedure.name(), params, identity, metadata).await?;
-
-	let mut response = encode_binding_response(frames, binding.format)?;
-	insert_meta_headers(response.headers_mut(), &metrics);
-	Ok(response)
+		Ok(Params::Named(Arc::new(params)))
+	}
 }
 
 fn insert_meta_headers(headers: &mut HeaderMap, metrics: &ExecutionMetrics) {

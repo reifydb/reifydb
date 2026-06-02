@@ -158,34 +158,82 @@ impl HttpSubsystemFactory {
 	}
 }
 
+type ResolvedDeps = (StandardEngine, RequestInterceptorChain, ActorSpawner, Clock, Rng, Handle);
+
 impl SubsystemFactory for HttpSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		let config = (self.config_fn)();
 
+		let (engine, interceptors, spawner, clock, rng, handle) =
+			Self::resolve_deps(ioc, config.spawner, config.clock, config.rng, config.handle)?;
+
+		let state = Self::build_app_state(
+			config.query_timeout,
+			config.request_timeout,
+			config.max_connections,
+			spawner,
+			engine,
+			clock,
+			rng,
+			interceptors,
+		);
+
+		let subsystem =
+			Self::build_subsystem(config.bind_addr.clone(), config.admin_bind_addr.clone(), state, handle)?;
+
+		Ok(Box::new(subsystem))
+	}
+}
+
+impl HttpSubsystemFactory {
+	#[inline]
+	#[allow(clippy::too_many_arguments)]
+	fn resolve_deps(
+		ioc: &IocContainer,
+		spawner: Option<ActorSpawner>,
+		clock: Option<Clock>,
+		rng: Option<Rng>,
+		handle: Option<Handle>,
+	) -> Result<ResolvedDeps> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let interceptors = ioc.resolve::<RequestInterceptorChain>().unwrap_or_default();
 
-		let spawner = match config.spawner {
+		let spawner = match spawner {
 			Some(spawner) => spawner,
 			None => ioc.resolve::<ActorSpawner>()?,
 		};
-		let clock = match config.clock {
+		let clock = match clock {
 			Some(clock) => clock,
 			None => ioc.resolve::<Clock>()?,
 		};
-		let rng = match config.rng {
+		let rng = match rng {
 			Some(rng) => rng,
 			None => ioc.resolve::<Rng>()?,
 		};
-		let handle = match config.handle {
+		let handle = match handle {
 			Some(handle) => handle,
 			None => ioc.resolve::<Handle>()?,
 		};
 
+		Ok((engine, interceptors, spawner, clock, rng, handle))
+	}
+
+	#[inline]
+	#[allow(clippy::too_many_arguments)]
+	fn build_app_state(
+		query_timeout: Duration,
+		request_timeout: Duration,
+		max_connections: usize,
+		spawner: ActorSpawner,
+		engine: StandardEngine,
+		clock: Clock,
+		rng: Rng,
+		interceptors: RequestInterceptorChain,
+	) -> AppState {
 		let query_config = StateConfig::new()
-			.query_timeout(config.query_timeout)
-			.request_timeout(config.request_timeout)
-			.max_connections(config.max_connections);
+			.query_timeout(query_timeout)
+			.request_timeout(request_timeout)
+			.max_connections(max_connections);
 
 		let auth_service = AuthService::new(
 			Arc::new(engine.clone()),
@@ -195,10 +243,16 @@ impl SubsystemFactory for HttpSubsystemFactory {
 			AuthServiceConfig::default(),
 		);
 
-		let state = AppState::new(spawner, engine, auth_service, query_config, interceptors, clock, rng);
-		let subsystem =
-			HttpSubsystem::new(config.bind_addr.clone(), config.admin_bind_addr.clone(), state, handle)?;
+		AppState::new(spawner, engine, auth_service, query_config, interceptors, clock, rng)
+	}
 
-		Ok(Box::new(subsystem))
+	#[inline]
+	fn build_subsystem(
+		bind_addr: Option<String>,
+		admin_bind_addr: Option<String>,
+		state: AppState,
+		handle: Handle,
+	) -> Result<HttpSubsystem> {
+		HttpSubsystem::new(bind_addr, admin_bind_addr, state, handle)
 	}
 }

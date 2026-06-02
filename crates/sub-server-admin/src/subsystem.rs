@@ -16,6 +16,7 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_runtime::{
+	reifydb_assertions,
 	shutdown::Shutdown,
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
@@ -25,6 +26,8 @@ use tokio::{net::TcpListener, runtime::Handle, sync::oneshot};
 use tracing::{error, info, warn};
 
 use crate::{routes::router, state::AdminState};
+
+type ShutdownHandles = (oneshot::Sender<()>, oneshot::Receiver<()>);
 
 pub struct AdminSubsystem {
 	bind_addr: String,
@@ -58,17 +61,39 @@ impl AdminSubsystem {
 	}
 
 	fn spawn_server(&self) -> Result<()> {
+		reifydb_assertions! {
+			assert!(
+				!self.bind_addr.is_empty(),
+				"admin subsystem must be configured with a non-empty bind address before binding, \
+				 otherwise TcpListener::bind resolves to an unspecified endpoint and the server would \
+				 silently accept on an unintended port (bind_addr={:?})",
+				self.bind_addr
+			);
+		}
+
+		let listener = self.bind_listener()?;
+		self.record_bound_addr(&listener)?;
+		let (shutdown_tx, complete_rx) = self.run_server(listener);
+		self.store_shutdown_handles(shutdown_tx, complete_rx);
+		Ok(())
+	}
+
+	#[inline]
+	fn bind_listener(&self) -> Result<TcpListener> {
 		let addr = self.bind_addr.clone();
 		let handle = self.handle.clone();
-		let listener = handle.block_on(TcpListener::bind(&addr)).map_err(|e| {
+		handle.block_on(TcpListener::bind(&addr)).map_err(|e| {
 			let err: Error = CoreError::SubsystemBindFailed {
 				addr: addr.clone(),
 				reason: e.to_string(),
 			}
 			.into();
 			err
-		})?;
+		})
+	}
 
+	#[inline]
+	fn record_bound_addr(&self, listener: &TcpListener) -> Result<()> {
 		let actual_addr = listener.local_addr().map_err(|e| {
 			let err: Error = CoreError::SubsystemAddressUnavailable {
 				reason: e.to_string(),
@@ -78,6 +103,20 @@ impl AdminSubsystem {
 		})?;
 		*self.actual_addr.write() = Some(actual_addr);
 		info!("Admin server bound to {}", actual_addr);
+		Ok(())
+	}
+
+	#[inline]
+	fn run_server(&self, listener: TcpListener) -> ShutdownHandles {
+		reifydb_assertions! {
+			let recorded = self.actual_addr.read().is_some();
+			assert!(
+				recorded,
+				"actual_addr must be recorded before the server task starts serving, otherwise \
+				 local_addr()/port() can observe None for a server that is already accepting \
+				 connections and callers waiting on the bound port would race the spawn"
+			);
+		}
 
 		let (shutdown_tx, shutdown_rx) = oneshot::channel();
 		let (complete_tx, complete_rx) = oneshot::channel();
@@ -109,9 +148,29 @@ impl AdminSubsystem {
 			info!("Admin server stopped");
 		});
 
+		(shutdown_tx, complete_rx)
+	}
+
+	#[inline]
+	fn store_shutdown_handles(&self, shutdown_tx: oneshot::Sender<()>, complete_rx: oneshot::Receiver<()>) {
 		*self.shutdown_tx.lock() = Some(shutdown_tx);
 		*self.shutdown_complete_rx.lock() = Some(complete_rx);
-		Ok(())
+	}
+
+	#[inline]
+	fn signal_shutdown(&self) {
+		let tx = self.shutdown_tx.lock().take();
+		if let Some(tx) = tx {
+			let _ = tx.send(());
+		}
+	}
+
+	#[inline]
+	fn await_completion(&self) {
+		let rx = self.shutdown_complete_rx.lock().take();
+		if let Some(rx) = rx {
+			let _ = self.handle.block_on(rx);
+		}
 	}
 
 	pub fn bind_addr(&self) -> &str {
@@ -143,14 +202,8 @@ impl HasVersion for AdminSubsystem {
 
 impl Shutdown for AdminSubsystem {
 	fn shutdown(&self) {
-		let tx = self.shutdown_tx.lock().take();
-		if let Some(tx) = tx {
-			let _ = tx.send(());
-		}
-		let rx = self.shutdown_complete_rx.lock().take();
-		if let Some(rx) = rx {
-			let _ = self.handle.block_on(rx);
-		}
+		self.signal_shutdown();
+		self.await_completion();
 	}
 }
 

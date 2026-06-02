@@ -4,7 +4,7 @@
 use std::{sync::Arc, time::Duration};
 
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
-use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_runtime::{reifydb_assertions, sync::mutex::Mutex};
 use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
 use tokio::{
 	pin, select,
@@ -40,8 +40,7 @@ impl StoreBackedPoller {
 		let mut scratch = self.scratch.lock();
 		let _coord = self.store.begin_poll();
 
-		scratch.active.clear();
-		delivery.active_subscriptions_into(&mut scratch.active);
+		self.reset_active(&mut scratch, delivery);
 
 		let PollScratch {
 			active,
@@ -67,11 +66,23 @@ impl StoreBackedPoller {
 		delivery.flush()
 	}
 
+	#[inline]
+	fn reset_active(&self, scratch: &mut PollScratch, delivery: &dyn SubscriptionDelivery) {
+		scratch.active.clear();
+		reifydb_assertions! {
+			let stale = scratch.active.len();
+			assert!(
+				stale == 0,
+				"poll scratch.active must be emptied before repopulation; a leftover id from the previous \
+				 poll would be delivered to again this cycle, including ids unregistered since (stale len={stale})"
+			);
+		}
+		delivery.active_subscriptions_into(&mut scratch.active);
+	}
+
 	pub async fn run_loop(self: Arc<Self>, delivery: Arc<dyn SubscriptionDelivery>, mut stop_rx: Receiver<bool>) {
 		const NO_DEADLINE: Duration = Duration::from_secs(86_400);
-		let wake = Arc::new(Notify::new());
-		self.store.register_waker(wake.clone());
-		delivery.register_waker(wake.clone());
+		let wake = self.register_wakers(delivery.as_ref());
 		let mut next_deadline: Option<Duration> = None;
 		loop {
 			let mut stop = false;
@@ -95,5 +106,13 @@ impl StoreBackedPoller {
 			next_deadline =
 				spawn_blocking(move || poller.poll_all(delivery_ref.as_ref())).await.unwrap_or(None);
 		}
+	}
+
+	#[inline]
+	fn register_wakers(&self, delivery: &dyn SubscriptionDelivery) -> Arc<Notify> {
+		let wake = Arc::new(Notify::new());
+		self.store.register_waker(wake.clone());
+		delivery.register_waker(wake.clone());
+		wake
 	}
 }

@@ -52,6 +52,8 @@ pub struct HttpSubsystem {
 	handle: Handle,
 }
 
+type ShutdownHandles = (oneshot::Sender<()>, oneshot::Receiver<()>);
+
 impl HttpSubsystem {
 	pub fn new(
 		bind_addr: Option<String>,
@@ -98,15 +100,29 @@ impl HttpSubsystem {
 	}
 
 	fn spawn_main_server(&self) -> Result<()> {
+		let Some(listener) = self.bind_main_listener()? else {
+			return Ok(());
+		};
+		let (shutdown_tx, complete_rx) = self.spawn_main_serve_task(listener);
+		self.store_main_shutdown_handles(shutdown_tx, complete_rx);
+		Ok(())
+	}
+
+	#[inline]
+	fn bind_main_listener(&self) -> Result<Option<TcpListener>> {
 		let Some(addr) = self.bind_addr.clone() else {
 			self.running.store(true, Ordering::SeqCst);
-			return Ok(());
+			return Ok(None);
 		};
 		let listener = self.bind_listener(&addr)?;
 		let actual_addr = local_addr_or_err(&listener)?;
 		*self.actual_addr.write() = Some(actual_addr);
 		info!("HTTP server bound to {}", actual_addr);
+		Ok(Some(listener))
+	}
 
+	#[inline]
+	fn spawn_main_serve_task(&self, listener: TcpListener) -> ShutdownHandles {
 		let (shutdown_tx, shutdown_rx) = oneshot::channel();
 		let (complete_tx, complete_rx) = oneshot::channel();
 		let server_state = HttpServerState::new(self.state.clone());
@@ -121,20 +137,38 @@ impl HttpSubsystem {
 			let _ = complete_tx.send(());
 			info!("HTTP server stopped");
 		});
+		(shutdown_tx, complete_rx)
+	}
+
+	#[inline]
+	fn store_main_shutdown_handles(&self, shutdown_tx: oneshot::Sender<()>, complete_rx: oneshot::Receiver<()>) {
 		*self.shutdown_tx.lock() = Some(shutdown_tx);
 		*self.shutdown_complete_rx.lock() = Some(complete_rx);
-		Ok(())
 	}
 
 	fn spawn_admin_server(&self) -> Result<()> {
-		let Some(admin_addr) = self.admin_bind_addr.clone() else {
+		let Some(listener) = self.bind_admin_listener()? else {
 			return Ok(());
+		};
+		let (shutdown_tx, complete_rx) = self.spawn_admin_serve_task(listener);
+		self.store_admin_shutdown_handles(shutdown_tx, complete_rx);
+		Ok(())
+	}
+
+	#[inline]
+	fn bind_admin_listener(&self) -> Result<Option<TcpListener>> {
+		let Some(admin_addr) = self.admin_bind_addr.clone() else {
+			return Ok(None);
 		};
 		let listener = self.bind_listener(&admin_addr)?;
 		let actual_addr = local_addr_or_err(&listener)?;
 		*self.admin_actual_addr.write() = Some(actual_addr);
 		info!("HTTP admin server bound to {}", actual_addr);
+		Ok(Some(listener))
+	}
 
+	#[inline]
+	fn spawn_admin_serve_task(&self, listener: TcpListener) -> ShutdownHandles {
 		let (admin_shutdown_tx, admin_shutdown_rx) = oneshot::channel();
 		let (admin_complete_tx, admin_complete_rx) = oneshot::channel();
 		let admin_config = self.state.config().clone().admin_enabled(true);
@@ -149,9 +183,37 @@ impl HttpSubsystem {
 			let _ = admin_complete_tx.send(());
 			info!("HTTP admin server stopped");
 		});
-		*self.admin_shutdown_tx.lock() = Some(admin_shutdown_tx);
-		*self.admin_shutdown_complete_rx.lock() = Some(admin_complete_rx);
-		Ok(())
+		(admin_shutdown_tx, admin_complete_rx)
+	}
+
+	#[inline]
+	fn store_admin_shutdown_handles(&self, shutdown_tx: oneshot::Sender<()>, complete_rx: oneshot::Receiver<()>) {
+		*self.admin_shutdown_tx.lock() = Some(shutdown_tx);
+		*self.admin_shutdown_complete_rx.lock() = Some(complete_rx);
+	}
+
+	#[inline]
+	fn stop_admin_server(&self) {
+		let admin_tx = self.admin_shutdown_tx.lock().take();
+		if let Some(tx) = admin_tx {
+			let _ = tx.send(());
+		}
+		let admin_rx = self.admin_shutdown_complete_rx.lock().take();
+		if let Some(rx) = admin_rx {
+			let _ = self.handle.block_on(rx);
+		}
+	}
+
+	#[inline]
+	fn stop_main_server(&self) {
+		let main_tx = self.shutdown_tx.lock().take();
+		if let Some(tx) = main_tx {
+			let _ = tx.send(());
+		}
+		let main_rx = self.shutdown_complete_rx.lock().take();
+		if let Some(rx) = main_rx {
+			let _ = self.handle.block_on(rx);
+		}
 	}
 
 	#[inline]
@@ -182,23 +244,8 @@ impl HasVersion for HttpSubsystem {
 
 impl Shutdown for HttpSubsystem {
 	fn shutdown(&self) {
-		let admin_tx = self.admin_shutdown_tx.lock().take();
-		if let Some(tx) = admin_tx {
-			let _ = tx.send(());
-		}
-		let admin_rx = self.admin_shutdown_complete_rx.lock().take();
-		if let Some(rx) = admin_rx {
-			let _ = self.handle.block_on(rx);
-		}
-
-		let main_tx = self.shutdown_tx.lock().take();
-		if let Some(tx) = main_tx {
-			let _ = tx.send(());
-		}
-		let main_rx = self.shutdown_complete_rx.lock().take();
-		if let Some(rx) = main_rx {
-			let _ = self.handle.block_on(rx);
-		}
+		self.stop_admin_server();
+		self.stop_main_server();
 		self.running.store(false, Ordering::SeqCst);
 	}
 }
