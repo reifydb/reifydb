@@ -47,6 +47,8 @@ pub trait NativeBridge {
 	fn internal_state_set(&mut self, key: &EncodedKey, value: EncodedRow) -> Result<()>;
 	fn internal_state_remove(&mut self, key: &EncodedKey) -> Result<()>;
 
+	fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber>;
+
 	fn store_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>>;
 	fn store_contains(&mut self, key: &EncodedKey) -> Result<bool>;
 	fn store_prefix(&mut self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedRow)>>;
@@ -455,6 +457,9 @@ impl OperatorContext for NativeOperatorContext<'_> {
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> SdkResult<Vec<(RowNumber, bool)>> {
 		let provider = RowNumberProvider::new(self.node);
 		provider.get_or_create_row_numbers_batch(self, keys.iter())
+	}
+	fn allocate_row_numbers(&mut self, count: u64) -> SdkResult<RowNumber> {
+		unsafe { (*self.bridge).allocate_row_numbers(count) }.map_err(to_sdk_err)
 	}
 	fn shape_for_row(&mut self, row: &EncodedRow) -> SdkResult<RowShape> {
 		let fingerprint = row.fingerprint();

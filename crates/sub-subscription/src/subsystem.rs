@@ -61,7 +61,7 @@ use reifydb_sub_flow::{
 	builder::OperatorFactory,
 	engine::FlowEngine,
 	operator::{OperatorCell, Operators},
-	transaction::FlowTransaction,
+	transaction::{FlowTransaction, row_allocator::RowAllocatorRegistry},
 };
 use reifydb_transaction::{
 	interceptor::builder::InterceptorBuilder,
@@ -486,6 +486,7 @@ impl SubscriptionSubsystem {
 			event_bus,
 			runtime_context,
 			custom_operators,
+			Arc::new(RowAllocatorRegistry::new()),
 		)));
 
 		let flow_states = Arc::new(DashMap::new());

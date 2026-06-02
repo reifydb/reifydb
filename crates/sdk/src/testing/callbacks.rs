@@ -790,6 +790,30 @@ unsafe extern "C" fn test_rql(
 	FFI_ERROR_INTERNAL
 }
 
+extern "C" fn test_allocate_row_numbers(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	count: u64,
+	out_start: *mut u64,
+) -> i32 {
+	if ctx.is_null() || out_start.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		let counter_key = test_internal_envelope(operator_id, b"__row_number_alloc__");
+		let current = test_ctx
+			.get_state(&counter_key)
+			.and_then(|b| <[u8; 8]>::try_from(b.as_slice()).ok())
+			.map(u64::from_le_bytes)
+			.unwrap_or(1);
+		test_ctx.set_state(counter_key, (current + count).to_le_bytes().to_vec());
+		*out_start = current;
+		FFI_OK
+	}
+}
+
 pub fn create_test_callbacks() -> HostCallbacks {
 	HostCallbacks {
 		memory: MemoryCallbacks {
@@ -811,6 +835,7 @@ pub fn create_test_callbacks() -> HostCallbacks {
 			internal_remove: test_internal_state_remove,
 			get_many: test_state_get_many,
 			internal_get_many: test_internal_state_get_many,
+			allocate_row_numbers: test_allocate_row_numbers,
 		},
 		log: LogCallbacks {
 			message: test_log_message,

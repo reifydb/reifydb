@@ -83,10 +83,12 @@ use reifydb_value::Result;
 use tracing::instrument;
 
 pub mod read;
+pub mod row_allocator;
 pub mod slot;
 pub mod state;
 pub mod write;
 
+use row_allocator::RowAllocatorRegistry;
 use slot::{OperatorStateSlot, PersistFn};
 
 use crate::host::{HostCatalog, StandardHostCatalog};
@@ -103,6 +105,8 @@ pub struct TransactionalParams {
 	pub clock: Clock,
 
 	pub view_overlay: Arc<Vec<Change>>,
+
+	pub row_allocators: Arc<RowAllocatorRegistry>,
 }
 
 pub struct DeferredParams {
@@ -114,6 +118,8 @@ pub struct DeferredParams {
 	pub catalog: Catalog,
 	pub interceptors: Interceptors,
 	pub clock: Clock,
+
+	pub row_allocators: Arc<RowAllocatorRegistry>,
 }
 
 pub struct CommittingParams {
@@ -121,6 +127,8 @@ pub struct CommittingParams {
 	pub catalog: Catalog,
 	pub interceptors: Interceptors,
 	pub clock: Clock,
+
+	pub row_allocators: Arc<RowAllocatorRegistry>,
 }
 
 pub struct FlowTransactionInner {
@@ -139,6 +147,8 @@ pub struct FlowTransactionInner {
 	pub operator_states: HashMap<FlowNodeId, OperatorStateSlot>,
 
 	pub prefetch: HashMap<EncodedKey, Option<EncodedRow>>,
+
+	pub row_allocators: Arc<RowAllocatorRegistry>,
 }
 
 pub enum FlowTransaction {
@@ -237,6 +247,7 @@ impl FlowTransaction {
 				clock,
 				operator_states: HashMap::new(),
 				prefetch: HashMap::new(),
+				row_allocators: Arc::new(RowAllocatorRegistry::new()),
 			},
 		}
 	}
@@ -261,6 +272,7 @@ impl FlowTransaction {
 				clock: params.clock,
 				operator_states: HashMap::new(),
 				prefetch: HashMap::new(),
+				row_allocators: params.row_allocators,
 			},
 		}
 	}
@@ -289,6 +301,7 @@ impl FlowTransaction {
 				clock: params.clock,
 				operator_states: HashMap::new(),
 				prefetch: HashMap::new(),
+				row_allocators: params.row_allocators,
 			},
 			cmd: Box::new(params.cmd),
 		})
@@ -320,10 +333,15 @@ impl FlowTransaction {
 				clock: params.clock,
 				operator_states: HashMap::new(),
 				prefetch: HashMap::new(),
+				row_allocators: params.row_allocators,
 			},
 			base_pending: params.base_pending,
 			view_overlay: params.view_overlay,
 		}
+	}
+
+	pub fn row_allocators(&self) -> Arc<RowAllocatorRegistry> {
+		self.inner().row_allocators.clone()
 	}
 
 	pub fn view_overlay(&self) -> Option<Arc<Vec<Change>>> {
@@ -362,6 +380,7 @@ impl FlowTransaction {
 				clock,
 				operator_states: HashMap::new(),
 				prefetch: HashMap::new(),
+				row_allocators: Arc::new(RowAllocatorRegistry::new()),
 			},
 			state,
 		}

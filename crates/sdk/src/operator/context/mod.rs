@@ -173,6 +173,10 @@ pub trait OperatorContext {
 	fn catalog(&mut self) -> impl CatalogApi + '_;
 	fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)>;
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
+	/// Reserve `count` fresh, globally-unique output row numbers for this operator and return the start
+	/// of the `[start, start + count)` range. Backed by the host's process-shared in-memory allocator so
+	/// it is immune to the committing transaction's MVCC snapshot (unlike a counter read from the store).
+	fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber>;
 	fn shape_for_row(&mut self, row: &EncodedRow) -> Result<RowShape>;
 
 	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::InsertEmit<'_>>;

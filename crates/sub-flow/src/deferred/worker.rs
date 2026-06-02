@@ -284,6 +284,7 @@ impl FlowWorkerActor {
 			catalog: self.catalog.clone(),
 			interceptors,
 			clock: self.engine.clock().clone(),
+			row_allocators: flow_engine.row_allocators.clone(),
 		});
 
 		for flow_id in flow_ids {
@@ -340,6 +341,7 @@ impl FlowWorkerActor {
 				catalog: self.catalog.clone(),
 				interceptors: interceptors.clone(),
 				clock: self.engine.clock().clone(),
+				row_allocators: flow_engine.row_allocators.clone(),
 			});
 
 			if let Err(e) = flow_engine.process_batch(&mut txn, instruction.changes.clone(), flow_id) {
@@ -429,6 +431,7 @@ impl FlowWorkerActor {
 				catalog: self.catalog.clone(),
 				interceptors: interceptors.clone(),
 				clock: self.engine.clock().clone(),
+				row_allocators: flow_engine.row_allocators.clone(),
 			});
 
 			if let Err(e) = flow_engine.process_batch(&mut txn, flow_changes, flow_id) {

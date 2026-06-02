@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, iter};
+use std::{
+	collections::{HashMap, HashSet},
+	iter,
+};
 
 use reifydb_core::{
 	encoded::key::EncodedKey, interface::catalog::flow::FlowNodeId,
@@ -38,8 +41,18 @@ impl RowNumberProvider {
 			Ok(())
 		})?;
 
-		let mut counter = self.load_counter(ctx)?;
-		let initial_counter = counter;
+		let mut distinct_new: HashSet<Vec<u8>> = HashSet::new();
+		for map_key in &map_keys {
+			let bytes = map_key.as_bytes();
+			if !existing.contains_key(bytes) {
+				distinct_new.insert(bytes.to_vec());
+			}
+		}
+		let mut next = if distinct_new.is_empty() {
+			0
+		} else {
+			ctx.allocate_row_numbers(distinct_new.len() as u64)?.0
+		};
 
 		let mut newly_assigned: HashMap<Vec<u8>, u64> = HashMap::new();
 		let mut results = Vec::with_capacity(map_keys.len());
@@ -50,14 +63,11 @@ impl RowNumberProvider {
 				continue;
 			}
 
-			ctx.internal_state().set::<u64>(map_key, &counter)?;
-			newly_assigned.insert(bytes.to_vec(), counter);
-			results.push((RowNumber(counter), true));
-			counter += 1;
-		}
-
-		if counter != initial_counter {
-			self.save_counter(ctx, counter)?;
+			let row_num = next;
+			next += 1;
+			ctx.internal_state().set::<u64>(map_key, &row_num)?;
+			newly_assigned.insert(bytes.to_vec(), row_num);
+			results.push((RowNumber(row_num), true));
 		}
 
 		Ok(results)
@@ -71,20 +81,6 @@ impl RowNumberProvider {
 		Ok(self.get_or_create_row_numbers_batch(ctx, iter::once(key))?.into_iter().next().unwrap())
 	}
 
-	fn load_counter<O: OperatorContext>(&self, ctx: &mut O) -> Result<u64> {
-		Ok(ctx.internal_state().get::<u64>(&self.make_counter_key())?.unwrap_or(1))
-	}
-
-	fn save_counter<O: OperatorContext>(&self, ctx: &mut O, counter: u64) -> Result<()> {
-		ctx.internal_state().set::<u64>(&self.make_counter_key(), &counter)
-	}
-
-	fn make_counter_key(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(FlowNodeInternalStateKey::ROW_NUMBER_COUNTER_TAG);
-		serializer.finish()
-	}
-
 	fn make_map_key(&self, key: &EncodedKey) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG);
@@ -96,11 +92,7 @@ impl RowNumberProvider {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_abi::operator::capabilities::OperatorCapability;
-	use reifydb_core::{
-		encoded::key::EncodedKey,
-		interface::catalog::flow::FlowNodeId,
-		key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
-	};
+	use reifydb_core::{encoded::key::EncodedKey, interface::catalog::flow::FlowNodeId};
 
 	use crate::{
 		config::Config,
@@ -358,28 +350,6 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_counter_key_uniqueness_per_node() {
-		// Counter inner-keys are identical across providers (just the tag byte) -
-		// the host's FlowNodeInternalStateKey wrapper adds the FlowNodeId at storage
-		// time, keeping different operators' counters in disjoint storage ranges.
-		let provider1 = RowNumberProvider::new(FlowNodeId(1));
-		let provider2 = RowNumberProvider::new(FlowNodeId(2));
-
-		let internal_key1 = provider1.make_counter_key();
-		let internal_key2 = provider2.make_counter_key();
-
-		assert_eq!(internal_key1, internal_key2);
-
-		// And after wrapping with FlowNodeInternalStateKey, they differ:
-		let final_key1 = FlowNodeInternalStateKey::new(FlowNodeId(1), internal_key1.as_ref().to_vec()).encode();
-		let final_key2 = FlowNodeInternalStateKey::new(FlowNodeId(2), internal_key2.as_ref().to_vec()).encode();
-
-		assert!(!final_key1.is_empty());
-		assert!(!final_key2.is_empty());
-		assert_ne!(final_key1, final_key2);
-	}
-
-	#[test]
 	fn test_map_key_uniqueness() {
 		let provider = RowNumberProvider::new(FlowNodeId(42));
 		let original_key1 = encode_key("test1");
@@ -396,18 +366,6 @@ pub mod tests {
 		// Same original key should produce same map key
 		let map_key1_again = provider.make_map_key(&original_key1);
 		assert_eq!(map_key1, map_key1_again);
-	}
-
-	#[test]
-	fn test_counter_key_vs_map_key_separation() {
-		// Counter key and map key should never collide
-		let provider = RowNumberProvider::new(FlowNodeId(1));
-
-		let counter_key = provider.make_counter_key();
-		let map_key = provider.make_map_key(&EncodedKey::new(Vec::new()));
-
-		// Even with an empty original key, they should be different
-		assert_ne!(counter_key, map_key);
 	}
 
 	#[test]

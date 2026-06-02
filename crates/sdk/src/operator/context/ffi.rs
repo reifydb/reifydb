@@ -150,6 +150,10 @@ impl FFIOperatorContext {
 		provider.get_or_create_row_numbers_batch(self, keys.iter())
 	}
 
+	pub fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber> {
+		Ok(RowNumber(crate::state::ffi::allocate_row_numbers(self, count)?))
+	}
+
 	pub fn query(&self, query: &str, params: Params) -> Result<Vec<Frame>> {
 		raw_query(self, query, params)
 	}
@@ -284,6 +288,9 @@ impl OperatorContext for FFIOperatorContext {
 	}
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 		FFIOperatorContext::get_or_create_row_numbers(self, keys)
+	}
+	fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber> {
+		FFIOperatorContext::allocate_row_numbers(self, count)
 	}
 	fn shape_for_row(&mut self, row: &EncodedRow) -> Result<RowShape> {
 		FFIOperatorContext::shape_for_row(self, row)

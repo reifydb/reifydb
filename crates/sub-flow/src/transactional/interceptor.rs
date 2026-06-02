@@ -64,28 +64,6 @@ impl PreCommitInterceptor for TransactionalFlowPreCommitInterceptor {
 	}
 }
 
-fn dbg_diff(d: &Diff) -> String {
-	match d {
-		Diff::Insert {
-			post,
-			origin,
-		} => format!("Ins(rn={:?},from={:?})", post.row_numbers, origin),
-		Diff::Update {
-			post,
-			origin,
-			..
-		} => format!("Upd(rn={:?},from={:?})", post.row_numbers, origin),
-		Diff::Remove {
-			pre,
-			origin,
-		} => format!("Rem(rn={:?},from={:?})", pre.row_numbers, origin),
-	}
-}
-
-fn dbg_change(c: &Change) -> String {
-	format!("{{origin={:?} {}}}", c.origin, c.diffs.iter().map(dbg_diff).collect::<Vec<_>>().join(","))
-}
-
 pub(crate) fn execute_inline_flow_changes(
 	flow_engine: &FlowEngine,
 	engine: &StandardEngine,
@@ -108,11 +86,6 @@ pub(crate) fn execute_inline_flow_changes(
 		let q: MultiReadTransaction = engine.multi().begin_query()?;
 		q.version()
 	};
-	eprintln!(
-		"DBG2 ===== INLINE COMMIT read_version={:?} flow_changes: {}",
-		read_version,
-		ctx.flow_changes.iter().map(dbg_change).collect::<Vec<_>>().join(" | ")
-	);
 
 	let available_changes = prepare_available_changes(&ctx.flow_changes, read_version);
 	let base_pending = build_base_pending(&ctx.transaction_writes);
@@ -262,14 +235,6 @@ impl<'a> Scheduler<'a> {
 			self.prepare_flow_txn(&state.available_changes, flow_id)
 		};
 
-		if let Some((relevant, _)) = prepared.as_ref() {
-			eprintln!(
-				"DBG2   flow={} INPUTS: {}",
-				flow_id.0,
-				relevant.iter().map(dbg_change).collect::<Vec<_>>().join(" | ")
-			);
-		}
-
 		let outcome = prepared
 			.map(|(relevant, mut flow_txn)| run_flow(self.flow_engine, flow_id, relevant, &mut flow_txn));
 
@@ -281,18 +246,7 @@ impl<'a> Scheduler<'a> {
 				}
 				return;
 			}
-			Some(Ok(result)) => {
-				eprintln!(
-					"DBG2   flow={} OUTPUTS: {}",
-					flow_id.0,
-					result.view_entries
-						.iter()
-						.map(|(id, d)| format!("{id:?}={}", dbg_diff(d)))
-						.collect::<Vec<_>>()
-						.join(" | ")
-				);
-				self.merge_flow_result(&mut state, result)
-			}
+			Some(Ok(result)) => self.merge_flow_result(&mut state, result),
 			None => {}
 		}
 
@@ -334,6 +288,7 @@ impl<'a> Scheduler<'a> {
 			interceptors,
 			clock: self.engine.clock().clone(),
 			view_overlay: build_view_overlay(available_changes),
+			row_allocators: self.flow_engine.row_allocators.clone(),
 		});
 
 		Some((relevant, flow_txn))

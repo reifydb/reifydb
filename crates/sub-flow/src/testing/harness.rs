@@ -6,6 +6,7 @@ use std::{
 	marker::PhantomData,
 	mem,
 	ops::{Bound, Index},
+	sync::Arc,
 };
 
 use reifydb_catalog::catalog::Catalog;
@@ -36,7 +37,7 @@ use crate::{
 		context::native::NativeOperatorContext,
 		native::{FlowNativeBridge, NativeBridgedOperator, NativeOperatorAdapter},
 	},
-	transaction::{DeferredParams, FlowTransaction},
+	transaction::{DeferredParams, FlowTransaction, row_allocator::RowAllocatorRegistry},
 };
 
 pub struct NativeOperatorHarness<C: OperatorLogic + OperatorMetadata + 'static> {
@@ -45,6 +46,7 @@ pub struct NativeOperatorHarness<C: OperatorLogic + OperatorMetadata + 'static> 
 	node_id: FlowNodeId,
 	version: u64,
 	pending: Pending,
+	row_allocators: Arc<RowAllocatorRegistry>,
 	current: Option<FlowTransaction>,
 	history: Vec<Change>,
 	_phantom: PhantomData<C>,
@@ -67,6 +69,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 			catalog: Catalog::testing(),
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(MockClock::from_millis(1000)),
+			row_allocators: self.row_allocators.clone(),
 		})
 	}
 
@@ -249,6 +252,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarnessBuilder
 			node_id: self.node_id,
 			version: self.version.0,
 			pending: Pending::new(),
+			row_allocators: Arc::new(RowAllocatorRegistry::new()),
 			current: None,
 			history: Vec::new(),
 			_phantom: PhantomData,

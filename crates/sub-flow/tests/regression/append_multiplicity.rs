@@ -59,60 +59,6 @@ fn await_row_count(db: &Database, rql: &str, want: usize) -> usize {
 	}
 }
 
-// Temporary diagnostic (keep until the APPEND multiplicity fix is confirmed): dumps every
-// intermediate view's id multiset so the divergence can be localized to g::n2 vs g::n3.
-fn dump(db: &Database, ns: &str, name: &str) {
-	let rql = format!("FROM {ns}::{name}");
-	let frames = db.query_as_root(&rql, Params::None).unwrap_or_else(|e| panic!("query failed: {e:?}\nrql: {rql}"));
-	let mut ids: Vec<i64> = Vec::new();
-	for f in &frames {
-		for row in f.to_rows() {
-			for (col, val) in row {
-				if col == "id" {
-					if let reifydb::Value::Int4(v) = val {
-						ids.push(v as i64);
-					}
-				}
-			}
-		}
-	}
-	ids.sort_unstable();
-	eprintln!("  {ns}::{name} count={} ids={ids:?}", ids.len());
-}
-
-#[test]
-fn dbg_dump_intermediate_views() {
-	let db = setup();
-	admin(&db, "CREATE NAMESPACE v");
-	admin(&db, "CREATE NAMESPACE t");
-	admin(&db, "CREATE NAMESPACE g");
-	admin(&db, "CREATE TABLE v::base { id: int4 }");
-
-	admin(&db, "CREATE TRANSACTIONAL VIEW t::n0 { id: int4 } AS { FROM v::base MAP { id } }");
-	admin(&db, "CREATE TRANSACTIONAL VIEW t::n2 { id: int4 } AS { FROM v::base APPEND { FROM t::n0 } MAP { id } }");
-	admin(&db, "CREATE TRANSACTIONAL VIEW t::n3 { id: int4 } AS { FROM t::n2 APPEND { FROM t::n2 } MAP { id } }");
-
-	admin(&db, "CREATE DEFERRED VIEW g::n0 { id: int4 } AS { FROM v::base MAP { id } }");
-	admin(&db, "CREATE TRANSACTIONAL VIEW g::n2 { id: int4 } AS { FROM v::base APPEND { FROM g::n0 } MAP { id } }");
-	admin(&db, "CREATE DEFERRED VIEW g::n3 { id: int4 } AS { FROM g::n2 APPEND { FROM g::n2 } MAP { id } }");
-
-	command(&db, "INSERT v::base [{ id: 1 }]");
-	command(&db, "INSERT v::base [{ id: 2 }]");
-	command(&db, "INSERT v::base [{ id: 3 }]");
-
-	let _ = await_row_count(&db, "FROM g::n3", 12);
-	thread::sleep(Duration::from_millis(500));
-
-	eprintln!("=== TWIN (all transactional) ===");
-	dump(&db, "t", "n0");
-	dump(&db, "t", "n2");
-	dump(&db, "t", "n3");
-	eprintln!("=== MIXED (g::n0 deferred, g::n2 transactional, g::n3 deferred) ===");
-	dump(&db, "g", "n0");
-	dump(&db, "g", "n2");
-	dump(&db, "g", "n3");
-}
-
 #[test]
 fn deferred_append_self_union_of_append_view_matches_transactional() {
 	let db = setup();

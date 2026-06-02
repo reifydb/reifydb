@@ -469,6 +469,24 @@ pub(crate) fn internal_set(ctx: &mut FFIOperatorContext, key: &EncodedKey, value
 	}
 }
 
+pub(crate) fn allocate_row_numbers(ctx: &mut FFIOperatorContext, count: u64) -> Result<u64> {
+	unsafe {
+		let mut out_start: u64 = 0;
+		let result = ((*ctx.ctx).callbacks.state.allocate_row_numbers)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			count,
+			&mut out_start,
+		);
+
+		if result == FFI_OK {
+			Ok(out_start)
+		} else {
+			Err(SdkError::Other(format!("host_allocate_row_numbers failed with code {}", result)))
+		}
+	}
+}
+
 #[instrument(name = "flow::operator::internal_state::ffi::remove", level = "trace", skip(ctx), fields(
 	operator_id = ctx.operator_id().0,
 	key_len = key.as_bytes().len()

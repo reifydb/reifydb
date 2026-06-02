@@ -3,13 +3,11 @@
 
 use std::{mem, sync::Arc};
 
-use postcard::from_bytes;
 use reifydb_core::{
 	interface::catalog::{
 		flow::{FlowId, FlowNodeId},
 		id::ViewId,
 		shape::ShapeId,
-		view::ViewKind,
 	},
 	internal,
 };
@@ -18,7 +16,7 @@ use reifydb_rql::flow::{
 	node::{
 		FlowNode,
 		FlowNodeType::{
-			self, Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Map, SinkRingBufferView,
+			Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Map, SinkRingBufferView,
 			SinkSeriesView, SinkSubscription, SinkTableView, Sort, SourceDictionary, SourceFlow,
 			SourceInlineData, SourceRingBuffer, SourceSeries, SourceTable, SourceView, Take, Window,
 		},
@@ -559,63 +557,6 @@ impl FlowEngine {
 		self.add_source(flow.id, node.id, ShapeId::view(view.id()));
 
 		self.add_source(flow.id, node.id, view.underlying_id());
-
-		if view.kind() == ViewKind::Transactional {
-			let current_flow_is_transactional = flow.get_node_ids().any(|nid| {
-				if let Some(n) = flow.get_node(&nid) {
-					let sink_view = match &n.ty {
-						SinkTableView {
-							view,
-							..
-						}
-						| SinkRingBufferView {
-							view,
-							..
-						}
-						| SinkSeriesView {
-							view,
-							..
-						} => Some(view),
-						_ => None,
-					};
-					sink_view
-						.and_then(|v| {
-							self.catalog.find_view(&mut txn.reborrow(), *v).ok().flatten()
-						})
-						.map(|v| v.kind() == ViewKind::Transactional)
-						.unwrap_or(false)
-				} else {
-					false
-				}
-			});
-
-			let current_flow_is_subscription = flow.get_node_ids().any(|nid| {
-				flow.get_node(&nid).map(|n| matches!(n.ty, SinkSubscription { .. })).unwrap_or(false)
-			});
-
-			if !current_flow_is_transactional && !current_flow_is_subscription {
-				let mut additional_sources = Vec::new();
-				if let Some(view_flow) = self.catalog.find_flow_by_name(
-					&mut txn.reborrow(),
-					view.namespace(),
-					view.name(),
-				)? {
-					let flow_nodes = self
-						.catalog
-						.list_flow_nodes_by_flow(&mut txn.reborrow(), view_flow.id)?;
-					for flow_node in &flow_nodes {
-						if let Ok(nt) = from_bytes::<FlowNodeType>(&flow_node.data)
-							&& let Some(shape) = nt.primitive_source_shape_id()
-						{
-							additional_sources.push(shape);
-						}
-					}
-				}
-				for source in additional_sources {
-					self.add_source(flow.id, node.id, source);
-				}
-			}
-		}
 
 		self.operators.insert(
 			node.id,

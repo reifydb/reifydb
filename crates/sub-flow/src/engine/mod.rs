@@ -56,6 +56,7 @@ use crate::{
 	builder::OperatorFactory,
 	engine::cache::{ExecutionLevelCache, ScheduleCache},
 	operator::OperatorCell,
+	transaction::row_allocator::RowAllocatorRegistry,
 };
 
 pub struct FlowEngine {
@@ -74,6 +75,7 @@ pub struct FlowEngine {
 	pub(crate) runtime_context: RuntimeContext,
 	pub(crate) custom_operators: Arc<HashMap<String, OperatorFactory>>,
 	operator_tick_times: DashMap<FlowNodeId, u64>,
+	pub(crate) row_allocators: Arc<RowAllocatorRegistry>,
 }
 
 impl FlowEngine {
@@ -88,6 +90,7 @@ impl FlowEngine {
 		event_bus: EventBus,
 		runtime_context: RuntimeContext,
 		custom_operators: Arc<HashMap<String, OperatorFactory>>,
+		row_allocators: Arc<RowAllocatorRegistry>,
 	) -> Self {
 		Self {
 			catalog,
@@ -104,6 +107,7 @@ impl FlowEngine {
 			runtime_context,
 			custom_operators,
 			operator_tick_times: DashMap::new(),
+			row_allocators,
 		}
 	}
 
@@ -196,6 +200,7 @@ impl FlowEngine {
 
 		for node_id in node_ids {
 			self.operators.remove(&node_id);
+			self.row_allocators.evict(node_id);
 		}
 
 		for entries in self.sources.values_mut() {

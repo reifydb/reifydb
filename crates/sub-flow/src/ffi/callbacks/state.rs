@@ -490,6 +490,29 @@ pub(super) extern "C" fn host_internal_state_set(
 	}
 }
 
+pub(super) extern "C" fn host_allocate_row_numbers(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	count: u64,
+	out_start: *mut u64,
+) -> i32 {
+	if ctx.is_null() || out_start.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let ctx_handle = &mut *ctx;
+		let flow_txn = get_transaction_mut(ctx_handle);
+		match crate::operator::stateful::row::allocate_row_numbers(flow_txn, FlowNodeId(operator_id), count) {
+			Ok(start) => {
+				*out_start = start;
+				FFI_OK
+			}
+			Err(_) => FFI_ERROR_INTERNAL,
+		}
+	}
+}
+
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_internal_state_remove(
 	operator_id: u64,

@@ -158,6 +158,7 @@ impl TransactionalTickActor {
 			catalog: self.catalog.clone(),
 			interceptors,
 			clock: self.clock.clone(),
+			row_allocators: self.flow_engine.read().row_allocators.clone(),
 		})
 		.map_err(|e| format!("committing: {e}"))?;
 

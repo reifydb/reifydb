@@ -165,7 +165,12 @@ pub(crate) mod stubs {
 			internal_remove: internal_state_remove,
 			get_many: state_get_many,
 			internal_get_many: internal_state_get_many,
+			allocate_row_numbers,
 		}
+	}
+
+	extern "C" fn allocate_row_numbers(_: u64, _: *mut ContextFFI, _: u64, _: *mut u64) -> i32 {
+		FFI_ERROR_INTERNAL
 	}
 
 	extern "C" fn state_get_many(

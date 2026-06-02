@@ -40,7 +40,11 @@ use reifydb_sdk::{
 	operator::{OperatorLogic, Tick, view::native::NativeChangeView},
 };
 use reifydb_transaction::multi::RangeScope;
-use reifydb_value::{Result, error::Error, value::constraint::TypeConstraint};
+use reifydb_value::{
+	Result,
+	error::Error,
+	value::{constraint::TypeConstraint, row_number::RowNumber},
+};
 use tracing::error;
 
 use crate::{
@@ -182,6 +186,9 @@ impl NativeBridge for FlowNativeBridge<'_> {
 	}
 	fn internal_state_remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.txn.internal_state_remove(self.node, key)
+	}
+	fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber> {
+		crate::operator::stateful::row::allocate_row_numbers(self.txn, self.node, count).map(RowNumber)
 	}
 	fn store_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 		self.txn.get(key)

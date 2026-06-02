@@ -13,27 +13,42 @@ use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{Result, value::row_number::RowNumber};
 
 use crate::{
-	operator::stateful::{
-		counter::{Counter, CounterDirection},
-		utils::{internal_state_drop, internal_state_get, internal_state_set},
-	},
+	operator::stateful::utils::{internal_state_drop, internal_state_get, internal_state_set},
 	transaction::FlowTransaction,
 };
 
+pub fn allocate_row_numbers(txn: &mut FlowTransaction, node: FlowNodeId, count: u64) -> Result<u64> {
+	let registry = txn.row_allocators();
+	let counter_key = counter_key();
+	let seed = if registry.is_seeded(node) {
+		0
+	} else {
+		match internal_state_get(node, txn, &counter_key)? {
+			Some(row) => decode_payload::<u64>(&row)?,
+			None => 1,
+		}
+	};
+	let start = registry.allocate(node, count, seed);
+	let high_water = registry.high_water(node).expect("node seeded after allocate");
+	let now = txn.clock().now_nanos();
+	internal_state_set(node, txn, &counter_key, encode_payload(&high_water, now)?)?;
+	Ok(start)
+}
+
+fn counter_key() -> EncodedKey {
+	let mut serializer = KeySerializer::new();
+	serializer.extend_u8(FlowNodeInternalStateKey::ROW_NUMBER_COUNTER_TAG);
+	serializer.finish()
+}
+
 pub struct RowNumberProvider {
 	node: FlowNodeId,
-	counter: Counter,
 }
 
 impl RowNumberProvider {
 	pub fn new(node: FlowNodeId) -> Self {
 		Self {
 			node,
-			counter: Counter::with_prefix(
-				node,
-				FlowNodeInternalStateKey::ROW_NUMBER_COUNTER_TAG,
-				CounterDirection::Ascending,
-			),
 		}
 	}
 
@@ -46,24 +61,33 @@ impl RowNumberProvider {
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
 		let now = txn.clock().now_nanos();
-		let mut results = Vec::new();
+		let keys: Vec<&EncodedKey> = keys.into_iter().collect();
+		let mut results: Vec<Option<(RowNumber, bool)>> = (0..keys.len()).map(|_| None).collect();
+		let mut new_positions: Vec<(usize, EncodedKey)> = Vec::new();
 
-		for key in keys {
+		for (i, key) in keys.iter().enumerate() {
 			let map_key = self.make_map_key(key);
-
 			if let Some(existing_row) = internal_state_get(self.node, txn, &map_key)? {
-				results.push((RowNumber(decode_payload::<u64>(&existing_row)?), false));
-				continue;
+				results[i] = Some((RowNumber(decode_payload::<u64>(&existing_row)?), false));
+			} else {
+				new_positions.push((i, map_key));
 			}
-
-			let new_row_number = self.counter.next(txn)?;
-
-			internal_state_set(self.node, txn, &map_key, encode_payload(&new_row_number.0, now)?)?;
-
-			results.push((new_row_number, true));
 		}
 
-		Ok(results)
+		if !new_positions.is_empty() {
+			let start = self.mint(txn, new_positions.len() as u64)?;
+			for (offset, (i, map_key)) in new_positions.iter().enumerate() {
+				let row_number = RowNumber(start + offset as u64);
+				internal_state_set(self.node, txn, map_key, encode_payload(&row_number.0, now)?)?;
+				results[*i] = Some((row_number, true));
+			}
+		}
+
+		Ok(results.into_iter().map(|r| r.expect("every position filled")).collect())
+	}
+
+	fn mint(&self, txn: &mut FlowTransaction, count: u64) -> Result<u64> {
+		allocate_row_numbers(txn, self.node, count)
 	}
 
 	pub fn get_or_create_row_number(

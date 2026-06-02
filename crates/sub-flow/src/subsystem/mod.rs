@@ -66,6 +66,7 @@ use crate::{
 		worker::FlowWorkerActor,
 	},
 	engine::FlowEngine,
+	transaction::row_allocator::RowAllocatorRegistry,
 	transactional::{
 		interceptor::{TransactionalFlowPostCommitInterceptor, TransactionalFlowPreCommitInterceptor},
 		registry::TransactionalFlowRegistry,
@@ -136,6 +137,7 @@ impl FlowSubsystem {
 		let clock = ioc.resolve::<Clock>().expect("Clock must be registered");
 		let spawner = ioc.resolve::<ActorSpawner>().expect("ActorSpawner must be registered");
 		let custom_operators = Arc::new(config.custom_operators);
+		let row_allocators = Arc::new(RowAllocatorRegistry::new());
 		let primitive_tracker = Arc::new(ShapeVersionTracker::new());
 		let flow_tracker = Arc::new(FlowPositionTracker::new());
 		let cdc_store = ioc.resolve::<CdcStore>().expect("CdcStore must be registered");
@@ -159,6 +161,7 @@ impl FlowSubsystem {
 			&flow_catalog,
 			&clock,
 			&custom_operators,
+			&row_allocators,
 		);
 
 		let pool_handle = flow_scope.spawn_system("flow-pool", PoolActor::new(worker_refs, clock.clone()));
@@ -189,6 +192,7 @@ impl FlowSubsystem {
 			engine.event_bus().clone(),
 			RuntimeContext::with_clock(clock.clone()),
 			custom_operators.clone(),
+			row_allocators.clone(),
 		)));
 
 		let registrar = TransactionalFlowRegistry {
@@ -302,6 +306,7 @@ impl FlowSubsystem {
 		flow_catalog: &FlowCatalog,
 		clock: &Clock,
 		custom_operators: &Arc<HashMap<String, OperatorFactory>>,
+		row_allocators: &Arc<RowAllocatorRegistry>,
 	) -> (Vec<ActorRef<FlowMessage>>, Vec<FlowHandle>) {
 		let mut worker_refs = Vec::with_capacity(num_workers);
 		let mut worker_handles = Vec::with_capacity(num_workers);
@@ -312,7 +317,8 @@ impl FlowSubsystem {
 			let bus = engine.event_bus().clone();
 			let rc = RuntimeContext::with_clock(clock.clone());
 			let co = custom_operators.clone();
-			let worker_factory = move || FlowEngine::new(cat, exec, bus, rc, co);
+			let ra = row_allocators.clone();
+			let worker_factory = move || FlowEngine::new(cat, exec, bus, rc, co, ra);
 
 			let worker = FlowWorkerActor::new(
 				worker_factory,
@@ -378,6 +384,7 @@ impl FlowSubsystem {
 					hook_event_bus.clone(),
 					hook_runtime_context.clone(),
 					hook_custom_operators.clone(),
+					Arc::new(RowAllocatorRegistry::new()),
 				);
 
 				let flows = hook_catalog
