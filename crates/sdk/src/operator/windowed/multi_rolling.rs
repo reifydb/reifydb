@@ -13,6 +13,7 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::flow_node_internal_state::FlowNodeInternalStateKey,
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::value::row_number::RowNumber;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
@@ -100,6 +101,19 @@ pub type MultiRollingBuffer<A> =
 	BTreeMap<<A as MultiRollingOperator>::WindowCoord, <A as MultiRollingOperator>::WindowAcc>;
 
 pub type MultiRollingEmit<A> = BTreeMap<<A as MultiRollingOperator>::SecondaryKey, <A as MultiRollingOperator>::Output>;
+
+type EmitDiffs<A> = (
+	Vec<(RowNumber, <A as MultiRollingOperator>::Output)>,
+	Vec<(RowNumber, <A as MultiRollingOperator>::Output, <A as MultiRollingOperator>::Output)>,
+	Vec<(RowNumber, <A as MultiRollingOperator>::Output)>,
+);
+
+struct GroupSlot<A: MultiRollingOperator> {
+	state_row_number: RowNumber,
+	buffer: MultiRollingBuffer<A>,
+	prior_emit: MultiRollingEmit<A>,
+	buffer_changed: bool,
+}
 
 #[derive(Serialize, Deserialize)]
 #[serde(bound(
@@ -205,6 +219,44 @@ where
 
 	#[allow(clippy::type_complexity)]
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
+		let buckets = self.route_diffs_to_buckets(&change);
+		if buckets.is_empty() {
+			return Ok(());
+		}
+
+		let mut meta_loaded = self.warm_and_load_meta(ctx, &buckets)?;
+		let state_rows = self.resolve_state_rows(ctx, &buckets, &meta_loaded)?;
+		let group_slots = self.apply_events_into_buffers(ctx, buckets, &mut meta_loaded, &state_rows)?;
+
+		let (inserts, updates, removes) = self.diff_emits(ctx, group_slots)?;
+		Self::emit_three_batches(ctx, &inserts, &updates, &removes)?;
+		self.persist_meta(ctx, meta_loaded)
+	}
+
+	fn flush_state(&mut self, ctx: &mut impl OperatorContext) -> Result<()> {
+		self.groups.flush(ctx)?;
+		self.meta.flush(ctx)?;
+		Ok(())
+	}
+}
+
+impl<A> MultiRollingDriver<A>
+where
+	A: MultiRollingRegistration + Send + Sync + 'static,
+	A::Output: Row + Send + Sync,
+	A::GroupKey: Send + Sync,
+	A::WindowCoord: Send + Sync,
+	A::WindowAcc: Send + Sync,
+	A::SecondaryKey: Send + Sync,
+	AccContribution<A>: Send + Sync,
+	for<'a> &'a A::GroupKey: IntoEncodedKey,
+{
+	#[inline]
+	#[allow(clippy::type_complexity)]
+	fn route_diffs_to_buckets(
+		&self,
+		change: &impl ChangeView,
+	) -> BTreeMap<(A::GroupKey, A::WindowCoord), Vec<AccEvent<A>>> {
 		let mut buckets: BTreeMap<(A::GroupKey, A::WindowCoord), Vec<AccEvent<A>>> = BTreeMap::new();
 
 		for di in 0..change.diff_count() {
@@ -270,10 +322,16 @@ where
 			}
 		}
 
-		if buckets.is_empty() {
-			return Ok(());
-		}
+		buckets
+	}
 
+	#[inline]
+	#[allow(clippy::type_complexity)]
+	fn warm_and_load_meta(
+		&mut self,
+		ctx: &mut impl OperatorContext,
+		buckets: &BTreeMap<(A::GroupKey, A::WindowCoord), Vec<AccEvent<A>>>,
+	) -> Result<HashMap<A::GroupKey, GroupMeta<A::WindowCoord>>> {
 		let meta_keys: Vec<MetaKey> = buckets
 			.keys()
 			.map(|(group, _)| group)
@@ -290,7 +348,17 @@ where
 				meta_loaded.insert(group.clone(), m);
 			}
 		}
+		Ok(meta_loaded)
+	}
 
+	#[inline]
+	#[allow(clippy::type_complexity)]
+	fn resolve_state_rows(
+		&mut self,
+		ctx: &mut impl OperatorContext,
+		buckets: &BTreeMap<(A::GroupKey, A::WindowCoord), Vec<AccEvent<A>>>,
+		meta_loaded: &HashMap<A::GroupKey, GroupMeta<A::WindowCoord>>,
+	) -> Result<HashMap<A::GroupKey, RowNumber>> {
 		let mut state_rows: HashMap<A::GroupKey, RowNumber> = HashMap::new();
 		let mut resolve_order: Vec<A::GroupKey> = Vec::new();
 		let mut state_lookup_keys: Vec<EncodedKey> = Vec::new();
@@ -308,13 +376,18 @@ where
 			state_rows.insert(group, state_row_number);
 		}
 		self.groups.warm(ctx, &state_keys)?;
+		Ok(state_rows)
+	}
 
-		struct GroupSlot<A: MultiRollingOperator> {
-			state_row_number: RowNumber,
-			buffer: MultiRollingBuffer<A>,
-			prior_emit: MultiRollingEmit<A>,
-			buffer_changed: bool,
-		}
+	#[inline]
+	#[allow(clippy::type_complexity)]
+	fn apply_events_into_buffers(
+		&mut self,
+		ctx: &mut impl OperatorContext,
+		buckets: BTreeMap<(A::GroupKey, A::WindowCoord), Vec<AccEvent<A>>>,
+		meta_loaded: &mut HashMap<A::GroupKey, GroupMeta<A::WindowCoord>>,
+		state_rows: &HashMap<A::GroupKey, RowNumber>,
+	) -> Result<BTreeMap<A::GroupKey, GroupSlot<A>>> {
 		let mut group_slots: BTreeMap<A::GroupKey, GroupSlot<A>> = BTreeMap::new();
 
 		let capacity = self.aggregator.capacity();
@@ -371,12 +444,39 @@ where
 			}
 			slot.buffer_changed = true;
 
-			meta.high_water = Some(match meta.high_water {
+			let next_high_water = match meta.high_water {
 				Some(hw) if hw > coord => hw,
 				_ => coord,
-			});
+			};
+			reifydb_assertions! {
+				assert!(
+					next_high_water >= coord,
+					"high_water regressed below the window coord it just admitted, so the next batch would \
+					 treat an already-processed window as late and silently drop its events (coord={coord:?}, \
+					 prev_high_water={prev:?}, next_high_water={next_high_water:?})",
+					prev = meta.high_water
+				);
+				if let Some(prev) = meta.high_water {
+					assert!(
+						next_high_water >= prev,
+						"high_water moved backwards across an admit, breaking the monotonic late-event \
+						 cutoff that buried-window dropping relies on (coord={coord:?}, prev_high_water={prev:?}, \
+						 next_high_water={next_high_water:?})"
+					);
+				}
+			}
+			meta.high_water = Some(next_high_water);
 		}
 
+		Ok(group_slots)
+	}
+
+	#[inline]
+	fn diff_emits(
+		&mut self,
+		ctx: &mut impl OperatorContext,
+		group_slots: BTreeMap<A::GroupKey, GroupSlot<A>>,
+	) -> Result<EmitDiffs<A>> {
 		let mut inserts: Vec<(RowNumber, A::Output)> = Vec::new();
 		let mut updates: Vec<(RowNumber, A::Output, A::Output)> = Vec::new();
 		let mut removes: Vec<(RowNumber, A::Output)> = Vec::new();
@@ -416,38 +516,49 @@ where
 			self.groups.put(ctx, &slot.state_row_number, combined)?;
 		}
 
+		Ok((inserts, updates, removes))
+	}
+
+	#[inline]
+	fn emit_three_batches(
+		ctx: &mut impl OperatorContext,
+		inserts: &[(RowNumber, A::Output)],
+		updates: &[(RowNumber, A::Output, A::Output)],
+		removes: &[(RowNumber, A::Output)],
+	) -> Result<()> {
 		if !inserts.is_empty() {
 			let mut batch = InsertBatch::<A::Output, _>::new(ctx, inserts.len())?;
-			for (rn, data) in &inserts {
+			for (rn, data) in inserts {
 				batch.push(*rn, data)?;
 			}
 			batch.finish()?;
 		}
 		if !updates.is_empty() {
 			let mut batch = UpdateBatch::<A::Output, _>::new(ctx, updates.len())?;
-			for (rn, prior, new) in &updates {
+			for (rn, prior, new) in updates {
 				batch.push(*rn, prior, new)?;
 			}
 			batch.finish()?;
 		}
 		if !removes.is_empty() {
 			let mut batch = RemoveBatch::<A::Output, _>::new(ctx, removes.len())?;
-			for (rn, data) in &removes {
+			for (rn, data) in removes {
 				batch.push(*rn, data)?;
 			}
 			batch.finish()?;
 		}
-
-		for (group, meta) in meta_loaded {
-			self.meta.set(ctx, &meta_key_for(&group), &meta)?;
-		}
-
 		Ok(())
 	}
 
-	fn flush_state(&mut self, ctx: &mut impl OperatorContext) -> Result<()> {
-		self.groups.flush(ctx)?;
-		self.meta.flush(ctx)?;
+	#[inline]
+	fn persist_meta(
+		&mut self,
+		ctx: &mut impl OperatorContext,
+		meta_loaded: HashMap<A::GroupKey, GroupMeta<A::WindowCoord>>,
+	) -> Result<()> {
+		for (group, meta) in meta_loaded {
+			self.meta.set(ctx, &meta_key_for(&group), &meta)?;
+		}
 		Ok(())
 	}
 }

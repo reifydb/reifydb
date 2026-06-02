@@ -243,20 +243,33 @@ fn validate_row_or_panic(
 	context: &'static str,
 ) {
 	if schema.is_empty() {
-		schema.reserve(fields.len());
-		for (name, value) in fields {
-			let type_code = match value_to_type_code(value) {
-				Some(c) => c,
-				None => panic!("{}: column {:?} has unsupported value type {:?}", context, name, value),
-			};
-			if schema.iter().any(|(n, _)| n == name) {
-				panic!("{}: duplicate column name {:?}", context, name);
-			}
-			schema.push((name.clone(), type_code));
-		}
+		infer_schema_from_first_row(schema, fields, context);
 		return;
 	}
+	validate_row_against_schema(schema, fields, context);
+}
 
+#[inline]
+fn infer_schema_from_first_row(
+	schema: &mut Vec<(String, ColumnTypeCode)>,
+	fields: &[(String, Value)],
+	context: &'static str,
+) {
+	schema.reserve(fields.len());
+	for (name, value) in fields {
+		let type_code = match value_to_type_code(value) {
+			Some(c) => c,
+			None => panic!("{}: column {:?} has unsupported value type {:?}", context, name, value),
+		};
+		if schema.iter().any(|(n, _)| n == name) {
+			panic!("{}: duplicate column name {:?}", context, name);
+		}
+		schema.push((name.clone(), type_code));
+	}
+}
+
+#[inline]
+fn validate_row_against_schema(schema: &[(String, ColumnTypeCode)], fields: &[(String, Value)], context: &'static str) {
 	if fields.len() != schema.len() {
 		panic!(
 			"{}: row has {} fields, schema expects {} (schema: {:?})",

@@ -13,6 +13,7 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::flow_node_internal_state::FlowNodeInternalStateKey,
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::value::row_number::RowNumber;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
@@ -85,6 +86,15 @@ type Buckets<A> = BTreeMap<
 	(<A as TumblingCarryOperator>::GroupKey, WindowSpan<<A as TumblingCarryOperator>::WindowCoord>),
 	Vec<AccEvent<A>>,
 >;
+type LoadedMeta<A> = HashMap<
+	<A as TumblingCarryOperator>::GroupKey,
+	GroupMeta<<A as TumblingCarryOperator>::WindowCoord, <A as TumblingCarryOperator>::Carry>,
+>;
+type SlotResolutions = Vec<Option<(RowNumber, bool)>>;
+type OutputBatches<A> = (
+	Vec<(RowNumber, <A as TumblingCarryOperator>::Output)>,
+	Vec<(RowNumber, <A as TumblingCarryOperator>::Output)>,
+);
 
 pub trait TumblingCarryOperator {
 	type GroupKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned;
@@ -201,50 +211,14 @@ where
 			buckets.entry((group, span)).or_default().push(event);
 		}
 	}
-}
 
-impl<A> OperatorMetadata for TumblingCarryDriver<A>
-where
-	A: TumblingCarryRegistration + 'static,
-	A::Output: Row,
-	for<'a> &'a A::GroupKey: IntoEncodedKey,
-{
-	const NAME: &'static str = A::NAME;
-	const API: u32 = 1;
-	const VERSION: &'static str = A::VERSION;
-	const DESCRIPTION: &'static str = A::DESCRIPTION;
-	const INPUT_COLUMNS: &'static [OperatorColumn] = A::INPUT_COLUMNS;
-	const OUTPUT_COLUMNS: &'static [OperatorColumn] = A::OUTPUT_COLUMNS;
-	const CAPABILITIES: &'static [OperatorCapability] = A::CAPABILITIES;
-}
-
-impl<A> OperatorLogic for TumblingCarryDriver<A>
-where
-	A: TumblingCarryRegistration + Send + Sync + 'static,
-	A::Output: Row,
-	A::GroupKey: Send + Sync,
-	A::WindowCoord: Send + Sync,
-	A::Acc: Send + Sync,
-	A::Carry: Send + Sync,
-	AccContribution<A>: Send + Sync,
-	for<'a> &'a A::GroupKey: IntoEncodedKey,
-{
-	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
-		let aggregator = A::from_config(operator_id, config)?;
-		Ok(Self {
-			aggregator,
-			accs: StateCache::<RowNumber, A::Acc>::new(8),
-			meta: StateCache::<MetaKey, GroupMeta<A::WindowCoord, A::Carry>>::new_internal(64),
-		})
-	}
-
+	#[inline]
 	#[allow(clippy::type_complexity)]
-	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
-		let buckets = self.route(&change);
-		if buckets.is_empty() {
-			return Ok(());
-		}
-
+	fn warm_and_load_meta(
+		&mut self,
+		ctx: &mut impl OperatorContext,
+		buckets: &Buckets<A>,
+	) -> Result<LoadedMeta<A>> {
 		let meta_keys: Vec<MetaKey> = buckets
 			.keys()
 			.map(|(group, _)| group)
@@ -254,14 +228,23 @@ where
 			.collect();
 		self.meta.warm(ctx, &meta_keys)?;
 
-		let mut meta_loaded: HashMap<A::GroupKey, GroupMeta<A::WindowCoord, A::Carry>> = HashMap::new();
+		let mut meta_loaded: LoadedMeta<A> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
 				let m = self.meta.get(ctx, &meta_key_for(group))?.unwrap_or_default();
 				meta_loaded.insert(group.clone(), m);
 			}
 		}
+		Ok(meta_loaded)
+	}
 
+	#[inline]
+	fn resolve_survivor_rows(
+		&mut self,
+		ctx: &mut impl OperatorContext,
+		buckets: &Buckets<A>,
+		meta_loaded: &LoadedMeta<A>,
+	) -> Result<SlotResolutions> {
 		let mut survivor_keys: Vec<EncodedKey> = Vec::new();
 		let mut slot_survives: Vec<bool> = Vec::with_capacity(buckets.len());
 		for (group, span) in buckets.keys() {
@@ -276,7 +259,7 @@ where
 		let acc_keys: Vec<RowNumber> = resolved_rows.iter().map(|(rn, _)| *rn).collect();
 		self.accs.warm(ctx, &acc_keys)?;
 		let mut resolved_rows = resolved_rows.into_iter();
-		let slot_resolved: Vec<Option<(RowNumber, bool)>> = slot_survives
+		Ok(slot_survives
 			.into_iter()
 			.map(|survives| {
 				if survives {
@@ -285,8 +268,18 @@ where
 					None
 				}
 			})
-			.collect();
+			.collect())
+	}
 
+	#[inline]
+	#[allow(clippy::type_complexity)]
+	fn apply_events_with_carry(
+		&mut self,
+		ctx: &mut impl OperatorContext,
+		buckets: Buckets<A>,
+		meta_loaded: &mut LoadedMeta<A>,
+		slot_resolved: SlotResolutions,
+	) -> Result<OutputBatches<A>> {
 		let mut inserts: Vec<(RowNumber, A::Output)> = Vec::new();
 		let mut updates: Vec<(RowNumber, A::Output)> = Vec::new();
 
@@ -300,6 +293,14 @@ where
 				}
 				Some(_) => {}
 				None => entry.high_water = Some(span.start),
+			}
+			reifydb_assertions! {
+				let recorded = entry.high_water;
+				assert!(
+					recorded == Some(span.start),
+					"tumbling-carry high_water must equal the accepted span start after the advance match (recorded={recorded:?}, span.start={:?}); a lagging high_water would rotate prev_carry against a window that has not actually closed, carrying the wrong prior close into this window",
+					span.start
+				);
 			}
 			let prev_carry = entry.carry_for_current.clone();
 
@@ -345,24 +346,88 @@ where
 			}
 		}
 
+		Ok((inserts, updates))
+	}
+
+	#[inline]
+	fn emit_batches(
+		&self,
+		ctx: &mut impl OperatorContext,
+		inserts: &[(RowNumber, A::Output)],
+		updates: &[(RowNumber, A::Output)],
+	) -> Result<()> {
 		if !inserts.is_empty() {
 			let mut batch = InsertBatch::<A::Output, _>::new(ctx, inserts.len())?;
-			for (rn, data) in &inserts {
+			for (rn, data) in inserts {
 				batch.push(*rn, data)?;
 			}
 			batch.finish()?;
 		}
 		if !updates.is_empty() {
 			let mut batch = UpdateBatch::<A::Output, _>::new(ctx, updates.len())?;
-			for (rn, data) in &updates {
+			for (rn, data) in updates {
 				batch.push(*rn, data, data)?;
 			}
 			batch.finish()?;
 		}
+		Ok(())
+	}
 
+	#[inline]
+	fn persist_meta(&mut self, ctx: &mut impl OperatorContext, meta_loaded: LoadedMeta<A>) -> Result<()> {
 		for (group, meta) in meta_loaded {
 			self.meta.set(ctx, &meta_key_for(&group), &meta)?;
 		}
+		Ok(())
+	}
+}
+
+impl<A> OperatorMetadata for TumblingCarryDriver<A>
+where
+	A: TumblingCarryRegistration + 'static,
+	A::Output: Row,
+	for<'a> &'a A::GroupKey: IntoEncodedKey,
+{
+	const NAME: &'static str = A::NAME;
+	const API: u32 = 1;
+	const VERSION: &'static str = A::VERSION;
+	const DESCRIPTION: &'static str = A::DESCRIPTION;
+	const INPUT_COLUMNS: &'static [OperatorColumn] = A::INPUT_COLUMNS;
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = A::OUTPUT_COLUMNS;
+	const CAPABILITIES: &'static [OperatorCapability] = A::CAPABILITIES;
+}
+
+impl<A> OperatorLogic for TumblingCarryDriver<A>
+where
+	A: TumblingCarryRegistration + Send + Sync + 'static,
+	A::Output: Row,
+	A::GroupKey: Send + Sync,
+	A::WindowCoord: Send + Sync,
+	A::Acc: Send + Sync,
+	A::Carry: Send + Sync,
+	AccContribution<A>: Send + Sync,
+	for<'a> &'a A::GroupKey: IntoEncodedKey,
+{
+	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
+		let aggregator = A::from_config(operator_id, config)?;
+		Ok(Self {
+			aggregator,
+			accs: StateCache::<RowNumber, A::Acc>::new(8),
+			meta: StateCache::<MetaKey, GroupMeta<A::WindowCoord, A::Carry>>::new_internal(64),
+		})
+	}
+
+	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
+		let buckets = self.route(&change);
+		if buckets.is_empty() {
+			return Ok(());
+		}
+
+		let mut meta_loaded = self.warm_and_load_meta(ctx, &buckets)?;
+		let slot_resolved = self.resolve_survivor_rows(ctx, &buckets, &meta_loaded)?;
+		let (inserts, updates) = self.apply_events_with_carry(ctx, buckets, &mut meta_loaded, slot_resolved)?;
+		self.emit_batches(ctx, &inserts, &updates)?;
+		self.persist_meta(ctx, meta_loaded)?;
 
 		Ok(())
 	}

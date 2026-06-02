@@ -13,6 +13,7 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::flow_node_internal_state::FlowNodeInternalStateKey,
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::value::row_number::RowNumber;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
@@ -76,6 +77,10 @@ type Buckets<A> = BTreeMap<
 	(<A as TumblingOperator>::GroupKey, WindowSpan<<A as TumblingOperator>::WindowCoord>),
 	Vec<AccEvent<A>>,
 >;
+type MetaLoaded<A> = HashMap<<A as TumblingOperator>::GroupKey, GroupMeta<<A as TumblingOperator>::WindowCoord>>;
+type SlotResolved = Vec<Option<(RowNumber, bool)>>;
+type WindowOutputs<A> =
+	(Vec<(RowNumber, <A as TumblingOperator>::Output)>, Vec<(RowNumber, <A as TumblingOperator>::Output)>);
 
 pub trait TumblingOperator {
 	type GroupKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned;
@@ -189,22 +194,7 @@ where
 	}
 }
 
-impl<A> OperatorMetadata for TumblingDriver<A>
-where
-	A: TumblingRegistration + 'static,
-	A::Output: Row,
-	for<'a> &'a A::GroupKey: IntoEncodedKey,
-{
-	const NAME: &'static str = A::NAME;
-	const API: u32 = 1;
-	const VERSION: &'static str = A::VERSION;
-	const DESCRIPTION: &'static str = A::DESCRIPTION;
-	const INPUT_COLUMNS: &'static [OperatorColumn] = A::INPUT_COLUMNS;
-	const OUTPUT_COLUMNS: &'static [OperatorColumn] = A::OUTPUT_COLUMNS;
-	const CAPABILITIES: &'static [OperatorCapability] = A::CAPABILITIES;
-}
-
-impl<A> OperatorLogic for TumblingDriver<A>
+impl<A> TumblingDriver<A>
 where
 	A: TumblingRegistration + Send + Sync + 'static,
 	A::Output: Row,
@@ -214,22 +204,12 @@ where
 	AccContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
-	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
-		let aggregator = A::from_config(operator_id, config)?;
-		Ok(Self {
-			aggregator,
-			accs: StateCache::<RowNumber, A::Acc>::new(8),
-			meta: StateCache::<MetaKey, GroupMeta<A::WindowCoord>>::new_internal(64),
-		})
-	}
-
-	#[allow(clippy::type_complexity)]
-	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
-		let buckets = self.route(&change);
-		if buckets.is_empty() {
-			return Ok(());
-		}
-
+	#[inline]
+	fn warm_and_load_meta(
+		&mut self,
+		ctx: &mut impl OperatorContext,
+		buckets: &Buckets<A>,
+	) -> Result<MetaLoaded<A>> {
 		let meta_keys: Vec<MetaKey> = buckets
 			.keys()
 			.map(|(group, _)| group)
@@ -239,14 +219,23 @@ where
 			.collect();
 		self.meta.warm(ctx, &meta_keys)?;
 
-		let mut meta_loaded: HashMap<A::GroupKey, GroupMeta<A::WindowCoord>> = HashMap::new();
+		let mut meta_loaded: MetaLoaded<A> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
 				let m = self.meta.get(ctx, &meta_key_for(group))?.unwrap_or_default();
 				meta_loaded.insert(group.clone(), m);
 			}
 		}
+		Ok(meta_loaded)
+	}
 
+	#[inline]
+	fn resolve_survivor_rows(
+		&mut self,
+		ctx: &mut impl OperatorContext,
+		buckets: &Buckets<A>,
+		meta_loaded: &MetaLoaded<A>,
+	) -> Result<SlotResolved> {
 		let mut survivor_keys: Vec<EncodedKey> = Vec::new();
 		let mut slot_survives: Vec<bool> = Vec::with_capacity(buckets.len());
 		for (group, span) in buckets.keys() {
@@ -258,10 +247,21 @@ where
 			}
 		}
 		let resolved_rows = ctx.get_or_create_row_numbers(&survivor_keys)?;
+		reifydb_assertions! {
+			let survivors = survivor_keys.len();
+			let resolved = resolved_rows.len();
+			assert!(
+				resolved == survivors,
+				"get_or_create_row_numbers must return exactly one row per survivor key; a short batch would \
+				 leave a surviving slot with no resolved row, so the slot_resolved zip below pairs it with None \
+				 and apply_events_build_outputs silently re-creates a fresh row instead of reusing the existing \
+				 window state, double-counting it (survivor_keys={survivors}, resolved_rows={resolved})"
+			);
+		}
 		let acc_keys: Vec<RowNumber> = resolved_rows.iter().map(|(rn, _)| *rn).collect();
 		self.accs.warm(ctx, &acc_keys)?;
 		let mut resolved_rows = resolved_rows.into_iter();
-		let slot_resolved: Vec<Option<(RowNumber, bool)>> = slot_survives
+		let slot_resolved: SlotResolved = slot_survives
 			.into_iter()
 			.map(|survives| {
 				if survives {
@@ -271,7 +271,17 @@ where
 				}
 			})
 			.collect();
+		Ok(slot_resolved)
+	}
 
+	#[inline]
+	fn apply_events_build_outputs(
+		&mut self,
+		ctx: &mut impl OperatorContext,
+		buckets: Buckets<A>,
+		slot_resolved: SlotResolved,
+		meta_loaded: &mut MetaLoaded<A>,
+	) -> Result<WindowOutputs<A>> {
 		let mut inserts: Vec<(RowNumber, A::Output)> = Vec::new();
 		let mut updates: Vec<(RowNumber, A::Output)> = Vec::new();
 
@@ -314,25 +324,89 @@ where
 				}
 			}
 		}
+		Ok((inserts, updates))
+	}
 
+	#[inline]
+	fn emit_insert_update_batches(
+		&self,
+		ctx: &mut impl OperatorContext,
+		inserts: &[(RowNumber, A::Output)],
+		updates: &[(RowNumber, A::Output)],
+	) -> Result<()> {
 		if !inserts.is_empty() {
 			let mut batch = InsertBatch::<A::Output, _>::new(ctx, inserts.len())?;
-			for (rn, data) in &inserts {
+			for (rn, data) in inserts {
 				batch.push(*rn, data)?;
 			}
 			batch.finish()?;
 		}
 		if !updates.is_empty() {
 			let mut batch = UpdateBatch::<A::Output, _>::new(ctx, updates.len())?;
-			for (rn, data) in &updates {
+			for (rn, data) in updates {
 				batch.push(*rn, data, data)?;
 			}
 			batch.finish()?;
 		}
+		Ok(())
+	}
 
+	#[inline]
+	fn persist_meta(&mut self, ctx: &mut impl OperatorContext, meta_loaded: MetaLoaded<A>) -> Result<()> {
 		for (group, meta) in meta_loaded {
 			self.meta.set(ctx, &meta_key_for(&group), &meta)?;
 		}
+		Ok(())
+	}
+}
+
+impl<A> OperatorMetadata for TumblingDriver<A>
+where
+	A: TumblingRegistration + 'static,
+	A::Output: Row,
+	for<'a> &'a A::GroupKey: IntoEncodedKey,
+{
+	const NAME: &'static str = A::NAME;
+	const API: u32 = 1;
+	const VERSION: &'static str = A::VERSION;
+	const DESCRIPTION: &'static str = A::DESCRIPTION;
+	const INPUT_COLUMNS: &'static [OperatorColumn] = A::INPUT_COLUMNS;
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = A::OUTPUT_COLUMNS;
+	const CAPABILITIES: &'static [OperatorCapability] = A::CAPABILITIES;
+}
+
+impl<A> OperatorLogic for TumblingDriver<A>
+where
+	A: TumblingRegistration + Send + Sync + 'static,
+	A::Output: Row,
+	A::GroupKey: Send + Sync,
+	A::WindowCoord: Send + Sync,
+	A::Acc: Send + Sync,
+	AccContribution<A>: Send + Sync,
+	for<'a> &'a A::GroupKey: IntoEncodedKey,
+{
+	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
+		let aggregator = A::from_config(operator_id, config)?;
+		Ok(Self {
+			aggregator,
+			accs: StateCache::<RowNumber, A::Acc>::new(8),
+			meta: StateCache::<MetaKey, GroupMeta<A::WindowCoord>>::new_internal(64),
+		})
+	}
+
+	#[allow(clippy::type_complexity)]
+	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
+		let buckets = self.route(&change);
+		if buckets.is_empty() {
+			return Ok(());
+		}
+
+		let mut meta_loaded = self.warm_and_load_meta(ctx, &buckets)?;
+		let slot_resolved = self.resolve_survivor_rows(ctx, &buckets, &meta_loaded)?;
+		let (inserts, updates) =
+			self.apply_events_build_outputs(ctx, buckets, slot_resolved, &mut meta_loaded)?;
+		self.emit_insert_update_batches(ctx, &inserts, &updates)?;
+		self.persist_meta(ctx, meta_loaded)?;
 
 		Ok(())
 	}

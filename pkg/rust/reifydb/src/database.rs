@@ -43,7 +43,7 @@ use reifydb_sub_server_http::subsystem::HttpSubsystem;
 #[cfg(all(feature = "sub_server_ws", not(reifydb_single_threaded)))]
 use reifydb_sub_server_ws::subsystem::WsSubsystem;
 #[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
-use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
+use reifydb_sub_subscription::{store::SubscriptionStore, subsystem::SubscriptionSubsystem};
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_sub_task::{handle::TaskHandle, subsystem::TaskSubsystem};
 #[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
@@ -228,19 +228,31 @@ impl Database {
 		self.engine.set_shutting_down();
 
 		if drain {
-			self.drain_cdc_consumers(SHUTDOWN_DRAIN_TIMEOUT);
-
-			if let Some(multi_store) = self.engine.ioc().try_resolve::<MultiStore>() {
-				multi_store.flush_all_blocking();
-			}
-
-			if let Some(single_store) = self.engine.ioc().try_resolve::<SingleStore>() {
-				single_store.flush_pending_blocking();
-			}
+			self.drain_and_flush_stores();
 		}
 
 		self.subsystems.shutdown_all();
+		self.shutdown_stores();
+		self.engine.shutdown();
+		self.mark_stopped();
+		Ok(())
+	}
 
+	#[inline]
+	fn drain_and_flush_stores(&self) {
+		self.drain_cdc_consumers(SHUTDOWN_DRAIN_TIMEOUT);
+
+		if let Some(multi_store) = self.engine.ioc().try_resolve::<MultiStore>() {
+			multi_store.flush_all_blocking();
+		}
+
+		if let Some(single_store) = self.engine.ioc().try_resolve::<SingleStore>() {
+			single_store.flush_pending_blocking();
+		}
+	}
+
+	#[inline]
+	fn shutdown_stores(&self) {
 		if let Some(multi_store) = self.engine.ioc().try_resolve::<MultiStore>() {
 			multi_store.shutdown();
 		}
@@ -250,13 +262,13 @@ impl Database {
 		if let Some(cdc_store) = self.engine.ioc().try_resolve::<CdcStore>() {
 			cdc_store.shutdown();
 		}
+	}
 
-		self.engine.shutdown();
-
+	#[inline]
+	fn mark_stopped(&mut self) {
 		self.running = false;
 		debug!("System stopped successfully");
 		self.health_monitor.update_component_health("system".to_string(), HealthStatus::Healthy, false);
-		Ok(())
 	}
 
 	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
@@ -424,14 +436,27 @@ impl Database {
 		params: impl Into<Params>,
 		hydration: HydrationConfig,
 	) -> Result<Subscription> {
-		let store = self
-			.subsystem::<SubscriptionSubsystem>()
+		let store = self.resolve_subscription_store()?;
+		let frames = self.admin_as(identity, &format!("CREATE SUBSCRIPTION AS {{ {query} }}"), params)?;
+		let id = Self::parse_subscription_id(&frames)?;
+		let column_names = store.column_names(&id).unwrap_or_default();
+		let prelude = self.build_hydration_prelude(id, identity, &hydration)?;
+		Ok(Subscription::new(id, store, column_names, prelude))
+	}
+
+	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+	#[inline]
+	fn resolve_subscription_store(&self) -> Result<Arc<SubscriptionStore>> {
+		Ok(self.subsystem::<SubscriptionSubsystem>()
 			.ok_or_else(|| Error(Box::new(feature_disabled("subscription"))))?
 			.store()
-			.clone();
-		let frames = self.admin_as(identity, &format!("CREATE SUBSCRIPTION AS {{ {query} }}"), params)?;
-		let id = frames
-			.first()
+			.clone())
+	}
+
+	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+	#[inline]
+	fn parse_subscription_id(frames: &[Frame]) -> Result<SubscriptionId> {
+		frames.first()
 			.and_then(|f| f.columns.iter().find(|c| c.name == "subscription_id"))
 			.filter(|c| !c.data.is_empty())
 			.map(|c| c.data.get_value(0))
@@ -443,26 +468,30 @@ impl Database {
 				Error(Box::new(internal!(
 					"CREATE SUBSCRIPTION succeeded but returned no subscription_id"
 				)))
-			})?;
-		let column_names = store.column_names(&id).unwrap_or_default();
+			})
+	}
 
-		let prelude = if hydration.enabled {
-			let service = self
-				.engine
-				.ioc()
-				.try_resolve::<SubscriptionServiceRef>()
-				.ok_or_else(|| Error(Box::new(feature_disabled("subscription"))))?;
-			let (_, lease) = self.engine.acquire_current_snapshot_lease()?;
-			let max_rows = hydration.max_rows.unwrap_or(u64::MAX);
-			let outcome = service
-				.hydrate(id, &self.engine, identity, lease, max_rows)
-				.map_err(hydrate_error_to_error)?;
-			outcome.batches.into_iter().map(Frame::from).collect()
-		} else {
-			Vec::new()
-		};
-
-		Ok(Subscription::new(id, store, column_names, prelude))
+	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+	#[inline]
+	fn build_hydration_prelude(
+		&self,
+		id: SubscriptionId,
+		identity: IdentityId,
+		hydration: &HydrationConfig,
+	) -> Result<Vec<Frame>> {
+		if !hydration.enabled {
+			return Ok(Vec::new());
+		}
+		let service = self
+			.engine
+			.ioc()
+			.try_resolve::<SubscriptionServiceRef>()
+			.ok_or_else(|| Error(Box::new(feature_disabled("subscription"))))?;
+		let (_, lease) = self.engine.acquire_current_snapshot_lease()?;
+		let max_rows = hydration.max_rows.unwrap_or(u64::MAX);
+		let outcome =
+			service.hydrate(id, &self.engine, identity, lease, max_rows).map_err(hydrate_error_to_error)?;
+		Ok(outcome.batches.into_iter().map(Frame::from).collect())
 	}
 
 	/// Re-attach a handle to an already-created subscription `id` on the current delivery store.

@@ -90,12 +90,30 @@ impl RaftSubsystem {
 		eventbus: EventBus,
 		handle: Handle,
 	) -> Self {
+		let raft_state =
+			Self::build_apply_state(multi_store, single_store, eventbus, &catalog, &multi_tx, &single_tx);
+		let node = Self::build_seeded_node(&config, raft_state);
+		let (transport, transport_join) = Self::start_transport(&handle, &config);
+		let (raft, driver_join) = Self::spawn_driver(&handle, &config, node, transport);
+		Self::wire_transactions(&multi_tx, &single_tx, &raft);
+		Self::assemble(multi_tx, single_tx, handle, raft, driver_join, transport_join)
+	}
+
+	#[inline]
+	fn build_apply_state(
+		multi_store: MultiStore,
+		single_store: SingleStore,
+		eventbus: EventBus,
+		catalog: &CatalogCache,
+		multi_tx: &MultiTransaction,
+		single_tx: &SingleTransaction,
+	) -> Apply<MultiStore, SingleStore> {
 		let catalog_for_cb = catalog.clone();
 		let multi_for_cb = multi_tx.clone();
 		let single_for_cb = single_tx.clone();
 		let multi_for_ver = multi_tx.clone();
 
-		let raft_state = Apply::with_callbacks(
+		Apply::with_callbacks(
 			multi_store,
 			single_store,
 			eventbus,
@@ -107,27 +125,40 @@ impl RaftSubsystem {
 			move |version| {
 				multi_for_ver.advance_version_to(CommitVersion(version));
 			},
-		);
+		)
+	}
 
+	#[inline]
+	fn build_seeded_node(config: &RaftConfig, raft_state: Apply<MultiStore, SingleStore>) -> Node {
 		let peer_ids: HashSet<NodeId> = config.peers.iter().map(|p| p.node_id).collect();
 		let opts = Options {
 			heartbeat_interval: config.heartbeat_interval,
 			election_timeout_range: config.election_timeout_range.clone(),
 			max_append_entries: config.max_append_entries,
 		};
-		let node = Node::new_seeded(
+		Node::new_seeded(
 			config.node_id,
 			peer_ids,
 			Log::new(),
 			Box::new(raft_state),
 			opts,
 			config.node_id as u64,
-		);
+		)
+	}
 
-		let (transport, transport_join) = handle
-			.block_on(GrpcTransport::start(config.bind_addr, config.peers.clone()))
-			.expect("failed to start raft gRPC transport");
+	#[inline]
+	fn start_transport(handle: &Handle, config: &RaftConfig) -> (GrpcTransport, JoinHandle<()>) {
+		handle.block_on(GrpcTransport::start(config.bind_addr, config.peers.clone()))
+			.expect("failed to start raft gRPC transport")
+	}
 
+	#[inline]
+	fn spawn_driver(
+		handle: &Handle,
+		config: &RaftConfig,
+		node: Node,
+		transport: GrpcTransport,
+	) -> (Raft, JoinHandle<()>) {
 		let driver_config = DriverConfig {
 			tick_interval: config.tick_interval,
 			recv_interval: config.recv_interval,
@@ -135,10 +166,24 @@ impl RaftSubsystem {
 		};
 		let (driver, raft) = RaftDriver::new(node, transport, driver_config);
 		let driver_join = handle.spawn(driver.run());
+		(raft, driver_join)
+	}
 
+	#[inline]
+	fn wire_transactions(multi_tx: &MultiTransaction, single_tx: &SingleTransaction, raft: &Raft) {
 		multi_tx.set_raft(raft.clone());
 		single_tx.set_raft(raft.clone());
+	}
 
+	#[inline]
+	fn assemble(
+		multi_tx: MultiTransaction,
+		single_tx: SingleTransaction,
+		handle: Handle,
+		raft: Raft,
+		driver_join: JoinHandle<()>,
+		transport_join: JoinHandle<()>,
+	) -> Self {
 		Self {
 			multi_tx,
 			single_tx,

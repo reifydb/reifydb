@@ -13,6 +13,7 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::flow_node_internal_state::FlowNodeInternalStateKey,
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::value::row_number::RowNumber;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
@@ -108,6 +109,24 @@ where
 
 pub type RollingBuffer<A> = BTreeMap<<A as RollingOperator>::WindowCoord, <A as RollingOperator>::WindowAcc>;
 
+type Buckets<A> = BTreeMap<(<A as RollingOperator>::GroupKey, <A as RollingOperator>::WindowCoord), Vec<AccEvent<A>>>;
+
+type MetaLoaded<A> = HashMap<<A as RollingOperator>::GroupKey, GroupMeta<<A as RollingOperator>::WindowCoord>>;
+
+type BufferRows<A> = HashMap<<A as RollingOperator>::GroupKey, (RowNumber, bool)>;
+
+type GroupSlots<A> = BTreeMap<<A as RollingOperator>::GroupKey, GroupSlot<A>>;
+
+type Emits<A> = (Vec<(RowNumber, <A as RollingOperator>::Output)>, Vec<(RowNumber, <A as RollingOperator>::Output)>);
+
+struct GroupSlot<A: RollingOperator> {
+	row_number: RowNumber,
+	is_new: bool,
+	buffer: RollingBuffer<A>,
+	was_empty_before: bool,
+	buffer_changed: bool,
+}
+
 pub struct RollingDriver<A>
 where
 	A: RollingRegistration,
@@ -124,43 +143,14 @@ enum AccEvent<A: RollingOperator> {
 	Remove(AccContribution<A>),
 }
 
-impl<A> OperatorMetadata for RollingDriver<A>
+impl<A> RollingDriver<A>
 where
-	A: RollingRegistration + 'static,
+	A: RollingRegistration,
 	A::Output: Row,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
-	const NAME: &'static str = A::NAME;
-	const API: u32 = 1;
-	const VERSION: &'static str = A::VERSION;
-	const DESCRIPTION: &'static str = A::DESCRIPTION;
-	const INPUT_COLUMNS: &'static [OperatorColumn] = A::INPUT_COLUMNS;
-	const OUTPUT_COLUMNS: &'static [OperatorColumn] = A::OUTPUT_COLUMNS;
-	const CAPABILITIES: &'static [OperatorCapability] = A::CAPABILITIES;
-}
-
-impl<A> OperatorLogic for RollingDriver<A>
-where
-	A: RollingRegistration + Send + Sync + 'static,
-	A::Output: Row,
-	A::GroupKey: Send + Sync,
-	A::WindowCoord: Send + Sync,
-	A::WindowAcc: Send + Sync,
-	AccContribution<A>: Send + Sync,
-	for<'a> &'a A::GroupKey: IntoEncodedKey,
-{
-	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
-		let aggregator = A::from_config(operator_id, config)?;
-		Ok(Self {
-			aggregator,
-			buffers: StateCache::<RowNumber, RollingBuffer<A>>::new(8),
-			meta: StateCache::<MetaKey, GroupMeta<A::WindowCoord>>::new_internal(64),
-		})
-	}
-
-	#[allow(clippy::type_complexity)]
-	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
-		let mut buckets: BTreeMap<(A::GroupKey, A::WindowCoord), Vec<AccEvent<A>>> = BTreeMap::new();
+	fn route(&self, change: &impl ChangeView) -> Buckets<A> {
+		let mut buckets: Buckets<A> = BTreeMap::new();
 
 		for di in 0..change.diff_count() {
 			let Some(diff) = change.diff(di) else {
@@ -169,68 +159,63 @@ where
 			match diff.kind() {
 				DiffType::Insert => {
 					if let Some(cols) = diff.post() {
-						for i in 0..cols.row_count() {
-							let Some(row) = cols.row(i) else {
-								continue;
-							};
-							let Some((group, coord, contribution)) =
-								self.aggregator.extract(&row)
-							else {
-								continue;
-							};
-							buckets.entry((group, coord))
-								.or_default()
-								.push(AccEvent::Add(contribution));
-						}
+						self.push_all(&cols, &mut buckets, true);
 					}
 				}
 				DiffType::Update => {
 					if let (Some(pre), Some(post)) = (diff.pre(), diff.post()) {
-						let n = pre.row_count().min(post.row_count());
-						for i in 0..n {
-							if let Some(pre_row) = pre.row(i)
-								&& let Some((group, coord, contribution)) =
-									self.aggregator.extract(&pre_row)
-							{
-								buckets.entry((group, coord))
-									.or_default()
-									.push(AccEvent::Remove(contribution));
-							}
-							if let Some(post_row) = post.row(i)
-								&& let Some((group, coord, contribution)) =
-									self.aggregator.extract(&post_row)
-							{
-								buckets.entry((group, coord))
-									.or_default()
-									.push(AccEvent::Add(contribution));
-							}
-						}
+						self.push_updates(&pre, &post, &mut buckets);
 					}
 				}
 				DiffType::Remove => {
 					if let Some(cols) = diff.pre() {
-						for i in 0..cols.row_count() {
-							let Some(row) = cols.row(i) else {
-								continue;
-							};
-							let Some((group, coord, contribution)) =
-								self.aggregator.extract(&row)
-							else {
-								continue;
-							};
-							buckets.entry((group, coord))
-								.or_default()
-								.push(AccEvent::Remove(contribution));
-						}
+						self.push_all(&cols, &mut buckets, false);
 					}
 				}
 			}
 		}
+		buckets
+	}
 
-		if buckets.is_empty() {
-			return Ok(());
+	fn push_all<C: ColumnsView>(&self, cols: &C, buckets: &mut Buckets<A>, is_add: bool) {
+		for i in 0..cols.row_count() {
+			let Some(row) = cols.row(i) else {
+				continue;
+			};
+			let Some((group, coord, contribution)) = self.aggregator.extract(&row) else {
+				continue;
+			};
+			let event = if is_add {
+				AccEvent::Add(contribution)
+			} else {
+				AccEvent::Remove(contribution)
+			};
+			buckets.entry((group, coord)).or_default().push(event);
 		}
+	}
 
+	fn push_updates<P: ColumnsView, Q: ColumnsView>(&self, pre: &P, post: &Q, buckets: &mut Buckets<A>) {
+		let n = pre.row_count().min(post.row_count());
+		for i in 0..n {
+			if let Some(pre_row) = pre.row(i)
+				&& let Some((group, coord, contribution)) = self.aggregator.extract(&pre_row)
+			{
+				buckets.entry((group, coord)).or_default().push(AccEvent::Remove(contribution));
+			}
+			if let Some(post_row) = post.row(i)
+				&& let Some((group, coord, contribution)) = self.aggregator.extract(&post_row)
+			{
+				buckets.entry((group, coord)).or_default().push(AccEvent::Add(contribution));
+			}
+		}
+	}
+
+	#[inline]
+	fn warm_and_load_meta(
+		&mut self,
+		ctx: &mut impl OperatorContext,
+		buckets: &Buckets<A>,
+	) -> Result<MetaLoaded<A>> {
 		let meta_keys: Vec<MetaKey> = buckets
 			.keys()
 			.map(|(group, _)| group)
@@ -240,15 +225,24 @@ where
 			.collect();
 		self.meta.warm(ctx, &meta_keys)?;
 
-		let mut meta_loaded: HashMap<A::GroupKey, GroupMeta<A::WindowCoord>> = HashMap::new();
+		let mut meta_loaded: MetaLoaded<A> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
 				let m = self.meta.get(ctx, &meta_key_for(group))?.unwrap_or_default();
 				meta_loaded.insert(group.clone(), m);
 			}
 		}
+		Ok(meta_loaded)
+	}
 
-		let mut buffer_rows: HashMap<A::GroupKey, (RowNumber, bool)> = HashMap::new();
+	#[inline]
+	fn resolve_buffer_rows(
+		&mut self,
+		ctx: &mut impl OperatorContext,
+		buckets: &Buckets<A>,
+		meta_loaded: &MetaLoaded<A>,
+	) -> Result<BufferRows<A>> {
+		let mut buffer_rows: BufferRows<A> = HashMap::new();
 		let mut resolve_order: Vec<A::GroupKey> = Vec::new();
 		let mut group_keys: Vec<EncodedKey> = Vec::new();
 		let mut seen: BTreeSet<A::GroupKey> = BTreeSet::new();
@@ -260,21 +254,34 @@ where
 			}
 		}
 		let resolved_rows = ctx.get_or_create_row_numbers(&group_keys)?;
+		reifydb_assertions! {
+			let requested = group_keys.len();
+			let resolved = resolved_rows.len();
+			assert!(
+				requested == resolved,
+				"get_or_create_row_numbers returned a different count than requested, so the resolve_order \
+				 zip would silently truncate buffer_rows and survivor groups would be re-resolved one at a \
+				 time in apply_events_into_buffers, changing the per-batch row-number lookup cost \
+				 (requested={requested}, resolved={resolved})"
+			);
+		}
 		let buffer_keys: Vec<RowNumber> = resolved_rows.iter().map(|(rn, _)| *rn).collect();
 		for (group, resolved) in resolve_order.into_iter().zip(resolved_rows) {
 			buffer_rows.insert(group, resolved);
 		}
 		self.buffers.warm(ctx, &buffer_keys)?;
+		Ok(buffer_rows)
+	}
 
-		struct GroupSlot<A: RollingOperator> {
-			row_number: RowNumber,
-			is_new: bool,
-			buffer: RollingBuffer<A>,
-			was_empty_before: bool,
-			buffer_changed: bool,
-		}
-		let mut group_slots: BTreeMap<A::GroupKey, GroupSlot<A>> = BTreeMap::new();
-
+	#[inline]
+	fn apply_events_into_buffers(
+		&mut self,
+		ctx: &mut impl OperatorContext,
+		buckets: Buckets<A>,
+		meta_loaded: &mut MetaLoaded<A>,
+		buffer_rows: &BufferRows<A>,
+	) -> Result<GroupSlots<A>> {
+		let mut group_slots: GroupSlots<A> = BTreeMap::new();
 		let capacity = self.aggregator.capacity();
 
 		for ((group, coord), events) in buckets {
@@ -333,7 +340,15 @@ where
 				_ => coord,
 			});
 		}
+		Ok(group_slots)
+	}
 
+	#[inline]
+	fn combine_and_collect_emits(
+		&mut self,
+		ctx: &mut impl OperatorContext,
+		group_slots: GroupSlots<A>,
+	) -> Result<Emits<A>> {
 		let mut inserts: Vec<(RowNumber, A::Output)> = Vec::new();
 		let mut updates: Vec<(RowNumber, A::Output)> = Vec::new();
 
@@ -352,7 +367,15 @@ where
 				}
 			}
 		}
+		Ok((inserts, updates))
+	}
 
+	#[inline]
+	fn emit_batches(
+		ctx: &mut impl OperatorContext,
+		inserts: Vec<(RowNumber, A::Output)>,
+		updates: Vec<(RowNumber, A::Output)>,
+	) -> Result<()> {
 		if !inserts.is_empty() {
 			let mut batch = InsertBatch::<A::Output, _>::new(ctx, inserts.len())?;
 			for (rn, data) in &inserts {
@@ -367,11 +390,65 @@ where
 			}
 			batch.finish()?;
 		}
+		Ok(())
+	}
 
+	#[inline]
+	fn persist_meta(&mut self, ctx: &mut impl OperatorContext, meta_loaded: MetaLoaded<A>) -> Result<()> {
 		for (group, meta) in meta_loaded {
 			self.meta.set(ctx, &meta_key_for(&group), &meta)?;
 		}
+		Ok(())
+	}
+}
 
+impl<A> OperatorMetadata for RollingDriver<A>
+where
+	A: RollingRegistration + 'static,
+	A::Output: Row,
+	for<'a> &'a A::GroupKey: IntoEncodedKey,
+{
+	const NAME: &'static str = A::NAME;
+	const API: u32 = 1;
+	const VERSION: &'static str = A::VERSION;
+	const DESCRIPTION: &'static str = A::DESCRIPTION;
+	const INPUT_COLUMNS: &'static [OperatorColumn] = A::INPUT_COLUMNS;
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = A::OUTPUT_COLUMNS;
+	const CAPABILITIES: &'static [OperatorCapability] = A::CAPABILITIES;
+}
+
+impl<A> OperatorLogic for RollingDriver<A>
+where
+	A: RollingRegistration + Send + Sync + 'static,
+	A::Output: Row,
+	A::GroupKey: Send + Sync,
+	A::WindowCoord: Send + Sync,
+	A::WindowAcc: Send + Sync,
+	AccContribution<A>: Send + Sync,
+	for<'a> &'a A::GroupKey: IntoEncodedKey,
+{
+	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
+		let aggregator = A::from_config(operator_id, config)?;
+		Ok(Self {
+			aggregator,
+			buffers: StateCache::<RowNumber, RollingBuffer<A>>::new(8),
+			meta: StateCache::<MetaKey, GroupMeta<A::WindowCoord>>::new_internal(64),
+		})
+	}
+
+	#[allow(clippy::type_complexity)]
+	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
+		let buckets = self.route(&change);
+		if buckets.is_empty() {
+			return Ok(());
+		}
+
+		let mut meta_loaded = self.warm_and_load_meta(ctx, &buckets)?;
+		let buffer_rows = self.resolve_buffer_rows(ctx, &buckets, &meta_loaded)?;
+		let group_slots = self.apply_events_into_buffers(ctx, buckets, &mut meta_loaded, &buffer_rows)?;
+		let (inserts, updates) = self.combine_and_collect_emits(ctx, group_slots)?;
+		Self::emit_batches(ctx, inserts, updates)?;
+		self.persist_meta(ctx, meta_loaded)?;
 		Ok(())
 	}
 
