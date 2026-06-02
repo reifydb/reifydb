@@ -63,7 +63,7 @@ pub(crate) fn create_subscription(
 	let flow_dag =
 		compile_subscription_flow_ephemeral(&services.catalog, txn, *as_clause, subscription_id, flow_id)?;
 
-	sub_service.register_subscription(subscription_id, flow_dag, column_names, txn)?;
+	sub_service.register_subscription(subscription_id, flow_dag, column_names, plan.hydration.enabled, txn)?;
 
 	let hydration_max_rows = match plan.hydration.max_rows {
 		Some(n) => Value::Uint8(n),

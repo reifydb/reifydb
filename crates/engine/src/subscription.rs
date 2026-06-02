@@ -88,6 +88,7 @@ pub trait SubscriptionService: Send + Sync {
 		id: SubscriptionId,
 		flow_dag: FlowDag,
 		column_names: Vec<String>,
+		hydration_enabled: bool,
 		txn: &mut Transaction<'_>,
 	) -> Result<()>;
 

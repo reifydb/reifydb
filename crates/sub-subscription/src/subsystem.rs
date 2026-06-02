@@ -111,12 +111,20 @@ impl SubscriptionService for SubscriptionServiceImpl {
 		id: SubscriptionId,
 		flow_dag: FlowDag,
 		column_names: Vec<String>,
+		hydration_enabled: bool,
 		txn: &mut Transaction<'_>,
 	) -> Result<()> {
 		self.state.store.register(id, column_names);
 
 		let flow_id = flow_dag.id;
-		self.register_flow(flow_dag, id, txn)?;
+
+		let gate = if hydration_enabled {
+			Some(self.state.multi.begin_query()?.version())
+		} else {
+			None
+		};
+
+		self.register_flow(flow_dag, id, gate, txn)?;
 		self.track_subscription(id, flow_id);
 
 		Ok(())
@@ -182,8 +190,18 @@ type SourceFrames = Vec<(ShapeId, Vec<Columns>)>;
 
 impl SubscriptionServiceImpl {
 	#[inline]
-	fn register_flow(&self, flow_dag: FlowDag, id: SubscriptionId, txn: &mut Transaction<'_>) -> Result<()> {
+	fn register_flow(
+		&self,
+		flow_dag: FlowDag,
+		id: SubscriptionId,
+		gate: Option<CommitVersion>,
+		txn: &mut Transaction<'_>,
+	) -> Result<()> {
+		let flow_id = flow_dag.id;
 		let mut engine = self.state.flow_engine.write();
+		if let Some(version) = gate {
+			self.state.hydration_versions.insert(flow_id, version);
+		}
 		register_ephemeral_flow(&mut engine, txn, flow_dag, id, self.state.delivery.clone())
 	}
 
