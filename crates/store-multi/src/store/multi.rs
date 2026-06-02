@@ -21,6 +21,7 @@ use reifydb_core::{
 		is_single_version_semantics_key,
 	},
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_store::row::page::PageId;
 use reifydb_value::util::{cowvec::CowVec, hex};
 use tracing::{instrument, warn};
@@ -45,61 +46,89 @@ impl MultiVersionGet for StandardMultiStore {
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
 		let table = classify_key(key);
 
-		if let Some(commit) = &self.commit {
-			match commit.get(table, key.as_ref(), version)? {
-				VersionedGetResult::Value {
-					value,
-					version: v,
-				} => {
-					return Ok(Some(MultiVersionRow {
-						key: key.clone(),
-						row: EncodedRow(value),
-						version: v,
-					}));
-				}
-				VersionedGetResult::Tombstone => return Ok(None),
-				VersionedGetResult::NotFound => {}
-			}
+		if let Some(found) = self.get_probe_commit(table, key, version)? {
+			return Ok(found);
 		}
-
-		if let Some(read) = &self.read {
-			match read.get(key, version) {
-				VersionedGetResult::Value {
-					value,
-					version: v,
-				} => {
-					return Ok(Some(MultiVersionRow {
-						key: key.clone(),
-						row: EncodedRow(value),
-						version: v,
-					}));
-				}
-				VersionedGetResult::Tombstone => return Ok(None),
-				VersionedGetResult::NotFound => {}
-			}
+		if let Some(found) = self.get_probe_read(key, version) {
+			return Ok(found);
 		}
-
-		if let Some(persistent) = &self.persistent {
-			match persistent.get(table, key.as_ref(), version)? {
-				VersionedGetResult::Value {
-					value,
-					version: v,
-				} => {
-					if let Some(read) = &self.read {
-						read.insert(key.clone(), v, Some(value.clone()));
-					}
-					return Ok(Some(MultiVersionRow {
-						key: key.clone(),
-						row: EncodedRow(value),
-						version: v,
-					}));
-				}
-				VersionedGetResult::Tombstone => return Ok(None),
-				VersionedGetResult::NotFound => {}
-			}
+		if let Some(found) = self.get_probe_persistent(table, key, version)? {
+			return Ok(found);
 		}
 
 		Ok(None)
+	}
+}
+
+impl StandardMultiStore {
+	#[inline]
+	fn get_probe_commit(
+		&self,
+		table: EntryKind,
+		key: &EncodedKey,
+		version: CommitVersion,
+	) -> Result<Option<Option<MultiVersionRow>>> {
+		let Some(commit) = &self.commit else {
+			return Ok(None);
+		};
+		Ok(match commit.get(table, key.as_ref(), version)? {
+			VersionedGetResult::Value {
+				value,
+				version: v,
+			} => Some(Some(MultiVersionRow {
+				key: key.clone(),
+				row: EncodedRow(value),
+				version: v,
+			})),
+			VersionedGetResult::Tombstone => Some(None),
+			VersionedGetResult::NotFound => None,
+		})
+	}
+
+	#[inline]
+	fn get_probe_read(&self, key: &EncodedKey, version: CommitVersion) -> Option<Option<MultiVersionRow>> {
+		let read = self.read.as_ref()?;
+		match read.get(key, version) {
+			VersionedGetResult::Value {
+				value,
+				version: v,
+			} => Some(Some(MultiVersionRow {
+				key: key.clone(),
+				row: EncodedRow(value),
+				version: v,
+			})),
+			VersionedGetResult::Tombstone => Some(None),
+			VersionedGetResult::NotFound => None,
+		}
+	}
+
+	#[inline]
+	fn get_probe_persistent(
+		&self,
+		table: EntryKind,
+		key: &EncodedKey,
+		version: CommitVersion,
+	) -> Result<Option<Option<MultiVersionRow>>> {
+		let Some(persistent) = &self.persistent else {
+			return Ok(None);
+		};
+		Ok(match persistent.get(table, key.as_ref(), version)? {
+			VersionedGetResult::Value {
+				value,
+				version: v,
+			} => {
+				if let Some(read) = &self.read {
+					read.insert(key.clone(), v, Some(value.clone()));
+				}
+				Some(Some(MultiVersionRow {
+					key: key.clone(),
+					row: EncodedRow(value),
+					version: v,
+				}))
+			}
+			VersionedGetResult::Tombstone => Some(None),
+			VersionedGetResult::NotFound => None,
+		})
 	}
 }
 
@@ -115,37 +144,27 @@ impl MultiVersionCommit for StandardMultiStore {
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
 		let classified = classify_deltas(&deltas);
 
-		let (operator_drops, source_drops): (Vec<_>, Vec<_>) = classified
-			.explicit_drops
-			.into_iter()
-			.partition(|(table, _)| matches!(table, EntryKind::Operator(_)));
+		let (operator_drops, source_drops) = partition_drops(classified.explicit_drops);
+		self.dispatch_drops(build_drop_batch(source_drops, &classified.pending_set_keys, version));
 
-		let drop_batch = build_drop_batch(source_drops, &classified.pending_set_keys, version);
-		self.dispatch_drops(drop_batch);
+		self.invalidate_read_writes_and_deletes(&classified.writes, &classified.deletes);
 
-		if let Some(read) = &self.read {
-			for write in &classified.writes {
-				read.invalidate(&write.key);
-			}
-			for delete in &classified.deletes {
-				read.invalidate(&delete.key);
-			}
-		}
-
-		if let Some(commit) = &self.commit {
-			commit.set(version, classified.batches)?;
-		} else if let Some(persistent) = &self.persistent {
-			persistent.set(version, classified.batches)?;
-		} else {
+		if !self.write_batches(version, classified.batches)? {
 			return Ok(());
 		}
 
 		self.evict_operator_state(&operator_drops)?;
-
 		self.emit_commit_metrics(classified.writes, classified.deletes, version);
 
 		Ok(())
 	}
+}
+
+type DropPartition = (Vec<(EntryKind, EncodedKey)>, Vec<(EntryKind, EncodedKey)>);
+
+#[inline]
+fn partition_drops(explicit_drops: Vec<(EntryKind, EncodedKey)>) -> DropPartition {
+	explicit_drops.into_iter().partition(|(table, _)| matches!(table, EntryKind::Operator(_)))
 }
 
 struct ClassifiedDeltas {
@@ -264,104 +283,168 @@ impl StandardMultiStore {
 		}
 
 		let mut out: HashMap<EncodedKey, MultiVersionRow> = HashMap::new();
-
 		for (table, table_keys) in by_table {
-			let key_slices: Vec<&[u8]> = table_keys.iter().map(|k| k.as_ref()).collect();
+			self.get_many_for_table(table, &table_keys, version, &mut out)?;
+		}
 
-			let commit_results = match &self.commit {
-				Some(commit) => commit.get_many(table, &key_slices, version)?,
-				None => vec![VersionedGetResult::NotFound; key_slices.len()],
-			};
+		Ok(out)
+	}
 
-			let mut read_aligned = vec![VersionedGetResult::NotFound; key_slices.len()];
-			let mut persistent_idx: Vec<usize> = Vec::new();
-			let mut persistent_slices: Vec<&[u8]> = Vec::new();
-			for (i, result) in commit_results.iter().enumerate() {
-				if !matches!(result, VersionedGetResult::NotFound) {
-					continue;
+	#[inline]
+	fn get_many_for_table(
+		&self,
+		table: EntryKind,
+		table_keys: &[&EncodedKey],
+		version: CommitVersion,
+		out: &mut HashMap<EncodedKey, MultiVersionRow>,
+	) -> Result<()> {
+		let key_slices: Vec<&[u8]> = table_keys.iter().map(|k| k.as_ref()).collect();
+
+		let commit_results = self.probe_commit_batch(table, &key_slices, version)?;
+		let (read_aligned, persistent_aligned) = self.resolve_misses_through_read_and_persistent(
+			table,
+			table_keys,
+			&key_slices,
+			&commit_results,
+			version,
+		)?;
+
+		reifydb_assertions! {
+			let n = key_slices.len();
+			assert!(
+				commit_results.len() == n && read_aligned.len() == n && persistent_aligned.len() == n,
+				"per-tier result vectors must stay index-aligned with the table's keys, otherwise collect_resolved_rows \
+				 reads a tier result for the wrong key and returns mismatched rows (keys={n}, commit={}, read={}, persistent={})",
+				commit_results.len(),
+				read_aligned.len(),
+				persistent_aligned.len()
+			);
+		}
+
+		self.collect_resolved_rows(table_keys, &commit_results, &read_aligned, &persistent_aligned, out);
+		Ok(())
+	}
+
+	#[inline]
+	fn probe_commit_batch(
+		&self,
+		table: EntryKind,
+		key_slices: &[&[u8]],
+		version: CommitVersion,
+	) -> Result<Vec<VersionedGetResult>> {
+		match &self.commit {
+			Some(commit) => commit.get_many(table, key_slices, version),
+			None => Ok(vec![VersionedGetResult::NotFound; key_slices.len()]),
+		}
+	}
+
+	#[inline]
+	fn resolve_misses_through_read_and_persistent(
+		&self,
+		table: EntryKind,
+		table_keys: &[&EncodedKey],
+		key_slices: &[&[u8]],
+		commit_results: &[VersionedGetResult],
+		version: CommitVersion,
+	) -> Result<(Vec<VersionedGetResult>, Vec<VersionedGetResult>)> {
+		let mut read_aligned = vec![VersionedGetResult::NotFound; key_slices.len()];
+		let mut persistent_idx: Vec<usize> = Vec::new();
+		let mut persistent_slices: Vec<&[u8]> = Vec::new();
+		for (i, result) in commit_results.iter().enumerate() {
+			if !matches!(result, VersionedGetResult::NotFound) {
+				continue;
+			}
+			let read_hit = self
+				.read
+				.as_ref()
+				.map(|c| c.get(table_keys[i], version))
+				.unwrap_or(VersionedGetResult::NotFound);
+			match read_hit {
+				VersionedGetResult::Value {
+					value,
+					version: v,
+				} => {
+					read_aligned[i] = VersionedGetResult::Value {
+						value,
+						version: v,
+					};
 				}
-				let read_hit = self
-					.read
-					.as_ref()
-					.map(|c| c.get(table_keys[i], version))
-					.unwrap_or(VersionedGetResult::NotFound);
-				match read_hit {
+				VersionedGetResult::Tombstone => {
+					read_aligned[i] = VersionedGetResult::Tombstone;
+				}
+				VersionedGetResult::NotFound => {
+					persistent_idx.push(i);
+					persistent_slices.push(key_slices[i]);
+				}
+			}
+		}
+
+		let mut persistent_aligned = vec![VersionedGetResult::NotFound; key_slices.len()];
+		if !persistent_slices.is_empty()
+			&& let Some(persistent) = &self.persistent
+		{
+			let persistent_results = persistent.get_many(table, &persistent_slices, version)?;
+			for (slot, result) in persistent_idx.into_iter().zip(persistent_results) {
+				if let (
+					Some(read),
 					VersionedGetResult::Value {
 						value,
 						version: v,
-					} => {
-						read_aligned[i] = VersionedGetResult::Value {
-							value,
-							version: v,
-						};
-					}
-					VersionedGetResult::Tombstone => {
-						read_aligned[i] = VersionedGetResult::Tombstone;
-					}
-					VersionedGetResult::NotFound => {
-						persistent_idx.push(i);
-						persistent_slices.push(key_slices[i]);
-					}
+					},
+				) = (&self.read, &result)
+				{
+					read.insert(table_keys[slot].clone(), *v, Some(value.clone()));
 				}
+				persistent_aligned[slot] = result;
 			}
+		}
 
-			let mut persistent_aligned = vec![VersionedGetResult::NotFound; key_slices.len()];
-			if !persistent_slices.is_empty()
-				&& let Some(persistent) = &self.persistent
-			{
-				let persistent_results = persistent.get_many(table, &persistent_slices, version)?;
-				for (slot, result) in persistent_idx.into_iter().zip(persistent_results) {
-					if let (
-						Some(read),
-						VersionedGetResult::Value {
-							value,
-							version: v,
-						},
-					) = (&self.read, &result)
-					{
-						read.insert(table_keys[slot].clone(), *v, Some(value.clone()));
-					}
-					persistent_aligned[slot] = result;
-				}
-			}
+		Ok((read_aligned, persistent_aligned))
+	}
 
-			for (i, key) in table_keys.into_iter().enumerate() {
-				let resolved = match &commit_results[i] {
+	#[inline]
+	fn collect_resolved_rows(
+		&self,
+		table_keys: &[&EncodedKey],
+		commit_results: &[VersionedGetResult],
+		read_aligned: &[VersionedGetResult],
+		persistent_aligned: &[VersionedGetResult],
+		out: &mut HashMap<EncodedKey, MultiVersionRow>,
+	) {
+		for (i, key) in table_keys.iter().enumerate() {
+			let resolved = match &commit_results[i] {
+				VersionedGetResult::Value {
+					value,
+					version: v,
+				} => Some((value.clone(), *v)),
+				VersionedGetResult::Tombstone => None,
+				VersionedGetResult::NotFound => match &read_aligned[i] {
 					VersionedGetResult::Value {
 						value,
 						version: v,
 					} => Some((value.clone(), *v)),
 					VersionedGetResult::Tombstone => None,
-					VersionedGetResult::NotFound => match &read_aligned[i] {
+					VersionedGetResult::NotFound => match &persistent_aligned[i] {
 						VersionedGetResult::Value {
 							value,
 							version: v,
 						} => Some((value.clone(), *v)),
-						VersionedGetResult::Tombstone => None,
-						VersionedGetResult::NotFound => match &persistent_aligned[i] {
-							VersionedGetResult::Value {
-								value,
-								version: v,
-							} => Some((value.clone(), *v)),
-							_ => None,
-						},
+						_ => None,
 					},
-				};
+				},
+			};
 
-				if let Some((value, v)) = resolved {
-					out.insert(
-						key.clone(),
-						MultiVersionRow {
-							key: key.clone(),
-							row: EncodedRow(value),
-							version: v,
-						},
-					);
-				}
+			if let Some((value, v)) = resolved {
+				out.insert(
+					(*key).clone(),
+					MultiVersionRow {
+						key: (*key).clone(),
+						row: EncodedRow(value),
+						version: v,
+					},
+				);
 			}
 		}
-
-		Ok(out)
 	}
 
 	#[inline]
@@ -376,40 +459,83 @@ impl StandardMultiStore {
 		}
 	}
 
+	#[inline]
+	fn invalidate_read_writes_and_deletes(&self, writes: &[MultiWrite], deletes: &[MultiDelete]) {
+		let Some(read) = &self.read else {
+			return;
+		};
+		for write in writes {
+			read.invalidate(&write.key);
+		}
+		for delete in deletes {
+			read.invalidate(&delete.key);
+		}
+	}
+
+	#[inline]
+	fn write_batches(&self, version: CommitVersion, batches: TierBatch) -> Result<bool> {
+		if let Some(commit) = &self.commit {
+			commit.set(version, batches)?;
+		} else if let Some(persistent) = &self.persistent {
+			persistent.set(version, batches)?;
+		} else {
+			return Ok(false);
+		}
+		Ok(true)
+	}
+
 	fn evict_operator_state(&self, drops: &[(EntryKind, EncodedKey)]) -> Result<()> {
 		if drops.is_empty() {
 			return Ok(());
 		}
 
-		if let Some(commit) = &self.commit {
-			let mut batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
-			for (table, key) in drops {
-				for (entry_version, _) in commit.get_all_versions(*table, key.as_ref())? {
-					batches.entry(*table).or_default().push((key.clone(), entry_version));
-				}
-			}
-			if !batches.is_empty() {
-				commit.drop(batches)?;
-			}
-		}
-
-		if let Some(persistent) = &self.persistent {
-			let mut by_table: HashMap<EntryKind, Vec<EncodedKey>> = HashMap::new();
-			for (table, key) in drops {
-				by_table.entry(*table).or_default().push(key.clone());
-			}
-			for (table, keys) in by_table {
-				persistent.delete_keys(table, &keys)?;
-			}
-		}
-
-		if let Some(read) = &self.read {
-			for (_, key) in drops {
-				read.invalidate(key);
-			}
-		}
+		self.evict_drops_from_commit(drops)?;
+		self.delete_drops_from_persistent(drops)?;
+		self.invalidate_drops_in_read(drops);
 
 		Ok(())
+	}
+
+	#[inline]
+	fn evict_drops_from_commit(&self, drops: &[(EntryKind, EncodedKey)]) -> Result<()> {
+		let Some(commit) = &self.commit else {
+			return Ok(());
+		};
+		let mut batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
+		for (table, key) in drops {
+			for (entry_version, _) in commit.get_all_versions(*table, key.as_ref())? {
+				batches.entry(*table).or_default().push((key.clone(), entry_version));
+			}
+		}
+		if !batches.is_empty() {
+			commit.drop(batches)?;
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn delete_drops_from_persistent(&self, drops: &[(EntryKind, EncodedKey)]) -> Result<()> {
+		let Some(persistent) = &self.persistent else {
+			return Ok(());
+		};
+		let mut by_table: HashMap<EntryKind, Vec<EncodedKey>> = HashMap::new();
+		for (table, key) in drops {
+			by_table.entry(*table).or_default().push(key.clone());
+		}
+		for (table, keys) in by_table {
+			persistent.delete_keys(table, &keys)?;
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn invalidate_drops_in_read(&self, drops: &[(EntryKind, EncodedKey)]) {
+		let Some(read) = &self.read else {
+			return;
+		};
+		for (_, key) in drops {
+			read.invalidate(key);
+		}
 	}
 
 	#[inline]
@@ -788,23 +914,51 @@ impl StandardMultiStore {
 			return Ok(false);
 		};
 
-		if let (Some(read), EntryKind::Source(_)) = (&self.read, scan.table) {
-			match read.serve_persistent_chunk(
-				scan.table,
-				&mut cursor.persistent,
-				scan.start,
-				scan.end,
-				scan.scope,
-				TIER_SCAN_CHUNK_SIZE,
-				descending,
-			) {
-				ServedChunk::Served(batch) => {
-					return merge_tier_batch(batch, scan.range, collected);
-				}
-				ServedChunk::Gap => {}
-			}
+		if let Some(served) = self.serve_from_read_cache(scan, cursor, collected, descending) {
+			return served;
 		}
 
+		let (consumed, progressed) =
+			self.scan_persistent_chunk(persistent, scan, cursor, collected, descending)?;
+		self.warm_read_bucket_after_scan(persistent, scan, cursor, consumed)?;
+
+		Ok(progressed)
+	}
+
+	#[inline]
+	fn serve_from_read_cache(
+		&self,
+		scan: &TierScanQuery,
+		cursor: &mut MultiVersionRangeCursor,
+		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+		descending: bool,
+	) -> Option<Result<bool>> {
+		let (Some(read), EntryKind::Source(_)) = (&self.read, scan.table) else {
+			return None;
+		};
+		match read.serve_persistent_chunk(
+			scan.table,
+			&mut cursor.persistent,
+			scan.start,
+			scan.end,
+			scan.scope,
+			TIER_SCAN_CHUNK_SIZE,
+			descending,
+		) {
+			ServedChunk::Served(batch) => Some(merge_tier_batch(batch, scan.range, collected)),
+			ServedChunk::Gap => None,
+		}
+	}
+
+	#[inline]
+	fn scan_persistent_chunk(
+		&self,
+		persistent: &MultiPersistentTier,
+		scan: &TierScanQuery,
+		cursor: &mut MultiVersionRangeCursor,
+		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
+		descending: bool,
+	) -> Result<(usize, bool)> {
 		let batch = if descending {
 			persistent.range_rev_next(
 				scan.table,
@@ -826,12 +980,21 @@ impl StandardMultiStore {
 		};
 		let consumed = batch.entries.len();
 		let progressed = merge_tier_batch(batch, scan.range, collected)?;
+		Ok((consumed, progressed))
+	}
 
+	#[inline]
+	fn warm_read_bucket_after_scan(
+		&self,
+		persistent: &MultiPersistentTier,
+		scan: &TierScanQuery,
+		cursor: &mut MultiVersionRangeCursor,
+		consumed: usize,
+	) -> Result<()> {
 		if let (Some(read), EntryKind::Source(_)) = (&self.read, scan.table) {
 			maybe_warm_bucket(read, persistent, cursor, scan.table, consumed)?;
 		}
-
-		Ok(progressed)
+		Ok(())
 	}
 }
 
@@ -994,63 +1157,104 @@ impl MultiVersionGetPrevious for StandardMultiStore {
 		}
 
 		let table = classify_key(key);
+		reifydb_assertions! {
+			assert!(
+				before_version.0 >= 1,
+				"the before_version==0 guard must precede this subtraction, otherwise before_version.0 - 1 \
+				 wraps to u64::MAX and the probe reads the latest version instead of the previous one \
+				 (before_version={})",
+				before_version.0
+			);
+		}
 		let prev_version = CommitVersion(before_version.0 - 1);
 
-		if let Some(commit) = &self.commit {
-			match commit.get(table, key.as_ref(), prev_version)? {
-				VersionedGetResult::Value {
-					value,
-					version,
-				} => {
-					return Ok(Some(MultiVersionRow {
-						key: key.clone(),
-						row: EncodedRow(CowVec::new(value.to_vec())),
-						version,
-					}));
-				}
-				VersionedGetResult::Tombstone => return Ok(None),
-				VersionedGetResult::NotFound => {}
-			}
+		if let Some(found) = self.previous_probe_commit(table, key, prev_version)? {
+			return Ok(found);
 		}
-
-		if let Some(read) = &self.read {
-			match read.get(key, prev_version) {
-				VersionedGetResult::Value {
-					value,
-					version,
-				} => {
-					return Ok(Some(MultiVersionRow {
-						key: key.clone(),
-						row: EncodedRow(CowVec::new(value.to_vec())),
-						version,
-					}));
-				}
-				VersionedGetResult::Tombstone => return Ok(None),
-				VersionedGetResult::NotFound => {}
-			}
+		if let Some(found) = self.previous_probe_read(key, prev_version) {
+			return Ok(found);
 		}
-
-		if let Some(persistent) = &self.persistent {
-			match persistent.get(table, key.as_ref(), prev_version)? {
-				VersionedGetResult::Value {
-					value,
-					version,
-				} => {
-					if let Some(read) = &self.read {
-						read.insert(key.clone(), version, Some(value.clone()));
-					}
-					return Ok(Some(MultiVersionRow {
-						key: key.clone(),
-						row: EncodedRow(CowVec::new(value.to_vec())),
-						version,
-					}));
-				}
-				VersionedGetResult::Tombstone => return Ok(None),
-				VersionedGetResult::NotFound => {}
-			}
+		if let Some(found) = self.previous_probe_persistent(table, key, prev_version)? {
+			return Ok(found);
 		}
 
 		Ok(None)
+	}
+}
+
+impl StandardMultiStore {
+	#[inline]
+	fn previous_probe_commit(
+		&self,
+		table: EntryKind,
+		key: &EncodedKey,
+		prev_version: CommitVersion,
+	) -> Result<Option<Option<MultiVersionRow>>> {
+		let Some(commit) = &self.commit else {
+			return Ok(None);
+		};
+		Ok(match commit.get(table, key.as_ref(), prev_version)? {
+			VersionedGetResult::Value {
+				value,
+				version,
+			} => Some(Some(MultiVersionRow {
+				key: key.clone(),
+				row: EncodedRow(CowVec::new(value.to_vec())),
+				version,
+			})),
+			VersionedGetResult::Tombstone => Some(None),
+			VersionedGetResult::NotFound => None,
+		})
+	}
+
+	#[inline]
+	fn previous_probe_read(
+		&self,
+		key: &EncodedKey,
+		prev_version: CommitVersion,
+	) -> Option<Option<MultiVersionRow>> {
+		let read = self.read.as_ref()?;
+		match read.get(key, prev_version) {
+			VersionedGetResult::Value {
+				value,
+				version,
+			} => Some(Some(MultiVersionRow {
+				key: key.clone(),
+				row: EncodedRow(CowVec::new(value.to_vec())),
+				version,
+			})),
+			VersionedGetResult::Tombstone => Some(None),
+			VersionedGetResult::NotFound => None,
+		}
+	}
+
+	#[inline]
+	fn previous_probe_persistent(
+		&self,
+		table: EntryKind,
+		key: &EncodedKey,
+		prev_version: CommitVersion,
+	) -> Result<Option<Option<MultiVersionRow>>> {
+		let Some(persistent) = &self.persistent else {
+			return Ok(None);
+		};
+		Ok(match persistent.get(table, key.as_ref(), prev_version)? {
+			VersionedGetResult::Value {
+				value,
+				version,
+			} => {
+				if let Some(read) = &self.read {
+					read.insert(key.clone(), version, Some(value.clone()));
+				}
+				Some(Some(MultiVersionRow {
+					key: key.clone(),
+					row: EncodedRow(CowVec::new(value.to_vec())),
+					version,
+				}))
+			}
+			VersionedGetResult::Tombstone => Some(None),
+			VersionedGetResult::NotFound => None,
+		})
 	}
 }
 

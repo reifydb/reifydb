@@ -13,11 +13,12 @@ use reifydb_core::{
 	execution::ExecutionResult,
 	interface::{
 		WithEventBus,
-		change::{Change, ChangeOrigin},
+		catalog::shape::ShapeId,
+		change::{Change, ChangeOrigin, Diff},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 };
-use reifydb_runtime::context::clock::Clock;
+use reifydb_runtime::{context::clock::Clock, reifydb_assertions};
 use reifydb_value::{
 	Result,
 	error::Diagnostic,
@@ -227,21 +228,59 @@ impl CommandTransaction {
 		let Some(mut multi) = self.cmd.take() else {
 			unreachable!("Transaction state inconsistency")
 		};
-		apply_pre_commit_writes(&mut multi, &ctx.pending_writes)?;
+		reifydb_assertions! {
+			assert!(
+				self.state == TransactionState::Active,
+				"finalize_commit entered in non-Active state; commit()/commit_unchecked() must \
+				 pass check_active() first, otherwise this double-commits or commits a \
+				 rolled-back/poisoned transaction"
+			);
+		}
+		let id = self.apply_writes_and_mark_committed(&mut multi, &ctx)?;
+		let row_changes = take(&mut self.row_changes);
+		let flow_changes = self.merge_view_entries(ctx.flow_changes, ctx.view_entries)?;
+		self.commit_and_post(multi, id, flow_changes, row_changes, unchecked)
+	}
+
+	#[inline]
+	fn apply_writes_and_mark_committed(
+		&mut self,
+		multi: &mut MultiWriteTransaction,
+		ctx: &PreCommitContext,
+	) -> Result<TransactionId> {
+		apply_pre_commit_writes(multi, &ctx.pending_writes)?;
 		let id = multi.id();
 		self.state = TransactionState::Committed;
+		Ok(id)
+	}
 
-		let changes = TransactionalCatalogChanges::default();
-		let row_changes = take(&mut self.row_changes);
-		let mut flow_changes = ctx.flow_changes;
-		if !ctx.view_entries.is_empty() {
+	#[inline]
+	fn merge_view_entries(
+		&self,
+		mut flow_changes: Vec<Change>,
+		view_entries: Vec<(ShapeId, Diff)>,
+	) -> Result<Vec<Change>> {
+		if !view_entries.is_empty() {
 			let mut accumulator = ChangeAccumulator::new();
-			for (shape, diff) in ctx.view_entries {
+			for (shape, diff) in view_entries {
 				accumulator.track(shape, diff);
 			}
 			let changed_at = DateTime::from_nanos(self.clock.now_nanos());
 			flow_changes.extend(accumulator.take_changes(CommitVersion(0), changed_at)?);
 		}
+		Ok(flow_changes)
+	}
+
+	#[inline]
+	fn commit_and_post(
+		&self,
+		mut multi: MultiWriteTransaction,
+		id: TransactionId,
+		flow_changes: Vec<Change>,
+		row_changes: Vec<RowChange>,
+		unchecked: bool,
+	) -> Result<CommitVersion> {
+		let changes = TransactionalCatalogChanges::default();
 		let version = if unchecked {
 			multi.commit_unchecked(flow_changes)?
 		} else {

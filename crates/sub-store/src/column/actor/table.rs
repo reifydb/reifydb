@@ -4,10 +4,14 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use reifydb_catalog::store::column_snapshot::create::ColumnSnapshotToCreate;
-use reifydb_column::{compress::Compressor, snapshot::SystemColumn};
+use reifydb_column::{
+	compress::Compressor,
+	snapshot::{ColumnBlock, SystemColumn},
+};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{column_snapshot::ColumnSnapshotSource, id::TableId, table::Table},
+	value::column::columns::Columns,
 };
 use reifydb_engine::{
 	engine::StandardEngine,
@@ -19,11 +23,14 @@ use reifydb_engine::{
 		},
 	},
 };
-use reifydb_runtime::actor::{
-	context::Context,
-	system::ActorConfig,
-	timers::TimerHandle,
-	traits::{Actor, Directive},
+use reifydb_runtime::{
+	actor::{
+		context::Context,
+		system::ActorConfig,
+		timers::TimerHandle,
+		traits::{Actor, Directive},
+	},
+	reifydb_assertions,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction};
 use reifydb_value::{
@@ -70,33 +77,57 @@ impl TableMaterializationActor {
 	}
 
 	fn run_tick(&self, state: &mut TableMaterializationState, _now: DateTime) {
-		let mut query_txn = match self.engine.begin_query(IdentityId::system()) {
-			Ok(t) => t,
-			Err(e) => {
-				warn!("table materialization: begin_query failed: {e}");
-				return;
-			}
+		let Some(mut query_txn) = self.begin_query_or_warn() else {
+			return;
 		};
 		let current = query_txn.version();
-
-		let tables = match self.engine.catalog().list_tables_all(&mut Transaction::Query(&mut query_txn)) {
-			Ok(t) => t,
-			Err(e) => {
-				warn!("table materialization: list_tables_all failed: {e}");
-				return;
-			}
+		let Some(tables) = self.list_tables_or_warn(&mut query_txn) else {
+			return;
 		};
 		for table in tables {
-			if state.last_seen.get(&table.id).copied() == Some(current) {
-				continue;
+			self.materialize_unseen_table(state, &mut query_txn, &table, current);
+		}
+	}
+
+	#[inline]
+	fn begin_query_or_warn(&self) -> Option<QueryTransaction> {
+		match self.engine.begin_query(IdentityId::system()) {
+			Ok(t) => Some(t),
+			Err(e) => {
+				warn!("table materialization: begin_query failed: {e}");
+				None
 			}
-			match self.materialize_table(&mut query_txn, &table, current) {
-				Ok(()) => {
-					state.last_seen.insert(table.id, current);
-				}
-				Err(e) => {
-					warn!("table materialization skipped for {:?}: {e}", table.id);
-				}
+		}
+	}
+
+	#[inline]
+	fn list_tables_or_warn(&self, query_txn: &mut QueryTransaction) -> Option<Vec<Table>> {
+		match self.engine.catalog().list_tables_all(&mut Transaction::Query(query_txn)) {
+			Ok(t) => Some(t),
+			Err(e) => {
+				warn!("table materialization: list_tables_all failed: {e}");
+				None
+			}
+		}
+	}
+
+	#[inline]
+	fn materialize_unseen_table(
+		&self,
+		state: &mut TableMaterializationState,
+		query_txn: &mut QueryTransaction,
+		table: &Table,
+		current: CommitVersion,
+	) {
+		if state.last_seen.get(&table.id).copied() == Some(current) {
+			return;
+		}
+		match self.materialize_table(query_txn, table, current) {
+			Ok(()) => {
+				state.last_seen.insert(table.id, current);
+			}
+			Err(e) => {
+				warn!("table materialization skipped for {:?}: {e}", table.id);
 			}
 		}
 	}
@@ -107,37 +138,71 @@ impl TableMaterializationActor {
 		table: &Table,
 		version: CommitVersion,
 	) -> Result<()> {
-		let services = self.engine.services();
-		let catalog = self.engine.catalog();
-		let mut tx: Transaction<'_> = (&mut *query_txn).into();
-		let resolved = catalog.resolve_table(&mut tx, table.id)?;
+		reifydb_assertions! {
+			let scan_version = query_txn.version();
+			assert!(
+				scan_version == version,
+				"table materialization scans at query version {} but records the column snapshot under commit_version {}; a mismatch makes the snapshot metadata claim a version the materialized rows do not reflect, so later reads resolve the wrong block for table {:?}",
+				scan_version,
+				version,
+				table.id
+			);
+		}
+		let context = self.build_query_context();
+		let batches = self.scan_table_batches(query_txn, table, &context)?;
+		let block_arc = Arc::new(self.build_column_block(table, batches)?);
+		self.store_table_snapshot(table, version, block_arc)
+	}
 
-		let context = Arc::new(QueryContext {
-			services,
+	#[inline]
+	fn build_query_context(&self) -> Arc<QueryContext> {
+		Arc::new(QueryContext {
+			services: self.engine.services(),
 			source: None,
 			batch_size: 1024,
 			params: Params::None,
 			symbols: SymbolTable::new(),
 			identity: IdentityId::system(),
-		});
+		})
+	}
 
-		let mut scan = TableScanNode::new(resolved, Arc::clone(&context), &mut tx)?;
-		scan.initialize(&mut tx, &context)?;
-		let mut ctx = (*context).clone();
+	#[inline]
+	fn scan_table_batches(
+		&self,
+		query_txn: &mut QueryTransaction,
+		table: &Table,
+		context: &Arc<QueryContext>,
+	) -> Result<Vec<Columns>> {
+		let mut tx: Transaction<'_> = query_txn.into();
+		let resolved = self.engine.catalog().resolve_table(&mut tx, table.id)?;
+		let mut scan = TableScanNode::new(resolved, Arc::clone(context), &mut tx)?;
+		scan.initialize(&mut tx, context)?;
+		let mut ctx = (**context).clone();
 		let mut batches = Vec::new();
 		while let Some(batch) = scan.next(&mut tx, &mut ctx)? {
 			batches.push(batch);
 		}
+		Ok(batches)
+	}
 
+	#[inline]
+	fn build_column_block(&self, table: &Table, batches: Vec<Columns>) -> Result<ColumnBlock> {
 		let mut schema: Vec<(String, ValueType)> =
 			table.columns.iter().map(|c| (c.name.clone(), c.constraint.get_type())).collect();
 		for sc in SystemColumn::ALL {
 			schema.push((sc.name().to_string(), sc.ty()));
 		}
-		let block = column_block_from_batches(schema, batches, &self.compressor)?;
-		let row_count = block.len() as u64;
-		let block_arc = Arc::new(block);
+		column_block_from_batches(schema, batches, &self.compressor)
+	}
 
+	#[inline]
+	fn store_table_snapshot(
+		&self,
+		table: &Table,
+		version: CommitVersion,
+		block_arc: Arc<ColumnBlock>,
+	) -> Result<()> {
+		let row_count = block_arc.len() as u64;
 		let mut admin = self.engine.begin_admin(IdentityId::system())?;
 		let column_snapshot = self.engine.catalog().create_column_snapshot(
 			&mut admin,
@@ -152,7 +217,6 @@ impl TableMaterializationActor {
 		)?;
 		commit_admin(admin)?;
 		self.block_store.put(column_snapshot.id, block_arc);
-
 		Ok(())
 	}
 }

@@ -7,15 +7,15 @@ use super::Config;
 
 impl Config {
 	pub fn date(&self, key: &str) -> Option<Date> {
-		self.opt(key)
+		self.opt_coerce(key)
 	}
 
 	pub fn require_date(&self, key: &str) -> Date {
-		self.opt(key).unwrap_or_else(|| self.missing(key, "a date"))
+		self.opt_coerce(key).unwrap_or_else(|| self.missing(key, "a date"))
 	}
 
 	pub fn date_or(&self, key: &str, default: Date) -> Date {
-		self.opt(key).unwrap_or(default)
+		self.opt_coerce(key).unwrap_or(default)
 	}
 }
 

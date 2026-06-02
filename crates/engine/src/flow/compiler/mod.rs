@@ -229,27 +229,42 @@ impl FlowCompiler {
 		let root_node_id = self.compile_plan(txn, plan)?;
 
 		if let Some(sink_view) = sink {
-			let node_type = match sink_view {
-				View::Table(t) => FlowNodeType::SinkTableView {
-					view: sink_view.id(),
-					table: t.underlying,
-				},
-				View::RingBuffer(rb) => FlowNodeType::SinkRingBufferView {
-					view: sink_view.id(),
-					ringbuffer: rb.underlying,
-					capacity: rb.capacity,
-					propagate_evictions: rb.propagate_evictions,
-				},
-				View::Series(s) => FlowNodeType::SinkSeriesView {
-					view: sink_view.id(),
-					series: s.underlying,
-					key: s.key.clone(),
-				},
-			};
-			let result_node = self.add_node(txn, node_type)?;
-			self.add_edge(txn, &root_node_id, &result_node)?;
+			self.attach_sink_node(txn, sink_view, &root_node_id)?;
 		}
 
+		self.build_validated_flow()
+	}
+
+	#[inline]
+	fn attach_sink_node(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		sink_view: &View,
+		root_node_id: &FlowNodeId,
+	) -> Result<()> {
+		let node_type = match sink_view {
+			View::Table(t) => FlowNodeType::SinkTableView {
+				view: sink_view.id(),
+				table: t.underlying,
+			},
+			View::RingBuffer(rb) => FlowNodeType::SinkRingBufferView {
+				view: sink_view.id(),
+				ringbuffer: rb.underlying,
+				capacity: rb.capacity,
+				propagate_evictions: rb.propagate_evictions,
+			},
+			View::Series(s) => FlowNodeType::SinkSeriesView {
+				view: sink_view.id(),
+				series: s.underlying,
+				key: s.key.clone(),
+			},
+		};
+		let result_node = self.add_node(txn, node_type)?;
+		self.add_edge(txn, root_node_id, &result_node)
+	}
+
+	#[inline]
+	fn build_validated_flow(self) -> Result<FlowDag> {
 		let flow = self.builder.build();
 
 		if !has_real_source(&flow) {

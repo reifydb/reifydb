@@ -14,15 +14,19 @@ use reifydb_catalog::{
 use reifydb_column::{
 	bucket::{Bucket, BucketId, bucket_for, is_closed},
 	compress::Compressor,
-	snapshot::SystemColumn,
+	snapshot::{ColumnBlock, SystemColumn},
 };
-use reifydb_core::interface::{
-	catalog::{
-		column_snapshot::ColumnSnapshotSource,
-		id::SeriesId,
-		series::{Series, SeriesMetadata},
+use reifydb_core::{
+	common::CommitVersion,
+	interface::{
+		catalog::{
+			column_snapshot::ColumnSnapshotSource,
+			id::SeriesId,
+			series::{Series, SeriesMetadata},
+		},
+		resolved::{ResolvedNamespace, ResolvedSeries},
 	},
-	resolved::{ResolvedNamespace, ResolvedSeries},
+	value::column::columns::Columns,
 };
 use reifydb_engine::{
 	engine::StandardEngine,
@@ -34,11 +38,14 @@ use reifydb_engine::{
 		},
 	},
 };
-use reifydb_runtime::actor::{
-	context::Context,
-	system::ActorConfig,
-	timers::TimerHandle,
-	traits::{Actor, Directive},
+use reifydb_runtime::{
+	actor::{
+		context::Context,
+		system::ActorConfig,
+		timers::TimerHandle,
+		traits::{Actor, Directive},
+	},
+	reifydb_assertions,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction};
 use reifydb_value::{
@@ -101,16 +108,28 @@ impl SeriesMaterializationActor {
 			return;
 		};
 		let catalog = self.engine.catalog();
-		let now_wall = UNIX_EPOCH + Duration::from_nanos(self.engine.clock().now_nanos());
-		let series_list = match catalog.list_series_all(&mut Transaction::Query(&mut query_txn)) {
-			Ok(s) => s,
-			Err(e) => {
-				warn!("series materialization: list_series_all failed: {e}");
-				return;
-			}
+		let now_wall = self.wall_clock_now();
+		let Some(series_list) = self.list_series_or_warn(&mut query_txn, &catalog) else {
+			return;
 		};
 		for series in series_list {
 			self.materialize_series_buckets(state, &mut query_txn, &catalog, &series, now_wall);
+		}
+	}
+
+	#[inline]
+	fn wall_clock_now(&self) -> SystemTime {
+		UNIX_EPOCH + Duration::from_nanos(self.engine.clock().now_nanos())
+	}
+
+	#[inline]
+	fn list_series_or_warn(&self, query_txn: &mut QueryTransaction, catalog: &Catalog) -> Option<Vec<Series>> {
+		match catalog.list_series_all(&mut Transaction::Query(query_txn)) {
+			Ok(s) => Some(s),
+			Err(e) => {
+				warn!("series materialization: list_series_all failed: {e}");
+				None
+			}
 		}
 	}
 
@@ -217,23 +236,45 @@ impl SeriesMaterializationActor {
 		metadata: &SeriesMetadata,
 		bucket: &Bucket,
 	) -> Result<()> {
-		let services = self.engine.services();
-		let catalog = self.engine.catalog();
 		let sealed_at_commit_version = query_txn.version();
+		let resolved_series = self.resolve_series_target(query_txn, series)?;
+		let batches = self.scan_bucket_batches(query_txn, resolved_series, bucket)?;
 
+		reifydb_assertions! {
+			let after_scan = query_txn.version();
+			assert!(
+				sealed_at_commit_version == after_scan,
+				"query snapshot version moved during the bucket scan, so the snapshot would record a \
+				 sealed_at_commit_version that the scanned rows were not actually read at; a time-travel \
+				 reader of the snapshot would then see data inconsistent with its recorded read_version \
+				 (captured before scan={sealed_at_commit_version:?}, observed after scan={after_scan:?})"
+			);
+		}
+
+		let block = Arc::new(self.build_column_block(series, batches)?);
+		self.upsert_snapshot_and_store(series, metadata, bucket, sealed_at_commit_version, block)
+	}
+
+	#[inline]
+	fn resolve_series_target(&self, query_txn: &mut QueryTransaction, series: &Series) -> Result<ResolvedSeries> {
+		let catalog = self.engine.catalog();
 		let namespace_def = catalog
-			.find_namespace(&mut Transaction::Query(&mut *query_txn), series.namespace)?
+			.find_namespace(&mut Transaction::Query(query_txn), series.namespace)?
 			.ok_or_else(|| missing_namespace(series))?;
 		let resolved_namespace =
 			ResolvedNamespace::new(Fragment::internal(namespace_def.name()), namespace_def.clone());
-		let resolved_series = ResolvedSeries::new(
-			Fragment::internal(series.name.clone()),
-			resolved_namespace,
-			series.clone(),
-		);
+		Ok(ResolvedSeries::new(Fragment::internal(series.name.clone()), resolved_namespace, series.clone()))
+	}
 
+	#[inline]
+	fn scan_bucket_batches(
+		&self,
+		query_txn: &mut QueryTransaction,
+		resolved_series: ResolvedSeries,
+		bucket: &Bucket,
+	) -> Result<Vec<Columns>> {
 		let context = Arc::new(QueryContext {
-			services,
+			services: self.engine.services(),
 			source: None,
 			batch_size: 1024,
 			params: Params::None,
@@ -249,19 +290,32 @@ impl SeriesMaterializationActor {
 			Arc::clone(&context),
 		)?;
 
-		let mut tx: Transaction<'_> = (&mut *query_txn).into();
+		let mut tx: Transaction<'_> = query_txn.into();
 		scan.initialize(&mut tx, &context)?;
 		let mut ctx = (*context).clone();
 		let mut batches = Vec::new();
 		while let Some(batch) = scan.next(&mut tx, &mut ctx)? {
 			batches.push(batch);
 		}
+		Ok(batches)
+	}
 
+	#[inline]
+	fn build_column_block(&self, series: &Series, batches: Vec<Columns>) -> Result<ColumnBlock> {
 		let schema = scan_output_schema(series);
-		let block = column_block_from_batches(schema, batches, &self.compressor)?;
-		let row_count = block.len() as u64;
-		let block_arc = Arc::new(block);
+		column_block_from_batches(schema, batches, &self.compressor)
+	}
 
+	#[inline]
+	fn upsert_snapshot_and_store(
+		&self,
+		series: &Series,
+		metadata: &SeriesMetadata,
+		bucket: &Bucket,
+		sealed_at_commit_version: CommitVersion,
+		block: Arc<ColumnBlock>,
+	) -> Result<()> {
+		let row_count = block.len() as u64;
 		let mut admin = self.engine.begin_admin(IdentityId::system())?;
 		let cat = self.engine.catalog();
 		let column_snapshot = match cat.find_column_snapshot_for_series_bucket(
@@ -294,7 +348,7 @@ impl SeriesMaterializationActor {
 			)?,
 		};
 		commit_admin(admin)?;
-		self.block_store.put(column_snapshot.id, block_arc);
+		self.block_store.put(column_snapshot.id, block);
 		Ok(())
 	}
 }

@@ -6,21 +6,27 @@ use std::{
 	fmt::{self, Display, Formatter},
 };
 
-use crate::value::{
-	Value,
-	blob::Blob,
-	date::Date,
-	datetime::DateTime,
-	decimal::Decimal,
-	duration::Duration,
-	identity::IdentityId,
-	int::Int,
-	ordered_f32::OrderedF32,
-	ordered_f64::OrderedF64,
-	time::Time,
-	uint::Uint,
-	uuid::{Uuid4, Uuid7},
-	value_type::ValueType,
+use crate::{
+	fragment::Fragment,
+	value::{
+		Value,
+		blob::Blob,
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		duration::Duration,
+		identity::IdentityId,
+		int::Int,
+		ordered_f32::OrderedF32,
+		ordered_f64::OrderedF64,
+		temporal::parse::{
+			date::parse_date, datetime::parse_datetime, duration::parse_duration, time::parse_time,
+		},
+		time::Time,
+		uint::Uint,
+		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
+	},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -413,6 +419,33 @@ impl TryFromValue for Decimal {
 	}
 }
 
+macro_rules! coerce_temporal {
+	($t:ty, $variant:ident, $parse:path, $expected:expr) => {
+		impl TryFromValueCoerce for $t {
+			fn try_from_value_coerce(value: &Value) -> Result<Self, FromValueError> {
+				match value {
+					Value::$variant(v) => Ok(*v),
+					Value::Utf8(s) => $parse(Fragment::internal(s)).map_err(|_| {
+						FromValueError::TypeMismatch {
+							expected: $expected,
+							found: ValueType::Utf8,
+						}
+					}),
+					_ => Err(FromValueError::TypeMismatch {
+						expected: $expected,
+						found: value.get_type(),
+					}),
+				}
+			}
+		}
+	};
+}
+
+coerce_temporal!(Date, Date, parse_date, ValueType::Date);
+coerce_temporal!(DateTime, DateTime, parse_datetime, ValueType::DateTime);
+coerce_temporal!(Time, Time, parse_time, ValueType::Time);
+coerce_temporal!(Duration, Duration, parse_duration, ValueType::Duration);
+
 macro_rules! coerce_int {
 	($t:ty, $expected:expr, $name:literal) => {
 		impl TryFromValueCoerce for $t {
@@ -591,5 +624,51 @@ pub mod tests {
 		assert_eq!(i64::from_value_coerce(&Value::none()), None);
 		assert_eq!(u64::from_value_coerce(&Value::none()), None);
 		assert_eq!(f64::from_value_coerce(&Value::none()), None);
+	}
+
+	#[test]
+	fn test_try_from_value_coerce_temporal_parses_strings() {
+		// A duration literal string coerces; sub-minute must survive intact.
+		assert_eq!(
+			Duration::try_from_value_coerce(&Value::Utf8("1s".to_string())),
+			Ok(Duration::from_seconds(1).unwrap())
+		);
+		assert_eq!(
+			Duration::try_from_value_coerce(&Value::Utf8("5m".to_string())),
+			Ok(Duration::from_minutes(5).unwrap())
+		);
+		assert_eq!(
+			Duration::try_from_value_coerce(&Value::Utf8("PT1M".to_string())),
+			Ok(Duration::from_minutes(1).unwrap())
+		);
+
+		// The native variant passes straight through.
+		let d = Duration::from_seconds(60).unwrap();
+		assert_eq!(Duration::try_from_value_coerce(&Value::Duration(d)), Ok(d));
+
+		// Date / DateTime / Time literals coerce as well.
+		assert_eq!(
+			Date::try_from_value_coerce(&Value::Utf8("2024-01-15".to_string())),
+			Ok(Date::new(2024, 1, 15).unwrap())
+		);
+		assert_eq!(
+			DateTime::try_from_value_coerce(&Value::Utf8("2024-01-15T10:30:00".to_string())),
+			Ok(DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap())
+		);
+		assert_eq!(
+			Time::try_from_value_coerce(&Value::Utf8("10:30:00".to_string())),
+			Ok(Time::new(10, 30, 0, 0).unwrap())
+		);
+	}
+
+	#[test]
+	fn test_try_from_value_coerce_temporal_rejects_non_literals() {
+		// A bare integer must NOT be silently treated as a duration (no implied unit).
+		assert!(Duration::try_from_value_coerce(&Value::Uint8(60)).is_err());
+		assert!(Duration::try_from_value_coerce(&Value::Int4(1)).is_err());
+
+		// An unparseable string and a foreign temporal variant are rejected.
+		assert!(Duration::try_from_value_coerce(&Value::Utf8("notaduration".to_string())).is_err());
+		assert!(Duration::try_from_value_coerce(&Value::Time(Time::new(1, 0, 0, 0).unwrap())).is_err());
 	}
 }

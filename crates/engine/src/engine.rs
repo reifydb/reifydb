@@ -150,10 +150,7 @@ impl StandardEngine {
 
 	#[instrument(name = "engine::admin_as", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn admin_as(&self, identity: IdentityId, rql: &str, params: Params) -> ExecutionResult {
-		if let Err(e) = self.reject_if_read_only() {
-			return ExecutionResult::from_error(e);
-		}
-		if let Err(e) = self.reject_if_shutting_down(identity) {
+		if let Some(e) = self.reject_request(identity) {
 			return ExecutionResult::from_error(e);
 		}
 		let mut txn = match self.begin_admin(identity) {
@@ -170,24 +167,48 @@ impl StandardEngine {
 				params,
 			},
 		);
+		self.commit_admin(&mut txn, &mut outcome, rql);
+		self.annotate_rql(&mut outcome, rql);
+		outcome
+	}
+
+	fn reject_request(&self, identity: IdentityId) -> Option<Error> {
+		if let Err(e) = self.reject_if_read_only() {
+			return Some(e);
+		}
+		if let Err(e) = self.reject_if_shutting_down(identity) {
+			return Some(e);
+		}
+		None
+	}
+
+	#[inline]
+	fn commit_admin(&self, txn: &mut AdminTransaction, outcome: &mut ExecutionResult, rql: &str) {
 		if outcome.is_ok()
 			&& let Err(mut e) = txn.commit()
 		{
 			e.with_rql(rql.to_string());
 			outcome.error = Some(e);
 		}
+	}
+
+	fn annotate_rql(&self, outcome: &mut ExecutionResult, rql: &str) {
 		if let Some(ref mut e) = outcome.error {
 			e.with_rql(rql.to_string());
 		}
-		outcome
+		reifydb_assertions! {
+			let annotated = outcome.error.as_ref().map(|e| e.rql.is_some());
+			assert!(
+				annotated != Some(false),
+				"annotate_rql is the single catch-all that attaches the originating query to every error leaving admin_as/command_as; an error reaching the user with rql=None (annotated={:?}) would render a diagnostic with no source query, defeating user-facing error reporting",
+				annotated
+			);
+		}
 	}
 
 	#[instrument(name = "engine::command_as", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn command_as(&self, identity: IdentityId, rql: &str, params: Params) -> ExecutionResult {
-		if let Err(e) = self.reject_if_read_only() {
-			return ExecutionResult::from_error(e);
-		}
-		if let Err(e) = self.reject_if_shutting_down(identity) {
+		if let Some(e) = self.reject_request(identity) {
 			return ExecutionResult::from_error(e);
 		}
 		let mut txn = match self.begin_command(identity) {
@@ -204,16 +225,19 @@ impl StandardEngine {
 				params,
 			},
 		);
+		self.commit_command(&mut txn, &mut outcome, rql);
+		self.annotate_rql(&mut outcome, rql);
+		outcome
+	}
+
+	#[inline]
+	fn commit_command(&self, txn: &mut CommandTransaction, outcome: &mut ExecutionResult, rql: &str) {
 		if outcome.is_ok()
 			&& let Err(mut e) = txn.commit()
 		{
 			e.with_rql(rql.to_string());
 			outcome.error = Some(e);
 		}
-		if let Some(ref mut e) = outcome.error {
-			e.with_rql(rql.to_string());
-		}
-		outcome
 	}
 
 	#[instrument(name = "engine::query_as", level = "debug", skip(self, params), fields(rql = %rql))]

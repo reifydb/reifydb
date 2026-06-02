@@ -7,15 +7,15 @@ use super::Config;
 
 impl Config {
 	pub fn duration(&self, key: &str) -> Option<Duration> {
-		self.opt(key)
+		self.opt_coerce(key)
 	}
 
 	pub fn require_duration(&self, key: &str) -> Duration {
-		self.opt(key).unwrap_or_else(|| self.missing(key, "a duration"))
+		self.opt_coerce(key).unwrap_or_else(|| self.missing(key, "a duration"))
 	}
 
 	pub fn duration_or(&self, key: &str, default: Duration) -> Duration {
-		self.opt(key).unwrap_or(default)
+		self.opt_coerce(key).unwrap_or(default)
 	}
 }
 
@@ -37,6 +37,21 @@ mod tests {
 		let cfg = config(vec![("t", Value::Time(Time::midnight())), ("n", Value::Uint8(60))]);
 		assert_eq!(cfg.duration("t"), None, "a time does not coerce to a duration");
 		assert_eq!(cfg.duration("n"), None, "a raw integer does not coerce to a duration");
+	}
+
+	#[test]
+	fn parses_duration_literal_string() {
+		let cfg = config(vec![("d", Value::utf8("1m")), ("sub", Value::utf8("1s"))]);
+		assert_eq!(
+			cfg.duration("d"),
+			Some(Duration::from_minutes(1).unwrap()),
+			"a duration literal string coerces to a Duration"
+		);
+		assert_eq!(
+			cfg.require_duration("sub"),
+			Duration::from_seconds(1).unwrap(),
+			"a sub-minute duration literal must stay sub-minute, not round up"
+		);
 	}
 
 	#[test]

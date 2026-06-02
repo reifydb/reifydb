@@ -14,6 +14,8 @@ use reifydb_runtime::actor::{
 	system::{ActorConfig, ActorSpawner},
 	traits::{Actor, Directive},
 };
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_runtime::reifydb_assertions;
 use reifydb_runtime::{
 	actor::timers::TimerHandle,
 	sync::{mutex::Mutex, waiter::WaiterHandle},
@@ -71,20 +73,46 @@ impl FlushActor {
 	}
 
 	fn drain(&self, state: &mut FlushActorState) {
-		if state.flushing {
+		if !self.begin_flush(state) {
 			return;
 		}
-		state.flushing = true;
 
-		let drained: DirtyMap = {
-			let mut guard = self.dirty.lock();
-			mem::take(&mut *guard)
-		};
+		let drained = self.take_dirty();
 		if drained.is_empty() {
 			state.flushing = false;
 			return;
 		}
 
+		reifydb_assertions! {
+			let proceeding = state.flushing;
+			assert!(
+				proceeding,
+				"flush_to_persistent reached with the reentrancy flag cleared, so a concurrent drain could \
+				 take the dirty map and double-write the same rows to the persistent tier (flushing={proceeding})"
+			);
+		}
+
+		self.flush_to_persistent(drained);
+		state.flushing = false;
+	}
+
+	#[inline]
+	fn begin_flush(&self, state: &mut FlushActorState) -> bool {
+		if state.flushing {
+			return false;
+		}
+		state.flushing = true;
+		true
+	}
+
+	#[inline]
+	fn take_dirty(&self) -> DirtyMap {
+		let mut guard = self.dirty.lock();
+		mem::take(&mut *guard)
+	}
+
+	#[inline]
+	fn flush_to_persistent(&self, drained: DirtyMap) {
 		let entries: Vec<(EncodedKey, Option<CowVec<u8>>)> = drained.into_iter().collect();
 		let count = entries.len();
 		if let Err(e) = self.persistent.set(entries) {
@@ -92,7 +120,6 @@ impl FlushActor {
 		} else {
 			debug!(rows = count, "single persistent flush completed");
 		}
-		state.flushing = false;
 	}
 }
 

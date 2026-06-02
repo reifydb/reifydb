@@ -12,14 +12,16 @@ use reifydb_core::{
 	internal_error,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_routine::routine::context::{
-	FunctionContext as RoutineFunctionContext, ProcedureContext as RoutineProcedureContext,
+use reifydb_routine::routine::{
+	Function as RoutineFunction, Procedure as RoutineProcedure,
+	context::{FunctionContext as RoutineFunctionContext, ProcedureContext as RoutineProcedureContext},
 };
 use reifydb_rql::{
 	compiler::{CompilationResult, Compiled},
 	instruction::{CompiledClosure, CompiledFunction, Instruction, ScopeType},
 	nodes::FunctionParameter,
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::{Error as ReifyError, ProcedureErrorKind, TypeError},
@@ -88,6 +90,17 @@ impl<'a> Vm<'a> {
 	}
 }
 
+fn unknown_procedure_error(func_name: &str, name: &Fragment) -> ReifyError {
+	TypeError::Procedure {
+		kind: ProcedureErrorKind::UndefinedProcedure {
+			name: func_name.to_string(),
+		},
+		message: format!("Unknown procedure: {}", func_name),
+		fragment: name.clone(),
+	}
+	.into()
+}
+
 fn assign_row_numbers_if_absent(columns: Columns) -> Columns {
 	if columns.row_numbers.is_empty() && columns.has_rows() {
 		let n = columns.row_count();
@@ -130,33 +143,78 @@ impl<'a> Vm<'a> {
 		let arity = arity as usize;
 		let func_name = name.text();
 
-		if self.batch_size > 1 {
-			if let Some(func_def) = self.symbols.get_function(func_name).cloned() {
-				return self.call_user_function_columnar(services, tx, &func_def, arity, name);
-			}
-			if let Some(closure_val) = self.symbols.get(strip_dollar_prefix(func_name)).cloned()
-				&& let Variable::Closure(closure) = closure_val
-			{
-				return self.call_closure_columnar(services, tx, closure, arity);
-			}
+		if self.try_call_columnar(services, tx, func_name, arity, name)? {
+			return Ok(());
 		}
 
-		let mut args = Vec::with_capacity(arity);
-		for _ in 0..arity {
-			args.push(self.pop_value()?);
-		}
-		args.reverse();
+		let args = self.pop_scalar_args(arity)?;
 
 		if let Some(func_def) = self.symbols.get_function(func_name).cloned() {
 			return self.call_user_function(services, tx, &func_def, args, name);
 		}
-
 		if let Some(closure_val) = self.symbols.get(strip_dollar_prefix(func_name)).cloned()
 			&& let Variable::Closure(closure) = closure_val
 		{
 			return self.call_closure(services, tx, closure, args);
 		}
 
+		self.dispatch_resolved_procedure(services, tx, args, name, func_name, is_procedure_call)
+	}
+
+	#[inline]
+	fn try_call_columnar(
+		&mut self,
+		services: &Arc<Services>,
+		tx: &mut Transaction<'_>,
+		func_name: &str,
+		arity: usize,
+		name: &Fragment,
+	) -> Result<bool> {
+		if self.batch_size <= 1 {
+			return Ok(false);
+		}
+		if let Some(func_def) = self.symbols.get_function(func_name).cloned() {
+			self.call_user_function_columnar(services, tx, &func_def, arity, name)?;
+			return Ok(true);
+		}
+		if let Some(closure_val) = self.symbols.get(strip_dollar_prefix(func_name)).cloned()
+			&& let Variable::Closure(closure) = closure_val
+		{
+			self.call_closure_columnar(services, tx, closure, arity)?;
+			return Ok(true);
+		}
+		Ok(false)
+	}
+
+	#[inline]
+	fn pop_scalar_args(&mut self, arity: usize) -> Result<Vec<Value>> {
+		let mut args = Vec::with_capacity(arity);
+		for _ in 0..arity {
+			args.push(self.pop_value()?);
+		}
+		args.reverse();
+		reifydb_assertions! {
+			let popped = args.len();
+			assert!(
+				popped == arity,
+				"argument pop produced {popped} values for an arity-{arity} call; downstream \
+				 callees positionally zip params against args, so a miscount silently mis-binds \
+				 or drops arguments instead of failing the call"
+			);
+		}
+		Ok(args)
+	}
+
+	#[inline]
+	fn dispatch_resolved_procedure(
+		&mut self,
+		services: &Arc<Services>,
+		tx: &mut Transaction<'_>,
+		args: Vec<Value>,
+		name: &Fragment,
+		func_name: &str,
+		is_procedure_call: bool,
+	) -> Result<()> {
 		let proc_def = {
 			let mut tx_tmp = tx.reborrow();
 			services.catalog.find_procedure_by_qualified_name(&mut tx_tmp, func_name)?
@@ -656,75 +714,97 @@ impl<'a> Vm<'a> {
 		is_procedure_call: bool,
 	) -> Result<()> {
 		if let Some(routine) = ctx.services.routines.get_procedure(func_name) {
-			let call_params = Params::Positional(Arc::new(args));
-			let identity = ctx.tx.identity();
-			let mut proc_ctx = RoutineProcedureContext {
-				fragment: name.clone(),
-				identity,
-				row_count: 1,
-				runtime_context: &ctx.services.runtime_context,
-				tx: ctx.tx,
-				params: &call_params,
-				catalog: &ctx.services.catalog,
-				ioc: &ctx.services.ioc,
-			};
-			let empty = Columns::empty();
-			let attach_metadata = routine.attaches_row_metadata();
-			let columns =
-				routine.call(&mut proc_ctx, &empty).map_err(|e| e.with_context(name.clone(), true))?;
-			let columns = if attach_metadata {
-				assign_row_numbers_if_absent(columns)
-			} else {
-				columns
-			};
-
-			if func_name == "identity::inject"
-				&& let Some(col) = columns.first()
-				&& let Value::IdentityId(id) = col.data().get_value(0)
-			{
-				ctx.tx.set_identity(id);
-			}
-
-			self.stack.push(Variable::columns(columns));
-			return Ok(());
+			return self.call_procedure_routine(ctx, routine, args, name, func_name);
 		}
-
 		if let Some(generator) = ctx.services.routines.get_generator_function(func_name) {
-			let arg_columns: Vec<ColumnWithName> = args
-				.into_iter()
-				.enumerate()
-				.map(|(i, v)| {
-					let mut data = ColumnBuffer::with_capacity(v.get_type(), 1);
-					data.push_value(v);
-					ColumnWithName::new(format!("arg{}", i), data)
-				})
-				.collect();
-			let columns_args = Columns::new(arg_columns);
-			let identity = ctx.tx.identity();
-			let mut fn_ctx = RoutineFunctionContext {
-				fragment: name.clone(),
-				identity,
-				row_count: columns_args.row_count(),
-				runtime_context: &ctx.services.runtime_context,
-			};
-			let columns = generator
-				.call(&mut fn_ctx, &columns_args)
-				.map_err(|e| e.with_context(name.clone(), false))?;
-			self.stack.push(Variable::columns(columns));
-			return Ok(());
+			return self.call_generator_function(ctx, generator, args, name);
 		}
-
 		if is_procedure_call {
-			return Err(TypeError::Procedure {
-				kind: ProcedureErrorKind::UndefinedProcedure {
-					name: func_name.to_string(),
-				},
-				message: format!("Unknown procedure: {}", func_name),
-				fragment: name.clone(),
-			}
-			.into());
+			return Err(unknown_procedure_error(func_name, name));
+		}
+		self.call_plain_function(ctx, args, name, func_name)
+	}
+
+	#[inline]
+	fn call_procedure_routine(
+		&mut self,
+		ctx: CallContext<'_, '_>,
+		routine: Arc<dyn RoutineProcedure>,
+		args: Vec<Value>,
+		name: &Fragment,
+		func_name: &str,
+	) -> Result<()> {
+		let call_params = Params::Positional(Arc::new(args));
+		let identity = ctx.tx.identity();
+		let mut proc_ctx = RoutineProcedureContext {
+			fragment: name.clone(),
+			identity,
+			row_count: 1,
+			runtime_context: &ctx.services.runtime_context,
+			tx: ctx.tx,
+			params: &call_params,
+			catalog: &ctx.services.catalog,
+			ioc: &ctx.services.ioc,
+		};
+		let empty = Columns::empty();
+		let attach_metadata = routine.attaches_row_metadata();
+		let columns = routine.call(&mut proc_ctx, &empty).map_err(|e| e.with_context(name.clone(), true))?;
+		let columns = if attach_metadata {
+			assign_row_numbers_if_absent(columns)
+		} else {
+			columns
+		};
+
+		if func_name == "identity::inject"
+			&& let Some(col) = columns.first()
+			&& let Value::IdentityId(id) = col.data().get_value(0)
+		{
+			ctx.tx.set_identity(id);
 		}
 
+		self.stack.push(Variable::columns(columns));
+		Ok(())
+	}
+
+	#[inline]
+	fn call_generator_function(
+		&mut self,
+		ctx: CallContext<'_, '_>,
+		generator: Arc<dyn RoutineFunction>,
+		args: Vec<Value>,
+		name: &Fragment,
+	) -> Result<()> {
+		let arg_columns: Vec<ColumnWithName> = args
+			.into_iter()
+			.enumerate()
+			.map(|(i, v)| {
+				let mut data = ColumnBuffer::with_capacity(v.get_type(), 1);
+				data.push_value(v);
+				ColumnWithName::new(format!("arg{}", i), data)
+			})
+			.collect();
+		let columns_args = Columns::new(arg_columns);
+		let identity = ctx.tx.identity();
+		let mut fn_ctx = RoutineFunctionContext {
+			fragment: name.clone(),
+			identity,
+			row_count: columns_args.row_count(),
+			runtime_context: &ctx.services.runtime_context,
+		};
+		let columns =
+			generator.call(&mut fn_ctx, &columns_args).map_err(|e| e.with_context(name.clone(), false))?;
+		self.stack.push(Variable::columns(columns));
+		Ok(())
+	}
+
+	#[inline]
+	fn call_plain_function(
+		&mut self,
+		ctx: CallContext<'_, '_>,
+		args: Vec<Value>,
+		name: &Fragment,
+		func_name: &str,
+	) -> Result<()> {
 		let function = ctx.services.routines.get_function(func_name).ok_or_else(|| {
 			ReifyError::from(EngineError::UnknownCallable {
 				name: func_name.to_string(),

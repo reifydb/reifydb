@@ -297,15 +297,9 @@ impl Executor {
 
 	#[instrument(name = "executor::rql", level = "debug", skip(self, tx, params), fields(rql = %rql))]
 	pub fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> ExecutionResult {
-		let mut symbols = match self.setup_symbols(&params, tx) {
+		let symbols = match self.setup_symbols(&params, tx) {
 			Ok(s) => s,
-			Err(e) => {
-				return ExecutionResult {
-					frames: vec![],
-					error: Some(e),
-					metrics: ExecutionMetrics::default(),
-				};
-			}
+			Err(e) => return error_result(e, ExecutionMetrics::default()),
 		};
 
 		let start_compile = self.0.runtime_context.clock.instant();
@@ -314,30 +308,49 @@ impl Executor {
 			Ok(CompilationResult::Incremental(_)) => {
 				unreachable!("incremental compilation not supported in rql()")
 			}
-			Err(err) => {
-				#[cfg(not(reifydb_single_threaded))]
-				if let Ok(Some(frames)) = self.try_forward_remote_query(&err, rql, params) {
-					return ExecutionResult {
-						frames,
-						error: None,
-						metrics: ExecutionMetrics::default(),
-					};
-				}
-				return ExecutionResult {
-					frames: vec![],
-					error: Some(err),
-					metrics: ExecutionMetrics::default(),
-				};
-			}
+			Err(err) => return self.handle_rql_compile_error(err, rql, params),
 		};
 		let compile_duration = start_compile.elapsed();
-		let compile_duration_us = compile_duration.as_micros() as u64 / compiled_list.len().max(1) as u64;
 
+		match self.run_units_collecting_last(tx, &compiled_list, &params, symbols, compile_duration) {
+			Ok((frames, metrics)) => ExecutionResult {
+				frames,
+				error: None,
+				metrics: build_metrics(metrics),
+			},
+			Err(f) => error_result(f.error, build_metrics(f.partial_metrics)),
+		}
+	}
+
+	#[inline]
+	#[cfg_attr(reifydb_single_threaded, allow(unused_variables))]
+	fn handle_rql_compile_error(&self, err: Error, rql: &str, params: Params) -> ExecutionResult {
+		#[cfg(not(reifydb_single_threaded))]
+		if let Ok(Some(frames)) = self.try_forward_remote_query(&err, rql, params) {
+			return ExecutionResult {
+				frames,
+				error: None,
+				metrics: ExecutionMetrics::default(),
+			};
+		}
+		error_result(err, ExecutionMetrics::default())
+	}
+
+	#[inline]
+	fn run_units_collecting_last(
+		&self,
+		tx: &mut Transaction<'_>,
+		compiled_list: &[Compiled],
+		params: &Params,
+		mut symbols: SymbolTable,
+		compile_duration: Duration,
+	) -> StdResult<(Vec<Frame>, Vec<StatementMetric>), ExecutionFailure> {
+		let compile_duration_us = compile_duration.as_micros() as u64 / compiled_list.len().max(1) as u64;
 		let mut result = vec![];
 		let mut metrics = Vec::new();
 		for compiled in compiled_list.iter() {
 			result.clear();
-			let outcome = run_compiled_unit(&self.0, tx, compiled, &params, symbols, &mut result);
+			let outcome = run_compiled_unit(&self.0, tx, compiled, params, symbols, &mut result);
 			symbols = outcome.symbols;
 
 			metrics.push(StatementMetric {
@@ -352,20 +365,15 @@ impl Executor {
 				},
 			});
 
-			if let Err(e) = outcome.run_result {
-				return ExecutionResult {
-					frames: vec![],
-					error: Some(e),
-					metrics: build_metrics(metrics),
-				};
+			if let Err(error) = outcome.run_result {
+				return Err(ExecutionFailure {
+					error,
+					partial_metrics: metrics,
+				});
 			}
 		}
 
-		ExecutionResult {
-			frames: result,
-			error: None,
-			metrics: build_metrics(metrics),
-		}
+		Ok((result, metrics))
 	}
 
 	#[instrument(name = "executor::admin", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
@@ -510,140 +518,143 @@ impl Executor {
 	pub fn test(&self, txn: &mut TestTransaction<'_>, cmd: Test<'_>) -> ExecutionResult {
 		let symbols = match self.setup_symbols(&cmd.params, &mut Transaction::Test(Box::new(txn.reborrow()))) {
 			Ok(s) => s,
-			Err(e) => {
-				return ExecutionResult {
-					frames: vec![],
-					error: Some(e),
-					metrics: ExecutionMetrics::default(),
-				};
-			}
+			Err(e) => return error_result(e, ExecutionMetrics::default()),
 		};
-
-		let session_type = txn.session_type;
-		let session_default_deny = txn.session_default_deny;
-		if let Err(e) = PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
-			&mut Transaction::Test(Box::new(txn.reborrow())),
-			session_type,
-			session_default_deny,
-		) {
-			return ExecutionResult {
-				frames: vec![],
-				error: Some(e),
-				metrics: ExecutionMetrics::default(),
-			};
+		if let Err(e) = self.enforce_test_policy(&symbols, txn) {
+			return error_result(e, ExecutionMetrics::default());
 		}
-
 		let start_compile = self.0.runtime_context.clock.instant();
 		match self.compiler.compile_with_policy(
 			&mut Transaction::Test(Box::new(txn.reborrow())),
 			cmd.rql,
 			inject_from_policies,
 		) {
-			Err(err) => {
-				#[cfg(not(reifydb_single_threaded))]
-				if let Ok(Some(frames)) = self.try_forward_remote_query(&err, cmd.rql, cmd.params) {
-					return ExecutionResult {
-						frames,
-						error: None,
-						metrics: ExecutionMetrics::default(),
-					};
-				}
-				ExecutionResult {
-					frames: vec![],
-					error: Some(err),
-					metrics: ExecutionMetrics::default(),
-				}
-			}
+			Err(err) => self.handle_test_compile_error(err, cmd.rql, cmd.params),
 			Ok(CompilationResult::Ready(compiled)) => {
-				let compile_duration = start_compile.elapsed();
-				match execute_compiled_units(
-					&self.0,
-					&mut Transaction::Test(Box::new(txn.reborrow())),
-					&compiled,
-					&cmd.params,
-					symbols,
-					compile_duration,
-				) {
-					Ok((output, remaining, _, metrics)) => ExecutionResult {
-						frames: merge_results(output, remaining),
-						error: None,
-						metrics: build_metrics(metrics),
-					},
-					Err(f) => ExecutionResult {
-						frames: vec![],
-						error: Some(f.error),
-						metrics: build_metrics(f.partial_metrics),
-					},
-				}
+				self.execute_test_ready(txn, compiled, &cmd.params, symbols, start_compile)
 			}
-			Ok(CompilationResult::Incremental(mut state)) => {
-				let policy = constrain_policy(|plans, bump, cat, tx| {
-					inject_from_policies(plans, bump, cat, tx)
-				});
-				let mut result = vec![];
-				let mut output_results: Vec<Frame> = Vec::new();
-				let mut symbols = symbols;
-				let mut metrics = Vec::new();
-				loop {
-					let start_incr = self.0.runtime_context.clock.instant();
-					let next = match self.compiler.compile_next_with_policy(
-						&mut Transaction::Test(Box::new(txn.reborrow())),
-						&mut state,
-						&policy,
-					) {
-						Ok(n) => n,
-						Err(e) => {
-							return ExecutionResult {
-								frames: vec![],
-								error: Some(e),
-								metrics: build_metrics(metrics),
-							};
-						}
-					};
-					let compile_duration = start_incr.elapsed();
-
-					let Some(compiled) = next else {
-						break;
-					};
-
-					result.clear();
-					let mut tx = Transaction::Test(Box::new(txn.reborrow()));
-					let mut vm = Vm::from_services(symbols, &self.0, &cmd.params, tx.identity());
-					let start_execute = self.0.runtime_context.clock.instant();
-					let run_result = vm.run(&self.0, &mut tx, &compiled.instructions, &mut result);
-					let execute_duration = start_execute.elapsed();
-					symbols = vm.symbols;
-
-					metrics.push(StatementMetric {
-						fingerprint: compiled.fingerprint,
-						normalized_rql: compiled.normalized_rql,
-						compile_duration_us: compile_duration.as_micros() as u64,
-						execute_duration_us: execute_duration.as_micros() as u64,
-						rows_affected: if run_result.is_ok() {
-							extract_rows_affected(&result)
-						} else {
-							0
-						},
-					});
-
-					if let Err(e) = run_result {
-						return ExecutionResult {
-							frames: vec![],
-							error: Some(e),
-							metrics: build_metrics(metrics),
-						};
-					}
-
-					if compiled.is_output {
-						output_results.append(&mut result);
-					}
-				}
-				ExecutionResult {
-					frames: merge_results(output_results, result),
-					error: None,
-					metrics: build_metrics(metrics),
-				}
+			Ok(CompilationResult::Incremental(state)) => {
+				self.execute_test_incremental(txn, state, &cmd.params, symbols)
 			}
+		}
+	}
+
+	#[inline]
+	fn enforce_test_policy(&self, symbols: &SymbolTable, txn: &mut TestTransaction<'_>) -> Result<()> {
+		let session_type = txn.session_type;
+		let session_default_deny = txn.session_default_deny;
+		PolicyEvaluator::new(&self.0, symbols).enforce_session_policy(
+			&mut Transaction::Test(Box::new(txn.reborrow())),
+			session_type,
+			session_default_deny,
+		)
+	}
+
+	#[inline]
+	#[cfg_attr(reifydb_single_threaded, allow(unused_variables))]
+	fn handle_test_compile_error(&self, err: Error, rql: &str, params: Params) -> ExecutionResult {
+		#[cfg(not(reifydb_single_threaded))]
+		if let Ok(Some(frames)) = self.try_forward_remote_query(&err, rql, params) {
+			return ExecutionResult {
+				frames,
+				error: None,
+				metrics: ExecutionMetrics::default(),
+			};
+		}
+		error_result(err, ExecutionMetrics::default())
+	}
+
+	#[inline]
+	fn execute_test_ready(
+		&self,
+		txn: &mut TestTransaction<'_>,
+		compiled: Arc<Vec<Compiled>>,
+		params: &Params,
+		symbols: SymbolTable,
+		start_compile: Instant,
+	) -> ExecutionResult {
+		let compile_duration = start_compile.elapsed();
+		match execute_compiled_units(
+			&self.0,
+			&mut Transaction::Test(Box::new(txn.reborrow())),
+			&compiled,
+			params,
+			symbols,
+			compile_duration,
+		) {
+			Ok((output, remaining, _, metrics)) => ExecutionResult {
+				frames: merge_results(output, remaining),
+				error: None,
+				metrics: build_metrics(metrics),
+			},
+			Err(f) => ExecutionResult {
+				frames: vec![],
+				error: Some(f.error),
+				metrics: build_metrics(f.partial_metrics),
+			},
+		}
+	}
+
+	fn execute_test_incremental(
+		&self,
+		txn: &mut TestTransaction<'_>,
+		mut state: IncrementalCompilation,
+		params: &Params,
+		symbols: SymbolTable,
+	) -> ExecutionResult {
+		let policy = constrain_policy(inject_from_policies);
+		let mut result = vec![];
+		let mut output_results: Vec<Frame> = Vec::new();
+		let mut symbols = symbols;
+		let mut metrics = Vec::new();
+		loop {
+			let start_incr = self.0.runtime_context.clock.instant();
+			let next = match self.compiler.compile_next_with_policy(
+				&mut Transaction::Test(Box::new(txn.reborrow())),
+				&mut state,
+				&policy,
+			) {
+				Ok(n) => n,
+				Err(e) => return error_result(e, build_metrics(metrics)),
+			};
+			let compile_duration = start_incr.elapsed();
+
+			let Some(compiled) = next else {
+				break;
+			};
+
+			result.clear();
+			let mut tx = Transaction::Test(Box::new(txn.reborrow()));
+			let mut vm = Vm::from_services(symbols, &self.0, params, tx.identity());
+			let start_execute = self.0.runtime_context.clock.instant();
+			let run_result = vm.run(&self.0, &mut tx, &compiled.instructions, &mut result);
+			let execute_duration = start_execute.elapsed();
+			symbols = vm.symbols;
+
+			metrics.push(StatementMetric {
+				fingerprint: compiled.fingerprint,
+				normalized_rql: compiled.normalized_rql,
+				compile_duration_us: compile_duration.as_micros() as u64,
+				execute_duration_us: execute_duration.as_micros() as u64,
+				rows_affected: if run_result.is_ok() {
+					extract_rows_affected(&result)
+				} else {
+					0
+				},
+			});
+
+			if let Err(e) = run_result {
+				return error_result(e, build_metrics(metrics));
+			}
+
+			if compiled.is_output {
+				output_results.append(&mut result);
+			}
+		}
+		ExecutionResult {
+			frames: merge_results(output_results, result),
+			error: None,
+			metrics: build_metrics(metrics),
 		}
 	}
 
@@ -828,13 +839,7 @@ impl Executor {
 		let rql = format!("CALL {}()", name);
 		let symbols = match self.setup_symbols(params, &mut Transaction::Command(&mut *txn)) {
 			Ok(s) => s,
-			Err(e) => {
-				return ExecutionResult {
-					frames: vec![],
-					error: Some(e),
-					metrics: ExecutionMetrics::default(),
-				};
-			}
+			Err(e) => return error_result(e, ExecutionMetrics::default()),
 		};
 
 		let start_compile = self.0.runtime_context.clock.instant();
@@ -843,20 +848,32 @@ impl Executor {
 			Ok(CompilationResult::Incremental(_)) => {
 				unreachable!("CALL statements should not require incremental compilation")
 			}
-			Err(e) => {
-				return ExecutionResult {
-					frames: vec![],
-					error: Some(e),
-					metrics: ExecutionMetrics::default(),
-				};
-			}
+			Err(e) => return error_result(e, ExecutionMetrics::default()),
 		};
 		let compile_duration = start_compile.elapsed();
-		let compile_duration_us = compile_duration.as_micros() as u64 / compiled.len().max(1) as u64;
 
+		match self.run_command_units_collecting_last(txn, &compiled, params, symbols, compile_duration) {
+			Ok((frames, metrics)) => ExecutionResult {
+				frames,
+				error: None,
+				metrics: build_metrics(metrics),
+			},
+			Err(f) => error_result(f.error, build_metrics(f.partial_metrics)),
+		}
+	}
+
+	#[inline]
+	fn run_command_units_collecting_last(
+		&self,
+		txn: &mut CommandTransaction,
+		compiled: &[Compiled],
+		params: &Params,
+		mut symbols: SymbolTable,
+		compile_duration: Duration,
+	) -> StdResult<(Vec<Frame>, Vec<StatementMetric>), ExecutionFailure> {
+		let compile_duration_us = compile_duration.as_micros() as u64 / compiled.len().max(1) as u64;
 		let mut result = vec![];
 		let mut metrics = Vec::new();
-		let mut symbols = symbols;
 		for compiled in compiled.iter() {
 			result.clear();
 			let mut tx = Transaction::Command(txn);
@@ -878,20 +895,15 @@ impl Executor {
 				},
 			});
 
-			if let Err(e) = run_result {
-				return ExecutionResult {
-					frames: vec![],
-					error: Some(e),
-					metrics: build_metrics(metrics),
-				};
+			if let Err(error) = run_result {
+				return Err(ExecutionFailure {
+					error,
+					partial_metrics: metrics,
+				});
 			}
 		}
 
-		ExecutionResult {
-			frames: result,
-			error: None,
-			metrics: build_metrics(metrics),
-		}
+		Ok((result, metrics))
 	}
 
 	#[instrument(name = "executor::query", level = "debug", skip(self, txn, qry), fields(rql = %qry.rql))]

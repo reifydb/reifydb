@@ -7,15 +7,15 @@ use super::Config;
 
 impl Config {
 	pub fn time(&self, key: &str) -> Option<Time> {
-		self.opt(key)
+		self.opt_coerce(key)
 	}
 
 	pub fn require_time(&self, key: &str) -> Time {
-		self.opt(key).unwrap_or_else(|| self.missing(key, "a time"))
+		self.opt_coerce(key).unwrap_or_else(|| self.missing(key, "a time"))
 	}
 
 	pub fn time_or(&self, key: &str, default: Time) -> Time {
-		self.opt(key).unwrap_or(default)
+		self.opt_coerce(key).unwrap_or(default)
 	}
 }
 

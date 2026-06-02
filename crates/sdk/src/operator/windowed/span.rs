@@ -64,6 +64,10 @@ impl Slot for u64 {
 	type Duration = u64;
 }
 
+impl Slot for DateTime {
+	type Duration = Duration;
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct WindowSpan<T> {
 	pub start: T,
@@ -122,6 +126,26 @@ mod tests {
 		assert_eq!(WindowSpan::<u64>::for_slot(123, 60), WindowSpan::new(120u64, 180));
 		assert_eq!(WindowSpan::<u64>::for_slot(0, 60), WindowSpan::new(0u64, 60));
 		assert_eq!(WindowSpan::<u64>::for_slot(60, 60), WindowSpan::new(60u64, 120));
+	}
+
+	#[test]
+	fn for_slot_aligns_datetime_to_duration() {
+		let coord = DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 25).unwrap();
+		let one_second = Duration::from_seconds(1).unwrap();
+		let one_minute = Duration::from_seconds(60).unwrap();
+
+		// A sub-minute (1s) window must stay 1s, not round up to a minute.
+		let sec = WindowSpan::for_slot(coord, one_second);
+		assert_eq!(sec.start, DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 25).unwrap());
+		assert_eq!(sec.end, DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 26).unwrap());
+		assert_eq!(sec.duration(), one_second);
+
+		// A 1m window aligns the coord down to the minute boundary.
+		let min = WindowSpan::for_slot(coord, one_minute);
+		assert_eq!(min.start, DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap());
+		assert_eq!(min.end, DateTime::from_ymd_hms(2024, 1, 15, 10, 31, 0).unwrap());
+		assert!(min.contains(coord));
+		assert!(!min.contains(min.end));
 	}
 
 	#[test]

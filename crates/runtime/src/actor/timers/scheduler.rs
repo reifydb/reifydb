@@ -6,6 +6,7 @@
 use std::{
 	cmp::Ordering as CmpOrdering,
 	collections::BinaryHeap,
+	ops::ControlFlow,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
@@ -18,6 +19,7 @@ use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, bounded};
 use rayon::ThreadPool;
 
 use super::{TimerHandle, next_timer_id};
+use crate::reifydb_assertions;
 
 struct TimerEntry {
 	id: u64,
@@ -164,125 +166,160 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>)
 	let mut heap: BinaryHeap<TimerEntry> = BinaryHeap::new();
 
 	loop {
-		let timeout = heap.peek().map(|entry| {
-			let now = Instant::now();
-			if entry.deadline <= now {
-				Duration::ZERO
-			} else {
-				entry.deadline.duration_since(now)
-			}
-		});
-
-		let command = match timeout {
-			Some(Duration::ZERO) => command_rx.try_recv().ok(),
-			Some(dur) => match command_rx.recv_timeout(dur) {
-				Ok(cmd) => Some(cmd),
-				Err(RecvTimeoutError::Timeout) => None,
-				Err(RecvTimeoutError::Disconnected) => {
-					return;
-				}
-			},
-			None => match command_rx.recv() {
-				Ok(cmd) => Some(cmd),
-				Err(_) => return,
-			},
+		let command = match next_command(&command_rx, &heap) {
+			ControlFlow::Break(()) => return,
+			ControlFlow::Continue(command) => command,
 		};
 
 		if let Some(cmd) = command {
-			match cmd {
-				SchedulerCommand::ScheduleOnce {
-					id,
-					delay,
-					callback,
-					cancelled,
-				} => {
-					let deadline = if delay.is_zero() {
-						if !cancelled.load(Ordering::SeqCst) {
-							pool.spawn(callback);
-						}
-						continue;
-					} else {
-						Instant::now() + delay
-					};
+			match apply_command(cmd, &mut heap, &pool) {
+				ControlFlow::Break(()) => return,
+				ControlFlow::Continue(true) => continue,
+				ControlFlow::Continue(false) => {}
+			}
+		}
 
-					heap.push(TimerEntry {
-						id,
-						deadline,
-						kind: TimerKind::Once {
-							callback,
-						},
-						cancelled,
-					});
+		drain_due_timers(&mut heap, &pool);
+	}
+}
+
+#[inline]
+fn next_command(
+	command_rx: &Receiver<SchedulerCommand>,
+	heap: &BinaryHeap<TimerEntry>,
+) -> ControlFlow<(), Option<SchedulerCommand>> {
+	let timeout = heap.peek().map(|entry| {
+		let now = Instant::now();
+		if entry.deadline <= now {
+			Duration::ZERO
+		} else {
+			entry.deadline.duration_since(now)
+		}
+	});
+
+	match timeout {
+		Some(Duration::ZERO) => ControlFlow::Continue(command_rx.try_recv().ok()),
+		Some(dur) => match command_rx.recv_timeout(dur) {
+			Ok(cmd) => ControlFlow::Continue(Some(cmd)),
+			Err(RecvTimeoutError::Timeout) => ControlFlow::Continue(None),
+			Err(RecvTimeoutError::Disconnected) => ControlFlow::Break(()),
+		},
+		None => match command_rx.recv() {
+			Ok(cmd) => ControlFlow::Continue(Some(cmd)),
+			Err(_) => ControlFlow::Break(()),
+		},
+	}
+}
+
+#[inline]
+fn apply_command(
+	cmd: SchedulerCommand,
+	heap: &mut BinaryHeap<TimerEntry>,
+	pool: &Arc<ThreadPool>,
+) -> ControlFlow<(), bool> {
+	match cmd {
+		SchedulerCommand::ScheduleOnce {
+			id,
+			delay,
+			callback,
+			cancelled,
+		} => {
+			let deadline = if delay.is_zero() {
+				if !cancelled.load(Ordering::SeqCst) {
+					pool.spawn(callback);
 				}
-				SchedulerCommand::ScheduleRepeat {
-					id,
-					interval,
-					callback,
-					cancelled,
-				} => {
-					let deadline = Instant::now() + interval;
+				return ControlFlow::Continue(true);
+			} else {
+				Instant::now() + delay
+			};
 
+			heap.push(TimerEntry {
+				id,
+				deadline,
+				kind: TimerKind::Once {
+					callback,
+				},
+				cancelled,
+			});
+			ControlFlow::Continue(false)
+		}
+		SchedulerCommand::ScheduleRepeat {
+			id,
+			interval,
+			callback,
+			cancelled,
+		} => {
+			let deadline = Instant::now() + interval;
+
+			heap.push(TimerEntry {
+				id,
+				deadline,
+				kind: TimerKind::Repeat {
+					callback,
+					interval,
+				},
+				cancelled,
+			});
+			ControlFlow::Continue(false)
+		}
+		SchedulerCommand::Shutdown => ControlFlow::Break(()),
+	}
+}
+
+#[inline]
+fn drain_due_timers(heap: &mut BinaryHeap<TimerEntry>, pool: &Arc<ThreadPool>) {
+	let now = Instant::now();
+	while let Some(entry) = heap.peek() {
+		if entry.deadline > now {
+			break;
+		}
+
+		reifydb_assertions! {
+			let peeked = heap.peek().is_some();
+			assert!(
+				peeked,
+				"timer heap.pop() relies on the immediately-preceding peek seeing a due entry; \
+				 an empty heap here would unwrap None and panic the scheduler thread, killing every timer"
+			);
+		}
+		let entry = heap.pop().unwrap();
+
+		if entry.cancelled.load(Ordering::SeqCst) {
+			continue;
+		}
+
+		match entry.kind {
+			TimerKind::Once {
+				callback,
+			} => {
+				pool.spawn(callback);
+			}
+			TimerKind::Repeat {
+				callback,
+				interval,
+			} => {
+				let cancelled = entry.cancelled.clone();
+				let callback_clone = callback.clone();
+
+				pool.spawn(move || {
+					if !cancelled.load(Ordering::SeqCst) {
+						let continue_timer = callback_clone();
+						if !continue_timer {
+							cancelled.store(true, Ordering::SeqCst);
+						}
+					}
+				});
+
+				if !entry.cancelled.load(Ordering::SeqCst) {
 					heap.push(TimerEntry {
-						id,
-						deadline,
+						id: entry.id,
+						deadline: now + interval,
 						kind: TimerKind::Repeat {
 							callback,
 							interval,
 						},
-						cancelled,
+						cancelled: entry.cancelled,
 					});
-				}
-				SchedulerCommand::Shutdown => {
-					return;
-				}
-			}
-		}
-
-		let now = Instant::now();
-		while let Some(entry) = heap.peek() {
-			if entry.deadline > now {
-				break;
-			}
-
-			let entry = heap.pop().unwrap();
-
-			if entry.cancelled.load(Ordering::SeqCst) {
-				continue;
-			}
-
-			match entry.kind {
-				TimerKind::Once {
-					callback,
-				} => {
-					pool.spawn(callback);
-				}
-				TimerKind::Repeat {
-					callback,
-					interval,
-				} => {
-					let cancelled = entry.cancelled.clone();
-					let callback_clone = callback.clone();
-
-					pool.spawn(move || {
-						if !cancelled.load(Ordering::SeqCst) {
-							let continue_timer = callback_clone();
-							if !continue_timer {
-								cancelled.store(true, Ordering::SeqCst);
-							}
-						}
-					});
-
-					if !entry.cancelled.load(Ordering::SeqCst) {
-						heap.push(TimerEntry {
-							id: entry.id,
-							deadline: now + interval,
-							kind: TimerKind::Repeat {
-								callback,
-								interval,
-							},
-							cancelled: entry.cancelled,
-						});
-					}
 				}
 			}
 		}

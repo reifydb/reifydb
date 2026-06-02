@@ -25,6 +25,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_rql::{nodes::DeleteSeriesNode, query::QueryPlan};
+use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,
@@ -127,23 +128,56 @@ fn run_series_delete_with_input(
 	has_tag: bool,
 	has_returning: bool,
 ) -> Result<(u64, Option<Columns>)> {
+	let context = build_series_delete_query_context(exec, target, params);
+	let mut input_node = compile_series_delete_input(txn, input_plan, &context)?;
+	let (deleted_count, returning_columns) =
+		drive_series_delete_input(exec, txn, &mut input_node, &context, target, has_tag, has_returning)?;
+	Ok((deleted_count, finalize_series_delete_returning(returning_columns, has_returning)))
+}
+
+#[inline]
+fn build_series_delete_query_context(
+	exec: &WriteExecCtx<'_>,
+	target: &SeriesTarget<'_>,
+	params: &Params,
+) -> QueryContext {
 	let series = target.series;
 	let namespace_ident = Fragment::internal(target.namespace.name());
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, target.namespace.clone());
 	let series_ident = Fragment::internal(series.name.clone());
 	let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, series.clone());
-	let context = QueryContext {
+	QueryContext {
 		services: exec.services.clone(),
 		source: Some(ResolvedShape::Series(resolved_series)),
 		batch_size: exec.services.catalog.get_config_uint2(ConfigKey::QueryRowBatchSize) as u64,
 		params: params.clone(),
 		symbols: exec.symbols.clone(),
 		identity: IdentityId::root(),
-	};
+	}
+}
 
+#[inline]
+fn compile_series_delete_input(
+	txn: &mut Transaction<'_>,
+	input_plan: QueryPlan,
+	context: &QueryContext,
+) -> Result<Box<dyn QueryNode>> {
 	let mut input_node = compile(input_plan, txn, Arc::new(context.clone()));
-	input_node.initialize(txn, &context)?;
+	input_node.initialize(txn, context)?;
+	Ok(input_node)
+}
 
+#[inline]
+fn drive_series_delete_input(
+	exec: &WriteExecCtx<'_>,
+	txn: &mut Transaction<'_>,
+	input_node: &mut Box<dyn QueryNode>,
+	context: &QueryContext,
+	target: &SeriesTarget<'_>,
+	has_tag: bool,
+	has_returning: bool,
+) -> Result<(u64, Option<Columns>)> {
+	let series = target.series;
 	let mut deleted_count = 0u64;
 	let mut returning_columns: Option<Columns> = None;
 	let mut mutable_context = context.clone();
@@ -163,6 +197,14 @@ fn run_series_delete_with_input(
 		)?;
 
 		let row_numbers = columns.row_numbers.clone();
+		reifydb_assertions! {
+			let row_numbers_len = row_numbers.len();
+			assert!(
+				row_numbers_len == row_count,
+				"series delete loop indexes row_numbers[0..row_count] but row_numbers.len()={row_numbers_len} != row_count={row_count}; \
+				 a row batch without parallel row_numbers would panic out of bounds while building the delete key sequence"
+			);
+		}
 		for row_idx in 0..row_count {
 			let sequence = u64::from(row_numbers[row_idx]);
 			let key_value = extract_series_delete_key_value(&columns, series, row_idx);
@@ -209,10 +251,16 @@ fn run_series_delete_with_input(
 		}
 	}
 
-	if has_returning && returning_columns.is_none() {
-		returning_columns = Some(Columns::empty());
-	}
 	Ok((deleted_count, returning_columns))
+}
+
+#[inline]
+fn finalize_series_delete_returning(returning_columns: Option<Columns>, has_returning: bool) -> Option<Columns> {
+	if has_returning && returning_columns.is_none() {
+		Some(Columns::empty())
+	} else {
+		returning_columns
+	}
 }
 
 fn run_series_delete_all(

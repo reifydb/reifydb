@@ -22,7 +22,8 @@ use reifydb_core::{
 	key::{EncodableKey, series_row::SeriesRowKey},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_rql::nodes::InsertSeriesNode;
+use reifydb_rql::{expression::Expression, nodes::InsertSeriesNode};
+use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,
@@ -65,96 +66,169 @@ pub(crate) fn insert_series(
 		returning,
 	} = plan;
 	let (namespace, series, mut metadata) = resolve_insert_series_target(services, txn, &target)?;
-	let target_data = SeriesTarget {
-		namespace: &namespace,
-		series: &series,
-	};
-	let context = build_insert_series_query_context(services, &target_data, &params, symbols);
+	let context = build_insert_series_query_context(
+		services,
+		&SeriesTarget {
+			namespace: &namespace,
+			series: &series,
+		},
+		&params,
+		symbols,
+	);
 	let mut input_node = compile(*input, txn, context.clone());
 
 	let has_tag = series.tag.is_some();
 	let key_column_name = series.key.column();
-
+	let has_returning = returning.is_some();
 	let mut inserted_count = 0u64;
-	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if returning.is_some() {
+	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if has_returning {
 		Vec::with_capacity(16)
 	} else {
 		Vec::new()
 	};
-	let has_returning = returning.is_some();
 
 	input_node.initialize(txn, &context)?;
 	let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
 
 	let mut mutable_context = (*context).clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
-		PolicyEvaluator::new(services, symbols).enforce_write_policies(
-			txn,
-			namespace.name(),
-			&series.name,
-			DataOp::Insert,
-			&columns,
-			PolicyTargetType::Series,
-		)?;
-
-		let row_count = columns.row_count();
-		for row_idx in 0..row_count {
-			let key_value = extract_or_generate_series_key(
+		enforce_series_write_policies(services, symbols, txn, &namespace, &series, &columns)?;
+		for row_idx in 0..columns.row_count() {
+			insert_series_row(
 				services,
-				&columns,
+				txn,
 				&series,
-				&metadata,
+				&mut metadata,
+				&shape,
+				&columns,
 				row_idx,
 				key_column_name,
-			);
-			let variant_tag = extract_variant_tag(&columns, has_tag, row_idx);
-
-			metadata.sequence_counter += 1;
-			let sequence = metadata.sequence_counter;
-			let row_key = SeriesRowKey {
-				series: series.id,
-				variant_tag,
-				key: key_value,
-				sequence,
-			};
-			let encoded_key = row_key.encode();
-
-			let data_columns: Vec<_> = series.data_columns().collect();
-			let data_values = collect_series_data_values(&columns, &data_columns, row_idx);
-			let row = build_encoded_series_row(services, &series, &shape, key_value, &data_values);
-
-			let mut rows_buf = [row];
-			SeriesRowInterceptor::pre_insert(txn, &series, &mut rows_buf)?;
-			let [row] = rows_buf;
-			txn.set(&encoded_key, row.clone())?;
-			let rows = [row.clone()];
-			SeriesRowInterceptor::post_insert(txn, &series, &rows)?;
-
-			if has_returning {
-				returned_rows.push((RowNumber::from(sequence), row.clone()));
-			}
-
-			let snapshot = SeriesRowSnapshot {
-				key_column_name,
-				key_value,
-				data_columns: &data_columns,
-				data_values: &data_values,
-				sequence,
-				row: &row,
-			};
-			track_series_insert_flow_change(txn, &series, &snapshot);
-
-			update_series_metadata_for_insert(&mut metadata, key_value);
+				has_tag,
+				has_returning,
+				&mut returned_rows,
+			)?;
 			inserted_count += 1;
 		}
 	}
 
+	reifydb_assertions! {
+		let collected = returned_rows.len() as u64;
+		assert!(
+			!has_returning || collected == inserted_count,
+			"each inserted series row must contribute exactly one RETURNING row; a mismatch means \
+			 decode_rows_to_columns would emit a row count that disagrees with what was committed, \
+			 silently corrupting the RETURNING result (inserted={inserted_count}, collected={collected})"
+		);
+	}
+
+	finalize_series_insert(
+		services,
+		txn,
+		symbols,
+		&namespace,
+		&series,
+		&shape,
+		metadata,
+		inserted_count,
+		&returning,
+		&returned_rows,
+	)
+}
+
+fn enforce_series_write_policies(
+	services: &Arc<Services>,
+	symbols: &SymbolTable,
+	txn: &mut Transaction<'_>,
+	namespace: &Namespace,
+	series: &Series,
+	columns: &Columns,
+) -> Result<()> {
+	PolicyEvaluator::new(services, symbols).enforce_write_policies(
+		txn,
+		namespace.name(),
+		&series.name,
+		DataOp::Insert,
+		columns,
+		PolicyTargetType::Series,
+	)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn insert_series_row(
+	services: &Arc<Services>,
+	txn: &mut Transaction<'_>,
+	series: &Series,
+	metadata: &mut SeriesMetadata,
+	shape: &RowShape,
+	columns: &Columns,
+	row_idx: usize,
+	key_column_name: &str,
+	has_tag: bool,
+	has_returning: bool,
+	returned_rows: &mut Vec<(RowNumber, EncodedRow)>,
+) -> Result<()> {
+	let key_value = extract_or_generate_series_key(services, columns, series, metadata, row_idx, key_column_name);
+	let variant_tag = extract_variant_tag(columns, has_tag, row_idx);
+
+	metadata.sequence_counter += 1;
+	let sequence = metadata.sequence_counter;
+	let row_key = SeriesRowKey {
+		series: series.id,
+		variant_tag,
+		key: key_value,
+		sequence,
+	};
+	let encoded_key = row_key.encode();
+
+	let data_columns: Vec<_> = series.data_columns().collect();
+	let data_values = collect_series_data_values(columns, &data_columns, row_idx);
+	let row = build_encoded_series_row(services, series, shape, key_value, &data_values);
+
+	let mut rows_buf = [row];
+	SeriesRowInterceptor::pre_insert(txn, series, &mut rows_buf)?;
+	let [row] = rows_buf;
+	txn.set(&encoded_key, row.clone())?;
+	let rows = [row.clone()];
+	SeriesRowInterceptor::post_insert(txn, series, &rows)?;
+
+	if has_returning {
+		returned_rows.push((RowNumber::from(sequence), row.clone()));
+	}
+
+	let snapshot = SeriesRowSnapshot {
+		key_column_name,
+		key_value,
+		data_columns: &data_columns,
+		data_values: &data_values,
+		sequence,
+		row: &row,
+	};
+	track_series_insert_flow_change(txn, series, &snapshot);
+
+	update_series_metadata_for_insert(metadata, key_value);
+	Ok(())
+}
+
+#[inline]
+#[allow(clippy::too_many_arguments)]
+fn finalize_series_insert(
+	services: &Arc<Services>,
+	txn: &mut Transaction<'_>,
+	symbols: &SymbolTable,
+	namespace: &Namespace,
+	series: &Series,
+	shape: &RowShape,
+	metadata: SeriesMetadata,
+	inserted_count: u64,
+	returning: &Option<Vec<Expression>>,
+	returned_rows: &[(RowNumber, EncodedRow)],
+) -> Result<Columns> {
 	if inserted_count > 0 {
 		services.catalog.update_series_metadata_txn(txn, metadata)?;
 	}
 
-	if let Some(returning_exprs) = &returning {
-		let columns = decode_rows_to_columns(&shape, &returned_rows);
+	if let Some(returning_exprs) = returning {
+		let columns = decode_rows_to_columns(shape, returned_rows);
 		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 	Ok(insert_series_result(namespace.name(), &series.name, inserted_count))

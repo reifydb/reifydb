@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use std::fmt::{self, Display, Formatter};
+use std::{
+	fmt::{self, Display, Formatter},
+	ops::{Add, Rem, Sub},
+};
 
 use serde::{
 	Deserialize, Deserializer, Serialize, Serializer,
@@ -209,6 +212,51 @@ impl DateTime {
 		Ok(Self {
 			nanos,
 		})
+	}
+}
+
+impl Add<Duration> for DateTime {
+	type Output = DateTime;
+
+	#[inline]
+	fn add(self, rhs: Duration) -> DateTime {
+		let total = rhs.as_nanos().expect("duration exceeds i64 nanoseconds");
+		let nanos = self.to_nanos() as i128 + total as i128;
+		DateTime::from_nanos(u64::try_from(nanos).expect("datetime addition out of range"))
+	}
+}
+
+impl Sub<Duration> for DateTime {
+	type Output = DateTime;
+
+	#[inline]
+	fn sub(self, rhs: Duration) -> DateTime {
+		let total = rhs.as_nanos().expect("duration exceeds i64 nanoseconds");
+		let nanos = self.to_nanos() as i128 - total as i128;
+		DateTime::from_nanos(u64::try_from(nanos).expect("datetime subtraction out of range"))
+	}
+}
+
+impl Sub<DateTime> for DateTime {
+	type Output = Duration;
+
+	#[inline]
+	fn sub(self, rhs: DateTime) -> Duration {
+		let diff = self.to_nanos() as i128 - rhs.to_nanos() as i128;
+		Duration::from_nanoseconds(i64::try_from(diff).expect("datetime difference exceeds i64 nanoseconds"))
+			.expect("datetime difference out of duration range")
+	}
+}
+
+impl Rem<Duration> for DateTime {
+	type Output = Duration;
+
+	#[inline]
+	fn rem(self, rhs: Duration) -> Duration {
+		let total = rhs.as_nanos().expect("duration exceeds i64 nanoseconds");
+		let total = u64::try_from(total).expect("duration must be positive for windowing");
+		Duration::from_nanoseconds((self.to_nanos() % total) as i64)
+			.expect("datetime remainder out of duration range")
 	}
 }
 
@@ -624,5 +672,34 @@ pub mod tests {
 		assert_eq!(result.hour(), 0);
 		assert_eq!(result.minute(), 0);
 		assert_eq!(result.second(), 30);
+	}
+
+	#[test]
+	fn add_and_sub_duration_operators() {
+		let dt = DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 25).unwrap();
+		let minute = Duration::from_seconds(60).unwrap();
+		assert_eq!(dt + minute, DateTime::from_ymd_hms(2024, 1, 15, 10, 31, 25).unwrap());
+		assert_eq!(dt - minute, DateTime::from_ymd_hms(2024, 1, 15, 10, 29, 25).unwrap());
+	}
+
+	#[test]
+	fn sub_datetime_yields_duration() {
+		let a = DateTime::from_ymd_hms(2024, 1, 15, 10, 31, 0).unwrap();
+		let b = DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap();
+		assert_eq!(a - b, Duration::from_seconds(60).unwrap());
+	}
+
+	#[test]
+	fn rem_duration_aligns_to_window_boundary() {
+		let dt = DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 25).unwrap();
+		let minute = Duration::from_seconds(60).unwrap();
+		// 25 seconds past the minute boundary.
+		assert_eq!(dt % minute, Duration::from_seconds(25).unwrap());
+		// The bucket-start computation `coord - (coord % dur)` lands on the boundary.
+		assert_eq!(dt - (dt % minute), DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap());
+
+		// A 1s window leaves the second boundary in place (sub-minute correctness).
+		let second = Duration::from_seconds(1).unwrap();
+		assert_eq!(dt % second, Duration::from_seconds(0).unwrap());
 	}
 }

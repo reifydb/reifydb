@@ -17,10 +17,14 @@ use reifydb_runtime::actor::{
 	system::{ActorConfig, ActorSpawner},
 	traits::{Actor, Directive},
 };
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_runtime::reifydb_assertions;
 use reifydb_runtime::{
 	actor::timers::TimerHandle,
 	sync::{rwlock::RwLock, waiter::WaiterHandle},
 };
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_value::util::cowvec::CowVec;
 use reifydb_value::value::datetime::DateTime;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use tracing::{debug, error, warn};
@@ -61,6 +65,9 @@ pub struct FlushActor {
 	eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 	read: Option<MultiReadBufferTier>,
 }
+
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+type EvictablePartition = (Vec<(EncodedKey, CommitVersion, Option<CowVec<u8>>)>, Vec<(EncodedKey, CommitVersion)>);
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 impl FlushActor {
@@ -113,61 +120,103 @@ impl FlushActor {
 	}
 
 	fn sweep(&self, cutoff: CommitVersion) {
-		let entry_kinds = match self.commit.list_all_entry_kinds() {
-			Ok(v) => v,
-			Err(e) => {
-				warn!(error = %e, "flush sweep: list_all_entry_kinds failed");
-				return;
-			}
+		let Some(entry_kinds) = self.list_evictable_kinds() else {
+			return;
 		};
 
 		let mut persisted = 0usize;
 		let mut dropped = 0usize;
 
 		for kind in entry_kinds {
-			let (to_persist, to_drop) = match &self.commit {
-				MultiCommitBufferTier::Memory(s) => s.collect_evictable_below(kind, cutoff),
-			};
-
+			let (to_persist, to_drop) = self.collect_evictable(kind, cutoff);
 			if to_drop.is_empty() {
 				continue;
 			}
 
 			if self.is_persistent_shape(kind) && !to_persist.is_empty() {
-				let mut batch: HashMap<CommitVersion, TierBatch> = HashMap::new();
-				for (key, version, value) in to_persist {
-					batch.entry(version).or_default().entry(kind).or_default().push((key, value));
-				}
-				let mut persist_failed = false;
-				for (version, by_kind) in batch {
-					let count: usize = by_kind.values().map(|v| v.len()).sum();
-					if let Err(e) = self.persistent.set(version, by_kind) {
-						error!(version = version.0, error = %e, "flush sweep: persist failed");
-						persist_failed = true;
-						break;
-					}
-					persisted += count;
-				}
+				let (count, persist_failed) = self.persist_evictable_batch(kind, to_persist);
+				persisted += count;
 				if persist_failed {
 					continue;
 				}
 			}
 
-			let drop_count = to_drop.len();
-			if let Some(read) = &self.read {
-				for (key, _) in &to_drop {
-					read.invalidate(key);
-				}
+			match self.invalidate_and_drop(kind, to_drop) {
+				Some(count) => dropped += count,
+				None => continue,
 			}
-			let mut batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
-			batches.insert(kind, to_drop);
-			if let Err(e) = self.commit.drop(batches) {
-				warn!(?kind, error = %e, "flush sweep: commit buffer drop failed");
-				continue;
-			}
-			dropped += drop_count;
 		}
 
+		self.checkpoint_and_maintain(cutoff, persisted, dropped);
+	}
+
+	#[inline]
+	fn list_evictable_kinds(&self) -> Option<Vec<EntryKind>> {
+		match self.commit.list_all_entry_kinds() {
+			Ok(v) => Some(v),
+			Err(e) => {
+				warn!(error = %e, "flush sweep: list_all_entry_kinds failed");
+				None
+			}
+		}
+	}
+
+	#[inline]
+	fn collect_evictable(&self, kind: EntryKind, cutoff: CommitVersion) -> EvictablePartition {
+		match &self.commit {
+			MultiCommitBufferTier::Memory(s) => s.collect_evictable_below(kind, cutoff),
+		}
+	}
+
+	#[inline]
+	fn persist_evictable_batch(
+		&self,
+		kind: EntryKind,
+		to_persist: Vec<(EncodedKey, CommitVersion, Option<CowVec<u8>>)>,
+	) -> (usize, bool) {
+		let mut batch: HashMap<CommitVersion, TierBatch> = HashMap::new();
+		for (key, version, value) in to_persist {
+			batch.entry(version).or_default().entry(kind).or_default().push((key, value));
+		}
+		let mut persisted = 0usize;
+		for (version, by_kind) in batch {
+			let count: usize = by_kind.values().map(|v| v.len()).sum();
+			if let Err(e) = self.persistent.set(version, by_kind) {
+				error!(version = version.0, error = %e, "flush sweep: persist failed");
+				return (persisted, true);
+			}
+			persisted += count;
+		}
+		(persisted, false)
+	}
+
+	#[inline]
+	fn invalidate_and_drop(&self, kind: EntryKind, to_drop: Vec<(EncodedKey, CommitVersion)>) -> Option<usize> {
+		let drop_count = to_drop.len();
+		reifydb_assertions! {
+			assert!(
+				drop_count > 0,
+				"sweep must only reach invalidate_and_drop with a non-empty drop set; an empty drop \
+				 issues a no-op commit-buffer drop and lets the read-tier invalidation loop and the \
+				 dropped counter run for zero work (kind={kind:?})"
+			);
+		}
+		if let Some(read) = &self.read {
+			for (key, _) in &to_drop {
+				read.invalidate(key);
+			}
+		}
+		let mut batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
+		batches.insert(kind, to_drop);
+		if let Err(e) = self.commit.drop(batches) {
+			warn!(?kind, error = %e, "flush sweep: commit buffer drop failed");
+			return None;
+		}
+		Some(drop_count)
+	}
+
+	#[inline]
+	fn checkpoint_and_maintain(&self, cutoff: CommitVersion, persisted: usize, dropped: usize) {
 		if persisted > 0 || dropped > 0 {
 			debug!(cutoff = cutoff.0, persisted, dropped, "flush sweep completed");
 			if persisted > 0

@@ -19,7 +19,8 @@ use reifydb_core::{
 	key::row::RowKey,
 	value::column::columns::Columns,
 };
-use reifydb_rql::nodes::InsertRingBufferNode;
+use reifydb_rql::{expression::Expression, nodes::InsertRingBufferNode, query::QueryPlan};
+use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
@@ -62,23 +63,71 @@ pub(crate) fn insert_ringbuffer(
 		target,
 		returning,
 	} = plan;
-	let (namespace, ringbuffer) = resolve_insert_ringbuffer_target(services, txn, &target)?;
-	let shape = get_or_create_ringbuffer_shape(&services.catalog, &ringbuffer, txn)?;
+	let (namespace, ringbuffer, shape) = resolve_insert_ringbuffer_target_and_shape(services, txn, &target)?;
 	let target_data = RingBufferTarget {
 		namespace: &namespace,
 		ringbuffer: &ringbuffer,
 	};
 	let context = build_insert_ringbuffer_query_context(services, &target_data, &params, symbols);
-	let mut input_node = compile(*input, txn, context.clone());
-	input_node.initialize(txn, &context)?;
+	let mut input_node = compile_and_initialize_input(*input, txn, &context)?;
 
-	let partition_col_indices = compute_partition_col_indices(&ringbuffer);
 	let mut partition_metadata_cache: HashMap<Vec<Value>, RingBufferMetadata> = HashMap::new();
+	let (inserted_count, returned_rows) = drive_ringbuffer_insert(
+		services,
+		txn,
+		symbols,
+		&target_data,
+		&shape,
+		&context,
+		input_node.as_mut(),
+		returning.is_some(),
+		&mut partition_metadata_cache,
+	)?;
+
+	finalize_ringbuffer_insert(
+		services,
+		txn,
+		&target_data,
+		&shape,
+		symbols,
+		&returning,
+		&partition_metadata_cache,
+		&returned_rows,
+		inserted_count,
+	)
+}
+
+#[inline]
+fn compile_and_initialize_input<'a>(
+	input: QueryPlan,
+	txn: &mut Transaction<'a>,
+	context: &Arc<QueryContext>,
+) -> Result<Box<dyn QueryNode>> {
+	let mut input_node = compile(input, txn, context.clone());
+	input_node.initialize(txn, context)?;
+	Ok(input_node)
+}
+
+#[inline]
+#[allow(clippy::too_many_arguments)]
+fn drive_ringbuffer_insert(
+	services: &Arc<Services>,
+	txn: &mut Transaction<'_>,
+	symbols: &SymbolTable,
+	target_data: &RingBufferTarget<'_>,
+	shape: &RowShape,
+	context: &Arc<QueryContext>,
+	input_node: &mut dyn QueryNode,
+	has_returning: bool,
+	partition_metadata_cache: &mut HashMap<Vec<Value>, RingBufferMetadata>,
+) -> Result<(u64, Vec<(RowNumber, EncodedRow)>)> {
+	let namespace = target_data.namespace;
+	let ringbuffer = target_data.ringbuffer;
+	let partition_col_indices = compute_partition_col_indices(ringbuffer);
 	let mut inserted_count = 0u64;
 	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = Vec::new();
-	let has_returning = returning.is_some();
 
-	let mut mutable_context = (*context).clone();
+	let mut mutable_context = (**context).clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		PolicyEvaluator::new(services, symbols).enforce_write_policies(
 			txn,
@@ -94,10 +143,10 @@ pub(crate) fn insert_ringbuffer(
 			let (row, row_values) = build_insert_ringbuffer_row(
 				services,
 				txn,
-				&target_data,
-				&shape,
+				target_data,
+				shape,
 				&columns,
-				&context,
+				context,
 				row_idx,
 			)?;
 			let partition_key: Vec<Value> =
@@ -105,17 +154,17 @@ pub(crate) fn insert_ringbuffer(
 			ensure_partition_metadata(
 				services,
 				txn,
-				&target_data,
+				target_data,
 				&partition_key,
-				&mut partition_metadata_cache,
+				partition_metadata_cache,
 			)?;
 			let current_metadata = partition_metadata_cache.get_mut(&partition_key).unwrap();
 
 			if current_metadata.is_full() {
 				evict_oldest_for_partition(
 					txn,
-					&target_data,
-					&shape,
+					target_data,
+					shape,
 					&partition_col_indices,
 					&partition_key,
 					current_metadata,
@@ -123,7 +172,7 @@ pub(crate) fn insert_ringbuffer(
 			}
 
 			let row_number = services.catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
-			let stored_row = txn.insert_ringbuffer_at(&ringbuffer, &shape, row_number, row)?;
+			let stored_row = txn.insert_ringbuffer_at(ringbuffer, shape, row_number, row)?;
 			if has_returning {
 				returned_rows.push((row_number, stored_row));
 			}
@@ -132,21 +181,49 @@ pub(crate) fn insert_ringbuffer(
 		}
 	}
 
-	save_all_partition_metadata(services, txn, &ringbuffer, &partition_metadata_cache)?;
-
-	if let Some(returning_exprs) = &returning {
-		let columns = decode_rows_to_columns(&shape, &returned_rows);
-		return evaluate_returning(services, symbols, returning_exprs, columns);
-	}
-	Ok(insert_ringbuffer_result(namespace.name(), &ringbuffer.name, inserted_count))
+	Ok((inserted_count, returned_rows))
 }
 
 #[inline]
-fn resolve_insert_ringbuffer_target(
+#[allow(clippy::too_many_arguments)]
+fn finalize_ringbuffer_insert(
+	services: &Arc<Services>,
+	txn: &mut Transaction<'_>,
+	target_data: &RingBufferTarget<'_>,
+	shape: &RowShape,
+	symbols: &SymbolTable,
+	returning: &Option<Vec<Expression>>,
+	partition_metadata_cache: &HashMap<Vec<Value>, RingBufferMetadata>,
+	returned_rows: &[(RowNumber, EncodedRow)],
+	inserted_count: u64,
+) -> Result<Columns> {
+	let ringbuffer = target_data.ringbuffer;
+	save_all_partition_metadata(services, txn, ringbuffer, partition_metadata_cache)?;
+
+	reifydb_assertions! {
+		let returning_rows_match = returning.is_none() || returned_rows.len() as u64 == inserted_count;
+		assert!(
+			returning_rows_match,
+			"ringbuffer insert with a RETURNING clause must capture one stored row per inserted row \
+			 so the returned Columns reflect every insert; captured {} rows but inserted {}",
+			returned_rows.len(),
+			inserted_count
+		);
+	}
+
+	if let Some(returning_exprs) = returning {
+		let columns = decode_rows_to_columns(shape, returned_rows);
+		return evaluate_returning(services, symbols, returning_exprs, columns);
+	}
+	Ok(insert_ringbuffer_result(target_data.namespace.name(), &ringbuffer.name, inserted_count))
+}
+
+#[inline]
+fn resolve_insert_ringbuffer_target_and_shape(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	target: &ResolvedRingBuffer,
-) -> Result<(Namespace, RingBuffer)> {
+) -> Result<(Namespace, RingBuffer, RowShape)> {
 	let namespace_name = target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
 		return_error!(namespace_not_found(Fragment::internal(namespace_name), namespace_name));
@@ -156,7 +233,8 @@ fn resolve_insert_ringbuffer_target(
 		let fragment = Fragment::internal(target.name());
 		return_error!(ringbuffer_not_found(fragment.clone(), namespace_name, ringbuffer_name));
 	};
-	Ok((namespace, ringbuffer))
+	let shape = get_or_create_ringbuffer_shape(&services.catalog, &ringbuffer, txn)?;
+	Ok((namespace, ringbuffer, shape))
 }
 
 #[inline]

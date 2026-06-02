@@ -24,6 +24,7 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
+	reifydb_assertions,
 	shutdown::Shutdown,
 	sync::{mutex::Mutex, waiter::WaiterHandle},
 };
@@ -240,8 +241,15 @@ impl SingleVersionContains for StandardSingleStore {
 impl SingleVersionCommit for StandardSingleStore {
 	#[instrument(name = "store::single::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len()))]
 	fn commit(&mut self, deltas: CowVec<Delta>) -> Result<()> {
-		let entries: Vec<(EncodedKey, Option<CowVec<u8>>)> = deltas
-			.iter()
+		let entries = self.entries_from_deltas(&deltas);
+		self.apply_to_tiers(entries)
+	}
+}
+
+impl StandardSingleStore {
+	#[inline]
+	fn entries_from_deltas(&self, deltas: &CowVec<Delta>) -> Vec<(EncodedKey, Option<CowVec<u8>>)> {
+		deltas.iter()
 			.map(|delta| match delta {
 				Delta::Set {
 					key,
@@ -258,8 +266,11 @@ impl SingleVersionCommit for StandardSingleStore {
 					key,
 				} => (key.clone(), None),
 			})
-			.collect();
+			.collect()
+	}
 
+	#[inline]
+	fn apply_to_tiers(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<()> {
 		if let Some(buffer) = &self.buffer {
 			buffer.set(entries.clone())?;
 			if self.persistent.is_some() {
@@ -283,47 +294,65 @@ impl SingleVersionRange for StandardSingleStore {
 	#[instrument(name = "store::single::range_batch", level = "debug", skip(self), fields(batch_size = batch_size))]
 	fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch> {
 		let mut all_entries: BTreeMap<EncodedKey, Option<CowVec<u8>>> = BTreeMap::new();
-
 		let (start, end) = make_range_bounds(&range);
 
 		if let Some(buffer) = &self.buffer {
-			let mut cursor = RangeCursor::new();
-
-			loop {
-				let batch =
-					buffer.range_next(&mut cursor, bound_as_ref(&start), bound_as_ref(&end), 4096)?;
-
-				for entry in batch.entries {
-					all_entries.entry(entry.key).or_insert(entry.value);
-				}
-
-				if cursor.exhausted {
-					break;
-				}
-			}
+			Self::drain_buffer_range(buffer, &start, &end, &mut all_entries)?;
 		}
-
 		if let Some(persistent) = &self.persistent {
-			let mut cursor = RangeCursor::new();
-
-			loop {
-				let batch = persistent.range_next(
-					&mut cursor,
-					bound_as_ref(&start),
-					bound_as_ref(&end),
-					4096,
-				)?;
-
-				for entry in batch.entries {
-					all_entries.entry(entry.key).or_insert(entry.value);
-				}
-
-				if cursor.exhausted {
-					break;
-				}
-			}
+			Self::drain_persistent_range(persistent, &start, &end, &mut all_entries)?;
 		}
 
+		Ok(Self::materialize_batch(all_entries, batch_size))
+	}
+}
+
+impl StandardSingleStore {
+	#[inline]
+	fn drain_buffer_range(
+		buffer: &SingleBufferTier,
+		start: &Bound<Vec<u8>>,
+		end: &Bound<Vec<u8>>,
+		all_entries: &mut BTreeMap<EncodedKey, Option<CowVec<u8>>>,
+	) -> Result<()> {
+		let mut cursor = RangeCursor::new();
+		loop {
+			let batch = buffer.range_next(&mut cursor, bound_as_ref(start), bound_as_ref(end), 4096)?;
+			for entry in batch.entries {
+				all_entries.entry(entry.key).or_insert(entry.value);
+			}
+			if cursor.exhausted {
+				break;
+			}
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn drain_persistent_range(
+		persistent: &SinglePersistentTier,
+		start: &Bound<Vec<u8>>,
+		end: &Bound<Vec<u8>>,
+		all_entries: &mut BTreeMap<EncodedKey, Option<CowVec<u8>>>,
+	) -> Result<()> {
+		let mut cursor = RangeCursor::new();
+		loop {
+			let batch = persistent.range_next(&mut cursor, bound_as_ref(start), bound_as_ref(end), 4096)?;
+			for entry in batch.entries {
+				all_entries.entry(entry.key).or_insert(entry.value);
+			}
+			if cursor.exhausted {
+				break;
+			}
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn materialize_batch(
+		all_entries: BTreeMap<EncodedKey, Option<CowVec<u8>>>,
+		batch_size: u64,
+	) -> SingleVersionBatch {
 		let items: Vec<SingleVersionRow> = all_entries
 			.into_iter()
 			.filter_map(|(key_bytes, value)| {
@@ -335,12 +364,21 @@ impl SingleVersionRange for StandardSingleStore {
 			.take(batch_size as usize)
 			.collect();
 
+		reifydb_assertions! {
+			let count = items.len();
+			let cap = batch_size as usize;
+			assert!(
+				count <= cap,
+				"range materialize yielded more rows than the requested batch_size, so the has_more paging flag (items.len() >= batch_size) loses meaning and a consumer sizing buffers to batch_size overflows (items={count} batch_size={cap})"
+			);
+		}
+
 		let has_more = items.len() >= batch_size as usize;
 
-		Ok(SingleVersionBatch {
+		SingleVersionBatch {
 			items,
 			has_more,
-		})
+		}
 	}
 }
 
@@ -348,51 +386,66 @@ impl SingleVersionRangeRev for StandardSingleStore {
 	#[instrument(name = "store::single::range_rev_batch", level = "debug", skip(self), fields(batch_size = batch_size))]
 	fn range_rev_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch> {
 		let mut all_entries: BTreeMap<EncodedKey, Option<CowVec<u8>>> = BTreeMap::new();
-
 		let (start, end) = make_range_bounds(&range);
 
 		if let Some(buffer) = &self.buffer {
-			let mut cursor = RangeCursor::new();
-
-			loop {
-				let batch = buffer.range_rev_next(
-					&mut cursor,
-					bound_as_ref(&start),
-					bound_as_ref(&end),
-					4096,
-				)?;
-
-				for entry in batch.entries {
-					all_entries.entry(entry.key).or_insert(entry.value);
-				}
-
-				if cursor.exhausted {
-					break;
-				}
-			}
+			Self::drain_buffer_range_rev(buffer, &start, &end, &mut all_entries)?;
 		}
-
 		if let Some(persistent) = &self.persistent {
-			let mut cursor = RangeCursor::new();
-
-			loop {
-				let batch = persistent.range_rev_next(
-					&mut cursor,
-					bound_as_ref(&start),
-					bound_as_ref(&end),
-					4096,
-				)?;
-
-				for entry in batch.entries {
-					all_entries.entry(entry.key).or_insert(entry.value);
-				}
-
-				if cursor.exhausted {
-					break;
-				}
-			}
+			Self::drain_persistent_range_rev(persistent, &start, &end, &mut all_entries)?;
 		}
 
+		Ok(Self::materialize_batch_rev(all_entries, batch_size))
+	}
+}
+
+impl StandardSingleStore {
+	#[inline]
+	fn drain_buffer_range_rev(
+		buffer: &SingleBufferTier,
+		start: &Bound<Vec<u8>>,
+		end: &Bound<Vec<u8>>,
+		all_entries: &mut BTreeMap<EncodedKey, Option<CowVec<u8>>>,
+	) -> Result<()> {
+		let mut cursor = RangeCursor::new();
+		loop {
+			let batch = buffer.range_rev_next(&mut cursor, bound_as_ref(start), bound_as_ref(end), 4096)?;
+			for entry in batch.entries {
+				all_entries.entry(entry.key).or_insert(entry.value);
+			}
+			if cursor.exhausted {
+				break;
+			}
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn drain_persistent_range_rev(
+		persistent: &SinglePersistentTier,
+		start: &Bound<Vec<u8>>,
+		end: &Bound<Vec<u8>>,
+		all_entries: &mut BTreeMap<EncodedKey, Option<CowVec<u8>>>,
+	) -> Result<()> {
+		let mut cursor = RangeCursor::new();
+		loop {
+			let batch =
+				persistent.range_rev_next(&mut cursor, bound_as_ref(start), bound_as_ref(end), 4096)?;
+			for entry in batch.entries {
+				all_entries.entry(entry.key).or_insert(entry.value);
+			}
+			if cursor.exhausted {
+				break;
+			}
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn materialize_batch_rev(
+		all_entries: BTreeMap<EncodedKey, Option<CowVec<u8>>>,
+		batch_size: u64,
+	) -> SingleVersionBatch {
 		let items: Vec<SingleVersionRow> = all_entries
 			.into_iter()
 			.rev()
@@ -405,12 +458,21 @@ impl SingleVersionRangeRev for StandardSingleStore {
 			.take(batch_size as usize)
 			.collect();
 
+		reifydb_assertions! {
+			let count = items.len();
+			let cap = batch_size as usize;
+			assert!(
+				count <= cap,
+				"reverse range materialize yielded more rows than the requested batch_size, so the has_more paging flag (items.len() >= batch_size) loses meaning and a consumer sizing buffers to batch_size overflows (items={count} batch_size={cap})"
+			);
+		}
+
 		let has_more = items.len() >= batch_size as usize;
 
-		Ok(SingleVersionBatch {
+		SingleVersionBatch {
 			items,
 			has_more,
-		})
+		}
 	}
 }
 

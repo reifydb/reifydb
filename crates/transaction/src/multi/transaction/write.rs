@@ -520,33 +520,64 @@ impl MultiWriteTransaction {
 			self.discard();
 			return Ok(CommitVersion(0));
 		}
-		let deltas = self.optimize_for_storage(&entries);
-		#[cfg(not(target_arch = "wasm32"))]
-		{
-			let raft_handle = self.engine.raft.read().clone();
-			if let Some(raft) = raft_handle {
-				let cmd = Command::WriteMulti {
-					deltas: deltas.to_vec(),
-					version: commit_version,
-					changes: flow_changes,
-				};
-				if let Err(e) = raft.propose(cmd) {
-					self.oracle.done_commit(commit_version);
-					self.discard();
-					return Err(TransactionError::RaftProposeFailed {
-						message: e.to_string(),
-					}
-					.into());
-				}
-				self.oracle.done_commit(commit_version);
-				self.discard();
-				return Ok(commit_version);
-			}
+		reifydb_assertions! {
+			assert_ne!(
+				commit_version, 0,
+				"finalize_commit reached with commit_version=0 but {} non-empty entries; \
+				 CommitVersion(0) is the empty/discarded sentinel callers read as 'nothing \
+				 committed', so committing real deltas at it would silently drop them",
+				entries.len()
+			);
 		}
+		let deltas = self.optimize_for_storage(&entries);
+		let flow_changes = match self.propose_to_raft(commit_version, &deltas, flow_changes)? {
+			Ok(version) => return Ok(version),
+			Err(flow_changes) => flow_changes,
+		};
 		MultiVersionCommit::commit(&self.engine.store, deltas.clone(), commit_version)?;
 		self.discard();
 		self.publish(commit_version, deltas, flow_changes);
 		Ok(commit_version)
+	}
+
+	#[cfg(not(target_arch = "wasm32"))]
+	#[inline]
+	fn propose_to_raft(
+		&mut self,
+		commit_version: CommitVersion,
+		deltas: &CowVec<Delta>,
+		flow_changes: Vec<Change>,
+	) -> Result<core::result::Result<CommitVersion, Vec<Change>>> {
+		let raft_handle = self.engine.raft.read().clone();
+		let Some(raft) = raft_handle else {
+			return Ok(Err(flow_changes));
+		};
+		let cmd = Command::WriteMulti {
+			deltas: deltas.to_vec(),
+			version: commit_version,
+			changes: flow_changes,
+		};
+		let propose_result = raft.propose(cmd);
+		self.oracle.done_commit(commit_version);
+		self.discard();
+		match propose_result {
+			Ok(_) => Ok(Ok(commit_version)),
+			Err(e) => Err(TransactionError::RaftProposeFailed {
+				message: e.to_string(),
+			}
+			.into()),
+		}
+	}
+
+	#[cfg(target_arch = "wasm32")]
+	#[inline]
+	fn propose_to_raft(
+		&mut self,
+		_commit_version: CommitVersion,
+		_deltas: &CowVec<Delta>,
+		flow_changes: Vec<Change>,
+	) -> Result<core::result::Result<CommitVersion, Vec<Change>>> {
+		Ok(Err(flow_changes))
 	}
 
 	#[inline]
