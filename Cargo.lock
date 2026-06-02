@@ -2987,15 +2987,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reifydb-sql"
-version = "0.6.0"
-dependencies = [
- "reifydb-build",
- "reifydb-testing",
- "test_each_file",
-]
-
-[[package]]
 name = "reifydb-sqlite"
 version = "0.6.0"
 dependencies = [

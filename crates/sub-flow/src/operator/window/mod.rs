@@ -62,6 +62,8 @@ use reifydb_runtime::{
 	context::RuntimeContext,
 	hash::{Hash128, xxh3_128},
 };
+#[cfg(reifydb_assertions)]
+use reifydb_value::value::assert_equal_with_tolerance;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -69,8 +71,8 @@ use reifydb_value::{
 	params::Params,
 	util::cowvec::CowVec,
 	value::{
-		Value, assert_equal_with_tolerance, blob::Blob, datetime::DateTime, identity::IdentityId,
-		row_number::RowNumber, value_type::ValueType,
+		Value, blob::Blob, datetime::DateTime, identity::IdentityId, row_number::RowNumber,
+		value_type::ValueType,
 	},
 };
 
