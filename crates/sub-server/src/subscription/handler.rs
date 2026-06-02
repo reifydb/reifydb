@@ -143,6 +143,7 @@ pub async fn handle_subscribe<S: WireSink>(
 			id: subscription_id,
 			hydration,
 			throttle,
+			linger: _,
 		}) => {
 			let server_cap = state.subscribe_max_hydration_rows();
 			let throttle = state.clamp_throttle(throttle);
@@ -231,6 +232,7 @@ pub async fn handle_subscribe<S: WireSink>(
 			token: ns_token,
 			hydration,
 			throttle,
+			linger,
 		}) => {
 			let client_format = S::client_wire_format(format);
 			let config = ClientSubscriptionConfig {
@@ -239,6 +241,7 @@ pub async fn handle_subscribe<S: WireSink>(
 					max_rows: hydration.max_rows,
 				},
 				throttle,
+				linger,
 			};
 			let remote_sub = connect_remote(&address, &body, config, ns_token.as_deref(), client_format)
 				.await
@@ -297,6 +300,7 @@ pub async fn handle_batch_subscribe<S: WireSink>(
 
 	let mut resolved: Vec<ResolvedBatchMember> = Vec::with_capacity(queries.len());
 	let mut local_hydrations: Vec<(SubscriptionId, String, HydrationConfig, Option<Duration>)> = Vec::new();
+	let mut member_lingers: HashMap<SubscriptionId, Duration> = HashMap::new();
 
 	for (index, user_rql) in queries.iter().enumerate() {
 		match create_subscription(state, identity, user_rql, metadata.clone()).await {
@@ -304,7 +308,9 @@ pub async fn handle_batch_subscribe<S: WireSink>(
 				id: subscription_id,
 				hydration,
 				throttle,
+				linger,
 			}) => {
+				member_lingers.insert(subscription_id, state.clamp_linger(linger));
 				local_hydrations.push((subscription_id, user_rql.clone(), hydration, throttle));
 				resolved.push(ResolvedBatchMember::Local {
 					index,
@@ -318,6 +324,7 @@ pub async fn handle_batch_subscribe<S: WireSink>(
 				token: ns_token,
 				hydration,
 				throttle,
+				linger,
 			}) => {
 				let client_format = S::client_wire_format(format);
 				let config = ClientSubscriptionConfig {
@@ -326,6 +333,7 @@ pub async fn handle_batch_subscribe<S: WireSink>(
 						max_rows: hydration.max_rows,
 					},
 					throttle,
+					linger,
 				};
 				let remote_sub = match connect_remote(
 					&address,
@@ -350,6 +358,7 @@ pub async fn handle_batch_subscribe<S: WireSink>(
 						return Err(BatchSubscribeError::InvalidRemoteId);
 					}
 				};
+				member_lingers.insert(subscription_id, state.clamp_linger(linger));
 				resolved.push(ResolvedBatchMember::Remote {
 					index,
 					subscription_id,
@@ -413,9 +422,15 @@ pub async fn handle_batch_subscribe<S: WireSink>(
 		}
 	}
 
-	let member_ids: Vec<SubscriptionId> = resolved.iter().map(|m| m.subscription_id()).collect();
+	let members: Vec<(SubscriptionId, Duration)> = resolved
+		.iter()
+		.map(|m| {
+			let id = m.subscription_id();
+			(id, member_lingers.get(&id).copied().unwrap_or(Duration::ZERO))
+		})
+		.collect();
 	let batch_id =
-		registry.register_batch(connection_id, member_ids, sink.clone(), format, state.clock(), state.rng());
+		registry.register_batch(connection_id, members, sink.clone(), format, state.clock(), state.rng());
 
 	let mut remote_members_taken: Vec<(SubscriptionId, RemoteSubscription)> = Vec::new();
 	let mut members_for_ack: Vec<BatchMemberInfo> = Vec::with_capacity(resolved.len());

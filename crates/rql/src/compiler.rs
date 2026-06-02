@@ -1127,6 +1127,7 @@ impl InstructionCompiler {
 						.transpose()?,
 					hydration: node.hydration,
 					throttle: node.throttle.map(compile_throttle_duration),
+					linger: node.linger.map(compile_throttle_duration),
 				}));
 				self.emit(Instruction::Emit);
 			}

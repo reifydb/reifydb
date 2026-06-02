@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod cleanup;
+pub mod connection_batcher;
 pub mod create;
 pub mod errors;
 pub mod extract;

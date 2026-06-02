@@ -30,6 +30,8 @@ pub struct StateConfig {
 	pub subscribe_max_hydration_rows: u64,
 
 	pub subscribe_min_throttle: Duration,
+
+	pub subscribe_min_linger: Duration,
 }
 
 impl Default for StateConfig {
@@ -41,6 +43,7 @@ impl Default for StateConfig {
 			admin_enabled: false,
 			subscribe_max_hydration_rows: 10_000,
 			subscribe_min_throttle: Duration::from_millis(50),
+			subscribe_min_linger: Duration::ZERO,
 		}
 	}
 }
@@ -77,6 +80,11 @@ impl StateConfig {
 
 	pub fn subscribe_min_throttle(mut self, interval: Duration) -> Self {
 		self.subscribe_min_throttle = interval;
+		self
+	}
+
+	pub fn subscribe_min_linger(mut self, interval: Duration) -> Self {
+		self.subscribe_min_linger = interval;
 		self
 	}
 }
@@ -183,6 +191,18 @@ impl AppState {
 	}
 
 	#[inline]
+	pub fn subscribe_min_linger(&self) -> Duration {
+		self.config.subscribe_min_linger
+	}
+
+	pub fn clamp_linger(&self, requested: Option<Duration>) -> Duration {
+		match requested {
+			Some(d) if !d.is_zero() => d.max(self.config.subscribe_min_linger),
+			_ => Duration::ZERO,
+		}
+	}
+
+	#[inline]
 	pub fn request_interceptors(&self) -> &RequestInterceptorChain {
 		&self.request_interceptors
 	}
@@ -223,6 +243,7 @@ pub mod tests {
 		assert_eq!(config.max_connections, 10_000);
 		assert_eq!(config.subscribe_max_hydration_rows, 10_000);
 		assert_eq!(config.subscribe_min_throttle, Duration::from_millis(50));
+		assert_eq!(config.subscribe_min_linger, Duration::ZERO);
 	}
 
 	#[test]
@@ -232,12 +253,14 @@ pub mod tests {
 			.request_timeout(Duration::from_secs(120))
 			.max_connections(5_000)
 			.subscribe_max_hydration_rows(50_000)
-			.subscribe_min_throttle(Duration::from_millis(200));
+			.subscribe_min_throttle(Duration::from_millis(200))
+			.subscribe_min_linger(Duration::from_millis(20));
 
 		assert_eq!(config.query_timeout, Duration::from_secs(60));
 		assert_eq!(config.request_timeout, Duration::from_secs(120));
 		assert_eq!(config.max_connections, 5_000);
 		assert_eq!(config.subscribe_max_hydration_rows, 50_000);
 		assert_eq!(config.subscribe_min_throttle, Duration::from_millis(200));
+		assert_eq!(config.subscribe_min_linger, Duration::from_millis(20));
 	}
 }

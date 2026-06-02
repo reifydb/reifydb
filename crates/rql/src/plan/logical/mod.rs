@@ -661,6 +661,7 @@ pub struct CreateSubscriptionNode<'bump> {
 	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub hydration: HydrationConfig,
 	pub throttle: Option<Duration>,
+	pub linger: Option<Duration>,
 }
 
 #[derive(Debug)]

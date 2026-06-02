@@ -487,7 +487,7 @@ pub mod tests {
 
 		let batch_id = registry.register_batch(
 			connection_id,
-			vec![sub_a, sub_b],
+			vec![(sub_a, Duration::ZERO), (sub_b, Duration::ZERO)],
 			sink.clone(),
 			WireFormat::Frames,
 			&clock,
@@ -545,8 +545,14 @@ pub mod tests {
 			None,
 			Duration::ZERO,
 		);
-		let batch_id =
-			registry.register_batch(connection_id, vec![sub_a], sink, WireFormat::Frames, &clock, &rng);
+		let batch_id = registry.register_batch(
+			connection_id,
+			vec![(sub_a, Duration::ZERO)],
+			sink,
+			WireFormat::Frames,
+			&clock,
+			&rng,
+		);
 
 		registry.try_deliver(&sub_a, single_int_columns("value", 1));
 		registry.try_deliver(&sub_a, single_int_columns("value", 2));
@@ -652,5 +658,231 @@ pub mod tests {
 		let rendered = id.to_string();
 		let parsed: BatchId = rendered.parse().expect("parse roundtrip");
 		assert_eq!(id, parsed);
+	}
+
+	#[tokio::test]
+	async fn test_linger_respects_each_member_independently_not_max() {
+		let (mock, clock, rng) = test_clock_and_rng();
+		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
+		let connection_id = Uuid7::generate(&clock, &rng);
+		let (push_tx, mut push_rx) = mpsc::unbounded_channel();
+		let sink = WsWireSink::new(push_tx);
+
+		let sub_short = SubscriptionId(1);
+		let sub_long = SubscriptionId(2);
+		registry.subscribe(
+			sub_short,
+			connection_id,
+			"FROM a".to_string(),
+			sink.clone(),
+			WireFormat::Frames,
+			None,
+			Duration::ZERO,
+		);
+		registry.subscribe(
+			sub_long,
+			connection_id,
+			"FROM b".to_string(),
+			sink.clone(),
+			WireFormat::Frames,
+			None,
+			Duration::ZERO,
+		);
+		registry.register_batch(
+			connection_id,
+			vec![(sub_short, Duration::from_millis(5)), (sub_long, Duration::from_millis(50))],
+			sink,
+			WireFormat::Frames,
+			&clock,
+			&rng,
+		);
+
+		registry.try_deliver(&sub_short, single_int_columns("v", 1));
+		registry.try_deliver(&sub_long, single_int_columns("v", 2));
+
+		registry.flush();
+		assert!(push_rx.try_recv().is_err(), "no member is due before its own linger elapses");
+
+		mock.advance_millis(5);
+		registry.flush();
+		match push_rx.try_recv().expect("the short-linger member is due") {
+			PushMessage::BatchChangeJson {
+				entries,
+				..
+			} => {
+				assert_eq!(
+					entries.len(),
+					1,
+					"only the short-linger member flushes - lingers are respected individually, never max-ed across the batch"
+				);
+				assert_eq!(entries[0].subscription_id, sub_short);
+			}
+			other => panic!("expected BatchChangeJson, got {:?}", other),
+		}
+		assert!(
+			push_rx.try_recv().is_err(),
+			"the long-linger member is held back, not dragged out early by the short one"
+		);
+
+		mock.advance_millis(50);
+		registry.flush();
+		match push_rx.try_recv().expect("the long-linger member is now due") {
+			PushMessage::BatchChangeJson {
+				entries,
+				..
+			} => {
+				assert_eq!(entries.len(), 1);
+				assert_eq!(entries[0].subscription_id, sub_long);
+			}
+			other => panic!("expected BatchChangeJson, got {:?}", other),
+		}
+	}
+
+	#[tokio::test]
+	async fn test_linger_concatenates_changes_within_its_window() {
+		let (mock, clock, rng) = test_clock_and_rng();
+		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
+		let connection_id = Uuid7::generate(&clock, &rng);
+		let (push_tx, mut push_rx) = mpsc::unbounded_channel();
+		let sink = WsWireSink::new(push_tx);
+
+		let sub_a = SubscriptionId(7);
+		registry.subscribe(
+			sub_a,
+			connection_id,
+			"FROM a".to_string(),
+			sink.clone(),
+			WireFormat::Frames,
+			None,
+			Duration::ZERO,
+		);
+		registry.register_batch(
+			connection_id,
+			vec![(sub_a, Duration::from_millis(10))],
+			sink,
+			WireFormat::Frames,
+			&clock,
+			&rng,
+		);
+
+		registry.try_deliver(&sub_a, single_int_columns("v", 1));
+		mock.advance_millis(5);
+		registry.try_deliver(&sub_a, single_int_columns("v", 2));
+
+		registry.flush();
+		assert!(
+			push_rx.try_recv().is_err(),
+			"the window anchors at the first pending change and is not reset by a later one"
+		);
+
+		mock.advance_millis(5);
+		registry.flush();
+		match push_rx.try_recv().expect("envelope after the window elapses") {
+			PushMessage::BatchChangeJson {
+				entries,
+				..
+			} => {
+				assert_eq!(entries.len(), 1);
+				let frames = entries[0].body.get("frames").expect("frames key").as_array().unwrap();
+				assert_eq!(
+					frames.len(),
+					2,
+					"both changes inside the linger window are concatenated into one frame-list"
+				);
+			}
+			other => panic!("expected BatchChangeJson, got {:?}", other),
+		}
+	}
+
+	#[tokio::test]
+	async fn test_linger_zero_flushes_on_the_next_flush() {
+		let (_, clock, rng) = test_clock_and_rng();
+		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
+		let connection_id = Uuid7::generate(&clock, &rng);
+		let (push_tx, mut push_rx) = mpsc::unbounded_channel();
+		let sink = WsWireSink::new(push_tx);
+
+		let sub_z = SubscriptionId(9);
+		registry.subscribe(
+			sub_z,
+			connection_id,
+			"FROM z".to_string(),
+			sink.clone(),
+			WireFormat::Frames,
+			None,
+			Duration::ZERO,
+		);
+		registry.register_batch(
+			connection_id,
+			vec![(sub_z, Duration::ZERO)],
+			sink,
+			WireFormat::Frames,
+			&clock,
+			&rng,
+		);
+
+		registry.try_deliver(&sub_z, single_int_columns("v", 1));
+		registry.flush();
+		match push_rx.try_recv().expect("a zero-linger member is due immediately, with no added latency") {
+			PushMessage::BatchChangeJson {
+				entries,
+				..
+			} => assert_eq!(entries.len(), 1),
+			other => panic!("expected BatchChangeJson, got {:?}", other),
+		}
+	}
+
+	#[tokio::test]
+	async fn test_linger_next_deadline_tracks_the_nearest_member() {
+		let (mock, clock, rng) = test_clock_and_rng();
+		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
+		let connection_id = Uuid7::generate(&clock, &rng);
+		let (push_tx, _push_rx) = mpsc::unbounded_channel();
+		let sink = WsWireSink::new(push_tx);
+
+		let sub_a = SubscriptionId(1);
+		let sub_b = SubscriptionId(2);
+		registry.subscribe(
+			sub_a,
+			connection_id,
+			"FROM a".to_string(),
+			sink.clone(),
+			WireFormat::Frames,
+			None,
+			Duration::ZERO,
+		);
+		registry.subscribe(
+			sub_b,
+			connection_id,
+			"FROM b".to_string(),
+			sink.clone(),
+			WireFormat::Frames,
+			None,
+			Duration::ZERO,
+		);
+		registry.register_batch(
+			connection_id,
+			vec![(sub_a, Duration::from_millis(5)), (sub_b, Duration::from_millis(50))],
+			sink,
+			WireFormat::Frames,
+			&clock,
+			&rng,
+		);
+
+		registry.try_deliver(&sub_a, single_int_columns("v", 1));
+		registry.try_deliver(&sub_b, single_int_columns("v", 2));
+
+		assert_eq!(
+			registry.flush(),
+			Some(Duration::from_millis(5)),
+			"the poller is told to wake at the soonest member deadline, so a low-linger member never starves"
+		);
+
+		mock.advance_millis(5);
+		assert_eq!(
+			registry.flush(),
+			Some(Duration::from_millis(45)),
+			"after the near member drains, the deadline tracks the remaining member"
+		);
 	}
 }

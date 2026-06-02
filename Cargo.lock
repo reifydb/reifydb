@@ -3194,6 +3194,7 @@ version = "0.6.0"
 dependencies = [
  "dashmap",
  "futures-util",
+ "indexmap",
  "reifydb-auth",
  "reifydb-build",
  "reifydb-client",

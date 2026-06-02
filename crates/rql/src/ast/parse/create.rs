@@ -783,6 +783,7 @@ impl<'bump> Parser<'bump> {
 
 		let mut hydration = AstHydrationConfig::default();
 		let mut throttle: Option<Duration> = None;
+		let mut linger: Option<Duration> = None;
 
 		if self.consume_if(TokenKind::Keyword(Keyword::With))?.is_some() {
 			self.consume_operator(Operator::OpenCurly)?;
@@ -804,14 +805,18 @@ impl<'bump> Parser<'bump> {
 					"throttle" => {
 						throttle = Some(self.parse_throttle_duration()?);
 					}
+					"linger" => {
+						linger = Some(self.parse_linger_duration()?);
+					}
 					_ => {
 						let fragment = key.fragment.to_owned();
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'hydration' or 'throttle'".to_string(),
+								expected: "'hydration', 'throttle', or 'linger'"
+									.to_string(),
 							},
 							message: format!(
-								"expected 'hydration' or 'throttle', found `{}`",
+								"expected 'hydration', 'throttle', or 'linger', found `{}`",
 								fragment.text()
 							),
 							fragment,
@@ -893,6 +898,7 @@ impl<'bump> Parser<'bump> {
 			as_clause,
 			hydration,
 			throttle,
+			linger,
 		}))
 	}
 
@@ -2283,6 +2289,12 @@ impl<'bump> Parser<'bump> {
 		Compiler::parse_duration(duration_str)
 	}
 
+	fn parse_linger_duration(&mut self) -> Result<Duration> {
+		let token = self.consume(TokenKind::Literal(Literal::Text))?;
+		let duration_str = token.fragment.text();
+		Compiler::parse_duration(duration_str)
+	}
+
 	fn parse_hydration_with_value(&mut self) -> Result<AstHydrationConfig> {
 		self.consume_operator(Operator::OpenCurly)?;
 
@@ -2841,6 +2853,8 @@ enum ViewStorageKindHint {
 
 #[cfg(test)]
 pub mod tests {
+	use std::time::Duration;
+
 	use crate::{
 		ast::{
 			ast::{
@@ -4099,6 +4113,60 @@ pub mod tests {
 		let cfg = parse_subscription_hydration("CREATE SUBSCRIPTION AS { FROM demo::events }");
 		assert!(cfg.enabled);
 		assert_eq!(cfg.max_rows, None);
+	}
+
+	fn parse_subscription_linger(source: &str) -> Option<Duration> {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		let r = result.pop().unwrap();
+		match r.first_unchecked().as_create() {
+			AstCreate::Subscription(s) => s.linger,
+			_ => unreachable!("expected subscription"),
+		}
+	}
+
+	#[test]
+	fn test_subscription_linger_parsed() {
+		let linger = parse_subscription_linger(
+			"CREATE SUBSCRIPTION WITH { linger: \"250ms\" } AS { FROM demo::events }",
+		);
+		assert_eq!(
+			linger,
+			Some(Duration::from_millis(250)),
+			"linger is a sibling WITH key parsed as a duration"
+		);
+	}
+
+	#[test]
+	fn test_subscription_linger_absent_is_none() {
+		let linger = parse_subscription_linger("CREATE SUBSCRIPTION AS { FROM demo::events }");
+		assert_eq!(
+			linger, None,
+			"an omitted linger is None, not a default - the default is applied downstream at clamp time"
+		);
+	}
+
+	#[test]
+	fn test_subscription_throttle_and_linger_coexist() {
+		let bump = Bump::new();
+		let source = "CREATE SUBSCRIPTION WITH { throttle: \"1s\", linger: \"5ms\" } AS { FROM demo::events }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		let r = result.pop().unwrap();
+		match r.first_unchecked().as_create() {
+			AstCreate::Subscription(s) => {
+				assert_eq!(
+					s.throttle,
+					Some(Duration::from_secs(1)),
+					"throttle and linger are orthogonal WITH keys"
+				);
+				assert_eq!(s.linger, Some(Duration::from_millis(5)));
+			}
+			_ => unreachable!("expected subscription"),
+		}
 	}
 
 	fn parse_subscription_must_fail(source: &str) -> String {

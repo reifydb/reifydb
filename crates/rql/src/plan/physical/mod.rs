@@ -215,6 +215,7 @@ pub struct CreateSubscriptionNode<'bump> {
 	pub as_clause: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
 	pub hydration: HydrationConfig,
 	pub throttle: Option<Duration>,
+	pub linger: Option<Duration>,
 }
 
 #[derive(Debug)]

@@ -292,7 +292,7 @@ mod tests {
 
 		let batch_id = registry.register_batch(
 			connection_id,
-			vec![sub_a, sub_b],
+			vec![(sub_a, Duration::ZERO), (sub_b, Duration::ZERO)],
 			batch_sink,
 			WireFormat::Proto,
 			&clock,
@@ -329,7 +329,7 @@ mod tests {
 
 		let batch_id = registry.register_batch(
 			connection_id,
-			vec![sub_remote],
+			vec![(sub_remote, Duration::ZERO)],
 			batch_sink,
 			WireFormat::Proto,
 			&clock,
@@ -359,8 +359,14 @@ mod tests {
 		let batch_sink = GrpcWireSink::Batch(batch_tx);
 		let sub = SubscriptionId(123);
 
-		let batch_id =
-			registry.register_batch(connection_id, vec![sub], batch_sink, WireFormat::Proto, &clock, &rng);
+		let batch_id = registry.register_batch(
+			connection_id,
+			vec![(sub, Duration::ZERO)],
+			batch_sink,
+			WireFormat::Proto,
+			&clock,
+			&rng,
+		);
 
 		assert!(registry.emit_batch_member_closed(batch_id, sub));
 

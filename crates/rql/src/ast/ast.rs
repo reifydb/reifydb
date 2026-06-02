@@ -815,6 +815,7 @@ pub struct AstCreateSubscription<'bump> {
 	pub as_clause: Option<AstStatement<'bump>>,
 	pub hydration: AstHydrationConfig,
 	pub throttle: Option<Duration>,
+	pub linger: Option<Duration>,
 }
 
 #[derive(Debug)]

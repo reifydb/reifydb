@@ -34,6 +34,10 @@ pub(crate) fn create_subscription(
 			Some(d) => Value::Uint8(u64::try_from(d.milliseconds()?).unwrap_or(u64::MAX)),
 			None => Value::none(),
 		};
+		let linger_value = match plan.linger {
+			Some(d) => Value::Uint8(u64::try_from(d.milliseconds()?).unwrap_or(u64::MAX)),
+			None => Value::none(),
+		};
 		return Ok(Columns::single_row([
 			("remote_address", Value::Utf8(remote.address.clone())),
 			("remote_body", Value::Utf8(remote.remote_rql.clone())),
@@ -41,6 +45,7 @@ pub(crate) fn create_subscription(
 			("remote_hydration_enabled", Value::Boolean(plan.hydration.enabled)),
 			("remote_hydration_max_rows", max_rows_value),
 			("remote_throttle_ms", throttle_value),
+			("remote_linger_ms", linger_value),
 		]));
 	}
 
@@ -68,6 +73,10 @@ pub(crate) fn create_subscription(
 		Some(d) => Value::Uint8(u64::try_from(d.milliseconds()?).unwrap_or(u64::MAX)),
 		None => Value::none(),
 	};
+	let linger_value = match plan.linger {
+		Some(d) => Value::Uint8(u64::try_from(d.milliseconds()?).unwrap_or(u64::MAX)),
+		None => Value::none(),
+	};
 
 	Ok(Columns::single_row([
 		("subscription_id", Value::Uint8(subscription_id.0)),
@@ -75,5 +84,6 @@ pub(crate) fn create_subscription(
 		("hydration_enabled", Value::Boolean(plan.hydration.enabled)),
 		("hydration_max_rows", hydration_max_rows),
 		("throttle_ms", throttle_value),
+		("linger_ms", linger_value),
 	]))
 }

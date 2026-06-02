@@ -19,6 +19,7 @@ pub enum CreateSubscriptionResult {
 		id: SubscriptionId,
 		hydration: HydrationConfig,
 		throttle: Option<Duration>,
+		linger: Option<Duration>,
 	},
 	Remote {
 		address: String,
@@ -26,6 +27,7 @@ pub enum CreateSubscriptionResult {
 		token: Option<String>,
 		hydration: HydrationConfig,
 		throttle: Option<Duration>,
+		linger: Option<Duration>,
 	},
 }
 
@@ -84,6 +86,7 @@ fn extract_remote_result(frame: &Frame) -> Result<Option<CreateSubscriptionResul
 	let enabled = first_bool_value(frame, "remote_hydration_enabled").unwrap_or(true);
 	let max_rows = first_uint8_value(frame, "remote_hydration_max_rows");
 	let throttle = first_uint8_value(frame, "remote_throttle_ms").map(Duration::from_millis);
+	let linger = first_uint8_value(frame, "remote_linger_ms").map(Duration::from_millis);
 	Ok(Some(CreateSubscriptionResult::Remote {
 		address,
 		body,
@@ -93,6 +96,7 @@ fn extract_remote_result(frame: &Frame) -> Result<Option<CreateSubscriptionResul
 			max_rows,
 		},
 		throttle,
+		linger,
 	}))
 }
 
@@ -121,6 +125,7 @@ fn extract_local_result(frame: &Frame) -> Result<CreateSubscriptionResult, Creat
 	let enabled = first_bool_value(frame, "hydration_enabled").unwrap_or(true);
 	let max_rows = first_uint8_value(frame, "hydration_max_rows");
 	let throttle = first_uint8_value(frame, "throttle_ms").map(Duration::from_millis);
+	let linger = first_uint8_value(frame, "linger_ms").map(Duration::from_millis);
 
 	Ok(CreateSubscriptionResult::Local {
 		id,
@@ -129,6 +134,7 @@ fn extract_local_result(frame: &Frame) -> Result<CreateSubscriptionResult, Creat
 			max_rows,
 		},
 		throttle,
+		linger,
 	})
 }
 

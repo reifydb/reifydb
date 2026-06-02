@@ -273,6 +273,7 @@ pub struct CreateSubscriptionNode {
 	pub as_clause: Option<Box<QueryPlan>>,
 	pub hydration: HydrationConfig,
 	pub throttle: Option<Duration>,
+	pub linger: Option<Duration>,
 }
 
 #[derive(Debug, Clone)]

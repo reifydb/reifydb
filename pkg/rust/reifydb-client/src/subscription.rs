@@ -22,6 +22,7 @@ impl Default for HydrationConfig {
 pub struct SubscriptionConfig {
 	pub hydration: HydrationConfig,
 	pub throttle: Option<Duration>,
+	pub linger: Option<Duration>,
 }
 
 #[derive(Debug, Clone)]
@@ -47,6 +48,9 @@ pub fn build_subscription_rql(body: &str, config: &SubscriptionConfig) -> String
 	};
 	if let Some(throttle) = config.throttle {
 		opts.push_str(&format!(", throttle: \"{}ms\"", throttle.as_millis()));
+	}
+	if let Some(linger) = config.linger {
+		opts.push_str(&format!(", linger: \"{}ms\"", linger.as_millis()));
 	}
 	let with_clause = format!(" WITH {{ {} }}", opts);
 	let mut out = String::with_capacity(body.len() + with_clause.len() + 32);
@@ -76,6 +80,7 @@ mod tests {
 				max_rows: Some(500),
 			},
 			throttle: None,
+			linger: None,
 		};
 		let s = build_subscription_rql("from a::b", &cfg);
 		assert_eq!(
@@ -92,8 +97,26 @@ mod tests {
 				max_rows: None,
 			},
 			throttle: None,
+			linger: None,
 		};
 		let s = build_subscription_rql("from a::b | take 10", &cfg);
 		assert_eq!(s, "CREATE SUBSCRIPTION WITH { hydration: { enabled: false } } AS { from a::b | take 10 }");
+	}
+
+	#[test]
+	fn linger_is_woven_into_the_with_clause() {
+		let cfg = SubscriptionConfig {
+			hydration: HydrationConfig {
+				enabled: true,
+				max_rows: None,
+			},
+			throttle: None,
+			linger: Some(Duration::from_millis(250)),
+		};
+		let s = build_subscription_rql("from a::b", &cfg);
+		assert_eq!(
+			s,
+			"CREATE SUBSCRIPTION WITH { hydration: { enabled: true }, linger: \"250ms\" } AS { from a::b }"
+		);
 	}
 }

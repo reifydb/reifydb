@@ -111,12 +111,50 @@ impl WarmingBuffer {
 	}
 }
 
+struct MemberPending {
+	frames: Vec<Frame>,
+	linger_millis: u64,
+	first_pending_at: Option<u64>,
+}
+
+impl MemberPending {
+	fn new(linger: Duration) -> Self {
+		Self {
+			frames: Vec::new(),
+			linger_millis: linger.as_millis() as u64,
+			first_pending_at: None,
+		}
+	}
+
+	fn push(&mut self, frame: Frame, now: u64) {
+		if self.frames.is_empty() {
+			self.first_pending_at = Some(now);
+		}
+		self.frames.push(frame);
+	}
+
+	fn ready(&self, now: u64) -> bool {
+		match self.first_pending_at {
+			None => false,
+			Some(first) => now.saturating_sub(first) >= self.linger_millis,
+		}
+	}
+
+	fn remaining_millis(&self, now: u64) -> u64 {
+		match self.first_pending_at {
+			None => u64::MAX,
+			Some(first) => self.linger_millis.saturating_sub(now.saturating_sub(first)),
+		}
+	}
+}
+
 struct BatchState<S: WireSink> {
 	connection_id: ConnectionId,
 	sink: S,
 	format: S::Format,
 	member_ids: Vec<SubscriptionId>,
-	pending: DashMap<SubscriptionId, Vec<Frame>>,
+	pending: DashMap<SubscriptionId, MemberPending>,
+	lingers: HashMap<SubscriptionId, Duration>,
 }
 
 pub struct SubscriptionRegistry<S: WireSink> {
@@ -198,9 +236,14 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 				return PromoteResult::Disconnected;
 			};
 			{
-				let mut entry = batch.pending.entry(subscription_id).or_default();
+				let now = self.clock.now_millis();
+				let linger = batch.lingers.get(&subscription_id).copied().unwrap_or(Duration::ZERO);
+				let mut entry = batch
+					.pending
+					.entry(subscription_id)
+					.or_insert_with(|| MemberPending::new(linger));
 				for columns in buffered {
-					entry.push(Frame::from(columns));
+					entry.push(Frame::from(columns), now);
 				}
 			}
 			for waker in self.wakers.lock().iter() {
@@ -221,13 +264,16 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 	pub fn register_batch(
 		&self,
 		connection_id: ConnectionId,
-		member_ids: Vec<SubscriptionId>,
+		members: Vec<(SubscriptionId, Duration)>,
 		sink: S,
 		format: S::Format,
 		clock: &Clock,
 		rng: &Rng,
 	) -> BatchId {
 		let batch_id = BatchId(Uuid7::generate(clock, rng));
+
+		let member_ids: Vec<SubscriptionId> = members.iter().map(|(id, _)| *id).collect();
+		let lingers: HashMap<SubscriptionId, Duration> = members.into_iter().collect();
 
 		for member_id in &member_ids {
 			if let Some(mut state) = self.subscriptions.get_mut(member_id) {
@@ -243,6 +289,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 				format,
 				member_ids: member_ids.clone(),
 				pending: DashMap::new(),
+				lingers,
 			},
 		);
 
@@ -315,9 +362,12 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 			return false;
 		};
 		{
-			let mut entry = batch.pending.entry(subscription_id).or_default();
+			let now = self.clock.now_millis();
+			let linger = batch.lingers.get(&subscription_id).copied().unwrap_or(Duration::ZERO);
+			let mut entry =
+				batch.pending.entry(subscription_id).or_insert_with(|| MemberPending::new(linger));
 			for frame in frames {
-				entry.push(frame);
+				entry.push(frame, now);
 			}
 		}
 		for waker in self.wakers.lock().iter() {
@@ -410,7 +460,12 @@ impl<S: WireSink> SubscriptionDelivery for SubscriptionRegistry<S> {
 	fn try_deliver(&self, subscription_id: &SubscriptionId, columns: Columns) -> DeliveryResult {
 		if let Some(batch_id) = self.batch_for(subscription_id) {
 			if let Some(batch) = self.batches.get(&batch_id) {
-				batch.pending.entry(*subscription_id).or_default().push(Frame::from(columns));
+				let now = self.clock.now_millis();
+				let linger = batch.lingers.get(subscription_id).copied().unwrap_or(Duration::ZERO);
+				batch.pending
+					.entry(*subscription_id)
+					.or_insert_with(|| MemberPending::new(linger))
+					.push(Frame::from(columns), now);
 				return DeliveryResult::Delivered;
 			}
 
@@ -524,23 +579,27 @@ impl<S: WireSink> SubscriptionDelivery for SubscriptionRegistry<S> {
 			let batch_id = *entry.key();
 			let batch = entry.value();
 
-			let taken: Vec<(SubscriptionId, Vec<Frame>)> = batch
-				.pending
-				.iter_mut()
-				.filter_map(|mut e| {
-					let v = mem::take(e.value_mut());
-					if v.is_empty() {
-						None
-					} else {
-						Some((*e.key(), v))
-					}
-				})
-				.collect();
-			if taken.is_empty() {
+			let mut due: Vec<(SubscriptionId, Vec<Frame>)> = Vec::new();
+			for mut e in batch.pending.iter_mut() {
+				let key = *e.key();
+				let member = e.value_mut();
+				if member.frames.is_empty() {
+					continue;
+				}
+				if member.ready(now) {
+					let frames = mem::take(&mut member.frames);
+					member.first_pending_at = None;
+					due.push((key, frames));
+				} else {
+					let rem = member.remaining_millis(now);
+					next_deadline = Some(next_deadline.map_or(rem, |d| d.min(rem)));
+				}
+			}
+			if due.is_empty() {
 				continue;
 			}
 
-			match batch.sink.send_batch_envelope(batch_id, batch.format, taken) {
+			match batch.sink.send_batch_envelope(batch_id, batch.format, due) {
 				DeliveryResult::Delivered => {}
 				DeliveryResult::Disconnected => dead_batches.push(batch_id),
 			}

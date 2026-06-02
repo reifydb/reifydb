@@ -45,6 +45,7 @@ impl<'bump> Compiler<'bump> {
 			as_clause,
 			hydration,
 			throttle: ast.throttle,
+			linger: ast.linger,
 		}))
 	}
 }
