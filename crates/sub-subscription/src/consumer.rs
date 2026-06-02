@@ -63,7 +63,7 @@ impl CdcConsume for SubscriptionCdcConsumer {
 			reply(Ok(()));
 			return;
 		};
-		if flow_engine.sources.is_empty() {
+		if !flow_engine.has_sources() {
 			reply(Ok(()));
 			return;
 		}
@@ -91,7 +91,7 @@ impl SubscriptionCdcConsumer {
 					ChangeOrigin::Shape(s) => *s,
 					ChangeOrigin::Flow(_) => continue,
 				};
-				let Some(flow_entries) = flow_engine.sources.get(&source_shape).cloned() else {
+				let Some(flow_entries) = flow_engine.flows_for_source_shape(source_shape) else {
 					continue;
 				};
 				self.process_change_for_flows(flow_engine, version, change, &flow_entries);

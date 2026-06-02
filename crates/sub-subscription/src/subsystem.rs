@@ -261,7 +261,7 @@ fn collect_source_descriptors(
 	outer: &mut QueryTransaction,
 ) -> StdResult<Vec<(ShapeId, String)>, HydrateError> {
 	let fe = flow_engine.read();
-	let flow = fe.flows.get(&flow_id).cloned().ok_or(HydrateError::SubscriptionNotFound)?;
+	let flow = fe.flow_by_id(flow_id).ok_or(HydrateError::SubscriptionNotFound)?;
 	drop(fe);
 
 	let mut txn = Transaction::Query(outer);
@@ -436,26 +436,21 @@ fn register_ephemeral_flow(
 			FlowNodeType::SinkSubscription {
 				..
 			} => {
-				let parent = engine
-					.operators
-					.get(&node.inputs[0])
-					.expect("Parent operator not found")
-					.clone();
+				let parent = engine.operator(node.inputs[0]).expect("Parent operator not found");
 				let op = EphemeralSinkSubscriptionOperator::new(
 					parent,
 					node_id,
 					subscription_id,
 					delivery.clone(),
 				);
-				engine.operators.insert(node_id, OperatorCell::new(Operators::Custom(Box::new(op))));
+				engine.insert_operator(node_id, OperatorCell::new(Operators::Custom(Box::new(op))));
 			}
 			_ => {
 				engine.add(txn, &flow, node)?;
 			}
 		}
 	}
-	engine.analyzer.add(flow.clone());
-	engine.flows.insert(flow.id, Arc::new(flow));
+	engine.register_flow_dag(Arc::new(flow));
 	Ok(())
 }
 

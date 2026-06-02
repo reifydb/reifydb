@@ -62,11 +62,11 @@ use crate::{
 pub struct FlowEngine {
 	pub(crate) catalog: Catalog,
 	pub(crate) executor: Executor,
-	pub operators: BTreeMap<FlowNodeId, OperatorCell>,
-	pub flows: BTreeMap<FlowId, Arc<FlowDag>>,
-	pub sources: BTreeMap<ShapeId, Vec<(FlowId, FlowNodeId)>>,
-	pub sinks: BTreeMap<ShapeId, Vec<(FlowId, FlowNodeId)>>,
-	pub analyzer: FlowGraphAnalyzer,
+	pub(crate) operators: BTreeMap<FlowNodeId, OperatorCell>,
+	pub(crate) flows: BTreeMap<FlowId, Arc<FlowDag>>,
+	pub(crate) sources: BTreeMap<ShapeId, Vec<(FlowId, FlowNodeId)>>,
+	pub(crate) sinks: BTreeMap<ShapeId, Vec<(FlowId, FlowNodeId)>>,
+	pub(crate) analyzer: FlowGraphAnalyzer,
 	pub(crate) execution_level_cache: ExecutionLevelCache,
 	pub(crate) schedule_cache: ScheduleCache,
 	#[allow(dead_code)]
@@ -113,6 +113,31 @@ impl FlowEngine {
 
 	pub fn clock(&self) -> &Clock {
 		&self.runtime_context.clock
+	}
+
+	pub fn operator(&self, node_id: FlowNodeId) -> Option<OperatorCell> {
+		self.operators.get(&node_id).cloned()
+	}
+
+	pub fn insert_operator(&mut self, node_id: FlowNodeId, operator: OperatorCell) {
+		self.operators.insert(node_id, operator);
+	}
+
+	pub fn register_flow_dag(&mut self, flow: Arc<FlowDag>) {
+		self.analyzer.add((*flow).clone());
+		self.flows.insert(flow.id, flow);
+	}
+
+	pub fn flow_by_id(&self, flow_id: FlowId) -> Option<Arc<FlowDag>> {
+		self.flows.get(&flow_id).cloned()
+	}
+
+	pub fn has_sources(&self) -> bool {
+		!self.sources.is_empty()
+	}
+
+	pub fn flows_for_source_shape(&self, shape: ShapeId) -> Option<Vec<(FlowId, FlowNodeId)>> {
+		self.sources.get(&shape).cloned()
 	}
 
 	fn operator_due(&self, node_id: FlowNodeId, now_nanos: u64, interval: Duration) -> bool {
