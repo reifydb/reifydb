@@ -18,7 +18,10 @@ use reifydb_extension::procedure::ffi_callbacks::memory::{host_alloc, host_free}
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::error::Error;
 
-use super::store_iterator::{self, StoreIteratorHandle};
+use super::{
+	marshal::{encoded_key, write_buffer},
+	store_iterator::{self, StoreIteratorHandle},
+};
 use crate::ffi::context::get_transaction_mut;
 
 #[repr(C)]
@@ -41,25 +44,10 @@ pub(super) extern "C" fn host_store_get(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey::new(key_bytes.to_vec());
+		let key = encoded_key(key_ptr, key_len);
 
 		match flow_txn.get(&key) {
-			Ok(Some(value)) => {
-				let value_bytes = value.as_slice();
-				let value_ptr = host_alloc(value_bytes.len());
-				if value_ptr.is_null() {
-					return FFI_ERROR_ALLOC;
-				}
-
-				ptr::copy_nonoverlapping(value_bytes.as_ptr(), value_ptr, value_bytes.len());
-
-				(*output).ptr = value_ptr;
-				(*output).len = value_bytes.len();
-				(*output).cap = value_bytes.len();
-
-				FFI_OK
-			}
+			Ok(Some(value)) => write_buffer(output, value.as_slice()),
 			Ok(None) => FFI_NOT_FOUND,
 			Err(_) => FFI_ERROR_INTERNAL,
 		}
@@ -81,8 +69,7 @@ pub(super) extern "C" fn host_store_contains_key(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey::new(key_bytes.to_vec());
+		let key = encoded_key(key_ptr, key_len);
 
 		match flow_txn.contains_key(&key) {
 			Ok(exists) => {

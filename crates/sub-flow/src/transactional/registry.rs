@@ -1,20 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
-
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::catalog::{flow::FlowId, view::ViewKind};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::{flow::FlowDag, loader::load_flow_dag, node::FlowNodeType};
-use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, value::identity::IdentityId};
 
 use crate::engine::FlowEngine;
 
 pub struct TransactionalFlowRegistry {
-	pub flow_engine: Arc<RwLock<FlowEngine>>,
+	pub flow_engine: FlowEngine,
 	pub engine: StandardEngine,
 	pub catalog: Catalog,
 }

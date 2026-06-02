@@ -12,7 +12,8 @@ use reifydb_core::{
 use reifydb_runtime::hash::Hash128;
 use reifydb_value::{Result, value::datetime::DateTime};
 
-use super::{WindowEvent, WindowLayout, WindowOperator, WindowState};
+use super::operator::WindowOperator;
+use super::state::{WindowEvent, WindowLayout, WindowState};
 use crate::transaction::FlowTransaction;
 
 impl WindowOperator {

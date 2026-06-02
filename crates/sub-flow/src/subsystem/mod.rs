@@ -45,7 +45,7 @@ use reifydb_runtime::{
 	},
 	context::{RuntimeContext, clock::Clock},
 	shutdown::Shutdown,
-	sync::{mutex::Mutex, rwlock::RwLock},
+	sync::mutex::Mutex,
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_transaction::{
@@ -59,13 +59,13 @@ use crate::{
 	builder::{FlowConfig, OperatorFactory},
 	catalog::FlowCatalog,
 	deferred::{
-		coordinator::{CoordinatorActor, FlowConsumeRef, extract_new_flow_ids},
+		coordinator::{CoordinatorActor, FlowConsumeRef, registration::extract_new_flow_ids},
 		pool::PoolActor,
 		tracker::{FlowPositionTracker, ShapeVersionTracker},
 		watermark::compute_flow_watermarks,
 		worker::FlowWorkerActor,
 	},
-	engine::FlowEngine,
+	engine::{FlowEngine, FlowEngineInner},
 	transaction::row_allocator::RowAllocatorRegistry,
 	transactional::{
 		interceptor::{TransactionalFlowPostCommitInterceptor, TransactionalFlowPreCommitInterceptor},
@@ -126,7 +126,7 @@ pub struct FlowSubsystem {
 	pool_handle: Mutex<Option<FlowPoolHandle>>,
 	coordinator_handle: Mutex<Option<FlowCoordinatorHandle>>,
 	transactional_tick_handle: Mutex<Option<ActorHandle<TransactionalTickMessage>>>,
-	transactional_flow_engine: Arc<RwLock<FlowEngine>>,
+	transactional_flow_engine: FlowEngine,
 	running: AtomicBool,
 }
 
@@ -186,14 +186,14 @@ impl FlowSubsystem {
 			actor_ref: coordinator_handle.actor_ref().clone(),
 		};
 
-		let transactional_flow_engine = Arc::new(RwLock::new(FlowEngine::new(
+		let transactional_flow_engine = FlowEngine::new(
 			engine.catalog(),
 			engine.executor(),
 			engine.event_bus().clone(),
 			RuntimeContext::with_clock(clock.clone()),
 			custom_operators.clone(),
 			row_allocators.clone(),
-		)));
+		);
 
 		let registrar = TransactionalFlowRegistry {
 			flow_engine: transactional_flow_engine.clone(),
@@ -318,7 +318,7 @@ impl FlowSubsystem {
 			let rc = RuntimeContext::with_clock(clock.clone());
 			let co = custom_operators.clone();
 			let ra = row_allocators.clone();
-			let worker_factory = move || FlowEngine::new(cat, exec, bus, rc, co, ra);
+			let worker_factory = move || FlowEngineInner::new(cat, exec, bus, rc, co, ra);
 
 			let worker = FlowWorkerActor::new(
 				worker_factory,
@@ -337,7 +337,7 @@ impl FlowSubsystem {
 	#[inline]
 	fn register_flow_interceptors(
 		engine: &StandardEngine,
-		transactional_flow_engine: &Arc<RwLock<FlowEngine>>,
+		transactional_flow_engine: &FlowEngine,
 		clock: &Clock,
 		custom_operators: &Arc<HashMap<String, OperatorFactory>>,
 	) {
@@ -378,7 +378,7 @@ impl FlowSubsystem {
 			let hook_custom_operators = test_custom_operators.clone();
 
 			interceptors.set_test_pre_commit(Arc::new(move |test_txn: &mut TestTransaction<'_>| {
-				let mut fresh_engine = FlowEngine::new(
+				let mut fresh_engine = FlowEngineInner::new(
 					hook_catalog.clone(),
 					hook_engine.executor(),
 					hook_event_bus.clone(),

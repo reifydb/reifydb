@@ -5,7 +5,6 @@ use std::{
 	collections::HashMap,
 	panic::{AssertUnwindSafe, catch_unwind},
 	process,
-	sync::Arc,
 	time::Duration,
 };
 
@@ -22,7 +21,6 @@ use reifydb_runtime::{
 		traits::{Actor, Directive},
 	},
 	context::clock::{Clock, Instant},
-	sync::rwlock::RwLock,
 };
 use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
 use tracing::{error, warn};
@@ -37,19 +35,14 @@ pub enum TransactionalTickMessage {
 }
 
 pub struct TransactionalTickActor {
-	flow_engine: Arc<RwLock<FlowEngine>>,
+	flow_engine: FlowEngine,
 	engine: StandardEngine,
 	catalog: Catalog,
 	clock: Clock,
 }
 
 impl TransactionalTickActor {
-	pub fn new(
-		flow_engine: Arc<RwLock<FlowEngine>>,
-		engine: StandardEngine,
-		catalog: Catalog,
-		clock: Clock,
-	) -> Self {
+	pub fn new(flow_engine: FlowEngine, engine: StandardEngine, catalog: Catalog, clock: Clock) -> Self {
 		Self {
 			flow_engine,
 			engine,

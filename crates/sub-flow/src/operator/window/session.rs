@@ -18,7 +18,8 @@ use reifydb_value::{
 	value::{blob::Blob, datetime::DateTime},
 };
 
-use super::{WindowEvent, WindowLayout, WindowOperator};
+use super::operator::WindowOperator;
+use super::state::{WindowEvent, WindowLayout};
 use crate::{operator::stateful::window::WindowStateful, transaction::FlowTransaction};
 
 impl WindowOperator {

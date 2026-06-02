@@ -8,7 +8,6 @@
 
 pub mod cache;
 pub mod eval;
-pub mod process;
 pub mod register;
 
 use std::{
@@ -40,6 +39,7 @@ use reifydb_rql::flow::{
 	flow::FlowDag,
 };
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
+use reifydb_runtime::sync::rwlock::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 #[cfg(reifydb_target = "native")]
 use reifydb_sdk::config::Config;
 #[cfg(reifydb_target = "native")]
@@ -59,7 +59,7 @@ use crate::{
 	transaction::row_allocator::RowAllocatorRegistry,
 };
 
-pub struct FlowEngine {
+pub struct FlowEngineInner {
 	pub(crate) catalog: Catalog,
 	pub(crate) executor: Executor,
 	pub(crate) operators: BTreeMap<FlowNodeId, OperatorCell>,
@@ -78,7 +78,46 @@ pub struct FlowEngine {
 	pub(crate) row_allocators: Arc<RowAllocatorRegistry>,
 }
 
+#[derive(Clone)]
+pub struct FlowEngine {
+	inner: Arc<RwLock<FlowEngineInner>>,
+}
+
 impl FlowEngine {
+	pub fn new(
+		catalog: Catalog,
+		executor: Executor,
+		event_bus: EventBus,
+		runtime_context: RuntimeContext,
+		custom_operators: Arc<HashMap<String, OperatorFactory>>,
+		row_allocators: Arc<RowAllocatorRegistry>,
+	) -> Self {
+		Self {
+			inner: Arc::new(RwLock::new(FlowEngineInner::new(
+				catalog,
+				executor,
+				event_bus,
+				runtime_context,
+				custom_operators,
+				row_allocators,
+			))),
+		}
+	}
+
+	pub fn read(&self) -> RwLockReadGuard<'_, FlowEngineInner> {
+		self.inner.read()
+	}
+
+	pub fn read_recursive(&self) -> RwLockReadGuard<'_, FlowEngineInner> {
+		self.inner.read_recursive()
+	}
+
+	pub fn write(&self) -> RwLockWriteGuard<'_, FlowEngineInner> {
+		self.inner.write()
+	}
+}
+
+impl FlowEngineInner {
 	#[instrument(
 		name = "flow::engine::new",
 		level = "debug",
@@ -140,7 +179,7 @@ impl FlowEngine {
 		self.sources.get(&shape).cloned()
 	}
 
-	fn operator_due(&self, node_id: FlowNodeId, now_nanos: u64, interval: Duration) -> bool {
+	pub(crate) fn operator_due(&self, node_id: FlowNodeId, now_nanos: u64, interval: Duration) -> bool {
 		let interval_nanos = interval.as_nanos() as u64;
 		let due = match self.operator_tick_times.get(&node_id) {
 			Some(last) => now_nanos.saturating_sub(*last) >= interval_nanos,

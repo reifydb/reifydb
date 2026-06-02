@@ -34,7 +34,7 @@ pub mod window;
 
 use append::AppendOperator;
 use apply::ApplyOperator;
-use distinct::DistinctOperator;
+use distinct::operator::DistinctOperator;
 use extend::ExtendOperator;
 use filter::FilterOperator;
 use gate::GateOperator;
@@ -51,7 +51,7 @@ use sink::{
 };
 use sort::SortOperator;
 use take::TakeOperator;
-use window::WindowOperator;
+use window::operator::WindowOperator;
 
 pub trait Operator: Send {
 	fn id(&self) -> FlowNodeId;

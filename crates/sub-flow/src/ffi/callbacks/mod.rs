@@ -11,6 +11,7 @@ use reifydb_extension::{
 };
 
 pub mod catalog;
+mod marshal;
 pub mod rql;
 pub mod state;
 pub mod state_iterator;

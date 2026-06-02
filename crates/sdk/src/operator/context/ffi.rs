@@ -34,7 +34,7 @@ use crate::{
 		diff::DiffStart,
 	},
 	rql::raw_query,
-	state::{InternalState, State, StateEntry, row::RowNumberProvider},
+	state::{InternalState, State, StateEntry, ffi::allocate_row_numbers, row::RowNumberProvider},
 	store::Store,
 };
 
@@ -151,7 +151,7 @@ impl FFIOperatorContext {
 	}
 
 	pub fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber> {
-		Ok(RowNumber(crate::state::ffi::allocate_row_numbers(self, count)?))
+		Ok(RowNumber(allocate_row_numbers(self, count)?))
 	}
 
 	pub fn query(&self, query: &str, params: Params) -> Result<Vec<Frame>> {

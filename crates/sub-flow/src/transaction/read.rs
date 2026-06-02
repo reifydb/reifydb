@@ -257,7 +257,11 @@ impl FlowTransaction {
 							(Ok(a), Ok(b)) => a.key.cmp(&b.key),
 							_ => Ordering::Equal,
 						});
-						Box::new(flow_merge_pending_iterator(pending_vec, state_items.into_iter(), v))
+						Box::new(flow_merge_pending_iterator(
+							pending_vec,
+							state_items.into_iter(),
+							v,
+						))
 					} else {
 						state_items.sort_by(|a, b| match (a, b) {
 							(Ok(a), Ok(b)) => b.key.cmp(&a.key),
@@ -292,10 +296,12 @@ fn ordered_pending(merged: BTreeMap<EncodedKey, PendingWrite>, forward: bool) ->
 #[cfg(test)]
 pub mod tests {
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::common::CommitVersion;
-	use reifydb_core::encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
+	use reifydb_core::{
+		common::CommitVersion,
+		encoded::{
+			key::{EncodedKey, EncodedKeyRange},
+			row::EncodedRow,
+		},
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};

@@ -59,7 +59,7 @@ use reifydb_runtime::{
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
 use reifydb_sub_flow::{
 	builder::OperatorFactory,
-	engine::FlowEngine,
+	engine::{FlowEngine, FlowEngineInner},
 	operator::{OperatorCell, Operators},
 	transaction::{FlowTransaction, row_allocator::RowAllocatorRegistry},
 };
@@ -84,7 +84,7 @@ use crate::{
 
 struct SubscriptionState {
 	store: Arc<SubscriptionStore>,
-	flow_engine: Arc<RwLock<FlowEngine>>,
+	flow_engine: FlowEngine,
 	flow_states: Arc<DashMap<FlowId, HashMap<EncodedKey, EncodedRow>>>,
 
 	hydration_versions: Arc<DashMap<FlowId, CommitVersion>>,
@@ -255,7 +255,7 @@ impl SubscriptionService for SubscriptionServiceImpl {
 }
 
 fn collect_source_descriptors(
-	flow_engine: &Arc<RwLock<FlowEngine>>,
+	flow_engine: &FlowEngine,
 	flow_id: FlowId,
 	catalog: &Catalog,
 	outer: &mut QueryTransaction,
@@ -424,7 +424,7 @@ fn render_constant_rql(c: &ConstantExpression) -> String {
 }
 
 fn register_ephemeral_flow(
-	engine: &mut FlowEngine,
+	engine: &mut FlowEngineInner,
 	txn: &mut Transaction<'_>,
 	flow: FlowDag,
 	subscription_id: SubscriptionId,
@@ -475,14 +475,14 @@ impl SubscriptionSubsystem {
 		let multi = engine.multi_owned();
 		let spawner = engine.spawner();
 
-		let flow_engine = Arc::new(RwLock::new(FlowEngine::new(
+		let flow_engine = FlowEngine::new(
 			catalog.clone(),
 			executor,
 			event_bus,
 			runtime_context,
 			custom_operators,
 			Arc::new(RowAllocatorRegistry::new()),
-		)));
+		);
 
 		let flow_states = Arc::new(DashMap::new());
 		let hydration_versions = Arc::new(DashMap::new());

@@ -32,11 +32,11 @@ use super::eval::evaluate_operator_config;
 #[cfg(reifydb_target = "native")]
 use crate::operator::apply::ApplyOperator;
 use crate::{
-	engine::FlowEngine,
+	engine::FlowEngineInner,
 	operator::{
 		OperatorCell, Operators,
 		append::AppendOperator,
-		distinct::DistinctOperator,
+		distinct::operator::DistinctOperator,
 		extend::ExtendOperator,
 		filter::FilterOperator,
 		gate::GateOperator,
@@ -53,11 +53,11 @@ use crate::{
 		},
 		sort::SortOperator,
 		take::TakeOperator,
-		window::{WindowConfig, WindowOperator},
+		window::operator::{WindowConfig, WindowOperator},
 	},
 };
 
-impl FlowEngine {
+impl FlowEngineInner {
 	#[instrument(name = "flow::register", level = "debug", skip(self, txn), fields(flow_id = ?flow.id))]
 	pub fn register(&mut self, txn: &mut CommandTransaction, flow: Arc<FlowDag>) -> Result<()> {
 		self.register_with_transaction(&mut Transaction::Command(txn), flow)
@@ -177,11 +177,7 @@ impl FlowEngine {
 				view,
 				table,
 			} => {
-				let parent = self
-					.operators
-					.get(&node.inputs[0])
-					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
-					.clone();
+				let parent = self.parent(node.inputs[0])?;
 
 				self.add_sink(flow.id, node.id, ShapeId::view(*view));
 				let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
@@ -198,11 +194,7 @@ impl FlowEngine {
 				capacity,
 				propagate_evictions,
 			} => {
-				let parent = self
-					.operators
-					.get(&node.inputs[0])
-					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
-					.clone();
+				let parent = self.parent(node.inputs[0])?;
 				self.add_sink(flow.id, node.id, ShapeId::view(*view));
 				let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 				self.operators.insert(
@@ -224,11 +216,7 @@ impl FlowEngine {
 				series,
 				key,
 			} => {
-				let parent = self
-					.operators
-					.get(&node.inputs[0])
-					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
-					.clone();
+				let parent = self.parent(node.inputs[0])?;
 				self.add_sink(flow.id, node.id, ShapeId::view(*view));
 				let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 				self.operators.insert(
@@ -252,11 +240,7 @@ impl FlowEngine {
 			Filter {
 				conditions,
 			} => {
-				let parent = self
-					.operators
-					.get(&node.inputs[0])
-					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
-					.clone();
+				let parent = self.parent(node.inputs[0])?;
 				self.operators.insert(
 					node.id,
 					OperatorCell::new(Operators::Filter(FilterOperator::new(
@@ -271,11 +255,7 @@ impl FlowEngine {
 			Gate {
 				conditions,
 			} => {
-				let parent = self
-					.operators
-					.get(&node.inputs[0])
-					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
-					.clone();
+				let parent = self.parent(node.inputs[0])?;
 				self.operators.insert(
 					node.id,
 					OperatorCell::new(Operators::Gate(GateOperator::new(
@@ -290,11 +270,7 @@ impl FlowEngine {
 			Map {
 				expressions,
 			} => {
-				let parent = self
-					.operators
-					.get(&node.inputs[0])
-					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
-					.clone();
+				let parent = self.parent(node.inputs[0])?;
 				self.operators.insert(
 					node.id,
 					OperatorCell::new(Operators::Map(MapOperator::new(
@@ -309,11 +285,7 @@ impl FlowEngine {
 			Extend {
 				expressions,
 			} => {
-				let parent = self
-					.operators
-					.get(&node.inputs[0])
-					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
-					.clone();
+				let parent = self.parent(node.inputs[0])?;
 				self.operators.insert(
 					node.id,
 					OperatorCell::new(Operators::Extend(ExtendOperator::new(
@@ -326,11 +298,7 @@ impl FlowEngine {
 			Sort {
 				by: _,
 			} => {
-				let parent = self
-					.operators
-					.get(&node.inputs[0])
-					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
-					.clone();
+				let parent = self.parent(node.inputs[0])?;
 				self.operators.insert(
 					node.id,
 					OperatorCell::new(Operators::Sort(SortOperator::new(
@@ -343,11 +311,7 @@ impl FlowEngine {
 			Take {
 				limit,
 			} => {
-				let parent = self
-					.operators
-					.get(&node.inputs[0])
-					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
-					.clone();
+				let parent = self.parent(node.inputs[0])?;
 				self.operators.insert(
 					node.id,
 					OperatorCell::new(Operators::Take(TakeOperator::new(parent, node.id, limit))),
@@ -405,11 +369,7 @@ impl FlowEngine {
 			Distinct {
 				expressions,
 			} => {
-				let parent = self
-					.operators
-					.get(&node.inputs[0])
-					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
-					.clone();
+				let parent = self.parent(node.inputs[0])?;
 				let ttl = self.catalog.find_operator_settings_latest(node.id).and_then(|s| s.ttl);
 				self.operators.insert(
 					node.id,
@@ -478,13 +438,7 @@ impl FlowEngine {
 				} else {
 					#[cfg(reifydb_target = "native")]
 					{
-						let parent = self
-							.operators
-							.get(&node.inputs[0])
-							.ok_or_else(|| {
-								Error(Box::new(internal!("Parent operator not found")))
-							})?
-							.clone();
+						let parent = self.parent(node.inputs[0])?;
 
 						let inner = if self.is_native_operator(operator.as_str()) {
 							self.create_native_operator(operator.as_str(), node.id, &cfg)?
@@ -523,11 +477,7 @@ impl FlowEngine {
 				aggregations,
 				ts,
 			} => {
-				let parent = self
-					.operators
-					.get(&node.inputs[0])
-					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
-					.clone();
+				let parent = self.parent(node.inputs[0])?;
 				let operator = WindowOperator::new(WindowConfig {
 					parent,
 					node: node.id,
@@ -543,6 +493,13 @@ impl FlowEngine {
 		}
 
 		Ok(())
+	}
+
+	fn parent(&self, input: FlowNodeId) -> Result<OperatorCell> {
+		Ok(self.operators
+			.get(&input)
+			.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
+			.clone())
 	}
 
 	#[inline]

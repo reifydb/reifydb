@@ -51,6 +51,7 @@ use crate::{
 	operator::{
 		BoxedOperator, Operator,
 		context::native::{NativeBridge, NativeOperatorContext},
+		stateful::row::allocate_row_numbers,
 	},
 	transaction::{FlowTransaction, slot::PersistFn},
 };
@@ -188,7 +189,7 @@ impl NativeBridge for FlowNativeBridge<'_> {
 		self.txn.internal_state_remove(self.node, key)
 	}
 	fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber> {
-		crate::operator::stateful::row::allocate_row_numbers(self.txn, self.node, count).map(RowNumber)
+		allocate_row_numbers(self.txn, self.node, count).map(RowNumber)
 	}
 	fn store_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 		self.txn.get(key)

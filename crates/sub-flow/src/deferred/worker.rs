@@ -40,11 +40,11 @@ use tracing::{Span, error, field, instrument};
 
 use crate::{
 	catalog::FlowCatalog,
-	engine::FlowEngine,
+	engine::FlowEngineInner,
 	transaction::{DeferredParams, FlowTransaction},
 };
 
-pub type FlowEngineFactory = Box<dyn FnOnce() -> FlowEngine + Send>;
+pub type FlowEngineFactory = Box<dyn FnOnce() -> FlowEngineInner + Send>;
 
 pub struct FlowWorkerActor {
 	engine: StandardEngine,
@@ -56,7 +56,7 @@ pub struct FlowWorkerActor {
 impl FlowWorkerActor {
 	pub fn new<F>(engine_factory: F, engine: StandardEngine, catalog: Catalog, flow_catalog: FlowCatalog) -> Self
 	where
-		F: FnOnce() -> FlowEngine + Send + 'static,
+		F: FnOnce() -> FlowEngineInner + Send + 'static,
 	{
 		Self {
 			engine,
@@ -68,7 +68,7 @@ impl FlowWorkerActor {
 }
 
 pub struct FlowState {
-	flow_engine: FlowEngine,
+	flow_engine: FlowEngineInner,
 }
 
 impl Actor for FlowWorkerActor {
@@ -265,7 +265,7 @@ impl FlowWorkerActor {
 	))]
 	fn process_tick(
 		&self,
-		flow_engine: &mut FlowEngine,
+		flow_engine: &mut FlowEngineInner,
 		flow_ids: Vec<FlowId>,
 		timestamp: DateTime,
 		state_version: CommitVersion,
@@ -304,68 +304,16 @@ impl FlowWorkerActor {
 	))]
 	fn process_request(
 		&self,
-		flow_engine: &mut FlowEngine,
+		flow_engine: &mut FlowEngineInner,
 		batch: WorkerBatch,
 	) -> Result<(Pending, Vec<RowShape>, Vec<Change>)> {
 		let total_changes: usize = batch.instructions.iter().map(|i| i.changes.len()).sum();
 		Span::current().record("total_changes", total_changes);
 
-		let mut pending = Pending::new();
-		let mut all_pending_shapes: Vec<RowShape> = Vec::new();
-		let mut all_view_changes: Vec<Change> = Vec::new();
-		let interceptors = self.engine.create_interceptors();
+		let items: Vec<(FlowId, CommitVersion, Vec<Change>)> =
+			batch.instructions.into_iter().map(|i| (i.flow_id, i.to_version, i.changes)).collect();
 
-		let state_lease = self.engine.multi().acquire_version_lease(batch.state_version)?;
-		let base_query = self.engine.multi().begin_query_at_version(&state_lease)?;
-		let base_state_query = self.engine.multi().begin_query_at_version(&state_lease)?;
-
-		for instruction in batch.instructions {
-			let flow_id = instruction.flow_id;
-
-			if instruction.changes.is_empty() {
-				continue;
-			}
-
-			let primitive_version = instruction.to_version;
-
-			let mut query = base_query.clone();
-			query.read_as_of_version_inclusive(primitive_version);
-			let state_query = base_state_query.clone();
-
-			let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
-				version: primitive_version,
-				pending,
-				query,
-				state_query,
-				single: self.engine.single().clone(),
-				catalog: self.catalog.clone(),
-				interceptors: interceptors.clone(),
-				clock: self.engine.clock().clone(),
-				row_allocators: flow_engine.row_allocators.clone(),
-			});
-
-			if let Err(e) = flow_engine.process_batch(&mut txn, instruction.changes.clone(), flow_id) {
-				error!(flow_id = flow_id.0, error = %e, "failed to process flow");
-			}
-
-			txn.flush_operator_states()?;
-
-			let view_entries = txn.take_accumulator_entries();
-			let changed_at = DateTime::from_nanos(self.engine.clock().now_nanos());
-			for (id, diff) in view_entries {
-				all_view_changes.push(Change {
-					origin: ChangeOrigin::Shape(id),
-					version: primitive_version,
-					diffs: smallvec![diff],
-					changed_at,
-				});
-			}
-
-			all_pending_shapes.extend(txn.take_pending_shapes());
-			pending = txn.take_pending();
-		}
-
-		Ok((pending, all_pending_shapes, all_view_changes))
+		self.run_deferred_batch(flow_engine, batch.state_version, items)
 	}
 
 	#[instrument(name = "flow::actor::dispatch", level = "debug", skip(self, flow_engine, changes, index, active), fields(
@@ -374,7 +322,7 @@ impl FlowWorkerActor {
 	))]
 	fn process_dispatch(
 		&self,
-		flow_engine: &mut FlowEngine,
+		flow_engine: &mut FlowEngineInner,
 		state_version: CommitVersion,
 		to_version: CommitVersion,
 		changes: &[Change],
@@ -404,6 +352,18 @@ impl FlowWorkerActor {
 		}
 		Span::current().record("flows", per_flow.len());
 
+		let items: Vec<(FlowId, CommitVersion, Vec<Change>)> =
+			per_flow.into_iter().map(|(flow_id, changes)| (flow_id, to_version, changes)).collect();
+
+		self.run_deferred_batch(flow_engine, state_version, items)
+	}
+
+	fn run_deferred_batch(
+		&self,
+		flow_engine: &mut FlowEngineInner,
+		state_version: CommitVersion,
+		items: Vec<(FlowId, CommitVersion, Vec<Change>)>,
+	) -> Result<(Pending, Vec<RowShape>, Vec<Change>)> {
 		let mut pending = Pending::new();
 		let mut all_pending_shapes: Vec<RowShape> = Vec::new();
 		let mut all_view_changes: Vec<Change> = Vec::new();
@@ -413,17 +373,17 @@ impl FlowWorkerActor {
 		let base_query = self.engine.multi().begin_query_at_version(&state_lease)?;
 		let base_state_query = self.engine.multi().begin_query_at_version(&state_lease)?;
 
-		for (flow_id, flow_changes) in per_flow {
-			if flow_changes.is_empty() {
+		for (flow_id, version, changes) in items {
+			if changes.is_empty() {
 				continue;
 			}
 
 			let mut query = base_query.clone();
-			query.read_as_of_version_inclusive(to_version);
+			query.read_as_of_version_inclusive(version);
 			let state_query = base_state_query.clone();
 
 			let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
-				version: to_version,
+				version,
 				pending,
 				query,
 				state_query,
@@ -434,7 +394,7 @@ impl FlowWorkerActor {
 				row_allocators: flow_engine.row_allocators.clone(),
 			});
 
-			if let Err(e) = flow_engine.process_batch(&mut txn, flow_changes, flow_id) {
+			if let Err(e) = flow_engine.process_batch(&mut txn, changes, flow_id) {
 				error!(flow_id = flow_id.0, error = %e, "failed to process flow");
 			}
 
@@ -445,7 +405,7 @@ impl FlowWorkerActor {
 			for (id, diff) in view_entries {
 				all_view_changes.push(Change {
 					origin: ChangeOrigin::Shape(id),
-					version: to_version,
+					version,
 					diffs: smallvec![diff],
 					changed_at,
 				});

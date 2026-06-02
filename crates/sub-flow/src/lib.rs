@@ -23,8 +23,9 @@ pub(crate) mod catalog;
 pub mod connector;
 pub(crate) mod deferred;
 pub mod engine;
+pub(crate) mod execution;
 #[cfg(reifydb_target = "native")]
-pub mod ffi;
+pub(crate) mod ffi;
 pub mod host;
 pub mod operator;
 pub mod subsystem;

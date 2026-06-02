@@ -15,15 +15,18 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin},
 	},
 };
-use reifydb_runtime::sync::rwlock::{RwLock, RwLockReadGuard};
-use reifydb_sub_flow::{engine::FlowEngine, transaction::FlowTransaction};
+use reifydb_runtime::sync::rwlock::RwLockReadGuard;
+use reifydb_sub_flow::{
+	engine::{FlowEngine, FlowEngineInner},
+	transaction::FlowTransaction,
+};
 use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
 use reifydb_value::Result;
 
 use crate::sink::DeliveryBuffer;
 
 pub struct SubscriptionCdcConsumer {
-	flow_engine: Arc<RwLock<FlowEngine>>,
+	flow_engine: FlowEngine,
 	multi: MultiTransaction,
 	single: SingleTransaction,
 	catalog: Catalog,
@@ -37,7 +40,7 @@ pub struct SubscriptionCdcConsumer {
 
 impl SubscriptionCdcConsumer {
 	pub fn new(
-		flow_engine: Arc<RwLock<FlowEngine>>,
+		flow_engine: FlowEngine,
 		multi: MultiTransaction,
 		single: SingleTransaction,
 		catalog: Catalog,
@@ -79,11 +82,11 @@ impl CdcConsume for SubscriptionCdcConsumer {
 
 impl SubscriptionCdcConsumer {
 	#[inline]
-	fn acquire_flow_engine(&self) -> Option<RwLockReadGuard<'_, FlowEngine>> {
+	fn acquire_flow_engine(&self) -> Option<RwLockReadGuard<'_, FlowEngineInner>> {
 		Some(self.flow_engine.read())
 	}
 
-	fn process_cdc_batch(&self, flow_engine: &FlowEngine, cdcs: &[Cdc]) {
+	fn process_cdc_batch(&self, flow_engine: &FlowEngineInner, cdcs: &[Cdc]) {
 		for cdc in cdcs {
 			let version = cdc.version;
 			for change in &cdc.changes {
@@ -101,7 +104,7 @@ impl SubscriptionCdcConsumer {
 
 	fn process_change_for_flows(
 		&self,
-		flow_engine: &FlowEngine,
+		flow_engine: &FlowEngineInner,
 		version: CommitVersion,
 		change: &Change,
 		flow_entries: &[(FlowId, FlowNodeId)],

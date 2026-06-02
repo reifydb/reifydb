@@ -11,17 +11,17 @@ use reifydb_abi::{
 	data::{buffer::BufferFFI, key_ref::KeyRefFFI},
 };
 use reifydb_core::{
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
-	},
+	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::catalog::flow::FlowNodeId,
 };
 use reifydb_extension::procedure::ffi_callbacks::memory::{host_alloc, host_free};
-use reifydb_value::util::cowvec::CowVec;
 
-use super::state_iterator::{self, StateIteratorHandle};
+use super::{
+	marshal::{encoded_key, encoded_row, write_buffer},
+	state_iterator::{self, StateIteratorHandle},
+};
 use crate::ffi::context::get_transaction_mut;
+use crate::operator::stateful::row::allocate_row_numbers;
 
 #[repr(C)]
 struct StateIteratorInternal {
@@ -44,27 +44,12 @@ pub(super) extern "C" fn host_state_get(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey::new(key_bytes.to_vec());
+		let key = encoded_key(key_ptr, key_len);
 
 		let result = flow_txn.state_get(FlowNodeId(operator_id), &key);
 
 		match result {
-			Ok(Some(value)) => {
-				let value_bytes = value.as_slice();
-				let value_ptr = host_alloc(value_bytes.len());
-				if value_ptr.is_null() {
-					return FFI_ERROR_ALLOC;
-				}
-
-				ptr::copy_nonoverlapping(value_bytes.as_ptr(), value_ptr, value_bytes.len());
-
-				(*output).ptr = value_ptr;
-				(*output).len = value_bytes.len();
-				(*output).cap = value_bytes.len();
-
-				FFI_OK
-			}
+			Ok(Some(value)) => write_buffer(output, value.as_slice()),
 			Ok(None) => FFI_NOT_FOUND,
 			Err(_) => FFI_ERROR_INTERNAL,
 		}
@@ -88,11 +73,9 @@ pub(super) extern "C" fn host_state_set(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey::new(key_bytes.to_vec());
+		let key = encoded_key(key_ptr, key_len);
 
-		let value_bytes = from_raw_parts(value_ptr, value_len);
-		let value = EncodedRow(CowVec::new(value_bytes.to_vec()));
+		let value = encoded_row(value_ptr, value_len);
 
 		match flow_txn.state_set(FlowNodeId(operator_id), &key, value) {
 			Ok(_) => FFI_OK,
@@ -116,8 +99,7 @@ pub(super) extern "C" fn host_state_remove(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey::new(key_bytes.to_vec());
+		let key = encoded_key(key_ptr, key_len);
 
 		match flow_txn.state_remove(FlowNodeId(operator_id), &key) {
 			Ok(_) => FFI_OK,
@@ -433,27 +415,12 @@ pub(super) extern "C" fn host_internal_state_get(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey::new(key_bytes.to_vec());
+		let key = encoded_key(key_ptr, key_len);
 
 		let result = flow_txn.internal_state_get(FlowNodeId(operator_id), &key);
 
 		match result {
-			Ok(Some(value)) => {
-				let value_bytes = value.as_slice();
-				let value_ptr = host_alloc(value_bytes.len());
-				if value_ptr.is_null() {
-					return FFI_ERROR_ALLOC;
-				}
-
-				ptr::copy_nonoverlapping(value_bytes.as_ptr(), value_ptr, value_bytes.len());
-
-				(*output).ptr = value_ptr;
-				(*output).len = value_bytes.len();
-				(*output).cap = value_bytes.len();
-
-				FFI_OK
-			}
+			Ok(Some(value)) => write_buffer(output, value.as_slice()),
 			Ok(None) => FFI_NOT_FOUND,
 			Err(_) => FFI_ERROR_INTERNAL,
 		}
@@ -477,11 +444,9 @@ pub(super) extern "C" fn host_internal_state_set(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey::new(key_bytes.to_vec());
+		let key = encoded_key(key_ptr, key_len);
 
-		let value_bytes = from_raw_parts(value_ptr, value_len);
-		let value = EncodedRow(CowVec::new(value_bytes.to_vec()));
+		let value = encoded_row(value_ptr, value_len);
 
 		match flow_txn.internal_state_set(FlowNodeId(operator_id), &key, value) {
 			Ok(_) => FFI_OK,
@@ -503,7 +468,7 @@ pub(super) extern "C" fn host_allocate_row_numbers(
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
-		match crate::operator::stateful::row::allocate_row_numbers(flow_txn, FlowNodeId(operator_id), count) {
+		match allocate_row_numbers(flow_txn, FlowNodeId(operator_id), count) {
 			Ok(start) => {
 				*out_start = start;
 				FFI_OK
@@ -528,8 +493,7 @@ pub(super) extern "C" fn host_internal_state_remove(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		let key_bytes = from_raw_parts(key_ptr, key_len);
-		let key = EncodedKey::new(key_bytes.to_vec());
+		let key = encoded_key(key_ptr, key_len);
 
 		match flow_txn.internal_state_remove(FlowNodeId(operator_id), &key) {
 			Ok(_) => FFI_OK,
