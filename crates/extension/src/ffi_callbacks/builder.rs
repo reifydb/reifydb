@@ -281,67 +281,113 @@ pub unsafe extern "C" fn host_builder_commit(handle: *mut ColumnBufferHandle, wr
 	};
 	let h = Handle::decode(handle);
 	let mut inner = registry.inner.lock();
-	let slot = match inner.slots.remove(&h.id) {
-		Some(slot) => slot,
-		None => return FFI_ERROR_INTERNAL,
-	};
-	let mut active = match slot {
-		BuilderSlot::Active(a) if a.generation == h.generation => a,
-		other => {
-			inner.slots.insert(h.id, other);
-			return FFI_ERROR_INTERNAL;
-		}
-	};
 
-	let elem = elem_size_for(active.type_code);
+	let mut active = match inner.take_active(h) {
+		Ok(active) => active,
+		Err(code) => return code,
+	};
+	if let Err(code) = active.set_committed_lengths(written_count) {
+		return code;
+	}
+	inner.store_committed(h, active, written_count)
+}
 
-	if let Some(offsets) = active.offsets.as_mut() {
-		let offsets_len = written_count + 1;
-		if offsets_len > offsets.capacity() {
-			return FFI_ERROR_INTERNAL;
+impl RegistryInner {
+	#[inline]
+	fn take_active(&mut self, h: Handle) -> Result<ActiveBuilder, i32> {
+		let slot = match self.slots.remove(&h.id) {
+			Some(slot) => slot,
+			None => return Err(FFI_ERROR_INTERNAL),
+		};
+		match slot {
+			BuilderSlot::Active(a) if a.generation == h.generation => Ok(a),
+			other => {
+				self.slots.insert(h.id, other);
+				Err(FFI_ERROR_INTERNAL)
+			}
 		}
+	}
+
+	#[inline]
+	fn store_committed(&mut self, h: Handle, active: ActiveBuilder, written_count: usize) -> i32 {
+		let buffer = match finalize_buffer(
+			active.type_code,
+			active.data,
+			active.offsets,
+			active.bitvec,
+			written_count,
+		) {
+			Some(b) => b,
+			None => return FFI_ERROR_INTERNAL,
+		};
+		self.slots.insert(
+			h.id,
+			BuilderSlot::Committed(CommittedBuilder {
+				type_code: active.type_code,
+				buffer,
+				row_count: written_count,
+			}),
+		);
+		FFI_OK
+	}
+}
+
+impl ActiveBuilder {
+	#[inline]
+	fn set_committed_lengths(&mut self, written_count: usize) -> Result<(), i32> {
+		reifydb_assertions! {
+			let var_len = is_var_len(self.type_code);
+			assert!(
+				!var_len || self.offsets.is_some(),
+				"var-len builder (type_code {:?}) committed without an offsets vector; \
+				 host_builder_acquire allocates offsets for every var-len type, so a missing \
+				 offsets here would silently set data_byte_len to 0 and truncate the column to empty",
+				self.type_code
+			);
+		}
+
+		let elem = elem_size_for(self.type_code);
+
+		if let Some(offsets) = self.offsets.as_mut() {
+			let offsets_len = written_count + 1;
+			if offsets_len > offsets.capacity() {
+				return Err(FFI_ERROR_INTERNAL);
+			}
+			// SAFETY: offsets_len <= offsets.capacity() (checked above); the FFI writer
+
+			unsafe {
+				offsets.set_len(offsets_len);
+			}
+		}
+		let data_byte_len = if is_var_len(self.type_code) {
+			match self.offsets.as_ref() {
+				Some(o) if !o.is_empty() => *o.last().unwrap() as usize,
+				_ => 0,
+			}
+		} else {
+			written_count.saturating_mul(elem)
+		};
+		if data_byte_len > self.data.capacity() {
+			return Err(FFI_ERROR_INTERNAL);
+		}
+		// SAFETY: data_byte_len <= self.data.capacity() (checked above); the FFI writer
+
 		unsafe {
-			offsets.set_len(offsets_len);
+			self.data.set_len(data_byte_len);
 		}
-	}
-	let data_byte_len = if is_var_len(active.type_code) {
-		match active.offsets.as_ref() {
-			Some(o) if !o.is_empty() => *o.last().unwrap() as usize,
-			_ => 0,
-		}
-	} else {
-		written_count.saturating_mul(elem)
-	};
-	if data_byte_len > active.data.capacity() {
-		return FFI_ERROR_INTERNAL;
-	}
-	unsafe {
-		active.data.set_len(data_byte_len);
-	}
-	if let Some(bitvec) = active.bitvec.as_mut() {
-		let needed = written_count.div_ceil(8);
-		if needed > bitvec.capacity() {
-			return FFI_ERROR_INTERNAL;
-		}
-		unsafe {
-			bitvec.set_len(needed);
-		}
-	}
+		if let Some(bitvec) = self.bitvec.as_mut() {
+			let needed = written_count.div_ceil(8);
+			if needed > bitvec.capacity() {
+				return Err(FFI_ERROR_INTERNAL);
+			}
+			// SAFETY: needed <= bitvec.capacity() (checked above); the FFI writer
 
-	let buffer = match finalize_buffer(active.type_code, active.data, active.offsets, active.bitvec, written_count)
-	{
-		Some(b) => b,
-		None => return FFI_ERROR_INTERNAL,
-	};
-	inner.slots.insert(
-		h.id,
-		BuilderSlot::Committed(CommittedBuilder {
-			type_code: active.type_code,
-			buffer,
-			row_count: written_count,
-		}),
-	);
-	FFI_OK
+			unsafe {
+				bitvec.set_len(needed);
+			}
+		}
+		Ok(())
+	}
 }
 
 /// # Safety
@@ -389,45 +435,37 @@ pub unsafe extern "C" fn host_builder_emit_diff(
 	let txn_clock_now = unsafe { (*ctx).clock_now_nanos };
 	let now = DateTime::from_nanos(txn_clock_now);
 
-	let pre_columns = if pre_count > 0 {
-		match assemble_columns(
-			&mut inner,
-			ColumnsPtrs {
-				handles: pre_handles_ptr,
-				names: pre_name_ptrs,
-				name_lens: pre_name_lens,
-				count: pre_count,
-			},
-			pre_row_count,
-			pre_row_numbers_ptr,
-			pre_row_numbers_len,
-			now,
-		) {
-			Ok(c) => Some(c),
-			Err(code) => return code,
-		}
-	} else {
-		None
+	let pre_columns = match assemble_columns_opt(
+		&mut inner,
+		ColumnsPtrs {
+			handles: pre_handles_ptr,
+			names: pre_name_ptrs,
+			name_lens: pre_name_lens,
+			count: pre_count,
+		},
+		pre_row_count,
+		pre_row_numbers_ptr,
+		pre_row_numbers_len,
+		now,
+	) {
+		Ok(c) => c,
+		Err(code) => return code,
 	};
-	let post_columns = if post_count > 0 {
-		match assemble_columns(
-			&mut inner,
-			ColumnsPtrs {
-				handles: post_handles_ptr,
-				names: post_name_ptrs,
-				name_lens: post_name_lens,
-				count: post_count,
-			},
-			post_row_count,
-			post_row_numbers_ptr,
-			post_row_numbers_len,
-			now,
-		) {
-			Ok(c) => Some(c),
-			Err(code) => return code,
-		}
-	} else {
-		None
+	let post_columns = match assemble_columns_opt(
+		&mut inner,
+		ColumnsPtrs {
+			handles: post_handles_ptr,
+			names: post_name_ptrs,
+			name_lens: post_name_lens,
+			count: post_count,
+		},
+		post_row_count,
+		post_row_numbers_ptr,
+		post_row_numbers_len,
+		now,
+	) {
+		Ok(c) => c,
+		Err(code) => return code,
 	};
 
 	inner.accumulator.push(EmittedDiff {
@@ -436,6 +474,20 @@ pub unsafe extern "C" fn host_builder_emit_diff(
 		post: post_columns,
 	});
 	FFI_OK
+}
+
+fn assemble_columns_opt(
+	inner: &mut RegistryInner,
+	ptrs: ColumnsPtrs,
+	row_count: usize,
+	row_numbers_ptr: *const u64,
+	row_numbers_len: usize,
+	now: DateTime,
+) -> Result<Option<Columns>, i32> {
+	if ptrs.count == 0 {
+		return Ok(None);
+	}
+	assemble_columns(inner, ptrs, row_count, row_numbers_ptr, row_numbers_len, now).map(Some)
 }
 
 struct ColumnsPtrs {

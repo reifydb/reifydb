@@ -25,6 +25,9 @@ use crate::{
 	token::token::{Literal, Token, TokenKind},
 };
 
+type MatchSubject = (Option<Expression>, Option<String>);
+type MatchBranches<'bump> = (Vec<(Expression, LogicalPlan<'bump>)>, Option<LogicalPlan<'bump>>);
+
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_let(&self, ast: AstLet<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
 		let value = match ast.value {
@@ -102,8 +105,14 @@ impl<'bump> Compiler<'bump> {
 		_tx: &mut Transaction<'_>,
 	) -> Result<LogicalPlan<'bump>> {
 		let fragment = ast.token.fragment.to_owned();
+		let (subject, subject_col_name) = Self::compile_match_subject(ast.subject)?;
+		let (branches, else_plan) = self.lower_match_arms(ast.arms, &fragment, &subject, &subject_col_name)?;
+		self.assemble_match_conditional(branches, else_plan)
+	}
 
-		let subject = match ast.subject {
+	#[inline]
+	fn compile_match_subject(subject: Option<BumpBox<'bump, Ast<'bump>>>) -> Result<MatchSubject> {
+		let subject = match subject {
 			Some(s) => Some(ExpressionCompiler::compile(BumpBox::into_inner(s))?),
 			None => None,
 		};
@@ -113,10 +122,21 @@ impl<'bump> Compiler<'bump> {
 			_ => None,
 		});
 
+		Ok((subject, subject_col_name))
+	}
+
+	#[inline]
+	fn lower_match_arms(
+		&self,
+		arms: Vec<AstMatchArm<'bump>>,
+		fragment: &Fragment,
+		subject: &Option<Expression>,
+		subject_col_name: &Option<String>,
+	) -> Result<MatchBranches<'bump>> {
 		let mut branches: Vec<(Expression, LogicalPlan<'bump>)> = Vec::new();
 		let mut else_plan: Option<LogicalPlan<'bump>> = None;
 
-		for arm in ast.arms {
+		for arm in arms {
 			match arm {
 				AstMatchArm::Else {
 					result,
@@ -160,7 +180,7 @@ impl<'bump> Compiler<'bump> {
 				} => {
 					let subject_expr = subject.clone().expect("IS arm requires a MATCH subject");
 
-					let bindings: Vec<(String, String)> = match (&destructure, &subject_col_name) {
+					let bindings: Vec<(String, String)> = match (&destructure, subject_col_name) {
 						(Some(destr), Some(col_name)) => {
 							let variant_lower = variant_name.text().to_lowercase();
 							destr.fields
@@ -224,7 +244,7 @@ impl<'bump> Compiler<'bump> {
 					let subject_expr =
 						subject.clone().expect("Variant arm requires a MATCH subject");
 
-					let bindings: Vec<(String, String)> = match (&destructure, &subject_col_name) {
+					let bindings: Vec<(String, String)> = match (&destructure, subject_col_name) {
 						(Some(destr), Some(col_name)) => {
 							let variant_lower = variant_name.text().to_lowercase();
 							destr.fields
@@ -302,6 +322,15 @@ impl<'bump> Compiler<'bump> {
 			}
 		}
 
+		Ok((branches, else_plan))
+	}
+
+	#[inline]
+	fn assemble_match_conditional(
+		&self,
+		mut branches: Vec<(Expression, LogicalPlan<'bump>)>,
+		else_plan: Option<LogicalPlan<'bump>>,
+	) -> Result<LogicalPlan<'bump>> {
 		if branches.is_empty() {
 			return match else_plan {
 				Some(plan) => Ok(plan),

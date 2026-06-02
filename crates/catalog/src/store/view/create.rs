@@ -81,21 +81,7 @@ impl CatalogStore {
 
 	fn create_view(txn: &mut AdminTransaction, to_create: ViewToCreate, kind: ViewKind) -> Result<View> {
 		let namespace_id = to_create.namespace;
-
-		if let Some(view) = CatalogStore::find_view_by_name(
-			&mut Transaction::Admin(&mut *txn),
-			namespace_id,
-			to_create.name.text(),
-		)? {
-			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
-			return Err(CatalogError::AlreadyExists {
-				kind: CatalogObjectKind::View,
-				namespace: namespace.name().to_string(),
-				name: view.name().to_string(),
-				fragment: to_create.name.clone(),
-			}
-			.into());
-		}
+		Self::reject_existing_view(txn, namespace_id, &to_create.name)?;
 
 		let view_id = SystemSequence::next_view_id(txn)?;
 		Self::store_view(txn, view_id, namespace_id, &to_create, kind)?;
@@ -104,6 +90,23 @@ impl CatalogStore {
 		Self::insert_columns_for_view(txn, view_id, to_create)?;
 
 		Self::get_view(&mut Transaction::Admin(&mut *txn), view_id)
+	}
+
+	#[inline]
+	fn reject_existing_view(txn: &mut AdminTransaction, namespace_id: NamespaceId, name: &Fragment) -> Result<()> {
+		let Some(view) =
+			CatalogStore::find_view_by_name(&mut Transaction::Admin(&mut *txn), namespace_id, name.text())?
+		else {
+			return Ok(());
+		};
+		let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
+		Err(CatalogError::AlreadyExists {
+			kind: CatalogObjectKind::View,
+			namespace: namespace.name().to_string(),
+			name: view.name().to_string(),
+			fragment: name.clone(),
+		}
+		.into())
 	}
 
 	fn store_view(

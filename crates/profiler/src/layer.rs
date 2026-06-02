@@ -3,7 +3,10 @@
 
 use std::sync::Arc;
 
-use reifydb_runtime::context::clock::{Clock, Instant};
+use reifydb_runtime::{
+	context::clock::{Clock, Instant},
+	reifydb_assertions,
+};
 use tracing::{
 	Metadata, Subscriber,
 	span::{Attributes, Id, Record},
@@ -110,33 +113,13 @@ where
 
 	fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
 		let metadata = attrs.metadata();
-		let Some(category) = ProfilerCategory::from_span_name(metadata.name()) else {
+		let Some(category) = self.resolve_admitted_category(metadata) else {
 			return;
 		};
-		let level_admitted =
-			self.categories.level_for(category).map(|max| max.admits(metadata.level())).unwrap_or(false);
-		if !level_admitted {
-			return;
-		}
-		let scope = discover_scope(&ctx, id).unwrap_or_else(|| Arc::clone(&self.ambient_scope));
-		let callsite_id = metadata_callsite_id(metadata);
-		callsite::register(callsite_id, metadata.name());
-		let mut flow_fields = None;
-		if category == ProfilerCategory::Flow && metadata.name() == "flow::engine::apply" {
-			let mut v = FlowApplyFields::default();
-			attrs.record(&mut v);
-			flow_fields = Some(v);
-		}
-		let ext = SpanExt {
-			category,
-			scope,
-			callsite_id,
-			started_at: self.clock.instant(),
-			flow_fields,
-		};
-		if let Some(span) = ctx.span(id) {
-			span.extensions_mut().insert(ext);
-		}
+		let scope = self.discover_span_scope(&ctx, id);
+		let callsite_id = self.register_span_callsite(metadata);
+		let flow_fields = self.extract_flow_fields(category, attrs, metadata);
+		self.insert_span_ext(&ctx, id, category, scope, callsite_id, flow_fields);
 	}
 
 	fn on_record(&self, id: &Id, values: &Record<'_>, ctx: Context<'_, S>) {
@@ -152,23 +135,53 @@ where
 	}
 
 	fn on_close(&self, id: Id, ctx: Context<'_, S>) {
-		let Some(span) = ctx.span(&id) else {
+		let Some(entry) = self.take_span_ext(&ctx, &id) else {
 			return;
 		};
-		let entry = span.extensions_mut().remove::<SpanExt>();
-		let Some(entry) = entry else {
-			return;
-		};
-		let SpanExt {
-			category,
-			scope,
-			callsite_id,
-			started_at,
-			flow_fields,
-		} = entry;
+		let record = self.build_record(&entry);
+		self.emit_record(&entry.scope, record);
+	}
+}
 
-		let mut record = MinimalSpanRecord::new(category, callsite_id, 0);
-		match (category, &flow_fields) {
+impl ProfilerLayer {
+	#[inline]
+	fn resolve_admitted_category(&self, metadata: &'static Metadata<'static>) -> Option<ProfilerCategory> {
+		let category = ProfilerCategory::from_span_name(metadata.name())?;
+		let max = self.categories.level_for(category)?;
+		if max.admits(metadata.level()) {
+			Some(category)
+		} else {
+			None
+		}
+	}
+
+	#[inline]
+	fn register_span_callsite(&self, metadata: &'static Metadata<'static>) -> u64 {
+		let callsite_id = metadata_callsite_id(metadata);
+		callsite::register(callsite_id, metadata.name());
+		callsite_id
+	}
+
+	#[inline]
+	fn extract_flow_fields(
+		&self,
+		category: ProfilerCategory,
+		attrs: &Attributes<'_>,
+		metadata: &'static Metadata<'static>,
+	) -> Option<FlowApplyFields> {
+		if category == ProfilerCategory::Flow && metadata.name() == "flow::engine::apply" {
+			let mut fields = FlowApplyFields::default();
+			attrs.record(&mut fields);
+			Some(fields)
+		} else {
+			None
+		}
+	}
+
+	#[inline]
+	fn build_record(&self, entry: &SpanExt) -> MinimalSpanRecord {
+		let mut record = MinimalSpanRecord::new(entry.category, entry.callsite_id, 0);
+		match (entry.category, &entry.flow_fields) {
 			(ProfilerCategory::Flow, Some(f)) => {
 				record.duration_us = u32::try_from(f.apply_time_us).unwrap_or(u32::MAX);
 				let mut dims: [DimIdx; 2] = [0, 0];
@@ -186,14 +199,72 @@ where
 				record.extras = extras;
 			}
 			_ => {
-				let elapsed = started_at.elapsed().as_micros();
+				reifydb_assertions! {
+					let now = self.clock.instant();
+					assert!(
+						now >= entry.started_at,
+						"span close observed a clock instant before its start, so elapsed() would saturate \
+						 to zero and silently report a missing duration for an untracked-flow span; the \
+						 profiler relies on a monotonic clock for span timing (now_us={}, started_us={})",
+						now.elapsed().as_micros(),
+						entry.started_at.elapsed().as_micros()
+					);
+				}
+				let elapsed = entry.started_at.elapsed().as_micros();
 				record.duration_us = u32::try_from(elapsed).unwrap_or(u32::MAX);
 			}
 		}
+		record
+	}
 
+	#[inline]
+	fn emit_record(&self, scope: &ScopeState, record: MinimalSpanRecord) {
 		self.sink.on_span_record(&record);
 		scope.attach_interner(Arc::clone(&self.interner));
 		scope.push(record);
+	}
+}
+
+impl ProfilerLayer {
+	#[inline]
+	fn discover_span_scope<S>(&self, ctx: &Context<'_, S>, id: &Id) -> Arc<ScopeState>
+	where
+		S: Subscriber + for<'a> LookupSpan<'a>,
+	{
+		discover_scope(ctx, id).unwrap_or_else(|| Arc::clone(&self.ambient_scope))
+	}
+
+	#[inline]
+	fn insert_span_ext<S>(
+		&self,
+		ctx: &Context<'_, S>,
+		id: &Id,
+		category: ProfilerCategory,
+		scope: Arc<ScopeState>,
+		callsite_id: u64,
+		flow_fields: Option<FlowApplyFields>,
+	) where
+		S: Subscriber + for<'a> LookupSpan<'a>,
+	{
+		let ext = SpanExt {
+			category,
+			scope,
+			callsite_id,
+			started_at: self.clock.instant(),
+			flow_fields,
+		};
+		if let Some(span) = ctx.span(id) {
+			span.extensions_mut().insert(ext);
+		}
+	}
+
+	#[inline]
+	fn take_span_ext<S>(&self, ctx: &Context<'_, S>, id: &Id) -> Option<SpanExt>
+	where
+		S: Subscriber + for<'a> LookupSpan<'a>,
+	{
+		let span = ctx.span(id)?;
+		span.extensions_mut().remove::<SpanExt>()
 	}
 }
 

@@ -3,8 +3,9 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::interface::auth::AuthStep;
-use reifydb_value::error::Error;
+use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider};
+use reifydb_runtime::reifydb_assertions;
+use reifydb_value::{error::Error, value::identity::IdentityId};
 
 use super::{AuthResponse, AuthService, generate_session_token};
 use crate::error::AuthError;
@@ -16,23 +17,53 @@ impl AuthService {
 		public_key: &str,
 		credentials: &HashMap<String, String>,
 	) -> Result<AuthResponse, Error> {
-		let provider = self.auth_registry.get("solana").ok_or_else(|| {
+		let provider = self.solana_provider()?;
+		let properties = provider
+			.create(&self.rng, &HashMap::from([("public_key".to_string(), public_key.to_string())]))?;
+		let identity = self.create_solana_identity(identifier, properties.clone())?;
+		let step = provider.authenticate(&properties, credentials)?;
+		self.respond_to_provisioned_auth_step(step, identity, identifier)
+	}
+
+	#[inline]
+	fn solana_provider(&self) -> Result<&dyn AuthenticationProvider, Error> {
+		self.auth_registry.get("solana").ok_or_else(|| {
 			Error::from(AuthError::UnknownMethod {
 				method: "solana".to_string(),
 			})
-		})?;
+		})
+	}
 
-		let properties = provider
-			.create(&self.rng, &HashMap::from([("public_key".to_string(), public_key.to_string())]))?;
-
+	#[inline]
+	fn create_solana_identity(
+		&self,
+		identifier: &str,
+		properties: HashMap<String, String>,
+	) -> Result<IdentityId, Error> {
 		let mut admin = self.engine.begin_admin()?;
 		let catalog = self.engine.catalog();
 
 		let ident = catalog.create_identity(&mut admin, identifier, &self.clock, &self.rng)?;
-		catalog.create_authentication(&mut admin, ident.id, "solana", properties.clone())?;
+		catalog.create_authentication(&mut admin, ident.id, "solana", properties)?;
 		admin.commit()?;
 
-		match provider.authenticate(&properties, credentials)? {
+		reifydb_assertions! {
+			assert!(
+				ident.id != IdentityId::default(),
+				"auto-provisioning created the nil placeholder identity instead of a freshly generated one, so the provisioned principal would later be minted a session token bound to the default id and gain authorization (identifier={identifier:?})"
+			);
+		}
+		Ok(ident.id)
+	}
+
+	#[inline]
+	fn respond_to_provisioned_auth_step(
+		&self,
+		step: AuthStep,
+		identity: IdentityId,
+		identifier: &str,
+	) -> Result<AuthResponse, Error> {
+		match step {
 			AuthStep::Challenge {
 				payload,
 			} => {
@@ -50,9 +81,9 @@ impl AuthService {
 			}
 			AuthStep::Authenticated => {
 				let token = generate_session_token(&self.rng);
-				self.persist_token(&token, ident.id)?;
+				self.persist_token(&token, identity)?;
 				Ok(AuthResponse::Authenticated {
-					identity: ident.id,
+					identity,
 					token,
 				})
 			}

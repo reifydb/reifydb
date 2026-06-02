@@ -6,6 +6,7 @@ use std::sync::Arc;
 use reifydb_core::value::column::{
 	ColumnWithName, buffer::ColumnBuffer, columns::Columns, data::Column, mask::RowMask,
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{
 	Result,
 	fragment::Fragment,
@@ -49,24 +50,48 @@ impl SnapshotReader {
 	}
 
 	fn read_next_batch(&mut self) -> Result<Option<Columns>> {
-		let start = self.offset;
-		let end = (start + self.batch_size).min(self.row_count);
-		self.offset = end;
-
+		let (start, end) = self.advance_batch_window();
 		let block = self.block.as_ref();
-		let schema = &block.schema;
 
 		let Some(predicate) = self.predicate.as_ref() else {
 			return Ok(Some(materialize_full(block, start, end)?));
 		};
 
-		let view = block.view_range(start, end)?;
-		let selection = predicate::evaluate(&view, predicate)?;
-		match selection {
-			Selection::None_ => Ok(None),
-			Selection::All => Ok(Some(materialize_view_full(schema, &view, start, end)?)),
-			Selection::Mask(mask) => Ok(Some(materialize_filtered(schema, &view, start, &mask)?)),
+		evaluate_and_materialize(block, predicate, start, end)
+	}
+
+	#[inline]
+	fn advance_batch_window(&mut self) -> (usize, usize) {
+		let start = self.offset;
+		let end = (start + self.batch_size).min(self.row_count);
+		self.offset = end;
+		reifydb_assertions! {
+			let row_count = self.row_count;
+			assert!(
+				start < end && end <= row_count,
+				"read_next_batch produced an empty or out-of-bounds window, so a batch would \
+				 materialize zero rows while the iterator's offset>=row_count guard still treats \
+				 the reader as live, looping without progress (start={start}, end={end}, row_count={row_count})"
+			);
 		}
+		(start, end)
+	}
+}
+
+#[inline]
+fn evaluate_and_materialize(
+	block: &ColumnBlock,
+	predicate: &Predicate,
+	start: usize,
+	end: usize,
+) -> Result<Option<Columns>> {
+	let schema = &block.schema;
+	let view = block.view_range(start, end)?;
+	let selection = predicate::evaluate(&view, predicate)?;
+	match selection {
+		Selection::None_ => Ok(None),
+		Selection::All => Ok(Some(materialize_view_full(schema, &view, start, end)?)),
+		Selection::Mask(mask) => Ok(Some(materialize_filtered(schema, &view, start, &mask)?)),
 	}
 }
 

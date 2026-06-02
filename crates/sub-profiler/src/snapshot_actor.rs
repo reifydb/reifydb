@@ -17,6 +17,7 @@ use reifydb_runtime::{
 		context::Context,
 		traits::{Actor, Directive},
 	},
+	reifydb_assertions,
 	sync::rwlock::RwLock,
 };
 use reifydb_value::{
@@ -63,21 +64,41 @@ impl ProfilerSnapshotActor {
 	}
 
 	pub fn flush(&self, ts: DateTime) {
-		let snapshot = self.accumulator.read().snapshot();
+		let snapshot = self.snapshot_records();
 		if snapshot.is_empty() {
 			return;
 		}
 
+		let by_category = self.group_by_category(snapshot);
+		let (event_rows, total_written, had_error) = self.insert_categories(&by_category, ts);
+		self.emit_snapshot(ts, total_written, event_rows, had_error);
+	}
+
+	#[inline]
+	fn snapshot_records(&self) -> Vec<AggregateRecord> {
+		self.accumulator.read().snapshot()
+	}
+
+	#[inline]
+	fn group_by_category(&self, snapshot: Vec<AggregateRecord>) -> HashMap<ProfilerCategory, Vec<AggregateRecord>> {
 		let mut by_category: HashMap<ProfilerCategory, Vec<AggregateRecord>> = HashMap::new();
 		for record in snapshot {
 			by_category.entry(record.category).or_default().push(record);
 		}
+		by_category
+	}
 
+	#[inline]
+	fn insert_categories(
+		&self,
+		by_category: &HashMap<ProfilerCategory, Vec<AggregateRecord>>,
+		ts: DateTime,
+	) -> FlushOutcome {
 		let mut event_rows: Vec<ProfilerAggregateRow> = Vec::new();
 		let mut total_written = 0usize;
 		let mut had_error = false;
 
-		for (category, records) in &by_category {
+		for (category, records) in by_category {
 			let series_path = format!("system::metrics::profiler::{}::snapshots", category.name());
 			let rows: Vec<Params> = records.iter().map(|r| record_to_params(r, ts)).collect();
 
@@ -95,13 +116,37 @@ impl ProfilerSnapshotActor {
 			}
 		}
 
-		if !had_error && !event_rows.is_empty() {
-			PROFILER_SNAPSHOT_LAST_FLUSH_RECORDS.set(total_written as f64);
-			PROFILER_SNAPSHOT_LAST_FLUSH_TS_MS.set(ts.to_nanos() as f64 / 1_000_000.0);
-			self.event_bus.emit(ProfilerSnapshotEvent::new(ts, event_rows));
+		(event_rows, total_written, had_error)
+	}
+
+	#[inline]
+	fn emit_snapshot(
+		&self,
+		ts: DateTime,
+		total_written: usize,
+		event_rows: Vec<ProfilerAggregateRow>,
+		had_error: bool,
+	) {
+		if had_error || event_rows.is_empty() {
+			return;
 		}
+		reifydb_assertions! {
+			let rows = event_rows.len();
+			assert!(
+				rows == total_written,
+				"profiler snapshot emits one event row per successfully inserted record, so the count published \
+				 to PROFILER_SNAPSHOT_LAST_FLUSH_RECORDS must equal the rows in the emitted event; a mismatch \
+				 means a consumer reads a record count that contradicts the rows it receives \
+				 (total_written={total_written}, event_rows={rows})"
+			);
+		}
+		PROFILER_SNAPSHOT_LAST_FLUSH_RECORDS.set(total_written as f64);
+		PROFILER_SNAPSHOT_LAST_FLUSH_TS_MS.set(ts.to_nanos() as f64 / 1_000_000.0);
+		self.event_bus.emit(ProfilerSnapshotEvent::new(ts, event_rows));
 	}
 }
+
+type FlushOutcome = (Vec<ProfilerAggregateRow>, usize, bool);
 
 impl Actor for ProfilerSnapshotActor {
 	type Message = SnapshotMessage;

@@ -6,7 +6,10 @@ use std::collections::HashMap;
 use bs58::decode as bs58_decode;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider};
-use reifydb_runtime::context::{clock::Clock, rng::Rng};
+use reifydb_runtime::{
+	context::{clock::Clock, rng::Rng},
+	reifydb_assertions,
+};
 use reifydb_value::{Result, error::Error};
 
 use crate::error::AuthError;
@@ -55,56 +58,83 @@ impl AuthenticationProvider for SolanaProvider {
 			stored.get("public_key").ok_or_else(|| Error::from(AuthError::MissingPublicKey))?;
 
 		if let Some(signature_b58) = credentials.get("signature") {
-			let signed_message = credentials.get("signed_message").ok_or_else(|| {
-				Error::from(AuthError::InvalidSignature {
-					reason: "missing signed_message".to_string(),
-				})
-			})?;
+			return self.verify_signature(public_key_b58, signature_b58, credentials);
+		}
 
-			let pk_bytes: [u8; 32] = bs58_decode(public_key_b58)
-				.into_vec()
-				.map_err(|e| {
-					Error::from(AuthError::InvalidPublicKey {
-						reason: e.to_string(),
-					})
-				})?
-				.try_into()
-				.map_err(|_| {
-					Error::from(AuthError::InvalidPublicKey {
-						reason: "expected 32 bytes".to_string(),
-					})
-				})?;
+		Ok(self.issue_signin_challenge(public_key_b58, credentials))
+	}
+}
 
-			let verifying_key = VerifyingKey::from_bytes(&pk_bytes).map_err(|e| {
+impl SolanaProvider {
+	#[inline]
+	fn verify_signature(
+		&self,
+		public_key_b58: &str,
+		signature_b58: &str,
+		credentials: &HashMap<String, String>,
+	) -> Result<AuthStep> {
+		let signed_message = credentials.get("signed_message").ok_or_else(|| {
+			Error::from(AuthError::InvalidSignature {
+				reason: "missing signed_message".to_string(),
+			})
+		})?;
+
+		let pk_bytes: [u8; 32] = bs58_decode(public_key_b58)
+			.into_vec()
+			.map_err(|e| {
 				Error::from(AuthError::InvalidPublicKey {
 					reason: e.to_string(),
 				})
+			})?
+			.try_into()
+			.map_err(|_| {
+				Error::from(AuthError::InvalidPublicKey {
+					reason: "expected 32 bytes".to_string(),
+				})
 			})?;
 
-			let sig_bytes: [u8; 64] = bs58_decode(signature_b58)
-				.into_vec()
-				.map_err(|e| {
-					Error::from(AuthError::InvalidSignature {
-						reason: e.to_string(),
-					})
-				})?
-				.try_into()
-				.map_err(|_| {
-					Error::from(AuthError::InvalidSignature {
-						reason: "expected 64 bytes".to_string(),
-					})
-				})?;
+		let verifying_key = VerifyingKey::from_bytes(&pk_bytes).map_err(|e| {
+			Error::from(AuthError::InvalidPublicKey {
+				reason: e.to_string(),
+			})
+		})?;
 
-			let signature = Signature::from_bytes(&sig_bytes);
+		let sig_bytes: [u8; 64] = bs58_decode(signature_b58)
+			.into_vec()
+			.map_err(|e| {
+				Error::from(AuthError::InvalidSignature {
+					reason: e.to_string(),
+				})
+			})?
+			.try_into()
+			.map_err(|_| {
+				Error::from(AuthError::InvalidSignature {
+					reason: "expected 64 bytes".to_string(),
+				})
+			})?;
 
-			match verifying_key.verify(signed_message.as_bytes(), &signature) {
-				Ok(()) => return Ok(AuthStep::Authenticated),
-				Err(_) => return Ok(AuthStep::Failed),
-			}
+		let signature = Signature::from_bytes(&sig_bytes);
+
+		match verifying_key.verify(signed_message.as_bytes(), &signature) {
+			Ok(()) => Ok(AuthStep::Authenticated),
+			Err(_) => Ok(AuthStep::Failed),
 		}
+	}
 
+	#[inline]
+	fn issue_signin_challenge(&self, public_key_b58: &str, credentials: &HashMap<String, String>) -> AuthStep {
 		let nonce_bytes = Rng::Os.bytes_32();
 		let nonce: String = nonce_bytes.iter().map(|b| format!("{:02x}", b)).collect();
+
+		reifydb_assertions! {
+			assert!(
+				nonce.len() == 64,
+				"sign-in nonce must be 64 hex chars (32 bytes of entropy); a shorter nonce weakens \
+				 challenge-replay resistance because an attacker can brute-force or precompute it \
+				 (got {} chars)",
+				nonce.len()
+			);
+		}
 
 		let domain = credentials.get("domain").cloned().unwrap_or_else(|| "reifydb".to_string());
 		let statement =
@@ -128,9 +158,9 @@ impl AuthenticationProvider for SolanaProvider {
 			issued_at = issued_at,
 		);
 
-		Ok(AuthStep::Challenge {
+		AuthStep::Challenge {
 			payload: HashMap::from([("message".into(), message), ("nonce".into(), nonce)]),
-		})
+		}
 	}
 }
 

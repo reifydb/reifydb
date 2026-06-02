@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Always-on database profiler primitives: tracing layer, per-scope capture, dimension interning"
 
+[build-dependencies]
+reifydb-build = { workspace = true }
+
 [dependencies]
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }

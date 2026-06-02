@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_metric::accumulator::StatementStatsAccumulator;
-use reifydb_runtime::context::clock::Clock;
+use reifydb_runtime::{context::clock::Clock, reifydb_assertions};
 use reifydb_sub_server::{
 	execute::ExecuteError,
 	interceptor::{RequestContext, RequestInterceptor, ResponseContext},
@@ -32,6 +32,42 @@ impl RequestMetricsInterceptor {
 			clock,
 		}
 	}
+
+	#[inline]
+	fn build_request_record(
+		accumulator: &StatementStatsAccumulator,
+		ctx: &ResponseContext,
+		success: bool,
+	) -> Option<Request> {
+		match ctx.operation {
+			Operation::Query => {
+				for stmt in &ctx.metrics.statements {
+					accumulator.record(
+						stmt.fingerprint,
+						&stmt.normalized_rql,
+						stmt.execute_duration_us,
+						stmt.compile_duration_us,
+						stmt.rows_affected,
+						success,
+					);
+				}
+
+				Some(Request::Query {
+					fingerprint: ctx.metrics.fingerprint,
+					statements: ctx.metrics.statements.clone(),
+				})
+			}
+			Operation::Command => Some(Request::Command {
+				fingerprint: ctx.metrics.fingerprint,
+				statements: ctx.metrics.statements.clone(),
+			}),
+			Operation::Admin => Some(Request::Admin {
+				fingerprint: ctx.metrics.fingerprint,
+				statements: ctx.metrics.statements.clone(),
+			}),
+			Operation::Subscribe => None,
+		}
+	}
 }
 
 impl RequestInterceptor for RequestMetricsInterceptor {
@@ -50,33 +86,17 @@ impl RequestInterceptor for RequestMetricsInterceptor {
 		Box::pin(async move {
 			let success = ctx.result.is_ok();
 
-			let request_record = match ctx.operation {
-				Operation::Query => {
-					for stmt in &ctx.metrics.statements {
-						accumulator.record(
-							stmt.fingerprint,
-							&stmt.normalized_rql,
-							stmt.execute_duration_us,
-							stmt.compile_duration_us,
-							stmt.rows_affected,
-							success,
-						);
-					}
-
-					Request::Query {
-						fingerprint: ctx.metrics.fingerprint,
-						statements: ctx.metrics.statements.clone(),
-					}
+			let Some(request_record) = Self::build_request_record(&accumulator, ctx, success) else {
+				reifydb_assertions! {
+					assert!(
+						matches!(ctx.operation, Operation::Subscribe),
+						"build_request_record returned None for a metered operation {:?}; only Subscribe \
+						 requests are exempt from RequestExecutedEvent, so a None here silently drops \
+						 metrics for a request that should have been recorded",
+						ctx.operation
+					);
 				}
-				Operation::Command => Request::Command {
-					fingerprint: ctx.metrics.fingerprint,
-					statements: ctx.metrics.statements.clone(),
-				},
-				Operation::Admin => Request::Admin {
-					fingerprint: ctx.metrics.fingerprint,
-					statements: ctx.metrics.statements.clone(),
-				},
-				Operation::Subscribe => return,
+				return;
 			};
 
 			let timestamp = DateTime::from_timestamp_millis(clock.now_millis()).unwrap();

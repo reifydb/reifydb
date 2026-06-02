@@ -3,14 +3,18 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider};
+use reifydb_catalog::catalog::Catalog;
+use reifydb_core::interface::{
+	auth::{AuthStep, AuthenticationProvider},
+	catalog::{authentication::Authentication, identity::Identity},
+};
 use reifydb_runtime::reifydb_assertions;
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
 use reifydb_value::{error::Error, value::identity::IdentityId};
 use tracing::instrument;
 
 use super::{AuthResponse, AuthService, generate_session_token};
-use crate::error::AuthError;
+use crate::{challenge::ChallengeInfo, error::AuthError};
 
 impl AuthService {
 	#[instrument(name = "auth::authenticate", level = "debug", skip(self, credentials))]
@@ -33,20 +37,9 @@ impl AuthService {
 		let mut txn = self.engine.begin_query()?;
 		let catalog = self.engine.catalog();
 
-		let ident = match catalog.find_identity_by_name(&mut Transaction::Query(&mut txn), identifier)? {
-			Some(u) => u,
-			None => {
-				if method == "solana"
-					&& let Some(u) = catalog.find_identity_by_solana_pubkey(
-						&mut Transaction::Query(&mut txn),
-						identifier,
-					)? {
-					u
-				} else {
-					drop(txn);
-					return self.handle_missing_identity(method, identifier, &credentials);
-				}
-			}
+		let Some(ident) = self.resolve_provider_identity(&mut txn, &catalog, method, identifier)? else {
+			drop(txn);
+			return self.handle_missing_identity(method, identifier, &credentials);
 		};
 		if !ident.enabled {
 			return Ok(AuthResponse::Failed {
@@ -54,18 +47,52 @@ impl AuthService {
 			});
 		}
 
-		let Some(stored_auth) = catalog.find_authentication_by_identity_and_method(
-			&mut Transaction::Query(&mut txn),
-			ident.id,
-			method,
-		)?
-		else {
+		let Some(stored_auth) = self.load_stored_auth(&mut txn, &catalog, ident.id, method)? else {
 			return Ok(invalid_credentials());
 		};
 
+		self.run_provider_and_respond(&stored_auth, &credentials, ident.id, identifier, method)
+	}
+
+	#[inline]
+	fn resolve_provider_identity(
+		&self,
+		txn: &mut QueryTransaction,
+		catalog: &Catalog,
+		method: &str,
+		identifier: &str,
+	) -> Result<Option<Identity>, Error> {
+		if let Some(u) = catalog.find_identity_by_name(&mut Transaction::Query(txn), identifier)? {
+			return Ok(Some(u));
+		}
+		if method == "solana" {
+			return catalog.find_identity_by_solana_pubkey(&mut Transaction::Query(txn), identifier);
+		}
+		Ok(None)
+	}
+
+	fn load_stored_auth(
+		&self,
+		txn: &mut QueryTransaction,
+		catalog: &Catalog,
+		identity: IdentityId,
+		method: &str,
+	) -> Result<Option<Authentication>, Error> {
+		catalog.find_authentication_by_identity_and_method(&mut Transaction::Query(txn), identity, method)
+	}
+
+	#[inline]
+	fn run_provider_and_respond(
+		&self,
+		stored_auth: &Authentication,
+		credentials: &HashMap<String, String>,
+		identity: IdentityId,
+		identifier: &str,
+		method: &str,
+	) -> Result<AuthResponse, Error> {
 		let provider = self.provider_for(method)?;
-		let step = provider.authenticate(&stored_auth.properties, &credentials)?;
-		self.respond_to_initial_auth_step(step, ident.id, identifier, method)
+		let step = provider.authenticate(&stored_auth.properties, credentials)?;
+		self.respond_to_initial_auth_step(step, identity, identifier, method)
 	}
 
 	#[inline]
@@ -158,46 +185,84 @@ impl AuthService {
 		challenge_id: &str,
 		mut credentials: HashMap<String, String>,
 	) -> Result<AuthResponse, Error> {
-		let Some(challenge) = self.challenges.consume(challenge_id) else {
+		let Some(challenge) = self.consume_challenge(challenge_id, &mut credentials) else {
 			return Ok(AuthResponse::Failed {
 				reason: "invalid or expired challenge".to_string(),
 			});
 		};
 
-		merge_challenge_payload(&mut credentials, &challenge.payload);
-
 		let mut txn = self.engine.begin_query()?;
 		let catalog = self.engine.catalog();
 
-		let ident = match catalog
-			.find_identity_by_name(&mut Transaction::Query(&mut txn), &challenge.identifier)?
-		{
-			Some(u) if u.enabled => u,
-			Some(_) => return Ok(invalid_credentials()),
-			None if challenge.method == "solana" => {
-				match catalog.find_identity_by_solana_pubkey(
-					&mut Transaction::Query(&mut txn),
-					&challenge.identifier,
-				)? {
-					Some(u) if u.enabled => u,
-					_ => return Ok(invalid_credentials()),
-				}
-			}
-			None => return Ok(invalid_credentials()),
-		};
-
-		let Some(stored_auth) = catalog.find_authentication_by_identity_and_method(
-			&mut Transaction::Query(&mut txn),
-			ident.id,
-			&challenge.method,
-		)?
+		let Some(ident) =
+			self.resolve_challenge_identity(&mut txn, &catalog, &challenge.identifier, &challenge.method)?
 		else {
 			return Ok(invalid_credentials());
 		};
 
-		let provider = self.provider_for(&challenge.method)?;
-		let step = provider.authenticate(&stored_auth.properties, &credentials)?;
-		respond_to_challenge_step(step, ident.id, self)
+		let Some(stored_auth) = self.load_stored_auth(&mut txn, &catalog, ident.id, &challenge.method)? else {
+			return Ok(invalid_credentials());
+		};
+
+		self.run_challenge_provider_and_respond(&stored_auth, &credentials, ident.id, &challenge.method)
+	}
+
+	#[inline]
+	fn consume_challenge(
+		&self,
+		challenge_id: &str,
+		credentials: &mut HashMap<String, String>,
+	) -> Option<ChallengeInfo> {
+		let challenge = self.challenges.consume(challenge_id)?;
+		merge_challenge_payload(credentials, &challenge.payload);
+		Some(challenge)
+	}
+
+	#[inline]
+	fn resolve_challenge_identity(
+		&self,
+		txn: &mut QueryTransaction,
+		catalog: &Catalog,
+		identifier: &str,
+		method: &str,
+	) -> Result<Option<Identity>, Error> {
+		let resolved = match catalog.find_identity_by_name(&mut Transaction::Query(txn), identifier)? {
+			Some(u) if u.enabled => Some(u),
+			Some(_) => None,
+			None if method == "solana" => {
+				match catalog
+					.find_identity_by_solana_pubkey(&mut Transaction::Query(txn), identifier)?
+				{
+					Some(u) if u.enabled => Some(u),
+					_ => None,
+				}
+			}
+			None => None,
+		};
+		reifydb_assertions! {
+			if let Some(ref ident) = resolved {
+				assert!(
+					ident.enabled,
+					"challenge identity resolution returned a disabled identity (id={:?}, name={}); a disabled principal must never advance to provider authentication or it could obtain a session token",
+					ident.id,
+					ident.name
+				);
+			}
+		}
+		Ok(resolved)
+	}
+
+	#[inline]
+	fn run_challenge_provider_and_respond(
+		&self,
+		stored_auth: &Authentication,
+		credentials: &HashMap<String, String>,
+		identity: IdentityId,
+		method: &str,
+	) -> Result<AuthResponse, Error> {
+		let provider = self.provider_for(method)?;
+		let step = provider.authenticate(&stored_auth.properties, credentials)?;
+		respond_to_challenge_step(step, identity, self)
 	}
 }
 

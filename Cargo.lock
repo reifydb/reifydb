@@ -2854,6 +2854,7 @@ name = "reifydb-policy"
 version = "0.6.0"
 dependencies = [
  "bumpalo",
+ "reifydb-build",
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-rql",
@@ -2871,6 +2872,7 @@ dependencies = [
  "dashmap",
  "once_cell",
  "paste",
+ "reifydb-build",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-testing",
@@ -3094,6 +3096,7 @@ version = "0.6.0"
 dependencies = [
  "crossbeam-channel",
  "futures-util",
+ "reifydb-build",
  "reifydb-catalog",
  "reifydb-cdc",
  "reifydb-core",
@@ -3119,6 +3122,7 @@ dependencies = [
 name = "reifydb-sub-profiler"
 version = "0.6.0"
 dependencies = [
+ "reifydb-build",
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",
@@ -3177,6 +3181,7 @@ name = "reifydb-sub-runtime"
 version = "0.6.0"
 dependencies = [
  "libc",
+ "reifydb-build",
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",

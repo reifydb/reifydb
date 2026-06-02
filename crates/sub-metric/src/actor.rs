@@ -12,7 +12,7 @@ use reifydb_core::{
 		EventBus,
 		metric::{
 			CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, MultiDelete, MultiDrop, MultiWrite,
-			ProfilerSnapshotEvent, RequestExecutedEvent,
+			ProfilerAggregateRow, ProfilerSnapshotEvent, RequestExecutedEvent,
 		},
 		store::StatsProcessedEvent,
 	},
@@ -120,6 +120,17 @@ impl MetricCollectorActor {
 		dropped_keys: &HashSet<EncodedKey>,
 		version: CommitVersion,
 	) {
+		let pre_sizes = self.read_prior_sizes(writes, dropped_keys, version);
+		record_each_write(state, writes, dropped_keys, &pre_sizes);
+	}
+
+	#[inline]
+	fn read_prior_sizes(
+		&self,
+		writes: &[MultiWrite],
+		dropped_keys: &HashSet<EncodedKey>,
+		version: CommitVersion,
+	) -> HashMap<EncodedKey, u64> {
 		let mut pre_sizes: HashMap<EncodedKey, u64> = HashMap::new();
 		if version.0 > 0 {
 			let lookup_keys: Vec<EncodedKey> = writes
@@ -138,22 +149,7 @@ impl MetricCollectorActor {
 				}
 			}
 		}
-
-		for write in writes {
-			let pre_value_bytes = if dropped_keys.contains(&write.key) {
-				None
-			} else {
-				pre_sizes.get(&write.key).copied()
-			};
-			if let Err(e) = state.storage_writer.record_write(
-				Tier::Buffer,
-				write.key.as_ref(),
-				write.value_bytes,
-				pre_value_bytes,
-			) {
-				error!("Failed to record write: {}", e);
-			}
-		}
+		pre_sizes
 	}
 
 	fn process_cdc_written(&self, state: &mut MetricActorState, event: CdcWrittenEvent) {
@@ -181,36 +177,12 @@ impl MetricCollectorActor {
 	}
 
 	fn process_profile_snapshot(&self, event: ProfilerSnapshotEvent) {
-		#[derive(Default)]
-		struct CategoryRollup {
-			calls: u64,
-			p50: u32,
-			p75: u32,
-			p90: u32,
-			p95: u32,
-			p99: u32,
-		}
-		let rows = event.rows();
-		let mut by_category: HashMap<u8, CategoryRollup> = HashMap::new();
-		for row in rows {
-			let entry = by_category.entry(row.category.0).or_default();
-			entry.calls = entry.calls.saturating_add(row.calls);
-			if row.p50_us > entry.p50 {
-				entry.p50 = row.p50_us;
-			}
-			if row.p75_us > entry.p75 {
-				entry.p75 = row.p75_us;
-			}
-			if row.p90_us > entry.p90 {
-				entry.p90 = row.p90_us;
-			}
-			if row.p95_us > entry.p95 {
-				entry.p95 = row.p95_us;
-			}
-			if row.p99_us > entry.p99 {
-				entry.p99 = row.p99_us;
-			}
-		}
+		let by_category = roll_up_by_category(event.rows());
+		self.publish_category_gauges(by_category);
+	}
+
+	#[inline]
+	fn publish_category_gauges(&self, by_category: HashMap<u8, CategoryRollup>) {
 		for (cat_byte, rollup) in by_category {
 			let cat_id = ProfilerCategoryId(cat_byte);
 			profiler_gauges::ensure_registered(&self.registry, cat_id);
@@ -222,6 +194,65 @@ impl MetricCollectorActor {
 				g.p95.set(rollup.p95 as f64);
 				g.p99.set(rollup.p99 as f64);
 			}
+		}
+	}
+}
+
+#[derive(Default)]
+struct CategoryRollup {
+	calls: u64,
+	p50: u32,
+	p75: u32,
+	p90: u32,
+	p95: u32,
+	p99: u32,
+}
+
+#[inline]
+fn roll_up_by_category(rows: &[ProfilerAggregateRow]) -> HashMap<u8, CategoryRollup> {
+	let mut by_category: HashMap<u8, CategoryRollup> = HashMap::new();
+	for row in rows {
+		let entry = by_category.entry(row.category.0).or_default();
+		entry.calls = entry.calls.saturating_add(row.calls);
+		if row.p50_us > entry.p50 {
+			entry.p50 = row.p50_us;
+		}
+		if row.p75_us > entry.p75 {
+			entry.p75 = row.p75_us;
+		}
+		if row.p90_us > entry.p90 {
+			entry.p90 = row.p90_us;
+		}
+		if row.p95_us > entry.p95 {
+			entry.p95 = row.p95_us;
+		}
+		if row.p99_us > entry.p99 {
+			entry.p99 = row.p99_us;
+		}
+	}
+	by_category
+}
+
+#[inline]
+fn record_each_write(
+	state: &mut MetricActorState,
+	writes: &[MultiWrite],
+	dropped_keys: &HashSet<EncodedKey>,
+	pre_sizes: &HashMap<EncodedKey, u64>,
+) {
+	for write in writes {
+		let pre_value_bytes = if dropped_keys.contains(&write.key) {
+			None
+		} else {
+			pre_sizes.get(&write.key).copied()
+		};
+		if let Err(e) = state.storage_writer.record_write(
+			Tier::Buffer,
+			write.key.as_ref(),
+			write.value_bytes,
+			pre_value_bytes,
+		) {
+			error!("Failed to record write: {}", e);
 		}
 	}
 }
@@ -263,6 +294,21 @@ pub struct MetricActorState {
 	pending: Vec<RequestExecutedEvent>,
 }
 
+impl MetricCollectorActor {
+	#[inline]
+	fn handle_tick(&self, state: &mut MetricActorState, ctx: &Context<MetricMessage>) {
+		if let Err(e) = state.storage_writer.flush() {
+			error!("Failed to flush storage stats: {}", e);
+		}
+		if let Err(e) = state.cdc_writer.flush() {
+			error!("Failed to flush cdc stats: {}", e);
+		}
+		let _ = mem::take(&mut state.pending);
+		emit_stats_processed(&self.event_bus, &mut state.max_version);
+		ctx.schedule_once(self.effective_interval(), || MetricMessage::Tick(DateTime::from_nanos(0)));
+	}
+}
+
 impl Actor for MetricCollectorActor {
 	type Message = MetricMessage;
 	type State = MetricActorState;
@@ -282,19 +328,7 @@ impl Actor for MetricCollectorActor {
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
 		match msg {
-			MetricMessage::Tick(_) => {
-				if let Err(e) = state.storage_writer.flush() {
-					error!("Failed to flush storage stats: {}", e);
-				}
-				if let Err(e) = state.cdc_writer.flush() {
-					error!("Failed to flush cdc stats: {}", e);
-				}
-				let _ = mem::take(&mut state.pending);
-				emit_stats_processed(&self.event_bus, &mut state.max_version);
-				ctx.schedule_once(self.effective_interval(), || {
-					MetricMessage::Tick(DateTime::from_nanos(0))
-				});
-			}
+			MetricMessage::Tick(_) => self.handle_tick(state, ctx),
 			MetricMessage::RequestExecuted(event) => state.pending.push(event),
 			MetricMessage::MultiCommitted(event) => self.process_multi_committed(state, event),
 			MetricMessage::CdcWritten(event) => self.process_cdc_written(state, event),

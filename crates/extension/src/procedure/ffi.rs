@@ -14,7 +14,7 @@ use reifydb_abi::{
 };
 use reifydb_core::value::column::columns::Columns;
 use reifydb_routine::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
-use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_runtime::{reifydb_assertions, sync::mutex::Mutex};
 use reifydb_sdk::{error::SdkError, ffi::arena::Arena};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::value_type::ValueType;
@@ -129,39 +129,70 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for NativeProcedureFFI {
 		let instance_guard = self.instance.lock();
 		let instance = *instance_guard;
 
-		let params_bytes = to_stdvec(ctx.params).map_err(|e| {
+		let params_bytes = self.serialize_params(ctx)?;
+		self.reset_arena();
+		self.prepare_ffi_context(ctx);
+		let result_code = self.invoke_instance(instance, &params_bytes);
+
+		let result = self.collect_or_drain(result_code);
+		drop(instance_guard);
+		result
+	}
+}
+
+impl NativeProcedureFFI {
+	#[inline]
+	fn serialize_params(&self, ctx: &ProcedureContext<'_, '_>) -> Result<Vec<u8>, RoutineError> {
+		to_stdvec(ctx.params).map_err(|e| {
 			RoutineError::Wrapped(Box::new(
 				SdkError::Other(format!("Failed to serialize params: {}", e)).into(),
 			))
-		})?;
+		})
+	}
 
+	#[inline]
+	fn reset_arena(&self) {
 		// SAFETY: single-threaded per call (Mutex held); no live pointers
-
 		FFI_PROC_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
+	}
 
+	#[inline]
+	fn prepare_ffi_context(&self, ctx: &mut ProcedureContext<'_, '_>) {
 		let ffi_ctx_ptr = self.cached_ctx.get();
 		unsafe {
 			(*ffi_ctx_ptr).txn_ptr = ctx.tx as *mut Transaction<'_> as *mut c_void;
 			(*ffi_ctx_ptr).clock_now_nanos = ctx.runtime_context.clock.now_nanos();
 		}
+	}
 
-		let result_code = with_registry(&self.builder_registry, || {
+	#[inline]
+	fn invoke_instance(&self, instance: *mut c_void, params_bytes: &[u8]) -> i32 {
+		reifydb_assertions! {
+			assert!(
+				!instance.is_null(),
+				"FFI procedure instance pointer is null at call time; invoking vtable.call with a \
+				 null instance is undefined behaviour inside the dlopen'd operator and would \
+				 crash the host"
+			);
+		}
+
+		let ffi_ctx_ptr = self.cached_ctx.get();
+		with_registry(&self.builder_registry, || {
 			call_with_abort_on_panic("procedure::call", || unsafe {
 				(self.vtable.call)(instance, ffi_ctx_ptr, params_bytes.as_ptr(), params_bytes.len())
 			})
-		});
+		})
+	}
 
+	#[inline]
+	fn collect_or_drain(&self, result_code: i32) -> Result<Columns, RoutineError> {
 		if result_code != 0 {
 			let _ = self.builder_registry.drain();
-			drop(instance_guard);
 			return Err(RoutineError::Wrapped(Box::new(
 				SdkError::Other(format!("FFI procedure call failed with code: {}", result_code)).into(),
 			)));
 		}
 
-		let columns = single_columns_from_registry(&self.builder_registry);
-		drop(instance_guard);
-
-		Ok(columns)
+		Ok(single_columns_from_registry(&self.builder_registry))
 	}
 }

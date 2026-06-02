@@ -9,6 +9,7 @@ use std::{
 };
 
 use rand::{RngExt as _, SeedableRng, rng, rngs::SmallRng};
+use reifydb_runtime::reifydb_assertions;
 
 use crate::{
 	log::{Entry, Index, Log},
@@ -407,111 +408,38 @@ impl RawNode<Follower> {
 			self.role.leader_seen = 0;
 		}
 
+		reifydb_assertions! {
+			let node_term = self.term();
+			assert_eq!(
+				msg.term, node_term,
+				"follower::step reached message dispatch with msg.term != node term; the term guard above \
+				 must equalise terms (lower returns, higher converts) before any arm runs, otherwise \
+				 into_follower / set_term_vote would record an out-of-term leader or vote and corrupt the \
+				 election state machine (msg.term={}, node_term={node_term})",
+				msg.term
+			);
+		}
+
 		match msg.message {
 			Message::Heartbeat {
 				last_index,
 				commit_index,
-			} => {
-				assert!(commit_index <= last_index, "commit_index after last_index");
-
-				match self.role.leader {
-					Some(leader) => assert_eq!(msg.from, leader, "multiple leaders in term"),
-					None => self = self.into_follower(msg.term, Some(msg.from)),
-				}
-
-				let match_index = if self.log.has(last_index, msg.term) {
-					last_index
-				} else {
-					0
-				};
-				self.send(
-					msg.from,
-					Message::HeartbeatResponse {
-						match_index,
-					},
-				);
-
-				if match_index != 0 && commit_index > self.log.get_commit_index().0 {
-					self.log.commit(commit_index);
-					self.maybe_apply();
-				}
-			}
+			} => self.handle_heartbeat(msg.from, msg.term, last_index, commit_index),
 
 			Message::Append {
 				base_index,
 				base_term,
 				entries,
-			} => {
-				if let Some(first) = entries.first() {
-					assert_eq!(base_index, first.index - 1, "base index mismatch");
-				}
-
-				match self.role.leader {
-					Some(leader) => assert_eq!(msg.from, leader, "multiple leaders in term"),
-					None => self = self.into_follower(msg.term, Some(msg.from)),
-				}
-
-				if base_index == 0 || self.log.has(base_index, base_term) {
-					let match_index = entries.last().map(|e| e.index).unwrap_or(base_index);
-					self.log.splice(entries);
-					self.send(
-						msg.from,
-						Message::AppendResponse {
-							match_index,
-							reject_index: 0,
-						},
-					);
-				} else {
-					let reject_index = min(base_index, self.log.get_last_index().0 + 1);
-					self.send(
-						msg.from,
-						Message::AppendResponse {
-							reject_index,
-							match_index: 0,
-						},
-					);
-				}
-			}
+			} => self.handle_append(msg.from, msg.term, base_index, base_term, entries),
 
 			Message::Campaign {
 				last_index,
 				last_term,
-			} => {
-				if let (_, Some(vote)) = self.log.get_term_vote()
-					&& msg.from != vote
-				{
-					self.send(
-						msg.from,
-						Message::CampaignResponse {
-							vote: false,
-						},
-					);
-					return self.into();
-				}
-
-				let (log_index, log_term) = self.log.get_last_index();
-				if log_term > last_term || (log_term == last_term && log_index > last_index) {
-					self.send(
-						msg.from,
-						Message::CampaignResponse {
-							vote: false,
-						},
-					);
-					return self.into();
-				}
-
-				self.log.set_term_vote(msg.term, Some(msg.from));
-				self.send(
-					msg.from,
-					Message::CampaignResponse {
-						vote: true,
-					},
-				);
-			}
+			} => self.handle_campaign_vote(msg.from, msg.term, last_index, last_term),
 
 			Message::CampaignResponse {
 				..
-			} => {}
+			} => self.into(),
 
 			Message::HeartbeatResponse {
 				..
@@ -522,6 +450,109 @@ impl RawNode<Follower> {
 				panic!("follower received unexpected message {msg:?}")
 			}
 		}
+	}
+
+	#[inline]
+	fn handle_heartbeat(mut self, from: NodeId, term: Term, last_index: Index, commit_index: Index) -> Node {
+		assert!(commit_index <= last_index, "commit_index after last_index");
+
+		match self.role.leader {
+			Some(leader) => assert_eq!(from, leader, "multiple leaders in term"),
+			None => self = self.into_follower(term, Some(from)),
+		}
+
+		let match_index = if self.log.has(last_index, term) {
+			last_index
+		} else {
+			0
+		};
+		self.send(
+			from,
+			Message::HeartbeatResponse {
+				match_index,
+			},
+		);
+
+		if match_index != 0 && commit_index > self.log.get_commit_index().0 {
+			self.log.commit(commit_index);
+			self.maybe_apply();
+		}
+		self.into()
+	}
+
+	#[inline]
+	fn handle_append(
+		mut self,
+		from: NodeId,
+		term: Term,
+		base_index: Index,
+		base_term: Term,
+		entries: Vec<Entry>,
+	) -> Node {
+		if let Some(first) = entries.first() {
+			assert_eq!(base_index, first.index - 1, "base index mismatch");
+		}
+
+		match self.role.leader {
+			Some(leader) => assert_eq!(from, leader, "multiple leaders in term"),
+			None => self = self.into_follower(term, Some(from)),
+		}
+
+		if base_index == 0 || self.log.has(base_index, base_term) {
+			let match_index = entries.last().map(|e| e.index).unwrap_or(base_index);
+			self.log.splice(entries);
+			self.send(
+				from,
+				Message::AppendResponse {
+					match_index,
+					reject_index: 0,
+				},
+			);
+		} else {
+			let reject_index = min(base_index, self.log.get_last_index().0 + 1);
+			self.send(
+				from,
+				Message::AppendResponse {
+					reject_index,
+					match_index: 0,
+				},
+			);
+		}
+		self.into()
+	}
+
+	#[inline]
+	fn handle_campaign_vote(mut self, from: NodeId, term: Term, last_index: Index, last_term: Term) -> Node {
+		if let (_, Some(vote)) = self.log.get_term_vote()
+			&& from != vote
+		{
+			self.send(
+				from,
+				Message::CampaignResponse {
+					vote: false,
+				},
+			);
+			return self.into();
+		}
+
+		let (log_index, log_term) = self.log.get_last_index();
+		if log_term > last_term || (log_term == last_term && log_index > last_index) {
+			self.send(
+				from,
+				Message::CampaignResponse {
+					vote: false,
+				},
+			);
+			return self.into();
+		}
+
+		self.log.set_term_vote(term, Some(from));
+		self.send(
+			from,
+			Message::CampaignResponse {
+				vote: true,
+			},
+		);
 		self.into()
 	}
 
@@ -734,52 +765,32 @@ impl RawNode<Leader> {
 			return self.into_follower(msg.term).step(msg);
 		}
 
+		reifydb_assertions! {
+			let node_term = self.term();
+			assert_eq!(
+				msg.term, node_term,
+				"leader::step reached message dispatch with msg.term != node term; the term guard above \
+				 must equalise terms (lower returns, higher steps down) before any arm runs, otherwise a \
+				 leader would process progress/append responses from a foreign term and advance match/next \
+				 indices against the wrong log epoch (msg.term={}, node_term={node_term})",
+				msg.term
+			);
+		}
+
 		match msg.message {
 			Message::HeartbeatResponse {
 				match_index,
-			} => {
-				let (last_index, _) = self.log.get_last_index();
-				assert!(match_index <= last_index, "future match index");
-
-				if match_index == 0 {
-					self.progress(msg.from).regress_next(last_index);
-					self.maybe_send_append(msg.from, true);
-				}
-
-				if self.progress(msg.from).advance(match_index) {
-					self.maybe_commit_and_apply();
-				}
-			}
+			} => self.handle_heartbeat_response(msg.from, match_index),
 
 			Message::AppendResponse {
 				match_index,
 				reject_index: 0,
-			} if match_index > 0 => {
-				let (last_index, _) = self.log.get_last_index();
-				assert!(match_index <= last_index, "future match index");
-
-				if self.progress(msg.from).advance(match_index) {
-					self.maybe_commit_and_apply();
-				}
-
-				self.maybe_send_append(msg.from, false);
-			}
+			} if match_index > 0 => self.handle_append_accept(msg.from, match_index),
 
 			Message::AppendResponse {
 				reject_index,
 				match_index: 0,
-			} if reject_index > 0 => {
-				let (last_index, _) = self.log.get_last_index();
-				assert!(reject_index <= last_index, "future reject index");
-
-				if reject_index <= self.progress(msg.from).match_index {
-					return self.into();
-				}
-
-				if self.progress(msg.from).regress_next(reject_index) {
-					self.maybe_send_append(msg.from, true);
-				}
-			}
+			} if reject_index > 0 => self.handle_append_reject(msg.from, reject_index),
 
 			Message::AppendResponse {
 				..
@@ -811,6 +822,47 @@ impl RawNode<Leader> {
 		}
 
 		self.into()
+	}
+
+	#[inline]
+	fn handle_heartbeat_response(&mut self, from: NodeId, match_index: Index) {
+		let (last_index, _) = self.log.get_last_index();
+		assert!(match_index <= last_index, "future match index");
+
+		if match_index == 0 {
+			self.progress(from).regress_next(last_index);
+			self.maybe_send_append(from, true);
+		}
+
+		if self.progress(from).advance(match_index) {
+			self.maybe_commit_and_apply();
+		}
+	}
+
+	#[inline]
+	fn handle_append_accept(&mut self, from: NodeId, match_index: Index) {
+		let (last_index, _) = self.log.get_last_index();
+		assert!(match_index <= last_index, "future match index");
+
+		if self.progress(from).advance(match_index) {
+			self.maybe_commit_and_apply();
+		}
+
+		self.maybe_send_append(from, false);
+	}
+
+	#[inline]
+	fn handle_append_reject(&mut self, from: NodeId, reject_index: Index) {
+		let (last_index, _) = self.log.get_last_index();
+		assert!(reject_index <= last_index, "future reject index");
+
+		if reject_index <= self.progress(from).match_index {
+			return;
+		}
+
+		if self.progress(from).regress_next(reject_index) {
+			self.maybe_send_append(from, true);
+		}
 	}
 
 	fn tick(mut self) -> Node {

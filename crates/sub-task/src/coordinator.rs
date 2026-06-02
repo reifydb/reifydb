@@ -64,13 +64,7 @@ pub async fn run_coordinator(
 	let (completion_tx, mut completion_rx) = mpsc::unbounded_channel();
 
 	let mut heap: BinaryHeap<HeapEntry> = BinaryHeap::new();
-
-	for entry in registry.iter() {
-		heap.push(HeapEntry {
-			next_execution: entry.value().next_execution.clone(),
-			task_id: *entry.key(),
-		});
-	}
+	seed_heap(&mut heap, &registry);
 
 	loop {
 		let sleep_duration = heap.peek().map(|entry| {
@@ -113,72 +107,18 @@ pub async fn run_coordinator(
 
 
 		    Some((task_id, completed_at)) = completion_rx.recv() => {
-
-			if let Some(mut entry) = registry.get_mut(&task_id) {
-			    if let Some(next_exec) = entry.task.schedule.next_execution(completed_at) {
-				reifydb_assertions! {
-					assert!(
-						!matches!(entry.task.schedule, Schedule::Once(_)),
-						"a Schedule::Once task entered the reschedule path after completing, so a one-shot task would run repeatedly and duplicate its side effects (task={})",
-						entry.task.name
-					);
-				}
-
-				entry.next_execution = next_exec.clone();
-
-
-				heap.push(HeapEntry {
-				    next_execution: next_exec,
-				    task_id,
-				});
-
-				debug!("Rescheduled task: {}", entry.task.name);
-			    } else {
-
-				let task_name = entry.task.name.clone();
-				drop(entry);
-				registry.remove(&task_id);
-				debug!("Completed one-shot task: {}", task_name);
-			    }
-			}
+			handle_completion(&mut heap, &registry, task_id, completed_at);
 		    }
 
 
 		    Some(msg) = rx.recv() => {
 			match msg {
 			    TaskCoordinatorMessage::Register(task) => {
-				let task_id = task.id;
-				let next_execution = clock.instant() + task.schedule.initial_delay();
-
-				info!("Registering task: {} (id: {})", task.name, task_id);
-
-
-				registry.insert(task_id, TaskEntry {
-				    task: Arc::new(task),
-				    next_execution: next_execution.clone(),
-				});
-
-
-				heap.push(HeapEntry {
-				    next_execution,
-				    task_id,
-				});
+				handle_register(&mut heap, &registry, &clock, task);
 			    }
 
 			    TaskCoordinatorMessage::Unregister(task_id) => {
-				info!("Unregistering task: {}", task_id);
-
-
-				registry.remove(&task_id);
-
-
-				heap.clear();
-				for entry in registry.iter() {
-				    heap.push(HeapEntry {
-					next_execution: entry.value().next_execution.clone(),
-					task_id: *entry.key(),
-				    });
-				}
+				handle_unregister(&mut heap, &registry, task_id);
 			    }
 
 			    TaskCoordinatorMessage::Shutdown => {
@@ -197,6 +137,104 @@ pub async fn run_coordinator(
 	}
 
 	info!("Task coordinator stopped");
+}
+
+#[inline]
+fn seed_heap(heap: &mut BinaryHeap<HeapEntry>, registry: &TaskRegistry) {
+	for entry in registry.iter() {
+		heap.push(HeapEntry {
+			next_execution: entry.value().next_execution.clone(),
+			task_id: *entry.key(),
+		});
+	}
+
+	reifydb_assertions! {
+		let heap_len = heap.len();
+		let registry_len = registry.len();
+		assert!(
+			heap_len == registry_len,
+			"the scheduling heap must hold exactly one entry per registered task after seeding, else a task with no heap slot never gets a fire time (lost task) or a stale slot fires for a missing one (heap={heap_len}, registry={registry_len})"
+		);
+	}
+}
+
+#[inline]
+fn handle_completion(
+	heap: &mut BinaryHeap<HeapEntry>,
+	registry: &TaskRegistry,
+	task_id: TaskId,
+	completed_at: Instant,
+) {
+	if let Some(mut entry) = registry.get_mut(&task_id) {
+		if let Some(next_exec) = entry.task.schedule.next_execution(completed_at) {
+			reifydb_assertions! {
+				assert!(
+					!matches!(entry.task.schedule, Schedule::Once(_)),
+					"a Schedule::Once task entered the reschedule path after completing, so a one-shot task would run repeatedly and duplicate its side effects (task={})",
+					entry.task.name
+				);
+			}
+
+			entry.next_execution = next_exec.clone();
+
+			heap.push(HeapEntry {
+				next_execution: next_exec,
+				task_id,
+			});
+
+			debug!("Rescheduled task: {}", entry.task.name);
+		} else {
+			let task_name = entry.task.name.clone();
+			drop(entry);
+			registry.remove(&task_id);
+			debug!("Completed one-shot task: {}", task_name);
+		}
+	}
+}
+
+#[inline]
+fn handle_register(heap: &mut BinaryHeap<HeapEntry>, registry: &TaskRegistry, clock: &Clock, task: ScheduledTask) {
+	let task_id = task.id;
+	let next_execution = clock.instant() + task.schedule.initial_delay();
+
+	info!("Registering task: {} (id: {})", task.name, task_id);
+
+	registry.insert(
+		task_id,
+		TaskEntry {
+			task: Arc::new(task),
+			next_execution: next_execution.clone(),
+		},
+	);
+
+	heap.push(HeapEntry {
+		next_execution,
+		task_id,
+	});
+}
+
+#[inline]
+fn handle_unregister(heap: &mut BinaryHeap<HeapEntry>, registry: &TaskRegistry, task_id: TaskId) {
+	info!("Unregistering task: {}", task_id);
+
+	registry.remove(&task_id);
+
+	heap.clear();
+	for entry in registry.iter() {
+		heap.push(HeapEntry {
+			next_execution: entry.value().next_execution.clone(),
+			task_id: *entry.key(),
+		});
+	}
+
+	reifydb_assertions! {
+		let heap_len = heap.len();
+		let registry_len = registry.len();
+		assert!(
+			heap_len == registry_len,
+			"the scheduling heap must mirror the registry one-for-one after an unregister rebuild, else a surviving task loses its fire slot or a removed task keeps one (heap={heap_len}, registry={registry_len})"
+		);
+	}
 }
 
 fn spawn_task(

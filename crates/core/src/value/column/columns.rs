@@ -535,12 +535,19 @@ impl Columns {
 		if source.row_count() == 0 {
 			return Ok(());
 		}
-
 		if self.columns.is_empty() {
 			*self = source;
 			return Ok(());
 		}
 
+		self.validate_append_compatibility(&source)?;
+		self.extend_data_columns(source.columns)?;
+		self.extend_system_columns(&source.row_numbers, &source.created_at, &source.updated_at);
+		Ok(())
+	}
+
+	#[inline]
+	fn validate_append_compatibility(&self, source: &Columns) -> Result<()> {
 		if self.columns.len() != source.columns.len() {
 			return_internal_error!(
 				"Columns::append_all: column count mismatch (self={}, source={})",
@@ -570,24 +577,45 @@ impl Columns {
 				source.updated_at.is_empty()
 			);
 		}
+		Ok(())
+	}
 
+	#[inline]
+	fn extend_data_columns(&mut self, source_columns: CowVec<ColumnBuffer>) -> Result<()> {
 		let dest_cols = self.columns.make_mut();
-		let source_cols = source.columns.into_inner();
+		let source_cols = source_columns.into_inner();
+		reifydb_assertions! {
+			let dest_len = dest_cols.len();
+			let src_len = source_cols.len();
+			assert!(
+				dest_len == src_len,
+				"append_all extends destination columns by source index, so a source with more columns than \
+				 the destination would index dest_cols out of bounds and panic mid-append, leaving self \
+				 partially extended (dest_len={dest_len}, src_len={src_len})"
+			);
+		}
 		for (i, src_col) in source_cols.into_iter().enumerate() {
 			dest_cols[i].extend(src_col)?;
 		}
-
-		if !source.row_numbers.is_empty() {
-			self.row_numbers.extend_from_slice(source.row_numbers.as_slice());
-		}
-		if !source.created_at.is_empty() {
-			self.created_at.extend_from_slice(source.created_at.as_slice());
-		}
-		if !source.updated_at.is_empty() {
-			self.updated_at.extend_from_slice(source.updated_at.as_slice());
-		}
-
 		Ok(())
+	}
+
+	#[inline]
+	fn extend_system_columns(
+		&mut self,
+		source_row_numbers: &CowVec<RowNumber>,
+		source_created_at: &CowVec<DateTime>,
+		source_updated_at: &CowVec<DateTime>,
+	) {
+		if !source_row_numbers.is_empty() {
+			self.row_numbers.extend_from_slice(source_row_numbers.as_slice());
+		}
+		if !source_created_at.is_empty() {
+			self.created_at.extend_from_slice(source_created_at.as_slice());
+		}
+		if !source_updated_at.is_empty() {
+			self.updated_at.extend_from_slice(source_updated_at.as_slice());
+		}
 	}
 
 	pub fn concat(batches: Vec<Columns>) -> Result<Option<Columns>> {

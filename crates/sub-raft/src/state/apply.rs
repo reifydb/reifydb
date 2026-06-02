@@ -4,8 +4,13 @@
 use std::any::Any;
 
 use reifydb_core::{
+	common::CommitVersion,
+	delta::Delta,
 	event::{EventBus, transaction::PostCommitEvent},
-	interface::store::{MultiVersionCommit, SingleVersionCommit},
+	interface::{
+		change::Change,
+		store::{MultiVersionCommit, SingleVersionCommit},
+	},
 	key::{Key, kind::KeyKind},
 };
 use reifydb_runtime::reifydb_assertions;
@@ -60,6 +65,38 @@ fn is_catalog_key(kind: KeyKind) -> bool {
 	!matches!(kind, KeyKind::Row | KeyKind::IndexEntry)
 }
 
+impl<M: MultiVersionCommit + 'static, S: SingleVersionCommit + 'static> Apply<M, S> {
+	#[inline]
+	fn handle_write_multi(&mut self, deltas: &[Delta], version: CommitVersion, changes: &[Change]) {
+		let cow_deltas = CowVec::new(deltas.to_vec());
+		self.multi_store
+			.commit(cow_deltas.clone(), version)
+			.expect("multi-store commit failed during raft apply");
+		self.event_bus.emit(PostCommitEvent::new(cow_deltas, version, changes.to_vec()));
+
+		if let Some(cb) = &self.on_version_advance {
+			cb(version.0);
+		}
+
+		if self.on_catalog_change.is_some() {
+			let has_catalog = deltas.iter().any(|d| Key::kind(d.key()).is_some_and(is_catalog_key));
+			if has_catalog {
+				(self.on_catalog_change.as_ref().unwrap())();
+			}
+		}
+	}
+
+	#[inline]
+	fn handle_write_single(&mut self, deltas: &[Delta]) {
+		let cow_deltas = CowVec::new(deltas.to_vec());
+		self.single_store.commit(cow_deltas).expect("single-store commit failed during raft apply");
+
+		if let Some(cb) = &self.on_catalog_change {
+			cb();
+		}
+	}
+}
+
 impl<M: MultiVersionCommit + 'static, S: SingleVersionCommit + 'static> State for Apply<M, S> {
 	fn get_applied_index(&self) -> Index {
 		self.applied_index
@@ -79,37 +116,10 @@ impl<M: MultiVersionCommit + 'static, S: SingleVersionCommit + 'static> State fo
 				deltas,
 				version,
 				changes,
-			} => {
-				let cow_deltas = CowVec::new(deltas.clone());
-				self.multi_store
-					.commit(cow_deltas.clone(), *version)
-					.expect("multi-store commit failed during raft apply");
-				self.event_bus.emit(PostCommitEvent::new(cow_deltas, *version, changes.clone()));
-
-				if let Some(cb) = &self.on_version_advance {
-					cb(version.0);
-				}
-
-				if self.on_catalog_change.is_some() {
-					let has_catalog =
-						deltas.iter().any(|d| Key::kind(d.key()).is_some_and(is_catalog_key));
-					if has_catalog {
-						(self.on_catalog_change.as_ref().unwrap())();
-					}
-				}
-			}
+			} => self.handle_write_multi(deltas, *version, changes),
 			Command::WriteSingle {
 				deltas,
-			} => {
-				let cow_deltas = CowVec::new(deltas.clone());
-				self.single_store
-					.commit(cow_deltas)
-					.expect("single-store commit failed during raft apply");
-
-				if let Some(cb) = &self.on_catalog_change {
-					cb();
-				}
-			}
+			} => self.handle_write_single(deltas),
 			Command::Noop => {}
 		}
 		self.applied_index = entry.index;

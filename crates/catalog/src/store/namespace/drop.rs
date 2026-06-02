@@ -16,104 +16,121 @@ use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn drop_namespace(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
-		{
-			let range = NamespaceTableKey::full_scan(namespace);
-			let mut stream = txn.range(range, RangeScope::All, 1024)?;
-			let mut table_ids = Vec::new();
-			for entry in stream.by_ref() {
-				let entry = entry?;
-				if let Some(key) = NamespaceTableKey::decode(&entry.key) {
-					table_ids.push(key.table);
-				}
-			}
-			drop(stream);
-			for table_id in table_ids {
-				Self::drop_table(txn, table_id)?;
-			}
-		}
-
-		{
-			let range = NamespaceViewKey::full_scan(namespace);
-			let mut stream = txn.range(range, RangeScope::All, 1024)?;
-			let mut view_ids = Vec::new();
-			for entry in stream.by_ref() {
-				let entry = entry?;
-				if let Some(key) = NamespaceViewKey::decode(&entry.key) {
-					view_ids.push(key.view);
-				}
-			}
-			drop(stream);
-			for view_id in view_ids {
-				Self::drop_view(txn, view_id)?;
-			}
-		}
-
-		{
-			let range = NamespaceRingBufferKey::full_scan(namespace);
-			let mut stream = txn.range(range, RangeScope::All, 1024)?;
-			let mut rb_ids = Vec::new();
-			for entry in stream.by_ref() {
-				let entry = entry?;
-				if let Some(key) = NamespaceRingBufferKey::decode(&entry.key) {
-					rb_ids.push(key.ringbuffer);
-				}
-			}
-			drop(stream);
-			for rb_id in rb_ids {
-				Self::drop_ringbuffer(txn, rb_id)?;
-			}
-		}
-
-		{
-			let range = NamespaceFlowKey::full_scan(namespace);
-			let mut stream = txn.range(range, RangeScope::All, 1024)?;
-			let mut flow_ids = Vec::new();
-			for entry in stream.by_ref() {
-				let entry = entry?;
-				if let Some(key) = NamespaceFlowKey::decode(&entry.key) {
-					flow_ids.push(key.flow);
-				}
-			}
-			drop(stream);
-			for flow_id in flow_ids {
-				Self::drop_flow(txn, flow_id)?;
-			}
-		}
-
-		{
-			let range = NamespaceDictionaryKey::full_scan(namespace);
-			let mut stream = txn.range(range, RangeScope::All, 1024)?;
-			let mut dict_ids = Vec::new();
-			for entry in stream.by_ref() {
-				let entry = entry?;
-				if let Some(key) = NamespaceDictionaryKey::decode(&entry.key) {
-					dict_ids.push(key.dictionary);
-				}
-			}
-			drop(stream);
-			for dict_id in dict_ids {
-				Self::drop_dictionary(txn, dict_id)?;
-			}
-		}
-
-		{
-			let range = NamespaceSumTypeKey::full_scan(namespace);
-			let mut stream = txn.range(range, RangeScope::All, 1024)?;
-			let mut st_ids = Vec::new();
-			for entry in stream.by_ref() {
-				let entry = entry?;
-				if let Some(key) = NamespaceSumTypeKey::decode(&entry.key) {
-					st_ids.push(key.sumtype);
-				}
-			}
-			drop(stream);
-			for st_id in st_ids {
-				Self::drop_sumtype(txn, st_id)?;
-			}
-		}
-
+		Self::drop_namespace_tables(txn, namespace)?;
+		Self::drop_namespace_views(txn, namespace)?;
+		Self::drop_namespace_ringbuffers(txn, namespace)?;
+		Self::drop_namespace_flows(txn, namespace)?;
+		Self::drop_namespace_dictionaries(txn, namespace)?;
+		Self::drop_namespace_sumtypes(txn, namespace)?;
 		txn.remove(&NamespaceKey::encoded(namespace))?;
+		Ok(())
+	}
 
+	#[inline]
+	fn drop_namespace_tables(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
+		let range = NamespaceTableKey::full_scan(namespace);
+		let mut stream = txn.range(range, RangeScope::All, 1024)?;
+		let mut table_ids = Vec::new();
+		for entry in stream.by_ref() {
+			let entry = entry?;
+			if let Some(key) = NamespaceTableKey::decode(&entry.key) {
+				table_ids.push(key.table);
+			}
+		}
+		drop(stream);
+		for table_id in table_ids {
+			Self::drop_table(txn, table_id)?;
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn drop_namespace_views(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
+		let range = NamespaceViewKey::full_scan(namespace);
+		let mut stream = txn.range(range, RangeScope::All, 1024)?;
+		let mut view_ids = Vec::new();
+		for entry in stream.by_ref() {
+			let entry = entry?;
+			if let Some(key) = NamespaceViewKey::decode(&entry.key) {
+				view_ids.push(key.view);
+			}
+		}
+		drop(stream);
+		for view_id in view_ids {
+			Self::drop_view(txn, view_id)?;
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn drop_namespace_ringbuffers(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
+		let range = NamespaceRingBufferKey::full_scan(namespace);
+		let mut stream = txn.range(range, RangeScope::All, 1024)?;
+		let mut rb_ids = Vec::new();
+		for entry in stream.by_ref() {
+			let entry = entry?;
+			if let Some(key) = NamespaceRingBufferKey::decode(&entry.key) {
+				rb_ids.push(key.ringbuffer);
+			}
+		}
+		drop(stream);
+		for rb_id in rb_ids {
+			Self::drop_ringbuffer(txn, rb_id)?;
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn drop_namespace_flows(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
+		let range = NamespaceFlowKey::full_scan(namespace);
+		let mut stream = txn.range(range, RangeScope::All, 1024)?;
+		let mut flow_ids = Vec::new();
+		for entry in stream.by_ref() {
+			let entry = entry?;
+			if let Some(key) = NamespaceFlowKey::decode(&entry.key) {
+				flow_ids.push(key.flow);
+			}
+		}
+		drop(stream);
+		for flow_id in flow_ids {
+			Self::drop_flow(txn, flow_id)?;
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn drop_namespace_dictionaries(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
+		let range = NamespaceDictionaryKey::full_scan(namespace);
+		let mut stream = txn.range(range, RangeScope::All, 1024)?;
+		let mut dict_ids = Vec::new();
+		for entry in stream.by_ref() {
+			let entry = entry?;
+			if let Some(key) = NamespaceDictionaryKey::decode(&entry.key) {
+				dict_ids.push(key.dictionary);
+			}
+		}
+		drop(stream);
+		for dict_id in dict_ids {
+			Self::drop_dictionary(txn, dict_id)?;
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn drop_namespace_sumtypes(txn: &mut AdminTransaction, namespace: NamespaceId) -> Result<()> {
+		let range = NamespaceSumTypeKey::full_scan(namespace);
+		let mut stream = txn.range(range, RangeScope::All, 1024)?;
+		let mut st_ids = Vec::new();
+		for entry in stream.by_ref() {
+			let entry = entry?;
+			if let Some(key) = NamespaceSumTypeKey::decode(&entry.key) {
+				st_ids.push(key.sumtype);
+			}
+		}
+		drop(stream);
+		for st_id in st_ids {
+			Self::drop_sumtype(txn, st_id)?;
+		}
 		Ok(())
 	}
 }

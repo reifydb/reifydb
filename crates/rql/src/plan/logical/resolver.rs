@@ -5,6 +5,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::{
 	catalog::{
 		id::NamespaceId,
+		namespace::Namespace,
 		view::ViewKind,
 		vtable::{VTable, VTableId},
 	},
@@ -38,12 +39,27 @@ pub fn resolve_unresolved_source(
 	tx: &mut Transaction<'_>,
 	unresolved: &UnresolvedShapeIdentifier,
 ) -> Result<ResolvedSource> {
+	let (namespace_str, ns_def) = resolve_namespace_context(catalog, tx, unresolved)?;
+	let name_str = unresolved.name.text();
+
+	if let Some(remote) = remote_source(&ns_def, &namespace_str, name_str) {
+		return Ok(remote);
+	}
+
+	probe_shape_in_namespace(catalog, tx, unresolved, &ns_def, &namespace_str, name_str)
+}
+
+#[inline]
+fn resolve_namespace_context(
+	catalog: &Catalog,
+	tx: &mut Transaction<'_>,
+	unresolved: &UnresolvedShapeIdentifier,
+) -> Result<(String, Namespace)> {
 	let namespace_str = if !unresolved.namespace.is_empty() {
 		unresolved.namespace.iter().map(|s| s.text()).collect::<Vec<_>>().join("::")
 	} else {
 		DEFAULT_NAMESPACE.to_string()
 	};
-	let name_str = unresolved.name.text();
 
 	let ns_def = if !unresolved.namespace.is_empty() {
 		let ns_fragment = unresolved.namespace[0].to_owned().with_text(&namespace_str);
@@ -52,15 +68,28 @@ pub fn resolve_unresolved_source(
 		catalog.get_namespace_by_name(tx, DEFAULT_NAMESPACE)?
 	};
 
-	if let Some(address) = ns_def.address() {
-		return Ok(ResolvedSource::Remote {
-			address: address.to_string(),
-			token: ns_def.token().map(|s| s.to_string()),
-			local_namespace: namespace_str.to_string(),
-			remote_name: name_str.to_string(),
-		});
-	}
+	Ok((namespace_str, ns_def))
+}
 
+#[inline]
+fn remote_source(ns_def: &Namespace, namespace_str: &str, name_str: &str) -> Option<ResolvedSource> {
+	ns_def.address().map(|address| ResolvedSource::Remote {
+		address: address.to_string(),
+		token: ns_def.token().map(|s| s.to_string()),
+		local_namespace: namespace_str.to_string(),
+		remote_name: name_str.to_string(),
+	})
+}
+
+#[inline]
+fn probe_shape_in_namespace(
+	catalog: &Catalog,
+	tx: &mut Transaction<'_>,
+	unresolved: &UnresolvedShapeIdentifier,
+	ns_def: &Namespace,
+	namespace_str: &str,
+	name_str: &str,
+) -> Result<ResolvedSource> {
 	let namespace_fragment = Fragment::internal(ns_def.name());
 	let namespace = ResolvedNamespace::new(namespace_fragment, ns_def.clone());
 	let name_fragment = Fragment::internal(name_str);

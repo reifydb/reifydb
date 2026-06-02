@@ -80,7 +80,43 @@ impl CatalogStore {
 	) -> Result<Column> {
 		let shape = shape.into();
 
-		// FIXME policies
+		Self::reject_existing_column(txn, shape, &column_to_create)?;
+		if let Some(ty) = Self::invalid_auto_increment_type(&column_to_create) {
+			return Err(CatalogError::AutoIncrementInvalidType {
+				column: column_to_create.column.clone(),
+				ty,
+				fragment: column_to_create.fragment.unwrap_or(Fragment::None),
+			}
+			.into());
+		}
+
+		let id = SystemSequence::next_column_id(txn)?;
+		Self::store_column_row(txn, id, shape, &column_to_create)?;
+		Self::store_primitive_column_row(txn, id, shape, &column_to_create)?;
+
+		Self::create_properties_and_build(txn, id, column_to_create)
+	}
+
+	pub(crate) fn create_column_with_id(
+		txn: &mut AdminTransaction,
+		id: ColumnId,
+		shape: impl Into<ShapeId>,
+		column_to_create: ColumnToCreate,
+	) -> Result<Column> {
+		let shape = shape.into();
+
+		Self::store_column_row(txn, id, shape, &column_to_create)?;
+		Self::store_primitive_column_row(txn, id, shape, &column_to_create)?;
+
+		Self::create_properties_and_build(txn, id, column_to_create)
+	}
+
+	#[inline]
+	fn reject_existing_column(
+		txn: &mut AdminTransaction,
+		shape: ShapeId,
+		column_to_create: &ColumnToCreate,
+	) -> Result<()> {
 		if let Some(column) =
 			Self::find_column_by_name(&mut Transaction::Admin(&mut *txn), shape, &column_to_create.column)?
 		{
@@ -93,76 +129,37 @@ impl CatalogStore {
 			}
 			.into());
 		}
-
-		if column_to_create.auto_increment {
-			let base_type = column_to_create.constraint.get_type();
-			let is_integer_type = matches!(
-				base_type,
-				ValueType::Int1
-					| ValueType::Int2 | ValueType::Int4 | ValueType::Int8
-					| ValueType::Int16 | ValueType::Uint1
-					| ValueType::Uint2 | ValueType::Uint4
-					| ValueType::Uint8 | ValueType::Uint16
-			);
-
-			if !is_integer_type {
-				return Err(CatalogError::AutoIncrementInvalidType {
-					column: column_to_create.column.clone(),
-					ty: base_type,
-					fragment: column_to_create.fragment.unwrap_or(Fragment::None),
-				}
-				.into());
-			}
-		}
-
-		let id = SystemSequence::next_column_id(txn)?;
-
-		let mut row = column::SHAPE.allocate();
-		column::SHAPE.set_u64(&mut row, ID, id);
-		column::SHAPE.set_u64(&mut row, PRIMITIVE, shape);
-		column::SHAPE.set_utf8(&mut row, NAME, &column_to_create.column);
-		column::SHAPE.set_u8(&mut row, VALUE, column_to_create.constraint.get_type().to_u8());
-		column::SHAPE.set_u8(&mut row, INDEX, column_to_create.index);
-		column::SHAPE.set_bool(&mut row, AUTO_INCREMENT, column_to_create.auto_increment);
-
-		let constraint_bytes = encode_constraint(column_to_create.constraint.constraint());
-		let blob = Blob::from(constraint_bytes);
-		column::SHAPE.set_blob(&mut row, CONSTRAINT, &blob);
-
-		let dict_id_value = column_to_create.dictionary_id.map(u64::from).unwrap_or(0);
-		column::SHAPE.set_u64(&mut row, DICTIONARY_ID, dict_id_value);
-
-		txn.set(&ColumnsKey::encoded(id), row)?;
-
-		let mut row = primitive_column::SHAPE.allocate();
-		primitive_column::SHAPE.set_u64(&mut row, primitive_column::ID, id);
-		primitive_column::SHAPE.set_utf8(&mut row, primitive_column::NAME, &column_to_create.column);
-		primitive_column::SHAPE.set_u8(&mut row, primitive_column::INDEX, column_to_create.index);
-		txn.set(&ColumnKey::encoded(shape, id), row)?;
-
-		for policy in column_to_create.properties {
-			Self::create_column_property(txn, id, policy)?;
-		}
-
-		Ok(Column {
-			id,
-			name: column_to_create.column,
-			constraint: column_to_create.constraint,
-			index: column_to_create.index,
-			properties: Self::list_column_properties(&mut Transaction::Admin(&mut *txn), id)?,
-			auto_increment: column_to_create.auto_increment,
-			dictionary_id: column_to_create.dictionary_id,
-		})
+		Ok(())
 	}
 
-	pub(crate) fn create_column_with_id(
+	#[inline]
+	fn invalid_auto_increment_type(column_to_create: &ColumnToCreate) -> Option<ValueType> {
+		if !column_to_create.auto_increment {
+			return None;
+		}
+		let base_type = column_to_create.constraint.get_type();
+		let is_integer_type = matches!(
+			base_type,
+			ValueType::Int1
+				| ValueType::Int2 | ValueType::Int4
+				| ValueType::Int8 | ValueType::Int16
+				| ValueType::Uint1 | ValueType::Uint2
+				| ValueType::Uint4 | ValueType::Uint8
+				| ValueType::Uint16
+		);
+		if is_integer_type {
+			None
+		} else {
+			Some(base_type)
+		}
+	}
+
+	fn store_column_row(
 		txn: &mut AdminTransaction,
 		id: ColumnId,
-		shape: impl Into<ShapeId>,
-		column_to_create: ColumnToCreate,
-	) -> Result<Column> {
-		let shape = shape.into();
-
+		shape: ShapeId,
+		column_to_create: &ColumnToCreate,
+	) -> Result<()> {
 		let mut row = column::SHAPE.allocate();
 		column::SHAPE.set_u64(&mut row, ID, id);
 		column::SHAPE.set_u64(&mut row, PRIMITIVE, shape);
@@ -178,14 +175,27 @@ impl CatalogStore {
 		let dict_id_value = column_to_create.dictionary_id.map(u64::from).unwrap_or(0);
 		column::SHAPE.set_u64(&mut row, DICTIONARY_ID, dict_id_value);
 
-		txn.set(&ColumnsKey::encoded(id), row)?;
+		txn.set(&ColumnsKey::encoded(id), row)
+	}
 
+	fn store_primitive_column_row(
+		txn: &mut AdminTransaction,
+		id: ColumnId,
+		shape: ShapeId,
+		column_to_create: &ColumnToCreate,
+	) -> Result<()> {
 		let mut row = primitive_column::SHAPE.allocate();
 		primitive_column::SHAPE.set_u64(&mut row, primitive_column::ID, id);
 		primitive_column::SHAPE.set_utf8(&mut row, primitive_column::NAME, &column_to_create.column);
 		primitive_column::SHAPE.set_u8(&mut row, primitive_column::INDEX, column_to_create.index);
-		txn.set(&ColumnKey::encoded(shape, id), row)?;
+		txn.set(&ColumnKey::encoded(shape, id), row)
+	}
 
+	fn create_properties_and_build(
+		txn: &mut AdminTransaction,
+		id: ColumnId,
+		column_to_create: ColumnToCreate,
+	) -> Result<Column> {
 		for policy in column_to_create.properties {
 			Self::create_column_property(txn, id, policy)?;
 		}

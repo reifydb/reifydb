@@ -17,7 +17,7 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::{context::clock::Clock, shutdown::Shutdown, sync::mutex::Mutex};
+use reifydb_runtime::{context::clock::Clock, reifydb_assertions, shutdown::Shutdown, sync::mutex::Mutex};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use tokio::{runtime::Handle, sync::mpsc, task::JoinHandle};
 use tracing::{info, instrument};
@@ -98,19 +98,35 @@ impl TaskSubsystem {
 	pub fn handle(&self) -> Option<TaskHandle> {
 		self.handle.lock().clone()
 	}
-}
 
-impl Shutdown for TaskSubsystem {
-	#[instrument(name = "task::subsystem::shutdown", level = "debug", skip(self))]
-	fn shutdown(&self) {
-		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
-			return;
-		}
+	#[inline]
+	fn claim_shutdown(&self) -> bool {
+		self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_ok()
+	}
 
-		info!("Shutting down task subsystem");
-
+	#[inline]
+	fn drain_coordinator_handles(&self) -> DrainedCoordinator {
 		let coordinator_tx = self.coordinator_tx.lock().take();
 		let coordinator_handle = self.coordinator_handle.lock().take();
+
+		reifydb_assertions! {
+			let tx_present = coordinator_tx.is_some();
+			let handle_present = coordinator_handle.is_some();
+			assert!(
+				tx_present && handle_present,
+				"coordinator tx ({tx_present}) and join handle ({handle_present}) must both be \
+				 present on the winning shutdown path; claim_shutdown's CAS makes this the sole \
+				 drainer, so a None here means the coordinator was torn down out of band and the \
+				 worker would skip its Shutdown send or join"
+			);
+		}
+
+		(coordinator_tx, coordinator_handle)
+	}
+
+	#[inline]
+	fn join_coordinator_worker(&self, drained: DrainedCoordinator) {
+		let (coordinator_tx, coordinator_handle) = drained;
 		let handle_tokio = self.handle_tokio.clone();
 		let worker = thread::spawn(move || {
 			if let Some(coordinator_tx) = coordinator_tx {
@@ -121,8 +137,28 @@ impl Shutdown for TaskSubsystem {
 			}
 		});
 		let _ = worker.join();
+	}
 
+	#[inline]
+	fn clear_handle(&self) {
 		*self.handle.lock() = None;
+	}
+}
+
+type DrainedCoordinator = (Option<Sender<TaskCoordinatorMessage>>, Option<JoinHandle<()>>);
+
+impl Shutdown for TaskSubsystem {
+	#[instrument(name = "task::subsystem::shutdown", level = "debug", skip(self))]
+	fn shutdown(&self) {
+		if !self.claim_shutdown() {
+			return;
+		}
+
+		info!("Shutting down task subsystem");
+
+		let drained = self.drain_coordinator_handles();
+		self.join_coordinator_worker(drained);
+		self.clear_handle();
 
 		info!("Task subsystem shut down");
 	}

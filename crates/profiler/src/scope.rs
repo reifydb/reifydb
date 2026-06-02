@@ -14,6 +14,7 @@ use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use reifydb_runtime::{
 	context::clock::{Clock, Instant},
+	reifydb_assertions,
 	sync::mutex::Mutex,
 };
 use serde::{Deserialize, Serialize};
@@ -49,25 +50,46 @@ pub struct ScopeState {
 
 impl ScopeState {
 	pub fn push(&self, rec: MinimalSpanRecord) {
+		if let Some(drained) = self.push_locked(rec) {
+			self.flush_batch(drained);
+		}
+	}
+
+	#[inline]
+	fn push_locked(&self, rec: MinimalSpanRecord) -> Option<Vec<MinimalSpanRecord>> {
 		if self.closed.load(Ordering::Acquire) {
-			return;
+			return None;
 		}
 		let mut guard = self.records.lock();
 		guard.push(rec);
 		if self.batch_threshold > 0 && guard.len() >= self.batch_threshold {
-			let drained: Vec<MinimalSpanRecord> = mem::take(&mut *guard);
-			drop(guard);
-			let elapsed_us = self.started_at.elapsed().as_micros() as u64;
-			let summary = ProfilerSummary::from_records(
-				self.id,
-				self.name,
-				self.started_at_nanos,
-				elapsed_us,
-				drained,
-				self.interner.get().cloned(),
-			);
-			self.sink.on_scope_batch(&summary);
+			Some(mem::take(&mut *guard))
+		} else {
+			None
 		}
+	}
+
+	#[inline]
+	fn flush_batch(&self, drained: Vec<MinimalSpanRecord>) {
+		reifydb_assertions! {
+			let count = drained.len();
+			assert!(
+				count > 0,
+				"flush_batch must never emit an empty profiler batch: a zero-record on_scope_batch \
+				 call would report a spurious flush to the sink; reached with batch_threshold {} and {count} records",
+				self.batch_threshold
+			);
+		}
+		let elapsed_us = self.started_at.elapsed().as_micros() as u64;
+		let summary = ProfilerSummary::from_records(
+			self.id,
+			self.name,
+			self.started_at_nanos,
+			elapsed_us,
+			drained,
+			self.interner.get().cloned(),
+		);
+		self.sink.on_scope_batch(&summary);
 	}
 
 	pub fn attach_interner(&self, interner: Arc<DimInterner>) {

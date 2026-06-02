@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
+	actors::metric::MetricMessage,
 	event::{
 		EventBus,
 		metric::{
@@ -19,7 +20,7 @@ use reifydb_metric::{
 	accumulator::StatementStatsAccumulator,
 	registry::{MetricRegistry, StaticMetricRegistry},
 };
-use reifydb_runtime::actor::system::ActorSpawner;
+use reifydb_runtime::actor::{mailbox::ActorRef, system::ActorSpawner};
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
@@ -35,6 +36,8 @@ use crate::{
 	profiler_vtable::MetricsProfilerCategoriesVTable,
 	subsystem::MetricSubsystem,
 };
+
+type ResolvedDeps = (ActorSpawner, EventBus, SingleStore, MultiStore, Result<StandardEngine>);
 
 pub struct MetricSubsystemFactory {
 	registry: Arc<MetricRegistry>,
@@ -58,33 +61,64 @@ impl MetricSubsystemFactory {
 
 impl SubsystemFactory for MetricSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+		let (spawner, event_bus, single_store, multi_store, engine) = Self::resolve_deps(ioc)?;
+
+		let actor_ref = self.spawn_collector(&spawner, event_bus.clone(), single_store, multi_store, &engine);
+
+		Self::register_listeners(&event_bus, actor_ref);
+		Self::register_vtable(engine)?;
+
+		Ok(Box::new(MetricSubsystem::new()))
+	}
+}
+
+impl MetricSubsystemFactory {
+	#[inline]
+	fn resolve_deps(ioc: &IocContainer) -> Result<ResolvedDeps> {
 		let spawner = ioc.resolve::<ActorSpawner>()?;
 		let event_bus = ioc.resolve::<EventBus>()?;
 		let single_store = ioc.resolve::<SingleStore>()?;
 		let multi_store = ioc.resolve::<MultiStore>()?;
-
 		let engine = ioc.resolve::<StandardEngine>();
+		Ok((spawner, event_bus, single_store, multi_store, engine))
+	}
 
+	#[inline]
+	#[allow(clippy::boxed_local)]
+	fn spawn_collector(
+		self: Box<Self>,
+		spawner: &ActorSpawner,
+		event_bus: EventBus,
+		single_store: SingleStore,
+		multi_store: MultiStore,
+		engine: &Result<StandardEngine>,
+	) -> ActorRef<MetricMessage> {
 		let mut actor = MetricCollectorActor::new(
 			self.registry,
 			self.static_registry,
 			self.accumulator,
-			event_bus.clone(),
+			event_bus,
 			single_store,
 			multi_store,
 		);
-		if let Ok(engine) = &engine {
+		if let Ok(engine) = engine {
 			actor = actor.with_config(Arc::new(engine.catalog()) as Arc<dyn GetConfig>);
 		}
 		let handle = spawner.spawn_background("metric-collector", actor);
-		let actor_ref = handle.actor_ref().clone();
+		handle.actor_ref().clone()
+	}
 
+	#[inline]
+	fn register_listeners(event_bus: &EventBus, actor_ref: ActorRef<MetricMessage>) {
 		event_bus.register::<RequestExecutedEvent, _>(RequestMetricsEventListener::new(actor_ref.clone()));
 		event_bus.register::<MultiCommittedEvent, _>(MultiCommittedListener::new(actor_ref.clone()));
 		event_bus.register::<CdcWrittenEvent, _>(CdcWrittenListener::new(actor_ref.clone()));
 		event_bus.register::<CdcEvictedEvent, _>(CdcEvictedListener::new(actor_ref.clone()));
 		event_bus.register::<ProfilerSnapshotEvent, _>(ProfilerSnapshotListener::new(actor_ref));
+	}
 
+	#[inline]
+	fn register_vtable(engine: Result<StandardEngine>) -> Result<()> {
 		match engine {
 			Ok(engine) => {
 				engine.register_virtual_table(
@@ -99,7 +133,6 @@ impl SubsystemFactory for MetricSubsystemFactory {
 				);
 			}
 		}
-
-		Ok(Box::new(MetricSubsystem::new()))
+		Ok(())
 	}
 }

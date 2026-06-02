@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Always-on profiling subsystem for ReifyDB: EventBus bridge, deep-dive store, histogram delivery"
 
+[build-dependencies]
+reifydb-build = { workspace = true }
+
 [dependencies]
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{
 	Result,
 	storage::DataBitVec,
@@ -74,6 +75,33 @@ impl Columns {
 		rows: impl IntoIterator<Item = EncodedRow>,
 		row_numbers: Vec<RowNumber>,
 	) -> Result<()> {
+		self.validate_append_shape(shape)?;
+
+		let rows: Vec<EncodedRow> = rows.into_iter().collect();
+		Self::validate_row_numbers(&row_numbers, rows.len())?;
+
+		if !row_numbers.is_empty() {
+			self.row_numbers.make_mut().extend(row_numbers);
+		}
+
+		reifydb_assertions! {
+			let columns = self.len();
+			let fields = shape.field_count();
+			assert!(
+				columns == fields,
+				"append_rows retypes and dispatches per column by indexing shape.get_field(index); a \
+				 column/field count divergence makes get_field(index).unwrap() panic on a valid call or \
+				 route a row value into the wrong column (columns={columns}, shape fields={fields})"
+			);
+		}
+
+		self.push_system_columns(&rows);
+		self.retype_all_none_columns(shape);
+		self.append_each_row(shape, &rows)
+	}
+
+	#[inline]
+	fn validate_append_shape(&self, shape: &RowShape) -> Result<()> {
 		if self.len() != shape.field_count() {
 			return Err(CoreError::FrameError {
 				message: format!(
@@ -84,29 +112,34 @@ impl Columns {
 			}
 			.into());
 		}
+		Ok(())
+	}
 
-		let rows: Vec<EncodedRow> = rows.into_iter().collect();
-
-		if !row_numbers.is_empty() && row_numbers.len() != rows.len() {
+	#[inline]
+	fn validate_row_numbers(row_numbers: &[RowNumber], rows_len: usize) -> Result<()> {
+		if !row_numbers.is_empty() && row_numbers.len() != rows_len {
 			return Err(CoreError::FrameError {
 				message: format!(
 					"row_numbers length {} does not match rows length {}",
 					row_numbers.len(),
-					rows.len()
+					rows_len
 				),
 			}
 			.into());
 		}
+		Ok(())
+	}
 
-		if !row_numbers.is_empty() {
-			self.row_numbers.make_mut().extend(row_numbers);
-		}
-
-		for row in &rows {
+	#[inline]
+	fn push_system_columns(&mut self, rows: &[EncodedRow]) {
+		for row in rows {
 			self.created_at.make_mut().push(DateTime::from_nanos(row.created_at_nanos()));
 			self.updated_at.make_mut().push(DateTime::from_nanos(row.updated_at_nanos()));
 		}
+	}
 
+	#[inline]
+	fn retype_all_none_columns(&mut self, shape: &RowShape) {
 		let columns = self.columns.make_mut();
 		for (index, column) in columns.iter_mut().enumerate() {
 			let field = shape.get_field(index).unwrap();
@@ -255,8 +288,11 @@ impl Columns {
 				container.set_dictionary_id(*dict_id);
 			}
 		}
+	}
 
-		for row in &rows {
+	#[inline]
+	fn append_each_row(&mut self, shape: &RowShape, rows: &[EncodedRow]) -> Result<()> {
+		for row in rows {
 			let all_defined = (0..shape.field_count()).all(|i| row.is_defined(i));
 
 			if all_defined {

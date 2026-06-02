@@ -20,3 +20,6 @@ reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+
+[build-dependencies]
+reifydb-build = { workspace = true }

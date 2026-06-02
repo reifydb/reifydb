@@ -137,36 +137,49 @@ impl Drop for GoldenFile {
 		let _ = self.file.flush();
 
 		if let Some(ref temp_path) = self.temp_path {
-			if !self.golden_path.exists() {
-				panic!(
-					"{}\n{}\n\n{}",
-					format!("Golden file '{}' does not exist", self.golden_path.display())
-						.red()
-						.bold(),
-					"Run with UPDATE_TESTFILES=1 to create it.".yellow(),
-					format!("Would create: {}", self.golden_path.display()).bright_black()
-				);
-			}
-
-			let temp_content = read(temp_path).unwrap_or_default();
-			let golden_content = read(&self.golden_path).unwrap_or_default();
-
-			if temp_content != golden_content {
-				let temp_str = String::from_utf8_lossy(&temp_content);
-				let golden_str = String::from_utf8_lossy(&golden_content);
-
-				let diff_output = create_diff(&golden_str, &temp_str);
-
-				panic!(
-					"{}\n\n{}\n\n{}",
-					format!("Golden file test failed for '{}'", self.golden_path.display())
-						.red()
-						.bold(),
-					diff_output,
-					"Run with UPDATE_TESTFILES=1 to update the goldenfile.".yellow()
-				);
-			}
+			self.verify_against_golden(temp_path);
 		}
+	}
+}
+
+impl GoldenFile {
+	#[inline]
+	fn verify_against_golden(&self, temp_path: &Path) {
+		self.assert_golden_exists();
+
+		let temp_content = read(temp_path).unwrap_or_default();
+		let golden_content = read(&self.golden_path).unwrap_or_default();
+
+		if temp_content != golden_content {
+			self.panic_with_diff(&golden_content, &temp_content);
+		}
+	}
+
+	#[inline]
+	fn assert_golden_exists(&self) {
+		if !self.golden_path.exists() {
+			panic!(
+				"{}\n{}\n\n{}",
+				format!("Golden file '{}' does not exist", self.golden_path.display()).red().bold(),
+				"Run with UPDATE_TESTFILES=1 to create it.".yellow(),
+				format!("Would create: {}", self.golden_path.display()).bright_black()
+			);
+		}
+	}
+
+	#[inline]
+	fn panic_with_diff(&self, golden_content: &[u8], temp_content: &[u8]) -> ! {
+		let temp_str = String::from_utf8_lossy(temp_content);
+		let golden_str = String::from_utf8_lossy(golden_content);
+
+		let diff_output = create_diff(&golden_str, &temp_str);
+
+		panic!(
+			"{}\n\n{}\n\n{}",
+			format!("Golden file test failed for '{}'", self.golden_path.display()).red().bold(),
+			diff_output,
+			"Run with UPDATE_TESTFILES=1 to update the goldenfile.".yellow()
+		);
 	}
 }
 
@@ -176,8 +189,29 @@ pub fn create_diff(expected: &str, actual: &str) -> String {
 	let expected_lines: Vec<&str> = expected.lines().collect();
 	let actual_lines: Vec<&str> = actual.lines().collect();
 
-	let mut differences = Vec::new();
 	let max_lines = expected_lines.len().max(actual_lines.len());
+	let differences = collect_differences(&expected_lines, &actual_lines, max_lines);
+
+	if differences.is_empty() {
+		output.push_str(&format!("{}\n", "Files are identical but binary comparison failed.".yellow()));
+		return output;
+	}
+
+	output.clear();
+
+	let hunks = group_into_hunks(&differences, max_lines);
+	let hunks_to_show = hunks.iter().take(20).cloned().collect::<Vec<_>>();
+	let remaining_hunks = hunks.len().saturating_sub(20);
+
+	render_hunks(&mut output, &hunks_to_show, &expected_lines, &actual_lines);
+	append_footers(&mut output, remaining_hunks, differences.len());
+
+	output
+}
+
+#[inline]
+fn collect_differences(expected_lines: &[&str], actual_lines: &[&str], max_lines: usize) -> Vec<usize> {
+	let mut differences = Vec::new();
 
 	for i in 0..max_lines {
 		let expected_line = expected_lines.get(i).copied();
@@ -188,18 +222,16 @@ pub fn create_diff(expected: &str, actual: &str) -> String {
 		}
 	}
 
-	if differences.is_empty() {
-		output.push_str(&format!("{}\n", "Files are identical but binary comparison failed.".yellow()));
-		return output;
-	}
+	differences
+}
 
-	output.clear();
-
+#[inline]
+fn group_into_hunks(differences: &[usize], max_lines: usize) -> Vec<(usize, usize)> {
 	let context_lines = 3;
 	let mut hunks = Vec::new();
 	let mut current_hunk: Option<(usize, usize)> = None;
 
-	for &diff_line in &differences {
+	for &diff_line in differences {
 		match current_hunk {
 			None => {
 				let start = diff_line.saturating_sub(context_lines);
@@ -221,10 +253,12 @@ pub fn create_diff(expected: &str, actual: &str) -> String {
 		hunks.push((start, (end + context_lines).min(max_lines)));
 	}
 
-	let hunks_to_show = hunks.iter().take(20).cloned().collect::<Vec<_>>();
-	let remaining_hunks = hunks.len().saturating_sub(20);
+	hunks
+}
 
-	for (hunk_start, hunk_end) in &hunks_to_show {
+#[inline]
+fn render_hunks(output: &mut String, hunks_to_show: &[(usize, usize)], expected_lines: &[&str], actual_lines: &[&str]) {
+	for (hunk_start, hunk_end) in hunks_to_show {
 		let expected_start = hunk_start + 1;
 		let expected_count = expected_lines[*hunk_start..(*hunk_end).min(expected_lines.len())].len();
 		let actual_start = hunk_start + 1;
@@ -282,7 +316,10 @@ pub fn create_diff(expected: &str, actual: &str) -> String {
 			}
 		}
 	}
+}
 
+#[inline]
+fn append_footers(output: &mut String, remaining_hunks: usize, total_diffs: usize) {
 	if remaining_hunks > 0 {
 		output.push_str(&format!(
 			"\n{}\n",
@@ -299,7 +336,6 @@ pub fn create_diff(expected: &str, actual: &str) -> String {
 		));
 	}
 
-	let total_diffs = differences.len();
 	if total_diffs > 10 {
 		output.push_str(&format!(
 			"\n{}\n",
@@ -315,6 +351,4 @@ pub fn create_diff(expected: &str, actual: &str) -> String {
 			.bright_black()
 		));
 	}
-
-	output
 }

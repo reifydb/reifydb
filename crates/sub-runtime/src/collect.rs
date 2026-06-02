@@ -39,7 +39,15 @@ pub fn collect_memory(c: &Collectors) -> Vec<Sample> {
 	let proc_mem = collect_process();
 	let alloc = collect_allocator();
 
-	if let Some(p) = &proc_mem {
+	push_process_allocator_samples(&mut out, &proc_mem, &alloc);
+	push_buffer_derived_samples(c, &mut out, &proc_mem, &alloc);
+
+	out
+}
+
+#[inline]
+fn push_process_allocator_samples(out: &mut Vec<Sample>, proc_mem: &Option<ProcMem>, alloc: &Option<AllocMem>) {
+	if let Some(p) = proc_mem {
 		out.push(Sample::new("process", "rss_total_bytes", p.rss_total as f64, "bytes"));
 		out.push(Sample::new("process", "rss_anon_bytes", p.rss_anon as f64, "bytes"));
 		out.push(Sample::new("process", "rss_file_bytes", p.rss_file as f64, "bytes"));
@@ -53,28 +61,34 @@ pub fn collect_memory(c: &Collectors) -> Vec<Sample> {
 		out.push(Sample::new("process", "thread_count", p.threads as f64, "threads"));
 	}
 
-	if let Some(a) = &alloc {
+	if let Some(a) = alloc {
 		out.push(Sample::new("allocator", "heap_live_bytes", a.heap_live as f64, "bytes"));
 		out.push(Sample::new("allocator", "heap_free_retained_bytes", a.heap_free_retained as f64, "bytes"));
 		out.push(Sample::new("allocator", "heap_arena_bytes", a.heap_arena as f64, "bytes"));
 		out.push(Sample::new("allocator", "heap_mmap_bytes", a.heap_mmap as f64, "bytes"));
 	}
+}
 
-	collect_buffer(c, &mut out);
+#[inline]
+fn push_buffer_derived_samples(
+	c: &Collectors,
+	out: &mut Vec<Sample>,
+	proc_mem: &Option<ProcMem>,
+	alloc: &Option<AllocMem>,
+) {
+	collect_buffer(c, out);
 
-	if let Some(p) = &proc_mem {
+	if let Some(p) = proc_mem {
 		if p.rss_total > 0 {
 			out.push(Sample::new("derived", "mmap_share", p.rss_file as f64 / p.rss_total as f64, "ratio"));
 		}
-		if let Some(a) = &alloc
+		if let Some(a) = alloc
 			&& p.rss_anon > 0
 		{
 			let frag = (p.rss_anon as f64 - a.heap_live as f64) / p.rss_anon as f64;
 			out.push(Sample::new("derived", "heap_retention_ratio", frag, "ratio"));
 		}
 	}
-
-	out
 }
 
 pub fn collect_watermarks(c: &Collectors) -> Vec<Sample> {

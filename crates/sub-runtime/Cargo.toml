@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Always-on runtime-metrics subsystem for ReifyDB"
 
+[build-dependencies]
+reifydb-build = { workspace = true }
+
 [dependencies]
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }

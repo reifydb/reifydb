@@ -32,10 +32,21 @@ impl DiagnosticRenderer for DefaultRenderer {
 
 impl DefaultRenderer {
 	fn render_flat(&self, output: &mut String, diagnostic: &Diagnostic) {
+		self.render_flat_header(output, diagnostic);
+		self.render_flat_location(output, diagnostic);
+		self.render_flat_operator_chain(output, diagnostic);
+		self.render_flat_trailing(output, diagnostic);
+	}
+
+	#[inline]
+	fn render_flat_header(&self, output: &mut String, diagnostic: &Diagnostic) {
 		let _ = writeln!(output, "Error {}", diagnostic.code);
 		let _ = writeln!(output, "  {}", diagnostic.message);
 		let _ = writeln!(output);
+	}
 
+	#[inline]
+	fn render_flat_location(&self, output: &mut String, diagnostic: &Diagnostic) {
 		if let Fragment::Statement {
 			line,
 			column,
@@ -71,7 +82,10 @@ impl DefaultRenderer {
 			let _ = writeln!(output, "    │ {}{}", " ".repeat(label_center_offset), label_text);
 			let _ = writeln!(output);
 		}
+	}
 
+	#[inline]
+	fn render_flat_operator_chain(&self, output: &mut String, diagnostic: &Diagnostic) {
 		if let Some(chain) = &diagnostic.operator_chain
 			&& !chain.is_empty()
 		{
@@ -88,7 +102,10 @@ impl DefaultRenderer {
 			}
 			let _ = writeln!(output);
 		}
+	}
 
+	#[inline]
+	fn render_flat_trailing(&self, output: &mut String, diagnostic: &Diagnostic) {
 		if let Some(help) = &diagnostic.help {
 			let _ = writeln!(output, "HELP");
 			let _ = writeln!(output, "  {}", help);
@@ -121,8 +138,23 @@ impl DefaultRenderer {
 			"↳ "
 		};
 
-		let _ = writeln!(output, "{}{} Error {}: {}", indent, prefix, diagnostic.code, diagnostic.message);
+		self.render_nested_header(output, diagnostic, indent, prefix);
+		self.render_nested_location(output, diagnostic, indent);
 
+		if let Some(cause) = &diagnostic.cause {
+			self.render_nested(output, cause, depth + 1);
+		}
+
+		self.render_nested_trailing(output, diagnostic, indent, depth);
+	}
+
+	#[inline]
+	fn render_nested_header(&self, output: &mut String, diagnostic: &Diagnostic, indent: &str, prefix: &str) {
+		let _ = writeln!(output, "{}{} Error {}: {}", indent, prefix, diagnostic.code, diagnostic.message);
+	}
+
+	#[inline]
+	fn render_nested_location(&self, output: &mut String, diagnostic: &Diagnostic, indent: &str) {
 		if let Fragment::Statement {
 			line,
 			column,
@@ -180,11 +212,10 @@ impl DefaultRenderer {
 			}
 			let _ = writeln!(output);
 		}
+	}
 
-		if let Some(cause) = &diagnostic.cause {
-			self.render_nested(output, cause, depth + 1);
-		}
-
+	#[inline]
+	fn render_nested_trailing(&self, output: &mut String, diagnostic: &Diagnostic, indent: &str, depth: usize) {
 		if let Some(help) = &diagnostic.help {
 			let _ = writeln!(output, "{}  help: {}", indent, help);
 		}

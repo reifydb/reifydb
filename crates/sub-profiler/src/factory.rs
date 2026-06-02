@@ -27,9 +27,11 @@ use crate::{
 	vtable::ProfilerAggregatesVTable,
 };
 
+type Configurator = Box<dyn FnOnce(ProfilerConfigurator) -> ProfilerConfigurator + Send>;
+
 pub struct ProfilerSubsystemFactory {
 	subsystem: Option<ProfilerSubsystem>,
-	configurator: Option<Box<dyn FnOnce(ProfilerConfigurator) -> ProfilerConfigurator + Send>>,
+	configurator: Option<Configurator>,
 }
 
 impl ProfilerSubsystemFactory {
@@ -56,6 +58,55 @@ impl ProfilerSubsystemFactory {
 			configurator: None,
 		}
 	}
+
+	#[inline]
+	fn build_subsystem(configurator: Option<Configurator>, ioc: &IocContainer) -> Result<ProfilerSubsystem> {
+		let cfg = match configurator {
+			Some(f) => f(ProfilerConfigurator::new()),
+			None => ProfilerConfigurator::default(),
+		};
+
+		let interner = Arc::new(DimInterner::new());
+		let accumulator = Arc::new(RwLock::new(ProfilerAccumulator::new(
+			cfg.accumulator_capacity,
+			cfg.min_calls_for_retention,
+		)));
+		let event_bus = ioc.resolve::<EventBus>()?;
+		let clock = ioc.resolve::<Clock>()?;
+
+		if cfg.enabled {
+			let spawner = ioc.resolve::<ActorSpawner>()?;
+			let actor = ProfilerCollectorActor::new(Arc::clone(&accumulator), Arc::clone(&interner));
+			let handle = spawner.spawn_background("profile-collector", actor);
+			let actor_ref = handle.actor_ref().clone();
+
+			event_bus.register::<ProfilerScopeClosedEvent, _>(ProfilerScopeClosedListener::new(
+				actor_ref.clone(),
+			));
+			event_bus.register::<ProfilerScopeBatchEvent, _>(ProfilerScopeBatchListener::new(actor_ref));
+		}
+
+		let sink: Arc<dyn ProfilerSink> = if cfg.enabled {
+			Arc::new(EventBusSink::new(event_bus))
+		} else {
+			Arc::new(NoopSink)
+		};
+
+		Ok(ProfilerSubsystem::new(cfg.enabled, cfg.categories, interner, accumulator, sink, clock.clone()))
+	}
+
+	#[inline]
+	fn spawn_snapshot_actor(
+		subsystem: &ProfilerSubsystem,
+		engine: StandardEngine,
+		ioc: &IocContainer,
+	) -> Result<()> {
+		let spawner = ioc.resolve::<ActorSpawner>()?;
+		let event_bus = ioc.resolve::<EventBus>()?;
+		let snapshot_actor = ProfilerSnapshotActor::new(subsystem.accumulator(), engine, event_bus);
+		spawner.spawn_background("profile-snapshot", snapshot_actor);
+		Ok(())
+	}
 }
 
 impl Default for ProfilerSubsystemFactory {
@@ -66,53 +117,15 @@ impl Default for ProfilerSubsystemFactory {
 
 impl SubsystemFactory for ProfilerSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
-		let subsystem = if let Some(subsystem) = self.subsystem {
-			subsystem
-		} else {
-			let cfg = match self.configurator {
-				Some(f) => f(ProfilerConfigurator::new()),
-				None => ProfilerConfigurator::default(),
-			};
-
-			let interner = Arc::new(DimInterner::new());
-			let accumulator = Arc::new(RwLock::new(ProfilerAccumulator::new(
-				cfg.accumulator_capacity,
-				cfg.min_calls_for_retention,
-			)));
-			let event_bus = ioc.resolve::<EventBus>()?;
-			let clock = ioc.resolve::<Clock>()?;
-
-			if cfg.enabled {
-				let spawner = ioc.resolve::<ActorSpawner>()?;
-				let actor =
-					ProfilerCollectorActor::new(Arc::clone(&accumulator), Arc::clone(&interner));
-				let handle = spawner.spawn_background("profile-collector", actor);
-				let actor_ref = handle.actor_ref().clone();
-
-				event_bus.register::<ProfilerScopeClosedEvent, _>(ProfilerScopeClosedListener::new(
-					actor_ref.clone(),
-				));
-				event_bus.register::<ProfilerScopeBatchEvent, _>(ProfilerScopeBatchListener::new(
-					actor_ref,
-				));
-			}
-
-			let sink: Arc<dyn ProfilerSink> = if cfg.enabled {
-				Arc::new(EventBusSink::new(event_bus))
-			} else {
-				Arc::new(NoopSink)
-			};
-
-			ProfilerSubsystem::new(cfg.enabled, cfg.categories, interner, accumulator, sink, clock.clone())
+		let subsystem = match self.subsystem {
+			Some(subsystem) => subsystem,
+			None => Self::build_subsystem(self.configurator, ioc)?,
 		};
 
 		let engine = ioc.resolve::<StandardEngine>()?;
 		register_profile_aggregates_vtables(&engine, &subsystem.reader())?;
 
-		let spawner = ioc.resolve::<ActorSpawner>()?;
-		let event_bus = ioc.resolve::<EventBus>()?;
-		let snapshot_actor = ProfilerSnapshotActor::new(subsystem.accumulator(), engine, event_bus);
-		spawner.spawn_background("profile-snapshot", snapshot_actor);
+		Self::spawn_snapshot_actor(&subsystem, engine, ioc)?;
 
 		Ok(Box::new(subsystem))
 	}

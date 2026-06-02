@@ -45,25 +45,41 @@ pub struct WindowNode {
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_window(&self, ast: AstWindow<'bump>) -> Result<LogicalPlan<'bump>> {
 		let rql = ast.rql.to_string();
-		let mut parsed = ParsedConfig::default();
-		let mut group_by = Vec::new();
 
-		for config_item in &ast.config {
+		let parsed = Self::parse_config(&ast.config)?;
+		let group_by = Self::compile_expressions(ast.group_by)?;
+		let aggregations = Self::compile_expressions(ast.aggregations)?;
+		let kind = Self::build_window_kind(ast.kind, &parsed)?;
+
+		Ok(LogicalPlan::Window(WindowNode {
+			kind,
+			group_by,
+			aggregations,
+			ts: parsed.ts,
+			rql,
+		}))
+	}
+
+	#[inline]
+	fn parse_config(config: &[AstWindowConfig<'bump>]) -> Result<ParsedConfig> {
+		let mut parsed = ParsedConfig::default();
+		for config_item in config {
 			Self::parse_config_item(config_item, &mut parsed)?;
 		}
+		Ok(parsed)
+	}
 
-		for group_ast in ast.group_by {
-			let group_expr = ExpressionCompiler::compile(group_ast)?;
-			group_by.push(group_expr);
+	fn compile_expressions(asts: Vec<Ast<'bump>>) -> Result<Vec<Expression>> {
+		let mut expressions = Vec::new();
+		for ast in asts {
+			expressions.push(ExpressionCompiler::compile(ast)?);
 		}
+		Ok(expressions)
+	}
 
-		let mut aggregations = Vec::new();
-		for agg_ast in ast.aggregations {
-			let agg_expr = ExpressionCompiler::compile(agg_ast)?;
-			aggregations.push(agg_expr);
-		}
-
-		if parsed.lag.is_some() && !matches!(ast.kind, AstWindowKind::Rolling) {
+	#[inline]
+	fn build_window_kind(kind: AstWindowKind, parsed: &ParsedConfig) -> Result<WindowKind> {
+		if parsed.lag.is_some() && !matches!(kind, AstWindowKind::Rolling) {
 			return Err(AstError::UnexpectedToken {
 				expected: "lag is only supported for rolling windows".to_string(),
 				fragment: Fragment::None,
@@ -71,15 +87,15 @@ impl<'bump> Compiler<'bump> {
 			.into());
 		}
 
-		let kind = match ast.kind {
+		match kind {
 			AstWindowKind::Tumbling => {
-				let size = Self::build_measure(&parsed)?;
-				WindowKind::Tumbling {
+				let size = Self::build_measure(parsed)?;
+				Ok(WindowKind::Tumbling {
 					size,
-				}
+				})
 			}
 			AstWindowKind::Sliding => {
-				let size = Self::build_measure(&parsed)?;
+				let size = Self::build_measure(parsed)?;
 				let slide = if let Some(d) = parsed.slide_duration {
 					WindowSize::Duration(d)
 				} else if let Some(c) = parsed.slide_count {
@@ -91,13 +107,13 @@ impl<'bump> Compiler<'bump> {
 					}
 					.into());
 				};
-				WindowKind::Sliding {
+				Ok(WindowKind::Sliding {
 					size,
 					slide,
-				}
+				})
 			}
 			AstWindowKind::Rolling => {
-				let size = Self::build_measure(&parsed)?;
+				let size = Self::build_measure(parsed)?;
 				if parsed.lag.is_some() && !matches!(size, WindowSize::Duration(_)) {
 					return Err(AstError::UnexpectedToken {
 						expected: "lag is only supported with a duration interval".to_string(),
@@ -112,31 +128,21 @@ impl<'bump> Compiler<'bump> {
 					}
 					.into());
 				}
-				WindowKind::Rolling {
+				Ok(WindowKind::Rolling {
 					size,
 					lag: parsed.lag,
-				}
+				})
 			}
 			AstWindowKind::Session => {
 				let gap = parsed.gap.ok_or_else(|| AstError::UnexpectedToken {
 					expected: "gap parameter is required for session windows".to_string(),
 					fragment: Fragment::None,
 				})?;
-				WindowKind::Session {
+				Ok(WindowKind::Session {
 					gap,
-				}
+				})
 			}
-		};
-
-		let window_node = WindowNode {
-			kind,
-			group_by,
-			aggregations,
-			ts: parsed.ts,
-			rql,
-		};
-
-		Ok(LogicalPlan::Window(window_node))
+		}
 	}
 
 	fn build_measure(parsed: &ParsedConfig) -> Result<WindowSize> {

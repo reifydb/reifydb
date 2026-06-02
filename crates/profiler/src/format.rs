@@ -12,21 +12,31 @@ use crate::{
 
 pub fn summary(summary: &ProfilerSummary, top_n: usize) -> String {
 	let (totals, mut hot) = flow_aggregates(summary);
-
-	let mut out = format!(
-		"tick(proc={}us/{}c, apply_sum={}us/{}ops, lock_sum={}us)",
-		totals.process_wall_us,
-		totals.process_calls,
-		totals.apply_total_us,
-		totals.op_calls,
-		totals.lock_total_us,
-	);
+	let mut out = summary_header(&totals);
 
 	if hot.is_empty() {
 		out.push_str(" hot=[]");
 		return out;
 	}
 
+	render_hot_rows(&mut out, summary, &mut hot, top_n);
+	out
+}
+
+#[inline]
+fn summary_header(totals: &FlowTotals) -> String {
+	format!(
+		"tick(proc={}us/{}c, apply_sum={}us/{}ops, lock_sum={}us)",
+		totals.process_wall_us,
+		totals.process_calls,
+		totals.apply_total_us,
+		totals.op_calls,
+		totals.lock_total_us,
+	)
+}
+
+#[inline]
+fn render_hot_rows(out: &mut String, summary: &ProfilerSummary, hot: &mut [(FlowKey, HotEntry)], top_n: usize) {
 	hot.sort_by(|a, b| b.1.apply_us.cmp(&a.1.apply_us));
 	out.push_str(" hot=[");
 	for (i, (key, entry)) in hot.iter().take(top_n).enumerate() {
@@ -42,7 +52,6 @@ pub fn summary(summary: &ProfilerSummary, top_n: usize) -> String {
 		);
 	}
 	out.push(']');
-	out
 }
 
 pub fn summary_table(summary: &ProfilerSummary, top_n: usize) -> String {
@@ -89,6 +98,17 @@ pub fn aggregates_table(records: &[AggregateRecord], top_n: usize) -> String {
 		out.push_str("profile (accumulator) empty\n");
 		return out;
 	}
+	write_accumulator_header(&mut out, records);
+
+	for cat in ALL_CATEGORIES {
+		render_category(&mut out, records, cat, top_n);
+	}
+
+	out
+}
+
+#[inline]
+fn write_accumulator_header(out: &mut String, records: &[AggregateRecord]) {
 	let total_calls: u64 = records.iter().map(|r| r.calls).sum();
 	let total_us: u64 = records.iter().map(|r| r.total_us).sum();
 	let _ = writeln!(
@@ -98,96 +118,100 @@ pub fn aggregates_table(records: &[AggregateRecord], top_n: usize) -> String {
 		total_calls,
 		fmt_us(total_us)
 	);
+}
 
-	for cat in ALL_CATEGORIES {
-		let cat_records: Vec<&AggregateRecord> = records.iter().filter(|r| r.category == cat).collect();
-		if cat_records.is_empty() {
-			continue;
-		}
-		let cat_calls: u64 = cat_records.iter().map(|r| r.calls).sum();
-		let cat_total: u64 = cat_records.iter().map(|r| r.total_us).sum();
+#[inline]
+fn render_category(out: &mut String, records: &[AggregateRecord], cat: ProfilerCategory, top_n: usize) {
+	let cat_records: Vec<&AggregateRecord> = records.iter().filter(|r| r.category == cat).collect();
+	if cat_records.is_empty() {
+		return;
+	}
+	let cat_calls: u64 = cat_records.iter().map(|r| r.calls).sum();
+	let cat_total: u64 = cat_records.iter().map(|r| r.total_us).sum();
+	let _ = writeln!(
+		out,
+		"  {}: {} records, {} calls, total={}",
+		category_label(cat),
+		cat_records.len(),
+		cat_calls,
+		fmt_us(cat_total)
+	);
+
+	let mut by_name: HashMap<&str, Vec<&AggregateRecord>> = HashMap::new();
+	for r in &cat_records {
+		by_name.entry(r.span_name.as_str()).or_default().push(*r);
+	}
+	let mut groups: Vec<(&str, Vec<&AggregateRecord>)> = by_name.into_iter().collect();
+	groups.sort_by_key(|(_, recs)| Reverse(recs.iter().map(|r| r.total_us).sum::<u64>()));
+
+	for (span_name, group) in groups {
+		render_group(out, span_name, group, top_n);
+	}
+}
+
+#[inline]
+fn render_group(out: &mut String, span_name: &str, mut group: Vec<&AggregateRecord>, top_n: usize) {
+	let group_total: u64 = group.iter().map(|r| r.total_us).sum();
+	let group_calls: u64 = group.iter().map(|r| r.calls).sum();
+
+	if group.len() == 1 && group[0].dimensions.is_empty() {
+		let r = group[0];
+		let p = r.histogram.percentiles();
 		let _ = writeln!(
 			out,
-			"  {}: {} records, {} calls, total={}",
-			category_label(cat),
-			cat_records.len(),
-			cat_calls,
-			fmt_us(cat_total)
+			"    {}  total={} calls={} p50={} p75={} p90={} p95={} p99={}",
+			span_name,
+			fmt_us(r.total_us),
+			r.calls,
+			fmt_us(p.p50 as u64),
+			fmt_us(p.p75 as u64),
+			fmt_us(p.p90 as u64),
+			fmt_us(p.p95 as u64),
+			fmt_us(p.p99 as u64),
 		);
-
-		let mut by_name: HashMap<&str, Vec<&AggregateRecord>> = HashMap::new();
-		for r in &cat_records {
-			by_name.entry(r.span_name.as_str()).or_default().push(*r);
-		}
-		let mut groups: Vec<(&str, Vec<&AggregateRecord>)> = by_name.into_iter().collect();
-		groups.sort_by_key(|(_, recs)| Reverse(recs.iter().map(|r| r.total_us).sum::<u64>()));
-
-		for (span_name, mut group) in groups {
-			let group_total: u64 = group.iter().map(|r| r.total_us).sum();
-			let group_calls: u64 = group.iter().map(|r| r.calls).sum();
-
-			if group.len() == 1 && group[0].dimensions.is_empty() {
-				let r = group[0];
-				let p = r.histogram.percentiles();
-				let _ = writeln!(
-					out,
-					"    {}  total={} calls={} p50={} p75={} p90={} p95={} p99={}",
-					span_name,
-					fmt_us(r.total_us),
-					r.calls,
-					fmt_us(p.p50 as u64),
-					fmt_us(p.p75 as u64),
-					fmt_us(p.p90 as u64),
-					fmt_us(p.p95 as u64),
-					fmt_us(p.p99 as u64),
-				);
-				continue;
-			}
-
-			let _ = writeln!(
-				out,
-				"    {} [{} ops, total={}, calls={}]",
-				span_name,
-				group.len(),
-				fmt_us(group_total),
-				group_calls,
-			);
-
-			group.sort_by(|a, b| b.total_us.cmp(&a.total_us));
-			group.truncate(top_n);
-
-			let labels: Vec<String> = group
-				.iter()
-				.map(|r| {
-					if r.dimensions.is_empty() {
-						"<no-dims>".to_string()
-					} else {
-						r.dimensions.join("@")
-					}
-				})
-				.collect();
-			let max_label_width = labels.iter().map(|s| s.len()).max().unwrap_or(0);
-
-			for (i, r) in group.iter().enumerate() {
-				let p = r.histogram.percentiles();
-				let _ = writeln!(
-					out,
-					"      {:<width$}  total={} calls={} p50={} p75={} p90={} p95={} p99={}",
-					labels[i],
-					fmt_us(r.total_us),
-					r.calls,
-					fmt_us(p.p50 as u64),
-					fmt_us(p.p75 as u64),
-					fmt_us(p.p90 as u64),
-					fmt_us(p.p95 as u64),
-					fmt_us(p.p99 as u64),
-					width = max_label_width,
-				);
-			}
-		}
+		return;
 	}
 
-	out
+	let _ = writeln!(
+		out,
+		"    {} [{} ops, total={}, calls={}]",
+		span_name,
+		group.len(),
+		fmt_us(group_total),
+		group_calls,
+	);
+
+	group.sort_by(|a, b| b.total_us.cmp(&a.total_us));
+	group.truncate(top_n);
+
+	let labels: Vec<String> = group
+		.iter()
+		.map(|r| {
+			if r.dimensions.is_empty() {
+				"<no-dims>".to_string()
+			} else {
+				r.dimensions.join("@")
+			}
+		})
+		.collect();
+	let max_label_width = labels.iter().map(|s| s.len()).max().unwrap_or(0);
+
+	for (i, r) in group.iter().enumerate() {
+		let p = r.histogram.percentiles();
+		let _ = writeln!(
+			out,
+			"      {:<width$}  total={} calls={} p50={} p75={} p90={} p95={} p99={}",
+			labels[i],
+			fmt_us(r.total_us),
+			r.calls,
+			fmt_us(p.p50 as u64),
+			fmt_us(p.p75 as u64),
+			fmt_us(p.p90 as u64),
+			fmt_us(p.p95 as u64),
+			fmt_us(p.p99 as u64),
+			width = max_label_width,
+		);
+	}
 }
 
 pub fn fmt_us(us: u64) -> String {

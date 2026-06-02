@@ -4,7 +4,10 @@
 use std::collections::HashMap;
 
 use reifydb_catalog::{drop_expired_tokens, drop_token, drop_tokens_by_identity, find_token_by_value};
-use reifydb_core::interface::{auth::AuthStep, catalog::token::Token};
+use reifydb_core::interface::{
+	auth::AuthStep,
+	catalog::token::{Token, TokenId},
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
 
@@ -56,23 +59,30 @@ impl AuthService {
 	}
 
 	pub fn revoke_token(&self, token: &str) -> bool {
-		let mut txn = match self.engine.begin_query() {
-			Ok(txn) => txn,
-			Err(_) => return false,
+		let def = match self.find_token(token) {
+			Some(def) => def,
+			None => return false,
 		};
+		self.drop_and_commit(def.id)
+	}
 
-		let def = match find_token_by_value(&mut Transaction::Query(&mut txn), token) {
-			Ok(Some(def)) => def,
-			_ => return false,
-		};
-		drop(txn);
+	#[inline]
+	fn find_token(&self, token: &str) -> Option<Token> {
+		let mut txn = self.engine.begin_query().ok()?;
+		match find_token_by_value(&mut Transaction::Query(&mut txn), token) {
+			Ok(Some(def)) => Some(def),
+			_ => None,
+		}
+	}
 
+	#[inline]
+	fn drop_and_commit(&self, id: TokenId) -> bool {
 		let mut admin = match self.engine.begin_admin() {
 			Ok(a) => a,
 			Err(_) => return false,
 		};
 
-		if drop_token(&mut admin, def.id).is_err() {
+		if drop_token(&mut admin, id).is_err() {
 			return false;
 		}
 

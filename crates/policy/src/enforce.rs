@@ -12,8 +12,9 @@ use reifydb_rql::{
 	bump::BumpBox,
 	expression::{Expression, ExpressionCompiler},
 };
+use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, error::Error};
+use reifydb_value::{Result, error::Error, value::identity::IdentityId};
 
 use crate::{error::PolicyError, evaluate::PolicyEvaluator, resolve_write_policies};
 
@@ -38,11 +39,30 @@ pub fn enforce_write_policies(
 	if policies.is_empty() {
 		return Err(no_policy_error(target));
 	}
+	let identity = tx.identity();
+	evaluate_row_policies(&policies, target, row_columns, identity, evaluator)
+}
 
+#[inline]
+fn evaluate_row_policies(
+	policies: &[(Policy, PolicyOperation)],
+	target: &PolicyTarget<'_>,
+	row_columns: &Columns,
+	identity: IdentityId,
+	evaluator: &impl PolicyEvaluator,
+) -> Result<()> {
+	reifydb_assertions! {
+		let count = policies.len();
+		assert!(
+			count > 0,
+			"enforce_write_policies reached per-condition evaluation with no resolved policies; \
+			 for_each_policy_condition over an empty slice returns Ok and would silently allow an \
+			 unprotected write past policy enforcement (policies={count})"
+		);
+	}
 	let bump = Bump::new();
 	let target_name = format!("{}::{}", target.namespace, target.shape);
-	let identity = tx.identity();
-	for_each_policy_condition(&policies, &bump, |policy, condition_expr| {
+	for_each_policy_condition(policies, &bump, |policy, condition_expr| {
 		let row_count = row_columns.row_count();
 		if row_count == 0 {
 			return Ok(());
@@ -72,20 +92,43 @@ pub fn enforce_session_policy(
 	}
 	let policies = resolve_write_policies(catalog, tx, "", "", session_type, PolicyTargetType::Session)?;
 	if policies.is_empty() {
-		return if default_deny {
-			Err(PolicyError::SessionDenied {
-				session_type: session_type.to_string(),
-			}
-			.into())
-		} else {
-			Ok(())
-		};
+		return session_empty_outcome(session_type, default_deny);
 	}
+	let identity = tx.identity();
+	evaluate_session_policies(&policies, session_type, identity, evaluator)
+}
 
+#[inline]
+fn session_empty_outcome(session_type: &str, default_deny: bool) -> Result<()> {
+	if default_deny {
+		Err(PolicyError::SessionDenied {
+			session_type: session_type.to_string(),
+		}
+		.into())
+	} else {
+		Ok(())
+	}
+}
+
+#[inline]
+fn evaluate_session_policies(
+	policies: &[(Policy, PolicyOperation)],
+	session_type: &str,
+	identity: IdentityId,
+	evaluator: &impl PolicyEvaluator,
+) -> Result<()> {
+	reifydb_assertions! {
+		let count = policies.len();
+		assert!(
+			count > 0,
+			"enforce_session_policy reached per-condition evaluation with no resolved policies; \
+			 for_each_policy_condition over an empty slice returns Ok and would bypass the \
+			 default-deny decision, silently admitting the session (policies={count})"
+		);
+	}
 	let bump = Bump::new();
 	let empty_columns = Columns::empty();
-	let identity = tx.identity();
-	for_each_policy_condition(&policies, &bump, |_policy, condition_expr| {
+	for_each_policy_condition(policies, &bump, |_policy, condition_expr| {
 		let passed = evaluator.evaluate_condition(condition_expr, &empty_columns, 1, identity)?;
 		if passed {
 			return Ok(());
@@ -110,12 +153,30 @@ pub fn enforce_identity_policy(
 	if policies.is_empty() {
 		return Err(no_policy_error(target));
 	}
+	let identity = tx.identity();
+	evaluate_identity_policies(&policies, target, identity, evaluator)
+}
 
+#[inline]
+fn evaluate_identity_policies(
+	policies: &[(Policy, PolicyOperation)],
+	target: &PolicyTarget<'_>,
+	identity: IdentityId,
+	evaluator: &impl PolicyEvaluator,
+) -> Result<()> {
+	reifydb_assertions! {
+		let count = policies.len();
+		assert!(
+			count > 0,
+			"enforce_identity_policy reached per-condition evaluation with no resolved policies; \
+			 for_each_policy_condition over an empty slice returns Ok and would silently admit the \
+			 identity past policy enforcement (policies={count})"
+		);
+	}
 	let bump = Bump::new();
 	let target_name = format!("{}::{}", target.namespace, target.shape);
 	let empty_columns = Columns::empty();
-	let identity = tx.identity();
-	for_each_policy_condition(&policies, &bump, |policy, condition_expr| {
+	for_each_policy_condition(policies, &bump, |policy, condition_expr| {
 		let passed = evaluator.evaluate_condition(condition_expr, &empty_columns, 1, identity)?;
 		if passed {
 			return Ok(());

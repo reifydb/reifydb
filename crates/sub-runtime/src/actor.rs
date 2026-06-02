@@ -4,9 +4,12 @@
 use std::{collections::HashMap, sync::Arc, time::Duration as StdDuration};
 
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::actor::{
-	context::Context,
-	traits::{Actor, Directive},
+use reifydb_runtime::{
+	actor::{
+		context::Context,
+		traits::{Actor, Directive},
+	},
+	reifydb_assertions,
 };
 use reifydb_value::{
 	params::Params,
@@ -40,41 +43,59 @@ impl RuntimeSamplerActor {
 	}
 
 	pub fn sample(&self, ts: DateTime) {
-		let mut all: Vec<Sample> = Vec::new();
+		let all = self.insert_domain_samples(ts);
+		if all.is_empty() {
+			return;
+		}
+		self.log_aggregate_metrics(&all);
+	}
 
+	#[inline]
+	fn insert_domain_samples(&self, ts: DateTime) -> Vec<Sample> {
+		let mut all: Vec<Sample> = Vec::new();
 		for domain in Domain::ALL {
 			let samples = domain.collect(&self.collectors);
 			if samples.is_empty() {
 				continue;
 			}
-
-			let rows: Vec<Params> = samples
-				.iter()
-				.map(|s| {
-					let mut map = HashMap::with_capacity(5);
-					map.insert("ts".to_string(), Value::DateTime(ts));
-					map.insert("scope".to_string(), Value::Utf8(s.scope.to_string()));
-					map.insert("metric".to_string(), Value::Utf8(s.metric.to_string()));
-					map.insert("value".to_string(), f64_value(s.value));
-					map.insert("unit".to_string(), Value::Utf8(s.unit.to_string()));
-					Params::Named(Arc::new(map))
-				})
-				.collect();
-
+			let rows = self.build_rows(ts, &samples);
 			let mut builder = self.engine.bulk_insert_unchecked(IdentityId::system());
 			builder.series(domain.snapshots_path()).rows(rows).done();
 			if let Err(e) = builder.execute() {
 				error!("runtime metrics insert into {} failed: {e}", domain.snapshots_path());
 				continue;
 			}
-
 			all.extend(samples);
 		}
+		all
+	}
 
-		if all.is_empty() {
-			return;
-		}
+	#[inline]
+	fn build_rows(&self, ts: DateTime, samples: &[Sample]) -> Vec<Params> {
+		samples.iter()
+			.map(|s| {
+				let mut map = HashMap::with_capacity(5);
+				map.insert("ts".to_string(), Value::DateTime(ts));
+				map.insert("scope".to_string(), Value::Utf8(s.scope.to_string()));
+				map.insert("metric".to_string(), Value::Utf8(s.metric.to_string()));
+				map.insert("value".to_string(), f64_value(s.value));
+				map.insert("unit".to_string(), Value::Utf8(s.unit.to_string()));
+				reifydb_assertions! {
+					let len = map.len();
+					assert!(
+						len == 5,
+						"row map was pre-sized with capacity(5) but ended with {len} entries; a \
+						 mismatch means either a duplicate key silently dropped a metric column or \
+						 a new column reallocates the map on every sample (defeats the pre-size)"
+					);
+				}
+				Params::Named(Arc::new(map))
+			})
+			.collect()
+	}
 
+	#[inline]
+	fn log_aggregate_metrics(&self, all: &[Sample]) {
 		let get = |name: &str| all.iter().find(|s| s.metric == name).map(|s| s.value).unwrap_or(0.0);
 		info!(
 			rss_anon_mb = get("rss_anon_bytes") / 1_048_576.0,

@@ -37,13 +37,26 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		to_create: PrimaryKeyToCreate,
 	) -> Result<PrimaryKeyId> {
+		Self::reject_empty_columns(&to_create)?;
+		Self::reject_unknown_columns(txn, &to_create)?;
+		let id = Self::allocate_primary_key_row(txn, &to_create)?;
+		Self::link_primary_key_to_shape(txn, to_create.shape, id)?;
+		Ok(id)
+	}
+
+	#[inline]
+	fn reject_empty_columns(to_create: &PrimaryKeyToCreate) -> Result<()> {
 		if to_create.column_ids.is_empty() {
 			return Err(CatalogError::PrimaryKeyEmpty {
 				fragment: Fragment::None,
 			}
 			.into());
 		}
+		Ok(())
+	}
 
+	#[inline]
+	fn reject_unknown_columns(txn: &mut AdminTransaction, to_create: &PrimaryKeyToCreate) -> Result<()> {
 		let source_columns = Self::list_columns(&mut Transaction::Admin(&mut *txn), to_create.shape)?;
 		let source_column_ids: HashSet<_> = source_columns.iter().map(|c| c.id).collect();
 
@@ -56,7 +69,14 @@ impl CatalogStore {
 				.into());
 			}
 		}
+		Ok(())
+	}
 
+	#[inline]
+	fn allocate_primary_key_row(
+		txn: &mut AdminTransaction,
+		to_create: &PrimaryKeyToCreate,
+	) -> Result<PrimaryKeyId> {
 		let id = SystemSequence::next_primary_key_id(txn)?;
 
 		let mut row = SHAPE.allocate();
@@ -65,8 +85,12 @@ impl CatalogStore {
 		SHAPE.set_blob(&mut row, primary_key::COLUMN_IDS, &serialize_column_ids(&to_create.column_ids));
 
 		txn.set(&PrimaryKeyKey::encoded(id), row)?;
+		Ok(id)
+	}
 
-		match to_create.shape {
+	#[inline]
+	fn link_primary_key_to_shape(txn: &mut AdminTransaction, shape: ShapeId, id: PrimaryKeyId) -> Result<()> {
+		match shape {
 			ShapeId::Table(table_id) => {
 				Self::set_table_primary_key(txn, table_id, id)?;
 			}
@@ -92,8 +116,7 @@ impl CatalogStore {
 				);
 			}
 		}
-
-		Ok(id)
+		Ok(())
 	}
 }
 

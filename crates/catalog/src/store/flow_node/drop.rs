@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
+	interface::catalog::flow::{FlowId, FlowNodeId},
 	key::{
 		EncodableKey,
 		flow_node::{FlowNodeByFlowKey, FlowNodeKey},
@@ -20,47 +20,59 @@ use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn drop_flow_node(txn: &mut AdminTransaction, node_id: FlowNodeId) -> Result<()> {
-		let node = CatalogStore::find_flow_node(&mut Transaction::Admin(&mut *txn), node_id)?;
+		let Some(node_def) = CatalogStore::find_flow_node(&mut Transaction::Admin(&mut *txn), node_id)? else {
+			return Ok(());
+		};
 
-		if let Some(node_def) = node {
-			let state_range = FlowNodeStateKey::node_range(node_id);
-			let mut state_stream = txn.range(state_range, RangeScope::All, 1024)?;
-			let mut state_keys = Vec::new();
-			for entry in state_stream.by_ref() {
-				state_keys.push(entry?.key.clone());
-			}
-			drop(state_stream);
-			for key in state_keys {
-				txn.remove(&key)?;
-			}
+		Self::delete_node_state(txn, node_id)?;
+		Self::delete_internal_state(txn, node_id)?;
+		Self::unlink_node(txn, node_id, node_def.flow)
+	}
 
-			let internal_range = FlowNodeInternalStateKey::node_range(node_id);
-			let mut internal_stream = txn.range(internal_range, RangeScope::All, 1024)?;
-			let mut internal_keys = Vec::new();
-			for entry in internal_stream.by_ref() {
-				let entry = entry?;
-
-				if let Some(decoded) = FlowNodeInternalStateKey::decode(&entry.key)
-					&& (decoded.is_row_number_counter()
-						|| decoded.is_row_number_mapping() || decoded.is_window_meta()
-						|| decoded.is_gate_visibility())
-				{
-					continue;
-				}
-				internal_keys.push(entry.key.clone());
-			}
-			drop(internal_stream);
-			for key in internal_keys {
-				txn.remove(&key)?;
-			}
-
-			txn.remove(&OperatorRetentionStrategyKey::encoded(node_id))?;
-
-			txn.remove(&FlowNodeKey::encoded(node_id))?;
-
-			txn.remove(&FlowNodeByFlowKey::encoded(node_def.flow, node_id))?;
+	#[inline]
+	fn delete_node_state(txn: &mut AdminTransaction, node_id: FlowNodeId) -> Result<()> {
+		let state_range = FlowNodeStateKey::node_range(node_id);
+		let mut state_stream = txn.range(state_range, RangeScope::All, 1024)?;
+		let mut state_keys = Vec::new();
+		for entry in state_stream.by_ref() {
+			state_keys.push(entry?.key.clone());
 		}
+		drop(state_stream);
+		for key in state_keys {
+			txn.remove(&key)?;
+		}
+		Ok(())
+	}
 
+	#[inline]
+	fn delete_internal_state(txn: &mut AdminTransaction, node_id: FlowNodeId) -> Result<()> {
+		let internal_range = FlowNodeInternalStateKey::node_range(node_id);
+		let mut internal_stream = txn.range(internal_range, RangeScope::All, 1024)?;
+		let mut internal_keys = Vec::new();
+		for entry in internal_stream.by_ref() {
+			let entry = entry?;
+
+			if let Some(decoded) = FlowNodeInternalStateKey::decode(&entry.key)
+				&& (decoded.is_row_number_counter()
+					|| decoded.is_row_number_mapping() || decoded.is_window_meta()
+					|| decoded.is_gate_visibility())
+			{
+				continue;
+			}
+			internal_keys.push(entry.key.clone());
+		}
+		drop(internal_stream);
+		for key in internal_keys {
+			txn.remove(&key)?;
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn unlink_node(txn: &mut AdminTransaction, node_id: FlowNodeId, flow: FlowId) -> Result<()> {
+		txn.remove(&OperatorRetentionStrategyKey::encoded(node_id))?;
+		txn.remove(&FlowNodeKey::encoded(node_id))?;
+		txn.remove(&FlowNodeByFlowKey::encoded(flow, node_id))?;
 		Ok(())
 	}
 }

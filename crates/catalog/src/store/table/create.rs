@@ -51,21 +51,7 @@ pub struct TableToCreate {
 impl CatalogStore {
 	pub(crate) fn create_table(txn: &mut AdminTransaction, to_create: TableToCreate) -> Result<Table> {
 		let namespace_id = to_create.namespace;
-
-		if let Some(table) = CatalogStore::find_table_by_name(
-			&mut Transaction::Admin(&mut *txn),
-			namespace_id,
-			to_create.name.text(),
-		)? {
-			let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
-			return Err(CatalogError::AlreadyExists {
-				kind: CatalogObjectKind::Table,
-				namespace: namespace.name().to_string(),
-				name: table.name,
-				fragment: to_create.name.clone(),
-			}
-			.into());
-		}
+		Self::reject_existing_table(txn, namespace_id, &to_create.name)?;
 
 		let table_id = SystemSequence::next_table_id(txn)?;
 		Self::store_table(txn, table_id, namespace_id, &to_create)?;
@@ -78,6 +64,26 @@ impl CatalogStore {
 		Self::insert_columns(txn, table_id, to_create)?;
 
 		Self::get_table(&mut Transaction::Admin(&mut *txn), table_id)
+	}
+
+	#[inline]
+	fn reject_existing_table(txn: &mut AdminTransaction, namespace_id: NamespaceId, name: &Fragment) -> Result<()> {
+		let Some(table) = CatalogStore::find_table_by_name(
+			&mut Transaction::Admin(&mut *txn),
+			namespace_id,
+			name.text(),
+		)?
+		else {
+			return Ok(());
+		};
+		let namespace = CatalogStore::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
+		Err(CatalogError::AlreadyExists {
+			kind: CatalogObjectKind::Table,
+			namespace: namespace.name().to_string(),
+			name: table.name,
+			fragment: name.clone(),
+		}
+		.into())
 	}
 
 	fn store_table(

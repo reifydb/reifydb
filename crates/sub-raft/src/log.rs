@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 
+use reifydb_runtime::reifydb_assertions;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -133,7 +134,20 @@ impl Log {
 		let (Some(first), Some(last)) = (entries.first(), entries.last()) else {
 			return self.last_index;
 		};
+		let (last_index, last_term) = (last.index, last.term);
 
+		self.validate_spliced_batch(&entries, first, last);
+
+		let new_entries = self.skip_matching_prefix(entries.as_slice(), first.index, last_index);
+		let Some(first) = new_entries.first() else {
+			return self.last_index;
+		};
+
+		self.insert_and_truncate(new_entries, first.index, last_index, last_term)
+	}
+
+	#[inline]
+	fn validate_spliced_batch(&self, entries: &[Entry], first: &Entry, last: &Entry) {
 		assert!(first.index > 0 && first.term > 0, "spliced entry has index or term 0");
 		assert!(entries.windows(2).all(|w| w[0].index + 1 == w[1].index), "spliced entries are not contiguous");
 		assert!(entries.windows(2).all(|w| w[0].term <= w[1].term), "spliced entries have term regression",);
@@ -151,9 +165,11 @@ impl Log {
 				);
 			}
 		}
+	}
 
-		let mut entries = entries.as_slice();
-		for entry in self.scan(first.index, last.index) {
+	#[inline]
+	fn skip_matching_prefix<'a>(&self, mut entries: &'a [Entry], from: Index, to: Index) -> &'a [Entry] {
+		for entry in self.scan(from, to) {
 			if entries.is_empty() {
 				break;
 			}
@@ -163,24 +179,37 @@ impl Log {
 			}
 			entries = &entries[1..];
 		}
+		entries
+	}
 
-		let Some(first) = entries.first() else {
-			return self.last_index;
-		};
+	#[inline]
+	fn insert_and_truncate(
+		&mut self,
+		new_entries: &[Entry],
+		first_index: Index,
+		last_index: Index,
+		last_term: Term,
+	) -> Index {
+		assert!(first_index > self.commit_index, "spliced entries below commit index");
+		reifydb_assertions! {
+			assert!(
+				first_index <= last_index,
+				"splice narrowed range is inverted, so the truncation below would delete the entries just \
+				 inserted: first_index must not exceed last_index (first_index={first_index} last_index={last_index})"
+			);
+		}
 
-		assert!(first.index > self.commit_index, "spliced entries below commit index");
-
-		for entry in entries {
+		for entry in new_entries {
 			self.entries.insert(entry.index, entry.clone());
 		}
-		let truncate_from = last.index + 1;
+		let truncate_from = last_index + 1;
 		let to_remove: Vec<Index> = self.entries.range(truncate_from..).map(|(&k, _)| k).collect();
 		for k in to_remove {
 			self.entries.remove(&k);
 		}
 
-		self.last_index = last.index;
-		self.last_term = last.term;
+		self.last_index = last_index;
+		self.last_term = last_term;
 		self.last_index
 	}
 }
