@@ -3,17 +3,18 @@
 
 use std::time::Duration;
 
-use postcard::to_stdvec;
+use postcard::from_bytes;
 use reifydb_core::{interface::change::Change, internal};
+use reifydb_runtime::hash::Hash128;
 use reifydb_sdk::operator::Tick;
-use reifydb_value::{Result, error::Error, value::blob::Blob};
+use reifydb_value::{Result, error::Error};
 
 use crate::{
 	operator::{
-		distinct::{operator::DistinctOperator, state::DistinctState},
+		distinct::{operator::DistinctOperator, state::DistinctEntry},
 		stateful::utils,
 	},
-	transaction::{FlowTransaction, slot::PersistFn},
+	transaction::FlowTransaction,
 };
 
 impl DistinctOperator {
@@ -31,32 +32,25 @@ impl DistinctOperator {
 		};
 		let cutoff = tick.now.to_nanos().saturating_sub(ttl_nanos);
 
-		let node_id = self.node;
-		let shape = self.shape.clone();
+		let mut expired: Vec<Hash128> = Vec::new();
+		for (key, row) in utils::state_scan_all(self.node, txn)? {
+			let Some(hash) = Self::hash_from_entry_key(key.as_ref()) else {
+				continue;
+			};
+			let blob = self.shape.get_blob(&row, 0);
+			if blob.is_empty() {
+				continue;
+			}
+			let entry: DistinctEntry = from_bytes(blob.as_ref()).map_err(|e| {
+				Error(Box::new(internal!("Failed to deserialize DistinctEntry: {}", e)))
+			})?;
+			if entry.last_seen_nanos < cutoff {
+				expired.push(hash);
+			}
+		}
 
-		let state: &mut DistinctState = txn.operator_state(node_id, |txn| {
-			let s = self.load_distinct_state(txn)?;
-			let persist: PersistFn = Box::new(move |txn, value| {
-				let state = value.downcast::<DistinctState>().expect("DistinctState slot type");
-				let serialized = to_stdvec(&*state).map_err(|e| {
-					Error(Box::new(internal!("Failed to serialize DistinctState: {}", e)))
-				})?;
-				let blob = Blob::from(serialized);
-				let key = utils::empty_key();
-				let mut row = utils::load_or_create_row(node_id, txn, &key, &shape)?;
-				shape.set_blob(&mut row, 0, &blob);
-				utils::save_row(node_id, txn, &key, row)?;
-				Ok(())
-			});
-			Ok((s, persist))
-		})?;
-
-		let initial = state.entries.len();
-		state.entries.retain(|_, entry| entry.last_seen_nanos >= cutoff);
-		let evicted = initial - state.entries.len();
-
-		if evicted > 0 {
-			txn.mark_state_dirty(node_id);
+		for hash in expired {
+			utils::state_remove(self.node, txn, &Self::entry_key(hash))?;
 		}
 
 		Ok(None)
@@ -156,8 +150,7 @@ mod ttl_tests {
 		assert!(result.is_none(), "tick must return Ok(None) (silent)");
 
 		txn.flush_operator_states().unwrap();
-		let state = op.load_distinct_state(&mut txn).unwrap();
-		assert_eq!(state.entries.len(), 2, "no eviction when ttl is None");
+		assert_eq!(op.count_entries(&mut txn), 2, "no eviction when ttl is None");
 	}
 
 	#[test]
@@ -191,7 +184,7 @@ mod ttl_tests {
 			.unwrap();
 		assert!(result.is_none());
 		txn.flush_operator_states().unwrap();
-		assert_eq!(op.load_distinct_state(&mut txn).unwrap().entries.len(), 2);
+		assert_eq!(op.count_entries(&mut txn), 2);
 
 		// Advance to t = 1020ms (20ms > 10ms row) - tick must evict both
 		mock_clock.advance_millis(15);
@@ -205,7 +198,7 @@ mod ttl_tests {
 			.unwrap();
 		assert!(result.is_none(), "eviction is silent (Drop mode)");
 		txn.flush_operator_states().unwrap();
-		assert_eq!(op.load_distinct_state(&mut txn).unwrap().entries.len(), 0);
+		assert_eq!(op.count_entries(&mut txn), 0);
 	}
 
 	#[test]
@@ -242,6 +235,6 @@ mod ttl_tests {
 		)
 		.unwrap();
 		txn.flush_operator_states().unwrap();
-		assert_eq!(op.load_distinct_state(&mut txn).unwrap().entries.len(), 2);
+		assert_eq!(op.count_entries(&mut txn), 2);
 	}
 }
