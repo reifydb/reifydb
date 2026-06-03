@@ -76,11 +76,8 @@ where
 
 pub type RollingBuffer<A> = BTreeMap<<A as RollingOperator>::WindowCoord, <A as RollingOperator>::WindowAcc>;
 
-type Buckets<A> = RollingBuckets<
-	<A as RollingOperator>::GroupKey,
-	<A as RollingOperator>::WindowCoord,
-	AccContribution<A>,
->;
+type Buckets<A> =
+	RollingBuckets<<A as RollingOperator>::GroupKey, <A as RollingOperator>::WindowCoord, AccContribution<A>>;
 
 pub struct RollingDriver<A>
 where

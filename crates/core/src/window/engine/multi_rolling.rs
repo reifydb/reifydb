@@ -23,18 +23,24 @@ use crate::{
 	},
 };
 
-/// The rolling buffer for one group (most recent windows, each an invertible
-/// accumulator).
 pub type MultiRollingBuffer<C, WAcc> = BTreeMap<C, WAcc>;
 
-/// The rows a group currently emits, keyed by secondary key (e.g. rank).
 pub type MultiRollingEmit<SK, Output> = BTreeMap<SK, Output>;
 
-/// One emitted-row decision after diffing the new emit against the prior one.
 pub enum MultiEmit<Output> {
-	Insert { row_number: RowNumber, value: Output },
-	Update { row_number: RowNumber, prior: Output, value: Output },
-	Remove { row_number: RowNumber, value: Output },
+	Insert {
+		row_number: RowNumber,
+		value: Output,
+	},
+	Update {
+		row_number: RowNumber,
+		prior: Output,
+		value: Output,
+	},
+	Remove {
+		row_number: RowNumber,
+		value: Output,
+	},
 }
 
 #[derive(Serialize, Deserialize)]
@@ -85,9 +91,6 @@ struct GroupSlot<C, WAcc, SK, Output> {
 	buffer_changed: bool,
 }
 
-/// Rolling windows that emit multiple rows per group (top-K), diffing the new
-/// emit set against the prior one to produce Insert/Update/Remove per secondary
-/// key. Buffer and prior emit are persisted together as one group state.
 pub struct MultiRollingEngine<G, C, WAcc, SK, Output> {
 	groups: StateCache<RowNumber, GroupState<C, WAcc, SK, Output>>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
@@ -125,9 +128,6 @@ where
 		}
 	}
 
-	/// `state_key` maps a group to its (single) group-state row key; `row_key`
-	/// maps a (group, secondary key) to an output row key; `combine` produces the
-	/// new emit set from the group's buffer.
 	pub fn apply<S, SKF, RKF, CB>(
 		&mut self,
 		store: &mut S,
@@ -148,8 +148,14 @@ where
 		}
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
 		let state_rows = self.resolve_state_rows(store, &buckets, &meta_loaded, &state_key)?;
-		let group_slots =
-			self.apply_events_into_buffers(store, buckets, &mut meta_loaded, &state_rows, &state_key, capacity)?;
+		let group_slots = self.apply_events_into_buffers(
+			store,
+			buckets,
+			&mut meta_loaded,
+			&state_rows,
+			&state_key,
+			capacity,
+		)?;
 		let emits = self.diff_emits(store, group_slots, &row_key, &combine)?;
 		self.persist_meta(store, meta_loaded)?;
 		Ok(emits)

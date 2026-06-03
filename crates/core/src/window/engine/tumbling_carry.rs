@@ -23,9 +23,6 @@ use crate::{
 	},
 };
 
-/// Per-group carry state: the closed-window cutoff plus the carry rotated from
-/// the just-closed window (`carry_for_current`) and the carry being built for the
-/// current window (`current_window_carry`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound(
 	serialize = "C: Serialize, Carry: Serialize",
@@ -50,9 +47,6 @@ impl<C, Carry> Default for CarryMeta<C, Carry> {
 type MetaLoaded<G, C, Carry> = HashMap<G, CarryMeta<C, Carry>>;
 type SlotResolved = Vec<Option<(RowNumber, bool)>>;
 
-/// Tumbling windows that carry a value forward into the next window (EMA-family,
-/// prev-close, TWAP). The carry is rotated when a window closes (high-water
-/// advances) and passed into the next window's `build_output`/`carry_forward`.
 pub struct TumblingCarryEngine<G, C, Acc, Carry> {
 	accs: StateCache<RowNumber, Acc>,
 	meta: StateCache<MetaKey, CarryMeta<C, Carry>>,
@@ -88,10 +82,6 @@ where
 		}
 	}
 
-	/// `build_output` receives the carry rotated in from the prior window;
-	/// `carry_forward` produces the carry the current window hands to the next.
-	/// Both are operator logic supplied by the face; the engine owns the
-	/// rotation, high-water, accumulator state, and emit decision.
 	#[allow(clippy::too_many_arguments)]
 	pub fn apply<S, K, NA, BO, CF, Output>(
 		&mut self,

@@ -335,7 +335,11 @@ mod tests {
 		let mut cache: StateCache<String, i32> = StateCache::new(100);
 		cache.set(&mut store, &"a".to_string(), &99).unwrap();
 		cache.warm(&mut store, &["a".to_string()]).unwrap();
-		assert_eq!(cache.get(&mut store, &"a".to_string()).unwrap(), Some(99), "pending write must shadow store");
+		assert_eq!(
+			cache.get(&mut store, &"a".to_string()).unwrap(),
+			Some(99),
+			"pending write must shadow store"
+		);
 	}
 
 	#[test]

@@ -23,14 +23,10 @@ use crate::{
 	},
 };
 
-/// The rolling buffer for one group: the most recent windows, each an invertible
-/// accumulator, keyed by window coordinate.
 pub type RollingBuffer<C, Acc> = BTreeMap<C, Acc>;
 
-/// Events bucketed by their target (group, window coordinate).
 pub type RollingBuckets<G, C, Contribution> = BTreeMap<(G, C), Vec<AccEvent<Contribution>>>;
 
-/// A group whose rolling buffer changed; the face emits a row per result.
 pub struct RollingResult<G, Output> {
 	pub row_number: RowNumber,
 	pub group: G,
@@ -49,8 +45,6 @@ struct GroupSlot<C, Acc> {
 	buffer_changed: bool,
 }
 
-/// Overlapping rolling windows: one capacity-bounded buffer per group, with
-/// per-group event-time high-water dropping events for buried coordinates.
 pub struct RollingEngine<G, C, Acc> {
 	buffers: StateCache<RowNumber, RollingBuffer<C, Acc>>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
@@ -84,10 +78,6 @@ where
 		}
 	}
 
-	/// Apply one batch of bucketed events. `capacity` bounds each group's buffer;
-	/// `row_key` maps a group to its output row key; `combine` produces the output
-	/// row value from the group's (post-update) buffer. State is persisted via
-	/// `store`; the caller emits each [`RollingResult`].
 	pub fn apply<S, K, CB, Output>(
 		&mut self,
 		store: &mut S,
@@ -106,8 +96,14 @@ where
 		}
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
 		let buffer_rows = self.resolve_buffer_rows(store, &buckets, &meta_loaded, &row_key)?;
-		let group_slots =
-			self.apply_events_into_buffers(store, buckets, &mut meta_loaded, &buffer_rows, &row_key, capacity)?;
+		let group_slots = self.apply_events_into_buffers(
+			store,
+			buckets,
+			&mut meta_loaded,
+			&buffer_rows,
+			&row_key,
+			capacity,
+		)?;
 		let results = self.combine_and_collect(store, group_slots, &combine)?;
 		self.persist_meta(store, meta_loaded)?;
 		Ok(results)

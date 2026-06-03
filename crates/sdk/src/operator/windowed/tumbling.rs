@@ -37,11 +37,8 @@ use crate::{
 
 type AccContribution<A> = <<A as TumblingOperator>::Acc as WindowAccumulator>::Contribution;
 type AccValue<A> = <<A as TumblingOperator>::Acc as WindowAccumulator>::Output;
-type Buckets<A> = TumblingBuckets<
-	<A as TumblingOperator>::GroupKey,
-	<A as TumblingOperator>::WindowCoord,
-	AccContribution<A>,
->;
+type Buckets<A> =
+	TumblingBuckets<<A as TumblingOperator>::GroupKey, <A as TumblingOperator>::WindowCoord, AccContribution<A>>;
 
 pub trait TumblingOperator {
 	type GroupKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned;

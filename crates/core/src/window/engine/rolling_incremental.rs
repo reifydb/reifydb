@@ -38,10 +38,6 @@ struct GroupSlot<C, WAcc, Running> {
 	buffer_changed: bool,
 }
 
-/// Rolling buffer plus a cross-window `Running` accumulator maintained
-/// incrementally: when a window's finalized value changes the old value is
-/// removed and the new value added; an evicted window's value is removed. Output
-/// is computed in O(1) from the running state and the newest window.
 pub struct RollingIncrementalEngine<G, C, WAcc, Running> {
 	buffers: StateCache<RowNumber, RollingBuffer<C, WAcc>>,
 	running: StateCache<RowNumber, Running>,
@@ -79,9 +75,6 @@ where
 		}
 	}
 
-	/// `window_contribution` maps a window's finalized value to a contribution for
-	/// the running accumulator; `combine_running` produces the output from the
-	/// running state and the newest window.
 	pub fn apply<S, K, WC, CR, Output>(
 		&mut self,
 		store: &mut S,
@@ -126,7 +119,8 @@ where
 					};
 					let buffer: RollingBuffer<C, WAcc> =
 						self.buffers.get(store, &row_number)?.unwrap_or_default();
-					let running: Running = self.running.get(store, &row_number)?.unwrap_or_default();
+					let running: Running =
+						self.running.get(store, &row_number)?.unwrap_or_default();
 					let was_empty_before = buffer.is_empty();
 					group_slots.insert(
 						group.clone(),
@@ -184,9 +178,9 @@ where
 				continue;
 			}
 			let output = match slot.buffer.iter().next_back() {
-				Some((coord, acc)) => {
-					acc.finalize().and_then(|newest| combine_running(&group, &slot.running, &newest, *coord))
-				}
+				Some((coord, acc)) => acc
+					.finalize()
+					.and_then(|newest| combine_running(&group, &slot.running, &newest, *coord)),
 				None => None,
 			};
 			self.buffers.put(store, &slot.row_number, slot.buffer)?;

@@ -9,11 +9,7 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	window::{
 		accumulator::WindowAccumulator,
-		engine::{
-			AccEvent, EmitKind,
-			rolling::RollingBuckets,
-			rolling_incremental::RollingIncrementalEngine,
-		},
+		engine::{AccEvent, EmitKind, rolling::RollingBuckets, rolling_incremental::RollingIncrementalEngine},
 	},
 };
 use reifydb_value::value::row_number::RowNumber;
@@ -120,7 +116,9 @@ where
 				capacity,
 				|group| aggregator.encode_row_key(group),
 				|value| aggregator.window_contribution(value),
-				|group, running, newest, coord| aggregator.combine_running(group, running, newest, coord),
+				|group, running, newest, coord| {
+					aggregator.combine_running(group, running, newest, coord)
+				},
 			)?
 		};
 
@@ -145,11 +143,8 @@ where
 	}
 }
 
-type EventBuckets<A> = RollingBuckets<
-	<A as RollingOperator>::GroupKey,
-	<A as RollingOperator>::WindowCoord,
-	WindowContribution<A>,
->;
+type EventBuckets<A> =
+	RollingBuckets<<A as RollingOperator>::GroupKey, <A as RollingOperator>::WindowCoord, WindowContribution<A>>;
 
 impl<A> RollingIncrementalDriver<A>
 where

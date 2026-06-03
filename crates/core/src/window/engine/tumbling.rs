@@ -23,15 +23,11 @@ use crate::{
 	},
 };
 
-/// Events bucketed by their target (group, window) - produced by the face's
-/// extraction, consumed by [`TumblingEngine::apply`].
 pub type TumblingBuckets<G, C, Contribution> = BTreeMap<(G, WindowSpan<C>), Vec<AccEvent<Contribution>>>;
 
 type MetaLoaded<G, C> = HashMap<G, GroupMeta<C>>;
 type SlotResolved = Vec<Option<(RowNumber, bool)>>;
 
-/// Non-overlapping tumbling windows: one accumulator per (group, window_start),
-/// per-group event-time high-water that drops late events for closed windows.
 pub struct TumblingEngine<G, C, Acc> {
 	accs: StateCache<RowNumber, Acc>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
@@ -65,11 +61,6 @@ where
 		}
 	}
 
-	/// Apply one batch of bucketed events and return the windows that changed.
-	/// `row_key` maps a (group, window_start) to its output row's encoded key;
-	/// `new_acc` builds a fresh accumulator (so operator-specific init is
-	/// preserved). The accumulator state and high-water meta are persisted via
-	/// `store`; emission is the caller's job (translate each [`WindowResult`]).
 	pub fn apply<S, K, NA>(
 		&mut self,
 		store: &mut S,

@@ -9,11 +9,7 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	window::{
 		accumulator::WindowAccumulator,
-		engine::{
-			AccEvent, EmitKind,
-			tumbling::TumblingBuckets,
-			tumbling_carry::TumblingCarryEngine,
-		},
+		engine::{AccEvent, EmitKind, tumbling::TumblingBuckets, tumbling_carry::TumblingCarryEngine},
 		span::{Slot, WindowSpan},
 	},
 };
@@ -230,7 +226,9 @@ where
 				buckets,
 				|group, window_start| aggregator.encode_row_key(group, window_start),
 				|| aggregator.new_accumulator(),
-				|group, span, value, prev_carry| aggregator.build_output(group, span, value, prev_carry),
+				|group, span, value, prev_carry| {
+					aggregator.build_output(group, span, value, prev_carry)
+				},
 				|value, prev_carry| aggregator.carry_forward(value, prev_carry),
 			)?
 		};
