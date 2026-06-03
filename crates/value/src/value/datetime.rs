@@ -215,6 +215,34 @@ impl DateTime {
 	}
 }
 
+impl DateTime {
+	pub fn saturating_add(self, rhs: Duration) -> DateTime {
+		let total = rhs.as_nanos().unwrap_or(if rhs.is_negative() {
+			i64::MIN
+		} else {
+			i64::MAX
+		});
+		let nanos = (self.to_nanos() as i128 + total as i128).clamp(0, u64::MAX as i128);
+		DateTime::from_nanos(nanos as u64)
+	}
+
+	pub fn saturating_sub(self, rhs: Duration) -> DateTime {
+		let total = rhs.as_nanos().unwrap_or(if rhs.is_negative() {
+			i64::MIN
+		} else {
+			i64::MAX
+		});
+		let nanos = (self.to_nanos() as i128 - total as i128).clamp(0, u64::MAX as i128);
+		DateTime::from_nanos(nanos as u64)
+	}
+
+	pub fn saturating_duration_since(self, earlier: DateTime) -> Duration {
+		let diff = (self.to_nanos() as i128 - earlier.to_nanos() as i128)
+			.clamp(i64::MIN as i128, i64::MAX as i128) as i64;
+		Duration::from_nanoseconds(diff).unwrap_or_else(|_| Duration::zero())
+	}
+}
+
 impl Add<Duration> for DateTime {
 	type Output = DateTime;
 
@@ -701,5 +729,44 @@ pub mod tests {
 		// A 1s window leaves the second boundary in place (sub-minute correctness).
 		let second = Duration::from_seconds(1).unwrap();
 		assert_eq!(dt % second, Duration::from_seconds(0).unwrap());
+	}
+
+	#[test]
+	fn saturating_sub_below_epoch_clamps_to_epoch() {
+		// A rolling-window cutoff that would fall before 1970 must clamp to the
+		// epoch rather than panic the u64-nanos conversion (the chaos failure mode).
+		let epoch = DateTime::from_nanos(0);
+		assert_eq!(epoch.saturating_sub(Duration::from_seconds(1).unwrap()), epoch);
+
+		let early = DateTime::from_timestamp(5).unwrap();
+		assert_eq!(early.saturating_sub(Duration::from_seconds(10_000).unwrap()), epoch);
+	}
+
+	#[test]
+	fn saturating_add_above_max_clamps_to_max() {
+		// Overflow past the representable u64-nanos range clamps to the max instant.
+		let near_max = DateTime::from_nanos(u64::MAX - 1);
+		assert_eq!(near_max.saturating_add(Duration::from_days(1).unwrap()), DateTime::from_nanos(u64::MAX));
+	}
+
+	#[test]
+	fn saturating_add_sub_match_operators_in_range() {
+		// In range, the saturating ops agree with the panicking +/- operators.
+		let dt = DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 25).unwrap();
+		let minute = Duration::from_seconds(60).unwrap();
+		assert_eq!(dt.saturating_add(minute), dt + minute);
+		assert_eq!(dt.saturating_sub(minute), dt - minute);
+	}
+
+	#[test]
+	fn saturating_duration_since_normal_and_clamped() {
+		let a = DateTime::from_ymd_hms(2024, 1, 15, 10, 31, 0).unwrap();
+		let b = DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 0).unwrap();
+		assert_eq!(a.saturating_duration_since(b), Duration::from_seconds(60).unwrap());
+		// Reversed order is a negative duration that still fits i64 (not clamped).
+		assert_eq!(b.saturating_duration_since(a), Duration::from_seconds(-60).unwrap());
+		// A gap wider than i64 nanoseconds clamps instead of panicking.
+		let clamped = DateTime::from_nanos(u64::MAX).saturating_duration_since(DateTime::from_nanos(0));
+		assert_eq!(clamped.as_nanos().unwrap(), i64::MAX);
 	}
 }

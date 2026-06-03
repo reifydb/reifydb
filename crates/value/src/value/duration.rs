@@ -376,6 +376,39 @@ impl Duration {
 			.ok_or_else(|| Box::new(Self::overflow_err("nanos overflow in mul")))?;
 		Self::normalized(months, days, nanos)
 	}
+
+	fn saturating_normalized(months: i32, days: i32, nanos: i64) -> Self {
+		let total = days as i128 * NANOS_PER_DAY as i128 + nanos as i128;
+		let new_days = (total / NANOS_PER_DAY as i128).clamp(i32::MIN as i128, i32::MAX as i128) as i32;
+		let new_nanos = (total % NANOS_PER_DAY as i128) as i64;
+		Self {
+			months,
+			days: new_days,
+			nanos: new_nanos,
+		}
+	}
+
+	pub fn saturating_add(self, rhs: Self) -> Self {
+		Self::saturating_normalized(
+			self.months.saturating_add(rhs.months),
+			self.days.saturating_add(rhs.days),
+			self.nanos.saturating_add(rhs.nanos),
+		)
+	}
+
+	pub fn saturating_sub(self, rhs: Self) -> Self {
+		Self::saturating_normalized(
+			self.months.saturating_sub(rhs.months),
+			self.days.saturating_sub(rhs.days),
+			self.nanos.saturating_sub(rhs.nanos),
+		)
+	}
+
+	pub fn saturating_mul(self, rhs: i64) -> Self {
+		let months = (self.months as i128 * rhs as i128).clamp(i32::MIN as i128, i32::MAX as i128) as i32;
+		let days = (self.days as i128 * rhs as i128).clamp(i32::MIN as i128, i32::MAX as i128) as i32;
+		Self::saturating_normalized(months, days, self.nanos.saturating_mul(rhs))
+	}
 }
 
 impl ops::Add for Duration {
@@ -1301,5 +1334,47 @@ pub mod tests {
 		assert_eq!(d.seconds().unwrap(), i32::MAX as i64 * 86_400);
 		assert_total_overflow(d.nanoseconds());
 		assert_total_overflow(d.as_nanos());
+	}
+
+	#[test]
+	fn saturating_add_matches_try_add_in_range() {
+		// In range, saturating arithmetic must agree exactly with the checked
+		// (try_*) path; saturation only kicks in at the i32/i64 boundaries.
+		let a = Duration::new(1, 2, 3_000_000_000).unwrap();
+		let b = Duration::new(0, 1, 1_000_000_000).unwrap();
+		assert_eq!(a.saturating_add(b), a.try_add(b).unwrap());
+		assert_eq!(a.saturating_sub(b), a.try_sub(b).unwrap());
+	}
+
+	#[test]
+	fn saturating_add_clamps_months_overflow() {
+		// months past i32::MAX clamp to i32::MAX instead of panicking/erroring.
+		let d = Duration::new(i32::MAX, 0, 0).unwrap().saturating_add(Duration::new(1000, 0, 0).unwrap());
+		assert_eq!(d.get_months(), i32::MAX);
+	}
+
+	#[test]
+	fn saturating_add_clamps_days_overflow() {
+		// days past i32::MAX clamp to i32::MAX.
+		let d = Duration::new(0, i32::MAX, 0).unwrap().saturating_add(Duration::new(0, 1000, 0).unwrap());
+		assert_eq!(d.get_days(), i32::MAX);
+	}
+
+	#[test]
+	fn saturating_sub_carries_mixed_sign() {
+		// 1 day minus 1 nanosecond = 23:59:59.999999999. This is exactly the
+		// mixed days/nanos sign case that try_sub REJECTS (days=1, nanos=-1);
+		// saturating arithmetic carries it into a single same-sign value instead.
+		let d = Duration::new(0, 1, 0).unwrap().saturating_sub(Duration::new(0, 0, 1).unwrap());
+		assert_eq!(d.get_days(), 0);
+		assert_eq!(d.get_nanos(), 86_399_999_999_999);
+	}
+
+	#[test]
+	fn saturating_mul_scales_and_clamps() {
+		// In range, scaling matches the equivalent constructed duration.
+		assert_eq!(Duration::from_seconds(1).unwrap().saturating_mul(60), Duration::from_seconds(60).unwrap());
+		// Out of range, the day product clamps to i32::MAX.
+		assert_eq!(Duration::new(0, i32::MAX, 0).unwrap().saturating_mul(2).get_days(), i32::MAX);
 	}
 }

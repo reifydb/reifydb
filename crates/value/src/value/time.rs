@@ -11,6 +11,7 @@ use serde::{
 use crate::{
 	error::{TemporalKind, TypeError},
 	fragment::Fragment,
+	value::duration::Duration,
 };
 
 #[repr(transparent)]
@@ -104,6 +105,32 @@ impl Time {
 		Some(Self {
 			nanos_since_midnight: nanos,
 		})
+	}
+
+	pub fn saturating_add(self, rhs: Duration) -> Time {
+		let total = rhs.as_nanos().unwrap_or(if rhs.is_negative() {
+			i64::MIN
+		} else {
+			i64::MAX
+		});
+		let nanos =
+			(self.nanos_since_midnight as i128 + total as i128).clamp(0, Self::MAX_NANOS_IN_DAY as i128);
+		Self {
+			nanos_since_midnight: nanos as u64,
+		}
+	}
+
+	pub fn saturating_sub(self, rhs: Duration) -> Time {
+		let total = rhs.as_nanos().unwrap_or(if rhs.is_negative() {
+			i64::MIN
+		} else {
+			i64::MAX
+		});
+		let nanos =
+			(self.nanos_since_midnight as i128 - total as i128).clamp(0, Self::MAX_NANOS_IN_DAY as i128);
+		Self {
+			nanos_since_midnight: nanos as u64,
+		}
 	}
 }
 
@@ -467,5 +494,27 @@ pub mod tests {
 	#[test]
 	fn test_from_hms_nano_invalid_nano() {
 		assert_time_overflow(Time::from_hms_nano(0, 0, 0, 1_000_000_000));
+	}
+
+	#[test]
+	fn saturating_sub_before_midnight_clamps_to_midnight() {
+		// Subtracting past 00:00 clamps to midnight rather than wrapping or panicking.
+		let midnight = Time::midnight();
+		assert_eq!(midnight.saturating_sub(Duration::from_seconds(1).unwrap()), midnight);
+	}
+
+	#[test]
+	fn saturating_add_past_end_of_day_clamps_to_max() {
+		// Adding past 23:59:59.999999999 clamps to the last representable instant of the day.
+		let late = Time::from_hms(23, 59, 59).unwrap();
+		let max = Time::from_nanos_since_midnight(86_399_999_999_999).unwrap();
+		assert_eq!(late.saturating_add(Duration::from_seconds(3600).unwrap()), max);
+	}
+
+	#[test]
+	fn saturating_add_sub_within_day() {
+		let t = Time::from_hms(10, 30, 0).unwrap();
+		assert_eq!(t.saturating_add(Duration::from_seconds(60).unwrap()), Time::from_hms(10, 31, 0).unwrap());
+		assert_eq!(t.saturating_sub(Duration::from_seconds(60).unwrap()), Time::from_hms(10, 29, 0).unwrap());
 	}
 }

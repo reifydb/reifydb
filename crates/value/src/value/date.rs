@@ -11,6 +11,7 @@ use serde::{
 use crate::{
 	error::{TemporalKind, TypeError},
 	fragment::Fragment,
+	value::duration::Duration,
 };
 
 #[repr(transparent)]
@@ -141,6 +142,34 @@ impl Date {
 			days_since_epoch: days,
 		})
 	}
+
+	pub fn saturating_add(self, rhs: Duration) -> Date {
+		const NANOS_PER_DAY: i128 = 86_400_000_000_000;
+		let total = rhs.as_nanos().unwrap_or(if rhs.is_negative() {
+			i64::MIN
+		} else {
+			i64::MAX
+		});
+		let days = (self.days_since_epoch as i128 + total as i128 / NANOS_PER_DAY)
+			.clamp(-365_250_000, 365_250_000);
+		Self {
+			days_since_epoch: days as i32,
+		}
+	}
+
+	pub fn saturating_sub(self, rhs: Duration) -> Date {
+		const NANOS_PER_DAY: i128 = 86_400_000_000_000;
+		let total = rhs.as_nanos().unwrap_or(if rhs.is_negative() {
+			i64::MIN
+		} else {
+			i64::MAX
+		});
+		let days = (self.days_since_epoch as i128 - total as i128 / NANOS_PER_DAY)
+			.clamp(-365_250_000, 365_250_000);
+		Self {
+			days_since_epoch: days as i32,
+		}
+	}
 }
 
 impl Display for Date {
@@ -214,7 +243,10 @@ pub mod tests {
 	use serde_json::{from_str, to_string};
 
 	use super::*;
-	use crate::error::{TemporalKind, TypeError};
+	use crate::{
+		error::{TemporalKind, TypeError},
+		value::duration::Duration,
+	};
 
 	#[test]
 	fn test_date_display_standard_dates() {
@@ -431,5 +463,47 @@ pub mod tests {
 	#[test]
 	fn test_from_ymd_non_leap_year() {
 		assert_date_overflow(Date::from_ymd(2023, 2, 29));
+	}
+
+	#[test]
+	fn saturating_add_sub_whole_days() {
+		// Adding/subtracting a whole-day Duration shifts the date by exactly that many days.
+		let base = Date::from_ymd(2024, 1, 15).unwrap();
+
+		let forward = base.saturating_add(Duration::from_days(2).unwrap());
+		assert_eq!(forward, Date::from_ymd(2024, 1, 17).unwrap());
+
+		let backward = base.saturating_sub(Duration::from_days(2).unwrap());
+		assert_eq!(backward, Date::from_ymd(2024, 1, 13).unwrap());
+	}
+
+	#[test]
+	fn saturating_sub_day_truncates() {
+		// Date has day resolution: a sub-day duration that does not cross a day
+		// boundary truncates to zero days and leaves the date unchanged, while a
+		// 36h duration crosses exactly one boundary and advances exactly 1 day.
+		let base = Date::from_ymd(2024, 1, 15).unwrap();
+
+		let half_day = base.saturating_add(Duration::from_seconds(12 * 3600).unwrap());
+		assert_eq!(half_day, base, "12h is sub-day and must not change the date");
+
+		let day_and_half = base.saturating_add(Duration::from_seconds(36 * 3600).unwrap());
+		assert_eq!(day_and_half, Date::from_ymd(2024, 1, 16).unwrap(), "36h truncates to 1 whole day");
+	}
+
+	#[test]
+	fn saturating_add_clamps_at_max() {
+		// Adding past the valid upper bound saturates rather than overflowing the i32.
+		let max = Date::from_days_since_epoch(365_250_000).unwrap();
+		let clamped = max.saturating_add(Duration::from_days(10).unwrap());
+		assert_eq!(clamped.to_days_since_epoch(), 365_250_000);
+	}
+
+	#[test]
+	fn saturating_sub_clamps_at_min() {
+		// Subtracting past the valid lower bound saturates rather than underflowing the i32.
+		let min = Date::from_days_since_epoch(-365_250_000).unwrap();
+		let clamped = min.saturating_sub(Duration::from_days(10).unwrap());
+		assert_eq!(clamped.to_days_since_epoch(), -365_250_000);
 	}
 }
