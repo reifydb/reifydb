@@ -16,12 +16,11 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_runtime::{
-	reifydb_assertions,
 	shutdown::Shutdown,
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_value::{Result, error::Error};
+use reifydb_value::{Result, error::Error, reifydb_assertions};
 use tokio::{net::TcpListener, runtime::Handle, sync::oneshot};
 use tracing::{error, info, warn};
 

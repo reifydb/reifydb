@@ -11,12 +11,12 @@ use reifydb_core::{
 	},
 };
 use reifydb_metric::accumulator::StatementStatsAccumulator;
-use reifydb_runtime::{context::clock::Clock, reifydb_assertions};
+use reifydb_runtime::context::clock::Clock;
 use reifydb_sub_server::{
 	execute::ExecuteError,
 	interceptor::{RequestContext, RequestInterceptor, ResponseContext},
 };
-use reifydb_value::value::datetime::DateTime;
+use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
 
 pub struct RequestMetricsInterceptor {
 	event_bus: EventBus,

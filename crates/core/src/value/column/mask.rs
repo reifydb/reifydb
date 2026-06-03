@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_runtime::reifydb_assertions;
+use reifydb_value::reifydb_assertions;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RowMask {

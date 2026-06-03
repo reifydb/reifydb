@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
+use reifydb_value::value::duration::Duration;
 
 pub struct PrimaryConfigurator {
 	bind_addr: Option<String>,
@@ -19,7 +19,7 @@ impl PrimaryConfigurator {
 	pub fn new() -> Self {
 		Self {
 			bind_addr: None,
-			poll_interval: Duration::from_millis(50),
+			poll_interval: Duration::from_milliseconds(50).unwrap(),
 			batch_size: 1024,
 		}
 	}
@@ -71,7 +71,7 @@ impl ReplicaConfigurator {
 		Self {
 			primary_addr: None,
 			batch_size: 1024,
-			reconnect_interval: Duration::from_secs(1),
+			reconnect_interval: Duration::from_seconds(1).unwrap(),
 		}
 	}
 

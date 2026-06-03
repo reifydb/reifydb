@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{thread, time::Duration};
+use std::thread;
 
 use reifydb::{Database, Params, embedded as db_embedded};
 use reifydb_core::interface::catalog::id::SubscriptionId;
@@ -10,7 +10,7 @@ use reifydb_engine::{
 	subscription::{HydrateError, SubscriptionServiceRef},
 };
 use reifydb_transaction::multi::lease::VersionLeaseGuard;
-use reifydb_value::value::{Value, frame::frame::Frame, identity::IdentityId};
+use reifydb_value::value::{Value, duration::Duration, frame::frame::Frame, identity::IdentityId};
 
 fn extract_sub_id(frames: &[Frame]) -> SubscriptionId {
 	let frame = frames.first().expect("subscription frame");
@@ -47,7 +47,7 @@ fn create_and_setup(
 	let frames = db.admin_as_root(&stmt, Params::None).expect("create subscription");
 	let sub_id = extract_sub_id(&frames);
 	let (engine, lease, sub_service) = engine_lease_service(db);
-	thread::sleep(Duration::from_millis(50));
+	thread::sleep(Duration::from_milliseconds(50).unwrap().to_std());
 	(engine, sub_id, lease, sub_service)
 }
 

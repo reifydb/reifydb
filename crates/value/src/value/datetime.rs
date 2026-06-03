@@ -4,6 +4,7 @@
 use std::{
 	fmt::{self, Display, Formatter},
 	ops::{Add, Rem, Sub},
+	str::FromStr,
 };
 
 use serde::{
@@ -12,9 +13,10 @@ use serde::{
 };
 
 use crate::{
-	error::{TemporalKind, TypeError},
+	clock::ClockNow,
+	error::{Error, TemporalKind, TypeError},
 	fragment::Fragment,
-	value::{date::Date, duration::Duration, time::Time},
+	value::{date::Date, duration::Duration, temporal::parse::datetime::parse_datetime, time::Time},
 };
 
 const NANOS_PER_SECOND: u64 = 1_000_000_000;
@@ -329,6 +331,20 @@ impl<'de> Deserialize<'de> for DateTime {
 		D: Deserializer<'de>,
 	{
 		deserializer.deserialize_u64(DateTimeVisitor)
+	}
+}
+
+impl DateTime {
+	pub fn now<C: ClockNow>(clock: &C) -> Self {
+		Self::from_nanos(clock.now_nanos())
+	}
+}
+
+impl FromStr for DateTime {
+	type Err = Error;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		parse_datetime(Fragment::internal(s.trim()))
 	}
 }
 
@@ -768,5 +784,30 @@ pub mod tests {
 		// A gap wider than i64 nanoseconds clamps instead of panicking.
 		let clamped = DateTime::from_nanos(u64::MAX).saturating_duration_since(DateTime::from_nanos(0));
 		assert_eq!(clamped.as_nanos().unwrap(), i64::MAX);
+	}
+}
+
+#[cfg(test)]
+mod now_tests {
+	use super::DateTime;
+	use crate::clock::testing::TestClock;
+
+	#[test]
+	fn now_reads_the_clock() {
+		// Civil "now" is sourced from the (mockable) clock, so DST/tests control it.
+		let clock = TestClock::from_millis(1500);
+		assert_eq!(DateTime::now(&clock), DateTime::from_nanos(1_500_000_000));
+	}
+
+	#[test]
+	fn from_str_round_trips_display() {
+		let dt = DateTime::from_nanos(1_700_000_000_000_000_000);
+		let parsed: DateTime = dt.to_string().parse().unwrap();
+		assert_eq!(parsed, dt);
+	}
+
+	#[test]
+	fn from_str_rejects_garbage() {
+		assert!("not a datetime".parse::<DateTime>().is_err());
 	}
 }

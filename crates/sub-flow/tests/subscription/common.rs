@@ -19,14 +19,14 @@
 
 #![allow(dead_code)]
 
-use std::{collections::BTreeMap, time::Duration};
+use std::collections::BTreeMap;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb::{Database, Params, embedded as db_embedded};
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_engine::subscription::SubscriptionServiceRef;
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
-use reifydb_value::value::{Value, identity::IdentityId, row_number::RowNumber};
+use reifydb_value::value::{Value, duration::Duration, identity::IdentityId, row_number::RowNumber};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Row {
@@ -95,7 +95,7 @@ pub fn drain_sub(db: &Database, sub_id: SubscriptionId) -> Vec<Columns> {
 
 pub fn drain_after_consumer_caught_up(db: &Database, sub_id: SubscriptionId) -> Vec<Columns> {
 	let target = db.watermarks().tx().current().expect("current version");
-	let timeout = Duration::from_secs(10);
+	let timeout = Duration::from_seconds(10).unwrap();
 	if !db.watermarks().cdc().wait_for_consumer(target, timeout) {
 		panic!(
 			"CDC consumer did not reach {:?} within {:?} (current consumer = {:?})",

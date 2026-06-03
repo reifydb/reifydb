@@ -8,9 +8,8 @@ use reifydb_core::interface::{
 	auth::{AuthStep, AuthenticationProvider},
 	catalog::{authentication::Authentication, identity::Identity},
 };
-use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
-use reifydb_value::{error::Error, value::identity::IdentityId};
+use reifydb_value::{error::Error, reifydb_assertions, value::identity::IdentityId};
 use tracing::instrument;
 
 use super::{AuthResponse, AuthService, generate_session_token};

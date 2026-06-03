@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops, sync::LazyLock, time::Duration};
+use std::{ops, sync::LazyLock};
 
 use postcard::to_stdvec;
 use reifydb_abi::operator::capabilities::OperatorCapability;
@@ -41,7 +41,10 @@ use reifydb_value::{
 	Result,
 	error::Error,
 	params::Params,
-	value::{Value, datetime::DateTime, identity::IdentityId, row_number::RowNumber},
+	value::{
+		Value, datetime::DateTime, duration::Duration as ReifyDuration, identity::IdentityId,
+		row_number::RowNumber,
+	},
 };
 
 use super::{
@@ -175,7 +178,7 @@ impl WindowOperator {
 		matches!(self.kind, WindowKind::Rolling { .. })
 	}
 
-	pub fn size_duration(&self) -> Option<Duration> {
+	pub fn size_duration(&self) -> Option<ReifyDuration> {
 		self.kind.size().and_then(|m| m.as_duration())
 	}
 
@@ -465,7 +468,7 @@ impl WindowOperator {
 		let mut result = Vec::new();
 
 		if let Some(duration) = self.size_duration() {
-			let window_size_ms = duration.as_millis() as u64;
+			let window_size_ms = duration.to_std().as_millis() as u64;
 			if window_size_ms > 0 {
 				let expire_before = current_timestamp.saturating_sub(window_size_ms * 2);
 				let cutoff_id = expire_before / window_size_ms;
@@ -522,7 +525,7 @@ impl WindowOperator {
 	pub fn tick_expire_windows(&self, txn: &mut FlowTransaction, current_timestamp: u64) -> Result<Vec<Diff>> {
 		let mut result = Vec::new();
 		let window_size_ms = match self.size_duration() {
-			Some(d) => d.as_millis() as u64,
+			Some(d) => d.to_std().as_millis() as u64,
 			None => return Ok(result),
 		};
 		if window_size_ms == 0 {
@@ -700,7 +703,7 @@ impl Operator for WindowOperator {
 		OperatorCapability::STANDARD_WITH_TICK
 	}
 
-	fn ticks(&self) -> Option<Duration> {
+	fn ticks(&self) -> Option<ReifyDuration> {
 		match &self.kind {
 			WindowKind::Tumbling {
 				..
@@ -714,7 +717,7 @@ impl Operator for WindowOperator {
 			| WindowKind::Rolling {
 				size: WindowSize::Duration(_),
 				..
-			} => Some(Duration::from_secs(1)),
+			} => Some(ReifyDuration::from_seconds(1).unwrap()),
 			WindowKind::Rolling {
 				size: WindowSize::Count(_),
 				..

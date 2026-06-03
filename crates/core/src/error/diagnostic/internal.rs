@@ -160,7 +160,9 @@ macro_rules! return_internal_error {
 
 #[cfg(test)]
 pub mod tests {
-	use std::{thread::sleep, time::Duration};
+	use std::thread::sleep;
+
+	use reifydb_value::value::duration::Duration;
 
 	use super::*;
 	use crate::error::Error;
@@ -289,7 +291,7 @@ pub mod tests {
 		let diagnostic1 = internal_with_context("error 1", "file1.rs", 10, 5, "func1", "mod1");
 
 		// Small delay to ensure different timestamps
-		sleep(Duration::from_millis(2));
+		sleep(Duration::from_milliseconds(2).unwrap().to_std());
 
 		let diagnostic2 = internal_with_context("error 2", "file2.rs", 20, 10, "func2", "mod2");
 

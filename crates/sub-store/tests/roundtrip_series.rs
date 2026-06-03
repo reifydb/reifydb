@@ -3,7 +3,7 @@
 
 #![cfg(feature = "column")]
 
-use std::{collections::BTreeSet, sync::Arc, time::Duration};
+use std::{collections::BTreeSet, sync::Arc};
 
 use reifydb::{Params, WithSubsystem, embedded as db_embedded};
 use reifydb_column::reader::SnapshotReader;
@@ -11,7 +11,7 @@ use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
-use reifydb_value::value::Value;
+use reifydb_value::value::{Value, duration::Duration};
 
 mod common;
 use common::poll_until;
@@ -23,13 +23,13 @@ use common::poll_until;
 #[test]
 fn series_materialization_populates_block_store() {
 	let fast_config = StorageConfig {
-		table_tick_interval: Duration::from_millis(50),
-		series_tick_interval: Duration::from_millis(50),
+		table_tick_interval: Duration::from_milliseconds(50).unwrap(),
+		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		// Small integer bucket width - with keys 0..=11 and width 5,
 		// buckets are [0,5), [5,10), [10,15). newest_key=11 closes the
 		// first two buckets.
 		series_bucket_width: 5,
-		series_grace: Duration::from_millis(0),
+		series_grace: Duration::from_milliseconds(0).unwrap(),
 	};
 
 	let mut db = db_embedded::memory()
@@ -63,7 +63,7 @@ fn series_materialization_populates_block_store() {
 				None
 			}
 		},
-		Duration::from_secs(5),
+		Duration::from_seconds(5).unwrap(),
 	)
 	.expect("at least two series buckets did not materialize within 5 seconds");
 

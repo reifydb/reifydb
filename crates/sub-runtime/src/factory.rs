@@ -9,10 +9,10 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::{Runtime, actor::system::ActorSpawner, context::clock::Clock, reifydb_assertions};
+use reifydb_runtime::{Runtime, actor::system::ActorSpawner, context::clock::Clock};
 use reifydb_store_multi::MultiStore;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
-use reifydb_value::Result;
+use reifydb_value::{Result, reifydb_assertions};
 
 use crate::{
 	actor::RuntimeSamplerActor, collect::Collectors, domain::Domain, subsystem::RuntimeSubsystem,

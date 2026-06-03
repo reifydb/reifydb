@@ -3,10 +3,10 @@
 
 use std::{collections::HashMap, sync::LazyLock};
 
-use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{
 	error::{AstErrorKind, Error, TypeError},
 	fragment::Fragment,
+	reifydb_assertions,
 };
 
 use super::{

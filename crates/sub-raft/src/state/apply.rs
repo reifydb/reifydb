@@ -13,8 +13,7 @@ use reifydb_core::{
 	},
 	key::{Key, kind::KeyKind},
 };
-use reifydb_runtime::reifydb_assertions;
-use reifydb_value::util::cowvec::CowVec;
+use reifydb_value::{reifydb_assertions, util::cowvec::CowVec};
 
 use super::State;
 use crate::{

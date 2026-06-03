@@ -24,7 +24,7 @@ impl WindowOperator {
 			WindowKind::Rolling {
 				lag: Some(lag),
 				..
-			} => lag.as_millis() as u64,
+			} => lag.to_std().as_millis() as u64,
 			_ => 0,
 		}
 	}
@@ -35,8 +35,8 @@ impl WindowOperator {
 				size: WindowSize::Duration(duration),
 				lag,
 			} => {
-				let window_size_ms = duration.as_millis() as u64;
-				let lag_ms = lag.map(|l| l.as_millis() as u64).unwrap_or(0);
+				let window_size_ms = duration.to_std().as_millis() as u64;
+				let lag_ms = lag.map(|l| l.to_std().as_millis() as u64).unwrap_or(0);
 				let cutoff_time = current_timestamp.saturating_sub(window_size_ms + lag_ms);
 				let layout_opt = state.window_layout.clone();
 				let totals_intact_before = self

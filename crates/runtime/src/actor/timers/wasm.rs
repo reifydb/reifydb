@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
+#![allow(clippy::disallowed_types)]
+
 use std::{cell::RefCell, rc::Rc, sync::atomic::Ordering, time::Duration};
 
 use js_sys::Function;

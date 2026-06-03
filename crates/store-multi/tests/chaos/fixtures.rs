@@ -3,7 +3,7 @@
 
 //! Store-configuration builders and the deterministic flush stand-in.
 
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -24,7 +24,7 @@ use reifydb_store_multi::{
 	store::StandardMultiStore,
 	tier::{TierStorage, commit::buffer::MultiCommitBufferTier},
 };
-use reifydb_value::util::cowvec::CowVec;
+use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
 
 /// commit buffer + SQLite persistent + read cache, built with sync_only pools so the timer-driven
 /// flush/drop actors never fire on their own (the large flush_interval is extra insurance on top). The
@@ -37,7 +37,7 @@ pub fn sync_persistent_store() -> (StandardMultiStore, impl Drop) {
 	std::mem::forget(actor_system);
 	let event_bus = EventBus::new(&spawner);
 	let (persistent, guard) = PersistentConfig::sqlite_in_memory();
-	let persistent = persistent.flush_interval(Duration::from_secs(86_400));
+	let persistent = persistent.flush_interval(Duration::from_seconds(86_400).unwrap());
 	let store = StandardMultiStore::new(MultiStoreConfig::sqlite(persistent, spawner, clock, event_bus)).unwrap();
 	(store, guard)
 }

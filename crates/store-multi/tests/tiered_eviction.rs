@@ -17,11 +17,7 @@
 //! (`real_flush_actor_sweep_bounds_ram_end_to_end`) additionally drives the genuine FlushActor timer to prove the
 //! wiring fires in production configuration.
 
-use std::{
-	collections::HashMap,
-	sync::Arc,
-	time::{Duration, Instant},
-};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -51,7 +47,7 @@ use reifydb_store_multi::{
 	store::StandardMultiStore,
 	tier::{TierStorage, VersionedGetResult, commit::buffer::MultiCommitBufferTier},
 };
-use reifydb_value::{cow_vec, util::cowvec::CowVec};
+use reifydb_value::{cow_vec, util::cowvec::CowVec, value::duration::Duration};
 
 const SHAPE: ShapeId = ShapeId::Table(TableId(1));
 
@@ -72,7 +68,7 @@ fn store_with_fast_flush() -> (StandardMultiStore, impl Drop) {
 		commit: Some(CommitBufferConfig {
 			storage: MultiCommitBufferTier::memory(),
 		}),
-		persistent: Some(persistent.flush_interval(Duration::from_millis(25))),
+		persistent: Some(persistent.flush_interval(Duration::from_milliseconds(25).unwrap())),
 		retention: Default::default(),
 		merge_config: Default::default(),
 		event_bus,
@@ -346,7 +342,7 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 	store.flush_pending_blocking();
 
 	let commit_tier = store.commit().unwrap();
-	let deadline = Instant::now() + Duration::from_secs(10);
+	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
 	loop {
 		// The sweep drops the <= W history from the commit tier: historical falls to 0 and a commit-tier read
 		// at the watermark snapshot no longer resolves (only the current v3 > W remains resident).

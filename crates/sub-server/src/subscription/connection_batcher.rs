@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use indexmap::IndexMap;
 use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_value::value::duration::Duration;
 use tokio::{
 	pin, select,
 	sync::Notify,
@@ -52,7 +53,8 @@ impl<W: Send + 'static> ConnectionBatcher<W> {
 		}
 	}
 
-	pub fn append(&self, subscription_id: SubscriptionId, item: W, linger: Duration) {
+	pub fn append(&self, subscription_id: SubscriptionId, item: W, linger: impl Into<Duration>) {
+		let linger = linger.into();
 		{
 			let mut pending = self.inner.pending.lock();
 			match pending.get_mut(&subscription_id) {
@@ -74,7 +76,7 @@ impl<W: Send + 'static> ConnectionBatcher<W> {
 
 	pub fn flush_due(&self) {
 		let now = Instant::now();
-		self.emit_where(|p| now.duration_since(p.first_pending_at) >= p.linger);
+		self.emit_where(|p| Duration::from_std(now.duration_since(p.first_pending_at)) >= p.linger);
 	}
 
 	pub fn flush_all(&self) {
@@ -102,7 +104,9 @@ impl<W: Send + 'static> ConnectionBatcher<W> {
 	fn next_deadline(&self) -> Option<Duration> {
 		let now = Instant::now();
 		let pending = self.inner.pending.lock();
-		pending.values().map(|p| p.linger.saturating_sub(now.duration_since(p.first_pending_at))).min()
+		pending.values()
+			.map(|p| p.linger.saturating_sub(Duration::from_std(now.duration_since(p.first_pending_at))))
+			.min()
 	}
 
 	pub async fn run(self) {
@@ -113,7 +117,7 @@ impl<W: Send + 'static> ConnectionBatcher<W> {
 					let notified = self.inner.wake.notified();
 					pin!(notified);
 					select! {
-						_ = sleep(remaining) => {}
+						_ = sleep(remaining.to_std()) => {}
 						_ = &mut notified => {}
 					}
 				}
@@ -125,16 +129,14 @@ impl<W: Send + 'static> ConnectionBatcher<W> {
 
 #[cfg(test)]
 mod tests {
-	use std::{
-		sync::{
-			Arc,
-			atomic::{AtomicUsize, Ordering},
-		},
-		time::Duration,
+	use std::sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
 	};
 
 	use reifydb_core::interface::catalog::id::SubscriptionId;
 	use reifydb_runtime::sync::mutex::Mutex;
+	use reifydb_value::value::duration::Duration;
 	use tokio::{spawn, time::sleep};
 
 	use super::{ConnectionBatcher, EmitFn, MergeFn};
@@ -148,7 +150,7 @@ mod tests {
 	}
 
 	fn ms(n: u64) -> Duration {
-		Duration::from_millis(n)
+		Duration::from_milliseconds(n as i64).unwrap()
 	}
 
 	#[test]
@@ -215,14 +217,14 @@ mod tests {
 		batcher.append(SubscriptionId(1), 1, ms(15));
 		batcher.append(SubscriptionId(2), 2, ms(150));
 
-		sleep(ms(60)).await;
+		sleep(ms(60).to_std()).await;
 		assert_eq!(
 			out.lock().clone(),
 			vec![vec![1]],
 			"the short-linger subscription is delivered first, in its own envelope, while the long one waits"
 		);
 
-		sleep(ms(150)).await;
+		sleep(ms(150).to_std()).await;
 		assert_eq!(
 			out.lock().clone(),
 			vec![vec![1], vec![2]],
@@ -241,7 +243,7 @@ mod tests {
 		batcher.append(SubscriptionId(1), 1, ms(15));
 		batcher.append(SubscriptionId(2), 2, ms(15));
 
-		sleep(ms(60)).await;
+		sleep(ms(60).to_std()).await;
 		assert_eq!(
 			out.lock().clone(),
 			vec![vec![1, 2]],
@@ -259,7 +261,7 @@ mod tests {
 		let task = spawn(batcher.clone().run());
 		batcher.append(SubscriptionId(1), 1, ms(0));
 
-		sleep(ms(30)).await;
+		sleep(ms(30).to_std()).await;
 		assert_eq!(
 			out.lock().clone(),
 			vec![vec![1]],
@@ -276,10 +278,10 @@ mod tests {
 
 		let task = spawn(batcher.clone().run());
 		batcher.append(SubscriptionId(1), 1, ms(150));
-		sleep(ms(10)).await;
+		sleep(ms(10).to_std()).await;
 		batcher.append(SubscriptionId(2), 2, ms(15));
 
-		sleep(ms(60)).await;
+		sleep(ms(60).to_std()).await;
 		assert_eq!(
 			out.lock().clone(),
 			vec![vec![2]],
@@ -299,7 +301,7 @@ mod tests {
 		let batcher = ConnectionBatcher::new(sum_merge(), emit);
 
 		let task = spawn(batcher.clone().run());
-		sleep(ms(40)).await;
+		sleep(ms(40).to_std()).await;
 		task.abort();
 
 		assert_eq!(calls.load(Ordering::SeqCst), 0, "an idle connection never wakes to emit");

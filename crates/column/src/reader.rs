@@ -6,10 +6,10 @@ use std::sync::Arc;
 use reifydb_core::value::column::{
 	ColumnWithName, buffer::ColumnBuffer, columns::Columns, data::Column, mask::RowMask,
 };
-use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{
 	Result,
 	fragment::Fragment,
+	reifydb_assertions,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 

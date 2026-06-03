@@ -5,9 +5,8 @@ use reifydb_core::{
 	internal,
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::error::Error;
+use reifydb_value::{error::Error, reifydb_assertions};
 
 use crate::{
 	Result,

@@ -26,6 +26,8 @@ futures-util = { workspace = true }
 rand = { workspace = true }
 getrandom = { workspace = true }
 
+reifydb-value = { workspace = true }
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { workspace = true }
 rayon = { workspace = true }

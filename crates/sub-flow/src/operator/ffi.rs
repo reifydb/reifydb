@@ -8,7 +8,6 @@ use std::{
 	panic::{AssertUnwindSafe, catch_unwind},
 	process::abort,
 	ptr,
-	time::Duration,
 };
 
 use reifydb_abi::{
@@ -32,7 +31,10 @@ use reifydb_core::{
 use reifydb_engine::vm::executor::Executor;
 use reifydb_extension::ffi_callbacks::builder::{BuilderRegistry, with_registry};
 use reifydb_sdk::{error::SdkError, ffi::arena::Arena, operator::Tick};
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{
+	Result,
+	value::{datetime::DateTime, duration::Duration},
+};
 use tracing::{Span, error, field, instrument};
 
 use crate::{
@@ -210,7 +212,7 @@ impl Operator for FFIOperator {
 			return None;
 		}
 		let nanos = unsafe { (self.vtable.tick_interval)(self.instance) };
-		Some(Duration::from_nanos(nanos))
+		Some(Duration::from_nanoseconds(nanos as i64).unwrap())
 	}
 
 	#[instrument(name = "flow::ffi::apply", level = "debug", skip_all, fields(

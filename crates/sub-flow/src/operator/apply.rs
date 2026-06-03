@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	value::column::columns::Columns,
 };
 use reifydb_sdk::operator::Tick;
-use reifydb_value::Result;
+use reifydb_value::{Result, value::duration::Duration};
 
 use crate::{
 	operator::{BoxedOperator, Operator, OperatorCell},

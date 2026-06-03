@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::HashMap,
-	sync::Arc,
-	time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_catalog::{
 	catalog::Catalog,
@@ -38,21 +34,19 @@ use reifydb_engine::{
 		},
 	},
 };
-use reifydb_runtime::{
-	actor::{
-		context::Context,
-		system::ActorConfig,
-		timers::TimerHandle,
-		traits::{Actor, Directive},
-	},
-	reifydb_assertions,
+use reifydb_runtime::actor::{
+	context::Context,
+	system::ActorConfig,
+	timers::TimerHandle,
+	traits::{Actor, Directive},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction};
 use reifydb_value::{
 	Result,
 	fragment::Fragment,
 	params::Params,
-	value::{datetime::DateTime, identity::IdentityId, value_type::ValueType},
+	reifydb_assertions,
+	value::{datetime::DateTime, duration::Duration, identity::IdentityId, value_type::ValueType},
 };
 use tracing::{debug, warn};
 
@@ -118,8 +112,8 @@ impl SeriesMaterializationActor {
 	}
 
 	#[inline]
-	fn wall_clock_now(&self) -> SystemTime {
-		UNIX_EPOCH + Duration::from_nanos(self.engine.clock().now_nanos())
+	fn wall_clock_now(&self) -> DateTime {
+		DateTime::now(self.engine.clock())
 	}
 
 	#[inline]
@@ -150,7 +144,7 @@ impl SeriesMaterializationActor {
 		query_txn: &mut QueryTransaction,
 		catalog: &Catalog,
 		series: &Series,
-		now_wall: SystemTime,
+		now_wall: DateTime,
 	) {
 		let Some(metadata) = self.load_series_metadata_or_warn(query_txn, catalog, series) else {
 			return;
@@ -197,9 +191,9 @@ impl SeriesMaterializationActor {
 		series: &Series,
 		metadata: &SeriesMetadata,
 		bucket: &Bucket,
-		now_wall: SystemTime,
+		now_wall: DateTime,
 	) {
-		if !is_closed(bucket, series, metadata, now_wall, self.grace) {
+		if !is_closed(bucket, series, metadata, now_wall, self.grace.to_std()) {
 			return;
 		}
 		let key = (series.id, bucket.id());

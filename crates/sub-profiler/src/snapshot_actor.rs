@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc, time::Duration as StdDuration};
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
 	event::{
@@ -17,12 +17,12 @@ use reifydb_runtime::{
 		context::Context,
 		traits::{Actor, Directive},
 	},
-	reifydb_assertions,
 	sync::rwlock::RwLock,
 };
 use reifydb_value::{
 	params::Params,
-	value::{Value, datetime::DateTime, identity::IdentityId, value_type::ValueType},
+	reifydb_assertions,
+	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId, value_type::ValueType},
 };
 use tracing::error;
 
@@ -34,7 +34,9 @@ use crate::{
 	},
 };
 
-pub const DEFAULT_SNAPSHOT_INTERVAL: StdDuration = StdDuration::from_secs(10);
+pub fn default_snapshot_interval() -> Duration {
+	Duration::from_seconds(10).unwrap()
+}
 
 #[derive(Clone, Debug)]
 pub enum SnapshotMessage {
@@ -45,7 +47,7 @@ pub struct ProfilerSnapshotActor {
 	accumulator: Arc<RwLock<ProfilerAccumulator>>,
 	engine: StandardEngine,
 	event_bus: EventBus,
-	tick_interval: StdDuration,
+	tick_interval: Duration,
 }
 
 impl ProfilerSnapshotActor {
@@ -54,11 +56,11 @@ impl ProfilerSnapshotActor {
 			accumulator,
 			engine,
 			event_bus,
-			tick_interval: DEFAULT_SNAPSHOT_INTERVAL,
+			tick_interval: default_snapshot_interval(),
 		}
 	}
 
-	pub fn with_interval(mut self, interval: StdDuration) -> Self {
+	pub fn with_interval(mut self, interval: Duration) -> Self {
 		self.tick_interval = interval;
 		self
 	}
@@ -153,7 +155,9 @@ impl Actor for ProfilerSnapshotActor {
 	type State = ();
 
 	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
-		ctx.schedule_tick(self.tick_interval, |nanos| SnapshotMessage::Tick(DateTime::from_nanos(nanos)));
+		ctx.schedule_tick(self.tick_interval.to_std(), |nanos| {
+			SnapshotMessage::Tick(DateTime::from_nanos(nanos))
+		});
 	}
 
 	fn handle(&self, _state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {

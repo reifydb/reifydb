@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
 use cfg_if::cfg_if;
+use reifydb_value::value::duration::Duration;
 
 use crate::sync::mutex::MutexGuard;
 
@@ -51,7 +50,7 @@ impl Condvar {
 
 	#[inline]
 	pub fn wait_for<'a, T>(&self, guard: &mut MutexGuard<'a, T>, timeout: Duration) -> WaitTimeoutResult {
-		let timed_out = self.inner.wait_for(guard, timeout);
+		let timed_out = self.inner.wait_for(guard, timeout.to_std());
 		WaitTimeoutResult {
 			timed_out,
 		}

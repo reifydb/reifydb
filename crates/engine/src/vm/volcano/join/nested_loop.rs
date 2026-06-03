@@ -3,10 +3,10 @@
 
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_rql::expression::Expression;
-use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
+	reifydb_assertions,
 	value::{Value, row_number::RowNumber},
 };
 use tracing::instrument;

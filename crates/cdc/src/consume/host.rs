@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::common::CommitVersion;
 use reifydb_transaction::transaction::{command::CommandTransaction, query::QueryTransaction};
-use reifydb_value::Result;
+use reifydb_value::{Result, value::duration::Duration};
 
 pub trait CdcHost: Clone + Send + Sync + 'static {
 	fn begin_command(&self) -> Result<CommandTransaction>;

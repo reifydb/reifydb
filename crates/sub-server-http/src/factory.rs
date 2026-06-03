@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use reifydb_auth::{
 	registry::AuthenticationRegistry,
@@ -18,7 +18,7 @@ use reifydb_sub_server::{
 	interceptor::RequestInterceptorChain,
 	state::{AppState, StateConfig},
 };
-use reifydb_value::Result;
+use reifydb_value::{Result, value::duration::Duration};
 use tokio::runtime::Handle;
 
 use crate::subsystem::HttpSubsystem;
@@ -47,8 +47,8 @@ impl HttpConfigurator {
 			bind_addr: None,
 			admin_bind_addr: None,
 			max_connections: 10_000,
-			query_timeout: Duration::from_secs(30),
-			request_timeout: Duration::from_secs(60),
+			query_timeout: Duration::from_seconds(30).unwrap(),
+			request_timeout: Duration::from_seconds(60).unwrap(),
 			spawner: None,
 			clock: None,
 			rng: None,

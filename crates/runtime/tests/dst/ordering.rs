@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::value::duration::Duration;
+
 use super::helpers::*;
 
 #[test]
@@ -281,10 +283,10 @@ fn timer_vs_direct_message_ordering() {
 		system.clone(),
 		system.cancellation_token(),
 	);
-	ctx.schedule_once(std::time::Duration::from_millis(10), || "timer".to_string());
+	ctx.schedule_once(Duration::from_milliseconds(10).unwrap(), || "timer".to_string());
 
 	// Now advance time to trigger the timer.
-	system.advance_time(std::time::Duration::from_millis(10));
+	system.advance_time(Duration::from_milliseconds(10).unwrap());
 
 	system.run_until_idle();
 

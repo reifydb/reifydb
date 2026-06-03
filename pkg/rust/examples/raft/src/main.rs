@@ -7,7 +7,7 @@
 //!   raft-cluster --node-id 1 --bind 127.0.0.1:9100 \
 //!     --peer 2=127.0.0.1:9200 --peer 3=127.0.0.1:9300
 
-use std::{collections::HashSet, env, net::SocketAddr, time::Duration};
+use std::{collections::HashSet, env, net::SocketAddr};
 
 use reifydb_sub_raft::{
 	config::PeerConfig,
@@ -17,6 +17,7 @@ use reifydb_sub_raft::{
 	node::{Node, NodeId, Options},
 	state::testing::KV,
 };
+use reifydb_value::value::duration::Duration;
 use tokio::{spawn, time::sleep};
 
 #[tokio::main]
@@ -74,7 +75,7 @@ async fn main() {
 	let status_handle = handle.clone();
 	spawn(async move {
 		loop {
-			sleep(Duration::from_secs(5)).await;
+			sleep(Duration::from_seconds(5).unwrap().to_std()).await;
 			eprintln!("node {node_id}: alive (handle active={})", !status_handle.is_closed());
 		}
 	});

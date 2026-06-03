@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{marker::PhantomData, thread, time::Duration};
+use std::{marker::PhantomData, thread};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -9,7 +9,7 @@ use reifydb_core::{
 };
 #[cfg(feature = "sub_replication")]
 use reifydb_sub_replication::replica::watermark::ReplicaWatermark;
-use reifydb_value::Result;
+use reifydb_value::{Result, value::duration::Duration};
 
 use crate::Database;
 
@@ -124,7 +124,7 @@ impl CdcWatermarks<'_> {
 			return true;
 		}
 		let clock = self.db.clock().clone();
-		let deadline = clock.instant() + timeout;
+		let deadline = clock.instant() + timeout.to_std();
 		loop {
 			if self.consumer() >= version {
 				return true;
@@ -132,7 +132,7 @@ impl CdcWatermarks<'_> {
 			if clock.instant() >= deadline {
 				return self.consumer() >= version;
 			}
-			thread::sleep(Duration::from_millis(2));
+			thread::sleep(Duration::from_milliseconds(2).unwrap().to_std());
 		}
 	}
 }

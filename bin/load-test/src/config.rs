@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
 use clap::{Parser, ValueEnum};
+use reifydb_value::value::duration::Duration;
 
 #[derive(Parser)]
 #[command(name = "reifydb-load-test")]
@@ -125,10 +124,10 @@ fn parse_duration(s: &str) -> Result<Duration, String> {
 	let num: u64 = num_str.parse().map_err(|_| format!("invalid duration number: {}", num_str))?;
 
 	let duration = match unit {
-		"ms" => Duration::from_millis(num),
-		"s" => Duration::from_secs(num),
-		"m" => Duration::from_secs(num * 60),
-		"h" => Duration::from_secs(num * 3600),
+		"ms" => Duration::from_milliseconds(num as i64).unwrap(),
+		"s" => Duration::from_seconds(num as i64).unwrap(),
+		"m" => Duration::from_seconds((num * 60) as i64).unwrap(),
+		"h" => Duration::from_seconds((num * 3600) as i64).unwrap(),
 		_ => return Err(format!("unknown duration unit: {}", unit)),
 	};
 
@@ -141,10 +140,10 @@ mod tests {
 
 	#[test]
 	fn test_parse_duration() {
-		assert_eq!(parse_duration("30s").unwrap(), Duration::from_secs(30));
-		assert_eq!(parse_duration("5m").unwrap(), Duration::from_secs(300));
-		assert_eq!(parse_duration("1h").unwrap(), Duration::from_secs(3600));
-		assert_eq!(parse_duration("500ms").unwrap(), Duration::from_millis(500));
-		assert_eq!(parse_duration("60").unwrap(), Duration::from_secs(60));
+		assert_eq!(parse_duration("30s").unwrap(), Duration::from_seconds(30).unwrap());
+		assert_eq!(parse_duration("5m").unwrap(), Duration::from_seconds(300).unwrap());
+		assert_eq!(parse_duration("1h").unwrap(), Duration::from_seconds(3600).unwrap());
+		assert_eq!(parse_duration("500ms").unwrap(), Duration::from_milliseconds(500).unwrap());
+		assert_eq!(parse_duration("60").unwrap(), Duration::from_seconds(60).unwrap());
 	}
 }

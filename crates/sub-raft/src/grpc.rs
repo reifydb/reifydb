@@ -1,10 +1,11 @@
 // Copyright (c) 2026 ReifyDB
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::{collections::HashMap, error::Error, mem::take, net::SocketAddr, sync::Arc, time::Duration};
+use std::{collections::HashMap, error::Error, mem::take, net::SocketAddr, sync::Arc};
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_value::value::duration::Duration;
 use tokio::{spawn, sync::mpsc, task::JoinHandle, time::sleep};
 use tonic::{Request, Response, Status, transport::Server};
 
@@ -46,7 +47,7 @@ impl GrpcTransport {
 			})
 		};
 
-		sleep(Duration::from_millis(50)).await;
+		sleep(Duration::from_milliseconds(50).unwrap().to_std()).await;
 
 		let mut outbound_txs = HashMap::new();
 		for peer in &peers {
@@ -70,7 +71,7 @@ impl GrpcTransport {
 							}
 						}
 						Err(_) => {
-							sleep(Duration::from_millis(500)).await;
+							sleep(Duration::from_milliseconds(500).unwrap().to_std()).await;
 						}
 					}
 				}

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
+#![allow(clippy::disallowed_types)]
+
 use std::{
 	cell::RefCell,
 	cmp::Ordering as CmpOrdering,

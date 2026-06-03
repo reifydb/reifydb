@@ -6,11 +6,11 @@ use std::{
 	result::Result as StdResult,
 };
 
-use reifydb_runtime::reifydb_assertions;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, ser::SerializeSeq};
 use serde_bytes::{ByteBuf, Bytes};
 
 use crate::{
+	reifydb_assertions,
 	storage::{Cow, DataVec, Storage},
 	util::cowvec::CowVec,
 };

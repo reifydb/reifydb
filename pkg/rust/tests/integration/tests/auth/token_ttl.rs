@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
-use reifydb::{Clock, MockClock, Params, RuntimeConfig, auth::service::AuthResponse, embedded};
+use reifydb::{
+	Clock, MockClock, Params, RuntimeConfig, auth::service::AuthResponse, embedded,
+	value::value::duration::Duration,
+};
 
 fn create_db_with_mock_clock(mock: &MockClock, session_ttl: Duration) -> reifydb::Database {
 	let mut config = RuntimeConfig::default();
@@ -33,7 +34,7 @@ fn setup_user_and_login(db: &mut reifydb::Database) -> String {
 #[test]
 fn test_token_valid_before_ttl() {
 	let mock = MockClock::from_millis(1_700_000_000_000);
-	let ttl = Duration::from_secs(60);
+	let ttl = Duration::from_seconds(60).unwrap();
 	let mut db = create_db_with_mock_clock(&mock, ttl);
 
 	let token = setup_user_and_login(&mut db);
@@ -50,7 +51,7 @@ fn test_token_valid_before_ttl() {
 #[test]
 fn test_token_expires_after_ttl() {
 	let mock = MockClock::from_millis(1_700_000_000_000);
-	let ttl = Duration::from_secs(60);
+	let ttl = Duration::from_seconds(60).unwrap();
 	let mut db = create_db_with_mock_clock(&mock, ttl);
 
 	let token = setup_user_and_login(&mut db);
@@ -86,7 +87,7 @@ fn test_token_no_ttl_never_expires() {
 #[test]
 fn test_cleanup_removes_expired_tokens() {
 	let mock = MockClock::from_millis(1_700_000_000_000);
-	let ttl = Duration::from_secs(60);
+	let ttl = Duration::from_seconds(60).unwrap();
 	let mut db = create_db_with_mock_clock(&mock, ttl);
 
 	let token = setup_user_and_login(&mut db);

@@ -12,11 +12,11 @@ use reifydb_core::{
 	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
-use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error,
 	error::Error,
+	reifydb_assertions,
 	util::cowvec::CowVec,
 	value::{
 		datetime::{CREATED_AT_COLUMN_NAME, UPDATED_AT_COLUMN_NAME},

@@ -8,8 +8,7 @@ use reifydb_column::{
 	snapshot::{ColumnBlock, ColumnChunks, SystemColumn},
 };
 use reifydb_core::value::column::{buffer::ColumnBuffer, columns::Columns, data::canonical::Canonical};
-use reifydb_runtime::reifydb_assertions;
-use reifydb_value::{Result, value::value_type::ValueType};
+use reifydb_value::{Result, reifydb_assertions, value::value_type::ValueType};
 
 use crate::column::error::SubStoreError;
 

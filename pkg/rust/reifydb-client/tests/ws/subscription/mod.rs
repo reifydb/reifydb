@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use std::{error::Error, future::Future, sync::Arc, time::Duration};
+use std::{error::Error, future::Future, sync::Arc};
 
 use reifydb_client::{ChangePayload, SubscriptionConfig, WireFormat, WsClient};
+use reifydb_value::value::duration::Duration;
 use tokio::{runtime::Runtime, time::timeout};
 
 use crate::common::{cleanup_server, create_server_instance, start_server_and_get_ws_port};
@@ -37,7 +38,7 @@ pub async fn create_test_table(client: &WsClient, name: &str, columns: &[(&str, 
 
 /// Wait for a change with timeout
 pub async fn recv_with_timeout(client: &mut WsClient, timeout_ms: u64) -> Option<ChangePayload> {
-	match timeout(Duration::from_millis(timeout_ms), client.recv()).await {
+	match timeout(Duration::from_milliseconds(timeout_ms as i64).unwrap().to_std(), client.recv()).await {
 		Ok(result) => result,
 		Err(_) => None,
 	}
@@ -46,7 +47,7 @@ pub async fn recv_with_timeout(client: &mut WsClient, timeout_ms: u64) -> Option
 /// Wait for multiple changes with timeout
 pub async fn recv_multiple_with_timeout(client: &mut WsClient, count: usize, timeout_ms: u64) -> Vec<ChangePayload> {
 	let mut results = Vec::new();
-	let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms);
+	let deadline = tokio::time::Instant::now() + Duration::from_milliseconds(timeout_ms as i64).unwrap().to_std();
 
 	while results.len() < count {
 		let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());

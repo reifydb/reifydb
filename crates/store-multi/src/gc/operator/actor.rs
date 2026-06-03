@@ -13,17 +13,14 @@ use reifydb_core::{
 	key::flow_node_state::FlowNodeStateKey,
 	row::{Ttl, TtlAnchor, TtlCleanupMode},
 };
-use reifydb_runtime::{
-	actor::{
-		context::Context,
-		mailbox::ActorRef,
-		system::{ActorConfig, ActorSpawner},
-		timers::TimerHandle,
-		traits::{Actor as ActorTrait, Directive},
-	},
-	reifydb_assertions,
+use reifydb_runtime::actor::{
+	context::Context,
+	mailbox::ActorRef,
+	system::{ActorConfig, ActorSpawner},
+	timers::TimerHandle,
+	traits::{Actor as ActorTrait, Directive},
 };
-use reifydb_value::value::datetime::DateTime;
+use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
 use tracing::{debug, info, trace, warn};
 
 use super::{ListOperatorSettings, OperatorScanStats, scanner};

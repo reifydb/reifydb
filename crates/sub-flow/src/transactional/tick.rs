@@ -5,7 +5,6 @@ use std::{
 	collections::HashMap,
 	panic::{AssertUnwindSafe, catch_unwind},
 	process,
-	time::Duration,
 };
 
 use reifydb_catalog::catalog::Catalog;
@@ -22,7 +21,7 @@ use reifydb_runtime::{
 	},
 	context::clock::{Clock, Instant},
 };
-use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
+use reifydb_value::value::{datetime::DateTime, duration::Duration, identity::IdentityId};
 use tracing::{error, warn};
 
 use crate::{
@@ -132,7 +131,7 @@ impl TransactionalTickActor {
 				continue;
 			}
 			let elapsed_due = match state.last_ticks.get(flow_id) {
-				Some(last) => now.duration_since(last) >= interval,
+				Some(last) => now.duration_since(last) >= interval.to_std(),
 				None => true,
 			};
 			if elapsed_due {

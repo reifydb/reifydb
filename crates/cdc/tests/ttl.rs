@@ -4,7 +4,7 @@
 use std::{
 	sync::{Arc, Mutex},
 	thread::sleep,
-	time::{Duration, Instant},
+	time::Instant,
 };
 
 use reifydb_catalog::cache::CatalogCache;
@@ -32,15 +32,21 @@ use reifydb_runtime::{
 use reifydb_store_multi::MultiStore;
 use reifydb_value::{
 	util::cowvec::CowVec,
-	value::{Value, datetime::DateTime, duration::Duration as TypeDuration},
+	value::{Value, datetime::DateTime, duration::Duration},
 };
 
-const POLL_TIMEOUT: Duration = Duration::from_secs(2);
-const POLL_INTERVAL: Duration = Duration::from_millis(10);
+fn poll_timeout() -> Duration {
+	Duration::from_seconds(2).unwrap()
+}
+fn poll_interval() -> Duration {
+	Duration::from_milliseconds(10).unwrap()
+}
 /// Slack window after sending a Tick within which we trust the actor has settled.
 /// Used only by negative assertions ("nothing was evicted") - positive assertions
 /// use the bounded-poll helpers instead.
-const NEGATIVE_SETTLE: Duration = Duration::from_millis(150);
+fn negative_settle() -> Duration {
+	Duration::from_milliseconds(150).unwrap()
+}
 
 /// Bundles every handle a TTL test needs: actor handle, storage, mock clock, materialized
 /// catalog (for setting `CDC_TTL_DURATION`), and event bus (for capturing eviction events).
@@ -93,12 +99,8 @@ impl TtlFixture {
 }
 
 fn set_ttl_secs(catalog: &CatalogCache, secs: i64) {
-	catalog.set_config(
-		ConfigKey::CdcTtlDuration,
-		CommitVersion(1),
-		Value::Duration(TypeDuration::from_seconds(secs).unwrap()),
-	)
-	.expect("set CDC_TTL_DURATION");
+	catalog.set_config(ConfigKey::CdcTtlDuration, CommitVersion(1), Value::duration_seconds(secs))
+		.expect("set CDC_TTL_DURATION");
 }
 
 fn write_cdc(storage: &MemoryCdcStorage, version: u64, timestamp_nanos: u64) {
@@ -117,14 +119,15 @@ fn write_cdc(storage: &MemoryCdcStorage, version: u64, timestamp_nanos: u64) {
 /// Bounded-poll until `check` is true. Panics on timeout. Use this for positive
 /// assertions ("entry should disappear") so the tests stay green even under CI jitter.
 fn await_until<F: Fn() -> bool>(label: &str, check: F) {
-	let deadline = Instant::now() + POLL_TIMEOUT;
+	let timeout = poll_timeout().to_std();
+	let deadline = Instant::now() + timeout;
 	while Instant::now() < deadline {
 		if check() {
 			return;
 		}
-		sleep(POLL_INTERVAL);
+		sleep(poll_interval().to_std());
 	}
-	panic!("await_until({label}) timed out after {POLL_TIMEOUT:?}");
+	panic!("await_until({label}) timed out after {timeout:?}");
 }
 
 /// Wrapper that lets tests share an `Arc<L>` listener with the EventBus.
@@ -160,7 +163,7 @@ fn ttl_unset_does_not_evict_anything() {
 
 	f.mock.advance_secs(3600);
 	f.tick();
-	sleep(NEGATIVE_SETTLE);
+	sleep(negative_settle().to_std());
 
 	assert_eq!(f.storage.min_version().unwrap(), Some(CommitVersion(1)));
 	assert_eq!(f.storage.max_version().unwrap(), Some(CommitVersion(3)));
@@ -190,7 +193,7 @@ fn ttl_keeps_all_when_every_entry_is_within_cutoff() {
 
 	// cutoff = now - 60 s = -50 s (saturated to 0). All entries are >= 0 → kept.
 	f.tick();
-	sleep(NEGATIVE_SETTLE);
+	sleep(negative_settle().to_std());
 
 	assert_eq!(f.storage.min_version().unwrap(), Some(CommitVersion(1)));
 	assert_eq!(f.storage.max_version().unwrap(), Some(CommitVersion(2)));
@@ -237,7 +240,7 @@ fn ttl_empty_storage_is_a_noop() {
 	set_ttl_secs(&f.catalog, 5);
 
 	f.tick();
-	sleep(NEGATIVE_SETTLE); // give the actor time to confirm there is nothing to do.
+	sleep(negative_settle().to_std()); // give the actor time to confirm there is nothing to do.
 
 	assert_eq!(f.storage.min_version().unwrap(), None);
 }
@@ -254,7 +257,7 @@ fn ttl_progressive_eviction_as_clock_advances() {
 	// Tick 1: now = 8 s, cutoff = -2 s (saturated to 0). Nothing < 0 → keep all.
 	f.mock.advance_secs(8);
 	f.tick();
-	sleep(NEGATIVE_SETTLE);
+	sleep(negative_settle().to_std());
 	assert_eq!(f.storage.min_version().unwrap(), Some(CommitVersion(1)));
 
 	// Tick 2: now = 12 s, cutoff = 2 s. Only v1 (t = 0) is older → drop v1.
@@ -312,7 +315,7 @@ fn ttl_does_not_emit_event_when_nothing_is_evicted() {
 	f.event_bus.register::<CdcEvictedEvent, _>(WrappedListener(recorder.clone()));
 
 	f.tick();
-	sleep(NEGATIVE_SETTLE);
+	sleep(negative_settle().to_std());
 	f.event_bus.wait_for_completion();
 
 	assert!(recorder.events.lock().unwrap().is_empty());
@@ -323,7 +326,7 @@ fn ttl_setting_zero_duration_is_rejected_by_catalog() {
 	// Sanity check that the validate hook is wired in - the catalog rejects zero TTLs at
 	// the set_config boundary, so a misconfigured operator never reaches the producer.
 	let catalog = CatalogCache::new();
-	let zero = Value::Duration(TypeDuration::from_seconds(0).unwrap());
+	let zero = Value::duration_seconds(0);
 	let err = catalog.set_config(ConfigKey::CdcTtlDuration, CommitVersion(1), zero).unwrap_err();
 	assert_eq!(err.code, "CA_053");
 }

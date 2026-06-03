@@ -20,7 +20,7 @@ fn test_with_configs_applies_multiple() {
 	let db = embedded::memory()
 		.with_configs([
 			(ConfigKey::OracleWindowSize, Value::Uint8(1000)),
-			(ConfigKey::CdcTtlDuration, Value::Duration(Duration::from_hours(2).unwrap())),
+			(ConfigKey::CdcTtlDuration, Value::duration_hours(2)),
 		])
 		.build()
 		.unwrap();

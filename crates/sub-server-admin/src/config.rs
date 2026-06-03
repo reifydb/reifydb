@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{fmt, time::Duration};
+use std::fmt;
 
 use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
+use reifydb_value::value::duration::Duration;
 use tokio::runtime::Handle;
 
 pub struct AdminConfigurator {
@@ -28,7 +29,7 @@ impl AdminConfigurator {
 		Self {
 			bind_addr: "127.0.0.1:9090".to_string(),
 			max_connections: 1_000,
-			request_timeout: Duration::from_secs(30),
+			request_timeout: Duration::from_seconds(30).unwrap(),
 			auth_required: false,
 			auth_token: None,
 			spawner: None,

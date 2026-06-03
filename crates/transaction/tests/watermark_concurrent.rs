@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{thread, time::Duration};
+use std::thread;
 
 use reifydb_core::common::CommitVersion;
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 use reifydb_transaction::multi::watermark::watermark::WaterMark;
+use reifydb_value::value::duration::Duration;
 
 // The MVCC oracle's `done_until` watermark is the gate the CDC consumer waits on before it may
 // process a version (deferred-view maintenance, subscriptions, GC all block on it). It is fed by an
@@ -45,7 +46,7 @@ fn done_until_reaches_max_under_concurrent_burst() {
 		}
 	});
 
-	let reached = watermark.wait_for_mark_timeout(CommitVersion(total), Duration::from_secs(10));
+	let reached = watermark.wait_for_mark_timeout(CommitVersion(total), Duration::from_seconds(10).unwrap());
 	assert!(
 		reached,
 		"done_until stalled at {} of {} - the watermark actor dropped a Begin/Done under burst load",
@@ -54,5 +55,5 @@ fn done_until_reaches_max_under_concurrent_burst() {
 	);
 
 	system.shutdown();
-	thread::sleep(Duration::from_millis(150));
+	thread::sleep(Duration::from_milliseconds(150).unwrap().to_std());
 }

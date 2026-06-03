@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
+use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::{
@@ -30,7 +30,7 @@ use reifydb_sub_server::{
 use reifydb_subscription::batch::BatchId;
 use reifydb_value::{
 	params::Params,
-	value::{frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
+	value::{duration::Duration, frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
 };
 use reifydb_wire_format::json::to::convert_frames;
 use serde_json::{Value as JsonValue, from_str, json, to_string as json_to_string};
@@ -273,7 +273,7 @@ fn configure_stream(stream: &TcpStream, peer: Option<SocketAddr>) {
 
 #[inline]
 async fn accept_ws_with_timeout(stream: TcpStream) -> Option<WebSocketStream<TcpStream>> {
-	match timeout(Duration::from_secs(30), accept_async(stream)).await {
+	match timeout(Duration::from_seconds(30).unwrap().to_std(), accept_async(stream)).await {
 		Ok(Ok(ws)) => Some(ws),
 		_ => None,
 	}

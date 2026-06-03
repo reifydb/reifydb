@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
-use reifydb_runtime::reifydb_assertions;
+use reifydb_value::reifydb_assertions;
 
 use crate::{Result, vm::vm::Vm};
 

@@ -19,11 +19,10 @@ use reifydb_core::{
 		},
 	},
 };
-use reifydb_runtime::reifydb_assertions;
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sub_raft::message::Command;
 use reifydb_value::{
-	Result,
+	Result, reifydb_assertions,
 	util::{cowvec::CowVec, hex},
 };
 use tracing::instrument;

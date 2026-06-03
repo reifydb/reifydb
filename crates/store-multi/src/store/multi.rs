@@ -21,9 +21,11 @@ use reifydb_core::{
 		is_single_version_semantics_key,
 	},
 };
-use reifydb_runtime::reifydb_assertions;
 use reifydb_store::row::page::PageId;
-use reifydb_value::util::{cowvec::CowVec, hex};
+use reifydb_value::{
+	reifydb_assertions,
+	util::{cowvec::CowVec, hex},
+};
 use tracing::{instrument, warn};
 
 use super::StandardMultiStore;

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{sync::Arc, thread, time::Duration};
+use std::{sync::Arc, thread};
 
 use reifydb::{
 	ConfigKey, Database, Params, RuntimeConfig, Value, WithSubsystem, embedded as db_embedded,
-	value::value::duration::Duration as ConfigDuration,
+	value::value::duration::Duration,
 };
 use reifydb_metric::{
 	accumulator::StatementStatsAccumulator,
@@ -15,7 +15,7 @@ use reifydb_sub_metric::factory::MetricSubsystemFactory;
 use reifydb_value::value::frame::frame::Frame;
 
 fn wait_for_metrics_processing() {
-	thread::sleep(Duration::from_millis(150));
+	thread::sleep(Duration::from_milliseconds(150).unwrap().to_std());
 }
 
 fn new_db_with_metrics() -> Database {
@@ -28,7 +28,7 @@ fn new_db_with_metrics() -> Database {
 		.with_runtime_config(RuntimeConfig::default().seeded(0))
 		// Seed a fast flush interval so the collector populates system::metrics::storage::table
 		// well within wait_for_metrics_processing(); the default 10s cadence would leave it empty.
-		.with_config(ConfigKey::MetricFlushInterval, Value::Duration(ConfigDuration::from_milliseconds(10).unwrap()))
+		.with_config(ConfigKey::MetricFlushInterval, Value::duration_milliseconds(10))
 		.with_subsystem(factory)
 		.build()
 		.expect("build");

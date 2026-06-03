@@ -1,17 +1,23 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
+#![allow(clippy::disallowed_types)]
+
 use std::{
 	cmp,
 	fmt::{self, Display, Formatter, Write},
 	ops,
+	str::FromStr,
+	time::Duration as StdDuration,
 };
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	error::{TemporalKind, TypeError},
+	error::{Error, TemporalKind, TypeError},
 	fragment::Fragment,
+	reifydb_assertions,
+	value::temporal::parse::duration::parse_duration,
 };
 
 #[repr(C)]
@@ -106,6 +112,71 @@ impl Duration {
 			days,
 			nanos: (remainder_us * 1_000) as i64,
 		}
+	}
+
+	pub const fn from_nanoseconds_const(nanoseconds: i64) -> Self {
+		reifydb_assertions! {
+			let day_count = nanoseconds / NANOS_PER_DAY;
+			assert!(
+				day_count >= i32::MIN as i64 && day_count <= i32::MAX as i64,
+				"from_nanoseconds_const: whole-day count does not fit in i32 days"
+			);
+		}
+		Self {
+			months: 0,
+			days: (nanoseconds / NANOS_PER_DAY) as i32,
+			nanos: nanoseconds % NANOS_PER_DAY,
+		}
+	}
+
+	pub const fn from_microseconds_const(microseconds: i64) -> Self {
+		reifydb_assertions! {
+			assert!(
+				microseconds.checked_mul(1_000).is_some(),
+				"from_microseconds_const: microseconds * 1_000 overflows i64 nanoseconds"
+			);
+		}
+		Self::from_nanoseconds_const(microseconds * 1_000)
+	}
+
+	pub const fn from_milliseconds_const(milliseconds: i64) -> Self {
+		reifydb_assertions! {
+			assert!(
+				milliseconds.checked_mul(1_000_000).is_some(),
+				"from_milliseconds_const: milliseconds * 1_000_000 overflows i64 nanoseconds"
+			);
+		}
+		Self::from_nanoseconds_const(milliseconds * 1_000_000)
+	}
+
+	pub const fn from_seconds_const(seconds: i64) -> Self {
+		reifydb_assertions! {
+			assert!(
+				seconds.checked_mul(1_000_000_000).is_some(),
+				"from_seconds_const: seconds * 1_000_000_000 overflows i64 nanoseconds"
+			);
+		}
+		Self::from_nanoseconds_const(seconds * 1_000_000_000)
+	}
+
+	pub const fn from_minutes_const(minutes: i64) -> Self {
+		reifydb_assertions! {
+			assert!(
+				minutes.checked_mul(60_000_000_000).is_some(),
+				"from_minutes_const: minutes * 60_000_000_000 overflows i64 nanoseconds"
+			);
+		}
+		Self::from_nanoseconds_const(minutes * 60_000_000_000)
+	}
+
+	pub const fn from_hours_const(hours: i64) -> Self {
+		reifydb_assertions! {
+			assert!(
+				hours.checked_mul(3_600_000_000_000).is_some(),
+				"from_hours_const: hours * 3_600_000_000_000 overflows i64 nanoseconds"
+			);
+		}
+		Self::from_nanoseconds_const(hours * 3_600_000_000_000)
 	}
 
 	pub fn from_nanoseconds(nanoseconds: i64) -> Result<Self, Box<TypeError>> {
@@ -496,6 +567,42 @@ impl Display for Duration {
 		}
 
 		Ok(())
+	}
+}
+
+impl Duration {
+	pub fn is_zero(&self) -> bool {
+		self.months == 0 && self.days == 0 && self.nanos == 0
+	}
+
+	pub fn to_std(&self) -> StdDuration {
+		let nanos = self.nanoseconds().map(|n| n.max(0)).unwrap_or(0);
+		StdDuration::from_nanos(nanos as u64)
+	}
+
+	pub fn from_std(duration: StdDuration) -> Self {
+		let nanos = i64::try_from(duration.as_nanos()).expect("std Duration exceeds i64 nanoseconds");
+		Self::from_nanoseconds(nanos).expect("std Duration nanoseconds within range")
+	}
+}
+
+impl From<Duration> for StdDuration {
+	fn from(duration: Duration) -> Self {
+		duration.to_std()
+	}
+}
+
+impl From<StdDuration> for Duration {
+	fn from(duration: StdDuration) -> Self {
+		Self::from_std(duration)
+	}
+}
+
+impl FromStr for Duration {
+	type Err = Error;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		parse_duration(Fragment::internal(s.trim()))
 	}
 }
 
@@ -1376,5 +1483,50 @@ pub mod tests {
 		assert_eq!(Duration::from_seconds(1).unwrap().saturating_mul(60), Duration::from_seconds(60).unwrap());
 		// Out of range, the day product clamps to i32::MAX.
 		assert_eq!(Duration::new(0, i32::MAX, 0).unwrap().saturating_mul(2).get_days(), i32::MAX);
+	}
+}
+
+#[cfg(test)]
+mod conversion_tests {
+	use std::str::FromStr;
+
+	use super::{Duration, StdDuration};
+
+	#[test]
+	fn from_str_parses_human_units() {
+		// The migration's whole point: a config value is written "10ms", not a bare integer.
+		assert_eq!(Duration::from_str("10ms").unwrap().to_std(), StdDuration::from_millis(10));
+		assert_eq!("5s".parse::<Duration>().unwrap().to_std(), StdDuration::from_secs(5));
+		assert_eq!("2m".parse::<Duration>().unwrap().to_std(), StdDuration::from_secs(120));
+	}
+
+	#[test]
+	fn from_str_trims_whitespace() {
+		assert_eq!("  400ms  ".parse::<Duration>().unwrap().to_std(), StdDuration::from_millis(400));
+	}
+
+	#[test]
+	fn from_str_rejects_bare_integer() {
+		// A bare "5000" must fail loudly rather than be silently read as ms or s.
+		assert!("5000".parse::<Duration>().is_err());
+	}
+
+	#[test]
+	fn from_str_rejects_garbage() {
+		assert!("soon".parse::<Duration>().is_err());
+		assert!("".parse::<Duration>().is_err());
+	}
+
+	#[test]
+	fn to_std_and_from_std_round_trip() {
+		let std = StdDuration::from_millis(1234);
+		assert_eq!(Duration::from_std(std).to_std(), std);
+	}
+
+	#[test]
+	fn to_std_saturates_negative_to_zero() {
+		// Config durations are never negative; a negative one degrades to zero, not a panic.
+		let negative = Duration::from_seconds(-5).unwrap();
+		assert_eq!(negative.to_std(), StdDuration::ZERO);
 	}
 }

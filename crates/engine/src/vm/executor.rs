@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Deref, result::Result as StdResult, sync::Arc, time::Duration};
+use std::{ops::Deref, result::Result as StdResult, sync::Arc};
 
 use bumpalo::Bump;
 use reifydb_catalog::{catalog::Catalog, vtable::system::flow_operator_store::SystemFlowOperatorStore};
@@ -30,7 +30,7 @@ use reifydb_value::error::Diagnostic;
 use reifydb_value::{
 	error::Error,
 	params::Params,
-	value::{Value, frame::frame::Frame, value_type::ValueType},
+	value::{Value, duration::Duration, frame::frame::Frame, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -211,7 +211,7 @@ fn execute_compiled_units(
 	mut symbols: SymbolTable,
 	compile_duration: Duration,
 ) -> StdResult<CompiledUnitsResult, ExecutionFailure> {
-	let compile_duration_us = compile_duration.as_micros() as u64 / compiled_list.len().max(1) as u64;
+	let compile_duration_us = compile_duration.to_std().as_micros() as u64 / compiled_list.len().max(1) as u64;
 	let mut result = vec![];
 	let mut output_results: Vec<Frame> = Vec::new();
 	let mut metrics = Vec::new();
@@ -310,7 +310,7 @@ impl Executor {
 			}
 			Err(err) => return self.handle_rql_compile_error(err, rql, params),
 		};
-		let compile_duration = start_compile.elapsed();
+		let compile_duration = Duration::from_std(start_compile.elapsed());
 
 		match self.run_units_collecting_last(tx, &compiled_list, &params, symbols, compile_duration) {
 			Ok((frames, metrics)) => ExecutionResult {
@@ -345,7 +345,8 @@ impl Executor {
 		mut symbols: SymbolTable,
 		compile_duration: Duration,
 	) -> StdResult<(Vec<Frame>, Vec<StatementMetric>), ExecutionFailure> {
-		let compile_duration_us = compile_duration.as_micros() as u64 / compiled_list.len().max(1) as u64;
+		let compile_duration_us =
+			compile_duration.to_std().as_micros() as u64 / compiled_list.len().max(1) as u64;
 		let mut result = vec![];
 		let mut metrics = Vec::new();
 		for compiled in compiled_list.iter() {
@@ -429,7 +430,7 @@ impl Executor {
 		symbols: SymbolTable,
 		start_compile: Instant,
 	) -> ExecutionResult {
-		let compile_duration = start_compile.elapsed();
+		let compile_duration = Duration::from_std(start_compile.elapsed());
 		match execute_compiled_units(
 			&self.0,
 			&mut Transaction::Admin(txn),
@@ -573,7 +574,7 @@ impl Executor {
 		symbols: SymbolTable,
 		start_compile: Instant,
 	) -> ExecutionResult {
-		let compile_duration = start_compile.elapsed();
+		let compile_duration = Duration::from_std(start_compile.elapsed());
 		match execute_compiled_units(
 			&self.0,
 			&mut Transaction::Test(Box::new(txn.reborrow())),
@@ -734,7 +735,7 @@ impl Executor {
 				};
 			}
 		};
-		let compile_duration = start_compile.elapsed();
+		let compile_duration = Duration::from_std(start_compile.elapsed());
 
 		match execute_compiled_units(
 			&self.0,
@@ -811,7 +812,7 @@ impl Executor {
 				};
 			}
 		};
-		let compile_duration = start_compile.elapsed();
+		let compile_duration = Duration::from_std(start_compile.elapsed());
 
 		match execute_compiled_units(
 			&self.0,
@@ -850,7 +851,7 @@ impl Executor {
 			}
 			Err(e) => return error_result(e, ExecutionMetrics::default()),
 		};
-		let compile_duration = start_compile.elapsed();
+		let compile_duration = Duration::from_std(start_compile.elapsed());
 
 		match self.run_command_units_collecting_last(txn, &compiled, params, symbols, compile_duration) {
 			Ok((frames, metrics)) => ExecutionResult {
@@ -871,7 +872,7 @@ impl Executor {
 		mut symbols: SymbolTable,
 		compile_duration: Duration,
 	) -> StdResult<(Vec<Frame>, Vec<StatementMetric>), ExecutionFailure> {
-		let compile_duration_us = compile_duration.as_micros() as u64 / compiled.len().max(1) as u64;
+		let compile_duration_us = compile_duration.to_std().as_micros() as u64 / compiled.len().max(1) as u64;
 		let mut result = vec![];
 		let mut metrics = Vec::new();
 		for compiled in compiled.iter() {
@@ -953,7 +954,7 @@ impl Executor {
 				};
 			}
 		};
-		let compile_duration = start_compile.elapsed();
+		let compile_duration = Duration::from_std(start_compile.elapsed());
 
 		let exec_result = execute_compiled_units(
 			&self.0,

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{thread::sleep, time::Duration};
+use std::thread::sleep;
 
 use reifydb::{Params, WithSubsystem, server, sub_replication::subsystem::ReplicationSubsystem};
 use reifydb_examples::log_query;
+use reifydb_value::value::duration::Duration;
 use tracing::info;
 
 fn main() {
@@ -75,7 +76,7 @@ fn main() {
 
 	// Give the replica time to connect and replicate
 	info!("Waiting for replication to catch up...");
-	sleep(Duration::from_millis(500));
+	sleep(Duration::from_milliseconds(500).unwrap().to_std());
 
 	info!("--- Data on REPLICA ---");
 	log_query("from shop::products");
@@ -95,7 +96,7 @@ fn main() {
 	)
 	.unwrap();
 
-	sleep(Duration::from_millis(500));
+	sleep(Duration::from_milliseconds(500).unwrap().to_std());
 
 	info!("--- Updated data on REPLICA ---");
 	log_query("from shop::products");

@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc, time::Duration as StdDuration};
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::{
-	actor::{
-		context::Context,
-		traits::{Actor, Directive},
-	},
-	reifydb_assertions,
+use reifydb_runtime::actor::{
+	context::Context,
+	traits::{Actor, Directive},
 };
 use reifydb_value::{
 	params::Params,
-	value::{Value, datetime::DateTime, identity::IdentityId, ordered_f64::OrderedF64, value_type::ValueType},
+	reifydb_assertions,
+	value::{
+		Value, datetime::DateTime, duration::Duration, identity::IdentityId, ordered_f64::OrderedF64,
+		value_type::ValueType,
+	},
 };
 use tracing::{error, info};
 
@@ -30,11 +31,11 @@ pub enum SamplerMessage {
 pub struct RuntimeSamplerActor {
 	collectors: Collectors,
 	engine: StandardEngine,
-	interval: StdDuration,
+	interval: Duration,
 }
 
 impl RuntimeSamplerActor {
-	pub fn new(collectors: Collectors, engine: StandardEngine, interval: StdDuration) -> Self {
+	pub fn new(collectors: Collectors, engine: StandardEngine, interval: Duration) -> Self {
 		Self {
 			collectors,
 			engine,

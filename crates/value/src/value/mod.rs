@@ -227,6 +227,30 @@ impl Value {
 		Value::Duration(v.into())
 	}
 
+	pub fn duration_nanoseconds(nanoseconds: i64) -> Self {
+		Value::Duration(Duration::from_nanoseconds_const(nanoseconds))
+	}
+
+	pub fn duration_microseconds(microseconds: i64) -> Self {
+		Value::Duration(Duration::from_microseconds_const(microseconds))
+	}
+
+	pub fn duration_milliseconds(milliseconds: i64) -> Self {
+		Value::Duration(Duration::from_milliseconds_const(milliseconds))
+	}
+
+	pub fn duration_seconds(seconds: i64) -> Self {
+		Value::Duration(Duration::from_seconds_const(seconds))
+	}
+
+	pub fn duration_minutes(minutes: i64) -> Self {
+		Value::Duration(Duration::from_minutes_const(minutes))
+	}
+
+	pub fn duration_hours(hours: i64) -> Self {
+		Value::Duration(Duration::from_hours_const(hours))
+	}
+
 	pub fn identity_id(v: impl Into<IdentityId>) -> Self {
 		Value::IdentityId(v.into())
 	}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem, sync::Arc, time::Duration};
+use std::{mem, sync::Arc};
 
 use reifydb_catalog::{cache::CatalogCache, catalog::Catalog};
 use reifydb_core::{
@@ -25,7 +25,11 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 	transaction::{command::CommandTransaction, query::QueryTransaction},
 };
-use reifydb_value::{Result, util::cowvec::CowVec, value::identity::IdentityId};
+use reifydb_value::{
+	Result,
+	util::cowvec::CowVec,
+	value::{duration::Duration, identity::IdentityId},
+};
 
 use crate::consume::host::CdcHost;
 

@@ -94,7 +94,7 @@ pub trait SpawnBinary<SOURCE> {
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native {
-	use reifydb_runtime::reifydb_assertions;
+	use reifydb_value::reifydb_assertions;
 	use wasmtime::{Config, Engine as WtEngine, Instance, Linker, Module, ResourceLimiter, Result, Store, Val};
 
 	use crate::{EnvironmentError, LoadError, SpawnBinary, Trap, config::WasmConfig, module::value::Value, source};

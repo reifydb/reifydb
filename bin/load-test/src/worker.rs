@@ -6,11 +6,12 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
-	time::{Duration, Instant},
+	time::Instant,
 };
 
 use hdrhistogram::Histogram;
 use rand::{SeedableRng, rngs::StdRng};
+use reifydb_value::value::duration::Duration;
 
 use crate::{client::Client, metrics::Metrics, workload::Workload};
 
@@ -59,7 +60,7 @@ impl Worker {
 
 	/// Run until duration expires or stop signal is received
 	pub async fn run_duration(&mut self, duration: Duration, stop_signal: Arc<AtomicBool>) {
-		let deadline = Instant::now() + duration;
+		let deadline = Instant::now() + duration.to_std();
 
 		while Instant::now() < deadline && !stop_signal.load(Ordering::Relaxed) {
 			self.execute_one().await;

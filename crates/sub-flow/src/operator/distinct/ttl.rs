@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
 use postcard::from_bytes;
 use reifydb_core::{interface::change::Change, internal};
 use reifydb_runtime::hash::Hash128;
 use reifydb_sdk::operator::Tick;
-use reifydb_value::{Result, error::Error};
+use reifydb_value::{Result, error::Error, value::duration::Duration};
 
 use crate::{
 	operator::{
@@ -20,7 +18,7 @@ use crate::{
 impl DistinctOperator {
 	pub(super) fn ticks_interval(&self) -> Option<Duration> {
 		if self.ttl_nanos.is_some() {
-			Some(Duration::from_secs(1))
+			Some(Duration::from_seconds(1).unwrap())
 		} else {
 			None
 		}

@@ -14,10 +14,10 @@ use reifydb_abi::{
 };
 use reifydb_core::value::column::columns::Columns;
 use reifydb_routine::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
-use reifydb_runtime::{reifydb_assertions, sync::mutex::Mutex};
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sdk::{error::SdkError, ffi::arena::Arena};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::value_type::ValueType;
+use reifydb_value::{reifydb_assertions, value::value_type::ValueType};
 use tracing::instrument;
 
 use super::ffi_callbacks::{logging, memory, rql};

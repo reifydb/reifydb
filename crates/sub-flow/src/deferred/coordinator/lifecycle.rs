@@ -15,9 +15,9 @@ use reifydb_core::{
 	},
 };
 use reifydb_rql::flow::flow::FlowDag;
-use reifydb_runtime::{actor::context::Context, context::clock::Instant, reifydb_assertions};
+use reifydb_runtime::{actor::context::Context, context::clock::Instant};
 use reifydb_transaction::multi::lease::VersionLeaseGuard;
-use reifydb_value::Result;
+use reifydb_value::{Result, reifydb_assertions};
 use tracing::{Span, debug, field, instrument};
 
 use super::{ConsumeContext, CoordinatorActor, CoordinatorState, PendingConsume, Phase, coordinator_error};

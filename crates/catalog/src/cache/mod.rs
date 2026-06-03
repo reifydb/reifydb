@@ -472,8 +472,6 @@ impl GetConfig for CatalogCache {
 
 #[cfg(test)]
 mod config_validation_tests {
-	use std::time::Duration as StdDuration;
-
 	use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
 	use reifydb_value::value::{Value, duration::Duration as TypeDuration, value_type::ValueType};
 
@@ -515,7 +513,7 @@ mod config_validation_tests {
 		assert_eq!(catalog.get_config(ConfigKey::CdcTtlDuration), ten_sec);
 
 		let opt = catalog.get_config_duration_opt(ConfigKey::CdcTtlDuration);
-		assert_eq!(opt, Some(StdDuration::from_secs(10)));
+		assert_eq!(opt, Some(TypeDuration::from_seconds(10).unwrap()));
 	}
 
 	#[test]

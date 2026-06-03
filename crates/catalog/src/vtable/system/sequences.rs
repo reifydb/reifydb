@@ -7,9 +7,8 @@ use reifydb_core::{
 	interface::catalog::vtable::VTable,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, reifydb_assertions};
 
 use crate::{
 	CatalogStore, Result,

@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	internal_error,
 };
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::duration::Duration};
 
 use crate::{
 	Result,
@@ -246,7 +244,7 @@ impl<'bump> Compiler<'bump> {
 		if let Some(number_part) = duration_str.strip_suffix("ms") {
 			let number: u64 =
 				number_part.parse().map_err(|_| internal_error!("Invalid duration number"))?;
-			return Ok(Duration::from_millis(number));
+			return Ok(Duration::from_milliseconds(number as i64).unwrap());
 		}
 
 		if let Some(suffix) = duration_str.chars().last() {
@@ -255,10 +253,10 @@ impl<'bump> Compiler<'bump> {
 				number_part.parse().map_err(|_| internal_error!("Invalid duration number"))?;
 
 			let duration = match suffix {
-				's' => Duration::from_secs(number),
-				'm' => Duration::from_secs(number * 60),
-				'h' => Duration::from_secs(number * 3600),
-				'd' => Duration::from_secs(number * 86400),
+				's' => Duration::from_seconds(number as i64).unwrap(),
+				'm' => Duration::from_seconds((number * 60) as i64).unwrap(),
+				'h' => Duration::from_seconds((number * 3600) as i64).unwrap(),
+				'd' => Duration::from_seconds((number * 86400) as i64).unwrap(),
 				_ => {
 					return Err(internal_error!("Invalid duration suffix"));
 				}

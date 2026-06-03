@@ -114,12 +114,12 @@ impl OtelSubsystem {
 		let exporter = SpanExporter::builder()
 			.with_tonic()
 			.with_endpoint(&self.config.endpoint)
-			.with_timeout(self.config.export_timeout)
+			.with_timeout(self.config.export_timeout.to_std())
 			.build()?;
 
 		let batch_config = BatchConfigBuilder::default()
 			.with_max_export_batch_size(self.config.max_export_batch_size)
-			.with_scheduled_delay(self.config.scheduled_delay)
+			.with_scheduled_delay(self.config.scheduled_delay.to_std())
 			.with_max_queue_size(self.config.max_queue_size)
 			.build();
 

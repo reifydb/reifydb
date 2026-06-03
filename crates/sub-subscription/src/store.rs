@@ -11,13 +11,11 @@ use std::{
 
 use dashmap::{DashMap, DashSet};
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
-use reifydb_runtime::{
-	reifydb_assertions,
-	sync::{
-		mutex::Mutex,
-		rwlock::{RwLock, RwLockReadGuard},
-	},
+use reifydb_runtime::sync::{
+	mutex::Mutex,
+	rwlock::{RwLock, RwLockReadGuard},
 };
+use reifydb_value::reifydb_assertions;
 use tokio::sync::Notify;
 
 struct SubscriptionBuffer {

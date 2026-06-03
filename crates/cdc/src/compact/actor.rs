@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -12,6 +12,7 @@ use reifydb_runtime::actor::{
 	system::ActorConfig,
 	traits::{Actor, Directive},
 };
+use reifydb_value::value::duration::Duration;
 use tracing::{debug, error, trace};
 
 use crate::{produce::watermark::CdcProducerWatermark, storage::sqlite::storage::SqliteCdcStorage};

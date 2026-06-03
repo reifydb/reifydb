@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_runtime::reifydb_assertions;
+use reifydb_value::reifydb_assertions;
 use serde::{Deserialize, Serialize};
 
 use crate::{

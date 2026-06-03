@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	sync::{
-		Arc,
-		atomic::{AtomicBool, Ordering},
-	},
-	time::Duration,
+use std::sync::{
+	Arc,
+	atomic::{AtomicBool, Ordering},
 };
 
 use reifydb_core::{
@@ -14,7 +11,7 @@ use reifydb_core::{
 	interface::cdc::CdcConsumerId,
 };
 use reifydb_runtime::actor::system::ActorSpawner;
-use reifydb_value::Result;
+use reifydb_value::{Result, value::duration::Duration};
 
 use super::{
 	actor::{PollActor, PollActorConfig},

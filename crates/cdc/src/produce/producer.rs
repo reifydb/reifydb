@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use reifydb_core::{
+	actors::cdc::{CdcProduceHandle, CdcProduceMessage},
 	common::CommitVersion,
 	delta::Delta,
 	event::{
@@ -29,7 +30,10 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 };
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{
+	Result,
+	value::{datetime::DateTime, duration::Duration},
+};
 use tracing::{debug, error, trace};
 
 use crate::{
@@ -37,10 +41,6 @@ use crate::{
 	produce::watermark::CdcProducerWatermark,
 	storage::CdcStorage,
 };
-
-const CLEANUP_INTERVAL: Duration = Duration::from_secs(30);
-
-use reifydb_core::actors::cdc::{CdcProduceHandle, CdcProduceMessage};
 
 pub struct CdcProducerActor<S, T, H> {
 	storage: Arc<S>,
@@ -188,7 +188,7 @@ where
 		let Some(ttl) = self.host.catalog().get_config_duration_opt(ConfigKey::CdcTtlDuration) else {
 			return Ok(None);
 		};
-		let cutoff_nanos = self.clock.now_nanos().saturating_sub(ttl.as_nanos() as u64);
+		let cutoff_nanos = self.clock.now_nanos().saturating_sub(ttl.to_std().as_nanos() as u64);
 		let cutoff = DateTime::from_nanos(cutoff_nanos);
 		let Some(cutoff_version) = self.storage.find_ttl_cutoff(cutoff)? else {
 			return Ok(None);
@@ -293,7 +293,7 @@ where
 
 	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
 		debug!("CDC producer actor started");
-		let timer_handle = ctx.schedule_repeat(CLEANUP_INTERVAL, CdcProduceMessage::Tick);
+		let timer_handle = ctx.schedule_repeat(Duration::from_seconds(30).unwrap(), CdcProduceMessage::Tick);
 		CdcProducerState {
 			_timer_handle: Some(timer_handle),
 		}
@@ -376,7 +376,7 @@ where
 
 #[cfg(test)]
 pub mod tests {
-	use std::{thread::sleep, time::Duration};
+	use std::thread::sleep;
 
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 	use reifydb_store_multi::MultiStore;
@@ -424,7 +424,7 @@ pub mod tests {
 			.unwrap();
 
 		// Give actor time to process
-		sleep(Duration::from_millis(50));
+		sleep(Duration::from_milliseconds(50).unwrap().to_std());
 
 		let cdc = storage.read(CommitVersion(1)).unwrap();
 		assert!(cdc.is_some());
@@ -484,7 +484,7 @@ pub mod tests {
 			})
 			.unwrap();
 
-		sleep(Duration::from_millis(50));
+		sleep(Duration::from_milliseconds(50).unwrap().to_std());
 
 		let cdc = storage.read(CommitVersion(2)).unwrap().unwrap();
 		// Only the Set should produce CDC, not the Drop

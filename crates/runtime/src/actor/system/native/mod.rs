@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
+#![allow(clippy::disallowed_types)]
+
 mod pool;
 
 use std::{

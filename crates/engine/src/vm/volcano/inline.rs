@@ -12,10 +12,10 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
-use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
+	reifydb_assertions,
 	value::{Value, constraint::Constraint, value_type::ValueType},
 };
 

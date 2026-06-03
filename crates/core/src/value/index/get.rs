@@ -3,16 +3,18 @@
 
 use std::ptr;
 
-use reifydb_runtime::reifydb_assertions;
 #[cfg(reifydb_assertions)]
 use reifydb_value::value::value_type::ValueType;
-use reifydb_value::value::{
-	date::Date,
-	datetime::DateTime,
-	duration::Duration,
-	identity::IdentityId,
-	time::Time,
-	uuid::{Uuid4, Uuid7},
+use reifydb_value::{
+	reifydb_assertions,
+	value::{
+		date::Date,
+		datetime::DateTime,
+		duration::Duration,
+		identity::IdentityId,
+		time::Time,
+		uuid::{Uuid4, Uuid7},
+	},
 };
 use uuid::Uuid;
 

@@ -15,7 +15,6 @@ use std::{
 	io::{BufRead, Write, stdin, stdout},
 	net::SocketAddr,
 	thread,
-	time::Duration,
 };
 
 use reifydb::{
@@ -24,7 +23,10 @@ use reifydb::{
 		config::{PeerConfig, RaftConfig},
 		node::NodeId,
 	},
-	value::{params::Params, value::identity::IdentityId},
+	value::{
+		params::Params,
+		value::{duration::Duration, identity::IdentityId},
+	},
 };
 
 allocator::set_global_allocator!();
@@ -73,8 +75,8 @@ fn main() {
 		.heartbeat_interval(3)
 		.election_timeout_range(8..15)
 		.max_append_entries(100)
-		.tick_interval(Duration::from_millis(50))
-		.recv_interval(Duration::from_millis(5))
+		.tick_interval(Duration::from_milliseconds(50).unwrap())
+		.recv_interval(Duration::from_milliseconds(5).unwrap())
 		.proposal_channel_capacity(64);
 
 	for p in peers {
@@ -90,7 +92,7 @@ fn main() {
 
 	eprintln!("node {node_id}: waiting for leader election...");
 	loop {
-		thread::sleep(Duration::from_millis(100));
+		thread::sleep(Duration::from_milliseconds(100).unwrap().to_std());
 		let status = handle.status();
 		if status.role == "leader" || status.leader.is_some() {
 			eprintln!("node {node_id}: {} (term={}, leader={:?})", status.role, status.term, status.leader);

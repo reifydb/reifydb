@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 
 use reifydb_runtime::{
 	context::{
@@ -10,6 +10,7 @@ use reifydb_runtime::{
 	},
 	sync::rwlock::RwLock,
 };
+use reifydb_value::value::duration::Duration;
 use uuid::Builder;
 
 struct ChallengeEntry {
@@ -64,7 +65,7 @@ impl ChallengeStore {
 		let mut entries = self.entries.write();
 		let entry = entries.remove(challenge_id)?;
 
-		if entry.created_at.elapsed() > self.ttl {
+		if entry.created_at.elapsed() > self.ttl.to_std() {
 			return None;
 		}
 
@@ -76,7 +77,7 @@ impl ChallengeStore {
 	}
 
 	pub fn cleanup_expired(&self) {
-		let ttl = self.ttl;
+		let ttl = self.ttl.to_std();
 		let mut entries = self.entries.write();
 		entries.retain(|_, e| e.created_at.elapsed() <= ttl);
 	}
@@ -96,7 +97,7 @@ mod tests {
 	#[test]
 	fn test_create_and_consume() {
 		let (clock, _, rng) = test_clock_and_rng();
-		let store = ChallengeStore::new(Duration::from_secs(60));
+		let store = ChallengeStore::new(Duration::from_seconds(60).unwrap());
 		let data = HashMap::from([("nonce".to_string(), "abc123".to_string())]);
 
 		let id = store.create("alice".to_string(), "solana".to_string(), data, &clock, &rng);
@@ -110,7 +111,7 @@ mod tests {
 	#[test]
 	fn test_one_time_use() {
 		let (clock, _, rng) = test_clock_and_rng();
-		let store = ChallengeStore::new(Duration::from_secs(60));
+		let store = ChallengeStore::new(Duration::from_seconds(60).unwrap());
 		let id = store.create("alice".to_string(), "solana".to_string(), HashMap::new(), &clock, &rng);
 
 		assert!(store.consume(&id).is_some());
@@ -119,14 +120,14 @@ mod tests {
 
 	#[test]
 	fn test_unknown_challenge() {
-		let store = ChallengeStore::new(Duration::from_secs(60));
+		let store = ChallengeStore::new(Duration::from_seconds(60).unwrap());
 		assert!(store.consume("nonexistent").is_none());
 	}
 
 	#[test]
 	fn test_expired_challenge() {
 		let (clock, mock, rng) = test_clock_and_rng();
-		let store = ChallengeStore::new(Duration::from_millis(1));
+		let store = ChallengeStore::new(Duration::from_milliseconds(1).unwrap());
 		let id = store.create("alice".to_string(), "solana".to_string(), HashMap::new(), &clock, &rng);
 
 		mock.advance_millis(10);

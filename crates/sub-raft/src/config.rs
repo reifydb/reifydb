@@ -1,7 +1,9 @@
 // Copyright (c) 2026 ReifyDB
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use std::{net::SocketAddr, ops::Range, time::Duration};
+use std::{net::SocketAddr, ops::Range};
+
+use reifydb_value::value::duration::Duration;
 
 use crate::node::{NodeId, Ticks};
 
@@ -26,7 +28,7 @@ impl Default for ClusterConfig {
 			node_id: 1,
 			bind_addr: "127.0.0.1:9100".parse().unwrap(),
 			peers: Vec::new(),
-			tick_interval: Duration::from_millis(100),
+			tick_interval: Duration::from_milliseconds(100).unwrap(),
 			election_timeout_range: 10..20,
 			heartbeat_interval: 4,
 		}
@@ -55,8 +57,8 @@ impl Default for RaftConfig {
 			heartbeat_interval: 3,
 			election_timeout_range: 8..15,
 			max_append_entries: 100,
-			tick_interval: Duration::from_millis(50),
-			recv_interval: Duration::from_millis(5),
+			tick_interval: Duration::from_milliseconds(50).unwrap(),
+			recv_interval: Duration::from_milliseconds(5).unwrap(),
 			proposal_channel_capacity: 64,
 		}
 	}

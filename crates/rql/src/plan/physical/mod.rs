@@ -6,7 +6,7 @@ pub mod create;
 pub mod drop;
 pub mod mutate;
 
-use std::{collections, fmt, iter::once, marker, time::Duration};
+use std::{collections, fmt, iter::once, marker};
 
 use reifydb_catalog::catalog::{Catalog, table::TableColumnToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
@@ -34,7 +34,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
 	return_error,
-	value::{constraint::TypeConstraint, value_type::ValueType},
+	value::{constraint::TypeConstraint, duration::Duration, value_type::ValueType},
 };
 use tracing::instrument;
 

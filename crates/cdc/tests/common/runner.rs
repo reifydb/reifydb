@@ -3,13 +3,7 @@
 
 #![allow(dead_code, unused_imports)]
 
-use std::{
-	collections::Bound,
-	error::Error as StdError,
-	fmt::Write as _,
-	thread::sleep,
-	time::{Duration, Instant},
-};
+use std::{collections::Bound, error::Error as StdError, fmt::Write as _, thread::sleep, time::Instant};
 
 use reifydb_cdc::storage::{CdcStorage as _, CdcStore};
 use reifydb_core::{
@@ -21,7 +15,10 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::context::clock::MockClock;
 use reifydb_testing::testscript::{command::Command, runner::Runner as TsRunner};
 use reifydb_transaction::transaction::command::CommandTransaction;
-use reifydb_value::{util::cowvec::CowVec, value::identity::IdentityId};
+use reifydb_value::{
+	util::cowvec::CowVec,
+	value::{duration::Duration, identity::IdentityId},
+};
 
 /// Runs commands from `tests/scripts/cdc/*` against a `StandardEngine` +
 /// `CdcStore`. Buffers row mutations into a transaction and commits on the
@@ -67,7 +64,7 @@ impl Runner {
 	}
 
 	fn wait_for_cdc(&self, version: CommitVersion) {
-		let deadline = Instant::now() + Duration::from_secs(5);
+		let deadline = Instant::now() + Duration::from_seconds(5).unwrap().to_std();
 		loop {
 			match self.cdc_store.max_version() {
 				Ok(Some(max)) if max.0 >= version.0 => return,
@@ -76,7 +73,7 @@ impl Runner {
 			if Instant::now() >= deadline {
 				return;
 			}
-			sleep(Duration::from_millis(2));
+			sleep(Duration::from_milliseconds(2).unwrap().to_std());
 		}
 	}
 

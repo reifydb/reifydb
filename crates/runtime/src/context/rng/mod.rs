@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use getrandom::fill as getrandom_fill;
 use rand::{Rng as RandRng, RngExt, SeedableRng, rngs::StdRng};
+use reifydb_value::clock::RandomBytes;
 
 use crate::sync::mutex::Mutex;
 
@@ -14,6 +15,12 @@ pub enum Rng {
 	Os,
 
 	Seeded(SeededRng),
+}
+
+impl RandomBytes for Rng {
+	fn bytes_10(&self) -> [u8; 10] {
+		self.bytes_10()
+	}
 }
 
 impl Rng {

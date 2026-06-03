@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
 use reifydb_runtime::actor::context::Context;
+use reifydb_value::value::duration::Duration;
 
 use super::helpers::*;
 
@@ -101,14 +100,14 @@ fn run_timer_scenario(seed: u64) -> Vec<String> {
 	);
 
 	let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
-	ctx.schedule_once(Duration::from_millis(300), || "t300".to_string());
-	ctx.schedule_once(Duration::from_millis(100), || "t100".to_string());
-	ctx.schedule_once(Duration::from_millis(200), || "t200".to_string());
+	ctx.schedule_once(Duration::from_milliseconds(300).unwrap(), || "t300".to_string());
+	ctx.schedule_once(Duration::from_milliseconds(100).unwrap(), || "t100".to_string());
+	ctx.schedule_once(Duration::from_milliseconds(200).unwrap(), || "t200".to_string());
 
 	// Also send a direct message.
 	handle.actor_ref.send("direct".into()).unwrap();
 
-	system.advance_time(Duration::from_millis(300));
+	system.advance_time(Duration::from_milliseconds(300).unwrap());
 	system.run_until_idle();
 
 	log_contents(&log)
@@ -147,9 +146,9 @@ fn complex_scenario_reproducible() {
 		a.actor_ref.send("world".into()).unwrap();
 
 		let ctx = Context::new(a.actor_ref.clone(), system.clone(), system.cancellation_token());
-		ctx.schedule_once(Duration::from_millis(50), || "timer".to_string());
+		ctx.schedule_once(Duration::from_milliseconds(50).unwrap(), || "timer".to_string());
 
-		system.advance_time(Duration::from_millis(50));
+		system.advance_time(Duration::from_milliseconds(50).unwrap());
 
 		let trace = collect_step_trace(&system);
 		let contents = log_contents(&log);

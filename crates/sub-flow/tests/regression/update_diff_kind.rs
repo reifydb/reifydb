@@ -21,10 +21,7 @@
 // These assertions pin the contract (UPDATE -> Update on every flow path) so they break if the
 // classification regresses, not merely if the output shape changes.
 
-use std::{
-	thread,
-	time::{Duration, Instant},
-};
+use std::{thread, time::Instant};
 
 use reifydb::{Database, Params, SqliteConfig, WithSubsystem, embedded};
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
@@ -45,7 +42,9 @@ use reifydb_sub_flow::operator::{
 	BoxedOperator,
 	native::{NativeBridgedOperator, NativeOperatorAdapter},
 };
-use reifydb_value::value::{Value, constraint::TypeConstraint, row_number::RowNumber, value_type::ValueType};
+use reifydb_value::value::{
+	Value, constraint::TypeConstraint, duration::Duration, row_number::RowNumber, value_type::ValueType,
+};
 
 use crate::common::{drain_after_consumer_caught_up, extract_sub_id};
 
@@ -202,7 +201,7 @@ fn read_counts(db: &Database, query: &str) -> Option<(i64, i64, i64)> {
 // Poll a deferred view until its tally reflects `expected_total` mutations or the deadline passes,
 // then return whatever it holds so the caller's assertion reports the actual (possibly wrong) tally.
 fn await_counts(db: &Database, query: &str, expected_total: i64) -> (i64, i64, i64) {
-	let deadline = Instant::now() + Duration::from_secs(10);
+	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
 	loop {
 		if let Some(counts) = read_counts(db, query)
 			&& counts.0 + counts.1 + counts.2 >= expected_total
@@ -212,7 +211,7 @@ fn await_counts(db: &Database, query: &str, expected_total: i64) -> (i64, i64, i
 		if Instant::now() >= deadline {
 			return read_counts(db, query).unwrap_or((-1, -1, -1));
 		}
-		thread::sleep(Duration::from_millis(20));
+		thread::sleep(Duration::from_milliseconds(20).unwrap().to_std());
 	}
 }
 

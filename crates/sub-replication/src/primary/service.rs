@@ -5,7 +5,7 @@ use std::{ops::Bound, sync::Arc};
 
 use reifydb_cdc::storage::CdcStore;
 use reifydb_core::common::CommitVersion;
-use reifydb_runtime::reifydb_assertions;
+use reifydb_value::reifydb_assertions;
 use tokio::{
 	select, spawn,
 	sync::{Notify, mpsc, watch},

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
 use reifydb_core::actors::admin::AdminMessage;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
@@ -12,6 +10,7 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 };
+use reifydb_value::value::duration::Duration;
 
 use crate::actor::AdminServerActor;
 

@@ -8,9 +8,8 @@ use reifydb_core::{
 	interface::catalog::{id::IndexId, table::Table},
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::{fragment::Fragment, reifydb_assertions, value::value_type::ValueType};
 
 use crate::{
 	Result,

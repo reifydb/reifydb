@@ -7,7 +7,6 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
-	time::Duration,
 };
 
 use reifydb_auth::service::AuthEngine;
@@ -44,7 +43,6 @@ use reifydb_metric::storage::metric::MetricReader;
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSpawner},
 	context::{clock::Clock, rng::Rng},
-	reifydb_assertions,
 	shutdown::Shutdown,
 };
 use reifydb_store_single::SingleStore;
@@ -59,7 +57,8 @@ use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
 	params::Params,
-	value::{constraint::TypeConstraint, identity::IdentityId},
+	reifydb_assertions,
+	value::{constraint::TypeConstraint, duration::Duration, identity::IdentityId},
 };
 use tracing::instrument;
 

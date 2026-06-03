@@ -13,8 +13,10 @@ use reifydb_abi::{
 		diff::{DiffFFI, DiffType},
 	},
 };
-use reifydb_runtime::reifydb_assertions;
-use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
+use reifydb_value::{
+	reifydb_assertions,
+	value::{date::Date, datetime::DateTime, duration::Duration, time::Time},
+};
 
 #[derive(Clone, Copy)]
 pub struct BorrowedChange<'a> {

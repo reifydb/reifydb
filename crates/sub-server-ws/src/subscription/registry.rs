@@ -369,7 +369,7 @@ fn encode_rbcf_batch_envelope(batch_id: &str, entries: &[(String, Vec<u8>)]) -> 
 
 #[cfg(test)]
 pub mod tests {
-	use std::{collections::HashSet, time::Duration};
+	use std::collections::HashSet;
 
 	use reifydb_core::interface::catalog::id::SubscriptionId;
 	use reifydb_runtime::context::{
@@ -378,7 +378,7 @@ pub mod tests {
 	};
 	use reifydb_sub_server::subscription::registry::PromoteResult;
 	use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
-	use reifydb_value::value::{Value, uuid::Uuid7};
+	use reifydb_value::value::{Value, duration::Duration, uuid::Uuid7};
 
 	use super::*;
 
@@ -409,7 +409,7 @@ pub mod tests {
 			sink,
 			WireFormat::Frames,
 			None,
-			Duration::ZERO,
+			Duration::zero(),
 		);
 		assert_eq!(registry.subscription_count(), 1);
 
@@ -437,7 +437,7 @@ pub mod tests {
 			WsWireSink::new(tx1),
 			WireFormat::Json,
 			None,
-			Duration::ZERO,
+			Duration::zero(),
 		);
 		registry.subscribe(
 			sub2,
@@ -446,7 +446,7 @@ pub mod tests {
 			WsWireSink::new(tx2),
 			WireFormat::Json,
 			None,
-			Duration::ZERO,
+			Duration::zero(),
 		);
 		assert_eq!(registry.subscription_count(), 2);
 
@@ -473,7 +473,7 @@ pub mod tests {
 			sink.clone(),
 			WireFormat::Frames,
 			None,
-			Duration::ZERO,
+			Duration::zero(),
 		);
 		registry.subscribe(
 			sub_b,
@@ -482,12 +482,12 @@ pub mod tests {
 			sink.clone(),
 			WireFormat::Frames,
 			None,
-			Duration::ZERO,
+			Duration::zero(),
 		);
 
 		let batch_id = registry.register_batch(
 			connection_id,
-			vec![(sub_a, Duration::ZERO), (sub_b, Duration::ZERO)],
+			vec![(sub_a, Duration::zero()), (sub_b, Duration::zero())],
 			sink.clone(),
 			WireFormat::Frames,
 			&clock,
@@ -543,11 +543,11 @@ pub mod tests {
 			sink.clone(),
 			WireFormat::Frames,
 			None,
-			Duration::ZERO,
+			Duration::zero(),
 		);
 		let batch_id = registry.register_batch(
 			connection_id,
-			vec![(sub_a, Duration::ZERO)],
+			vec![(sub_a, Duration::zero())],
 			sink,
 			WireFormat::Frames,
 			&clock,
@@ -591,7 +591,7 @@ pub mod tests {
 			sink,
 			WireFormat::Frames,
 			Some(16),
-			Duration::ZERO,
+			Duration::zero(),
 		);
 
 		assert!(matches!(registry.try_deliver(&sub, single_int_columns("v", 1)), DeliveryResult::Delivered));
@@ -629,7 +629,7 @@ pub mod tests {
 			sink,
 			WireFormat::Frames,
 			Some(2),
-			Duration::ZERO,
+			Duration::zero(),
 		);
 
 		registry.try_deliver(&sub, single_int_columns("v", 1));
@@ -677,7 +677,7 @@ pub mod tests {
 			sink.clone(),
 			WireFormat::Frames,
 			None,
-			Duration::ZERO,
+			Duration::zero(),
 		);
 		registry.subscribe(
 			sub_long,
@@ -686,11 +686,14 @@ pub mod tests {
 			sink.clone(),
 			WireFormat::Frames,
 			None,
-			Duration::ZERO,
+			Duration::zero(),
 		);
 		registry.register_batch(
 			connection_id,
-			vec![(sub_short, Duration::from_millis(5)), (sub_long, Duration::from_millis(50))],
+			vec![
+				(sub_short, Duration::from_milliseconds(5).unwrap()),
+				(sub_long, Duration::from_milliseconds(50).unwrap()),
+			],
 			sink,
 			WireFormat::Frames,
 			&clock,
@@ -754,11 +757,11 @@ pub mod tests {
 			sink.clone(),
 			WireFormat::Frames,
 			None,
-			Duration::ZERO,
+			Duration::zero(),
 		);
 		registry.register_batch(
 			connection_id,
-			vec![(sub_a, Duration::from_millis(10))],
+			vec![(sub_a, Duration::from_milliseconds(10).unwrap())],
 			sink,
 			WireFormat::Frames,
 			&clock,
@@ -810,11 +813,11 @@ pub mod tests {
 			sink.clone(),
 			WireFormat::Frames,
 			None,
-			Duration::ZERO,
+			Duration::zero(),
 		);
 		registry.register_batch(
 			connection_id,
-			vec![(sub_z, Duration::ZERO)],
+			vec![(sub_z, Duration::zero())],
 			sink,
 			WireFormat::Frames,
 			&clock,
@@ -849,7 +852,7 @@ pub mod tests {
 			sink.clone(),
 			WireFormat::Frames,
 			None,
-			Duration::ZERO,
+			Duration::zero(),
 		);
 		registry.subscribe(
 			sub_b,
@@ -858,11 +861,14 @@ pub mod tests {
 			sink.clone(),
 			WireFormat::Frames,
 			None,
-			Duration::ZERO,
+			Duration::zero(),
 		);
 		registry.register_batch(
 			connection_id,
-			vec![(sub_a, Duration::from_millis(5)), (sub_b, Duration::from_millis(50))],
+			vec![
+				(sub_a, Duration::from_milliseconds(5).unwrap()),
+				(sub_b, Duration::from_milliseconds(50).unwrap()),
+			],
 			sink,
 			WireFormat::Frames,
 			&clock,
@@ -874,14 +880,14 @@ pub mod tests {
 
 		assert_eq!(
 			registry.flush(),
-			Some(Duration::from_millis(5)),
+			Some(Duration::from_milliseconds(5).unwrap()),
 			"the poller is told to wake at the soonest member deadline, so a low-linger member never starves"
 		);
 
 		mock.advance_millis(5);
 		assert_eq!(
 			registry.flush(),
-			Some(Duration::from_millis(45)),
+			Some(Duration::from_milliseconds(45).unwrap()),
 			"after the near member drains, the deadline tracks the remaining member"
 		);
 	}

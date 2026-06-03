@@ -7,7 +7,6 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
-	time::Duration,
 };
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
@@ -15,6 +14,7 @@ use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion}
 use reifydb_runtime::actor::mailbox::ActorRef;
 use reifydb_runtime::shutdown::Shutdown;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
+use reifydb_value::value::duration::Duration;
 use tracing::debug;
 #[cfg(feature = "column")]
 use tracing::info;
@@ -38,11 +38,11 @@ pub struct StorageConfig {
 impl Default for StorageConfig {
 	fn default() -> Self {
 		Self {
-			table_tick_interval: Duration::from_secs(1),
-			series_tick_interval: Duration::from_secs(1),
+			table_tick_interval: Duration::from_seconds(1).unwrap(),
+			series_tick_interval: Duration::from_seconds(1).unwrap(),
 
 			series_bucket_width: 3_600 * 1_000_000_000,
-			series_grace: Duration::from_secs(5),
+			series_grace: Duration::from_seconds(5).unwrap(),
 		}
 	}
 }

@@ -3,7 +3,7 @@
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use std::mem;
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::encoded::key::EncodedKey;
@@ -14,15 +14,13 @@ use reifydb_runtime::actor::{
 	system::{ActorConfig, ActorSpawner},
 	traits::{Actor, Directive},
 };
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_runtime::reifydb_assertions;
 use reifydb_runtime::{
 	actor::timers::TimerHandle,
 	sync::{mutex::Mutex, waiter::WaiterHandle},
 };
+use reifydb_value::value::{datetime::DateTime, duration::Duration};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_value::util::cowvec::CowVec;
-use reifydb_value::value::datetime::DateTime;
+use reifydb_value::{reifydb_assertions, util::cowvec::CowVec};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use tracing::{debug, error};
 
@@ -130,8 +128,9 @@ impl Actor for FlushActor {
 
 	fn init(&self, ctx: &Context<FlushMessage>) -> FlushActorState {
 		debug!("Single persistent flush actor started");
-		let timer_handle =
-			ctx.schedule_tick(self.flush_interval, |nanos| FlushMessage::Tick(DateTime::from_nanos(nanos)));
+		let timer_handle = ctx.schedule_tick(self.flush_interval.to_std(), |nanos| {
+			FlushMessage::Tick(DateTime::from_nanos(nanos))
+		});
 		FlushActorState {
 			_timer_handle: Some(timer_handle),
 			flushing: false,

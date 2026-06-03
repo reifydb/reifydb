@@ -11,8 +11,8 @@ use reifydb_core::{
 	encoded::shape::{RowShape, RowShapeField},
 	key::{EncodableKey, transaction_version::TransactionVersionKey},
 };
-use reifydb_runtime::{reifydb_assertions, sync::mutex::Mutex};
-use reifydb_value::{Result, value::value_type::ValueType};
+use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_value::{Result, reifydb_assertions, value::value_type::ValueType};
 
 use crate::single::SingleTransaction;
 

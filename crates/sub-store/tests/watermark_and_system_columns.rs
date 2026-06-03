@@ -3,7 +3,7 @@
 
 #![cfg(feature = "column")]
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use reifydb::{Params, WithSubsystem, embedded as db_embedded};
 use reifydb_column::reader::SnapshotReader;
@@ -12,7 +12,7 @@ use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
-use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
 
 mod common;
 use common::poll_until;
@@ -24,10 +24,10 @@ use common::poll_until;
 #[test]
 fn series_snapshot_records_sealed_at_commit_version() {
 	let fast_config = StorageConfig {
-		table_tick_interval: Duration::from_millis(50),
-		series_tick_interval: Duration::from_millis(50),
+		table_tick_interval: Duration::from_milliseconds(50).unwrap(),
+		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_bucket_width: 5,
-		series_grace: Duration::from_millis(0),
+		series_grace: Duration::from_milliseconds(0).unwrap(),
 	};
 
 	let mut db = db_embedded::memory()
@@ -67,7 +67,7 @@ fn series_snapshot_records_sealed_at_commit_version() {
 				None
 			}
 		},
-		Duration::from_secs(5),
+		Duration::from_seconds(5).unwrap(),
 	)
 	.expect("series snapshot did not materialize within 5 seconds");
 
@@ -93,10 +93,10 @@ fn series_snapshot_records_sealed_at_commit_version() {
 #[test]
 fn series_snapshot_system_columns_match_row_metadata() {
 	let fast_config = StorageConfig {
-		table_tick_interval: Duration::from_millis(50),
-		series_tick_interval: Duration::from_millis(50),
+		table_tick_interval: Duration::from_milliseconds(50).unwrap(),
+		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_bucket_width: 5,
-		series_grace: Duration::from_millis(0),
+		series_grace: Duration::from_milliseconds(0).unwrap(),
 	};
 
 	let mut db = db_embedded::memory()
@@ -127,7 +127,7 @@ fn series_snapshot_system_columns_match_row_metadata() {
 			let entries = block_store.entries();
 			entries.into_iter().map(|(_, b)| b).find(|b| b.len() > 0)
 		},
-		Duration::from_secs(5),
+		Duration::from_seconds(5).unwrap(),
 	)
 	.expect("series snapshot did not materialize within 5 seconds");
 
@@ -160,8 +160,8 @@ fn series_snapshot_system_columns_match_row_metadata() {
 #[test]
 fn table_snapshot_system_columns_match_row_metadata() {
 	let fast_config = StorageConfig {
-		table_tick_interval: Duration::from_millis(50),
-		series_tick_interval: Duration::from_millis(50),
+		table_tick_interval: Duration::from_milliseconds(50).unwrap(),
+		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		..StorageConfig::default()
 	};
 
@@ -187,7 +187,7 @@ fn table_snapshot_system_columns_match_row_metadata() {
 			let entries = block_store.entries();
 			entries.into_iter().map(|(_, b)| b).find(|b| b.len() == 3)
 		},
-		Duration::from_secs(5),
+		Duration::from_seconds(5).unwrap(),
 	)
 	.expect("table snapshot did not materialize within 5 seconds");
 

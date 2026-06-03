@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::{mem, ops::Deref, sync::Arc, time::Duration};
+use std::{mem, ops::Deref, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -33,7 +33,11 @@ use reifydb_runtime::{
 use reifydb_store_multi::MultiStore;
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sub_raft::driver::Raft;
-use reifydb_value::{Result, util::hex, value::Value};
+use reifydb_value::{
+	Result,
+	util::hex,
+	value::{Value, duration::Duration},
+};
 use tracing::instrument;
 use version::{StandardVersionProvider, VersionProvider};
 

@@ -17,7 +17,6 @@ pub mod variable;
 use std::{
 	fmt,
 	fmt::{Display, Formatter},
-	time::Duration,
 };
 
 use query::window::WindowNode;
@@ -35,7 +34,7 @@ use reifydb_core::{
 	sort::{SortDirection, SortKey},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction, query::QueryTransaction};
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::duration::Duration};
 use tracing::instrument;
 
 use crate::{

@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
 use reifydb_core::interface::catalog::{id::SubscriptionId, subscription::HydrationConfig};
+use reifydb_value::value::duration::Duration;
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_value::value::frame::{column::FrameColumn, frame::Frame};
 #[cfg(not(reifydb_single_threaded))]
@@ -85,8 +84,10 @@ fn extract_remote_result(frame: &Frame) -> Result<Option<CreateSubscriptionResul
 	let token = frame.columns.iter().find(|c| c.name == "remote_token").and_then(first_utf8_value);
 	let enabled = first_bool_value(frame, "remote_hydration_enabled").unwrap_or(true);
 	let max_rows = first_uint8_value(frame, "remote_hydration_max_rows");
-	let throttle = first_uint8_value(frame, "remote_throttle_ms").map(Duration::from_millis);
-	let linger = first_uint8_value(frame, "remote_linger_ms").map(Duration::from_millis);
+	let throttle = first_uint8_value(frame, "remote_throttle_ms")
+		.map(|ms| Duration::from_milliseconds(ms as i64).unwrap());
+	let linger =
+		first_uint8_value(frame, "remote_linger_ms").map(|ms| Duration::from_milliseconds(ms as i64).unwrap());
 	Ok(Some(CreateSubscriptionResult::Remote {
 		address,
 		body,
@@ -124,8 +125,9 @@ fn extract_local_result(frame: &Frame) -> Result<CreateSubscriptionResult, Creat
 
 	let enabled = first_bool_value(frame, "hydration_enabled").unwrap_or(true);
 	let max_rows = first_uint8_value(frame, "hydration_max_rows");
-	let throttle = first_uint8_value(frame, "throttle_ms").map(Duration::from_millis);
-	let linger = first_uint8_value(frame, "linger_ms").map(Duration::from_millis);
+	let throttle =
+		first_uint8_value(frame, "throttle_ms").map(|ms| Duration::from_milliseconds(ms as i64).unwrap());
+	let linger = first_uint8_value(frame, "linger_ms").map(|ms| Duration::from_milliseconds(ms as i64).unwrap());
 
 	Ok(CreateSubscriptionResult::Local {
 		id,

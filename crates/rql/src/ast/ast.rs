@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Index, time::Duration};
+use std::ops::Index;
 
 use reifydb_core::{
 	common::{IndexType, JoinType},
 	sort::SortDirection,
 };
+use reifydb_value::value::duration::Duration;
 
 use crate::{
 	ast::identifier::{

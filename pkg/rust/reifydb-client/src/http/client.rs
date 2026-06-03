@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 
 use reifydb_value::{
 	error::{Diagnostic, Error},
 	params::Params,
-	value::frame::frame::Frame,
+	value::{duration::Duration, frame::frame::Frame},
 };
 use reifydb_wire_format::{decode::decode_frames, json::types::ResponseFrame};
 use reqwest::{Client as ReqwestClient, header::HeaderMap};
@@ -102,7 +102,8 @@ impl HttpClient {
 			})));
 		}
 
-		let inner = ReqwestClient::builder().timeout(Duration::from_secs(30)).build().unwrap(); // FIXME better error handling
+		let inner =
+			ReqwestClient::builder().timeout(Duration::from_seconds(30).unwrap().to_std()).build().unwrap(); // FIXME better error handling
 
 		// Normalize URL (remove trailing slash)
 		let base_url = url.trim_end_matches('/').to_string();

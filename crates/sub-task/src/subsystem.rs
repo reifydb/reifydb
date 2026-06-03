@@ -17,8 +17,9 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::{context::clock::Clock, reifydb_assertions, shutdown::Shutdown, sync::mutex::Mutex};
+use reifydb_runtime::{context::clock::Clock, shutdown::Shutdown, sync::mutex::Mutex};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
+use reifydb_value::reifydb_assertions;
 use tokio::{runtime::Handle, sync::mpsc, task::JoinHandle};
 use tracing::{info, instrument};
 
@@ -55,7 +56,7 @@ impl TaskSubsystem {
 		let (coordinator_tx, coordinator_rx) = mpsc::channel(100);
 
 		for task in initial_tasks {
-			let next_execution = clock.instant() + task.schedule.initial_delay();
+			let next_execution = clock.instant() + task.schedule.initial_delay().to_std();
 			registry.insert(
 				task.id,
 				TaskEntry {

@@ -19,7 +19,10 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 };
-use reifydb_value::{params::Params, value::identity::IdentityId};
+use reifydb_value::{
+	params::Params,
+	value::{duration::Duration, identity::IdentityId},
+};
 
 pub struct ServerActor {
 	engine: StandardEngine,
@@ -58,7 +61,7 @@ impl ServerActor {
 		} else {
 			reply.send(ServerResponse::Success {
 				frames: result.frames,
-				duration: t.elapsed(),
+				duration: Duration::from_std(t.elapsed()),
 				metrics: result.metrics,
 			});
 		}
@@ -76,7 +79,7 @@ impl ServerActor {
 		} else {
 			reply.send(ServerSubscribeResponse::Subscribed {
 				frames: result.frames,
-				duration: t.elapsed(),
+				duration: Duration::from_std(t.elapsed()),
 				metrics: result.metrics,
 			});
 		}

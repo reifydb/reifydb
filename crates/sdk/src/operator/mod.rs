@@ -6,8 +6,6 @@
 //! views, the diff representation an operator emits, and the context that gives the operator access to engine
 //! services. Anything an extension needs to write a useful operator lives here.
 
-use std::time::Duration;
-
 use crate::config::Config;
 
 pub mod builder;
@@ -24,7 +22,7 @@ use column::operator::OperatorColumn;
 use context::{OperatorContext, ffi::FFIOperatorContext};
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::interface::catalog::flow::FlowNodeId;
-use reifydb_value::value::datetime::DateTime;
+use reifydb_value::value::{datetime::DateTime, duration::Duration};
 use view::ChangeView;
 
 use crate::error::Result;

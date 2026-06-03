@@ -14,9 +14,9 @@ use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use reifydb_runtime::{
 	context::clock::{Clock, Instant},
-	reifydb_assertions,
 	sync::mutex::Mutex,
 };
+use reifydb_value::reifydb_assertions;
 use serde::{Deserialize, Serialize};
 use tokio::task_local;
 

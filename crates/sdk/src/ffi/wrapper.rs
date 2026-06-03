@@ -273,7 +273,7 @@ pub unsafe extern "C" fn ffi_tick_interval<O: FFIOperator>(instance: *mut c_void
 	let result = catch_unwind(AssertUnwindSafe(|| {
 		let wrapper = OperatorWrapper::<O>::from_ptr(instance);
 		match wrapper.operator.ticks() {
-			Some(d) => d.as_nanos() as u64,
+			Some(d) => d.to_std().as_nanos() as u64,
 			None => 0,
 		}
 	}));

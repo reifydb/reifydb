@@ -14,11 +14,11 @@ use reifydb_routine::routine::{
 	Accumulator, FunctionKind, context::FunctionContext, error::RoutineError, registry::Routines,
 };
 use reifydb_rql::expression::{Expression, name::display_label};
-use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error,
 	fragment::Fragment,
+	reifydb_assertions,
 	value::{Value, value_type::ValueType},
 };
 use tracing::instrument;

@@ -9,7 +9,6 @@ use std::{
 	path::{Path, PathBuf},
 	process::abort,
 	sync::OnceLock,
-	time::Duration,
 };
 
 use libloading::Symbol;
@@ -43,7 +42,7 @@ use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
 	error::Error,
-	value::{constraint::TypeConstraint, row_number::RowNumber},
+	value::{constraint::TypeConstraint, duration::Duration, row_number::RowNumber},
 };
 use tracing::error;
 

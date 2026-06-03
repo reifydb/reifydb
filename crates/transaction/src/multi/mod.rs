@@ -9,11 +9,9 @@
 //! Snapshot isolation is what this layer provides; serialisable isolation requires the conflict detector to
 //! consider read-write conflicts in addition to write-write, and that mode is selected per transaction at start.
 
-use std::time::Duration;
-
 use reifydb_core::common::CommitVersion;
 use reifydb_store_multi::MultiVersionScope;
-use reifydb_value::Result;
+use reifydb_value::{Result, value::duration::Duration};
 
 use crate::multi::transaction::{
 	MultiTransaction, read::MultiReadTransaction, replica::MultiReplicaTransaction, write::MultiWriteTransaction,

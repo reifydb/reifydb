@@ -6,9 +6,9 @@ use std::{
 	fmt::{Display, Formatter},
 	num::ParseIntError,
 	str::FromStr,
-	time::Duration,
 };
 
+use reifydb_value::value::duration::Duration;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
 #[repr(transparent)]

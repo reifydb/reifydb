@@ -14,7 +14,7 @@ use reifydb_rql::{
 	nodes::{RunTestsNode, RunTestsScope},
 };
 use reifydb_transaction::transaction::{TestTransaction, Transaction};
-use reifydb_value::value::{Value, duration::Duration as RqlDuration, frame::frame::Frame};
+use reifydb_value::value::{Value, duration::Duration, frame::frame::Frame};
 
 use crate::{
 	Result,
@@ -151,7 +151,7 @@ pub(crate) fn run_tests(
 			("name", Value::Utf8("(no tests found)".to_string())),
 			("namespace", Value::Utf8("".to_string())),
 			("outcome", Value::Utf8("skip".to_string())),
-			("duration", Value::Duration(RqlDuration::zero())),
+			("duration", Value::Duration(Duration::zero())),
 			("message", Value::Utf8("".to_string())),
 		]));
 	}
@@ -193,7 +193,7 @@ pub(crate) fn run_tests(
 				);
 				test_txn.restore();
 				let elapsed = start.elapsed();
-				let duration = RqlDuration::from_nanoseconds(elapsed.as_nanos() as i64)?;
+				let duration = Duration::from_nanoseconds(elapsed.as_nanos() as i64)?;
 
 				let row = Columns::single_row([
 					("name", Value::Utf8(test.name.clone())),
@@ -252,7 +252,7 @@ pub(crate) fn run_tests(
 					);
 					test_txn.restore();
 					let elapsed = start.elapsed();
-					let duration = RqlDuration::from_nanoseconds(elapsed.as_nanos() as i64)?;
+					let duration = Duration::from_nanoseconds(elapsed.as_nanos() as i64)?;
 
 					let display_name = format!("{} {}", test.name, row_label);
 

@@ -9,11 +9,10 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::AlterSequenceNode;
-use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_value::{
 	params::Params,
-	return_error,
+	reifydb_assertions, return_error,
 	value::{Value, identity::IdentityId},
 };
 

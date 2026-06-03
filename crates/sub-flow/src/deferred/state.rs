@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
-use reifydb_runtime::reifydb_assertions;
+use reifydb_value::reifydb_assertions;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FlowStatus {

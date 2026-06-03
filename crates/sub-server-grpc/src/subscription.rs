@@ -238,15 +238,13 @@ pub fn encode_change_payload(frames: Vec<Frame>, format: WireFormat) -> change_e
 
 #[cfg(test)]
 mod tests {
-	use std::time::Duration;
-
 	use reifydb_runtime::context::{
 		clock::{Clock, MockClock},
 		rng::Rng,
 	};
 	use reifydb_sub_server::subscription::registry::PromoteResult;
 	use reifydb_subscription::delivery::SubscriptionDelivery;
-	use reifydb_value::value::{Value, uuid::Uuid7};
+	use reifydb_value::value::{Value, duration::Duration, uuid::Uuid7};
 
 	use super::*;
 
@@ -278,7 +276,7 @@ mod tests {
 			batch_sink.clone(),
 			WireFormat::Proto,
 			None,
-			Duration::ZERO,
+			Duration::zero(),
 		);
 		registry.subscribe(
 			sub_b,
@@ -287,12 +285,12 @@ mod tests {
 			batch_sink.clone(),
 			WireFormat::Proto,
 			None,
-			Duration::ZERO,
+			Duration::zero(),
 		);
 
 		let batch_id = registry.register_batch(
 			connection_id,
-			vec![(sub_a, Duration::ZERO), (sub_b, Duration::ZERO)],
+			vec![(sub_a, Duration::zero()), (sub_b, Duration::zero())],
 			batch_sink,
 			WireFormat::Proto,
 			&clock,
@@ -329,7 +327,7 @@ mod tests {
 
 		let batch_id = registry.register_batch(
 			connection_id,
-			vec![(sub_remote, Duration::ZERO)],
+			vec![(sub_remote, Duration::zero())],
 			batch_sink,
 			WireFormat::Proto,
 			&clock,
@@ -361,7 +359,7 @@ mod tests {
 
 		let batch_id = registry.register_batch(
 			connection_id,
-			vec![(sub, Duration::ZERO)],
+			vec![(sub, Duration::zero())],
 			batch_sink,
 			WireFormat::Proto,
 			&clock,
@@ -396,7 +394,7 @@ mod tests {
 			sink,
 			WireFormat::Proto,
 			Some(16),
-			Duration::ZERO,
+			Duration::zero(),
 		);
 
 		assert!(matches!(registry.try_deliver(&sub, single_int_columns("v", 1)), DeliveryResult::Delivered));
@@ -434,7 +432,7 @@ mod tests {
 			sink,
 			WireFormat::Proto,
 			Some(2),
-			Duration::ZERO,
+			Duration::zero(),
 		);
 
 		registry.try_deliver(&sub, single_int_columns("v", 1));

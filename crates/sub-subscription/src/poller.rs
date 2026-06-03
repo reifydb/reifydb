@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
-use reifydb_runtime::{reifydb_assertions, sync::mutex::Mutex};
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
+use reifydb_value::{reifydb_assertions, value::duration::Duration};
 use tokio::{
 	pin, select,
 	sync::{Notify, watch::Receiver},
@@ -81,7 +82,7 @@ impl StoreBackedPoller {
 	}
 
 	pub async fn run_loop(self: Arc<Self>, delivery: Arc<dyn SubscriptionDelivery>, mut stop_rx: Receiver<bool>) {
-		const NO_DEADLINE: Duration = Duration::from_secs(86_400);
+		let no_deadline = Duration::from_seconds(86_400).unwrap();
 		let wake = self.register_wakers(delivery.as_ref());
 		let mut next_deadline: Option<Duration> = None;
 		loop {
@@ -95,7 +96,7 @@ impl StoreBackedPoller {
 						stop = result.is_err() || *stop_rx.borrow();
 					}
 					_ = &mut notified => {}
-					_ = sleep(next_deadline.unwrap_or(NO_DEADLINE)), if next_deadline.is_some() => {}
+					_ = sleep(next_deadline.unwrap_or(no_deadline).to_std()), if next_deadline.is_some() => {}
 				}
 			}
 			if stop {

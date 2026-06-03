@@ -8,7 +8,6 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
-	time::Duration,
 };
 
 use reifydb_core::{
@@ -21,16 +20,13 @@ use reifydb_core::{
 	},
 	key::{EncodableKey, Key, cdc_consumer::CdcConsumerKey, kind::KeyKind},
 };
-use reifydb_runtime::{
-	actor::{
-		context::Context,
-		system::ActorConfig,
-		traits::{Actor, Directive},
-	},
-	reifydb_assertions,
+use reifydb_runtime::actor::{
+	context::Context,
+	system::ActorConfig,
+	traits::{Actor, Directive},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, error::Error};
+use reifydb_value::{Result, error::Error, reifydb_assertions, value::duration::Duration};
 use tracing::{debug, error};
 
 use super::{checkpoint::CdcCheckpoint, consumer::CdcConsume, host::CdcHost, watermark::CdcConsumerWatermark};

@@ -7,7 +7,8 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{flow::FlowId, shape::ShapeId},
 };
-use reifydb_runtime::{reifydb_assertions, sync::rwlock::RwLock};
+use reifydb_runtime::sync::rwlock::RwLock;
+use reifydb_value::reifydb_assertions;
 
 #[derive(Clone)]
 pub struct ShapeVersionTracker {

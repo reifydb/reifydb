@@ -7,10 +7,10 @@ use std::{
 		Arc,
 		atomic::{AtomicUsize, Ordering},
 	},
-	time::Duration,
 };
 
 use reifydb_client::{GrpcClient, SubscriptionConfig, WireFormat};
+use reifydb_value::value::duration::Duration;
 use tokio::{runtime::Runtime, time::sleep};
 
 use crate::{
@@ -121,7 +121,7 @@ fn test_many_concurrent_clients() {
 		}
 
 		// Give clients time to connect and subscribe
-		sleep(Duration::from_millis(500)).await;
+		sleep(Duration::from_milliseconds(500).unwrap().to_std()).await;
 
 		// Create a new client to trigger the insert
 		let mut trigger_client =
@@ -241,7 +241,7 @@ fn test_client_disconnect_without_unsubscribe() {
 		}
 
 		// Give server time to clean up disconnected clients
-		sleep(Duration::from_millis(500)).await;
+		sleep(Duration::from_milliseconds(500).unwrap().to_std()).await;
 
 		// Server should still be healthy - new clients should be able to connect and subscribe
 		let mut new_client =
@@ -326,7 +326,10 @@ fn test_concurrent_connect_disconnect() {
 						{
 							Ok(sub) => {
 								// Small delay to simulate some work
-								sleep(Duration::from_millis(10)).await;
+								sleep(Duration::from_milliseconds(10)
+									.unwrap()
+									.to_std())
+								.await;
 
 								drop(sub);
 
@@ -338,7 +341,10 @@ fn test_concurrent_connect_disconnect() {
 							{
 								// Transaction conflict, retry after small delay
 								retries += 1;
-								sleep(Duration::from_millis(10 * retries as u64)).await;
+								sleep(Duration::from_milliseconds(10 * retries as i64)
+									.unwrap()
+									.to_std())
+								.await;
 								continue;
 							}
 							Err(e) => {

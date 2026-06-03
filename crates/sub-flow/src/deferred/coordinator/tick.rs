@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, time::Duration};
+use std::collections::BTreeMap;
 
 use reifydb_core::{
 	actors::flow::{FlowCoordinatorMessage, FlowPoolMessage, PoolResponse},
@@ -27,7 +27,7 @@ impl CoordinatorActor {
 			);
 			debug!(
 				flow_id = flow.id().0,
-				tick_nanos = tick.as_nanos(),
+				tick_nanos = tick.to_std().as_nanos(),
 				"registered tick schedule for flow"
 			);
 		}
@@ -40,7 +40,7 @@ impl CoordinatorActor {
 		let mut due_flows: BTreeMap<usize, Vec<FlowId>> = BTreeMap::new();
 
 		for (flow_id, schedule) in &mut state.tick_schedules {
-			let tick_std = Duration::from_nanos(schedule.tick.as_nanos() as u64);
+			let tick_std = schedule.tick.to_std();
 			if now.duration_since(&schedule.last_tick) >= tick_std {
 				let worker_id = *state
 					.flow_assignments

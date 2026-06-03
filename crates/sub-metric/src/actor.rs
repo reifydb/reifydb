@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 #[allow(unused_imports)]
-use std::{collections::HashMap, collections::HashSet, mem, sync::Arc, time::Duration as StdDuration};
+use std::{collections::HashMap, collections::HashSet, mem, sync::Arc};
 
 use reifydb_core::{
 	actors::metric::MetricMessage,
@@ -36,12 +36,14 @@ use reifydb_runtime::actor::{
 };
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
-use reifydb_value::value::datetime::DateTime;
+use reifydb_value::value::{datetime::DateTime, duration::Duration};
 use tracing::{error, trace};
 
 use crate::profiler_gauges;
 
-const DEFAULT_FLUSH_INTERVAL: StdDuration = StdDuration::from_secs(10);
+fn default_flush_interval() -> Duration {
+	Duration::from_seconds(10).unwrap()
+}
 
 #[allow(dead_code)]
 pub struct MetricCollectorActor {
@@ -52,7 +54,7 @@ pub struct MetricCollectorActor {
 	single_store: SingleStore,
 	resolver: MultiStore,
 	config: Option<Arc<dyn GetConfig>>,
-	flush_interval_override: Option<StdDuration>,
+	flush_interval_override: Option<Duration>,
 }
 
 impl MetricCollectorActor {
@@ -76,7 +78,7 @@ impl MetricCollectorActor {
 		}
 	}
 
-	pub fn with_flush_interval(mut self, interval: StdDuration) -> Self {
+	pub fn with_flush_interval(mut self, interval: Duration) -> Self {
 		self.flush_interval_override = Some(interval);
 		self
 	}
@@ -86,10 +88,10 @@ impl MetricCollectorActor {
 		self
 	}
 
-	fn effective_interval(&self) -> StdDuration {
+	fn effective_interval(&self) -> Duration {
 		self.flush_interval_override
 			.or_else(|| self.config.as_ref().map(|c| c.get_config_duration(ConfigKey::MetricFlushInterval)))
-			.unwrap_or(DEFAULT_FLUSH_INTERVAL)
+			.unwrap_or_else(default_flush_interval)
 	}
 
 	fn process_multi_committed(&self, state: &mut MetricActorState, event: MultiCommittedEvent) {

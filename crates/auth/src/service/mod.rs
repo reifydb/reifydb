@@ -10,7 +10,7 @@ mod authenticate;
 mod solana;
 mod token;
 
-use std::{collections::HashMap, ops::Deref, sync::Arc, time::Duration};
+use std::{collections::HashMap, ops::Deref, sync::Arc};
 
 use reifydb_catalog::{catalog::Catalog, create_token};
 use reifydb_core::interface::catalog::token::Token;
@@ -18,7 +18,7 @@ use reifydb_runtime::context::{clock::Clock, rng::Rng as SystemRng};
 use reifydb_transaction::transaction::{admin::AdminTransaction, query::QueryTransaction};
 use reifydb_value::{
 	error::Error,
-	value::{datetime::DateTime, identity::IdentityId},
+	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
 
 use crate::{challenge::ChallengeStore, registry::AuthenticationRegistry};
@@ -60,8 +60,8 @@ impl Default for AuthConfigurator {
 impl AuthConfigurator {
 	pub fn new() -> Self {
 		Self {
-			session_ttl: Some(Duration::from_secs(24 * 60 * 60)),
-			challenge_ttl: Duration::from_secs(60),
+			session_ttl: Some(Duration::from_seconds(24 * 60 * 60).unwrap()),
+			challenge_ttl: Duration::from_seconds(60).unwrap(),
 		}
 	}
 
@@ -145,7 +145,7 @@ impl AuthService {
 	pub(super) fn expires_at(&self) -> Result<Option<DateTime>, Error> {
 		match self.session_ttl {
 			Some(ttl) => {
-				let ttl_nanos = ttl.as_nanos() as u64;
+				let ttl_nanos = ttl.as_nanos()? as u64;
 				let nanos = self.clock.now_nanos().saturating_add(ttl_nanos);
 				Ok(Some(DateTime::from_nanos(nanos)))
 			}

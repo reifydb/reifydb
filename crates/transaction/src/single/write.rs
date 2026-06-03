@@ -5,14 +5,11 @@ use std::mem::take;
 
 use indexmap::IndexMap;
 use reifydb_core::interface::store::{SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRow};
-use reifydb_runtime::{
-	reifydb_assertions,
-	sync::rwlock::{ArcRwLock, OwnedRwLockWriteGuard},
-};
+use reifydb_runtime::sync::rwlock::{ArcRwLock, OwnedRwLockWriteGuard};
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sub_raft::message::Command;
 use reifydb_value::{
-	Result,
+	Result, reifydb_assertions,
 	util::{cowvec::CowVec, hex},
 };
 

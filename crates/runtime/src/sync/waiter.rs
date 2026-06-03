@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use std::{fmt, time::Duration};
+use std::fmt;
+
+use reifydb_value::value::duration::Duration;
 
 use crate::sync::{condvar::Condvar, mutex::Mutex};
 
@@ -81,7 +83,7 @@ mod tests {
 
 		assert_eq!(count.load(Ordering::SeqCst), 1, "one-shot callback must fire exactly once");
 		assert!(
-			waiter.wait_timeout(Duration::from_millis(0)),
+			waiter.wait_timeout(Duration::from_milliseconds(0).unwrap()),
 			"an already-notified waiter returns immediately"
 		);
 	}

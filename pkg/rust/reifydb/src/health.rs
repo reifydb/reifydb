@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, fmt, sync::Arc, time::Duration};
+use std::{collections::HashMap, fmt, sync::Arc};
 
 use reifydb_runtime::{
 	context::clock::{Clock, Instant},
 	sync::mutex::Mutex,
 };
 use reifydb_sub_api::subsystem::HealthStatus;
+use reifydb_value::value::duration::Duration;
 
 #[derive(Debug, Clone)]
 pub struct ComponentHealth {
@@ -117,7 +118,7 @@ impl HealthMonitor {
 		components
 			.values()
 			.filter_map(|health| {
-				if now.duration_since(&health.last_updated) > max_age {
+				if now.duration_since(&health.last_updated) > max_age.to_std() {
 					Some(health.name.clone())
 				} else {
 					None

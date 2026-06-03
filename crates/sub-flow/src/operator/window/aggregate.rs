@@ -14,12 +14,12 @@ use reifydb_routine::routine::{
 	Accumulator, AggregateFunctionCapability, context::FunctionContext, registry::Routines,
 };
 use reifydb_rql::expression::{Expression, name::display_label};
-use reifydb_runtime::reifydb_assertions;
 #[cfg(reifydb_assertions)]
 use reifydb_value::value::assert_equal_with_tolerance;
 use reifydb_value::{
 	Result,
 	fragment::Fragment,
+	reifydb_assertions,
 	util::cowvec::CowVec,
 	value::{Value, datetime::DateTime, identity::IdentityId, value_type::ValueType},
 };

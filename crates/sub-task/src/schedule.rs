@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
 use reifydb_runtime::context::clock::Instant;
+use reifydb_value::value::duration::Duration;
 
 #[derive(Debug, Clone)]
 pub enum Schedule {
@@ -15,7 +14,7 @@ pub enum Schedule {
 impl Schedule {
 	pub fn next_execution(&self, after: Instant) -> Option<Instant> {
 		match self {
-			Schedule::FixedInterval(duration) => Some(after + *duration),
+			Schedule::FixedInterval(duration) => Some(after + duration.to_std()),
 			Schedule::Once(_) => None,
 		}
 	}
@@ -54,17 +53,17 @@ mod tests {
 	#[test]
 	fn test_fixed_interval_next_execution() {
 		let clock = Clock::Real;
-		let schedule = Schedule::FixedInterval(Duration::from_secs(10));
+		let schedule = Schedule::FixedInterval(Duration::from_seconds(10).unwrap());
 		let now = clock.instant();
 		let next = schedule.next_execution(now.clone());
 		assert!(next.is_some());
-		assert_eq!(next.unwrap(), now + Duration::from_secs(10));
+		assert_eq!(next.unwrap(), now + Duration::from_seconds(10).unwrap().to_std());
 	}
 
 	#[test]
 	fn test_once_next_execution() {
 		let clock = Clock::Real;
-		let schedule = Schedule::Once(Duration::from_secs(5));
+		let schedule = Schedule::Once(Duration::from_seconds(5).unwrap());
 		let now = clock.instant();
 		let next = schedule.next_execution(now);
 		assert!(next.is_none());
@@ -72,19 +71,19 @@ mod tests {
 
 	#[test]
 	fn test_initial_delay() {
-		let interval = Schedule::FixedInterval(Duration::from_secs(30));
-		assert_eq!(interval.initial_delay(), Duration::from_secs(30));
+		let interval = Schedule::FixedInterval(Duration::from_seconds(30).unwrap());
+		assert_eq!(interval.initial_delay(), Duration::from_seconds(30).unwrap());
 
-		let once = Schedule::Once(Duration::from_secs(5));
-		assert_eq!(once.initial_delay(), Duration::from_secs(5));
+		let once = Schedule::Once(Duration::from_seconds(5).unwrap());
+		assert_eq!(once.initial_delay(), Duration::from_seconds(5).unwrap());
 	}
 
 	#[test]
 	fn test_validation() {
-		let valid = Schedule::FixedInterval(Duration::from_secs(1));
+		let valid = Schedule::FixedInterval(Duration::from_seconds(1).unwrap());
 		assert!(valid.validate().is_ok());
 
-		let invalid = Schedule::FixedInterval(Duration::ZERO);
+		let invalid = Schedule::FixedInterval(Duration::zero());
 		assert!(invalid.validate().is_err());
 	}
 }

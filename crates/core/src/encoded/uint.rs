@@ -5,8 +5,10 @@ use std::ptr;
 
 use num_bigint::{BigInt, BigUint};
 use num_traits::ToPrimitive;
-use reifydb_runtime::reifydb_assertions;
-use reifydb_value::value::{uint::Uint, value_type::ValueType};
+use reifydb_value::{
+	reifydb_assertions,
+	value::{uint::Uint, value_type::ValueType},
+};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 

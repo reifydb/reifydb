@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
 use reifydb_auth::service::AuthService;
 use reifydb_core::actors::server::ServerMessage;
 use reifydb_engine::engine::StandardEngine;
@@ -13,6 +11,7 @@ use reifydb_runtime::{
 	},
 	context::{clock::Clock, rng::Rng},
 };
+use reifydb_value::value::duration::Duration;
 use tracing::instrument;
 
 use crate::{actor::ServerActor, interceptor::RequestInterceptorChain};
@@ -37,13 +36,13 @@ pub struct StateConfig {
 impl Default for StateConfig {
 	fn default() -> Self {
 		Self {
-			query_timeout: Duration::from_secs(30),
-			request_timeout: Duration::from_secs(60),
+			query_timeout: Duration::from_seconds(30).unwrap(),
+			request_timeout: Duration::from_seconds(60).unwrap(),
 			max_connections: 10_000,
 			admin_enabled: false,
 			subscribe_max_hydration_rows: 10_000,
-			subscribe_min_throttle: Duration::from_millis(50),
-			subscribe_min_linger: Duration::ZERO,
+			subscribe_min_throttle: Duration::from_milliseconds(50).unwrap(),
+			subscribe_min_linger: Duration::zero(),
 		}
 	}
 }
@@ -186,7 +185,7 @@ impl AppState {
 	pub fn clamp_throttle(&self, requested: Option<Duration>) -> Duration {
 		match requested {
 			Some(d) if !d.is_zero() => d.max(self.config.subscribe_min_throttle),
-			_ => Duration::ZERO,
+			_ => Duration::zero(),
 		}
 	}
 
@@ -198,7 +197,7 @@ impl AppState {
 	pub fn clamp_linger(&self, requested: Option<Duration>) -> Duration {
 		match requested {
 			Some(d) if !d.is_zero() => d.max(self.config.subscribe_min_linger),
-			_ => Duration::ZERO,
+			_ => Duration::zero(),
 		}
 	}
 
@@ -238,29 +237,29 @@ pub mod tests {
 	#[test]
 	fn test_query_defaults() {
 		let config = StateConfig::default();
-		assert_eq!(config.query_timeout, Duration::from_secs(30));
-		assert_eq!(config.request_timeout, Duration::from_secs(60));
+		assert_eq!(config.query_timeout, Duration::from_seconds(30).unwrap());
+		assert_eq!(config.request_timeout, Duration::from_seconds(60).unwrap());
 		assert_eq!(config.max_connections, 10_000);
 		assert_eq!(config.subscribe_max_hydration_rows, 10_000);
-		assert_eq!(config.subscribe_min_throttle, Duration::from_millis(50));
-		assert_eq!(config.subscribe_min_linger, Duration::ZERO);
+		assert_eq!(config.subscribe_min_throttle, Duration::from_milliseconds(50).unwrap());
+		assert_eq!(config.subscribe_min_linger, Duration::zero());
 	}
 
 	#[test]
 	fn test_query_config_builder() {
 		let config = StateConfig::new()
-			.query_timeout(Duration::from_secs(60))
-			.request_timeout(Duration::from_secs(120))
+			.query_timeout(Duration::from_seconds(60).unwrap())
+			.request_timeout(Duration::from_seconds(120).unwrap())
 			.max_connections(5_000)
 			.subscribe_max_hydration_rows(50_000)
-			.subscribe_min_throttle(Duration::from_millis(200))
-			.subscribe_min_linger(Duration::from_millis(20));
+			.subscribe_min_throttle(Duration::from_milliseconds(200).unwrap())
+			.subscribe_min_linger(Duration::from_milliseconds(20).unwrap());
 
-		assert_eq!(config.query_timeout, Duration::from_secs(60));
-		assert_eq!(config.request_timeout, Duration::from_secs(120));
+		assert_eq!(config.query_timeout, Duration::from_seconds(60).unwrap());
+		assert_eq!(config.request_timeout, Duration::from_seconds(120).unwrap());
 		assert_eq!(config.max_connections, 5_000);
 		assert_eq!(config.subscribe_max_hydration_rows, 50_000);
-		assert_eq!(config.subscribe_min_throttle, Duration::from_millis(200));
-		assert_eq!(config.subscribe_min_linger, Duration::from_millis(20));
+		assert_eq!(config.subscribe_min_throttle, Duration::from_milliseconds(200).unwrap());
+		assert_eq!(config.subscribe_min_linger, Duration::from_milliseconds(20).unwrap());
 	}
 }

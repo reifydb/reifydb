@@ -9,8 +9,9 @@ use std::{
 	error, fmt,
 	panic::{AssertUnwindSafe, catch_unwind},
 	rc::{Rc, Weak},
-	time::Duration,
 };
+
+use reifydb_value::value::duration::Duration;
 
 use crate::{
 	actor::{
@@ -398,7 +399,7 @@ impl ActorSystem {
 	}
 
 	pub fn advance_time(&self, delta: Duration) {
-		let target_nanos = self.inner.mock_clock.now_nanos() + delta.as_nanos() as u64;
+		let target_nanos = self.inner.mock_clock.now_nanos() + delta.to_std().as_nanos() as u64;
 
 		loop {
 			let next_deadline = self.inner.timer_heap.borrow().peek().map(|e| e.deadline_nanos);
@@ -767,13 +768,13 @@ mod tests {
 
 		// Schedule a timer for 100ms.
 		let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
-		ctx.schedule_once(Duration::from_millis(100), || OrderMessage(42));
+		ctx.schedule_once(Duration::from_milliseconds(100).unwrap(), || OrderMessage(42));
 
 		// No messages yet.
 		assert!(matches!(system.step(), StepResult::Idle));
 
 		// Advance time past the deadline.
-		system.advance_time(Duration::from_millis(100));
+		system.advance_time(Duration::from_milliseconds(100).unwrap());
 
 		// Now the timer-fired message should be processable.
 		match system.step() {
@@ -799,12 +800,12 @@ mod tests {
 		let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
 
 		// Schedule timers in reverse deadline order.
-		ctx.schedule_once(Duration::from_millis(300), || "t300".into());
-		ctx.schedule_once(Duration::from_millis(100), || "t100".into());
-		ctx.schedule_once(Duration::from_millis(200), || "t200".into());
+		ctx.schedule_once(Duration::from_milliseconds(300).unwrap(), || "t300".into());
+		ctx.schedule_once(Duration::from_milliseconds(100).unwrap(), || "t100".into());
+		ctx.schedule_once(Duration::from_milliseconds(200).unwrap(), || "t200".into());
 
 		// Advance past all deadlines.
-		system.advance_time(Duration::from_millis(300));
+		system.advance_time(Duration::from_milliseconds(300).unwrap());
 		system.run_until_idle();
 
 		// Timers should have fired in deadline order.
@@ -823,10 +824,10 @@ mod tests {
 		);
 
 		let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
-		ctx.schedule_repeat(Duration::from_millis(100), "tick".to_string());
+		ctx.schedule_repeat(Duration::from_milliseconds(100).unwrap(), "tick".to_string());
 
 		// Advance 350ms - should fire at 100, 200, 300.
-		system.advance_time(Duration::from_millis(350));
+		system.advance_time(Duration::from_milliseconds(350).unwrap());
 		system.run_until_idle();
 
 		assert_eq!(log.lock().len(), 3);

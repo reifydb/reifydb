@@ -10,7 +10,8 @@ use std::{
 };
 
 use reifydb_core::common::CommitVersion;
-use reifydb_runtime::{reifydb_assertions, sync::mutex::Mutex};
+use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_value::reifydb_assertions;
 
 #[derive(Clone, Default)]
 pub struct CdcProducerWatermark {

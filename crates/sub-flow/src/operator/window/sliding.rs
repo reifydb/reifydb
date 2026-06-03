@@ -25,8 +25,8 @@ impl WindowOperator {
 				size: WindowSize::Duration(duration),
 				slide: WindowSize::Duration(slide_duration),
 			} => {
-				let window_size_ms = duration.as_millis() as u64;
-				let slide_ms = slide_duration.as_millis() as u64;
+				let window_size_ms = duration.to_std().as_millis() as u64;
+				let slide_ms = slide_duration.to_std().as_millis() as u64;
 				let timestamp = timestamp_or_row_index;
 
 				if slide_ms >= window_size_ms {
@@ -75,7 +75,7 @@ impl WindowOperator {
 				slide: WindowSize::Duration(slide_duration),
 				..
 			} => {
-				let slide_ms = slide_duration.as_millis() as u64;
+				let slide_ms = slide_duration.to_std().as_millis() as u64;
 				window_id * slide_ms
 			}
 			_ => timestamp,

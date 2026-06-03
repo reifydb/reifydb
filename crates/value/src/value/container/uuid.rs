@@ -243,19 +243,15 @@ where
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_runtime::context::{
-		clock::{Clock, MockClock},
-		rng::Rng,
+	use super::*;
+	use crate::{
+		clock::testing::{TestClock, TestRng},
+		value::uuid::{Uuid4, Uuid7},
 	};
 
-	use super::*;
-	use crate::value::uuid::{Uuid4, Uuid7};
-
-	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
-		let mock = MockClock::from_millis(1000);
-		let clock = Clock::Mock(mock.clone());
-		let rng = Rng::seeded(42);
-		(mock, clock, rng)
+	fn test_clock_and_rng() -> (TestClock, TestClock, TestRng) {
+		let clock = TestClock::from_millis(1000);
+		(clock.clone(), clock, TestRng)
 	}
 
 	#[test]

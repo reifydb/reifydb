@@ -4,11 +4,10 @@
 use std::cmp::Ordering;
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer};
-use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{
 	error::Diagnostic,
 	fragment::Fragment,
-	return_error,
+	reifydb_assertions, return_error,
 	value::{
 		container::{
 			blob::BlobContainer, bool::BoolContainer, identity_id::IdentityIdContainer,

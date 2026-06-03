@@ -29,7 +29,7 @@ impl WindowOperator {
 		match &self.kind {
 			WindowKind::Session {
 				gap,
-			} => gap.as_millis() as u64,
+			} => gap.to_std().as_millis() as u64,
 			_ => 0,
 		}
 	}

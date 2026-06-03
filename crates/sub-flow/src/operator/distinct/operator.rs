@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashSet, sync::LazyLock, time::Duration};
+use std::{collections::HashSet, sync::LazyLock};
 
 use indexmap::IndexMap;
 use postcard::{from_bytes, to_stdvec};
@@ -26,7 +26,12 @@ use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::{context::RuntimeContext, hash::Hash128};
 use reifydb_sdk::operator::Tick;
-use reifydb_value::{Result, error::Error, params::Params, value::blob::Blob};
+use reifydb_value::{
+	Result,
+	error::Error,
+	params::Params,
+	value::{blob::Blob, duration::Duration},
+};
 
 use crate::{
 	operator::{

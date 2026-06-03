@@ -3,7 +3,7 @@
 
 #![cfg(feature = "column")]
 
-use std::{collections::BTreeMap, time::Duration};
+use std::collections::BTreeMap;
 
 use reifydb::{Params, WithSubsystem, embedded as db_embedded};
 use reifydb_column::reader::SnapshotReader;
@@ -11,7 +11,7 @@ use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
-use reifydb_value::value::Value;
+use reifydb_value::value::{Value, duration::Duration};
 
 mod common;
 use common::poll_until;
@@ -19,8 +19,8 @@ use common::poll_until;
 #[test]
 fn table_materialization_populates_block_store() {
 	let fast_config = StorageConfig {
-		table_tick_interval: Duration::from_millis(50),
-		series_tick_interval: Duration::from_millis(50),
+		table_tick_interval: Duration::from_milliseconds(50).unwrap(),
+		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		..StorageConfig::default()
 	};
 
@@ -48,7 +48,7 @@ fn table_materialization_populates_block_store() {
 			let entries = block_store.entries();
 			entries.into_iter().map(|(_, b)| b).find(|b| b.len() == 3)
 		},
-		Duration::from_secs(5),
+		Duration::from_seconds(5).unwrap(),
 	)
 	.expect("block with 3 rows did not appear in block_store within 5 seconds");
 

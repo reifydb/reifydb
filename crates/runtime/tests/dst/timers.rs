@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use reifydb_runtime::{
 	actor::{context::Context, system::dst::StepResult},
 	sync::mutex::Mutex,
 };
+use reifydb_value::value::duration::Duration;
 
 use super::helpers::*;
 
@@ -22,10 +23,10 @@ fn zero_delay_timer() {
 	);
 
 	let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
-	ctx.schedule_once(Duration::ZERO, || "zero".to_string());
+	ctx.schedule_once(Duration::zero(), || "zero".to_string());
 
 	// Timer with zero delay should fire on advance_time(0).
-	system.advance_time(Duration::ZERO);
+	system.advance_time(Duration::zero());
 	system.run_until_idle();
 
 	assert_eq!(log_contents(&log), vec!["zero"]);
@@ -43,12 +44,12 @@ fn timer_cancellation_before_fire() {
 	);
 
 	let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
-	let timer = ctx.schedule_once(Duration::from_millis(100), || "cancelled".to_string());
+	let timer = ctx.schedule_once(Duration::from_milliseconds(100).unwrap(), || "cancelled".to_string());
 
 	// Cancel before advancing time.
 	assert!(timer.cancel());
 
-	system.advance_time(Duration::from_millis(200));
+	system.advance_time(Duration::from_milliseconds(200).unwrap());
 	system.run_until_idle();
 
 	// Message should never have been enqueued.
@@ -67,10 +68,10 @@ fn timer_cancellation_after_fire() {
 	);
 
 	let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
-	let timer = ctx.schedule_once(Duration::from_millis(100), || "fired".to_string());
+	let timer = ctx.schedule_once(Duration::from_milliseconds(100).unwrap(), || "fired".to_string());
 
 	// Advance past deadline - timer fires.
-	system.advance_time(Duration::from_millis(100));
+	system.advance_time(Duration::from_milliseconds(100).unwrap());
 	system.run_until_idle();
 
 	assert_eq!(log_contents(&log), vec!["fired"]);
@@ -96,11 +97,11 @@ fn multiple_timers_same_deadline() {
 	let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
 
 	// Schedule 3 timers with the same delay.
-	ctx.schedule_once(Duration::from_millis(100), || "t1".to_string());
-	ctx.schedule_once(Duration::from_millis(100), || "t2".to_string());
-	ctx.schedule_once(Duration::from_millis(100), || "t3".to_string());
+	ctx.schedule_once(Duration::from_milliseconds(100).unwrap(), || "t1".to_string());
+	ctx.schedule_once(Duration::from_milliseconds(100).unwrap(), || "t2".to_string());
+	ctx.schedule_once(Duration::from_milliseconds(100).unwrap(), || "t3".to_string());
 
-	system.advance_time(Duration::from_millis(100));
+	system.advance_time(Duration::from_milliseconds(100).unwrap());
 	system.run_until_idle();
 
 	let contents = log_contents(&log);
@@ -121,10 +122,10 @@ fn repeat_timer_cancellation() {
 	);
 
 	let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
-	let timer = ctx.schedule_repeat(Duration::from_millis(100), "tick".to_string());
+	let timer = ctx.schedule_repeat(Duration::from_milliseconds(100).unwrap(), "tick".to_string());
 
 	// Advance 250ms - should fire at 100ms and 200ms.
-	system.advance_time(Duration::from_millis(250));
+	system.advance_time(Duration::from_milliseconds(250).unwrap());
 	system.run_until_idle();
 	assert_eq!(log_contents(&log).len(), 2);
 
@@ -132,7 +133,7 @@ fn repeat_timer_cancellation() {
 	timer.cancel();
 
 	// Advance more - no more fires.
-	system.advance_time(Duration::from_millis(200));
+	system.advance_time(Duration::from_milliseconds(200).unwrap());
 	system.run_until_idle();
 	assert_eq!(log_contents(&log).len(), 2);
 }
@@ -151,13 +152,13 @@ fn timer_and_direct_message_interleaving() {
 	let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
 
 	// Schedule timer at 50ms.
-	ctx.schedule_once(Duration::from_millis(50), || "timer".to_string());
+	ctx.schedule_once(Duration::from_milliseconds(50).unwrap(), || "timer".to_string());
 
 	// Send direct message (gets a logical timestamp NOW).
 	handle.actor_ref.send("direct".into()).unwrap();
 
 	// Advance 50ms to fire the timer.
-	system.advance_time(Duration::from_millis(50));
+	system.advance_time(Duration::from_milliseconds(50).unwrap());
 
 	system.run_until_idle();
 
@@ -181,10 +182,10 @@ fn cascading_timers() {
 	// First timer at 100ms schedules a second timer at +100ms during its callback.
 	// We achieve this by having the first timer send a message, and when the LogActor
 	// doesn't schedule timers, we use a different approach: schedule both upfront.
-	ctx.schedule_once(Duration::from_millis(100), || "first".to_string());
-	ctx.schedule_once(Duration::from_millis(200), || "second".to_string());
+	ctx.schedule_once(Duration::from_milliseconds(100).unwrap(), || "first".to_string());
+	ctx.schedule_once(Duration::from_milliseconds(200).unwrap(), || "second".to_string());
 
-	system.advance_time(Duration::from_millis(200));
+	system.advance_time(Duration::from_milliseconds(200).unwrap());
 	system.run_until_idle();
 
 	assert_eq!(log_contents(&log), vec!["first", "second"]);
@@ -203,12 +204,12 @@ fn large_time_advance() {
 
 	let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
 
-	ctx.schedule_once(Duration::from_secs(1), || "1s".to_string());
-	ctx.schedule_once(Duration::from_secs(2), || "2s".to_string());
-	ctx.schedule_once(Duration::from_secs(3), || "3s".to_string());
+	ctx.schedule_once(Duration::from_seconds(1).unwrap(), || "1s".to_string());
+	ctx.schedule_once(Duration::from_seconds(2).unwrap(), || "2s".to_string());
+	ctx.schedule_once(Duration::from_seconds(3).unwrap(), || "3s".to_string());
 
 	// Advance 10 seconds in one call.
-	system.advance_time(Duration::from_secs(10));
+	system.advance_time(Duration::from_seconds(10).unwrap());
 	system.run_until_idle();
 
 	assert_eq!(log_contents(&log), vec!["1s", "2s", "3s"]);
@@ -226,10 +227,10 @@ fn schedule_tick_uses_mock_clock() {
 	);
 
 	let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
-	ctx.schedule_tick(Duration::from_millis(100), |nanos| TickMessage(nanos));
+	ctx.schedule_tick(Duration::from_milliseconds(100).unwrap(), |nanos| TickMessage(nanos));
 
 	// Advance 350ms - ticks at 100ms, 200ms, 300ms.
-	system.advance_time(Duration::from_millis(350));
+	system.advance_time(Duration::from_milliseconds(350).unwrap());
 	system.run_until_idle();
 
 	let ts = timestamps.lock().clone();
@@ -252,7 +253,7 @@ fn timer_not_fired_if_time_not_advanced() {
 	);
 
 	let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
-	ctx.schedule_once(Duration::from_millis(100), || "should_not_fire".to_string());
+	ctx.schedule_once(Duration::from_milliseconds(100).unwrap(), || "should_not_fire".to_string());
 
 	// Don't advance time at all.
 	system.run_until_idle();
@@ -272,10 +273,10 @@ fn repeat_timer_fires_correct_count() {
 	);
 
 	let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
-	ctx.schedule_repeat(Duration::from_millis(50), "tick".to_string());
+	ctx.schedule_repeat(Duration::from_milliseconds(50).unwrap(), "tick".to_string());
 
 	// Advance exactly 200ms - should fire at 50, 100, 150, 200.
-	system.advance_time(Duration::from_millis(200));
+	system.advance_time(Duration::from_milliseconds(200).unwrap());
 	system.run_until_idle();
 
 	assert_eq!(log_contents(&log).len(), 4);
@@ -327,10 +328,10 @@ fn timers_must_be_cancelled_when_actor_stops() {
 
 	// Schedule a repeating timer.
 	let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
-	ctx.schedule_repeat(std::time::Duration::from_millis(100), "tick".to_string());
+	ctx.schedule_repeat(Duration::from_milliseconds(100).unwrap(), "tick".to_string());
 
 	// Fire it once.
-	system.advance_time(std::time::Duration::from_millis(100));
+	system.advance_time(Duration::from_milliseconds(100).unwrap());
 	system.run_until_idle();
 	assert_eq!(log_contents(&log), vec!["tick"]);
 
@@ -340,7 +341,7 @@ fn timers_must_be_cancelled_when_actor_stops() {
 	// Our LogActor doesn't stop. Let's use CounterActor.
 	let counter = system.spawn_system("counter", CounterActor);
 	let ctx_c = Context::new(counter.actor_ref.clone(), system.clone(), system.cancellation_token());
-	ctx_c.schedule_repeat(std::time::Duration::from_millis(100), CounterMessage::Inc);
+	ctx_c.schedule_repeat(Duration::from_milliseconds(100).unwrap(), CounterMessage::Inc);
 
 	// Stop it.
 	counter.actor_ref.send(CounterMessage::Stop).unwrap();
@@ -348,7 +349,7 @@ fn timers_must_be_cancelled_when_actor_stops() {
 	assert_eq!(system.alive_count(), 1); // only LogActor alive
 
 	// Advance time more.
-	system.advance_time(std::time::Duration::from_millis(500));
+	system.advance_time(Duration::from_milliseconds(500).unwrap());
 
 	// If the timer is still firing, it might be reported by system.step().
 	// But the actor is dead. The message delivery SHOULD fail silently or be dropped.

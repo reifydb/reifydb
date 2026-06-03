@@ -6,7 +6,6 @@ use std::{
 	mem,
 	ops::{Bound, Deref},
 	sync::Arc,
-	time::Duration,
 };
 
 use reifydb_core::{
@@ -24,13 +23,16 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
-	reifydb_assertions,
 	shutdown::Shutdown,
 	sync::{mutex::Mutex, waiter::WaiterHandle},
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
-use reifydb_value::util::{cowvec::CowVec, hex};
+use reifydb_value::{
+	reifydb_assertions,
+	util::{cowvec::CowVec, hex},
+	value::duration::Duration,
+};
 use tracing::instrument;
 
 use crate::{
@@ -128,7 +130,7 @@ impl StandardSingleStore {
 			return;
 		}
 
-		waiter.wait_timeout(Duration::from_secs(5));
+		waiter.wait_timeout(Duration::from_seconds(5).unwrap());
 	}
 }
 

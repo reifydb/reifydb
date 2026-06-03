@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
+#![allow(clippy::disallowed_types)]
+
 use std::{future::Future, sync::Arc, time::Duration};
 
 use rayon::{ThreadPool, ThreadPoolBuilder};
+use reifydb_value::reifydb_assertions;
 use tokio::{
 	runtime::{self, Handle, Runtime},
 	task::JoinHandle,
 };
 
 use super::PoolConfig;
-use crate::{reifydb_assertions, sync::mutex::Mutex};
+use crate::sync::mutex::Mutex;
 
 struct PoolsInner {
 	system: Arc<ThreadPool>,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_client::{HydrationConfig as ClientHydrationConfig, SubscriptionConfig as ClientSubscriptionConfig};
 use reifydb_core::{
@@ -12,10 +12,12 @@ use reifydb_core::{
 };
 use reifydb_engine::subscription::{HydrateError, SubscriptionServiceRef};
 use reifydb_remote_proxy::{RemoteSubscription, connect_remote, proxy_remote_to_sink};
-use reifydb_runtime::reifydb_assertions;
 use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
 use reifydb_transaction::multi::lease::VersionLeaseGuard;
-use reifydb_value::value::{frame::frame::Frame, identity::IdentityId};
+use reifydb_value::{
+	reifydb_assertions,
+	value::{duration::Duration, frame::frame::Frame, identity::IdentityId},
+};
 use tokio::{spawn, sync::watch::Receiver as WatchReceiver, task::JoinHandle};
 use tracing::{info, warn};
 
@@ -584,7 +586,7 @@ async fn register_batch_and_ack<S: WireSink>(
 		.iter()
 		.map(|m| {
 			let id = m.subscription_id();
-			(id, member_lingers.get(&id).copied().unwrap_or(Duration::ZERO))
+			(id, member_lingers.get(&id).copied().unwrap_or(Duration::zero()))
 		})
 		.collect();
 	let batch_id =

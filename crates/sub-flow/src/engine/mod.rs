@@ -13,7 +13,6 @@ pub mod register;
 use std::{
 	collections::{BTreeMap, BTreeSet},
 	sync::Arc,
-	time::Duration,
 };
 
 use dashmap::DashMap;
@@ -44,6 +43,7 @@ use reifydb_runtime::{
 };
 #[cfg(reifydb_target = "native")]
 use reifydb_sdk::config::Config;
+use reifydb_value::value::duration::Duration;
 #[cfg(reifydb_target = "native")]
 use reifydb_value::{Result, error::Error, value::Value};
 use tracing::instrument;
@@ -182,7 +182,7 @@ impl FlowEngineInner {
 	}
 
 	pub(crate) fn operator_due(&self, node_id: FlowNodeId, now_nanos: u64, interval: Duration) -> bool {
-		let interval_nanos = interval.as_nanos() as u64;
+		let interval_nanos = interval.to_std().as_nanos() as u64;
 		let due = match self.operator_tick_times.get(&node_id) {
 			Some(last) => now_nanos.saturating_sub(*last) >= interval_nanos,
 			None => true,

@@ -402,12 +402,11 @@ mod tests {
 		},
 		thread,
 		thread::sleep,
-		time::Duration,
 	};
 
 	use reifydb_core::encoded::key::EncodedKeyRange;
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::MockClock, pool::Pools};
-	use reifydb_value::value::Value;
+	use reifydb_value::value::{Value, duration::Duration};
 
 	use super::*;
 	use crate::multi::transaction::version::VersionProvider;
@@ -790,7 +789,9 @@ mod tests {
 						CreateCommitResult::Success(version) => {
 							// Simulate storage write with variable delay
 							if i % 3 == 0 {
-								sleep(Duration::from_micros(100));
+								sleep(Duration::from_microseconds(100)
+									.unwrap()
+									.to_std());
 							}
 							// Mark commit as done
 							oracle_clone.done_commit(version);
@@ -821,7 +822,7 @@ mod tests {
 			);
 
 			// Give watermark processor time to catch up
-			sleep(Duration::from_millis(100));
+			sleep(Duration::from_milliseconds(100).unwrap().to_std());
 
 			// KEY ASSERTION: The watermark should have advanced to max_version
 			// If any version was skipped due to the race condition, done_until
@@ -878,7 +879,7 @@ mod tests {
 		}
 
 		// Give watermark time to process
-		sleep(Duration::from_millis(50));
+		sleep(Duration::from_milliseconds(50).unwrap().to_std());
 
 		// All versions should be contiguous (no gaps)
 		versions.sort();

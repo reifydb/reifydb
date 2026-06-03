@@ -25,12 +25,11 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_rql::{nodes::DeleteSeriesNode, query::QueryPlan};
-use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
-	return_error,
+	reifydb_assertions, return_error,
 	value::{Value, datetime::DateTime, identity::IdentityId, row_number::RowNumber},
 };
 use smallvec::smallvec;

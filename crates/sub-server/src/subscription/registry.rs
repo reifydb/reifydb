@@ -8,21 +8,22 @@ use std::{
 		Arc,
 		atomic::{AtomicUsize, Ordering},
 	},
-	time::Duration,
 };
 
 use dashmap::DashMap;
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_runtime::{
 	context::{clock::Clock, rng::Rng},
-	reifydb_assertions,
 	sync::mutex::Mutex,
 };
 use reifydb_subscription::{
 	batch::BatchId,
 	delivery::{DeliveryResult, SubscriptionDelivery},
 };
-use reifydb_value::value::{frame::frame::Frame, uuid::Uuid7};
+use reifydb_value::{
+	reifydb_assertions,
+	value::{duration::Duration, frame::frame::Frame, uuid::Uuid7},
+};
 use tokio::sync::Notify;
 use tracing::{debug, info};
 
@@ -62,7 +63,7 @@ struct ThrottleState {
 impl ThrottleState {
 	fn new(interval: Duration) -> Self {
 		Self {
-			interval_millis: interval.as_millis() as u64,
+			interval_millis: interval.to_std().as_millis() as u64,
 			last_sent_at: None,
 			pending: Vec::new(),
 		}
@@ -125,7 +126,7 @@ impl MemberPending {
 	fn new(linger: Duration) -> Self {
 		Self {
 			frames: Vec::new(),
-			linger_millis: linger.as_millis() as u64,
+			linger_millis: linger.to_std().as_millis() as u64,
 			first_pending_at: None,
 		}
 	}
@@ -264,7 +265,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 		};
 		{
 			let now = self.clock.now_millis();
-			let linger = batch.lingers.get(&subscription_id).copied().unwrap_or(Duration::ZERO);
+			let linger = batch.lingers.get(&subscription_id).copied().unwrap_or(Duration::zero());
 			let mut entry =
 				batch.pending.entry(subscription_id).or_insert_with(|| MemberPending::new(linger));
 			for columns in buffered {
@@ -410,7 +411,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 		};
 		{
 			let now = self.clock.now_millis();
-			let linger = batch.lingers.get(&subscription_id).copied().unwrap_or(Duration::ZERO);
+			let linger = batch.lingers.get(&subscription_id).copied().unwrap_or(Duration::zero());
 			let mut entry =
 				batch.pending.entry(subscription_id).or_insert_with(|| MemberPending::new(linger));
 			for frame in frames {
@@ -513,7 +514,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 			return DeliveryResult::Disconnected;
 		};
 		let now = self.clock.now_millis();
-		let linger = batch.lingers.get(subscription_id).copied().unwrap_or(Duration::ZERO);
+		let linger = batch.lingers.get(subscription_id).copied().unwrap_or(Duration::zero());
 		batch.pending
 			.entry(*subscription_id)
 			.or_insert_with(|| MemberPending::new(linger))
@@ -700,11 +701,11 @@ impl<S: WireSink> SubscriptionDelivery for SubscriptionRegistry<S> {
 		self.flush_ready_throttled(now, &mut next_deadline);
 
 		if self.batches.is_empty() {
-			return next_deadline.map(Duration::from_millis);
+			return next_deadline.map(|ms| Duration::from_milliseconds(ms as i64).unwrap());
 		}
 
 		self.flush_due_batches(now, &mut next_deadline);
 
-		next_deadline.map(Duration::from_millis)
+		next_deadline.map(|ms| Duration::from_milliseconds(ms as i64).unwrap())
 	}
 }

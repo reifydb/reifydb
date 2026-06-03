@@ -24,7 +24,7 @@ impl WindowOperator {
 			WindowKind::Tumbling {
 				size: WindowSize::Duration(duration),
 			} => {
-				let window_size_ms = duration.as_millis() as u64;
+				let window_size_ms = duration.to_std().as_millis() as u64;
 				timestamp / window_size_ms
 			}
 			WindowKind::Tumbling {
@@ -36,7 +36,7 @@ impl WindowOperator {
 
 	pub fn set_tumbling_window_start(&self, timestamp: u64) -> u64 {
 		if let Some(duration) = self.size_duration() {
-			let window_size_ms = duration.as_millis() as u64;
+			let window_size_ms = duration.to_std().as_millis() as u64;
 			(timestamp / window_size_ms) * window_size_ms
 		} else {
 			timestamp

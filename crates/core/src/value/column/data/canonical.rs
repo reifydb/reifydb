@@ -3,9 +3,8 @@
 
 use std::{any::Any, sync::Arc};
 
-use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{
-	Result,
+	Result, reifydb_assertions,
 	value::{Value, value_type::ValueType},
 };
 

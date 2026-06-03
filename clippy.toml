@@ -9,4 +9,5 @@ disallowed-types = [
     { path = "parking_lot::Mutex", reason = "Use reifydb_runtime::sync::mutex::Mutex instead" },
     { path = "parking_lot::RwLock", reason = "Use reifydb_runtime::sync::rwlock::RwLock instead" },
     { path = "parking_lot::Condvar", reason = "Use reifydb_runtime::sync::condvar::Condvar instead" },
+    { path = "std::time::Duration", reason = "Use reifydb_value::value::duration::Duration instead; std Duration is allowed only at irreducible boundaries (runtime timers/clock/condvar/mailbox, tokio, crossbeam, sqlite, external SDKs, FFI) - annotate those with #[allow(clippy::disallowed_types)]" },
 ]

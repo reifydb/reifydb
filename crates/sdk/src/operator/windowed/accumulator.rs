@@ -9,7 +9,7 @@ use std::{
 	marker::PhantomData,
 };
 
-use reifydb_runtime::reifydb_assertions;
+use reifydb_value::reifydb_assertions;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::operator::windowed::span::Slot;

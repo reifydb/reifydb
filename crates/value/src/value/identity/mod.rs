@@ -3,18 +3,20 @@
 
 use std::{fmt, ops::Deref, str::FromStr};
 
-use reifydb_runtime::context::{clock::Clock, rng::Rng};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de, de::Visitor};
 use uuid::Uuid;
 
-use crate::value::uuid::Uuid7;
+use crate::{
+	clock::{ClockNow, RandomBytes},
+	value::uuid::Uuid7,
+};
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Default)]
 pub struct IdentityId(pub Uuid7);
 
 impl IdentityId {
-	pub fn generate(clock: &Clock, rng: &Rng) -> Self {
+	pub fn generate<C: ClockNow, R: RandomBytes>(clock: &C, rng: &R) -> Self {
 		IdentityId(Uuid7::generate(clock, rng))
 	}
 
@@ -165,16 +167,14 @@ impl<'de> Deserialize<'de> for IdentityId {
 #[cfg(test)]
 pub mod tests {
 	use postcard::{from_bytes, to_allocvec};
-	use reifydb_runtime::context::clock::MockClock;
 	use serde_json::{from_str, to_string};
 
 	use super::*;
+	use crate::clock::testing::{TestClock, TestRng};
 
-	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
-		let mock = MockClock::from_millis(1000);
-		let clock = Clock::Mock(mock.clone());
-		let rng = Rng::seeded(42);
-		(mock, clock, rng)
+	fn test_clock_and_rng() -> (TestClock, TestClock, TestRng) {
+		let clock = TestClock::from_millis(1000);
+		(clock.clone(), clock, TestRng)
 	}
 
 	#[test]

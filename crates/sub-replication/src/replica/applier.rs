@@ -6,9 +6,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use reifydb_catalog::change::apply_system_change;
 use reifydb_core::{common::CommitVersion, interface::cdc::SystemChange};
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::{Transaction, replica::ReplicaTransaction};
-use reifydb_value::Result;
+use reifydb_value::{Result, reifydb_assertions};
 use tracing::debug;
 
 use crate::{

@@ -18,11 +18,12 @@ use reifydb_core::{
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 };
-use reifydb_runtime::{context::clock::Clock, reifydb_assertions};
+use reifydb_runtime::context::clock::Clock;
 use reifydb_value::{
 	Result,
 	error::Diagnostic,
 	params::Params,
+	reifydb_assertions,
 	value::{datetime::DateTime, identity::IdentityId},
 };
 use tracing::instrument;

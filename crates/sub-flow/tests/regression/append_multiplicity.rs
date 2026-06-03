@@ -22,12 +22,10 @@
 //     - which isolates the defect to the nested case with a deferred upstream.
 // Root-causing the exact mechanism is the follow-up fix, not this change.
 
-use std::{
-	thread,
-	time::{Duration, Instant},
-};
+use std::{thread, time::Instant};
 
 use reifydb::{Database, Params, WithSubsystem, embedded};
+use reifydb_value::value::duration::Duration;
 
 fn setup() -> Database {
 	embedded::memory().with_flow(|c| c).build().expect("build memory db with flow")
@@ -49,13 +47,13 @@ fn row_count(db: &Database, rql: &str) -> usize {
 // Poll a deferred view until it holds `want` rows or the deadline passes, then return whatever it last
 // held so the caller's assertion reports the actual (possibly halved) count rather than hanging.
 fn await_row_count(db: &Database, rql: &str, want: usize) -> usize {
-	let deadline = Instant::now() + Duration::from_secs(10);
+	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
 	loop {
 		let got = row_count(db, rql);
 		if got >= want || Instant::now() >= deadline {
 			return got;
 		}
-		thread::sleep(Duration::from_millis(20));
+		thread::sleep(Duration::from_milliseconds(20).unwrap().to_std());
 	}
 }
 

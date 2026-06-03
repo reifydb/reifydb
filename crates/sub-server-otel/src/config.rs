@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
+use reifydb_value::value::duration::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExporterType {
@@ -35,9 +35,9 @@ impl OtelConfigurator {
 			endpoint: "http://localhost:4317".to_string(),
 			sample_ratio: 1.0,
 			max_export_batch_size: 512,
-			scheduled_delay: Duration::from_millis(5000),
+			scheduled_delay: Duration::from_milliseconds(5000).unwrap(),
 			max_queue_size: 2048,
-			export_timeout: Duration::from_secs(30),
+			export_timeout: Duration::from_seconds(30).unwrap(),
 		}
 	}
 

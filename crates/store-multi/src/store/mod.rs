@@ -5,7 +5,6 @@ use std::{
 	mem,
 	ops::Deref,
 	sync::{Arc, OnceLock},
-	time::Duration,
 };
 
 use reifydb_core::{encoded::key::EncodedKey, event::EventBus};
@@ -18,6 +17,7 @@ use reifydb_runtime::{
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
+use reifydb_value::value::duration::Duration;
 use tracing::instrument;
 
 use crate::{
@@ -191,7 +191,7 @@ impl StandardMultiStore {
 			return;
 		}
 
-		waiter.wait_timeout(Duration::from_secs(60));
+		waiter.wait_timeout(Duration::from_seconds(60).unwrap());
 	}
 
 	pub fn flush_all_blocking(&self) {
@@ -212,7 +212,7 @@ impl StandardMultiStore {
 			return;
 		}
 
-		waiter.wait_timeout(Duration::from_secs(60));
+		waiter.wait_timeout(Duration::from_seconds(60).unwrap());
 	}
 }
 

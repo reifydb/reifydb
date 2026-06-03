@@ -76,7 +76,11 @@ fn per_domain_current_and_snapshots_roundtrip() {
 	let before = test_engine.query("from system::metrics::runtime::watermarks::snapshots");
 	assert_eq!(TestEngine::row_count(&before), 0, "snapshots must be empty before the first sample");
 
-	let actor = RuntimeSamplerActor::new(collectors, engine.clone(), std::time::Duration::from_secs(5));
+	let actor = RuntimeSamplerActor::new(
+		collectors,
+		engine.clone(),
+		reifydb_value::value::duration::Duration::from_seconds(5).unwrap(),
+	);
 
 	actor.sample(DateTime::from_timestamp_millis(1_000).expect("valid timestamp"));
 	let wm_after_one =

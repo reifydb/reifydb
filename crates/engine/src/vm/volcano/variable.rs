@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_rql::expression::VariableExpression;
-use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::reifydb_assertions;
 
 use crate::{
 	Result,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use reifydb_core::{
 	encoded::shape::RowShape,
@@ -23,7 +23,7 @@ use reifydb_store_multi::{
 use reifydb_transaction::single::SingleTransaction;
 use reifydb_value::{
 	params::Params,
-	value::{identity::IdentityId, value_type::ValueType},
+	value::{duration::Duration, identity::IdentityId, value_type::ValueType},
 };
 use tracing::debug;
 
@@ -125,8 +125,11 @@ pub(crate) fn apply_migrations(engine: &StandardEngine, migrations: &[MigrationS
 	}
 
 	debug!("Running MIGRATE to apply pending migrations");
-	let strategy =
-		RetryStrategy::with_jittered_backoff(30, Duration::from_millis(10), Duration::from_millis(2_000));
+	let strategy = RetryStrategy::with_jittered_backoff(
+		30,
+		Duration::from_milliseconds(10).unwrap(),
+		Duration::from_milliseconds(2_000).unwrap(),
+	);
 	let rng = engine.rng();
 	let result =
 		strategy.execute(rng, "MIGRATE;", || engine.admin_as(IdentityId::root(), "MIGRATE;", Params::None));

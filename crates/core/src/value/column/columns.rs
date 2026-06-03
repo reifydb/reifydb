@@ -8,10 +8,10 @@ use std::{
 };
 
 use indexmap::IndexMap;
-use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{
 	Result,
 	fragment::Fragment,
+	reifydb_assertions,
 	util::cowvec::CowVec,
 	value::{Value, constraint::Constraint, datetime::DateTime, row_number::RowNumber, value_type::ValueType},
 };

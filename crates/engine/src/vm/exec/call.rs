@@ -21,12 +21,12 @@ use reifydb_rql::{
 	instruction::{CompiledClosure, CompiledFunction, Instruction, ScopeType},
 	nodes::FunctionParameter,
 };
-use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::{Error as ReifyError, ProcedureErrorKind, TypeError},
 	fragment::Fragment,
 	params::Params,
+	reifydb_assertions,
 	value::{Value, constraint::TypeConstraint, frame::frame::Frame, row_number::RowNumber, value_type::ValueType},
 };
 

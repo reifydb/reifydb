@@ -9,12 +9,13 @@ use std::{
 };
 
 use ::uuid::{Builder, Uuid as StdUuid};
-use reifydb_runtime::{
-	context::{clock::Clock, rng::Rng},
-	reifydb_assertions,
-};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+use crate::{
+	clock::{ClockNow, RandomBytes},
+	reifydb_assertions,
+};
 
 pub mod parse;
 
@@ -86,7 +87,7 @@ impl Default for Uuid7 {
 }
 
 impl Uuid7 {
-	pub fn generate(clock: &Clock, rng: &Rng) -> Self {
+	pub fn generate<C: ClockNow, R: RandomBytes>(clock: &C, rng: &R) -> Self {
 		let millis = clock.now_millis();
 		let random_bytes = rng.bytes_10();
 		Uuid7(Builder::from_unix_timestamp_millis(millis, &random_bytes).into_uuid())
@@ -137,15 +138,12 @@ impl Display for Uuid7 {
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
 pub mod tests {
-	use reifydb_runtime::context::clock::MockClock;
-
 	use super::*;
+	use crate::clock::testing::{TestClock, TestRng};
 
-	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
-		let mock = MockClock::from_millis(1000);
-		let clock = Clock::Mock(mock.clone());
-		let rng = Rng::seeded(42);
-		(mock, clock, rng)
+	fn test_clock_and_rng() -> (TestClock, TestClock, TestRng) {
+		let clock = TestClock::from_millis(1000);
+		(clock.clone(), clock, TestRng)
 	}
 
 	#[test]

@@ -5,9 +5,9 @@ use reifydb_abi::flow::diff::DiffType;
 use reifydb_core::{
 	encoded::shape::SHAPE_HEADER_SIZE, interface::change::Change, row::Row, value::column::columns::Columns,
 };
-use reifydb_runtime::reifydb_assertions;
-use reifydb_value::value::{
-	Value, date::Date, datetime::DateTime, duration::Duration, time::Time, value_type::ValueType,
+use reifydb_value::{
+	reifydb_assertions,
+	value::{Value, date::Date, datetime::DateTime, duration::Duration, time::Time, value_type::ValueType},
 };
 
 use super::{

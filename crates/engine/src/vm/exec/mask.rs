@@ -4,9 +4,9 @@
 use std::collections::HashMap;
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
+	reifydb_assertions,
 	util::bitvec::BitVec,
 	value::Value,
 };

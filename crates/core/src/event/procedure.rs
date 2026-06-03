@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::time;
+use reifydb_value::value::duration::Duration;
 define_event! {
 	pub struct ProcedureCreatedEvent {
 		pub procedure_name: String,
@@ -12,6 +12,6 @@ define_event! {
 define_event! {
 	pub struct ProcedureExecutedEvent {
 		pub procedure_name: String,
-		pub duration: time::Duration,
+		pub duration: Duration,
 	}
 }

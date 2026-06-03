@@ -9,7 +9,7 @@ use std::{
 };
 
 use rand::{RngExt as _, SeedableRng, rng, rngs::SmallRng};
-use reifydb_runtime::reifydb_assertions;
+use reifydb_value::reifydb_assertions;
 
 use crate::{
 	log::{Entry, Index, Log},

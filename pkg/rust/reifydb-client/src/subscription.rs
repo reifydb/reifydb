@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
+use reifydb_value::value::duration::Duration;
 
 #[derive(Debug, Clone)]
 pub struct HydrationConfig {
@@ -47,10 +47,10 @@ pub fn build_subscription_rql(body: &str, config: &SubscriptionConfig) -> String
 		None => format!("hydration: {{ enabled: {} }}", h.enabled),
 	};
 	if let Some(throttle) = config.throttle {
-		opts.push_str(&format!(", throttle: \"{}ms\"", throttle.as_millis()));
+		opts.push_str(&format!(", throttle: \"{}ms\"", throttle.to_std().as_millis()));
 	}
 	if let Some(linger) = config.linger {
-		opts.push_str(&format!(", linger: \"{}ms\"", linger.as_millis()));
+		opts.push_str(&format!(", linger: \"{}ms\"", linger.to_std().as_millis()));
 	}
 	let with_clause = format!(" WITH {{ {} }}", opts);
 	let mut out = String::with_capacity(body.len() + with_clause.len() + 32);
@@ -111,7 +111,7 @@ mod tests {
 				max_rows: None,
 			},
 			throttle: None,
-			linger: Some(Duration::from_millis(250)),
+			linger: Some(Duration::from_milliseconds(250).unwrap()),
 		};
 		let s = build_subscription_rql("from a::b", &cfg);
 		assert_eq!(

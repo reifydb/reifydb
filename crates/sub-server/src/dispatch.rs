@@ -13,7 +13,7 @@ mod native {
 		metric::ExecutionMetrics,
 	};
 	use reifydb_runtime::{actor::reply::reply_channel, context::clock::Instant};
-	use reifydb_value::value::{duration::Duration as ReifyDuration, frame::frame::Frame};
+	use reifydb_value::value::{duration::Duration, frame::frame::Frame};
 	use tokio::time::timeout;
 	use tracing::instrument;
 
@@ -85,7 +85,7 @@ mod native {
 		let msg = build_server_message(ctx.operation, ctx.identity, ctx.rql.clone(), ctx.params.clone(), reply);
 		let (actor_ref, _handle) = state.spawn_server_actor();
 		actor_ref.send(msg).ok().ok_or(ExecuteError::Disconnected)?;
-		timeout(state.query_timeout(), receiver.recv())
+		timeout(state.query_timeout().to_std(), receiver.recv())
 			.await
 			.map_err(|_| ExecuteError::Timeout)?
 			.map_err(|_| ExecuteError::Disconnected)
@@ -104,7 +104,7 @@ mod native {
 		};
 		let (actor_ref, _handle) = state.spawn_server_actor();
 		actor_ref.send(msg).ok().ok_or(ExecuteError::Disconnected)?;
-		timeout(state.query_timeout(), receiver.recv())
+		timeout(state.query_timeout().to_std(), receiver.recv())
 			.await
 			.map_err(|_| ExecuteError::Timeout)?
 			.map_err(|_| ExecuteError::Disconnected)
@@ -132,9 +132,9 @@ mod native {
 				});
 			}
 		};
-		metrics.total = ReifyDuration::from_nanoseconds(wall_duration.as_nanos() as i64).unwrap_or_default();
+		metrics.total = Duration::from_nanoseconds(wall_duration.as_nanos() as i64).unwrap_or_default();
 		metrics.compute =
-			ReifyDuration::from_nanoseconds(compute_duration.as_nanos() as i64).unwrap_or_default();
+			Duration::from_nanoseconds(compute_duration.to_std().as_nanos() as i64).unwrap_or_default();
 		Ok((frames, metrics))
 	}
 
@@ -160,9 +160,9 @@ mod native {
 				});
 			}
 		};
-		metrics.total = ReifyDuration::from_nanoseconds(wall_duration.as_nanos() as i64).unwrap_or_default();
+		metrics.total = Duration::from_nanoseconds(wall_duration.as_nanos() as i64).unwrap_or_default();
 		metrics.compute =
-			ReifyDuration::from_nanoseconds(compute_duration.as_nanos() as i64).unwrap_or_default();
+			Duration::from_nanoseconds(compute_duration.to_std().as_nanos() as i64).unwrap_or_default();
 		Ok((frames, metrics))
 	}
 }

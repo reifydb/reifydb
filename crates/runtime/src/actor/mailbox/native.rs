@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
+#![allow(clippy::disallowed_types)]
+
 use std::{fmt, sync, sync::Arc, time::Duration};
 
 use crossbeam_channel::{

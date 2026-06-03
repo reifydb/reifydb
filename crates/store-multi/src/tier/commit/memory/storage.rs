@@ -9,8 +9,7 @@ use std::{
 };
 
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
-use reifydb_runtime::reifydb_assertions;
-use reifydb_value::{Result, util::cowvec::CowVec};
+use reifydb_value::{Result, reifydb_assertions, util::cowvec::CowVec};
 use tracing::{Span, field, instrument};
 
 use crate::{

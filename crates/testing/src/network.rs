@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	net::SocketAddr,
-	time::{Duration, Instant},
-};
+use std::{net::SocketAddr, time::Instant};
+
+use reifydb_value::value::duration::Duration;
 
 pub fn busy_wait(f: impl Fn() -> Option<SocketAddr>) -> SocketAddr {
 	let mut socket_addr: Option<SocketAddr>;
@@ -16,7 +15,7 @@ pub fn busy_wait(f: impl Fn() -> Option<SocketAddr>) -> SocketAddr {
 			break;
 		}
 
-		if start.elapsed() > Duration::from_millis(500) {
+		if start.elapsed() > Duration::from_milliseconds(500).unwrap().to_std() {
 			panic!("failed to connect within 500ms")
 		}
 	}

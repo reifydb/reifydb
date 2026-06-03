@@ -10,10 +10,21 @@ mod wasm;
 
 #[cfg(any(reifydb_target = "native", reifydb_target = "dst"))]
 pub use native::{Clock, Instant, MockClock};
+use reifydb_value::clock::ClockNow;
 #[cfg(reifydb_target = "wasi")]
 pub use wasi::{Clock, Instant, MockClock};
 #[cfg(reifydb_target = "wasm")]
 pub use wasm::{Clock, Instant, MockClock};
+
+impl ClockNow for Clock {
+	fn now_nanos(&self) -> u64 {
+		self.now_nanos()
+	}
+
+	fn now_millis(&self) -> u64 {
+		self.now_millis()
+	}
+}
 
 #[cfg(test)]
 mod tests {

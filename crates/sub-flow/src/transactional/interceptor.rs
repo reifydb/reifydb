@@ -7,14 +7,14 @@ use rayon::scope;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::{reifydb_assertions, sync::mutex::Mutex};
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_transaction::{
 	change::OperationType,
 	interceptor::transaction::{PostCommitContext, PostCommitInterceptor, PreCommitContext, PreCommitInterceptor},
 	multi::transaction::read::MultiReadTransaction,
 	transaction::Transaction,
 };
-use reifydb_value::{Result, value::identity::IdentityId};
+use reifydb_value::{Result, reifydb_assertions, value::identity::IdentityId};
 use tracing::warn;
 
 use crate::{

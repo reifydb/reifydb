@@ -171,10 +171,9 @@ pub mod tests {
 		iter,
 		sync::{Arc, Barrier},
 		thread,
-		time::Duration,
 	};
 
-	use reifydb_value::util::cowvec::CowVec;
+	use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
 
 	use super::*;
 
@@ -492,7 +491,7 @@ pub mod tests {
 			barrier1.wait();
 
 			// Hold the transaction (and locks) for a bit
-			thread::sleep(Duration::from_millis(100));
+			thread::sleep(Duration::from_milliseconds(100).unwrap().to_std());
 
 			tx.commit().unwrap();
 		});
@@ -506,7 +505,7 @@ pub mod tests {
 			barrier2.wait();
 
 			// Small delay to ensure thread 1 is holding the lock
-			thread::sleep(Duration::from_millis(10));
+			thread::sleep(Duration::from_milliseconds(10).unwrap().to_std());
 
 			// This should block until thread 1 commits
 			let mut tx = svl2.begin_command(vec![&key2]).unwrap();
@@ -550,7 +549,7 @@ pub mod tests {
 			barrier1.wait();
 
 			// Hold the transaction for a bit
-			thread::sleep(Duration::from_millis(100));
+			thread::sleep(Duration::from_milliseconds(100).unwrap().to_std());
 
 			tx.commit().unwrap();
 		});
@@ -564,7 +563,7 @@ pub mod tests {
 			barrier2.wait();
 
 			// Small delay to ensure thread 1 is holding the lock
-			thread::sleep(Duration::from_millis(10));
+			thread::sleep(Duration::from_milliseconds(10).unwrap().to_std());
 
 			// This should block until thread 1 commits
 			let mut tx = svl2.begin_query(vec![&key2]).unwrap();
@@ -612,7 +611,7 @@ pub mod tests {
 				assert_eq!(result.unwrap().row, make_value("shared"));
 
 				// Hold for a bit to ensure overlap
-				thread::sleep(Duration::from_millis(50));
+				thread::sleep(Duration::from_milliseconds(50).unwrap().to_std());
 			});
 			handles.push(handle);
 		}
@@ -638,7 +637,7 @@ pub mod tests {
 			barrier1.wait();
 			let mut tx = svl1.begin_command(vec![&key1_clone, &key2_clone]).unwrap();
 			tx.set(&key1_clone, make_value("from_thread1")).unwrap();
-			thread::sleep(Duration::from_millis(10)); // Hold locks briefly
+			thread::sleep(Duration::from_milliseconds(10).unwrap().to_std()); // Hold locks briefly
 			tx.commit().unwrap();
 		});
 
@@ -652,7 +651,7 @@ pub mod tests {
 			barrier2.wait();
 			let mut tx = svl2.begin_command(vec![&key2_clone2, &key1_clone2]).unwrap();
 			tx.set(&key2_clone2, make_value("from_thread2")).unwrap();
-			thread::sleep(Duration::from_millis(10)); // Hold locks briefly
+			thread::sleep(Duration::from_milliseconds(10).unwrap().to_std()); // Hold locks briefly
 			tx.commit().unwrap();
 		});
 
@@ -685,7 +684,7 @@ pub mod tests {
 			barrier1.wait();
 			let mut tx = svl1.begin_command(vec![&k1_1, &k2_1]).unwrap();
 			tx.set(&k1_1, make_value("t1")).unwrap();
-			thread::sleep(Duration::from_millis(10));
+			thread::sleep(Duration::from_milliseconds(10).unwrap().to_std());
 			tx.commit().unwrap();
 		});
 
@@ -698,7 +697,7 @@ pub mod tests {
 			barrier2.wait();
 			let mut tx = svl2.begin_command(vec![&k2_2, &k3_2]).unwrap();
 			tx.set(&k2_2, make_value("t2")).unwrap();
-			thread::sleep(Duration::from_millis(10));
+			thread::sleep(Duration::from_milliseconds(10).unwrap().to_std());
 			tx.commit().unwrap();
 		});
 
@@ -710,7 +709,7 @@ pub mod tests {
 			barrier3.wait();
 			let mut tx = svl3.begin_command(vec![&key3, &key1]).unwrap();
 			tx.set(&key3, make_value("t3")).unwrap();
-			thread::sleep(Duration::from_millis(10));
+			thread::sleep(Duration::from_milliseconds(10).unwrap().to_std());
 			tx.commit().unwrap();
 		});
 
@@ -737,7 +736,7 @@ pub mod tests {
 		handle1.join().unwrap();
 
 		// Small delay to ensure drop completes
-		thread::sleep(Duration::from_millis(10));
+		thread::sleep(Duration::from_milliseconds(10).unwrap().to_std());
 
 		// Thread 2: Should be able to acquire the lock immediately
 		// If locks weren't released on drop, this would block indefinitely

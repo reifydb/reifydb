@@ -4,9 +4,9 @@
 use std::{
 	collections::HashMap,
 	sync::mpsc::{SyncSender, sync_channel},
-	time::Duration,
 };
 
+use reifydb_value::value::duration::Duration;
 use tokio::{
 	select,
 	sync::{mpsc, watch},
@@ -43,8 +43,8 @@ pub struct DriverConfig {
 impl Default for DriverConfig {
 	fn default() -> Self {
 		Self {
-			tick_interval: Duration::from_millis(100),
-			recv_interval: Duration::from_millis(10),
+			tick_interval: Duration::from_milliseconds(100).unwrap(),
+			recv_interval: Duration::from_milliseconds(10).unwrap(),
 			proposal_channel_capacity: 256,
 		}
 	}
@@ -133,8 +133,8 @@ impl<T: Transport> RaftDriver<T> {
 	}
 
 	pub async fn run(mut self) {
-		let mut tick_interval = interval(self.config.tick_interval);
-		let mut recv_interval = interval(self.config.recv_interval);
+		let mut tick_interval = interval(self.config.tick_interval.to_std());
+		let mut recv_interval = interval(self.config.recv_interval.to_std());
 
 		loop {
 			select! {

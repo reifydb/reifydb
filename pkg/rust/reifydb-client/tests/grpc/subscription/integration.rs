@@ -8,10 +8,11 @@ use std::{
 		Arc,
 		atomic::{AtomicUsize, Ordering},
 	},
-	time::{Duration, SystemTime, UNIX_EPOCH},
+	time::{SystemTime, UNIX_EPOCH},
 };
 
 use reifydb_client::{ChangeKind, GrpcClient, SubscriptionConfig, Value, WireFormat};
+use reifydb_value::value::duration::Duration;
 use tokio::{runtime::Runtime, time::sleep};
 
 use crate::{
@@ -489,7 +490,7 @@ fn test_lifecycle_no_callbacks_after_drop() {
 		ctx.insert(&table, "{ id: 1, value: 100 }").await?;
 
 		// Small wait to verify no callback fires
-		sleep(Duration::from_millis(100)).await;
+		sleep(Duration::from_milliseconds(100).unwrap().to_std()).await;
 
 		// Create new subscription to verify data was inserted
 		let mut sub2 = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
@@ -521,7 +522,7 @@ fn test_edge_empty_result_sets() {
 		ctx.insert(&table, "{ id: 1, value: 100 }").await?;
 
 		// Small wait to verify no callback fires for non-matching data
-		sleep(Duration::from_millis(100)).await;
+		sleep(Duration::from_milliseconds(100).unwrap().to_std()).await;
 
 		let change = recv_with_timeout(&mut sub, 500).await;
 		assert!(change.is_none(), "Should not trigger callback for non-matching data");
@@ -596,7 +597,7 @@ fn test_edge_rapid_successive_changes() {
 
 		// Collect all changes with timeout
 		let mut total_rows = 0usize;
-		let deadline = tokio::time::Instant::now() + Duration::from_millis(15000);
+		let deadline = tokio::time::Instant::now() + Duration::from_milliseconds(15000).unwrap().to_std();
 		while total_rows < 10 {
 			let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
 			if remaining.is_zero() {
@@ -741,7 +742,7 @@ fn test_stress_many_concurrent_clients() {
 			handles.push((client_idx, handle));
 		}
 
-		sleep(Duration::from_millis(500)).await;
+		sleep(Duration::from_milliseconds(500).unwrap().to_std()).await;
 
 		let mut trigger_client =
 			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
@@ -850,7 +851,7 @@ fn test_stress_client_disconnect_without_unsubscribe() {
 			}
 		}
 
-		sleep(Duration::from_millis(500)).await;
+		sleep(Duration::from_milliseconds(500).unwrap().to_std()).await;
 
 		let mut new_client =
 			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
@@ -928,7 +929,10 @@ fn test_stress_concurrent_connect_disconnect() {
 							.await
 						{
 							Ok(sub) => {
-								sleep(Duration::from_millis(10)).await;
+								sleep(Duration::from_milliseconds(10)
+									.unwrap()
+									.to_std())
+								.await;
 								drop(sub);
 								drop(client);
 								counter.fetch_add(1, Ordering::SeqCst);
@@ -939,7 +943,10 @@ fn test_stress_concurrent_connect_disconnect() {
 							{
 								retries += 1;
 								drop(client);
-								sleep(Duration::from_millis(10 * retries as u64)).await;
+								sleep(Duration::from_milliseconds(10 * retries as i64)
+									.unwrap()
+									.to_std())
+								.await;
 								continue;
 							}
 							Err(e) => {

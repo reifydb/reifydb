@@ -7,11 +7,10 @@ use std::{
 	str,
 };
 
-use reifydb_runtime::reifydb_assertions;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-	Result,
+	Result, reifydb_assertions,
 	storage::{Cow, Storage},
 	value::{Value, container::varlen::VarlenContainer, value_type::ValueType},
 };

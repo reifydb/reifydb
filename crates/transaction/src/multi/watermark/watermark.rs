@@ -8,7 +8,6 @@ use std::{
 		Arc,
 		atomic::{AtomicU64, Ordering},
 	},
-	time::Duration,
 };
 
 use reifydb_core::{actors::watermark::WatermarkMessage, common::CommitVersion};
@@ -16,6 +15,7 @@ use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSpawner},
 	sync::waiter::WaiterHandle,
 };
+use reifydb_value::value::duration::Duration;
 use tracing::instrument;
 
 use super::actor::{WatermarkActor, WatermarkShared};
@@ -83,7 +83,7 @@ impl WaterMark {
 	}
 
 	pub fn wait_for_mark(&self, index: u64) {
-		self.wait_for_mark_timeout(CommitVersion(index), Duration::from_secs(30));
+		self.wait_for_mark_timeout(CommitVersion(index), Duration::from_seconds(30).unwrap());
 	}
 
 	pub fn register_mark_waiter(&self, index: CommitVersion, waiter: Arc<WaiterHandle>) -> bool {
@@ -117,7 +117,7 @@ impl WaterMark {
 
 #[cfg(test)]
 pub mod tests {
-	use std::{sync::atomic::AtomicUsize, thread, thread::sleep, time::Duration};
+	use std::{sync::atomic::AtomicUsize, thread, thread::sleep};
 
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 
@@ -196,14 +196,14 @@ pub mod tests {
 			handle.join().unwrap();
 		}
 
-		sleep(Duration::from_millis(100));
+		sleep(Duration::from_milliseconds(100).unwrap().to_std());
 
 		// Verify the watermark progressed
 		let final_done = watermark.done_until();
 		assert!(final_done.0 > 0, "Watermark should have progressed");
 
 		system.shutdown();
-		sleep(Duration::from_millis(150)); // Wait for actor to stop
+		sleep(Duration::from_milliseconds(150).unwrap().to_std()); // Wait for actor to stop
 	}
 
 	#[test]
@@ -225,7 +225,8 @@ pub mod tests {
 			let counter = success_count.clone();
 			let handle = thread::spawn(move || {
 				// Use timeout to avoid hanging if something goes wrong
-				if wm.wait_for_mark_timeout(CommitVersion(version), Duration::from_secs(5)) {
+				if wm.wait_for_mark_timeout(CommitVersion(version), Duration::from_seconds(5).unwrap())
+				{
 					counter.fetch_add(1, Ordering::Relaxed);
 				}
 			});
@@ -233,7 +234,7 @@ pub mod tests {
 		}
 
 		// Give tasks time to start waiting
-		sleep(Duration::from_millis(50));
+		sleep(Duration::from_milliseconds(50).unwrap().to_std());
 
 		// Complete the versions
 		for i in 1..=10 {
@@ -248,7 +249,7 @@ pub mod tests {
 		assert_eq!(success_count.load(Ordering::Relaxed), 10);
 
 		system.shutdown();
-		sleep(Duration::from_millis(150)); // Wait for actor to stop
+		sleep(Duration::from_milliseconds(150).unwrap().to_std()); // Wait for actor to stop
 	}
 
 	#[test]
@@ -260,7 +261,8 @@ pub mod tests {
 				watermark.mark_finished(CommitVersion(i));
 			}
 
-			let reached = watermark.wait_for_mark_timeout(CommitVersion(100), Duration::from_secs(5));
+			let reached =
+				watermark.wait_for_mark_timeout(CommitVersion(100), Duration::from_seconds(5).unwrap());
 			assert!(reached, "Should have processed all 100 versions");
 			let done_until = watermark.done_until();
 
@@ -285,7 +287,8 @@ pub mod tests {
 			// Wait with short timeout
 			let clock = Clock::Real;
 			let start = clock.instant();
-			let result = watermark.wait_for_mark_timeout(CommitVersion(1), Duration::from_millis(100));
+			let result = watermark
+				.wait_for_mark_timeout(CommitVersion(1), Duration::from_milliseconds(100).unwrap());
 			let elapsed = start.elapsed();
 
 			// Should timeout and return false
@@ -311,7 +314,8 @@ pub mod tests {
 			watermark.mark_finished(CommitVersion(2));
 			watermark.mark_finished(CommitVersion(3));
 
-			let reached = watermark.wait_for_mark_timeout(CommitVersion(3), Duration::from_secs(5));
+			let reached =
+				watermark.wait_for_mark_timeout(CommitVersion(3), Duration::from_seconds(5).unwrap());
 			assert!(reached, "Timed out waiting for watermark to advance to 3");
 			let done = watermark.done_until();
 			assert_eq!(done.0, 3, "Watermark should advance to 3, got {}", done.0);
@@ -326,7 +330,7 @@ pub mod tests {
 			watermark.mark_finished(CommitVersion(1));
 
 			// Wait a bit for processing
-			sleep(Duration::from_millis(20));
+			sleep(Duration::from_milliseconds(20).unwrap().to_std());
 
 			// Watermark should NOT advance yet (begin hasn't arrived)
 			assert_eq!(watermark.done_until().0, 0);
@@ -335,7 +339,7 @@ pub mod tests {
 			watermark.register_in_flight(CommitVersion(1));
 
 			// Wait for processing
-			sleep(Duration::from_millis(50));
+			sleep(Duration::from_milliseconds(50).unwrap().to_std());
 
 			// Now watermark should advance
 			let done = watermark.done_until();
@@ -355,7 +359,8 @@ pub mod tests {
 			watermark.register_in_flight(CommitVersion(3));
 			watermark.mark_finished(CommitVersion(2));
 
-			let reached = watermark.wait_for_mark_timeout(CommitVersion(3), Duration::from_secs(5));
+			let reached =
+				watermark.wait_for_mark_timeout(CommitVersion(3), Duration::from_seconds(5).unwrap());
 			assert!(reached, "Timed out waiting for watermark to advance to 3");
 			let done = watermark.done_until();
 			assert_eq!(done.0, 3, "Watermark should advance to 3, got {}", done.0);
@@ -378,11 +383,11 @@ pub mod tests {
 			}),
 		);
 
-		sleep(Duration::from_millis(20));
+		sleep(Duration::from_milliseconds(20).unwrap().to_std());
 		assert_eq!(fired.load(Ordering::SeqCst), 0, "callback must not fire before the mark is reached");
 
 		watermark.mark_finished(CommitVersion(1));
-		sleep(Duration::from_millis(50));
+		sleep(Duration::from_milliseconds(50).unwrap().to_std());
 		assert_eq!(fired.load(Ordering::SeqCst), 1, "callback fires once when the mark advances");
 
 		let f2 = fired.clone();
@@ -392,7 +397,7 @@ pub mod tests {
 				f2.fetch_add(1, Ordering::SeqCst);
 			}),
 		);
-		sleep(Duration::from_millis(20));
+		sleep(Duration::from_milliseconds(20).unwrap().to_std());
 		assert_eq!(
 			fired.load(Ordering::SeqCst),
 			2,
@@ -400,7 +405,7 @@ pub mod tests {
 		);
 
 		system.shutdown();
-		sleep(Duration::from_millis(150));
+		sleep(Duration::from_milliseconds(150).unwrap().to_std());
 	}
 
 	fn init_and_close<F>(f: F)
@@ -412,8 +417,8 @@ pub mod tests {
 
 		f(watermark);
 
-		sleep(Duration::from_millis(10));
+		sleep(Duration::from_milliseconds(10).unwrap().to_std());
 		system.shutdown();
-		sleep(Duration::from_millis(150)); // Wait for actor to stop
+		sleep(Duration::from_milliseconds(150).unwrap().to_std()); // Wait for actor to stop
 	}
 }

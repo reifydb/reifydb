@@ -12,9 +12,8 @@ use reifydb_rql::{
 	bump::BumpBox,
 	expression::{Expression, ExpressionCompiler},
 };
-use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, error::Error, value::identity::IdentityId};
+use reifydb_value::{Result, error::Error, reifydb_assertions, value::identity::IdentityId};
 
 use crate::{error::PolicyError, evaluate::PolicyEvaluator, resolve_write_policies};
 

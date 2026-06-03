@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	sync::{
-		Arc,
-		atomic::{AtomicBool, Ordering},
-	},
-	time::Duration,
+use std::sync::{
+	Arc,
+	atomic::{AtomicBool, Ordering},
 };
+
+use reifydb_value::value::duration::Duration;
 
 #[cfg(reifydb_target = "dst")]
 use crate::actor::timers::dst as dst_timers;
@@ -87,7 +86,12 @@ impl<M: Send + 'static> Context<M> {
 
 impl<M: Send + 'static> Context<M> {
 	#[cfg(not(reifydb_single_threaded))]
-	pub fn schedule_once<F: FnOnce() -> M + Send + 'static>(&self, delay: Duration, factory: F) -> TimerHandle {
+	pub fn schedule_once<F: FnOnce() -> M + Send + 'static>(
+		&self,
+		delay: impl Into<Duration>,
+		factory: F,
+	) -> TimerHandle {
+		let delay = delay.into().to_std();
 		let actor_ref = self.self_ref.clone();
 		self.system.scheduler().schedule_once(delay, move || {
 			let _ = actor_ref.send(factory());
@@ -95,12 +99,22 @@ impl<M: Send + 'static> Context<M> {
 	}
 
 	#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
-	pub fn schedule_once<F: FnOnce() -> M + Send + 'static>(&self, delay: Duration, factory: F) -> TimerHandle {
+	pub fn schedule_once<F: FnOnce() -> M + Send + 'static>(
+		&self,
+		delay: impl Into<Duration>,
+		factory: F,
+	) -> TimerHandle {
+		let delay = delay.into().to_std();
 		schedule_once_fn(self.self_ref.clone(), delay, factory)
 	}
 
 	#[cfg(reifydb_target = "dst")]
-	pub fn schedule_once<F: FnOnce() -> M + Send + 'static>(&self, delay: Duration, factory: F) -> TimerHandle {
+	pub fn schedule_once<F: FnOnce() -> M + Send + 'static>(
+		&self,
+		delay: impl Into<Duration>,
+		factory: F,
+	) -> TimerHandle {
+		let delay = delay.into().to_std();
 		dst_timers::schedule_once_fn(
 			self.system.timer_heap(),
 			self.system.mock_clock(),
@@ -113,18 +127,21 @@ impl<M: Send + 'static> Context<M> {
 
 impl<M: Send + Sync + Clone + 'static> Context<M> {
 	#[cfg(not(reifydb_single_threaded))]
-	pub fn schedule_repeat(&self, interval: Duration, msg: M) -> TimerHandle {
+	pub fn schedule_repeat(&self, interval: impl Into<Duration>, msg: M) -> TimerHandle {
+		let interval = interval.into().to_std();
 		let actor_ref = self.self_ref.clone();
 		self.system.scheduler().schedule_repeat(interval, move || actor_ref.send(msg.clone()).is_ok())
 	}
 
 	#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
-	pub fn schedule_repeat(&self, interval: Duration, msg: M) -> TimerHandle {
+	pub fn schedule_repeat(&self, interval: impl Into<Duration>, msg: M) -> TimerHandle {
+		let interval = interval.into().to_std();
 		schedule_repeat(self.self_ref.clone(), interval, msg)
 	}
 
 	#[cfg(reifydb_target = "dst")]
-	pub fn schedule_repeat(&self, interval: Duration, msg: M) -> TimerHandle {
+	pub fn schedule_repeat(&self, interval: impl Into<Duration>, msg: M) -> TimerHandle {
+		let interval = interval.into().to_std();
 		dst_timers::schedule_repeat(
 			self.system.timer_heap(),
 			self.system.mock_clock(),
@@ -137,9 +154,10 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 	#[cfg(not(reifydb_single_threaded))]
 	pub fn schedule_repeat_fn<F: Fn() -> M + Send + Sync + 'static>(
 		&self,
-		interval: Duration,
+		interval: impl Into<Duration>,
 		factory: F,
 	) -> TimerHandle {
+		let interval = interval.into().to_std();
 		let actor_ref = self.self_ref.clone();
 		self.system.scheduler().schedule_repeat(interval, move || actor_ref.send(factory()).is_ok())
 	}
@@ -147,18 +165,20 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 	#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
 	pub fn schedule_repeat_fn<F: Fn() -> M + Send + Sync + 'static>(
 		&self,
-		interval: Duration,
+		interval: impl Into<Duration>,
 		factory: F,
 	) -> TimerHandle {
+		let interval = interval.into().to_std();
 		schedule_repeat_fn(self.self_ref.clone(), interval, factory)
 	}
 
 	#[cfg(reifydb_target = "dst")]
 	pub fn schedule_repeat_fn<F: Fn() -> M + Send + Sync + 'static>(
 		&self,
-		interval: Duration,
+		interval: impl Into<Duration>,
 		factory: F,
 	) -> TimerHandle {
+		let interval = interval.into().to_std();
 		dst_timers::schedule_repeat_fn(
 			self.system.timer_heap(),
 			self.system.mock_clock(),
@@ -170,9 +190,10 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 
 	pub fn schedule_tick<F: Fn(u64) -> M + Send + Sync + 'static>(
 		&self,
-		interval: Duration,
+		interval: impl Into<Duration>,
 		factory: F,
 	) -> TimerHandle {
+		let interval = interval.into().to_std();
 		let actor_ref = self.self_ref.clone();
 		let clock = self.system.clock().clone();
 

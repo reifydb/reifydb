@@ -6,9 +6,9 @@ use std::{
 	error, fmt,
 	rc::Rc,
 	sync::{Arc, Mutex, Weak, atomic::AtomicBool},
-	time,
 };
 
+use reifydb_value::value::duration::Duration;
 use tracing::{debug, warn};
 
 use crate::{
@@ -90,7 +90,7 @@ impl ActorSystem {
 		Ok(())
 	}
 
-	pub fn join_timeout(&self, _timeout: time::Duration) -> Result<(), JoinError> {
+	pub fn join_timeout(&self, _timeout: Duration) -> Result<(), JoinError> {
 		Ok(())
 	}
 

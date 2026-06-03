@@ -3,8 +3,7 @@
 
 use std::{f32, ptr};
 
-use reifydb_runtime::reifydb_assertions;
-use reifydb_value::value::value_type::ValueType;
+use reifydb_value::{reifydb_assertions, value::value_type::ValueType};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
 

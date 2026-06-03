@@ -983,6 +983,7 @@ name = "examples"
 version = "0.6.0"
 dependencies = [
  "reifydb",
+ "reifydb-value",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1814,6 +1815,7 @@ dependencies = [
  "rand 0.10.1",
  "reifydb",
  "reifydb-client",
+ "reifydb-value",
  "reqwest 0.13.2",
  "tokio",
 ]
@@ -2375,6 +2377,7 @@ name = "raft-cluster"
 version = "0.6.0"
 dependencies = [
  "reifydb-sub-raft",
+ "reifydb-value",
  "tokio",
 ]
 
@@ -2960,6 +2963,7 @@ dependencies = [
  "rand 0.10.1",
  "rayon",
  "reifydb-build",
+ "reifydb-value",
  "serde",
  "tokio",
  "tracing",
@@ -3478,7 +3482,6 @@ dependencies = [
  "num-traits",
  "postcard",
  "reifydb-build",
- "reifydb-runtime",
  "serde",
  "serde_bytes",
  "serde_json",
@@ -3517,6 +3520,7 @@ version = "0.6.0"
 dependencies = [
  "reifydb-build",
  "reifydb-runtime",
+ "reifydb-value",
  "wasmtime",
  "wasmtime-wasi",
  "wat",

@@ -11,9 +11,10 @@ use reifydb_abi::{
 	data::column::ColumnTypeCode,
 };
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_runtime::{reifydb_assertions, sync::mutex::Mutex};
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{
 	fragment::Fragment,
+	reifydb_assertions,
 	util::{bitvec::BitVec, cowvec::CowVec},
 	value::{
 		Value,

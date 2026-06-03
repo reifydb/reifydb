@@ -6,7 +6,6 @@ use std::{
 	fmt::Write,
 	path::Path,
 	sync::{Arc, Condvar, Mutex},
-	time::Duration,
 };
 
 use reifydb_core::{
@@ -55,7 +54,7 @@ use reifydb_testing::testscript::{
 	command::Command,
 	runner::{self, Runner as TestRunner},
 };
-use reifydb_value::{cow_vec, util::cowvec::CowVec};
+use reifydb_value::{cow_vec, util::cowvec::CowVec, value::duration::Duration};
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/sub-metric/tests/scripts/storage" as metric_memory => test_memory }
@@ -87,7 +86,7 @@ impl StatsWaiter {
 
 	fn wait_until(&self, version: CommitVersion, timeout: Duration) -> bool {
 		let guard = self.inner.processed_up_to.lock().unwrap();
-		let result = self.inner.condvar.wait_timeout_while(guard, timeout, |v| *v < version).unwrap();
+		let result = self.inner.condvar.wait_timeout_while(guard, timeout.to_std(), |v| *v < version).unwrap();
 		!result.1.timed_out()
 	}
 }
@@ -144,7 +143,7 @@ impl Runner {
 			metrics_storage.clone(),
 			multi_store.clone(),
 		)
-		.with_flush_interval(Duration::from_millis(10));
+		.with_flush_interval(Duration::from_milliseconds(10).unwrap());
 
 		let handle = spawner.spawn_system("metric-collector", actor);
 		let actor_ref = handle.actor_ref().clone();
@@ -319,7 +318,7 @@ impl TestRunner for Runner {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
-				if !self.stats_waiter.wait_until(self.version, Duration::from_secs(5)) {
+				if !self.stats_waiter.wait_until(self.version, Duration::from_seconds(5).unwrap()) {
 					return Err("timeout waiting for stats".into());
 				}
 
@@ -351,7 +350,7 @@ impl TestRunner for Runner {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
-				if !self.stats_waiter.wait_until(self.version, Duration::from_secs(5)) {
+				if !self.stats_waiter.wait_until(self.version, Duration::from_seconds(5).unwrap()) {
 					return Err("timeout waiting for stats".into());
 				}
 
@@ -370,7 +369,7 @@ impl TestRunner for Runner {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
-				if !self.stats_waiter.wait_until(self.version, Duration::from_secs(5)) {
+				if !self.stats_waiter.wait_until(self.version, Duration::from_seconds(5).unwrap()) {
 					return Err("timeout waiting for stats".into());
 				}
 
@@ -389,7 +388,7 @@ impl TestRunner for Runner {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
-				if !self.stats_waiter.wait_until(self.version, Duration::from_secs(5)) {
+				if !self.stats_waiter.wait_until(self.version, Duration::from_seconds(5).unwrap()) {
 					return Err("timeout waiting for stats".into());
 				}
 
@@ -408,7 +407,7 @@ impl TestRunner for Runner {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
-				if !self.stats_waiter.wait_until(self.version, Duration::from_secs(5)) {
+				if !self.stats_waiter.wait_until(self.version, Duration::from_seconds(5).unwrap()) {
 					return Err("timeout waiting for stats".into());
 				}
 
@@ -434,7 +433,7 @@ impl TestRunner for Runner {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
-				if !self.stats_waiter.wait_until(self.version, Duration::from_secs(5)) {
+				if !self.stats_waiter.wait_until(self.version, Duration::from_seconds(5).unwrap()) {
 					return Err("timeout waiting for stats to be processed".into());
 				}
 			}

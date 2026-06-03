@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -22,6 +22,7 @@ use reifydb_runtime::{
 	},
 	context::clock::{Clock, Instant},
 };
+use reifydb_value::value::duration::Duration;
 use tracing::{Span, debug, error, instrument};
 
 use super::drop::find_keys_to_drop;
@@ -38,7 +39,7 @@ impl Default for DropWorkerConfig {
 	fn default() -> Self {
 		Self {
 			batch_size: 100,
-			flush_interval: Duration::from_millis(50),
+			flush_interval: Duration::from_milliseconds(50).unwrap(),
 		}
 	}
 }
@@ -160,7 +161,7 @@ impl Actor for DropActor {
 	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
 		debug!("Drop actor started");
 
-		let timer_handle = ctx.schedule_repeat(Duration::from_millis(10), DropMessage::Tick);
+		let timer_handle = ctx.schedule_repeat(Duration::from_milliseconds(10).unwrap(), DropMessage::Tick);
 
 		DropActorState {
 			pending_requests: Vec::with_capacity(self.config.batch_size),
@@ -187,7 +188,7 @@ impl Actor for DropActor {
 			}
 			DropMessage::Tick => {
 				if !state.pending_requests.is_empty()
-					&& state.last_flush.elapsed() >= self.config.flush_interval
+					&& state.last_flush.elapsed() >= self.config.flush_interval.to_std()
 				{
 					self.flush(state);
 				}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashSet, fmt, fmt::Debug, sync::Arc, time};
+use std::{collections::HashSet, fmt, fmt::Debug, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
@@ -12,11 +12,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::hash::xxh3_128;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{
-	Result, error,
-	fragment::Fragment,
-	value::{Value, duration::Duration},
-};
+use reifydb_value::{Result, error, fragment::Fragment, value::Value};
 
 use crate::{
 	ast::{
@@ -316,10 +312,6 @@ fn compile_view_storage_kind(ast: AstViewStorageKind) -> CompiledViewStorageKind
 			}
 		}
 	}
-}
-
-fn compile_throttle_duration(std_dur: time::Duration) -> Duration {
-	Duration::from_nanoseconds(std_dur.as_nanos() as i64).unwrap()
 }
 
 fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
@@ -1126,8 +1118,8 @@ impl InstructionCompiler {
 						.map(|a| materialize_query_plan(BumpBox::into_inner(a)).map(Box::new))
 						.transpose()?,
 					hydration: node.hydration,
-					throttle: node.throttle.map(compile_throttle_duration),
-					linger: node.linger.map(compile_throttle_duration),
+					throttle: node.throttle,
+					linger: node.linger,
 				}));
 				self.emit(Instruction::Emit);
 			}

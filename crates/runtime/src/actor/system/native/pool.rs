@@ -8,6 +8,7 @@ use std::sync::{
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError as CcTryRecvError, bounded};
 use rayon::ThreadPool;
+use reifydb_value::reifydb_assertions;
 use tracing::debug;
 
 use super::{ActorSystem, JoinError};
@@ -17,7 +18,6 @@ use crate::{
 		mailbox::{ActorRef, create_mailbox},
 		traits::{Actor, Directive},
 	},
-	reifydb_assertions,
 	sync::mutex::{Mutex, MutexGuard},
 };
 

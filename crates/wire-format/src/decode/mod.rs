@@ -14,8 +14,8 @@ use std::str;
 
 use bigdecimal::BigDecimal;
 use num_bigint::BigInt;
-use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{
+	reifydb_assertions,
 	util::bitvec::BitVec,
 	value::{
 		container::{blob::BlobContainer, number::NumberContainer, utf8::Utf8Container},

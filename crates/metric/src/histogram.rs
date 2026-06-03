@@ -3,7 +3,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use reifydb_runtime::reifydb_assertions;
+use reifydb_value::reifydb_assertions;
 
 use crate::snapshot::{HistogramSnapshot, Percentiles};
 

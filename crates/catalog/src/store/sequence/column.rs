@@ -5,8 +5,10 @@ use reifydb_core::{
 	interface::catalog::{id::ColumnId, shape::ShapeId},
 	key::column_sequence::ColumnSequenceKey,
 };
-use reifydb_runtime::reifydb_assertions;
-use reifydb_value::value::{Value, value_type::ValueType};
+use reifydb_value::{
+	reifydb_assertions,
+	value::{Value, value_type::ValueType},
+};
 
 use super::generator::SequenceTransaction;
 use crate::{

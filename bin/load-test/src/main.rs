@@ -17,7 +17,6 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
-	time::Duration,
 };
 
 use clap::Parser;
@@ -28,6 +27,7 @@ use num_cpus::get as get_num_cpus;
 use output::{clear_progress, print_header, print_progress, print_summary};
 use rand::random;
 use reifydb::allocator;
+use reifydb_value::value::duration::Duration;
 use reqwest::Client as ReqwestClient;
 
 allocator::set_global_allocator!();
@@ -104,7 +104,7 @@ async fn async_main() -> Result<()> {
 	let shared_http_client = if matches!(config.protocol, Protocol::Http) {
 		Some(ReqwestClient::builder()
 			.pool_max_idle_per_host(config.connections)
-			.timeout(Duration::from_secs(30))
+			.timeout(Duration::from_seconds(30).unwrap().to_std())
 			.build()?)
 	} else {
 		None
@@ -169,7 +169,7 @@ async fn async_main() -> Result<()> {
 		Some(spawn(async move {
 			let mut last_count = 0u64;
 			loop {
-				time::sleep(Duration::from_secs(1)).await;
+				time::sleep(Duration::from_seconds(1).unwrap().to_std()).await;
 
 				if progress_stop.load(Ordering::Relaxed) {
 					break;
@@ -230,7 +230,7 @@ async fn async_main() -> Result<()> {
 
 	if let Some(handle) = progress_handle {
 		// Give progress reporter time to notice the stop signal
-		time::sleep(Duration::from_millis(100)).await;
+		time::sleep(Duration::from_milliseconds(100).unwrap().to_std()).await;
 		handle.abort();
 	}
 

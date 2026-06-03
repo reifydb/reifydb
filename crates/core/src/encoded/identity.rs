@@ -3,8 +3,10 @@
 
 use std::ptr;
 
-use reifydb_runtime::reifydb_assertions;
-use reifydb_value::value::{identity::IdentityId, uuid::Uuid7, value_type::ValueType};
+use reifydb_value::{
+	reifydb_assertions,
+	value::{identity::IdentityId, uuid::Uuid7, value_type::ValueType},
+};
 use uuid::Uuid;
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};

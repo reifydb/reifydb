@@ -8,7 +8,6 @@ use std::{
 	panic::{AssertUnwindSafe, catch_unwind},
 	process,
 	sync::Arc,
-	time::Duration,
 };
 
 use reifydb_cdc::{
@@ -45,7 +44,11 @@ use reifydb_runtime::{
 	context::clock::{Clock, Instant},
 };
 use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transaction};
-use reifydb_value::{Result, error::Error, value::identity::IdentityId};
+use reifydb_value::{
+	Result,
+	error::Error,
+	value::{duration::Duration, identity::IdentityId},
+};
 use tracing::{error, info, warn};
 
 use super::{
@@ -269,7 +272,8 @@ impl Actor for CoordinatorActor {
 					if matches!(state.phase, Phase::Idle) {
 						self.handle_tick(state, ctx);
 					} else if let Some(entered) = &state.phase_entered_at
-						&& self.clock.instant().duration_since(entered) > self.flow_tick() * 10
+						&& self.clock.instant().duration_since(entered)
+							> (self.flow_tick() * 10).to_std()
 					{
 						error!(
 							"flow coordinator stuck in non-Idle phase for more than 10x FLOW_TICK; pool reply lost, aborting"

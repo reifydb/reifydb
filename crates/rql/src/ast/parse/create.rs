@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
 use reifydb_core::sort::SortDirection;
 use reifydb_value::{
 	error::{AstErrorKind, Error, TypeError},
 	fragment::Fragment,
+	value::duration::Duration,
 };
 
 use crate::{
@@ -2286,13 +2285,15 @@ impl<'bump> Parser<'bump> {
 	fn parse_throttle_duration(&mut self) -> Result<Duration> {
 		let token = self.consume(TokenKind::Literal(Literal::Text))?;
 		let duration_str = token.fragment.text();
-		Compiler::parse_duration(duration_str)
+		let parsed = Compiler::parse_duration(duration_str)?;
+		Ok(Duration::from_nanoseconds(parsed.to_std().as_nanos() as i64).unwrap())
 	}
 
 	fn parse_linger_duration(&mut self) -> Result<Duration> {
 		let token = self.consume(TokenKind::Literal(Literal::Text))?;
 		let duration_str = token.fragment.text();
-		Compiler::parse_duration(duration_str)
+		let parsed = Compiler::parse_duration(duration_str)?;
+		Ok(Duration::from_nanoseconds(parsed.to_std().as_nanos() as i64).unwrap())
 	}
 
 	fn parse_hydration_with_value(&mut self) -> Result<AstHydrationConfig> {
@@ -2853,7 +2854,7 @@ enum ViewStorageKindHint {
 
 #[cfg(test)]
 pub mod tests {
-	use std::time::Duration;
+	use reifydb_value::value::duration::Duration;
 
 	use crate::{
 		ast::{
@@ -4134,7 +4135,7 @@ pub mod tests {
 		);
 		assert_eq!(
 			linger,
-			Some(Duration::from_millis(250)),
+			Some(Duration::from_milliseconds(250).unwrap()),
 			"linger is a sibling WITH key parsed as a duration"
 		);
 	}
@@ -4160,10 +4161,10 @@ pub mod tests {
 			AstCreate::Subscription(s) => {
 				assert_eq!(
 					s.throttle,
-					Some(Duration::from_secs(1)),
+					Some(Duration::from_seconds(1).unwrap()),
 					"throttle and linger are orthogonal WITH keys"
 				);
-				assert_eq!(s.linger, Some(Duration::from_millis(5)));
+				assert_eq!(s.linger, Some(Duration::from_milliseconds(5).unwrap()));
 			}
 			_ => unreachable!("expected subscription"),
 		}

@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{
-	Result,
+	Result, reifydb_assertions,
 	storage::DataBitVec,
 	util::bitvec::BitVec,
 	value::{

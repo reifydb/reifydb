@@ -18,12 +18,10 @@
 // RED until the over-registration is fixed (the consumer's `SourceView` node should be registered only
 // for the transactional view's OUTPUT, not its base sources); GREEN after.
 
-use std::{
-	thread,
-	time::{Duration, Instant},
-};
+use std::{thread, time::Instant};
 
 use reifydb::{Database, Params, Value, WithSubsystem, embedded};
+use reifydb_value::value::duration::Duration;
 
 fn setup() -> Database {
 	embedded::memory().with_flow(|c| c).build().expect("build memory db with flow")
@@ -62,13 +60,13 @@ fn rows(db: &Database, rql: &str) -> Vec<(i32, i32)> {
 // Poll a deferred view until it holds `want` rows or the deadline passes, then return its sorted
 // multiset so the caller's assertion reports the actual (possibly leaked) contents.
 fn await_rows(db: &Database, rql: &str, want: usize) -> Vec<(i32, i32)> {
-	let deadline = Instant::now() + Duration::from_secs(10);
+	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
 	loop {
 		let got = rows(db, rql);
 		if got.len() == want || Instant::now() >= deadline {
 			return got;
 		}
-		thread::sleep(Duration::from_millis(20));
+		thread::sleep(Duration::from_milliseconds(20).unwrap().to_std());
 	}
 }
 

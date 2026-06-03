@@ -5,8 +5,8 @@ use reifydb_core::{
 	encoded::shape::RowShape,
 	key::shape::{RowShapeFieldKey, RowShapeKey},
 };
-use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::reifydb_assertions;
 use tracing::instrument;
 
 use super::shape::{shape_field, shape_header};

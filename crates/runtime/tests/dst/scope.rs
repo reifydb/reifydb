@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use std::time::Duration;
-
 use reifydb_runtime::actor::context::Context;
+use reifydb_value::value::duration::Duration;
 
 use super::helpers::*;
 
@@ -12,7 +11,7 @@ fn scope_shares_clock() {
 	let parent = test_system();
 	let child = parent.scope();
 
-	parent.advance_time(Duration::from_millis(500));
+	parent.advance_time(Duration::from_milliseconds(500).unwrap());
 
 	// Both should see the same mock clock value.
 	assert_eq!(parent.clock().now_millis(), 500);
@@ -83,10 +82,10 @@ fn scope_shares_timer_heap() {
 
 	// Schedule timer via parent's context but targeting child's actor.
 	let ctx = Context::new(handle.actor_ref.clone(), parent.clone(), parent.cancellation_token());
-	ctx.schedule_once(Duration::from_millis(100), || "from_parent_timer".to_string());
+	ctx.schedule_once(Duration::from_milliseconds(100).unwrap(), || "from_parent_timer".to_string());
 
 	// Advance time on parent - timers are shared.
-	parent.advance_time(Duration::from_millis(100));
+	parent.advance_time(Duration::from_milliseconds(100).unwrap());
 
 	// Process on child - the message should be there.
 	child.run_until_idle();
@@ -148,12 +147,12 @@ fn clock_advancement_is_asymmetric() {
 	let child = parent.scope();
 
 	// 1. Advance child clock - parent MUST NOT be affected.
-	child.advance_time(std::time::Duration::from_millis(100));
+	child.advance_time(Duration::from_milliseconds(100).unwrap());
 	assert_eq!(child.clock().now_millis(), 100);
 	assert_eq!(parent.clock().now_millis(), 0, "Child clock advancement leaked to parent!");
 
 	// 2. Advance parent clock - child MUST be affected.
-	parent.advance_time(std::time::Duration::from_millis(200));
+	parent.advance_time(Duration::from_milliseconds(200).unwrap());
 	assert_eq!(parent.clock().now_millis(), 200);
 	// Child clock was at 100, we advanced parent by 200. Does child become 300 or 200?
 	// If it's a "shared" mock clock, it might be 200. If child has an offset, it might be 300.

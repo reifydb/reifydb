@@ -13,8 +13,7 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::flow_node_internal_state::FlowNodeInternalStateKey,
 };
-use reifydb_runtime::reifydb_assertions;
-use reifydb_value::value::row_number::RowNumber;
+use reifydb_value::{reifydb_assertions, value::row_number::RowNumber};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{

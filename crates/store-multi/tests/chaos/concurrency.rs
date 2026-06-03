@@ -27,7 +27,7 @@ use std::{
 	collections::BTreeMap,
 	sync::atomic::{AtomicU64, Ordering},
 	thread,
-	time::{Duration, Instant},
+	time::Instant,
 };
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
@@ -42,7 +42,7 @@ use reifydb_core::{
 	key::{EncodableKey, row::RowKey},
 };
 use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore};
-use reifydb_value::util::cowvec::CowVec;
+use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
 
 const SHAPE: ShapeId = ShapeId::Table(TableId(1));
 
@@ -118,7 +118,7 @@ impl Default for Config {
 			readers: 2,
 			rows_per_writer: 64,
 			ops_per_writer: 3000,
-			timeout: Duration::from_secs(60),
+			timeout: Duration::from_seconds(60).unwrap(),
 		}
 	}
 }
@@ -222,13 +222,13 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 		// stop counter never reaching `writers` within the timeout.
 		while stop.load(Ordering::SeqCst) < cfg.writers {
 			assert!(
-				start.elapsed() < cfg.timeout,
+				start.elapsed() < cfg.timeout.to_std(),
 				"concurrency stress TIMED OUT after {:?} (seed={seed}) - possible deadlock; only {}/{} writers finished",
 				cfg.timeout,
 				stop.load(Ordering::SeqCst),
 				cfg.writers
 			);
-			thread::sleep(Duration::from_millis(5));
+			thread::sleep(Duration::from_milliseconds(5).unwrap().to_std());
 		}
 
 		for h in reader_handles {

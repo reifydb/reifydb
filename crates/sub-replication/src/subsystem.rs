@@ -9,7 +9,6 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
-	time::Duration,
 };
 
 use reifydb_cdc::storage::CdcStore;
@@ -20,12 +19,11 @@ use reifydb_core::{
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
-	reifydb_assertions,
 	shutdown::Shutdown,
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_value::{Result, error::Error};
+use reifydb_value::{Result, error::Error, reifydb_assertions, value::duration::Duration};
 use tokio::{
 	net::TcpListener,
 	runtime::Handle,

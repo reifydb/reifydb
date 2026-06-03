@@ -20,12 +20,11 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::{expression::Expression, nodes::InsertRingBufferNode, query::QueryPlan};
-use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
-	return_error,
+	reifydb_assertions, return_error,
 	value::{Value, identity::IdentityId, row_number::RowNumber},
 };
 use tracing::instrument;

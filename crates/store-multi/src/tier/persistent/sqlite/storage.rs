@@ -9,7 +9,6 @@ use std::{
 		Arc,
 		atomic::{AtomicUsize, Ordering},
 	},
-	time::Duration,
 };
 
 use reifydb_core::{
@@ -31,7 +30,7 @@ use reifydb_sqlite::{
 	connection::{connect, convert_flags, resolve_db_path},
 	pragma,
 };
-use reifydb_value::{Result, error, util::cowvec::CowVec};
+use reifydb_value::{Result, error, util::cowvec::CowVec, value::duration::Duration};
 use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, Transaction, TransactionBehavior,
 	params, params_from_iter,
@@ -71,7 +70,7 @@ fn bucket_key_count(len: usize) -> usize {
 	GET_MANY_CHUNK
 }
 
-const BUSY_TIMEOUT: Duration = Duration::from_millis(200);
+const BUSY_TIMEOUT: Duration = Duration::from_milliseconds_const(200);
 
 #[derive(Clone)]
 pub struct SqlitePersistentStorage {
@@ -143,7 +142,7 @@ impl SqlitePersistentStorage {
 
 		let conn = connect(&db_path, flags).expect("Failed to connect to persistent database");
 		pragma::apply(&conn, &config).expect("Failed to configure persistent SQLite pragmas");
-		conn.busy_timeout(BUSY_TIMEOUT).expect("Failed to set persistent busy timeout");
+		conn.busy_timeout(BUSY_TIMEOUT.to_std()).expect("Failed to set persistent busy timeout");
 
 		let pool_size = config.read_pool_size.max(1) as usize;
 		let mut conns = Vec::with_capacity(pool_size);
@@ -151,7 +150,7 @@ impl SqlitePersistentStorage {
 			let reader = connect(&db_path, flags).expect("Failed to open persistent read connection");
 			pragma::apply_read_only(&reader, &config)
 				.expect("Failed to configure persistent read connection");
-			reader.busy_timeout(BUSY_TIMEOUT).expect("Failed to set persistent read busy timeout");
+			reader.busy_timeout(BUSY_TIMEOUT.to_std()).expect("Failed to set persistent read busy timeout");
 			conns.push(Mutex::new(Some(reader)));
 		}
 

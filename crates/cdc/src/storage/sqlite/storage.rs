@@ -15,13 +15,13 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::cdc::{Cdc, CdcBatch, SystemChange},
 };
-use reifydb_runtime::{reifydb_assertions, sync::mutex::Mutex};
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sqlite::{
 	SqliteConfig, SqliteTempPathGuard,
 	connection::{connect, convert_flags, resolve_db_path},
 	pragma,
 };
-use reifydb_value::value::datetime::DateTime;
+use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
 use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, Transaction, params, params_from_iter, types::Value as SqlValue,
 };

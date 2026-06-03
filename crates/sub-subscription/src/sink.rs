@@ -18,7 +18,7 @@ use reifydb_core::{
 	internal,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_runtime::{reifydb_assertions, sync::mutex::Mutex};
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sub_flow::{
 	operator::{
 		Operator, OperatorCell,
@@ -30,6 +30,7 @@ use reifydb_value::{
 	Result,
 	error::Error,
 	fragment::Fragment,
+	reifydb_assertions,
 	value::{blob::Blob, row_number::RowNumber, value_type::ValueType},
 };
 use serde::{Deserialize, Serialize};

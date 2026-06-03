@@ -8,4 +8,5 @@ publish = false
 
 [dependencies]
 reifydb-sub-raft = { workspace = true }
+reifydb-value = { workspace = true }
 tokio = { workspace = true }

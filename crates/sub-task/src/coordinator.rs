@@ -5,10 +5,8 @@ use std::{cmp::Ordering, collections::BinaryHeap, error::Error, future, io, sync
 
 use reifydb_core::interface::catalog::task::TaskId;
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::{
-	context::clock::{Clock, Instant},
-	reifydb_assertions,
-};
+use reifydb_runtime::context::clock::{Clock, Instant};
+use reifydb_value::{reifydb_assertions, value::duration::Duration};
 use tokio::{runtime::Handle, select, sync::mpsc, task::spawn_blocking, time};
 use tracing::{debug, error, info};
 
@@ -72,7 +70,7 @@ pub async fn run_coordinator(
 			if entry.next_execution > now {
 				&entry.next_execution - &now
 			} else {
-				time::Duration::ZERO
+				Duration::zero().to_std()
 			}
 		});
 
@@ -195,7 +193,7 @@ fn handle_completion(
 #[inline]
 fn handle_register(heap: &mut BinaryHeap<HeapEntry>, registry: &TaskRegistry, clock: &Clock, task: ScheduledTask) {
 	let task_id = task.id;
-	let next_execution = clock.instant() + task.schedule.initial_delay();
+	let next_execution = clock.instant() + task.schedule.initial_delay().to_std();
 
 	info!("Registering task: {} (id: {})", task.name, task_id);
 

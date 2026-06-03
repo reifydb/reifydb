@@ -15,9 +15,9 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::{reifydb_assertions, sync::mutex::Mutex};
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_transaction::multi::transaction::read::MultiReadTransaction;
-use reifydb_value::{Result, error::Error, value::datetime::DateTime};
+use reifydb_value::{Result, error::Error, reifydb_assertions, value::datetime::DateTime};
 use smallvec::smallvec;
 
 use crate::{

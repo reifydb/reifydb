@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{fmt, str::FromStr, time::Duration as StdDuration};
+use std::{fmt, str::FromStr};
 
 use reifydb_value::value::{
 	Value, decimal::Decimal, duration::Duration, int::Int, ordered_f32::OrderedF32, ordered_f64::OrderedF64,
@@ -110,15 +110,15 @@ impl ConfigKey {
 			Self::OracleWaterMark => Value::Uint8(20),
 			Self::QueryRowBatchSize => Value::Uint2(32),
 			Self::RowTtlScanBatchSize => Value::Uint8(10000),
-			Self::RowTtlScanInterval => Value::Duration(Duration::from_seconds(60).unwrap()),
+			Self::RowTtlScanInterval => Value::duration_seconds(60),
 			Self::OperatorTtlScanBatchSize => Value::Uint8(10000),
-			Self::OperatorTtlScanInterval => Value::Duration(Duration::from_seconds(60).unwrap()),
+			Self::OperatorTtlScanInterval => Value::duration_seconds(60),
 			Self::HistoricalGcBatchSize => Value::Uint8(50_000),
-			Self::HistoricalGcInterval => Value::Duration(Duration::from_seconds(30).unwrap()),
+			Self::HistoricalGcInterval => Value::duration_seconds(30),
 			Self::CdcTtlDuration => Value::None {
 				inner: ValueType::Duration,
 			},
-			Self::CdcCompactInterval => Value::Duration(Duration::from_seconds(60).unwrap()),
+			Self::CdcCompactInterval => Value::duration_seconds(60),
 			Self::CdcCompactBlockSize => Value::Uint8(1024),
 			Self::CdcCompactSafetyLag => Value::Uint8(1024),
 			Self::CdcCompactMaxBlocksPerTick => Value::Uint8(16),
@@ -127,8 +127,8 @@ impl ConfigKey {
 			Self::CdcRecentCacheCapacity => Value::Uint8(128),
 			Self::MultiReadBufferPages => Value::Uint8(1024),
 			Self::MultiReadBufferPageSize => Value::Uint8(65536),
-			Self::FlowTick => Value::Duration(Duration::from_seconds(1).unwrap()),
-			Self::CdcWatermarkWaitTimeout => Value::Duration(Duration::from_seconds(1).unwrap()),
+			Self::FlowTick => Value::duration_seconds(1),
+			Self::CdcWatermarkWaitTimeout => Value::duration_seconds(1),
 			Self::FlowJoinProbeBlockSize => Value::Uint8(1024),
 			Self::ThreadsAsync => Value::Uint2(1),
 			Self::ThreadsSystem => Value::Uint2(2),
@@ -136,8 +136,8 @@ impl ConfigKey {
 			Self::ThreadsCommit => Value::Uint2(2),
 			Self::ThreadsBackground => Value::Uint2(1),
 			Self::FlowWorkerThreads => Value::Uint2(0),
-			Self::RuntimeMetricsInterval => Value::Duration(Duration::from_seconds(5).unwrap()),
-			Self::MetricFlushInterval => Value::Duration(Duration::from_seconds(10).unwrap()),
+			Self::RuntimeMetricsInterval => Value::duration_seconds(5),
+			Self::MetricFlushInterval => Value::duration_seconds(10),
 		}
 	}
 
@@ -693,28 +693,20 @@ pub trait GetConfig: Send + Sync {
 		}
 	}
 
-	fn get_config_duration(&self, key: ConfigKey) -> StdDuration {
+	fn get_config_duration(&self, key: ConfigKey) -> Duration {
 		let val = self.get_config(key);
 		match val {
-			Value::Duration(v) => {
-				let total_nanos =
-					(v.get_days() as i128 * 24 * 3600 * 1_000_000_000) + (v.get_nanos() as i128);
-				StdDuration::from_nanos(total_nanos.max(0) as u64)
-			}
+			Value::Duration(v) => v,
 			v => panic!("config key '{}' expected Duration, got {:?}", key, v),
 		}
 	}
 
-	fn get_config_duration_opt(&self, key: ConfigKey) -> Option<StdDuration> {
+	fn get_config_duration_opt(&self, key: ConfigKey) -> Option<Duration> {
 		match self.get_config(key) {
 			Value::None {
 				..
 			} => None,
-			Value::Duration(v) => {
-				let total_nanos =
-					(v.get_days() as i128 * 24 * 3600 * 1_000_000_000) + (v.get_nanos() as i128);
-				Some(StdDuration::from_nanos(total_nanos.max(0) as u64))
-			}
+			Value::Duration(v) => Some(v),
 			v => panic!("config key '{}' expected Duration or None, got {:?}", key, v),
 		}
 	}
@@ -747,16 +739,16 @@ mod tests {
 
 	#[test]
 	fn test_cdc_ttl_accept_passes_positive_duration() {
-		let one_sec = Value::Duration(Duration::from_seconds(1).unwrap());
+		let one_sec = Value::duration_seconds(1);
 		assert_eq!(ConfigKey::CdcTtlDuration.accept(one_sec.clone()).unwrap(), one_sec);
 
-		let one_hour = Value::Duration(Duration::from_seconds(3600).unwrap());
+		let one_hour = Value::duration_seconds(3600);
 		assert_eq!(ConfigKey::CdcTtlDuration.accept(one_hour.clone()).unwrap(), one_hour);
 	}
 
 	#[test]
 	fn test_cdc_ttl_accept_rejects_zero() {
-		let zero = Value::Duration(Duration::from_seconds(0).unwrap());
+		let zero = Value::duration_seconds(0);
 		match ConfigKey::CdcTtlDuration.accept(zero).unwrap_err() {
 			AcceptError::InvalidValue(reason) => {
 				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
@@ -767,7 +759,7 @@ mod tests {
 
 	#[test]
 	fn test_cdc_ttl_accept_rejects_negative() {
-		let negative = Value::Duration(Duration::from_seconds(-5).unwrap());
+		let negative = Value::duration_seconds(-5);
 		assert!(matches!(ConfigKey::CdcTtlDuration.accept(negative), Err(AcceptError::InvalidValue(_))));
 	}
 
@@ -775,9 +767,7 @@ mod tests {
 	fn test_other_keys_accept_in_type_values() {
 		// Keys without bespoke validation should accept any in-type value.
 		assert!(ConfigKey::OracleWindowSize.accept(Value::Uint8(0)).is_ok());
-		assert!(ConfigKey::RowTtlScanInterval
-			.accept(Value::Duration(Duration::from_seconds(0).unwrap()))
-			.is_ok());
+		assert!(ConfigKey::RowTtlScanInterval.accept(Value::duration_seconds(0)).is_ok());
 	}
 
 	#[test]
@@ -820,10 +810,7 @@ mod tests {
 	#[test]
 	fn test_runtime_metrics_interval_metadata() {
 		// Single optional Duration knob: default on (5s), none disables the history sampler.
-		assert_eq!(
-			ConfigKey::RuntimeMetricsInterval.default_value(),
-			Value::Duration(Duration::from_seconds(5).unwrap())
-		);
+		assert_eq!(ConfigKey::RuntimeMetricsInterval.default_value(), Value::duration_seconds(5));
 		assert_eq!(ConfigKey::RuntimeMetricsInterval.expected_types(), &[ValueType::Duration]);
 		assert!(ConfigKey::RuntimeMetricsInterval.is_optional());
 	}
@@ -841,20 +828,17 @@ mod tests {
 		};
 		assert_eq!(ConfigKey::RuntimeMetricsInterval.accept(none.clone()).unwrap(), none);
 
-		let five = Value::Duration(Duration::from_seconds(5).unwrap());
+		let five = Value::duration_seconds(5);
 		assert_eq!(ConfigKey::RuntimeMetricsInterval.accept(five.clone()).unwrap(), five);
 
-		let zero = Value::Duration(Duration::from_seconds(0).unwrap());
+		let zero = Value::duration_seconds(0);
 		assert!(matches!(ConfigKey::RuntimeMetricsInterval.accept(zero), Err(AcceptError::InvalidValue(_))));
 	}
 
 	#[test]
 	fn test_metric_flush_interval_metadata() {
 		// Always-on (non-optional) Duration knob defaulting to the historical 10s flush cadence.
-		assert_eq!(
-			ConfigKey::MetricFlushInterval.default_value(),
-			Value::Duration(Duration::from_seconds(10).unwrap())
-		);
+		assert_eq!(ConfigKey::MetricFlushInterval.default_value(), Value::duration_seconds(10));
 		assert_eq!(ConfigKey::MetricFlushInterval.expected_types(), &[ValueType::Duration]);
 		assert!(!ConfigKey::MetricFlushInterval.is_optional());
 		assert!(!ConfigKey::MetricFlushInterval.requires_restart());
@@ -868,10 +852,10 @@ mod tests {
 
 	#[test]
 	fn test_metric_flush_interval_accepts_positive_rejects_zero() {
-		let ten = Value::Duration(Duration::from_seconds(10).unwrap());
+		let ten = Value::duration_seconds(10);
 		assert_eq!(ConfigKey::MetricFlushInterval.accept(ten.clone()).unwrap(), ten);
 
-		let zero = Value::Duration(Duration::from_seconds(0).unwrap());
+		let zero = Value::duration_seconds(0);
 		assert!(matches!(ConfigKey::MetricFlushInterval.accept(zero), Err(AcceptError::InvalidValue(_))));
 	}
 
@@ -1104,13 +1088,13 @@ mod tests {
 
 	#[test]
 	fn test_cdc_compact_interval_accept_passes_positive_duration() {
-		let one_sec = Value::Duration(Duration::from_seconds(1).unwrap());
+		let one_sec = Value::duration_seconds(1);
 		assert_eq!(ConfigKey::CdcCompactInterval.accept(one_sec.clone()).unwrap(), one_sec);
 	}
 
 	#[test]
 	fn test_cdc_compact_interval_accept_rejects_zero() {
-		let zero = Value::Duration(Duration::from_seconds(0).unwrap());
+		let zero = Value::duration_seconds(0);
 		match ConfigKey::CdcCompactInterval.accept(zero).unwrap_err() {
 			AcceptError::InvalidValue(reason) => {
 				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
@@ -1121,7 +1105,7 @@ mod tests {
 
 	#[test]
 	fn test_cdc_compact_interval_accept_rejects_negative() {
-		let negative = Value::Duration(Duration::from_seconds(-5).unwrap());
+		let negative = Value::duration_seconds(-5);
 		assert!(matches!(ConfigKey::CdcCompactInterval.accept(negative), Err(AcceptError::InvalidValue(_))));
 	}
 
@@ -1195,7 +1179,7 @@ mod tests {
 
 	#[test]
 	fn test_accept_idempotent_on_canonical_duration() {
-		let canonical = Value::Duration(Duration::from_seconds(5).unwrap());
+		let canonical = Value::duration_seconds(5);
 		assert_eq!(ConfigKey::CdcCompactInterval.accept(canonical.clone()).unwrap(), canonical);
 	}
 
@@ -1254,7 +1238,7 @@ mod tests {
 
 	#[test]
 	fn test_historical_gc_interval_rejects_zero() {
-		let zero = Value::Duration(Duration::from_seconds(0).unwrap());
+		let zero = Value::duration_seconds(0);
 		match ConfigKey::HistoricalGcInterval.accept(zero).unwrap_err() {
 			AcceptError::InvalidValue(reason) => {
 				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");

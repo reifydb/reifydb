@@ -14,9 +14,10 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::{error, fragment::Fragment, util::cowvec::CowVec, value::value_type::ValueType};
+use reifydb_value::{
+	error, fragment::Fragment, reifydb_assertions, util::cowvec::CowVec, value::value_type::ValueType,
+};
 use tracing::instrument;
 
 use super::super::decode_dictionary_columns;

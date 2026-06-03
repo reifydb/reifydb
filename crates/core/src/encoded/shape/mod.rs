@@ -28,8 +28,8 @@ use std::{
 	sync::{Arc, LazyLock, OnceLock},
 };
 
-use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{
+	reifydb_assertions,
 	util::cowvec::CowVec,
 	value::{constraint::TypeConstraint, value_type::ValueType},
 };

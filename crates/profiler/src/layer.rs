@@ -3,10 +3,8 @@
 
 use std::sync::Arc;
 
-use reifydb_runtime::{
-	context::clock::{Clock, Instant},
-	reifydb_assertions,
-};
+use reifydb_runtime::context::clock::{Clock, Instant};
+use reifydb_value::reifydb_assertions;
 use tracing::{
 	Metadata, Subscriber,
 	span::{Attributes, Id, Record},

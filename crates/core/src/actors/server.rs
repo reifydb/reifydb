@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 
 use reifydb_runtime::actor::{reply::Reply, system::ActorHandle};
 use reifydb_value::{
 	error::Diagnostic,
 	params::Params,
-	value::{frame::frame::Frame, identity::IdentityId},
+	value::{duration::Duration, frame::frame::Frame, identity::IdentityId},
 };
 
 use crate::metric::ExecutionMetrics;

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 #![allow(clippy::disallowed_methods)]
+#![allow(clippy::disallowed_types)]
 
 use std::{
 	cmp::Ordering as CmpOrdering,
@@ -17,9 +18,9 @@ use std::{
 
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, bounded};
 use rayon::ThreadPool;
+use reifydb_value::reifydb_assertions;
 
 use super::{TimerHandle, next_timer_id};
-use crate::reifydb_assertions;
 
 struct TimerEntry {
 	id: u64,

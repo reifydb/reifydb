@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{thread::sleep, time::Duration};
+use std::thread::sleep;
 
 use reifydb::{Params, WithInterceptorBuilder, WithSubsystem, embedded};
 use reifydb_examples::log_query;
+use reifydb_value::value::duration::Duration;
 use tracing::info;
 use tracing_subscriber::{
 	EnvFilter, fmt, fmt::format::FmtSpan, layer::SubscriberExt, registry, util::SubscriberInitExt,
@@ -80,7 +81,7 @@ fn main() {
 
 	// Wait for deferred view to process the data
 	info!("\n--- Waiting for deferred view to process ---");
-	sleep(Duration::from_millis(100));
+	sleep(Duration::from_milliseconds(100).unwrap().to_std());
 
 	// Step 5: Query the results
 	info!("\n--- All users (from table) ---");

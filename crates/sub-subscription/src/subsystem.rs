@@ -9,7 +9,6 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
-	time::Duration,
 };
 
 use dashmap::DashMap;
@@ -56,7 +55,6 @@ use reifydb_runtime::{
 		RuntimeContext,
 		clock::{Clock, Instant},
 	},
-	reifydb_assertions,
 	shutdown::Shutdown,
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
@@ -77,7 +75,8 @@ use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
 	params::Params,
-	value::{datetime::DateTime, duration::Duration as ReifyDuration, identity::IdentityId, row_number::RowNumber},
+	reifydb_assertions,
+	value::{datetime::DateTime, duration::Duration, identity::IdentityId, row_number::RowNumber},
 };
 
 use crate::{
@@ -309,7 +308,7 @@ impl SubscriptionServiceImpl {
 	) -> HydrateOutcome {
 		let elapsed = hydrate_start.elapsed();
 		let elapsed_nanos = elapsed.as_nanos() as i64;
-		let total = ReifyDuration::from_nanoseconds(elapsed_nanos).unwrap_or_default();
+		let total = Duration::from_nanoseconds(elapsed_nanos).unwrap_or_default();
 		let fps: Vec<_> = statements.iter().map(|m| m.fingerprint).collect();
 		let metrics = ExecutionMetrics {
 			fingerprint: fingerprint_request(&fps),
@@ -586,7 +585,7 @@ impl SubscriptionSubsystem {
 		let config = PollConsumerConfig::new(
 			CdcConsumerId::new("__SUBSCRIPTION_CONSUMER"),
 			"sub-subscription-poll",
-			Duration::from_millis(10),
+			Duration::from_milliseconds(10).unwrap(),
 			None,
 		)
 		.with_consumer_watermark(consumer_watermark);

@@ -3,7 +3,7 @@
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{common::CommitVersion, interface::cdc::Cdc};
-use reifydb_runtime::reifydb_assertions;
+use reifydb_value::reifydb_assertions;
 use zstd::{decode_all, encode_all};
 
 use crate::error::CdcError;

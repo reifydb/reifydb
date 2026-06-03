@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
 use reifydb_core::interface::catalog::series::{Series, SeriesKey, SeriesMetadata, TimestampPrecision};
+use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct BucketId(pub u64);
@@ -43,20 +42,14 @@ pub fn bucket_for(key: u64, width: u64) -> Bucket {
 	}
 }
 
-pub fn is_closed(
-	bucket: &Bucket,
-	series: &Series,
-	metadata: &SeriesMetadata,
-	now: SystemTime,
-	grace: Duration,
-) -> bool {
+pub fn is_closed(bucket: &Bucket, series: &Series, metadata: &SeriesMetadata, now: DateTime, grace: Duration) -> bool {
 	match &series.key {
 		SeriesKey::DateTime {
 			precision,
 			..
 		} => {
-			let bucket_end_wall = to_systemtime(bucket.end, *precision);
-			now.duration_since(bucket_end_wall).map(|d| d > grace).unwrap_or(false)
+			let bucket_end_wall = to_datetime(bucket.end, *precision);
+			now.saturating_duration_since(bucket_end_wall).to_std() > grace.to_std()
 		}
 		SeriesKey::Integer {
 			..
@@ -64,14 +57,14 @@ pub fn is_closed(
 	}
 }
 
-fn to_systemtime(key: u64, precision: TimestampPrecision) -> SystemTime {
+fn to_datetime(key: u64, precision: TimestampPrecision) -> DateTime {
 	let nanos: u128 = match precision {
 		TimestampPrecision::Second => (key as u128) * 1_000_000_000,
 		TimestampPrecision::Millisecond => (key as u128) * 1_000_000,
 		TimestampPrecision::Microsecond => (key as u128) * 1_000,
 		TimestampPrecision::Nanosecond => key as u128,
 	};
-	UNIX_EPOCH + Duration::from_nanos(nanos as u64)
+	DateTime::from_nanos(nanos as u64)
 }
 
 #[cfg(test)]
@@ -116,9 +109,9 @@ mod tests {
 		};
 		let mut meta = SeriesMetadata::new(s.id);
 		meta.newest_key = 99;
-		assert!(!is_closed(&b, &s, &meta, SystemTime::now(), Duration::ZERO));
+		assert!(!is_closed(&b, &s, &meta, DateTime::from_nanos(0), Duration::zero()));
 		meta.newest_key = 100;
-		assert!(is_closed(&b, &s, &meta, SystemTime::now(), Duration::ZERO));
+		assert!(is_closed(&b, &s, &meta, DateTime::from_nanos(0), Duration::zero()));
 	}
 
 	#[test]
@@ -134,9 +127,9 @@ mod tests {
 			width: 1000,
 		};
 		let meta = SeriesMetadata::new(s.id);
-		let bucket_end = UNIX_EPOCH + Duration::from_millis(1000);
-		assert!(!is_closed(&b, &s, &meta, bucket_end, Duration::from_millis(100)));
-		let past_grace = bucket_end + Duration::from_millis(250);
-		assert!(is_closed(&b, &s, &meta, past_grace, Duration::from_millis(100)));
+		let bucket_end = DateTime::from_nanos(1_000_000_000);
+		assert!(!is_closed(&b, &s, &meta, bucket_end, Duration::from_milliseconds(100).unwrap()));
+		let past_grace = DateTime::from_nanos(1_000_000_000 + 250_000_000);
+		assert!(is_closed(&b, &s, &meta, past_grace, Duration::from_milliseconds(100).unwrap()));
 	}
 }

@@ -2,10 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, push::Push};
-use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{
 	error::{BinaryOp, TypeError},
 	fragment::LazyFragment,
+	reifydb_assertions,
 	value::{
 		container::number::NumberContainer,
 		is::IsNumber,

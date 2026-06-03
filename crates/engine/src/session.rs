@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{thread, time::Duration};
+use std::thread;
 
 use reifydb_core::{execution::ExecutionResult, interface::catalog::token::Token};
 use reifydb_runtime::context::rng::Rng;
-use reifydb_value::{params::Params, value::identity::IdentityId};
+use reifydb_value::{
+	params::Params,
+	value::{duration::Duration, identity::IdentityId},
+};
 use tracing::{debug, instrument, warn};
 
 use crate::engine::StandardEngine;
@@ -35,8 +38,8 @@ impl Default for RetryStrategy {
 		Self {
 			max_attempts: 10,
 			backoff: Backoff::ExponentialJitter {
-				base: Duration::from_millis(5),
-				max: Duration::from_millis(200),
+				base: Duration::from_milliseconds(5).unwrap(),
+				max: Duration::from_milliseconds(200).unwrap(),
 			},
 		}
 	}
@@ -105,12 +108,12 @@ impl RetryStrategy {
 						debug!(
 							attempt = attempt + 1,
 							max_attempts = self.max_attempts,
-							delay_us = delay.as_micros() as u64,
+							delay_us = delay.microseconds().unwrap_or(0) as u64,
 							rql = %rql,
 							"Transaction conflict detected, retrying after backoff"
 						);
 						if !delay.is_zero() {
-							thread::sleep(delay);
+							thread::sleep(delay.to_std());
 						}
 					}
 				}
@@ -125,7 +128,7 @@ impl RetryStrategy {
 
 fn compute_backoff(backoff: &Backoff, attempt: u32, rng: &Rng) -> Duration {
 	match backoff {
-		Backoff::None => Duration::ZERO,
+		Backoff::None => Duration::zero(),
 		Backoff::Fixed(d) => *d,
 		Backoff::Exponential {
 			base,
@@ -136,19 +139,19 @@ fn compute_backoff(backoff: &Backoff, attempt: u32, rng: &Rng) -> Duration {
 			max,
 		} => {
 			let cap = exponential_cap(*base, *max, attempt);
-			let cap_nanos = cap.as_nanos().min(u64::MAX as u128) as u64;
+			let cap_nanos = cap.as_nanos().unwrap_or(0).max(0) as u64;
 			if cap_nanos == 0 {
-				return Duration::ZERO;
+				return Duration::zero();
 			}
 			let sampled = rng.infra_u64_inclusive(cap_nanos);
-			Duration::from_nanos(sampled)
+			Duration::from_nanoseconds(sampled as i64).unwrap()
 		}
 	}
 }
 
 fn exponential_cap(base: Duration, max: Duration, attempt: u32) -> Duration {
 	let shift = attempt.min(30);
-	let multiplier = 1u32 << shift;
+	let multiplier = 1i64 << shift;
 	base.saturating_mul(multiplier).min(max)
 }
 
@@ -236,13 +239,14 @@ impl Session {
 
 #[cfg(test)]
 mod retry_tests {
-	use std::{cell::Cell, time::Duration};
+	use std::cell::Cell;
 
 	use reifydb_core::{execution::ExecutionResult, metric::ExecutionMetrics};
 	use reifydb_runtime::context::rng::Rng;
 	use reifydb_value::{
 		error::{Diagnostic, Error},
 		fragment::Fragment,
+		value::duration::Duration,
 	};
 
 	use super::{Backoff, RetryStrategy, compute_backoff, exponential_cap};
@@ -341,8 +345,8 @@ mod retry_tests {
 
 	#[test]
 	fn jittered_backoff_stays_within_cap() {
-		let base = Duration::from_millis(10);
-		let max = Duration::from_millis(100);
+		let base = Duration::from_milliseconds(10).unwrap();
+		let max = Duration::from_milliseconds(100).unwrap();
 		let backoff = Backoff::ExponentialJitter {
 			base,
 			max,
@@ -359,8 +363,8 @@ mod retry_tests {
 
 	#[test]
 	fn seeded_rng_produces_deterministic_jitter() {
-		let base = Duration::from_millis(5);
-		let max = Duration::from_millis(200);
+		let base = Duration::from_milliseconds(5).unwrap();
+		let max = Duration::from_milliseconds(200).unwrap();
 		let backoff = Backoff::ExponentialJitter {
 			base,
 			max,
@@ -375,15 +379,16 @@ mod retry_tests {
 
 	#[test]
 	fn seeded_rng_produces_exact_pinned_jitter_values() {
-		let base = Duration::from_millis(5);
-		let max = Duration::from_millis(200);
+		let base = Duration::from_milliseconds(5).unwrap();
+		let max = Duration::from_milliseconds(200).unwrap();
 		let backoff = Backoff::ExponentialJitter {
 			base,
 			max,
 		};
 		let nanos = |seed: u64| -> Vec<u64> {
 			let rng = Rng::seeded(seed);
-			(0..8).map(|attempt| compute_backoff(&backoff, attempt, &rng).as_nanos() as u64).collect()
+			(0..8).map(|attempt| compute_backoff(&backoff, attempt, &rng).as_nanos().unwrap() as u64)
+				.collect()
 		};
 
 		let expected_42: Vec<u64> = vec![
@@ -409,11 +414,11 @@ mod retry_tests {
 
 	#[test]
 	fn exponential_cap_saturates_at_max() {
-		let base = Duration::from_millis(5);
-		let max = Duration::from_millis(200);
-		assert_eq!(exponential_cap(base, max, 0), Duration::from_millis(5));
-		assert_eq!(exponential_cap(base, max, 1), Duration::from_millis(10));
-		assert_eq!(exponential_cap(base, max, 5), Duration::from_millis(160));
+		let base = Duration::from_milliseconds(5).unwrap();
+		let max = Duration::from_milliseconds(200).unwrap();
+		assert_eq!(exponential_cap(base, max, 0), Duration::from_milliseconds(5).unwrap());
+		assert_eq!(exponential_cap(base, max, 1), Duration::from_milliseconds(10).unwrap());
+		assert_eq!(exponential_cap(base, max, 5), Duration::from_milliseconds(160).unwrap());
 		assert_eq!(exponential_cap(base, max, 6), max);
 		assert_eq!(exponential_cap(base, max, 100), max);
 	}
@@ -427,8 +432,8 @@ mod retry_tests {
 				base,
 				max,
 			} => {
-				assert_eq!(base, Duration::from_millis(5));
-				assert_eq!(max, Duration::from_millis(200));
+				assert_eq!(base, Duration::from_milliseconds(5).unwrap());
+				assert_eq!(max, Duration::from_milliseconds(200).unwrap());
 			}
 			_ => panic!("expected ExponentialJitter default"),
 		}

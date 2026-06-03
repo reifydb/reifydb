@@ -4,13 +4,13 @@
 use std::{ops::Bound, sync::Arc};
 
 use reifydb_core::{encoded::key::EncodedKey, internal_error};
-use reifydb_runtime::{reifydb_assertions, shutdown::Shutdown, sync::mutex::Mutex};
+use reifydb_runtime::{shutdown::Shutdown, sync::mutex::Mutex};
 use reifydb_sqlite::{
 	SqliteConfig, SqliteTempPathGuard,
 	connection::{connect, convert_flags, resolve_db_path},
 	pragma,
 };
-use reifydb_value::{Result, util::cowvec::CowVec};
+use reifydb_value::{Result, reifydb_assertions, util::cowvec::CowVec};
 use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, Transaction as SqliteTransaction, params,
 };

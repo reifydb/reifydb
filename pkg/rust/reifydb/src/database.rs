@@ -8,7 +8,6 @@ use std::{
 		atomic::{AtomicBool, Ordering},
 	},
 	thread::sleep,
-	time::Duration,
 };
 
 use libc::{SIGHUP, SIGINT, SIGQUIT, SIGTERM, c_int, sighandler_t, signal};
@@ -51,7 +50,7 @@ use reifydb_value::error::Error;
 use reifydb_value::{
 	Result,
 	params::Params,
-	value::{Value, frame::frame::Frame, identity::IdentityId},
+	value::{Value, duration::Duration, frame::frame::Frame, identity::IdentityId},
 };
 use tracing::{debug, instrument, warn};
 
@@ -65,8 +64,6 @@ use crate::{
 	subsystem::Subsystems,
 	watermarks::Watermarks,
 };
-
-const SHUTDOWN_DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
 fn hydrate_error_to_error(e: HydrateError) -> Error {
@@ -240,7 +237,7 @@ impl Database {
 
 	#[inline]
 	fn drain_and_flush_stores(&self) {
-		self.drain_cdc_consumers(SHUTDOWN_DRAIN_TIMEOUT);
+		self.drain_cdc_consumers(Duration::from_seconds(10).unwrap());
 
 		if let Some(multi_store) = self.engine.ioc().try_resolve::<MultiStore>() {
 			multi_store.flush_all_blocking();
@@ -279,7 +276,7 @@ impl Database {
 
 		const PLATEAU_ROUNDS: u32 = 6;
 
-		let deadline = self.clock.instant() + timeout;
+		let deadline = self.clock.instant() + timeout.to_std();
 		let mut last_producer = u64::MAX;
 		let mut last_consumer = u64::MAX;
 		let mut caught_up = 0u32;
@@ -318,7 +315,7 @@ impl Database {
 			}
 
 			self.engine.notify_cdc_consumers();
-			sleep(Duration::from_millis(50));
+			sleep(Duration::from_milliseconds(50).unwrap().to_std());
 		}
 	}
 
@@ -533,7 +530,7 @@ impl Database {
 
 		debug!("Waiting for termination signal...");
 		while RUNNING.load(Ordering::SeqCst) {
-			sleep(Duration::from_millis(100));
+			sleep(Duration::from_milliseconds(100).unwrap().to_std());
 
 			// Log the signal reception outside the signal handler
 			if SIGNAL_RECEIVED.load(Ordering::SeqCst) {

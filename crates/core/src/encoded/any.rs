@@ -3,19 +3,21 @@
 
 use std::str;
 
-use reifydb_runtime::reifydb_assertions;
-use reifydb_value::value::{
-	Value,
-	blob::Blob,
-	date::Date,
-	datetime::DateTime,
-	duration::Duration,
-	identity::IdentityId,
-	ordered_f32::OrderedF32,
-	ordered_f64::OrderedF64,
-	time::Time,
-	uuid::{Uuid4, Uuid7},
-	value_type::ValueType,
+use reifydb_value::{
+	reifydb_assertions,
+	value::{
+		Value,
+		blob::Blob,
+		date::Date,
+		datetime::DateTime,
+		duration::Duration,
+		identity::IdentityId,
+		ordered_f32::OrderedF32,
+		ordered_f64::OrderedF64,
+		time::Time,
+		uuid::{Uuid4, Uuid7},
+		value_type::ValueType,
+	},
 };
 use uuid::Uuid;
 
@@ -276,7 +278,6 @@ pub mod tests {
 		blob::Blob,
 		date::Date,
 		datetime::DateTime,
-		duration::Duration,
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
 		time::Time,
@@ -359,7 +360,7 @@ pub mod tests {
 		shape.set_any(&mut row3, 0, &t);
 		assert_eq!(shape.get_any(&row3, 0), t);
 
-		let dur = Value::Duration(Duration::from_seconds(3600).unwrap());
+		let dur = Value::duration_seconds(3600);
 		let mut row4 = shape.allocate();
 		shape.set_any(&mut row4, 0, &dur);
 		assert_eq!(shape.get_any(&row4, 0), dur);

@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	thread,
-	time::{Duration, Instant},
-};
+use std::{thread, time::Instant};
 
 use reifydb::{Database, HydrationConfig, Params, Subscription};
 use reifydb_core::value::column::columns::Columns;
-use reifydb_value::value::frame::frame::Frame;
+use reifydb_value::value::{duration::Duration, frame::frame::Frame};
 
 use crate::common::{Row, insert_all_at_once, make_db, normalize};
 
@@ -38,7 +35,7 @@ fn rows() -> Vec<Row> {
 // The handle - not the raw store - is drained on purpose: the hydration snapshot lives in the
 // handle's prelude, and going through the store would bypass it.
 fn drain_collect(sub: &Subscription) -> Vec<Columns> {
-	let deadline = Instant::now() + Duration::from_secs(10);
+	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
 	let mut acc: Vec<Frame> = Vec::new();
 	let mut empty = 0u32;
 	while Instant::now() < deadline {
@@ -52,7 +49,7 @@ fn drain_collect(sub: &Subscription) -> Vec<Columns> {
 			empty = 0;
 			acc.extend(batch);
 		}
-		thread::sleep(Duration::from_millis(20));
+		thread::sleep(Duration::from_milliseconds(20).unwrap().to_std());
 	}
 	acc.into_iter().map(Columns::from).collect()
 }
@@ -60,7 +57,7 @@ fn drain_collect(sub: &Subscription) -> Vec<Columns> {
 fn wait_caught_up(db: &Database) {
 	let target = db.watermarks().tx().current().expect("current version");
 	assert!(
-		db.watermarks().cdc().wait_for_consumer(target, Duration::from_secs(10)),
+		db.watermarks().cdc().wait_for_consumer(target, Duration::from_seconds(10).unwrap()),
 		"CDC consumer did not catch up to {:?}",
 		target
 	);

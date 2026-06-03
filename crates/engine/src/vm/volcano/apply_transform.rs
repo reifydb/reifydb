@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_extension::transform::{Transform, context::TransformContext};
-use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::reifydb_assertions;
 use tracing::instrument;
 
 use crate::{

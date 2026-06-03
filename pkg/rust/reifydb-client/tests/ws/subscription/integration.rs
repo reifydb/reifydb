@@ -8,10 +8,11 @@ use std::{
 		Arc,
 		atomic::{AtomicUsize, Ordering},
 	},
-	time::{Duration, SystemTime, UNIX_EPOCH},
+	time::{SystemTime, UNIX_EPOCH},
 };
 
 use reifydb_client::{SubscriptionConfig, WireFormat, WsClient};
+use reifydb_value::value::duration::Duration;
 use tokio::{runtime::Runtime, time::sleep};
 
 use crate::{
@@ -541,7 +542,7 @@ fn test_lifecycle_no_callbacks_after_unsubscribe() {
 		ctx.insert(&table, "{ id: 1, value: 100 }").await?;
 
 		// Small wait to verify no callback fires
-		sleep(Duration::from_millis(100)).await;
+		sleep(Duration::from_milliseconds(100).unwrap().to_std()).await;
 
 		// Should NOT receive any change
 		let change = recv_with_timeout(&mut ctx.client, 500).await;
@@ -570,7 +571,7 @@ fn test_edge_empty_result_sets() {
 		ctx.insert(&table, "{ id: 1, value: 100 }").await?;
 
 		// Small wait to verify no callback fires for non-matching data
-		sleep(Duration::from_millis(100)).await;
+		sleep(Duration::from_milliseconds(100).unwrap().to_std()).await;
 
 		let change = recv_with_timeout(&mut ctx.client, 500).await;
 		assert!(change.is_none(), "Should not trigger callback for non-matching data");
@@ -764,7 +765,7 @@ fn test_stress_many_concurrent_clients() {
 		}
 
 		// Give clients time to connect and subscribe
-		sleep(Duration::from_millis(500)).await;
+		sleep(Duration::from_milliseconds(500).unwrap().to_std()).await;
 
 		// Trigger insert
 		let mut trigger_client =
@@ -877,7 +878,7 @@ fn test_stress_client_disconnect_without_unsubscribe() {
 		}
 
 		// Give server time to clean up
-		sleep(Duration::from_millis(500)).await;
+		sleep(Duration::from_milliseconds(500).unwrap().to_std()).await;
 
 		// Server should still be healthy
 		let mut new_client =
@@ -956,7 +957,10 @@ fn test_stress_concurrent_connect_disconnect() {
 							.await
 						{
 							Ok(sub_id) => {
-								sleep(Duration::from_millis(10)).await;
+								sleep(Duration::from_milliseconds(10)
+									.unwrap()
+									.to_std())
+								.await;
 								client.unsubscribe(&sub_id).await?;
 								client.close().await?;
 								counter.fetch_add(1, Ordering::SeqCst);
@@ -967,7 +971,10 @@ fn test_stress_concurrent_connect_disconnect() {
 							{
 								retries += 1;
 								client.close().await?;
-								sleep(Duration::from_millis(10 * retries as u64)).await;
+								sleep(Duration::from_milliseconds(10 * retries as i64)
+									.unwrap()
+									.to_std())
+								.await;
 								continue;
 							}
 							Err(e) => {

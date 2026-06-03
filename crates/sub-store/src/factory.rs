@@ -52,7 +52,7 @@ impl SubsystemFactory for StorageSubsystemFactory {
 			engine.clone(),
 			block_store.clone(),
 			Compressor::new(CompressConfig::default()),
-			self.config.table_tick_interval,
+			self.config.table_tick_interval.to_std(),
 		);
 		let table_handle = spawner.spawn_system("storage-materialize-table", table_actor);
 		let table_ref = table_handle.actor_ref().clone();
@@ -61,9 +61,9 @@ impl SubsystemFactory for StorageSubsystemFactory {
 			engine,
 			block_store.clone(),
 			Compressor::new(CompressConfig::default()),
-			self.config.series_tick_interval,
+			self.config.series_tick_interval.to_std(),
 			self.config.series_bucket_width,
-			self.config.series_grace,
+			self.config.series_grace.to_std(),
 		);
 		let series_handle = spawner.spawn_system("storage-materialize-series", series_actor);
 		let series_ref = series_handle.actor_ref().clone();

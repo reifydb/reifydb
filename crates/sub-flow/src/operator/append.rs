@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::RefCell, ops::Bound, time::Duration};
+use std::{cell::RefCell, ops::Bound};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
@@ -18,9 +18,13 @@ use reifydb_core::{
 	util::encoding::keycode::serializer::KeySerializer,
 	value::column::columns::Columns,
 };
-use reifydb_runtime::reifydb_assertions;
 use reifydb_sdk::operator::Tick;
-use reifydb_value::{Result, error::Error, value::row_number::RowNumber};
+use reifydb_value::{
+	Result,
+	error::Error,
+	reifydb_assertions,
+	value::{duration::Duration, row_number::RowNumber},
+};
 
 use crate::{
 	operator::{
@@ -156,7 +160,7 @@ impl Operator for AppendOperator {
 
 	fn ticks(&self) -> Option<Duration> {
 		if self.ttl_nanos.is_some() {
-			Some(Duration::from_secs(1))
+			Some(Duration::from_seconds(1).unwrap())
 		} else {
 			None
 		}

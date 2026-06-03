@@ -3,8 +3,8 @@
 
 use std::fmt::{self, Write};
 
-use reifydb_runtime::reifydb_assertions;
 use reifydb_value::{
+	reifydb_assertions,
 	util::unicode::UnicodeWidthStr,
 	value::frame::{column::FrameColumn, frame::Frame},
 };

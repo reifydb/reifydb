@@ -11,7 +11,6 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
-	time::Duration,
 };
 
 #[cfg(reifydb_target = "native")]
@@ -54,7 +53,10 @@ use reifydb_transaction::{
 	interceptor::interceptors::Interceptors,
 	transaction::{TestTransaction, Transaction},
 };
-use reifydb_value::{Result, value::identity::IdentityId};
+use reifydb_value::{
+	Result,
+	value::{duration::Duration, identity::IdentityId},
+};
 use tracing::{info, warn};
 
 use crate::{
@@ -212,9 +214,13 @@ impl FlowSubsystem {
 		Self::register_watermark_sampler(ioc, &primitive_tracker, &flow_tracker, &flow_catalog);
 
 		let cdc_wake_registry = ioc.resolve::<CdcWakeRegistry>().expect("CdcWakeRegistry must be registered");
-		let poll_config =
-			PollConsumerConfig::new(flow_consumer_id, "flow-cdc-poll", Duration::from_secs(1), Some(100))
-				.with_wake_registry(cdc_wake_registry);
+		let poll_config = PollConsumerConfig::new(
+			flow_consumer_id,
+			"flow-cdc-poll",
+			Duration::from_seconds(1).unwrap(),
+			Some(100),
+		)
+		.with_wake_registry(cdc_wake_registry);
 
 		let bootstrap_flows = Self::bootstrap_flows(&engine, &flow_catalog, &registrar);
 		let _ = coordinator_handle.actor_ref().send(FlowCoordinatorMessage::Bootstrap {

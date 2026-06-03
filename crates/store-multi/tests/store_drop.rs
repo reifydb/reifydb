@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{error::Error as StdError, fmt::Write, path::Path, thread::sleep, time::Duration};
+use std::{error::Error as StdError, fmt::Write, path::Path, thread::sleep};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -31,7 +31,7 @@ use reifydb_testing::{
 	testscript,
 	testscript::{command::Command, runner::run_path},
 };
-use reifydb_value::{cow_vec, util::cowvec::CowVec};
+use reifydb_value::{cow_vec, util::cowvec::CowVec, value::duration::Duration};
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/store-multi/tests/scripts/drop" as store_drop_multi_memory => test_memory }
@@ -308,7 +308,7 @@ impl testscript::runner::Runner for Runner {
 
 				// Wait for background worker to process drops
 				// Default flush interval is 50ms, so 150ms should be enough
-				sleep(Duration::from_millis(150));
+				sleep(Duration::from_milliseconds(150).unwrap().to_std());
 			}
 
 			// count_versions KEY - counts how many versions of a key exist
@@ -337,7 +337,7 @@ impl testscript::runner::Runner for Runner {
 				let mut args = command.consume_args();
 				let millis: u64 = args.next_pos().ok_or("milliseconds not given")?.value.parse()?;
 				args.reject_rest()?;
-				sleep(Duration::from_millis(millis));
+				sleep(Duration::from_milliseconds(millis as i64).unwrap().to_std());
 			}
 
 			name => {

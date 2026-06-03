@@ -7,10 +7,10 @@ use std::{
 		Arc,
 		atomic::{AtomicUsize, Ordering},
 	},
-	time::Duration,
 };
 
 use reifydb_client::{SubscriptionConfig, WireFormat, WsClient};
+use reifydb_value::value::duration::Duration;
 use tokio::{
 	runtime::Runtime,
 	time::{sleep, timeout},
@@ -134,7 +134,7 @@ fn test_many_concurrent_clients() {
 		}
 
 		// Give clients time to connect and subscribe
-		sleep(Duration::from_millis(500)).await;
+		sleep(Duration::from_milliseconds(500).unwrap().to_std()).await;
 
 		// Create a new client to trigger the insert
 		let mut trigger_client =
@@ -252,7 +252,7 @@ fn test_client_disconnect_without_unsubscribe() {
 		}
 
 		// Give server time to clean up disconnected clients
-		sleep(Duration::from_millis(500)).await;
+		sleep(Duration::from_milliseconds(500).unwrap().to_std()).await;
 
 		// Server should still be healthy - new clients should be able to connect and subscribe
 		let mut new_client =
@@ -336,7 +336,10 @@ fn test_concurrent_connect_disconnect() {
 						{
 							Ok(sub_id) => {
 								// Small delay to simulate some work
-								sleep(Duration::from_millis(10)).await;
+								sleep(Duration::from_milliseconds(10)
+									.unwrap()
+									.to_std())
+								.await;
 
 								client.unsubscribe(&sub_id).await?;
 								client.close().await?;
@@ -350,7 +353,10 @@ fn test_concurrent_connect_disconnect() {
 								// Transaction conflict, retry after small delay
 								retries += 1;
 								client.close().await?;
-								sleep(Duration::from_millis(10 * retries as u64)).await;
+								sleep(Duration::from_milliseconds(10 * retries as i64)
+									.unwrap()
+									.to_std())
+								.await;
 								continue;
 							}
 							Err(e) => {
@@ -426,24 +432,27 @@ fn test_subscribe_receive_unsubscribe_cycles() {
 		// Generous per-op bound: a healthy op completes in milliseconds even under heavy parallel
 		// load, so 30s only trips on a genuine hang - turning it into a fast, attributed failure
 		// instead of stalling the whole test run.
-		const OP_TIMEOUT: Duration = Duration::from_secs(30);
+		let op_timeout = Duration::from_seconds(30).unwrap();
 		for i in 0..NUM_CYCLES {
 			let sub_id = timeout(
-				OP_TIMEOUT,
+				op_timeout.to_std(),
 				client.subscribe(&format!("from test::{}", table), SubscriptionConfig::default()),
 			)
 			.await
 			.unwrap_or_else(|_| panic!("Cycle {}: subscribe timed out", i))
 			.unwrap();
-			timeout(OP_TIMEOUT, client.command(&format!("INSERT test::{} [{{ id: {} }}]", table, i), None))
-				.await
-				.unwrap_or_else(|_| panic!("Cycle {}: command timed out", i))
-				.unwrap();
+			timeout(
+				op_timeout.to_std(),
+				client.command(&format!("INSERT test::{} [{{ id: {} }}]", table, i), None),
+			)
+			.await
+			.unwrap_or_else(|_| panic!("Cycle {}: command timed out", i))
+			.unwrap();
 
 			let change = recv_with_timeout(&mut client, 500).await;
 			assert!(change.is_some(), "Cycle {}: should receive notification", i);
 
-			timeout(OP_TIMEOUT, client.unsubscribe(&sub_id))
+			timeout(op_timeout.to_std(), client.unsubscribe(&sub_id))
 				.await
 				.unwrap_or_else(|_| panic!("Cycle {}: unsubscribe timed out", i))
 				.unwrap();

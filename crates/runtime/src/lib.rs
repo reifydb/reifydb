@@ -19,8 +19,6 @@
 #![allow(clippy::tabs_in_doc_comments)]
 #![allow(dead_code)]
 
-mod assertions;
-
 pub mod context;
 
 pub mod hash;

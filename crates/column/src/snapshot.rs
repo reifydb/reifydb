@@ -4,8 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::value::column::data::Column;
-use reifydb_runtime::reifydb_assertions;
-use reifydb_value::{Result, value::value_type::ValueType};
+use reifydb_value::{Result, reifydb_assertions, value::value_type::ValueType};
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{error::Error, time::Duration};
+use std::error::Error;
 
+use reifydb_value::value::duration::Duration;
 use tokio::{select, sync::watch, task::block_in_place, time::sleep};
 use tonic::{Streaming, transport::Channel};
 use tracing::{debug, error, info, warn};
@@ -50,7 +51,7 @@ impl ReplicationClient {
 						e, self.reconnect_interval
 					);
 					select! {
-					    _ = sleep(self.reconnect_interval) => {}
+					    _ = sleep(self.reconnect_interval.to_std()) => {}
 					    _ = shutdown_rx.changed() => {
 						if *shutdown_rx.borrow() {
 						    info!("Replication client shutting down during reconnect");
