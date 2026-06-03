@@ -20,6 +20,7 @@
 //! in [`accumulator`].
 
 pub mod accumulator;
+pub mod bridge;
 pub mod multi_rolling;
 pub mod rolling;
 pub mod rolling_incremental;

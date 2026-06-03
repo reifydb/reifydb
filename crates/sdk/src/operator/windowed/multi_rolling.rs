@@ -1,20 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{BTreeMap, BTreeSet, HashMap},
-	fmt::{self, Debug, Formatter},
-	hash::Hash,
-};
+use std::{collections::BTreeMap, fmt::Debug, hash::Hash};
 
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_core::{
 	encoded::key::{EncodedKey, IntoEncodedKey},
 	interface::catalog::flow::FlowNodeId,
-	key::flow_node_internal_state::FlowNodeInternalStateKey,
+	window::{
+		accumulator::WindowAccumulator,
+		engine::{
+			AccEvent,
+			multi_rolling::{MultiEmit, MultiRollingEngine},
+			rolling::RollingBuckets,
+		},
+		span::Slot,
+	},
 };
-use reifydb_value::{reifydb_assertions, value::row_number::RowNumber};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use reifydb_value::value::row_number::RowNumber;
+use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
 	config::Config,
@@ -28,32 +32,17 @@ use crate::{
 		},
 		context::OperatorContext,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
-		windowed::{accumulator::WindowAccumulator, span::Slot},
+		windowed::bridge::OperatorContextStore,
 	},
-	state::cache::StateCache,
 };
 
-#[derive(Clone, Hash, PartialEq, Eq)]
-struct MetaKey(EncodedKey);
-
-impl IntoEncodedKey for &MetaKey {
-	fn into_encoded_key(self) -> EncodedKey {
-		let inner = self.0.as_ref();
-		let mut bytes = Vec::with_capacity(1 + inner.len());
-		bytes.push(FlowNodeInternalStateKey::WINDOW_META_TAG);
-		bytes.extend_from_slice(inner);
-		EncodedKey::new(bytes)
-	}
-}
-
-fn meta_key_for<G>(group: &G) -> MetaKey
-where
-	for<'a> &'a G: IntoEncodedKey,
-{
-	MetaKey(group.into_encoded_key())
-}
-
 type AccContribution<A> = <<A as MultiRollingOperator>::WindowAcc as WindowAccumulator>::Contribution;
+
+type Buckets<A> = RollingBuckets<
+	<A as MultiRollingOperator>::GroupKey,
+	<A as MultiRollingOperator>::WindowCoord,
+	AccContribution<A>,
+>;
 
 pub trait MultiRollingOperator {
 	type GroupKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned;
@@ -101,70 +90,6 @@ pub type MultiRollingBuffer<A> =
 
 pub type MultiRollingEmit<A> = BTreeMap<<A as MultiRollingOperator>::SecondaryKey, <A as MultiRollingOperator>::Output>;
 
-type EmitDiffs<A> = (
-	Vec<(RowNumber, <A as MultiRollingOperator>::Output)>,
-	Vec<(RowNumber, <A as MultiRollingOperator>::Output, <A as MultiRollingOperator>::Output)>,
-	Vec<(RowNumber, <A as MultiRollingOperator>::Output)>,
-);
-
-struct GroupSlot<A: MultiRollingOperator> {
-	state_row_number: RowNumber,
-	buffer: MultiRollingBuffer<A>,
-	prior_emit: MultiRollingEmit<A>,
-	buffer_changed: bool,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(bound(
-	serialize = "MultiRollingBuffer<A>: Serialize, MultiRollingEmit<A>: Serialize",
-	deserialize = "MultiRollingBuffer<A>: serde::de::DeserializeOwned, MultiRollingEmit<A>: serde::de::DeserializeOwned"
-))]
-struct GroupState<A: MultiRollingOperator> {
-	buffer: MultiRollingBuffer<A>,
-	last_emit: MultiRollingEmit<A>,
-}
-
-impl<A: MultiRollingOperator> Default for GroupState<A> {
-	fn default() -> Self {
-		Self {
-			buffer: BTreeMap::new(),
-			last_emit: BTreeMap::new(),
-		}
-	}
-}
-
-impl<A: MultiRollingOperator> Clone for GroupState<A> {
-	fn clone(&self) -> Self {
-		Self {
-			buffer: self.buffer.clone(),
-			last_emit: self.last_emit.clone(),
-		}
-	}
-}
-
-impl<A: MultiRollingOperator> fmt::Debug for GroupState<A> {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		f.debug_struct("GroupState")
-			.field("buffer_len", &self.buffer.len())
-			.field("last_emit_len", &self.last_emit.len())
-			.finish()
-	}
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "K: Serialize", deserialize = "K: serde::de::DeserializeOwned"))]
-struct GroupMeta<K> {
-	high_water: Option<K>,
-}
-
-impl<K> Default for GroupMeta<K> {
-	fn default() -> Self {
-		Self {
-			high_water: None,
-		}
-	}
-}
-
 pub struct MultiRollingDriver<A>
 where
 	A: MultiRollingRegistration,
@@ -172,13 +97,7 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	aggregator: A,
-	groups: StateCache<RowNumber, GroupState<A>>,
-	meta: StateCache<MetaKey, GroupMeta<A::WindowCoord>>,
-}
-
-enum AccEvent<A: MultiRollingOperator> {
-	Add(AccContribution<A>),
-	Remove(AccContribution<A>),
+	engine: MultiRollingEngine<A::GroupKey, A::WindowCoord, A::WindowAcc, A::SecondaryKey, A::Output>,
 }
 
 impl<A> OperatorMetadata for MultiRollingDriver<A>
@@ -211,30 +130,61 @@ where
 		let aggregator = A::from_config(operator_id, config)?;
 		Ok(Self {
 			aggregator,
-			groups: StateCache::<RowNumber, GroupState<A>>::new(8),
-			meta: StateCache::<MetaKey, GroupMeta<A::WindowCoord>>::new_internal(64),
+			engine: MultiRollingEngine::new(),
 		})
 	}
 
-	#[allow(clippy::type_complexity)]
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
 		let buckets = self.route_diffs_to_buckets(&change);
 		if buckets.is_empty() {
 			return Ok(());
 		}
 
-		let mut meta_loaded = self.warm_and_load_meta(ctx, &buckets)?;
-		let state_rows = self.resolve_state_rows(ctx, &buckets, &meta_loaded)?;
-		let group_slots = self.apply_events_into_buffers(ctx, buckets, &mut meta_loaded, &state_rows)?;
+		let emits = {
+			let Self {
+				aggregator,
+				engine,
+			} = &mut *self;
+			let capacity = aggregator.capacity();
+			let mut store = OperatorContextStore(ctx);
+			engine.apply(
+				&mut store,
+				buckets,
+				capacity,
+				|group| aggregator.encode_state_key(group),
+				|group, secondary| aggregator.encode_row_key(group, secondary),
+				|group, buffer| aggregator.combine(group, buffer),
+			)?
+		};
 
-		let (inserts, updates, removes) = self.diff_emits(ctx, group_slots)?;
+		let mut inserts: Vec<(RowNumber, A::Output)> = Vec::new();
+		let mut updates: Vec<(RowNumber, A::Output, A::Output)> = Vec::new();
+		let mut removes: Vec<(RowNumber, A::Output)> = Vec::new();
+		for emit in emits {
+			match emit {
+				MultiEmit::Insert {
+					row_number,
+					value,
+				} => inserts.push((row_number, value)),
+				MultiEmit::Update {
+					row_number,
+					prior,
+					value,
+				} => updates.push((row_number, prior, value)),
+				MultiEmit::Remove {
+					row_number,
+					value,
+				} => removes.push((row_number, value)),
+			}
+		}
 		Self::emit_three_batches(ctx, &inserts, &updates, &removes)?;
-		self.persist_meta(ctx, meta_loaded)
+
+		Ok(())
 	}
 
 	fn flush_state(&mut self, ctx: &mut impl OperatorContext) -> Result<()> {
-		self.groups.flush(ctx)?;
-		self.meta.flush(ctx)?;
+		let mut store = OperatorContextStore(ctx);
+		self.engine.flush(&mut store)?;
 		Ok(())
 	}
 }
@@ -252,11 +202,8 @@ where
 {
 	#[inline]
 	#[allow(clippy::type_complexity)]
-	fn route_diffs_to_buckets(
-		&self,
-		change: &impl ChangeView,
-	) -> BTreeMap<(A::GroupKey, A::WindowCoord), Vec<AccEvent<A>>> {
-		let mut buckets: BTreeMap<(A::GroupKey, A::WindowCoord), Vec<AccEvent<A>>> = BTreeMap::new();
+	fn route_diffs_to_buckets(&self, change: &impl ChangeView) -> Buckets<A> {
+		let mut buckets: Buckets<A> = BTreeMap::new();
 
 		for di in 0..change.diff_count() {
 			let Some(diff) = change.diff(di) else {
@@ -325,200 +272,6 @@ where
 	}
 
 	#[inline]
-	#[allow(clippy::type_complexity)]
-	fn warm_and_load_meta(
-		&mut self,
-		ctx: &mut impl OperatorContext,
-		buckets: &BTreeMap<(A::GroupKey, A::WindowCoord), Vec<AccEvent<A>>>,
-	) -> Result<HashMap<A::GroupKey, GroupMeta<A::WindowCoord>>> {
-		let meta_keys: Vec<MetaKey> = buckets
-			.keys()
-			.map(|(group, _)| group)
-			.collect::<BTreeSet<_>>()
-			.into_iter()
-			.map(meta_key_for)
-			.collect();
-		self.meta.warm(ctx, &meta_keys)?;
-
-		let mut meta_loaded: HashMap<A::GroupKey, GroupMeta<A::WindowCoord>> = HashMap::new();
-		for (group, _) in buckets.keys() {
-			if !meta_loaded.contains_key(group) {
-				let m = self.meta.get(ctx, &meta_key_for(group))?.unwrap_or_default();
-				meta_loaded.insert(group.clone(), m);
-			}
-		}
-		Ok(meta_loaded)
-	}
-
-	#[inline]
-	#[allow(clippy::type_complexity)]
-	fn resolve_state_rows(
-		&mut self,
-		ctx: &mut impl OperatorContext,
-		buckets: &BTreeMap<(A::GroupKey, A::WindowCoord), Vec<AccEvent<A>>>,
-		meta_loaded: &HashMap<A::GroupKey, GroupMeta<A::WindowCoord>>,
-	) -> Result<HashMap<A::GroupKey, RowNumber>> {
-		let mut state_rows: HashMap<A::GroupKey, RowNumber> = HashMap::new();
-		let mut resolve_order: Vec<A::GroupKey> = Vec::new();
-		let mut state_lookup_keys: Vec<EncodedKey> = Vec::new();
-		let mut seen: BTreeSet<A::GroupKey> = BTreeSet::new();
-		for (group, coord) in buckets.keys() {
-			let initial_high_water = meta_loaded.get(group).and_then(|m| m.high_water);
-			if initial_high_water.is_none_or(|hw| *coord >= hw) && seen.insert(group.clone()) {
-				resolve_order.push(group.clone());
-				state_lookup_keys.push(self.aggregator.encode_state_key(group));
-			}
-		}
-		let resolved_rows = ctx.get_or_create_row_numbers(&state_lookup_keys)?;
-		let state_keys: Vec<RowNumber> = resolved_rows.iter().map(|(rn, _)| *rn).collect();
-		for (group, (state_row_number, _)) in resolve_order.into_iter().zip(resolved_rows) {
-			state_rows.insert(group, state_row_number);
-		}
-		self.groups.warm(ctx, &state_keys)?;
-		Ok(state_rows)
-	}
-
-	#[inline]
-	#[allow(clippy::type_complexity)]
-	fn apply_events_into_buffers(
-		&mut self,
-		ctx: &mut impl OperatorContext,
-		buckets: BTreeMap<(A::GroupKey, A::WindowCoord), Vec<AccEvent<A>>>,
-		meta_loaded: &mut HashMap<A::GroupKey, GroupMeta<A::WindowCoord>>,
-		state_rows: &HashMap<A::GroupKey, RowNumber>,
-	) -> Result<BTreeMap<A::GroupKey, GroupSlot<A>>> {
-		let mut group_slots: BTreeMap<A::GroupKey, GroupSlot<A>> = BTreeMap::new();
-
-		let capacity = self.aggregator.capacity();
-
-		for ((group, coord), events) in buckets {
-			let meta = meta_loaded.entry(group.clone()).or_default();
-
-			if let Some(hw) = meta.high_water
-				&& coord < hw
-			{
-				continue;
-			}
-
-			let slot = match group_slots.get_mut(&group) {
-				Some(s) => s,
-				None => {
-					let state_row_number = match state_rows.get(&group) {
-						Some(&rn) => rn,
-						None => {
-							let key = self.aggregator.encode_state_key(&group);
-							let (rn, _is_new) = ctx.get_or_create_row_number(&key)?;
-							rn
-						}
-					};
-					let GroupState {
-						buffer,
-						last_emit: prior_emit,
-					} = self.groups.get(ctx, &state_row_number)?.unwrap_or_default();
-					group_slots.insert(
-						group.clone(),
-						GroupSlot {
-							state_row_number,
-							buffer,
-							prior_emit,
-							buffer_changed: false,
-						},
-					);
-					group_slots.get_mut(&group).expect("just inserted")
-				}
-			};
-
-			let mut acc = slot.buffer.remove(&coord).unwrap_or_default();
-			for event in events {
-				match event {
-					AccEvent::Add(c) => acc.add(&c),
-					AccEvent::Remove(c) => acc.remove(&c),
-				}
-			}
-			if !acc.is_empty() {
-				slot.buffer.insert(coord, acc);
-			}
-			while slot.buffer.len() > capacity {
-				slot.buffer.pop_first();
-			}
-			slot.buffer_changed = true;
-
-			let next_high_water = match meta.high_water {
-				Some(hw) if hw > coord => hw,
-				_ => coord,
-			};
-			reifydb_assertions! {
-				assert!(
-					next_high_water >= coord,
-					"high_water regressed below the window coord it just admitted, so the next batch would \
-					 treat an already-processed window as late and silently drop its events (coord={coord:?}, \
-					 prev_high_water={prev:?}, next_high_water={next_high_water:?})",
-					prev = meta.high_water
-				);
-				if let Some(prev) = meta.high_water {
-					assert!(
-						next_high_water >= prev,
-						"high_water moved backwards across an admit, breaking the monotonic late-event \
-						 cutoff that buried-window dropping relies on (coord={coord:?}, prev_high_water={prev:?}, \
-						 next_high_water={next_high_water:?})"
-					);
-				}
-			}
-			meta.high_water = Some(next_high_water);
-		}
-
-		Ok(group_slots)
-	}
-
-	#[inline]
-	fn diff_emits(
-		&mut self,
-		ctx: &mut impl OperatorContext,
-		group_slots: BTreeMap<A::GroupKey, GroupSlot<A>>,
-	) -> Result<EmitDiffs<A>> {
-		let mut inserts: Vec<(RowNumber, A::Output)> = Vec::new();
-		let mut updates: Vec<(RowNumber, A::Output, A::Output)> = Vec::new();
-		let mut removes: Vec<(RowNumber, A::Output)> = Vec::new();
-
-		for (group, slot) in group_slots {
-			if !slot.buffer_changed {
-				continue;
-			}
-			let new_emit = self.aggregator.combine(&group, &slot.buffer);
-
-			for (sk, new_out) in &new_emit {
-				let key = self.aggregator.encode_row_key(&group, sk);
-				let (rn, _is_new_alloc) = ctx.get_or_create_row_number(&key)?;
-				match slot.prior_emit.get(sk) {
-					Some(prior_out) => {
-						if prior_out != new_out {
-							updates.push((rn, prior_out.clone(), new_out.clone()));
-						}
-					}
-					None => {
-						inserts.push((rn, new_out.clone()));
-					}
-				}
-			}
-			for (sk, prior_out) in &slot.prior_emit {
-				if !new_emit.contains_key(sk) {
-					let key = self.aggregator.encode_row_key(&group, sk);
-					let (rn, _is_new_alloc) = ctx.get_or_create_row_number(&key)?;
-					removes.push((rn, prior_out.clone()));
-				}
-			}
-
-			let combined = GroupState {
-				buffer: slot.buffer,
-				last_emit: new_emit,
-			};
-			self.groups.put(ctx, &slot.state_row_number, combined)?;
-		}
-
-		Ok((inserts, updates, removes))
-	}
-
-	#[inline]
 	fn emit_three_batches(
 		ctx: &mut impl OperatorContext,
 		inserts: &[(RowNumber, A::Output)],
@@ -548,18 +301,6 @@ where
 		}
 		Ok(())
 	}
-
-	#[inline]
-	fn persist_meta(
-		&mut self,
-		ctx: &mut impl OperatorContext,
-		meta_loaded: HashMap<A::GroupKey, GroupMeta<A::WindowCoord>>,
-	) -> Result<()> {
-		for (group, meta) in meta_loaded {
-			self.meta.set(ctx, &meta_key_for(&group), &meta)?;
-		}
-		Ok(())
-	}
 }
 
 #[cfg(test)]
@@ -575,6 +316,7 @@ mod tests {
 		row::Row as CoreRow,
 	};
 	use reifydb_value::value::{Value, value_type::ValueType};
+	use serde::{Deserialize, Serialize};
 
 	use super::*;
 	use crate::{

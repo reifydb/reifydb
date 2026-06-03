@@ -2750,6 +2750,7 @@ dependencies = [
  "num_cpus",
  "once_cell",
  "paste",
+ "postcard",
  "reifydb-abi",
  "reifydb-build",
  "reifydb-catalog",

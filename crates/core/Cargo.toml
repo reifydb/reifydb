@@ -40,3 +40,4 @@ futures-util = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-engine = { workspace = true, features = ["tokio"] }
 reifydb-transaction = { workspace = true }
+postcard = { workspace = true }
