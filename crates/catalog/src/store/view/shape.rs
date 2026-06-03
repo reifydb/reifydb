@@ -3,7 +3,11 @@
 
 pub(crate) mod view {
 	use once_cell::sync::Lazy;
-	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_core::{
+		encoded::shape::{RowShape, RowShapeField},
+		interface::catalog::{column::ColumnIndex, view::ViewSortKey},
+		sort::SortDirection,
+	};
 	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const ID: usize = 0;
@@ -19,6 +23,7 @@ pub(crate) mod view {
 	pub(crate) const KEY_KIND: usize = 10;
 	pub(crate) const PRECISION: usize = 11;
 	pub(crate) const TAG_ID: usize = 12;
+	pub(crate) const SORT: usize = 13;
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
@@ -35,8 +40,43 @@ pub(crate) mod view {
 			RowShapeField::unconstrained("key_kind", ValueType::Uint1),
 			RowShapeField::unconstrained("precision", ValueType::Uint1),
 			RowShapeField::unconstrained("tag_id", ValueType::Uint8),
+			RowShapeField::unconstrained("sort", ValueType::Utf8),
 		])
 	});
+
+	pub(crate) fn encode_view_sort(sort: &[ViewSortKey]) -> String {
+		sort.iter()
+			.map(|key| {
+				let dir = match key.direction {
+					SortDirection::Asc => 'a',
+					SortDirection::Desc => 'd',
+				};
+				format!("{}:{}", key.column.0, dir)
+			})
+			.collect::<Vec<_>>()
+			.join(",")
+	}
+
+	pub(crate) fn parse_view_sort(encoded: &str) -> Vec<ViewSortKey> {
+		if encoded.is_empty() {
+			return Vec::new();
+		}
+		encoded.split(',')
+			.filter_map(|part| {
+				let (idx, dir) = part.split_once(':')?;
+				let column = ColumnIndex(idx.parse::<u8>().ok()?);
+				let direction = match dir {
+					"a" => SortDirection::Asc,
+					"d" => SortDirection::Desc,
+					_ => return None,
+				};
+				Some(ViewSortKey {
+					column,
+					direction,
+				})
+			})
+			.collect()
+	}
 }
 
 pub(crate) mod view_namespace {

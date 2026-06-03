@@ -28,7 +28,31 @@ use super::{
 use crate::{
 	encoded::key::EncodedKey,
 	interface::catalog::{id::IndexId, shape::ShapeId},
+	sort::SortDirection,
 };
+
+fn keycode_type_descending(ty: &ValueType) -> bool {
+	matches!(
+		ty,
+		ValueType::Boolean
+			| ValueType::Float4
+			| ValueType::Float8
+			| ValueType::Int1
+			| ValueType::Int2
+			| ValueType::Int4
+			| ValueType::Int8
+			| ValueType::Int16
+			| ValueType::Uint1
+			| ValueType::Uint2
+			| ValueType::Uint4
+			| ValueType::Uint8
+			| ValueType::Uint16
+			| ValueType::Date
+			| ValueType::DateTime
+			| ValueType::Time
+			| ValueType::Duration
+	)
+}
 
 pub struct KeySerializer {
 	buffer: EncodedKey,
@@ -149,6 +173,27 @@ impl KeySerializer {
 	pub fn extend_raw(&mut self, bytes: &[u8]) -> &mut Self {
 		self.buffer.extend_from_slice(bytes);
 		self
+	}
+
+	pub fn extend_value_with_direction(&mut self, value: &Value, direction: SortDirection) -> &mut Self {
+		let ty = match value {
+			Value::None {
+				inner,
+			} => inner.clone(),
+			present => present.get_type(),
+		};
+		let ascending = matches!(direction, SortDirection::Asc);
+		if ascending == keycode_type_descending(&ty) {
+			let mut tmp = KeySerializer::new();
+			tmp.extend_value(value);
+			let mut bytes = tmp.to_encoded_key().to_vec();
+			for b in bytes.iter_mut() {
+				*b = !*b;
+			}
+			self.extend_raw(&bytes)
+		} else {
+			self.extend_value(value)
+		}
 	}
 
 	pub fn len(&self) -> usize {
@@ -435,6 +480,7 @@ pub mod tests {
 			id::{IndexId, PrimaryKeyId, TableId},
 			shape::ShapeId,
 		},
+		sort::SortDirection,
 		util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 	};
 
@@ -834,6 +880,66 @@ pub mod tests {
 		// So: bytes_1000 < bytes_100 < bytes_1
 		assert!(bytes3 < bytes2, "encode(1000) should be < encode(100)");
 		assert!(bytes2 < bytes1, "encode(100) should be < encode(1)");
+	}
+
+	#[test]
+	fn test_extend_value_with_direction_ascending() {
+		// Ascending: a smaller value must encode to smaller bytes so a forward scan returns it first.
+		let enc = |v: i32| {
+			let mut s = KeySerializer::new();
+			s.extend_value_with_direction(&Value::Int4(v), SortDirection::Asc);
+			s.finish()
+		};
+		assert!(enc(1) < enc(100), "asc: encode(1) should sort before encode(100)");
+		assert!(enc(100) < enc(1000), "asc: encode(100) should sort before encode(1000)");
+		assert!(enc(-5) < enc(0), "asc: encode(-5) should sort before encode(0)");
+	}
+
+	#[test]
+	fn test_extend_value_with_direction_descending() {
+		// Descending: a larger value must encode to smaller bytes so a forward scan returns it first.
+		let enc = |v: i32| {
+			let mut s = KeySerializer::new();
+			s.extend_value_with_direction(&Value::Int4(v), SortDirection::Desc);
+			s.finish()
+		};
+		assert!(enc(1000) < enc(100), "desc: encode(1000) should sort before encode(100)");
+		assert!(enc(100) < enc(1), "desc: encode(100) should sort before encode(1)");
+	}
+
+	#[test]
+	fn test_extend_value_with_direction_none_policy() {
+		// none sorts last under ascending and first under descending.
+		let enc = |v: &Value, d: SortDirection| {
+			let mut s = KeySerializer::new();
+			s.extend_value_with_direction(v, d);
+			s.finish()
+		};
+		let none = Value::none_of(ValueType::Int4);
+		let present = Value::Int4(0);
+		assert!(
+			enc(&present, SortDirection::Asc) < enc(&none, SortDirection::Asc),
+			"asc: present should sort before none"
+		);
+		assert!(
+			enc(&none, SortDirection::Desc) < enc(&present, SortDirection::Desc),
+			"desc: none should sort before present"
+		);
+	}
+
+	#[test]
+	fn test_extend_value_with_direction_utf8() {
+		// Strings encode ascending in keycode; asc must preserve lexicographic order and desc must reverse it
+		// (this is the regression that the uniform-invert implementation got backwards).
+		let enc = |s: &str, d: SortDirection| {
+			let mut ser = KeySerializer::new();
+			ser.extend_value_with_direction(&Value::Utf8(s.to_string()), d);
+			ser.finish()
+		};
+		assert!(enc("apple", SortDirection::Asc) < enc("banana", SortDirection::Asc), "asc: apple < banana");
+		assert!(enc("banana", SortDirection::Asc) < enc("cherry", SortDirection::Asc), "asc: banana < cherry");
+		assert!(enc("cherry", SortDirection::Desc) < enc("banana", SortDirection::Desc), "desc: cherry first");
+		assert!(enc("banana", SortDirection::Desc) < enc("apple", SortDirection::Desc), "desc: banana before apple");
 	}
 
 	#[test]

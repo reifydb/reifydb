@@ -9,12 +9,19 @@ use reifydb_core::{
 		shape::RowShape,
 	},
 	interface::{
-		catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId, view::View},
+		catalog::{
+			flow::FlowNodeId,
+			id::TableId,
+			shape::ShapeId,
+			view::{View, ViewSortKey},
+		},
 		change::{Change, ChangeOrigin, Diff},
 		resolved::ResolvedView,
 	},
 	key::kind::KeyKind,
-	util::encoding::keycode::{catalog::serialize_shape_id, encode_u8, encode_u64_varint},
+	util::encoding::keycode::{
+		catalog::serialize_shape_id, encode_u8, encode_u64_varint, serializer::KeySerializer,
+	},
 	value::column::columns::Columns,
 };
 use reifydb_value::{
@@ -34,6 +41,7 @@ pub struct SinkTableViewOperator {
 
 	key_prefix: Vec<u8>,
 	shape: RowShape,
+	sort: Vec<ViewSortKey>,
 }
 
 impl SinkTableViewOperator {
@@ -42,12 +50,14 @@ impl SinkTableViewOperator {
 		key_prefix.push(encode_u8(KeyKind::Row as u8));
 		serialize_shape_id(&ShapeId::table(underlying), &mut key_prefix);
 		let shape: RowShape = view.def().columns().into();
+		let sort = view.def().sort().to_vec();
 		Self {
 			parent,
 			node,
 			view,
 			key_prefix,
 			shape,
+			sort,
 		}
 	}
 
@@ -57,6 +67,21 @@ impl SinkTableViewOperator {
 		buf.extend_from_slice(&self.key_prefix);
 		encode_u64_varint(row.0, &mut buf);
 		EncodedKey::new(buf)
+	}
+
+	#[inline]
+	fn clustered_key(&self, cols: &Columns, row_idx: usize, row: RowNumber) -> EncodedKey {
+		if self.sort.is_empty() {
+			return self.row_key(row);
+		}
+		let mut serializer = KeySerializer::new();
+		serializer.extend_raw(&self.key_prefix);
+		for key in &self.sort {
+			let value = cols.data_at(key.column.0 as usize).get_value(row_idx);
+			serializer.extend_value_with_direction(&value, key.direction.clone());
+		}
+		serializer.extend_raw(&row.0.to_be_bytes());
+		serializer.to_encoded_key()
 	}
 }
 
@@ -107,20 +132,16 @@ impl SinkTableViewOperator {
 		let coerced = coerce_columns(post, view.columns())?;
 		let row_count = coerced.row_count();
 		let field_columns = shape_field_columns(&coerced, shape);
-		let mut ids: Vec<RowNumber> = Vec::with_capacity(row_count);
+		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
 
 		for row_idx in 0..row_count {
 			let row_number = coerced.row_numbers[row_idx];
 			let (_, encoded) = encode_row_at_index(&coerced, row_idx, shape, row_number, &field_columns)?;
-			ids.push(row_number);
+			keys.push(self.clustered_key(&coerced, row_idx, row_number));
 			encoded_rows.push(encoded);
 		}
 
-		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		for row_number in ids.iter() {
-			keys.push(self.row_key(*row_number));
-		}
 		txn.set_batch(&keys, &encoded_rows)?;
 
 		emit_view_change(txn, view, Diff::insert(coerced));
@@ -149,8 +170,8 @@ impl SinkTableViewOperator {
 			let (_, mut post_encoded) =
 				encode_row_at_index(&coerced_post, row_idx, shape, post_row_number, &field_columns)?;
 
-			let pre_key = self.row_key(pre_row_number);
-			let post_key = self.row_key(post_row_number);
+			let pre_key = self.clustered_key(&coerced_pre, row_idx, pre_row_number);
+			let post_key = self.clustered_key(&coerced_post, row_idx, post_row_number);
 
 			let prior_created = match txn.get(&post_key)? {
 				Some(prior) if prior.len() >= SHAPE_HEADER_SIZE => {
@@ -163,7 +184,7 @@ impl SinkTableViewOperator {
 				}
 				_ => None,
 			};
-			if prior_created.is_none() && pre_row_number != post_row_number {
+			if prior_created.is_none() && pre_key.as_slice() != post_key.as_slice() {
 				match txn.get(&pre_key)? {
 					Some(prior) if prior.len() >= SHAPE_HEADER_SIZE => {
 						let c = prior.created_at_nanos();
@@ -200,7 +221,7 @@ impl SinkTableViewOperator {
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
 			let row_number = coerced.row_numbers[row_idx];
-			keys.push(self.row_key(row_number));
+			keys.push(self.clustered_key(&coerced, row_idx, row_number));
 		}
 
 		txn.remove_batch(&keys)?;

@@ -122,6 +122,7 @@ pub mod tests {
 					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
 				}],
 				storage: ViewStorageConfig::default(),
+				sort: vec![],
 			},
 		)
 		.unwrap();

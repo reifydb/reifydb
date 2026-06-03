@@ -4,13 +4,22 @@
 use reifydb_value::value::sumtype::SumTypeId;
 use serde::{Deserialize, Serialize};
 
-use crate::interface::catalog::{
-	column::Column,
-	id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
-	key::PrimaryKey,
-	series::SeriesKey,
-	shape::ShapeId,
+use crate::{
+	interface::catalog::{
+		column::{Column, ColumnIndex},
+		id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
+		key::PrimaryKey,
+		series::SeriesKey,
+		shape::ShapeId,
+	},
+	sort::SortDirection,
 };
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ViewSortKey {
+	pub column: ColumnIndex,
+	pub direction: SortDirection,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ViewKind {
@@ -35,6 +44,7 @@ pub struct TableView {
 	pub columns: Vec<Column>,
 	pub primary_key: Option<PrimaryKey>,
 	pub underlying: TableId,
+	pub sort: Vec<ViewSortKey>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -48,6 +58,7 @@ pub struct RingBufferView {
 	pub underlying: RingBufferId,
 	pub capacity: u64,
 	pub propagate_evictions: bool,
+	pub sort: Vec<ViewSortKey>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -61,6 +72,7 @@ pub struct SeriesView {
 	pub underlying: SeriesId,
 	pub key: SeriesKey,
 	pub tag: Option<SumTypeId>,
+	pub sort: Vec<ViewSortKey>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -124,6 +136,14 @@ impl View {
 			View::Table(t) => t.primary_key.as_ref(),
 			View::RingBuffer(rb) => rb.primary_key.as_ref(),
 			View::Series(s) => s.primary_key.as_ref(),
+		}
+	}
+
+	pub fn sort(&self) -> &[ViewSortKey] {
+		match self {
+			View::Table(t) => &t.sort,
+			View::RingBuffer(rb) => &rb.sort,
+			View::Series(s) => &s.sort,
 		}
 	}
 

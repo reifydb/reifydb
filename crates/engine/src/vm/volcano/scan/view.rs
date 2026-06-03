@@ -15,7 +15,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::reifydb_assertions;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::row_number::RowNumber};
 use tracing::instrument;
 
 use crate::{
@@ -30,6 +30,7 @@ pub(crate) struct ViewScanNode {
 	shape: Option<RowShape>,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
+	sorted: bool,
 }
 
 impl ViewScanNode {
@@ -37,6 +38,7 @@ impl ViewScanNode {
 		let headers = ColumnHeaders {
 			columns: view.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		};
+		let sorted = !view.def().sort().is_empty();
 
 		Ok(Self {
 			view,
@@ -45,6 +47,7 @@ impl ViewScanNode {
 			shape: None,
 			last_key: None,
 			exhausted: false,
+			sorted,
 		})
 	}
 
@@ -98,11 +101,19 @@ impl QueryNode for ViewScanNode {
 		for _ in 0..batch_size {
 			match stream.next() {
 				Some(Ok(multi)) => {
-					if let Some(key) = RowKey::decode(&multi.key) {
-						batch_rows.push(multi.row);
-						row_numbers.push(key.row);
-						new_last_key = Some(multi.key);
-					}
+					let row = if self.sorted {
+						let bytes = multi.key.as_slice();
+						RowNumber(u64::from_be_bytes(
+							bytes[bytes.len() - 8..].try_into().unwrap(),
+						))
+					} else if let Some(key) = RowKey::decode(&multi.key) {
+						key.row
+					} else {
+						continue;
+					};
+					batch_rows.push(multi.row);
+					row_numbers.push(row);
+					new_last_key = Some(multi.key);
 				}
 				Some(Err(e)) => return Err(e),
 				None => {

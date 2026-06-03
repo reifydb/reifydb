@@ -97,6 +97,7 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 
 	let storage_kind = view::SHAPE.get_u8(row, view::STORAGE_KIND);
 	let underlying_shape_id = view::SHAPE.get_u64(row, view::UNDERLYING_SHAPE_ID);
+	let sort = view::parse_view_sort(view::SHAPE.get_utf8(row, view::SORT));
 
 	Ok(match storage_kind {
 		x if x == ViewStorageKind::Table as u8 => View::Table(TableView {
@@ -107,6 +108,7 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 			columns,
 			primary_key,
 			underlying: TableId(underlying_shape_id),
+			sort,
 		}),
 		x if x == ViewStorageKind::RingBuffer as u8 => {
 			let capacity = view::SHAPE.get_u64(row, view::CAPACITY);
@@ -121,6 +123,7 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 				underlying: RingBufferId(underlying_shape_id),
 				capacity,
 				propagate_evictions,
+				sort,
 			})
 		}
 		x if x == ViewStorageKind::Series as u8 => {
@@ -144,6 +147,7 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 				underlying: SeriesId(underlying_shape_id),
 				key,
 				tag,
+				sort,
 			})
 		}
 
@@ -155,6 +159,7 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 			columns,
 			primary_key,
 			underlying: TableId(underlying_shape_id),
+			sort,
 		}),
 	})
 }

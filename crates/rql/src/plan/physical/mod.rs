@@ -1045,7 +1045,9 @@ impl<'bump> Compiler<'bump> {
 							PhysicalPlan::TableScan(scan) => {
 								Some(ResolvedShape::Table(scan.source.clone()))
 							}
-							PhysicalPlan::ViewScan(scan) => {
+							PhysicalPlan::ViewScan(scan)
+								if scan.source.def().sort().is_empty() =>
+							{
 								Some(ResolvedShape::View(scan.source.clone()))
 							}
 							PhysicalPlan::RingBufferScan(scan) => {

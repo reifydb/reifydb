@@ -96,6 +96,7 @@ pub mod tests {
 			],
 			primary_key: None,
 			underlying: TableId(0),
+			sort: vec![],
 		})
 	}
 

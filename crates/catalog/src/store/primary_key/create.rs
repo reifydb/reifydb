@@ -235,6 +235,7 @@ pub mod tests {
 					},
 				],
 				storage: ViewStorageConfig::default(),
+				sort: vec![],
 			},
 		)
 		.unwrap();

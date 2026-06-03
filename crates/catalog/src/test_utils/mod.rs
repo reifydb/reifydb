@@ -140,6 +140,7 @@ pub fn create_view(txn: &mut AdminTransaction, namespace: &str, view: &str, colu
 			namespace: namespace.id(),
 			columns: columns.to_vec(),
 			storage: ViewStorageConfig::default(),
+			sort: vec![],
 		},
 	)
 	.unwrap()

@@ -9,7 +9,7 @@ use reifydb_core::{
 		view::{
 			View, ViewKind,
 			ViewKind::{Deferred, Transactional},
-			ViewStorageKind,
+			ViewSortKey, ViewStorageKind,
 		},
 	},
 	key::{namespace_view::NamespaceViewKey, view::ViewKey},
@@ -68,6 +68,7 @@ pub struct ViewToCreate {
 	pub namespace: NamespaceId,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub storage: ViewStorageConfig,
+	pub sort: Vec<ViewSortKey>,
 }
 
 impl CatalogStore {
@@ -129,6 +130,7 @@ impl CatalogStore {
 			},
 		);
 		view::SHAPE.set_u64(&mut row, view::PRIMARY_KEY, 0u64);
+		view::SHAPE.set_utf8(&mut row, view::SORT, view::encode_view_sort(&to_create.sort));
 
 		match &to_create.storage {
 			ViewStorageConfig::Table {
@@ -260,6 +262,7 @@ pub mod tests {
 			name: Fragment::internal("test_view"),
 			columns: vec![],
 			storage: ViewStorageConfig::default(),
+			sort: vec![],
 		};
 
 		// First creation should succeed
@@ -282,6 +285,7 @@ pub mod tests {
 			name: Fragment::internal("test_view"),
 			columns: vec![],
 			storage: ViewStorageConfig::default(),
+			sort: vec![],
 		};
 
 		CatalogStore::create_deferred_view(&mut txn, to_create).unwrap();
@@ -291,6 +295,7 @@ pub mod tests {
 			name: Fragment::internal("another_view"),
 			columns: vec![],
 			storage: ViewStorageConfig::default(),
+			sort: vec![],
 		};
 
 		CatalogStore::create_deferred_view(&mut txn, to_create).unwrap();
@@ -322,6 +327,7 @@ pub mod tests {
 			name: Fragment::internal("my_view"),
 			columns: vec![],
 			storage: ViewStorageConfig::default(),
+			sort: vec![],
 		};
 
 		CatalogStore::create_deferred_view(&mut txn, to_create).unwrap_err();

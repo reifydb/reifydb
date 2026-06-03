@@ -20,7 +20,7 @@ use reifydb_rql::nodes::{CompiledViewStorageKind, CreateDeferredViewNode};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{fragment::Fragment, return_error, value::Value};
 
-use super::{create_deferred_view_flow, require_buffer_for_non_persistent};
+use super::{create_deferred_view_flow, extract_view_sort, require_buffer_for_non_persistent};
 use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_deferred_view(
@@ -73,6 +73,8 @@ pub(crate) fn create_deferred_view(
 		)?;
 	}
 
+	let sort = extract_view_sort(&plan.as_clause, &plan.columns);
+
 	let result = services.catalog.create_deferred_view(
 		txn,
 		ViewToCreate {
@@ -80,6 +82,7 @@ pub(crate) fn create_deferred_view(
 			namespace: plan.namespace.id(),
 			columns: plan.columns,
 			storage,
+			sort,
 		},
 	)?;
 	txn.track_view_created(result.clone())?;

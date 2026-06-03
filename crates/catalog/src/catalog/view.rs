@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::{
 		change::CatalogTrackViewChangeOperations,
 		id::{NamespaceId, PrimaryKeyId, ViewId},
-		view::View,
+		view::{View, ViewSortKey},
 	},
 	internal,
 };
@@ -38,6 +38,7 @@ pub struct ViewToCreate {
 	pub namespace: NamespaceId,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub storage: ViewStorageConfig,
+	pub sort: Vec<ViewSortKey>,
 }
 
 impl From<ViewColumnToCreate> for StoreViewColumnToCreate {
@@ -57,6 +58,7 @@ impl From<ViewToCreate> for StoreViewToCreate {
 			namespace: to_create.namespace,
 			columns: to_create.columns.into_iter().map(|c| c.into()).collect(),
 			storage: to_create.storage,
+			sort: to_create.sort,
 		}
 	}
 }
