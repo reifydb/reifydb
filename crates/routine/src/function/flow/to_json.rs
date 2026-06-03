@@ -147,6 +147,7 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 				right,
 				alias,
 				snapshot: _,
+				natural: _,
 			} => JsonFlowNodeType::Join {
 				join_type: *join_type,
 				left: left.iter().map(|e| e.into()).collect(),

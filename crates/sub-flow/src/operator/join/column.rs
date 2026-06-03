@@ -13,20 +13,28 @@ pub(crate) struct JoinedColumnsBuilder {
 	left_column_count: usize,
 
 	right_column_names: Vec<String>,
+
+	included_right_cols: Vec<usize>,
 }
 
 impl JoinedColumnsBuilder {
-	pub(crate) fn new(left: &Columns, right: &Columns, alias: &Option<String>) -> Self {
+	pub(crate) fn new(left: &Columns, right: &Columns, alias: &Option<String>, natural: bool) -> Self {
 		let left_column_count = left.columns.len();
 
 		let left_names: Vec<String> = left.names.iter().map(|n| n.as_ref().to_string()).collect();
 
 		let alias_str = alias.as_deref().unwrap_or("other");
 		let mut right_column_names = Vec::with_capacity(right.columns.len());
+		let mut included_right_cols = Vec::with_capacity(right.columns.len());
 		let mut all_names = left_names.clone();
 
-		for name in right.names.iter() {
+		for (idx, name) in right.names.iter().enumerate() {
 			let col_name = name.as_ref();
+
+			if natural && left_names.iter().any(|ln| ln.as_str() == col_name) {
+				continue;
+			}
+
 			let prefixed_name = format!("{}_{}", alias_str, col_name);
 
 			let mut final_name = prefixed_name.clone();
@@ -44,11 +52,13 @@ impl JoinedColumnsBuilder {
 
 			all_names.push(final_name.clone());
 			right_column_names.push(final_name);
+			included_right_cols.push(idx);
 		}
 
 		Self {
 			left_column_count,
 			right_column_names,
+			included_right_cols,
 		}
 	}
 
@@ -76,7 +86,10 @@ impl JoinedColumnsBuilder {
 			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data));
 		}
 
-		for (right_col, aliased_name) in right.columns.iter().zip(self.right_column_names.iter()) {
+		for (&right_col_idx, aliased_name) in
+			self.included_right_cols.iter().zip(self.right_column_names.iter())
+		{
+			let right_col = &right.columns[right_col_idx];
 			let mut col_data = ColumnBuffer::with_capacity(right_col.get_type(), right_count);
 			for row_idx in 0..right_count {
 				col_data.push_value(right_col.get_value(row_idx));
@@ -115,7 +128,10 @@ impl JoinedColumnsBuilder {
 			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data));
 		}
 
-		for (right_col, aliased_name) in right.columns.iter().zip(self.right_column_names.iter()) {
+		for (&right_col_idx, aliased_name) in
+			self.included_right_cols.iter().zip(self.right_column_names.iter())
+		{
+			let right_col = &right.columns[right_col_idx];
 			let right_value = right_col.get_value(right_idx);
 			let mut col_data = ColumnBuffer::with_capacity(right_col.get_type(), left_count);
 			for _ in 0..left_count {
@@ -161,7 +177,10 @@ impl JoinedColumnsBuilder {
 			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data));
 		}
 
-		for (right_col, aliased_name) in right.columns.iter().zip(self.right_column_names.iter()) {
+		for (&right_col_idx, aliased_name) in
+			self.included_right_cols.iter().zip(self.right_column_names.iter())
+		{
+			let right_col = &right.columns[right_col_idx];
 			let mut col_data = ColumnBuffer::with_capacity(right_col.get_type(), result_count);
 			for _ in 0..left_count {
 				for &right_idx in right_indices {
@@ -195,7 +214,10 @@ impl JoinedColumnsBuilder {
 			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data));
 		}
 
-		for (right_col, aliased_name) in right_shape.columns.iter().zip(self.right_column_names.iter()) {
+		for (&right_col_idx, aliased_name) in
+			self.included_right_cols.iter().zip(self.right_column_names.iter())
+		{
+			let right_col = &right_shape.columns[right_col_idx];
 			let mut col_data = ColumnBuffer::with_capacity(right_col.get_type(), 1);
 			col_data.push_value(Value::none());
 			result_columns.push(ColumnWithName::new(Fragment::internal(aliased_name), col_data));
@@ -232,7 +254,10 @@ impl JoinedColumnsBuilder {
 			result_columns.push(ColumnWithName::new(left.names[i].clone(), col_data));
 		}
 
-		for (right_col, aliased_name) in right_shape.columns.iter().zip(self.right_column_names.iter()) {
+		for (&right_col_idx, aliased_name) in
+			self.included_right_cols.iter().zip(self.right_column_names.iter())
+		{
+			let right_col = &right_shape.columns[right_col_idx];
 			let mut col_data = ColumnBuffer::with_capacity(right_col.get_type(), count);
 			for _ in 0..count {
 				col_data.push_value(Value::none());

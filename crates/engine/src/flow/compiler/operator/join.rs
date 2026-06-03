@@ -9,7 +9,7 @@ use reifydb_core::{
 use reifydb_rql::{
 	expression::Expression,
 	flow::node::FlowNodeType,
-	nodes::{JoinInnerNode, JoinLeftNode},
+	nodes::{JoinInnerNode, JoinLeftNode, JoinNaturalNode},
 	query::QueryPlan,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -25,6 +25,7 @@ pub(crate) struct JoinCompiler {
 	pub alias: Option<String>,
 	pub ttl: Option<JoinTtl>,
 	pub snapshot: bool,
+	pub natural: bool,
 }
 
 impl From<JoinInnerNode> for JoinCompiler {
@@ -37,6 +38,7 @@ impl From<JoinInnerNode> for JoinCompiler {
 			alias: node.alias.map(|f| f.text().to_string()),
 			ttl: node.ttl,
 			snapshot: node.snapshot,
+			natural: false,
 		}
 	}
 }
@@ -51,6 +53,22 @@ impl From<JoinLeftNode> for JoinCompiler {
 			alias: node.alias.map(|f| f.text().to_string()),
 			ttl: node.ttl,
 			snapshot: node.snapshot,
+			natural: false,
+		}
+	}
+}
+
+impl From<JoinNaturalNode> for JoinCompiler {
+	fn from(node: JoinNaturalNode) -> Self {
+		Self {
+			join_type: node.join_type,
+			left: node.left,
+			right: node.right,
+			on: Vec::new(),
+			alias: node.alias.map(|f| f.text().to_string()),
+			ttl: node.ttl,
+			snapshot: node.snapshot,
+			natural: true,
 		}
 	}
 }
@@ -123,6 +141,7 @@ impl CompileOperator for JoinCompiler {
 				right: right_keys,
 				alias: effective_alias,
 				snapshot: self.snapshot,
+				natural: self.natural,
 			},
 		)?;
 

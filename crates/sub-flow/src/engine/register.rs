@@ -5,16 +5,20 @@ use std::mem;
 
 use reifydb_core::{
 	common::{JoinType, WindowKind},
-	interface::catalog::{
-		flow::{FlowId, FlowNodeId},
-		id::{RingBufferId, SeriesId, TableId, ViewId},
-		series::SeriesKey,
-		shape::ShapeId,
+	interface::{
+		catalog::{
+			flow::{FlowId, FlowNodeId},
+			id::{RingBufferId, SeriesId, TableId, ViewId},
+			series::SeriesKey,
+			shape::ShapeId,
+		},
+		identifier::{ColumnIdentifier, ColumnShape},
 	},
 	internal,
+	value::column::columns::Columns,
 };
 use reifydb_rql::{
-	expression::Expression,
+	expression::{ColumnExpression, Expression},
 	flow::{
 		flow::FlowDag,
 		node::{
@@ -31,7 +35,7 @@ use reifydb_rql::{
 use reifydb_runtime::reifydb_assertions;
 use reifydb_sdk::config::Config;
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
-use reifydb_value::{Result, error::Error, value::dictionary::DictionaryId};
+use reifydb_value::{Result, error::Error, fragment::Fragment, value::dictionary::DictionaryId};
 use tracing::instrument;
 
 use super::eval::evaluate_operator_config;
@@ -189,7 +193,8 @@ impl FlowEngineInner {
 				right,
 				alias,
 				snapshot,
-			} => self.add_join(node_id, &inputs, join_type, left, right, alias, snapshot)?,
+				natural,
+			} => self.add_join(node_id, &inputs, join_type, left, right, alias, snapshot, natural)?,
 			Distinct {
 				expressions,
 			} => self.add_distinct(node_id, &inputs, expressions)?,
@@ -466,6 +471,7 @@ impl FlowEngineInner {
 		right: Vec<Expression>,
 		alias: Option<String>,
 		snapshot: bool,
+		natural: bool,
 	) -> Result<()> {
 		if inputs.len() != 2 {
 			return Err(Error(Box::new(internal!("Join node must have exactly 2 inputs"))));
@@ -486,26 +492,37 @@ impl FlowEngineInner {
 			.ok_or_else(|| Error(Box::new(internal!("Right parent operator not found"))))?
 			.clone();
 
+		let left_schema = left_parent.output_schema().unwrap_or_default();
+		let right_schema =
+			right_parent.output_schema().expect("right side of join must have a statically known schema");
+
+		let (left_exprs, right_exprs) = if natural {
+			let common = common_column_names(&left_schema, &right_schema);
+			let keys: Vec<Expression> = common.iter().map(|name| natural_key_expr(name)).collect();
+			(keys.clone(), keys)
+		} else {
+			(left, right)
+		};
+
 		self.operators.insert(
 			node_id,
 			OperatorCell::new(Operators::Join(JoinOperator::new(
 				JoinSideConfig {
-					schema: left_parent.output_schema().unwrap_or_default(),
+					schema: left_schema,
 					node: left_node,
-					exprs: left,
+					exprs: left_exprs,
 				},
 				JoinSideConfig {
-					schema: right_parent
-						.output_schema()
-						.expect("right side of join must have a statically known schema"),
+					schema: right_schema,
 					node: right_node,
-					exprs: right,
+					exprs: right_exprs,
 				},
 				node_id,
 				join_type,
 				alias,
 				self.executor.clone(),
 				snapshot,
+				natural,
 			))),
 		);
 		Ok(())
@@ -688,4 +705,19 @@ impl FlowEngineInner {
 			nodes.push(entry);
 		}
 	}
+}
+
+fn common_column_names(left: &Columns, right: &Columns) -> Vec<String> {
+	let right_names: Vec<String> = right.names.iter().map(|n| n.text().to_string()).collect();
+	left.names.iter().map(|n| n.text().to_string()).filter(|name| right_names.contains(name)).collect()
+}
+
+fn natural_key_expr(name: &str) -> Expression {
+	Expression::Column(ColumnExpression(ColumnIdentifier {
+		shape: ColumnShape::Qualified {
+			namespace: Fragment::internal("_context"),
+			name: Fragment::internal("_context"),
+		},
+		name: Fragment::internal(name),
+	}))
 }

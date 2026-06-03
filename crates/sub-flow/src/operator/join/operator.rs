@@ -72,6 +72,7 @@ pub struct JoinOperator {
 	routines: Routines,
 	runtime_context: RuntimeContext,
 	pub(crate) snapshot: bool,
+	natural: bool,
 }
 
 impl JoinOperator {
@@ -84,6 +85,7 @@ impl JoinOperator {
 		alias: Option<String>,
 		executor: Executor,
 		snapshot: bool,
+		natural: bool,
 	) -> Self {
 		let left_node = left.node;
 		let right_node = right.node;
@@ -127,6 +129,7 @@ impl JoinOperator {
 			routines,
 			runtime_context,
 			snapshot,
+			natural,
 		}
 	}
 
@@ -218,7 +221,7 @@ impl JoinOperator {
 		let (result_row_number, _is_new) =
 			self.row_number_provider.get_or_create_row_number(txn, &composite_key)?;
 
-		let builder = JoinedColumnsBuilder::new(left, &self.right_schema, &self.alias);
+		let builder = JoinedColumnsBuilder::new(left, &self.right_schema, &self.alias, self.natural);
 		Ok(builder.unmatched_left(result_row_number, left, left_idx, &self.right_schema))
 	}
 
@@ -247,7 +250,7 @@ impl JoinOperator {
 			self.row_number_provider.get_or_create_row_numbers(txn, composite_keys.iter())?;
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
 
-		let builder = JoinedColumnsBuilder::new(left, &self.right_schema, &self.alias);
+		let builder = JoinedColumnsBuilder::new(left, &self.right_schema, &self.alias, self.natural);
 		Ok(builder.unmatched_left_batch(&row_numbers, left, left_indices, &self.right_schema))
 	}
 
@@ -293,7 +296,7 @@ impl JoinOperator {
 			self.row_number_provider.get_or_create_row_numbers(txn, composite_keys.iter())?;
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
 
-		let builder = JoinedColumnsBuilder::new(left, right, &self.alias);
+		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
 		Ok(builder.join_one_to_many(&row_numbers, left, left_idx, right))
 	}
 
@@ -322,7 +325,7 @@ impl JoinOperator {
 			self.row_number_provider.get_or_create_row_numbers(txn, composite_keys.iter())?;
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
 
-		let builder = JoinedColumnsBuilder::new(left, right, &self.alias);
+		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
 		Ok(builder.join_many_to_one(&row_numbers, left, right, right_idx))
 	}
 
@@ -355,7 +358,7 @@ impl JoinOperator {
 			self.row_number_provider.get_or_create_row_numbers(txn, composite_keys.iter())?;
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
 
-		let builder = JoinedColumnsBuilder::new(left, right, &self.alias);
+		let builder = JoinedColumnsBuilder::new(left, right, &self.alias, self.natural);
 		Ok(builder.join_cartesian(&row_numbers, left, left_indices, right, right_indices))
 	}
 
@@ -397,6 +400,10 @@ impl Operator for JoinOperator {
 			&& *from_node == self.node
 		{
 			return Ok(Change::from_flow(self.node, change.version, Vec::new(), DateTime::default()));
+		}
+
+		if self.natural && self.compiled_left_exprs.is_empty() {
+			return Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at));
 		}
 
 		let mut state = JoinState::new(self.node);

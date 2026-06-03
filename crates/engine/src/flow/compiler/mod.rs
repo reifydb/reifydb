@@ -326,9 +326,7 @@ impl FlowCompiler {
 			QueryPlan::Sort(sort) => SortCompiler::from(sort).compile(self, txn),
 			QueryPlan::JoinInner(join) => JoinCompiler::from(join).compile(self, txn),
 			QueryPlan::JoinLeft(join) => JoinCompiler::from(join).compile(self, txn),
-			QueryPlan::JoinNatural(_) => {
-				unimplemented!()
-			}
+			QueryPlan::JoinNatural(join) => JoinCompiler::from(join).compile(self, txn),
 			QueryPlan::Append(append) => AppendCompiler::from(append).compile(self, txn),
 			QueryPlan::Patch(_) => {
 				unimplemented!("Patch compilation not yet implemented for flow")
