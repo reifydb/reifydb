@@ -35,22 +35,14 @@ fn keycode_type_descending(ty: &ValueType) -> bool {
 	matches!(
 		ty,
 		ValueType::Boolean
-			| ValueType::Float4
-			| ValueType::Float8
-			| ValueType::Int1
-			| ValueType::Int2
-			| ValueType::Int4
-			| ValueType::Int8
-			| ValueType::Int16
-			| ValueType::Uint1
-			| ValueType::Uint2
-			| ValueType::Uint4
-			| ValueType::Uint8
-			| ValueType::Uint16
-			| ValueType::Date
-			| ValueType::DateTime
-			| ValueType::Time
-			| ValueType::Duration
+			| ValueType::Float4 | ValueType::Float8
+			| ValueType::Int1 | ValueType::Int2
+			| ValueType::Int4 | ValueType::Int8
+			| ValueType::Int16 | ValueType::Uint1
+			| ValueType::Uint2 | ValueType::Uint4
+			| ValueType::Uint8 | ValueType::Uint16
+			| ValueType::Date | ValueType::DateTime
+			| ValueType::Time | ValueType::Duration
 	)
 }
 
@@ -939,7 +931,10 @@ pub mod tests {
 		assert!(enc("apple", SortDirection::Asc) < enc("banana", SortDirection::Asc), "asc: apple < banana");
 		assert!(enc("banana", SortDirection::Asc) < enc("cherry", SortDirection::Asc), "asc: banana < cherry");
 		assert!(enc("cherry", SortDirection::Desc) < enc("banana", SortDirection::Desc), "desc: cherry first");
-		assert!(enc("banana", SortDirection::Desc) < enc("apple", SortDirection::Desc), "desc: banana before apple");
+		assert!(
+			enc("banana", SortDirection::Desc) < enc("apple", SortDirection::Desc),
+			"desc: banana before apple"
+		);
 	}
 
 	#[test]

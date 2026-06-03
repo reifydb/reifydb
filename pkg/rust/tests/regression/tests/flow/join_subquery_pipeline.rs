@@ -42,7 +42,7 @@ fn distinct_in_join_subquery_deduplicates() {
 		"create view test::result \
          { swap_id: uint8, quote_mint: utf8, p_mint: utf8, p_price: float8 } as { \
              from test::swaps \
-             inner join { from test::prices | sort { slot: desc } | map { mint, price } | distinct { mint } } as p \
+             inner join { from test::prices | map { mint, price } | distinct { mint } } as p \
              using (quote_mint, p.mint) \
          }",
 	);
@@ -51,9 +51,9 @@ fn distinct_in_join_subquery_deduplicates() {
 	command(
 		&db,
 		r#"INSERT test::prices [
-            { mint: "USDC", slot: 3, price: 1.0 },
             { mint: "USDC", slot: 2, price: 1.0 },
             { mint: "USDC", slot: 1, price: 1.0 }
+            { mint: "USDC", slot: 3, price: 1.0 },
         ]"#,
 	);
 	// Left side second: 1 swap triggers the join.

@@ -35,6 +35,22 @@ pub fn invalid_statement(message: &str) -> Diagnostic {
 	}
 }
 
+pub fn subscription_operation_unsupported(operation: &str) -> Diagnostic {
+	Diagnostic {
+		code: "SUBS_004".to_string(),
+		rql: None,
+		message: format!("operator `{}` is not supported in a subscription", operation),
+		fragment: Fragment::None,
+		label: Some("unsupported operator in subscription".to_string()),
+		help: Some("subscriptions support only filter, gate, map, extend, take, and distinct over a source"
+			.to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn subscription_missing_as_clause(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "SUBS_003".to_string(),

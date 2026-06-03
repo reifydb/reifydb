@@ -22,7 +22,7 @@
 use std::{collections::BTreeMap, time::Duration};
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use reifydb::{Params, embedded as db_embedded};
+use reifydb::{Database, Params, embedded as db_embedded};
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_engine::subscription::SubscriptionServiceRef;
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
@@ -55,15 +55,17 @@ pub fn extract_sub_id(frames: &[reifydb_value::value::frame::frame::Frame]) -> S
 	}
 }
 
-pub fn make_db() -> reifydb::Database {
+pub fn make_db() -> Database {
 	let db = db_embedded::memory().build().expect("build");
 	db.admin_as_root("CREATE NAMESPACE app", Params::None).expect("create namespace");
 	db.admin_as_root("CREATE TABLE app::t { id: int4, qty: int4, ts_ms: int8 }", Params::None)
 		.expect("create table");
+	db.admin_as_root("CREATE TABLE app::other { id: int4, qty: int4, ts_ms: int8 }", Params::None)
+		.expect("create table");
 	db
 }
 
-pub fn insert_all_at_once(db: &reifydb::Database, rows: &[Row]) {
+pub fn insert_all_at_once(db: &Database, rows: &[Row]) {
 	if rows.is_empty() {
 		return;
 	}
@@ -78,20 +80,20 @@ pub fn insert_all_at_once(db: &reifydb::Database, rows: &[Row]) {
 	db.command_as_root(&stmt, Params::None).expect("bulk insert");
 }
 
-pub fn insert_one_at_a_time(db: &reifydb::Database, rows: &[Row]) {
+pub fn insert_one_at_a_time(db: &Database, rows: &[Row]) {
 	for r in rows {
 		let stmt = format!("INSERT app::t [{{id: {}, qty: {}, ts_ms: {}}}]", r.id, r.qty, r.ts_ms);
 		db.command_as_root(&stmt, Params::None).expect("incremental insert");
 	}
 }
 
-pub fn drain_sub(db: &reifydb::Database, sub_id: SubscriptionId) -> Vec<Columns> {
+pub fn drain_sub(db: &Database, sub_id: SubscriptionId) -> Vec<Columns> {
 	let subsystem = db.subsystem::<SubscriptionSubsystem>().expect("subscription subsystem present");
 	let store = subsystem.store();
 	store.drain(&sub_id, usize::MAX)
 }
 
-pub fn drain_after_consumer_caught_up(db: &reifydb::Database, sub_id: SubscriptionId) -> Vec<Columns> {
+pub fn drain_after_consumer_caught_up(db: &Database, sub_id: SubscriptionId) -> Vec<Columns> {
 	let target = db.watermarks().tx().current().expect("current version");
 	let timeout = Duration::from_secs(10);
 	if !db.watermarks().cdc().wait_for_consumer(target, timeout) {
@@ -214,6 +216,17 @@ pub fn run_path_incremental(rql: &str, rows: &[Row]) -> Vec<Columns> {
 	insert_one_at_a_time(&db, rows);
 
 	drain_after_consumer_caught_up(&db, sub_id)
+}
+
+// Attempt to create a subscription with an operator the compiler should reject, returning the
+// resulting diagnostic. Used by the negative tests for operators outside the subscription allowlist
+// (filter, gate, map, extend, take, distinct).
+pub fn create_subscription_error(rql: &str) -> reifydb_value::error::Diagnostic {
+	let db = make_db();
+	let create_stmt = format!("CREATE SUBSCRIPTION AS {{ {} }}", rql);
+	db.admin_as_root(&create_stmt, Params::None)
+		.expect_err("expected CREATE SUBSCRIPTION to be rejected by the compiler")
+		.diagnostic()
 }
 
 pub fn random_rows(seed: u64, count: usize, max_id: i32) -> Vec<Row> {

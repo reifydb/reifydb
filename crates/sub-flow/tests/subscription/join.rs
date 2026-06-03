@@ -1,15 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-// Join parity is #[ignore]'d because PR1's hydrate returns UnsupportedSourceType for
-// multi-source flows. Once multi-source hydrate lands, fill in a real test body and
-// remove #[ignore]. The placeholder below keeps the operator visible in the test list so it
-// is not silently forgotten.
+use crate::common::create_subscription_error;
 
-#[ignore]
 #[test]
-fn join_parity() {
-	// Intentional placeholder. Cannot exercise join parity until multi-source hydrate
-	// is implemented. See HydrateError::UnsupportedSourceType.
-	panic!("join parity placeholder - implement after multi-source hydrate lands");
+fn join_rejected_in_subscription() {
+	let diag = create_subscription_error("from app::t | left join { from app::other }  as o using (id,  o.id)");
+	assert_eq!(diag.code, "SUBS_004", "expected SUBS_004, got {:?}: {}", diag.code, diag.message);
+	assert!(diag.message.contains("join"), "diagnostic should name the offending operator: {}", diag.message);
 }

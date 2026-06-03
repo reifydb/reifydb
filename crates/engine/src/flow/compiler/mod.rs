@@ -3,8 +3,12 @@
 
 use reifydb_catalog::{catalog::Catalog, store::operator_settings::create::create_operator_settings};
 use reifydb_core::{
-	error::diagnostic::flow::{
-		flow_ephemeral_id_capacity_exceeded, flow_remote_source_unsupported, flow_source_required,
+	error::diagnostic::{
+		flow::{
+			flow_ephemeral_id_capacity_exceeded, flow_remote_source_unsupported,
+			flow_sort_must_be_terminal, flow_source_required,
+		},
+		subscription::subscription_operation_unsupported,
 	},
 	interface::catalog::{
 		flow::{FlowEdge, FlowEdgeId, FlowId, FlowNode, FlowNodeId},
@@ -225,6 +229,7 @@ impl FlowCompiler {
 		plan: QueryPlan,
 		sink: Option<&View>,
 	) -> Result<FlowDag> {
+		validate_sort_terminal(&plan)?;
 		self.sink = sink.cloned();
 		let root_node_id = self.compile_plan(txn, plan)?;
 
@@ -280,6 +285,7 @@ impl FlowCompiler {
 		plan: QueryPlan,
 		subscription_id: SubscriptionId,
 	) -> Result<FlowDag> {
+		validate_subscription_plan(&plan)?;
 		let root_node_id = self.compile_plan(txn, plan)?;
 
 		let result_node = self.add_node(
@@ -373,6 +379,84 @@ impl FlowCompiler {
 				panic!("CallFunction is not supported in flow graphs");
 			}
 		}
+	}
+}
+
+fn validate_subscription_plan(plan: &QueryPlan) -> Result<()> {
+	match plan {
+		QueryPlan::Filter(n) => validate_subscription_plan(&n.input),
+		QueryPlan::Gate(n) => validate_subscription_plan(&n.input),
+		QueryPlan::Take(n) => validate_subscription_plan(&n.input),
+		QueryPlan::Distinct(n) => validate_subscription_plan(&n.input),
+		QueryPlan::Map(n) => match &n.input {
+			Some(input) => validate_subscription_plan(input),
+			None => Ok(()),
+		},
+		QueryPlan::Extend(n) => match &n.input {
+			Some(input) => validate_subscription_plan(input),
+			None => Ok(()),
+		},
+		QueryPlan::TableScan(_)
+		| QueryPlan::ViewScan(_)
+		| QueryPlan::RingBufferScan(_)
+		| QueryPlan::SeriesScan(_)
+		| QueryPlan::DictionaryScan(_)
+		| QueryPlan::InlineData(_) => Ok(()),
+		other => Err(Error(Box::new(subscription_operation_unsupported(other.name())))),
+	}
+}
+
+fn validate_sort_terminal(plan: &QueryPlan) -> Result<()> {
+	let has_deeper_sort = match plan {
+		QueryPlan::Sort(n) => contains_sort(&n.input),
+		other => contains_sort(other),
+	};
+	if has_deeper_sort {
+		return Err(Error(Box::new(flow_sort_must_be_terminal())));
+	}
+	Ok(())
+}
+
+fn contains_sort(plan: &QueryPlan) -> bool {
+	matches!(plan, QueryPlan::Sort(_)) || child_plans(plan).iter().any(|child| contains_sort(child))
+}
+
+fn child_plans(plan: &QueryPlan) -> Vec<&QueryPlan> {
+	match plan {
+		QueryPlan::Filter(n) => vec![&n.input],
+		QueryPlan::Gate(n) => vec![&n.input],
+		QueryPlan::Aggregate(n) => vec![&n.input],
+		QueryPlan::Distinct(n) => vec![&n.input],
+		QueryPlan::Sort(n) => vec![&n.input],
+		QueryPlan::Take(n) => vec![&n.input],
+		QueryPlan::Scalarize(n) => vec![&n.input],
+		QueryPlan::Map(n) => n.input.as_deref().into_iter().collect(),
+		QueryPlan::Extend(n) => n.input.as_deref().into_iter().collect(),
+		QueryPlan::Patch(n) => n.input.as_deref().into_iter().collect(),
+		QueryPlan::Apply(n) => n.input.as_deref().into_iter().collect(),
+		QueryPlan::Assert(n) => n.input.as_deref().into_iter().collect(),
+		QueryPlan::Window(n) => n.input.as_deref().into_iter().collect(),
+		QueryPlan::JoinInner(n) => vec![&n.left, &n.right],
+		QueryPlan::JoinLeft(n) => vec![&n.left, &n.right],
+		QueryPlan::JoinNatural(n) => vec![&n.left, &n.right],
+		QueryPlan::Append(n) => vec![&n.left, &n.right],
+		QueryPlan::RemoteScan(_)
+		| QueryPlan::TableScan(_)
+		| QueryPlan::TableVirtualScan(_)
+		| QueryPlan::ViewScan(_)
+		| QueryPlan::RingBufferScan(_)
+		| QueryPlan::DictionaryScan(_)
+		| QueryPlan::SeriesScan(_)
+		| QueryPlan::IndexScan(_)
+		| QueryPlan::RowPointLookup(_)
+		| QueryPlan::RowListLookup(_)
+		| QueryPlan::RowRangeScan(_)
+		| QueryPlan::InlineData(_)
+		| QueryPlan::Generator(_)
+		| QueryPlan::Variable(_)
+		| QueryPlan::Environment(_)
+		| QueryPlan::RunTests(_)
+		| QueryPlan::CallFunction(_) => vec![],
 	}
 }
 

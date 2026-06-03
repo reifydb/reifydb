@@ -182,6 +182,25 @@ pub fn flow_source_required() -> Diagnostic {
 	}
 }
 
+pub fn flow_sort_must_be_terminal() -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_012".to_string(),
+		rql: None,
+		message: "sort is only supported as the final operator in a view".to_string(),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some(
+			"Move the sort to the end of the pipeline so its output is not consumed by another operator. \
+			A view may sort its result, but cannot apply further operators after a sort."
+				.to_string(),
+		),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn flow_ephemeral_id_capacity_exceeded(flow_id: u64) -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_011".to_string(),

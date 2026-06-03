@@ -11,3 +11,5 @@ mod ffi;
 mod native;
 #[path = "operator/native/txn_variants/mod.rs"]
 mod txn_variants;
+#[path = "operator/view_sort_terminal.rs"]
+mod view_sort_terminal;
