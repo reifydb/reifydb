@@ -15,7 +15,6 @@ use reifydb_transaction::{
 	transaction::Transaction,
 };
 use reifydb_value::{Result, reifydb_assertions, value::identity::IdentityId};
-use tracing::warn;
 
 use crate::{
 	engine::{FlowEngine, FlowEngineInner},
@@ -153,13 +152,8 @@ impl PostCommitInterceptor for TransactionalFlowPostCommitInterceptor {
 		for flow_change in &ctx.changes.flow {
 			if flow_change.op == OperationType::Create
 				&& let Some(flow) = &flow_change.post
-				&& let Err(e) = self.registrar.try_register_by_id(flow.id)
 			{
-				warn!(
-					flow_id = flow.id.0,
-					error = %e,
-					"failed to register transactional flow on commit"
-				);
+				self.registrar.try_register_by_id_at_version(flow.id, ctx.version)?;
 			}
 		}
 		Ok(())

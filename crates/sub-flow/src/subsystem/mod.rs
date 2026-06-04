@@ -93,7 +93,7 @@ impl CdcConsume for FlowConsumeDispatcher {
 		{
 			for flow_id in new_flow_ids {
 				match self.flow_catalog.get_or_load_flow(&mut Transaction::Query(&mut query), flow_id) {
-					Ok((flow, true)) => match self.registrar.try_register(flow) {
+					Ok((flow, true)) => match self.registrar.try_register(flow, &mut query) {
 						Ok(true) => {}
 						Ok(false) => {
 							self.flow_catalog.remove(flow_id);
@@ -350,7 +350,8 @@ impl FlowSubsystem {
 							&mut Transaction::Query(&mut query),
 							existing.id,
 						) {
-							Ok((flow, _)) => match registrar.try_register(flow) {
+							Ok((flow, _)) => match registrar.try_register(flow, &mut query)
+							{
 								Ok(is_transactional) => bootstrap_flows
 									.push((existing.id, !is_transactional)),
 								Err(e) => warn!(
