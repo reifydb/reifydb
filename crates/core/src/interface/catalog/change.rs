@@ -10,7 +10,7 @@ use crate::{
 		column_snapshot::ColumnSnapshot,
 		config::Config,
 		dictionary::Dictionary,
-		flow::{Flow, FlowNodeId},
+		flow::{Flow, FlowEdge, FlowNode, FlowNodeId},
 		handler::Handler,
 		identity::{GrantedRole, Identity, Role},
 		migration::{Migration, MigrationEvent},
@@ -56,6 +56,18 @@ pub trait CatalogTrackFlowChangeOperations {
 	fn track_flow_updated(&mut self, pre: Flow, post: Flow) -> Result<()>;
 
 	fn track_flow_deleted(&mut self, flow: Flow) -> Result<()>;
+}
+
+pub trait CatalogTrackFlowNodeChangeOperations {
+	fn track_flow_node_created(&mut self, node: FlowNode) -> Result<()>;
+
+	fn track_flow_node_deleted(&mut self, node: FlowNode) -> Result<()>;
+}
+
+pub trait CatalogTrackFlowEdgeChangeOperations {
+	fn track_flow_edge_created(&mut self, edge: FlowEdge) -> Result<()>;
+
+	fn track_flow_edge_deleted(&mut self, edge: FlowEdge) -> Result<()>;
 }
 
 pub trait CatalogTrackViewChangeOperations {
@@ -216,6 +228,8 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackColumnSnapshotChangeOperations
 	+ CatalogTrackDictionaryChangeOperations
 	+ CatalogTrackFlowChangeOperations
+	+ CatalogTrackFlowNodeChangeOperations
+	+ CatalogTrackFlowEdgeChangeOperations
 	+ CatalogTrackHandlerChangeOperations
 	+ CatalogTrackMigrationChangeOperations
 	+ CatalogTrackMigrationEventChangeOperations

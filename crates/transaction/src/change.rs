@@ -10,7 +10,7 @@ use reifydb_core::{
 		column_snapshot::ColumnSnapshot,
 		config::{Config, ConfigKey},
 		dictionary::Dictionary,
-		flow::{Flow, FlowId, FlowNodeId},
+		flow::{Flow, FlowEdge, FlowEdgeId, FlowId, FlowNode, FlowNodeId},
 		handler::Handler,
 		id::{
 			BindingId, ColumnSnapshotId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
@@ -303,6 +303,10 @@ pub struct TransactionalCatalogChanges {
 
 	pub flow: Vec<Change<Flow>>,
 
+	pub flow_node: Vec<Change<FlowNode>>,
+
+	pub flow_edge: Vec<Change<FlowEdge>>,
+
 	pub handler: Vec<Change<Handler>>,
 
 	pub migration: Vec<Change<Migration>>,
@@ -351,6 +355,8 @@ pub struct CatalogChangesSavepoint {
 	config_len: usize,
 	dictionary_len: usize,
 	flow_len: usize,
+	flow_node_len: usize,
+	flow_edge_len: usize,
 	handler_len: usize,
 	migration_len: usize,
 	migration_event_len: usize,
@@ -382,6 +388,8 @@ impl TransactionalCatalogChanges {
 			config_len: self.config.len(),
 			dictionary_len: self.dictionary.len(),
 			flow_len: self.flow.len(),
+			flow_node_len: self.flow_node.len(),
+			flow_edge_len: self.flow_edge.len(),
 			handler_len: self.handler.len(),
 			migration_len: self.migration.len(),
 			migration_event_len: self.migration_event.len(),
@@ -412,6 +420,8 @@ impl TransactionalCatalogChanges {
 		self.config.truncate(sp.config_len);
 		self.dictionary.truncate(sp.dictionary_len);
 		self.flow.truncate(sp.flow_len);
+		self.flow_node.truncate(sp.flow_node_len);
+		self.flow_edge.truncate(sp.flow_edge_len);
 		self.handler.truncate(sp.handler_len);
 		self.migration.truncate(sp.migration_len);
 		self.migration_event.truncate(sp.migration_event_len);
@@ -505,6 +515,36 @@ impl TransactionalCatalogChanges {
 		let op = change.op;
 		self.flow.push(change);
 		self.log.push(Operation::Flow {
+			id,
+			op,
+		});
+	}
+
+	pub fn add_flow_node_change(&mut self, change: Change<FlowNode>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|n| n.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.flow_node.push(change);
+		self.log.push(Operation::FlowNode {
+			id,
+			op,
+		});
+	}
+
+	pub fn add_flow_edge_change(&mut self, change: Change<FlowEdge>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|e| e.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.flow_edge.push(change);
+		self.log.push(Operation::FlowEdge {
 			id,
 			op,
 		});
@@ -856,6 +896,14 @@ pub enum Operation {
 		id: FlowId,
 		op: OperationType,
 	},
+	FlowNode {
+		id: FlowNodeId,
+		op: OperationType,
+	},
+	FlowEdge {
+		id: FlowEdgeId,
+		op: OperationType,
+	},
 	Handler {
 		id: HandlerId,
 		op: OperationType,
@@ -948,6 +996,8 @@ impl TransactionalCatalogChanges {
 			config: Vec::new(),
 			dictionary: Vec::new(),
 			flow: Vec::new(),
+			flow_node: Vec::new(),
+			flow_edge: Vec::new(),
 			handler: Vec::new(),
 			migration: Vec::new(),
 			migration_event: Vec::new(),

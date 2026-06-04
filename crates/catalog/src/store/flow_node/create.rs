@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::flow::FlowNode,
+	interface::catalog::{change::CatalogTrackFlowNodeChangeOperations, flow::FlowNode},
 	key::flow_node::{FlowNodeByFlowKey, FlowNodeKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -27,6 +27,8 @@ impl CatalogStore {
 		flow_node_by_flow::SHAPE.set_u64(&mut index_row, flow_node_by_flow::ID, node_def.id);
 
 		txn.set(&FlowNodeByFlowKey::encoded(node_def.flow, node_def.id), index_row)?;
+
+		txn.track_flow_node_created(node_def.clone())?;
 
 		Ok(())
 	}

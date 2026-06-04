@@ -2,7 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::flow::{FlowId, FlowNodeId},
+	interface::catalog::{
+		change::CatalogTrackFlowNodeChangeOperations,
+		flow::{FlowId, FlowNodeId},
+	},
 	key::{
 		EncodableKey,
 		flow_node::{FlowNodeByFlowKey, FlowNodeKey},
@@ -26,7 +29,9 @@ impl CatalogStore {
 
 		Self::delete_node_state(txn, node_id)?;
 		Self::delete_internal_state(txn, node_id)?;
-		Self::unlink_node(txn, node_id, node_def.flow)
+		Self::unlink_node(txn, node_id, node_def.flow)?;
+		txn.track_flow_node_deleted(node_def)?;
+		Ok(())
 	}
 
 	#[inline]

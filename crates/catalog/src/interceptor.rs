@@ -220,6 +220,26 @@ impl PostCommitInterceptor for CatalogCacheInterceptor {
 			self.catalog.set_flow(id, version, change.post.clone());
 		}
 
+		for change in &ctx.changes.flow_node {
+			let id = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.map(|n| n.id)
+				.expect("Change must have either pre or post state");
+			self.catalog.set_flow_node(id, version, change.post.clone());
+		}
+
+		for change in &ctx.changes.flow_edge {
+			let id = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.map(|e| e.id)
+				.expect("Change must have either pre or post state");
+			self.catalog.set_flow_edge(id, version, change.post.clone());
+		}
+
 		for change in &ctx.changes.source {
 			let id = change
 				.post

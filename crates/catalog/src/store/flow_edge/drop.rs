@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::flow::FlowEdgeId,
+	interface::catalog::{change::CatalogTrackFlowEdgeChangeOperations, flow::FlowEdgeId},
 	key::flow_edge::{FlowEdgeByFlowKey, FlowEdgeKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -17,6 +17,8 @@ impl CatalogStore {
 			txn.remove(&FlowEdgeKey::encoded(edge_id))?;
 
 			txn.remove(&FlowEdgeByFlowKey::encoded(edge_def.flow, edge_id))?;
+
+			txn.track_flow_edge_deleted(edge_def)?;
 		}
 
 		Ok(())

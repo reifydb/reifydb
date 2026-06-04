@@ -7,6 +7,8 @@ pub mod column_snapshot;
 pub mod config;
 pub mod dictionary;
 pub mod flow;
+pub mod flow_edge;
+pub mod flow_node;
 pub mod granted_role;
 pub mod identity;
 pub mod namespace;
@@ -32,6 +34,8 @@ use column_snapshot::load_column_snapshots;
 use config::load_configs;
 use dictionary::load_dictionaries;
 use flow::load_flows;
+use flow_edge::load_flow_edges;
+use flow_node::load_flow_nodes;
 use granted_role::load_granted_roles;
 use identity::load_identities;
 use namespace::load_namespaces;
@@ -68,6 +72,8 @@ impl CatalogCacheLoader {
 		load_tables(rx, catalog)?;
 		load_views(rx, catalog)?;
 		load_flows(rx, catalog)?;
+		load_flow_nodes(rx, catalog)?;
+		load_flow_edges(rx, catalog)?;
 		load_ringbuffers(rx, catalog)?;
 
 		load_shape_retention_strategies(rx, catalog)?;

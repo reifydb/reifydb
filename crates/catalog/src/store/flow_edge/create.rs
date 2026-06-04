@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::flow::FlowEdge,
+	interface::catalog::{change::CatalogTrackFlowEdgeChangeOperations, flow::FlowEdge},
 	key::flow_edge::{FlowEdgeByFlowKey, FlowEdgeKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -27,6 +27,8 @@ impl CatalogStore {
 		flow_edge_by_flow::SHAPE.set_u64(&mut index_row, flow_edge_by_flow::ID, edge_def.id);
 
 		txn.set(&FlowEdgeByFlowKey::encoded(edge_def.flow, edge_def.id), index_row)?;
+
+		txn.track_flow_edge_created(edge_def.clone())?;
 
 		Ok(())
 	}

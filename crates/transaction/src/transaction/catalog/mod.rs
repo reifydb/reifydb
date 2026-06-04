@@ -11,6 +11,8 @@ pub mod column_snapshot;
 pub mod config;
 pub mod dictionary;
 pub mod flow;
+pub mod flow_edge;
+pub mod flow_node;
 pub mod granted_role;
 pub mod handler;
 pub mod identity;

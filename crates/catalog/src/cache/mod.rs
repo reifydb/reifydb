@@ -16,6 +16,8 @@ pub mod column_snapshot;
 pub mod config;
 pub mod dictionary;
 pub mod flow;
+pub mod flow_edge;
+pub mod flow_node;
 pub mod granted_role;
 pub mod handler;
 pub mod identity;
@@ -56,7 +58,7 @@ use reifydb_core::{
 		column_snapshot::ColumnSnapshot,
 		config::{Config, ConfigKey, GetConfig},
 		dictionary::Dictionary,
-		flow::{Flow, FlowId, FlowNodeId},
+		flow::{Flow, FlowEdge, FlowEdgeId, FlowId, FlowNode, FlowNodeId},
 		handler::Handler,
 		id::{
 			BindingId, ColumnSnapshotId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
@@ -103,6 +105,8 @@ pub type MultiVersionNamespace = MultiVersionContainer<Namespace>;
 pub type MultiVersionTable = MultiVersionContainer<Table>;
 pub type MultiVersionView = MultiVersionContainer<View>;
 pub type MultiVersionFlow = MultiVersionContainer<Flow>;
+pub type MultiVersionFlowNode = MultiVersionContainer<FlowNode>;
+pub type MultiVersionFlowEdge = MultiVersionContainer<FlowEdge>;
 pub type MultiVersionPrimaryKey = MultiVersionContainer<PrimaryKey>;
 pub type MultiVersionRetentionStrategy = MultiVersionContainer<RetentionStrategy>;
 pub type MultiVersionDictionary = MultiVersionContainer<Dictionary>;
@@ -162,6 +166,14 @@ pub struct CatalogCacheInner {
 	pub(crate) flows: SkipMap<FlowId, MultiVersionFlow>,
 
 	pub(crate) flows_by_name: SkipMap<(NamespaceId, String), FlowId>,
+
+	pub(crate) flow_nodes: SkipMap<FlowNodeId, MultiVersionFlowNode>,
+
+	pub(crate) flow_nodes_by_flow: SkipMap<FlowId, Vec<FlowNodeId>>,
+
+	pub(crate) flow_edges: SkipMap<FlowEdgeId, MultiVersionFlowEdge>,
+
+	pub(crate) flow_edges_by_flow: SkipMap<FlowId, Vec<FlowEdgeId>>,
 
 	pub(crate) procedures: SkipMap<ProcedureId, MultiVersionProcedure>,
 
@@ -312,6 +324,10 @@ impl CatalogCache {
 			views_by_name: SkipMap::new(),
 			flows: SkipMap::new(),
 			flows_by_name: SkipMap::new(),
+			flow_nodes: SkipMap::new(),
+			flow_nodes_by_flow: SkipMap::new(),
+			flow_edges: SkipMap::new(),
+			flow_edges_by_flow: SkipMap::new(),
 			primary_keys: SkipMap::new(),
 			shape_retention_strategies: SkipMap::new(),
 			operator_retention_strategies: SkipMap::new(),
