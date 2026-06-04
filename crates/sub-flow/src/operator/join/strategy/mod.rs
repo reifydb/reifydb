@@ -15,10 +15,16 @@ use crate::{
 pub(crate) mod hash;
 pub mod hash_inner;
 pub mod hash_left;
+pub(crate) mod latest;
+pub mod latest_inner;
+pub mod latest_left;
 
 use reifydb_value::Result;
 
-use crate::operator::join::strategy::{hash_inner::InnerHashJoin, hash_left::LeftHashJoin};
+use crate::operator::join::strategy::{
+	hash_inner::InnerHashJoin, hash_left::LeftHashJoin, latest_inner::LatestInnerHashJoin,
+	latest_left::LatestLeftHashJoin,
+};
 
 pub(crate) struct JoinContext<'a> {
 	pub side: JoinSide,
@@ -33,15 +39,19 @@ pub(crate) struct UpdateKeys<'a> {
 }
 
 pub(crate) enum JoinStrategy {
-	LeftHash(LeftHashJoin),
-	InnerHash(InnerHashJoin),
+	Left(LeftHashJoin),
+	Inner(InnerHashJoin),
+	LatestLeft(LatestLeftHashJoin),
+	LatestInner(LatestInnerHashJoin),
 }
 
 impl JoinStrategy {
-	pub(crate) fn from(join_type: JoinType) -> Self {
-		match join_type {
-			JoinType::Left => JoinStrategy::LeftHash(LeftHashJoin),
-			JoinType::Inner => JoinStrategy::InnerHash(InnerHashJoin),
+	pub(crate) fn from(join_type: JoinType, latest: bool) -> Self {
+		match (join_type, latest) {
+			(JoinType::Left, false) => JoinStrategy::Left(LeftHashJoin),
+			(JoinType::Inner, false) => JoinStrategy::Inner(InnerHashJoin),
+			(JoinType::Left, true) => JoinStrategy::LatestLeft(LatestLeftHashJoin),
+			(JoinType::Inner, true) => JoinStrategy::LatestInner(LatestInnerHashJoin),
 		}
 	}
 
@@ -53,8 +63,10 @@ impl JoinStrategy {
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match self {
-			JoinStrategy::LeftHash(s) => s.handle_insert_undefined(txn, post, row_idx, ctx),
-			JoinStrategy::InnerHash(s) => s.handle_insert_undefined(txn, post, row_idx, ctx),
+			JoinStrategy::Left(s) => s.handle_insert_undefined(txn, post, row_idx, ctx),
+			JoinStrategy::Inner(s) => s.handle_insert_undefined(txn, post, row_idx, ctx),
+			JoinStrategy::LatestLeft(s) => s.handle_insert_undefined(txn, post, row_idx, ctx),
+			JoinStrategy::LatestInner(s) => s.handle_insert_undefined(txn, post, row_idx, ctx),
 		}
 	}
 
@@ -66,8 +78,10 @@ impl JoinStrategy {
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match self {
-			JoinStrategy::LeftHash(s) => s.handle_remove_undefined(txn, pre, row_idx, ctx),
-			JoinStrategy::InnerHash(s) => s.handle_remove_undefined(txn, pre, row_idx, ctx),
+			JoinStrategy::Left(s) => s.handle_remove_undefined(txn, pre, row_idx, ctx),
+			JoinStrategy::Inner(s) => s.handle_remove_undefined(txn, pre, row_idx, ctx),
+			JoinStrategy::LatestLeft(s) => s.handle_remove_undefined(txn, pre, row_idx, ctx),
+			JoinStrategy::LatestInner(s) => s.handle_remove_undefined(txn, pre, row_idx, ctx),
 		}
 	}
 
@@ -80,8 +94,10 @@ impl JoinStrategy {
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match self {
-			JoinStrategy::LeftHash(s) => s.handle_update_undefined(txn, pre, post, row_idx, ctx),
-			JoinStrategy::InnerHash(s) => s.handle_update_undefined(txn, pre, post, row_idx, ctx),
+			JoinStrategy::Left(s) => s.handle_update_undefined(txn, pre, post, row_idx, ctx),
+			JoinStrategy::Inner(s) => s.handle_update_undefined(txn, pre, post, row_idx, ctx),
+			JoinStrategy::LatestLeft(s) => s.handle_update_undefined(txn, pre, post, row_idx, ctx),
+			JoinStrategy::LatestInner(s) => s.handle_update_undefined(txn, pre, post, row_idx, ctx),
 		}
 	}
 
@@ -94,8 +110,10 @@ impl JoinStrategy {
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match self {
-			JoinStrategy::LeftHash(s) => s.handle_insert(txn, post, indices, key_hash, ctx),
-			JoinStrategy::InnerHash(s) => s.handle_insert(txn, post, indices, key_hash, ctx),
+			JoinStrategy::Left(s) => s.handle_insert(txn, post, indices, key_hash, ctx),
+			JoinStrategy::Inner(s) => s.handle_insert(txn, post, indices, key_hash, ctx),
+			JoinStrategy::LatestLeft(s) => s.handle_insert(txn, post, indices, key_hash, ctx),
+			JoinStrategy::LatestInner(s) => s.handle_insert(txn, post, indices, key_hash, ctx),
 		}
 	}
 
@@ -108,8 +126,10 @@ impl JoinStrategy {
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match self {
-			JoinStrategy::LeftHash(s) => s.handle_remove(txn, pre, indices, key_hash, ctx),
-			JoinStrategy::InnerHash(s) => s.handle_remove(txn, pre, indices, key_hash, ctx),
+			JoinStrategy::Left(s) => s.handle_remove(txn, pre, indices, key_hash, ctx),
+			JoinStrategy::Inner(s) => s.handle_remove(txn, pre, indices, key_hash, ctx),
+			JoinStrategy::LatestLeft(s) => s.handle_remove(txn, pre, indices, key_hash, ctx),
+			JoinStrategy::LatestInner(s) => s.handle_remove(txn, pre, indices, key_hash, ctx),
 		}
 	}
 
@@ -123,8 +143,10 @@ impl JoinStrategy {
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
 		match self {
-			JoinStrategy::LeftHash(s) => s.handle_update(txn, pre, post, indices, keys, ctx),
-			JoinStrategy::InnerHash(s) => s.handle_update(txn, pre, post, indices, keys, ctx),
+			JoinStrategy::Left(s) => s.handle_update(txn, pre, post, indices, keys, ctx),
+			JoinStrategy::Inner(s) => s.handle_update(txn, pre, post, indices, keys, ctx),
+			JoinStrategy::LatestLeft(s) => s.handle_update(txn, pre, post, indices, keys, ctx),
+			JoinStrategy::LatestInner(s) => s.handle_update(txn, pre, post, indices, keys, ctx),
 		}
 	}
 }

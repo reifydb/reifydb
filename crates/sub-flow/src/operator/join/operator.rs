@@ -113,7 +113,7 @@ impl JoinOperator {
 		let left_exprs = left.exprs;
 		let right_exprs = right.exprs;
 		let right_schema = right.schema;
-		let strategy = JoinStrategy::from(join_type);
+		let strategy = JoinStrategy::from(join_type, latest);
 		let shape = Self::state_shape();
 		let row_number_provider = RowNumberProvider::new(node);
 
@@ -179,7 +179,7 @@ impl JoinOperator {
 	) -> Self {
 		Self {
 			node,
-			strategy: JoinStrategy::from(JoinType::Inner),
+			strategy: JoinStrategy::from(JoinType::Inner, false),
 			left_node: FlowNodeId(0),
 			right_node: FlowNodeId(0),
 			compiled_left_exprs: Vec::new(),
@@ -467,6 +467,18 @@ impl JoinOperator {
 		Ok(builder.join_cartesian(&row_numbers, left, left_indices, right, right_indices))
 	}
 
+	pub(crate) fn join_left_with_slot(&self, left: &Columns, left_indices: &[usize], slot: &Columns) -> Columns {
+		let row_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers[idx]).collect();
+		let builder = JoinedColumnsBuilder::new(left, slot, &self.alias, self.natural);
+		builder.join_cartesian(&row_numbers, left, left_indices, slot, &[0])
+	}
+
+	pub(crate) fn unmatched_left_latest(&self, left: &Columns, left_indices: &[usize]) -> Columns {
+		let row_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers[idx]).collect();
+		let builder = JoinedColumnsBuilder::new(left, &self.right_schema, &self.alias, self.natural);
+		builder.unmatched_left_batch(&row_numbers, left, left_indices, &self.right_schema)
+	}
+
 	fn determine_side_from_origin(&self, origin: &ChangeOrigin) -> Option<JoinSide> {
 		match origin {
 			ChangeOrigin::Flow(from_node) => {
@@ -510,8 +522,10 @@ impl Operator for JoinOperator {
 
 	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
 		self.evict_left(txn, tick.now)?;
-		self.evict_right(txn, tick.now)?;
-		self.evict_rownumbers(txn, tick.now)?;
+		if !self.latest {
+			self.evict_right(txn, tick.now)?;
+			self.evict_rownumbers(txn, tick.now)?;
+		}
 		Ok(None)
 	}
 

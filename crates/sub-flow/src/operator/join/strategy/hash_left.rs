@@ -10,7 +10,7 @@ use super::{
 	hash::{
 		JoinEmitContext, add_to_state_entry_batch, emit_joined_columns_batch, emit_remove_joined_columns_batch,
 		emit_update_joined_columns, for_each_left_block, is_first_right_row, remove_from_state_entry,
-		replace_right_entry, update_row_in_entry,
+		update_row_in_entry,
 	},
 };
 use crate::{operator::join::state::JoinSide, transaction::FlowTransaction};
@@ -125,9 +125,6 @@ impl LeftHashJoin {
 		let is_first = is_first_right_row(txn, &ctx.state.right, key_hash)?;
 
 		let mut result = Vec::new();
-		if ctx.operator.latest {
-			result.extend(replace_right_entry(txn, ctx.state, key_hash, ctx.operator)?);
-		}
 		add_to_state_entry_batch(txn, &mut ctx.state.right, key_hash, post, indices)?;
 
 		if ctx.operator.snapshot {

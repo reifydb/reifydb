@@ -156,38 +156,6 @@ impl Store {
 		Ok(())
 	}
 
-	pub(crate) fn clear_key(&self, txn: &mut FlowTransaction, hash: &Hash128, batch_size: usize) -> Result<()> {
-		let prefix = self.hash_prefix(hash);
-		let mut after: Option<EncodedKey> = None;
-		let mut total = 0usize;
-		loop {
-			let base = EncodedKeyRange::prefix(&prefix);
-			let start = match after.clone() {
-				Some(cursor) => Bound::Excluded(cursor),
-				None => base.start.clone(),
-			};
-			let range = EncodedKeyRange::new(start, base.end.clone());
-			let keys: Vec<EncodedKey> = state_range(self.node_id, txn, range)
-				.take(batch_size)
-				.map(|entry| entry.map(|(key, _)| key))
-				.collect::<Result<Vec<_>>>()?;
-			if keys.is_empty() {
-				break;
-			}
-			after = keys.last().cloned();
-			let exhausted = keys.len() < batch_size;
-			total += keys.len();
-			for key in keys {
-				state_remove(self.node_id, txn, &key)?;
-			}
-			if exhausted {
-				break;
-			}
-		}
-		let _ = total;
-		Ok(())
-	}
-
 	pub(crate) fn rows_for_key_block(
 		&self,
 		txn: &mut FlowTransaction,

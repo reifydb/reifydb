@@ -21,15 +21,11 @@ use reifydb_value::{
 };
 
 use crate::{
-	operator::join::{
-		operator::{EVICT_BATCH, JoinOperator},
-		state::{JoinSide, JoinState},
-		store::Store,
-	},
+	operator::join::{operator::JoinOperator, state::JoinSide, store::Store},
 	transaction::FlowTransaction,
 };
 
-fn build_shape(columns: &Columns) -> RowShape {
+pub(crate) fn build_shape(columns: &Columns) -> RowShape {
 	let fields: Vec<RowShapeField> = columns
 		.names
 		.iter()
@@ -39,7 +35,7 @@ fn build_shape(columns: &Columns) -> RowShape {
 	RowShape::new(fields)
 }
 
-fn encode_row(shape: &RowShape, columns: &Columns, row_idx: usize) -> EncodedRow {
+pub(crate) fn encode_row(shape: &RowShape, columns: &Columns, row_idx: usize) -> EncodedRow {
 	let values: Vec<Value> = columns.columns.iter().map(|buf| buf.get_value(row_idx)).collect();
 	let mut encoded = shape.allocate();
 	shape.set_values(&mut encoded, &values);
@@ -105,7 +101,7 @@ pub(crate) fn is_first_right_row(txn: &mut FlowTransaction, right_store: &Store,
 	Ok(!right_store.contains_key(txn, key_hash)?)
 }
 
-fn columns_from_block(
+pub(crate) fn columns_from_block(
 	txn: &mut FlowTransaction,
 	store: &Store,
 	block: Vec<(RowNumber, EncodedRow)>,
@@ -286,34 +282,4 @@ where
 		after = Some(last);
 	}
 	Ok(())
-}
-
-pub(crate) fn replace_right_entry(
-	txn: &mut FlowTransaction,
-	state: &mut JoinState,
-	key_hash: &Hash128,
-	operator: &JoinOperator,
-) -> Result<Vec<Diff>> {
-	let mut removes = Vec::new();
-	if !operator.snapshot {
-		let left = &state.left;
-		for_each_left_block(txn, &state.right, key_hash, |txn, old_right| {
-			let indices: Vec<usize> = (0..old_right.row_count()).collect();
-			let emit_ctx = JoinEmitContext {
-				opposite_store: left,
-				key_hash,
-				operator,
-			};
-			removes.extend(emit_remove_joined_columns_batch(
-				txn,
-				old_right,
-				&indices,
-				JoinSide::Right,
-				&emit_ctx,
-			)?);
-			Ok(())
-		})?;
-	}
-	state.right.clear_key(txn, key_hash, EVICT_BATCH)?;
-	Ok(removes)
 }

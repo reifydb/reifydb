@@ -12,6 +12,8 @@ pub static ROW_NUMBER_COLUMN_NAME: &str = "rownum";
 pub struct RowNumber(pub u64);
 
 impl RowNumber {
+	pub const MAX: Self = Self(u64::MAX);
+
 	pub fn new(id: u64) -> Self {
 		assert!(id > 0, "Row numbers must be greater than 0, got {}", id);
 		RowNumber(id)
