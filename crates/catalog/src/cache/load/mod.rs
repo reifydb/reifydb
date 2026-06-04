@@ -21,6 +21,7 @@ pub mod ringbuffer;
 pub mod role;
 pub mod row_settings;
 pub mod row_shape;
+pub mod series;
 pub mod shape_retention_strategy;
 pub mod sink;
 pub mod source;
@@ -49,6 +50,7 @@ use ringbuffer::load_ringbuffers;
 use role::load_roles;
 use row_settings::load_row_settings;
 use row_shape::load_row_shapes;
+use series::load_series;
 use shape_retention_strategy::load_shape_retention_strategies;
 use sink::load_sinks;
 use source::load_sources;
@@ -75,6 +77,7 @@ impl CatalogCacheLoader {
 		load_flow_nodes(rx, catalog)?;
 		load_flow_edges(rx, catalog)?;
 		load_ringbuffers(rx, catalog)?;
+		load_series(rx, catalog)?;
 
 		load_shape_retention_strategies(rx, catalog)?;
 		load_operator_retention_strategies(rx, catalog)?;

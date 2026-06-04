@@ -187,6 +187,8 @@ pub struct CatalogCacheInner {
 
 	pub(crate) primary_keys: SkipMap<PrimaryKeyId, MultiVersionPrimaryKey>,
 
+	pub(crate) primary_keys_by_shape: SkipMap<ShapeId, PrimaryKeyId>,
+
 	pub(crate) shape_retention_strategies: SkipMap<ShapeId, MultiVersionRetentionStrategy>,
 
 	pub(crate) operator_retention_strategies: SkipMap<FlowNodeId, MultiVersionRetentionStrategy>,
@@ -329,6 +331,7 @@ impl CatalogCache {
 			flow_edges: SkipMap::new(),
 			flow_edges_by_flow: SkipMap::new(),
 			primary_keys: SkipMap::new(),
+			primary_keys_by_shape: SkipMap::new(),
 			shape_retention_strategies: SkipMap::new(),
 			operator_retention_strategies: SkipMap::new(),
 			row_settings: SkipMap::new(),

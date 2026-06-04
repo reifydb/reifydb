@@ -16,7 +16,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn list_flow_nodes_by_flow(rx: &mut Transaction<'_>, flow_id: FlowId) -> Result<Vec<FlowNode>> {
+	pub fn list_flow_nodes_by_flow(rx: &mut Transaction<'_>, flow_id: FlowId) -> Result<Vec<FlowNode>> {
 		let mut node_ids = Vec::new();
 		{
 			let stream = rx.range(FlowNodeByFlowKey::full_scan(flow_id), RangeScope::All, 1024)?;

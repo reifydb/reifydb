@@ -11,13 +11,16 @@ use reifydb_core::{
 	},
 	internal,
 };
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction};
+use reifydb_transaction::{
+	change::TransactionalRingBufferChanges,
+	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
+};
 use reifydb_value::{
 	error,
 	fragment::Fragment,
 	value::{Value, constraint::TypeConstraint, dictionary::DictionaryId},
 };
-use tracing::instrument;
+use tracing::{instrument, warn};
 
 use crate::{
 	CatalogStore, Result,
@@ -79,19 +82,72 @@ impl Catalog {
 	pub fn find_ringbuffer(&self, txn: &mut Transaction<'_>, id: RingBufferId) -> Result<Option<RingBuffer>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				CatalogStore::find_ringbuffer(&mut Transaction::Command(&mut *cmd), id)
+				if let Some(ringbuffer) = self.cache.find_ringbuffer_at(id, cmd.version()) {
+					return Ok(Some(ringbuffer));
+				}
+				if let Some(ringbuffer) =
+					CatalogStore::find_ringbuffer(&mut Transaction::Command(&mut *cmd), id)?
+				{
+					warn!("RingBuffer {:?} found in storage but not in CatalogCache", id);
+					return Ok(Some(ringbuffer));
+				}
+				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut *admin), id)
+				if let Some(ringbuffer) = TransactionalRingBufferChanges::find_ringbuffer(admin, id) {
+					return Ok(Some(ringbuffer.clone()));
+				}
+				if TransactionalRingBufferChanges::is_ringbuffer_deleted(admin, id) {
+					return Ok(None);
+				}
+				if let Some(ringbuffer) = self.cache.find_ringbuffer_at(id, admin.version()) {
+					return Ok(Some(ringbuffer));
+				}
+				if let Some(ringbuffer) =
+					CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut *admin), id)?
+				{
+					warn!("RingBuffer {:?} found in storage but not in CatalogCache", id);
+					return Ok(Some(ringbuffer));
+				}
+				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				CatalogStore::find_ringbuffer(&mut Transaction::Query(&mut *qry), id)
+				if let Some(ringbuffer) = self.cache.find_ringbuffer_at(id, qry.version()) {
+					return Ok(Some(ringbuffer));
+				}
+				if let Some(ringbuffer) =
+					CatalogStore::find_ringbuffer(&mut Transaction::Query(&mut *qry), id)?
+				{
+					warn!("RingBuffer {:?} found in storage but not in CatalogCache", id);
+					return Ok(Some(ringbuffer));
+				}
+				Ok(None)
 			}
 			Transaction::Test(t) => {
-				CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut *t.inner), id)
+				if let Some(ringbuffer) = TransactionalRingBufferChanges::find_ringbuffer(t.inner, id) {
+					return Ok(Some(ringbuffer.clone()));
+				}
+				if TransactionalRingBufferChanges::is_ringbuffer_deleted(t.inner, id) {
+					return Ok(None);
+				}
+				if let Some(ringbuffer) =
+					CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut *t.inner), id)?
+				{
+					return Ok(Some(ringbuffer));
+				}
+				Ok(None)
 			}
 			Transaction::Replica(rep) => {
-				CatalogStore::find_ringbuffer(&mut Transaction::Replica(&mut *rep), id)
+				if let Some(ringbuffer) = self.cache.find_ringbuffer_at(id, rep.version()) {
+					return Ok(Some(ringbuffer));
+				}
+				if let Some(ringbuffer) =
+					CatalogStore::find_ringbuffer(&mut Transaction::Replica(&mut *rep), id)?
+				{
+					warn!("RingBuffer {:?} found in storage but not in CatalogCache", id);
+					return Ok(Some(ringbuffer));
+				}
+				Ok(None)
 			}
 		}
 	}
@@ -104,31 +160,111 @@ impl Catalog {
 		name: &str,
 	) -> Result<Option<RingBuffer>> {
 		match txn.reborrow() {
-			Transaction::Command(cmd) => CatalogStore::find_ringbuffer_by_name(
-				&mut Transaction::Command(&mut *cmd),
-				namespace,
-				name,
-			),
-			Transaction::Admin(admin) => CatalogStore::find_ringbuffer_by_name(
-				&mut Transaction::Admin(&mut *admin),
-				namespace,
-				name,
-			),
-			Transaction::Query(qry) => CatalogStore::find_ringbuffer_by_name(
-				&mut Transaction::Query(&mut *qry),
-				namespace,
-				name,
-			),
-			Transaction::Test(t) => CatalogStore::find_ringbuffer_by_name(
-				&mut Transaction::Admin(&mut *t.inner),
-				namespace,
-				name,
-			),
-			Transaction::Replica(rep) => CatalogStore::find_ringbuffer_by_name(
-				&mut Transaction::Replica(&mut *rep),
-				namespace,
-				name,
-			),
+			Transaction::Command(cmd) => {
+				if let Some(ringbuffer) =
+					self.cache.find_ringbuffer_by_name_at(namespace, name, cmd.version())
+				{
+					return Ok(Some(ringbuffer));
+				}
+				if let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(
+					&mut Transaction::Command(&mut *cmd),
+					namespace,
+					name,
+				)? {
+					warn!(
+						"RingBuffer '{}' in namespace {:?} found in storage but not in CatalogCache",
+						name, namespace
+					);
+					return Ok(Some(ringbuffer));
+				}
+				Ok(None)
+			}
+			Transaction::Admin(admin) => {
+				if let Some(ringbuffer) =
+					TransactionalRingBufferChanges::find_ringbuffer_by_name(admin, namespace, name)
+				{
+					return Ok(Some(ringbuffer.clone()));
+				}
+				if TransactionalRingBufferChanges::is_ringbuffer_deleted_by_name(admin, namespace, name)
+				{
+					return Ok(None);
+				}
+				if let Some(ringbuffer) =
+					self.cache.find_ringbuffer_by_name_at(namespace, name, admin.version())
+				{
+					return Ok(Some(ringbuffer));
+				}
+				if let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(
+					&mut Transaction::Admin(&mut *admin),
+					namespace,
+					name,
+				)? {
+					warn!(
+						"RingBuffer '{}' in namespace {:?} found in storage but not in CatalogCache",
+						name, namespace
+					);
+					return Ok(Some(ringbuffer));
+				}
+				Ok(None)
+			}
+			Transaction::Query(qry) => {
+				if let Some(ringbuffer) =
+					self.cache.find_ringbuffer_by_name_at(namespace, name, qry.version())
+				{
+					return Ok(Some(ringbuffer));
+				}
+				if let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(
+					&mut Transaction::Query(&mut *qry),
+					namespace,
+					name,
+				)? {
+					warn!(
+						"RingBuffer '{}' in namespace {:?} found in storage but not in CatalogCache",
+						name, namespace
+					);
+					return Ok(Some(ringbuffer));
+				}
+				Ok(None)
+			}
+			Transaction::Test(t) => {
+				if let Some(ringbuffer) = TransactionalRingBufferChanges::find_ringbuffer_by_name(
+					t.inner, namespace, name,
+				) {
+					return Ok(Some(ringbuffer.clone()));
+				}
+				if TransactionalRingBufferChanges::is_ringbuffer_deleted_by_name(
+					t.inner, namespace, name,
+				) {
+					return Ok(None);
+				}
+				if let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(
+					&mut Transaction::Admin(&mut *t.inner),
+					namespace,
+					name,
+				)? {
+					return Ok(Some(ringbuffer));
+				}
+				Ok(None)
+			}
+			Transaction::Replica(rep) => {
+				if let Some(ringbuffer) =
+					self.cache.find_ringbuffer_by_name_at(namespace, name, rep.version())
+				{
+					return Ok(Some(ringbuffer));
+				}
+				if let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(
+					&mut Transaction::Replica(&mut *rep),
+					namespace,
+					name,
+				)? {
+					warn!(
+						"RingBuffer '{}' in namespace {:?} found in storage but not in CatalogCache",
+						name, namespace
+					);
+					return Ok(Some(ringbuffer));
+				}
+				Ok(None)
+			}
 		}
 	}
 

@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{
-		catalog::{id::PrimaryKeyId, key::PrimaryKey, view::View},
+		catalog::{id::PrimaryKeyId, key::PrimaryKey, shape::ShapeId, view::View},
 		store::MultiVersionRow,
 	},
 	key::view::ViewKey,
@@ -31,6 +31,9 @@ pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 		let pk_id = get_view_primary_key_id(&multi);
 		let primary_key = pk_id.and_then(|id| catalog.find_primary_key_at(id, version));
 		let view = convert_view(multi, primary_key)?;
+		if let Some(id) = pk_id {
+			catalog.set_primary_key_shape(ShapeId::View(view.id()), id);
+		}
 		views.push((view, version));
 	}
 	drop(stream);

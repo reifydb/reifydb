@@ -28,7 +28,7 @@ impl TransactionalFlowRegistry {
 	pub fn try_register_by_id_at_version(&self, flow_id: FlowId, version: CommitVersion) -> Result<()> {
 		let lease = self.engine.acquire_version_lease(version)?;
 		let mut query = self.engine.begin_query_at_version(&lease, IdentityId::system())?;
-		let flow = load_flow_dag(&self.catalog, &mut Transaction::Query(&mut query), flow_id)?;
+		let flow = load_flow_dag(&mut Transaction::Query(&mut query), flow_id)?;
 		self.try_register_with_query(flow, &mut query)?;
 		Ok(())
 	}

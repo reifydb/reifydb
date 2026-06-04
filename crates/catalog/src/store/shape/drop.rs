@@ -3,7 +3,9 @@
 
 use reifydb_core::{
 	interface::catalog::{
+		change::CatalogTrackPrimaryKeyChangeOperations,
 		id::{ColumnId, PrimaryKeyId},
+		key::PrimaryKey,
 		shape::ShapeId,
 	},
 	key::{
@@ -51,6 +53,13 @@ pub(crate) fn drop_shape_metadata(
 	}
 
 	if let Some(pk_id) = pk_id {
+		txn.track_primary_key_deleted(
+			shape,
+			PrimaryKey {
+				id: pk_id,
+				columns: Vec::new(),
+			},
+		)?;
 		txn.remove(&PrimaryKeyKey::encoded(pk_id))?;
 	}
 

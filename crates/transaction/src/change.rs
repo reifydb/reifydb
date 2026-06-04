@@ -17,6 +17,7 @@ use reifydb_core::{
 			ProcedureId, RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
 		},
 		identity::{GrantedRole, Identity, Role, RoleId},
+		key::PrimaryKey,
 		migration::{Migration, MigrationEvent},
 		namespace::Namespace,
 		policy::{Policy, PolicyId},
@@ -346,6 +347,8 @@ pub struct TransactionalCatalogChanges {
 
 	pub operator_settings: Vec<Change<(FlowNodeId, OperatorSettings)>>,
 
+	pub primary_key: Vec<Change<(ShapeId, PrimaryKey)>>,
+
 	pub log: Vec<Operation>,
 }
 
@@ -377,6 +380,7 @@ pub struct CatalogChangesSavepoint {
 	view_len: usize,
 	row_settings_len: usize,
 	operator_settings_len: usize,
+	primary_key_len: usize,
 	log_len: usize,
 }
 
@@ -410,6 +414,7 @@ impl TransactionalCatalogChanges {
 			view_len: self.view.len(),
 			row_settings_len: self.row_settings.len(),
 			operator_settings_len: self.operator_settings.len(),
+			primary_key_len: self.primary_key.len(),
 			log_len: self.log.len(),
 		}
 	}
@@ -442,6 +447,7 @@ impl TransactionalCatalogChanges {
 		self.view.truncate(sp.view_len);
 		self.row_settings.truncate(sp.row_settings_len);
 		self.operator_settings.truncate(sp.operator_settings_len);
+		self.primary_key.truncate(sp.primary_key_len);
 		self.log.truncate(sp.log_len);
 	}
 
@@ -842,6 +848,21 @@ impl TransactionalCatalogChanges {
 		});
 	}
 
+	pub fn add_primary_key_change(&mut self, change: Change<(ShapeId, PrimaryKey)>) {
+		let shape = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|(s, _)| *s)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.primary_key.push(change);
+		self.log.push(Operation::PrimaryKey {
+			shape,
+			op,
+		});
+	}
+
 	pub fn add_operator_settings_change(&mut self, change: Change<(FlowNodeId, OperatorSettings)>) {
 		let operator = change
 			.post
@@ -985,6 +1006,10 @@ pub enum Operation {
 		operator: FlowNodeId,
 		op: OperationType,
 	},
+	PrimaryKey {
+		shape: ShapeId,
+		op: OperationType,
+	},
 }
 
 impl TransactionalCatalogChanges {
@@ -1018,6 +1043,7 @@ impl TransactionalCatalogChanges {
 			view: Vec::new(),
 			row_settings: Vec::new(),
 			operator_settings: Vec::new(),
+			primary_key: Vec::new(),
 			log: Vec::new(),
 		}
 	}

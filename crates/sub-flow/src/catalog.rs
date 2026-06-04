@@ -35,7 +35,7 @@ impl FlowCatalog {
 			}
 		}
 
-		let flow = load_flow_dag(&self.catalog, txn, flow_id)?;
+		let flow = load_flow_dag(txn, flow_id)?;
 		let mut cache = self.flows.write();
 
 		let is_new = !cache.contains_key(&flow_id);

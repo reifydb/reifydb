@@ -6,6 +6,7 @@ use reifydb_core::{
 		catalog::{
 			id::{NamespaceId, PrimaryKeyId, TableId},
 			key::PrimaryKey,
+			shape::ShapeId,
 			table::Table,
 		},
 		store::MultiVersionRow,
@@ -35,6 +36,9 @@ pub(crate) fn load_tables(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> R
 		let pk_id = get_table_primary_key_id(&multi);
 		let primary_key = pk_id.and_then(|id| catalog.find_primary_key_at(id, version));
 		let table = convert_table(multi, primary_key);
+		if let Some(id) = pk_id {
+			catalog.set_primary_key_shape(ShapeId::Table(table.id), id);
+		}
 		tables.push((table, version));
 	}
 	drop(stream);

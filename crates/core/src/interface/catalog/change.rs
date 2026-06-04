@@ -13,6 +13,7 @@ use crate::{
 		flow::{Flow, FlowEdge, FlowNode, FlowNodeId},
 		handler::Handler,
 		identity::{GrantedRole, Identity, Role},
+		key::PrimaryKey,
 		migration::{Migration, MigrationEvent},
 		namespace::Namespace,
 		policy::Policy,
@@ -56,6 +57,12 @@ pub trait CatalogTrackFlowChangeOperations {
 	fn track_flow_updated(&mut self, pre: Flow, post: Flow) -> Result<()>;
 
 	fn track_flow_deleted(&mut self, flow: Flow) -> Result<()>;
+}
+
+pub trait CatalogTrackPrimaryKeyChangeOperations {
+	fn track_primary_key_created(&mut self, shape: ShapeId, primary_key: PrimaryKey) -> Result<()>;
+
+	fn track_primary_key_deleted(&mut self, shape: ShapeId, primary_key: PrimaryKey) -> Result<()>;
 }
 
 pub trait CatalogTrackFlowNodeChangeOperations {
@@ -228,6 +235,7 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackColumnSnapshotChangeOperations
 	+ CatalogTrackDictionaryChangeOperations
 	+ CatalogTrackFlowChangeOperations
+	+ CatalogTrackPrimaryKeyChangeOperations
 	+ CatalogTrackFlowNodeChangeOperations
 	+ CatalogTrackFlowEdgeChangeOperations
 	+ CatalogTrackHandlerChangeOperations

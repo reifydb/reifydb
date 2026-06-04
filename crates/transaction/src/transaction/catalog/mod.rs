@@ -20,6 +20,7 @@ pub mod migration;
 pub mod namespace;
 pub mod operator_settings;
 pub mod policy;
+pub mod primary_key;
 pub mod procedure;
 pub mod ringbuffer;
 pub mod role;

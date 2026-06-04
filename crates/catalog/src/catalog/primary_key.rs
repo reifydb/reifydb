@@ -7,7 +7,7 @@ use reifydb_core::interface::catalog::{
 	shape::ShapeId,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use tracing::instrument;
+use tracing::{instrument, warn};
 
 use crate::{
 	CatalogStore, Result, catalog::Catalog,
@@ -45,7 +45,21 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		shape: impl Into<ShapeId>,
 	) -> Result<Option<PrimaryKey>> {
-		CatalogStore::find_primary_key(txn, shape)
+		let shape = shape.into();
+		let cacheable = !matches!(&*txn, Transaction::Admin(_) | Transaction::Test(_));
+		if cacheable
+			&& let Some(primary_key_id) = self.cache.find_primary_key_id_by_shape(shape)
+			&& let Some(primary_key) = self.cache.find_primary_key_at(primary_key_id, txn.version())
+		{
+			return Ok(Some(primary_key));
+		}
+		if let Some(primary_key) = CatalogStore::find_primary_key(txn, shape)? {
+			if cacheable {
+				warn!("primary key for shape {:?} found in storage but not in CatalogCache", shape);
+			}
+			return Ok(Some(primary_key));
+		}
+		Ok(None)
 	}
 
 	#[instrument(name = "catalog::primary_key::list", level = "debug", skip(self, txn))]

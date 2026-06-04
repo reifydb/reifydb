@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use postcard::from_bytes;
-use reifydb_catalog::catalog::Catalog;
+use reifydb_catalog::CatalogStore;
 use reifydb_core::{interface::catalog::flow::FlowId, internal};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::error::Error;
@@ -15,9 +15,9 @@ use crate::{
 	},
 };
 
-pub fn load_flow_dag(catalog: &Catalog, txn: &mut Transaction<'_>, flow_id: FlowId) -> Result<FlowDag> {
-	let node_defs = catalog.list_flow_nodes_by_flow(txn, flow_id)?;
-	let edge_defs = catalog.list_flow_edges_by_flow(txn, flow_id)?;
+pub fn load_flow_dag(txn: &mut Transaction<'_>, flow_id: FlowId) -> Result<FlowDag> {
+	let node_defs = CatalogStore::list_flow_nodes_by_flow(txn, flow_id)?;
+	let edge_defs = CatalogStore::list_flow_edges_by_flow(txn, flow_id)?;
 
 	let mut builder = FlowDag::builder(flow_id);
 

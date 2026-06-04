@@ -432,7 +432,6 @@ impl FlowSubsystem {
 
 				for flow in flows {
 					let dag = load_flow_dag(
-						&hook_catalog,
 						&mut Transaction::Test(Box::new(test_txn.reborrow())),
 						flow.id,
 					)?;

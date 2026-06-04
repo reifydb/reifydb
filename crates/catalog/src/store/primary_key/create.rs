@@ -6,6 +6,7 @@ use std::collections;
 use collections::HashSet;
 use reifydb_core::{
 	interface::catalog::{
+		change::CatalogTrackPrimaryKeyChangeOperations,
 		id::{ColumnId, PrimaryKeyId},
 		shape::ShapeId,
 	},
@@ -41,6 +42,10 @@ impl CatalogStore {
 		Self::reject_unknown_columns(txn, &to_create)?;
 		let id = Self::allocate_primary_key_row(txn, &to_create)?;
 		Self::link_primary_key_to_shape(txn, to_create.shape, id)?;
+		if let Some(primary_key) = Self::find_primary_key(&mut Transaction::Admin(&mut *txn), to_create.shape)?
+		{
+			txn.track_primary_key_created(to_create.shape, primary_key)?;
+		}
 		Ok(id)
 	}
 

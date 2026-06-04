@@ -11,13 +11,16 @@ use reifydb_core::{
 	},
 	internal,
 };
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_transaction::{
+	change::TransactionalSeriesChanges,
+	transaction::{Transaction, admin::AdminTransaction},
+};
 use reifydb_value::{
 	error,
 	fragment::Fragment,
 	value::{constraint::TypeConstraint, dictionary::DictionaryId, sumtype::SumTypeId},
 };
-use tracing::instrument;
+use tracing::{instrument, warn};
 
 use crate::{
 	CatalogStore, Result,
@@ -78,15 +81,71 @@ impl Catalog {
 	pub fn find_series(&self, txn: &mut Transaction<'_>, id: SeriesId) -> Result<Option<Series>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				CatalogStore::find_series(&mut Transaction::Command(&mut *cmd), id)
+				if let Some(series) = self.cache.find_series_at(id, cmd.version()) {
+					return Ok(Some(series));
+				}
+				if let Some(series) =
+					CatalogStore::find_series(&mut Transaction::Command(&mut *cmd), id)?
+				{
+					warn!("Series {:?} found in storage but not in CatalogCache", id);
+					return Ok(Some(series));
+				}
+				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				CatalogStore::find_series(&mut Transaction::Admin(&mut *admin), id)
+				if let Some(series) = TransactionalSeriesChanges::find_series(admin, id) {
+					return Ok(Some(series.clone()));
+				}
+				if TransactionalSeriesChanges::is_series_deleted(admin, id) {
+					return Ok(None);
+				}
+				if let Some(series) = self.cache.find_series_at(id, admin.version()) {
+					return Ok(Some(series));
+				}
+				if let Some(series) =
+					CatalogStore::find_series(&mut Transaction::Admin(&mut *admin), id)?
+				{
+					warn!("Series {:?} found in storage but not in CatalogCache", id);
+					return Ok(Some(series));
+				}
+				Ok(None)
 			}
-			Transaction::Query(qry) => CatalogStore::find_series(&mut Transaction::Query(&mut *qry), id),
-			Transaction::Test(t) => CatalogStore::find_series(&mut Transaction::Admin(&mut *t.inner), id),
+			Transaction::Query(qry) => {
+				if let Some(series) = self.cache.find_series_at(id, qry.version()) {
+					return Ok(Some(series));
+				}
+				if let Some(series) = CatalogStore::find_series(&mut Transaction::Query(&mut *qry), id)?
+				{
+					warn!("Series {:?} found in storage but not in CatalogCache", id);
+					return Ok(Some(series));
+				}
+				Ok(None)
+			}
+			Transaction::Test(t) => {
+				if let Some(series) = TransactionalSeriesChanges::find_series(t.inner, id) {
+					return Ok(Some(series.clone()));
+				}
+				if TransactionalSeriesChanges::is_series_deleted(t.inner, id) {
+					return Ok(None);
+				}
+				if let Some(series) =
+					CatalogStore::find_series(&mut Transaction::Admin(&mut *t.inner), id)?
+				{
+					return Ok(Some(series));
+				}
+				Ok(None)
+			}
 			Transaction::Replica(rep) => {
-				CatalogStore::find_series(&mut Transaction::Replica(&mut *rep), id)
+				if let Some(series) = self.cache.find_series_at(id, rep.version()) {
+					return Ok(Some(series));
+				}
+				if let Some(series) =
+					CatalogStore::find_series(&mut Transaction::Replica(&mut *rep), id)?
+				{
+					warn!("Series {:?} found in storage but not in CatalogCache", id);
+					return Ok(Some(series));
+				}
+				Ok(None)
 			}
 		}
 	}
@@ -100,21 +159,103 @@ impl Catalog {
 	) -> Result<Option<Series>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
-				CatalogStore::find_series_by_name(&mut Transaction::Command(&mut *cmd), namespace, name)
+				if let Some(series) = self.cache.find_series_by_name_at(namespace, name, cmd.version())
+				{
+					return Ok(Some(series));
+				}
+				if let Some(series) = CatalogStore::find_series_by_name(
+					&mut Transaction::Command(&mut *cmd),
+					namespace,
+					name,
+				)? {
+					warn!(
+						"Series '{}' in namespace {:?} found in storage but not in CatalogCache",
+						name, namespace
+					);
+					return Ok(Some(series));
+				}
+				Ok(None)
 			}
 			Transaction::Admin(admin) => {
-				CatalogStore::find_series_by_name(&mut Transaction::Admin(&mut *admin), namespace, name)
+				if let Some(series) =
+					TransactionalSeriesChanges::find_series_by_name(admin, namespace, name)
+				{
+					return Ok(Some(series.clone()));
+				}
+				if TransactionalSeriesChanges::is_series_deleted_by_name(admin, namespace, name) {
+					return Ok(None);
+				}
+				if let Some(series) =
+					self.cache.find_series_by_name_at(namespace, name, admin.version())
+				{
+					return Ok(Some(series));
+				}
+				if let Some(series) = CatalogStore::find_series_by_name(
+					&mut Transaction::Admin(&mut *admin),
+					namespace,
+					name,
+				)? {
+					warn!(
+						"Series '{}' in namespace {:?} found in storage but not in CatalogCache",
+						name, namespace
+					);
+					return Ok(Some(series));
+				}
+				Ok(None)
 			}
 			Transaction::Query(qry) => {
-				CatalogStore::find_series_by_name(&mut Transaction::Query(&mut *qry), namespace, name)
+				if let Some(series) = self.cache.find_series_by_name_at(namespace, name, qry.version())
+				{
+					return Ok(Some(series));
+				}
+				if let Some(series) = CatalogStore::find_series_by_name(
+					&mut Transaction::Query(&mut *qry),
+					namespace,
+					name,
+				)? {
+					warn!(
+						"Series '{}' in namespace {:?} found in storage but not in CatalogCache",
+						name, namespace
+					);
+					return Ok(Some(series));
+				}
+				Ok(None)
 			}
-			Transaction::Test(t) => CatalogStore::find_series_by_name(
-				&mut Transaction::Admin(&mut *t.inner),
-				namespace,
-				name,
-			),
+			Transaction::Test(t) => {
+				if let Some(series) =
+					TransactionalSeriesChanges::find_series_by_name(t.inner, namespace, name)
+				{
+					return Ok(Some(series.clone()));
+				}
+				if TransactionalSeriesChanges::is_series_deleted_by_name(t.inner, namespace, name) {
+					return Ok(None);
+				}
+				if let Some(series) = CatalogStore::find_series_by_name(
+					&mut Transaction::Admin(&mut *t.inner),
+					namespace,
+					name,
+				)? {
+					return Ok(Some(series));
+				}
+				Ok(None)
+			}
 			Transaction::Replica(rep) => {
-				CatalogStore::find_series_by_name(&mut Transaction::Replica(&mut *rep), namespace, name)
+				if let Some(series) = self.cache.find_series_by_name_at(namespace, name, rep.version())
+				{
+					return Ok(Some(series));
+				}
+				if let Some(series) = CatalogStore::find_series_by_name(
+					&mut Transaction::Replica(&mut *rep),
+					namespace,
+					name,
+				)? {
+					warn!(
+						"Series '{}' in namespace {:?} found in storage but not in CatalogCache",
+						name, namespace
+					);
+					return Ok(Some(series));
+				}
+				Ok(None)
 			}
 		}
 	}

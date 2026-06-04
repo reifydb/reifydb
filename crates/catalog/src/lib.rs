@@ -43,7 +43,7 @@ pub mod vtable;
 
 pub type Result<T> = reifydb_value::Result<T>;
 
-pub(crate) struct CatalogStore;
+pub struct CatalogStore;
 
 pub fn drop_flow_by_name(txn: &mut AdminTransaction, namespace: NamespaceId, name: &str) -> Result<()> {
 	CatalogStore::drop_flow_by_name(txn, namespace, name)
