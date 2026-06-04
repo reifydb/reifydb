@@ -9,7 +9,10 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	window::{
 		accumulator::WindowAccumulator,
-		engine::{AccEvent, EmitKind, rolling::RollingBuckets, rolling_incremental::RollingIncrementalEngine},
+		engine::{
+			AccumulatorEvent, EmitKind, rolling::RollingBuckets,
+			rolling_incremental::RollingIncrementalEngine,
+		},
 	},
 };
 use reifydb_value::value::row_number::RowNumber;
@@ -33,8 +36,8 @@ use crate::{
 	},
 };
 
-type WindowContribution<A> = <<A as RollingOperator>::WindowAcc as WindowAccumulator>::Contribution;
-type WindowValue<A> = <<A as RollingOperator>::WindowAcc as WindowAccumulator>::Output;
+type WindowContribution<A> = <<A as RollingOperator>::Accumulator as WindowAccumulator>::Contribution;
+type WindowValue<A> = <<A as RollingOperator>::Accumulator as WindowAccumulator>::Output;
 type RunningContribution<A> = <<A as RollingIncrementalOperator>::Running as WindowAccumulator>::Contribution;
 
 pub trait RollingIncrementalOperator: RollingOperator {
@@ -51,7 +54,7 @@ pub trait RollingIncrementalOperator: RollingOperator {
 	) -> Option<Self::Output>;
 }
 
-pub type RollingBuffer<A> = BTreeMap<<A as RollingOperator>::WindowCoord, <A as RollingOperator>::WindowAcc>;
+pub type RollingBuffer<A> = BTreeMap<<A as RollingOperator>::WindowCoord, <A as RollingOperator>::Accumulator>;
 
 pub struct RollingIncrementalDriver<A>
 where
@@ -60,7 +63,7 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	aggregator: A,
-	engine: RollingIncrementalEngine<A::GroupKey, A::WindowCoord, A::WindowAcc, A::Running>,
+	engine: RollingIncrementalEngine<A::GroupKey, A::WindowCoord, A::Accumulator, A::Running>,
 }
 
 impl<A> OperatorMetadata for RollingIncrementalDriver<A>
@@ -84,7 +87,7 @@ where
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
 	A::WindowCoord: Send + Sync,
-	A::WindowAcc: Send + Sync,
+	A::Accumulator: Send + Sync,
 	A::Running: Send + Sync,
 	WindowContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
@@ -152,7 +155,7 @@ where
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
 	A::WindowCoord: Send + Sync,
-	A::WindowAcc: Send + Sync,
+	A::Accumulator: Send + Sync,
 	A::Running: Send + Sync,
 	WindowContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
@@ -179,7 +182,7 @@ where
 							};
 							buckets.entry((group, coord))
 								.or_default()
-								.push(AccEvent::Add(contribution));
+								.push(AccumulatorEvent::Add(contribution));
 						}
 					}
 				}
@@ -193,7 +196,7 @@ where
 							{
 								buckets.entry((group, coord))
 									.or_default()
-									.push(AccEvent::Remove(contribution));
+									.push(AccumulatorEvent::Remove(contribution));
 							}
 							if let Some(post_row) = post.row(i)
 								&& let Some((group, coord, contribution)) =
@@ -201,7 +204,7 @@ where
 							{
 								buckets.entry((group, coord))
 									.or_default()
-									.push(AccEvent::Add(contribution));
+									.push(AccumulatorEvent::Add(contribution));
 							}
 						}
 					}
@@ -219,7 +222,7 @@ where
 							};
 							buckets.entry((group, coord))
 								.or_default()
-								.push(AccEvent::Remove(contribution));
+								.push(AccumulatorEvent::Remove(contribution));
 						}
 					}
 				}
@@ -262,16 +265,13 @@ mod tests {
 		},
 		interface::catalog::flow::FlowNodeId,
 		row::Row as CoreRow,
+		window::accumulator::{LastValue, Moments},
 	};
 	use reifydb_value::value::{Value, value_type::ValueType};
 
 	use super::*;
 	use crate::{
-		operator::{
-			FFIOperatorAdapter,
-			view::RowView,
-			windowed::accumulator::{LastValue, Moments},
-		},
+		operator::{FFIOperatorAdapter, view::RowView},
 		row,
 		testing::{
 			builders::{TestChangeBuilder, TestRowBuilder},
@@ -306,7 +306,7 @@ mod tests {
 	impl RollingOperator for TestVelocity {
 		type GroupKey = String;
 		type WindowCoord = u64;
-		type WindowAcc = LastValue<f64>;
+		type Accumulator = LastValue<f64>;
 		type Output = TestOut;
 
 		fn capacity(&self) -> usize {
@@ -327,11 +327,11 @@ mod tests {
 			let mut sum = 0.0_f64;
 			let mut count = 0u32;
 			let total = buffer.len();
-			for (i, acc) in buffer.values().enumerate() {
+			for (i, accumulator) in buffer.values().enumerate() {
 				if i + 1 == total {
 					continue;
 				}
-				if let Some(v) = acc.get() {
+				if let Some(v) = accumulator.get() {
 					sum += *v;
 					count += 1;
 				}

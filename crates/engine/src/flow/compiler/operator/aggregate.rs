@@ -8,7 +8,9 @@ use reifydb_rql::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
-use crate::flow::compiler::{CompileOperator, FlowCompiler};
+use crate::flow::compiler::{
+	CompileOperator, FlowCompiler, operator::aggregate_validation::validate_flow_aggregations,
+};
 
 pub(crate) struct AggregateCompiler {
 	pub input: Box<QueryPlan>,
@@ -28,6 +30,8 @@ impl From<AggregateNode> for AggregateCompiler {
 
 impl CompileOperator for AggregateCompiler {
 	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
+		validate_flow_aggregations(&self.map)?;
+
 		let input_node = compiler.compile_plan(txn, *self.input)?;
 
 		let node_id = compiler.add_node(

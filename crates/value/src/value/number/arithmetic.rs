@@ -5,6 +5,7 @@ use crate::value::{
 	Value,
 	decimal::Decimal,
 	int::Int,
+	is::IsNumber,
 	number::{
 		promote::Promote,
 		safe::{add::SafeAdd, div::SafeDiv, mul::SafeMul, remainder::SafeRemainder, sub::SafeSub},
@@ -58,7 +59,7 @@ macro_rules! gen_helpers {
 		fn $checked<L, R>(l: &L, r: &R) -> Option<Value>
 		where
 			L: Promote<R>,
-			R: crate::value::is::IsNumber,
+			R: IsNumber,
 			<L as Promote<R>>::Output: $trait,
 		{
 			let (a, b) = l.checked_promote(r)?;
@@ -68,7 +69,7 @@ macro_rules! gen_helpers {
 		fn $sat<L, R>(l: &L, r: &R) -> Value
 		where
 			L: Promote<R>,
-			R: crate::value::is::IsNumber,
+			R: IsNumber,
 			<L as Promote<R>>::Output: $trait,
 		{
 			let (a, b) = l.saturating_promote(r);
@@ -78,7 +79,7 @@ macro_rules! gen_helpers {
 		fn $wrap<L, R>(l: &L, r: &R) -> Value
 		where
 			L: Promote<R>,
-			R: crate::value::is::IsNumber,
+			R: IsNumber,
 			<L as Promote<R>>::Output: $trait,
 		{
 			let (a, b) = l.wrapping_promote(r);
@@ -145,7 +146,7 @@ impl DivToValue for Decimal {
 fn v_checked_div<L, R>(l: &L, r: &R) -> Option<Value>
 where
 	L: Promote<R>,
-	R: crate::value::is::IsNumber,
+	R: IsNumber,
 	<L as Promote<R>>::Output: DivToValue,
 {
 	let (a, b) = l.checked_promote(r)?;
@@ -155,7 +156,7 @@ where
 fn v_sat_div<L, R>(l: &L, r: &R) -> Value
 where
 	L: Promote<R>,
-	R: crate::value::is::IsNumber,
+	R: IsNumber,
 	<L as Promote<R>>::Output: DivToValue,
 {
 	let (a, b) = l.saturating_promote(r);
@@ -165,7 +166,7 @@ where
 fn v_wrap_div<L, R>(l: &L, r: &R) -> Value
 where
 	L: Promote<R>,
-	R: crate::value::is::IsNumber,
+	R: IsNumber,
 	<L as Promote<R>>::Output: DivToValue,
 {
 	let (a, b) = l.wrapping_promote(r);
@@ -366,6 +367,7 @@ impl SafeRemainder for Value {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::value::{ordered_f32::OrderedF32, ordered_f64::OrderedF64};
 
 	fn int4(v: i32) -> Value {
 		Value::Int4(v)
@@ -394,9 +396,9 @@ mod tests {
 
 	#[test]
 	fn add_float_pair_is_float8() {
-		let out = Value::Float8(crate::value::ordered_f64::OrderedF64::try_from(1.5).unwrap())
-			.checked_add(&Value::Float4(crate::value::ordered_f32::OrderedF32::try_from(2.5f32).unwrap()));
-		assert_eq!(out, Some(Value::Float8(crate::value::ordered_f64::OrderedF64::try_from(4.0).unwrap())));
+		let out = Value::Float8(OrderedF64::try_from(1.5).unwrap())
+			.checked_add(&Value::Float4(OrderedF32::try_from(2.5f32).unwrap()));
+		assert_eq!(out, Some(Value::Float8(OrderedF64::try_from(4.0).unwrap())));
 	}
 
 	#[test]
@@ -420,12 +422,9 @@ mod tests {
 
 	#[test]
 	fn float_div_stays_float8() {
-		let three = Value::Float8(crate::value::ordered_f64::OrderedF64::try_from(3.0).unwrap());
-		let two = Value::Float8(crate::value::ordered_f64::OrderedF64::try_from(2.0).unwrap());
-		assert_eq!(
-			three.checked_div(&two),
-			Some(Value::Float8(crate::value::ordered_f64::OrderedF64::try_from(1.5).unwrap()))
-		);
+		let three = Value::Float8(OrderedF64::try_from(3.0).unwrap());
+		let two = Value::Float8(OrderedF64::try_from(2.0).unwrap());
+		assert_eq!(three.checked_div(&two), Some(Value::Float8(OrderedF64::try_from(1.5).unwrap())));
 	}
 
 	// none propagation produces a DEFINED none (Some(None-value)), distinct from
@@ -463,8 +462,8 @@ mod tests {
 	fn div_by_zero_is_none() {
 		assert_eq!(int4(3).checked_div(&int4(0)), None);
 		assert_eq!(dec(3).checked_div(&dec(0)), None);
-		let one = Value::Float8(crate::value::ordered_f64::OrderedF64::try_from(1.0).unwrap());
-		let zero = Value::Float8(crate::value::ordered_f64::OrderedF64::try_from(0.0).unwrap());
+		let one = Value::Float8(OrderedF64::try_from(1.0).unwrap());
+		let zero = Value::Float8(OrderedF64::try_from(0.0).unwrap());
 		assert_eq!(one.checked_div(&zero), None);
 	}
 
@@ -511,8 +510,8 @@ mod tests {
 	// this is not a false negative.
 	#[test]
 	fn retraction_float_within_tolerance() {
-		let r = Value::Float8(crate::value::ordered_f64::OrderedF64::try_from(0.1).unwrap());
-		let x = Value::Float8(crate::value::ordered_f64::OrderedF64::try_from(0.2).unwrap());
+		let r = Value::Float8(OrderedF64::try_from(0.1).unwrap());
+		let x = Value::Float8(OrderedF64::try_from(0.2).unwrap());
 		let restored = r.checked_add(&x).unwrap().checked_sub(&x).unwrap();
 		if let Value::Float8(v) = restored {
 			assert!((v.value() - 0.1).abs() < 1e-9, "float retraction drift too large: {}", v.value());
@@ -524,7 +523,7 @@ mod tests {
 	// NaN result becomes a defined none{Float8} via ToValue (pin the silent-none path).
 	#[test]
 	fn nan_result_is_none_float8() {
-		let inf = Value::Float8(crate::value::ordered_f64::OrderedF64::try_from(f64::MAX).unwrap());
+		let inf = Value::Float8(OrderedF64::try_from(f64::MAX).unwrap());
 		// MAX * MAX overflows to +inf -> checked None; saturating clamps.
 		assert_eq!(inf.checked_mul(&inf), None);
 	}

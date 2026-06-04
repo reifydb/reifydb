@@ -8,8 +8,8 @@
 //! pins a contractual invariant, not just observed output, so it fails if the
 //! implementation regresses.
 
-use reifydb_sdk::operator::windowed::accumulator::{
-	EndpointByCoord, KeyedInvertibleAcc, LastValue, Moments, Multiset, OrdF64, SealingEndpoint, SealingMin,
+use reifydb_core::window::accumulator::{
+	EndpointByCoord, KeyedInvertibleAccumulator, LastValue, Moments, Multiset, OrdF64, SealingEndpoint, SealingMin,
 	WindowAccumulator,
 };
 
@@ -49,11 +49,11 @@ fn sealing_min_default_is_fully_invertible() {
 	// when the probe is a new minimum.
 	assert_add_remove_is_inverse::<SealingMin<u64, i64>>(&[(1u64, 10i64), (2, 20), (3, 30)], (4u64, -5i64));
 
-	let mut acc: SealingMin<u64, i64> = SealingMin::default();
-	acc.add(&(0, 5));
-	acc.add(&(100, 1));
-	acc.remove(&(100, 1));
-	assert_eq!(acc.finalize(), Some(5), "removing the min reveals the prior min when nothing has sealed");
+	let mut accumulator: SealingMin<u64, i64> = SealingMin::default();
+	accumulator.add(&(0, 5));
+	accumulator.add(&(100, 1));
+	accumulator.remove(&(100, 1));
+	assert_eq!(accumulator.finalize(), Some(5), "removing the min reveals the prior min when nothing has sealed");
 }
 
 #[test]
@@ -61,27 +61,27 @@ fn sealing_endpoint_late_earlier_arrival_updates_open() {
 	// An observation that arrives after a seal but is *earlier* than the
 	// sealed open must become the new open: open is the earliest
 	// observation overall, not merely the first to seal.
-	let mut acc: SealingEndpoint<u64, i64> = SealingEndpoint::with_lateness(10);
-	acc.add(&(5, 50));
-	acc.add(&(20, 200)); // hw=20; coord 5 ages (20-5=15>10) -> sealed_open=(5,50)
-	assert_eq!(acc.open(), Some(&50), "open frozen to the earliest seen so far");
+	let mut accumulator: SealingEndpoint<u64, i64> = SealingEndpoint::with_lateness(10);
+	accumulator.add(&(5, 50));
+	accumulator.add(&(20, 200)); // hw=20; coord 5 ages (20-5=15>10) -> sealed_open=(5,50)
+	assert_eq!(accumulator.open(), Some(&50), "open frozen to the earliest seen so far");
 
-	acc.add(&(2, 999)); // hw=20; coord 2 ages immediately (18>10) and 2 < 5
-	assert_eq!(acc.open(), Some(&999), "a genuinely earlier late arrival reclaims open");
-	assert_eq!(acc.close(), Some(&200), "close unchanged by the earlier arrival");
+	accumulator.add(&(2, 999)); // hw=20; coord 2 ages immediately (18>10) and 2 < 5
+	assert_eq!(accumulator.open(), Some(&999), "a genuinely earlier late arrival reclaims open");
+	assert_eq!(accumulator.close(), Some(&200), "close unchanged by the earlier arrival");
 }
 
 #[test]
 fn sealing_endpoint_late_middle_arrival_keeps_open() {
 	// Counterpart to the above: a late arrival whose coord is later than the
 	// sealed open must NOT move open.
-	let mut acc: SealingEndpoint<u64, i64> = SealingEndpoint::with_lateness(10);
-	acc.add(&(2, 999));
-	acc.add(&(20, 200)); // hw=20; coord 2 ages -> sealed_open=(2,999)
-	assert_eq!(acc.open(), Some(&999));
+	let mut accumulator: SealingEndpoint<u64, i64> = SealingEndpoint::with_lateness(10);
+	accumulator.add(&(2, 999));
+	accumulator.add(&(20, 200)); // hw=20; coord 2 ages -> sealed_open=(2,999)
+	assert_eq!(accumulator.open(), Some(&999));
 
-	acc.add(&(5, 50)); // coord 5 ages (15>10) but 5 > 2, so open stays (2,999)
-	assert_eq!(acc.open(), Some(&999), "a later late arrival does not displace the earlier open");
+	accumulator.add(&(5, 50)); // coord 5 ages (15>10) but 5 > 2, so open stays (2,999)
+	assert_eq!(accumulator.open(), Some(&999), "a later late arrival does not displace the earlier open");
 }
 
 #[test]
@@ -134,7 +134,7 @@ fn keyed_invertible_is_order_independent_for_exact_sums() {
 	// Per-key Moments over small integer-valued contributions: the sums are
 	// exact in f64, so reordering must not change finalize(). Uses distinct
 	// and colliding keys to cover the per-key routing.
-	assert_order_independent::<KeyedInvertibleAcc<u64, Moments>>(&[
+	assert_order_independent::<KeyedInvertibleAccumulator<u64, Moments>>(&[
 		(1u64, 10.0f64),
 		(2, 20.0),
 		(1, 5.0),

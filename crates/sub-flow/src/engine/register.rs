@@ -16,6 +16,7 @@ use reifydb_core::{
 	},
 	internal,
 	value::column::columns::Columns,
+	window::engine::LatePolicy,
 };
 use reifydb_rql::{
 	expression::{ColumnExpression, Expression},
@@ -68,7 +69,10 @@ use crate::{
 		},
 		sort::SortOperator,
 		take::TakeOperator,
-		window::operator::{WindowConfig, WindowOperator},
+		window::{
+			aggregate::AggregateOperator,
+			operator::{WindowConfig, WindowOperator},
+		},
 	},
 };
 
@@ -212,8 +216,9 @@ impl FlowEngineInner {
 				expressions,
 			} => self.add_apply(node_id, &inputs, operator, expressions)?,
 			Aggregate {
-				..
-			} => unimplemented!(),
+				by,
+				map,
+			} => self.add_aggregate(node_id, &inputs, by, map)?,
 			Window {
 				kind,
 				group_by,
@@ -680,8 +685,32 @@ impl FlowEngineInner {
 			ts: ts.clone(),
 			runtime_context: self.runtime_context.clone(),
 			routines: self.executor.routines.clone(),
+			late_policy: LatePolicy::Process,
 		});
 		self.operators.insert(node_id, OperatorCell::new(Operators::Window(operator)));
+		Ok(())
+	}
+
+	#[inline]
+	fn add_aggregate(
+		&mut self,
+		node_id: FlowNodeId,
+		inputs: &[FlowNodeId],
+		by: Vec<Expression>,
+		map: Vec<Expression>,
+	) -> Result<()> {
+		let parent = self.parent(inputs[0])?;
+		self.operators.insert(
+			node_id,
+			OperatorCell::new(Operators::Aggregate(AggregateOperator::new(
+				parent,
+				node_id,
+				by,
+				map,
+				self.executor.routines.clone(),
+				self.runtime_context.clone(),
+			))),
+		);
 		Ok(())
 	}
 

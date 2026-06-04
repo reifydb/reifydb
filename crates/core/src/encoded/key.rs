@@ -15,6 +15,7 @@ use std::{
 	sync::Arc,
 };
 
+use reifydb_runtime::hash::Hash128;
 use reifydb_value::value::{
 	Value,
 	blob::Blob,
@@ -569,6 +570,14 @@ impl IntoEncodedKey for &u8 {
 impl IntoEncodedKey for &i8 {
 	fn into_encoded_key(self) -> EncodedKey {
 		(*self).into_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for &Hash128 {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(16);
+		serializer.extend_u128(self.0);
+		serializer.to_encoded_key()
 	}
 }
 

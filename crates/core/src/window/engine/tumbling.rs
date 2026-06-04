@@ -16,29 +16,30 @@ use crate::{
 	encoded::key::{EncodedKey, IntoEncodedKey},
 	window::{
 		accumulator::WindowAccumulator,
-		engine::{AccEvent, EmitKind, GroupMeta, MetaKey, WindowResult, meta_key_for},
+		engine::{AccumulatorEvent, EmitKind, GroupMeta, LatePolicy, MetaKey, WindowResult, meta_key_for},
 		span::{Slot, WindowSpan},
 		state::StateCache,
 		store::WindowStore,
 	},
 };
 
-pub type TumblingBuckets<G, C, Contribution> = BTreeMap<(G, WindowSpan<C>), Vec<AccEvent<Contribution>>>;
+pub type TumblingBuckets<G, C, Contribution> = BTreeMap<(G, WindowSpan<C>), Vec<AccumulatorEvent<Contribution>>>;
 
 type MetaLoaded<G, C> = HashMap<G, GroupMeta<C>>;
 type SlotResolved = Vec<Option<(RowNumber, bool)>>;
 
-pub struct TumblingEngine<G, C, Acc> {
-	accs: StateCache<RowNumber, Acc>,
+pub struct TumblingEngine<G, C, Accumulator> {
+	accumulators: StateCache<RowNumber, Accumulator>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
+	late_policy: LatePolicy,
 	_pd: PhantomData<G>,
 }
 
-impl<G, C, Acc> Default for TumblingEngine<G, C, Acc>
+impl<G, C, Accumulator> Default for TumblingEngine<G, C, Accumulator>
 where
 	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
 	C: Slot + Hash + Serialize + DeserializeOwned,
-	Acc: WindowAccumulator,
+	Accumulator: WindowAccumulator,
 	for<'a> &'a G: IntoEncodedKey,
 {
 	fn default() -> Self {
@@ -46,17 +47,22 @@ where
 	}
 }
 
-impl<G, C, Acc> TumblingEngine<G, C, Acc>
+impl<G, C, Accumulator> TumblingEngine<G, C, Accumulator>
 where
 	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
 	C: Slot + Hash + Serialize + DeserializeOwned,
-	Acc: WindowAccumulator,
+	Accumulator: WindowAccumulator,
 	for<'a> &'a G: IntoEncodedKey,
 {
 	pub fn new() -> Self {
+		Self::with_late_policy(LatePolicy::Drop)
+	}
+
+	pub fn with_late_policy(late_policy: LatePolicy) -> Self {
 		Self {
-			accs: StateCache::<RowNumber, Acc>::new(8),
+			accumulators: StateCache::<RowNumber, Accumulator>::new(8),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(64),
+			late_policy,
 			_pd: PhantomData,
 		}
 	}
@@ -64,27 +70,28 @@ where
 	pub fn apply<S, K, NA>(
 		&mut self,
 		store: &mut S,
-		buckets: TumblingBuckets<G, C, Acc::Contribution>,
+		buckets: TumblingBuckets<G, C, Accumulator::Contribution>,
 		row_key: K,
-		new_acc: NA,
-	) -> Result<Vec<WindowResult<G, C, Acc::Output>>>
+		new_accumulator: NA,
+	) -> Result<Vec<WindowResult<G, C, Accumulator::Output>>>
 	where
 		S: WindowStore,
 		K: Fn(&G, C) -> EncodedKey,
-		NA: Fn() -> Acc,
+		NA: Fn() -> Accumulator,
 	{
 		if buckets.is_empty() {
 			return Ok(Vec::new());
 		}
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
 		let slot_resolved = self.resolve_survivor_rows(store, &buckets, &meta_loaded, &row_key)?;
-		let results = self.apply_events(store, buckets, slot_resolved, &mut meta_loaded, &row_key, &new_acc)?;
+		let results =
+			self.apply_events(store, buckets, slot_resolved, &mut meta_loaded, &row_key, &new_accumulator)?;
 		self.persist_meta(store, meta_loaded)?;
 		Ok(results)
 	}
 
 	pub fn flush<S: WindowStore>(&mut self, store: &mut S) -> Result<()> {
-		self.accs.flush(store)?;
+		self.accumulators.flush(store)?;
 		self.meta.flush(store)?;
 		Ok(())
 	}
@@ -92,7 +99,7 @@ where
 	fn warm_and_load_meta<S: WindowStore>(
 		&mut self,
 		store: &mut S,
-		buckets: &TumblingBuckets<G, C, Acc::Contribution>,
+		buckets: &TumblingBuckets<G, C, Accumulator::Contribution>,
 	) -> Result<MetaLoaded<G, C>> {
 		let meta_keys: Vec<MetaKey> = buckets
 			.keys()
@@ -116,7 +123,7 @@ where
 	fn resolve_survivor_rows<S, K>(
 		&mut self,
 		store: &mut S,
-		buckets: &TumblingBuckets<G, C, Acc::Contribution>,
+		buckets: &TumblingBuckets<G, C, Accumulator::Contribution>,
 		meta_loaded: &MetaLoaded<G, C>,
 		row_key: &K,
 	) -> Result<SlotResolved>
@@ -146,8 +153,8 @@ where
 				 state, double-counting it (survivor_keys={survivors}, resolved_rows={resolved})"
 			);
 		}
-		let acc_keys: Vec<RowNumber> = resolved_rows.iter().map(|(rn, _)| *rn).collect();
-		self.accs.warm(store, &acc_keys)?;
+		let accumulator_keys: Vec<RowNumber> = resolved_rows.iter().map(|(rn, _)| *rn).collect();
+		self.accumulators.warm(store, &accumulator_keys)?;
 		let mut resolved_rows = resolved_rows.into_iter();
 		let slot_resolved: SlotResolved = slot_survives
 			.into_iter()
@@ -165,23 +172,27 @@ where
 	fn apply_events<S, K, NA>(
 		&mut self,
 		store: &mut S,
-		buckets: TumblingBuckets<G, C, Acc::Contribution>,
+		buckets: TumblingBuckets<G, C, Accumulator::Contribution>,
 		slot_resolved: SlotResolved,
 		meta_loaded: &mut MetaLoaded<G, C>,
 		row_key: &K,
-		new_acc: &NA,
-	) -> Result<Vec<WindowResult<G, C, Acc::Output>>>
+		new_accumulator: &NA,
+	) -> Result<Vec<WindowResult<G, C, Accumulator::Output>>>
 	where
 		S: WindowStore,
 		K: Fn(&G, C) -> EncodedKey,
-		NA: Fn() -> Acc,
+		NA: Fn() -> Accumulator,
 	{
-		let mut results: Vec<WindowResult<G, C, Acc::Output>> = Vec::new();
+		let mut results: Vec<WindowResult<G, C, Accumulator::Output>> = Vec::new();
 
 		for (((group, span), events), slot_pre) in buckets.into_iter().zip(slot_resolved) {
 			let entry = meta_loaded.entry(group.clone()).or_default();
 			match entry.high_water {
-				Some(hw) if span.start < hw => continue,
+				Some(hw) if span.start < hw => {
+					if matches!(self.late_policy, LatePolicy::Drop) {
+						continue;
+					}
+				}
 				Some(hw) if span.start > hw => entry.high_water = Some(span.start),
 				Some(_) => {}
 				None => entry.high_water = Some(span.start),
@@ -195,32 +206,53 @@ where
 				}
 			};
 
-			let mut acc: Acc = self.accs.get(store, &row_number)?.unwrap_or_else(new_acc);
-			let was_empty_before = acc.is_empty();
+			let mut accumulator: Accumulator =
+				self.accumulators.get(store, &row_number)?.unwrap_or_else(new_accumulator);
+			let was_empty_before = accumulator.is_empty();
+			let prior = if was_empty_before {
+				None
+			} else {
+				accumulator.finalize()
+			};
 
 			for event in events {
 				match event {
-					AccEvent::Add(c) => acc.add(&c),
-					AccEvent::Remove(c) => acc.remove(&c),
+					AccumulatorEvent::Add(c) => accumulator.add(&c),
+					AccumulatorEvent::Remove(c) => accumulator.remove(&c),
 				}
 			}
 
-			let value = acc.finalize();
-			self.accs.put(store, &row_number, acc)?;
+			let value = accumulator.finalize();
+			self.accumulators.put(store, &row_number, accumulator)?;
 
-			if let Some(value) = value {
-				let kind = if is_new || was_empty_before {
-					EmitKind::Insert
-				} else {
-					EmitKind::Update
-				};
-				results.push(WindowResult {
-					row_number,
-					group,
-					span,
-					value,
-					kind,
-				});
+			match value {
+				Some(value) => {
+					let kind = if is_new || was_empty_before {
+						EmitKind::Insert
+					} else {
+						EmitKind::Update
+					};
+					results.push(WindowResult {
+						row_number,
+						group,
+						span,
+						value,
+						prior,
+						kind,
+					});
+				}
+				None => {
+					if let Some(p) = prior.clone() {
+						results.push(WindowResult {
+							row_number,
+							group,
+							span,
+							value: p,
+							prior,
+							kind: EmitKind::Remove,
+						});
+					}
+				}
 			}
 		}
 		Ok(results)

@@ -214,6 +214,7 @@ where
 mod tests {
 	use std::collections::HashMap;
 
+	use postcard::{from_bytes, to_allocvec};
 	use reifydb_value::value::row_number::RowNumber;
 
 	use super::*;
@@ -226,7 +227,7 @@ mod tests {
 
 	impl WindowStore for MockStore {
 		fn state_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Result<Option<V>> {
-			Ok(self.data.get(key.as_bytes()).map(|b| postcard::from_bytes(b).expect("decode")))
+			Ok(self.data.get(key.as_bytes()).map(|b| from_bytes(b).expect("decode")))
 		}
 		fn state_get_many_visit<V: DeserializeOwned>(
 			&mut self,
@@ -235,13 +236,13 @@ mod tests {
 		) -> Result<()> {
 			for key in keys {
 				if let Some(b) = self.data.get(key.as_bytes()) {
-					visit(key.clone(), postcard::from_bytes(b).expect("decode"))?;
+					visit(key.clone(), from_bytes(b).expect("decode"))?;
 				}
 			}
 			Ok(())
 		}
 		fn state_set<V: Serialize>(&mut self, key: &EncodedKey, value: &V) -> Result<()> {
-			self.data.insert(key.as_bytes().to_vec(), postcard::to_allocvec(value).expect("encode"));
+			self.data.insert(key.as_bytes().to_vec(), to_allocvec(value).expect("encode"));
 			Ok(())
 		}
 		fn state_remove(&mut self, key: &EncodedKey) -> Result<()> {
@@ -249,7 +250,7 @@ mod tests {
 			Ok(())
 		}
 		fn internal_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Result<Option<V>> {
-			Ok(self.internal.get(key.as_bytes()).map(|b| postcard::from_bytes(b).expect("decode")))
+			Ok(self.internal.get(key.as_bytes()).map(|b| from_bytes(b).expect("decode")))
 		}
 		fn internal_get_many_visit<V: DeserializeOwned>(
 			&mut self,
@@ -258,13 +259,13 @@ mod tests {
 		) -> Result<()> {
 			for key in keys {
 				if let Some(b) = self.internal.get(key.as_bytes()) {
-					visit(key.clone(), postcard::from_bytes(b).expect("decode"))?;
+					visit(key.clone(), from_bytes(b).expect("decode"))?;
 				}
 			}
 			Ok(())
 		}
 		fn internal_set<V: Serialize>(&mut self, key: &EncodedKey, value: &V) -> Result<()> {
-			self.internal.insert(key.as_bytes().to_vec(), postcard::to_allocvec(value).expect("encode"));
+			self.internal.insert(key.as_bytes().to_vec(), to_allocvec(value).expect("encode"));
 			Ok(())
 		}
 		fn internal_remove(&mut self, key: &EncodedKey) -> Result<()> {

@@ -4,7 +4,7 @@
 //! Windowed-aggregation authoring surface.
 //!
 //! An operator implements one of the windowed authoring traits over a
-//! [`accumulator::WindowAccumulator`]:
+//! `reifydb_core::window::accumulator::WindowAccumulator`:
 //! - [`tumbling::TumblingOperator`] - non-overlapping windows.
 //! - [`tumbling_carry::TumblingCarryOperator`] - tumbling windows that carry a value forward into the next window
 //!   (EMA-family, prev-close, Heikin-Ashi).
@@ -16,14 +16,12 @@
 //! `Update -> remove(pre) + add(post)`, `Remove -> remove(pre)`), window
 //! boundary math, late-event drop, and state persistence in one place, so the
 //! operator only describes its accumulator and how to build an output row.
-//! Coordinate machinery lives in [`span`]; the reusable accumulator primitives
-//! in [`accumulator`].
+//! Coordinate machinery lives in `reifydb_core::window::span`; the reusable
+//! accumulator primitives in `reifydb_core::window::accumulator`.
 
-pub mod accumulator;
 pub mod bridge;
 pub mod multi_rolling;
 pub mod rolling;
 pub mod rolling_incremental;
-pub mod span;
 pub mod tumbling;
 pub mod tumbling_carry;

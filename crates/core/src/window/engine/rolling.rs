@@ -16,46 +16,55 @@ use crate::{
 	encoded::key::{EncodedKey, IntoEncodedKey},
 	window::{
 		accumulator::WindowAccumulator,
-		engine::{AccEvent, EmitKind, GroupMeta, MetaKey, meta_key_for},
+		engine::{AccumulatorEvent, EmitKind, GroupMeta, LatePolicy, MetaKey, meta_key_for},
 		span::Slot,
 		state::StateCache,
 		store::WindowStore,
 	},
 };
 
-pub type RollingBuffer<C, Acc> = BTreeMap<C, Acc>;
+pub type RollingBuffer<C, Accumulator> = BTreeMap<C, Accumulator>;
 
-pub type RollingBuckets<G, C, Contribution> = BTreeMap<(G, C), Vec<AccEvent<Contribution>>>;
+pub type RollingBuckets<G, C, Contribution> = BTreeMap<(G, C), Vec<AccumulatorEvent<Contribution>>>;
 
 pub struct RollingResult<G, Output> {
 	pub row_number: RowNumber,
 	pub group: G,
 	pub value: Output,
+	pub prior: Option<Output>,
 	pub kind: EmitKind,
+}
+
+pub enum RollingEviction<C: Slot> {
+	Capacity(usize),
+	Before(C),
+	Within(C::Duration),
+	BeforeStamp(u64),
 }
 
 type MetaLoaded<G, C> = HashMap<G, GroupMeta<C>>;
 type BufferRows<G> = HashMap<G, (RowNumber, bool)>;
 
-struct GroupSlot<C, Acc> {
+struct GroupSlot<C, Accumulator> {
 	row_number: RowNumber,
 	is_new: bool,
-	buffer: RollingBuffer<C, Acc>,
+	buffer: RollingBuffer<C, Accumulator>,
 	was_empty_before: bool,
 	buffer_changed: bool,
 }
 
-pub struct RollingEngine<G, C, Acc> {
-	buffers: StateCache<RowNumber, RollingBuffer<C, Acc>>,
+pub struct RollingEngine<G, C, Accumulator> {
+	buffers: StateCache<RowNumber, RollingBuffer<C, Accumulator>>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
+	late_policy: LatePolicy,
 	_pd: PhantomData<G>,
 }
 
-impl<G, C, Acc> Default for RollingEngine<G, C, Acc>
+impl<G, C, Accumulator> Default for RollingEngine<G, C, Accumulator>
 where
 	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
 	C: Slot + Hash + Serialize + DeserializeOwned,
-	Acc: WindowAccumulator,
+	Accumulator: WindowAccumulator,
 	for<'a> &'a G: IntoEncodedKey,
 {
 	fn default() -> Self {
@@ -63,17 +72,22 @@ where
 	}
 }
 
-impl<G, C, Acc> RollingEngine<G, C, Acc>
+impl<G, C, Accumulator> RollingEngine<G, C, Accumulator>
 where
 	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
 	C: Slot + Hash + Serialize + DeserializeOwned,
-	Acc: WindowAccumulator,
+	Accumulator: WindowAccumulator,
 	for<'a> &'a G: IntoEncodedKey,
 {
 	pub fn new() -> Self {
+		Self::with_late_policy(LatePolicy::Drop)
+	}
+
+	pub fn with_late_policy(late_policy: LatePolicy) -> Self {
 		Self {
-			buffers: StateCache::<RowNumber, RollingBuffer<C, Acc>>::new(8),
+			buffers: StateCache::<RowNumber, RollingBuffer<C, Accumulator>>::new(8),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(64),
+			late_policy,
 			_pd: PhantomData,
 		}
 	}
@@ -81,7 +95,7 @@ where
 	pub fn apply<S, K, CB, Output>(
 		&mut self,
 		store: &mut S,
-		buckets: RollingBuckets<G, C, Acc::Contribution>,
+		buckets: RollingBuckets<G, C, Accumulator::Contribution>,
 		capacity: usize,
 		row_key: K,
 		combine: CB,
@@ -89,7 +103,32 @@ where
 	where
 		S: WindowStore,
 		K: Fn(&G) -> EncodedKey,
-		CB: Fn(&G, &RollingBuffer<C, Acc>) -> Option<Output>,
+		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
+	{
+		self.apply_evicting(
+			store,
+			buckets,
+			RollingEviction::Capacity(capacity),
+			row_key,
+			Accumulator::default,
+			combine,
+		)
+	}
+
+	pub fn apply_evicting<S, K, NA, CB, Output>(
+		&mut self,
+		store: &mut S,
+		buckets: RollingBuckets<G, C, Accumulator::Contribution>,
+		eviction: RollingEviction<C>,
+		row_key: K,
+		new_accumulator: NA,
+		combine: CB,
+	) -> Result<Vec<RollingResult<G, Output>>>
+	where
+		S: WindowStore,
+		K: Fn(&G) -> EncodedKey,
+		NA: Fn() -> Accumulator,
+		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
 	{
 		if buckets.is_empty() {
 			return Ok(Vec::new());
@@ -102,7 +141,8 @@ where
 			&mut meta_loaded,
 			&buffer_rows,
 			&row_key,
-			capacity,
+			&eviction,
+			&new_accumulator,
 		)?;
 		let results = self.combine_and_collect(store, group_slots, &combine)?;
 		self.persist_meta(store, meta_loaded)?;
@@ -118,7 +158,7 @@ where
 	fn warm_and_load_meta<S: WindowStore>(
 		&mut self,
 		store: &mut S,
-		buckets: &RollingBuckets<G, C, Acc::Contribution>,
+		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
 	) -> Result<MetaLoaded<G, C>> {
 		let meta_keys: Vec<MetaKey> = buckets
 			.keys()
@@ -142,7 +182,7 @@ where
 	fn resolve_buffer_rows<S, K>(
 		&mut self,
 		store: &mut S,
-		buckets: &RollingBuckets<G, C, Acc::Contribution>,
+		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
 		meta_loaded: &MetaLoaded<G, C>,
 		row_key: &K,
 	) -> Result<BufferRows<G>>
@@ -181,26 +221,29 @@ where
 		Ok(buffer_rows)
 	}
 
-	fn apply_events_into_buffers<S, K>(
+	#[allow(clippy::too_many_arguments)]
+	fn apply_events_into_buffers<S, K, NA>(
 		&mut self,
 		store: &mut S,
-		buckets: RollingBuckets<G, C, Acc::Contribution>,
+		buckets: RollingBuckets<G, C, Accumulator::Contribution>,
 		meta_loaded: &mut MetaLoaded<G, C>,
 		buffer_rows: &BufferRows<G>,
 		row_key: &K,
-		capacity: usize,
-	) -> Result<BTreeMap<G, GroupSlot<C, Acc>>>
+		eviction: &RollingEviction<C>,
+		new_accumulator: &NA,
+	) -> Result<BTreeMap<G, GroupSlot<C, Accumulator>>>
 	where
 		S: WindowStore,
 		K: Fn(&G) -> EncodedKey,
+		NA: Fn() -> Accumulator,
 	{
-		let mut group_slots: BTreeMap<G, GroupSlot<C, Acc>> = BTreeMap::new();
+		let mut group_slots: BTreeMap<G, GroupSlot<C, Accumulator>> = BTreeMap::new();
 
 		for ((group, coord), events) in buckets {
 			let meta = meta_loaded.entry(group.clone()).or_default();
 
 			if let Some(hw) = meta.high_water
-				&& coord < hw
+				&& coord < hw && matches!(self.late_policy, LatePolicy::Drop)
 			{
 				continue;
 			}
@@ -215,7 +258,7 @@ where
 							store.get_or_create_row_number(&key)?
 						}
 					};
-					let buffer: RollingBuffer<C, Acc> =
+					let buffer: RollingBuffer<C, Accumulator> =
 						self.buffers.get(store, &row_number)?.unwrap_or_default();
 					let was_empty_before = buffer.is_empty();
 					group_slots.insert(
@@ -232,18 +275,55 @@ where
 				}
 			};
 
-			let mut acc = slot.buffer.remove(&coord).unwrap_or_default();
+			let mut accumulator = slot.buffer.remove(&coord).unwrap_or_else(new_accumulator);
 			for event in events {
 				match event {
-					AccEvent::Add(c) => acc.add(&c),
-					AccEvent::Remove(c) => acc.remove(&c),
+					AccumulatorEvent::Add(c) => accumulator.add(&c),
+					AccumulatorEvent::Remove(c) => accumulator.remove(&c),
 				}
 			}
-			if !acc.is_empty() {
-				slot.buffer.insert(coord, acc);
+			if !accumulator.is_empty() {
+				slot.buffer.insert(coord, accumulator);
 			}
-			while slot.buffer.len() > capacity {
-				slot.buffer.pop_first();
+			match eviction {
+				RollingEviction::Capacity(cap) => {
+					while slot.buffer.len() > *cap {
+						slot.buffer.pop_first();
+					}
+				}
+				RollingEviction::Before(cutoff) => {
+					while let Some((&oldest, _)) = slot.buffer.iter().next() {
+						if oldest <= *cutoff {
+							slot.buffer.pop_first();
+						} else {
+							break;
+						}
+					}
+				}
+				RollingEviction::Within(span) => {
+					if let Some((&newest, _)) = slot.buffer.iter().next_back() {
+						while let Some((&oldest, _)) = slot.buffer.iter().next() {
+							if newest - oldest >= *span {
+								slot.buffer.pop_first();
+							} else {
+								break;
+							}
+						}
+					}
+				}
+				RollingEviction::BeforeStamp(cutoff) => {
+					let stale: Vec<C> = slot
+						.buffer
+						.iter()
+						.filter(|(_, accumulator)| {
+							accumulator.stamp().is_some_and(|s| s <= *cutoff)
+						})
+						.map(|(coord, _)| *coord)
+						.collect();
+					for coord in stale {
+						slot.buffer.remove(&coord);
+					}
+				}
 			}
 			slot.buffer_changed = true;
 
@@ -258,12 +338,12 @@ where
 	fn combine_and_collect<S, CB, Output>(
 		&mut self,
 		store: &mut S,
-		group_slots: BTreeMap<G, GroupSlot<C, Acc>>,
+		group_slots: BTreeMap<G, GroupSlot<C, Accumulator>>,
 		combine: &CB,
 	) -> Result<Vec<RollingResult<G, Output>>>
 	where
 		S: WindowStore,
-		CB: Fn(&G, &RollingBuffer<C, Acc>) -> Option<Output>,
+		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
 	{
 		let mut results: Vec<RollingResult<G, Output>> = Vec::new();
 		for (group, slot) in group_slots {
@@ -283,6 +363,7 @@ where
 					row_number: slot.row_number,
 					group,
 					value: out,
+					prior: None,
 					kind,
 				});
 			}

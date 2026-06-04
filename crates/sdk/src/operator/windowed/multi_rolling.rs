@@ -10,7 +10,7 @@ use reifydb_core::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccEvent,
+			AccumulatorEvent,
 			multi_rolling::{MultiEmit, MultiRollingEngine},
 			rolling::RollingBuckets,
 		},
@@ -36,12 +36,12 @@ use crate::{
 	},
 };
 
-type AccContribution<A> = <<A as MultiRollingOperator>::WindowAcc as WindowAccumulator>::Contribution;
+type AccumulatorContribution<A> = <<A as MultiRollingOperator>::Accumulator as WindowAccumulator>::Contribution;
 
 type Buckets<A> = RollingBuckets<
 	<A as MultiRollingOperator>::GroupKey,
 	<A as MultiRollingOperator>::WindowCoord,
-	AccContribution<A>,
+	AccumulatorContribution<A>,
 >;
 
 pub trait MultiRollingOperator {
@@ -49,7 +49,7 @@ pub trait MultiRollingOperator {
 
 	type WindowCoord: Slot + Hash + Serialize + DeserializeOwned;
 
-	type WindowAcc: WindowAccumulator;
+	type Accumulator: WindowAccumulator;
 
 	type SecondaryKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned;
 
@@ -57,12 +57,15 @@ pub trait MultiRollingOperator {
 
 	fn capacity(&self) -> usize;
 
-	fn extract(&self, row: &impl RowView) -> Option<(Self::GroupKey, Self::WindowCoord, AccContribution<Self>)>;
+	fn extract(
+		&self,
+		row: &impl RowView,
+	) -> Option<(Self::GroupKey, Self::WindowCoord, AccumulatorContribution<Self>)>;
 
 	fn combine(
 		&self,
 		group: &Self::GroupKey,
-		buffer: &BTreeMap<Self::WindowCoord, Self::WindowAcc>,
+		buffer: &BTreeMap<Self::WindowCoord, Self::Accumulator>,
 	) -> BTreeMap<Self::SecondaryKey, Self::Output>;
 }
 
@@ -86,7 +89,7 @@ where
 }
 
 pub type MultiRollingBuffer<A> =
-	BTreeMap<<A as MultiRollingOperator>::WindowCoord, <A as MultiRollingOperator>::WindowAcc>;
+	BTreeMap<<A as MultiRollingOperator>::WindowCoord, <A as MultiRollingOperator>::Accumulator>;
 
 pub type MultiRollingEmit<A> = BTreeMap<<A as MultiRollingOperator>::SecondaryKey, <A as MultiRollingOperator>::Output>;
 
@@ -97,7 +100,8 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	aggregator: A,
-	engine: MultiRollingEngine<A::GroupKey, A::WindowCoord, A::WindowAcc, A::SecondaryKey, A::Output>,
+	#[allow(clippy::type_complexity)]
+	engine: MultiRollingEngine<A::GroupKey, A::WindowCoord, A::Accumulator, A::SecondaryKey, A::Output>,
 }
 
 impl<A> OperatorMetadata for MultiRollingDriver<A>
@@ -121,9 +125,9 @@ where
 	A::Output: Row + Send + Sync,
 	A::GroupKey: Send + Sync,
 	A::WindowCoord: Send + Sync,
-	A::WindowAcc: Send + Sync,
+	A::Accumulator: Send + Sync,
 	A::SecondaryKey: Send + Sync,
-	AccContribution<A>: Send + Sync,
+	AccumulatorContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
@@ -195,9 +199,9 @@ where
 	A::Output: Row + Send + Sync,
 	A::GroupKey: Send + Sync,
 	A::WindowCoord: Send + Sync,
-	A::WindowAcc: Send + Sync,
+	A::Accumulator: Send + Sync,
 	A::SecondaryKey: Send + Sync,
-	AccContribution<A>: Send + Sync,
+	AccumulatorContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	#[inline]
@@ -221,7 +225,7 @@ where
 							{
 								buckets.entry((group, coord))
 									.or_default()
-									.push(AccEvent::Add(contribution));
+									.push(AccumulatorEvent::Add(contribution));
 							}
 						}
 					}
@@ -236,7 +240,7 @@ where
 							{
 								buckets.entry((group, coord))
 									.or_default()
-									.push(AccEvent::Remove(contribution));
+									.push(AccumulatorEvent::Remove(contribution));
 							}
 							if let Some(post_row) = post.row(i)
 								&& let Some((group, coord, contribution)) =
@@ -244,7 +248,7 @@ where
 							{
 								buckets.entry((group, coord))
 									.or_default()
-									.push(AccEvent::Add(contribution));
+									.push(AccumulatorEvent::Add(contribution));
 							}
 						}
 					}
@@ -260,7 +264,7 @@ where
 							{
 								buckets.entry((group, coord))
 									.or_default()
-									.push(AccEvent::Remove(contribution));
+									.push(AccumulatorEvent::Remove(contribution));
 							}
 						}
 					}
@@ -314,17 +318,14 @@ mod tests {
 		},
 		interface::catalog::flow::FlowNodeId,
 		row::Row as CoreRow,
+		window::accumulator::{KeyedInvertibleAccumulator, Moments},
 	};
 	use reifydb_value::value::{Value, value_type::ValueType};
 	use serde::{Deserialize, Serialize};
 
 	use super::*;
 	use crate::{
-		operator::{
-			FFIOperatorAdapter,
-			view::RowView,
-			windowed::accumulator::{KeyedInvertibleAcc, Moments},
-		},
+		operator::{FFIOperatorAdapter, view::RowView},
 		row,
 		testing::{
 			builders::{TestChangeBuilder, TestRowBuilder},
@@ -333,7 +334,7 @@ mod tests {
 	};
 
 	// Rolling top-2 traders by summed volume over the last 3 windows. Each
-	// window cell is a KeyedInvertibleAcc<trader, Moments> so a trade's
+	// window cell is a KeyedInvertibleAccumulator<trader, Moments> so a trade's
 	// volume accumulates per trader and an Update/Remove subtracts it
 	// (invertible). combine merges all buffered windows' per-trader sums,
 	// ranks by total volume, and emits the top 2 keyed by rank.
@@ -358,7 +359,7 @@ mod tests {
 	impl MultiRollingOperator for TestTopVolume {
 		type GroupKey = String;
 		type WindowCoord = u64;
-		type WindowAcc = KeyedInvertibleAcc<u64, Moments>;
+		type Accumulator = KeyedInvertibleAccumulator<u64, Moments>;
 		type SecondaryKey = u32;
 		type Output = TopOut;
 
@@ -377,7 +378,7 @@ mod tests {
 		fn combine(
 			&self,
 			group: &String,
-			buffer: &BTreeMap<u64, KeyedInvertibleAcc<u64, Moments>>,
+			buffer: &BTreeMap<u64, KeyedInvertibleAccumulator<u64, Moments>>,
 		) -> BTreeMap<u32, TopOut> {
 			let mut totals: BTreeMap<u64, f64> = BTreeMap::new();
 			for window in buffer.values() {

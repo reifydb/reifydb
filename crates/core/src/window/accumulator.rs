@@ -25,6 +25,10 @@ pub trait WindowAccumulator: Clone + Debug + Default + Serialize + DeserializeOw
 	fn finalize(&self) -> Option<Self::Output>;
 
 	fn is_empty(&self) -> bool;
+
+	fn stamp(&self) -> Option<u64> {
+		None
+	}
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
@@ -186,6 +190,13 @@ impl<V: Ord + Clone> Multiset<V> {
 		self.total -= 1;
 		if *count == 0 {
 			self.counts.remove(value);
+		}
+	}
+
+	pub fn merge(&mut self, other: &Self) {
+		for (value, count) in &other.counts {
+			*self.counts.entry(value.clone()).or_insert(0) += count;
+			self.total += count;
 		}
 	}
 
@@ -385,11 +396,11 @@ impl<C: Ord + Clone, V: Clone> EndpointByCoord<C, V> {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct KeyedInvertibleAcc<K: Ord, A> {
+pub struct KeyedInvertibleAccumulator<K: Ord, A> {
 	subs: BTreeMap<K, A>,
 }
 
-impl<K: Ord, A> Default for KeyedInvertibleAcc<K, A> {
+impl<K: Ord, A> Default for KeyedInvertibleAccumulator<K, A> {
 	fn default() -> Self {
 		Self {
 			subs: BTreeMap::new(),
@@ -397,13 +408,13 @@ impl<K: Ord, A> Default for KeyedInvertibleAcc<K, A> {
 	}
 }
 
-impl<K: Ord, A> KeyedInvertibleAcc<K, A> {
+impl<K: Ord, A> KeyedInvertibleAccumulator<K, A> {
 	pub fn entries(&self) -> &BTreeMap<K, A> {
 		&self.subs
 	}
 }
 
-impl<K, A> WindowAccumulator for KeyedInvertibleAcc<K, A>
+impl<K, A> WindowAccumulator for KeyedInvertibleAccumulator<K, A>
 where
 	K: Ord + Clone + Debug + Serialize + DeserializeOwned,
 	A: WindowAccumulator,
@@ -439,11 +450,11 @@ where
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct RetainedAcc<K: Ord, V> {
+pub struct RetainedAccumulator<K: Ord, V> {
 	map: RetainedMap<K, V>,
 }
 
-impl<K: Ord, V> Default for RetainedAcc<K, V> {
+impl<K: Ord, V> Default for RetainedAccumulator<K, V> {
 	fn default() -> Self {
 		Self {
 			map: RetainedMap::default(),
@@ -451,7 +462,7 @@ impl<K: Ord, V> Default for RetainedAcc<K, V> {
 	}
 }
 
-impl<K, V> WindowAccumulator for RetainedAcc<K, V>
+impl<K, V> WindowAccumulator for RetainedAccumulator<K, V>
 where
 	K: Ord + Clone + Debug + Serialize + DeserializeOwned,
 	V: Clone + Debug + PartialEq + Serialize + DeserializeOwned,
@@ -961,11 +972,11 @@ impl<C: Slot, V: Clone> SealingTail<C, V> {
 	serialize = "C: Serialize, C::Duration: Serialize, V: Serialize",
 	deserialize = "C: serde::de::DeserializeOwned, C::Duration: serde::de::DeserializeOwned, V: serde::de::DeserializeOwned"
 ))]
-pub struct TailAcc<C: Slot, V> {
+pub struct TailAccumulator<C: Slot, V> {
 	events: SealingTail<C, V>,
 }
 
-impl<C: Slot, V> Default for TailAcc<C, V> {
+impl<C: Slot, V> Default for TailAccumulator<C, V> {
 	fn default() -> Self {
 		Self {
 			events: SealingTail::default(),
@@ -973,7 +984,7 @@ impl<C: Slot, V> Default for TailAcc<C, V> {
 	}
 }
 
-impl<C: Slot, V: Clone> TailAcc<C, V> {
+impl<C: Slot, V: Clone> TailAccumulator<C, V> {
 	pub fn with_lateness(lateness: C::Duration) -> Self {
 		Self {
 			events: SealingTail::with_lateness(lateness),
@@ -981,7 +992,7 @@ impl<C: Slot, V: Clone> TailAcc<C, V> {
 	}
 }
 
-impl<C, V> WindowAccumulator for TailAcc<C, V>
+impl<C, V> WindowAccumulator for TailAccumulator<C, V>
 where
 	C: Slot + Serialize + DeserializeOwned,
 	C::Duration: Serialize + DeserializeOwned,
@@ -1015,16 +1026,16 @@ mod tests {
 	use super::*;
 
 	// Test-fixture accumulators that exercise the three storage families
-	// through the WindowAccumulator trait: invertible (SumAcc via Moments),
-	// ordered multiset (MinAcc via Multiset), and keyed-retained (LastAcc
+	// through the WindowAccumulator trait: invertible (SumAccumulator via Moments),
+	// ordered multiset (MinAccumulator via Multiset), and keyed-retained (LastAccumulator
 	// via RetainedMap). The generic property helpers below run over these.
 
 	#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-	struct SumAcc {
+	struct SumAccumulator {
 		moments: Moments,
 	}
 
-	impl WindowAccumulator for SumAcc {
+	impl WindowAccumulator for SumAccumulator {
 		type Contribution = f64;
 		type Output = OrdF64;
 
@@ -1046,11 +1057,11 @@ mod tests {
 	}
 
 	#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-	struct MinAcc {
+	struct MinAccumulator {
 		values: Multiset<OrdF64>,
 	}
 
-	impl WindowAccumulator for MinAcc {
+	impl WindowAccumulator for MinAccumulator {
 		type Contribution = OrdF64;
 		type Output = OrdF64;
 
@@ -1072,11 +1083,11 @@ mod tests {
 	}
 
 	#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-	struct LastAcc {
+	struct LastAccumulator {
 		retained: RetainedMap<u64, i64>,
 	}
 
-	impl WindowAccumulator for LastAcc {
+	impl WindowAccumulator for LastAccumulator {
 		type Contribution = (u64, i64);
 		type Output = i64;
 
@@ -1109,14 +1120,14 @@ mod tests {
 	// an add over an existing key replaces rather than stacks - see
 	// retained_add_over_existing_key_then_remove_deletes).
 	fn assert_add_remove_is_inverse<A: WindowAccumulator>(initial: &[A::Contribution], probe: A::Contribution) {
-		let mut acc = A::default();
+		let mut accumulator = A::default();
 		for c in initial {
-			acc.add(c);
+			accumulator.add(c);
 		}
-		let before = acc.finalize();
-		acc.add(&probe);
-		acc.remove(&probe);
-		assert_eq!(acc.finalize(), before, "add then remove must restore finalize()");
+		let before = accumulator.finalize();
+		accumulator.add(&probe);
+		accumulator.remove(&probe);
+		assert_eq!(accumulator.finalize(), before, "add then remove must restore finalize()");
 	}
 
 	// For commutative families, the multiset of contributions determines the
@@ -1138,7 +1149,7 @@ mod tests {
 
 	#[test]
 	fn sum_add_remove_is_inverse() {
-		assert_add_remove_is_inverse::<SumAcc>(&[1.0, 2.0, 3.0], 7.0);
+		assert_add_remove_is_inverse::<SumAccumulator>(&[1.0, 2.0, 3.0], 7.0);
 	}
 
 	#[test]
@@ -1146,36 +1157,36 @@ mod tests {
 		// Adding a value below the current minimum then removing it must
 		// restore the old minimum - the multiset case a scalar running-min
 		// cannot do.
-		assert_add_remove_is_inverse::<MinAcc>(&[of64(5.0), of64(8.0), of64(6.0)], of64(1.0));
+		assert_add_remove_is_inverse::<MinAccumulator>(&[of64(5.0), of64(8.0), of64(6.0)], of64(1.0));
 	}
 
 	#[test]
 	fn min_add_remove_is_inverse_for_duplicate_value() {
 		// Removing one occurrence of a duplicated value must not drop the
 		// value entirely while another occurrence remains.
-		assert_add_remove_is_inverse::<MinAcc>(&[of64(5.0), of64(5.0), of64(8.0)], of64(5.0));
+		assert_add_remove_is_inverse::<MinAccumulator>(&[of64(5.0), of64(5.0), of64(8.0)], of64(5.0));
 	}
 
 	#[test]
 	fn retained_add_remove_is_inverse_for_fresh_key() {
-		assert_add_remove_is_inverse::<LastAcc>(&[(1u64, 10i64), (2, 20)], (3u64, 30i64));
+		assert_add_remove_is_inverse::<LastAccumulator>(&[(1u64, 10i64), (2, 20)], (3u64, 30i64));
 	}
 
 	#[test]
 	fn sum_is_order_independent() {
-		assert_order_independent::<SumAcc>(&[1.0, 2.0, 4.0, 8.0]);
+		assert_order_independent::<SumAccumulator>(&[1.0, 2.0, 4.0, 8.0]);
 	}
 
 	#[test]
 	fn min_is_order_independent() {
-		assert_order_independent::<MinAcc>(&[of64(3.0), of64(1.0), of64(4.0), of64(1.0), of64(5.0)]);
+		assert_order_independent::<MinAccumulator>(&[of64(3.0), of64(1.0), of64(4.0), of64(1.0), of64(5.0)]);
 	}
 
 	#[test]
 	fn retained_is_order_independent_for_distinct_keys() {
 		// Last-write-wins is only order-independent when keys are distinct;
 		// colliding keys legitimately depend on order (later write wins).
-		assert_order_independent::<LastAcc>(&[(1u64, 10i64), (2, 20), (3, 30)]);
+		assert_order_independent::<LastAccumulator>(&[(1u64, 10i64), (2, 20), (3, 30)]);
 	}
 
 	#[test]
@@ -1184,12 +1195,12 @@ mod tests {
 		// key overwrites it, so a following remove deletes the entry rather
 		// than restoring the prior value. The driver never does this for a
 		// single diff; Update routing is remove(pre)+add(post).
-		let mut acc = LastAcc::default();
-		acc.add(&(1u64, 10i64));
-		acc.add(&(1u64, 99i64));
-		acc.remove(&(1u64, 99i64));
-		assert!(acc.is_empty());
-		assert_eq!(acc.finalize(), None);
+		let mut accumulator = LastAccumulator::default();
+		accumulator.add(&(1u64, 10i64));
+		accumulator.add(&(1u64, 99i64));
+		accumulator.remove(&(1u64, 99i64));
+		assert!(accumulator.is_empty());
+		assert_eq!(accumulator.finalize(), None);
 	}
 
 	#[test]
@@ -1353,12 +1364,12 @@ mod tests {
 
 	#[test]
 	fn retained_acc_add_remove_is_inverse_for_fresh_key() {
-		assert_add_remove_is_inverse::<RetainedAcc<u64, i64>>(&[(1u64, 10i64), (2, 20)], (3u64, 30i64));
+		assert_add_remove_is_inverse::<RetainedAccumulator<u64, i64>>(&[(1u64, 10i64), (2, 20)], (3u64, 30i64));
 	}
 
 	#[test]
 	fn retained_acc_is_order_independent_for_distinct_keys() {
-		assert_order_independent::<RetainedAcc<u64, i64>>(&[(1u64, 10i64), (2, 20), (3, 30)]);
+		assert_order_independent::<RetainedAccumulator<u64, i64>>(&[(1u64, 10i64), (2, 20), (3, 30)]);
 	}
 
 	#[test]
@@ -1366,12 +1377,12 @@ mod tests {
 		// Unlike LastValue/LatestByCoord, the carry-forward family needs the
 		// FULL retained map (e.g. TWAP integrates every observation), so
 		// finalize yields a clone of all entries, not just the latest.
-		let mut acc: RetainedAcc<u64, i64> = RetainedAcc::default();
-		assert!(acc.is_empty());
-		assert_eq!(acc.finalize(), None);
-		acc.add(&(2, 20));
-		acc.add(&(1, 10));
-		let map = acc.finalize().expect("non-empty");
+		let mut accumulator: RetainedAccumulator<u64, i64> = RetainedAccumulator::default();
+		assert!(accumulator.is_empty());
+		assert_eq!(accumulator.finalize(), None);
+		accumulator.add(&(2, 20));
+		accumulator.add(&(1, 10));
+		let map = accumulator.finalize().expect("non-empty");
 		assert_eq!(map.len(), 2);
 		assert_eq!(map.get(&1), Some(&10));
 		assert_eq!(map.get(&2), Some(&20));
@@ -1383,22 +1394,22 @@ mod tests {
 		// it, so a following remove deletes the entry rather than restoring
 		// the prior value. The driver never does this for a single diff -
 		// Update routing is remove(pre)+add(post) on distinct calls.
-		let mut acc: RetainedAcc<u64, i64> = RetainedAcc::default();
-		acc.add(&(1, 10));
-		acc.add(&(1, 99));
-		acc.remove(&(1, 99));
-		assert!(acc.is_empty());
-		assert_eq!(acc.finalize(), None);
+		let mut accumulator: RetainedAccumulator<u64, i64> = RetainedAccumulator::default();
+		accumulator.add(&(1, 10));
+		accumulator.add(&(1, 99));
+		accumulator.remove(&(1, 99));
+		assert!(accumulator.is_empty());
+		assert_eq!(accumulator.finalize(), None);
 	}
 
 	#[test]
 	fn retained_acc_postcard_roundtrip() {
-		let mut acc: RetainedAcc<u64, i64> = RetainedAcc::default();
-		acc.add(&(1, 10));
-		acc.add(&(2, 20));
-		let bytes = to_allocvec(&acc).expect("serialize");
-		let restored: RetainedAcc<u64, i64> = from_bytes(&bytes).expect("deserialize");
-		assert_eq!(restored, acc);
+		let mut accumulator: RetainedAccumulator<u64, i64> = RetainedAccumulator::default();
+		accumulator.add(&(1, 10));
+		accumulator.add(&(2, 20));
+		let bytes = to_allocvec(&accumulator).expect("serialize");
+		let restored: RetainedAccumulator<u64, i64> = from_bytes(&bytes).expect("deserialize");
+		assert_eq!(restored, accumulator);
 	}
 
 	#[test]
@@ -1407,27 +1418,27 @@ mod tests {
 		// key's last contribution drops the key entirely, so finalize never
 		// reports a key whose sub-accumulator drained to empty. This is the
 		// O(distinct keys) shape behind volume-profile and top-K.
-		let mut acc: KeyedInvertibleAcc<u64, Moments> = KeyedInvertibleAcc::default();
-		assert!(acc.is_empty());
-		assert_eq!(acc.finalize(), None);
+		let mut accumulator: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
+		assert!(accumulator.is_empty());
+		assert_eq!(accumulator.finalize(), None);
 
-		acc.add(&(1, 10.0));
-		acc.add(&(1, 20.0));
-		acc.add(&(2, 5.0));
-		let out = acc.finalize().expect("non-empty");
+		accumulator.add(&(1, 10.0));
+		accumulator.add(&(1, 20.0));
+		accumulator.add(&(2, 5.0));
+		let out = accumulator.finalize().expect("non-empty");
 		assert_eq!(out.len(), 2);
 		assert_eq!(out.get(&1).map(|m| m.sum()), Some(30.0));
 		assert_eq!(out.get(&2).map(|m| m.sum()), Some(5.0));
 
-		acc.remove(&(2, 5.0));
-		let out = acc.finalize().expect("non-empty");
+		accumulator.remove(&(2, 5.0));
+		let out = accumulator.finalize().expect("non-empty");
 		assert_eq!(out.len(), 1, "key 2 drained to empty and was dropped");
 		assert!(out.get(&2).is_none());
 	}
 
 	#[test]
 	fn keyed_invertible_add_remove_is_inverse() {
-		assert_add_remove_is_inverse::<KeyedInvertibleAcc<u64, Moments>>(
+		assert_add_remove_is_inverse::<KeyedInvertibleAccumulator<u64, Moments>>(
 			&[(1u64, 10.0f64), (2, 20.0), (1, 30.0)],
 			(3u64, 7.0f64),
 		);
@@ -1435,12 +1446,12 @@ mod tests {
 
 	#[test]
 	fn keyed_invertible_postcard_roundtrip() {
-		let mut acc: KeyedInvertibleAcc<u64, Moments> = KeyedInvertibleAcc::default();
-		acc.add(&(1, 10.0));
-		acc.add(&(2, 20.0));
-		let bytes = to_allocvec(&acc).expect("serialize");
-		let restored: KeyedInvertibleAcc<u64, Moments> = from_bytes(&bytes).expect("deserialize");
-		assert_eq!(restored, acc);
+		let mut accumulator: KeyedInvertibleAccumulator<u64, Moments> = KeyedInvertibleAccumulator::default();
+		accumulator.add(&(1, 10.0));
+		accumulator.add(&(2, 20.0));
+		let bytes = to_allocvec(&accumulator).expect("serialize");
+		let restored: KeyedInvertibleAccumulator<u64, Moments> = from_bytes(&bytes).expect("deserialize");
+		assert_eq!(restored, accumulator);
 	}
 
 	#[test]
@@ -1448,65 +1459,65 @@ mod tests {
 		// lateness 10: an event aged past hw-10 is folded into the O(1)
 		// sealed scalar; events within 10 of the high-water stay in the
 		// removable tail.
-		let mut acc: SealingMax<u64, i64> = SealingMax::with_lateness(10);
-		acc.add(&(0, 5));
-		acc.add(&(5, 8));
-		acc.add(&(12, 3)); // hw=12; coord 0 (age 12>10) seals -> sealed=5, tail={5:8,12:3}
-		assert_eq!(acc.max(), Some(8));
+		let mut accumulator: SealingMax<u64, i64> = SealingMax::with_lateness(10);
+		accumulator.add(&(0, 5));
+		accumulator.add(&(5, 8));
+		accumulator.add(&(12, 3)); // hw=12; coord 0 (age 12>10) seals -> sealed=5, tail={5:8,12:3}
+		assert_eq!(accumulator.max(), Some(8));
 
 		// Removing the aged (sealed) event is a dropped no-op: the sealed
 		// max cannot be lowered (the bounded-lateness assumption).
-		acc.remove(&(0, 5));
-		assert_eq!(acc.max(), Some(8), "aged removal does not disturb the sealed max");
+		accumulator.remove(&(0, 5));
+		assert_eq!(accumulator.max(), Some(8), "aged removal does not disturb the sealed max");
 
 		// Removing a still-live tail event IS removal-safe; the max falls
 		// back to max(sealed, remaining tail).
-		acc.remove(&(5, 8));
-		assert_eq!(acc.max(), Some(5), "tail max 8 removed; falls back to sealed 5");
+		accumulator.remove(&(5, 8));
+		assert_eq!(accumulator.max(), Some(5), "tail max 8 removed; falls back to sealed 5");
 	}
 
 	#[test]
 	fn sealing_min_seals_aged_extreme() {
-		let mut acc: SealingMin<u64, i64> = SealingMin::with_lateness(10);
-		acc.add(&(0, 2));
-		acc.add(&(5, 9));
-		acc.add(&(12, 7)); // coord 0 seals -> sealed=2, tail={5:9,12:7}
-		assert_eq!(acc.min(), Some(2));
-		acc.remove(&(5, 9));
-		assert_eq!(acc.min(), Some(2), "sealed min 2 survives removal of a live event");
+		let mut accumulator: SealingMin<u64, i64> = SealingMin::with_lateness(10);
+		accumulator.add(&(0, 2));
+		accumulator.add(&(5, 9));
+		accumulator.add(&(12, 7)); // coord 0 seals -> sealed=2, tail={5:9,12:7}
+		assert_eq!(accumulator.min(), Some(2));
+		accumulator.remove(&(5, 9));
+		assert_eq!(accumulator.min(), Some(2), "sealed min 2 survives removal of a live event");
 	}
 
 	#[test]
 	fn sealing_max_default_never_seals_and_is_fully_invertible() {
 		// With no lateness bound, nothing seals, so add/remove is a pure
-		// inverse - the Default-constructed sealing acc behaves exactly like
+		// inverse - the Default-constructed sealing accumulator behaves exactly like
 		// the removal-safe decompose variant.
 		assert_add_remove_is_inverse::<SealingMax<u64, i64>>(&[(1u64, 10i64), (2, 20)], (3u64, 30i64));
-		let mut acc: SealingMax<u64, i64> = SealingMax::default();
-		acc.add(&(0, 5));
-		acc.add(&(100, 8)); // far apart but never sealed without a lateness bound
-		acc.remove(&(100, 8));
-		assert_eq!(acc.max(), Some(5), "removing the max reveals the prior max (no sealing)");
+		let mut accumulator: SealingMax<u64, i64> = SealingMax::default();
+		accumulator.add(&(0, 5));
+		accumulator.add(&(100, 8)); // far apart but never sealed without a lateness bound
+		accumulator.remove(&(100, 8));
+		assert_eq!(accumulator.max(), Some(5), "removing the max reveals the prior max (no sealing)");
 	}
 
 	#[test]
 	fn sealing_endpoint_freezes_open_and_tracks_live_close() {
-		let mut acc: SealingEndpoint<u64, i64> = SealingEndpoint::with_lateness(10);
-		acc.add(&(0, 100));
-		acc.add(&(5, 200));
-		acc.add(&(12, 300)); // coord 0 ages out -> sealed_open=(0,100); tail={5:200,12:300}
-		assert_eq!(acc.open(), Some(&100), "open frozen to the earliest observation");
-		assert_eq!(acc.close(), Some(&300), "close is the latest live observation");
+		let mut accumulator: SealingEndpoint<u64, i64> = SealingEndpoint::with_lateness(10);
+		accumulator.add(&(0, 100));
+		accumulator.add(&(5, 200));
+		accumulator.add(&(12, 300)); // coord 0 ages out -> sealed_open=(0,100); tail={5:200,12:300}
+		assert_eq!(accumulator.open(), Some(&100), "open frozen to the earliest observation");
+		assert_eq!(accumulator.close(), Some(&300), "close is the latest live observation");
 
-		acc.remove(&(0, 100));
-		assert_eq!(acc.open(), Some(&100), "aged open removal is a dropped no-op (frozen)");
+		accumulator.remove(&(0, 100));
+		assert_eq!(accumulator.open(), Some(&100), "aged open removal is a dropped no-op (frozen)");
 
-		acc.remove(&(12, 300));
-		assert_eq!(acc.close(), Some(&200), "removing the latest reveals the prior latest in the tail");
+		accumulator.remove(&(12, 300));
+		assert_eq!(accumulator.close(), Some(&200), "removing the latest reveals the prior latest in the tail");
 
-		acc.add(&(20, 400)); // coord 5 ages out; sealed_open stays (0,100) since 0 <= 5
-		assert_eq!(acc.open(), Some(&100));
-		assert_eq!(acc.close(), Some(&400));
+		accumulator.add(&(20, 400)); // coord 5 ages out; sealed_open stays (0,100) since 0 <= 5
+		assert_eq!(accumulator.open(), Some(&100));
+		assert_eq!(accumulator.close(), Some(&400));
 	}
 
 	#[test]
@@ -1556,12 +1567,12 @@ mod tests {
 
 	#[test]
 	fn sealing_fold_no_lateness_sums_all_adjacent_steps() {
-		let mut acc: SealingFold<u64, AbsPathFold> = SealingFold::default();
-		acc.add(&(0, 10.0));
-		acc.add(&(1, 20.0));
-		acc.add(&(2, 15.0));
+		let mut accumulator: SealingFold<u64, AbsPathFold> = SealingFold::default();
+		accumulator.add(&(0, 10.0));
+		accumulator.add(&(1, 20.0));
+		accumulator.add(&(2, 15.0));
 		// |20-10| + |15-20| = 10 + 5 = 15; the first observation contributes 0.
-		assert_eq!(acc.finalize(), Some(15.0));
+		assert_eq!(accumulator.finalize(), Some(15.0));
 	}
 
 	#[test]
@@ -1569,26 +1580,26 @@ mod tests {
 		// lateness 1: observation at coord 0 ages out once hw reaches 2 and is
 		// folded into the sealed path; the total is still exact for
 		// forward-only inserts.
-		let mut acc: SealingFold<u64, AbsPathFold> = SealingFold::with_lateness(1);
-		acc.add(&(0, 10.0));
-		acc.add(&(1, 20.0)); // coord 0 still live (hw-0 = 1, not > 1)
-		acc.add(&(2, 15.0)); // coord 0 ages out -> sealed
-		assert_eq!(acc.finalize(), Some(15.0), "sealed prefix preserves the full path exactly");
+		let mut accumulator: SealingFold<u64, AbsPathFold> = SealingFold::with_lateness(1);
+		accumulator.add(&(0, 10.0));
+		accumulator.add(&(1, 20.0)); // coord 0 still live (hw-0 = 1, not > 1)
+		accumulator.add(&(2, 15.0)); // coord 0 ages out -> sealed
+		assert_eq!(accumulator.finalize(), Some(15.0), "sealed prefix preserves the full path exactly");
 	}
 
 	#[test]
 	fn sealing_fold_aged_removal_is_dropped_no_op_but_live_removal_is_safe() {
-		let mut acc: SealingFold<u64, AbsPathFold> = SealingFold::with_lateness(1);
-		acc.add(&(0, 10.0));
-		acc.add(&(1, 20.0));
-		acc.add(&(2, 15.0)); // coord 0 sealed
+		let mut accumulator: SealingFold<u64, AbsPathFold> = SealingFold::with_lateness(1);
+		accumulator.add(&(0, 10.0));
+		accumulator.add(&(1, 20.0));
+		accumulator.add(&(2, 15.0)); // coord 0 sealed
 		// Removing the aged (sealed) observation is a dropped no-op.
-		acc.remove(&(0, 10.0));
-		assert_eq!(acc.finalize(), Some(15.0), "aged removal does not disturb the sealed path");
+		accumulator.remove(&(0, 10.0));
+		assert_eq!(accumulator.finalize(), Some(15.0), "aged removal does not disturb the sealed path");
 		// Removing a still-live tail observation IS removal-safe: the path
 		// recomputes over sealed-prefix + remaining tail (10 -> 20 = 10).
-		acc.remove(&(2, 15.0));
-		assert_eq!(acc.finalize(), Some(10.0), "live removal recomputes the path");
+		accumulator.remove(&(2, 15.0));
+		assert_eq!(accumulator.finalize(), Some(10.0), "live removal recomputes the path");
 	}
 
 	#[test]
@@ -1601,13 +1612,13 @@ mod tests {
 
 	#[test]
 	fn sealing_fold_postcard_roundtrip() {
-		let mut acc: SealingFold<u64, AbsPathFold> = SealingFold::with_lateness(1);
-		acc.add(&(0, 10.0));
-		acc.add(&(1, 20.0));
-		acc.add(&(2, 15.0));
-		let bytes = to_allocvec(&acc).expect("serialize");
+		let mut accumulator: SealingFold<u64, AbsPathFold> = SealingFold::with_lateness(1);
+		accumulator.add(&(0, 10.0));
+		accumulator.add(&(1, 20.0));
+		accumulator.add(&(2, 15.0));
+		let bytes = to_allocvec(&accumulator).expect("serialize");
 		let restored: SealingFold<u64, AbsPathFold> = from_bytes(&bytes).expect("deserialize");
-		assert_eq!(restored.finalize(), acc.finalize());
+		assert_eq!(restored.finalize(), accumulator.finalize());
 	}
 
 	#[test]
@@ -1643,12 +1654,12 @@ mod tests {
 
 	#[test]
 	fn tail_acc_no_lateness_retains_whole_window_like_retained_acc() {
-		// With no lateness bound, TailAcc.finalize() returns the full map -
-		// a drop-in for RetainedAcc (same Output = BTreeMap<C, V>).
-		let mut acc: TailAcc<u64, i64> = TailAcc::default();
-		acc.add(&(0, 10));
-		acc.add(&(100, 20));
-		let map = acc.finalize().expect("non-empty");
+		// With no lateness bound, TailAccumulator.finalize() returns the full map -
+		// a drop-in for RetainedAccumulator (same Output = BTreeMap<C, V>).
+		let mut accumulator: TailAccumulator<u64, i64> = TailAccumulator::default();
+		accumulator.add(&(0, 10));
+		accumulator.add(&(100, 20));
+		let map = accumulator.finalize().expect("non-empty");
 		assert_eq!(map.len(), 2);
 		assert_eq!(map.get(&0), Some(&10));
 		assert_eq!(map.get(&100), Some(&20));
@@ -1656,16 +1667,16 @@ mod tests {
 
 	#[test]
 	fn tail_acc_default_add_remove_is_inverse() {
-		assert_add_remove_is_inverse::<TailAcc<u64, i64>>(&[(0u64, 10i64), (1, 20)], (2u64, 30i64));
+		assert_add_remove_is_inverse::<TailAccumulator<u64, i64>>(&[(0u64, 10i64), (1, 20)], (2u64, 30i64));
 	}
 
 	#[test]
 	fn tail_acc_with_lateness_drops_aged_from_finalize() {
-		let mut acc: TailAcc<u64, i64> = TailAcc::with_lateness(10);
-		acc.add(&(0, 10));
-		acc.add(&(5, 20));
-		acc.add(&(12, 30)); // hw=12; coord 0 (age 12 > 10) dropped
-		let map = acc.finalize().expect("non-empty");
+		let mut accumulator: TailAccumulator<u64, i64> = TailAccumulator::with_lateness(10);
+		accumulator.add(&(0, 10));
+		accumulator.add(&(5, 20));
+		accumulator.add(&(12, 30)); // hw=12; coord 0 (age 12 > 10) dropped
+		let map = accumulator.finalize().expect("non-empty");
 		assert_eq!(
 			map.keys().copied().collect::<Vec<_>>(),
 			vec![5, 12],
@@ -1675,11 +1686,11 @@ mod tests {
 
 	#[test]
 	fn tail_acc_postcard_roundtrip() {
-		let mut acc: TailAcc<u64, i64> = TailAcc::with_lateness(10);
-		acc.add(&(0, 1));
-		acc.add(&(12, 3));
-		let bytes = to_allocvec(&acc).expect("serialize");
-		let restored: TailAcc<u64, i64> = from_bytes(&bytes).expect("deserialize");
-		assert_eq!(restored, acc);
+		let mut accumulator: TailAccumulator<u64, i64> = TailAccumulator::with_lateness(10);
+		accumulator.add(&(0, 1));
+		accumulator.add(&(12, 3));
+		let bytes = to_allocvec(&accumulator).expect("serialize");
+		let restored: TailAccumulator<u64, i64> = from_bytes(&bytes).expect("deserialize");
+		assert_eq!(restored, accumulator);
 	}
 }

@@ -1,163 +1,922 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
-use std::collections::{HashMap, HashSet, hash_map::Entry};
+use std::collections::{BTreeMap, HashMap};
 
 use reifydb_core::{
-	common::{WindowKind, WindowSize},
-	encoded::key::EncodedKey,
+	encoded::key::{EncodedKey, IntoEncodedKey},
 	interface::change::{Change, Diff},
-	row::Row,
+	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 	value::column::columns::Columns,
+	window::{
+		accumulator::WindowAccumulator,
+		engine::{
+			AccumulatorEvent, EmitKind, LatePolicy,
+			tumbling::{TumblingBuckets, TumblingEngine},
+		},
+		span::WindowSpan,
+		store::WindowStore,
+	},
 };
 use reifydb_runtime::hash::Hash128;
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{
+	Result,
+	value::{Value, row_number::RowNumber},
+};
+use serde::{Deserialize, Serialize};
 
 use super::{
+	accumulator::{RowAccumulator, SlotKind},
+	aggregation::Aggregation,
 	operator::WindowOperator,
-	state::{WindowEvent, WindowLayout, WindowState},
+	store::FlowWindowStore,
 };
 use crate::transaction::FlowTransaction;
 
-impl WindowOperator {
-	pub fn get_tumbling_window_id(&self, timestamp: u64) -> u64 {
-		match &self.kind {
-			WindowKind::Tumbling {
-				size: WindowSize::Duration(duration),
-			} => {
-				let window_size_ms = duration.to_std().as_millis() as u64;
-				timestamp / window_size_ms
-			}
-			WindowKind::Tumbling {
-				size: WindowSize::Count(count),
-			} => timestamp / *count,
-			_ => 0,
-		}
-	}
+type EngineBuckets = TumblingBuckets<Hash128, u64, Vec<Option<Value>>>;
 
-	pub fn set_tumbling_window_start(&self, timestamp: u64) -> u64 {
-		if let Some(duration) = self.size_duration() {
-			let window_size_ms = duration.to_std().as_millis() as u64;
-			(timestamp / window_size_ms) * window_size_ms
-		} else {
-			timestamp
-		}
-	}
+#[derive(Default, Serialize, Deserialize)]
+struct EngineWindowMeta {
+	group_hash: u128,
+	window_start: u64,
+	row_number: u64,
+	last_event_time: u64,
+	group_values: Vec<Value>,
 }
 
-fn process_tumbling_group_insert(
+#[allow(clippy::too_many_arguments)]
+fn route_engine_columns(
 	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
 	columns: &Columns,
-	group_hash: Hash128,
-	changed_at: DateTime,
-) -> Result<Vec<Diff>> {
-	let mut result = Vec::new();
+	is_add: bool,
+	window_size_ms: u64,
+	buckets: &mut EngineBuckets,
+	group_values: &mut HashMap<Hash128, Vec<Value>>,
+	arrival: &mut Vec<(Hash128, WindowSpan<u64>)>,
+	window_max_ts: &mut HashMap<(Hash128, WindowSpan<u64>), u64>,
+) -> Result<()> {
 	let row_count = columns.row_count();
 	if row_count == 0 {
-		return Ok(result);
+		return Ok(());
 	}
-
+	let groups = operator.core.compute_groups(columns)?;
 	let timestamps = operator.resolve_event_timestamps(columns, row_count)?;
-
-	let mut row_info: Vec<(u64, u64)> = Vec::with_capacity(row_count);
-	for &timestamp in timestamps.iter() {
-		let (event_timestamp, window_id) = if operator.is_count_based() {
-			let event_timestamp = operator.current_timestamp();
-			let global_count = operator.get_and_increment_global_count(txn, group_hash)?;
-			let window_size = operator.size_count().unwrap_or(3);
-			(event_timestamp, global_count / window_size)
+	let slot_cols = operator.core.evaluate_slot_inputs(columns)?;
+	for row_idx in 0..row_count {
+		let (hash, gvals) = &groups[row_idx];
+		let span = WindowSpan::for_slot(timestamps[row_idx], window_size_ms);
+		let contribution = operator.core.build_contribution(columns, &slot_cols, row_idx);
+		let key = (*hash, span);
+		let event = if is_add {
+			let entry = window_max_ts.entry(key).or_insert(0);
+			*entry = (*entry).max(timestamps[row_idx]);
+			AccumulatorEvent::Add(contribution)
 		} else {
-			(timestamp, operator.get_tumbling_window_id(timestamp))
+			AccumulatorEvent::Remove(contribution)
 		};
-		row_info.push((event_timestamp, window_id));
+		if !buckets.contains_key(&key) {
+			arrival.push(key);
+		}
+		buckets.entry(key).or_default().push(event);
+		group_values.entry(*hash).or_insert_with(|| gvals.clone());
 	}
-
-	let mut prefetch_keys: Vec<EncodedKey> = Vec::new();
-	let mut seen_windows: HashSet<u64> = HashSet::new();
-	for &(_, window_id) in &row_info {
-		if seen_windows.insert(window_id) {
-			prefetch_keys.push(operator.create_window_key(group_hash, window_id));
-		}
-	}
-	txn.prefetch_state(operator.node, &prefetch_keys)?;
-
-	type WindowCache = (WindowState, Option<(Row, bool)>, EncodedKey);
-	let mut window_caches: HashMap<u64, WindowCache> = HashMap::new();
-
-	for (row_idx, &(event_timestamp, window_id)) in row_info.iter().enumerate() {
-		if let Entry::Vacant(e) = window_caches.entry(window_id) {
-			let window_key = operator.create_window_key(group_hash, window_id);
-			let state = operator.load_window_state(txn, &window_key)?;
-			e.insert((state, None, window_key));
-		}
-
-		let single_row_columns = columns.extract_row(row_idx);
-		let projected = operator.project_columns(&single_row_columns);
-		let row = projected.to_single_row();
-
-		let (window_state, last_post, window_key) = window_caches.get_mut(&window_id).unwrap();
-
-		if window_state.window_layout.is_none() {
-			window_state.window_layout = Some(WindowLayout::from_row(&row));
-		}
-		let layout = window_state.layout().clone();
-
-		let previous_aggregation = match last_post.take() {
-			Some(prev) => Some(prev),
-			None if !window_state.events.is_empty() => operator.apply_aggregations(
-				txn,
-				window_key,
-				&layout,
-				&window_state.events,
-				changed_at,
-				window_state,
-			)?,
-			None => None,
-		};
-
-		let event = WindowEvent::from_row(&row, event_timestamp);
-		let event_row_number = event.row_number;
-		window_state.events.push(event);
-		window_state.event_count += 1;
-		window_state.last_event_time = event_timestamp;
-		operator.update_running_totals_on_push(window_state, &row);
-		if window_state.window_start == 0 {
-			window_state.window_start = operator.set_tumbling_window_start(event_timestamp);
-		}
-
-		if let Some((aggregated_row, is_new)) = operator.apply_aggregations(
-			txn,
-			window_key,
-			&layout,
-			&window_state.events,
-			changed_at,
-			window_state,
-		)? {
-			let cache_value = Some((aggregated_row.clone(), is_new));
-			result.push(WindowOperator::emit_aggregation_diff(
-				&aggregated_row,
-				is_new,
-				previous_aggregation,
-			));
-			*last_post = cache_value;
-		} else {
-			*last_post = None;
-		}
-
-		operator.store_row_index(txn, group_hash, event_row_number, window_id)?;
-	}
-
-	for (window_state, _, window_key) in window_caches.values() {
-		operator.save_window_state(txn, window_key, window_state)?;
-	}
-
-	Ok(result)
+	Ok(())
 }
 
-pub fn apply_tumbling_window(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-	let changed_at = change.changed_at;
-	let diffs = operator.apply_window_change(txn, &change, true, |op, txn, columns| {
-		op.process_insert(txn, columns, changed_at, process_tumbling_group_insert)
-	})?;
-	Ok(Change::from_flow(operator.node, change.version, diffs, change.changed_at))
+#[allow(clippy::too_many_arguments)]
+fn push_count_event(
+	buckets: &mut EngineBuckets,
+	group_values: &mut HashMap<Hash128, Vec<Value>>,
+	arrival: &mut Vec<(Hash128, WindowSpan<u64>)>,
+	window_max_ts: &mut HashMap<(Hash128, WindowSpan<u64>), u64>,
+	hash: Hash128,
+	gvals: &[Value],
+	window_id: u64,
+	event: AccumulatorEvent<Vec<Option<Value>>>,
+	event_ts: u64,
+) {
+	let now = event_ts;
+	let span = WindowSpan::new(window_id, window_id + 1);
+	let key = (hash, span);
+	if matches!(event, AccumulatorEvent::Add(_)) {
+		let entry = window_max_ts.entry(key).or_insert(0);
+		*entry = (*entry).max(now);
+	}
+	if !buckets.contains_key(&key) {
+		arrival.push(key);
+	}
+	buckets.entry(key).or_default().push(event);
+	group_values.entry(hash).or_insert_with(|| gvals.to_vec());
+}
+
+fn route_count_tumbling(
+	operator: &WindowOperator,
+	txn: &mut FlowTransaction,
+	change: &Change,
+	buckets: &mut EngineBuckets,
+	group_values: &mut HashMap<Hash128, Vec<Value>>,
+	arrival: &mut Vec<(Hash128, WindowSpan<u64>)>,
+	window_max_ts: &mut HashMap<(Hash128, WindowSpan<u64>), u64>,
+) -> Result<()> {
+	let size = operator.size_count().unwrap_or(1).max(1);
+	let now = operator.core.current_timestamp();
+	for diff in change.diffs.iter() {
+		match diff {
+			Diff::Insert {
+				post,
+				..
+			} => {
+				let groups = operator.core.compute_groups(post)?;
+				let slot_cols = operator.core.evaluate_slot_inputs(post)?;
+				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
+					let ordinal = operator.get_and_increment_global_count(txn, *hash)?;
+					let window_id = ordinal / size;
+					operator.store_row_index(txn, *hash, post.row_numbers[row_idx], window_id)?;
+					let contribution = operator.core.build_contribution(post, &slot_cols, row_idx);
+					push_count_event(
+						buckets,
+						group_values,
+						arrival,
+						window_max_ts,
+						*hash,
+						gvals,
+						window_id,
+						AccumulatorEvent::Add(contribution),
+						now,
+					);
+				}
+			}
+			Diff::Remove {
+				pre,
+				..
+			} => {
+				let groups = operator.core.compute_groups(pre)?;
+				let slot_cols = operator.core.evaluate_slot_inputs(pre)?;
+				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
+					let contribution = operator.core.build_contribution(pre, &slot_cols, row_idx);
+					for window_id in
+						operator.lookup_row_index(txn, *hash, pre.row_numbers[row_idx])?
+					{
+						push_count_event(
+							buckets,
+							group_values,
+							arrival,
+							window_max_ts,
+							*hash,
+							gvals,
+							window_id,
+							AccumulatorEvent::Remove(contribution.clone()),
+							now,
+						);
+					}
+				}
+			}
+			Diff::Update {
+				pre,
+				post,
+				..
+			} => {
+				let groups = operator.core.compute_groups(pre)?;
+				let pre_cols = operator.core.evaluate_slot_inputs(pre)?;
+				let post_cols = operator.core.evaluate_slot_inputs(post)?;
+				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
+					let row_number = pre.row_numbers[row_idx];
+					let existing = operator.lookup_row_index(txn, *hash, row_number)?;
+					if existing.is_empty() {
+						let ordinal = operator.get_and_increment_global_count(txn, *hash)?;
+						let window_id = ordinal / size;
+						operator.store_row_index(
+							txn,
+							*hash,
+							post.row_numbers[row_idx],
+							window_id,
+						)?;
+						let contribution =
+							operator.core.build_contribution(post, &post_cols, row_idx);
+						push_count_event(
+							buckets,
+							group_values,
+							arrival,
+							window_max_ts,
+							*hash,
+							gvals,
+							window_id,
+							AccumulatorEvent::Add(contribution),
+							now,
+						);
+					} else {
+						let pre_contrib =
+							operator.core.build_contribution(pre, &pre_cols, row_idx);
+						let post_contrib =
+							operator.core.build_contribution(post, &post_cols, row_idx);
+						for window_id in existing {
+							push_count_event(
+								buckets,
+								group_values,
+								arrival,
+								window_max_ts,
+								*hash,
+								gvals,
+								window_id,
+								AccumulatorEvent::Remove(pre_contrib.clone()),
+								now,
+							);
+							push_count_event(
+								buckets,
+								group_values,
+								arrival,
+								window_max_ts,
+								*hash,
+								gvals,
+								window_id,
+								AccumulatorEvent::Add(post_contrib.clone()),
+								now,
+							);
+						}
+					}
+				}
+			}
+		}
+	}
+	Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn finish_tumbling_engine(
+	core: &Aggregation,
+	txn: &mut FlowTransaction,
+	change: &Change,
+	buckets: EngineBuckets,
+	group_values: &HashMap<Hash128, Vec<Value>>,
+	arrival: Vec<(Hash128, WindowSpan<u64>)>,
+	window_max_ts: HashMap<(Hash128, WindowSpan<u64>), u64>,
+	kinds: &[SlotKind],
+	late_policy: LatePolicy,
+) -> Result<Vec<Diff>> {
+	let results = {
+		let mut store = FlowWindowStore::new(txn, core.node);
+		for (hash, span) in &arrival {
+			let key = core.create_window_key(*hash, span.start);
+			store.get_or_create_row_number(&key)?;
+		}
+		let mut engine = TumblingEngine::<Hash128, u64, RowAccumulator>::with_late_policy(late_policy);
+		let res = engine.apply(
+			&mut store,
+			buckets,
+			|hash, window_start| core.create_window_key(*hash, window_start),
+			|| RowAccumulator::new(kinds),
+		)?;
+		engine.flush(&mut store)?;
+		res
+	};
+
+	{
+		let mut store = FlowWindowStore::new(txn, core.node);
+		for r in &results {
+			let ewm_key = core.create_engine_meta_key(r.group, r.span.start);
+			match r.kind {
+				EmitKind::Remove => store.state_remove(&ewm_key)?,
+				EmitKind::Insert | EmitKind::Update => {
+					let batch_max = window_max_ts.get(&(r.group, r.span)).copied().unwrap_or(0);
+					let prior_last = store
+						.state_get::<EngineWindowMeta>(&ewm_key)?
+						.map(|m| m.last_event_time)
+						.unwrap_or(0);
+					let meta = EngineWindowMeta {
+						group_hash: r.group.0,
+						window_start: r.span.start,
+						row_number: r.row_number.0,
+						last_event_time: prior_last.max(batch_max),
+						group_values: group_values.get(&r.group).cloned().unwrap_or_default(),
+					};
+					store.state_set(&ewm_key, &meta)?;
+				}
+			}
+		}
+	}
+
+	let ts_nanos = change.changed_at.to_nanos();
+	let mut diffs = Vec::new();
+	for r in results {
+		let gvals = group_values.get(&r.group).cloned().unwrap_or_default();
+		match r.kind {
+			EmitKind::Insert => {
+				let row = core.build_engine_row(&gvals, &r.value, r.row_number, ts_nanos)?;
+				diffs.push(Diff::insert(Columns::from_row(&row)));
+			}
+			EmitKind::Update => {
+				let pre_vals: &[Value] = r.prior.as_deref().unwrap_or(&r.value);
+				let pre = core.build_engine_row(&gvals, pre_vals, r.row_number, ts_nanos)?;
+				let post = core.build_engine_row(&gvals, &r.value, r.row_number, ts_nanos)?;
+				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
+			}
+			EmitKind::Remove => {
+				let pre_vals: &[Value] = r.prior.as_deref().unwrap_or(&r.value);
+				let pre = core.build_engine_row(&gvals, pre_vals, r.row_number, ts_nanos)?;
+				diffs.push(Diff::remove(Columns::from_row(&pre)));
+			}
+		}
+	}
+	Ok(diffs)
+}
+
+pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	let window_size_ms = operator.size_duration().map(|d| d.milliseconds().unwrap_or(0) as u64).unwrap_or(0);
+	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
+
+	let mut buckets: EngineBuckets = BTreeMap::new();
+	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
+	let mut arrival: Vec<(Hash128, WindowSpan<u64>)> = Vec::new();
+	let mut window_max_ts: HashMap<(Hash128, WindowSpan<u64>), u64> = HashMap::new();
+
+	if operator.is_count_based() {
+		route_count_tumbling(
+			operator,
+			txn,
+			&change,
+			&mut buckets,
+			&mut group_values,
+			&mut arrival,
+			&mut window_max_ts,
+		)?;
+	} else {
+		for diff in change.diffs.iter() {
+			match diff {
+				Diff::Insert {
+					post,
+					..
+				} => route_engine_columns(
+					operator,
+					post,
+					true,
+					window_size_ms,
+					&mut buckets,
+					&mut group_values,
+					&mut arrival,
+					&mut window_max_ts,
+				)?,
+				Diff::Remove {
+					pre,
+					..
+				} => route_engine_columns(
+					operator,
+					pre,
+					false,
+					window_size_ms,
+					&mut buckets,
+					&mut group_values,
+					&mut arrival,
+					&mut window_max_ts,
+				)?,
+				Diff::Update {
+					pre,
+					post,
+					..
+				} => {
+					route_engine_columns(
+						operator,
+						pre,
+						false,
+						window_size_ms,
+						&mut buckets,
+						&mut group_values,
+						&mut arrival,
+						&mut window_max_ts,
+					)?;
+					route_engine_columns(
+						operator,
+						post,
+						true,
+						window_size_ms,
+						&mut buckets,
+						&mut group_values,
+						&mut arrival,
+						&mut window_max_ts,
+					)?;
+				}
+			}
+		}
+	}
+
+	let diffs = finish_tumbling_engine(
+		&operator.core,
+		txn,
+		&change,
+		buckets,
+		&group_values,
+		arrival,
+		window_max_ts,
+		&kinds,
+		operator.late_policy,
+	)?;
+	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
+}
+
+fn sliding_insert_window_ids(
+	operator: &WindowOperator,
+	txn: &mut FlowTransaction,
+	hash: Hash128,
+	event_ts: u64,
+	is_count: bool,
+	is_event: bool,
+) -> Result<Vec<u64>> {
+	let coord = if is_count {
+		operator.get_and_increment_global_count(txn, hash)?
+	} else if is_event {
+		event_ts
+	} else {
+		operator.core.current_timestamp()
+	};
+	Ok(operator.get_sliding_window_ids(coord))
+}
+
+pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
+	let is_count = operator.is_count_based();
+	let is_event = operator.ts.is_some();
+
+	let mut buckets: EngineBuckets = BTreeMap::new();
+	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
+	let mut arrival: Vec<(Hash128, WindowSpan<u64>)> = Vec::new();
+	let mut window_max_ts: HashMap<(Hash128, WindowSpan<u64>), u64> = HashMap::new();
+
+	for diff in change.diffs.iter() {
+		match diff {
+			Diff::Insert {
+				post,
+				..
+			} => {
+				let groups = operator.core.compute_groups(post)?;
+				let timestamps = if is_count {
+					Vec::new()
+				} else {
+					operator.resolve_event_timestamps(post, post.row_count())?
+				};
+				let slot_cols = operator.core.evaluate_slot_inputs(post)?;
+				for row_idx in 0..post.row_count() {
+					let (hash, gvals) = &groups[row_idx];
+					let event_ts = if is_count {
+						0
+					} else {
+						timestamps[row_idx]
+					};
+					let window_ids = sliding_insert_window_ids(
+						operator, txn, *hash, event_ts, is_count, is_event,
+					)?;
+					let contribution = operator.core.build_contribution(post, &slot_cols, row_idx);
+					for wid in &window_ids {
+						operator.store_row_index(txn, *hash, post.row_numbers[row_idx], *wid)?;
+						push_count_event(
+							&mut buckets,
+							&mut group_values,
+							&mut arrival,
+							&mut window_max_ts,
+							*hash,
+							gvals,
+							*wid,
+							AccumulatorEvent::Add(contribution.clone()),
+							event_ts,
+						);
+					}
+				}
+			}
+			Diff::Remove {
+				pre,
+				..
+			} => {
+				let groups = operator.core.compute_groups(pre)?;
+				let timestamps = if is_count {
+					Vec::new()
+				} else {
+					operator.resolve_event_timestamps(pre, pre.row_count())?
+				};
+				let slot_cols = operator.core.evaluate_slot_inputs(pre)?;
+				for row_idx in 0..pre.row_count() {
+					let (hash, gvals) = &groups[row_idx];
+					let event_ts = if is_count {
+						0
+					} else {
+						timestamps[row_idx]
+					};
+					let contribution = operator.core.build_contribution(pre, &slot_cols, row_idx);
+					for wid in operator.lookup_row_index(txn, *hash, pre.row_numbers[row_idx])? {
+						push_count_event(
+							&mut buckets,
+							&mut group_values,
+							&mut arrival,
+							&mut window_max_ts,
+							*hash,
+							gvals,
+							wid,
+							AccumulatorEvent::Remove(contribution.clone()),
+							event_ts,
+						);
+					}
+				}
+			}
+			Diff::Update {
+				pre,
+				post,
+				..
+			} => {
+				let groups = operator.core.compute_groups(pre)?;
+				let timestamps = if is_count {
+					Vec::new()
+				} else {
+					operator.resolve_event_timestamps(post, post.row_count())?
+				};
+				let pre_cols = operator.core.evaluate_slot_inputs(pre)?;
+				let post_cols = operator.core.evaluate_slot_inputs(post)?;
+				for row_idx in 0..pre.row_count() {
+					let (hash, gvals) = &groups[row_idx];
+					let row_number = pre.row_numbers[row_idx];
+					let event_ts = if is_count {
+						0
+					} else {
+						timestamps[row_idx]
+					};
+					let existing = operator.lookup_row_index(txn, *hash, row_number)?;
+					if existing.is_empty() {
+						let window_ids = sliding_insert_window_ids(
+							operator, txn, *hash, event_ts, is_count, is_event,
+						)?;
+						let contribution =
+							operator.core.build_contribution(post, &post_cols, row_idx);
+						for wid in &window_ids {
+							operator.store_row_index(
+								txn,
+								*hash,
+								post.row_numbers[row_idx],
+								*wid,
+							)?;
+							push_count_event(
+								&mut buckets,
+								&mut group_values,
+								&mut arrival,
+								&mut window_max_ts,
+								*hash,
+								gvals,
+								*wid,
+								AccumulatorEvent::Add(contribution.clone()),
+								event_ts,
+							);
+						}
+					} else {
+						let pre_contrib =
+							operator.core.build_contribution(pre, &pre_cols, row_idx);
+						let post_contrib =
+							operator.core.build_contribution(post, &post_cols, row_idx);
+						for wid in existing {
+							push_count_event(
+								&mut buckets,
+								&mut group_values,
+								&mut arrival,
+								&mut window_max_ts,
+								*hash,
+								gvals,
+								wid,
+								AccumulatorEvent::Remove(pre_contrib.clone()),
+								event_ts,
+							);
+							push_count_event(
+								&mut buckets,
+								&mut group_values,
+								&mut arrival,
+								&mut window_max_ts,
+								*hash,
+								gvals,
+								wid,
+								AccumulatorEvent::Add(post_contrib.clone()),
+								event_ts,
+							);
+						}
+					}
+				}
+			}
+		}
+	}
+
+	let diffs = finish_tumbling_engine(
+		&operator.core,
+		txn,
+		&change,
+		buckets,
+		&group_values,
+		arrival,
+		window_max_ts,
+		&kinds,
+		operator.late_policy,
+	)?;
+	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
+}
+
+fn session_assign(
+	operator: &WindowOperator,
+	txn: &mut FlowTransaction,
+	hash: Hash128,
+	event_ts: u64,
+	gap_ms: u64,
+	trackers: &mut HashMap<Hash128, (u64, u64)>,
+	closes: &mut Vec<(Hash128, u64)>,
+) -> Result<u64> {
+	let (mut session_id, last) = match trackers.get(&hash) {
+		Some(&tracker) => tracker,
+		None => {
+			let tracker = operator.load_session_tracker(txn, hash)?;
+			trackers.insert(hash, tracker);
+			tracker
+		}
+	};
+	if last > 0 && event_ts.saturating_sub(last) > gap_ms {
+		closes.push((hash, session_id));
+		session_id += 1;
+	}
+	trackers.insert(hash, (session_id, event_ts));
+	Ok(session_id)
+}
+
+pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
+	let gap_ms = operator.session_gap_ms();
+
+	let mut buckets: EngineBuckets = BTreeMap::new();
+	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
+	let mut arrival: Vec<(Hash128, WindowSpan<u64>)> = Vec::new();
+	let mut window_max_ts: HashMap<(Hash128, WindowSpan<u64>), u64> = HashMap::new();
+	let mut closes: Vec<(Hash128, u64)> = Vec::new();
+	let mut trackers: HashMap<Hash128, (u64, u64)> = HashMap::new();
+
+	for diff in change.diffs.iter() {
+		match diff {
+			Diff::Insert {
+				post,
+				..
+			} => {
+				let groups = operator.core.compute_groups(post)?;
+				let timestamps = operator.resolve_event_timestamps(post, post.row_count())?;
+				let slot_cols = operator.core.evaluate_slot_inputs(post)?;
+				for row_idx in 0..post.row_count() {
+					let (hash, gvals) = &groups[row_idx];
+					let event_ts = timestamps[row_idx];
+					let session_id = session_assign(
+						operator,
+						txn,
+						*hash,
+						event_ts,
+						gap_ms,
+						&mut trackers,
+						&mut closes,
+					)?;
+					operator.store_row_index(txn, *hash, post.row_numbers[row_idx], session_id)?;
+					let contribution = operator.core.build_contribution(post, &slot_cols, row_idx);
+					push_count_event(
+						&mut buckets,
+						&mut group_values,
+						&mut arrival,
+						&mut window_max_ts,
+						*hash,
+						gvals,
+						session_id,
+						AccumulatorEvent::Add(contribution),
+						event_ts,
+					);
+				}
+			}
+			Diff::Remove {
+				pre,
+				..
+			} => {
+				let groups = operator.core.compute_groups(pre)?;
+				let timestamps = operator.resolve_event_timestamps(pre, pre.row_count())?;
+				let slot_cols = operator.core.evaluate_slot_inputs(pre)?;
+				for row_idx in 0..pre.row_count() {
+					let (hash, gvals) = &groups[row_idx];
+					let event_ts = timestamps[row_idx];
+					let contribution = operator.core.build_contribution(pre, &slot_cols, row_idx);
+					for session_id in
+						operator.lookup_row_index(txn, *hash, pre.row_numbers[row_idx])?
+					{
+						push_count_event(
+							&mut buckets,
+							&mut group_values,
+							&mut arrival,
+							&mut window_max_ts,
+							*hash,
+							gvals,
+							session_id,
+							AccumulatorEvent::Remove(contribution.clone()),
+							event_ts,
+						);
+					}
+				}
+			}
+			Diff::Update {
+				pre,
+				post,
+				..
+			} => {
+				let groups = operator.core.compute_groups(pre)?;
+				let timestamps = operator.resolve_event_timestamps(post, post.row_count())?;
+				let pre_cols = operator.core.evaluate_slot_inputs(pre)?;
+				let post_cols = operator.core.evaluate_slot_inputs(post)?;
+				for row_idx in 0..pre.row_count() {
+					let (hash, gvals) = &groups[row_idx];
+					let event_ts = timestamps[row_idx];
+					let existing =
+						operator.lookup_row_index(txn, *hash, pre.row_numbers[row_idx])?;
+					if existing.is_empty() {
+						let session_id = session_assign(
+							operator,
+							txn,
+							*hash,
+							event_ts,
+							gap_ms,
+							&mut trackers,
+							&mut closes,
+						)?;
+						operator.store_row_index(
+							txn,
+							*hash,
+							post.row_numbers[row_idx],
+							session_id,
+						)?;
+						let contribution =
+							operator.core.build_contribution(post, &post_cols, row_idx);
+						push_count_event(
+							&mut buckets,
+							&mut group_values,
+							&mut arrival,
+							&mut window_max_ts,
+							*hash,
+							gvals,
+							session_id,
+							AccumulatorEvent::Add(contribution),
+							event_ts,
+						);
+					} else {
+						let pre_contrib =
+							operator.core.build_contribution(pre, &pre_cols, row_idx);
+						let post_contrib =
+							operator.core.build_contribution(post, &post_cols, row_idx);
+						for session_id in existing {
+							push_count_event(
+								&mut buckets,
+								&mut group_values,
+								&mut arrival,
+								&mut window_max_ts,
+								*hash,
+								gvals,
+								session_id,
+								AccumulatorEvent::Remove(pre_contrib.clone()),
+								event_ts,
+							);
+							push_count_event(
+								&mut buckets,
+								&mut group_values,
+								&mut arrival,
+								&mut window_max_ts,
+								*hash,
+								gvals,
+								session_id,
+								AccumulatorEvent::Add(post_contrib.clone()),
+								event_ts,
+							);
+						}
+					}
+				}
+			}
+		}
+	}
+
+	for (hash, (session_id, last)) in &trackers {
+		operator.save_session_tracker(txn, *hash, *session_id, *last)?;
+	}
+
+	let mut diffs = finish_tumbling_engine(
+		&operator.core,
+		txn,
+		&change,
+		buckets,
+		&group_values,
+		arrival,
+		window_max_ts,
+		&kinds,
+		operator.late_policy,
+	)?;
+
+	let ts_nanos = change.changed_at.to_nanos();
+	{
+		let mut store = FlowWindowStore::new(txn, operator.core.node);
+		for (hash, session_id) in &closes {
+			let key = operator.core.create_window_key(*hash, *session_id);
+			let (row_number, _) = store.get_or_create_row_number(&key)?;
+			let accumulator_key = row_number.into_encoded_key();
+			if let Some(accumulator) = store.state_get::<RowAccumulator>(&accumulator_key)?
+				&& let Some(value) = accumulator.finalize()
+			{
+				let gvals = group_values.get(hash).cloned().unwrap_or_default();
+				let row = operator.core.build_engine_row(&gvals, &value, row_number, ts_nanos)?;
+				diffs.push(Diff::remove(Columns::from_row(&row)));
+			}
+			store.state_remove(&accumulator_key)?;
+			store.state_remove(&operator.core.create_engine_meta_key(*hash, *session_id))?;
+		}
+	}
+
+	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
+}
+
+pub fn tick_expire_session_engine(
+	operator: &WindowOperator,
+	txn: &mut FlowTransaction,
+	current_timestamp: u64,
+) -> Result<Vec<Diff>> {
+	let gap_ms = operator.session_gap_ms();
+	if gap_ms == 0 {
+		return Ok(Vec::new());
+	}
+	let meta_keys = scan_engine_meta_keys(operator, txn)?;
+	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
+	let mut diffs = Vec::new();
+	let mut store = FlowWindowStore::new(txn, operator.core.node);
+	for meta_key in &meta_keys {
+		let Some(meta) = store.state_get::<EngineWindowMeta>(meta_key)? else {
+			continue;
+		};
+		if meta.last_event_time == 0 {
+			continue;
+		}
+		if current_timestamp.saturating_sub(meta.last_event_time) <= gap_ms {
+			continue;
+		}
+		let row_number = RowNumber(meta.row_number);
+		let accumulator_key = row_number.into_encoded_key();
+		if let Some(accumulator) = store.state_get::<RowAccumulator>(&accumulator_key)?
+			&& let Some(value) = accumulator.finalize()
+		{
+			let row = operator.core.build_engine_row(&meta.group_values, &value, row_number, ts_nanos)?;
+			diffs.push(Diff::remove(Columns::from_row(&row)));
+		}
+		store.state_remove(&accumulator_key)?;
+		store.state_remove(meta_key)?;
+	}
+	Ok(diffs)
+}
+
+fn scan_engine_meta_keys(operator: &WindowOperator, txn: &mut FlowTransaction) -> Result<Vec<EncodedKey>> {
+	let all_state = txn.state_scan_all(operator.core.node)?;
+	let prefix = FlowNodeStateKey::new(operator.core.node, vec![]).encode();
+	let mut keys = Vec::new();
+	for item in &all_state.items {
+		let full_key = &item.key;
+		if full_key.len() <= prefix.len() {
+			continue;
+		}
+		let inner = &full_key[prefix.len()..];
+		if inner.starts_with(b"ewm:") {
+			keys.push(EncodedKey::new(inner));
+		}
+	}
+	Ok(keys)
+}
+
+pub fn tick_expire_engine_windows(
+	operator: &WindowOperator,
+	txn: &mut FlowTransaction,
+	current_timestamp: u64,
+) -> Result<Vec<Diff>> {
+	let window_size_ms = match operator.size_duration() {
+		Some(d) => d.milliseconds().unwrap_or(0) as u64,
+		None => return Ok(Vec::new()),
+	};
+	if window_size_ms == 0 {
+		return Ok(Vec::new());
+	}
+
+	let meta_keys = scan_engine_meta_keys(operator, txn)?;
+	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
+	let mut diffs = Vec::new();
+	let mut store = FlowWindowStore::new(txn, operator.core.node);
+	for meta_key in &meta_keys {
+		let Some(meta) = store.state_get::<EngineWindowMeta>(meta_key)? else {
+			continue;
+		};
+		if meta.last_event_time == 0 {
+			continue;
+		}
+		if current_timestamp.saturating_sub(meta.last_event_time) <= window_size_ms {
+			continue;
+		}
+
+		let row_number = RowNumber(meta.row_number);
+		let accumulator_key = row_number.into_encoded_key();
+		if let Some(accumulator) = store.state_get::<RowAccumulator>(&accumulator_key)?
+			&& let Some(value) = accumulator.finalize()
+		{
+			let row = operator.core.build_engine_row(&meta.group_values, &value, row_number, ts_nanos)?;
+			diffs.push(Diff::remove(Columns::from_row(&row)));
+		}
+		store.state_remove(&accumulator_key)?;
+		store.state_remove(meta_key)?;
+	}
+	Ok(diffs)
 }

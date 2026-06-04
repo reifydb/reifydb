@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod aggregate;
+pub mod aggregate_validation;
 pub mod append;
 pub mod apply;
 pub mod distinct;

@@ -6,7 +6,9 @@ use reifydb_rql::{expression::Expression, flow::node::FlowNodeType::Window, node
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
-use crate::flow::compiler::{CompileOperator, FlowCompiler};
+use crate::flow::compiler::{
+	CompileOperator, FlowCompiler, operator::aggregate_validation::validate_flow_aggregations,
+};
 
 pub(crate) struct WindowCompiler {
 	pub input: Option<Box<QueryPlan>>,
@@ -30,6 +32,8 @@ impl From<WindowNode> for WindowCompiler {
 
 impl CompileOperator for WindowCompiler {
 	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
+		validate_flow_aggregations(&self.aggregations)?;
+
 		let input_node = if let Some(input) = self.input {
 			Some(compiler.compile_plan(txn, *input)?)
 		} else {

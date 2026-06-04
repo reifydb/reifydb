@@ -51,7 +51,7 @@ use sink::{
 };
 use sort::SortOperator;
 use take::TakeOperator;
-use window::operator::WindowOperator;
+use window::{aggregate::AggregateOperator, operator::WindowOperator};
 
 pub trait Operator: Send {
 	fn id(&self) -> FlowNodeId;
@@ -118,6 +118,7 @@ pub enum Operators {
 	SinkRingBufferView(SinkRingBufferViewOperator),
 	SinkSeriesView(SinkSeriesViewOperator),
 	Window(WindowOperator),
+	Aggregate(AggregateOperator),
 	Custom(BoxedOperator),
 }
 
@@ -138,6 +139,7 @@ impl Operators {
 			Operators::SinkRingBufferView(op) => op.id(),
 			Operators::SinkSeriesView(op) => op.id(),
 			Operators::Window(op) => op.id(),
+			Operators::Aggregate(op) => op.id(),
 			Operators::SourceTable(op) => op.id(),
 			Operators::SourceView(op) => op.id(),
 			Operators::SourceFlow(op) => op.id(),
@@ -164,6 +166,7 @@ impl Operators {
 			Operators::SinkRingBufferView(op) => op.capabilities(),
 			Operators::SinkSeriesView(op) => op.capabilities(),
 			Operators::Window(op) => op.capabilities(),
+			Operators::Aggregate(op) => op.capabilities(),
 			Operators::SourceTable(op) => op.capabilities(),
 			Operators::SourceView(op) => op.capabilities(),
 			Operators::SourceFlow(op) => op.capabilities(),
@@ -190,6 +193,7 @@ impl Operators {
 			Operators::SinkRingBufferView(op) => op.ticks(),
 			Operators::SinkSeriesView(op) => op.ticks(),
 			Operators::Window(op) => op.ticks(),
+			Operators::Aggregate(op) => op.ticks(),
 			Operators::SourceTable(op) => op.ticks(),
 			Operators::SourceView(op) => op.ticks(),
 			Operators::SourceFlow(op) => op.ticks(),
@@ -217,6 +221,7 @@ impl Operators {
 			Operators::SinkRingBufferView(op) => op.apply(txn, change),
 			Operators::SinkSeriesView(op) => op.apply(txn, change),
 			Operators::Window(op) => op.apply(txn, change),
+			Operators::Aggregate(op) => op.apply(txn, change),
 			Operators::SourceTable(op) => op.apply(txn, change),
 			Operators::SourceView(op) => op.apply(txn, change),
 			Operators::SourceFlow(op) => op.apply(txn, change),
@@ -273,7 +278,8 @@ impl Operators {
 			Operators::Take(op) => op.output_schema(),
 			Operators::Distinct(op) => op.output_schema(),
 			Operators::Append(op) => op.output_schema(),
-			Operators::Window(op) => op.parent.output_schema(),
+			Operators::Window(op) => op.core.parent.output_schema(),
+			Operators::Aggregate(op) => op.output_schema(),
 			Operators::Apply(op) => op.output_schema(),
 			Operators::Join(_) => None,
 			Operators::SinkTableView(_) => None,

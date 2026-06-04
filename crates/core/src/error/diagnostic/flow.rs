@@ -217,3 +217,21 @@ pub fn flow_ephemeral_id_capacity_exceeded(flow_id: u64) -> Diagnostic {
 		operator_chain: None,
 	}
 }
+
+pub fn flow_unsupported_aggregate_expression(output: &str) -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_013".to_string(),
+		rql: None,
+		message: format!("aggregate output '{}' is not a supported aggregate expression in a view", output),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some("Window and aggregate views support math::count, math::sum, math::avg, math::min and \
+			math::max over a column or scalar expression, optionally combined with arithmetic \
+			(for example math::max(x) - math::min(x)). Every output must reduce to such an aggregate."
+			.to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}

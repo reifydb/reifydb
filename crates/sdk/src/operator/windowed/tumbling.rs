@@ -10,7 +10,7 @@ use reifydb_core::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccEvent, EmitKind,
+			AccumulatorEvent, EmitKind,
 			tumbling::{TumblingBuckets, TumblingEngine},
 		},
 		span::{Slot, WindowSpan},
@@ -35,21 +35,27 @@ use crate::{
 	},
 };
 
-type AccContribution<A> = <<A as TumblingOperator>::Acc as WindowAccumulator>::Contribution;
-type AccValue<A> = <<A as TumblingOperator>::Acc as WindowAccumulator>::Output;
-type Buckets<A> =
-	TumblingBuckets<<A as TumblingOperator>::GroupKey, <A as TumblingOperator>::WindowCoord, AccContribution<A>>;
+type AccumulatorContribution<A> = <<A as TumblingOperator>::Accumulator as WindowAccumulator>::Contribution;
+type AccumulatorValue<A> = <<A as TumblingOperator>::Accumulator as WindowAccumulator>::Output;
+type Buckets<A> = TumblingBuckets<
+	<A as TumblingOperator>::GroupKey,
+	<A as TumblingOperator>::WindowCoord,
+	AccumulatorContribution<A>,
+>;
 
 pub trait TumblingOperator {
 	type GroupKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned;
 
 	type WindowCoord: Slot + Hash + Serialize + DeserializeOwned;
 
-	type Acc: WindowAccumulator;
+	type Accumulator: WindowAccumulator;
 
 	type Output: Clone + Debug + PartialEq;
 
-	fn extract(&self, row: &impl RowView) -> Option<(Self::GroupKey, Self::WindowCoord, AccContribution<Self>)>;
+	fn extract(
+		&self,
+		row: &impl RowView,
+	) -> Option<(Self::GroupKey, Self::WindowCoord, AccumulatorContribution<Self>)>;
 
 	fn window_for(&self, coord: Self::WindowCoord) -> WindowSpan<Self::WindowCoord>;
 
@@ -57,11 +63,11 @@ pub trait TumblingOperator {
 		&self,
 		group: &Self::GroupKey,
 		span: WindowSpan<Self::WindowCoord>,
-		value: AccValue<Self>,
+		value: AccumulatorValue<Self>,
 	) -> Option<Self::Output>;
 
-	fn new_accumulator(&self) -> Self::Acc {
-		Self::Acc::default()
+	fn new_accumulator(&self) -> Self::Accumulator {
+		Self::Accumulator::default()
 	}
 }
 
@@ -89,7 +95,7 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	aggregator: A,
-	engine: TumblingEngine<A::GroupKey, A::WindowCoord, A::Acc>,
+	engine: TumblingEngine<A::GroupKey, A::WindowCoord, A::Accumulator>,
 }
 
 impl<A> TumblingDriver<A>
@@ -137,9 +143,9 @@ where
 			};
 			let span = self.aggregator.window_for(coord);
 			let event = if is_add {
-				AccEvent::Add(contribution)
+				AccumulatorEvent::Add(contribution)
 			} else {
-				AccEvent::Remove(contribution)
+				AccumulatorEvent::Remove(contribution)
 			};
 			buckets.entry((group, span)).or_default().push(event);
 		}
@@ -152,8 +158,8 @@ where
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
 	A::WindowCoord: Send + Sync,
-	A::Acc: Send + Sync,
-	AccContribution<A>: Send + Sync,
+	A::Accumulator: Send + Sync,
+	AccumulatorContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	#[inline]
@@ -202,8 +208,8 @@ where
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
 	A::WindowCoord: Send + Sync,
-	A::Acc: Send + Sync,
-	AccContribution<A>: Send + Sync,
+	A::Accumulator: Send + Sync,
+	AccumulatorContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
@@ -267,17 +273,14 @@ mod tests {
 		},
 		interface::catalog::flow::FlowNodeId,
 		row::Row as CoreRow,
+		window::accumulator::{Moments, Multiset, OrdF64},
 	};
 	use reifydb_value::value::{Value, value_type::ValueType};
 	use serde::{Deserialize, Serialize};
 
 	use super::*;
 	use crate::{
-		operator::{
-			FFIOperatorAdapter,
-			view::RowView,
-			windowed::accumulator::{Moments, Multiset, OrdF64},
-		},
+		operator::{FFIOperatorAdapter, view::RowView},
 		row,
 		testing::{
 			builders::{TestChangeBuilder, TestRowBuilder},
@@ -291,11 +294,11 @@ mod tests {
 	// per-slot map existed to handle and that the pre/post diff now subsumes.
 
 	#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-	struct VolumeAcc {
+	struct VolumeAccumulator {
 		moments: Moments,
 	}
 
-	impl WindowAccumulator for VolumeAcc {
+	impl WindowAccumulator for VolumeAccumulator {
 		type Contribution = f64;
 		type Output = OrdF64;
 
@@ -334,7 +337,7 @@ mod tests {
 	impl TumblingOperator for TestVolume {
 		type GroupKey = String;
 		type WindowCoord = u64;
-		type Acc = VolumeAcc;
+		type Accumulator = VolumeAccumulator;
 		type Output = VolumeOut;
 
 		fn extract(&self, row: &impl RowView) -> Option<(String, u64, f64)> {
@@ -380,11 +383,11 @@ mod tests {
 	// running-min could not do.
 
 	#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-	struct MinAcc {
+	struct MinAccumulator {
 		values: Multiset<OrdF64>,
 	}
 
-	impl WindowAccumulator for MinAcc {
+	impl WindowAccumulator for MinAccumulator {
 		type Contribution = OrdF64;
 		type Output = OrdF64;
 
@@ -423,7 +426,7 @@ mod tests {
 	impl TumblingOperator for TestMin {
 		type GroupKey = String;
 		type WindowCoord = u64;
-		type Acc = MinAcc;
+		type Accumulator = MinAccumulator;
 		type Output = MinOut;
 
 		fn extract(&self, row: &impl RowView) -> Option<(String, u64, OrdF64)> {

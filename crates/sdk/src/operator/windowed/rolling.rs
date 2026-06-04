@@ -10,7 +10,7 @@ use reifydb_core::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccEvent, EmitKind,
+			AccumulatorEvent, EmitKind,
 			rolling::{RollingBuckets, RollingEngine},
 		},
 		span::Slot,
@@ -35,25 +35,28 @@ use crate::{
 	},
 };
 
-type AccContribution<A> = <<A as RollingOperator>::WindowAcc as WindowAccumulator>::Contribution;
+type AccumulatorContribution<A> = <<A as RollingOperator>::Accumulator as WindowAccumulator>::Contribution;
 
 pub trait RollingOperator {
 	type GroupKey: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned;
 
 	type WindowCoord: Slot + Hash + Serialize + DeserializeOwned;
 
-	type WindowAcc: WindowAccumulator;
+	type Accumulator: WindowAccumulator;
 
 	type Output: Clone + Debug + PartialEq;
 
 	fn capacity(&self) -> usize;
 
-	fn extract(&self, row: &impl RowView) -> Option<(Self::GroupKey, Self::WindowCoord, AccContribution<Self>)>;
+	fn extract(
+		&self,
+		row: &impl RowView,
+	) -> Option<(Self::GroupKey, Self::WindowCoord, AccumulatorContribution<Self>)>;
 
 	fn combine(
 		&self,
 		group: &Self::GroupKey,
-		buffer: &BTreeMap<Self::WindowCoord, Self::WindowAcc>,
+		buffer: &BTreeMap<Self::WindowCoord, Self::Accumulator>,
 	) -> Option<Self::Output>;
 }
 
@@ -74,10 +77,13 @@ where
 	fn encode_row_key(&self, group: &Self::GroupKey) -> EncodedKey;
 }
 
-pub type RollingBuffer<A> = BTreeMap<<A as RollingOperator>::WindowCoord, <A as RollingOperator>::WindowAcc>;
+pub type RollingBuffer<A> = BTreeMap<<A as RollingOperator>::WindowCoord, <A as RollingOperator>::Accumulator>;
 
-type Buckets<A> =
-	RollingBuckets<<A as RollingOperator>::GroupKey, <A as RollingOperator>::WindowCoord, AccContribution<A>>;
+type Buckets<A> = RollingBuckets<
+	<A as RollingOperator>::GroupKey,
+	<A as RollingOperator>::WindowCoord,
+	AccumulatorContribution<A>,
+>;
 
 pub struct RollingDriver<A>
 where
@@ -86,7 +92,7 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	aggregator: A,
-	engine: RollingEngine<A::GroupKey, A::WindowCoord, A::WindowAcc>,
+	engine: RollingEngine<A::GroupKey, A::WindowCoord, A::Accumulator>,
 }
 
 impl<A> RollingDriver<A>
@@ -132,9 +138,9 @@ where
 				continue;
 			};
 			let event = if is_add {
-				AccEvent::Add(contribution)
+				AccumulatorEvent::Add(contribution)
 			} else {
-				AccEvent::Remove(contribution)
+				AccumulatorEvent::Remove(contribution)
 			};
 			buckets.entry((group, coord)).or_default().push(event);
 		}
@@ -146,12 +152,12 @@ where
 			if let Some(pre_row) = pre.row(i)
 				&& let Some((group, coord, contribution)) = self.aggregator.extract(&pre_row)
 			{
-				buckets.entry((group, coord)).or_default().push(AccEvent::Remove(contribution));
+				buckets.entry((group, coord)).or_default().push(AccumulatorEvent::Remove(contribution));
 			}
 			if let Some(post_row) = post.row(i)
 				&& let Some((group, coord, contribution)) = self.aggregator.extract(&post_row)
 			{
-				buckets.entry((group, coord)).or_default().push(AccEvent::Add(contribution));
+				buckets.entry((group, coord)).or_default().push(AccumulatorEvent::Add(contribution));
 			}
 		}
 	}
@@ -201,8 +207,8 @@ where
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
 	A::WindowCoord: Send + Sync,
-	A::WindowAcc: Send + Sync,
-	AccContribution<A>: Send + Sync,
+	A::Accumulator: Send + Sync,
+	AccumulatorContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
@@ -265,13 +271,14 @@ mod tests {
 		},
 		interface::catalog::flow::FlowNodeId,
 		row::Row as CoreRow,
+		window::accumulator::Moments,
 	};
 	use reifydb_value::value::{Value, value_type::ValueType};
 	use serde::{Deserialize, Serialize};
 
 	use super::*;
 	use crate::{
-		operator::{FFIOperatorAdapter, view::RowView, windowed::accumulator::Moments},
+		operator::{FFIOperatorAdapter, view::RowView},
 		row,
 		testing::{
 			builders::{TestChangeBuilder, TestRowBuilder},
@@ -332,7 +339,7 @@ mod tests {
 	impl RollingOperator for TestRollingSum {
 		type GroupKey = String;
 		type WindowCoord = u64;
-		type WindowAcc = WindowSum;
+		type Accumulator = WindowSum;
 		type Output = TestOut;
 
 		fn capacity(&self) -> usize {

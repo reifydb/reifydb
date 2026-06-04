@@ -23,6 +23,13 @@ use reifydb_core::{
 		shape::{RowShape, RowShapeField},
 	},
 	interface::catalog::flow::FlowNodeId,
+	window::{
+		accumulator::{
+			KeyedInvertibleAccumulator, LastValue, Moments, Multiset, OrdF64, RetainedAccumulator,
+			SealingEndpoint, SealingMax, SealingMin, WindowAccumulator,
+		},
+		span::WindowSpan,
+	},
 };
 use reifydb_sdk::{
 	config::Config,
@@ -31,14 +38,9 @@ use reifydb_sdk::{
 		column::operator::OperatorColumn,
 		view::RowView,
 		windowed::{
-			accumulator::{
-				KeyedInvertibleAcc, LastValue, Moments, Multiset, OrdF64, RetainedAcc, SealingEndpoint,
-				SealingMax, SealingMin, WindowAccumulator,
-			},
 			multi_rolling::{MultiRollingOperator, MultiRollingRegistration},
 			rolling::{RollingOperator, RollingRegistration},
 			rolling_incremental::RollingIncrementalOperator,
-			span::WindowSpan,
 			tumbling::{TumblingOperator, TumblingRegistration},
 			tumbling_carry::{TumblingCarryOperator, TumblingCarryRegistration},
 		},
@@ -105,14 +107,14 @@ pub fn maybe_none_f64(lo: f64, hi: f64) -> ColumnSampler {
 /// Applying a contribution then removing it must leave `finalize()` exactly
 /// where it started. The probe's identity must be absent from `initial`.
 pub fn assert_add_remove_is_inverse<A: WindowAccumulator>(initial: &[A::Contribution], probe: A::Contribution) {
-	let mut acc = A::default();
+	let mut accumulator = A::default();
 	for c in initial {
-		acc.add(c);
+		accumulator.add(c);
 	}
-	let before = acc.finalize();
-	acc.add(&probe);
-	acc.remove(&probe);
-	assert_eq!(acc.finalize(), before, "add then remove must restore finalize()");
+	let before = accumulator.finalize();
+	accumulator.add(&probe);
+	accumulator.remove(&probe);
+	assert_eq!(accumulator.finalize(), before, "add then remove must restore finalize()");
 }
 
 /// For commutative families the multiset of contributions, not their order,
@@ -130,11 +132,11 @@ pub fn assert_order_independent<A: WindowAccumulator>(contributions: &[A::Contri
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct VolumeAcc {
+pub struct VolumeAccumulator {
 	moments: Moments,
 }
 
-impl WindowAccumulator for VolumeAcc {
+impl WindowAccumulator for VolumeAccumulator {
 	type Contribution = f64;
 	type Output = OrdF64;
 
@@ -173,7 +175,7 @@ pub struct VolumeTumbling;
 impl TumblingOperator for VolumeTumbling {
 	type GroupKey = String;
 	type WindowCoord = u64;
-	type Acc = VolumeAcc;
+	type Accumulator = VolumeAccumulator;
 	type Output = VolumeOut;
 
 	fn extract(&self, row: &impl RowView) -> Option<(String, u64, f64)> {
@@ -214,11 +216,11 @@ impl TumblingRegistration for VolumeTumbling {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct MinAcc {
+pub struct MinAccumulator {
 	values: Multiset<OrdF64>,
 }
 
-impl WindowAccumulator for MinAcc {
+impl WindowAccumulator for MinAccumulator {
 	type Contribution = OrdF64;
 	type Output = OrdF64;
 
@@ -257,7 +259,7 @@ pub struct MinTumbling;
 impl TumblingOperator for MinTumbling {
 	type GroupKey = String;
 	type WindowCoord = u64;
-	type Acc = MinAcc;
+	type Accumulator = MinAccumulator;
 	type Output = MinOut;
 
 	fn extract(&self, row: &impl RowView) -> Option<(String, u64, OrdF64)> {
@@ -383,7 +385,7 @@ pub struct OhlcvSealingTumbling;
 impl TumblingOperator for OhlcvSealingTumbling {
 	type GroupKey = String;
 	type WindowCoord = u64;
-	type Acc = OhlcvAcc;
+	type Accumulator = OhlcvAcc;
 	type Output = OhlcvOut;
 
 	fn extract(&self, row: &impl RowView) -> Option<(String, u64, (u64, OrdF64))> {
@@ -478,7 +480,7 @@ pub fn rolling_sum() -> RollingSum {
 impl RollingOperator for RollingSum {
 	type GroupKey = String;
 	type WindowCoord = u64;
-	type WindowAcc = WindowSum;
+	type Accumulator = WindowSum;
 	type Output = RollingOut;
 
 	fn capacity(&self) -> usize {
@@ -542,7 +544,7 @@ pub struct TopVolumeMultiRolling;
 impl MultiRollingOperator for TopVolumeMultiRolling {
 	type GroupKey = String;
 	type WindowCoord = u64;
-	type WindowAcc = KeyedInvertibleAcc<u64, Moments>;
+	type Accumulator = KeyedInvertibleAccumulator<u64, Moments>;
 	type SecondaryKey = u32;
 	type Output = TopOut;
 
@@ -561,7 +563,7 @@ impl MultiRollingOperator for TopVolumeMultiRolling {
 	fn combine(
 		&self,
 		group: &String,
-		buffer: &BTreeMap<u64, KeyedInvertibleAcc<u64, Moments>>,
+		buffer: &BTreeMap<u64, KeyedInvertibleAccumulator<u64, Moments>>,
 	) -> BTreeMap<u32, TopOut> {
 		let mut totals: BTreeMap<u64, f64> = BTreeMap::new();
 		for window in buffer.values() {
@@ -635,7 +637,7 @@ pub struct TwapCarry;
 impl TumblingCarryOperator for TwapCarry {
 	type GroupKey = String;
 	type WindowCoord = u64;
-	type Acc = RetainedAcc<u64, f64>;
+	type Accumulator = RetainedAccumulator<u64, f64>;
 	type Output = CarryOut;
 	type Carry = f64;
 
@@ -716,7 +718,7 @@ pub fn velocity_incremental() -> VelocityIncremental {
 impl RollingOperator for VelocityIncremental {
 	type GroupKey = String;
 	type WindowCoord = u64;
-	type WindowAcc = LastValue<f64>;
+	type Accumulator = LastValue<f64>;
 	type Output = VelocityOut;
 
 	fn capacity(&self) -> usize {
@@ -736,11 +738,11 @@ impl RollingOperator for VelocityIncremental {
 		let total = buffer.len();
 		let mut sum = 0.0_f64;
 		let mut count = 0u32;
-		for (i, acc) in buffer.values().enumerate() {
+		for (i, accumulator) in buffer.values().enumerate() {
 			if i + 1 == total {
 				continue;
 			}
-			if let Some(v) = acc.get() {
+			if let Some(v) = accumulator.get() {
 				sum += *v;
 				count += 1;
 			}

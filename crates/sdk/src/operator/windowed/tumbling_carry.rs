@@ -9,7 +9,7 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	window::{
 		accumulator::WindowAccumulator,
-		engine::{AccEvent, EmitKind, tumbling::TumblingBuckets, tumbling_carry::TumblingCarryEngine},
+		engine::{AccumulatorEvent, EmitKind, tumbling::TumblingBuckets, tumbling_carry::TumblingCarryEngine},
 		span::{Slot, WindowSpan},
 	},
 };
@@ -32,12 +32,12 @@ use crate::{
 	},
 };
 
-type AccContribution<A> = <<A as TumblingCarryOperator>::Acc as WindowAccumulator>::Contribution;
-type AccValue<A> = <<A as TumblingCarryOperator>::Acc as WindowAccumulator>::Output;
+type AccumulatorContribution<A> = <<A as TumblingCarryOperator>::Accumulator as WindowAccumulator>::Contribution;
+type AccumulatorValue<A> = <<A as TumblingCarryOperator>::Accumulator as WindowAccumulator>::Output;
 type Buckets<A> = TumblingBuckets<
 	<A as TumblingCarryOperator>::GroupKey,
 	<A as TumblingCarryOperator>::WindowCoord,
-	AccContribution<A>,
+	AccumulatorContribution<A>,
 >;
 
 pub trait TumblingCarryOperator {
@@ -45,13 +45,16 @@ pub trait TumblingCarryOperator {
 
 	type WindowCoord: Slot + Hash + Serialize + DeserializeOwned;
 
-	type Acc: WindowAccumulator;
+	type Accumulator: WindowAccumulator;
 
 	type Output: Clone + Debug + PartialEq;
 
 	type Carry: Clone + Debug + Serialize + DeserializeOwned;
 
-	fn extract(&self, row: &impl RowView) -> Option<(Self::GroupKey, Self::WindowCoord, AccContribution<Self>)>;
+	fn extract(
+		&self,
+		row: &impl RowView,
+	) -> Option<(Self::GroupKey, Self::WindowCoord, AccumulatorContribution<Self>)>;
 
 	fn window_for(&self, coord: Self::WindowCoord) -> WindowSpan<Self::WindowCoord>;
 
@@ -59,14 +62,18 @@ pub trait TumblingCarryOperator {
 		&self,
 		group: &Self::GroupKey,
 		span: WindowSpan<Self::WindowCoord>,
-		value: &AccValue<Self>,
+		value: &AccumulatorValue<Self>,
 		prev_carry: Option<&Self::Carry>,
 	) -> Option<Self::Output>;
 
-	fn carry_forward(&self, value: &AccValue<Self>, prev_carry: Option<&Self::Carry>) -> Option<Self::Carry>;
+	fn carry_forward(
+		&self,
+		value: &AccumulatorValue<Self>,
+		prev_carry: Option<&Self::Carry>,
+	) -> Option<Self::Carry>;
 
-	fn new_accumulator(&self) -> Self::Acc {
-		Self::Acc::default()
+	fn new_accumulator(&self) -> Self::Accumulator {
+		Self::Accumulator::default()
 	}
 }
 
@@ -94,7 +101,7 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	aggregator: A,
-	engine: TumblingCarryEngine<A::GroupKey, A::WindowCoord, A::Acc, A::Carry>,
+	engine: TumblingCarryEngine<A::GroupKey, A::WindowCoord, A::Accumulator, A::Carry>,
 }
 
 impl<A> TumblingCarryDriver<A>
@@ -142,9 +149,9 @@ where
 			};
 			let span = self.aggregator.window_for(coord);
 			let event = if is_add {
-				AccEvent::Add(contribution)
+				AccumulatorEvent::Add(contribution)
 			} else {
-				AccEvent::Remove(contribution)
+				AccumulatorEvent::Remove(contribution)
 			};
 			buckets.entry((group, span)).or_default().push(event);
 		}
@@ -196,9 +203,9 @@ where
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
 	A::WindowCoord: Send + Sync,
-	A::Acc: Send + Sync,
+	A::Accumulator: Send + Sync,
 	A::Carry: Send + Sync,
-	AccContribution<A>: Send + Sync,
+	AccumulatorContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
@@ -265,12 +272,13 @@ mod tests {
 		},
 		interface::catalog::flow::FlowNodeId,
 		row::Row as CoreRow,
+		window::accumulator::RetainedAccumulator,
 	};
 	use reifydb_value::value::{Value, value_type::ValueType};
 
 	use super::*;
 	use crate::{
-		operator::{FFIOperatorAdapter, windowed::accumulator::RetainedAcc},
+		operator::FFIOperatorAdapter,
 		row,
 		testing::{
 			builders::{TestChangeBuilder, TestRowBuilder},
@@ -279,7 +287,7 @@ mod tests {
 	};
 
 	// A TWAP-shaped fixture exercising the carry-forward rotation in
-	// isolation. Each window retains its observations (RetainedAcc keyed by
+	// isolation. Each window retains its observations (RetainedAccumulator keyed by
 	// timestamp); the value summed is incidental. `carry_in` echoes the
 	// prior window's closing observation so assertions can prove the carry
 	// rotated across the window boundary, not whether the integral math is
@@ -307,7 +315,7 @@ mod tests {
 	impl TumblingCarryOperator for TestCarry {
 		type GroupKey = String;
 		type WindowCoord = u64;
-		type Acc = RetainedAcc<u64, f64>;
+		type Accumulator = RetainedAccumulator<u64, f64>;
 		type Output = CarryOut;
 		type Carry = f64;
 

@@ -16,6 +16,7 @@ pub mod rolling_incremental;
 pub mod tumbling;
 pub mod tumbling_carry;
 
+use reifydb_value::value::row_number::RowNumber;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -25,9 +26,21 @@ use crate::{
 };
 
 /// One contribution routed to a window accumulator.
-pub enum AccEvent<C> {
+pub enum AccumulatorEvent<C> {
 	Add(C),
 	Remove(C),
+}
+
+/// How an engine treats an event whose window coordinate is below the per-group
+/// high-water mark (an event for an already-closed window).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum LatePolicy {
+	/// Event-time semantics: drop late events (deterministic under replay).
+	#[default]
+	Drop,
+	/// Accept late events into their (re-opened) window. High-water still
+	/// tracks the max coordinate seen but never rejects.
+	Process,
 }
 
 /// How a finalized window value should be emitted downstream.
@@ -40,10 +53,15 @@ pub enum EmitKind {
 
 /// A finalized window the engine produced; the face turns it into a diff.
 pub struct WindowResult<G, Coord, Output> {
-	pub row_number: reifydb_value::value::row_number::RowNumber,
+	pub row_number: RowNumber,
 	pub group: G,
 	pub span: WindowSpan<Coord>,
 	pub value: Output,
+	/// The finalized value before this batch's events, when the window was
+	/// non-empty (used by faces that emit a real pre on Update/Remove). `None`
+	/// for a brand-new window. Faces that don't need it (the sdk drivers)
+	/// ignore it.
+	pub prior: Option<Output>,
 	pub kind: EmitKind,
 }
 

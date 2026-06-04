@@ -16,14 +16,14 @@ use crate::{
 	encoded::key::{EncodedKey, IntoEncodedKey},
 	window::{
 		accumulator::WindowAccumulator,
-		engine::{AccEvent, GroupMeta, MetaKey, meta_key_for, rolling::RollingBuckets},
+		engine::{AccumulatorEvent, GroupMeta, MetaKey, meta_key_for, rolling::RollingBuckets},
 		span::Slot,
 		state::StateCache,
 		store::WindowStore,
 	},
 };
 
-pub type MultiRollingBuffer<C, WAcc> = BTreeMap<C, WAcc>;
+pub type MultiRollingBuffer<C, Accumulator> = BTreeMap<C, Accumulator>;
 
 pub type MultiRollingEmit<SK, Output> = BTreeMap<SK, Output>;
 
@@ -45,16 +45,16 @@ pub enum MultiEmit<Output> {
 
 #[derive(Serialize, Deserialize)]
 #[serde(bound(
-	serialize = "C: Serialize + Ord, WAcc: Serialize, SK: Serialize + Ord, Output: Serialize",
-	deserialize = "C: serde::de::DeserializeOwned + Ord, WAcc: serde::de::DeserializeOwned, \
+	serialize = "C: Serialize + Ord, Accumulator: Serialize, SK: Serialize + Ord, Output: Serialize",
+	deserialize = "C: serde::de::DeserializeOwned + Ord, Accumulator: serde::de::DeserializeOwned, \
 	               SK: serde::de::DeserializeOwned + Ord, Output: serde::de::DeserializeOwned"
 ))]
-struct GroupState<C, WAcc, SK, Output> {
-	buffer: MultiRollingBuffer<C, WAcc>,
+struct GroupState<C, Accumulator, SK, Output> {
+	buffer: MultiRollingBuffer<C, Accumulator>,
 	last_emit: MultiRollingEmit<SK, Output>,
 }
 
-impl<C: Ord, WAcc, SK: Ord, Output> Default for GroupState<C, WAcc, SK, Output> {
+impl<C: Ord, Accumulator, SK: Ord, Output> Default for GroupState<C, Accumulator, SK, Output> {
 	fn default() -> Self {
 		Self {
 			buffer: BTreeMap::new(),
@@ -63,7 +63,9 @@ impl<C: Ord, WAcc, SK: Ord, Output> Default for GroupState<C, WAcc, SK, Output> 
 	}
 }
 
-impl<C: Ord + Clone, WAcc: Clone, SK: Ord + Clone, Output: Clone> Clone for GroupState<C, WAcc, SK, Output> {
+impl<C: Ord + Clone, Accumulator: Clone, SK: Ord + Clone, Output: Clone> Clone
+	for GroupState<C, Accumulator, SK, Output>
+{
 	fn clone(&self) -> Self {
 		Self {
 			buffer: self.buffer.clone(),
@@ -72,7 +74,7 @@ impl<C: Ord + Clone, WAcc: Clone, SK: Ord + Clone, Output: Clone> Clone for Grou
 	}
 }
 
-impl<C, WAcc, SK, Output> Debug for GroupState<C, WAcc, SK, Output> {
+impl<C, Accumulator, SK, Output> Debug for GroupState<C, Accumulator, SK, Output> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		f.debug_struct("GroupState")
 			.field("buffer_len", &self.buffer.len())
@@ -84,24 +86,24 @@ impl<C, WAcc, SK, Output> Debug for GroupState<C, WAcc, SK, Output> {
 type MetaLoaded<G, C> = HashMap<G, GroupMeta<C>>;
 type StateRows<G> = HashMap<G, RowNumber>;
 
-struct GroupSlot<C, WAcc, SK, Output> {
+struct GroupSlot<C, Accumulator, SK, Output> {
 	state_row_number: RowNumber,
-	buffer: MultiRollingBuffer<C, WAcc>,
+	buffer: MultiRollingBuffer<C, Accumulator>,
 	prior_emit: MultiRollingEmit<SK, Output>,
 	buffer_changed: bool,
 }
 
-pub struct MultiRollingEngine<G, C, WAcc, SK, Output> {
-	groups: StateCache<RowNumber, GroupState<C, WAcc, SK, Output>>,
+pub struct MultiRollingEngine<G, C, Accumulator, SK, Output> {
+	groups: StateCache<RowNumber, GroupState<C, Accumulator, SK, Output>>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
 	_pd: PhantomData<G>,
 }
 
-impl<G, C, WAcc, SK, Output> Default for MultiRollingEngine<G, C, WAcc, SK, Output>
+impl<G, C, Accumulator, SK, Output> Default for MultiRollingEngine<G, C, Accumulator, SK, Output>
 where
 	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
 	C: Slot + Hash + Serialize + DeserializeOwned,
-	WAcc: WindowAccumulator,
+	Accumulator: WindowAccumulator,
 	SK: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
 	Output: Clone + Debug + PartialEq + Serialize + DeserializeOwned,
 	for<'a> &'a G: IntoEncodedKey,
@@ -111,18 +113,18 @@ where
 	}
 }
 
-impl<G, C, WAcc, SK, Output> MultiRollingEngine<G, C, WAcc, SK, Output>
+impl<G, C, Accumulator, SK, Output> MultiRollingEngine<G, C, Accumulator, SK, Output>
 where
 	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
 	C: Slot + Hash + Serialize + DeserializeOwned,
-	WAcc: WindowAccumulator,
+	Accumulator: WindowAccumulator,
 	SK: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
 	Output: Clone + Debug + PartialEq + Serialize + DeserializeOwned,
 	for<'a> &'a G: IntoEncodedKey,
 {
 	pub fn new() -> Self {
 		Self {
-			groups: StateCache::<RowNumber, GroupState<C, WAcc, SK, Output>>::new(8),
+			groups: StateCache::<RowNumber, GroupState<C, Accumulator, SK, Output>>::new(8),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(64),
 			_pd: PhantomData,
 		}
@@ -131,7 +133,7 @@ where
 	pub fn apply<S, SKF, RKF, CB>(
 		&mut self,
 		store: &mut S,
-		buckets: RollingBuckets<G, C, WAcc::Contribution>,
+		buckets: RollingBuckets<G, C, Accumulator::Contribution>,
 		capacity: usize,
 		state_key: SKF,
 		row_key: RKF,
@@ -141,7 +143,7 @@ where
 		S: WindowStore,
 		SKF: Fn(&G) -> EncodedKey,
 		RKF: Fn(&G, &SK) -> EncodedKey,
-		CB: Fn(&G, &MultiRollingBuffer<C, WAcc>) -> MultiRollingEmit<SK, Output>,
+		CB: Fn(&G, &MultiRollingBuffer<C, Accumulator>) -> MultiRollingEmit<SK, Output>,
 	{
 		if buckets.is_empty() {
 			return Ok(Vec::new());
@@ -170,7 +172,7 @@ where
 	fn warm_and_load_meta<S: WindowStore>(
 		&mut self,
 		store: &mut S,
-		buckets: &RollingBuckets<G, C, WAcc::Contribution>,
+		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
 	) -> Result<MetaLoaded<G, C>> {
 		let meta_keys: Vec<MetaKey> = buckets
 			.keys()
@@ -194,7 +196,7 @@ where
 	fn resolve_state_rows<S, SKF>(
 		&mut self,
 		store: &mut S,
-		buckets: &RollingBuckets<G, C, WAcc::Contribution>,
+		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
 		meta_loaded: &MetaLoaded<G, C>,
 		state_key: &SKF,
 	) -> Result<StateRows<G>>
@@ -225,17 +227,17 @@ where
 	fn apply_events_into_buffers<S, SKF>(
 		&mut self,
 		store: &mut S,
-		buckets: RollingBuckets<G, C, WAcc::Contribution>,
+		buckets: RollingBuckets<G, C, Accumulator::Contribution>,
 		meta_loaded: &mut MetaLoaded<G, C>,
 		state_rows: &StateRows<G>,
 		state_key: &SKF,
 		capacity: usize,
-	) -> Result<BTreeMap<G, GroupSlot<C, WAcc, SK, Output>>>
+	) -> Result<BTreeMap<G, GroupSlot<C, Accumulator, SK, Output>>>
 	where
 		S: WindowStore,
 		SKF: Fn(&G) -> EncodedKey,
 	{
-		let mut group_slots: BTreeMap<G, GroupSlot<C, WAcc, SK, Output>> = BTreeMap::new();
+		let mut group_slots: BTreeMap<G, GroupSlot<C, Accumulator, SK, Output>> = BTreeMap::new();
 
 		for ((group, coord), events) in buckets {
 			let meta = meta_loaded.entry(group.clone()).or_default();
@@ -274,15 +276,15 @@ where
 				}
 			};
 
-			let mut acc = slot.buffer.remove(&coord).unwrap_or_default();
+			let mut accumulator = slot.buffer.remove(&coord).unwrap_or_default();
 			for event in events {
 				match event {
-					AccEvent::Add(c) => acc.add(&c),
-					AccEvent::Remove(c) => acc.remove(&c),
+					AccumulatorEvent::Add(c) => accumulator.add(&c),
+					AccumulatorEvent::Remove(c) => accumulator.remove(&c),
 				}
 			}
-			if !acc.is_empty() {
-				slot.buffer.insert(coord, acc);
+			if !accumulator.is_empty() {
+				slot.buffer.insert(coord, accumulator);
 			}
 			while slot.buffer.len() > capacity {
 				slot.buffer.pop_first();
@@ -319,14 +321,14 @@ where
 	fn diff_emits<S, RKF, CB>(
 		&mut self,
 		store: &mut S,
-		group_slots: BTreeMap<G, GroupSlot<C, WAcc, SK, Output>>,
+		group_slots: BTreeMap<G, GroupSlot<C, Accumulator, SK, Output>>,
 		row_key: &RKF,
 		combine: &CB,
 	) -> Result<Vec<MultiEmit<Output>>>
 	where
 		S: WindowStore,
 		RKF: Fn(&G, &SK) -> EncodedKey,
-		CB: Fn(&G, &MultiRollingBuffer<C, WAcc>) -> MultiRollingEmit<SK, Output>,
+		CB: Fn(&G, &MultiRollingBuffer<C, Accumulator>) -> MultiRollingEmit<SK, Output>,
 	{
 		let mut emits: Vec<MultiEmit<Output>> = Vec::new();
 

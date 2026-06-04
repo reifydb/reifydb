@@ -17,7 +17,7 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccEvent, EmitKind, GroupMeta, MetaKey, meta_key_for,
+			AccumulatorEvent, EmitKind, GroupMeta, MetaKey, meta_key_for,
 			rolling::{RollingBuckets, RollingBuffer, RollingResult},
 		},
 		span::Slot,
@@ -29,27 +29,27 @@ use crate::{
 type MetaLoaded<G, C> = HashMap<G, GroupMeta<C>>;
 type BufferRows<G> = HashMap<G, (RowNumber, bool)>;
 
-struct GroupSlot<C, WAcc, Running> {
+struct GroupSlot<C, Accumulator, Running> {
 	row_number: RowNumber,
 	is_new: bool,
-	buffer: RollingBuffer<C, WAcc>,
+	buffer: RollingBuffer<C, Accumulator>,
 	running: Running,
 	was_empty_before: bool,
 	buffer_changed: bool,
 }
 
-pub struct RollingIncrementalEngine<G, C, WAcc, Running> {
-	buffers: StateCache<RowNumber, RollingBuffer<C, WAcc>>,
+pub struct RollingIncrementalEngine<G, C, Accumulator, Running> {
+	buffers: StateCache<RowNumber, RollingBuffer<C, Accumulator>>,
 	running: StateCache<RowNumber, Running>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
 	_pd: PhantomData<G>,
 }
 
-impl<G, C, WAcc, Running> Default for RollingIncrementalEngine<G, C, WAcc, Running>
+impl<G, C, Accumulator, Running> Default for RollingIncrementalEngine<G, C, Accumulator, Running>
 where
 	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
 	C: Slot + Hash + Serialize + DeserializeOwned,
-	WAcc: WindowAccumulator,
+	Accumulator: WindowAccumulator,
 	Running: WindowAccumulator,
 	for<'a> &'a G: IntoEncodedKey,
 {
@@ -58,17 +58,17 @@ where
 	}
 }
 
-impl<G, C, WAcc, Running> RollingIncrementalEngine<G, C, WAcc, Running>
+impl<G, C, Accumulator, Running> RollingIncrementalEngine<G, C, Accumulator, Running>
 where
 	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
 	C: Slot + Hash + Serialize + DeserializeOwned,
-	WAcc: WindowAccumulator,
+	Accumulator: WindowAccumulator,
 	Running: WindowAccumulator,
 	for<'a> &'a G: IntoEncodedKey,
 {
 	pub fn new() -> Self {
 		Self {
-			buffers: StateCache::<RowNumber, RollingBuffer<C, WAcc>>::new(8),
+			buffers: StateCache::<RowNumber, RollingBuffer<C, Accumulator>>::new(8),
 			running: StateCache::<RowNumber, Running>::new(8),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(64),
 			_pd: PhantomData,
@@ -78,7 +78,7 @@ where
 	pub fn apply<S, K, WC, CR, Output>(
 		&mut self,
 		store: &mut S,
-		buckets: RollingBuckets<G, C, WAcc::Contribution>,
+		buckets: RollingBuckets<G, C, Accumulator::Contribution>,
 		capacity: usize,
 		row_key: K,
 		window_contribution: WC,
@@ -87,8 +87,8 @@ where
 	where
 		S: WindowStore,
 		K: Fn(&G) -> EncodedKey,
-		WC: Fn(&WAcc::Output) -> Running::Contribution,
-		CR: Fn(&G, &Running, &WAcc::Output, C) -> Option<Output>,
+		WC: Fn(&Accumulator::Output) -> Running::Contribution,
+		CR: Fn(&G, &Running, &Accumulator::Output, C) -> Option<Output>,
 	{
 		if buckets.is_empty() {
 			return Ok(Vec::new());
@@ -96,7 +96,7 @@ where
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
 		let buffer_rows = self.resolve_buffer_rows(store, &buckets, &meta_loaded, &row_key)?;
 
-		let mut group_slots: BTreeMap<G, GroupSlot<C, WAcc, Running>> = BTreeMap::new();
+		let mut group_slots: BTreeMap<G, GroupSlot<C, Accumulator, Running>> = BTreeMap::new();
 
 		for ((group, coord), events) in buckets {
 			let meta = meta_loaded.entry(group.clone()).or_default();
@@ -117,7 +117,7 @@ where
 							store.get_or_create_row_number(&key)?
 						}
 					};
-					let buffer: RollingBuffer<C, WAcc> =
+					let buffer: RollingBuffer<C, Accumulator> =
 						self.buffers.get(store, &row_number)?.unwrap_or_default();
 					let running: Running =
 						self.running.get(store, &row_number)?.unwrap_or_default();
@@ -137,15 +137,15 @@ where
 				}
 			};
 
-			let mut acc = slot.buffer.remove(&coord).unwrap_or_default();
-			let old_value = acc.finalize();
+			let mut accumulator = slot.buffer.remove(&coord).unwrap_or_default();
+			let old_value = accumulator.finalize();
 			for event in events {
 				match event {
-					AccEvent::Add(c) => acc.add(&c),
-					AccEvent::Remove(c) => acc.remove(&c),
+					AccumulatorEvent::Add(c) => accumulator.add(&c),
+					AccumulatorEvent::Remove(c) => accumulator.remove(&c),
 				}
 			}
-			let new_value = acc.finalize();
+			let new_value = accumulator.finalize();
 
 			if let Some(old) = &old_value {
 				slot.running.remove(&window_contribution(old));
@@ -154,8 +154,8 @@ where
 				slot.running.add(&window_contribution(new));
 			}
 
-			if !acc.is_empty() {
-				slot.buffer.insert(coord, acc);
+			if !accumulator.is_empty() {
+				slot.buffer.insert(coord, accumulator);
 			}
 			while slot.buffer.len() > capacity {
 				if let Some((_, evicted)) = slot.buffer.pop_first()
@@ -178,7 +178,7 @@ where
 				continue;
 			}
 			let output = match slot.buffer.iter().next_back() {
-				Some((coord, acc)) => acc
+				Some((coord, accumulator)) => accumulator
 					.finalize()
 					.and_then(|newest| combine_running(&group, &slot.running, &newest, *coord)),
 				None => None,
@@ -196,6 +196,7 @@ where
 					row_number: slot.row_number,
 					group,
 					value: out,
+					prior: None,
 					kind,
 				});
 			}
@@ -214,7 +215,7 @@ where
 	fn warm_and_load_meta<S: WindowStore>(
 		&mut self,
 		store: &mut S,
-		buckets: &RollingBuckets<G, C, WAcc::Contribution>,
+		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
 	) -> Result<MetaLoaded<G, C>> {
 		let meta_keys: Vec<MetaKey> = buckets
 			.keys()
@@ -238,7 +239,7 @@ where
 	fn resolve_buffer_rows<S, K>(
 		&mut self,
 		store: &mut S,
-		buckets: &RollingBuckets<G, C, WAcc::Contribution>,
+		buckets: &RollingBuckets<G, C, Accumulator::Contribution>,
 		meta_loaded: &MetaLoaded<G, C>,
 		row_key: &K,
 	) -> Result<BufferRows<G>>
