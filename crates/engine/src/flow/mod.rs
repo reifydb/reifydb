@@ -5,4 +5,5 @@
 //! consumes. This module is the bridge between RQL's flow AST and the operator graph the streaming runtime
 //! actually evaluates.
 
+pub mod aggregate;
 pub mod compiler;

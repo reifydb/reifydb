@@ -18,6 +18,7 @@ use reifydb_core::{
 	internal,
 	row::{JoinTtl, OperatorSettings, Ttl},
 };
+use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::{
 	flow::{
 		flow::{FlowBuilder, FlowDag},
@@ -48,28 +49,32 @@ use crate::flow::compiler::{
 
 pub fn compile_flow(
 	catalog: &Catalog,
+	routines: &Routines,
 	txn: &mut AdminTransaction,
 	plan: QueryPlan,
 	sink: Option<&View>,
 	flow_id: FlowId,
 ) -> Result<FlowDag> {
-	let compiler = FlowCompiler::new(catalog.clone(), flow_id);
+	let compiler = FlowCompiler::new(catalog.clone(), routines.clone(), flow_id);
 	compiler.compile(&mut Transaction::Admin(txn), plan, sink)
 }
 
 pub fn compile_subscription_flow_ephemeral(
 	catalog: &Catalog,
+	routines: &Routines,
 	txn: &mut Transaction<'_>,
 	plan: QueryPlan,
 	subscription_id: SubscriptionId,
 	flow_id: FlowId,
 ) -> Result<FlowDag> {
-	let compiler = FlowCompiler::new_ephemeral(catalog.clone(), flow_id);
+	let compiler = FlowCompiler::new_ephemeral(catalog.clone(), routines.clone(), flow_id);
 	compiler.compile_with_subscription_id(txn, plan, subscription_id)
 }
 
 pub(crate) struct FlowCompiler {
 	pub(crate) catalog: Catalog,
+
+	pub(crate) routines: Routines,
 
 	builder: FlowBuilder,
 
@@ -85,9 +90,10 @@ pub(crate) struct FlowCompiler {
 }
 
 impl FlowCompiler {
-	pub fn new(catalog: Catalog, flow_id: FlowId) -> Self {
+	pub fn new(catalog: Catalog, routines: Routines, flow_id: FlowId) -> Self {
 		Self {
 			catalog,
+			routines,
 			builder: FlowDag::builder(flow_id),
 			sink: None,
 			ephemeral: false,
@@ -97,10 +103,11 @@ impl FlowCompiler {
 		}
 	}
 
-	pub fn new_ephemeral(catalog: Catalog, flow_id: FlowId) -> Self {
+	pub fn new_ephemeral(catalog: Catalog, routines: Routines, flow_id: FlowId) -> Self {
 		let base = flow_id.0 * 100;
 		Self {
 			catalog,
+			routines,
 			builder: FlowDag::builder(flow_id),
 			sink: None,
 			ephemeral: true,

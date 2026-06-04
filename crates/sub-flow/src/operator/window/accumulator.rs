@@ -1,23 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::window::accumulator::{Multiset, WindowAccumulator};
-use reifydb_value::value::{
-	Value,
-	number::safe::{add::SafeAdd, div::SafeDiv, sub::SafeSub},
+use reifydb_core::window::accumulator::{WindowAccumulator, invertible::Multiset};
+use reifydb_engine::flow::aggregate::SlotKind;
+use reifydb_value::{
+	reifydb_assertions,
+	value::{
+		Value,
+		number::safe::{add::SafeAdd, div::SafeDiv, sub::SafeSub},
+	},
 };
 use serde::{Deserialize, Serialize};
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SlotKind {
-	Count {
-		count_star: bool,
-	},
-	Sum,
-	Avg,
-	Min,
-	Max,
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum AggregateSlot {
@@ -267,12 +260,34 @@ impl WindowAccumulator for RowAccumulator {
 	type Output = Vec<Value>;
 
 	fn add(&mut self, contribution: &Self::Contribution) {
+		reifydb_assertions! {
+			assert!(
+				contribution.len() == self.slots.len(),
+				"RowAccumulator contribution length {} != slot count {}; the zip below truncates to the \
+				 shorter side, so a default-constructed zero-slot accumulator (e.g. routed through an engine \
+				 that builds empties via Default instead of new(kinds)) would silently swallow every \
+				 contribution",
+				contribution.len(),
+				self.slots.len()
+			);
+		}
 		for (slot, input) in self.slots.iter_mut().zip(contribution.iter()) {
 			slot.add(input);
 		}
 	}
 
 	fn remove(&mut self, contribution: &Self::Contribution) {
+		reifydb_assertions! {
+			assert!(
+				contribution.len() == self.slots.len(),
+				"RowAccumulator contribution length {} != slot count {}; the zip below truncates to the \
+				 shorter side, so a default-constructed zero-slot accumulator (e.g. routed through an engine \
+				 that builds empties via Default instead of new(kinds)) would silently swallow every \
+				 retraction",
+				contribution.len(),
+				self.slots.len()
+			);
+		}
 		for (slot, input) in self.slots.iter_mut().zip(contribution.iter()) {
 			slot.remove(input);
 		}

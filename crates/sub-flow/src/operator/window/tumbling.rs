@@ -17,6 +17,7 @@ use reifydb_core::{
 		store::WindowStore,
 	},
 };
+use reifydb_engine::flow::aggregate::SlotKind;
 use reifydb_runtime::hash::Hash128;
 use reifydb_value::{
 	Result,
@@ -24,12 +25,7 @@ use reifydb_value::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::{
-	accumulator::{RowAccumulator, SlotKind},
-	aggregation::Aggregation,
-	operator::WindowOperator,
-	store::FlowWindowStore,
-};
+use super::{accumulator::RowAccumulator, aggregation::Aggregation, operator::WindowOperator, store::FlowWindowStore};
 use crate::transaction::FlowTransaction;
 
 type EngineBuckets = TumblingBuckets<Hash128, u64, Vec<Option<Value>>>;
@@ -44,31 +40,32 @@ struct EngineWindowMeta {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn route_engine_columns(
-	operator: &WindowOperator,
+pub(super) fn route_into_buckets<F>(
+	core: &Aggregation,
 	columns: &Columns,
 	is_add: bool,
-	window_size_ms: u64,
+	assign: F,
 	buckets: &mut EngineBuckets,
 	group_values: &mut HashMap<Hash128, Vec<Value>>,
 	arrival: &mut Vec<(Hash128, WindowSpan<u64>)>,
 	window_max_ts: &mut HashMap<(Hash128, WindowSpan<u64>), u64>,
-) -> Result<()> {
+) -> Result<()>
+where
+	F: Fn(usize) -> (WindowSpan<u64>, u64),
+{
 	let row_count = columns.row_count();
 	if row_count == 0 {
 		return Ok(());
 	}
-	let groups = operator.core.compute_groups(columns)?;
-	let timestamps = operator.resolve_event_timestamps(columns, row_count)?;
-	let slot_cols = operator.core.evaluate_slot_inputs(columns)?;
-	for row_idx in 0..row_count {
-		let (hash, gvals) = &groups[row_idx];
-		let span = WindowSpan::for_slot(timestamps[row_idx], window_size_ms);
-		let contribution = operator.core.build_contribution(columns, &slot_cols, row_idx);
+	let groups = core.compute_groups(columns)?;
+	let slot_cols = core.evaluate_slot_inputs(columns)?;
+	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
+		let (span, event_ts) = assign(row_idx);
+		let contribution = core.build_contribution(columns, &slot_cols, row_idx);
 		let key = (*hash, span);
 		let event = if is_add {
 			let entry = window_max_ts.entry(key).or_insert(0);
-			*entry = (*entry).max(timestamps[row_idx]);
+			*entry = (*entry).max(event_ts);
 			AccumulatorEvent::Add(contribution)
 		} else {
 			AccumulatorEvent::Remove(contribution)
@@ -80,6 +77,33 @@ fn route_engine_columns(
 		group_values.entry(*hash).or_insert_with(|| gvals.clone());
 	}
 	Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn route_engine_columns(
+	operator: &WindowOperator,
+	columns: &Columns,
+	is_add: bool,
+	window_size_ms: u64,
+	buckets: &mut EngineBuckets,
+	group_values: &mut HashMap<Hash128, Vec<Value>>,
+	arrival: &mut Vec<(Hash128, WindowSpan<u64>)>,
+	window_max_ts: &mut HashMap<(Hash128, WindowSpan<u64>), u64>,
+) -> Result<()> {
+	let timestamps = operator.resolve_event_timestamps(columns, columns.row_count())?;
+	route_into_buckets(
+		&operator.core,
+		columns,
+		is_add,
+		|row_idx| {
+			let ts = timestamps[row_idx];
+			(WindowSpan::for_slot(ts, window_size_ms), ts)
+		},
+		buckets,
+		group_values,
+		arrival,
+		window_max_ts,
+	)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -825,16 +849,16 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
 }
 
-pub fn tick_expire_session_engine(
+fn tick_expire_by_cutoff(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	current_timestamp: u64,
+	cutoff_ms: u64,
 ) -> Result<Vec<Diff>> {
-	let gap_ms = operator.session_gap_ms();
-	if gap_ms == 0 {
+	if cutoff_ms == 0 {
 		return Ok(Vec::new());
 	}
-	let meta_keys = scan_engine_meta_keys(operator, txn)?;
+	let meta_keys = scan_meta_keys(operator, txn, b"ewm:")?;
 	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
 	let mut diffs = Vec::new();
 	let mut store = FlowWindowStore::new(txn, operator.core.node);
@@ -845,7 +869,7 @@ pub fn tick_expire_session_engine(
 		if meta.last_event_time == 0 {
 			continue;
 		}
-		if current_timestamp.saturating_sub(meta.last_event_time) <= gap_ms {
+		if current_timestamp.saturating_sub(meta.last_event_time) <= cutoff_ms {
 			continue;
 		}
 		let row_number = RowNumber(meta.row_number);
@@ -862,7 +886,19 @@ pub fn tick_expire_session_engine(
 	Ok(diffs)
 }
 
-fn scan_engine_meta_keys(operator: &WindowOperator, txn: &mut FlowTransaction) -> Result<Vec<EncodedKey>> {
+pub fn tick_expire_session_engine(
+	operator: &WindowOperator,
+	txn: &mut FlowTransaction,
+	current_timestamp: u64,
+) -> Result<Vec<Diff>> {
+	tick_expire_by_cutoff(operator, txn, current_timestamp, operator.session_gap_ms())
+}
+
+pub(super) fn scan_meta_keys(
+	operator: &WindowOperator,
+	txn: &mut FlowTransaction,
+	tag: &[u8],
+) -> Result<Vec<EncodedKey>> {
 	let all_state = txn.state_scan_all(operator.core.node)?;
 	let prefix = FlowNodeStateKey::new(operator.core.node, vec![]).encode();
 	let mut keys = Vec::new();
@@ -872,7 +908,7 @@ fn scan_engine_meta_keys(operator: &WindowOperator, txn: &mut FlowTransaction) -
 			continue;
 		}
 		let inner = &full_key[prefix.len()..];
-		if inner.starts_with(b"ewm:") {
+		if inner.starts_with(tag) {
 			keys.push(EncodedKey::new(inner));
 		}
 	}
@@ -888,35 +924,5 @@ pub fn tick_expire_engine_windows(
 		Some(d) => d.milliseconds().unwrap_or(0) as u64,
 		None => return Ok(Vec::new()),
 	};
-	if window_size_ms == 0 {
-		return Ok(Vec::new());
-	}
-
-	let meta_keys = scan_engine_meta_keys(operator, txn)?;
-	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
-	let mut diffs = Vec::new();
-	let mut store = FlowWindowStore::new(txn, operator.core.node);
-	for meta_key in &meta_keys {
-		let Some(meta) = store.state_get::<EngineWindowMeta>(meta_key)? else {
-			continue;
-		};
-		if meta.last_event_time == 0 {
-			continue;
-		}
-		if current_timestamp.saturating_sub(meta.last_event_time) <= window_size_ms {
-			continue;
-		}
-
-		let row_number = RowNumber(meta.row_number);
-		let accumulator_key = row_number.into_encoded_key();
-		if let Some(accumulator) = store.state_get::<RowAccumulator>(&accumulator_key)?
-			&& let Some(value) = accumulator.finalize()
-		{
-			let row = operator.core.build_engine_row(&meta.group_values, &value, row_number, ts_nanos)?;
-			diffs.push(Diff::remove(Columns::from_row(&row)));
-		}
-		store.state_remove(&accumulator_key)?;
-		store.state_remove(meta_key)?;
-	}
-	Ok(diffs)
+	tick_expire_by_cutoff(operator, txn, current_timestamp, window_size_ms)
 }

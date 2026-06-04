@@ -265,7 +265,7 @@ mod tests {
 		},
 		interface::catalog::flow::FlowNodeId,
 		row::Row as CoreRow,
-		window::accumulator::{LastValue, Moments},
+		window::accumulator::invertible::{LastValue, Moments},
 	};
 	use reifydb_value::value::{Value, value_type::ValueType};
 

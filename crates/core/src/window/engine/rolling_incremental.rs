@@ -8,8 +8,7 @@ use std::{
 	marker::PhantomData,
 };
 
-use reifydb_value::reifydb_assertions;
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{

@@ -273,7 +273,7 @@ mod tests {
 		},
 		interface::catalog::flow::FlowNodeId,
 		row::Row as CoreRow,
-		window::accumulator::{Moments, Multiset, OrdF64},
+		window::accumulator::invertible::{Moments, Multiset, OrdF64},
 	};
 	use reifydb_value::value::{Value, value_type::ValueType};
 	use serde::{Deserialize, Serialize};

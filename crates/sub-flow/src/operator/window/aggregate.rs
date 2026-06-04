@@ -5,40 +5,29 @@ use std::collections::{BTreeMap, HashMap};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
-	encoded::shape::{RowShape, RowShapeField},
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
 	value::column::columns::Columns,
 	window::{
-		engine::{AccumulatorEvent, LatePolicy, tumbling::TumblingBuckets},
+		engine::{LatePolicy, tumbling::TumblingBuckets},
 		span::WindowSpan,
 	},
 };
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::{context::RuntimeContext, hash::Hash128};
-use reifydb_value::{
-	Result,
-	value::{Value, value_type::ValueType},
-};
+use reifydb_value::{Result, value::Value};
 
-use super::{aggregation::Aggregation, tumbling::finish_tumbling_engine};
+use super::{
+	aggregation::Aggregation,
+	tumbling::{finish_tumbling_engine, route_into_buckets},
+};
 use crate::{
 	operator::{Operator, OperatorCell},
 	transaction::FlowTransaction,
 };
-
-#[inline]
-pub(super) fn build_aggregation_shape(names: &[String], types: &[ValueType]) -> RowShape {
-	let fields: Vec<RowShapeField> = names
-		.iter()
-		.zip(types.iter())
-		.map(|(name, ty)| RowShapeField::unconstrained(name.clone(), ty.clone()))
-		.collect();
-	RowShape::new(fields)
-}
 
 type EngineBuckets = TumblingBuckets<Hash128, u64, Vec<Option<Value>>>;
 
@@ -79,75 +68,68 @@ impl Operator for AggregateOperator {
 	}
 }
 
-fn route_aggregate_columns(
-	core: &Aggregation,
-	columns: &Columns,
-	is_add: bool,
-	buckets: &mut EngineBuckets,
-	group_values: &mut HashMap<Hash128, Vec<Value>>,
-	arrival: &mut Vec<(Hash128, WindowSpan<u64>)>,
-) -> Result<()> {
-	let row_count = columns.row_count();
-	if row_count == 0 {
-		return Ok(());
-	}
-	let groups = core.compute_groups(columns)?;
-	let slot_cols = core.evaluate_slot_inputs(columns)?;
-	let span = WindowSpan::new(0u64, 1u64);
-	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
-		let contribution = core.build_contribution(columns, &slot_cols, row_idx);
-		let key = (*hash, span);
-		let event = if is_add {
-			AccumulatorEvent::Add(contribution)
-		} else {
-			AccumulatorEvent::Remove(contribution)
-		};
-		if !buckets.contains_key(&key) {
-			arrival.push(key);
-		}
-		buckets.entry(key).or_default().push(event);
-		group_values.entry(*hash).or_insert_with(|| gvals.clone());
-	}
-	Ok(())
-}
-
 pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 	let kinds = core.slot_kinds.clone().expect("aggregate requires representable slot kinds");
 
 	let mut buckets: EngineBuckets = BTreeMap::new();
 	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
 	let mut arrival: Vec<(Hash128, WindowSpan<u64>)> = Vec::new();
+	let mut window_max_ts: HashMap<(Hash128, WindowSpan<u64>), u64> = HashMap::new();
+
+	let degenerate_span = |_row_idx: usize| (WindowSpan::new(0u64, 1u64), 0u64);
 
 	for diff in change.diffs.iter() {
 		match diff {
 			Diff::Insert {
 				post,
 				..
-			} => route_aggregate_columns(core, post, true, &mut buckets, &mut group_values, &mut arrival)?,
+			} => route_into_buckets(
+				core,
+				post,
+				true,
+				degenerate_span,
+				&mut buckets,
+				&mut group_values,
+				&mut arrival,
+				&mut window_max_ts,
+			)?,
 			Diff::Remove {
 				pre,
 				..
-			} => route_aggregate_columns(core, pre, false, &mut buckets, &mut group_values, &mut arrival)?,
+			} => route_into_buckets(
+				core,
+				pre,
+				false,
+				degenerate_span,
+				&mut buckets,
+				&mut group_values,
+				&mut arrival,
+				&mut window_max_ts,
+			)?,
 			Diff::Update {
 				pre,
 				post,
 				..
 			} => {
-				route_aggregate_columns(
+				route_into_buckets(
 					core,
 					pre,
 					false,
+					degenerate_span,
 					&mut buckets,
 					&mut group_values,
 					&mut arrival,
+					&mut window_max_ts,
 				)?;
-				route_aggregate_columns(
+				route_into_buckets(
 					core,
 					post,
 					true,
+					degenerate_span,
 					&mut buckets,
 					&mut group_values,
 					&mut arrival,
+					&mut window_max_ts,
 				)?;
 			}
 		}
@@ -160,7 +142,7 @@ pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, cha
 		buckets,
 		&group_values,
 		arrival,
-		HashMap::new(),
+		window_max_ts,
 		&kinds,
 		LatePolicy::Process,
 	)?;

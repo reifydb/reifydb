@@ -5,11 +5,11 @@ use std::sync::LazyLock;
 
 use postcard::to_stdvec;
 use reifydb_core::{
-	encoded::key::EncodedKey,
-	interface::{
-		catalog::flow::FlowNodeId,
-		identifier::{ColumnIdentifier, ColumnShape},
+	encoded::{
+		key::EncodedKey,
+		shape::{RowShape, RowShapeField},
 	},
+	interface::catalog::flow::FlowNodeId,
 	internal,
 	row::Row,
 	util::encoding::keycode::serializer::KeySerializer,
@@ -20,10 +20,11 @@ use reifydb_engine::{
 		compile::{CompiledExpr, compile_expression},
 		context::{CompileContext, EvalContext},
 	},
+	flow::aggregate::{SlotArg, SlotKind, rewrite_aggregates, synthetic_aggregate_column_name},
 	vm::stack::SymbolTable,
 };
 use reifydb_routine::routine::registry::Routines;
-use reifydb_rql::expression::{ColumnExpression, Expression, name::display_label};
+use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_runtime::{
 	context::RuntimeContext,
 	hash::{Hash128, xxh3_128},
@@ -31,12 +32,10 @@ use reifydb_runtime::{
 use reifydb_value::{
 	Result,
 	error::Error,
-	fragment::Fragment,
 	params::Params,
-	value::{Value, identity::IdentityId, row_number::RowNumber},
+	value::{Value, identity::IdentityId, row_number::RowNumber, value_type::ValueType},
 };
 
-use super::{accumulator::SlotKind, aggregate::build_aggregation_shape};
 use crate::operator::OperatorCell;
 
 static EMPTY_PARAMS: Params = Params::None;
@@ -50,98 +49,19 @@ pub enum SlotInput {
 	Expr(usize),
 }
 
-enum SlotArg {
-	Star,
-	Column(String),
-	Expr(Expression),
-}
-
-fn classify_slot(routines: &Routines, expr: &Expression) -> Option<(SlotKind, SlotArg)> {
-	let inner = match expr {
-		Expression::Alias(alias) => alias.expression.as_ref(),
-		other => other,
-	};
-	let call = match inner {
-		Expression::Call(c) => c,
-		_ => return None,
-	};
-	let name = call.func.0.text().to_string();
-	routines.get_aggregate_function(&name)?;
-	let arg = match call.args.as_slice() {
-		[] => SlotArg::Star,
-		[Expression::Column(col)] => SlotArg::Column(col.0.name.text().to_string()),
-		[single] => SlotArg::Expr(single.clone()),
-		_ => return None,
-	};
-	let is_star = matches!(arg, SlotArg::Star);
-	let short = name.rsplit("::").next().unwrap_or(&name);
-	let kind = match short {
-		"count" => SlotKind::Count {
-			count_star: is_star,
-		},
-		"sum" if !is_star => SlotKind::Sum,
-		"avg" if !is_star => SlotKind::Avg,
-		"min" if !is_star => SlotKind::Min,
-		"max" if !is_star => SlotKind::Max,
-		_ => return None,
-	};
-	Some((kind, arg))
-}
-
-fn synthetic_aggregate_column(idx: usize) -> Expression {
-	let name = format!("__aggregate{idx}");
-	Expression::Column(ColumnExpression(ColumnIdentifier {
-		shape: ColumnShape::Alias(Fragment::internal(name.clone())),
-		name: Fragment::internal(name),
-	}))
-}
-
-fn rewrite_aggregates(routines: &Routines, expr: &mut Expression, slots: &mut Vec<(SlotKind, SlotArg)>) -> bool {
-	if let Some((kind, arg)) = classify_slot(routines, expr) {
-		let idx = slots.len();
-		slots.push((kind, arg));
-		*expr = synthetic_aggregate_column(idx);
-		return true;
-	}
-	match expr {
-		Expression::Alias(a) => rewrite_aggregates(routines, a.expression.as_mut(), slots),
-		Expression::Cast(c) => rewrite_aggregates(routines, c.expression.as_mut(), slots),
-		Expression::Prefix(p) => rewrite_aggregates(routines, p.expression.as_mut(), slots),
-		Expression::Add(e) => {
-			let l = rewrite_aggregates(routines, e.left.as_mut(), slots);
-			let r = rewrite_aggregates(routines, e.right.as_mut(), slots);
-			l && r
-		}
-		Expression::Sub(e) => {
-			let l = rewrite_aggregates(routines, e.left.as_mut(), slots);
-			let r = rewrite_aggregates(routines, e.right.as_mut(), slots);
-			l && r
-		}
-		Expression::Mul(e) => {
-			let l = rewrite_aggregates(routines, e.left.as_mut(), slots);
-			let r = rewrite_aggregates(routines, e.right.as_mut(), slots);
-			l && r
-		}
-		Expression::Div(e) => {
-			let l = rewrite_aggregates(routines, e.left.as_mut(), slots);
-			let r = rewrite_aggregates(routines, e.right.as_mut(), slots);
-			l && r
-		}
-		Expression::Rem(e) => {
-			let l = rewrite_aggregates(routines, e.left.as_mut(), slots);
-			let r = rewrite_aggregates(routines, e.right.as_mut(), slots);
-			l && r
-		}
-		Expression::Constant(_) => true,
-		_ => false,
-	}
+#[inline]
+fn build_aggregation_shape(names: &[String], types: &[ValueType]) -> RowShape {
+	let fields: Vec<RowShapeField> = names
+		.iter()
+		.zip(types.iter())
+		.map(|(name, ty)| RowShapeField::unconstrained(name.clone(), ty.clone()))
+		.collect();
+	RowShape::new(fields)
 }
 
 pub struct Aggregation {
 	pub node: FlowNodeId,
 	pub parent: OperatorCell,
-	pub group_by: Vec<Expression>,
-	pub aggregations: Vec<Expression>,
 	pub compiled_group_by: Vec<CompiledExpr>,
 	pub group_names: Vec<String>,
 	pub aggregate_output_names: Vec<String>,
@@ -225,8 +145,6 @@ impl Aggregation {
 		Self {
 			node,
 			parent,
-			group_by,
-			aggregations,
 			compiled_group_by,
 			group_names,
 			aggregate_output_names,
@@ -264,7 +182,7 @@ impl Aggregation {
 			return Ok(vec![(Hash128::from(0u128), Vec::new()); row_count]);
 		}
 
-		let session = self.eval_session(false);
+		let session = self.eval_session();
 		let exec_ctx = session.with_eval(columns.clone(), row_count);
 		let mut group_columns: Vec<ColumnWithName> = Vec::new();
 		for compiled_expr in &self.compiled_group_by {
@@ -294,7 +212,7 @@ impl Aggregation {
 			return Ok(Vec::new());
 		}
 		let row_count = columns.row_count();
-		let session = self.eval_session(false);
+		let session = self.eval_session();
 		let exec_ctx = session.with_eval(columns.clone(), row_count);
 		let mut out = Vec::with_capacity(self.compiled_slot_args.len());
 		for compiled in &self.compiled_slot_args {
@@ -323,7 +241,7 @@ impl Aggregation {
 		if self.compiled_outputs.is_empty() {
 			return Ok(slot_values.to_vec());
 		}
-		let names: Vec<String> = (0..slot_values.len()).map(|i| format!("__aggregate{i}")).collect();
+		let names: Vec<String> = (0..slot_values.len()).map(synthetic_aggregate_column_name).collect();
 		let types: Vec<_> = slot_values.iter().map(Value::get_type).collect();
 		let layout = build_aggregation_shape(&names, &types);
 		let mut encoded = layout.allocate();
@@ -334,7 +252,7 @@ impl Aggregation {
 			shape: layout,
 		};
 		let columns = Columns::from_row(&row);
-		let session = self.eval_session(false);
+		let session = self.eval_session();
 		let exec_ctx = session.with_eval(columns, 1);
 		let mut out = Vec::with_capacity(self.compiled_outputs.len());
 		for compiled in &self.compiled_outputs {
@@ -379,7 +297,7 @@ impl Aggregation {
 		self.runtime_context.clock.now_millis()
 	}
 
-	pub(super) fn eval_session(&self, is_aggregate: bool) -> EvalContext<'_> {
+	pub(super) fn eval_session(&self) -> EvalContext<'_> {
 		EvalContext {
 			params: &EMPTY_PARAMS,
 			symbols: &EMPTY_SYMBOL_TABLE,
@@ -387,7 +305,7 @@ impl Aggregation {
 			runtime_context: &self.runtime_context,
 			arena: None,
 			identity: IdentityId::root(),
-			is_aggregate_context: is_aggregate,
+			is_aggregate_context: false,
 			columns: Columns::empty(),
 			row_count: 1,
 			target: None,

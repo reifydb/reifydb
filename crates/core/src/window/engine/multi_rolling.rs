@@ -8,8 +8,7 @@ use std::{
 	marker::PhantomData,
 };
 
-use reifydb_value::reifydb_assertions;
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
@@ -216,6 +215,17 @@ where
 			}
 		}
 		let resolved_rows = store.get_or_create_row_numbers(&state_lookup_keys)?;
+		reifydb_assertions! {
+			let resolved = resolved_rows.len();
+			let requested = state_lookup_keys.len();
+			assert!(
+				resolved == requested,
+				"get_or_create_row_numbers returned {resolved} rows for {requested} group keys; \
+				 the zip below pairs resolve_order with resolved_rows by position, so a length \
+				 mismatch would silently leave some groups without a state_rows entry and route \
+				 them through the per-bucket get_or_create_row_number fallback, diverging behaviour"
+			);
+		}
 		let state_keys: Vec<RowNumber> = resolved_rows.iter().map(|(rn, _)| *rn).collect();
 		for (group, (state_row_number, _)) in resolve_order.into_iter().zip(resolved_rows) {
 			state_rows.insert(group, state_row_number);

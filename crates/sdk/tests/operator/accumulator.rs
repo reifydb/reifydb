@@ -9,8 +9,9 @@
 //! implementation regresses.
 
 use reifydb_core::window::accumulator::{
-	EndpointByCoord, KeyedInvertibleAccumulator, LastValue, Moments, Multiset, OrdF64, SealingEndpoint, SealingMin,
 	WindowAccumulator,
+	invertible::{EndpointByCoord, KeyedInvertibleAccumulator, LastValue, Moments, Multiset, OrdF64},
+	sealing::{SealingEndpoint, SealingMin},
 };
 
 use super::common::{assert_add_remove_is_inverse, assert_order_independent};

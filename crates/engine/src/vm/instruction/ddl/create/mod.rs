@@ -11,6 +11,7 @@ use reifydb_core::{
 	},
 	sort::SortKey,
 };
+use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::query::QueryPlan;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_value::{fragment::Fragment, return_error};
@@ -87,6 +88,7 @@ pub mod transactional;
 
 pub(crate) fn create_deferred_view_flow(
 	catalog: &Catalog,
+	routines: &Routines,
 	txn: &mut AdminTransaction,
 	view: &View,
 	plan: QueryPlan,
@@ -100,6 +102,6 @@ pub(crate) fn create_deferred_view_flow(
 		},
 	)?;
 
-	let _flow = compile_flow(catalog, txn, plan, Some(view), flow.id)?;
+	let _flow = compile_flow(catalog, routines, txn, plan, Some(view), flow.id)?;
 	Ok(())
 }

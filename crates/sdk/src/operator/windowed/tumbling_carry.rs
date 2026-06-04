@@ -272,7 +272,7 @@ mod tests {
 		},
 		interface::catalog::flow::FlowNodeId,
 		row::Row as CoreRow,
-		window::accumulator::RetainedAccumulator,
+		window::accumulator::invertible::RetainedAccumulator,
 	};
 	use reifydb_value::value::{Value, value_type::ValueType};
 

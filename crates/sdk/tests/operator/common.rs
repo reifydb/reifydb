@@ -25,8 +25,11 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	window::{
 		accumulator::{
-			KeyedInvertibleAccumulator, LastValue, Moments, Multiset, OrdF64, RetainedAccumulator,
-			SealingEndpoint, SealingMax, SealingMin, WindowAccumulator,
+			WindowAccumulator,
+			invertible::{
+				KeyedInvertibleAccumulator, LastValue, Moments, Multiset, OrdF64, RetainedAccumulator,
+			},
+			sealing::{SealingEndpoint, SealingMax, SealingMin},
 		},
 		span::WindowSpan,
 	},

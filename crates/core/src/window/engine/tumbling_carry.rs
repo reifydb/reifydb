@@ -8,8 +8,7 @@ use std::{
 	marker::PhantomData,
 };
 
-use reifydb_value::reifydb_assertions;
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
@@ -232,6 +231,17 @@ where
 			}
 		}
 		let resolved_rows = store.get_or_create_row_numbers(&survivor_keys)?;
+		reifydb_assertions! {
+			let survivors = survivor_keys.len();
+			let resolved = resolved_rows.len();
+			assert!(
+				resolved == survivors,
+				"get_or_create_row_numbers must return exactly one row per survivor key; a short batch would \
+				 leave a surviving slot with no resolved row, so the slot_resolved zip below pairs it with None \
+				 and apply silently re-creates a fresh row instead of reusing the existing window state, \
+				 double-counting it (survivor_keys={survivors}, resolved_rows={resolved})"
+			);
+		}
 		let accumulator_keys: Vec<RowNumber> = resolved_rows.iter().map(|(rn, _)| *rn).collect();
 		self.accumulators.warm(store, &accumulator_keys)?;
 		let mut resolved_rows = resolved_rows.into_iter();

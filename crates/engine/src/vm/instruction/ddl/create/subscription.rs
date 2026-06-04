@@ -60,8 +60,14 @@ pub(crate) fn create_subscription(
 		plan.as_clause.ok_or_else(|| Error(Box::new(subscription_missing_as_clause(Fragment::None))))?;
 
 	let flow_id = FlowId(subscription_id.0);
-	let flow_dag =
-		compile_subscription_flow_ephemeral(&services.catalog, txn, *as_clause, subscription_id, flow_id)?;
+	let flow_dag = compile_subscription_flow_ephemeral(
+		&services.catalog,
+		&services.routines,
+		txn,
+		*as_clause,
+		subscription_id,
+		flow_id,
+	)?;
 
 	sub_service.register_subscription(subscription_id, flow_dag, column_names, plan.hydration.enabled, txn)?;
 

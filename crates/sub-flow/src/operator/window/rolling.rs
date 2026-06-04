@@ -5,9 +5,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use reifydb_core::{
 	common::WindowKind,
-	encoded::key::{EncodedKey, IntoEncodedKey},
+	encoded::key::IntoEncodedKey,
 	interface::change::{Change, Diff},
-	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 	value::column::columns::Columns,
 	window::{
 		accumulator::WindowAccumulator,
@@ -18,6 +17,7 @@ use reifydb_core::{
 		store::WindowStore,
 	},
 };
+use reifydb_engine::flow::aggregate::SlotKind;
 use reifydb_runtime::hash::Hash128;
 use reifydb_value::{
 	Result,
@@ -26,9 +26,10 @@ use reifydb_value::{
 use serde::{Deserialize, Serialize};
 
 use super::{
-	accumulator::{RowAccumulator, SlotKind, StampedAccumulator},
+	accumulator::{RowAccumulator, StampedAccumulator},
 	operator::WindowOperator,
 	store::FlowWindowStore,
+	tumbling::scan_meta_keys,
 };
 use crate::transaction::FlowTransaction;
 
@@ -282,23 +283,6 @@ fn finish_rolling_results(
 	Ok(diffs)
 }
 
-fn scan_rolling_meta_keys(operator: &WindowOperator, txn: &mut FlowTransaction) -> Result<Vec<EncodedKey>> {
-	let all_state = txn.state_scan_all(operator.core.node)?;
-	let prefix = FlowNodeStateKey::new(operator.core.node, vec![]).encode();
-	let mut keys = Vec::new();
-	for item in &all_state.items {
-		let full_key = &item.key;
-		if full_key.len() <= prefix.len() {
-			continue;
-		}
-		let inner = &full_key[prefix.len()..];
-		if inner.starts_with(b"rwm:") {
-			keys.push(EncodedKey::new(inner));
-		}
-	}
-	Ok(keys)
-}
-
 pub fn tick_expire_rolling_engine(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
@@ -316,7 +300,7 @@ pub fn tick_expire_rolling_engine(
 	let cutoff = current_timestamp.saturating_sub(size_ms + lag_ms);
 	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
 
-	let meta_keys = scan_rolling_meta_keys(operator, txn)?;
+	let meta_keys = scan_meta_keys(operator, txn, b"rwm:")?;
 	let mut diffs = Vec::new();
 	let mut store = FlowWindowStore::new(txn, operator.core.node);
 	for meta_key in &meta_keys {
@@ -543,7 +527,7 @@ pub fn tick_expire_rolling_processing_engine(
 	let cutoff = current_timestamp.saturating_sub(size_ms + lag_ms);
 	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
 
-	let meta_keys = scan_rolling_meta_keys(operator, txn)?;
+	let meta_keys = scan_meta_keys(operator, txn, b"rwm:")?;
 	let mut diffs = Vec::new();
 	let mut store = FlowWindowStore::new(txn, operator.core.node);
 	for meta_key in &meta_keys {
