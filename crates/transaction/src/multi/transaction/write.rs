@@ -35,6 +35,7 @@ use crate::{
 	multi::{
 		RangeScope,
 		conflict::ConflictManager,
+		lease::VersionLeaseGuard,
 		marker::Marker,
 		oracle::{CreateCommitResult, Oracle},
 		pending::PendingWrites,
@@ -77,6 +78,8 @@ pub struct MultiWriteTransaction {
 	pub(crate) preexisting_keys: HashSet<Vec<u8>>,
 
 	pub(crate) lifecycle: Lifecycle,
+
+	pub(crate) self_lease: Option<VersionLeaseGuard>,
 }
 
 impl MultiWriteTransaction {
@@ -101,6 +104,7 @@ impl MultiWriteTransaction {
 			delta_log: Vec::new(),
 			preexisting_keys: HashSet::new(),
 			lifecycle: Lifecycle::Active,
+			self_lease: None,
 		})
 	}
 
@@ -528,6 +532,17 @@ impl MultiWriteTransaction {
 				entries.len()
 			);
 		}
+		let self_lease = self.oracle.leases.try_acquire(commit_version, self.oracle.query.done_until()).ok();
+		reifydb_assertions! {
+			assert!(
+				self_lease.is_some(),
+				"self-version lease on freshly-committed version {} must succeed: it is the newest \
+				 version so query.done_until() < it; failing means the historical-GC cutoff passed our \
+				 own commit version before its post-commit hooks ran",
+				commit_version.0
+			);
+		}
+		self.self_lease = self_lease;
 		let deltas = self.optimize_for_storage(&entries);
 		let flow_changes = match self.propose_to_raft(commit_version, &deltas, flow_changes)? {
 			Ok(version) => return Ok(version),
@@ -609,6 +624,10 @@ impl MultiWriteTransaction {
 
 	pub fn is_discard(&self) -> bool {
 		self.lifecycle == Lifecycle::Discarded
+	}
+
+	pub(crate) fn take_self_lease(&mut self) -> Option<VersionLeaseGuard> {
+		self.self_lease.take()
 	}
 }
 

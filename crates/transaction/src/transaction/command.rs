@@ -287,6 +287,7 @@ impl CommandTransaction {
 		} else {
 			multi.commit(flow_changes)?
 		};
+		let _self_lease = multi.take_self_lease();
 		self.interceptors.post_commit.execute(PostCommitContext::new(id, version, changes, row_changes))?;
 		Ok(version)
 	}
