@@ -37,6 +37,7 @@ fn test_row_settings_sync_to_catalog_cache() {
 
 	let ttl = catalog
 		.find_row_settings(&mut Transaction::Admin(&mut txn), shape)
+		.unwrap()
 		.expect("TTL not found in materialized catalog");
 	assert_eq!(ttl.ttl.expect("ttl not set").duration_nanos, 3_600_000_000_000);
 }
@@ -87,6 +88,7 @@ fn test_row_settings_replication_sync() {
 
 	let ttl = replica_catalog
 		.find_row_settings(&mut Transaction::Admin(&mut q_txn), shape)
+		.unwrap()
 		.expect("TTL not found in replica materialized catalog");
 	assert_eq!(ttl.ttl.expect("ttl not set").duration_nanos, 60_000_000_000);
 }

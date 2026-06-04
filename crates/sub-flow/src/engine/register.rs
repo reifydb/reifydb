@@ -200,11 +200,13 @@ impl FlowEngineInner {
 				snapshot,
 				natural,
 				latest,
-			} => self.add_join(node_id, &inputs, join_type, left, right, alias, snapshot, natural, latest)?,
+			} => self.add_join(
+				txn, node_id, &inputs, join_type, left, right, alias, snapshot, natural, latest,
+			)?,
 			Distinct {
 				expressions,
-			} => self.add_distinct(node_id, &inputs, expressions)?,
-			Append {} => self.add_append(node_id, &inputs)?,
+			} => self.add_distinct(txn, node_id, &inputs, expressions)?,
+			Append {} => self.add_append(txn, node_id, &inputs)?,
 			Apply {
 				operator,
 				expressions,
@@ -470,6 +472,7 @@ impl FlowEngineInner {
 	#[allow(clippy::too_many_arguments)]
 	fn add_join(
 		&mut self,
+		txn: &mut Transaction<'_>,
 		node_id: FlowNodeId,
 		inputs: &[FlowNodeId],
 		join_type: JoinType,
@@ -511,7 +514,7 @@ impl FlowEngineInner {
 			(left, right)
 		};
 
-		let join_ttl = self.catalog.find_operator_settings_latest(node_id).and_then(|s| s.join);
+		let join_ttl = self.catalog.find_operator_settings(txn, node_id)?.and_then(|s| s.join);
 		let left = join_ttl.as_ref().and_then(|j| j.left.as_ref());
 		let left_ttl = left.map(|t| Duration::from_nanoseconds_const(t.duration_nanos as i64));
 		let left_ttl_anchor = left.map(|t| t.anchor).unwrap_or_default();
@@ -551,12 +554,13 @@ impl FlowEngineInner {
 	#[inline]
 	fn add_distinct(
 		&mut self,
+		txn: &mut Transaction<'_>,
 		node_id: FlowNodeId,
 		inputs: &[FlowNodeId],
 		expressions: Vec<Expression>,
 	) -> Result<()> {
 		let parent = self.parent(inputs[0])?;
-		let ttl = self.catalog.find_operator_settings_latest(node_id).and_then(|s| s.ttl);
+		let ttl = self.catalog.find_operator_settings(txn, node_id)?.and_then(|s| s.ttl);
 		self.operators.insert(
 			node_id,
 			OperatorCell::new(Operators::Distinct(DistinctOperator::new(
@@ -572,7 +576,7 @@ impl FlowEngineInner {
 	}
 
 	#[inline]
-	fn add_append(&mut self, node_id: FlowNodeId, inputs: &[FlowNodeId]) -> Result<()> {
+	fn add_append(&mut self, txn: &mut Transaction<'_>, node_id: FlowNodeId, inputs: &[FlowNodeId]) -> Result<()> {
 		if inputs.len() < 2 {
 			return Err(Error(Box::new(internal!("Append node must have at least 2 inputs"))));
 		}
@@ -593,7 +597,7 @@ impl FlowEngineInner {
 			parents.push(parent);
 		}
 
-		let ttl = self.catalog.find_operator_settings_latest(node_id).and_then(|s| s.ttl);
+		let ttl = self.catalog.find_operator_settings(txn, node_id)?.and_then(|s| s.ttl);
 		let ttl_nanos = ttl.as_ref().map(|t| t.duration_nanos);
 		let ttl_anchor = ttl.as_ref().map(|t| t.anchor).unwrap_or_default();
 

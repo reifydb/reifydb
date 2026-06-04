@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod create;
+mod find;
 pub(crate) mod shape;
 
 use reifydb_core::{

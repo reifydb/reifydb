@@ -8,7 +8,6 @@ use super::decode_row_settings;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	#[allow(dead_code)]
 	pub fn find_row_settings(rx: &mut Transaction<'_>, shape: ShapeId) -> Result<Option<RowSettings>> {
 		let value = rx.get(&RowSettingsKey::encoded(shape))?;
 		Ok(value.and_then(|v| decode_row_settings(&v.row)))

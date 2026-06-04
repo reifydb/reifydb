@@ -9,12 +9,20 @@ use reifydb_core::{
 };
 use reifydb_store_multi::{flush::ShapePersistence, gc::row::ListRowSettings};
 use reifydb_transaction::transaction::Transaction;
+use tracing::warn;
 
-use crate::catalog::Catalog;
+use crate::{CatalogStore, Result, catalog::Catalog};
 
 impl Catalog {
-	pub fn find_row_settings(&self, txn: &mut Transaction<'_>, shape: ShapeId) -> Option<RowSettings> {
-		self.cache.find_row_settings_at(shape, txn.version())
+	pub fn find_row_settings(&self, txn: &mut Transaction<'_>, shape: ShapeId) -> Result<Option<RowSettings>> {
+		if let Some(settings) = self.cache.find_row_settings_at(shape, txn.version()) {
+			return Ok(Some(settings));
+		}
+		if let Some(settings) = CatalogStore::find_row_settings(txn, shape)? {
+			warn!("row settings for {:?} found in storage but not in CatalogCache", shape);
+			return Ok(Some(settings));
+		}
+		Ok(None)
 	}
 }
 
