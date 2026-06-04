@@ -55,6 +55,8 @@ pub enum FlowNodeType {
 		snapshot: bool,
 		#[serde(default)]
 		natural: bool,
+		#[serde(default)]
+		latest: bool,
 	},
 	Aggregate {
 		by: Vec<Expression>,
@@ -110,7 +112,7 @@ impl FlowNodeType {
 			FlowNodeType::Append { .. }
 				| FlowNodeType::Distinct { .. }
 				| FlowNodeType::Window { .. }
-				| FlowNodeType::Apply { .. }
+				| FlowNodeType::Apply { .. } | FlowNodeType::Join { .. }
 		)
 	}
 
@@ -388,14 +390,15 @@ mod tests {
 			alias: None,
 			snapshot: false,
 			natural: false,
+			latest: false,
 		}
 	}
 
 	#[test]
-	fn join_never_requests_ticks() {
+	fn join_always_requests_ticks() {
 		// Join state TTL is reclaimed by the background operator GC actor (per-side, via
 		// OperatorSettings), not on the flow tick path - so a Join node never requests ticks.
-		assert!(!join().ticks());
+		assert!(join().ticks());
 	}
 
 	#[test]

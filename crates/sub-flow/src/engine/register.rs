@@ -34,7 +34,13 @@ use reifydb_rql::{
 };
 use reifydb_sdk::config::Config;
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
-use reifydb_value::{Result, error::Error, fragment::Fragment, reifydb_assertions, value::dictionary::DictionaryId};
+use reifydb_value::{
+	Result,
+	error::Error,
+	fragment::Fragment,
+	reifydb_assertions,
+	value::{dictionary::DictionaryId, duration::Duration},
+};
 use tracing::instrument;
 
 use super::eval::evaluate_operator_config;
@@ -193,7 +199,8 @@ impl FlowEngineInner {
 				alias,
 				snapshot,
 				natural,
-			} => self.add_join(node_id, &inputs, join_type, left, right, alias, snapshot, natural)?,
+				latest,
+			} => self.add_join(node_id, &inputs, join_type, left, right, alias, snapshot, natural, latest)?,
 			Distinct {
 				expressions,
 			} => self.add_distinct(node_id, &inputs, expressions)?,
@@ -471,6 +478,7 @@ impl FlowEngineInner {
 		alias: Option<String>,
 		snapshot: bool,
 		natural: bool,
+		latest: bool,
 	) -> Result<()> {
 		if inputs.len() != 2 {
 			return Err(Error(Box::new(internal!("Join node must have exactly 2 inputs"))));
@@ -503,6 +511,14 @@ impl FlowEngineInner {
 			(left, right)
 		};
 
+		let join_ttl = self.catalog.find_operator_settings_latest(node_id).and_then(|s| s.join);
+		let left = join_ttl.as_ref().and_then(|j| j.left.as_ref());
+		let left_ttl = left.map(|t| Duration::from_nanoseconds_const(t.duration_nanos as i64));
+		let left_ttl_anchor = left.map(|t| t.anchor).unwrap_or_default();
+		let right = join_ttl.as_ref().and_then(|j| j.right.as_ref());
+		let right_ttl = right.map(|t| Duration::from_nanoseconds_const(t.duration_nanos as i64));
+		let right_ttl_anchor = right.map(|t| t.anchor).unwrap_or_default();
+
 		self.operators.insert(
 			node_id,
 			OperatorCell::new(Operators::Join(JoinOperator::new(
@@ -522,6 +538,11 @@ impl FlowEngineInner {
 				self.executor.clone(),
 				snapshot,
 				natural,
+				latest,
+				left_ttl,
+				left_ttl_anchor,
+				right_ttl,
+				right_ttl_anchor,
 			))),
 		);
 		Ok(())

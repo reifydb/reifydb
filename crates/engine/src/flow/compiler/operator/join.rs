@@ -26,6 +26,7 @@ pub(crate) struct JoinCompiler {
 	pub ttl: Option<JoinTtl>,
 	pub snapshot: bool,
 	pub natural: bool,
+	pub latest: bool,
 }
 
 impl From<JoinInnerNode> for JoinCompiler {
@@ -39,6 +40,7 @@ impl From<JoinInnerNode> for JoinCompiler {
 			ttl: node.ttl,
 			snapshot: node.snapshot,
 			natural: false,
+			latest: node.latest,
 		}
 	}
 }
@@ -54,6 +56,7 @@ impl From<JoinLeftNode> for JoinCompiler {
 			ttl: node.ttl,
 			snapshot: node.snapshot,
 			natural: false,
+			latest: node.latest,
 		}
 	}
 }
@@ -69,6 +72,7 @@ impl From<JoinNaturalNode> for JoinCompiler {
 			ttl: node.ttl,
 			snapshot: node.snapshot,
 			natural: true,
+			latest: node.latest,
 		}
 	}
 }
@@ -142,6 +146,7 @@ impl CompileOperator for JoinCompiler {
 				alias: effective_alias,
 				snapshot: self.snapshot,
 				natural: self.natural,
+				latest: self.latest,
 			},
 		)?;
 

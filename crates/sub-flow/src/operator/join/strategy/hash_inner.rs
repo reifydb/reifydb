@@ -9,7 +9,7 @@ use super::{
 	JoinContext, UpdateKeys,
 	hash::{
 		JoinEmitContext, add_to_state_entry_batch, emit_joined_columns_batch, emit_remove_joined_columns_batch,
-		emit_update_joined_columns, remove_from_state_entry, update_row_in_entry,
+		emit_update_joined_columns, remove_from_state_entry, replace_right_entry, update_row_in_entry,
 	},
 };
 use crate::{operator::join::state::JoinSide, transaction::FlowTransaction};
@@ -67,6 +67,9 @@ impl InnerHashJoin {
 				add_to_state_entry_batch(txn, &mut ctx.state.left, key_hash, post, indices)?;
 			}
 			JoinSide::Right => {
+				if ctx.operator.latest {
+					result.extend(replace_right_entry(txn, ctx.state, key_hash, ctx.operator)?);
+				}
 				add_to_state_entry_batch(txn, &mut ctx.state.right, key_hash, post, indices)?;
 			}
 		}

@@ -1313,6 +1313,7 @@ pub enum AstJoin<'bump> {
 		alias: BumpFragment<'bump>,
 		ttl: Option<AstJoinTtl<'bump>>,
 		snapshot: bool,
+		latest: bool,
 		rql: &'bump str,
 	},
 	LeftJoin {
@@ -1322,6 +1323,7 @@ pub enum AstJoin<'bump> {
 		alias: BumpFragment<'bump>,
 		ttl: Option<AstJoinTtl<'bump>>,
 		snapshot: bool,
+		latest: bool,
 		rql: &'bump str,
 	},
 	NaturalJoin {
@@ -1331,6 +1333,7 @@ pub enum AstJoin<'bump> {
 		alias: BumpFragment<'bump>,
 		ttl: Option<AstJoinTtl<'bump>>,
 		snapshot: bool,
+		latest: bool,
 		rql: &'bump str,
 	},
 }

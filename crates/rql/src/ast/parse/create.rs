@@ -2783,15 +2783,16 @@ impl<'bump> Parser<'bump> {
 		Ok(ttl)
 	}
 
-	pub(crate) fn parse_with_clause_for_join(&mut self) -> Result<(Option<AstJoinTtl<'bump>>, bool)> {
+	pub(crate) fn parse_with_clause_for_join(&mut self) -> Result<(Option<AstJoinTtl<'bump>>, bool, bool)> {
 		if self.is_eof() || !self.current()?.is_keyword(Keyword::With) {
-			return Ok((None, false));
+			return Ok((None, false, false));
 		}
 		self.advance()?;
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut ttl: Option<AstJoinTtl<'bump>> = None;
 		let mut snapshot: bool = false;
+		let mut latest: bool = false;
 
 		loop {
 			self.skip_new_line()?;
@@ -2827,11 +2828,32 @@ impl<'bump> Parser<'bump> {
 						}
 					};
 				}
+				"latest" => {
+					let value = self.advance()?;
+					latest = match value.kind {
+						TokenKind::Literal(Literal::True) => true,
+						TokenKind::Literal(Literal::False) => false,
+						_ => {
+							let fragment = value.fragment.to_owned();
+							return Err(Error::from(TypeError::Ast {
+								kind: AstErrorKind::UnexpectedToken {
+									expected: "boolean literal 'true' or 'false'"
+										.to_string(),
+								},
+								message: format!(
+									"expected boolean literal for 'latest', got '{}'",
+									value.fragment.text()
+								),
+								fragment,
+							}));
+						}
+					};
+				}
 				other => {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'ttl' or 'snapshot'".to_string(),
+							expected: "'ttl', 'snapshot', or 'latest'".to_string(),
 						},
 						message: format!("unexpected key '{}' in join WITH clause", other),
 						fragment,
@@ -2843,7 +2865,7 @@ impl<'bump> Parser<'bump> {
 		}
 
 		self.consume_operator(Operator::CloseCurly)?;
-		Ok((ttl, snapshot))
+		Ok((ttl, snapshot, latest))
 	}
 }
 

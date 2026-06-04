@@ -479,6 +479,7 @@ pub struct JoinInnerNode<'bump> {
 	pub alias: Option<Fragment>,
 	pub ttl: Option<JoinTtl>,
 	pub snapshot: bool,
+	pub latest: bool,
 }
 
 #[derive(Debug)]
@@ -489,6 +490,7 @@ pub struct JoinLeftNode<'bump> {
 	pub alias: Option<Fragment>,
 	pub ttl: Option<JoinTtl>,
 	pub snapshot: bool,
+	pub latest: bool,
 }
 
 #[derive(Debug)]
@@ -499,6 +501,7 @@ pub struct JoinNaturalNode<'bump> {
 	pub alias: Option<Fragment>,
 	pub ttl: Option<JoinTtl>,
 	pub snapshot: bool,
+	pub latest: bool,
 }
 
 #[derive(Debug)]
@@ -1724,6 +1727,7 @@ impl<'bump> Compiler<'bump> {
 						alias,
 						ttl: join.ttl,
 						snapshot: join.snapshot,
+						latest: join.latest,
 					}));
 				}
 
@@ -1749,6 +1753,7 @@ impl<'bump> Compiler<'bump> {
 						alias,
 						ttl: join.ttl,
 						snapshot: join.snapshot,
+						latest: join.latest,
 					}));
 				}
 
@@ -1774,6 +1779,7 @@ impl<'bump> Compiler<'bump> {
 						alias,
 						ttl: join.ttl,
 						snapshot: join.snapshot,
+						latest: join.latest,
 					}));
 				}
 

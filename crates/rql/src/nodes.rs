@@ -652,6 +652,7 @@ pub struct JoinInnerNode {
 	pub alias: Option<Fragment>,
 	pub ttl: Option<JoinTtl>,
 	pub snapshot: bool,
+	pub latest: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -662,6 +663,7 @@ pub struct JoinLeftNode {
 	pub alias: Option<Fragment>,
 	pub ttl: Option<JoinTtl>,
 	pub snapshot: bool,
+	pub latest: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -672,6 +674,7 @@ pub struct JoinNaturalNode {
 	pub alias: Option<Fragment>,
 	pub ttl: Option<JoinTtl>,
 	pub snapshot: bool,
+	pub latest: bool,
 }
 
 #[derive(Debug, Clone)]

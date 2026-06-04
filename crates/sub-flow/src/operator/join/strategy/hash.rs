@@ -21,7 +21,11 @@ use reifydb_value::{
 };
 
 use crate::{
-	operator::join::{operator::JoinOperator, state::JoinSide, store::Store},
+	operator::join::{
+		operator::{EVICT_BATCH, JoinOperator},
+		state::{JoinSide, JoinState},
+		store::Store,
+	},
 	transaction::FlowTransaction,
 };
 
@@ -282,4 +286,34 @@ where
 		after = Some(last);
 	}
 	Ok(())
+}
+
+pub(crate) fn replace_right_entry(
+	txn: &mut FlowTransaction,
+	state: &mut JoinState,
+	key_hash: &Hash128,
+	operator: &JoinOperator,
+) -> Result<Vec<Diff>> {
+	let mut removes = Vec::new();
+	if !operator.snapshot {
+		let left = &state.left;
+		for_each_left_block(txn, &state.right, key_hash, |txn, old_right| {
+			let indices: Vec<usize> = (0..old_right.row_count()).collect();
+			let emit_ctx = JoinEmitContext {
+				opposite_store: left,
+				key_hash,
+				operator,
+			};
+			removes.extend(emit_remove_joined_columns_batch(
+				txn,
+				old_right,
+				&indices,
+				JoinSide::Right,
+				&emit_ctx,
+			)?);
+			Ok(())
+		})?;
+	}
+	state.right.clear_key(txn, key_hash, EVICT_BATCH)?;
+	Ok(removes)
 }

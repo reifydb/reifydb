@@ -786,6 +786,7 @@ pub struct JoinInnerNode<'bump> {
 	pub alias: Option<BumpFragment<'bump>>,
 	pub ttl: Option<JoinTtl>,
 	pub snapshot: bool,
+	pub latest: bool,
 	pub rql: String,
 }
 
@@ -796,6 +797,7 @@ pub struct JoinLeftNode<'bump> {
 	pub alias: Option<BumpFragment<'bump>>,
 	pub ttl: Option<JoinTtl>,
 	pub snapshot: bool,
+	pub latest: bool,
 	pub rql: String,
 }
 
@@ -806,6 +808,7 @@ pub struct JoinNaturalNode<'bump> {
 	pub alias: Option<BumpFragment<'bump>>,
 	pub ttl: Option<JoinTtl>,
 	pub snapshot: bool,
+	pub latest: bool,
 	pub rql: String,
 }
 

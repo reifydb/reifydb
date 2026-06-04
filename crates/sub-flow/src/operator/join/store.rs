@@ -14,17 +14,18 @@ use reifydb_core::{
 	},
 	interface::catalog::flow::FlowNodeId,
 	internal,
+	row::TtlAnchor,
 };
 use reifydb_runtime::hash::Hash128;
 use reifydb_value::{
 	Result,
 	error::Error,
-	value::{blob::Blob, row_number::RowNumber},
+	value::{blob::Blob, datetime::DateTime, duration::Duration, row_number::RowNumber},
 };
 
 use super::state::JoinSide;
 use crate::{
-	operator::stateful::utils::{state_get, state_range, state_remove, state_set},
+	operator::stateful::utils::{state_drop, state_get, state_range, state_remove, state_set},
 	transaction::FlowTransaction,
 };
 
@@ -114,6 +115,77 @@ impl Store {
 			state_remove(self.node_id, txn, &key)?;
 		}
 		Ok(existed)
+	}
+
+	pub(crate) fn evict_expired(
+		&self,
+		txn: &mut FlowTransaction,
+		now: DateTime,
+		ttl: Duration,
+		anchor: TtlAnchor,
+		cursor: &mut Option<EncodedKey>,
+		batch_size: usize,
+	) -> Result<()> {
+		let cutoff = now.saturating_sub(ttl);
+		let base = EncodedKeyRange::prefix(&self.prefix);
+		let start = match cursor.clone() {
+			Some(c) => Bound::Excluded(c),
+			None => base.start.clone(),
+		};
+		let range = EncodedKeyRange::new(start, base.end.clone());
+		let batch = state_range(self.node_id, txn, range).take(batch_size).collect::<Result<Vec<_>>>()?;
+		let reached_end = batch.len() < batch_size;
+		let last_key = batch.last().map(|(key, _)| key.clone());
+
+		for (key, row) in batch {
+			let anchor_ts = match anchor {
+				TtlAnchor::Created => DateTime::from_nanos(row.created_at_nanos()),
+				TtlAnchor::Updated => DateTime::from_nanos(row.updated_at_nanos()),
+			};
+			if anchor_ts >= cutoff {
+				continue;
+			}
+			state_drop(self.node_id, txn, &key)?;
+		}
+
+		*cursor = if reached_end {
+			None
+		} else {
+			last_key
+		};
+		Ok(())
+	}
+
+	pub(crate) fn clear_key(&self, txn: &mut FlowTransaction, hash: &Hash128, batch_size: usize) -> Result<()> {
+		let prefix = self.hash_prefix(hash);
+		let mut after: Option<EncodedKey> = None;
+		let mut total = 0usize;
+		loop {
+			let base = EncodedKeyRange::prefix(&prefix);
+			let start = match after.clone() {
+				Some(cursor) => Bound::Excluded(cursor),
+				None => base.start.clone(),
+			};
+			let range = EncodedKeyRange::new(start, base.end.clone());
+			let keys: Vec<EncodedKey> = state_range(self.node_id, txn, range)
+				.take(batch_size)
+				.map(|entry| entry.map(|(key, _)| key))
+				.collect::<Result<Vec<_>>>()?;
+			if keys.is_empty() {
+				break;
+			}
+			after = keys.last().cloned();
+			let exhausted = keys.len() < batch_size;
+			total += keys.len();
+			for key in keys {
+				state_remove(self.node_id, txn, &key)?;
+			}
+			if exhausted {
+				break;
+			}
+		}
+		let _ = total;
+		Ok(())
 	}
 
 	pub(crate) fn rows_for_key_block(

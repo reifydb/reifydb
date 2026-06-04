@@ -76,6 +76,7 @@ impl<'bump> Compiler<'bump> {
 				alias,
 				ttl,
 				snapshot,
+				latest,
 				rql,
 				..
 			} => {
@@ -92,6 +93,7 @@ impl<'bump> Compiler<'bump> {
 					alias: Some(alias),
 					ttl,
 					snapshot,
+					latest,
 					rql: rql.to_string(),
 				}))
 			}
@@ -101,6 +103,7 @@ impl<'bump> Compiler<'bump> {
 				alias,
 				ttl,
 				snapshot,
+				latest,
 				rql,
 				..
 			} => {
@@ -117,6 +120,7 @@ impl<'bump> Compiler<'bump> {
 					alias: Some(alias),
 					ttl,
 					snapshot,
+					latest,
 					rql: rql.to_string(),
 				}))
 			}
@@ -126,6 +130,7 @@ impl<'bump> Compiler<'bump> {
 				alias,
 				ttl,
 				snapshot,
+				latest,
 				rql,
 				..
 			} => {
@@ -141,6 +146,7 @@ impl<'bump> Compiler<'bump> {
 					alias: Some(alias),
 					ttl,
 					snapshot,
+					latest,
 					rql: rql.to_string(),
 				}))
 			}

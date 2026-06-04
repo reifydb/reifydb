@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::LazyLock;
+use std::{cell::RefCell, sync::LazyLock};
 
 use postcard::to_stdvec;
 use reifydb_abi::operator::capabilities::OperatorCapability;
@@ -13,6 +13,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 	},
 	internal,
+	row::TtlAnchor,
 	util::encoding::keycode::serializer::KeySerializer,
 	value::column::{ColumnWithName, columns::Columns},
 };
@@ -29,16 +30,21 @@ use reifydb_runtime::{
 	context::RuntimeContext,
 	hash::{Hash128, xxh3_128},
 };
+use reifydb_sdk::operator::Tick;
 use reifydb_value::{
 	Result,
 	error::Error,
 	params::Params,
-	value::{Value, datetime::DateTime, identity::IdentityId, row_number::RowNumber, value_type::ValueType},
+	value::{
+		Value, datetime::DateTime, duration::Duration, identity::IdentityId, row_number::RowNumber,
+		value_type::ValueType,
+	},
 };
 
 use super::{
 	column::JoinedColumnsBuilder,
 	state::{JoinSide, JoinState},
+	store::Store,
 	strategy::{JoinContext, JoinStrategy, UpdateKeys},
 };
 use crate::{
@@ -51,6 +57,8 @@ use crate::{
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
+
+pub(crate) const EVICT_BATCH: usize = 4096;
 
 pub struct JoinSideConfig {
 	pub node: FlowNodeId,
@@ -73,6 +81,14 @@ pub struct JoinOperator {
 	runtime_context: RuntimeContext,
 	pub(crate) snapshot: bool,
 	natural: bool,
+	pub(crate) latest: bool,
+	left_ttl: Option<Duration>,
+	left_ttl_anchor: TtlAnchor,
+	right_ttl: Option<Duration>,
+	right_ttl_anchor: TtlAnchor,
+	left_evict_cursor: RefCell<Option<EncodedKey>>,
+	right_evict_cursor: RefCell<Option<EncodedKey>>,
+	rownumber_evict_cursor: RefCell<Option<EncodedKey>>,
 }
 
 impl JoinOperator {
@@ -86,6 +102,11 @@ impl JoinOperator {
 		executor: Executor,
 		snapshot: bool,
 		natural: bool,
+		latest: bool,
+		left_ttl: Option<Duration>,
+		left_ttl_anchor: TtlAnchor,
+		right_ttl: Option<Duration>,
+		right_ttl_anchor: TtlAnchor,
 	) -> Self {
 		let left_node = left.node;
 		let right_node = right.node;
@@ -130,11 +151,95 @@ impl JoinOperator {
 			runtime_context,
 			snapshot,
 			natural,
+			latest,
+			left_ttl,
+			left_ttl_anchor,
+			right_ttl,
+			right_ttl_anchor,
+			left_evict_cursor: RefCell::new(None),
+			right_evict_cursor: RefCell::new(None),
+			rownumber_evict_cursor: RefCell::new(None),
 		}
 	}
 
 	fn state_shape() -> RowShape {
 		RowShape::operator_state()
+	}
+
+	#[cfg(test)]
+	#[allow(clippy::too_many_arguments)]
+	pub(crate) fn new_for_state_tests(
+		node: FlowNodeId,
+		left_ttl: Option<Duration>,
+		left_ttl_anchor: TtlAnchor,
+		right_ttl: Option<Duration>,
+		right_ttl_anchor: TtlAnchor,
+		routines: Routines,
+		runtime_context: RuntimeContext,
+	) -> Self {
+		Self {
+			node,
+			strategy: JoinStrategy::from(JoinType::Inner),
+			left_node: FlowNodeId(0),
+			right_node: FlowNodeId(0),
+			compiled_left_exprs: Vec::new(),
+			compiled_right_exprs: Vec::new(),
+			alias: None,
+			shape: Self::state_shape(),
+			right_schema: Columns::empty(),
+			row_number_provider: RowNumberProvider::new(node),
+			routines,
+			runtime_context,
+			snapshot: true,
+			natural: false,
+			latest: false,
+			left_ttl,
+			left_ttl_anchor,
+			right_ttl,
+			right_ttl_anchor,
+			left_evict_cursor: RefCell::new(None),
+			right_evict_cursor: RefCell::new(None),
+			rownumber_evict_cursor: RefCell::new(None),
+		}
+	}
+
+	fn evict_left(&self, txn: &mut FlowTransaction, now: DateTime) -> Result<()> {
+		let Some(ttl) = self.left_ttl else {
+			return Ok(());
+		};
+		let left = Store::new(self.node, JoinSide::Left);
+		let mut cursor = self.left_evict_cursor.borrow_mut().take();
+		left.evict_expired(txn, now, ttl, self.left_ttl_anchor, &mut cursor, EVICT_BATCH)?;
+		*self.left_evict_cursor.borrow_mut() = cursor;
+		Ok(())
+	}
+
+	fn evict_right(&self, txn: &mut FlowTransaction, now: DateTime) -> Result<()> {
+		let Some(ttl) = self.right_ttl else {
+			return Ok(());
+		};
+		let right = Store::new(self.node, JoinSide::Right);
+		let mut cursor = self.right_evict_cursor.borrow_mut().take();
+		right.evict_expired(txn, now, ttl, self.right_ttl_anchor, &mut cursor, EVICT_BATCH)?;
+		*self.right_evict_cursor.borrow_mut() = cursor;
+		Ok(())
+	}
+
+	fn evict_rownumbers(&self, txn: &mut FlowTransaction, now: DateTime) -> Result<()> {
+		let Some(ttl) = self.left_ttl else {
+			return Ok(());
+		};
+		let mut cursor = self.rownumber_evict_cursor.borrow_mut().take();
+		self.row_number_provider.evict_expired(
+			txn,
+			now,
+			ttl,
+			self.left_ttl_anchor,
+			&mut cursor,
+			EVICT_BATCH,
+		)?;
+		*self.rownumber_evict_cursor.borrow_mut() = cursor;
+		Ok(())
 	}
 
 	pub(crate) fn compute_join_keys(
@@ -392,7 +497,22 @@ impl Operator for JoinOperator {
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
-		OperatorCapability::STANDARD
+		OperatorCapability::STANDARD_WITH_TICK
+	}
+
+	fn ticks(&self) -> Option<Duration> {
+		if self.left_ttl.is_some() || self.right_ttl.is_some() {
+			Some(Duration::from_seconds(1).unwrap())
+		} else {
+			None
+		}
+	}
+
+	fn tick(&self, txn: &mut FlowTransaction, tick: Tick) -> Result<Option<Change>> {
+		self.evict_left(txn, tick.now)?;
+		self.evict_right(txn, tick.now)?;
+		self.evict_rownumbers(txn, tick.now)?;
+		Ok(None)
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
@@ -548,5 +668,220 @@ impl JoinOperator {
 		}
 
 		Ok(())
+	}
+}
+
+#[cfg(test)]
+mod tick_tests {
+	use reifydb_catalog::catalog::Catalog;
+	use reifydb_core::{common::CommitVersion, encoded::row::EncodedRow};
+	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_transaction::interceptor::interceptors::Interceptors;
+	use reifydb_value::value::blob::Blob;
+
+	use super::*;
+
+	fn ttl(millis: i64) -> Duration {
+		Duration::from_milliseconds_const(millis)
+	}
+
+	fn make_tick(engine: &TestEngine) -> Tick {
+		Tick {
+			now: DateTime::from_nanos(engine.clock().now_nanos()),
+		}
+	}
+
+	fn make_op(
+		node: u64,
+		left_ttl: Option<Duration>,
+		right_ttl: Option<Duration>,
+		engine: &TestEngine,
+	) -> JoinOperator {
+		let routines = engine.executor().routines.clone();
+		let rc = RuntimeContext::with_clock(engine.clock().clone());
+		JoinOperator::new_for_state_tests(
+			FlowNodeId(node),
+			left_ttl,
+			TtlAnchor::Created,
+			right_ttl,
+			TtlAnchor::Created,
+			routines,
+			rc,
+		)
+	}
+
+	fn op_row(payload: u8) -> EncodedRow {
+		let shape = RowShape::operator_state();
+		let mut r = shape.allocate();
+		shape.set_blob(&mut r, 0, &Blob::from(vec![payload]));
+		r
+	}
+
+	#[test]
+	fn tick_evicts_rownumbers_past_ttl() {
+		// A join mints one row-number mapping per (left,right) output pair. If those mappings are
+		// never evicted once the left row ages past the left TTL, the join's internal state grows
+		// without bound (observed: 430M mapping rows / 66GB on a live ingestor). evict_rownumbers
+		// must drop the aged mappings and keep the fresh ones.
+		let engine = TestEngine::new();
+		let mock_clock = engine.mock_clock();
+		let op = make_op(30, Some(ttl(50)), None, &engine);
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+
+		let old = JoinOperator::make_composite_key(RowNumber(1), RowNumber(1));
+		op.row_number_provider.get_or_create_row_number(&mut txn, &old).unwrap();
+
+		mock_clock.advance_millis(40);
+		let young = JoinOperator::make_composite_key(RowNumber(2), RowNumber(1));
+		op.row_number_provider.get_or_create_row_number(&mut txn, &young).unwrap();
+
+		mock_clock.advance_millis(20);
+		let emitted = op.tick(&mut txn, make_tick(&engine)).unwrap();
+		assert!(emitted.is_none(), "join tick must be silent (no downstream change)");
+
+		assert!(
+			op.row_number_provider.get_row_number(&mut txn, &old).unwrap().is_none(),
+			"a mapping whose left row aged past the left TTL must be evicted"
+		);
+		assert!(
+			op.row_number_provider.get_row_number(&mut txn, &young).unwrap().is_some(),
+			"a mapping still within the left TTL window must survive"
+		);
+	}
+
+	#[test]
+	fn tick_evicts_left_store_past_ttl() {
+		// evict_left must drop left-store rows older than the left TTL.
+		let engine = TestEngine::new();
+		let mock_clock = engine.mock_clock();
+		let op = make_op(30, Some(ttl(50)), None, &engine);
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+
+		let left = Store::new(FlowNodeId(30), JoinSide::Left);
+		let hash = Hash128(0xABC);
+		left.put_row(&mut txn, &hash, RowNumber(1), &op_row(0x10)).unwrap();
+		mock_clock.advance_millis(40);
+		left.put_row(&mut txn, &hash, RowNumber(2), &op_row(0x20)).unwrap();
+
+		mock_clock.advance_millis(20);
+		op.tick(&mut txn, make_tick(&engine)).unwrap();
+
+		let remaining = left.rows_for_key(&mut txn, &hash).unwrap();
+		assert_eq!(remaining.len(), 1, "only the within-TTL left-store row survives");
+		assert_eq!(remaining[0].0, RowNumber(2));
+	}
+
+	#[test]
+	fn tick_evicts_right_store_past_ttl() {
+		// The snapshot right store accumulates one row per churned upstream RowNumber (observed
+		// ~2875 rows per hot mint, since upstream TTL drops never emit a Remove). evict_right must
+		// drop right-store rows past the right TTL so the probe fan-out and storage stay bounded.
+		let engine = TestEngine::new();
+		let mock_clock = engine.mock_clock();
+		let op = make_op(30, None, Some(ttl(50)), &engine);
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+
+		let right = Store::new(FlowNodeId(30), JoinSide::Right);
+		let hash = Hash128(0xABC);
+		right.put_row(&mut txn, &hash, RowNumber(1), &op_row(0x10)).unwrap();
+		mock_clock.advance_millis(40);
+		right.put_row(&mut txn, &hash, RowNumber(2), &op_row(0x20)).unwrap();
+
+		mock_clock.advance_millis(20);
+		op.tick(&mut txn, make_tick(&engine)).unwrap();
+
+		let remaining = right.rows_for_key(&mut txn, &hash).unwrap();
+		assert_eq!(remaining.len(), 1, "only the within-TTL right-store row survives");
+		assert_eq!(remaining[0].0, RowNumber(2));
+	}
+
+	#[test]
+	fn tick_is_noop_when_no_ttl_set() {
+		// With neither side's TTL configured the join must not evict anything (mappings retained,
+		// exactly as before this change; the central GC still bounds the data stores).
+		let engine = TestEngine::new();
+		let mock_clock = engine.mock_clock();
+		let op = make_op(30, None, None, &engine);
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+
+		let key = JoinOperator::make_composite_key(RowNumber(1), RowNumber(1));
+		op.row_number_provider.get_or_create_row_number(&mut txn, &key).unwrap();
+
+		mock_clock.advance_millis(10_000);
+		let emitted = op.tick(&mut txn, make_tick(&engine)).unwrap();
+		assert!(emitted.is_none());
+		assert!(
+			op.row_number_provider.get_row_number(&mut txn, &key).unwrap().is_some(),
+			"with no TTL configured the tick must retain mappings"
+		);
+	}
+
+	#[test]
+	fn tick_preserves_row_number_counter() {
+		// Evicting every mapping must NOT reset the monotonic counter; a fresh mapping after a
+		// full eviction must get a strictly larger number, or a recycled id would corrupt any
+		// downstream consumer that tracks rows by number.
+		let engine = TestEngine::new();
+		let mock_clock = engine.mock_clock();
+		let op = make_op(30, Some(ttl(50)), None, &engine);
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+
+		let first = JoinOperator::make_composite_key(RowNumber(1), RowNumber(1));
+		let (n1, _) = op.row_number_provider.get_or_create_row_number(&mut txn, &first).unwrap();
+
+		mock_clock.advance_millis(100);
+		op.tick(&mut txn, make_tick(&engine)).unwrap();
+		assert!(op.row_number_provider.get_row_number(&mut txn, &first).unwrap().is_none());
+
+		let second = JoinOperator::make_composite_key(RowNumber(7), RowNumber(7));
+		let (n2, is_new) = op.row_number_provider.get_or_create_row_number(&mut txn, &second).unwrap();
+		assert!(is_new);
+		assert!(n2.0 > n1.0, "counter must keep advancing past evicted mappings, not recycle ids");
+	}
+
+	#[test]
+	fn capabilities_always_include_tick() {
+		// The engine calls enforce_tick_capability before tick() and aborts the process if Tick is
+		// absent; capabilities must include Tick unconditionally, even when no TTL is set.
+		let engine = TestEngine::new();
+		let with = make_op(1, Some(ttl(100)), None, &engine);
+		assert!(with.capabilities().contains(&OperatorCapability::Tick));
+		let without = make_op(2, None, None, &engine);
+		assert!(without.capabilities().contains(&OperatorCapability::Tick));
 	}
 }

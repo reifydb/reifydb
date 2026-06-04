@@ -29,7 +29,7 @@ impl<'bump> Parser<'bump> {
 		let alias = self.consume(TokenKind::Identifier)?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
-		let (ttl, snapshot) = self.parse_with_clause_for_join()?;
+		let (ttl, snapshot, latest) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::InnerJoin {
 			token,
@@ -38,6 +38,7 @@ impl<'bump> Parser<'bump> {
 			alias,
 			ttl,
 			snapshot,
+			latest,
 			rql: self.source_since(start),
 		})
 	}
@@ -62,7 +63,7 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(As)?;
 		let alias = self.consume(TokenKind::Identifier)?.fragment;
-		let (ttl, snapshot) = self.parse_with_clause_for_join()?;
+		let (ttl, snapshot, latest) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::NaturalJoin {
 			token,
@@ -71,6 +72,7 @@ impl<'bump> Parser<'bump> {
 			alias,
 			ttl,
 			snapshot,
+			latest,
 			rql: self.source_since(start),
 		})
 	}
@@ -86,7 +88,7 @@ impl<'bump> Parser<'bump> {
 		let alias = self.consume(TokenKind::Identifier)?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
-		let (ttl, snapshot) = self.parse_with_clause_for_join()?;
+		let (ttl, snapshot, latest) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::InnerJoin {
 			token,
@@ -95,6 +97,7 @@ impl<'bump> Parser<'bump> {
 			alias,
 			ttl,
 			snapshot,
+			latest,
 			rql: self.source_since(start),
 		})
 	}
@@ -110,7 +113,7 @@ impl<'bump> Parser<'bump> {
 		let alias = self.consume(TokenKind::Identifier)?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
-		let (ttl, snapshot) = self.parse_with_clause_for_join()?;
+		let (ttl, snapshot, latest) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::LeftJoin {
 			token,
@@ -119,6 +122,7 @@ impl<'bump> Parser<'bump> {
 			alias,
 			ttl,
 			snapshot,
+			latest,
 			rql: self.source_since(start),
 		})
 	}
@@ -769,5 +773,44 @@ pub mod tests {
 		let ttl = ttl.as_ref().expect("expected ttl");
 		assert!(ttl.left.is_some());
 		assert!(ttl.right.is_none());
+	}
+
+	#[test]
+	fn test_join_with_latest_flag() {
+		let bump = Bump::new();
+		let source = "inner join { from orders } as o using (id, o.user_id) \
+			with { snapshot: true, latest: true, ttl: { left: { duration: '10s', on: created, mode: drop } } }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		let result = result.pop().unwrap();
+		let AstJoin::InnerJoin {
+			snapshot,
+			latest,
+			..
+		} = result.first_unchecked().as_join()
+		else {
+			panic!("Expected InnerJoin");
+		};
+		assert!(*snapshot, "snapshot must parse alongside latest");
+		assert!(*latest, "latest flag must parse from the join WITH clause");
+	}
+
+	#[test]
+	fn test_join_latest_defaults_false() {
+		let bump = Bump::new();
+		let source = "inner join { from orders } as o using (id, o.user_id)";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		let result = result.pop().unwrap();
+		let AstJoin::InnerJoin {
+			latest,
+			..
+		} = result.first_unchecked().as_join()
+		else {
+			panic!("Expected InnerJoin");
+		};
+		assert!(!*latest, "latest must default to false when omitted");
 	}
 }

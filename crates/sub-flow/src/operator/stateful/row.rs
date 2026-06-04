@@ -1,19 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
-use std::iter::once;
+use std::{iter::once, ops::Bound};
 
 use reifydb_core::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::catalog::flow::FlowNodeId,
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
+	row::TtlAnchor,
 	util::encoding::keycode::serializer::KeySerializer,
 };
 use reifydb_sdk::state::{decode_payload, encode_payload};
 use reifydb_transaction::multi::RangeScope;
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{
+	Result,
+	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+};
 
 use crate::{
-	operator::stateful::utils::{internal_state_drop, internal_state_get, internal_state_set},
+	operator::stateful::utils::{
+		internal_state_drop, internal_state_get, internal_state_range, internal_state_set,
+	},
 	transaction::FlowTransaction,
 };
 
@@ -146,6 +152,50 @@ impl RowNumberProvider {
 			txn.remove(&key)?;
 		}
 
+		Ok(())
+	}
+
+	pub fn evict_expired(
+		&self,
+		txn: &mut FlowTransaction,
+		now: DateTime,
+		ttl: Duration,
+		anchor: TtlAnchor,
+		cursor: &mut Option<EncodedKey>,
+		batch_size: usize,
+	) -> Result<()> {
+		let cutoff = now.saturating_sub(ttl);
+		let prefix = {
+			let mut serializer = KeySerializer::new();
+			serializer.extend_u8(FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG);
+			serializer.finish()
+		};
+		let base = EncodedKeyRange::prefix(prefix.as_ref());
+		let start = match cursor.clone() {
+			Some(c) => Bound::Excluded(c),
+			None => base.start.clone(),
+		};
+		let range = EncodedKeyRange::new(start, base.end.clone());
+		let batch = internal_state_range(self.node, txn, range).take(batch_size).collect::<Result<Vec<_>>>()?;
+		let reached_end = batch.len() < batch_size;
+		let last_key = batch.last().map(|(key, _)| key.clone());
+
+		for (key, row) in batch {
+			let anchor_ts = match anchor {
+				TtlAnchor::Created => DateTime::from_nanos(row.created_at_nanos()),
+				TtlAnchor::Updated => DateTime::from_nanos(row.updated_at_nanos()),
+			};
+			if anchor_ts >= cutoff {
+				continue;
+			}
+			internal_state_drop(self.node, txn, &key)?;
+		}
+
+		*cursor = if reached_end {
+			None
+		} else {
+			last_key
+		};
 		Ok(())
 	}
 }
