@@ -8,6 +8,7 @@ use reifydb_core::{
 	interface::store::EntryKind,
 };
 use reifydb_store::row::page::{PageId, key_range_of, page_of};
+use tracing::instrument;
 
 use crate::{
 	MultiVersionScope,
@@ -63,6 +64,7 @@ impl MultiReadBufferTier {
 	}
 
 	#[allow(clippy::too_many_arguments)]
+	#[instrument(name = "store::multi::read::serve", level = "trace", skip(self, cursor, start, end), fields(table = ?table, descending = descending))]
 	pub fn serve_persistent_chunk(
 		&self,
 		table: EntryKind,

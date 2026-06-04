@@ -245,11 +245,17 @@ impl<P: ListRowSettings> Actor<P> {
 	) {
 		let cutoff = now_nanos.saturating_sub(ttl.duration_nanos);
 		match persistent.delete_expired(EntryKind::Source(*shape_id), ttl.anchor, cutoff, None) {
-			Ok(deleted) => {
-				*persistent_rows_deleted += deleted;
-				if deleted > 0 {
-					self.store.clear_read();
-					debug!(?shape_id, deleted, "Evicted expired rows from persistent tier");
+			Ok(keys) => {
+				*persistent_rows_deleted += keys.len() as u64;
+				if !keys.is_empty() {
+					for key in &keys {
+						self.store.invalidate_read_key(key);
+					}
+					debug!(
+						?shape_id,
+						deleted = keys.len(),
+						"Evicted expired rows from persistent tier"
+					);
 				}
 			}
 			Err(e) => {

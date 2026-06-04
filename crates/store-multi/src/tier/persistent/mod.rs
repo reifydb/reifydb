@@ -74,7 +74,7 @@ impl MultiPersistentTier {
 		anchor: TtlAnchor,
 		cutoff_nanos: u64,
 		prefix: Option<&[u8]>,
-	) -> Result<u64> {
+	) -> Result<Vec<EncodedKey>> {
 		match self {
 			Self::Sqlite(s) => s.delete_expired(table, anchor, cutoff_nanos, prefix),
 		}
@@ -111,7 +111,7 @@ impl MultiPersistentTier {
 		_anchor: TtlAnchor,
 		_cutoff_nanos: u64,
 		_prefix: Option<&[u8]>,
-	) -> Result<u64> {
+	) -> Result<Vec<EncodedKey>> {
 		match *self {}
 	}
 

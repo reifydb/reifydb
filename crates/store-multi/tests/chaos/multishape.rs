@@ -133,7 +133,7 @@ fn ttl_sweep_shape(store: &StandardMultiStore, shape_id: ShapeId, ttl: &Ttl, now
 	if let Some(persistent) = store.persistent() {
 		let cutoff = now_nanos.saturating_sub(ttl.duration_nanos);
 		let deleted = persistent.delete_expired(EntryKind::Source(shape_id), ttl.anchor, cutoff, None).unwrap();
-		if deleted > 0 {
+		if !deleted.is_empty() {
 			store.clear_read();
 		}
 	}

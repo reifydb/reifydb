@@ -32,7 +32,7 @@ use reifydb_sqlite::{
 };
 use reifydb_value::{Result, error, util::cowvec::CowVec, value::duration::Duration};
 use rusqlite::{
-	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, Transaction, TransactionBehavior,
+	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, Row, ToSql, Transaction, TransactionBehavior,
 	params, params_from_iter,
 };
 use tracing::{instrument, warn};
@@ -234,7 +234,7 @@ impl SqlitePersistentStorage {
 		anchor: TtlAnchor,
 		cutoff_nanos: u64,
 		prefix: Option<&[u8]>,
-	) -> Result<u64> {
+	) -> Result<Vec<EncodedKey>> {
 		let table_sql = self.table_sql(table);
 		let anchor_column = match anchor {
 			TtlAnchor::Created => "created_nanos",
@@ -243,23 +243,49 @@ impl SqlitePersistentStorage {
 		let sql = build_delete_expired_sql(&table_sql.table_name, anchor_column, prefix.is_some());
 		let guard = self.inner.conn.lock();
 		let Some(conn) = guard.as_ref() else {
-			return Ok(0);
+			return Ok(Vec::new());
 		};
-		let result = match prefix {
+		let mut stmt = match conn.prepare_cached(&sql) {
+			Ok(stmt) => stmt,
+			Err(e) if e.to_string().contains("no such table") => return Ok(Vec::new()),
+			Err(e) => {
+				return Err(error!(internal(format!(
+					"Failed to prepare delete expired for {}: {}",
+					table_sql.table_name, e
+				))));
+			}
+		};
+		let map_key = |row: &Row| row.get::<_, Vec<u8>>(0);
+		let rows = match prefix {
 			Some(prefix) => {
 				let upper = prefix_upper_bound(prefix);
-				conn.execute(&sql, params![cutoff_nanos as i64, prefix, upper.as_slice()])
+				stmt.query_map(params![cutoff_nanos as i64, prefix, upper.as_slice()], map_key)
 			}
-			None => conn.execute(&sql, params![cutoff_nanos as i64]),
+			None => stmt.query_map(params![cutoff_nanos as i64], map_key),
 		};
-		match result {
-			Ok(n) => Ok(n as u64),
-			Err(e) if e.to_string().contains("no such table") => Ok(0),
-			Err(e) => Err(error!(internal(format!(
-				"Failed to delete expired persistent rows from {}: {}",
-				table_sql.table_name, e
-			)))),
+		let rows = match rows {
+			Ok(rows) => rows,
+			Err(e) if e.to_string().contains("no such table") => return Ok(Vec::new()),
+			Err(e) => {
+				return Err(error!(internal(format!(
+					"Failed to delete expired persistent rows from {}: {}",
+					table_sql.table_name, e
+				))));
+			}
+		};
+		let mut deleted = Vec::new();
+		for row in rows {
+			match row {
+				Ok(key) => deleted.push(EncodedKey::new(key)),
+				Err(e) => {
+					return Err(error!(internal(format!(
+						"Failed to read deleted key from {}: {}",
+						table_sql.table_name, e
+					))));
+				}
+			}
 		}
+		Ok(deleted)
 	}
 
 	pub fn delete_keys(&self, table: EntryKind, keys: &[EncodedKey]) -> Result<u64> {
@@ -455,9 +481,23 @@ struct RangeChunkRequest<'a> {
 	descending: bool,
 }
 
-impl TierStorage for SqlitePersistentStorage {
-	#[instrument(name = "store::multi::persistent::sqlite::get", level = "trace", skip(self), fields(table = ?table, key_len = key.len(), version = version.0))]
-	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
+impl SqlitePersistentStorage {
+	#[instrument(name = "store::multi::persistent::sqlite::get::operator", level = "trace", skip(self), fields(key_len = key.len(), version = version.0))]
+	fn get_operator(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
+		self.get_impl(table, key, version)
+	}
+
+	#[instrument(name = "store::multi::persistent::sqlite::get::source", level = "trace", skip(self), fields(key_len = key.len(), version = version.0))]
+	fn get_source(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
+		self.get_impl(table, key, version)
+	}
+
+	#[instrument(name = "store::multi::persistent::sqlite::get::multi", level = "trace", skip(self), fields(key_len = key.len(), version = version.0))]
+	fn get_multi(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
+		self.get_impl(table, key, version)
+	}
+
+	fn get_impl(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
 		let table_sql = self.table_sql(table);
 		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
@@ -489,7 +529,37 @@ impl TierStorage for SqlitePersistentStorage {
 		}
 	}
 
-	fn get_many(
+	#[instrument(name = "store::multi::persistent::sqlite::get_many::operator", level = "trace", skip(self, keys), fields(key_count = keys.len(), version = version.0))]
+	fn get_many_operator(
+		&self,
+		table: EntryKind,
+		keys: &[&[u8]],
+		version: CommitVersion,
+	) -> Result<Vec<VersionedGetResult>> {
+		self.get_many_impl(table, keys, version)
+	}
+
+	#[instrument(name = "store::multi::persistent::sqlite::get_many::source", level = "trace", skip(self, keys), fields(key_count = keys.len(), version = version.0))]
+	fn get_many_source(
+		&self,
+		table: EntryKind,
+		keys: &[&[u8]],
+		version: CommitVersion,
+	) -> Result<Vec<VersionedGetResult>> {
+		self.get_many_impl(table, keys, version)
+	}
+
+	#[instrument(name = "store::multi::persistent::sqlite::get_many::multi", level = "trace", skip(self, keys), fields(key_count = keys.len(), version = version.0))]
+	fn get_many_multi(
+		&self,
+		table: EntryKind,
+		keys: &[&[u8]],
+		version: CommitVersion,
+	) -> Result<Vec<VersionedGetResult>> {
+		self.get_many_impl(table, keys, version)
+	}
+
+	fn get_many_impl(
 		&self,
 		table: EntryKind,
 		keys: &[&[u8]],
@@ -564,6 +634,29 @@ impl TierStorage for SqlitePersistentStorage {
 
 		Ok(out)
 	}
+}
+
+impl TierStorage for SqlitePersistentStorage {
+	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
+		match table {
+			EntryKind::Operator(_) => self.get_operator(table, key, version),
+			EntryKind::Source(_) => self.get_source(table, key, version),
+			_ => self.get_multi(table, key, version),
+		}
+	}
+
+	fn get_many(
+		&self,
+		table: EntryKind,
+		keys: &[&[u8]],
+		version: CommitVersion,
+	) -> Result<Vec<VersionedGetResult>> {
+		match table {
+			EntryKind::Operator(_) => self.get_many_operator(table, keys, version),
+			EntryKind::Source(_) => self.get_many_source(table, keys, version),
+			_ => self.get_many_multi(table, keys, version),
+		}
+	}
 
 	#[instrument(name = "store::multi::persistent::sqlite::set", level = "debug", skip(self, batches), fields(table_count = batches.len(), version = version.0))]
 	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
@@ -613,6 +706,7 @@ impl TierStorage for SqlitePersistentStorage {
 		tx.commit().map_err(|e| error!(internal(format!("Failed to commit persistent transaction: {}", e))))
 	}
 
+	#[instrument(name = "store::multi::persistent::sqlite::range", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size))]
 	fn range_next(
 		&self,
 		table: EntryKind,
@@ -635,6 +729,7 @@ impl TierStorage for SqlitePersistentStorage {
 		)
 	}
 
+	#[instrument(name = "store::multi::persistent::sqlite::range_rev", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size))]
 	fn range_rev_next(
 		&self,
 		table: EntryKind,
@@ -691,6 +786,7 @@ impl TierStorage for SqlitePersistentStorage {
 		panic!("SqlitePersistentStorage::drop: persistent tier has no historical chain to drop versions from");
 	}
 
+	#[instrument(name = "store::multi::persistent::sqlite::get_all_versions", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()))]
 	fn get_all_versions(&self, table: EntryKind, key: &[u8]) -> Result<Vec<(CommitVersion, Option<CowVec<u8>>)>> {
 		// TODO: change the TierStorage interface to remove the
 
@@ -797,7 +893,7 @@ mod tests {
 
 		let deleted = s.delete_expired(table(), TtlAnchor::Created, 200, None).unwrap();
 
-		assert_eq!(deleted, 2, "rows created at <= cutoff(200) must be physically deleted");
+		assert_eq!(deleted.len(), 2, "rows created at <= cutoff(200) must be physically deleted");
 		assert_eq!(
 			s.count_current(table()).unwrap(),
 			1,
@@ -825,7 +921,7 @@ mod tests {
 
 		let deleted = s.delete_expired(table(), TtlAnchor::Updated, 100, None).unwrap();
 
-		assert_eq!(deleted, 1, "Updated anchor must key eviction on updated_nanos, not created_nanos");
+		assert_eq!(deleted.len(), 1, "Updated anchor must key eviction on updated_nanos, not created_nanos");
 		assert!(
 			visible(&s, &key(1)),
 			"a row updated after the cutoff must NOT be evicted even if created long ago"
@@ -845,7 +941,11 @@ mod tests {
 
 		let deleted = s.delete_expired(table(), TtlAnchor::Created, u64::MAX, None).unwrap();
 
-		assert_eq!(deleted, 0, "rows whose anchor is 0 (tombstones / undatable) must never be mass-deleted");
+		assert_eq!(
+			deleted.len(),
+			0,
+			"rows whose anchor is 0 (tombstones / undatable) must never be mass-deleted"
+		);
 		assert_eq!(s.count_current(table()).unwrap(), before);
 	}
 
@@ -855,7 +955,7 @@ mod tests {
 		let deleted = s
 			.delete_expired(EntryKind::Source(ShapeId::Table(TableId(999))), TtlAnchor::Created, 100, None)
 			.unwrap();
-		assert_eq!(deleted, 0);
+		assert_eq!(deleted.len(), 0);
 	}
 
 	#[test]
@@ -875,8 +975,40 @@ mod tests {
 
 		let deleted = s.delete_expired(table(), TtlAnchor::Updated, 100, Some(&[0x01])).unwrap();
 
-		assert_eq!(deleted, 1, "only the 0x01-prefixed (left) row should be deleted");
+		assert_eq!(deleted.len(), 1, "only the 0x01-prefixed (left) row should be deleted");
 		assert!(!visible(&s, &left));
 		assert!(visible(&s, &right), "the 0x02-prefixed (right) row must survive a left-only prefix sweep");
+	}
+
+	#[test]
+	fn delete_expired_returns_exactly_the_deleted_keys() {
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		s.set(
+			CommitVersion(1),
+			HashMap::from([(
+				table(),
+				vec![
+					(key(1), Some(row(100, 100, b"a"))),
+					(key(2), Some(row(200, 200, b"b"))),
+					(key(3), Some(row(300, 300, b"c"))),
+				],
+			)]),
+		)
+		.unwrap();
+
+		// The surgical GC invalidation depends on delete_expired returning the exact keys it deleted,
+		// so the read cache is invalidated per-key instead of cleared wholesale. A wrong/empty key set
+		// would silently leave stale entries (or over-clear) and this assertion would catch it.
+		let mut got: Vec<Vec<u8>> = s
+			.delete_expired(table(), TtlAnchor::Created, 200, None)
+			.unwrap()
+			.iter()
+			.map(|k| k.to_vec())
+			.collect();
+		got.sort();
+		let mut want = vec![key(1).to_vec(), key(2).to_vec()];
+		want.sort();
+		assert_eq!(got, want, "delete_expired must return every key it physically deleted, and only those");
+		assert!(visible(&s, &key(3)), "the row newer than the cutoff must neither be deleted nor returned");
 	}
 }

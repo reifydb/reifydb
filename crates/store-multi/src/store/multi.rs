@@ -44,8 +44,33 @@ const TIER_SCAN_CHUNK_SIZE: usize = 32;
 pub(crate) const WARM_THRESHOLD: u64 = 4 * TIER_SCAN_CHUNK_SIZE as u64;
 
 impl MultiVersionGet for StandardMultiStore {
-	#[instrument(name = "store::multi::get", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref()), version = version.0))]
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
+		match classify_key(key) {
+			EntryKind::Operator(_) => self.get_operator(key, version),
+			EntryKind::Source(_) => self.get_source(key, version),
+			_ => self.get_multi(key, version),
+		}
+	}
+}
+
+impl StandardMultiStore {
+	#[instrument(name = "store::multi::get::operator", level = "trace", skip(self, key), fields(version = version.0))]
+	fn get_operator(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
+		self.get_impl(key, version)
+	}
+
+	#[instrument(name = "store::multi::get::source", level = "trace", skip(self, key), fields(version = version.0))]
+	fn get_source(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
+		self.get_impl(key, version)
+	}
+
+	#[instrument(name = "store::multi::get::multi", level = "trace", skip(self, key), fields(version = version.0))]
+	fn get_multi(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
+		self.get_impl(key, version)
+	}
+
+	#[inline]
+	fn get_impl(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
 		let table = classify_key(key);
 
 		if let Some(found) = self.get_probe_commit(table, key, version)? {
@@ -149,7 +174,7 @@ impl MultiVersionCommit for StandardMultiStore {
 		let (operator_drops, source_drops) = partition_drops(classified.explicit_drops);
 		self.dispatch_drops(build_drop_batch(source_drops, &classified.pending_set_keys, version));
 
-		self.invalidate_read_writes_and_deletes(&classified.writes, &classified.deletes);
+		self.update_read_cache_on_commit(version, &classified.batches);
 
 		if !self.write_batches(version, classified.batches)? {
 			return Ok(());
@@ -462,15 +487,28 @@ impl StandardMultiStore {
 	}
 
 	#[inline]
-	fn invalidate_read_writes_and_deletes(&self, writes: &[MultiWrite], deletes: &[MultiDelete]) {
+	fn update_read_cache_on_commit(&self, version: CommitVersion, batches: &TierBatch) {
 		let Some(read) = &self.read else {
 			return;
 		};
-		for write in writes {
-			read.invalidate(&write.key);
-		}
-		for delete in deletes {
-			read.invalidate(&delete.key);
+		for (table, entries) in batches {
+			match table {
+				EntryKind::Operator(_) => {
+					for (key, value) in entries {
+						match value {
+							Some(value) => {
+								read.insert(key.clone(), version, Some(value.clone()))
+							}
+							None => read.invalidate(key),
+						}
+					}
+				}
+				_ => {
+					for (key, _) in entries {
+						read.invalidate(key);
+					}
+				}
+			}
 		}
 	}
 
@@ -1378,17 +1416,17 @@ mod cache_tests {
 		delta::Delta,
 		encoded::{key::EncodedKey, row::EncodedRow},
 		interface::{
-			catalog::{id::TableId, shape::ShapeId},
+			catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId},
 			store::{EntryKind, MultiVersionCommit},
 		},
-		key::row::RowKey,
+		key::{EncodableKey, flow_node_state::FlowNodeStateKey, row::RowKey},
 	};
 	use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
 	use crate::{
 		MultiVersionScope,
 		store::{StandardMultiStore, multi::WARM_THRESHOLD},
-		tier::{TierStorage, commit::buffer::MultiCommitBufferTier},
+		tier::{RawEntry, TierStorage, VersionedGetResult, commit::buffer::MultiCommitBufferTier},
 	};
 
 	const SHAPE: ShapeId = ShapeId::Table(TableId(1));
@@ -1475,6 +1513,80 @@ mod cache_tests {
 		assert!(
 			!read.page_is_complete(light_bucket),
 			"a bucket scanned below the threshold must not be warmed"
+		);
+	}
+
+	#[test]
+	fn operator_state_write_through_keeps_read_cache_warm() {
+		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+		let read = store.read.clone().expect("read tier configured");
+
+		let opkey = FlowNodeStateKey::new(FlowNodeId(7), vec![1, 2, 3]).encode();
+		MultiVersionCommit::commit(
+			&store,
+			cow_vec![Delta::Set {
+				key: opkey.clone(),
+				row: EncodedRow(CowVec::new(b"state-v10".to_vec())),
+			}],
+			CommitVersion(10),
+		)
+		.unwrap();
+
+		match read.get(&opkey, CommitVersion(10)) {
+			VersionedGetResult::Value {
+				value,
+				version,
+			} => {
+				assert_eq!(
+					value.as_ref(),
+					b"state-v10",
+					"the cached operator state must be the committed value"
+				);
+				assert_eq!(
+					version,
+					CommitVersion(10),
+					"the cached entry must carry the commit version"
+				);
+			}
+			other => {
+				panic!("operator state must be served from the read cache after commit, got {other:?}")
+			}
+		}
+
+		assert!(
+			matches!(read.get(&opkey, CommitVersion(9)), VersionedGetResult::NotFound),
+			"a pre-write snapshot read must miss the write-through entry, not see the newer value"
+		);
+	}
+
+	#[test]
+	fn source_row_write_clears_range_complete_on_its_page() {
+		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+		let read = store.read.clone().expect("read tier configured");
+
+		let neighbor = RowKey::encoded(SHAPE, 1);
+		let page = read.page_of_key(&neighbor);
+		assert_eq!(
+			read.page_of_key(&RowKey::encoded(SHAPE, 2)),
+			page,
+			"both source rows must share a page for this test to exercise flag-clearing"
+		);
+		read.populate_page(
+			page,
+			vec![RawEntry {
+				key: neighbor,
+				version: CommitVersion(1),
+				value: Some(CowVec::new(b"neighbor".to_vec())),
+			}],
+			true,
+		);
+		assert!(read.page_is_complete(page), "the page must start range-complete");
+
+		commit_row(&store, 2, 5);
+
+		assert!(
+			!read.page_is_complete(page),
+			"writing a source row into a range-complete page must clear the flag so the range cache re-warms"
 		);
 	}
 }

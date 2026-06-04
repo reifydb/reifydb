@@ -66,11 +66,11 @@ pub(super) fn build_upsert_current_sql(table_name: &str) -> String {
 pub(super) fn build_delete_expired_sql(table_name: &str, anchor_column: &str, has_prefix: bool) -> String {
 	if has_prefix {
 		format!(
-			"DELETE FROM \"{0}\" WHERE {1} > 0 AND {1} <= ?1 AND key >= ?2 AND key < ?3",
+			"DELETE FROM \"{0}\" WHERE {1} > 0 AND {1} <= ?1 AND key >= ?2 AND key < ?3 RETURNING key",
 			table_name, anchor_column
 		)
 	} else {
-		format!("DELETE FROM \"{0}\" WHERE {1} > 0 AND {1} <= ?1", table_name, anchor_column)
+		format!("DELETE FROM \"{0}\" WHERE {1} > 0 AND {1} <= ?1 RETURNING key", table_name, anchor_column)
 	}
 }
 

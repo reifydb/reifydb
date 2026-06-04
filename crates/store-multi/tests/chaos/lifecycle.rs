@@ -96,7 +96,7 @@ fn ttl_sweep(store: &StandardMultiStore, ttl: &Ttl, now_nanos: u64) {
 	if let Some(persistent) = store.persistent() {
 		let cutoff = now_nanos.saturating_sub(ttl.duration_nanos);
 		let deleted = persistent.delete_expired(EntryKind::Source(SHAPE), ttl.anchor, cutoff, None).unwrap();
-		if deleted > 0 {
+		if !deleted.is_empty() {
 			store.clear_read();
 		}
 	}

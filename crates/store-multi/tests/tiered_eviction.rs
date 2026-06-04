@@ -428,7 +428,7 @@ fn row_ttl_deletes_from_persistent_and_invalidated_read_tier_does_not_serve_it()
 
 	// Row-TTL GC's persistent step: delete everything created at/below a cutoff above the row's timestamp.
 	let deleted = persistent.delete_expired(kind, TtlAnchor::Created, 200, None).unwrap();
-	assert_eq!(deleted, 1, "the expired row must be physically deleted from the persistent tier");
+	assert_eq!(deleted.len(), 1, "the expired row must be physically deleted from the persistent tier");
 
 	// Without invalidation the read tier would still serve "old" - prove the cache is indeed stale right now.
 	// (We do NOT assert it here to avoid pinning an implementation detail; instead we run the GC's invalidation
