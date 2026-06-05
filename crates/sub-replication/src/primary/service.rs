@@ -12,7 +12,7 @@ use tokio::{
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 use crate::{
 	convert::cdc_to_proto,
@@ -110,7 +110,7 @@ impl ReplicationService {
 							let entry = cdc_to_proto(cdc);
 							cursor = cdc.version;
 							if tx.send(Ok(entry)).await.is_err() {
-								debug!("Replica disconnected");
+								info!("Replica disconnected");
 								return;
 							}
 						}
@@ -149,7 +149,7 @@ impl ReifyDbReplication for ReplicationService {
 
 		let (tx, rx, store, notify, shutdown_rx) = self.clone_stream_resources();
 
-		debug!(since_version = since.0, "Replica connected for CDC streaming");
+		info!(since_version = since.0, "Replica connected for CDC streaming");
 
 		self.spawn_streaming_loop(since, batch_size, tx, store, notify, shutdown_rx);
 

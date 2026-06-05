@@ -31,6 +31,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
+		category::CATEGORY_COUNT,
 		record::MAX_EXTRAS,
 		scope::ScopeId,
 		summary::{CategorySummary, ProfilerSummary},
@@ -61,7 +62,7 @@ mod tests {
 			started_at_nanos: 0,
 			total_duration_us: 0,
 			records: Vec::new(),
-			per_category: [CategorySummary::default(); 6],
+			per_category: [CategorySummary::default(); CATEGORY_COUNT],
 			interner: None,
 		};
 		sink.on_scope_closed(&summary);
@@ -77,7 +78,7 @@ mod tests {
 			started_at_nanos: 0,
 			total_duration_us: 0,
 			records: Vec::new(),
-			per_category: [CategorySummary::default(); 6],
+			per_category: [CategorySummary::default(); CATEGORY_COUNT],
 			interner: None,
 		};
 		sink.on_scope_closed(&summary);

@@ -264,7 +264,7 @@ impl Catalog {
 		})
 	}
 
-	#[instrument(name = "catalog::view::create_deferred", level = "debug", skip(self, txn, to_create))]
+	#[instrument(name = "catalog::view::create_deferred", level = "info", skip(self, txn, to_create))]
 	pub fn create_deferred_view(&self, txn: &mut AdminTransaction, to_create: ViewToCreate) -> Result<View> {
 		let view = CatalogStore::create_deferred_view(txn, to_create.into())?;
 		txn.track_view_created(view.clone())?;
@@ -275,7 +275,7 @@ impl Catalog {
 		Ok(view)
 	}
 
-	#[instrument(name = "catalog::view::create_transactional", level = "debug", skip(self, txn, to_create))]
+	#[instrument(name = "catalog::view::create_transactional", level = "info", skip(self, txn, to_create))]
 	pub fn create_transactional_view(&self, txn: &mut AdminTransaction, to_create: ViewToCreate) -> Result<View> {
 		let view = CatalogStore::create_transactional_view(txn, to_create.into())?;
 		txn.track_view_created(view.clone())?;
@@ -286,14 +286,14 @@ impl Catalog {
 		Ok(view)
 	}
 
-	#[instrument(name = "catalog::view::drop", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::view::drop", level = "info", skip(self, txn))]
 	pub fn drop_view(&self, txn: &mut AdminTransaction, view: View) -> Result<()> {
 		CatalogStore::drop_view(txn, view.id())?;
 		txn.track_view_deleted(view)?;
 		Ok(())
 	}
 
-	#[instrument(name = "catalog::view::list_all", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::view::list_all", level = "trace", skip(self, txn))]
 	pub fn list_views_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<View>> {
 		CatalogStore::list_views_all(txn)
 	}

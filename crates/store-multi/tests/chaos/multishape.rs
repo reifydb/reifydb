@@ -83,7 +83,7 @@ impl MsOracle {
 }
 
 /// Shape-scoped row-TTL sweep mirroring `gc/row/actor.rs` (buffer scan->invalidate->drop, then persistent
-/// delete_expired -> clear_read on a hit). Scoped to a single shape so the test can assert isolation.
+/// delete_below_version -> clear_read on a hit). Scoped to a single shape so the test can assert isolation.
 fn ttl_sweep_shape(store: &StandardMultiStore, shape_id: ShapeId, cutoff_version: CommitVersion) {
 	if let Some(buffer) = store.commit() {
 		loop {
@@ -112,7 +112,7 @@ fn ttl_sweep_shape(store: &StandardMultiStore, shape_id: ShapeId, cutoff_version
 	if let Some(persistent) = store.persistent() {
 		let deleted =
 			persistent.delete_below_version(EntryKind::Source(shape_id), cutoff_version, None).unwrap();
-		if deleted > 0 {
+		if !deleted.is_empty() {
 			store.clear_read();
 		}
 	}

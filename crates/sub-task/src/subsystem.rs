@@ -44,7 +44,7 @@ pub struct TaskSubsystem {
 }
 
 impl TaskSubsystem {
-	#[instrument(name = "task::subsystem::new", level = "debug", skip(ioc, initial_tasks))]
+	#[instrument(name = "task::subsystem::new", level = "info", skip(ioc, initial_tasks))]
 	pub fn new(ioc: &IocContainer, initial_tasks: Vec<ScheduledTask>) -> Self {
 		let clock = ioc.resolve::<Clock>().expect("Clock not registered in IoC");
 		let handle_tokio = ioc.resolve::<Handle>().expect("tokio::runtime::Handle not registered in IoC");
@@ -149,7 +149,7 @@ impl TaskSubsystem {
 type DrainedCoordinator = (Option<Sender<TaskCoordinatorMessage>>, Option<JoinHandle<()>>);
 
 impl Shutdown for TaskSubsystem {
-	#[instrument(name = "task::subsystem::shutdown", level = "debug", skip(self))]
+	#[instrument(name = "task::subsystem::shutdown", level = "info", skip(self))]
 	fn shutdown(&self) {
 		if !self.claim_shutdown() {
 			return;
@@ -175,7 +175,7 @@ impl Subsystem for TaskSubsystem {
 		self.running.load(Ordering::Acquire)
 	}
 
-	#[instrument(name = "task::subsystem::health_status", level = "debug", skip(self))]
+	#[instrument(name = "task::subsystem::health_status", level = "trace", skip(self))]
 	fn health_status(&self) -> HealthStatus {
 		if self.is_running() {
 			HealthStatus::Healthy

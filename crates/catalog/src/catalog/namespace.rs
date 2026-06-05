@@ -331,7 +331,7 @@ impl Catalog {
 		})
 	}
 
-	#[instrument(name = "catalog::namespace::create", level = "debug", skip(self, txn, to_create))]
+	#[instrument(name = "catalog::namespace::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_namespace(&self, txn: &mut AdminTransaction, to_create: NamespaceToCreate) -> Result<Namespace> {
 		let namespace = CatalogStore::create_namespace(txn, to_create.into())?;
 		txn.track_namespace_created(namespace.clone())?;
@@ -349,14 +349,14 @@ impl Catalog {
 		Ok(namespace)
 	}
 
-	#[instrument(name = "catalog::namespace::drop", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::namespace::drop", level = "info", skip(self, txn))]
 	pub fn drop_namespace(&self, txn: &mut AdminTransaction, namespace: Namespace) -> Result<()> {
 		CatalogStore::drop_namespace(txn, namespace.id())?;
 		txn.track_namespace_deleted(namespace)?;
 		Ok(())
 	}
 
-	#[instrument(name = "catalog::namespace::list_all", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::namespace::list_all", level = "trace", skip(self, txn))]
 	pub fn list_namespaces_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Namespace>> {
 		CatalogStore::list_namespaces_all(txn)
 	}

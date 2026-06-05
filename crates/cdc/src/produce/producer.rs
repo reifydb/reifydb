@@ -34,7 +34,7 @@ use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
 };
-use tracing::{debug, error, trace};
+use tracing::{debug, error, info};
 
 use crate::{
 	consume::{host::CdcHost, wake::CdcWakeRegistry},
@@ -82,7 +82,7 @@ where
 	fn process(&self, version: CommitVersion, changed_at: DateTime, deltas: Vec<Delta>, flow_changes: Vec<Change>) {
 		let mut system_changes: Vec<SystemChange> = Vec::new();
 
-		trace!(version = version.0, delta_count = deltas.len(), "Processing CDC");
+		debug!(version = version.0, delta_count = deltas.len(), "Processing CDC");
 
 		for delta in deltas {
 			if Self::is_excluded_kind(&delta) {
@@ -292,7 +292,7 @@ where
 	type Message = CdcProduceMessage;
 
 	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
-		debug!("CDC producer actor started");
+		info!("CDC producer actor started");
 		let timer_handle = ctx.schedule_repeat(Duration::from_seconds(30).unwrap(), CdcProduceMessage::Tick);
 		CdcProducerState {
 			_timer_handle: Some(timer_handle),
@@ -301,7 +301,7 @@ where
 
 	fn handle(&self, _state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
 		if ctx.is_cancelled() {
-			debug!("CDC producer actor stopping");
+			info!("CDC producer actor stopping");
 			return Directive::Stop;
 		}
 		match msg {
@@ -317,7 +317,7 @@ where
 	}
 
 	fn post_stop(&self) {
-		debug!("CDC producer actor stopped");
+		info!("CDC producer actor stopped");
 	}
 
 	fn config(&self) -> ActorConfig {

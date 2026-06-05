@@ -52,7 +52,7 @@ use reifydb_value::{
 	params::Params,
 	value::{Value, duration::Duration, frame::frame::Frame, identity::IdentityId},
 };
-use tracing::{debug, instrument, warn};
+use tracing::{info, instrument, warn};
 
 #[cfg(feature = "sub_raft")]
 use crate::raft::RaftSubsystem;
@@ -205,12 +205,12 @@ impl Database {
 		self.subsystems.subsystem_count()
 	}
 
-	#[instrument(name = "api::database::stop", level = "debug", skip(self))]
+	#[instrument(name = "api::database::stop", level = "info", skip(self))]
 	pub fn stop(&mut self) -> Result<()> {
 		self.shutdown_internal(!self.fast_shutdown)
 	}
 
-	#[instrument(name = "api::database::stop_fast", level = "debug", skip(self))]
+	#[instrument(name = "api::database::stop_fast", level = "info", skip(self))]
 	pub fn stop_fast(&mut self) -> Result<()> {
 		self.shutdown_internal(false)
 	}
@@ -220,7 +220,7 @@ impl Database {
 			return Ok(()); // Already stopped
 		}
 
-		debug!("Stopping system");
+		info!("Stopping system");
 
 		self.engine.set_shutting_down();
 
@@ -264,7 +264,7 @@ impl Database {
 	#[inline]
 	fn mark_stopped(&mut self) {
 		self.running = false;
-		debug!("System stopped successfully");
+		info!("System stopped successfully");
 		self.health_monitor.update_component_health("system".to_string(), HealthStatus::Healthy, false);
 	}
 
@@ -528,13 +528,13 @@ impl Database {
 			signal(SIGHUP, handle_signal as sighandler_t);
 		}
 
-		debug!("Waiting for termination signal...");
+		info!("Waiting for termination signal...");
 		while RUNNING.load(Ordering::SeqCst) {
 			sleep(Duration::from_milliseconds(100).unwrap().to_std());
 
 			// Log the signal reception outside the signal handler
 			if SIGNAL_RECEIVED.load(Ordering::SeqCst) {
-				debug!("Received termination signal, initiating shutdown...");
+				info!("Received termination signal, initiating shutdown...");
 				break;
 			}
 		}
@@ -552,14 +552,14 @@ impl Database {
 	where
 		F: FnOnce() -> Result<()>,
 	{
-		debug!("Database running, waiting for termination signal...");
+		info!("Database running, waiting for termination signal...");
 
 		self.await_signal()?;
 
-		debug!("Signal received, running shutdown handler...");
+		info!("Signal received, running shutdown handler...");
 		on_shutdown()?;
 
-		debug!("Shutdown handler completed, shutting down database...");
+		info!("Shutdown handler completed, shutting down database...");
 		self.stop()?;
 
 		Ok(())

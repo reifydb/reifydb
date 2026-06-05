@@ -366,12 +366,12 @@ impl MultiTransaction {
 		self.0.version()
 	}
 
-	#[instrument(name = "transaction::begin_query", level = "debug", skip(self))]
+	#[instrument(name = "transaction::begin_query", level = "trace", skip(self))]
 	pub fn begin_query(&self) -> Result<MultiReadTransaction> {
 		MultiReadTransaction::new(self.clone(), None)
 	}
 
-	#[instrument(name = "transaction::begin_query_at_version", level = "debug", skip(self, lease), fields(version = %lease.version().0))]
+	#[instrument(name = "transaction::begin_query_at_version", level = "trace", skip(self, lease), fields(version = %lease.version().0))]
 	pub fn begin_query_at_version(&self, lease: &VersionLeaseGuard) -> Result<MultiReadTransaction> {
 		MultiReadTransaction::new_with_lease(self.clone(), lease.clone())
 	}

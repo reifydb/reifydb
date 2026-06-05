@@ -28,7 +28,7 @@ use reifydb_value::{
 	params::Params,
 	value::{duration::Duration, identity::IdentityId, value_type::ValueType},
 };
-use tracing::debug;
+use tracing::info;
 
 use crate::{MigrationStatement, Result};
 
@@ -120,7 +120,7 @@ pub(crate) fn apply_migrations(engine: &StandardEngine, migrations: &[MigrationS
 		return Ok(());
 	}
 
-	debug!("Applying {} registered migrations", migrations.len());
+	info!("Applying {} registered migrations", migrations.len());
 
 	for migration in migrations {
 		match migration {
@@ -139,16 +139,16 @@ pub(crate) fn apply_migrations(engine: &StandardEngine, migrations: &[MigrationS
 				}
 				rql.push(';');
 				run_admin_root(engine, &rql)?;
-				debug!("Registered migration '{}'", name);
+				info!("Registered migration '{}'", name);
 			}
 			MigrationStatement::Raw(stmt) => {
 				run_admin_root(engine, stmt)?;
-				debug!("Registered raw migration statement ({} bytes)", stmt.len());
+				info!("Registered raw migration statement ({} bytes)", stmt.len());
 			}
 		}
 	}
 
-	debug!("Running MIGRATE to apply pending migrations");
+	info!("Running MIGRATE to apply pending migrations");
 	let strategy = RetryStrategy::with_jittered_backoff(
 		30,
 		Duration::from_milliseconds(10).unwrap(),
@@ -163,7 +163,7 @@ pub(crate) fn apply_migrations(engine: &StandardEngine, migrations: &[MigrationS
 	if let Some(frame) = result.frames.first()
 		&& let Ok(Some(count)) = frame.get::<u32>("migrations_applied", 0)
 	{
-		debug!("Applied {} pending migrations", count);
+		info!("Applied {} pending migrations", count);
 	}
 
 	Ok(())

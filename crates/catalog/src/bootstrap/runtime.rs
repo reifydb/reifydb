@@ -4,7 +4,7 @@
 use reifydb_core::{
 	event::EventBus,
 	interface::catalog::{
-		id::NamespaceId,
+		id::{ColumnId, NamespaceId, SeriesId},
 		series::{SeriesKey, TimestampPrecision},
 	},
 };
@@ -56,7 +56,7 @@ pub fn bootstrap_runtime(
 		NamespaceId::SYSTEM_METRICS,
 	)?;
 
-	for (ns_id, path, local_name) in RUNTIME_DOMAINS {
+	for (ns_id, path, local_name, series_id, column_ids) in RUNTIME_DOMAINS {
 		let ns = ensure_namespace(
 			&catalog_api,
 			&mut admin,
@@ -67,8 +67,9 @@ pub fn bootstrap_runtime(
 		)?;
 
 		if catalog_api.find_series_by_name(&mut Transaction::Admin(&mut admin), ns, "snapshots")?.is_none() {
-			catalog_api.create_series(
+			catalog_api.create_series_with_id(
 				&mut admin,
+				series_id,
 				SeriesToCreate {
 					name: Fragment::internal("snapshots"),
 					namespace: ns,
@@ -80,6 +81,7 @@ pub fn bootstrap_runtime(
 					},
 					underlying: false,
 				},
+				column_ids,
 			)?;
 			info!("Created {path}::snapshots series");
 		}
@@ -89,9 +91,21 @@ pub fn bootstrap_runtime(
 	Ok(())
 }
 
-const RUNTIME_DOMAINS: [(NamespaceId, &str, &str); 2] = [
-	(NamespaceId::SYSTEM_METRICS_RUNTIME_MEMORY, "system::metrics::runtime::memory", "memory"),
-	(NamespaceId::SYSTEM_METRICS_RUNTIME_WATERMARKS, "system::metrics::runtime::watermarks", "watermarks"),
+const RUNTIME_DOMAINS: [(NamespaceId, &str, &str, SeriesId, &[ColumnId]); 2] = [
+	(
+		NamespaceId::SYSTEM_METRICS_RUNTIME_MEMORY,
+		"system::metrics::runtime::memory",
+		"memory",
+		SeriesId::RUNTIME_MEMORY_SNAPSHOTS,
+		&ColumnId::RUNTIME_MEMORY_SNAPSHOTS_COLUMNS,
+	),
+	(
+		NamespaceId::SYSTEM_METRICS_RUNTIME_WATERMARKS,
+		"system::metrics::runtime::watermarks",
+		"watermarks",
+		SeriesId::RUNTIME_WATERMARKS_SNAPSHOTS,
+		&ColumnId::RUNTIME_WATERMARKS_SNAPSHOTS_COLUMNS,
+	),
 ];
 
 fn runtime_col(name: &str, ty: ValueType) -> SeriesColumnToCreate {

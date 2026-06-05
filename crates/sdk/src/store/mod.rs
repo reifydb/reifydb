@@ -39,7 +39,7 @@ impl<'a> Store<'a> {
 		raw_store_contains_key(self.ctx, key)
 	}
 
-	#[instrument(name = "flow::operator::store::prefix", level = "trace", skip(self), fields(
+	#[instrument(name = "flow::operator::store::prefix", level = "debug", skip(self), fields(
 		prefix_len = prefix.as_bytes().len(),
 		result_count
 	))]
@@ -51,7 +51,7 @@ impl<'a> Store<'a> {
 
 	#[instrument(
 		name = "flow::operator::store::range",
-		level = "trace",
+		level = "debug",
 		skip(self, start, end),
 		fields(result_count)
 	)]

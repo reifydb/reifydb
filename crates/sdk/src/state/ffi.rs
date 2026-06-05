@@ -109,7 +109,7 @@ pub(crate) fn remove(ctx: &mut FFIOperatorContext, key: &EncodedKey) -> Result<(
 	}
 }
 
-#[instrument(name = "flow::operator::state::ffi:get_many", level = "trace", skip(ctx, keys), fields(
+#[instrument(name = "flow::operator::state::ffi:get_many", level = "debug", skip(ctx, keys), fields(
 	operator_id = ctx.operator_id().0,
 	key_count = keys.len(),
 	result_count
@@ -150,7 +150,7 @@ pub(crate) fn get_many(ctx: &FFIOperatorContext, keys: &[EncodedKey]) -> Result<
 	}
 }
 
-#[instrument(name = "flow::operator::state::ffi:prefix", level = "trace", skip(ctx), fields(
+#[instrument(name = "flow::operator::state::ffi:prefix", level = "debug", skip(ctx), fields(
 	operator_id = ctx.operator_id().0,
 	prefix_len = prefix.as_bytes().len(),
 	result_count
@@ -180,7 +180,7 @@ const BOUND_UNBOUNDED: u8 = 0;
 const BOUND_INCLUDED: u8 = 1;
 const BOUND_EXCLUDED: u8 = 2;
 
-#[instrument(name = "flow::operator::state::ffi::range", level = "trace", skip(ctx), fields(
+#[instrument(name = "flow::operator::state::ffi::range", level = "debug", skip(ctx), fields(
 	operator_id = ctx.operator_id().0,
 	result_count
 ))]
@@ -226,7 +226,7 @@ pub(crate) fn range(
 
 #[instrument(
 	name = "flow::operator::state::collect_iterator",
-	level = "trace",
+	level = "debug",
 	skip(ctx, iterator),
 	fields(result_count)
 )]
@@ -291,7 +291,7 @@ unsafe fn collect_iterator_results(
 	Ok(results)
 }
 
-#[instrument(name = "flow::operator::state::ffi::clear", level = "debug", skip(ctx), fields(
+#[instrument(name = "flow::operator::state::ffi::clear", level = "trace", skip(ctx), fields(
 	operator_id = ctx.operator_id().0
 ))]
 pub(crate) fn clear(ctx: &mut FFIOperatorContext) -> Result<()> {
@@ -415,7 +415,7 @@ pub(crate) fn internal_remove(ctx: &mut FFIOperatorContext, key: &EncodedKey) ->
 	}
 }
 
-#[instrument(name = "flow::operator::internal_state::ffi:get_many", level = "trace", skip(ctx, keys), fields(
+#[instrument(name = "flow::operator::internal_state::ffi:get_many", level = "debug", skip(ctx, keys), fields(
 	operator_id = ctx.operator_id().0,
 	key_count = keys.len(),
 	result_count

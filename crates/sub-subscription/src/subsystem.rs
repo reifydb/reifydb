@@ -78,6 +78,7 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId, row_number::RowNumber},
 };
+use tracing::instrument;
 
 use crate::{
 	consumer::SubscriptionCdcConsumer,
@@ -249,7 +250,12 @@ impl SubscriptionServiceImpl {
 		Ok((source_frames, statements))
 	}
 
-	#[inline]
+	#[instrument(
+		name = "subscription::hydrate_apply",
+		level = "debug",
+		skip(self, flow_engine, engine, source_frames, now),
+		fields(sources = source_frames.len())
+	)]
 	fn apply_source_frames(
 		&self,
 		flow_engine: &FlowEngineInner,

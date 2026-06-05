@@ -107,7 +107,7 @@ impl Catalog {
 		}
 	}
 
-	#[instrument(name = "catalog::policy::create", level = "debug", skip(self, txn, to_create))]
+	#[instrument(name = "catalog::policy::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_policy(
 		&self,
 		txn: &mut AdminTransaction,
@@ -134,7 +134,7 @@ impl Catalog {
 		Ok(())
 	}
 
-	#[instrument(name = "catalog::policy::drop", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::policy::drop", level = "info", skip(self, txn))]
 	pub fn drop_policy(&self, txn: &mut AdminTransaction, policy_id: PolicyId) -> Result<()> {
 		if let Some(policy) = CatalogStore::find_policy(&mut Transaction::Admin(&mut *txn), policy_id)? {
 			CatalogStore::drop_policy(txn, policy_id)?;

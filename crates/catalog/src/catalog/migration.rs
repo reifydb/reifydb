@@ -26,7 +26,7 @@ pub struct MigrationToCreate {
 }
 
 impl Catalog {
-	#[instrument(name = "catalog::migration::create", level = "debug", skip(self, txn, to_create))]
+	#[instrument(name = "catalog::migration::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_migration(&self, txn: &mut AdminTransaction, to_create: MigrationToCreate) -> Result<Migration> {
 		let new_hash = migration_hash(&to_create.body, to_create.rollback_body.as_deref());
 
@@ -52,7 +52,7 @@ impl Catalog {
 		Ok(migration)
 	}
 
-	#[instrument(name = "catalog::migration::create_event", level = "debug", skip(self, txn, migration))]
+	#[instrument(name = "catalog::migration::create_event", level = "info", skip(self, txn, migration))]
 	pub fn create_migration_event(
 		&self,
 		txn: &mut AdminTransaction,

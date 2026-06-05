@@ -226,7 +226,7 @@ impl Catalog {
 		}
 	}
 
-	#[instrument(name = "catalog::identity::create", level = "debug", skip(self, txn, clock, rng))]
+	#[instrument(name = "catalog::identity::create", level = "info", skip(self, txn, clock, rng))]
 	pub fn create_identity(
 		&self,
 		txn: &mut AdminTransaction,
@@ -239,7 +239,7 @@ impl Catalog {
 		Ok(ident)
 	}
 
-	#[instrument(name = "catalog::identity::drop", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::identity::drop", level = "info", skip(self, txn))]
 	pub fn drop_identity(&self, txn: &mut AdminTransaction, identity: IdentityId) -> Result<()> {
 		if let Some(ident) = CatalogStore::find_identity(&mut Transaction::Admin(&mut *txn), identity)? {
 			CatalogStore::drop_identity(txn, identity)?;
@@ -250,7 +250,7 @@ impl Catalog {
 		Ok(())
 	}
 
-	#[instrument(name = "catalog::identity::list_all", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::identity::list_all", level = "trace", skip(self, txn))]
 	pub fn list_identities_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Identity>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => Ok(self.cache.list_all_identities_at(cmd.version())),
@@ -467,14 +467,14 @@ impl Catalog {
 		}
 	}
 
-	#[instrument(name = "catalog::role::create", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::role::create", level = "info", skip(self, txn))]
 	pub fn create_role(&self, txn: &mut AdminTransaction, name: &str) -> Result<Role> {
 		let role = CatalogStore::create_role(txn, name)?;
 		txn.track_role_created(role.clone())?;
 		Ok(role)
 	}
 
-	#[instrument(name = "catalog::role::drop", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::role::drop", level = "info", skip(self, txn))]
 	pub fn drop_role(&self, txn: &mut AdminTransaction, role_id: RoleId) -> Result<()> {
 		if let Some(role) = CatalogStore::find_role(&mut Transaction::Admin(&mut *txn), role_id)? {
 			CatalogStore::drop_role(txn, role_id)?;

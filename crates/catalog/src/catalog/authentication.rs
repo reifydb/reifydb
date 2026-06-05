@@ -17,7 +17,7 @@ use tracing::{instrument, warn};
 use crate::{CatalogStore, Result, catalog::Catalog};
 
 impl Catalog {
-	#[instrument(name = "catalog::authentication::create", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::authentication::create", level = "info", skip(self, txn))]
 	pub fn create_authentication(
 		&self,
 		txn: &mut AdminTransaction,
@@ -326,7 +326,7 @@ impl Catalog {
 		}
 	}
 
-	#[instrument(name = "catalog::authentication::drop", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::authentication::drop", level = "info", skip(self, txn))]
 	pub fn drop_authentication(
 		&self,
 		txn: &mut AdminTransaction,

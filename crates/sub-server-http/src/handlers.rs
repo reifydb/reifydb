@@ -343,7 +343,7 @@ fn encode_query_response(frames: Vec<Frame>, format_params: &FormatParams) -> Re
 	}
 }
 
-#[instrument(name = "http::extract_identity", level = "debug", skip_all)]
+#[instrument(name = "http::extract_identity", level = "trace", skip_all)]
 fn extract_identity(state: &HttpServerState, headers: &HeaderMap) -> Result<IdentityId, AppError> {
 	if let Some(auth_header) = headers.get("authorization") {
 		let auth_str = auth_header.to_str().map_err(|_| AppError::Auth(AuthError::InvalidHeader))?;

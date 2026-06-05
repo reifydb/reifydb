@@ -3385,6 +3385,7 @@ dependencies = [
  "reifydb-value",
  "serde",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

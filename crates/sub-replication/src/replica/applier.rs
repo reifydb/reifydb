@@ -8,7 +8,7 @@ use reifydb_core::{common::CommitVersion, interface::cdc::SystemChange};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_transaction::transaction::{Transaction, replica::ReplicaTransaction};
 use reifydb_value::{Result, reifydb_assertions};
-use tracing::debug;
+use tracing::trace;
 
 use crate::{
 	convert::proto_entry_to_system_changes, error::ReplicationError, generated::CdcEntry,
@@ -41,7 +41,7 @@ impl ReplicaApplier {
 		}
 		self.commit_replica_transaction(version, system_changes)?;
 		self.advance_to(version);
-		debug!(version = version.0, "Replica applied CDC entry");
+		trace!(version = version.0, "Replica applied CDC entry");
 		Ok(())
 	}
 

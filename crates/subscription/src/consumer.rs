@@ -19,7 +19,7 @@ use reifydb_value::value::datetime::DateTime;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, error::Error, fragment::Fragment, value::identity::IdentityId};
-use tracing::{debug, warn};
+use tracing::{trace, warn};
 
 
 pub struct SubscriptionConsumer;
@@ -153,7 +153,7 @@ impl SubscriptionConsumer {
 
 		delete_txn.commit()?;
 
-		debug!("Deleted {} consumed rows", row_keys.len());
+		trace!("Deleted {} consumed rows", row_keys.len());
 		Ok(())
 	}
 }

@@ -45,6 +45,21 @@ fn category_namespace_id(category: ProfilerCategory) -> NamespaceId {
 		ProfilerCategory::Plan => NamespaceId::SYSTEM_METRICS_PROFILER_PLAN,
 		ProfilerCategory::Cdc => NamespaceId::SYSTEM_METRICS_PROFILER_CDC,
 		ProfilerCategory::Flow => NamespaceId::SYSTEM_METRICS_PROFILER_FLOW,
+		ProfilerCategory::Subscription => NamespaceId::SYSTEM_METRICS_PROFILER_SUBSCRIPTION,
+		ProfilerCategory::Server => NamespaceId::SYSTEM_METRICS_PROFILER_SERVER,
+		ProfilerCategory::Wire => NamespaceId::SYSTEM_METRICS_PROFILER_WIRE,
+		ProfilerCategory::Auth => NamespaceId::SYSTEM_METRICS_PROFILER_AUTH,
+		ProfilerCategory::Catalog => NamespaceId::SYSTEM_METRICS_PROFILER_CATALOG,
+		ProfilerCategory::Engine => NamespaceId::SYSTEM_METRICS_PROFILER_ENGINE,
+		ProfilerCategory::Mutate => NamespaceId::SYSTEM_METRICS_PROFILER_MUTATE,
+		ProfilerCategory::Transport => NamespaceId::SYSTEM_METRICS_PROFILER_TRANSPORT,
+		ProfilerCategory::Task => NamespaceId::SYSTEM_METRICS_PROFILER_TASK,
+		ProfilerCategory::Policy => NamespaceId::SYSTEM_METRICS_PROFILER_POLICY,
+		ProfilerCategory::Ffi => NamespaceId::SYSTEM_METRICS_PROFILER_FFI,
+		ProfilerCategory::Cache => NamespaceId::SYSTEM_METRICS_PROFILER_CACHE,
+		ProfilerCategory::Shape => NamespaceId::SYSTEM_METRICS_PROFILER_SHAPE,
+		ProfilerCategory::Api => NamespaceId::SYSTEM_METRICS_PROFILER_API,
+		ProfilerCategory::Actor => NamespaceId::SYSTEM_METRICS_PROFILER_ACTOR,
 	}
 }
 

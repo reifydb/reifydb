@@ -198,7 +198,7 @@ impl Catalog {
 		}
 	}
 
-	#[instrument(name = "catalog::handler::drop", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::handler::drop", level = "info", skip(self, txn))]
 	pub fn drop_handler(&self, txn: &mut AdminTransaction, id: HandlerId) -> Result<()> {
 		if let Some(handler) = self.find_handler_by_id(&mut Transaction::Admin(&mut *txn), id)? {
 			CatalogStore::drop_handler(txn, id)?;
@@ -207,7 +207,7 @@ impl Catalog {
 		Ok(())
 	}
 
-	#[instrument(name = "catalog::handler::create", level = "debug", skip(self, txn, to_create))]
+	#[instrument(name = "catalog::handler::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_handler(&self, txn: &mut AdminTransaction, to_create: HandlerToCreate) -> Result<Handler> {
 		let store_to_create = StoreHandlerToCreate {
 			name: to_create.name.clone(),

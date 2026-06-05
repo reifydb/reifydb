@@ -81,7 +81,7 @@ impl Drop for NativeTransformFFI {
 }
 
 impl Transform for NativeTransformFFI {
-	#[instrument(name = "transform::ffi::apply", level = "debug", skip_all)]
+	#[instrument(name = "transform::ffi::apply", level = "trace", skip_all)]
 	fn apply(&self, ctx: &TransformContext, input: Columns) -> Result<Columns> {
 		// SAFETY: single-threaded per call; no live pointers from a prior
 

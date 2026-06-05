@@ -25,7 +25,7 @@ use reifydb_runtime::{
 	version_epoch::VersionEpoch,
 };
 use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, trace, warn};
 
 use super::{ListOperatorSettings, OperatorScanStats, scanner};
 use crate::{
@@ -182,7 +182,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 				!both_none,
 				"scan_join_entry was called for node {node_id:?} with neither join side configured; \
 				 the caller's left/right guard let an idle join through, which wastes a buffer range \
-				 scan and a persistent delete_expired on a node that can never expire rows"
+				 scan and a persistent delete_below_version on a node that can never expire rows"
 			);
 		}
 
@@ -212,6 +212,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 						for row in &expired {
 							*stats.bytes_discovered.entry(row.node_id).or_insert(0) +=
 								row.scanned_bytes;
+							self.store.invalidate_read_key(&row.key);
 						}
 						if let Err(e) =
 							scanner::drop_expired_operator_keys(buffer, &expired, stats)
@@ -242,7 +243,12 @@ impl<P: ListOperatorSettings> Actor<P> {
 					cutoff,
 					Some(prefix.as_ref()),
 				) {
-					Ok(deleted) => *persistent_rows_deleted += deleted,
+					Ok(keys) => {
+						*persistent_rows_deleted += keys.len() as u64;
+						for key in &keys {
+							self.store.invalidate_read_key(key);
+						}
+					}
 					Err(e) => {
 						warn!(?node_id, error = %e, "Failed to evict expired persistent join rows");
 					}
@@ -299,6 +305,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 						for row in &expired {
 							*stats.bytes_discovered.entry(row.node_id).or_insert(0) +=
 								row.scanned_bytes;
+							self.store.invalidate_read_key(&row.key);
 						}
 
 						if let Err(e) =
@@ -323,12 +330,16 @@ impl<P: ListOperatorSettings> Actor<P> {
 
 		if let (Some(persistent), Some(cutoff_version)) = (persistent, cutoff_version) {
 			match persistent.delete_below_version(EntryKind::Operator(node_id), cutoff_version, None) {
-				Ok(deleted) => {
-					*persistent_rows_deleted += deleted;
-					if deleted > 0 {
+				Ok(keys) => {
+					*persistent_rows_deleted += keys.len() as u64;
+					if !keys.is_empty() {
+						for key in &keys {
+							self.store.invalidate_read_key(key);
+						}
 						debug!(
 							?node_id,
-							deleted, "Evicted expired operator rows from persistent tier"
+							deleted = keys.len(),
+							"Evicted expired operator rows from persistent tier"
 						);
 					}
 				}
@@ -363,7 +374,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 	#[inline]
 	fn report_scan(&self, stats: &OperatorScanStats, persistent_rows_deleted: u64) {
 		if stats.rows_expired > 0 || persistent_rows_deleted > 0 {
-			info!(
+			debug!(
 				operators_scanned = stats.operators_scanned,
 				operators_skipped = stats.operators_skipped,
 				rows_expired = stats.rows_expired,
@@ -444,4 +455,115 @@ pub fn spawn_operator_settings_actor<P: ListOperatorSettings>(
 	epoch: VersionEpoch,
 ) -> ActorRef<Message> {
 	Actor::spawn(&spawner, store, provider, epoch)
+}
+
+#[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
+mod tests {
+	use std::sync::Arc;
+
+	use reifydb_core::{
+		common::CommitVersion,
+		delta::Delta,
+		encoded::row::{EncodedRow, SHAPE_HEADER_SIZE},
+		interface::{catalog::config::GetConfig, store::MultiVersionCommit},
+		row::OperatorSettings,
+	};
+	use reifydb_value::{util::cowvec::CowVec, value::Value};
+
+	use super::*;
+	use crate::tier::VersionedGetResult;
+
+	#[derive(Clone)]
+	struct TestProvider {
+		node: FlowNodeId,
+		ttl: Ttl,
+	}
+
+	impl ListOperatorSettings for TestProvider {
+		fn list_operator_settings(&self) -> Vec<(FlowNodeId, OperatorSettings)> {
+			vec![(
+				self.node,
+				OperatorSettings {
+					ttl: Some(self.ttl.clone()),
+					join: None,
+				},
+			)]
+		}
+
+		fn config(&self) -> Arc<dyn GetConfig> {
+			Arc::new(TestConfig)
+		}
+	}
+
+	struct TestConfig;
+
+	impl GetConfig for TestConfig {
+		fn get_config(&self, key: ConfigKey) -> Value {
+			key.default_value()
+		}
+
+		fn get_config_at(&self, key: ConfigKey, _version: CommitVersion) -> Value {
+			key.default_value()
+		}
+	}
+
+	fn row_with_created(payload: &[u8], created_at: u64) -> CowVec<u8> {
+		let mut buf = vec![0u8; SHAPE_HEADER_SIZE + payload.len()];
+		buf[8..16].copy_from_slice(&created_at.to_le_bytes());
+		buf[16..24].copy_from_slice(&created_at.to_le_bytes());
+		buf[SHAPE_HEADER_SIZE..].copy_from_slice(payload);
+		CowVec::new(buf)
+	}
+
+	#[test]
+	fn operator_ttl_gc_invalidates_read_cache_for_dropped_keys() {
+		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+		let read = store.read.clone().expect("read tier configured");
+
+		let node = FlowNodeId(1);
+		let opkey = FlowNodeStateKey::encoded(node, vec![1u8]);
+
+		MultiVersionCommit::commit(
+			&store,
+			CowVec::new(vec![Delta::Set {
+				key: opkey.clone(),
+				row: EncodedRow(row_with_created(b"state", 1)),
+			}]),
+			CommitVersion(1),
+		)
+		.unwrap();
+
+		assert!(
+			matches!(read.get(&opkey, CommitVersion(1)), VersionedGetResult::Value { .. }),
+			"write-through must have cached the operator state before GC, otherwise this test cannot \
+			 prove the GC clears a stale entry"
+		);
+
+		let ttl = Ttl {
+			duration_nanos: 100,
+			cleanup_mode: TtlCleanupMode::Drop,
+		};
+
+		let epoch = VersionEpoch::new();
+		epoch.record(1, 1);
+		let actor = Actor::new(
+			store.clone(),
+			TestProvider {
+				node,
+				ttl,
+			},
+			epoch,
+		);
+		let mut state = ActorState {
+			_timer_handle: None,
+			scanning: false,
+			scanner: ScannerState::default(),
+		};
+		actor.run_scan(&mut state, DateTime::from_nanos(1_000));
+
+		assert!(
+			matches!(read.get(&opkey, CommitVersion(1)), VersionedGetResult::NotFound),
+			"operator TTL GC must invalidate the read cache for reclaimed keys"
+		);
+	}
 }

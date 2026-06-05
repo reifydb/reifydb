@@ -96,6 +96,66 @@ pub static PROFILER_FLOW_HIST: LazyLock<Histogram> = LazyLock::new(|| {
 	Histogram::new("profiler.flow.duration_us", "Profiler category Flow duration (us)", FLOW_BOUNDS)
 });
 
+pub static PROFILER_SUBSCRIPTION_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.subscription.duration_us", "Profiler category Subscription duration (us)", FLOW_BOUNDS)
+});
+
+pub static PROFILER_SERVER_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.server.duration_us", "Profiler category Server duration (us)", FLOW_BOUNDS)
+});
+
+pub static PROFILER_WIRE_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.wire.duration_us", "Profiler category Wire duration (us)", STORAGE_BOUNDS)
+});
+
+pub static PROFILER_AUTH_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.auth.duration_us", "Profiler category Auth duration (us)", PLAN_BOUNDS)
+});
+
+pub static PROFILER_CATALOG_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.catalog.duration_us", "Profiler category Catalog duration (us)", PLAN_BOUNDS)
+});
+
+pub static PROFILER_ENGINE_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.engine.duration_us", "Profiler category Engine duration (us)", QUERY_BOUNDS)
+});
+
+pub static PROFILER_MUTATE_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.mutate.duration_us", "Profiler category Mutate duration (us)", TXN_BOUNDS)
+});
+
+pub static PROFILER_TRANSPORT_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.transport.duration_us", "Profiler category Transport duration (us)", QUERY_BOUNDS)
+});
+
+pub static PROFILER_TASK_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.task.duration_us", "Profiler category Task duration (us)", FLOW_BOUNDS)
+});
+
+pub static PROFILER_POLICY_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.policy.duration_us", "Profiler category Policy duration (us)", PLAN_BOUNDS)
+});
+
+pub static PROFILER_FFI_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.ffi.duration_us", "Profiler category Ffi duration (us)", STORAGE_BOUNDS)
+});
+
+pub static PROFILER_CACHE_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.cache.duration_us", "Profiler category Cache duration (us)", PLAN_BOUNDS)
+});
+
+pub static PROFILER_SHAPE_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.shape.duration_us", "Profiler category Shape duration (us)", PLAN_BOUNDS)
+});
+
+pub static PROFILER_API_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.api.duration_us", "Profiler category Api duration (us)", QUERY_BOUNDS)
+});
+
+pub static PROFILER_ACTOR_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.actor.duration_us", "Profiler category Actor duration (us)", FLOW_BOUNDS)
+});
+
 pub fn histogram_for(category: ProfilerCategory) -> &'static Histogram {
 	match category {
 		ProfilerCategory::Query => &PROFILER_QUERY_HIST,
@@ -104,6 +164,21 @@ pub fn histogram_for(category: ProfilerCategory) -> &'static Histogram {
 		ProfilerCategory::Plan => &PROFILER_PLAN_HIST,
 		ProfilerCategory::Cdc => &PROFILER_CDC_HIST,
 		ProfilerCategory::Flow => &PROFILER_FLOW_HIST,
+		ProfilerCategory::Subscription => &PROFILER_SUBSCRIPTION_HIST,
+		ProfilerCategory::Server => &PROFILER_SERVER_HIST,
+		ProfilerCategory::Wire => &PROFILER_WIRE_HIST,
+		ProfilerCategory::Auth => &PROFILER_AUTH_HIST,
+		ProfilerCategory::Catalog => &PROFILER_CATALOG_HIST,
+		ProfilerCategory::Engine => &PROFILER_ENGINE_HIST,
+		ProfilerCategory::Mutate => &PROFILER_MUTATE_HIST,
+		ProfilerCategory::Transport => &PROFILER_TRANSPORT_HIST,
+		ProfilerCategory::Task => &PROFILER_TASK_HIST,
+		ProfilerCategory::Policy => &PROFILER_POLICY_HIST,
+		ProfilerCategory::Ffi => &PROFILER_FFI_HIST,
+		ProfilerCategory::Cache => &PROFILER_CACHE_HIST,
+		ProfilerCategory::Shape => &PROFILER_SHAPE_HIST,
+		ProfilerCategory::Api => &PROFILER_API_HIST,
+		ProfilerCategory::Actor => &PROFILER_ACTOR_HIST,
 	}
 }
 
@@ -147,6 +222,21 @@ pub fn register_all() {
 		STATIC_REGISTRY.register_histogram(&PROFILER_PLAN_HIST);
 		STATIC_REGISTRY.register_histogram(&PROFILER_CDC_HIST);
 		STATIC_REGISTRY.register_histogram(&PROFILER_FLOW_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_SUBSCRIPTION_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_SERVER_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_WIRE_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_AUTH_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_CATALOG_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_ENGINE_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_MUTATE_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_TRANSPORT_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_TASK_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_POLICY_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_FFI_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_CACHE_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_SHAPE_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_API_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_ACTOR_HIST);
 
 		STATIC_REGISTRY.register_gauge(&PROFILER_ACCUMULATOR_SIZE);
 		STATIC_REGISTRY.register_gauge(&PROFILER_ACCUMULATOR_CAPACITY);

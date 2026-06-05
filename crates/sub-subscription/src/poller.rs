@@ -13,6 +13,7 @@ use tokio::{
 	task::spawn_blocking,
 	time::sleep,
 };
+use tracing::instrument;
 
 use crate::store::SubscriptionStore;
 
@@ -37,6 +38,7 @@ impl StoreBackedPoller {
 		}
 	}
 
+	#[instrument(name = "subscription::poll", level = "debug", skip_all)]
 	pub fn poll_all(&self, delivery: &dyn SubscriptionDelivery) -> Option<Duration> {
 		let mut scratch = self.scratch.lock();
 		let _coord = self.store.begin_poll();

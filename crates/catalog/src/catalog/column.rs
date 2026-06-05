@@ -28,12 +28,12 @@ impl Catalog {
 		CatalogStore::get_column(txn, column_id)
 	}
 
-	#[instrument(name = "catalog::column::list_all", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::column::list_all", level = "trace", skip(self, txn))]
 	pub fn list_columns_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<ColumnInfo>> {
 		CatalogStore::list_columns_all(txn)
 	}
 
-	#[instrument(name = "catalog::column::create_policy", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::column::create_policy", level = "info", skip(self, txn))]
 	pub fn create_column_property(
 		&self,
 		txn: &mut AdminTransaction,

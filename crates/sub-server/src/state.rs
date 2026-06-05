@@ -221,7 +221,7 @@ impl AppState {
 		&self.auth_service
 	}
 
-	#[instrument(name = "actor::spawn_server", level = "debug", skip_all)]
+	#[instrument(name = "actor::spawn_server", level = "info", skip_all)]
 	pub fn spawn_server_actor(&self) -> (ActorRef<ServerMessage>, ActorHandle<ServerMessage>) {
 		let actor = ServerActor::new(self.engine.clone(), self.auth_service.clone(), self.clock.clone());
 		let handle = self.spawner.spawn_query("server-req", actor);

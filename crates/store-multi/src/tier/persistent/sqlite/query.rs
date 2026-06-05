@@ -60,9 +60,9 @@ pub(super) fn build_upsert_current_sql(table_name: &str) -> String {
 
 pub(super) fn build_delete_below_version_sql(table_name: &str, has_prefix: bool) -> String {
 	if has_prefix {
-		format!("DELETE FROM \"{0}\" WHERE version <= ?1 AND key >= ?2 AND key < ?3", table_name)
+		format!("DELETE FROM \"{0}\" WHERE version <= ?1 AND key >= ?2 AND key < ?3 RETURNING key", table_name)
 	} else {
-		format!("DELETE FROM \"{0}\" WHERE version <= ?1", table_name)
+		format!("DELETE FROM \"{0}\" WHERE version <= ?1 RETURNING key", table_name)
 	}
 }
 

@@ -9,11 +9,11 @@ use reifydb_core::event::{
 };
 use reifydb_extension::operator::ffi_loader::{ColumnInfo, ffi_operator_loader};
 use reifydb_value::Result;
-use tracing::{debug, instrument};
+use tracing::{info, instrument};
 
 use crate::operator::native::{NativeOperatorColumn, native_operator_loader};
 
-#[instrument(name = "flow::subsystem::load_ffi_operators", level = "debug", skip(event_bus), fields(dir = ?dir))]
+#[instrument(name = "flow::subsystem::load_ffi_operators", level = "info", skip(event_bus), fields(dir = ?dir))]
 pub fn load_ffi_operators(dir: &PathBuf, event_bus: &EventBus) -> Result<()> {
 	let loader = ffi_operator_loader();
 
@@ -40,7 +40,7 @@ pub fn load_ffi_operators(dir: &PathBuf, event_bus: &EventBus) -> Result<()> {
 			}
 		};
 
-		debug!("Registered FFI operator: {} from {:?}", info.operator, path);
+		info!("Registered FFI operator: {} from {:?}", info.operator, path);
 
 		fn convert_columns(columns: &[ColumnInfo]) -> Vec<OperatorColumn> {
 			columns.iter()
@@ -70,7 +70,7 @@ pub fn load_ffi_operators(dir: &PathBuf, event_bus: &EventBus) -> Result<()> {
 	Ok(())
 }
 
-#[instrument(name = "flow::subsystem::load_native_operators", level = "debug", skip(event_bus), fields(dir = ?dir))]
+#[instrument(name = "flow::subsystem::load_native_operators", level = "info", skip(event_bus), fields(dir = ?dir))]
 pub fn load_native_operators(dir: &PathBuf, event_bus: &EventBus) -> Result<()> {
 	let loader = native_operator_loader();
 
@@ -97,7 +97,7 @@ pub fn load_native_operators(dir: &PathBuf, event_bus: &EventBus) -> Result<()> 
 			}
 		};
 
-		debug!("Registered native operator: {} from {:?}", info.operator, path);
+		info!("Registered native operator: {} from {:?}", info.operator, path);
 
 		fn convert_columns(columns: &[NativeOperatorColumn]) -> Vec<OperatorColumn> {
 			columns.iter()

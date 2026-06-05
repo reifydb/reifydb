@@ -278,7 +278,7 @@ impl Catalog {
 		})
 	}
 
-	#[instrument(name = "catalog::ringbuffer::create", level = "debug", skip(self, txn, to_create))]
+	#[instrument(name = "catalog::ringbuffer::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_ringbuffer(
 		&self,
 		txn: &mut AdminTransaction,
@@ -310,14 +310,14 @@ impl Catalog {
 		Ok(ringbuffer)
 	}
 
-	#[instrument(name = "catalog::ringbuffer::drop", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::ringbuffer::drop", level = "info", skip(self, txn))]
 	pub fn drop_ringbuffer(&self, txn: &mut AdminTransaction, ringbuffer: RingBuffer) -> Result<()> {
 		CatalogStore::drop_ringbuffer(txn, ringbuffer.id)?;
 		txn.track_ringbuffer_deleted(ringbuffer)?;
 		Ok(())
 	}
 
-	#[instrument(name = "catalog::ringbuffer::list_all", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::ringbuffer::list_all", level = "trace", skip(self, txn))]
 	pub fn list_ringbuffers_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<RingBuffer>> {
 		CatalogStore::list_ringbuffers_all(txn)
 	}

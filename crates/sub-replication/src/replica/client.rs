@@ -6,7 +6,7 @@ use std::error::Error;
 use reifydb_value::value::duration::Duration;
 use tokio::{select, sync::watch, task::block_in_place, time::sleep};
 use tonic::{Streaming, transport::Channel};
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 use super::applier::ReplicaApplier;
 use crate::generated::{CdcEntry, StreamCdcRequest, reify_db_replication_client::ReifyDbReplicationClient};
@@ -81,7 +81,7 @@ impl ReplicationClient {
 		let Some(mut stream) = self.open_cdc_stream(&mut client, since_version, shutdown_rx).await? else {
 			return Ok(());
 		};
-		debug!("Replication stream established");
+		info!("Replication stream established");
 		self.apply_stream_entries(&mut stream, shutdown_rx).await
 	}
 
@@ -129,7 +129,7 @@ impl ReplicationClient {
 					}
 				    }
 				    Ok(None) => {
-					debug!("Replication stream ended");
+					info!("Replication stream ended");
 					return Err("stream ended".into());
 				    }
 				    Err(e) => {

@@ -24,6 +24,21 @@ impl NamespaceId {
 	pub const SYSTEM_METRICS_RUNTIME: NamespaceId = NamespaceId(17);
 	pub const SYSTEM_METRICS_RUNTIME_MEMORY: NamespaceId = NamespaceId(18);
 	pub const SYSTEM_METRICS_RUNTIME_WATERMARKS: NamespaceId = NamespaceId(19);
+	pub const SYSTEM_METRICS_PROFILER_SUBSCRIPTION: NamespaceId = NamespaceId(20);
+	pub const SYSTEM_METRICS_PROFILER_SERVER: NamespaceId = NamespaceId(21);
+	pub const SYSTEM_METRICS_PROFILER_WIRE: NamespaceId = NamespaceId(22);
+	pub const SYSTEM_METRICS_PROFILER_AUTH: NamespaceId = NamespaceId(23);
+	pub const SYSTEM_METRICS_PROFILER_CATALOG: NamespaceId = NamespaceId(24);
+	pub const SYSTEM_METRICS_PROFILER_ENGINE: NamespaceId = NamespaceId(25);
+	pub const SYSTEM_METRICS_PROFILER_MUTATE: NamespaceId = NamespaceId(26);
+	pub const SYSTEM_METRICS_PROFILER_TRANSPORT: NamespaceId = NamespaceId(27);
+	pub const SYSTEM_METRICS_PROFILER_TASK: NamespaceId = NamespaceId(28);
+	pub const SYSTEM_METRICS_PROFILER_POLICY: NamespaceId = NamespaceId(29);
+	pub const SYSTEM_METRICS_PROFILER_FFI: NamespaceId = NamespaceId(30);
+	pub const SYSTEM_METRICS_PROFILER_CACHE: NamespaceId = NamespaceId(31);
+	pub const SYSTEM_METRICS_PROFILER_SHAPE: NamespaceId = NamespaceId(32);
+	pub const SYSTEM_METRICS_PROFILER_API: NamespaceId = NamespaceId(33);
+	pub const SYSTEM_METRICS_PROFILER_ACTOR: NamespaceId = NamespaceId(34);
 }
 
 #[derive(Debug, Clone, PartialEq)]

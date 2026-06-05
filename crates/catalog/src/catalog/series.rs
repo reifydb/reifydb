@@ -270,7 +270,7 @@ impl Catalog {
 		})
 	}
 
-	#[instrument(name = "catalog::series::create", level = "debug", skip(self, txn, to_create))]
+	#[instrument(name = "catalog::series::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_series(&self, txn: &mut AdminTransaction, to_create: SeriesToCreate) -> Result<Series> {
 		let series = CatalogStore::create_series(txn, to_create.into())?;
 		txn.track_series_created(series.clone())?;
@@ -297,14 +297,14 @@ impl Catalog {
 		Ok(series)
 	}
 
-	#[instrument(name = "catalog::series::drop", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::series::drop", level = "info", skip(self, txn))]
 	pub fn drop_series(&self, txn: &mut AdminTransaction, series: Series) -> Result<()> {
 		CatalogStore::drop_series(txn, series.id)?;
 		txn.track_series_deleted(series)?;
 		Ok(())
 	}
 
-	#[instrument(name = "catalog::series::list_all", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::series::list_all", level = "trace", skip(self, txn))]
 	pub fn list_series_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Series>> {
 		CatalogStore::list_series_all(txn)
 	}

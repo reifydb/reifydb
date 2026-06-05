@@ -17,7 +17,7 @@ pub struct TracingSubsystem {
 }
 
 impl TracingSubsystem {
-	#[instrument(name = "tracing::subsystem::new", level = "debug")]
+	#[instrument(name = "tracing::subsystem::new", level = "info")]
 	pub fn new() -> Self {
 		info!("Tracing subsystem started");
 		Self {
@@ -33,7 +33,7 @@ impl Default for TracingSubsystem {
 }
 
 impl Shutdown for TracingSubsystem {
-	#[instrument(name = "tracing::subsystem::shutdown", level = "debug", skip(self))]
+	#[instrument(name = "tracing::subsystem::shutdown", level = "info", skip(self))]
 	fn shutdown(&self) {
 		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
 			return;
@@ -56,7 +56,7 @@ impl Subsystem for TracingSubsystem {
 		self.running.load(Ordering::Acquire)
 	}
 
-	#[instrument(name = "tracing::subsystem::health_status", level = "debug", skip(self))]
+	#[instrument(name = "tracing::subsystem::health_status", level = "trace", skip(self))]
 	fn health_status(&self) -> HealthStatus {
 		if self.is_running() {
 			HealthStatus::Healthy

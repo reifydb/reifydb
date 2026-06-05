@@ -26,7 +26,7 @@ impl Catalog {
 		CatalogStore::get_sequence(txn, id)
 	}
 
-	#[instrument(name = "catalog::sequence::list", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::sequence::list", level = "trace", skip(self, txn))]
 	pub fn list_sequences(&self, txn: &mut Transaction<'_>) -> Result<Vec<Sequence>> {
 		CatalogStore::list_sequences(txn)
 	}

@@ -217,7 +217,7 @@ impl Catalog {
 		}
 	}
 
-	#[instrument(name = "catalog::binding::create", level = "debug", skip(self, txn, to_create))]
+	#[instrument(name = "catalog::binding::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_binding(&self, txn: &mut AdminTransaction, to_create: BindingToCreate) -> Result<Binding> {
 		if let Some(existing) = self.cache.find_binding_by_name(to_create.namespace, &to_create.name) {
 			let _ = existing;
@@ -278,7 +278,7 @@ impl Catalog {
 		Ok(binding)
 	}
 
-	#[instrument(name = "catalog::binding::drop", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::binding::drop", level = "info", skip(self, txn))]
 	pub fn drop_binding(&self, txn: &mut AdminTransaction, id: BindingId) -> Result<()> {
 		let pre = CatalogStore::find_binding(&mut Transaction::Admin(&mut *txn), id)?;
 		if let Some(pre) = pre {

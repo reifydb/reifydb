@@ -9,7 +9,7 @@ use std::{
 };
 
 use reifydb_value::value::duration::Duration;
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 
 use crate::{
 	actor::{
@@ -120,14 +120,14 @@ impl ActorSystem {
 			{
 				let mut queue_ref = init_queue_for_processor.borrow_mut();
 				if let Some(ref mut queue) = *queue_ref {
-					debug!(actor = %_name, "Queueing message during initialization");
+					trace!(actor = %_name, "Queueing message during initialization");
 					queue.push(msg);
 					return;
 				}
 			}
 
 			if cancel.is_cancelled() {
-				debug!(actor = %_name, "Actor cancelled, ignoring message");
+				trace!(actor = %_name, "Actor cancelled, ignoring message");
 				actor_ref_for_closure.mark_stopped();
 				return;
 			}

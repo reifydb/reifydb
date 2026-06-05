@@ -124,7 +124,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for NativeProcedureFFI {
 		ValueType::Any
 	}
 
-	#[instrument(name = "procedure::ffi::execute", level = "debug", skip_all)]
+	#[instrument(name = "procedure::ffi::execute", level = "trace", skip_all)]
 	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
 		let instance_guard = self.instance.lock();
 		let instance = *instance_guard;

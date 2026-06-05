@@ -73,7 +73,7 @@ impl MultiPersistentTier {
 		table: EntryKind,
 		cutoff_version: CommitVersion,
 		prefix: Option<&[u8]>,
-	) -> Result<u64> {
+	) -> Result<Vec<EncodedKey>> {
 		match self {
 			Self::Sqlite(s) => s.delete_below_version(table, cutoff_version, prefix),
 		}
@@ -109,7 +109,7 @@ impl MultiPersistentTier {
 		_table: EntryKind,
 		_cutoff_version: CommitVersion,
 		_prefix: Option<&[u8]>,
-	) -> Result<u64> {
+	) -> Result<Vec<EncodedKey>> {
 		match *self {}
 	}
 

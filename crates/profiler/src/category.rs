@@ -14,15 +14,47 @@ pub enum ProfilerCategory {
 	Plan = 3,
 	Cdc = 4,
 	Flow = 5,
+	Subscription = 6,
+	Server = 7,
+	Wire = 8,
+	Auth = 9,
+	Catalog = 10,
+	Engine = 11,
+	Mutate = 12,
+	Transport = 13,
+	Task = 14,
+	Policy = 15,
+	Ffi = 16,
+	Cache = 17,
+	Shape = 18,
+	Api = 19,
+	Actor = 20,
 }
 
-pub const ALL_CATEGORIES: [ProfilerCategory; 6] = [
+pub const CATEGORY_COUNT: usize = 21;
+
+pub const ALL_CATEGORIES: [ProfilerCategory; CATEGORY_COUNT] = [
 	ProfilerCategory::Query,
 	ProfilerCategory::Txn,
 	ProfilerCategory::Storage,
 	ProfilerCategory::Plan,
 	ProfilerCategory::Cdc,
 	ProfilerCategory::Flow,
+	ProfilerCategory::Subscription,
+	ProfilerCategory::Server,
+	ProfilerCategory::Wire,
+	ProfilerCategory::Auth,
+	ProfilerCategory::Catalog,
+	ProfilerCategory::Engine,
+	ProfilerCategory::Mutate,
+	ProfilerCategory::Transport,
+	ProfilerCategory::Task,
+	ProfilerCategory::Policy,
+	ProfilerCategory::Ffi,
+	ProfilerCategory::Cache,
+	ProfilerCategory::Shape,
+	ProfilerCategory::Api,
+	ProfilerCategory::Actor,
 ];
 
 impl ProfilerCategory {
@@ -38,12 +70,29 @@ impl ProfilerCategory {
 			3 => Some(ProfilerCategory::Plan),
 			4 => Some(ProfilerCategory::Cdc),
 			5 => Some(ProfilerCategory::Flow),
+			6 => Some(ProfilerCategory::Subscription),
+			7 => Some(ProfilerCategory::Server),
+			8 => Some(ProfilerCategory::Wire),
+			9 => Some(ProfilerCategory::Auth),
+			10 => Some(ProfilerCategory::Catalog),
+			11 => Some(ProfilerCategory::Engine),
+			12 => Some(ProfilerCategory::Mutate),
+			13 => Some(ProfilerCategory::Transport),
+			14 => Some(ProfilerCategory::Task),
+			15 => Some(ProfilerCategory::Policy),
+			16 => Some(ProfilerCategory::Ffi),
+			17 => Some(ProfilerCategory::Cache),
+			18 => Some(ProfilerCategory::Shape),
+			19 => Some(ProfilerCategory::Api),
+			20 => Some(ProfilerCategory::Actor),
 			_ => None,
 		}
 	}
 
 	pub fn from_span_name(name: &str) -> Option<Self> {
-		if name.starts_with("flow::engine::") {
+		if name.starts_with("flow::ffi::") {
+			Some(ProfilerCategory::Ffi)
+		} else if name.starts_with("flow::") {
 			Some(ProfilerCategory::Flow)
 		} else if name.starts_with("transaction::") {
 			Some(ProfilerCategory::Txn)
@@ -54,10 +103,46 @@ impl ProfilerCategory {
 			Some(ProfilerCategory::Storage)
 		} else if name.starts_with("volcano::") || name.starts_with("vm::") {
 			Some(ProfilerCategory::Query)
-		} else if name.starts_with("rql::") || name.starts_with("catalog::") {
+		} else if name.starts_with("rql::") {
 			Some(ProfilerCategory::Plan)
+		} else if name.starts_with("catalog::") {
+			Some(ProfilerCategory::Catalog)
+		} else if name.starts_with("cache::") {
+			Some(ProfilerCategory::Cache)
+		} else if name.starts_with("shape_store::") || name.starts_with("row_shape_registry::") {
+			Some(ProfilerCategory::Shape)
+		} else if name.starts_with("api::") {
+			Some(ProfilerCategory::Api)
+		} else if name.starts_with("actor::") {
+			Some(ProfilerCategory::Actor)
 		} else if name.starts_with("cdc::") {
 			Some(ProfilerCategory::Cdc)
+		} else if name.starts_with("subscription::") {
+			Some(ProfilerCategory::Subscription)
+		} else if name.starts_with("server::") {
+			Some(ProfilerCategory::Server)
+		} else if name.starts_with("wire::") {
+			Some(ProfilerCategory::Wire)
+		} else if name.starts_with("auth::") {
+			Some(ProfilerCategory::Auth)
+		} else if name.starts_with("engine::")
+			|| name.starts_with("executor::")
+			|| name.starts_with("session::")
+		{
+			Some(ProfilerCategory::Engine)
+		} else if name.starts_with("mutate::") {
+			Some(ProfilerCategory::Mutate)
+		} else if name.starts_with("http::") || name.starts_with("dispatch::") {
+			Some(ProfilerCategory::Transport)
+		} else if name.starts_with("task::") {
+			Some(ProfilerCategory::Task)
+		} else if name.starts_with("policy::") {
+			Some(ProfilerCategory::Policy)
+		} else if name.starts_with("ffi::")
+			|| name.starts_with("procedure::")
+			|| name.starts_with("transform::")
+		{
+			Some(ProfilerCategory::Ffi)
 		} else {
 			None
 		}
@@ -71,6 +156,21 @@ impl ProfilerCategory {
 			ProfilerCategory::Plan => "plan",
 			ProfilerCategory::Cdc => "cdc",
 			ProfilerCategory::Flow => "flow",
+			ProfilerCategory::Subscription => "subscription",
+			ProfilerCategory::Server => "server",
+			ProfilerCategory::Wire => "wire",
+			ProfilerCategory::Auth => "auth",
+			ProfilerCategory::Catalog => "catalog",
+			ProfilerCategory::Engine => "engine",
+			ProfilerCategory::Mutate => "mutate",
+			ProfilerCategory::Transport => "transport",
+			ProfilerCategory::Task => "task",
+			ProfilerCategory::Policy => "policy",
+			ProfilerCategory::Ffi => "ffi",
+			ProfilerCategory::Cache => "cache",
+			ProfilerCategory::Shape => "shape",
+			ProfilerCategory::Api => "api",
+			ProfilerCategory::Actor => "actor",
 		}
 	}
 }
@@ -102,13 +202,13 @@ impl ProfilerLevel {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct CategorySet {
-	levels: [Option<ProfilerLevel>; 6],
+	levels: [Option<ProfilerLevel>; CATEGORY_COUNT],
 }
 
 impl CategorySet {
 	pub const fn empty() -> Self {
 		Self {
-			levels: [None; 6],
+			levels: [None; CATEGORY_COUNT],
 		}
 	}
 
@@ -118,7 +218,7 @@ impl CategorySet {
 
 	pub const fn all_at(level: ProfilerLevel) -> Self {
 		Self {
-			levels: [Some(level); 6],
+			levels: [Some(level); CATEGORY_COUNT],
 		}
 	}
 
@@ -180,8 +280,67 @@ mod tests {
 		assert_eq!(ProfilerCategory::from_span_name("volcano::project"), Some(ProfilerCategory::Query));
 		assert_eq!(ProfilerCategory::from_span_name("vm::executor"), Some(ProfilerCategory::Query));
 		assert_eq!(ProfilerCategory::from_span_name("rql::parse"), Some(ProfilerCategory::Plan));
-		assert_eq!(ProfilerCategory::from_span_name("catalog::lookup"), Some(ProfilerCategory::Plan));
 		assert_eq!(ProfilerCategory::from_span_name("cdc::write"), Some(ProfilerCategory::Cdc));
+		assert_eq!(
+			ProfilerCategory::from_span_name("subscription::consume"),
+			Some(ProfilerCategory::Subscription)
+		);
+		assert_eq!(ProfilerCategory::from_span_name("server::deliver"), Some(ProfilerCategory::Server));
+		assert_eq!(ProfilerCategory::from_span_name("wire::encode_frames"), Some(ProfilerCategory::Wire));
+		assert_eq!(ProfilerCategory::from_span_name("auth::authenticate"), Some(ProfilerCategory::Auth));
+		assert_eq!(ProfilerCategory::from_span_name("engine::query_as"), Some(ProfilerCategory::Engine));
+		assert_eq!(ProfilerCategory::from_span_name("executor::compile"), Some(ProfilerCategory::Engine));
+		assert_eq!(ProfilerCategory::from_span_name("session::query"), Some(ProfilerCategory::Engine));
+		assert_eq!(ProfilerCategory::from_span_name("mutate::table::insert"), Some(ProfilerCategory::Mutate));
+		assert_eq!(ProfilerCategory::from_span_name("http::query"), Some(ProfilerCategory::Transport));
+		assert_eq!(
+			ProfilerCategory::from_span_name("dispatch::send_server_message"),
+			Some(ProfilerCategory::Transport)
+		);
+		assert_eq!(ProfilerCategory::from_span_name("task::spawn"), Some(ProfilerCategory::Task));
+		assert_eq!(ProfilerCategory::from_span_name("policy::enforce"), Some(ProfilerCategory::Policy));
+		assert_eq!(ProfilerCategory::from_span_name("ffi::callback"), Some(ProfilerCategory::Ffi));
+		assert_eq!(ProfilerCategory::from_span_name("procedure::ffi::execute"), Some(ProfilerCategory::Ffi));
+		assert_eq!(ProfilerCategory::from_span_name("transform::ffi::apply"), Some(ProfilerCategory::Ffi));
+		// flow::ffi:: must beat the broader flow:: -> Flow rule so FFI boundary cost is attributed to Ffi.
+		assert_eq!(ProfilerCategory::from_span_name("flow::ffi::vtable_call"), Some(ProfilerCategory::Ffi));
+		assert_eq!(ProfilerCategory::from_span_name("flow::engine::apply"), Some(ProfilerCategory::Flow));
+	}
+
+	#[test]
+	fn catalog_split_out_of_plan() {
+		// catalog:: was moved out of Plan into its own Catalog category so Plan reflects
+		// real query planning (rql::) rather than being dominated by metadata lookups.
+		assert_eq!(
+			ProfilerCategory::from_span_name("catalog::column::find_by_name"),
+			Some(ProfilerCategory::Catalog)
+		);
+		assert_eq!(ProfilerCategory::from_span_name("rql::plan"), Some(ProfilerCategory::Plan));
+	}
+
+	#[test]
+	fn from_span_name_new_subsystem_prefixes() {
+		// cache::, shape_store::/row_shape_registry::, api::, actor:: were previously unmapped and
+		// their spans silently dropped; each now buckets into its own selectable category.
+		assert_eq!(ProfilerCategory::from_span_name("cache::row_shape::load"), Some(ProfilerCategory::Cache));
+		assert_eq!(ProfilerCategory::from_span_name("shape_store::create"), Some(ProfilerCategory::Shape));
+		// row_shape_registry:: is the same row-shape subsystem as shape_store::, so it shares Shape.
+		assert_eq!(ProfilerCategory::from_span_name("row_shape_registry::load"), Some(ProfilerCategory::Shape));
+		assert_eq!(ProfilerCategory::from_span_name("api::stop_fast"), Some(ProfilerCategory::Api));
+		assert_eq!(ProfilerCategory::from_span_name("actor::query_pool"), Some(ProfilerCategory::Actor));
+	}
+
+	#[test]
+	fn from_span_name_flow_covers_non_engine_prefixes() {
+		// Flow was widened from `flow::engine::` to `flow::` so the already-instrumented
+		// coordinator/pool/worker spans are captured, not just the engine internals.
+		assert_eq!(
+			ProfilerCategory::from_span_name("flow::coordinator::consume"),
+			Some(ProfilerCategory::Flow)
+		);
+		assert_eq!(ProfilerCategory::from_span_name("flow::pool::submit"), Some(ProfilerCategory::Flow));
+		assert_eq!(ProfilerCategory::from_span_name("flow::actor::tick"), Some(ProfilerCategory::Flow));
+		assert_eq!(ProfilerCategory::from_span_name("flow::engine::apply"), Some(ProfilerCategory::Flow));
 	}
 
 	#[test]
@@ -196,7 +355,7 @@ mod tests {
 		for c in ALL_CATEGORIES {
 			assert_eq!(ProfilerCategory::from_id(c.as_id()), Some(c));
 		}
-		assert_eq!(ProfilerCategory::from_id(ProfilerCategoryId(6)), None);
+		assert_eq!(ProfilerCategory::from_id(ProfilerCategoryId(CATEGORY_COUNT as u8)), None);
 		assert_eq!(ProfilerCategory::from_id(ProfilerCategoryId(255)), None);
 	}
 

@@ -87,7 +87,7 @@ fn ttl_sweep(store: &StandardMultiStore, cutoff_version: CommitVersion) {
 	}
 	if let Some(persistent) = store.persistent() {
 		let deleted = persistent.delete_below_version(EntryKind::Source(SHAPE), cutoff_version, None).unwrap();
-		if deleted > 0 {
+		if !deleted.is_empty() {
 			store.clear_read();
 		}
 	}

@@ -28,7 +28,7 @@ use reifydb_runtime::{shutdown::Shutdown, sync::mutex::Mutex};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_value::Result;
 use tokio::runtime::Handle;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 use crate::config::OtelConfig;
 
@@ -160,7 +160,7 @@ impl Shutdown for OtelSubsystem {
 			if let Err(e) = provider.shutdown() {
 				error!("Error shutting down tracer provider: {:?}", e);
 			} else {
-				debug!("Tracer provider shutdown complete");
+				info!("Tracer provider shutdown complete");
 			}
 		}
 	}

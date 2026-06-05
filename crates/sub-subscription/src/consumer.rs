@@ -22,6 +22,7 @@ use reifydb_sub_flow::{
 };
 use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
 use reifydb_value::Result;
+use tracing::instrument;
 
 use crate::sink::DeliveryBuffer;
 
@@ -61,6 +62,7 @@ impl SubscriptionCdcConsumer {
 }
 
 impl CdcConsume for SubscriptionCdcConsumer {
+	#[instrument(name = "subscription::consume", level = "debug", skip(self, cdcs, reply), fields(cdc_count = cdcs.len()))]
 	fn consume(&self, cdcs: Vec<Cdc>, reply: Box<dyn FnOnce(Result<()>) + Send>) {
 		let Some(flow_engine) = self.acquire_flow_engine() else {
 			reply(Ok(()));

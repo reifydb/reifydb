@@ -24,7 +24,7 @@ use reifydb_runtime::{
 	version_epoch::VersionEpoch,
 };
 use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, trace, warn};
 
 use super::{ListRowSettings, ScanStats, scanner};
 use crate::{
@@ -252,11 +252,17 @@ impl<P: ListRowSettings> Actor<P> {
 			return;
 		};
 		match persistent.delete_below_version(EntryKind::Source(*shape_id), cutoff_version, None) {
-			Ok(deleted) => {
-				*persistent_rows_deleted += deleted;
-				if deleted > 0 {
-					self.store.clear_read();
-					debug!(?shape_id, deleted, "Evicted expired rows from persistent tier");
+			Ok(keys) => {
+				*persistent_rows_deleted += keys.len() as u64;
+				if !keys.is_empty() {
+					for key in &keys {
+						self.store.invalidate_read_key(key);
+					}
+					debug!(
+						?shape_id,
+						deleted = keys.len(),
+						"Evicted expired rows from persistent tier"
+					);
 				}
 			}
 			Err(e) => {
@@ -287,7 +293,7 @@ impl<P: ListRowSettings> Actor<P> {
 		}
 
 		if stats.rows_expired > 0 || persistent_rows_deleted > 0 {
-			info!(
+			debug!(
 				shapes_scanned = stats.shapes_scanned,
 				shapes_skipped = stats.shapes_skipped,
 				rows_expired = stats.rows_expired,

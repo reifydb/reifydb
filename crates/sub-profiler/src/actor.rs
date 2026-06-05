@@ -66,6 +66,21 @@ fn span_name_for(category: ProfilerCategory) -> &'static str {
 		Plan => "plan",
 		Cdc => "cdc",
 		Flow => "flow",
+		Subscription => "subscription",
+		Server => "server",
+		Wire => "wire",
+		Auth => "auth",
+		Catalog => "catalog",
+		Engine => "engine",
+		Mutate => "mutate",
+		Transport => "transport",
+		Task => "task",
+		Policy => "policy",
+		Ffi => "ffi",
+		Cache => "cache",
+		Shape => "shape",
+		Api => "api",
+		Actor => "actor",
 	}
 }
 

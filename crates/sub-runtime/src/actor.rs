@@ -16,7 +16,7 @@ use reifydb_value::{
 		value_type::ValueType,
 	},
 };
-use tracing::{error, info};
+use tracing::{debug, error};
 
 use crate::{
 	collect::{Collectors, Sample},
@@ -98,7 +98,7 @@ impl RuntimeSamplerActor {
 	#[inline]
 	fn log_aggregate_metrics(&self, all: &[Sample]) {
 		let get = |name: &str| all.iter().find(|s| s.metric == name).map(|s| s.value).unwrap_or(0.0);
-		info!(
+		debug!(
 			rss_anon_mb = get("rss_anon_bytes") / 1_048_576.0,
 			rss_file_mb = get("rss_file_bytes") / 1_048_576.0,
 			heap_live_mb = get("heap_live_bytes") / 1_048_576.0,
