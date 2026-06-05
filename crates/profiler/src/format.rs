@@ -359,6 +359,17 @@ fn category_label(c: ProfilerCategory) -> &'static str {
 		ProfilerCategory::Plan => "Plan",
 		ProfilerCategory::Cdc => "Cdc",
 		ProfilerCategory::Flow => "Flow",
+		ProfilerCategory::Subscription => "Subscription",
+		ProfilerCategory::Server => "Server",
+		ProfilerCategory::Wire => "Wire",
+		ProfilerCategory::Auth => "Auth",
+		ProfilerCategory::Catalog => "Catalog",
+		ProfilerCategory::Engine => "Engine",
+		ProfilerCategory::Mutate => "Mutate",
+		ProfilerCategory::Transport => "Transport",
+		ProfilerCategory::Task => "Task",
+		ProfilerCategory::Policy => "Policy",
+		ProfilerCategory::Ffi => "Ffi",
 	}
 }
 
@@ -368,7 +379,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		category::ProfilerCategory,
+		category::{CATEGORY_COUNT, ProfilerCategory},
 		intern::DimInterner,
 		percentile::PercentileHistogram,
 		record::{AggregateRecord, DIM_UNSET, MAX_EXTRAS, MinimalSpanRecord},
@@ -383,7 +394,7 @@ mod tests {
 			started_at_nanos: 0,
 			total_duration_us: 0,
 			records: Vec::new(),
-			per_category: [CategorySummary::default(); 6],
+			per_category: [CategorySummary::default(); CATEGORY_COUNT],
 			interner: None,
 		}
 	}

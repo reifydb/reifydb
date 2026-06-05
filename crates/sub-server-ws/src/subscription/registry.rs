@@ -13,7 +13,7 @@ use reifydb_value::value::{frame::frame::Frame, uuid::Uuid7};
 use reifydb_wire_format::{encode::encode_frames, json::to::convert_frames, options::EncodeOptions};
 use serde_json::{Value as JsonValue, from_str, json};
 use tokio::sync::mpsc;
-use tracing::warn;
+use tracing::{instrument, warn};
 
 use crate::handler::{BinaryKind, encode_rbcf_envelope};
 
@@ -96,6 +96,7 @@ impl WireSink for WsWireSink {
 		DeliveryResult::Delivered
 	}
 
+	#[instrument(name = "server::ws_encode", level = "debug", skip(self, columns, format), fields(sub = sub_id.0))]
 	fn send_change(&self, sub_id: SubscriptionId, columns: Columns, format: Self::Format) -> DeliveryResult {
 		let msg = match encode_change(sub_id, columns, format) {
 			Some(m) => m,

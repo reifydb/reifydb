@@ -23,7 +23,7 @@ mod native {
 		state::AppState,
 	};
 
-	#[instrument(name = "dispatch", level = "debug", skip_all, fields(op = ?ctx.operation))]
+	#[instrument(name = "dispatch::request", level = "debug", skip_all, fields(op = ?ctx.operation))]
 	pub async fn dispatch(
 		state: &AppState,
 		mut ctx: RequestContext,
@@ -36,7 +36,7 @@ mod native {
 		Ok((frames, metrics))
 	}
 
-	#[instrument(name = "dispatch_subscribe", level = "debug", skip_all, fields(op = ?ctx.operation))]
+	#[instrument(name = "dispatch::subscribe", level = "debug", skip_all, fields(op = ?ctx.operation))]
 	pub async fn dispatch_subscribe(
 		state: &AppState,
 		mut ctx: RequestContext,

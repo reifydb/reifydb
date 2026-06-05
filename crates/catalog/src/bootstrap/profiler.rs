@@ -31,13 +31,24 @@ use crate::{
 	},
 };
 
-const PROFILER_CATEGORIES: [(&str, NamespaceId); 6] = [
+const PROFILER_CATEGORIES: [(&str, NamespaceId); 17] = [
 	("query", NamespaceId::SYSTEM_METRICS_PROFILER_QUERY),
 	("txn", NamespaceId::SYSTEM_METRICS_PROFILER_TXN),
 	("storage", NamespaceId::SYSTEM_METRICS_PROFILER_STORAGE),
 	("plan", NamespaceId::SYSTEM_METRICS_PROFILER_PLAN),
 	("cdc", NamespaceId::SYSTEM_METRICS_PROFILER_CDC),
 	("flow", NamespaceId::SYSTEM_METRICS_PROFILER_FLOW),
+	("subscription", NamespaceId::SYSTEM_METRICS_PROFILER_SUBSCRIPTION),
+	("server", NamespaceId::SYSTEM_METRICS_PROFILER_SERVER),
+	("wire", NamespaceId::SYSTEM_METRICS_PROFILER_WIRE),
+	("auth", NamespaceId::SYSTEM_METRICS_PROFILER_AUTH),
+	("catalog", NamespaceId::SYSTEM_METRICS_PROFILER_CATALOG),
+	("engine", NamespaceId::SYSTEM_METRICS_PROFILER_ENGINE),
+	("mutate", NamespaceId::SYSTEM_METRICS_PROFILER_MUTATE),
+	("transport", NamespaceId::SYSTEM_METRICS_PROFILER_TRANSPORT),
+	("task", NamespaceId::SYSTEM_METRICS_PROFILER_TASK),
+	("policy", NamespaceId::SYSTEM_METRICS_PROFILER_POLICY),
+	("ffi", NamespaceId::SYSTEM_METRICS_PROFILER_FFI),
 ];
 
 pub fn bootstrap_profiler(

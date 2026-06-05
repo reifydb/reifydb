@@ -8,7 +8,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::context::clock::{Clock, Instant};
 use reifydb_value::{reifydb_assertions, value::duration::Duration};
 use tokio::{runtime::Handle, select, sync::mpsc, task::spawn_blocking, time};
-use tracing::{debug, error, info};
+use tracing::{Instrument, debug, debug_span, error, info};
 
 #[cfg(reifydb_assertions)]
 use crate::schedule::Schedule;
@@ -247,6 +247,7 @@ fn spawn_task(
 	let executor = task.executor;
 	let work = task.work.clone();
 
+	let span = debug_span!("task::run", task = %task_name);
 	handle.spawn(async move {
 		let start = clock.instant();
 		let ctx = TaskContext::new(engine);
@@ -284,5 +285,6 @@ fn spawn_task(
 		}
 
 		let _ = completion_tx.send((task_id, completed_at));
-	});
+	}
+	.instrument(span));
 }

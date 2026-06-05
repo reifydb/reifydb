@@ -14,6 +14,7 @@ use reifydb_rql::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, error::Error, reifydb_assertions, value::identity::IdentityId};
+use tracing::instrument;
 
 use crate::{error::PolicyError, evaluate::PolicyEvaluator, resolve_write_policies};
 
@@ -24,6 +25,7 @@ pub struct PolicyTarget<'a> {
 	pub target_type: PolicyTargetType,
 }
 
+#[instrument(name = "policy::enforce", level = "debug", skip_all)]
 pub fn enforce_write_policies(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,

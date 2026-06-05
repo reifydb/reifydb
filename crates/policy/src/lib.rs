@@ -36,7 +36,9 @@ use reifydb_rql::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, fragment::Fragment};
+use tracing::instrument;
 
+#[instrument(name = "policy::inject", level = "debug", skip_all)]
 pub fn inject_from_policies<'a>(
 	plans: BumpVec<'a, LogicalPlan<'a>>,
 	bump: &'a Bump,

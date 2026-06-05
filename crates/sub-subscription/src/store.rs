@@ -17,6 +17,7 @@ use reifydb_runtime::sync::{
 };
 use reifydb_value::reifydb_assertions;
 use tokio::sync::Notify;
+use tracing::instrument;
 
 struct SubscriptionBuffer {
 	queue: VecDeque<Columns>,
@@ -116,6 +117,7 @@ impl SubscriptionStore {
 		self.inner.iter().map(|entry| *entry.key()).collect()
 	}
 
+	#[instrument(name = "subscription::commit_staged", level = "debug", skip(self, staged), fields(subs = staged.len()))]
 	pub fn commit_staged(&self, staged: HashMap<SubscriptionId, Vec<Columns>>) {
 		if staged.is_empty() {
 			return;

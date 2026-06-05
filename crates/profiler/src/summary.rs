@@ -7,7 +7,7 @@ use reifydb_value::value::duration::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	category::ProfilerCategory,
+	category::{CATEGORY_COUNT, ProfilerCategory},
 	intern::DimInterner,
 	record::{MAX_EXTRAS, MinimalSpanRecord},
 	scope::ScopeId,
@@ -62,7 +62,7 @@ pub struct ProfilerSummary {
 	pub started_at_nanos: u128,
 	pub total_duration_us: u64,
 	pub records: Vec<MinimalSpanRecord>,
-	pub per_category: [CategorySummary; 6],
+	pub per_category: [CategorySummary; CATEGORY_COUNT],
 	#[serde(skip)]
 	pub interner: Option<Arc<DimInterner>>,
 }
@@ -84,7 +84,7 @@ impl ProfilerSummary {
 		records: Vec<MinimalSpanRecord>,
 		interner: Option<Arc<DimInterner>>,
 	) -> Self {
-		let mut per_category = [CategorySummary::default(); 6];
+		let mut per_category = [CategorySummary::default(); CATEGORY_COUNT];
 		for rec in &records {
 			let idx = rec.category_id as usize;
 			if idx < per_category.len() {
@@ -142,7 +142,7 @@ mod tests {
 
 	#[test]
 	fn all_categories_addressable() {
-		let mut per = [CategorySummary::default(); 6];
+		let mut per = [CategorySummary::default(); CATEGORY_COUNT];
 		for c in ALL_CATEGORIES {
 			per[c as usize].calls = c as u64;
 		}
