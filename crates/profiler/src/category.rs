@@ -25,9 +25,13 @@ pub enum ProfilerCategory {
 	Task = 14,
 	Policy = 15,
 	Ffi = 16,
+	Cache = 17,
+	Shape = 18,
+	Api = 19,
+	Actor = 20,
 }
 
-pub const CATEGORY_COUNT: usize = 17;
+pub const CATEGORY_COUNT: usize = 21;
 
 pub const ALL_CATEGORIES: [ProfilerCategory; CATEGORY_COUNT] = [
 	ProfilerCategory::Query,
@@ -47,6 +51,10 @@ pub const ALL_CATEGORIES: [ProfilerCategory; CATEGORY_COUNT] = [
 	ProfilerCategory::Task,
 	ProfilerCategory::Policy,
 	ProfilerCategory::Ffi,
+	ProfilerCategory::Cache,
+	ProfilerCategory::Shape,
+	ProfilerCategory::Api,
+	ProfilerCategory::Actor,
 ];
 
 impl ProfilerCategory {
@@ -73,6 +81,10 @@ impl ProfilerCategory {
 			14 => Some(ProfilerCategory::Task),
 			15 => Some(ProfilerCategory::Policy),
 			16 => Some(ProfilerCategory::Ffi),
+			17 => Some(ProfilerCategory::Cache),
+			18 => Some(ProfilerCategory::Shape),
+			19 => Some(ProfilerCategory::Api),
+			20 => Some(ProfilerCategory::Actor),
 			_ => None,
 		}
 	}
@@ -95,6 +107,14 @@ impl ProfilerCategory {
 			Some(ProfilerCategory::Plan)
 		} else if name.starts_with("catalog::") {
 			Some(ProfilerCategory::Catalog)
+		} else if name.starts_with("cache::") {
+			Some(ProfilerCategory::Cache)
+		} else if name.starts_with("shape_store::") || name.starts_with("row_shape_registry::") {
+			Some(ProfilerCategory::Shape)
+		} else if name.starts_with("api::") {
+			Some(ProfilerCategory::Api)
+		} else if name.starts_with("actor::") {
+			Some(ProfilerCategory::Actor)
 		} else if name.starts_with("cdc::") {
 			Some(ProfilerCategory::Cdc)
 		} else if name.starts_with("subscription::") {
@@ -147,6 +167,10 @@ impl ProfilerCategory {
 			ProfilerCategory::Task => "task",
 			ProfilerCategory::Policy => "policy",
 			ProfilerCategory::Ffi => "ffi",
+			ProfilerCategory::Cache => "cache",
+			ProfilerCategory::Shape => "shape",
+			ProfilerCategory::Api => "api",
+			ProfilerCategory::Actor => "actor",
 		}
 	}
 }
@@ -292,6 +316,18 @@ mod tests {
 			Some(ProfilerCategory::Catalog)
 		);
 		assert_eq!(ProfilerCategory::from_span_name("rql::plan"), Some(ProfilerCategory::Plan));
+	}
+
+	#[test]
+	fn from_span_name_new_subsystem_prefixes() {
+		// cache::, shape_store::/row_shape_registry::, api::, actor:: were previously unmapped and
+		// their spans silently dropped; each now buckets into its own selectable category.
+		assert_eq!(ProfilerCategory::from_span_name("cache::row_shape::load"), Some(ProfilerCategory::Cache));
+		assert_eq!(ProfilerCategory::from_span_name("shape_store::create"), Some(ProfilerCategory::Shape));
+		// row_shape_registry:: is the same row-shape subsystem as shape_store::, so it shares Shape.
+		assert_eq!(ProfilerCategory::from_span_name("row_shape_registry::load"), Some(ProfilerCategory::Shape));
+		assert_eq!(ProfilerCategory::from_span_name("api::stop_fast"), Some(ProfilerCategory::Api));
+		assert_eq!(ProfilerCategory::from_span_name("actor::query_pool"), Some(ProfilerCategory::Actor));
 	}
 
 	#[test]

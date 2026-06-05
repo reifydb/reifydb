@@ -35,6 +35,10 @@ impl NamespaceId {
 	pub const SYSTEM_METRICS_PROFILER_TASK: NamespaceId = NamespaceId(28);
 	pub const SYSTEM_METRICS_PROFILER_POLICY: NamespaceId = NamespaceId(29);
 	pub const SYSTEM_METRICS_PROFILER_FFI: NamespaceId = NamespaceId(30);
+	pub const SYSTEM_METRICS_PROFILER_CACHE: NamespaceId = NamespaceId(31);
+	pub const SYSTEM_METRICS_PROFILER_SHAPE: NamespaceId = NamespaceId(32);
+	pub const SYSTEM_METRICS_PROFILER_API: NamespaceId = NamespaceId(33);
+	pub const SYSTEM_METRICS_PROFILER_ACTOR: NamespaceId = NamespaceId(34);
 }
 
 #[derive(Debug, Clone, PartialEq)]

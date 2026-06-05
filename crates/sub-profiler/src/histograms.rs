@@ -140,6 +140,22 @@ pub static PROFILER_FFI_HIST: LazyLock<Histogram> = LazyLock::new(|| {
 	Histogram::new("profiler.ffi.duration_us", "Profiler category Ffi duration (us)", STORAGE_BOUNDS)
 });
 
+pub static PROFILER_CACHE_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.cache.duration_us", "Profiler category Cache duration (us)", PLAN_BOUNDS)
+});
+
+pub static PROFILER_SHAPE_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.shape.duration_us", "Profiler category Shape duration (us)", PLAN_BOUNDS)
+});
+
+pub static PROFILER_API_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.api.duration_us", "Profiler category Api duration (us)", QUERY_BOUNDS)
+});
+
+pub static PROFILER_ACTOR_HIST: LazyLock<Histogram> = LazyLock::new(|| {
+	Histogram::new("profiler.actor.duration_us", "Profiler category Actor duration (us)", FLOW_BOUNDS)
+});
+
 pub fn histogram_for(category: ProfilerCategory) -> &'static Histogram {
 	match category {
 		ProfilerCategory::Query => &PROFILER_QUERY_HIST,
@@ -159,6 +175,10 @@ pub fn histogram_for(category: ProfilerCategory) -> &'static Histogram {
 		ProfilerCategory::Task => &PROFILER_TASK_HIST,
 		ProfilerCategory::Policy => &PROFILER_POLICY_HIST,
 		ProfilerCategory::Ffi => &PROFILER_FFI_HIST,
+		ProfilerCategory::Cache => &PROFILER_CACHE_HIST,
+		ProfilerCategory::Shape => &PROFILER_SHAPE_HIST,
+		ProfilerCategory::Api => &PROFILER_API_HIST,
+		ProfilerCategory::Actor => &PROFILER_ACTOR_HIST,
 	}
 }
 
@@ -213,6 +233,10 @@ pub fn register_all() {
 		STATIC_REGISTRY.register_histogram(&PROFILER_TASK_HIST);
 		STATIC_REGISTRY.register_histogram(&PROFILER_POLICY_HIST);
 		STATIC_REGISTRY.register_histogram(&PROFILER_FFI_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_CACHE_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_SHAPE_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_API_HIST);
+		STATIC_REGISTRY.register_histogram(&PROFILER_ACTOR_HIST);
 
 		STATIC_REGISTRY.register_gauge(&PROFILER_ACCUMULATOR_SIZE);
 		STATIC_REGISTRY.register_gauge(&PROFILER_ACCUMULATOR_CAPACITY);

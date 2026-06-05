@@ -77,6 +77,10 @@ fn span_name_for(category: ProfilerCategory) -> &'static str {
 		Task => "task",
 		Policy => "policy",
 		Ffi => "ffi",
+		Cache => "cache",
+		Shape => "shape",
+		Api => "api",
+		Actor => "actor",
 	}
 }
 

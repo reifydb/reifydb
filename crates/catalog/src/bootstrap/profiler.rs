@@ -31,7 +31,7 @@ use crate::{
 	},
 };
 
-const PROFILER_CATEGORIES: [(&str, NamespaceId, SeriesId, &[ColumnId]); 17] = [
+const PROFILER_CATEGORIES: [(&str, NamespaceId, SeriesId, &[ColumnId]); 21] = [
 	(
 		"query",
 		NamespaceId::SYSTEM_METRICS_PROFILER_QUERY,
@@ -133,6 +133,30 @@ const PROFILER_CATEGORIES: [(&str, NamespaceId, SeriesId, &[ColumnId]); 17] = [
 		NamespaceId::SYSTEM_METRICS_PROFILER_FFI,
 		SeriesId::PROFILER_FFI_SNAPSHOTS,
 		&ColumnId::PROFILER_FFI_SNAPSHOTS_COLUMNS,
+	),
+	(
+		"cache",
+		NamespaceId::SYSTEM_METRICS_PROFILER_CACHE,
+		SeriesId::PROFILER_CACHE_SNAPSHOTS,
+		&ColumnId::PROFILER_CACHE_SNAPSHOTS_COLUMNS,
+	),
+	(
+		"shape",
+		NamespaceId::SYSTEM_METRICS_PROFILER_SHAPE,
+		SeriesId::PROFILER_SHAPE_SNAPSHOTS,
+		&ColumnId::PROFILER_SHAPE_SNAPSHOTS_COLUMNS,
+	),
+	(
+		"api",
+		NamespaceId::SYSTEM_METRICS_PROFILER_API,
+		SeriesId::PROFILER_API_SNAPSHOTS,
+		&ColumnId::PROFILER_API_SNAPSHOTS_COLUMNS,
+	),
+	(
+		"actor",
+		NamespaceId::SYSTEM_METRICS_PROFILER_ACTOR,
+		SeriesId::PROFILER_ACTOR_SNAPSHOTS,
+		&ColumnId::PROFILER_ACTOR_SNAPSHOTS_COLUMNS,
 	),
 ];
 

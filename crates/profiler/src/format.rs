@@ -370,6 +370,10 @@ fn category_label(c: ProfilerCategory) -> &'static str {
 		ProfilerCategory::Task => "Task",
 		ProfilerCategory::Policy => "Policy",
 		ProfilerCategory::Ffi => "Ffi",
+		ProfilerCategory::Cache => "Cache",
+		ProfilerCategory::Shape => "Shape",
+		ProfilerCategory::Api => "Api",
+		ProfilerCategory::Actor => "Actor",
 	}
 }
 

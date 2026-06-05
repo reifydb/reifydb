@@ -56,6 +56,10 @@ fn category_namespace_id(category: ProfilerCategory) -> NamespaceId {
 		ProfilerCategory::Task => NamespaceId::SYSTEM_METRICS_PROFILER_TASK,
 		ProfilerCategory::Policy => NamespaceId::SYSTEM_METRICS_PROFILER_POLICY,
 		ProfilerCategory::Ffi => NamespaceId::SYSTEM_METRICS_PROFILER_FFI,
+		ProfilerCategory::Cache => NamespaceId::SYSTEM_METRICS_PROFILER_CACHE,
+		ProfilerCategory::Shape => NamespaceId::SYSTEM_METRICS_PROFILER_SHAPE,
+		ProfilerCategory::Api => NamespaceId::SYSTEM_METRICS_PROFILER_API,
+		ProfilerCategory::Actor => NamespaceId::SYSTEM_METRICS_PROFILER_ACTOR,
 	}
 }
 
