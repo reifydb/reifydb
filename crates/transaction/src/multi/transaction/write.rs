@@ -219,7 +219,7 @@ impl MultiWriteTransaction {
 }
 
 impl MultiWriteTransaction {
-	#[instrument(name = "transaction::command::set", level = "debug", skip(self, row), fields(
+	#[instrument(name = "transaction::command::set", level = "trace", skip(self, row), fields(
 		txn_id = %self.id,
 		key_hex = %hex::display(key.as_ref()),
 		value_len = row.len()
@@ -237,7 +237,7 @@ impl MultiWriteTransaction {
 		})
 	}
 
-	#[instrument(name = "transaction::command::unset", level = "debug", skip(self, row), fields(
+	#[instrument(name = "transaction::command::unset", level = "trace", skip(self, row), fields(
 		txn_id = %self.id,
 		key_hex = %hex::display(key.as_ref()),
 		value_len = row.len()

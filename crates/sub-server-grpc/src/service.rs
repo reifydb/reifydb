@@ -45,7 +45,7 @@ use tonic::{
 	Request, Response, Status,
 	metadata::{KeyAndValueRef, MetadataMap},
 };
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 use crate::{
 	convert::{frames_to_proto, proto_params_to_params},
@@ -297,7 +297,7 @@ impl ReifyDbService {
 			}
 		});
 
-		info!("gRPC subscription created: {}", subscription_id);
+		debug!("gRPC subscription created: {}", subscription_id);
 		Response::new(UnboundedReceiverStream::new(rx))
 	}
 
@@ -349,7 +349,7 @@ impl ReifyDbService {
 			}
 		});
 
-		info!("gRPC batch {} created ({} members, format={:?})", batch_id, ack.members.len(), format);
+		debug!("gRPC batch {} created ({} members, format={:?})", batch_id, ack.members.len(), format);
 		Response::new(UnboundedReceiverStream::new(batch_rx))
 	}
 
@@ -517,7 +517,7 @@ impl ReifyDb for ReifyDbService {
 		let engine = self.state.engine_clone();
 		let result = spawn_blocking(move || cleanup_subscription_sync(&engine, subscription_id)).await;
 		match result {
-			Ok(Ok(())) => info!("gRPC subscription {} unsubscribed", subscription_id),
+			Ok(Ok(())) => debug!("gRPC subscription {} unsubscribed", subscription_id),
 			Ok(Err(e)) => {
 				warn!("Failed to cleanup subscription {} from database: {:?}", subscription_id, e)
 			}
@@ -580,7 +580,7 @@ impl ReifyDb for ReifyDbService {
 			}
 		}
 
-		info!("gRPC batch {} unsubscribed", batch_id);
+		debug!("gRPC batch {} unsubscribed", batch_id);
 		Ok(Response::new(BatchUnsubscribeResponse {
 			batch_id: inner.batch_id,
 		}))

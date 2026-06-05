@@ -206,7 +206,7 @@ impl Catalog {
 		}
 	}
 
-	#[instrument(name = "catalog::test::drop", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::test::drop", level = "info", skip(self, txn))]
 	pub fn drop_test(&self, txn: &mut AdminTransaction, id: TestId) -> Result<()> {
 		if let Some(test) = self.find_test(&mut Transaction::Admin(&mut *txn), id)? {
 			txn.track_test_deleted(test)?;
@@ -214,7 +214,7 @@ impl Catalog {
 		Ok(())
 	}
 
-	#[instrument(name = "catalog::test::create", level = "debug", skip(self, txn, to_create))]
+	#[instrument(name = "catalog::test::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_test(&self, txn: &mut AdminTransaction, to_create: TestToCreate) -> Result<Test> {
 		let id = SystemSequence::next_test_id(txn)?;
 

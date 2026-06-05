@@ -8,12 +8,12 @@ use tracing::{instrument, warn};
 use crate::{CatalogStore, Result, catalog::Catalog};
 
 impl Catalog {
-	#[instrument(name = "catalog::flow_node::create", level = "debug", skip(self, txn, node_def))]
+	#[instrument(name = "catalog::flow_node::create", level = "info", skip(self, txn, node_def))]
 	pub fn create_flow_node(&self, txn: &mut AdminTransaction, node_def: &FlowNode) -> Result<()> {
 		CatalogStore::create_flow_node(txn, node_def)
 	}
 
-	#[instrument(name = "catalog::flow_node::drop", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::flow_node::drop", level = "info", skip(self, txn))]
 	pub fn drop_flow_node(&self, txn: &mut AdminTransaction, node_id: FlowNodeId) -> Result<()> {
 		CatalogStore::drop_flow_node(txn, node_id)
 	}
@@ -35,7 +35,7 @@ impl Catalog {
 		CatalogStore::get_flow_node(txn, node_id)
 	}
 
-	#[instrument(name = "catalog::flow_node::list_by_flow", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::flow_node::list_by_flow", level = "trace", skip(self, txn))]
 	pub fn list_flow_nodes_by_flow(&self, txn: &mut Transaction<'_>, flow_id: FlowId) -> Result<Vec<FlowNode>> {
 		if let Some(nodes) = self.cache.list_flow_nodes_by_flow_at(flow_id, txn.version()) {
 			return Ok(nodes);
@@ -47,7 +47,7 @@ impl Catalog {
 		Ok(nodes)
 	}
 
-	#[instrument(name = "catalog::flow_node::list_all", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::flow_node::list_all", level = "trace", skip(self, txn))]
 	pub fn list_flow_nodes_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<FlowNode>> {
 		CatalogStore::list_flow_nodes_all(txn)
 	}

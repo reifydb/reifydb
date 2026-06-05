@@ -313,7 +313,7 @@ impl Catalog {
 		})
 	}
 
-	#[instrument(name = "catalog::table::create", level = "debug", skip(self, txn, to_create))]
+	#[instrument(name = "catalog::table::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_table(&self, txn: &mut AdminTransaction, to_create: TableToCreate) -> Result<Table> {
 		let pk_columns = to_create.primary_key_columns.clone();
 		let table = CatalogStore::create_table(txn, to_create.into())?;
@@ -357,19 +357,19 @@ impl Catalog {
 		CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table.id)
 	}
 
-	#[instrument(name = "catalog::table::drop", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::table::drop", level = "info", skip(self, txn))]
 	pub fn drop_table(&self, txn: &mut AdminTransaction, table: Table) -> Result<()> {
 		CatalogStore::drop_table(txn, table.id)?;
 		txn.track_table_deleted(table)?;
 		Ok(())
 	}
 
-	#[instrument(name = "catalog::table::list_all", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::table::list_all", level = "trace", skip(self, txn))]
 	pub fn list_tables_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Table>> {
 		CatalogStore::list_tables_all(txn)
 	}
 
-	#[instrument(name = "catalog::table::list_columns", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::table::list_columns", level = "trace", skip(self, txn))]
 	pub fn list_columns(&self, txn: &mut Transaction<'_>, table_id: TableId) -> Result<Vec<Column>> {
 		CatalogStore::list_columns(txn, table_id)
 	}

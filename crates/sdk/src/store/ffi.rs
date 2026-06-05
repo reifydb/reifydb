@@ -69,7 +69,7 @@ pub(super) fn raw_store_contains_key(ctx: &FFIOperatorContext, key: &EncodedKey)
 	}
 }
 
-#[instrument(name = "flow::operator::store::raw::prefix", level = "trace", skip(ctx), fields(
+#[instrument(name = "flow::operator::store::raw::prefix", level = "debug", skip(ctx), fields(
 	prefix_len = prefix.as_bytes().len()
 ))]
 pub(super) fn raw_store_prefix(ctx: &FFIOperatorContext, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedRow)>> {
@@ -96,7 +96,7 @@ const BOUND_UNBOUNDED: u8 = 0;
 const BOUND_INCLUDED: u8 = 1;
 const BOUND_EXCLUDED: u8 = 2;
 
-#[instrument(name = "flow::operator::store::raw::range", level = "trace", skip(ctx, start, end))]
+#[instrument(name = "flow::operator::store::raw::range", level = "debug", skip(ctx, start, end))]
 pub(super) fn raw_store_range(
 	ctx: &FFIOperatorContext,
 	start: Bound<&EncodedKey>,
@@ -138,7 +138,7 @@ pub(super) fn raw_store_range(
 
 #[instrument(
 	name = "flow::operator::store::collect_iterator",
-	level = "trace",
+	level = "debug",
 	skip(ctx, iterator),
 	fields(result_count)
 )]

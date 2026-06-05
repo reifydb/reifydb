@@ -13,7 +13,7 @@ use reifydb_runtime::actor::{
 	traits::{Actor, Directive},
 };
 use reifydb_value::value::duration::Duration;
-use tracing::{debug, error, trace};
+use tracing::{debug, error, info, trace};
 
 use crate::{produce::watermark::CdcProducerWatermark, storage::sqlite::storage::SqliteCdcStorage};
 
@@ -65,13 +65,13 @@ impl Actor for CompactActor {
 
 	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
 		let interval = self.read_interval();
-		debug!("[CdcCompact] started: interval={:?}", interval);
+		info!("[CdcCompact] started: interval={:?}", interval);
 		ctx.schedule_once(interval, || CompactMessage::Tick);
 	}
 
 	fn handle(&self, _state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
 		if ctx.is_cancelled() {
-			debug!("[CdcCompact] stopped");
+			info!("[CdcCompact] stopped");
 			return Directive::Stop;
 		}
 		match msg {

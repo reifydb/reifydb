@@ -19,7 +19,7 @@ use reifydb_value::{
 	value::{duration::Duration, frame::frame::Frame, identity::IdentityId},
 };
 use tokio::{spawn, sync::watch::Receiver as WatchReceiver, task::JoinHandle};
-use tracing::{info, warn};
+use tracing::{debug, warn};
 
 use crate::{
 	interceptor::RequestMetadata,
@@ -275,7 +275,7 @@ async fn handle_subscribe_local<S: WireSink>(
 		let _ = registry.promote_to_live(subscription_id);
 	}
 
-	info!(
+	debug!(
 		"Connection {} subscribed: subscription_id={} hydration_enabled={}",
 		connection_id, subscription_id, hydration.enabled
 	);
@@ -335,7 +335,7 @@ async fn handle_subscribe_remote<S: WireSink>(
 		let _ = sink_for_close.send_closed(subscription_id);
 	});
 
-	info!("Connection {} subscribed to remote: subscription_id={}", connection_id, subscription_id);
+	debug!("Connection {} subscribed to remote: subscription_id={}", connection_id, subscription_id);
 
 	Ok(SubscribeAck {
 		subscription_id,
@@ -395,7 +395,7 @@ pub async fn handle_batch_subscribe<S: WireSink>(
 
 	let remote_handles = spawn_batch_remote_proxies(registry, batch_id, remote_members_taken, &shutdown);
 
-	info!("Connection {} created batch {} with {} members", connection_id, batch_id, members_for_ack.len());
+	debug!("Connection {} created batch {} with {} members", connection_id, batch_id, members_for_ack.len());
 
 	Ok(BatchAck {
 		batch_id,
@@ -779,7 +779,7 @@ async fn run_member_hydrate<S: WireSink>(
 
 	if let Some((cols, metrics)) = outcome {
 		let row_count = cols.row_count();
-		info!(
+		debug!(
 			subscription_id = subscription_id.0,
 			version = version.0,
 			total_us = metrics.total.microseconds().unwrap_or(0),

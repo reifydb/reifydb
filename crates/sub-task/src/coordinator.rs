@@ -195,7 +195,7 @@ fn handle_register(heap: &mut BinaryHeap<HeapEntry>, registry: &TaskRegistry, cl
 	let task_id = task.id;
 	let next_execution = clock.instant() + task.schedule.initial_delay().to_std();
 
-	info!("Registering task: {} (id: {})", task.name, task_id);
+	debug!("Registering task: {} (id: {})", task.name, task_id);
 
 	registry.insert(
 		task_id,
@@ -213,7 +213,7 @@ fn handle_register(heap: &mut BinaryHeap<HeapEntry>, registry: &TaskRegistry, cl
 
 #[inline]
 fn handle_unregister(heap: &mut BinaryHeap<HeapEntry>, registry: &TaskRegistry, task_id: TaskId) {
-	info!("Unregistering task: {}", task_id);
+	debug!("Unregistering task: {}", task_id);
 
 	registry.remove(&task_id);
 

@@ -293,7 +293,7 @@ impl SingleVersionSet for StandardSingleStore {}
 impl SingleVersionRemove for StandardSingleStore {}
 
 impl SingleVersionRange for StandardSingleStore {
-	#[instrument(name = "store::single::range_batch", level = "debug", skip(self), fields(batch_size = batch_size))]
+	#[instrument(name = "store::single::range_batch", level = "trace", skip(self), fields(batch_size = batch_size))]
 	fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch> {
 		let mut all_entries: BTreeMap<EncodedKey, Option<CowVec<u8>>> = BTreeMap::new();
 		let (start, end) = make_range_bounds(&range);
@@ -385,7 +385,7 @@ impl StandardSingleStore {
 }
 
 impl SingleVersionRangeRev for StandardSingleStore {
-	#[instrument(name = "store::single::range_rev_batch", level = "debug", skip(self), fields(batch_size = batch_size))]
+	#[instrument(name = "store::single::range_rev_batch", level = "trace", skip(self), fields(batch_size = batch_size))]
 	fn range_rev_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch> {
 		let mut all_entries: BTreeMap<EncodedKey, Option<CowVec<u8>>> = BTreeMap::new();
 		let (start, end) = make_range_bounds(&range);

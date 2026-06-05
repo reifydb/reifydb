@@ -246,21 +246,21 @@ impl Catalog {
 		CatalogStore::get_sumtype(txn, id)
 	}
 
-	#[instrument(name = "catalog::sumtype::create", level = "debug", skip(self, txn, to_create))]
+	#[instrument(name = "catalog::sumtype::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_sumtype(&self, txn: &mut AdminTransaction, to_create: SumTypeToCreate) -> Result<SumType> {
 		let def = CatalogStore::create_sumtype(txn, to_create.into())?;
 		txn.track_sumtype_created(def.clone())?;
 		Ok(def)
 	}
 
-	#[instrument(name = "catalog::sumtype::drop", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::sumtype::drop", level = "info", skip(self, txn))]
 	pub fn drop_sumtype(&self, txn: &mut AdminTransaction, sumtype: SumType) -> Result<()> {
 		CatalogStore::drop_sumtype(txn, sumtype.id)?;
 		txn.track_sumtype_deleted(sumtype)?;
 		Ok(())
 	}
 
-	#[instrument(name = "catalog::sumtype::list", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::sumtype::list", level = "trace", skip(self, txn))]
 	pub fn list_sumtypes(&self, txn: &mut Transaction<'_>, namespace: NamespaceId) -> Result<Vec<SumType>> {
 		CatalogStore::list_sumtypes(txn, namespace)
 	}

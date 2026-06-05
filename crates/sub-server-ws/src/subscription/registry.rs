@@ -96,7 +96,7 @@ impl WireSink for WsWireSink {
 		DeliveryResult::Delivered
 	}
 
-	#[instrument(name = "server::ws_encode", level = "debug", skip(self, columns, format), fields(sub = sub_id.0))]
+	#[instrument(name = "server::ws_encode", level = "trace", skip(self, columns, format), fields(sub = sub_id.0))]
 	fn send_change(&self, sub_id: SubscriptionId, columns: Columns, format: Self::Format) -> DeliveryResult {
 		let msg = match encode_change(sub_id, columns, format) {
 			Some(m) => m,

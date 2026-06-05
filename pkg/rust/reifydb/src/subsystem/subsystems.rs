@@ -11,7 +11,7 @@ use std::{
 };
 
 use reifydb_sub_api::subsystem::Subsystem;
-use tracing::debug;
+use tracing::info;
 
 use crate::health::HealthMonitor;
 
@@ -58,21 +58,21 @@ impl Subsystems {
 			return;
 		}
 
-		debug!("Shutting down {} subsystems...", self.subsystems.len());
+		info!("Shutting down {} subsystems...", self.subsystems.len());
 
 		for subsystem in self.subsystems.iter().rev() {
 			let name = subsystem.name();
-			debug!("Shutting down subsystem: {}", name);
+			info!("Shutting down subsystem: {}", name);
 			subsystem.shutdown();
 			self.health_monitor.update_component_health(
 				name.to_string(),
 				subsystem.health_status(),
 				subsystem.is_running(),
 			);
-			debug!("Successfully shut down: {}", name);
+			info!("Successfully shut down: {}", name);
 		}
 
-		debug!("All subsystems shut down");
+		info!("All subsystems shut down");
 	}
 
 	pub fn update_health_monitoring(&mut self) {

@@ -20,7 +20,7 @@ use reifydb_runtime::actor::{
 	traits::{Actor as ActorTrait, Directive},
 };
 use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, trace, warn};
 
 use super::{ListRowSettings, ScanStats, scanner};
 use crate::{
@@ -286,7 +286,7 @@ impl<P: ListRowSettings> Actor<P> {
 		}
 
 		if stats.rows_expired > 0 || persistent_rows_deleted > 0 {
-			info!(
+			debug!(
 				shapes_scanned = stats.shapes_scanned,
 				shapes_skipped = stats.shapes_skipped,
 				rows_expired = stats.rows_expired,

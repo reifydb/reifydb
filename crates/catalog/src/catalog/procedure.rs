@@ -301,7 +301,7 @@ impl Catalog {
 		}
 	}
 
-	#[instrument(name = "catalog::procedure::create", level = "debug", skip(self, txn, to_create))]
+	#[instrument(name = "catalog::procedure::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_procedure(&self, txn: &mut AdminTransaction, to_create: ProcedureToCreate) -> Result<Procedure> {
 		let procedure = CatalogStore::create_procedure(txn, to_create)?;
 		txn.track_procedure_created(procedure.clone())?;
@@ -319,7 +319,7 @@ impl Catalog {
 		Ok(procedure)
 	}
 
-	#[instrument(name = "catalog::procedure::drop", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::procedure::drop", level = "info", skip(self, txn))]
 	pub fn drop_procedure(&self, txn: &mut AdminTransaction, id: ProcedureId) -> Result<()> {
 		let pre = CatalogStore::get_procedure(&mut Transaction::Admin(&mut *txn), id)?;
 		if !pre.is_persistent() {

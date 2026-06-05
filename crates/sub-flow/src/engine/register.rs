@@ -77,12 +77,12 @@ use crate::{
 };
 
 impl FlowEngineInner {
-	#[instrument(name = "flow::register", level = "debug", skip(self, txn), fields(flow_id = ?flow.id))]
+	#[instrument(name = "flow::register", level = "info", skip(self, txn), fields(flow_id = ?flow.id))]
 	pub fn register(&mut self, txn: &mut CommandTransaction, flow: FlowDag) -> Result<()> {
 		self.register_with_transaction(&mut Transaction::Command(txn), flow)
 	}
 
-	#[instrument(name = "flow::register_with_transaction", level = "debug", skip(self, txn), fields(flow_id = ?flow.id))]
+	#[instrument(name = "flow::register_with_transaction", level = "info", skip(self, txn), fields(flow_id = ?flow.id))]
 	pub fn register_with_transaction(&mut self, txn: &mut Transaction<'_>, flow: FlowDag) -> Result<()> {
 		reifydb_assertions! {
 			assert!(!self.flows.contains_key(&flow.id), "Flow already registered");

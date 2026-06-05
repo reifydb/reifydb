@@ -5,7 +5,7 @@ use std::fs;
 
 use reifydb::value::{error::Error, value::Value};
 use reifydb_client::GrpcClient;
-use tracing::{error, info};
+use tracing::{debug, error};
 use uuid::Uuid;
 
 /// Execute an entire job: claim the job_run, run all steps sequentially, then complete.
@@ -79,7 +79,7 @@ pub async fn execute_job(client: &GrpcClient, job_run_id: &str, job_id: &str, ru
 	client.command(&format!("CALL forge::complete_job_run(uuid::v4(\"{job_run_id}\"), \"{final_status}\")"), None)
 		.await?;
 
-	info!("Job run {} completed with status: {}", job_run_id, final_status);
+	debug!("Job run {} completed with status: {}", job_run_id, final_status);
 	Ok(())
 }
 
@@ -137,7 +137,7 @@ async fn execute_step(
 		command_str.clone()
 	};
 
-	info!("Executing RQL for step_run {}: {}", step_run_id, rql);
+	debug!("Executing RQL for step_run {}: {}", step_run_id, rql);
 
 	// Execute the RQL statement
 	let result = client.command(&rql, None).await;
@@ -214,7 +214,7 @@ async fn execute_step(
 				)
 				.await?;
 
-				info!("Step run {} {} (exit_code: {})", step_run_id, status, exit_code);
+				debug!("Step run {} {} (exit_code: {})", step_run_id, status, exit_code);
 				Ok(succeeded)
 			} else {
 				// Pure RQL step - collect log lines from result frames
@@ -260,7 +260,7 @@ async fn execute_step(
 					None,
 				)
 				.await?;
-				info!("Step run {} succeeded", step_run_id);
+				debug!("Step run {} succeeded", step_run_id);
 				Ok(true)
 			}
 		}

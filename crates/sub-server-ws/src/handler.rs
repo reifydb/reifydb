@@ -42,7 +42,7 @@ use tokio::{
 	time::timeout,
 };
 use tokio_tungstenite::{WebSocketStream, accept_async, tungstenite::Message};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, warn};
 use uuid::Builder;
 
 use crate::{
@@ -555,7 +555,7 @@ async fn handle_unsubscribe(
 ) -> Option<WsResponse> {
 	if let Some(handle) = conn.remote_tasks.remove(&unsub.subscription_id) {
 		handle.abort();
-		info!("Connection {} unsubscribed from remote {}", conn.connection_id, unsub.subscription_id);
+		debug!("Connection {} unsubscribed from remote {}", conn.connection_id, unsub.subscription_id);
 		return Some(WsResponse::Text(Response::unsubscribed(request_id, unsub.subscription_id).to_json()));
 	}
 
@@ -577,10 +577,10 @@ async fn handle_unsubscribe(
 			warn!("Failed to cleanup subscription {} from database: {:?}", subscription_id, e);
 		}
 
-		info!("Connection {} unsubscribed from {}", conn.connection_id, subscription_id);
+		debug!("Connection {} unsubscribed from {}", conn.connection_id, subscription_id);
 		Some(WsResponse::Text(Response::unsubscribed(request_id, subscription_id.to_string()).to_json()))
 	} else {
-		info!("Connection {} unsubscribe for {} (already removed)", conn.connection_id, subscription_id);
+		debug!("Connection {} unsubscribe for {} (already removed)", conn.connection_id, subscription_id);
 		Some(WsResponse::Text(Response::unsubscribed(request_id, subscription_id.to_string()).to_json()))
 	}
 }

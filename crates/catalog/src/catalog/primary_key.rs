@@ -30,7 +30,7 @@ impl From<PrimaryKeyToCreate> for StorePrimaryKeyToCreate {
 }
 
 impl Catalog {
-	#[instrument(name = "catalog::primary_key::create", level = "debug", skip(self, txn, to_create))]
+	#[instrument(name = "catalog::primary_key::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_primary_key(
 		&self,
 		txn: &mut AdminTransaction,
@@ -62,12 +62,12 @@ impl Catalog {
 		Ok(None)
 	}
 
-	#[instrument(name = "catalog::primary_key::list", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::primary_key::list", level = "trace", skip(self, txn))]
 	pub fn list_primary_keys(&self, txn: &mut Transaction<'_>) -> Result<Vec<PrimaryKey>> {
 		Ok(CatalogStore::list_primary_keys(txn)?.into_iter().map(|info| info.def).collect())
 	}
 
-	#[instrument(name = "catalog::primary_key::list_columns", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::primary_key::list_columns", level = "trace", skip(self, txn))]
 	pub fn list_primary_key_columns(&self, txn: &mut Transaction<'_>) -> Result<Vec<(u64, u64, usize)>> {
 		CatalogStore::list_primary_key_columns(txn)
 	}

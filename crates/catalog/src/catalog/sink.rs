@@ -139,21 +139,21 @@ impl Catalog {
 		}
 	}
 
-	#[instrument(name = "catalog::sink::create", level = "debug", skip(self, txn, to_create))]
+	#[instrument(name = "catalog::sink::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_sink(&self, txn: &mut AdminTransaction, to_create: SinkToCreate) -> Result<Sink> {
 		let sink = CatalogStore::create_sink(txn, to_create.into())?;
 		txn.track_sink_created(sink.clone())?;
 		Ok(sink)
 	}
 
-	#[instrument(name = "catalog::sink::drop", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::sink::drop", level = "info", skip(self, txn))]
 	pub fn drop_sink(&self, txn: &mut AdminTransaction, sink: Sink) -> Result<()> {
 		CatalogStore::drop_sink(txn, sink.id)?;
 		txn.track_sink_deleted(sink)?;
 		Ok(())
 	}
 
-	#[instrument(name = "catalog::sink::list_all", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::sink::list_all", level = "trace", skip(self, txn))]
 	pub fn list_sinks_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Sink>> {
 		CatalogStore::list_sinks_all(txn)
 	}

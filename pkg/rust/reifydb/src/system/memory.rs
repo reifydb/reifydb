@@ -23,7 +23,7 @@ use reifydb_sub_task::{
 };
 #[cfg(all(not(reifydb_single_threaded), any(target_os = "linux", target_os = "macos")))]
 use reifydb_value::value::duration::Duration;
-use tracing::{debug, error};
+use tracing::{error, trace};
 
 #[cfg(not(reifydb_single_threaded))]
 const MEMORY_KILL_THRESHOLD_PERCENT: f32 = 90.0;
@@ -172,7 +172,7 @@ pub fn create_memory_watchdog_task() -> ScheduledTask {
 				percent_used,
 			};
 
-			debug!(
+			trace!(
 				"Memory usage: {:.2}% ({} MB / {} MB)",
 				percent_used,
 				current / 1024 / 1024,

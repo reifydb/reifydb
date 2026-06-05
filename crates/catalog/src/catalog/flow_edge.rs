@@ -8,12 +8,12 @@ use tracing::{instrument, warn};
 use crate::{CatalogStore, Result, catalog::Catalog};
 
 impl Catalog {
-	#[instrument(name = "catalog::flow_edge::create", level = "debug", skip(self, txn, edge_def))]
+	#[instrument(name = "catalog::flow_edge::create", level = "info", skip(self, txn, edge_def))]
 	pub fn create_flow_edge(&self, txn: &mut AdminTransaction, edge_def: &FlowEdge) -> Result<()> {
 		CatalogStore::create_flow_edge(txn, edge_def)
 	}
 
-	#[instrument(name = "catalog::flow_edge::drop", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::flow_edge::drop", level = "info", skip(self, txn))]
 	pub fn drop_flow_edge(&self, txn: &mut AdminTransaction, edge_id: FlowEdgeId) -> Result<()> {
 		CatalogStore::drop_flow_edge(txn, edge_id)
 	}
@@ -35,7 +35,7 @@ impl Catalog {
 		CatalogStore::get_flow_edge(txn, edge_id)
 	}
 
-	#[instrument(name = "catalog::flow_edge::list_by_flow", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::flow_edge::list_by_flow", level = "trace", skip(self, txn))]
 	pub fn list_flow_edges_by_flow(&self, txn: &mut Transaction<'_>, flow_id: FlowId) -> Result<Vec<FlowEdge>> {
 		if let Some(edges) = self.cache.list_flow_edges_by_flow_at(flow_id, txn.version()) {
 			return Ok(edges);
@@ -47,7 +47,7 @@ impl Catalog {
 		Ok(edges)
 	}
 
-	#[instrument(name = "catalog::flow_edge::list_all", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::flow_edge::list_all", level = "trace", skip(self, txn))]
 	pub fn list_flow_edges_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<FlowEdge>> {
 		CatalogStore::list_flow_edges_all(txn)
 	}

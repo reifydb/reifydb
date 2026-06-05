@@ -21,7 +21,7 @@ use reifydb_runtime::actor::{
 	traits::{Actor as ActorTrait, Directive},
 };
 use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, trace, warn};
 
 use super::{ListOperatorSettings, OperatorScanStats, scanner};
 use crate::{
@@ -364,7 +364,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 	#[inline]
 	fn report_scan(&self, stats: &OperatorScanStats, persistent_rows_deleted: u64) {
 		if stats.rows_expired > 0 || persistent_rows_deleted > 0 {
-			info!(
+			debug!(
 				operators_scanned = stats.operators_scanned,
 				operators_skipped = stats.operators_skipped,
 				rows_expired = stats.rows_expired,

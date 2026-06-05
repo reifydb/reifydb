@@ -255,7 +255,7 @@ impl Catalog {
 		CatalogStore::get_dictionary(txn, id)
 	}
 
-	#[instrument(name = "catalog::dictionary::create", level = "debug", skip(self, txn, to_create))]
+	#[instrument(name = "catalog::dictionary::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_dictionary(
 		&self,
 		txn: &mut AdminTransaction,
@@ -266,19 +266,19 @@ impl Catalog {
 		Ok(dictionary)
 	}
 
-	#[instrument(name = "catalog::dictionary::drop", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::dictionary::drop", level = "info", skip(self, txn))]
 	pub fn drop_dictionary(&self, txn: &mut AdminTransaction, dictionary: Dictionary) -> Result<()> {
 		CatalogStore::drop_dictionary(txn, dictionary.id)?;
 		txn.track_dictionary_deleted(dictionary)?;
 		Ok(())
 	}
 
-	#[instrument(name = "catalog::dictionary::list", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::dictionary::list", level = "trace", skip(self, txn))]
 	pub fn list_dictionaries(&self, txn: &mut Transaction<'_>, namespace: NamespaceId) -> Result<Vec<Dictionary>> {
 		CatalogStore::list_dictionaries(txn, namespace)
 	}
 
-	#[instrument(name = "catalog::dictionary::list_all", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::dictionary::list_all", level = "trace", skip(self, txn))]
 	pub fn list_all_dictionaries(&self, txn: &mut Transaction<'_>) -> Result<Vec<Dictionary>> {
 		CatalogStore::list_all_dictionaries(txn)
 	}

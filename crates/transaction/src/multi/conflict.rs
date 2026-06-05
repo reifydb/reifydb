@@ -216,7 +216,7 @@ impl ConflictManager {
 		self.mark_range(EncodedKeyRange::all());
 	}
 
-	#[instrument(name = "transaction::conflict::has_conflict", level = "debug", skip(self, other), fields(
+	#[instrument(name = "transaction::conflict::has_conflict", level = "trace", skip(self, other), fields(
 		self_read_keys = self.read_keys.len(),
 		self_write_keys = self.write_keys.len(),
 		other_write_keys = other.write_keys.len()

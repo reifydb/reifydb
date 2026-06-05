@@ -76,7 +76,7 @@ impl ProfilerSubsystem {
 }
 
 impl Shutdown for ProfilerSubsystem {
-	#[instrument(name = "profiler::subsystem::shutdown", level = "debug", skip(self))]
+	#[instrument(name = "profiler::subsystem::shutdown", level = "info", skip(self))]
 	fn shutdown(&self) {
 		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
 			return;

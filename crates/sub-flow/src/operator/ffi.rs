@@ -215,7 +215,7 @@ impl Operator for FFIOperator {
 		Some(Duration::from_nanoseconds(nanos as i64).unwrap())
 	}
 
-	#[instrument(name = "flow::ffi::apply", level = "debug", skip_all, fields(
+	#[instrument(name = "flow::ffi::apply", level = "trace", skip_all, fields(
 		operator_id = self.operator_id.0,
 		input_diff_count = change.diffs.len(),
 		output_diff_count = field::Empty
@@ -251,7 +251,7 @@ impl Operator for FFIOperator {
 		Ok(output_change)
 	}
 
-	#[instrument(name = "flow::ffi::tick", level = "debug", skip_all, fields(
+	#[instrument(name = "flow::ffi::tick", level = "trace", skip_all, fields(
 		operator_id = self.operator_id.0,
 		output_diff_count = field::Empty
 	))]

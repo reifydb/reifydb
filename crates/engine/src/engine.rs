@@ -132,7 +132,7 @@ impl StandardEngine {
 		Ok(txn)
 	}
 
-	#[instrument(name = "engine::transaction::begin_query", level = "debug", skip(self))]
+	#[instrument(name = "engine::transaction::begin_query", level = "trace", skip(self))]
 	pub fn begin_query(&self, identity: IdentityId) -> Result<QueryTransaction> {
 		let mut txn = QueryTransaction::new(self.multi.begin_query()?, self.single.clone(), identity);
 		txn.set_executor(Arc::new(self.executor.clone()));
@@ -488,7 +488,7 @@ impl StandardEngine {
 		self.interceptors.add_late(factory);
 	}
 
-	#[instrument(name = "engine::transaction::begin_query_at_version", level = "debug", skip(self, lease), fields(version = %lease.version().0
+	#[instrument(name = "engine::transaction::begin_query_at_version", level = "trace", skip(self, lease), fields(version = %lease.version().0
     ))]
 	pub fn begin_query_at_version(
 		&self,
@@ -501,12 +501,12 @@ impl StandardEngine {
 		Ok(txn)
 	}
 
-	#[instrument(name = "engine::acquire_version_lease", level = "debug", skip(self), fields(version = %version.0))]
+	#[instrument(name = "engine::acquire_version_lease", level = "trace", skip(self), fields(version = %version.0))]
 	pub fn acquire_version_lease(&self, version: CommitVersion) -> Result<VersionLeaseGuard> {
 		self.multi.acquire_version_lease(version)
 	}
 
-	#[instrument(name = "engine::acquire_current_snapshot_lease", level = "debug", skip(self))]
+	#[instrument(name = "engine::acquire_current_snapshot_lease", level = "trace", skip(self))]
 	pub fn acquire_current_snapshot_lease(&self) -> Result<(CommitVersion, VersionLeaseGuard)> {
 		self.multi.acquire_current_snapshot_lease()
 	}

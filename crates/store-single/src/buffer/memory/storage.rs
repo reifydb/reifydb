@@ -151,7 +151,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 		})
 	}
 
-	#[instrument(name = "store::single::memory::ensure_table", level = "trace", skip(self))]
+	#[instrument(name = "store::single::memory::ensure_table", level = "debug", skip(self))]
 	fn ensure_table(&self) -> Result<()> {
 		Ok(())
 	}

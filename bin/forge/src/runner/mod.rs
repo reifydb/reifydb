@@ -8,7 +8,7 @@ use std::process;
 
 use reifydb_client::{Frame, GrpcClient, GrpcSubscription, SubscriptionConfig, WireFormat};
 use tokio::{runtime::Runtime, spawn};
-use tracing::{error, info};
+use tracing::{debug, error};
 use tracing_subscriber::fmt as tracing_fmt;
 
 fn process_frames(frames: &[Frame], client: &GrpcClient) {
@@ -27,7 +27,7 @@ fn process_frames(frames: &[Frame], client: &GrpcClient) {
 				None => continue,
 			};
 
-			info!("Picking up job_run {}", job_run_id);
+			debug!("Picking up job_run {}", job_run_id);
 			let client = client.clone();
 			spawn(async move {
 				if let Err(e) = exec::execute_job(&client, &job_run_id, &job_id, &run_id).await {
@@ -43,7 +43,7 @@ pub fn start(url: &str) {
 
 	let rt = Runtime::new().unwrap();
 	rt.block_on(async move {
-		info!("Forge runner connecting to orchestrator at {}", url);
+		debug!("Forge runner connecting to orchestrator at {}", url);
 
 		let mut client: GrpcClient = match GrpcClient::connect(url, WireFormat::Json).await {
 			Ok(c) => c,
@@ -55,7 +55,7 @@ pub fn start(url: &str) {
 
 		client.authenticate("mysecrettoken");
 
-		info!("Connected to orchestrator, subscribing to pending job_runs...");
+		debug!("Connected to orchestrator, subscribing to pending job_runs...");
 
 		let mut subscription: GrpcSubscription = match client
 			.subscribe("FROM forge::job_runs | FILTER status == \"pending\"", SubscriptionConfig::default())
@@ -68,13 +68,13 @@ pub fn start(url: &str) {
 			}
 		};
 
-		info!("Subscribed (id={}), waiting for work...", subscription.subscription_id());
+		debug!("Subscribed (id={}), waiting for work...", subscription.subscription_id());
 
 		// Process any already-pending job_runs that existed before subscription
 		match client.query("FROM forge::job_runs | FILTER status == \"pending\"", None).await {
 			Ok(result) => {
 				if !result.is_empty() {
-					info!("Found existing pending job_runs, processing...");
+					debug!("Found existing pending job_runs, processing...");
 					process_frames(&result, &client);
 				}
 			}

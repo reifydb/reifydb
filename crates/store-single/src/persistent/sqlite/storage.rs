@@ -197,7 +197,7 @@ impl TierStorage for SqlitePersistentStorage {
 		Ok(batch)
 	}
 
-	#[instrument(name = "store::single::persistent::ensure_table", level = "trace", skip(self))]
+	#[instrument(name = "store::single::persistent::ensure_table", level = "debug", skip(self))]
 	fn ensure_table(&self) -> Result<()> {
 		let guard = self.inner.conn.lock();
 		let Some(conn) = guard.as_ref() else {

@@ -25,7 +25,7 @@ use reifydb_value::{
 	value::{duration::Duration, frame::frame::Frame, uuid::Uuid7},
 };
 use tokio::sync::Notify;
-use tracing::{debug, info, instrument};
+use tracing::{debug, instrument, trace};
 
 use crate::subscription::wire_sink::WireSink;
 
@@ -496,7 +496,7 @@ impl<S: WireSink> SubscriptionRegistry<S> {
 
 	#[allow(dead_code)]
 	pub fn log_stats(&self) {
-		info!(
+		trace!(
 			"Registry stats: {} subscriptions, {} connections",
 			self.subscriptions.len(),
 			self.connections.len()

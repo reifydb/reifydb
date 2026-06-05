@@ -193,7 +193,7 @@ impl Catalog {
 		CatalogStore::find_latest_column_snapshot_for_table(txn, table_id)
 	}
 
-	#[instrument(name = "catalog::column_snapshot::list_for_series", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::column_snapshot::list_for_series", level = "trace", skip(self, txn))]
 	pub fn list_column_snapshots_for_series(
 		&self,
 		txn: &mut Transaction<'_>,
@@ -215,7 +215,7 @@ impl Catalog {
 		CatalogStore::list_column_snapshots_for_series(txn, series_id)
 	}
 
-	#[instrument(name = "catalog::column_snapshot::list_for_table", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::column_snapshot::list_for_table", level = "trace", skip(self, txn))]
 	pub fn list_column_snapshots_for_table(
 		&self,
 		txn: &mut Transaction<'_>,
@@ -237,7 +237,7 @@ impl Catalog {
 		CatalogStore::list_column_snapshots_for_table(txn, table_id)
 	}
 
-	#[instrument(name = "catalog::column_snapshot::create", level = "debug", skip(self, txn, to_create))]
+	#[instrument(name = "catalog::column_snapshot::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_column_snapshot(
 		&self,
 		txn: &mut AdminTransaction,
@@ -261,7 +261,7 @@ impl Catalog {
 		Ok(post)
 	}
 
-	#[instrument(name = "catalog::column_snapshot::drop", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::column_snapshot::drop", level = "info", skip(self, txn))]
 	pub fn drop_column_snapshot(&self, txn: &mut AdminTransaction, id: ColumnSnapshotId) -> Result<()> {
 		let pre = CatalogStore::find_column_snapshot(&mut Transaction::Admin(&mut *txn), id)?;
 		CatalogStore::drop_column_snapshot(txn, id)?;

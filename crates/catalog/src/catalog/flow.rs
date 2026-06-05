@@ -240,14 +240,14 @@ impl Catalog {
 		})
 	}
 
-	#[instrument(name = "catalog::flow::create", level = "debug", skip(self, txn, to_create))]
+	#[instrument(name = "catalog::flow::create", level = "info", skip(self, txn, to_create))]
 	pub fn create_flow(&self, txn: &mut AdminTransaction, to_create: FlowToCreate) -> Result<Flow> {
 		let flow = CatalogStore::create_flow(txn, to_create.into())?;
 		txn.track_flow_created(flow.clone())?;
 		Ok(flow)
 	}
 
-	#[instrument(name = "catalog::flow::create_with_id", level = "debug", skip(self, txn, to_create))]
+	#[instrument(name = "catalog::flow::create_with_id", level = "info", skip(self, txn, to_create))]
 	pub fn create_flow_with_id(
 		&self,
 		txn: &mut AdminTransaction,
@@ -259,14 +259,14 @@ impl Catalog {
 		Ok(flow)
 	}
 
-	#[instrument(name = "catalog::flow::drop", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::flow::drop", level = "info", skip(self, txn))]
 	pub fn drop_flow(&self, txn: &mut AdminTransaction, flow: Flow) -> Result<()> {
 		CatalogStore::drop_flow(txn, flow.id)?;
 		txn.track_flow_deleted(flow)?;
 		Ok(())
 	}
 
-	#[instrument(name = "catalog::flow::list_all", level = "debug", skip(self, txn))]
+	#[instrument(name = "catalog::flow::list_all", level = "trace", skip(self, txn))]
 	pub fn list_flows_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Flow>> {
 		CatalogStore::list_flows_all(txn)
 	}

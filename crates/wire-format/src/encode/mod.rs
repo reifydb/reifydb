@@ -37,7 +37,7 @@ pub(crate) struct EncodedColumn {
 
 #[instrument(
 	name = "wire::encode_frames",
-	level = "debug",
+	level = "trace",
 	skip_all,
 	fields(
 		frame_count = frames.len(),

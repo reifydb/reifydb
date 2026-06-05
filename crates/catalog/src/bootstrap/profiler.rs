@@ -4,7 +4,7 @@
 use reifydb_core::{
 	event::EventBus,
 	interface::catalog::{
-		id::NamespaceId,
+		id::{ColumnId, NamespaceId, SeriesId},
 		series::{SeriesKey, TimestampPrecision},
 	},
 };
@@ -31,24 +31,109 @@ use crate::{
 	},
 };
 
-const PROFILER_CATEGORIES: [(&str, NamespaceId); 17] = [
-	("query", NamespaceId::SYSTEM_METRICS_PROFILER_QUERY),
-	("txn", NamespaceId::SYSTEM_METRICS_PROFILER_TXN),
-	("storage", NamespaceId::SYSTEM_METRICS_PROFILER_STORAGE),
-	("plan", NamespaceId::SYSTEM_METRICS_PROFILER_PLAN),
-	("cdc", NamespaceId::SYSTEM_METRICS_PROFILER_CDC),
-	("flow", NamespaceId::SYSTEM_METRICS_PROFILER_FLOW),
-	("subscription", NamespaceId::SYSTEM_METRICS_PROFILER_SUBSCRIPTION),
-	("server", NamespaceId::SYSTEM_METRICS_PROFILER_SERVER),
-	("wire", NamespaceId::SYSTEM_METRICS_PROFILER_WIRE),
-	("auth", NamespaceId::SYSTEM_METRICS_PROFILER_AUTH),
-	("catalog", NamespaceId::SYSTEM_METRICS_PROFILER_CATALOG),
-	("engine", NamespaceId::SYSTEM_METRICS_PROFILER_ENGINE),
-	("mutate", NamespaceId::SYSTEM_METRICS_PROFILER_MUTATE),
-	("transport", NamespaceId::SYSTEM_METRICS_PROFILER_TRANSPORT),
-	("task", NamespaceId::SYSTEM_METRICS_PROFILER_TASK),
-	("policy", NamespaceId::SYSTEM_METRICS_PROFILER_POLICY),
-	("ffi", NamespaceId::SYSTEM_METRICS_PROFILER_FFI),
+const PROFILER_CATEGORIES: [(&str, NamespaceId, SeriesId, &[ColumnId]); 17] = [
+	(
+		"query",
+		NamespaceId::SYSTEM_METRICS_PROFILER_QUERY,
+		SeriesId::PROFILER_QUERY_SNAPSHOTS,
+		&ColumnId::PROFILER_QUERY_SNAPSHOTS_COLUMNS,
+	),
+	(
+		"txn",
+		NamespaceId::SYSTEM_METRICS_PROFILER_TXN,
+		SeriesId::PROFILER_TXN_SNAPSHOTS,
+		&ColumnId::PROFILER_TXN_SNAPSHOTS_COLUMNS,
+	),
+	(
+		"storage",
+		NamespaceId::SYSTEM_METRICS_PROFILER_STORAGE,
+		SeriesId::PROFILER_STORAGE_SNAPSHOTS,
+		&ColumnId::PROFILER_STORAGE_SNAPSHOTS_COLUMNS,
+	),
+	(
+		"plan",
+		NamespaceId::SYSTEM_METRICS_PROFILER_PLAN,
+		SeriesId::PROFILER_PLAN_SNAPSHOTS,
+		&ColumnId::PROFILER_PLAN_SNAPSHOTS_COLUMNS,
+	),
+	(
+		"cdc",
+		NamespaceId::SYSTEM_METRICS_PROFILER_CDC,
+		SeriesId::PROFILER_CDC_SNAPSHOTS,
+		&ColumnId::PROFILER_CDC_SNAPSHOTS_COLUMNS,
+	),
+	(
+		"flow",
+		NamespaceId::SYSTEM_METRICS_PROFILER_FLOW,
+		SeriesId::PROFILER_FLOW_SNAPSHOTS,
+		&ColumnId::PROFILER_FLOW_SNAPSHOTS_COLUMNS,
+	),
+	(
+		"subscription",
+		NamespaceId::SYSTEM_METRICS_PROFILER_SUBSCRIPTION,
+		SeriesId::PROFILER_SUBSCRIPTION_SNAPSHOTS,
+		&ColumnId::PROFILER_SUBSCRIPTION_SNAPSHOTS_COLUMNS,
+	),
+	(
+		"server",
+		NamespaceId::SYSTEM_METRICS_PROFILER_SERVER,
+		SeriesId::PROFILER_SERVER_SNAPSHOTS,
+		&ColumnId::PROFILER_SERVER_SNAPSHOTS_COLUMNS,
+	),
+	(
+		"wire",
+		NamespaceId::SYSTEM_METRICS_PROFILER_WIRE,
+		SeriesId::PROFILER_WIRE_SNAPSHOTS,
+		&ColumnId::PROFILER_WIRE_SNAPSHOTS_COLUMNS,
+	),
+	(
+		"auth",
+		NamespaceId::SYSTEM_METRICS_PROFILER_AUTH,
+		SeriesId::PROFILER_AUTH_SNAPSHOTS,
+		&ColumnId::PROFILER_AUTH_SNAPSHOTS_COLUMNS,
+	),
+	(
+		"catalog",
+		NamespaceId::SYSTEM_METRICS_PROFILER_CATALOG,
+		SeriesId::PROFILER_CATALOG_SNAPSHOTS,
+		&ColumnId::PROFILER_CATALOG_SNAPSHOTS_COLUMNS,
+	),
+	(
+		"engine",
+		NamespaceId::SYSTEM_METRICS_PROFILER_ENGINE,
+		SeriesId::PROFILER_ENGINE_SNAPSHOTS,
+		&ColumnId::PROFILER_ENGINE_SNAPSHOTS_COLUMNS,
+	),
+	(
+		"mutate",
+		NamespaceId::SYSTEM_METRICS_PROFILER_MUTATE,
+		SeriesId::PROFILER_MUTATE_SNAPSHOTS,
+		&ColumnId::PROFILER_MUTATE_SNAPSHOTS_COLUMNS,
+	),
+	(
+		"transport",
+		NamespaceId::SYSTEM_METRICS_PROFILER_TRANSPORT,
+		SeriesId::PROFILER_TRANSPORT_SNAPSHOTS,
+		&ColumnId::PROFILER_TRANSPORT_SNAPSHOTS_COLUMNS,
+	),
+	(
+		"task",
+		NamespaceId::SYSTEM_METRICS_PROFILER_TASK,
+		SeriesId::PROFILER_TASK_SNAPSHOTS,
+		&ColumnId::PROFILER_TASK_SNAPSHOTS_COLUMNS,
+	),
+	(
+		"policy",
+		NamespaceId::SYSTEM_METRICS_PROFILER_POLICY,
+		SeriesId::PROFILER_POLICY_SNAPSHOTS,
+		&ColumnId::PROFILER_POLICY_SNAPSHOTS_COLUMNS,
+	),
+	(
+		"ffi",
+		NamespaceId::SYSTEM_METRICS_PROFILER_FFI,
+		SeriesId::PROFILER_FFI_SNAPSHOTS,
+		&ColumnId::PROFILER_FFI_SNAPSHOTS_COLUMNS,
+	),
 ];
 
 pub fn bootstrap_profiler(
@@ -76,7 +161,7 @@ pub fn bootstrap_profiler(
 		NamespaceId::SYSTEM_METRICS,
 	)?;
 
-	for (category_name, category_namespace) in PROFILER_CATEGORIES {
+	for (category_name, category_namespace, series_id, column_ids) in PROFILER_CATEGORIES {
 		let ns_path = format!("system::metrics::profiler::{category_name}");
 		let ns_id = ensure_namespace(
 			&catalog_api,
@@ -88,8 +173,9 @@ pub fn bootstrap_profiler(
 		)?;
 
 		if catalog_api.find_series_by_name(&mut Transaction::Admin(&mut admin), ns_id, "snapshots")?.is_none() {
-			catalog_api.create_series(
+			catalog_api.create_series_with_id(
 				&mut admin,
+				series_id,
 				SeriesToCreate {
 					name: Fragment::internal("snapshots"),
 					namespace: ns_id,
@@ -101,6 +187,7 @@ pub fn bootstrap_profiler(
 					},
 					underlying: false,
 				},
+				column_ids,
 			)?;
 			info!("Created {ns_path}::snapshots series");
 		}
