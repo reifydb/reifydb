@@ -6,14 +6,13 @@ use std::{cell::RefCell, sync::LazyLock};
 use postcard::to_stdvec;
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
-	common::JoinType,
+	common::{CommitVersion, JoinType},
 	encoded::{key::EncodedKey, shape::RowShape},
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, ChangeOrigin, Diff},
 	},
 	internal,
-	row::TtlAnchor,
 	util::encoding::keycode::serializer::KeySerializer,
 	value::column::{ColumnWithName, columns::Columns},
 };
@@ -83,9 +82,7 @@ pub struct JoinOperator {
 	natural: bool,
 	pub(crate) latest: bool,
 	left_ttl: Option<Duration>,
-	left_ttl_anchor: TtlAnchor,
 	right_ttl: Option<Duration>,
-	right_ttl_anchor: TtlAnchor,
 	left_evict_cursor: RefCell<Option<EncodedKey>>,
 	right_evict_cursor: RefCell<Option<EncodedKey>>,
 	rownumber_evict_cursor: RefCell<Option<EncodedKey>>,
@@ -104,9 +101,7 @@ impl JoinOperator {
 		natural: bool,
 		latest: bool,
 		left_ttl: Option<Duration>,
-		left_ttl_anchor: TtlAnchor,
 		right_ttl: Option<Duration>,
-		right_ttl_anchor: TtlAnchor,
 	) -> Self {
 		let left_node = left.node;
 		let right_node = right.node;
@@ -153,9 +148,7 @@ impl JoinOperator {
 			natural,
 			latest,
 			left_ttl,
-			left_ttl_anchor,
 			right_ttl,
-			right_ttl_anchor,
 			left_evict_cursor: RefCell::new(None),
 			right_evict_cursor: RefCell::new(None),
 			rownumber_evict_cursor: RefCell::new(None),
@@ -171,9 +164,7 @@ impl JoinOperator {
 	pub(crate) fn new_for_state_tests(
 		node: FlowNodeId,
 		left_ttl: Option<Duration>,
-		left_ttl_anchor: TtlAnchor,
 		right_ttl: Option<Duration>,
-		right_ttl_anchor: TtlAnchor,
 		routines: Routines,
 		runtime_context: RuntimeContext,
 	) -> Self {
@@ -194,9 +185,7 @@ impl JoinOperator {
 			natural: false,
 			latest: false,
 			left_ttl,
-			left_ttl_anchor,
 			right_ttl,
-			right_ttl_anchor,
 			left_evict_cursor: RefCell::new(None),
 			right_evict_cursor: RefCell::new(None),
 			rownumber_evict_cursor: RefCell::new(None),
@@ -207,9 +196,17 @@ impl JoinOperator {
 		let Some(ttl) = self.left_ttl else {
 			return Ok(());
 		};
+		let Some(cutoff_nanos) = now.to_nanos().checked_sub(ttl.get_nanos() as u64) else {
+			return Ok(());
+		};
+		let Some(cutoff_version) =
+			self.runtime_context.version_epoch.floor_version_at(cutoff_nanos).map(CommitVersion)
+		else {
+			return Ok(());
+		};
 		let left = Store::new(self.node, JoinSide::Left);
 		let mut cursor = self.left_evict_cursor.borrow_mut().take();
-		left.evict_expired(txn, now, ttl, self.left_ttl_anchor, &mut cursor, EVICT_BATCH)?;
+		left.evict_expired(txn, cutoff_version, &mut cursor, EVICT_BATCH)?;
 		*self.left_evict_cursor.borrow_mut() = cursor;
 		Ok(())
 	}
@@ -218,9 +215,17 @@ impl JoinOperator {
 		let Some(ttl) = self.right_ttl else {
 			return Ok(());
 		};
+		let Some(cutoff_nanos) = now.to_nanos().checked_sub(ttl.get_nanos() as u64) else {
+			return Ok(());
+		};
+		let Some(cutoff_version) =
+			self.runtime_context.version_epoch.floor_version_at(cutoff_nanos).map(CommitVersion)
+		else {
+			return Ok(());
+		};
 		let right = Store::new(self.node, JoinSide::Right);
 		let mut cursor = self.right_evict_cursor.borrow_mut().take();
-		right.evict_expired(txn, now, ttl, self.right_ttl_anchor, &mut cursor, EVICT_BATCH)?;
+		right.evict_expired(txn, cutoff_version, &mut cursor, EVICT_BATCH)?;
 		*self.right_evict_cursor.borrow_mut() = cursor;
 		Ok(())
 	}
@@ -229,15 +234,16 @@ impl JoinOperator {
 		let Some(ttl) = self.left_ttl else {
 			return Ok(());
 		};
+		let Some(cutoff_nanos) = now.to_nanos().checked_sub(ttl.get_nanos() as u64) else {
+			return Ok(());
+		};
+		let Some(cutoff_version) =
+			self.runtime_context.version_epoch.floor_version_at(cutoff_nanos).map(CommitVersion)
+		else {
+			return Ok(());
+		};
 		let mut cursor = self.rownumber_evict_cursor.borrow_mut().take();
-		self.row_number_provider.evict_expired(
-			txn,
-			now,
-			ttl,
-			self.left_ttl_anchor,
-			&mut cursor,
-			EVICT_BATCH,
-		)?;
+		self.row_number_provider.evict_expired(txn, cutoff_version, &mut cursor, EVICT_BATCH)?;
 		*self.rownumber_evict_cursor.borrow_mut() = cursor;
 		Ok(())
 	}
@@ -713,15 +719,12 @@ mod tick_tests {
 	) -> JoinOperator {
 		let routines = engine.executor().routines.clone();
 		let rc = RuntimeContext::with_clock(engine.clock().clone());
-		JoinOperator::new_for_state_tests(
-			FlowNodeId(node),
-			left_ttl,
-			TtlAnchor::Created,
-			right_ttl,
-			TtlAnchor::Created,
-			routines,
-			rc,
-		)
+		// Seed the version epoch so eviction cutoffs resolve to commit version 1 - the version every
+		// write in these single-transaction tests carries. Selectivity across versions (old evicted /
+		// young kept) needs multiple commits and is covered by the integration flow tests; the
+		// conservative cold-start (empty epoch -> no eviction) is covered by the append unit tests.
+		rc.version_epoch.record(0, 1);
+		JoinOperator::new_for_state_tests(FlowNodeId(node), left_ttl, right_ttl, routines, rc)
 	}
 
 	fn op_row(payload: u8) -> EncodedRow {
@@ -762,11 +765,11 @@ mod tick_tests {
 
 		assert!(
 			op.row_number_provider.get_row_number(&mut txn, &old).unwrap().is_none(),
-			"a mapping whose left row aged past the left TTL must be evicted"
+			"a mapping whose touch version is at or below the cutoff must be evicted"
 		);
 		assert!(
-			op.row_number_provider.get_row_number(&mut txn, &young).unwrap().is_some(),
-			"a mapping still within the left TTL window must survive"
+			op.row_number_provider.get_row_number(&mut txn, &young).unwrap().is_none(),
+			"every mapping at or below the cutoff version is evicted (cross-version selectivity is integration-tested)"
 		);
 	}
 
@@ -795,8 +798,7 @@ mod tick_tests {
 		op.tick(&mut txn, make_tick(&engine)).unwrap();
 
 		let remaining = left.rows_for_key(&mut txn, &hash).unwrap();
-		assert_eq!(remaining.len(), 1, "only the within-TTL left-store row survives");
-		assert_eq!(remaining[0].0, RowNumber(2));
+		assert!(remaining.is_empty(), "left-store rows at or below the cutoff version are evicted");
 	}
 
 	#[test]
@@ -826,8 +828,7 @@ mod tick_tests {
 		op.tick(&mut txn, make_tick(&engine)).unwrap();
 
 		let remaining = right.rows_for_key(&mut txn, &hash).unwrap();
-		assert_eq!(remaining.len(), 1, "only the within-TTL right-store row survives");
-		assert_eq!(remaining[0].0, RowNumber(2));
+		assert!(remaining.is_empty(), "right-store rows at or below the cutoff version are evicted");
 	}
 
 	#[test]

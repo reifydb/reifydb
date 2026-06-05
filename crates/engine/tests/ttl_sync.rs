@@ -22,7 +22,7 @@ fn test_row_settings_sync_to_catalog_cache() {
 	engine.admin("CREATE NAMESPACE test");
 	engine.admin(r#"
 		CREATE TABLE test::users { id: int4 } WITH {
-			row: { ttl: { duration: '1h', on: created, mode: drop } }
+			row: { ttl: { duration: '1h', mode: drop } }
 		};
 	"#);
 
@@ -57,7 +57,7 @@ fn test_row_settings_replication_sync() {
 		panic!("{e:?}");
 	}
 	let r = txn.rql(
-		"CREATE TABLE test::users { id: int4 } WITH { row: { ttl: { duration: '1m', on: created, mode: drop } } }",
+		"CREATE TABLE test::users { id: int4 } WITH { row: { ttl: { duration: '1m', mode: drop } } }",
 		Default::default(),
 	);
 	if let Some(e) = r.error {
@@ -98,7 +98,7 @@ fn test_operator_settings_sync_to_catalog_cache() {
 	use reifydb_catalog::store::operator_settings::create::create_operator_settings;
 	use reifydb_core::{
 		interface::catalog::flow::FlowNodeId,
-		row::{OperatorSettings, Ttl, TtlAnchor, TtlCleanupMode},
+		row::{OperatorSettings, Ttl, TtlCleanupMode},
 	};
 	use reifydb_store_multi::gc::operator::ListOperatorSettings;
 
@@ -115,7 +115,6 @@ fn test_operator_settings_sync_to_catalog_cache() {
 	let settings = OperatorSettings {
 		ttl: Some(Ttl {
 			duration_nanos: 3_600_000_000_000,
-			anchor: TtlAnchor::Created,
 			cleanup_mode: TtlCleanupMode::Drop,
 		}),
 		join: None,

@@ -522,10 +522,8 @@ impl FlowEngineInner {
 		let join_ttl = self.catalog.find_operator_settings(txn, node_id)?.and_then(|s| s.join);
 		let left = join_ttl.as_ref().and_then(|j| j.left.as_ref());
 		let left_ttl = left.map(|t| Duration::from_nanoseconds_const(t.duration_nanos as i64));
-		let left_ttl_anchor = left.map(|t| t.anchor).unwrap_or_default();
 		let right = join_ttl.as_ref().and_then(|j| j.right.as_ref());
 		let right_ttl = right.map(|t| Duration::from_nanoseconds_const(t.duration_nanos as i64));
-		let right_ttl_anchor = right.map(|t| t.anchor).unwrap_or_default();
 
 		self.operators.insert(
 			node_id,
@@ -548,9 +546,7 @@ impl FlowEngineInner {
 				natural,
 				latest,
 				left_ttl,
-				left_ttl_anchor,
 				right_ttl,
-				right_ttl_anchor,
 			))),
 		);
 		Ok(())
@@ -604,7 +600,6 @@ impl FlowEngineInner {
 
 		let ttl = self.catalog.find_operator_settings(txn, node_id)?.and_then(|s| s.ttl);
 		let ttl_nanos = ttl.as_ref().map(|t| t.duration_nanos);
-		let ttl_anchor = ttl.as_ref().map(|t| t.anchor).unwrap_or_default();
 
 		self.operators.insert(
 			node_id,
@@ -613,7 +608,7 @@ impl FlowEngineInner {
 				parents,
 				inputs.to_vec(),
 				ttl_nanos,
-				ttl_anchor,
+				self.executor.runtime_context.version_epoch.clone(),
 			))),
 		);
 		Ok(())

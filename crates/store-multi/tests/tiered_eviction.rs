@@ -22,17 +22,13 @@ use std::{collections::HashMap, sync::Arc, time::Instant};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	encoded::{
-		key::EncodedKey,
-		row::{EncodedRow, SHAPE_HEADER_SIZE},
-	},
+	encoded::{key::EncodedKey, row::EncodedRow},
 	event::EventBus,
 	interface::{
 		catalog::{id::TableId, shape::ShapeId},
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 	},
 	key::row::RowKey,
-	row::TtlAnchor,
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -388,14 +384,10 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 	);
 }
 
-/// Build a row with the 24-byte shape header carrying created/updated anchor timestamps, mirroring the layout
-/// the row-TTL scanner and persistent delete_expired key off.
-fn anchored_row(created_nanos: u64, updated_nanos: u64, payload: &[u8]) -> CowVec<u8> {
-	let mut buf = vec![0u8; SHAPE_HEADER_SIZE + payload.len()];
-	buf[8..16].copy_from_slice(&created_nanos.to_le_bytes());
-	buf[16..24].copy_from_slice(&updated_nanos.to_le_bytes());
-	buf[SHAPE_HEADER_SIZE..].copy_from_slice(payload);
-	CowVec::new(buf)
+/// Build a row value. TTL eviction now keys off the per-key commit version, not any header
+/// timestamp, so the value is just the payload bytes.
+fn versioned_row(payload: &[u8]) -> CowVec<u8> {
+	CowVec::new(payload.to_vec())
 }
 
 #[test]
@@ -412,22 +404,19 @@ fn row_ttl_deletes_from_persistent_and_invalidated_read_tier_does_not_serve_it()
 	let persistent = store.persistent().unwrap();
 	let table = classify_key(&k);
 	persistent
-		.set(
-			CommitVersion(1),
-			HashMap::from([(table, vec![(k.clone(), Some(anchored_row(100, 100, b"old")))])]),
-		)
+		.set(CommitVersion(1), HashMap::from([(table, vec![(k.clone(), Some(versioned_row(b"old")))])]))
 		.unwrap();
 
-	// A point read populates the read tier with the (soon-to-be-stale) value (header + payload).
-	let expected = anchored_row(100, 100, b"old").to_vec();
+	// A point read populates the read tier with the (soon-to-be-stale) value.
+	let expected = versioned_row(b"old").to_vec();
 	assert_eq!(
 		get(&store, &k, 1),
 		Some(expected),
 		"the persistent row is readable before TTL deletion (and now cached)"
 	);
 
-	// Row-TTL GC's persistent step: delete everything created at/below a cutoff above the row's timestamp.
-	let deleted = persistent.delete_expired(kind, TtlAnchor::Created, 200, None).unwrap();
+	// Row-TTL GC's persistent step: delete everything whose commit version is at or below the cutoff.
+	let deleted = persistent.delete_below_version(kind, CommitVersion(1), None).unwrap();
 	assert_eq!(deleted, 1, "the expired row must be physically deleted from the persistent tier");
 
 	// Without invalidation the read tier would still serve "old" - prove the cache is indeed stale right now.

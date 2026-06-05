@@ -6,9 +6,9 @@
 //! Drives commit / flush / row-TTL / physical-delete across SEVERAL tables (ShapeIds) at once and asserts
 //! that an operation scoped to one shape never touches another: a TTL sweep or delete on shape A must
 //! leave shape B byte-for-byte intact, and a full-scan of a shape must return exactly that shape's rows.
-//! This guards the shape-scoping of `scan_shape_by_*`, `delete_expired`, `delete_keys`, and range bounds -
-//! a scoping bug there would bleed rows across tables, which the per-shape oracle and cross-config checks
-//! both catch. Reads are taken at the current version (TTL/delete remove by age, like `lifecycle`).
+//! This guards the shape-scoping of `scan_shape_expired`, `delete_below_version`, `delete_keys`, and range
+//! bounds - a scoping bug there would bleed rows across tables, which the per-shape oracle and cross-config
+//! checks both catch. Reads are taken at the current version (TTL/delete remove by version, like `lifecycle`).
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -22,13 +22,12 @@ use reifydb_core::{
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet},
 	},
 	key::row::RowKey,
-	row::{Ttl, TtlAnchor, TtlCleanupMode},
 };
 use reifydb_store_multi::{
 	MultiVersionScope,
 	gc::row::{
 		ScanStats,
-		scanner::{ScanResult, drop_expired_keys, scan_shape_by_created_at, scan_shape_by_updated_at},
+		scanner::{ScanResult, drop_expired_keys, scan_shape_expired},
 	},
 	store::StandardMultiStore,
 	tier::{RangeCursor, TierStorage},
@@ -46,22 +45,20 @@ fn shape(idx: usize) -> ShapeId {
 	SHAPES[idx]
 }
 
-/// Per-(shape, row) current value/version plus the header timestamps that decide TTL eligibility.
+/// Per-(shape, row) current value + commit version. The version decides TTL eligibility (a row is
+/// expired once its current version is at or below the sweep's cutoff version).
 #[derive(Default)]
 struct MsOracle {
 	current: BTreeMap<(usize, u64), (Vec<u8>, u64)>,
-	ts: BTreeMap<(usize, u64), (u64, u64)>,
 }
 
 impl MsOracle {
-	fn set(&mut self, s: usize, row: u64, value: Vec<u8>, version: u64, created: u64, updated: u64) {
+	fn set(&mut self, s: usize, row: u64, value: Vec<u8>, version: u64) {
 		self.current.insert((s, row), (value, version));
-		self.ts.insert((s, row), (created, updated));
 	}
 
 	fn remove(&mut self, s: usize, row: u64) {
 		self.current.remove(&(s, row));
-		self.ts.remove(&(s, row));
 	}
 
 	fn get(&self, s: usize, row: u64) -> Option<(Vec<u8>, u64)> {
@@ -87,33 +84,15 @@ impl MsOracle {
 
 /// Shape-scoped row-TTL sweep mirroring `gc/row/actor.rs` (buffer scan->invalidate->drop, then persistent
 /// delete_expired -> clear_read on a hit). Scoped to a single shape so the test can assert isolation.
-fn ttl_sweep_shape(store: &StandardMultiStore, shape_id: ShapeId, ttl: &Ttl, now_nanos: u64) {
+fn ttl_sweep_shape(store: &StandardMultiStore, shape_id: ShapeId, cutoff_version: CommitVersion) {
 	if let Some(buffer) = store.commit() {
 		loop {
 			let mut cursor = RangeCursor::new();
 			let mut stats = ScanStats::default();
 			let mut removed_any = false;
 			loop {
-				let (expired, result) = match ttl.anchor {
-					TtlAnchor::Created => scan_shape_by_created_at(
-						buffer,
-						shape_id,
-						ttl,
-						now_nanos,
-						64,
-						&mut cursor,
-					)
-					.unwrap(),
-					TtlAnchor::Updated => scan_shape_by_updated_at(
-						buffer,
-						shape_id,
-						ttl,
-						now_nanos,
-						64,
-						&mut cursor,
-					)
-					.unwrap(),
-				};
+				let (expired, result) =
+					scan_shape_expired(buffer, shape_id, cutoff_version, 64, &mut cursor).unwrap();
 				if !expired.is_empty() {
 					removed_any = true;
 					for e in &expired {
@@ -131,8 +110,8 @@ fn ttl_sweep_shape(store: &StandardMultiStore, shape_id: ShapeId, ttl: &Ttl, now
 		}
 	}
 	if let Some(persistent) = store.persistent() {
-		let cutoff = now_nanos.saturating_sub(ttl.duration_nanos);
-		let deleted = persistent.delete_expired(EntryKind::Source(shape_id), ttl.anchor, cutoff, None).unwrap();
+		let deleted =
+			persistent.delete_below_version(EntryKind::Source(shape_id), cutoff_version, None).unwrap();
 		if deleted > 0 {
 			store.clear_read();
 		}
@@ -255,7 +234,6 @@ pub fn drive(seed: u64, p: Params) {
 		vec![("memory", memory), ("persistent", persistent), ("tiny_cache", tiny)];
 
 	let mut version: u64 = 0;
-	let mut now: u64 = 1000;
 
 	let steps = rng.random_range(p.min_steps..=p.max_steps);
 	for step in 0..steps {
@@ -275,10 +253,9 @@ pub fn drive(seed: u64, p: Params) {
 					oracle.remove(s, row);
 					values.push((row, None));
 				} else {
-					let created = oracle.ts.get(&(s, row)).map(|(c, _)| *c).unwrap_or(now);
 					let payload = format!("s{s}r{row}@v{version}").into_bytes();
-					let bytes = build_row(&payload, created, now).0.to_vec();
-					oracle.set(s, row, bytes.clone(), version, created, now);
+					let bytes = build_row(&payload).0.to_vec();
+					oracle.set(s, row, bytes.clone(), version);
 					values.push((row, Some(bytes)));
 				}
 			}
@@ -305,34 +282,17 @@ pub fn drive(seed: u64, p: Params) {
 				}
 			}
 		} else if roll < ttl_hi {
-			now += rng.random_range(1..=p.max_time_step);
-			let dur = rng.random_range(1..=p.max_ttl);
-			let anchor = if rng.random_range(0u32..2) == 0 {
-				TtlAnchor::Created
-			} else {
-				TtlAnchor::Updated
-			};
-			let ttl = Ttl {
-				duration_nanos: dur,
-				anchor,
-				cleanup_mode: TtlCleanupMode::Drop,
-			};
-			let cutoff = now.saturating_sub(dur);
-			let mut expired: Vec<u64> = Vec::new();
-			for ((shape_idx, row), (created, updated)) in &oracle.ts {
-				if *shape_idx != s {
-					continue;
-				}
-				let anchor_ts = match anchor {
-					TtlAnchor::Created => *created,
-					TtlAnchor::Updated => *updated,
-				};
-				if anchor_ts <= cutoff {
-					expired.push(*row);
-				}
-			}
+			// Version-anchored TTL scoped to shape `s`: evict that shape's rows whose current version is
+			// at or below a random cutoff version. Rows of the other shapes must be untouched (isolation).
+			let cutoff_version = rng.random_range(1..=version);
+			let expired: Vec<u64> = oracle
+				.current
+				.iter()
+				.filter(|((shape_idx, _), (_, v))| *shape_idx == s && *v <= cutoff_version)
+				.map(|((_, row), _)| *row)
+				.collect();
 			for (_, store) in &configs {
-				ttl_sweep_shape(store, shape(s), &ttl, now);
+				ttl_sweep_shape(store, shape(s), CommitVersion(cutoff_version));
 			}
 			for row in expired {
 				oracle.remove(s, row);

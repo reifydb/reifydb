@@ -54,7 +54,7 @@ use reifydb_rql::RqlVersion;
 use reifydb_runtime::{Runtime, context::RuntimeContext};
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sqlite::SqliteConfig;
-use reifydb_store_multi::{MultiStore, MultiStoreVersion};
+use reifydb_store_multi::{MultiStore, MultiStoreVersion, gc::epoch::listener::VersionEpochListener};
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
@@ -516,6 +516,10 @@ impl DatabaseBuilder {
 		);
 		eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
 			cdc_handle.actor_ref().clone(),
+			clock.clone(),
+		));
+		eventbus.register::<PostCommitEvent, _>(VersionEpochListener::new(
+			engine.version_epoch().clone(),
 			clock.clone(),
 		));
 		self.ioc.register_service::<Arc<CdcProduceHandle>>(Arc::new(cdc_handle));

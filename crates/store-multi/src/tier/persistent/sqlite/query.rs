@@ -20,12 +20,9 @@ pub(super) fn build_create_current_sql(table_name: &str) -> String {
 		"CREATE TABLE IF NOT EXISTS \"{0}\" (\
 			key BLOB PRIMARY KEY,\
 			version BLOB NOT NULL,\
-			value BLOB,\
-			created_nanos INTEGER NOT NULL DEFAULT 0,\
-			updated_nanos INTEGER NOT NULL DEFAULT 0\
+			value BLOB\
 		) WITHOUT ROWID;\
-		CREATE INDEX IF NOT EXISTS \"{0}__created_nanos\" ON \"{0}\" (created_nanos);\
-		CREATE INDEX IF NOT EXISTS \"{0}__updated_nanos\" ON \"{0}\" (updated_nanos);",
+		CREATE INDEX IF NOT EXISTS \"{0}__version\" ON \"{0}\" (version);",
 		table_name
 	)
 }
@@ -52,25 +49,20 @@ fn build_placeholders(key_count: usize) -> String {
 
 pub(super) fn build_upsert_current_sql(table_name: &str) -> String {
 	format!(
-		"INSERT INTO \"{0}\" (key, version, value, created_nanos, updated_nanos) VALUES (?1, ?2, ?3, ?4, ?5) \
+		"INSERT INTO \"{0}\" (key, version, value) VALUES (?1, ?2, ?3) \
 		 ON CONFLICT(key) DO UPDATE SET \
 		     version = excluded.version, \
-		     value = excluded.value, \
-		     created_nanos = excluded.created_nanos, \
-		     updated_nanos = excluded.updated_nanos \
+		     value = excluded.value \
 		 WHERE excluded.version >= \"{0}\".version",
 		table_name
 	)
 }
 
-pub(super) fn build_delete_expired_sql(table_name: &str, anchor_column: &str, has_prefix: bool) -> String {
+pub(super) fn build_delete_below_version_sql(table_name: &str, has_prefix: bool) -> String {
 	if has_prefix {
-		format!(
-			"DELETE FROM \"{0}\" WHERE {1} > 0 AND {1} <= ?1 AND key >= ?2 AND key < ?3",
-			table_name, anchor_column
-		)
+		format!("DELETE FROM \"{0}\" WHERE version <= ?1 AND key >= ?2 AND key < ?3", table_name)
 	} else {
-		format!("DELETE FROM \"{0}\" WHERE {1} > 0 AND {1} <= ?1", table_name, anchor_column)
+		format!("DELETE FROM \"{0}\" WHERE version <= ?1", table_name)
 	}
 }
 

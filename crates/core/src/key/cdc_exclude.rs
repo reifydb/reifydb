@@ -21,7 +21,7 @@ pub fn should_exclude_from_cdc(kind: KeyKind) -> bool {
 			| KeyKind::SubscriptionColumn
 			| KeyKind::SubscriptionRow
 			| KeyKind::ConfigStorage
-			| KeyKind::Token
+			| KeyKind::Token | KeyKind::VersionEpoch
 	)
 }
 
@@ -115,10 +115,11 @@ pub mod tests {
 			KeyKind::NamespaceBinding => {}
 			KeyKind::ColumnSnapshot => {}
 			KeyKind::SeriesColumnSnapshot => {}
-			KeyKind::TableColumnSnapshot => {} /* When adding a new variant, add it here.
-			                                    * The compiler will error if you forget.
-			                                    * Then add a test and update should_exclude_from_cdc() if
-			                                    * needed. */
+			KeyKind::TableColumnSnapshot => {}
+			KeyKind::VersionEpoch => {} /* When adding a new variant, add it here.
+			                             * The compiler will error if you forget.
+			                             * Then add a test and update should_exclude_from_cdc() if
+			                             * needed. */
 		}
 	}
 
@@ -438,5 +439,11 @@ pub mod tests {
 	#[test]
 	fn test_exclude_config() {
 		assert!(should_exclude_from_cdc(KeyKind::ConfigStorage));
+	}
+
+	// Version-epoch TTL checkpoint is internal bookkeeping (excluded)
+	#[test]
+	fn test_exclude_version_epoch() {
+		assert!(should_exclude_from_cdc(KeyKind::VersionEpoch));
 	}
 }

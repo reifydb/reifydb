@@ -12,11 +12,8 @@ use std::{
 };
 
 use reifydb_core::{
-	common::CommitVersion,
-	encoded::{key::EncodedKey, row::EncodedRow},
-	error::diagnostic::internal::internal,
+	common::CommitVersion, encoded::key::EncodedKey, error::diagnostic::internal::internal,
 	interface::store::EntryKind,
-	row::TtlAnchor,
 };
 use reifydb_runtime::{
 	shutdown::Shutdown,
@@ -47,10 +44,10 @@ use crate::{
 			sqlite::{
 				entry::current_table_name,
 				query::{
-					build_create_current_sql, build_delete_expired_sql, build_delete_keys_sql,
-					build_get_current_sql, build_get_many_current_sql, build_range_consistent_sql,
-					build_range_current_sql, build_upsert_current_sql, prefix_upper_bound,
-					version_from_bytes, version_to_bytes,
+					build_create_current_sql, build_delete_below_version_sql,
+					build_delete_keys_sql, build_get_current_sql, build_get_many_current_sql,
+					build_range_consistent_sql, build_range_current_sql, build_upsert_current_sql,
+					prefix_upper_bound, version_from_bytes, version_to_bytes,
 				},
 			},
 		},
@@ -228,19 +225,15 @@ impl SqlitePersistentStorage {
 		}
 	}
 
-	pub fn delete_expired(
+	pub fn delete_below_version(
 		&self,
 		table: EntryKind,
-		anchor: TtlAnchor,
-		cutoff_nanos: u64,
+		cutoff_version: CommitVersion,
 		prefix: Option<&[u8]>,
 	) -> Result<u64> {
 		let table_sql = self.table_sql(table);
-		let anchor_column = match anchor {
-			TtlAnchor::Created => "created_nanos",
-			TtlAnchor::Updated => "updated_nanos",
-		};
-		let sql = build_delete_expired_sql(&table_sql.table_name, anchor_column, prefix.is_some());
+		let sql = build_delete_below_version_sql(&table_sql.table_name, prefix.is_some());
+		let cutoff = version_to_bytes(cutoff_version);
 		let guard = self.inner.conn.lock();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(0);
@@ -248,15 +241,15 @@ impl SqlitePersistentStorage {
 		let result = match prefix {
 			Some(prefix) => {
 				let upper = prefix_upper_bound(prefix);
-				conn.execute(&sql, params![cutoff_nanos as i64, prefix, upper.as_slice()])
+				conn.execute(&sql, params![cutoff.as_slice(), prefix, upper.as_slice()])
 			}
-			None => conn.execute(&sql, params![cutoff_nanos as i64]),
+			None => conn.execute(&sql, params![cutoff.as_slice()]),
 		};
 		match result {
 			Ok(n) => Ok(n as u64),
 			Err(e) if e.to_string().contains("no such table") => Ok(0),
 			Err(e) => Err(error!(internal(format!(
-				"Failed to delete expired persistent rows from {}: {}",
+				"Failed to delete rows below version from {}: {}",
 				table_sql.table_name, e
 			)))),
 		}
@@ -592,21 +585,9 @@ impl TierStorage for SqlitePersistentStorage {
 			for (key, value) in entries {
 				let key_slice = key.as_slice();
 				let value_slice = value.as_ref().map(|v| v.as_slice());
-				let (created_nanos, updated_nanos) = match &value {
-					Some(v) if v.len() >= 24 => {
-						let row = EncodedRow(v.clone());
-						(row.created_at_nanos() as i64, row.updated_at_nanos() as i64)
-					}
-					_ => (0i64, 0i64),
-				};
-				stmt.execute(params![
-					key_slice,
-					new_version_bytes.as_slice(),
-					value_slice,
-					created_nanos,
-					updated_nanos
-				])
-				.map_err(|e| error!(internal(format!("Failed to upsert persistent row: {}", e))))?;
+				stmt.execute(params![key_slice, new_version_bytes.as_slice(), value_slice]).map_err(
+					|e| error!(internal(format!("Failed to upsert persistent row: {}", e))),
+				)?;
 			}
 		}
 
@@ -766,12 +747,8 @@ mod tests {
 		EncodedKey::new(n.to_be_bytes().to_vec())
 	}
 
-	fn row(created_nanos: u64, updated_nanos: u64, payload: &[u8]) -> CowVec<u8> {
-		let mut buf = vec![0u8; 24 + payload.len()];
-		buf[8..16].copy_from_slice(&created_nanos.to_le_bytes());
-		buf[16..24].copy_from_slice(&updated_nanos.to_le_bytes());
-		buf[24..].copy_from_slice(payload);
-		CowVec::new(buf)
+	fn row(payload: &[u8]) -> CowVec<u8> {
+		CowVec::new(payload.to_vec())
 	}
 
 	fn visible(s: &SqlitePersistentStorage, k: &EncodedKey) -> bool {
@@ -779,25 +756,17 @@ mod tests {
 	}
 
 	#[test]
-	fn delete_expired_created_anchor_removes_only_rows_at_or_below_cutoff() {
+	fn delete_below_version_removes_rows_at_or_below_cutoff() {
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		s.set(
-			CommitVersion(1),
-			HashMap::from([(
-				table(),
-				vec![
-					(key(1), Some(row(100, 100, b"a"))),
-					(key(2), Some(row(200, 200, b"b"))),
-					(key(3), Some(row(300, 300, b"c"))),
-				],
-			)]),
-		)
-		.unwrap();
+		// Each key written at a distinct commit version (separate set calls).
+		s.set(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(row(b"a")))])])).unwrap();
+		s.set(CommitVersion(2), HashMap::from([(table(), vec![(key(2), Some(row(b"b")))])])).unwrap();
+		s.set(CommitVersion(3), HashMap::from([(table(), vec![(key(3), Some(row(b"c")))])])).unwrap();
 		assert_eq!(s.count_current(table()).unwrap(), 3);
 
-		let deleted = s.delete_expired(table(), TtlAnchor::Created, 200, None).unwrap();
+		let deleted = s.delete_below_version(table(), CommitVersion(2), None).unwrap();
 
-		assert_eq!(deleted, 2, "rows created at <= cutoff(200) must be physically deleted");
+		assert_eq!(deleted, 2, "rows whose version is <= cutoff(2) must be physically deleted");
 		assert_eq!(
 			s.count_current(table()).unwrap(),
 			1,
@@ -805,75 +774,88 @@ mod tests {
 		);
 		assert!(!visible(&s, &key(1)));
 		assert!(!visible(&s, &key(2)));
-		assert!(visible(&s, &key(3)), "row newer than the TTL cutoff must survive");
+		assert!(visible(&s, &key(3)), "a row written after the cutoff version must survive");
 	}
 
 	#[test]
-	fn delete_expired_updated_anchor_keeps_recently_updated_rows() {
+	fn create_table_indexes_the_version_column() {
+		// Phase 2b: after the created_nanos/updated_nanos indices were dropped, the version-anchored TTL
+		// delete (DELETE WHERE version <= cutoff) needs an index on `version`, or GC full-scans the live
+		// set on every tick. The two timestamp indices must stay gone.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		s.set(
-			CommitVersion(1),
-			HashMap::from([(
-				table(),
-				vec![
-					(key(1), Some(row(10, 500, b"created-old-updated-fresh"))),
-					(key(2), Some(row(10, 50, b"created-old-updated-stale"))),
-				],
-			)]),
-		)
-		.unwrap();
+		s.set(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(row(b"a")))])])).unwrap();
 
-		let deleted = s.delete_expired(table(), TtlAnchor::Updated, 100, None).unwrap();
+		let table_name = s.table_sql(table()).table_name.clone();
+		let guard = s.inner.conn.lock();
+		let conn = guard.as_ref().expect("write connection is present");
 
-		assert_eq!(deleted, 1, "Updated anchor must key eviction on updated_nanos, not created_nanos");
+		let indices: Vec<String> = conn
+			.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ?1")
+			.unwrap()
+			.query_map([table_name.as_str()], |r| r.get::<_, String>(0))
+			.unwrap()
+			.map(|r| r.unwrap())
+			.collect();
+
 		assert!(
-			visible(&s, &key(1)),
-			"a row updated after the cutoff must NOT be evicted even if created long ago"
+			indices.contains(&format!("{table_name}__version")),
+			"the version column must be indexed so the TTL delete seeks instead of scanning, got {indices:?}"
 		);
+		assert!(
+			!indices.iter().any(|n| n.ends_with("__created_nanos") || n.ends_with("__updated_nanos")),
+			"the dropped timestamp indices must not be recreated, got {indices:?}"
+		);
+	}
+
+	#[test]
+	fn delete_below_version_keeps_rows_written_after_the_cutoff() {
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		s.set(CommitVersion(2), HashMap::from([(table(), vec![(key(2), Some(row(b"stale")))])])).unwrap();
+		s.set(CommitVersion(5), HashMap::from([(table(), vec![(key(1), Some(row(b"fresh")))])])).unwrap();
+
+		let deleted = s.delete_below_version(table(), CommitVersion(3), None).unwrap();
+
+		assert_eq!(deleted, 1, "only the row whose last write is at or below the cutoff is evicted");
+		assert!(visible(&s, &key(1)), "a row written after the cutoff version must NOT be evicted");
 		assert!(!visible(&s, &key(2)));
 	}
 
 	#[test]
-	fn delete_expired_skips_rows_with_unset_anchor() {
+	fn delete_below_version_boundary_is_inclusive() {
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		s.set(
-			CommitVersion(1),
-			HashMap::from([(table(), vec![(key(1), None), (key(2), Some(row(0, 0, b"no-anchor")))])]),
-		)
-		.unwrap();
-		let before = s.count_current(table()).unwrap();
+		s.set(CommitVersion(5), HashMap::from([(table(), vec![(key(1), Some(row(b"v5")))])])).unwrap();
 
-		let deleted = s.delete_expired(table(), TtlAnchor::Created, u64::MAX, None).unwrap();
-
-		assert_eq!(deleted, 0, "rows whose anchor is 0 (tombstones / undatable) must never be mass-deleted");
-		assert_eq!(s.count_current(table()).unwrap(), before);
+		// Cutoff exactly equal to the row's version: the row IS deleted (version <= cutoff).
+		let deleted = s.delete_below_version(table(), CommitVersion(5), None).unwrap();
+		assert_eq!(deleted, 1, "a row whose version equals the cutoff is evicted (the bound is inclusive)");
+		assert!(!visible(&s, &key(1)));
 	}
 
 	#[test]
-	fn delete_expired_on_missing_table_is_noop() {
+	fn delete_below_version_on_missing_table_is_noop() {
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		let deleted = s
-			.delete_expired(EntryKind::Source(ShapeId::Table(TableId(999))), TtlAnchor::Created, 100, None)
+			.delete_below_version(EntryKind::Source(ShapeId::Table(TableId(999))), CommitVersion(100), None)
 			.unwrap();
 		assert_eq!(deleted, 0);
 	}
 
 	#[test]
-	fn delete_expired_with_prefix_only_touches_matching_keys() {
+	fn delete_below_version_with_prefix_only_touches_matching_keys() {
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		// Two "sides" distinguished by a leading prefix byte, both stale by the cutoff.
+		// Two "sides" distinguished by a leading prefix byte, both written at v1.
 		let left = EncodedKey::new(vec![0x01, 0xAA]);
 		let right = EncodedKey::new(vec![0x02, 0xBB]);
 		s.set(
 			CommitVersion(1),
 			HashMap::from([(
 				table(),
-				vec![(left.clone(), Some(row(10, 10, b"l"))), (right.clone(), Some(row(10, 10, b"r")))],
+				vec![(left.clone(), Some(row(b"l"))), (right.clone(), Some(row(b"r")))],
 			)]),
 		)
 		.unwrap();
 
-		let deleted = s.delete_expired(table(), TtlAnchor::Updated, 100, Some(&[0x01])).unwrap();
+		let deleted = s.delete_below_version(table(), CommitVersion(2), Some(&[0x01])).unwrap();
 
 		assert_eq!(deleted, 1, "only the 0x01-prefixed (left) row should be deleted");
 		assert!(!visible(&s, &left));

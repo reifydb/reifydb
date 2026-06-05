@@ -7,7 +7,7 @@
 
 use std::{collections::HashMap, ops::Bound};
 
-use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind, row::TtlAnchor};
+use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
@@ -68,15 +68,14 @@ impl MultiPersistentTier {
 		}
 	}
 
-	pub fn delete_expired(
+	pub fn delete_below_version(
 		&self,
 		table: EntryKind,
-		anchor: TtlAnchor,
-		cutoff_nanos: u64,
+		cutoff_version: CommitVersion,
 		prefix: Option<&[u8]>,
 	) -> Result<u64> {
 		match self {
-			Self::Sqlite(s) => s.delete_expired(table, anchor, cutoff_nanos, prefix),
+			Self::Sqlite(s) => s.delete_below_version(table, cutoff_version, prefix),
 		}
 	}
 
@@ -105,11 +104,10 @@ impl MultiPersistentTier {
 		match *self {}
 	}
 
-	pub fn delete_expired(
+	pub fn delete_below_version(
 		&self,
 		_table: EntryKind,
-		_anchor: TtlAnchor,
-		_cutoff_nanos: u64,
+		_cutoff_version: CommitVersion,
 		_prefix: Option<&[u8]>,
 	) -> Result<u64> {
 		match *self {}

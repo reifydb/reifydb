@@ -7,7 +7,7 @@ pub(crate) mod shape;
 
 use reifydb_core::{
 	encoded::row::EncodedRow,
-	row::{JoinTtl, OperatorSettings, Ttl, TtlAnchor, TtlCleanupMode},
+	row::{JoinTtl, OperatorSettings, Ttl, TtlCleanupMode},
 };
 
 use self::shape::operator_settings;
@@ -21,14 +21,12 @@ pub(crate) fn encode_operator_settings(settings: &OperatorSettings) -> EncodedRo
 			encode_side(
 				&mut row,
 				&join.left,
-				operator_settings::LEFT_ANCHOR,
 				operator_settings::LEFT_CLEANUP_MODE,
 				operator_settings::LEFT_DURATION_NANOS,
 			);
 			encode_side(
 				&mut row,
 				&join.right,
-				operator_settings::RIGHT_ANCHOR,
 				operator_settings::RIGHT_CLEANUP_MODE,
 				operator_settings::RIGHT_DURATION_NANOS,
 			);
@@ -38,7 +36,6 @@ pub(crate) fn encode_operator_settings(settings: &OperatorSettings) -> EncodedRo
 			encode_side(
 				&mut row,
 				&settings.ttl,
-				operator_settings::ANCHOR,
 				operator_settings::CLEANUP_MODE,
 				operator_settings::DURATION_NANOS,
 			);
@@ -50,15 +47,10 @@ pub(crate) fn encode_operator_settings(settings: &OperatorSettings) -> EncodedRo
 
 pub(crate) fn decode_operator_settings(row: &EncodedRow) -> Option<OperatorSettings> {
 	if operator_settings::SHAPE.get_bool(row, operator_settings::IS_JOIN) {
-		let left = decode_side(
-			row,
-			operator_settings::LEFT_ANCHOR,
-			operator_settings::LEFT_CLEANUP_MODE,
-			operator_settings::LEFT_DURATION_NANOS,
-		)?;
+		let left =
+			decode_side(row, operator_settings::LEFT_CLEANUP_MODE, operator_settings::LEFT_DURATION_NANOS)?;
 		let right = decode_side(
 			row,
-			operator_settings::RIGHT_ANCHOR,
 			operator_settings::RIGHT_CLEANUP_MODE,
 			operator_settings::RIGHT_DURATION_NANOS,
 		)?;
@@ -70,12 +62,7 @@ pub(crate) fn decode_operator_settings(row: &EncodedRow) -> Option<OperatorSetti
 			}),
 		})
 	} else {
-		let ttl = decode_side(
-			row,
-			operator_settings::ANCHOR,
-			operator_settings::CLEANUP_MODE,
-			operator_settings::DURATION_NANOS,
-		)?;
+		let ttl = decode_side(row, operator_settings::CLEANUP_MODE, operator_settings::DURATION_NANOS)?;
 		Some(OperatorSettings {
 			ttl,
 			join: None,
@@ -83,10 +70,9 @@ pub(crate) fn decode_operator_settings(row: &EncodedRow) -> Option<OperatorSetti
 	}
 }
 
-fn encode_side(row: &mut EncodedRow, ttl: &Option<Ttl>, anchor_idx: usize, cleanup_idx: usize, duration_idx: usize) {
+fn encode_side(row: &mut EncodedRow, ttl: &Option<Ttl>, cleanup_idx: usize, duration_idx: usize) {
 	match ttl {
 		Some(ttl) => {
-			operator_settings::SHAPE.set_u8(row, anchor_idx, encode_anchor(&ttl.anchor));
 			operator_settings::SHAPE.set_u8(row, cleanup_idx, encode_cleanup_mode(&ttl.cleanup_mode));
 			operator_settings::SHAPE.set_u64(row, duration_idx, ttl.duration_nanos);
 		}
@@ -96,33 +82,16 @@ fn encode_side(row: &mut EncodedRow, ttl: &Option<Ttl>, anchor_idx: usize, clean
 	}
 }
 
-fn decode_side(row: &EncodedRow, anchor_idx: usize, cleanup_idx: usize, duration_idx: usize) -> Option<Option<Ttl>> {
+fn decode_side(row: &EncodedRow, cleanup_idx: usize, duration_idx: usize) -> Option<Option<Ttl>> {
 	let duration_nanos = operator_settings::SHAPE.get_u64(row, duration_idx);
 	if duration_nanos == 0 {
 		return Some(None);
 	}
-	let anchor = decode_anchor(operator_settings::SHAPE.get_u8(row, anchor_idx))?;
 	let cleanup_mode = decode_cleanup_mode(operator_settings::SHAPE.get_u8(row, cleanup_idx))?;
 	Some(Some(Ttl {
 		duration_nanos,
-		anchor,
 		cleanup_mode,
 	}))
-}
-
-fn encode_anchor(anchor: &TtlAnchor) -> u8 {
-	match anchor {
-		TtlAnchor::Created => operator_settings::ANCHOR_CREATED,
-		TtlAnchor::Updated => operator_settings::ANCHOR_UPDATED,
-	}
-}
-
-fn decode_anchor(anchor: u8) -> Option<TtlAnchor> {
-	match anchor {
-		operator_settings::ANCHOR_CREATED => Some(TtlAnchor::Created),
-		operator_settings::ANCHOR_UPDATED => Some(TtlAnchor::Updated),
-		_ => None,
-	}
 }
 
 fn encode_cleanup_mode(mode: &TtlCleanupMode) -> u8 {
@@ -144,10 +113,9 @@ fn decode_cleanup_mode(mode: u8) -> Option<TtlCleanupMode> {
 pub mod tests {
 	use super::*;
 
-	fn ttl(duration_nanos: u64, anchor: TtlAnchor, cleanup_mode: TtlCleanupMode) -> Ttl {
+	fn ttl(duration_nanos: u64, cleanup_mode: TtlCleanupMode) -> Ttl {
 		Ttl {
 			duration_nanos,
-			anchor,
 			cleanup_mode,
 		}
 	}
@@ -160,11 +128,11 @@ pub mod tests {
 	#[test]
 	fn single_ttl_roundtrips() {
 		roundtrip(OperatorSettings {
-			ttl: Some(ttl(300_000_000_000, TtlAnchor::Created, TtlCleanupMode::Drop)),
+			ttl: Some(ttl(300_000_000_000, TtlCleanupMode::Drop)),
 			join: None,
 		});
 		roundtrip(OperatorSettings {
-			ttl: Some(ttl(3_600_000_000_000, TtlAnchor::Updated, TtlCleanupMode::Delete)),
+			ttl: Some(ttl(3_600_000_000_000, TtlCleanupMode::Delete)),
 			join: None,
 		});
 		roundtrip(OperatorSettings {
@@ -175,8 +143,8 @@ pub mod tests {
 
 	#[test]
 	fn join_ttl_roundtrips_all_side_combinations() {
-		let l = ttl(60_000_000_000, TtlAnchor::Updated, TtlCleanupMode::Drop);
-		let r = ttl(120_000_000_000, TtlAnchor::Updated, TtlCleanupMode::Drop);
+		let l = ttl(60_000_000_000, TtlCleanupMode::Drop);
+		let r = ttl(120_000_000_000, TtlCleanupMode::Drop);
 
 		roundtrip(OperatorSettings {
 			ttl: None,

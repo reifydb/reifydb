@@ -12,10 +12,13 @@ pub mod rng;
 use clock::{Clock, MockClock};
 use rng::Rng;
 
+use crate::version_epoch::VersionEpoch;
+
 #[derive(Clone)]
 pub struct RuntimeContext {
 	pub clock: Clock,
 	pub rng: Rng,
+	pub version_epoch: VersionEpoch,
 }
 
 impl RuntimeContext {
@@ -23,6 +26,7 @@ impl RuntimeContext {
 		Self {
 			clock,
 			rng,
+			version_epoch: VersionEpoch::new(),
 		}
 	}
 
@@ -30,6 +34,7 @@ impl RuntimeContext {
 		Self {
 			clock,
 			rng: Rng::default(),
+			version_epoch: VersionEpoch::new(),
 		}
 	}
 
@@ -37,6 +42,7 @@ impl RuntimeContext {
 		Self {
 			clock: Clock::Mock(MockClock::from_millis(initial_millis)),
 			rng: Rng::seeded(seed),
+			version_epoch: VersionEpoch::new(),
 		}
 	}
 }

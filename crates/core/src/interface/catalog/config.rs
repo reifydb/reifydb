@@ -43,6 +43,7 @@ pub enum ConfigKey {
 	RowTtlScanInterval,
 	OperatorTtlScanBatchSize,
 	OperatorTtlScanInterval,
+	VersionEpochSampleInterval,
 	HistoricalGcBatchSize,
 	HistoricalGcInterval,
 	CdcTtlDuration,
@@ -78,6 +79,7 @@ impl ConfigKey {
 			Self::RowTtlScanInterval,
 			Self::OperatorTtlScanBatchSize,
 			Self::OperatorTtlScanInterval,
+			Self::VersionEpochSampleInterval,
 			Self::HistoricalGcBatchSize,
 			Self::HistoricalGcInterval,
 			Self::CdcTtlDuration,
@@ -113,6 +115,7 @@ impl ConfigKey {
 			Self::RowTtlScanInterval => Value::duration_seconds(60),
 			Self::OperatorTtlScanBatchSize => Value::Uint8(10000),
 			Self::OperatorTtlScanInterval => Value::duration_seconds(60),
+			Self::VersionEpochSampleInterval => Value::duration_seconds(1),
 			Self::HistoricalGcBatchSize => Value::Uint8(50_000),
 			Self::HistoricalGcInterval => Value::duration_seconds(30),
 			Self::CdcTtlDuration => Value::None {
@@ -155,6 +158,9 @@ impl ConfigKey {
 			}
 			Self::OperatorTtlScanInterval => {
 				"How often the operator-state TTL actor should scan for expired rows."
+			}
+			Self::VersionEpochSampleInterval => {
+				"How often the version-epoch sampler records a (wall-clock, commit version) sample used to map a TTL duration to a cutoff version."
 			}
 			Self::HistoricalGcBatchSize => {
 				"Max historical (key, version) pairs scanned per shape per historical GC tick."
@@ -252,6 +258,7 @@ impl ConfigKey {
 			Self::RowTtlScanInterval => false,
 			Self::OperatorTtlScanBatchSize => false,
 			Self::OperatorTtlScanInterval => false,
+			Self::VersionEpochSampleInterval => false,
 			Self::HistoricalGcBatchSize => false,
 			Self::HistoricalGcInterval => false,
 			Self::CdcTtlDuration => false,
@@ -287,6 +294,7 @@ impl ConfigKey {
 			Self::RowTtlScanInterval => &[ValueType::Duration],
 			Self::OperatorTtlScanBatchSize => &[ValueType::Uint8],
 			Self::OperatorTtlScanInterval => &[ValueType::Duration],
+			Self::VersionEpochSampleInterval => &[ValueType::Duration],
 			Self::HistoricalGcBatchSize => &[ValueType::Uint8],
 			Self::HistoricalGcInterval => &[ValueType::Duration],
 			Self::CdcTtlDuration => &[ValueType::Duration],
@@ -322,6 +330,7 @@ impl ConfigKey {
 			Self::RowTtlScanInterval => false,
 			Self::OperatorTtlScanBatchSize => false,
 			Self::OperatorTtlScanInterval => false,
+			Self::VersionEpochSampleInterval => false,
 			Self::HistoricalGcBatchSize => false,
 			Self::HistoricalGcInterval => false,
 			Self::CdcTtlDuration => true,
@@ -584,6 +593,7 @@ impl fmt::Display for ConfigKey {
 			Self::RowTtlScanInterval => write!(f, "ROW_TTL_SCAN_INTERVAL"),
 			Self::OperatorTtlScanBatchSize => write!(f, "OPERATOR_TTL_SCAN_BATCH_SIZE"),
 			Self::OperatorTtlScanInterval => write!(f, "OPERATOR_TTL_SCAN_INTERVAL"),
+			Self::VersionEpochSampleInterval => write!(f, "VERSION_EPOCH_SAMPLE_INTERVAL"),
 			Self::HistoricalGcBatchSize => write!(f, "HISTORICAL_GC_BATCH_SIZE"),
 			Self::HistoricalGcInterval => write!(f, "HISTORICAL_GC_INTERVAL"),
 			Self::CdcTtlDuration => write!(f, "CDC_TTL_DURATION"),
@@ -623,6 +633,7 @@ impl FromStr for ConfigKey {
 			"ROW_TTL_SCAN_INTERVAL" => Ok(Self::RowTtlScanInterval),
 			"OPERATOR_TTL_SCAN_BATCH_SIZE" => Ok(Self::OperatorTtlScanBatchSize),
 			"OPERATOR_TTL_SCAN_INTERVAL" => Ok(Self::OperatorTtlScanInterval),
+			"VERSION_EPOCH_SAMPLE_INTERVAL" => Ok(Self::VersionEpochSampleInterval),
 			"HISTORICAL_GC_BATCH_SIZE" => Ok(Self::HistoricalGcBatchSize),
 			"HISTORICAL_GC_INTERVAL" => Ok(Self::HistoricalGcInterval),
 			"CDC_TTL_DURATION" => Ok(Self::CdcTtlDuration),
@@ -785,7 +796,8 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 30);
+		assert_eq!(all.len(), 31);
+		assert!(all.contains(&ConfigKey::VersionEpochSampleInterval));
 		assert!(all.contains(&ConfigKey::CdcWatermarkWaitTimeout));
 		assert!(all.contains(&ConfigKey::FlowJoinProbeBlockSize));
 		assert!(all.contains(&ConfigKey::CdcCompactInterval));

@@ -5,19 +5,23 @@ use std::collections::HashMap;
 
 use reifydb_core::{
 	actors::ttl::RowTtlMessage as Message,
+	common::CommitVersion,
 	event::row::RowsExpiredEvent,
 	interface::{
 		catalog::{config::ConfigKey, shape::ShapeId},
 		store::EntryKind,
 	},
-	row::{RowSettings, Ttl, TtlAnchor, TtlCleanupMode},
+	row::{RowSettings, Ttl, TtlCleanupMode},
 };
-use reifydb_runtime::actor::{
-	context::Context,
-	mailbox::ActorRef,
-	system::{ActorConfig, ActorSpawner},
-	timers::TimerHandle,
-	traits::{Actor as ActorTrait, Directive},
+use reifydb_runtime::{
+	actor::{
+		context::Context,
+		mailbox::ActorRef,
+		system::{ActorConfig, ActorSpawner},
+		timers::TimerHandle,
+		traits::{Actor as ActorTrait, Directive},
+	},
+	version_epoch::VersionEpoch,
 };
 use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
 use tracing::{debug, info, trace, warn};
@@ -42,18 +46,25 @@ pub struct ActorState {
 pub struct Actor<P: ListRowSettings> {
 	store: StandardMultiStore,
 	provider: P,
+	epoch: VersionEpoch,
 }
 
 impl<P: ListRowSettings> Actor<P> {
-	pub fn new(store: StandardMultiStore, provider: P) -> Self {
+	pub fn new(store: StandardMultiStore, provider: P, epoch: VersionEpoch) -> Self {
 		Self {
 			store,
 			provider,
+			epoch,
 		}
 	}
 
-	pub fn spawn(spawner: &ActorSpawner, store: StandardMultiStore, provider: P) -> ActorRef<Message> {
-		let actor = Self::new(store, provider);
+	pub fn spawn(
+		spawner: &ActorSpawner,
+		store: StandardMultiStore,
+		provider: P,
+		epoch: VersionEpoch,
+	) -> ActorRef<Message> {
+		let actor = Self::new(store, provider, epoch);
 		spawner.spawn_background("row-row", actor).actor_ref().clone()
 	}
 
@@ -167,26 +178,17 @@ impl<P: ListRowSettings> Actor<P> {
 		batch_size: usize,
 		stats: &mut ScanStats,
 	) {
+		let Some(cutoff_nanos) = now_nanos.checked_sub(ttl.duration_nanos) else {
+			return;
+		};
+		let Some(cutoff_version) = self.epoch.floor_version_at(cutoff_nanos).map(CommitVersion) else {
+			return;
+		};
+
 		let mut cursor = state.scanner.cursors.remove(shape_id).unwrap_or_default();
 
-		let scan_result = match ttl.anchor {
-			TtlAnchor::Created => scanner::scan_shape_by_created_at(
-				buffer,
-				*shape_id,
-				ttl,
-				now_nanos,
-				batch_size,
-				&mut cursor,
-			),
-			TtlAnchor::Updated => scanner::scan_shape_by_updated_at(
-				buffer,
-				*shape_id,
-				ttl,
-				now_nanos,
-				batch_size,
-				&mut cursor,
-			),
-		};
+		let scan_result =
+			scanner::scan_shape_expired(buffer, *shape_id, cutoff_version, batch_size, &mut cursor);
 
 		match scan_result {
 			Ok((expired, result)) => {
@@ -243,8 +245,13 @@ impl<P: ListRowSettings> Actor<P> {
 		now_nanos: u64,
 		persistent_rows_deleted: &mut u64,
 	) {
-		let cutoff = now_nanos.saturating_sub(ttl.duration_nanos);
-		match persistent.delete_expired(EntryKind::Source(*shape_id), ttl.anchor, cutoff, None) {
+		let Some(cutoff_nanos) = now_nanos.checked_sub(ttl.duration_nanos) else {
+			return;
+		};
+		let Some(cutoff_version) = self.epoch.floor_version_at(cutoff_nanos).map(CommitVersion) else {
+			return;
+		};
+		match persistent.delete_below_version(EntryKind::Source(*shape_id), cutoff_version, None) {
 			Ok(deleted) => {
 				*persistent_rows_deleted += deleted;
 				if deleted > 0 {
@@ -356,6 +363,7 @@ pub fn spawn_row_settings_actor<P: ListRowSettings>(
 	store: StandardMultiStore,
 	spawner: ActorSpawner,
 	provider: P,
+	epoch: VersionEpoch,
 ) -> ActorRef<Message> {
-	Actor::spawn(&spawner, store, provider)
+	Actor::spawn(&spawner, store, provider, epoch)
 }

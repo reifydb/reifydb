@@ -5,16 +5,12 @@ use std::{collections::HashMap, error::Error as StdError, fmt::Write, path::Path
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{
-		key::EncodedKey,
-		row::{EncodedRow, SHAPE_HEADER_SIZE},
-	},
+	encoded::key::EncodedKey,
 	interface::{
 		catalog::{id::TableId, shape::ShapeId},
 		store::EntryKind,
 	},
 	key::row::RowKey,
-	row::{Ttl, TtlAnchor, TtlCleanupMode},
 	util::encoding::format::raw::Raw,
 };
 use reifydb_store_multi::{
@@ -22,7 +18,7 @@ use reifydb_store_multi::{
 		ScanStats,
 		scanner::{
 			ScanResult::{Exhausted, Yielded},
-			drop_expired_keys, scan_shape_by_created_at, scan_shape_by_updated_at,
+			drop_expired_keys, scan_shape_expired,
 		},
 	},
 	tier::{RangeCursor, TierStorage, commit::buffer::MultiCommitBufferTier},
@@ -83,12 +79,8 @@ fn parse_u64(args: &mut ArgumentConsumer, name: &str) -> Result<Option<u64>, Box
 	}
 }
 
-fn build_row(payload: &str, created_at: u64, updated_at: u64) -> CowVec<u8> {
-	let mut buf = vec![0u8; SHAPE_HEADER_SIZE + payload.len()];
-	buf[8..16].copy_from_slice(&created_at.to_le_bytes());
-	buf[16..24].copy_from_slice(&updated_at.to_le_bytes());
-	buf[SHAPE_HEADER_SIZE..].copy_from_slice(payload.as_bytes());
-	CowVec::new(buf)
+fn build_row(payload: &str) -> CowVec<u8> {
+	CowVec::new(payload.as_bytes().to_vec())
 }
 
 impl testscript::runner::Runner for Runner {
@@ -109,12 +101,10 @@ impl testscript::runner::Runner for Runner {
 				let row_number: u64 = kv.key.unwrap().parse()?;
 				let payload = kv.value;
 				let version = parse_u64(&mut args, "version")?.ok_or("version=N required")?;
-				let created = parse_u64(&mut args, "created")?.unwrap_or(0);
-				let updated = parse_u64(&mut args, "updated")?.unwrap_or(created);
 				args.reject_rest()?;
 
 				let key = self.row_key(row_number);
-				let value = build_row(&payload, created, updated);
+				let value = build_row(&payload);
 				self.storage.set(
 					CommitVersion(version),
 					HashMap::from([(self.table(), vec![(key, Some(value))])]),
@@ -150,45 +140,23 @@ impl testscript::runner::Runner for Runner {
 
 			"scan_ttl" => {
 				let mut args = command.consume_args();
-				let mode = args.lookup("mode").ok_or("mode=created|updated required")?.value.clone();
-				let duration_nanos = parse_u64(&mut args, "duration")?.ok_or("duration=N required")?;
-				let now_nanos = parse_u64(&mut args, "now")?.ok_or("now=N required")?;
+				let cutoff = parse_u64(&mut args, "cutoff")?.ok_or("cutoff=N required")?;
 				let batch_size = parse_u64(&mut args, "batch")?.unwrap_or(1024) as usize;
 				args.reject_rest()?;
 
-				let ttl = Ttl {
-					duration_nanos,
-					anchor: match mode.as_str() {
-						"created" => TtlAnchor::Created,
-						"updated" => TtlAnchor::Updated,
-						other => return Err(format!("unknown mode: {}", other).into()),
-					},
-					cleanup_mode: TtlCleanupMode::Drop,
-				};
-
+				let cutoff_version = CommitVersion(cutoff);
 				let mut cursor = RangeCursor::new();
 				let mut total_expired: u64 = 0;
 				let mut stats = ScanStats::default();
 
 				loop {
-					let (expired, result) = match ttl.anchor {
-						TtlAnchor::Created => scan_shape_by_created_at(
-							&self.storage,
-							self.shape,
-							&ttl,
-							now_nanos,
-							batch_size,
-							&mut cursor,
-						)?,
-						TtlAnchor::Updated => scan_shape_by_updated_at(
-							&self.storage,
-							self.shape,
-							&ttl,
-							now_nanos,
-							batch_size,
-							&mut cursor,
-						)?,
-					};
+					let (expired, result) = scan_shape_expired(
+						&self.storage,
+						self.shape,
+						cutoff_version,
+						batch_size,
+						&mut cursor,
+					)?;
 
 					total_expired += expired.len() as u64;
 					if !expired.is_empty() {
@@ -235,16 +203,7 @@ impl testscript::runner::Runner for Runner {
 				for (v, value) in versions {
 					match value {
 						Some(bytes) => {
-							let row = EncodedRow(bytes.clone());
-							let payload = &bytes[SHAPE_HEADER_SIZE..];
-							writeln!(
-								output,
-								"v{} created={} updated={} value={}",
-								v.0,
-								row.created_at_nanos(),
-								row.updated_at_nanos(),
-								Raw::bytes(payload),
-							)?;
+							writeln!(output, "v{} value={}", v.0, Raw::bytes(&bytes[..]))?;
 						}
 						None => {
 							writeln!(output, "v{} tombstone", v.0)?;
@@ -262,15 +221,7 @@ impl testscript::runner::Runner for Runner {
 				let value = self.storage.get(self.table(), &key, CommitVersion(u64::MAX))?.value();
 				match value {
 					Some(bytes) => {
-						let row = EncodedRow(bytes.clone());
-						let payload = &bytes[SHAPE_HEADER_SIZE..];
-						writeln!(
-							output,
-							"created={} updated={} value={}",
-							row.created_at_nanos(),
-							row.updated_at_nanos(),
-							Raw::bytes(payload),
-						)?;
+						writeln!(output, "value={}", Raw::bytes(&bytes[..]))?;
 					}
 					None => {
 						writeln!(output, "(none)")?;

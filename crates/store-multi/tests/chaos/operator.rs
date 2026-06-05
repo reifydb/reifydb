@@ -19,16 +19,13 @@ use reifydb_core::{
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet},
 	},
 	key::flow_node_state::FlowNodeStateKey,
-	row::{Ttl, TtlAnchor, TtlCleanupMode},
 };
 use reifydb_store_multi::{
 	MultiVersionScope,
 	gc::{
 		operator::{
 			OperatorScanStats,
-			scanner::{
-				drop_expired_operator_keys, scan_operator_by_created_at, scan_operator_by_updated_at,
-			},
+			scanner::{drop_expired_operator_keys, scan_operator_expired},
 		},
 		row::scanner::ScanResult,
 	},
@@ -48,22 +45,20 @@ fn op_key(id: u64) -> EncodedKey {
 	FlowNodeStateKey::encoded(NODE, id.to_be_bytes().to_vec())
 }
 
-/// Single-version model: the latest (value, version) per key, plus the current header timestamps for TTL.
+/// Single-version model: the latest (value, commit version) per key. The version decides TTL
+/// eligibility (a key is expired once its current version is at or below the sweep's cutoff version).
 #[derive(Default)]
 struct OpOracle {
 	current: BTreeMap<u64, (Vec<u8>, u64)>,
-	ts: BTreeMap<u64, (u64, u64)>,
 }
 
 impl OpOracle {
-	fn set(&mut self, id: u64, value: Vec<u8>, version: u64, created: u64, updated: u64) {
+	fn set(&mut self, id: u64, value: Vec<u8>, version: u64) {
 		self.current.insert(id, (value, version));
-		self.ts.insert(id, (created, updated));
 	}
 
 	fn remove(&mut self, id: u64) {
 		self.current.remove(&id);
-		self.ts.remove(&id);
 	}
 
 	fn get(&self, id: u64) -> Option<(Vec<u8>, u64)> {
@@ -86,33 +81,15 @@ impl OpOracle {
 
 /// Deterministic operator-TTL sweep mirroring `gc/operator/actor.rs`: drop expired operator-state keys
 /// from the buffer (invalidate-then-drop), then remove them from the persistent tier and clear the cache.
-fn ttl_sweep_op(store: &StandardMultiStore, ttl: &Ttl, now_nanos: u64) {
+fn ttl_sweep_op(store: &StandardMultiStore, cutoff_version: CommitVersion) {
 	if let Some(buffer) = store.commit() {
 		loop {
 			let mut cursor = RangeCursor::new();
 			let mut stats = OperatorScanStats::default();
 			let mut removed_any = false;
 			loop {
-				let (expired, result) = match ttl.anchor {
-					TtlAnchor::Created => scan_operator_by_created_at(
-						buffer,
-						NODE,
-						ttl,
-						now_nanos,
-						64,
-						&mut cursor,
-					)
-					.unwrap(),
-					TtlAnchor::Updated => scan_operator_by_updated_at(
-						buffer,
-						NODE,
-						ttl,
-						now_nanos,
-						64,
-						&mut cursor,
-					)
-					.unwrap(),
-				};
+				let (expired, result) =
+					scan_operator_expired(buffer, NODE, cutoff_version, 64, &mut cursor).unwrap();
 				if !expired.is_empty() {
 					removed_any = true;
 					for e in &expired {
@@ -130,8 +107,7 @@ fn ttl_sweep_op(store: &StandardMultiStore, ttl: &Ttl, now_nanos: u64) {
 		}
 	}
 	if let Some(persistent) = store.persistent() {
-		let cutoff = now_nanos.saturating_sub(ttl.duration_nanos);
-		persistent.delete_expired(EntryKind::Operator(NODE), ttl.anchor, cutoff, None).unwrap();
+		persistent.delete_below_version(EntryKind::Operator(NODE), cutoff_version, None).unwrap();
 		store.clear_read();
 	}
 }
@@ -216,7 +192,6 @@ pub fn drive(seed: u64, p: Params) {
 	let configs: Vec<(&str, StandardMultiStore)> = vec![("memory", memory), ("persistent", persistent)];
 
 	let mut version: u64 = 0;
-	let mut now: u64 = 1000;
 
 	let steps = rng.random_range(p.min_steps..=p.max_steps);
 	for step in 0..steps {
@@ -231,10 +206,9 @@ pub fn drive(seed: u64, p: Params) {
 			let ids = distinct_rows(&mut rng, count, p.keyspace);
 			let mut values: Vec<(u64, Vec<u8>)> = Vec::new();
 			for id in ids {
-				let created = oracle.ts.get(&id).map(|(c, _)| *c).unwrap_or(now);
 				let payload = format!("op{id}@v{version}").into_bytes();
-				let bytes = build_row(&payload, created, now).0.to_vec();
-				oracle.set(id, bytes.clone(), version, created, now);
+				let bytes = build_row(&payload).0.to_vec();
+				oracle.set(id, bytes.clone(), version);
 				values.push((id, bytes));
 			}
 			for (_, store) in &configs {
@@ -255,31 +229,17 @@ pub fn drive(seed: u64, p: Params) {
 				}
 			}
 		} else if roll < ttl_hi {
-			now += rng.random_range(1..=p.max_time_step);
-			let dur = rng.random_range(1..=p.max_ttl);
-			let anchor = if rng.random_range(0u32..2) == 0 {
-				TtlAnchor::Created
-			} else {
-				TtlAnchor::Updated
-			};
-			let ttl = Ttl {
-				duration_nanos: dur,
-				anchor,
-				cleanup_mode: TtlCleanupMode::Drop,
-			};
-			let cutoff = now.saturating_sub(dur);
-			let mut expired: Vec<u64> = Vec::new();
-			for (id, (created, updated)) in &oracle.ts {
-				let anchor_ts = match anchor {
-					TtlAnchor::Created => *created,
-					TtlAnchor::Updated => *updated,
-				};
-				if anchor_ts <= cutoff {
-					expired.push(*id);
-				}
-			}
+			// Version-anchored operator-state TTL: evict keys whose current version is at or below a
+			// random cutoff version.
+			let cutoff_version = rng.random_range(1..=version);
+			let expired: Vec<u64> = oracle
+				.current
+				.iter()
+				.filter(|(_, (_, v))| *v <= cutoff_version)
+				.map(|(id, _)| *id)
+				.collect();
 			for (_, store) in &configs {
-				ttl_sweep_op(store, &ttl, now);
+				ttl_sweep_op(store, CommitVersion(cutoff_version));
 			}
 			for id in expired {
 				oracle.remove(id);

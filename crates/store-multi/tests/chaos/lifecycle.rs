@@ -3,13 +3,14 @@
 
 //! Delete / physical-removal / row-TTL lifecycle chaos.
 //!
-//! Interleaves commits (rows carry test-controlled header timestamps), tombstones, flushes, row-TTL
-//! sweeps, and direct physical deletes across the three configs, asserting no ghost / no premature loss /
-//! cross-config agreement against an exact oracle.
+//! Interleaves commits (each row carries the commit version it was written at), tombstones, flushes,
+//! row-TTL sweeps, and direct physical deletes across the three configs, asserting no ghost / no premature
+//! loss / cross-config agreement against an exact oracle.
 //!
-//! Reads are taken at the CURRENT version only. Row TTL and `delete_expired` remove rows by wall-clock
-//! age, which can drop a historical version a `read < current` would need; at the current version a key
-//! is present iff its current version survives (no tombstone, not TTL'd, not physically deleted), which
+//! Reads are taken at the CURRENT version only. Row TTL removes rows by commit version (`version <=
+//! cutoff_version`), which can drop a historical version a `read < current` would need; at the current
+//! version a key is present iff its current version survives (no tombstone, not TTL'd, not physically
+//! deleted), which
 //! the oracle models exactly. (Version-gated historical reads live in the base `workload` harness, where
 //! reclamation is version-based.)
 
@@ -22,12 +23,11 @@ use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::store::{EntryKind, MultiVersionCommit},
 	key::row::RowKey,
-	row::{Ttl, TtlAnchor, TtlCleanupMode},
 };
 use reifydb_store_multi::{
 	gc::row::{
 		ScanStats,
-		scanner::{ScanResult, drop_expired_keys, scan_shape_by_created_at, scan_shape_by_updated_at},
+		scanner::{ScanResult, drop_expired_keys, scan_shape_expired},
 	},
 	store::StandardMultiStore,
 	tier::{HistoricalCursor, RangeCursor, TierStorage},
@@ -60,23 +60,15 @@ pub struct Params {
 /// Deterministic stand-in for the row-TTL actor (`gc/row/actor.rs` ordering). Drains the commit buffer to
 /// a fixpoint (each pass drops the expired current version, promoting older ones for the next pass), then
 /// removes expired rows from the persistent tier and clears the read cache.
-fn ttl_sweep(store: &StandardMultiStore, ttl: &Ttl, now_nanos: u64) {
+fn ttl_sweep(store: &StandardMultiStore, cutoff_version: CommitVersion) {
 	if let Some(buffer) = store.commit() {
 		loop {
 			let mut cursor = RangeCursor::new();
 			let mut stats = ScanStats::default();
 			let mut removed_any = false;
 			loop {
-				let (expired, result) = match ttl.anchor {
-					TtlAnchor::Created => {
-						scan_shape_by_created_at(buffer, SHAPE, ttl, now_nanos, 64, &mut cursor)
-							.unwrap()
-					}
-					TtlAnchor::Updated => {
-						scan_shape_by_updated_at(buffer, SHAPE, ttl, now_nanos, 64, &mut cursor)
-							.unwrap()
-					}
-				};
+				let (expired, result) =
+					scan_shape_expired(buffer, SHAPE, cutoff_version, 64, &mut cursor).unwrap();
 				if !expired.is_empty() {
 					removed_any = true;
 					for row in &expired {
@@ -94,8 +86,7 @@ fn ttl_sweep(store: &StandardMultiStore, ttl: &Ttl, now_nanos: u64) {
 		}
 	}
 	if let Some(persistent) = store.persistent() {
-		let cutoff = now_nanos.saturating_sub(ttl.duration_nanos);
-		let deleted = persistent.delete_expired(EntryKind::Source(SHAPE), ttl.anchor, cutoff, None).unwrap();
+		let deleted = persistent.delete_below_version(EntryKind::Source(SHAPE), cutoff_version, None).unwrap();
 		if deleted > 0 {
 			store.clear_read();
 		}
@@ -151,9 +142,9 @@ fn historical_gc(store: &StandardMultiStore, cutoff: CommitVersion) {
 pub fn drive(seed: u64, p: Params) {
 	let mut rng = StdRng::seed_from_u64(seed);
 	let mut oracle = Oracle::default();
-	// current (created_nanos, updated_nanos) of each present (live-current) key - mirrors what the TTL
-	// scanner reads from the row header, so we can predict eviction exactly.
-	let mut ts: std::collections::BTreeMap<u64, (u64, u64)> = std::collections::BTreeMap::new();
+	// last-write commit version of each present (live-current) key - mirrors what the version-anchored TTL
+	// scanner reads from the store, so we can predict eviction exactly.
+	let mut row_version: std::collections::BTreeMap<u64, u64> = std::collections::BTreeMap::new();
 
 	let memory = StandardMultiStore::testing_memory();
 	let (persistent, _g1) = sync_persistent_store();
@@ -168,7 +159,6 @@ pub fn drive(seed: u64, p: Params) {
 		vec![("memory", memory), ("persistent", persistent), ("tiny_cache", tiny)];
 
 	let mut version: u64 = 0;
-	let mut now: u64 = 1000;
 
 	let steps = rng.random_range(p.min_steps..=p.max_steps);
 	for step in 0..steps {
@@ -185,13 +175,12 @@ pub fn drive(seed: u64, p: Params) {
 			let mut deltas: Vec<(u64, Option<Vec<u8>>)> = Vec::new();
 			for row in rows {
 				if rng.random_range(0u32..100) < p.remove_pct {
-					ts.remove(&row);
+					row_version.remove(&row);
 					deltas.push((row, None));
 				} else {
-					let created = ts.get(&row).map(|(c, _)| *c).unwrap_or(now);
-					ts.insert(row, (created, now));
+					row_version.insert(row, version);
 					let payload = format!("r{row}@v{version}").into_bytes();
-					deltas.push((row, Some(build_row(&payload, created, now).0.to_vec())));
+					deltas.push((row, Some(build_row(&payload).0.to_vec())));
 				}
 			}
 			oracle.apply(version, &deltas);
@@ -219,35 +208,21 @@ pub fn drive(seed: u64, p: Params) {
 				}
 			}
 		} else if roll < ttl_hi {
-			now += rng.random_range(1..=p.max_time_step);
-			let dur = rng.random_range(1..=p.max_ttl);
-			let anchor = if rng.random_range(0u32..2) == 0 {
-				TtlAnchor::Created
-			} else {
-				TtlAnchor::Updated
-			};
-			let ttl = Ttl {
-				duration_nanos: dur,
-				anchor,
-				cleanup_mode: TtlCleanupMode::Drop,
-			};
-			let cutoff = now.saturating_sub(dur);
-			let mut expired: Vec<u64> = Vec::new();
-			for (row, (created, updated)) in &ts {
-				let anchor_ts = match anchor {
-					TtlAnchor::Created => *created,
-					TtlAnchor::Updated => *updated,
-				};
-				if anchor_ts <= cutoff {
-					expired.push(*row);
-				}
-			}
+			// Version-anchored TTL: evict every key whose last-write version is at or below a cutoff
+			// version (the time -> cutoff_version mapping is the epoch's job, unit-tested separately).
+			// A random cutoff fuzzes the full range of eviction depths.
+			let cutoff_version = rng.random_range(1..=version);
+			let expired: Vec<u64> = row_version
+				.iter()
+				.filter(|&(_, &v)| v <= cutoff_version)
+				.map(|(&row, _)| row)
+				.collect();
 			for (_, store) in &configs {
-				ttl_sweep(store, &ttl, now);
+				ttl_sweep(store, CommitVersion(cutoff_version));
 			}
 			for row in expired {
 				oracle.remove_key(row);
-				ts.remove(&row);
+				row_version.remove(&row);
 			}
 		} else if roll < delete_hi {
 			let count = rng.random_range(1u64..=4);
@@ -257,7 +232,7 @@ pub fn drive(seed: u64, p: Params) {
 			}
 			for row in rows {
 				oracle.remove_key(row);
-				ts.remove(&row);
+				row_version.remove(&row);
 			}
 		} else if roll < histgc_hi {
 			let cutoff = rng.random_range(1..=version);

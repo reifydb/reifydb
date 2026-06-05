@@ -7,6 +7,7 @@ use postcard::{from_bytes, to_stdvec};
 #[cfg(test)]
 use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
 use reifydb_core::{
+	common::CommitVersion,
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
@@ -14,18 +15,19 @@ use reifydb_core::{
 	},
 	interface::catalog::flow::FlowNodeId,
 	internal,
-	row::TtlAnchor,
 };
 use reifydb_runtime::hash::Hash128;
 use reifydb_value::{
 	Result,
 	error::Error,
-	value::{blob::Blob, datetime::DateTime, duration::Duration, row_number::RowNumber},
+	value::{blob::Blob, row_number::RowNumber},
 };
 
 use super::state::JoinSide;
 use crate::{
-	operator::stateful::utils::{state_drop, state_get, state_range, state_remove, state_set},
+	operator::stateful::utils::{
+		state_drop, state_get, state_range, state_range_versioned, state_remove, state_set,
+	},
 	transaction::FlowTransaction,
 };
 
@@ -79,10 +81,7 @@ impl Store {
 		encoded: &EncodedRow,
 	) -> Result<()> {
 		let key = self.row_key(hash, row_number);
-		let mut row = encoded.clone();
-		let now_nanos = txn.clock().now_nanos();
-		row.set_timestamps(now_nanos, now_nanos);
-		state_set(self.node_id, txn, &key, row)
+		state_set(self.node_id, txn, &key, encoded.clone())
 	}
 
 	pub(crate) fn update_row(
@@ -96,10 +95,7 @@ impl Store {
 		if state_get(self.node_id, txn, &key)?.is_none() {
 			return Ok(false);
 		}
-		let mut row = encoded.clone();
-		let now_nanos = txn.clock().now_nanos();
-		row.set_timestamps(now_nanos, now_nanos);
-		state_set(self.node_id, txn, &key, row)?;
+		state_set(self.node_id, txn, &key, encoded.clone())?;
 		Ok(true)
 	}
 
@@ -120,29 +116,23 @@ impl Store {
 	pub(crate) fn evict_expired(
 		&self,
 		txn: &mut FlowTransaction,
-		now: DateTime,
-		ttl: Duration,
-		anchor: TtlAnchor,
+		cutoff_version: CommitVersion,
 		cursor: &mut Option<EncodedKey>,
 		batch_size: usize,
 	) -> Result<()> {
-		let cutoff = now.saturating_sub(ttl);
 		let base = EncodedKeyRange::prefix(&self.prefix);
 		let start = match cursor.clone() {
 			Some(c) => Bound::Excluded(c),
 			None => base.start.clone(),
 		};
 		let range = EncodedKeyRange::new(start, base.end.clone());
-		let batch = state_range(self.node_id, txn, range).take(batch_size).collect::<Result<Vec<_>>>()?;
+		let batch =
+			state_range_versioned(self.node_id, txn, range).take(batch_size).collect::<Result<Vec<_>>>()?;
 		let reached_end = batch.len() < batch_size;
-		let last_key = batch.last().map(|(key, _)| key.clone());
+		let last_key = batch.last().map(|(key, _, _)| key.clone());
 
-		for (key, row) in batch {
-			let anchor_ts = match anchor {
-				TtlAnchor::Created => DateTime::from_nanos(row.created_at_nanos()),
-				TtlAnchor::Updated => DateTime::from_nanos(row.updated_at_nanos()),
-			};
-			if anchor_ts >= cutoff {
+		for (key, version, _row) in batch {
+			if version > cutoff_version {
 				continue;
 			}
 			state_drop(self.node_id, txn, &key)?;
@@ -245,23 +235,11 @@ impl Store {
 		let serialized = to_stdvec(&shape.fields().to_vec())
 			.map_err(|e| Error(Box::new(internal!("Failed to serialize row shape: {}", e))))?;
 		let op = RowShape::operator_state();
-		let now_nanos = txn.clock().now_nanos();
-		let (mut row, created_at) = match state_get(self.node_id, txn, &self.schema_key)? {
-			Some(existing) => {
-				let c = existing.created_at_nanos();
-				(
-					existing,
-					if c == 0 {
-						now_nanos
-					} else {
-						c
-					},
-				)
-			}
-			None => (op.allocate(), now_nanos),
+		let mut row = match state_get(self.node_id, txn, &self.schema_key)? {
+			Some(existing) => existing,
+			None => op.allocate(),
 		};
 		op.set_blob(&mut row, 0, &Blob::from(serialized));
-		row.set_timestamps(created_at, now_nanos);
 		state_set(self.node_id, txn, &self.schema_key, row)?;
 		self.shape_written.set(true);
 		self.shape_cache.insert(shape.clone());

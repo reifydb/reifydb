@@ -23,7 +23,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::{
 		interface::catalog::flow::FlowNodeId,
-		row::{OperatorSettings, Ttl, TtlAnchor, TtlCleanupMode},
+		row::{OperatorSettings, Ttl, TtlCleanupMode},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -38,7 +38,6 @@ pub mod tests {
 		let settings = OperatorSettings {
 			ttl: Some(Ttl {
 				duration_nanos: 300_000_000_000,
-				anchor: TtlAnchor::Created,
 				cleanup_mode: TtlCleanupMode::Drop,
 			}),
 			join: None,

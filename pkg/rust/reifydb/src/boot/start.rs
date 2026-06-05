@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
+	common::CommitVersion,
 	encoded::shape::RowShape,
 	interface::catalog::config::{ConfigKey, GetConfig},
 	key::{
@@ -16,7 +17,9 @@ use reifydb_runtime::actor::system::ActorSpawner;
 use reifydb_store_multi::{
 	MultiStore,
 	gc::{
-		historical::actor::spawn_historical_gc_actor, operator::actor::spawn_operator_settings_actor,
+		epoch::{EpochSource, actor::spawn_version_epoch_sampler},
+		historical::actor::spawn_historical_gc_actor,
+		operator::actor::spawn_operator_settings_actor,
 		row::actor::spawn_row_settings_actor,
 	},
 };
@@ -30,6 +33,20 @@ use tracing::debug;
 use crate::{MigrationStatement, Result};
 
 const CURRENT_STORAGE_VERSION: u8 = 0x01;
+
+struct EngineEpochSource {
+	engine: StandardEngine,
+}
+
+impl EpochSource for EngineEpochSource {
+	fn now_nanos(&self) -> u64 {
+		self.engine.clock().now_nanos()
+	}
+
+	fn current_version(&self) -> Option<CommitVersion> {
+		self.engine.current_version().ok()
+	}
+}
 
 /// Ensures the storage version key exists and matches the expected version.
 /// On first boot, creates the version entry.
@@ -74,8 +91,15 @@ pub(crate) fn spawn_actors(engine: &StandardEngine, spawner: &ActorSpawner) -> R
 	);
 	store.set_row_settings_provider(Arc::new(catalog.clone()));
 
-	let _ttl_actor = spawn_row_settings_actor(store.clone(), spawner.clone(), catalog.clone());
-	let _operator_ttl_actor = spawn_operator_settings_actor(store.clone(), spawner.clone(), catalog.clone());
+	let epoch = engine.version_epoch().clone();
+	let epoch_source = EngineEpochSource {
+		engine: engine.clone(),
+	};
+	let epoch_config: Arc<dyn GetConfig> = Arc::new(catalog.clone());
+	let _epoch_actor = spawn_version_epoch_sampler(epoch.clone(), spawner.clone(), epoch_source, epoch_config);
+
+	let _ttl_actor = spawn_row_settings_actor(store.clone(), spawner.clone(), catalog.clone(), epoch.clone());
+	let _operator_ttl_actor = spawn_operator_settings_actor(store.clone(), spawner.clone(), catalog.clone(), epoch);
 
 	store.set_eviction_watermark(Arc::new(engine.clone()));
 

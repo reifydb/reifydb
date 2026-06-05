@@ -15,7 +15,7 @@ fn deferred_view_persists_row_ttl() {
 	t.admin("CREATE NAMESPACE rs_d");
 	t.admin("CREATE TABLE rs_d::src { id: int4 }");
 	t.admin("CREATE DEFERRED VIEW rs_d::v { id: int4 } \
-		 WITH { row: { ttl: { duration: '1h', on: created, mode: drop } } } \
+		 WITH { row: { ttl: { duration: '1h', mode: drop } } } \
 		 AS { FROM rs_d::src MAP { id: id } }");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();

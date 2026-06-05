@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::row::{JoinTtl, Ttl, TtlAnchor, TtlCleanupMode};
+use reifydb_core::row::{JoinTtl, Ttl, TtlCleanupMode};
 
 use crate::{
 	Result,
@@ -54,20 +54,14 @@ impl<'bump> Compiler<'bump> {
 			.into());
 		}
 
-		let anchor = match ast.anchor {
-			None => TtlAnchor::Created,
-			Some(token) => match token.fragment.text().to_lowercase().as_str() {
-				"created" => TtlAnchor::Created,
-				"updated" => TtlAnchor::Updated,
-				_ => {
-					return Err(AstError::UnexpectedToken {
-						expected: "'created' or 'updated'".to_string(),
-						fragment: token.fragment.to_owned(),
-					}
-					.into());
-				}
-			},
-		};
+		if let Some(token) = &ast.anchor {
+			return Err(AstError::UnexpectedToken {
+				expected: "no 'on' clause: TTL is version-anchored and expires on the last write"
+					.to_string(),
+				fragment: token.fragment.to_owned(),
+			}
+			.into());
+		}
 
 		let cleanup_mode = match ast.mode {
 			None => TtlCleanupMode::Drop,
@@ -86,7 +80,6 @@ impl<'bump> Compiler<'bump> {
 
 		Ok(Ttl {
 			duration_nanos,
-			anchor,
 			cleanup_mode,
 		})
 	}

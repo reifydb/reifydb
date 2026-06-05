@@ -43,7 +43,7 @@ use reifydb_runtime::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sqlite::SqliteConfig;
-use reifydb_store_multi::MultiStore;
+use reifydb_store_multi::{MultiStore, gc::epoch::listener::VersionEpochListener};
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
@@ -300,7 +300,11 @@ fn register_cdc_producer(
 		watermark,
 		wake_registry,
 	);
-	eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(cdc_handle.actor_ref().clone(), clock));
+	eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
+		cdc_handle.actor_ref().clone(),
+		clock.clone(),
+	));
+	eventbus.register::<PostCommitEvent, _>(VersionEpochListener::new(engine.version_epoch().clone(), clock));
 	ioc_for_cdc.register_service::<Arc<CdcProduceHandle>>(Arc::new(cdc_handle));
 }
 

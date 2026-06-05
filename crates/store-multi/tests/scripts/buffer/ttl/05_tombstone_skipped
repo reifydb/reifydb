@@ -1,12 +1,11 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-# Tombstone in __current is skipped by the scanner (value=None has no
-# trailer to read created_at from). The row's stale historical version is
-# NOT reaped by TTL - that's what MVCC compaction (find_keys_to_drop)
-# handles. Lock in current behavior.
+# A tombstone in __current (value=None) is skipped by the scanner: there is no
+# live value to expire. The row's stale historical version is NOT reaped by TTL
+# - that is what MVCC compaction (find_keys_to_drop) handles. Lock in behavior.
 
-set 1=alive version=1 created=1000
+set 1=alive version=1
 tombstone 1 version=2
 ---
 ok
@@ -21,9 +20,9 @@ historical: 1
 versions 1
 ---
 v2 tombstone
-v1 created=1000 updated=1000 value="alive"
+v1 value="alive"
 
-scan_ttl mode=created duration=5000 now=10000
+scan_ttl cutoff=5
 ---
 expired=0 versions_dropped=0
 

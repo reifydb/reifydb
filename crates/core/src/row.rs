@@ -17,8 +17,6 @@ pub struct Row {
 pub struct Ttl {
 	pub duration_nanos: u64,
 
-	pub anchor: TtlAnchor,
-
 	pub cleanup_mode: TtlCleanupMode,
 }
 
@@ -40,14 +38,6 @@ pub struct OperatorSettings {
 	pub ttl: Option<Ttl>,
 
 	pub join: Option<JoinTtl>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum TtlAnchor {
-	#[default]
-	Created,
-
-	Updated,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

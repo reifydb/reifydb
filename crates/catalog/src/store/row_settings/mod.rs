@@ -10,7 +10,7 @@ pub(crate) mod shape;
 
 use reifydb_core::{
 	encoded::row::EncodedRow,
-	row::{RowSettings, Ttl, TtlAnchor, TtlCleanupMode},
+	row::{RowSettings, Ttl, TtlCleanupMode},
 };
 
 use self::shape::row_settings;
@@ -20,7 +20,6 @@ pub(crate) fn encode_row_settings(settings: &RowSettings) -> EncodedRow {
 
 	match &settings.ttl {
 		Some(ttl) => {
-			row_settings::SHAPE.set_u8(&mut row, row_settings::ANCHOR, encode_anchor(&ttl.anchor));
 			row_settings::SHAPE.set_u8(
 				&mut row,
 				row_settings::CLEANUP_MODE,
@@ -44,11 +43,9 @@ pub(crate) fn decode_row_settings(row: &EncodedRow) -> Option<RowSettings> {
 	let ttl = if duration_nanos == 0 {
 		None
 	} else {
-		let anchor = decode_anchor(row_settings::SHAPE.get_u8(row, row_settings::ANCHOR))?;
 		let cleanup_mode = decode_cleanup_mode(row_settings::SHAPE.get_u8(row, row_settings::CLEANUP_MODE))?;
 		Some(Ttl {
 			duration_nanos,
-			anchor,
 			cleanup_mode,
 		})
 	};
@@ -59,21 +56,6 @@ pub(crate) fn decode_row_settings(row: &EncodedRow) -> Option<RowSettings> {
 		ttl,
 		persistent,
 	})
-}
-
-fn encode_anchor(anchor: &TtlAnchor) -> u8 {
-	match anchor {
-		TtlAnchor::Created => row_settings::ANCHOR_CREATED,
-		TtlAnchor::Updated => row_settings::ANCHOR_UPDATED,
-	}
-}
-
-fn decode_anchor(anchor: u8) -> Option<TtlAnchor> {
-	match anchor {
-		row_settings::ANCHOR_CREATED => Some(TtlAnchor::Created),
-		row_settings::ANCHOR_UPDATED => Some(TtlAnchor::Updated),
-		_ => None,
-	}
 }
 
 fn encode_cleanup_mode(mode: &TtlCleanupMode) -> u8 {
@@ -100,7 +82,6 @@ pub mod tests {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration_nanos: 300_000_000_000, // 5 minutes
-				anchor: TtlAnchor::Created,
 				cleanup_mode: TtlCleanupMode::Drop,
 			}),
 			persistent: true,
@@ -115,7 +96,6 @@ pub mod tests {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration_nanos: 3_600_000_000_000, // 1 hour
-				anchor: TtlAnchor::Updated,
 				cleanup_mode: TtlCleanupMode::Delete,
 			}),
 			persistent: true,
@@ -130,7 +110,6 @@ pub mod tests {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration_nanos: 60_000_000_000,
-				anchor: TtlAnchor::Created,
 				cleanup_mode: TtlCleanupMode::Drop,
 			}),
 			persistent: false,

@@ -15,7 +15,7 @@ fn transactional_view_persists_row_ttl() {
 	t.admin("CREATE NAMESPACE rs_t");
 	t.admin("CREATE TABLE rs_t::src { id: int4 }");
 	t.admin("CREATE TRANSACTIONAL VIEW rs_t::v { id: int4 } \
-		 WITH { row: { ttl: { duration: '1h', on: created, mode: drop } } } \
+		 WITH { row: { ttl: { duration: '1h', mode: drop } } } \
 		 AS { FROM rs_t::src MAP { id: id } }");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();

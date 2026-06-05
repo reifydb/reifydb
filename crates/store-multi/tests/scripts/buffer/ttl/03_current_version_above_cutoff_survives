@@ -1,0 +1,32 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Version-anchored TTL keys off the CURRENT version of a key. If the current
+# version is above the cutoff, the row does not expire even though an older
+# version sits in __historical below the cutoff.
+
+set 1=stale version=1
+set 1=fresh version=2
+---
+ok
+ok
+
+count_current
+count_historical
+---
+current: 1
+historical: 1
+
+scan_ttl cutoff=1
+---
+expired=0 versions_dropped=0
+
+count_current
+count_historical
+---
+current: 1
+historical: 1
+
+visible 1
+---
+value="fresh"

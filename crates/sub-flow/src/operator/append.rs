@@ -5,6 +5,7 @@ use std::{cell::RefCell, ops::Bound};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
+	common::CommitVersion,
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
 		shape::RowShape,
@@ -14,10 +15,10 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 	},
 	internal,
-	row::TtlAnchor,
 	util::encoding::keycode::serializer::KeySerializer,
 	value::column::columns::Columns,
 };
+use reifydb_runtime::version_epoch::VersionEpoch;
 use reifydb_sdk::operator::Tick;
 use reifydb_value::{
 	Result,
@@ -31,7 +32,7 @@ use crate::{
 		Operator, OperatorCell,
 		stateful::{
 			row::RowNumberProvider,
-			utils::{internal_state_drop, internal_state_get, internal_state_range, internal_state_set},
+			utils::{internal_state_drop, internal_state_range_versioned, internal_state_set},
 		},
 	},
 	transaction::FlowTransaction,
@@ -50,7 +51,7 @@ pub struct AppendOperator {
 
 	ttl_nanos: Option<u64>,
 
-	ttl_anchor: TtlAnchor,
+	version_epoch: VersionEpoch,
 
 	evict_cursor: RefCell<Option<EncodedKey>>,
 }
@@ -61,7 +62,7 @@ impl AppendOperator {
 		parents: Vec<OperatorCell>,
 		input_nodes: Vec<FlowNodeId>,
 		ttl_nanos: Option<u64>,
-		ttl_anchor: TtlAnchor,
+		version_epoch: VersionEpoch,
 	) -> Self {
 		reifydb_assertions! {
 			assert_eq!(parents.len(), input_nodes.len());
@@ -74,20 +75,20 @@ impl AppendOperator {
 			input_nodes,
 			row_number_provider: RowNumberProvider::new(node),
 			ttl_nanos,
-			ttl_anchor,
+			version_epoch,
 			evict_cursor: RefCell::new(None),
 		}
 	}
 
 	#[cfg(test)]
-	pub(crate) fn new_for_state_tests(node: FlowNodeId, ttl_nanos: Option<u64>, ttl_anchor: TtlAnchor) -> Self {
+	pub(crate) fn new_for_state_tests(node: FlowNodeId, ttl_nanos: Option<u64>) -> Self {
 		Self {
 			node,
 			parents: Vec::new(),
 			input_nodes: Vec::new(),
 			row_number_provider: RowNumberProvider::new(node),
 			ttl_nanos,
-			ttl_anchor,
+			version_epoch: VersionEpoch::new(),
 			evict_cursor: RefCell::new(None),
 		}
 	}
@@ -117,28 +118,12 @@ impl AppendOperator {
 		EncodedKey::new(bytes)
 	}
 
-	fn touch_timestamp(&self, txn: &mut FlowTransaction, composite_key: &EncodedKey) -> Result<()> {
+	fn touch(&self, txn: &mut FlowTransaction, composite_key: &EncodedKey) -> Result<()> {
 		if self.ttl_nanos.is_none() {
 			return Ok(());
 		}
 		let key = Self::make_timestamp_key(composite_key);
-		let now_nanos = txn.clock().now_nanos();
-		let shape = RowShape::operator_state();
-		let (mut row, created_at) = match internal_state_get(self.node, txn, &key)? {
-			Some(existing) => {
-				let c = existing.created_at_nanos();
-				(
-					existing,
-					if c == 0 {
-						now_nanos
-					} else {
-						c
-					},
-				)
-			}
-			None => (shape.allocate(), now_nanos),
-		};
-		row.set_timestamps(created_at, now_nanos);
+		let row = RowShape::operator_state().allocate();
 		internal_state_set(self.node, txn, &key, row)
 	}
 
@@ -213,7 +198,12 @@ impl Operator for AppendOperator {
 		};
 
 		let now_nanos = tick.now.to_nanos();
-		let cutoff = now_nanos.saturating_sub(ttl_nanos);
+		let Some(cutoff_nanos) = now_nanos.checked_sub(ttl_nanos) else {
+			return Ok(None);
+		};
+		let Some(cutoff_version) = self.version_epoch.floor_version_at(cutoff_nanos).map(CommitVersion) else {
+			return Ok(None);
+		};
 
 		const EVICT_BATCH: usize = 4096;
 		let prefix = [TIMESTAMP_PREFIX];
@@ -223,17 +213,14 @@ impl Operator for AppendOperator {
 			None => base.start.clone(),
 		};
 		let range = EncodedKeyRange::new(start, base.end.clone());
-		let batch =
-			internal_state_range(self.node, txn, range).take(EVICT_BATCH).collect::<Result<Vec<_>>>()?;
+		let batch = internal_state_range_versioned(self.node, txn, range)
+			.take(EVICT_BATCH)
+			.collect::<Result<Vec<_>>>()?;
 		let reached_end = batch.len() < EVICT_BATCH;
-		let last_key = batch.last().map(|(key, _)| key.clone());
+		let last_key = batch.last().map(|(key, _, _)| key.clone());
 
-		for (storage_key, row) in batch {
-			let anchor_ts = match self.ttl_anchor {
-				TtlAnchor::Created => row.created_at_nanos(),
-				TtlAnchor::Updated => row.updated_at_nanos(),
-			};
-			if anchor_ts >= cutoff {
+		for (storage_key, version, _row) in batch {
+			if version > cutoff_version {
 				continue;
 			}
 
@@ -269,7 +256,7 @@ impl AppendOperator {
 			let composite_key = Self::make_composite_key(parent_index as u8, source_row_number);
 			let (output_row_number, _) =
 				self.row_number_provider.get_or_create_row_number(txn, &composite_key)?;
-			self.touch_timestamp(txn, &composite_key)?;
+			self.touch(txn, &composite_key)?;
 			output_row_numbers.push(output_row_number);
 		}
 		Ok(output_row_numbers)
@@ -328,7 +315,7 @@ impl AppendOperator {
 			return Ok(None);
 		};
 		for composite_key in &composite_keys {
-			self.touch_timestamp(txn, composite_key)?;
+			self.touch(txn, composite_key)?;
 		}
 		let pre_output = pre.with_row_numbers(output_row_numbers.clone());
 		let post_output = post.with_row_numbers(output_row_numbers);
@@ -391,7 +378,7 @@ mod tests {
 			Interceptors::new(),
 			engine.clock().clone(),
 		);
-		let op = AppendOperator::new_for_state_tests(FlowNodeId(1), None, TtlAnchor::Created);
+		let op = AppendOperator::new_for_state_tests(FlowNodeId(1), None);
 
 		let key = composite(0, 42);
 		assert_eq!(op.row_number_provider.get_row_number(&mut txn, &key).unwrap(), None);
@@ -402,7 +389,7 @@ mod tests {
 	}
 
 	#[test]
-	fn forget_mapping_removes_forward_and_timestamp_entries() {
+	fn forget_mapping_removes_forward_and_touch_entries() {
 		let engine = TestEngine::new();
 		let admin = engine.begin_admin(IdentityId::system()).unwrap();
 		let mut txn = FlowTransaction::deferred(
@@ -412,11 +399,11 @@ mod tests {
 			Interceptors::new(),
 			engine.clock().clone(),
 		);
-		let op = AppendOperator::new_for_state_tests(FlowNodeId(2), Some(1_000), TtlAnchor::Created);
+		let op = AppendOperator::new_for_state_tests(FlowNodeId(2), Some(1_000));
 
 		let key = composite(1, 7);
 		let (_assigned, _) = op.row_number_provider.get_or_create_row_number(&mut txn, &key).unwrap();
-		op.touch_timestamp(&mut txn, &key).unwrap();
+		op.touch(&mut txn, &key).unwrap();
 
 		assert!(op.row_number_provider.get_row_number(&mut txn, &key).unwrap().is_some());
 		let ts_key = AppendOperator::make_timestamp_key(&key);
@@ -429,9 +416,8 @@ mod tests {
 	}
 
 	#[test]
-	fn touch_timestamp_is_noop_when_ttl_disabled() {
-		// without ttl we must not waste storage on timestamp entries, since they would never
-		// be consulted
+	fn touch_is_noop_when_ttl_disabled() {
+		// without ttl we must not waste storage on touch entries, since they would never be consulted
 		let engine = TestEngine::new();
 		let admin = engine.begin_admin(IdentityId::system()).unwrap();
 		let mut txn = FlowTransaction::deferred(
@@ -441,23 +427,22 @@ mod tests {
 			Interceptors::new(),
 			engine.clock().clone(),
 		);
-		let op = AppendOperator::new_for_state_tests(FlowNodeId(3), None, TtlAnchor::Created);
+		let op = AppendOperator::new_for_state_tests(FlowNodeId(3), None);
 
 		let key = composite(0, 5);
-		op.touch_timestamp(&mut txn, &key).unwrap();
+		op.touch(&mut txn, &key).unwrap();
 
 		let ts_key = AppendOperator::make_timestamp_key(&key);
 		assert!(
 			internal_state_get(op.node, &mut txn, &ts_key).unwrap().is_none(),
-			"timestamp must not be written when ttl is disabled"
+			"touch must not be written when ttl is disabled"
 		);
 	}
 
 	#[test]
-	fn touch_timestamp_preserves_created_at_across_calls() {
-		// the created anchor is meaningful only if created_at stays pinned across re-touches
+	fn touch_writes_touch_key_when_ttl_enabled() {
+		// the touch key carries no header timestamp now - its commit version is the last-touch marker.
 		let engine = TestEngine::new();
-		let mock_clock = engine.mock_clock();
 		let admin = engine.begin_admin(IdentityId::system()).unwrap();
 		let mut txn = FlowTransaction::deferred(
 			&admin,
@@ -466,28 +451,20 @@ mod tests {
 			Interceptors::new(),
 			engine.clock().clone(),
 		);
-		let op = AppendOperator::new_for_state_tests(FlowNodeId(4), Some(60_000_000_000), TtlAnchor::Created);
+		let op = AppendOperator::new_for_state_tests(FlowNodeId(4), Some(60_000_000_000));
 
 		let key = composite(0, 1);
-		op.touch_timestamp(&mut txn, &key).unwrap();
-		let ts_key = AppendOperator::make_timestamp_key(&key);
-		let first = internal_state_get(op.node, &mut txn, &ts_key).unwrap().unwrap();
-		let created_at = first.created_at_nanos();
-		assert_ne!(created_at, 0);
+		op.touch(&mut txn, &key).unwrap();
 
-		mock_clock.advance_millis(100);
-		op.touch_timestamp(&mut txn, &key).unwrap();
-		let second = internal_state_get(op.node, &mut txn, &ts_key).unwrap().unwrap();
-		assert_eq!(
-			second.created_at_nanos(),
-			created_at,
-			"created_at must not move when ttl is anchored to Created"
+		let ts_key = AppendOperator::make_timestamp_key(&key);
+		assert!(
+			internal_state_get(op.node, &mut txn, &ts_key).unwrap().is_some(),
+			"touch must write the touch key so its version marks the last access"
 		);
-		assert!(second.updated_at_nanos() > created_at, "updated_at must advance with the clock");
 	}
 
 	#[test]
-	fn tick_evicts_mappings_older_than_ttl_with_created_anchor() {
+	fn tick_evicts_mappings_at_or_below_cutoff_version() {
 		let engine = TestEngine::new();
 		let mock_clock = engine.mock_clock();
 		let admin = engine.begin_admin(IdentityId::system()).unwrap();
@@ -499,33 +476,29 @@ mod tests {
 			engine.clock().clone(),
 		);
 		let ttl_nanos = 50_000_000; // 50ms
-		let op = AppendOperator::new_for_state_tests(FlowNodeId(5), Some(ttl_nanos), TtlAnchor::Created);
+		let op = AppendOperator::new_for_state_tests(FlowNodeId(5), Some(ttl_nanos));
+		// Seed the epoch so any cutoff time maps to commit version 1 - the version every write in
+		// this deferred transaction carries.
+		op.version_epoch.record(0, 1);
 
-		let old = composite(0, 100);
-		op.row_number_provider.get_or_create_row_number(&mut txn, &old).unwrap();
-		op.touch_timestamp(&mut txn, &old).unwrap();
+		let key = composite(0, 100);
+		op.row_number_provider.get_or_create_row_number(&mut txn, &key).unwrap();
+		op.touch(&mut txn, &key).unwrap();
+		assert!(op.row_number_provider.get_row_number(&mut txn, &key).unwrap().is_some());
 
-		mock_clock.advance_millis(40);
-		let young = composite(0, 200);
-		op.row_number_provider.get_or_create_row_number(&mut txn, &young).unwrap();
-		op.touch_timestamp(&mut txn, &young).unwrap();
-
-		mock_clock.advance_millis(20);
+		// Advance past the TTL: cutoff = floor_version_at(now - ttl) = 1, at/above the entry's version.
+		mock_clock.advance_millis(100);
 		let result = op.tick(&mut txn, make_tick(&engine.clock())).unwrap();
 		assert!(result.is_none(), "append tick never produces a downstream change");
 
 		assert!(
-			op.row_number_provider.get_row_number(&mut txn, &old).unwrap().is_none(),
-			"old mapping must be evicted past the TTL"
-		);
-		assert!(
-			op.row_number_provider.get_row_number(&mut txn, &young).unwrap().is_some(),
-			"young mapping must survive when its timestamp is within the TTL window"
+			op.row_number_provider.get_row_number(&mut txn, &key).unwrap().is_none(),
+			"a mapping whose touch version is at or below the cutoff must be evicted"
 		);
 	}
 
 	#[test]
-	fn tick_with_updated_anchor_keeps_recently_touched_mappings_alive() {
+	fn tick_is_conservative_when_epoch_has_no_sample() {
 		let engine = TestEngine::new();
 		let mock_clock = engine.mock_clock();
 		let admin = engine.begin_admin(IdentityId::system()).unwrap();
@@ -537,28 +510,19 @@ mod tests {
 			engine.clock().clone(),
 		);
 		let ttl_nanos = 50_000_000; // 50ms
-		let op = AppendOperator::new_for_state_tests(FlowNodeId(6), Some(ttl_nanos), TtlAnchor::Updated);
+		let op = AppendOperator::new_for_state_tests(FlowNodeId(6), Some(ttl_nanos));
 
 		let key = composite(0, 1);
 		op.row_number_provider.get_or_create_row_number(&mut txn, &key).unwrap();
-		op.touch_timestamp(&mut txn, &key).unwrap();
+		op.touch(&mut txn, &key).unwrap();
 
-		mock_clock.advance_millis(40);
-		op.touch_timestamp(&mut txn, &key).unwrap();
-
-		mock_clock.advance_millis(40);
-		op.tick(&mut txn, make_tick(&engine.clock())).unwrap();
-
-		assert!(
-			op.row_number_provider.get_row_number(&mut txn, &key).unwrap().is_some(),
-			"Updated anchor must keep mapping alive while it is being touched within the TTL window"
-		);
-
+		// No epoch sample: floor_version_at returns None, so nothing may be evicted (cold-start
+		// conservative contract - never delete when a version cannot be dated).
 		mock_clock.advance_millis(100);
 		op.tick(&mut txn, make_tick(&engine.clock())).unwrap();
 		assert!(
-			op.row_number_provider.get_row_number(&mut txn, &key).unwrap().is_none(),
-			"after silence longer than TTL the mapping must finally be evicted"
+			op.row_number_provider.get_row_number(&mut txn, &key).unwrap().is_some(),
+			"with no epoch sample the cutoff is None and nothing may be evicted"
 		);
 	}
 
@@ -573,7 +537,7 @@ mod tests {
 			Interceptors::new(),
 			engine.clock().clone(),
 		);
-		let op = AppendOperator::new_for_state_tests(FlowNodeId(7), None, TtlAnchor::Created);
+		let op = AppendOperator::new_for_state_tests(FlowNodeId(7), None);
 
 		let key = composite(0, 1);
 		op.row_number_provider.get_or_create_row_number(&mut txn, &key).unwrap();
@@ -589,9 +553,9 @@ mod tests {
 		// engine can route per-flow ticks (set via `with { tick: ... }` on the view) here
 		// even when TTL is disabled. Tick is a no-op in that case, but the capability is
 		// required to avoid the engine's enforce_tick_capability abort.
-		let with_ttl = AppendOperator::new_for_state_tests(FlowNodeId(8), Some(100), TtlAnchor::Created);
+		let with_ttl = AppendOperator::new_for_state_tests(FlowNodeId(8), Some(100));
 		assert!(with_ttl.capabilities().contains(&OperatorCapability::Tick));
-		let without_ttl = AppendOperator::new_for_state_tests(FlowNodeId(9), None, TtlAnchor::Created);
+		let without_ttl = AppendOperator::new_for_state_tests(FlowNodeId(9), None);
 		assert!(without_ttl.capabilities().contains(&OperatorCapability::Tick));
 	}
 }

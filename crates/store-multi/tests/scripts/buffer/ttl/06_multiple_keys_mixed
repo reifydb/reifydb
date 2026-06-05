@@ -1,16 +1,18 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-# Multiple keys with mixed expiry status. Only expired rows go away;
-# non-expired rows are untouched in both physical tables.
+# Multiple keys with mixed expiry status. Only keys whose current version is at
+# or below the cutoff go away; keys written after the cutoff are untouched in
+# both physical tables. Freshness is the commit version, so the surviving key
+# is written last (highest version).
 
 # Row 1: single old version (current only, expired)
-set 1=row1 version=1 created=1000
-# Row 2: single fresh version (current only, NOT expired)
-set 2=row2 version=2 created=9000
+set 1=row1 version=1
 # Row 3: two old versions (current + historical, both expired)
-set 3=row3a version=3 created=1000
-set 3=row3b version=4 created=1000
+set 3=row3a version=2
+set 3=row3b version=3
+# Row 2: newest version (above the cutoff, NOT expired)
+set 2=row2 version=4
 ---
 ok
 ok
@@ -23,7 +25,7 @@ count_historical
 current: 3
 historical: 1
 
-scan_ttl mode=created duration=5000 now=10000
+scan_ttl cutoff=3
 ---
 expired=2 versions_dropped=3
 
@@ -38,5 +40,5 @@ visible 2
 visible 3
 ---
 (none)
-created=9000 updated=9000 value="row2"
+value="row2"
 (none)

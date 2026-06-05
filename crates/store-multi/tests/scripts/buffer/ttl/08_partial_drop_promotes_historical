@@ -1,17 +1,17 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-# Bug 1 fix verification: dropping ONLY the current version while
-# historical versions remain must promote the next-newest historical
-# row into current. Memory and SQLite must agree on this outcome.
+# Bug 1 fix verification: dropping ONLY the current version while historical
+# versions remain must promote the next-newest historical row into current.
+# Memory and SQLite must agree on this outcome.
 #
 # Setup: V1 and V3 in __historical, V5 in __current.
 # Drop only V5.
 # Expected: current=V3, historical=[V1] on both backends.
 
-set 1=v1 version=1 created=1000
-set 1=v3 version=3 created=1000
-set 1=v5 version=5 created=1000
+set 1=v1 version=1
+set 1=v3 version=3
+set 1=v5 version=5
 ---
 ok
 ok
@@ -25,9 +25,9 @@ historical: 2
 
 versions 1
 ---
-v5 created=1000 updated=1000 value="v5"
-v3 created=1000 updated=1000 value="v3"
-v1 created=1000 updated=1000 value="v1"
+v5 value="v5"
+v3 value="v3"
+v1 value="v1"
 
 drop_version 1 version=5
 ---
@@ -41,9 +41,9 @@ historical: 1
 
 versions 1
 ---
-v3 created=1000 updated=1000 value="v3"
-v1 created=1000 updated=1000 value="v1"
+v3 value="v3"
+v1 value="v1"
 
 visible 1
 ---
-created=1000 updated=1000 value="v3"
+value="v3"

@@ -5,20 +5,24 @@ use std::{collections::HashMap, mem::take};
 
 use reifydb_core::{
 	actors::operator_ttl::OperatorTtlMessage as Message,
+	common::CommitVersion,
 	event::row::OperatorRowsExpiredEvent,
 	interface::{
 		catalog::{config::ConfigKey, flow::FlowNodeId},
 		store::EntryKind,
 	},
 	key::flow_node_state::FlowNodeStateKey,
-	row::{Ttl, TtlAnchor, TtlCleanupMode},
+	row::{Ttl, TtlCleanupMode},
 };
-use reifydb_runtime::actor::{
-	context::Context,
-	mailbox::ActorRef,
-	system::{ActorConfig, ActorSpawner},
-	timers::TimerHandle,
-	traits::{Actor as ActorTrait, Directive},
+use reifydb_runtime::{
+	actor::{
+		context::Context,
+		mailbox::ActorRef,
+		system::{ActorConfig, ActorSpawner},
+		timers::TimerHandle,
+		traits::{Actor as ActorTrait, Directive},
+	},
+	version_epoch::VersionEpoch,
 };
 use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
 use tracing::{debug, info, trace, warn};
@@ -44,18 +48,25 @@ pub struct ActorState {
 pub struct Actor<P: ListOperatorSettings> {
 	store: StandardMultiStore,
 	provider: P,
+	epoch: VersionEpoch,
 }
 
 impl<P: ListOperatorSettings> Actor<P> {
-	pub fn new(store: StandardMultiStore, provider: P) -> Self {
+	pub fn new(store: StandardMultiStore, provider: P, epoch: VersionEpoch) -> Self {
 		Self {
 			store,
 			provider,
+			epoch,
 		}
 	}
 
-	pub fn spawn(spawner: &ActorSpawner, store: StandardMultiStore, provider: P) -> ActorRef<Message> {
-		let actor = Self::new(store, provider);
+	pub fn spawn(
+		spawner: &ActorSpawner,
+		store: StandardMultiStore,
+		provider: P,
+		epoch: VersionEpoch,
+	) -> ActorRef<Message> {
+		let actor = Self::new(store, provider, epoch);
 		spawner.spawn_background("operator-row", actor).actor_ref().clone()
 	}
 
@@ -175,14 +186,22 @@ impl<P: ListOperatorSettings> Actor<P> {
 			);
 		}
 
+		let left_cutoff = left
+			.and_then(|ttl| now_nanos.checked_sub(ttl.duration_nanos))
+			.and_then(|cutoff_nanos| self.epoch.floor_version_at(cutoff_nanos))
+			.map(CommitVersion);
+		let right_cutoff = right
+			.and_then(|ttl| now_nanos.checked_sub(ttl.duration_nanos))
+			.and_then(|cutoff_nanos| self.epoch.floor_version_at(cutoff_nanos))
+			.map(CommitVersion);
+
 		if let Some(buffer) = buffer {
 			let mut cursor = scan_state.cursors.remove(&node_id).unwrap_or_default();
 			match scanner::scan_operator_join(
 				buffer,
 				node_id,
-				left,
-				right,
-				now_nanos,
+				left_cutoff,
+				right_cutoff,
 				batch_size,
 				&mut cursor,
 			) {
@@ -211,17 +230,15 @@ impl<P: ListOperatorSettings> Actor<P> {
 		}
 
 		if let Some(persistent) = persistent {
-			for (side_ttl, side_prefix) in
-				[(left, scanner::JOIN_LEFT_PREFIX), (right, scanner::JOIN_RIGHT_PREFIX)]
+			for (side_cutoff, side_prefix) in
+				[(left_cutoff, scanner::JOIN_LEFT_PREFIX), (right_cutoff, scanner::JOIN_RIGHT_PREFIX)]
 			{
-				let Some(ttl) = side_ttl else {
+				let Some(cutoff) = side_cutoff else {
 					continue;
 				};
-				let cutoff = now_nanos.saturating_sub(ttl.duration_nanos);
 				let prefix = FlowNodeStateKey::encoded(node_id, vec![side_prefix]);
-				match persistent.delete_expired(
+				match persistent.delete_below_version(
 					EntryKind::Operator(node_id),
-					ttl.anchor,
 					cutoff,
 					Some(prefix.as_ref()),
 				) {
@@ -257,27 +274,21 @@ impl<P: ListOperatorSettings> Actor<P> {
 			);
 		}
 
-		if let Some(buffer) = buffer {
+		let cutoff_version = now_nanos
+			.checked_sub(ttl.duration_nanos)
+			.and_then(|cutoff_nanos| self.epoch.floor_version_at(cutoff_nanos))
+			.map(CommitVersion);
+
+		if let (Some(buffer), Some(cutoff_version)) = (buffer, cutoff_version) {
 			let mut cursor = scan_state.cursors.remove(&node_id).unwrap_or_default();
 
-			let scan_result = match ttl.anchor {
-				TtlAnchor::Created => scanner::scan_operator_by_created_at(
-					buffer,
-					node_id,
-					ttl,
-					now_nanos,
-					batch_size,
-					&mut cursor,
-				),
-				TtlAnchor::Updated => scanner::scan_operator_by_updated_at(
-					buffer,
-					node_id,
-					ttl,
-					now_nanos,
-					batch_size,
-					&mut cursor,
-				),
-			};
+			let scan_result = scanner::scan_operator_expired(
+				buffer,
+				node_id,
+				cutoff_version,
+				batch_size,
+				&mut cursor,
+			);
 
 			match scan_result {
 				Ok((expired, result)) => {
@@ -310,9 +321,8 @@ impl<P: ListOperatorSettings> Actor<P> {
 			}
 		}
 
-		if let Some(persistent) = persistent {
-			let cutoff = now_nanos.saturating_sub(ttl.duration_nanos);
-			match persistent.delete_expired(EntryKind::Operator(node_id), ttl.anchor, cutoff, None) {
+		if let (Some(persistent), Some(cutoff_version)) = (persistent, cutoff_version) {
+			match persistent.delete_below_version(EntryKind::Operator(node_id), cutoff_version, None) {
 				Ok(deleted) => {
 					*persistent_rows_deleted += deleted;
 					if deleted > 0 {
@@ -431,6 +441,7 @@ pub fn spawn_operator_settings_actor<P: ListOperatorSettings>(
 	store: StandardMultiStore,
 	spawner: ActorSpawner,
 	provider: P,
+	epoch: VersionEpoch,
 ) -> ActorRef<Message> {
-	Actor::spawn(&spawner, store, provider)
+	Actor::spawn(&spawner, store, provider, epoch)
 }

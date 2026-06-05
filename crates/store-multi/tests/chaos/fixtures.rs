@@ -74,13 +74,11 @@ pub fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 	}
 }
 
-/// Build a row whose shape header carries the TTL anchors (created/updated nanos at offsets 8..16 / 16..24),
-/// matching `tests/gc_ttl.rs::build_row`. The TTL scanner and the persistent tier read these to decide
-/// expiry, so the test controls a key's age by what it writes here.
-pub fn build_row(payload: &[u8], created_nanos: u64, updated_nanos: u64) -> EncodedRow {
+/// Build a row carrying `payload`. TTL eviction is version-anchored now (it keys off each row's commit
+/// version, read from the store, not any header timestamp), so the test controls a key's age purely by
+/// the version it commits at - the row body is opaque to eviction.
+pub fn build_row(payload: &[u8]) -> EncodedRow {
 	let mut buf = vec![0u8; SHAPE_HEADER_SIZE + payload.len()];
-	buf[8..16].copy_from_slice(&created_nanos.to_le_bytes());
-	buf[16..24].copy_from_slice(&updated_nanos.to_le_bytes());
 	buf[SHAPE_HEADER_SIZE..].copy_from_slice(payload);
 	EncodedRow(CowVec::new(buf))
 }

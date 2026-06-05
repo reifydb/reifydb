@@ -1,10 +1,11 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-# Single key, only in __current. Old created_at. TTL expires it.
-# After scan_ttl, both physical tables must be empty for that row.
+# Single key, only in __current, written at an old commit version. A cutoff
+# above its version expires it. After scan_ttl, both physical tables must be
+# empty for that row.
 
-set 1=hello version=1 created=1000
+set 1=hello version=1
 ---
 ok
 
@@ -14,7 +15,7 @@ count_historical
 current: 1
 historical: 0
 
-scan_ttl mode=created duration=5000 now=10000
+scan_ttl cutoff=5
 ---
 expired=1 versions_dropped=1
 

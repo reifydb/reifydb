@@ -51,6 +51,7 @@ use system_version::SystemVersionKey;
 use table::TableKey;
 use token::TokenKey;
 use transaction_version::TransactionVersionKey;
+use version_epoch::VersionEpochKey;
 use view::ViewKey;
 
 use crate::{
@@ -120,6 +121,7 @@ pub mod table;
 pub mod token;
 pub mod transaction_version;
 pub mod variant_handler;
+pub mod version_epoch;
 pub mod view;
 #[derive(Debug)]
 pub enum Key {
@@ -144,6 +146,7 @@ pub enum Key {
 	TableColumnProperty(ColumnPropertyKey),
 	SystemVersion(SystemVersionKey),
 	TransactionVersion(TransactionVersionKey),
+	VersionEpoch(VersionEpochKey),
 	View(ViewKey),
 	RingBuffer(RingBufferKey),
 	RingBufferMetadata(RingBufferMetadataKey),
@@ -207,6 +210,7 @@ impl Key {
 			Key::SystemSequence(key) => key.encode(),
 			Key::SystemVersion(key) => key.encode(),
 			Key::TransactionVersion(key) => key.encode(),
+			Key::VersionEpoch(key) => key.encode(),
 			Key::View(key) => key.encode(),
 			Key::RingBuffer(key) => key.encode(),
 			Key::RingBufferMetadata(key) => key.encode(),
@@ -309,6 +313,7 @@ impl Key {
 			KeyKind::SystemSequence => SystemSequenceKey::decode(key).map(Self::SystemSequence),
 			KeyKind::SystemVersion => SystemVersionKey::decode(key).map(Self::SystemVersion),
 			KeyKind::TransactionVersion => TransactionVersionKey::decode(key).map(Self::TransactionVersion),
+			KeyKind::VersionEpoch => VersionEpochKey::decode(key).map(Self::VersionEpoch),
 			KeyKind::View => ViewKey::decode(key).map(Self::View),
 			KeyKind::PrimaryKey => PrimaryKeyKey::decode(key).map(Self::PrimaryKey),
 			KeyKind::RingBuffer => RingBufferKey::decode(key).map(Self::RingBuffer),

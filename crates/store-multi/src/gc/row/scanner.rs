@@ -5,10 +5,9 @@ use std::{collections::HashMap, ops::Bound};
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{key::EncodedKey, row::EncodedRow},
+	encoded::key::EncodedKey,
 	interface::{catalog::shape::ShapeId, store::EntryKind},
 	key::row::RowKey,
-	row::Ttl,
 };
 use reifydb_value::Result;
 
@@ -30,11 +29,10 @@ pub enum ScanResult {
 	Exhausted,
 }
 
-pub fn scan_shape_by_created_at(
+pub fn scan_shape_expired(
 	storage: &MultiCommitBufferTier,
 	shape_id: ShapeId,
-	ttl: &Ttl,
-	now_nanos: u64,
+	cutoff_version: CommitVersion,
 	batch_size: usize,
 	cursor: &mut RangeCursor,
 ) -> Result<(Vec<ExpiredRow>, ScanResult)> {
@@ -52,69 +50,14 @@ pub fn scan_shape_by_created_at(
 	let batch = storage.range_next(table, &mut batch_cursor, start, end, scope, batch_size)?;
 
 	for entry in &batch.entries {
-		if let Some(ref value) = entry.value {
-			let row = EncodedRow(value.clone());
-			let anchor_nanos = row.created_at_nanos();
-			assert!(
-				anchor_nanos > 0,
-				"Row is missing created_at timestamp - this is an invariant violation"
-			);
-
-			if now_nanos.saturating_sub(anchor_nanos) >= ttl.duration_nanos {
-				expired.push(ExpiredRow {
-					shape_id,
-					key: entry.key.clone(),
-					scanned_bytes: value.len() as u64,
-				});
-			}
-		}
-	}
-
-	*cursor = batch_cursor;
-	if !batch.has_more || cursor.exhausted {
-		Ok((expired, ScanResult::Exhausted))
-	} else {
-		Ok((expired, ScanResult::Yielded))
-	}
-}
-
-pub fn scan_shape_by_updated_at(
-	storage: &MultiCommitBufferTier,
-	shape_id: ShapeId,
-	ttl: &Ttl,
-	now_nanos: u64,
-	batch_size: usize,
-	cursor: &mut RangeCursor,
-) -> Result<(Vec<ExpiredRow>, ScanResult)> {
-	let range = RowKey::full_scan(shape_id);
-	let table = EntryKind::Source(shape_id);
-
-	let start = bound_as_ref(&range.start);
-	let end = bound_as_ref(&range.end);
-
-	let mut expired = Vec::new();
-	let mut batch_cursor = cursor.clone();
-	let scope = MultiVersionScope::AsOf {
-		read: CommitVersion(u64::MAX),
-	};
-	let batch = storage.range_next(table, &mut batch_cursor, start, end, scope, batch_size)?;
-
-	for entry in &batch.entries {
-		if let Some(ref value) = entry.value {
-			let row = EncodedRow(value.clone());
-			let anchor_nanos = row.updated_at_nanos();
-			assert!(
-				anchor_nanos > 0,
-				"Row is missing updated_at timestamp - this is an invariant violation"
-			);
-
-			if now_nanos.saturating_sub(anchor_nanos) >= ttl.duration_nanos {
-				expired.push(ExpiredRow {
-					shape_id,
-					key: entry.key.clone(),
-					scanned_bytes: value.len() as u64,
-				});
-			}
+		if let Some(ref value) = entry.value
+			&& entry.version <= cutoff_version
+		{
+			expired.push(ExpiredRow {
+				shape_id,
+				key: entry.key.clone(),
+				scanned_bytes: value.len() as u64,
+			});
 		}
 	}
 

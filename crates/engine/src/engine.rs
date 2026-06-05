@@ -44,6 +44,7 @@ use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSpawner},
 	context::{clock::Clock, rng::Rng},
 	shutdown::Shutdown,
+	version_epoch::VersionEpoch,
 };
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
@@ -145,6 +146,10 @@ impl StandardEngine {
 
 	pub fn rng(&self) -> &Rng {
 		&self.executor.runtime_context.rng
+	}
+
+	pub fn version_epoch(&self) -> &VersionEpoch {
+		&self.executor.runtime_context.version_epoch
 	}
 
 	#[instrument(name = "engine::admin_as", level = "debug", skip(self, params), fields(rql = %rql))]

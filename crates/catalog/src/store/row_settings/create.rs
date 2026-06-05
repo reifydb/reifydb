@@ -22,7 +22,7 @@ pub fn create_row_settings(txn: &mut AdminTransaction, shape: ShapeId, settings:
 pub mod tests {
 	use reifydb_core::{
 		interface::catalog::id::{RingBufferId, SeriesId, TableId},
-		row::{RowSettings, Ttl, TtlAnchor, TtlCleanupMode},
+		row::{RowSettings, Ttl, TtlCleanupMode},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -37,7 +37,6 @@ pub mod tests {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration_nanos: 300_000_000_000,
-				anchor: TtlAnchor::Created,
 				cleanup_mode: TtlCleanupMode::Drop,
 			}),
 			persistent: true,
@@ -58,7 +57,6 @@ pub mod tests {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration_nanos: 60_000_000_000,
-				anchor: TtlAnchor::Created,
 				cleanup_mode: TtlCleanupMode::Drop,
 			}),
 			persistent: false,
@@ -80,7 +78,6 @@ pub mod tests {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration_nanos: 3_600_000_000_000,
-				anchor: TtlAnchor::Updated,
 				cleanup_mode: TtlCleanupMode::Delete,
 			}),
 			persistent: true,
@@ -101,7 +98,6 @@ pub mod tests {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
 				duration_nanos: 86_400_000_000_000,
-				anchor: TtlAnchor::Created,
 				cleanup_mode: TtlCleanupMode::Drop,
 			}),
 			persistent: true,
@@ -122,7 +118,6 @@ pub mod tests {
 		let settings_v1 = RowSettings {
 			ttl: Some(Ttl {
 				duration_nanos: 300_000_000_000,
-				anchor: TtlAnchor::Created,
 				cleanup_mode: TtlCleanupMode::Drop,
 			}),
 			persistent: true,
@@ -130,7 +125,6 @@ pub mod tests {
 		let settings_v2 = RowSettings {
 			ttl: Some(Ttl {
 				duration_nanos: 600_000_000_000,
-				anchor: TtlAnchor::Updated,
 				cleanup_mode: TtlCleanupMode::Delete,
 			}),
 			persistent: false,

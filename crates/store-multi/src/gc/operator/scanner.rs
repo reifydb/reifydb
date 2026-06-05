@@ -5,10 +5,9 @@ use std::{collections::HashMap, ops::Bound};
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{key::EncodedKey, row::EncodedRow},
+	encoded::key::EncodedKey,
 	interface::{catalog::flow::FlowNodeId, store::EntryKind},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
-	row::{Ttl, TtlAnchor},
 };
 use reifydb_value::Result;
 
@@ -25,11 +24,10 @@ pub struct ExpiredOperatorState {
 	pub scanned_bytes: u64,
 }
 
-pub fn scan_operator_by_created_at(
+pub fn scan_operator_expired(
 	storage: &MultiCommitBufferTier,
 	node_id: FlowNodeId,
-	ttl: &Ttl,
-	now_nanos: u64,
+	cutoff_version: CommitVersion,
 	batch_size: usize,
 	cursor: &mut RangeCursor,
 ) -> Result<(Vec<ExpiredOperatorState>, ScanResult)> {
@@ -47,59 +45,14 @@ pub fn scan_operator_by_created_at(
 	let batch = storage.range_next(table, &mut batch_cursor, start, end, scope, batch_size)?;
 
 	for entry in &batch.entries {
-		if let Some(ref value) = entry.value {
-			let row = EncodedRow(value.clone());
-			let anchor_nanos = row.created_at_nanos();
-			if now_nanos.saturating_sub(anchor_nanos) >= ttl.duration_nanos {
-				expired.push(ExpiredOperatorState {
-					node_id,
-					key: entry.key.clone(),
-					scanned_bytes: value.len() as u64,
-				});
-			}
-		}
-	}
-
-	*cursor = batch_cursor;
-	if !batch.has_more || cursor.exhausted {
-		Ok((expired, ScanResult::Exhausted))
-	} else {
-		Ok((expired, ScanResult::Yielded))
-	}
-}
-
-pub fn scan_operator_by_updated_at(
-	storage: &MultiCommitBufferTier,
-	node_id: FlowNodeId,
-	ttl: &Ttl,
-	now_nanos: u64,
-	batch_size: usize,
-	cursor: &mut RangeCursor,
-) -> Result<(Vec<ExpiredOperatorState>, ScanResult)> {
-	let range = FlowNodeStateKey::node_range(node_id);
-	let table = EntryKind::Operator(node_id);
-
-	let start = bound_as_ref(&range.start);
-	let end = bound_as_ref(&range.end);
-
-	let mut expired = Vec::new();
-	let mut batch_cursor = cursor.clone();
-	let scope = MultiVersionScope::AsOf {
-		read: CommitVersion(u64::MAX),
-	};
-	let batch = storage.range_next(table, &mut batch_cursor, start, end, scope, batch_size)?;
-
-	for entry in &batch.entries {
-		if let Some(ref value) = entry.value {
-			let row = EncodedRow(value.clone());
-			let anchor_nanos = row.updated_at_nanos();
-			if now_nanos.saturating_sub(anchor_nanos) >= ttl.duration_nanos {
-				expired.push(ExpiredOperatorState {
-					node_id,
-					key: entry.key.clone(),
-					scanned_bytes: value.len() as u64,
-				});
-			}
+		if let Some(ref value) = entry.value
+			&& entry.version <= cutoff_version
+		{
+			expired.push(ExpiredOperatorState {
+				node_id,
+				key: entry.key.clone(),
+				scanned_bytes: value.len() as u64,
+			});
 		}
 	}
 
@@ -117,9 +70,8 @@ pub(crate) const JOIN_RIGHT_PREFIX: u8 = 0x02;
 pub fn scan_operator_join(
 	storage: &MultiCommitBufferTier,
 	node_id: FlowNodeId,
-	left: Option<&Ttl>,
-	right: Option<&Ttl>,
-	now_nanos: u64,
+	left_cutoff: Option<CommitVersion>,
+	right_cutoff: Option<CommitVersion>,
 	batch_size: usize,
 	cursor: &mut RangeCursor,
 ) -> Result<(Vec<ExpiredOperatorState>, ScanResult)> {
@@ -148,21 +100,16 @@ pub fn scan_operator_join(
 		};
 
 		let side_prefix = FlowNodeStateKey::decode(&entry.key).and_then(|k| k.key.first().copied());
-		let ttl = match side_prefix {
-			Some(JOIN_LEFT_PREFIX) => left,
-			Some(JOIN_RIGHT_PREFIX) => right,
+		let cutoff = match side_prefix {
+			Some(JOIN_LEFT_PREFIX) => left_cutoff,
+			Some(JOIN_RIGHT_PREFIX) => right_cutoff,
 			_ => None,
 		};
-		let Some(ttl) = ttl else {
+		let Some(cutoff) = cutoff else {
 			continue;
 		};
 
-		let row = EncodedRow(value.clone());
-		let anchor_nanos = match ttl.anchor {
-			TtlAnchor::Created => row.created_at_nanos(),
-			TtlAnchor::Updated => row.updated_at_nanos(),
-		};
-		if now_nanos.saturating_sub(anchor_nanos) >= ttl.duration_nanos {
+		if entry.version <= cutoff {
 			expired.push(ExpiredOperatorState {
 				node_id,
 				key: entry.key.clone(),
@@ -229,21 +176,14 @@ mod tests {
 		encoded::row::SHAPE_HEADER_SIZE,
 		interface::{catalog::flow::FlowNodeId, store::EntryKind},
 		key::{flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
-		row::{Ttl, TtlAnchor, TtlCleanupMode},
 	};
 	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
 	use crate::tier::{TierStorage, commit::buffer::MultiCommitBufferTier};
 
-	fn row_with_created(payload: &[u8], created_at: u64) -> CowVec<u8> {
-		row_with(payload, created_at, created_at)
-	}
-
-	fn row_with(payload: &[u8], created_at: u64, updated_at: u64) -> CowVec<u8> {
+	fn row(payload: &[u8]) -> CowVec<u8> {
 		let mut buf = vec![0u8; SHAPE_HEADER_SIZE + payload.len()];
-		buf[8..16].copy_from_slice(&created_at.to_le_bytes());
-		buf[16..24].copy_from_slice(&updated_at.to_le_bytes());
 		buf[SHAPE_HEADER_SIZE..].copy_from_slice(payload);
 		CowVec::new(buf)
 	}
@@ -256,36 +196,28 @@ mod tests {
 
 		let old_data = FlowNodeStateKey::encoded(node, vec![1u8]);
 		let fresh_data = FlowNodeStateKey::encoded(node, vec![2u8]);
-		// An OLD internal-state row (e.g. a row-number mapping). It must stay immune even though
-		// its anchor is well past the TTL, because operator GC only scans the data-state range.
+		// An internal-state row (e.g. a row-number mapping). It must stay immune even though it is
+		// older than the cutoff, because operator GC only scans the data-state range.
 		let old_internal = FlowNodeInternalStateKey::encoded(node, vec![9u8]);
 
+		// Old data + internal at v1; the fresh data row at v3.
 		storage.set(
 			CommitVersion(1),
 			HashMap::from([(
 				table,
-				vec![
-					(old_data.clone(), Some(row_with_created(b"old", 1))),
-					(fresh_data.clone(), Some(row_with_created(b"new", 10_000))),
-					(old_internal.clone(), Some(row_with_created(b"map", 1))),
-				],
+				vec![(old_data.clone(), Some(row(b"old"))), (old_internal.clone(), Some(row(b"map")))],
 			)]),
 		)
 		.unwrap();
+		storage.set(CommitVersion(3), HashMap::from([(table, vec![(fresh_data.clone(), Some(row(b"new")))])]))
+			.unwrap();
 
-		let ttl = Ttl {
-			duration_nanos: 100,
-			anchor: TtlAnchor::Created,
-			cleanup_mode: TtlCleanupMode::Drop,
-		};
-		let now = 1_000;
-
+		// Cutoff sits between the two writes: the v1 data row is expired, the v3 data row survives.
+		let cutoff = CommitVersion(2);
 		let mut cursor = RangeCursor::default();
-		let (expired, _) = scan_operator_by_created_at(&storage, node, &ttl, now, 4096, &mut cursor).unwrap();
+		let (expired, _) = scan_operator_expired(&storage, node, cutoff, 4096, &mut cursor).unwrap();
 
-		// Exactly the old data-state row is expired: the fresh data row is within TTL, and the
-		// old internal-state row is outside the data-state scan range entirely.
-		assert_eq!(expired.len(), 1, "only the old data-state row should be expired");
+		assert_eq!(expired.len(), 1, "only the data row written at or below the cutoff version should expire");
 		assert_eq!(expired[0].key, old_data);
 
 		let mut stats = OperatorScanStats::default();
@@ -300,8 +232,7 @@ mod tests {
 
 		// Re-scanning finds nothing: the expired data row is gone, the fresh one stays.
 		let mut cursor = RangeCursor::default();
-		let (expired_after, _) =
-			scan_operator_by_created_at(&storage, node, &ttl, now, 4096, &mut cursor).unwrap();
+		let (expired_after, _) = scan_operator_expired(&storage, node, cutoff, 4096, &mut cursor).unwrap();
 		assert!(expired_after.is_empty(), "the expired data-state row should have been dropped");
 	}
 
@@ -320,33 +251,34 @@ mod tests {
 		let left_schema = FlowNodeStateKey::encoded(node, vec![0x03u8]);
 		let right_schema = FlowNodeStateKey::encoded(node, vec![0x04u8]);
 
+		// Old rows + schema rows at v1; fresh rows at v3.
 		storage.set(
 			CommitVersion(1),
 			HashMap::from([(
 				table,
 				vec![
-					(left_old.clone(), Some(row_with_created(b"lo", 1))),
-					(left_fresh.clone(), Some(row_with_created(b"lf", 10_000))),
-					(right_old.clone(), Some(row_with_created(b"ro", 1))),
-					(right_fresh.clone(), Some(row_with_created(b"rf", 10_000))),
-					(left_schema.clone(), Some(row_with_created(b"ls", 1))),
-					(right_schema.clone(), Some(row_with_created(b"rs", 1))),
+					(left_old.clone(), Some(row(b"lo"))),
+					(right_old.clone(), Some(row(b"ro"))),
+					(left_schema.clone(), Some(row(b"ls"))),
+					(right_schema.clone(), Some(row(b"rs"))),
 				],
 			)]),
 		)
 		.unwrap();
+		storage.set(
+			CommitVersion(3),
+			HashMap::from([(
+				table,
+				vec![(left_fresh.clone(), Some(row(b"lf"))), (right_fresh.clone(), Some(row(b"rf")))],
+			)]),
+		)
+		.unwrap();
 
-		let ttl = Ttl {
-			duration_nanos: 100,
-			anchor: TtlAnchor::Updated,
-			cleanup_mode: TtlCleanupMode::Drop,
-		};
-		let now = 1_000;
-
-		// Both sides configured: each side's old row expires; fresh rows and schema rows survive.
+		// Both sides cut off at v2: each side's v1 row expires; v3 rows and schema rows survive.
+		let cutoff = CommitVersion(2);
 		let mut cursor = RangeCursor::default();
 		let (expired, _) =
-			scan_operator_join(&storage, node, Some(&ttl), Some(&ttl), now, 4096, &mut cursor).unwrap();
+			scan_operator_join(&storage, node, Some(cutoff), Some(cutoff), 4096, &mut cursor).unwrap();
 		let keys: Vec<&EncodedKey> = expired.iter().map(|e| &e.key).collect();
 		assert_eq!(expired.len(), 2, "exactly the two old side rows expire");
 		assert!(keys.contains(&&left_old) && keys.contains(&&right_old));
@@ -356,46 +288,45 @@ mod tests {
 			"schema rows are never scanned"
 		);
 
-		// Asymmetric: only the left side has a TTL -> only the old left row is eligible.
+		// Asymmetric: only the left side has a cutoff -> only the old left row is eligible.
 		let mut cursor = RangeCursor::default();
 		let (expired_left_only, _) =
-			scan_operator_join(&storage, node, Some(&ttl), None, now, 4096, &mut cursor).unwrap();
+			scan_operator_join(&storage, node, Some(cutoff), None, 4096, &mut cursor).unwrap();
 		assert_eq!(expired_left_only.len(), 1);
 		assert_eq!(expired_left_only[0].key, left_old);
 	}
 
 	#[test]
-	fn join_scan_respects_the_configured_anchor() {
-		// A row created long ago but updated recently must be evicted under a Created anchor and
-		// kept under an Updated anchor - the scan must honor the per-side anchor, not force one.
+	fn join_scan_applies_independent_per_side_cutoffs() {
+		// The two join sides expire on independent cutoff versions: a same-aged row is evicted on
+		// the side whose cutoff reaches its version and kept on the side whose cutoff is below it.
 		let storage = MultiCommitBufferTier::memory();
 		let node = FlowNodeId(3);
 		let table = EntryKind::Operator(node);
 		let left = FlowNodeStateKey::encoded(node, vec![JOIN_LEFT_PREFIX, 1]);
+		let right = FlowNodeStateKey::encoded(node, vec![JOIN_RIGHT_PREFIX, 1]);
 		storage.set(
-			CommitVersion(1),
-			HashMap::from([(table, vec![(left.clone(), Some(row_with(b"l", 1, 10_000)))])]),
+			CommitVersion(5),
+			HashMap::from([(
+				table,
+				vec![(left.clone(), Some(row(b"l"))), (right.clone(), Some(row(b"r")))],
+			)]),
 		)
 		.unwrap();
-		let now = 1_000;
-		let created = Ttl {
-			duration_nanos: 100,
-			anchor: TtlAnchor::Created,
-			cleanup_mode: TtlCleanupMode::Drop,
-		};
-		let updated = Ttl {
-			anchor: TtlAnchor::Updated,
-			..created.clone()
-		};
 
+		// Left cutoff (10) reaches the rows' version -> left expires; right cutoff (3) is below -> right
+		// survives.
 		let mut cursor = RangeCursor::default();
-		let (created_expired, _) =
-			scan_operator_join(&storage, node, Some(&created), None, now, 4096, &mut cursor).unwrap();
-		assert_eq!(created_expired.len(), 1, "Created anchor: an old created_at must expire");
-
-		let mut cursor = RangeCursor::default();
-		let (updated_expired, _) =
-			scan_operator_join(&storage, node, Some(&updated), None, now, 4096, &mut cursor).unwrap();
-		assert!(updated_expired.is_empty(), "Updated anchor: a fresh updated_at must survive");
+		let (expired, _) = scan_operator_join(
+			&storage,
+			node,
+			Some(CommitVersion(10)),
+			Some(CommitVersion(3)),
+			4096,
+			&mut cursor,
+		)
+		.unwrap();
+		assert_eq!(expired.len(), 1, "only the side whose cutoff reaches the row's version expires");
+		assert_eq!(expired[0].key, left);
 	}
 }

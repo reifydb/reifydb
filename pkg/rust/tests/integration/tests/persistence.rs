@@ -26,7 +26,7 @@ fn persistent_false_rejected_when_store_has_no_buffer() {
 	db.admin_as_root("create namespace demo", Params::None).unwrap();
 
 	let result = db.admin_as_root(
-		"create table demo::t { id: uint8 } with { row: { ttl: { duration: '1m', on: created, mode: drop }, persistent: false } }",
+		"create table demo::t { id: uint8 } with { row: { ttl: { duration: '1m', mode: drop }, persistent: false } }",
 		Params::None,
 	);
 	assert!(result.is_err(), "persistent: false must be rejected when the store has no buffer tier");
@@ -49,7 +49,7 @@ fn persistent_false_rows_are_not_durable_after_reopen() {
 		db.admin_as_root("create namespace demo", Params::None).unwrap();
 		db.admin_as_root("create table demo::keep { id: uint8 }", Params::None).unwrap();
 		db.admin_as_root(
-			"create table demo::transient { id: uint8 } with { row: { ttl: { duration: '1h', on: created, mode: drop }, persistent: false } }",
+			"create table demo::transient { id: uint8 } with { row: { ttl: { duration: '1h', mode: drop }, persistent: false } }",
 			Params::None,
 		)
 		.unwrap();

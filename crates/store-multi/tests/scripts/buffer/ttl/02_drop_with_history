@@ -1,14 +1,14 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-# Row with three versions: V1 and V2 in __historical, V3 in __current.
-# All share created_at; all expire together. Both physical tables must
-# be empty afterwards (covers the bulk-drop fast path in
-# drop_versions_from_split / memory drop).
+# Row with three versions: V1 and V2 in __historical, V3 in __current. The
+# current version (V3) is at or below the cutoff, so the whole key expires and
+# ALL its versions are dropped. Both physical tables must be empty afterwards
+# (covers the bulk-drop fast path in drop_versions_from_split / memory drop).
 
-set 1=v1 version=1 created=1000
-set 1=v2 version=2 created=1000
-set 1=v3 version=3 created=1000
+set 1=v1 version=1
+set 1=v2 version=2
+set 1=v3 version=3
 ---
 ok
 ok
@@ -22,11 +22,11 @@ historical: 2
 
 versions 1
 ---
-v3 created=1000 updated=1000 value="v3"
-v2 created=1000 updated=1000 value="v2"
-v1 created=1000 updated=1000 value="v1"
+v3 value="v3"
+v2 value="v2"
+v1 value="v1"
 
-scan_ttl mode=created duration=5000 now=10000
+scan_ttl cutoff=5
 ---
 expired=1 versions_dropped=3
 

@@ -6,6 +6,7 @@
 //! pre-tombstone version; operator handles per-flow retention overrides where some operators keep less history
 //! than the global default.
 
+pub mod epoch;
 pub mod historical;
 pub mod operator;
 pub mod row;
