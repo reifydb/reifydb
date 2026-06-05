@@ -1,7 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{env::temp_dir, error::Error, fs, io, io::Write as _, panic, path, process, time};
+#[allow(clippy::disallowed_types)]
+use std::sync::Mutex;
+use std::{
+	collections::HashMap,
+	env::temp_dir,
+	error::Error,
+	fs, io,
+	io::Write as _,
+	panic, path, process,
+	sync::{Arc, LazyLock, PoisonError},
+	time,
+};
 
 use fs::read_to_string;
 use io::ErrorKind;
@@ -16,6 +27,16 @@ use crate::{
 		parser::parse,
 	},
 };
+
+#[allow(clippy::disallowed_types)]
+static SCRIPT_LOCKS: LazyLock<Mutex<HashMap<path::PathBuf, Arc<Mutex<()>>>>> =
+	LazyLock::new(|| Mutex::new(HashMap::new()));
+
+#[allow(clippy::disallowed_types)]
+fn lock_for(path: &Path) -> Arc<Mutex<()>> {
+	let mut map = SCRIPT_LOCKS.lock().unwrap_or_else(PoisonError::into_inner);
+	map.entry(path.to_path_buf()).or_insert_with(|| Arc::new(Mutex::new(()))).clone()
+}
 
 pub trait Runner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>>;
@@ -59,6 +80,9 @@ pub fn run_path<R: Runner, P: AsRef<Path>>(runner: &mut R, path: P) -> io::Resul
 	if filename.to_str().unwrap().ends_with(".skip") {
 		return Ok(());
 	}
+
+	let lock = lock_for(path);
+	let _guard = lock.lock().unwrap_or_else(PoisonError::into_inner);
 
 	let input = read_to_string(dir.join(filename))?;
 	let output = generate(runner, &input)?;

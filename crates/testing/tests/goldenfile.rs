@@ -291,6 +291,78 @@ fn test_long_lines_truncation() {
 }
 
 #[test]
+fn test_concurrent_update_never_empties_file() {
+	use std::{
+		sync::{
+			Arc,
+			atomic::{AtomicBool, AtomicUsize, Ordering},
+		},
+		thread,
+	};
+
+	// Regression for the UPDATE_TESTFILES race: the same golden file is rewritten in update
+	// mode by multiple test entry points (e.g. memory + sqlite backends) running in parallel.
+	// The pre-fix code truncated the golden file in place at open time, so a concurrent reader
+	// could observe it momentarily empty. With the atomic temp+rename write, the golden path is
+	// only ever replaced atomically, so any successful read must yield the complete content -
+	// never empty, never partial. A non-zero violation count means a truncated file leaked.
+	let test_dir = std::env::temp_dir().join(format!("goldenfile_race_{}", std::process::id()));
+	fs::create_dir_all(&test_dir).unwrap();
+	let path = test_dir.join("race.txt");
+
+	let expected: String = (1..=50).map(|i| format!("line {i}\n")).collect();
+
+	let writers_done = Arc::new(AtomicBool::new(false));
+	let violations = Arc::new(AtomicUsize::new(0));
+
+	let mut reader_handles = Vec::new();
+	for _ in 0..4 {
+		let path = path.clone();
+		let expected = expected.clone();
+		let writers_done = writers_done.clone();
+		let violations = violations.clone();
+		reader_handles.push(thread::spawn(move || {
+			while !writers_done.load(Ordering::Relaxed) {
+				if let Ok(content) = fs::read_to_string(&path)
+					&& content != expected
+				{
+					violations.fetch_add(1, Ordering::Relaxed);
+				}
+			}
+		}));
+	}
+
+	let mut writer_handles = Vec::new();
+	for _ in 0..8 {
+		let test_dir = test_dir.clone();
+		let expected = expected.clone();
+		writer_handles.push(thread::spawn(move || {
+			for _ in 0..200 {
+				let mint = goldenfile::Mint::new_with_mode(&test_dir, Mode::Update);
+				let mut file = mint.new_goldenfile("race.txt").unwrap();
+				file.write_all(expected.as_bytes()).unwrap();
+			}
+		}));
+	}
+
+	for h in writer_handles {
+		h.join().unwrap();
+	}
+	writers_done.store(true, Ordering::Relaxed);
+	for h in reader_handles {
+		h.join().unwrap();
+	}
+
+	assert_eq!(
+		violations.load(Ordering::Relaxed),
+		0,
+		"a reader observed an empty or partial golden file during concurrent update"
+	);
+	assert_eq!(fs::read_to_string(&path).unwrap(), expected);
+	let _ = fs::remove_dir_all(&test_dir);
+}
+
+#[test]
 fn test_binary_safety() {
 	let test_dir = std::env::temp_dir().join(format!("goldenfile_binary_{}", std::process::id()));
 	fs::create_dir_all(&test_dir).unwrap();

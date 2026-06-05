@@ -14,6 +14,17 @@ use std::{
 use fs::read;
 use reifydb_core::util::colored::Colorize;
 
+fn update_temp_path(golden_path: &Path) -> PathBuf {
+	#[allow(clippy::disallowed_methods)]
+	let nanos = SystemTime::now().duration_since(time::UNIX_EPOCH).unwrap().as_nanos();
+	let file_name = golden_path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+	let temp_name = format!(".{}.tmp-{}-{}-{:?}", file_name, id(), nanos, thread::current().id());
+	match golden_path.parent() {
+		Some(parent) => parent.join(temp_name),
+		None => PathBuf::from(temp_name),
+	}
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
 	Update,
@@ -89,16 +100,19 @@ impl Mint {
 
 			Ok(GoldenFile {
 				file,
-				temp_path: Some(temp_path),
+				temp_path,
 				golden_path,
+				mode: Mode::Compare,
 			})
 		} else {
-			let file = OpenOptions::new().write(true).create(true).truncate(true).open(&golden_path)?;
+			let temp_path = update_temp_path(&golden_path);
+			let file = OpenOptions::new().write(true).create(true).truncate(true).open(&temp_path)?;
 
 			Ok(GoldenFile {
 				file,
-				temp_path: None,
+				temp_path,
 				golden_path,
+				mode: Mode::Update,
 			})
 		}
 	}
@@ -118,8 +132,9 @@ impl Drop for Mint {
 
 pub struct GoldenFile {
 	file: File,
-	temp_path: Option<PathBuf>,
+	temp_path: PathBuf,
 	golden_path: PathBuf,
+	mode: Mode,
 }
 
 impl Write for GoldenFile {
@@ -136,8 +151,13 @@ impl Drop for GoldenFile {
 	fn drop(&mut self) {
 		let _ = self.file.flush();
 
-		if let Some(ref temp_path) = self.temp_path {
-			self.verify_against_golden(temp_path);
+		match self.mode {
+			Mode::Compare => self.verify_against_golden(&self.temp_path),
+			Mode::Update => {
+				fs::rename(&self.temp_path, &self.golden_path).unwrap_or_else(|e| {
+					panic!("failed to finalize goldenfile '{}': {e}", self.golden_path.display())
+				});
+			}
 		}
 	}
 }
