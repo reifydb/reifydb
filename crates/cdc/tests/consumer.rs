@@ -86,7 +86,7 @@ fn test_event_processing() {
 
 	test_instance.start().expect("Failed to start consumer");
 
-	sleep(Duration::from_milliseconds(200).unwrap().to_std());
+	await_until("processes 5", || consumer_clone.get_total_changes() >= 5);
 
 	let changes = consumer_clone.get_total_changes();
 	assert_eq!(changes, 5, "Should have processed 5 changes");
@@ -200,7 +200,7 @@ fn test_error_handling() {
 	let mut test_instance = PollConsumer::new(config, t.inner().clone(), consumer, cdc_store, runtime);
 
 	test_instance.start().expect("Failed to start consumer");
-	sleep(Duration::from_milliseconds(100).unwrap().to_std());
+	await_until("processes initial 3", || consumer_clone.get_total_changes() >= 3);
 
 	let changes_before_error = consumer_clone.get_total_changes();
 	assert_eq!(changes_before_error, 3, "Should have processed 3 changes before error");
@@ -214,7 +214,7 @@ fn test_error_handling() {
 	assert_eq!(changes_during_error, 3, "Should not have processed new changes during error");
 
 	consumer_clone.set_should_fail(false);
-	sleep(Duration::from_milliseconds(150).unwrap().to_std());
+	await_until("recovery processes 5", || consumer_clone.get_total_changes() >= 5);
 
 	let changes_after_recovery = consumer_clone.get_total_changes();
 	assert_eq!(changes_after_recovery, 5, "Should have processed new changes after recovery");
@@ -246,7 +246,7 @@ fn test_empty_events_handling() {
 	assert_eq!(consumer_clone.get_process_count(), 0, "Should not have called consume");
 
 	insert_test_events(&t, 1);
-	sleep(Duration::from_milliseconds(100).unwrap().to_std());
+	await_until("processes 1", || consumer_clone.get_total_changes() >= 1);
 
 	let changes_after_insert = consumer_clone.get_total_changes();
 	assert_eq!(changes_after_insert, 1, "Should have processed 1 change");
@@ -293,7 +293,9 @@ fn test_multiple_consumers() {
 	test_instance1.start().expect("Failed to start consumer 1");
 	test_instance2.start().expect("Failed to start consumer 2");
 
-	sleep(Duration::from_milliseconds(200).unwrap().to_std());
+	await_until("both process 3", || {
+		consumer1_clone.get_total_changes() >= 3 && consumer2_clone.get_total_changes() >= 3
+	});
 
 	let changes1 = consumer1_clone.get_total_changes();
 	let changes2 = consumer2_clone.get_total_changes();
@@ -303,7 +305,9 @@ fn test_multiple_consumers() {
 
 	insert_test_events(&t, 2);
 
-	sleep(Duration::from_milliseconds(200).unwrap().to_std());
+	await_until("both process 5", || {
+		consumer1_clone.get_total_changes() >= 5 && consumer2_clone.get_total_changes() >= 5
+	});
 
 	let changes1_after = consumer1_clone.get_total_changes();
 	let changes2_after = consumer2_clone.get_total_changes();
@@ -372,7 +376,7 @@ fn test_non_table_events_filtered() {
 	let mut test_instance = PollConsumer::new(config, t.inner().clone(), consumer, cdc_store, runtime);
 
 	test_instance.start().expect("Failed to start consumer");
-	sleep(Duration::from_milliseconds(150).unwrap().to_std());
+	await_until("processes 2", || consumer_clone.get_total_changes() >= 2);
 	test_instance.stop().expect("Failed to stop consumer");
 
 	// The transaction contains both changes, but it was included because it has at least one table encoded
@@ -464,8 +468,7 @@ fn test_batch_size_limits_processing() {
 
 	test_instance.start().expect("Failed to start consumer");
 
-	// Wait for processing - should take at least 3 cycles (10, 10, 5)
-	sleep(Duration::from_milliseconds(300).unwrap().to_std());
+	await_until("processes 25", || consumer_clone.get_total_changes() >= 25);
 
 	let changes = consumer_clone.get_total_changes();
 	assert_eq!(changes, 25, "Should have processed all 25 changes");
@@ -501,8 +504,7 @@ fn test_batch_size_one_processes_sequentially() {
 
 	test_instance.start().expect("Failed to start consumer");
 
-	// Wait for processing
-	sleep(Duration::from_milliseconds(400).unwrap().to_std());
+	await_until("processes 5", || consumer_clone.get_total_changes() >= 5);
 
 	let changes = consumer_clone.get_total_changes();
 	assert_eq!(changes, 5, "Should have processed all 5 changes");
@@ -534,8 +536,7 @@ fn test_batch_size_none_processes_all_at_once() {
 
 	test_instance.start().expect("Failed to start consumer");
 
-	// Wait for processing
-	sleep(Duration::from_milliseconds(150).unwrap().to_std());
+	await_until("processes 20", || consumer_clone.get_total_changes() >= 20);
 
 	let changes = consumer_clone.get_total_changes();
 	assert_eq!(changes, 20, "Should have processed all 20 changes");
@@ -571,8 +572,7 @@ fn test_batch_size_larger_than_events() {
 
 	test_instance.start().expect("Failed to start consumer");
 
-	// Wait for processing
-	sleep(Duration::from_milliseconds(150).unwrap().to_std());
+	await_until("processes 5", || consumer_clone.get_total_changes() >= 5);
 
 	let changes = consumer_clone.get_total_changes();
 	assert_eq!(changes, 5, "Should have processed all 5 changes");
@@ -669,8 +669,7 @@ fn test_batch_size_exact_match() {
 
 	test_instance.start().expect("Failed to start consumer");
 
-	// Wait for processing
-	sleep(Duration::from_milliseconds(150).unwrap().to_std());
+	await_until("processes 10", || consumer_clone.get_total_changes() >= 10);
 
 	let changes = consumer_clone.get_total_changes();
 	assert_eq!(changes, 10, "Should have processed all 10 changes");
@@ -722,8 +721,9 @@ fn test_multiple_consumers_different_batch_sizes() {
 	test_instance1.start().expect("Failed to start consumer 1");
 	test_instance2.start().expect("Failed to start consumer 2");
 
-	// Wait for processing
-	sleep(Duration::from_milliseconds(400).unwrap().to_std());
+	await_until("both process 10", || {
+		consumer1_clone.get_total_changes() >= 10 && consumer2_clone.get_total_changes() >= 10
+	});
 
 	let changes1 = consumer1_clone.get_total_changes();
 	let changes2 = consumer2_clone.get_total_changes();
