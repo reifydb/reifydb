@@ -450,7 +450,13 @@ impl FlowEngineInner {
 		let parent = self.parent(inputs[0])?;
 		self.operators.insert(
 			node_id,
-			OperatorCell::new(Operators::Extend(ExtendOperator::new(parent, node_id, expressions))),
+			OperatorCell::new(Operators::Extend(ExtendOperator::new(
+				parent,
+				node_id,
+				expressions,
+				self.executor.routines.clone(),
+				self.runtime_context.clone(),
+			))),
 		);
 		Ok(())
 	}

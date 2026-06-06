@@ -93,3 +93,43 @@ fn commit_self_lease_keeps_own_version_leasable_after_cutoff_advances() {
 		engine.acquire_version_lease(version).expect_err("version must be evicted once self-lease is released");
 	assert_eq!(err.0.code, "TXN_012");
 }
+
+// A lagging CDC consumer (a subscription worker draining a backlog) must still be able to lease a
+// historical version it has not processed yet, even after the query watermark (the historical-GC
+// cutoff) has advanced past that version. The consumer watermark lowers the lease floor to the
+// consumer's own position. Without it the acquire is rejected as TXN_012, which is the production
+// subscription failure this change fixes.
+#[test]
+fn consumer_watermark_keeps_lagging_version_leasable() {
+	let engine = test_multi();
+
+	// Advance the query watermark (cutoff) past the version the lagging consumer still needs.
+	engine.advance_version_to(CommitVersion(14096));
+	assert!(
+		engine.query_done_until().0 >= 14096,
+		"precondition: the query watermark must be advanced past the target version"
+	);
+
+	// The default consumer watermark is u64::MAX, meaning "no consumer pins anything". The cutoff is
+	// then purely the query watermark, so an evicted version is correctly rejected. This guards
+	// against the fix accidentally weakening the no-consumer case.
+	let err = engine
+		.acquire_version_lease(CommitVersion(14093))
+		.expect_err("with no consumer pinning, an evicted version must not be leasable");
+	assert_eq!(err.0.code, "TXN_012");
+
+	// A consumer lagging at 14092 lowers the floor so the next version it will process (14093) stays
+	// leasable despite the higher query watermark.
+	engine.set_consumer_watermark(CommitVersion(14092));
+	let lease = engine
+		.acquire_version_lease(CommitVersion(14093))
+		.expect("a version at or above the consumer watermark must remain leasable");
+	assert_eq!(lease.version(), CommitVersion(14093));
+
+	// The floor is the consumer position, not zero: a version below the consumer watermark is still
+	// rejected. This is the footgun guard, since a 0 default would have made all history leasable.
+	let err = engine
+		.acquire_version_lease(CommitVersion(14091))
+		.expect_err("a version below the consumer watermark must not be leasable");
+	assert_eq!(err.0.code, "TXN_012");
+}

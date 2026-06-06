@@ -3,7 +3,10 @@
 
 use std::{
 	collections::{BTreeMap, HashSet},
-	sync::Arc,
+	sync::{
+		Arc,
+		atomic::{AtomicU64, Ordering},
+	},
 };
 
 use cleanup::cleanup_old_windows;
@@ -99,6 +102,7 @@ where
 	pub(crate) query: WaterMark,
 	pub(crate) command: WaterMark,
 	pub(crate) leases: Arc<VersionLeases>,
+	consumer_watermark: Arc<AtomicU64>,
 	shutdown_signal: Arc<RwLock<bool>>,
 	spawner: ActorSpawner,
 	metrics_clock: Clock,
@@ -128,6 +132,7 @@ where
 			query: WaterMark::new("txn-mark-query".into(), &spawner),
 			command: WaterMark::new("txn-mark-cmd".into(), &spawner),
 			leases: VersionLeases::new(),
+			consumer_watermark: Arc::new(AtomicU64::new(u64::MAX)),
 			shutdown_signal,
 			spawner,
 			metrics_clock,
@@ -150,6 +155,18 @@ where
 
 	pub fn rng(&self) -> &Rng {
 		&self.rng
+	}
+
+	pub(crate) fn consumer_watermark(&self) -> CommitVersion {
+		CommitVersion(self.consumer_watermark.load(Ordering::Acquire))
+	}
+
+	pub(crate) fn set_consumer_watermark(&self, version: CommitVersion) {
+		self.consumer_watermark.store(version.0, Ordering::Release);
+	}
+
+	pub(crate) fn consumer_watermark_handle(&self) -> Arc<AtomicU64> {
+		self.consumer_watermark.clone()
 	}
 
 	pub fn window_count(&self) -> usize {
@@ -821,8 +838,12 @@ mod tests {
 				NUM_CONCURRENT, success_count
 			);
 
-			// Give watermark processor time to catch up
-			sleep(Duration::from_milliseconds(100).unwrap().to_std());
+			// Wait for the watermark to catch up to max_version. Waiting on the
+			// event keeps this deterministic under load; a skipped version would
+			// stall the advance and time out here rather than passing by luck.
+			let reached =
+				oracle.command.wait_for_mark_timeout(max_version, Duration::from_seconds(5).unwrap());
+			assert!(reached, "watermark did not reach {} within timeout", max_version.0);
 
 			// KEY ASSERTION: The watermark should have advanced to max_version
 			// If any version was skipped due to the race condition, done_until
@@ -878,9 +899,6 @@ mod tests {
 			}
 		}
 
-		// Give watermark time to process
-		sleep(Duration::from_milliseconds(50).unwrap().to_std());
-
 		// All versions should be contiguous (no gaps)
 		versions.sort();
 		for i in 1..versions.len() {
@@ -893,13 +911,18 @@ mod tests {
 			);
 		}
 
+		// Wait for the watermark to reach the highest version. Waiting on the
+		// event (rather than a fixed sleep) keeps the test deterministic under
+		// load: a real stall or dropped version would time out here and fail.
+		let expected = *versions.last().unwrap_or(&0);
+		let reached = oracle
+			.command
+			.wait_for_mark_timeout(CommitVersion(expected), Duration::from_seconds(5).unwrap());
+		assert!(reached, "watermark did not reach {} within timeout", expected);
+
 		// Watermark should be at the highest version
 		let done_until = oracle.command.done_until();
-		assert_eq!(
-			done_until.0,
-			*versions.last().unwrap_or(&0),
-			"Watermark should be at highest committed version"
-		);
+		assert_eq!(done_until.0, expected, "Watermark should be at highest committed version");
 	}
 
 	#[test]

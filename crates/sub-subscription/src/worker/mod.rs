@@ -51,7 +51,7 @@ pub enum SubscriptionWorkerMessage {
 	Dispatch {
 		to_version: CommitVersion,
 		changes: Arc<Vec<Change>>,
-		done: Box<dyn FnOnce() + Send>,
+		done: Box<dyn FnOnce(Result<()>) + Send>,
 	},
 
 	Register {
@@ -148,10 +148,11 @@ impl Actor for SubscriptionWorkerActor {
 					changes,
 					done,
 				} => {
-					if let Err(e) = self.process_dispatch(state, to_version, &changes) {
+					let result = self.process_dispatch(state, to_version, &changes);
+					if let Err(e) = &result {
 						error!(error = %e, "subscription worker dispatch failed");
 					}
-					done();
+					done(result);
 				}
 				SubscriptionWorkerMessage::Register {
 					id,

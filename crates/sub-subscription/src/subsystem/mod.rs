@@ -246,7 +246,7 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 		let store = Arc::new(SubscriptionStore::new(1024));
 		let custom_operators = CustomOperators::new(HashMap::new());
 
-		let consumer_watermark = CdcConsumerWatermark::new();
+		let consumer_watermark = CdcConsumerWatermark::from_handle(engine.multi().consumer_watermark_handle());
 		ioc.register_service::<CdcConsumerWatermark>(consumer_watermark.clone());
 
 		let subsystem = SubscriptionSubsystem::new(

@@ -11,19 +11,35 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::Result;
 
 #[derive(Debug, Clone, Default)]
-pub struct CdcConsumerWatermark(Arc<AtomicU64>);
+pub struct CdcConsumerWatermark {
+	progress: Arc<AtomicU64>,
+	gc_floor: Option<Arc<AtomicU64>>,
+}
 
 impl CdcConsumerWatermark {
 	pub fn new() -> Self {
-		Self(Arc::new(AtomicU64::new(0)))
+		Self {
+			progress: Arc::new(AtomicU64::new(0)),
+			gc_floor: None,
+		}
+	}
+
+	pub fn from_handle(gc_floor: Arc<AtomicU64>) -> Self {
+		Self {
+			progress: Arc::new(AtomicU64::new(0)),
+			gc_floor: Some(gc_floor),
+		}
 	}
 
 	pub fn get(&self) -> CommitVersion {
-		CommitVersion(self.0.load(Ordering::Acquire))
+		CommitVersion(self.progress.load(Ordering::Acquire))
 	}
 
 	pub fn store(&self, v: CommitVersion) {
-		self.0.store(v.0, Ordering::Release);
+		if let Some(gc_floor) = &self.gc_floor {
+			gc_floor.store(v.0, Ordering::Release);
+		}
+		self.progress.store(v.0, Ordering::Release);
 	}
 }
 
