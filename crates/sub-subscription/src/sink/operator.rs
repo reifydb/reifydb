@@ -1,80 +1,64 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::Arc};
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
-use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	encoded::{
-		key::EncodedKey,
-		shape::{RowShape, RowShapeField},
-	},
+	encoded::shape::RowShape,
 	interface::{
-		catalog::{
-			flow::FlowNodeId,
-			subscription::{IMPLICIT_COLUMN_OP, SubscriptionId},
-		},
+		catalog::{flow::FlowNodeId, id::SubscriptionId, subscription::IMPLICIT_COLUMN_OP},
 		change::{Change, Diff},
-		resolved::ResolvedSubscription,
 	},
 	internal,
-	key::subscription_row::SubscriptionRowKey,
-	util::encoding::keycode::serializer::KeySerializer,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+};
+use reifydb_sub_flow::{
+	operator::{
+		Operator, OperatorCell,
+		stateful::{raw::RawStatefulOperator, single::SingleStateful, utils},
+	},
+	transaction::{FlowTransaction, slot::PersistFn},
 };
 use reifydb_value::{
 	Result,
 	error::Error,
 	fragment::Fragment,
+	reifydb_assertions,
 	value::{blob::Blob, row_number::RowNumber, value_type::ValueType},
 };
 use serde::{Deserialize, Serialize};
 
-use super::{encode_row_at_index, shape_field_columns};
-use crate::{
-	Operator,
-	operator::{
-		OperatorCell,
-		stateful::{
-			counter::{Counter, CounterDirection},
-			raw::RawStatefulOperator,
-			single::SingleStateful,
-			utils,
-		},
-	},
-	transaction::{FlowTransaction, slot::PersistFn},
-};
+use crate::sink::DeliveryBuffer;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct DeliveredState {
 	rows: BTreeSet<RowNumber>,
 }
 
-pub struct SinkSubscriptionOperator {
+pub struct EphemeralSinkSubscriptionOperator {
 	#[allow(dead_code)]
 	parent: OperatorCell,
 	node: FlowNodeId,
-	subscription: ResolvedSubscription,
-	counter: Counter,
+	subscription_id: SubscriptionId,
+	delivery: Arc<DeliveryBuffer>,
 	shape: RowShape,
 }
 
-impl SinkSubscriptionOperator {
-	pub fn new(parent: OperatorCell, node: FlowNodeId, subscription: ResolvedSubscription) -> Self {
-		let counter_key = {
-			let mut serializer = KeySerializer::new();
-			serializer.extend_u64(subscription.def().id.0);
-			serializer.finish()
-		};
-
+impl EphemeralSinkSubscriptionOperator {
+	pub fn new(
+		parent: OperatorCell,
+		node: FlowNodeId,
+		subscription_id: SubscriptionId,
+		delivery: Arc<DeliveryBuffer>,
+	) -> Self {
 		Self {
 			parent,
 			node,
-			subscription,
-			counter: Counter::with_key(node, counter_key, CounterDirection::Descending),
-			shape: RowShape::operator_state(),
+			subscription_id,
+			delivery,
+			shape: RowShape::testing(&[ValueType::Blob]),
 		}
 	}
 
@@ -97,7 +81,8 @@ impl SinkSubscriptionOperator {
 	fn add_implicit_columns(columns: &Columns, op: DiffType) -> Columns {
 		let row_count = columns.row_count();
 
-		let mut all_columns: Vec<ColumnWithName> = columns.iter().cloned().collect();
+		let mut all_columns: Vec<ColumnWithName> =
+			columns.iter().map(|c| ColumnWithName::new(c.name().clone(), c.data().clone())).collect();
 
 		all_columns.push(ColumnWithName::new(
 			Fragment::internal(IMPLICIT_COLUMN_OP),
@@ -112,44 +97,21 @@ impl SinkSubscriptionOperator {
 		)
 	}
 
-	fn write_subscription_rows(
-		&self,
-		txn: &mut FlowTransaction,
-		columns: &Columns,
-		op: DiffType,
-		subscription_id: SubscriptionId,
-	) -> Result<()> {
+	fn stage(&self, columns: &Columns, op: DiffType) {
 		let with_implicit = Self::add_implicit_columns(columns, op);
-
-		let shape = {
-			let catalog = txn.catalog();
-			create_shape_from_columns(&with_implicit, catalog)?
-		};
-
-		let row_count = with_implicit.row_count();
-		let field_columns = shape_field_columns(&with_implicit, &shape);
-		for row_idx in 0..row_count {
-			let row_number = self.counter.next(txn)?;
-
-			let (_, encoded) = encode_row_at_index(&with_implicit, row_idx, &shape, row_number, &field_columns)?;
-
-			let key = SubscriptionRowKey::encoded(subscription_id, row_number);
-			txn.set(&key, encoded)?;
-		}
-
-		Ok(())
+		self.delivery.push(self.subscription_id, with_implicit);
 	}
 }
 
-impl RawStatefulOperator for SinkSubscriptionOperator {}
+impl RawStatefulOperator for EphemeralSinkSubscriptionOperator {}
 
-impl SingleStateful for SinkSubscriptionOperator {
+impl SingleStateful for EphemeralSinkSubscriptionOperator {
 	fn layout(&self) -> RowShape {
 		self.shape.clone()
 	}
 }
 
-impl Operator for SinkSubscriptionOperator {
+impl Operator for EphemeralSinkSubscriptionOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
@@ -159,36 +121,38 @@ impl Operator for SinkSubscriptionOperator {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		let node_id = self.node;
-		let (mut state, persist) = self.acquire_delivered_state(txn)?;
-		let subscription_id = self.subscription.def().id;
+		let (mut state, persist) = self.take_delivered_state(txn)?;
 
 		for diff in change.diffs.iter() {
 			match diff {
 				Diff::Insert {
 					post,
-				} => self.apply_subscription_insert(txn, &mut state, post, subscription_id)?,
+					..
+				} => self.apply_insert(&mut state, post),
 				Diff::Update {
 					pre,
 					post,
-				} => self.apply_subscription_update(txn, &mut state, pre, post, subscription_id)?,
+					..
+				} => self.apply_update(&mut state, pre, post),
 				Diff::Remove {
 					pre,
-				} => self.apply_subscription_remove(txn, &mut state, pre, subscription_id)?,
+					..
+				} => self.apply_remove(&mut state, pre),
 			}
 		}
 
-		txn.put_operator_state(node_id, state, persist);
+		txn.put_operator_state(self.node, state, persist);
 
 		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))
 	}
 }
 
-impl SinkSubscriptionOperator {
+impl EphemeralSinkSubscriptionOperator {
 	#[inline]
-	fn acquire_delivered_state(&self, txn: &mut FlowTransaction) -> Result<(DeliveredState, PersistFn)> {
+	fn take_delivered_state(&self, txn: &mut FlowTransaction) -> Result<(DeliveredState, PersistFn)> {
 		let node_id = self.node;
 		let shape_for_persist = self.shape.clone();
+
 		txn.take_operator_state::<DeliveredState, _>(node_id, |txn| {
 			let s = self.load_delivered_state(txn)?;
 			let shape = shape_for_persist.clone();
@@ -208,30 +172,31 @@ impl SinkSubscriptionOperator {
 		})
 	}
 
-	#[inline]
-	fn apply_subscription_insert(
-		&self,
-		txn: &mut FlowTransaction,
-		state: &mut DeliveredState,
-		post: &Columns,
-		subscription_id: SubscriptionId,
-	) -> Result<()> {
+	fn apply_insert(&self, state: &mut DeliveredState, post: &Columns) {
 		let row_count = post.row_count();
+		let mut new_indices: Vec<usize> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
-			state.rows.insert(post.row_numbers[row_idx]);
+			if state.rows.insert(post.row_numbers[row_idx]) {
+				new_indices.push(row_idx);
+			}
 		}
-		self.write_subscription_rows(txn, post, DiffType::Insert, subscription_id)
+		reifydb_assertions! {
+			assert!(
+				new_indices.len() <= row_count,
+				"insert staged more rows than the diff carried, so a subscriber would receive phantom \
+				 inserts not present in the source change (new_indices={}, row_count={row_count})",
+				new_indices.len()
+			);
+		}
+		if new_indices.len() == row_count {
+			self.stage(post, DiffType::Insert);
+		} else if !new_indices.is_empty() {
+			let sub_post = post.extract_by_indices(&new_indices);
+			self.stage(&sub_post, DiffType::Insert);
+		}
 	}
 
-	#[inline]
-	fn apply_subscription_update(
-		&self,
-		txn: &mut FlowTransaction,
-		state: &mut DeliveredState,
-		pre: &Columns,
-		post: &Columns,
-		subscription_id: SubscriptionId,
-	) -> Result<()> {
+	fn apply_update(&self, state: &mut DeliveredState, pre: &Columns, post: &Columns) {
 		let row_count = post.row_count();
 		let mut update_indices: Vec<usize> = Vec::new();
 		let mut insert_indices: Vec<usize> = Vec::new();
@@ -249,25 +214,27 @@ impl SinkSubscriptionOperator {
 				insert_indices.push(row_idx);
 			}
 		}
+		reifydb_assertions! {
+			assert!(
+				update_indices.len() + insert_indices.len() == row_count,
+				"update classification dropped or double-counted a post row, so a subscriber would miss a \
+				 change or see it twice; every post row must be exactly one of update-or-insert \
+				 (update={}, insert={}, row_count={row_count})",
+				update_indices.len(),
+				insert_indices.len()
+			);
+		}
 		if !update_indices.is_empty() {
 			let sub_post = post.extract_by_indices(&update_indices);
-			self.write_subscription_rows(txn, &sub_post, DiffType::Update, subscription_id)?;
+			self.stage(&sub_post, DiffType::Update);
 		}
 		if !insert_indices.is_empty() {
 			let sub_post = post.extract_by_indices(&insert_indices);
-			self.write_subscription_rows(txn, &sub_post, DiffType::Insert, subscription_id)?;
+			self.stage(&sub_post, DiffType::Insert);
 		}
-		Ok(())
 	}
 
-	#[inline]
-	fn apply_subscription_remove(
-		&self,
-		txn: &mut FlowTransaction,
-		state: &mut DeliveredState,
-		pre: &Columns,
-		subscription_id: SubscriptionId,
-	) -> Result<()> {
+	fn apply_remove(&self, state: &mut DeliveredState, pre: &Columns) {
 		let row_count = pre.row_count();
 		let mut remove_indices: Vec<usize> = Vec::new();
 		for row_idx in 0..row_count {
@@ -278,17 +245,7 @@ impl SinkSubscriptionOperator {
 		}
 		if !remove_indices.is_empty() {
 			let sub_pre = pre.extract_by_indices(&remove_indices);
-			self.write_subscription_rows(txn, &sub_pre, DiffType::Remove, subscription_id)?;
+			self.stage(&sub_pre, DiffType::Remove);
 		}
-		Ok(())
 	}
-}
-
-fn create_shape_from_columns(columns: &Columns, catalog: &Catalog) -> Result<RowShape> {
-	let fields: Vec<RowShapeField> = columns
-		.iter()
-		.map(|col| RowShapeField::unconstrained(col.name.to_string(), col.data().get_type()))
-		.collect();
-
-	catalog.shape.get_or_create(fields)
 }

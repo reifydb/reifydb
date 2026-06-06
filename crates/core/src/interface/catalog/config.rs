@@ -65,6 +65,7 @@ pub enum ConfigKey {
 	ThreadsCommit,
 	ThreadsBackground,
 	FlowWorkerThreads,
+	SubscriptionWorkerThreads,
 	RuntimeMetricsInterval,
 	MetricFlushInterval,
 }
@@ -101,6 +102,7 @@ impl ConfigKey {
 			Self::ThreadsCommit,
 			Self::ThreadsBackground,
 			Self::FlowWorkerThreads,
+			Self::SubscriptionWorkerThreads,
 			Self::RuntimeMetricsInterval,
 			Self::MetricFlushInterval,
 		]
@@ -139,6 +141,7 @@ impl ConfigKey {
 			Self::ThreadsCommit => Value::Uint2(2),
 			Self::ThreadsBackground => Value::Uint2(1),
 			Self::FlowWorkerThreads => Value::Uint2(0),
+			Self::SubscriptionWorkerThreads => Value::Uint2(0),
 			Self::RuntimeMetricsInterval => Value::duration_seconds(5),
 			Self::MetricFlushInterval => Value::duration_seconds(10),
 		}
@@ -237,6 +240,11 @@ impl ConfigKey {
 				 0 means auto (size to the system thread pool). Higher values raise fan-out parallelism \
 				 for many independent views. Changes require restart."
 			}
+			Self::SubscriptionWorkerThreads => {
+				"Number of subscription worker actors that fan out CDC changes to ephemeral \
+				 subscriptions in parallel. 0 means auto (size to the system thread pool). Higher values \
+				 raise fan-out parallelism for many concurrent subscriptions. Changes require restart."
+			}
 			Self::RuntimeMetricsInterval => {
 				"How often the runtime-metrics sampler records a memory snapshot into \
 				 system::metrics::runtime::memory::snapshots. When unset, the history sampler is \
@@ -280,6 +288,7 @@ impl ConfigKey {
 			Self::ThreadsCommit => true,
 			Self::ThreadsBackground => true,
 			Self::FlowWorkerThreads => true,
+			Self::SubscriptionWorkerThreads => true,
 			Self::RuntimeMetricsInterval => false,
 			Self::MetricFlushInterval => false,
 		}
@@ -316,6 +325,7 @@ impl ConfigKey {
 			Self::ThreadsCommit => &[ValueType::Uint2],
 			Self::ThreadsBackground => &[ValueType::Uint2],
 			Self::FlowWorkerThreads => &[ValueType::Uint2],
+			Self::SubscriptionWorkerThreads => &[ValueType::Uint2],
 			Self::RuntimeMetricsInterval => &[ValueType::Duration],
 			Self::MetricFlushInterval => &[ValueType::Duration],
 		}
@@ -352,6 +362,7 @@ impl ConfigKey {
 			Self::ThreadsCommit => false,
 			Self::ThreadsBackground => false,
 			Self::FlowWorkerThreads => false,
+			Self::SubscriptionWorkerThreads => false,
 			Self::RuntimeMetricsInterval => true,
 			Self::MetricFlushInterval => false,
 		}
@@ -475,6 +486,7 @@ impl ConfigKey {
 				_ => Ok(()),
 			},
 			Self::FlowWorkerThreads => Ok(()),
+			Self::SubscriptionWorkerThreads => Ok(()),
 			Self::RuntimeMetricsInterval => match value {
 				Value::None {
 					..
@@ -615,6 +627,7 @@ impl fmt::Display for ConfigKey {
 			Self::ThreadsCommit => write!(f, "THREADS_COMMIT"),
 			Self::ThreadsBackground => write!(f, "THREADS_BACKGROUND"),
 			Self::FlowWorkerThreads => write!(f, "FLOW_WORKER_THREADS"),
+			Self::SubscriptionWorkerThreads => write!(f, "SUBSCRIPTION_WORKER_THREADS"),
 			Self::RuntimeMetricsInterval => write!(f, "RUNTIME_METRICS_INTERVAL"),
 			Self::MetricFlushInterval => write!(f, "METRIC_FLUSH_INTERVAL"),
 		}
@@ -655,6 +668,7 @@ impl FromStr for ConfigKey {
 			"THREADS_COMMIT" => Ok(Self::ThreadsCommit),
 			"THREADS_BACKGROUND" => Ok(Self::ThreadsBackground),
 			"FLOW_WORKER_THREADS" => Ok(Self::FlowWorkerThreads),
+			"SUBSCRIPTION_WORKER_THREADS" => Ok(Self::SubscriptionWorkerThreads),
 			"RUNTIME_METRICS_INTERVAL" => Ok(Self::RuntimeMetricsInterval),
 			"METRIC_FLUSH_INTERVAL" => Ok(Self::MetricFlushInterval),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
@@ -796,7 +810,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 31);
+		assert_eq!(all.len(), 32);
 		assert!(all.contains(&ConfigKey::VersionEpochSampleInterval));
 		assert!(all.contains(&ConfigKey::CdcWatermarkWaitTimeout));
 		assert!(all.contains(&ConfigKey::FlowJoinProbeBlockSize));
@@ -817,6 +831,7 @@ mod tests {
 		assert!(all.contains(&ConfigKey::ThreadsBackground));
 		assert!(all.contains(&ConfigKey::RuntimeMetricsInterval));
 		assert!(all.contains(&ConfigKey::MetricFlushInterval));
+		assert!(all.contains(&ConfigKey::SubscriptionWorkerThreads));
 	}
 
 	#[test]

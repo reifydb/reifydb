@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, mem, sync::Arc};
+use std::{any::Any, collections::HashMap, mem, sync::Arc};
 
 use read::ReadFrom;
 use reifydb_catalog::catalog::Catalog;
@@ -528,6 +528,24 @@ impl FlowTransaction {
 			}
 		}
 		Ok(())
+	}
+
+	pub fn install_operator_states(&mut self, states: HashMap<FlowNodeId, Box<dyn Any + Send>>) {
+		let inner = self.inner_mut();
+		for (node, value) in states {
+			inner.operator_states.entry(node).or_insert_with(|| OperatorStateSlot {
+				value,
+				dirty: false,
+				persist: Box::new(|_, _| Ok(())),
+			});
+		}
+	}
+
+	pub fn drain_operator_states(&mut self) -> HashMap<FlowNodeId, Box<dyn Any + Send>> {
+		mem::take(&mut self.inner_mut().operator_states)
+			.into_iter()
+			.map(|(node, slot)| (node, slot.value))
+			.collect()
 	}
 }
 
