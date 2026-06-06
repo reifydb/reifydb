@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use reifydb_core::{
 	common::TimeDomain,
@@ -429,6 +429,8 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 		operator.advance_event_watermark(txn, batch_max)?;
 	}
 
+	gate_closed_buckets(operator, txn, &mut buckets, &mut arrival, &window_max_ts, window_size_ms)?;
+
 	let diffs = finish_tumbling_engine(
 		&operator.core,
 		txn,
@@ -634,6 +636,9 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		operator.advance_event_watermark(txn, batch_max)?;
 	}
 
+	let window_size_ms = operator.size_duration().map(|d| d.milliseconds().unwrap_or(0) as u64).unwrap_or(0);
+	gate_closed_buckets(operator, txn, &mut buckets, &mut arrival, &window_max_ts, window_size_ms)?;
+
 	let diffs = finish_tumbling_engine(
 		&operator.core,
 		txn,
@@ -837,6 +842,8 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		operator.advance_event_watermark(txn, batch_max)?;
 	}
 
+	gate_closed_buckets(operator, txn, &mut buckets, &mut arrival, &window_max_ts, gap_ms)?;
+
 	let mut diffs = finish_tumbling_engine(
 		&operator.core,
 		txn,
@@ -871,6 +878,47 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
 }
 
+pub(super) fn window_closed(watermark: u64, last_event_time: u64, cutoff_ms: u64) -> bool {
+	watermark.saturating_sub(last_event_time) > cutoff_ms
+}
+
+fn gate_closed_buckets(
+	operator: &WindowOperator,
+	txn: &mut FlowTransaction,
+	buckets: &mut EngineBuckets,
+	arrival: &mut Vec<(Hash128, WindowSpan<u64>)>,
+	window_max_ts: &HashMap<(Hash128, WindowSpan<u64>), u64>,
+	cutoff_ms: u64,
+) -> Result<()> {
+	if cutoff_ms == 0 || operator.kind.time() != TimeDomain::Event || operator.is_count_based() {
+		return Ok(());
+	}
+	let watermark = operator.load_event_watermark(txn)?;
+	let mut closed: Vec<(Hash128, WindowSpan<u64>)> = Vec::new();
+	{
+		let mut store = FlowWindowStore::new(txn, operator.core.node);
+		for key in buckets.keys() {
+			let (hash, span) = key;
+			let meta_key = operator.core.create_engine_meta_key(*hash, span.start);
+			let prior_last =
+				store.state_get::<EngineWindowMeta>(&meta_key)?.map(|m| m.last_event_time).unwrap_or(0);
+			let batch_last = window_max_ts.get(key).copied().unwrap_or(0);
+			if window_closed(watermark, prior_last.max(batch_last), cutoff_ms) {
+				closed.push(*key);
+			}
+		}
+	}
+	if closed.is_empty() {
+		return Ok(());
+	}
+	for key in &closed {
+		buckets.remove(key);
+	}
+	let closed: HashSet<(Hash128, WindowSpan<u64>)> = closed.into_iter().collect();
+	arrival.retain(|key| !closed.contains(key));
+	Ok(())
+}
+
 fn tick_expire_by_cutoff(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
@@ -895,7 +943,7 @@ fn tick_expire_by_cutoff(
 		if meta.last_event_time == 0 {
 			continue;
 		}
-		if effective_now.saturating_sub(meta.last_event_time) <= cutoff_ms {
+		if !window_closed(effective_now, meta.last_event_time, cutoff_ms) {
 			continue;
 		}
 		let row_number = RowNumber(meta.row_number);
@@ -951,4 +999,26 @@ pub fn tick_expire_engine_windows(
 		None => return Ok(Vec::new()),
 	};
 	tick_expire_by_cutoff(operator, txn, current_timestamp, window_size_ms)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::window_closed;
+
+	#[test]
+	fn closed_only_strictly_beyond_cutoff() {
+		// The routing gate and tick_expire_by_cutoff share this predicate; if they disagree
+		// (e.g. one uses > and the other >=) a window can be expired but then re-created by a
+		// later delta, which is exactly the resurrection divergence this fix removes.
+		assert!(!window_closed(14, 14, 5), "watermark at last event time is open");
+		assert!(!window_closed(19, 14, 5), "exactly cutoff behind is still open");
+		assert!(window_closed(20, 14, 5), "one past the cutoff is closed");
+	}
+
+	#[test]
+	fn out_of_order_event_does_not_underflow() {
+		// Event time behind the watermark must not panic or wrap; it is simply not closed by
+		// virtue of a saturating distance of zero.
+		assert!(!window_closed(3, 10, 5), "event ahead of watermark saturates to open");
+	}
 }
