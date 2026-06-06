@@ -15,21 +15,14 @@ default = []
 
 [dependencies]
 bumpalo = { workspace = true }
-reifydb-abi = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }
-reifydb-wasm = { workspace = true }
-reifydb-wire-format = { workspace = true }
-reifydb-sdk = { workspace = true }
-libloading = { workspace = true }
 thiserror = { workspace = true }
-tracing = { workspace = true }
 
-futures-util = { workspace = true }
 uuid = { workspace = true }
 indexmap = { workspace = true }
 num-traits = { workspace = true }
@@ -38,4 +31,3 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
-tokio = {workspace = true}

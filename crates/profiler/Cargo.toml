@@ -26,4 +26,3 @@ paste = { workspace = true }
 tdigest = { workspace = true }
 
 [dev-dependencies]
-reifydb-testing = { workspace = true }

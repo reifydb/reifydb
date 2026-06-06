@@ -17,15 +17,12 @@ reifydb-engine = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-sub-subscription = { workspace = true }
 reifydb-subscription = { workspace = true }
-reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }
 reifydb-wire-format = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-sub-server = { workspace = true }
-reifydb-remote-proxy = { workspace = true }
 reifydb-client = { workspace = true }
 
-dashmap = { workspace = true }
 
 # gRPC
 tonic = { workspace = true }

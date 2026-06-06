@@ -30,6 +30,5 @@ postcard = { workspace = true }
 reifydb = { workspace = true }
 reifydb-testing = { workspace = true }
 reifydb-catalog = { workspace = true }
-reifydb-engine = { workspace = true, features = ["tokio"] }
 test_each_file = { workspace = true }
 tokio = { workspace = true }

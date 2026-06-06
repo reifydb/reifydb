@@ -11,7 +11,6 @@ description = "WebAssembly runtime for sandboxed execution in ReifyDB (backed by
 reifydb-build = { workspace = true }
 
 [dependencies]
-reifydb-runtime = { workspace = true }
 reifydb-value = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

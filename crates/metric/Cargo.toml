@@ -15,4 +15,3 @@ reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-value = { workspace = true }
 dashmap = { workspace = true }
-serde = { workspace = true }

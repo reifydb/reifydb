@@ -20,18 +20,10 @@ reifydb-store-single = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-sub-server = { workspace = true }
-reifydb-rql = { workspace = true }
-reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }
-serde = { workspace = true }
 tracing = { workspace = true }
-futures-util = { workspace = true }
-crossbeam-channel = { workspace = true }
 
 [dev-dependencies]
-reifydb-cdc = { workspace = true }
-reifydb-extension = { workspace = true }
-reifydb-routine = { workspace = true }
 reifydb-store-single = { workspace = true, features = ["sqlite"] }
 reifydb-store-multi = { workspace = true, features = ["sqlite"] }
 reifydb-testing = { workspace = true }

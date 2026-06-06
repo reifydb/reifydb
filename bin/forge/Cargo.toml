@@ -14,7 +14,6 @@ reifydb-client = { workspace = true, features = ["grpc"] }
 clap = { version = "4", features = ["derive"] }
 tokio = { workspace = true }
 axum = { workspace = true }
-tower-http = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 uuid = { workspace = true }

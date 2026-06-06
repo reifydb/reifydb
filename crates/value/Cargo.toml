@@ -26,4 +26,3 @@ num-traits = { workspace = true }
 
 [dev-dependencies]
 postcard = { workspace = true }
-tokio = { workspace = true}

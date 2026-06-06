@@ -12,9 +12,5 @@ reifydb-build = { workspace = true }
 
 [dependencies]
 reifydb-core = { workspace = true }
-reifydb-runtime = { workspace = true }
 reifydb-value = { workspace = true }
-dashmap = { workspace = true }
-serde = { workspace = true }
 thiserror = { workspace = true }
-tracing = { workspace = true }

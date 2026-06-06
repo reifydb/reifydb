@@ -18,7 +18,6 @@ default = []
 [dependencies]
 reifydb-auth = { workspace = true }
 reifydb-sub-server = { workspace = true }
-reifydb-remote-proxy = { workspace = true }
 reifydb-client = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-core = { workspace = true }
@@ -26,11 +25,9 @@ reifydb-engine = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-sub-subscription = { workspace = true }
 reifydb-subscription = { workspace = true }
-reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }
 reifydb-wire-format = { workspace = true }
 
-dashmap = { workspace = true }
 tokio = { workspace = true }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }

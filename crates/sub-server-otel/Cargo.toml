@@ -9,16 +9,12 @@ description = "OpenTelemetry/Jaeger tracing subsystem for ReifyDB"
 
 [dependencies]
 reifydb-core = { workspace = true }
-reifydb-engine = { workspace = true }
 reifydb-runtime = { workspace = true}
 reifydb-value = { workspace = true }
 reifydb-sub-api = { workspace = true }
-reifydb-sub-server = { workspace = true }
 
 # Tracing ecosystem
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-tracing-opentelemetry = { workspace = true }
 
 # OpenTelemetry core
 opentelemetry = { workspace = true }

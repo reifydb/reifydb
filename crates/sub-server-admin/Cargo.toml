@@ -16,7 +16,6 @@ reifydb-engine = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-value = { workspace = true }
 reifydb-sub-api = { workspace = true }
-reifydb-sub-server = { workspace = true }
 
 # HTTP framework
 axum = { workspace = true }

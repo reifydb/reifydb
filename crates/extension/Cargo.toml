@@ -15,7 +15,6 @@ default = []
 
 [dependencies]
 reifydb-abi = { workspace = true }
-reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-routine = { workspace = true }
 reifydb-runtime = { workspace = true }
@@ -24,7 +23,6 @@ reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }
 reifydb-wasm = { workspace = true }
 
-bumpalo = { workspace = true }
 libloading = { workspace = true }
 postcard = { workspace = true }
 serde = { workspace = true }

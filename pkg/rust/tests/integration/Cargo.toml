@@ -13,4 +13,3 @@ reifydb-metric = { workspace = true }
 reifydb-sub-metric = { workspace = true }
 reifydb-value = { workspace = true }
 reifydb-wire-format = { workspace = true }
-tokio = { workspace = true }

@@ -1072,7 +1072,6 @@ dependencies = [
  "reifydb",
  "reifydb-client",
  "tokio",
- "tower-http",
  "tracing",
  "tracing-subscriber",
  "uuid",
@@ -2230,11 +2229,7 @@ checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
 name = "playground"
 version = "0.6.0"
 dependencies = [
- "futures-util",
  "reifydb",
- "reifydb-client",
- "tokio",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -2369,7 +2364,6 @@ name = "raft"
 version = "0.6.0"
 dependencies = [
  "reifydb",
- "tokio",
 ]
 
 [[package]]
@@ -2535,7 +2529,6 @@ dependencies = [
  "libc",
  "num_cpus",
  "opentelemetry",
- "parking_lot",
  "rayon",
  "reifydb-abi",
  "reifydb-allocator",
@@ -2638,7 +2631,6 @@ name = "reifydb-catalog"
 version = "0.6.0"
 dependencies = [
  "crossbeam-skiplist",
- "futures-util",
  "once_cell",
  "reifydb-abi",
  "reifydb-build",
@@ -2651,7 +2643,6 @@ dependencies = [
  "reifydb-testing",
  "reifydb-transaction",
  "reifydb-value",
- "serde",
  "serde_json",
  "subtle",
  "test_each_file",
@@ -2676,10 +2667,8 @@ dependencies = [
  "reifydb-transaction",
  "reifydb-value",
  "rusqlite",
- "serde",
  "test_each_file",
  "tracing",
- "uuid",
  "zstd",
 ]
 
@@ -2698,9 +2687,6 @@ dependencies = [
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-sub-server",
- "reifydb-sub-server-grpc",
- "reifydb-sub-server-http",
- "reifydb-sub-server-ws",
  "reifydb-testing",
  "reifydb-value",
  "reifydb-wire-format",
@@ -2726,14 +2712,10 @@ dependencies = [
 name = "reifydb-column"
 version = "0.6.0"
 dependencies = [
- "dashmap",
  "reifydb-build",
  "reifydb-core",
- "reifydb-runtime",
  "reifydb-value",
- "serde",
  "thiserror 2.0.18",
- "tracing",
 ]
 
 [[package]]
@@ -2743,26 +2725,20 @@ dependencies = [
  "bigdecimal",
  "crossbeam-skiplist",
  "dashmap",
- "futures-util",
  "indexmap",
  "num-bigint",
  "num-traits",
- "num_cpus",
- "once_cell",
  "paste",
  "postcard",
  "reifydb-abi",
  "reifydb-build",
- "reifydb-catalog",
  "reifydb-engine",
  "reifydb-runtime",
- "reifydb-transaction",
  "reifydb-value",
  "serde",
  "serde_bytes",
  "smallvec",
  "thiserror 2.0.18",
- "tracing",
  "uuid",
 ]
 
@@ -2778,7 +2754,6 @@ name = "reifydb-engine"
 version = "0.6.0"
 dependencies = [
  "bumpalo",
- "futures-util",
  "postcard",
  "reifydb-auth",
  "reifydb-build",
@@ -2807,12 +2782,10 @@ dependencies = [
 name = "reifydb-extension"
 version = "0.6.0"
 dependencies = [
- "bumpalo",
  "libloading",
  "postcard",
  "reifydb-abi",
  "reifydb-build",
- "reifydb-catalog",
  "reifydb-core",
  "reifydb-routine",
  "reifydb-runtime",
@@ -2850,7 +2823,6 @@ dependencies = [
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-value",
- "serde",
 ]
 
 [[package]]
@@ -2862,7 +2834,6 @@ dependencies = [
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-rql",
- "reifydb-runtime",
  "reifydb-transaction",
  "reifydb-value",
  "thiserror 2.0.18",
@@ -2879,7 +2850,6 @@ dependencies = [
  "reifydb-build",
  "reifydb-core",
  "reifydb-runtime",
- "reifydb-testing",
  "reifydb-value",
  "serde",
  "tdigest",
@@ -2894,7 +2864,6 @@ version = "0.6.0"
 dependencies = [
  "reifydb-build",
  "reifydb-client",
- "reifydb-value",
  "tokio",
 ]
 
@@ -2903,27 +2872,19 @@ name = "reifydb-routine"
 version = "0.6.0"
 dependencies = [
  "bumpalo",
- "futures-util",
  "indexmap",
- "libloading",
  "num-traits",
  "postcard",
- "reifydb-abi",
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-rql",
  "reifydb-runtime",
- "reifydb-sdk",
  "reifydb-transaction",
  "reifydb-value",
- "reifydb-wasm",
- "reifydb-wire-format",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
- "tokio",
- "tracing",
  "uuid",
 ]
 
@@ -2937,7 +2898,6 @@ dependencies = [
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-core",
- "reifydb-engine",
  "reifydb-runtime",
  "reifydb-testing",
  "reifydb-transaction",
@@ -2969,7 +2929,6 @@ dependencies = [
  "tokio",
  "tracing",
  "wasm-bindgen",
- "wasm-bindgen-futures",
  "web-sys",
  "xxhash-rust",
 ]
@@ -2985,7 +2944,6 @@ dependencies = [
  "reifydb-build",
  "reifydb-core",
  "reifydb-runtime",
- "reifydb-testing",
  "reifydb-testing-macro",
  "reifydb-value",
  "serde",
@@ -3028,7 +2986,6 @@ dependencies = [
  "rusqlite",
  "test_each_file",
  "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -3044,7 +3001,6 @@ dependencies = [
  "rusqlite",
  "test_each_file",
  "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -3052,7 +3008,6 @@ name = "reifydb-sub-api"
 version = "0.6.0"
 dependencies = [
  "reifydb-core",
- "reifydb-engine",
  "reifydb-runtime",
  "reifydb-transaction",
  "reifydb-value",
@@ -3062,11 +3017,9 @@ dependencies = [
 name = "reifydb-sub-flow"
 version = "0.6.0"
 dependencies = [
- "crossbeam-channel",
  "dashmap",
  "indexmap",
  "libloading",
- "num_cpus",
  "postcard",
  "rand 0.10.1",
  "rayon",
@@ -3082,8 +3035,6 @@ dependencies = [
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-sdk",
- "reifydb-store-multi",
- "reifydb-store-single",
  "reifydb-sub-api",
  "reifydb-sub-subscription",
  "reifydb-transaction",
@@ -3099,26 +3050,18 @@ dependencies = [
 name = "reifydb-sub-metric"
 version = "0.6.0"
 dependencies = [
- "crossbeam-channel",
- "futures-util",
  "reifydb-build",
  "reifydb-catalog",
- "reifydb-cdc",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-extension",
  "reifydb-metric",
- "reifydb-routine",
- "reifydb-rql",
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
  "reifydb-sub-api",
  "reifydb-sub-server",
  "reifydb-testing",
- "reifydb-transaction",
  "reifydb-value",
- "serde",
  "test_each_file",
  "tracing",
 ]
@@ -3135,9 +3078,7 @@ dependencies = [
  "reifydb-profiler",
  "reifydb-runtime",
  "reifydb-sub-api",
- "reifydb-testing",
  "reifydb-value",
- "serde",
  "tracing",
 ]
 
@@ -3154,7 +3095,6 @@ dependencies = [
  "reifydb-value",
  "serde",
  "tokio",
- "tokio-stream",
  "tonic",
  "tonic-prost",
 ]
@@ -3170,7 +3110,6 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",
- "reifydb-store-multi",
  "reifydb-sub-api",
  "reifydb-transaction",
  "reifydb-value",
@@ -3193,7 +3132,6 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-sub-api",
- "reifydb-testing",
  "reifydb-value",
  "tracing",
 ]
@@ -3232,7 +3170,6 @@ dependencies = [
  "reifydb-engine",
  "reifydb-runtime",
  "reifydb-sub-api",
- "reifydb-sub-server",
  "reifydb-value",
  "serde",
  "serde_json",
@@ -3246,7 +3183,6 @@ dependencies = [
 name = "reifydb-sub-server-grpc"
 version = "0.6.0"
 dependencies = [
- "dashmap",
  "num-bigint",
  "prost",
  "reifydb-auth",
@@ -3254,13 +3190,11 @@ dependencies = [
  "reifydb-client",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-remote-proxy",
  "reifydb-runtime",
  "reifydb-sub-api",
  "reifydb-sub-server",
  "reifydb-sub-subscription",
  "reifydb-subscription",
- "reifydb-transaction",
  "reifydb-value",
  "reifydb-wire-format",
  "serde_json",
@@ -3303,35 +3237,28 @@ dependencies = [
  "opentelemetry_sdk",
  "reifydb-build",
  "reifydb-core",
- "reifydb-engine",
  "reifydb-runtime",
  "reifydb-sub-api",
- "reifydb-sub-server",
  "reifydb-value",
  "tokio",
  "tracing",
- "tracing-opentelemetry",
- "tracing-subscriber",
 ]
 
 [[package]]
 name = "reifydb-sub-server-ws"
 version = "0.6.0"
 dependencies = [
- "dashmap",
  "futures-util",
  "reifydb-auth",
  "reifydb-build",
  "reifydb-client",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-remote-proxy",
  "reifydb-runtime",
  "reifydb-sub-api",
  "reifydb-sub-server",
  "reifydb-sub-subscription",
  "reifydb-subscription",
- "reifydb-transaction",
  "reifydb-value",
  "reifydb-wire-format",
  "serde",
@@ -3357,10 +3284,8 @@ dependencies = [
  "reifydb-sub-api",
  "reifydb-transaction",
  "reifydb-value",
- "serde",
  "thiserror 2.0.18",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -3409,10 +3334,8 @@ name = "reifydb-sub-tracing"
 version = "0.6.0"
 dependencies = [
  "reifydb-core",
- "reifydb-engine",
  "reifydb-runtime",
  "reifydb-sub-api",
- "reifydb-testing",
  "reifydb-transaction",
  "reifydb-value",
  "tracing",
@@ -3426,7 +3349,6 @@ dependencies = [
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-runtime",
  "reifydb-transaction",
  "reifydb-value",
  "tokio",
@@ -3455,13 +3377,11 @@ version = "0.6.0"
 name = "reifydb-transaction"
 version = "0.6.0"
 dependencies = [
- "crossbeam-channel",
  "crossbeam-skiplist",
  "indexmap",
  "rand 0.10.1",
  "reifydb-build",
  "reifydb-core",
- "reifydb-engine",
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
@@ -3488,7 +3408,6 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "thiserror 2.0.18",
- "tokio",
  "uuid",
 ]
 
@@ -3508,11 +3427,9 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
- "reifydb-sub-api",
  "reifydb-sub-flow",
  "reifydb-transaction",
  "reifydb-value",
- "serde",
  "serde_json",
 ]
 
@@ -3521,7 +3438,6 @@ name = "reifydb-wasm"
 version = "0.6.0"
 dependencies = [
  "reifydb-build",
- "reifydb-runtime",
  "reifydb-value",
  "wasmtime",
  "wasmtime-wasi",
@@ -3533,7 +3449,6 @@ name = "reifydb-webassembly"
 version = "0.6.0"
 dependencies = [
  "console_error_panic_hook",
- "getrandom 0.4.2",
  "js-sys",
  "reifydb-auth",
  "reifydb-catalog",
@@ -3546,16 +3461,12 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
- "reifydb-sub-api",
  "reifydb-sub-flow",
  "reifydb-transaction",
  "reifydb-value",
  "reifydb-wire-format",
- "serde",
- "serde-wasm-bindgen",
  "serde_json",
  "wasm-bindgen",
- "wasm-bindgen-futures",
  "wasm-bindgen-test",
  "web-sys",
 ]
@@ -3567,7 +3478,6 @@ dependencies = [
  "bigdecimal",
  "num-bigint",
  "reifydb-build",
- "reifydb-runtime",
  "reifydb-value",
  "serde",
  "serde_json",
@@ -3791,17 +3701,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde-wasm-bindgen"
-version = "0.6.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8302e169f0eddcc139c70f139d19d6467353af16f9fce27e8c30158036a1e16b"
-dependencies = [
- "js-sys",
- "serde",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "serde_bytes"
 version = "0.11.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3881,7 +3780,6 @@ name = "server"
 version = "0.6.0"
 dependencies = [
  "reifydb",
- "tokio",
 ]
 
 [[package]]
@@ -4134,7 +4032,6 @@ dependencies = [
  "reifydb-sub-metric",
  "reifydb-value",
  "reifydb-wire-format",
- "tokio",
 ]
 
 [[package]]
@@ -4144,7 +4041,6 @@ dependencies = [
  "reifydb",
  "reifydb-testing",
  "test_each_file",
- "tokio",
 ]
 
 [[package]]

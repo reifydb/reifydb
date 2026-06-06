@@ -23,10 +23,8 @@ reifydb-store-single = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }
 
-futures-util = { workspace = true }
 crossbeam-skiplist = {workspace = true}
 once_cell = {workspace = true}
-serde = { workspace = true }
 tracing = { workspace = true }
 serde_json.workspace = true
 subtle = { workspace = true }

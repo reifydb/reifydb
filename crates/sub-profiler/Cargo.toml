@@ -21,7 +21,5 @@ reifydb-sub-api = { workspace = true }
 reifydb-value = { workspace = true }
 
 tracing = { workspace = true }
-serde = { workspace = true }
 
 [dev-dependencies]
-reifydb-testing = { workspace = true }
