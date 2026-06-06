@@ -48,6 +48,7 @@ use reifydb_catalog::{
 			shape_fields::SystemShapeFields,
 			shape_retention_strategies::SystemShapeRetentionStrategies,
 			shapes::SystemShapes,
+			subscription_watermarks::SystemSubscriptionWatermarks,
 			subscriptions::SystemSubscriptions,
 			tables::SystemTables,
 			tables_virtual::SystemTablesVirtual,
@@ -113,6 +114,9 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 		"views" => VTables::Views(SystemViews::new()),
 		"flows" => VTables::Flows(SystemFlows::new()),
 		"flow_watermarks" => VTables::FlowWatermarks(SystemFlowWatermarks::new(context.services.ioc.clone())),
+		"subscription_watermarks" => {
+			VTables::SubscriptionWatermarks(SystemSubscriptionWatermarks::new(context.services.ioc.clone()))
+		}
 		"flow_nodes" => VTables::FlowNodes(SystemFlowNodes::new()),
 		"flow_edges" => VTables::FlowEdges(SystemFlowEdges::new()),
 		"columns" => VTables::Columns(SystemColumnsTable::new()),

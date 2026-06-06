@@ -17,12 +17,17 @@ pub struct CdcConsumerId(pub(crate) String);
 impl CdcConsumerId {
 	pub fn new(id: impl Into<String>) -> Self {
 		let id = id.into();
-		assert_ne!(id, "__FLOW_CONSUMER");
+		assert_ne!(id, "__FLOW_COORDINATOR");
+		assert_ne!(id, "__SUBSCRIPTION_CONSUMER");
 		Self(id)
 	}
 
 	pub fn flow_consumer() -> Self {
-		Self("__FLOW_CONSUMER".to_string())
+		Self("__FLOW_COORDINATOR".to_string())
+	}
+
+	pub fn subscription_consumer() -> Self {
+		Self("__SUBSCRIPTION_CONSUMER".to_string())
 	}
 }
 

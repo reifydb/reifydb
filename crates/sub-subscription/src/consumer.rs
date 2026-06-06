@@ -9,24 +9,42 @@ use std::sync::{
 use reifydb_cdc::consume::consumer::CdcConsume;
 use reifydb_core::{
 	common::CommitVersion,
-	interface::{cdc::Cdc, change::Change},
+	interface::{
+		cdc::Cdc,
+		change::{Change, ChangeOrigin},
+	},
 };
 use reifydb_runtime::{actor::mailbox::ActorRef, sync::mutex::Mutex};
 use reifydb_value::{Result, error::Error};
 use tracing::instrument;
 
-use crate::worker::SubscriptionWorkerMessage;
+use crate::{
+	store::SubscriptionStore,
+	tracker::{SubscriptionPositionTracker, SubscriptionSourceTracker},
+	worker::SubscriptionWorkerMessage,
+};
 
 type Reply = Box<dyn FnOnce(Result<()>) + Send>;
 
 pub struct SubscriptionCdcConsumer {
 	workers: Vec<ActorRef<SubscriptionWorkerMessage>>,
+	source_tracker: SubscriptionSourceTracker,
+	position_tracker: SubscriptionPositionTracker,
+	store: Arc<SubscriptionStore>,
 }
 
 impl SubscriptionCdcConsumer {
-	pub fn new(workers: Vec<ActorRef<SubscriptionWorkerMessage>>) -> Self {
+	pub fn new(
+		workers: Vec<ActorRef<SubscriptionWorkerMessage>>,
+		source_tracker: SubscriptionSourceTracker,
+		position_tracker: SubscriptionPositionTracker,
+		store: Arc<SubscriptionStore>,
+	) -> Self {
 		Self {
 			workers,
+			source_tracker,
+			position_tracker,
+			store,
 		}
 	}
 }
@@ -69,6 +87,11 @@ impl CdcConsume for SubscriptionCdcConsumer {
 			if cdc.version > max_version {
 				max_version = cdc.version;
 			}
+			for change in &cdc.changes {
+				if let ChangeOrigin::Shape(shape_id) = &change.origin {
+					self.source_tracker.update(*shape_id, cdc.version);
+				}
+			}
 			all_changes.extend(cdc.changes);
 		}
 
@@ -78,9 +101,21 @@ impl CdcConsume for SubscriptionCdcConsumer {
 		}
 
 		let changes = Arc::new(all_changes);
+
+		let position_tracker = self.position_tracker.clone();
+		let store = self.store.clone();
+		let wrapped_reply: Reply = Box::new(move |outcome| {
+			if outcome.is_ok() {
+				for subscription_id in store.active_subscriptions() {
+					position_tracker.update(subscription_id, max_version);
+				}
+			}
+			reply(outcome);
+		});
+
 		let barrier = Arc::new(DispatchBarrier {
 			remaining: AtomicUsize::new(self.workers.len()),
-			reply: Mutex::new(Some(reply)),
+			reply: Mutex::new(Some(wrapped_reply)),
 			error: Mutex::new(None),
 		});
 

@@ -171,7 +171,7 @@ impl FlowSubsystem {
 		let pool_handle = flow_scope.spawn_system("flow-pool", PoolActor::new(worker_refs, clock.clone()));
 		let pool_ref = pool_handle.actor_ref().clone();
 
-		let flow_consumer_id = CdcConsumerId::new("flow-coordinator");
+		let flow_consumer_id = CdcConsumerId::flow_consumer();
 		let coordinator_handle = flow_scope.spawn_system(
 			"flow-coordinator",
 			CoordinatorActor::new(

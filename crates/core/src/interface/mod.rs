@@ -25,6 +25,7 @@ pub mod flow;
 pub mod identifier;
 pub mod resolved;
 pub mod store;
+pub mod subscription;
 pub mod version;
 
 pub trait WithEventBus {

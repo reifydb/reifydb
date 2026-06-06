@@ -14,4 +14,6 @@ pub mod poller;
 pub mod sink;
 pub mod store;
 pub mod subsystem;
+pub mod tracker;
+pub mod watermark;
 pub mod worker;

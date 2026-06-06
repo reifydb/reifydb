@@ -52,6 +52,7 @@ pub mod series;
 pub mod shape_fields;
 pub mod shape_retention_strategies;
 pub mod shapes;
+pub mod subscription_watermarks;
 pub mod subscriptions;
 pub mod tables;
 pub mod tables_virtual;
@@ -103,6 +104,7 @@ use series::series;
 use shape_fields::shape_fields;
 use shape_retention_strategies::shape_retention_strategies;
 use shapes::shapes;
+use subscription_watermarks::subscription_watermarks;
 use subscriptions::subscriptions;
 use tables::tables;
 use tables_virtual::virtual_tables;
@@ -645,6 +647,16 @@ pub mod ids {
 			pub const ALL: [ColumnId; 3] = [FLOW_ID, SHAPE_ID, LAG];
 		}
 
+		pub mod subscription_watermarks {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const SUBSCRIPTION_ID: ColumnId = ColumnId(1);
+			pub const SHAPE_ID: ColumnId = ColumnId(2);
+			pub const LAG: ColumnId = ColumnId(3);
+
+			pub const ALL: [ColumnId; 3] = [SUBSCRIPTION_ID, SHAPE_ID, LAG];
+		}
+
 		pub mod subscriptions {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
@@ -864,6 +876,7 @@ pub mod ids {
 		pub const EVENT_VARIANTS: VTableId = VTableId(50);
 		pub const TAG_VARIANTS: VTableId = VTableId(51);
 		pub const SUBSCRIPTIONS: VTableId = VTableId(52);
+		pub const SUBSCRIPTION_WATERMARKS: VTableId = VTableId(61);
 
 		pub const PROCEDURES_RQL: VTableId = VTableId(53);
 		pub const PROCEDURES_TEST: VTableId = VTableId(54);
@@ -895,8 +908,9 @@ pub mod ids {
 		pub const METRICS_CDC_FLOW_NODE: VTableId = VTableId(1040);
 		pub const METRICS_CDC_SYSTEM: VTableId = VTableId(1041);
 
-		pub const ALL: [VTableId; 70] = [
+		pub const ALL: [VTableId; 71] = [
 			SEQUENCES,
+			SUBSCRIPTION_WATERMARKS,
 			NAMESPACES,
 			TABLES,
 			VIEWS,
@@ -1011,6 +1025,10 @@ impl SystemCatalog {
 
 	pub fn get_system_flow_watermarks_table() -> Arc<VTable> {
 		flow_watermarks()
+	}
+
+	pub fn get_system_subscription_watermarks_table() -> Arc<VTable> {
+		subscription_watermarks()
 	}
 
 	pub fn get_system_subscriptions_table() -> Arc<VTable> {

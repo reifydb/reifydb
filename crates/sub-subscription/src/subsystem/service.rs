@@ -24,13 +24,14 @@ use reifydb_transaction::{
 };
 use reifydb_value::{Result, error::Error, fragment::Fragment, value::identity::IdentityId};
 
-use crate::{store::SubscriptionStore, worker::SubscriptionWorkerMessage};
+use crate::{store::SubscriptionStore, tracker::SubscriptionPositionTracker, worker::SubscriptionWorkerMessage};
 
 pub(super) struct SubscriptionState {
 	pub(super) store: Arc<SubscriptionStore>,
 	pub(super) workers: Vec<ActorRef<SubscriptionWorkerMessage>>,
 	pub(super) subscription_flows: RwLock<HashMap<SubscriptionId, FlowId>>,
 	pub(super) multi: MultiTransaction,
+	pub(super) position_tracker: SubscriptionPositionTracker,
 }
 
 impl SubscriptionState {
@@ -65,9 +66,12 @@ impl SubscriptionService for SubscriptionServiceImpl {
 	) -> Result<()> {
 		self.state.store.register(id, column_names);
 
+		let current = self.state.multi.begin_query()?.version();
+		self.state.position_tracker.update(id, current);
+
 		let flow_id = flow_dag.id;
 		let gate = if hydration_enabled {
-			Some(self.state.multi.begin_query()?.version())
+			Some(current)
 		} else {
 			None
 		};
@@ -96,6 +100,7 @@ impl SubscriptionService for SubscriptionServiceImpl {
 
 	fn unregister_subscription(&self, id: &SubscriptionId) -> Result<()> {
 		let existed = self.state.store.unregister(id);
+		self.state.position_tracker.remove(id);
 
 		if let Some(flow_id) = self.state.subscription_flows.write().remove(id) {
 			let (tx, rx) = mpsc::channel();

@@ -34,6 +34,7 @@ use reifydb_core::{
 			subscription::SubscriptionInspectorRef,
 		},
 		cdc::CdcConsumerId,
+		subscription::SubscriptionWatermarkSampler,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	util::ioc::IocContainer,
@@ -63,6 +64,8 @@ use crate::{
 	consumer::SubscriptionCdcConsumer,
 	sink::DeliveryBuffer,
 	store::SubscriptionStore,
+	tracker::{SubscriptionPositionTracker, SubscriptionSourceTracker},
+	watermark::compute_subscription_watermarks,
 	worker::{SubscriptionWorkerActor, SubscriptionWorkerMessage},
 };
 
@@ -74,6 +77,7 @@ pub struct SubscriptionSubsystem {
 }
 
 impl SubscriptionSubsystem {
+	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		engine: StandardEngine,
 		cdc_store: CdcStore,
@@ -81,6 +85,8 @@ impl SubscriptionSubsystem {
 		_runtime_context: RuntimeContext,
 		custom_operators: CustomOperators,
 		consumer_watermark: CdcConsumerWatermark,
+		source_tracker: SubscriptionSourceTracker,
+		position_tracker: SubscriptionPositionTracker,
 	) -> Result<Self> {
 		let catalog = engine.catalog();
 		let multi = engine.multi_owned();
@@ -100,16 +106,18 @@ impl SubscriptionSubsystem {
 		);
 
 		let state = Arc::new(SubscriptionState {
-			store,
+			store: store.clone(),
 			workers: workers.clone(),
 			subscription_flows: RwLock::new(HashMap::new()),
 			multi,
+			position_tracker: position_tracker.clone(),
 		});
 
-		let cdc_consumer = SubscriptionCdcConsumer::new(workers);
+		let cdc_consumer =
+			SubscriptionCdcConsumer::new(workers, source_tracker, position_tracker, store.clone());
 
 		let config = PollConsumerConfig::new(
-			CdcConsumerId::new("__SUBSCRIPTION_CONSUMER"),
+			CdcConsumerId::subscription_consumer(),
 			"sub-subscription-poll",
 			Duration::from_milliseconds(10).unwrap(),
 			None,
@@ -249,6 +257,16 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 		let consumer_watermark = CdcConsumerWatermark::from_handle(engine.multi().consumer_watermark_handle());
 		ioc.register_service::<CdcConsumerWatermark>(consumer_watermark.clone());
 
+		let source_tracker = SubscriptionSourceTracker::new();
+		let position_tracker = SubscriptionPositionTracker::new();
+
+		ioc.register_service::<SubscriptionWatermarkSampler>(SubscriptionWatermarkSampler::new({
+			let source_tracker = source_tracker.clone();
+			let position_tracker = position_tracker.clone();
+			let store = store.clone();
+			move || compute_subscription_watermarks(&source_tracker, &position_tracker, &store)
+		}));
+
 		let subsystem = SubscriptionSubsystem::new(
 			engine,
 			cdc_store,
@@ -256,6 +274,8 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 			runtime_context,
 			custom_operators,
 			consumer_watermark,
+			source_tracker,
+			position_tracker,
 		)?;
 
 		let service = subsystem.service_handle();

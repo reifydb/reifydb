@@ -140,4 +140,36 @@ impl WindowOperator {
 	pub(super) fn event_time_cutoff(&self, txn: &mut FlowTransaction, span_ms: u64) -> Result<u64> {
 		Ok(self.load_event_watermark(txn)?.saturating_sub(span_ms))
 	}
+
+	pub(super) fn expiry_watermark_key(&self) -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(8);
+		serializer.extend_bytes(b"xwm:");
+		serializer.finish()
+	}
+
+	pub(super) fn load_expiry_watermark(&self, txn: &mut FlowTransaction) -> Result<u64> {
+		let key = self.expiry_watermark_key();
+		let state_row = self.load_state(txn, &key)?;
+		if state_row.is_empty() || !state_row.is_defined(0) {
+			return Ok(0);
+		}
+		let blob = self.layout.get_blob(&state_row, 0);
+		if blob.is_empty() {
+			return Ok(0);
+		}
+		Ok(from_bytes(blob.as_ref()).unwrap_or(0))
+	}
+
+	pub(super) fn advance_expiry_watermark(&self, txn: &mut FlowTransaction, coord: u64) -> Result<()> {
+		if coord > self.load_expiry_watermark(txn)? {
+			let serialized = to_stdvec(&coord).map_err(|e| {
+				Error(Box::new(internal!("Failed to serialize expiry watermark: {}", e)))
+			})?;
+			let mut state_row = self.layout.allocate();
+			let blob = Blob::from(serialized);
+			self.layout.set_blob(&mut state_row, 0, &blob);
+			self.save_state(txn, &self.expiry_watermark_key(), state_row)?;
+		}
+		Ok(())
+	}
 }

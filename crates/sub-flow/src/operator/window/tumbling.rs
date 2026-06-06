@@ -893,7 +893,7 @@ fn gate_closed_buckets(
 	if cutoff_ms == 0 || operator.kind.time() != TimeDomain::Event || operator.is_count_based() {
 		return Ok(());
 	}
-	let watermark = operator.load_event_watermark(txn)?;
+	let watermark = operator.load_expiry_watermark(txn)?;
 	let mut closed: Vec<(Hash128, WindowSpan<u64>)> = Vec::new();
 	{
 		let mut store = FlowWindowStore::new(txn, operator.core.node);
@@ -934,6 +934,9 @@ fn tick_expire_by_cutoff(
 		TimeDomain::Event => operator.load_event_watermark(txn)?,
 		TimeDomain::Processing => current_timestamp,
 	};
+	if operator.kind.time() == TimeDomain::Event {
+		operator.advance_expiry_watermark(txn, effective_now)?;
+	}
 	let mut diffs = Vec::new();
 	let mut store = FlowWindowStore::new(txn, operator.core.node);
 	for meta_key in &meta_keys {

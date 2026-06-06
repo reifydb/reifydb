@@ -40,6 +40,7 @@ pub mod series;
 pub mod shape_fields;
 pub mod shape_retention_strategies;
 pub mod shapes;
+pub mod subscription_watermarks;
 pub mod subscriptions;
 pub mod tables;
 pub mod tables_virtual;

@@ -5,7 +5,10 @@ use std::{marker::PhantomData, thread};
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::flow::{FlowWatermarkRow, FlowWatermarkSampler},
+	interface::{
+		flow::{FlowWatermarkRow, FlowWatermarkSampler},
+		subscription::{SubscriptionWatermarkRow, SubscriptionWatermarkSampler},
+	},
 };
 #[cfg(feature = "sub_replication")]
 use reifydb_sub_replication::replica::watermark::ReplicaWatermark;
@@ -40,6 +43,14 @@ impl<'a> Watermarks<'a> {
 	pub fn flow(&self) -> Option<FlowWatermarks<'a>> {
 		let source = self.db.engine().ioc().resolve::<FlowWatermarkSampler>().ok()?;
 		Some(FlowWatermarks {
+			source,
+			_marker: PhantomData,
+		})
+	}
+
+	pub fn subscription(&self) -> Option<SubscriptionWatermarks<'a>> {
+		let source = self.db.engine().ioc().resolve::<SubscriptionWatermarkSampler>().ok()?;
+		Some(SubscriptionWatermarks {
 			source,
 			_marker: PhantomData,
 		})
@@ -144,6 +155,17 @@ pub struct FlowWatermarks<'a> {
 
 impl FlowWatermarks<'_> {
 	pub fn all(&self) -> Vec<FlowWatermarkRow> {
+		self.source.all()
+	}
+}
+
+pub struct SubscriptionWatermarks<'a> {
+	source: SubscriptionWatermarkSampler,
+	_marker: PhantomData<&'a Database>,
+}
+
+impl SubscriptionWatermarks<'_> {
+	pub fn all(&self) -> Vec<SubscriptionWatermarkRow> {
 		self.source.all()
 	}
 }
