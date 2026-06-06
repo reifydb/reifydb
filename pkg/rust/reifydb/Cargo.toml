@@ -17,6 +17,7 @@ reifydb-column = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-derive = { workspace = true }
 reifydb-engine = { workspace = true }
+reifydb-export = { workspace = true }
 reifydb-extension = { workspace = true }
 reifydb-macro = { workspace = true }
 reifydb-metric = { workspace = true }

@@ -38,6 +38,15 @@ cargo run --bin basic-hello-world
 | `make rql-comparison` | Comparison operators (==, !=, <, >, <=, >=, between) | None |
 | `make rql-logical` | Logical operators (and, or, not, xor) | None |
 
+### Export / Import Examples
+
+| Make Command | Description | Required Features |
+|--------------|-------------|-------------------|
+| `make export-roundtrip` | Full logical backup/clone: export everything, re-import into a fresh database | None |
+| `make export-schema-data-split` | Two-phase migrate: `schema_only` then `data_only` applied in order | None |
+| `make export-selective` | Narrow exports by namespace / shape / kind, with dependency closure | None |
+| `make export-tuning` | `batch_size` chunking and `if_not_exists` idempotent re-apply | None |
+
 ### Interceptor Examples
 
 | Make Command | Description | Required Features |
@@ -72,6 +81,11 @@ bin/examples/
         └── 10_logical_operators.rs     # Logical operators
     └── intercept/      # Interceptor examples
         └── 01_table_view_interceptors.rs # Table and view hooks
+    └── export/         # Export / import examples
+        ├── 01_full_roundtrip.rs        # Full backup/clone round-trip
+        ├── 02_schema_data_split.rs     # schema_only + data_only
+        ├── 03_selective.rs             # namespace / shape / kind selection
+        └── 04_tuning.rs                # batch_size + if_not_exists
 ```
 
 ## Running Examples

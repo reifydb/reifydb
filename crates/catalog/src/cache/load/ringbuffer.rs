@@ -17,7 +17,7 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use super::CatalogCache;
 use crate::{
-	Result,
+	CatalogStore, Result,
 	store::ringbuffer::shape::{
 		ringbuffer,
 		ringbuffer::{CAPACITY, ID, NAME, NAMESPACE, PRIMARY_KEY},
@@ -26,9 +26,10 @@ use crate::{
 
 pub(crate) fn load_ringbuffers(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = RingBufferKey::full_scan();
-	let stream = rx.range(range, RangeScope::All, 1024)?;
+	let mut stream = rx.range(range, RangeScope::All, 1024)?;
 
-	for entry in stream {
+	let mut ringbuffers = Vec::new();
+	for entry in stream.by_ref() {
 		let multi = entry?;
 		let version = multi.version;
 
@@ -39,6 +40,12 @@ pub(crate) fn load_ringbuffers(rx: &mut Transaction<'_>, catalog: &CatalogCache)
 		if let Some(id) = pk_id {
 			catalog.set_primary_key_shape(ShapeId::RingBuffer(ringbuffer.id), id);
 		}
+		ringbuffers.push((ringbuffer, version));
+	}
+	drop(stream);
+
+	for (mut ringbuffer, version) in ringbuffers {
+		ringbuffer.columns = CatalogStore::list_columns(rx, ringbuffer.id)?;
 		catalog.set_ringbuffer(ringbuffer.id, version, Some(ringbuffer));
 	}
 

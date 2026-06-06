@@ -106,3 +106,20 @@ path = "examples/router/data.rs"
 name = "router"
 path = "examples/router/router.rs"
 
+# Export / Import examples
+[[bin]]
+name = "export-roundtrip"
+path = "examples/export/01_full_roundtrip.rs"
+
+[[bin]]
+name = "export-schema-data-split"
+path = "examples/export/02_schema_data_split.rs"
+
+[[bin]]
+name = "export-selective"
+path = "examples/export/03_selective.rs"
+
+[[bin]]
+name = "export-tuning"
+path = "examples/export/04_tuning.rs"
+

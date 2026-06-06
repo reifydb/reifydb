@@ -2530,6 +2530,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-derive",
  "reifydb-engine",
+ "reifydb-export",
  "reifydb-extension",
  "reifydb-macro",
  "reifydb-metric",
@@ -2766,6 +2767,15 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "reifydb-export"
+version = "0.6.0"
+dependencies = [
+ "reifydb-core",
+ "reifydb-value",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

@@ -1,0 +1,16 @@
+[package]
+name = "reifydb-export"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Logical export of ReifyDB catalog shapes and row data to RQL scripts"
+
+[features]
+default = []
+
+[dependencies]
+reifydb-core = { workspace = true }
+reifydb-value = { workspace = true }
+thiserror = { workspace = true }

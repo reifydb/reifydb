@@ -26,6 +26,12 @@ help:
 	@echo "  make rql-comparison      - Comparison operators (==, !=, <, >, <=, >=)"
 	@echo "  make rql-logical         - Logical operators (and, or, not, xor)"
 	@echo ""
+	@echo "Export / Import Examples:"
+	@echo "  make export-roundtrip         - Full backup/clone: export all, import into a fresh DB"
+	@echo "  make export-schema-data-split - Two-phase migrate: schema_only then data_only"
+	@echo "  make export-selective         - Narrow by namespace / shape / kind (+ dependency closure)"
+	@echo "  make export-tuning            - batch_size and if_not_exists idempotency"
+	@echo ""
 	@echo "Interceptor Examples:"
 	@echo "  make intercept-table-view    - Table and view interceptors (pre/post hooks)"
 	@echo ""
@@ -99,6 +105,23 @@ rql-comparison:
 rql-logical:
 	cargo run --release --bin rql-logical
 
+# Export / Import Examples
+.PHONY: export-roundtrip
+export-roundtrip:
+	RUST_LOG=info cargo run --release --bin export-roundtrip
+
+.PHONY: export-schema-data-split
+export-schema-data-split:
+	RUST_LOG=info cargo run --release --bin export-schema-data-split
+
+.PHONY: export-selective
+export-selective:
+	RUST_LOG=info cargo run --release --bin export-selective
+
+.PHONY: export-tuning
+export-tuning:
+	RUST_LOG=info cargo run --release --bin export-tuning
+
 # Interceptor Examples
 .PHONY: intercept-table-view
 intercept-table-view:
@@ -113,6 +136,7 @@ replication-basic:
 BASIC_EXAMPLES := basic-hello-world basic-tables basic-enums basic-events-and-handlers
 RQL_EXAMPLES := rql-from rql-map rql-filter rql-sort rql-take rql-aggregate rql-join rql-arithmetic rql-comparison rql-logical
 INTERCEPT_EXAMPLES := intercept-table-view
+EXPORT_EXAMPLES := export-roundtrip export-schema-data-split export-selective export-tuning
 # Run all examples in order (by directory, then by filename)
 .PHONY: run-all
 run-all:
@@ -156,6 +180,22 @@ run-all:
 	echo "=== Interceptor Examples ==="; \
 	echo ""; \
 	for example in $(INTERCEPT_EXAMPLES); do \
+		echo "--- Running $$example ---"; \
+		if RUST_LOG=info cargo run --release --bin $$example; then \
+			true; \
+		else \
+			exit_code=$$?; \
+			output=$$(RUST_LOG=info cargo run --release --bin $$example 2>&1); \
+			panic=$$(echo "$$output" | grep -A2 "panicked at" | head -3 || echo "Unknown error"); \
+			[ $$first_error -eq 0 ] && first_error=$$exit_code; \
+			failed_examples="$$failed_examples $$example"; \
+			panic_messages="$$panic_messages\n$$example:\n$$panic\n"; \
+		fi; \
+		echo ""; \
+	done; \
+	echo "=== Export Examples ==="; \
+	echo ""; \
+	for example in $(EXPORT_EXAMPLES); do \
 		echo "--- Running $$example ---"; \
 		if RUST_LOG=info cargo run --release --bin $$example; then \
 			true; \

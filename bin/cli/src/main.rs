@@ -3,9 +3,12 @@
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 
+mod local;
 mod ws;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+use std::thread;
+
 use clap::{Parser, Subcommand};
 use reifydb::allocator;
 
@@ -24,7 +27,73 @@ struct Cli {
 enum Protocol {
 	/// WebSocket protocol operations
 	Ws(WsCommand),
-	// Future: Http(HttpCommand), Grpc(GrpcCommand), Local(LocalCommand)
+	/// Local (embedded) database operations
+	Local(LocalCommand),
+	// Future: Http(HttpCommand), Grpc(GrpcCommand)
+}
+
+#[derive(Parser)]
+struct LocalCommand {
+	#[command(subcommand)]
+	action: LocalAction,
+}
+
+#[derive(Subcommand)]
+enum LocalAction {
+	/// Export shapes from a local database to a self-contained .rql script
+	Export(LocalExportArgs),
+	/// Import a .rql script into a local database
+	Import(LocalImportArgs),
+}
+
+#[derive(Parser)]
+struct LocalExportArgs {
+	/// Path to the local (sqlite) database
+	#[arg(long)]
+	db: String,
+
+	/// Output file (defaults to stdout)
+	#[arg(long, short)]
+	out: Option<String>,
+
+	/// Export only this namespace (repeatable)
+	#[arg(long)]
+	namespace: Vec<String>,
+
+	/// Export only this shape, given as namespace::name (repeatable)
+	#[arg(long)]
+	shape: Vec<String>,
+
+	/// Export only this kind: table|ringbuffer|series|dictionary|enum (repeatable)
+	#[arg(long)]
+	kind: Vec<String>,
+
+	/// Export schema (DDL) only, without data
+	#[arg(long)]
+	schema_only: bool,
+
+	/// Export data only, assuming the schema already exists in the target
+	#[arg(long)]
+	data_only: bool,
+
+	/// Rows per INSERT batch
+	#[arg(long)]
+	batch_size: Option<usize>,
+
+	/// Emit IF NOT EXISTS on the CREATE statements that support it
+	#[arg(long)]
+	if_not_exists: bool,
+}
+
+#[derive(Parser)]
+struct LocalImportArgs {
+	/// Path to the local (sqlite) database
+	#[arg(long)]
+	db: String,
+
+	/// Path to the .rql script to import
+	#[arg(long, short)]
+	file: String,
 }
 
 #[derive(Parser)]
@@ -170,6 +239,14 @@ async fn main() -> Result<()> {
 
 	match cli.protocol {
 		Protocol::Ws(ws_cmd) => handle_ws(ws_cmd).await,
+		Protocol::Local(local_cmd) => {
+			// Run on a dedicated thread so the embedded database gets a clean
+			// execution context outside the tokio runtime driving the CLI.
+			match thread::spawn(move || local::handle(local_cmd)).join() {
+				Ok(result) => result.map_err(|e| e.into()),
+				Err(_) => Err("local command thread panicked".into()),
+			}
+		}
 	}
 }
 

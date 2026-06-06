@@ -25,6 +25,7 @@ use reifydb_store_single::{
 use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
 
 pub mod embedded;
+mod export;
 pub mod migration;
 pub mod server;
 
