@@ -106,13 +106,9 @@ impl<K, V, S> LinkedHashMap<K, V, S> {
     #[inline]
     pub fn clear(&mut self) {
         self.table.clear();
-        if let Some(mut values) = self.values {
+        if let Some(values) = self.values {
             unsafe {
                 drop_value_nodes(values);
-                values.as_mut().links.value = ValueLinks {
-                    prev: values,
-                    next: values,
-                };
             }
         }
     }
@@ -486,17 +482,22 @@ where
                 let mut cur = values.as_ref().links.value.next;
                 while cur != values {
                     let next = cur.as_ref().links.value.next;
+                    // Compute the hash before invoking the callback. The callback
+                    // only receives `&K`, but interior mutability could change the
+                    // key's hash or equality, and this node is stored in the table
+                    // under its *original* hash.
+                    let hash = hash_key(&self.hash_builder, (*cur.as_ptr()).key_ref());
                     let filter = {
                         let (k, v) = (*cur.as_ptr()).entry_mut();
                         !f(k, v)
                     };
                     if filter {
-                        let k = (*cur.as_ptr()).key_ref();
-                        let hash = hash_key(&self.hash_builder, k);
-                        self.table
-                            .find_entry(hash, |o| (*o).as_ref().key_ref().eq(k))
-                            .unwrap()
-                            .remove();
+                        // Remove the table entry pointing at *this* node, matching
+                        // by pointer identity rather than key equality: the callback
+                        // may have mutated the key to compare equal to a different
+                        // entry, which would otherwise leave the table referencing a
+                        // freed node.
+                        self.table.find_entry(hash, |o| *o == cur).unwrap().remove();
                         drop_filtered_values.drop_later(cur);
                     }
                     cur = next;
@@ -2228,13 +2229,48 @@ unsafe fn allocate_node<K, V>(free_list: &mut Option<NonNull<Node<K, V>>>) -> No
 
 // Given node is assumed to be the guard node and is *not* dropped.
 #[inline]
-unsafe fn drop_value_nodes<K, V>(guard: NonNull<Node<K, V>>) {
-    let mut cur = guard.as_ref().links.value.prev;
-    while cur != guard {
-        let prev = cur.as_ref().links.value.prev;
-        cur.as_mut().take_entry();
-        let _ = Box::from_raw(cur.as_ptr());
-        cur = prev;
+unsafe fn drop_value_nodes<K, V>(mut guard: NonNull<Node<K, V>>) {
+    // Detach the value list from the guard before dropping any nodes, so the
+    // guard is always left as an empty, consistent list.  This matters when an
+    // entry's `Drop` panics: without it, a caught panic (e.g. via `clear`)
+    // could observe a node whose entry was already moved out and drop it again.
+    let cur = guard.as_ref().links.value.prev;
+    guard.as_mut().links.value = ValueLinks {
+        prev: guard,
+        next: guard,
+    };
+
+    // `Remainder` owns the not-yet-freed tail of the detached chain.  If
+    // dropping an entry panics, its `Drop` frees the remaining nodes during
+    // unwinding (rather than leaking them), matching how the standard library
+    // drops the rest of a collection when one element's destructor panics.
+    struct Remainder<K, V> {
+        cur: NonNull<Node<K, V>>,
+        guard: NonNull<Node<K, V>>,
+    }
+
+    impl<K, V> Drop for Remainder<K, V> {
+        fn drop(&mut self) {
+            while self.cur != self.guard {
+                unsafe {
+                    let prev = self.cur.as_ref().links.value.prev;
+                    let _ = self.cur.as_mut().take_entry();
+                    let _ = Box::from_raw(self.cur.as_ptr());
+                    self.cur = prev;
+                }
+            }
+        }
+    }
+
+    let mut rem = Remainder { cur, guard };
+    while rem.cur != guard {
+        let prev = rem.cur.as_ref().links.value.prev;
+        let entry = rem.cur.as_mut().take_entry();
+        // Free the node and advance past it before dropping the entry, so that
+        // if the entry's `Drop` panics, `Remainder` resumes from the next node.
+        let _ = Box::from_raw(rem.cur.as_ptr());
+        rem.cur = prev;
+        drop(entry);
     }
 }
 

@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.71"
 name = "pin-project-internal"
-version = "1.1.11"
+version = "1.1.13"
 build = false
 autolib = false
 autobins = false

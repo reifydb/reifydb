@@ -5,7 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 0.2.1 (UNRELEASED)
+## 0.2.2 (2026-05-19)
+### Added
+- `SetIvState` trait ([#2420])
+
+[#2420]: https://github.com/RustCrypto/traits/pull/2420
+
+## 0.2.1 (2026-02-25)
 ### Changed
 - `BlockSizeUser::BlockSize` is no longer bounded by `BlockSizes` ([#2309])
 
@@ -14,7 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [#2309]: https://github.com/RustCrypto/traits/pull/2309
 
-## 0.2.0 (2026-02-04)
+## 0.2.0 (2026-02-04) [YANKED]
+Note: this version was yanked because v0.2.1 introduces breaking changes.
+Users should migrate to v0.2.1 using `cargo update`.
+
 ### Added
 - Sealed `BlockSizes` trait implemented for types from `U1` to `U255` ([#1172])
 - `SerializableState` trait under `hazmat` module ([#1369])

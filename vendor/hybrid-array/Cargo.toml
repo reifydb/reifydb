@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.85"
 name = "hybrid-array"
-version = "0.4.10"
+version = "0.4.12"
 authors = ["RustCrypto Developers"]
 build = false
 autolib = false
@@ -84,7 +84,7 @@ optional = true
 default-features = false
 
 [dependencies.typenum]
-version = "1.17"
+version = "1.20"
 features = ["const-generics"]
 
 [dependencies.zerocopy]
@@ -97,10 +97,8 @@ version = "1.8"
 optional = true
 default-features = false
 
-[dev-dependencies.postcard]
+[dev-dependencies.serde_json]
 version = "1"
-features = ["alloc"]
-default-features = false
 
 [lints.clippy]
 arithmetic_side_effects = "warn"

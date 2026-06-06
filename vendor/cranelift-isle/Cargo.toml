@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.92.0"
 name = "cranelift-isle"
-version = "0.131.0"
+version = "0.131.2"
 authors = ["The Cranelift Project Developers"]
 build = "build.rs"
 autolib = false

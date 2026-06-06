@@ -38,12 +38,14 @@ fn open_db() {
 
 ```toml
 [dependencies]
-sqlite-wasm-vfs = "0.1"
+# It requires sqlite-wasm-rs 0.5.2 or higher to be used,
+# for version 0.5.1, use version 0.1 instead.
+sqlite-wasm-vfs = "0.2"
 ```
 
 The following vfs have been implemented:
 
-* [`memory`](./src/vfs/memory.rs): as the default vfs, no additional conditions are required, store the database in memory.
+* [`memory`](./crates/rsqlite-vfs/src/memvfs.rs): as the default vfs, no additional conditions are required, store the database in memory.
 * [`sahpool`](./crates/sqlite-wasm-vfs/src/sahpool.rs): ported from sqlite-wasm, store the database in opfs.
 * [`relaxed-idb`](./crates/sqlite-wasm-vfs/src/relaxed_idb.rs): store the database in blocks in indexed db.
 
@@ -78,7 +80,7 @@ More see [`use-prebuild-lib`](./examples/use-prebuild-lib) example.
 
 ## Minimum supported Rust version (MSRV)
 
-The minimal officially supported rustc version is 1.82.0.
+The minimal officially supported rustc version is 1.81.0.
 
 ## Extensions
 

@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.92.0"
 name = "wiggle"
-version = "44.0.0"
+version = "44.0.2"
 authors = [
     "Pat Hickey <phickey@fastly.com>",
     "Jakub Konka <kubkonk@jakubkonka.com>",
@@ -70,15 +70,15 @@ version = "0.1.41"
 default-features = false
 
 [dependencies.wasmtime]
-version = "44.0.0"
+version = "44.0.2"
 optional = true
 default-features = false
 
 [dependencies.wasmtime-environ]
-version = "=44.0.0"
+version = "=44.0.2"
 
 [dependencies.wiggle-macro]
-version = "=44.0.0"
+version = "=44.0.2"
 
 [dependencies.witx]
 version = "0.9.1"
@@ -96,7 +96,7 @@ features = [
 ]
 
 [dev-dependencies.wasmtime]
-version = "44.0.0"
+version = "44.0.2"
 features = ["default"]
 default-features = false
 

@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.92.0"
 name = "wiggle-generate"
-version = "44.0.0"
+version = "44.0.2"
 authors = [
     "Pat Hickey <phickey@fastly.com>",
     "Jakub Konka <kubkon@jakubkonka.com>",
@@ -59,7 +59,7 @@ version = "2.0.106"
 features = ["full"]
 
 [dependencies.wasmtime-environ]
-version = "=44.0.0"
+version = "=44.0.2"
 
 [dependencies.witx]
 version = "0.9.1"

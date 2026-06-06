@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.92.0"
 name = "wasmtime-internal-cache"
-version = "44.0.0"
+version = "44.0.2"
 authors = ["The Wasmtime Project Developers"]
 build = "build.rs"
 autolib = false
@@ -68,7 +68,7 @@ default-features = false
 version = "0.9.8"
 
 [dependencies.wasmtime-environ]
-version = "=44.0.0"
+version = "=44.0.2"
 
 [dependencies.zstd]
 version = "0.13.0"

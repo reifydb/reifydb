@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.92.0"
 name = "winch-codegen"
-version = "44.0.0"
+version = "44.0.2"
 authors = ["The Winch Project Developers"]
 build = "build.rs"
 autolib = false
@@ -46,10 +46,10 @@ name = "winch_codegen"
 path = "src/lib.rs"
 
 [dependencies.cranelift-assembler-x64]
-version = "0.131.0"
+version = "0.131.2"
 
 [dependencies.cranelift-codegen]
-version = "0.131.0"
+version = "0.131.2"
 features = [
     "std",
     "unwind",
@@ -82,15 +82,15 @@ features = ["simd"]
 default-features = false
 
 [dependencies.wasmtime-core]
-version = "=44.0.0"
+version = "=44.0.2"
 package = "wasmtime-internal-core"
 
 [dependencies.wasmtime-cranelift]
-version = "=44.0.0"
+version = "=44.0.2"
 package = "wasmtime-internal-cranelift"
 
 [dependencies.wasmtime-environ]
-version = "=44.0.0"
+version = "=44.0.2"
 
 [lints.clippy]
 allow_attributes_without_reason = "warn"

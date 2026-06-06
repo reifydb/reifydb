@@ -13,7 +13,7 @@ dependencies = [
 
 [[package]]
 name = "pulley-macros"
-version = "44.0.0"
+version = "44.0.2"
 dependencies = [
  "proc-macro2",
  "quote",

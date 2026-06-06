@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.85"
 name = "cmov"
-version = "0.5.3"
+version = "0.5.4"
 authors = ["RustCrypto Developers"]
 build = false
 autolib = false
@@ -62,7 +62,7 @@ name = "regression"
 path = "tests/regression.rs"
 
 [target."cfg(any(unix, windows))".dev-dependencies.proptest]
-version = "1.9"
+version = "1.11"
 
 [lints.clippy]
 borrow_as_ptr = "warn"

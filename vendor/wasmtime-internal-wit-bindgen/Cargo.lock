@@ -184,7 +184,7 @@ dependencies = [
 
 [[package]]
 name = "wasmtime-internal-wit-bindgen"
-version = "44.0.0"
+version = "44.0.2"
 dependencies = [
  "anyhow",
  "bitflags",

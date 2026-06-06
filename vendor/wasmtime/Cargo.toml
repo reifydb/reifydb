@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.92.0"
 name = "wasmtime"
-version = "44.0.0"
+version = "44.0.2"
 authors = ["The Wasmtime Project Developers"]
 build = "build.rs"
 autolib = false
@@ -332,7 +332,7 @@ features = ["alloc"]
 default-features = false
 
 [dependencies.pulley-interpreter]
-version = "=44.0.0"
+version = "=44.0.2"
 
 [dependencies.rayon]
 version = "1.5.3"
@@ -386,65 +386,65 @@ features = ["simd"]
 default-features = false
 
 [dependencies.wasmtime-cache]
-version = "=44.0.0"
+version = "=44.0.2"
 optional = true
 package = "wasmtime-internal-cache"
 
 [dependencies.wasmtime-component-macro]
-version = "=44.0.0"
+version = "=44.0.2"
 optional = true
 package = "wasmtime-internal-component-macro"
 
 [dependencies.wasmtime-component-util]
-version = "=44.0.0"
+version = "=44.0.2"
 optional = true
 package = "wasmtime-internal-component-util"
 
 [dependencies.wasmtime-core]
-version = "=44.0.0"
+version = "=44.0.2"
 features = ["serde"]
 package = "wasmtime-internal-core"
 
 [dependencies.wasmtime-cranelift]
-version = "=44.0.0"
+version = "=44.0.2"
 features = ["pulley"]
 optional = true
 package = "wasmtime-internal-cranelift"
 
 [dependencies.wasmtime-environ]
-version = "=44.0.0"
+version = "=44.0.2"
 
 [dependencies.wasmtime-fiber]
-version = "=44.0.0"
+version = "=44.0.2"
 optional = true
 package = "wasmtime-internal-fiber"
 
 [dependencies.wasmtime-jit-debug]
-version = "=44.0.0"
+version = "=44.0.2"
 optional = true
 package = "wasmtime-internal-jit-debug"
 
 [dependencies.wasmtime-jit-icache-coherence]
-version = "=44.0.0"
+version = "=44.0.2"
 optional = true
 package = "wasmtime-internal-jit-icache-coherence"
 
 [dependencies.wasmtime-unwinder]
-version = "=44.0.0"
+version = "=44.0.2"
 optional = true
 package = "wasmtime-internal-unwinder"
 
 [dependencies.wasmtime-versioned-export-macros]
-version = "=44.0.0"
+version = "=44.0.2"
 package = "wasmtime-internal-versioned-export-macros"
 
 [dependencies.wasmtime-winch]
-version = "=44.0.0"
+version = "=44.0.2"
 optional = true
 package = "wasmtime-internal-winch"
 
 [dependencies.wasmtime-wmemcheck]
-version = "=44.0.0"
+version = "=44.0.2"
 optional = true
 package = "wasmtime-internal-wmemcheck"
 
@@ -453,7 +453,7 @@ version = "1.246.1"
 optional = true
 
 [dev-dependencies.cranelift-native]
-version = "0.131.0"
+version = "0.131.2"
 
 [dev-dependencies.env_logger]
 version = "0.11.5"
@@ -486,7 +486,7 @@ version = "1.2.41"
 optional = true
 
 [build-dependencies.wasmtime-versioned-export-macros]
-version = "=44.0.0"
+version = "=44.0.2"
 optional = true
 package = "wasmtime-internal-versioned-export-macros"
 

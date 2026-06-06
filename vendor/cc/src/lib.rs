@@ -2161,15 +2161,6 @@ impl Build {
                         cmd.push_cc_arg("-fno-plt".into());
                     }
                 }
-                if target.arch == "wasm32" || target.arch == "wasm64" {
-                    // WASI does not support exceptions yet.
-                    // https://github.com/WebAssembly/exception-handling
-                    //
-                    // `rustc` also defaults to (currently) disable exceptions
-                    // on all WASM targets:
-                    // <https://github.com/rust-lang/rust/blob/1.82.0/compiler/rustc_target/src/spec/base/wasm.rs#L72-L77>
-                    cmd.push_cc_arg("-fno-exceptions".into());
-                }
 
                 if target.os == "wasi" {
                     // Link clang sysroot
@@ -3611,6 +3602,7 @@ impl Build {
                     "aarch64-unknown-helenos" => Some("aarch64-helenos"),
                     "aarch64-unknown-linux-gnu" => Some("aarch64-linux-gnu"),
                     "aarch64-unknown-linux-musl" => Some("aarch64-linux-musl"),
+                    "aarch64-unknown-linux-relibc" => Some("aarch64-linux-relibc"),
                     "aarch64-unknown-netbsd" => Some("aarch64--netbsd"),
                     "arm-unknown-linux-gnueabi" => Some("arm-linux-gnueabi"),
                     "armv4t-unknown-linux-gnueabi" => Some("arm-linux-gnueabi"),
@@ -3740,6 +3732,9 @@ impl Build {
                     ]), // explicit None if not found, so caller knows to fall back
                     "x86_64-unknown-linux-musl" => {
                         self.find_working_gnu_prefix(&["x86_64-linux-musl", "musl"])
+                    }
+                    "x86_64-unknown-linux-relibc" => {
+                        self.find_working_gnu_prefix(&["x86_64-linux-relibc", "relibc"])
                     }
                     "x86_64-unknown-netbsd" => Some("x86_64--netbsd"),
                     "xtensa-esp32-espidf"

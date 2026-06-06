@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.92.0"
 name = "wasmtime-wasi"
-version = "44.0.0"
+version = "44.0.2"
 authors = ["The Wasmtime Project Developers"]
 build = false
 include = [
@@ -145,7 +145,7 @@ default-features = false
 version = "2.5.7"
 
 [dependencies.wasmtime]
-version = "44.0.0"
+version = "44.0.2"
 features = [
     "runtime",
     "std",
@@ -153,12 +153,12 @@ features = [
 default-features = false
 
 [dependencies.wasmtime-wasi-io]
-version = "44.0.0"
+version = "44.0.2"
 features = ["std"]
 default-features = false
 
 [dependencies.wiggle]
-version = "=44.0.0"
+version = "=44.0.2"
 features = ["wasmtime"]
 optional = true
 default-features = false
@@ -201,7 +201,7 @@ features = [
 default-features = false
 
 [dev-dependencies.wasmtime]
-version = "44.0.0"
+version = "44.0.2"
 features = [
     "default",
     "incremental-cache",

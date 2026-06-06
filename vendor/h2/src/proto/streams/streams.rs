@@ -555,19 +555,26 @@ impl Inner {
                         id,
                         self.actions.recv.max_stream_id()
                     );
+
+                    // We still need to account for connection-level flow control.
+                    let sz = frame.flow_controlled_len();
+                    assert!(sz <= super::MAX_WINDOW_SIZE as usize);
+                    let sz = sz as WindowSize;
+                    self.actions.recv.ignore_data(sz)?;
+
                     return Ok(());
                 }
 
                 if self.actions.may_have_forgotten_stream(peer, id) {
                     tracing::debug!("recv_data for old stream={:?}, sending STREAM_CLOSED", id,);
 
-                    let sz = frame.payload().len();
+                    let sz = frame.flow_controlled_len();
                     // This should have been enforced at the codec::FramedRead layer, so
                     // this is just a sanity check.
                     assert!(sz <= super::MAX_WINDOW_SIZE as usize);
                     let sz = sz as WindowSize;
-
                     self.actions.recv.ignore_data(sz)?;
+
                     return Err(Error::library_reset(id, Reason::STREAM_CLOSED));
                 }
 
@@ -581,7 +588,7 @@ impl Inner {
         let send_buffer = &mut *send_buffer;
 
         self.counts.transition(stream, |counts, stream| {
-            let sz = frame.payload().len();
+            let sz = frame.flow_controlled_len();
             let res = actions.recv.recv_data(frame, stream);
 
             // Any stream error after receiving a DATA frame means
@@ -727,8 +734,9 @@ impl Inner {
 
         let err = Error::remote_go_away(frame.debug_data().clone(), frame.reason());
 
+        let peer = counts.peer();
         self.store.for_each(|stream| {
-            if stream.id > last_stream_id {
+            if stream.id > last_stream_id && peer.is_local_init(stream.id) {
                 counts.transition(stream, |counts, stream| {
                     actions.recv.handle_error(&err, &mut *stream);
                     actions.send.handle_error(send_buffer, stream, counts);

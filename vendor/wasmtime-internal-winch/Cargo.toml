@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.92.0"
 name = "wasmtime-internal-winch"
-version = "44.0.0"
+version = "44.0.2"
 authors = ["The Wasmtime Project Developers"]
 build = false
 autolib = false
@@ -45,7 +45,7 @@ name = "wasmtime_internal_winch"
 path = "src/lib.rs"
 
 [dependencies.cranelift-codegen]
-version = "0.131.0"
+version = "0.131.2"
 features = [
     "std",
     "unwind",
@@ -82,14 +82,14 @@ features = ["simd"]
 default-features = false
 
 [dependencies.wasmtime-cranelift]
-version = "=44.0.0"
+version = "=44.0.2"
 package = "wasmtime-internal-cranelift"
 
 [dependencies.wasmtime-environ]
-version = "=44.0.0"
+version = "=44.0.2"
 
 [dependencies.winch-codegen]
-version = "=44.0.0"
+version = "=44.0.2"
 
 [lints.clippy]
 allow_attributes_without_reason = "warn"

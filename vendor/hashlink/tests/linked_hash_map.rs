@@ -1,3 +1,10 @@
+use std::{
+    cell::{Cell, RefCell},
+    hash::{Hash, Hasher},
+    panic::{catch_unwind, AssertUnwindSafe},
+    rc::Rc,
+};
+
 use hashlink::{linked_hash_map, LinkedHashMap};
 
 #[allow(dead_code)]
@@ -819,4 +826,101 @@ fn test_cursor_back_mut() {
     let mut cursor = map.cursor_back_mut();
     assert!(cursor.current().is_some());
     assert_eq!(cursor.current().unwrap().1, &mut 3);
+}
+
+// Regression test for https://github.com/djc/hashlink/issues/43
+//
+// A panic while dropping an entry during `clear` must not leave a moved-out node reachable
+// from the value list, which would cause its entry to be dropped again.
+#[test]
+fn test_clear_panic_safe() {
+    struct PanicOnDrop {
+        should_panic: Rc<Cell<bool>>,
+    }
+
+    impl Drop for PanicOnDrop {
+        fn drop(&mut self) {
+            if self.should_panic.replace(false) {
+                panic!("intentional panic while clearing LinkedHashMap");
+            }
+        }
+    }
+
+    let should_panic = Rc::new(Cell::new(true));
+    let mut map = LinkedHashMap::new();
+    map.insert(
+        1,
+        PanicOnDrop {
+            should_panic: Rc::clone(&should_panic),
+        },
+    );
+    map.insert(
+        2,
+        PanicOnDrop {
+            should_panic: Rc::clone(&should_panic),
+        },
+    );
+
+    let result = catch_unwind(AssertUnwindSafe(|| map.clear()));
+    assert!(result.is_err());
+    should_panic.set(false);
+
+    // Dropping (or reusing) the map after the caught panic must not traverse a
+    // stale, moved-out node.
+    drop(map);
+}
+
+// Regression test for https://github.com/djc/hashlink/issues/42
+//
+// A key that changes its hash/equality through interior mutability inside the
+// `retain_with_order` callback must not make the method remove a different table entry than the
+// node it frees, which would leave the table referencing a freed node.
+#[test]
+fn test_retain_with_order_key_mutation_sound() {
+    #[derive(Debug)]
+    struct Key(RefCell<String>);
+
+    impl Key {
+        fn new(value: &str) -> Self {
+            Self(RefCell::new(value.to_owned()))
+        }
+
+        fn set(&self, value: &str) {
+            *self.0.borrow_mut() = value.to_owned();
+        }
+    }
+
+    impl PartialEq for Key {
+        fn eq(&self, other: &Self) -> bool {
+            self.0.borrow().as_str() == other.0.borrow().as_str()
+        }
+    }
+
+    impl Eq for Key {}
+
+    impl Hash for Key {
+        fn hash<H: Hasher>(&self, state: &mut H) {
+            self.0.borrow().hash(state);
+        }
+    }
+
+    let mut map = LinkedHashMap::new();
+    map.insert(Key::new("a"), 1);
+    map.insert(Key::new("b"), 2);
+
+    // The callback mutates the first key to compare equal to the second, then
+    // asks to drop it.
+    let mut first = true;
+    map.retain_with_order(|key, _| {
+        if first {
+            first = false;
+            key.set("b");
+            false
+        } else {
+            true
+        }
+    });
+
+    // Looking up a stale key must not dereference a freed node.
+    let _ = map.contains_key(&Key::new("a"));
 }

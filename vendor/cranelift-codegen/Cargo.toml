@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.92.0"
 name = "cranelift-codegen"
-version = "0.131.0"
+version = "0.131.2"
 authors = ["The Cranelift Project Developers"]
 build = "build.rs"
 autolib = false
@@ -117,23 +117,23 @@ version = "0.13.0"
 optional = true
 
 [dependencies.cranelift-assembler-x64]
-version = "0.131.0"
+version = "0.131.2"
 
 [dependencies.cranelift-bforest]
-version = "0.131.0"
+version = "0.131.2"
 
 [dependencies.cranelift-bitset]
-version = "0.131.0"
+version = "0.131.2"
 
 [dependencies.cranelift-codegen-shared]
-version = "0.131.0"
+version = "0.131.2"
 
 [dependencies.cranelift-control]
-version = "0.131.0"
+version = "0.131.2"
 default-features = false
 
 [dependencies.cranelift-entity]
-version = "0.131.0"
+version = "0.131.2"
 
 [dependencies.gimli]
 version = "0.33.0"
@@ -163,7 +163,7 @@ optional = true
 default-features = false
 
 [dependencies.pulley-interpreter]
-version = "=44.0.0"
+version = "=44.0.2"
 optional = true
 
 [dependencies.regalloc2]
@@ -200,7 +200,7 @@ optional = true
 version = "0.13.0"
 
 [dependencies.wasmtime-core]
-version = "=44.0.0"
+version = "=44.0.2"
 package = "wasmtime-internal-core"
 
 [dev-dependencies.criterion]
@@ -221,10 +221,10 @@ version = "1.0.0"
 version = "2.1.0"
 
 [build-dependencies.cranelift-codegen-meta]
-version = "0.131.0"
+version = "0.131.2"
 
 [build-dependencies.cranelift-isle]
-version = "=0.131.0"
+version = "=0.131.2"
 
 [lints.clippy]
 allow_attributes_without_reason = "warn"

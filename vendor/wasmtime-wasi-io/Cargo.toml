@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.92.0"
 name = "wasmtime-wasi-io"
-version = "44.0.0"
+version = "44.0.2"
 authors = ["The Wasmtime Project Developers"]
 build = false
 autolib = false
@@ -60,7 +60,7 @@ version = "0.1.41"
 default-features = false
 
 [dependencies.wasmtime]
-version = "44.0.0"
+version = "44.0.2"
 features = [
     "component-model",
     "async",
