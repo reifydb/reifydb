@@ -3,7 +3,7 @@
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
-	common::{CommitVersion, WindowKind, WindowSize},
+	common::{CommitVersion, TimeDomain, WindowKind, WindowSize},
 	encoded::shape::RowShape,
 	error::diagnostic::flow::{flow_window_timestamp_column_not_found, flow_window_timestamp_column_type_mismatch},
 	interface::{catalog::flow::FlowNodeId, change::Change},
@@ -101,8 +101,8 @@ impl WindowOperator {
 		if row_count == 0 {
 			return Ok(Vec::new());
 		}
-		match &self.ts {
-			Some(ts_col) => {
+		match (self.kind.time(), &self.ts) {
+			(TimeDomain::Event, Some(ts_col)) => {
 				let col = columns.column(ts_col).ok_or_else(|| {
 					Error(Box::new(flow_window_timestamp_column_not_found(ts_col)))
 				})?;
@@ -122,7 +122,7 @@ impl WindowOperator {
 				}
 				Ok(timestamps)
 			}
-			None => {
+			_ => {
 				let now = self.core.current_timestamp();
 				Ok(vec![now; row_count])
 			}

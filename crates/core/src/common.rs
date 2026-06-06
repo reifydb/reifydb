@@ -138,25 +138,35 @@ impl WindowSize {
 	}
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TimeDomain {
+	Event,
+	Processing,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum WindowKind {
 	Tumbling {
 		size: WindowSize,
+		time: TimeDomain,
 	},
 
 	Sliding {
 		size: WindowSize,
 		slide: WindowSize,
+		time: TimeDomain,
 	},
 
 	Rolling {
 		size: WindowSize,
 		#[serde(default)]
 		lag: Option<Duration>,
+		time: TimeDomain,
 	},
 
 	Session {
 		gap: Duration,
+		time: TimeDomain,
 	},
 }
 
@@ -165,6 +175,7 @@ impl WindowKind {
 		match self {
 			WindowKind::Tumbling {
 				size,
+				..
 			} => Some(size),
 			WindowKind::Sliding {
 				size,
@@ -177,6 +188,27 @@ impl WindowKind {
 			WindowKind::Session {
 				..
 			} => None,
+		}
+	}
+
+	pub fn time(&self) -> TimeDomain {
+		match self {
+			WindowKind::Tumbling {
+				time,
+				..
+			}
+			| WindowKind::Sliding {
+				time,
+				..
+			}
+			| WindowKind::Rolling {
+				time,
+				..
+			}
+			| WindowKind::Session {
+				time,
+				..
+			} => *time,
 		}
 	}
 }

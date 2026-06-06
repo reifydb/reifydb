@@ -671,7 +671,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 
 		Expression::SumTypeConstructor(_) => {
 			panic!(
-				"SumTypeConstructor in expression context — constructors should be expanded by InlineDataNode before expression compilation"
+				"SumTypeConstructor in expression context - constructors should be expanded by InlineDataNode before expression compilation"
 			);
 		}
 

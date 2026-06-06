@@ -81,12 +81,12 @@ fuzz_target!(|input: RoundtripInput| {
     let decoded: i128 = keycode::deserialize(&encoded).unwrap();
     assert_eq!(decoded, input.i16_val);
 
-    // f32 — compare via to_bits() for NaN
+    // f32 - compare via to_bits() for NaN
     let encoded = keycode::serialize(&input.f4);
     let decoded: f32 = keycode::deserialize(&encoded).unwrap();
     assert_eq!(decoded.to_bits(), input.f4.to_bits());
 
-    // f64 — compare via to_bits() for NaN
+    // f64 - compare via to_bits() for NaN
     let encoded = keycode::serialize(&input.f8);
     let decoded: f64 = keycode::deserialize(&encoded).unwrap();
     assert_eq!(decoded.to_bits(), input.f8.to_bits());

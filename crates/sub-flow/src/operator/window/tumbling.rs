@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use reifydb_core::{
+	common::TimeDomain,
 	encoded::key::{EncodedKey, IntoEncodedKey},
 	interface::change::{Change, Diff},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
@@ -421,6 +422,13 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 		}
 	}
 
+	if operator.kind.time() == TimeDomain::Event
+		&& !operator.is_count_based()
+		&& let Some(batch_max) = window_max_ts.values().copied().max()
+	{
+		operator.advance_event_watermark(txn, batch_max)?;
+	}
+
 	let diffs = finish_tumbling_engine(
 		&operator.core,
 		txn,
@@ -619,6 +627,13 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		}
 	}
 
+	if operator.kind.time() == TimeDomain::Event
+		&& !operator.is_count_based()
+		&& let Some(batch_max) = window_max_ts.values().copied().max()
+	{
+		operator.advance_event_watermark(txn, batch_max)?;
+	}
+
 	let diffs = finish_tumbling_engine(
 		&operator.core,
 		txn,
@@ -815,6 +830,13 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		operator.save_session_tracker(txn, *hash, *session_id, *last)?;
 	}
 
+	if operator.kind.time() == TimeDomain::Event
+		&& !operator.is_count_based()
+		&& let Some(batch_max) = window_max_ts.values().copied().max()
+	{
+		operator.advance_event_watermark(txn, batch_max)?;
+	}
+
 	let mut diffs = finish_tumbling_engine(
 		&operator.core,
 		txn,
@@ -860,6 +882,10 @@ fn tick_expire_by_cutoff(
 	}
 	let meta_keys = scan_meta_keys(operator, txn, b"ewm:")?;
 	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
+	let effective_now = match operator.kind.time() {
+		TimeDomain::Event => operator.load_event_watermark(txn)?,
+		TimeDomain::Processing => current_timestamp,
+	};
 	let mut diffs = Vec::new();
 	let mut store = FlowWindowStore::new(txn, operator.core.node);
 	for meta_key in &meta_keys {
@@ -869,7 +895,7 @@ fn tick_expire_by_cutoff(
 		if meta.last_event_time == 0 {
 			continue;
 		}
-		if current_timestamp.saturating_sub(meta.last_event_time) <= cutoff_ms {
+		if effective_now.saturating_sub(meta.last_event_time) <= cutoff_ms {
 			continue;
 		}
 		let row_number = RowNumber(meta.row_number);

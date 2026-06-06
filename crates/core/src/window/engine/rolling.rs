@@ -37,7 +37,6 @@ pub struct RollingResult<G, Output> {
 pub enum RollingEviction<C: Slot> {
 	Capacity(usize),
 	Before(C),
-	Within(C::Duration),
 	BeforeStamp(u64),
 }
 
@@ -296,17 +295,6 @@ where
 							slot.buffer.pop_first();
 						} else {
 							break;
-						}
-					}
-				}
-				RollingEviction::Within(span) => {
-					if let Some((&newest, _)) = slot.buffer.iter().next_back() {
-						while let Some((&oldest, _)) = slot.buffer.iter().next() {
-							if newest - oldest >= *span {
-								slot.buffer.pop_first();
-							} else {
-								break;
-							}
 						}
 					}
 				}

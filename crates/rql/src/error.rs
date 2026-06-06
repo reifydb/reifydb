@@ -842,7 +842,7 @@ impl IntoDiagnostic for RqlError {
 				code: "SYNTAX_001".to_string(),
 				rql: None,
 				message: format!(
-					"found {} statements where only one was expected — are you missing semicolons?",
+					"found {} statements where only one was expected - are you missing semicolons?",
 					count,
 				),
 				column: None,

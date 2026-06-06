@@ -16,6 +16,7 @@ impl WindowOperator {
 		match &self.kind {
 			WindowKind::Session {
 				gap,
+				..
 			} => gap.milliseconds().unwrap_or(0) as u64,
 			_ => 0,
 		}

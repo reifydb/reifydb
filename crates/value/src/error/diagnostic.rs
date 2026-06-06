@@ -1458,7 +1458,7 @@ impl IntoDiagnostic for TypeError {
 					),
 					ProcedureErrorKind::NoRegisteredImplementation { .. } => (
 						"PROCEDURE_002",
-						"the catalog references a native/FFI/WASM binding that is not loaded in this binary — rebuild with the registration or drop/replace the catalog entry",
+						"the catalog references a native/FFI/WASM binding that is not loaded in this binary - rebuild with the registration or drop/replace the catalog entry",
 						"native binding not loaded",
 					),
 				};

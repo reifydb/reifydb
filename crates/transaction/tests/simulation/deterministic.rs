@@ -86,7 +86,7 @@ fn test_lost_update_prevented() {
 	let t2_committed = trace.committed.contains_key(&TxId(2));
 	assert!(
 		!(t1_committed && t2_committed),
-		"both T1 and T2 committed — lost update! T1={}, T2={}",
+		"both T1 and T2 committed - lost update! T1={}, T2={}",
 		t1_committed,
 		t2_committed
 	);
@@ -124,7 +124,7 @@ fn test_write_skew_detected() {
 	// This test documents the engine's actual behavior.
 	assert!(
 		!(t1_committed && t2_committed),
-		"both T1 and T2 committed — write skew allowed. T1={}, T2={}",
+		"both T1 and T2 committed - write skew allowed. T1={}, T2={}",
 		t1_committed,
 		t2_committed
 	);

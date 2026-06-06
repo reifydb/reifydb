@@ -30,7 +30,7 @@ fuzz_target!(|input: LayoutInput| {
 
     let buf = BufferFFI::from_slice(&input.data);
 
-    // Test is_defined for all field indices — must not panic or read OOB
+    // Test is_defined for all field indices - must not panic or read OOB
     for i in 0..field_count.saturating_add(1) {
         let result = layout.is_defined(&buf, i);
 

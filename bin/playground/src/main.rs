@@ -56,7 +56,7 @@ fn main() {
 	// ── First-class tests ───────────────────────────────────
 	admin(
 		&db,
-		"CREATE TEST — checks Alice is present",
+		"CREATE TEST - checks Alice is present",
 		r#"CREATE TEST demo::alice_exists {
 			FROM demo::users | FILTER name == "Alice" | ASSERT { name == "Alice" }
 		}"#,
@@ -64,7 +64,7 @@ fn main() {
 
 	admin(
 		&db,
-		"CREATE TEST — checks Bob is active",
+		"CREATE TEST - checks Bob is active",
 		r#"CREATE TEST demo::bob_active {
 			FROM demo::users | FILTER name == "Bob" | ASSERT { active == true }
 		}"#,
@@ -72,7 +72,7 @@ fn main() {
 
 	admin(
 		&db,
-		"CREATE TEST — deliberately failing (Charlie is inactive)",
+		"CREATE TEST - deliberately failing (Charlie is inactive)",
 		r#"CREATE TEST demo::charlie_is_active {
 			FROM demo::users | FILTER name == "Charlie" | ASSERT { active == true }
 		}"#,
@@ -88,7 +88,7 @@ fn main() {
 	// ── Tests with mutations ────────────────────────────────
 	admin(
 		&db,
-		"CREATE TEST — inserts inside test body",
+		"CREATE TEST - inserts inside test body",
 		r#"CREATE TEST demo::insert_in_test {
 			INSERT demo::users [{ id: 99, name: "Ghost", active: true }];
 			FROM demo::users | FILTER id == 99 | ASSERT { name == "Ghost" }

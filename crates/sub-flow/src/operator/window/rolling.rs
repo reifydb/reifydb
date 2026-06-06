@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use reifydb_core::{
-	common::WindowKind,
+	common::{TimeDomain, WindowKind},
 	encoded::key::IntoEncodedKey,
 	interface::change::{Change, Diff},
 	value::column::columns::Columns,
@@ -47,7 +47,9 @@ impl WindowOperator {
 
 impl WindowOperator {
 	pub fn is_rolling_processing(&self) -> bool {
-		matches!(self.kind, WindowKind::Rolling { .. }) && !self.is_count_based() && self.ts.is_none()
+		matches!(self.kind, WindowKind::Rolling { .. })
+			&& !self.is_count_based()
+			&& self.kind.time() == TimeDomain::Processing
 	}
 }
 
@@ -125,7 +127,7 @@ pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let is_count = operator.is_count_based();
 	let lag_ms = operator.rolling_lag_ms();
-	let is_event_time = operator.ts.is_some();
+	let is_event_time = !is_count && operator.kind.time() == TimeDomain::Event;
 	let size_ms = operator.size_duration().map(|d| d.milliseconds().unwrap_or(0) as u64).unwrap_or(0);
 
 	let mut buckets: RollingEngineBuckets = BTreeMap::new();
@@ -196,7 +198,9 @@ pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 	let eviction = if is_count {
 		RollingEviction::Capacity(operator.size_count().unwrap_or(0) as usize)
 	} else if is_event_time {
-		RollingEviction::Within(size_ms + lag_ms)
+		let batch_max = buckets.keys().map(|&(_, coord)| coord).max().unwrap_or(0);
+		operator.advance_event_watermark(txn, batch_max)?;
+		RollingEviction::Before(operator.event_time_cutoff(txn, size_ms + lag_ms)?)
 	} else {
 		RollingEviction::Before(operator.core.current_timestamp().saturating_sub(size_ms + lag_ms))
 	};
@@ -297,7 +301,7 @@ pub fn tick_expire_rolling_engine(
 	}
 	let lag_ms = operator.rolling_lag_ms();
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
-	let cutoff = current_timestamp.saturating_sub(size_ms + lag_ms);
+	let cutoff = operator.event_time_cutoff(txn, size_ms + lag_ms)?;
 	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
 
 	let meta_keys = scan_meta_keys(operator, txn, b"rwm:")?;

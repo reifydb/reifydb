@@ -112,7 +112,7 @@ impl Invariant for NoDirtyReads {
 								return Err(InvariantViolation {
 									invariant_name: "NoDirtyReads".into(),
 									message: format!(
-										"tx {:?} read a value for key '{}' at step {} but expected None — possible dirty read",
+										"tx {:?} read a value for key '{}' at step {} but expected None - possible dirty read",
 										tx_id, key, result.step_index
 									),
 								});

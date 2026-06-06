@@ -11,6 +11,7 @@ impl WindowOperator {
 			WindowKind::Sliding {
 				size: WindowSize::Duration(duration),
 				slide: WindowSize::Duration(slide_duration),
+				..
 			} => {
 				let window_size_ms = duration.milliseconds().unwrap_or(0) as u64;
 				let slide_ms = slide_duration.milliseconds().unwrap_or(0) as u64;
@@ -36,6 +37,7 @@ impl WindowOperator {
 			WindowKind::Sliding {
 				size: WindowSize::Count(count),
 				slide: WindowSize::Count(slide_count),
+				..
 			} => {
 				let row_number = timestamp_or_row_index + 1;
 				let min_window = if row_number > *count {

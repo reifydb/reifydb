@@ -1131,7 +1131,7 @@ impl IntoDiagnostic for CatalogError {
 				fragment,
 				label: Some("cannot drop system-managed procedure".to_string()),
 				help: Some(
-					"native, FFI, and WASM procedures are repopulated on every boot from the runtime registry — remove them from the binary or plugin directory instead"
+					"native, FFI, and WASM procedures are repopulated on every boot from the runtime registry - remove them from the binary or plugin directory instead"
 						.to_string(),
 				),
 				column: None,
@@ -1173,7 +1173,7 @@ impl IntoDiagnostic for CatalogError {
 				};
 				let help = if valid.is_empty() {
 					format!(
-						"{} policies currently have no enforceable operations — remove this policy or add an enforcement call site for it",
+						"{} policies currently have no enforceable operations - remove this policy or add an enforcement call site for it",
 						target_type
 					)
 				} else {
@@ -1249,7 +1249,7 @@ impl IntoDiagnostic for CatalogChangeError {
 				fragment: Fragment::None,
 				label: Some("key decode failure during replication".to_string()),
 				help: Some(
-					"this indicates a protocol mismatch between primary and replica — ensure both nodes are running the same version".to_string(),
+					"this indicates a protocol mismatch between primary and replica - ensure both nodes are running the same version".to_string(),
 				),
 				column: None,
 				notes: vec![],
@@ -1265,7 +1265,7 @@ impl IntoDiagnostic for CatalogChangeError {
 				fragment: Fragment::None,
 				label: Some("unrecognized key kind during replication".to_string()),
 				help: Some(
-					"this indicates state inconsistency — ensure primary and replica are running the same version".to_string(),
+					"this indicates state inconsistency - ensure primary and replica are running the same version".to_string(),
 				),
 				column: None,
 				notes: vec![],

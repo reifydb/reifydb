@@ -4,7 +4,7 @@
 use clap::Parser;
 
 #[derive(Parser, Debug)]
-#[command(name = "reifydb-forge", about = "Forge — CI platform powered by ReifyDB")]
+#[command(name = "reifydb-forge", about = "Forge - CI platform powered by ReifyDB")]
 pub struct Cli {
 	/// Run in runner mode, connecting to the orchestrator at this gRPC URL
 	#[arg(long)]
