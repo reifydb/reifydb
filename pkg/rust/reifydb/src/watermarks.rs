@@ -3,6 +3,7 @@
 
 use std::{marker::PhantomData, thread};
 
+use reifydb_cdc::consume::watermark::FlowConsumerWatermark;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -130,6 +131,14 @@ impl CdcWatermarks<'_> {
 		self.db.engine().cdc_consumer_watermark()
 	}
 
+	pub fn flow_consumer(&self) -> CommitVersion {
+		self.db.engine()
+			.ioc()
+			.try_resolve::<FlowConsumerWatermark>()
+			.map(|w| w.get())
+			.unwrap_or(CommitVersion(0))
+	}
+
 	pub fn wait_for_consumer(&self, version: CommitVersion, timeout: Duration) -> bool {
 		if self.consumer() >= version {
 			return true;
@@ -142,6 +151,23 @@ impl CdcWatermarks<'_> {
 			}
 			if clock.instant() >= deadline {
 				return self.consumer() >= version;
+			}
+			thread::sleep(Duration::from_milliseconds(2).unwrap().to_std());
+		}
+	}
+
+	pub fn wait_for_flow_consumer(&self, version: CommitVersion, timeout: Duration) -> bool {
+		if self.flow_consumer() >= version {
+			return true;
+		}
+		let clock = self.db.clock().clone();
+		let deadline = clock.instant() + timeout.to_std();
+		loop {
+			if self.flow_consumer() >= version {
+				return true;
+			}
+			if clock.instant() >= deadline {
+				return self.flow_consumer() >= version;
 			}
 			thread::sleep(Duration::from_milliseconds(2).unwrap().to_std());
 		}

@@ -112,12 +112,14 @@ where
 			if key.1 > *hw {
 				*hw = key.1;
 			}
-			if let Some(accumulator) = accumulators.get(&key)
-				&& let Some(value) = accumulator.finalize()
+			let finalized = accumulators.get(&key).and_then(|a| a.finalize());
+			if let Some(value) = finalized
 				&& let Some(span) = spans.get(&key).copied()
 				&& let Some(out) = aggregate.build_output(&key.0, span, value)
 			{
 				last_visible.insert(key.clone(), out);
+			} else {
+				last_visible.remove(&key);
 			}
 		}
 	}

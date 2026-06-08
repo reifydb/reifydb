@@ -6,14 +6,18 @@ use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_value::{Result, error::Error};
 
-use crate::flow::aggregate::is_representable;
+use crate::flow::aggregate::{AggregateContext, is_representable};
 
-pub(crate) fn validate_flow_aggregations(routines: &Routines, aggregations: &[Expression]) -> Result<()> {
+pub(crate) fn validate_flow_aggregations(
+	routines: &Routines,
+	aggregations: &[Expression],
+	context: AggregateContext,
+) -> Result<()> {
 	if aggregations.is_empty() {
 		return Err(Error(Box::new(flow_unsupported_aggregate_expression("<none>"))));
 	}
 	for expr in aggregations {
-		if !is_representable(routines, expr) {
+		if !is_representable(routines, expr, context) {
 			let output = display_label(expr).text().to_string();
 			return Err(Error(Box::new(flow_unsupported_aggregate_expression(&output))));
 		}

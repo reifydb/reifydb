@@ -827,6 +827,7 @@ pub struct WindowNode {
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
 	pub ts: Option<String>,
+	pub lateness: Option<Duration>,
 }
 
 #[derive(Debug, Clone)]

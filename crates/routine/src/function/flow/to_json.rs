@@ -211,6 +211,7 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 				group_by,
 				aggregations,
 				ts,
+				..
 			} => JsonFlowNodeType::Window {
 				kind: kind.clone(),
 				group_by: group_by.iter().map(|e| e.into()).collect(),

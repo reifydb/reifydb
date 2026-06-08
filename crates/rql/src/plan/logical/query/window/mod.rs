@@ -28,6 +28,7 @@ struct ParsedConfig {
 	pub slide_count: Option<u64>,
 	pub gap: Option<Duration>,
 	pub lag: Option<Duration>,
+	pub lateness: Option<Duration>,
 	pub ts: Option<String>,
 	pub time: Option<String>,
 }
@@ -38,6 +39,7 @@ pub struct WindowNode {
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
 	pub ts: Option<String>,
+	pub lateness: Option<Duration>,
 	pub rql: String,
 }
 
@@ -55,6 +57,7 @@ impl<'bump> Compiler<'bump> {
 			group_by,
 			aggregations,
 			ts: parsed.ts,
+			lateness: parsed.lateness,
 			rql,
 		}))
 	}
@@ -250,6 +253,17 @@ impl<'bump> Compiler<'bump> {
 					.into());
 				}
 			}
+			"lateness" => {
+				if let Some(duration_str) = Self::extract_literal_string(&config_item.value) {
+					config.lateness = Some(Self::parse_duration(&duration_str)?);
+				} else {
+					return Err(AstError::UnexpectedToken {
+						expected: "duration string".to_string(),
+						fragment: config_item.value.token().fragment.to_owned(),
+					}
+					.into());
+				}
+			}
 			"ts" => {
 				if let Some(ts_str) = Self::extract_literal_string(&config_item.value) {
 					config.ts = Some(ts_str);
@@ -274,7 +288,7 @@ impl<'bump> Compiler<'bump> {
 			}
 			_ => {
 				return Err(AstError::UnexpectedToken {
-					expected: "interval, count, slide, gap, lag, ts, or time".to_string(),
+					expected: "interval, count, slide, gap, lag, lateness, ts, or time".to_string(),
 					fragment: config_item.key.token.fragment.to_owned(),
 				}
 				.into());

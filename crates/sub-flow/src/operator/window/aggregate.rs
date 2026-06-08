@@ -15,12 +15,14 @@ use reifydb_core::{
 		span::WindowSpan,
 	},
 };
+use reifydb_engine::flow::aggregate::AggregateContext;
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::{context::RuntimeContext, hash::Hash128};
 use reifydb_value::{Result, value::Value};
 
 use super::{
+	accumulator::WindowSlotKey,
 	aggregation::Aggregation,
 	tumbling::{finish_tumbling_engine, route_into_buckets},
 };
@@ -29,7 +31,7 @@ use crate::{
 	transaction::FlowTransaction,
 };
 
-type EngineBuckets = TumblingBuckets<Hash128, u64, Vec<Option<Value>>>;
+type EngineBuckets = TumblingBuckets<Hash128, u64, (WindowSlotKey, Vec<Option<Value>>)>;
 
 pub struct AggregateOperator {
 	core: Aggregation,
@@ -45,7 +47,15 @@ impl AggregateOperator {
 		runtime_context: RuntimeContext,
 	) -> Self {
 		Self {
-			core: Aggregation::new(node, parent, by, map, routines, runtime_context),
+			core: Aggregation::new(
+				node,
+				parent,
+				by,
+				map,
+				routines,
+				runtime_context,
+				AggregateContext::Grouped,
+			),
 		}
 	}
 
@@ -145,6 +155,7 @@ pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, cha
 		window_max_ts,
 		&kinds,
 		LatePolicy::Process,
+		None,
 	)?;
 	Ok(Change::from_flow(core.node, change.version, diffs, change.changed_at))
 }

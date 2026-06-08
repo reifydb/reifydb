@@ -22,14 +22,28 @@ use reifydb_engine::flow::aggregate::SlotKind;
 use reifydb_runtime::hash::Hash128;
 use reifydb_value::{
 	Result,
-	value::{Value, row_number::RowNumber},
+	value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber},
 };
 use serde::{Deserialize, Serialize};
 
-use super::{accumulator::RowAccumulator, aggregation::Aggregation, operator::WindowOperator, store::FlowWindowStore};
+use super::{
+	accumulator::{RowAccumulator, WindowSlotKey},
+	aggregation::Aggregation,
+	operator::WindowOperator,
+	store::FlowWindowStore,
+};
 use crate::transaction::FlowTransaction;
 
-type EngineBuckets = TumblingBuckets<Hash128, u64, Vec<Option<Value>>>;
+type EngineBuckets = TumblingBuckets<Hash128, u64, (WindowSlotKey, Vec<Option<Value>>)>;
+
+pub(super) fn slot_coord(is_count: bool, event_ts: u64, row_number: u64) -> WindowSlotKey {
+	let timestamp = if is_count {
+		DateTime::default()
+	} else {
+		DateTime::from_timestamp_millis(event_ts).unwrap_or_default()
+	};
+	WindowSlotKey::new(timestamp, row_number)
+}
 
 #[derive(Default, Serialize, Deserialize)]
 struct EngineWindowMeta {
@@ -62,7 +76,8 @@ where
 	let slot_cols = core.evaluate_slot_inputs(columns)?;
 	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 		let (span, event_ts) = assign(row_idx);
-		let contribution = core.build_contribution(columns, &slot_cols, row_idx);
+		let coord = slot_coord(false, event_ts, columns.row_numbers[row_idx].0);
+		let contribution = (coord, core.build_contribution(columns, &slot_cols, row_idx));
 		let key = (*hash, span);
 		let event = if is_add {
 			let entry = window_max_ts.entry(key).or_insert(0);
@@ -116,12 +131,17 @@ fn push_count_event(
 	hash: Hash128,
 	gvals: &[Value],
 	window_id: u64,
+	coord: WindowSlotKey,
 	event: AccumulatorEvent<Vec<Option<Value>>>,
 	event_ts: u64,
 ) {
 	let now = event_ts;
 	let span = WindowSpan::new(window_id, window_id + 1);
 	let key = (hash, span);
+	let event = match event {
+		AccumulatorEvent::Add(c) => AccumulatorEvent::Add((coord, c)),
+		AccumulatorEvent::Remove(c) => AccumulatorEvent::Remove((coord, c)),
+	};
 	if matches!(event, AccumulatorEvent::Add(_)) {
 		let entry = window_max_ts.entry(key).or_insert(0);
 		*entry = (*entry).max(now);
@@ -157,6 +177,7 @@ fn route_count_tumbling(
 					let window_id = ordinal / size;
 					operator.store_row_index(txn, *hash, post.row_numbers[row_idx], window_id)?;
 					let contribution = operator.core.build_contribution(post, &slot_cols, row_idx);
+					let coord = slot_coord(true, now, post.row_numbers[row_idx].0);
 					push_count_event(
 						buckets,
 						group_values,
@@ -165,6 +186,7 @@ fn route_count_tumbling(
 						*hash,
 						gvals,
 						window_id,
+						coord,
 						AccumulatorEvent::Add(contribution),
 						now,
 					);
@@ -178,6 +200,7 @@ fn route_count_tumbling(
 				let slot_cols = operator.core.evaluate_slot_inputs(pre)?;
 				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 					let contribution = operator.core.build_contribution(pre, &slot_cols, row_idx);
+					let coord = slot_coord(true, now, pre.row_numbers[row_idx].0);
 					for window_id in
 						operator.lookup_row_index(txn, *hash, pre.row_numbers[row_idx])?
 					{
@@ -189,6 +212,7 @@ fn route_count_tumbling(
 							*hash,
 							gvals,
 							window_id,
+							coord,
 							AccumulatorEvent::Remove(contribution.clone()),
 							now,
 						);
@@ -217,6 +241,7 @@ fn route_count_tumbling(
 						)?;
 						let contribution =
 							operator.core.build_contribution(post, &post_cols, row_idx);
+						let coord = slot_coord(true, now, post.row_numbers[row_idx].0);
 						push_count_event(
 							buckets,
 							group_values,
@@ -225,6 +250,7 @@ fn route_count_tumbling(
 							*hash,
 							gvals,
 							window_id,
+							coord,
 							AccumulatorEvent::Add(contribution),
 							now,
 						);
@@ -233,6 +259,7 @@ fn route_count_tumbling(
 							operator.core.build_contribution(pre, &pre_cols, row_idx);
 						let post_contrib =
 							operator.core.build_contribution(post, &post_cols, row_idx);
+						let coord = slot_coord(true, now, pre.row_numbers[row_idx].0);
 						for window_id in existing {
 							push_count_event(
 								buckets,
@@ -242,6 +269,7 @@ fn route_count_tumbling(
 								*hash,
 								gvals,
 								window_id,
+								coord,
 								AccumulatorEvent::Remove(pre_contrib.clone()),
 								now,
 							);
@@ -253,6 +281,7 @@ fn route_count_tumbling(
 								*hash,
 								gvals,
 								window_id,
+								coord,
 								AccumulatorEvent::Add(post_contrib.clone()),
 								now,
 							);
@@ -276,6 +305,7 @@ pub(super) fn finish_tumbling_engine(
 	window_max_ts: HashMap<(Hash128, WindowSpan<u64>), u64>,
 	kinds: &[SlotKind],
 	late_policy: LatePolicy,
+	lateness: Option<Duration>,
 ) -> Result<Vec<Diff>> {
 	let results = {
 		let mut store = FlowWindowStore::new(txn, core.node);
@@ -288,7 +318,7 @@ pub(super) fn finish_tumbling_engine(
 			&mut store,
 			buckets,
 			|hash, window_start| core.create_window_key(*hash, window_start),
-			|| RowAccumulator::new(kinds),
+			|| RowAccumulator::new(kinds, lateness),
 		)?;
 		engine.flush(&mut store)?;
 		res
@@ -441,6 +471,7 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 		window_max_ts,
 		&kinds,
 		operator.late_policy,
+		operator.sealing_lateness(),
 	)?;
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
 }
@@ -497,6 +528,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 						operator, txn, *hash, event_ts, is_count, is_event,
 					)?;
 					let contribution = operator.core.build_contribution(post, &slot_cols, row_idx);
+					let coord = slot_coord(is_count, event_ts, post.row_numbers[row_idx].0);
 					for wid in &window_ids {
 						operator.store_row_index(txn, *hash, post.row_numbers[row_idx], *wid)?;
 						push_count_event(
@@ -507,6 +539,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 							*hash,
 							gvals,
 							*wid,
+							coord,
 							AccumulatorEvent::Add(contribution.clone()),
 							event_ts,
 						);
@@ -532,6 +565,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 						timestamps[row_idx]
 					};
 					let contribution = operator.core.build_contribution(pre, &slot_cols, row_idx);
+					let coord = slot_coord(is_count, event_ts, pre.row_numbers[row_idx].0);
 					for wid in operator.lookup_row_index(txn, *hash, pre.row_numbers[row_idx])? {
 						push_count_event(
 							&mut buckets,
@@ -541,6 +575,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 							*hash,
 							gvals,
 							wid,
+							coord,
 							AccumulatorEvent::Remove(contribution.clone()),
 							event_ts,
 						);
@@ -575,6 +610,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 						)?;
 						let contribution =
 							operator.core.build_contribution(post, &post_cols, row_idx);
+						let coord = slot_coord(is_count, event_ts, row_number.0);
 						for wid in &window_ids {
 							operator.store_row_index(
 								txn,
@@ -590,6 +626,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 								*hash,
 								gvals,
 								*wid,
+								coord,
 								AccumulatorEvent::Add(contribution.clone()),
 								event_ts,
 							);
@@ -599,6 +636,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 							operator.core.build_contribution(pre, &pre_cols, row_idx);
 						let post_contrib =
 							operator.core.build_contribution(post, &post_cols, row_idx);
+						let coord = slot_coord(is_count, event_ts, row_number.0);
 						for wid in existing {
 							push_count_event(
 								&mut buckets,
@@ -608,6 +646,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 								*hash,
 								gvals,
 								wid,
+								coord,
 								AccumulatorEvent::Remove(pre_contrib.clone()),
 								event_ts,
 							);
@@ -619,6 +658,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 								*hash,
 								gvals,
 								wid,
+								coord,
 								AccumulatorEvent::Add(post_contrib.clone()),
 								event_ts,
 							);
@@ -649,6 +689,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		window_max_ts,
 		&kinds,
 		operator.late_policy,
+		operator.sealing_lateness(),
 	)?;
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
 }
@@ -659,10 +700,10 @@ fn session_assign(
 	hash: Hash128,
 	event_ts: u64,
 	gap_ms: u64,
-	trackers: &mut HashMap<Hash128, (u64, u64)>,
+	trackers: &mut HashMap<Hash128, (u64, u64, u64)>,
 	closes: &mut Vec<(Hash128, u64)>,
-) -> Result<u64> {
-	let (mut session_id, last) = match trackers.get(&hash) {
+) -> Result<Option<u64>> {
+	let (mut session_id, last, start) = match trackers.get(&hash) {
 		Some(&tracker) => tracker,
 		None => {
 			let tracker = operator.load_session_tracker(txn, hash)?;
@@ -670,12 +711,21 @@ fn session_assign(
 			tracker
 		}
 	};
-	if last > 0 && event_ts.saturating_sub(last) > gap_ms {
+	if last == 0 {
+		trackers.insert(hash, (session_id, event_ts, event_ts));
+		return Ok(Some(session_id));
+	}
+	if event_ts > last && event_ts - last > gap_ms {
 		closes.push((hash, session_id));
 		session_id += 1;
+		trackers.insert(hash, (session_id, event_ts, event_ts));
+		return Ok(Some(session_id));
 	}
-	trackers.insert(hash, (session_id, event_ts));
-	Ok(session_id)
+	if event_ts < start && start - event_ts > gap_ms {
+		return Ok(None);
+	}
+	trackers.insert(hash, (session_id, last.max(event_ts), start.min(event_ts)));
+	Ok(Some(session_id))
 }
 
 pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
@@ -687,7 +737,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 	let mut arrival: Vec<(Hash128, WindowSpan<u64>)> = Vec::new();
 	let mut window_max_ts: HashMap<(Hash128, WindowSpan<u64>), u64> = HashMap::new();
 	let mut closes: Vec<(Hash128, u64)> = Vec::new();
-	let mut trackers: HashMap<Hash128, (u64, u64)> = HashMap::new();
+	let mut trackers: HashMap<Hash128, (u64, u64, u64)> = HashMap::new();
 
 	for diff in change.diffs.iter() {
 		match diff {
@@ -701,7 +751,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				for row_idx in 0..post.row_count() {
 					let (hash, gvals) = &groups[row_idx];
 					let event_ts = timestamps[row_idx];
-					let session_id = session_assign(
+					if let Some(session_id) = session_assign(
 						operator,
 						txn,
 						*hash,
@@ -709,20 +759,29 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 						gap_ms,
 						&mut trackers,
 						&mut closes,
-					)?;
-					operator.store_row_index(txn, *hash, post.row_numbers[row_idx], session_id)?;
-					let contribution = operator.core.build_contribution(post, &slot_cols, row_idx);
-					push_count_event(
-						&mut buckets,
-						&mut group_values,
-						&mut arrival,
-						&mut window_max_ts,
-						*hash,
-						gvals,
-						session_id,
-						AccumulatorEvent::Add(contribution),
-						event_ts,
-					);
+					)? {
+						operator.store_row_index(
+							txn,
+							*hash,
+							post.row_numbers[row_idx],
+							session_id,
+						)?;
+						let contribution =
+							operator.core.build_contribution(post, &slot_cols, row_idx);
+						let coord = slot_coord(false, event_ts, post.row_numbers[row_idx].0);
+						push_count_event(
+							&mut buckets,
+							&mut group_values,
+							&mut arrival,
+							&mut window_max_ts,
+							*hash,
+							gvals,
+							session_id,
+							coord,
+							AccumulatorEvent::Add(contribution),
+							event_ts,
+						);
+					}
 				}
 			}
 			Diff::Remove {
@@ -736,6 +795,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 					let (hash, gvals) = &groups[row_idx];
 					let event_ts = timestamps[row_idx];
 					let contribution = operator.core.build_contribution(pre, &slot_cols, row_idx);
+					let coord = slot_coord(false, event_ts, pre.row_numbers[row_idx].0);
 					for session_id in
 						operator.lookup_row_index(txn, *hash, pre.row_numbers[row_idx])?
 					{
@@ -747,6 +807,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 							*hash,
 							gvals,
 							session_id,
+							coord,
 							AccumulatorEvent::Remove(contribution.clone()),
 							event_ts,
 						);
@@ -768,7 +829,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 					let existing =
 						operator.lookup_row_index(txn, *hash, pre.row_numbers[row_idx])?;
 					if existing.is_empty() {
-						let session_id = session_assign(
+						if let Some(session_id) = session_assign(
 							operator,
 							txn,
 							*hash,
@@ -776,31 +837,40 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 							gap_ms,
 							&mut trackers,
 							&mut closes,
-						)?;
-						operator.store_row_index(
-							txn,
-							*hash,
-							post.row_numbers[row_idx],
-							session_id,
-						)?;
-						let contribution =
-							operator.core.build_contribution(post, &post_cols, row_idx);
-						push_count_event(
-							&mut buckets,
-							&mut group_values,
-							&mut arrival,
-							&mut window_max_ts,
-							*hash,
-							gvals,
-							session_id,
-							AccumulatorEvent::Add(contribution),
-							event_ts,
-						);
+						)? {
+							operator.store_row_index(
+								txn,
+								*hash,
+								post.row_numbers[row_idx],
+								session_id,
+							)?;
+							let contribution = operator
+								.core
+								.build_contribution(post, &post_cols, row_idx);
+							let coord = slot_coord(
+								false,
+								event_ts,
+								post.row_numbers[row_idx].0,
+							);
+							push_count_event(
+								&mut buckets,
+								&mut group_values,
+								&mut arrival,
+								&mut window_max_ts,
+								*hash,
+								gvals,
+								session_id,
+								coord,
+								AccumulatorEvent::Add(contribution),
+								event_ts,
+							);
+						}
 					} else {
 						let pre_contrib =
 							operator.core.build_contribution(pre, &pre_cols, row_idx);
 						let post_contrib =
 							operator.core.build_contribution(post, &post_cols, row_idx);
+						let coord = slot_coord(false, event_ts, pre.row_numbers[row_idx].0);
 						for session_id in existing {
 							push_count_event(
 								&mut buckets,
@@ -810,6 +880,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 								*hash,
 								gvals,
 								session_id,
+								coord,
 								AccumulatorEvent::Remove(pre_contrib.clone()),
 								event_ts,
 							);
@@ -821,6 +892,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 								*hash,
 								gvals,
 								session_id,
+								coord,
 								AccumulatorEvent::Add(post_contrib.clone()),
 								event_ts,
 							);
@@ -831,8 +903,8 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		}
 	}
 
-	for (hash, (session_id, last)) in &trackers {
-		operator.save_session_tracker(txn, *hash, *session_id, *last)?;
+	for (hash, (session_id, last, start)) in &trackers {
+		operator.save_session_tracker(txn, *hash, *session_id, *last, *start)?;
 	}
 
 	if operator.kind.time() == TimeDomain::Event
@@ -854,6 +926,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		window_max_ts,
 		&kinds,
 		operator.late_policy,
+		operator.sealing_lateness(),
 	)?;
 
 	let ts_nanos = change.changed_at.to_nanos();

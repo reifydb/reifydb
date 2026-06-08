@@ -4,10 +4,11 @@
 use reifydb_core::{common::WindowKind, interface::catalog::flow::FlowNodeId};
 use reifydb_rql::{expression::Expression, flow::node::FlowNodeType::Window, nodes::WindowNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::Result;
+use reifydb_value::{Result, value::duration::Duration};
 
-use crate::flow::compiler::{
-	CompileOperator, FlowCompiler, operator::aggregate_validation::validate_flow_aggregations,
+use crate::flow::{
+	aggregate::AggregateContext,
+	compiler::{CompileOperator, FlowCompiler, operator::aggregate_validation::validate_flow_aggregations},
 };
 
 pub(crate) struct WindowCompiler {
@@ -16,6 +17,7 @@ pub(crate) struct WindowCompiler {
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
 	pub ts: Option<String>,
+	pub lateness: Option<Duration>,
 }
 
 impl From<WindowNode> for WindowCompiler {
@@ -26,13 +28,14 @@ impl From<WindowNode> for WindowCompiler {
 			group_by: node.group_by,
 			aggregations: node.aggregations,
 			ts: node.ts,
+			lateness: node.lateness,
 		}
 	}
 }
 
 impl CompileOperator for WindowCompiler {
 	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
-		validate_flow_aggregations(&compiler.routines, &self.aggregations)?;
+		validate_flow_aggregations(&compiler.routines, &self.aggregations, AggregateContext::Windowed)?;
 
 		let input_node = if let Some(input) = self.input {
 			Some(compiler.compile_plan(txn, *input)?)
@@ -47,6 +50,7 @@ impl CompileOperator for WindowCompiler {
 				group_by: self.group_by,
 				aggregations: self.aggregations,
 				ts: self.ts,
+				lateness: self.lateness,
 			},
 		)?;
 

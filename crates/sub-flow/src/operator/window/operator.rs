@@ -10,6 +10,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 	window::engine::LatePolicy,
 };
+use reifydb_engine::flow::aggregate::AggregateContext;
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -49,6 +50,7 @@ pub struct WindowConfig {
 	pub runtime_context: RuntimeContext,
 	pub routines: Routines,
 	pub late_policy: LatePolicy,
+	pub lateness: Option<Duration>,
 }
 
 pub struct WindowOperator {
@@ -57,6 +59,7 @@ pub struct WindowOperator {
 	pub ts: Option<String>,
 
 	pub late_policy: LatePolicy,
+	pub lateness: Option<Duration>,
 	pub layout: RowShape,
 	pub row_number_provider: RowNumberProvider,
 }
@@ -70,12 +73,14 @@ impl WindowOperator {
 			config.aggregations,
 			config.routines,
 			config.runtime_context,
+			AggregateContext::Windowed,
 		);
 		Self {
 			core,
 			kind: config.kind,
 			ts: config.ts,
 			late_policy: config.late_policy,
+			lateness: config.lateness,
 			layout: RowShape::operator_state(),
 			row_number_provider: RowNumberProvider::new(config.node),
 		}
@@ -83,6 +88,13 @@ impl WindowOperator {
 
 	pub fn is_count_based(&self) -> bool {
 		self.kind.size().is_some_and(|m| m.is_count())
+	}
+
+	pub fn sealing_lateness(&self) -> Option<Duration> {
+		match self.kind.time() {
+			TimeDomain::Event if !self.is_count_based() => self.lateness,
+			_ => None,
+		}
 	}
 
 	pub fn is_rolling(&self) -> bool {

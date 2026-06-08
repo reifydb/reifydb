@@ -22,6 +22,7 @@ use reifydb_cdc::{
 	consume::{
 		consumer::CdcConsumer,
 		poll::{PollConsumer, PollConsumerConfig},
+		wake::CdcWakeRegistry,
 		watermark::CdcConsumerWatermark,
 	},
 	storage::CdcStore,
@@ -116,13 +117,16 @@ impl SubscriptionSubsystem {
 		let cdc_consumer =
 			SubscriptionCdcConsumer::new(workers, source_tracker, position_tracker, store.clone());
 
+		let cdc_wake_registry =
+			engine.ioc().resolve::<CdcWakeRegistry>().expect("CdcWakeRegistry must be registered");
 		let config = PollConsumerConfig::new(
 			CdcConsumerId::subscription_consumer(),
 			"sub-subscription-poll",
 			Duration::from_milliseconds(10).unwrap(),
 			None,
 		)
-		.with_consumer_watermark(consumer_watermark);
+		.with_consumer_watermark(consumer_watermark)
+		.with_wake_registry(cdc_wake_registry);
 
 		let mut consumer = PollConsumer::new(config, engine, cdc_consumer, cdc_store, spawner);
 		consumer.start()?;

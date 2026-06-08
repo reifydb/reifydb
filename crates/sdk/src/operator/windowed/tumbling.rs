@@ -25,7 +25,7 @@ use crate::{
 	operator::{
 		OperatorLogic, OperatorMetadata,
 		column::{
-			batch::{InsertBatch, UpdateBatch},
+			batch::{InsertBatch, RemoveBatch, UpdateBatch},
 			operator::OperatorColumn,
 			row::Row,
 		},
@@ -163,11 +163,12 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	#[inline]
-	fn emit_insert_update_batches(
+	fn emit_batches(
 		&self,
 		ctx: &mut impl OperatorContext,
 		inserts: &[(RowNumber, A::Output)],
 		updates: &[(RowNumber, A::Output)],
+		removes: &[(RowNumber, A::Output)],
 	) -> Result<()> {
 		if !inserts.is_empty() {
 			let mut batch = InsertBatch::<A::Output, _>::new(ctx, inserts.len())?;
@@ -180,6 +181,13 @@ where
 			let mut batch = UpdateBatch::<A::Output, _>::new(ctx, updates.len())?;
 			for (rn, data) in updates {
 				batch.push(*rn, data, data)?;
+			}
+			batch.finish()?;
+		}
+		if !removes.is_empty() {
+			let mut batch = RemoveBatch::<A::Output, _>::new(ctx, removes.len())?;
+			for (rn, data) in removes {
+				batch.push(*rn, data)?;
 			}
 			batch.finish()?;
 		}
@@ -242,6 +250,7 @@ where
 
 		let mut inserts: Vec<(RowNumber, A::Output)> = Vec::new();
 		let mut updates: Vec<(RowNumber, A::Output)> = Vec::new();
+		let mut removes: Vec<(RowNumber, A::Output)> = Vec::new();
 		for r in results {
 			let Some(out) = self.aggregator.build_output(&r.group, r.span, r.value) else {
 				continue;
@@ -249,10 +258,10 @@ where
 			match r.kind {
 				EmitKind::Insert => inserts.push((r.row_number, out)),
 				EmitKind::Update => updates.push((r.row_number, out)),
-				EmitKind::Remove => {}
+				EmitKind::Remove => removes.push((r.row_number, out)),
 			}
 		}
-		self.emit_insert_update_batches(ctx, &inserts, &updates)?;
+		self.emit_batches(ctx, &inserts, &updates, &removes)?;
 
 		Ok(())
 	}
@@ -542,16 +551,21 @@ mod tests {
 	}
 
 	#[test]
-	fn remove_clears_window_emits_nothing() {
-		// Locked decision: an emptied window emits nothing (no downstream
-		// Remove). The accumulator is empty; finalize returns None.
+	fn remove_clears_window_emits_remove() {
+		// An emptied window emits a Remove of its previously emitted aggregate
+		// row, so a downstream consumer withdraws the stale row instead of
+		// leaking it. The accumulator is empty (finalize returns None); the
+		// engine carries the prior value so the driver can emit the Remove.
 		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolume>>>::new()
 			.build()
 			.expect("harness");
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 		let out =
 			h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
-		assert_eq!(out.diffs.len(), 0);
+		assert_eq!(out.diffs.len(), 1);
+		assert_eq!(out.diffs[0].kind(), DiffType::Remove);
+		let r = out.diffs[0].pre().expect("remove pre").row_ref(0).expect("r0");
+		assert_eq!(r.f64("volume"), Some(10.0));
 	}
 
 	#[test]

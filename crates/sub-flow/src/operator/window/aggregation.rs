@@ -20,7 +20,7 @@ use reifydb_engine::{
 		compile::{CompiledExpr, compile_expression},
 		context::{CompileContext, EvalContext},
 	},
-	flow::aggregate::{SlotArg, SlotKind, rewrite_aggregates, synthetic_aggregate_column_name},
+	flow::aggregate::{AggregateContext, SlotArg, SlotKind, rewrite_aggregates, synthetic_aggregate_column_name},
 	vm::stack::SymbolTable,
 };
 use reifydb_routine::routine::registry::Routines;
@@ -86,6 +86,7 @@ impl Aggregation {
 		aggregations: Vec<Expression>,
 		routines: Routines,
 		runtime_context: RuntimeContext,
+		context: AggregateContext,
 	) -> Self {
 		let symbols = SymbolTable::new();
 		let compile_ctx = CompileContext {
@@ -105,7 +106,7 @@ impl Aggregation {
 		let mut all_representable = !aggregations.is_empty();
 		for aggregate in &aggregations {
 			let mut expr = aggregate.clone();
-			if rewrite_aggregates(&routines, &mut expr, &mut slots) {
+			if rewrite_aggregates(&routines, &mut expr, &mut slots, context) {
 				rewritten_outputs.push(expr);
 			} else {
 				all_representable = false;

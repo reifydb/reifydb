@@ -21,15 +21,15 @@ use reifydb_engine::flow::aggregate::SlotKind;
 use reifydb_runtime::hash::Hash128;
 use reifydb_value::{
 	Result,
-	value::{Value, row_number::RowNumber},
+	value::{Value, duration::Duration, row_number::RowNumber},
 };
 use serde::{Deserialize, Serialize};
 
 use super::{
-	accumulator::{RowAccumulator, StampedAccumulator},
+	accumulator::{RowAccumulator, StampedAccumulator, WindowSlotKey},
 	operator::WindowOperator,
 	store::FlowWindowStore,
-	tumbling::scan_meta_keys,
+	tumbling::{scan_meta_keys, slot_coord},
 };
 use crate::transaction::FlowTransaction;
 
@@ -61,12 +61,17 @@ struct RollingWindowMeta {
 	last_value: Vec<Value>,
 }
 
-type RollingEngineBuckets = RollingBuckets<Hash128, u64, Vec<Option<Value>>>;
+type RollingEngineBuckets = RollingBuckets<Hash128, u64, (WindowSlotKey, Vec<Option<Value>>)>;
 
-fn combine_rolling(buffer: &RollingBuffer<u64, RowAccumulator>, kinds: &[SlotKind], lag_ms: u64) -> Option<Vec<Value>> {
+fn combine_rolling(
+	buffer: &RollingBuffer<u64, RowAccumulator>,
+	kinds: &[SlotKind],
+	lag_ms: u64,
+	lateness: Option<Duration>,
+) -> Option<Vec<Value>> {
 	let (&newest, _) = buffer.iter().next_back()?;
 	let aggregate_cutoff = newest.saturating_sub(lag_ms);
-	let mut merged = RowAccumulator::new(kinds);
+	let mut merged = RowAccumulator::new(kinds, lateness);
 	let mut any = false;
 	for (_coord, accumulator) in buffer.range(..=aggregate_cutoff) {
 		merged.merge(accumulator);
@@ -108,7 +113,8 @@ fn route_rolling_columns(
 		} else {
 			timestamps[row_idx]
 		};
-		let contribution = operator.core.build_contribution(columns, &slot_cols, row_idx);
+		let slot_key = slot_coord(is_count, coord, columns.row_numbers[row_idx].0);
+		let contribution = (slot_key, operator.core.build_contribution(columns, &slot_cols, row_idx));
 		let event = if is_add {
 			AccumulatorEvent::Add(contribution)
 		} else {
@@ -126,6 +132,7 @@ fn route_rolling_columns(
 pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let is_count = operator.is_count_based();
+	let lateness = operator.sealing_lateness();
 	let lag_ms = operator.rolling_lag_ms();
 	let is_event_time = !is_count && operator.kind.time() == TimeDomain::Event;
 	let size_ms = operator.size_duration().map(|d| d.milliseconds().unwrap_or(0) as u64).unwrap_or(0);
@@ -217,8 +224,8 @@ pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 			buckets,
 			eviction,
 			|hash| operator.core.create_window_key(*hash, 0),
-			|| RowAccumulator::new(&kinds),
-			|_g, buffer| combine_rolling(buffer, &kinds, lag_ms),
+			|| RowAccumulator::new(&kinds, lateness),
+			|_g, buffer| combine_rolling(buffer, &kinds, lag_ms, lateness),
 		)?;
 		engine.flush(&mut store)?;
 		res
@@ -300,6 +307,7 @@ pub fn tick_expire_rolling_engine(
 		return Ok(Vec::new());
 	}
 	let lag_ms = operator.rolling_lag_ms();
+	let lateness = operator.sealing_lateness();
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let cutoff = operator.event_time_cutoff(txn, size_ms + lag_ms)?;
 	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
@@ -322,7 +330,7 @@ pub fn tick_expire_rolling_engine(
 			continue;
 		}
 
-		match combine_rolling(&buffer, &kinds, lag_ms) {
+		match combine_rolling(&buffer, &kinds, lag_ms, lateness) {
 			Some(value) => {
 				let pre = operator.core.build_engine_row(
 					&meta.group_values,
@@ -364,10 +372,10 @@ pub fn tick_expire_rolling_engine(
 	Ok(diffs)
 }
 
-type StampedBuckets = RollingBuckets<Hash128, u64, (Vec<Option<Value>>, u64)>;
+type StampedBuckets = RollingBuckets<Hash128, u64, ((WindowSlotKey, Vec<Option<Value>>), u64)>;
 
 fn combine_stamped(buffer: &RollingBuffer<u64, StampedAccumulator>, kinds: &[SlotKind]) -> Option<Vec<Value>> {
-	let mut merged = RowAccumulator::new(kinds);
+	let mut merged = RowAccumulator::new(kinds, None);
 	let mut any = false;
 	for (_coord, accumulator) in buffer.iter() {
 		merged.merge(accumulator.inner());
@@ -399,7 +407,8 @@ fn route_rolling_processing(
 	let slot_cols = operator.core.evaluate_slot_inputs(columns)?;
 	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 		let coord = columns.row_numbers[row_idx].0;
-		let value_contrib = operator.core.build_contribution(columns, &slot_cols, row_idx);
+		let slot_key = slot_coord(true, 0, coord);
+		let value_contrib = (slot_key, operator.core.build_contribution(columns, &slot_cols, row_idx));
 		let event = if is_add {
 			AccumulatorEvent::Add((value_contrib, now))
 		} else {
@@ -503,7 +512,7 @@ pub fn apply_rolling_processing_engine(
 			buckets,
 			RollingEviction::BeforeStamp(cutoff),
 			|hash| operator.core.create_window_key(*hash, 0),
-			|| StampedAccumulator::new(&kinds),
+			|| StampedAccumulator::new(&kinds, None),
 			|_g, buffer| combine_stamped(buffer, &kinds),
 		)?;
 		engine.flush(&mut store)?;

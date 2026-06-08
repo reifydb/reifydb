@@ -43,6 +43,19 @@ impl CdcConsumerWatermark {
 	}
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct FlowConsumerWatermark(pub CdcConsumerWatermark);
+
+impl FlowConsumerWatermark {
+	pub fn get(&self) -> CommitVersion {
+		self.0.get()
+	}
+
+	pub fn store(&self, v: CommitVersion) {
+		self.0.store(v);
+	}
+}
+
 pub fn compute_watermark(txn: &mut Transaction<'_>) -> Result<Option<CommitVersion>> {
 	let mut min_version: Option<CommitVersion> = None;
 	for multi in txn.range(CdcConsumerKeyRange::full_scan(), RangeScope::All, 1024)? {

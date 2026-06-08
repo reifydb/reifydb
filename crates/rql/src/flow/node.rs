@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 	sort::SortKey,
 };
-use reifydb_value::value::dictionary::DictionaryId;
+use reifydb_value::value::{dictionary::DictionaryId, duration::Duration};
 use serde::{Deserialize, Serialize};
 
 use crate::expression::Expression;
@@ -99,6 +99,7 @@ pub enum FlowNodeType {
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
 		ts: Option<String>,
+		lateness: Option<Duration>,
 	},
 	SourceDictionary {
 		dictionary: DictionaryId,

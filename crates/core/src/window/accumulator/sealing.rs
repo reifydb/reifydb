@@ -112,6 +112,24 @@ impl<C: Slot, V: Ord + Clone> SealingMax<C, V> {
 			(None, None) => None,
 		}
 	}
+
+	pub fn absorb(&mut self, other: &Self) {
+		if let Some(s) = other.sealed.clone() {
+			self.seal(s);
+		}
+		for (coord, value) in other.base.tail() {
+			for (_, aged) in self.base.push(*coord, value.clone()) {
+				self.seal(aged);
+			}
+		}
+	}
+
+	fn seal(&mut self, v: V) {
+		self.sealed = Some(match self.sealed.take() {
+			Some(s) => s.max(v),
+			None => v,
+		});
+	}
 }
 
 impl<C, V> WindowAccumulator for SealingMax<C, V>
@@ -180,6 +198,24 @@ impl<C: Slot, V: Ord + Clone> SealingMin<C, V> {
 			(None, Some(t)) => Some(t),
 			(None, None) => None,
 		}
+	}
+
+	pub fn absorb(&mut self, other: &Self) {
+		if let Some(s) = other.sealed.clone() {
+			self.seal(s);
+		}
+		for (coord, value) in other.base.tail() {
+			for (_, aged) in self.base.push(*coord, value.clone()) {
+				self.seal(aged);
+			}
+		}
+	}
+
+	fn seal(&mut self, v: V) {
+		self.sealed = Some(match self.sealed.take() {
+			Some(s) => s.min(v),
+			None => v,
+		});
 	}
 }
 
@@ -253,6 +289,24 @@ impl<C: Slot, V: Clone> SealingEndpoint<C, V> {
 			Some(v) => Some(v),
 			None => self.sealed_open.as_ref().map(|(_, v)| v),
 		}
+	}
+
+	pub fn absorb(&mut self, other: &Self) {
+		if let Some((c, v)) = other.sealed_open.clone() {
+			self.seal_open(c, v);
+		}
+		for (coord, value) in other.base.tail() {
+			for (c, v) in self.base.push(*coord, value.clone()) {
+				self.seal_open(c, v);
+			}
+		}
+	}
+
+	fn seal_open(&mut self, c: C, v: V) {
+		self.sealed_open = Some(match self.sealed_open.take() {
+			Some((sc, sv)) if sc <= c => (sc, sv),
+			_ => (c, v),
+		});
 	}
 }
 

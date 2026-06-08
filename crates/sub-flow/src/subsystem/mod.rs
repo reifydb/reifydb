@@ -20,6 +20,7 @@ use reifydb_cdc::{
 		consumer::{CdcConsume, CdcConsumer},
 		poll::{PollConsumer, PollConsumerConfig},
 		wake::CdcWakeRegistry,
+		watermark::FlowConsumerWatermark,
 	},
 	storage::CdcStore,
 };
@@ -214,13 +215,16 @@ impl FlowSubsystem {
 		Self::register_watermark_sampler(ioc, &primitive_tracker, &flow_tracker, &flow_catalog);
 
 		let cdc_wake_registry = ioc.resolve::<CdcWakeRegistry>().expect("CdcWakeRegistry must be registered");
+		let flow_consumer_watermark = FlowConsumerWatermark::default();
+		ioc.register_service::<FlowConsumerWatermark>(flow_consumer_watermark.clone());
 		let poll_config = PollConsumerConfig::new(
 			flow_consumer_id,
 			"flow-cdc-poll",
 			Duration::from_seconds(1).unwrap(),
 			Some(100),
 		)
-		.with_wake_registry(cdc_wake_registry);
+		.with_wake_registry(cdc_wake_registry)
+		.with_consumer_watermark(flow_consumer_watermark.0.clone());
 
 		let bootstrap_flows = Self::bootstrap_flows(&engine, &flow_catalog, &registrar);
 		let _ = coordinator_handle.actor_ref().send(FlowCoordinatorMessage::Bootstrap {

@@ -224,7 +224,8 @@ impl FlowEngineInner {
 				group_by,
 				aggregations,
 				ts,
-			} => self.add_window(node_id, &inputs, kind, group_by, aggregations, ts)?,
+				lateness,
+			} => self.add_window(node_id, &inputs, kind, group_by, aggregations, ts, lateness)?,
 		}
 
 		Ok(())
@@ -667,6 +668,7 @@ impl FlowEngineInner {
 	}
 
 	#[inline]
+	#[allow(clippy::too_many_arguments)]
 	fn add_window(
 		&mut self,
 		node_id: FlowNodeId,
@@ -675,6 +677,7 @@ impl FlowEngineInner {
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
 		ts: Option<String>,
+		lateness: Option<Duration>,
 	) -> Result<()> {
 		let parent = self.parent(inputs[0])?;
 		let operator = WindowOperator::new(WindowConfig {
@@ -687,6 +690,7 @@ impl FlowEngineInner {
 			runtime_context: self.runtime_context.clone(),
 			routines: self.executor.routines.clone(),
 			late_policy: LatePolicy::Process,
+			lateness,
 		});
 		self.operators.insert(node_id, OperatorCell::new(Operators::Window(operator)));
 		Ok(())
