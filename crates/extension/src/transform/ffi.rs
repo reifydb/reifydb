@@ -163,6 +163,7 @@ pub(crate) mod stubs {
 			internal_get: internal_state_get,
 			internal_set: internal_state_set,
 			internal_remove: internal_state_remove,
+			internal_range: internal_state_range,
 			get_many: state_get_many,
 			internal_get_many: internal_state_get_many,
 			allocate_row_numbers,
@@ -215,6 +216,19 @@ pub(crate) mod stubs {
 		FFI_ERROR_INTERNAL
 	}
 	extern "C" fn state_range(
+		_: u64,
+		_: *mut ContextFFI,
+		_: *const u8,
+		_: usize,
+		_: u8,
+		_: *const u8,
+		_: usize,
+		_: u8,
+		_: *mut *mut StateIteratorFFI,
+	) -> i32 {
+		FFI_ERROR_INTERNAL
+	}
+	extern "C" fn internal_state_range(
 		_: u64,
 		_: *mut ContextFFI,
 		_: *const u8,

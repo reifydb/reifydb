@@ -98,6 +98,11 @@ pub trait InternalStateApi {
 	fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> Result<()>;
 	fn remove(&mut self, key: &EncodedKey) -> Result<()>;
 	fn contains(&self, key: &EncodedKey) -> Result<bool>;
+	fn range<T: DeserializeOwned>(
+		&self,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+	) -> Result<Vec<(EncodedKey, T)>>;
 
 	fn get_many_visit<T: DeserializeOwned>(
 		&self,
@@ -105,6 +110,18 @@ pub trait InternalStateApi {
 		visit: &mut dyn FnMut(EncodedKey, T) -> Result<()>,
 	) -> Result<()> {
 		for (k, v) in self.get_many::<T>(keys)? {
+			visit(k, v)?;
+		}
+		Ok(())
+	}
+
+	fn range_visit<T: DeserializeOwned>(
+		&self,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+		visit: &mut dyn FnMut(EncodedKey, T) -> Result<()>,
+	) -> Result<()> {
+		for (k, v) in self.range::<T>(start, end)? {
 			visit(k, v)?;
 		}
 		Ok(())

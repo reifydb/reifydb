@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{encoded::key::EncodedKey, interface::catalog::flow::FlowNodeId, window::store::WindowStore};
+use reifydb_core::{
+	encoded::key::{EncodedKey, EncodedKeyRange},
+	interface::catalog::flow::FlowNodeId,
+	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
+	window::store::WindowStore,
+};
 use reifydb_sdk::state::{decode_payload, encode_payload};
 use reifydb_value::{Result, value::row_number::RowNumber};
 use serde::{Serialize, de::DeserializeOwned};
@@ -83,6 +88,21 @@ impl WindowStore for FlowWindowStore<'_> {
 
 	fn internal_remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.txn.internal_state_remove(self.node, key)
+	}
+
+	fn internal_range_visit<V: DeserializeOwned>(
+		&mut self,
+		range: EncodedKeyRange,
+		visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
+	) -> Result<()> {
+		let batch = self.txn.internal_state_range_all(self.node, range)?;
+		for r in batch.items {
+			if let Some(decoded) = FlowNodeInternalStateKey::decode(&r.key) {
+				let value = decode_payload::<V>(&r.row)?;
+				visit(EncodedKey::new(decoded.key), value)?;
+			}
+		}
+		Ok(())
 	}
 
 	fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)> {

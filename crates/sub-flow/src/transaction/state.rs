@@ -170,6 +170,26 @@ impl FlowTransaction {
 		})
 	}
 
+	#[instrument(name = "flow::internal_state::range", level = "debug", skip(self, range), fields(
+		node_id = id.0
+	))]
+	pub fn internal_state_range_all(
+		&mut self,
+		id: FlowNodeId,
+		range: EncodedKeyRange,
+	) -> Result<MultiVersionBatch> {
+		let prefixed_range = range.with_prefix(FlowNodeInternalStateKey::encoded(id, vec![]));
+		let iter = self.range(prefixed_range, RangeScope::All, 1024);
+		let mut items = Vec::new();
+		for result in iter {
+			items.push(result?);
+		}
+		Ok(MultiVersionBatch {
+			items,
+			has_more: false,
+		})
+	}
+
 	#[instrument(name = "flow::state::clear", level = "trace", skip(self), fields(
 		node_id = id.0,
 		keys_removed = field::Empty

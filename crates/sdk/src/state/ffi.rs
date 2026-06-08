@@ -224,6 +224,46 @@ pub(crate) fn range(
 	}
 }
 
+pub(crate) fn internal_range(
+	ctx: &FFIOperatorContext,
+	start: Bound<&EncodedKey>,
+	end: Bound<&EncodedKey>,
+) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+	let mut iterator: *mut StateIteratorFFI = null_mut();
+
+	unsafe {
+		let (start_ptr, start_len, start_bound_type) = match start {
+			Bound::Unbounded => (ptr::null(), 0, BOUND_UNBOUNDED),
+			Bound::Included(key) => (key.as_bytes().as_ptr(), key.as_bytes().len(), BOUND_INCLUDED),
+			Bound::Excluded(key) => (key.as_bytes().as_ptr(), key.as_bytes().len(), BOUND_EXCLUDED),
+		};
+
+		let (end_ptr, end_len, end_bound_type) = match end {
+			Bound::Unbounded => (ptr::null(), 0, BOUND_UNBOUNDED),
+			Bound::Included(key) => (key.as_bytes().as_ptr(), key.as_bytes().len(), BOUND_INCLUDED),
+			Bound::Excluded(key) => (key.as_bytes().as_ptr(), key.as_bytes().len(), BOUND_EXCLUDED),
+		};
+
+		let result = ((*ctx.ctx).callbacks.state.internal_range)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			start_ptr,
+			start_len,
+			start_bound_type,
+			end_ptr,
+			end_len,
+			end_bound_type,
+			&mut iterator,
+		);
+
+		if result != FFI_OK {
+			return Err(SdkError::Other(format!("host_internal_state_range failed with code {}", result)));
+		}
+
+		collect_iterator_results(ctx, iterator)
+	}
+}
+
 #[instrument(
 	name = "flow::operator::state::collect_iterator",
 	level = "debug",

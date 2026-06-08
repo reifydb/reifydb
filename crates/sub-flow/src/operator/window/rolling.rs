@@ -5,14 +5,16 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use reifydb_core::{
 	common::{TimeDomain, WindowKind},
-	encoded::key::IntoEncodedKey,
 	interface::change::{Change, Diff},
 	value::column::columns::Columns,
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent,
-			rolling::{RollingBuckets, RollingBuffer, RollingEngine, RollingEviction, RollingResult},
+			rolling::{
+				RollingBuckets, RollingBuffer, RollingEngine, RollingEviction, RollingExpiry,
+				RollingResult,
+			},
 		},
 		store::WindowStore,
 	},
@@ -29,7 +31,7 @@ use super::{
 	accumulator::{RowAccumulator, StampedAccumulator, WindowSlotKey},
 	operator::WindowOperator,
 	store::FlowWindowStore,
-	tumbling::{scan_meta_keys, slot_coord},
+	tumbling::slot_coord,
 };
 use crate::transaction::FlowTransaction;
 
@@ -312,26 +314,29 @@ pub fn tick_expire_rolling_engine(
 	let cutoff = operator.event_time_cutoff(txn, size_ms + lag_ms)?;
 	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
 
-	let meta_keys = scan_meta_keys(operator, txn, b"rwm:")?;
+	let expiries = {
+		let mut store = FlowWindowStore::new(txn, operator.core.node);
+		let mut engine = RollingEngine::<Hash128, u64, RowAccumulator>::with_late_policy(operator.late_policy);
+		let res = engine.expire_before(&mut store, cutoff, |_g, buffer| {
+			combine_rolling(buffer, &kinds, lag_ms, lateness)
+		})?;
+		engine.flush(&mut store)?;
+		res
+	};
+
 	let mut diffs = Vec::new();
 	let mut store = FlowWindowStore::new(txn, operator.core.node);
-	for meta_key in &meta_keys {
-		let Some(meta) = store.state_get::<RollingWindowMeta>(meta_key)? else {
-			continue;
-		};
-		let row_number = RowNumber(meta.row_number);
-		let buf_key = row_number.into_encoded_key();
-		let Some(mut buffer) = store.state_get::<RollingBuffer<u64, RowAccumulator>>(&buf_key)? else {
-			continue;
-		};
-		let before_len = buffer.len();
-		buffer.retain(|&coord, _| coord > cutoff);
-		if buffer.len() == before_len {
-			continue;
-		}
-
-		match combine_rolling(&buffer, &kinds, lag_ms, lateness) {
-			Some(value) => {
+	for expiry in expiries {
+		match expiry {
+			RollingExpiry::Update {
+				row_number,
+				group,
+				value,
+			} => {
+				let meta_key = operator.create_rolling_meta_key(group);
+				let Some(meta) = store.state_get::<RollingWindowMeta>(&meta_key)? else {
+					continue;
+				};
 				let pre = operator.core.build_engine_row(
 					&meta.group_values,
 					&meta.last_value,
@@ -345,9 +350,8 @@ pub fn tick_expire_rolling_engine(
 					ts_nanos,
 				)?;
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
-				store.state_set(&buf_key, &buffer)?;
 				store.state_set(
-					meta_key,
+					&meta_key,
 					&RollingWindowMeta {
 						group_hash: meta.group_hash,
 						row_number: meta.row_number,
@@ -356,7 +360,14 @@ pub fn tick_expire_rolling_engine(
 					},
 				)?;
 			}
-			None => {
+			RollingExpiry::Remove {
+				row_number,
+				group,
+			} => {
+				let meta_key = operator.create_rolling_meta_key(group);
+				let Some(meta) = store.state_get::<RollingWindowMeta>(&meta_key)? else {
+					continue;
+				};
 				let pre = operator.core.build_engine_row(
 					&meta.group_values,
 					&meta.last_value,
@@ -364,8 +375,7 @@ pub fn tick_expire_rolling_engine(
 					ts_nanos,
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
-				store.state_remove(&buf_key)?;
-				store.state_remove(meta_key)?;
+				store.state_remove(&meta_key)?;
 			}
 		}
 	}
@@ -540,26 +550,29 @@ pub fn tick_expire_rolling_processing_engine(
 	let cutoff = current_timestamp.saturating_sub(size_ms + lag_ms);
 	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
 
-	let meta_keys = scan_meta_keys(operator, txn, b"rwm:")?;
+	let expiries = {
+		let mut store = FlowWindowStore::new(txn, operator.core.node);
+		let mut engine =
+			RollingEngine::<Hash128, u64, StampedAccumulator>::with_late_policy(operator.late_policy);
+		let res =
+			engine.expire_before_stamp(&mut store, cutoff, |_g, buffer| combine_stamped(buffer, &kinds))?;
+		engine.flush(&mut store)?;
+		res
+	};
+
 	let mut diffs = Vec::new();
 	let mut store = FlowWindowStore::new(txn, operator.core.node);
-	for meta_key in &meta_keys {
-		let Some(meta) = store.state_get::<RollingWindowMeta>(meta_key)? else {
-			continue;
-		};
-		let row_number = RowNumber(meta.row_number);
-		let buf_key = row_number.into_encoded_key();
-		let Some(mut buffer) = store.state_get::<RollingBuffer<u64, StampedAccumulator>>(&buf_key)? else {
-			continue;
-		};
-		let before_len = buffer.len();
-		buffer.retain(|_coord, accumulator| accumulator.stamp().is_none_or(|s| s > cutoff));
-		if buffer.len() == before_len {
-			continue;
-		}
-
-		match combine_stamped(&buffer, &kinds) {
-			Some(value) => {
+	for expiry in expiries {
+		match expiry {
+			RollingExpiry::Update {
+				row_number,
+				group,
+				value,
+			} => {
+				let meta_key = operator.create_rolling_meta_key(group);
+				let Some(meta) = store.state_get::<RollingWindowMeta>(&meta_key)? else {
+					continue;
+				};
 				let pre = operator.core.build_engine_row(
 					&meta.group_values,
 					&meta.last_value,
@@ -573,9 +586,8 @@ pub fn tick_expire_rolling_processing_engine(
 					ts_nanos,
 				)?;
 				diffs.push(Diff::update(Columns::from_row(&pre), Columns::from_row(&post)));
-				store.state_set(&buf_key, &buffer)?;
 				store.state_set(
-					meta_key,
+					&meta_key,
 					&RollingWindowMeta {
 						group_hash: meta.group_hash,
 						row_number: meta.row_number,
@@ -584,7 +596,14 @@ pub fn tick_expire_rolling_processing_engine(
 					},
 				)?;
 			}
-			None => {
+			RollingExpiry::Remove {
+				row_number,
+				group,
+			} => {
+				let meta_key = operator.create_rolling_meta_key(group);
+				let Some(meta) = store.state_get::<RollingWindowMeta>(&meta_key)? else {
+					continue;
+				};
 				let pre = operator.core.build_engine_row(
 					&meta.group_values,
 					&meta.last_value,
@@ -592,8 +611,7 @@ pub fn tick_expire_rolling_processing_engine(
 					ts_nanos,
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
-				store.state_remove(&buf_key)?;
-				store.state_remove(meta_key)?;
+				store.state_remove(&meta_key)?;
 			}
 		}
 	}

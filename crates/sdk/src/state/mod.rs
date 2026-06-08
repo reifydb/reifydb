@@ -145,6 +145,17 @@ impl<'a> InternalState<'a> {
 		Ok(ffi::internal_get(self.ctx, key)?.is_some())
 	}
 
+	pub fn range<T: DeserializeOwned>(
+		&self,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+	) -> Result<Vec<(EncodedKey, T)>> {
+		ffi::internal_range(self.ctx, start, end)?
+			.into_iter()
+			.map(|(k, row)| Ok((k, decode_payload(&row)?)))
+			.collect()
+	}
+
 	#[inline]
 	fn now_nanos(&self) -> u64 {
 		unsafe { (*self.ctx.ctx).clock_now_nanos }

@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{encoded::key::EncodedKey, window::store::WindowStore};
+use std::ops::Bound;
+
+use reifydb_core::{
+	encoded::key::{EncodedKey, EncodedKeyRange},
+	window::store::WindowStore,
+};
 use reifydb_value::{Result, value::row_number::RowNumber};
 use serde::{Serialize, de::DeserializeOwned};
 
@@ -53,6 +58,25 @@ impl<C: OperatorContext> WindowStore for OperatorContextStore<'_, C> {
 
 	fn internal_remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.0.internal_state().remove(key)?;
+		Ok(())
+	}
+
+	fn internal_range_visit<V: DeserializeOwned>(
+		&mut self,
+		range: EncodedKeyRange,
+		visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
+	) -> Result<()> {
+		let start = match &range.start {
+			Bound::Included(k) => Bound::Included(k),
+			Bound::Excluded(k) => Bound::Excluded(k),
+			Bound::Unbounded => Bound::Unbounded,
+		};
+		let end = match &range.end {
+			Bound::Included(k) => Bound::Included(k),
+			Bound::Excluded(k) => Bound::Excluded(k),
+			Bound::Unbounded => Bound::Unbounded,
+		};
+		self.0.internal_state().range_visit::<V>(start, end, &mut |k, v| visit(k, v).map_err(Into::into))?;
 		Ok(())
 	}
 

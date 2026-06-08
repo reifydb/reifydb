@@ -187,6 +187,14 @@ impl NativeBridge for FlowNativeBridge<'_> {
 	fn internal_state_remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.txn.internal_state_remove(self.node, key)
 	}
+	fn internal_state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+		Ok(self.txn
+			.internal_state_range_all(self.node, range)?
+			.items
+			.into_iter()
+			.map(|r| (r.key, r.row))
+			.collect())
+	}
 	fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber> {
 		allocate_row_numbers(self.txn, self.node, count).map(RowNumber)
 	}

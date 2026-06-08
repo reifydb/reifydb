@@ -4,15 +4,14 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use reifydb_core::{
 	common::TimeDomain,
-	encoded::key::{EncodedKey, IntoEncodedKey},
+	encoded::key::IntoEncodedKey,
 	interface::change::{Change, Diff},
-	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 	value::column::columns::Columns,
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, EmitKind, LatePolicy,
-			tumbling::{TumblingBuckets, TumblingEngine},
+			tumbling::{TumblingBuckets, TumblingEngine, reindex_window},
 		},
 		span::WindowSpan,
 		store::WindowStore,
@@ -22,7 +21,7 @@ use reifydb_engine::flow::aggregate::SlotKind;
 use reifydb_runtime::hash::Hash128;
 use reifydb_value::{
 	Result,
-	value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber},
+	value::{Value, datetime::DateTime, duration::Duration},
 };
 use serde::{Deserialize, Serialize};
 
@@ -306,6 +305,7 @@ pub(super) fn finish_tumbling_engine(
 	kinds: &[SlotKind],
 	late_policy: LatePolicy,
 	lateness: Option<Duration>,
+	index: bool,
 ) -> Result<Vec<Diff>> {
 	let results = {
 		let mut store = FlowWindowStore::new(txn, core.node);
@@ -328,19 +328,40 @@ pub(super) fn finish_tumbling_engine(
 		let mut store = FlowWindowStore::new(txn, core.node);
 		for r in &results {
 			let ewm_key = core.create_engine_meta_key(r.group, r.span.start);
+			let prior_last =
+				store.state_get::<EngineWindowMeta>(&ewm_key)?.map(|m| m.last_event_time).unwrap_or(0);
 			match r.kind {
-				EmitKind::Remove => store.state_remove(&ewm_key)?,
+				EmitKind::Remove => {
+					if index {
+						reindex_window(
+							&mut store,
+							&r.group,
+							r.span.start,
+							r.row_number,
+							(prior_last > 0).then_some(prior_last),
+							None,
+						)?;
+					}
+					store.state_remove(&ewm_key)?;
+				}
 				EmitKind::Insert | EmitKind::Update => {
 					let batch_max = window_max_ts.get(&(r.group, r.span)).copied().unwrap_or(0);
-					let prior_last = store
-						.state_get::<EngineWindowMeta>(&ewm_key)?
-						.map(|m| m.last_event_time)
-						.unwrap_or(0);
+					let last_event_time = prior_last.max(batch_max);
+					if index {
+						reindex_window(
+							&mut store,
+							&r.group,
+							r.span.start,
+							r.row_number,
+							(prior_last > 0).then_some(prior_last),
+							(last_event_time > 0).then_some(last_event_time),
+						)?;
+					}
 					let meta = EngineWindowMeta {
 						group_hash: r.group.0,
 						window_start: r.span.start,
 						row_number: r.row_number.0,
-						last_event_time: prior_last.max(batch_max),
+						last_event_time,
 						group_values: group_values.get(&r.group).cloned().unwrap_or_default(),
 					};
 					store.state_set(&ewm_key, &meta)?;
@@ -472,6 +493,7 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 		&kinds,
 		operator.late_policy,
 		operator.sealing_lateness(),
+		!operator.is_count_based(),
 	)?;
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
 }
@@ -690,6 +712,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		&kinds,
 		operator.late_policy,
 		operator.sealing_lateness(),
+		!operator.is_count_based(),
 	)?;
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
 }
@@ -927,6 +950,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		&kinds,
 		operator.late_policy,
 		operator.sealing_lateness(),
+		!operator.is_count_based(),
 	)?;
 
 	let ts_nanos = change.changed_at.to_nanos();
@@ -936,6 +960,17 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 			let key = operator.core.create_window_key(*hash, *session_id);
 			let (row_number, _) = store.get_or_create_row_number(&key)?;
 			let accumulator_key = row_number.into_encoded_key();
+			let meta_key = operator.core.create_engine_meta_key(*hash, *session_id);
+			let prior_last =
+				store.state_get::<EngineWindowMeta>(&meta_key)?.map(|m| m.last_event_time).unwrap_or(0);
+			reindex_window(
+				&mut store,
+				hash,
+				*session_id,
+				row_number,
+				(prior_last > 0).then_some(prior_last),
+				None,
+			)?;
 			if let Some(accumulator) = store.state_get::<RowAccumulator>(&accumulator_key)?
 				&& let Some(value) = accumulator.finalize()
 			{
@@ -944,7 +979,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				diffs.push(Diff::remove(Columns::from_row(&row)));
 			}
 			store.state_remove(&accumulator_key)?;
-			store.state_remove(&operator.core.create_engine_meta_key(*hash, *session_id))?;
+			store.state_remove(&meta_key)?;
 		}
 	}
 
@@ -1001,7 +1036,6 @@ fn tick_expire_by_cutoff(
 	if cutoff_ms == 0 {
 		return Ok(Vec::new());
 	}
-	let meta_keys = scan_meta_keys(operator, txn, b"ewm:")?;
 	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
 	let effective_now = match operator.kind.time() {
 		TimeDomain::Event => operator.load_event_watermark(txn)?,
@@ -1010,28 +1044,27 @@ fn tick_expire_by_cutoff(
 	if operator.kind.time() == TimeDomain::Event {
 		operator.advance_expiry_watermark(txn, effective_now)?;
 	}
+	let threshold = effective_now.saturating_sub(cutoff_ms).saturating_sub(1);
+	let expired = {
+		let mut store = FlowWindowStore::new(txn, operator.core.node);
+		let mut engine = TumblingEngine::<Hash128, u64, RowAccumulator>::with_late_policy(operator.late_policy);
+		let res = engine.expire(&mut store, threshold)?;
+		engine.flush(&mut store)?;
+		res
+	};
 	let mut diffs = Vec::new();
 	let mut store = FlowWindowStore::new(txn, operator.core.node);
-	for meta_key in &meta_keys {
-		let Some(meta) = store.state_get::<EngineWindowMeta>(meta_key)? else {
-			continue;
-		};
-		if meta.last_event_time == 0 {
-			continue;
-		}
-		if !window_closed(effective_now, meta.last_event_time, cutoff_ms) {
-			continue;
-		}
-		let row_number = RowNumber(meta.row_number);
-		let accumulator_key = row_number.into_encoded_key();
-		if let Some(accumulator) = store.state_get::<RowAccumulator>(&accumulator_key)?
-			&& let Some(value) = accumulator.finalize()
-		{
-			let row = operator.core.build_engine_row(&meta.group_values, &value, row_number, ts_nanos)?;
+	for window in expired {
+		let ewm_key = operator.core.create_engine_meta_key(window.group, window.window_start);
+		if let Some(value) = window.value {
+			let gvals = store
+				.state_get::<EngineWindowMeta>(&ewm_key)?
+				.map(|m| m.group_values)
+				.unwrap_or_default();
+			let row = operator.core.build_engine_row(&gvals, &value, window.row_number, ts_nanos)?;
 			diffs.push(Diff::remove(Columns::from_row(&row)));
 		}
-		store.state_remove(&accumulator_key)?;
-		store.state_remove(meta_key)?;
+		store.state_remove(&ewm_key)?;
 	}
 	Ok(diffs)
 }
@@ -1042,27 +1075,6 @@ pub fn tick_expire_session_engine(
 	current_timestamp: u64,
 ) -> Result<Vec<Diff>> {
 	tick_expire_by_cutoff(operator, txn, current_timestamp, operator.session_gap_ms())
-}
-
-pub(super) fn scan_meta_keys(
-	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
-	tag: &[u8],
-) -> Result<Vec<EncodedKey>> {
-	let all_state = txn.state_scan_all(operator.core.node)?;
-	let prefix = FlowNodeStateKey::new(operator.core.node, vec![]).encode();
-	let mut keys = Vec::new();
-	for item in &all_state.items {
-		let full_key = &item.key;
-		if full_key.len() <= prefix.len() {
-			continue;
-		}
-		let inner = &full_key[prefix.len()..];
-		if inner.starts_with(tag) {
-			keys.push(EncodedKey::new(inner));
-		}
-	}
-	Ok(keys)
 }
 
 pub fn tick_expire_engine_windows(

@@ -127,3 +127,195 @@ pub fn expiry_due_range(threshold: u64) -> EncodedKeyRange {
 	let end = vec![FlowNodeInternalStateKey::WINDOW_EXPIRY_TAG + 1];
 	EncodedKeyRange::new(Bound::Included(EncodedKey::new(start)), Bound::Excluded(EncodedKey::new(end)))
 }
+
+#[cfg(test)]
+pub(crate) mod test_support {
+	use std::{collections::HashMap, ops::Bound};
+
+	use postcard::{from_bytes, to_allocvec};
+	use reifydb_value::{Result, value::row_number::RowNumber};
+	use serde::{Deserialize, Serialize, de::DeserializeOwned};
+
+	use crate::{
+		encoded::key::{EncodedKey, EncodedKeyRange},
+		key::flow_node_internal_state::FlowNodeInternalStateKey,
+		window::{accumulator::WindowAccumulator, store::WindowStore},
+	};
+
+	#[derive(Default)]
+	pub(crate) struct MockStore {
+		data: HashMap<Vec<u8>, Vec<u8>>,
+		internal: HashMap<Vec<u8>, Vec<u8>>,
+		rows: HashMap<Vec<u8>, u64>,
+		next_row: u64,
+	}
+
+	impl MockStore {
+		pub(crate) fn index_entry_count(&mut self) -> usize {
+			self.internal
+				.keys()
+				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_EXPIRY_TAG))
+				.count()
+		}
+	}
+
+	impl WindowStore for MockStore {
+		fn state_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Result<Option<V>> {
+			Ok(self.data.get(key.as_bytes()).map(|b| from_bytes(b).expect("decode")))
+		}
+		fn state_get_many_visit<V: DeserializeOwned>(
+			&mut self,
+			keys: &[EncodedKey],
+			visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
+		) -> Result<()> {
+			for key in keys {
+				if let Some(b) = self.data.get(key.as_bytes()) {
+					visit(key.clone(), from_bytes(b).expect("decode"))?;
+				}
+			}
+			Ok(())
+		}
+		fn state_set<V: Serialize>(&mut self, key: &EncodedKey, value: &V) -> Result<()> {
+			self.data.insert(key.as_bytes().to_vec(), to_allocvec(value).expect("encode"));
+			Ok(())
+		}
+		fn state_remove(&mut self, key: &EncodedKey) -> Result<()> {
+			self.data.remove(key.as_bytes());
+			Ok(())
+		}
+		fn internal_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Result<Option<V>> {
+			Ok(self.internal.get(key.as_bytes()).map(|b| from_bytes(b).expect("decode")))
+		}
+		fn internal_get_many_visit<V: DeserializeOwned>(
+			&mut self,
+			keys: &[EncodedKey],
+			visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
+		) -> Result<()> {
+			for key in keys {
+				if let Some(b) = self.internal.get(key.as_bytes()) {
+					visit(key.clone(), from_bytes(b).expect("decode"))?;
+				}
+			}
+			Ok(())
+		}
+		fn internal_set<V: Serialize>(&mut self, key: &EncodedKey, value: &V) -> Result<()> {
+			self.internal.insert(key.as_bytes().to_vec(), to_allocvec(value).expect("encode"));
+			Ok(())
+		}
+		fn internal_remove(&mut self, key: &EncodedKey) -> Result<()> {
+			self.internal.remove(key.as_bytes());
+			Ok(())
+		}
+		fn internal_range_visit<V: DeserializeOwned>(
+			&mut self,
+			range: EncodedKeyRange,
+			visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
+		) -> Result<()> {
+			let after_start = |k: &[u8]| match &range.start {
+				Bound::Included(s) => k >= s.as_bytes(),
+				Bound::Excluded(s) => k > s.as_bytes(),
+				Bound::Unbounded => true,
+			};
+			let before_end = |k: &[u8]| match &range.end {
+				Bound::Included(e) => k <= e.as_bytes(),
+				Bound::Excluded(e) => k < e.as_bytes(),
+				Bound::Unbounded => true,
+			};
+			let mut matched: Vec<(Vec<u8>, Vec<u8>)> = self
+				.internal
+				.iter()
+				.filter(|(k, _)| after_start(k) && before_end(k))
+				.map(|(k, v)| (k.clone(), v.clone()))
+				.collect();
+			matched.sort_by(|a, b| a.0.cmp(&b.0));
+			for (k, b) in matched {
+				visit(EncodedKey::new(k), from_bytes(&b).expect("decode"))?;
+			}
+			Ok(())
+		}
+		fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)> {
+			if let Some(rn) = self.rows.get(key.as_bytes()) {
+				return Ok((RowNumber(*rn), false));
+			}
+			self.next_row += 1;
+			self.rows.insert(key.as_bytes().to_vec(), self.next_row);
+			Ok((RowNumber(self.next_row), true))
+		}
+		fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
+			keys.iter().map(|k| self.get_or_create_row_number(k)).collect()
+		}
+		fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber> {
+			let start = self.next_row + 1;
+			self.next_row += count;
+			Ok(RowNumber(start))
+		}
+		fn clock_now_nanos(&self) -> u64 {
+			0
+		}
+	}
+
+	#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+	pub(crate) struct SumAccumulator {
+		pub sum: i64,
+		pub count: u64,
+	}
+
+	impl WindowAccumulator for SumAccumulator {
+		type Contribution = i64;
+		type Output = i64;
+
+		fn add(&mut self, contribution: &i64) {
+			self.sum += *contribution;
+			self.count += 1;
+		}
+		fn remove(&mut self, contribution: &i64) {
+			self.sum -= *contribution;
+			self.count = self.count.saturating_sub(1);
+		}
+		fn finalize(&self) -> Option<i64> {
+			if self.count == 0 {
+				None
+			} else {
+				Some(self.sum)
+			}
+		}
+		fn is_empty(&self) -> bool {
+			self.count == 0
+		}
+	}
+
+	#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+	pub(crate) struct StampedSum {
+		pub sum: i64,
+		pub count: u64,
+		pub stamp: Option<u64>,
+	}
+
+	impl WindowAccumulator for StampedSum {
+		type Contribution = (i64, u64);
+		type Output = i64;
+
+		fn add(&mut self, contribution: &(i64, u64)) {
+			self.sum += contribution.0;
+			self.count += 1;
+			self.stamp = Some(self.stamp.map_or(contribution.1, |s| s.max(contribution.1)));
+		}
+		fn remove(&mut self, contribution: &(i64, u64)) {
+			self.sum -= contribution.0;
+			self.count = self.count.saturating_sub(1);
+		}
+		fn finalize(&self) -> Option<i64> {
+			if self.count == 0 {
+				None
+			} else {
+				Some(self.sum)
+			}
+		}
+		fn is_empty(&self) -> bool {
+			self.count == 0
+		}
+		fn stamp(&self) -> Option<u64> {
+			self.stamp
+		}
+	}
+}

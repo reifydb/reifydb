@@ -220,6 +220,13 @@ impl InternalStateApi for InternalState<'_> {
 	fn contains(&self, key: &EncodedKey) -> Result<bool> {
 		InternalState::contains(self, key)
 	}
+	fn range<T: DeserializeOwned>(
+		&self,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+	) -> Result<Vec<(EncodedKey, T)>> {
+		InternalState::range(self, start, end)
+	}
 }
 
 impl StoreApi for Store<'_> {

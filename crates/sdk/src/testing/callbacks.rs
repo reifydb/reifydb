@@ -167,6 +167,76 @@ fn test_internal_envelope(operator_id: u64, user_key_bytes: &[u8]) -> EncodedKey
 }
 
 #[unsafe(no_mangle)]
+extern "C" fn test_internal_state_range(
+	_operator_id: u64,
+	ctx: *mut ContextFFI,
+	start_ptr: *const u8,
+	start_len: usize,
+	start_bound_type: u8,
+	end_ptr: *const u8,
+	end_len: usize,
+	end_bound_type: u8,
+	iterator_out: *mut *mut StateIteratorFFI,
+) -> i32 {
+	if ctx.is_null() || iterator_out.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+
+		let start_key = if start_bound_type == BOUND_UNBOUNDED || start_ptr.is_null() {
+			None
+		} else {
+			Some(from_raw_parts(start_ptr, start_len).to_vec())
+		};
+
+		let end_key = if end_bound_type == BOUND_UNBOUNDED || end_ptr.is_null() {
+			None
+		} else {
+			Some(from_raw_parts(end_ptr, end_len).to_vec())
+		};
+
+		let state_store = test_ctx.state_store();
+		let state = state_store.lock();
+
+		let mut items: Vec<(Vec<u8>, Vec<u8>)> = state
+			.iter()
+			.filter(|(key, _)| {
+				let key_bytes = key.as_slice();
+
+				let start_ok = match (&start_key, start_bound_type) {
+					(None, _) => true,
+					(Some(start), BOUND_INCLUDED) => key_bytes >= start.as_slice(),
+					(Some(start), BOUND_EXCLUDED) => key_bytes > start.as_slice(),
+					_ => true,
+				};
+
+				let end_ok = match (&end_key, end_bound_type) {
+					(None, _) => true,
+					(Some(end), BOUND_INCLUDED) => key_bytes <= end.as_slice(),
+					(Some(end), BOUND_EXCLUDED) => key_bytes < end.as_slice(),
+					_ => true,
+				};
+
+				start_ok && end_ok
+			})
+			.map(|(key, value)| (key.to_vec(), value.0.to_vec()))
+			.collect();
+
+		items.sort_by(|a, b| a.0.cmp(&b.0));
+
+		let iter = Box::new(TestStateIterator {
+			items,
+			position: 0,
+		});
+
+		*iterator_out = Box::into_raw(iter) as *mut StateIteratorFFI;
+
+		FFI_OK
+	}
+}
+
 extern "C" fn test_internal_state_get(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
@@ -833,6 +903,7 @@ pub fn create_test_callbacks() -> HostCallbacks {
 			internal_get: test_internal_state_get,
 			internal_set: test_internal_state_set,
 			internal_remove: test_internal_state_remove,
+			internal_range: test_internal_state_range,
 			get_many: test_state_get_many,
 			internal_get_many: test_internal_state_get_many,
 			allocate_row_numbers: test_allocate_row_numbers,

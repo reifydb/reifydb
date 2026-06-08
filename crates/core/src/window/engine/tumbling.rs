@@ -9,13 +9,17 @@ use std::{
 };
 
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
 	encoded::key::{EncodedKey, IntoEncodedKey},
+	util::encoding::keycode::encode_u64,
 	window::{
 		accumulator::WindowAccumulator,
-		engine::{AccumulatorEvent, EmitKind, GroupMeta, LatePolicy, MetaKey, WindowResult, meta_key_for},
+		engine::{
+			AccumulatorEvent, EmitKind, GroupMeta, LatePolicy, MetaKey, WindowResult, expiry_due_range,
+			expiry_key, meta_key_for,
+		},
 		span::{Slot, WindowSpan},
 		state::StateCache,
 		store::WindowStore,
@@ -26,6 +30,55 @@ pub type TumblingBuckets<G, C, Contribution> = BTreeMap<(G, WindowSpan<C>), Vec<
 
 type MetaLoaded<G, C> = HashMap<G, GroupMeta<C>>;
 type SlotResolved = Vec<Option<(RowNumber, bool)>>;
+
+pub struct ExpiredWindow<G, C, Output> {
+	pub row_number: RowNumber,
+	pub group: G,
+	pub window_start: C,
+	pub value: Option<Output>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(bound(serialize = "G: Serialize, C: Serialize", deserialize = "G: DeserializeOwned, C: DeserializeOwned"))]
+struct TumblingIndexEntry<G, C> {
+	group: G,
+	window_start: C,
+	row_number: u64,
+}
+
+pub fn reindex_window<S, G, C>(
+	store: &mut S,
+	group: &G,
+	window_start: C,
+	row_number: RowNumber,
+	prior: Option<u64>,
+	new: Option<u64>,
+) -> Result<()>
+where
+	S: WindowStore,
+	G: Clone + Serialize,
+	C: Slot + Serialize,
+	for<'a> &'a G: IntoEncodedKey,
+{
+	if prior == new {
+		return Ok(());
+	}
+	let suffix = encode_u64(window_start.order_key());
+	if let Some(old) = prior {
+		store.internal_remove(&expiry_key(old, group, &suffix))?;
+	}
+	if let Some(new) = new {
+		store.internal_set(
+			&expiry_key(new, group, &suffix),
+			&TumblingIndexEntry {
+				group: group.clone(),
+				window_start,
+				row_number: row_number.0,
+			},
+		)?;
+	}
+	Ok(())
+}
 
 pub struct TumblingEngine<G, C, Accumulator> {
 	accumulators: StateCache<RowNumber, Accumulator>,
@@ -257,10 +310,136 @@ where
 		Ok(results)
 	}
 
+	pub fn expire<S: WindowStore>(
+		&mut self,
+		store: &mut S,
+		threshold: u64,
+	) -> Result<Vec<ExpiredWindow<G, C, Accumulator::Output>>> {
+		let mut due: Vec<(EncodedKey, TumblingIndexEntry<G, C>)> = Vec::new();
+		store.internal_range_visit::<TumblingIndexEntry<G, C>>(
+			expiry_due_range(threshold),
+			&mut |key, entry| {
+				due.push((key, entry));
+				Ok(())
+			},
+		)?;
+
+		let mut out: Vec<ExpiredWindow<G, C, Accumulator::Output>> = Vec::new();
+		for (index_key, entry) in due {
+			let row_number = RowNumber(entry.row_number);
+			store.internal_remove(&index_key)?;
+			let value = self
+				.accumulators
+				.get(store, &row_number)?
+				.and_then(|accumulator| accumulator.finalize());
+			self.accumulators.remove(store, &row_number)?;
+			out.push(ExpiredWindow {
+				row_number,
+				group: entry.group,
+				window_start: entry.window_start,
+				value,
+			});
+		}
+		Ok(out)
+	}
+
 	fn persist_meta<S: WindowStore>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C>) -> Result<()> {
 		for (group, meta) in meta_loaded {
 			self.meta.set(store, &meta_key_for(&group), &meta)?;
 		}
 		Ok(())
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::collections::BTreeMap;
+
+	use crate::{
+		encoded::key::EncodedKey,
+		window::{
+			engine::{
+				AccumulatorEvent, WindowResult,
+				test_support::{MockStore, SumAccumulator},
+				tumbling::{TumblingBuckets, TumblingEngine, reindex_window},
+			},
+			span::WindowSpan,
+		},
+	};
+
+	fn row_key(group: &u32, window_start: u64) -> EncodedKey {
+		EncodedKey::builder().u32(*group).u64(window_start).build()
+	}
+
+	fn seed_window(store: &mut MockStore, window_start: u64, contribution: i64) -> WindowResult<u32, u64, i64> {
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new();
+		let mut buckets: TumblingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert(
+			(1u32, WindowSpan::new(window_start, window_start + 1)),
+			vec![AccumulatorEvent::Add(contribution)],
+		);
+		let mut results = engine.apply(store, buckets, row_key, SumAccumulator::default).expect("apply");
+		engine.flush(store).expect("flush");
+		results.pop().expect("one window")
+	}
+
+	#[test]
+	fn expire_returns_only_due_windows_and_clears_their_state() {
+		let mut store = MockStore::default();
+		// Two live windows; the face indexes each by its last_event_time (10 and 90).
+		let w0 = seed_window(&mut store, 0, 5);
+		reindex_window(&mut store, &w0.group, w0.span.start, w0.row_number, None, Some(10)).unwrap();
+		let w100 = seed_window(&mut store, 100, 7);
+		reindex_window(&mut store, &w100.group, w100.span.start, w100.row_number, None, Some(90)).unwrap();
+		assert_eq!(store.index_entry_count(), 2, "both live windows are indexed");
+
+		// Threshold 10: only the window whose expiry (10) is at/under the threshold is due.
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new();
+		let expired = engine.expire(&mut store, 10).unwrap();
+		engine.flush(&mut store).unwrap();
+		assert_eq!(expired.len(), 1, "exactly one window is due, not the whole population");
+		assert_eq!(expired[0].window_start, 0);
+		assert_eq!(expired[0].value, Some(5));
+		assert_eq!(store.index_entry_count(), 1, "the due window's index entry is gone, the other remains");
+
+		// The surviving window finalizes correctly once the threshold reaches it.
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new();
+		let later = engine.expire(&mut store, 1000).unwrap();
+		assert_eq!(later.len(), 1);
+		assert_eq!(later[0].window_start, 100);
+		assert_eq!(later[0].value, Some(7));
+		assert_eq!(store.index_entry_count(), 0);
+	}
+
+	#[test]
+	fn expire_threshold_is_inclusive() {
+		let mut store = MockStore::default();
+		let w = seed_window(&mut store, 0, 4);
+		reindex_window(&mut store, &w.group, w.span.start, w.row_number, None, Some(50)).unwrap();
+
+		// One below the expiry: not due, and the scan leaves the index intact.
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new();
+		assert!(engine.expire(&mut store, 49).unwrap().is_empty());
+		engine.flush(&mut store).unwrap();
+		assert_eq!(store.index_entry_count(), 1);
+
+		// Exactly at the expiry: due (the face folds the strict close boundary into the threshold).
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new();
+		assert_eq!(engine.expire(&mut store, 50).unwrap().len(), 1);
+	}
+
+	#[test]
+	fn reindex_rekeys_without_leaving_a_stale_entry() {
+		let mut store = MockStore::default();
+		let w = seed_window(&mut store, 0, 9);
+		// Index at 10, then a later event advances the window's expiry to 80.
+		reindex_window(&mut store, &w.group, w.span.start, w.row_number, None, Some(10)).unwrap();
+		reindex_window(&mut store, &w.group, w.span.start, w.row_number, Some(10), Some(80)).unwrap();
+		assert_eq!(store.index_entry_count(), 1, "re-keying must not leave the old entry behind");
+
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new();
+		assert!(engine.expire(&mut store, 10).unwrap().is_empty(), "no longer due at the old expiry");
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new();
+		assert_eq!(engine.expire(&mut store, 80).unwrap().len(), 1, "due at the new expiry");
 	}
 }

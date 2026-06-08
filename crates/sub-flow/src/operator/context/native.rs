@@ -46,6 +46,7 @@ pub trait NativeBridge {
 	fn internal_state_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedRow)>>;
 	fn internal_state_set(&mut self, key: &EncodedKey, value: EncodedRow) -> Result<()>;
 	fn internal_state_remove(&mut self, key: &EncodedKey) -> Result<()>;
+	fn internal_state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>>;
 
 	fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber>;
 
@@ -320,6 +321,15 @@ impl InternalStateApi for NativeInternalState<'_> {
 	}
 	fn contains(&self, key: &EncodedKey) -> SdkResult<bool> {
 		Ok(unsafe { (*self.bridge).internal_state_get(key) }.map_err(to_sdk_err)?.is_some())
+	}
+	fn range<T: DeserializeOwned>(
+		&self,
+		start: Bound<&EncodedKey>,
+		end: Bound<&EncodedKey>,
+	) -> SdkResult<Vec<(EncodedKey, T)>> {
+		let range = EncodedKeyRange::new(start.map(|k| k.clone()), end.map(|k| k.clone()));
+		let rows = unsafe { (*self.bridge).internal_state_range(range) }.map_err(to_sdk_err)?;
+		rows.into_iter().map(|(k, r)| Ok((strip_internal_envelope(&k), decode(&r)?))).collect()
 	}
 	fn get_many_visit<T: DeserializeOwned>(
 		&self,

@@ -340,6 +340,93 @@ pub(super) extern "C" fn host_state_range(
 	}
 }
 
+pub(super) extern "C" fn host_internal_state_range(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	start_ptr: *const u8,
+	start_len: usize,
+	start_bound_type: u8,
+	end_ptr: *const u8,
+	end_len: usize,
+	end_bound_type: u8,
+	iterator_out: *mut *mut StateIteratorFFI,
+) -> i32 {
+	if ctx.is_null() || iterator_out.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let ctx_handle = &mut *ctx;
+		let flow_txn = get_transaction_mut(ctx_handle);
+		let node_id = FlowNodeId(operator_id);
+
+		let start_bound = match start_bound_type {
+			BOUND_UNBOUNDED => Bound::Unbounded,
+			BOUND_INCLUDED => {
+				if start_ptr.is_null() {
+					return FFI_ERROR_NULL_PTR;
+				}
+				let bytes = from_raw_parts(start_ptr, start_len).to_vec();
+				Bound::Included(EncodedKey::new(bytes))
+			}
+			BOUND_EXCLUDED => {
+				if start_ptr.is_null() {
+					return FFI_ERROR_NULL_PTR;
+				}
+				let bytes = from_raw_parts(start_ptr, start_len).to_vec();
+				Bound::Excluded(EncodedKey::new(bytes))
+			}
+			_ => return FFI_ERROR_INTERNAL,
+		};
+
+		let end_bound = match end_bound_type {
+			BOUND_UNBOUNDED => Bound::Unbounded,
+			BOUND_INCLUDED => {
+				if end_ptr.is_null() {
+					return FFI_ERROR_NULL_PTR;
+				}
+				let bytes = from_raw_parts(end_ptr, end_len).to_vec();
+				Bound::Included(EncodedKey::new(bytes))
+			}
+			BOUND_EXCLUDED => {
+				if end_ptr.is_null() {
+					return FFI_ERROR_NULL_PTR;
+				}
+				let bytes = from_raw_parts(end_ptr, end_len).to_vec();
+				Bound::Excluded(EncodedKey::new(bytes))
+			}
+			_ => return FFI_ERROR_INTERNAL,
+		};
+
+		let range = EncodedKeyRange::new(start_bound, end_bound);
+		let result = flow_txn.internal_state_range_all(node_id, range);
+
+		match result {
+			Ok(batch) => {
+				let handle = state_iterator::create_internal_iterator(batch);
+
+				let iter_ptr = host_alloc(mem::size_of::<StateIteratorInternal>())
+					as *mut StateIteratorInternal;
+				if iter_ptr.is_null() {
+					state_iterator::free_iterator(handle);
+					return FFI_ERROR_ALLOC;
+				}
+
+				ptr::write(
+					iter_ptr,
+					StateIteratorInternal {
+						handle,
+					},
+				);
+
+				*iterator_out = iter_ptr as *mut StateIteratorFFI;
+				FFI_OK
+			}
+			Err(_) => FFI_ERROR_INTERNAL,
+		}
+	}
+}
+
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_state_iterator_next(
 	iterator: *mut StateIteratorFFI,

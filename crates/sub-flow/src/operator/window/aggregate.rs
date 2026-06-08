@@ -156,6 +156,7 @@ pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, cha
 		&kinds,
 		LatePolicy::Process,
 		None,
+		false,
 	)?;
 	Ok(Change::from_flow(core.node, change.version, diffs, change.changed_at))
 }

@@ -78,6 +78,18 @@ pub struct StateCallbacks {
 	pub internal_remove:
 		extern "C" fn(operator_id: u64, ctx: *mut ContextFFI, key: *const u8, key_len: usize) -> i32,
 
+	pub internal_range: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ContextFFI,
+		start: *const u8,
+		start_len: usize,
+		start_bound_type: u8,
+		end: *const u8,
+		end_len: usize,
+		end_bound_type: u8,
+		iterator_out: *mut *mut StateIteratorFFI,
+	) -> i32,
+
 	pub get_many: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ContextFFI,
