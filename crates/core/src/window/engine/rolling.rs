@@ -284,12 +284,6 @@ where
 		for ((group, coord), events) in buckets {
 			let meta = meta_loaded.entry(group.clone()).or_default();
 
-			if let Some(hw) = meta.high_water
-				&& coord < hw && matches!(self.late_policy, LatePolicy::Drop)
-			{
-				continue;
-			}
-
 			let slot = match group_slots.get_mut(&group) {
 				Some(s) => s,
 				None => {
@@ -323,15 +317,35 @@ where
 				}
 			};
 
+			let late = matches!(meta.high_water, Some(hw) if coord < hw)
+				&& matches!(self.late_policy, LatePolicy::Drop)
+				&& !slot.buffer.contains_key(&coord);
+
 			let mut accumulator = slot.buffer.remove(&coord).unwrap_or_else(new_accumulator);
+			let mut touched = false;
 			for event in events {
 				match event {
-					AccumulatorEvent::Add(c) => accumulator.add(&c),
-					AccumulatorEvent::Remove(c) => accumulator.remove(&c),
+					AccumulatorEvent::Add(c) => {
+						if late {
+							continue;
+						}
+						accumulator.add(&c);
+						touched = true;
+					}
+					AccumulatorEvent::Remove(c) => {
+						if accumulator.is_empty() {
+							continue;
+						}
+						accumulator.remove(&c);
+						touched = true;
+					}
 				}
 			}
 			if !accumulator.is_empty() {
 				slot.buffer.insert(coord, accumulator);
+			}
+			if !touched {
+				continue;
 			}
 			match eviction {
 				RollingEviction::Capacity(cap) => {
