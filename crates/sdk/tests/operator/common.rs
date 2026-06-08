@@ -31,6 +31,7 @@ use reifydb_core::{
 			},
 			sealing::{SealingEndpoint, SealingMax, SealingMin},
 		},
+		engine::LatePolicy,
 		span::WindowSpan,
 	},
 };
@@ -67,6 +68,18 @@ pub const ROLLING_CAPACITY: usize = 3;
 
 /// Seeds replayed for every config so a failure names a reproducible run.
 pub const SEEDS: [u64; 6] = [1, 7, 42, 99, 12_345, 2_024];
+
+/// Both late-event policies, replayed by every differential suite so the
+/// `Process` path (the production default) is covered, not just `Drop`.
+pub const POLICIES: [LatePolicy; 2] = [LatePolicy::Drop, LatePolicy::Process];
+
+/// Config-string label the windowed drivers parse back into a `LatePolicy`.
+pub fn policy_label(policy: LatePolicy) -> &'static str {
+	match policy {
+		LatePolicy::Drop => "drop",
+		LatePolicy::Process => "process",
+	}
+}
 
 /// One event per Change. Forces the operator to snapshot per single diff;
 /// the cleanest setting for boundary/high-water reasoning.
@@ -635,7 +648,15 @@ row!(CarryOut {
 	has_carry: bool
 });
 
-pub struct TwapCarry;
+pub struct TwapCarry {
+	lateness: Option<u64>,
+}
+
+pub fn twap_carry(lateness: Option<u64>) -> TwapCarry {
+	TwapCarry {
+		lateness,
+	}
+}
 
 impl TumblingCarryOperator for TwapCarry {
 	type GroupKey = String;
@@ -674,6 +695,10 @@ impl TumblingCarryOperator for TwapCarry {
 	fn carry_forward(&self, value: &BTreeMap<u64, f64>, _prev_carry: Option<&f64>) -> Option<f64> {
 		value.last_key_value().map(|(_, v)| *v)
 	}
+
+	fn lateness(&self) -> Option<u64> {
+		self.lateness
+	}
 }
 
 impl TumblingCarryRegistration for TwapCarry {
@@ -684,8 +709,10 @@ impl TumblingCarryRegistration for TwapCarry {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
-		Ok(Self)
+	fn from_config(_operator_id: FlowNodeId, config: &Config) -> Result<Self> {
+		Ok(TwapCarry {
+			lateness: config.u64("__lateness"),
+		})
 	}
 
 	fn encode_row_key(&self, group: &String, window_start: u64) -> EncodedKey {

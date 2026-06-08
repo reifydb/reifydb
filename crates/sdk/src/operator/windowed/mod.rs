@@ -25,3 +25,14 @@ pub mod rolling;
 pub mod rolling_incremental;
 pub mod tumbling;
 pub mod tumbling_carry;
+
+use reifydb_core::window::engine::LatePolicy;
+
+use crate::config::Config;
+
+pub(crate) fn late_policy_from_config(config: &Config) -> LatePolicy {
+	match config.str("__late_policy").as_deref() {
+		Some("process") => LatePolicy::Process,
+		_ => LatePolicy::Drop,
+	}
+}

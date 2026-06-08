@@ -31,7 +31,7 @@ use crate::{
 		},
 		context::OperatorContext,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
-		windowed::bridge::OperatorContextStore,
+		windowed::{bridge::OperatorContextStore, late_policy_from_config},
 	},
 };
 
@@ -215,7 +215,7 @@ where
 		let aggregator = A::from_config(operator_id, config)?;
 		Ok(Self {
 			aggregator,
-			engine: RollingEngine::new(),
+			engine: RollingEngine::with_late_policy(late_policy_from_config(config)),
 		})
 	}
 

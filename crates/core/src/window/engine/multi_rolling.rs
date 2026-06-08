@@ -15,7 +15,7 @@ use crate::{
 	encoded::key::{EncodedKey, IntoEncodedKey},
 	window::{
 		accumulator::WindowAccumulator,
-		engine::{AccumulatorEvent, GroupMeta, MetaKey, meta_key_for, rolling::RollingBuckets},
+		engine::{AccumulatorEvent, GroupMeta, LatePolicy, MetaKey, meta_key_for, rolling::RollingBuckets},
 		span::Slot,
 		state::StateCache,
 		store::WindowStore,
@@ -95,6 +95,7 @@ struct GroupSlot<C, Accumulator, SK, Output> {
 pub struct MultiRollingEngine<G, C, Accumulator, SK, Output> {
 	groups: StateCache<RowNumber, GroupState<C, Accumulator, SK, Output>>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
+	late_policy: LatePolicy,
 	_pd: PhantomData<G>,
 }
 
@@ -122,9 +123,14 @@ where
 	for<'a> &'a G: IntoEncodedKey,
 {
 	pub fn new() -> Self {
+		Self::with_late_policy(LatePolicy::Drop)
+	}
+
+	pub fn with_late_policy(late_policy: LatePolicy) -> Self {
 		Self {
 			groups: StateCache::<RowNumber, GroupState<C, Accumulator, SK, Output>>::new(8),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(64),
+			late_policy,
 			_pd: PhantomData,
 		}
 	}
@@ -280,8 +286,9 @@ where
 				}
 			};
 
-			let late =
-				matches!(meta.high_water, Some(hw) if coord < hw) && !slot.buffer.contains_key(&coord);
+			let late = matches!(meta.high_water, Some(hw) if coord < hw)
+				&& matches!(self.late_policy, LatePolicy::Drop)
+				&& !slot.buffer.contains_key(&coord);
 
 			let mut accumulator = slot.buffer.remove(&coord).unwrap_or_default();
 			let mut touched = false;

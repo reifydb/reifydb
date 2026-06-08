@@ -28,7 +28,7 @@ use crate::{
 		},
 		context::OperatorContext,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
-		windowed::bridge::OperatorContextStore,
+		windowed::{bridge::OperatorContextStore, late_policy_from_config},
 	},
 };
 
@@ -74,6 +74,10 @@ pub trait TumblingCarryOperator {
 
 	fn new_accumulator(&self) -> Self::Accumulator {
 		Self::Accumulator::default()
+	}
+
+	fn lateness(&self) -> Option<<Self::WindowCoord as Slot>::Duration> {
+		None
 	}
 }
 
@@ -203,6 +207,7 @@ where
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
 	A::WindowCoord: Send + Sync,
+	<A::WindowCoord as Slot>::Duration: Send + Sync,
 	A::Accumulator: Send + Sync,
 	A::Carry: Send + Sync,
 	AccumulatorContribution<A>: Send + Sync,
@@ -210,9 +215,11 @@ where
 {
 	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
 		let aggregator = A::from_config(operator_id, config)?;
+		let late_policy = late_policy_from_config(config);
+		let lateness = aggregator.lateness();
 		Ok(Self {
 			aggregator,
-			engine: TumblingCarryEngine::new(),
+			engine: TumblingCarryEngine::with_late_policy_and_lateness(late_policy, lateness),
 		})
 	}
 

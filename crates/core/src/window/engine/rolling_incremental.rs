@@ -16,7 +16,7 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, GroupMeta, MetaKey, meta_key_for,
+			AccumulatorEvent, EmitKind, GroupMeta, LatePolicy, MetaKey, meta_key_for,
 			rolling::{RollingBuckets, RollingBuffer, RollingResult},
 		},
 		span::Slot,
@@ -41,6 +41,7 @@ pub struct RollingIncrementalEngine<G, C, Accumulator, Running> {
 	buffers: StateCache<RowNumber, RollingBuffer<C, Accumulator>>,
 	running: StateCache<RowNumber, Running>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
+	late_policy: LatePolicy,
 	_pd: PhantomData<G>,
 }
 
@@ -66,10 +67,15 @@ where
 	for<'a> &'a G: IntoEncodedKey,
 {
 	pub fn new() -> Self {
+		Self::with_late_policy(LatePolicy::Drop)
+	}
+
+	pub fn with_late_policy(late_policy: LatePolicy) -> Self {
 		Self {
 			buffers: StateCache::<RowNumber, RollingBuffer<C, Accumulator>>::new(8),
 			running: StateCache::<RowNumber, Running>::new(8),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(64),
+			late_policy,
 			_pd: PhantomData,
 		}
 	}
@@ -95,6 +101,7 @@ where
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
 		let buffer_rows = self.resolve_buffer_rows(store, &buckets, &meta_loaded, &row_key)?;
 
+		let late_policy = self.late_policy;
 		let mut group_slots: BTreeMap<G, GroupSlot<C, Accumulator, Running>> = BTreeMap::new();
 
 		for ((group, coord), events) in buckets {
@@ -130,8 +137,9 @@ where
 				}
 			};
 
-			let late =
-				matches!(meta.high_water, Some(hw) if coord < hw) && !slot.buffer.contains_key(&coord);
+			let late = matches!(meta.high_water, Some(hw) if coord < hw)
+				&& matches!(late_policy, LatePolicy::Drop)
+				&& !slot.buffer.contains_key(&coord);
 
 			let mut accumulator = slot.buffer.remove(&coord).unwrap_or_default();
 			let old_value = accumulator.finalize();

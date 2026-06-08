@@ -15,7 +15,10 @@ use crate::{
 	encoded::key::{EncodedKey, IntoEncodedKey},
 	window::{
 		accumulator::WindowAccumulator,
-		engine::{AccumulatorEvent, EmitKind, MetaKey, WindowResult, meta_key_for, tumbling::TumblingBuckets},
+		engine::{
+			AccumulatorEvent, EmitKind, LatePolicy, MetaKey, WindowResult, meta_key_for,
+			tumbling::TumblingBuckets,
+		},
 		span::{Slot, WindowSpan},
 		state::StateCache,
 		store::WindowStore,
@@ -41,6 +44,8 @@ struct WindowEntry<C, Carry> {
 ))]
 struct CarryMeta<C, Carry> {
 	high_water: Option<C>,
+	sealed_up_to: Option<C>,
+	sealed_carry: Option<Carry>,
 	windows: BTreeMap<C, WindowEntry<C, Carry>>,
 }
 
@@ -48,6 +53,8 @@ impl<C, Carry> Default for CarryMeta<C, Carry> {
 	fn default() -> Self {
 		Self {
 			high_water: None,
+			sealed_up_to: None,
+			sealed_carry: None,
 			windows: BTreeMap::new(),
 		}
 	}
@@ -56,9 +63,11 @@ impl<C, Carry> Default for CarryMeta<C, Carry> {
 type MetaLoaded<G, C, Carry> = HashMap<G, CarryMeta<C, Carry>>;
 type SlotResolved = Vec<Option<(RowNumber, bool)>>;
 
-pub struct TumblingCarryEngine<G, C, Accumulator, Carry> {
+pub struct TumblingCarryEngine<G, C: Slot, Accumulator, Carry> {
 	accumulators: StateCache<RowNumber, Accumulator>,
 	meta: StateCache<MetaKey, CarryMeta<C, Carry>>,
+	late_policy: LatePolicy,
+	lateness: Option<C::Duration>,
 	_pd: PhantomData<G>,
 }
 
@@ -84,9 +93,15 @@ where
 	for<'a> &'a G: IntoEncodedKey,
 {
 	pub fn new() -> Self {
+		Self::with_late_policy_and_lateness(LatePolicy::Drop, None)
+	}
+
+	pub fn with_late_policy_and_lateness(late_policy: LatePolicy, lateness: Option<C::Duration>) -> Self {
 		Self {
 			accumulators: StateCache::<RowNumber, Accumulator>::new(8),
 			meta: StateCache::<MetaKey, CarryMeta<C, Carry>>::new_internal(64),
+			late_policy,
+			lateness,
 			_pd: PhantomData,
 		}
 	}
@@ -111,13 +126,19 @@ where
 		if buckets.is_empty() {
 			return Ok(Vec::new());
 		}
+		let late_policy = self.late_policy;
+		let lateness = self.lateness;
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
 		let slot_resolved = self.resolve_survivor_rows(store, &buckets, &meta_loaded, &row_key)?;
 
 		let mut earliest_affected: HashMap<G, C> = HashMap::new();
 		for (((group, span), events), slot_pre) in buckets.into_iter().zip(slot_resolved) {
 			let entry = meta_loaded.entry(group.clone()).or_default();
-			let drop_adds = matches!(entry.high_water, Some(hw) if span.start < hw);
+			if matches!(entry.sealed_up_to, Some(s) if span.start <= s) {
+				continue;
+			}
+			let drop_adds = matches!(late_policy, LatePolicy::Drop)
+				&& matches!(entry.high_water, Some(hw) if span.start < hw);
 
 			let row_number = match entry.windows.get(&span.start).map(|w| w.row_number) {
 				Some(rn) => rn,
@@ -173,8 +194,10 @@ where
 		for (group, start) in earliest_affected {
 			let meta = meta_loaded.get_mut(&group).expect("affected group has meta");
 
-			let mut prev_carry: Option<Carry> =
-				meta.windows.range(..start).next_back().and_then(|(_, w)| w.carry_out.clone());
+			let mut prev_carry: Option<Carry> = match meta.windows.range(..start).next_back() {
+				Some((_, w)) => w.carry_out.clone(),
+				None => meta.sealed_carry.clone(),
+			};
 
 			let coords: Vec<C> = meta.windows.range(start..).map(|(c, _)| *c).collect();
 			let mut emptied: Vec<C> = Vec::new();
@@ -214,6 +237,23 @@ where
 			}
 			for coord in emptied {
 				meta.windows.remove(&coord);
+			}
+
+			if let (Some(lateness), Some(hw)) = (lateness, meta.high_water) {
+				loop {
+					let Some((&first, w)) = meta.windows.iter().next() else {
+						break;
+					};
+					if hw - first <= lateness {
+						break;
+					}
+					let carry_out = w.carry_out.clone();
+					let row_number = w.row_number;
+					meta.windows.remove(&first);
+					meta.sealed_up_to = Some(first);
+					meta.sealed_carry = carry_out;
+					self.accumulators.remove(store, &row_number)?;
+				}
 			}
 		}
 
@@ -265,8 +305,12 @@ where
 		let mut survivor_keys: Vec<EncodedKey> = Vec::new();
 		let mut slot_survives: Vec<bool> = Vec::with_capacity(buckets.len());
 		for (group, span) in buckets.keys() {
-			let initial_high_water = meta_loaded.get(group).and_then(|m| m.high_water);
-			let survives = initial_high_water.is_none_or(|hw| span.start >= hw);
+			let meta = meta_loaded.get(group);
+			let initial_high_water = meta.and_then(|m| m.high_water);
+			let sealed = matches!(meta.and_then(|m| m.sealed_up_to), Some(s) if span.start <= s);
+			let survives = !sealed
+				&& (matches!(self.late_policy, LatePolicy::Process)
+					|| initial_high_water.is_none_or(|hw| span.start >= hw));
 			slot_survives.push(survives);
 			if survives {
 				survivor_keys.push(row_key(group, span.start));
@@ -304,5 +348,184 @@ where
 			self.meta.set(store, &meta_key_for(&group), &meta)?;
 		}
 		Ok(())
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::{collections::HashMap, ops::Bound};
+
+	use postcard::{from_bytes, to_allocvec};
+
+	use super::*;
+	use crate::{encoded::key::EncodedKeyRange, window::accumulator::invertible::RetainedAccumulator};
+
+	// In-memory store that allocates a distinct row number per key (the state.rs
+	// mock collapses every key onto row 1, which would alias all window
+	// accumulators and defeat a storage-bound test).
+	#[derive(Default)]
+	struct CountingStore {
+		data: HashMap<Vec<u8>, Vec<u8>>,
+		internal: HashMap<Vec<u8>, Vec<u8>>,
+		rows: HashMap<Vec<u8>, RowNumber>,
+		next_row: u64,
+	}
+
+	impl WindowStore for CountingStore {
+		fn state_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Result<Option<V>> {
+			Ok(self.data.get(key.as_bytes()).map(|b| from_bytes(b).expect("decode")))
+		}
+		fn state_get_many_visit<V: DeserializeOwned>(
+			&mut self,
+			keys: &[EncodedKey],
+			visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
+		) -> Result<()> {
+			for key in keys {
+				if let Some(b) = self.data.get(key.as_bytes()) {
+					visit(key.clone(), from_bytes(b).expect("decode"))?;
+				}
+			}
+			Ok(())
+		}
+		fn state_set<V: Serialize>(&mut self, key: &EncodedKey, value: &V) -> Result<()> {
+			self.data.insert(key.as_bytes().to_vec(), to_allocvec(value).expect("encode"));
+			Ok(())
+		}
+		fn state_remove(&mut self, key: &EncodedKey) -> Result<()> {
+			self.data.remove(key.as_bytes());
+			Ok(())
+		}
+		fn internal_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Result<Option<V>> {
+			Ok(self.internal.get(key.as_bytes()).map(|b| from_bytes(b).expect("decode")))
+		}
+		fn internal_get_many_visit<V: DeserializeOwned>(
+			&mut self,
+			keys: &[EncodedKey],
+			visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
+		) -> Result<()> {
+			for key in keys {
+				if let Some(b) = self.internal.get(key.as_bytes()) {
+					visit(key.clone(), from_bytes(b).expect("decode"))?;
+				}
+			}
+			Ok(())
+		}
+		fn internal_set<V: Serialize>(&mut self, key: &EncodedKey, value: &V) -> Result<()> {
+			self.internal.insert(key.as_bytes().to_vec(), to_allocvec(value).expect("encode"));
+			Ok(())
+		}
+		fn internal_remove(&mut self, key: &EncodedKey) -> Result<()> {
+			self.internal.remove(key.as_bytes());
+			Ok(())
+		}
+		fn internal_range_visit<V: DeserializeOwned>(
+			&mut self,
+			range: EncodedKeyRange,
+			visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
+		) -> Result<()> {
+			let after_start = |k: &[u8]| match &range.start {
+				Bound::Included(s) => k >= s.as_bytes(),
+				Bound::Excluded(s) => k > s.as_bytes(),
+				Bound::Unbounded => true,
+			};
+			let before_end = |k: &[u8]| match &range.end {
+				Bound::Included(e) => k <= e.as_bytes(),
+				Bound::Excluded(e) => k < e.as_bytes(),
+				Bound::Unbounded => true,
+			};
+			let mut matched: Vec<(Vec<u8>, Vec<u8>)> = self
+				.internal
+				.iter()
+				.filter(|(k, _)| after_start(k) && before_end(k))
+				.map(|(k, v)| (k.clone(), v.clone()))
+				.collect();
+			matched.sort_by(|a, b| a.0.cmp(&b.0));
+			for (k, b) in matched {
+				visit(EncodedKey::new(k), from_bytes(&b).expect("decode"))?;
+			}
+			Ok(())
+		}
+		fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)> {
+			if let Some(rn) = self.rows.get(key.as_bytes()) {
+				return Ok((*rn, false));
+			}
+			self.next_row += 1;
+			let rn = RowNumber(self.next_row);
+			self.rows.insert(key.as_bytes().to_vec(), rn);
+			Ok((rn, true))
+		}
+		fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
+			keys.iter().map(|k| self.get_or_create_row_number(k)).collect()
+		}
+		fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber> {
+			let start = self.next_row + 1;
+			self.next_row += count;
+			Ok(RowNumber(start))
+		}
+		fn clock_now_nanos(&self) -> u64 {
+			0
+		}
+	}
+
+	type Engine = TumblingCarryEngine<String, u64, RetainedAccumulator<u64, f64>, f64>;
+
+	const WINDOW: u64 = 60;
+
+	// Feed one event into window `ws` for group "BTC" as its own batch, so the
+	// high-water mark advances one window per call.
+	fn feed(engine: &mut Engine, store: &mut CountingStore, ws: u64, price: f64) {
+		let mut buckets: TumblingBuckets<String, u64, (u64, f64)> = BTreeMap::new();
+		let span = WindowSpan::for_slot(ws, WINDOW);
+		buckets.insert(("BTC".to_string(), span), vec![AccumulatorEvent::Add((ws, price))]);
+		let _: Vec<WindowResult<String, u64, f64>> = engine
+			.apply(
+				store,
+				buckets,
+				|g: &String, w: u64| EncodedKey::builder().str(g).u64(w).build(),
+				RetainedAccumulator::<u64, f64>::default,
+				|_g: &String, _s: WindowSpan<u64>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
+					(!v.is_empty()).then(|| v.values().sum::<f64>())
+				},
+				|v: &BTreeMap<u64, f64>, _p: Option<&f64>| v.last_key_value().map(|(_, val)| *val),
+			)
+			.expect("apply");
+	}
+
+	#[test]
+	fn lateness_seals_old_windows_and_reclaims_accumulator_rows() {
+		// With a 2-window lateness horizon, only the windows within `hw - 120`
+		// stay live; every older window must seal to the O(1) carry scalar and
+		// have its accumulator row removed from the store. After 60 windows the
+		// live accumulator-row count must stay bounded by the horizon, not grow
+		// with the number of windows seen.
+		let mut store = CountingStore::default();
+		let mut engine = Engine::with_late_policy_and_lateness(LatePolicy::Drop, Some(2 * WINDOW));
+		for i in 0..60u64 {
+			feed(&mut engine, &mut store, i * WINDOW, i as f64);
+		}
+		engine.flush(&mut store).expect("flush");
+		assert!(
+			store.data.len() <= 4,
+			"sealed windows must reclaim their accumulator rows; found {} live rows after 60 windows",
+			store.data.len()
+		);
+	}
+
+	#[test]
+	fn without_lateness_every_window_accumulator_is_retained() {
+		// The contrast that proves the bound above is the sealing, not some
+		// other cap: with no lateness configured the engine keeps every window's
+		// accumulator forever (the pre-sealing behavior).
+		let mut store = CountingStore::default();
+		let mut engine = Engine::new();
+		for i in 0..60u64 {
+			feed(&mut engine, &mut store, i * WINDOW, i as f64);
+		}
+		engine.flush(&mut store).expect("flush");
+		assert_eq!(
+			store.data.len(),
+			60,
+			"with no lateness the carry engine retains every window's accumulator row"
+		);
 	}
 }
