@@ -16,12 +16,15 @@ pub mod rolling_incremental;
 pub mod tumbling;
 pub mod tumbling_carry;
 
+use std::ops::Bound;
+
 use reifydb_value::value::row_number::RowNumber;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	encoded::key::{EncodedKey, IntoEncodedKey},
+	encoded::key::{EncodedKey, EncodedKeyRange, IntoEncodedKey},
 	key::flow_node_internal_state::FlowNodeInternalStateKey,
+	util::encoding::keycode::encode_u64,
 	window::span::WindowSpan,
 };
 
@@ -101,4 +104,26 @@ where
 	for<'a> &'a G: IntoEncodedKey,
 {
 	MetaKey(group.into_encoded_key())
+}
+
+pub fn expiry_key<G>(expiry: u64, group: &G, suffix: &[u8]) -> EncodedKey
+where
+	for<'a> &'a G: IntoEncodedKey,
+{
+	let group = group.into_encoded_key();
+	let group = group.as_ref();
+	let mut bytes = Vec::with_capacity(1 + 8 + group.len() + suffix.len());
+	bytes.push(FlowNodeInternalStateKey::WINDOW_EXPIRY_TAG);
+	bytes.extend_from_slice(&encode_u64(expiry));
+	bytes.extend_from_slice(group);
+	bytes.extend_from_slice(suffix);
+	EncodedKey::new(bytes)
+}
+
+pub fn expiry_due_range(threshold: u64) -> EncodedKeyRange {
+	let mut start = Vec::with_capacity(1 + 8);
+	start.push(FlowNodeInternalStateKey::WINDOW_EXPIRY_TAG);
+	start.extend_from_slice(&encode_u64(threshold));
+	let end = vec![FlowNodeInternalStateKey::WINDOW_EXPIRY_TAG + 1];
+	EncodedKeyRange::new(Bound::Included(EncodedKey::new(start)), Bound::Excluded(EncodedKey::new(end)))
 }

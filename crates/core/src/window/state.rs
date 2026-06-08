@@ -212,12 +212,13 @@ where
 
 #[cfg(test)]
 mod tests {
-	use std::collections::HashMap;
+	use std::{collections::HashMap, ops::Bound};
 
 	use postcard::{from_bytes, to_allocvec};
 	use reifydb_value::value::row_number::RowNumber;
 
 	use super::*;
+	use crate::encoded::key::EncodedKeyRange;
 
 	#[derive(Default)]
 	struct MockStore {
@@ -270,6 +271,33 @@ mod tests {
 		}
 		fn internal_remove(&mut self, key: &EncodedKey) -> Result<()> {
 			self.internal.remove(key.as_bytes());
+			Ok(())
+		}
+		fn internal_range_visit<V: DeserializeOwned>(
+			&mut self,
+			range: EncodedKeyRange,
+			visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
+		) -> Result<()> {
+			let after_start = |k: &[u8]| match &range.start {
+				Bound::Included(s) => k >= s.as_bytes(),
+				Bound::Excluded(s) => k > s.as_bytes(),
+				Bound::Unbounded => true,
+			};
+			let before_end = |k: &[u8]| match &range.end {
+				Bound::Included(e) => k <= e.as_bytes(),
+				Bound::Excluded(e) => k < e.as_bytes(),
+				Bound::Unbounded => true,
+			};
+			let mut matched: Vec<(Vec<u8>, Vec<u8>)> = self
+				.internal
+				.iter()
+				.filter(|(k, _)| after_start(k) && before_end(k))
+				.map(|(k, v)| (k.clone(), v.clone()))
+				.collect();
+			matched.sort_by(|a, b| a.0.cmp(&b.0));
+			for (k, b) in matched {
+				visit(EncodedKey::new(k), from_bytes(&b).expect("decode"))?;
+			}
 			Ok(())
 		}
 		fn get_or_create_row_number(&mut self, _key: &EncodedKey) -> Result<(RowNumber, bool)> {

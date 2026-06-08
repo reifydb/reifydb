@@ -19,6 +19,8 @@ pub trait Slot:
 	+ Sub<Self::Duration, Output = Self>
 {
 	type Duration: Copy + Ord + Debug + IsZero;
+
+	fn order_key(&self) -> u64;
 }
 
 pub trait IsZero {
@@ -62,10 +64,18 @@ impl IsZero for Time {
 
 impl Slot for u64 {
 	type Duration = u64;
+
+	fn order_key(&self) -> u64 {
+		*self
+	}
 }
 
 impl Slot for DateTime {
 	type Duration = Duration;
+
+	fn order_key(&self) -> u64 {
+		self.to_nanos()
+	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -211,6 +221,10 @@ mod tests {
 	}
 	impl Slot for Tick {
 		type Duration = u64;
+
+		fn order_key(&self) -> u64 {
+			self.0
+		}
 	}
 
 	#[test]

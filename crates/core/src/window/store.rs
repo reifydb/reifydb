@@ -4,7 +4,7 @@
 use reifydb_value::{Result, value::row_number::RowNumber};
 use serde::{Serialize, de::DeserializeOwned};
 
-use crate::encoded::key::EncodedKey;
+use crate::encoded::key::{EncodedKey, EncodedKeyRange};
 
 pub trait WindowStore {
 	fn state_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Result<Option<V>>;
@@ -30,6 +30,12 @@ pub trait WindowStore {
 	fn internal_set<V: Serialize>(&mut self, key: &EncodedKey, value: &V) -> Result<()>;
 
 	fn internal_remove(&mut self, key: &EncodedKey) -> Result<()>;
+
+	fn internal_range_visit<V: DeserializeOwned>(
+		&mut self,
+		range: EncodedKeyRange,
+		visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
+	) -> Result<()>;
 
 	fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)>;
 

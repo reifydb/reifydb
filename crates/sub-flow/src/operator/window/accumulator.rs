@@ -74,6 +74,10 @@ impl Rem<Duration> for WindowSlotKey {
 
 impl Slot for WindowSlotKey {
 	type Duration = Duration;
+
+	fn order_key(&self) -> u64 {
+		self.timestamp.to_nanos()
+	}
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

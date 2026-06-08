@@ -50,6 +50,8 @@ impl FlowNodeInternalStateKey {
 
 	pub const WINDOW_META_TAG: u8 = b'W';
 
+	pub const WINDOW_EXPIRY_TAG: u8 = b'X';
+
 	pub const GATE_VISIBILITY_TAG: u8 = b'G';
 
 	pub fn is_row_number_counter(&self) -> bool {
@@ -62,6 +64,10 @@ impl FlowNodeInternalStateKey {
 
 	pub fn is_window_meta(&self) -> bool {
 		self.key.first() == Some(&Self::WINDOW_META_TAG)
+	}
+
+	pub fn is_window_expiry(&self) -> bool {
+		self.key.first() == Some(&Self::WINDOW_EXPIRY_TAG)
 	}
 
 	pub fn is_gate_visibility(&self) -> bool {
