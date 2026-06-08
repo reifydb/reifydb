@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{BTreeSet, HashMap},
+	collections::{BTreeMap, BTreeSet, HashMap},
 	fmt::Debug,
 	hash::Hash,
 	marker::PhantomData,
@@ -24,21 +24,31 @@ use crate::{
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound(
-	serialize = "C: Serialize, Carry: Serialize",
-	deserialize = "C: serde::de::DeserializeOwned, Carry: serde::de::DeserializeOwned"
+	serialize = "C: Serialize + Ord, Carry: Serialize",
+	deserialize = "C: serde::de::DeserializeOwned + Ord, Carry: serde::de::DeserializeOwned"
+))]
+struct WindowEntry<C, Carry> {
+	row_number: RowNumber,
+	span: WindowSpan<C>,
+	carry_out: Option<Carry>,
+	has_output: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(bound(
+	serialize = "C: Serialize + Ord, Carry: Serialize",
+	deserialize = "C: serde::de::DeserializeOwned + Ord, Carry: serde::de::DeserializeOwned"
 ))]
 struct CarryMeta<C, Carry> {
 	high_water: Option<C>,
-	carry_for_current: Option<Carry>,
-	current_window_carry: Option<Carry>,
+	windows: BTreeMap<C, WindowEntry<C, Carry>>,
 }
 
 impl<C, Carry> Default for CarryMeta<C, Carry> {
 	fn default() -> Self {
 		Self {
 			high_water: None,
-			carry_for_current: None,
-			current_window_carry: None,
+			windows: BTreeMap::new(),
 		}
 	}
 }
@@ -104,74 +114,106 @@ where
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
 		let slot_resolved = self.resolve_survivor_rows(store, &buckets, &meta_loaded, &row_key)?;
 
-		let mut results: Vec<WindowResult<G, C, Output>> = Vec::new();
-
+		let mut earliest_affected: HashMap<G, C> = HashMap::new();
 		for (((group, span), events), slot_pre) in buckets.into_iter().zip(slot_resolved) {
 			let entry = meta_loaded.entry(group.clone()).or_default();
-			match entry.high_water {
-				Some(hw) if span.start < hw => continue,
-				Some(hw) if span.start > hw => {
-					entry.carry_for_current = entry.current_window_carry.take();
-					entry.high_water = Some(span.start);
-				}
-				Some(_) => {}
-				None => entry.high_water = Some(span.start),
-			}
-			reifydb_assertions! {
-				let recorded = entry.high_water;
-				assert!(
-					recorded == Some(span.start),
-					"tumbling-carry high_water must equal the accepted span start after the advance match (recorded={recorded:?}, span.start={:?}); a lagging high_water would rotate prev_carry against a window that has not actually closed, carrying the wrong prior close into this window",
-					span.start
-				);
-			}
-			let prev_carry = entry.carry_for_current.clone();
+			let drop_adds = matches!(entry.high_water, Some(hw) if span.start < hw);
 
-			let (row_number, is_new) = match slot_pre {
-				Some(resolved) => resolved,
-				None => {
-					let key = row_key(&group, span.start);
-					store.get_or_create_row_number(&key)?
-				}
+			let row_number = match entry.windows.get(&span.start).map(|w| w.row_number) {
+				Some(rn) => rn,
+				None => match slot_pre {
+					Some((rn, _)) => rn,
+					None => continue,
+				},
 			};
 
 			let mut accumulator: Accumulator =
 				self.accumulators.get(store, &row_number)?.unwrap_or_else(&new_accumulator);
-			let was_empty_before = accumulator.is_empty();
-
+			let mut changed = false;
 			for event in events {
 				match event {
-					AccumulatorEvent::Add(c) => accumulator.add(&c),
-					AccumulatorEvent::Remove(c) => accumulator.remove(&c),
+					AccumulatorEvent::Add(c) => {
+						if drop_adds {
+							continue;
+						}
+						accumulator.add(&c);
+						changed = true;
+					}
+					AccumulatorEvent::Remove(c) => {
+						if accumulator.is_empty() {
+							continue;
+						}
+						accumulator.remove(&c);
+						changed = true;
+					}
 				}
 			}
-
-			let value = accumulator.finalize();
-			let output = value.as_ref().and_then(|v| build_output(&group, span, v, prev_carry.as_ref()));
-
-			if output.is_some()
-				&& let Some(v) = value.as_ref()
-				&& let Some(new_carry) = carry_forward(v, prev_carry.as_ref())
-			{
-				meta_loaded.entry(group.clone()).or_default().current_window_carry = Some(new_carry);
+			if !changed {
+				continue;
 			}
-
 			self.accumulators.put(store, &row_number, accumulator)?;
 
-			if let Some(out) = output {
-				let kind = if is_new || was_empty_before {
-					EmitKind::Insert
-				} else {
-					EmitKind::Update
+			entry.windows.entry(span.start).or_insert_with(|| WindowEntry {
+				row_number,
+				span,
+				carry_out: None,
+				has_output: false,
+			});
+			if entry.high_water.is_none_or(|hw| span.start > hw) {
+				entry.high_water = Some(span.start);
+			}
+
+			let e = earliest_affected.entry(group).or_insert(span.start);
+			if span.start < *e {
+				*e = span.start;
+			}
+		}
+
+		let mut results: Vec<WindowResult<G, C, Output>> = Vec::new();
+		for (group, start) in earliest_affected {
+			let meta = meta_loaded.get_mut(&group).expect("affected group has meta");
+
+			let mut prev_carry: Option<Carry> =
+				meta.windows.range(..start).next_back().and_then(|(_, w)| w.carry_out.clone());
+
+			let coords: Vec<C> = meta.windows.range(start..).map(|(c, _)| *c).collect();
+			let mut emptied: Vec<C> = Vec::new();
+			for coord in coords {
+				let (row_number, span, had_output) = {
+					let w = meta.windows.get(&coord).expect("window entry present");
+					(w.row_number, w.span, w.has_output)
 				};
-				results.push(WindowResult {
-					row_number,
-					group,
-					span,
-					value: out,
-					prior: None,
-					kind,
-				});
+				let value = self.accumulators.get(store, &row_number)?.and_then(|a| a.finalize());
+				match value.as_ref().and_then(|v| build_output(&group, span, v, prev_carry.as_ref())) {
+					Some(out) => {
+						let new_carry = value
+							.as_ref()
+							.and_then(|v| carry_forward(v, prev_carry.as_ref()));
+						let kind = if had_output {
+							EmitKind::Update
+						} else {
+							EmitKind::Insert
+						};
+						results.push(WindowResult {
+							row_number,
+							group: group.clone(),
+							span,
+							value: out,
+							prior: None,
+							kind,
+						});
+						let w = meta.windows.get_mut(&coord).expect("window entry present");
+						w.carry_out = new_carry.clone();
+						w.has_output = true;
+						if new_carry.is_some() {
+							prev_carry = new_carry;
+						}
+					}
+					None => emptied.push(coord),
+				}
+			}
+			for coord in emptied {
+				meta.windows.remove(&coord);
 			}
 		}
 
