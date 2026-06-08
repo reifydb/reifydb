@@ -264,19 +264,35 @@ where
 {
 	let mut touched: BTreeSet<RollingGroup<A>> = BTreeSet::new();
 	for ((group, coord), legs) in buckets {
-		if snapshot.get(&group).is_some_and(|hw| coord < *hw) {
-			continue;
-		}
 		let buffer = buffers.entry(group.clone()).or_default();
+
+		let late = snapshot.get(&group).is_some_and(|hw| coord < *hw) && !buffer.contains_key(&coord);
 		let mut accumulator = buffer.remove(&coord).unwrap_or_default();
+		let mut changed = false;
 		for leg in legs {
 			match leg {
-				Leg::Add(c) => accumulator.add(&c),
-				Leg::Remove(c) => accumulator.remove(&c),
+				Leg::Add(c) => {
+					if late {
+						continue;
+					}
+					accumulator.add(&c);
+					changed = true;
+				}
+				Leg::Remove(c) => {
+					if accumulator.is_empty() {
+						continue;
+					}
+					accumulator.remove(&c);
+					changed = true;
+				}
 			}
 		}
 		if !accumulator.is_empty() {
 			buffer.insert(coord, accumulator);
+		}
+
+		if !changed {
+			continue;
 		}
 		while buffer.len() > capacity {
 			buffer.pop_first();
@@ -384,19 +400,63 @@ type CarryCoord<A> = <A as TumblingCarryOperator>::WindowCoord;
 type CarryGroup<A> = <A as TumblingCarryOperator>::GroupKey;
 type CarryWindowKey<A> = (CarryGroup<A>, CarryCoord<A>);
 
-struct GroupCarry<K, C> {
-	high_water: Option<K>,
-	carry_for_current: Option<C>,
-	current_window_carry: Option<C>,
+type CarryContribution<A> = <<A as TumblingCarryOperator>::Accumulator as WindowAccumulator>::Contribution;
+type CarryBuckets<A> = BTreeMap<CarryWindowKey<A>, (WindowSpan<CarryCoord<A>>, Vec<Leg<CarryContribution<A>>>)>;
+
+struct CarryGroupState<C, Carry> {
+	high_water: Option<C>,
+	windows: BTreeMap<C, Option<Carry>>,
 }
 
-impl<K, C> Default for GroupCarry<K, C> {
+impl<C, Carry> Default for CarryGroupState<C, Carry> {
 	fn default() -> Self {
 		Self {
 			high_water: None,
-			carry_for_current: None,
-			current_window_carry: None,
+			windows: BTreeMap::new(),
 		}
+	}
+}
+
+fn bucket_carry<A>(aggregate: &A, batch: &ChaosBatch) -> CarryBuckets<A>
+where
+	A: TumblingCarryOperator,
+{
+	let mut buckets: CarryBuckets<A> = BTreeMap::new();
+	for event in &batch.events {
+		match event {
+			ChaosEvent::Insert {
+				row,
+				..
+			} => push_carry(aggregate, row, true, &mut buckets),
+			ChaosEvent::Update {
+				pre,
+				post,
+				..
+			} => {
+				push_carry(aggregate, pre, false, &mut buckets);
+				push_carry(aggregate, post, true, &mut buckets);
+			}
+			ChaosEvent::Remove {
+				row,
+				..
+			} => push_carry(aggregate, row, false, &mut buckets),
+		}
+	}
+	buckets
+}
+
+fn push_carry<A>(aggregate: &A, row: &CoreRow, is_add: bool, buckets: &mut CarryBuckets<A>)
+where
+	A: TumblingCarryOperator,
+{
+	if let Some((group, coord, contribution)) = extract_carry(aggregate, row) {
+		let span = aggregate.window_for(coord);
+		let leg = if is_add {
+			Leg::Add(contribution)
+		} else {
+			Leg::Remove(contribution)
+		};
+		buckets.entry((group, span.start)).or_insert_with(|| (span, Vec::new())).1.push(leg);
 	}
 }
 
@@ -412,125 +472,95 @@ where
 {
 	let mut accumulators: HashMap<CarryWindowKey<A>, A::Accumulator> = HashMap::new();
 	let mut spans: HashMap<CarryWindowKey<A>, WindowSpan<CarryCoord<A>>> = HashMap::new();
-	let mut carry: HashMap<CarryGroup<A>, GroupCarry<CarryCoord<A>, A::Carry>> = HashMap::new();
+	let mut metas: HashMap<CarryGroup<A>, CarryGroupState<CarryCoord<A>, A::Carry>> = HashMap::new();
 	let mut last_visible: HashMap<CarryWindowKey<A>, A::Output> = HashMap::new();
 
 	for batch in batches {
 		let snapshot: HashMap<CarryGroup<A>, CarryCoord<A>> =
-			carry.iter().filter_map(|(g, c)| c.high_water.map(|hw| (g.clone(), hw))).collect();
-		let mut touched: BTreeSet<CarryWindowKey<A>> = BTreeSet::new();
+			metas.iter().filter_map(|(g, m)| m.high_water.map(|hw| (g.clone(), hw))).collect();
+		let buckets = bucket_carry(aggregate, batch);
 
-		for event in &batch.events {
-			match event {
-				ChaosEvent::Insert {
-					row,
-					..
-				} => apply_carry_leg(
-					aggregate,
-					row,
-					true,
-					&snapshot,
-					&mut accumulators,
-					&mut spans,
-					&mut touched,
-				),
-				ChaosEvent::Update {
-					pre,
-					post,
-					..
-				} => {
-					apply_carry_leg(
-						aggregate,
-						pre,
-						false,
-						&snapshot,
-						&mut accumulators,
-						&mut spans,
-						&mut touched,
-					);
-					apply_carry_leg(
-						aggregate,
-						post,
-						true,
-						&snapshot,
-						&mut accumulators,
-						&mut spans,
-						&mut touched,
-					);
+		let mut earliest_affected: HashMap<CarryGroup<A>, CarryCoord<A>> = HashMap::new();
+		for ((group, start), (span, legs)) in buckets {
+			let meta = metas.entry(group.clone()).or_default();
+			let snap_hw = snapshot.get(&group).copied();
+			let tracked = meta.windows.contains_key(&start);
+			let survives = snap_hw.is_none_or(|hw| start >= hw);
+			if !tracked && !survives {
+				continue;
+			}
+			let drop_adds = snap_hw.is_some_and(|hw| start < hw);
+			let key = (group.clone(), start);
+			let accumulator =
+				accumulators.entry(key.clone()).or_insert_with(|| aggregate.new_accumulator());
+			let mut changed = false;
+			for leg in legs {
+				match leg {
+					Leg::Add(c) => {
+						if drop_adds {
+							continue;
+						}
+						accumulator.add(&c);
+						changed = true;
+					}
+					Leg::Remove(c) => {
+						if accumulator.is_empty() {
+							continue;
+						}
+						accumulator.remove(&c);
+						changed = true;
+					}
 				}
-				ChaosEvent::Remove {
-					row,
-					..
-				} => apply_carry_leg(
-					aggregate,
-					row,
-					false,
-					&snapshot,
-					&mut accumulators,
-					&mut spans,
-					&mut touched,
-				),
+			}
+			if !changed {
+				continue;
+			}
+			spans.insert(key, span);
+			meta.windows.entry(start).or_insert(None);
+			if meta.high_water.is_none_or(|hw| start > hw) {
+				meta.high_water = Some(start);
+			}
+			let e = earliest_affected.entry(group).or_insert(start);
+			if start < *e {
+				*e = start;
 			}
 		}
 
-		for key in touched {
-			let meta = carry.entry(key.0.clone()).or_default();
-			match meta.high_water {
-				Some(hw) if key.1 < hw => continue,
-				Some(hw) if key.1 > hw => {
-					meta.carry_for_current = meta.current_window_carry.take();
-					meta.high_water = Some(key.1);
+		for (group, start) in earliest_affected {
+			let meta = metas.get_mut(&group).expect("affected group has meta");
+			let mut prev_carry: Option<A::Carry> =
+				meta.windows.range(..start).next_back().and_then(|(_, c)| c.clone());
+			let coords: Vec<CarryCoord<A>> = meta.windows.range(start..).map(|(c, _)| *c).collect();
+			let mut emptied: Vec<CarryCoord<A>> = Vec::new();
+			for coord in coords {
+				let key = (group.clone(), coord);
+				let span = *spans.get(&key).expect("span recorded for tracked window");
+				let value = accumulators.get(&key).and_then(|a| a.finalize());
+				match value
+					.as_ref()
+					.and_then(|v| aggregate.build_output(&group, span, v, prev_carry.as_ref()))
+				{
+					Some(out) => {
+						let new_carry = value
+							.as_ref()
+							.and_then(|v| aggregate.carry_forward(v, prev_carry.as_ref()));
+						last_visible.insert(key, out);
+						*meta.windows.get_mut(&coord).expect("window entry present") =
+							new_carry.clone();
+						if new_carry.is_some() {
+							prev_carry = new_carry;
+						}
+					}
+					None => emptied.push(coord),
 				}
-				Some(_) => {}
-				None => meta.high_water = Some(key.1),
 			}
-			let prev_carry = meta.carry_for_current.clone();
-
-			if let Some(accumulator) = accumulators.get(&key)
-				&& let Some(value) = accumulator.finalize()
-				&& let Some(span) = spans.get(&key).copied()
-				&& let Some(out) = aggregate.build_output(&key.0, span, &value, prev_carry.as_ref())
-			{
-				last_visible.insert(key.clone(), out);
-				if let Some(new_carry) = aggregate.carry_forward(&value, prev_carry.as_ref()) {
-					carry.entry(key.0.clone()).or_default().current_window_carry = Some(new_carry);
-				}
+			for coord in emptied {
+				meta.windows.remove(&coord);
 			}
 		}
 	}
 
 	materialize_outputs(last_visible.into_values(), ctx.now_nanos(), output_key_columns)
-}
-
-#[allow(clippy::type_complexity)]
-fn apply_carry_leg<A>(
-	aggregate: &A,
-	row: &CoreRow,
-	is_add: bool,
-	snapshot: &HashMap<CarryGroup<A>, CarryCoord<A>>,
-	accumulators: &mut HashMap<CarryWindowKey<A>, A::Accumulator>,
-	spans: &mut HashMap<CarryWindowKey<A>, WindowSpan<CarryCoord<A>>>,
-	touched: &mut BTreeSet<CarryWindowKey<A>>,
-) where
-	A: TumblingCarryOperator,
-{
-	let Some((group, coord, contribution)) = extract_carry(aggregate, row) else {
-		return;
-	};
-	let span = aggregate.window_for(coord);
-	let survives = snapshot.get(&group).is_none_or(|hw| span.start >= *hw);
-	if !survives {
-		return;
-	}
-	let key = (group, span.start);
-	spans.insert(key.clone(), span);
-	let accumulator = accumulators.entry(key.clone()).or_insert_with(|| aggregate.new_accumulator());
-	if is_add {
-		accumulator.add(&contribution);
-	} else {
-		accumulator.remove(&contribution);
-	}
-	touched.insert(key);
 }
 
 type MultiCoord<A> = <A as MultiRollingOperator>::WindowCoord;
@@ -593,19 +623,34 @@ where
 {
 	let mut touched: BTreeSet<MultiGroup<A>> = BTreeSet::new();
 	for ((group, coord), legs) in buckets {
-		if snapshot.get(&group).is_some_and(|hw| coord < *hw) {
-			continue;
-		}
 		let buffer = buffers.entry(group.clone()).or_default();
+
+		let late = snapshot.get(&group).is_some_and(|hw| coord < *hw) && !buffer.contains_key(&coord);
 		let mut accumulator = buffer.remove(&coord).unwrap_or_default();
+		let mut changed = false;
 		for leg in legs {
 			match leg {
-				Leg::Add(c) => accumulator.add(&c),
-				Leg::Remove(c) => accumulator.remove(&c),
+				Leg::Add(c) => {
+					if late {
+						continue;
+					}
+					accumulator.add(&c);
+					changed = true;
+				}
+				Leg::Remove(c) => {
+					if accumulator.is_empty() {
+						continue;
+					}
+					accumulator.remove(&c);
+					changed = true;
+				}
 			}
 		}
 		if !accumulator.is_empty() {
 			buffer.insert(coord, accumulator);
+		}
+		if !changed {
+			continue;
 		}
 		while buffer.len() > capacity {
 			buffer.pop_first();

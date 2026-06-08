@@ -2934,6 +2934,7 @@ dependencies = [
  "reifydb-build",
  "reifydb-core",
  "reifydb-runtime",
+ "reifydb-testing",
  "reifydb-testing-macro",
  "reifydb-value",
  "serde",
