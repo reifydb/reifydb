@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::RefCell, sync::LazyLock};
+use std::{cell::RefCell, collections::HashMap, sync::LazyLock};
 
-use postcard::to_stdvec;
+use postcard::to_extend;
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	common::{CommitVersion, JoinType},
@@ -58,6 +58,73 @@ static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
 pub(crate) const EVICT_BATCH: usize = 4096;
+
+fn group_by_key(keys: &[Option<Hash128>]) -> (Vec<Hash128>, HashMap<Hash128, Vec<usize>>, Vec<usize>) {
+	let mut order: Vec<Hash128> = Vec::new();
+	let mut groups: HashMap<Hash128, Vec<usize>> = HashMap::new();
+	let mut undefined: Vec<usize> = Vec::new();
+	for (row_idx, key) in keys.iter().enumerate() {
+		match key {
+			Some(key_hash) => {
+				groups.entry(*key_hash)
+					.or_insert_with(|| {
+						order.push(*key_hash);
+						Vec::new()
+					})
+					.push(row_idx);
+			}
+			None => undefined.push(row_idx),
+		}
+	}
+	(order, groups, undefined)
+}
+
+#[cfg(test)]
+mod group_by_key_tests {
+	use super::*;
+
+	fn h(v: u128) -> Hash128 {
+		Hash128(v)
+	}
+
+	#[test]
+	fn groups_duplicate_keys_and_preserves_first_occurrence_order() {
+		// Latest-mode dispatch iterates `order` to issue one strategy call per key. The order must be
+		// first-occurrence so that, combined with latest's left-row-number reuse, output identity is
+		// stable; and every input index must land in exactly one group with none dropped or duplicated.
+		let keys = vec![Some(h(0xA)), Some(h(0xB)), Some(h(0xA)), Some(h(0xC)), Some(h(0xB))];
+		let (order, groups, undefined) = group_by_key(&keys);
+
+		assert_eq!(order, vec![h(0xA), h(0xB), h(0xC)], "keys must appear in first-occurrence order");
+		assert_eq!(groups[&h(0xA)], vec![0, 2], "indices within a group keep input order");
+		assert_eq!(groups[&h(0xB)], vec![1, 4]);
+		assert_eq!(groups[&h(0xC)], vec![3]);
+		assert!(undefined.is_empty());
+
+		let regrouped: usize = order.iter().map(|k| groups[k].len()).sum();
+		assert_eq!(regrouped, 5, "every defined row is grouped exactly once");
+	}
+
+	#[test]
+	fn routes_none_keys_to_undefined_without_grouping_them() {
+		// None-key rows take the per-row undefined path (they never probe); they must not create a
+		// group keyed by some sentinel hash, or an undefined row would be mis-joined.
+		let keys = vec![None, Some(h(0xA)), None, Some(h(0xA))];
+		let (order, groups, undefined) = group_by_key(&keys);
+
+		assert_eq!(order, vec![h(0xA)]);
+		assert_eq!(groups[&h(0xA)], vec![1, 3]);
+		assert_eq!(undefined, vec![0, 2], "none-key rows are collected in input order, separately");
+	}
+
+	#[test]
+	fn empty_input_yields_empty_partitions() {
+		let (order, groups, undefined) = group_by_key(&[]);
+		assert!(order.is_empty());
+		assert!(groups.is_empty());
+		assert!(undefined.is_empty());
+	}
+}
 
 pub struct JoinSideConfig {
 	pub node: FlowNodeId,
@@ -288,8 +355,9 @@ impl JoinOperator {
 		}
 
 		let mut hashes = Vec::with_capacity(row_count);
+		let mut buf: Vec<u8> = Vec::with_capacity(256);
 		for row_idx in 0..row_count {
-			let mut hasher = Vec::with_capacity(256);
+			buf.clear();
 			let mut has_undefined = false;
 
 			for col in &expr_columns {
@@ -300,16 +368,15 @@ impl JoinOperator {
 					break;
 				}
 
-				let bytes = to_stdvec(&value).map_err(|e| {
+				buf = to_extend(&value, buf).map_err(|e| {
 					Error(Box::new(internal!("Failed to encode value for hash: {}", e)))
 				})?;
-				hasher.extend_from_slice(&bytes);
 			}
 
 			if has_undefined {
 				hashes.push(None);
 			} else {
-				hashes.push(Some(xxh3_128(&hasher)));
+				hashes.push(Some(xxh3_128(&buf)));
 			}
 		}
 
@@ -603,19 +670,47 @@ impl JoinOperator {
 	) -> Result<()> {
 		let keys = self.compute_join_keys(post, compiled_exprs)?;
 
-		for (row_idx, key) in keys.iter().enumerate() {
+		if !self.latest {
+			for (row_idx, key) in keys.iter().enumerate() {
+				let mut ctx = JoinContext {
+					side,
+					state,
+					operator: self,
+				};
+				let diffs = match key {
+					Some(key_hash) => self.strategy.handle_insert(
+						txn,
+						post,
+						&[row_idx],
+						key_hash,
+						&mut ctx,
+					)?,
+					None => self.strategy.handle_insert_undefined(txn, post, row_idx, &mut ctx)?,
+				};
+				result.extend(diffs);
+			}
+			return Ok(());
+		}
+
+		let (order, groups, undefined) = group_by_key(&keys);
+
+		for key_hash in &order {
+			let indices = &groups[key_hash];
 			let mut ctx = JoinContext {
 				side,
 				state,
 				operator: self,
 			};
-			let diffs = match key {
-				Some(key_hash) => {
-					self.strategy.handle_insert(txn, post, &[row_idx], key_hash, &mut ctx)?
-				}
-				None => self.strategy.handle_insert_undefined(txn, post, row_idx, &mut ctx)?,
+			result.extend(self.strategy.handle_insert(txn, post, indices, key_hash, &mut ctx)?);
+		}
+
+		for row_idx in undefined {
+			let mut ctx = JoinContext {
+				side,
+				state,
+				operator: self,
 			};
-			result.extend(diffs);
+			result.extend(self.strategy.handle_insert_undefined(txn, post, row_idx, &mut ctx)?);
 		}
 
 		Ok(())
@@ -634,19 +729,43 @@ impl JoinOperator {
 	) -> Result<()> {
 		let keys = self.compute_join_keys(pre, compiled_exprs)?;
 
-		for (row_idx, key) in keys.iter().enumerate() {
+		if !self.latest {
+			for (row_idx, key) in keys.iter().enumerate() {
+				let mut ctx = JoinContext {
+					side,
+					state,
+					operator: self,
+				};
+				let diffs = match key {
+					Some(key_hash) => {
+						self.strategy.handle_remove(txn, pre, &[row_idx], key_hash, &mut ctx)?
+					}
+					None => self.strategy.handle_remove_undefined(txn, pre, row_idx, &mut ctx)?,
+				};
+				result.extend(diffs);
+			}
+			return Ok(());
+		}
+
+		let (order, groups, undefined) = group_by_key(&keys);
+
+		for key_hash in &order {
+			let indices = &groups[key_hash];
 			let mut ctx = JoinContext {
 				side,
 				state,
 				operator: self,
 			};
-			let diffs = match key {
-				Some(key_hash) => {
-					self.strategy.handle_remove(txn, pre, &[row_idx], key_hash, &mut ctx)?
-				}
-				None => self.strategy.handle_remove_undefined(txn, pre, row_idx, &mut ctx)?,
+			result.extend(self.strategy.handle_remove(txn, pre, indices, key_hash, &mut ctx)?);
+		}
+
+		for row_idx in undefined {
+			let mut ctx = JoinContext {
+				side,
+				state,
+				operator: self,
 			};
-			result.extend(diffs);
+			result.extend(self.strategy.handle_remove_undefined(txn, pre, row_idx, &mut ctx)?);
 		}
 
 		Ok(())
