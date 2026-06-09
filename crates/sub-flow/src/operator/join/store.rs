@@ -84,6 +84,16 @@ impl Store {
 		state_set(self.node_id, txn, &key, encoded.clone())
 	}
 
+	pub(crate) fn get_row(
+		&self,
+		txn: &mut FlowTransaction,
+		hash: &Hash128,
+		row_number: RowNumber,
+	) -> Result<Option<EncodedRow>> {
+		let key = self.row_key(hash, row_number);
+		state_get(self.node_id, txn, &key)
+	}
+
 	pub(crate) fn update_row(
 		&self,
 		txn: &mut FlowTransaction,
@@ -305,6 +315,39 @@ mod tests {
 		let rows_b = store.rows_for_key(&mut txn, &h(0xBBB)).unwrap();
 		assert_eq!(rows_b.len(), 1);
 		assert_eq!(rows_b[0].0, rn(3));
+	}
+
+	#[test]
+	fn get_row_point_reads_exact_row_number_for_hash() {
+		// The latest-join probe reads its single right slot by exact (hash, RowNumber::MAX) rather than
+		// a prefix scan. get_row must return the row at that exact key, None for an absent row number,
+		// and must not return a sibling row stored under the same hash but a different number.
+		let engine = TestEngine::new();
+		let admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = FlowTransaction::deferred(
+			&admin,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			engine.clock().clone(),
+		);
+		let store = Store::new(FlowNodeId(5), JoinSide::Right);
+
+		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		store.put_row(&mut txn, &h(0xAAA), RowNumber::MAX, &row(0x20)).unwrap();
+
+		let slot = store.get_row(&mut txn, &h(0xAAA), RowNumber::MAX).unwrap();
+		let shape = RowShape::operator_state();
+		assert_eq!(shape.get_blob(&slot.expect("slot present"), 0).as_bytes(), &[0x20u8][..]);
+
+		assert!(
+			store.get_row(&mut txn, &h(0xAAA), rn(99)).unwrap().is_none(),
+			"a row number that was never written must not resolve to any sibling row"
+		);
+		assert!(
+			store.get_row(&mut txn, &h(0xBBB), RowNumber::MAX).unwrap().is_none(),
+			"a different hash must not share the slot stored under another hash"
+		);
 	}
 
 	#[test]

@@ -8,8 +8,6 @@ use reifydb_value::{Result, value::row_number::RowNumber};
 use super::hash::{build_shape, columns_from_block, encode_row};
 use crate::{operator::join::store::Store, transaction::FlowTransaction};
 
-const SLOT_PROBE_LIMIT: usize = 1;
-
 pub(crate) fn overwrite_right_slot(
 	txn: &mut FlowTransaction,
 	right: &Store,
@@ -30,11 +28,10 @@ pub(crate) fn overwrite_right_slot(
 }
 
 pub(crate) fn read_right_slot(txn: &mut FlowTransaction, right: &Store, key_hash: &Hash128) -> Result<Option<Columns>> {
-	let block = right.rows_for_key_block(txn, key_hash, None, SLOT_PROBE_LIMIT)?;
-	if block.is_empty() {
-		return Ok(None);
+	match right.get_row(txn, key_hash, RowNumber::MAX)? {
+		Some(row) => Ok(Some(columns_from_block(txn, right, vec![(RowNumber::MAX, row)])?)),
+		None => Ok(None),
 	}
-	Ok(Some(columns_from_block(txn, right, block)?))
 }
 
 pub(crate) fn remove_right_slot(txn: &mut FlowTransaction, right: &Store, key_hash: &Hash128) -> Result<()> {
