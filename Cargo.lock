@@ -2958,6 +2958,7 @@ version = "0.6.0"
 dependencies = [
  "reifydb-build",
  "reifydb-testing",
+ "reifydb-value",
  "rusqlite",
  "thiserror 2.0.18",
  "uuid",

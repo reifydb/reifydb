@@ -19,7 +19,7 @@ use reifydb_sub_server::{
 	state::{AppState, StateConfig},
 };
 use reifydb_sub_subscription::store::SubscriptionStore;
-use reifydb_value::{Result, value::duration::Duration};
+use reifydb_value::{Result, byte_size::ByteSize, value::duration::Duration};
 use tokio::runtime::Handle;
 
 use crate::subsystem::WsSubsystem;
@@ -33,7 +33,7 @@ pub struct WsConfigurator {
 
 	query_timeout: Duration,
 
-	max_frame_size: usize,
+	max_frame_size: ByteSize,
 
 	runtime: Option<Handle>,
 
@@ -47,7 +47,7 @@ impl Default for WsConfigurator {
 			admin_bind_addr: None,
 			max_connections: 10_000,
 			query_timeout: Duration::from_seconds(30).unwrap(),
-			max_frame_size: 16 << 20,
+			max_frame_size: ByteSize::from_mib(16),
 			runtime: None,
 			poll_batch_size: 100,
 		}
@@ -79,7 +79,7 @@ impl WsConfigurator {
 		self
 	}
 
-	pub fn max_frame_size(mut self, size: usize) -> Self {
+	pub fn max_frame_size(mut self, size: ByteSize) -> Self {
 		self.max_frame_size = size;
 		self
 	}
@@ -117,7 +117,7 @@ pub struct WsConfig {
 
 	pub query_timeout: Duration,
 
-	pub max_frame_size: usize,
+	pub max_frame_size: ByteSize,
 
 	pub runtime: Option<Handle>,
 

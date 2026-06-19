@@ -33,7 +33,7 @@ struct SqlitePersistentStorageInner {
 impl SqlitePersistentStorage {
 	#[instrument(name = "store::single::persistent::new", level = "debug", skip(config), fields(
 		db_path = ?config.path,
-		page_size = config.page_size,
+		page_size = config.page_size.as_bytes(),
 		journal_mode = %config.journal_mode.as_str()
 	))]
 	pub fn new(config: SqliteConfig) -> Self {

@@ -16,6 +16,7 @@ use std::{
 	path::{Path, PathBuf},
 };
 
+use reifydb_value::byte_size::ByteSize;
 use uuid::Uuid;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -102,10 +103,10 @@ pub struct SqliteConfig {
 	pub journal_mode: JournalMode,
 	pub synchronous_mode: SynchronousMode,
 	pub temp_store: TempStore,
-	pub cache_size: u32,
+	pub cache_size: ByteSize,
 	pub wal_autocheckpoint: u32,
-	pub page_size: u32,
-	pub mmap_size: u64,
+	pub page_size: ByteSize,
+	pub mmap_size: ByteSize,
 	pub prepared_statement_cache_capacity: u32,
 	pub read_pool_size: u32,
 }
@@ -118,10 +119,10 @@ impl SqliteConfig {
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Normal,
 			temp_store: TempStore::Memory,
-			cache_size: 2000,
+			cache_size: ByteSize::from_kib(2000),
 			wal_autocheckpoint: 1000,
-			page_size: 4096,
-			mmap_size: 64 * 1024 * 1024,
+			page_size: ByteSize::from_bytes(4096),
+			mmap_size: ByteSize::from_mib(64),
 			prepared_statement_cache_capacity: 1024,
 			read_pool_size: 4,
 		}
@@ -134,10 +135,10 @@ impl SqliteConfig {
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Full,
 			temp_store: TempStore::File,
-			cache_size: 2000,
+			cache_size: ByteSize::from_kib(2000),
 			wal_autocheckpoint: 1000,
-			page_size: 4096,
-			mmap_size: 0,
+			page_size: ByteSize::from_bytes(4096),
+			mmap_size: ByteSize::ZERO,
 			prepared_statement_cache_capacity: 128,
 			read_pool_size: 4,
 		}
@@ -150,10 +151,10 @@ impl SqliteConfig {
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Off,
 			temp_store: TempStore::Memory,
-			cache_size: 10000,
+			cache_size: ByteSize::from_kib(10000),
 			wal_autocheckpoint: 10000,
-			page_size: 16384,
-			mmap_size: 256 * 1024 * 1024,
+			page_size: ByteSize::from_bytes(16384),
+			mmap_size: ByteSize::from_mib(256),
 			prepared_statement_cache_capacity: 256,
 			read_pool_size: 8,
 		}
@@ -166,10 +167,10 @@ impl SqliteConfig {
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Off,
 			temp_store: TempStore::Memory,
-			cache_size: 2000,
+			cache_size: ByteSize::from_kib(2000),
 			wal_autocheckpoint: 10000,
-			page_size: 16384,
-			mmap_size: 0,
+			page_size: ByteSize::from_bytes(16384),
+			mmap_size: ByteSize::ZERO,
 			prepared_statement_cache_capacity: 128,
 			read_pool_size: 4,
 		}
@@ -185,10 +186,10 @@ impl SqliteConfig {
 				journal_mode: JournalMode::Wal,
 				synchronous_mode: SynchronousMode::Off,
 				temp_store: TempStore::Memory,
-				cache_size: 2000,
+				cache_size: ByteSize::from_kib(2000),
 				wal_autocheckpoint: 10000,
-				page_size: 16384,
-				mmap_size: 0,
+				page_size: ByteSize::from_bytes(16384),
+				mmap_size: ByteSize::ZERO,
 				prepared_statement_cache_capacity: 128,
 				read_pool_size: 2,
 			},
@@ -206,10 +207,10 @@ impl SqliteConfig {
 				journal_mode: JournalMode::Wal,
 				synchronous_mode: SynchronousMode::Off,
 				temp_store: TempStore::Memory,
-				cache_size: 1000,
+				cache_size: ByteSize::from_kib(1000),
 				wal_autocheckpoint: 10000,
-				page_size: 4096,
-				mmap_size: 0,
+				page_size: ByteSize::from_bytes(4096),
+				mmap_size: ByteSize::ZERO,
 				prepared_statement_cache_capacity: 32,
 				read_pool_size: 2,
 			},
@@ -247,8 +248,8 @@ impl SqliteConfig {
 		self
 	}
 
-	pub fn cache_size(mut self, size_kb: u32) -> Self {
-		self.cache_size = size_kb;
+	pub fn cache_size(mut self, size: ByteSize) -> Self {
+		self.cache_size = size;
 		self
 	}
 
@@ -257,12 +258,12 @@ impl SqliteConfig {
 		self
 	}
 
-	pub fn page_size(mut self, size: u32) -> Self {
+	pub fn page_size(mut self, size: ByteSize) -> Self {
 		self.page_size = size;
 		self
 	}
 
-	pub fn mmap_size(mut self, size: u64) -> Self {
+	pub fn mmap_size(mut self, size: ByteSize) -> Self {
 		self.mmap_size = size;
 		self
 	}
@@ -415,14 +416,14 @@ mod tests {
 			.journal_mode(JournalMode::Wal)
 			.synchronous_mode(SynchronousMode::Normal)
 			.temp_store(TempStore::Memory)
-			.cache_size(30000)
+			.cache_size(ByteSize::from_kib(30000))
 			.flags(OpenFlags::new().read_write(true).create(true).full_mutex(true));
 
 		assert_eq!(config.path, DbPath::File(PathBuf::from("/tmp/test.reifydb")));
 		assert_eq!(config.journal_mode, JournalMode::Wal);
 		assert_eq!(config.synchronous_mode, SynchronousMode::Normal);
 		assert_eq!(config.temp_store, TempStore::Memory);
-		assert_eq!(config.cache_size, 30000);
+		assert_eq!(config.cache_size, ByteSize::from_kib(30000));
 		assert!(config.flags.read_write);
 		assert!(config.flags.create);
 		assert!(config.flags.full_mutex);
@@ -514,7 +515,7 @@ mod tests {
 		assert_eq!(config.journal_mode, JournalMode::Wal);
 		assert_eq!(config.synchronous_mode, SynchronousMode::Off);
 		assert_eq!(config.temp_store, TempStore::Memory);
-		assert_eq!(config.cache_size, 2000);
+		assert_eq!(config.cache_size, ByteSize::from_kib(2000));
 		assert_eq!(config.wal_autocheckpoint, 10000);
 	}
 

@@ -21,6 +21,7 @@
 
 mod assertions;
 
+pub mod byte_size;
 pub mod clock;
 pub mod error;
 pub mod fragment;
