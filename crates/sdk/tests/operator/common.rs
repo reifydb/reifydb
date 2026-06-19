@@ -649,12 +649,12 @@ row!(CarryOut {
 });
 
 pub struct TwapCarry {
-	lateness: Option<u64>,
+	retention: Option<u64>,
 }
 
-pub fn twap_carry(lateness: Option<u64>) -> TwapCarry {
+pub fn twap_carry(retention: Option<u64>) -> TwapCarry {
 	TwapCarry {
-		lateness,
+		retention,
 	}
 }
 
@@ -696,8 +696,8 @@ impl TumblingCarryOperator for TwapCarry {
 		value.last_key_value().map(|(_, v)| *v)
 	}
 
-	fn lateness(&self) -> Option<u64> {
-		self.lateness
+	fn retention(&self) -> Option<u64> {
+		self.retention
 	}
 }
 
@@ -711,7 +711,7 @@ impl TumblingCarryRegistration for TwapCarry {
 
 	fn from_config(_operator_id: FlowNodeId, config: &Config) -> Result<Self> {
 		Ok(TwapCarry {
-			lateness: config.u64("__lateness"),
+			retention: config.u64("__retention"),
 		})
 	}
 

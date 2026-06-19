@@ -76,7 +76,7 @@ pub trait TumblingCarryOperator {
 		Self::Accumulator::default()
 	}
 
-	fn lateness(&self) -> Option<<Self::WindowCoord as Slot>::Duration> {
+	fn retention(&self) -> Option<<Self::WindowCoord as Slot>::Duration> {
 		None
 	}
 }
@@ -216,10 +216,10 @@ where
 	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
 		let aggregator = A::from_config(operator_id, config)?;
 		let late_policy = late_policy_from_config(config);
-		let lateness = aggregator.lateness();
+		let retention = aggregator.retention();
 		Ok(Self {
 			aggregator,
-			engine: TumblingCarryEngine::with_late_policy_and_lateness(late_policy, lateness),
+			engine: TumblingCarryEngine::with_late_policy_and_retention(late_policy, retention),
 		})
 	}
 

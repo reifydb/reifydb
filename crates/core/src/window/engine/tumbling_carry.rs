@@ -67,7 +67,7 @@ pub struct TumblingCarryEngine<G, C: Slot, Accumulator, Carry> {
 	accumulators: StateCache<RowNumber, Accumulator>,
 	meta: StateCache<MetaKey, CarryMeta<C, Carry>>,
 	late_policy: LatePolicy,
-	lateness: Option<C::Duration>,
+	retention: Option<C::Duration>,
 	_pd: PhantomData<G>,
 }
 
@@ -93,15 +93,15 @@ where
 	for<'a> &'a G: IntoEncodedKey,
 {
 	pub fn new() -> Self {
-		Self::with_late_policy_and_lateness(LatePolicy::Drop, None)
+		Self::with_late_policy_and_retention(LatePolicy::Drop, None)
 	}
 
-	pub fn with_late_policy_and_lateness(late_policy: LatePolicy, lateness: Option<C::Duration>) -> Self {
+	pub fn with_late_policy_and_retention(late_policy: LatePolicy, retention: Option<C::Duration>) -> Self {
 		Self {
 			accumulators: StateCache::<RowNumber, Accumulator>::new(8),
 			meta: StateCache::<MetaKey, CarryMeta<C, Carry>>::new_internal(64),
 			late_policy,
-			lateness,
+			retention,
 			_pd: PhantomData,
 		}
 	}
@@ -127,7 +127,7 @@ where
 			return Ok(Vec::new());
 		}
 		let late_policy = self.late_policy;
-		let lateness = self.lateness;
+		let retention = self.retention;
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
 		let slot_resolved = self.resolve_survivor_rows(store, &buckets, &meta_loaded, &row_key)?;
 
@@ -239,12 +239,12 @@ where
 				meta.windows.remove(&coord);
 			}
 
-			if let (Some(lateness), Some(hw)) = (lateness, meta.high_water) {
+			if let (Some(retention), Some(hw)) = (retention, meta.high_water) {
 				loop {
 					let Some((&first, w)) = meta.windows.iter().next() else {
 						break;
 					};
-					if hw - first <= lateness {
+					if hw - first <= retention {
 						break;
 					}
 					let carry_out = w.carry_out.clone();
@@ -492,14 +492,14 @@ mod tests {
 	}
 
 	#[test]
-	fn lateness_seals_old_windows_and_reclaims_accumulator_rows() {
-		// With a 2-window lateness horizon, only the windows within `hw - 120`
+	fn retention_seals_old_windows_and_reclaims_accumulator_rows() {
+		// With a 2-window retention horizon, only the windows within `hw - 120`
 		// stay live; every older window must seal to the O(1) carry scalar and
 		// have its accumulator row removed from the store. After 60 windows the
 		// live accumulator-row count must stay bounded by the horizon, not grow
 		// with the number of windows seen.
 		let mut store = CountingStore::default();
-		let mut engine = Engine::with_late_policy_and_lateness(LatePolicy::Drop, Some(2 * WINDOW));
+		let mut engine = Engine::with_late_policy_and_retention(LatePolicy::Drop, Some(2 * WINDOW));
 		for i in 0..60u64 {
 			feed(&mut engine, &mut store, i * WINDOW, i as f64);
 		}
@@ -512,9 +512,9 @@ mod tests {
 	}
 
 	#[test]
-	fn without_lateness_every_window_accumulator_is_retained() {
+	fn without_retention_every_window_accumulator_is_retained() {
 		// The contrast that proves the bound above is the sealing, not some
-		// other cap: with no lateness configured the engine keeps every window's
+		// other cap: with no retention configured the engine keeps every window's
 		// accumulator forever (the pre-sealing behavior).
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new();
@@ -525,7 +525,7 @@ mod tests {
 		assert_eq!(
 			store.data.len(),
 			60,
-			"with no lateness the carry engine retains every window's accumulator row"
+			"with no retention the carry engine retains every window's accumulator row"
 		);
 	}
 }

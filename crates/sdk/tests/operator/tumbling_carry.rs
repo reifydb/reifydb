@@ -35,10 +35,10 @@ fn price_sampler(none_values: bool) -> ColumnSampler {
 	}
 }
 
-fn run(none_values: bool, cfg: ChaosConfig, seed: u64, policy: LatePolicy, lateness: Option<u64>) -> ChaosOutcome {
+fn run(none_values: bool, cfg: ChaosConfig, seed: u64, policy: LatePolicy, retention: Option<u64>) -> ChaosOutcome {
 	let mut config: Vec<(&str, Value)> = vec![("__late_policy", Value::Utf8(common::policy_label(policy).into()))];
-	if let Some(l) = lateness {
-		config.push(("__lateness", Value::Uint8(l)));
+	if let Some(l) = retention {
+		config.push(("__retention", Value::Uint8(l)));
 	}
 	ChaosHarness::<FFIOperatorAdapter<TumblingCarryDriver<TwapCarry>>>::builder()
 		.with_input_shape(common::carry_shape())
@@ -52,12 +52,12 @@ fn run(none_values: bool, cfg: ChaosConfig, seed: u64, policy: LatePolicy, laten
 		.with_chaos(cfg)
 		.with_oracle(move |ctx, batches| {
 			tumbling_carry_accumulator_oracle(
-				&common::twap_carry(lateness),
+				&common::twap_carry(retention),
 				ctx,
 				batches,
 				&window_key(),
 				policy,
-				lateness,
+				retention,
 			)
 		})
 		.seed(seed)
@@ -70,16 +70,16 @@ fn run(none_values: bool, cfg: ChaosConfig, seed: u64, policy: LatePolicy, laten
 fn carry_matches_across_configs_and_seeds() {
 	for &seed in &common::SEEDS {
 		for policy in common::POLICIES {
-			for lateness in [None, Some(90)] {
-				run(false, common::baseline(150, SupportedOps::insert_only()), seed, policy, lateness)
+			for retention in [None, Some(90)] {
+				run(false, common::baseline(150, SupportedOps::insert_only()), seed, policy, retention)
 					.assert_matches();
-				run(false, common::baseline(150, SupportedOps::no_remove()), seed, policy, lateness)
+				run(false, common::baseline(150, SupportedOps::no_remove()), seed, policy, retention)
 					.assert_matches();
-				run(false, common::baseline(150, SupportedOps::no_update()), seed, policy, lateness)
+				run(false, common::baseline(150, SupportedOps::no_update()), seed, policy, retention)
 					.assert_matches();
-				run(false, common::baseline(200, SupportedOps::all()), seed, policy, lateness)
+				run(false, common::baseline(200, SupportedOps::all()), seed, policy, retention)
 					.assert_matches();
-				run(false, common::full_chaos(250), seed, policy, lateness).assert_matches();
+				run(false, common::full_chaos(250), seed, policy, retention).assert_matches();
 			}
 		}
 	}
@@ -89,8 +89,8 @@ fn carry_matches_across_configs_and_seeds() {
 fn carry_handles_none_inputs() {
 	for &seed in &common::SEEDS {
 		for policy in common::POLICIES {
-			for lateness in [None, Some(90)] {
-				run(true, common::full_chaos(200), seed, policy, lateness).assert_matches();
+			for retention in [None, Some(90)] {
+				run(true, common::full_chaos(200), seed, policy, retention).assert_matches();
 			}
 		}
 	}

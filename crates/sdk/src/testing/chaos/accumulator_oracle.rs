@@ -486,7 +486,7 @@ pub fn tumbling_carry_accumulator_oracle<A>(
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
 	policy: LatePolicy,
-	lateness: Option<<CarryCoord<A> as Slot>::Duration>,
+	retention: Option<<CarryCoord<A> as Slot>::Duration>,
 ) -> MaterializedTable
 where
 	A: TumblingCarryOperator,
@@ -589,12 +589,12 @@ where
 				meta.windows.remove(&coord);
 			}
 
-			if let (Some(lateness), Some(hw)) = (lateness, meta.high_water) {
+			if let (Some(retention), Some(hw)) = (retention, meta.high_water) {
 				loop {
 					let Some((&first, carry_out)) = meta.windows.iter().next() else {
 						break;
 					};
-					if hw - first <= lateness {
+					if hw - first <= retention {
 						break;
 					}
 					let carry_out = carry_out.clone();
