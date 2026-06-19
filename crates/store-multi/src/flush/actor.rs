@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -128,15 +128,21 @@ impl FlushActor {
 				continue;
 			}
 
-			if self.is_persistent_shape(kind) && !to_persist.is_empty() {
-				let (count, persist_failed) = self.persist_evictable_batch(kind, to_persist);
+			let persistent_shape = self.is_persistent_shape(kind);
+			let mut accepted: Vec<EncodedKey> = Vec::new();
+			if persistent_shape && !to_persist.is_empty() {
+				let (count, persist_failed, accepted_keys) =
+					self.persist_evictable_batch(kind, &to_persist);
 				persisted += count;
 				if persist_failed {
 					continue;
 				}
+				accepted = accepted_keys;
 			}
 
-			match self.invalidate_and_drop(kind, to_drop) {
+			self.refresh_read_tier(persistent_shape, &to_persist, &to_drop, &accepted);
+
+			match self.drop_from_commit(kind, to_drop) {
 				Some(count) => dropped += count,
 				None => continue,
 			}
@@ -167,39 +173,62 @@ impl FlushActor {
 	fn persist_evictable_batch(
 		&self,
 		kind: EntryKind,
-		to_persist: Vec<(EncodedKey, CommitVersion, Option<CowVec<u8>>)>,
-	) -> (usize, bool) {
+		to_persist: &[(EncodedKey, CommitVersion, Option<CowVec<u8>>)],
+	) -> (usize, bool, Vec<EncodedKey>) {
 		let mut batch: HashMap<CommitVersion, TierBatch> = HashMap::new();
 		for (key, version, value) in to_persist {
-			batch.entry(version).or_default().entry(kind).or_default().push((key, value));
+			batch.entry(*version).or_default().entry(kind).or_default().push((key.clone(), value.clone()));
 		}
-		let mut persisted = 0usize;
+		let mut accepted = Vec::new();
 		for (version, by_kind) in batch {
-			let count: usize = by_kind.values().map(|v| v.len()).sum();
-			if let Err(e) = self.persistent.set(version, by_kind) {
-				error!(version = version.0, error = %e, "flush sweep: persist failed");
-				return (persisted, true);
+			match self.persistent.set_collecting_accepted(version, by_kind) {
+				Ok(keys) => accepted.extend(keys),
+				Err(e) => {
+					error!(version = version.0, error = %e, "flush sweep: persist failed");
+					return (accepted.len(), true, accepted);
+				}
 			}
-			persisted += count;
 		}
-		(persisted, false)
+		(accepted.len(), false, accepted)
 	}
 
 	#[inline]
-	fn invalidate_and_drop(&self, kind: EntryKind, to_drop: Vec<(EncodedKey, CommitVersion)>) -> Option<usize> {
+	fn refresh_read_tier(
+		&self,
+		persistent_shape: bool,
+		to_persist: &[(EncodedKey, CommitVersion, Option<CowVec<u8>>)],
+		to_drop: &[(EncodedKey, CommitVersion)],
+		accepted: &[EncodedKey],
+	) {
+		let Some(read) = &self.read else {
+			return;
+		};
+		if persistent_shape {
+			let accepted: HashSet<&[u8]> = accepted.iter().map(|k| k.as_slice()).collect();
+			for (key, version, value) in to_persist {
+				if accepted.contains(key.as_slice()) {
+					read.insert(key.clone(), *version, value.clone());
+				} else {
+					read.invalidate(key);
+				}
+			}
+		} else {
+			for (key, _) in to_drop {
+				read.invalidate(key);
+			}
+		}
+	}
+
+	#[inline]
+	fn drop_from_commit(&self, kind: EntryKind, to_drop: Vec<(EncodedKey, CommitVersion)>) -> Option<usize> {
 		let drop_count = to_drop.len();
 		reifydb_assertions! {
 			assert!(
 				drop_count > 0,
-				"sweep must only reach invalidate_and_drop with a non-empty drop set; an empty drop \
-				 issues a no-op commit-buffer drop and lets the read-tier invalidation loop and the \
-				 dropped counter run for zero work (kind={kind:?})"
+				"sweep must only reach drop_from_commit with a non-empty drop set; an empty drop \
+				 issues a no-op commit-buffer drop and lets the dropped counter run for zero work \
+				 (kind={kind:?})"
 			);
-		}
-		if let Some(read) = &self.read {
-			for (key, _) in &to_drop {
-				read.invalidate(key);
-			}
 		}
 		let mut batches: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
 		batches.insert(kind, to_drop);
@@ -482,7 +511,7 @@ mod tests {
 	}
 
 	#[test]
-	fn sweep_invalidates_evicted_keys_in_the_read_tier() {
+	fn sweep_seeds_evicted_keys_into_the_read_tier() {
 		let read = MultiReadBufferTier::new(ReadBufferConfig {
 			resident_pages: 16,
 			..Default::default()
@@ -494,14 +523,166 @@ mod tests {
 		write(&actor.commit, kind, &key, 2, "v2");
 
 		read.insert(key.clone(), CommitVersion(2), Some(val("stale")));
-		assert!(matches!(read.get(&key, CommitVersion(2)), VersionedGetResult::Value { .. }));
+
+		actor.sweep(CommitVersion(2));
+
+		match read.get(&key, CommitVersion(2)) {
+			VersionedGetResult::Value {
+				value,
+				..
+			} => assert_eq!(
+				value.as_ref(),
+				val("v2").as_ref(),
+				"the read tier must hold the persisted value, not the stale one"
+			),
+			other => panic!("the sweep must seed the evicted key into the read tier, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn sweep_seeds_tombstone_into_read_tier() {
+		let read = MultiReadBufferTier::new(ReadBufferConfig {
+			resident_pages: 16,
+			..Default::default()
+		});
+		let (actor, _guard) = build_actor_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
+		let kind = EntryKind::Source(ShapeId::Table(TableId(21)));
+		let key = ek("k");
+		write(&actor.commit, kind, &key, 1, "v1");
+		actor.commit.set(CommitVersion(2), HashMap::from([(kind, vec![(key.clone(), None)])])).unwrap();
+
+		actor.sweep(CommitVersion(2));
+
+		assert!(
+			matches!(read.get(&key, CommitVersion(2)), VersionedGetResult::Tombstone),
+			"an evicted tombstone must be seeded into the read tier as a definitive miss, not left absent \
+			 (which would fall through and risk resurrecting an older value)"
+		);
+	}
+
+	#[test]
+	fn sweep_invalidates_rejected_key_but_seeds_accepted() {
+		let read = MultiReadBufferTier::new(ReadBufferConfig {
+			resident_pages: 16,
+			..Default::default()
+		});
+		let (actor, _guard) = build_actor_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
+		let kind = EntryKind::Source(ShapeId::Table(TableId(22)));
+		let rejected = ek("rejected");
+		let accepted = ek("accepted");
+
+		actor.persistent
+			.set(CommitVersion(3), HashMap::from([(kind, vec![(rejected.clone(), Some(val("high")))])]))
+			.unwrap();
+
+		read.insert(rejected.clone(), CommitVersion(2), Some(val("stale")));
+
+		write(&actor.commit, kind, &rejected, 2, "low");
+		write(&actor.commit, kind, &accepted, 2, "b");
+
+		actor.sweep(CommitVersion(2));
+
+		assert!(
+			matches!(read.get(&rejected, CommitVersion(2)), VersionedGetResult::NotFound),
+			"a guard-rejected key must be invalidated in the read tier so reads fall through to the newer \
+			 persisted value, never serving the stale entry"
+		);
+		match read.get(&accepted, CommitVersion(2)) {
+			VersionedGetResult::Value {
+				value,
+				..
+			} => assert_eq!(value.as_ref(), val("b").as_ref(), "the accepted key must be seeded"),
+			other => panic!("the accepted key must be seeded into the read tier, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn sweep_seed_respects_read_tier_downgrade_guard() {
+		let read = MultiReadBufferTier::new(ReadBufferConfig {
+			resident_pages: 16,
+			..Default::default()
+		});
+		let (actor, _guard) = build_actor_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
+		let kind = EntryKind::Source(ShapeId::Table(TableId(23)));
+		let key = ek("k");
+
+		read.insert(key.clone(), CommitVersion(5), Some(val("newer")));
+
+		write(&actor.commit, kind, &key, 2, "older");
+		actor.sweep(CommitVersion(2));
+
+		match read.get(&key, CommitVersion(5)) {
+			VersionedGetResult::Value {
+				value,
+				..
+			} => assert_eq!(
+				value.as_ref(),
+				val("newer").as_ref(),
+				"the older seeded value must not overwrite a newer resident read-tier entry"
+			),
+			other => panic!("the newer read-tier entry must survive the sweep's seed, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn sweep_invalidates_ephemeral_shape_in_read_tier() {
+		let read = MultiReadBufferTier::new(ReadBufferConfig {
+			resident_pages: 16,
+			..Default::default()
+		});
+		let (actor, _guard) = build_actor_with_read(Arc::new(NonePersistent), CommitVersion(2), read.clone());
+		let kind = EntryKind::Source(ShapeId::Table(TableId(24)));
+		let key = ek("k");
+
+		read.insert(key.clone(), CommitVersion(2), Some(val("stale")));
+		write(&actor.commit, kind, &key, 2, "v2");
 
 		actor.sweep(CommitVersion(2));
 
 		assert!(
 			matches!(read.get(&key, CommitVersion(2)), VersionedGetResult::NotFound),
-			"the read tier must be invalidated for keys evicted by the sweep"
+			"an ephemeral (persistent:false) shape must be invalidated in the read tier, never seeded"
 		);
+		assert!(
+			matches!(
+				actor.persistent.get(kind, key.as_ref(), CommitVersion(2)).unwrap(),
+				VersionedGetResult::NotFound
+			),
+			"an ephemeral shape must not be persisted"
+		);
+	}
+
+	#[test]
+	fn sweep_seeds_accepted_keys_across_version_buckets() {
+		let read = MultiReadBufferTier::new(ReadBufferConfig {
+			resident_pages: 16,
+			..Default::default()
+		});
+		let (actor, _guard) = build_actor_with_read(Arc::new(AllPersistent), CommitVersion(4), read.clone());
+		let kind = EntryKind::Source(ShapeId::Table(TableId(25)));
+		let a = ek("a");
+		let b = ek("b");
+		write(&actor.commit, kind, &a, 1, "a1");
+		write(&actor.commit, kind, &a, 2, "a2");
+		write(&actor.commit, kind, &b, 3, "b3");
+		write(&actor.commit, kind, &b, 4, "b4");
+
+		actor.sweep(CommitVersion(4));
+
+		match read.get(&a, CommitVersion(4)) {
+			VersionedGetResult::Value {
+				value,
+				..
+			} => assert_eq!(value.as_ref(), val("a2").as_ref(), "a's latest-<=W (v2) must be seeded"),
+			other => panic!("key a must be seeded across version buckets, got {other:?}"),
+		}
+		match read.get(&b, CommitVersion(4)) {
+			VersionedGetResult::Value {
+				value,
+				..
+			} => assert_eq!(value.as_ref(), val("b4").as_ref(), "b's latest-<=W (v4) must be seeded"),
+			other => panic!("key b must be seeded across version buckets, got {other:?}"),
+		}
 	}
 
 	#[test]

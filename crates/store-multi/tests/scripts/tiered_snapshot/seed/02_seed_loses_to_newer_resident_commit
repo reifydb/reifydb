@@ -1,0 +1,39 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# A seeded (older) read-tier entry must never shadow a newer version still resident in
+# the commit tier. The sweep seeds v2 (<= W); v5 (> W) stays in the commit tier.
+# Deleting the persistent row isolates the read tier as the only source of v2.
+
+set k=v2 version=2
+---
+ok
+
+set k=v5 version=5
+---
+ok
+
+watermark 2
+flush
+---
+ok
+ok
+
+persistent_delete k
+---
+ok
+
+# The newer resident version wins (served from the commit tier).
+get k version=5
+---
+"k" => "v5"
+
+# Older snapshots are served the seeded v2 from the read tier.
+get k version=2
+---
+"k" => "v2"
+
+# A between snapshot resolves to the latest <= it, which is the seeded v2.
+get k version=4
+---
+"k" => "v2"

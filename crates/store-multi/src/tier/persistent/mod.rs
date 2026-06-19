@@ -85,6 +85,12 @@ impl MultiPersistentTier {
 		}
 	}
 
+	pub fn set_collecting_accepted(&self, version: CommitVersion, batches: TierBatch) -> Result<Vec<EncodedKey>> {
+		match self {
+			Self::Sqlite(s) => s.set_collecting_accepted(version, batches),
+		}
+	}
+
 	pub fn load_range_consistent(
 		&self,
 		table: EntryKind,

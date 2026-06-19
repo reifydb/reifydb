@@ -1,0 +1,51 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# A single sweep evicting multiple keys partitions them by the persistent version
+# guard: accepted keys are seeded into the read tier, rejected (stale) keys are
+# invalidated. `a` already has a newer v3 in persistent, so its late v2 upsert is
+# rejected; `b` is accepted. Deleting `b` from persistent isolates the read tier as
+# b's only source.
+
+persistent_set a=high version=3
+---
+ok
+
+set a=low version=2
+---
+ok
+
+set b=b2 version=2
+---
+ok
+
+watermark 2
+flush
+---
+ok
+ok
+
+# `b` was accepted and seeded: still served from the read tier after deleting persistent.
+persistent_delete b
+---
+ok
+
+get b version=2
+---
+"b" => "b2"
+
+# `a`'s late v2 was rejected by the guard - persistent still holds high@v3 untouched.
+persistent_get a version=3
+---
+"a" => "high"
+
+# `a` was NOT seeded with the stale low: a read at v2 sees nothing (persistent's only
+# version is v3 > 2, and the read tier holds no v2 for a).
+get a version=2
+---
+"a" => None
+
+# A read at v3 resolves to the authoritative high from persistent.
+get a version=3
+---
+"a" => "high"

@@ -1,0 +1,36 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Seed-on-eviction: the flush sweep seeds the read tier with the value it persists.
+# Proven by deleting the key from the persistent tier AFTER the flush - only the read
+# tier can then serve it. Under the old invalidate-on-evict behaviour `get` would
+# return None here.
+
+set k=v1 version=1
+---
+ok
+
+watermark 1
+flush
+---
+ok
+ok
+
+# The swept value is durable in persistent...
+persistent_get k version=1
+---
+"k" => "v1"
+
+# ...now delete it from persistent. The read tier still holds the seeded copy.
+persistent_delete k
+---
+ok
+
+persistent_get k version=1
+---
+"k" => None
+
+# The cascade serves v1 from the read tier (commit dropped it, persistent deleted it).
+get k version=1
+---
+"k" => "v1"

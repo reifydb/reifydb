@@ -11,11 +11,13 @@
 //! MVCC view matches an identical never-evicted store.
 //!
 //! The sweep itself fires on a background timer inside the FlushActor and is not directly callable from an
-//! integration test. `sweep_through_store` below replicates the sweep's persist+drop composition through the
-//! public store API (the same `collect_evictable_below` -> persist -> invalidate-read -> drop pipeline the
-//! FlushActor runs) so the store-level read-through can be asserted deterministically. One test
-//! (`real_flush_actor_sweep_bounds_ram_end_to_end`) additionally drives the genuine FlushActor timer to prove the
-//! wiring fires in production configuration.
+//! integration test. `sweep_through_store` below replicates the sweep's composition through the public store API
+//! (`collect_evictable_below` -> persist -> drop) and reproduces its read-tier effect: ephemeral keys are
+//! invalidated, persistent keys are left resident in the read tier (the actor seeds them on eviction; here a
+//! post-drop read-through warms the same entry) so the store-level read-through can be asserted deterministically.
+//! Two tests drive the genuine FlushActor timer: `real_flush_actor_sweep_bounds_ram_end_to_end` proves the wiring
+//! fires, and `real_flush_actor_seeds_read_tier_on_eviction` proves the sweep seeds the read tier with the
+//! persisted value so a post-eviction read skips the persistent tier.
 
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
@@ -111,8 +113,10 @@ fn scan_keys(store: &StandardMultiStore, version: u64) -> Vec<(Vec<u8>, Vec<u8>)
 }
 
 /// Deterministic stand-in for FlushActor::sweep: collects evictable-below-W per entry kind, persists the
-/// latest-<=W value of persistent shapes, invalidates the read tier, then drops all <=W versions from the commit
-/// tier. `persistent` decides whether the (single) shape is treated as persistent, mirroring the actor's
+/// latest-<=W value of persistent shapes, then drops all <=W versions from the commit tier. It reproduces the
+/// actor's post-sweep read-tier state: ephemeral (`persistent:false`) keys are invalidated, while persistent keys
+/// are left resident in the read tier (the actor seeds them on eviction; here a post-drop read-through warms the
+/// same entry). `persistent` decides whether the (single) shape is treated as persistent, mirroring the actor's
 /// `is_persistent_shape` gate.
 fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persistent_shape: bool) {
 	let commit = store.commit().expect("commit tier configured");
@@ -131,18 +135,32 @@ fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persis
 				CommitVersion,
 				HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>>,
 			> = HashMap::new();
-			for (key, version, value) in to_persist {
-				by_version.entry(version).or_default().entry(kind).or_default().push((key, value));
+			for (key, version, value) in &to_persist {
+				by_version
+					.entry(*version)
+					.or_default()
+					.entry(kind)
+					.or_default()
+					.push((key.clone(), value.clone()));
 			}
 			for (version, batch) in by_version {
 				persistent.set(version, batch).unwrap();
 			}
 		}
 
-		for (key, _) in &to_drop {
-			store.invalidate_read_key(key);
+		if !persistent_shape {
+			for (key, _) in &to_drop {
+				store.invalidate_read_key(key);
+			}
 		}
+
 		commit.drop(HashMap::from([(kind, to_drop)])).unwrap();
+
+		if persistent_shape {
+			for (key, version, _) in &to_persist {
+				store.get(key, *version).unwrap();
+			}
+		}
 	}
 }
 
@@ -382,6 +400,100 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 		Some(b"v2".as_slice()),
 		"a read at the eviction watermark must resolve to the latest-<=W value from persistent, not NotFound"
 	);
+}
+
+#[test]
+fn real_flush_actor_seeds_read_tier_on_eviction() {
+	// Seed-on-evict: when the genuine sweep evicts a persistent key, it must SEED the read tier with the value it
+	// just persisted, not invalidate it. Proven deterministically by deleting the key from the persistent tier
+	// AFTER eviction - a read can then only still return the value if it is resident in the read tier. Under the
+	// old invalidate-on-evict behaviour this read returned NotFound (cache punched, SQLite row gone).
+	let (store, _guard) = store_with_fast_flush();
+	let kind = EntryKind::Source(SHAPE);
+	let k = row_key(1);
+
+	store.set_row_settings_provider(Arc::new(AllPersistent));
+	store.set_eviction_watermark(Arc::new(StaticWatermark(CommitVersion(2))));
+
+	commit(&store, &k, 1, "v1");
+	commit(&store, &k, 2, "v2");
+	store.flush_pending_blocking();
+
+	let commit_tier = store.commit().unwrap();
+	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
+	loop {
+		let evicted = matches!(
+			commit_tier.get(kind, k.as_ref(), CommitVersion(2)).unwrap(),
+			VersionedGetResult::NotFound
+		);
+		if evicted {
+			break;
+		}
+		if Instant::now() >= deadline {
+			panic!("flush actor sweep did not evict v2 from the commit tier within the timeout");
+		}
+		std::thread::yield_now();
+	}
+
+	// SQLite no longer has the key; the read tier is the only place its value can survive.
+	let persistent = store.persistent().unwrap();
+	let deleted = persistent.delete_keys(kind, std::slice::from_ref(&k)).unwrap();
+	assert_eq!(deleted, 1, "the evicted key must have been durable in the persistent tier before the delete");
+
+	assert_eq!(
+		get(&store, &k, 2).as_deref(),
+		Some(b"v2".as_slice()),
+		"after eviction the read tier must serve the seeded value even though the persistent row is gone; \
+		 invalidate-on-evict would return NotFound here"
+	);
+}
+
+#[test]
+fn seeded_read_tier_entry_loses_to_a_newer_resident_commit_version() {
+	// A seeded (older) read-tier entry must never shadow a newer version still resident in the commit tier. The
+	// sweep seeds v2 (<= W) while v5 (> W) stays in the commit tier. Deleting the persistent row isolates the read
+	// tier as the only source of v2, so the version resolution is exercised purely against the seed.
+	let (store, _guard) = store_with_fast_flush();
+	let kind = EntryKind::Source(SHAPE);
+	let k = row_key(1);
+
+	store.set_row_settings_provider(Arc::new(AllPersistent));
+	store.set_eviction_watermark(Arc::new(StaticWatermark(CommitVersion(2))));
+
+	commit(&store, &k, 1, "v1");
+	commit(&store, &k, 2, "v2");
+	commit(&store, &k, 5, "v5");
+	store.flush_pending_blocking();
+
+	let commit_tier = store.commit().unwrap();
+	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
+	loop {
+		let evicted = matches!(
+			commit_tier.get(kind, k.as_ref(), CommitVersion(2)).unwrap(),
+			VersionedGetResult::NotFound
+		);
+		if evicted {
+			break;
+		}
+		if Instant::now() >= deadline {
+			panic!("flush actor sweep did not evict <= W (v2) from the commit tier within the timeout");
+		}
+		std::thread::yield_now();
+	}
+
+	let persistent = store.persistent().unwrap();
+	persistent.delete_keys(kind, std::slice::from_ref(&k)).unwrap();
+
+	// The newer resident version wins (served from the commit tier).
+	assert_eq!(get(&store, &k, 5).as_deref(), Some(b"v5".as_slice()), "a reader at v5 must see the resident v5");
+	// An older snapshot is served the seeded v2 from the read tier (persistent row deleted).
+	assert_eq!(
+		get(&store, &k, 2).as_deref(),
+		Some(b"v2".as_slice()),
+		"an older snapshot must be served the seeded v2 from the read tier"
+	);
+	// A between snapshot resolves to the latest <= it, which is the seeded v2 (v5 is not yet visible).
+	assert_eq!(get(&store, &k, 4).as_deref(), Some(b"v2".as_slice()), "v4 resolves to the latest <= 4 (seeded v2)");
 }
 
 /// Build a row value. TTL eviction now keys off the per-key commit version, not any header

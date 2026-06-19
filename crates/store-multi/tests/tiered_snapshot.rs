@@ -27,6 +27,7 @@ test_each_path! { in "crates/store-multi/tests/scripts/tiered_snapshot/tombstone
 test_each_path! { in "crates/store-multi/tests/scripts/tiered_snapshot/cascade" as ts_cascade => test_snapshot }
 test_each_path! { in "crates/store-multi/tests/scripts/tiered_snapshot/versioned_get" as ts_versioned_get => test_snapshot }
 test_each_path! { in "crates/store-multi/tests/scripts/tiered_snapshot/get_many" as ts_get_many => test_snapshot }
+test_each_path! { in "crates/store-multi/tests/scripts/tiered_snapshot/seed" as ts_seed => test_snapshot }
 
 fn test_snapshot(path: &Path) {
 	for read_pool_size in [1u32, 2, 4] {

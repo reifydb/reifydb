@@ -475,6 +475,17 @@ impl testscript::runner::Runner for Runner {
 				persistent.set(version, batches)?;
 			}
 
+			"persistent_delete" => {
+				let mut args = command.consume_args();
+				let key =
+					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				args.reject_rest()?;
+
+				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
+				let table = classify_key(&key);
+				persistent.delete_keys(table, &[key])?;
+			}
+
 			name => {
 				return Err(format!("invalid command {name}").into());
 			}

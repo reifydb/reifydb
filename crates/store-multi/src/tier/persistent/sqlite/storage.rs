@@ -307,6 +307,48 @@ impl SqlitePersistentStorage {
 		Ok(total)
 	}
 
+	#[instrument(name = "store::multi::persistent::sqlite::set", level = "debug", skip(self, batches), fields(table_count = batches.len(), version = version.0))]
+	pub fn set_collecting_accepted(&self, version: CommitVersion, batches: TierBatch) -> Result<Vec<EncodedKey>> {
+		let mut accepted = Vec::new();
+		if batches.is_empty() {
+			return Ok(accepted);
+		}
+
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(accepted);
+		};
+		let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
+			.map_err(|e| error!(internal(format!("Failed to start persistent transaction: {}", e))))?;
+
+		let new_version_bytes = version_to_bytes(version);
+
+		for (table, entries) in batches {
+			let table_sql = self.table_sql(table);
+			Self::create_table_if_needed(&tx, &table_sql.create_sql)
+				.map_err(|e| error!(internal(format!("Failed to ensure persistent table: {}", e))))?;
+
+			let mut stmt = tx
+				.prepare_cached(&table_sql.upsert_sql)
+				.map_err(|e| error!(internal(format!("Failed to prepare persistent upsert: {}", e))))?;
+
+			for (key, value) in entries {
+				let value_slice = value.as_ref().map(|v| v.as_slice());
+				let affected = stmt
+					.execute(params![key.as_slice(), new_version_bytes.as_slice(), value_slice])
+					.map_err(|e| {
+						error!(internal(format!("Failed to upsert persistent row: {}", e)))
+					})?;
+				if affected > 0 {
+					accepted.push(key);
+				}
+			}
+		}
+
+		tx.commit().map_err(|e| error!(internal(format!("Failed to commit persistent transaction: {}", e))))?;
+		Ok(accepted)
+	}
+
 	fn create_table_if_needed(conn: &Connection, create_sql: &str) -> SqliteResult<()> {
 		conn.execute_batch(create_sql)?;
 		Ok(())
@@ -651,40 +693,9 @@ impl TierStorage for SqlitePersistentStorage {
 		}
 	}
 
-	#[instrument(name = "store::multi::persistent::sqlite::set", level = "debug", skip(self, batches), fields(table_count = batches.len(), version = version.0))]
 	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
-		if batches.is_empty() {
-			return Ok(());
-		}
-
-		let guard = self.inner.conn.lock();
-		let Some(conn) = guard.as_ref() else {
-			return Ok(());
-		};
-		let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
-			.map_err(|e| error!(internal(format!("Failed to start persistent transaction: {}", e))))?;
-
-		let new_version_bytes = version_to_bytes(version);
-
-		for (table, entries) in batches {
-			let table_sql = self.table_sql(table);
-			Self::create_table_if_needed(&tx, &table_sql.create_sql)
-				.map_err(|e| error!(internal(format!("Failed to ensure persistent table: {}", e))))?;
-
-			let mut stmt = tx
-				.prepare_cached(&table_sql.upsert_sql)
-				.map_err(|e| error!(internal(format!("Failed to prepare persistent upsert: {}", e))))?;
-
-			for (key, value) in entries {
-				let key_slice = key.as_slice();
-				let value_slice = value.as_ref().map(|v| v.as_slice());
-				stmt.execute(params![key_slice, new_version_bytes.as_slice(), value_slice]).map_err(
-					|e| error!(internal(format!("Failed to upsert persistent row: {}", e))),
-				)?;
-			}
-		}
-
-		tx.commit().map_err(|e| error!(internal(format!("Failed to commit persistent transaction: {}", e))))
+		self.set_collecting_accepted(version, batches)?;
+		Ok(())
 	}
 
 	#[instrument(name = "store::multi::persistent::sqlite::range", level = "trace", skip(self, cursor, start, end), fields(table = ?table, batch_size = batch_size))]
