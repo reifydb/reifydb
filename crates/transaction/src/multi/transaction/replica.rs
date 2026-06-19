@@ -15,7 +15,7 @@ use reifydb_core::{
 		MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow,
 	},
 };
-use reifydb_value::{Result, reifydb_assertions, util::cowvec::CowVec};
+use reifydb_value::{Result, byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec};
 use tracing::instrument;
 
 use super::{MultiTransaction, version::StandardVersionProvider};
@@ -40,7 +40,7 @@ pub struct MultiReplicaTransaction {
 	pub(crate) id: TransactionId,
 	pub(crate) version: CommitVersion,
 	pub(crate) read_version: Option<CommitVersion>,
-	pub(crate) size: u64,
+	pub(crate) size: ByteSize,
 	pub(crate) count: u64,
 	pub(crate) oracle: Arc<Oracle<StandardVersionProvider>>,
 	pub(crate) conflicts: ConflictManager,
@@ -67,7 +67,7 @@ impl MultiReplicaTransaction {
 			id,
 			version: snapshot,
 			read_version: Some(version),
-			size: 0,
+			size: ByteSize::ZERO,
 			count: 0,
 			oracle,
 			conflicts: ConflictManager::new(),

@@ -22,7 +22,9 @@ use reifydb_core::{
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sub_raft::message::Command;
 use reifydb_value::{
-	Result, reifydb_assertions,
+	Result,
+	byte_size::ByteSize,
+	reifydb_assertions,
 	util::{cowvec::CowVec, hex},
 };
 use tracing::instrument;
@@ -46,7 +48,7 @@ use crate::{
 pub struct WriteSavepoint {
 	pub(crate) pending_writes: PendingWrites,
 	pub(crate) count: u64,
-	pub(crate) size: u64,
+	pub(crate) size: ByteSize,
 	pub(crate) duplicates: Vec<DeltaEntry>,
 	pub(crate) delta_log_len: usize,
 	pub(crate) conflicts: ConflictManager,
@@ -66,7 +68,7 @@ pub struct MultiWriteTransaction {
 	pub(crate) id: TransactionId,
 	pub(crate) version: CommitVersion,
 	pub(crate) read_version: Option<CommitVersion>,
-	pub(crate) size: u64,
+	pub(crate) size: ByteSize,
 	pub(crate) count: u64,
 	pub(crate) oracle: Arc<Oracle<StandardVersionProvider>>,
 	pub(crate) conflicts: ConflictManager,
@@ -95,7 +97,7 @@ impl MultiWriteTransaction {
 			id,
 			version,
 			read_version: None,
-			size: 0,
+			size: ByteSize::ZERO,
 			count: 0,
 			oracle,
 			conflicts: ConflictManager::new(),

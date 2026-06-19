@@ -11,6 +11,7 @@ use std::{
 };
 
 use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
+use reifydb_value::byte_size::ByteSize;
 
 use crate::multi::types::DeltaEntry;
 
@@ -22,7 +23,7 @@ pub struct PendingWrites {
 
 	position_index: HashMap<EncodedKey, usize>,
 
-	estimated_size: u64,
+	estimated_size: ByteSize,
 }
 
 impl PendingWrites {
@@ -31,7 +32,7 @@ impl PendingWrites {
 			writes: BTreeMap::new(),
 			insertion_order: Vec::new(),
 			position_index: HashMap::new(),
-			estimated_size: 0,
+			estimated_size: ByteSize::ZERO,
 		}
 	}
 
@@ -46,8 +47,8 @@ impl PendingWrites {
 	}
 
 	#[inline]
-	pub fn max_batch_size(&self) -> u64 {
-		1024 * 1024 * 1024
+	pub fn max_batch_size(&self) -> ByteSize {
+		ByteSize::from_gib(1)
 	}
 
 	#[inline]
@@ -56,8 +57,8 @@ impl PendingWrites {
 	}
 
 	#[inline]
-	pub fn estimate_size(&self, _entry: &DeltaEntry) -> u64 {
-		(size_of::<EncodedKey>() + size_of::<EncodedRow>()) as u64
+	pub fn estimate_size(&self, _entry: &DeltaEntry) -> ByteSize {
+		ByteSize::from_bytes((size_of::<EncodedKey>() + size_of::<EncodedRow>()) as u64)
 	}
 
 	#[inline]
@@ -127,11 +128,11 @@ impl PendingWrites {
 		self.writes.clear();
 		self.insertion_order.clear();
 		self.position_index.clear();
-		self.estimated_size = 0;
+		self.estimated_size = ByteSize::ZERO;
 	}
 
 	#[inline]
-	pub fn total_estimated_size(&self) -> u64 {
+	pub fn total_estimated_size(&self) -> ByteSize {
 		self.estimated_size
 	}
 
@@ -325,11 +326,11 @@ pub mod tests {
 		}
 
 		assert_eq!(pw.len(), 10);
-		assert!(pw.total_estimated_size() > 0);
+		assert!(pw.total_estimated_size() > ByteSize::ZERO);
 
 		pw.rollback();
 
 		assert!(pw.is_empty());
-		assert_eq!(pw.total_estimated_size(), 0);
+		assert_eq!(pw.total_estimated_size(), ByteSize::ZERO);
 	}
 }

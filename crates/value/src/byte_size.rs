@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 ReifyDB
 
-use std::fmt::{self, Display, Formatter};
+use std::{
+	fmt::{self, Display, Formatter},
+	ops::Add,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -9,7 +12,7 @@ const KIB: u64 = 1024;
 const MIB: u64 = 1024 * 1024;
 const GIB: u64 = 1024 * 1024 * 1024;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[repr(transparent)]
 pub struct ByteSize(u64);
 
@@ -38,6 +41,22 @@ impl ByteSize {
 
 	pub const fn as_kib(self) -> u64 {
 		self.0 / KIB
+	}
+
+	pub const fn saturating_add(self, other: Self) -> Self {
+		Self(self.0.saturating_add(other.0))
+	}
+
+	pub const fn saturating_sub(self, other: Self) -> Self {
+		Self(self.0.saturating_sub(other.0))
+	}
+}
+
+impl Add for ByteSize {
+	type Output = Self;
+
+	fn add(self, rhs: Self) -> Self {
+		Self(self.0 + rhs.0)
 	}
 }
 
@@ -117,5 +136,27 @@ mod tests {
 		assert_eq!(ByteSize::from_bytes(4096).to_string(), "4 KiB");
 		assert_eq!(ByteSize::from_bytes(1500).to_string(), "1500 B");
 		assert_eq!(ByteSize::ZERO.to_string(), "0 B");
+	}
+
+	#[test]
+	fn test_add_sums_bytes() {
+		assert_eq!(ByteSize::from_kib(1) + ByteSize::from_kib(3), ByteSize::from_kib(4));
+		assert_eq!(ByteSize::from_mib(1) + ByteSize::from_bytes(512), ByteSize::from_bytes(1024 * 1024 + 512));
+		assert_eq!(ByteSize::ZERO + ByteSize::from_bytes(7), ByteSize::from_bytes(7));
+	}
+
+	#[test]
+	fn test_saturating_add_clamps_at_max() {
+		assert_eq!(ByteSize::from_bytes(10).saturating_add(ByteSize::from_bytes(5)), ByteSize::from_bytes(15));
+		assert_eq!(
+			ByteSize::from_bytes(u64::MAX).saturating_add(ByteSize::from_bytes(1)),
+			ByteSize::from_bytes(u64::MAX)
+		);
+	}
+
+	#[test]
+	fn test_saturating_sub_clamps_at_zero() {
+		assert_eq!(ByteSize::from_bytes(10).saturating_sub(ByteSize::from_bytes(4)), ByteSize::from_bytes(6));
+		assert_eq!(ByteSize::from_bytes(3).saturating_sub(ByteSize::from_bytes(9)), ByteSize::ZERO);
 	}
 }
