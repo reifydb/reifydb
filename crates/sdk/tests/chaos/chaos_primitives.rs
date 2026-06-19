@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
 //! `duplicate_update_burst` and `update_as_remove_insert` at extreme

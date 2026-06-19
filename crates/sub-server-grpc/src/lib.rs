@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
 //! gRPC server. Accepts requests, hands them to `sub-server` for execution, and streams subscription updates back

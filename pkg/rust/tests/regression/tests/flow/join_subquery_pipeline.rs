@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
 // Regression: compile_join_subquery in crates/rql/src/plan/logical/query/join.rs

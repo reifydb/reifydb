@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
 // flush_state must be deferred to the explicit flush, not run inside apply. The

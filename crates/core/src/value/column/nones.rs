@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::{reifydb_assertions, storage::DataBitVec, util::bitvec::BitVec};

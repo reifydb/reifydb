@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
 // Reproducer: a DEFERRED view that APPENDs a base table with a TRANSACTIONAL filter view leaks the

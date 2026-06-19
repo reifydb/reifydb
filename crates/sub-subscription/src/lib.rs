@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
 //! Ephemeral subscription subsystem: maintains the per-client cursor that drains the CDC stream and pushes deltas

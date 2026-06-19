@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
 //! Bumpalo-backed arena allocator used by the engine for per-request scratch storage. Plans, intermediate column

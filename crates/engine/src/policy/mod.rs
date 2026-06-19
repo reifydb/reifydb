@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
 //! Engine-side policy enforcement. Wraps `reifydb-policy`'s evaluators with the call-sites the VM needs: write

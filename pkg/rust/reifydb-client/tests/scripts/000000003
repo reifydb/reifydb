@@ -1,5 +1,5 @@
 # Copyright (c) reifydb.com 2026
-# This file is licensed under the MIT
+# This file is licensed under the Apache-2.0
 
 # Test multiple sequential operations
 admin 'create namespace ops'

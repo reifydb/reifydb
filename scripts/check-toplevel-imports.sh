@@ -1,5 +1,5 @@
 #!/bin/bash
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 ReifyDB
 # Check that all `use` statements are at module level (not inside function bodies,
 # match arms, closures, or other code blocks).

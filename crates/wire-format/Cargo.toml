@@ -4,7 +4,7 @@ description = "RBCF (ReifyDB Binary Columnar Format) wire format encoder/decoder
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-license = "MIT"
+license.workspace = true
 
 [build-dependencies]
 reifydb-build = { workspace = true }

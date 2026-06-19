@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
 //! Per-column wire encodings: plain, dictionary, run-length, and delta. Each encoding has a stable tag in the RBCF

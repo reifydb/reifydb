@@ -1,5 +1,5 @@
 # Copyright (c) reifydb.com 2026
-# This file is licensed under the AGPL-3.0-or-later, see license.md file
+# This file is licensed under the Apache-2.0, see license.md file
 
 # Defect targets (coupled-flush model):
 #   - sweep persisting the wrong version when a key is written several times below W

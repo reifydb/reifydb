@@ -1,5 +1,5 @@
 # Copyright (c) reifydb.com 2026
-# This file is licensed under the AGPL-3.0-or-later, see license.md file
+# This file is licensed under the Apache-2.0, see license.md file
 
 # Regression: re-registering a migration with the same name but a different body
 # must fail with `MigrationHashMismatch`. Applied migrations are immutable; if

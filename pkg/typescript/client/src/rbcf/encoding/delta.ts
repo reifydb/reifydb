@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
 // Delta and DeltaRLE encodings. Port of crates/wire-format/src/encoding/delta.rs.

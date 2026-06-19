@@ -1,5 +1,5 @@
 # Copyright (c) reifydb.com 2026
-# This file is licensed under the AGPL-3.0-or-later, see license.md file
+# This file is licensed under the Apache-2.0, see license.md file
 
 # A seeded (older) read-tier entry must never shadow a newer version still resident in
 # the commit tier. The sweep seeds v2 (<= W); v5 (> W) stays in the commit tier.

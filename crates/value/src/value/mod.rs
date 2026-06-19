@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
 //! Workspace-wide value system. Defines the `Value` enum every column carries, the `ValueType` enum that classifies it,

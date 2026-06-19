@@ -2,7 +2,7 @@
 name = "reifydb-build"
 version.workspace = true
 edition.workspace = true
-license = "MIT"
+license.workspace = true
 description = "Build utilities for ReifyDB target detection"
 
 [dependencies]

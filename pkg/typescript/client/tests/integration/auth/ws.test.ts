@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {afterEach, beforeAll, describe, expect, it} from 'vitest';
 import {wait_for_database} from "../setup";

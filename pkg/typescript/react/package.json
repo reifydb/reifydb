@@ -42,12 +42,11 @@
   "files": [
     "dist/",
     "package.json",
-    "readme.md",
-    "license.md"
+    "readme.md"
   ],
   "publishConfig": {
     "access": "public",
     "linkWorkspacePackages": false
   },
-  "license": "MIT"
+  "license": "Apache-2.0"
 }

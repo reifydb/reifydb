@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
 //! Decoder side of RBCF. Reverses what `encode/` does: parses the frame header, walks the per-column headers,

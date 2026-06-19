@@ -3,7 +3,7 @@ name = "reifydb-value"
 authors.workspace = true
 version.workspace = true
 edition.workspace = true
-license = "MIT"
+license.workspace = true
 repository.workspace = true
 description = "Core type system and value representations for ReifyDB"
 

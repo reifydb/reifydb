@@ -1,5 +1,5 @@
 # Copyright (c) reifydb.com 2026
-# This file is licensed under the AGPL-3.0-or-later, see license.md file
+# This file is licensed under the Apache-2.0, see license.md file
 
 # The critical invariant: in a batched read a buffer tombstone must shadow a higher-versioned
 # persistent "ghost", exactly as the single-key cascade does (cascade/03_tombstone_short_circuit).

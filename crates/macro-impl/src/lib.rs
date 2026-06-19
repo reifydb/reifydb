@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
 //! Implementation crate for ReifyDB derive macros. Holds the parsing, validation, and codegen for `FromFrame` (and

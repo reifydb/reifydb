@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
 //! Small dependency-free utilities used throughout the workspace: the bit-vector backing none-bitmaps and row

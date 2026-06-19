@@ -3,7 +3,7 @@ name = "reifydb-macro"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-license = "AGPL-3.0-or-later"
+license.workspace = true
 repository.workspace = true
 description = "Macros for ReifyDB"
 

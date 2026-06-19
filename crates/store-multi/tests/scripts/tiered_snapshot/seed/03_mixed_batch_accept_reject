@@ -1,5 +1,5 @@
 # Copyright (c) reifydb.com 2026
-# This file is licensed under the AGPL-3.0-or-later, see license.md file
+# This file is licensed under the Apache-2.0, see license.md file
 
 # A single sweep evicting multiple keys partitions them by the persistent version
 # guard: accepted keys are seeded into the read tier, rejected (stale) keys are

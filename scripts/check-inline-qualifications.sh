@@ -1,5 +1,5 @@
 #!/bin/bash
-# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 ReifyDB
 # Check for inline qualified paths (crate::, super::, reifydb_*::, std::, or
 # vendored crate paths) that should be top-level `use` imports instead.

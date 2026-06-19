@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {JsonHttpClient} from '../src/json-http';

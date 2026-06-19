@@ -1,5 +1,5 @@
 # Copyright (c) reifydb.com 2026
-# This file is licensed under the AGPL-3.0-or-later, see license.md file
+# This file is licensed under the Apache-2.0, see license.md file
 
 # Five versions of one operator-state key, all with the same old created_at.
 # All five go into the drop batch (bulk fast path) without any cascading

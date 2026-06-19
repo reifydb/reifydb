@@ -1,5 +1,5 @@
 # Copyright (c) reifydb.com 2026
-# This file is licensed under the AGPL-3.0-or-later, see license.md file
+# This file is licensed under the Apache-2.0, see license.md file
 
 # Verifies MemoryPrimitiveStorage::get classifies Value / Tombstone / NotFound, including
 # historical version resolution, and never collapses a tombstone into a missing key.

@@ -16,7 +16,7 @@ A database designed to manage live application state with transactional guarante
 </h3>
 
 [![GitHub Repo stars](https://img.shields.io/github/stars/reifydb/reifydb)](https://github.com/reifydb/reifydb/stargazers)
-[![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](https://github.com/reifydb/reifydb/blob/main/license.md)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/reifydb/reifydb/blob/main/license.md)
 
 <p align="center">
   <strong>IN DEVELOPMENT</strong><br>
@@ -273,7 +273,7 @@ See **[contributing.md](contributing.md)** for details on how to participate.
 <h2>License</h2>
 
 <p>
-ReifyDB is <strong>open-source under the <a href="https://github.com/reifydb/reifydb/blob/main/license.md">AGPL-3.0-or-later license</a></strong>.
+ReifyDB is <strong>open-source under the <a href="https://github.com/reifydb/reifydb/blob/main/license.md">Apache-2.0 license</a></strong>.
 </p>
 
 
