@@ -950,7 +950,6 @@ impl CdcStorage for SqliteCdcStorage {
 		let live = scan_live_rows_below(conn, &version_bytes)?;
 
 		apply_drop_before(conn, &full_blocks.pks, &straddle.actions, &version_bytes, zstd_level)?;
-		let _ = pragma::incremental_vacuum(conn);
 
 		let mut entries = full_blocks.entries;
 		entries.extend(straddle.entries);
@@ -960,6 +959,11 @@ impl CdcStorage for SqliteCdcStorage {
 			entries,
 			more_remaining,
 		})
+	}
+
+	fn vacuum(&self) -> CdcStorageResult<()> {
+		self.incremental_vacuum();
+		Ok(())
 	}
 
 	fn find_ttl_cutoff(&self, cutoff: DateTime) -> CdcStorageResult<Option<CommitVersion>> {

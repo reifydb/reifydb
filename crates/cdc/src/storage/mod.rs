@@ -113,6 +113,10 @@ pub trait CdcStorage: Send + Sync + Clone + 'static {
 
 	fn drop_before(&self, version: CommitVersion, limit: usize) -> CdcStorageResult<DropBeforeResult>;
 
+	fn vacuum(&self) -> CdcStorageResult<()> {
+		Ok(())
+	}
+
 	fn find_ttl_cutoff(&self, cutoff: DateTime) -> CdcStorageResult<Option<CommitVersion>> {
 		let Some(min) = self.min_version()? else {
 			return Ok(None);
@@ -178,6 +182,10 @@ impl<T: CdcStorage> CdcStorage for sync::Arc<T> {
 
 	fn drop_before(&self, version: CommitVersion, limit: usize) -> CdcStorageResult<DropBeforeResult> {
 		(**self).drop_before(version, limit)
+	}
+
+	fn vacuum(&self) -> CdcStorageResult<()> {
+		(**self).vacuum()
 	}
 
 	fn find_ttl_cutoff(&self, cutoff: DateTime) -> CdcStorageResult<Option<CommitVersion>> {
@@ -277,6 +285,14 @@ impl CdcStore {
 		}
 	}
 
+	pub fn vacuum(&self) -> CdcStorageResult<()> {
+		match self {
+			Self::Memory(s) => s.vacuum(),
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+			Self::Sqlite(s) => s.vacuum(),
+		}
+	}
+
 	pub fn find_ttl_cutoff(&self, cutoff: DateTime) -> CdcStorageResult<Option<CommitVersion>> {
 		match self {
 			Self::Memory(s) => s.find_ttl_cutoff(cutoff),
@@ -318,6 +334,10 @@ impl CdcStorage for CdcStore {
 
 	fn drop_before(&self, version: CommitVersion, limit: usize) -> CdcStorageResult<DropBeforeResult> {
 		CdcStore::delete_before(self, version, limit)
+	}
+
+	fn vacuum(&self) -> CdcStorageResult<()> {
+		CdcStore::vacuum(self)
 	}
 
 	fn find_ttl_cutoff(&self, cutoff: DateTime) -> CdcStorageResult<Option<CommitVersion>> {

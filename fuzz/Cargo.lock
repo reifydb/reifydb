@@ -1064,6 +1064,7 @@ name = "reifydb-sqlite"
 version = "0.6.0"
 dependencies = [
  "reifydb-build",
+ "reifydb-value",
  "rusqlite",
  "thiserror",
  "uuid",
