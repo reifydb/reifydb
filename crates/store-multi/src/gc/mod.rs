@@ -9,6 +9,7 @@
 pub mod epoch;
 pub mod historical;
 pub mod operator;
+pub mod reclaim;
 pub mod row;
 
 use reifydb_core::common::CommitVersion;

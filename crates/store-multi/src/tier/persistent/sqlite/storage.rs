@@ -202,6 +202,16 @@ impl SqlitePersistentStorage {
 		})
 	}
 
+	pub fn reclaim(&self) -> Result<()> {
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(());
+		};
+		pragma::incremental_vacuum(conn)
+			.map_err(|e| error!(internal(format!("Failed to reclaim persistent free pages: {}", e))))?;
+		Ok(())
+	}
+
 	pub fn in_memory() -> (Self, SqliteTempPathGuard) {
 		let (config, guard) = SqliteConfig::in_memory();
 		(Self::new(config), guard)

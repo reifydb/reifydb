@@ -60,6 +60,7 @@ pub enum ConfigKey {
 	CdcRecentCacheCapacity,
 	MultiReadBufferPages,
 	MultiReadBufferPageSize,
+	MultiReclaimInterval,
 	FlowTick,
 	CdcWatermarkWaitTimeout,
 	FlowJoinProbeBlockSize,
@@ -101,6 +102,7 @@ impl ConfigKey {
 			Self::CdcRecentCacheCapacity,
 			Self::MultiReadBufferPages,
 			Self::MultiReadBufferPageSize,
+			Self::MultiReclaimInterval,
 			Self::FlowTick,
 			Self::CdcWatermarkWaitTimeout,
 			Self::FlowJoinProbeBlockSize,
@@ -144,6 +146,7 @@ impl ConfigKey {
 			Self::CdcRecentCacheCapacity => Value::Uint8(128),
 			Self::MultiReadBufferPages => Value::Uint8(1024),
 			Self::MultiReadBufferPageSize => Value::Uint8(65536),
+			Self::MultiReclaimInterval => Value::duration_seconds(30),
 			Self::FlowTick => Value::duration_seconds(1),
 			Self::CdcWatermarkWaitTimeout => Value::duration_seconds(1),
 			Self::FlowJoinProbeBlockSize => Value::Uint8(1024),
@@ -225,6 +228,9 @@ impl ConfigKey {
 				"Number of rows per cached page (bucket) in the multi-version read cache. Must be a \
 				 power of two; sets the granularity of whole-page read-ahead and completeness tracking."
 			}
+			Self::MultiReclaimInterval => {
+				"How often the multi store reclaims free pages (incremental_vacuum + WAL truncate) on its persistent SQLite tier, returning space to the OS after evictions. Decoupled from the GC/flush delete cadence."
+			}
 			Self::FlowTick => {
 				"How often the deferred and transactional flow tick coordinators wake up to dispatch \
 				 due flows."
@@ -294,7 +300,7 @@ impl ConfigKey {
 			Self::HistoricalGcBatchSize => false,
 			Self::HistoricalGcInterval => false,
 			Self::CdcTtlDuration => false,
-			Self::CdcTtlScanInterval => false,
+			Self::CdcTtlScanInterval => true,
 			Self::CdcTtlScanBatchSize => false,
 			Self::CdcTtlScanMaxBatchesPerTick => false,
 			Self::CdcTtlReclaimInterval => false,
@@ -307,6 +313,7 @@ impl ConfigKey {
 			Self::CdcRecentCacheCapacity => true,
 			Self::MultiReadBufferPages => true,
 			Self::MultiReadBufferPageSize => true,
+			Self::MultiReclaimInterval => true,
 			Self::FlowTick => false,
 			Self::CdcWatermarkWaitTimeout => false,
 			Self::FlowJoinProbeBlockSize => false,
@@ -348,6 +355,7 @@ impl ConfigKey {
 			Self::CdcRecentCacheCapacity => &[ValueType::Uint8],
 			Self::MultiReadBufferPages => &[ValueType::Uint8],
 			Self::MultiReadBufferPageSize => &[ValueType::Uint8],
+			Self::MultiReclaimInterval => &[ValueType::Duration],
 			Self::FlowTick => &[ValueType::Duration],
 			Self::CdcWatermarkWaitTimeout => &[ValueType::Duration],
 			Self::FlowJoinProbeBlockSize => &[ValueType::Uint8],
@@ -389,6 +397,7 @@ impl ConfigKey {
 			Self::CdcRecentCacheCapacity => false,
 			Self::MultiReadBufferPages => false,
 			Self::MultiReadBufferPageSize => false,
+			Self::MultiReclaimInterval => false,
 			Self::FlowTick => false,
 			Self::CdcWatermarkWaitTimeout => false,
 			Self::FlowJoinProbeBlockSize => false,
@@ -658,6 +667,7 @@ impl fmt::Display for ConfigKey {
 			Self::CdcRecentCacheCapacity => write!(f, "CDC_RECENT_CACHE_CAPACITY"),
 			Self::MultiReadBufferPages => write!(f, "MULTI_READ_BUFFER_PAGES"),
 			Self::MultiReadBufferPageSize => write!(f, "MULTI_READ_BUFFER_PAGE_SIZE"),
+			Self::MultiReclaimInterval => write!(f, "MULTI_RECLAIM_INTERVAL"),
 			Self::FlowTick => write!(f, "FLOW_TICK"),
 			Self::CdcWatermarkWaitTimeout => write!(f, "CDC_WATERMARK_WAIT_TIMEOUT"),
 			Self::FlowJoinProbeBlockSize => write!(f, "FLOW_JOIN_PROBE_BLOCK_SIZE"),
@@ -703,6 +713,7 @@ impl FromStr for ConfigKey {
 			"CDC_RECENT_CACHE_CAPACITY" => Ok(Self::CdcRecentCacheCapacity),
 			"MULTI_READ_BUFFER_PAGES" => Ok(Self::MultiReadBufferPages),
 			"MULTI_READ_BUFFER_PAGE_SIZE" => Ok(Self::MultiReadBufferPageSize),
+			"MULTI_RECLAIM_INTERVAL" => Ok(Self::MultiReclaimInterval),
 			"FLOW_TICK" => Ok(Self::FlowTick),
 			"CDC_WATERMARK_WAIT_TIMEOUT" => Ok(Self::CdcWatermarkWaitTimeout),
 			"FLOW_JOIN_PROBE_BLOCK_SIZE" => Ok(Self::FlowJoinProbeBlockSize),
@@ -854,10 +865,11 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 36);
+		assert_eq!(all.len(), 37);
 		assert!(all.contains(&ConfigKey::VersionEpochSampleInterval));
 		assert!(all.contains(&ConfigKey::CdcWatermarkWaitTimeout));
 		assert!(all.contains(&ConfigKey::FlowJoinProbeBlockSize));
+		assert!(all.contains(&ConfigKey::MultiReclaimInterval));
 		assert!(all.contains(&ConfigKey::CdcTtlScanInterval));
 		assert!(all.contains(&ConfigKey::CdcTtlScanBatchSize));
 		assert!(all.contains(&ConfigKey::CdcTtlReclaimInterval));
