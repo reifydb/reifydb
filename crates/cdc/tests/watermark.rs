@@ -257,7 +257,7 @@ fn test_slow_consumer_prevents_cdc_cleanup_until_caught_up() {
 	assert_eq!(watermark, CommitVersion(20));
 
 	// Cleanup: only version 10 removed (< 20)
-	let result = storage.drop_before(watermark).unwrap();
+	let result = storage.drop_before(watermark, usize::MAX).unwrap();
 	assert_eq!(result.count, 1);
 	assert!(storage.read(CommitVersion(10)).unwrap().is_none());
 	assert!(storage.read(CommitVersion(20)).unwrap().is_some()); // Retained!
@@ -274,7 +274,7 @@ fn test_slow_consumer_prevents_cdc_cleanup_until_caught_up() {
 	assert_eq!(watermark, CommitVersion(50));
 
 	// Cleanup: versions 20, 30, 40 now removed
-	let result = storage.drop_before(watermark).unwrap();
+	let result = storage.drop_before(watermark, usize::MAX).unwrap();
 	assert_eq!(result.count, 3);
 	assert!(storage.read(CommitVersion(50)).unwrap().is_some()); // Still retained
 	assert_eq!(storage.len(), 1);
@@ -298,7 +298,7 @@ fn test_cdc_entry_at_watermark_is_retained() {
 	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
 	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
 
-	let result = storage.drop_before(watermark).unwrap();
+	let result = storage.drop_before(watermark, usize::MAX).unwrap();
 	assert_eq!(result.count, 2); // Versions 1, 2 removed
 	assert!(storage.read(CommitVersion(3)).unwrap().is_some()); // Version 3 retained!
 	assert_eq!(storage.len(), 3); // Versions 3, 4, 5 remain
@@ -325,7 +325,7 @@ fn test_incremental_cleanup_as_slow_consumer_advances() {
 	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
 	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
 	assert_eq!(watermark, CommitVersion(10));
-	let result = storage.drop_before(watermark).unwrap();
+	let result = storage.drop_before(watermark, usize::MAX).unwrap();
 	assert_eq!(result.count, 0);
 	assert_eq!(storage.len(), 10);
 
@@ -337,7 +337,7 @@ fn test_incremental_cleanup_as_slow_consumer_advances() {
 	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
 	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
 	assert_eq!(watermark, CommitVersion(30));
-	let result = storage.drop_before(watermark).unwrap();
+	let result = storage.drop_before(watermark, usize::MAX).unwrap();
 	assert_eq!(result.count, 2); // Versions 10, 20 removed
 	assert_eq!(storage.len(), 8);
 
@@ -349,7 +349,7 @@ fn test_incremental_cleanup_as_slow_consumer_advances() {
 	let mut query_txn = t.begin_query(IdentityId::system()).unwrap();
 	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap().unwrap_or(CommitVersion(1));
 	assert_eq!(watermark, CommitVersion(70));
-	let result = storage.drop_before(watermark).unwrap();
+	let result = storage.drop_before(watermark, usize::MAX).unwrap();
 	assert_eq!(result.count, 4); // Versions 30, 40, 50, 60 removed
 	assert_eq!(storage.len(), 4); // Versions 70, 80, 90, 100 remain
 
@@ -384,7 +384,7 @@ fn test_multiple_slow_consumers_constrain_cleanup() {
 	assert_eq!(watermark, CommitVersion(20));
 
 	// Only version 10 can be cleaned up
-	let result = storage.drop_before(watermark).unwrap();
+	let result = storage.drop_before(watermark, usize::MAX).unwrap();
 	assert_eq!(result.count, 1);
 	assert_eq!(storage.len(), 4);
 
@@ -398,7 +398,7 @@ fn test_multiple_slow_consumers_constrain_cleanup() {
 	assert_eq!(watermark, CommitVersion(30)); // medium_consumer is now the slowest
 
 	// Version 20 can now be cleaned up
-	let result = storage.drop_before(watermark).unwrap();
+	let result = storage.drop_before(watermark, usize::MAX).unwrap();
 	assert_eq!(result.count, 1);
 	assert_eq!(storage.len(), 3); // Versions 30, 40, 50 remain
 
@@ -413,7 +413,7 @@ fn test_multiple_slow_consumers_constrain_cleanup() {
 	assert_eq!(watermark, CommitVersion(50));
 
 	// Versions 30, 40 can now be cleaned up
-	let result = storage.drop_before(watermark).unwrap();
+	let result = storage.drop_before(watermark, usize::MAX).unwrap();
 	assert_eq!(result.count, 2);
 	assert_eq!(storage.len(), 1); // Only version 50 remains
 	assert!(storage.read(CommitVersion(50)).unwrap().is_some());

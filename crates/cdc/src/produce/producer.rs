@@ -30,10 +30,7 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 };
-use reifydb_value::{
-	Result,
-	value::{datetime::DateTime, duration::Duration},
-};
+use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::{debug, error, info};
 
 use crate::{
@@ -172,14 +169,17 @@ where
 	}
 
 	fn try_cleanup(&self) {
+		let catalog = self.host.catalog();
+		let batch_size = (catalog.get_config_uint8(ConfigKey::CdcTtlScanBatchSize) as usize).max(1);
+		let max_batches = (catalog.get_config_uint8(ConfigKey::CdcTtlScanMaxBatchesPerTick) as usize).max(1);
 		match self.find_eviction_target() {
 			Ok(Some(cutoff_version)) => {
-				if let Err(e) = self.evict_and_emit(cutoff_version) {
-					error!("CDC cleanup failed: {:?}", e);
+				if let Err(e) = self.evict_and_emit(cutoff_version, batch_size, max_batches) {
+					error!(cutoff = cutoff_version.0, error = ?e, "CDC cleanup failed");
 				}
 			}
 			Ok(None) => {}
-			Err(e) => error!("CDC cleanup failed: {:?}", e),
+			Err(e) => error!(error = ?e, "CDC cleanup failed"),
 		}
 	}
 
@@ -199,22 +199,39 @@ where
 		Ok(Some(cutoff_version))
 	}
 
-	#[inline]
-	fn evict_and_emit(&self, cutoff_version: CommitVersion) -> Result<()> {
-		let result = self.storage.drop_before(cutoff_version)?;
-		if result.count == 0 {
-			return Ok(());
+	fn evict_and_emit(&self, cutoff_version: CommitVersion, batch_size: usize, max_batches: usize) -> Result<()> {
+		let mut iterations = 0usize;
+		loop {
+			let result = self.storage.drop_before(cutoff_version, batch_size)?;
+			if result.count > 0 {
+				debug!(
+					cutoff = cutoff_version.0,
+					deleted = result.count,
+					"CDC TTL eviction batch completed"
+				);
+				let drop_entries: Vec<CdcEviction> = result
+					.entries
+					.into_iter()
+					.map(|e| CdcEviction {
+						key: e.key,
+						value_bytes: e.value_bytes,
+					})
+					.collect();
+				self.event_bus.emit(CdcEvictedEvent::new(drop_entries, cutoff_version));
+			}
+			iterations += 1;
+			if !result.more_remaining {
+				break;
+			}
+			if iterations >= max_batches {
+				debug!(
+					cutoff = cutoff_version.0,
+					iterations,
+					"CDC TTL eviction hit per-tick budget with backlog remaining; continuing next tick"
+				);
+				break;
+			}
 		}
-		debug!(cutoff = cutoff_version.0, deleted = result.count, "CDC TTL eviction completed");
-		let drop_entries: Vec<CdcEviction> = result
-			.entries
-			.into_iter()
-			.map(|e| CdcEviction {
-				key: e.key,
-				value_bytes: e.value_bytes,
-			})
-			.collect();
-		self.event_bus.emit(CdcEvictedEvent::new(drop_entries, cutoff_version));
 		Ok(())
 	}
 
@@ -293,7 +310,8 @@ where
 
 	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
 		info!("CDC producer actor started");
-		let timer_handle = ctx.schedule_repeat(Duration::from_seconds(30).unwrap(), CdcProduceMessage::Tick);
+		let interval = self.host.catalog().get_config_duration(ConfigKey::CdcTtlScanInterval);
+		let timer_handle = ctx.schedule_repeat(interval, CdcProduceMessage::Tick);
 		CdcProducerState {
 			_timer_handle: Some(timer_handle),
 		}
@@ -380,7 +398,7 @@ pub mod tests {
 
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 	use reifydb_store_multi::MultiStore;
-	use reifydb_value::value::datetime::DateTime;
+	use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 	use super::*;
 	use crate::{

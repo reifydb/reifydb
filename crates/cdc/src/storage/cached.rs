@@ -73,8 +73,8 @@ impl<S: CdcStorage> CdcStorage for CachedCdcStorage<S> {
 		self.inner.max_version()
 	}
 
-	fn drop_before(&self, version: CommitVersion) -> CdcStorageResult<DropBeforeResult> {
-		self.inner.drop_before(version)
+	fn drop_before(&self, version: CommitVersion, limit: usize) -> CdcStorageResult<DropBeforeResult> {
+		self.inner.drop_before(version, limit)
 	}
 
 	fn find_ttl_cutoff(&self, cutoff: DateTime) -> CdcStorageResult<Option<CommitVersion>> {

@@ -553,6 +553,24 @@ fn query_min_block(conn: &Connection) -> CdcStorageResult<Option<CommitVersion>>
 }
 
 #[inline]
+fn live_cutoff_at_offset(
+	conn: &Connection,
+	cutoff_bytes: &[u8; 8],
+	offset: usize,
+) -> CdcStorageResult<Option<CommitVersion>> {
+	let res = conn.query_row(
+		r#"SELECT version FROM "cdc" WHERE version < ?1 ORDER BY version ASC LIMIT 1 OFFSET ?2"#,
+		params![cutoff_bytes.as_slice(), offset as i64],
+		|row| row.get::<_, Vec<u8>>(0),
+	);
+	match res {
+		Ok(b) => Ok(Some(bytes_to_version(&b)?)),
+		Err(QueryReturnedNoRows) => Ok(None),
+		Err(e) => Err(CdcError::Internal(format!("live_cutoff_at_offset: {e}"))),
+	}
+}
+
+#[inline]
 fn query_min_live(conn: &Connection) -> CdcStorageResult<Option<CommitVersion>> {
 	let r: Option<Vec<u8>> = conn
 		.query_row(r#"SELECT MIN(version) FROM "cdc""#, [], |row| row.get::<_, Option<Vec<u8>>>(0))
@@ -908,19 +926,27 @@ impl CdcStorage for SqliteCdcStorage {
 		query_max_block(conn)
 	}
 
-	fn drop_before(&self, version: CommitVersion) -> CdcStorageResult<DropBeforeResult> {
+	fn drop_before(&self, version: CommitVersion, limit: usize) -> CdcStorageResult<DropBeforeResult> {
 		let guard = self.inner.conn.lock();
 		let Some(conn) = guard.as_ref() else {
-			return Ok(DropBeforeResult {
-				count: 0,
-				entries: Vec::new(),
-			});
+			return Ok(DropBeforeResult::default());
 		};
-		let version_bytes = version_to_bytes(version);
+
+		let cutoff_bytes = version_to_bytes(version);
+		let (effective, more_remaining) = if limit == usize::MAX {
+			(version, false)
+		} else {
+			match live_cutoff_at_offset(conn, &cutoff_bytes, limit)? {
+				Some(v) => (v, true),
+				None => (version, false),
+			}
+		};
+
+		let version_bytes = version_to_bytes(effective);
 		let zstd_level = self.inner.last_zstd_level.load(Ordering::Relaxed);
 
 		let full_blocks = self.scan_full_blocks_below(conn, &version_bytes)?;
-		let straddle = self.scan_straddle_blocks(conn, version, &version_bytes)?;
+		let straddle = self.scan_straddle_blocks(conn, effective, &version_bytes)?;
 		let live = scan_live_rows_below(conn, &version_bytes)?;
 
 		apply_drop_before(conn, &full_blocks.pks, &straddle.actions, &version_bytes, zstd_level)?;
@@ -932,6 +958,7 @@ impl CdcStorage for SqliteCdcStorage {
 		Ok(DropBeforeResult {
 			count: full_blocks.cdc_count + straddle.cdc_count + live.cdc_count,
 			entries,
+			more_remaining,
 		})
 	}
 

@@ -86,6 +86,7 @@ pub struct DroppedCdcEntry {
 pub struct DropBeforeResult {
 	pub count: usize,
 	pub entries: Vec<DroppedCdcEntry>,
+	pub more_remaining: bool,
 }
 
 pub trait CdcStorage: Send + Sync + Clone + 'static {
@@ -110,7 +111,7 @@ pub trait CdcStorage: Send + Sync + Clone + 'static {
 		Ok(self.read(version)?.is_some())
 	}
 
-	fn drop_before(&self, version: CommitVersion) -> CdcStorageResult<DropBeforeResult>;
+	fn drop_before(&self, version: CommitVersion, limit: usize) -> CdcStorageResult<DropBeforeResult>;
 
 	fn find_ttl_cutoff(&self, cutoff: DateTime) -> CdcStorageResult<Option<CommitVersion>> {
 		let Some(min) = self.min_version()? else {
@@ -175,8 +176,8 @@ impl<T: CdcStorage> CdcStorage for sync::Arc<T> {
 		(**self).max_version()
 	}
 
-	fn drop_before(&self, version: CommitVersion) -> CdcStorageResult<DropBeforeResult> {
-		(**self).drop_before(version)
+	fn drop_before(&self, version: CommitVersion, limit: usize) -> CdcStorageResult<DropBeforeResult> {
+		(**self).drop_before(version, limit)
 	}
 
 	fn find_ttl_cutoff(&self, cutoff: DateTime) -> CdcStorageResult<Option<CommitVersion>> {
@@ -268,11 +269,11 @@ impl CdcStore {
 		}
 	}
 
-	pub fn delete_before(&self, version: CommitVersion) -> CdcStorageResult<DropBeforeResult> {
+	pub fn delete_before(&self, version: CommitVersion, limit: usize) -> CdcStorageResult<DropBeforeResult> {
 		match self {
-			Self::Memory(s) => s.drop_before(version),
+			Self::Memory(s) => s.drop_before(version, limit),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(s) => s.drop_before(version),
+			Self::Sqlite(s) => s.drop_before(version, limit),
 		}
 	}
 
@@ -315,8 +316,8 @@ impl CdcStorage for CdcStore {
 		CdcStore::max_version(self)
 	}
 
-	fn drop_before(&self, version: CommitVersion) -> CdcStorageResult<DropBeforeResult> {
-		CdcStore::delete_before(self, version)
+	fn drop_before(&self, version: CommitVersion, limit: usize) -> CdcStorageResult<DropBeforeResult> {
+		CdcStore::delete_before(self, version, limit)
 	}
 
 	fn find_ttl_cutoff(&self, cutoff: DateTime) -> CdcStorageResult<Option<CommitVersion>> {

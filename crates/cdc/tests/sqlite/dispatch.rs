@@ -40,7 +40,7 @@ fn dispatch_through_cdcstore_enum() {
 	assert_eq!(store.min_version().unwrap(), Some(CommitVersion(1)));
 	assert_eq!(store.max_version().unwrap(), Some(CommitVersion(3)));
 
-	let dropped = store.delete_before(CommitVersion(3)).unwrap();
+	let dropped = store.delete_before(CommitVersion(3), usize::MAX).unwrap();
 	assert_eq!(dropped.count, 2);
 	assert_eq!(store.min_version().unwrap(), Some(CommitVersion(3)));
 

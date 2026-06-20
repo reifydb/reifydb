@@ -94,17 +94,19 @@ impl CdcStorage for MemoryCdcStorage {
 		Ok(self.inner.read().keys().next_back().copied())
 	}
 
-	fn drop_before(&self, version: CommitVersion) -> CdcStorageResult<DropBeforeResult> {
+	fn drop_before(&self, version: CommitVersion, limit: usize) -> CdcStorageResult<DropBeforeResult> {
 		let mut guard = self.inner.write();
-		let keys_to_remove: Vec<_> = guard.range(..version).map(|(k, _)| *k).collect();
+		let mut keys_to_remove: Vec<_> = guard.range(..version).take(limit).map(|(k, _)| *k).collect();
+		let more_remaining = keys_to_remove.len() == limit && guard.range(..version).nth(limit).is_some();
 		let count = keys_to_remove.len();
 		let entries = collect_dropped_entries(&guard, &keys_to_remove);
-		for key in keys_to_remove {
+		for key in keys_to_remove.drain(..) {
 			guard.remove(&key);
 		}
 		Ok(DropBeforeResult {
 			count,
 			entries,
+			more_remaining,
 		})
 	}
 }

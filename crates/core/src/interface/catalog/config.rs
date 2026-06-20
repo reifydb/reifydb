@@ -47,6 +47,9 @@ pub enum ConfigKey {
 	HistoricalGcBatchSize,
 	HistoricalGcInterval,
 	CdcTtlDuration,
+	CdcTtlScanInterval,
+	CdcTtlScanBatchSize,
+	CdcTtlScanMaxBatchesPerTick,
 	CdcCompactInterval,
 	CdcCompactBlockSize,
 	CdcCompactSafetyLag,
@@ -84,6 +87,9 @@ impl ConfigKey {
 			Self::HistoricalGcBatchSize,
 			Self::HistoricalGcInterval,
 			Self::CdcTtlDuration,
+			Self::CdcTtlScanInterval,
+			Self::CdcTtlScanBatchSize,
+			Self::CdcTtlScanMaxBatchesPerTick,
 			Self::CdcCompactInterval,
 			Self::CdcCompactBlockSize,
 			Self::CdcCompactSafetyLag,
@@ -123,6 +129,9 @@ impl ConfigKey {
 			Self::CdcTtlDuration => Value::None {
 				inner: ValueType::Duration,
 			},
+			Self::CdcTtlScanInterval => Value::duration_seconds(1),
+			Self::CdcTtlScanBatchSize => Value::Uint8(8192),
+			Self::CdcTtlScanMaxBatchesPerTick => Value::Uint8(32),
 			Self::CdcCompactInterval => Value::duration_seconds(60),
 			Self::CdcCompactBlockSize => Value::Uint8(1024),
 			Self::CdcCompactSafetyLag => Value::Uint8(1024),
@@ -175,6 +184,15 @@ impl ConfigKey {
 				"Maximum age of CDC entries before eviction. When unset, CDC is retained forever; \
 				 when set, must be > 0 and entries older than this duration are evicted regardless \
 				 of consumer state."
+			}
+			Self::CdcTtlScanInterval => {
+				"How often the CDC producer actor scans for and evicts expired CDC entries."
+			}
+			Self::CdcTtlScanBatchSize => {
+				"Max CDC entries deleted per transaction during a CDC TTL eviction tick."
+			}
+			Self::CdcTtlScanMaxBatchesPerTick => {
+				"Upper bound on delete transactions per CDC TTL eviction tick. Caps how long one tick can run when draining a backlog; remaining work continues on the next tick."
 			}
 			Self::CdcCompactInterval => "How often the CDC compaction actor runs.",
 			Self::CdcCompactBlockSize => "Number of CDC entries packed into one compressed block.",
@@ -270,6 +288,9 @@ impl ConfigKey {
 			Self::HistoricalGcBatchSize => false,
 			Self::HistoricalGcInterval => false,
 			Self::CdcTtlDuration => false,
+			Self::CdcTtlScanInterval => false,
+			Self::CdcTtlScanBatchSize => false,
+			Self::CdcTtlScanMaxBatchesPerTick => false,
 			Self::CdcCompactInterval => false,
 			Self::CdcCompactBlockSize => false,
 			Self::CdcCompactSafetyLag => false,
@@ -307,6 +328,9 @@ impl ConfigKey {
 			Self::HistoricalGcBatchSize => &[ValueType::Uint8],
 			Self::HistoricalGcInterval => &[ValueType::Duration],
 			Self::CdcTtlDuration => &[ValueType::Duration],
+			Self::CdcTtlScanInterval => &[ValueType::Duration],
+			Self::CdcTtlScanBatchSize => &[ValueType::Uint8],
+			Self::CdcTtlScanMaxBatchesPerTick => &[ValueType::Uint8],
 			Self::CdcCompactInterval => &[ValueType::Duration],
 			Self::CdcCompactBlockSize => &[ValueType::Uint8],
 			Self::CdcCompactSafetyLag => &[ValueType::Uint8],
@@ -344,6 +368,9 @@ impl ConfigKey {
 			Self::HistoricalGcBatchSize => false,
 			Self::HistoricalGcInterval => false,
 			Self::CdcTtlDuration => true,
+			Self::CdcTtlScanInterval => false,
+			Self::CdcTtlScanBatchSize => false,
+			Self::CdcTtlScanMaxBatchesPerTick => false,
 			Self::CdcCompactInterval => false,
 			Self::CdcCompactBlockSize => false,
 			Self::CdcCompactSafetyLag => false,
@@ -609,6 +636,9 @@ impl fmt::Display for ConfigKey {
 			Self::HistoricalGcBatchSize => write!(f, "HISTORICAL_GC_BATCH_SIZE"),
 			Self::HistoricalGcInterval => write!(f, "HISTORICAL_GC_INTERVAL"),
 			Self::CdcTtlDuration => write!(f, "CDC_TTL_DURATION"),
+			Self::CdcTtlScanInterval => write!(f, "CDC_TTL_SCAN_INTERVAL"),
+			Self::CdcTtlScanBatchSize => write!(f, "CDC_TTL_SCAN_BATCH_SIZE"),
+			Self::CdcTtlScanMaxBatchesPerTick => write!(f, "CDC_TTL_SCAN_MAX_BATCHES_PER_TICK"),
 			Self::CdcCompactInterval => write!(f, "CDC_COMPACT_INTERVAL"),
 			Self::CdcCompactBlockSize => write!(f, "CDC_COMPACT_BLOCK_SIZE"),
 			Self::CdcCompactSafetyLag => write!(f, "CDC_COMPACT_SAFETY_LAG"),
@@ -650,6 +680,9 @@ impl FromStr for ConfigKey {
 			"HISTORICAL_GC_BATCH_SIZE" => Ok(Self::HistoricalGcBatchSize),
 			"HISTORICAL_GC_INTERVAL" => Ok(Self::HistoricalGcInterval),
 			"CDC_TTL_DURATION" => Ok(Self::CdcTtlDuration),
+			"CDC_TTL_SCAN_INTERVAL" => Ok(Self::CdcTtlScanInterval),
+			"CDC_TTL_SCAN_BATCH_SIZE" => Ok(Self::CdcTtlScanBatchSize),
+			"CDC_TTL_SCAN_MAX_BATCHES_PER_TICK" => Ok(Self::CdcTtlScanMaxBatchesPerTick),
 			"CDC_COMPACT_INTERVAL" => Ok(Self::CdcCompactInterval),
 			"CDC_COMPACT_BLOCK_SIZE" => Ok(Self::CdcCompactBlockSize),
 			"CDC_COMPACT_SAFETY_LAG" => Ok(Self::CdcCompactSafetyLag),
@@ -810,10 +843,13 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 32);
+		assert_eq!(all.len(), 35);
 		assert!(all.contains(&ConfigKey::VersionEpochSampleInterval));
 		assert!(all.contains(&ConfigKey::CdcWatermarkWaitTimeout));
 		assert!(all.contains(&ConfigKey::FlowJoinProbeBlockSize));
+		assert!(all.contains(&ConfigKey::CdcTtlScanInterval));
+		assert!(all.contains(&ConfigKey::CdcTtlScanBatchSize));
+		assert!(all.contains(&ConfigKey::CdcTtlScanMaxBatchesPerTick));
 		assert!(all.contains(&ConfigKey::CdcCompactInterval));
 		assert!(all.contains(&ConfigKey::CdcCompactBlockSize));
 		assert!(all.contains(&ConfigKey::CdcCompactSafetyLag));

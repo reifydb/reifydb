@@ -136,7 +136,7 @@ fn assert_overwrite<S: CdcStorage>(storage: S) {
 }
 
 fn assert_drop_before_empty<S: CdcStorage>(storage: S) {
-	let r = storage.drop_before(CommitVersion(10)).unwrap();
+	let r = storage.drop_before(CommitVersion(10), usize::MAX).unwrap();
 	assert_eq!(r.count, 0);
 	assert!(r.entries.is_empty());
 }
@@ -145,7 +145,7 @@ fn assert_drop_before_some<S: CdcStorage>(storage: S) {
 	for v in [1u64, 3, 5, 7, 9] {
 		storage.write(&cdc_minimal(v)).unwrap();
 	}
-	let r = storage.drop_before(CommitVersion(5)).unwrap();
+	let r = storage.drop_before(CommitVersion(5), usize::MAX).unwrap();
 	assert_eq!(r.count, 2);
 	assert_eq!(r.entries.len(), 2);
 	assert!(storage.read(CommitVersion(1)).unwrap().is_none());
@@ -158,7 +158,7 @@ fn assert_drop_before_all<S: CdcStorage>(storage: S) {
 	for v in 1..=3u64 {
 		storage.write(&cdc_minimal(v)).unwrap();
 	}
-	let r = storage.drop_before(CommitVersion(10)).unwrap();
+	let r = storage.drop_before(CommitVersion(10), usize::MAX).unwrap();
 	assert_eq!(r.count, 3);
 	assert!(storage.min_version().unwrap().is_none());
 }
@@ -167,7 +167,7 @@ fn assert_drop_before_none_when_too_low<S: CdcStorage>(storage: S) {
 	for v in 5..=7u64 {
 		storage.write(&cdc_minimal(v)).unwrap();
 	}
-	let r = storage.drop_before(CommitVersion(3)).unwrap();
+	let r = storage.drop_before(CommitVersion(3), usize::MAX).unwrap();
 	assert_eq!(r.count, 0);
 	assert!(r.entries.is_empty());
 	assert_eq!(storage.min_version().unwrap(), Some(CommitVersion(5)));
@@ -177,7 +177,7 @@ fn assert_drop_before_boundary<S: CdcStorage>(storage: S) {
 	for v in 1..=5u64 {
 		storage.write(&cdc_minimal(v)).unwrap();
 	}
-	let r = storage.drop_before(CommitVersion(3)).unwrap();
+	let r = storage.drop_before(CommitVersion(3), usize::MAX).unwrap();
 	assert_eq!(r.count, 2);
 	assert!(storage.read(CommitVersion(3)).unwrap().is_some());
 	assert_eq!(storage.min_version().unwrap(), Some(CommitVersion(3)));
@@ -194,11 +194,45 @@ fn assert_drop_before_entry_stats<S: CdcStorage>(storage: S) {
 		}],
 	);
 	storage.write(&cdc).unwrap();
-	let r: DropBeforeResult = storage.drop_before(CommitVersion(2)).unwrap();
+	let r: DropBeforeResult = storage.drop_before(CommitVersion(2), usize::MAX).unwrap();
 	assert_eq!(r.count, 1);
 	assert_eq!(r.entries.len(), 1);
 	assert_eq!(r.entries[0].key.as_ref(), &[1, 2, 3]);
 	assert_eq!(r.entries[0].value_bytes, 5);
+}
+
+fn assert_drop_before_limited<S: CdcStorage>(storage: S) {
+	// Ten entries below the cutoff (versions 1..=10) plus two at/above it (11, 12).
+	for v in 1..=12u64 {
+		storage.write(&cdc_minimal(v)).unwrap();
+	}
+	let cutoff = CommitVersion(11);
+
+	// A bounded pass deletes at most `limit` below-cutoff entries and reports more remain.
+	// A regression to an unbounded delete would blow past 4 and drain everything at once.
+	let first = storage.drop_before(cutoff, 4).unwrap();
+	assert_eq!(first.count, 4);
+	assert!(first.more_remaining);
+	assert_eq!(first.entries.len(), 4);
+	assert_eq!(storage.min_version().unwrap(), Some(CommitVersion(5)));
+
+	// Entries at/above the cutoff are never touched.
+	assert!(storage.read(CommitVersion(11)).unwrap().is_some());
+	assert!(storage.read(CommitVersion(12)).unwrap().is_some());
+
+	// Looping bounded passes drains exactly the remaining below-cutoff set, no more.
+	let mut total = first.count;
+	loop {
+		let r = storage.drop_before(cutoff, 4).unwrap();
+		total += r.count;
+		if !r.more_remaining {
+			break;
+		}
+	}
+	assert_eq!(total, 10);
+	assert!(storage.read(CommitVersion(10)).unwrap().is_none());
+	assert!(storage.read(CommitVersion(11)).unwrap().is_some());
+	assert_eq!(storage.min_version().unwrap(), Some(CommitVersion(11)));
 }
 
 fn assert_range_inverted_returns_empty<S: CdcStorage>(storage: S) {
@@ -322,6 +356,11 @@ macro_rules! storage_trait_tests {
 			fn drop_before_entry_stats() {
 				let (storage, _guard) = $fresh();
 				super::assert_drop_before_entry_stats(storage);
+			}
+			#[test]
+			fn drop_before_limited() {
+				let (storage, _guard) = $fresh();
+				super::assert_drop_before_limited(storage);
 			}
 		}
 	};
