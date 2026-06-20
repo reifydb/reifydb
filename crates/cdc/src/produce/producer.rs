@@ -30,6 +30,7 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 };
+use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
@@ -37,7 +38,7 @@ use reifydb_value::{
 use tracing::{debug, error, info};
 
 use crate::{
-	consume::{host::CdcHost, wake::CdcWakeRegistry},
+	consume::{host::CdcHost, wake::CdcWakeRegistry, watermark::compute_watermark},
 	produce::watermark::CdcProducerWatermark,
 	storage::CdcStorage,
 };
@@ -215,13 +216,23 @@ where
 		};
 		let cutoff_nanos = self.clock.now_nanos().saturating_sub(ttl.to_std().as_nanos() as u64);
 		let cutoff = DateTime::from_nanos(cutoff_nanos);
-		let Some(cutoff_version) = self.storage.find_ttl_cutoff(cutoff)? else {
+		let Some(ttl_cutoff) = self.storage.find_ttl_cutoff(cutoff)? else {
 			return Ok(None);
+		};
+		let cutoff_version = match self.consumer_watermark()? {
+			Some(watermark) => ttl_cutoff.min(CommitVersion(watermark.0.saturating_add(1))),
+			None => ttl_cutoff,
 		};
 		if cutoff_version.0 == 0 {
 			return Ok(None);
 		}
 		Ok(Some(cutoff_version))
+	}
+
+	#[inline]
+	fn consumer_watermark(&self) -> Result<Option<CommitVersion>> {
+		let mut query = self.host.begin_query()?;
+		compute_watermark(&mut Transaction::Query(&mut query))
 	}
 
 	fn evict_and_emit(
@@ -430,12 +441,14 @@ where
 pub mod tests {
 	use std::thread::sleep;
 
+	use reifydb_core::interface::cdc::CdcConsumerId;
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 	use reifydb_store_multi::MultiStore;
-	use reifydb_value::value::{datetime::DateTime, duration::Duration};
+	use reifydb_value::value::{Value, datetime::DateTime, duration::Duration};
 
 	use super::*;
 	use crate::{
+		consume::checkpoint::CdcCheckpoint,
 		storage::memory::MemoryCdcStorage,
 		testing::{TestCdcHost, make_key, make_row},
 	};
@@ -494,6 +507,65 @@ pub mod tests {
 			}
 			_ => panic!("Expected Insert change"),
 		}
+	}
+
+	#[test]
+	fn eviction_never_passes_the_consumer_watermark() {
+		let storage = MemoryCdcStorage::new();
+		let store = MultiStore::testing_memory();
+		let resolver = store;
+		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
+		let spawner = actor_system.spawner();
+		let event_bus = EventBus::new(&spawner);
+		let host = TestCdcHost::new();
+		let clock = host.clock.clone();
+
+		// Aggressive TTL: every already-written (old-timestamped) entry is TTL-eligible for eviction.
+		host.catalog()
+			.cache()
+			.set_config(
+				ConfigKey::CdcTtlDuration,
+				CommitVersion(1),
+				Value::Duration(Duration::from_milliseconds(1).unwrap()),
+			)
+			.unwrap();
+
+		// CDC entries 1..=10, all timestamped far in the past relative to the host's mock clock.
+		for v in 1..=10u64 {
+			let cdc = Cdc::new(
+				CommitVersion(v),
+				DateTime::from_nanos(1000),
+				vec![],
+				vec![SystemChange::Insert {
+					key: make_key(&format!("k{v}")),
+					post: make_row("v"),
+				}],
+			);
+			storage.write(&cdc).unwrap();
+		}
+
+		// All flows have durably processed only through version 4.
+		let mut cmd = host.begin_command().unwrap();
+		CdcCheckpoint::persist(&mut cmd, &CdcConsumerId::new("flow"), CommitVersion(4)).unwrap();
+		cmd.commit().unwrap();
+
+		let actor = CdcProducerActor::new(
+			storage.clone(),
+			resolver,
+			host,
+			event_bus,
+			clock,
+			CdcProducerWatermark::new(),
+			CdcWakeRegistry::new(),
+		);
+
+		// TTL alone would evict everything (cutoff = 11). The consumer watermark caps the cutoff at
+		// 5 (= 4 + 1), so versions 5..=10 - not yet processed by all flows - are never dropped.
+		assert_eq!(
+			actor.find_eviction_target().unwrap(),
+			Some(CommitVersion(5)),
+			"eviction cutoff must never pass the minimum consumer checkpoint + 1"
+		);
 	}
 
 	#[test]
