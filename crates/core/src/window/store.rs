@@ -19,6 +19,8 @@ pub trait WindowStore {
 
 	fn state_remove(&mut self, key: &EncodedKey) -> Result<()>;
 
+	fn state_drop(&mut self, key: &EncodedKey) -> Result<()>;
+
 	fn internal_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Result<Option<V>>;
 
 	fn internal_get_many_visit<V: DeserializeOwned>(
@@ -30,6 +32,8 @@ pub trait WindowStore {
 	fn internal_set<V: Serialize>(&mut self, key: &EncodedKey, value: &V) -> Result<()>;
 
 	fn internal_remove(&mut self, key: &EncodedKey) -> Result<()>;
+
+	fn internal_drop(&mut self, key: &EncodedKey) -> Result<()>;
 
 	fn internal_range_visit<V: DeserializeOwned>(
 		&mut self,

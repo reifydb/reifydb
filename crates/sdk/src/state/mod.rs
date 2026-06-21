@@ -54,6 +54,10 @@ impl<'a> State<'a> {
 		ffi::remove(self.ctx, key)
 	}
 
+	pub fn drop(&mut self, key: &EncodedKey) -> Result<()> {
+		ffi::drop(self.ctx, key)
+	}
+
 	pub fn contains(&self, key: &EncodedKey) -> Result<bool> {
 		Ok(ffi::get(self.ctx, key)?.is_some())
 	}
@@ -139,6 +143,10 @@ impl<'a> InternalState<'a> {
 
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		ffi::internal_remove(self.ctx, key)
+	}
+
+	pub fn drop(&mut self, key: &EncodedKey) -> Result<()> {
+		ffi::internal_drop(self.ctx, key)
 	}
 
 	pub fn contains(&self, key: &EncodedKey) -> Result<bool> {

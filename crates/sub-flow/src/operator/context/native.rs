@@ -39,6 +39,7 @@ pub trait NativeBridge {
 	fn state_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedRow)>>;
 	fn state_set(&mut self, key: &EncodedKey, value: EncodedRow) -> Result<()>;
 	fn state_remove(&mut self, key: &EncodedKey) -> Result<()>;
+	fn state_drop(&mut self, key: &EncodedKey) -> Result<()>;
 	fn state_clear(&mut self) -> Result<()>;
 	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>>;
 
@@ -46,6 +47,7 @@ pub trait NativeBridge {
 	fn internal_state_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedRow)>>;
 	fn internal_state_set(&mut self, key: &EncodedKey, value: EncodedRow) -> Result<()>;
 	fn internal_state_remove(&mut self, key: &EncodedKey) -> Result<()>;
+	fn internal_state_drop(&mut self, key: &EncodedKey) -> Result<()>;
 	fn internal_state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>>;
 
 	fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber>;
@@ -216,6 +218,9 @@ impl StateApi for NativeState<'_> {
 	fn remove(&mut self, key: &EncodedKey) -> SdkResult<()> {
 		unsafe { (*self.bridge).state_remove(key) }.map_err(to_sdk_err)
 	}
+	fn drop(&mut self, key: &EncodedKey) -> SdkResult<()> {
+		unsafe { (*self.bridge).state_drop(key) }.map_err(to_sdk_err)
+	}
 	fn contains(&self, key: &EncodedKey) -> SdkResult<bool> {
 		Ok(unsafe { (*self.bridge).state_get(key) }.map_err(to_sdk_err)?.is_some())
 	}
@@ -318,6 +323,9 @@ impl InternalStateApi for NativeInternalState<'_> {
 	}
 	fn remove(&mut self, key: &EncodedKey) -> SdkResult<()> {
 		unsafe { (*self.bridge).internal_state_remove(key) }.map_err(to_sdk_err)
+	}
+	fn drop(&mut self, key: &EncodedKey) -> SdkResult<()> {
+		unsafe { (*self.bridge).internal_state_drop(key) }.map_err(to_sdk_err)
 	}
 	fn contains(&self, key: &EncodedKey) -> SdkResult<bool> {
 		Ok(unsafe { (*self.bridge).internal_state_get(key) }.map_err(to_sdk_err)?.is_some())

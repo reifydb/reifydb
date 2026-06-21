@@ -38,6 +38,11 @@ impl<C: OperatorContext> WindowStore for OperatorContextStore<'_, C> {
 		Ok(())
 	}
 
+	fn state_drop(&mut self, key: &EncodedKey) -> Result<()> {
+		self.0.state().drop(key)?;
+		Ok(())
+	}
+
 	fn internal_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Result<Option<V>> {
 		Ok(self.0.internal_state().get::<V>(key)?)
 	}
@@ -58,6 +63,11 @@ impl<C: OperatorContext> WindowStore for OperatorContextStore<'_, C> {
 
 	fn internal_remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.0.internal_state().remove(key)?;
+		Ok(())
+	}
+
+	fn internal_drop(&mut self, key: &EncodedKey) -> Result<()> {
+		self.0.internal_state().drop(key)?;
 		Ok(())
 	}
 

@@ -12,7 +12,10 @@ use reifydb_value::{Result, value::row_number::RowNumber};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
-	operator::stateful::row::{RowNumberProvider, allocate_row_numbers},
+	operator::stateful::{
+		row::{RowNumberProvider, allocate_row_numbers},
+		utils::{internal_state_drop, state_drop},
+	},
 	transaction::FlowTransaction,
 };
 
@@ -62,6 +65,10 @@ impl WindowStore for FlowWindowStore<'_> {
 		self.txn.state_remove(self.node, key)
 	}
 
+	fn state_drop(&mut self, key: &EncodedKey) -> Result<()> {
+		state_drop(self.node, self.txn, key)
+	}
+
 	fn internal_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Result<Option<V>> {
 		match self.txn.internal_state_get(self.node, key)? {
 			Some(row) => Ok(Some(decode_payload::<V>(&row)?)),
@@ -88,6 +95,10 @@ impl WindowStore for FlowWindowStore<'_> {
 
 	fn internal_remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.txn.internal_state_remove(self.node, key)
+	}
+
+	fn internal_drop(&mut self, key: &EncodedKey) -> Result<()> {
+		internal_state_drop(self.node, self.txn, key)
 	}
 
 	fn internal_range_visit<V: DeserializeOwned>(

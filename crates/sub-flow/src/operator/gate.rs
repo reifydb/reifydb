@@ -133,7 +133,7 @@ impl GateOperator {
 	}
 
 	fn mark_invisible(&self, txn: &mut FlowTransaction, rn: RowNumber) -> Result<()> {
-		self.internal_state_remove(txn, &Self::row_number_key(rn))
+		self.internal_state_drop(txn, &Self::row_number_key(rn))
 	}
 }
 

@@ -107,6 +107,29 @@ pub(super) extern "C" fn host_state_remove(
 	}
 }
 
+pub(super) extern "C" fn host_state_drop(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	key_ptr: *const u8,
+	key_len: usize,
+) -> i32 {
+	if ctx.is_null() || key_ptr.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let ctx_handle = &mut *ctx;
+		let flow_txn = get_transaction_mut(ctx_handle);
+
+		let key = encoded_key(key_ptr, key_len);
+
+		match flow_txn.state_drop(FlowNodeId(operator_id), &key) {
+			Ok(_) => FFI_OK,
+			Err(_) => FFI_ERROR_INTERNAL,
+		}
+	}
+}
+
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_state_clear(operator_id: u64, ctx: *mut ContextFFI) -> i32 {
 	if ctx.is_null() {
@@ -582,6 +605,29 @@ pub(super) extern "C" fn host_internal_state_remove(
 		let key = encoded_key(key_ptr, key_len);
 
 		match flow_txn.internal_state_remove(FlowNodeId(operator_id), &key) {
+			Ok(_) => FFI_OK,
+			Err(_) => FFI_ERROR_INTERNAL,
+		}
+	}
+}
+
+pub(super) extern "C" fn host_internal_state_drop(
+	operator_id: u64,
+	ctx: *mut ContextFFI,
+	key_ptr: *const u8,
+	key_len: usize,
+) -> i32 {
+	if ctx.is_null() || key_ptr.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let ctx_handle = &mut *ctx;
+		let flow_txn = get_transaction_mut(ctx_handle);
+
+		let key = encoded_key(key_ptr, key_len);
+
+		match flow_txn.internal_state_drop(FlowNodeId(operator_id), &key) {
 			Ok(_) => FFI_OK,
 			Err(_) => FFI_ERROR_INTERNAL,
 		}

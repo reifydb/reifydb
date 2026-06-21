@@ -1419,7 +1419,10 @@ mod cache_tests {
 			catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId},
 			store::{EntryKind, MultiVersionCommit},
 		},
-		key::{EncodableKey, flow_node_state::FlowNodeStateKey, row::RowKey},
+		key::{
+			EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey,
+			flow_node_state::FlowNodeStateKey, row::RowKey,
+		},
 	};
 	use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
@@ -1475,6 +1478,159 @@ mod cache_tests {
 			}
 			commit.drop(HashMap::from([(kind, to_drop)])).unwrap();
 		}
+	}
+
+	#[test]
+	fn operator_drop_fully_removes_state_leaving_no_tombstone() {
+		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+		let node = FlowNodeId(7);
+		let table = EntryKind::Operator(node);
+		let data_key = FlowNodeStateKey::encoded(node, vec![1u8]);
+		let internal_key = FlowNodeInternalStateKey::encoded(node, vec![2u8]);
+
+		for v in [1u64, 2] {
+			MultiVersionCommit::commit(
+				&store,
+				cow_vec![Delta::Set {
+					key: data_key.clone(),
+					row: EncodedRow(CowVec::new(vec![v as u8])),
+				}],
+				CommitVersion(v),
+			)
+			.unwrap();
+		}
+		for v in [3u64, 4] {
+			MultiVersionCommit::commit(
+				&store,
+				cow_vec![Delta::Set {
+					key: internal_key.clone(),
+					row: EncodedRow(CowVec::new(vec![v as u8])),
+				}],
+				CommitVersion(v),
+			)
+			.unwrap();
+		}
+
+		let commit = store.commit().expect("commit tier");
+		assert!(!commit.get_all_versions(table, data_key.as_ref()).unwrap().is_empty());
+		assert!(!commit.get_all_versions(table, internal_key.as_ref()).unwrap().is_empty());
+
+		MultiVersionCommit::commit(
+			&store,
+			cow_vec![
+				Delta::Drop {
+					key: data_key.clone(),
+				},
+				Delta::Drop {
+					key: internal_key.clone(),
+				}
+			],
+			CommitVersion(5),
+		)
+		.unwrap();
+
+		assert!(
+			commit.get_all_versions(table, data_key.as_ref()).unwrap().is_empty(),
+			"operator data-state Drop must remove every version, not leave a tombstone"
+		);
+		assert!(
+			commit.get_all_versions(table, internal_key.as_ref()).unwrap().is_empty(),
+			"operator internal-state Drop must remove every version, not leave a tombstone"
+		);
+	}
+
+	#[test]
+	fn operator_remove_leaves_a_tombstone_in_commit_tier() {
+		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+		let node = FlowNodeId(8);
+		let table = EntryKind::Operator(node);
+		let key = FlowNodeInternalStateKey::encoded(node, vec![9u8]);
+
+		MultiVersionCommit::commit(
+			&store,
+			cow_vec![Delta::Set {
+				key: key.clone(),
+				row: EncodedRow(CowVec::new(vec![1u8])),
+			}],
+			CommitVersion(1),
+		)
+		.unwrap();
+		MultiVersionCommit::commit(
+			&store,
+			cow_vec![Delta::Remove {
+				key: key.clone(),
+			}],
+			CommitVersion(2),
+		)
+		.unwrap();
+
+		let commit = store.commit().expect("commit tier");
+		let versions = commit.get_all_versions(table, key.as_ref()).unwrap();
+		assert!(
+			versions.iter().any(|(_, value)| value.is_none()),
+			"Remove leaves a tombstone in the commit tier (the path Drop must avoid); versions={versions:?}"
+		);
+	}
+
+	#[test]
+	fn operator_state_drop_keeps_keyspace_bounded_under_churn() {
+		const ROUNDS: u64 = 200;
+
+		fn current_count(store: &StandardMultiStore, table: EntryKind) -> u64 {
+			match store.commit().expect("commit tier") {
+				MultiCommitBufferTier::Memory(s) => s.count_current(table).unwrap(),
+			}
+		}
+
+		fn churn(evict_with_drop: bool) -> u64 {
+			let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+			let node = FlowNodeId(21);
+			let table = EntryKind::Operator(node);
+			let key_at = |round: u64| FlowNodeInternalStateKey::encoded(node, round.to_be_bytes().to_vec());
+
+			let mut version = 0u64;
+			for round in 0..ROUNDS {
+				version += 1;
+				MultiVersionCommit::commit(
+					&store,
+					cow_vec![Delta::Set {
+						key: key_at(round),
+						row: EncodedRow(CowVec::new(vec![1u8])),
+					}],
+					CommitVersion(version),
+				)
+				.unwrap();
+
+				if round > 0 {
+					version += 1;
+					let prev = key_at(round - 1);
+					let delta = if evict_with_drop {
+						Delta::Drop {
+							key: prev,
+						}
+					} else {
+						Delta::Remove {
+							key: prev,
+						}
+					};
+					MultiVersionCommit::commit(&store, cow_vec![delta], CommitVersion(version))
+						.unwrap();
+				}
+			}
+			current_count(&store, table)
+		}
+
+		let drop_live = churn(true);
+		let remove_live = churn(false);
+
+		assert!(
+			drop_live <= 2,
+			"Drop must keep the operator keyspace bounded to the live set; got {drop_live}"
+		);
+		assert!(
+			remove_live >= ROUNDS - 1,
+			"Remove leaves a tombstone per round (the path Drop avoids); got {remove_live} after {ROUNDS} rounds"
+		);
 	}
 
 	#[test]

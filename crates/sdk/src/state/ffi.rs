@@ -109,6 +109,29 @@ pub(crate) fn remove(ctx: &mut FFIOperatorContext, key: &EncodedKey) -> Result<(
 	}
 }
 
+#[instrument(name = "flow::operator::state::ffi::drop", level = "trace", skip(ctx), fields(
+	operator_id = ctx.operator_id().0,
+	key_len = key.as_bytes().len()
+))]
+pub(crate) fn drop(ctx: &mut FFIOperatorContext, key: &EncodedKey) -> Result<()> {
+	let key_bytes = key.as_bytes();
+
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.drop)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			key_bytes.as_ptr(),
+			key_bytes.len(),
+		);
+
+		if result == FFI_OK {
+			Ok(())
+		} else {
+			Err(SdkError::Other(format!("host_state_drop failed with code {}", result)))
+		}
+	}
+}
+
 #[instrument(name = "flow::operator::state::ffi:get_many", level = "debug", skip(ctx, keys), fields(
 	operator_id = ctx.operator_id().0,
 	key_count = keys.len(),
@@ -451,6 +474,29 @@ pub(crate) fn internal_remove(ctx: &mut FFIOperatorContext, key: &EncodedKey) ->
 			Ok(())
 		} else {
 			Err(SdkError::Other(format!("host_internal_state_remove failed with code {}", result)))
+		}
+	}
+}
+
+#[instrument(name = "flow::operator::internal_state::ffi::drop", level = "trace", skip(ctx), fields(
+	operator_id = ctx.operator_id().0,
+	key_len = key.as_bytes().len()
+))]
+pub(crate) fn internal_drop(ctx: &mut FFIOperatorContext, key: &EncodedKey) -> Result<()> {
+	let key_bytes = key.as_bytes();
+
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.internal_drop)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			key_bytes.as_ptr(),
+			key_bytes.len(),
+		);
+
+		if result == FFI_OK {
+			Ok(())
+		} else {
+			Err(SdkError::Other(format!("host_internal_state_drop failed with code {}", result)))
 		}
 	}
 }

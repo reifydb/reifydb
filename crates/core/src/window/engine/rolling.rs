@@ -409,7 +409,7 @@ where
 				};
 				if new_index_key != slot.prior_index_key {
 					if let Some(old) = slot.prior_index_key {
-						store.internal_remove(&expiry_key(old, &group, &[]))?;
+						store.internal_drop(&expiry_key(old, &group, &[]))?;
 					}
 					if let Some(new) = new_index_key {
 						store.internal_set(
@@ -465,7 +465,7 @@ where
 		let mut out: Vec<RollingExpiry<G, Output>> = Vec::new();
 		for (index_key, entry) in due {
 			let row_number = RowNumber(entry.row_number);
-			store.internal_remove(&index_key)?;
+			store.internal_drop(&index_key)?;
 			let Some(mut buffer) = self.buffers.get(store, &row_number)? else {
 				continue;
 			};
@@ -532,7 +532,7 @@ where
 		let mut out: Vec<RollingExpiry<G, Output>> = Vec::new();
 		for (index_key, entry) in due {
 			let row_number = RowNumber(entry.row_number);
-			store.internal_remove(&index_key)?;
+			store.internal_drop(&index_key)?;
 			let Some(mut buffer) = self.buffers.get(store, &row_number)? else {
 				continue;
 			};

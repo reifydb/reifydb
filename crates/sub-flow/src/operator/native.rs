@@ -164,6 +164,9 @@ impl NativeBridge for FlowNativeBridge<'_> {
 	fn state_remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.txn.state_remove(self.node, key)
 	}
+	fn state_drop(&mut self, key: &EncodedKey) -> Result<()> {
+		self.txn.state_drop(self.node, key)
+	}
 	fn state_clear(&mut self) -> Result<()> {
 		self.txn.state_clear(self.node)
 	}
@@ -186,6 +189,9 @@ impl NativeBridge for FlowNativeBridge<'_> {
 	}
 	fn internal_state_remove(&mut self, key: &EncodedKey) -> Result<()> {
 		self.txn.internal_state_remove(self.node, key)
+	}
+	fn internal_state_drop(&mut self, key: &EncodedKey) -> Result<()> {
+		self.txn.internal_state_drop(self.node, key)
 	}
 	fn internal_state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 		Ok(self.txn

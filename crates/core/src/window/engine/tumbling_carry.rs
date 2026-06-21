@@ -395,6 +395,10 @@ mod tests {
 			self.data.remove(key.as_bytes());
 			Ok(())
 		}
+		fn state_drop(&mut self, key: &EncodedKey) -> Result<()> {
+			self.data.remove(key.as_bytes());
+			Ok(())
+		}
 		fn internal_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Result<Option<V>> {
 			Ok(self.internal.get(key.as_bytes()).map(|b| from_bytes(b).expect("decode")))
 		}
@@ -415,6 +419,10 @@ mod tests {
 			Ok(())
 		}
 		fn internal_remove(&mut self, key: &EncodedKey) -> Result<()> {
+			self.internal.remove(key.as_bytes());
+			Ok(())
+		}
+		fn internal_drop(&mut self, key: &EncodedKey) -> Result<()> {
 			self.internal.remove(key.as_bytes());
 			Ok(())
 		}

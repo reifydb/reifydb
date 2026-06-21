@@ -97,6 +97,14 @@ impl FlowTransaction {
 		self.scoped_remove(StateScope::Public, id, key)
 	}
 
+	#[instrument(name = "flow::state::drop", level = "trace", skip(self), fields(
+		node_id = id.0,
+		key_len = key.as_bytes().len()
+	))]
+	pub fn state_drop(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<()> {
+		self.scoped_drop(StateScope::Public, id, key)
+	}
+
 	#[instrument(name = "flow::internal_state::get", level = "trace", skip(self), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len(),
@@ -134,6 +142,14 @@ impl FlowTransaction {
 	))]
 	pub fn internal_state_remove(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<()> {
 		self.scoped_remove(StateScope::Internal, id, key)
+	}
+
+	#[instrument(name = "flow::internal_state::drop", level = "trace", skip(self), fields(
+		node_id = id.0,
+		key_len = key.as_bytes().len()
+	))]
+	pub fn internal_state_drop(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<()> {
+		self.scoped_drop(StateScope::Internal, id, key)
 	}
 
 	#[instrument(name = "flow::state::scan", level = "debug", skip(self), fields(
@@ -378,6 +394,11 @@ impl FlowTransaction {
 	fn scoped_remove(&mut self, scope: StateScope, id: FlowNodeId, key: &EncodedKey) -> Result<()> {
 		let encoded_key = scope.encode(id, key);
 		self.remove(&encoded_key)
+	}
+
+	fn scoped_drop(&mut self, scope: StateScope, id: FlowNodeId, key: &EncodedKey) -> Result<()> {
+		let encoded_key = scope.encode(id, key);
+		self.drop_key(&encoded_key)
 	}
 }
 

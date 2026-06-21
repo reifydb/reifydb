@@ -237,7 +237,7 @@ impl Operator for DistinctOperator {
 							shape.set_blob(&mut row, 0, &Blob::from(bytes));
 							utils::state_set(node_id, txn, &key, row)?;
 						}
-						None => utils::state_remove(node_id, txn, &key)?,
+						None => utils::state_drop(node_id, txn, &key)?,
 					}
 				}
 				let layout_bytes = to_stdvec(&working.state.layout).map_err(|e| {

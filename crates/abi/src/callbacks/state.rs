@@ -28,6 +28,8 @@ pub struct StateCallbacks {
 
 	pub remove: extern "C" fn(operator_id: u64, ctx: *mut ContextFFI, key: *const u8, key_len: usize) -> i32,
 
+	pub drop: extern "C" fn(operator_id: u64, ctx: *mut ContextFFI, key: *const u8, key_len: usize) -> i32,
+
 	pub clear: extern "C" fn(operator_id: u64, ctx: *mut ContextFFI) -> i32,
 
 	pub prefix: extern "C" fn(
@@ -77,6 +79,8 @@ pub struct StateCallbacks {
 
 	pub internal_remove:
 		extern "C" fn(operator_id: u64, ctx: *mut ContextFFI, key: *const u8, key_len: usize) -> i32,
+
+	pub internal_drop: extern "C" fn(operator_id: u64, ctx: *mut ContextFFI, key: *const u8, key_len: usize) -> i32,
 
 	pub internal_range: extern "C" fn(
 		operator_id: u64,

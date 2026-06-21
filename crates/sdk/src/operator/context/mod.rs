@@ -45,6 +45,7 @@ pub trait StateApi {
 	fn get<T: DeserializeOwned>(&self, key: &EncodedKey) -> Result<Option<T>>;
 	fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> Result<()>;
 	fn remove(&mut self, key: &EncodedKey) -> Result<()>;
+	fn drop(&mut self, key: &EncodedKey) -> Result<()>;
 	fn contains(&self, key: &EncodedKey) -> Result<bool>;
 	fn clear(&mut self) -> Result<()>;
 	fn scan_prefix<T: DeserializeOwned>(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, T)>>;
@@ -97,6 +98,7 @@ pub trait InternalStateApi {
 	fn get_many<T: DeserializeOwned>(&self, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, T)>>;
 	fn set<T: Serialize>(&mut self, key: &EncodedKey, value: &T) -> Result<()>;
 	fn remove(&mut self, key: &EncodedKey) -> Result<()>;
+	fn drop(&mut self, key: &EncodedKey) -> Result<()>;
 	fn contains(&self, key: &EncodedKey) -> Result<bool>;
 	fn range<T: DeserializeOwned>(
 		&self,

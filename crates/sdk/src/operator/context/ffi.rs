@@ -177,6 +177,9 @@ impl StateApi for State<'_> {
 	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		State::remove(self, key)
 	}
+	fn drop(&mut self, key: &EncodedKey) -> Result<()> {
+		State::drop(self, key)
+	}
 	fn contains(&self, key: &EncodedKey) -> Result<bool> {
 		State::contains(self, key)
 	}
@@ -216,6 +219,9 @@ impl InternalStateApi for InternalState<'_> {
 	}
 	fn remove(&mut self, key: &EncodedKey) -> Result<()> {
 		InternalState::remove(self, key)
+	}
+	fn drop(&mut self, key: &EncodedKey) -> Result<()> {
+		InternalState::drop(self, key)
 	}
 	fn contains(&self, key: &EncodedKey) -> Result<bool> {
 		InternalState::contains(self, key)

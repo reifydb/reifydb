@@ -342,7 +342,7 @@ pub(super) fn finish_tumbling_engine(
 							None,
 						)?;
 					}
-					store.state_remove(&ewm_key)?;
+					store.state_drop(&ewm_key)?;
 				}
 				EmitKind::Insert | EmitKind::Update => {
 					let batch_max = window_max_ts.get(&(r.group, r.span)).copied().unwrap_or(0);
@@ -978,8 +978,8 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				let row = operator.core.build_engine_row(&gvals, &value, row_number, ts_nanos)?;
 				diffs.push(Diff::remove(Columns::from_row(&row)));
 			}
-			store.state_remove(&accumulator_key)?;
-			store.state_remove(&meta_key)?;
+			store.state_drop(&accumulator_key)?;
+			store.state_drop(&meta_key)?;
 		}
 	}
 
@@ -1064,7 +1064,7 @@ fn tick_expire_by_cutoff(
 			let row = operator.core.build_engine_row(&gvals, &value, window.row_number, ts_nanos)?;
 			diffs.push(Diff::remove(Columns::from_row(&row)));
 		}
-		store.state_remove(&ewm_key)?;
+		store.state_drop(&ewm_key)?;
 	}
 	Ok(diffs)
 }

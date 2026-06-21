@@ -290,7 +290,7 @@ fn finish_rolling_results(
 				ts_nanos,
 			)?;
 			diffs.push(Diff::remove(Columns::from_row(&pre)));
-			store.state_remove(&meta_key)?;
+			store.state_drop(&meta_key)?;
 		}
 	}
 	Ok(diffs)
@@ -375,7 +375,7 @@ pub fn tick_expire_rolling_engine(
 					ts_nanos,
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
-				store.state_remove(&meta_key)?;
+				store.state_drop(&meta_key)?;
 			}
 		}
 	}
@@ -611,7 +611,7 @@ pub fn tick_expire_rolling_processing_engine(
 					ts_nanos,
 				)?;
 				diffs.push(Diff::remove(Columns::from_row(&pre)));
-				store.state_remove(&meta_key)?;
+				store.state_drop(&meta_key)?;
 			}
 		}
 	}
