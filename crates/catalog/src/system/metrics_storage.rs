@@ -10,11 +10,11 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
-pub fn metrics_storage_vtable(id: VTableId, local_name: &str) -> Arc<VTable> {
+pub fn metrics_storage_vtable(id: VTableId, namespace: NamespaceId) -> Arc<VTable> {
 	Arc::new(VTable {
 		id,
-		namespace: NamespaceId::SYSTEM_METRICS_STORAGE,
-		name: local_name.to_string(),
+		namespace,
+		name: "current".to_string(),
 		columns: vec![
 			col(1, 0, "id", ValueType::Uint8),
 			col(2, 1, "namespace_id", ValueType::Uint8),

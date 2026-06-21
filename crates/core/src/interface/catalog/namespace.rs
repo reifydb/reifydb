@@ -39,6 +39,24 @@ impl NamespaceId {
 	pub const SYSTEM_METRICS_PROFILER_SHAPE: NamespaceId = NamespaceId(32);
 	pub const SYSTEM_METRICS_PROFILER_API: NamespaceId = NamespaceId(33);
 	pub const SYSTEM_METRICS_PROFILER_ACTOR: NamespaceId = NamespaceId(34);
+	pub const SYSTEM_METRICS_STORAGE_TABLE: NamespaceId = NamespaceId(37);
+	pub const SYSTEM_METRICS_STORAGE_VIEW: NamespaceId = NamespaceId(38);
+	pub const SYSTEM_METRICS_STORAGE_TABLE_VIRTUAL: NamespaceId = NamespaceId(39);
+	pub const SYSTEM_METRICS_STORAGE_RINGBUFFER: NamespaceId = NamespaceId(40);
+	pub const SYSTEM_METRICS_STORAGE_DICTIONARY: NamespaceId = NamespaceId(41);
+	pub const SYSTEM_METRICS_STORAGE_SERIES: NamespaceId = NamespaceId(42);
+	pub const SYSTEM_METRICS_STORAGE_FLOW: NamespaceId = NamespaceId(43);
+	pub const SYSTEM_METRICS_STORAGE_FLOW_NODE: NamespaceId = NamespaceId(44);
+	pub const SYSTEM_METRICS_STORAGE_SYSTEM: NamespaceId = NamespaceId(45);
+	pub const SYSTEM_METRICS_CDC_TABLE: NamespaceId = NamespaceId(46);
+	pub const SYSTEM_METRICS_CDC_VIEW: NamespaceId = NamespaceId(47);
+	pub const SYSTEM_METRICS_CDC_TABLE_VIRTUAL: NamespaceId = NamespaceId(48);
+	pub const SYSTEM_METRICS_CDC_RINGBUFFER: NamespaceId = NamespaceId(49);
+	pub const SYSTEM_METRICS_CDC_DICTIONARY: NamespaceId = NamespaceId(50);
+	pub const SYSTEM_METRICS_CDC_SERIES: NamespaceId = NamespaceId(51);
+	pub const SYSTEM_METRICS_CDC_FLOW: NamespaceId = NamespaceId(52);
+	pub const SYSTEM_METRICS_CDC_FLOW_NODE: NamespaceId = NamespaceId(53);
+	pub const SYSTEM_METRICS_CDC_SYSTEM: NamespaceId = NamespaceId(54);
 }
 
 #[derive(Debug, Clone, PartialEq)]

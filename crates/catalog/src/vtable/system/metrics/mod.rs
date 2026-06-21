@@ -3,8 +3,8 @@
 
 // TODO(index-metrics): per-index storage/cdc stats require `KeyKind::Index` /
 // `KeyKind::IndexEntry` to carry `IndexId` in their key layout. Add
-// `system::metrics::storage::index` and `system::metrics::cdc::index` when
-// that lands.
+// `system::metrics::storage::index::current` and `system::metrics::cdc::index::current`
+// when that lands.
 
 pub mod cdc;
 pub mod storage;

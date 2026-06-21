@@ -80,10 +80,10 @@ pub(crate) fn compile_virtual_scan(node: TableVirtualScanNode, context: Arc<Quer
 		user_table
 	} else if namespace.id() == NamespaceId::SYSTEM {
 		compile_system_vtable(&table.name, &context)
-	} else if namespace.id() == NamespaceId::SYSTEM_METRICS_STORAGE {
-		compile_metrics_storage_vtable(&table.name, &context)
-	} else if namespace.id() == NamespaceId::SYSTEM_METRICS_CDC {
-		compile_metrics_cdc_vtable(&table.name, &context)
+	} else if let Some(vtable) = compile_metrics_storage_vtable(namespace.id(), &context) {
+		vtable
+	} else if let Some(vtable) = compile_metrics_cdc_vtable(namespace.id(), &context) {
+		vtable
 	} else if namespace.id() == NamespaceId::SYSTEM_PROCEDURES {
 		compile_procedures_vtable(&table.name, &context)
 	} else if namespace.id() == NamespaceId::SYSTEM_BINDINGS {
@@ -168,46 +168,56 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 	}
 }
 
-fn compile_metrics_storage_vtable(name: &str, context: &QueryContext) -> VTables {
-	let reader = context.services.stats_reader.clone();
-	let (vtable, primitive) = match name {
-		"table" => (SystemCatalog::get_system_metrics_storage_table_table(), StatsPrimitive::Table),
-		"view" => (SystemCatalog::get_system_metrics_storage_view_table(), StatsPrimitive::View),
-		"table_virtual" => {
-			(SystemCatalog::get_system_metrics_storage_table_virtual_table(), StatsPrimitive::TableVirtual)
-		}
-		"ringbuffer" => {
-			(SystemCatalog::get_system_metrics_storage_ringbuffer_table(), StatsPrimitive::RingBuffer)
-		}
-		"dictionary" => {
-			(SystemCatalog::get_system_metrics_storage_dictionary_table(), StatsPrimitive::Dictionary)
-		}
-		"series" => (SystemCatalog::get_system_metrics_storage_series_table(), StatsPrimitive::Series),
-		"flow" => (SystemCatalog::get_system_metrics_storage_flow_table(), StatsPrimitive::Flow),
-		"flow_node" => (SystemCatalog::get_system_metrics_storage_flow_node_table(), StatsPrimitive::FlowNode),
-		"system" => (SystemCatalog::get_system_metrics_storage_system_table(), StatsPrimitive::System),
-		_ => panic!("Unknown metrics storage virtual table: {}", name),
+fn compile_metrics_storage_vtable(namespace: NamespaceId, context: &QueryContext) -> Option<VTables> {
+	let (vtable, primitive) = if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_TABLE {
+		(SystemCatalog::get_system_metrics_storage_table_table(), StatsPrimitive::Table)
+	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_VIEW {
+		(SystemCatalog::get_system_metrics_storage_view_table(), StatsPrimitive::View)
+	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_TABLE_VIRTUAL {
+		(SystemCatalog::get_system_metrics_storage_table_virtual_table(), StatsPrimitive::TableVirtual)
+	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_RINGBUFFER {
+		(SystemCatalog::get_system_metrics_storage_ringbuffer_table(), StatsPrimitive::RingBuffer)
+	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_DICTIONARY {
+		(SystemCatalog::get_system_metrics_storage_dictionary_table(), StatsPrimitive::Dictionary)
+	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_SERIES {
+		(SystemCatalog::get_system_metrics_storage_series_table(), StatsPrimitive::Series)
+	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_FLOW {
+		(SystemCatalog::get_system_metrics_storage_flow_table(), StatsPrimitive::Flow)
+	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_FLOW_NODE {
+		(SystemCatalog::get_system_metrics_storage_flow_node_table(), StatsPrimitive::FlowNode)
+	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_SYSTEM {
+		(SystemCatalog::get_system_metrics_storage_system_table(), StatsPrimitive::System)
+	} else {
+		return None;
 	};
-	VTables::MetricsStorage(SystemMetricsStorage::new(vtable, primitive, reader))
+	let reader = context.services.stats_reader.clone();
+	Some(VTables::MetricsStorage(SystemMetricsStorage::new(vtable, primitive, reader)))
 }
 
-fn compile_metrics_cdc_vtable(name: &str, context: &QueryContext) -> VTables {
-	let reader = context.services.stats_reader.clone();
-	let (vtable, primitive) = match name {
-		"table" => (SystemCatalog::get_system_metrics_cdc_table_table(), StatsPrimitive::Table),
-		"view" => (SystemCatalog::get_system_metrics_cdc_view_table(), StatsPrimitive::View),
-		"table_virtual" => {
-			(SystemCatalog::get_system_metrics_cdc_table_virtual_table(), StatsPrimitive::TableVirtual)
-		}
-		"ringbuffer" => (SystemCatalog::get_system_metrics_cdc_ringbuffer_table(), StatsPrimitive::RingBuffer),
-		"dictionary" => (SystemCatalog::get_system_metrics_cdc_dictionary_table(), StatsPrimitive::Dictionary),
-		"series" => (SystemCatalog::get_system_metrics_cdc_series_table(), StatsPrimitive::Series),
-		"flow" => (SystemCatalog::get_system_metrics_cdc_flow_table(), StatsPrimitive::Flow),
-		"flow_node" => (SystemCatalog::get_system_metrics_cdc_flow_node_table(), StatsPrimitive::FlowNode),
-		"system" => (SystemCatalog::get_system_metrics_cdc_system_table(), StatsPrimitive::System),
-		_ => panic!("Unknown metrics cdc virtual table: {}", name),
+fn compile_metrics_cdc_vtable(namespace: NamespaceId, context: &QueryContext) -> Option<VTables> {
+	let (vtable, primitive) = if namespace == NamespaceId::SYSTEM_METRICS_CDC_TABLE {
+		(SystemCatalog::get_system_metrics_cdc_table_table(), StatsPrimitive::Table)
+	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_VIEW {
+		(SystemCatalog::get_system_metrics_cdc_view_table(), StatsPrimitive::View)
+	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_TABLE_VIRTUAL {
+		(SystemCatalog::get_system_metrics_cdc_table_virtual_table(), StatsPrimitive::TableVirtual)
+	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_RINGBUFFER {
+		(SystemCatalog::get_system_metrics_cdc_ringbuffer_table(), StatsPrimitive::RingBuffer)
+	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_DICTIONARY {
+		(SystemCatalog::get_system_metrics_cdc_dictionary_table(), StatsPrimitive::Dictionary)
+	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_SERIES {
+		(SystemCatalog::get_system_metrics_cdc_series_table(), StatsPrimitive::Series)
+	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_FLOW {
+		(SystemCatalog::get_system_metrics_cdc_flow_table(), StatsPrimitive::Flow)
+	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_FLOW_NODE {
+		(SystemCatalog::get_system_metrics_cdc_flow_node_table(), StatsPrimitive::FlowNode)
+	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_SYSTEM {
+		(SystemCatalog::get_system_metrics_cdc_system_table(), StatsPrimitive::System)
+	} else {
+		return None;
 	};
-	VTables::MetricsCdc(SystemMetricsCdc::new(vtable, primitive, reader))
+	let reader = context.services.stats_reader.clone();
+	Some(VTables::MetricsCdc(SystemMetricsCdc::new(vtable, primitive, reader)))
 }
 
 fn compile_procedures_vtable(name: &str, context: &QueryContext) -> VTables {

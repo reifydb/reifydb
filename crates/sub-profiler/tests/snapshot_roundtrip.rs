@@ -7,7 +7,7 @@
 //! - Drives a `ProfilerAccumulator` by hand so the test is deterministic (no clock racing, no tracing subscriber
 //!   wiring). The collector actor is not exercised here; its fold path has its own unit tests in `accumulator.rs`.
 //! - Registers the per-category live VTables via `ProfilerAggregatesVTable`.
-//! - Calls `ProfilerSnapshotActor::flush` directly and queries both the live `spans` VTable and the persisted
+//! - Calls `ProfilerSnapshotActor::flush` directly and queries both the live `current` VTable and the persisted
 //!   `snapshots` Series, asserting snapshot semantics: live remains non-empty after flush (cumulative aggregates), and
 //!   the Series receives one row per active category per flush so a second flush at a later timestamp adds another row.
 
@@ -86,10 +86,10 @@ fn end_to_end_drain_into_history_series() {
 		let ns_id = category_namespace_id(category);
 		engine.register_virtual_table(
 			ns_id,
-			"spans",
+			"current",
 			ProfilerAggregatesVTable::new(reader_factory(), category),
 		)
-		.unwrap_or_else(|e| panic!("register {}::spans: {e}", category.name()));
+		.unwrap_or_else(|e| panic!("register {}::current: {e}", category.name()));
 	}
 
 	// Drive records into two categories so we can verify per-category partitioning works.
@@ -101,15 +101,15 @@ fn end_to_end_drain_into_history_series() {
 	assert_eq!(accumulator.read().len(), 2, "two distinct callsites should be folded into the accumulator");
 
 	// Live view: pre-flush both categories show records, an idle category is empty.
-	let pre_query_frames = test_engine.query("from system::metrics::profiler::query::spans");
+	let pre_query_frames = test_engine.query("from system::metrics::profiler::query::current");
 	assert_eq!(
 		TestEngine::row_count(&pre_query_frames),
 		1,
-		"live query::spans should reflect the current partial interval"
+		"live query::current should reflect the in-flight partial interval"
 	);
-	let pre_flow_frames = test_engine.query("from system::metrics::profiler::flow::spans");
+	let pre_flow_frames = test_engine.query("from system::metrics::profiler::flow::current");
 	assert_eq!(TestEngine::row_count(&pre_flow_frames), 1);
-	let pre_cdc_frames = test_engine.query("from system::metrics::profiler::cdc::spans");
+	let pre_cdc_frames = test_engine.query("from system::metrics::profiler::cdc::current");
 	assert_eq!(
 		TestEngine::row_count(&pre_cdc_frames),
 		0,
@@ -123,8 +123,8 @@ fn end_to_end_drain_into_history_series() {
 
 	// Snapshot semantics: accumulator retains every record, live VTables keep returning them.
 	assert_eq!(accumulator.read().len(), 2, "snapshot must not clear the accumulator");
-	let post_query_live = test_engine.query("from system::metrics::profiler::query::spans");
-	assert_eq!(TestEngine::row_count(&post_query_live), 1, "live spans remain visible after snapshot");
+	let post_query_live = test_engine.query("from system::metrics::profiler::query::current");
+	assert_eq!(TestEngine::row_count(&post_query_live), 1, "live current rows remain visible after snapshot");
 
 	// Snapshots Series: query category gets the one folded callsite; flow category gets its own; quiet categories
 	// stay empty.

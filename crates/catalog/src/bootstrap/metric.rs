@@ -31,6 +31,30 @@ use crate::{
 const REQUEST_HISTORY_CAPACITY: u64 = 10_000;
 const STATEMENT_STATS_CAPACITY: u64 = 5_000;
 
+const STORAGE_PRIMITIVE_NAMESPACES: [(NamespaceId, &str, &str); 9] = [
+	(NamespaceId::SYSTEM_METRICS_STORAGE_TABLE, "system::metrics::storage::table", "table"),
+	(NamespaceId::SYSTEM_METRICS_STORAGE_VIEW, "system::metrics::storage::view", "view"),
+	(NamespaceId::SYSTEM_METRICS_STORAGE_TABLE_VIRTUAL, "system::metrics::storage::table_virtual", "table_virtual"),
+	(NamespaceId::SYSTEM_METRICS_STORAGE_RINGBUFFER, "system::metrics::storage::ringbuffer", "ringbuffer"),
+	(NamespaceId::SYSTEM_METRICS_STORAGE_DICTIONARY, "system::metrics::storage::dictionary", "dictionary"),
+	(NamespaceId::SYSTEM_METRICS_STORAGE_SERIES, "system::metrics::storage::series", "series"),
+	(NamespaceId::SYSTEM_METRICS_STORAGE_FLOW, "system::metrics::storage::flow", "flow"),
+	(NamespaceId::SYSTEM_METRICS_STORAGE_FLOW_NODE, "system::metrics::storage::flow_node", "flow_node"),
+	(NamespaceId::SYSTEM_METRICS_STORAGE_SYSTEM, "system::metrics::storage::system", "system"),
+];
+
+const CDC_PRIMITIVE_NAMESPACES: [(NamespaceId, &str, &str); 9] = [
+	(NamespaceId::SYSTEM_METRICS_CDC_TABLE, "system::metrics::cdc::table", "table"),
+	(NamespaceId::SYSTEM_METRICS_CDC_VIEW, "system::metrics::cdc::view", "view"),
+	(NamespaceId::SYSTEM_METRICS_CDC_TABLE_VIRTUAL, "system::metrics::cdc::table_virtual", "table_virtual"),
+	(NamespaceId::SYSTEM_METRICS_CDC_RINGBUFFER, "system::metrics::cdc::ringbuffer", "ringbuffer"),
+	(NamespaceId::SYSTEM_METRICS_CDC_DICTIONARY, "system::metrics::cdc::dictionary", "dictionary"),
+	(NamespaceId::SYSTEM_METRICS_CDC_SERIES, "system::metrics::cdc::series", "series"),
+	(NamespaceId::SYSTEM_METRICS_CDC_FLOW, "system::metrics::cdc::flow", "flow"),
+	(NamespaceId::SYSTEM_METRICS_CDC_FLOW_NODE, "system::metrics::cdc::flow_node", "flow_node"),
+	(NamespaceId::SYSTEM_METRICS_CDC_SYSTEM, "system::metrics::cdc::system", "system"),
+];
+
 pub fn bootstrap_metric_ringbuffers(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
@@ -71,6 +95,13 @@ pub fn bootstrap_metric_ringbuffers(
 		"cdc",
 		NamespaceId::SYSTEM_METRICS,
 	)?;
+
+	for (id, path, local_name) in STORAGE_PRIMITIVE_NAMESPACES {
+		ensure_namespace(&catalog_api, &mut admin, id, path, local_name, NamespaceId::SYSTEM_METRICS_STORAGE)?;
+	}
+	for (id, path, local_name) in CDC_PRIMITIVE_NAMESPACES {
+		ensure_namespace(&catalog_api, &mut admin, id, path, local_name, NamespaceId::SYSTEM_METRICS_CDC)?;
+	}
 
 	if catalog_api.find_ringbuffer_by_name(&mut Transaction::Admin(&mut admin), ns_id, "request_history")?.is_none()
 	{

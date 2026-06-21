@@ -1,7 +1,7 @@
 # storage stats
 
 ```rql
-from system::metrics::storage::table
+from system::metrics::storage::table::current
 map {
   id,
   tier,
@@ -17,7 +17,7 @@ map {
 # cdc stats
 
 ```rql
-from system::metrics::cdc::table
+from system::metrics::cdc::table::current
 map {
   id,
   count,

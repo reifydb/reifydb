@@ -26,7 +26,7 @@ fn new_db_with_metrics() -> Database {
 
 	let db = db_embedded::memory()
 		.with_runtime_config(RuntimeConfig::default().seeded(0))
-		// Seed a fast flush interval so the collector populates system::metrics::storage::table
+		// Seed a fast flush interval so the collector populates system::metrics::storage::table::current
 		// well within wait_for_metrics_processing(); the default 10s cadence would leave it empty.
 		.with_config(ConfigKey::MetricFlushInterval, Value::duration_milliseconds(10))
 		.with_subsystem(factory)
@@ -70,7 +70,7 @@ fn test_sort_table_storage_stats_multiline_syntax() {
 
 	wait_for_metrics_processing();
 
-	let multiline_query = "from system::metrics::storage::table
+	let multiline_query = "from system::metrics::storage::table::current
 sort {total_bytes:asc}";
 
 	let frames = query(&db, multiline_query);
@@ -128,8 +128,8 @@ fn test_asc_is_not_desc() {
 
 	wait_for_metrics_processing();
 
-	let frames_asc = query(&db, "from system::metrics::storage::table\nsort {total_bytes:asc}");
-	let frames_desc = query(&db, "from system::metrics::storage::table\nsort {total_bytes:desc}");
+	let frames_asc = query(&db, "from system::metrics::storage::table::current\nsort {total_bytes:asc}");
+	let frames_desc = query(&db, "from system::metrics::storage::table::current\nsort {total_bytes:desc}");
 
 	let frame_asc = frames_asc.first().unwrap();
 	let bytes_col_asc = frame_asc.columns.iter().find(|c| c.name == "total_bytes").unwrap();
@@ -190,7 +190,7 @@ fn test_sort_table_storage_stats_by_total_bytes() {
 
 	wait_for_metrics_processing();
 
-	let frames_asc = query(&db, "FROM system::metrics::storage::table SORT {total_bytes:ASC}");
+	let frames_asc = query(&db, "FROM system::metrics::storage::table::current SORT {total_bytes:ASC}");
 
 	let frame_asc = frames_asc.first().expect("Expected at least one frame");
 	let bytes_col_asc = frame_asc.columns.iter().find(|c| c.name == "total_bytes").unwrap();
@@ -209,7 +209,7 @@ fn test_sort_table_storage_stats_by_total_bytes() {
 		);
 	}
 
-	let frames_desc = query(&db, "FROM system::metrics::storage::table SORT {total_bytes:DESC}");
+	let frames_desc = query(&db, "FROM system::metrics::storage::table::current SORT {total_bytes:DESC}");
 
 	let frame_desc = frames_desc.first().expect("Expected at least one frame");
 	let bytes_col_desc = frame_desc.columns.iter().find(|c| c.name == "total_bytes").unwrap();

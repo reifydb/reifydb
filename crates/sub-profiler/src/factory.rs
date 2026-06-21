@@ -134,7 +134,7 @@ impl SubsystemFactory for ProfilerSubsystemFactory {
 fn register_profile_aggregates_vtables(engine: &StandardEngine, reader: &ProfilerReader) -> Result<()> {
 	for category in ALL_CATEGORIES {
 		let vtable = ProfilerAggregatesVTable::new(reader.clone(), category);
-		engine.register_virtual_table(category_namespace_id(category), "spans", vtable)?;
+		engine.register_virtual_table(category_namespace_id(category), "current", vtable)?;
 	}
 	Ok(())
 }

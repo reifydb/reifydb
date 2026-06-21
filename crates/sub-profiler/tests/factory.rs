@@ -49,7 +49,7 @@ fn with_subsystem_returns_provided_and_registers_vtables() {
 
 	// Verify each per-category aggregates vtable was registered under the matching namespace.
 	for name in ["query", "txn", "storage", "plan", "cdc", "flow"] {
-		let frames = test_engine.query(&format!("from system::metrics::profiler::{name}::spans"));
-		assert!(!frames.is_empty(), "vtable system::metrics::profiler::{name}::spans should be queryable");
+		let frames = test_engine.query(&format!("from system::metrics::profiler::{name}::current"));
+		assert!(!frames.is_empty(), "vtable system::metrics::profiler::{name}::current should be queryable");
 	}
 }
