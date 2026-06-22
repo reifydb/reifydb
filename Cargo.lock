@@ -846,6 +846,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "dev"
+version = "0.6.0"
+dependencies = [
+ "clap",
+ "reifydb",
+ "reifydb-runtime",
+ "rusqlite",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

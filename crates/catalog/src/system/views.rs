@@ -67,6 +67,15 @@ pub fn views() -> Arc<VTable> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
+				Column {
+					id: UNDERLYING_ID,
+					name: "underlying_id".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
+					properties: vec![],
+					index: ColumnIndex(5),
+					auto_increment: false,
+					dictionary_id: None,
+				},
 			],
 		})
 	})

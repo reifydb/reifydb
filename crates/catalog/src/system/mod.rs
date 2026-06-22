@@ -206,8 +206,9 @@ pub mod ids {
 			pub const NAME: ColumnId = ColumnId(3);
 			pub const KIND: ColumnId = ColumnId(4);
 			pub const PRIMARY_KEY_ID: ColumnId = ColumnId(5);
+			pub const UNDERLYING_ID: ColumnId = ColumnId(6);
 
-			pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, KIND, PRIMARY_KEY_ID];
+			pub const ALL: [ColumnId; 6] = [ID, NAMESPACE_ID, NAME, KIND, PRIMARY_KEY_ID, UNDERLYING_ID];
 		}
 
 		pub mod flows {

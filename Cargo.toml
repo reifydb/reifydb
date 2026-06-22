@@ -64,6 +64,7 @@ members = [
     "bin/forge",
     "pkg/rust/examples/raft",
     "bin/raft",
+    "bin/dev",
     # Package/library projects
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",

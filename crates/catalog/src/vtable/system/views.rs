@@ -56,6 +56,7 @@ impl BaseVTable for SystemViews {
 		let mut namespaces = ColumnBuffer::uint8_with_capacity(views.len());
 		let mut names = ColumnBuffer::utf8_with_capacity(views.len());
 		let mut primary_keys = ColumnBuffer::uint4_with_capacity(views.len());
+		let mut underlying_ids = ColumnBuffer::uint8_with_capacity(views.len());
 
 		for view in views {
 			ids.push(view.id().0);
@@ -67,6 +68,7 @@ impl BaseVTable for SystemViews {
 					.map(Value::Uint8)
 					.unwrap_or(Value::none_of(ValueType::Uint8)),
 			);
+			underlying_ids.push(view.underlying_id().as_u64());
 		}
 
 		let columns = vec![
@@ -74,6 +76,7 @@ impl BaseVTable for SystemViews {
 			ColumnWithName::new(Fragment::internal("namespace_id"), namespaces),
 			ColumnWithName::new(Fragment::internal("name"), names),
 			ColumnWithName::new(Fragment::internal("primary_key_id"), primary_keys),
+			ColumnWithName::new(Fragment::internal("underlying_id"), underlying_ids),
 		];
 
 		self.exhausted = true;
