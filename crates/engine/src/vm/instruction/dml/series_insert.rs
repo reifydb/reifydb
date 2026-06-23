@@ -19,6 +19,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		resolved::{ResolvedNamespace, ResolvedSeries, ResolvedShape},
 	},
+	internal_error,
 	key::{EncodableKey, series_row::SeriesRowKey},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
@@ -41,6 +42,7 @@ use super::{
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
+	transaction::operation::dictionary::DictionaryOperations,
 	vm::{
 		services::Services,
 		stack::SymbolTable,
@@ -181,7 +183,17 @@ fn insert_series_row(
 
 	let data_columns: Vec<_> = series.data_columns().collect();
 	let data_values = collect_series_data_values(columns, &data_columns, row_idx);
-	let row = build_encoded_series_row(services, series, shape, key_value, &data_values);
+	let mut encoded_values = data_values.clone();
+	for (i, col_def) in data_columns.iter().enumerate() {
+		if let Some(dict_id) = col_def.dictionary_id {
+			let dictionary = services.catalog.find_dictionary(txn, dict_id)?.ok_or_else(|| {
+				internal_error!("Dictionary {:?} not found for column {}", dict_id, col_def.name)
+			})?;
+			let entry_id = txn.insert_into_dictionary(&dictionary, &encoded_values[i])?;
+			encoded_values[i] = entry_id.to_value();
+		}
+	}
+	let row = build_encoded_series_row(services, series, shape, key_value, &encoded_values);
 
 	let mut rows_buf = [row];
 	SeriesRowInterceptor::pre_insert(txn, series, &mut rows_buf)?;

@@ -32,6 +32,7 @@ impl<'bump> Compiler<'bump> {
 
 		for col in ast.columns.into_iter() {
 			let constraint = convert_data_type_with_constraints(&col.ty)?;
+			let column_type = constraint.get_type();
 
 			let name = col.name.to_owned();
 			let ty_fragment = col.ty.name_fragment().to_owned();
@@ -79,6 +80,17 @@ impl<'bump> Compiler<'bump> {
 							}
 							.into());
 						};
+
+						if column_type != dictionary.value_type {
+							return Err(CatalogError::DictionaryTypeMismatch {
+								column: col.name.text().to_string(),
+								column_type,
+								dictionary: dict_name.to_string(),
+								dictionary_value_type: dictionary.value_type,
+								fragment: col.name.to_owned(),
+							}
+							.into());
+						}
 
 						dictionary_id = Some(dictionary.id);
 					}

@@ -5,18 +5,24 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
-	interface::resolved::ResolvedView,
+	interface::{catalog::dictionary::Dictionary, resolved::ResolvedView},
 	internal_error,
 	key::{
 		EncodableKey,
 		row::{RowKey, RowKeyRange},
 	},
-	value::column::{columns::Columns, headers::ColumnHeaders},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::{fragment::Fragment, reifydb_assertions, value::row_number::RowNumber};
+use reifydb_value::{
+	fragment::Fragment,
+	reifydb_assertions,
+	util::cowvec::CowVec,
+	value::{row_number::RowNumber, value_type::ValueType},
+};
 use tracing::instrument;
 
+use super::super::decode_dictionary_columns;
 use crate::{
 	Result,
 	vm::volcano::query::{QueryContext, QueryNode},
@@ -26,6 +32,8 @@ pub(crate) struct ViewScanNode {
 	view: ResolvedView,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
+	storage_types: Vec<ValueType>,
+	dictionaries: Vec<Option<Dictionary>>,
 	shape: Option<RowShape>,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
@@ -33,7 +41,25 @@ pub(crate) struct ViewScanNode {
 }
 
 impl ViewScanNode {
-	pub fn new(view: ResolvedView, context: Arc<QueryContext>) -> Result<Self> {
+	pub fn new(view: ResolvedView, context: Arc<QueryContext>, rx: &mut Transaction<'_>) -> Result<Self> {
+		let mut storage_types = Vec::with_capacity(view.columns().len());
+		let mut dictionaries = Vec::with_capacity(view.columns().len());
+
+		for col in view.columns() {
+			if let Some(dict_id) = col.dictionary_id {
+				if let Some(dict) = context.services.catalog.find_dictionary(rx, dict_id)? {
+					storage_types.push(ValueType::DictionaryId);
+					dictionaries.push(Some(dict));
+				} else {
+					storage_types.push(col.constraint.get_type());
+					dictionaries.push(None);
+				}
+			} else {
+				storage_types.push(col.constraint.get_type());
+				dictionaries.push(None);
+			}
+		}
+
 		let headers = ColumnHeaders {
 			columns: view.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		};
@@ -43,6 +69,8 @@ impl ViewScanNode {
 			view,
 			context: Some(context),
 			headers,
+			storage_types,
+			dictionaries,
 			shape: None,
 			last_key: None,
 			exhausted: false,
@@ -133,9 +161,26 @@ impl QueryNode for ViewScanNode {
 
 		self.last_key = new_last_key;
 
-		let mut columns = Columns::from_catalog_columns(self.view.columns());
-		let shape = self.get_or_load_shape(rx, &batch_rows[0])?;
-		columns.append_rows(&shape, batch_rows.into_iter(), row_numbers)?;
+		let storage_columns: Vec<ColumnWithName> = self
+			.view
+			.columns()
+			.iter()
+			.enumerate()
+			.map(|(idx, col)| ColumnWithName {
+				name: Fragment::internal(&col.name),
+				data: ColumnBuffer::with_capacity(self.storage_types[idx].clone(), 0),
+			})
+			.collect();
+
+		let mut columns = Columns::with_system_columns(storage_columns, Vec::new(), Vec::new(), Vec::new());
+		{
+			let shape = self.get_or_load_shape(rx, &batch_rows[0])?;
+			columns.append_rows(&shape, batch_rows.into_iter(), row_numbers.clone())?;
+		}
+
+		columns.row_numbers = CowVec::new(row_numbers);
+
+		decode_dictionary_columns(&mut columns, &self.dictionaries, rx)?;
 
 		Ok(Some(columns))
 	}

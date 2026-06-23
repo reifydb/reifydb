@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use postcard::to_stdvec;
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	encoded::{
@@ -10,6 +11,7 @@ use reifydb_core::{
 	},
 	interface::{
 		catalog::{
+			dictionary::Dictionary,
 			flow::FlowNodeId,
 			id::TableId,
 			shape::ShapeId,
@@ -18,15 +20,23 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		resolved::ResolvedView,
 	},
-	key::kind::KeyKind,
+	internal_error,
+	key::{
+		dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionarySequenceKey},
+		kind::KeyKind,
+	},
 	util::encoding::keycode::{
 		catalog::serialize_shape_id, encode_u8, encode_u64_varint, serializer::KeySerializer,
 	},
-	value::column::columns::Columns,
+	value::column::{buffer::ColumnBuffer, columns::Columns},
 };
+use reifydb_runtime::hash::xxh3_128;
 use reifydb_value::{
 	Result,
-	value::{datetime::DateTime, row_number::RowNumber},
+	util::cowvec::CowVec,
+	value::{
+		Value, datetime::DateTime, dictionary::DictionaryEntryId, row_number::RowNumber, value_type::ValueType,
+	},
 };
 use smallvec::smallvec;
 
@@ -130,15 +140,17 @@ impl SinkTableViewOperator {
 		post: &Columns,
 	) -> Result<()> {
 		let coerced = coerce_columns(post, view.columns())?;
-		let row_count = coerced.row_count();
-		let field_columns = shape_field_columns(&coerced, shape);
+		let dict_encoded = dictionary_encode_view_columns(txn, view, &coerced)?;
+		let source = dict_encoded.as_ref().unwrap_or(&coerced);
+		let row_count = source.row_count();
+		let field_columns = shape_field_columns(source, shape);
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
 
 		for row_idx in 0..row_count {
-			let row_number = coerced.row_numbers[row_idx];
-			let (_, encoded) = encode_row_at_index(&coerced, row_idx, shape, row_number, &field_columns)?;
-			keys.push(self.clustered_key(&coerced, row_idx, row_number));
+			let row_number = source.row_numbers[row_idx];
+			let (_, encoded) = encode_row_at_index(source, row_idx, shape, row_number, &field_columns)?;
+			keys.push(self.clustered_key(source, row_idx, row_number));
 			encoded_rows.push(encoded);
 		}
 
@@ -159,19 +171,23 @@ impl SinkTableViewOperator {
 	) -> Result<()> {
 		let coerced_pre = coerce_columns(pre, view.columns())?;
 		let coerced_post = coerce_columns(post, view.columns())?;
-		let row_count = coerced_post.row_count();
-		let field_columns = shape_field_columns(&coerced_post, shape);
+		let dict_pre = dictionary_encode_view_columns(txn, view, &coerced_pre)?;
+		let dict_post = dictionary_encode_view_columns(txn, view, &coerced_post)?;
+		let source_pre = dict_pre.as_ref().unwrap_or(&coerced_pre);
+		let source_post = dict_post.as_ref().unwrap_or(&coerced_post);
+		let row_count = source_post.row_count();
+		let field_columns = shape_field_columns(source_post, shape);
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
-			let pre_row_number = coerced_pre.row_numbers[row_idx];
-			let post_row_number = coerced_post.row_numbers[row_idx];
+			let pre_row_number = source_pre.row_numbers[row_idx];
+			let post_row_number = source_post.row_numbers[row_idx];
 			let (_, mut post_encoded) =
-				encode_row_at_index(&coerced_post, row_idx, shape, post_row_number, &field_columns)?;
+				encode_row_at_index(source_post, row_idx, shape, post_row_number, &field_columns)?;
 
-			let pre_key = self.clustered_key(&coerced_pre, row_idx, pre_row_number);
-			let post_key = self.clustered_key(&coerced_post, row_idx, post_row_number);
+			let pre_key = self.clustered_key(source_pre, row_idx, pre_row_number);
+			let post_key = self.clustered_key(source_post, row_idx, post_row_number);
 
 			let prior_created = match txn.get(&post_key)? {
 				Some(prior) if prior.len() >= SHAPE_HEADER_SIZE => {
@@ -217,11 +233,13 @@ impl SinkTableViewOperator {
 	#[inline]
 	fn apply_table_view_remove(&self, txn: &mut FlowTransaction, view: &View, pre: &Columns) -> Result<()> {
 		let coerced = coerce_columns(pre, view.columns())?;
-		let row_count = coerced.row_count();
+		let dict_encoded = dictionary_encode_view_columns(txn, view, &coerced)?;
+		let source = dict_encoded.as_ref().unwrap_or(&coerced);
+		let row_count = source.row_count();
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
-			let row_number = coerced.row_numbers[row_idx];
-			keys.push(self.clustered_key(&coerced, row_idx, row_number));
+			let row_number = source.row_numbers[row_idx];
+			keys.push(self.clustered_key(source, row_idx, row_number));
 		}
 
 		txn.remove_batch(&keys)?;
@@ -241,4 +259,76 @@ fn emit_view_change(txn: &mut FlowTransaction, view: &View, diff: Diff) {
 		diffs: smallvec![diff],
 		changed_at,
 	});
+}
+
+pub(crate) fn dictionary_encode_view_columns(
+	txn: &mut FlowTransaction,
+	view: &View,
+	columns: &Columns,
+) -> Result<Option<Columns>> {
+	let mut dict_columns: Vec<(usize, Dictionary)> = Vec::new();
+	{
+		let catalog = txn.catalog();
+		for (pos, col) in view.columns().iter().enumerate() {
+			if let Some(dict_id) = col.dictionary_id {
+				let dictionary = catalog.cache().find_dictionary(dict_id).ok_or_else(|| {
+					internal_error!(
+						"Dictionary {:?} not found for view column {}",
+						dict_id,
+						col.name
+					)
+				})?;
+				dict_columns.push((pos, dictionary));
+			}
+		}
+	}
+
+	if dict_columns.is_empty() {
+		return Ok(None);
+	}
+
+	let mut encoded = columns.clone();
+	for (col_pos, dictionary) in &dict_columns {
+		let row_count = encoded[*col_pos].len();
+		let mut new_data = ColumnBuffer::with_capacity(ValueType::DictionaryId, row_count);
+		for row_idx in 0..row_count {
+			let value = encoded[*col_pos].get_value(row_idx);
+			let entry_id = dictionary_intern(txn, dictionary, &value)?;
+			new_data.push_value(entry_id.to_value());
+		}
+		encoded.columns.make_mut()[*col_pos] = new_data;
+	}
+
+	Ok(Some(encoded))
+}
+
+fn dictionary_intern(txn: &mut FlowTransaction, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
+	let value_bytes = to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
+	let hash = xxh3_128(&value_bytes).0.to_be_bytes();
+
+	let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
+	if let Some(existing) = txn.get(&entry_key)? {
+		let id = u128::from_be_bytes(existing[..16].try_into().unwrap());
+		return DictionaryEntryId::from_u128(id, dictionary.id_type.clone());
+	}
+
+	let seq_key = DictionarySequenceKey::encoded(dictionary.id);
+	let next_id = match txn.get(&seq_key)? {
+		Some(v) => u128::from_be_bytes(v[..16].try_into().unwrap()) + 1,
+		None => 1,
+	};
+
+	let entry_id = DictionaryEntryId::from_u128(next_id, dictionary.id_type.clone())?;
+
+	let mut entry_value = Vec::with_capacity(16 + value_bytes.len());
+	entry_value.extend_from_slice(&next_id.to_be_bytes());
+	entry_value.extend_from_slice(&value_bytes);
+	txn.set(&entry_key, EncodedRow(CowVec::new(entry_value)))?;
+
+	let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, next_id as u64);
+	txn.set(&index_key, EncodedRow(CowVec::new(value_bytes)))?;
+
+	txn.set(&seq_key, EncodedRow(CowVec::new(next_id.to_be_bytes().to_vec())))?;
+
+	Ok(entry_id)
 }

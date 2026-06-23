@@ -89,11 +89,13 @@ pub mod tests {
 					name: Fragment::internal("col_a"),
 					fragment: Fragment::None,
 					constraint: TypeConstraint::unconstrained(ValueType::Int4),
+					dictionary_id: None,
 				},
 				ViewColumnToCreate {
 					name: Fragment::internal("col_b"),
 					fragment: Fragment::None,
 					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
+					dictionary_id: None,
 				},
 			],
 		);

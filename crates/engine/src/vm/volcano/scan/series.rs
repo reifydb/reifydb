@@ -17,12 +17,15 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,
 	reifydb_assertions,
-	value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType},
+	value::{
+		Value, datetime::DateTime, dictionary::DictionaryEntryId, row_number::RowNumber, value_type::ValueType,
+	},
 };
 use tracing::instrument;
 
 use crate::{
 	Result,
+	transaction::operation::dictionary::DictionaryOperations,
 	vm::{
 		instruction::dml::shape::get_or_create_series_shape,
 		volcano::query::{QueryContext, QueryNode},
@@ -201,10 +204,22 @@ impl QueryNode for SeriesScanNode {
 
 		for (col_idx, col_def) in series.data_columns().enumerate() {
 			let col_type = col_def.constraint.get_type();
-			let col_values: Vec<Value> = data_rows
+			let mut col_values: Vec<Value> = data_rows
 				.iter()
 				.map(|row| row.get(col_idx).cloned().unwrap_or(Value::none()))
 				.collect();
+
+			if let Some(dict_id) = col_def.dictionary_id
+				&& let Some(dictionary) = stored_ctx.services.catalog.find_dictionary(rx, dict_id)?
+			{
+				for value in col_values.iter_mut() {
+					if let Some(entry_id) = DictionaryEntryId::from_value(value) {
+						*value = rx
+							.get_from_dictionary(&dictionary, entry_id)?
+							.unwrap_or_else(Value::none);
+					}
+				}
+			}
 
 			result_columns.push(build_data_column(&col_def.name, &col_values, col_type)?);
 		}

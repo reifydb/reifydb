@@ -232,11 +232,13 @@ pub mod tests {
 						name: Fragment::internal("id"),
 						fragment: Fragment::None,
 						constraint: TypeConstraint::unconstrained(ValueType::Uint8),
+						dictionary_id: None,
 					},
 					ViewColumnToCreate {
 						name: Fragment::internal("name"),
 						fragment: Fragment::None,
 						constraint: TypeConstraint::unconstrained(ValueType::Utf8),
+						dictionary_id: None,
 					},
 				],
 				storage: ViewStorageConfig::default(),

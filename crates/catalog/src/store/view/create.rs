@@ -17,7 +17,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, sumtype::SumTypeId},
+	value::{constraint::TypeConstraint, dictionary::DictionaryId, sumtype::SumTypeId},
 };
 
 use crate::{
@@ -35,6 +35,7 @@ pub struct ViewColumnToCreate {
 	pub name: Fragment,
 	pub fragment: Fragment,
 	pub constraint: TypeConstraint,
+	pub dictionary_id: Option<DictionaryId>,
 }
 
 #[derive(Debug, Clone)]
@@ -226,7 +227,7 @@ impl CatalogStore {
 					properties: vec![],
 					index: ColumnIndex(idx as u8),
 					auto_increment: false,
-					dictionary_id: None,
+					dictionary_id: column_to_create.dictionary_id,
 				},
 			)?;
 		}

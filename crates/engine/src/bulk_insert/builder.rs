@@ -573,6 +573,26 @@ fn dict_encode_ringbuffer_row(
 	Ok(())
 }
 
+#[inline]
+fn dict_encode_series_row(
+	catalog: &Catalog,
+	txn: &mut CommandTransaction,
+	series: &Series,
+	values: &mut [Value],
+) -> Result<()> {
+	for (idx, col) in series.columns.iter().enumerate() {
+		if let Some(dict_id) = col.dictionary_id {
+			let dictionary =
+				catalog.find_dictionary(&mut Transaction::Command(txn), dict_id)?.ok_or_else(|| {
+					internal_error!("Dictionary {:?} not found for column {}", dict_id, col.name)
+				})?;
+			let entry_id = txn.insert_into_dictionary(&dictionary, &values[idx])?;
+			values[idx] = entry_id.to_value();
+		}
+	}
+	Ok(())
+}
+
 fn execute_series_insert<V: ValidationMode>(
 	catalog: &Catalog,
 	txn: &mut CommandTransaction,
@@ -583,7 +603,7 @@ fn execute_series_insert<V: ValidationMode>(
 	let mut metadata = load_series_metadata(catalog, txn, pending, &series)?;
 	let shape = get_or_create_series_shape(catalog, &series, &mut Transaction::Command(txn))?;
 	let coerced_rows = coerce_series_rows::<V>(pending, &series)?;
-	let inserted = insert_series_rows::<V>(txn, &series, &shape, coerced_rows, &mut metadata, clock)?;
+	let inserted = insert_series_rows::<V>(catalog, txn, &series, &shape, coerced_rows, &mut metadata, clock)?;
 	catalog.update_series_metadata_txn(&mut Transaction::Command(txn), metadata)?;
 	Ok(SeriesInsertResult {
 		namespace: pending.namespace.clone(),
@@ -642,6 +662,7 @@ fn coerce_series_rows<V: ValidationMode>(pending: &PendingSeriesInsert, series: 
 }
 
 fn insert_series_rows<V: ValidationMode>(
+	catalog: &Catalog,
 	txn: &mut CommandTransaction,
 	series: &Series,
 	shape: &RowShape,
@@ -656,7 +677,9 @@ fn insert_series_rows<V: ValidationMode>(
 		})?;
 
 	let mut inserted_count = 0u64;
-	for values in coerced_rows {
+	for mut values in coerced_rows {
+		dict_encode_series_row(catalog, txn, series, &mut values)?;
+
 		if V::VALIDATED {
 			for (idx, col) in series.columns.iter().enumerate() {
 				col.constraint.validate(&values[idx])?;

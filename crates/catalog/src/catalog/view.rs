@@ -14,7 +14,11 @@ use reifydb_transaction::{
 	change::TransactionalViewChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_value::{error, fragment::Fragment, value::constraint::TypeConstraint};
+use reifydb_value::{
+	error,
+	fragment::Fragment,
+	value::{constraint::TypeConstraint, dictionary::DictionaryId},
+};
 use tracing::{instrument, warn};
 
 use crate::{
@@ -30,6 +34,7 @@ pub struct ViewColumnToCreate {
 	pub name: Fragment,
 	pub fragment: Fragment,
 	pub constraint: TypeConstraint,
+	pub dictionary_id: Option<DictionaryId>,
 }
 
 #[derive(Debug, Clone)]
@@ -47,6 +52,7 @@ impl From<ViewColumnToCreate> for StoreViewColumnToCreate {
 			name: col.name,
 			fragment: col.fragment,
 			constraint: col.constraint,
+			dictionary_id: col.dictionary_id,
 		}
 	}
 }

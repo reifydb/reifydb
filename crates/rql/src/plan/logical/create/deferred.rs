@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_catalog::catalog::view::ViewColumnToCreate;
+use reifydb_catalog::{
+	catalog::view::ViewColumnToCreate,
+	error::{CatalogError, CatalogObjectKind},
+};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{
+	fragment::Fragment,
+	value::constraint::{Constraint, TypeConstraint},
+};
 
 use crate::{
 	Result,
-	ast::ast::AstCreateDeferredView,
+	ast::ast::{AstColumnProperty, AstCreateDeferredView},
 	bump::BumpVec,
 	convert_data_type_with_constraints,
 	plan::logical::{Compiler, CreateDeferredViewNode, LogicalPlan},
@@ -20,17 +26,78 @@ impl<'bump> Compiler<'bump> {
 		tx: &mut Transaction<'_>,
 	) -> Result<LogicalPlan<'bump>> {
 		let mut columns: Vec<ViewColumnToCreate> = vec![];
+
+		let view_ns_segments: Vec<&str> = ast.view.namespace.iter().map(|n| n.text()).collect();
+
 		for col in ast.columns.into_iter() {
-			let constraint = convert_data_type_with_constraints(&col.ty)?;
+			let column_name = col.name.text().to_string();
+			let mut constraint = convert_data_type_with_constraints(&col.ty)?;
+			let column_type = constraint.get_type();
 
 			let name = col.name.to_owned();
 			let ty_fragment = col.ty.name_fragment().to_owned();
 			let fragment = Fragment::merge_all([name.clone(), ty_fragment]);
 
+			let mut dictionary_id = None;
+
+			for property in &col.properties {
+				if let AstColumnProperty::Dictionary(dict_ident) = property {
+					let dict_ns_segments: Vec<&str> = if dict_ident.namespace.is_empty() {
+						view_ns_segments.clone()
+					} else {
+						dict_ident.namespace.iter().map(|n| n.text()).collect()
+					};
+					let dict_name = dict_ident.name.text();
+
+					let Some(namespace) =
+						self.catalog.find_namespace_by_segments(tx, &dict_ns_segments)?
+					else {
+						return Err(CatalogError::NotFound {
+							kind: CatalogObjectKind::Dictionary,
+							namespace: dict_ns_segments.join("::"),
+							name: dict_name.to_string(),
+							fragment: dict_ident.name.to_owned(),
+						}
+						.into());
+					};
+
+					let Some(dictionary) =
+						self.catalog.find_dictionary_by_name(tx, namespace.id(), dict_name)?
+					else {
+						return Err(CatalogError::NotFound {
+							kind: CatalogObjectKind::Dictionary,
+							namespace: dict_ns_segments.join("::"),
+							name: dict_name.to_string(),
+							fragment: dict_ident.name.to_owned(),
+						}
+						.into());
+					};
+
+					if column_type != dictionary.value_type {
+						return Err(CatalogError::DictionaryTypeMismatch {
+							column: column_name.clone(),
+							column_type,
+							dictionary: dict_name.to_string(),
+							dictionary_value_type: dictionary.value_type,
+							fragment: col.name.to_owned(),
+						}
+						.into());
+					}
+
+					dictionary_id = Some(dictionary.id);
+
+					constraint = TypeConstraint::with_constraint(
+						constraint.get_type(),
+						Constraint::Dictionary(dictionary.id, dictionary.id_type),
+					);
+				}
+			}
+
 			columns.push(ViewColumnToCreate {
 				name,
 				fragment,
 				constraint,
+				dictionary_id,
 			});
 		}
 

@@ -94,6 +94,7 @@ pub mod tests {
 					name: Fragment::internal("id"),
 					fragment: Fragment::None,
 					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
+					dictionary_id: None,
 				}],
 				storage: ViewStorageConfig::default(),
 				sort: vec![],
