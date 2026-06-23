@@ -18,7 +18,9 @@ use reifydb_value::{
 		identity::IdentityId,
 		int::{Int, parse::parse_int},
 		row_number::RowNumber,
-		temporal::parse::{datetime::parse_datetime, duration::parse_duration},
+		temporal::parse::{
+			date::parse_date, datetime::parse_datetime, duration::parse_duration, time::parse_time,
+		},
 		time::Time,
 		uint::{Uint, parse::parse_uint},
 		uuid::parse::{parse_uuid4, parse_uuid7},
@@ -275,16 +277,8 @@ pub fn convert_column_to_data(target: ValueType, data: Vec<String>) -> FrameColu
 					if s == "⟪none⟫" {
 						Date::from_ymd(1970, 1, 1).unwrap()
 					} else {
-						let parts: Vec<&str> = s.split('-').collect();
-						if parts.len() == 3 {
-							let year = parts[0].parse::<i32>().unwrap_or(1970);
-							let month = parts[1].parse::<u32>().unwrap_or(1);
-							let day = parts[2].parse::<u32>().unwrap_or(1);
-							Date::from_ymd(year, month, day)
-								.unwrap_or(Date::from_ymd(1970, 1, 1).unwrap())
-						} else {
-							Date::from_ymd(1970, 1, 1).unwrap()
-						}
+						parse_date(Fragment::from(s))
+							.unwrap_or_else(|_| Date::from_ymd(1970, 1, 1).unwrap())
 					}
 				})
 				.collect();
@@ -315,28 +309,8 @@ pub fn convert_column_to_data(target: ValueType, data: Vec<String>) -> FrameColu
 					if s == "⟪none⟫" {
 						Time::from_hms(0, 0, 0).unwrap()
 					} else {
-						let parts: Vec<&str> = s.split(':').collect();
-						if parts.len() >= 3 {
-							let hour = parts[0].parse::<u32>().unwrap_or(0);
-							let min = parts[1].parse::<u32>().unwrap_or(0);
-							let sec_parts: Vec<&str> = parts[2].split('.').collect();
-							let sec = sec_parts[0].parse::<u32>().unwrap_or(0);
-							let nano = if sec_parts.len() > 1 {
-								let frac_str = sec_parts[1];
-								let padded = if frac_str.len() < 9 {
-									format!("{:0<9}", frac_str)
-								} else {
-									frac_str[..9].to_string()
-								};
-								padded.parse::<u32>().unwrap_or(0)
-							} else {
-								0
-							};
-							Time::from_hms_nano(hour, min, sec, nano)
-								.unwrap_or(Time::from_hms(0, 0, 0).unwrap())
-						} else {
-							Time::from_hms(0, 0, 0).unwrap()
-						}
+						parse_time(Fragment::from(s))
+							.unwrap_or_else(|_| Time::from_hms(0, 0, 0).unwrap())
 					}
 				})
 				.collect();

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	common::{TimeDomain, WindowKind, WindowSize},
-	internal_error,
+use reifydb_core::common::{TimeDomain, WindowKind, WindowSize};
+use reifydb_value::{
+	fragment::Fragment,
+	value::{duration::Duration, number::parse::parse_primitive_int, temporal::parse::duration::parse_duration},
 };
-use reifydb_value::{fragment::Fragment, value::duration::Duration};
 
 use crate::{
 	Result,
@@ -15,6 +15,7 @@ use crate::{
 		AstLiteral::{Number, Text},
 		AstWindow, AstWindowConfig, AstWindowKind,
 	},
+	bump::BumpFragment,
 	diagnostic::AstError,
 	expression::{Expression, ExpressionCompiler},
 	plan::logical::{Compiler, LogicalPlan},
@@ -194,11 +195,11 @@ impl<'bump> Compiler<'bump> {
 		}
 	}
 
-	fn parse_config_item(config_item: &AstWindowConfig, config: &mut ParsedConfig) -> Result<()> {
+	fn parse_config_item(config_item: &AstWindowConfig<'bump>, config: &mut ParsedConfig) -> Result<()> {
 		match config_item.key.text() {
 			"interval" | "duration" => {
-				if let Some(duration_str) = Self::extract_literal_string(&config_item.value) {
-					config.interval = Some(Self::parse_duration(&duration_str)?);
+				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
+					config.interval = Some(parse_duration(frag.to_owned())?);
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "duration string".to_string(),
@@ -219,8 +220,8 @@ impl<'bump> Compiler<'bump> {
 				}
 			}
 			"slide" => {
-				if let Some(duration_str) = Self::extract_literal_string(&config_item.value) {
-					config.slide_duration = Some(Self::parse_duration(&duration_str)?);
+				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
+					config.slide_duration = Some(parse_duration(frag.to_owned())?);
 				} else if let Some(count_val) = Self::extract_literal_number(&config_item.value) {
 					config.slide_count = Some(count_val as u64);
 				} else {
@@ -232,8 +233,8 @@ impl<'bump> Compiler<'bump> {
 				}
 			}
 			"gap" => {
-				if let Some(duration_str) = Self::extract_literal_string(&config_item.value) {
-					config.gap = Some(Self::parse_duration(&duration_str)?);
+				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
+					config.gap = Some(parse_duration(frag.to_owned())?);
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "duration string".to_string(),
@@ -243,8 +244,8 @@ impl<'bump> Compiler<'bump> {
 				}
 			}
 			"lag" => {
-				if let Some(duration_str) = Self::extract_literal_string(&config_item.value) {
-					config.lag = Some(Self::parse_duration(&duration_str)?);
+				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
+					config.lag = Some(parse_duration(frag.to_owned())?);
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "duration string".to_string(),
@@ -254,8 +255,8 @@ impl<'bump> Compiler<'bump> {
 				}
 			}
 			"lateness" => {
-				if let Some(duration_str) = Self::extract_literal_string(&config_item.value) {
-					config.lateness = Some(Self::parse_duration(&duration_str)?);
+				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
+					config.lateness = Some(parse_duration(frag.to_owned())?);
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "duration string".to_string(),
@@ -265,8 +266,8 @@ impl<'bump> Compiler<'bump> {
 				}
 			}
 			"ts" => {
-				if let Some(ts_str) = Self::extract_literal_string(&config_item.value) {
-					config.ts = Some(ts_str);
+				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
+					config.ts = Some(frag.text().to_string());
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "column name string".to_string(),
@@ -276,8 +277,8 @@ impl<'bump> Compiler<'bump> {
 				}
 			}
 			"time" => {
-				if let Some(time_str) = Self::extract_literal_string(&config_item.value) {
-					config.time = Some(time_str.to_ascii_lowercase());
+				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
+					config.time = Some(frag.text().to_ascii_lowercase());
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "\"event\" or \"processing\"".to_string(),
@@ -297,41 +298,11 @@ impl<'bump> Compiler<'bump> {
 		Ok(())
 	}
 
-	pub fn parse_duration(duration_str: &str) -> Result<Duration> {
-		let duration_str = duration_str.trim_matches('"');
-
-		if let Some(number_part) = duration_str.strip_suffix("ms") {
-			let number: u64 =
-				number_part.parse().map_err(|_| internal_error!("Invalid duration number"))?;
-			return Ok(Duration::from_milliseconds(number as i64).unwrap());
-		}
-
-		if let Some(suffix) = duration_str.chars().last() {
-			let number_part = &duration_str[..duration_str.len() - 1];
-			let number: u64 =
-				number_part.parse().map_err(|_| internal_error!("Invalid duration number"))?;
-
-			let duration = match suffix {
-				's' => Duration::from_seconds(number as i64).unwrap(),
-				'm' => Duration::from_seconds((number * 60) as i64).unwrap(),
-				'h' => Duration::from_seconds((number * 3600) as i64).unwrap(),
-				'd' => Duration::from_seconds((number * 86400) as i64).unwrap(),
-				_ => {
-					return Err(internal_error!("Invalid duration suffix"));
-				}
-			};
-
-			Ok(duration)
-		} else {
-			Err(internal_error!("Invalid duration format"))
-		}
-	}
-
-	pub fn extract_literal_string(ast: &Ast) -> Option<String> {
+	pub fn extract_text_fragment(ast: &Ast<'bump>) -> Option<BumpFragment<'bump>> {
 		if let Literal(literal) = ast
 			&& let Text(text) = literal
 		{
-			Some(text.0.fragment.text().to_string())
+			Some(text.0.fragment)
 		} else {
 			None
 		}
@@ -341,7 +312,7 @@ impl<'bump> Compiler<'bump> {
 		if let Literal(literal) = ast
 			&& let Number(number) = literal
 		{
-			number.0.fragment.text().parse().ok()
+			parse_primitive_int::<i64>(number.0.fragment.to_owned()).ok()
 		} else {
 			None
 		}

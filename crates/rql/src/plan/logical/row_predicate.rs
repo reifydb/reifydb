@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::row_number::ROW_NUMBER_COLUMN_NAME;
+use reifydb_value::value::{number::parse::parse_primitive_uint, row_number::ROW_NUMBER_COLUMN_NAME};
 
 use crate::expression::{
 	BetweenExpression, ColumnExpression, ConstantExpression, EqExpression, Expression, InExpression,
@@ -108,10 +108,7 @@ fn extract_constant_u64(expr: &Expression) -> Option<u64> {
 	match expr {
 		Expression::Constant(ConstantExpression::Number {
 			fragment,
-		}) => {
-			let text = fragment.text();
-			text.parse::<u64>().ok()
-		}
+		}) => parse_primitive_uint::<u64>(fragment.clone()).ok(),
 		_ => None,
 	}
 }

@@ -5,7 +5,7 @@ use reifydb_core::sort::SortDirection;
 use reifydb_value::{
 	error::{AstErrorKind, Error, TypeError},
 	fragment::Fragment,
-	value::duration::Duration,
+	value::{duration::Duration, temporal::parse::duration::parse_duration},
 };
 
 use crate::{
@@ -31,7 +31,6 @@ use crate::{
 		parse::{Parser, Precedence},
 	},
 	bump::BumpBox,
-	plan::logical::Compiler,
 	token::{
 		keyword::{
 			Keyword,
@@ -2284,15 +2283,13 @@ impl<'bump> Parser<'bump> {
 
 	fn parse_throttle_duration(&mut self) -> Result<Duration> {
 		let token = self.consume(TokenKind::Literal(Literal::Text))?;
-		let duration_str = token.fragment.text();
-		let parsed = Compiler::parse_duration(duration_str)?;
+		let parsed = parse_duration(token.fragment.to_owned())?;
 		Ok(Duration::from_nanoseconds(parsed.to_std().as_nanos() as i64).unwrap())
 	}
 
 	fn parse_linger_duration(&mut self) -> Result<Duration> {
 		let token = self.consume(TokenKind::Literal(Literal::Text))?;
-		let duration_str = token.fragment.text();
-		let parsed = Compiler::parse_duration(duration_str)?;
+		let parsed = parse_duration(token.fragment.to_owned())?;
 		Ok(Duration::from_nanoseconds(parsed.to_std().as_nanos() as i64).unwrap())
 	}
 

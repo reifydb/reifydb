@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::row::{JoinTtl, Ttl, TtlCleanupMode};
+use reifydb_value::value::temporal::parse::duration::parse_duration;
 
 use crate::{
 	Result,
@@ -40,7 +41,7 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	pub(crate) fn compile_ttl(ast: AstTtl<'bump>) -> Result<Ttl> {
-		let duration = Self::parse_duration(ast.duration.fragment.text())?;
+		let duration = parse_duration(ast.duration.fragment.to_owned())?;
 		let duration_nanos: u64 =
 			duration.to_std().as_nanos().try_into().map_err(|_| AstError::UnexpectedToken {
 				expected: "a duration that fits in u64 nanoseconds".to_string(),
@@ -82,5 +83,28 @@ impl<'bump> Compiler<'bump> {
 			duration_nanos,
 			cleanup_mode,
 		})
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::{bump::Bump, token::tokenize};
+
+	#[test]
+	// Intent: a compound TTL duration - the form Duration::Display emits (e.g. "2d2h" for 50h)
+	// and that generated MIGRATE statements carry - must compile, not panic with ERR-mod:312.
+	// Guards the view-migration boot path that regressed in raptor.
+	fn compile_ttl_accepts_compound_duration() {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, "'2d2h'").unwrap();
+		let duration = tokens.into_iter().next().unwrap();
+		let ttl = Compiler::<'_>::compile_ttl(AstTtl {
+			duration,
+			anchor: None,
+			mode: None,
+		})
+		.unwrap();
+		assert_eq!(ttl.duration_nanos, 50u64 * 3600 * 1_000_000_000);
 	}
 }
