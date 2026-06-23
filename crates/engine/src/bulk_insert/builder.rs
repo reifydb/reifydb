@@ -374,7 +374,11 @@ fn dictionary_encode_table(
 				catalog.find_dictionary(&mut Transaction::Command(txn), dict_id)?.ok_or_else(|| {
 					internal_error!("Dictionary {:?} not found for column {}", dict_id, col.name)
 				})?;
-			let entry_id = txn.insert_into_dictionary(&dictionary, &values[idx])?;
+			let entry_id = if matches!(values[idx], Value::None { .. }) {
+				dictionary.id_type.none()
+			} else {
+				txn.insert_into_dictionary(&dictionary, &values[idx])?
+			};
 			values[idx] = entry_id.to_value();
 		}
 	}
@@ -566,7 +570,11 @@ fn dict_encode_ringbuffer_row(
 				catalog.find_dictionary(&mut Transaction::Command(txn), dict_id)?.ok_or_else(|| {
 					internal_error!("Dictionary {:?} not found for column {}", dict_id, col.name)
 				})?;
-			let entry_id = txn.insert_into_dictionary(&dictionary, &values[idx])?;
+			let entry_id = if matches!(values[idx], Value::None { .. }) {
+				dictionary.id_type.none()
+			} else {
+				txn.insert_into_dictionary(&dictionary, &values[idx])?
+			};
 			values[idx] = entry_id.to_value();
 		}
 	}
@@ -586,7 +594,11 @@ fn dict_encode_series_row(
 				catalog.find_dictionary(&mut Transaction::Command(txn), dict_id)?.ok_or_else(|| {
 					internal_error!("Dictionary {:?} not found for column {}", dict_id, col.name)
 				})?;
-			let entry_id = txn.insert_into_dictionary(&dictionary, &values[idx])?;
+			let entry_id = if matches!(values[idx], Value::None { .. }) {
+				dictionary.id_type.none()
+			} else {
+				txn.insert_into_dictionary(&dictionary, &values[idx])?
+			};
 			values[idx] = entry_id.to_value();
 		}
 	}

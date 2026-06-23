@@ -15,7 +15,7 @@ pub mod super_type;
 
 use std::fmt;
 
-use crate::value::Value;
+use crate::value::{Value, dictionary::DictionaryEntryId};
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ValueType {
@@ -185,6 +185,20 @@ impl ValueType {
 		match self {
 			ValueType::Option(inner) => inner,
 			other => other,
+		}
+	}
+
+	pub fn none(&self) -> DictionaryEntryId {
+		match self {
+			ValueType::Uint1 => DictionaryEntryId::U1(0),
+			ValueType::Uint2 => DictionaryEntryId::U2(0),
+			ValueType::Uint4 => DictionaryEntryId::U4(0),
+			ValueType::Uint8 => DictionaryEntryId::U8(0),
+			ValueType::Uint16 => DictionaryEntryId::U16(0),
+			_ => unimplemented!(
+				"Invalid dictionary id_type: {:?}. Must be Uint1, Uint2, Uint4, Uint8, or Uint16",
+				self
+			),
 		}
 	}
 }

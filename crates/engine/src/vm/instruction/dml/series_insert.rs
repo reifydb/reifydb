@@ -36,7 +36,7 @@ use tracing::instrument;
 
 use super::{
 	context::SeriesTarget,
-	returning::{decode_rows_to_columns, evaluate_returning},
+	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning},
 	shape::get_or_create_series_shape,
 };
 use crate::{
@@ -189,7 +189,11 @@ fn insert_series_row(
 			let dictionary = services.catalog.find_dictionary(txn, dict_id)?.ok_or_else(|| {
 				internal_error!("Dictionary {:?} not found for column {}", dict_id, col_def.name)
 			})?;
-			let entry_id = txn.insert_into_dictionary(&dictionary, &encoded_values[i])?;
+			let entry_id = if matches!(encoded_values[i], Value::None { .. }) {
+				dictionary.id_type.none()
+			} else {
+				txn.insert_into_dictionary(&dictionary, &encoded_values[i])?
+			};
 			encoded_values[i] = entry_id.to_value();
 		}
 	}
@@ -239,7 +243,8 @@ fn finalize_series_insert(
 	}
 
 	if let Some(returning_exprs) = returning {
-		let columns = decode_rows_to_columns(shape, returned_rows);
+		let mut columns = decode_rows_to_columns(shape, returned_rows);
+		decode_returning_dictionaries(services, txn, &series.columns, &mut columns)?;
 		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 	Ok(insert_series_result(namespace.name(), &series.name, inserted_count))

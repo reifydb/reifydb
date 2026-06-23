@@ -121,7 +121,7 @@ impl<'bump> Compiler<'bump> {
 							.into());
 						};
 
-						if column_type != dictionary.value_type {
+						if column_type.inner_type() != &dictionary.value_type {
 							return Err(CatalogError::DictionaryTypeMismatch {
 								column: column_name.clone(),
 								column_type,

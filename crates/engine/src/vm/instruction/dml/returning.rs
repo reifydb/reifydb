@@ -5,9 +5,11 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	encoded::{row::EncodedRow, shape::RowShape},
+	interface::catalog::{column::Column, dictionary::Dictionary},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_rql::expression::Expression;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
@@ -20,7 +22,7 @@ use crate::{
 		compile::{CompiledExpr, compile_expression},
 		context::{CompileContext, EvalContext},
 	},
-	vm::{services::Services, stack::SymbolTable},
+	vm::{services::Services, stack::SymbolTable, volcano::decode_dictionary_columns},
 };
 
 pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, EncodedRow)]) -> Columns {
@@ -47,6 +49,24 @@ pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, Encod
 	}
 
 	Columns::with_system_columns(columns_vec, row_numbers, created_at, updated_at)
+}
+
+pub(crate) fn decode_returning_dictionaries(
+	services: &Arc<Services>,
+	txn: &mut Transaction<'_>,
+	object_columns: &[Column],
+	columns: &mut Columns,
+) -> Result<()> {
+	let mut dictionaries: Vec<Option<Dictionary>> = Vec::with_capacity(columns.len());
+	for column in columns.iter() {
+		let dict_id =
+			object_columns.iter().find(|c| c.name == column.name().text()).and_then(|c| c.dictionary_id);
+		match dict_id {
+			Some(id) => dictionaries.push(services.catalog.find_dictionary(txn, id)?),
+			None => dictionaries.push(None),
+		}
+	}
+	decode_dictionary_columns(columns, &dictionaries, txn)
 }
 
 fn try_column_passthrough(exprs: &[Expression], input: &Columns) -> Option<Columns> {

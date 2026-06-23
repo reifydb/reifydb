@@ -37,7 +37,7 @@ use tracing::instrument;
 use super::{
 	context::TableTarget,
 	primary_key,
-	returning::{decode_rows_to_columns, evaluate_returning},
+	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning},
 	shape::get_or_create_table_shape,
 };
 use crate::{
@@ -113,7 +113,8 @@ pub(crate) fn insert_table(
 	)?;
 
 	if let Some(returning_exprs) = &returning {
-		let columns = decode_rows_to_columns(&shape, &returned_rows);
+		let mut columns = decode_rows_to_columns(&shape, &returned_rows);
+		decode_returning_dictionaries(services, txn, &table.columns, &mut columns)?;
 		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 	Ok(insert_table_result(namespace.name(), &table.name, total_rows as u64))
@@ -248,7 +249,11 @@ fn build_insert_table_row(
 			let dictionary = services.catalog.find_dictionary(txn, dict_id)?.ok_or_else(|| {
 				internal_error!("Dictionary {:?} not found for column {}", dict_id, table_column.name)
 			})?;
-			let entry_id = txn.insert_into_dictionary(&dictionary, &value)?;
+			let entry_id = if matches!(value, Value::None { .. }) {
+				dictionary.id_type.none()
+			} else {
+				txn.insert_into_dictionary(&dictionary, &value)?
+			};
 			entry_id.to_value()
 		} else {
 			value

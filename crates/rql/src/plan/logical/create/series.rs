@@ -81,7 +81,7 @@ impl<'bump> Compiler<'bump> {
 							.into());
 						};
 
-						if column_type != dictionary.value_type {
+						if column_type.inner_type() != &dictionary.value_type {
 							return Err(CatalogError::DictionaryTypeMismatch {
 								column: col.name.text().to_string(),
 								column_type,
