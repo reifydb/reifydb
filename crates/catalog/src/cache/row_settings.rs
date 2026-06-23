@@ -37,13 +37,14 @@ pub mod tests {
 		interface::catalog::id::TableId,
 		row::{Ttl, TtlCleanupMode},
 	};
+	use reifydb_value::value::duration::Duration;
 
 	use super::*;
 
-	fn settings(duration_nanos: u64, cleanup_mode: TtlCleanupMode, persistent: bool) -> RowSettings {
+	fn settings(duration: Duration, cleanup_mode: TtlCleanupMode, persistent: bool) -> RowSettings {
 		RowSettings {
 			ttl: Some(Ttl {
-				duration_nanos,
+				duration,
 				cleanup_mode,
 			}),
 			persistent,
@@ -54,7 +55,7 @@ pub mod tests {
 	fn test_set_and_find_row_settings() {
 		let catalog = CatalogCache::new();
 		let shape = ShapeId::Table(TableId(1));
-		let config = settings(300_000_000_000, TtlCleanupMode::Drop, false);
+		let config = settings(Duration::from_minutes(5).unwrap(), TtlCleanupMode::Drop, false);
 
 		catalog.set_row_settings(shape, CommitVersion(1), Some(config.clone()));
 
@@ -68,8 +69,8 @@ pub mod tests {
 		let catalog = CatalogCache::new();
 		let shape = ShapeId::Table(TableId(42));
 
-		let config_v1 = settings(300_000_000_000, TtlCleanupMode::Drop, true);
-		let config_v2 = settings(600_000_000_000, TtlCleanupMode::Delete, false);
+		let config_v1 = settings(Duration::from_minutes(5).unwrap(), TtlCleanupMode::Drop, true);
+		let config_v2 = settings(Duration::from_minutes(10).unwrap(), TtlCleanupMode::Delete, false);
 
 		catalog.set_row_settings(shape, CommitVersion(1), Some(config_v1.clone()));
 		catalog.set_row_settings(shape, CommitVersion(2), Some(config_v2.clone()));
@@ -83,7 +84,7 @@ pub mod tests {
 	fn test_row_settings_deletion() {
 		let catalog = CatalogCache::new();
 		let shape = ShapeId::Table(TableId(99));
-		let config = settings(300_000_000_000, TtlCleanupMode::Drop, true);
+		let config = settings(Duration::from_minutes(5).unwrap(), TtlCleanupMode::Drop, true);
 
 		catalog.set_row_settings(shape, CommitVersion(1), Some(config.clone()));
 		assert_eq!(catalog.find_row_settings_at(shape, CommitVersion(1)), Some(config.clone()));
@@ -98,9 +99,9 @@ pub mod tests {
 		let catalog = CatalogCache::new();
 		let shape = ShapeId::Table(TableId(100));
 
-		let config_v1 = settings(60_000_000_000, TtlCleanupMode::Drop, true);
-		let config_v2 = settings(300_000_000_000, TtlCleanupMode::Delete, false);
-		let config_v3 = settings(86_400_000_000_000, TtlCleanupMode::Drop, true);
+		let config_v1 = settings(Duration::from_minutes(1).unwrap(), TtlCleanupMode::Drop, true);
+		let config_v2 = settings(Duration::from_minutes(5).unwrap(), TtlCleanupMode::Delete, false);
+		let config_v3 = settings(Duration::from_days(1).unwrap(), TtlCleanupMode::Drop, true);
 
 		catalog.set_row_settings(shape, CommitVersion(10), Some(config_v1.clone()));
 		catalog.set_row_settings(shape, CommitVersion(20), Some(config_v2.clone()));

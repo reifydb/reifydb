@@ -178,10 +178,10 @@ impl<P: ListRowSettings> Actor<P> {
 		batch_size: usize,
 		stats: &mut ScanStats,
 	) {
-		let Some(cutoff_nanos) = now_nanos.checked_sub(ttl.duration_nanos) else {
+		let Some(cutoff) = DateTime::from_nanos(now_nanos).checked_sub(ttl.duration) else {
 			return;
 		};
-		let Some(cutoff_version) = self.epoch.floor_version_at(cutoff_nanos).map(CommitVersion) else {
+		let Some(cutoff_version) = self.epoch.floor_version_at(cutoff.to_nanos()).map(CommitVersion) else {
 			return;
 		};
 
@@ -245,10 +245,10 @@ impl<P: ListRowSettings> Actor<P> {
 		now_nanos: u64,
 		persistent_rows_deleted: &mut u64,
 	) {
-		let Some(cutoff_nanos) = now_nanos.checked_sub(ttl.duration_nanos) else {
+		let Some(cutoff) = DateTime::from_nanos(now_nanos).checked_sub(ttl.duration) else {
 			return;
 		};
-		let Some(cutoff_version) = self.epoch.floor_version_at(cutoff_nanos).map(CommitVersion) else {
+		let Some(cutoff_version) = self.epoch.floor_version_at(cutoff.to_nanos()).map(CommitVersion) else {
 			return;
 		};
 		match persistent.delete_below_version(EntryKind::Source(*shape_id), cutoff_version, None) {

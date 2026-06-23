@@ -9,6 +9,7 @@ use reifydb_core::{
 	encoded::row::EncodedRow,
 	row::{JoinTtl, OperatorSettings, Ttl, TtlCleanupMode},
 };
+use reifydb_value::value::duration::Duration;
 
 use self::shape::operator_settings;
 
@@ -22,13 +23,13 @@ pub(crate) fn encode_operator_settings(settings: &OperatorSettings) -> EncodedRo
 				&mut row,
 				&join.left,
 				operator_settings::LEFT_CLEANUP_MODE,
-				operator_settings::LEFT_DURATION_NANOS,
+				operator_settings::LEFT_DURATION,
 			);
 			encode_side(
 				&mut row,
 				&join.right,
 				operator_settings::RIGHT_CLEANUP_MODE,
-				operator_settings::RIGHT_DURATION_NANOS,
+				operator_settings::RIGHT_DURATION,
 			);
 		}
 		None => {
@@ -37,7 +38,7 @@ pub(crate) fn encode_operator_settings(settings: &OperatorSettings) -> EncodedRo
 				&mut row,
 				&settings.ttl,
 				operator_settings::CLEANUP_MODE,
-				operator_settings::DURATION_NANOS,
+				operator_settings::DURATION,
 			);
 		}
 	}
@@ -47,13 +48,8 @@ pub(crate) fn encode_operator_settings(settings: &OperatorSettings) -> EncodedRo
 
 pub(crate) fn decode_operator_settings(row: &EncodedRow) -> Option<OperatorSettings> {
 	if operator_settings::SHAPE.get_bool(row, operator_settings::IS_JOIN) {
-		let left =
-			decode_side(row, operator_settings::LEFT_CLEANUP_MODE, operator_settings::LEFT_DURATION_NANOS)?;
-		let right = decode_side(
-			row,
-			operator_settings::RIGHT_CLEANUP_MODE,
-			operator_settings::RIGHT_DURATION_NANOS,
-		)?;
+		let left = decode_side(row, operator_settings::LEFT_CLEANUP_MODE, operator_settings::LEFT_DURATION)?;
+		let right = decode_side(row, operator_settings::RIGHT_CLEANUP_MODE, operator_settings::RIGHT_DURATION)?;
 		Some(OperatorSettings {
 			ttl: None,
 			join: Some(JoinTtl {
@@ -62,7 +58,7 @@ pub(crate) fn decode_operator_settings(row: &EncodedRow) -> Option<OperatorSetti
 			}),
 		})
 	} else {
-		let ttl = decode_side(row, operator_settings::CLEANUP_MODE, operator_settings::DURATION_NANOS)?;
+		let ttl = decode_side(row, operator_settings::CLEANUP_MODE, operator_settings::DURATION)?;
 		Some(OperatorSettings {
 			ttl,
 			join: None,
@@ -74,22 +70,22 @@ fn encode_side(row: &mut EncodedRow, ttl: &Option<Ttl>, cleanup_idx: usize, dura
 	match ttl {
 		Some(ttl) => {
 			operator_settings::SHAPE.set_u8(row, cleanup_idx, encode_cleanup_mode(&ttl.cleanup_mode));
-			operator_settings::SHAPE.set_u64(row, duration_idx, ttl.duration_nanos);
+			operator_settings::SHAPE.set_duration(row, duration_idx, ttl.duration);
 		}
 		None => {
-			operator_settings::SHAPE.set_u64(row, duration_idx, 0u64);
+			operator_settings::SHAPE.set_duration(row, duration_idx, Duration::zero());
 		}
 	}
 }
 
 fn decode_side(row: &EncodedRow, cleanup_idx: usize, duration_idx: usize) -> Option<Option<Ttl>> {
-	let duration_nanos = operator_settings::SHAPE.get_u64(row, duration_idx);
-	if duration_nanos == 0 {
+	let duration = operator_settings::SHAPE.get_duration(row, duration_idx);
+	if duration.is_zero() {
 		return Some(None);
 	}
 	let cleanup_mode = decode_cleanup_mode(operator_settings::SHAPE.get_u8(row, cleanup_idx))?;
 	Some(Some(Ttl {
-		duration_nanos,
+		duration,
 		cleanup_mode,
 	}))
 }
@@ -113,9 +109,9 @@ fn decode_cleanup_mode(mode: u8) -> Option<TtlCleanupMode> {
 pub mod tests {
 	use super::*;
 
-	fn ttl(duration_nanos: u64, cleanup_mode: TtlCleanupMode) -> Ttl {
+	fn ttl(duration: Duration, cleanup_mode: TtlCleanupMode) -> Ttl {
 		Ttl {
-			duration_nanos,
+			duration,
 			cleanup_mode,
 		}
 	}
@@ -128,11 +124,11 @@ pub mod tests {
 	#[test]
 	fn single_ttl_roundtrips() {
 		roundtrip(OperatorSettings {
-			ttl: Some(ttl(300_000_000_000, TtlCleanupMode::Drop)),
+			ttl: Some(ttl(Duration::from_minutes(5).unwrap(), TtlCleanupMode::Drop)),
 			join: None,
 		});
 		roundtrip(OperatorSettings {
-			ttl: Some(ttl(3_600_000_000_000, TtlCleanupMode::Delete)),
+			ttl: Some(ttl(Duration::from_hours(1).unwrap(), TtlCleanupMode::Delete)),
 			join: None,
 		});
 		roundtrip(OperatorSettings {
@@ -143,8 +139,8 @@ pub mod tests {
 
 	#[test]
 	fn join_ttl_roundtrips_all_side_combinations() {
-		let l = ttl(60_000_000_000, TtlCleanupMode::Drop);
-		let r = ttl(120_000_000_000, TtlCleanupMode::Drop);
+		let l = ttl(Duration::from_minutes(1).unwrap(), TtlCleanupMode::Drop);
+		let r = ttl(Duration::from_minutes(2).unwrap(), TtlCleanupMode::Drop);
 
 		roundtrip(OperatorSettings {
 			ttl: None,

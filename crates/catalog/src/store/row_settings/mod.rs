@@ -12,6 +12,7 @@ use reifydb_core::{
 	encoded::row::EncodedRow,
 	row::{RowSettings, Ttl, TtlCleanupMode},
 };
+use reifydb_value::value::duration::Duration;
 
 use self::shape::row_settings;
 
@@ -25,10 +26,10 @@ pub(crate) fn encode_row_settings(settings: &RowSettings) -> EncodedRow {
 				row_settings::CLEANUP_MODE,
 				encode_cleanup_mode(&ttl.cleanup_mode),
 			);
-			row_settings::SHAPE.set_u64(&mut row, row_settings::DURATION_NANOS, ttl.duration_nanos);
+			row_settings::SHAPE.set_duration(&mut row, row_settings::DURATION, ttl.duration);
 		}
 		None => {
-			row_settings::SHAPE.set_u64(&mut row, row_settings::DURATION_NANOS, 0u64);
+			row_settings::SHAPE.set_duration(&mut row, row_settings::DURATION, Duration::zero());
 		}
 	}
 
@@ -38,14 +39,14 @@ pub(crate) fn encode_row_settings(settings: &RowSettings) -> EncodedRow {
 }
 
 pub(crate) fn decode_row_settings(row: &EncodedRow) -> Option<RowSettings> {
-	let duration_nanos = row_settings::SHAPE.get_u64(row, row_settings::DURATION_NANOS);
+	let duration = row_settings::SHAPE.get_duration(row, row_settings::DURATION);
 
-	let ttl = if duration_nanos == 0 {
+	let ttl = if duration.is_zero() {
 		None
 	} else {
 		let cleanup_mode = decode_cleanup_mode(row_settings::SHAPE.get_u8(row, row_settings::CLEANUP_MODE))?;
 		Some(Ttl {
-			duration_nanos,
+			duration,
 			cleanup_mode,
 		})
 	};
@@ -81,7 +82,7 @@ pub mod tests {
 	fn test_encode_decode_row_settings() {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
-				duration_nanos: 300_000_000_000, // 5 minutes
+				duration: Duration::from_minutes(5).unwrap(),
 				cleanup_mode: TtlCleanupMode::Drop,
 			}),
 			persistent: true,
@@ -95,7 +96,7 @@ pub mod tests {
 	fn test_encode_decode_row_settings_updated_delete() {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
-				duration_nanos: 3_600_000_000_000, // 1 hour
+				duration: Duration::from_hours(1).unwrap(),
 				cleanup_mode: TtlCleanupMode::Delete,
 			}),
 			persistent: true,
@@ -109,7 +110,7 @@ pub mod tests {
 	fn test_encode_decode_row_settings_non_persistent() {
 		let settings = RowSettings {
 			ttl: Some(Ttl {
-				duration_nanos: 60_000_000_000,
+				duration: Duration::from_minutes(1).unwrap(),
 				cleanup_mode: TtlCleanupMode::Drop,
 			}),
 			persistent: false,

@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, replica::ReplicaTransaction};
-use reifydb_value::value::identity::IdentityId;
+use reifydb_value::value::{duration::Duration, identity::IdentityId};
 
 #[test]
 fn test_row_settings_sync_to_catalog_cache() {
@@ -39,7 +39,7 @@ fn test_row_settings_sync_to_catalog_cache() {
 		.find_row_settings(&mut Transaction::Admin(&mut txn), shape)
 		.unwrap()
 		.expect("TTL not found in materialized catalog");
-	assert_eq!(ttl.ttl.expect("ttl not set").duration_nanos, 3_600_000_000_000);
+	assert_eq!(ttl.ttl.expect("ttl not set").duration, Duration::from_hours(1).unwrap());
 }
 
 #[test]
@@ -90,7 +90,7 @@ fn test_row_settings_replication_sync() {
 		.find_row_settings(&mut Transaction::Admin(&mut q_txn), shape)
 		.unwrap()
 		.expect("TTL not found in replica materialized catalog");
-	assert_eq!(ttl.ttl.expect("ttl not set").duration_nanos, 60_000_000_000);
+	assert_eq!(ttl.ttl.expect("ttl not set").duration, Duration::from_minutes(1).unwrap());
 }
 
 #[test]
@@ -114,7 +114,7 @@ fn test_operator_settings_sync_to_catalog_cache() {
 	let node_id = FlowNodeId(42);
 	let settings = OperatorSettings {
 		ttl: Some(Ttl {
-			duration_nanos: 3_600_000_000_000,
+			duration: Duration::from_hours(1).unwrap(),
 			cleanup_mode: TtlCleanupMode::Drop,
 		}),
 		join: None,
@@ -127,7 +127,7 @@ fn test_operator_settings_sync_to_catalog_cache() {
 	let listed = catalog.list_operator_settings();
 	assert_eq!(listed.len(), 1, "operator settings did not sync to the catalog cache");
 	assert_eq!(listed[0].0, node_id);
-	assert_eq!(listed[0].1.ttl.as_ref().expect("ttl not set").duration_nanos, 3_600_000_000_000);
+	assert_eq!(listed[0].1.ttl.as_ref().expect("ttl not set").duration, Duration::from_hours(1).unwrap());
 }
 
 fn deltas_to_system_changes(txn: &AdminTransaction) -> Vec<SystemChange> {

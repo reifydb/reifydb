@@ -43,13 +43,14 @@ impl CatalogCache {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::row::{Ttl, TtlCleanupMode};
+	use reifydb_value::value::duration::Duration;
 
 	use super::*;
 
-	fn settings(duration_nanos: u64, cleanup_mode: TtlCleanupMode) -> OperatorSettings {
+	fn settings(duration: Duration, cleanup_mode: TtlCleanupMode) -> OperatorSettings {
 		OperatorSettings {
 			ttl: Some(Ttl {
-				duration_nanos,
+				duration,
 				cleanup_mode,
 			}),
 			join: None,
@@ -60,7 +61,7 @@ pub mod tests {
 	fn test_set_and_find_operator_settings() {
 		let catalog = CatalogCache::new();
 		let operator = FlowNodeId(1);
-		let config = settings(300_000_000_000, TtlCleanupMode::Drop);
+		let config = settings(Duration::from_minutes(5).unwrap(), TtlCleanupMode::Drop);
 
 		catalog.set_operator_settings(operator, CommitVersion(1), Some(config.clone()));
 
@@ -74,8 +75,8 @@ pub mod tests {
 		let catalog = CatalogCache::new();
 		let operator = FlowNodeId(42);
 
-		let v1 = settings(300_000_000_000, TtlCleanupMode::Drop);
-		let v2 = settings(600_000_000_000, TtlCleanupMode::Delete);
+		let v1 = settings(Duration::from_minutes(5).unwrap(), TtlCleanupMode::Drop);
+		let v2 = settings(Duration::from_minutes(10).unwrap(), TtlCleanupMode::Delete);
 
 		catalog.set_operator_settings(operator, CommitVersion(1), Some(v1.clone()));
 		catalog.set_operator_settings(operator, CommitVersion(2), Some(v2.clone()));
@@ -96,7 +97,7 @@ pub mod tests {
 		// per-row maps. The latest read (now used at registration) must still find them.
 		let catalog = CatalogCache::new();
 		let operator = FlowNodeId(7);
-		let cfg = settings(10_000_000_000, TtlCleanupMode::Drop);
+		let cfg = settings(Duration::from_seconds(10).unwrap(), TtlCleanupMode::Drop);
 
 		catalog.set_operator_settings(operator, CommitVersion(5), Some(cfg.clone()));
 

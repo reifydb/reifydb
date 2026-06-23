@@ -238,6 +238,16 @@ impl DateTime {
 		DateTime::from_nanos(nanos as u64)
 	}
 
+	pub fn checked_sub(self, rhs: Duration) -> Option<DateTime> {
+		let total = rhs.as_nanos().ok()?;
+		let nanos = self.to_nanos() as i128 - total as i128;
+		if nanos < 0 {
+			None
+		} else {
+			Some(DateTime::from_nanos(nanos as u64))
+		}
+	}
+
 	pub fn saturating_duration_since(self, earlier: DateTime) -> Duration {
 		let diff = (self.to_nanos() as i128 - earlier.to_nanos() as i128)
 			.clamp(i64::MIN as i128, i64::MAX as i128) as i64;
@@ -756,6 +766,24 @@ pub mod tests {
 
 		let early = DateTime::from_timestamp(5).unwrap();
 		assert_eq!(early.saturating_sub(Duration::from_seconds(10_000).unwrap()), epoch);
+	}
+
+	#[test]
+	fn checked_sub_returns_none_when_window_has_not_elapsed() {
+		// A TTL cutoff is only meaningful once the window has fully elapsed. When the duration
+		// reaches before the start of time (now < ttl), checked_sub must yield None so the GC
+		// scan skips eviction entirely - never clamp to the epoch, which would feed a bogus
+		// cutoff that evicts rows still inside their TTL.
+		let now = DateTime::from_timestamp_millis(1_000).unwrap();
+		assert_eq!(now.checked_sub(Duration::from_seconds(3).unwrap()), None);
+		assert_eq!(DateTime::from_nanos(0).checked_sub(Duration::from_seconds(1).unwrap()), None);
+	}
+
+	#[test]
+	fn checked_sub_matches_subtraction_when_in_range() {
+		let now = DateTime::from_ymd_hms(2024, 1, 15, 10, 30, 25).unwrap();
+		let minute = Duration::from_seconds(60).unwrap();
+		assert_eq!(now.checked_sub(minute), Some(now - minute));
 	}
 
 	#[test]

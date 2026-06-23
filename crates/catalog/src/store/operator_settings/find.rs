@@ -27,6 +27,7 @@ pub mod tests {
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
+	use reifydb_value::value::duration::Duration;
 
 	use super::*;
 	use crate::store::operator_settings::create::create_operator_settings;
@@ -37,7 +38,7 @@ pub mod tests {
 		let operator = FlowNodeId(42);
 		let settings = OperatorSettings {
 			ttl: Some(Ttl {
-				duration_nanos: 300_000_000_000,
+				duration: Duration::from_minutes(5).unwrap(),
 				cleanup_mode: TtlCleanupMode::Drop,
 			}),
 			join: None,

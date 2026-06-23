@@ -22,6 +22,7 @@ pub mod tests {
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
+	use reifydb_value::value::duration::Duration;
 
 	use super::*;
 	use crate::store::row_settings::create::create_row_settings;
@@ -32,7 +33,7 @@ pub mod tests {
 		let shape = ShapeId::Table(TableId(42));
 		let settings = RowSettings {
 			ttl: Some(Ttl {
-				duration_nanos: 300_000_000_000,
+				duration: Duration::from_minutes(5).unwrap(),
 				cleanup_mode: TtlCleanupMode::Drop,
 			}),
 			persistent: true,

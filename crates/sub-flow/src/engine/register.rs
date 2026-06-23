@@ -528,9 +528,9 @@ impl FlowEngineInner {
 
 		let join_ttl = self.catalog.find_operator_settings(txn, node_id)?.and_then(|s| s.join);
 		let left = join_ttl.as_ref().and_then(|j| j.left.as_ref());
-		let left_ttl = left.map(|t| Duration::from_nanoseconds_const(t.duration_nanos as i64));
+		let left_ttl = left.map(|t| t.duration);
 		let right = join_ttl.as_ref().and_then(|j| j.right.as_ref());
-		let right_ttl = right.map(|t| Duration::from_nanoseconds_const(t.duration_nanos as i64));
+		let right_ttl = right.map(|t| t.duration);
 
 		self.operators.insert(
 			node_id,
@@ -577,7 +577,10 @@ impl FlowEngineInner {
 				expressions,
 				self.executor.routines.clone(),
 				self.runtime_context.clone(),
-				ttl.map(|t| t.duration_nanos),
+				ttl.map(|t| {
+					t.duration.as_nanos().expect("operator ttl duration fits in i64 nanoseconds")
+						as u64
+				}),
 			))),
 		);
 		Ok(())
@@ -606,7 +609,9 @@ impl FlowEngineInner {
 		}
 
 		let ttl = self.catalog.find_operator_settings(txn, node_id)?.and_then(|s| s.ttl);
-		let ttl_nanos = ttl.as_ref().map(|t| t.duration_nanos);
+		let ttl_nanos = ttl
+			.as_ref()
+			.map(|t| t.duration.as_nanos().expect("operator ttl duration fits in i64 nanoseconds") as u64);
 
 		self.operators.insert(
 			node_id,

@@ -42,14 +42,9 @@ impl<'bump> Compiler<'bump> {
 
 	pub(crate) fn compile_ttl(ast: AstTtl<'bump>) -> Result<Ttl> {
 		let duration = parse_duration(ast.duration.fragment.to_owned())?;
-		let duration_nanos: u64 =
-			duration.to_std().as_nanos().try_into().map_err(|_| AstError::UnexpectedToken {
-				expected: "a duration that fits in u64 nanoseconds".to_string(),
-				fragment: ast.duration.fragment.to_owned(),
-			})?;
-		if duration_nanos == 0 {
+		if !duration.is_positive() {
 			return Err(AstError::UnexpectedToken {
-				expected: "a non-zero TTL duration".to_string(),
+				expected: "a positive TTL duration".to_string(),
 				fragment: ast.duration.fragment.to_owned(),
 			}
 			.into());
@@ -80,7 +75,7 @@ impl<'bump> Compiler<'bump> {
 		};
 
 		Ok(Ttl {
-			duration_nanos,
+			duration,
 			cleanup_mode,
 		})
 	}
@@ -105,6 +100,6 @@ mod tests {
 			mode: None,
 		})
 		.unwrap();
-		assert_eq!(ttl.duration_nanos, 50u64 * 3600 * 1_000_000_000);
+		assert_eq!(ttl.duration.as_nanos().unwrap(), 50i64 * 3600 * 1_000_000_000);
 	}
 }

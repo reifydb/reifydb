@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::row_number::RowNumber;
+use reifydb_value::value::{duration::Duration, row_number::RowNumber};
 use serde::{Deserialize, Serialize};
 
 use crate::encoded::{row::EncodedRow, shape::RowShape};
@@ -15,7 +15,7 @@ pub struct Row {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Ttl {
-	pub duration_nanos: u64,
+	pub duration: Duration,
 
 	pub cleanup_mode: TtlCleanupMode,
 }

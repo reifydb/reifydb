@@ -73,6 +73,8 @@ pub enum ConfigKey {
 	SubscriptionWorkerThreads,
 	RuntimeMetricsInterval,
 	MetricFlushInterval,
+	MetricsRuntimeRetention,
+	MetricsProfilerRetention,
 }
 
 impl ConfigKey {
@@ -115,6 +117,8 @@ impl ConfigKey {
 			Self::SubscriptionWorkerThreads,
 			Self::RuntimeMetricsInterval,
 			Self::MetricFlushInterval,
+			Self::MetricsRuntimeRetention,
+			Self::MetricsProfilerRetention,
 		]
 	}
 
@@ -159,6 +163,8 @@ impl ConfigKey {
 			Self::SubscriptionWorkerThreads => Value::Uint2(0),
 			Self::RuntimeMetricsInterval => Value::duration_seconds(5),
 			Self::MetricFlushInterval => Value::duration_seconds(10),
+			Self::MetricsRuntimeRetention => Value::duration_seconds(7 * 24 * 3600),
+			Self::MetricsProfilerRetention => Value::duration_seconds(3600),
 		}
 	}
 
@@ -284,6 +290,18 @@ impl ConfigKey {
 				"How often the metric collector flushes accumulated storage and CDC stats into the \
 				 system::metrics views. Must be > 0."
 			}
+			Self::MetricsRuntimeRetention => {
+				"Row TTL applied to the system::metrics::runtime::* snapshot series so old samples are \
+				 evicted. Seeded onto each runtime series at bootstrap only when it has no row settings \
+				 yet; changing it affects series created after the change, not already-seeded ones. \
+				 Must be > 0."
+			}
+			Self::MetricsProfilerRetention => {
+				"Row TTL applied to the system::metrics::profiler::*::snapshots series so old samples are \
+				 evicted. Seeded onto each profiler series at bootstrap only when it has no row settings \
+				 yet; changing it affects series created after the change, not already-seeded ones. \
+				 Must be > 0."
+			}
 		}
 	}
 
@@ -326,6 +344,8 @@ impl ConfigKey {
 			Self::SubscriptionWorkerThreads => true,
 			Self::RuntimeMetricsInterval => false,
 			Self::MetricFlushInterval => false,
+			Self::MetricsRuntimeRetention => true,
+			Self::MetricsProfilerRetention => true,
 		}
 	}
 
@@ -368,6 +388,8 @@ impl ConfigKey {
 			Self::SubscriptionWorkerThreads => &[ValueType::Uint2],
 			Self::RuntimeMetricsInterval => &[ValueType::Duration],
 			Self::MetricFlushInterval => &[ValueType::Duration],
+			Self::MetricsRuntimeRetention => &[ValueType::Duration],
+			Self::MetricsProfilerRetention => &[ValueType::Duration],
 		}
 	}
 
@@ -410,6 +432,8 @@ impl ConfigKey {
 			Self::SubscriptionWorkerThreads => false,
 			Self::RuntimeMetricsInterval => true,
 			Self::MetricFlushInterval => false,
+			Self::MetricsRuntimeRetention => false,
+			Self::MetricsProfilerRetention => false,
 		}
 	}
 
@@ -555,6 +579,26 @@ impl ConfigKey {
 				}
 				_ => Ok(()),
 			},
+			Self::MetricsRuntimeRetention => match value {
+				Value::Duration(d) => {
+					if d.is_positive() {
+						Ok(())
+					} else {
+						Err("METRICS_RUNTIME_RETENTION must be greater than zero".to_string())
+					}
+				}
+				_ => Ok(()),
+			},
+			Self::MetricsProfilerRetention => match value {
+				Value::Duration(d) => {
+					if d.is_positive() {
+						Ok(())
+					} else {
+						Err("METRICS_PROFILER_RETENTION must be greater than zero".to_string())
+					}
+				}
+				_ => Ok(()),
+			},
 			_ => Ok(()),
 		}
 	}
@@ -680,6 +724,8 @@ impl fmt::Display for ConfigKey {
 			Self::SubscriptionWorkerThreads => write!(f, "SUBSCRIPTION_WORKER_THREADS"),
 			Self::RuntimeMetricsInterval => write!(f, "RUNTIME_METRICS_INTERVAL"),
 			Self::MetricFlushInterval => write!(f, "METRIC_FLUSH_INTERVAL"),
+			Self::MetricsRuntimeRetention => write!(f, "METRICS_RUNTIME_RETENTION"),
+			Self::MetricsProfilerRetention => write!(f, "METRICS_PROFILER_RETENTION"),
 		}
 	}
 }
@@ -726,6 +772,8 @@ impl FromStr for ConfigKey {
 			"SUBSCRIPTION_WORKER_THREADS" => Ok(Self::SubscriptionWorkerThreads),
 			"RUNTIME_METRICS_INTERVAL" => Ok(Self::RuntimeMetricsInterval),
 			"METRIC_FLUSH_INTERVAL" => Ok(Self::MetricFlushInterval),
+			"METRICS_RUNTIME_RETENTION" => Ok(Self::MetricsRuntimeRetention),
+			"METRICS_PROFILER_RETENTION" => Ok(Self::MetricsProfilerRetention),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
 		}
 	}
@@ -865,7 +913,9 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 37);
+		assert_eq!(all.len(), 39);
+		assert!(all.contains(&ConfigKey::MetricsRuntimeRetention));
+		assert!(all.contains(&ConfigKey::MetricsProfilerRetention));
 		assert!(all.contains(&ConfigKey::VersionEpochSampleInterval));
 		assert!(all.contains(&ConfigKey::CdcWatermarkWaitTimeout));
 		assert!(all.contains(&ConfigKey::FlowJoinProbeBlockSize));
@@ -1297,6 +1347,53 @@ mod tests {
 			})
 			.unwrap_err();
 		assert!(matches!(err, AcceptError::TypeMismatch { .. }));
+	}
+
+	#[test]
+	fn test_metrics_retention_round_trip() {
+		assert_eq!(
+			"METRICS_RUNTIME_RETENTION".parse::<ConfigKey>().unwrap(),
+			ConfigKey::MetricsRuntimeRetention
+		);
+		assert_eq!(
+			"METRICS_PROFILER_RETENTION".parse::<ConfigKey>().unwrap(),
+			ConfigKey::MetricsProfilerRetention
+		);
+		assert_eq!(format!("{}", ConfigKey::MetricsRuntimeRetention), "METRICS_RUNTIME_RETENTION");
+		assert_eq!(format!("{}", ConfigKey::MetricsProfilerRetention), "METRICS_PROFILER_RETENTION");
+	}
+
+	#[test]
+	fn test_metrics_retention_defaults_are_7d_and_1h() {
+		// Runtime snapshots are sampled every few seconds, so a week is the cap before eviction;
+		// profiler aggregates are far noisier, so they default to a single hour.
+		assert_eq!(ConfigKey::MetricsRuntimeRetention.default_value(), Value::duration_seconds(7 * 24 * 3600));
+		assert_eq!(ConfigKey::MetricsProfilerRetention.default_value(), Value::duration_seconds(3600));
+	}
+
+	#[test]
+	fn test_metrics_retention_metadata() {
+		for key in [ConfigKey::MetricsRuntimeRetention, ConfigKey::MetricsProfilerRetention] {
+			assert_eq!(key.expected_types(), &[ValueType::Duration], "{key}");
+			assert!(!key.is_optional(), "{key} is always defaulted, never unset");
+		}
+	}
+
+	#[test]
+	fn test_metrics_retention_rejects_zero() {
+		// Zero retention would map the eviction cutoff to "now" and wipe every snapshot on the next
+		// scan, so it must be rejected like the other positive-duration knobs.
+		for key in [ConfigKey::MetricsRuntimeRetention, ConfigKey::MetricsProfilerRetention] {
+			match key.accept(Value::duration_seconds(0)).unwrap_err() {
+				AcceptError::InvalidValue(reason) => {
+					assert!(
+						reason.contains("greater than zero"),
+						"{key}: unexpected reason: {reason}"
+					);
+				}
+				other => panic!("{key}: expected InvalidValue, got {other:?}"),
+			}
+		}
 	}
 
 	#[test]

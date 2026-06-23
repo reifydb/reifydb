@@ -8,6 +8,7 @@
 
 use reifydb_engine::test_prelude::*;
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::value::duration::Duration;
 
 #[test]
 fn deferred_append_view_persists_operator_ttl() {
@@ -36,12 +37,16 @@ fn deferred_append_view_persists_operator_ttl() {
 	for id in node_ids {
 		if let Some(settings) = catalog.find_operator_settings(&mut Transaction::Admin(&mut txn), id).unwrap() {
 			if let Some(ttl) = settings.ttl {
-				ttls.push(ttl.duration_nanos);
+				ttls.push(ttl.duration);
 			}
 		}
 	}
 
-	assert_eq!(ttls, vec![500_000_000], "the append operator must carry its 500ms TTL");
+	assert_eq!(
+		ttls,
+		vec![Duration::from_milliseconds(500).unwrap()],
+		"the append operator must carry its 500ms TTL"
+	);
 }
 
 #[test]
@@ -74,11 +79,15 @@ fn deferred_join_view_persists_join_ttl() {
 		if let Some(settings) = catalog.find_operator_settings(&mut Transaction::Admin(&mut txn), id).unwrap() {
 			if let Some(join) = settings.join {
 				if let Some(left) = join.left {
-					left_ttls.push(left.duration_nanos);
+					left_ttls.push(left.duration);
 				}
 			}
 		}
 	}
 
-	assert_eq!(left_ttls, vec![500_000_000], "the join operator must carry its left-side 500ms TTL");
+	assert_eq!(
+		left_ttls,
+		vec![Duration::from_milliseconds(500).unwrap()],
+		"the join operator must carry its left-side 500ms TTL"
+	);
 }

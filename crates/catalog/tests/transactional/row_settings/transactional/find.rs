@@ -7,6 +7,7 @@
 
 use reifydb_engine::test_prelude::*;
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::value::duration::Duration;
 
 #[test]
 fn transactional_view_persists_row_ttl() {
@@ -30,5 +31,5 @@ fn transactional_view_persists_row_ttl() {
 		.find_row_settings(&mut Transaction::Admin(&mut txn), shape)
 		.unwrap()
 		.expect("row settings must be findable for the view's underlying shape");
-	assert_eq!(settings.ttl.expect("row ttl must be set").duration_nanos, 3_600_000_000_000);
+	assert_eq!(settings.ttl.expect("row ttl must be set").duration, Duration::from_hours(1).unwrap());
 }

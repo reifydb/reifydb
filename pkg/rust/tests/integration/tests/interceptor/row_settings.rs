@@ -4,6 +4,7 @@
 use reifydb::{
 	Params,
 	core::{interface::catalog::shape::ShapeId, row::TtlCleanupMode},
+	value::value::duration::Duration,
 };
 
 use super::common::{admin, fresh_db};
@@ -21,7 +22,7 @@ fn create_table_with_row_settings_propagates_to_materialized_cache() {
 	let table = mat.find_table_by_name(ns.id(), "t").unwrap();
 	let settings = mat.find_row_settings(ShapeId::Table(table.id)).unwrap();
 	let ttl = settings.ttl.expect("ttl should be set");
-	assert_eq!(ttl.duration_nanos, 60_000_000_000);
+	assert_eq!(ttl.duration, Duration::from_minutes(1).unwrap());
 	assert_eq!(ttl.cleanup_mode, TtlCleanupMode::Drop);
 	assert!(settings.persistent, "persistent defaults to true when omitted");
 }
@@ -42,7 +43,7 @@ fn create_table_persistent_false_propagates_to_materialized_cache() {
 	let table = mat.find_table_by_name(ns.id(), "t").unwrap();
 	let settings = mat.find_row_settings(ShapeId::Table(table.id)).unwrap();
 	assert!(!settings.persistent, "persistent: false should be stored");
-	assert_eq!(settings.ttl.expect("ttl should be set").duration_nanos, 60_000_000_000);
+	assert_eq!(settings.ttl.expect("ttl should be set").duration, Duration::from_minutes(1).unwrap());
 }
 
 #[test]

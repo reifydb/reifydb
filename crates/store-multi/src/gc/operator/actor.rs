@@ -187,12 +187,12 @@ impl<P: ListOperatorSettings> Actor<P> {
 		}
 
 		let left_cutoff = left
-			.and_then(|ttl| now_nanos.checked_sub(ttl.duration_nanos))
-			.and_then(|cutoff_nanos| self.epoch.floor_version_at(cutoff_nanos))
+			.and_then(|ttl| DateTime::from_nanos(now_nanos).checked_sub(ttl.duration))
+			.and_then(|cutoff| self.epoch.floor_version_at(cutoff.to_nanos()))
 			.map(CommitVersion);
 		let right_cutoff = right
-			.and_then(|ttl| now_nanos.checked_sub(ttl.duration_nanos))
-			.and_then(|cutoff_nanos| self.epoch.floor_version_at(cutoff_nanos))
+			.and_then(|ttl| DateTime::from_nanos(now_nanos).checked_sub(ttl.duration))
+			.and_then(|cutoff| self.epoch.floor_version_at(cutoff.to_nanos()))
 			.map(CommitVersion);
 
 		if let Some(buffer) = buffer {
@@ -280,10 +280,10 @@ impl<P: ListOperatorSettings> Actor<P> {
 			);
 		}
 
-		let cutoff_version = now_nanos
-			.checked_sub(ttl.duration_nanos)
-			.and_then(|cutoff_nanos| self.epoch.floor_version_at(cutoff_nanos))
-			.map(CommitVersion);
+		let Some(cutoff) = DateTime::from_nanos(now_nanos).checked_sub(ttl.duration) else {
+			return;
+		};
+		let cutoff_version = self.epoch.floor_version_at(cutoff.to_nanos()).map(CommitVersion);
 
 		if let (Some(buffer), Some(cutoff_version)) = (buffer, cutoff_version) {
 			let mut cursor = scan_state.cursors.remove(&node_id).unwrap_or_default();
@@ -468,7 +468,10 @@ mod tests {
 		interface::{catalog::config::GetConfig, store::MultiVersionCommit},
 		row::OperatorSettings,
 	};
-	use reifydb_value::{util::cowvec::CowVec, value::Value};
+	use reifydb_value::{
+		util::cowvec::CowVec,
+		value::{Value, duration::Duration},
+	};
 
 	use super::*;
 	use crate::tier::VersionedGetResult;
@@ -540,7 +543,7 @@ mod tests {
 		);
 
 		let ttl = Ttl {
-			duration_nanos: 100,
+			duration: Duration::from_nanoseconds(100).unwrap(),
 			cleanup_mode: TtlCleanupMode::Drop,
 		};
 

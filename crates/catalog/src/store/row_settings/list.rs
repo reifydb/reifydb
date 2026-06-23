@@ -51,6 +51,7 @@ pub mod tests {
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
+	use reifydb_value::value::duration::Duration;
 
 	use super::*;
 	use crate::store::row_settings::create::create_row_settings;
@@ -73,21 +74,21 @@ pub mod tests {
 
 		let settings_table = RowSettings {
 			ttl: Some(Ttl {
-				duration_nanos: 300_000_000_000,
+				duration: Duration::from_minutes(5).unwrap(),
 				cleanup_mode: TtlCleanupMode::Drop,
 			}),
 			persistent: true,
 		};
 		let settings_rb = RowSettings {
 			ttl: Some(Ttl {
-				duration_nanos: 600_000_000_000,
+				duration: Duration::from_minutes(10).unwrap(),
 				cleanup_mode: TtlCleanupMode::Delete,
 			}),
 			persistent: false,
 		};
 		let settings_series = RowSettings {
 			ttl: Some(Ttl {
-				duration_nanos: 86_400_000_000_000,
+				duration: Duration::from_days(1).unwrap(),
 				cleanup_mode: TtlCleanupMode::Drop,
 			}),
 			persistent: true,

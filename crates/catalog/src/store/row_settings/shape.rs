@@ -10,13 +10,13 @@ pub(crate) mod row_settings {
 	pub(crate) const CLEANUP_MODE_DROP: u8 = 1;
 
 	pub(crate) const CLEANUP_MODE: usize = 0;
-	pub(crate) const DURATION_NANOS: usize = 1;
+	pub(crate) const DURATION: usize = 1;
 	pub(crate) const PERSISTENT: usize = 2;
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
 			RowShapeField::unconstrained("cleanup_mode", ValueType::Uint1),
-			RowShapeField::unconstrained("duration_nanos", ValueType::Uint8),
+			RowShapeField::unconstrained("duration", ValueType::Duration),
 			RowShapeField::unconstrained("persistent", ValueType::Uint1),
 		])
 	});
