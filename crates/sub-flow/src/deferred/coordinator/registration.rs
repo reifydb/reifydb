@@ -3,6 +3,7 @@
 
 use reifydb_core::{
 	actors::flow::{FlowCoordinatorMessage, FlowPoolMessage, PoolResponse},
+	common::CommitVersion,
 	interface::{
 		catalog::flow::FlowId,
 		cdc::{Cdc, SystemChange},
@@ -22,14 +23,54 @@ impl CoordinatorActor {
 		&self,
 		state: &mut CoordinatorState,
 		cdcs: &[Cdc],
+		deleted: &[FlowId],
 	) -> Result<Vec<FlowDag>> {
-		let new_flow_ids = extract_new_flow_ids(cdcs);
+		let new_flows_at_version = extract_new_flows(cdcs);
 		let mut new_flows = Vec::new();
-		if new_flow_ids.is_empty() {
+		if new_flows_at_version.is_empty() {
 			return Ok(new_flows);
 		}
-		let mut query = self.engine.begin_query(IdentityId::system())?;
-		for flow_id in new_flow_ids {
+
+		for (flow_id, version) in new_flows_at_version {
+			if deleted.contains(&flow_id) {
+				self.catalog.remove(flow_id);
+				debug!(flow_id = flow_id.0, "skipping flow created and dropped in the same batch");
+				continue;
+			}
+			let lease = match self.engine.acquire_version_lease(version) {
+				Ok(lease) => lease,
+
+				Err(e) if e.0.code == "TXN_012" => match self.engine.acquire_current_snapshot_lease() {
+					Ok((current, lease)) => {
+						debug!(
+							flow_id = flow_id.0,
+							version = version.0,
+							current = current.0,
+							"creation version evicted, loading new flow at current snapshot"
+						);
+						lease
+					}
+					Err(e) => {
+						warn!(
+							flow_id = flow_id.0,
+							version = version.0,
+							error = %e,
+							"failed to lease current snapshot for new flow, skipping"
+						);
+						continue;
+					}
+				},
+				Err(e) => {
+					warn!(
+						flow_id = flow_id.0,
+						version = version.0,
+						error = %e,
+						"failed to lease creation version for new flow, skipping"
+					);
+					continue;
+				}
+			};
+			let mut query = self.engine.begin_query_at_version(&lease, IdentityId::system())?;
 			match self.catalog.get_or_load_flow(&mut Transaction::Query(&mut query), flow_id) {
 				Ok((flow, is_new)) => {
 					if is_new {
@@ -52,6 +93,21 @@ impl CoordinatorActor {
 			}
 		}
 		Ok(new_flows)
+	}
+
+	pub(super) fn apply_flow_deletions(&self, state: &mut CoordinatorState, deleted: &[FlowId]) {
+		for &flow_id in deleted {
+			self.catalog.remove(flow_id);
+
+			let was_tracked = state.states.remove(&flow_id);
+			state.tick_schedules.remove(&flow_id);
+			state.analyzer.remove(flow_id);
+
+			if was_tracked {
+				state.flows_changed = true;
+				debug!(flow_id = flow_id.0, "deregistered dropped flow");
+			}
+		}
 	}
 
 	#[inline]
@@ -139,6 +195,25 @@ fn absorb_register_reply(consume_ctx: &mut ConsumeContext, response: PoolRespons
 	}
 }
 
+pub fn extract_new_flows(cdcs: &[Cdc]) -> Vec<(FlowId, CommitVersion)> {
+	let mut flows = Vec::new();
+
+	for cdc in cdcs {
+		for change in &cdc.system_changes {
+			if let Some(kind) = Key::kind(change.key())
+				&& kind == KeyKind::Flow && let SystemChange::Insert {
+				key,
+				..
+			} = change && let Some(Key::Flow(flow_key)) = Key::decode(key)
+			{
+				flows.push((flow_key.flow, cdc.version));
+			}
+		}
+	}
+
+	flows
+}
+
 pub fn extract_new_flow_ids(cdcs: &[Cdc]) -> Vec<FlowId> {
 	let mut flow_ids = Vec::new();
 
@@ -146,6 +221,25 @@ pub fn extract_new_flow_ids(cdcs: &[Cdc]) -> Vec<FlowId> {
 		for change in &cdc.system_changes {
 			if let Some(kind) = Key::kind(change.key())
 				&& kind == KeyKind::Flow && let SystemChange::Insert {
+				key,
+				..
+			} = change && let Some(Key::Flow(flow_key)) = Key::decode(key)
+			{
+				flow_ids.push(flow_key.flow);
+			}
+		}
+	}
+
+	flow_ids
+}
+
+pub fn extract_deleted_flow_ids(cdcs: &[Cdc]) -> Vec<FlowId> {
+	let mut flow_ids = Vec::new();
+
+	for cdc in cdcs {
+		for change in &cdc.system_changes {
+			if let Some(kind) = Key::kind(change.key())
+				&& kind == KeyKind::Flow && let SystemChange::Delete {
 				key,
 				..
 			} = change && let Some(Key::Flow(flow_key)) = Key::decode(key)

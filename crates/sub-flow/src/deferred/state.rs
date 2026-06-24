@@ -87,6 +87,10 @@ impl FlowStates {
 		self.states.contains_key(flow_id)
 	}
 
+	pub fn remove(&mut self, flow_id: &FlowId) -> bool {
+		self.states.remove(flow_id).is_some()
+	}
+
 	pub fn register_backfilling(&mut self, flow_id: FlowId) {
 		self.states.insert(flow_id, FlowState::new_backfilling());
 	}

@@ -20,7 +20,10 @@ use reifydb_transaction::multi::lease::VersionLeaseGuard;
 use reifydb_value::{Result, reifydb_assertions};
 use tracing::{Span, debug, field, instrument};
 
-use super::{ConsumeContext, CoordinatorActor, CoordinatorState, PendingConsume, Phase, coordinator_error};
+use super::{
+	ConsumeContext, CoordinatorActor, CoordinatorState, PendingConsume, Phase, coordinator_error,
+	registration::extract_deleted_flow_ids,
+};
 
 #[inline]
 fn record_version_range_span(cdcs: &[Cdc]) {
@@ -101,13 +104,15 @@ impl CoordinatorActor {
 
 		let consume_ctx = self.build_consume_context(&cdcs, current_version, state_version, state_lease, reply);
 
-		let new_flows = match self.discover_and_load_new_flows(state, &cdcs) {
+		let deleted = extract_deleted_flow_ids(&cdcs);
+		let new_flows = match self.discover_and_load_new_flows(state, &cdcs, &deleted) {
 			Ok(flows) => flows,
 			Err(e) => {
 				(consume_ctx.original_reply)(coordinator_error(e));
 				return;
 			}
 		};
+		self.apply_flow_deletions(state, &deleted);
 
 		self.start_registration_or_submit(state, ctx, consume_ctx, new_flows);
 	}

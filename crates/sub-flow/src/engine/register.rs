@@ -317,7 +317,7 @@ impl FlowEngineInner {
 		view: ViewId,
 		table: TableId,
 	) -> Result<()> {
-		let parent = self.parent(inputs[0])?;
+		let parent = self.parent(first_input(inputs)?)?;
 
 		self.add_sink(flow.id, node_id, ShapeId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
@@ -343,7 +343,7 @@ impl FlowEngineInner {
 		capacity: u64,
 		propagate_evictions: bool,
 	) -> Result<()> {
-		let parent = self.parent(inputs[0])?;
+		let parent = self.parent(first_input(inputs)?)?;
 		self.add_sink(flow.id, node_id, ShapeId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 		self.operators.insert(
@@ -372,7 +372,7 @@ impl FlowEngineInner {
 		series: SeriesId,
 		key: SeriesKey,
 	) -> Result<()> {
-		let parent = self.parent(inputs[0])?;
+		let parent = self.parent(first_input(inputs)?)?;
 		self.add_sink(flow.id, node_id, ShapeId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 		self.operators.insert(
@@ -395,7 +395,7 @@ impl FlowEngineInner {
 		inputs: &[FlowNodeId],
 		conditions: Vec<Expression>,
 	) -> Result<()> {
-		let parent = self.parent(inputs[0])?;
+		let parent = self.parent(first_input(inputs)?)?;
 		self.operators.insert(
 			node_id,
 			OperatorCell::new(Operators::Filter(FilterOperator::new(
@@ -411,7 +411,7 @@ impl FlowEngineInner {
 
 	#[inline]
 	fn add_gate(&mut self, node_id: FlowNodeId, inputs: &[FlowNodeId], conditions: Vec<Expression>) -> Result<()> {
-		let parent = self.parent(inputs[0])?;
+		let parent = self.parent(first_input(inputs)?)?;
 		self.operators.insert(
 			node_id,
 			OperatorCell::new(Operators::Gate(GateOperator::new(
@@ -427,7 +427,7 @@ impl FlowEngineInner {
 
 	#[inline]
 	fn add_map(&mut self, node_id: FlowNodeId, inputs: &[FlowNodeId], expressions: Vec<Expression>) -> Result<()> {
-		let parent = self.parent(inputs[0])?;
+		let parent = self.parent(first_input(inputs)?)?;
 		self.operators.insert(
 			node_id,
 			OperatorCell::new(Operators::Map(MapOperator::new(
@@ -448,7 +448,7 @@ impl FlowEngineInner {
 		inputs: &[FlowNodeId],
 		expressions: Vec<Expression>,
 	) -> Result<()> {
-		let parent = self.parent(inputs[0])?;
+		let parent = self.parent(first_input(inputs)?)?;
 		self.operators.insert(
 			node_id,
 			OperatorCell::new(Operators::Extend(ExtendOperator::new(
@@ -464,7 +464,7 @@ impl FlowEngineInner {
 
 	#[inline]
 	fn add_sort(&mut self, node_id: FlowNodeId, inputs: &[FlowNodeId]) -> Result<()> {
-		let parent = self.parent(inputs[0])?;
+		let parent = self.parent(first_input(inputs)?)?;
 		self.operators.insert(
 			node_id,
 			OperatorCell::new(Operators::Sort(SortOperator::new(parent, node_id, Vec::new()))),
@@ -474,7 +474,7 @@ impl FlowEngineInner {
 
 	#[inline]
 	fn add_take(&mut self, node_id: FlowNodeId, inputs: &[FlowNodeId], limit: usize) -> Result<()> {
-		let parent = self.parent(inputs[0])?;
+		let parent = self.parent(first_input(inputs)?)?;
 		self.operators
 			.insert(node_id, OperatorCell::new(Operators::Take(TakeOperator::new(parent, node_id, limit))));
 		Ok(())
@@ -567,7 +567,7 @@ impl FlowEngineInner {
 		inputs: &[FlowNodeId],
 		expressions: Vec<Expression>,
 	) -> Result<()> {
-		let parent = self.parent(inputs[0])?;
+		let parent = self.parent(first_input(inputs)?)?;
 		let ttl = self.catalog.find_operator_settings(txn, node_id)?.and_then(|s| s.ttl);
 		self.operators.insert(
 			node_id,
@@ -647,7 +647,7 @@ impl FlowEngineInner {
 		} else {
 			#[cfg(reifydb_target = "native")]
 			{
-				let parent = self.parent(inputs[0])?;
+				let parent = self.parent(first_input(inputs)?)?;
 
 				let inner = if self.is_native_operator(operator.as_str()) {
 					self.create_native_operator(operator.as_str(), node_id, &cfg)?
@@ -684,7 +684,7 @@ impl FlowEngineInner {
 		ts: Option<String>,
 		lateness: Option<Duration>,
 	) -> Result<()> {
-		let parent = self.parent(inputs[0])?;
+		let parent = self.parent(first_input(inputs)?)?;
 		let operator = WindowOperator::new(WindowConfig {
 			parent,
 			node: node_id,
@@ -709,7 +709,7 @@ impl FlowEngineInner {
 		by: Vec<Expression>,
 		map: Vec<Expression>,
 	) -> Result<()> {
-		let parent = self.parent(inputs[0])?;
+		let parent = self.parent(first_input(inputs)?)?;
 		self.operators.insert(
 			node_id,
 			OperatorCell::new(Operators::Aggregate(AggregateOperator::new(
@@ -768,6 +768,12 @@ impl FlowEngineInner {
 			nodes.push(entry);
 		}
 	}
+}
+
+fn first_input(inputs: &[FlowNodeId]) -> Result<FlowNodeId> {
+	inputs.first().copied().ok_or_else(|| {
+		Error(Box::new(internal!("flow node is missing a required input edge; the flow DAG is incomplete")))
+	})
 }
 
 fn common_column_names(left: &Columns, right: &Columns) -> Vec<String> {

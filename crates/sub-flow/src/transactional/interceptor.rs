@@ -150,10 +150,18 @@ pub struct TransactionalFlowPostCommitInterceptor {
 impl PostCommitInterceptor for TransactionalFlowPostCommitInterceptor {
 	fn intercept(&self, ctx: &mut PostCommitContext) -> Result<()> {
 		for flow_change in &ctx.changes.flow {
-			if flow_change.op == OperationType::Create
-				&& let Some(flow) = &flow_change.post
-			{
-				self.registrar.try_register_by_id_at_version(flow.id, ctx.version)?;
+			match flow_change.op {
+				OperationType::Create => {
+					if let Some(flow) = &flow_change.post {
+						self.registrar.try_register_by_id_at_version(flow.id, ctx.version)?;
+					}
+				}
+				OperationType::Delete => {
+					if let Some(flow) = &flow_change.pre {
+						self.registrar.flow_engine.write().remove_flow(flow.id);
+					}
+				}
+				OperationType::Update => {}
 			}
 		}
 		Ok(())
