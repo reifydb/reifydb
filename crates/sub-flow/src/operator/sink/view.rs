@@ -332,3 +332,109 @@ fn dictionary_intern(txn: &mut FlowTransaction, dictionary: &Dictionary, value: 
 
 	Ok(entry_id)
 }
+
+#[cfg(test)]
+mod tests {
+	use postcard::from_bytes;
+	use reifydb_core::{actors::pending::PendingWrite, common::CommitVersion};
+	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_value::value::identity::IdentityId;
+
+	use super::*;
+
+	// A deferred flow batch reads source data at its own commit version. Dictionary interning
+	// state (the sequence counter and entry/index rows), however, is persisted by the coordinator
+	// at a *higher* flow commit version. If a later batch's interning read resolves through that
+	// pinned source-version snapshot, it misses an earlier batch's committed sequence increment,
+	// computes a colliding id, and overwrites the existing index entry - so several distinct
+	// strings decode to one (the production symptom: 3 view rows all reading "wsol").
+	//
+	// This test reproduces the split-batch ordering deterministically: phase 1 interns and
+	// COMMITS two values, phase 2 interns a third through a transaction pinned to a version that
+	// predates phase 1's commit. Interning must still allocate a fresh id and never clobber an
+	// existing entry. The fix routes dictionary reads to the latest committed version
+	// (ReadFrom::DictionaryQuery), so phase 2 observes the committed sequence.
+	#[test]
+	fn dictionary_intern_does_not_collide_across_a_stale_version_snapshot() {
+		let t = TestEngine::new();
+		t.admin("CREATE NAMESPACE test");
+		t.admin("CREATE DICTIONARY test::syms FOR utf8 AS uint2");
+
+		let engine = t.inner();
+		let catalog = engine.catalog();
+		let namespace = catalog.cache().find_namespace_by_name("test").expect("namespace test");
+		let dictionary =
+			catalog.cache().find_dictionary_by_name(namespace.id(), "syms").expect("dictionary syms");
+
+		// Persist a deferred transaction's pending dictionary writes the way the coordinator does.
+		let commit_pending = |txn: &mut FlowTransaction| {
+			let pending = txn.take_pending();
+			let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
+			cmd.disable_conflict_tracking().unwrap();
+			for (key, pw) in pending.iter_sorted() {
+				match pw {
+					PendingWrite::Set(v) => cmd.set(key, v.clone()).unwrap(),
+					PendingWrite::Remove => cmd.remove(key).unwrap(),
+					PendingWrite::Drop => cmd.drop_key(key).unwrap(),
+				};
+			}
+			cmd.commit_unchecked().unwrap()
+		};
+
+		// Phase 1 (the INSERT batch): intern sol + usdc, then commit the pending writes.
+		let parent = engine.begin_admin(IdentityId::system()).unwrap();
+		let version = parent.version();
+		let mut insert_txn = FlowTransaction::deferred(
+			&parent,
+			version,
+			catalog.clone(),
+			engine.create_interceptors(),
+			engine.clock().clone(),
+		);
+		let sol_id = dictionary_intern(&mut insert_txn, &dictionary, &Value::Utf8("sol".to_string()))
+			.unwrap()
+			.to_u128();
+		let usdc_id = dictionary_intern(&mut insert_txn, &dictionary, &Value::Utf8("usdc".to_string()))
+			.unwrap()
+			.to_u128();
+		assert_ne!(sol_id, usdc_id, "distinct strings must intern to distinct ids");
+		let phase1_commit = commit_pending(&mut insert_txn);
+
+		// Phase 2 (the UPDATE batch): a fresh deferred transaction whose source-version snapshot
+		// predates phase 1's commit. (A deferred read at version V sees commits with version <= V+1,
+		// so pinning two below the phase-1 commit excludes phase 1's persisted dictionary writes -
+		// exactly the production split-batch situation where the UPDATE batch's source version is
+		// below the flow commit that persisted the INSERT batch.) With the bug, the sequence read is
+		// stale and "wsol" reuses an id already in use, overwriting that entry.
+		let stale_version = CommitVersion(phase1_commit.0 - 2);
+		let parent = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut update_txn = FlowTransaction::deferred(
+			&parent,
+			stale_version,
+			catalog.clone(),
+			engine.create_interceptors(),
+			engine.clock().clone(),
+		);
+		let wsol_id = dictionary_intern(&mut update_txn, &dictionary, &Value::Utf8("wsol".to_string()))
+			.unwrap()
+			.to_u128();
+
+		assert_ne!(wsol_id, sol_id, "wsol must not reuse sol's id (would overwrite sol's entry)");
+		assert_ne!(wsol_id, usdc_id, "wsol must not reuse usdc's id (would overwrite usdc's entry)");
+		commit_pending(&mut update_txn);
+
+		// Every interned string must still decode to itself - no entry was clobbered.
+		let decode = |id: u128| -> String {
+			let key = DictionaryEntryIndexKey::encoded(dictionary.id, id as u64);
+			let query = engine.multi().begin_query().unwrap();
+			let bytes = query.get(&key).unwrap().expect("index entry present").row().to_vec();
+			match from_bytes::<Value>(&bytes).unwrap() {
+				Value::Utf8(s) => s,
+				other => panic!("expected Utf8, got {:?}", other),
+			}
+		};
+		assert_eq!(decode(sol_id), "sol", "sol's dictionary entry was overwritten");
+		assert_eq!(decode(usdc_id), "usdc", "usdc's dictionary entry was overwritten");
+		assert_eq!(decode(wsol_id), "wsol");
+	}
+}

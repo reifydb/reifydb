@@ -64,6 +64,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 			pending: mem::take(&mut self.pending),
 			query,
 			state_query,
+			dictionary_query: None,
 			single: self.engine.inner().single().clone(),
 			catalog: Catalog::testing(),
 			interceptors: Interceptors::new(),

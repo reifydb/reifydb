@@ -288,6 +288,7 @@ impl FlowWorkerActor {
 		let lease = self.engine.multi().acquire_version_lease(state_version)?;
 		let query = self.engine.multi().begin_query_at_version(&lease)?;
 		let state_query = self.engine.multi().begin_query_at_version(&lease)?;
+		let dictionary_query = self.engine.multi().begin_query()?;
 		let interceptors = self.engine.create_interceptors();
 
 		Ok(FlowTransaction::deferred_from_parts(DeferredParams {
@@ -295,6 +296,7 @@ impl FlowWorkerActor {
 			pending: Pending::new(),
 			query,
 			state_query,
+			dictionary_query: Some(dictionary_query),
 			single: self.engine.single().clone(),
 			catalog: self.catalog.clone(),
 			interceptors,
@@ -378,6 +380,8 @@ impl FlowWorkerActor {
 		let base_query = self.engine.multi().begin_query_at_version(&state_lease)?;
 		let base_state_query = self.engine.multi().begin_query_at_version(&state_lease)?;
 
+		let base_dictionary_query = self.engine.multi().begin_query()?;
+
 		for (flow_id, version, changes) in items {
 			if changes.is_empty() {
 				continue;
@@ -387,6 +391,7 @@ impl FlowWorkerActor {
 				flow_engine,
 				&base_query,
 				&base_state_query,
+				&base_dictionary_query,
 				&interceptors,
 				flow_id,
 				version,
@@ -407,6 +412,7 @@ impl FlowWorkerActor {
 		flow_engine: &mut FlowEngineInner,
 		base_query: &MultiReadTransaction,
 		base_state_query: &MultiReadTransaction,
+		base_dictionary_query: &MultiReadTransaction,
 		interceptors: &Interceptors,
 		flow_id: FlowId,
 		version: CommitVersion,
@@ -418,12 +424,14 @@ impl FlowWorkerActor {
 		let mut query = base_query.clone();
 		query.read_as_of_version_inclusive(version);
 		let state_query = base_state_query.clone();
+		let dictionary_query = base_dictionary_query.clone();
 
 		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 			version,
 			pending,
 			query,
 			state_query,
+			dictionary_query: Some(dictionary_query),
 			single: self.engine.single().clone(),
 			catalog: self.catalog.clone(),
 			interceptors: interceptors.clone(),

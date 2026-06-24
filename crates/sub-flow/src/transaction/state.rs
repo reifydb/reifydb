@@ -871,6 +871,7 @@ pub mod tests {
 			pending: Pending::new(),
 			query,
 			state_query,
+			dictionary_query: None,
 			single: engine.single().clone(),
 			catalog: Catalog::testing(),
 			interceptors: engine.create_interceptors(),

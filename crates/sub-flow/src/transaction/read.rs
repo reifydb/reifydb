@@ -33,6 +33,8 @@ pub(crate) enum ReadFrom {
 	StateQuery,
 
 	Query,
+
+	DictionaryQuery,
 }
 
 impl FlowTransaction {
@@ -65,10 +67,12 @@ impl FlowTransaction {
 		{
 			return match Self::read_from(key) {
 				ReadFrom::StateQuery => Ok(state.get(key).cloned()),
-				ReadFrom::Query => match inner.query.get(key)? {
-					Some(multi) => Ok(Some(multi.row().clone())),
-					None => Ok(None),
-				},
+				ReadFrom::Query | ReadFrom::DictionaryQuery => {
+					match inner.dictionary_query.as_ref().unwrap_or(&inner.query).get(key)? {
+						Some(multi) => Ok(Some(multi.row().clone())),
+						None => Ok(None),
+					}
+				}
 			};
 		}
 
@@ -80,6 +84,7 @@ impl FlowTransaction {
 		let query = match Self::read_from(key) {
 			ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
 			ReadFrom::Query => &inner.query,
+			ReadFrom::DictionaryQuery => inner.dictionary_query.as_ref().unwrap_or(&inner.query),
 		};
 		match query.get(key)? {
 			Some(multi) => Ok(Some(multi.row().clone())),
@@ -116,7 +121,9 @@ impl FlowTransaction {
 		{
 			return match Self::read_from(key) {
 				ReadFrom::StateQuery => Ok(state.contains_key(key)),
-				ReadFrom::Query => inner.query.contains_key(key),
+				ReadFrom::Query | ReadFrom::DictionaryQuery => {
+					inner.dictionary_query.as_ref().unwrap_or(&inner.query).contains_key(key)
+				}
 			};
 		}
 
@@ -124,6 +131,7 @@ impl FlowTransaction {
 		let query = match Self::read_from(key) {
 			ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
 			ReadFrom::Query => &inner.query,
+			ReadFrom::DictionaryQuery => inner.dictionary_query.as_ref().unwrap_or(&inner.query),
 		};
 		query.contains_key(key)
 	}
@@ -176,10 +184,10 @@ impl FlowTransaction {
 				KeyKind::FlowEdge => ReadFrom::Query,
 				KeyKind::FlowEdgeByFlow => ReadFrom::Query,
 				KeyKind::Dictionary => ReadFrom::Query,
-				KeyKind::DictionaryEntry => ReadFrom::Query,
-				KeyKind::DictionaryEntryIndex => ReadFrom::Query,
+				KeyKind::DictionaryEntry => ReadFrom::DictionaryQuery,
+				KeyKind::DictionaryEntryIndex => ReadFrom::DictionaryQuery,
 				KeyKind::NamespaceDictionary => ReadFrom::Query,
-				KeyKind::DictionarySequence => ReadFrom::Query,
+				KeyKind::DictionarySequence => ReadFrom::DictionaryQuery,
 				KeyKind::Metric => ReadFrom::Query,
 				KeyKind::FlowVersion => ReadFrom::Query,
 				KeyKind::Subscription => ReadFrom::Query,
@@ -250,6 +258,9 @@ impl FlowTransaction {
 					Included(start) | Excluded(start) => match Self::read_from(start) {
 						ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
 						ReadFrom::Query => &inner.query,
+						ReadFrom::DictionaryQuery => {
+							inner.dictionary_query.as_ref().unwrap_or(&inner.query)
+						}
 					},
 					Unbounded => &inner.query,
 				};
@@ -276,6 +287,9 @@ impl FlowTransaction {
 					Included(start) | Excluded(start) => match Self::read_from(start) {
 						ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
 						ReadFrom::Query => &inner.query,
+						ReadFrom::DictionaryQuery => {
+							inner.dictionary_query.as_ref().unwrap_or(&inner.query)
+						}
 					},
 					Unbounded => &inner.query,
 				};
@@ -357,6 +371,9 @@ impl FlowTransaction {
 					Included(start) | Excluded(start) => match Self::read_from(start) {
 						ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
 						ReadFrom::Query => &inner.query,
+						ReadFrom::DictionaryQuery => {
+							inner.dictionary_query.as_ref().unwrap_or(&inner.query)
+						}
 					},
 					Unbounded => &inner.query,
 				};
@@ -383,6 +400,9 @@ impl FlowTransaction {
 					Included(start) | Excluded(start) => match Self::read_from(start) {
 						ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
 						ReadFrom::Query => &inner.query,
+						ReadFrom::DictionaryQuery => {
+							inner.dictionary_query.as_ref().unwrap_or(&inner.query)
+						}
 					},
 					Unbounded => &inner.query,
 				};
