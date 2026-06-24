@@ -50,6 +50,7 @@ pub trait RollingOperator {
 
 	fn extract(
 		&self,
+		ctx: &mut impl OperatorContext,
 		row: &impl RowView,
 	) -> Option<(Self::GroupKey, Self::WindowCoord, AccumulatorContribution<Self>)>;
 
@@ -101,7 +102,7 @@ where
 	A::Output: Row,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
-	fn route(&self, change: &impl ChangeView) -> Buckets<A> {
+	fn route(&self, ctx: &mut impl OperatorContext, change: &impl ChangeView) -> Buckets<A> {
 		let mut buckets: Buckets<A> = BTreeMap::new();
 
 		for di in 0..change.diff_count() {
@@ -111,17 +112,17 @@ where
 			match diff.kind() {
 				DiffType::Insert => {
 					if let Some(cols) = diff.post() {
-						self.push_all(&cols, &mut buckets, true);
+						self.push_all(ctx, &cols, &mut buckets, true);
 					}
 				}
 				DiffType::Update => {
 					if let (Some(pre), Some(post)) = (diff.pre(), diff.post()) {
-						self.push_updates(&pre, &post, &mut buckets);
+						self.push_updates(ctx, &pre, &post, &mut buckets);
 					}
 				}
 				DiffType::Remove => {
 					if let Some(cols) = diff.pre() {
-						self.push_all(&cols, &mut buckets, false);
+						self.push_all(ctx, &cols, &mut buckets, false);
 					}
 				}
 			}
@@ -129,12 +130,18 @@ where
 		buckets
 	}
 
-	fn push_all<C: ColumnsView>(&self, cols: &C, buckets: &mut Buckets<A>, is_add: bool) {
+	fn push_all<C: ColumnsView>(
+		&self,
+		ctx: &mut impl OperatorContext,
+		cols: &C,
+		buckets: &mut Buckets<A>,
+		is_add: bool,
+	) {
 		for i in 0..cols.row_count() {
 			let Some(row) = cols.row(i) else {
 				continue;
 			};
-			let Some((group, coord, contribution)) = self.aggregator.extract(&row) else {
+			let Some((group, coord, contribution)) = self.aggregator.extract(ctx, &row) else {
 				continue;
 			};
 			let event = if is_add {
@@ -146,16 +153,22 @@ where
 		}
 	}
 
-	fn push_updates<P: ColumnsView, Q: ColumnsView>(&self, pre: &P, post: &Q, buckets: &mut Buckets<A>) {
+	fn push_updates<P: ColumnsView, Q: ColumnsView>(
+		&self,
+		ctx: &mut impl OperatorContext,
+		pre: &P,
+		post: &Q,
+		buckets: &mut Buckets<A>,
+	) {
 		let n = pre.row_count().min(post.row_count());
 		for i in 0..n {
 			if let Some(pre_row) = pre.row(i)
-				&& let Some((group, coord, contribution)) = self.aggregator.extract(&pre_row)
+				&& let Some((group, coord, contribution)) = self.aggregator.extract(ctx, &pre_row)
 			{
 				buckets.entry((group, coord)).or_default().push(AccumulatorEvent::Remove(contribution));
 			}
 			if let Some(post_row) = post.row(i)
-				&& let Some((group, coord, contribution)) = self.aggregator.extract(&post_row)
+				&& let Some((group, coord, contribution)) = self.aggregator.extract(ctx, &post_row)
 			{
 				buckets.entry((group, coord)).or_default().push(AccumulatorEvent::Add(contribution));
 			}
@@ -220,7 +233,7 @@ where
 	}
 
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
-		let buckets = self.route(&change);
+		let buckets = self.route(ctx, &change);
 		if buckets.is_empty() {
 			return Ok(());
 		}
@@ -346,7 +359,7 @@ mod tests {
 			self.capacity
 		}
 
-		fn extract(&self, row: &impl RowView) -> Option<(String, u64, f64)> {
+		fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, u64, f64)> {
 			let group = row.utf8("group")?.to_string();
 			let window_start = row.u64("window_start")?;
 			let value = row.f64("value")?;

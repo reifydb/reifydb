@@ -123,6 +123,7 @@ fn pure_host_callbacks() -> HostCallbacks {
 		store: stubs::store(),
 		catalog: stubs::catalog(),
 		rql: stubs::rql(),
+		dictionary: stubs::dictionary(),
 		builder: BuilderCallbacks {
 			acquire: host_builder_acquire,
 			data_ptr: host_builder_data_ptr,
@@ -139,7 +140,8 @@ fn pure_host_callbacks() -> HostCallbacks {
 pub(crate) mod stubs {
 	use reifydb_abi::{
 		callbacks::{
-			catalog::CatalogCallbacks, rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
+			catalog::CatalogCallbacks, dictionary::DictionaryCallbacks, rql::RqlCallbacks,
+			state::StateCallbacks, store::StoreCallbacks,
 		},
 		catalog::{namespace::NamespaceFFI, row_shape::RowShapeFFI, table::TableFFI},
 		constants::FFI_ERROR_INTERNAL,
@@ -345,6 +347,38 @@ pub(crate) mod stubs {
 	extern "C" fn catalog_free_namespace(_: *mut NamespaceFFI) {}
 	extern "C" fn catalog_free_table(_: *mut TableFFI) {}
 	extern "C" fn catalog_free_row_shape(_: *mut RowShapeFFI) {}
+
+	pub fn dictionary() -> DictionaryCallbacks {
+		DictionaryCallbacks {
+			id_by_name: dictionary_id_by_name,
+			find: dictionary_find,
+			get: dictionary_get,
+		}
+	}
+
+	extern "C" fn dictionary_id_by_name(
+		_: *mut ContextFFI,
+		_: *const u8,
+		_: usize,
+		_: *mut u64,
+		_: *mut u8,
+	) -> i32 {
+		FFI_ERROR_INTERNAL
+	}
+	extern "C" fn dictionary_find(
+		_: *mut ContextFFI,
+		_: u64,
+		_: *const u8,
+		_: usize,
+		_: *mut u128,
+		_: *mut u8,
+		_: *mut u8,
+	) -> i32 {
+		FFI_ERROR_INTERNAL
+	}
+	extern "C" fn dictionary_get(_: *mut ContextFFI, _: u64, _: u128, _: *mut BufferFFI) -> i32 {
+		FFI_ERROR_INTERNAL
+	}
 
 	pub fn rql() -> RqlCallbacks {
 		RqlCallbacks {

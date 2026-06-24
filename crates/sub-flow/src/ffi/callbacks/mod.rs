@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_abi::callbacks::{
-	builder::BuilderCallbacks, catalog::CatalogCallbacks, host::HostCallbacks, log::LogCallbacks,
-	memory::MemoryCallbacks, rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
+	builder::BuilderCallbacks, catalog::CatalogCallbacks, dictionary::DictionaryCallbacks, host::HostCallbacks,
+	log::LogCallbacks, memory::MemoryCallbacks, rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
 };
 use reifydb_extension::{
 	ffi_callbacks::builder,
@@ -11,6 +11,7 @@ use reifydb_extension::{
 };
 
 pub mod catalog;
+pub mod dictionary;
 mod marshal;
 pub mod rql;
 pub mod state;
@@ -67,6 +68,11 @@ pub fn create_host_callbacks() -> HostCallbacks {
 		},
 		rql: RqlCallbacks {
 			rql: rql::host_rql,
+		},
+		dictionary: DictionaryCallbacks {
+			id_by_name: dictionary::host_dictionary_id_by_name,
+			find: dictionary::host_dictionary_find,
+			get: dictionary::host_dictionary_get,
 		},
 		builder: BuilderCallbacks {
 			acquire: builder::host_builder_acquire,

@@ -7,6 +7,7 @@
 
 pub mod builder;
 pub mod catalog;
+pub mod dictionary;
 pub mod host;
 pub mod log;
 pub mod memory;

@@ -7,17 +7,29 @@ use std::{
 	sync::Arc,
 };
 
+use postcard::to_stdvec;
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::{key::EncodedKey, row::EncodedRow},
 };
 use reifydb_runtime::sync::mutex::Mutex;
-use reifydb_value::util::cowvec::CowVec;
+use reifydb_value::{
+	util::cowvec::CowVec,
+	value::{Value, value_type::ValueType},
+};
+
+#[derive(Default)]
+struct DictionaryData {
+	by_name: HashMap<String, (u64, u8)>,
+	find: HashMap<(u64, Vec<u8>), (u128, u8)>,
+	get: HashMap<(u64, u128), Vec<u8>>,
+}
 
 #[derive(Clone)]
 pub struct TestContext {
 	state_store: Arc<Mutex<HashMap<EncodedKey, EncodedRow>>>,
 	store: Arc<Mutex<BTreeMap<EncodedKey, EncodedRow>>>,
+	dictionaries: Arc<Mutex<DictionaryData>>,
 	version: CommitVersion,
 	logs: Arc<Mutex<Vec<String>>>,
 }
@@ -33,9 +45,33 @@ impl TestContext {
 		Self {
 			state_store: Arc::new(Mutex::new(HashMap::new())),
 			store: Arc::new(Mutex::new(BTreeMap::new())),
+			dictionaries: Arc::new(Mutex::new(DictionaryData::default())),
 			version,
 			logs: Arc::new(Mutex::new(Vec::new())),
 		}
+	}
+
+	pub fn seed_dictionary(&self, name: &str, id: u64, id_type: ValueType, entries: &[(u128, Value)]) {
+		let id_type_byte = id_type.to_u8();
+		let mut dicts = self.dictionaries.lock();
+		dicts.by_name.insert(name.to_string(), (id, id_type_byte));
+		for (entry_id, value) in entries {
+			let value_bytes = to_stdvec(value).expect("serialize dictionary value");
+			dicts.find.insert((id, value_bytes.clone()), (*entry_id, id_type_byte));
+			dicts.get.insert((id, *entry_id), value_bytes);
+		}
+	}
+
+	pub fn dictionary_id_by_name(&self, name: &str) -> Option<u64> {
+		self.dictionaries.lock().by_name.get(name).map(|(id, _)| *id)
+	}
+
+	pub fn dictionary_find(&self, dictionary: u64, value_bytes: &[u8]) -> Option<(u128, u8)> {
+		self.dictionaries.lock().find.get(&(dictionary, value_bytes.to_vec())).copied()
+	}
+
+	pub fn dictionary_get(&self, dictionary: u64, id: u128) -> Option<Vec<u8>> {
+		self.dictionaries.lock().get.get(&(dictionary, id)).cloned()
 	}
 
 	pub fn state_store(&self) -> &Arc<Mutex<HashMap<EncodedKey, EncodedRow>>> {

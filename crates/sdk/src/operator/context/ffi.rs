@@ -20,13 +20,19 @@ use reifydb_core::{
 };
 use reifydb_value::{
 	params::Params,
-	value::{frame::frame::Frame, row_number::RowNumber},
+	value::{
+		Value,
+		dictionary::{DictionaryEntryId, DictionaryId},
+		frame::frame::Frame,
+		row_number::RowNumber,
+	},
 };
 use serde::{Serialize, de::DeserializeOwned};
 
-use super::{CatalogApi, InternalStateApi, OperatorContext, RowEmit, StateApi, StoreApi, UpdateEmit};
+use super::{CatalogApi, DictionaryApi, InternalStateApi, OperatorContext, RowEmit, StateApi, StoreApi, UpdateEmit};
 use crate::{
 	catalog::Catalog,
+	dictionary::Dictionary,
 	error::{Result, SdkError},
 	operator::{
 		builder::ColumnsBuilder,
@@ -127,6 +133,10 @@ impl FFIOperatorContext {
 
 	pub fn catalog(&mut self) -> Catalog<'_> {
 		Catalog::new(self)
+	}
+
+	pub fn dictionary(&mut self) -> Dictionary<'_> {
+		Dictionary::new(self)
 	}
 
 	pub fn shape_for_row(&mut self, row: &EncodedRow) -> Result<RowShape> {
@@ -273,6 +283,18 @@ impl CatalogApi for Catalog<'_> {
 	}
 }
 
+impl DictionaryApi for Dictionary<'_> {
+	fn id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>> {
+		Dictionary::id_by_name(self, name)
+	}
+	fn find(&mut self, dictionary: DictionaryId, value: &Value) -> Result<Option<DictionaryEntryId>> {
+		Dictionary::find(self, dictionary, value)
+	}
+	fn get(&mut self, dictionary: DictionaryId, id: DictionaryEntryId) -> Result<Option<Value>> {
+		Dictionary::get(self, dictionary, id)
+	}
+}
+
 impl OperatorContext for FFIOperatorContext {
 	type InsertEmit<'a> = FFIRowEmit<'a>;
 	type UpdateEmit<'a> = FFIUpdateEmit<'a>;
@@ -295,6 +317,9 @@ impl OperatorContext for FFIOperatorContext {
 	}
 	fn catalog(&mut self) -> impl CatalogApi + '_ {
 		FFIOperatorContext::catalog(self)
+	}
+	fn dictionary(&mut self) -> impl DictionaryApi + '_ {
+		FFIOperatorContext::dictionary(self)
 	}
 	fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)> {
 		FFIOperatorContext::get_or_create_row_number(self, key)

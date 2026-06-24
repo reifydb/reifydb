@@ -82,6 +82,7 @@ use reifydb_transaction::{
 use reifydb_value::Result;
 use tracing::instrument;
 
+pub mod dictionary;
 pub mod read;
 pub mod row_allocator;
 pub mod slot;

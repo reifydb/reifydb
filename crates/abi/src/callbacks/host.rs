@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use super::{
-	builder::BuilderCallbacks, catalog::CatalogCallbacks, log::LogCallbacks, memory::MemoryCallbacks,
-	rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
+	builder::BuilderCallbacks, catalog::CatalogCallbacks, dictionary::DictionaryCallbacks, log::LogCallbacks,
+	memory::MemoryCallbacks, rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
 };
 
 #[repr(C)]
@@ -16,4 +16,5 @@ pub struct HostCallbacks {
 	pub catalog: CatalogCallbacks,
 	pub rql: RqlCallbacks,
 	pub builder: BuilderCallbacks,
+	pub dictionary: DictionaryCallbacks,
 }

@@ -42,7 +42,13 @@ use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
 	error::Error,
-	value::{constraint::TypeConstraint, duration::Duration, row_number::RowNumber},
+	value::{
+		Value,
+		constraint::TypeConstraint,
+		dictionary::{DictionaryEntryId, DictionaryId},
+		duration::Duration,
+		row_number::RowNumber,
+	},
 };
 use tracing::error;
 
@@ -244,6 +250,21 @@ impl NativeBridge for FlowNativeBridge<'_> {
 	}
 	fn catalog_find_row_shape(&mut self, fingerprint: RowShapeFingerprint) -> Result<Option<RowShape>> {
 		Ok(self.txn.host_catalog().find_row_shape(fingerprint))
+	}
+	fn dictionary_id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>> {
+		Ok(self.txn.find_dictionary_by_name(name).map(|d| d.id))
+	}
+	fn dictionary_find(&mut self, dictionary: DictionaryId, value: &Value) -> Result<Option<DictionaryEntryId>> {
+		match self.txn.find_dictionary(dictionary) {
+			Some(dict) => self.txn.find_in_dictionary(&dict, value),
+			None => Ok(None),
+		}
+	}
+	fn dictionary_get(&mut self, dictionary: DictionaryId, id: DictionaryEntryId) -> Result<Option<Value>> {
+		match self.txn.find_dictionary(dictionary) {
+			Some(dict) => self.txn.get_from_dictionary(&dict, id),
+			None => Ok(None),
+		}
 	}
 	fn state_get_many_visit(
 		&mut self,

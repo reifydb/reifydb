@@ -19,7 +19,11 @@ use reifydb_core::{
 		table::Table,
 	},
 };
-use reifydb_value::value::row_number::RowNumber;
+use reifydb_value::value::{
+	Value,
+	dictionary::{DictionaryEntryId, DictionaryId},
+	row_number::RowNumber,
+};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
@@ -173,6 +177,12 @@ pub trait CatalogApi {
 	fn find_row_shape(&self, fingerprint: RowShapeFingerprint) -> Result<Option<RowShape>>;
 }
 
+pub trait DictionaryApi {
+	fn id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>>;
+	fn find(&mut self, dictionary: DictionaryId, value: &Value) -> Result<Option<DictionaryEntryId>>;
+	fn get(&mut self, dictionary: DictionaryId, id: DictionaryEntryId) -> Result<Option<Value>>;
+}
+
 pub trait OperatorContext {
 	type InsertEmit<'a>: RowEmit
 	where
@@ -190,6 +200,7 @@ pub trait OperatorContext {
 	fn internal_state(&mut self) -> impl InternalStateApi + '_;
 	fn store(&mut self) -> impl StoreApi + '_;
 	fn catalog(&mut self) -> impl CatalogApi + '_;
+	fn dictionary(&mut self) -> impl DictionaryApi + '_;
 	fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)>;
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
 	/// Reserve `count` fresh, globally-unique output row numbers for this operator and return the start

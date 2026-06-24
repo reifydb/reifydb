@@ -53,6 +53,7 @@ pub trait TumblingCarryOperator {
 
 	fn extract(
 		&self,
+		ctx: &mut impl OperatorContext,
 		row: &impl RowView,
 	) -> Option<(Self::GroupKey, Self::WindowCoord, AccumulatorContribution<Self>)>;
 
@@ -114,7 +115,7 @@ where
 	A::Output: Row,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
-	fn route(&self, change: &impl ChangeView) -> Buckets<A> {
+	fn route(&self, ctx: &mut impl OperatorContext, change: &impl ChangeView) -> Buckets<A> {
 		let mut buckets: Buckets<A> = BTreeMap::new();
 
 		for di in 0..change.diff_count() {
@@ -124,18 +125,18 @@ where
 			match diff.kind() {
 				DiffType::Insert => {
 					if let Some(cols) = diff.post() {
-						self.push_all(&cols, &mut buckets, true);
+						self.push_all(ctx, &cols, &mut buckets, true);
 					}
 				}
 				DiffType::Update => {
 					if let (Some(pre), Some(post)) = (diff.pre(), diff.post()) {
-						self.push_all(&pre, &mut buckets, false);
-						self.push_all(&post, &mut buckets, true);
+						self.push_all(ctx, &pre, &mut buckets, false);
+						self.push_all(ctx, &post, &mut buckets, true);
 					}
 				}
 				DiffType::Remove => {
 					if let Some(cols) = diff.pre() {
-						self.push_all(&cols, &mut buckets, false);
+						self.push_all(ctx, &cols, &mut buckets, false);
 					}
 				}
 			}
@@ -143,12 +144,18 @@ where
 		buckets
 	}
 
-	fn push_all<C: ColumnsView>(&self, cols: &C, buckets: &mut Buckets<A>, is_add: bool) {
+	fn push_all<C: ColumnsView>(
+		&self,
+		ctx: &mut impl OperatorContext,
+		cols: &C,
+		buckets: &mut Buckets<A>,
+		is_add: bool,
+	) {
 		for i in 0..cols.row_count() {
 			let Some(row) = cols.row(i) else {
 				continue;
 			};
-			let Some((group, coord, contribution)) = self.aggregator.extract(&row) else {
+			let Some((group, coord, contribution)) = self.aggregator.extract(ctx, &row) else {
 				continue;
 			};
 			let span = self.aggregator.window_for(coord);
@@ -224,7 +231,7 @@ where
 	}
 
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
-		let buckets = self.route(&change);
+		let buckets = self.route(ctx, &change);
 		if buckets.is_empty() {
 			return Ok(());
 		}
@@ -326,7 +333,11 @@ mod tests {
 		type Output = CarryOut;
 		type Carry = f64;
 
-		fn extract(&self, row: &impl RowView) -> Option<(String, u64, (u64, f64))> {
+		fn extract(
+			&self,
+			_ctx: &mut impl OperatorContext,
+			row: &impl RowView,
+		) -> Option<(String, u64, (u64, f64))> {
 			let group = row.utf8("group")?.to_string();
 			let ts = row.u64("ts")?;
 			let price = row.f64("price")?;

@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::{
+	collections::{BTreeMap, BTreeSet, HashMap},
+	ffi::c_void,
+	ptr::null,
+};
 
+use reifydb_abi::context::context::ContextFFI;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -25,15 +30,32 @@ use super::{
 	materialize::materialize_history,
 	oracle::MaterializedTable,
 };
-use crate::operator::{
-	column::{row::Row, sink::native::NativeRowSink},
-	view::{ColumnsView, native::NativeColumnsView},
-	windowed::{
-		multi_rolling::MultiRollingOperator, rolling::RollingOperator,
-		rolling_incremental::RollingIncrementalOperator, tumbling::TumblingOperator,
-		tumbling_carry::TumblingCarryOperator,
+use crate::{
+	operator::{
+		column::{row::Row, sink::native::NativeRowSink},
+		context::ffi::FFIOperatorContext,
+		view::{ColumnsView, native::NativeColumnsView},
+		windowed::{
+			multi_rolling::MultiRollingOperator, rolling::RollingOperator,
+			rolling_incremental::RollingIncrementalOperator, tumbling::TumblingOperator,
+			tumbling_carry::TumblingCarryOperator,
+		},
 	},
+	testing::{callbacks::create_test_callbacks, context::TestContext},
 };
+
+fn with_oracle_ctx<R>(f: impl FnOnce(&mut FFIOperatorContext) -> R) -> R {
+	let test_ctx = TestContext::new(CommitVersion(1));
+	let mut ffi_context = ContextFFI {
+		txn_ptr: &test_ctx as *const TestContext as *mut c_void,
+		executor_ptr: null(),
+		operator_id: 1,
+		clock_now_nanos: 0,
+		callbacks: create_test_callbacks(),
+	};
+	let mut op_ctx = FFIOperatorContext::new(&mut ffi_context as *mut ContextFFI);
+	f(&mut op_ctx)
+}
 
 type Coord<A> = <A as TumblingOperator>::WindowCoord;
 type Group<A> = <A as TumblingOperator>::GroupKey;
@@ -177,7 +199,7 @@ where
 	let columns = Columns::from_row(row);
 	let view = NativeColumnsView::new(&columns);
 	let row_view = view.row(0)?;
-	aggregate.extract(&row_view)
+	with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))
 }
 
 fn materialize_outputs<O: Row>(
@@ -364,7 +386,7 @@ where
 	let columns = Columns::from_row(row);
 	let view = NativeColumnsView::new(&columns);
 	let row_view = view.row(0)?;
-	aggregate.extract(&row_view)
+	with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))
 }
 
 pub fn rolling_incremental_accumulator_oracle<A>(
@@ -762,7 +784,7 @@ where
 	let columns = Columns::from_row(row);
 	let view = NativeColumnsView::new(&columns);
 	let row_view = view.row(0)?;
-	aggregate.extract(&row_view)
+	with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))
 }
 
 #[allow(clippy::type_complexity)]
@@ -776,5 +798,5 @@ where
 	let columns = Columns::from_row(row);
 	let view = NativeColumnsView::new(&columns);
 	let row_view = view.row(0)?;
-	aggregate.extract(&row_view)
+	with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))
 }

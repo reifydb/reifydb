@@ -59,6 +59,7 @@ pub trait MultiRollingOperator {
 
 	fn extract(
 		&self,
+		ctx: &mut impl OperatorContext,
 		row: &impl RowView,
 	) -> Option<(Self::GroupKey, Self::WindowCoord, AccumulatorContribution<Self>)>;
 
@@ -139,7 +140,7 @@ where
 	}
 
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
-		let buckets = self.route_diffs_to_buckets(&change);
+		let buckets = self.route_diffs_to_buckets(ctx, &change);
 		if buckets.is_empty() {
 			return Ok(());
 		}
@@ -206,7 +207,7 @@ where
 {
 	#[inline]
 	#[allow(clippy::type_complexity)]
-	fn route_diffs_to_buckets(&self, change: &impl ChangeView) -> Buckets<A> {
+	fn route_diffs_to_buckets(&self, ctx: &mut impl OperatorContext, change: &impl ChangeView) -> Buckets<A> {
 		let mut buckets: Buckets<A> = BTreeMap::new();
 
 		for di in 0..change.diff_count() {
@@ -221,7 +222,7 @@ where
 								continue;
 							};
 							if let Some((group, coord, contribution)) =
-								self.aggregator.extract(&row)
+								self.aggregator.extract(ctx, &row)
 							{
 								buckets.entry((group, coord))
 									.or_default()
@@ -236,7 +237,7 @@ where
 						for i in 0..n {
 							if let Some(pre_row) = pre.row(i)
 								&& let Some((group, coord, contribution)) =
-									self.aggregator.extract(&pre_row)
+									self.aggregator.extract(ctx, &pre_row)
 							{
 								buckets.entry((group, coord))
 									.or_default()
@@ -244,7 +245,7 @@ where
 							}
 							if let Some(post_row) = post.row(i)
 								&& let Some((group, coord, contribution)) =
-									self.aggregator.extract(&post_row)
+									self.aggregator.extract(ctx, &post_row)
 							{
 								buckets.entry((group, coord))
 									.or_default()
@@ -260,7 +261,7 @@ where
 								continue;
 							};
 							if let Some((group, coord, contribution)) =
-								self.aggregator.extract(&row)
+								self.aggregator.extract(ctx, &row)
 							{
 								buckets.entry((group, coord))
 									.or_default()
@@ -367,7 +368,11 @@ mod tests {
 			3
 		}
 
-		fn extract(&self, row: &impl RowView) -> Option<(String, u64, (u64, f64))> {
+		fn extract(
+			&self,
+			_ctx: &mut impl OperatorContext,
+			row: &impl RowView,
+		) -> Option<(String, u64, (u64, f64))> {
 			let group = row.utf8("group")?.to_string();
 			let window_start = row.u64("window_start")?;
 			let trader = row.u64("trader")?;

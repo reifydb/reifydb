@@ -25,11 +25,21 @@ use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	operator::{
 		column::{row::Row, sink::native::NativeRowSink},
-		context::{CatalogApi, InternalStateApi, OperatorContext, RowEmit, StateApi, StoreApi, UpdateEmit},
+		context::{
+			CatalogApi, DictionaryApi, InternalStateApi, OperatorContext, RowEmit, StateApi, StoreApi,
+			UpdateEmit,
+		},
 	},
 	state::{StateEntry, decode_payload, encode_payload, row::RowNumberProvider},
 };
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{
+	Result,
+	value::{
+		Value,
+		dictionary::{DictionaryEntryId, DictionaryId},
+		row_number::RowNumber,
+	},
+};
 use serde::{Serialize, de::DeserializeOwned};
 
 pub trait NativeBridge {
@@ -75,6 +85,10 @@ pub trait NativeBridge {
 		version: CommitVersion,
 	) -> Result<Option<Table>>;
 	fn catalog_find_row_shape(&mut self, fingerprint: RowShapeFingerprint) -> Result<Option<RowShape>>;
+
+	fn dictionary_id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>>;
+	fn dictionary_find(&mut self, dictionary: DictionaryId, value: &Value) -> Result<Option<DictionaryEntryId>>;
+	fn dictionary_get(&mut self, dictionary: DictionaryId, id: DictionaryEntryId) -> Result<Option<Value>>;
 
 	fn state_get_many_visit(
 		&mut self,
@@ -422,6 +436,23 @@ impl CatalogApi for NativeCatalog<'_> {
 	}
 }
 
+pub struct NativeDictionary<'a> {
+	bridge: *mut (dyn NativeBridge + 'a),
+	_marker: PhantomData<&'a mut (dyn NativeBridge + 'a)>,
+}
+
+impl DictionaryApi for NativeDictionary<'_> {
+	fn id_by_name(&mut self, name: &str) -> SdkResult<Option<DictionaryId>> {
+		unsafe { (*self.bridge).dictionary_id_by_name(name) }.map_err(to_sdk_err)
+	}
+	fn find(&mut self, dictionary: DictionaryId, value: &Value) -> SdkResult<Option<DictionaryEntryId>> {
+		unsafe { (*self.bridge).dictionary_find(dictionary, value) }.map_err(to_sdk_err)
+	}
+	fn get(&mut self, dictionary: DictionaryId, id: DictionaryEntryId) -> SdkResult<Option<Value>> {
+		unsafe { (*self.bridge).dictionary_get(dictionary, id) }.map_err(to_sdk_err)
+	}
+}
+
 impl OperatorContext for NativeOperatorContext<'_> {
 	type InsertEmit<'a>
 		= NativeRowEmit<'a>
@@ -464,6 +495,12 @@ impl OperatorContext for NativeOperatorContext<'_> {
 	}
 	fn catalog(&mut self) -> impl CatalogApi + '_ {
 		NativeCatalog {
+			bridge: self.bridge,
+			_marker: PhantomData,
+		}
+	}
+	fn dictionary(&mut self) -> impl DictionaryApi + '_ {
+		NativeDictionary {
 			bridge: self.bridge,
 			_marker: PhantomData,
 		}

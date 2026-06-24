@@ -40,6 +40,7 @@ use reifydb_sdk::{
 	error::Result,
 	operator::{
 		column::operator::OperatorColumn,
+		context::OperatorContext,
 		view::RowView,
 		windowed::{
 			multi_rolling::{MultiRollingOperator, MultiRollingRegistration},
@@ -194,7 +195,7 @@ impl TumblingOperator for VolumeTumbling {
 	type Accumulator = VolumeAccumulator;
 	type Output = VolumeOut;
 
-	fn extract(&self, row: &impl RowView) -> Option<(String, u64, f64)> {
+	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, u64, f64)> {
 		let group = row.utf8("group")?.to_string();
 		let slot = row.u64("slot")?;
 		let size = row.f64("size")?;
@@ -278,7 +279,7 @@ impl TumblingOperator for MinTumbling {
 	type Accumulator = MinAccumulator;
 	type Output = MinOut;
 
-	fn extract(&self, row: &impl RowView) -> Option<(String, u64, OrdF64)> {
+	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, u64, OrdF64)> {
 		let group = row.utf8("group")?.to_string();
 		let slot = row.u64("slot")?;
 		let size = row.f64("size")?;
@@ -404,7 +405,7 @@ impl TumblingOperator for OhlcvSealingTumbling {
 	type Accumulator = OhlcvAcc;
 	type Output = OhlcvOut;
 
-	fn extract(&self, row: &impl RowView) -> Option<(String, u64, (u64, OrdF64))> {
+	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, u64, (u64, OrdF64))> {
 		let group = row.utf8("group")?.to_string();
 		let slot = row.u64("slot")?;
 		let price = OrdF64::new(row.f64("price")?)?;
@@ -503,7 +504,7 @@ impl RollingOperator for RollingSum {
 		self.capacity
 	}
 
-	fn extract(&self, row: &impl RowView) -> Option<(String, u64, f64)> {
+	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, u64, f64)> {
 		let group = row.utf8("group")?.to_string();
 		let window_start = row.u64("window_start")?;
 		let value = row.f64("value")?;
@@ -568,7 +569,7 @@ impl MultiRollingOperator for TopVolumeMultiRolling {
 		ROLLING_CAPACITY
 	}
 
-	fn extract(&self, row: &impl RowView) -> Option<(String, u64, (u64, f64))> {
+	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, u64, (u64, f64))> {
 		let group = row.utf8("group")?.to_string();
 		let window_start = row.u64("window_start")?;
 		let trader = row.u64("trader")?;
@@ -665,7 +666,7 @@ impl TumblingCarryOperator for TwapCarry {
 	type Output = CarryOut;
 	type Carry = f64;
 
-	fn extract(&self, row: &impl RowView) -> Option<(String, u64, (u64, f64))> {
+	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, u64, (u64, f64))> {
 		let group = row.utf8("group")?.to_string();
 		let ts = row.u64("ts")?;
 		let price = row.f64("price")?;
@@ -755,7 +756,7 @@ impl RollingOperator for VelocityIncremental {
 		self.capacity
 	}
 
-	fn extract(&self, row: &impl RowView) -> Option<(String, u64, f64)> {
+	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, u64, f64)> {
 		let group = row.utf8("group")?.to_string();
 		let window_start = row.u64("window_start")?;
 		let value = row.f64("value")?;

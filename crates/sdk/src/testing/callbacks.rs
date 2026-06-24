@@ -5,6 +5,7 @@ use std::{
 	alloc::{Layout, alloc, dealloc, realloc as system_realloc},
 	ops::Bound,
 	slice::from_raw_parts,
+	str::from_utf8,
 };
 
 #[unsafe(no_mangle)]
@@ -775,8 +776,9 @@ use std::ptr;
 
 use reifydb_abi::{
 	callbacks::{
-		builder::BuilderCallbacks, catalog::CatalogCallbacks, host::HostCallbacks, log::LogCallbacks,
-		memory::MemoryCallbacks, rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
+		builder::BuilderCallbacks, catalog::CatalogCallbacks, dictionary::DictionaryCallbacks,
+		host::HostCallbacks, log::LogCallbacks, memory::MemoryCallbacks, rql::RqlCallbacks,
+		state::StateCallbacks, store::StoreCallbacks,
 	},
 	catalog::{namespace::NamespaceFFI, row_shape::RowShapeFFI, table::TableFFI},
 	constants::{FFI_END_OF_ITERATION, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK},
@@ -884,6 +886,86 @@ extern "C" fn test_allocate_row_numbers(
 	}
 }
 
+extern "C" fn test_dictionary_id_by_name(
+	ctx: *mut ContextFFI,
+	name_ptr: *const u8,
+	name_len: usize,
+	out_id: *mut u64,
+	found: *mut u8,
+) -> i32 {
+	if ctx.is_null() || name_ptr.is_null() || out_id.is_null() || found.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		let name = match from_utf8(from_raw_parts(name_ptr, name_len)) {
+			Ok(name) => name,
+			Err(_) => return FFI_ERROR_INTERNAL,
+		};
+		match test_ctx.dictionary_id_by_name(name) {
+			Some(id) => {
+				*out_id = id;
+				*found = 1;
+			}
+			None => *found = 0,
+		}
+		FFI_OK
+	}
+}
+
+extern "C" fn test_dictionary_find(
+	ctx: *mut ContextFFI,
+	dictionary_id: u64,
+	value_ptr: *const u8,
+	value_len: usize,
+	out_id: *mut u128,
+	out_id_type: *mut u8,
+	found: *mut u8,
+) -> i32 {
+	if ctx.is_null() || value_ptr.is_null() || out_id.is_null() || out_id_type.is_null() || found.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		let value_bytes = from_raw_parts(value_ptr, value_len);
+		match test_ctx.dictionary_find(dictionary_id, value_bytes) {
+			Some((id, id_type)) => {
+				*out_id = id;
+				*out_id_type = id_type;
+				*found = 1;
+			}
+			None => *found = 0,
+		}
+		FFI_OK
+	}
+}
+
+extern "C" fn test_dictionary_get(ctx: *mut ContextFFI, dictionary_id: u64, id: u128, output: *mut BufferFFI) -> i32 {
+	if ctx.is_null() || output.is_null() {
+		return FFI_ERROR_NULL_PTR;
+	}
+
+	unsafe {
+		let test_ctx = get_test_context(ctx);
+		match test_ctx.dictionary_get(dictionary_id, id) {
+			Some(value_bytes) => {
+				let value_ptr = test_alloc(value_bytes.len());
+				if value_ptr.is_null() {
+					return -2;
+				}
+				ptr::copy_nonoverlapping(value_bytes.as_ptr(), value_ptr, value_bytes.len());
+				(*output).ptr = value_ptr;
+				(*output).len = value_bytes.len();
+				(*output).cap = value_bytes.len();
+				FFI_OK
+			}
+			None => FFI_NOT_FOUND,
+		}
+	}
+}
+
 pub fn create_test_callbacks() -> HostCallbacks {
 	HostCallbacks {
 		memory: MemoryCallbacks {
@@ -933,6 +1015,11 @@ pub fn create_test_callbacks() -> HostCallbacks {
 		},
 		rql: RqlCallbacks {
 			rql: test_rql,
+		},
+		dictionary: DictionaryCallbacks {
+			id_by_name: test_dictionary_id_by_name,
+			find: test_dictionary_find,
+			get: test_dictionary_get,
 		},
 		builder: BuilderCallbacks {
 			acquire: test_acquire,

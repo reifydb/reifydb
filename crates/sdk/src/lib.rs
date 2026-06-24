@@ -23,6 +23,7 @@
 pub mod catalog;
 pub mod config;
 pub mod connector;
+pub mod dictionary;
 pub mod error;
 pub mod ffi;
 pub mod flow;

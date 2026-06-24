@@ -102,6 +102,7 @@ fn procedure_host_callbacks() -> HostCallbacks {
 		rql: RqlCallbacks {
 			rql: rql::host_rql,
 		},
+		dictionary: stubs::dictionary(),
 		builder: BuilderCallbacks {
 			acquire: host_builder_acquire,
 			data_ptr: host_builder_data_ptr,
