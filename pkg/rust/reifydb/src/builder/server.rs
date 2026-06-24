@@ -67,6 +67,7 @@ use tracing_subscriber::filter::LevelFilter;
 
 #[cfg(feature = "sub_raft")]
 use crate::raft::RaftSubsystemFactory;
+use crate::system::raise_fd_limit;
 
 fn pool_config_from_sources(
 	factory: &StorageFactory,
@@ -347,6 +348,11 @@ impl ServerBuilder {
 
 	#[allow(unused_mut)]
 	pub fn build(mut self) -> Result<Database> {
+		// Servers accept one file descriptor per connection; raise the soft FD
+		// limit to the hard limit before any listener is bound so concurrent load
+		// does not exhaust it (`accept error: Too many open files`).
+		raise_fd_limit();
+
 		let (multi_commit_buffer, pool_config) =
 			pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs)?;
 

@@ -3155,6 +3155,7 @@ dependencies = [
  "dashmap",
  "futures-util",
  "indexmap",
+ "libc",
  "reifydb-auth",
  "reifydb-build",
  "reifydb-client",
@@ -3195,6 +3196,7 @@ dependencies = [
 name = "reifydb-sub-server-grpc"
 version = "0.6.0"
 dependencies = [
+ "futures-util",
  "num-bigint",
  "prost",
  "reifydb-auth",

@@ -3,7 +3,7 @@
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 
-use reifydb::{WithSubsystem, allocator, server, sub_tracing::builder::TracingConfigurator};
+use reifydb::{WithSubsystem, allocator, server, sub_tracing::builder::TracingConfigurator, system};
 
 allocator::set_global_allocator!();
 
@@ -13,6 +13,7 @@ fn tracing_configuration(tracing: TracingConfigurator) -> TracingConfigurator {
 
 fn main() {
 	allocator::verify();
+	system::raise_fd_limit();
 
 	let mut db = server::memory()
 		.with_http(|http| http.bind_addr("0.0.0.0:8090").admin_bind_addr("127.0.0.1:9090"))

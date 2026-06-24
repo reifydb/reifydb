@@ -11,7 +11,7 @@ use std::{
 	},
 };
 
-use axum::{serve, serve::ListenerExt};
+use axum::{serve, serve::Listener};
 use reifydb_core::{
 	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
@@ -21,10 +21,17 @@ use reifydb_runtime::{
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_sub_server::state::AppState;
+use reifydb_sub_server::{
+	accept::{PermittedStream, accept_admitted},
+	state::AppState,
+};
 use reifydb_value::Result;
-use tokio::{net::TcpListener, runtime::Handle, sync::oneshot};
-use tracing::{error, info, warn};
+use tokio::{
+	net::TcpListener,
+	runtime::Handle,
+	sync::{Semaphore, oneshot},
+};
+use tracing::{error, info};
 
 use crate::{routes::router, state::HttpServerState};
 
@@ -49,6 +56,8 @@ pub struct HttpSubsystem {
 
 	admin_shutdown_complete_rx: Mutex<Option<oneshot::Receiver<()>>>,
 
+	connection_semaphore: Arc<Semaphore>,
+
 	handle: Handle,
 }
 
@@ -61,6 +70,7 @@ impl HttpSubsystem {
 		state: AppState,
 		handle: Handle,
 	) -> Result<Self> {
+		let connection_semaphore = Arc::new(Semaphore::new(state.max_connections()));
 		let subsystem = Self {
 			bind_addr,
 			admin_bind_addr,
@@ -72,6 +82,7 @@ impl HttpSubsystem {
 			shutdown_complete_rx: Mutex::new(None),
 			admin_shutdown_tx: Mutex::new(None),
 			admin_shutdown_complete_rx: Mutex::new(None),
+			connection_semaphore,
 			handle,
 		};
 		subsystem.spawn_main_server()?;
@@ -126,10 +137,11 @@ impl HttpSubsystem {
 		let (shutdown_tx, shutdown_rx) = oneshot::channel();
 		let (complete_tx, complete_rx) = oneshot::channel();
 		let server_state = HttpServerState::new(self.state.clone());
+		let semaphore = self.connection_semaphore.clone();
 		let running = self.running.clone();
 		self.handle.spawn(async move {
 			running.store(true, Ordering::SeqCst);
-			let result = serve_http(listener, server_state, shutdown_rx, "HTTP server").await;
+			let result = serve_http(listener, server_state, semaphore, shutdown_rx, "HTTP server").await;
 			if let Err(e) = result {
 				error!("HTTP server error: {}", e);
 			}
@@ -174,9 +186,16 @@ impl HttpSubsystem {
 		let admin_config = self.state.config().clone().admin_enabled(true);
 		let admin_app_state = self.state.clone_with_config(admin_config);
 		let admin_server_state = HttpServerState::new(admin_app_state);
+		let semaphore = self.connection_semaphore.clone();
 		self.handle.spawn(async move {
-			let result =
-				serve_http(listener, admin_server_state, admin_shutdown_rx, "HTTP admin server").await;
+			let result = serve_http(
+				listener,
+				admin_server_state,
+				semaphore,
+				admin_shutdown_rx,
+				"HTTP admin server",
+			)
+			.await;
 			if let Err(e) = result {
 				error!("HTTP admin server error: {}", e);
 			}
@@ -291,19 +310,46 @@ fn local_addr_or_err(listener: &TcpListener) -> Result<SocketAddr> {
 async fn serve_http(
 	listener: TcpListener,
 	server_state: HttpServerState,
+	semaphore: Arc<Semaphore>,
 	shutdown_rx: oneshot::Receiver<()>,
 	name: &'static str,
 ) -> io::Result<()> {
 	let app = router(server_state);
-	let listener = listener.tap_io(|tcp_stream| {
-		if let Err(e) = tcp_stream.set_nodelay(true) {
-			warn!("Failed to set TCP_NODELAY: {e}");
-		}
-	});
+	let listener = LimitedListener::new(listener, semaphore, name);
 	serve(listener, app)
 		.with_graceful_shutdown(async move {
 			shutdown_rx.await.ok();
 			info!("{} received shutdown signal", name);
 		})
 		.await
+}
+
+pub struct LimitedListener {
+	listener: TcpListener,
+	semaphore: Arc<Semaphore>,
+	name: &'static str,
+}
+
+impl LimitedListener {
+	pub fn new(listener: TcpListener, semaphore: Arc<Semaphore>, name: &'static str) -> Self {
+		Self {
+			listener,
+			semaphore,
+			name,
+		}
+	}
+}
+
+impl Listener for LimitedListener {
+	type Io = PermittedStream;
+	type Addr = SocketAddr;
+
+	async fn accept(&mut self) -> (Self::Io, Self::Addr) {
+		let (stream, permit, peer) = accept_admitted(&self.listener, &self.semaphore, self.name).await;
+		(PermittedStream::new(stream, permit), peer)
+	}
+
+	fn local_addr(&self) -> io::Result<Self::Addr> {
+		self.listener.local_addr()
+	}
 }

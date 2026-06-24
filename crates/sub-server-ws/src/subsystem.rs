@@ -3,7 +3,6 @@
 
 use std::{
 	any::Any,
-	io,
 	net::SocketAddr,
 	sync::{
 		Arc,
@@ -20,7 +19,10 @@ use reifydb_runtime::{
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_sub_server::state::AppState;
+use reifydb_sub_server::{
+	accept::{BACKOFF_MIN, backoff_after_accept_error},
+	state::AppState,
+};
 use reifydb_sub_subscription::{poller::StoreBackedPoller, store::SubscriptionStore};
 use reifydb_value::Result;
 use tokio::{
@@ -315,6 +317,7 @@ async fn run_accept_loop(
 	runtime: Handle,
 	name: &'static str,
 ) {
+	let mut backoff = BACKOFF_MIN;
 	loop {
 		select! {
 			biased;
@@ -325,15 +328,23 @@ async fn run_accept_loop(
 				}
 			}
 			accept = listener.accept() => {
-				handle_accept_result(
-					accept,
-					&state,
-					&registry,
-					&semaphore,
-					&active_connections,
-					&shutdown_rx,
-					&runtime,
-				);
+				match accept {
+					Ok(pair) => {
+						backoff = BACKOFF_MIN;
+						handle_accept_result(
+							pair,
+							&state,
+							&registry,
+							&semaphore,
+							&active_connections,
+							&shutdown_rx,
+							&runtime,
+						);
+					}
+
+
+					Err(e) => backoff_after_accept_error(&e, &mut backoff, name).await,
+				}
 			}
 		}
 	}
@@ -341,7 +352,7 @@ async fn run_accept_loop(
 
 #[allow(clippy::too_many_arguments)]
 fn handle_accept_result(
-	accept: io::Result<(TcpStream, SocketAddr)>,
+	accept: (TcpStream, SocketAddr),
 	state: &AppState,
 	registry: &Arc<SubscriptionRegistry>,
 	semaphore: &Arc<Semaphore>,
@@ -349,13 +360,7 @@ fn handle_accept_result(
 	shutdown_rx: &watch::Receiver<bool>,
 	runtime: &Handle,
 ) {
-	let (stream, peer) = match accept {
-		Ok(pair) => pair,
-		Err(e) => {
-			warn!("Accept error: {}", e);
-			return;
-		}
-	};
+	let (stream, peer) = accept;
 	let Ok(permit) = semaphore.clone().try_acquire_owned() else {
 		warn!("Connection limit reached, rejecting {}", peer);
 		return;

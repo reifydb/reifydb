@@ -3,14 +3,18 @@
 
 use std::{
 	any::Any,
+	io,
 	net::SocketAddr,
+	pin::Pin,
 	result::Result as StdResult,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
+	task::{Context, Poll},
 };
 
+use futures_util::{Stream, stream::unfold};
 use reifydb_core::{
 	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
@@ -20,16 +24,16 @@ use reifydb_runtime::{
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_sub_server::state::AppState;
+use reifydb_sub_server::{accept::accept_admitted, state::AppState};
 use reifydb_sub_subscription::{poller::StoreBackedPoller, store::SubscriptionStore};
 use reifydb_value::Result;
 use tokio::{
-	net::TcpListener,
+	io::{AsyncRead, AsyncWrite, ReadBuf},
+	net::{TcpListener, TcpStream},
 	runtime::Handle,
-	sync::{oneshot, watch},
+	sync::{OwnedSemaphorePermit, Semaphore, oneshot, watch},
 };
-use tokio_stream::{StreamExt, wrappers::TcpListenerStream};
-use tonic::transport::{Error as TonicError, Server};
+use tonic::transport::{Error as TonicError, Server, server::Connected};
 use tracing::{error, info};
 
 use crate::{
@@ -48,6 +52,7 @@ pub struct GrpcSubsystem {
 	shutdown_complete_rx: Mutex<Option<oneshot::Receiver<()>>>,
 	admin_shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
 	admin_shutdown_complete_rx: Mutex<Option<oneshot::Receiver<()>>>,
+	connection_semaphore: Arc<Semaphore>,
 	handle: Handle,
 	poll_batch_size: usize,
 	registry: Mutex<Option<Arc<SubscriptionRegistry>>>,
@@ -65,6 +70,7 @@ impl GrpcSubsystem {
 		poll_batch_size: usize,
 		subscription_store: Option<Arc<SubscriptionStore>>,
 	) -> Result<Self> {
+		let connection_semaphore = Arc::new(Semaphore::new(state.max_connections()));
 		let subsystem = Self {
 			bind_addr,
 			admin_bind_addr,
@@ -76,6 +82,7 @@ impl GrpcSubsystem {
 			shutdown_complete_rx: Mutex::new(None),
 			admin_shutdown_tx: Mutex::new(None),
 			admin_shutdown_complete_rx: Mutex::new(None),
+			connection_semaphore,
 			handle,
 			poll_batch_size,
 			registry: Mutex::new(None),
@@ -161,12 +168,13 @@ impl GrpcSubsystem {
 		let (shutdown_tx, shutdown_rx) = oneshot::channel();
 		let (complete_tx, complete_rx) = oneshot::channel();
 		let state = self.state.clone();
+		let semaphore = self.connection_semaphore.clone();
 		let running = self.running.clone();
 		self.handle.spawn(async move {
 			running.store(true, Ordering::SeqCst);
 			let server_state = GrpcServerState::new(state);
 			let service = ReifyDbService::new(server_state, false, registry, sub_shutdown_rx);
-			let result = serve_grpc(listener, service, shutdown_rx, "gRPC server").await;
+			let result = serve_grpc(listener, service, semaphore, shutdown_rx, "gRPC server").await;
 			let _ = poller_stop_tx.send(true);
 			if let Err(e) = result {
 				error!("gRPC server error: {}", e);
@@ -194,10 +202,13 @@ impl GrpcSubsystem {
 		let admin_server_state = GrpcServerState::new(self.state.clone());
 		let admin_registry = self.registry.lock().as_ref().unwrap().clone();
 		let admin_sub_shutdown_rx = self.subscription_shutdown_tx.lock().as_ref().unwrap().subscribe();
+		let semaphore = self.connection_semaphore.clone();
 		self.handle.spawn(async move {
 			let admin_service =
 				ReifyDbService::new(admin_server_state, true, admin_registry, admin_sub_shutdown_rx);
-			let result = serve_grpc(listener, admin_service, admin_shutdown_rx, "gRPC admin server").await;
+			let result =
+				serve_grpc(listener, admin_service, semaphore, admin_shutdown_rx, "gRPC admin server")
+					.await;
 			if let Err(e) = result {
 				error!("gRPC admin server error: {}", e);
 			}
@@ -329,14 +340,11 @@ fn local_addr_or_err(listener: &TcpListener) -> Result<SocketAddr> {
 async fn serve_grpc(
 	listener: TcpListener,
 	service: ReifyDbService,
+	semaphore: Arc<Semaphore>,
 	shutdown_rx: oneshot::Receiver<()>,
 	name: &'static str,
 ) -> StdResult<(), TonicError> {
-	let incoming = TcpListenerStream::new(listener).map(|result| {
-		result.inspect(|stream| {
-			let _ = stream.set_nodelay(true);
-		})
-	});
+	let incoming = limited_incoming(listener, semaphore, name);
 	Server::builder()
 		.add_service(ReifyDbServer::new(service))
 		.serve_with_incoming_shutdown(incoming, async {
@@ -344,4 +352,64 @@ async fn serve_grpc(
 			info!("{} received shutdown signal", name);
 		})
 		.await
+}
+
+pub fn limited_incoming(
+	listener: TcpListener,
+	semaphore: Arc<Semaphore>,
+	name: &'static str,
+) -> impl Stream<Item = io::Result<PermittedConn>> {
+	unfold((listener, semaphore, name), |(listener, semaphore, name)| async move {
+		let (stream, permit, _peer) = accept_admitted(&listener, &semaphore, name).await;
+		let conn = PermittedConn {
+			inner: stream,
+			_permit: permit,
+		};
+		Some((Ok(conn), (listener, semaphore, name)))
+	})
+}
+
+pub struct PermittedConn {
+	inner: TcpStream,
+	_permit: OwnedSemaphorePermit,
+}
+
+impl Connected for PermittedConn {
+	type ConnectInfo = <TcpStream as Connected>::ConnectInfo;
+
+	fn connect_info(&self) -> Self::ConnectInfo {
+		self.inner.connect_info()
+	}
+}
+
+impl AsyncRead for PermittedConn {
+	fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
+		Pin::new(&mut self.inner).poll_read(cx, buf)
+	}
+}
+
+impl AsyncWrite for PermittedConn {
+	fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+		Pin::new(&mut self.inner).poll_write(cx, buf)
+	}
+
+	fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+		Pin::new(&mut self.inner).poll_flush(cx)
+	}
+
+	fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+		Pin::new(&mut self.inner).poll_shutdown(cx)
+	}
+
+	fn poll_write_vectored(
+		mut self: Pin<&mut Self>,
+		cx: &mut Context<'_>,
+		bufs: &[io::IoSlice<'_>],
+	) -> Poll<io::Result<usize>> {
+		Pin::new(&mut self.inner).poll_write_vectored(cx, bufs)
+	}
+
+	fn is_write_vectored(&self) -> bool {
+		self.inner.is_write_vectored()
+	}
 }

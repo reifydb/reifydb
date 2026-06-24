@@ -30,6 +30,7 @@ tonic-prost = { workspace = true }
 prost = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
+futures-util = { workspace = true }
 
 # Serialization
 serde_json = { workspace = true }
