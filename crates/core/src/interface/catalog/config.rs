@@ -63,6 +63,7 @@ pub enum ConfigKey {
 	MultiReclaimInterval,
 	FlowTick,
 	CdcWatermarkWaitTimeout,
+	CdcConsumeWaitTimeout,
 	FlowJoinProbeBlockSize,
 	ThreadsAsync,
 	ThreadsSystem,
@@ -107,6 +108,7 @@ impl ConfigKey {
 			Self::MultiReclaimInterval,
 			Self::FlowTick,
 			Self::CdcWatermarkWaitTimeout,
+			Self::CdcConsumeWaitTimeout,
 			Self::FlowJoinProbeBlockSize,
 			Self::ThreadsAsync,
 			Self::ThreadsSystem,
@@ -153,6 +155,7 @@ impl ConfigKey {
 			Self::MultiReclaimInterval => Value::duration_seconds(30),
 			Self::FlowTick => Value::duration_seconds(1),
 			Self::CdcWatermarkWaitTimeout => Value::duration_seconds(1),
+			Self::CdcConsumeWaitTimeout => Value::duration_seconds(30),
 			Self::FlowJoinProbeBlockSize => Value::Uint8(1024),
 			Self::ThreadsAsync => Value::Uint2(1),
 			Self::ThreadsSystem => Value::Uint2(2),
@@ -246,6 +249,11 @@ impl ConfigKey {
 				 latest commit before consuming; catch-up is event-driven, so this only bounds a missed \
 				 wakeup. Must be > 0."
 			}
+			Self::CdcConsumeWaitTimeout => {
+				"Backstop timeout for the CDC consumer's wait for a consume reply from the downstream \
+				 consumer. A lost reply would otherwise wedge the poll loop forever; on timeout the batch \
+				 is re-dispatched without advancing the checkpoint. Must be > 0."
+			}
 			Self::FlowJoinProbeBlockSize => {
 				"Number of opposite-side rows a streaming join pulls per block when probing its stored \
 				 state. Bounds resident probe memory without dropping matches; smaller trades fewer \
@@ -334,6 +342,7 @@ impl ConfigKey {
 			Self::MultiReclaimInterval => true,
 			Self::FlowTick => false,
 			Self::CdcWatermarkWaitTimeout => false,
+			Self::CdcConsumeWaitTimeout => false,
 			Self::FlowJoinProbeBlockSize => false,
 			Self::ThreadsAsync => true,
 			Self::ThreadsSystem => true,
@@ -378,6 +387,7 @@ impl ConfigKey {
 			Self::MultiReclaimInterval => &[ValueType::Duration],
 			Self::FlowTick => &[ValueType::Duration],
 			Self::CdcWatermarkWaitTimeout => &[ValueType::Duration],
+			Self::CdcConsumeWaitTimeout => &[ValueType::Duration],
 			Self::FlowJoinProbeBlockSize => &[ValueType::Uint8],
 			Self::ThreadsAsync => &[ValueType::Uint2],
 			Self::ThreadsSystem => &[ValueType::Uint2],
@@ -422,6 +432,7 @@ impl ConfigKey {
 			Self::MultiReclaimInterval => false,
 			Self::FlowTick => false,
 			Self::CdcWatermarkWaitTimeout => false,
+			Self::CdcConsumeWaitTimeout => false,
 			Self::FlowJoinProbeBlockSize => false,
 			Self::ThreadsAsync => false,
 			Self::ThreadsSystem => false,
@@ -524,6 +535,16 @@ impl ConfigKey {
 						Ok(())
 					} else {
 						Err("CDC_WATERMARK_WAIT_TIMEOUT must be greater than zero".to_string())
+					}
+				}
+				_ => Ok(()),
+			},
+			Self::CdcConsumeWaitTimeout => match value {
+				Value::Duration(d) => {
+					if d.is_positive() {
+						Ok(())
+					} else {
+						Err("CDC_CONSUME_WAIT_TIMEOUT must be greater than zero".to_string())
 					}
 				}
 				_ => Ok(()),
@@ -714,6 +735,7 @@ impl fmt::Display for ConfigKey {
 			Self::MultiReclaimInterval => write!(f, "MULTI_RECLAIM_INTERVAL"),
 			Self::FlowTick => write!(f, "FLOW_TICK"),
 			Self::CdcWatermarkWaitTimeout => write!(f, "CDC_WATERMARK_WAIT_TIMEOUT"),
+			Self::CdcConsumeWaitTimeout => write!(f, "CDC_CONSUME_WAIT_TIMEOUT"),
 			Self::FlowJoinProbeBlockSize => write!(f, "FLOW_JOIN_PROBE_BLOCK_SIZE"),
 			Self::ThreadsAsync => write!(f, "THREADS_ASYNC"),
 			Self::ThreadsSystem => write!(f, "THREADS_SYSTEM"),
@@ -762,6 +784,7 @@ impl FromStr for ConfigKey {
 			"MULTI_RECLAIM_INTERVAL" => Ok(Self::MultiReclaimInterval),
 			"FLOW_TICK" => Ok(Self::FlowTick),
 			"CDC_WATERMARK_WAIT_TIMEOUT" => Ok(Self::CdcWatermarkWaitTimeout),
+			"CDC_CONSUME_WAIT_TIMEOUT" => Ok(Self::CdcConsumeWaitTimeout),
 			"FLOW_JOIN_PROBE_BLOCK_SIZE" => Ok(Self::FlowJoinProbeBlockSize),
 			"THREADS_ASYNC" => Ok(Self::ThreadsAsync),
 			"THREADS_SYSTEM" => Ok(Self::ThreadsSystem),
@@ -913,11 +936,12 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 39);
+		assert_eq!(all.len(), 40);
 		assert!(all.contains(&ConfigKey::MetricsRuntimeRetention));
 		assert!(all.contains(&ConfigKey::MetricsProfilerRetention));
 		assert!(all.contains(&ConfigKey::VersionEpochSampleInterval));
 		assert!(all.contains(&ConfigKey::CdcWatermarkWaitTimeout));
+		assert!(all.contains(&ConfigKey::CdcConsumeWaitTimeout));
 		assert!(all.contains(&ConfigKey::FlowJoinProbeBlockSize));
 		assert!(all.contains(&ConfigKey::MultiReclaimInterval));
 		assert!(all.contains(&ConfigKey::CdcTtlScanInterval));

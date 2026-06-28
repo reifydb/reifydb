@@ -22,7 +22,10 @@ use reifydb_core::{
 	row::Row,
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
-use reifydb_value::{util::cowvec::CowVec, value::Value};
+use reifydb_value::{
+	util::cowvec::CowVec,
+	value::{Value, value_type::ValueType},
+};
 use serde::de::DeserializeOwned;
 
 use crate::{
@@ -41,6 +44,8 @@ use crate::{
 		state::TestStateStore,
 	},
 };
+
+type DictionarySeed = (String, u64, ValueType, Vec<(u128, Value)>);
 
 pub struct FFIOperatorHarness<T: FFIOperator> {
 	operator: T,
@@ -275,6 +280,7 @@ pub struct FFIOperatorHarnessBuilder<T: FFIOperator> {
 	version: CommitVersion,
 	clock: Clock,
 	initial_state: HashMap<EncodedKey, EncodedRow>,
+	dictionaries: Vec<DictionarySeed>,
 	_phantom: PhantomData<T>,
 }
 
@@ -292,6 +298,7 @@ impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
 			version: CommitVersion(1),
 			clock: Clock::Mock(MockClock::new(0)),
 			initial_state: HashMap::new(),
+			dictionaries: Vec::new(),
 			_phantom: PhantomData,
 		}
 	}
@@ -333,11 +340,26 @@ impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
 		self
 	}
 
+	pub fn with_dictionary(
+		mut self,
+		name: impl Into<String>,
+		id: u64,
+		id_type: ValueType,
+		entries: Vec<(u128, Value)>,
+	) -> Self {
+		self.dictionaries.push((name.into(), id, id_type, entries));
+		self
+	}
+
 	pub fn build(self) -> Result<FFIOperatorHarness<T>> {
 		let context = Box::new(TestContext::new(self.version));
 
 		for (k, v) in self.initial_state {
 			context.set_state(k, v.0.to_vec());
+		}
+
+		for (name, id, id_type, entries) in &self.dictionaries {
+			context.seed_dictionary_interning(name, *id, id_type.clone(), entries);
 		}
 
 		let ffi_context = Box::new(ContextFFI {

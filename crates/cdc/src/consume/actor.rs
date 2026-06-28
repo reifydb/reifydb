@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	mem,
 	ops::Bound,
 	sync::{
 		Arc,
@@ -87,6 +86,11 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 	fn watermark_wait_timeout(&self) -> Duration {
 		self.host.catalog().get_config_duration(ConfigKey::CdcWatermarkWaitTimeout)
 	}
+
+	#[inline]
+	fn consume_wait_timeout(&self) -> Duration {
+		self.host.catalog().get_config_duration(ConfigKey::CdcConsumeWaitTimeout)
+	}
 }
 
 pub enum Phase {
@@ -98,6 +102,8 @@ pub enum Phase {
 		latest_version: CommitVersion,
 
 		count: usize,
+
+		generation: u64,
 	},
 }
 
@@ -105,6 +111,8 @@ pub struct PollState {
 	phase: Phase,
 
 	cached_checkpoint: Option<CommitVersion>,
+
+	consume_generation: u64,
 }
 
 impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C> {
@@ -122,6 +130,7 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C
 		PollState {
 			phase: Phase::Ready,
 			cached_checkpoint: None,
+			consume_generation: 0,
 		}
 	}
 
@@ -129,7 +138,13 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C
 		match msg {
 			CdcPollMessage::Poll => self.on_poll(state, ctx),
 			CdcPollMessage::CheckWatermark => self.on_check_watermark(state, ctx),
-			CdcPollMessage::ConsumeResponse(result) => self.on_consume_response(state, ctx, result),
+			CdcPollMessage::ConsumeResponse {
+				generation,
+				result,
+			} => self.on_consume_response(state, ctx, generation, result),
+			CdcPollMessage::CheckConsume {
+				generation,
+			} => self.on_check_consume(state, ctx, generation),
 			CdcPollMessage::Shutdown => {
 				debug!("[Consumer {:?}] Shutdown", self.config.consumer_id);
 				Directive::Stop
@@ -195,15 +210,47 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		&self,
 		state: &mut PollState,
 		ctx: &Context<CdcPollMessage>,
+		generation: u64,
 		result: Result<()>,
 	) -> Directive {
 		if let Phase::WaitingForConsume {
 			latest_version,
 			count,
-		} = mem::replace(&mut state.phase, Phase::Ready)
+			generation: pending,
+		} = state.phase
 		{
+			if pending != generation {
+				return Directive::Continue;
+			}
+			state.phase = Phase::Ready;
 			self.finish_consume(state, ctx, latest_version, count, result);
 		}
+		Directive::Continue
+	}
+
+	#[inline]
+	fn on_check_consume(&self, state: &mut PollState, ctx: &Context<CdcPollMessage>, generation: u64) -> Directive {
+		let still_waiting = matches!(
+			state.phase,
+			Phase::WaitingForConsume {
+				generation: pending,
+				..
+			} if pending == generation
+		);
+		if !still_waiting {
+			return Directive::Continue;
+		}
+		if ctx.is_cancelled() {
+			debug!("[Consumer {:?}] Stopped", self.config.consumer_id);
+			return Directive::Stop;
+		}
+		error!(
+			"[Consumer {:?}] consume reply not received within {:?}; re-dispatching batch",
+			self.config.consumer_id,
+			self.consume_wait_timeout()
+		);
+		state.phase = Phase::Ready;
+		ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
 		Directive::Continue
 	}
 
@@ -240,11 +287,17 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			return;
 		}
 
+		state.consume_generation = state.consume_generation.wrapping_add(1);
+		let generation = state.consume_generation;
 		state.phase = Phase::WaitingForConsume {
 			latest_version,
 			count,
+			generation,
 		};
-		self.dispatch_to_consumer(relevant_cdcs, ctx);
+		self.dispatch_to_consumer(relevant_cdcs, generation, ctx);
+		ctx.schedule_once(self.consume_wait_timeout(), move || CdcPollMessage::CheckConsume {
+			generation,
+		});
 	}
 
 	#[inline]
@@ -321,10 +374,13 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 	}
 
 	#[inline]
-	fn dispatch_to_consumer(&self, cdcs: Vec<Cdc>, ctx: &Context<CdcPollMessage>) {
+	fn dispatch_to_consumer(&self, cdcs: Vec<Cdc>, generation: u64, ctx: &Context<CdcPollMessage>) {
 		let self_ref = ctx.self_ref().clone();
 		let reply: Box<dyn FnOnce(Result<()>) + Send> = Box::new(move |result| {
-			let _ = self_ref.send(CdcPollMessage::ConsumeResponse(result));
+			let _ = self_ref.send(CdcPollMessage::ConsumeResponse {
+				generation,
+				result,
+			});
 		});
 		self.consumer.consume(cdcs, reply);
 	}

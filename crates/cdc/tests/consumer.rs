@@ -16,9 +16,10 @@ use reifydb_cdc::consume::{
 	poll::{PollConsumer, PollConsumerConfig},
 };
 use reifydb_core::{
+	common::CommitVersion,
 	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::{
-		catalog::{id::TableId, shape::ShapeId},
+		catalog::{config::ConfigKey, id::TableId, shape::ShapeId},
 		cdc::{Cdc, CdcConsumerId, SystemChange},
 	},
 	key::{EncodableKey, Key, Key::Row, cdc_consumer::CdcConsumerKey, row::RowKey},
@@ -33,7 +34,7 @@ use reifydb_value::{
 	error::{Diagnostic, Error},
 	fragment::Fragment,
 	util::cowvec::CowVec,
-	value::{duration::Duration, identity::IdentityId, row_number::RowNumber},
+	value::{Value, duration::Duration, identity::IdentityId, row_number::RowNumber},
 };
 
 #[test]
@@ -218,6 +219,60 @@ fn test_error_handling() {
 
 	let changes_after_recovery = consumer_clone.get_total_changes();
 	assert_eq!(changes_after_recovery, 5, "Should have processed new changes after recovery");
+
+	test_instance.stop().expect("Failed to stop consumer");
+}
+
+#[test]
+fn test_recovers_when_consume_reply_is_lost() {
+	// A dropped consume reply must not wedge the poll loop forever: the CdcConsumeWaitTimeout
+	// backstop re-dispatches the batch. Without the timeout the actor stays in WaitingForConsume
+	// and never polls again, so neither the re-dispatch nor the post-recovery processing happen.
+	let t = TestEngine::new();
+	t.inner()
+		.catalog()
+		.cache()
+		.set_config(
+			ConfigKey::CdcConsumeWaitTimeout,
+			CommitVersion(1),
+			Value::Duration(Duration::from_milliseconds(150).unwrap()),
+		)
+		.expect("Failed to set consume wait timeout");
+
+	let cdc_store = t.cdc_store();
+	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
+	let consumer_clone = consumer.clone();
+	let pools = Pools::new(PoolConfig::default());
+	let actor_system = ActorSystem::new(pools, Clock::Real);
+	let runtime = actor_system.spawner();
+
+	insert_test_events(&t, 3);
+
+	let config =
+		PollConsumerConfig::new(consumer_id, "cdc-poll-test", Duration::from_milliseconds(50).unwrap(), None);
+	let mut test_instance = PollConsumer::new(config, t.inner().clone(), consumer, cdc_store, runtime);
+
+	test_instance.start().expect("Failed to start consumer");
+	await_until("processes initial 3", || consumer_clone.get_total_changes() >= 3);
+
+	// Start dropping replies, then publish new work. The consumer dispatches but never hears back.
+	consumer_clone.set_drop_reply(true);
+	let calls_before_drop = consumer_clone.get_call_count();
+	insert_test_events(&t, 2);
+
+	// The timeout must keep re-dispatching the un-acked batch rather than stalling.
+	await_until("re-dispatches after lost reply", || consumer_clone.get_call_count() >= calls_before_drop + 2);
+	assert_eq!(
+		consumer_clone.get_total_changes(),
+		3,
+		"No new changes should be processed while replies are lost (checkpoint must not advance)"
+	);
+
+	// Once replies flow again, the still-un-acked batch is processed.
+	consumer_clone.set_drop_reply(false);
+	await_until("recovery processes 5", || consumer_clone.get_total_changes() >= 5);
+	assert_eq!(consumer_clone.get_total_changes(), 5, "Should process the batch once replies resume");
 
 	test_instance.stop().expect("Failed to stop consumer");
 }
@@ -748,7 +803,9 @@ struct TestConsumer {
 	consumer_key: EncodedKey,
 	cdc_received: Arc<Mutex<Vec<Cdc>>>,
 	process_count: Arc<AtomicUsize>,
+	call_count: Arc<AtomicUsize>,
 	should_fail: Arc<AtomicBool>,
+	drop_reply: Arc<AtomicBool>,
 }
 
 impl TestConsumer {
@@ -762,12 +819,18 @@ impl TestConsumer {
 			consumer_key,
 			cdc_received: Arc::new(Mutex::new(Vec::new())),
 			process_count: Arc::new(AtomicUsize::new(0)),
+			call_count: Arc::new(AtomicUsize::new(0)),
 			should_fail: Arc::new(AtomicBool::new(false)),
+			drop_reply: Arc::new(AtomicBool::new(false)),
 		}
 	}
 
 	fn set_should_fail(&self, should_fail: bool) {
 		self.should_fail.store(should_fail, Ordering::SeqCst);
+	}
+
+	fn set_drop_reply(&self, drop_reply: bool) {
+		self.drop_reply.store(drop_reply, Ordering::SeqCst);
 	}
 
 	fn get_transactions(&self) -> Vec<Cdc> {
@@ -781,6 +844,10 @@ impl TestConsumer {
 	fn get_process_count(&self) -> usize {
 		self.process_count.load(Ordering::SeqCst)
 	}
+
+	fn get_call_count(&self) -> usize {
+		self.call_count.load(Ordering::SeqCst)
+	}
 }
 
 impl Clone for TestConsumer {
@@ -790,13 +857,23 @@ impl Clone for TestConsumer {
 			consumer_key: self.consumer_key.clone(),
 			cdc_received: Arc::clone(&self.cdc_received),
 			process_count: Arc::clone(&self.process_count),
+			call_count: Arc::clone(&self.call_count),
 			should_fail: Arc::clone(&self.should_fail),
+			drop_reply: Arc::clone(&self.drop_reply),
 		}
 	}
 }
 
 impl CdcConsume for TestConsumer {
 	fn consume(&self, transactions: Vec<Cdc>, reply: Box<dyn FnOnce(reifydb_value::Result<()>) + Send>) {
+		self.call_count.fetch_add(1, Ordering::SeqCst);
+
+		if self.drop_reply.load(Ordering::SeqCst) {
+			// Simulate a lost reply: the callback is dropped without ever being invoked.
+			drop(reply);
+			return;
+		}
+
 		if self.should_fail.load(Ordering::SeqCst) {
 			(reply)(Err(Error(Box::new(Diagnostic {
 				code: "TEST_ERROR".to_string(),
