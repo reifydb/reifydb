@@ -2,6 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
+	env,
+	os::unix::process::ExitStatusExt,
+	process::Command,
 	sync::{
 		Arc, Mutex,
 		atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -183,13 +186,40 @@ fn test_checkpoint_persistence() {
 	assert!(stored_version >= 3, "Checkpoint should be after initial events");
 }
 
+const ABORT_CHILD_ENV: &str = "REIFYDB_CDC_ABORT_CHILD";
+
+// A consumer that replies with an error is a fatal condition: the poll actor calls
+// process::abort() rather than trying to recover, because a checkpoint must never advance
+// past events the consumer could not durably process. process::abort() is terminal and cannot
+// be observed in-process, so the failure is driven inside a re-exec'd child of this same test
+// binary and the parent asserts the child died from SIGABRT.
 #[test]
-fn test_error_handling() {
+fn test_consumer_error_aborts_process() {
+	if env::var(ABORT_CHILD_ENV).is_ok() {
+		run_abort_child();
+		return;
+	}
+
+	let exe = env::current_exe().expect("Failed to resolve test binary path");
+	let status = Command::new(exe)
+		.args(["test_consumer_error_aborts_process", "--exact", "--nocapture", "--test-threads=1"])
+		.env(ABORT_CHILD_ENV, "1")
+		.status()
+		.expect("Failed to run abort child process");
+
+	assert_eq!(
+		status.signal(),
+		Some(6),
+		"a consumer error must abort the process with SIGABRT, but the child exited with {status:?}"
+	);
+}
+
+fn run_abort_child() {
 	let t = TestEngine::new();
 	let cdc_store = t.cdc_store();
 	let consumer_id = CdcConsumerId::flow_consumer();
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
-	let consumer_clone = consumer.clone();
+	consumer.set_should_fail(true);
 	let pools = Pools::new(PoolConfig::default());
 	let actor_system = ActorSystem::new(pools, Clock::Real);
 	let runtime = actor_system.spawner();
@@ -201,26 +231,10 @@ fn test_error_handling() {
 	let mut test_instance = PollConsumer::new(config, t.inner().clone(), consumer, cdc_store, runtime);
 
 	test_instance.start().expect("Failed to start consumer");
-	await_until("processes initial 3", || consumer_clone.get_total_changes() >= 3);
 
-	let changes_before_error = consumer_clone.get_total_changes();
-	assert_eq!(changes_before_error, 3, "Should have processed 3 changes before error");
-
-	consumer_clone.set_should_fail(true);
-
-	insert_test_events(&t, 2);
-	sleep(Duration::from_milliseconds(150).unwrap().to_std());
-
-	let changes_during_error = consumer_clone.get_total_changes();
-	assert_eq!(changes_during_error, 3, "Should not have processed new changes during error");
-
-	consumer_clone.set_should_fail(false);
-	await_until("recovery processes 5", || consumer_clone.get_total_changes() >= 5);
-
-	let changes_after_recovery = consumer_clone.get_total_changes();
-	assert_eq!(changes_after_recovery, 5, "Should have processed new changes after recovery");
-
-	test_instance.stop().expect("Failed to stop consumer");
+	// The first dispatch to the failing consumer must abort this child. If the abort path
+	// regresses, control returns here and the child exits 0, failing the parent's assertion.
+	sleep(poll_timeout().to_std());
 }
 
 #[test]

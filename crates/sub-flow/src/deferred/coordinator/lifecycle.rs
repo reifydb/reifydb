@@ -21,9 +21,10 @@ use reifydb_value::{Result, reifydb_assertions};
 use tracing::{Span, debug, field, instrument};
 
 use super::{
-	ConsumeContext, CoordinatorActor, CoordinatorState, PendingConsume, Phase, coordinator_error,
+	ConsumeContext, CoordinatorActor, CoordinatorState, PendingConsume, Phase,
 	registration::extract_deleted_flow_ids,
 };
+use crate::error::FlowDispatchError;
 
 #[inline]
 fn record_version_range_span(cdcs: &[Cdc]) {
@@ -82,7 +83,7 @@ impl CoordinatorActor {
 				);
 			}
 			if state.pending_consume.is_some() {
-				(reply)(coordinator_error("Coordinator busy"));
+				(reply)(Err(FlowDispatchError::CoordinatorBusy.into()));
 				return;
 			}
 			state.stash_consume(PendingConsume {
@@ -97,7 +98,7 @@ impl CoordinatorActor {
 		let (state_version, state_lease) = match self.engine.acquire_current_snapshot_lease() {
 			Ok(pair) => pair,
 			Err(e) => {
-				(reply)(coordinator_error(e));
+				(reply)(Err(e));
 				return;
 			}
 		};
@@ -108,7 +109,7 @@ impl CoordinatorActor {
 		let new_flows = match self.discover_and_load_new_flows(state, &cdcs, &deleted) {
 			Ok(flows) => flows,
 			Err(e) => {
-				(consume_ctx.original_reply)(coordinator_error(e));
+				(consume_ctx.original_reply)(Err(e));
 				return;
 			}
 		};
@@ -198,7 +199,7 @@ impl CoordinatorActor {
 			})
 			.is_err()
 		{
-			(consume_ctx.original_reply)(coordinator_error("Pool actor stopped"));
+			(consume_ctx.original_reply)(Err(FlowDispatchError::PoolActorStopped.into()));
 			return;
 		}
 		state.set_phase(
@@ -240,7 +241,7 @@ impl CoordinatorActor {
 			}
 			PoolResponse::RegisterSuccess => {}
 			PoolResponse::Error(e) => {
-				(consume_ctx.original_reply)(coordinator_error(e));
+				(consume_ctx.original_reply)(Err(e));
 				return;
 			}
 		}
@@ -322,7 +323,7 @@ impl CoordinatorActor {
 			})
 			.is_err()
 		{
-			(consume_ctx.original_reply)(coordinator_error("Pool actor stopped"));
+			(consume_ctx.original_reply)(Err(FlowDispatchError::PoolActorStopped.into()));
 			return;
 		}
 

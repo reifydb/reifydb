@@ -3,6 +3,7 @@
 
 use std::{
 	ops::Bound,
+	process,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
@@ -396,7 +397,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		state.phase = Phase::Ready;
 		match result {
 			Ok(()) => self.advance_after_success(state, ctx, latest_version, count),
-			Err(e) => self.reschedule_after_error(ctx, e),
+			Err(e) => self.abort_on_error(e),
 		}
 	}
 
@@ -429,9 +430,12 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 	}
 
 	#[inline]
-	fn reschedule_after_error(&self, ctx: &Context<CdcPollMessage>, err: Error) {
-		error!("[Consumer {:?}] Error consuming events: {}", self.config.consumer_id, err);
-		ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
+	fn abort_on_error(&self, err: Error) -> ! {
+		error!(
+			"[Consumer {:?}] fatal error consuming events, aborting application: {}",
+			self.config.consumer_id, err
+		);
+		process::abort();
 	}
 
 	fn fetch_cdcs_until(&self, since_version: CommitVersion, until_version: CommitVersion) -> Result<Vec<Cdc>> {

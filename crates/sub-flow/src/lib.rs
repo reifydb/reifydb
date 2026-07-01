@@ -23,6 +23,7 @@ pub(crate) mod catalog;
 pub mod connector;
 pub(crate) mod deferred;
 pub mod engine;
+pub mod error;
 pub(crate) mod execution;
 #[cfg(reifydb_target = "native")]
 pub(crate) mod ffi;

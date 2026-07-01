@@ -16,7 +16,8 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, value::identity::IdentityId};
 use tracing::{debug, warn};
 
-use super::{ConsumeContext, CoordinatorActor, CoordinatorState, Phase, coordinator_error};
+use super::{ConsumeContext, CoordinatorActor, CoordinatorState, Phase};
+use crate::error::FlowDispatchError;
 
 impl CoordinatorActor {
 	pub(super) fn discover_and_load_new_flows(
@@ -166,7 +167,7 @@ impl CoordinatorActor {
 			})
 			.is_err()
 		{
-			(consume_ctx.original_reply)(coordinator_error("Pool actor stopped"));
+			(consume_ctx.original_reply)(Err(FlowDispatchError::PoolActorStopped.into()));
 			return;
 		}
 
@@ -191,7 +192,7 @@ fn absorb_register_reply(consume_ctx: &mut ConsumeContext, response: PoolRespons
 			consume_ctx.pending_shapes.extend(pending_shapes);
 			Ok(())
 		}
-		PoolResponse::Error(e) => coordinator_error(e),
+		PoolResponse::Error(e) => Err(e),
 	}
 }
 

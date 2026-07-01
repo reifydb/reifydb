@@ -29,7 +29,6 @@ use reifydb_core::{
 		},
 		change::Change,
 	},
-	internal,
 };
 use reifydb_extension::loader::ffi::LibraryCache;
 use reifydb_runtime::sync::rwlock::RwLock;
@@ -53,6 +52,7 @@ use reifydb_value::{
 use tracing::error;
 
 use crate::{
+	error::NativeOperatorError,
 	operator::{
 		BoxedOperator, Operator,
 		context::native::{NativeBridge, NativeOperatorContext},
@@ -106,11 +106,10 @@ pub fn native_operator_magic() -> u32 {
 
 pub fn check_native_abi_tag(abi_tag: u32) -> Result<()> {
 	if abi_tag != NATIVE_ABI_TAG {
-		return Err(Error(Box::new(internal!(
-			"native operator ABI tag mismatch: plugin reports {:#06x}, host expects {:#06x}",
-			abi_tag,
-			NATIVE_ABI_TAG
-		))));
+		return Err(Error::from(NativeOperatorError::AbiTagMismatch {
+			plugin: abi_tag,
+			host: NATIVE_ABI_TAG,
+		}));
 	}
 	Ok(())
 }
@@ -358,24 +357,27 @@ impl NativeOperatorLoader {
 	}
 
 	fn load_library(&mut self, path: &Path) -> Result<bool> {
-		self.cache
-			.check_magic(path, b"reifydb_native_operator_magic\0", NATIVE_OPERATOR_MAGIC)
-			.map_err(|e| Error(Box::new(internal!("{}", e))))
+		self.cache.check_magic(path, b"reifydb_native_operator_magic\0", NATIVE_OPERATOR_MAGIC).map_err(|_e| {
+			Error::from(NativeOperatorError::LibraryNotLoaded {
+				path: path.display().to_string(),
+			})
+		})
 	}
 
 	fn descriptor(&self, path: &Path) -> Result<NativeOperatorDescriptor> {
-		let library = self
-			.cache
-			.get(path)
-			.ok_or_else(|| Error(Box::new(internal!("Library not loaded: {}", path.display()))))?;
+		let library = self.cache.get(path).ok_or_else(|| {
+			Error::from(NativeOperatorError::LibraryNotLoaded {
+				path: path.display().to_string(),
+			})
+		})?;
 
 		let descriptor = unsafe {
 			let get_descriptor: Symbol<fn() -> NativeOperatorDescriptor> =
 				library.get(b"reifydb_native_operator_descriptor\0").map_err(|e| {
-					Error(Box::new(internal!(
-						"Failed to find reifydb_native_operator_descriptor: {}",
-						e
-					)))
+					Error::from(NativeOperatorError::SymbolNotFound {
+						symbol: "reifydb_native_operator_descriptor",
+						cause: e.to_string(),
+					})
 				})?;
 			get_descriptor()
 		};
@@ -417,14 +419,17 @@ impl NativeOperatorLoader {
 		let path = self
 			.operator_paths
 			.get(operator)
-			.ok_or_else(|| Error(Box::new(internal!("Native operator not found: {}", operator))))?
+			.ok_or_else(|| {
+				Error::from(NativeOperatorError::OperatorNotFound {
+					operator: operator.to_string(),
+				})
+			})?
 			.clone();
 
 		if !self.load_library(&path)? {
-			return Err(Error(Box::new(internal!(
-				"Native operator library no longer valid: {}",
-				operator
-			))));
+			return Err(Error::from(NativeOperatorError::LibraryNotLoaded {
+				path: operator.to_string(),
+			}));
 		}
 
 		self.descriptor(&path)?;
@@ -433,10 +438,10 @@ impl NativeOperatorLoader {
 		let create: NativeOperatorCreateFn = unsafe {
 			let create_symbol: Symbol<NativeOperatorCreateFn> =
 				library.get(b"reifydb_native_operator_create\0").map_err(|e| {
-					Error(Box::new(internal!(
-						"Failed to find reifydb_native_operator_create: {}",
-						e
-					)))
+					Error::from(NativeOperatorError::SymbolNotFound {
+						symbol: "reifydb_native_operator_create",
+						cause: e.to_string(),
+					})
 				})?;
 			*create_symbol
 		};

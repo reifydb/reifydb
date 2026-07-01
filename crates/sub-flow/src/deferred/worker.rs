@@ -151,7 +151,7 @@ impl FlowWorkerActor {
 				pending_shapes,
 				view_changes,
 			},
-			Err(e) => FlowResponse::Error(e.to_string()),
+			Err(e) => FlowResponse::Error(e),
 		};
 		(reply)(resp);
 	}
@@ -181,7 +181,7 @@ impl FlowWorkerActor {
 				pending_shapes,
 				view_changes,
 			},
-			Err(e) => FlowResponse::Error(e.to_string()),
+			Err(e) => FlowResponse::Error(e),
 		};
 		(reply)(resp);
 	}
@@ -201,7 +201,7 @@ impl FlowWorkerActor {
 				pending_shapes,
 				view_changes: Vec::new(),
 			},
-			Err(e) => FlowResponse::Error(e.to_string()),
+			Err(e) => FlowResponse::Error(e),
 		};
 		(reply)(resp);
 	}
@@ -229,7 +229,7 @@ impl FlowWorkerActor {
 				pending_shapes: Vec::new(),
 				view_changes: Vec::new(),
 			},
-			Err(e) => FlowResponse::Error(e.to_string()),
+			Err(e) => FlowResponse::Error(e),
 		};
 		(reply)(resp);
 	}
@@ -257,7 +257,7 @@ impl FlowWorkerActor {
 				pending_shapes: Vec::new(),
 				view_changes: Vec::new(),
 			},
-			Err(e) => FlowResponse::Error(e.to_string()),
+			Err(e) => FlowResponse::Error(e),
 		};
 		(reply)(resp);
 	}
@@ -274,7 +274,7 @@ impl FlowWorkerActor {
 		state_version: CommitVersion,
 	) -> Result<(Pending, Vec<RowShape>)> {
 		let mut txn = self.build_tick_transaction(flow_engine, state_version)?;
-		run_flow_ticks(flow_engine, &mut txn, flow_ids, timestamp);
+		run_flow_ticks(flow_engine, &mut txn, flow_ids, timestamp)?;
 		txn.flush_operator_states()?;
 		Ok((txn.take_pending(), txn.take_pending_shapes()))
 	}
@@ -439,9 +439,7 @@ impl FlowWorkerActor {
 			row_allocators: flow_engine.row_allocators.clone(),
 		});
 
-		if let Err(e) = flow_engine.process_batch(&mut txn, changes, flow_id) {
-			error!(flow_id = flow_id.0, error = %e, "failed to process flow");
-		}
+		flow_engine.process_batch(&mut txn, changes, flow_id)?;
 
 		txn.flush_operator_states()?;
 
@@ -467,10 +465,9 @@ fn run_flow_ticks(
 	txn: &mut FlowTransaction,
 	flow_ids: Vec<FlowId>,
 	timestamp: DateTime,
-) {
+) -> Result<()> {
 	for flow_id in flow_ids {
-		if let Err(e) = flow_engine.process_tick(txn, flow_id, timestamp) {
-			error!(flow_id = flow_id.0, error = %e, "failed to process tick");
-		}
+		flow_engine.process_tick(txn, flow_id, timestamp)?;
 	}
+	Ok(())
 }

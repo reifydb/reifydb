@@ -18,7 +18,6 @@ use reifydb_core::{
 		},
 		evaluate::TargetColumn,
 	},
-	internal_error,
 	key::{EncodableKey, dictionary::DictionaryEntryIndexKey},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
@@ -30,13 +29,14 @@ use reifydb_routine::routine::registry::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_value::{
 	Result,
+	error::Error,
 	fragment::Fragment,
 	params::Params,
 	util::cowvec::CowVec,
 	value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, row_number::RowNumber},
 };
 
-use crate::transaction::FlowTransaction;
+use crate::{error::FlowSinkError, transaction::FlowTransaction};
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
@@ -147,12 +147,22 @@ pub(crate) fn encode_row_at_index(
 	let created_at_nanos = columns
 		.created_at
 		.get(row_idx)
-		.ok_or_else(|| internal_error!("Row at index {} is missing created_at timestamp", row_idx))?
+		.ok_or_else(|| {
+			Error::from(FlowSinkError::MissingSystemColumn {
+				column: "created_at",
+				row_idx,
+			})
+		})?
 		.to_nanos();
 	let updated_at_nanos = columns
 		.updated_at
 		.get(row_idx)
-		.ok_or_else(|| internal_error!("Row at index {} is missing updated_at timestamp", row_idx))?
+		.ok_or_else(|| {
+			Error::from(FlowSinkError::MissingSystemColumn {
+				column: "updated_at",
+				row_idx,
+			})
+		})?
 		.to_nanos();
 	encoded.set_timestamps(created_at_nanos, updated_at_nanos);
 

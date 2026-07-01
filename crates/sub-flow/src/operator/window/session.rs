@@ -2,14 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use postcard::{from_bytes, to_stdvec};
-use reifydb_core::{
-	common::WindowKind, encoded::key::EncodedKey, internal, util::encoding::keycode::serializer::KeySerializer,
-};
+use reifydb_core::{common::WindowKind, encoded::key::EncodedKey, util::encoding::keycode::serializer::KeySerializer};
 use reifydb_runtime::hash::Hash128;
 use reifydb_value::{Result, error::Error, value::blob::Blob};
 
 use super::operator::WindowOperator;
-use crate::{operator::stateful::window::WindowStateful, transaction::FlowTransaction};
+use crate::{error::FlowStateError, operator::stateful::window::WindowStateful, transaction::FlowTransaction};
 
 impl WindowOperator {
 	pub(super) fn session_gap_ms(&self) -> u64 {
@@ -59,8 +57,12 @@ impl WindowOperator {
 		session_start: u64,
 	) -> Result<()> {
 		let tracker_key = self.create_session_tracker_key(group_hash);
-		let serialized = to_stdvec(&(session_id, last_event_time, session_start))
-			.map_err(|e| Error(Box::new(internal!("Failed to serialize session tracker: {}", e))))?;
+		let serialized = to_stdvec(&(session_id, last_event_time, session_start)).map_err(|e| {
+			Error::from(FlowStateError::Encode {
+				state: "session tracker",
+				cause: e.to_string(),
+			})
+		})?;
 		let mut state_row = self.layout.allocate();
 		let blob = Blob::from(serialized);
 		self.layout.set_blob(&mut state_row, 0, &blob);

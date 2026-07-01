@@ -13,7 +13,7 @@ use reifydb_transaction::transaction::{Transaction, command::CommandTransaction}
 use reifydb_value::{Result, value::identity::IdentityId};
 use tracing::{Span, warn};
 
-use super::{ConsumeContext, CoordinatorActor, CoordinatorState, Phase, coordinator_error};
+use super::{ConsumeContext, CoordinatorActor, CoordinatorState, Phase};
 
 #[inline]
 fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending) -> Result<()> {
@@ -77,20 +77,20 @@ impl CoordinatorActor {
 		let mut transaction = match self.engine.begin_command(IdentityId::system()) {
 			Ok(t) => t,
 			Err(e) => {
-				(original_reply)(coordinator_error(e));
+				(original_reply)(Err(e));
 				return;
 			}
 		};
 
 		if let Err(e) = transaction.disable_conflict_tracking() {
 			let _ = transaction.rollback();
-			(original_reply)(coordinator_error(e));
+			(original_reply)(Err(e));
 			return;
 		}
 
 		if let Err(e) = apply_pending_writes(&mut transaction, &combined) {
 			let _ = transaction.rollback();
-			(original_reply)(coordinator_error(e));
+			(original_reply)(Err(e));
 			return;
 		}
 
@@ -100,21 +100,21 @@ impl CoordinatorActor {
 
 		if let Err(e) = persist_flow_checkpoints(&mut transaction, &checkpoints) {
 			let _ = transaction.rollback();
-			(original_reply)(coordinator_error(e));
+			(original_reply)(Err(e));
 			return;
 		}
 
 		for flow_id in &checkpoint_deletes {
 			if let Err(e) = CdcCheckpoint::delete(&mut transaction, flow_id) {
 				let _ = transaction.rollback();
-				(original_reply)(coordinator_error(e));
+				(original_reply)(Err(e));
 				return;
 			}
 		}
 
 		if let Err(e) = CdcCheckpoint::persist(&mut transaction, &self.consumer_id, current_version) {
 			let _ = transaction.rollback();
-			(original_reply)(coordinator_error(e));
+			(original_reply)(Err(e));
 			return;
 		}
 
@@ -122,7 +122,7 @@ impl CoordinatorActor {
 			self.catalog.persist_pending_shapes(&mut Transaction::Command(&mut transaction), pending_shapes)
 		{
 			let _ = transaction.rollback();
-			(original_reply)(coordinator_error(e));
+			(original_reply)(Err(e));
 			return;
 		}
 
@@ -133,7 +133,7 @@ impl CoordinatorActor {
 				}
 				(original_reply)(Ok(()))
 			}
-			Err(e) => (original_reply)(coordinator_error(e)),
+			Err(e) => (original_reply)(Err(e)),
 		}
 	}
 

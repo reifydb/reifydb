@@ -1,6 +1,5 @@
 Copyright (c) 2026 ReifyDB
 
-
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/

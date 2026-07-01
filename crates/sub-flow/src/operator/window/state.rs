@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use postcard::{from_bytes, to_stdvec};
-use reifydb_core::{encoded::key::EncodedKey, internal, util::encoding::keycode::serializer::KeySerializer};
+use reifydb_core::{encoded::key::EncodedKey, util::encoding::keycode::serializer::KeySerializer};
 use reifydb_runtime::hash::Hash128;
 use reifydb_value::{
 	Result,
@@ -11,7 +11,7 @@ use reifydb_value::{
 };
 
 use super::operator::WindowOperator;
-use crate::{operator::stateful::window::WindowStateful, transaction::FlowTransaction};
+use crate::{error::FlowStateError, operator::stateful::window::WindowStateful, transaction::FlowTransaction};
 
 impl WindowOperator {
 	pub(super) fn create_rolling_meta_key(&self, group_hash: Hash128) -> EncodedKey {
@@ -41,8 +41,12 @@ impl WindowOperator {
 		if !window_ids.contains(&window_id) {
 			window_ids.push(window_id);
 		}
-		let serialized = to_stdvec(&window_ids)
-			.map_err(|e| Error(Box::new(internal!("Failed to serialize row index: {}", e))))?;
+		let serialized = to_stdvec(&window_ids).map_err(|e| {
+			Error::from(FlowStateError::Encode {
+				state: "row index",
+				cause: e.to_string(),
+			})
+		})?;
 		let mut state_row = self.layout.allocate();
 		let blob = Blob::from(serialized);
 		self.layout.set_blob(&mut state_row, 0, &blob);
@@ -64,8 +68,12 @@ impl WindowOperator {
 		if blob.is_empty() {
 			return Ok(Vec::new());
 		}
-		let window_ids: Vec<u64> = from_bytes(blob.as_ref())
-			.map_err(|e| Error(Box::new(internal!("Failed to deserialize row index: {}", e))))?;
+		let window_ids: Vec<u64> = from_bytes(blob.as_ref()).map_err(|e| {
+			Error::from(FlowStateError::Decode {
+				state: "row index",
+				cause: e.to_string(),
+			})
+		})?;
 		Ok(window_ids)
 	}
 
@@ -86,8 +94,12 @@ impl WindowOperator {
 
 		let new_count = current_count + 1;
 
-		let serialized = to_stdvec(&new_count)
-			.map_err(|e| Error(Box::new(internal!("Failed to serialize count: {}", e))))?;
+		let serialized = to_stdvec(&new_count).map_err(|e| {
+			Error::from(FlowStateError::Encode {
+				state: "count",
+				cause: e.to_string(),
+			})
+		})?;
 
 		let mut count_state_row = self.layout.allocate();
 		let blob = Blob::from(serialized);
@@ -127,7 +139,10 @@ impl WindowOperator {
 	pub(super) fn advance_event_watermark(&self, txn: &mut FlowTransaction, coord: u64) -> Result<()> {
 		if coord > self.load_event_watermark(txn)? {
 			let serialized = to_stdvec(&coord).map_err(|e| {
-				Error(Box::new(internal!("Failed to serialize event watermark: {}", e)))
+				Error::from(FlowStateError::Encode {
+					state: "event watermark",
+					cause: e.to_string(),
+				})
 			})?;
 			let mut state_row = self.layout.allocate();
 			let blob = Blob::from(serialized);
@@ -163,7 +178,10 @@ impl WindowOperator {
 	pub(super) fn advance_expiry_watermark(&self, txn: &mut FlowTransaction, coord: u64) -> Result<()> {
 		if coord > self.load_expiry_watermark(txn)? {
 			let serialized = to_stdvec(&coord).map_err(|e| {
-				Error(Box::new(internal!("Failed to serialize expiry watermark: {}", e)))
+				Error::from(FlowStateError::Encode {
+					state: "expiry watermark",
+					cause: e.to_string(),
+				})
 			})?;
 			let mut state_row = self.layout.allocate();
 			let blob = Blob::from(serialized);

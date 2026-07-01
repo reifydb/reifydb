@@ -12,7 +12,6 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	internal,
 	util::encoding::keycode::serializer::KeySerializer,
 	value::column::{ColumnWithName, columns::Columns},
 };
@@ -47,6 +46,7 @@ use super::{
 	strategy::{JoinContext, JoinStrategy, UpdateKeys},
 };
 use crate::{
+	error::{FlowGraphError, FlowStateError},
 	operator::{
 		Operator,
 		stateful::{raw::RawStatefulOperator, row::RowNumberProvider, single::SingleStateful},
@@ -369,7 +369,10 @@ impl JoinOperator {
 				}
 
 				buf = to_extend(&value, buf).map_err(|e| {
-					Error(Box::new(internal!("Failed to encode value for hash: {}", e)))
+					Error::from(FlowStateError::Encode {
+						state: "value for hash",
+						cause: e.to_string(),
+					})
 				})?;
 			}
 
@@ -621,7 +624,10 @@ impl Operator for JoinOperator {
 		for diff in change.diffs {
 			let diff_origin = diff.origin().cloned().unwrap_or_else(|| parent_origin.clone());
 			let side = self.determine_side_from_origin(&diff_origin).ok_or_else(|| {
-				Error(Box::new(internal!("Join operator received diff from unknown node")))
+				Error::from(FlowGraphError::UnknownDiffOrigin {
+					operator: "Join",
+					origin: None,
+				})
 			})?;
 			let compiled_exprs = match side {
 				JoinSide::Left => &self.compiled_left_exprs,

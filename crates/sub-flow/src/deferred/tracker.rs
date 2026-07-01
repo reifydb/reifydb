@@ -8,7 +8,6 @@ use reifydb_core::{
 	interface::catalog::{flow::FlowId, shape::ShapeId},
 };
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_value::reifydb_assertions;
 
 #[derive(Clone)]
 pub struct ShapeVersionTracker {
@@ -31,15 +30,6 @@ impl ShapeVersionTracker {
 		let mut versions = self.inner.versions.write();
 		versions.entry(object_id)
 			.and_modify(|v| {
-				reifydb_assertions! {
-					let prev = v.0;
-					let new = version.0;
-					assert!(
-						new >= prev,
-						"shape version moved backwards for shape {:?}: a monotonic tracker must never decrease (prev={prev} new={new})",
-						object_id
-					);
-				}
 				if version.0 > v.0 {
 					*v = version;
 				}

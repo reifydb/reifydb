@@ -5,14 +5,13 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{flow::FlowId, view::ViewKind},
-	internal,
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::{flow::FlowDag, loader::load_flow_dag, node::FlowNodeType};
 use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
 use reifydb_value::{Result, error::Error, value::identity::IdentityId};
 
-use crate::engine::FlowEngine;
+use crate::{engine::FlowEngine, error::FlowGraphError};
 
 pub struct TransactionalFlowRegistry {
 	pub flow_engine: FlowEngine,
@@ -71,13 +70,10 @@ impl TransactionalFlowRegistry {
 				_ => continue,
 			};
 			let Some(def) = self.catalog.find_view(&mut Transaction::Query(query), *view)? else {
-				return Err(Error(Box::new(internal!(
-					"transactional flow {} references sink view {} that is not visible to its registration query; \
-					 the freshly created view must be findable when its flow is registered, otherwise the \
-					 transactional view is silently left unmaterialized",
-					flow.id.0,
-					view.0
-				))));
+				return Err(Error::from(FlowGraphError::SinkViewNotVisibleAtRegistration {
+					flow_id: flow.id.0,
+					view_id: view.0,
+				}));
 			};
 			if def.kind() == ViewKind::Transactional {
 				return Ok(true);

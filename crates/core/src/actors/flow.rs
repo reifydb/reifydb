@@ -7,7 +7,7 @@ use std::{
 };
 
 use reifydb_runtime::actor::system::ActorHandle;
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{Result, error::Error, value::datetime::DateTime};
 
 use super::pending::Pending;
 use crate::{
@@ -66,7 +66,7 @@ pub enum FlowResponse {
 		view_changes: Vec<Change>,
 	},
 
-	Error(String),
+	Error(Error),
 }
 
 pub type FlowHandle = ActorHandle<FlowMessage>;
@@ -112,7 +112,7 @@ pub enum PoolResponse {
 
 	RegisterSuccess,
 
-	Error(String),
+	Error(Error),
 }
 
 pub type FlowPoolHandle = ActorHandle<FlowPoolMessage>;

@@ -10,7 +10,6 @@ use reifydb_core::{
 		shape::{RowShape, RowShapeField},
 	},
 	interface::catalog::flow::FlowNodeId,
-	internal,
 	row::Row,
 	util::encoding::keycode::serializer::KeySerializer,
 	value::column::{ColumnWithName, columns::Columns},
@@ -36,7 +35,7 @@ use reifydb_value::{
 	value::{Value, identity::IdentityId, row_number::RowNumber, value_type::ValueType},
 };
 
-use crate::operator::OperatorCell;
+use crate::{error::FlowStateError, operator::OperatorCell};
 
 static EMPTY_PARAMS: Params = Params::None;
 
@@ -198,7 +197,10 @@ impl Aggregation {
 			for col in &group_columns {
 				let value = col.data().get_value(row_idx);
 				let bytes = to_stdvec(&value).map_err(|e| {
-					Error(Box::new(internal!("Failed to encode group-by value: {}", e)))
+					Error::from(FlowStateError::Encode {
+						state: "group-by value",
+						cause: e.to_string(),
+					})
 				})?;
 				buf.extend_from_slice(&bytes);
 				values.push(value);

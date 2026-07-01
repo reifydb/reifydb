@@ -14,7 +14,6 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	internal,
 	util::encoding::keycode::serializer::KeySerializer,
 	value::column::columns::Columns,
 };
@@ -28,6 +27,7 @@ use reifydb_value::{
 };
 
 use crate::{
+	error::FlowGraphError,
 	operator::{
 		Operator, OperatorCell,
 		stateful::{
@@ -158,7 +158,10 @@ impl Operator for AppendOperator {
 		for diff in change.diffs {
 			let diff_origin = diff.origin().cloned().unwrap_or_else(|| parent_origin.clone());
 			let parent_index = self.parent_index_for_origin(&diff_origin).ok_or_else(|| {
-				Error(Box::new(internal!("Append received diff from unknown node: {:?}", diff_origin)))
+				Error::from(FlowGraphError::UnknownDiffOrigin {
+					operator: "Append",
+					origin: Some(format!("{:?}", diff_origin)),
+				})
 			})?;
 			match diff {
 				Diff::Insert {

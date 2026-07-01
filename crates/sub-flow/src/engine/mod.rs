@@ -19,8 +19,6 @@ use dashmap::DashMap;
 #[cfg(reifydb_target = "native")]
 use postcard::to_stdvec;
 use reifydb_catalog::catalog::Catalog;
-#[cfg(reifydb_target = "native")]
-use reifydb_core::internal;
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
@@ -57,6 +55,7 @@ use crate::operator::native::native_operator_loader;
 use crate::{
 	builder::CustomOperators,
 	engine::cache::{ExecutionLevelCache, ScheduleCache},
+	error::{FlowStateError, NativeOperatorError},
 	operator::OperatorCell,
 	transaction::row_allocator::RowAllocatorRegistry,
 };
@@ -204,12 +203,19 @@ impl FlowEngineInner {
 		let loader = ffi_operator_loader();
 		let mut loader_write = loader.write();
 
-		let config_bytes = to_stdvec(config)
-			.map_err(|e| Error(Box::new(internal!("Failed to serialize operator config: {:?}", e))))?;
+		let config_bytes = to_stdvec(config).map_err(|e| {
+			Error::from(FlowStateError::Encode {
+				state: "operator config",
+				cause: e.to_string(),
+			})
+		})?;
 
-		let (descriptor, instance) = loader_write
-			.create_operator_by_name(operator, node_id, &config_bytes)
-			.map_err(|e| Error(Box::new(internal!("Failed to create FFI operator: {:?}", e))))?;
+		let (descriptor, instance) =
+			loader_write.create_operator_by_name(operator, node_id, &config_bytes).map_err(|e| {
+				Error::from(NativeOperatorError::CreateFailed {
+					cause: format!("{:?}", e),
+				})
+			})?;
 
 		Ok(Box::new(FFIOperator::new(descriptor, instance, node_id, self.executor.clone())))
 	}

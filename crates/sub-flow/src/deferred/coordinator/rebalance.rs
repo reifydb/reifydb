@@ -9,7 +9,8 @@ use reifydb_core::{
 };
 use reifydb_runtime::actor::context::Context;
 
-use super::{ConsumeContext, CoordinatorActor, CoordinatorState, Phase, coordinator_error};
+use super::{ConsumeContext, CoordinatorActor, CoordinatorState, Phase};
+use crate::error::FlowDispatchError;
 
 impl CoordinatorActor {
 	#[inline]
@@ -28,7 +29,7 @@ impl CoordinatorActor {
 				self.proceed_to_submit(state, ctx, consume_ctx);
 			}
 			PoolResponse::Error(e) => {
-				(consume_ctx.original_reply)(coordinator_error(e));
+				(consume_ctx.original_reply)(Err(e));
 			}
 		}
 	}
@@ -171,7 +172,7 @@ impl CoordinatorActor {
 			})
 			.is_err()
 		{
-			(consume_ctx.original_reply)(coordinator_error("Pool actor stopped"));
+			(consume_ctx.original_reply)(Err(FlowDispatchError::PoolActorStopped.into()));
 			return;
 		}
 

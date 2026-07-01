@@ -20,7 +20,6 @@ use reifydb_core::{
 		catalog::{flow::FlowId, shape::ShapeId},
 		change::Change,
 	},
-	internal,
 };
 use reifydb_runtime::{
 	actor::{
@@ -31,8 +30,10 @@ use reifydb_runtime::{
 	},
 	context::clock::{Clock, Instant},
 };
-use reifydb_value::{util::hex::encode, value::datetime::DateTime};
+use reifydb_value::{error::Error, util::hex::encode, value::datetime::DateTime};
 use tracing::{Span, error, field, instrument};
+
+use crate::error::FlowDispatchError;
 
 enum Phase {
 	Idle,
@@ -60,7 +61,7 @@ fn reject_if_busy(
 	if matches!(state.phase, Phase::Idle) {
 		Some(reply)
 	} else {
-		(reply)(PoolResponse::Error("Pool actor is busy".to_string()));
+		(reply)(PoolResponse::Error(FlowDispatchError::PoolBusy.into()));
 		None
 	}
 }
@@ -212,7 +213,12 @@ impl PoolActor {
 			})
 			.is_err()
 		{
-			reply(PoolResponse::Error(format!("Worker {} stopped", worker_id)));
+			reply(PoolResponse::Error(
+				FlowDispatchError::WorkerStopped {
+					worker_id,
+				}
+				.into(),
+			));
 			return;
 		}
 
@@ -232,7 +238,13 @@ impl PoolActor {
 		reply: Box<dyn FnOnce(PoolResponse) + Send>,
 	) {
 		if worker_id >= self.refs.len() {
-			(reply)(PoolResponse::Error(internal!("Invalid worker_id: {}", worker_id).to_string()));
+			(reply)(PoolResponse::Error(
+				FlowDispatchError::InvalidWorkerId {
+					worker_id,
+					num_workers: self.refs.len(),
+				}
+				.into(),
+			));
 			return;
 		}
 
@@ -251,7 +263,12 @@ impl PoolActor {
 			})
 			.is_err()
 		{
-			reply(PoolResponse::Error(format!("Worker {} stopped", worker_id)));
+			reply(PoolResponse::Error(
+				FlowDispatchError::WorkerStopped {
+					worker_id,
+				}
+				.into(),
+			));
 			return;
 		}
 
@@ -281,7 +298,13 @@ impl PoolActor {
 
 		for (worker_id, batch) in batches {
 			if worker_id >= self.refs.len() {
-				(reply)(PoolResponse::Error(internal!("Invalid worker_id: {}", worker_id).to_string()));
+				(reply)(PoolResponse::Error(
+					FlowDispatchError::InvalidWorkerId {
+						worker_id,
+						num_workers: self.refs.len(),
+					}
+					.into(),
+				));
 				return;
 			}
 
@@ -300,7 +323,12 @@ impl PoolActor {
 				})
 				.is_err()
 			{
-				(reply)(PoolResponse::Error(format!("Worker {} stopped", worker_id)));
+				(reply)(PoolResponse::Error(
+					FlowDispatchError::WorkerStopped {
+						worker_id,
+					}
+					.into(),
+				));
 				return;
 			}
 		}
@@ -350,7 +378,12 @@ impl PoolActor {
 				})
 				.is_err()
 			{
-				(reply)(PoolResponse::Error(format!("Worker {} stopped", worker_id)));
+				(reply)(PoolResponse::Error(
+					FlowDispatchError::WorkerStopped {
+						worker_id,
+					}
+					.into(),
+				));
 				return;
 			}
 		}
@@ -392,7 +425,12 @@ impl PoolActor {
 				})
 				.is_err()
 			{
-				(reply)(PoolResponse::Error(format!("Worker {} stopped", worker_id)));
+				(reply)(PoolResponse::Error(
+					FlowDispatchError::WorkerStopped {
+						worker_id,
+					}
+					.into(),
+				));
 				return;
 			}
 		}
@@ -420,7 +458,13 @@ impl PoolActor {
 
 		for (worker_id, flow_ids) in ticks {
 			if worker_id >= self.refs.len() {
-				(reply)(PoolResponse::Error(internal!("Invalid worker_id: {}", worker_id).to_string()));
+				(reply)(PoolResponse::Error(
+					FlowDispatchError::InvalidWorkerId {
+						worker_id,
+						num_workers: self.refs.len(),
+					}
+					.into(),
+				));
 				return;
 			}
 
@@ -441,7 +485,12 @@ impl PoolActor {
 				})
 				.is_err()
 			{
-				(reply)(PoolResponse::Error(format!("Worker {} stopped", worker_id)));
+				(reply)(PoolResponse::Error(
+					FlowDispatchError::WorkerStopped {
+						worker_id,
+					}
+					.into(),
+				));
 				return;
 			}
 		}
@@ -567,22 +616,27 @@ impl PoolActor {
 				}
 			}
 			FlowResponse::Error(e) => {
-				(reply)(PoolResponse::Error(format!("Worker {} error: {}", worker_id, e)));
+				(reply)(PoolResponse::Error(
+					FlowDispatchError::WorkerFailed {
+						worker_id,
+						cause: e,
+					}
+					.into(),
+				));
 			}
 		}
 	}
 
-	fn aggregate_pending_writes(&self, writes: Vec<Pending>) -> Result<Pending, String> {
+	fn aggregate_pending_writes(&self, writes: Vec<Pending>) -> Result<Pending, Error> {
 		let mut combined = Pending::new();
 
 		for pending in writes {
 			for (key, value) in pending.iter_sorted() {
 				if combined.contains_key(key) {
-					return Err(internal!(
-						"keyspace overlap detected during worker aggregation: {}",
-						encode(key.as_ref())
-					)
-					.to_string());
+					return Err(FlowDispatchError::KeyspaceOverlap {
+						key: encode(key.as_ref()),
+					}
+					.into());
 				}
 
 				match value {

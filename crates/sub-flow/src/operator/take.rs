@@ -17,7 +17,6 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
-	internal,
 	value::column::columns::Columns,
 };
 use reifydb_value::{
@@ -28,6 +27,7 @@ use reifydb_value::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
+	error::FlowStateError,
 	operator::{
 		Operator, OperatorCell,
 		stateful::{raw::RawStatefulOperator, single::SingleStateful, utils},
@@ -95,8 +95,12 @@ impl TakeOperator {
 			return Ok(TakeState::default());
 		}
 
-		from_bytes(blob.as_ref())
-			.map_err(|e| Error(Box::new(internal!("Failed to deserialize TakeState: {}", e))))
+		from_bytes(blob.as_ref()).map_err(|e| {
+			Error::from(FlowStateError::Decode {
+				state: "TakeState",
+				cause: e.to_string(),
+			})
+		})
 	}
 
 	#[inline]
@@ -109,7 +113,10 @@ impl TakeOperator {
 			let persist: PersistFn = Box::new(move |txn, value| {
 				let state = value.downcast::<TakeState>().expect("TakeState slot type");
 				let serialized = to_stdvec(&*state).map_err(|e| {
-					Error(Box::new(internal!("Failed to serialize TakeState: {}", e)))
+					Error::from(FlowStateError::Encode {
+						state: "TakeState",
+						cause: e.to_string(),
+					})
 				})?;
 				let blob = Blob::from(serialized);
 				let key = utils::empty_key();

@@ -14,7 +14,6 @@ use reifydb_core::{
 		},
 		identifier::{ColumnIdentifier, ColumnShape},
 	},
-	internal,
 	value::column::columns::Columns,
 	window::engine::LatePolicy,
 };
@@ -49,6 +48,7 @@ use super::eval::evaluate_operator_config;
 use crate::operator::apply::ApplyOperator;
 use crate::{
 	engine::FlowEngineInner,
+	error::FlowGraphError,
 	operator::{
 		OperatorCell, Operators,
 		append::AppendOperator,
@@ -174,9 +174,9 @@ impl FlowEngineInner {
 			SinkSubscription {
 				..
 			} => {
-				return Err(Error(Box::new(internal!(
-					"SinkSubscription nodes are no longer supported in persistent flows"
-				))));
+				return Err(Error::from(FlowGraphError::UnsupportedNode {
+					kind: "SinkSubscription",
+				}));
 			}
 			Filter {
 				conditions,
@@ -496,7 +496,11 @@ impl FlowEngineInner {
 		latest: bool,
 	) -> Result<()> {
 		if inputs.len() != 2 {
-			return Err(Error(Box::new(internal!("Join node must have exactly 2 inputs"))));
+			return Err(Error::from(FlowGraphError::NodeInputArity {
+				node: "Join",
+				expected: "exactly 2",
+				found: inputs.len(),
+			}));
 		}
 
 		let left_node = inputs[0];
@@ -505,13 +509,21 @@ impl FlowEngineInner {
 		let left_parent = self
 			.operators
 			.get(&left_node)
-			.ok_or_else(|| Error(Box::new(internal!("Left parent operator not found"))))?
+			.ok_or_else(|| {
+				Error::from(FlowGraphError::ParentOperatorNotFound {
+					input: "left parent".to_string(),
+				})
+			})?
 			.clone();
 
 		let right_parent = self
 			.operators
 			.get(&right_node)
-			.ok_or_else(|| Error(Box::new(internal!("Right parent operator not found"))))?
+			.ok_or_else(|| {
+				Error::from(FlowGraphError::ParentOperatorNotFound {
+					input: "right parent".to_string(),
+				})
+			})?
 			.clone();
 
 		let left_schema = left_parent.output_schema().unwrap_or_default();
@@ -589,7 +601,11 @@ impl FlowEngineInner {
 	#[inline]
 	fn add_append(&mut self, txn: &mut Transaction<'_>, node_id: FlowNodeId, inputs: &[FlowNodeId]) -> Result<()> {
 		if inputs.len() < 2 {
-			return Err(Error(Box::new(internal!("Append node must have at least 2 inputs"))));
+			return Err(Error::from(FlowGraphError::NodeInputArity {
+				node: "Append",
+				expected: "at least 2",
+				found: inputs.len(),
+			}));
 		}
 
 		let mut parents = Vec::with_capacity(inputs.len());
@@ -599,10 +615,9 @@ impl FlowEngineInner {
 				.operators
 				.get(input_node_id)
 				.ok_or_else(|| {
-					Error(Box::new(internal!(
-						"Parent operator not found for input {:?}",
-						input_node_id
-					)))
+					Error::from(FlowGraphError::ParentOperatorNotFound {
+						input: format!("{:?}", input_node_id),
+					})
 				})?
 				.clone();
 			parents.push(parent);
@@ -654,7 +669,9 @@ impl FlowEngineInner {
 				} else if self.is_ffi_operator(operator.as_str()) {
 					self.create_ffi_operator(operator.as_str(), node_id, &config)?
 				} else {
-					return Err(Error(Box::new(internal!("Unknown operator: {}", operator))));
+					return Err(Error::from(FlowGraphError::UnknownOperator {
+						operator: operator.to_string(),
+					}));
 				};
 
 				self.operators.insert(
@@ -666,7 +683,7 @@ impl FlowEngineInner {
 			{
 				let _ = (operator, inputs);
 
-				return Err(Error(Box::new(internal!("FFI operators are not supported in WASM"))));
+				return Err(Error::from(FlowGraphError::FfiUnsupportedOnWasm));
 			}
 		}
 		Ok(())
@@ -727,7 +744,11 @@ impl FlowEngineInner {
 	fn parent(&self, input: FlowNodeId) -> Result<OperatorCell> {
 		Ok(self.operators
 			.get(&input)
-			.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
+			.ok_or_else(|| {
+				Error::from(FlowGraphError::ParentOperatorNotFound {
+					input: format!("{:?}", input),
+				})
+			})?
 			.clone())
 	}
 
@@ -771,9 +792,7 @@ impl FlowEngineInner {
 }
 
 fn first_input(inputs: &[FlowNodeId]) -> Result<FlowNodeId> {
-	inputs.first().copied().ok_or_else(|| {
-		Error(Box::new(internal!("flow node is missing a required input edge; the flow DAG is incomplete")))
-	})
+	inputs.first().copied().ok_or_else(|| Error::from(FlowGraphError::MissingInputEdge))
 }
 
 fn common_column_names(left: &Columns, right: &Columns) -> Vec<String> {

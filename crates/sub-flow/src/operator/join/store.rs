@@ -14,7 +14,6 @@ use reifydb_core::{
 		shape::{RowShape, RowShapeField, cache::RowShapeCacheCell, fingerprint::RowShapeFingerprint},
 	},
 	interface::catalog::flow::FlowNodeId,
-	internal,
 };
 use reifydb_runtime::hash::Hash128;
 use reifydb_value::{
@@ -25,6 +24,7 @@ use reifydb_value::{
 
 use super::state::JoinSide;
 use crate::{
+	error::FlowStateError,
 	operator::stateful::utils::{
 		state_drop, state_get, state_range, state_range_versioned, state_remove, state_set,
 	},
@@ -228,7 +228,10 @@ impl Store {
 					return Ok(None);
 				}
 				let fields: Vec<RowShapeField> = from_bytes(blob.as_ref()).map_err(|e| {
-					Error(Box::new(internal!("Failed to deserialize row shape: {}", e)))
+					Error::from(FlowStateError::Decode {
+						state: "row shape",
+						cause: e.to_string(),
+					})
 				})?;
 				let shape = RowShape::new(fields);
 				self.shape_cache.insert(shape.clone());
@@ -242,8 +245,12 @@ impl Store {
 		if self.shape_written.get() {
 			return Ok(());
 		}
-		let serialized = to_stdvec(&shape.fields().to_vec())
-			.map_err(|e| Error(Box::new(internal!("Failed to serialize row shape: {}", e))))?;
+		let serialized = to_stdvec(&shape.fields().to_vec()).map_err(|e| {
+			Error::from(FlowStateError::Encode {
+				state: "row shape",
+				cause: e.to_string(),
+			})
+		})?;
 		let op = RowShape::operator_state();
 		let mut row = match state_get(self.node_id, txn, &self.schema_key)? {
 			Some(existing) => existing,

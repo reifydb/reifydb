@@ -12,7 +12,6 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
-	internal,
 	value::column::columns::Columns,
 };
 use reifydb_engine::{
@@ -34,6 +33,7 @@ use reifydb_value::{
 };
 
 use crate::{
+	error::FlowStateError,
 	operator::{
 		Operator, OperatorCell,
 		distinct::state::{DistinctEntry, DistinctLayout, DistinctState},
@@ -127,7 +127,10 @@ impl DistinctOperator {
 					return Ok(None);
 				}
 				let entry: DistinctEntry = from_bytes(blob.as_ref()).map_err(|e| {
-					Error(Box::new(internal!("Failed to deserialize DistinctEntry: {}", e)))
+					Error::from(FlowStateError::Decode {
+						state: "DistinctEntry",
+						cause: e.to_string(),
+					})
 				})?;
 				Ok(Some(entry))
 			}
@@ -143,7 +146,10 @@ impl DistinctOperator {
 					return Ok(DistinctLayout::new());
 				}
 				from_bytes(blob.as_ref()).map_err(|e| {
-					Error(Box::new(internal!("Failed to deserialize DistinctLayout: {}", e)))
+					Error::from(FlowStateError::Decode {
+						state: "DistinctLayout",
+						cause: e.to_string(),
+					})
 				})
 			}
 			None => Ok(DistinctLayout::new()),
@@ -228,10 +234,10 @@ impl Operator for DistinctOperator {
 					match working.state.entries.get(hash) {
 						Some(entry) => {
 							let bytes = to_stdvec(entry).map_err(|e| {
-								Error(Box::new(internal!(
-									"Failed to serialize DistinctEntry: {}",
-									e
-								)))
+								Error::from(FlowStateError::Encode {
+									state: "DistinctEntry",
+									cause: e.to_string(),
+								})
 							})?;
 							let mut row = shape.allocate();
 							shape.set_blob(&mut row, 0, &Blob::from(bytes));
@@ -241,7 +247,10 @@ impl Operator for DistinctOperator {
 					}
 				}
 				let layout_bytes = to_stdvec(&working.state.layout).map_err(|e| {
-					Error(Box::new(internal!("Failed to serialize DistinctLayout: {}", e)))
+					Error::from(FlowStateError::Encode {
+						state: "DistinctLayout",
+						cause: e.to_string(),
+					})
 				})?;
 				let mut layout_row = shape.allocate();
 				shape.set_blob(&mut layout_row, 0, &Blob::from(layout_bytes));

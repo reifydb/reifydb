@@ -15,7 +15,6 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		resolved::ResolvedView,
 	},
-	internal,
 	key::{ringbuffer::RingBufferMetadataKey, row::RowKey},
 	value::column::columns::Columns,
 };
@@ -30,6 +29,7 @@ use smallvec::smallvec;
 use super::{coerce_columns, encode_row_at_index, shape_field_columns, view::dictionary_encode_view_columns};
 use crate::{
 	Operator,
+	error::FlowStateError,
 	operator::{
 		OperatorCell,
 		stateful::{raw::RawStatefulOperator, single::SingleStateful},
@@ -100,13 +100,21 @@ impl SinkRingBufferViewOperator {
 			return Ok(RingBufferState::default());
 		}
 
-		from_bytes(blob.as_ref())
-			.map_err(|e| Error(Box::new(internal!("Failed to deserialize RingBufferState: {}", e))))
+		from_bytes(blob.as_ref()).map_err(|e| {
+			Error::from(FlowStateError::Decode {
+				state: "RingBufferState",
+				cause: e.to_string(),
+			})
+		})
 	}
 
 	fn save(&self, txn: &mut FlowTransaction, state: &RingBufferState) -> Result<()> {
-		let serialized = to_stdvec(state)
-			.map_err(|e| Error(Box::new(internal!("Failed to serialize RingBufferState: {}", e))))?;
+		let serialized = to_stdvec(state).map_err(|e| {
+			Error::from(FlowStateError::Encode {
+				state: "RingBufferState",
+				cause: e.to_string(),
+			})
+		})?;
 		let blob = Blob::from(serialized);
 
 		self.update_state(txn, |shape, row| {

@@ -20,7 +20,6 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		resolved::ResolvedView,
 	},
-	internal_error,
 	key::{
 		dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionarySequenceKey},
 		kind::KeyKind,
@@ -33,6 +32,7 @@ use reifydb_core::{
 use reifydb_runtime::hash::xxh3_128;
 use reifydb_value::{
 	Result,
+	error::Error,
 	util::cowvec::CowVec,
 	value::{
 		Value, datetime::DateTime, dictionary::DictionaryEntryId, row_number::RowNumber, value_type::ValueType,
@@ -41,7 +41,12 @@ use reifydb_value::{
 use smallvec::smallvec;
 
 use super::{coerce_columns, encode_row_at_index, shape_field_columns};
-use crate::{Operator, operator::OperatorCell, transaction::FlowTransaction};
+use crate::{
+	Operator,
+	error::{FlowSinkError, FlowStateError},
+	operator::OperatorCell,
+	transaction::FlowTransaction,
+};
 
 pub struct SinkTableViewOperator {
 	#[allow(dead_code)]
@@ -272,11 +277,10 @@ pub(crate) fn dictionary_encode_view_columns(
 		for (pos, col) in view.columns().iter().enumerate() {
 			if let Some(dict_id) = col.dictionary_id {
 				let dictionary = catalog.cache().find_dictionary(dict_id).ok_or_else(|| {
-					internal_error!(
-						"Dictionary {:?} not found for view column {}",
-						dict_id,
-						col.name
-					)
+					Error::from(FlowSinkError::DictionaryNotFound {
+						dictionary_id: format!("{:?}", dict_id),
+						column: col.name.to_string(),
+					})
 				})?;
 				dict_columns.push((pos, dictionary));
 			}
@@ -303,7 +307,12 @@ pub(crate) fn dictionary_encode_view_columns(
 }
 
 fn dictionary_intern(txn: &mut FlowTransaction, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
-	let value_bytes = to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
+	let value_bytes = to_stdvec(value).map_err(|e| {
+		Error::from(FlowStateError::Encode {
+			state: "value",
+			cause: e.to_string(),
+		})
+	})?;
 	let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
 	let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);

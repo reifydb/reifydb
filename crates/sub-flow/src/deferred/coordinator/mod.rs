@@ -4,7 +4,7 @@
 use std::{
 	collections,
 	collections::BTreeMap,
-	fmt, mem,
+	mem,
 	panic::{AssertUnwindSafe, catch_unwind},
 	process,
 	sync::Arc,
@@ -30,7 +30,6 @@ use reifydb_core::{
 		cdc::{Cdc, CdcConsumerId},
 		change::Change,
 	},
-	internal,
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::{analyzer::FlowGraphAnalyzer, flow::FlowDag};
@@ -46,7 +45,6 @@ use reifydb_runtime::{
 use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transaction};
 use reifydb_value::{
 	Result,
-	error::Error,
 	value::{duration::Duration, identity::IdentityId},
 };
 use tracing::{error, info, warn};
@@ -55,7 +53,7 @@ use super::{
 	state::FlowStates,
 	tracker::{FlowPositionTracker, ShapeVersionTracker},
 };
-use crate::catalog::FlowCatalog;
+use crate::{catalog::FlowCatalog, error::FlowDispatchError};
 
 mod backfill_advance;
 mod backfill_filter;
@@ -85,7 +83,7 @@ impl CdcConsume for FlowConsumeRef {
 				..
 			} = send_err.into_inner()
 		{
-			reply(Err(Error(Box::new(internal!("Coordinator actor stopped")))));
+			reply(Err(FlowDispatchError::CoordinatorStopped.into()));
 		}
 	}
 }
@@ -164,10 +162,6 @@ struct PendingConsume {
 	cdcs: Vec<Cdc>,
 	current_version: CommitVersion,
 	reply: Box<dyn FnOnce(Result<()>) + Send>,
-}
-
-fn coordinator_error(msg: impl fmt::Display) -> Result<()> {
-	Err(Error(Box::new(internal!("{}", msg))))
 }
 
 pub struct CoordinatorActor {

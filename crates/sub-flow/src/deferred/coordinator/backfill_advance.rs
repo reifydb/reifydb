@@ -17,10 +17,8 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, value::identity::IdentityId};
 use tracing::{debug, info, warn};
 
-use super::{
-	ConsumeContext, CoordinatorActor, CoordinatorState, Phase, backfill_filter::collect_chunk_changes,
-	coordinator_error,
-};
+use super::{ConsumeContext, CoordinatorActor, CoordinatorState, Phase, backfill_filter::collect_chunk_changes};
+use crate::error::FlowDispatchError;
 
 impl CoordinatorActor {
 	#[inline]
@@ -56,7 +54,7 @@ impl CoordinatorActor {
 			}
 			PoolResponse::RegisterSuccess => {}
 			PoolResponse::Error(e) => {
-				(consume_ctx.original_reply)(coordinator_error(e));
+				(consume_ctx.original_reply)(Err(e));
 				return;
 			}
 		}
@@ -105,7 +103,7 @@ impl CoordinatorActor {
 			let from_version = match self.fetch_flow_checkpoint(flow_id) {
 				Ok(v) => v,
 				Err(e) => {
-					(consume_ctx.original_reply)(coordinator_error(e));
+					(consume_ctx.original_reply)(Err(e));
 					return;
 				}
 			};
@@ -151,7 +149,7 @@ impl CoordinatorActor {
 			}
 
 			if !self.submit_backfill_chunk(state, ctx, flow_id, to_version, flow_changes, &consume_ctx) {
-				(consume_ctx.original_reply)(coordinator_error("Pool actor stopped"));
+				(consume_ctx.original_reply)(Err(FlowDispatchError::PoolActorStopped.into()));
 				return;
 			}
 

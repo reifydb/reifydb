@@ -2,12 +2,13 @@
 // Copyright (c) 2026 ReifyDB
 
 use postcard::from_bytes;
-use reifydb_core::{interface::change::Change, internal};
+use reifydb_core::interface::change::Change;
 use reifydb_runtime::hash::Hash128;
 use reifydb_sdk::operator::Tick;
 use reifydb_value::{Result, error::Error, value::duration::Duration};
 
 use crate::{
+	error::FlowStateError,
 	operator::{
 		distinct::{operator::DistinctOperator, state::DistinctEntry},
 		stateful::utils,
@@ -40,7 +41,10 @@ impl DistinctOperator {
 				continue;
 			}
 			let entry: DistinctEntry = from_bytes(blob.as_ref()).map_err(|e| {
-				Error(Box::new(internal!("Failed to deserialize DistinctEntry: {}", e)))
+				Error::from(FlowStateError::Decode {
+					state: "DistinctEntry",
+					cause: e.to_string(),
+				})
 			})?;
 			if entry.last_seen_nanos < cutoff {
 				expired.push(hash);
