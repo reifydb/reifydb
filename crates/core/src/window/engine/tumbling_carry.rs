@@ -27,29 +27,30 @@ use crate::{
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound(
-	serialize = "C: Serialize + Ord, Carry: Serialize",
-	deserialize = "C: serde::de::DeserializeOwned + Ord, Carry: serde::de::DeserializeOwned"
+	serialize = "C: Serialize + Ord, Carry: Serialize, Output: Serialize",
+	deserialize = "C: serde::de::DeserializeOwned + Ord, Carry: serde::de::DeserializeOwned, Output: serde::de::DeserializeOwned"
 ))]
-struct WindowEntry<C, Carry> {
+struct WindowEntry<C, Carry, Output> {
 	row_number: RowNumber,
 	span: WindowSpan<C>,
 	carry_out: Option<Carry>,
 	has_output: bool,
+	last_output: Option<Output>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(bound(
-	serialize = "C: Serialize + Ord, Carry: Serialize",
-	deserialize = "C: serde::de::DeserializeOwned + Ord, Carry: serde::de::DeserializeOwned"
+	serialize = "C: Serialize + Ord, Carry: Serialize, Output: Serialize",
+	deserialize = "C: serde::de::DeserializeOwned + Ord, Carry: serde::de::DeserializeOwned, Output: serde::de::DeserializeOwned"
 ))]
-struct CarryMeta<C, Carry> {
+struct CarryMeta<C, Carry, Output> {
 	high_water: Option<C>,
 	sealed_up_to: Option<C>,
 	sealed_carry: Option<Carry>,
-	windows: BTreeMap<C, WindowEntry<C, Carry>>,
+	windows: BTreeMap<C, WindowEntry<C, Carry, Output>>,
 }
 
-impl<C, Carry> Default for CarryMeta<C, Carry> {
+impl<C, Carry, Output> Default for CarryMeta<C, Carry, Output> {
 	fn default() -> Self {
 		Self {
 			high_water: None,
@@ -60,23 +61,24 @@ impl<C, Carry> Default for CarryMeta<C, Carry> {
 	}
 }
 
-type MetaLoaded<G, C, Carry> = HashMap<G, CarryMeta<C, Carry>>;
+type MetaLoaded<G, C, Carry, Output> = HashMap<G, CarryMeta<C, Carry, Output>>;
 type SlotResolved = Vec<Option<(RowNumber, bool)>>;
 
-pub struct TumblingCarryEngine<G, C: Slot, Accumulator, Carry> {
+pub struct TumblingCarryEngine<G, C: Slot, Accumulator, Carry, Output> {
 	accumulators: StateCache<RowNumber, Accumulator>,
-	meta: StateCache<MetaKey, CarryMeta<C, Carry>>,
+	meta: StateCache<MetaKey, CarryMeta<C, Carry, Output>>,
 	late_policy: LatePolicy,
 	retention: Option<C::Duration>,
 	_pd: PhantomData<G>,
 }
 
-impl<G, C, Accumulator, Carry> Default for TumblingCarryEngine<G, C, Accumulator, Carry>
+impl<G, C, Accumulator, Carry, Output> Default for TumblingCarryEngine<G, C, Accumulator, Carry, Output>
 where
 	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
 	C: Slot + Hash + Serialize + DeserializeOwned,
 	Accumulator: WindowAccumulator,
 	Carry: Clone + Debug + Serialize + DeserializeOwned,
+	Output: Clone + Debug + Serialize + DeserializeOwned,
 	for<'a> &'a G: IntoEncodedKey,
 {
 	fn default() -> Self {
@@ -84,12 +86,13 @@ where
 	}
 }
 
-impl<G, C, Accumulator, Carry> TumblingCarryEngine<G, C, Accumulator, Carry>
+impl<G, C, Accumulator, Carry, Output> TumblingCarryEngine<G, C, Accumulator, Carry, Output>
 where
 	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
 	C: Slot + Hash + Serialize + DeserializeOwned,
 	Accumulator: WindowAccumulator,
 	Carry: Clone + Debug + Serialize + DeserializeOwned,
+	Output: Clone + Debug + Serialize + DeserializeOwned,
 	for<'a> &'a G: IntoEncodedKey,
 {
 	pub fn new() -> Self {
@@ -99,7 +102,7 @@ where
 	pub fn with_late_policy_and_retention(late_policy: LatePolicy, retention: Option<C::Duration>) -> Self {
 		Self {
 			accumulators: StateCache::<RowNumber, Accumulator>::new(8),
-			meta: StateCache::<MetaKey, CarryMeta<C, Carry>>::new_internal(64),
+			meta: StateCache::<MetaKey, CarryMeta<C, Carry, Output>>::new_internal(64),
 			late_policy,
 			retention,
 			_pd: PhantomData,
@@ -107,7 +110,7 @@ where
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	pub fn apply<S, K, NA, BO, CF, Output>(
+	pub fn apply<S, K, NA, BO, CF>(
 		&mut self,
 		store: &mut S,
 		buckets: TumblingBuckets<G, C, Accumulator::Contribution>,
@@ -179,6 +182,7 @@ where
 				span,
 				carry_out: None,
 				has_output: false,
+				last_output: None,
 			});
 			if entry.high_water.is_none_or(|hw| span.start > hw) {
 				entry.high_water = Some(span.start);
@@ -217,6 +221,13 @@ where
 						} else {
 							EmitKind::Insert
 						};
+						let w = meta.windows.get_mut(&coord).expect("window entry present");
+						w.carry_out = new_carry.clone();
+						w.has_output = true;
+						w.last_output = Some(out.clone());
+						if new_carry.is_some() {
+							prev_carry = new_carry;
+						}
 						results.push(WindowResult {
 							row_number,
 							group: group.clone(),
@@ -225,14 +236,25 @@ where
 							prior: None,
 							kind,
 						});
-						let w = meta.windows.get_mut(&coord).expect("window entry present");
-						w.carry_out = new_carry.clone();
-						w.has_output = true;
-						if new_carry.is_some() {
-							prev_carry = new_carry;
-						}
 					}
-					None => emptied.push(coord),
+					None => {
+						if had_output
+							&& let Some(prev) = meta
+								.windows
+								.get(&coord)
+								.and_then(|w| w.last_output.clone())
+						{
+							results.push(WindowResult {
+								row_number,
+								group: group.clone(),
+								span,
+								value: prev,
+								prior: None,
+								kind: EmitKind::Remove,
+							});
+						}
+						emptied.push(coord);
+					}
 				}
 			}
 			for coord in emptied {
@@ -271,7 +293,7 @@ where
 		&mut self,
 		store: &mut S,
 		buckets: &TumblingBuckets<G, C, Accumulator::Contribution>,
-	) -> Result<MetaLoaded<G, C, Carry>> {
+	) -> Result<MetaLoaded<G, C, Carry, Output>> {
 		let meta_keys: Vec<MetaKey> = buckets
 			.keys()
 			.map(|(group, _)| group)
@@ -281,7 +303,7 @@ where
 			.collect();
 		self.meta.warm(store, &meta_keys)?;
 
-		let mut meta_loaded: MetaLoaded<G, C, Carry> = HashMap::new();
+		let mut meta_loaded: MetaLoaded<G, C, Carry, Output> = HashMap::new();
 		for (group, _) in buckets.keys() {
 			if !meta_loaded.contains_key(group) {
 				let m = self.meta.get(store, &meta_key_for(group))?.unwrap_or_default();
@@ -295,7 +317,7 @@ where
 		&mut self,
 		store: &mut S,
 		buckets: &TumblingBuckets<G, C, Accumulator::Contribution>,
-		meta_loaded: &MetaLoaded<G, C, Carry>,
+		meta_loaded: &MetaLoaded<G, C, Carry, Output>,
 		row_key: &K,
 	) -> Result<SlotResolved>
 	where
@@ -343,7 +365,11 @@ where
 			.collect())
 	}
 
-	fn persist_meta<S: WindowStore>(&mut self, store: &mut S, meta_loaded: MetaLoaded<G, C, Carry>) -> Result<()> {
+	fn persist_meta<S: WindowStore>(
+		&mut self,
+		store: &mut S,
+		meta_loaded: MetaLoaded<G, C, Carry, Output>,
+	) -> Result<()> {
 		for (group, meta) in meta_loaded {
 			self.meta.set(store, &meta_key_for(&group), &meta)?;
 		}
@@ -475,28 +501,40 @@ mod tests {
 		}
 	}
 
-	type Engine = TumblingCarryEngine<String, u64, RetainedAccumulator<u64, f64>, f64>;
+	type Engine = TumblingCarryEngine<String, u64, RetainedAccumulator<u64, f64>, f64, f64>;
 
 	const WINDOW: u64 = 60;
 
 	// Feed one event into window `ws` for group "BTC" as its own batch, so the
 	// high-water mark advances one window per call.
 	fn feed(engine: &mut Engine, store: &mut CountingStore, ws: u64, price: f64) {
+		let _ = feed_group(engine, store, "BTC", ws, price);
+	}
+
+	// Same as `feed` but for an explicit group, returning the emitted results so a caller can capture
+	// the published row. Distinct groups get distinct accumulator rows, which is what the eviction test
+	// needs to overflow the 8-slot accumulator cache.
+	fn feed_group(
+		engine: &mut Engine,
+		store: &mut CountingStore,
+		group: &str,
+		ws: u64,
+		price: f64,
+	) -> Vec<WindowResult<String, u64, f64>> {
 		let mut buckets: TumblingBuckets<String, u64, (u64, f64)> = BTreeMap::new();
 		let span = WindowSpan::for_slot(ws, WINDOW);
-		buckets.insert(("BTC".to_string(), span), vec![AccumulatorEvent::Add((ws, price))]);
-		let _: Vec<WindowResult<String, u64, f64>> = engine
-			.apply(
-				store,
-				buckets,
-				|g: &String, w: u64| EncodedKey::builder().str(g).u64(w).build(),
-				RetainedAccumulator::<u64, f64>::default,
-				|_g: &String, _s: WindowSpan<u64>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
-					(!v.is_empty()).then(|| v.values().sum::<f64>())
-				},
-				|v: &BTreeMap<u64, f64>, _p: Option<&f64>| v.last_key_value().map(|(_, val)| *val),
-			)
-			.expect("apply");
+		buckets.insert((group.to_string(), span), vec![AccumulatorEvent::Add((ws, price))]);
+		engine.apply(
+			store,
+			buckets,
+			|g: &String, w: u64| EncodedKey::builder().str(g).u64(w).build(),
+			RetainedAccumulator::<u64, f64>::default,
+			|_g: &String, _s: WindowSpan<u64>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
+				(!v.is_empty()).then(|| v.values().sum::<f64>())
+			},
+			|v: &BTreeMap<u64, f64>, _p: Option<&f64>| v.last_key_value().map(|(_, val)| *val),
+		)
+		.expect("apply")
 	}
 
 	#[test]
@@ -534,6 +572,108 @@ mod tests {
 			store.data.len(),
 			60,
 			"with no retention the carry engine retains every window's accumulator row"
+		);
+	}
+
+	#[test]
+	fn terminal_remove_after_restart_uses_persisted_last_output() {
+		// Unlike rolling, a carry window's withdrawn value cannot be recomputed from the window's own
+		// surviving state: once it empties, its accumulator finalizes to nothing, and the output also
+		// depended on the value carried in from earlier windows. So the engine persists `last_output`
+		// in the WindowEntry. This test publishes a window, drops the engine (a restart / panic
+		// recovery), then retracts the only contribution with a fresh engine that holds no in-memory
+		// WindowEntry, and asserts the terminal Remove still carries the originally published value.
+		// That proves `last_output` is durable, not ephemeral; if it were reverted to in-memory-only
+		// state the second engine would have nothing to withdraw and this test would fail.
+		let mut store = CountingStore::default();
+
+		let mut engine = Engine::new();
+		feed(&mut engine, &mut store, 0, 5.0);
+		engine.flush(&mut store).expect("flush");
+
+		let mut engine = Engine::new();
+		let span = WindowSpan::for_slot(0, WINDOW);
+		let mut buckets: TumblingBuckets<String, u64, (u64, f64)> = BTreeMap::new();
+		buckets.insert(("BTC".to_string(), span), vec![AccumulatorEvent::Remove((0, 5.0))]);
+		let withdrawn: Vec<WindowResult<String, u64, f64>> = engine
+			.apply(
+				&mut store,
+				buckets,
+				|g: &String, w: u64| EncodedKey::builder().str(g).u64(w).build(),
+				RetainedAccumulator::<u64, f64>::default,
+				|_g: &String, _s: WindowSpan<u64>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
+					(!v.is_empty()).then(|| v.values().sum::<f64>())
+				},
+				|v: &BTreeMap<u64, f64>, _p: Option<&f64>| v.last_key_value().map(|(_, val)| *val),
+			)
+			.expect("apply");
+
+		assert_eq!(withdrawn.len(), 1, "emptying the window emits exactly one terminal diff");
+		assert!(
+			matches!(withdrawn[0].kind, EmitKind::Remove),
+			"the window emptied under retraction, so the last published row must be withdrawn"
+		);
+		assert_eq!(
+			withdrawn[0].value, 5.0,
+			"the withdrawn value is the persisted last_output, recovered across the restart"
+		);
+	}
+
+	#[test]
+	fn last_output_survives_lru_eviction() {
+		// The other way the persisted state is read back is LRU eviction, no restart needed: the
+		// accumulator cache holds only 8 windows, so tracking more evicts the oldest and the next
+		// access re-reads it from the store. We publish 11 single-window groups so group G00 is evicted,
+		// flush, then retract G00 and assert its accumulator reloads and the terminal Remove carries the
+		// persisted last_output. It would fail if last_output stopped being persisted, or the
+		// accumulator failed to round-trip through the store.
+		let mut store = CountingStore::default();
+		let mut engine = Engine::new();
+
+		let mut published_g00: Vec<WindowResult<String, u64, f64>> = Vec::new();
+		for i in 0..11u64 {
+			let group = format!("G{i:02}");
+			let out = feed_group(&mut engine, &mut store, &group, 0, (i + 1) as f64);
+			if i == 0 {
+				published_g00 = out;
+			}
+		}
+		engine.flush(&mut store).expect("flush");
+		assert_eq!(published_g00.len(), 1);
+		assert!(matches!(published_g00[0].kind, EmitKind::Insert));
+		assert_eq!(published_g00[0].value, 1.0);
+
+		// G00's window was published first and pushed out of the 8-slot accumulator cache by the later
+		// groups, so the engine must re-read its accumulator from the store to apply this retraction.
+		let span = WindowSpan::for_slot(0, WINDOW);
+		let mut buckets: TumblingBuckets<String, u64, (u64, f64)> = BTreeMap::new();
+		buckets.insert(("G00".to_string(), span), vec![AccumulatorEvent::Remove((0, 1.0))]);
+		let withdrawn: Vec<WindowResult<String, u64, f64>> = engine
+			.apply(
+				&mut store,
+				buckets,
+				|g: &String, w: u64| EncodedKey::builder().str(g).u64(w).build(),
+				RetainedAccumulator::<u64, f64>::default,
+				|_g: &String, _s: WindowSpan<u64>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
+					(!v.is_empty()).then(|| v.values().sum::<f64>())
+				},
+				|v: &BTreeMap<u64, f64>, _p: Option<&f64>| v.last_key_value().map(|(_, val)| *val),
+			)
+			.expect("apply");
+		engine.flush(&mut store).expect("flush");
+
+		assert_eq!(withdrawn.len(), 1, "emptying the evicted window emits exactly one terminal diff");
+		assert!(
+			matches!(withdrawn[0].kind, EmitKind::Remove),
+			"the evicted window emptied under retraction, so the last published row must be withdrawn"
+		);
+		assert_eq!(
+			withdrawn[0].value, 1.0,
+			"the withdrawn value is the persisted last_output for G00, recovered after eviction"
+		);
+		assert_eq!(
+			withdrawn[0].row_number, published_g00[0].row_number,
+			"the withdrawal targets the same row that was published for G00"
 		);
 	}
 }

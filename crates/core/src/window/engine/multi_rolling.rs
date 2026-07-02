@@ -417,3 +417,141 @@ where
 		Ok(())
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use std::collections::BTreeMap;
+
+	use super::{MultiEmit, MultiRollingBuffer, MultiRollingEngine};
+	use crate::{
+		encoded::key::EncodedKey,
+		window::engine::{
+			AccumulatorEvent,
+			rolling::RollingBuckets,
+			test_support::{MockStore, SumAccumulator},
+		},
+	};
+
+	fn state_key(group: &u32) -> EncodedKey {
+		EncodedKey::builder().u32(*group).build()
+	}
+
+	fn row_key(group: &u32, sk: &u32) -> EncodedKey {
+		EncodedKey::builder().u32(*group).u32(*sk).build()
+	}
+
+	fn combine(_group: &u32, buffer: &MultiRollingBuffer<u64, SumAccumulator>) -> BTreeMap<u32, i64> {
+		let mut out = BTreeMap::new();
+		if !buffer.is_empty() {
+			out.insert(0u32, buffer.values().map(|a| a.sum).sum());
+		}
+		out
+	}
+
+	#[test]
+	fn group_state_survives_restart() {
+		// multi_rolling bundles a group's rolling buffer and its last emitted ranking into one
+		// persisted GroupState. When the group empties under retraction, the vanishing ranked key is
+		// withdrawn using the persisted `last_emit`. Dropping the engine between the publish and the
+		// retraction (a restart) forces the GroupState to be reloaded from the store. It would fail if
+		// the GroupState (buffer + last_emit) failed to round-trip - a serialization break, or
+		// last_emit not being persisted.
+		let mut store = MockStore::default();
+
+		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new();
+		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
+		let published = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
+		engine.flush(&mut store).unwrap();
+		assert_eq!(published.len(), 1);
+		let published_row = match &published[0] {
+			MultiEmit::Insert {
+				row_number,
+				value,
+			} => {
+				assert_eq!(*value, 5);
+				*row_number
+			}
+			_ => panic!("expected an Insert for the newly published group"),
+		};
+
+		// Restart: a brand new engine with empty caches, forced to reload the persisted GroupState.
+		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new();
+		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(5)]);
+		let withdrawn = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
+		engine.flush(&mut store).unwrap();
+
+		assert_eq!(withdrawn.len(), 1, "emptying the group emits exactly one terminal diff");
+		match &withdrawn[0] {
+			MultiEmit::Remove {
+				row_number,
+				value,
+			} => {
+				assert_eq!(
+					*value, 5,
+					"the withdrawn value is the reloaded last_emit, not a stale or zeroed value"
+				);
+				assert_eq!(
+					*row_number, published_row,
+					"the withdrawal targets the same row that was published"
+				);
+			}
+			_ => panic!("the group emptied under retraction, so it must emit a terminal Remove"),
+		}
+	}
+
+	#[test]
+	fn group_state_survives_lru_eviction() {
+		// The other way the GroupState is read back is LRU eviction, no restart needed: the group cache
+		// holds only 8 groups, so tracking more evicts the oldest and the next access re-reads it from
+		// the store. We publish 11 groups so group 1 is evicted, flush, then retract group 1 and assert
+		// its GroupState reloads and the vanishing ranked key is withdrawn with the persisted value.
+		let mut store = MockStore::default();
+		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new();
+
+		let mut published_row_1 = None;
+		for group in 1u32..=11u32 {
+			let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+			buckets.insert((group, 10u64), vec![AccumulatorEvent::Add(i64::from(group))]);
+			let out = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
+			if group == 1 {
+				assert_eq!(out.len(), 1);
+				published_row_1 = match &out[0] {
+					MultiEmit::Insert {
+						row_number,
+						value,
+					} => {
+						assert_eq!(*value, 1);
+						Some(*row_number)
+					}
+					_ => panic!("expected an Insert for group 1"),
+				};
+			}
+		}
+		engine.flush(&mut store).unwrap();
+		let published_row_1 = published_row_1.expect("group 1 published an Insert");
+
+		// Group 1 was published first and pushed out of the 8-slot group cache by the later groups, so
+		// the same engine must re-read its GroupState from the store to apply this retraction.
+		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(1)]);
+		let withdrawn = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
+		engine.flush(&mut store).unwrap();
+
+		assert_eq!(withdrawn.len(), 1, "emptying the evicted group emits exactly one terminal diff");
+		match &withdrawn[0] {
+			MultiEmit::Remove {
+				row_number,
+				value,
+			} => {
+				assert_eq!(*value, 1, "the withdrawn value is the reloaded last_emit for group 1");
+				assert_eq!(
+					*row_number, published_row_1,
+					"the withdrawal targets the same row that was published for group 1"
+				);
+			}
+			_ => panic!("the evicted group emptied under retraction, so it must emit a terminal Remove"),
+		}
+	}
+}

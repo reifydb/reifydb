@@ -23,7 +23,7 @@ use crate::{
 	operator::{
 		OperatorLogic, OperatorMetadata,
 		column::{
-			batch::{InsertBatch, UpdateBatch},
+			batch::{InsertBatch, RemoveBatch, UpdateBatch},
 			operator::OperatorColumn,
 			row::Row,
 		},
@@ -128,14 +128,15 @@ where
 
 		let mut inserts: Vec<(RowNumber, A::Output)> = Vec::new();
 		let mut updates: Vec<(RowNumber, A::Output)> = Vec::new();
+		let mut removes: Vec<(RowNumber, A::Output)> = Vec::new();
 		for r in results {
 			match r.kind {
 				EmitKind::Insert => inserts.push((r.row_number, r.value)),
 				EmitKind::Update => updates.push((r.row_number, r.value)),
-				EmitKind::Remove => {}
+				EmitKind::Remove => removes.push((r.row_number, r.value)),
 			}
 		}
-		Self::emit_insert_update_batches(ctx, &inserts, &updates)?;
+		Self::emit_batches(ctx, &inserts, &updates, &removes)?;
 
 		Ok(())
 	}
@@ -234,10 +235,11 @@ where
 	}
 
 	#[inline]
-	fn emit_insert_update_batches(
+	fn emit_batches(
 		ctx: &mut impl OperatorContext,
 		inserts: &[(RowNumber, A::Output)],
 		updates: &[(RowNumber, A::Output)],
+		removes: &[(RowNumber, A::Output)],
 	) -> Result<()> {
 		if !inserts.is_empty() {
 			let mut batch = InsertBatch::<A::Output, _>::new(ctx, inserts.len())?;
@@ -250,6 +252,13 @@ where
 			let mut batch = UpdateBatch::<A::Output, _>::new(ctx, updates.len())?;
 			for (rn, data) in updates {
 				batch.push(*rn, data, data)?;
+			}
+			batch.finish()?;
+		}
+		if !removes.is_empty() {
+			let mut batch = RemoveBatch::<A::Output, _>::new(ctx, removes.len())?;
+			for (rn, data) in removes {
+				batch.push(*rn, data)?;
 			}
 			batch.finish()?;
 		}
@@ -435,6 +444,25 @@ mod tests {
 		assert_eq!(r.f64("recent"), Some(60.0));
 		assert_eq!(r.f64("baseline"), Some(15.0));
 		assert_eq!(r.u32("windows"), Some(3));
+	}
+
+	#[test]
+	fn remove_clears_buffer_emits_remove() {
+		// Removing the only window empties the rolling buffer; the driver must
+		// withdraw the previously emitted output row (terminal Remove carrying the
+		// prior value) rather than leak a ghost row - required for reorg-retraction
+		// correctness of incremental rolling views.
+		let mut h =
+			FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
+				.build()
+				.expect("harness");
+		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+		let out =
+			h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+		assert_eq!(out.diffs.len(), 1);
+		assert_eq!(out.diffs[0].kind(), DiffType::Remove);
+		let r = out.diffs[0].pre().expect("remove pre").row_ref(0).expect("r0");
+		assert_eq!(r.f64("recent"), Some(10.0));
 	}
 
 	#[test]

@@ -22,7 +22,7 @@ use crate::{
 	operator::{
 		OperatorLogic, OperatorMetadata,
 		column::{
-			batch::{InsertBatch, UpdateBatch},
+			batch::{InsertBatch, RemoveBatch, UpdateBatch},
 			operator::OperatorColumn,
 			row::Row,
 		},
@@ -47,7 +47,7 @@ pub trait TumblingCarryOperator {
 
 	type Accumulator: WindowAccumulator;
 
-	type Output: Clone + Debug + PartialEq;
+	type Output: Clone + Debug + PartialEq + Serialize + DeserializeOwned;
 
 	type Carry: Clone + Debug + Serialize + DeserializeOwned;
 
@@ -106,7 +106,7 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	aggregator: A,
-	engine: TumblingCarryEngine<A::GroupKey, A::WindowCoord, A::Accumulator, A::Carry>,
+	engine: TumblingCarryEngine<A::GroupKey, A::WindowCoord, A::Accumulator, A::Carry, A::Output>,
 }
 
 impl<A> TumblingCarryDriver<A>
@@ -174,6 +174,7 @@ where
 		ctx: &mut impl OperatorContext,
 		inserts: &[(RowNumber, A::Output)],
 		updates: &[(RowNumber, A::Output)],
+		removes: &[(RowNumber, A::Output)],
 	) -> Result<()> {
 		if !inserts.is_empty() {
 			let mut batch = InsertBatch::<A::Output, _>::new(ctx, inserts.len())?;
@@ -186,6 +187,13 @@ where
 			let mut batch = UpdateBatch::<A::Output, _>::new(ctx, updates.len())?;
 			for (rn, data) in updates {
 				batch.push(*rn, data, data)?;
+			}
+			batch.finish()?;
+		}
+		if !removes.is_empty() {
+			let mut batch = RemoveBatch::<A::Output, _>::new(ctx, removes.len())?;
+			for (rn, data) in removes {
+				batch.push(*rn, data)?;
 			}
 			batch.finish()?;
 		}
@@ -217,6 +225,7 @@ where
 	<A::WindowCoord as Slot>::Duration: Send + Sync,
 	A::Accumulator: Send + Sync,
 	A::Carry: Send + Sync,
+	A::Output: Send + Sync,
 	AccumulatorContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
@@ -256,14 +265,15 @@ where
 
 		let mut inserts: Vec<(RowNumber, A::Output)> = Vec::new();
 		let mut updates: Vec<(RowNumber, A::Output)> = Vec::new();
+		let mut removes: Vec<(RowNumber, A::Output)> = Vec::new();
 		for r in results {
 			match r.kind {
 				EmitKind::Insert => inserts.push((r.row_number, r.value)),
 				EmitKind::Update => updates.push((r.row_number, r.value)),
-				EmitKind::Remove => {}
+				EmitKind::Remove => removes.push((r.row_number, r.value)),
 			}
 		}
-		self.emit_batches(ctx, &inserts, &updates)?;
+		self.emit_batches(ctx, &inserts, &updates, &removes)?;
 
 		Ok(())
 	}
@@ -307,7 +317,7 @@ mod tests {
 	// rotated across the window boundary, not whether the integral math is
 	// right (that lives in the operator's own tests).
 
-	#[derive(Clone, Debug, PartialEq)]
+	#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 	struct CarryOut {
 		group: String,
 		window_start: u64,
@@ -417,6 +427,25 @@ mod tests {
 		assert_eq!(r.f64("sum"), Some(30.0));
 		assert_eq!(r.bool("has_carry"), Some(false), "first window has no prior close to carry in");
 		assert_eq!(r.f64("carry_in"), Some(0.0));
+	}
+
+	#[test]
+	fn remove_empties_window_emits_remove() {
+		// Removing the only observation empties the window's accumulator, so the
+		// carry driver must withdraw the previously emitted row (terminal Remove
+		// carrying the prior output) rather than leak a ghost row - required for
+		// reorg-retraction correctness of the carry/EMA-family views.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
+			.build()
+			.expect("harness");
+		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+		let out =
+			h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+		assert_eq!(out.diffs.len(), 1);
+		assert_eq!(out.diffs[0].kind(), DiffType::Remove);
+		let r = out.diffs[0].pre().expect("remove pre").row_ref(0).expect("r0");
+		assert_eq!(r.u64("window_start"), Some(0));
+		assert_eq!(r.f64("sum"), Some(10.0));
 	}
 
 	#[test]

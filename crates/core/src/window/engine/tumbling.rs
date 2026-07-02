@@ -239,15 +239,15 @@ where
 
 		for (((group, span), events), slot_pre) in buckets.into_iter().zip(slot_resolved) {
 			let entry = meta_loaded.entry(group.clone()).or_default();
+			let late = matches!(entry.high_water, Some(hw) if span.start < hw);
+			let drop_late_adds = late && matches!(self.late_policy, LatePolicy::Drop);
+			if drop_late_adds && !events.iter().any(|e| matches!(e, AccumulatorEvent::Remove(_))) {
+				continue;
+			}
 			match entry.high_water {
-				Some(hw) if span.start < hw => {
-					if matches!(self.late_policy, LatePolicy::Drop) {
-						continue;
-					}
-				}
 				Some(hw) if span.start > hw => entry.high_water = Some(span.start),
-				Some(_) => {}
 				None => entry.high_water = Some(span.start),
+				_ => {}
 			}
 
 			let (row_number, is_new) = match slot_pre {
@@ -269,8 +269,22 @@ where
 
 			for event in events {
 				match event {
-					AccumulatorEvent::Add(c) => accumulator.add(&c),
-					AccumulatorEvent::Remove(c) => accumulator.remove(&c),
+					AccumulatorEvent::Add(c) => {
+						if drop_late_adds {
+							continue;
+						}
+						accumulator.add(&c);
+					}
+					AccumulatorEvent::Remove(c) => {
+						if accumulator.is_empty() {
+							continue;
+						}
+						if drop_late_adds {
+							accumulator.remove_if_present(&c);
+						} else {
+							accumulator.remove(&c);
+						}
+					}
 				}
 			}
 
@@ -359,7 +373,7 @@ mod tests {
 		encoded::key::EncodedKey,
 		window::{
 			engine::{
-				AccumulatorEvent, WindowResult,
+				AccumulatorEvent, EmitKind, WindowResult,
 				test_support::{MockStore, SumAccumulator},
 				tumbling::{TumblingBuckets, TumblingEngine, reindex_window},
 			},
@@ -441,5 +455,89 @@ mod tests {
 		assert!(engine.expire(&mut store, 10).unwrap().is_empty(), "no longer due at the old expiry");
 		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new();
 		assert_eq!(engine.expire(&mut store, 80).unwrap().len(), 1, "due at the new expiry");
+	}
+
+	#[test]
+	fn accumulator_survives_restart() {
+		// When a tumbling window empties under retraction it emits a terminal Remove carrying the value
+		// it last published; that value is the window accumulator's pre-batch finalize, read back from
+		// the store. Dropping the engine between the publish and the retraction (a restart) forces the
+		// accumulator to be reloaded from the store rather than served from the in-memory cache. It
+		// would fail if the accumulator failed to round-trip through the store (a serialization break,
+		// or a second Data cache colliding on the same RowNumber).
+		let mut store = MockStore::default();
+
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new();
+		let mut buckets: TumblingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, WindowSpan::new(0, 1)), vec![AccumulatorEvent::Add(5)]);
+		let published: Vec<WindowResult<u32, u64, i64>> =
+			engine.apply(&mut store, buckets, row_key, SumAccumulator::default).unwrap();
+		engine.flush(&mut store).unwrap();
+		assert_eq!(published.len(), 1);
+		assert!(matches!(published[0].kind, EmitKind::Insert));
+		assert_eq!(published[0].value, 5);
+
+		// Restart: a brand new engine with empty caches, forced to read the persisted accumulator back.
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new();
+		let mut buckets: TumblingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, WindowSpan::new(0, 1)), vec![AccumulatorEvent::Remove(5)]);
+		let withdrawn: Vec<WindowResult<u32, u64, i64>> =
+			engine.apply(&mut store, buckets, row_key, SumAccumulator::default).unwrap();
+		engine.flush(&mut store).unwrap();
+
+		assert_eq!(withdrawn.len(), 1, "emptying the window emits exactly one terminal diff");
+		assert!(
+			matches!(withdrawn[0].kind, EmitKind::Remove),
+			"the window emptied under retraction, so the last published row must be withdrawn"
+		);
+		assert_eq!(withdrawn[0].value, 5, "the withdrawn value is the reloaded pre-batch accumulator output");
+		assert_eq!(
+			withdrawn[0].row_number, published[0].row_number,
+			"the withdrawal targets the same row that was published"
+		);
+	}
+
+	#[test]
+	fn accumulator_survives_lru_eviction() {
+		// The other way a read reaches the store is LRU eviction, no restart needed: the accumulator
+		// cache holds only 8 windows, so more than that evicts the oldest and the next access re-reads
+		// it from the store. We publish 11 single-window groups so group 1 is evicted, flush, then
+		// retract group 1 and assert its accumulator is read back intact.
+		let mut store = MockStore::default();
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new();
+
+		let mut published_group_1: Vec<WindowResult<u32, u64, i64>> = Vec::new();
+		for group in 1u32..=11u32 {
+			let mut buckets: TumblingBuckets<u32, u64, i64> = BTreeMap::new();
+			buckets.insert((group, WindowSpan::new(0, 1)), vec![AccumulatorEvent::Add(i64::from(group))]);
+			let out: Vec<WindowResult<u32, u64, i64>> =
+				engine.apply(&mut store, buckets, row_key, SumAccumulator::default).unwrap();
+			if group == 1 {
+				published_group_1 = out;
+			}
+		}
+		engine.flush(&mut store).unwrap();
+		assert_eq!(published_group_1.len(), 1);
+		assert!(matches!(published_group_1[0].kind, EmitKind::Insert));
+		assert_eq!(published_group_1[0].value, 1);
+
+		// Group 1's window was published first and pushed out of the 8-slot cache by the later groups,
+		// so the same engine must re-read its accumulator from the store to apply this retraction.
+		let mut buckets: TumblingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, WindowSpan::new(0, 1)), vec![AccumulatorEvent::Remove(1)]);
+		let withdrawn: Vec<WindowResult<u32, u64, i64>> =
+			engine.apply(&mut store, buckets, row_key, SumAccumulator::default).unwrap();
+		engine.flush(&mut store).unwrap();
+
+		assert_eq!(withdrawn.len(), 1, "emptying the evicted window emits exactly one terminal diff");
+		assert!(
+			matches!(withdrawn[0].kind, EmitKind::Remove),
+			"the evicted window emptied under retraction, so the last published row must be withdrawn"
+		);
+		assert_eq!(withdrawn[0].value, 1, "the withdrawn value is the reloaded accumulator output for group 1");
+		assert_eq!(
+			withdrawn[0].row_number, published_group_1[0].row_number,
+			"the withdrawal targets the same row that was published for group 1"
+		);
 	}
 }

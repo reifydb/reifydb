@@ -175,6 +175,17 @@ impl<V: Ord + Clone> Multiset<V> {
 		}
 	}
 
+	pub fn remove_if_present(&mut self, value: &V) {
+		let Some(count) = self.counts.get_mut(value) else {
+			return;
+		};
+		*count -= 1;
+		self.total -= 1;
+		if *count == 0 {
+			self.counts.remove(value);
+		}
+	}
+
 	pub fn merge(&mut self, other: &Self) {
 		for (value, count) in &other.counts {
 			*self.counts.entry(value.clone()).or_insert(0) += count;

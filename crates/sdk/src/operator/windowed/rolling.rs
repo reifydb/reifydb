@@ -25,7 +25,7 @@ use crate::{
 	operator::{
 		OperatorLogic, OperatorMetadata,
 		column::{
-			batch::{InsertBatch, UpdateBatch},
+			batch::{InsertBatch, RemoveBatch, UpdateBatch},
 			operator::OperatorColumn,
 			row::Row,
 		},
@@ -180,6 +180,7 @@ where
 		ctx: &mut impl OperatorContext,
 		inserts: Vec<(RowNumber, A::Output)>,
 		updates: Vec<(RowNumber, A::Output)>,
+		removes: Vec<(RowNumber, A::Output)>,
 	) -> Result<()> {
 		if !inserts.is_empty() {
 			let mut batch = InsertBatch::<A::Output, _>::new(ctx, inserts.len())?;
@@ -192,6 +193,13 @@ where
 			let mut batch = UpdateBatch::<A::Output, _>::new(ctx, updates.len())?;
 			for (rn, data) in &updates {
 				batch.push(*rn, data, data)?;
+			}
+			batch.finish()?;
+		}
+		if !removes.is_empty() {
+			let mut batch = RemoveBatch::<A::Output, _>::new(ctx, removes.len())?;
+			for (rn, data) in &removes {
+				batch.push(*rn, data)?;
 			}
 			batch.finish()?;
 		}
@@ -256,14 +264,15 @@ where
 
 		let mut inserts: Vec<(RowNumber, A::Output)> = Vec::new();
 		let mut updates: Vec<(RowNumber, A::Output)> = Vec::new();
+		let mut removes: Vec<(RowNumber, A::Output)> = Vec::new();
 		for r in results {
 			match r.kind {
 				EmitKind::Insert => inserts.push((r.row_number, r.value)),
 				EmitKind::Update => updates.push((r.row_number, r.value)),
-				EmitKind::Remove => {}
+				EmitKind::Remove => removes.push((r.row_number, r.value)),
 			}
 		}
-		Self::emit_batches(ctx, inserts, updates)?;
+		Self::emit_batches(ctx, inserts, updates, removes)?;
 
 		Ok(())
 	}
@@ -510,14 +519,21 @@ mod tests {
 	}
 
 	#[test]
-	fn remove_clears_buffer_emits_nothing() {
+	fn remove_clears_buffer_emits_remove() {
+		// A Remove that empties the only window must withdraw the previously
+		// emitted output row - a terminal Remove carrying the prior rolling_sum -
+		// rather than silently leaking a ghost row. This is what makes reorg
+		// retraction correct for rolling-window views.
 		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
 			.build()
 			.expect("harness");
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
 		let out =
 			h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
-		assert_eq!(out.diffs.len(), 0);
+		assert_eq!(out.diffs.len(), 1);
+		assert_eq!(out.diffs[0].kind(), DiffType::Remove);
+		let r = out.diffs[0].pre().expect("remove pre").row_ref(0).expect("r0");
+		assert_eq!(r.f64("rolling_sum"), Some(10.0));
 	}
 
 	#[test]

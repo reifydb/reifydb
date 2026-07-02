@@ -609,6 +609,34 @@ mod tests {
 	}
 
 	#[test]
+	fn late_remove_for_closed_window_is_applied() {
+		// A Remove is a retraction of already-admitted data, not a late insert, so
+		// under the default Drop policy it must still be honored even after
+		// ingestion advanced past the window - this is what lets a reorg
+		// retraction (which fires a few slots late) correct a closed window.
+		// Window 0 holds two contributions summing to 15; after high_water
+		// advances to window 60, a late Remove of pre=5 for window 0 must still
+		// subtract, leaving 10. Contrast with the late INSERT above, still dropped.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolume>>>::new()
+			.build()
+			.expect("harness");
+		let _ = h
+			.apply(TestChangeBuilder::new()
+				.insert(input_row(1, "BTC", 0, 10.0))
+				.insert(input_row(2, "BTC", 30, 5.0))
+				.build())
+			.expect("apply");
+		let _ = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 60, 1.0)).build()).expect("apply");
+		let out =
+			h.apply(TestChangeBuilder::new().remove(input_row(2, "BTC", 30, 5.0)).build()).expect("apply");
+		assert_eq!(out.diffs.len(), 1);
+		let diff = &out.diffs[0];
+		assert_eq!(diff.kind(), DiffType::Update);
+		let r = diff.post().expect("post").row_ref(0).expect("r0");
+		assert_eq!(r.f64("volume"), Some(10.0));
+	}
+
+	#[test]
 	fn multiple_groups_isolate_state() {
 		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolume>>>::new()
 			.build()

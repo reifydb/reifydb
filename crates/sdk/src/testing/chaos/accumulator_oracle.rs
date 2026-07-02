@@ -173,19 +173,28 @@ fn apply_leg<A>(
 		return;
 	};
 	let span = aggregate.window_for(coord);
-	let survives = snapshot.get(&group).is_none_or(|hw| span.start >= *hw);
-	if !survives {
-		return;
-	}
 	let key = (group, span.start);
-	spans.insert(key.clone(), span);
-	let accumulator = accumulators.entry(key.clone()).or_insert_with(|| aggregate.new_accumulator());
 	if is_add {
+		let survives = snapshot.get(&key.0).is_none_or(|hw| span.start >= *hw);
+		if !survives {
+			return;
+		}
+		spans.insert(key.clone(), span);
+		let accumulator = accumulators.entry(key.clone()).or_insert_with(|| aggregate.new_accumulator());
 		accumulator.add(&contribution);
-	} else {
-		accumulator.remove(&contribution);
+		touched.insert(key);
+	} else if let Some(accumulator) = accumulators.get_mut(&key)
+		&& !accumulator.is_empty()
+	{
+		let survives = snapshot.get(&key.0).is_none_or(|hw| span.start >= *hw);
+		if survives {
+			accumulator.remove(&contribution);
+		} else {
+			accumulator.remove_if_present(&contribution);
+		}
+		spans.insert(key.clone(), span);
+		touched.insert(key);
 	}
-	touched.insert(key);
 }
 
 #[allow(clippy::type_complexity)]
@@ -364,10 +373,13 @@ where
 		let buckets = bucket_rolling(aggregate, batch);
 		let touched = apply_rolling_buckets::<A>(capacity, &snapshot, buckets, &mut buffers, &mut high_water);
 		for group in touched {
-			if let Some(buffer) = buffers.get(&group)
-				&& let Some(out) = aggregate.combine(&group, buffer)
-			{
-				last_visible.insert(group, out);
+			match buffers.get(&group).and_then(|buffer| aggregate.combine(&group, buffer)) {
+				Some(out) => {
+					last_visible.insert(group, out);
+				}
+				None => {
+					last_visible.remove(&group);
+				}
 			}
 		}
 	}
@@ -413,20 +425,24 @@ where
 		let buckets = bucket_rolling(aggregate, batch);
 		let touched = apply_rolling_buckets::<A>(capacity, &snapshot, buckets, &mut buffers, &mut high_water);
 		for group in touched {
-			let Some(buffer) = buffers.get(&group) else {
-				continue;
-			};
-			let mut running = A::Running::default();
-			for accumulator in buffer.values() {
-				if let Some(value) = accumulator.finalize() {
-					running.add(&aggregate.window_contribution(&value));
+			let out = buffers.get(&group).and_then(|buffer| {
+				let mut running = A::Running::default();
+				for accumulator in buffer.values() {
+					if let Some(value) = accumulator.finalize() {
+						running.add(&aggregate.window_contribution(&value));
+					}
 				}
-			}
-			if let Some((coord, accumulator)) = buffer.iter().next_back()
-				&& let Some(newest) = accumulator.finalize()
-				&& let Some(out) = aggregate.combine_running(&group, &running, &newest, *coord)
-			{
-				last_visible.insert(group, out);
+				let (coord, accumulator) = buffer.iter().next_back()?;
+				let newest = accumulator.finalize()?;
+				aggregate.combine_running(&group, &running, &newest, *coord)
+			});
+			match out {
+				Some(out) => {
+					last_visible.insert(group, out);
+				}
+				None => {
+					last_visible.remove(&group);
+				}
 			}
 		}
 	}
@@ -604,7 +620,10 @@ where
 							prev_carry = new_carry;
 						}
 					}
-					None => emptied.push(coord),
+					None => {
+						last_visible.remove(&key);
+						emptied.push(coord);
+					}
 				}
 			}
 			for coord in emptied {
