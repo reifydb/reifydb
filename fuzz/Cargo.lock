@@ -1127,6 +1127,7 @@ name = "reifydb-transaction"
 version = "0.6.0"
 dependencies = [
  "crossbeam-skiplist",
+ "dashmap",
  "indexmap",
  "reifydb-build",
  "reifydb-core",
