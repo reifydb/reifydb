@@ -50,17 +50,17 @@ fi
 
 # Check current branch
 CURRENT_BRANCH=$(git branch --show-current)
-if [ "$CURRENT_BRANCH" != "main" ] && [ "$CURRENT_BRANCH" != "master" ]; then
-    echo -e "${YELLOW}⚠ Warning: Not on main branch (current: ${CURRENT_BRANCH})${NC}"
-    WARNINGS=$((WARNINGS + 1))
+if [ "$CURRENT_BRANCH" != "release" ]; then
+    echo -e "${RED}✗ Releases must be run on the release branch (current: ${CURRENT_BRANCH})${NC}"
+    VALIDATION_FAILED=1
 else
-    echo -e "${GREEN}✓ On main branch${NC}"
+    echo -e "${GREEN}✓ On release branch${NC}"
 fi
 
 # Check if up to date with remote
 git fetch origin >/dev/null 2>&1
 LOCAL_COMMIT=$(git rev-parse HEAD)
-REMOTE_COMMIT=$(git rev-parse origin/main 2>/dev/null || git rev-parse origin/master 2>/dev/null || echo "")
+REMOTE_COMMIT=$(git rev-parse origin/release 2>/dev/null || echo "")
 
 if [ -n "$REMOTE_COMMIT" ] && [ "$LOCAL_COMMIT" != "$REMOTE_COMMIT" ]; then
     echo -e "${YELLOW}⚠ Warning: Local branch is not up to date with remote${NC}"
