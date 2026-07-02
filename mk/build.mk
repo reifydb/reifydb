@@ -21,6 +21,8 @@ build-workspace:
 		echo "Using network dependencies"; \
 		MAKEFLAGS= cargo build --release --workspace; \
 	fi
+	@echo "🔍 Checking all-features compile..."
+	@MAKEFLAGS= cargo check --workspace --all-features
 
 # Build pkg/typescript packages
 build-pkg-typescript:

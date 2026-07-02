@@ -193,7 +193,7 @@ impl SeriesMaterializationActor {
 		bucket: &Bucket,
 		now_wall: DateTime,
 	) {
-		if !is_closed(bucket, series, metadata, now_wall, self.grace.to_std()) {
+		if !is_closed(bucket, series, metadata, now_wall, self.grace) {
 			return;
 		}
 		let key = (series.id, bucket.id());
