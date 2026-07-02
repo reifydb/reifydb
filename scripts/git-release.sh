@@ -93,11 +93,8 @@ if [ $CREATE_COMMIT -eq 1 ]; then
 
     COMMIT_MSG="chore: release v${VERSION}
 
-This commit updates all package versions to ${VERSION} across:
-- Rust workspace crates
-- TypeScript packages (@reifydb/core, @reifydb/client, @reifydb/react)
-
-All packages share the same semantic version as part of the monorepo release strategy."
+Bumps all monorepo packages to ${VERSION}. All packages share the same
+semantic version as part of the monorepo release strategy."
 
     git commit -m "$COMMIT_MSG"
 
@@ -127,13 +124,7 @@ fi
 # Create annotated tag
 TAG_MSG="Release v${VERSION}
 
-ReifyDB monorepo release ${VERSION}
-
-This release includes:
-- Rust crates (published to crates.io)
-- TypeScript packages (published to npm)
-
-All packages are versioned together as ${VERSION}."
+ReifyDB monorepo release ${VERSION}. All packages are versioned together as ${VERSION}."
 
 if [ $SIGN_TAG -eq 1 ]; then
     echo -e "${BLUE}Creating signed tag...${NC}"
