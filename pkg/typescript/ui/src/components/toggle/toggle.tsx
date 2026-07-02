@@ -21,12 +21,12 @@ export function Toggle({ options, value, onChange, className = "" }: ToggleProps
       </span>
       <button
         onClick={() => onChange(value === left ? right : left)}
-        className={`relative w-10 h-5 rounded-none transition-colors border-2 border-border-default ${
-          value === right ? "bg-primary" : "bg-bg-secondary"
+        className={`relative w-10 h-5 rounded-full transition-colors border border-border-light ${
+          value === right ? "bg-primary" : "bg-bg-tertiary"
         }`}
       >
         <span
-          className={`absolute top-0.5 w-4 h-4 rounded-none transition-transform bg-text-primary ${
+          className={`absolute top-0.5 w-4 h-4 rounded-full transition-transform bg-text-primary ${
             value === right ? "translate-x-5" : "translate-x-0.5"
           }`}
         />

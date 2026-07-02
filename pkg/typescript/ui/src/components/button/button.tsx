@@ -6,21 +6,24 @@ import { type ButtonHTMLAttributes, forwardRef } from "react";
 type ButtonVariant = "primary" | "secondary" | "ghost" | "forest" | "danger" | "destructive" | "link";
 type ButtonSize = "sm" | "md" | "lg" | "icon";
 
+const brutalPress =
+  "shadow-[var(--shadow-hard-sm)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none";
+
 const variantStyles: Record<ButtonVariant, string> = {
   primary:
-    "bg-primary text-[#141414] font-semibold border-primary hover:brightness-110",
+    `bg-primary text-white font-bold border-border-default hover:brightness-90 ${brutalPress}`,
   secondary:
-    "bg-[#141414] text-white border-[#141414] font-medium hover:bg-bg-elevated hover:text-primary",
+    `bg-bg-tertiary text-text-primary border-border-default font-semibold hover:bg-bg-elevated ${brutalPress}`,
   ghost:
-    "text-white border-border-ghost hover:text-primary",
+    "text-text-secondary border-transparent hover:bg-bg-tertiary hover:text-text-primary",
   forest:
-    "bg-forest text-white font-semibold border-forest-border hover:brightness-110",
+    `bg-forest text-white font-semibold border-forest-border hover:brightness-90 ${brutalPress}`,
   danger:
-    "bg-status-error/10 text-status-error border-status-error/30 hover:bg-status-error/20",
+    `bg-status-error/10 text-status-error border-status-error/30 hover:bg-status-error/20 ${brutalPress}`,
   destructive:
-    "bg-status-error text-white font-semibold border-status-error hover:bg-status-error/90",
+    `bg-status-error text-white font-bold border-border-default hover:brightness-90 ${brutalPress}`,
   link:
-    "text-primary border-transparent underline-offset-4 hover:underline active:text-primary-light",
+    "text-primary border-transparent underline-offset-4 hover:underline active:text-primary-dark",
 };
 
 const sizeStyles: Record<ButtonSize, string> = {
@@ -40,8 +43,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <button
         ref={ref}
-        className={`inline-flex items-center justify-center font-medium transition-all duration-200
-          rounded-[4px] border
+        className={`inline-flex items-center justify-center font-mono font-semibold transition-none
+          rounded-none border-2
           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary
           disabled:pointer-events-none disabled:opacity-50
           ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}

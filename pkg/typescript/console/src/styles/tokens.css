@@ -4,7 +4,7 @@
 /* CSS custom properties for @reifydb/console theming */
 :where(.rdb-console),
 :where(.rdb-snippet) {
-  --rdb-font-mono: 'Inconsolata', ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
+  --rdb-font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
   --rdb-font-size-xs: 0.75rem;
   --rdb-font-size-sm: 0.875rem;
 
@@ -42,39 +42,39 @@
   --rdb-space-3: 0.75rem;
   --rdb-space-4: 1rem;
 
-  /* Border radius — sharp geometry */
-  --rdb-radius: 4px;
+  /* Border radius — brutalist square geometry */
+  --rdb-radius: 0px;
 
   /* Borders */
   --rdb-border: none;
   --rdb-border-thin: none;
 }
 
-/* Light theme overrides */
+/* Light theme overrides — raptor neo-brutalist */
 .rdb-theme-light {
-  --rdb-color-bg: #FFFFFF;
-  --rdb-color-bg-secondary: #F5F5F5;
-  --rdb-color-bg-elevated: #F0F0F0;
-  --rdb-color-bg-tertiary: #FAFAFA;
-  --rdb-color-primary: #6366F1;
-  --rdb-color-primary-hover: #818CF8;
+  --rdb-color-bg: #ffffff;
+  --rdb-color-bg-secondary: #f7f7f8;
+  --rdb-color-bg-elevated: #f0f0f2;
+  --rdb-color-bg-tertiary: #f0f0f2;
+  --rdb-color-primary: #7e85f2;
+  --rdb-color-primary-hover: #525bec;
 
-  --rdb-color-text: #1A1A1A;
-  --rdb-color-secondary: #525252;
-  --rdb-color-muted: #9CA3AF;
-  --rdb-color-border: rgba(0, 0, 0, 0.12);
+  --rdb-color-text: #18181b;
+  --rdb-color-secondary: #3f3f46;
+  --rdb-color-muted: #71717a;
+  --rdb-color-border: #18181b;
   --rdb-color-error: #DC2626;
   --rdb-color-success: #16A34A;
 
-  --rdb-color-value-string: #059669;
-  --rdb-color-value-number: #DB2777;
-  --rdb-color-value-boolean: #6366F1;
-  --rdb-color-value-date: #0891B2;
-  --rdb-color-value-uuid: #6366F1;
+  --rdb-color-value-string: #525bec;
+  --rdb-color-value-number: #2e39df;
+  --rdb-color-value-boolean: #7e85f2;
+  --rdb-color-value-date: #525bec;
+  --rdb-color-value-uuid: #7e85f2;
 
   --rdb-color-hover-bg: rgba(0, 0, 0, 0.03);
   --rdb-color-hover-bg-strong: rgba(0, 0, 0, 0.05);
-  --rdb-color-row-border: rgba(0, 0, 0, 0.05);
-  --rdb-color-overlay-bg: rgba(0, 0, 0, 0.4);
+  --rdb-color-row-border: rgba(0, 0, 0, 0.08);
+  --rdb-color-overlay-bg: rgba(24, 24, 27, 0.4);
   --rdb-color-hover-secondary-btn: rgba(0, 0, 0, 0.06);
 }

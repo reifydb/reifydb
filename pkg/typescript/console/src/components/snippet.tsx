@@ -58,8 +58,7 @@ export function Snippet({
 
   const resolved_theme = resolved_monaco_theme_name ?? (theme === 'light' ? 'premium-light' : 'premium-dark');
 
-  const line_count = code.split('\n').length;
-  const editor_height = Math.max(line_count * 20 + 16, 80);
+  const [editor_height, setEditorHeight] = useState(() => Math.max(initial_code.split('\n').length * 20 + 16, 80));
 
   const toggle_fullscreen = useCallback(() => {
     if (!container_ref.current) return;
@@ -113,6 +112,9 @@ export function Snippet({
     editor_ref.current = editor;
     register_rql_language(monaco);
 
+    setEditorHeight(editor.getContentHeight());
+    editor.onDidContentSizeChange(() => setEditorHeight(editor.getContentHeight()));
+
     if (!readonly) {
       editor.addAction({
         id: 'run-query',
@@ -133,7 +135,6 @@ export function Snippet({
   };
 
   const columns = result?.data && result.data.length > 0 ? Object.keys(result.data[0]) : [];
-  const max_key_length = columns.length > 0 ? Math.max(...columns.map(c => c.length)) : 0;
 
   const content = (
     <div ref={container_ref} className={`rdb-snippet${is_fullscreen ? ' rdb-snippet--fullscreen' : ''}${theme === 'light' ? ' rdb-theme-light' : ''}${className ? ` ${className}` : ''}`}>
@@ -237,12 +238,12 @@ export function Snippet({
               lineDecorationsWidth: 16,
               lineNumbersMinChars: 3,
               scrollBeyondLastLine: false,
-              scrollbar: { vertical: 'hidden', horizontal: 'hidden' },
+              scrollbar: { vertical: 'hidden', horizontal: 'hidden', alwaysConsumeMouseWheel: false },
               overviewRulerLanes: 0,
               hideCursorInOverviewRuler: true,
               overviewRulerBorder: false,
               renderLineHighlight: 'none',
-              fontFamily: "'Inconsolata', monospace",
+              fontFamily: "'JetBrains Mono Variable', monospace",
               fontSize: 13,
               padding: { top: 8, bottom: 8 },
               wordWrap: 'on',
@@ -276,7 +277,7 @@ export function Snippet({
                   hideCursorInOverviewRuler: true,
                   overviewRulerBorder: false,
                   renderLineHighlight: 'none',
-                  fontFamily: "'Inconsolata', monospace",
+                  fontFamily: "'JetBrains Mono Variable', monospace",
                   fontSize: 13,
                   padding: { top: 8, bottom: 8 },
                   wordWrap: 'on',
@@ -304,13 +305,6 @@ export function Snippet({
               {/* Results */}
               {result && (
                 <div className="rdb-snippet__results rdb-snippet__results--fullscreen">
-                  <div className="rdb-snippet__results-header">
-                    <span>{result.error ? '--- error ---' : '--- output ---'}</span>
-                    {result.data && !result.error && (
-                      <span>({result.data.length} row{result.data.length !== 1 ? 's' : ''})</span>
-                    )}
-                  </div>
-
                   {result.error && (
                     <div className="rdb-snippet__error">
                       <pre className="rdb-snippet__error-text">ERR: {result.error}</pre>
@@ -318,7 +312,7 @@ export function Snippet({
                   )}
 
                   {result.data && result.data.length > 0 && !result.error && (
-                    <SnippetResults data={result.data} columns={columns} max_key_length={max_key_length} />
+                    <SnippetResults data={result.data} columns={columns} />
                   )}
 
                   {result.data && result.data.length === 0 && !result.error && (
@@ -349,58 +343,18 @@ export function Snippet({
                 lineDecorationsWidth: 16,
                 lineNumbersMinChars: 3,
                 scrollBeyondLastLine: false,
-                scrollbar: { vertical: 'hidden', horizontal: 'hidden' },
+                scrollbar: { vertical: 'hidden', horizontal: 'hidden', alwaysConsumeMouseWheel: false },
                 overviewRulerLanes: 0,
                 hideCursorInOverviewRuler: true,
                 overviewRulerBorder: false,
                 renderLineHighlight: 'none',
-                fontFamily: "'Inconsolata', monospace",
+                fontFamily: "'JetBrains Mono Variable', monospace",
                 fontSize: 13,
                 padding: { top: 8, bottom: 8 },
                 wordWrap: 'on',
                 automaticLayout: true,
               }}
             />
-
-            {/* Results overlay */}
-            {result && (
-              <div className="rdb-snippet__results-overlay">
-                <div className="rdb-snippet__results-header">
-                  <span>{result.error ? '--- error ---' : '--- output ---'}</span>
-                  <div className="rdb-snippet__results-header-right">
-                    {result.data && !result.error && (
-                      <span>({result.data.length} row{result.data.length !== 1 ? 's' : ''})</span>
-                    )}
-                    <button
-                      onClick={() => setResult(null)}
-                      className="rdb-snippet__action-btn"
-                      title="Close results"
-                    >
-                      <svg className="rdb-snippet__action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18" />
-                        <line x1="6" y1="6" x2="18" y2="18" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="rdb-snippet__results-body">
-                  {result.error && (
-                    <div className="rdb-snippet__error">
-                      <pre className="rdb-snippet__error-text">ERR: {result.error}</pre>
-                    </div>
-                  )}
-
-                  {result.data && result.data.length > 0 && !result.error && (
-                    <SnippetResults data={result.data} columns={columns} max_key_length={max_key_length} />
-                  )}
-
-                  {result.data && result.data.length === 0 && !result.error && (
-                    <div className="rdb-snippet__empty">$ 0 rows returned.</div>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Toolbar */}
@@ -416,6 +370,27 @@ export function Snippet({
               {is_executing ? 'Running...' : 'Run'}
             </button>
           </div>
+
+          {/* Results */}
+          {result && (
+            <div className="rdb-snippet__results-panel">
+              <div className="rdb-snippet__results-body">
+                {result.error && (
+                  <div className="rdb-snippet__error">
+                    <pre className="rdb-snippet__error-text">ERR: {result.error}</pre>
+                  </div>
+                )}
+
+                {result.data && result.data.length > 0 && !result.error && (
+                  <SnippetResults data={result.data} columns={columns} />
+                )}
+
+                {result.data && result.data.length === 0 && !result.error && (
+                  <div className="rdb-snippet__empty">$ 0 rows returned.</div>
+                )}
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

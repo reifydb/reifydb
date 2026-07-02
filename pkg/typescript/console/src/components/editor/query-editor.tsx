@@ -65,7 +65,7 @@ export function QueryEditor({ code, on_change, on_run, theme = 'light', monaco_t
         hideCursorInOverviewRuler: true,
         overviewRulerBorder: false,
         renderLineHighlight: 'line',
-        fontFamily: "'Inconsolata', monospace",
+        fontFamily: "'JetBrains Mono Variable', monospace",
         fontSize: 13,
         padding: { top: 8, bottom: 8 },
         wordWrap: 'on',

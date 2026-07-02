@@ -5,18 +5,22 @@
   html {
     background: var(--color-bg-primary);
     color: var(--color-text-primary);
-    color-scheme: dark;
-    font-family: var(--font-body);
+    color-scheme: light;
+    font-family: var(--font-mono);
+    font-size: 16px;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+  @media (min-width: 1440px) { html { font-size: 17px; } }
+  @media (min-width: 1728px) { html { font-size: 18px; } }
+  @media (min-width: 2048px) { html { font-size: 19px; } }
   *:focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
   }
   ::selection {
     background: var(--color-primary);
-    color: var(--color-bg-primary);
+    color: #ffffff;
   }
   input::placeholder,
   textarea::placeholder {
@@ -24,6 +28,9 @@
   }
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
+  }
+  table, [data-numeric] {
+    font-variant-numeric: tabular-nums;
   }
 }
 
@@ -36,55 +43,59 @@
 /* ── Card ─────────────────────────────────────────────────── */
 .card-modern {
   background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border-default);
+  border: 2px solid var(--color-border-default);
   border-radius: var(--radius-md);
-  transition: border-color 0.2s ease;
-}
-.card-modern:hover {
-  border-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
+  box-shadow: var(--shadow-hard);
 }
 
 /* ── Section alternation ────────────────────────────────── */
 .section-elevated {
-  background: var(--color-bg-secondary);
+  background: var(--color-bg-tertiary);
 }
 .section-elevated .glass-card {
-  background: var(--color-bg-primary);
+  background: var(--color-bg-secondary);
 }
 .section-elevated .card-modern {
-  background: var(--color-bg-primary);
+  background: var(--color-bg-secondary);
 }
 
 /* ── Card utilities ─────────────────────────────────────── */
 .glass-card {
   background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border-default);
+  border: 2px solid var(--color-border-default);
   border-radius: var(--radius-md);
-  transition: border-color 0.2s ease;
-}
-.glass-card:hover {
-  border-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
+  box-shadow: var(--shadow-hard);
 }
 
 .glass-card-strong {
   background: var(--color-bg-secondary);
-  border: 1px solid var(--color-primary);
+  border: 2px solid var(--color-primary);
   border-radius: var(--radius-md);
-  transition: border-color 0.2s ease;
-}
-.glass-card-strong:hover {
-  border-color: var(--color-primary-light);
+  box-shadow: var(--shadow-hard-primary);
 }
 
 .glass {
-  background: rgba(0, 0, 0, 0.80);
+  background: rgba(255, 255, 255, 0.80);
 }
 
 /* ── Card nested inner ───────────────────────────────────── */
 .card-nested-inner {
-  background: var(--color-bg-tertiary);
-  border: 1px solid var(--color-border-light);
+  background: var(--color-input-bg);
+  border: 2px solid var(--color-border-default);
   border-radius: var(--radius-sm);
+}
+
+/* ── Brutalist featured card ─────────────────────────────── */
+.card-brutal {
+  background: var(--color-bg-secondary);
+  border: 2px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-hard);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.card-brutal:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 var(--color-border-default);
 }
 
 /* ── Brutalist tab underline ─────────────────────────────── */
@@ -99,7 +110,7 @@
   bottom: 0;
   left: 0;
   width: 0;
-  height: 2px;
+  height: 3px;
   background: var(--color-primary);
   transition: width 0.15s ease;
 }
@@ -160,10 +171,10 @@
 }
 
 /* ── Scrollbar ───────────────────────────────────────────── */
-::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--color-bg-primary); }
-::-webkit-scrollbar-thumb { background: #343434; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #4a4a4a; }
+::-webkit-scrollbar-thumb { background: var(--color-border-subtle); border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-primary); }
 
 /* ── Reduced motion ──────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {

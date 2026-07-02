@@ -10,7 +10,7 @@ export interface TableProps {
 
 export function Table({ children, className = "" }: TableProps) {
   return (
-    <div className="w-full overflow-x-auto rounded-[var(--radius-md)]">
+    <div className="w-full overflow-x-auto rounded-none">
       <table className={`w-full text-sm ${className}`}>{children}</table>
     </div>
   );
@@ -18,7 +18,7 @@ export function Table({ children, className = "" }: TableProps) {
 
 export function TableHead({ children }: { children: ReactNode }) {
   return (
-    <thead className="border-b border-border-light">
+    <thead className="border-b-2 border-border-light">
       <tr>{children}</tr>
     </thead>
   );
@@ -53,7 +53,7 @@ export interface TableRowProps {
 
 export function TableRow({ children, className = "", onClick }: TableRowProps) {
   return (
-    <tr className={`hover:bg-bg-secondary transition-colors ${onClick ? "cursor-pointer" : ""} ${className}`} onClick={onClick}>
+    <tr className={`border-l-2 border-l-transparent even:bg-bg-tertiary/40 hover:border-l-primary hover:bg-bg-tertiary transition-colors ${onClick ? "cursor-pointer" : ""} ${className}`} onClick={onClick}>
       {children}
     </tr>
   );

@@ -52,7 +52,7 @@ export const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
   ({ className = "", children }, ref) => (
     <div
       ref={ref}
-      className={`relative w-full max-w-lg mx-4 bg-bg-secondary border border-border-default rounded-[var(--radius-md)] shadow-xl ${className}`}
+      className={`relative w-full max-w-lg mx-4 bg-bg-secondary border-2 border-border-default rounded-none shadow-[var(--shadow-hard)] ${className}`}
       onClick={(e) => e.stopPropagation()}
     >
       {children}

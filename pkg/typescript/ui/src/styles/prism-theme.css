@@ -1,0 +1,71 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Copyright (c) 2026 ReifyDB */
+/* Light neo-brutalist Prism theme - indigo ramp on light code surfaces. */
+
+code[class*="language-"],
+pre[class*="language-"] {
+  color: var(--color-code-text);
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  line-height: 1.6;
+  tab-size: 2;
+}
+
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: var(--color-code-text-muted);
+  font-style: italic;
+}
+
+.token.punctuation {
+  color: var(--color-text-secondary);
+}
+
+.token.keyword,
+.token.tag,
+.token.boolean,
+.token.atrule,
+.token.important,
+.token.selector {
+  color: var(--color-primary-dark);
+  font-weight: 600;
+}
+
+.token.string,
+.token.char,
+.token.attr-value,
+.token.builtin,
+.token.regex {
+  color: #525bec;
+}
+
+.token.number,
+.token.constant,
+.token.symbol {
+  color: var(--color-primary-dark);
+}
+
+.token.function,
+.token.class-name {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.token.operator,
+.token.entity,
+.token.url,
+.token.variable,
+.token.property,
+.token.attr-name {
+  color: var(--color-text-secondary);
+}
+
+.token.inserted {
+  color: #16a34a;
+}
+
+.token.deleted {
+  color: var(--color-status-error);
+}
