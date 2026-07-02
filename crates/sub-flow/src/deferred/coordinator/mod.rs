@@ -128,6 +128,7 @@ enum Phase {
 	Idle,
 
 	RegisteringFlows {
+		registering: FlowId,
 		flows: Vec<FlowDag>,
 		ctx: ConsumeContext,
 	},
@@ -301,9 +302,10 @@ impl CoordinatorActor {
 		state.phase_entered_at = None;
 		match phase {
 			Phase::RegisteringFlows {
+				registering,
 				flows,
 				ctx: cctx,
-			} => self.continue_registering(state, ctx, response, flows, cctx),
+			} => self.continue_registering(state, ctx, response, registering, flows, cctx),
 			Phase::Rebalancing {
 				ctx: cctx,
 			} => self.continue_rebalancing(state, ctx, response, cctx),

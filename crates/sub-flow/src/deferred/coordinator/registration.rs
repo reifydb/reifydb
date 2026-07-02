@@ -117,12 +117,17 @@ impl CoordinatorActor {
 		state: &mut CoordinatorState,
 		ctx: &Context<FlowCoordinatorMessage>,
 		response: PoolResponse,
+		registering: FlowId,
 		remaining_flows: Vec<FlowDag>,
 		mut consume_ctx: ConsumeContext,
 	) {
 		if let Err(e) = absorb_register_reply(&mut consume_ctx, response) {
-			(consume_ctx.original_reply)(Err(e));
-			return;
+			warn!(
+				flow_id = registering.0,
+				error = %e,
+				"failed to register flow (view/flow likely concurrently dropped), skipping"
+			);
+			self.apply_flow_deletions(state, &[registering]);
 		}
 
 		if remaining_flows.is_empty() {
@@ -173,6 +178,7 @@ impl CoordinatorActor {
 
 		state.set_phase(
 			Phase::RegisteringFlows {
+				registering: flow_id,
 				flows: remaining_flows,
 				ctx: consume_ctx,
 			},

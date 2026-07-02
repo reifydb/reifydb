@@ -39,7 +39,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, identity::IdentityId},
 };
 use smallvec::smallvec;
-use tracing::{Span, error, field, instrument};
+use tracing::{Span, error, field, instrument, warn};
 
 use crate::{
 	catalog::FlowCatalog,
@@ -242,13 +242,20 @@ impl FlowWorkerActor {
 		reply: Box<dyn FnOnce(FlowResponse) + Send>,
 	) {
 		state.flow_engine.clear();
-		let result = self.engine.begin_command(IdentityId::system()).and_then(|mut txn| {
+		let result = self.engine.begin_command(IdentityId::system()).map(|mut txn| {
 			for fid in flow_ids {
-				let (flow, _) =
-					self.flow_catalog.get_or_load_flow(&mut Transaction::Command(&mut txn), fid)?;
-				state.flow_engine.register(&mut txn, flow)?;
+				let loaded = self
+					.flow_catalog
+					.get_or_load_flow(&mut Transaction::Command(&mut txn), fid)
+					.and_then(|(flow, _)| state.flow_engine.register(&mut txn, flow));
+				if let Err(e) = loaded {
+					warn!(
+						flow_id = fid.0,
+						error = %e,
+						"failed to (re)register flow during rebalance (view/flow likely concurrently dropped), skipping"
+					);
+				}
 			}
-			Ok(())
 		});
 
 		let resp = match result {

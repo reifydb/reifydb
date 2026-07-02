@@ -204,6 +204,7 @@ impl CoordinatorActor {
 		}
 		state.set_phase(
 			Phase::RegisteringFlows {
+				registering: flow_id,
 				flows: new_flows,
 				ctx: consume_ctx,
 			},
