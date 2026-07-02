@@ -3393,6 +3393,7 @@ name = "reifydb-transaction"
 version = "0.6.0"
 dependencies = [
  "crossbeam-skiplist",
+ "dashmap",
  "indexmap",
  "rand 0.10.1",
  "reifydb-build",

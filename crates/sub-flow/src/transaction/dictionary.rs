@@ -3,6 +3,7 @@
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
+	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::catalog::dictionary::Dictionary,
 	key::{
 		EncodableKey,
@@ -10,6 +11,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_runtime::hash::xxh3_128;
+use reifydb_transaction::{dictionary::DictionaryReader, multi::RangeScope};
 use reifydb_value::{
 	Result,
 	value::{
@@ -19,6 +21,21 @@ use reifydb_value::{
 };
 
 use super::FlowTransaction;
+
+impl DictionaryReader for FlowTransaction {
+	fn read(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+		self.get(key)
+	}
+
+	fn max_index_id(&mut self, dictionary: DictionaryId) -> Result<Option<u128>> {
+		let range = DictionaryEntryIndexKey::full_scan(dictionary);
+		let mut iter = self.range(range, RangeScope::All, 1);
+		match iter.next() {
+			Some(result) => Ok(DictionaryEntryIndexKey::decode(&result?.key).map(|key| key.id)),
+			None => Ok(None),
+		}
+	}
+}
 
 impl FlowTransaction {
 	pub fn find_dictionary(&self, id: DictionaryId) -> Option<Dictionary> {
@@ -50,7 +67,7 @@ impl FlowTransaction {
 	}
 
 	pub fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
-		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id.to_u128() as u64).encode();
+		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id.to_u128()).encode();
 		match self.get(&index_key)? {
 			Some(v) => Ok(Some(from_bytes(&v.0).expect("failed to deserialize dictionary value"))),
 			None => Ok(None),

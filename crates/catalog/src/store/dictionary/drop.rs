@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::key::{
-	dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey, DictionarySequenceKey},
+	dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey},
 	namespace_dictionary::NamespaceDictionaryKey,
 };
 use reifydb_transaction::{
@@ -15,6 +15,10 @@ use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn drop_dictionary(txn: &mut AdminTransaction, dictionary: DictionaryId) -> Result<()> {
+		if let Some(registry) = txn.dictionary_allocators() {
+			registry.begin_drop(dictionary);
+		}
+
 		if let Some(dictionary_def) = Self::find_dictionary(&mut Transaction::Admin(&mut *txn), dictionary)? {
 			txn.remove(&NamespaceDictionaryKey::encoded(dictionary_def.namespace, dictionary))?;
 		}
@@ -41,9 +45,11 @@ impl CatalogStore {
 			txn.remove(&key)?;
 		}
 
-		txn.remove(&DictionarySequenceKey::encoded(dictionary))?;
-
 		txn.remove(&DictionaryKey::encoded(dictionary))?;
+
+		if let Some(registry) = txn.dictionary_allocators() {
+			registry.evict(dictionary);
+		}
 
 		Ok(())
 	}
@@ -128,16 +134,13 @@ pub mod tests {
 		entry_value.extend_from_slice(&dummy_value);
 		txn.set(&DictionaryEntryKey::encoded(dict_def.id, dummy_hash), EncodedRow(CowVec::new(entry_value)))
 			.unwrap();
-		txn.set(
-			&DictionaryEntryIndexKey::encoded(dict_def.id, next_id as u64),
-			EncodedRow(CowVec::new(dummy_value)),
-		)
-		.unwrap();
+		txn.set(&DictionaryEntryIndexKey::encoded(dict_def.id, next_id), EncodedRow(CowVec::new(dummy_value)))
+			.unwrap();
 
 		// Verify entry exists before drop
 		let found = txn.get(&DictionaryEntryKey::encoded(dict_def.id, dummy_hash)).unwrap();
 		assert!(found.is_some());
-		let found = txn.get(&DictionaryEntryIndexKey::encoded(dict_def.id, 1u64)).unwrap();
+		let found = txn.get(&DictionaryEntryIndexKey::encoded(dict_def.id, 1u128)).unwrap();
 		assert!(found.is_some());
 
 		// Drop the dictionary
@@ -146,7 +149,7 @@ pub mod tests {
 		// Verify entries are cleaned up
 		let found = txn.get(&DictionaryEntryKey::encoded(dict_def.id, dummy_hash)).unwrap();
 		assert!(found.is_none());
-		let found = txn.get(&DictionaryEntryIndexKey::encoded(dict_def.id, 1u64)).unwrap();
+		let found = txn.get(&DictionaryEntryIndexKey::encoded(dict_def.id, 1u128)).unwrap();
 		assert!(found.is_none());
 
 		// Verify dictionary itself is gone

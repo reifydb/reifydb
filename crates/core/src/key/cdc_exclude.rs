@@ -12,7 +12,6 @@ pub fn should_exclude_from_cdc(kind: KeyKind) -> bool {
 			| KeyKind::Metric | KeyKind::SystemSequence
 			| KeyKind::RowSequence
 			| KeyKind::ColumnSequence
-			| KeyKind::DictionarySequence
 			| KeyKind::SystemVersion
 			| KeyKind::TransactionVersion
 			| KeyKind::FlowVersion
@@ -75,7 +74,6 @@ pub mod tests {
 			KeyKind::DictionaryEntry => {}
 			KeyKind::DictionaryEntryIndex => {}
 			KeyKind::NamespaceDictionary => {}
-			KeyKind::DictionarySequence => {}
 			KeyKind::Metric => {}
 			KeyKind::FlowVersion => {}
 			KeyKind::Subscription => {}
@@ -162,11 +160,6 @@ pub mod tests {
 	#[test]
 	fn test_exclude_column_sequence() {
 		assert!(should_exclude_from_cdc(KeyKind::ColumnSequence));
-	}
-
-	#[test]
-	fn test_exclude_dictionary_sequence() {
-		assert!(should_exclude_from_cdc(KeyKind::DictionarySequence));
 	}
 
 	// Version tracking

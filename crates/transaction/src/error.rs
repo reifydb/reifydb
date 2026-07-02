@@ -7,6 +7,8 @@ use reifydb_value::{
 	fragment::Fragment,
 };
 
+use crate::dictionary::error::DictionaryError;
+
 #[derive(Debug, thiserror::Error)]
 pub enum TransactionError {
 	#[error("Transaction conflict detected")]
@@ -50,6 +52,9 @@ pub enum TransactionError {
 
 	#[error("Database is shutting down; new transactions are rejected")]
 	ShuttingDown,
+
+	#[error(transparent)]
+	Dictionary(#[from] DictionaryError),
 }
 
 impl IntoDiagnostic for TransactionError {
@@ -206,6 +211,8 @@ impl IntoDiagnostic for TransactionError {
 				cause: None,
 				operator_chain: None,
 			},
+
+			TransactionError::Dictionary(err) => err.into_diagnostic(),
 		}
 	}
 }
@@ -213,5 +220,11 @@ impl IntoDiagnostic for TransactionError {
 impl From<TransactionError> for Error {
 	fn from(err: TransactionError) -> Self {
 		Error(Box::new(err.into_diagnostic()))
+	}
+}
+
+impl From<DictionaryError> for Error {
+	fn from(err: DictionaryError) -> Self {
+		TransactionError::from(err).into()
 	}
 }

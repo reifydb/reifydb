@@ -20,20 +20,16 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		resolved::ResolvedView,
 	},
-	key::{
-		dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionarySequenceKey},
-		kind::KeyKind,
-	},
+	key::kind::KeyKind,
 	util::encoding::keycode::{
 		catalog::serialize_shape_id, encode_u8, encode_u64_varint, serializer::KeySerializer,
 	},
 	value::column::{buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_runtime::hash::xxh3_128;
+use reifydb_transaction::interceptor::dictionary_row::DictionaryRowInterceptor;
 use reifydb_value::{
 	Result,
 	error::Error,
-	util::cowvec::CowVec,
 	value::{
 		Value, datetime::DateTime, dictionary::DictionaryEntryId, row_number::RowNumber, value_type::ValueType,
 	},
@@ -307,45 +303,34 @@ pub(crate) fn dictionary_encode_view_columns(
 }
 
 fn dictionary_intern(txn: &mut FlowTransaction, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
-	let value_bytes = to_stdvec(value).map_err(|e| {
+	let mut values_buf = [value.clone()];
+	DictionaryRowInterceptor::pre_insert(txn, dictionary, &mut values_buf)?;
+	let [value] = values_buf;
+
+	let value_bytes = to_stdvec(&value).map_err(|e| {
 		Error::from(FlowStateError::Encode {
 			state: "value",
 			cause: e.to_string(),
 		})
 	})?;
-	let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
-	let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
-	if let Some(existing) = txn.get(&entry_key)? {
-		let id = u128::from_be_bytes(existing[..16].try_into().unwrap());
-		return DictionaryEntryId::from_u128(id, dictionary.id_type.clone());
+	let registry = txn.dictionary_allocators();
+	let outcome = registry.intern(dictionary, &value_bytes, txn)?;
+
+	if let Some(writes) = outcome.writes {
+		txn.set(&writes.entry_key, writes.entry_value)?;
+		txn.set(&writes.index_key, writes.index_value)?;
 	}
 
-	let seq_key = DictionarySequenceKey::encoded(dictionary.id);
-	let next_id = match txn.get(&seq_key)? {
-		Some(v) => u128::from_be_bytes(v[..16].try_into().unwrap()) + 1,
-		None => 1,
-	};
-
-	let entry_id = DictionaryEntryId::from_u128(next_id, dictionary.id_type.clone())?;
-
-	let mut entry_value = Vec::with_capacity(16 + value_bytes.len());
-	entry_value.extend_from_slice(&next_id.to_be_bytes());
-	entry_value.extend_from_slice(&value_bytes);
-	txn.set(&entry_key, EncodedRow(CowVec::new(entry_value)))?;
-
-	let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, next_id as u64);
-	txn.set(&index_key, EncodedRow(CowVec::new(value_bytes)))?;
-
-	txn.set(&seq_key, EncodedRow(CowVec::new(next_id.to_be_bytes().to_vec())))?;
-
-	Ok(entry_id)
+	Ok(outcome.id)
 }
 
 #[cfg(test)]
 mod tests {
 	use postcard::from_bytes;
-	use reifydb_core::{actors::pending::PendingWrite, common::CommitVersion};
+	use reifydb_core::{
+		actors::pending::PendingWrite, common::CommitVersion, key::dictionary::DictionaryEntryIndexKey,
+	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_value::value::identity::IdentityId;
 
@@ -434,7 +419,7 @@ mod tests {
 
 		// Every interned string must still decode to itself - no entry was clobbered.
 		let decode = |id: u128| -> String {
-			let key = DictionaryEntryIndexKey::encoded(dictionary.id, id as u64);
+			let key = DictionaryEntryIndexKey::encoded(dictionary.id, id);
 			let query = engine.multi().begin_query().unwrap();
 			let bytes = query.get(&key).unwrap().expect("index entry present").row().to_vec();
 			match from_bytes::<Value>(&bytes).unwrap() {

@@ -71,7 +71,7 @@ use crate::{
 		worker::FlowWorkerActor,
 	},
 	engine::{FlowEngine, FlowEngineInner},
-	transaction::row_allocator::RowAllocatorRegistry,
+	transaction::allocators::FlowAllocators,
 	transactional::{
 		interceptor::{TransactionalFlowPostCommitInterceptor, TransactionalFlowPreCommitInterceptor},
 		registry::TransactionalFlowRegistry,
@@ -142,7 +142,7 @@ impl FlowSubsystem {
 		let clock = ioc.resolve::<Clock>().expect("Clock must be registered");
 		let spawner = ioc.resolve::<ActorSpawner>().expect("ActorSpawner must be registered");
 		let custom_operators = CustomOperators::new(config.custom_operators);
-		let row_allocators = RowAllocatorRegistry::new();
+		let allocators = FlowAllocators::with_dictionary(engine.dictionary_allocators());
 		let primitive_tracker = ShapeVersionTracker::new();
 		let flow_tracker = FlowPositionTracker::new();
 		let cdc_store = ioc.resolve::<CdcStore>().expect("CdcStore must be registered");
@@ -166,7 +166,7 @@ impl FlowSubsystem {
 			&flow_catalog,
 			&clock,
 			&custom_operators,
-			&row_allocators,
+			&allocators,
 		);
 
 		let pool_handle = flow_scope.spawn_system("flow-pool", PoolActor::new(worker_refs, clock.clone()));
@@ -192,7 +192,7 @@ impl FlowSubsystem {
 		};
 
 		let transactional_flow_engine =
-			Self::build_transactional_engine(&engine, &clock, &custom_operators, &row_allocators);
+			Self::build_transactional_engine(&engine, &clock, &custom_operators, &allocators);
 
 		let registrar = TransactionalFlowRegistry {
 			flow_engine: transactional_flow_engine.clone(),
@@ -279,7 +279,7 @@ impl FlowSubsystem {
 		flow_catalog: &FlowCatalog,
 		clock: &Clock,
 		custom_operators: &CustomOperators,
-		row_allocators: &RowAllocatorRegistry,
+		allocators: &FlowAllocators,
 	) -> (Vec<ActorRef<FlowMessage>>, Vec<FlowHandle>) {
 		let mut worker_refs = Vec::with_capacity(num_workers);
 		let mut worker_handles = Vec::with_capacity(num_workers);
@@ -290,8 +290,8 @@ impl FlowSubsystem {
 			let bus = engine.event_bus().clone();
 			let rc = RuntimeContext::with_clock(clock.clone());
 			let co = custom_operators.clone();
-			let ra = row_allocators.clone();
-			let worker_factory = move || FlowEngineInner::new(cat, exec, bus, rc, co, ra);
+			let alloc = allocators.clone();
+			let worker_factory = move || FlowEngineInner::new(cat, exec, bus, rc, co, alloc);
 
 			let worker = FlowWorkerActor::new(
 				worker_factory,
@@ -312,7 +312,7 @@ impl FlowSubsystem {
 		engine: &StandardEngine,
 		clock: &Clock,
 		custom_operators: &CustomOperators,
-		row_allocators: &RowAllocatorRegistry,
+		allocators: &FlowAllocators,
 	) -> FlowEngine {
 		FlowEngine::new(
 			engine.catalog(),
@@ -320,7 +320,7 @@ impl FlowSubsystem {
 			engine.event_bus().clone(),
 			RuntimeContext::with_clock(clock.clone()),
 			custom_operators.clone(),
-			row_allocators.clone(),
+			allocators.clone(),
 		)
 	}
 
@@ -428,7 +428,7 @@ impl FlowSubsystem {
 					hook_event_bus.clone(),
 					hook_runtime_context.clone(),
 					hook_custom_operators.clone(),
-					RowAllocatorRegistry::new(),
+					FlowAllocators::with_dictionary(hook_engine.dictionary_allocators()),
 				);
 
 				let flows = hook_catalog

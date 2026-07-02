@@ -523,3 +523,16 @@ pub fn flow_sink_dictionary_not_found(dictionary_id: String, column: &str) -> Di
 		"A dictionary-encoded view column references a dictionary that no longer exists in the catalog.",
 	)
 }
+
+pub fn flow_transaction_dictionary_write_divergence(key_debug: String) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_038",
+		format!(
+			"dictionary write divergence: key {} was written with two different values by parallel flow workers in one round",
+			key_debug
+		),
+		"Two workers produced different bytes for the same dictionary key. This should be impossible - the shared \
+		 dictionary allocator makes concurrent interns of one value agree on one id - so it indicates a bijection \
+		 bug in the allocator or an unguarded 128-bit hash collision.",
+	)
+}

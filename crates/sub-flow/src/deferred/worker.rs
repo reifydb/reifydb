@@ -301,7 +301,7 @@ impl FlowWorkerActor {
 			catalog: self.catalog.clone(),
 			interceptors,
 			clock: self.engine.clock().clone(),
-			row_allocators: flow_engine.row_allocators.clone(),
+			allocators: flow_engine.allocators.clone(),
 		}))
 	}
 
@@ -436,7 +436,7 @@ impl FlowWorkerActor {
 			catalog: self.catalog.clone(),
 			interceptors: interceptors.clone(),
 			clock: self.engine.clock().clone(),
-			row_allocators: flow_engine.row_allocators.clone(),
+			allocators: flow_engine.allocators.clone(),
 		});
 
 		flow_engine.process_batch(&mut txn, changes, flow_id)?;

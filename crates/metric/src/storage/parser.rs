@@ -29,11 +29,9 @@ fn extract_object_id(key: &[u8], kind: KeyKind) -> MetricId {
 		| KeyKind::IndexEntry
 		| KeyKind::PrimaryKey => extract_shape_id(key).map(MetricId::Shape).unwrap_or(MetricId::System),
 
-		KeyKind::DictionaryEntry | KeyKind::DictionaryEntryIndex | KeyKind::DictionarySequence => {
-			extract_dictionary_id(key)
-				.map(|id| MetricId::Shape(ShapeId::Dictionary(DictionaryId(id))))
-				.unwrap_or(MetricId::System)
-		}
+		KeyKind::DictionaryEntry | KeyKind::DictionaryEntryIndex => extract_dictionary_id(key)
+			.map(|id| MetricId::Shape(ShapeId::Dictionary(DictionaryId(id))))
+			.unwrap_or(MetricId::System),
 
 		KeyKind::FlowNodeState | KeyKind::FlowNodeInternalState => {
 			extract_flow_node_id(key).map(MetricId::FlowNode).unwrap_or(MetricId::System)

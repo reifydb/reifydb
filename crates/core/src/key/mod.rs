@@ -8,7 +8,7 @@ use column::ColumnKey;
 use column_sequence::ColumnSequenceKey;
 use column_snapshot::{ColumnSnapshotKey, SeriesColumnSnapshotKey, TableColumnSnapshotKey};
 use columns::ColumnsKey;
-use dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey, DictionarySequenceKey};
+use dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey};
 use flow::FlowKey;
 use flow_node_internal_state::FlowNodeInternalStateKey;
 use flow_node_state::FlowNodeStateKey;
@@ -156,7 +156,6 @@ pub enum Key {
 	Dictionary(DictionaryKey),
 	DictionaryEntry(DictionaryEntryKey),
 	DictionaryEntryIndex(DictionaryEntryIndexKey),
-	DictionarySequence(DictionarySequenceKey),
 	NamespaceDictionary(NamespaceDictionaryKey),
 	SumType(SumTypeKey),
 	NamespaceSumType(NamespaceSumTypeKey),
@@ -220,7 +219,6 @@ impl Key {
 			Key::Dictionary(key) => key.encode(),
 			Key::DictionaryEntry(key) => key.encode(),
 			Key::DictionaryEntryIndex(key) => key.encode(),
-			Key::DictionarySequence(key) => key.encode(),
 			Key::NamespaceDictionary(key) => key.encode(),
 			Key::SumType(key) => key.encode(),
 			Key::NamespaceSumType(key) => key.encode(),
@@ -337,7 +335,6 @@ impl Key {
 			KeyKind::DictionaryEntryIndex => {
 				DictionaryEntryIndexKey::decode(key).map(Self::DictionaryEntryIndex)
 			}
-			KeyKind::DictionarySequence => DictionarySequenceKey::decode(key).map(Self::DictionarySequence),
 			KeyKind::NamespaceDictionary => {
 				NamespaceDictionaryKey::decode(key).map(Self::NamespaceDictionary)
 			}

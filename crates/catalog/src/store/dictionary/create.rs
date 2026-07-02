@@ -2,17 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	encoded::row::EncodedRow,
 	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
-	key::{
-		dictionary::{DictionaryKey, DictionarySequenceKey},
-		namespace_dictionary::NamespaceDictionaryKey,
-	},
+	key::{dictionary::DictionaryKey, namespace_dictionary::NamespaceDictionaryKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
 	fragment::Fragment,
-	util::cowvec::CowVec,
 	value::{dictionary::DictionaryId, value_type::ValueType},
 };
 
@@ -61,8 +56,6 @@ impl CatalogStore {
 
 		Self::link_dictionary_to_namespace(txn, namespace_id, dictionary_id, to_create.name.text())?;
 
-		Self::initialize_dictionary_sequence(txn, dictionary_id)?;
-
 		Self::get_dictionary(&mut Transaction::Admin(&mut *txn), dictionary_id)
 	}
 
@@ -95,15 +88,6 @@ impl CatalogStore {
 		dictionary_namespace::SHAPE.set_utf8(&mut row, dictionary_namespace::NAME, name);
 
 		txn.set(&NamespaceDictionaryKey::encoded(namespace, dictionary), row)?;
-
-		Ok(())
-	}
-
-	fn initialize_dictionary_sequence(txn: &mut AdminTransaction, dictionary: DictionaryId) -> Result<()> {
-		let seq_key = DictionarySequenceKey::encoded(dictionary);
-		let initial_value = 0u128.to_be_bytes().to_vec();
-
-		txn.set(&seq_key, EncodedRow(CowVec::new(initial_value)))?;
 
 		Ok(())
 	}

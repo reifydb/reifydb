@@ -1,16 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::collections::HashMap;
+
 use reifydb_cdc::consume::checkpoint::CdcCheckpoint;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	encoded::shape::RowShape,
 	interface::catalog::flow::FlowId,
-	key::{Key, kind::KeyKind},
+	key::{EncodableKey, Key, dictionary::DictionaryEntryKey, kind::KeyKind},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
-use reifydb_value::{Result, value::identity::IdentityId};
+use reifydb_value::{
+	Result,
+	value::{dictionary::DictionaryId, identity::IdentityId},
+};
 use tracing::{Span, warn};
 
 use super::{ConsumeContext, CoordinatorActor, CoordinatorState, Phase};
@@ -128,6 +133,7 @@ impl CoordinatorActor {
 
 		match transaction.commit_unchecked() {
 			Ok(_) => {
+				self.evict_durable_reservations(&combined);
 				for (flow_id, version) in checkpoints.iter().chain(positions.iter()) {
 					self.flow_tracker.update(*flow_id, *version);
 				}
@@ -175,6 +181,23 @@ impl CoordinatorActor {
 
 		if let Err(e) = transaction.commit_unchecked() {
 			warn!(error = %e, "failed to commit tick writes");
+		} else {
+			self.evict_durable_reservations(&pending);
+		}
+	}
+
+	fn evict_durable_reservations(&self, committed: &Pending) {
+		let registry = self.engine.dictionary_allocators();
+		let mut by_dict: HashMap<DictionaryId, Vec<[u8; 16]>> = HashMap::new();
+		for (key, _) in committed.iter_sorted() {
+			if matches!(Key::kind(key), Some(KeyKind::DictionaryEntry))
+				&& let Some(entry) = DictionaryEntryKey::decode(key)
+			{
+				by_dict.entry(entry.dictionary).or_default().push(entry.hash);
+			}
+		}
+		for (dictionary, hashes) in by_dict {
+			registry.mark_durable(dictionary, &hashes);
 		}
 	}
 }

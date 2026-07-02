@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem::take, sync::Arc};
+use std::{collections::HashMap, mem::take, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -24,7 +24,7 @@ use reifydb_value::{
 	error::Diagnostic,
 	params::Params,
 	reifydb_assertions,
-	value::{datetime::DateTime, identity::IdentityId},
+	value::{datetime::DateTime, dictionary::DictionaryId, identity::IdentityId},
 };
 use tracing::instrument;
 
@@ -32,6 +32,7 @@ use crate::{
 	TransactionId,
 	change::{RowChange, TransactionalCatalogChanges},
 	change_accumulator::ChangeAccumulator,
+	dictionary::DictionaryAllocatorRegistry,
 	error::TransactionError,
 	interceptor::{
 		WithInterceptors,
@@ -94,7 +95,7 @@ use crate::{
 	multi::{
 		RangeScope,
 		pending::PendingWrites,
-		transaction::{MultiTransaction, write::MultiWriteTransaction},
+		transaction::{MultiTransaction, read::MultiReadTransaction, write::MultiWriteTransaction},
 	},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
 	transaction::{
@@ -119,6 +120,12 @@ pub struct CommandTransaction {
 	pub identity: IdentityId,
 
 	pub(crate) executor: Option<Arc<dyn RqlExecutor>>,
+
+	pub(crate) dictionary_allocators: Option<DictionaryAllocatorRegistry>,
+
+	pub(crate) dictionary_reader: Option<MultiReadTransaction>,
+
+	pub(crate) dictionary_interned: Vec<(DictionaryId, [u8; 16])>,
 
 	pub(crate) clock: Clock,
 
@@ -155,6 +162,9 @@ impl CommandTransaction {
 			accumulator: ChangeAccumulator::new(),
 			identity,
 			executor: None,
+			dictionary_allocators: None,
+			dictionary_reader: None,
+			dictionary_interned: Vec::new(),
 			clock,
 			poison_cause: None,
 		})
@@ -162,6 +172,42 @@ impl CommandTransaction {
 
 	pub fn set_executor(&mut self, executor: Arc<dyn RqlExecutor>) {
 		self.executor = Some(executor);
+	}
+
+	pub fn set_dictionary_allocators(&mut self, registry: DictionaryAllocatorRegistry) {
+		self.dictionary_allocators = Some(registry);
+	}
+
+	pub fn dictionary_allocators(&self) -> Option<DictionaryAllocatorRegistry> {
+		self.dictionary_allocators.clone()
+	}
+
+	pub fn dictionary_reader(&mut self) -> Result<&mut MultiReadTransaction> {
+		if self.dictionary_reader.is_none() {
+			self.dictionary_reader = Some(self.multi.begin_query()?);
+		}
+		Ok(self.dictionary_reader.as_mut().unwrap())
+	}
+
+	pub fn record_dictionary_intern(&mut self, dictionary: DictionaryId, hash: [u8; 16]) {
+		self.dictionary_interned.push((dictionary, hash));
+	}
+
+	fn evict_durable_reservations(&mut self) {
+		if self.dictionary_interned.is_empty() {
+			return;
+		}
+		let Some(registry) = self.dictionary_allocators.clone() else {
+			self.dictionary_interned.clear();
+			return;
+		};
+		let mut by_dict: HashMap<DictionaryId, Vec<[u8; 16]>> = HashMap::new();
+		for (dictionary, hash) in self.dictionary_interned.drain(..) {
+			by_dict.entry(dictionary).or_default().push(hash);
+		}
+		for (dictionary, hashes) in by_dict {
+			registry.mark_durable(dictionary, &hashes);
+		}
 	}
 
 	pub fn rql(&mut self, rql: &str, params: Params) -> ExecutionResult {
@@ -240,7 +286,9 @@ impl CommandTransaction {
 		let id = self.apply_writes_and_mark_committed(&mut multi, &ctx)?;
 		let row_changes = take(&mut self.row_changes);
 		let flow_changes = self.merge_view_entries(ctx.flow_changes, ctx.view_entries)?;
-		self.commit_and_post(multi, id, flow_changes, row_changes, unchecked)
+		let version = self.commit_and_post(multi, id, flow_changes, row_changes, unchecked)?;
+		self.evict_durable_reservations();
+		Ok(version)
 	}
 
 	#[inline]

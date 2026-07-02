@@ -4,7 +4,6 @@
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::row::EncodedRow,
 	interface::{
 		catalog::{dictionary::Dictionary, shape::ShapeId},
 		change::{Change, ChangeOrigin, Diff},
@@ -12,7 +11,7 @@ use reifydb_core::{
 	internal_error,
 	key::{
 		EncodableKey,
-		dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionarySequenceKey},
+		dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey},
 	},
 	value::column::columns::Columns,
 };
@@ -21,10 +20,7 @@ use reifydb_transaction::{
 	interceptor::dictionary_row::DictionaryRowInterceptor,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
-use reifydb_value::{
-	util::cowvec::CowVec,
-	value::{Value, datetime::DateTime, dictionary::DictionaryEntryId, row_number::RowNumber},
-};
+use reifydb_value::value::{Value, datetime::DateTime, dictionary::DictionaryEntryId, row_number::RowNumber};
 use smallvec::smallvec;
 
 use crate::Result;
@@ -44,51 +40,38 @@ impl DictionaryOperations for CommandTransaction {
 		let [value] = values_buf;
 
 		let value_bytes = to_stdvec(&value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
-		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
-		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
-		if let Some(existing) = self.get(&entry_key)? {
-			let id = u128::from_be_bytes(existing.row[..16].try_into().unwrap());
-			return DictionaryEntryId::from_u128(id, dictionary.id_type.clone());
+		let registry = self
+			.dictionary_allocators()
+			.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
+		let reader = self.dictionary_reader()?;
+		let outcome = registry.intern(dictionary, &value_bytes, reader)?;
+
+		if let Some(writes) = outcome.writes {
+			self.set(&writes.entry_key, writes.entry_value)?;
+			self.set(&writes.index_key, writes.index_value)?;
+			self.record_dictionary_intern(dictionary.id, outcome.hash);
+
+			let ids = [outcome.id];
+			let values = [value.clone()];
+			DictionaryRowInterceptor::post_insert(self, dictionary, &ids, &values)?;
+
+			self.track_flow_change(Change {
+				origin: ChangeOrigin::Shape(ShapeId::Dictionary(dictionary.id)),
+				version: CommitVersion(0),
+				diffs: smallvec![Diff::insert(
+					Columns::single_row([("value", value)])
+						.with_row_numbers(vec![RowNumber(outcome.id.to_u128() as u64)])
+				)],
+				changed_at: DateTime::default(),
+			});
 		}
 
-		let seq_key = DictionarySequenceKey::encoded(dictionary.id);
-		let next_id = match self.get(&seq_key)? {
-			Some(v) => u128::from_be_bytes(v.row[..16].try_into().unwrap()) + 1,
-			None => 1,
-		};
-
-		let entry_id = DictionaryEntryId::from_u128(next_id, dictionary.id_type.clone())?;
-
-		let mut entry_value = Vec::with_capacity(16 + value_bytes.len());
-		entry_value.extend_from_slice(&next_id.to_be_bytes());
-		entry_value.extend_from_slice(&value_bytes);
-		self.set(&entry_key, EncodedRow(CowVec::new(entry_value)))?;
-
-		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, next_id as u64);
-		self.set(&index_key, EncodedRow(CowVec::new(value_bytes)))?;
-
-		self.set(&seq_key, EncodedRow(CowVec::new(next_id.to_be_bytes().to_vec())))?;
-
-		let ids = [entry_id];
-		let values = [value.clone()];
-		DictionaryRowInterceptor::post_insert(self, dictionary, &ids, &values)?;
-
-		self.track_flow_change(Change {
-			origin: ChangeOrigin::Shape(ShapeId::Dictionary(dictionary.id)),
-			version: CommitVersion(0),
-			diffs: smallvec![Diff::insert(
-				Columns::single_row([("value", value)])
-					.with_row_numbers(vec![RowNumber(next_id as u64)])
-			)],
-			changed_at: DateTime::default(),
-		});
-
-		Ok(entry_id)
+		Ok(outcome.id)
 	}
 
 	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
-		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id.to_u128() as u64).encode();
+		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id.to_u128()).encode();
 		match self.get(&index_key)? {
 			Some(v) => {
 				let value: Value = from_bytes(&v.row)
@@ -122,51 +105,38 @@ impl DictionaryOperations for AdminTransaction {
 		let [value] = values_buf;
 
 		let value_bytes = to_stdvec(&value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
-		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
-		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
-		if let Some(existing) = self.get(&entry_key)? {
-			let id = u128::from_be_bytes(existing.row[..16].try_into().unwrap());
-			return DictionaryEntryId::from_u128(id, dictionary.id_type.clone());
+		let registry = self
+			.dictionary_allocators()
+			.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
+		let reader = self.dictionary_reader()?;
+		let outcome = registry.intern(dictionary, &value_bytes, reader)?;
+
+		if let Some(writes) = outcome.writes {
+			self.set(&writes.entry_key, writes.entry_value)?;
+			self.set(&writes.index_key, writes.index_value)?;
+			self.record_dictionary_intern(dictionary.id, outcome.hash);
+
+			let ids = [outcome.id];
+			let values = [value.clone()];
+			DictionaryRowInterceptor::post_insert(self, dictionary, &ids, &values)?;
+
+			self.track_flow_change(Change {
+				origin: ChangeOrigin::Shape(ShapeId::Dictionary(dictionary.id)),
+				version: CommitVersion(0),
+				diffs: smallvec![Diff::insert(
+					Columns::single_row([("value", value)])
+						.with_row_numbers(vec![RowNumber(outcome.id.to_u128() as u64)])
+				)],
+				changed_at: DateTime::default(),
+			});
 		}
 
-		let seq_key = DictionarySequenceKey::encoded(dictionary.id);
-		let next_id = match self.get(&seq_key)? {
-			Some(v) => u128::from_be_bytes(v.row[..16].try_into().unwrap()) + 1,
-			None => 1,
-		};
-
-		let entry_id = DictionaryEntryId::from_u128(next_id, dictionary.id_type.clone())?;
-
-		let mut entry_value = Vec::with_capacity(16 + value_bytes.len());
-		entry_value.extend_from_slice(&next_id.to_be_bytes());
-		entry_value.extend_from_slice(&value_bytes);
-		self.set(&entry_key, EncodedRow(CowVec::new(entry_value)))?;
-
-		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, next_id as u64);
-		self.set(&index_key, EncodedRow(CowVec::new(value_bytes)))?;
-
-		self.set(&seq_key, EncodedRow(CowVec::new(next_id.to_be_bytes().to_vec())))?;
-
-		let ids = [entry_id];
-		let values = [value.clone()];
-		DictionaryRowInterceptor::post_insert(self, dictionary, &ids, &values)?;
-
-		self.track_flow_change(Change {
-			origin: ChangeOrigin::Shape(ShapeId::Dictionary(dictionary.id)),
-			version: CommitVersion(0),
-			diffs: smallvec![Diff::insert(
-				Columns::single_row([("value", value)])
-					.with_row_numbers(vec![RowNumber(next_id as u64)])
-			)],
-			changed_at: DateTime::default(),
-		});
-
-		Ok(entry_id)
+		Ok(outcome.id)
 	}
 
 	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
-		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id.to_u128() as u64).encode();
+		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id.to_u128()).encode();
 		match self.get(&index_key)? {
 			Some(v) => {
 				let value: Value = from_bytes(&v.row)
@@ -209,7 +179,7 @@ impl DictionaryOperations for Transaction<'_> {
 	}
 
 	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
-		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, id.to_u128() as u64);
+		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, id.to_u128());
 		match self.get(&index_key)? {
 			Some(v) => {
 				let value: Value = from_bytes(&v.row)

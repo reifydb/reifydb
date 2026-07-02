@@ -77,7 +77,7 @@ pub mod tests {
 			handler: HandlerId(0xABCD),
 		};
 		let encoded = key.encode();
-		let expected = vec![0xD1, 0x3F, 0x54, 0x32];
+		let expected = vec![0xD2, 0x3F, 0x54, 0x32];
 		assert_eq!(encoded.as_slice(), expected);
 
 		let decoded = HandlerKey::decode(&encoded).unwrap();

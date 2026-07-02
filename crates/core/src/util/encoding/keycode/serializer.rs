@@ -23,7 +23,7 @@ use serde::Serialize;
 use super::{
 	catalog, encode_bool, encode_bytes, encode_f32, encode_f64, encode_i8, encode_i16, encode_i32,
 	encode_i64_varint, encode_i128, encode_u8, encode_u16, encode_u32_varint, encode_u64_varint, encode_u128,
-	serialize,
+	encode_u128_varint, serialize,
 };
 use crate::{
 	encoded::key::EncodedKey,
@@ -125,6 +125,11 @@ impl KeySerializer {
 
 	pub fn extend_u128<T: Into<u128>>(&mut self, value: T) -> &mut Self {
 		self.buffer.extend_from_slice(&encode_u128(value.into()));
+		self
+	}
+
+	pub fn extend_u128_varint<T: Into<u128>>(&mut self, value: T) -> &mut Self {
+		encode_u128_varint(value.into(), &mut self.buffer);
 		self
 	}
 

@@ -48,6 +48,7 @@ use reifydb_runtime::{
 };
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
+	dictionary::DictionaryAllocatorRegistry,
 	error::TransactionError,
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
 	multi::{lease::VersionLeaseGuard, transaction::MultiTransaction},
@@ -115,6 +116,7 @@ impl StandardEngine {
 			self.executor.runtime_context.clock.clone(),
 		)?;
 		txn.set_executor(Arc::new(self.executor.clone()));
+		txn.set_dictionary_allocators(self.dictionary_allocators.clone());
 		Ok(txn)
 	}
 
@@ -130,6 +132,7 @@ impl StandardEngine {
 			self.executor.runtime_context.clock.clone(),
 		)?;
 		txn.set_executor(Arc::new(self.executor.clone()));
+		txn.set_dictionary_allocators(self.dictionary_allocators.clone());
 		Ok(txn)
 	}
 
@@ -442,6 +445,7 @@ pub struct Inner {
 	interceptors: Arc<InterceptorFactory>,
 	catalog: Catalog,
 	flow_operator_store: SystemFlowOperatorStore,
+	dictionary_allocators: DictionaryAllocatorRegistry,
 	read_only: AtomicBool,
 	shutting_down: AtomicBool,
 }
@@ -480,6 +484,7 @@ impl StandardEngine {
 			interceptors,
 			catalog,
 			flow_operator_store,
+			dictionary_allocators: DictionaryAllocatorRegistry::new(),
 			read_only: AtomicBool::new(false),
 			shutting_down: AtomicBool::new(false),
 		}))
@@ -487,6 +492,10 @@ impl StandardEngine {
 
 	pub fn create_interceptors(&self) -> Interceptors {
 		self.interceptors.create()
+	}
+
+	pub fn dictionary_allocators(&self) -> DictionaryAllocatorRegistry {
+		self.dictionary_allocators.clone()
 	}
 
 	pub fn add_interceptor_factory(&self, factory: Arc<dyn Fn(&mut Interceptors) + Send + Sync>) {

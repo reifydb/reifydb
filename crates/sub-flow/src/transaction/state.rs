@@ -428,9 +428,7 @@ pub mod tests {
 	use super::*;
 	use crate::{
 		operator::stateful::test_utils::test::create_test_transaction,
-		transaction::{
-			CommittingParams, DeferredParams, TransactionalParams, row_allocator::RowAllocatorRegistry,
-		},
+		transaction::{CommittingParams, DeferredParams, TransactionalParams, allocators::FlowAllocators},
 	};
 
 	fn commit_state_row(engine: &TestEngine, node: FlowNodeId, key: &EncodedKey, row: EncodedRow) -> CommitVersion {
@@ -876,7 +874,7 @@ pub mod tests {
 			catalog: Catalog::testing(),
 			interceptors: engine.create_interceptors(),
 			clock: engine.clock().clone(),
-			row_allocators: RowAllocatorRegistry::new(),
+			allocators: FlowAllocators::new(),
 		});
 
 		let batch = txn.state_get_many(node_id, &[inner_key]).unwrap();
@@ -910,7 +908,7 @@ pub mod tests {
 				catalog: Catalog::testing(),
 				interceptors: engine.create_interceptors(),
 				clock: engine.clock().clone(),
-				row_allocators: RowAllocatorRegistry::new(),
+				allocators: FlowAllocators::new(),
 			})
 			.unwrap();
 			txn.state_set(node_id, &written_key, written_value.clone()).unwrap();
@@ -973,7 +971,7 @@ pub mod tests {
 			interceptors: engine.create_interceptors(),
 			clock: engine.clock().clone(),
 			view_overlay: Arc::new(Vec::new()),
-			row_allocators: RowAllocatorRegistry::new(),
+			allocators: FlowAllocators::new(),
 		});
 
 		// Committed state above the txn version is visible (state_query is at the snapshot).

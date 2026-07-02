@@ -134,18 +134,18 @@ impl EncodableKey for DictionaryEntryKey {
 #[derive(Debug, Clone, PartialEq)]
 pub struct DictionaryEntryIndexKey {
 	pub dictionary: DictionaryId,
-	pub id: u64,
+	pub id: u128,
 }
 
 impl DictionaryEntryIndexKey {
-	pub fn new(dictionary: DictionaryId, id: u64) -> Self {
+	pub fn new(dictionary: DictionaryId, id: u128) -> Self {
 		Self {
 			dictionary,
 			id,
 		}
 	}
 
-	pub fn encoded(dictionary: impl Into<DictionaryId>, id: u64) -> EncodedKey {
+	pub fn encoded(dictionary: impl Into<DictionaryId>, id: u128) -> EncodedKey {
 		Self::new(dictionary.into(), id).encode()
 	}
 
@@ -170,8 +170,8 @@ impl EncodableKey for DictionaryEntryIndexKey {
 	const KIND: KeyKind = KeyKind::DictionaryEntryIndex;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(17);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(self.dictionary).extend_u64(self.id);
+		let mut serializer = KeySerializer::with_capacity(25);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.dictionary).extend_u128_varint(self.id);
 		serializer.to_encoded_key()
 	}
 
@@ -184,7 +184,7 @@ impl EncodableKey for DictionaryEntryIndexKey {
 		}
 
 		let dictionary = de.read_u64().ok()?;
-		let id = de.read_u64().ok()?;
+		let id = de.read_u128_varint().ok()?;
 
 		Some(Self {
 			dictionary: DictionaryId(dictionary),
@@ -194,56 +194,14 @@ impl EncodableKey for DictionaryEntryIndexKey {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct DictionarySequenceKey {
-	pub dictionary: DictionaryId,
-}
-
-impl DictionarySequenceKey {
-	pub fn new(dictionary: DictionaryId) -> Self {
-		Self {
-			dictionary,
-		}
-	}
-
-	pub fn encoded(dictionary: impl Into<DictionaryId>) -> EncodedKey {
-		Self::new(dictionary.into()).encode()
-	}
-}
-
-impl EncodableKey for DictionarySequenceKey {
-	const KIND: KeyKind = KeyKind::DictionarySequence;
-
-	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(self.dictionary);
-		serializer.to_encoded_key()
-	}
-
-	fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::KIND {
-			return None;
-		}
-
-		let dictionary = de.read_u64().ok()?;
-
-		Some(Self {
-			dictionary: DictionaryId(dictionary),
-		})
-	}
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct DictionaryEntryIndexKeyRange {
 	pub dictionary: DictionaryId,
-	pub start_id: Option<u64>,
-	pub end_id: Option<u64>,
+	pub start_id: Option<u128>,
+	pub end_id: Option<u128>,
 }
 
 impl DictionaryEntryIndexKeyRange {
-	pub fn new(dictionary: DictionaryId, start_id: Option<u64>, end_id: Option<u64>) -> Self {
+	pub fn new(dictionary: DictionaryId, start_id: Option<u128>, end_id: Option<u128>) -> Self {
 		Self {
 			dictionary,
 			start_id,
@@ -264,18 +222,18 @@ impl EncodableKeyRange for DictionaryEntryIndexKeyRange {
 	const KIND: KeyKind = KeyKind::DictionaryEntryIndex;
 
 	fn start(&self) -> Option<EncodedKey> {
-		let mut serializer = KeySerializer::with_capacity(17);
+		let mut serializer = KeySerializer::with_capacity(25);
 		serializer.extend_u8(Self::KIND as u8).extend_u64(self.dictionary);
 		if let Some(id) = self.start_id {
-			serializer.extend_u64(id);
+			serializer.extend_u128_varint(id);
 		}
 		Some(serializer.to_encoded_key())
 	}
 
 	fn end(&self) -> Option<EncodedKey> {
 		if let Some(id) = self.end_id {
-			let mut serializer = KeySerializer::with_capacity(17);
-			serializer.extend_u8(Self::KIND as u8).extend_u64(self.dictionary).extend_u64(id - 1);
+			let mut serializer = KeySerializer::with_capacity(25);
+			serializer.extend_u8(Self::KIND as u8).extend_u64(self.dictionary).extend_u128_varint(id - 1);
 			Some(serializer.to_encoded_key())
 		} else {
 			let mut serializer = KeySerializer::with_capacity(9);
@@ -330,16 +288,6 @@ pub mod tests {
 		let decoded = DictionaryEntryIndexKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.dictionary, key.dictionary);
 		assert_eq!(decoded.id, key.id);
-	}
-
-	#[test]
-	fn test_dictionary_sequence_key_encode_decode() {
-		let key = DictionarySequenceKey {
-			dictionary: DictionaryId(7),
-		};
-		let encoded = key.encode();
-		let decoded = DictionarySequenceKey::decode(&encoded).unwrap();
-		assert_eq!(decoded.dictionary, key.dictionary);
 	}
 
 	#[test]

@@ -87,7 +87,7 @@ impl QueryNode for DictionaryScanNode {
 			}
 
 			if let Some(key) = DictionaryEntryIndexKey::decode(&entry.key) {
-				let entry_id = DictionaryEntryId::from_u128(key.id as u128, dict_def.id_type.clone())?;
+				let entry_id = DictionaryEntryId::from_u128(key.id, dict_def.id_type.clone())?;
 
 				let value: Value = from_bytes(&entry.row).map_err(|e| {
 					internal_error!("Failed to deserialize dictionary value: {}", e)

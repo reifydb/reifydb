@@ -287,6 +287,69 @@ pub fn encode_u128(value: u128) -> [u8; 16] {
 	(!value).to_be_bytes()
 }
 
+pub fn encode_u128_varint<B: ByteSink>(value: u128, output: &mut B) {
+	if value < (1 << 56) {
+		encode_u64_varint(value as u64, output);
+	} else {
+		output.push(!0xff);
+		let bytes = value.to_be_bytes();
+		let start = bytes.iter().position(|&b| b != 0).unwrap_or(bytes.len() - 1);
+		let sig = &bytes[start..];
+		output.push(!(sig.len() as u8));
+		for &b in sig {
+			output.push(!b);
+		}
+	}
+}
+
+pub fn decode_u128_varint(input: &mut &[u8]) -> Result<u128> {
+	if input.is_empty() {
+		return Err(Error::from(TypeError::SerdeKeycode {
+			message: "unexpected end of key while decoding u128 varint".to_string(),
+		}));
+	}
+	let first = !input[0];
+	let prefix = first.leading_ones() as usize;
+	if prefix < 8 {
+		let len = prefix + 1;
+		if input.len() < len {
+			return Err(Error::from(TypeError::SerdeKeycode {
+				message: "unexpected end of key while decoding u128 varint".to_string(),
+			}));
+		}
+		let mut buf = [0u8; 9];
+		for (dst, &src) in buf[..len].iter_mut().zip(&input[..len]) {
+			*dst = !src;
+		}
+		let mut slice = &buf[..len];
+		let v = varint::decode_u64_varint(&mut slice).ok_or_else(|| {
+			Error::from(TypeError::SerdeKeycode {
+				message: "failed to decode u128 varint".to_string(),
+			})
+		})?;
+		*input = &input[len..];
+		Ok(v as u128)
+	} else {
+		if input.len() < 2 {
+			return Err(Error::from(TypeError::SerdeKeycode {
+				message: "unexpected end of key while decoding u128 varint length".to_string(),
+			}));
+		}
+		let len = (!input[1]) as usize;
+		if len == 0 || len > 16 || input.len() < 2 + len {
+			return Err(Error::from(TypeError::SerdeKeycode {
+				message: "invalid u128 varint length".to_string(),
+			}));
+		}
+		let mut bytes = [0u8; 16];
+		for (i, &src) in input[2..2 + len].iter().enumerate() {
+			bytes[16 - len + i] = !src;
+		}
+		*input = &input[2 + len..];
+		Ok(u128::from_be_bytes(bytes))
+	}
+}
+
 pub fn encode_bytes<B: ByteSink>(bytes: &[u8], output: &mut B) {
 	let mut start = 0;
 	while let Some(pos) = bytes[start..].iter().position(|&b| b == 0xff) {
@@ -344,6 +407,73 @@ pub mod tests {
 
 	use super::*;
 	use crate::util::encoding::keycode::serializer::KeySerializer;
+
+	#[test]
+	fn test_u128_varint_roundtrip_and_descending_order() {
+		let values: Vec<u128> = vec![
+			0,
+			1,
+			2,
+			126,
+			127,
+			128,
+			129,
+			(1 << 14) - 1,
+			1 << 14,
+			(1 << 21) - 1,
+			1 << 21,
+			(1 << 28) - 1,
+			1 << 28,
+			(1 << 35) - 1,
+			1 << 35,
+			(1 << 42) - 1,
+			1 << 42,
+			(1 << 49) - 1,
+			1 << 49,
+			(1 << 56) - 1,
+			1 << 56,
+			(1u128 << 63) - 1,
+			1u128 << 63,
+			u64::MAX as u128 - 1,
+			u64::MAX as u128,
+			u64::MAX as u128 + 1,
+			1u128 << 100,
+			u128::MAX - 1,
+			u128::MAX,
+		];
+
+		for &v in &values {
+			let mut buf = Vec::new();
+			encode_u128_varint(v, &mut buf);
+			let mut slice = buf.as_slice();
+			let decoded = decode_u128_varint(&mut slice).unwrap();
+			assert_eq!(decoded, v, "roundtrip failed for {}", v);
+			assert!(slice.is_empty(), "trailing bytes after decoding {}", v);
+		}
+
+		// keycode is descending: a strictly larger value must encode to a
+		// lexicographically smaller key, so a forward scan yields the max id first.
+		let mut sorted = values.clone();
+		sorted.sort();
+		sorted.dedup();
+		let mut prev: Option<(u128, Vec<u8>)> = None;
+		for &v in &sorted {
+			let mut buf = Vec::new();
+			encode_u128_varint(v, &mut buf);
+			if let Some((pv, pe)) = &prev {
+				assert!(*pv < v);
+				assert!(
+					buf < *pe,
+					"not descending: {} -> {:?} should sort before {} -> {:?}",
+					v,
+					buf,
+					pv,
+					pe
+				);
+			}
+			prev = Some((v, buf));
+		}
+	}
 
 	#[derive(Debug, Deserialize, Serialize, PartialEq)]
 	enum Key<'a> {

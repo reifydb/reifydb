@@ -187,7 +187,6 @@ impl FlowTransaction {
 				KeyKind::DictionaryEntry => ReadFrom::DictionaryQuery,
 				KeyKind::DictionaryEntryIndex => ReadFrom::DictionaryQuery,
 				KeyKind::NamespaceDictionary => ReadFrom::Query,
-				KeyKind::DictionarySequence => ReadFrom::DictionaryQuery,
 				KeyKind::Metric => ReadFrom::Query,
 				KeyKind::FlowVersion => ReadFrom::Query,
 				KeyKind::Subscription => ReadFrom::Query,

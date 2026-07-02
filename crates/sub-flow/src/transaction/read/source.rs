@@ -54,7 +54,6 @@ pub(crate) fn read_from(key: &EncodedKey) -> ReadFrom {
 			KeyKind::DictionaryEntry => ReadFrom::Query,
 			KeyKind::DictionaryEntryIndex => ReadFrom::Query,
 			KeyKind::NamespaceDictionary => ReadFrom::Query,
-			KeyKind::DictionarySequence => ReadFrom::Query,
 			KeyKind::Metric => ReadFrom::Query,
 			KeyKind::FlowVersion => ReadFrom::Query,
 			KeyKind::Subscription => ReadFrom::Query,

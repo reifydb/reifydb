@@ -195,7 +195,7 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 			let id_value = col.get_value(row_idx);
 			if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
 				let index_key =
-					DictionaryEntryIndexKey::new(dictionary.id, entry_id.to_u128() as u64).encode();
+					DictionaryEntryIndexKey::new(dictionary.id, entry_id.to_u128()).encode();
 				match txn.get(&index_key)? {
 					Some(encoded) => {
 						let value: Value = from_bytes(&encoded).unwrap_or(Value::none());

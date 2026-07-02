@@ -20,6 +20,7 @@ use reifydb_core::{
 		catalog::{flow::FlowId, shape::ShapeId},
 		change::Change,
 	},
+	key::{Key, kind::KeyKind},
 };
 use reifydb_runtime::{
 	actor::{
@@ -633,6 +634,20 @@ impl PoolActor {
 		for pending in writes {
 			for (key, value) in pending.iter_sorted() {
 				if combined.contains_key(key) {
+					if matches!(
+						Key::kind(key),
+						Some(KeyKind::DictionaryEntry | KeyKind::DictionaryEntryIndex)
+					) {
+						if let PendingWrite::Set(row) = value
+							&& combined.get(key) == Some(row)
+						{
+							continue;
+						}
+						return Err(FlowDispatchError::DictionaryWriteDivergence {
+							key: encode(key.as_ref()),
+						}
+						.into());
+					}
 					return Err(FlowDispatchError::KeyspaceOverlap {
 						key: encode(key.as_ref()),
 					}
@@ -654,5 +669,52 @@ impl PoolActor {
 		}
 
 		Ok(combined)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::{
+		encoded::{key::EncodedKey, row::EncodedRow},
+		key::dictionary::DictionaryEntryKey,
+	};
+	use reifydb_runtime::context::clock::MockClock;
+	use reifydb_value::{util::cowvec::CowVec, value::dictionary::DictionaryId};
+
+	use super::*;
+
+	fn pool() -> PoolActor {
+		PoolActor::new(Vec::new(), Clock::Mock(MockClock::from_millis(0)))
+	}
+
+	fn entry_key() -> EncodedKey {
+		DictionaryEntryKey::encoded(DictionaryId(1), [7u8; 16])
+	}
+
+	fn pending_with(value: &[u8]) -> Pending {
+		let mut p = Pending::new();
+		p.insert(entry_key(), EncodedRow(CowVec::new(value.to_vec())));
+		p
+	}
+
+	// Two flow workers legitimately co-write the same dictionary entry key when they intern the
+	// same brand-new value in one round; the shared allocator guarantees identical bytes, so
+	// aggregation must merge them into one rather than reject them as a keyspace overlap. If the
+	// two writes ever DISAGREE, the allocator forked one value into two ids (a bijection breach)
+	// - aggregation must then fail loud rather than silently keep the first, which is the hole the
+	// bare pool-relaxation left open.
+	#[test]
+	fn identical_dict_writes_merge_divergent_ones_fail_loud() {
+		let pool = pool();
+
+		let merged = pool
+			.aggregate_pending_writes(vec![pending_with(b"wsol"), pending_with(b"wsol")])
+			.expect("byte-identical dictionary writes must merge, not overlap-error");
+		assert!(merged.contains_key(&entry_key()), "the shared dict key must survive the merge exactly once");
+
+		let err = pool
+			.aggregate_pending_writes(vec![pending_with(b"wsol"), pending_with(b"usdc")])
+			.expect_err("divergent writes for one dict key must fail loud, not silently keep the first");
+		assert_eq!(err.0.code.as_str(), "FLOW_038", "divergence must surface as its dedicated diagnostic");
 	}
 }

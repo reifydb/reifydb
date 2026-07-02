@@ -47,6 +47,8 @@ use reifydb_value::{Result, error::Error, value::Value};
 use tracing::instrument;
 
 #[cfg(reifydb_target = "native")]
+use crate::error::{FlowStateError, NativeOperatorError};
+#[cfg(reifydb_target = "native")]
 use crate::operator::BoxedOperator;
 #[cfg(reifydb_target = "native")]
 use crate::operator::ffi::FFIOperator;
@@ -55,9 +57,8 @@ use crate::operator::native::native_operator_loader;
 use crate::{
 	builder::CustomOperators,
 	engine::cache::{ExecutionLevelCache, ScheduleCache},
-	error::{FlowStateError, NativeOperatorError},
 	operator::OperatorCell,
-	transaction::row_allocator::RowAllocatorRegistry,
+	transaction::allocators::FlowAllocators,
 };
 
 pub struct FlowEngineInner {
@@ -76,7 +77,7 @@ pub struct FlowEngineInner {
 	pub(crate) runtime_context: RuntimeContext,
 	pub(crate) custom_operators: CustomOperators,
 	operator_tick_times: DashMap<FlowNodeId, u64>,
-	pub(crate) row_allocators: RowAllocatorRegistry,
+	pub(crate) allocators: FlowAllocators,
 }
 
 #[derive(Clone)]
@@ -91,7 +92,7 @@ impl FlowEngine {
 		event_bus: EventBus,
 		runtime_context: RuntimeContext,
 		custom_operators: CustomOperators,
-		row_allocators: RowAllocatorRegistry,
+		allocators: FlowAllocators,
 	) -> Self {
 		Self {
 			inner: Arc::new(RwLock::new(FlowEngineInner::new(
@@ -100,7 +101,7 @@ impl FlowEngine {
 				event_bus,
 				runtime_context,
 				custom_operators,
-				row_allocators,
+				allocators,
 			))),
 		}
 	}
@@ -122,7 +123,7 @@ impl FlowEngineInner {
 	#[instrument(
 		name = "flow::engine::new",
 		level = "debug",
-		skip(catalog, executor, event_bus, runtime_context, custom_operators)
+		skip(catalog, executor, event_bus, runtime_context, custom_operators, allocators)
 	)]
 	pub fn new(
 		catalog: Catalog,
@@ -130,7 +131,7 @@ impl FlowEngineInner {
 		event_bus: EventBus,
 		runtime_context: RuntimeContext,
 		custom_operators: CustomOperators,
-		row_allocators: RowAllocatorRegistry,
+		allocators: FlowAllocators,
 	) -> Self {
 		Self {
 			catalog,
@@ -147,7 +148,7 @@ impl FlowEngineInner {
 			runtime_context,
 			custom_operators,
 			operator_tick_times: DashMap::new(),
-			row_allocators,
+			allocators,
 		}
 	}
 
@@ -272,7 +273,7 @@ impl FlowEngineInner {
 
 		for node_id in node_ids {
 			self.operators.remove(&node_id);
-			self.row_allocators.evict(node_id);
+			self.allocators.row.evict(node_id);
 		}
 
 		for entries in self.sources.values_mut() {

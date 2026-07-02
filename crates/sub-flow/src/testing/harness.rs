@@ -36,7 +36,7 @@ use crate::{
 		context::native::NativeOperatorContext,
 		native::{FlowNativeBridge, NativeBridgedOperator, NativeOperatorAdapter},
 	},
-	transaction::{DeferredParams, FlowTransaction, row_allocator::RowAllocatorRegistry},
+	transaction::{DeferredParams, FlowTransaction, allocators::FlowAllocators},
 };
 
 pub struct NativeOperatorHarness<C: OperatorLogic + OperatorMetadata + 'static> {
@@ -45,7 +45,7 @@ pub struct NativeOperatorHarness<C: OperatorLogic + OperatorMetadata + 'static> 
 	node_id: FlowNodeId,
 	version: u64,
 	pending: Pending,
-	row_allocators: RowAllocatorRegistry,
+	allocators: FlowAllocators,
 	current: Option<FlowTransaction>,
 	history: Vec<Change>,
 	_phantom: PhantomData<C>,
@@ -69,7 +69,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 			catalog: Catalog::testing(),
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(MockClock::from_millis(1000)),
-			row_allocators: self.row_allocators.clone(),
+			allocators: self.allocators.clone(),
 		})
 	}
 
@@ -252,7 +252,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarnessBuilder
 			node_id: self.node_id,
 			version: self.version.0,
 			pending: Pending::new(),
-			row_allocators: RowAllocatorRegistry::new(),
+			allocators: FlowAllocators::new(),
 			current: None,
 			history: Vec::new(),
 			_phantom: PhantomData,
