@@ -11,7 +11,12 @@ use std::{
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_profiler::{category::CategorySet, intern::DimInterner, layer::ProfilerLayer, sink::ProfilerSink};
-use reifydb_runtime::{context::clock::Clock, shutdown::Shutdown, sync::rwlock::RwLock};
+use reifydb_runtime::{
+	actor::system::ActorSpawner,
+	context::clock::Clock,
+	shutdown::Shutdown,
+	sync::{mutex::Mutex, rwlock::RwLock},
+};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use tracing::{info, instrument};
 
@@ -24,6 +29,7 @@ pub struct ProfilerSubsystem {
 	accumulator: Arc<RwLock<ProfilerAccumulator>>,
 	sink: Arc<dyn ProfilerSink>,
 	clock: Clock,
+	snapshot_scope: Mutex<Option<ActorSpawner>>,
 }
 
 impl ProfilerSubsystem {
@@ -46,6 +52,7 @@ impl ProfilerSubsystem {
 			accumulator,
 			sink,
 			clock,
+			snapshot_scope: Mutex::new(None),
 		}
 	}
 
@@ -73,6 +80,14 @@ impl ProfilerSubsystem {
 	pub fn accumulator(&self) -> Arc<RwLock<ProfilerAccumulator>> {
 		Arc::clone(&self.accumulator)
 	}
+
+	pub(crate) fn set_snapshot_scope(&self, scope: ActorSpawner) {
+		*self.snapshot_scope.lock() = Some(scope);
+	}
+
+	pub fn snapshot_persistence_enabled(&self) -> bool {
+		self.snapshot_scope.lock().is_some()
+	}
 }
 
 impl Shutdown for ProfilerSubsystem {
@@ -82,6 +97,7 @@ impl Shutdown for ProfilerSubsystem {
 			return;
 		}
 		info!("Profiler subsystem shutting down");
+		drop(self.snapshot_scope.lock().take());
 	}
 }
 

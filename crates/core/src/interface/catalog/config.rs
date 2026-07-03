@@ -76,6 +76,7 @@ pub enum ConfigKey {
 	MetricFlushInterval,
 	MetricsRuntimeRetention,
 	MetricsProfilerRetention,
+	MetricsProfilerSnapshotInterval,
 }
 
 impl ConfigKey {
@@ -121,6 +122,7 @@ impl ConfigKey {
 			Self::MetricFlushInterval,
 			Self::MetricsRuntimeRetention,
 			Self::MetricsProfilerRetention,
+			Self::MetricsProfilerSnapshotInterval,
 		]
 	}
 
@@ -168,6 +170,9 @@ impl ConfigKey {
 			Self::MetricFlushInterval => Value::duration_seconds(10),
 			Self::MetricsRuntimeRetention => Value::duration_seconds(7 * 24 * 3600),
 			Self::MetricsProfilerRetention => Value::duration_seconds(3600),
+			Self::MetricsProfilerSnapshotInterval => Value::None {
+				inner: ValueType::Duration,
+			},
 		}
 	}
 
@@ -310,6 +315,13 @@ impl ConfigKey {
 				 yet; changing it affects series created after the change, not already-seeded ones. \
 				 Must be > 0."
 			}
+			Self::MetricsProfilerSnapshotInterval => {
+				"How often the profiler snapshot actor flushes in-memory aggregates into \
+				 system::metrics::profiler::*::snapshots. Defaults to none, which disables snapshot \
+				 persistence entirely (the actor is never spawned) and leaves only the live ::current \
+				 view available; when set, must be > 0. Read once at subsystem construction, so \
+				 changing it requires a restart."
+			}
 		}
 	}
 
@@ -355,6 +367,7 @@ impl ConfigKey {
 			Self::MetricFlushInterval => false,
 			Self::MetricsRuntimeRetention => true,
 			Self::MetricsProfilerRetention => true,
+			Self::MetricsProfilerSnapshotInterval => true,
 		}
 	}
 
@@ -400,6 +413,7 @@ impl ConfigKey {
 			Self::MetricFlushInterval => &[ValueType::Duration],
 			Self::MetricsRuntimeRetention => &[ValueType::Duration],
 			Self::MetricsProfilerRetention => &[ValueType::Duration],
+			Self::MetricsProfilerSnapshotInterval => &[ValueType::Duration],
 		}
 	}
 
@@ -445,6 +459,7 @@ impl ConfigKey {
 			Self::MetricFlushInterval => false,
 			Self::MetricsRuntimeRetention => false,
 			Self::MetricsProfilerRetention => false,
+			Self::MetricsProfilerSnapshotInterval => true,
 		}
 	}
 
@@ -620,6 +635,20 @@ impl ConfigKey {
 				}
 				_ => Ok(()),
 			},
+			Self::MetricsProfilerSnapshotInterval => match value {
+				Value::None {
+					..
+				} => Ok(()),
+				Value::Duration(d) => {
+					if d.is_positive() {
+						Ok(())
+					} else {
+						Err("METRICS_PROFILER_SNAPSHOT_INTERVAL must be greater than zero"
+							.to_string())
+					}
+				}
+				_ => Ok(()),
+			},
 			_ => Ok(()),
 		}
 	}
@@ -748,6 +777,7 @@ impl fmt::Display for ConfigKey {
 			Self::MetricFlushInterval => write!(f, "METRIC_FLUSH_INTERVAL"),
 			Self::MetricsRuntimeRetention => write!(f, "METRICS_RUNTIME_RETENTION"),
 			Self::MetricsProfilerRetention => write!(f, "METRICS_PROFILER_RETENTION"),
+			Self::MetricsProfilerSnapshotInterval => write!(f, "METRICS_PROFILER_SNAPSHOT_INTERVAL"),
 		}
 	}
 }
@@ -797,6 +827,7 @@ impl FromStr for ConfigKey {
 			"METRIC_FLUSH_INTERVAL" => Ok(Self::MetricFlushInterval),
 			"METRICS_RUNTIME_RETENTION" => Ok(Self::MetricsRuntimeRetention),
 			"METRICS_PROFILER_RETENTION" => Ok(Self::MetricsProfilerRetention),
+			"METRICS_PROFILER_SNAPSHOT_INTERVAL" => Ok(Self::MetricsProfilerSnapshotInterval),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
 		}
 	}
@@ -936,9 +967,10 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 40);
+		assert_eq!(all.len(), 41);
 		assert!(all.contains(&ConfigKey::MetricsRuntimeRetention));
 		assert!(all.contains(&ConfigKey::MetricsProfilerRetention));
+		assert!(all.contains(&ConfigKey::MetricsProfilerSnapshotInterval));
 		assert!(all.contains(&ConfigKey::VersionEpochSampleInterval));
 		assert!(all.contains(&ConfigKey::CdcWatermarkWaitTimeout));
 		assert!(all.contains(&ConfigKey::CdcConsumeWaitTimeout));
@@ -1418,6 +1450,74 @@ mod tests {
 				other => panic!("{key}: expected InvalidValue, got {other:?}"),
 			}
 		}
+	}
+
+	#[test]
+	fn test_metrics_profiler_snapshot_interval_default_is_none() {
+		// Snapshot persistence is opt-in: leaving this key untouched must not spawn the
+		// ProfilerSnapshotActor or grow system::metrics::profiler::*::snapshots. A consumer
+		// that wants persisted profiler snapshots sets this explicitly to a positive duration.
+		assert_eq!(
+			ConfigKey::MetricsProfilerSnapshotInterval.default_value(),
+			Value::None {
+				inner: ValueType::Duration,
+			}
+		);
+	}
+
+	#[test]
+	fn test_metrics_profiler_snapshot_interval_accepts_none_to_disable_persistence() {
+		// None is the mechanism a consumer (e.g. raptor, which only ever reads the live
+		// in-memory accumulator and never queries the persisted ::snapshots series) uses to
+		// stop ProfilerSnapshotActor from being spawned at all, eliminating unbounded
+		// system::metrics::profiler::*::snapshots disk growth.
+		let none = Value::None {
+			inner: ValueType::Duration,
+		};
+		assert_eq!(ConfigKey::MetricsProfilerSnapshotInterval.accept(none.clone()).unwrap(), none);
+	}
+
+	#[test]
+	fn test_metrics_profiler_snapshot_interval_rejects_zero_and_negative() {
+		// A zero or negative tick interval would either busy-loop the snapshot actor or fail
+		// to schedule its timer, so it must be rejected like every other positive-duration
+		// knob rather than silently misbehaving at runtime.
+		match ConfigKey::MetricsProfilerSnapshotInterval.accept(Value::duration_seconds(0)).unwrap_err() {
+			AcceptError::InvalidValue(reason) => {
+				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");
+			}
+			other => panic!("expected InvalidValue, got {other:?}"),
+		}
+		assert!(matches!(
+			ConfigKey::MetricsProfilerSnapshotInterval.accept(Value::duration_seconds(-5)),
+			Err(AcceptError::InvalidValue(_))
+		));
+	}
+
+	#[test]
+	fn test_metrics_profiler_snapshot_interval_requires_restart() {
+		// ProfilerSnapshotActor::init() arms a single fixed-period ctx.schedule_tick(...) at
+		// actor start and never re-reads this config live, so a change without a restart would
+		// silently have no effect. This test exists so a future change that makes the actor
+		// live-reconfigurable doesn't forget to flip this bit back to false.
+		assert!(ConfigKey::MetricsProfilerSnapshotInterval.requires_restart());
+	}
+
+	#[test]
+	fn test_metrics_profiler_snapshot_interval_round_trips_through_display_and_from_str() {
+		assert_eq!(
+			"METRICS_PROFILER_SNAPSHOT_INTERVAL".parse::<ConfigKey>().unwrap(),
+			ConfigKey::MetricsProfilerSnapshotInterval
+		);
+		assert_eq!(
+			format!("{}", ConfigKey::MetricsProfilerSnapshotInterval),
+			"METRICS_PROFILER_SNAPSHOT_INTERVAL"
+		);
+	}
+
+	#[test]
+	fn test_metrics_profiler_snapshot_interval_in_all() {
+		assert!(ConfigKey::all().contains(&ConfigKey::MetricsProfilerSnapshotInterval));
 	}
 
 	#[test]

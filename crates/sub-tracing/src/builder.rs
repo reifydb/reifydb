@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::io::{stderr, stdout};
+
 use tracing::{Level, Subscriber};
 use tracing_subscriber::{
 	EnvFilter, Layer, Registry,
@@ -127,9 +129,9 @@ where
 		FmtSpan::NONE
 	};
 	let writer = if console_config.use_stderr_for_errors() {
-		BoxMakeWriter::new(std::io::stderr.with_max_level(Level::ERROR).or_else(std::io::stdout))
+		BoxMakeWriter::new(stderr.with_max_level(Level::ERROR).or_else(stdout))
 	} else {
-		BoxMakeWriter::new(std::io::stdout)
+		BoxMakeWriter::new(stdout)
 	};
 	Some(fmt::layer()
 		.with_ansi(console_config.use_color())

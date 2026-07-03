@@ -3,7 +3,14 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{event::EventBus, interface::catalog::id::NamespaceId, util::ioc::IocContainer};
+use reifydb_core::{
+	event::EventBus,
+	interface::catalog::{
+		config::{ConfigKey, GetConfig},
+		id::NamespaceId,
+	},
+	util::ioc::IocContainer,
+};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_profiler::{
 	category::{ALL_CATEGORIES, ProfilerCategory},
@@ -101,10 +108,19 @@ impl ProfilerSubsystemFactory {
 		engine: StandardEngine,
 		ioc: &IocContainer,
 	) -> Result<()> {
+		let Some(interval) =
+			engine.catalog().get_config_duration_opt(ConfigKey::MetricsProfilerSnapshotInterval)
+		else {
+			return Ok(());
+		};
+
 		let spawner = ioc.resolve::<ActorSpawner>()?;
 		let event_bus = ioc.resolve::<EventBus>()?;
-		let snapshot_actor = ProfilerSnapshotActor::new(subsystem.accumulator(), engine, event_bus);
-		spawner.spawn_background("profile-snapshot", snapshot_actor);
+		let scope = spawner.scope();
+		let snapshot_actor =
+			ProfilerSnapshotActor::new(subsystem.accumulator(), engine, event_bus).with_interval(interval);
+		scope.spawn_background("profile-snapshot", snapshot_actor);
+		subsystem.set_snapshot_scope(scope);
 		Ok(())
 	}
 }
