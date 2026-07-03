@@ -10,7 +10,7 @@ use reifydb_core::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent,
+			AccumulatorEvent, EmitKind,
 			rolling::{
 				RollingBuckets, RollingBuffer, RollingEngine, RollingEviction, RollingExpiry,
 				RollingResult,
@@ -251,9 +251,22 @@ fn finish_rolling_results(
 	let mut store = FlowWindowStore::new(txn, operator.core.node);
 	for r in results {
 		emitted.insert(r.group);
-		let gvals = group_values.get(&r.group).cloned().unwrap_or_default();
 		let meta_key = operator.create_rolling_meta_key(r.group);
 		let prior = store.state_get::<RollingWindowMeta>(&meta_key)?;
+		if matches!(r.kind, EmitKind::Remove) {
+			if let Some(m) = prior {
+				let pre = operator.core.build_engine_row(
+					&m.group_values,
+					&m.last_value,
+					RowNumber(m.row_number),
+					ts_nanos,
+				)?;
+				diffs.push(Diff::remove(Columns::from_row(&pre)));
+				store.state_drop(&meta_key)?;
+			}
+			continue;
+		}
+		let gvals = group_values.get(&r.group).cloned().unwrap_or_default();
 		let post = operator.core.build_engine_row(&gvals, &r.value, r.row_number, ts_nanos)?;
 		match prior {
 			Some(m) => {
