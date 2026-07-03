@@ -3,7 +3,7 @@
 
 use std::{collections::BTreeMap, ops::Bound, sync::Arc};
 
-use reifydb_core::encoded::key::EncodedKey;
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_value::{Result, util::cowvec::CowVec};
 use tracing::instrument;

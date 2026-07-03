@@ -1,20 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
+use reifydb_abi::data::constraint::FFITypeConstraint;
+use reifydb_codec::{
+	constraint::type_constraint_from_ffi,
 	encoded::{
-		key::EncodedKey,
 		row::EncodedRow,
 		shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 	},
-	key::{
-		EncodableKey,
-		kind::KeyKind,
-		shape::{RowShapeFieldKey, RowShapeKey},
-	},
+	key::encoded::EncodedKey,
+};
+use reifydb_core::key::{
+	EncodableKey,
+	kind::KeyKind,
+	shape::{RowShapeFieldKey, RowShapeKey},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::constraint::{FFITypeConstraint, TypeConstraint};
 
 use super::CatalogChangeApplier;
 use crate::{
@@ -90,12 +91,13 @@ fn try_reconstruct(
 				let constraint_type = shape_field::SHAPE.get_u8(row, shape_field::CONSTRAINT_TYPE);
 				let constraint_param1 = shape_field::SHAPE.get_u32(row, shape_field::CONSTRAINT_P1);
 				let constraint_param2 = shape_field::SHAPE.get_u32(row, shape_field::CONSTRAINT_P2);
-				let constraint = TypeConstraint::from_ffi(FFITypeConstraint {
+				let constraint = type_constraint_from_ffi(&FFITypeConstraint {
 					base_type,
 					constraint_type,
 					constraint_param1,
 					constraint_param2,
-				});
+				})
+				.expect("invalid persisted type constraint tag");
 				let offset = shape_field::SHAPE.get_u32(row, shape_field::OFFSET);
 				let size = shape_field::SHAPE.get_u32(row, shape_field::SIZE);
 				let align = shape_field::SHAPE.get_u8(row, shape_field::ALIGN);

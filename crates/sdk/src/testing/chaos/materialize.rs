@@ -2,9 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_abi::flow::diff::DiffType;
-use reifydb_core::{
-	encoded::shape::SHAPE_HEADER_SIZE, interface::change::Change, row::Row, value::column::columns::Columns,
-};
+use reifydb_codec::encoded::shape::SHAPE_HEADER_SIZE;
+use reifydb_core::{interface::change::Change, row::Row, value::column::columns::Columns};
 use reifydb_value::{
 	reifydb_assertions,
 	value::{Value, date::Date, datetime::DateTime, duration::Duration, time::Time, value_type::ValueType},
@@ -194,9 +193,9 @@ fn project_key(row: &MaterializedRow, output_key_columns: &[String]) -> OutputKe
 
 #[cfg(test)]
 mod tests {
+	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 	use reifydb_core::{
 		common::CommitVersion,
-		encoded::shape::{RowShape, RowShapeField},
 		interface::{
 			catalog::shape::ShapeId,
 			change::{Change, ChangeOrigin, Diff, Diffs},

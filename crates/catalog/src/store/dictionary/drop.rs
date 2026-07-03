@@ -57,10 +57,8 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::{
-		encoded::row::EncodedRow,
-		key::dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey},
-	};
+	use reifydb_codec::encoded::row::EncodedRow;
+	use reifydb_core::key::dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::{

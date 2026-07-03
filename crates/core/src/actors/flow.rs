@@ -6,13 +6,13 @@ use std::{
 	sync::Arc,
 };
 
+use reifydb_codec::encoded::shape::RowShape;
 use reifydb_runtime::actor::system::ActorHandle;
 use reifydb_value::{Result, error::Error, value::datetime::DateTime};
 
 use super::pending::Pending;
 use crate::{
 	common::CommitVersion,
-	encoded::shape::RowShape,
 	interface::{
 		catalog::{flow::FlowId, shape::ShapeId},
 		cdc::Cdc,

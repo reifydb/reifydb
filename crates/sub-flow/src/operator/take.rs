@@ -8,11 +8,11 @@ use std::{
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::operator::capabilities::OperatorCapability;
+use reifydb_codec::encoded::{
+	row::EncodedRow,
+	shape::{RowShape, RowShapeField},
+};
 use reifydb_core::{
-	encoded::{
-		row::EncodedRow,
-		shape::{RowShape, RowShapeField},
-	},
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},

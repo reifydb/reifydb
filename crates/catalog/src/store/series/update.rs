@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	encoded::row::EncodedRow, interface::catalog::series::SeriesMetadata, key::series::SeriesMetadataKey,
-};
+use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_core::{interface::catalog::series::SeriesMetadata, key::series::SeriesMetadataKey};
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, Result, store::series::shape::series_metadata};

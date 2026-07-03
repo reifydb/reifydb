@@ -8,13 +8,13 @@
 
 use std::sync::Arc;
 
+use reifydb_codec::{
+	encoded::row::EncodedRow,
+	key::encoded::{EncodedKey, EncodedKeyRange},
+};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
-	},
 	execution::ExecutionResult,
 	interface::{
 		catalog::{policy::SessionOp, shape::ShapeId},

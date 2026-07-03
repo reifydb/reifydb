@@ -6,9 +6,9 @@ use std::sync::{
 	atomic::{AtomicU64, Ordering},
 };
 
+use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::shape::{RowShape, RowShapeField},
 	key::{EncodableKey, transaction_version::TransactionVersionKey},
 };
 use reifydb_runtime::sync::mutex::Mutex;

@@ -24,7 +24,8 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_core::{common::CommitVersion, encoded::shape::RowShape, interface::catalog::flow::FlowNodeId};
+use reifydb_codec::encoded::shape::RowShape;
+use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
 use reifydb_value::value::Value;
 
 pub mod accumulator_oracle;
@@ -344,7 +345,7 @@ impl IntoColumnSampler for Range<f64> {
 #[cfg(test)]
 mod tests {
 	use reifydb_abi::operator::capabilities::OperatorCapability;
-	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 	use reifydb_value::value::value_type::ValueType;
 
 	use super::{config::BatchSizeDist, *};

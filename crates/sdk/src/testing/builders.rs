@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::shape::{RowShape, RowShapeField},
 	interface::{
 		catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId},
 		change::{Change, ChangeOrigin, Diff, Diffs},
@@ -195,7 +195,8 @@ impl TestLayoutBuilder {
 }
 
 pub mod helpers {
-	use reifydb_core::{encoded::shape::RowShape, interface::change::Change, row::Row};
+	use reifydb_codec::encoded::shape::RowShape;
+	use reifydb_core::{interface::change::Change, row::Row};
 	use reifydb_value::value::{row_number::RowNumber, value_type::ValueType};
 
 	use super::*;

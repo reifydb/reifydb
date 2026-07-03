@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	common::CommitVersion, encoded::key::EncodedKey, fingerprint::RequestFingerprint, metric::StatementMetric,
-	profiler::ProfilerCategoryId,
+	common::CommitVersion, fingerprint::RequestFingerprint, metric::StatementMetric, profiler::ProfilerCategoryId,
 };
 
 define_event! {

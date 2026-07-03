@@ -3,12 +3,12 @@
 
 use std::{collections::HashMap, mem::take, sync::Arc};
 
+use reifydb_codec::{
+	encoded::row::EncodedRow,
+	key::encoded::{EncodedKey, EncodedKeyRange},
+};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
-	},
 	event::EventBus,
 	execution::ExecutionResult,
 	interface::{

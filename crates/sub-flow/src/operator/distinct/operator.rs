@@ -6,8 +6,8 @@ use std::{collections::HashSet, sync::LazyLock};
 use indexmap::IndexMap;
 use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::operator::capabilities::OperatorCapability;
+use reifydb_codec::{encoded::shape::RowShape, key::encoded::EncodedKey};
 use reifydb_core::{
-	encoded::{key::EncodedKey, shape::RowShape},
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
@@ -23,12 +23,13 @@ use reifydb_engine::{
 };
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
-use reifydb_runtime::{context::RuntimeContext, hash::Hash128};
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_sdk::operator::Tick;
 use reifydb_value::{
 	Result,
 	error::Error,
 	params::Params,
+	util::hash::Hash128,
 	value::{blob::Blob, duration::Duration},
 };
 

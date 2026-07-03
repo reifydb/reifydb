@@ -3,7 +3,8 @@
 
 use std::sync::Arc;
 
-use reifydb_core::encoded::shape::{RowShape, RowShapeField};
+use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
+use reifydb_core::row::row_shape_from_columns;
 use reifydb_engine::test_prelude::*;
 use reifydb_transaction::interceptor::{
 	dictionary_row::dictionary_row_pre_insert,
@@ -22,7 +23,7 @@ fn test_table_row_pre_insert_mutates_row() {
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
 		interceptors.table_row_pre_insert.add(Arc::new(table_row_pre_insert(|ctx| {
-			let shape = RowShape::from(&ctx.table.columns);
+			let shape = row_shape_from_columns(&ctx.table.columns);
 			shape.set_value(&mut ctx.rows[0], 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
 		})));
@@ -43,7 +44,7 @@ fn test_table_row_pre_update_mutates_row() {
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
 		interceptors.table_row_pre_update.add(Arc::new(table_row_pre_update(|ctx| {
-			let shape = RowShape::from(&ctx.table.columns);
+			let shape = row_shape_from_columns(&ctx.table.columns);
 			shape.set_value(&mut ctx.rows[0], 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
 		})));
@@ -65,7 +66,7 @@ fn test_ringbuffer_row_pre_insert_mutates_row() {
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
 		interceptors.ringbuffer_row_pre_insert.add(Arc::new(ringbuffer_row_pre_insert(|ctx| {
-			let shape = RowShape::from(&ctx.ringbuffer.columns);
+			let shape = row_shape_from_columns(&ctx.ringbuffer.columns);
 			shape.set_value(&mut ctx.rows[0], 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
 		})));
@@ -86,7 +87,7 @@ fn test_ringbuffer_row_pre_update_mutates_row() {
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
 		interceptors.ringbuffer_row_pre_update.add(Arc::new(ringbuffer_row_pre_update(|ctx| {
-			let shape = RowShape::from(&ctx.ringbuffer.columns);
+			let shape = row_shape_from_columns(&ctx.ringbuffer.columns);
 			shape.set_value(&mut ctx.rows[0], 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
 		})));

@@ -2,9 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_cdc::storage::{CdcStorage, memory::MemoryCdcStorage};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::cdc::{Cdc, SystemChange},
 };
 use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};

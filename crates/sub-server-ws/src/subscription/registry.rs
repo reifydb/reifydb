@@ -2,6 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_client::{RawChangePayload, WireFormat as ClientWireFormat};
+use reifydb_codec::{
+	frame::{encode::encode_frames, options::EncodeOptions},
+	json::to::convert_frames,
+};
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_sub_server::{
 	format::WireFormat,
@@ -10,7 +14,6 @@ use reifydb_sub_server::{
 };
 use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
 use reifydb_value::value::{frame::frame::Frame, uuid::Uuid7};
-use reifydb_wire_format::{encode::encode_frames, json::to::convert_frames, options::EncodeOptions};
 use serde_json::{Value as JsonValue, from_str, json};
 use tokio::sync::mpsc;
 use tracing::{instrument, warn};

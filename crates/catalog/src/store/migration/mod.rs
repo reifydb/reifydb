@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	encoded::row::EncodedRow,
-	interface::catalog::{
-		id::{MigrationEventId, MigrationId},
-		migration::{Migration, MigrationAction, MigrationEvent},
-	},
+use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_core::interface::catalog::{
+	id::{MigrationEventId, MigrationId},
+	migration::{Migration, MigrationAction, MigrationEvent},
 };
-use reifydb_runtime::hash::Hash128;
+use reifydb_value::util::hash::Hash128;
 use shape::{migration, migration_event};
 
 pub mod create;

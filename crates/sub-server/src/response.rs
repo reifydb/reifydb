@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::frame::{encode::encode_frames, options::EncodeOptions};
 use reifydb_value::{reifydb_assertions, value::frame::frame::Frame};
-use reifydb_wire_format::{encode::encode_frames, options::EncodeOptions};
 use serde_json::{self, Map, Value as JsonValue, to_string as json_to_string};
 
 pub const CONTENT_TYPE_JSON: &str = "application/vnd.reifydb.json";

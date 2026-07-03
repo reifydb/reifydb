@@ -87,9 +87,8 @@ impl SubscriptionTestHarness {
 		let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 		runtime.block_on(async {
-			let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto)
-				.await
-				.unwrap();
+			let mut client =
+				GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 			client.authenticate("mysecrettoken");
 
 			let ctx = TestContext::new(client);

@@ -7,7 +7,8 @@
 
 use std::{collections::HashMap, ops::Bound};
 
-use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
+use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};

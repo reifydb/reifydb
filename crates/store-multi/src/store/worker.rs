@@ -3,9 +3,9 @@
 
 use std::collections::HashMap;
 
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::key::EncodedKey,
 	event::{
 		EventBus,
 		metric::{MultiCommittedEvent, MultiDrop},

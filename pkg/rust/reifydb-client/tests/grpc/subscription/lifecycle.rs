@@ -20,7 +20,7 @@ fn test_no_changes_after_drop_subscription() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_after_unsub");
@@ -63,7 +63,7 @@ fn test_drop_cleans_up_subscriptions() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_close");
@@ -90,7 +90,7 @@ fn test_rapid_subscribe_drop() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_rapid");

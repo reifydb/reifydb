@@ -8,21 +8,19 @@ use std::{
 	marker::PhantomData,
 };
 
+use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-use crate::{
-	encoded::key::{EncodedKey, IntoEncodedKey},
-	window::{
-		accumulator::WindowAccumulator,
-		engine::{
-			AccumulatorEvent, GroupMeta, LatePolicy, MetaKey, config::WindowEngineConfig, meta_key_for,
-			rolling::RollingBuckets,
-		},
-		span::Slot,
-		state::StateCache,
-		store::WindowStore,
+use crate::window::{
+	accumulator::WindowAccumulator,
+	engine::{
+		AccumulatorEvent, GroupMeta, LatePolicy, MetaKey, config::WindowEngineConfig, meta_key_for,
+		rolling::RollingBuckets,
 	},
+	span::Slot,
+	state::StateCache,
+	store::WindowStore,
 };
 
 pub type MultiRollingBuffer<C, Accumulator> = BTreeMap<C, Accumulator>;
@@ -409,15 +407,14 @@ where
 mod tests {
 	use std::collections::BTreeMap;
 
+	use reifydb_codec::key::encoded::EncodedKey;
+
 	use super::{MultiEmit, MultiRollingBuffer, MultiRollingEngine};
-	use crate::{
-		encoded::key::EncodedKey,
-		window::engine::{
-			AccumulatorEvent,
-			config::WindowEngineConfig,
-			rolling::RollingBuckets,
-			test_support::{MockStore, SumAccumulator},
-		},
+	use crate::window::engine::{
+		AccumulatorEvent,
+		config::WindowEngineConfig,
+		rolling::RollingBuckets,
+		test_support::{MockStore, SumAccumulator},
 	};
 
 	fn test_config() -> WindowEngineConfig {

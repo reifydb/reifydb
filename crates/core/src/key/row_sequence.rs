@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::key::{
+	deserializer::KeyDeserializer,
+	encoded::{EncodedKey, EncodedKeyRange},
+	serializer::KeySerializer,
+};
+
 use super::{EncodableKey, KeyKind};
 use crate::{
-	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::catalog::shape::ShapeId,
-	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	key::catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 };
 
 #[derive(Debug, Clone, PartialEq)]

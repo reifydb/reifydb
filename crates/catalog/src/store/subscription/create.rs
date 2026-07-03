@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::tag::{type_tag_byte, value_type_from_tag_byte};
 use reifydb_core::{
 	interface::catalog::{
 		id::{SubscriptionColumnId, SubscriptionId},
@@ -73,7 +74,7 @@ impl CatalogStore {
 			subscription_column::SHAPE.set_u8(
 				&mut row,
 				subscription_column::TYPE,
-				column_to_create.ty.to_u8(),
+				type_tag_byte(&column_to_create.ty),
 			);
 
 			txn.set(&SubscriptionColumnKey::encoded(subscription, column_id), row)?;
@@ -94,7 +95,7 @@ impl CatalogStore {
 			let id = SubscriptionColumnId(subscription_column::SHAPE.get_u64(row, subscription_column::ID));
 			let name = subscription_column::SHAPE.get_utf8(row, subscription_column::NAME).to_string();
 			let ty_u8 = subscription_column::SHAPE.get_u8(row, subscription_column::TYPE);
-			let ty = ValueType::from_u8(ty_u8);
+			let ty = value_type_from_tag_byte(ty_u8);
 
 			columns.push(SubscriptionColumn {
 				id,

@@ -5,9 +5,9 @@ use reifydb_cdc::{
 	consume::{checkpoint::CdcCheckpoint, watermark::compute_watermark},
 	storage::{CdcStorage, memory::MemoryCdcStorage},
 };
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::cdc::{Cdc, CdcConsumerId, SystemChange},
 };
 use reifydb_engine::test_harness::TestEngine;

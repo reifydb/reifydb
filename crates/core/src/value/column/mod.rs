@@ -26,7 +26,6 @@ use crate::value::column::{buffer::ColumnBuffer, data::Column};
 
 pub mod buffer;
 pub mod columns;
-pub mod compressed;
 pub mod data;
 pub mod encoding;
 pub mod frame;

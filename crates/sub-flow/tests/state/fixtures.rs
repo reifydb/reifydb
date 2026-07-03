@@ -6,15 +6,11 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::{
-	actors::pending::Pending,
-	common::CommitVersion,
-	encoded::{
-		key::EncodedKey,
-		row::{EncodedRow, SHAPE_HEADER_SIZE},
-	},
-	interface::catalog::flow::FlowNodeId,
+use reifydb_codec::{
+	encoded::row::{EncodedRow, SHAPE_HEADER_SIZE},
+	key::encoded::EncodedKey,
 };
+use reifydb_core::{actors::pending::Pending, common::CommitVersion, interface::catalog::flow::FlowNodeId};
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sub_flow::transaction::{FlowTransaction, TransactionalParams};

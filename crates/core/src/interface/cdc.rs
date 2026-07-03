@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_value::value::datetime::DateTime;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	common::CommitVersion,
-	encoded::{key::EncodedKey, row::EncodedRow},
-	interface::change::Change,
-};
+use crate::{common::CommitVersion, interface::change::Change};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]

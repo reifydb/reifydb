@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	common::CommitVersion,
-	encoded::{key::EncodedKey, row::EncodedRow},
-	interface::store::MultiVersionRow,
-};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_core::{common::CommitVersion, interface::store::MultiVersionRow};
 use reifydb_value::Result;
 
 pub mod counter;

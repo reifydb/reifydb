@@ -3,12 +3,14 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::{
+use reifydb_codec::{
 	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
 		row::{EncodedRow, SHAPE_HEADER_SIZE},
 		shape::RowShape,
 	},
+	key::encoded::{EncodedKey, EncodedKeyRange},
+};
+use reifydb_core::{
 	interface::{
 		catalog::flow::FlowNodeId,
 		store::{MultiVersionBatch, MultiVersionRow},
@@ -407,16 +409,11 @@ pub mod tests {
 	use std::{collections::Bound, sync::Arc};
 
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::{
-		actors::pending::Pending,
-		common::CommitVersion,
-		encoded::{
-			key::{EncodedKey, EncodedKeyRange},
-			row::EncodedRow,
-			shape::RowShape,
-		},
-		interface::catalog::flow::FlowNodeId,
+	use reifydb_codec::{
+		encoded::{row::EncodedRow, shape::RowShape},
+		key::encoded::{EncodedKey, EncodedKeyRange},
 	};
+	use reifydb_core::{actors::pending::Pending, common::CommitVersion, interface::catalog::flow::FlowNodeId};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;

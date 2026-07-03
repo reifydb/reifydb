@@ -10,9 +10,9 @@ use std::{
 };
 
 use cleanup::cleanup_old_windows;
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::key::EncodedKey,
 	interface::catalog::config::{ConfigKey, GetConfig},
 	util::bloom::BloomFilter,
 };
@@ -421,7 +421,7 @@ mod tests {
 		thread::sleep,
 	};
 
-	use reifydb_core::encoded::key::EncodedKeyRange;
+	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::MockClock, pool::Pools};
 	use reifydb_value::value::{Value, duration::Duration};
 

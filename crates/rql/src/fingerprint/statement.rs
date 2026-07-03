@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::fingerprint::StatementFingerprint;
-use reifydb_runtime::hash::xxh3_128;
+use reifydb_value::util::hash::xxh3_128;
 
 use super::walk::{FingerprintBuffer, fingerprint_ast_slice};
 use crate::{

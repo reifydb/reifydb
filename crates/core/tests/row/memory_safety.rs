@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::encoded::shape::RowShape;
+use reifydb_codec::encoded::shape::RowShape;
 use reifydb_value::value::{blob::Blob, int::Int, value_type::ValueType};
 
 #[test]

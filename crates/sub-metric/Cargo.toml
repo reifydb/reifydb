@@ -12,6 +12,7 @@ reifydb-build = { workspace = true }
 
 [dependencies]
 reifydb-catalog = { workspace = true }
+reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-metric = { workspace = true }

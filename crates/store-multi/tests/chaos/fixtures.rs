@@ -5,15 +5,11 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::{
-	common::CommitVersion,
-	encoded::{
-		key::EncodedKey,
-		row::{EncodedRow, SHAPE_HEADER_SIZE},
-	},
-	event::EventBus,
-	interface::store::EntryKind,
+use reifydb_codec::{
+	encoded::row::{EncodedRow, SHAPE_HEADER_SIZE},
+	key::encoded::EncodedKey,
 };
+use reifydb_core::{common::CommitVersion, event::EventBus, interface::store::EntryKind};
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::clock::Clock,

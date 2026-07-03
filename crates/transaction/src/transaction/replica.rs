@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::{
+	encoded::row::EncodedRow,
+	key::encoded::{EncodedKey, EncodedKeyRange},
+};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
-	},
 	interface::{
 		change::Change,
 		store::{MultiVersionBatch, MultiVersionRow},

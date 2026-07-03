@@ -7,7 +7,8 @@ use std::{
 	sync::{Arc, OnceLock},
 };
 
-use reifydb_core::{encoded::key::EncodedKey, event::EventBus};
+use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::event::EventBus;
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSystem},
 	context::clock::Clock,

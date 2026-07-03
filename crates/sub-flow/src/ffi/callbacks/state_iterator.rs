@@ -115,9 +115,9 @@ pub(crate) fn free_iterator(handle: StateIteratorHandle) -> bool {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 	use reifydb_core::{
 		common::CommitVersion,
-		encoded::{key::EncodedKey, row::EncodedRow},
 		interface::{
 			catalog::flow::FlowNodeId,
 			store::{MultiVersionBatch, MultiVersionRow},

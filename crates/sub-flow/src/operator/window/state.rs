@@ -2,11 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use postcard::{from_bytes, to_stdvec};
-use reifydb_core::{encoded::key::EncodedKey, util::encoding::keycode::serializer::KeySerializer};
-use reifydb_runtime::hash::Hash128;
+use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_value::{
 	Result,
 	error::Error,
+	util::hash::Hash128,
 	value::{blob::Blob, row_number::RowNumber},
 };
 

@@ -7,7 +7,7 @@ use std::{
 	hash::{Hash, Hasher},
 };
 
-use reifydb_core::encoded::shape::RowShape;
+use reifydb_codec::encoded::shape::RowShape;
 use reifydb_value::value::{Value, row_number::RowNumber};
 
 use super::strategy::RowContent;
@@ -154,7 +154,7 @@ impl ChaosSchema {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::encoded::shape::RowShapeField;
+	use reifydb_codec::encoded::shape::RowShapeField;
 	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;

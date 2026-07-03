@@ -3,9 +3,12 @@
 
 use std::sync::Arc;
 
+use reifydb_codec::{
+	encoded::{row::EncodedRow, shape::RowShape},
+	key::encoded::EncodedKey,
+};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	error::diagnostic,
 	interface::{catalog::dictionary::Dictionary, resolved::ResolvedTable},
 	key::{

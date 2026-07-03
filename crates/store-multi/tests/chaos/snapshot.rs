@@ -18,10 +18,8 @@
 //! interleaved here - they are the lifecycle test's job.
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use reifydb_core::{
-	common::CommitVersion, delta::Delta, encoded::row::EncodedRow, interface::store::MultiVersionCommit,
-	key::row::RowKey,
-};
+use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_core::{common::CommitVersion, delta::Delta, interface::store::MultiVersionCommit, key::row::RowKey};
 use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore};
 use reifydb_value::util::cowvec::CowVec;
 

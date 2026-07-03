@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	encoded::shape::RowShape,
-	key::shape::{RowShapeFieldKey, RowShapeKey},
-};
+use reifydb_codec::{constraint::type_constraint_to_ffi, encoded::shape::RowShape};
+use reifydb_core::key::shape::{RowShapeFieldKey, RowShapeKey};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::reifydb_assertions;
 use tracing::instrument;
@@ -33,7 +31,7 @@ pub(crate) fn create_row_shape(txn: &mut Transaction<'_>, shape: &RowShape) -> R
 	txn.set(&RowShapeKey::encoded(fingerprint), header_row)?;
 
 	for (idx, field) in shape.fields().iter().enumerate() {
-		let ffi = field.constraint.to_ffi();
+		let ffi = type_constraint_to_ffi(&field.constraint).expect("constraint exceeds tag capacity");
 
 		let mut field_row = shape_field::SHAPE.allocate();
 		shape_field::SHAPE.set_utf8(&mut field_row, shape_field::NAME, &field.name);

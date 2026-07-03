@@ -8,11 +8,11 @@ use std::{
 	marker::PhantomData,
 };
 
+use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
-	encoded::key::{EncodedKey, IntoEncodedKey},
 	key::flow_node_internal_state::FlowNodeInternalStateKey,
 	window::{
 		accumulator::WindowAccumulator,
@@ -332,17 +332,16 @@ where
 mod tests {
 	use std::collections::BTreeMap;
 
-	use crate::{
-		encoded::key::EncodedKey,
-		window::{
-			accumulator::WindowAccumulator,
-			engine::{
-				AccumulatorEvent, EmitKind,
-				config::WindowEngineConfig,
-				rolling::{RollingBuckets, RollingResult},
-				rolling_incremental::RollingIncrementalEngine,
-				test_support::{MockStore, SumAccumulator},
-			},
+	use reifydb_codec::key::encoded::EncodedKey;
+
+	use crate::window::{
+		accumulator::WindowAccumulator,
+		engine::{
+			AccumulatorEvent, EmitKind,
+			config::WindowEngineConfig,
+			rolling::{RollingBuckets, RollingResult},
+			rolling_incremental::RollingIncrementalEngine,
+			test_support::{MockStore, SumAccumulator},
 		},
 	};
 

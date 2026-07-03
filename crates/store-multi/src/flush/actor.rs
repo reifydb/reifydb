@@ -6,7 +6,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
+use reifydb_codec::key::encoded::EncodedKey;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_runtime::actor::{
 	context::Context,

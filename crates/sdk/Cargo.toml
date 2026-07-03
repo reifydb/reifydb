@@ -12,6 +12,7 @@ description = "SDK for building ReifyDB operators, procedures, transforms and mo
 reifydb-build = { workspace = true }
 
 [dependencies]
+reifydb-codec = { workspace = true }
 bumpalo.workspace = true
 reifydb-abi.workspace = true
 reifydb-core.workspace = true

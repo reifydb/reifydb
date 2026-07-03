@@ -5,10 +5,13 @@ use std::{any::Any, collections::HashMap, mem, sync::Arc};
 
 use read::ReadFrom;
 use reifydb_catalog::catalog::Catalog;
+use reifydb_codec::{
+	encoded::{row::EncodedRow, shape::RowShape},
+	key::encoded::EncodedKey,
+};
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
-	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	interface::{
 		catalog::{flow::FlowNodeId, shape::ShapeId},
 		change::{Change, ChangeOrigin, Diff},

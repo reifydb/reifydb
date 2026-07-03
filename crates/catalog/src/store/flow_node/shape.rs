@@ -3,7 +3,7 @@
 
 pub(crate) mod flow_node {
 	use once_cell::sync::Lazy;
-	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const ID: usize = 0;
@@ -23,7 +23,7 @@ pub(crate) mod flow_node {
 
 pub(crate) mod flow_node_by_flow {
 	use once_cell::sync::Lazy;
-	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const FLOW: usize = 0;

@@ -6,9 +6,9 @@
 use std::{collections::Bound, error::Error as StdError, fmt::Write as _, thread::sleep, time::Instant};
 
 use reifydb_cdc::storage::{CdcStorage as _, CdcStore};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::cdc::{Cdc, SystemChange},
 };
 use reifydb_engine::engine::StandardEngine;

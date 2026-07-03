@@ -111,7 +111,7 @@ impl Batcher {
 mod tests {
 	use std::sync::Arc;
 
-	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 	use reifydb_value::value::value_type::ValueType;
 
 	use super::{

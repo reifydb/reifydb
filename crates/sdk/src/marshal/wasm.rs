@@ -3,10 +3,13 @@
 
 use std::{mem, mem::size_of, ptr, slice, str};
 
-use postcard::{from_bytes, to_allocvec};
 use reifydb_abi::data::{
 	column::ColumnTypeCode,
 	wasm::{COLUMN_WASM_SIZE, COLUMNS_WASM_HEADER_SIZE, ColumnWasm, ColumnsWasm},
+};
+use reifydb_codec::ffi::cells::{
+	decode_any_cell, decode_decimal_cell, decode_duration_cell, decode_int_cell, decode_uint_cell, encode_any_cell,
+	encode_decimal_cell, encode_duration_cell, encode_int_cell, encode_uint_cell,
 };
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_value::{
@@ -36,7 +39,6 @@ use reifydb_value::{
 		value_type::ValueType,
 	},
 };
-use serde::{Serialize, de::DeserializeOwned};
 use uuid::Uuid;
 
 use super::util::column_data_to_type_code;
@@ -290,7 +292,7 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (
 		}
 		ColumnBuffer::Duration(container) => {
 			let durations: &[Duration] = container;
-			marshal_serialized_to_buf(buf, durations)
+			marshal_cells_to_buf(buf, durations.len(), |i, out| encode_duration_cell(&durations[i], out))
 		}
 
 		ColumnBuffer::IdentityId(container) => {
@@ -323,30 +325,30 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (
 			..
 		} => {
 			let values: &[Int] = container;
-			marshal_serialized_to_buf(buf, values)
+			marshal_cells_to_buf(buf, values.len(), |i, out| encode_int_cell(&values[i], out))
 		}
 		ColumnBuffer::Uint {
 			container,
 			..
 		} => {
 			let values: &[Uint] = container;
-			marshal_serialized_to_buf(buf, values)
+			marshal_cells_to_buf(buf, values.len(), |i, out| encode_uint_cell(&values[i], out))
 		}
 		ColumnBuffer::Decimal {
 			container,
 			..
 		} => {
 			let values: &[Decimal] = container;
-			marshal_serialized_to_buf(buf, values)
+			marshal_cells_to_buf(buf, values.len(), |i, out| encode_decimal_cell(&values[i], out))
 		}
 		ColumnBuffer::Any(container) => {
 			let mut offsets: Vec<u64> = Vec::with_capacity(container.len() + 1);
 			let mut data_bytes: Vec<u8> = Vec::new();
 			offsets.push(0);
 			for i in 0..container.len() {
-				let value = container.get(i);
-				let serialized = to_allocvec(&value).unwrap_or_default();
-				data_bytes.extend_from_slice(&serialized);
+				let none = Value::none();
+				let value = container.get(i).unwrap_or(&none);
+				encode_any_cell(value, &mut data_bytes).expect("unsupported value in any column cell");
 				offsets.push(data_bytes.len() as u64);
 			}
 			marshal_data_with_offsets_to_buf(buf, &data_bytes, &offsets)
@@ -406,13 +408,16 @@ fn marshal_blobs_iter_to_buf<'a, I: Iterator<Item = &'a [u8]>>(buf: &mut Vec<u8>
 	marshal_data_with_offsets_to_buf(buf, &data, &offsets)
 }
 
-fn marshal_serialized_to_buf<T: Serialize>(buf: &mut Vec<u8>, values: &[T]) -> (u32, u32, u32, u32) {
-	let mut offsets: Vec<u64> = Vec::with_capacity(values.len() + 1);
+fn marshal_cells_to_buf(
+	buf: &mut Vec<u8>,
+	count: usize,
+	mut write: impl FnMut(usize, &mut Vec<u8>),
+) -> (u32, u32, u32, u32) {
+	let mut offsets: Vec<u64> = Vec::with_capacity(count + 1);
 	let mut data: Vec<u8> = Vec::new();
 	offsets.push(0);
-	for value in values {
-		let serialized = to_allocvec(value).unwrap_or_default();
-		data.extend_from_slice(&serialized);
+	for i in 0..count {
+		write(i, &mut data);
 		offsets.push(data.len() as u64);
 	}
 	marshal_data_with_offsets_to_buf(buf, &data, &offsets)
@@ -525,21 +530,23 @@ fn unmarshal_column_data(
 			}
 		}
 		ColumnTypeCode::Int => {
-			let container = unmarshal_serialized::<Int>(data, row_count, offsets_bytes);
+			let container = unmarshal_cells(data, row_count, offsets_bytes, decode_int_cell);
 			ColumnBuffer::Int {
 				container,
 				max_bytes: MaxBytes::MAX,
 			}
 		}
 		ColumnTypeCode::Uint => {
-			let container = unmarshal_serialized::<Uint>(data, row_count, offsets_bytes);
+			let container = unmarshal_cells(data, row_count, offsets_bytes, decode_uint_cell);
 			ColumnBuffer::Uint {
 				container,
 				max_bytes: MaxBytes::MAX,
 			}
 		}
 		ColumnTypeCode::Decimal => {
-			let container = unmarshal_serialized::<Decimal>(data, row_count, offsets_bytes);
+			let container = unmarshal_cells(data, row_count, offsets_bytes, |b| {
+				decode_decimal_cell(b).unwrap_or_default()
+			});
 			ColumnBuffer::Decimal {
 				container,
 				precision: Precision::MAX,
@@ -650,7 +657,7 @@ fn unmarshal_duration(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> Te
 	for i in 0..row_count {
 		let start = offsets[i] as usize;
 		let end = offsets[i + 1] as usize;
-		let duration: Duration = from_bytes(&data[start..end]).unwrap_or_default();
+		let duration: Duration = decode_duration_cell(&data[start..end]).unwrap_or_default();
 		durations.push(duration);
 	}
 	TemporalContainer::new(durations)
@@ -715,10 +722,11 @@ fn unmarshal_blob(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> BlobCo
 	BlobContainer::new(blobs)
 }
 
-fn unmarshal_serialized<T: Default + Clone + DeserializeOwned + IsNumber>(
+fn unmarshal_cells<T: Default + Clone + IsNumber>(
 	data: &[u8],
 	row_count: usize,
 	offsets_bytes: &[u8],
+	decode: impl Fn(&[u8]) -> T,
 ) -> NumberContainer<T> {
 	if data.is_empty() || offsets_bytes.is_empty() {
 		return NumberContainer::new(vec![T::default(); row_count]);
@@ -728,8 +736,7 @@ fn unmarshal_serialized<T: Default + Clone + DeserializeOwned + IsNumber>(
 	for i in 0..row_count {
 		let start = offsets[i] as usize;
 		let end = offsets[i + 1] as usize;
-		let value: T = from_bytes(&data[start..end]).unwrap_or_default();
-		values.push(value);
+		values.push(decode(&data[start..end]));
 	}
 	NumberContainer::new(values)
 }
@@ -743,7 +750,7 @@ fn unmarshal_any(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> AnyCont
 	for i in 0..row_count {
 		let start = offsets[i] as usize;
 		let end = offsets[i + 1] as usize;
-		let value: Value = from_bytes(&data[start..end]).unwrap_or_else(|_| Value::none());
+		let value: Value = decode_any_cell(&data[start..end]).unwrap_or_else(|_| Value::none());
 		values.push(Box::new(value));
 	}
 	AnyContainer::new(values)

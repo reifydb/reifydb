@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, ffi::c_void, ptr, slice};
+use std::{collections::HashMap, ffi::c_void, ptr, slice, sync::Arc};
 
-use postcard::from_bytes;
 use reifydb_abi::{
 	constants::CURRENT_API,
 	data::buffer::BufferFFI,
 	transform::{descriptor::TransformDescriptorFFI, types::TRANSFORM_MAGIC},
 };
-use reifydb_value::value::Value;
+use reifydb_codec::value::decode_params;
+use reifydb_value::params::Params;
 
 use crate::{
 	config::Config,
@@ -39,7 +39,7 @@ pub fn create_transform_descriptor<T: FFITransformWithMetadata>() -> TransformDe
 
 /// # Safety
 ///
-/// - `config_ptr` must either be null or point to `config_len` valid bytes of postcard-encoded config.
+/// - `config_ptr` must either be null or point to `config_len` valid bytes of codec-encoded named params.
 pub unsafe extern "C" fn create_transform_instance<T: FFITransformWithMetadata>(
 	config_ptr: *const u8,
 	config_len: usize,
@@ -49,8 +49,12 @@ pub unsafe extern "C" fn create_transform_instance<T: FFITransformWithMetadata>(
 	} else {
 		let config_bytes = unsafe { slice::from_raw_parts(config_ptr, config_len) };
 
-		match from_bytes::<HashMap<String, Value>>(config_bytes) {
-			Ok(decoded_config) => decoded_config,
+		match decode_params(config_bytes) {
+			Ok(Params::Named(map)) => Arc::try_unwrap(map).unwrap_or_else(|map| (*map).clone()),
+			Ok(Params::None) => HashMap::new(),
+			Ok(Params::Positional(_)) => {
+				panic!("Failed to deserialize transform config: expected named params");
+			}
 			Err(e) => {
 				panic!("Failed to deserialize transform config: {}", e);
 			}

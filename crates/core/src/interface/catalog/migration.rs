@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_runtime::hash::{Hash128, xxh3_128};
+use reifydb_value::util::hash::{Hash128, xxh3_128};
 use serde::{Deserialize, Serialize};
 
 use crate::interface::catalog::id::{MigrationEventId, MigrationId};

@@ -13,13 +13,13 @@ use std::{
 
 use collections::BTreeMap;
 use iter::Peekable;
+use reifydb_codec::{
+	encoded::row::EncodedRow,
+	key::encoded::{EncodedKey, EncodedKeyRange},
+};
 use reifydb_core::{
 	actors::pending::PendingWrite,
 	common::CommitVersion,
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
-	},
 	interface::store::{MultiVersionBatch, MultiVersionRow},
 	key::{Key, kind::KeyKind},
 };
@@ -638,9 +638,9 @@ where
 #[cfg(test)]
 pub mod tests {
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
+	use reifydb_codec::{
+		encoded::row::EncodedRow,
+		key::encoded::{EncodedKey, EncodedKeyRange},
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};

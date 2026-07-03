@@ -5,8 +5,8 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
+use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
-	encoded::shape::RowShape,
 	interface::{
 		catalog::{flow::FlowNodeId, id::SubscriptionId, subscription::IMPLICIT_COLUMN_OP},
 		change::{Change, Diff},

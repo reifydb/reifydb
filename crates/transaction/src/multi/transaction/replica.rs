@@ -4,13 +4,13 @@
 use core::mem;
 use std::{collections::HashSet, ops::RangeBounds, sync::Arc};
 
+use reifydb_codec::{
+	encoded::row::EncodedRow,
+	key::encoded::{EncodedKey, EncodedKeyRange},
+};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
-	},
 	interface::store::{
 		MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow,
 	},

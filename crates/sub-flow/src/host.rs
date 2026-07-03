@@ -2,9 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::Catalog;
+use reifydb_codec::encoded::shape::{RowShape, fingerprint::RowShapeFingerprint};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::shape::{RowShape, fingerprint::RowShapeFingerprint},
 	interface::catalog::{
 		id::{NamespaceId, TableId},
 		namespace::Namespace,

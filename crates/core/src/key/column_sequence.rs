@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
+
 use crate::{
-	encoded::key::EncodedKey,
 	interface::catalog::{id::ColumnId, shape::ShapeId},
-	key::{EncodableKey, KeyKind},
-	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	key::{
+		EncodableKey, KeyKind,
+		catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
+	},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,11 +56,10 @@ impl ColumnSequenceKey {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_codec::key::encoded::EncodedKey;
+
 	use super::{ColumnSequenceKey, EncodableKey};
-	use crate::{
-		encoded::key::EncodedKey,
-		interface::catalog::{id::ColumnId, shape::ShapeId},
-	};
+	use crate::interface::catalog::{id::ColumnId, shape::ShapeId};
 
 	#[test]
 	fn test_encode_decode() {

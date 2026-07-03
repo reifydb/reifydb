@@ -3,13 +3,13 @@
 
 use std::{error::Error as StdError, fmt::Write, path::Path, thread::sleep};
 
+use reifydb_codec::{
+	encoded::row::EncodedRow,
+	key::encoded::{EncodedKey, EncodedKeyRange},
+};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
-	},
 	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow},
 	util::encoding::{
 		binary::decode_binary,

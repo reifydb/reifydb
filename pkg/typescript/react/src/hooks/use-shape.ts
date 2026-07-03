@@ -3,6 +3,7 @@
 
 import {useEffect, useState} from 'react';
 import {Shape, InferShape} from '@reifydb/core';
+import {type_name_from_code} from '@reifydb/client';
 import {useQueryExecutor} from './use-query-executor';
 
 export interface ColumnInfo {
@@ -147,36 +148,6 @@ export function useShape(): [boolean, TableInfo[], string | undefined] {
             });
         });
 
-        const type_map: Record<number, string> = {
-            0: 'None',
-            1: 'Float4',
-            2: 'Float8',
-            3: 'Int1',
-            4: 'Int2',
-            5: 'Int4',
-            6: 'Int8',
-            7: 'Int16',
-            8: 'Utf8',
-            9: 'Uint1',
-            10: 'Uint2',
-            11: 'Uint4',
-            12: 'Uint8',
-            13: 'Uint16',
-            14: 'Boolean',
-            15: 'Date',
-            16: 'DateTime',
-            17: 'Time',
-            18: 'Duration',
-            19: 'IdentityId',
-            20: 'Uuid4',
-            21: 'Uuid7',
-            22: 'Blob',
-            23: 'Int',
-            24: 'Decimal',
-            25: 'Uint',
-            26: 'Any',
-        };
-
         // Create a map to collect columns with their positions
         const table_columns_map = new Map<number, Array<{name: string; data_type: string; position: number}>>();
 
@@ -194,9 +165,16 @@ export function useShape(): [boolean, TableInfo[], string | undefined] {
                 table_columns_map.set(shape_id, []);
             }
 
+            let data_type: string;
+            try {
+                data_type = type_name_from_code(type_id);
+            } catch {
+                data_type = `Unknown(${type_id})`;
+            }
+
             table_columns_map.get(shape_id)!.push({
                 name: column_name,
-                data_type: type_map[type_id] || `Unknown(${type_id})`,
+                data_type,
                 position: position ?? 0,
             });
         });

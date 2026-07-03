@@ -49,9 +49,9 @@ use std::{
 };
 
 use crossbeam_skiplist::SkipMap;
+use reifydb_codec::encoded::shape::{RowShape, fingerprint::RowShapeFingerprint};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::shape::{RowShape, fingerprint::RowShapeFingerprint},
 	interface::catalog::{
 		authentication::{Authentication, AuthenticationId},
 		binding::Binding,

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use postcard::from_bytes;
 use reifydb_abi::data::column::ColumnTypeCode;
+use reifydb_codec::ffi::cells::decode_decimal_cell;
 use reifydb_value::value::decimal::Decimal;
 
 use crate::operator::change::{BorrowedColumn, BorrowedColumns};
@@ -262,7 +262,7 @@ impl<'a> Iterator for DecimalIter<'a> {
 		if end > self.data.len() || start > end {
 			return Some(None);
 		}
-		Some(from_bytes::<Decimal>(&self.data[start..end]).ok())
+		Some(decode_decimal_cell(&self.data[start..end]).ok())
 	}
 
 	fn size_hint(&self) -> (usize, Option<usize>) {

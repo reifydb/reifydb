@@ -95,13 +95,13 @@ impl testscript::runner::Runner for GrpcRunner {
 
 		let mut client = self
 			.runtime
-			.block_on(GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto))?;
+			.block_on(GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf))?;
 		client.authenticate("mysecrettoken");
 		self.client = Some(client);
 
 		let mut admin_client = self
 			.runtime
-			.block_on(GrpcClient::connect(&format!("http://[::1]:{}", admin_port), WireFormat::Proto))?;
+			.block_on(GrpcClient::connect(&format!("http://[::1]:{}", admin_port), WireFormat::Rbcf))?;
 		admin_client.authenticate("mysecrettoken");
 		self.admin_client = Some(admin_client);
 

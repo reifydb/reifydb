@@ -3,9 +3,8 @@
 
 use postcard::from_bytes;
 use reifydb_core::interface::change::Change;
-use reifydb_runtime::hash::Hash128;
 use reifydb_sdk::operator::Tick;
-use reifydb_value::{Result, error::Error, value::duration::Duration};
+use reifydb_value::{Result, error::Error, util::hash::Hash128, value::duration::Duration};
 
 use crate::{
 	error::FlowStateError,

@@ -60,10 +60,8 @@ impl CatalogStore {
 	}
 }
 
-use reifydb_core::{
-	encoded::row::EncodedRow,
-	interface::catalog::{column::Column, key::PrimaryKey},
-};
+use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_core::interface::catalog::{column::Column, key::PrimaryKey};
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	error::{Diagnostic, Error},

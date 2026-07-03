@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
+use reifydb_abi::data::constraint::FFITypeConstraint;
+use reifydb_codec::{
+	constraint::type_constraint_from_ffi,
 	encoded::shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
+};
+use reifydb_core::{
 	error::diagnostic::internal::internal,
 	key::{
 		EncodableKey,
@@ -10,10 +14,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::{
-	error::Error,
-	value::constraint::{FFITypeConstraint, TypeConstraint},
-};
+use reifydb_value::error::Error;
 use tracing::{Span, field, instrument};
 
 use super::shape::{shape_field, shape_header};
@@ -60,12 +61,13 @@ pub(crate) fn find_row_shape_by_fingerprint(
 		let constraint_type = shape_field::SHAPE.get_u8(&field_entry.row, shape_field::CONSTRAINT_TYPE);
 		let constraint_param1 = shape_field::SHAPE.get_u32(&field_entry.row, shape_field::CONSTRAINT_P1);
 		let constraint_param2 = shape_field::SHAPE.get_u32(&field_entry.row, shape_field::CONSTRAINT_P2);
-		let constraint = TypeConstraint::from_ffi(FFITypeConstraint {
+		let constraint = type_constraint_from_ffi(&FFITypeConstraint {
 			base_type,
 			constraint_type,
 			constraint_param1,
 			constraint_param2,
-		});
+		})
+		.expect("invalid persisted type constraint tag");
 		let offset = shape_field::SHAPE.get_u32(&field_entry.row, shape_field::OFFSET);
 		let size = shape_field::SHAPE.get_u32(&field_entry.row, shape_field::SIZE);
 		let align = shape_field::SHAPE.get_u8(&field_entry.row, shape_field::ALIGN);
@@ -133,12 +135,13 @@ pub fn load_all_row_shapes(rx: &mut Transaction<'_>) -> Result<Vec<RowShape>> {
 				shape_field::SHAPE.get_u32(&field_entry.row, shape_field::CONSTRAINT_P1);
 			let constraint_param2 =
 				shape_field::SHAPE.get_u32(&field_entry.row, shape_field::CONSTRAINT_P2);
-			let constraint = TypeConstraint::from_ffi(FFITypeConstraint {
+			let constraint = type_constraint_from_ffi(&FFITypeConstraint {
 				base_type,
 				constraint_type,
 				constraint_param1,
 				constraint_param2,
-			});
+			})
+			.expect("invalid persisted type constraint tag");
 			let offset = shape_field::SHAPE.get_u32(&field_entry.row, shape_field::OFFSET);
 			let size = shape_field::SHAPE.get_u32(&field_entry.row, shape_field::SIZE);
 			let align = shape_field::SHAPE.get_u8(&field_entry.row, shape_field::ALIGN);

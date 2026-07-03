@@ -1,35 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{error, fmt, string::FromUtf8Error};
+use std::{error, fmt};
 
+use reifydb_codec::error::DecodeError;
 use reifydb_sub_server::{auth::AuthError, execute::ExecuteError, subscription::errors::CreateSubscriptionError};
-use reifydb_value::value::value_type::ValueType;
 use serde_json::to_string as to_json;
 use tonic::Status;
 
 pub enum GrpcError {
-	InvalidByteLength {
-		r#type: ValueType,
-		expected: usize,
-		actual: usize,
-	},
-
-	InvalidUtf8(FromUtf8Error),
-
-	InvalidDate {
-		days: i32,
-	},
-
-	InvalidDateTime(String),
-
-	InvalidTime {
-		nanos: u64,
-	},
-
-	InvalidDecimal(String),
-
-	UnsupportedParamType(ValueType),
+	InvalidParamEncoding(DecodeError),
 
 	Unauthenticated(AuthError),
 
@@ -41,21 +21,7 @@ pub enum GrpcError {
 impl fmt::Display for GrpcError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			GrpcError::InvalidByteLength {
-				r#type,
-				expected,
-				actual,
-			} => write!(f, "{:?} requires {} bytes, got {}", r#type, expected, actual),
-			GrpcError::InvalidUtf8(e) => write!(f, "Invalid UTF-8: {}", e),
-			GrpcError::InvalidDate {
-				days,
-			} => write!(f, "Invalid date days: {}", days),
-			GrpcError::InvalidDateTime(msg) => write!(f, "Invalid datetime: {}", msg),
-			GrpcError::InvalidTime {
-				nanos,
-			} => write!(f, "Invalid time nanos: {}", nanos),
-			GrpcError::InvalidDecimal(msg) => write!(f, "Invalid decimal: {}", msg),
-			GrpcError::UnsupportedParamType(ty) => write!(f, "Unsupported param type: {:?}", ty),
+			GrpcError::InvalidParamEncoding(e) => write!(f, "Invalid param encoding: {}", e),
 			GrpcError::Unauthenticated(e) => write!(f, "{}", e),
 			GrpcError::Execute(e) => write!(f, "{}", e),
 			GrpcError::SubscriptionFailed(msg) => write!(f, "Subscription failed: {}", msg),
@@ -66,25 +32,7 @@ impl fmt::Display for GrpcError {
 impl fmt::Debug for GrpcError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			GrpcError::InvalidByteLength {
-				r#type,
-				expected,
-				actual,
-			} => f.debug_struct("InvalidByteLength")
-				.field("type", r#type)
-				.field("expected", expected)
-				.field("actual", actual)
-				.finish(),
-			GrpcError::InvalidUtf8(e) => f.debug_tuple("InvalidUtf8").field(e).finish(),
-			GrpcError::InvalidDate {
-				days,
-			} => f.debug_struct("InvalidDate").field("days", days).finish(),
-			GrpcError::InvalidDateTime(msg) => f.debug_tuple("InvalidDateTime").field(msg).finish(),
-			GrpcError::InvalidTime {
-				nanos,
-			} => f.debug_struct("InvalidTime").field("nanos", nanos).finish(),
-			GrpcError::InvalidDecimal(msg) => f.debug_tuple("InvalidDecimal").field(msg).finish(),
-			GrpcError::UnsupportedParamType(ty) => f.debug_tuple("UnsupportedParamType").field(ty).finish(),
+			GrpcError::InvalidParamEncoding(e) => f.debug_tuple("InvalidParamEncoding").field(e).finish(),
 			GrpcError::Unauthenticated(e) => f.debug_tuple("Unauthenticated").field(e).finish(),
 			GrpcError::Execute(e) => f.debug_tuple("Execute").field(e).finish(),
 			GrpcError::SubscriptionFailed(msg) => f.debug_tuple("SubscriptionFailed").field(msg).finish(),
@@ -106,6 +54,12 @@ impl From<ExecuteError> for GrpcError {
 	}
 }
 
+impl From<DecodeError> for GrpcError {
+	fn from(err: DecodeError) -> Self {
+		GrpcError::InvalidParamEncoding(err)
+	}
+}
+
 impl From<CreateSubscriptionError> for GrpcError {
 	fn from(err: CreateSubscriptionError) -> Self {
 		match err {
@@ -120,19 +74,7 @@ impl From<CreateSubscriptionError> for GrpcError {
 impl From<GrpcError> for Status {
 	fn from(err: GrpcError) -> Self {
 		match err {
-			GrpcError::InvalidByteLength {
-				..
-			}
-			| GrpcError::InvalidUtf8(_)
-			| GrpcError::InvalidDate {
-				..
-			}
-			| GrpcError::InvalidDateTime(_)
-			| GrpcError::InvalidTime {
-				..
-			}
-			| GrpcError::InvalidDecimal(_)
-			| GrpcError::UnsupportedParamType(_) => Status::invalid_argument(err.to_string()),
+			GrpcError::InvalidParamEncoding(_) => Status::invalid_argument(err.to_string()),
 			GrpcError::Unauthenticated(_) => Status::unauthenticated(err.to_string()),
 			GrpcError::Execute(ref inner) => match inner {
 				ExecuteError::Timeout => Status::deadline_exceeded(err.to_string()),

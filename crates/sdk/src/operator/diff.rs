@@ -3,8 +3,8 @@
 
 use std::{collections::HashMap, thread};
 
-use postcard::to_allocvec;
 use reifydb_abi::data::column::ColumnTypeCode;
+use reifydb_codec::ffi::cells::encode_decimal_cell;
 use reifydb_value::value::{Value, decimal::Decimal, row_number::RowNumber, value_type::ValueType};
 
 use crate::{
@@ -496,8 +496,8 @@ fn write_decimal_column(col: ColumnBuilder<'_>, values: &[Value]) -> Result<Comm
 				)));
 			}
 		};
-		let bytes =
-			to_allocvec(&dec).map_err(|e| SdkError::Serialization(format!("decimal serialize: {}", e)))?;
+		let mut bytes = Vec::new();
+		encode_decimal_cell(&dec, &mut bytes);
 		serialized.push(bytes);
 	}
 	col.write_blob(&serialized)

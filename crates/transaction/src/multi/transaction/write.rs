@@ -4,13 +4,13 @@
 use core::mem;
 use std::{cmp::Ordering, collections::HashSet, iter, ops::RangeBounds, sync::Arc, vec};
 
+use reifydb_codec::{
+	encoded::row::EncodedRow,
+	key::encoded::{EncodedKey, EncodedKeyRange},
+};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
-	},
 	event::transaction::PostCommitEvent,
 	interface::{
 		change::Change,

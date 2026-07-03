@@ -4,8 +4,8 @@
 pub mod exports;
 pub mod wrapper;
 
-use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::{constants::FFI_OK, context::context::ContextFFI, data::buffer::BufferFFI};
+use reifydb_codec::{frame::decode::decode_frames, value::encode_params};
 use reifydb_value::{params::Params, value::frame::frame::Frame};
 
 use crate::{
@@ -57,7 +57,7 @@ impl FFIProcedureContext {
 }
 
 pub(crate) fn raw_procedure_query(ctx: &FFIProcedureContext, query: &str, params: Params) -> Result<Vec<Frame>> {
-	let params_bytes = to_stdvec(&params)
+	let params_bytes = encode_params(&params)
 		.map_err(|e| SdkError::Serialization(format!("failed to serialize params: {}", e)))?;
 
 	let mut output = BufferFFI::empty();
@@ -74,7 +74,7 @@ pub(crate) fn raw_procedure_query(ctx: &FFIProcedureContext, query: &str, params
 
 		if result == FFI_OK {
 			let result_bytes = output.as_slice();
-			let frames: Vec<Frame> = from_bytes(result_bytes)
+			let frames: Vec<Frame> = decode_frames(result_bytes)
 				.map_err(|e| SdkError::Serialization(format!("failed to deserialize result: {}", e)))?;
 			Ok(frames)
 		} else {

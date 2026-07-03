@@ -3,13 +3,17 @@
 
 use std::collections::Bound;
 
+use reifydb_codec::key::{
+	deserializer::KeyDeserializer,
+	encoded::{EncodedKey, EncodedKeyRange},
+	serializer::KeySerializer,
+};
 use reifydb_value::value::row_number::RowNumber;
 
 use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
-	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::catalog::shape::ShapeId,
-	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+	key::catalog::{KeyDeserializerCatalogExt, KeySerializerCatalogExt},
 };
 
 #[derive(Debug, Clone, PartialEq)]

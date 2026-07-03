@@ -22,7 +22,8 @@ use std::{
 	sync::{Arc, atomic::AtomicU8},
 };
 
-use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey};
+use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::common::CommitVersion;
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_store::row::page::{DEFAULT_BUCKET_SHIFT, PageId};
 use reifydb_value::util::cowvec::CowVec;

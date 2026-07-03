@@ -10,10 +10,8 @@ use reifydb_abi::{
 	context::{context::ContextFFI, iterators::StoreIteratorFFI},
 	data::buffer::BufferFFI,
 };
-use reifydb_core::{
-	encoded::key::{EncodedKey, EncodedKeyRange},
-	interface::store::MultiVersionBatch,
-};
+use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_core::interface::store::MultiVersionBatch;
 use reifydb_extension::procedure::ffi_callbacks::memory::{host_alloc, host_free};
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::error::Error;

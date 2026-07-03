@@ -16,9 +16,9 @@ use std::{collections::Bound, sync};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use cached::CachedCdcStorage;
 use memory::MemoryCdcStorage;
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::key::EncodedKey,
 	interface::cdc::{Cdc, CdcBatch},
 };
 use reifydb_runtime::shutdown::Shutdown;

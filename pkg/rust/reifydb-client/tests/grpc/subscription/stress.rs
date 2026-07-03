@@ -28,7 +28,7 @@ fn test_many_subscriptions_single_client() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		// Create 50 tables and subscriptions
@@ -82,7 +82,7 @@ fn test_many_concurrent_clients() {
 
 		// First, create one client to set up the shared table
 		let mut setup_client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		setup_client.authenticate("mysecrettoken");
 
 		let shared_table = unique_table_name("stress_concurrent");
@@ -100,7 +100,7 @@ fn test_many_concurrent_clients() {
 
 			let handle = tokio::spawn(async move {
 				let mut client =
-					GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto)
+					GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf)
 						.await?;
 				client.authenticate("mysecrettoken");
 
@@ -125,7 +125,7 @@ fn test_many_concurrent_clients() {
 
 		// Create a new client to trigger the insert
 		let mut trigger_client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		trigger_client.authenticate("mysecrettoken");
 		trigger_client.command(&format!("INSERT test::{} [{{ id: 999 }}]", shared_table), None).await.unwrap();
 		drop(trigger_client);
@@ -160,7 +160,7 @@ fn test_rapid_subscribe_unsubscribe() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("stress_rapid");
@@ -212,7 +212,7 @@ fn test_client_disconnect_without_unsubscribe() {
 
 		// Create shared table first
 		let mut setup_client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		setup_client.authenticate("mysecrettoken");
 
 		let shared_table = unique_table_name("stress_disconnect");
@@ -221,9 +221,8 @@ fn test_client_disconnect_without_unsubscribe() {
 
 		// Connect multiple clients and subscribe, then disconnect abruptly (drop without cleanup)
 		for i in 0..NUM_CLIENTS {
-			let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto)
-				.await
-				.unwrap();
+			let mut client =
+				GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 			client.authenticate("mysecrettoken");
 			let _sub = client
 				.subscribe(&format!("from test::{}", shared_table), SubscriptionConfig::default())
@@ -245,7 +244,7 @@ fn test_client_disconnect_without_unsubscribe() {
 
 		// Server should still be healthy - new clients should be able to connect and subscribe
 		let mut new_client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		new_client.authenticate("mysecrettoken");
 
 		let mut sub = new_client
@@ -283,7 +282,7 @@ fn test_concurrent_connect_disconnect() {
 
 		// Create a table for each task to avoid transaction conflicts
 		let mut setup_client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		setup_client.authenticate("mysecrettoken");
 
 		let mut tables = Vec::new();
@@ -312,7 +311,7 @@ fn test_concurrent_connect_disconnect() {
 					loop {
 						let mut client = GrpcClient::connect(
 							&format!("http://[::1]:{}", port),
-							WireFormat::Proto,
+							WireFormat::Rbcf,
 						)
 						.await?;
 						client.authenticate("mysecrettoken");
@@ -380,7 +379,7 @@ fn test_concurrent_connect_disconnect() {
 
 		// Verify server is still healthy after all the concurrent activity
 		let mut final_client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		final_client.authenticate("mysecrettoken");
 
 		let mut sub = final_client
@@ -409,7 +408,7 @@ fn test_subscribe_receive_unsubscribe_cycles() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("stress_full_cycle");

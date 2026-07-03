@@ -3,7 +3,7 @@
 
 use std::ops::Bound;
 
-use reifydb_core::encoded::key::EncodedKey;
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};

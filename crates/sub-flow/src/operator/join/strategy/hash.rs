@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::encoded::{
+	row::EncodedRow,
+	shape::{RowShape, RowShapeField},
+};
 use reifydb_core::{
-	encoded::{
-		row::EncodedRow,
-		shape::{RowShape, RowShapeField},
-	},
 	interface::{
 		catalog::config::{ConfigKey, GetConfig},
 		change::Diff,
@@ -13,10 +13,10 @@ use reifydb_core::{
 	internal,
 	value::column::columns::Columns,
 };
-use reifydb_runtime::hash::Hash128;
 use reifydb_value::{
 	Result,
 	error::Error,
+	util::hash::Hash128,
 	value::{Value, row_number::RowNumber},
 };
 

@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	encoded::{key::EncodedKey, row::EncodedRow},
-	key::{EncodableKey, operator_settings::OperatorSettingsKey},
-};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_core::key::{EncodableKey, operator_settings::OperatorSettingsKey};
 use reifydb_transaction::transaction::Transaction;
 
 use super::CatalogChangeApplier;

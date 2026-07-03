@@ -35,10 +35,10 @@ pub mod store;
 use std::collections::HashMap;
 
 use config::{CommitBufferConfig, MultiStoreConfig};
+use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::store::{
 		MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious, MultiVersionRow,
 		MultiVersionStore,

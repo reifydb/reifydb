@@ -5,12 +5,11 @@ use reifydb_core::interface::catalog::{
 	change::{CatalogTrackMigrationChangeOperations, CatalogTrackMigrationEventChangeOperations},
 	migration::{Migration, MigrationAction, MigrationEvent, migration_hash},
 };
-use reifydb_runtime::hash::Hash128;
 use reifydb_transaction::{
 	change::TransactionalMigrationChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, util::hash::Hash128};
 use tracing::instrument;
 
 use crate::{

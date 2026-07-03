@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
+
 use super::{EncodableKey, KeyKind};
-use crate::{
-	encoded::key::EncodedKey,
-	interface::catalog::flow::FlowId,
-	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
-};
+use crate::interface::catalog::flow::FlowId;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FlowVersionKey {

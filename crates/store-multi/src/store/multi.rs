@@ -6,14 +6,14 @@ use std::{
 	ops::{Bound, RangeBounds},
 };
 
+use reifydb_codec::{
+	encoded::row::EncodedRow,
+	key::encoded::{EncodedKey, EncodedKeyRange},
+};
 use reifydb_core::{
 	actors::drop::{DropMessage, DropRequest},
 	common::CommitVersion,
 	delta::Delta,
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
-	},
 	event::metric::{MultiCommittedEvent, MultiDelete, MultiWrite},
 	interface::store::{
 		EntryKind, MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet,
@@ -1411,10 +1411,10 @@ fn make_range_bounds(range: &EncodedKeyRange) -> (Vec<u8>, Vec<u8>) {
 mod cache_tests {
 	use std::collections::HashMap;
 
+	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 	use reifydb_core::{
 		common::CommitVersion,
 		delta::Delta,
-		encoded::{key::EncodedKey, row::EncodedRow},
 		interface::{
 			catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId},
 			store::{EntryKind, MultiVersionCommit},

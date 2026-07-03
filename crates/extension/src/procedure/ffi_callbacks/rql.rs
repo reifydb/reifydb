@@ -3,11 +3,14 @@
 
 use std::{panic, ptr, slice, str};
 
-use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::{
 	constants::{FFI_ERROR_INTERNAL, FFI_ERROR_INVALID_UTF8, FFI_OK},
 	context::context::ContextFFI,
 	data::buffer::BufferFFI,
+};
+use reifydb_codec::{
+	frame::{encode::encode_frames, options::EncodeOptions},
+	value::decode_params,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::params::Params;
@@ -50,7 +53,7 @@ pub unsafe extern "C" fn host_rql(
 				Params::None
 			} else {
 				let params_bytes = slice::from_raw_parts(params_ptr, params_len);
-				match from_bytes(params_bytes) {
+				match decode_params(params_bytes) {
 					Ok(p) => p,
 					Err(e) => {
 						error!("host_rql: failed to deserialize params: {}", e);
@@ -79,7 +82,7 @@ pub unsafe extern "C" fn host_rql(
 				return FFI_ERROR_INTERNAL;
 			}
 
-			let result_bytes = match to_stdvec(&result.frames) {
+			let result_bytes = match encode_frames(&result.frames, &EncodeOptions::fast()) {
 				Ok(b) => b,
 				Err(e) => {
 					error!("host_rql: failed to serialize result: {}", e);

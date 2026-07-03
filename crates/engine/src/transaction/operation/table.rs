@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{row::EncodedRow, shape::RowShape},
 	interface::{
 		catalog::{shape::ShapeId, table::Table},
 		change::{Change, ChangeOrigin, Diff},
 	},
 	key::row::RowKey,
+	row::row_shape_from_columns,
 	value::column::columns::Columns,
 };
 use reifydb_transaction::{
@@ -153,7 +154,7 @@ impl TableOperations for CommandTransaction {
 
 		TableRowInterceptor::post_update(self, table, &matched_ids, &matched_posts, &pres)?;
 
-		let shape: RowShape = (&table.columns).into();
+		let shape = row_shape_from_columns(&table.columns);
 		self.track_flow_change(build_table_update_change(table, &shape, &matched_ids, &pres, &matched_posts));
 
 		Ok(matched_ids.into_iter().zip(matched_posts).collect())
@@ -196,7 +197,7 @@ impl TableOperations for CommandTransaction {
 
 		TableRowInterceptor::post_delete(self, table, &matched_ids, &pre_for_cdc_rows)?;
 
-		let shape: RowShape = (&table.columns).into();
+		let shape = row_shape_from_columns(&table.columns);
 		self.track_flow_change(build_table_remove_change(table, &shape, &matched_ids, &pre_for_cdc_rows));
 
 		Ok(matched_ids.into_iter().zip(displayed_rows).collect())
@@ -280,7 +281,7 @@ impl TableOperations for AdminTransaction {
 
 		TableRowInterceptor::post_update(self, table, &matched_ids, &matched_posts, &pres)?;
 
-		let shape: RowShape = (&table.columns).into();
+		let shape = row_shape_from_columns(&table.columns);
 		self.track_flow_change(build_table_update_change(table, &shape, &matched_ids, &pres, &matched_posts));
 
 		Ok(matched_ids.into_iter().zip(matched_posts).collect())
@@ -323,7 +324,7 @@ impl TableOperations for AdminTransaction {
 
 		TableRowInterceptor::post_delete(self, table, &matched_ids, &pre_for_cdc_rows)?;
 
-		let shape: RowShape = (&table.columns).into();
+		let shape = row_shape_from_columns(&table.columns);
 		self.track_flow_change(build_table_remove_change(table, &shape, &matched_ids, &pre_for_cdc_rows));
 
 		Ok(matched_ids.into_iter().zip(displayed_rows).collect())

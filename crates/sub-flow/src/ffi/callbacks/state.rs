@@ -10,10 +10,8 @@ use reifydb_abi::{
 	context::{context::ContextFFI, iterators::StateIteratorFFI},
 	data::{buffer::BufferFFI, key_ref::KeyRefFFI},
 };
-use reifydb_core::{
-	encoded::key::{EncodedKey, EncodedKeyRange},
-	interface::catalog::flow::FlowNodeId,
-};
+use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_extension::procedure::ffi_callbacks::memory::{host_alloc, host_free};
 
 use super::{

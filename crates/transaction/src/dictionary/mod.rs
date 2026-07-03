@@ -9,18 +9,18 @@ use std::sync::{
 };
 
 use dashmap::{DashMap, DashSet, mapref::entry::Entry};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
-	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::catalog::dictionary::Dictionary,
 	key::{
 		EncodableKey,
 		dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey},
 	},
 };
-use reifydb_runtime::{hash::xxh3_128, sync::mutex::Mutex};
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{
 	Result,
-	util::cowvec::CowVec,
+	util::{cowvec::CowVec, hash::xxh3_128},
 	value::{
 		dictionary::{DictionaryEntryId, DictionaryId},
 		value_type::ValueType,

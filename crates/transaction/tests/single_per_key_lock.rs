@@ -6,10 +6,8 @@ use std::{
 	thread,
 };
 
-use reifydb_core::{
-	encoded::{key::EncodedKey, shape::RowShape},
-	event::EventBus,
-};
+use reifydb_codec::{encoded::shape::RowShape, key::encoded::EncodedKey};
+use reifydb_core::event::EventBus;
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::single::SingleTransaction;

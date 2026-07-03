@@ -3,12 +3,14 @@
 
 use postcard::to_stdvec;
 use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_core::{
+use reifydb_codec::{
 	encoded::{
-		key::EncodedKey,
 		row::{EncodedRow, SHAPE_HEADER_SIZE},
 		shape::RowShape,
 	},
+	key::{encode_u8, encode_u64_varint, encoded::EncodedKey, serializer::KeySerializer},
+};
+use reifydb_core::{
 	interface::{
 		catalog::{
 			dictionary::Dictionary,
@@ -20,10 +22,8 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		resolved::ResolvedView,
 	},
-	key::kind::KeyKind,
-	util::encoding::keycode::{
-		catalog::serialize_shape_id, encode_u8, encode_u64_varint, serializer::KeySerializer,
-	},
+	key::{catalog::serialize_shape_id, kind::KeyKind},
+	row::row_shape_from_columns,
 	value::column::{buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::interceptor::dictionary_row::DictionaryRowInterceptor;
@@ -60,7 +60,7 @@ impl SinkTableViewOperator {
 		let mut key_prefix: Vec<u8> = Vec::with_capacity(10);
 		key_prefix.push(encode_u8(KeyKind::Row as u8));
 		serialize_shape_id(&ShapeId::table(underlying), &mut key_prefix);
-		let shape: RowShape = view.def().columns().into();
+		let shape = row_shape_from_columns(view.def().columns());
 		let sort = view.def().sort().to_vec();
 		Self {
 			parent,
@@ -89,7 +89,7 @@ impl SinkTableViewOperator {
 		serializer.extend_raw(&self.key_prefix);
 		for key in &self.sort {
 			let value = cols.data_at(key.column.0 as usize).get_value(row_idx);
-			serializer.extend_value_with_direction(&value, key.direction.clone());
+			serializer.extend_value_with_direction(&value, key.direction.clone().into());
 		}
 		serializer.extend_raw(&row.0.to_be_bytes());
 		serializer.to_encoded_key()

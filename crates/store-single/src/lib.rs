@@ -28,9 +28,9 @@ pub mod store;
 pub mod tier;
 
 use config::SingleStoreConfig;
+use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	delta::Delta,
-	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::store::{
 		SingleVersionBatch, SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
 		SingleVersionRangeRev, SingleVersionRemove, SingleVersionRow, SingleVersionSet, SingleVersionStore,

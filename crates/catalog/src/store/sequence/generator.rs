@@ -2,10 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use once_cell::sync::Lazy;
-use reifydb_core::{
-	encoded::{key::EncodedKey, shape::RowShape},
-	error::CoreError,
-};
+use reifydb_codec::{encoded::shape::RowShape, key::encoded::EncodedKey};
+use reifydb_core::error::CoreError;
 use reifydb_transaction::{
 	single::write::SingleWriteTransaction,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
@@ -159,7 +157,8 @@ macro_rules! impl_generator {
 
 			#[cfg(test)]
 			mod tests {
-				use reifydb_core::{encoded::key::EncodedKey, error::CoreError};
+				use reifydb_codec::key::encoded::EncodedKey;
+				use reifydb_core::error::CoreError;
 				use reifydb_engine::test_harness::create_test_admin_transaction;
 				use reifydb_value::{error::IntoDiagnostic, value::value_type::ValueType};
 

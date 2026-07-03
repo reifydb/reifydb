@@ -11,13 +11,13 @@
 
 use std::{collections::HashMap, error::Error as StdError, fmt::Write, sync::Arc};
 
+use reifydb_codec::{
+	encoded::row::EncodedRow,
+	key::encoded::{EncodedKey, EncodedKeyRange},
+};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
-	},
 	event::EventBus,
 	interface::store::{
 		EntryKind, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow, classify_key,

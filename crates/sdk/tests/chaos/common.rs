@@ -4,10 +4,8 @@
 #![allow(dead_code)]
 
 use reifydb_abi::{data::column::ColumnTypeCode, flow::diff::DiffType, operator::capabilities::OperatorCapability};
-use reifydb_core::{
-	encoded::shape::{RowShape, RowShapeField},
-	interface::catalog::flow::FlowNodeId,
-};
+use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
+use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_sdk::{
 	config::Config,
 	error::Result,

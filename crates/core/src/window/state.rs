@@ -3,14 +3,11 @@
 
 use std::{collections::HashMap, hash::Hash, mem, sync::Arc};
 
+use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
 use reifydb_value::Result;
 use serde::{Serialize, de::DeserializeOwned};
 
-use crate::{
-	encoded::key::{EncodedKey, IntoEncodedKey},
-	util::lru::slab::SlabLru,
-	window::store::WindowStore,
-};
+use crate::{util::lru::slab::SlabLru, window::store::WindowStore};
 
 #[derive(Clone, Copy, Debug)]
 pub enum StateBackend {
@@ -215,10 +212,10 @@ mod tests {
 	use std::{collections::HashMap, ops::Bound};
 
 	use postcard::{from_bytes, to_allocvec};
+	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_value::value::row_number::RowNumber;
 
 	use super::*;
-	use crate::encoded::key::EncodedKeyRange;
 
 	#[derive(Default)]
 	struct MockStore {

@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use OperationType::Delete;
+use reifydb_codec::encoded::row::EncodedRow;
 use reifydb_core::{
-	encoded::row::EncodedRow,
 	interface::catalog::{
 		authentication::{Authentication, AuthenticationId},
 		binding::Binding,

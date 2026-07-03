@@ -11,12 +11,12 @@
 
 use std::{error::Error as StdError, fmt::Write};
 
+use reifydb_codec::{
+	encoded::row::EncodedRow,
+	key::encoded::{EncodedKey, EncodedKeyRange},
+};
 use reifydb_core::{
 	delta::Delta,
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
-	},
 	interface::store::{
 		SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
 		SingleVersionRangeRev, SingleVersionRow,

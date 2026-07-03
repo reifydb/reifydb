@@ -5,8 +5,8 @@ use reifydb_core::{
 	interface::catalog::migration::{Migration, MigrationAction, MigrationEvent},
 	key::{migration::MigrationKey, migration_event::MigrationEventKey},
 };
-use reifydb_runtime::hash::Hash128;
 use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_value::util::hash::Hash128;
 
 use crate::{
 	CatalogStore, Result,

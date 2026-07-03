@@ -3,11 +3,14 @@
 
 use std::{panic, ptr, slice, str};
 
-use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::{
 	constants::{FFI_ERROR_INTERNAL, FFI_ERROR_INVALID_UTF8, FFI_OK},
 	context::context::ContextFFI,
 	data::buffer::BufferFFI,
+};
+use reifydb_codec::{
+	frame::{encode::encode_frames, options::EncodeOptions},
+	value::decode_params,
 };
 use reifydb_engine::vm::executor::Executor;
 use reifydb_extension::procedure::ffi_callbacks::memory::host_alloc;
@@ -21,7 +24,7 @@ use crate::ffi::context::get_transaction_mut;
 ///
 /// `ctx`, `rql_ptr`, and `result_out` must be valid non-null pointers for the duration of the
 /// call. `rql_ptr` must point to `rql_len` valid UTF-8 bytes. If `params_ptr` is non-null it
-/// must point to `params_len` valid postcard-encoded bytes.
+/// must point to `params_len` valid bytes holding codec-encoded params.
 pub unsafe extern "C" fn host_rql(
 	ctx: *mut ContextFFI,
 	rql_ptr: *const u8,
@@ -46,7 +49,7 @@ pub unsafe extern "C" fn host_rql(
 				Params::None
 			} else {
 				let params_bytes = slice::from_raw_parts(params_ptr, params_len);
-				match from_bytes(params_bytes) {
+				match decode_params(params_bytes) {
 					Ok(p) => p,
 					Err(e) => {
 						error!("host_rql: failed to deserialize params: {}", e);
@@ -87,7 +90,7 @@ pub unsafe extern "C" fn host_rql(
 				return FFI_ERROR_INTERNAL;
 			}
 
-			let result_bytes = match to_stdvec(&exec_result.frames) {
+			let result_bytes = match encode_frames(&exec_result.frames, &EncodeOptions::fast()) {
 				Ok(b) => b,
 				Err(e) => {
 					error!("host_rql: failed to serialize result: {}", e);

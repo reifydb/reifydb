@@ -13,13 +13,15 @@ use std::{
 
 use libloading::Symbol;
 use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_core::{
-	common::CommitVersion,
+use reifydb_codec::{
 	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
 		shape::{RowShape, fingerprint::RowShapeFingerprint},
 	},
+	key::encoded::{EncodedKey, EncodedKeyRange},
+};
+use reifydb_core::{
+	common::CommitVersion,
 	interface::{
 		catalog::{
 			flow::FlowNodeId,

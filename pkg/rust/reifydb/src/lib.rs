@@ -36,6 +36,7 @@ pub use reifydb_allocator as allocator;
 pub use reifydb_auth as auth;
 pub use reifydb_catalog as catalog;
 pub use reifydb_cdc as cdc;
+pub use reifydb_codec as codec;
 pub use reifydb_column as column;
 pub use reifydb_core as core;
 #[cfg(feature = "sub_server")]
@@ -148,7 +149,6 @@ pub use reifydb_value::{
 		value_type::ValueType,
 	},
 };
-pub use reifydb_wire_format as wire_format;
 #[cfg(feature = "sub_flow")]
 pub use subscribe::Subscription;
 pub mod test;

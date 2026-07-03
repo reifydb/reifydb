@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::json::from::convert_envelope_response;
 use reifydb_value::{err, error::Error};
-use reifydb_wire_format::json::from::convert_envelope_response;
 
 use crate::{AdminResult, CommandResult, QueryResult, Response, ResponsePayload};
 

@@ -3,10 +3,8 @@
 
 use std::{collections::HashMap, hash::Hash, mem, sync::Arc};
 
-use reifydb_core::{
-	encoded::key::{EncodedKey, IntoEncodedKey},
-	util::lru::slab::SlabLru,
-};
+use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
+use reifydb_core::util::lru::slab::SlabLru;
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{
@@ -217,7 +215,8 @@ where
 #[cfg(test)]
 pub mod tests {
 	use reifydb_abi::operator::capabilities::OperatorCapability;
-	use reifydb_core::{encoded::key::IntoEncodedKey, interface::catalog::flow::FlowNodeId};
+	use reifydb_codec::key::encoded::IntoEncodedKey;
+	use reifydb_core::interface::catalog::flow::FlowNodeId;
 
 	use super::*;
 	use crate::{

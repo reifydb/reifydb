@@ -8,8 +8,8 @@ repository.workspace = true
 publish = false
 
 [dev-dependencies]
+reifydb-codec = { workspace = true }
 reifydb = { workspace = true }
 reifydb-metric = { workspace = true }
 reifydb-sub-metric = { workspace = true }
 reifydb-value = { workspace = true }
-reifydb-wire-format = { workspace = true }

@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_value::{Result, value::row_number::RowNumber};
 use serde::{Serialize, de::DeserializeOwned};
-
-use crate::encoded::key::{EncodedKey, EncodedKeyRange};
 
 pub trait WindowStore {
 	fn state_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> Result<Option<V>>;

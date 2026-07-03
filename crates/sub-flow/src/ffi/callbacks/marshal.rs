@@ -7,7 +7,7 @@ use reifydb_abi::{
 	constants::{FFI_ERROR_ALLOC, FFI_OK},
 	data::buffer::BufferFFI,
 };
-use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_extension::procedure::ffi_callbacks::memory::host_alloc;
 use reifydb_value::util::cowvec::CowVec;
 

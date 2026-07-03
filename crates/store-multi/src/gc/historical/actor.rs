@@ -3,10 +3,10 @@
 
 use std::{collections::HashMap, mem::take, sync::Arc};
 
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	actors::historical_gc::HistoricalGcMessage as Message,
 	common::CommitVersion,
-	encoded::key::EncodedKey,
 	event::row::HistoricalGcSweepEvent,
 	interface::{
 		catalog::config::{ConfigKey, GetConfig},

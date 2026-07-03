@@ -65,15 +65,12 @@ mod utils;
 #[cfg(feature = "console_error_panic_hook")]
 use console_error_panic_hook::set_once as set_panic_hook;
 pub use error::JsError;
+use reifydb_codec::{
+	frame::{decode::decode_frames, encode::encode_frames, format::Encoding, options::EncodeOptions},
+	json::{from::frames_from_json, to::frames_to_json},
+};
 use reifydb_extension::transform::registry::Transforms;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_wire_format::{
-	decode::decode_frames,
-	encode::encode_frames,
-	format::Encoding,
-	json::{from::frames_from_json, to::frames_to_json},
-	options::EncodeOptions,
-};
 
 /// Encode JSON frames to RBCF binary with an optional forced encoding.
 #[wasm_bindgen(js_name = encode_rbcf)]

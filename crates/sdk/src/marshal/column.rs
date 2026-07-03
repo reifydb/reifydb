@@ -3,10 +3,12 @@
 
 use std::{mem, mem::size_of, ptr, slice, str};
 
-use postcard::to_allocvec;
 use reifydb_abi::data::{
 	buffer::BufferFFI,
 	column::{ColumnDataFFI, ColumnFFI, ColumnTypeCode, ColumnsFFI},
+};
+use reifydb_codec::ffi::cells::{
+	encode_any_cell, encode_decimal_cell, encode_dictionary_id_cell, encode_int_cell, encode_uint_cell,
 };
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_value::{
@@ -18,7 +20,6 @@ use reifydb_value::{
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
-		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
 		int::Int,
@@ -29,7 +30,6 @@ use reifydb_value::{
 		value_type::ValueType,
 	},
 };
-use serde::Serialize;
 use tracing::instrument;
 
 use super::util::column_data_to_type_code;
@@ -299,21 +299,21 @@ impl Arena {
 				}
 			}
 			ColumnTypeCode::Int => {
-				let container = self.unmarshal_serialized_data::<Int>(ffi);
+				let container = self.unmarshal_int_data(ffi);
 				ColumnBuffer::Int {
 					container,
 					max_bytes: MaxBytes::MAX,
 				}
 			}
 			ColumnTypeCode::Uint => {
-				let container = self.unmarshal_serialized_data::<Uint>(ffi);
+				let container = self.unmarshal_uint_data(ffi);
 				ColumnBuffer::Uint {
 					container,
 					max_bytes: MaxBytes::MAX,
 				}
 			}
 			ColumnTypeCode::Decimal => {
-				let container = self.unmarshal_serialized_data::<Decimal>(ffi);
+				let container = self.unmarshal_decimal_data(ffi);
 				ColumnBuffer::Decimal {
 					container,
 					precision: Precision::MAX,
@@ -478,44 +478,52 @@ impl Arena {
 				..
 			} => {
 				let values: &[Int] = container;
-				self.marshal_serialized(values)
+				self.marshal_encoded_cells(values.len(), |i, buf| encode_int_cell(&values[i], buf))
 			}
 			ColumnBuffer::Uint {
 				container,
 				..
 			} => {
 				let values: &[Uint] = container;
-				self.marshal_serialized(values)
+				self.marshal_encoded_cells(values.len(), |i, buf| encode_uint_cell(&values[i], buf))
 			}
 			ColumnBuffer::Decimal {
 				container,
 				..
 			} => {
 				let values: &[Decimal] = container;
-				self.marshal_serialized(values)
+				self.marshal_encoded_cells(values.len(), |i, buf| encode_decimal_cell(&values[i], buf))
 			}
-			ColumnBuffer::Any(container) => {
-				let mut offsets: Vec<u64> = Vec::with_capacity(container.len() + 1);
-				let mut data_bytes: Vec<u8> = Vec::new();
-				offsets.push(0);
-				for i in 0..container.len() {
-					let serialized = match container.get(i) {
-						Some(v) => to_allocvec(v).unwrap_or_default(),
-						None => to_allocvec(&Value::none()).unwrap_or_default(),
-					};
-					data_bytes.extend_from_slice(&serialized);
-					offsets.push(data_bytes.len() as u64);
-				}
-				self.marshal_with_offsets(&data_bytes, &offsets)
-			}
+			ColumnBuffer::Any(container) => self.marshal_encoded_cells(container.len(), |i, buf| {
+				let none = Value::none();
+				let value = container.get(i).unwrap_or(&none);
+				encode_any_cell(value, buf).expect("unsupported value in any column cell");
+			}),
 
 			ColumnBuffer::DictionaryId(container) => {
-				let values: Vec<&DictionaryEntryId> = container.data().iter().collect();
-				self.marshal_serialized(&values)
+				let values = container.data();
+				self.marshal_encoded_cells(values.len(), |i, buf| {
+					encode_dictionary_id_cell(&values[i], buf)
+				})
 			}
 
 			_ => unreachable!("marshal_column_data_serialize received non-serialize column type"),
 		}
+	}
+
+	fn marshal_encoded_cells(
+		&mut self,
+		count: usize,
+		mut write: impl FnMut(usize, &mut Vec<u8>),
+	) -> (BufferFFI, BufferFFI) {
+		let mut offsets: Vec<u64> = Vec::with_capacity(count + 1);
+		let mut data: Vec<u8> = Vec::new();
+		offsets.push(0);
+		for i in 0..count {
+			write(i, &mut data);
+			offsets.push(data.len() as u64);
+		}
+		self.marshal_with_offsets(&data, &offsets)
 	}
 
 	pub(super) fn marshal_numeric_slice<T: Copy>(&mut self, slice: &[T]) -> (BufferFFI, BufferFFI) {
@@ -532,20 +540,6 @@ impl Arena {
 			},
 			BufferFFI::empty(),
 		)
-	}
-
-	pub(super) fn marshal_serialized<T: Serialize>(&mut self, values: &[T]) -> (BufferFFI, BufferFFI) {
-		let mut offsets: Vec<u64> = Vec::with_capacity(values.len() + 1);
-		let mut data: Vec<u8> = Vec::new();
-
-		offsets.push(0);
-		for value in values {
-			let serialized = to_allocvec(value).unwrap_or_default();
-			data.extend_from_slice(&serialized);
-			offsets.push(data.len() as u64);
-		}
-
-		self.marshal_with_offsets(&data, &offsets)
 	}
 
 	pub(super) fn marshal_with_offsets(&mut self, data: &[u8], offsets: &[u64]) -> (BufferFFI, BufferFFI) {

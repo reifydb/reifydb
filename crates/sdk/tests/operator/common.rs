@@ -17,11 +17,11 @@
 use std::collections::BTreeMap;
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
+use reifydb_codec::{
+	encoded::shape::{RowShape, RowShapeField},
+	key::encoded::EncodedKey,
+};
 use reifydb_core::{
-	encoded::{
-		key::EncodedKey,
-		shape::{RowShape, RowShapeField},
-	},
 	interface::catalog::flow::FlowNodeId,
 	window::{
 		accumulator::{

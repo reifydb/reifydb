@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	encoded::row::EncodedRow,
-	interface::catalog::{
-		handler::Handler,
-		id::{HandlerId, NamespaceId},
-	},
+use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_core::interface::catalog::{
+	handler::Handler,
+	id::{HandlerId, NamespaceId},
 };
 use reifydb_value::value::sumtype::{SumTypeId, VariantRef};
 use shape::handler;

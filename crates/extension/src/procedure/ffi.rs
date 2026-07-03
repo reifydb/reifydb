@@ -3,7 +3,6 @@
 
 use std::{cell::UnsafeCell, ffi::c_void, ptr};
 
-use postcard::to_stdvec;
 use reifydb_abi::{
 	callbacks::{
 		builder::BuilderCallbacks, host::HostCallbacks, log::LogCallbacks, memory::MemoryCallbacks,
@@ -12,6 +11,7 @@ use reifydb_abi::{
 	context::context::ContextFFI,
 	procedure::{descriptor::ProcedureDescriptorFFI, vtable::ProcedureVTableFFI},
 };
+use reifydb_codec::value::encode_params;
 use reifydb_core::value::column::columns::Columns;
 use reifydb_routine::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_runtime::sync::mutex::Mutex;
@@ -144,7 +144,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for NativeProcedureFFI {
 impl NativeProcedureFFI {
 	#[inline]
 	fn serialize_params(&self, ctx: &ProcedureContext<'_, '_>) -> Result<Vec<u8>, RoutineError> {
-		to_stdvec(ctx.params).map_err(|e| {
+		encode_params(ctx.params).map_err(|e| {
 			RoutineError::Wrapped(Box::new(
 				SdkError::Other(format!("Failed to serialize params: {}", e)).into(),
 			))

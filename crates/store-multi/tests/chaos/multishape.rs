@@ -13,10 +13,10 @@
 use std::collections::{BTreeMap, HashMap};
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::{
 		catalog::{id::TableId, shape::ShapeId},
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet},

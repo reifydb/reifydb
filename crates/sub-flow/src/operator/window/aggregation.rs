@@ -4,14 +4,13 @@
 use std::sync::LazyLock;
 
 use postcard::to_stdvec;
+use reifydb_codec::{
+	encoded::shape::{RowShape, RowShapeField},
+	key::{encoded::EncodedKey, serializer::KeySerializer},
+};
 use reifydb_core::{
-	encoded::{
-		key::EncodedKey,
-		shape::{RowShape, RowShapeField},
-	},
 	interface::catalog::flow::FlowNodeId,
 	row::Row,
-	util::encoding::keycode::serializer::KeySerializer,
 	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_engine::{
@@ -24,14 +23,12 @@ use reifydb_engine::{
 };
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::{Expression, name::display_label};
-use reifydb_runtime::{
-	context::RuntimeContext,
-	hash::{Hash128, xxh3_128},
-};
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
 	error::Error,
 	params::Params,
+	util::hash::{Hash128, xxh3_128},
 	value::{Value, identity::IdentityId, row_number::RowNumber, value_type::ValueType},
 };
 

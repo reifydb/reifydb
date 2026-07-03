@@ -3,11 +3,7 @@
 
 use std::{sync::Arc, thread::spawn, time::Instant};
 
-use encoding::keycode;
-use reifydb_core::{
-	encoded::{key::EncodedKey, row::EncodedRow},
-	util::encoding,
-};
+use reifydb_codec::{encoded::row::EncodedRow, key as keycode, key::encoded::EncodedKey};
 use reifydb_transaction::multi::transaction::MultiTransaction;
 use reifydb_value::util::cowvec::CowVec;
 

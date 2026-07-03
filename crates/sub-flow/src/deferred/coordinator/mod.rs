@@ -14,13 +14,13 @@ use reifydb_cdc::{
 	consume::{checkpoint::CdcCheckpoint, consumer::CdcConsume},
 	storage::CdcStore,
 };
+use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
 	actors::{
 		flow::{FlowPoolMessage, PoolResponse},
 		pending::Pending,
 	},
 	common::CommitVersion,
-	encoded::shape::RowShape,
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},

@@ -9,13 +9,13 @@ use std::{
 };
 
 use reifydb_catalog::catalog::Catalog;
+use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
 	actors::{
 		flow::{FlowMessage, FlowResponse, WorkerBatch},
 		pending::Pending,
 	},
 	common::CommitVersion,
-	encoded::shape::RowShape,
 	interface::{
 		catalog::{flow::FlowId, shape::ShapeId},
 		change::{Change, ChangeOrigin},

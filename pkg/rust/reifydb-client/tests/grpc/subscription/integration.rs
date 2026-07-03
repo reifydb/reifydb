@@ -197,7 +197,7 @@ fn test_concurrent_multiple_subscriptions() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table1 = unique_table_name("sub_conc_1");
@@ -241,7 +241,7 @@ fn test_concurrent_5_plus_subscriptions() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		const NUM_TABLES: usize = 5;
@@ -293,7 +293,7 @@ fn test_reconnection_resubscribe_after_disconnect() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_reconn");
@@ -311,7 +311,7 @@ fn test_reconnection_resubscribe_after_disconnect() {
 
 		// Reconnect
 		let mut client2 =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client2.authenticate("mysecrettoken");
 
 		// Resubscribe
@@ -347,7 +347,7 @@ fn test_reconnection_multiple_subscriptions() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let tables: Vec<String> = (0..3).map(|i| unique_table_name(&format!("sub_reconn_m{}", i))).collect();
@@ -371,7 +371,7 @@ fn test_reconnection_multiple_subscriptions() {
 		drop(client);
 
 		let mut client2 =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client2.authenticate("mysecrettoken");
 
 		// Resubscribe to all tables
@@ -415,7 +415,7 @@ fn test_error_invalid_query() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let result = client.subscribe("INVALID RQL SYNTAX HERE", SubscriptionConfig::default()).await;
@@ -434,7 +434,7 @@ fn test_error_nonexistent_table() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let non_existent_table = format!(
@@ -459,7 +459,7 @@ fn test_lifecycle_cleanup_on_disconnect() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_cleanup");
@@ -577,7 +577,7 @@ fn test_edge_rapid_successive_changes() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_rapid");
@@ -632,7 +632,7 @@ fn test_stress_many_subscriptions_single_client() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		const NUM_SUBS: usize = 50;
@@ -705,7 +705,7 @@ fn test_stress_many_concurrent_clients() {
 		const NUM_CLIENTS: usize = 20;
 
 		let mut setup_client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		setup_client.authenticate("mysecrettoken");
 
 		let shared_table = unique_table_name("stress_concurrent");
@@ -722,7 +722,7 @@ fn test_stress_many_concurrent_clients() {
 
 			let handle = tokio::spawn(async move {
 				let mut client =
-					GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto)
+					GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf)
 						.await?;
 				client.authenticate("mysecrettoken");
 
@@ -745,7 +745,7 @@ fn test_stress_many_concurrent_clients() {
 		sleep(Duration::from_milliseconds(500).unwrap().to_std()).await;
 
 		let mut trigger_client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		trigger_client.authenticate("mysecrettoken");
 		trigger_client.command(&format!("INSERT test::{} [{{ id: 999 }}]", shared_table), None).await.unwrap();
 		drop(trigger_client);
@@ -778,7 +778,7 @@ fn test_stress_rapid_subscribe_unsubscribe() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("stress_rapid");
@@ -825,7 +825,7 @@ fn test_stress_client_disconnect_without_unsubscribe() {
 		const NUM_CLIENTS: usize = 10;
 
 		let mut setup_client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		setup_client.authenticate("mysecrettoken");
 
 		let shared_table = unique_table_name("stress_disconnect");
@@ -833,9 +833,8 @@ fn test_stress_client_disconnect_without_unsubscribe() {
 		drop(setup_client);
 
 		for i in 0..NUM_CLIENTS {
-			let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto)
-				.await
-				.unwrap();
+			let mut client =
+				GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 			client.authenticate("mysecrettoken");
 			let sub = client
 				.subscribe(&format!("from test::{}", shared_table), SubscriptionConfig::default())
@@ -854,7 +853,7 @@ fn test_stress_client_disconnect_without_unsubscribe() {
 		sleep(Duration::from_milliseconds(500).unwrap().to_std()).await;
 
 		let mut new_client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		new_client.authenticate("mysecrettoken");
 
 		let mut sub = new_client
@@ -889,7 +888,7 @@ fn test_stress_concurrent_connect_disconnect() {
 		const ITERATIONS_PER_TASK: usize = 5;
 
 		let mut setup_client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		setup_client.authenticate("mysecrettoken");
 
 		let mut tables = Vec::new();
@@ -916,7 +915,7 @@ fn test_stress_concurrent_connect_disconnect() {
 					loop {
 						let mut client = GrpcClient::connect(
 							&format!("http://[::1]:{}", port),
-							WireFormat::Proto,
+							WireFormat::Rbcf,
 						)
 						.await?;
 						client.authenticate("mysecrettoken");
@@ -981,7 +980,7 @@ fn test_stress_concurrent_connect_disconnect() {
 		assert_eq!(count, expected, "All {} connect/disconnect cycles should succeed, got {}", expected, count);
 
 		let mut final_client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		final_client.authenticate("mysecrettoken");
 
 		let mut sub = final_client
@@ -1011,7 +1010,7 @@ fn test_stress_subscribe_receive_unsubscribe_cycles() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("stress_full_cycle");
@@ -1050,9 +1049,8 @@ fn test_stress_connection_churn() {
 		const NUM_CONNECTIONS: usize = 50;
 
 		for i in 0..NUM_CONNECTIONS {
-			let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto)
-				.await
-				.unwrap();
+			let mut client =
+				GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 			client.authenticate("mysecrettoken");
 			drop(client);
 
@@ -1062,7 +1060,7 @@ fn test_stress_connection_churn() {
 		}
 
 		let mut final_client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		final_client.authenticate("mysecrettoken");
 
 		let _ = final_client.command("create namespace stress_test_ns", None).await;
@@ -1084,9 +1082,8 @@ fn test_stress_connect_query_disconnect_cycles() {
 		const NUM_CYCLES: usize = 30;
 
 		for i in 0..NUM_CYCLES {
-			let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto)
-				.await
-				.unwrap();
+			let mut client =
+				GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 			client.authenticate("mysecrettoken");
 
 			let _ = client.command("create namespace stress_test_ns", None).await;

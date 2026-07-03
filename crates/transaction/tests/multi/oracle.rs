@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_transaction::multi::transaction::MultiTransaction;
 use reifydb_value::util::cowvec::CowVec;
 

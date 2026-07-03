@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_value::{
 	Result, reifydb_assertions,
 	storage::DataBitVec,
@@ -24,7 +25,6 @@ use reifydb_value::{
 use uuid::Uuid;
 
 use crate::{
-	encoded::{row::EncodedRow, shape::RowShape},
 	error::CoreError,
 	value::column::{ColumnBuffer, columns::Columns},
 };
@@ -947,6 +947,7 @@ pub mod tests {
 	}
 
 	mod row {
+		use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 		use reifydb_value::{
 			fragment::Fragment,
 			util::bitvec::BitVec,
@@ -962,10 +963,7 @@ pub mod tests {
 			},
 		};
 
-		use crate::{
-			encoded::shape::{RowShape, RowShapeField},
-			value::column::{ColumnBuffer, ColumnWithName, columns::Columns},
-		};
+		use crate::value::column::{ColumnBuffer, ColumnWithName, columns::Columns};
 
 		#[test]
 		fn test_before_undefined_bool() {

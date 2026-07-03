@@ -10,9 +10,8 @@ use reifydb_core::{
 	interface::catalog::series::{SeriesKey, TimestampPrecision},
 	util::lru::arc::ArcLru,
 };
-use reifydb_runtime::hash::xxh3_128;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, error, fragment::Fragment, value::Value};
+use reifydb_value::{Result, error, fragment::Fragment, util::hash::xxh3_128, value::Value};
 
 use crate::{
 	ast::{

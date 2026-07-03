@@ -3,12 +3,14 @@
 
 use std::ops::Bound;
 
-use super::{EncodableKey, EncodableKeyRange, KeyKind};
-use crate::{
-	encoded::key::{EncodedKey, EncodedKeyRange},
-	interface::catalog::flow::FlowNodeId,
-	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+use reifydb_codec::key::{
+	deserializer::KeyDeserializer,
+	encoded::{EncodedKey, EncodedKeyRange},
+	serializer::KeySerializer,
 };
+
+use super::{EncodableKey, EncodableKeyRange, KeyKind};
+use crate::interface::catalog::flow::FlowNodeId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FlowNodeStateKey {
@@ -131,11 +133,10 @@ impl EncodableKeyRange for FlowNodeStateKeyRange {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+
 	use super::{EncodableKey, EncodableKeyRange, FlowNodeStateKey, FlowNodeStateKeyRange};
-	use crate::{
-		encoded::key::{EncodedKey, EncodedKeyRange},
-		interface::catalog::flow::FlowNodeId,
-	};
+	use crate::interface::catalog::flow::FlowNodeId;
 
 	#[test]
 	fn test_encode_decode() {

@@ -2,12 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 use std::collections::HashMap;
 
+use reifydb_codec::{frame::decode::decode_frames, json::types::ResponseFrame};
 use reifydb_value::{
 	error::{Diagnostic, Error},
 	params::Params,
 	value::{duration::Duration, frame::frame::Frame},
 };
-use reifydb_wire_format::{decode::decode_frames, json::types::ResponseFrame};
 use reqwest::{Client as ReqwestClient, header::HeaderMap};
 use serde::{Deserialize, Serialize};
 use serde_json::{from_str, json};
@@ -94,14 +94,6 @@ impl HttpClient {
 	/// * `url` - Base URL of the ReifyDB server (e.g., "http://localhost:8080")
 	/// * `format` - Wire format for responses
 	pub async fn connect(url: &str, format: WireFormat) -> Result<Self, Error> {
-		if format == WireFormat::Proto {
-			return Err(Error(Box::new(Diagnostic {
-				code: "INVALID_FORMAT".to_string(),
-				message: "WireFormat::Proto is not supported for HttpClient".to_string(),
-				..Default::default()
-			})));
-		}
-
 		let inner =
 			ReqwestClient::builder().timeout(Duration::from_seconds(30).unwrap().to_std()).build().unwrap(); // FIXME better error handling
 
@@ -123,14 +115,6 @@ impl HttpClient {
 	/// * `url` - Base URL of the ReifyDB server
 	/// * `format` - Wire format for responses
 	pub fn with_client(client: ReqwestClient, url: &str, format: WireFormat) -> Result<Self, Error> {
-		if format == WireFormat::Proto {
-			return Err(Error(Box::new(Diagnostic {
-				code: "INVALID_FORMAT".to_string(),
-				message: "WireFormat::Proto is not supported for HttpClient".to_string(),
-				..Default::default()
-			})));
-		}
-
 		let base_url = url.trim_end_matches('/').to_string();
 		Ok(Self {
 			inner: client,

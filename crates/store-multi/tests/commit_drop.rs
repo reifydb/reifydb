@@ -3,9 +3,9 @@
 
 use std::{collections::HashMap, error::Error as StdError, fmt::Write, ops::Bound, path::Path};
 
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::key::EncodedKey,
 	interface::{
 		catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId},
 		store::EntryKind,

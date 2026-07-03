@@ -3,7 +3,7 @@
 
 pub(crate) mod shape_header {
 	use once_cell::sync::Lazy;
-	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const FIELD_COUNT: usize = 0;
@@ -14,7 +14,7 @@ pub(crate) mod shape_header {
 
 pub(crate) mod shape_field {
 	use once_cell::sync::Lazy;
-	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const NAME: usize = 0;

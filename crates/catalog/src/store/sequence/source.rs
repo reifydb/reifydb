@@ -2,9 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use once_cell::sync::Lazy;
-use reifydb_core::{
-	encoded::key::EncodedKey, interface::catalog::id::SourceId, key::system_sequence::SystemSequenceKey,
-};
+use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::{interface::catalog::id::SourceId, key::system_sequence::SystemSequenceKey};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::{Result, store::sequence::generator::u64::GeneratorU64, system::ids::sequences::SOURCE_CONNECTOR};

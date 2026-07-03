@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	encoded::shape::RowShape,
 	interface::catalog::{
 		change::CatalogTrackSeriesChangeOperations,
 		id::{ColumnId, NamespaceId, SeriesId},
@@ -10,6 +9,7 @@ use reifydb_core::{
 		series::{Series, SeriesKey, SeriesMetadata},
 	},
 	internal,
+	row::row_shape_from_columns,
 };
 use reifydb_transaction::{
 	change::TransactionalSeriesChanges,
@@ -275,7 +275,7 @@ impl Catalog {
 		let series = CatalogStore::create_series(txn, to_create.into())?;
 		txn.track_series_created(series.clone())?;
 
-		let shape = RowShape::from(series.columns.as_slice());
+		let shape = row_shape_from_columns(series.columns.as_slice());
 		self.get_or_create_row_shape(&mut Transaction::Admin(&mut *txn), shape.fields().to_vec())?;
 
 		Ok(series)
@@ -291,7 +291,7 @@ impl Catalog {
 		let series = CatalogStore::create_series_with_id(txn, series_id, to_create.into(), column_ids)?;
 		txn.track_series_created(series.clone())?;
 
-		let shape = RowShape::from(series.columns.as_slice());
+		let shape = row_shape_from_columns(series.columns.as_slice());
 		self.get_or_create_row_shape(&mut Transaction::Admin(&mut *txn), shape.fields().to_vec())?;
 
 		Ok(series)

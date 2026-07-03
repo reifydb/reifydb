@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::{
+	encoded::{row::EncodedRow, shape::RowShape},
+	key::encoded::EncodedKey,
+};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	interface::{
 		catalog::shape::ShapeId,
 		change::{Change, Diff},

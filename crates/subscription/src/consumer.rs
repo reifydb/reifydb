@@ -5,16 +5,15 @@
 use std::collections::{HashMap, HashSet};
 
 use reifydb_catalog::find_subscription;
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	encoded::key::EncodedKey,
 	error::diagnostic::internal::internal,
 	interface::catalog::id::SubscriptionId,
 	key::{
 		Key,
 		subscription_row::{SubscriptionRowKey, SubscriptionRowKeyRange},
 	},
-	value::column::{ColumnWithName, columns::Columns, buffer::ColumnBuffer},
-};
+	value::column::{ColumnWithName, columns::Columns, buffer::ColumnBuffer}};
 use reifydb_value::value::datetime::DateTime;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_transaction::transaction::Transaction;

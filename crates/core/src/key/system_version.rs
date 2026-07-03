@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
 use serde::{Deserialize, Serialize, de};
 
 use super::{EncodableKey, KeyKind};
-use crate::{
-	encoded::key::EncodedKey,
-	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
-};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SystemVersionKey {

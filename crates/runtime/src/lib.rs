@@ -21,8 +21,6 @@
 
 pub mod context;
 
-pub mod hash;
-
 pub mod pool;
 
 pub mod shutdown;

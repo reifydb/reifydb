@@ -5,13 +5,15 @@ pub mod ffi;
 
 use std::ops::Bound;
 
-use reifydb_core::{
-	common::CommitVersion,
+use reifydb_codec::{
 	encoded::{
-		key::EncodedKey,
 		row::EncodedRow,
 		shape::{RowShape, fingerprint::RowShapeFingerprint},
 	},
+	key::encoded::EncodedKey,
+};
+use reifydb_core::{
+	common::CommitVersion,
 	interface::catalog::{
 		flow::FlowNodeId,
 		id::{NamespaceId, TableId},

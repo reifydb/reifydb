@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use super::{EncodableKey, KeyKind};
-use crate::{
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		shape::fingerprint::RowShapeFingerprint,
+use reifydb_codec::{
+	encoded::shape::fingerprint::RowShapeFingerprint,
+	key::{
+		deserializer::KeyDeserializer,
+		encoded::{EncodedKey, EncodedKeyRange},
+		serializer::KeySerializer,
 	},
-	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
+
+use super::{EncodableKey, KeyKind};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RowShapeKey {

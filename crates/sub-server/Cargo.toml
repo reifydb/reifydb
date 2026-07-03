@@ -11,6 +11,7 @@ description = "Common infrastructure for server subsystems"
 default = []
 
 [dependencies]
+reifydb-codec = { workspace = true }
 reifydb-auth = { workspace = true }
 reifydb-client = { workspace = true }
 reifydb-core = { workspace = true }
@@ -20,7 +21,6 @@ reifydb-runtime = { workspace = true }
 reifydb-subscription = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }
-reifydb-wire-format = { workspace = true }
 
 dashmap = { workspace = true }
 futures-util = { workspace = true }

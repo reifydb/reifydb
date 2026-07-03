@@ -11,13 +11,13 @@
 
 use std::collections::HashMap;
 
+use reifydb_codec::{
+	encoded::row::EncodedRow,
+	key::encoded::{EncodedKey, EncodedKeyRange},
+};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
-	},
 	interface::{
 		catalog::{id::TableId, shape::ShapeId},
 		store::{EntryKind, MultiVersionCommit},

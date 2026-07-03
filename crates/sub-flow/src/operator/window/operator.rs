@@ -2,9 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
+use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
 	common::{CommitVersion, TimeDomain, WindowKind, WindowSize},
-	encoded::shape::RowShape,
 	error::diagnostic::flow::{flow_window_timestamp_column_not_found, flow_window_timestamp_column_type_mismatch},
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	value::column::columns::Columns,

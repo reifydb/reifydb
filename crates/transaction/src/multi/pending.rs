@@ -10,7 +10,7 @@ use std::{
 	ops::RangeBounds,
 };
 
-use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::multi::types::DeltaEntry;
@@ -182,7 +182,8 @@ impl IntoIterator for PendingWrites {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::{common::CommitVersion, delta::Delta, encoded::key::EncodedKey};
+	use reifydb_codec::key::encoded::EncodedKey;
+	use reifydb_core::{common::CommitVersion, delta::Delta};
 	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;

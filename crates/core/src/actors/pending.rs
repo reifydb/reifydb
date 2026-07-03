@@ -9,7 +9,7 @@ use std::{
 	ops::RangeBounds,
 };
 
-use crate::encoded::{key::EncodedKey, row::EncodedRow};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 
 #[derive(Debug, Clone)]
 pub enum PendingWrite {

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{common::CommitVersion, encoded::row::EncodedRow, key::cdc_consumer::ToConsumerKey};
+use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_core::{common::CommitVersion, key::cdc_consumer::ToConsumerKey};
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_value::{Result, util::cowvec::CowVec};
 

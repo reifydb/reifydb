@@ -10,10 +10,10 @@ use reifydb_core::{
 	interface::catalog::config::{AcceptError, ConfigKey},
 	key::kind::KeyKind,
 };
-use reifydb_runtime::hash::Hash128;
 use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
+	util::hash::Hash128,
 	value::value_type::ValueType,
 };
 

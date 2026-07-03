@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::key::deserializer::KeyDeserializer;
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, RingBufferId},
@@ -10,7 +11,6 @@ use reifydb_core::{
 		namespace_ringbuffer::NamespaceRingBufferKey,
 		ringbuffer::{RingBufferKey, RingBufferMetadataKey},
 	},
-	util::encoding::keycode::deserializer::KeyDeserializer,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::Value;

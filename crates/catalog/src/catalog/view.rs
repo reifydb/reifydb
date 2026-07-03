@@ -2,13 +2,13 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	encoded::shape::RowShape,
 	interface::catalog::{
 		change::CatalogTrackViewChangeOperations,
 		id::{NamespaceId, PrimaryKeyId, ViewId},
 		view::{View, ViewSortKey},
 	},
 	internal,
+	row::row_shape_from_columns,
 };
 use reifydb_transaction::{
 	change::TransactionalViewChanges,
@@ -275,7 +275,7 @@ impl Catalog {
 		let view = CatalogStore::create_deferred_view(txn, to_create.into())?;
 		txn.track_view_created(view.clone())?;
 
-		let shape = RowShape::from(view.columns());
+		let shape = row_shape_from_columns(view.columns());
 		self.get_or_create_row_shape(&mut Transaction::Admin(&mut *txn), shape.fields().to_vec())?;
 
 		Ok(view)
@@ -286,7 +286,7 @@ impl Catalog {
 		let view = CatalogStore::create_transactional_view(txn, to_create.into())?;
 		txn.track_view_created(view.clone())?;
 
-		let shape = RowShape::from(view.columns());
+		let shape = row_shape_from_columns(view.columns());
 		self.get_or_create_row_shape(&mut Transaction::Admin(&mut *txn), shape.fields().to_vec())?;
 
 		Ok(view)

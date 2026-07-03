@@ -125,7 +125,7 @@ fn test_grpc_proto(path: &Path) {
 	retry(3, || {
 		let runtime = Arc::new(Runtime::new().unwrap());
 		let _guard = runtime.enter();
-		testscript::runner::run_path(&mut GrpcRunner::new(Arc::clone(&runtime), WireFormat::Proto), path)
+		testscript::runner::run_path(&mut GrpcRunner::new(Arc::clone(&runtime), WireFormat::Rbcf), path)
 	})
 	.expect("test failed with Proto");
 }

@@ -11,16 +11,18 @@ use std::{
 use libloading::Symbol;
 use reifydb_abi::{
 	constants::OPERATOR_ABI_TAG,
+	data::constraint::FFITypeConstraint,
 	operator::{
 		column::OperatorColumnsFFI,
 		descriptor::OperatorDescriptorFFI,
 		types::{OPERATOR_MAGIC, OperatorCreateFnFFI},
 	},
 };
+use reifydb_codec::constraint::type_constraint_from_ffi;
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::error::{Result as FFIResult, SdkError};
-use reifydb_value::value::constraint::{FFITypeConstraint, TypeConstraint};
+use reifydb_value::value::constraint::TypeConstraint;
 
 use crate::loader::ffi::{LibraryCache, buffer_to_string, validate_api_version};
 
@@ -231,12 +233,13 @@ unsafe fn extract_column_defs(column_defs: &OperatorColumnsFFI) -> Vec<ColumnInf
 	for i in 0..column_defs.column_count {
 		let col = unsafe { &*column_defs.columns.add(i) };
 
-		let field_type = TypeConstraint::from_ffi(FFITypeConstraint {
+		let field_type = type_constraint_from_ffi(&FFITypeConstraint {
 			base_type: col.base_type,
 			constraint_type: col.constraint_type,
 			constraint_param1: col.constraint_param1,
 			constraint_param2: col.constraint_param2,
-		});
+		})
+		.expect("invalid persisted type constraint tag");
 
 		columns.push(ColumnInfo {
 			name: unsafe { buffer_to_string(&col.name) },

@@ -3,10 +3,9 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::encoded::{
-	key::{EncodedKey, IntoEncodedKey},
-	row::EncodedRow,
-	shape::RowShape,
+use reifydb_codec::{
+	encoded::{row::EncodedRow, shape::RowShape},
+	key::encoded::{EncodedKey, IntoEncodedKey},
 };
 use reifydb_value::{
 	util::cowvec::CowVec,

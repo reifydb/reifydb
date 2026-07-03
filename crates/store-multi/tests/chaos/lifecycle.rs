@@ -17,10 +17,10 @@
 use std::collections::HashMap;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::store::{EntryKind, MultiVersionCommit},
 	key::row::RowKey,
 };

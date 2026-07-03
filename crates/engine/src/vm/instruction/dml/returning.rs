@@ -3,8 +3,8 @@
 
 use std::sync::Arc;
 
+use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_core::{
-	encoded::{row::EncodedRow, shape::RowShape},
 	interface::catalog::{column::Column, dictionary::Dictionary},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };

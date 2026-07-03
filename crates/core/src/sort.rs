@@ -6,6 +6,7 @@ use std::{
 	fmt::{Display, Formatter},
 };
 
+use reifydb_codec::key::sort::SortOrder;
 use reifydb_value::fragment::Fragment;
 use serde::{Deserialize, Serialize};
 
@@ -13,6 +14,15 @@ use serde::{Deserialize, Serialize};
 pub enum SortDirection {
 	Asc,
 	Desc,
+}
+
+impl From<SortDirection> for SortOrder {
+	fn from(direction: SortDirection) -> Self {
+		match direction {
+			SortDirection::Asc => SortOrder::Asc,
+			SortDirection::Desc => SortOrder::Desc,
+		}
+	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -37,6 +37,10 @@ use primary_key::PrimaryKeyKey;
 use procedure::ProcedureKey;
 use procedure_param::ProcedureParamKey;
 use property::ColumnPropertyKey;
+use reifydb_codec::{
+	key as keycode,
+	key::encoded::{EncodedKey, EncodedKeyRange},
+};
 use retention_strategy::{OperatorRetentionStrategyKey, ShapeRetentionStrategyKey};
 use ringbuffer::{RingBufferKey, RingBufferMetadataKey};
 use role::RoleKey;
@@ -54,13 +58,9 @@ use transaction_version::TransactionVersionKey;
 use version_epoch::VersionEpochKey;
 use view::ViewKey;
 
-use crate::{
-	encoded::key::{EncodedKey, EncodedKeyRange},
-	util::encoding::keycode,
-};
-
 pub mod authentication;
 pub mod binding;
+pub mod catalog;
 pub mod cdc_consumer;
 pub mod cdc_exclude;
 pub mod column;

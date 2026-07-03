@@ -3,8 +3,11 @@
 
 use std::sync::Arc;
 
+use reifydb_codec::{
+	encoded::{row::EncodedRow, shape::RowShape},
+	key::encoded::EncodedKey,
+};
 use reifydb_core::{
-	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	error::diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		engine,

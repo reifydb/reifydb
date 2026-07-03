@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::{Database, Params, RuntimeConfig, embedded as db_embedded};
+use reifydb_codec::frame::{decode::decode_frames, encode::encode_frames, options::EncodeOptions};
 use reifydb_value::value::frame::{data::FrameColumnData, frame::Frame};
-use reifydb_wire_format::{decode::decode_frames, encode::encode_frames, options::EncodeOptions};
 
 fn new_db() -> Database {
 	let db = db_embedded::memory().with_runtime_config(RuntimeConfig::default().seeded(0)).build().expect("build");

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::tag::type_tag_byte;
 use reifydb_core::{
 	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 	key::{dictionary::DictionaryKey, namespace_dictionary::NamespaceDictionaryKey},
@@ -69,8 +70,8 @@ impl CatalogStore {
 		dictionary::SHAPE.set_u64(&mut row, dictionary::ID, dictionary);
 		dictionary::SHAPE.set_u64(&mut row, dictionary::NAMESPACE, namespace);
 		dictionary::SHAPE.set_utf8(&mut row, dictionary::NAME, to_create.name.text());
-		dictionary::SHAPE.set_u8(&mut row, dictionary::VALUE_TYPE, to_create.value_type.to_u8());
-		dictionary::SHAPE.set_u8(&mut row, dictionary::ID_TYPE, to_create.id_type.to_u8());
+		dictionary::SHAPE.set_u8(&mut row, dictionary::VALUE_TYPE, type_tag_byte(&to_create.value_type));
+		dictionary::SHAPE.set_u8(&mut row, dictionary::ID_TYPE, type_tag_byte(&to_create.id_type));
 
 		txn.set(&DictionaryKey::encoded(dictionary), row)?;
 

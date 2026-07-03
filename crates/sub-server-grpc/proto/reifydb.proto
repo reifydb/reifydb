@@ -14,29 +14,22 @@ service ReifyDB {
   rpc Call(OperationRequest) returns (OperationResponse);
 }
 
-// Wire format the server should use when emitting frames back to the client.
-// FORMAT_UNSPECIFIED is treated as FORMAT_PROTO for backwards compatibility.
-enum Format {
-  FORMAT_UNSPECIFIED = 0;
-  FORMAT_PROTO = 1;
-  FORMAT_RBCF = 2;
-}
+// Every response payload is an RBCF message (the canonical binary columnar
+// format from the reifydb-codec crate). Params carry values in the canonical
+// self-describing value encoding from the same crate.
 
-message FramesPayload { repeated Frame frames = 1; }
-
-message AdminRequest  { string rql = 1; optional Params params = 2; Format format = 3; }
-message AdminResponse { oneof payload { FramesPayload frames = 1; bytes rbcf = 2; } }
-message CommandRequest  { string rql = 1; optional Params params = 2; Format format = 3; }
-message CommandResponse { oneof payload { FramesPayload frames = 1; bytes rbcf = 2; } }
-message QueryRequest  { string rql = 1; optional Params params = 2; Format format = 3; }
-message QueryResponse { oneof payload { FramesPayload frames = 1; bytes rbcf = 2; } }
+message AdminRequest  { string rql = 1; optional Params params = 2; }
+message AdminResponse { bytes rbcf = 1; }
+message CommandRequest  { string rql = 1; optional Params params = 2; }
+message CommandResponse { bytes rbcf = 1; }
+message QueryRequest  { string rql = 1; optional Params params = 2; }
+message QueryResponse { bytes rbcf = 1; }
 
 // Call a bound procedure via its gRPC binding name (globally unique across `system::bindings::grpc`).
-// `format` is accepted but ignored — the binding's declared format wins.
-message OperationRequest  { string name = 1; optional Params params = 2; Format format = 3; }
-message OperationResponse { oneof payload { FramesPayload frames = 1; bytes rbcf = 2; } }
+message OperationRequest  { string name = 1; optional Params params = 2; }
+message OperationResponse { bytes rbcf = 1; }
 
-message SubscribeRequest { string rql = 1; Format format = 2; }
+message SubscribeRequest { string rql = 1; }
 message UnsubscribeRequest { string subscription_id = 1; }
 message UnsubscribeResponse { string subscription_id = 1; }
 message SubscriptionEvent {
@@ -46,13 +39,12 @@ message SubscriptionEvent {
   }
 }
 message SubscribedEvent { string subscription_id = 1; }
-message ChangeEvent { oneof payload { FramesPayload frames = 1; bytes rbcf = 2; } }
+message ChangeEvent { bytes rbcf = 1; }
 
 // BatchSubscribe opens a single stream that delivers coalesced deltas from N RQL queries.
 // Each poller tick emits one BatchChangeEvent containing an entry per member that had data.
 message BatchSubscribeRequest {
   repeated string rql = 1;
-  Format format = 2;
 }
 message BatchUnsubscribeRequest { string batch_id = 1; }
 message BatchUnsubscribeResponse { string batch_id = 1; }
@@ -105,12 +97,4 @@ message Params {
 }
 message PositionalParams { repeated TypedValue values = 1; }
 message NamedParams      { map<string, TypedValue> values = 1; }
-message TypedValue       { uint32 type = 1; bytes value = 2; }
-
-message Frame       { repeated uint64 row_numbers = 1; repeated FrameColumn columns = 2; repeated string created_at = 3; repeated string updated_at = 4; }
-message FrameColumn {
-  string name    = 1;
-  uint32 type    = 2;
-  bytes  payload = 3;
-  bytes  bitvec  = 4;
-}
+message TypedValue       { bytes encoded = 1; }

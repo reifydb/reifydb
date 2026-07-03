@@ -3,9 +3,9 @@
 
 use std::collections::{HashMap, HashSet};
 
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::key::EncodedKey,
 	interface::{catalog::shape::ShapeId, store::EntryKind},
 	key::{EncodableKey, row::RowKey},
 };

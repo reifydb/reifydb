@@ -2,12 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 use std::{iter::once, ops::Bound};
 
+use reifydb_codec::key::{
+	encoded::{EncodedKey, EncodedKeyRange},
+	serializer::KeySerializer,
+};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::catalog::flow::FlowNodeId,
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
-	util::encoding::keycode::serializer::KeySerializer,
 };
 use reifydb_sdk::state::{decode_payload, encode_payload};
 use reifydb_transaction::multi::RangeScope;

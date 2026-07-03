@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::fingerprint::{RequestFingerprint, StatementFingerprint};
-use reifydb_runtime::hash::xxh3_128;
+use reifydb_value::util::hash::xxh3_128;
 
 pub fn fingerprint_request(statements: &[StatementFingerprint]) -> RequestFingerprint {
 	let mut buf = Vec::with_capacity(statements.len() * 16);

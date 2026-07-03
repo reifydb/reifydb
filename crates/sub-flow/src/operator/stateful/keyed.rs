@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
-	util::encoding::keycode::serializer::KeySerializer,
+use reifydb_codec::{
+	encoded::{row::EncodedRow, shape::RowShape},
+	key::{encoded::EncodedKey, serializer::KeySerializer},
 };
 use reifydb_value::{
 	Result,

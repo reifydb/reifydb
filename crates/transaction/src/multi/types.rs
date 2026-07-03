@@ -3,12 +3,8 @@
 
 use std::{cmp, cmp::Reverse};
 
-use reifydb_core::{
-	common::CommitVersion,
-	delta::Delta,
-	encoded::{key::EncodedKey, row::EncodedRow},
-	interface::store::MultiVersionRow,
-};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_core::{common::CommitVersion, delta::Delta, interface::store::MultiVersionRow};
 use reifydb_value::util::cowvec::CowVec;
 
 pub enum TransactionValue {

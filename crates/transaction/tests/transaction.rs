@@ -11,12 +11,12 @@
 
 use std::{collections::HashMap, error::Error as StdError, fmt::Write as _, path::Path, sync::Arc};
 
+use reifydb_codec::{
+	encoded::row::EncodedRow,
+	key::encoded::{EncodedKey, EncodedKeyRange},
+};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
-	},
 	event::EventBus,
 	interface::{
 		catalog::config::{ConfigKey, GetConfig},

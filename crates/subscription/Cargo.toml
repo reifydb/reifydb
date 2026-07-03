@@ -16,6 +16,7 @@ edition.workspace = true
 default = []
 
 [dependencies]
+reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-engine = { workspace = true }

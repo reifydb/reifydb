@@ -3,9 +3,9 @@
 
 use std::{collections::BTreeMap, sync::atomic::Ordering};
 
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::key::EncodedKey,
 	interface::store::{EntryKind, classify_key},
 };
 use reifydb_store::row::page::page_of;

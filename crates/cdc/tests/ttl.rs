@@ -14,10 +14,10 @@ use reifydb_cdc::{
 	storage::{CdcStorage, memory::MemoryCdcStorage},
 	testing::TestCdcHost,
 };
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
 	actors::cdc::{CdcProduceHandle, CdcProduceMessage},
 	common::CommitVersion,
-	encoded::{key::EncodedKey, row::EncodedRow},
 	event::{Event, EventBus, EventListener, metric::CdcEvictedEvent},
 	interface::{
 		catalog::config::ConfigKey,

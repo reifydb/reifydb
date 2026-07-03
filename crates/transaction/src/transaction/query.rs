@@ -3,9 +3,9 @@
 
 use std::sync::Arc;
 
+use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::key::{EncodedKey, EncodedKeyRange},
 	execution::ExecutionResult,
 	interface::{
 		catalog::{

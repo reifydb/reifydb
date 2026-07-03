@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use postcard::{from_bytes, to_stdvec};
-use reifydb_core::encoded::key::EncodedKey;
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_value::util::hex;
 
 #[test]

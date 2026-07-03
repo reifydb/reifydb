@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{encoded::row::EncodedRow, interface::catalog::ringbuffer::RingBuffer};
+use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_core::interface::catalog::ringbuffer::RingBuffer;
 use reifydb_value::{Result, value::row_number::RowNumber};
 
 use super::WithInterceptors;

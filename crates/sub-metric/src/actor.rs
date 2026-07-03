@@ -4,10 +4,10 @@
 #[allow(unused_imports)]
 use std::{collections::HashMap, collections::HashSet, mem, sync::Arc};
 
+use reifydb_codec::{encoded::shape::RowShape, key::encoded::EncodedKey};
 use reifydb_core::{
 	actors::metric::MetricMessage,
 	common::CommitVersion,
-	encoded::{key::EncodedKey, shape::RowShape},
 	event::{
 		EventBus,
 		metric::{

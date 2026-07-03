@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	encoded::key::EncodedKey, interface::catalog::flow::FlowNodeId,
-	util::encoding::keycode::serializer::KeySerializer,
-};
+use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
+use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_sdk::state::{decode_payload, encode_payload};
 use reifydb_value::{Result, value::row_number::RowNumber};
 

@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	encoded::shape::RowShape,
 	interface::catalog::{
 		change::CatalogTrackRingBufferChangeOperations,
 		id::{ColumnId, NamespaceId, PrimaryKeyId, RingBufferId},
@@ -10,6 +9,7 @@ use reifydb_core::{
 		ringbuffer::{PartitionedMetadata, RingBuffer, RingBufferMetadata},
 	},
 	internal,
+	row::row_shape_from_columns,
 };
 use reifydb_transaction::{
 	change::TransactionalRingBufferChanges,
@@ -287,7 +287,7 @@ impl Catalog {
 		let ringbuffer = CatalogStore::create_ringbuffer(txn, to_create.into())?;
 		txn.track_ringbuffer_created(ringbuffer.clone())?;
 
-		let shape = RowShape::from(ringbuffer.columns.as_slice());
+		let shape = row_shape_from_columns(ringbuffer.columns.as_slice());
 		self.get_or_create_row_shape(&mut Transaction::Admin(&mut *txn), shape.fields().to_vec())?;
 
 		Ok(ringbuffer)
@@ -304,7 +304,7 @@ impl Catalog {
 			CatalogStore::create_ringbuffer_with_id(txn, ringbuffer_id, to_create.into(), column_ids)?;
 		txn.track_ringbuffer_created(ringbuffer.clone())?;
 
-		let shape = RowShape::from(ringbuffer.columns.as_slice());
+		let shape = row_shape_from_columns(ringbuffer.columns.as_slice());
 		self.get_or_create_row_shape(&mut Transaction::Admin(&mut *txn), shape.fields().to_vec())?;
 
 		Ok(ringbuffer)

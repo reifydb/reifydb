@@ -3,9 +3,9 @@
 
 use std::collections::HashMap;
 
+use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::store::{MultiVersionBatch, MultiVersionRow},
 };
 use reifydb_value::Result;

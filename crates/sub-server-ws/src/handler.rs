@@ -4,6 +4,7 @@
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
 use futures_util::{SinkExt, StreamExt};
+use reifydb_codec::json::to::convert_frames;
 use reifydb_core::{
 	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
 	interface::catalog::{
@@ -32,7 +33,6 @@ use reifydb_value::{
 	params::Params,
 	value::{duration::Duration, frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
 };
-use reifydb_wire_format::json::to::convert_frames;
 use serde_json::{Value as JsonValue, from_str, json, to_string as json_to_string};
 use tokio::{
 	net::TcpStream,

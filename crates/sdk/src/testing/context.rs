@@ -8,11 +8,8 @@ use std::{
 	sync::Arc,
 };
 
-use postcard::to_stdvec;
-use reifydb_core::{
-	common::CommitVersion,
-	encoded::{key::EncodedKey, row::EncodedRow},
-};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey, tag::type_tag_byte, value::encode_value};
+use reifydb_core::common::CommitVersion;
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{
 	util::cowvec::CowVec,
@@ -62,12 +59,12 @@ struct DictionaryData {
 
 impl DictionaryData {
 	fn register(&mut self, name: &str, id: u64, id_type: ValueType, entries: &[(u128, Value)]) {
-		let id_type_byte = id_type.to_u8();
+		let id_type_byte = type_tag_byte(&id_type);
 		self.by_name.insert(name.to_string(), (id, id_type_byte));
 		self.id_type_by_dict.insert(id, id_type_byte);
 		let mut next = self.next_id.get(&id).copied().unwrap_or(0);
 		for (entry_id, value) in entries {
-			let value_bytes = to_stdvec(value).expect("serialize dictionary value");
+			let value_bytes = encode_value(value).expect("serialize dictionary value");
 			self.find.insert((id, value_bytes.clone()), (*entry_id, id_type_byte));
 			self.get.insert((id, *entry_id), value_bytes);
 			next = next.max(*entry_id + 1);

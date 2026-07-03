@@ -12,7 +12,10 @@ pub mod window;
 use std::ops::Bound;
 
 use postcard::{from_bytes, to_allocvec};
-use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape};
+use reifydb_codec::{
+	encoded::{row::EncodedRow, shape::RowShape},
+	key::encoded::EncodedKey,
+};
 use reifydb_value::value::blob::Blob;
 use serde::{Serialize, de::DeserializeOwned};
 

@@ -4,10 +4,10 @@
 use std::collections::HashMap;
 
 use reifydb_cdc::consume::checkpoint::CdcCheckpoint;
+use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
-	encoded::shape::RowShape,
 	interface::catalog::flow::FlowId,
 	key::{EncodableKey, Key, dictionary::DictionaryEntryKey, kind::KeyKind},
 };

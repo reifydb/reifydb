@@ -9,12 +9,8 @@
 use std::{mem, sync::Arc};
 
 use crossbeam_skiplist::SkipMap;
-use reifydb_core::{
-	delta::Delta,
-	encoded::{key::EncodedKey, row::EncodedRow},
-	event::EventBus,
-	interface::WithEventBus,
-};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_core::{delta::Delta, event::EventBus, interface::WithEventBus};
 use reifydb_runtime::sync::rwlock::{ArcRwLock, RwLock};
 use reifydb_store_single::SingleStore;
 #[cfg(not(target_arch = "wasm32"))]

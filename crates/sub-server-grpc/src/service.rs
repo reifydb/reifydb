@@ -3,14 +3,10 @@
 
 use std::sync::Arc;
 
+use reifydb_codec::frame::{encode::encode_frames, options::EncodeOptions};
 use reifydb_core::{
 	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
-	interface::catalog::{
-		binding::{Binding, BindingFormat},
-		id::SubscriptionId,
-		namespace::Namespace,
-		procedure::Procedure,
-	},
+	interface::catalog::{binding::Binding, id::SubscriptionId, namespace::Namespace, procedure::Procedure},
 	metric::ExecutionMetrics,
 };
 use reifydb_engine::subscription::HydrateError;
@@ -34,7 +30,6 @@ use reifydb_value::{
 	params::Params,
 	value::{frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
 };
-use reifydb_wire_format::{encode::encode_frames, options::EncodeOptions};
 use tokio::{
 	select, spawn,
 	sync::{mpsc, watch},
@@ -48,15 +43,14 @@ use tonic::{
 use tracing::{debug, warn};
 
 use crate::{
-	convert::{frames_to_proto, proto_params_to_params},
+	convert::proto_params_to_params,
 	error::GrpcError,
 	generated::{
 		AdminRequest, AdminResponse, AuthenticateRequest, AuthenticateResponse, BatchSubscribeRequest,
 		BatchSubscriptionEvent, BatchUnsubscribeRequest, BatchUnsubscribeResponse, CommandRequest,
-		CommandResponse, FramesPayload, LogoutRequest, LogoutResponse, OperationRequest, OperationResponse,
+		CommandResponse, LogoutRequest, LogoutResponse, OperationRequest, OperationResponse,
 		Params as ProtoParams, QueryRequest, QueryResponse, SubscribeRequest, SubscriptionEvent,
-		UnsubscribeRequest, UnsubscribeResponse, admin_response, command_response, operation_response,
-		query_response, reify_db_server::ReifyDb,
+		UnsubscribeRequest, UnsubscribeResponse, reify_db_server::ReifyDb,
 	},
 	server_state::GrpcServerState,
 	subscription::{GrpcWireSink, SubscriptionRegistry, WireFormat},
@@ -129,12 +123,11 @@ impl ReifyDbService {
 	}
 
 	#[inline]
-	fn admin_context(&self, request: Request<AdminRequest>) -> Result<(RequestContext, WireFormat), GrpcError> {
+	fn admin_context(&self, request: Request<AdminRequest>) -> Result<RequestContext, GrpcError> {
 		let identity = self.extract_identity(&request)?;
 		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
 		let params = Self::extract_params(inner.params)?;
-		let format = WireFormat::from_proto_i32(inner.format);
 		let ctx = RequestContext {
 			identity,
 			operation: Operation::Admin,
@@ -142,40 +135,24 @@ impl ReifyDbService {
 			params,
 			metadata,
 		};
-		Ok((ctx, format))
+		Ok(ctx)
 	}
 
 	#[inline]
-	fn encode_admin_payload(format: WireFormat, frames: Vec<Frame>) -> admin_response::Payload {
-		match format {
-			WireFormat::Rbcf => admin_response::Payload::Rbcf(
-				encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default(),
-			),
-			WireFormat::Proto => admin_response::Payload::Frames(FramesPayload {
-				frames: frames_to_proto(frames),
-			}),
-		}
-	}
-
-	#[inline]
-	fn build_admin_response(
-		payload: admin_response::Payload,
-		metrics: &ExecutionMetrics,
-	) -> Response<AdminResponse> {
+	fn build_admin_response(rbcf: Vec<u8>, metrics: &ExecutionMetrics) -> Response<AdminResponse> {
 		let mut response = Response::new(AdminResponse {
-			payload: Some(payload),
+			rbcf,
 		});
 		insert_meta_headers(response.metadata_mut(), metrics);
 		response
 	}
 
 	#[inline]
-	fn command_context(&self, request: Request<CommandRequest>) -> Result<(RequestContext, WireFormat), GrpcError> {
+	fn command_context(&self, request: Request<CommandRequest>) -> Result<RequestContext, GrpcError> {
 		let identity = self.extract_identity(&request)?;
 		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
 		let params = Self::extract_params(inner.params)?;
-		let format = WireFormat::from_proto_i32(inner.format);
 		let ctx = RequestContext {
 			identity,
 			operation: Operation::Command,
@@ -183,40 +160,24 @@ impl ReifyDbService {
 			params,
 			metadata,
 		};
-		Ok((ctx, format))
+		Ok(ctx)
 	}
 
 	#[inline]
-	fn encode_command_payload(format: WireFormat, frames: Vec<Frame>) -> command_response::Payload {
-		match format {
-			WireFormat::Rbcf => command_response::Payload::Rbcf(
-				encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default(),
-			),
-			WireFormat::Proto => command_response::Payload::Frames(FramesPayload {
-				frames: frames_to_proto(frames),
-			}),
-		}
-	}
-
-	#[inline]
-	fn build_command_response(
-		payload: command_response::Payload,
-		metrics: &ExecutionMetrics,
-	) -> Response<CommandResponse> {
+	fn build_command_response(rbcf: Vec<u8>, metrics: &ExecutionMetrics) -> Response<CommandResponse> {
 		let mut response = Response::new(CommandResponse {
-			payload: Some(payload),
+			rbcf,
 		});
 		insert_meta_headers(response.metadata_mut(), metrics);
 		response
 	}
 
 	#[inline]
-	fn query_context(&self, request: Request<QueryRequest>) -> Result<(RequestContext, WireFormat), GrpcError> {
+	fn query_context(&self, request: Request<QueryRequest>) -> Result<RequestContext, GrpcError> {
 		let identity = self.extract_identity(&request)?;
 		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
 		let params = Self::extract_params(inner.params)?;
-		let format = WireFormat::from_proto_i32(inner.format);
 		let ctx = RequestContext {
 			identity,
 			operation: Operation::Query,
@@ -224,28 +185,13 @@ impl ReifyDbService {
 			params,
 			metadata,
 		};
-		Ok((ctx, format))
+		Ok(ctx)
 	}
 
 	#[inline]
-	fn encode_query_payload(format: WireFormat, frames: Vec<Frame>) -> query_response::Payload {
-		match format {
-			WireFormat::Rbcf => query_response::Payload::Rbcf(
-				encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default(),
-			),
-			WireFormat::Proto => query_response::Payload::Frames(FramesPayload {
-				frames: frames_to_proto(frames),
-			}),
-		}
-	}
-
-	#[inline]
-	fn build_query_response(
-		payload: query_response::Payload,
-		metrics: &ExecutionMetrics,
-	) -> Response<QueryResponse> {
+	fn build_query_response(rbcf: Vec<u8>, metrics: &ExecutionMetrics) -> Response<QueryResponse> {
 		let mut response = Response::new(QueryResponse {
-			payload: Some(payload),
+			rbcf,
 		});
 		insert_meta_headers(response.metadata_mut(), metrics);
 		response
@@ -419,28 +365,17 @@ impl ReifyDbService {
 	}
 
 	#[inline]
-	fn encode_call_payload(format: BindingFormat, frames: Vec<Frame>) -> operation_response::Payload {
-		match format {
-			BindingFormat::Rbcf => operation_response::Payload::Rbcf(
-				encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default(),
-			),
-			_ => operation_response::Payload::Frames(FramesPayload {
-				frames: frames_to_proto(frames),
-			}),
-		}
-	}
-
-	#[inline]
-	fn build_call_response(
-		payload: operation_response::Payload,
-		metrics: &ExecutionMetrics,
-	) -> Response<OperationResponse> {
+	fn build_call_response(rbcf: Vec<u8>, metrics: &ExecutionMetrics) -> Response<OperationResponse> {
 		let mut response = Response::new(OperationResponse {
-			payload: Some(payload),
+			rbcf,
 		});
 		insert_meta_headers(response.metadata_mut(), metrics);
 		response
 	}
+}
+
+fn encode_rbcf(frames: Vec<Frame>) -> Vec<u8> {
+	encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default()
 }
 
 #[tonic::async_trait]
@@ -449,24 +384,21 @@ impl ReifyDb for ReifyDbService {
 		if !self.admin_enabled {
 			return Err(Status::not_found("not found"));
 		}
-		let (ctx, format) = self.admin_context(request)?;
+		let ctx = self.admin_context(request)?;
 		let (frames, metrics) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
-		let payload = Self::encode_admin_payload(format, frames);
-		Ok(Self::build_admin_response(payload, &metrics))
+		Ok(Self::build_admin_response(encode_rbcf(frames), &metrics))
 	}
 
 	async fn command(&self, request: Request<CommandRequest>) -> Result<Response<CommandResponse>, Status> {
-		let (ctx, format) = self.command_context(request)?;
+		let ctx = self.command_context(request)?;
 		let (frames, metrics) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
-		let payload = Self::encode_command_payload(format, frames);
-		Ok(Self::build_command_response(payload, &metrics))
+		Ok(Self::build_command_response(encode_rbcf(frames), &metrics))
 	}
 
 	async fn query(&self, request: Request<QueryRequest>) -> Result<Response<QueryResponse>, Status> {
-		let (ctx, format) = self.query_context(request)?;
+		let ctx = self.query_context(request)?;
 		let (frames, metrics) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
-		let payload = Self::encode_query_payload(format, frames);
-		Ok(Self::build_query_response(payload, &metrics))
+		Ok(Self::build_query_response(encode_rbcf(frames), &metrics))
 	}
 
 	type SubscribeStream = UnboundedReceiverStream<Result<SubscriptionEvent, Status>>;
@@ -478,7 +410,7 @@ impl ReifyDb for ReifyDbService {
 		let identity = self.extract_identity(&request)?;
 		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
-		let format = WireFormat::from_proto_i32(inner.format);
+		let format = WireFormat::Rbcf;
 
 		let (tx, rx, connection_id, sink) = self.build_single_sink();
 
@@ -538,7 +470,7 @@ impl ReifyDb for ReifyDbService {
 		let identity = self.extract_identity(&request)?;
 		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
-		let format = WireFormat::from_proto_i32(inner.format);
+		let format = WireFormat::Rbcf;
 
 		let (batch_tx, batch_rx, connection_id, batch_sink) = self.build_batch_sink();
 
@@ -678,8 +610,7 @@ impl ReifyDb for ReifyDbService {
 			dispatch_binding(&self.state, namespace.name(), procedure.name(), params, identity, metadata)
 				.await
 				.map_err(GrpcError::from)?;
-		let payload = Self::encode_call_payload(binding.format, frames);
-		Ok(Self::build_call_response(payload, &metrics))
+		Ok(Self::build_call_response(encode_rbcf(frames), &metrics))
 	}
 }
 

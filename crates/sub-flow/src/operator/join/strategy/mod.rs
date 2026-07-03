@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{common::JoinType, interface::change::Diff, value::column::columns::Columns};
-use reifydb_runtime::hash::Hash128;
+use reifydb_value::util::hash::Hash128;
 
 use crate::{
 	operator::join::{

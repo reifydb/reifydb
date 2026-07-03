@@ -48,7 +48,6 @@ use crate::interface::version::{ComponentType, HasVersion, SystemVersion};
 pub mod actors;
 pub mod common;
 pub mod delta;
-pub mod encoded;
 pub mod error;
 pub mod event;
 pub mod execution;

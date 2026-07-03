@@ -3,7 +3,8 @@
 
 use std::{collections::HashMap, ops::Bound};
 
-use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
+use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 use reifydb_value::{Result, util::cowvec::CowVec};
 
 use crate::{

@@ -3,9 +3,8 @@
 
 use std::cmp;
 
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use serde::{Deserialize, Serialize};
-
-use crate::encoded::{key::EncodedKey, row::EncodedRow};
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Delta {

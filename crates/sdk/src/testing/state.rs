@@ -4,7 +4,10 @@
 use std::{collections::HashMap, fmt::Debug};
 
 use postcard::from_bytes;
-use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape};
+use reifydb_codec::{
+	encoded::{row::EncodedRow, shape::RowShape},
+	key::encoded::EncodedKey,
+};
 use reifydb_value::value::Value;
 use serde::de::DeserializeOwned;
 
@@ -126,7 +129,7 @@ impl TestStateStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::encoded::{
+	use reifydb_codec::encoded::{
 		row::EncodedRow,
 		shape::{RowShape, RowShapeField},
 	};

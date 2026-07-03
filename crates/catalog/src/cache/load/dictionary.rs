@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::tag::value_type_from_tag_byte;
 use reifydb_core::{
 	interface::{
 		catalog::{dictionary::Dictionary, id::NamespaceId},
@@ -9,7 +10,7 @@ use reifydb_core::{
 	key::dictionary::DictionaryKey,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::{dictionary::DictionaryId, value_type::ValueType};
+use reifydb_value::value::dictionary::DictionaryId;
 
 use super::CatalogCache;
 use crate::{
@@ -43,7 +44,7 @@ fn convert_dictionary(multi: MultiVersionRow) -> Dictionary {
 		id,
 		namespace,
 		name,
-		value_type: ValueType::from_u8(value_type_ordinal),
-		id_type: ValueType::from_u8(id_type_ordinal),
+		value_type: value_type_from_tag_byte(value_type_ordinal),
+		id_type: value_type_from_tag_byte(id_type_ordinal),
 	}
 }

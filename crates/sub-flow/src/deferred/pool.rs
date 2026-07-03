@@ -9,13 +9,13 @@ use std::{
 	sync::Arc,
 };
 
+use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
 	actors::{
 		flow::{FlowMessage, FlowPoolMessage, FlowResponse, PoolResponse, WorkerBatch},
 		pending::{Pending, PendingWrite},
 	},
 	common::CommitVersion,
-	encoded::shape::RowShape,
 	interface::{
 		catalog::{flow::FlowId, shape::ShapeId},
 		change::Change,
@@ -674,10 +674,8 @@ impl PoolActor {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{
-		encoded::{key::EncodedKey, row::EncodedRow},
-		key::dictionary::DictionaryEntryKey,
-	};
+	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+	use reifydb_core::key::dictionary::DictionaryEntryKey;
 	use reifydb_runtime::context::clock::MockClock;
 	use reifydb_value::{util::cowvec::CowVec, value::dictionary::DictionaryId};
 

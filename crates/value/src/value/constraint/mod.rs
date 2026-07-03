@@ -36,18 +36,6 @@ pub enum Constraint {
 	SumType(SumTypeId),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(C)]
-pub struct FFITypeConstraint {
-	pub base_type: u8,
-
-	pub constraint_type: u8,
-
-	pub constraint_param1: u32,
-
-	pub constraint_param2: u32,
-}
-
 impl TypeConstraint {
 	pub const fn unconstrained(ty: ValueType) -> Self {
 		Self {
@@ -90,68 +78,6 @@ impl TypeConstraint {
 
 	pub fn constraint(&self) -> &Option<Constraint> {
 		&self.constraint
-	}
-
-	pub fn to_ffi(&self) -> FFITypeConstraint {
-		let base_type = self.base_type.to_u8();
-		match &self.constraint {
-			None => FFITypeConstraint {
-				base_type,
-				constraint_type: 0,
-				constraint_param1: 0,
-				constraint_param2: 0,
-			},
-			Some(Constraint::MaxBytes(max)) => FFITypeConstraint {
-				base_type,
-				constraint_type: 1,
-				constraint_param1: max.value(),
-				constraint_param2: 0,
-			},
-			Some(Constraint::PrecisionScale(p, s)) => FFITypeConstraint {
-				base_type,
-				constraint_type: 2,
-				constraint_param1: p.value() as u32,
-				constraint_param2: s.value() as u32,
-			},
-			Some(Constraint::Dictionary(dict_id, id_type)) => FFITypeConstraint {
-				base_type,
-				constraint_type: 3,
-				constraint_param1: dict_id.to_u64() as u32,
-				constraint_param2: id_type.to_u8() as u32,
-			},
-			Some(Constraint::SumType(id)) => FFITypeConstraint {
-				base_type,
-				constraint_type: 4,
-				constraint_param1: id.to_u64() as u32,
-				constraint_param2: 0,
-			},
-		}
-	}
-
-	pub fn from_ffi(ffi: FFITypeConstraint) -> Self {
-		let ty = ValueType::from_u8(ffi.base_type);
-		match ffi.constraint_type {
-			1 => Self::with_constraint(ty, Constraint::MaxBytes(MaxBytes::new(ffi.constraint_param1))),
-			2 => Self::with_constraint(
-				ty,
-				Constraint::PrecisionScale(
-					Precision::new(ffi.constraint_param1 as u8),
-					Scale::new(ffi.constraint_param2 as u8),
-				),
-			),
-			3 => Self::with_constraint(
-				ty,
-				Constraint::Dictionary(
-					DictionaryId::from(ffi.constraint_param1 as u64),
-					ValueType::from_u8(ffi.constraint_param2 as u8),
-				),
-			),
-			4 => Self::with_constraint(
-				ty,
-				Constraint::SumType(SumTypeId::from(ffi.constraint_param1 as u64)),
-			),
-			_ => Self::unconstrained(ty),
-		}
 	}
 
 	pub fn validate(&self, value: &Value) -> Result<(), Error> {

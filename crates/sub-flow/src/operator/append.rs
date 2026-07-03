@@ -4,17 +4,19 @@
 use std::{cell::RefCell, ops::Bound};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
+use reifydb_codec::{
+	encoded::shape::RowShape,
+	key::{
+		encoded::{EncodedKey, EncodedKeyRange},
+		serializer::KeySerializer,
+	},
+};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		shape::RowShape,
-	},
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	util::encoding::keycode::serializer::KeySerializer,
 	value::column::columns::Columns,
 };
 use reifydb_runtime::version_epoch::VersionEpoch;

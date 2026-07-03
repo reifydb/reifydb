@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 // RBCF message decoder: Uint8Array -> WireFrame[].
-// Port of crates/wire-format/src/decode/mod.rs.
+// Port of crates/codec/src/frame/decode/mod.rs.
 
 import type { Type } from "@reifydb/core";
 import { NONE_VALUE } from "@reifydb/core";
@@ -10,7 +10,7 @@ import { NONE_VALUE } from "@reifydb/core";
 import {
     COL_FLAG_HAS_NONES, COLUMN_DESCRIPTOR_SIZE, ColumnEncoding, FRAME_HEADER_SIZE,
     META_HAS_CREATED_AT, META_HAS_ROW_NUMBERS, META_HAS_UPDATED_AT, MESSAGE_HEADER_SIZE,
-    RBCF_MAGIC, RBCF_VERSION, dict_index_width_from_flags, is_option_code, type_name_from_code,
+    RBCF_MAGIC, RBCF_VERSION, dict_index_width_from_flags, type_name_from_code,
 } from "./format";
 import { BinaryReader } from "./reader";
 import { decode_bitvec } from "./nones";
@@ -90,8 +90,10 @@ function decode_column(r: BinaryReader): WireColumn {
     const extra_len = r.u32();
 
     const encoding = encoding_byte as ColumnEncoding;
+    // The type_code byte is a pure ValueKind; optionality is signaled only by
+    // COL_FLAG_HAS_NONES plus the none-bitmap.
     const has_nones = (flags & COL_FLAG_HAS_NONES) !== 0;
-    const option_outer = is_option_code(type_code);
+    const option_outer = has_nones;
 
     const name = r.utf8(name_len);
     const name_pad = (4 - (name_len % 4)) % 4;

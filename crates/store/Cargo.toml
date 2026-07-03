@@ -8,5 +8,6 @@ repository.workspace = true
 description = "Row-tier store layer: page model and residency traits"
 
 [dependencies]
+reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-value = { workspace = true }

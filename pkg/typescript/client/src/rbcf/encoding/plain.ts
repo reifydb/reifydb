@@ -2,14 +2,17 @@
 // Copyright (c) 2026 ReifyDB
 
 // Plain encoding: raw little-endian values for fixed-size types, offsets+data for varlen,
-// bit-packed for booleans. Port of crates/wire-format/src/encoding/plain.rs and the
-// decode paths in crates/wire-format/src/decode/{fixed,varlen,any}.rs.
+// bit-packed for booleans. Port of crates/codec/src/frame/encoding/plain.rs and the
+// decode paths in crates/codec/src/frame/decode/{fixed,varlen,any}.rs.
+
+import { NONE_VALUE } from "@reifydb/core";
 
 import { TYPE_CODE, type TypeName } from "../format";
 import {
     read_f32, read_f64, read_i8, read_i16, read_i32, read_i64, read_i128,
     read_u16, read_u32, read_u64, read_u128,
 } from "../reader";
+import { decode_type_info } from "../typeinfo";
 import {
     format_blob, format_date, format_date_time, format_duration, format_f32, format_f64,
     format_time, format_uuid, signed_big_int_from_le_bytes,
@@ -147,12 +150,17 @@ function decode_any(row_count: number, data: Uint8Array): string[] {
     return out;
 }
 
-// Port of crates/wire-format/src/decode/any.rs: type_tag + value bytes.
-function decode_any_value(data: Uint8Array, pos: number): { value: string; next_pos: number } {
+// Port of crates/codec/src/value/mod.rs decode_value_from: kind byte + payload.
+// None values (kind 0x00 + typeinfo of the inner type) decode to the NONE_VALUE
+// sentinel; List/Record/Tuple render in the same form as Rust's Value Display.
+export function decode_any_value(data: Uint8Array, pos: number): { value: string; next_pos: number } {
     const tag = data[pos];
     pos += 1;
-    // Tag is base type code (no option bit here).
     switch (tag) {
+        case TYPE_CODE.None: {
+            const inner = decode_type_info(data, pos);
+            return { value: NONE_VALUE, next_pos: inner.next_pos };
+        }
         case TYPE_CODE.Boolean:
             return { value: data[pos] !== 0 ? "true" : "false", next_pos: pos + 1 };
         case TYPE_CODE.Float4:
@@ -214,6 +222,55 @@ function decode_any_value(data: Uint8Array, pos: number): { value: string; next_
             const len = read_u32(data, pos);
             const slice = data.subarray(pos + 4, pos + 4 + len);
             return { value: new TextDecoder("utf-8").decode(slice), next_pos: pos + 4 + len };
+        }
+        case TYPE_CODE.Any:
+            return decode_any_value(data, pos);
+        case TYPE_CODE.DictionaryId: {
+            const width = data[pos];
+            pos += 1;
+            let v: bigint | number;
+            switch (width) {
+                case 1: v = data[pos]; break;
+                case 2: v = read_u16(data, pos); break;
+                case 4: v = read_u32(data, pos); break;
+                case 8: v = read_u64(data, pos); break;
+                case 16: v = read_u128(data, pos); break;
+                default: throw new Error(`RBCF: invalid DictionaryId width ${width}`);
+            }
+            return { value: v.toString(), next_pos: pos + width };
+        }
+        case TYPE_CODE.Type: {
+            const info = decode_type_info(data, pos);
+            return { value: info.name, next_pos: info.next_pos };
+        }
+        case TYPE_CODE.List:
+        case TYPE_CODE.Tuple: {
+            const count = read_u32(data, pos);
+            pos += 4;
+            const items = new Array<string>(count);
+            for (let i = 0; i < count; i++) {
+                const item = decode_any_value(data, pos);
+                items[i] = item.value;
+                pos = item.next_pos;
+            }
+            const open = tag === TYPE_CODE.List ? "[" : "(";
+            const close = tag === TYPE_CODE.List ? "]" : ")";
+            return { value: `${open}${items.join(", ")}${close}`, next_pos: pos };
+        }
+        case TYPE_CODE.Record: {
+            const count = read_u32(data, pos);
+            pos += 4;
+            const fields = new Array<string>(count);
+            for (let i = 0; i < count; i++) {
+                const key_len = read_u32(data, pos);
+                pos += 4;
+                const key = new TextDecoder("utf-8").decode(data.subarray(pos, pos + key_len));
+                pos += key_len;
+                const field = decode_any_value(data, pos);
+                pos = field.next_pos;
+                fields[i] = `${key}: ${field.value}`;
+            }
+            return { value: `{${fields.join(", ")}}`, next_pos: pos };
         }
         default:
             throw new Error(`RBCF: unsupported Any type tag: ${tag}`);

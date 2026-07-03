@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{encoded::row::EncodedRow, interface::catalog::series::Series};
+use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_core::interface::catalog::series::Series;
 use reifydb_value::Result;
 
 use super::WithInterceptors;

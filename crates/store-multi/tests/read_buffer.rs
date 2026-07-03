@@ -10,13 +10,13 @@
 
 use std::collections::HashMap;
 
+use reifydb_codec::{
+	encoded::row::EncodedRow,
+	key::encoded::{EncodedKey, EncodedKeyRange},
+};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
-	},
 	interface::store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 };
 use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore};

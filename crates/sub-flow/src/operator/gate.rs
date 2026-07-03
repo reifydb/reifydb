@@ -4,8 +4,8 @@
 use std::sync::LazyLock;
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
-	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
+use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 
 use crate::{Result, tier::TierStorage};
 

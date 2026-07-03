@@ -3,7 +3,8 @@
 
 use std::{ops::Bound, sync::Arc};
 
-use reifydb_core::{encoded::key::EncodedKey, internal_error};
+use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::internal_error;
 use reifydb_runtime::{shutdown::Shutdown, sync::mutex::Mutex};
 use reifydb_sqlite::{
 	SqliteConfig, SqliteTempPathGuard,

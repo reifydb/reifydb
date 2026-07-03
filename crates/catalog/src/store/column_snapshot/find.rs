@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::encoded::row::EncodedRow;
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::row::EncodedRow,
 	interface::catalog::{
 		column_snapshot::{ColumnSnapshot, ColumnSnapshotKind, ColumnSnapshotSource},
 		id::{ColumnSnapshotId, NamespaceId, SeriesId, TableId},

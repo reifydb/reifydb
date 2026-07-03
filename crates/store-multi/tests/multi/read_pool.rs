@@ -3,10 +3,10 @@
 
 use std::thread;
 
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::store::{MultiVersionCommit, MultiVersionGet},
 };
 use reifydb_store_multi::store::StandardMultiStore;

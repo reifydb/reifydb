@@ -31,10 +31,10 @@ use std::{
 };
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
+use reifydb_codec::encoded::row::EncodedRow;
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	encoded::row::EncodedRow,
 	interface::{
 		catalog::{id::TableId, shape::ShapeId},
 		store::{MultiVersionCommit, MultiVersionGet},

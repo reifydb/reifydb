@@ -9,6 +9,7 @@ use axum::{
 	http::{HeaderMap, HeaderValue, Method, StatusCode, header},
 	response::{IntoResponse, Response},
 };
+use reifydb_codec::json::{to::convert_frames, types::ResponseFrame};
 use reifydb_core::{
 	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
 	interface::catalog::{
@@ -32,7 +33,6 @@ use reifydb_value::{
 	params::Params,
 	value::{Value, frame::frame::Frame, identity::IdentityId, value_type::ValueType},
 };
-use reifydb_wire_format::json::{to::convert_frames, types::ResponseFrame};
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
 use tracing::{debug_span, instrument};

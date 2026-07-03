@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, ffi::c_void, ptr, slice};
+use std::{collections::HashMap, ffi::c_void, ptr, slice, sync::Arc};
 
-use postcard::from_bytes;
 use reifydb_abi::{
 	constants::CURRENT_API,
 	data::buffer::BufferFFI,
 	procedure::{descriptor::ProcedureDescriptorFFI, types::PROCEDURE_MAGIC},
 };
-use reifydb_value::value::Value;
+use reifydb_codec::value::decode_params;
+use reifydb_value::params::Params;
 
 use crate::{
 	config::Config,
@@ -51,8 +51,12 @@ pub unsafe extern "C" fn create_procedure_instance<T: FFIProcedureWithMetadata>(
 	} else {
 		let config_bytes = unsafe { slice::from_raw_parts(config_ptr, config_len) };
 
-		match from_bytes::<HashMap<String, Value>>(config_bytes) {
-			Ok(decoded_config) => decoded_config,
+		match decode_params(config_bytes) {
+			Ok(Params::Named(map)) => Arc::try_unwrap(map).unwrap_or_else(|map| (*map).clone()),
+			Ok(Params::None) => HashMap::new(),
+			Ok(Params::Positional(_)) => {
+				panic!("Failed to deserialize procedure config: expected named params");
+			}
 			Err(e) => {
 				panic!("Failed to deserialize procedure config: {}", e);
 			}

@@ -3,8 +3,8 @@
 
 use std::ops::Bound;
 
+use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
-	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::store::EntryKind,
 	key::{EncodableKey, Key, row::RowKey},
 };
@@ -64,8 +64,8 @@ pub fn key_range_of(page: PageId, bucket_shift: u8) -> Option<EncodedKeyRange> {
 mod tests {
 	use std::ops::RangeBounds;
 
+	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
-		encoded::key::EncodedKey,
 		interface::{catalog::shape::ShapeId, store::EntryKind},
 		key::{EncodableKey, row::RowKey},
 	};

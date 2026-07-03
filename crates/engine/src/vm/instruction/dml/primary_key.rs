@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::Catalog;
+use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_core::{
-	encoded::{row::EncodedRow, shape::RowShape},
 	interface::catalog::{key::PrimaryKey, table::Table},
 	sort::SortDirection,
 	value::index::{encoded::EncodedIndexKey, shape::IndexShape},

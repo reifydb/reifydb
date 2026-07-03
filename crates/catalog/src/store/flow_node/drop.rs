@@ -84,8 +84,8 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_codec::encoded::row::EncodedRow;
 	use reifydb_core::{
-		encoded::row::EncodedRow,
 		interface::catalog::flow::FlowNodeId,
 		key::{flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
 	};

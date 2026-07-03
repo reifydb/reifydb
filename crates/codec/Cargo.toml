@@ -1,0 +1,56 @@
+[package]
+name = "reifydb-codec"
+description = "Unified encoding and decoding for all ReifyDB values, frames, rows, keys, and boundaries"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[features]
+default = ["json"]
+json = ["dep:serde_json"]
+
+[build-dependencies]
+reifydb-build = { workspace = true }
+
+[dependencies]
+reifydb-value = { workspace = true }
+reifydb-abi = { workspace = true }
+num-bigint = { workspace = true }
+num-traits = { workspace = true }
+bigdecimal = { workspace = true }
+uuid = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true, optional = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+xxhash-rust = { workspace = true }
+
+[dev-dependencies]
+reifydb-runtime = { workspace = true }
+serde_bytes = { workspace = true }
+num-bigint = { workspace = true }
+
+[[test]]
+name = "plain"
+path = "tests/plain/mod.rs"
+
+[[test]]
+name = "dict"
+path = "tests/dict/mod.rs"
+
+[[test]]
+name = "rle"
+path = "tests/rle/mod.rs"
+
+[[test]]
+name = "delta"
+path = "tests/delta/mod.rs"
+
+[[test]]
+name = "delta_rle"
+path = "tests/delta_rle/mod.rs"
+
+[[test]]
+name = "nones"
+path = "tests/nones/mod.rs"

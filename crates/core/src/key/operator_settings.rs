@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::key::{
+	deserializer::KeyDeserializer,
+	encoded::{EncodedKey, EncodedKeyRange},
+	serializer::KeySerializer,
+};
 use serde::{Deserialize, Serialize};
 
 use super::{EncodableKey, KeyKind};
-use crate::{
-	encoded::key::{EncodedKey, EncodedKeyRange},
-	interface::catalog::flow::FlowNodeId,
-	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
-};
+use crate::interface::catalog::flow::FlowNodeId;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OperatorSettingsKey {

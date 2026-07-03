@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 // http: //www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_core::encoded::key::{EncodedKey, EncodedKeyRange};
+use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_transaction::multi::{RangeScope, transaction::write::MultiWriteTransaction};
 
 use super::test_multi;

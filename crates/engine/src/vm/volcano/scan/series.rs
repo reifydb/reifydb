@@ -3,9 +3,9 @@
 
 use std::sync::Arc;
 
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::key::EncodedKey,
 	interface::resolved::ResolvedSeries,
 	key::{
 		EncodableKey,

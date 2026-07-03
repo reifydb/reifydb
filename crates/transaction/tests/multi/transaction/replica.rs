@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{common::CommitVersion, encoded::key::EncodedKeyRange};
+use reifydb_codec::key::encoded::EncodedKeyRange;
+use reifydb_core::common::CommitVersion;
 use reifydb_transaction::{multi::RangeScope, transaction::replica::ReplicaTransaction};
 
 use super::test_multi;
@@ -465,7 +466,7 @@ fn test_replica_unset() {
 /// Replica prefix and prefix_rev queries.
 #[test]
 fn test_replica_prefix() {
-	use reifydb_core::encoded::key::EncodedKey;
+	use reifydb_codec::key::encoded::EncodedKey;
 
 	let engine = test_multi();
 

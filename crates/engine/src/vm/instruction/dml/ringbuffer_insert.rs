@@ -3,8 +3,8 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_core::{
-	encoded::{row::EncodedRow, shape::RowShape},
 	error::diagnostic::catalog::{namespace_not_found, ringbuffer_not_found},
 	interface::{
 		catalog::{

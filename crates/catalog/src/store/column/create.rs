@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::tag::type_tag_byte;
 use reifydb_core::{
 	interface::catalog::{property::ColumnPropertyKind, shape::ShapeId},
 	key::{column::ColumnKey, columns::ColumnsKey},
@@ -31,7 +32,7 @@ fn encode_constraint(constraint: &Option<Constraint>) -> Vec<u8> {
 		Some(Constraint::Dictionary(dict_id, id_type)) => {
 			let mut bytes = vec![3];
 			bytes.extend_from_slice(&dict_id.to_u64().to_le_bytes());
-			bytes.push(id_type.to_u8());
+			bytes.push(type_tag_byte(id_type));
 			bytes
 		}
 		Some(Constraint::SumType(id)) => {
@@ -164,7 +165,7 @@ impl CatalogStore {
 		column::SHAPE.set_u64(&mut row, ID, id);
 		column::SHAPE.set_u64(&mut row, PRIMITIVE, shape);
 		column::SHAPE.set_utf8(&mut row, NAME, &column_to_create.column);
-		column::SHAPE.set_u8(&mut row, VALUE, column_to_create.constraint.get_type().to_u8());
+		column::SHAPE.set_u8(&mut row, VALUE, type_tag_byte(&column_to_create.constraint.get_type()));
 		column::SHAPE.set_u8(&mut row, INDEX, column_to_create.index);
 		column::SHAPE.set_bool(&mut row, AUTO_INCREMENT, column_to_create.auto_increment);
 

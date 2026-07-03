@@ -4,8 +4,8 @@
 use std::sync::Arc;
 
 use postcard::from_bytes;
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	encoded::key::EncodedKey,
 	interface::resolved::ResolvedDictionary,
 	internal_error,
 	key::{EncodableKey, dictionary::DictionaryEntryIndexKey},

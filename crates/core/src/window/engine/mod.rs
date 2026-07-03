@@ -19,15 +19,14 @@ pub mod tumbling_carry;
 
 use std::ops::Bound;
 
+use reifydb_codec::key::{
+	encode_u64,
+	encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey},
+};
 use reifydb_value::value::row_number::RowNumber;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	encoded::key::{EncodedKey, EncodedKeyRange, IntoEncodedKey},
-	key::flow_node_internal_state::FlowNodeInternalStateKey,
-	util::encoding::keycode::encode_u64,
-	window::span::WindowSpan,
-};
+use crate::{key::flow_node_internal_state::FlowNodeInternalStateKey, window::span::WindowSpan};
 
 /// One contribution routed to a window accumulator.
 pub enum AccumulatorEvent<C> {
@@ -134,11 +133,11 @@ pub(crate) mod test_support {
 	use std::{collections::HashMap, ops::Bound};
 
 	use postcard::{from_bytes, to_allocvec};
+	use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 	use reifydb_value::{Result, value::row_number::RowNumber};
 	use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 	use crate::{
-		encoded::key::{EncodedKey, EncodedKeyRange},
 		key::flow_node_internal_state::FlowNodeInternalStateKey,
 		window::{accumulator::WindowAccumulator, store::WindowStore},
 	};

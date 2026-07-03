@@ -6,13 +6,13 @@
 use std::ops::Bound;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
+use reifydb_codec::{
+	encoded::row::EncodedRow,
+	key::encoded::{EncodedKey, EncodedKeyRange},
+};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
-	},
 	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious},
 	key::row::RowKey,
 };

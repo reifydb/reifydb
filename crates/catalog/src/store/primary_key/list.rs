@@ -3,8 +3,8 @@
 
 use std::ops::Bound;
 
+use reifydb_codec::key::encoded::EncodedKeyRange;
 use reifydb_core::{
-	encoded::key::EncodedKeyRange,
 	interface::catalog::{column::Column, id::PrimaryKeyId, key::PrimaryKey},
 	key::{Key, primary_key::PrimaryKeyKey},
 };

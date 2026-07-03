@@ -6,7 +6,7 @@ use std::mem;
 use std::sync::Arc;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_core::encoded::key::EncodedKey;
+use reifydb_codec::key::encoded::EncodedKey;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_runtime::actor::{
 	context::Context,

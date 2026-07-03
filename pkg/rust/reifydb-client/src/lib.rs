@@ -9,7 +9,6 @@
 pub enum WireFormat {
 	#[default]
 	Json,
-	Proto,
 	Rbcf,
 }
 

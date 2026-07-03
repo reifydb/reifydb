@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::{catalog::flow::FlowNodeId, store::MultiVersionCommit},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };

@@ -8,10 +8,8 @@ pub mod get;
 pub mod list;
 pub(crate) mod shape;
 
-use reifydb_core::{
-	encoded::row::EncodedRow,
-	row::{RowSettings, Ttl, TtlCleanupMode},
-};
+use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_core::row::{RowSettings, Ttl, TtlCleanupMode};
 use reifydb_value::value::duration::Duration;
 
 use self::shape::row_settings;

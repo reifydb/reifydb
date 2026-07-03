@@ -3,11 +3,13 @@
 
 use std::ops::Bound;
 
-use super::{EncodableKey, KeyKind};
-use crate::{
-	encoded::key::{EncodedKey, EncodedKeyRange},
-	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+use reifydb_codec::key::{
+	deserializer::KeyDeserializer,
+	encoded::{EncodedKey, EncodedKeyRange},
+	serializer::KeySerializer,
 };
+
+use super::{EncodableKey, KeyKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VersionEpochKey {

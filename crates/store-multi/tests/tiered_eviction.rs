@@ -21,10 +21,10 @@
 
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	encoded::{key::EncodedKey, row::EncodedRow},
 	event::EventBus,
 	interface::{
 		catalog::{id::TableId, shape::ShapeId},

@@ -3,7 +3,8 @@
 
 use std::{cmp::Reverse, collections::BTreeMap, sync::Arc};
 
-use reifydb_core::{common::CommitVersion, encoded::key::EncodedKey, interface::store::EntryKind};
+use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 use reifydb_runtime::sync::{map::Map, rwlock::RwLock};
 use reifydb_value::util::cowvec::CowVec;
 

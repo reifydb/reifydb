@@ -18,8 +18,8 @@ use reifydb_core::{
 use reifydb_engine::flow::aggregate::AggregateContext;
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
-use reifydb_runtime::{context::RuntimeContext, hash::Hash128};
-use reifydb_value::{Result, value::Value};
+use reifydb_runtime::context::RuntimeContext;
+use reifydb_value::{Result, util::hash::Hash128, value::Value};
 
 use super::{
 	accumulator::WindowSlotKey,

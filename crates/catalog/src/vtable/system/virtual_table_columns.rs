@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use reifydb_codec::tag::type_tag_byte;
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -55,7 +56,7 @@ impl BaseVTable for SystemVirtualTableColumns {
 				column_ids.push(col.id.0);
 				vtable_ids.push(vtable.id.0);
 				names.push(col.name.clone());
-				types.push(col.constraint.get_type().to_u8());
+				types.push(type_tag_byte(&col.constraint.get_type()));
 				positions.push(col.index.0);
 			}
 		}
@@ -65,7 +66,7 @@ impl BaseVTable for SystemVirtualTableColumns {
 				column_ids.push(col.id.0);
 				vtable_ids.push(vtable.id.0);
 				names.push(col.name.clone());
-				types.push(col.constraint.get_type().to_u8());
+				types.push(type_tag_byte(&col.constraint.get_type()));
 				positions.push(col.index.0);
 			}
 		}

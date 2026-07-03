@@ -7,8 +7,8 @@ use reifydb_core::{
 	interface::resolved::ResolvedColumn,
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::util::hash::{Hash128, xxh3_128};
 use tracing::instrument;
 
 use crate::{

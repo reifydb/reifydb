@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use reifydb_core::util::encoding::keycode;
+use reifydb_codec::key as keycode;
 
 use super::{
 	executor::{ExecutionTrace, OpResult},

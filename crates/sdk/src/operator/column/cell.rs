@@ -3,8 +3,8 @@
 
 use std::sync::Arc;
 
-use postcard::to_allocvec;
 use reifydb_abi::data::column::ColumnTypeCode;
+use reifydb_codec::ffi::cells::encode_decimal_cell;
 use reifydb_value::value::{date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, time::Time};
 
 use crate::{
@@ -119,8 +119,8 @@ impl Cell for Decimal {
 	const AVG_BYTES: usize = 16;
 	#[inline]
 	fn encode<S: RowSink>(&self, e: &mut S, col: usize) -> Result<(), SdkError> {
-		let bytes = to_allocvec(self)
-			.map_err(|err| SdkError::Serialization(format!("decimal serialize: {}", err)))?;
+		let mut bytes = Vec::new();
+		encode_decimal_cell(self, &mut bytes);
 		e.push_decimal_bytes(col, &bytes)
 	}
 	#[inline]

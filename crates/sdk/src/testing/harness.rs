@@ -11,9 +11,12 @@ use std::{
 
 use ptr::null;
 use reifydb_abi::context::context::ContextFFI;
+use reifydb_codec::{
+	encoded::{row::EncodedRow, shape::RowShape},
+	key::encoded::EncodedKey,
+};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, ChangeOrigin},
@@ -443,7 +446,8 @@ pub mod tests {
 		callbacks::builder::EmitDiffKind, data::column::ColumnTypeCode, flow::diff::DiffType,
 		operator::capabilities::OperatorCapability,
 	};
-	use reifydb_core::{common::CommitVersion, encoded::key::IntoEncodedKey, interface::catalog::flow::FlowNodeId};
+	use reifydb_codec::key::encoded::IntoEncodedKey;
+	use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
 	use reifydb_value::value::row_number::RowNumber;
 
 	use super::{super::helpers::encode_key, *};

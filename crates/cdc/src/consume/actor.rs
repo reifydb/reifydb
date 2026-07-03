@@ -10,10 +10,10 @@ use std::{
 	},
 };
 
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	actors::cdc::CdcPollMessage,
 	common::CommitVersion,
-	encoded::key::EncodedKey,
 	interface::{
 		catalog::config::{ConfigKey, GetConfig},
 		cdc::{Cdc, CdcConsumerId, SystemChange},

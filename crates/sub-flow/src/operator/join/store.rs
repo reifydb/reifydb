@@ -4,21 +4,20 @@
 use std::{cell::Cell, ops::Bound};
 
 use postcard::{from_bytes, to_stdvec};
-#[cfg(test)]
-use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
-use reifydb_core::{
-	common::CommitVersion,
+use reifydb_codec::{
 	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
 		shape::{RowShape, RowShapeField, cache::RowShapeCacheCell, fingerprint::RowShapeFingerprint},
 	},
-	interface::catalog::flow::FlowNodeId,
+	key::encoded::{EncodedKey, EncodedKeyRange},
 };
-use reifydb_runtime::hash::Hash128;
+#[cfg(test)]
+use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
+use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
 use reifydb_value::{
 	Result,
 	error::Error,
+	util::hash::Hash128,
 	value::{blob::Blob, row_number::RowNumber},
 };
 
@@ -275,7 +274,8 @@ fn row_number_from_key(bytes: &[u8]) -> Option<RowNumber> {
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::{common::CommitVersion, encoded::row::EncodedRow};
+	use reifydb_codec::encoded::row::EncodedRow;
+	use reifydb_core::common::CommitVersion;
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_value::value::{identity::IdentityId, value_type::ValueType};

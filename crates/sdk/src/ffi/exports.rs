@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, ffi::c_void, ptr, slice};
+use std::{collections::HashMap, ffi::c_void, ptr, slice, sync::Arc};
 
-use postcard::from_bytes;
 use reifydb_abi::{
 	constants::{CURRENT_API, OPERATOR_ABI_TAG},
 	data::buffer::BufferFFI,
@@ -14,8 +13,9 @@ use reifydb_abi::{
 		types::OPERATOR_MAGIC,
 	},
 };
+use reifydb_codec::{constraint::type_constraint_to_ffi, value::decode_params};
 use reifydb_core::interface::catalog::flow::FlowNodeId;
-use reifydb_value::value::Value;
+use reifydb_value::params::Params;
 
 use crate::{
 	config::Config,
@@ -39,7 +39,8 @@ fn columns_to_ffi(columns: &'static [OperatorColumn]) -> OperatorColumnsFFI {
 	let ffi_columns: Vec<OperatorColumnFFI> = columns
 		.iter()
 		.map(|c| {
-			let ffi_type = c.type_constraint.to_ffi();
+			let ffi_type =
+				type_constraint_to_ffi(&c.type_constraint).expect("constraint exceeds tag capacity");
 			OperatorColumnFFI {
 				name: str_to_buffer(c.name),
 				base_type: ffi_type.base_type,
@@ -90,8 +91,15 @@ pub unsafe extern "C" fn create_operator_instance<O: FFIOperator + OperatorMetad
 		// SAFETY: caller guarantees config_ptr is valid for config_len bytes
 		let config_bytes = unsafe { slice::from_raw_parts(config_ptr, config_len) };
 
-		match from_bytes::<HashMap<String, Value>>(config_bytes) {
-			Ok(decoded_config) => decoded_config,
+		match decode_params(config_bytes) {
+			Ok(Params::Named(map)) => Arc::try_unwrap(map).unwrap_or_else(|map| (*map).clone()),
+			Ok(Params::None) => HashMap::new(),
+			Ok(Params::Positional(_)) => {
+				panic!(
+					"Failed to deserialize operator config for operator {}: expected named params",
+					operator_id
+				);
+			}
 			Err(e) => {
 				panic!(
 					"Failed to deserialize operator config for operator {}: {}. Using empty config.",

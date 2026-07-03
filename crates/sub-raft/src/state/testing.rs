@@ -3,11 +3,8 @@
 
 use std::{any::Any, collections::BTreeMap};
 
-use reifydb_core::{
-	common::CommitVersion,
-	delta::Delta,
-	encoded::{key::EncodedKey, row::EncodedRow},
-};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_core::{common::CommitVersion, delta::Delta};
 use reifydb_value::util::cowvec::CowVec;
 
 use super::State;

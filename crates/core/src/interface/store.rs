@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::{
+	encoded::row::EncodedRow,
+	key::encoded::{EncodedKey, EncodedKeyRange},
+};
 use reifydb_value::{Result, util::cowvec::CowVec};
 
 use crate::{
 	common::CommitVersion,
 	delta::Delta,
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
-	},
 	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
 	key::{
 		EncodableKeyRange, Key, flow_node_internal_state::FlowNodeInternalStateKeyRange,

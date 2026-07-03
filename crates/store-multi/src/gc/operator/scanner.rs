@@ -3,9 +3,9 @@
 
 use std::{collections::HashMap, ops::Bound};
 
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::key::EncodedKey,
 	interface::{catalog::flow::FlowNodeId, store::EntryKind},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };
@@ -171,9 +171,9 @@ pub fn drop_expired_operator_keys(
 mod tests {
 	use std::collections::HashMap;
 
+	use reifydb_codec::encoded::row::SHAPE_HEADER_SIZE;
 	use reifydb_core::{
 		common::CommitVersion,
-		encoded::row::SHAPE_HEADER_SIZE,
 		interface::{catalog::flow::FlowNodeId, store::EntryKind},
 		key::{flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
 	};

@@ -2,10 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::{
-	encoded::shape::{RowShape, RowShapeField},
-	interface::catalog::{ringbuffer::RingBuffer, series::Series, table::Table},
-};
+use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
+use reifydb_core::interface::catalog::{ringbuffer::RingBuffer, series::Series, table::Table};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 

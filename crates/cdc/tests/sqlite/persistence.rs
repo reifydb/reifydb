@@ -4,9 +4,9 @@
 use std::collections::Bound;
 
 use reifydb_cdc::storage::{CdcStorage, sqlite::storage::SqliteCdcStorage};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::cdc::{Cdc, SystemChange},
 };
 use reifydb_sqlite::SqliteConfig;

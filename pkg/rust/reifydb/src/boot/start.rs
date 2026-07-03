@@ -3,9 +3,9 @@
 
 use std::sync::Arc;
 
+use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::shape::RowShape,
 	interface::catalog::config::{ConfigKey, GetConfig},
 	key::{
 		EncodableKey,

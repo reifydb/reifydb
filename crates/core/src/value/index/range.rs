@@ -3,10 +3,9 @@
 
 use std::{collections::Bound, iter};
 
-use crate::{
-	encoded::key::{EncodedKey, EncodedKeyRange},
-	value::index::encoded::EncodedIndexKey,
-};
+use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+
+use crate::value::index::encoded::EncodedIndexKey;
 
 #[derive(Clone, Debug)]
 pub struct EncodedIndexKeyRange {

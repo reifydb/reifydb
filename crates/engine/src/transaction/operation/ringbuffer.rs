@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{row::EncodedRow, shape::RowShape},
 	interface::{
 		catalog::{ringbuffer::RingBuffer, shape::ShapeId},
 		change::{Change, ChangeOrigin, Diff},
 	},
 	key::row::RowKey,
+	row::row_shape_from_columns,
 	value::column::columns::Columns,
 };
 use reifydb_transaction::{
@@ -45,7 +46,7 @@ fn build_ringbuffer_update_change(
 	pre: &EncodedRow,
 	post: &EncodedRow,
 ) -> Change {
-	let shape: RowShape = (&rb.columns).into();
+	let shape = row_shape_from_columns(&rb.columns);
 	let ids = [row_number];
 	let pres = [pre.clone()];
 	let posts = [post.clone()];
@@ -61,7 +62,7 @@ fn build_ringbuffer_update_change(
 }
 
 fn build_ringbuffer_remove_change(rb: &RingBuffer, row_number: RowNumber, encoded: &EncodedRow) -> Change {
-	let shape: RowShape = (&rb.columns).into();
+	let shape = row_shape_from_columns(&rb.columns);
 	let ids = [row_number];
 	let rows = [encoded.clone()];
 	Change {

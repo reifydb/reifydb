@@ -2,14 +2,18 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
+use reifydb_codec::{
+	encoded::{row::EncodedRow, shape::RowShape},
+	key::encoded::EncodedKey,
+};
 use reifydb_core::{
-	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	interface::{
 		catalog::{flow::FlowNodeId, id::SeriesId, series::SeriesKey, shape::ShapeId, view::View},
 		change::{Change, ChangeOrigin, Diff},
 		resolved::ResolvedView,
 	},
 	key::row::RowKey,
+	row::row_shape_from_columns,
 	value::column::columns::Columns,
 };
 use reifydb_value::{
@@ -60,7 +64,7 @@ impl Operator for SinkSeriesViewOperator {
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def().clone();
-		let shape: RowShape = view.columns().into();
+		let shape = row_shape_from_columns(view.columns());
 		let object_id = ShapeId::series(self.series_id);
 
 		for diff in change.diffs.iter() {

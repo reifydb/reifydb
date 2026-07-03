@@ -256,7 +256,7 @@ impl Generator {
 mod tests {
 	use std::{iter::from_fn, ops::Range};
 
-	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 	use reifydb_value::value::value_type::ValueType;
 
 	use super::{

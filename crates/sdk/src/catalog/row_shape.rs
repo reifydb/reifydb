@@ -7,7 +7,9 @@ use reifydb_abi::{
 	catalog::row_shape::{RowShapeFFI, RowShapeFieldFFI},
 	constants::{FFI_NOT_FOUND, FFI_OK},
 };
-use reifydb_core::encoded::shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint};
+use reifydb_codec::encoded::shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint};
+#[cfg(test)]
+use reifydb_codec::tag::type_tag_byte;
 
 use super::decode_type_constraint;
 use crate::{error::SdkError, operator::context::ffi::FFIOperatorContext};
@@ -86,7 +88,7 @@ mod tests {
 	use std::ptr;
 
 	use reifydb_abi::data::buffer::BufferFFI;
-	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 	use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 	use super::*;
@@ -125,7 +127,7 @@ mod tests {
 			.zip([id_name, mint_name, dec_name])
 			.map(|(f, name_buf)| RowShapeFieldFFI {
 				name: name_buf,
-				base_type: f.constraint.get_type().to_u8(),
+				base_type: type_tag_byte(&f.constraint.get_type()),
 				constraint_type: 0,
 				constraint_param1: 0,
 				constraint_param2: 0,
@@ -152,8 +154,8 @@ mod tests {
 		for (a, b) in decoded.fields().iter().zip(original.fields().iter()) {
 			assert_eq!(a.name, b.name, "field name must round-trip");
 			assert_eq!(
-				a.constraint.get_type().to_u8(),
-				b.constraint.get_type().to_u8(),
+				type_tag_byte(&a.constraint.get_type()),
+				type_tag_byte(&b.constraint.get_type()),
 				"field type must round-trip - this is what enables correct decoding"
 			);
 			assert_eq!(a.offset, b.offset, "offset drift breaks every subsequent get_utf8 read");

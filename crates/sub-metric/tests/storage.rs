@@ -8,13 +8,13 @@ use std::{
 	sync::{Arc, Condvar, Mutex},
 };
 
+use reifydb_codec::{
+	encoded::row::EncodedRow,
+	key::encoded::{EncodedKey, EncodedKeyRange},
+};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
-	},
 	event::{
 		EventBus, EventListener,
 		metric::{

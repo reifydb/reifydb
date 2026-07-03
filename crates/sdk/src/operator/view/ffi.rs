@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use postcard::from_bytes;
 use reifydb_abi::{data::column::ColumnTypeCode, flow::diff::DiffType};
+use reifydb_codec::ffi::cells::decode_decimal_cell;
 use reifydb_value::value::{
 	Value, date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, ordered_f32::OrderedF32,
 	ordered_f64::OrderedF64, row_number::RowNumber, time::Time, value_type::ValueType,
 };
-use serde::de::DeserializeOwned;
 
 use crate::operator::{
 	change::{BorrowedChange, BorrowedColumn, BorrowedColumns, BorrowedDiff},
@@ -191,7 +190,7 @@ impl<'a> RowView for FFIRowView<'a> {
 	fn decimal(&self, name: &str) -> Option<Decimal> {
 		let col = self.column_defined(name)?;
 		match col.type_code() {
-			ColumnTypeCode::Decimal => decode_serialized_at::<Decimal>(&col, self.index),
+			ColumnTypeCode::Decimal => decode_decimal_at(&col, self.index),
 			ColumnTypeCode::Float8 => fixed_at::<f64>(&col, self.index).map(Decimal::from),
 			ColumnTypeCode::Float4 => fixed_at::<f32>(&col, self.index).map(|v| Decimal::from(v as f64)),
 			_ => None,
@@ -265,10 +264,7 @@ pub(crate) fn fixed_at<T: Copy>(col: &BorrowedColumn<'_>, index: usize) -> Optio
 	slice.get(index).copied()
 }
 
-pub(crate) fn decode_serialized_at<T>(col: &BorrowedColumn<'_>, index: usize) -> Option<T>
-where
-	T: DeserializeOwned,
-{
+pub(crate) fn decode_decimal_at(col: &BorrowedColumn<'_>, index: usize) -> Option<Decimal> {
 	let data = col.data_bytes();
 	let offsets = col.offsets();
 	if index + 1 >= offsets.len() {
@@ -279,7 +275,7 @@ where
 	if end > data.len() || start > end {
 		return None;
 	}
-	from_bytes::<T>(&data[start..end]).ok()
+	decode_decimal_cell(&data[start..end]).ok()
 }
 
 fn type_for_code(code: ColumnTypeCode) -> ValueType {
@@ -363,9 +359,9 @@ fn read_value_at(col: &BorrowedColumn<'_>, index: usize) -> Value {
 			.nth(index)
 			.map(|s| Value::Utf8(s.to_string()))
 			.unwrap_or_else(|| none_value(code)),
-		ColumnTypeCode::Decimal => decode_serialized_at::<Decimal>(col, index)
-			.map(Value::Decimal)
-			.unwrap_or_else(|| none_value(code)),
+		ColumnTypeCode::Decimal => {
+			decode_decimal_at(col, index).map(Value::Decimal).unwrap_or_else(|| none_value(code))
+		}
 		_ => none_value(code),
 	}
 }

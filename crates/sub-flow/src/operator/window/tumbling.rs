@@ -2,9 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use reifydb_codec::key::encoded::IntoEncodedKey;
 use reifydb_core::{
 	common::TimeDomain,
-	encoded::key::IntoEncodedKey,
 	interface::change::{Change, Diff},
 	value::column::columns::Columns,
 	window::{
@@ -19,9 +19,9 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::flow::aggregate::SlotKind;
-use reifydb_runtime::hash::Hash128;
 use reifydb_value::{
 	Result,
+	util::hash::Hash128,
 	value::{Value, datetime::DateTime, duration::Duration},
 };
 use serde::{Deserialize, Serialize};

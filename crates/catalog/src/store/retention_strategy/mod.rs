@@ -7,10 +7,8 @@ pub mod get;
 pub mod list;
 pub(crate) mod shape;
 
-use reifydb_core::{
-	encoded::row::EncodedRow,
-	retention::{CleanupMode, RetentionStrategy},
-};
+use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_core::retention::{CleanupMode, RetentionStrategy};
 
 use self::shape::retention_strategy;
 

@@ -116,7 +116,7 @@ impl RemoteRegistry {
 		let (tx, rx) = mpsc::sync_channel(1);
 
 		self.handle()?.spawn(async move {
-			let result = GrpcClient::connect(&address_owned, WireFormat::Proto).await;
+			let result = GrpcClient::connect(&address_owned, WireFormat::Rbcf).await;
 			let _ = tx.send(result);
 		});
 

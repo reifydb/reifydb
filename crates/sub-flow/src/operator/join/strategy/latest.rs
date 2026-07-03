@@ -2,8 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::columns::Columns;
-use reifydb_runtime::hash::Hash128;
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_value::{Result, util::hash::Hash128, value::row_number::RowNumber};
 
 use super::hash::{build_shape, columns_from_block, encode_row};
 use crate::{operator::join::store::Store, transaction::FlowTransaction};

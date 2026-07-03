@@ -8,10 +8,8 @@ use std::{
 	ops::AddAssign,
 };
 
-use reifydb_core::{
-	encoded::{key::EncodedKey, row::EncodedRow},
-	interface::store::{SingleVersionStore, Tier},
-};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_core::interface::store::{SingleVersionStore, Tier};
 use reifydb_value::{Result, util::cowvec::CowVec};
 
 use crate::{

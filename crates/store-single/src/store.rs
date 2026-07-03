@@ -8,14 +8,11 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_core::{
-	delta::Delta,
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
-	},
-	interface::store::SingleVersionRow,
+use reifydb_codec::{
+	encoded::row::EncodedRow,
+	key::encoded::{EncodedKey, EncodedKeyRange},
 };
+use reifydb_core::{delta::Delta, interface::store::SingleVersionRow};
 use reifydb_runtime::{
 	actor::{
 		mailbox::ActorRef,

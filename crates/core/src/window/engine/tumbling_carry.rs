@@ -8,21 +8,19 @@ use std::{
 	marker::PhantomData,
 };
 
+use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-use crate::{
-	encoded::key::{EncodedKey, IntoEncodedKey},
-	window::{
-		accumulator::WindowAccumulator,
-		engine::{
-			AccumulatorEvent, EmitKind, LatePolicy, MetaKey, WindowResult, config::TumblingCarryConfig,
-			meta_key_for, tumbling::TumblingBuckets,
-		},
-		span::{Slot, WindowSpan},
-		state::StateCache,
-		store::WindowStore,
+use crate::window::{
+	accumulator::WindowAccumulator,
+	engine::{
+		AccumulatorEvent, EmitKind, LatePolicy, MetaKey, WindowResult, config::TumblingCarryConfig,
+		meta_key_for, tumbling::TumblingBuckets,
 	},
+	span::{Slot, WindowSpan},
+	state::StateCache,
+	store::WindowStore,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -367,12 +365,10 @@ mod tests {
 	use std::{collections::HashMap, ops::Bound};
 
 	use postcard::{from_bytes, to_allocvec};
+	use reifydb_codec::key::encoded::EncodedKeyRange;
 
 	use super::*;
-	use crate::{
-		encoded::key::EncodedKeyRange,
-		window::{accumulator::invertible::RetainedAccumulator, engine::config::WindowEngineConfig},
-	};
+	use crate::window::{accumulator::invertible::RetainedAccumulator, engine::config::WindowEngineConfig};
 
 	// In-memory store that allocates a distinct row number per key (the state.rs
 	// mock collapses every key onto row 1, which would alias all window

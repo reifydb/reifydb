@@ -2,10 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 #[cfg(test)]
-use reifydb_core::{
-	encoded::key::EncodedKey,
-	interface::store::{EntryKind, classify_key, is_single_version_semantics_key},
-};
+use reifydb_codec::key::encoded::EncodedKey;
+#[cfg(test)]
+use reifydb_core::interface::store::{EntryKind, classify_key, is_single_version_semantics_key};
 
 #[cfg(test)]
 pub mod tests {

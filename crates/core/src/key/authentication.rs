@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use super::{EncodableKey, KeyKind};
-use crate::{
-	encoded::key::{EncodedKey, EncodedKeyRange},
-	interface::catalog::authentication::AuthenticationId,
-	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
+use reifydb_codec::key::{
+	deserializer::KeyDeserializer,
+	encoded::{EncodedKey, EncodedKeyRange},
+	serializer::KeySerializer,
 };
+
+use super::{EncodableKey, KeyKind};
+use crate::interface::catalog::authentication::AuthenticationId;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AuthenticationKey {

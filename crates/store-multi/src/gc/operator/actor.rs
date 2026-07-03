@@ -461,10 +461,10 @@ pub fn spawn_operator_settings_actor<P: ListOperatorSettings>(
 mod tests {
 	use std::sync::Arc;
 
+	use reifydb_codec::encoded::row::{EncodedRow, SHAPE_HEADER_SIZE};
 	use reifydb_core::{
 		common::CommitVersion,
 		delta::Delta,
-		encoded::row::{EncodedRow, SHAPE_HEADER_SIZE},
 		interface::{catalog::config::GetConfig, store::MultiVersionCommit},
 		row::OperatorSettings,
 	};

@@ -8,8 +8,8 @@ use std::{
 	slice,
 };
 
-use postcard::from_bytes;
 use reifydb_abi::{context::context::ContextFFI, procedure::vtable::ProcedureVTableFFI};
+use reifydb_codec::value::decode_params;
 use reifydb_value::params::Params;
 use tracing::error;
 
@@ -48,7 +48,7 @@ pub unsafe extern "C" fn ffi_procedure_call<T: FFIProcedure>(
 			Params::None
 		} else {
 			let bytes = unsafe { slice::from_raw_parts(params_ptr, params_len) };
-			match from_bytes(bytes) {
+			match decode_params(bytes) {
 				Ok(p) => p,
 				Err(e) => {
 					error!(?e, "Failed to deserialize procedure params");

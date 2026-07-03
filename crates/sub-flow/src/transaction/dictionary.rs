@@ -2,18 +2,18 @@
 // Copyright (c) 2026 ReifyDB
 
 use postcard::{from_bytes, to_stdvec};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
-	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::catalog::dictionary::Dictionary,
 	key::{
 		EncodableKey,
 		dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey},
 	},
 };
-use reifydb_runtime::hash::xxh3_128;
 use reifydb_transaction::{dictionary::DictionaryReader, multi::RangeScope};
 use reifydb_value::{
 	Result,
+	util::hash::xxh3_128,
 	value::{
 		Value,
 		dictionary::{DictionaryEntryId, DictionaryId},

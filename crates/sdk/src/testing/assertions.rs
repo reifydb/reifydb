@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::{encoded::shape::RowShape, key::encoded::EncodedKey};
 use reifydb_core::{
-	encoded::{key::EncodedKey, shape::RowShape},
 	interface::change::{Change, Diff},
 	row::Row,
 	value::column::columns::Columns,
@@ -309,7 +309,7 @@ impl Assertable for TestStateStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::encoded::shape::RowShape;
+	use reifydb_codec::encoded::shape::RowShape;
 	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;

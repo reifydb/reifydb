@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::key::deserializer::KeyDeserializer;
 use reifydb_core::{
 	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
-	key::{Key, kind::KeyKind},
-	util::encoding::keycode::deserializer::KeyDeserializer,
+	key::{Key, catalog::KeyDeserializerCatalogExt, kind::KeyKind},
 };
 use reifydb_value::value::dictionary::DictionaryId;
 

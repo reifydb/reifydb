@@ -6,12 +6,12 @@ use futures_util::{
 	SinkExt, StreamExt,
 	stream::{SplitSink, SplitStream},
 };
+use reifydb_codec::{frame::decode::decode_frames, json::from::convert_envelope_response};
 use reifydb_value::{
 	error::{Diagnostic, Error},
 	params::Params,
 	value::frame::frame::Frame,
 };
-use reifydb_wire_format::{decode::decode_frames, json::from::convert_envelope_response};
 use serde_json::{Value, from_str, to_string};
 use tokio::{
 	net::TcpStream,
@@ -71,14 +71,6 @@ impl WsClient {
 	/// * `url` - WebSocket URL of the ReifyDB server (e.g., "ws://localhost:8090")
 	/// * `format` - Wire format for responses
 	pub async fn connect(url: &str, format: WireFormat) -> Result<Self, Error> {
-		if format == WireFormat::Proto {
-			return Err(Error(Box::new(Diagnostic {
-				code: "INVALID_FORMAT".to_string(),
-				message: "WireFormat::Proto is not supported for WsClient".to_string(),
-				..Default::default()
-			})));
-		}
-
 		let url = if !url.starts_with("ws://") && !url.starts_with("wss://") {
 			format!("ws://{}", url)
 		} else {
@@ -385,7 +377,6 @@ impl WsClient {
 		match self.format {
 			WireFormat::Rbcf => Some("rbcf".to_string()),
 			WireFormat::Json => Some("frames".to_string()),
-			WireFormat::Proto => None,
 		}
 	}
 

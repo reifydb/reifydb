@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::encoded::row::EncodedRow;
 use reifydb_core::{
-	encoded::row::EncodedRow,
 	interface::catalog::{
 		id::{NamespaceId, ProcedureId},
 		procedure::{Procedure, ProcedureParam, RqlTrigger},

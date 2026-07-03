@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::{constants::FFI_OK, data::buffer::BufferFFI};
+use reifydb_codec::{frame::decode::decode_frames, value::encode_params};
 use reifydb_value::{params::Params, value::frame::frame::Frame};
 
 use crate::{
@@ -11,7 +11,7 @@ use crate::{
 };
 
 pub(crate) fn raw_query(ctx: &FFIOperatorContext, query: &str, params: Params) -> Result<Vec<Frame>> {
-	let params_bytes = to_stdvec(&params)
+	let params_bytes = encode_params(&params)
 		.map_err(|e| SdkError::Serialization(format!("failed to serialize params: {}", e)))?;
 
 	let mut output = BufferFFI::empty();
@@ -28,7 +28,7 @@ pub(crate) fn raw_query(ctx: &FFIOperatorContext, query: &str, params: Params) -
 
 		if result == FFI_OK {
 			let result_bytes = output.as_slice();
-			let frames: Vec<Frame> = from_bytes(result_bytes)
+			let frames: Vec<Frame> = decode_frames(result_bytes)
 				.map_err(|e| SdkError::Serialization(format!("failed to deserialize result: {}", e)))?;
 			Ok(frames)
 		} else {

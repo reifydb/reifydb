@@ -15,9 +15,12 @@ use reifydb_abi::{
 	context::context::ContextFFI,
 	data::buffer::BufferFFI,
 };
+use reifydb_codec::{
+	encoded::shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
+	tag::type_tag_byte,
+};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 	interface::catalog::{
 		column::Column,
 		id::{NamespaceId, TableId},
@@ -480,7 +483,7 @@ fn marshal_primary_key(pk: &PrimaryKey) -> Result<PrimaryKeyFFI, &'static str> {
 }
 
 fn encode_type_constraint(constraint: &TypeConstraint) -> (u8, u8, u32, u32) {
-	let base_type = constraint.get_type().to_u8();
+	let base_type = type_tag_byte(&constraint.get_type());
 
 	match constraint.constraint() {
 		None => (base_type, 0, 0, 0),
@@ -538,7 +541,7 @@ mod tests {
 			);
 			assert_eq!(ffi_field.size, shape_field.size);
 			assert_eq!(ffi_field.align, shape_field.align);
-			assert_eq!(ffi_field.base_type, shape_field.constraint.get_type().to_u8());
+			assert_eq!(ffi_field.base_type, type_tag_byte(&shape_field.constraint.get_type()));
 		}
 
 		// Reclaim the host-allocated buffers; if free ever crashes on a well-formed marshal output we

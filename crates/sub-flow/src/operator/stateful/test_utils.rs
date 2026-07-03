@@ -3,10 +3,11 @@
 
 pub mod test {
 	use reifydb_abi::operator::capabilities::OperatorCapability;
-	use reifydb_core::{
-		encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
-		interface::{catalog::flow::FlowNodeId, change::Change},
+	use reifydb_codec::{
+		encoded::{row::EncodedRow, shape::RowShape},
+		key::encoded::EncodedKey,
 	};
+	use reifydb_core::interface::{catalog::flow::FlowNodeId, change::Change};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
 	use reifydb_value::{

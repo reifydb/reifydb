@@ -11,9 +11,9 @@ use std::{
 };
 
 use reifydb_catalog::catalog::Catalog;
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::{
 		catalog::{
 			flow::{FlowId, FlowNodeId},

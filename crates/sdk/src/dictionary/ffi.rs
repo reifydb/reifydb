@@ -3,15 +3,17 @@
 
 use std::{ptr::null_mut, slice::from_raw_parts};
 
-use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::{
 	constants::{FFI_NOT_FOUND, FFI_OK},
 	data::buffer::BufferFFI,
 };
+use reifydb_codec::{
+	tag::value_type_from_tag_byte,
+	value::{decode_value, encode_value},
+};
 use reifydb_value::value::{
 	Value,
 	dictionary::{DictionaryEntryId, DictionaryId},
-	value_type::ValueType,
 };
 
 use crate::{
@@ -50,7 +52,8 @@ pub(super) fn raw_find(
 	dictionary: DictionaryId,
 	value: &Value,
 ) -> Result<Option<DictionaryEntryId>> {
-	let value_bytes = to_stdvec(value).map_err(|e| SdkError::Other(format!("failed to serialize value: {}", e)))?;
+	let value_bytes =
+		encode_value(value).map_err(|e| SdkError::Other(format!("failed to serialize value: {}", e)))?;
 	let mut out_id: u128 = 0;
 	let mut out_id_type: u8 = 0;
 	let mut found: u8 = 0;
@@ -70,7 +73,7 @@ pub(super) fn raw_find(
 			if found == 0 {
 				Ok(None)
 			} else {
-				let id = DictionaryEntryId::from_u128(out_id, ValueType::from_u8(out_id_type))
+				let id = DictionaryEntryId::from_u128(out_id, value_type_from_tag_byte(out_id_type))
 					.map_err(|e| SdkError::Other(e.to_string()))?;
 				Ok(Some(id))
 			}
@@ -100,7 +103,7 @@ pub(super) fn raw_get(
 			} else {
 				let value_bytes = from_raw_parts(output.ptr, output.len).to_vec();
 				((*ctx.ctx).callbacks.memory.free)(output.ptr as *mut u8, output.len);
-				let value: Value = from_bytes(&value_bytes)
+				let value: Value = decode_value(&value_bytes)
 					.map_err(|e| SdkError::Other(format!("failed to deserialize value: {}", e)))?;
 				Ok(Some(value))
 			}

@@ -3,16 +3,15 @@
 
 use std::collections::BTreeMap;
 
+use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_core::{
-	encoded::key::EncodedKey,
 	interface::change::Diff,
-	util::encoding::keycode::serializer::KeySerializer,
 	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_engine::expression::context::EvalContext;
-use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_value::{
 	Result,
+	util::hash::{Hash128, xxh3_128},
 	value::{identity::IdentityId, row_number::RowNumber},
 };
 

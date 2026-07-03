@@ -20,7 +20,7 @@ fn test_subscribe_returns_subscription_id() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_basic");
@@ -47,7 +47,7 @@ fn test_drop_subscription_cleans_up() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_unsub");
@@ -74,7 +74,7 @@ fn test_subscribe_invalid_query() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		// Invalid RQL should return an error
@@ -94,7 +94,7 @@ fn test_subscribe_nonexistent_table() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		// Non-existent table should return an error
@@ -114,7 +114,7 @@ fn test_recv_with_timeout_returns_none_when_empty() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_try_recv");

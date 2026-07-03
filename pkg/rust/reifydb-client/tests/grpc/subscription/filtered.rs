@@ -20,7 +20,7 @@ fn test_filtered_subscription() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_filter");
@@ -57,7 +57,7 @@ fn test_no_callback_for_non_matching() {
 
 	runtime.block_on(async {
 		let mut client =
-			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Proto).await.unwrap();
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
 		let table = unique_table_name("sub_no_match");

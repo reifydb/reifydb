@@ -10,10 +10,10 @@
 use std::collections::BTreeMap;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::{
 		catalog::flow::FlowNodeId,
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet},

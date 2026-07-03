@@ -3,12 +3,14 @@
 
 use std::{cell::Cell, collections::HashMap, fmt, mem, ptr, slice, str};
 
-use postcard::from_bytes as postcard_decode;
 use reifydb_abi::{
 	callbacks::builder::{ColumnBufferHandle, EmitDiffKind},
 	constants::{FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_OK},
 	context::context::ContextFFI,
 	data::column::ColumnTypeCode,
+};
+use reifydb_codec::ffi::cells::{
+	decode_any_cell, decode_decimal_cell, decode_dictionary_id_cell, decode_int_cell, decode_uint_cell,
 };
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_runtime::sync::mutex::Mutex;
@@ -38,7 +40,6 @@ use reifydb_value::{
 		uuid::{Uuid4, Uuid7},
 	},
 };
-use serde::de::DeserializeOwned;
 
 pub struct BuilderRegistry {
 	inner: Mutex<RegistryInner>,
@@ -670,21 +671,27 @@ fn finalize_buffer(
 			}
 		}
 		ColumnTypeCode::Int => {
-			let v = postcard_per_element::<Int>(&data, &offsets, written_count)?;
+			let v = decode_per_element::<Int>(&data, &offsets, written_count, |bytes| {
+				Some(decode_int_cell(bytes))
+			})?;
 			ColumnBuffer::Int {
 				container: NumberContainer::from_vec(v),
 				max_bytes: MaxBytes::MAX,
 			}
 		}
 		ColumnTypeCode::Uint => {
-			let v = postcard_per_element::<Uint>(&data, &offsets, written_count)?;
+			let v = decode_per_element::<Uint>(&data, &offsets, written_count, |bytes| {
+				Some(decode_uint_cell(bytes))
+			})?;
 			ColumnBuffer::Uint {
 				container: NumberContainer::from_vec(v),
 				max_bytes: MaxBytes::MAX,
 			}
 		}
 		ColumnTypeCode::Decimal => {
-			let v = postcard_per_element::<Decimal>(&data, &offsets, written_count)?;
+			let v = decode_per_element::<Decimal>(&data, &offsets, written_count, |bytes| {
+				decode_decimal_cell(bytes).ok()
+			})?;
 			ColumnBuffer::Decimal {
 				container: NumberContainer::from_vec(v),
 				precision: Precision::MAX,
@@ -692,13 +699,18 @@ fn finalize_buffer(
 			}
 		}
 		ColumnTypeCode::Any => {
-			let values: Vec<Value> = postcard_per_element::<Value>(&data, &offsets, written_count)?;
+			let values: Vec<Value> =
+				decode_per_element::<Value>(&data, &offsets, written_count, |bytes| {
+					decode_any_cell(bytes).ok()
+				})?;
 			let boxed: Vec<Box<Value>> = values.into_iter().map(Box::new).collect();
 			ColumnBuffer::Any(AnyContainer::from_vec(boxed))
 		}
 		ColumnTypeCode::DictionaryId => {
 			let entries: Vec<DictionaryEntryId> =
-				postcard_per_element::<DictionaryEntryId>(&data, &offsets, written_count)?;
+				decode_per_element::<DictionaryEntryId>(&data, &offsets, written_count, |bytes| {
+					decode_dictionary_id_cell(bytes).ok()
+				})?;
 			ColumnBuffer::DictionaryId(DictionaryContainer::from_vec(entries))
 		}
 		_ => return None,
@@ -706,7 +718,12 @@ fn finalize_buffer(
 	Some(make_option_wrapped(inner))
 }
 
-fn postcard_per_element<T: DeserializeOwned>(data: &[u8], offsets: &Option<Vec<u64>>, count: usize) -> Option<Vec<T>> {
+fn decode_per_element<T>(
+	data: &[u8],
+	offsets: &Option<Vec<u64>>,
+	count: usize,
+	decode: impl Fn(&[u8]) -> Option<T>,
+) -> Option<Vec<T>> {
 	let offsets = offsets.as_ref()?;
 	if offsets.len() < count + 1 {
 		return None;
@@ -718,8 +735,7 @@ fn postcard_per_element<T: DeserializeOwned>(data: &[u8], offsets: &Option<Vec<u
 		if end > data.len() || start > end {
 			return None;
 		}
-		let value: T = postcard_decode(&data[start..end]).ok()?;
-		out.push(value);
+		out.push(decode(&data[start..end])?);
 	}
 	Some(out)
 }

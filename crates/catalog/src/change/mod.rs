@@ -6,8 +6,8 @@
 //! rest of the workspace listens for. Each catalog object kind has a handler that knows the layout of its rows
 //! and how to fold an insert/update/delete into the materialised state.
 
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
-	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::cdc::SystemChange,
 	key::{Key, kind::KeyKind},
 };

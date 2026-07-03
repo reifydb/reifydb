@@ -8,8 +8,8 @@ pub mod view;
 use std::sync::LazyLock;
 
 use postcard::from_bytes;
+use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_core::{
-	encoded::{row::EncodedRow, shape::RowShape},
 	interface::{
 		catalog::{
 			column::Column as CatalogColumn,

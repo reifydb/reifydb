@@ -3,9 +3,9 @@
 
 use std::{fs, path::Path};
 
-use reifydb_wire_format::{
-	decode::decode_frames, encode::encode_frames, format::Encoding, json::from::frames_from_json,
-	options::EncodeOptions,
+use reifydb_codec::{
+	frame::{decode::decode_frames, encode::encode_frames, format::Encoding, options::EncodeOptions},
+	json::from::frames_from_json,
 };
 use serde_json::{Value, from_str, to_string};
 use test_each_file::test_each_path;

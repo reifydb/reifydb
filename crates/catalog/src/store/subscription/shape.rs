@@ -3,7 +3,7 @@
 
 pub mod subscription {
 	use once_cell::sync::Lazy;
-	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 	use reifydb_value::value::value_type::ValueType;
 
 	pub const ID: usize = 0;
@@ -21,7 +21,7 @@ pub mod subscription {
 
 pub mod subscription_column {
 	use once_cell::sync::Lazy;
-	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 	use reifydb_value::value::value_type::ValueType;
 
 	pub const ID: usize = 0;

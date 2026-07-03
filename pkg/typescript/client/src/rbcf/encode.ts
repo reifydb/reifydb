@@ -12,7 +12,7 @@ import type { Type } from "@reifydb/core";
 import {
     COL_FLAG_HAS_NONES, COLUMN_DESCRIPTOR_SIZE, ColumnEncoding, FRAME_HEADER_SIZE,
     MESSAGE_HEADER_SIZE, META_HAS_CREATED_AT, META_HAS_ROW_NUMBERS, META_HAS_UPDATED_AT,
-    RBCF_MAGIC, RBCF_VERSION, TYPE_CODE, TYPE_OPTION_FLAG, type TypeName,
+    RBCF_MAGIC, RBCF_VERSION, TYPE_CODE, type TypeName,
 } from "./format";
 import { BinaryWriter } from "./writer";
 import { encode_bitvec } from "./nones";
@@ -79,7 +79,9 @@ function encode_column(w: BinaryWriter, col: WireColumn): void {
     const { base, is_option } = type_info(col.type);
     const row_count = col.payload.length;
 
-    const type_code = TYPE_CODE[base] | (is_option ? TYPE_OPTION_FLAG : 0);
+    // The type_code byte is a pure ValueKind; optionality is signaled only by
+    // COL_FLAG_HAS_NONES plus the none-bitmap.
+    const type_code = TYPE_CODE[base];
 
     const defined = new Array<boolean>(row_count);
     const defined_payload = new Array<string>(row_count);
@@ -94,7 +96,9 @@ function encode_column(w: BinaryWriter, col: WireColumn): void {
         }
     }
 
-    const has_nones = is_option && defined.some((d) => !d);
+    // Rust marks every Option column with COL_FLAG_HAS_NONES and writes the full
+    // defined-bitmap, even when no cell is actually none.
+    const has_nones = is_option;
     const nones_bytes = has_nones ? encode_bitvec(defined) : new Uint8Array(0);
 
     const { data, offsets } = encode_plain_data(base, defined_payload);

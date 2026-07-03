@@ -11,6 +11,7 @@ members = [
     "crates/routine",
     "crates/catalog",
     "crates/cdc",
+    "crates/codec",
     "crates/column",
     "crates/core",
     "crates/engine",
@@ -35,7 +36,6 @@ members = [
     "crates/transaction",
     "crates/value",
     "crates/wasm",
-    "crates/wire-format",
     # Subsystem crates
     "crates/sub-api",
     "crates/sub-store",
@@ -87,6 +87,7 @@ default-members = [
     "crates/routine",
     "crates/catalog",
     "crates/cdc",
+    "crates/codec",
     "crates/column",
     "crates/core",
     "crates/engine",
@@ -111,7 +112,6 @@ default-members = [
     "crates/value",
     "crates/wasm",
     "crates/sub-raft",
-    "crates/wire-format",
     # Subsystem crates
     "crates/sub-api",
     "crates/sub-store",
@@ -201,6 +201,7 @@ reifydb-routine = { version = "0.7.0", path = "crates/routine" }
 reifydb-catalog = { version = "0.7.0", path = "crates/catalog" }
 reifydb-cdc = { version = "0.7.0", path = "crates/cdc" }
 reifydb-column = { version = "0.7.0", path = "crates/column" }
+reifydb-codec = { version = "0.7.0", path = "crates/codec" }
 reifydb-core = { version = "0.7.0", path = "crates/core" }
 reifydb-engine = { version = "0.7.0", path = "crates/engine" }
 reifydb-export = { version = "0.7.0", path = "crates/export" }
@@ -222,7 +223,6 @@ reifydb-testing-macro = { version = "0.7.0", path = "crates/testing-macro" }
 reifydb-transaction = { version = "0.7.0", path = "crates/transaction" }
 reifydb-value = { version = "0.7.0", path = "crates/value" }
 reifydb-wasm = { version = "0.7.0", path = "crates/wasm" }
-reifydb-wire-format = { version = "0.7.0", path = "crates/wire-format" }
 reifydb-macro = { version = "0.7.0", path = "crates/macro" }
 reifydb-macro-impl = { version = "0.7.0", path = "crates/macro-impl" }
 

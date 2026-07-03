@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use reifydb_codec::tag::type_tag_byte;
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -58,7 +59,7 @@ impl BaseVTable for SystemFlowOperatorOutputs {
 				operators.push(info.operator.as_str());
 				positions.push(position as u8);
 				names.push(col.name.as_str());
-				column_types.push(col.field_type.get_type().to_u8());
+				column_types.push(type_tag_byte(&col.field_type.get_type()));
 				descriptions.push(col.description.as_str());
 			}
 		}

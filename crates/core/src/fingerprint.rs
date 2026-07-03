@@ -3,7 +3,7 @@
 
 use std::ops::Deref;
 
-use reifydb_runtime::hash::Hash128;
+use reifydb_value::util::hash::Hash128;
 use serde::{Deserialize, Serialize};
 
 #[repr(transparent)]

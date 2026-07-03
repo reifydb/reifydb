@@ -5,7 +5,7 @@ use std::thread;
 
 use reifydb_core::fingerprint::StatementFingerprint;
 use reifydb_metric::accumulator::StatementStatsAccumulator;
-use reifydb_runtime::hash::Hash128;
+use reifydb_value::util::hash::Hash128;
 
 fn fp(n: u128) -> StatementFingerprint {
 	StatementFingerprint(Hash128(n))

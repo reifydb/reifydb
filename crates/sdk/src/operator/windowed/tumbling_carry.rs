@@ -4,8 +4,8 @@
 use std::{collections::BTreeMap, fmt::Debug, hash::Hash};
 
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
+use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
 use reifydb_core::{
-	encoded::key::{EncodedKey, IntoEncodedKey},
 	interface::catalog::flow::FlowNodeId,
 	window::{
 		accumulator::WindowAccumulator,
@@ -303,13 +303,12 @@ where
 mod tests {
 	use std::collections::BTreeMap;
 
+	use reifydb_codec::{
+		encoded::shape::{RowShape, RowShapeField},
+		key::encoded::EncodedKey,
+	};
 	use reifydb_core::{
-		encoded::{
-			key::EncodedKey,
-			shape::{RowShape, RowShapeField},
-		},
-		interface::catalog::flow::FlowNodeId,
-		row::Row as CoreRow,
+		interface::catalog::flow::FlowNodeId, row::Row as CoreRow,
 		window::accumulator::invertible::RetainedAccumulator,
 	};
 	use reifydb_value::value::{Value, value_type::ValueType};

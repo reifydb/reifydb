@@ -2536,6 +2536,7 @@ dependencies = [
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-cdc",
+ "reifydb-codec",
  "reifydb-column",
  "reifydb-core",
  "reifydb-derive",
@@ -2575,7 +2576,6 @@ dependencies = [
  "reifydb-testing",
  "reifydb-transaction",
  "reifydb-value",
- "reifydb-wire-format",
  "test_each_file",
  "tokio",
  "tracing",
@@ -2635,6 +2635,7 @@ dependencies = [
  "once_cell",
  "reifydb-abi",
  "reifydb-build",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-metric",
@@ -2658,6 +2659,7 @@ dependencies = [
  "postcard",
  "reifydb-build",
  "reifydb-catalog",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",
@@ -2685,12 +2687,12 @@ dependencies = [
  "reifydb-build",
  "reifydb-client",
  "reifydb-client-derive",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-sub-server",
  "reifydb-testing",
  "reifydb-value",
- "reifydb-wire-format",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
@@ -2707,6 +2709,26 @@ name = "reifydb-client-derive"
 version = "0.7.0"
 dependencies = [
  "reifydb-macro-impl",
+]
+
+[[package]]
+name = "reifydb-codec"
+version = "0.7.0"
+dependencies = [
+ "bigdecimal",
+ "num-bigint",
+ "num-traits",
+ "reifydb-abi",
+ "reifydb-build",
+ "reifydb-runtime",
+ "reifydb-value",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
+ "uuid",
+ "xxhash-rust",
 ]
 
 [[package]]
@@ -2733,6 +2755,7 @@ dependencies = [
  "postcard",
  "reifydb-abi",
  "reifydb-build",
+ "reifydb-codec",
  "reifydb-engine",
  "reifydb-runtime",
  "reifydb-value",
@@ -2761,6 +2784,7 @@ dependencies = [
  "reifydb-catalog",
  "reifydb-cdc",
  "reifydb-client",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-extension",
  "reifydb-metric",
@@ -2796,6 +2820,7 @@ dependencies = [
  "postcard",
  "reifydb-abi",
  "reifydb-build",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-routine",
  "reifydb-runtime",
@@ -2830,6 +2855,7 @@ version = "0.7.0"
 dependencies = [
  "dashmap",
  "reifydb-build",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-value",
@@ -2952,6 +2978,7 @@ dependencies = [
  "rand 0.10.1",
  "reifydb-abi",
  "reifydb-build",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-testing",
@@ -2978,6 +3005,7 @@ dependencies = [
 name = "reifydb-store"
 version = "0.7.0"
 dependencies = [
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-value",
 ]
@@ -2988,6 +3016,7 @@ version = "0.7.0"
 dependencies = [
  "rand 0.10.1",
  "reifydb-build",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-sqlite",
@@ -3005,6 +3034,7 @@ name = "reifydb-store-single"
 version = "0.7.0"
 dependencies = [
  "reifydb-build",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-sqlite",
@@ -3040,6 +3070,7 @@ dependencies = [
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-cdc",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-extension",
@@ -3065,6 +3096,7 @@ version = "0.7.0"
 dependencies = [
  "reifydb-build",
  "reifydb-catalog",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-metric",
@@ -3103,6 +3135,7 @@ dependencies = [
  "prost",
  "rand 0.10.1",
  "reifydb-build",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-value",
@@ -3120,6 +3153,7 @@ dependencies = [
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-cdc",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",
@@ -3160,6 +3194,7 @@ dependencies = [
  "reifydb-auth",
  "reifydb-build",
  "reifydb-client",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-remote-proxy",
@@ -3167,7 +3202,6 @@ dependencies = [
  "reifydb-subscription",
  "reifydb-transaction",
  "reifydb-value",
- "reifydb-wire-format",
  "serde",
  "serde_json",
  "tokio",
@@ -3203,6 +3237,7 @@ dependencies = [
  "reifydb-auth",
  "reifydb-build",
  "reifydb-client",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",
@@ -3211,7 +3246,6 @@ dependencies = [
  "reifydb-sub-subscription",
  "reifydb-subscription",
  "reifydb-value",
- "reifydb-wire-format",
  "serde_json",
  "tokio",
  "tokio-stream",
@@ -3228,13 +3262,13 @@ dependencies = [
  "axum",
  "reifydb-auth",
  "reifydb-build",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",
  "reifydb-sub-api",
  "reifydb-sub-server",
  "reifydb-value",
- "reifydb-wire-format",
  "serde",
  "serde_json",
  "tokio",
@@ -3267,6 +3301,7 @@ dependencies = [
  "reifydb-auth",
  "reifydb-build",
  "reifydb-client",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",
@@ -3275,7 +3310,6 @@ dependencies = [
  "reifydb-sub-subscription",
  "reifydb-subscription",
  "reifydb-value",
- "reifydb-wire-format",
  "serde",
  "serde_json",
  "tokio",
@@ -3314,6 +3348,7 @@ dependencies = [
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-cdc",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-rql",
@@ -3362,6 +3397,7 @@ name = "reifydb-subscription"
 version = "0.7.0"
 dependencies = [
  "reifydb-catalog",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-transaction",
@@ -3397,6 +3433,7 @@ dependencies = [
  "indexmap",
  "rand 0.10.1",
  "reifydb-build",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-store-multi",
@@ -3425,6 +3462,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "uuid",
+ "xxhash-rust",
 ]
 
 [[package]]
@@ -3469,6 +3507,7 @@ dependencies = [
  "reifydb-auth",
  "reifydb-catalog",
  "reifydb-cdc",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-extension",
@@ -3480,25 +3519,10 @@ dependencies = [
  "reifydb-sub-flow",
  "reifydb-transaction",
  "reifydb-value",
- "reifydb-wire-format",
  "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-test",
  "web-sys",
-]
-
-[[package]]
-name = "reifydb-wire-format"
-version = "0.7.0"
-dependencies = [
- "bigdecimal",
- "num-bigint",
- "reifydb-build",
- "reifydb-value",
- "serde",
- "serde_json",
- "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -4044,10 +4068,10 @@ name = "tests-integration"
 version = "0.7.0"
 dependencies = [
  "reifydb",
+ "reifydb-codec",
  "reifydb-metric",
  "reifydb-sub-metric",
  "reifydb-value",
- "reifydb-wire-format",
 ]
 
 [[package]]

@@ -16,6 +16,7 @@ edition.workspace = true
 default = []
 
 [dependencies]
+reifydb-codec = { workspace = true }
 reifydb-auth = { workspace = true }
 reifydb-sub-server = { workspace = true }
 reifydb-client = { workspace = true }
@@ -26,7 +27,6 @@ reifydb-runtime = { workspace = true }
 reifydb-sub-subscription = { workspace = true }
 reifydb-subscription = { workspace = true }
 reifydb-value = { workspace = true }
-reifydb-wire-format = { workspace = true }
 
 tokio = { workspace = true }
 tokio-tungstenite = { workspace = true }

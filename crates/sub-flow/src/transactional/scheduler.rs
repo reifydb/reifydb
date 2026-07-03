@@ -5,10 +5,13 @@ use std::{collections::BTreeMap, mem, sync::Arc};
 
 use rayon::Scope;
 use reifydb_catalog::catalog::Catalog;
+use reifydb_codec::{
+	encoded::{row::EncodedRow, shape::RowShape},
+	key::encoded::EncodedKey,
+};
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
-	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	interface::{
 		catalog::{flow::FlowId, shape::ShapeId},
 		change::{Change, ChangeOrigin, Diff},

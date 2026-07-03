@@ -20,9 +20,9 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::flow::aggregate::SlotKind;
-use reifydb_runtime::hash::Hash128;
 use reifydb_value::{
 	Result,
+	util::hash::Hash128,
 	value::{Value, duration::Duration, row_number::RowNumber},
 };
 use serde::{Deserialize, Serialize};

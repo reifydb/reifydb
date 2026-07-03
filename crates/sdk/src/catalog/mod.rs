@@ -8,9 +8,12 @@ pub mod table;
 use std::{slice::from_raw_parts, str};
 
 use reifydb_abi::catalog::{column::ColumnFFI, primary_key::PrimaryKeyFFI};
+use reifydb_codec::{
+	encoded::shape::{RowShape, fingerprint::RowShapeFingerprint},
+	tag::value_type_from_tag_byte,
+};
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::shape::{RowShape, fingerprint::RowShapeFingerprint},
 	interface::catalog::{
 		column::{Column, ColumnIndex},
 		id::{ColumnId, NamespaceId, PrimaryKeyId, TableId},
@@ -133,7 +136,7 @@ pub(crate) fn decode_type_constraint(
 	param1: u32,
 	param2: u32,
 ) -> Result<TypeConstraint, SdkError> {
-	let ty = ValueType::from_u8(base_type);
+	let ty = value_type_from_tag_byte(base_type);
 
 	match constraint_type {
 		0 => Ok(TypeConstraint::unconstrained(ty)),

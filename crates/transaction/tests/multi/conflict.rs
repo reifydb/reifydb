@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::encoded::key::{EncodedKey, EncodedKeyRange};
+use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_transaction::multi::conflict::ConflictManager;
 
 fn make_key(s: &str) -> EncodedKey {

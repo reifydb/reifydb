@@ -3,10 +3,10 @@
 
 use std::{cmp::Ordering, iter::Peekable, vec::IntoIter};
 
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	actors::pending::PendingWrite, common::CommitVersion, encoded::key::EncodedKey,
-	interface::store::MultiVersionRow,
-};
+	actors::pending::PendingWrite, common::CommitVersion,
+	interface::store::MultiVersionRow};
 use reifydb_value::Result;
 
 pub(crate) struct FlowMergePendingIterator<I>

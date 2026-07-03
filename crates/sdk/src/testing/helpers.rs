@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::encoded::{
-	key::{EncodedKey, IntoEncodedKey},
-	row::EncodedRow,
-	shape::RowShape,
+use reifydb_codec::{
+	encoded::{row::EncodedRow, shape::RowShape},
+	key::encoded::{EncodedKey, IntoEncodedKey},
 };
 use reifydb_value::value::Value;
 

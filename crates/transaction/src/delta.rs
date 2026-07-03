@@ -7,10 +7,8 @@ use indexmap::{
 	IndexMap,
 	map::Entry::{Occupied, Vacant},
 };
-use reifydb_core::{
-	delta::Delta,
-	encoded::{key::EncodedKey, row::EncodedRow},
-};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_core::delta::Delta;
 
 #[derive(Debug, Clone)]
 enum OptimizedDeltaState {

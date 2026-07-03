@@ -3,14 +3,12 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use reifydb_core::{
-	common::CommitVersion,
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
-	},
-	util::encoding::keycode,
+use reifydb_codec::{
+	encoded::row::EncodedRow,
+	key as keycode,
+	key::encoded::{EncodedKey, EncodedKeyRange},
 };
+use reifydb_core::common::CommitVersion;
 use reifydb_transaction::multi::{
 	RangeScope,
 	transaction::{MultiTransaction, read::MultiReadTransaction, write::MultiWriteTransaction},

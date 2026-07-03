@@ -15,12 +15,14 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
-use reifydb_runtime::hash::xxh3_128;
 use reifydb_transaction::{
 	interceptor::dictionary_row::DictionaryRowInterceptor,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
-use reifydb_value::value::{Value, datetime::DateTime, dictionary::DictionaryEntryId, row_number::RowNumber};
+use reifydb_value::{
+	util::hash::xxh3_128,
+	value::{Value, datetime::DateTime, dictionary::DictionaryEntryId, row_number::RowNumber},
+};
 use smallvec::smallvec;
 
 use crate::Result;

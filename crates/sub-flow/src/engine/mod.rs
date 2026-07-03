@@ -16,9 +16,9 @@ use std::{
 };
 
 use dashmap::DashMap;
-#[cfg(reifydb_target = "native")]
-use postcard::to_stdvec;
 use reifydb_catalog::catalog::Catalog;
+#[cfg(reifydb_target = "native")]
+use reifydb_codec::value::encode_params;
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
@@ -43,7 +43,7 @@ use reifydb_runtime::{
 use reifydb_sdk::config::Config;
 use reifydb_value::value::duration::Duration;
 #[cfg(reifydb_target = "native")]
-use reifydb_value::{Result, error::Error, value::Value};
+use reifydb_value::{Result, error::Error, params::Params, value::Value};
 use tracing::instrument;
 
 #[cfg(reifydb_target = "native")]
@@ -204,7 +204,9 @@ impl FlowEngineInner {
 		let loader = ffi_operator_loader();
 		let mut loader_write = loader.write();
 
-		let config_bytes = to_stdvec(config).map_err(|e| {
+		let config_params =
+			Params::Named(Arc::new(config.iter().map(|(k, v)| (k.clone(), v.clone())).collect()));
+		let config_bytes = encode_params(&config_params).map_err(|e| {
 			Error::from(FlowStateError::Encode {
 				state: "operator config",
 				cause: e.to_string(),

@@ -3,7 +3,7 @@
 
 use std::str::FromStr;
 
-use reifydb_core::encoded::shape::RowShape;
+use reifydb_codec::encoded::shape::RowShape;
 use reifydb_value::value::{blob::Blob, decimal::Decimal, int::Int, value_type::ValueType};
 
 #[test]

@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	encoded::shape::RowShape,
 	interface::catalog::{
 		change::CatalogTrackTableChangeOperations,
 		column::{Column, ColumnIndex},
@@ -13,6 +12,7 @@ use reifydb_core::{
 	},
 	internal,
 	retention::RetentionStrategy,
+	row::row_shape_from_columns,
 };
 use reifydb_transaction::{
 	change::TransactionalTableChanges,
@@ -340,7 +340,7 @@ impl Catalog {
 		pk_columns: Option<Vec<String>>,
 	) -> Result<Table> {
 		txn.track_table_created(table.clone())?;
-		let shape = RowShape::from(table.columns.as_slice());
+		let shape = row_shape_from_columns(table.columns.as_slice());
 		self.get_or_create_row_shape(&mut Transaction::Admin(&mut *txn), shape.fields().to_vec())?;
 
 		let Some(pk_columns) = pk_columns else {

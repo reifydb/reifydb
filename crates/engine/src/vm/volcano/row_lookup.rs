@@ -3,8 +3,8 @@
 
 use std::{iter, sync::Arc};
 
+use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_core::{
-	encoded::{row::EncodedRow, shape::RowShape},
 	interface::{catalog::shape::ShapeId, resolved::ResolvedShape},
 	internal_err, internal_error,
 	key::row::RowKey,

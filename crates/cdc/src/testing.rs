@@ -4,11 +4,8 @@
 use std::{mem, sync::Arc};
 
 use reifydb_catalog::{cache::CatalogCache, catalog::Catalog};
-use reifydb_core::{
-	common::CommitVersion,
-	encoded::{key::EncodedKey, row::EncodedRow},
-	event::EventBus,
-};
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_core::{common::CommitVersion, event::EventBus};
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::{

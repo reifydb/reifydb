@@ -3,10 +3,8 @@
 
 use std::ops::Bound;
 
-use reifydb_core::{
-	encoded::key::{EncodedKey, EncodedKeyRange},
-	window::store::WindowStore,
-};
+use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_core::window::store::WindowStore;
 use reifydb_value::{Result, value::row_number::RowNumber};
 use serde::{Serialize, de::DeserializeOwned};
 

@@ -8,22 +8,22 @@ use std::{
 	marker::PhantomData,
 };
 
+use reifydb_codec::key::{
+	encode_u64,
+	encoded::{EncodedKey, IntoEncodedKey},
+};
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-use crate::{
-	encoded::key::{EncodedKey, IntoEncodedKey},
-	util::encoding::keycode::encode_u64,
-	window::{
-		accumulator::WindowAccumulator,
-		engine::{
-			AccumulatorEvent, EmitKind, GroupMeta, LatePolicy, MetaKey, WindowResult,
-			config::WindowEngineConfig, expiry_due_range, expiry_key, meta_key_for,
-		},
-		span::{Slot, WindowSpan},
-		state::StateCache,
-		store::WindowStore,
+use crate::window::{
+	accumulator::WindowAccumulator,
+	engine::{
+		AccumulatorEvent, EmitKind, GroupMeta, LatePolicy, MetaKey, WindowResult, config::WindowEngineConfig,
+		expiry_due_range, expiry_key, meta_key_for,
 	},
+	span::{Slot, WindowSpan},
+	state::StateCache,
+	store::WindowStore,
 };
 
 pub type TumblingBuckets<G, C, Contribution> = BTreeMap<(G, WindowSpan<C>), Vec<AccumulatorEvent<Contribution>>>;
@@ -353,17 +353,16 @@ where
 mod tests {
 	use std::collections::BTreeMap;
 
-	use crate::{
-		encoded::key::EncodedKey,
-		window::{
-			engine::{
-				AccumulatorEvent, EmitKind, WindowResult,
-				config::WindowEngineConfig,
-				test_support::{MockStore, SumAccumulator},
-				tumbling::{TumblingBuckets, TumblingEngine, reindex_window},
-			},
-			span::WindowSpan,
+	use reifydb_codec::key::encoded::EncodedKey;
+
+	use crate::window::{
+		engine::{
+			AccumulatorEvent, EmitKind, WindowResult,
+			config::WindowEngineConfig,
+			test_support::{MockStore, SumAccumulator},
+			tumbling::{TumblingBuckets, TumblingEngine, reindex_window},
 		},
+		span::WindowSpan,
 	};
 
 	fn test_config() -> WindowEngineConfig {

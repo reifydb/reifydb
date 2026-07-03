@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::tag::value_type_from_tag_byte;
 use reifydb_core::{internal, key::columns::ColumnsKey};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -9,7 +10,6 @@ use reifydb_value::{
 		constraint::{Constraint, TypeConstraint},
 		dictionary::DictionaryId,
 		sumtype::SumTypeId,
-		value_type::ValueType,
 	},
 };
 
@@ -35,7 +35,7 @@ fn decode_constraint(bytes: &[u8]) -> Option<Constraint> {
 			let dict_id = u64::from_le_bytes([
 				bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8],
 			]);
-			let id_type = ValueType::from_u8(bytes[9]);
+			let id_type = value_type_from_tag_byte(bytes[9]);
 			Some(Constraint::Dictionary(DictionaryId(dict_id), id_type))
 		}
 		4 if bytes.len() >= 9 => {
@@ -71,7 +71,7 @@ impl CatalogStore {
 
 		let id = ColumnId(SHAPE.get_u64(&row, ID));
 		let name = SHAPE.get_utf8(&row, NAME).to_string();
-		let base_type = ValueType::from_u8(SHAPE.get_u8(&row, VALUE));
+		let base_type = value_type_from_tag_byte(SHAPE.get_u8(&row, VALUE));
 		let index = ColumnIndex(SHAPE.get_u8(&row, INDEX));
 		let auto_increment = SHAPE.get_bool(&row, AUTO_INCREMENT);
 

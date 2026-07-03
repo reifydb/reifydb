@@ -3,11 +3,14 @@
 
 use std::{slice::from_raw_parts, str::from_utf8};
 
-use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::{
 	constants::{FFI_ERROR_INTERNAL, FFI_ERROR_INVALID_UTF8, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK},
 	context::context::ContextFFI,
 	data::buffer::BufferFFI,
+};
+use reifydb_codec::{
+	tag::type_tag_byte,
+	value::{decode_value, encode_value},
 };
 use reifydb_value::value::{
 	Value,
@@ -62,7 +65,7 @@ pub(super) extern "C" fn host_dictionary_find(
 	}
 
 	unsafe {
-		let value: Value = match from_bytes(from_raw_parts(value_ptr, value_len)) {
+		let value: Value = match decode_value(from_raw_parts(value_ptr, value_len)) {
 			Ok(value) => value,
 			Err(_) => return FFI_ERROR_INTERNAL,
 		};
@@ -76,7 +79,7 @@ pub(super) extern "C" fn host_dictionary_find(
 		match flow_txn.find_in_dictionary(&dictionary, &value) {
 			Ok(Some(id)) => {
 				*out_id = id.to_u128();
-				*out_id_type = id.id_type().to_u8();
+				*out_id_type = type_tag_byte(&id.id_type());
 				*found = 1;
 				FFI_OK
 			}
@@ -112,7 +115,7 @@ pub(super) extern "C" fn host_dictionary_get(
 		};
 
 		match flow_txn.get_from_dictionary(&dictionary, entry_id) {
-			Ok(Some(value)) => match to_stdvec(&value) {
+			Ok(Some(value)) => match encode_value(&value) {
 				Ok(bytes) => write_buffer(output, &bytes),
 				Err(_) => FFI_ERROR_INTERNAL,
 			},

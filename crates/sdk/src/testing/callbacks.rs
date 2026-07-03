@@ -788,8 +788,8 @@ use reifydb_abi::{
 	},
 	data::{buffer::BufferFFI, key_ref::KeyRefFFI},
 };
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	encoded::key::EncodedKey,
 	interface::catalog::flow::FlowNodeId,
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
 };

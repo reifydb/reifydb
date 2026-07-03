@@ -8,6 +8,10 @@ use std::{
 };
 
 use indexmap::IndexMap;
+use reifydb_codec::encoded::{
+	row::EncodedRow,
+	shape::{RowShape, RowShapeField},
+};
 use reifydb_value::{
 	Result,
 	fragment::Fragment,
@@ -18,10 +22,6 @@ use reifydb_value::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	encoded::{
-		row::EncodedRow,
-		shape::{RowShape, RowShapeField},
-	},
 	interface::catalog::column::Column as CatalogColumn,
 	return_internal_error,
 	row::Row,

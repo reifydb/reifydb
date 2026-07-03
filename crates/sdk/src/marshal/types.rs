@@ -3,8 +3,10 @@
 
 use std::{slice::from_raw_parts, str::from_utf8};
 
-use postcard::from_bytes;
 use reifydb_abi::data::{buffer::BufferFFI, column::ColumnDataFFI};
+use reifydb_codec::ffi::cells::{
+	decode_any_cell, decode_decimal_cell, decode_dictionary_id_cell, decode_int_cell, decode_uint_cell,
+};
 use reifydb_value::value::{
 	Value,
 	blob::Blob,
@@ -15,14 +17,16 @@ use reifydb_value::value::{
 	},
 	date::Date,
 	datetime::DateTime,
+	decimal::Decimal,
 	dictionary::DictionaryEntryId,
 	duration::Duration,
 	identity::IdentityId,
+	int::Int,
 	is::IsNumber,
 	time::Time,
+	uint::Uint,
 	uuid::{Uuid4, Uuid7},
 };
-use serde::de::DeserializeOwned;
 use uuid::Uuid;
 
 use crate::ffi::arena::Arena;
@@ -237,9 +241,22 @@ impl Arena {
 		}
 	}
 
-	pub(super) fn unmarshal_serialized_data<T: Default + Clone + DeserializeOwned + IsNumber>(
+	pub(super) fn unmarshal_int_data(&self, ffi: &ColumnDataFFI) -> NumberContainer<Int> {
+		self.unmarshal_cells(ffi, decode_int_cell)
+	}
+
+	pub(super) fn unmarshal_uint_data(&self, ffi: &ColumnDataFFI) -> NumberContainer<Uint> {
+		self.unmarshal_cells(ffi, decode_uint_cell)
+	}
+
+	pub(super) fn unmarshal_decimal_data(&self, ffi: &ColumnDataFFI) -> NumberContainer<Decimal> {
+		self.unmarshal_cells(ffi, |bytes| decode_decimal_cell(bytes).unwrap_or_default())
+	}
+
+	fn unmarshal_cells<T: Default + Clone + IsNumber>(
 		&self,
 		ffi: &ColumnDataFFI,
+		decode: impl Fn(&[u8]) -> T,
 	) -> NumberContainer<T> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
@@ -254,8 +271,7 @@ impl Arena {
 			for i in 0..row_count {
 				let start = offsets[i] as usize;
 				let end = offsets[i + 1] as usize;
-				let value: T = from_bytes(&data[start..end]).unwrap_or_default();
-				values.push(value);
+				values.push(decode(&data[start..end]));
 			}
 
 			NumberContainer::new(values)
@@ -276,7 +292,7 @@ impl Arena {
 			for i in 0..row_count {
 				let start = offsets[i] as usize;
 				let end = offsets[i + 1] as usize;
-				let value: Value = from_bytes(&data[start..end]).unwrap_or(Value::none());
+				let value: Value = decode_any_cell(&data[start..end]).unwrap_or(Value::none());
 				values.push(Box::new(value));
 			}
 
@@ -298,8 +314,8 @@ impl Arena {
 			for i in 0..row_count {
 				let start = offsets[i] as usize;
 				let end = offsets[i + 1] as usize;
-				let entry: DictionaryEntryId =
-					from_bytes(&data[start..end]).unwrap_or(DictionaryEntryId::U16(0));
+				let entry: DictionaryEntryId = decode_dictionary_id_cell(&data[start..end])
+					.unwrap_or(DictionaryEntryId::U16(0));
 				entries.push(entry);
 			}
 

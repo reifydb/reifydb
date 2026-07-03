@@ -15,9 +15,9 @@ use std::{
 	sync::{Arc, atomic::AtomicU64},
 };
 
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::key::EncodedKey,
 	event::EventBus,
 	interface::{
 		catalog::config::{ConfigKey, GetConfig},

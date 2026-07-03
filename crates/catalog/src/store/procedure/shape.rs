@@ -3,7 +3,7 @@
 
 pub(crate) mod procedure {
 	use once_cell::sync::Lazy;
-	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const ID: usize = 0;
@@ -44,7 +44,7 @@ pub(crate) mod procedure {
 
 pub(crate) mod namespace_procedure {
 	use once_cell::sync::Lazy;
-	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const ID: usize = 0;
@@ -60,7 +60,7 @@ pub(crate) mod namespace_procedure {
 
 pub(crate) mod procedure_param {
 	use once_cell::sync::Lazy;
-	use reifydb_core::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const PROCEDURE_ID: usize = 0;

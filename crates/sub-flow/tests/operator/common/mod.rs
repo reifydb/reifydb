@@ -9,12 +9,14 @@
 #![allow(dead_code)]
 
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
-use reifydb_core::{
+use reifydb_codec::{
 	encoded::{
-		key::EncodedKey,
 		row::{EncodedRow, SHAPE_HEADER_SIZE},
 		shape::{RowShape, RowShapeField},
 	},
+	key::encoded::EncodedKey,
+};
+use reifydb_core::{
 	interface::{
 		catalog::{flow::FlowNodeId, shape::ShapeId},
 		change::Change,

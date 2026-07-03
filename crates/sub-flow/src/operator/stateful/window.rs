@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-use reifydb_core::{
-	encoded::{
-		key::{EncodedKey, EncodedKeyRange},
-		row::EncodedRow,
-		shape::RowShape,
-	},
-	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
+use reifydb_codec::{
+	encoded::{row::EncodedRow, shape::RowShape},
+	key::encoded::{EncodedKey, EncodedKeyRange},
 };
+use reifydb_core::key::{EncodableKey, flow_node_state::FlowNodeStateKey};
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::Result;
 
@@ -69,10 +66,8 @@ pub mod tests {
 	use std::ops::Bound::{Excluded, Unbounded};
 
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::{
-		common::CommitVersion, interface::catalog::flow::FlowNodeId,
-		util::encoding::keycode::serializer::KeySerializer,
-	};
+	use reifydb_codec::key::serializer::KeySerializer;
+	use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 

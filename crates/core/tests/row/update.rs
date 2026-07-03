@@ -4,7 +4,7 @@
 use std::{f64::consts::E, str::FromStr};
 
 use num_bigint::BigInt;
-use reifydb_core::encoded::shape::RowShape;
+use reifydb_codec::encoded::shape::RowShape;
 use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
 	rng::Rng,

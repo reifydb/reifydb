@@ -6,8 +6,11 @@ use std::collections::{BTreeMap, HashSet};
 use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_catalog::store::ringbuffer::update::{decode_ringbuffer_metadata, encode_ringbuffer_metadata};
+use reifydb_codec::{
+	encoded::{row::EncodedRow, shape::RowShape},
+	key::encoded::EncodedKey,
+};
 use reifydb_core::{
-	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	interface::{
 		catalog::{
 			flow::FlowNodeId, id::RingBufferId, ringbuffer::RingBufferMetadata, shape::ShapeId, view::View,
@@ -16,6 +19,7 @@ use reifydb_core::{
 		resolved::ResolvedView,
 	},
 	key::{ringbuffer::RingBufferMetadataKey, row::RowKey},
+	row::row_shape_from_columns,
 	value::column::columns::Columns,
 };
 use reifydb_value::{
@@ -144,7 +148,7 @@ impl Operator for SinkRingBufferViewOperator {
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def().clone();
-		let shape: RowShape = view.columns().into();
+		let shape = row_shape_from_columns(view.columns());
 		let object_id = ShapeId::ringbuffer(self.ringbuffer_id);
 		let mut metadata = self.read_metadata(txn)?;
 		let mut state = self.load(txn)?;

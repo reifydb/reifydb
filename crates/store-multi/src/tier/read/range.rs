@@ -3,10 +3,8 @@
 
 use std::{collections::BTreeMap, ops::Bound};
 
-use reifydb_core::{
-	encoded::key::{EncodedKey, EncodedKeyRange},
-	interface::store::EntryKind,
-};
+use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_core::interface::store::EntryKind;
 use reifydb_store::row::page::{PageId, key_range_of, page_of};
 use tracing::instrument;
 

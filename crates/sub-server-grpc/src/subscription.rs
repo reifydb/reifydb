@@ -1,37 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use reifydb_client::{RawChangePayload, WireFormat as ClientWireFormat};
+use reifydb_codec::frame::{encode::encode_frames, options::EncodeOptions};
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_sub_server::subscription::wire_sink::{BatchSubscribedMember, WireSink};
 use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
 use reifydb_value::value::frame::frame::Frame;
-use reifydb_wire_format::{encode::encode_frames, options::EncodeOptions};
 use tokio::sync::mpsc;
 use tonic::Status;
 
-use crate::{
-	convert::frames_to_proto,
-	generated::{
-		BatchChangeEntry, BatchChangeEvent, BatchMember, BatchMemberClosedEvent, BatchSubscribedEvent,
-		BatchSubscriptionEvent, ChangeEvent, Format, FramesPayload, SubscribedEvent, SubscriptionEvent,
-		batch_subscription_event, change_event, subscription_event,
-	},
+use crate::generated::{
+	BatchChangeEntry, BatchChangeEvent, BatchMember, BatchMemberClosedEvent, BatchSubscribedEvent,
+	BatchSubscriptionEvent, ChangeEvent, SubscribedEvent, SubscriptionEvent, batch_subscription_event,
+	subscription_event,
 };
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum WireFormat {
 	#[default]
-	Proto,
 	Rbcf,
-}
-
-impl WireFormat {
-	pub fn from_proto_i32(format: i32) -> Self {
-		match Format::try_from(format).unwrap_or(Format::Unspecified) {
-			Format::Rbcf => WireFormat::Rbcf,
-			Format::Proto | Format::Unspecified => WireFormat::Proto,
-		}
-	}
 }
 
 pub type SubscriptionRegistry = reifydb_sub_server::subscription::registry::SubscriptionRegistry<GrpcWireSink>;
@@ -45,11 +32,8 @@ pub enum GrpcWireSink {
 impl WireSink for GrpcWireSink {
 	type Format = WireFormat;
 
-	fn client_wire_format(format: Self::Format) -> ClientWireFormat {
-		match format {
-			WireFormat::Rbcf => ClientWireFormat::Rbcf,
-			WireFormat::Proto => ClientWireFormat::Proto,
-		}
+	fn client_wire_format(_format: Self::Format) -> ClientWireFormat {
+		ClientWireFormat::Rbcf
 	}
 
 	fn send_subscribed(&self, sub_id: SubscriptionId) -> DeliveryResult {
@@ -98,10 +82,10 @@ impl WireSink for GrpcWireSink {
 		}
 	}
 
-	fn send_change(&self, _sub_id: SubscriptionId, columns: Columns, format: Self::Format) -> DeliveryResult {
+	fn send_change(&self, _sub_id: SubscriptionId, columns: Columns, _format: Self::Format) -> DeliveryResult {
 		match self {
 			Self::Single(tx) => {
-				let event = encode_change_event(columns, format);
+				let event = encode_change_event(columns, WireFormat::Rbcf);
 				if tx.send(Ok(event)).is_ok() {
 					DeliveryResult::Delivered
 				} else {
@@ -116,31 +100,20 @@ impl WireSink for GrpcWireSink {
 		&self,
 		_sub_id: SubscriptionId,
 		payload: RawChangePayload,
-		format: Self::Format,
+		_format: Self::Format,
 	) -> DeliveryResult {
 		match self {
 			Self::Single(tx) => {
-				let proto_payload = match (format, payload) {
-					(WireFormat::Rbcf, RawChangePayload::Rbcf(bytes)) => {
-						change_event::Payload::Rbcf(bytes)
-					}
-					(WireFormat::Rbcf, other) => {
+				let rbcf = match payload {
+					RawChangePayload::Rbcf(bytes) => bytes,
+					other => {
 						let frames = other.into_frames();
-						change_event::Payload::Rbcf(
-							encode_frames(&frames, &EncodeOptions::fast())
-								.unwrap_or_default(),
-						)
-					}
-					(WireFormat::Proto, payload) => {
-						let frames = payload.into_frames();
-						change_event::Payload::Frames(FramesPayload {
-							frames: frames_to_proto(frames),
-						})
+						encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default()
 					}
 				};
 				let event = SubscriptionEvent {
 					event: Some(subscription_event::Event::Change(ChangeEvent {
-						payload: Some(proto_payload),
+						rbcf,
 					})),
 				};
 				if tx.send(Ok(event)).is_ok() {
@@ -163,14 +136,11 @@ impl WireSink for GrpcWireSink {
 			Self::Batch(tx) => {
 				let proto_entries: Vec<BatchChangeEntry> = entries
 					.into_iter()
-					.map(|(sub_id, frames)| {
-						let payload = encode_change_payload(frames, format);
-						BatchChangeEntry {
-							subscription_id: sub_id.to_string(),
-							change: Some(ChangeEvent {
-								payload: Some(payload),
-							}),
-						}
+					.map(|(sub_id, frames)| BatchChangeEntry {
+						subscription_id: sub_id.to_string(),
+						change: Some(ChangeEvent {
+							rbcf: encode_change_payload(frames, format),
+						}),
 					})
 					.collect();
 				let event = BatchSubscriptionEvent {
@@ -216,24 +186,15 @@ impl WireSink for GrpcWireSink {
 }
 
 pub fn encode_change_event(columns: Columns, format: WireFormat) -> SubscriptionEvent {
-	let payload = encode_change_payload(vec![Frame::from(columns)], format);
 	SubscriptionEvent {
 		event: Some(subscription_event::Event::Change(ChangeEvent {
-			payload: Some(payload),
+			rbcf: encode_change_payload(vec![Frame::from(columns)], format),
 		})),
 	}
 }
 
-pub fn encode_change_payload(frames: Vec<Frame>, format: WireFormat) -> change_event::Payload {
-	match format {
-		WireFormat::Rbcf => {
-			let rbcf = encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default();
-			change_event::Payload::Rbcf(rbcf)
-		}
-		WireFormat::Proto => change_event::Payload::Frames(FramesPayload {
-			frames: frames_to_proto(frames),
-		}),
-	}
+pub fn encode_change_payload(frames: Vec<Frame>, _format: WireFormat) -> Vec<u8> {
+	encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -274,7 +235,7 @@ mod tests {
 			connection_id,
 			"FROM a".to_string(),
 			batch_sink.clone(),
-			WireFormat::Proto,
+			WireFormat::Rbcf,
 			None,
 			Duration::zero(),
 		);
@@ -283,7 +244,7 @@ mod tests {
 			connection_id,
 			"FROM b".to_string(),
 			batch_sink.clone(),
-			WireFormat::Proto,
+			WireFormat::Rbcf,
 			None,
 			Duration::zero(),
 		);
@@ -292,7 +253,7 @@ mod tests {
 			connection_id,
 			vec![(sub_a, Duration::zero()), (sub_b, Duration::zero())],
 			batch_sink,
-			WireFormat::Proto,
+			WireFormat::Rbcf,
 			&clock,
 			&rng,
 		);
@@ -329,7 +290,7 @@ mod tests {
 			connection_id,
 			vec![(sub_remote, Duration::zero())],
 			batch_sink,
-			WireFormat::Proto,
+			WireFormat::Rbcf,
 			&clock,
 			&rng,
 		);
@@ -361,7 +322,7 @@ mod tests {
 			connection_id,
 			vec![(sub, Duration::zero())],
 			batch_sink,
-			WireFormat::Proto,
+			WireFormat::Rbcf,
 			&clock,
 			&rng,
 		);
@@ -392,7 +353,7 @@ mod tests {
 			connection_id,
 			"FROM warm".to_string(),
 			sink,
-			WireFormat::Proto,
+			WireFormat::Rbcf,
 			Some(16),
 			Duration::zero(),
 		);
@@ -430,7 +391,7 @@ mod tests {
 			connection_id,
 			"FROM warm".to_string(),
 			sink,
-			WireFormat::Proto,
+			WireFormat::Rbcf,
 			Some(2),
 			Duration::zero(),
 		);

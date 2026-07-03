@@ -11,10 +11,7 @@ mod version;
 mod write;
 mod write_skew;
 
-use reifydb_core::{
-	encoded::{key::EncodedKey, row::EncodedRow},
-	util::encoding::keycode,
-};
+use reifydb_codec::{encoded::row::EncodedRow, key as keycode, key::encoded::EncodedKey};
 use reifydb_transaction::multi::transaction::MultiTransaction;
 use reifydb_value::util::cowvec::CowVec;
 
@@ -36,7 +33,7 @@ pub trait FromKey: Sized {
 
 #[macro_export]
 macro_rules! as_key {
-	($key:expr) => {{ reifydb_core::encoded::key::EncodedKey::new(reifydb_core::util::encoding::keycode::serialize(&$key)) }};
+	($key:expr) => {{ reifydb_codec::key::encoded::EncodedKey::new(reifydb_codec::key::serialize(&$key)) }};
 }
 
 #[macro_export]

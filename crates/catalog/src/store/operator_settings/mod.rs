@@ -5,10 +5,8 @@ pub mod create;
 mod find;
 pub(crate) mod shape;
 
-use reifydb_core::{
-	encoded::row::EncodedRow,
-	row::{JoinTtl, OperatorSettings, Ttl, TtlCleanupMode},
-};
+use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_core::row::{JoinTtl, OperatorSettings, Ttl, TtlCleanupMode};
 use reifydb_value::value::duration::Duration;
 
 use self::shape::operator_settings;

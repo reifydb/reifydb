@@ -6,10 +6,8 @@ use std::{
 	iter,
 };
 
-use reifydb_core::{
-	encoded::key::EncodedKey, interface::catalog::flow::FlowNodeId,
-	key::flow_node_internal_state::FlowNodeInternalStateKey, util::encoding::keycode::serializer::KeySerializer,
-};
+use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
+use reifydb_core::{interface::catalog::flow::FlowNodeId, key::flow_node_internal_state::FlowNodeInternalStateKey};
 use reifydb_value::value::row_number::RowNumber;
 
 use crate::{
@@ -92,7 +90,8 @@ impl RowNumberProvider {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_abi::operator::capabilities::OperatorCapability;
-	use reifydb_core::{encoded::key::EncodedKey, interface::catalog::flow::FlowNodeId};
+	use reifydb_codec::key::encoded::EncodedKey;
+	use reifydb_core::interface::catalog::flow::FlowNodeId;
 
 	use crate::{
 		config::Config,
