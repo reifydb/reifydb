@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use tracing::Subscriber;
+use tracing::{Level, Subscriber};
 use tracing_subscriber::{
 	EnvFilter, Layer, Registry,
 	filter::LevelFilter,
-	fmt::{self, format::FmtSpan},
+	fmt::{
+		self,
+		format::FmtSpan,
+		writer::{BoxMakeWriter, MakeWriterExt},
+	},
 	layer::SubscriberExt,
 	registry,
 	registry::LookupSpan,
@@ -109,7 +113,10 @@ fn build_filter(filter: Option<&str>) -> EnvFilter {
 }
 
 #[inline]
-fn build_console_layer<S>(console_config: Option<&ConsoleBuilder>, with_spans: bool) -> Option<fmt::Layer<S>>
+fn build_console_layer<S>(
+	console_config: Option<&ConsoleBuilder>,
+	with_spans: bool,
+) -> Option<fmt::Layer<S, fmt::format::DefaultFields, fmt::format::Format, BoxMakeWriter>>
 where
 	S: Subscriber + for<'a> LookupSpan<'a>,
 {
@@ -119,6 +126,11 @@ where
 	} else {
 		FmtSpan::NONE
 	};
+	let writer = if console_config.use_stderr_for_errors() {
+		BoxMakeWriter::new(std::io::stderr.with_max_level(Level::ERROR).or_else(std::io::stdout))
+	} else {
+		BoxMakeWriter::new(std::io::stdout)
+	};
 	Some(fmt::layer()
 		.with_ansi(console_config.use_color())
 		.with_target(true)
@@ -126,5 +138,6 @@ where
 		.with_thread_names(true)
 		.with_file(true)
 		.with_line_number(true)
-		.with_span_events(span_events))
+		.with_span_events(span_events)
+		.with_writer(writer))
 }
