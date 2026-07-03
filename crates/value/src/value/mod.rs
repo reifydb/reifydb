@@ -67,7 +67,6 @@ use value_type::ValueType;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Value {
 	None {
-		#[serde(skip, default = "default_none_inner")]
 		inner: ValueType,
 	},
 
@@ -132,10 +131,6 @@ pub enum Value {
 	Record(Vec<(String, Value)>),
 
 	Tuple(Vec<Value>),
-}
-
-fn default_none_inner() -> ValueType {
-	ValueType::Any
 }
 
 impl Value {
@@ -334,12 +329,12 @@ impl PartialEq for Value {
 		match (self, other) {
 			(
 				Value::None {
-					..
+					inner: l,
 				},
 				Value::None {
-					..
+					inner: r,
 				},
-			) => true,
+			) => l == r,
 			(Value::Boolean(l), Value::Boolean(r)) => l == r,
 			(Value::Float4(l), Value::Float4(r)) => l == r,
 			(Value::Float8(l), Value::Float8(r)) => l == r,
@@ -832,5 +827,34 @@ mod tests {
 	#[test]
 	fn to_usize_decimal_fractional() {
 		assert_eq!(Value::Decimal(Decimal::from_str("3.7").unwrap()).to_usize(), Some(3));
+	}
+
+	// Value::PartialEq currently treats every Value::None { .. } as equal regardless of `inner`
+	// (see the `(Value::None { .. }, Value::None { .. }) => true` arm above). That is wrong:
+	// Option<Duration>::None and Option<Boolean>::None are different values, and Option<Duration>::None
+	// is different again from Option<Option<Duration>>::None. Code that round-trips a None through
+	// Any encoding (or compares config values) needs `==` to catch a lost/changed inner type instead
+	// of silently treating it as "the same None".
+
+	#[test]
+	fn test_none_with_same_inner_type_are_equal() {
+		assert_eq!(Value::none_of(ValueType::Duration), Value::none_of(ValueType::Duration));
+	}
+
+	#[test]
+	fn test_none_with_different_inner_type_are_not_equal() {
+		assert_ne!(Value::none_of(ValueType::Duration), Value::none_of(ValueType::Boolean));
+	}
+
+	#[test]
+	fn test_none_with_different_nesting_depth_are_not_equal() {
+		let option_duration = Value::none_of(ValueType::Option(Box::new(ValueType::Duration)));
+		let duration = Value::none_of(ValueType::Duration);
+		assert_ne!(option_duration, duration);
+	}
+
+	#[test]
+	fn test_none_any_is_not_equal_to_none_of_concrete_type() {
+		assert_ne!(Value::none(), Value::none_of(ValueType::Duration));
 	}
 }

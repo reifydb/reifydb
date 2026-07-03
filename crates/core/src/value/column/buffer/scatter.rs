@@ -346,7 +346,10 @@ where
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::{util::bitvec::BitVec, value::Value};
+	use reifydb_value::{
+		util::bitvec::BitVec,
+		value::{Value, value_type::ValueType},
+	};
 
 	use crate::value::column::ColumnBuffer;
 
@@ -376,7 +379,7 @@ mod tests {
 		let merged = a.scatter_merge(&b, &then_mask, &else_mask, 3);
 		assert!(matches!(merged, ColumnBuffer::Option { .. }));
 		assert_eq!(merged.get_value(0), Value::Int4(10));
-		assert_eq!(merged.get_value(1), Value::none());
+		assert_eq!(merged.get_value(1), Value::none_of(ValueType::Int4));
 		assert_eq!(merged.get_value(2), Value::Int4(30));
 	}
 

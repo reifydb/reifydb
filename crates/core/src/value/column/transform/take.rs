@@ -212,8 +212,8 @@ pub mod tests {
 		test_instance.take(2).unwrap();
 
 		assert_eq!(test_instance[0].len(), 2);
-		assert_eq!(test_instance[0].get_value(0), Value::none());
-		assert_eq!(test_instance[0].get_value(1), Value::none());
+		assert_eq!(test_instance[0].get_value(0), Value::none_of(ValueType::Boolean));
+		assert_eq!(test_instance[0].get_value(1), Value::none_of(ValueType::Boolean));
 	}
 
 	#[test]
@@ -223,7 +223,7 @@ pub mod tests {
 		test_instance.take(3).unwrap();
 
 		assert_eq!(test_instance[0].len(), 3);
-		assert_eq!(test_instance[0].get_value(0), Value::none());
+		assert_eq!(test_instance[0].get_value(0), Value::none_of(ValueType::Boolean));
 	}
 
 	#[test]

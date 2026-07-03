@@ -136,14 +136,15 @@ pub fn encode_value(value: &Value) -> Vec<u8> {
 			b
 		}
 
+		Value::None {
+			inner,
+		} => vec![ValueType::NONE_TAG, inner.to_u8()],
+
 		Value::Int(_)
 		| Value::Uint(_)
 		| Value::Decimal(_)
 		| Value::DictionaryId(_)
 		| Value::Any(_)
-		| Value::None {
-			..
-		}
 		| Value::Type(_)
 		| Value::List(_)
 		| Value::Record(_)
@@ -154,6 +155,13 @@ pub fn encode_value(value: &Value) -> Vec<u8> {
 pub fn decode_value(bytes: &[u8]) -> Value {
 	let type_byte = bytes[0];
 	let p = &bytes[1..];
+
+	if type_byte == ValueType::NONE_TAG {
+		return Value::None {
+			inner: ValueType::from_u8(p[0]),
+		};
+	}
+
 	let ty = ValueType::from_u8(type_byte);
 
 	match ty {
@@ -285,7 +293,10 @@ pub mod tests {
 		value_type::ValueType,
 	};
 
-	use crate::encoded::shape::RowShape;
+	use crate::encoded::{
+		any::{decode_value, encode_value},
+		shape::RowShape,
+	};
 
 	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
 		let mock = MockClock::from_millis(1000);
@@ -475,5 +486,106 @@ pub mod tests {
 		assert_eq!(shape.get_any(&row, 0), Value::Utf8("a long string value".to_string()));
 		assert_eq!(shape.get_utf8(&row, 1), "middle");
 		assert_eq!(shape.get_any(&row, 2), Value::Boolean(false));
+	}
+
+	// `Value::PartialEq` treats every `Value::None { .. }` as equal regardless of `inner`
+	// (see crates/value/src/value/mod.rs), so these tests destructure and compare `inner`
+	// directly instead of using `assert_eq!(decoded, Value::none_of(ty))`, which would pass
+	// vacuously even if the inner type were lost or wrong.
+
+	#[test]
+	fn test_encode_decode_none_various_inner_types() {
+		// Config defaults such as METRICS_PROFILER_SNAPSHOT_INTERVAL use
+		// Value::None { inner: Duration } to mean "disabled". The Any encoding must round-trip
+		// that sentinel for any inner type, not just concrete values.
+		let cases: &[ValueType] = &[
+			ValueType::Boolean,
+			ValueType::Int4,
+			ValueType::Uint8,
+			ValueType::Utf8,
+			ValueType::Blob,
+			ValueType::Date,
+			ValueType::DateTime,
+			ValueType::Time,
+			ValueType::Duration,
+			ValueType::Uuid4,
+		];
+
+		for ty in cases {
+			let encoded = encode_value(&Value::none_of(ty.clone()));
+			match decode_value(&encoded) {
+				Value::None {
+					inner,
+				} => assert_eq!(&inner, ty, "inner type lost for {ty}"),
+				other => panic!("expected Value::None for {ty}, got {other:?}"),
+			}
+		}
+	}
+
+	#[test]
+	fn test_encode_decode_none_nested_option_duration() {
+		// Option<Option<Duration>>::None must round-trip distinctly from Option<Duration>::None:
+		// the inner type carries the full nesting, not just the base scalar.
+		let inner_ty = ValueType::Option(Box::new(ValueType::Duration));
+
+		let encoded = encode_value(&Value::none_of(inner_ty.clone()));
+		match decode_value(&encoded) {
+			Value::None {
+				inner,
+			} => assert_eq!(inner, inner_ty),
+			other => panic!("expected Value::None, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn test_encode_decode_none_triple_nested_option() {
+		// Nesting depth must generalize past 2 levels, not just the one depth that happens to
+		// survive the current "high bit means Option" type-tag scheme.
+		let inner_ty = ValueType::Option(Box::new(ValueType::Option(Box::new(ValueType::Option(Box::new(
+			ValueType::Duration,
+		))))));
+
+		let encoded = encode_value(&Value::none_of(inner_ty.clone()));
+		match decode_value(&encoded) {
+			Value::None {
+				inner,
+			} => assert_eq!(inner, inner_ty),
+			other => panic!("expected Value::None, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn test_any_set_get_none_duration() {
+		let shape = RowShape::testing(&[ValueType::Any]);
+		let mut row = shape.allocate();
+
+		shape.set_any(&mut row, 0, &Value::none_of(ValueType::Duration));
+
+		assert!(
+			row.is_defined(0),
+			"an Any field holding a None-of-Duration is a stored value, not an unset field"
+		);
+		match shape.get_any(&row, 0) {
+			Value::None {
+				inner,
+			} => assert_eq!(inner, ValueType::Duration),
+			other => panic!("expected Value::None, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn test_any_set_get_none_nested_option_duration() {
+		let shape = RowShape::testing(&[ValueType::Any]);
+		let mut row = shape.allocate();
+
+		let inner_ty = ValueType::Option(Box::new(ValueType::Duration));
+		shape.set_any(&mut row, 0, &Value::none_of(inner_ty.clone()));
+
+		match shape.get_any(&row, 0) {
+			Value::None {
+				inner,
+			} => assert_eq!(inner, inner_ty),
+			other => panic!("expected Value::None, got {other:?}"),
+		}
 	}
 }

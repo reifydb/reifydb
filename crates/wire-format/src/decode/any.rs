@@ -222,6 +222,12 @@ pub(crate) fn decode_any_value(data: &[u8], pos: usize) -> Result<(Value, usize)
 				s.parse().map_err(|e| DecodeError::InvalidData(format!("invalid decimal: {}", e)))?;
 			Ok((Value::Decimal(Decimal::new(dec)), pos + 4 + len))
 		}
+		ValueType::Option(inner) => Ok((
+			Value::None {
+				inner: *inner,
+			},
+			pos,
+		)),
 		_ => Err(DecodeError::UnsupportedType(format!("{:?}", ty))),
 	}
 }

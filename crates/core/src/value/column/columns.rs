@@ -91,8 +91,8 @@ impl<'a> ColumnRef<'a> {
 fn value_to_buffer(value: Value) -> ColumnBuffer {
 	match value {
 		Value::None {
-			..
-		} => ColumnBuffer::none_typed(ValueType::Boolean, 1),
+			inner,
+		} => ColumnBuffer::none_typed(inner, 1),
 		Value::Boolean(v) => ColumnBuffer::bool([v]),
 		Value::Float4(v) => ColumnBuffer::float4([v.into()]),
 		Value::Float8(v) => ColumnBuffer::float8([v.into()]),
@@ -1470,6 +1470,72 @@ pub mod tests {
 		assert_eq!(columns.column("none_col").unwrap().data().get_value(0), Value::none());
 	}
 
+	// value_to_buffer must respect the actual `inner` type carried by a `Value::None`, not force
+	// every None into a single hardcoded column type. `Value::PartialEq` now compares `inner`
+	// (previously all `Value::None` compared equal regardless of type), so a wrong inner type here
+	// would silently mistype every "all None" column.
+
+	#[test]
+	fn test_single_row_none_of_int4_is_int4_typed() {
+		let columns = Columns::single_row([("n", Value::none_of(ValueType::Int4))]);
+		match columns.column("n").unwrap().data().get_value(0) {
+			Value::None {
+				inner,
+			} => assert_eq!(inner, ValueType::Int4),
+			other => panic!("expected Value::None, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn test_single_row_none_of_utf8_is_utf8_typed() {
+		let columns = Columns::single_row([("n", Value::none_of(ValueType::Utf8))]);
+		match columns.column("n").unwrap().data().get_value(0) {
+			Value::None {
+				inner,
+			} => assert_eq!(inner, ValueType::Utf8),
+			other => panic!("expected Value::None, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn test_single_row_bare_none_is_any_typed() {
+		let columns = Columns::single_row([("n", Value::none())]);
+		match columns.column("n").unwrap().data().get_value(0) {
+			Value::None {
+				inner,
+			} => assert_eq!(inner, ValueType::Any),
+			other => panic!("expected Value::None, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn test_single_row_none_of_nested_option_collapses_to_base_type() {
+		// ColumnBuffer::none_typed already unwraps a nested Option(inner) type to its base type
+		// (there is no separate column representation for Option<Option<T>>), so a value that is
+		// itself Option<Option<Duration>>::None ends up as a Duration-typed None column.
+		let inner_ty = ValueType::Option(Box::new(ValueType::Duration));
+		let columns = Columns::single_row([("n", Value::none_of(inner_ty))]);
+		match columns.column("n").unwrap().data().get_value(0) {
+			Value::None {
+				inner,
+			} => assert_eq!(inner, ValueType::Duration),
+			other => panic!("expected Value::None, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn test_single_row_none_of_boolean_is_boolean_typed() {
+		// Boolean is also value_to_buffer's old hardcoded default, so this case alone would not
+		// have caught the bug; kept for symmetry with the other inner types above.
+		let columns = Columns::single_row([("n", Value::none_of(ValueType::Boolean))]);
+		match columns.column("n").unwrap().data().get_value(0) {
+			Value::None {
+				inner,
+			} => assert_eq!(inner, ValueType::Boolean),
+			other => panic!("expected Value::None, got {other:?}"),
+		}
+	}
+
 	#[test]
 	fn test_single_row_normal_column_names_work() {
 		let columns = Columns::single_row([("normal_column", Value::Int4(42))]);
@@ -1585,9 +1651,9 @@ pub mod tests {
 
 		// The defining assertion: the real value at row 1 must survive the bulk path.
 		let opt_col = bulk.column("opt_val").unwrap();
-		assert_eq!(opt_col.data().get_value(0), Value::none());
+		assert_eq!(opt_col.data().get_value(0), Value::none_of(ValueType::Float8));
 		assert_eq!(opt_col.data().get_value(1), v);
-		assert_eq!(opt_col.data().get_value(2), Value::none());
+		assert_eq!(opt_col.data().get_value(2), Value::none_of(ValueType::Float8));
 		assert_eq!(opt_col.data().len(), 3, "Option column has more entries than rows pushed");
 	}
 }

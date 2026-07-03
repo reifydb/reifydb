@@ -477,8 +477,8 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 			inner,
 			bitvec,
 		} => {
-			let (inner_type_u8, data, _) = encode_column_data(inner);
-			let type_u8 = 0x80 | inner_type_u8;
+			let (_, data, _) = encode_column_data(inner);
+			let type_u8 = ValueType::Option(Box::new(inner.get_type())).to_u8();
 			let bitvec_bytes = encode_bitvec(bitvec);
 			(type_u8, data, bitvec_bytes)
 		}

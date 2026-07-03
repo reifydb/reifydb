@@ -646,7 +646,7 @@ fn value_to_typed_value(value: Value) -> TypedValue {
 	let (type_u32, bytes) = match value {
 		Value::None {
 			inner,
-		} => ((0x80 | inner.to_u8()) as u32, vec![]),
+		} => (ValueType::Option(Box::new(inner)).to_u8() as u32, vec![]),
 		Value::Boolean(b) => (ValueType::Boolean.to_u8() as u32, vec![b as u8]),
 		Value::Float4(f) => (ValueType::Float4.to_u8() as u32, f.to_le_bytes().to_vec()),
 		Value::Float8(f) => (ValueType::Float8.to_u8() as u32, f.to_le_bytes().to_vec()),

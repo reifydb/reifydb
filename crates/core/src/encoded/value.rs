@@ -943,4 +943,49 @@ pub mod tests {
 		let retrieved: Vec<Value> = (0..3).map(|i| shape.get_value(&row, i)).collect();
 		assert_eq!(retrieved, values);
 	}
+
+	// Mirrors CatalogStore::set_config (crates/catalog/src/store/config/set.rs), which always
+	// wraps a config's value in Value::any(..) before storing it, even when that value is itself
+	// None (e.g. METRICS_PROFILER_SNAPSHOT_INTERVAL's default, Value::None { inner: Duration },
+	// meaning "snapshotting disabled"). `Value::PartialEq` treats all `Value::None` as equal
+	// regardless of `inner` (crates/value/src/value/mod.rs), so these destructure and compare
+	// `inner` directly rather than relying on `assert_eq!` against the wrapped value.
+
+	#[test]
+	fn test_any_field_stores_wrapped_none_duration() {
+		let shape = RowShape::testing(&[ValueType::Any]);
+		let mut row = shape.allocate();
+
+		shape.set_value(&mut row, 0, &Value::any(Value::none_of(ValueType::Duration)));
+
+		assert!(row.is_defined(0), "the field holds a stored Any value, not an absent one");
+		match shape.get_value(&row, 0) {
+			Value::Any(inner) => match *inner {
+				Value::None {
+					inner,
+				} => assert_eq!(inner, ValueType::Duration),
+				other => panic!("expected Value::None inside Any, got {other:?}"),
+			},
+			other => panic!("expected Value::Any, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn test_any_field_stores_wrapped_none_nested_option_duration() {
+		let shape = RowShape::testing(&[ValueType::Any]);
+		let mut row = shape.allocate();
+
+		let inner_ty = ValueType::Option(Box::new(ValueType::Duration));
+		shape.set_value(&mut row, 0, &Value::any(Value::none_of(inner_ty.clone())));
+
+		match shape.get_value(&row, 0) {
+			Value::Any(inner) => match *inner {
+				Value::None {
+					inner,
+				} => assert_eq!(inner, inner_ty),
+				other => panic!("expected Value::None inside Any, got {other:?}"),
+			},
+			other => panic!("expected Value::Any, got {other:?}"),
+		}
+	}
 }

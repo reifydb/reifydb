@@ -116,8 +116,8 @@ pub mod tests {
 		col.filter(&mask).unwrap();
 
 		assert_eq!(col.len(), 2);
-		assert_eq!(col.get_value(0), Value::none());
-		assert_eq!(col.get_value(1), Value::none());
+		assert_eq!(col.get_value(0), Value::none_of(ValueType::Boolean));
+		assert_eq!(col.get_value(1), Value::none_of(ValueType::Boolean));
 	}
 
 	#[test]

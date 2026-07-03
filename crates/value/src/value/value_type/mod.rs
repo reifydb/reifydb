@@ -204,9 +204,28 @@ impl ValueType {
 }
 
 impl ValueType {
+	pub const NONE_TAG: u8 = 31;
+
+	const MAX_OPTION_DEPTH: u8 = 7;
+
 	pub fn to_u8(&self) -> u8 {
+		let mut depth: u8 = 0;
+		let mut base = self;
+		while let ValueType::Option(inner) = base {
+			depth += 1;
+			base = inner;
+		}
+		assert!(
+			depth <= Self::MAX_OPTION_DEPTH,
+			"ValueType::to_u8 supports at most {} levels of Option nesting, got {depth}",
+			Self::MAX_OPTION_DEPTH
+		);
+		(depth << 5) | base.to_u8_base()
+	}
+
+	fn to_u8_base(&self) -> u8 {
 		match self {
-			ValueType::Option(inner) => 0x80 | inner.to_u8(),
+			ValueType::Option(_) => unreachable!("to_u8_base does not accept ValueType::Option"),
 			ValueType::Float4 => 1,
 			ValueType::Float8 => 2,
 			ValueType::Int1 => 3,
@@ -243,9 +262,12 @@ impl ValueType {
 
 impl ValueType {
 	pub fn from_u8(value: u8) -> Self {
-		if value & 0x80 != 0 {
-			return ValueType::Option(Box::new(ValueType::from_u8(value & 0x7F)));
-		}
+		let depth = value >> 5;
+		let base = Self::from_u8_base(value & 0x1F);
+		(0..depth).fold(base, |ty, _| ValueType::Option(Box::new(ty)))
+	}
+
+	fn from_u8_base(value: u8) -> Self {
 		match value {
 			1 => ValueType::Float4,
 			2 => ValueType::Float8,
@@ -505,5 +527,77 @@ impl FromStr for ValueType {
 			"DICTIONARYID" | "DICTIONARY_ID" => Ok(ValueType::DictionaryId),
 			_ => Err(()),
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::ValueType;
+
+	#[test]
+	fn test_to_u8_from_u8_roundtrip_scalars() {
+		let cases = [
+			ValueType::Boolean,
+			ValueType::Float4,
+			ValueType::Float8,
+			ValueType::Int1,
+			ValueType::Int2,
+			ValueType::Int4,
+			ValueType::Int8,
+			ValueType::Int16,
+			ValueType::Utf8,
+			ValueType::Uint1,
+			ValueType::Uint2,
+			ValueType::Uint4,
+			ValueType::Uint8,
+			ValueType::Uint16,
+			ValueType::Date,
+			ValueType::DateTime,
+			ValueType::Time,
+			ValueType::Duration,
+			ValueType::IdentityId,
+			ValueType::Uuid4,
+			ValueType::Uuid7,
+			ValueType::Blob,
+			ValueType::Int,
+			ValueType::Uint,
+			ValueType::Decimal,
+			ValueType::Any,
+			ValueType::DictionaryId,
+		];
+
+		for ty in &cases {
+			assert_eq!(ValueType::from_u8(ty.to_u8()), *ty, "roundtrip failed for {ty}");
+		}
+	}
+
+	#[test]
+	fn test_to_u8_from_u8_roundtrip_option_of_scalar() {
+		let ty = ValueType::Option(Box::new(ValueType::Duration));
+		assert_eq!(ValueType::from_u8(ty.to_u8()), ty);
+	}
+
+	#[test]
+	fn test_to_u8_from_u8_roundtrip_option_of_option() {
+		// Nesting depth is carried in the top 3 bits of the byte (0-7), so
+		// Option<Option<Duration>> must round-trip distinctly from Option<Duration>.
+		let ty = ValueType::Option(Box::new(ValueType::Option(Box::new(ValueType::Duration))));
+		assert_eq!(ValueType::from_u8(ty.to_u8()), ty);
+	}
+
+	#[test]
+	fn test_none_tag_does_not_collide_with_any_base_type_code() {
+		for code in 1..=30u8 {
+			assert_ne!(ValueType::NONE_TAG, code, "NONE_TAG collides with an assigned base type code");
+		}
+	}
+
+	#[test]
+	fn test_to_u8_from_u8_roundtrip_option_of_option_of_option() {
+		// Depth must generalize past 2 levels, not just accidentally work for one extra level.
+		let ty = ValueType::Option(Box::new(ValueType::Option(Box::new(ValueType::Option(Box::new(
+			ValueType::Duration,
+		))))));
+		assert_eq!(ValueType::from_u8(ty.to_u8()), ty);
 	}
 }
