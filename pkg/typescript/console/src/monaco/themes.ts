@@ -15,6 +15,9 @@ export const brutalist_light_theme: editor.IStandaloneThemeData = {
     { token: 'operator', foreground: '383838' },
     { token: 'identifier', foreground: '1A1A1A' },
     { token: 'key', foreground: '6366F1', fontStyle: 'bold' },
+    { token: 'namespace', foreground: '0D9488' },
+    { token: 'entity', foreground: '0F766E' },
+    { token: 'function', foreground: 'B45309' },
   ],
   colors: {
     'editor.background': '#FFFFFF',
@@ -39,6 +42,9 @@ export const brutalist_dark_theme: editor.IStandaloneThemeData = {
     { token: 'operator', foreground: 'a0a0a0' },
     { token: 'identifier', foreground: 'ffffff' },
     { token: 'key', foreground: '818CF8', fontStyle: 'bold' },
+    { token: 'namespace', foreground: '5EEAD4' },
+    { token: 'entity', foreground: '99F6E4' },
+    { token: 'function', foreground: 'FBBF24' },
   ],
   colors: {
     'editor.background': '#000000',
@@ -70,6 +76,9 @@ export const premium_light_theme: editor.IStandaloneThemeData = {
     { token: 'operator', foreground: '525252' },
     { token: 'identifier', foreground: '1A1A1A' },
     { token: 'key', foreground: '6366F1', fontStyle: 'bold' },
+    { token: 'namespace', foreground: '0E7490' },
+    { token: 'entity', foreground: '155E75' },
+    { token: 'function', foreground: 'D97706' },
   ],
   colors: {
     'editor.background': '#FFFFFF',
@@ -94,6 +103,9 @@ export const premium_dark_theme: editor.IStandaloneThemeData = {
     { token: 'operator', foreground: 'a0a0a0' },
     { token: 'identifier', foreground: 'ffffff' },
     { token: 'key', foreground: '818cf8', fontStyle: 'bold' },
+    { token: 'namespace', foreground: '2DD4BF' },
+    { token: 'entity', foreground: '5EEAD4' },
+    { token: 'function', foreground: 'FCD34D' },
   ],
   colors: {
     'editor.background': '#000000',

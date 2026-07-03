@@ -42,12 +42,46 @@ describe('RQL Monarch tokenization', () => {
     });
 
     describe('namespace separator', () => {
-        it('tp::users tokenizes as identifier :: identifier', () => {
+        it('tp::users tokenizes as namespace :: entity', () => {
             const tokens = tokenizeLine(lexer, 'tp::users');
             expect(tokens).toEqual([
-                { offset: 0, type: 'identifier.rql' },
+                { offset: 0, type: 'namespace.rql' },
                 { offset: 2, type: 'operator.rql' },
-                { offset: 4, type: 'identifier.rql' },
+                { offset: 4, type: 'entity.rql' },
+            ]);
+        });
+
+        it('app::users tokenizes as namespace :: entity', () => {
+            const tokens = tokenizeLine(lexer, 'app::users');
+            expect(tokens).toEqual([
+                { offset: 0, type: 'namespace.rql' },
+                { offset: 3, type: 'operator.rql' },
+                { offset: 5, type: 'entity.rql' },
+            ]);
+        });
+
+        it('math::avg(price) tokenizes namespace :: function ( identifier )', () => {
+            const tokens = tokenizeLine(lexer, 'math::avg(price)');
+            const types = tokens.map(t => t.type);
+            expect(types).toEqual([
+                'namespace.rql',
+                'operator.rql',
+                'function.rql',
+                'delimiter.parenthesis.rql',
+                'identifier.rql',
+                'delimiter.parenthesis.rql',
+            ]);
+        });
+
+        it('ns::order_event::OrderPlaced chained namespace tokenizes as namespace :: namespace :: entity', () => {
+            const tokens = tokenizeLine(lexer, 'ns::order_event::OrderPlaced');
+            const types = tokens.map(t => t.type);
+            expect(types).toEqual([
+                'namespace.rql',
+                'operator.rql',
+                'namespace.rql',
+                'operator.rql',
+                'entity.rql',
             ]);
         });
     });
@@ -251,6 +285,11 @@ describe('RQL Monarch tokenization', () => {
             const tokens = tokenizeLine(lexer, type);
             expect(tokens[0].type).toBe('type.rql');
         });
+
+        it.each(['date', 'text'])('bare %s used as a type annotation is type, not keyword', (type) => {
+            const tokens = tokenizeLine(lexer, type);
+            expect(tokens[0].type).toBe('type.rql');
+        });
     });
 
     describe('block comments', () => {
@@ -365,9 +404,9 @@ describe('RQL Monarch tokenization', () => {
         it('namespace-qualified function call', () => {
             const tokens = tokenizeLine(lexer, "text::trim_start('  hello  ')");
             const types = tokens.map(t => t.type);
-            expect(types).toContain('keyword.rql');                // text (module)
+            expect(types).toContain('namespace.rql');              // text
             expect(types).toContain('operator.rql');               // ::
-            expect(types).toContain('identifier.rql');             // trim_start
+            expect(types).toContain('function.rql');               // trim_start
         });
 
         it('Option(int4) type constructor', () => {
@@ -375,6 +414,23 @@ describe('RQL Monarch tokenization', () => {
             const types = tokens.map(t => t.type);
             expect(types).toContain('type.rql');                     // Option, int4
             expect(types).toContain('delimiter.parenthesis.rql');
+        });
+
+        it('Option(int4): Option itself stays type, not function, despite being followed by (', () => {
+            const tokens = tokenizeLine(lexer, 'Option(int4)');
+            expect(tokens[0].type).toBe('type.rql');
+        });
+
+        it('List(int4): List itself stays type, not function, despite being followed by (', () => {
+            const tokens = tokenizeLine(lexer, 'List(int4)');
+            expect(tokens[0].type).toBe('type.rql');
+        });
+
+        it('fun my_func(x) {} tokenizes my_func as function', () => {
+            const tokens = tokenizeLine(lexer, 'fun my_func(x) { x }');
+            const types = tokens.map(t => t.type);
+            expect(types).toContain('keyword.rql');    // fun
+            expect(types).toContain('function.rql');   // my_func
         });
 
         it('CREATE TABLE with uuid7 and blob types', () => {

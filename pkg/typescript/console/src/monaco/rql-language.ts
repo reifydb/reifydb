@@ -67,8 +67,6 @@ const KEYWORDS = [
   'and', 'or', 'not', 'xor',
 ];
 
-const MODULES = ['date', 'math', 'text'];
-const BUILTIN_FUNCTIONS = ['case'];
 const LITERALS = ['none', 'true', 'false'];
 
 const TYPE_KEYWORDS = [
@@ -100,7 +98,7 @@ export const rql_language_definition: languages.IMonarchLanguage = {
   defaultToken: '',
   ignoreCase: true,
 
-  keywords: [...KEYWORDS, ...MODULES, ...BUILTIN_FUNCTIONS],
+  keywords: KEYWORDS,
   constants: LITERALS,
   typeKeywords: TYPE_KEYWORDS,
 
@@ -111,14 +109,35 @@ export const rql_language_definition: languages.IMonarchLanguage = {
       // Comments
       [/#.*/, 'comment'],
 
-      // Namespace separator (must precede named arguments)
-      [/::/, 'operator'],
+      // Identifier immediately followed by `::` — first segment of a
+      // namespace path (app::users, math::avg, ns::a::b). Must precede
+      // the `::` rule and the generic keyword-cases rule so it wins for
+      // any identifier, including ones also in `keywords`/`typeKeywords`.
+      [/[a-zA-Z_][\w$]*(?=\s*::)/, 'namespace'],
+
+      // Namespace separator (must precede named arguments). Pushes into
+      // @nsMember so the identifier that follows is classified
+      // structurally (namespace / function / entity) instead of via the
+      // flat identifier rule below.
+      [/::/, { token: 'operator', next: '@nsMember' }],
 
       // Named arguments (negative lookahead prevents matching `::`)
       [/(\w+)\s*:(?!:)/, 'key'],
 
       // Variable references
       [/\$[\w$]+/, 'variable'],
+
+      // Bare call: identifier immediately followed by `(`.
+      [
+        /[a-zA-Z_][\w$]*(?=\s*\()/,
+        {
+          cases: {
+            '@keywords': 'keyword',
+            '@typeKeywords': 'type',
+            '@default': 'function',
+          },
+        },
+      ],
 
       // Identifiers and keywords (case insensitive)
       [
@@ -161,6 +180,18 @@ export const rql_language_definition: languages.IMonarchLanguage = {
 
       // Delimiters
       [/[;,]/, 'delimiter'],
+    ],
+
+    // Entered right after consuming `::`. Classifies the following
+    // identifier as namespace (chained path continues), function (call),
+    // or entity (leaf table/view/column-owner name) — always pops back
+    // to root.
+    nsMember: [
+      [/[a-zA-Z_][\w$]*(?=\s*::)/, { token: 'namespace', next: '@pop' }],
+      [/[a-zA-Z_][\w$]*(?=\s*\()/, { token: 'function', next: '@pop' }],
+      [/[a-zA-Z_][\w$]*/, { token: 'entity', next: '@pop' }],
+      [/\s+/, 'white'],
+      [/./, { token: '@rematch', next: '@pop' }],
     ],
 
     string: [
