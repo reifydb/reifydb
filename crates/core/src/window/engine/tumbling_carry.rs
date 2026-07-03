@@ -16,8 +16,8 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, LatePolicy, MetaKey, WindowResult, meta_key_for,
-			tumbling::TumblingBuckets,
+			AccumulatorEvent, EmitKind, LatePolicy, MetaKey, WindowResult, config::TumblingCarryConfig,
+			meta_key_for, tumbling::TumblingBuckets,
 		},
 		span::{Slot, WindowSpan},
 		state::StateCache,
@@ -72,20 +72,6 @@ pub struct TumblingCarryEngine<G, C: Slot, Accumulator, Carry, Output> {
 	_pd: PhantomData<G>,
 }
 
-impl<G, C, Accumulator, Carry, Output> Default for TumblingCarryEngine<G, C, Accumulator, Carry, Output>
-where
-	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
-	C: Slot + Hash + Serialize + DeserializeOwned,
-	Accumulator: WindowAccumulator,
-	Carry: Clone + Debug + Serialize + DeserializeOwned,
-	Output: Clone + Debug + Serialize + DeserializeOwned,
-	for<'a> &'a G: IntoEncodedKey,
-{
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
 impl<G, C, Accumulator, Carry, Output> TumblingCarryEngine<G, C, Accumulator, Carry, Output>
 where
 	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
@@ -95,16 +81,15 @@ where
 	Output: Clone + Debug + Serialize + DeserializeOwned,
 	for<'a> &'a G: IntoEncodedKey,
 {
-	pub fn new() -> Self {
-		Self::with_late_policy_and_retention(LatePolicy::Drop, None)
-	}
-
-	pub fn with_late_policy_and_retention(late_policy: LatePolicy, retention: Option<C::Duration>) -> Self {
+	pub fn new(config: TumblingCarryConfig<C>) -> Self {
+		let base = config.base();
 		Self {
-			accumulators: StateCache::<RowNumber, Accumulator>::new(8),
-			meta: StateCache::<MetaKey, CarryMeta<C, Carry, Output>>::new_internal(64),
-			late_policy,
-			retention,
+			accumulators: StateCache::<RowNumber, Accumulator>::new(base.state_cache_capacity()),
+			meta: StateCache::<MetaKey, CarryMeta<C, Carry, Output>>::new_internal(
+				base.internal_state_cache_capacity(),
+			),
+			late_policy: base.late_policy(),
+			retention: config.retention(),
 			_pd: PhantomData,
 		}
 	}
@@ -384,7 +369,10 @@ mod tests {
 	use postcard::{from_bytes, to_allocvec};
 
 	use super::*;
-	use crate::{encoded::key::EncodedKeyRange, window::accumulator::invertible::RetainedAccumulator};
+	use crate::{
+		encoded::key::EncodedKeyRange,
+		window::{accumulator::invertible::RetainedAccumulator, engine::config::WindowEngineConfig},
+	};
 
 	// In-memory store that allocates a distinct row number per key (the state.rs
 	// mock collapses every key onto row 1, which would alias all window
@@ -505,6 +493,16 @@ mod tests {
 
 	const WINDOW: u64 = 60;
 
+	fn carry_config(retention: Option<u64>) -> TumblingCarryConfig<u64> {
+		TumblingCarryConfig::builder()
+			.base(WindowEngineConfig::builder()
+				.state_cache_capacity(8)
+				.internal_state_cache_capacity(64)
+				.build())
+			.retention(retention)
+			.build()
+	}
+
 	// Feed one event into window `ws` for group "BTC" as its own batch, so the
 	// high-water mark advances one window per call.
 	fn feed(engine: &mut Engine, store: &mut CountingStore, ws: u64, price: f64) {
@@ -545,7 +543,7 @@ mod tests {
 		// live accumulator-row count must stay bounded by the horizon, not grow
 		// with the number of windows seen.
 		let mut store = CountingStore::default();
-		let mut engine = Engine::with_late_policy_and_retention(LatePolicy::Drop, Some(2 * WINDOW));
+		let mut engine = Engine::new(carry_config(Some(2 * WINDOW)));
 		for i in 0..60u64 {
 			feed(&mut engine, &mut store, i * WINDOW, i as f64);
 		}
@@ -563,7 +561,7 @@ mod tests {
 		// other cap: with no retention configured the engine keeps every window's
 		// accumulator forever (the pre-sealing behavior).
 		let mut store = CountingStore::default();
-		let mut engine = Engine::new();
+		let mut engine = Engine::new(carry_config(None));
 		for i in 0..60u64 {
 			feed(&mut engine, &mut store, i * WINDOW, i as f64);
 		}
@@ -587,11 +585,11 @@ mod tests {
 		// state the second engine would have nothing to withdraw and this test would fail.
 		let mut store = CountingStore::default();
 
-		let mut engine = Engine::new();
+		let mut engine = Engine::new(carry_config(None));
 		feed(&mut engine, &mut store, 0, 5.0);
 		engine.flush(&mut store).expect("flush");
 
-		let mut engine = Engine::new();
+		let mut engine = Engine::new(carry_config(None));
 		let span = WindowSpan::for_slot(0, WINDOW);
 		let mut buckets: TumblingBuckets<String, u64, (u64, f64)> = BTreeMap::new();
 		buckets.insert(("BTC".to_string(), span), vec![AccumulatorEvent::Remove((0, 5.0))]);
@@ -628,7 +626,7 @@ mod tests {
 		// persisted last_output. It would fail if last_output stopped being persisted, or the
 		// accumulator failed to round-trip through the store.
 		let mut store = CountingStore::default();
-		let mut engine = Engine::new();
+		let mut engine = Engine::new(carry_config(None));
 
 		let mut published_g00: Vec<WindowResult<String, u64, f64>> = Vec::new();
 		for i in 0..11u64 {

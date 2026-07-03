@@ -26,7 +26,7 @@ pub mod rolling_incremental;
 pub mod tumbling;
 pub mod tumbling_carry;
 
-use reifydb_core::window::engine::LatePolicy;
+use reifydb_core::window::engine::{LatePolicy, config::WindowEngineConfig};
 
 use crate::config::Config;
 
@@ -35,4 +35,15 @@ pub(crate) fn late_policy_from_config(config: &Config) -> LatePolicy {
 		Some("process") => LatePolicy::Process,
 		_ => LatePolicy::Drop,
 	}
+}
+
+pub(crate) fn window_engine_config(config: &Config) -> WindowEngineConfig {
+	let mut builder = WindowEngineConfig::builder().late_policy(late_policy_from_config(config));
+	if let Some(capacity) = config.usize("state_cache_size") {
+		builder = builder.state_cache_capacity(capacity);
+	}
+	if let Some(capacity) = config.usize("internal_state_cache_size") {
+		builder = builder.internal_state_cache_capacity(capacity);
+	}
+	builder.build()
 }

@@ -15,7 +15,10 @@ use crate::{
 	encoded::key::{EncodedKey, IntoEncodedKey},
 	window::{
 		accumulator::WindowAccumulator,
-		engine::{AccumulatorEvent, GroupMeta, LatePolicy, MetaKey, meta_key_for, rolling::RollingBuckets},
+		engine::{
+			AccumulatorEvent, GroupMeta, LatePolicy, MetaKey, config::WindowEngineConfig, meta_key_for,
+			rolling::RollingBuckets,
+		},
 		span::Slot,
 		state::StateCache,
 		store::WindowStore,
@@ -99,20 +102,6 @@ pub struct MultiRollingEngine<G, C, Accumulator, SK, Output> {
 	_pd: PhantomData<G>,
 }
 
-impl<G, C, Accumulator, SK, Output> Default for MultiRollingEngine<G, C, Accumulator, SK, Output>
-where
-	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
-	C: Slot + Hash + Serialize + DeserializeOwned,
-	Accumulator: WindowAccumulator,
-	SK: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
-	Output: Clone + Debug + PartialEq + Serialize + DeserializeOwned,
-	for<'a> &'a G: IntoEncodedKey,
-{
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
 impl<G, C, Accumulator, SK, Output> MultiRollingEngine<G, C, Accumulator, SK, Output>
 where
 	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
@@ -122,15 +111,13 @@ where
 	Output: Clone + Debug + PartialEq + Serialize + DeserializeOwned,
 	for<'a> &'a G: IntoEncodedKey,
 {
-	pub fn new() -> Self {
-		Self::with_late_policy(LatePolicy::Drop)
-	}
-
-	pub fn with_late_policy(late_policy: LatePolicy) -> Self {
+	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
-			groups: StateCache::<RowNumber, GroupState<C, Accumulator, SK, Output>>::new(8),
-			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(64),
-			late_policy,
+			groups: StateCache::<RowNumber, GroupState<C, Accumulator, SK, Output>>::new(
+				config.state_cache_capacity(),
+			),
+			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
+			late_policy: config.late_policy(),
 			_pd: PhantomData,
 		}
 	}
@@ -427,10 +414,15 @@ mod tests {
 		encoded::key::EncodedKey,
 		window::engine::{
 			AccumulatorEvent,
+			config::WindowEngineConfig,
 			rolling::RollingBuckets,
 			test_support::{MockStore, SumAccumulator},
 		},
 	};
+
+	fn test_config() -> WindowEngineConfig {
+		WindowEngineConfig::builder().state_cache_capacity(8).internal_state_cache_capacity(64).build()
+	}
 
 	fn state_key(group: &u32) -> EncodedKey {
 		EncodedKey::builder().u32(*group).build()
@@ -458,7 +450,7 @@ mod tests {
 		// last_emit not being persisted.
 		let mut store = MockStore::default();
 
-		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new();
+		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
 		let published = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
@@ -476,7 +468,7 @@ mod tests {
 		};
 
 		// Restart: a brand new engine with empty caches, forced to reload the persisted GroupState.
-		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new();
+		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(5)]);
 		let withdrawn = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
@@ -508,7 +500,7 @@ mod tests {
 		// the store. We publish 11 groups so group 1 is evicted, flush, then retract group 1 and assert
 		// its GroupState reloads and the vanishing ranked key is withdrawn with the persisted value.
 		let mut store = MockStore::default();
-		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new();
+		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
 
 		let mut published_row_1 = None;
 		for group in 1u32..=11u32 {

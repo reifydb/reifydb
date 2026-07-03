@@ -220,7 +220,7 @@ pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 			let key = operator.core.create_window_key(*hash, 0);
 			store.get_or_create_row_number(&key)?;
 		}
-		let mut engine = RollingEngine::<Hash128, u64, RowAccumulator>::with_late_policy(operator.late_policy);
+		let mut engine = RollingEngine::<Hash128, u64, RowAccumulator>::new(operator.engine_config());
 		let res = engine.apply_evicting(
 			&mut store,
 			buckets,
@@ -316,7 +316,7 @@ pub fn tick_expire_rolling_engine(
 
 	let expiries = {
 		let mut store = FlowWindowStore::new(txn, operator.core.node);
-		let mut engine = RollingEngine::<Hash128, u64, RowAccumulator>::with_late_policy(operator.late_policy);
+		let mut engine = RollingEngine::<Hash128, u64, RowAccumulator>::new(operator.engine_config());
 		let res = engine.expire_before(&mut store, cutoff, |_g, buffer| {
 			combine_rolling(buffer, &kinds, lag_ms, lateness)
 		})?;
@@ -515,8 +515,7 @@ pub fn apply_rolling_processing_engine(
 			let key = operator.core.create_window_key(*hash, 0);
 			store.get_or_create_row_number(&key)?;
 		}
-		let mut engine =
-			RollingEngine::<Hash128, u64, StampedAccumulator>::with_late_policy(operator.late_policy);
+		let mut engine = RollingEngine::<Hash128, u64, StampedAccumulator>::new(operator.engine_config());
 		let res = engine.apply_evicting(
 			&mut store,
 			buckets,
@@ -552,8 +551,7 @@ pub fn tick_expire_rolling_processing_engine(
 
 	let expiries = {
 		let mut store = FlowWindowStore::new(txn, operator.core.node);
-		let mut engine =
-			RollingEngine::<Hash128, u64, StampedAccumulator>::with_late_policy(operator.late_policy);
+		let mut engine = RollingEngine::<Hash128, u64, StampedAccumulator>::new(operator.engine_config());
 		let res =
 			engine.expire_before_stamp(&mut store, cutoff, |_g, buffer| combine_stamped(buffer, &kinds))?;
 		engine.flush(&mut store)?;

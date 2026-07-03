@@ -8,7 +8,7 @@ use reifydb_core::{
 	error::diagnostic::flow::{flow_window_timestamp_column_not_found, flow_window_timestamp_column_type_mismatch},
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	value::column::columns::Columns,
-	window::engine::LatePolicy,
+	window::engine::{LatePolicy, config::WindowEngineConfig},
 };
 use reifydb_engine::flow::aggregate::AggregateContext;
 use reifydb_routine::routine::registry::Routines;
@@ -51,6 +51,8 @@ pub struct WindowConfig {
 	pub routines: Routines,
 	pub late_policy: LatePolicy,
 	pub lateness: Option<Duration>,
+	pub state_cache_size: Option<usize>,
+	pub internal_state_cache_size: Option<usize>,
 }
 
 pub struct WindowOperator {
@@ -60,6 +62,8 @@ pub struct WindowOperator {
 
 	pub late_policy: LatePolicy,
 	pub lateness: Option<Duration>,
+	pub state_cache_size: Option<usize>,
+	pub internal_state_cache_size: Option<usize>,
 	pub layout: RowShape,
 	pub row_number_provider: RowNumberProvider,
 }
@@ -81,9 +85,22 @@ impl WindowOperator {
 			ts: config.ts,
 			late_policy: config.late_policy,
 			lateness: config.lateness,
+			state_cache_size: config.state_cache_size,
+			internal_state_cache_size: config.internal_state_cache_size,
 			layout: RowShape::operator_state(),
 			row_number_provider: RowNumberProvider::new(config.node),
 		}
+	}
+
+	pub(crate) fn engine_config(&self) -> WindowEngineConfig {
+		let mut builder = WindowEngineConfig::builder().late_policy(self.late_policy);
+		if let Some(capacity) = self.state_cache_size {
+			builder = builder.state_cache_capacity(capacity);
+		}
+		if let Some(capacity) = self.internal_state_cache_size {
+			builder = builder.internal_state_cache_capacity(capacity);
+		}
+		builder.build()
 	}
 
 	pub fn is_count_based(&self) -> bool {

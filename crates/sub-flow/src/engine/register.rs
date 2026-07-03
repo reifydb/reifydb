@@ -225,7 +225,19 @@ impl FlowEngineInner {
 				aggregations,
 				ts,
 				lateness,
-			} => self.add_window(node_id, &inputs, kind, group_by, aggregations, ts, lateness)?,
+				state_cache_size,
+				internal_state_cache_size,
+			} => self.add_window(
+				node_id,
+				&inputs,
+				kind,
+				group_by,
+				aggregations,
+				ts,
+				lateness,
+				state_cache_size,
+				internal_state_cache_size,
+			)?,
 		}
 
 		Ok(())
@@ -700,6 +712,8 @@ impl FlowEngineInner {
 		aggregations: Vec<Expression>,
 		ts: Option<String>,
 		lateness: Option<Duration>,
+		state_cache_size: Option<usize>,
+		internal_state_cache_size: Option<usize>,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
 		let operator = WindowOperator::new(WindowConfig {
@@ -713,6 +727,8 @@ impl FlowEngineInner {
 			routines: self.executor.routines.clone(),
 			late_policy: LatePolicy::Process,
 			lateness,
+			state_cache_size,
+			internal_state_cache_size,
 		});
 		self.operators.insert(node_id, OperatorCell::new(Operators::Window(operator)));
 		Ok(())

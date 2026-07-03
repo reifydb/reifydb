@@ -32,6 +32,8 @@ struct ParsedConfig {
 	pub lateness: Option<Duration>,
 	pub ts: Option<String>,
 	pub time: Option<String>,
+	pub state_cache_size: Option<usize>,
+	pub internal_state_cache_size: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -41,6 +43,8 @@ pub struct WindowNode {
 	pub aggregations: Vec<Expression>,
 	pub ts: Option<String>,
 	pub lateness: Option<Duration>,
+	pub state_cache_size: Option<usize>,
+	pub internal_state_cache_size: Option<usize>,
 	pub rql: String,
 }
 
@@ -59,6 +63,8 @@ impl<'bump> Compiler<'bump> {
 			aggregations,
 			ts: parsed.ts,
 			lateness: parsed.lateness,
+			state_cache_size: parsed.state_cache_size,
+			internal_state_cache_size: parsed.internal_state_cache_size,
 			rql,
 		}))
 	}
@@ -287,9 +293,33 @@ impl<'bump> Compiler<'bump> {
 					.into());
 				}
 			}
+			"state_cache_size" => {
+				if let Some(value) = Self::extract_literal_number(&config_item.value) {
+					config.state_cache_size = Some(value as usize);
+				} else {
+					return Err(AstError::UnexpectedToken {
+						expected: "number".to_string(),
+						fragment: config_item.value.token().fragment.to_owned(),
+					}
+					.into());
+				}
+			}
+			"internal_state_cache_size" => {
+				if let Some(value) = Self::extract_literal_number(&config_item.value) {
+					config.internal_state_cache_size = Some(value as usize);
+				} else {
+					return Err(AstError::UnexpectedToken {
+						expected: "number".to_string(),
+						fragment: config_item.value.token().fragment.to_owned(),
+					}
+					.into());
+				}
+			}
 			_ => {
 				return Err(AstError::UnexpectedToken {
-					expected: "interval, count, slide, gap, lag, lateness, ts, or time".to_string(),
+					expected: "interval, count, slide, gap, lag, lateness, ts, time, state_cache_size, \
+					           or internal_state_cache_size"
+						.to_string(),
 					fragment: config_item.key.token.fragment.to_owned(),
 				}
 				.into());
@@ -322,6 +352,7 @@ impl<'bump> Compiler<'bump> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::{ast::parse_str, bump::Bump};
 
 	fn rolling_with_ts() -> ParsedConfig {
 		ParsedConfig {
@@ -426,5 +457,37 @@ mod tests {
 				..
 			}
 		));
+	}
+
+	fn parse_window_config(source: &str) -> Result<ParsedConfig> {
+		let bump = Bump::new();
+		let statements = parse_str(&bump, source).unwrap();
+		let window = statements[0].first_unchecked().as_window();
+		Compiler::parse_config(&window.config)
+	}
+
+	#[test]
+	// Intent: the optional cache-size knobs in `with { }` parse as counts and land on ParsedConfig.
+	fn parses_optional_cache_sizes() {
+		let parsed = parse_window_config(
+			r#"window tumbling { count(*) } with { interval: "5m", state_cache_size: 4096, internal_state_cache_size: 512 }"#,
+		)
+		.unwrap();
+		assert_eq!(parsed.state_cache_size, Some(4096));
+		assert_eq!(parsed.internal_state_cache_size, Some(512));
+	}
+
+	#[test]
+	// Intent: when omitted the knobs stay None, so the engine keeps its built-in default capacities.
+	fn cache_sizes_absent_stay_none() {
+		let parsed = parse_window_config(r#"window tumbling { count(*) } with { interval: "5m" }"#).unwrap();
+		assert_eq!(parsed.state_cache_size, None);
+		assert_eq!(parsed.internal_state_cache_size, None);
+	}
+
+	#[test]
+	// Intent: adding the two keys must not open `with { }` to arbitrary keys - unknown keys still error.
+	fn unknown_with_key_still_rejected() {
+		assert!(parse_window_config(r#"window tumbling { count(*) } with { bogus: 1 }"#).is_err());
 	}
 }

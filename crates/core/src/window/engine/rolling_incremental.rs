@@ -17,7 +17,9 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, GroupMeta, LatePolicy, MetaKey, meta_key_for,
+			AccumulatorEvent, EmitKind, GroupMeta, LatePolicy, MetaKey,
+			config::WindowEngineConfig,
+			meta_key_for,
 			rolling::{RollingBuckets, RollingBuffer, RollingResult},
 		},
 		span::Slot,
@@ -61,19 +63,6 @@ pub struct RollingIncrementalEngine<G, C, Accumulator, Running> {
 	_pd: PhantomData<G>,
 }
 
-impl<G, C, Accumulator, Running> Default for RollingIncrementalEngine<G, C, Accumulator, Running>
-where
-	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
-	C: Slot + Hash + Serialize + DeserializeOwned,
-	Accumulator: WindowAccumulator,
-	Running: WindowAccumulator,
-	for<'a> &'a G: IntoEncodedKey,
-{
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
 impl<G, C, Accumulator, Running> RollingIncrementalEngine<G, C, Accumulator, Running>
 where
 	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
@@ -82,16 +71,14 @@ where
 	Running: WindowAccumulator,
 	for<'a> &'a G: IntoEncodedKey,
 {
-	pub fn new() -> Self {
-		Self::with_late_policy(LatePolicy::Drop)
-	}
-
-	pub fn with_late_policy(late_policy: LatePolicy) -> Self {
+	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
-			buffers: StateCache::<RowNumber, RollingBuffer<C, Accumulator>>::new(8),
-			running: StateCache::<RunningKey, Running>::new(8),
-			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(64),
-			late_policy,
+			buffers: StateCache::<RowNumber, RollingBuffer<C, Accumulator>>::new(
+				config.state_cache_capacity(),
+			),
+			running: StateCache::<RunningKey, Running>::new(config.state_cache_capacity()),
+			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
+			late_policy: config.late_policy(),
 			_pd: PhantomData,
 		}
 	}
@@ -351,12 +338,17 @@ mod tests {
 			accumulator::WindowAccumulator,
 			engine::{
 				AccumulatorEvent, EmitKind,
+				config::WindowEngineConfig,
 				rolling::{RollingBuckets, RollingResult},
 				rolling_incremental::RollingIncrementalEngine,
 				test_support::{MockStore, SumAccumulator},
 			},
 		},
 	};
+
+	fn test_config() -> WindowEngineConfig {
+		WindowEngineConfig::builder().state_cache_capacity(8).internal_state_cache_capacity(64).build()
+	}
 
 	fn row_key(group: &u32) -> EncodedKey {
 		EncodedKey::builder().u32(*group).build()
@@ -380,7 +372,8 @@ mod tests {
 		// store key.
 		let mut store = MockStore::default();
 
-		let mut engine = RollingIncrementalEngine::<u32, u64, SumAccumulator, SumAccumulator>::new();
+		let mut engine =
+			RollingIncrementalEngine::<u32, u64, SumAccumulator, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
 		let published: Vec<RollingResult<u32, i64>> =
@@ -392,7 +385,8 @@ mod tests {
 
 		// Restart: a brand new engine with empty caches, forced to read the persisted buffer and
 		// running accumulator back from the store.
-		let mut engine = RollingIncrementalEngine::<u32, u64, SumAccumulator, SumAccumulator>::new();
+		let mut engine =
+			RollingIncrementalEngine::<u32, u64, SumAccumulator, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(5)]);
 		let withdrawn: Vec<RollingResult<u32, i64>> =
@@ -423,7 +417,8 @@ mod tests {
 		// the earliest (group 1) is evicted, flush, then retract group 1 and assert its buffer is read
 		// back intact. It fails if `buffers` and `running` share a store key.
 		let mut store = MockStore::default();
-		let mut engine = RollingIncrementalEngine::<u32, u64, SumAccumulator, SumAccumulator>::new();
+		let mut engine =
+			RollingIncrementalEngine::<u32, u64, SumAccumulator, SumAccumulator>::new(test_config());
 
 		let mut published_group_1: Vec<RollingResult<u32, i64>> = Vec::new();
 		for group in 1u32..=11u32 {

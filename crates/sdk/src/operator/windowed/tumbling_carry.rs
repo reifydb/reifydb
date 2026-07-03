@@ -9,7 +9,10 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	window::{
 		accumulator::WindowAccumulator,
-		engine::{AccumulatorEvent, EmitKind, tumbling::TumblingBuckets, tumbling_carry::TumblingCarryEngine},
+		engine::{
+			AccumulatorEvent, EmitKind, config::TumblingCarryConfig, tumbling::TumblingBuckets,
+			tumbling_carry::TumblingCarryEngine,
+		},
 		span::{Slot, WindowSpan},
 	},
 };
@@ -28,12 +31,19 @@ use crate::{
 		},
 		context::OperatorContext,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
-		windowed::{bridge::OperatorContextStore, late_policy_from_config},
+		windowed::{bridge::OperatorContextStore, window_engine_config},
 	},
 };
 
 type AccumulatorContribution<A> = <<A as TumblingCarryOperator>::Accumulator as WindowAccumulator>::Contribution;
 type AccumulatorValue<A> = <<A as TumblingCarryOperator>::Accumulator as WindowAccumulator>::Output;
+type CarryEngine<A> = TumblingCarryEngine<
+	<A as TumblingCarryOperator>::GroupKey,
+	<A as TumblingCarryOperator>::WindowCoord,
+	<A as TumblingCarryOperator>::Accumulator,
+	<A as TumblingCarryOperator>::Carry,
+	<A as TumblingCarryOperator>::Output,
+>;
 type Buckets<A> = TumblingBuckets<
 	<A as TumblingCarryOperator>::GroupKey,
 	<A as TumblingCarryOperator>::WindowCoord,
@@ -106,7 +116,7 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	aggregator: A,
-	engine: TumblingCarryEngine<A::GroupKey, A::WindowCoord, A::Accumulator, A::Carry, A::Output>,
+	engine: CarryEngine<A>,
 }
 
 impl<A> TumblingCarryDriver<A>
@@ -231,11 +241,15 @@ where
 {
 	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
 		let aggregator = A::from_config(operator_id, config)?;
-		let late_policy = late_policy_from_config(config);
 		let retention = aggregator.retention();
 		Ok(Self {
 			aggregator,
-			engine: TumblingCarryEngine::with_late_policy_and_retention(late_policy, retention),
+			engine: TumblingCarryEngine::new(
+				TumblingCarryConfig::builder()
+					.base(window_engine_config(config))
+					.retention(retention)
+					.build(),
+			),
 		})
 	}
 

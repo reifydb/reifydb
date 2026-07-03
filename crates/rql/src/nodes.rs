@@ -828,6 +828,8 @@ pub struct WindowNode {
 	pub aggregations: Vec<Expression>,
 	pub ts: Option<String>,
 	pub lateness: Option<Duration>,
+	pub state_cache_size: Option<usize>,
+	pub internal_state_cache_size: Option<usize>,
 }
 
 #[derive(Debug, Clone)]

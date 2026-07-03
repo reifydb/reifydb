@@ -10,6 +10,7 @@
 //! output construction; it hands the engine pre-bucketed events and receives
 //! [`WindowResult`]s to translate into diffs.
 
+pub mod config;
 pub mod multi_rolling;
 pub mod rolling;
 pub mod rolling_incremental;

@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 	window::{
-		engine::{LatePolicy, tumbling::TumblingBuckets},
+		engine::{LatePolicy, config::WindowEngineConfig, tumbling::TumblingBuckets},
 		span::WindowSpan,
 	},
 };
@@ -154,7 +154,7 @@ pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, cha
 		arrival,
 		window_max_ts,
 		&kinds,
-		LatePolicy::Process,
+		WindowEngineConfig::builder().late_policy(LatePolicy::Process).build(),
 		None,
 		false,
 	)?;

@@ -18,6 +18,8 @@ pub(crate) struct WindowCompiler {
 	pub aggregations: Vec<Expression>,
 	pub ts: Option<String>,
 	pub lateness: Option<Duration>,
+	pub state_cache_size: Option<usize>,
+	pub internal_state_cache_size: Option<usize>,
 }
 
 impl From<WindowNode> for WindowCompiler {
@@ -29,6 +31,8 @@ impl From<WindowNode> for WindowCompiler {
 			aggregations: node.aggregations,
 			ts: node.ts,
 			lateness: node.lateness,
+			state_cache_size: node.state_cache_size,
+			internal_state_cache_size: node.internal_state_cache_size,
 		}
 	}
 }
@@ -51,6 +55,8 @@ impl CompileOperator for WindowCompiler {
 				aggregations: self.aggregations,
 				ts: self.ts,
 				lateness: self.lateness,
+				state_cache_size: self.state_cache_size,
+				internal_state_cache_size: self.internal_state_cache_size,
 			},
 		)?;
 

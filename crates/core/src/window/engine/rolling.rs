@@ -16,8 +16,8 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, GroupMeta, LatePolicy, MetaKey, expiry_due_range, expiry_key,
-			meta_key_for,
+			AccumulatorEvent, EmitKind, GroupMeta, LatePolicy, MetaKey, config::WindowEngineConfig,
+			expiry_due_range, expiry_key, meta_key_for,
 		},
 		span::Slot,
 		state::StateCache,
@@ -96,18 +96,6 @@ pub struct RollingEngine<G, C, Accumulator> {
 	_pd: PhantomData<G>,
 }
 
-impl<G, C, Accumulator> Default for RollingEngine<G, C, Accumulator>
-where
-	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
-	C: Slot + Hash + Serialize + DeserializeOwned,
-	Accumulator: WindowAccumulator,
-	for<'a> &'a G: IntoEncodedKey,
-{
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
 impl<G, C, Accumulator> RollingEngine<G, C, Accumulator>
 where
 	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
@@ -115,15 +103,13 @@ where
 	Accumulator: WindowAccumulator,
 	for<'a> &'a G: IntoEncodedKey,
 {
-	pub fn new() -> Self {
-		Self::with_late_policy(LatePolicy::Drop)
-	}
-
-	pub fn with_late_policy(late_policy: LatePolicy) -> Self {
+	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
-			buffers: StateCache::<RowNumber, RollingBuffer<C, Accumulator>>::new(8),
-			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(64),
-			late_policy,
+			buffers: StateCache::<RowNumber, RollingBuffer<C, Accumulator>>::new(
+				config.state_cache_capacity(),
+			),
+			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
+			late_policy: config.late_policy(),
 			_pd: PhantomData,
 		}
 	}
@@ -614,6 +600,7 @@ mod tests {
 		encoded::key::EncodedKey,
 		window::engine::{
 			AccumulatorEvent, EmitKind,
+			config::WindowEngineConfig,
 			rolling::{
 				RollingBuckets, RollingBuffer, RollingEngine, RollingEviction, RollingExpiry,
 				RollingResult,
@@ -621,6 +608,10 @@ mod tests {
 			test_support::{MockStore, StampedSum, SumAccumulator},
 		},
 	};
+
+	fn test_config() -> WindowEngineConfig {
+		WindowEngineConfig::builder().state_cache_capacity(8).internal_state_cache_capacity(64).build()
+	}
 
 	fn row_key(group: &u32) -> EncodedKey {
 		EncodedKey::builder().u32(*group).build()
@@ -645,7 +636,7 @@ mod tests {
 	#[test]
 	fn expire_before_evicts_a_quiet_group_then_rekeys_then_removes() {
 		let mut store = MockStore::default();
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new();
+		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(1)]);
 		buckets.insert((1u32, 20u64), vec![AccumulatorEvent::Add(2)]);
@@ -664,7 +655,7 @@ mod tests {
 		assert_eq!(store.index_entry_count(), 1, "the group is indexed by its oldest coord");
 
 		// A tick with no new events for this group evicts coords <= 20; coord 30 survives.
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new();
+		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let out = engine.expire_before(&mut store, 20, sum_combine).unwrap();
 		engine.flush(&mut store).unwrap();
 		assert_eq!(out.len(), 1);
@@ -684,7 +675,7 @@ mod tests {
 		assert_eq!(store.index_entry_count(), 1, "still one entry, re-keyed to coord 30");
 
 		// The next tick evicts the last coord: the group empties and is removed.
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new();
+		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let out = engine.expire_before(&mut store, 30, sum_combine).unwrap();
 		engine.flush(&mut store).unwrap();
 		assert_eq!(out.len(), 1);
@@ -700,14 +691,14 @@ mod tests {
 		assert_eq!(store.index_entry_count(), 0, "the emptied group leaves no index entry");
 
 		// A further tick finds nothing due.
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new();
+		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		assert!(engine.expire_before(&mut store, 1000, sum_combine).unwrap().is_empty());
 	}
 
 	#[test]
 	fn expire_before_leaves_groups_whose_oldest_coord_is_not_due() {
 		let mut store = MockStore::default();
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new();
+		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 100u64), vec![AccumulatorEvent::Add(1)]);
 		buckets.insert((2u32, 5u64), vec![AccumulatorEvent::Add(9)]);
@@ -724,7 +715,7 @@ mod tests {
 		assert_eq!(store.index_entry_count(), 2);
 
 		// Cutoff 5 is due only for group 2 (oldest coord 5); group 1 (oldest 100) is untouched.
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new();
+		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let out = engine.expire_before(&mut store, 5, sum_combine).unwrap();
 		engine.flush(&mut store).unwrap();
 		assert_eq!(out.len(), 1, "only the group with a due coord is processed");
@@ -735,7 +726,7 @@ mod tests {
 	#[test]
 	fn expire_before_stamp_evicts_by_accumulator_stamp() {
 		let mut store = MockStore::default();
-		let mut engine = RollingEngine::<u32, u64, StampedSum>::new();
+		let mut engine = RollingEngine::<u32, u64, StampedSum>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, (i64, u64)> = BTreeMap::new();
 		buckets.insert((1u32, 1u64), vec![AccumulatorEvent::Add((1, 10))]);
 		buckets.insert((1u32, 2u64), vec![AccumulatorEvent::Add((2, 20))]);
@@ -753,7 +744,7 @@ mod tests {
 		assert_eq!(store.index_entry_count(), 1, "indexed by the minimum stamp");
 
 		// Evict accumulators stamped <= 20; the stamp-30 entry survives.
-		let mut engine = RollingEngine::<u32, u64, StampedSum>::new();
+		let mut engine = RollingEngine::<u32, u64, StampedSum>::new(test_config());
 		let out = engine.expire_before_stamp(&mut store, 20, stamped_combine).unwrap();
 		engine.flush(&mut store).unwrap();
 		assert_eq!(out.len(), 1);
@@ -782,7 +773,7 @@ mod tests {
 		// would withdraw a wrong or empty value and this test would fail.
 		let mut store = MockStore::default();
 
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new();
+		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
 		let published: Vec<RollingResult<u32, i64>> =
@@ -794,7 +785,7 @@ mod tests {
 
 		// Restart: a brand new engine with no in-memory GroupSlot / prior_output, reading only the
 		// persisted buffer left behind by the first engine.
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new();
+		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(5)]);
 		let withdrawn: Vec<RollingResult<u32, i64>> =
@@ -826,7 +817,7 @@ mod tests {
 		// published value. It would fail if the buffer failed to round-trip through the store (a
 		// serialization break, or a second Data cache colliding on the same key).
 		let mut store = MockStore::default();
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new();
+		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
 
 		let mut published_group_1: Vec<RollingResult<u32, i64>> = Vec::new();
 		for group in 1u32..=11u32 {

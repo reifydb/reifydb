@@ -10,7 +10,8 @@ use reifydb_core::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, LatePolicy,
+			AccumulatorEvent, EmitKind,
+			config::WindowEngineConfig,
 			tumbling::{TumblingBuckets, TumblingEngine, reindex_window},
 		},
 		span::WindowSpan,
@@ -303,7 +304,7 @@ pub(super) fn finish_tumbling_engine(
 	arrival: Vec<(Hash128, WindowSpan<u64>)>,
 	window_max_ts: HashMap<(Hash128, WindowSpan<u64>), u64>,
 	kinds: &[SlotKind],
-	late_policy: LatePolicy,
+	engine_config: WindowEngineConfig,
 	lateness: Option<Duration>,
 	index: bool,
 ) -> Result<Vec<Diff>> {
@@ -313,7 +314,7 @@ pub(super) fn finish_tumbling_engine(
 			let key = core.create_window_key(*hash, span.start);
 			store.get_or_create_row_number(&key)?;
 		}
-		let mut engine = TumblingEngine::<Hash128, u64, RowAccumulator>::with_late_policy(late_policy);
+		let mut engine = TumblingEngine::<Hash128, u64, RowAccumulator>::new(engine_config);
 		let res = engine.apply(
 			&mut store,
 			buckets,
@@ -491,7 +492,7 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 		arrival,
 		window_max_ts,
 		&kinds,
-		operator.late_policy,
+		operator.engine_config(),
 		operator.sealing_lateness(),
 		!operator.is_count_based(),
 	)?;
@@ -710,7 +711,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		arrival,
 		window_max_ts,
 		&kinds,
-		operator.late_policy,
+		operator.engine_config(),
 		operator.sealing_lateness(),
 		!operator.is_count_based(),
 	)?;
@@ -948,7 +949,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		arrival,
 		window_max_ts,
 		&kinds,
-		operator.late_policy,
+		operator.engine_config(),
 		operator.sealing_lateness(),
 		!operator.is_count_based(),
 	)?;
@@ -1047,7 +1048,7 @@ fn tick_expire_by_cutoff(
 	let threshold = effective_now.saturating_sub(cutoff_ms).saturating_sub(1);
 	let expired = {
 		let mut store = FlowWindowStore::new(txn, operator.core.node);
-		let mut engine = TumblingEngine::<Hash128, u64, RowAccumulator>::with_late_policy(operator.late_policy);
+		let mut engine = TumblingEngine::<Hash128, u64, RowAccumulator>::new(operator.engine_config());
 		let res = engine.expire(&mut store, threshold)?;
 		engine.flush(&mut store)?;
 		res

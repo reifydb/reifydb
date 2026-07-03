@@ -100,6 +100,8 @@ pub enum FlowNodeType {
 		aggregations: Vec<Expression>,
 		ts: Option<String>,
 		lateness: Option<Duration>,
+		state_cache_size: Option<usize>,
+		internal_state_cache_size: Option<usize>,
 	},
 	SourceDictionary {
 		dictionary: DictionaryId,

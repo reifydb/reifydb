@@ -17,8 +17,8 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, GroupMeta, LatePolicy, MetaKey, WindowResult, expiry_due_range,
-			expiry_key, meta_key_for,
+			AccumulatorEvent, EmitKind, GroupMeta, LatePolicy, MetaKey, WindowResult,
+			config::WindowEngineConfig, expiry_due_range, expiry_key, meta_key_for,
 		},
 		span::{Slot, WindowSpan},
 		state::StateCache,
@@ -87,18 +87,6 @@ pub struct TumblingEngine<G, C, Accumulator> {
 	_pd: PhantomData<G>,
 }
 
-impl<G, C, Accumulator> Default for TumblingEngine<G, C, Accumulator>
-where
-	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
-	C: Slot + Hash + Serialize + DeserializeOwned,
-	Accumulator: WindowAccumulator,
-	for<'a> &'a G: IntoEncodedKey,
-{
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
 impl<G, C, Accumulator> TumblingEngine<G, C, Accumulator>
 where
 	G: Clone + Eq + Ord + Hash + Debug + Serialize + DeserializeOwned,
@@ -106,15 +94,11 @@ where
 	Accumulator: WindowAccumulator,
 	for<'a> &'a G: IntoEncodedKey,
 {
-	pub fn new() -> Self {
-		Self::with_late_policy(LatePolicy::Drop)
-	}
-
-	pub fn with_late_policy(late_policy: LatePolicy) -> Self {
+	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
-			accumulators: StateCache::<RowNumber, Accumulator>::new(8),
-			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(64),
-			late_policy,
+			accumulators: StateCache::<RowNumber, Accumulator>::new(config.state_cache_capacity()),
+			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
+			late_policy: config.late_policy(),
 			_pd: PhantomData,
 		}
 	}
@@ -374,6 +358,7 @@ mod tests {
 		window::{
 			engine::{
 				AccumulatorEvent, EmitKind, WindowResult,
+				config::WindowEngineConfig,
 				test_support::{MockStore, SumAccumulator},
 				tumbling::{TumblingBuckets, TumblingEngine, reindex_window},
 			},
@@ -381,12 +366,16 @@ mod tests {
 		},
 	};
 
+	fn test_config() -> WindowEngineConfig {
+		WindowEngineConfig::builder().state_cache_capacity(8).internal_state_cache_capacity(64).build()
+	}
+
 	fn row_key(group: &u32, window_start: u64) -> EncodedKey {
 		EncodedKey::builder().u32(*group).u64(window_start).build()
 	}
 
 	fn seed_window(store: &mut MockStore, window_start: u64, contribution: i64) -> WindowResult<u32, u64, i64> {
-		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new();
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let mut buckets: TumblingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert(
 			(1u32, WindowSpan::new(window_start, window_start + 1)),
@@ -408,7 +397,7 @@ mod tests {
 		assert_eq!(store.index_entry_count(), 2, "both live windows are indexed");
 
 		// Threshold 10: only the window whose expiry (10) is at/under the threshold is due.
-		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new();
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let expired = engine.expire(&mut store, 10).unwrap();
 		engine.flush(&mut store).unwrap();
 		assert_eq!(expired.len(), 1, "exactly one window is due, not the whole population");
@@ -417,7 +406,7 @@ mod tests {
 		assert_eq!(store.index_entry_count(), 1, "the due window's index entry is gone, the other remains");
 
 		// The surviving window finalizes correctly once the threshold reaches it.
-		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new();
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let later = engine.expire(&mut store, 1000).unwrap();
 		assert_eq!(later.len(), 1);
 		assert_eq!(later[0].window_start, 100);
@@ -432,13 +421,13 @@ mod tests {
 		reindex_window(&mut store, &w.group, w.span.start, w.row_number, None, Some(50)).unwrap();
 
 		// One below the expiry: not due, and the scan leaves the index intact.
-		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new();
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		assert!(engine.expire(&mut store, 49).unwrap().is_empty());
 		engine.flush(&mut store).unwrap();
 		assert_eq!(store.index_entry_count(), 1);
 
 		// Exactly at the expiry: due (the face folds the strict close boundary into the threshold).
-		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new();
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		assert_eq!(engine.expire(&mut store, 50).unwrap().len(), 1);
 	}
 
@@ -451,9 +440,9 @@ mod tests {
 		reindex_window(&mut store, &w.group, w.span.start, w.row_number, Some(10), Some(80)).unwrap();
 		assert_eq!(store.index_entry_count(), 1, "re-keying must not leave the old entry behind");
 
-		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new();
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		assert!(engine.expire(&mut store, 10).unwrap().is_empty(), "no longer due at the old expiry");
-		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new();
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		assert_eq!(engine.expire(&mut store, 80).unwrap().len(), 1, "due at the new expiry");
 	}
 
@@ -467,7 +456,7 @@ mod tests {
 		// or a second Data cache colliding on the same RowNumber).
 		let mut store = MockStore::default();
 
-		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new();
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let mut buckets: TumblingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, WindowSpan::new(0, 1)), vec![AccumulatorEvent::Add(5)]);
 		let published: Vec<WindowResult<u32, u64, i64>> =
@@ -478,7 +467,7 @@ mod tests {
 		assert_eq!(published[0].value, 5);
 
 		// Restart: a brand new engine with empty caches, forced to read the persisted accumulator back.
-		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new();
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let mut buckets: TumblingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, WindowSpan::new(0, 1)), vec![AccumulatorEvent::Remove(5)]);
 		let withdrawn: Vec<WindowResult<u32, u64, i64>> =
@@ -504,7 +493,7 @@ mod tests {
 		// it from the store. We publish 11 single-window groups so group 1 is evicted, flush, then
 		// retract group 1 and assert its accumulator is read back intact.
 		let mut store = MockStore::default();
-		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new();
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
 
 		let mut published_group_1: Vec<WindowResult<u32, u64, i64>> = Vec::new();
 		for group in 1u32..=11u32 {
