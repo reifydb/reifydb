@@ -230,7 +230,7 @@ describe('useCommand with Value Objects and Shapes', () => {
                 expect(result.current.result!.rows[0].text.type).toBe('Utf8');
             });
 
-            it('should handle Blob value objects - unsupported cast from Utf8 to Blob', async () => {
+            it('should handle Blob value objects - cast from Utf8 to Blob', async () => {
                 const shape = Shape.object({
                     data: Shape.blobValue()
                 });
@@ -247,8 +247,11 @@ describe('useCommand with Value Objects and Shapes', () => {
                     expect(result.current.is_executing).toBe(false);
                 });
 
-                expect(result.current.result).toBeUndefined();
-                expect(result.current.error).toBeDefined();
+                expect(result.current.error).toBeUndefined();
+                expect(result.current.result!.rows[0].data.type).toBe('Blob');
+                expect(result.current.result!.rows[0].data.value).toEqual(
+                    new TextEncoder().encode('binary data')
+                );
             });
         });
 

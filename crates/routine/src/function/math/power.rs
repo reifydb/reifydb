@@ -4,17 +4,21 @@
 use num_traits::ToPrimitive;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_value::{
-	fragment::Fragment,
+	error::TypeError,
+	util::bitvec::BitVec,
 	value::{
-		container::number::NumberContainer,
-		decimal::Decimal,
-		int::Int,
-		uint::Uint,
-		value_type::{ValueType, input_types::InputTypes},
+		container::number::NumberContainer, decimal::Decimal, int::Int, is::IsNumber, uint::Uint,
+		value_type::ValueType,
 	},
 };
 
-use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
+use crate::{
+	function::{
+		math::arith::dispatch::{ensure_arity, ensure_numeric},
+		support::coerce::{CoercePolicy, all_rows_none, coerce_column, promote_pair},
+	},
+	routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError},
+};
 
 pub struct Power {
 	info: RoutineInfo,
@@ -34,810 +38,178 @@ impl Power {
 	}
 }
 
-fn convert_column_to_type(data: &ColumnBuffer, target: ValueType, row_count: usize) -> ColumnBuffer {
-	match target {
-		ValueType::Int1 => {
-			let mut result = Vec::with_capacity(row_count);
-			let mut bitvec = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				if data.is_defined(i) {
-					result.push(get_as_i8(data, i));
-					bitvec.push(true);
-				} else {
-					result.push(0);
-					bitvec.push(false);
-				}
-			}
-			ColumnBuffer::int1_with_bitvec(result, bitvec)
-		}
-		ValueType::Int2 => {
-			let mut result = Vec::with_capacity(row_count);
-			let mut bitvec = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				if data.is_defined(i) {
-					result.push(get_as_i16(data, i));
-					bitvec.push(true);
-				} else {
-					result.push(0);
-					bitvec.push(false);
-				}
-			}
-			ColumnBuffer::int2_with_bitvec(result, bitvec)
-		}
-		ValueType::Int4 => {
-			let mut result = Vec::with_capacity(row_count);
-			let mut bitvec = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				if data.is_defined(i) {
-					result.push(get_as_i32(data, i));
-					bitvec.push(true);
-				} else {
-					result.push(0);
-					bitvec.push(false);
-				}
-			}
-			ColumnBuffer::int4_with_bitvec(result, bitvec)
-		}
-		ValueType::Int8 => {
-			let mut result = Vec::with_capacity(row_count);
-			let mut bitvec = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				if data.is_defined(i) {
-					result.push(get_as_i64(data, i));
-					bitvec.push(true);
-				} else {
-					result.push(0);
-					bitvec.push(false);
-				}
-			}
-			ColumnBuffer::int8_with_bitvec(result, bitvec)
-		}
-		ValueType::Int16 => {
-			let mut result = Vec::with_capacity(row_count);
-			let mut bitvec = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				if data.is_defined(i) {
-					result.push(get_as_i128(data, i));
-					bitvec.push(true);
-				} else {
-					result.push(0);
-					bitvec.push(false);
-				}
-			}
-			ColumnBuffer::int16_with_bitvec(result, bitvec)
-		}
-		ValueType::Uint1 => {
-			let mut result = Vec::with_capacity(row_count);
-			let mut bitvec = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				if data.is_defined(i) {
-					result.push(get_as_u8(data, i));
-					bitvec.push(true);
-				} else {
-					result.push(0);
-					bitvec.push(false);
-				}
-			}
-			ColumnBuffer::uint1_with_bitvec(result, bitvec)
-		}
-		ValueType::Uint2 => {
-			let mut result = Vec::with_capacity(row_count);
-			let mut bitvec = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				if data.is_defined(i) {
-					result.push(get_as_u16(data, i));
-					bitvec.push(true);
-				} else {
-					result.push(0);
-					bitvec.push(false);
-				}
-			}
-			ColumnBuffer::uint2_with_bitvec(result, bitvec)
-		}
-		ValueType::Uint4 => {
-			let mut result = Vec::with_capacity(row_count);
-			let mut bitvec = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				if data.is_defined(i) {
-					result.push(get_as_u32(data, i));
-					bitvec.push(true);
-				} else {
-					result.push(0);
-					bitvec.push(false);
-				}
-			}
-			ColumnBuffer::uint4_with_bitvec(result, bitvec)
-		}
-		ValueType::Uint8 => {
-			let mut result = Vec::with_capacity(row_count);
-			let mut bitvec = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				if data.is_defined(i) {
-					result.push(get_as_u64(data, i));
-					bitvec.push(true);
-				} else {
-					result.push(0);
-					bitvec.push(false);
-				}
-			}
-			ColumnBuffer::uint8_with_bitvec(result, bitvec)
-		}
-		ValueType::Uint16 => {
-			let mut result = Vec::with_capacity(row_count);
-			let mut bitvec = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				if data.is_defined(i) {
-					result.push(get_as_u128(data, i));
-					bitvec.push(true);
-				} else {
-					result.push(0);
-					bitvec.push(false);
-				}
-			}
-			ColumnBuffer::uint16_with_bitvec(result, bitvec)
-		}
-		ValueType::Float4 => {
-			let mut result = Vec::with_capacity(row_count);
-			let mut bitvec = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				if data.is_defined(i) {
-					result.push(get_as_f32(data, i));
-					bitvec.push(true);
-				} else {
-					result.push(0.0);
-					bitvec.push(false);
-				}
-			}
-			ColumnBuffer::float4_with_bitvec(result, bitvec)
-		}
-		ValueType::Float8 => {
-			let mut result = Vec::with_capacity(row_count);
-			let mut bitvec = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				if data.is_defined(i) {
-					result.push(get_as_f64(data, i));
-					bitvec.push(true);
-				} else {
-					result.push(0.0);
-					bitvec.push(false);
-				}
-			}
-			ColumnBuffer::float8_with_bitvec(result, bitvec)
-		}
-		ValueType::Int => {
-			let mut result = Vec::with_capacity(row_count);
-			let mut bitvec = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				if data.is_defined(i) {
-					result.push(Int::from(get_as_i128(data, i)));
-					bitvec.push(true);
-				} else {
-					result.push(Int::default());
-					bitvec.push(false);
-				}
-			}
-			ColumnBuffer::int_with_bitvec(result, bitvec)
-		}
-		ValueType::Uint => {
-			let mut result = Vec::with_capacity(row_count);
-			let mut bitvec = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				if data.is_defined(i) {
-					result.push(Uint::from(get_as_u128(data, i)));
-					bitvec.push(true);
-				} else {
-					result.push(Uint::default());
-					bitvec.push(false);
-				}
-			}
-			ColumnBuffer::uint_with_bitvec(result, bitvec)
-		}
-		ValueType::Decimal => {
-			let mut result = Vec::with_capacity(row_count);
-			let mut bitvec = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				if data.is_defined(i) {
-					result.push(Decimal::from(get_as_f64(data, i)));
-					bitvec.push(true);
-				} else {
-					result.push(Decimal::default());
-					bitvec.push(false);
-				}
-			}
-			ColumnBuffer::decimal_with_bitvec(result, bitvec)
-		}
-		_ => data.clone(),
-	}
-}
-
-fn get_as_i8(data: &ColumnBuffer, i: usize) -> i8 {
-	match data {
-		ColumnBuffer::Int1(c) => c.get(i).copied().unwrap_or(0),
-		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i8).unwrap_or(0),
-		_ => 0,
-	}
-}
-
-fn get_as_u8(data: &ColumnBuffer, i: usize) -> u8 {
-	match data {
-		ColumnBuffer::Uint1(c) => c.get(i).copied().unwrap_or(0),
-		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as u8).unwrap_or(0),
-		_ => 0,
-	}
-}
-
-fn get_as_i16(data: &ColumnBuffer, i: usize) -> i16 {
-	match data {
-		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as i16).unwrap_or(0),
-		ColumnBuffer::Int2(c) => c.get(i).copied().unwrap_or(0),
-		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i16).unwrap_or(0),
-		_ => 0,
-	}
-}
-
-fn get_as_i32(data: &ColumnBuffer, i: usize) -> i32 {
-	match data {
-		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as i32).unwrap_or(0),
-		ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as i32).unwrap_or(0),
-		ColumnBuffer::Int4(c) => c.get(i).copied().unwrap_or(0),
-		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i32).unwrap_or(0),
-		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as i32).unwrap_or(0),
-		_ => 0,
-	}
-}
-
-fn get_as_i64(data: &ColumnBuffer, i: usize) -> i64 {
-	match data {
-		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
-		ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
-		ColumnBuffer::Int4(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
-		ColumnBuffer::Int8(c) => c.get(i).copied().unwrap_or(0),
-		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
-		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
-		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as i64).unwrap_or(0),
-		_ => 0,
-	}
-}
-
-fn get_as_i128(data: &ColumnBuffer, i: usize) -> i128 {
-	match data {
-		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
-		ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
-		ColumnBuffer::Int4(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
-		ColumnBuffer::Int8(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
-		ColumnBuffer::Int16(c) => c.get(i).copied().unwrap_or(0),
-		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
-		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
-		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
-		ColumnBuffer::Uint8(c) => c.get(i).map(|&v| v as i128).unwrap_or(0),
-		_ => 0,
-	}
-}
-
-fn get_as_u16(data: &ColumnBuffer, i: usize) -> u16 {
-	match data {
-		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as u16).unwrap_or(0),
-		ColumnBuffer::Uint2(c) => c.get(i).copied().unwrap_or(0),
-		_ => 0,
-	}
-}
-
-fn get_as_u32(data: &ColumnBuffer, i: usize) -> u32 {
-	match data {
-		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as u32).unwrap_or(0),
-		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as u32).unwrap_or(0),
-		ColumnBuffer::Uint4(c) => c.get(i).copied().unwrap_or(0),
-		_ => 0,
-	}
-}
-
-fn get_as_u64(data: &ColumnBuffer, i: usize) -> u64 {
-	match data {
-		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as u64).unwrap_or(0),
-		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as u64).unwrap_or(0),
-		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as u64).unwrap_or(0),
-		ColumnBuffer::Uint8(c) => c.get(i).copied().unwrap_or(0),
-		_ => 0,
-	}
-}
-
-fn get_as_u128(data: &ColumnBuffer, i: usize) -> u128 {
-	match data {
-		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as u128).unwrap_or(0),
-		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as u128).unwrap_or(0),
-		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as u128).unwrap_or(0),
-		ColumnBuffer::Uint8(c) => c.get(i).map(|&v| v as u128).unwrap_or(0),
-		ColumnBuffer::Uint16(c) => c.get(i).copied().unwrap_or(0),
-		_ => 0,
-	}
-}
-
-fn get_as_f32(data: &ColumnBuffer, i: usize) -> f32 {
-	match data {
-		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
-		ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
-		ColumnBuffer::Int4(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
-		ColumnBuffer::Int8(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
-		ColumnBuffer::Int16(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
-		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
-		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
-		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
-		ColumnBuffer::Uint8(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
-		ColumnBuffer::Uint16(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
-		ColumnBuffer::Float4(c) => c.get(i).copied().unwrap_or(0.0),
-		ColumnBuffer::Float8(c) => c.get(i).map(|&v| v as f32).unwrap_or(0.0),
-		ColumnBuffer::Int {
-			container,
-			..
-		} => container.get(i).map(|v| v.0.to_f32().unwrap_or(0.0)).unwrap_or(0.0),
-		ColumnBuffer::Uint {
-			container,
-			..
-		} => container.get(i).map(|v| v.0.to_f32().unwrap_or(0.0)).unwrap_or(0.0),
-		ColumnBuffer::Decimal {
-			container,
-			..
-		} => container.get(i).map(|v| v.0.to_f32().unwrap_or(0.0)).unwrap_or(0.0),
-		_ => 0.0,
-	}
-}
-
-fn get_as_f64(data: &ColumnBuffer, i: usize) -> f64 {
-	match data {
-		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
-		ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
-		ColumnBuffer::Int4(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
-		ColumnBuffer::Int8(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
-		ColumnBuffer::Int16(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
-		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
-		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
-		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
-		ColumnBuffer::Uint8(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
-		ColumnBuffer::Uint16(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
-		ColumnBuffer::Float4(c) => c.get(i).map(|&v| v as f64).unwrap_or(0.0),
-		ColumnBuffer::Float8(c) => c.get(i).copied().unwrap_or(0.0),
-		ColumnBuffer::Int {
-			container,
-			..
-		} => container.get(i).map(|v| v.0.to_f64().unwrap_or(0.0)).unwrap_or(0.0),
-		ColumnBuffer::Uint {
-			container,
-			..
-		} => container.get(i).map(|v| v.0.to_f64().unwrap_or(0.0)).unwrap_or(0.0),
-		ColumnBuffer::Decimal {
-			container,
-			..
-		} => container.get(i).map(|v| v.0.to_f64().unwrap_or(0.0)).unwrap_or(0.0),
-		_ => 0.0,
-	}
-}
-
-fn promote_two(left: ValueType, right: ValueType) -> ValueType {
-	if matches!(left, ValueType::Any) && matches!(right, ValueType::Any) {
-		return ValueType::Any;
-	}
-	if matches!(left, ValueType::Any) && right.is_number() {
-		return right;
-	}
-	if left.is_number() && matches!(right, ValueType::Any) {
-		return left;
-	}
-	if matches!(left, ValueType::Float4 | ValueType::Float8 | ValueType::Decimal)
-		|| matches!(right, ValueType::Float4 | ValueType::Float8 | ValueType::Decimal)
-	{
-		return ValueType::Decimal;
-	}
-	if left == ValueType::Int || right == ValueType::Int {
-		return ValueType::Int16;
-	}
-	if left == ValueType::Uint || right == ValueType::Uint {
-		if matches!(
-			left,
-			ValueType::Int1 | ValueType::Int2 | ValueType::Int4 | ValueType::Int8 | ValueType::Int16
-		) || matches!(
-			right,
-			ValueType::Int1 | ValueType::Int2 | ValueType::Int4 | ValueType::Int8 | ValueType::Int16
-		) {
-			return ValueType::Int16;
-		}
-		return ValueType::Uint16;
-	}
-	ValueType::promote(left, right)
-}
-
 impl<'a> Routine<FunctionContext<'a>> for Power {
 	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
 
+	fn propagates_options(&self) -> bool {
+		false
+	}
+
 	fn return_type(&self, input_types: &[ValueType]) -> ValueType {
 		if input_types.len() >= 2 {
-			promote_two(input_types[0].clone(), input_types[1].clone())
+			promote_pair(input_types[0].clone(), input_types[1].clone())
 		} else {
 			ValueType::Float8
 		}
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		if args.len() != 2 {
-			return Err(RoutineError::FunctionArityMismatch {
+		ensure_arity(ctx, args, 2)?;
+
+		let (base_data, _) = args[0].unwrap_option();
+		let (exp_data, _) = args[1].unwrap_option();
+		ensure_numeric(ctx, base_data, 0)?;
+		ensure_numeric(ctx, exp_data, 1)?;
+
+		let promoted = promote_pair(base_data.get_type(), exp_data.get_type());
+		if promoted == ValueType::Any {
+			if all_rows_none(&args[0]) && all_rows_none(&args[1]) {
+				let result = ColumnBuffer::none_typed(ValueType::Any, base_data.len());
+				return Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result)]));
+			}
+			return Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
-				expected: 2,
-				actual: args.len(),
+				argument_index: 0,
+				expected: vec![],
+				actual: ValueType::Any,
 			});
 		}
+		let base_cast = coerce_column(ctx, &args[0], promoted.clone(), CoercePolicy::Error)?;
+		let exp_cast = coerce_column(ctx, &args[1], promoted.clone(), CoercePolicy::Error)?;
 
-		let base_column = &args[0];
-		let exponent_column = &args[1];
+		let (base_inner, base_bv) = base_cast.unwrap_option();
+		let (exp_inner, exp_bv) = exp_cast.unwrap_option();
 
-		let (base_data, base_bv) = base_column.unwrap_option();
-		let (exp_data, exp_bv) = exponent_column.unwrap_option();
-		let row_count = base_data.len();
-
-		let result_data = match (base_data, exp_data) {
-			(ColumnBuffer::Int1(base), ColumnBuffer::Int1(exp)) => {
-				let mut result = Vec::with_capacity(row_count);
-				let mut res_bitvec = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					match (base.get(i), exp.get(i)) {
-						(Some(&b), Some(&e)) => {
-							result.push(if e < 0 {
-								0
-							} else {
-								(b as i32).pow(e as u32)
-							});
-							res_bitvec.push(true);
-						}
-						_ => {
-							result.push(0);
-							res_bitvec.push(false);
-						}
-					}
-				}
-				ColumnBuffer::int4_with_bitvec(result, res_bitvec)
+		let overflow = || -> RoutineError {
+			TypeError::NumberOutOfRange {
+				target: promoted.clone(),
+				fragment: ctx.fragment.clone(),
+				descriptor: None,
 			}
-			(ColumnBuffer::Int2(base), ColumnBuffer::Int2(exp)) => {
-				let mut result = Vec::with_capacity(row_count);
-				let mut res_bitvec = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					match (base.get(i), exp.get(i)) {
-						(Some(&b), Some(&e)) => {
-							result.push(if e < 0 {
-								0
-							} else {
-								(b as i32).pow(e as u32)
-							});
-							res_bitvec.push(true);
-						}
-						_ => {
-							result.push(0);
-							res_bitvec.push(false);
-						}
-					}
-				}
-				ColumnBuffer::int4_with_bitvec(result, res_bitvec)
-			}
-			(ColumnBuffer::Int4(base), ColumnBuffer::Int4(exp)) => {
-				let mut result = Vec::with_capacity(row_count);
-				let mut res_bitvec = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					match (base.get(i), exp.get(i)) {
-						(Some(&b), Some(&e)) => {
-							result.push(if e < 0 {
-								0
-							} else {
-								b.saturating_pow(e as u32)
-							});
-							res_bitvec.push(true);
-						}
-						_ => {
-							result.push(0);
-							res_bitvec.push(false);
-						}
-					}
-				}
-				ColumnBuffer::int4_with_bitvec(result, res_bitvec)
-			}
-			(ColumnBuffer::Int8(base), ColumnBuffer::Int8(exp)) => {
-				let mut result = Vec::with_capacity(row_count);
-				let mut res_bitvec = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					match (base.get(i), exp.get(i)) {
-						(Some(&b), Some(&e)) => {
-							result.push(if e < 0 {
-								0
-							} else {
-								b.saturating_pow(e as u32)
-							});
-							res_bitvec.push(true);
-						}
-						_ => {
-							result.push(0);
-							res_bitvec.push(false);
-						}
-					}
-				}
-				ColumnBuffer::int8_with_bitvec(result, res_bitvec)
-			}
-			(ColumnBuffer::Int16(base), ColumnBuffer::Int16(exp)) => {
-				let mut result = Vec::with_capacity(row_count);
-				let mut res_bitvec = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					match (base.get(i), exp.get(i)) {
-						(Some(&b), Some(&e)) => {
-							result.push(if e < 0 {
-								0
-							} else {
-								b.saturating_pow(e as u32)
-							});
-							res_bitvec.push(true);
-						}
-						_ => {
-							result.push(0);
-							res_bitvec.push(false);
-						}
-					}
-				}
-				ColumnBuffer::int16_with_bitvec(result, res_bitvec)
-			}
-			(ColumnBuffer::Float4(base), ColumnBuffer::Float4(exp)) => {
-				let mut result = Vec::with_capacity(row_count);
-				let mut res_bitvec = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					match (base.get(i), exp.get(i)) {
-						(Some(&b), Some(&e)) => {
-							result.push(b.powf(e));
-							res_bitvec.push(true);
-						}
-						_ => {
-							result.push(0.0);
-							res_bitvec.push(false);
-						}
-					}
-				}
-				ColumnBuffer::float4_with_bitvec(result, res_bitvec)
-			}
-			(ColumnBuffer::Float8(base), ColumnBuffer::Float8(exp)) => {
-				let mut result = Vec::with_capacity(row_count);
-				let mut res_bitvec = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					match (base.get(i), exp.get(i)) {
-						(Some(&b), Some(&e)) => {
-							result.push(b.powf(e));
-							res_bitvec.push(true);
-						}
-						_ => {
-							result.push(0.0);
-							res_bitvec.push(false);
-						}
-					}
-				}
-				ColumnBuffer::float8_with_bitvec(result, res_bitvec)
-			}
-			(ColumnBuffer::Uint1(base), ColumnBuffer::Uint1(exp)) => {
-				let mut result = Vec::with_capacity(row_count);
-				let mut res_bitvec = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					match (base.get(i), exp.get(i)) {
-						(Some(&b), Some(&e)) => {
-							result.push((b as u32).saturating_pow(e as u32));
-							res_bitvec.push(true);
-						}
-						_ => {
-							result.push(0);
-							res_bitvec.push(false);
-						}
-					}
-				}
-				ColumnBuffer::uint4_with_bitvec(result, res_bitvec)
-			}
-			(ColumnBuffer::Uint2(base), ColumnBuffer::Uint2(exp)) => {
-				let mut result = Vec::with_capacity(row_count);
-				let mut res_bitvec = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					match (base.get(i), exp.get(i)) {
-						(Some(&b), Some(&e)) => {
-							result.push((b as u32).saturating_pow(e as u32));
-							res_bitvec.push(true);
-						}
-						_ => {
-							result.push(0);
-							res_bitvec.push(false);
-						}
-					}
-				}
-				ColumnBuffer::uint4_with_bitvec(result, res_bitvec)
-			}
-			(ColumnBuffer::Uint4(base), ColumnBuffer::Uint4(exp)) => {
-				let mut result = Vec::with_capacity(row_count);
-				let mut res_bitvec = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					match (base.get(i), exp.get(i)) {
-						(Some(&b), Some(&e)) => {
-							result.push(b.saturating_pow(e));
-							res_bitvec.push(true);
-						}
-						_ => {
-							result.push(0);
-							res_bitvec.push(false);
-						}
-					}
-				}
-				ColumnBuffer::uint4_with_bitvec(result, res_bitvec)
-			}
-			(ColumnBuffer::Uint8(base), ColumnBuffer::Uint8(exp)) => {
-				let mut result = Vec::with_capacity(row_count);
-				let mut res_bitvec = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					match (base.get(i), exp.get(i)) {
-						(Some(&b), Some(&e)) => {
-							result.push(b.saturating_pow(e as u32));
-							res_bitvec.push(true);
-						}
-						_ => {
-							result.push(0);
-							res_bitvec.push(false);
-						}
-					}
-				}
-				ColumnBuffer::uint8_with_bitvec(result, res_bitvec)
-			}
-			(ColumnBuffer::Uint16(base), ColumnBuffer::Uint16(exp)) => {
-				let mut result = Vec::with_capacity(row_count);
-				let mut res_bitvec = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					match (base.get(i), exp.get(i)) {
-						(Some(&b), Some(&e)) => {
-							result.push(b.saturating_pow(e as u32));
-							res_bitvec.push(true);
-						}
-						_ => {
-							result.push(0);
-							res_bitvec.push(false);
-						}
-					}
-				}
-				ColumnBuffer::uint16_with_bitvec(result, res_bitvec)
-			}
-			(
-				ColumnBuffer::Int {
-					container: base,
-					max_bytes,
-				},
-				ColumnBuffer::Int {
-					container: exp,
-					..
-				},
-			) => {
-				let mut result = Vec::with_capacity(row_count);
-				let mut res_bitvec = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					match (base.get(i), exp.get(i)) {
-						(Some(b), Some(e)) => {
-							let b_val = b.0.to_f64().unwrap_or(0.0);
-							let e_val = e.0.to_f64().unwrap_or(0.0);
-							result.push(Int::from(b_val.powf(e_val) as i64));
-							res_bitvec.push(true);
-						}
-						_ => {
-							result.push(Int::default());
-							res_bitvec.push(false);
-						}
-					}
-				}
-				ColumnBuffer::Int {
-					container: NumberContainer::new(result),
-					max_bytes: *max_bytes,
-				}
-			}
-			(
-				ColumnBuffer::Uint {
-					container: base,
-					max_bytes,
-				},
-				ColumnBuffer::Uint {
-					container: exp,
-					..
-				},
-			) => {
-				let mut result = Vec::with_capacity(row_count);
-				let mut res_bitvec = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					match (base.get(i), exp.get(i)) {
-						(Some(b), Some(e)) => {
-							let b_val = b.0.to_f64().unwrap_or(0.0);
-							let e_val = e.0.to_f64().unwrap_or(0.0);
-							result.push(Uint::from(b_val.powf(e_val) as u64));
-							res_bitvec.push(true);
-						}
-						_ => {
-							result.push(Uint::default());
-							res_bitvec.push(false);
-						}
-					}
-				}
-				ColumnBuffer::Uint {
-					container: NumberContainer::new(result),
-					max_bytes: *max_bytes,
-				}
-			}
-			(
-				ColumnBuffer::Decimal {
-					container: base,
-					precision,
-					scale,
-				},
-				ColumnBuffer::Decimal {
-					container: exp,
-					..
-				},
-			) => {
-				let mut result = Vec::with_capacity(row_count);
-				let mut res_bitvec = Vec::with_capacity(row_count);
-				for i in 0..row_count {
-					match (base.get(i), exp.get(i)) {
-						(Some(b), Some(e)) => {
-							let b_val = b.0.to_f64().unwrap_or(0.0);
-							let e_val = e.0.to_f64().unwrap_or(0.0);
-							result.push(Decimal::from(b_val.powf(e_val)));
-							res_bitvec.push(true);
-						}
-						_ => {
-							result.push(Decimal::default());
-							res_bitvec.push(false);
-						}
-					}
-				}
-				ColumnBuffer::Decimal {
-					container: NumberContainer::new(result),
-					precision: *precision,
-					scale: *scale,
-				}
-			}
-
-			_ => {
-				let base_type = base_data.get_type();
-				let exp_type = exp_data.get_type();
-
-				if !base_type.is_number() || !exp_type.is_number() {
-					return Err(RoutineError::FunctionInvalidArgumentType {
-						function: ctx.fragment.clone(),
-						argument_index: 0,
-						expected: InputTypes::numeric().expected_at(0).to_vec(),
-						actual: base_type,
-					});
-				}
-
-				let promoted_type = promote_two(base_type, exp_type);
-				let promoted_base = convert_column_to_type(base_data, promoted_type.clone(), row_count);
-				let promoted_exp = convert_column_to_type(exp_data, promoted_type, row_count);
-
-				let base_col = ColumnWithName::new(Fragment::internal("base"), promoted_base);
-				let exp_col = ColumnWithName::new(Fragment::internal("exp"), promoted_exp);
-				let promoted_columns = Columns::new(vec![base_col, exp_col]);
-
-				return self.call(ctx, &promoted_columns);
-			}
+			.into()
 		};
 
-		let combined_bitvec = match (base_bv, exp_bv) {
-			(Some(b), Some(e)) => Some(b.and(e)),
-			(Some(b), None) => Some(b.clone()),
-			(None, Some(e)) => Some(e.clone()),
-			(None, None) => None,
+		macro_rules! run {
+			($variant:ident, $factory:ident, $op:expr) => {{
+				let (ColumnBuffer::$variant(b), ColumnBuffer::$variant(e)) = (base_inner, exp_inner)
+				else {
+					unreachable!()
+				};
+				let (values, bits) = pow_rows(b, base_bv, e, exp_bv, $op, &overflow)?;
+				ColumnBuffer::$factory(values, bits)
+			}};
+			($variant:ident { .. }, $factory:ident, $op:expr) => {{
+				let (
+					ColumnBuffer::$variant {
+						container: b,
+						..
+					},
+					ColumnBuffer::$variant {
+						container: e,
+						..
+					},
+				) = (base_inner, exp_inner)
+				else {
+					unreachable!()
+				};
+				let (values, bits) = pow_rows(b, base_bv, e, exp_bv, $op, &overflow)?;
+				ColumnBuffer::$factory(values, bits)
+			}};
+		}
+
+		macro_rules! signed_pow_op {
+			() => {
+				|b, e| {
+					if *e < 0 {
+						Some(0)
+					} else {
+						u32::try_from(*e).ok().and_then(|exp| b.checked_pow(exp))
+					}
+				}
+			};
+		}
+
+		macro_rules! unsigned_pow_op {
+			() => {
+				|b, e| u32::try_from(*e).ok().and_then(|exp| b.checked_pow(exp))
+			};
+		}
+
+		let result = match promoted {
+			ValueType::Int1 => run!(Int1, int1_with_bitvec, signed_pow_op!()),
+			ValueType::Int2 => run!(Int2, int2_with_bitvec, signed_pow_op!()),
+			ValueType::Int4 => run!(Int4, int4_with_bitvec, signed_pow_op!()),
+			ValueType::Int8 => run!(Int8, int8_with_bitvec, signed_pow_op!()),
+			ValueType::Int16 => run!(Int16, int16_with_bitvec, signed_pow_op!()),
+			ValueType::Uint1 => run!(Uint1, uint1_with_bitvec, unsigned_pow_op!()),
+			ValueType::Uint2 => run!(Uint2, uint2_with_bitvec, unsigned_pow_op!()),
+			ValueType::Uint4 => run!(Uint4, uint4_with_bitvec, unsigned_pow_op!()),
+			ValueType::Uint8 => run!(Uint8, uint8_with_bitvec, unsigned_pow_op!()),
+			ValueType::Uint16 => run!(Uint16, uint16_with_bitvec, unsigned_pow_op!()),
+			ValueType::Float4 => run!(Float4, float4_with_bitvec, |b: &f32, e: &f32| Some(b.powf(*e))),
+			ValueType::Float8 => run!(Float8, float8_with_bitvec, |b: &f64, e: &f64| Some(b.powf(*e))),
+			ValueType::Int => run!(Int { .. }, int_with_bitvec, |b: &Int, e: &Int| {
+				if *e < Int::zero() {
+					Some(Int::zero())
+				} else {
+					e.0.to_u32().map(|exp| Int::from(b.0.pow(exp)))
+				}
+			}),
+			ValueType::Uint => run!(Uint { .. }, uint_with_bitvec, |b: &Uint, e: &Uint| {
+				e.0.to_u32().map(|exp| Uint::from(b.0.pow(exp)))
+			}),
+			ValueType::Decimal => run!(Decimal { .. }, decimal_with_bitvec, |b: &Decimal, e: &Decimal| {
+				let base = b.0.to_f64().unwrap_or(0.0);
+				let exp = e.0.to_f64().unwrap_or(0.0);
+				Some(Decimal::from(base.powf(exp)))
+			}),
+			_ => unreachable!("promotion of numeric inputs yields a numeric type"),
 		};
 
-		let final_data = if let Some(bv) = combined_bitvec {
-			ColumnBuffer::Option {
-				inner: Box::new(result_data),
-				bitvec: bv,
-			}
-		} else {
-			result_data
-		};
-
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), final_data)]))
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result)]))
 	}
+}
+
+fn pow_rows<T, F>(
+	b: &NumberContainer<T>,
+	b_bv: Option<&BitVec>,
+	e: &NumberContainer<T>,
+	e_bv: Option<&BitVec>,
+	op: F,
+	overflow: &dyn Fn() -> RoutineError,
+) -> Result<(Vec<T>, Vec<bool>), RoutineError>
+where
+	T: IsNumber + Clone + Default,
+	F: Fn(&T, &T) -> Option<T>,
+{
+	fn defined<T: IsNumber>(c: &NumberContainer<T>, bv: Option<&BitVec>, i: usize) -> bool {
+		c.is_defined(i) && bv.is_none_or(|b| b.get(i))
+	}
+
+	let row_count = b.len();
+	let mut values = Vec::with_capacity(row_count);
+	let mut bits = Vec::with_capacity(row_count);
+
+	for i in 0..row_count {
+		if !defined(b, b_bv, i) || !defined(e, e_bv, i) {
+			values.push(T::default());
+			bits.push(false);
+			continue;
+		}
+		let base = b.get(i).expect("defined row has a value");
+		let exp = e.get(i).expect("defined row has a value");
+		match op(base, exp) {
+			Some(v) => {
+				values.push(v);
+				bits.push(true);
+			}
+			None => return Err(overflow()),
+		}
+	}
+
+	Ok((values, bits))
 }
 
 impl Function for Power {

@@ -22,6 +22,7 @@ pub mod math;
 pub mod meta;
 pub mod rql;
 pub mod series;
+pub(crate) mod support;
 pub mod text;
 pub mod time;
 pub mod uuid;
@@ -69,30 +70,35 @@ pub fn default_native_functions(builder: RoutinesConfigurator) -> RoutinesConfig
 		.register_builtin_function(Arc::new(math::sign::Sign::new()))
 		.register_builtin_function(Arc::new(math::sin::Sin::new()))
 		.register_builtin_function(Arc::new(math::sqrt::Sqrt::new()))
+		.register_builtin_function(Arc::new(math::sub::basic::Sub::new()))
 		.register_builtin_function(Arc::new(math::sub::saturate::SubSaturate::new()))
 		.register_builtin_function(Arc::new(math::sub::zero::SubZero::new()))
 		.register_builtin_function(Arc::new(math::sub::none::SubNone::new()))
 		.register_builtin_function(Arc::new(math::sub::default::SubDefault::new()))
 		.register_builtin_function(Arc::new(math::sub::strict::SubStrict::new()))
 		.register_builtin_function(Arc::new(math::sub::wrap::SubWrap::new()))
+		.register_builtin_function(Arc::new(math::add::basic::Add::new()))
 		.register_builtin_function(Arc::new(math::add::saturate::AddSaturate::new()))
 		.register_builtin_function(Arc::new(math::add::zero::AddZero::new()))
 		.register_builtin_function(Arc::new(math::add::none::AddNone::new()))
 		.register_builtin_function(Arc::new(math::add::default::AddDefault::new()))
 		.register_builtin_function(Arc::new(math::add::strict::AddStrict::new()))
 		.register_builtin_function(Arc::new(math::add::wrap::AddWrap::new()))
+		.register_builtin_function(Arc::new(math::mul::basic::Mul::new()))
 		.register_builtin_function(Arc::new(math::mul::saturate::MulSaturate::new()))
 		.register_builtin_function(Arc::new(math::mul::zero::MulZero::new()))
 		.register_builtin_function(Arc::new(math::mul::none::MulNone::new()))
 		.register_builtin_function(Arc::new(math::mul::default::MulDefault::new()))
 		.register_builtin_function(Arc::new(math::mul::strict::MulStrict::new()))
 		.register_builtin_function(Arc::new(math::mul::wrap::MulWrap::new()))
+		.register_builtin_function(Arc::new(math::div::basic::Div::new()))
 		.register_builtin_function(Arc::new(math::div::saturate::DivSaturate::new()))
 		.register_builtin_function(Arc::new(math::div::zero::DivZero::new()))
 		.register_builtin_function(Arc::new(math::div::none::DivNone::new()))
 		.register_builtin_function(Arc::new(math::div::default::DivDefault::new()))
 		.register_builtin_function(Arc::new(math::div::strict::DivStrict::new()))
 		.register_builtin_function(Arc::new(math::div::wrap::DivWrap::new()))
+		.register_builtin_function(Arc::new(math::rem::basic::Rem::new()))
 		.register_builtin_function(Arc::new(math::rem::saturate::RemSaturate::new()))
 		.register_builtin_function(Arc::new(math::rem::zero::RemZero::new()))
 		.register_builtin_function(Arc::new(math::rem::none::RemNone::new()))

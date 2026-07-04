@@ -3,56 +3,63 @@
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
 use reifydb_value::{
+	error::TypeError,
 	util::bitvec::BitVec,
 	value::{
-		decimal::Decimal,
-		int::Int,
-		uint::Uint,
+		container::number::NumberContainer,
+		is::IsNumber,
+		number::safe::div::SafeDiv,
 		value_type::{ValueType, input_types::InputTypes},
 	},
 };
 
 use crate::{
-	function::math::arith::{
-		cast::{
-			convert_column_to_type, get_as_big_int, get_as_big_uint, get_as_decimal, get_as_f32,
-			get_as_f64, get_as_i8, get_as_i16, get_as_i32, get_as_i64, get_as_i128, get_as_u8, get_as_u16,
-			get_as_u32, get_as_u64, get_as_u128, promote_two,
-		},
-		op::BinaryOp,
+	function::{
+		math::arith::op::{ArithOp, SafeNum},
+		support::coerce::{CoercePolicy, all_rows_none, coerce_column, promote_pair},
 	},
 	routine::{context::FunctionContext, error::RoutineError},
 };
 
 #[derive(Debug, Clone, Copy)]
 pub enum BasicStrategy {
+	Default,
 	Saturate,
-	Zero,
-	Null,
 	Wrap,
+	Zero,
+	None,
 }
 
-enum Strategy<'a> {
+enum RowMode {
+	Default,
 	Saturate,
-	Zero,
-	Null,
-	Default(&'a ColumnBuffer),
-	Strict(&'a ColumnBuffer),
 	Wrap,
+	Zero,
+	None,
+	Strict,
+	Fallback,
 }
 
 impl BasicStrategy {
-	fn as_strategy(&self) -> Strategy<'static> {
+	fn row_mode(&self) -> RowMode {
 		match self {
-			BasicStrategy::Saturate => Strategy::Saturate,
-			BasicStrategy::Zero => Strategy::Zero,
-			BasicStrategy::Null => Strategy::Null,
-			BasicStrategy::Wrap => Strategy::Wrap,
+			BasicStrategy::Default => RowMode::Default,
+			BasicStrategy::Saturate => RowMode::Saturate,
+			BasicStrategy::Wrap => RowMode::Wrap,
+			BasicStrategy::Zero => RowMode::Zero,
+			BasicStrategy::None => RowMode::None,
+		}
+	}
+
+	fn coerce_policy(&self) -> CoercePolicy {
+		match self {
+			BasicStrategy::None => CoercePolicy::None,
+			_ => CoercePolicy::Error,
 		}
 	}
 }
 
-fn ensure_arity(ctx: &mut FunctionContext, args: &Columns, expected: usize) -> Result<(), RoutineError> {
+pub(crate) fn ensure_arity(ctx: &mut FunctionContext, args: &Columns, expected: usize) -> Result<(), RoutineError> {
 	if args.len() != expected {
 		return Err(RoutineError::FunctionArityMismatch {
 			function: ctx.fragment.clone(),
@@ -63,8 +70,12 @@ fn ensure_arity(ctx: &mut FunctionContext, args: &Columns, expected: usize) -> R
 	Ok(())
 }
 
-fn ensure_numeric(ctx: &mut FunctionContext, data: &ColumnBuffer, argument_index: usize) -> Result<(), RoutineError> {
-	if !data.get_type().is_number() {
+pub(crate) fn ensure_numeric(
+	ctx: &mut FunctionContext,
+	data: &ColumnBuffer,
+	argument_index: usize,
+) -> Result<(), RoutineError> {
+	if !data.get_type().is_number() && data.get_type() != ValueType::Any {
 		return Err(RoutineError::FunctionInvalidArgumentType {
 			function: ctx.fragment.clone(),
 			argument_index,
@@ -89,48 +100,25 @@ fn make_strict_error(ctx: &FunctionContext, msg_col: &ColumnBuffer, i: usize) ->
 	}
 }
 
-pub fn dispatch_two<Op: BinaryOp>(
+pub fn dispatch_two<Op: ArithOp>(
 	ctx: &mut FunctionContext,
 	args: &Columns,
-	basic_strategy: BasicStrategy,
+	strategy: BasicStrategy,
 ) -> Result<Columns, RoutineError> {
 	ensure_arity(ctx, args, 2)?;
-	execute_promoted::<Op>(ctx, &args[0], &args[1], basic_strategy.as_strategy())
+	execute_arith::<Op>(ctx, &args[0], &args[1], strategy.row_mode(), strategy.coerce_policy(), None, None)
 }
 
-pub fn dispatch_default<Op: BinaryOp>(ctx: &mut FunctionContext, args: &Columns) -> Result<Columns, RoutineError> {
+pub fn dispatch_fallback<Op: ArithOp>(ctx: &mut FunctionContext, args: &Columns) -> Result<Columns, RoutineError> {
 	ensure_arity(ctx, args, 3)?;
-	let a_col = &args[0];
-	let b_col = &args[1];
-	let d_col = &args[2];
-
-	let (a_data, _) = a_col.unwrap_option();
-	let (b_data, _) = b_col.unwrap_option();
-	let (d_data, _) = d_col.unwrap_option();
-
-	ensure_numeric(ctx, a_data, 0)?;
-	ensure_numeric(ctx, b_data, 1)?;
+	let (d_data, _) = args[2].unwrap_option();
 	ensure_numeric(ctx, d_data, 2)?;
-
-	let promoted = promote_two(a_data.get_type(), b_data.get_type());
-	let row_count = a_data.len();
-	let default_cast = convert_column_to_type(d_data, promoted.clone(), row_count);
-
-	execute_inner::<Op>(ctx, a_col, b_col, Strategy::Default(&default_cast))
+	execute_arith::<Op>(ctx, &args[0], &args[1], RowMode::Fallback, CoercePolicy::Error, Some(&args[2]), None)
 }
 
-pub fn dispatch_strict<Op: BinaryOp>(ctx: &mut FunctionContext, args: &Columns) -> Result<Columns, RoutineError> {
+pub fn dispatch_strict<Op: ArithOp>(ctx: &mut FunctionContext, args: &Columns) -> Result<Columns, RoutineError> {
 	ensure_arity(ctx, args, 3)?;
-	let a_col = &args[0];
-	let b_col = &args[1];
-	let msg_col = &args[2];
-
-	let (a_data, a_bv) = a_col.unwrap_option();
-	let (b_data, b_bv) = b_col.unwrap_option();
-	let (msg_data, _) = msg_col.unwrap_option();
-
-	ensure_numeric(ctx, a_data, 0)?;
-	ensure_numeric(ctx, b_data, 1)?;
+	let (msg_data, _) = args[2].unwrap_option();
 	if msg_data.get_type() != ValueType::Utf8 {
 		return Err(RoutineError::FunctionInvalidArgumentType {
 			function: ctx.fragment.clone(),
@@ -139,248 +127,148 @@ pub fn dispatch_strict<Op: BinaryOp>(ctx: &mut FunctionContext, args: &Columns) 
 			actual: msg_data.get_type(),
 		});
 	}
-
-	if a_data.get_type() != b_data.get_type() {
-		return Err(RoutineError::FunctionInvalidArgumentType {
-			function: ctx.fragment.clone(),
-			argument_index: 1,
-			expected: vec![a_data.get_type()],
-			actual: b_data.get_type(),
-		});
-	}
-
-	let combined_bv = match (a_bv, b_bv) {
-		(Some(a), Some(b)) => Some(a.and(b)),
-		(Some(a), None) => Some(a.clone()),
-		(None, Some(b)) => Some(b.clone()),
-		(None, None) => None,
-	};
-	execute_same_type::<Op>(ctx, a_col, b_col, Strategy::Strict(msg_data), combined_bv)
+	execute_arith::<Op>(ctx, &args[0], &args[1], RowMode::Strict, CoercePolicy::Error, None, Some(msg_data))
 }
 
-fn execute_promoted<Op: BinaryOp>(
+fn execute_arith<Op: ArithOp>(
 	ctx: &mut FunctionContext,
 	a_col: &ColumnBuffer,
 	b_col: &ColumnBuffer,
-	strategy: Strategy,
+	mode: RowMode,
+	policy: CoercePolicy,
+	fallback_col: Option<&ColumnBuffer>,
+	strict_msg: Option<&ColumnBuffer>,
 ) -> Result<Columns, RoutineError> {
 	let (a_data, _) = a_col.unwrap_option();
 	let (b_data, _) = b_col.unwrap_option();
-
 	ensure_numeric(ctx, a_data, 0)?;
 	ensure_numeric(ctx, b_data, 1)?;
 
-	execute_inner::<Op>(ctx, a_col, b_col, strategy)
-}
+	let promoted = promote_pair(a_data.get_type(), b_data.get_type());
+	if promoted == ValueType::Any {
+		if all_rows_none(a_col) && all_rows_none(b_col) {
+			let result = ColumnBuffer::none_typed(ValueType::Any, a_data.len());
+			return Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result)]));
+		}
+		return Err(RoutineError::FunctionInvalidArgumentType {
+			function: ctx.fragment.clone(),
+			argument_index: 0,
+			expected: InputTypes::numeric().expected_at(0).to_vec(),
+			actual: ValueType::Any,
+		});
+	}
+	let a_cast = coerce_column(ctx, a_col, promoted.clone(), policy)?;
+	let b_cast = coerce_column(ctx, b_col, promoted.clone(), policy)?;
+	let d_cast = fallback_col.map(|d| coerce_column(ctx, d, promoted.clone(), CoercePolicy::Error)).transpose()?;
 
-fn execute_inner<Op: BinaryOp>(
-	ctx: &mut FunctionContext,
-	a_col: &ColumnBuffer,
-	b_col: &ColumnBuffer,
-	strategy: Strategy,
-) -> Result<Columns, RoutineError> {
-	let (a_data, _) = a_col.unwrap_option();
-	let (b_data, _) = b_col.unwrap_option();
+	let (a_inner, a_bv) = a_cast.unwrap_option();
+	let (b_inner, b_bv) = b_cast.unwrap_option();
+	let d_parts = d_cast.as_ref().map(|d| d.unwrap_option());
 
-	let promoted = promote_two(a_data.get_type(), b_data.get_type());
-	let row_count = a_data.len();
-	let a_cast = convert_column_to_type(a_data, promoted.clone(), row_count);
-	let b_cast = convert_column_to_type(b_data, promoted.clone(), row_count);
-	let (a_inner, _) = a_cast.unwrap_option();
-	let (b_inner, _) = b_cast.unwrap_option();
-
-	let result = compute::<Op>(ctx, a_inner, b_inner, &strategy, promoted, row_count, None)?;
-	Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result)]))
-}
-
-fn execute_same_type<Op: BinaryOp>(
-	ctx: &mut FunctionContext,
-	a_col: &ColumnBuffer,
-	b_col: &ColumnBuffer,
-	strategy: Strategy,
-	input_bv: Option<BitVec>,
-) -> Result<Columns, RoutineError> {
-	let (a_data, _) = a_col.unwrap_option();
-	let (b_data, _) = b_col.unwrap_option();
-	let same_type = a_data.get_type();
-	let row_count = a_data.len();
-
-	let result = compute::<Op>(ctx, a_data, b_data, &strategy, same_type, row_count, input_bv.as_ref())?;
-	Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result)]))
-}
-
-fn compute<Op: BinaryOp>(
-	ctx: &mut FunctionContext,
-	a: &ColumnBuffer,
-	b: &ColumnBuffer,
-	strategy: &Strategy,
-	promoted: ValueType,
-	row_count: usize,
-	input_bv: Option<&BitVec>,
-) -> Result<ColumnBuffer, RoutineError> {
-	let is_null_input = |i: usize| -> bool { input_bv.is_some_and(|bv| i < bv.len() && !bv.get(i)) };
-	macro_rules! per_int {
-		($T:ty, $factory:ident, $checked:ident, $saturating:ident, $wrapping:ident, $extract:path, $zero:expr) => {{
-			let mut result = Vec::<$T>::with_capacity(row_count);
-			let mut bitvec = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				if is_null_input(i) || !a.is_defined(i) || !b.is_defined(i) {
-					result.push($zero);
-					bitvec.push(false);
-					continue;
-				}
-				let l: $T = $extract(a, i);
-				let r: $T = $extract(b, i);
-				match strategy {
-					Strategy::Saturate => {
-						result.push(<Op as BinaryOp>::$saturating(l, r));
-						bitvec.push(true);
-					}
-					Strategy::Zero => match <Op as BinaryOp>::$checked(l, r) {
-						Some(v) => {
-							result.push(v);
-							bitvec.push(true);
-						}
-						None => {
-							result.push($zero);
-							bitvec.push(true);
-						}
-					},
-					Strategy::Null => match <Op as BinaryOp>::$checked(l, r) {
-						Some(v) => {
-							result.push(v);
-							bitvec.push(true);
-						}
-						None => {
-							result.push($zero);
-							bitvec.push(false);
-						}
-					},
-					Strategy::Default(d) => match <Op as BinaryOp>::$checked(l, r) {
-						Some(v) => {
-							result.push(v);
-							bitvec.push(true);
-						}
-						None => {
-							result.push($extract(d, i));
-							bitvec.push(true);
-						}
-					},
-					Strategy::Strict(msg) => match <Op as BinaryOp>::$checked(l, r) {
-						Some(v) => {
-							result.push(v);
-							bitvec.push(true);
-						}
-						None => return Err(make_strict_error(ctx, msg, i)),
-					},
-					Strategy::Wrap => {
-						result.push(<Op as BinaryOp>::$wrapping(l, r));
-						bitvec.push(true);
-					}
-				}
-			}
-			ColumnBuffer::$factory(result, bitvec)
+	macro_rules! run {
+		($container_variant:ident) => {{
+			let (ColumnBuffer::$container_variant(l), ColumnBuffer::$container_variant(r)) =
+				(a_inner, b_inner)
+			else {
+				unreachable!()
+			};
+			let d = d_parts.as_ref().map(|(inner, bv)| {
+				let ColumnBuffer::$container_variant(c) = inner else {
+					unreachable!()
+				};
+				(c, *bv)
+			});
+			compute_rows::<_, Op>(ctx, &promoted, (l, a_bv), (r, b_bv), &mode, d, strict_msg)?
+		}};
+		($container_variant:ident { .. }) => {{
+			let (
+				ColumnBuffer::$container_variant {
+					container: l,
+					..
+				},
+				ColumnBuffer::$container_variant {
+					container: r,
+					..
+				},
+			) = (a_inner, b_inner)
+			else {
+				unreachable!()
+			};
+			let d = d_parts.as_ref().map(|(inner, bv)| {
+				let ColumnBuffer::$container_variant {
+					container: c,
+					..
+				} = inner
+				else {
+					unreachable!()
+				};
+				(c, *bv)
+			});
+			compute_rows::<_, Op>(ctx, &promoted, (l, a_bv), (r, b_bv), &mode, d, strict_msg)?
 		}};
 	}
 
-	macro_rules! per_float {
-		($T:ty, $factory:ident, $eval:ident, $extract:path, $max:expr, $min:expr) => {{
-			let mut result = Vec::<$T>::with_capacity(row_count);
-			let mut bitvec = Vec::with_capacity(row_count);
-			for i in 0..row_count {
-				if is_null_input(i) || !a.is_defined(i) || !b.is_defined(i) {
-					result.push(0.0);
-					bitvec.push(false);
-					continue;
-				}
-				let l: $T = $extract(a, i);
-				let r: $T = $extract(b, i);
-				let raw = <Op as BinaryOp>::$eval(l, r);
-
-				if matches!(strategy, Strategy::Wrap) || raw.is_finite() {
-					result.push(raw);
-					bitvec.push(true);
-					continue;
-				}
-
-				match strategy {
-					Strategy::Saturate => {
-						let clamped = if raw.is_nan() || raw > 0.0 {
-							$max
-						} else {
-							$min
-						};
-						result.push(clamped);
-						bitvec.push(true);
-					}
-					Strategy::Zero => {
-						result.push(0.0);
-						bitvec.push(true);
-					}
-					Strategy::Null => {
-						result.push(0.0);
-						bitvec.push(false);
-					}
-					Strategy::Default(d) => {
-						result.push($extract(d, i));
-						bitvec.push(true);
-					}
-					Strategy::Strict(msg) => return Err(make_strict_error(ctx, msg, i)),
-					Strategy::Wrap => unreachable!(),
-				}
-			}
-			ColumnBuffer::$factory(result, bitvec)
-		}};
-	}
-
-	let result_data = match promoted {
+	let result = match promoted {
 		ValueType::Int1 => {
-			per_int!(i8, int1_with_bitvec, checked_i8, saturating_i8, wrapping_i8, get_as_i8, 0i8)
+			let (values, bits) = run!(Int1);
+			ColumnBuffer::int1_with_bitvec(values, bits)
 		}
 		ValueType::Int2 => {
-			per_int!(i16, int2_with_bitvec, checked_i16, saturating_i16, wrapping_i16, get_as_i16, 0i16)
+			let (values, bits) = run!(Int2);
+			ColumnBuffer::int2_with_bitvec(values, bits)
 		}
 		ValueType::Int4 => {
-			per_int!(i32, int4_with_bitvec, checked_i32, saturating_i32, wrapping_i32, get_as_i32, 0i32)
+			let (values, bits) = run!(Int4);
+			ColumnBuffer::int4_with_bitvec(values, bits)
 		}
 		ValueType::Int8 => {
-			per_int!(i64, int8_with_bitvec, checked_i64, saturating_i64, wrapping_i64, get_as_i64, 0i64)
+			let (values, bits) = run!(Int8);
+			ColumnBuffer::int8_with_bitvec(values, bits)
 		}
-		ValueType::Int16 => per_int!(
-			i128,
-			int16_with_bitvec,
-			checked_i128,
-			saturating_i128,
-			wrapping_i128,
-			get_as_i128,
-			0i128
-		),
+		ValueType::Int16 => {
+			let (values, bits) = run!(Int16);
+			ColumnBuffer::int16_with_bitvec(values, bits)
+		}
 		ValueType::Uint1 => {
-			per_int!(u8, uint1_with_bitvec, checked_u8, saturating_u8, wrapping_u8, get_as_u8, 0u8)
+			let (values, bits) = run!(Uint1);
+			ColumnBuffer::uint1_with_bitvec(values, bits)
 		}
 		ValueType::Uint2 => {
-			per_int!(u16, uint2_with_bitvec, checked_u16, saturating_u16, wrapping_u16, get_as_u16, 0u16)
+			let (values, bits) = run!(Uint2);
+			ColumnBuffer::uint2_with_bitvec(values, bits)
 		}
 		ValueType::Uint4 => {
-			per_int!(u32, uint4_with_bitvec, checked_u32, saturating_u32, wrapping_u32, get_as_u32, 0u32)
+			let (values, bits) = run!(Uint4);
+			ColumnBuffer::uint4_with_bitvec(values, bits)
 		}
 		ValueType::Uint8 => {
-			per_int!(u64, uint8_with_bitvec, checked_u64, saturating_u64, wrapping_u64, get_as_u64, 0u64)
+			let (values, bits) = run!(Uint8);
+			ColumnBuffer::uint8_with_bitvec(values, bits)
 		}
-		ValueType::Uint16 => per_int!(
-			u128,
-			uint16_with_bitvec,
-			checked_u128,
-			saturating_u128,
-			wrapping_u128,
-			get_as_u128,
-			0u128
-		),
-		ValueType::Float4 => per_float!(f32, float4_with_bitvec, f32_eval, get_as_f32, f32::MAX, f32::MIN),
-		ValueType::Float8 => per_float!(f64, float8_with_bitvec, f64_eval, get_as_f64, f64::MAX, f64::MIN),
-		ValueType::Int => compute_big_int::<Op>(ctx, a, b, strategy, row_count, input_bv)?,
-		ValueType::Uint => compute_big_uint::<Op>(ctx, a, b, strategy, row_count, input_bv)?,
-		ValueType::Decimal => compute_decimal::<Op>(ctx, a, b, strategy, row_count, input_bv)?,
+		ValueType::Uint16 => {
+			let (values, bits) = run!(Uint16);
+			ColumnBuffer::uint16_with_bitvec(values, bits)
+		}
+		ValueType::Float4 => {
+			let (values, bits) = run!(Float4);
+			ColumnBuffer::float4_with_bitvec(values, bits)
+		}
+		ValueType::Float8 => {
+			let (values, bits) = run!(Float8);
+			ColumnBuffer::float8_with_bitvec(values, bits)
+		}
+		ValueType::Int => {
+			let (values, bits) = run!(Int { .. });
+			ColumnBuffer::int_with_bitvec(values, bits)
+		}
+		ValueType::Uint => {
+			let (values, bits) = run!(Uint { .. });
+			ColumnBuffer::uint_with_bitvec(values, bits)
+		}
+		ValueType::Decimal => {
+			let (values, bits) = run!(Decimal { .. });
+			ColumnBuffer::decimal_with_bitvec(values, bits)
+		}
 		other => {
 			return Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
@@ -391,150 +279,96 @@ fn compute<Op: BinaryOp>(
 		}
 	};
 
-	Ok(result_data)
+	Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result)]))
 }
 
-fn compute_big_int<Op: BinaryOp>(
-	ctx: &mut FunctionContext,
-	a: &ColumnBuffer,
-	b: &ColumnBuffer,
-	strategy: &Strategy,
-	row_count: usize,
-	input_bv: Option<&BitVec>,
-) -> Result<ColumnBuffer, RoutineError> {
-	let is_null_input = |i: usize| -> bool { input_bv.is_some_and(|bv| i < bv.len() && !bv.get(i)) };
-	let mut result: Vec<Int> = Vec::with_capacity(row_count);
-	let mut bitvec = Vec::with_capacity(row_count);
+fn compute_rows<T: SafeNum, Op: ArithOp>(
+	ctx: &FunctionContext,
+	promoted: &ValueType,
+	l: (&NumberContainer<T>, Option<&BitVec>),
+	r: (&NumberContainer<T>, Option<&BitVec>),
+	mode: &RowMode,
+	fallback: Option<(&NumberContainer<T>, Option<&BitVec>)>,
+	strict_msg: Option<&ColumnBuffer>,
+) -> Result<(Vec<T>, Vec<bool>), RoutineError> {
+	fn defined<T: IsNumber>(c: &NumberContainer<T>, bv: Option<&BitVec>, i: usize) -> bool {
+		c.is_defined(i) && bv.is_none_or(|b| b.get(i))
+	}
+
+	let (l, l_bv) = l;
+	let (r, r_bv) = r;
+	let row_count = l.len();
+	let mut values = Vec::with_capacity(row_count);
+	let mut bits = Vec::with_capacity(row_count);
+
 	for i in 0..row_count {
-		if is_null_input(i) || !a.is_defined(i) || !b.is_defined(i) {
-			result.push(Int::zero());
-			bitvec.push(false);
+		if !defined(l, l_bv, i) || !defined(r, r_bv, i) {
+			values.push(T::default());
+			bits.push(false);
 			continue;
 		}
-		let l = get_as_big_int(a, i);
-		let r = get_as_big_int(b, i);
-		match <Op as BinaryOp>::int_eval_checked(&l, &r) {
-			Some(v) => {
-				result.push(v);
-				bitvec.push(true);
-			}
-			None => match strategy {
-				Strategy::Saturate => {
-					let zero = Int::zero();
-					if l.0 >= zero.0 {
-						result.push(Int::from_i128(i128::MAX));
-					} else {
-						result.push(Int::from_i128(i128::MIN));
+		let lv = l.get(i).expect("defined row has a value");
+		let rv = r.get(i).expect("defined row has a value");
+
+		let value = match mode {
+			RowMode::Default => {
+				if Op::DIVISIVE && SafeDiv::is_zero(rv) {
+					return Err(TypeError::DivisionByZero {
+						target: promoted.clone(),
+						fragment: ctx.fragment.clone(),
 					}
-					bitvec.push(true);
+					.into());
 				}
-				Strategy::Zero | Strategy::Wrap => {
-					result.push(Int::zero());
-					bitvec.push(true);
+				match Op::checked(lv, rv) {
+					Some(v) => v,
+					None => {
+						return Err(TypeError::NumberOutOfRange {
+							target: promoted.clone(),
+							fragment: ctx.fragment.clone(),
+							descriptor: None,
+						}
+						.into());
+					}
 				}
-				Strategy::Null => {
-					result.push(Int::zero());
-					bitvec.push(false);
-				}
-				Strategy::Default(d) => {
-					result.push(get_as_big_int(d, i));
-					bitvec.push(true);
-				}
-				Strategy::Strict(msg) => return Err(make_strict_error(ctx, msg, i)),
-			},
-		}
-	}
-	Ok(ColumnBuffer::int_with_bitvec(result, bitvec))
-}
-
-fn compute_big_uint<Op: BinaryOp>(
-	ctx: &mut FunctionContext,
-	a: &ColumnBuffer,
-	b: &ColumnBuffer,
-	strategy: &Strategy,
-	row_count: usize,
-	input_bv: Option<&BitVec>,
-) -> Result<ColumnBuffer, RoutineError> {
-	let is_null_input = |i: usize| -> bool { input_bv.is_some_and(|bv| i < bv.len() && !bv.get(i)) };
-	let mut result: Vec<Uint> = Vec::with_capacity(row_count);
-	let mut bitvec = Vec::with_capacity(row_count);
-	for i in 0..row_count {
-		if is_null_input(i) || !a.is_defined(i) || !b.is_defined(i) {
-			result.push(Uint::zero());
-			bitvec.push(false);
-			continue;
-		}
-		let l = get_as_big_uint(a, i);
-		let r = get_as_big_uint(b, i);
-		match <Op as BinaryOp>::uint_eval_checked(&l, &r) {
-			Some(v) => {
-				result.push(v);
-				bitvec.push(true);
 			}
-			None => match strategy {
-				Strategy::Saturate => {
-					result.push(Uint::from(u128::MAX));
-					bitvec.push(true);
+			RowMode::Strict => match Op::checked(lv, rv) {
+				Some(v) => v,
+				None => {
+					return Err(make_strict_error(
+						ctx,
+						strict_msg.expect("strict mode carries a message column"),
+						i,
+					));
 				}
-				Strategy::Zero | Strategy::Wrap => {
-					result.push(Uint::zero());
-					bitvec.push(true);
-				}
-				Strategy::Null => {
-					result.push(Uint::zero());
-					bitvec.push(false);
-				}
-				Strategy::Default(d) => {
-					result.push(get_as_big_uint(d, i));
-					bitvec.push(true);
-				}
-				Strategy::Strict(msg) => return Err(make_strict_error(ctx, msg, i)),
 			},
-		}
+			RowMode::Saturate => Op::saturating(lv, rv),
+			RowMode::Wrap => Op::wrapping(lv, rv),
+			RowMode::Zero => Op::checked(lv, rv).unwrap_or_default(),
+			RowMode::None => match Op::checked(lv, rv) {
+				Some(v) => v,
+				None => {
+					values.push(T::default());
+					bits.push(false);
+					continue;
+				}
+			},
+			RowMode::Fallback => match Op::checked(lv, rv) {
+				Some(v) => v,
+				None => {
+					let (d, d_bv) = fallback.expect("fallback mode carries a fallback column");
+					if defined(d, d_bv, i) {
+						d.get(i).expect("defined row has a value").clone()
+					} else {
+						values.push(T::default());
+						bits.push(false);
+						continue;
+					}
+				}
+			},
+		};
+		values.push(value);
+		bits.push(true);
 	}
-	Ok(ColumnBuffer::uint_with_bitvec(result, bitvec))
-}
 
-fn compute_decimal<Op: BinaryOp>(
-	ctx: &mut FunctionContext,
-	a: &ColumnBuffer,
-	b: &ColumnBuffer,
-	strategy: &Strategy,
-	row_count: usize,
-	input_bv: Option<&BitVec>,
-) -> Result<ColumnBuffer, RoutineError> {
-	let is_null_input = |i: usize| -> bool { input_bv.is_some_and(|bv| i < bv.len() && !bv.get(i)) };
-	let mut result: Vec<Decimal> = Vec::with_capacity(row_count);
-	let mut bitvec = Vec::with_capacity(row_count);
-	for i in 0..row_count {
-		if is_null_input(i) || !a.is_defined(i) || !b.is_defined(i) {
-			result.push(Decimal::default());
-			bitvec.push(false);
-			continue;
-		}
-		let l = get_as_decimal(a, i);
-		let r = get_as_decimal(b, i);
-		match <Op as BinaryOp>::decimal_eval_checked(&l, &r) {
-			Some(v) => {
-				result.push(v);
-				bitvec.push(true);
-			}
-			None => match strategy {
-				Strategy::Saturate | Strategy::Zero | Strategy::Wrap => {
-					result.push(Decimal::default());
-					bitvec.push(true);
-				}
-				Strategy::Null => {
-					result.push(Decimal::default());
-					bitvec.push(false);
-				}
-				Strategy::Default(d) => {
-					result.push(get_as_decimal(d, i));
-					bitvec.push(true);
-				}
-				Strategy::Strict(msg) => return Err(make_strict_error(ctx, msg, i)),
-			},
-		}
-	}
-	Ok(ColumnBuffer::decimal_with_bitvec(result, bitvec))
+	Ok((values, bits))
 }

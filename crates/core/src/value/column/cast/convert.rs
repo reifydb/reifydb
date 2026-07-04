@@ -26,7 +26,7 @@ pub struct TargetConvert<'a> {
 }
 
 impl TargetConvert<'_> {
-	fn saturation_policy(&self) -> ColumnSaturationStrategy {
+	pub fn saturation_policy(&self) -> ColumnSaturationStrategy {
 		self.target
 			.and_then(|t| {
 				t.properties()

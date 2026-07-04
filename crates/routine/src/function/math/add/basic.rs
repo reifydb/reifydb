@@ -6,31 +6,34 @@ use reifydb_value::value::value_type::ValueType;
 
 use crate::{
 	function::{
-		math::arith::{dispatch::dispatch_strict, op::Add as AddOp},
+		math::arith::{
+			dispatch::{BasicStrategy, dispatch_two},
+			op::Add as AddOp,
+		},
 		support::coerce::promote_pair,
 	},
 	routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError},
 };
 
-pub struct AddStrict {
+pub struct Add {
 	info: RoutineInfo,
 }
 
-impl Default for AddStrict {
+impl Default for Add {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl AddStrict {
+impl Add {
 	pub fn new() -> Self {
 		Self {
-			info: RoutineInfo::new("math::add_strict"),
+			info: RoutineInfo::new("math::add"),
 		}
 	}
 }
 
-impl<'a> Routine<FunctionContext<'a>> for AddStrict {
+impl<'a> Routine<FunctionContext<'a>> for Add {
 	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
@@ -48,11 +51,11 @@ impl<'a> Routine<FunctionContext<'a>> for AddStrict {
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		dispatch_strict::<AddOp>(ctx, args)
+		dispatch_two::<AddOp>(ctx, args, BasicStrategy::Default)
 	}
 }
 
-impl Function for AddStrict {
+impl Function for Add {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
 	}

@@ -442,7 +442,7 @@ macro_rules! impl_safe_convert_float_demote {
 		impl SafeConvert<$dst> for $src {
 			fn checked_convert(self) -> Option<$dst> {
 				let demoted = self as $dst;
-				if self.is_finite() && self >= <$dst>::MIN as $src && self <= <$dst>::MAX as $src {
+				if self.is_finite() && demoted.is_finite() {
 					Some(demoted)
 				} else {
 					None

@@ -2,9 +2,15 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
-use reifydb_value::value::{container::temporal::TemporalContainer, date::Date, value_type::ValueType};
+use reifydb_value::{
+	util::bitvec::BitVec,
+	value::{container::number::NumberContainer, date::Date, value_type::ValueType},
+};
 
-use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
+use crate::{
+	function::support::coerce::{CoercePolicy, coerce_column},
+	routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError},
+};
 
 pub struct DateNew {
 	info: RoutineInfo,
@@ -24,41 +30,42 @@ impl DateNew {
 	}
 }
 
-fn extract_i32(data: &ColumnBuffer, i: usize) -> Option<i32> {
-	match data {
-		ColumnBuffer::Int1(c) => c.get(i).map(|&v| v as i32),
-		ColumnBuffer::Int2(c) => c.get(i).map(|&v| v as i32),
-		ColumnBuffer::Int4(c) => c.get(i).copied(),
-		ColumnBuffer::Int8(c) => c.get(i).map(|&v| v as i32),
-		ColumnBuffer::Int16(c) => c.get(i).map(|&v| v as i32),
-		ColumnBuffer::Uint1(c) => c.get(i).map(|&v| v as i32),
-		ColumnBuffer::Uint2(c) => c.get(i).map(|&v| v as i32),
-		ColumnBuffer::Uint4(c) => c.get(i).map(|&v| v as i32),
-		ColumnBuffer::Uint8(c) => c.get(i).map(|&v| v as i32),
-		ColumnBuffer::Uint16(c) => c.get(i).map(|&v| v as i32),
-		_ => None,
+const INTEGER_TYPES: [ValueType; 10] = [
+	ValueType::Int1,
+	ValueType::Int2,
+	ValueType::Int4,
+	ValueType::Int8,
+	ValueType::Int16,
+	ValueType::Uint1,
+	ValueType::Uint2,
+	ValueType::Uint4,
+	ValueType::Uint8,
+	ValueType::Uint16,
+];
+
+fn ensure_integer(ctx: &FunctionContext, data: &ColumnBuffer, argument_index: usize) -> Result<(), RoutineError> {
+	if !INTEGER_TYPES.contains(&data.get_type()) && data.get_type() != ValueType::Any {
+		return Err(RoutineError::FunctionInvalidArgumentType {
+			function: ctx.fragment.clone(),
+			argument_index,
+			expected: INTEGER_TYPES.to_vec(),
+			actual: data.get_type(),
+		});
 	}
+	Ok(())
 }
 
-fn is_integer_type(data: &ColumnBuffer) -> bool {
-	matches!(
-		data,
-		ColumnBuffer::Int1(_)
-			| ColumnBuffer::Int2(_)
-			| ColumnBuffer::Int4(_)
-			| ColumnBuffer::Int8(_)
-			| ColumnBuffer::Int16(_)
-			| ColumnBuffer::Uint1(_)
-			| ColumnBuffer::Uint2(_)
-			| ColumnBuffer::Uint4(_)
-			| ColumnBuffer::Uint8(_)
-			| ColumnBuffer::Uint16(_)
-	)
+fn defined(c: &NumberContainer<i32>, bv: Option<&BitVec>, i: usize) -> bool {
+	c.is_defined(i) && bv.is_none_or(|b| b.get(i))
 }
 
 impl<'a> Routine<FunctionContext<'a>> for DateNew {
 	fn info(&self) -> &RoutineInfo {
 		&self.info
+	}
+
+	fn propagates_options(&self) -> bool {
+		false
 	}
 
 	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
@@ -74,95 +81,59 @@ impl<'a> Routine<FunctionContext<'a>> for DateNew {
 			});
 		}
 
-		let year_col = &args[0];
-		let month_col = &args[1];
-		let day_col = &args[2];
-		let (year_data, _) = year_col.unwrap_option();
-		let (month_data, _) = month_col.unwrap_option();
-		let (day_data, _) = day_col.unwrap_option();
-		let row_count = year_data.len();
-
-		if !is_integer_type(year_data) {
-			return Err(RoutineError::FunctionInvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 0,
-				expected: vec![
-					ValueType::Int1,
-					ValueType::Int2,
-					ValueType::Int4,
-					ValueType::Int8,
-					ValueType::Int16,
-					ValueType::Uint1,
-					ValueType::Uint2,
-					ValueType::Uint4,
-					ValueType::Uint8,
-					ValueType::Uint16,
-				],
-				actual: year_data.get_type(),
-			});
-		}
-		if !is_integer_type(month_data) {
-			return Err(RoutineError::FunctionInvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 1,
-				expected: vec![
-					ValueType::Int1,
-					ValueType::Int2,
-					ValueType::Int4,
-					ValueType::Int8,
-					ValueType::Int16,
-					ValueType::Uint1,
-					ValueType::Uint2,
-					ValueType::Uint4,
-					ValueType::Uint8,
-					ValueType::Uint16,
-				],
-				actual: month_data.get_type(),
-			});
-		}
-		if !is_integer_type(day_data) {
-			return Err(RoutineError::FunctionInvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 2,
-				expected: vec![
-					ValueType::Int1,
-					ValueType::Int2,
-					ValueType::Int4,
-					ValueType::Int8,
-					ValueType::Int16,
-					ValueType::Uint1,
-					ValueType::Uint2,
-					ValueType::Uint4,
-					ValueType::Uint8,
-					ValueType::Uint16,
-				],
-				actual: day_data.get_type(),
-			});
+		for i in 0..3 {
+			let (data, _) = args[i].unwrap_option();
+			ensure_integer(ctx, data, i)?;
 		}
 
-		let mut container = TemporalContainer::with_capacity(row_count);
+		let year_cast = coerce_column(ctx, &args[0], ValueType::Int4, CoercePolicy::Error)?;
+		let month_cast = coerce_column(ctx, &args[1], ValueType::Int4, CoercePolicy::Error)?;
+		let day_cast = coerce_column(ctx, &args[2], ValueType::Int4, CoercePolicy::Error)?;
+
+		let (year_inner, year_bv) = year_cast.unwrap_option();
+		let (month_inner, month_bv) = month_cast.unwrap_option();
+		let (day_inner, day_bv) = day_cast.unwrap_option();
+		let (ColumnBuffer::Int4(years), ColumnBuffer::Int4(months), ColumnBuffer::Int4(days)) =
+			(year_inner, month_inner, day_inner)
+		else {
+			unreachable!()
+		};
+
+		let row_count = years.len();
+		let mut values = Vec::with_capacity(row_count);
+		let mut bits = Vec::with_capacity(row_count);
 
 		for i in 0..row_count {
-			let year = extract_i32(year_data, i);
-			let month = extract_i32(month_data, i);
-			let day = extract_i32(day_data, i);
+			if !defined(years, year_bv, i) || !defined(months, month_bv, i) || !defined(days, day_bv, i) {
+				values.push(Date::default());
+				bits.push(false);
+				continue;
+			}
+			let y = *years.get(i).expect("defined row has a value");
+			let m = *months.get(i).expect("defined row has a value");
+			let d = *days.get(i).expect("defined row has a value");
 
-			match (year, month, day) {
-				(Some(y), Some(m), Some(d)) => {
-					if m >= 1 && d >= 1 {
-						match Date::new(y, m as u32, d as u32) {
-							Some(date) => container.push(date),
-							None => container.push_default(),
-						}
-					} else {
-						container.push_default();
-					}
+			let date = if m >= 1 && d >= 1 {
+				Date::new(y, m as u32, d as u32)
+			} else {
+				None
+			};
+			match date {
+				Some(date) => {
+					values.push(date);
+					bits.push(true);
 				}
-				_ => container.push_default(),
+				None => {
+					return Err(RoutineError::FunctionExecutionFailed {
+						function: ctx.fragment.clone(),
+						reason: format!("invalid date: {}-{}-{}", y, m, d),
+					});
+				}
 			}
 		}
 
-		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::Date(container))]))
+		let result = ColumnBuffer::date_with_bitvec(values, bits);
+		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), result)]))
 	}
 }
 

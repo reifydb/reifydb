@@ -27,7 +27,7 @@ use crate::{
 		arith::{add::add_columns, div::div_columns, mul::mul_columns, rem::rem_columns, sub::sub_columns},
 		call::call_builtin,
 		compare::{Equal, GreaterThan, GreaterThanEqual, LessThan, LessThanEqual, NotEqual, compare_columns},
-		constant::{constant_value, constant_value_of},
+		constant::constant_value,
 		context::EvalContext,
 		logic::{execute_logical_op, try_short_circuit_and, try_short_circuit_or},
 		lookup::column_lookup,
@@ -593,13 +593,14 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			if let Expression::Constant(const_expr) = e.expression.as_ref() {
 				let const_expr = const_expr.clone();
 				let target_type = e.to.ty.clone();
+				let inner_fragment = e.expression.full_fragment_owned();
 				CompiledExpr::new(move |ctx| {
 					let row_count = ctx.take.unwrap_or(ctx.row_count);
 					let data = constant_value(&const_expr, row_count)?;
 					let casted = if data.get_type() == target_type {
 						data
 					} else {
-						constant_value_of(&const_expr, target_type.clone(), row_count)?
+						apply_cast(ctx, &data, &target_type, &inner_fragment)?
 					};
 					Ok(ColumnWithName::new(label.clone(), casted))
 				})
@@ -609,17 +610,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 				let inner_fragment = e.expression.full_fragment_owned();
 				CompiledExpr::new(move |ctx| {
 					let column = inner.execute(ctx)?;
-					let frag = inner_fragment.clone();
-					let casted = cast_column_data(ctx, column.data(), target_type.clone(), &|| {
-						inner_fragment.clone()
-					})
-					.map_err(|e| {
-						Error::from(CastError::InvalidNumber {
-							fragment: frag,
-							target: target_type.clone(),
-							cause: e.diagnostic(),
-						})
-					})?;
+					let casted = apply_cast(ctx, column.data(), &target_type, &inner_fragment)?;
 					Ok(ColumnWithName::new(label.clone(), casted))
 				})
 			}
@@ -1176,4 +1167,41 @@ fn execute_projection_multi(ctx: &EvalContext, expressions: &[CompiledExpr]) -> 
 	}
 
 	Ok(result)
+}
+
+fn apply_cast(ctx: &EvalContext, data: &ColumnBuffer, target: &ValueType, fragment: &Fragment) -> Result<ColumnBuffer> {
+	cast_column_data(ctx, data, target.clone(), &|| fragment.clone())
+		.map_err(|e| wrap_cast_error(e, fragment.clone(), target))
+}
+
+fn wrap_cast_error(err: Error, fragment: Fragment, target: &ValueType) -> Error {
+	if err.0.code.starts_with("CAST_") {
+		return err;
+	}
+	let cause = err.diagnostic();
+	let wrapped = if target.is_bool() {
+		CastError::InvalidBoolean {
+			fragment,
+			cause,
+		}
+	} else if target.is_temporal() {
+		CastError::InvalidTemporal {
+			fragment,
+			target: target.clone(),
+			cause,
+		}
+	} else if target.is_uuid() || *target == ValueType::IdentityId {
+		CastError::InvalidUuid {
+			fragment,
+			target: target.clone(),
+			cause,
+		}
+	} else {
+		CastError::InvalidNumber {
+			fragment,
+			target: target.clone(),
+			cause,
+		}
+	};
+	Error::from(wrapped)
 }

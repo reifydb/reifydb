@@ -1,26 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub mod number;
 pub mod temporal;
-pub mod text;
-pub mod uuid;
 
-use number::NumberParser;
 use reifydb_core::value::column::buffer::ColumnBuffer;
 use reifydb_rql::expression::ConstantExpression;
 use reifydb_value::{
-	error::TypeError,
 	return_error,
 	value::{
 		boolean::parse::parse_bool,
 		decimal::parse::parse_decimal,
+		int::Int,
 		number::parse::{parse_primitive_int, parse_primitive_uint},
 		value_type::ValueType,
 	},
 };
 use temporal::TemporalParser;
-use text::TextParser;
 
 use crate::Result;
 
@@ -71,8 +66,12 @@ pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> Res
 				}
 			}
 
-			return match parse_primitive_uint::<u128>(fragment.clone()) {
-				Ok(v) => Ok(ColumnBuffer::uint16(vec![v; row_count])),
+			if let Ok(v) = parse_primitive_uint::<u128>(fragment.clone()) {
+				return Ok(ColumnBuffer::uint16(vec![v; row_count]));
+			}
+
+			return match parse_primitive_int::<Int>(fragment.clone()) {
+				Ok(v) => Ok(ColumnBuffer::int(vec![v; row_count])),
 				Err(err) => {
 					return_error!(err.diagnostic());
 				}
@@ -87,70 +86,5 @@ pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> Res
 		ConstantExpression::None {
 			..
 		} => ColumnBuffer::none_typed(ValueType::Any, row_count),
-	})
-}
-
-pub(crate) fn constant_value_of(
-	expr: &ConstantExpression,
-	target: ValueType,
-	row_count: usize,
-) -> Result<ColumnBuffer> {
-	Ok(match (expr, target) {
-		(
-			ConstantExpression::Number {
-				fragment,
-			},
-			target,
-		) => NumberParser::from_number(fragment.clone(), target, row_count)?,
-		(
-			ConstantExpression::Text {
-				fragment,
-			},
-			target,
-		) if target.is_bool()
-			|| target.is_number() || target.is_temporal()
-			|| target.is_uuid() || target == ValueType::IdentityId =>
-		{
-			TextParser::from_text(fragment.clone(), target, row_count)?
-		}
-		(
-			ConstantExpression::Temporal {
-				fragment,
-			},
-			target,
-		) if target.is_temporal() => TemporalParser::from_temporal(fragment.clone(), target, row_count)?,
-
-		(
-			ConstantExpression::None {
-				..
-			},
-			target,
-		) => ColumnBuffer::none_typed(target, row_count),
-
-		(_, target) => {
-			let shape_type = match expr {
-				ConstantExpression::Bool {
-					..
-				} => ValueType::Boolean,
-				ConstantExpression::Number {
-					..
-				} => ValueType::Float8,
-				ConstantExpression::Text {
-					..
-				} => ValueType::Utf8,
-				ConstantExpression::Temporal {
-					..
-				} => ValueType::DateTime,
-				ConstantExpression::None {
-					..
-				} => ValueType::Option(Box::new(ValueType::Any)),
-			};
-			return Err(TypeError::UnsupportedCast {
-				from: shape_type,
-				to: target,
-				fragment: expr.full_fragment_owned(),
-			}
-			.into());
-		}
 	})
 }

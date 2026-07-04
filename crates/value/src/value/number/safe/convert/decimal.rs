@@ -60,10 +60,11 @@ macro_rules! impl_safe_convert_decimal_to_float {
                     if !f.is_finite() {
                         return None;
                     }
-                    if f < <$dst>::MIN as f64 || f > <$dst>::MAX as f64 {
+                    let converted = f as $dst;
+                    if !converted.is_finite() {
                         return None;
                     }
-                    Some(f as $dst)
+                    Some(converted)
                 }
 
                 fn saturating_convert(self) -> $dst {
@@ -286,16 +287,18 @@ pub mod tests {
 		}
 
 		#[test]
-		fn checked_convert_rejects_value_just_above_f32_max() {
-			// 3.4028235e38 (the shortest decimal that rounds to f32::MAX) is
-			// actually slightly larger than f32::MAX as an exact decimal, so it
-			// must be rejected when caller asked for the strict (Error) policy.
-			// This mirrors the older f64 -> f32 demote contract used by INSERT
-			// against a Float4 column with `saturation: error`.
+		fn checked_convert_rounds_value_just_above_f32_max_to_max() {
+			// 3.4028235e38 is the shortest decimal that rounds to f32::MAX; as
+			// an exact decimal it is slightly larger than f32::MAX, but IEEE
+			// round-to-nearest maps it back to f32::MAX. The printed form of
+			// f32::MAX must round-trip, so checked conversion accepts anything
+			// that rounds into range and rejects only true overflow (see
+			// checked_convert_rejects_value_above_f32_max). Same contract as
+			// parsing the equivalent string and the f64 -> f32 demote.
 			let bd = BigDecimal::from_str("3.4028235e38").unwrap();
 			let dec = Decimal::new(bd);
 			let out: Option<f32> = dec.checked_convert();
-			assert_eq!(out, None);
+			assert_eq!(out, Some(f32::MAX));
 		}
 
 		#[test]

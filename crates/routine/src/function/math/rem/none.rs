@@ -5,10 +5,12 @@ use reifydb_core::value::column::columns::Columns;
 use reifydb_value::value::value_type::ValueType;
 
 use crate::{
-	function::math::arith::{
-		cast::promote_two,
-		dispatch::{BasicStrategy, dispatch_two},
-		op::Rem,
+	function::{
+		math::arith::{
+			dispatch::{BasicStrategy, dispatch_two},
+			op::Rem as RemOp,
+		},
+		support::coerce::promote_pair,
 	},
 	routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError},
 };
@@ -36,16 +38,20 @@ impl<'a> Routine<FunctionContext<'a>> for RemNone {
 		&self.info
 	}
 
+	fn propagates_options(&self) -> bool {
+		false
+	}
+
 	fn return_type(&self, input_types: &[ValueType]) -> ValueType {
 		if input_types.len() >= 2 {
-			promote_two(input_types[0].clone(), input_types[1].clone())
+			promote_pair(input_types[0].clone(), input_types[1].clone())
 		} else {
 			input_types.first().cloned().unwrap_or(ValueType::Float8)
 		}
 	}
 
 	fn execute(&self, ctx: &mut FunctionContext<'a>, args: &Columns) -> Result<Columns, RoutineError> {
-		dispatch_two::<Rem>(ctx, args, BasicStrategy::Null)
+		dispatch_two::<RemOp>(ctx, args, BasicStrategy::None)
 	}
 }
 

@@ -4,11 +4,8 @@
 use std::sync::LazyLock;
 
 use reifydb_core::{
-	interface::{
-		catalog::property::{ColumnPropertyKind, ColumnSaturationStrategy, DEFAULT_COLUMN_SATURATION_STRATEGY},
-		evaluate::TargetColumn,
-	},
-	value::column::columns::Columns,
+	interface::{catalog::property::ColumnSaturationStrategy, evaluate::TargetColumn},
+	value::column::{cast::convert::TargetConvert, columns::Columns},
 };
 use reifydb_extension::transform::context::TransformContext;
 use reifydb_routine::routine::registry::Routines;
@@ -116,18 +113,10 @@ impl<'a> EvalContext<'a> {
 	}
 
 	pub(crate) fn saturation_policy(&self) -> ColumnSaturationStrategy {
-		self.target
-			.as_ref()
-			.and_then(|t| {
-				t.properties()
-					.into_iter()
-					.map(|p| {
-						let ColumnPropertyKind::Saturation(policy) = p;
-						policy
-					})
-					.next()
-			})
-			.unwrap_or(DEFAULT_COLUMN_SATURATION_STRATEGY.clone())
+		TargetConvert {
+			target: self.target.as_ref(),
+		}
+		.saturation_policy()
 	}
 }
 
