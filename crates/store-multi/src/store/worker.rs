@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::{collections::HashMap, mem};
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
@@ -25,8 +25,10 @@ use reifydb_runtime::{
 use reifydb_value::value::duration::Duration;
 use tracing::{Span, debug, error, instrument};
 
-use super::drop::find_keys_to_drop;
-use crate::tier::{TierStorage, commit::buffer::MultiCommitBufferTier};
+use super::{drop::find_keys_to_drop, pending::PendingDrops};
+use crate::tier::{
+	TierStorage, commit::buffer::MultiCommitBufferTier, persistent::MultiPersistentTier, read::MultiReadBufferTier,
+};
 
 #[derive(Debug, Clone)]
 pub struct DropWorkerConfig {
@@ -51,10 +53,17 @@ pub struct DropActor {
 	event_bus: EventBus,
 	config: DropWorkerConfig,
 	clock: Clock,
+	persistent: Option<MultiPersistentTier>,
+	read: Option<MultiReadBufferTier>,
+	pending_drops: PendingDrops,
 }
 
 pub struct DropActorState {
 	pending_requests: Vec<DropRequest>,
+
+	pending_evictions: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>>,
+
+	pending_eviction_keys: usize,
 
 	last_flush: Instant,
 
@@ -69,43 +78,81 @@ impl DropActor {
 		storage: MultiCommitBufferTier,
 		event_bus: EventBus,
 		clock: Clock,
+		persistent: Option<MultiPersistentTier>,
+		read: Option<MultiReadBufferTier>,
+		pending_drops: PendingDrops,
 	) -> Self {
 		Self {
 			storage,
 			event_bus,
 			config,
 			clock,
+			persistent,
+			read,
+			pending_drops,
 		}
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn spawn(
 		spawner: &ActorSpawner,
 		config: DropWorkerConfig,
 		storage: MultiCommitBufferTier,
 		event_bus: EventBus,
 		clock: Clock,
+		persistent: Option<MultiPersistentTier>,
+		read: Option<MultiReadBufferTier>,
+		pending_drops: PendingDrops,
 	) -> ActorRef<DropMessage> {
-		let actor = Self::new(config, storage, event_bus, clock);
+		let actor = Self::new(config, storage, event_bus, clock, persistent, read, pending_drops);
 		spawner.spawn_system("drop-worker", actor).actor_ref().clone()
 	}
 
 	fn maybe_flush(&self, state: &mut DropActorState) {
-		if state.pending_requests.len() >= self.config.batch_size {
+		if state.pending_requests.len() >= self.config.batch_size
+			|| state.pending_eviction_keys >= self.config.batch_size
+		{
 			self.flush(state);
 		}
 	}
 
 	fn flush(&self, state: &mut DropActorState) {
-		if state.pending_requests.is_empty() {
+		if state.pending_requests.is_empty() && state.pending_evictions.is_empty() {
 			return;
 		}
 
-		Self::process_batch(&self.storage, &mut state.pending_requests, &self.event_bus);
+		if !state.pending_requests.is_empty() {
+			Self::process_batch(&self.storage, &mut state.pending_requests, &self.event_bus);
+		}
+		self.process_evictions(state);
 		state.last_flush = self.clock.instant();
 
 		state.flush_count += 1;
 		if state.flush_count.is_multiple_of(100) {
 			self.storage.maintenance();
+		}
+	}
+
+	#[instrument(name = "drop::process_evictions", level = "debug", skip_all, fields(key_count = state.pending_eviction_keys))]
+	fn process_evictions(&self, state: &mut DropActorState) {
+		if state.pending_evictions.is_empty() {
+			return;
+		}
+		let evictions = mem::take(&mut state.pending_evictions);
+		state.pending_eviction_keys = 0;
+		for (table, keys) in evictions {
+			if let Some(persistent) = &self.persistent
+				&& let Err(e) = persistent.delete_keys_through(table, &keys)
+			{
+				error!(?table, error = %e, "Drop actor failed to evict persisted operator rows");
+				continue;
+			}
+			for (key, version) in &keys {
+				if let Some(read) = &self.read {
+					read.remove_dropped_through(key, *version);
+				}
+				self.pending_drops.settle(key, *version);
+			}
 		}
 	}
 
@@ -165,6 +212,8 @@ impl Actor for DropActor {
 
 		DropActorState {
 			pending_requests: Vec::with_capacity(self.config.batch_size),
+			pending_evictions: HashMap::new(),
+			pending_eviction_keys: 0,
 			last_flush: self.clock.instant(),
 			_timer_handle: Some(timer_handle),
 			flush_count: 0,
@@ -186,8 +235,16 @@ impl Actor for DropActor {
 				state.pending_requests.extend(requests);
 				self.maybe_flush(state);
 			}
+			DropMessage::PersistentEvict {
+				table,
+				keys,
+			} => {
+				state.pending_eviction_keys += keys.len();
+				state.pending_evictions.entry(table).or_default().extend(keys);
+				self.maybe_flush(state);
+			}
 			DropMessage::Tick => {
-				if !state.pending_requests.is_empty()
+				if (!state.pending_requests.is_empty() || !state.pending_evictions.is_empty())
 					&& state.last_flush.elapsed() >= self.config.flush_interval.to_std()
 				{
 					self.flush(state);

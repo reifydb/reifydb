@@ -57,13 +57,23 @@ impl MultiReadBufferTier {
 				}
 				return VersionedGetResult::NotFound;
 			};
-			if entry.version > version {
+			let served = if entry.version <= version {
+				Some((entry.version, entry.value.clone()))
+			} else {
+				match &entry.previous {
+					Some((prev_version, prev_value)) if *prev_version <= version => {
+						Some((*prev_version, prev_value.clone()))
+					}
+					_ => None,
+				}
+			};
+			let Some((served_version, served_value)) = served else {
 				return VersionedGetResult::NotFound;
-			}
-			let result = match &entry.value {
+			};
+			let result = match served_value {
 				Some(value) => VersionedGetResult::Value {
-					value: value.clone(),
-					version: entry.version,
+					value,
+					version: served_version,
 				},
 				None => VersionedGetResult::Tombstone,
 			};
@@ -81,18 +91,28 @@ impl MultiReadBufferTier {
 		let next = shard.next_tick;
 		match shard.pages.get_mut(&page_id) {
 			Some(page) => {
-				if let Some(existing) = page.entries.get(&key)
-					&& existing.version > version
-				{
-					return;
+				match page.entries.get_mut(&key) {
+					Some(existing) if existing.version > version => return,
+					Some(existing) if existing.version == version => {
+						existing.value = value;
+						existing.previous = None;
+					}
+					Some(existing) => {
+						existing.previous = Some((existing.version, existing.value.take()));
+						existing.version = version;
+						existing.value = value;
+					}
+					None => {
+						page.entries.insert(
+							key,
+							PageEntry {
+								version,
+								value,
+								previous: None,
+							},
+						);
+					}
 				}
-				page.entries.insert(
-					key,
-					PageEntry {
-						version,
-						value,
-					},
-				);
 				page.hot = true;
 				page.tick = next;
 			}
@@ -103,6 +123,7 @@ impl MultiReadBufferTier {
 					PageEntry {
 						version,
 						value,
+						previous: None,
 					},
 				);
 				shard.pages.insert(
@@ -149,6 +170,30 @@ impl MultiReadBufferTier {
 		let now_empty_incomplete = match shard.pages.get_mut(&page_id) {
 			Some(page) => {
 				page.entries.remove(key);
+				page.entries.is_empty() && !page.range_complete
+			}
+			None => false,
+		};
+		if now_empty_incomplete {
+			shard.pages.remove(&page_id);
+		}
+	}
+
+	pub fn remove_dropped_through(&self, key: &EncodedKey, through: CommitVersion) {
+		let page_id = page_of(key, self.bucket_shift());
+		let mut shard = self.shard_for(&page_id).lock();
+		if let Some(dirty) = shard.warming.get_mut(&page_id) {
+			*dirty = true;
+		}
+		let now_empty_incomplete = match shard.pages.get_mut(&page_id) {
+			Some(page) => {
+				if let Some(entry) = page.entries.get_mut(key) {
+					if entry.version <= through {
+						page.entries.remove(key);
+					} else if entry.previous.as_ref().is_some_and(|(v, _)| *v <= through) {
+						entry.previous = None;
+					}
+				}
 				page.entries.is_empty() && !page.range_complete
 			}
 			None => false,

@@ -110,6 +110,12 @@ impl MultiPersistentTier {
 			Self::Sqlite(s) => s.load_range_consistent(table, start, end, read, limit),
 		}
 	}
+
+	pub fn delete_keys_through(&self, table: EntryKind, keys: &[(EncodedKey, CommitVersion)]) -> Result<u64> {
+		match self {
+			Self::Sqlite(s) => s.delete_keys_through(table, keys),
+		}
+	}
 }
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
@@ -143,6 +149,10 @@ impl MultiPersistentTier {
 		_read: CommitVersion,
 		_limit: Option<usize>,
 	) -> Result<Vec<RawEntry>> {
+		match *self {}
+	}
+
+	pub fn delete_keys_through(&self, _table: EntryKind, _keys: &[(EncodedKey, CommitVersion)]) -> Result<u64> {
 		match *self {}
 	}
 }

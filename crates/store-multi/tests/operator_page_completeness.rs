@@ -262,3 +262,178 @@ fn oversized_node_page_never_marks_complete_and_keeps_falling_through() {
 		"an oversized node must keep reading through to SQLite instead of claiming absence"
 	);
 }
+
+#[test]
+fn pinned_reader_between_versions_is_served_from_the_previous_slot() {
+	// The production residual: a deferred dispatch pinned at v10 reads a key the
+	// tick just rewrote at v20. The commit-time write-through supersedes the cached
+	// entry in place, keeping v5 in the previous slot, so the read is answered from
+	// memory. Proven by bypass-deleting the SQLite row: without the previous slot
+	// this read has nowhere to fall through to and would come back empty.
+	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+	let k = state_key(7, "hot");
+	persistent_only_set(&store, &k, 5, "old");
+
+	assert_eq!(get(&store, &state_key(7, "warm-trigger"), 9), None);
+	assert_eq!(get(&store, &k, 9).as_deref(), Some(b"old".as_slice()));
+
+	MultiVersionCommit::commit(
+		&store,
+		cow_vec![Delta::Set {
+			key: k.clone(),
+			row: EncodedRow(CowVec::new(b"new".to_vec())),
+		}],
+		CommitVersion(20),
+	)
+	.unwrap();
+
+	persistent_only_delete(&store, &k);
+
+	assert_eq!(
+		get(&store, &k, 10).as_deref(),
+		Some(b"old".as_slice()),
+		"a reader pinned between the persisted and the freshly committed version must be served the previous slot from memory"
+	);
+	assert_eq!(get(&store, &k, 25).as_deref(), Some(b"new".as_slice()));
+	assert_eq!(get(&store, &k, 4), None, "a reader below both versions must see nothing");
+}
+
+fn persistent_row(store: &StandardMultiStore, k: &EncodedKey) -> Option<(u64, Vec<u8>)> {
+	let persistent = store.persistent().expect("persistent tier configured");
+	match persistent.get(classify_key(k), k.as_ref(), CommitVersion(u64::MAX)).unwrap() {
+		reifydb_store_multi::tier::VersionedGetResult::Value {
+			value,
+			version,
+		} => Some((version.0, value.to_vec())),
+		_ => None,
+	}
+}
+
+fn wait_until_persistent_gone(store: &StandardMultiStore, k: &EncodedKey) {
+	let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+	while persistent_row(store, k).is_some() {
+		assert!(
+			std::time::Instant::now() < deadline,
+			"the drop actor did not purge the persisted row within the deadline"
+		);
+		std::thread::sleep(std::time::Duration::from_millis(10));
+	}
+}
+
+#[test]
+fn operator_drop_masks_immediately_and_purges_persistence_in_the_background() {
+	// A drop leaves the commit buffer clean at once and masks the stale persisted
+	// row with a read-cache tombstone, so readers at or above the drop version see
+	// the key gone from the moment the commit returns while the commit path itself
+	// performs no SQLite work. The drop actor purges the row within its flush
+	// interval. Completeness survives both the mask and the purge (smuggle proof).
+	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+	let k1 = state_key(7, "a");
+	let k2 = state_key(7, "b");
+	persistent_only_set(&store, &k1, 5, "v5-a");
+	persistent_only_set(&store, &k2, 5, "v5-b");
+
+	assert_eq!(get(&store, &state_key(7, "warm-trigger"), 9), None);
+
+	MultiVersionCommit::commit(
+		&store,
+		cow_vec![Delta::Drop {
+			key: k1.clone(),
+		}],
+		CommitVersion(8),
+	)
+	.unwrap();
+
+	assert_eq!(get(&store, &k1, 9), None, "the dropped key must read as gone immediately after commit");
+	assert!(
+		persistent_row(&store, &k1).is_some(),
+		"the commit path must not touch SQLite; the stale row is masked, not deleted"
+	);
+
+	wait_until_persistent_gone(&store, &k1);
+
+	assert_eq!(get(&store, &k1, 9), None);
+	assert_eq!(get(&store, &k2, 9).as_deref(), Some(b"v5-b".as_slice()));
+
+	let smuggled = state_key(7, "smuggled-purge");
+	persistent_only_set(&store, &smuggled, 5, "hidden");
+	assert_eq!(get(&store, &smuggled, 9), None, "the page must still be complete after the purge");
+}
+
+#[test]
+fn drop_then_recreate_survives_the_background_purge() {
+	// The race the version guard exists for: a key is dropped at v8, recreated at
+	// v10, and the recreated row reaches SQLite (direct write standing in for the
+	// flush) before the deferred purge runs. The purge is bounded by the drop
+	// version and must leave the newer row alone; the mask tombstone lives on in
+	// the previous slot, so a reader pinned between drop and recreate still sees
+	// the key gone. The sentinel key shares the drop commit, so its disappearance
+	// proves the purge batch containing both keys has been processed.
+	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+	let k = state_key(7, "recreated");
+	let sentinel = state_key(7, "sentinel");
+	persistent_only_set(&store, &k, 5, "old");
+	persistent_only_set(&store, &sentinel, 5, "old");
+
+	assert_eq!(get(&store, &state_key(7, "warm-trigger"), 9), None);
+
+	MultiVersionCommit::commit(
+		&store,
+		cow_vec![
+			Delta::Drop {
+				key: k.clone(),
+			},
+			Delta::Drop {
+				key: sentinel.clone(),
+			}
+		],
+		CommitVersion(8),
+	)
+	.unwrap();
+	MultiVersionCommit::commit(
+		&store,
+		cow_vec![Delta::Set {
+			key: k.clone(),
+			row: EncodedRow(CowVec::new(b"new".to_vec())),
+		}],
+		CommitVersion(10),
+	)
+	.unwrap();
+
+	assert_eq!(get(&store, &k, 9), None, "a reader pinned between drop and recreate sees the mask");
+	assert_eq!(get(&store, &k, 15).as_deref(), Some(b"new".as_slice()));
+
+	persistent_only_set(&store, &k, 10, "new");
+
+	wait_until_persistent_gone(&store, &sentinel);
+
+	assert_eq!(
+		persistent_row(&store, &k),
+		Some((10, b"new".to_vec())),
+		"the deferred purge must not remove a row newer than the drop version"
+	);
+	assert_eq!(get(&store, &k, 15).as_deref(), Some(b"new".as_slice()));
+}
+
+#[test]
+fn tombstone_purge_is_bounded_by_the_drop_version() {
+	// The purge primitive itself: deleting through the drop version must leave a
+	// newer row alone (a tombstone flushed while a later recreate is already
+	// persisted must not destroy the recreate).
+	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+	let persistent = store.persistent().expect("persistent tier configured");
+	let k = state_key(7, "guarded");
+	persistent_only_set(&store, &k, 10, "newer");
+
+	let purged = persistent
+		.delete_keys_through(classify_key(&k), std::slice::from_ref(&(k.clone(), CommitVersion(8))))
+		.unwrap();
+	assert_eq!(purged, 0, "a row newer than the purge bound must survive");
+	assert_eq!(persistent_row(&store, &k), Some((10, b"newer".to_vec())));
+
+	let purged = persistent
+		.delete_keys_through(classify_key(&k), std::slice::from_ref(&(k.clone(), CommitVersion(10))))
+		.unwrap();
+	assert_eq!(purged, 1, "a row at the purge bound is dropped state and must go");
+	assert_eq!(persistent_row(&store, &k), None);
+}

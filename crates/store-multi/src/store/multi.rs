@@ -79,20 +79,33 @@ impl StandardMultiStore {
 			return Ok(found);
 		}
 		if let Some(found) = self.get_probe_read(key, version) {
-			return Ok(found);
+			return Ok(self.unmask_dropped(key, found, version));
 		}
 		if matches!(table, EntryKind::Operator(_))
 			&& let Some(read) = &self.read
 			&& self.warm_operator_page(read.page_of_key(key))?
 			&& let Some(found) = self.get_probe_read(key, version)
 		{
-			return Ok(found);
+			return Ok(self.unmask_dropped(key, found, version));
 		}
 		if let Some(found) = self.get_probe_persistent(table, key, version)? {
-			return Ok(found);
+			return Ok(self.unmask_dropped(key, found, version));
 		}
 
 		Ok(None)
+	}
+
+	#[inline]
+	fn unmask_dropped(
+		&self,
+		key: &EncodedKey,
+		found: Option<MultiVersionRow>,
+		read: CommitVersion,
+	) -> Option<MultiVersionRow> {
+		match found {
+			Some(row) if self.pending_drops.masks(key, row.version, read) => None,
+			other => other,
+		}
 	}
 }
 
@@ -239,7 +252,7 @@ impl MultiVersionCommit for StandardMultiStore {
 			return Ok(());
 		}
 
-		self.evict_operator_state(&operator_drops)?;
+		self.evict_operator_state(&operator_drops, version)?;
 		self.emit_commit_metrics(classified.writes, classified.deletes, version);
 
 		Ok(())
@@ -450,9 +463,13 @@ impl StandardMultiStore {
 					value,
 					version: v,
 				} => {
-					read_aligned[i] = VersionedGetResult::Value {
-						value,
-						version: v,
+					read_aligned[i] = if self.pending_drops.masks(table_keys[i], v, version) {
+						VersionedGetResult::Tombstone
+					} else {
+						VersionedGetResult::Value {
+							value,
+							version: v,
+						}
 					};
 				}
 				VersionedGetResult::Tombstone => {
@@ -514,6 +531,14 @@ impl StandardMultiStore {
 		{
 			let persistent_results = persistent.get_many(table, &persistent_slices, version)?;
 			for (slot, result) in persistent_idx.into_iter().zip(persistent_results) {
+				if let VersionedGetResult::Value {
+					version: v,
+					..
+				} = &result && self.pending_drops.masks(table_keys[slot], *v, version)
+				{
+					persistent_aligned[slot] = VersionedGetResult::Tombstone;
+					continue;
+				}
 				if let (
 					Some(read),
 					VersionedGetResult::Value {
@@ -626,15 +651,90 @@ impl StandardMultiStore {
 		Ok(true)
 	}
 
-	fn evict_operator_state(&self, drops: &[(EntryKind, EncodedKey)]) -> Result<()> {
+	fn evict_operator_state(&self, drops: &[(EntryKind, EncodedKey)], version: CommitVersion) -> Result<()> {
 		if drops.is_empty() {
 			return Ok(());
 		}
 
+		self.record_pending_drops(drops, version);
 		self.evict_drops_from_commit(drops)?;
-		self.delete_drops_from_persistent(drops)?;
-		self.invalidate_drops_in_read(drops);
+		self.remove_drops_from_read(drops);
+		if !self.send_persistent_evictions(drops, version) {
+			self.evict_drops_from_persistent_sync(drops, version)?;
+		}
 
+		Ok(())
+	}
+
+	#[inline]
+	fn record_pending_drops(&self, drops: &[(EntryKind, EncodedKey)], version: CommitVersion) {
+		if self.persistent.is_none() {
+			return;
+		}
+		for (_, key) in drops {
+			self.pending_drops.record(key.clone(), version);
+		}
+	}
+
+	#[inline]
+	fn remove_drops_from_read(&self, drops: &[(EntryKind, EncodedKey)]) {
+		let Some(read) = &self.read else {
+			return;
+		};
+		for (_, key) in drops {
+			read.remove_dropped(key);
+		}
+	}
+
+	#[inline]
+	fn send_persistent_evictions(&self, drops: &[(EntryKind, EncodedKey)], version: CommitVersion) -> bool {
+		if self.persistent.is_none() {
+			return true;
+		}
+		let Some(actor) = &self.drop_actor else {
+			return false;
+		};
+		let mut by_table: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
+		for (table, key) in drops {
+			by_table.entry(*table).or_default().push((key.clone(), version));
+		}
+		for (table, keys) in by_table {
+			if actor.send_blocking(DropMessage::PersistentEvict {
+				table,
+				keys,
+			})
+			.is_err()
+			{
+				warn!(?table, "Failed to send persistent eviction batch, evicting synchronously");
+				return false;
+			}
+		}
+		true
+	}
+
+	#[inline]
+	fn evict_drops_from_persistent_sync(
+		&self,
+		drops: &[(EntryKind, EncodedKey)],
+		version: CommitVersion,
+	) -> Result<()> {
+		if let Some(persistent) = &self.persistent {
+			let mut by_table: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
+			for (table, key) in drops {
+				by_table.entry(*table).or_default().push((key.clone(), version));
+			}
+			for (table, keys) in by_table {
+				persistent.delete_keys_through(table, &keys)?;
+			}
+		}
+		if let Some(read) = &self.read {
+			for (_, key) in drops {
+				read.remove_dropped_through(key, version);
+			}
+		}
+		for (_, key) in drops {
+			self.pending_drops.settle(key, version);
+		}
 		Ok(())
 	}
 
@@ -653,31 +753,6 @@ impl StandardMultiStore {
 			commit.drop(batches)?;
 		}
 		Ok(())
-	}
-
-	#[inline]
-	fn delete_drops_from_persistent(&self, drops: &[(EntryKind, EncodedKey)]) -> Result<()> {
-		let Some(persistent) = &self.persistent else {
-			return Ok(());
-		};
-		let mut by_table: HashMap<EntryKind, Vec<EncodedKey>> = HashMap::new();
-		for (table, key) in drops {
-			by_table.entry(*table).or_default().push(key.clone());
-		}
-		for (table, keys) in by_table {
-			persistent.delete_keys(table, &keys)?;
-		}
-		Ok(())
-	}
-
-	#[inline]
-	fn invalidate_drops_in_read(&self, drops: &[(EntryKind, EncodedKey)]) {
-		let Some(read) = &self.read else {
-			return;
-		};
-		for (_, key) in drops {
-			read.remove_dropped(key);
-		}
 	}
 
 	#[inline]
@@ -1095,7 +1170,10 @@ impl StandardMultiStore {
 			TIER_SCAN_CHUNK_SIZE,
 			descending,
 		) {
-			ServedChunk::Served(batch) => Some(merge_tier_batch(batch, scan.range, collected)),
+			ServedChunk::Served(batch) => {
+				let batch = self.mask_dropped_persistent_rows(scan, batch);
+				Some(merge_tier_batch(batch, scan.range, collected))
+			}
 			ServedChunk::Gap => None,
 		}
 	}
@@ -1129,8 +1207,24 @@ impl StandardMultiStore {
 			)?
 		};
 		let consumed = batch.entries.len();
+		let batch = self.mask_dropped_persistent_rows(scan, batch);
 		let progressed = merge_tier_batch(batch, scan.range, collected)?;
 		Ok((consumed, progressed))
+	}
+
+	#[inline]
+	fn mask_dropped_persistent_rows(&self, scan: &TierScanQuery, mut batch: RangeBatch) -> RangeBatch {
+		if !matches!(scan.table, EntryKind::Operator(_)) || self.pending_drops.is_empty() {
+			return batch;
+		}
+		for entry in batch.entries.iter_mut() {
+			if entry.value.is_some()
+				&& self.pending_drops.masks(&entry.key, entry.version, scan.scope.read())
+			{
+				entry.value = None;
+			}
+		}
+		batch
 	}
 
 	#[inline]

@@ -51,6 +51,7 @@ impl MultiReadBufferTier {
 						PageEntry {
 							version: entry.version,
 							value: entry.value,
+							previous: None,
 						},
 					);
 				}
@@ -89,6 +90,7 @@ impl MultiReadBufferTier {
 						PageEntry {
 							version: entry.version,
 							value: entry.value,
+							previous: None,
 						},
 					);
 				}

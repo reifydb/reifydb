@@ -37,9 +37,11 @@ use crate::{config::PersistentConfig, flush::actor::FlushActor};
 
 pub mod drop;
 pub mod multi;
+pub mod pending;
 pub mod router;
 pub mod worker;
 
+use pending::PendingDrops;
 use reifydb_core::actors::drop::DropMessage;
 use worker::{DropActor, DropWorkerConfig};
 
@@ -52,6 +54,7 @@ pub struct StandardMultiStoreInner {
 	pub(crate) commit: Option<MultiCommitBufferTier>,
 	pub(crate) persistent: Option<MultiPersistentTier>,
 	pub(crate) read: Option<MultiReadBufferTier>,
+	pub(crate) pending_drops: PendingDrops,
 	pub(crate) drop_actor: Option<ActorRef<DropMessage>>,
 
 	#[allow(dead_code)]
@@ -77,11 +80,6 @@ impl StandardMultiStore {
 		let row_settings_provider: Arc<OnceLock<Arc<dyn ShapePersistence>>> = Arc::new(OnceLock::new());
 
 		let eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
-
-		let drop_actor = commit.as_ref().map(|storage| {
-			let drop_config = DropWorkerConfig::default();
-			DropActor::spawn(&spawner, drop_config, storage.clone(), config.event_bus.clone(), config.clock)
-		});
 
 		let read = match (commit.as_ref(), config.persistent.is_some()) {
 			(Some(_), true) => Some(MultiReadBufferTier::new(ReadBufferConfig::default())),
@@ -118,10 +116,27 @@ impl StandardMultiStore {
 
 		let read = persistent.as_ref().and(read);
 
+		let pending_drops = PendingDrops::default();
+
+		let drop_actor = commit.as_ref().map(|storage| {
+			let drop_config = DropWorkerConfig::default();
+			DropActor::spawn(
+				&spawner,
+				drop_config,
+				storage.clone(),
+				config.event_bus.clone(),
+				config.clock,
+				persistent.clone(),
+				read.clone(),
+				pending_drops.clone(),
+			)
+		});
+
 		Ok(Self(Arc::new(StandardMultiStoreInner {
 			commit,
 			persistent,
 			read,
+			pending_drops,
 			drop_actor,
 			flush_actor,
 			row_settings_provider,

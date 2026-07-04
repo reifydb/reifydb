@@ -43,9 +43,10 @@ use crate::{
 				entry::current_table_name,
 				query::{
 					build_create_current_sql, build_delete_below_version_sql,
-					build_delete_keys_sql, build_get_current_sql, build_get_many_current_sql,
-					build_range_consistent_sql, build_range_current_sql, build_upsert_current_sql,
-					prefix_upper_bound, version_from_bytes, version_to_bytes,
+					build_delete_key_through_sql, build_delete_keys_sql, build_get_current_sql,
+					build_get_many_current_sql, build_range_consistent_sql,
+					build_range_current_sql, build_upsert_current_sql, prefix_upper_bound,
+					version_from_bytes, version_to_bytes,
 				},
 			},
 		},
@@ -312,6 +313,48 @@ impl SqlitePersistentStorage {
 				}
 			}
 		}
+		Ok(total)
+	}
+
+	#[instrument(name = "store::multi::persistent::sqlite::delete_through", level = "debug", skip(self, keys), fields(key_count = keys.len()))]
+	pub fn delete_keys_through(&self, table: EntryKind, keys: &[(EncodedKey, CommitVersion)]) -> Result<u64> {
+		if keys.is_empty() {
+			return Ok(0);
+		}
+		let table_sql = self.table_sql(table);
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(0);
+		};
+		let tx = Transaction::new_unchecked(conn, TransactionBehavior::Immediate)
+			.map_err(|e| error!(internal(format!("Failed to start persistent transaction: {}", e))))?;
+		let mut total = 0u64;
+		{
+			let sql = build_delete_key_through_sql(&table_sql.table_name);
+			let mut stmt = match tx.prepare_cached(&sql) {
+				Ok(s) => s,
+				Err(e) if e.to_string().contains("no such table") => return Ok(0),
+				Err(e) => {
+					return Err(error!(internal(format!(
+						"Failed to prepare persistent delete through: {}",
+						e
+					))));
+				}
+			};
+			for (key, version) in keys {
+				let version_bytes = version_to_bytes(*version);
+				let affected = stmt
+					.execute(params![key.as_slice(), version_bytes.as_slice()])
+					.map_err(|e| {
+						error!(internal(format!(
+							"Failed to delete key through version from {}: {}",
+							table_sql.table_name, e
+						)))
+					})?;
+				total += affected as u64;
+			}
+		}
+		tx.commit().map_err(|e| error!(internal(format!("Failed to commit persistent transaction: {}", e))))?;
 		Ok(total)
 	}
 

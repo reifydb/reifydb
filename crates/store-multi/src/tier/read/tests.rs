@@ -656,3 +656,187 @@ fn state_and_internal_state_of_one_node_use_distinct_complete_pages() {
 	assert!(read.page_key_range(state).is_some(), "state pages must have a completable key range");
 	assert!(read.page_key_range(internal).is_some(), "internal pages must have a completable key range");
 }
+
+#[test]
+fn supersede_keeps_the_previous_version_for_pinned_readers() {
+	let read = cache(8);
+	read.insert(key("k"), CommitVersion(5), Some(val("v5")));
+	read.insert(key("k"), CommitVersion(10), Some(val("v10")));
+
+	match read.get(&key("k"), CommitVersion(10)) {
+		VersionedGetResult::Value {
+			value,
+			version,
+		} => {
+			assert_eq!(value.as_ref(), b"v10");
+			assert_eq!(version, CommitVersion(10));
+		}
+		other => panic!("reader at the current version must get the current slot, got {other:?}"),
+	}
+
+	match read.get(&key("k"), CommitVersion(7)) {
+		VersionedGetResult::Value {
+			value,
+			version,
+		} => {
+			assert_eq!(value.as_ref(), b"v5", "reader between versions must be served previous");
+			assert_eq!(version, CommitVersion(5));
+		}
+		other => panic!("expected the previous slot, got {other:?}"),
+	}
+
+	assert!(
+		matches!(read.get(&key("k"), CommitVersion(4)), VersionedGetResult::NotFound),
+		"a reader below both slots must still fall through"
+	);
+}
+
+#[test]
+fn previous_slot_serves_tombstones_in_both_directions() {
+	let read = cache(8);
+	read.insert(key("del-now"), CommitVersion(5), Some(val("v5")));
+	read.insert(key("del-now"), CommitVersion(10), None);
+	assert!(
+		matches!(read.get(&key("del-now"), CommitVersion(12)), VersionedGetResult::Tombstone),
+		"current tombstone serves readers at or above it"
+	);
+	match read.get(&key("del-now"), CommitVersion(7)) {
+		VersionedGetResult::Value {
+			value,
+			..
+		} => assert_eq!(value.as_ref(), b"v5", "reader below the tombstone gets the previous value"),
+		other => panic!("expected the previous value below the tombstone, got {other:?}"),
+	}
+
+	read.insert(key("was-del"), CommitVersion(5), None);
+	read.insert(key("was-del"), CommitVersion(10), Some(val("v10")));
+	assert!(
+		matches!(read.get(&key("was-del"), CommitVersion(7)), VersionedGetResult::Tombstone),
+		"a previous-slot tombstone must serve as a definitive deletion"
+	);
+}
+
+#[test]
+fn flush_echo_clears_the_previous_slot() {
+	let read = cache(8);
+	read.insert(key("k"), CommitVersion(5), Some(val("v5")));
+	read.insert(key("k"), CommitVersion(10), Some(val("v10")));
+	read.insert(key("k"), CommitVersion(10), Some(val("v10")));
+
+	assert!(
+		matches!(read.get(&key("k"), CommitVersion(7)), VersionedGetResult::NotFound),
+		"after the flush echo the previous slot must be gone"
+	);
+	match read.get(&key("k"), CommitVersion(10)) {
+		VersionedGetResult::Value {
+			value,
+			..
+		} => assert_eq!(value.as_ref(), b"v10"),
+		other => panic!("current slot must survive the echo, got {other:?}"),
+	}
+}
+
+#[test]
+fn older_insert_is_rejected_and_leaves_previous_intact() {
+	let read = cache(8);
+	read.insert(key("k"), CommitVersion(5), Some(val("v5")));
+	read.insert(key("k"), CommitVersion(10), Some(val("v10")));
+	read.insert(key("k"), CommitVersion(5), Some(val("v5")));
+
+	match read.get(&key("k"), CommitVersion(7)) {
+		VersionedGetResult::Value {
+			value,
+			..
+		} => assert_eq!(value.as_ref(), b"v5", "previous must survive an older re-insert"),
+		other => panic!("expected previous to survive, got {other:?}"),
+	}
+	read.insert(key("k"), CommitVersion(3), Some(val("v3")));
+	assert!(
+		matches!(read.get(&key("k"), CommitVersion(4)), VersionedGetResult::NotFound),
+		"an insert older than both slots must be rejected outright"
+	);
+}
+
+#[test]
+fn warm_replace_does_not_fabricate_a_previous_slot() {
+	let read = cache(8);
+	let page = read.page_of_key(&opkey(7, "a"));
+	read.insert(opkey(7, "a"), CommitVersion(5), Some(val("resident-v5")));
+	read.populate_page(page, vec![opentry(7, "a", 10, "loaded-v10")], true);
+
+	assert!(
+		matches!(read.get(&opkey(7, "a"), CommitVersion(7)), VersionedGetResult::NotFound),
+		"a warm replace must not invent adjacency between v5 and v10"
+	);
+}
+
+#[test]
+fn removal_drops_both_version_slots() {
+	let read = cache(8);
+	read.insert(key("k"), CommitVersion(5), Some(val("v5")));
+	read.insert(key("k"), CommitVersion(10), Some(val("v10")));
+	read.remove_dropped(&key("k"));
+	assert!(matches!(read.get(&key("k"), CommitVersion(7)), VersionedGetResult::NotFound));
+	assert!(matches!(read.get(&key("k"), CommitVersion(10)), VersionedGetResult::NotFound));
+}
+
+#[test]
+fn remove_dropped_through_removes_only_older_entries() {
+	let read = cache(8);
+	read.insert(key("old"), CommitVersion(5), Some(val("v5")));
+	read.remove_dropped_through(&key("old"), CommitVersion(8));
+	assert!(
+		matches!(read.get(&key("old"), CommitVersion(9)), VersionedGetResult::NotFound),
+		"an entry older than the drop version must be removed"
+	);
+
+	read.insert(key("new"), CommitVersion(10), Some(val("v10")));
+	read.remove_dropped_through(&key("new"), CommitVersion(8));
+	match read.get(&key("new"), CommitVersion(10)) {
+		VersionedGetResult::Value {
+			value,
+			..
+		} => assert_eq!(value.as_ref(), b"v10", "a recreated newer entry must survive the delayed drop"),
+		other => panic!("expected the recreated entry to survive, got {other:?}"),
+	}
+}
+
+#[test]
+fn remove_dropped_through_clears_a_dropped_previous_slot() {
+	let read = cache(8);
+	read.insert(key("k"), CommitVersion(5), Some(val("v5")));
+	read.insert(key("k"), CommitVersion(10), Some(val("v10")));
+	read.remove_dropped_through(&key("k"), CommitVersion(8));
+
+	assert!(
+		matches!(read.get(&key("k"), CommitVersion(7)), VersionedGetResult::NotFound),
+		"the dropped previous version must not be served"
+	);
+	match read.get(&key("k"), CommitVersion(10)) {
+		VersionedGetResult::Value {
+			value,
+			..
+		} => assert_eq!(value.as_ref(), b"v10"),
+		other => panic!("current slot must survive, got {other:?}"),
+	}
+}
+
+#[test]
+fn remove_dropped_through_dirties_an_in_flight_warm() {
+	let read = cache(8);
+	let page = read.page_of_key(&opkey(7, "a"));
+	assert!(read.begin_warm(page));
+	read.remove_dropped_through(&opkey(7, "a"), CommitVersion(8));
+	assert!(!read.finish_warm(page, vec![opentry(7, "a", 5, "stale")]), "a warm racing a delayed drop must abort");
+}
+
+#[test]
+fn remove_dropped_through_removes_an_entry_at_exactly_the_drop_version() {
+	let read = cache(8);
+	read.insert(key("k"), CommitVersion(8), Some(val("v8")));
+	read.remove_dropped_through(&key("k"), CommitVersion(8));
+	assert!(
+		matches!(read.get(&key("k"), CommitVersion(9)), VersionedGetResult::NotFound),
+		"an entry at the drop version itself must be removed"
+	);
+}

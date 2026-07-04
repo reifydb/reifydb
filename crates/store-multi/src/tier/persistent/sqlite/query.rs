@@ -83,6 +83,10 @@ pub(super) fn build_delete_keys_sql(table_name: &str, key_count: usize) -> Strin
 	format!("DELETE FROM \"{}\" WHERE key IN ({})", table_name, placeholders)
 }
 
+pub(super) fn build_delete_key_through_sql(table_name: &str) -> String {
+	format!("DELETE FROM \"{}\" WHERE key = ?1 AND version <= ?2", table_name)
+}
+
 pub(super) fn build_range_consistent_sql(table_name: &str, start: Bound<()>, end: Bound<()>) -> String {
 	let mut sql = format!("SELECT key, version, value FROM \"{}\" WHERE 1=1", table_name);
 	match start {
