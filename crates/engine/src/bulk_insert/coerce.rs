@@ -3,17 +3,13 @@
 
 use reifydb_core::{
 	interface::catalog::column::Column,
-	value::column::{buffer::ColumnBuffer, columns::Columns},
+	value::column::{buffer::ColumnBuffer, cast::cast_column_data, columns::Columns},
 };
 use reifydb_routine::routine::registry::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_value::{fragment::Fragment, params::Params, value::identity::IdentityId};
 
-use crate::{
-	Result,
-	expression::{cast::cast_column_data, context::EvalContext},
-	vm::stack::SymbolTable,
-};
+use crate::{Result, expression::context::EvalContext, vm::stack::SymbolTable};
 
 pub(super) fn coerce_columns(
 	column_data: &[ColumnBuffer],

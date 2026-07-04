@@ -6,7 +6,7 @@ use std::{mem, sync::Arc};
 use reifydb_core::{
 	error::diagnostic::query::extend_duplicate_column,
 	interface::{evaluate::TargetColumn, resolved::ResolvedColumn},
-	value::column::{ColumnWithName, columns::Columns, headers::ColumnHeaders},
+	value::column::{ColumnWithName, cast::cast_column_data, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::{Expression, name::display_label};
@@ -18,7 +18,6 @@ use super::NoopNode;
 use crate::{
 	Result,
 	expression::{
-		cast::cast_column_data,
 		compile::{CompiledExpr, compile_expression},
 		context::{CompileContext, EvalContext},
 	},

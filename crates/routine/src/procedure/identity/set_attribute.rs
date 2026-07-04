@@ -8,11 +8,8 @@ use reifydb_catalog::{
 	error::{CatalogError, CatalogObjectKind},
 };
 use reifydb_core::{
-	interface::{
-		catalog::identity::{Identity, IdentityAttribute},
-		evaluate::ValueCastRef,
-	},
-	value::column::columns::Columns,
+	interface::catalog::identity::{Identity, IdentityAttribute},
+	value::column::{cast::cast_value, columns::Columns},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
@@ -140,27 +137,14 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for SetIdentityAttribute {
 	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
 		let args = extract_args("identity::set_attribute", ctx.params, 3)?;
 		let attribute_name = extract_utf8_arg("identity::set_attribute", &args[1], 1)?;
-		let caster = ctx.ioc.resolve::<ValueCastRef>()?;
 
 		match ctx.tx {
-			Transaction::Admin(admin) => set(
-				ctx.catalog,
-				admin,
-				&caster,
-				&args[0],
-				&attribute_name,
-				args[2].clone(),
-				&ctx.fragment,
-			),
-			Transaction::Test(t) if ctx.identity.is_privileged() => set(
-				ctx.catalog,
-				t.inner,
-				&caster,
-				&args[0],
-				&attribute_name,
-				args[2].clone(),
-				&ctx.fragment,
-			),
+			Transaction::Admin(admin) => {
+				set(ctx.catalog, admin, &args[0], &attribute_name, args[2].clone(), &ctx.fragment)
+			}
+			Transaction::Test(t) if ctx.identity.is_privileged() => {
+				set(ctx.catalog, t.inner, &args[0], &attribute_name, args[2].clone(), &ctx.fragment)
+			}
 			_ => Err(RoutineError::ProcedureExecutionFailed {
 				procedure: Fragment::internal("identity::set_attribute"),
 				reason: "must run in an admin transaction".to_string(),
@@ -172,7 +156,6 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for SetIdentityAttribute {
 fn set(
 	catalog: &Catalog,
 	txn: &mut AdminTransaction,
-	caster: &ValueCastRef,
 	user: &Value,
 	attribute_name: &str,
 	value: Value,
@@ -180,7 +163,7 @@ fn set(
 ) -> Result<Columns, RoutineError> {
 	let identity = resolve_identity("identity::set_attribute", catalog, txn, user, fragment)?;
 	let attribute = resolve_attribute(catalog, txn, attribute_name, fragment)?;
-	let value = coerce_to_declared_type("identity::set_attribute", caster, value, &attribute.value_type, 2)?;
+	let value = coerce_to_declared_type("identity::set_attribute", value, &attribute.value_type, 2)?;
 	let stored = catalog.set_identity_attribute_value(txn, identity.id, &attribute, value)?;
 	Ok(Columns::single_row([
 		("identity", Value::Utf8(identity.name)),
@@ -191,7 +174,6 @@ fn set(
 
 pub(crate) fn coerce_to_declared_type(
 	procedure: &'static str,
-	caster: &ValueCastRef,
 	value: Value,
 	expected: &ValueType,
 	argument_index: usize,
@@ -207,5 +189,5 @@ pub(crate) fn coerce_to_declared_type(
 			actual: value.get_type(),
 		});
 	}
-	Ok(caster.cast(value, expected)?)
+	Ok(cast_value(value, expected)?)
 }

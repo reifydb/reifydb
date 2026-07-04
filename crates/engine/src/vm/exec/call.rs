@@ -10,7 +10,7 @@ use reifydb_core::{
 		procedure::{Procedure, ProcedureParam},
 	},
 	internal_error,
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns},
 };
 use reifydb_routine::routine::{
 	Function as RoutineFunction, Procedure as RoutineProcedure,
@@ -34,7 +34,6 @@ use super::stack::strip_dollar_prefix;
 use crate::{
 	Result,
 	error::EngineError,
-	expression::cast::cast_column_data,
 	policy::PolicyEvaluator,
 	vm::{
 		exec::broadcast::broadcast_many,

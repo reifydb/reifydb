@@ -25,6 +25,7 @@ use reifydb_value::{
 use crate::value::column::{buffer::ColumnBuffer, data::Column};
 
 pub mod buffer;
+pub mod cast;
 pub mod columns;
 pub mod data;
 pub mod encoding;

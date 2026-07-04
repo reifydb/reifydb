@@ -19,12 +19,9 @@ use reifydb_core::{
 		evaluate::TargetColumn,
 	},
 	key::{EncodableKey, dictionary::DictionaryEntryIndexKey},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns},
 };
-use reifydb_engine::{
-	expression::{cast::cast_column_data, context::EvalContext},
-	vm::stack::SymbolTable,
-};
+use reifydb_engine::{expression::context::EvalContext, vm::stack::SymbolTable};
 use reifydb_routine::routine::registry::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_value::{

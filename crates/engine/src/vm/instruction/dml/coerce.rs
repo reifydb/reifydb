@@ -3,19 +3,14 @@
 
 use reifydb_core::{
 	interface::{evaluate::TargetColumn, resolved::ResolvedColumn},
-	value::column::buffer::ColumnBuffer,
+	value::column::{buffer::ColumnBuffer, cast::cast_column_data},
 };
 use reifydb_value::{
 	fragment::Fragment,
 	value::{Value, value_type::ValueType},
 };
 
-use crate::{
-	Result,
-	error::EngineError,
-	expression::{cast::cast_column_data, context::EvalContext},
-	vm::volcano::query::QueryContext,
-};
+use crate::{Result, error::EngineError, expression::context::EvalContext, vm::volcano::query::QueryContext};
 
 pub(crate) fn coerce_value_to_column_type(
 	value: Value,

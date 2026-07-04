@@ -9,7 +9,9 @@ use std::{
 
 use reifydb_core::{
 	interface::{catalog::sumtype::SumType, evaluate::TargetColumn, resolved::ResolvedShape},
-	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	value::column::{
+		ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns, headers::ColumnHeaders,
+	},
 };
 use reifydb_rql::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
 use reifydb_transaction::transaction::Transaction;
@@ -21,7 +23,7 @@ use reifydb_value::{
 
 use crate::{
 	Result,
-	expression::{cast::cast_column_data, context::EvalContext, eval::evaluate},
+	expression::{context::EvalContext, eval::evaluate},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 

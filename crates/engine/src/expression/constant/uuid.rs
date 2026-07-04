@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::buffer::ColumnBuffer;
+use reifydb_core::value::column::{buffer::ColumnBuffer, cast::error::CastError};
 use reifydb_value::{
 	error::TypeError,
 	fragment::Fragment,
@@ -11,7 +11,7 @@ use reifydb_value::{
 	},
 };
 
-use crate::{Result, error::CastError};
+use crate::Result;
 
 pub(crate) struct UuidParser;
 

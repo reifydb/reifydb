@@ -1116,7 +1116,7 @@ mod tests {
 
 	#[test]
 	fn test_threads_reject_int4_for_uint2_key() {
-		// accept is strict: coercion happens at the CALL boundary via ValueCast.
+		// accept is strict: coercion happens at the CALL boundary via cast_value.
 		assert!(matches!(
 			ConfigKey::ThreadsQuery.accept(Value::Int4(8)),
 			Err(AcceptError::TypeMismatch { .. })
@@ -1268,7 +1268,7 @@ mod tests {
 
 	#[test]
 	fn test_accept_rejects_int4_for_uint8_block_size() {
-		// accept is strict: SET CONFIG casts to Uint8 via ValueCast before calling accept.
+		// accept is strict: SET CONFIG casts to Uint8 via cast_value before calling accept.
 		assert!(matches!(
 			ConfigKey::CdcCompactBlockSize.accept(Value::Int4(1024)),
 			Err(AcceptError::TypeMismatch { .. })

@@ -5,8 +5,8 @@ use std::{str::FromStr, sync::LazyLock};
 
 use reifydb_catalog::error::CatalogError;
 use reifydb_core::{
-	interface::{catalog::config::ConfigKey, evaluate::ValueCastRef},
-	value::column::columns::Columns,
+	interface::catalog::config::ConfigKey,
+	value::column::{cast::cast_value, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -90,10 +90,9 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for SetConfigProcedure {
 		{
 			value
 		} else {
-			let caster = ctx.ioc.resolve::<ValueCastRef>()?;
 			let mut casted = None;
 			for target in config_key.expected_types() {
-				if let Ok(coerced) = caster.cast(value.clone(), target) {
+				if let Ok(coerced) = cast_value(value.clone(), target) {
 					casted = Some(coerced);
 					break;
 				}

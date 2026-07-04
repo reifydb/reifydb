@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::buffer::ColumnBuffer;
 use reifydb_value::{
+	Result,
 	error::{Error, TypeError},
 	fragment::{Fragment, LazyFragment},
 	value::{
@@ -18,7 +18,8 @@ use reifydb_value::{
 	},
 };
 
-use crate::{Result, error::CastError};
+use super::error::CastError;
+use crate::value::column::buffer::ColumnBuffer;
 
 pub fn to_temporal(data: &ColumnBuffer, target: ValueType, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
 	if let ColumnBuffer::Utf8 {

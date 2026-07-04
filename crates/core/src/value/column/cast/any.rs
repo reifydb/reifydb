@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::buffer::ColumnBuffer;
 use reifydb_value::{
+	Result,
 	error::TypeError,
 	fragment::LazyFragment,
 	value::{blob::Blob, value_type::ValueType},
 };
 
-use super::cast_column_data;
-use crate::{Result, expression::context::EvalContext};
+use super::{cast_column_data, convert::Convert};
+use crate::value::column::buffer::ColumnBuffer;
 
 pub fn from_any(
-	ctx: &EvalContext,
+	ctx: impl Convert + Copy,
 	data: &ColumnBuffer,
 	target: ValueType,
 	lazy_fragment: impl LazyFragment + Clone,

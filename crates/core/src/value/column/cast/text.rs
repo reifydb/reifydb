@@ -3,8 +3,8 @@
 
 use std::fmt::Display;
 
-use reifydb_core::value::column::buffer::ColumnBuffer;
 use reifydb_value::{
+	Result,
 	error::TypeError,
 	fragment::LazyFragment,
 	value::{
@@ -18,7 +18,8 @@ use reifydb_value::{
 	},
 };
 
-use crate::{Result, error::CastError};
+use super::error::CastError;
+use crate::value::column::buffer::ColumnBuffer;
 
 pub fn to_text(data: &ColumnBuffer, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
 	match data {
@@ -157,13 +158,12 @@ fn from_identity_id(container: &IdentityIdContainer) -> Result<ColumnBuffer> {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::value::column::buffer::ColumnBuffer;
 	use reifydb_value::{
 		fragment::Fragment,
 		value::{blob::Blob, container::blob::BlobContainer},
 	};
 
-	use crate::expression::cast::text::from_blob;
+	use crate::value::column::{buffer::ColumnBuffer, cast::text::from_blob};
 
 	#[test]
 	fn test_from_blob() {

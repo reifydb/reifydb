@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::buffer::ColumnBuffer;
 use reifydb_value::{
+	Result,
 	error::TypeError,
 	fragment::{Fragment, LazyFragment},
 	value::{blob::Blob, value_type::ValueType},
 };
 
-use crate::Result;
+use crate::value::column::buffer::ColumnBuffer;
 
 pub fn to_blob(data: &ColumnBuffer, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
 	match data {

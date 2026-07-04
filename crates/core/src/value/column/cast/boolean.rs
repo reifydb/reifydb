@@ -3,8 +3,8 @@
 
 use std::{fmt::Display, sync::Arc};
 
-use reifydb_core::value::column::buffer::ColumnBuffer;
 use reifydb_value::{
+	Result,
 	error::TypeError,
 	fragment::{Fragment, LazyFragment},
 	value::{
@@ -15,7 +15,7 @@ use reifydb_value::{
 	},
 };
 
-use crate::Result;
+use crate::value::column::buffer::ColumnBuffer;
 
 pub fn to_boolean(data: &ColumnBuffer, lazy_fragment: impl LazyFragment) -> Result<ColumnBuffer> {
 	match data {

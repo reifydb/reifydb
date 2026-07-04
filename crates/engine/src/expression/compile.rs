@@ -3,7 +3,12 @@
 
 use std::{mem::discriminant, slice::from_ref};
 
-use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_core::value::column::{
+	ColumnWithName,
+	buffer::ColumnBuffer,
+	cast::{cast_column_data, error::CastError},
+	columns::Columns,
+};
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_value::{
 	error::{BinaryOp, Error, IntoDiagnostic, LogicalOp, RuntimeErrorKind, TypeError},
@@ -17,12 +22,10 @@ use super::{
 };
 use crate::{
 	Result,
-	error::CastError,
 	expression::{
 		access::access_lookup,
 		arith::{add::add_columns, div::div_columns, mul::mul_columns, rem::rem_columns, sub::sub_columns},
 		call::call_builtin,
-		cast::cast_column_data,
 		compare::{Equal, GreaterThan, GreaterThanEqual, LessThan, LessThanEqual, NotEqual, compare_columns},
 		constant::{constant_value, constant_value_of},
 		context::EvalContext,

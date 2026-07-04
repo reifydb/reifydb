@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::buffer::ColumnBuffer;
 use reifydb_value::{
+	Result,
 	error::{Error, TypeError},
 	fragment::{Fragment, LazyFragment},
 	value::{
@@ -19,7 +19,8 @@ use reifydb_value::{
 	},
 };
 
-use crate::{Result, error::CastError, expression::convert::Convert};
+use super::{convert::Convert, error::CastError};
+use crate::value::column::buffer::ColumnBuffer;
 
 pub fn to_number(
 	ctx: impl Convert,
@@ -1292,7 +1293,7 @@ pub mod tests {
 			},
 		};
 
-		use crate::expression::{cast::number::convert_vec, convert::Convert};
+		use crate::value::column::cast::{convert::Convert, number::convert_vec};
 
 		#[test]
 		fn test_promote_ok() {
