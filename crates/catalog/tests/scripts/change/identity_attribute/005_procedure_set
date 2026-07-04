@@ -1,0 +1,32 @@
+# Assign a value via CALL identity::set_attribute, replicate; then CALL remove_attribute, replicate
+
+admin 'CREATE USER ATTRIBUTE org_id: utf8'
+admin 'CREATE USER carol'
+replicate
+---
+version: 2
+
+admin 'CALL identity::set_attribute("carol", "org_id", "acme")'
+replicate
+---
+version: 3
+
+query 'FROM system::identity_attribute_values MAP {attribute: attribute, value: value}'
+---
++-------------+---------+
+|  attribute  |  value  |
++-------------+---------+
+|   org_id    |  acme   |
++-------------+---------+
+
+admin 'CALL identity::remove_attribute("carol", "org_id")'
+replicate
+---
+version: 4
+
+query 'FROM system::identity_attribute_values MAP {attribute: attribute, value: value}'
+---
++-------------+---------+
+|  attribute  |  value  |
++-------------+---------+
++-------------+---------+

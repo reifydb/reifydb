@@ -27,6 +27,8 @@ pub fn default_native_procedures(builder: RoutinesConfigurator) -> RoutinesConfi
 		.register_builtin_procedure(Arc::new(clock::set::ClockSetProcedure::new()))
 		.register_builtin_procedure(Arc::new(clock::advance::ClockAdvanceProcedure::new()))
 		.register_builtin_procedure(Arc::new(identity::inject::IdentityInject::new()))
+		.register_builtin_procedure(Arc::new(identity::set_attribute::SetIdentityAttribute::new()))
+		.register_builtin_procedure(Arc::new(identity::remove_attribute::RemoveIdentityAttribute::new()))
 		.register_builtin_procedure(Arc::new(subscription::inspect::InspectSubscription::new()))
 		.register_builtin_procedure(Arc::new(rql::tokenize::RqlTokenize::new()))
 		.register_builtin_procedure(Arc::new(rql::ast::RqlAst::new()))

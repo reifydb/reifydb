@@ -1,8 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::collections::HashMap;
+
 use reifydb_engine::test_prelude::*;
 use reifydb_transaction::transaction::Transaction;
+
+fn named_params(entries: &[(&str, Value)]) -> Params {
+	let mut map = HashMap::new();
+	for (name, value) in entries {
+		map.insert(name.to_string(), value.clone());
+	}
+	Params::from(map)
+}
 
 fn value_of(
 	catalog: &reifydb_catalog::catalog::Catalog,
@@ -465,6 +475,230 @@ fn declare_and_alter_in_same_txn() {
 		Some("acme".to_string()),
 		"declare + alter in one txn must survive commit"
 	);
+}
+
+// CALL identity::set_attribute / remove_attribute are the programmatic API where the user
+// arrives as data (IdentityId or name). They route through the same tracked facade as the
+// DDL statements, so the tests below prove txn participation plus the argument contract.
+
+#[test]
+fn call_set_attribute_assigns_value() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_aa: utf8");
+	t.admin("CREATE USER iav_alice_aa");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql("CALL identity::set_attribute('iav_alice_aa', 'iav_org_aa', 'acme')", Params::None);
+	assert!(r.error.is_none(), "call failed: {:?}", r.error);
+
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn), "iav_alice_aa", "iav_org_aa"),
+		Some("acme".to_string()),
+		"within-txn CALL-assigned value must be visible"
+	);
+	txn.commit().unwrap();
+
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_aa", "iav_org_aa"),
+		Some("acme".to_string()),
+		"committed CALL-assigned value must be visible in new txn"
+	);
+}
+
+#[test]
+fn call_set_attribute_by_id() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_ab: utf8");
+	t.admin("CREATE USER iav_alice_ab");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let identity =
+		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "iav_alice_ab").unwrap().unwrap();
+	let r = txn.rql(
+		"CALL identity::set_attribute($uid, 'iav_org_ab', 'acme')",
+		named_params(&[("uid", Value::IdentityId(identity.id))]),
+	);
+	assert!(r.error.is_none(), "call by id failed: {:?}", r.error);
+	txn.commit().unwrap();
+
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_ab", "iav_org_ab"),
+		Some("acme".to_string()),
+		"value assigned by IdentityId must land on the right user"
+	);
+}
+
+#[test]
+fn call_set_attribute_overwrites_committed_value() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_ac: utf8");
+	t.admin("CREATE USER iav_alice_ac { iav_org_ac: 'acme' }");
+	t.admin("CALL identity::set_attribute('iav_alice_ac', 'iav_org_ac', 'globex')");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let identity =
+		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "iav_alice_ac").unwrap().unwrap();
+	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn), identity.id).unwrap();
+	assert_eq!(values.len(), 1, "CALL overwrite must not duplicate the value row, found {:?}", values);
+	assert_eq!(values[0].value, "globex", "CALL overwrite must supersede the old value");
+}
+
+#[test]
+fn rolled_back_call_set_is_not_visible() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_ad: utf8");
+	t.admin("CREATE USER iav_alice_ad { iav_org_ad: 'acme' }");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql("CALL identity::set_attribute('iav_alice_ad', 'iav_org_ad', 'globex')", Params::None);
+	assert!(r.error.is_none(), "call failed: {:?}", r.error);
+	txn.rollback().unwrap();
+
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_ad", "iav_org_ad"),
+		Some("acme".to_string()),
+		"rolled-back CALL set must leave the committed value intact"
+	);
+}
+
+#[test]
+fn call_remove_attribute_unsets_value() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_ae: utf8");
+	t.admin("CREATE USER iav_alice_ae { iav_org_ae: 'acme' }");
+	t.admin("CALL identity::remove_attribute('iav_alice_ae', 'iav_org_ae')");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn), "iav_alice_ae", "iav_org_ae"),
+		None,
+		"CALL remove must unset the value (fails closed afterwards)"
+	);
+}
+
+#[test]
+fn call_remove_unset_attribute_is_noop() {
+	let t = TestEngine::new();
+	t.admin("CREATE USER ATTRIBUTE iav_org_af: utf8");
+	t.admin("CREATE USER iav_alice_af");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql("CALL identity::remove_attribute('iav_alice_af', 'iav_org_af')", Params::None);
+	assert!(r.error.is_none(), "removing an unset attribute must be a no-op success: {:?}", r.error);
+}
+
+#[test]
+fn call_set_unknown_attribute_is_rejected() {
+	let t = TestEngine::new();
+	t.admin("CREATE USER iav_alice_ag");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql("CALL identity::set_attribute('iav_alice_ag', 'iav_undeclared_ag', 'x')", Params::None);
+	let error = r.error.expect("undeclared attribute must be rejected");
+	let diagnostic = error.diagnostic();
+	assert_eq!(diagnostic.code, "PROCEDURE_003");
+	assert_eq!(diagnostic.cause.as_ref().expect("wrapped catalog cause").code, "CA_091");
+}
+
+#[test]
+fn call_set_unknown_user_is_rejected() {
+	let t = TestEngine::new();
+	t.admin("CREATE USER ATTRIBUTE iav_org_ah: utf8");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql("CALL identity::set_attribute('iav_ghost_ah', 'iav_org_ah', 'x')", Params::None);
+	let error = r.error.expect("unknown user must be rejected");
+	let diagnostic = error.diagnostic();
+	assert_eq!(diagnostic.code, "PROCEDURE_003");
+	assert_eq!(diagnostic.cause.as_ref().expect("wrapped catalog cause").code, "CA_043");
+}
+
+// DDL body values are evaluated expressions since round 3: statement params bind and
+// non-utf8 results fail loud instead of storing raw token text (finding #2).
+
+#[test]
+fn create_user_with_param_value() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_ai: utf8");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql(
+		"CREATE USER iav_alice_ai { iav_org_ai: $new_org }",
+		named_params(&[("new_org", Value::Utf8("acme".to_string()))]),
+	);
+	assert!(r.error.is_none(), "create with param value failed: {:?}", r.error);
+	txn.commit().unwrap();
+
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_ai", "iav_org_ai"),
+		Some("acme".to_string()),
+		"param-bound body value must be stored"
+	);
+}
+
+#[test]
+fn alter_user_with_param_value() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_aj: utf8");
+	t.admin("CREATE USER iav_alice_aj { iav_org_aj: 'acme' }");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql(
+		"ALTER USER iav_alice_aj { iav_org_aj: $new_org }",
+		named_params(&[("new_org", Value::Utf8("globex".to_string()))]),
+	);
+	assert!(r.error.is_none(), "alter with param value failed: {:?}", r.error);
+	txn.commit().unwrap();
+
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_aj", "iav_org_aj"),
+		Some("globex".to_string()),
+		"param-bound ALTER USER value must overwrite"
+	);
+}
+
+#[test]
+fn non_utf8_body_value_is_rejected() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_ak: utf8");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql("CREATE USER iav_alice_ak { iav_org_ak: 123 }", Params::None);
+	let error = r.error.expect("non-utf8 body value must be rejected");
+	assert_eq!(error.diagnostic().code, "CA_094");
+	drop(txn);
+
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	assert!(
+		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn2), "iav_alice_ak").unwrap().is_none(),
+		"rejected create must not leave the identity behind"
+	);
+}
+
+#[test]
+fn none_param_body_value_is_rejected() {
+	let t = TestEngine::new();
+	t.admin("CREATE USER ATTRIBUTE iav_org_al: utf8");
+	t.admin("CREATE USER iav_alice_al { iav_org_al: 'acme' }");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn
+		.rql("ALTER USER iav_alice_al { iav_org_al: $new_org }", named_params(&[("new_org", Value::none())]));
+	let error = r.error.expect("none body value must be rejected, not silently unset");
+	assert_eq!(error.diagnostic().code, "CA_094");
 }
 
 #[test]

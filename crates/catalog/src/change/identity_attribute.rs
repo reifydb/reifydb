@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey, tag::value_type_from_tag_byte};
 use reifydb_core::{
-	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::catalog::identity::IdentityAttribute,
 	key::{EncodableKey, identity_attribute::IdentityAttributeKey, kind::KeyKind},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::value_type::ValueType;
 
 use super::CatalogChangeApplier;
 use crate::{
@@ -37,7 +36,8 @@ impl CatalogChangeApplier for IdentityAttributeApplier {
 fn decode_identity_attribute(row: &EncodedRow) -> IdentityAttribute {
 	let id = identity_attribute::SHAPE.get_u64(row, identity_attribute::ID);
 	let name = identity_attribute::SHAPE.get_utf8(row, identity_attribute::NAME).to_string();
-	let value_type = ValueType::from_u8(identity_attribute::SHAPE.get_u8(row, identity_attribute::VALUE_TYPE));
+	let value_type =
+		value_type_from_tag_byte(identity_attribute::SHAPE.get_u8(row, identity_attribute::VALUE_TYPE));
 
 	IdentityAttribute {
 		id,

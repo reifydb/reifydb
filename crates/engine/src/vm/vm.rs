@@ -430,7 +430,8 @@ impl<'a> Vm<'a> {
 					self.exec_ddl(services, tx, |s, t| create_migration(s, t, n.clone()))?
 				}
 				Instruction::CreateIdentity(n) => {
-					self.exec_ddl(services, tx, |s, t| create_identity(s, t, n.clone()))?
+					let params = self.params;
+					self.exec_ddl(services, tx, |s, t| create_identity(s, t, n.clone(), params))?
 				}
 				Instruction::CreateIdentityAttribute(n) => {
 					self.exec_ddl(services, tx, |s, t| create_identity_attribute(s, t, n.clone()))?
@@ -463,7 +464,8 @@ impl<'a> Vm<'a> {
 					self.exec_ddl(services, tx, |s, t| alter_table_sequence(s, t, n.clone()))?
 				}
 				Instruction::AlterIdentity(n) => {
-					self.exec_ddl(services, tx, |s, t| alter_identity(s, t, n.clone()))?
+					let params = self.params;
+					self.exec_ddl(services, tx, |s, t| alter_identity(s, t, n.clone(), params))?
 				}
 				Instruction::AlterPolicy(n) => {
 					self.exec_ddl(services, tx, |s, t| alter_policy(s, t, n.clone()))?

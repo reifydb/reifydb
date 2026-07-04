@@ -45,7 +45,8 @@ use crate::{
 	convert_data_type_with_constraints,
 	error::RqlError,
 	expression::{
-		ConstantExpression, Expression, Expression::Constant, VariableExpression, extract_variable_names,
+		ConstantExpression, Expression, Expression::Constant, ExpressionCompiler, VariableExpression,
+		extract_variable_names,
 	},
 	nodes::{
 		self, AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateRingBufferNode,
@@ -864,10 +865,10 @@ impl<'bump> Compiler<'bump> {
 
 				LogicalPlan::CreateIdentity(node) => {
 					let mut attributes = Vec::with_capacity(node.entries.len());
-					for entry in &node.entries {
+					for entry in node.entries {
 						attributes.push(nodes::IdentityAttributeAssignment {
 							name: self.interner.intern_fragment(&entry.key),
-							value: entry.value.value().to_string(),
+							value: ExpressionCompiler::compile(entry.value)?,
 						});
 					}
 					stack.push(PhysicalPlan::CreateIdentity(nodes::CreateIdentityNode {
@@ -877,10 +878,10 @@ impl<'bump> Compiler<'bump> {
 				}
 				LogicalPlan::AlterIdentity(node) => {
 					let mut attributes = Vec::with_capacity(node.entries.len());
-					for entry in &node.entries {
+					for entry in node.entries {
 						attributes.push(nodes::IdentityAttributeAssignment {
 							name: self.interner.intern_fragment(&entry.key),
-							value: entry.value.value().to_string(),
+							value: ExpressionCompiler::compile(entry.value)?,
 						});
 					}
 					stack.push(PhysicalPlan::AlterIdentity(nodes::AlterIdentityNode {

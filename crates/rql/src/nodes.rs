@@ -1004,7 +1004,7 @@ pub struct CreateIdentityNode {
 #[derive(Debug, Clone)]
 pub struct IdentityAttributeAssignment {
 	pub name: Fragment,
-	pub value: String,
+	pub value: Expression,
 }
 
 #[derive(Debug, Clone)]

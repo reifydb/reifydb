@@ -1,26 +1,56 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::LazyLock};
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_core::value::column::columns::Columns;
-use reifydb_rql::nodes::CreateIdentityNode;
+use reifydb_core::{interface::catalog::identity::IdentityAttribute, value::column::columns::Columns};
+use reifydb_rql::nodes::{CreateIdentityNode, IdentityAttributeAssignment};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_value::value::Value;
+use reifydb_value::{
+	params::Params,
+	value::{Value, identity::IdentityId},
+};
 
-use crate::{Result, vm::services::Services};
+use crate::{
+	Result,
+	expression::{context::EvalContext, eval::evaluate},
+	vm::{services::Services, stack::SymbolTable},
+};
 
 pub(crate) fn create_identity(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: CreateIdentityNode,
+	params: &Params,
 ) -> Result<Columns> {
 	let name = plan.name.text();
 
-	let mut resolved = Vec::with_capacity(plan.attributes.len());
+	let resolved = resolve_attribute_assignments(services, txn, &plan.attributes, params)?;
+
+	let identity = services.catalog.create_identity(
+		txn,
+		name,
+		&services.runtime_context.clock,
+		&services.runtime_context.rng,
+	)?;
+
+	for (attribute, value) in resolved {
+		services.catalog.set_identity_attribute_value(txn, identity.id, attribute.id, &value)?;
+	}
+
+	Ok(Columns::single_row([("identity", Value::Utf8(name.to_string())), ("created", Value::Boolean(true))]))
+}
+
+pub(crate) fn resolve_attribute_assignments(
+	services: &Services,
+	txn: &mut AdminTransaction,
+	assignments: &[IdentityAttributeAssignment],
+	params: &Params,
+) -> Result<Vec<(IdentityAttribute, String)>> {
+	let mut resolved = Vec::with_capacity(assignments.len());
 	let mut seen = HashSet::new();
-	for assignment in &plan.attributes {
+	for assignment in assignments {
 		let key = assignment.name.text();
 		if !seen.insert(key.to_string()) {
 			return Err(CatalogError::AlreadyExists {
@@ -42,19 +72,42 @@ pub(crate) fn create_identity(
 			}
 			.into());
 		};
-		resolved.push((attribute, assignment.value.clone()));
+		let value = evaluate_attribute_value(services, assignment, params)?;
+		resolved.push((attribute, value));
 	}
+	Ok(resolved)
+}
 
-	let identity = services.catalog.create_identity(
-		txn,
-		name,
-		&services.runtime_context.clock,
-		&services.runtime_context.rng,
-	)?;
+fn evaluate_attribute_value(
+	services: &Services,
+	assignment: &IdentityAttributeAssignment,
+	params: &Params,
+) -> Result<String> {
+	static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
-	for (attribute, value) in resolved {
-		services.catalog.set_identity_attribute_value(txn, identity.id, attribute.id, &value)?;
+	let base = EvalContext {
+		params,
+		symbols: &EMPTY_SYMBOL_TABLE,
+		routines: &services.routines,
+		runtime_context: &services.runtime_context,
+		arena: None,
+		identity: IdentityId::root(),
+		is_aggregate_context: false,
+		columns: Columns::empty(),
+		row_count: 1,
+		target: None,
+		take: None,
+	};
+	let eval_ctx = base.with_eval_empty();
+	let column = evaluate(&eval_ctx, &assignment.value)?;
+	let value = column.data().get_value(0);
+	match value {
+		Value::Utf8(s) => Ok(s.as_str().to_string()),
+		other => Err(CatalogError::IdentityAttributeValueInvalid {
+			name: assignment.name.text().to_string(),
+			actual: other.get_type(),
+			fragment: assignment.value.full_fragment_owned(),
+		}
+		.into()),
 	}
-
-	Ok(Columns::single_row([("identity", Value::Utf8(name.to_string())), ("created", Value::Boolean(true))]))
 }

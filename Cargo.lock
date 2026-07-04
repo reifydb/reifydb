@@ -2914,6 +2914,7 @@ dependencies = [
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-core",
+ "reifydb-engine",
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-transaction",

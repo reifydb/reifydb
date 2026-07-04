@@ -105,6 +105,13 @@ pub enum CatalogError {
 		fragment: Fragment,
 	},
 
+	#[error("user attribute `{name}` value must be a utf8 string, got `{actual}`")]
+	IdentityAttributeValueInvalid {
+		name: String,
+		actual: ValueType,
+		fragment: Fragment,
+	},
+
 	#[error("user attribute name `{name}` is not allowed: {reason}")]
 	IdentityAttributeNameInvalid {
 		name: String,
@@ -596,6 +603,26 @@ impl IntoDiagnostic for CatalogError {
 				fragment,
 				label: Some("unsupported user attribute type".to_string()),
 				help: Some("only `utf8` user attributes are supported".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::IdentityAttributeValueInvalid {
+				name,
+				actual,
+				fragment,
+			} => Diagnostic {
+				code: "CA_094".to_string(),
+				rql: None,
+				message: format!("user attribute `{}` value must be a utf8 string, got `{}`", name, actual),
+				fragment,
+				label: Some("invalid user attribute value".to_string()),
+				help: Some(
+					"attribute values are utf8; wrap the value in quotes or bind a utf8 parameter"
+						.to_string(),
+				),
 				column: None,
 				notes: vec![],
 				cause: None,

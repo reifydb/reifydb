@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::tag::type_tag_byte;
 use reifydb_core::{interface::catalog::identity::IdentityAttribute, key::identity_attribute::IdentityAttributeKey};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
@@ -35,7 +36,7 @@ impl CatalogStore {
 		let mut row = SHAPE.allocate();
 		SHAPE.set_u64(&mut row, ID, attribute_id);
 		SHAPE.set_utf8(&mut row, NAME, name);
-		SHAPE.set_u8(&mut row, VALUE_TYPE, value_type.to_u8());
+		SHAPE.set_u8(&mut row, VALUE_TYPE, type_tag_byte(&value_type));
 
 		txn.set(&IdentityAttributeKey::encoded(attribute_id), row)?;
 
