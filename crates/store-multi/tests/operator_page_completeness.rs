@@ -437,3 +437,64 @@ fn tombstone_purge_is_bounded_by_the_drop_version() {
 	assert_eq!(purged, 1, "a row at the purge bound is dropped state and must go");
 	assert_eq!(persistent_row(&store, &k), None);
 }
+
+#[test]
+fn warmed_node_survives_a_full_sqlite_blackout() {
+	// The performance contract behind the completeness and two-version cache work: once a
+	// node's page is warm and the flush has settled, steady-state reads must not depend on
+	// SQLite at all. Wiping the entire persistent operator table behind the store's back
+	// makes any reintroduced per-read fall-through return wrong answers (absent rows)
+	// instead of silently regressing latency.
+	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+	let table = classify_key(&state_key(7, "a"));
+
+	for (suffix, version) in [("a", 5u64), ("b", 6), ("c", 7)] {
+		MultiVersionCommit::commit(
+			&store,
+			cow_vec![Delta::Set {
+				key: state_key(7, suffix),
+				row: EncodedRow(CowVec::new(format!("val-{suffix}").into_bytes())),
+			}],
+			CommitVersion(version),
+		)
+		.unwrap();
+	}
+
+	store.flush_all_blocking();
+
+	assert_eq!(get(&store, &state_key(7, "missing"), 9), None);
+	for suffix in ["a", "b", "c"] {
+		assert_eq!(
+			get(&store, &state_key(7, suffix), 9).as_deref(),
+			Some(format!("val-{suffix}").as_bytes()),
+			"warm-up read must serve the committed value"
+		);
+	}
+
+	store.persistent().expect("persistent tier configured").clear_table(table).unwrap();
+
+	for suffix in ["a", "b", "c"] {
+		assert_eq!(
+			get(&store, &state_key(7, suffix), 9).as_deref(),
+			Some(format!("val-{suffix}").as_bytes()),
+			"point reads must be served from memory during the blackout"
+		);
+	}
+	assert_eq!(get(&store, &state_key(7, "missing"), 9), None, "absence must be served from memory");
+
+	let keys: Vec<EncodedKey> = ["a", "b", "missing", "c"].iter().map(|suffix| state_key(7, suffix)).collect();
+	let many = store.get_many(&keys, CommitVersion(9)).unwrap();
+	assert_eq!(many.len(), 3, "get_many must serve all live rows from memory during the blackout");
+
+	let scanned: Vec<EncodedKey> = store
+		.range(
+			FlowNodeStateKey::node_range(7.into()),
+			reifydb_store_multi::MultiVersionScope::AsOf {
+				read: CommitVersion(9),
+			},
+			16,
+		)
+		.map(|r| r.unwrap().key)
+		.collect();
+	assert_eq!(scanned.len(), 3, "range scans must be served from the complete page during the blackout");
+}

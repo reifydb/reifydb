@@ -19,9 +19,12 @@
 //! After all threads join (and a final blocking flush), each partition's scan must equal its writer's
 //! recorded last-written map - the exact, deterministic end check.
 //!
-//! Scope: writers do Set / Remove (tombstone) / blocking-flush. Physical delete and TTL are covered
-//! deterministically by the lifecycle/multishape entries; here the point is the actor-vs-commit-vs-read
-//! races, so the final per-key state stays cleanly determined by the owner's last op.
+//! Scope: writers do Set / Remove (tombstone) / blocking-flush on source rows, plus Set / Drop on a
+//! parallel operator-state keyspace under the same disjoint ownership, while a pump thread settles
+//! PendingDrops purges concurrently. Physical delete and TTL are covered deterministically by the
+//! lifecycle/multishape entries; here the point is the actor-vs-commit-vs-read and purge-vs-warm
+//! races, so the final per-key state stays cleanly determined by the owner's last op (a key whose
+//! last op was Drop must be absent after the final flush and pump).
 
 use std::{
 	collections::BTreeMap,
@@ -36,15 +39,39 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	interface::{
-		catalog::{id::TableId, shape::ShapeId},
+		catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId},
 		store::{MultiVersionCommit, MultiVersionGet},
 	},
-	key::{EncodableKey, row::RowKey},
+	key::{EncodableKey, flow_node_state::FlowNodeStateKey, row::RowKey},
 };
 use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore};
 use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
 
 const SHAPE: ShapeId = ShapeId::Table(TableId(1));
+
+const OP_NODE: FlowNodeId = FlowNodeId(9);
+
+fn conc_op_key(row: u64) -> reifydb_codec::key::encoded::EncodedKey {
+	FlowNodeStateKey::encoded(OP_NODE, row.to_be_bytes().to_vec())
+}
+
+fn scan_op_rows(store: &StandardMultiStore, read: u64, batch: usize, reverse: bool) -> Vec<(u64, Vec<u8>)> {
+	let range = FlowNodeStateKey::node_range(OP_NODE);
+	let scope = MultiVersionScope::AsOf {
+		read: CommitVersion(read),
+	};
+	let rows = if reverse {
+		store.range_rev(range, scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
+	} else {
+		store.range(range, scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
+	};
+	rows.into_iter()
+		.map(|r| {
+			let decoded = FlowNodeStateKey::decode(&r.key).unwrap();
+			(u64::from_be_bytes(decoded.key.as_slice().try_into().unwrap()), r.row.to_vec())
+		})
+		.collect()
+}
 
 fn parse_value(bytes: &[u8]) -> Option<(u64, u64, u64)> {
 	let s = std::str::from_utf8(bytes).ok()?;
@@ -131,7 +158,8 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 	let stop = AtomicU64::new(0);
 	let start = Instant::now();
 
-	let final_maps: Vec<BTreeMap<u64, Option<Vec<u8>>>> = thread::scope(|s| {
+	type WriterMaps = (BTreeMap<u64, Option<Vec<u8>>>, BTreeMap<u64, Option<Vec<u8>>>);
+	let final_maps: Vec<WriterMaps> = thread::scope(|s| {
 		let mut writer_handles = Vec::new();
 		for t in 0..cfg.writers {
 			let store = store.clone();
@@ -144,10 +172,35 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 				let owned: Vec<u64> = (1..=cfg.writers * cfg.rows_per_writer)
 					.filter(|r| r % cfg.writers == t)
 					.collect();
+				let mut op_last: BTreeMap<u64, Option<Vec<u8>>> = BTreeMap::new();
 				for seq in 0..cfg.ops_per_writer {
 					let row = owned[rng.random_range(0..owned.len() as u32) as usize];
 					let v = version.fetch_add(1, Ordering::SeqCst);
-					match rng.random_range(0u32..10) {
+					match rng.random_range(0u32..13) {
+						10 => {
+							MultiVersionCommit::commit(
+								&store,
+								CowVec::new(vec![Delta::Drop {
+									key: conc_op_key(row),
+								}]),
+								CommitVersion(v),
+							)
+							.unwrap();
+							op_last.insert(row, None);
+						}
+						11 | 12 => {
+							let value = format!("t{t}:r{row}:s{seq}").into_bytes();
+							MultiVersionCommit::commit(
+								&store,
+								CowVec::new(vec![Delta::Set {
+									key: conc_op_key(row),
+									row: EncodedRow(CowVec::new(value.clone())),
+								}]),
+								CommitVersion(v),
+							)
+							.unwrap();
+							op_last.insert(row, Some(value));
+						}
 						0 => {
 							MultiVersionCommit::commit(
 								&store,
@@ -178,9 +231,21 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 					}
 				}
 				stop.fetch_add(1, Ordering::SeqCst);
-				last
+				(last, op_last)
 			}));
 		}
+
+		let pump = s.spawn({
+			let store = store.clone();
+			let stop = &stop;
+			let cfg = &cfg;
+			move || {
+				while stop.load(Ordering::SeqCst) < cfg.writers {
+					store.purge_pending_drops();
+					thread::sleep(Duration::from_milliseconds(1).unwrap().to_std());
+				}
+			}
+		});
 
 		let mut reader_handles = Vec::new();
 		for _ in 0..cfg.readers {
@@ -192,7 +257,7 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 				let mut rng = StdRng::seed_from_u64(seed ^ 0xD1B54A32D192ED03u64);
 				while stop.load(Ordering::SeqCst) < cfg.writers {
 					let read = version.load(Ordering::SeqCst);
-					match rng.random_range(0u32..3) {
+					match rng.random_range(0u32..5) {
 						0 => {
 							let row =
 								rng.random_range(1..=cfg.writers * cfg.rows_per_writer);
@@ -206,6 +271,26 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 									"reader-get",
 								);
 							}
+						}
+						3 => {
+							let row =
+								rng.random_range(1..=cfg.writers * cfg.rows_per_writer);
+							if let Some(r) = store
+								.get(&conc_op_key(row), CommitVersion(read))
+								.unwrap()
+							{
+								check_structural(
+									&[(row, r.row.to_vec())],
+									cfg.writers,
+									"reader-op-get",
+								);
+							}
+						}
+						4 => {
+							let reverse = rng.random_range(0u32..2) == 0;
+							let batch = rng.random_range(1..=32) as usize;
+							let rows = scan_op_rows(&store, read, batch, reverse);
+							check_structural(&rows, cfg.writers, "reader-op-range");
 						}
 						_ => {
 							let reverse = rng.random_range(0u32..2) == 0;
@@ -234,12 +319,15 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 		for h in reader_handles {
 			h.join().expect("reader thread panicked");
 		}
+		pump.join().expect("pump thread panicked");
 		writer_handles.into_iter().map(|h| h.join().expect("writer thread panicked")).collect()
 	});
 
 	let mut expected: BTreeMap<u64, Option<Vec<u8>>> = BTreeMap::new();
-	for m in final_maps {
+	let mut op_expected: BTreeMap<u64, Option<Vec<u8>>> = BTreeMap::new();
+	for (m, op_m) in final_maps {
 		expected.extend(m);
+		op_expected.extend(op_m);
 	}
 
 	store.flush_pending_blocking();
@@ -267,6 +355,31 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 	assert!(
 		live_unexpected.is_empty(),
 		"FINAL state has rows no writer left live: {live_unexpected:?} (seed={seed})"
+	);
+
+	store.purge_pending_drops();
+	store.clear_read();
+	let op_live: BTreeMap<u64, Vec<u8>> = scan_op_rows(&store, final_version, 16, false).into_iter().collect();
+	for (row, want) in &op_expected {
+		match want {
+			Some(value) => assert_eq!(
+				op_live.get(row),
+				Some(value),
+				"FINAL operator state mismatch: row {row} owner-wrote {value:?} but store has {:?} (seed={seed})",
+				op_live.get(row)
+			),
+			None => assert!(
+				!op_live.contains_key(row),
+				"FINAL operator state mismatch: row {row} was dropped by its owner but store still has {:?} (seed={seed})",
+				op_live.get(row)
+			),
+		}
+	}
+	let op_unexpected: Vec<u64> =
+		op_live.keys().filter(|r| !matches!(op_expected.get(r), Some(Some(_)))).copied().collect();
+	assert!(
+		op_unexpected.is_empty(),
+		"FINAL operator state has rows no writer left live: {op_unexpected:?} (seed={seed})"
 	);
 
 	expected

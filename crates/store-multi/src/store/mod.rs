@@ -8,7 +8,7 @@ use std::{
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::event::EventBus;
+use reifydb_core::{common::CommitVersion, event::EventBus};
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSystem},
 	context::clock::Clock,
@@ -18,7 +18,7 @@ use reifydb_runtime::{
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
-use reifydb_value::value::duration::Duration;
+use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
 use tracing::instrument;
 
 use crate::{
@@ -157,10 +157,25 @@ impl StandardMultiStore {
 		}
 	}
 
+	pub fn insert_read_key(
+		&self,
+		key: EncodedKey,
+		version: CommitVersion,
+		value: Option<CowVec<u8>>,
+	) {
+		if let Some(read) = &self.read {
+			read.insert(key, version, value);
+		}
+	}
+
 	pub fn invalidate_read_key(&self, key: &EncodedKey) {
 		if let Some(read) = &self.read {
 			read.invalidate(key);
 		}
+	}
+
+	pub fn purge_pending_drops(&self) {
+		self.pending_drops.purge(self.persistent.as_ref(), self.read.as_ref());
 	}
 
 	pub fn remove_dropped_read_key(&self, key: &EncodedKey) {

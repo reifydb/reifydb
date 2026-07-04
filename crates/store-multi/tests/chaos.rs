@@ -35,6 +35,8 @@ mod lifecycle;
 mod multishape;
 #[path = "chaos/operator.rs"]
 mod operator;
+#[path = "chaos/operator_restart.rs"]
+mod operator_restart;
 #[path = "chaos/oracle.rs"]
 mod oracle;
 #[path = "chaos/snapshot.rs"]
@@ -119,14 +121,38 @@ chaos_test!(operator_state_lifecycle_chaos, |seed| {
 			keyspace: 48,
 			min_steps: 80,
 			max_steps: 200,
-			commit_pct: 40,
-			flush_pct: 15,
-			ttl_pct: 15,
-			drop_pct: 12,
+			commit_pct: 34,
+			flush_pct: 12,
+			ttl_pct: 12,
+			drop_pct: 10,
+			purge_pct: 6,
+			wipe_pct: 8,
 			max_deltas: 5,
 			max_batch: 24,
-			max_time_step: 400,
-			max_ttl: 400,
+		},
+	);
+});
+
+// Restart/recovery: operator lifecycle ops against a store rebuilt over its surviving SQLite file
+// at seed-chosen points. Encodes the recovery contract: flushed bases survive (including
+// dropped-but-unpurged rows, which legitimately resurface), everything else is gone, and reads keep
+// verifying differentially across restarts.
+chaos_test!(operator_restart_chaos, |seed| {
+	operator_restart::drive(
+		seed,
+		operator_restart::Params {
+			keyspace: 32,
+			min_steps: 60,
+			max_steps: 140,
+			commit_pct: 30,
+			flush_pct: 16,
+			ttl_pct: 10,
+			drop_pct: 10,
+			purge_pct: 6,
+			wipe_pct: 4,
+			restart_pct: 8,
+			max_deltas: 5,
+			max_batch: 24,
 		},
 	);
 });

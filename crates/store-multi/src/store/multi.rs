@@ -506,9 +506,17 @@ impl StandardMultiStore {
 							value,
 							version: v,
 						} => {
-							read_aligned[i] = VersionedGetResult::Value {
-								value,
-								version: v,
+							read_aligned[i] = if self.pending_drops.masks(
+								table_keys[i],
+								v,
+								version,
+							) {
+								VersionedGetResult::Tombstone
+							} else {
+								VersionedGetResult::Value {
+									value,
+									version: v,
+								}
 							};
 						}
 						VersionedGetResult::Tombstone => {
@@ -659,11 +667,26 @@ impl StandardMultiStore {
 		self.record_pending_drops(drops, version);
 		self.evict_drops_from_commit(drops)?;
 		self.remove_drops_from_read(drops);
-		if !self.send_persistent_evictions(drops, version) {
-			self.evict_drops_from_persistent_sync(drops, version)?;
+		if !self.nudge_drop_purge() {
+			self.pending_drops.purge(self.persistent.as_ref(), self.read.as_ref());
 		}
 
 		Ok(())
+	}
+
+	#[inline]
+	fn nudge_drop_purge(&self) -> bool {
+		if self.persistent.is_none() {
+			return true;
+		}
+		let Some(actor) = &self.drop_actor else {
+			return false;
+		};
+		if actor.send_blocking(DropMessage::PurgePending).is_err() {
+			warn!("Failed to nudge drop purge, purging synchronously");
+			return false;
+		}
+		true
 	}
 
 	#[inline]
@@ -684,58 +707,6 @@ impl StandardMultiStore {
 		for (_, key) in drops {
 			read.remove_dropped(key);
 		}
-	}
-
-	#[inline]
-	fn send_persistent_evictions(&self, drops: &[(EntryKind, EncodedKey)], version: CommitVersion) -> bool {
-		if self.persistent.is_none() {
-			return true;
-		}
-		let Some(actor) = &self.drop_actor else {
-			return false;
-		};
-		let mut by_table: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
-		for (table, key) in drops {
-			by_table.entry(*table).or_default().push((key.clone(), version));
-		}
-		for (table, keys) in by_table {
-			if actor.send_blocking(DropMessage::PersistentEvict {
-				table,
-				keys,
-			})
-			.is_err()
-			{
-				warn!(?table, "Failed to send persistent eviction batch, evicting synchronously");
-				return false;
-			}
-		}
-		true
-	}
-
-	#[inline]
-	fn evict_drops_from_persistent_sync(
-		&self,
-		drops: &[(EntryKind, EncodedKey)],
-		version: CommitVersion,
-	) -> Result<()> {
-		if let Some(persistent) = &self.persistent {
-			let mut by_table: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
-			for (table, key) in drops {
-				by_table.entry(*table).or_default().push((key.clone(), version));
-			}
-			for (table, keys) in by_table {
-				persistent.delete_keys_through(table, &keys)?;
-			}
-		}
-		if let Some(read) = &self.read {
-			for (_, key) in drops {
-				read.remove_dropped_through(key, version);
-			}
-		}
-		for (_, key) in drops {
-			self.pending_drops.settle(key, version);
-		}
-		Ok(())
 	}
 
 	#[inline]

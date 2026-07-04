@@ -22,10 +22,7 @@ pub enum DropMessage {
 
 	Batch(Vec<DropRequest>),
 
-	PersistentEvict {
-		table: EntryKind,
-		keys: Vec<(EncodedKey, CommitVersion)>,
-	},
+	PurgePending,
 
 	Tick,
 

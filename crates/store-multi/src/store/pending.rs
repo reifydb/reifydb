@@ -10,8 +10,14 @@ use std::{
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::common::CommitVersion;
+use reifydb_core::{
+	common::CommitVersion,
+	interface::store::{EntryKind, classify_key},
+};
 use reifydb_runtime::sync::rwlock::RwLock;
+use tracing::{error, instrument};
+
+use crate::tier::{persistent::MultiPersistentTier, read::MultiReadBufferTier};
 
 #[derive(Clone, Default)]
 pub struct PendingDrops {
@@ -60,5 +66,33 @@ impl PendingDrops {
 
 	pub fn is_empty(&self) -> bool {
 		self.inner.len.load(Ordering::Relaxed) == 0
+	}
+
+	#[instrument(name = "drop::purge_pending", level = "debug", skip_all)]
+	pub fn purge(&self, persistent: Option<&MultiPersistentTier>, read: Option<&MultiReadBufferTier>) {
+		if self.is_empty() {
+			return;
+		}
+		let mut by_kind: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
+		{
+			let map = self.inner.map.read();
+			for (key, version) in map.iter() {
+				by_kind.entry(classify_key(key)).or_default().push((key.clone(), *version));
+			}
+		}
+		for (kind, keys) in by_kind {
+			if let Some(persistent) = persistent
+				&& let Err(e) = persistent.delete_keys_through(kind, &keys)
+			{
+				error!(?kind, error = %e, "Failed to purge dropped operator rows, keeping them pending");
+				continue;
+			}
+			for (key, version) in &keys {
+				if let Some(read) = read {
+					read.remove_dropped_through(key, *version);
+				}
+				self.settle(key, *version);
+			}
+		}
 	}
 }
