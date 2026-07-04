@@ -26,3 +26,4 @@ pub mod parameter;
 pub mod prefix;
 pub mod scalar;
 pub(crate) mod udf_extract;
+pub mod value_cast;

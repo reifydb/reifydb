@@ -1,0 +1,31 @@
+# Typed attribute values (int4 + bool) set via DDL and CALL replicate with their types
+
+admin 'CREATE USER ATTRIBUTE rank: int4'
+admin 'CREATE USER ATTRIBUTE admin_flag: bool'
+admin 'CREATE USER carol { rank: 3; admin_flag: true }'
+replicate
+---
+version: 2
+
+query 'FROM system::identity_attribute_values MAP {attribute: attribute, value: value}'
+---
++--------------+---------+
+|  attribute   |  value  |
++--------------+---------+
+|  admin_flag  |  true   |
+|     rank     |    3    |
++--------------+---------+
+
+admin 'CALL identity::set_attribute("carol", "rank", 9)'
+replicate
+---
+version: 3
+
+query 'FROM system::identity_attribute_values MAP {attribute: attribute, value: value}'
+---
++--------------+---------+
+|  attribute   |  value  |
++--------------+---------+
+|  admin_flag  |  true   |
+|     rank     |    9    |
++--------------+---------+

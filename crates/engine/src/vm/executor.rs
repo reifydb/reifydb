@@ -155,7 +155,7 @@ fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Tran
 			let value = values
 				.iter()
 				.find(|v| v.attribute == attribute.id)
-				.map(|v| Value::Utf8(v.value.clone()))
+				.map(|v| v.value.clone())
 				.unwrap_or_else(|| Value::none_of(attribute.value_type.clone()));
 			fields.push((attribute.name.clone(), value));
 		}

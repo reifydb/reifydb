@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{identity::IdentityId, value_type::ValueType};
+use reifydb_value::value::{Value, identity::IdentityId, value_type::ValueType};
 use serde::{Deserialize, Serialize};
 
 pub type RoleId = u64;
@@ -56,5 +56,5 @@ impl IdentityAttribute {
 pub struct IdentityAttributeValue {
 	pub identity: IdentityId,
 	pub attribute: IdentityAttributeId,
-	pub value: String,
+	pub value: Value,
 }

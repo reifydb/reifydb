@@ -54,7 +54,7 @@ pub fn identity_attribute_values() -> Arc<VTable> {
 				Column {
 					id: VALUE,
 					name: "value".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
+					constraint: TypeConstraint::unconstrained(ValueType::Any),
 					properties: vec![],
 					index: ColumnIndex(3),
 					auto_increment: false,

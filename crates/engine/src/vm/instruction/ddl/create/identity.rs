@@ -4,7 +4,10 @@
 use std::{collections::HashSet, sync::LazyLock};
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_core::{interface::catalog::identity::IdentityAttribute, value::column::columns::Columns};
+use reifydb_core::{
+	interface::{catalog::identity::IdentityAttribute, evaluate::TargetColumn},
+	value::column::columns::Columns,
+};
 use reifydb_rql::nodes::{CreateIdentityNode, IdentityAttributeAssignment};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
@@ -36,7 +39,7 @@ pub(crate) fn create_identity(
 	)?;
 
 	for (attribute, value) in resolved {
-		services.catalog.set_identity_attribute_value(txn, identity.id, attribute.id, &value)?;
+		services.catalog.set_identity_attribute_value(txn, identity.id, &attribute, value)?;
 	}
 
 	Ok(Columns::single_row([("identity", Value::Utf8(name.to_string())), ("created", Value::Boolean(true))]))
@@ -47,7 +50,7 @@ pub(crate) fn resolve_attribute_assignments(
 	txn: &mut AdminTransaction,
 	assignments: &[IdentityAttributeAssignment],
 	params: &Params,
-) -> Result<Vec<(IdentityAttribute, String)>> {
+) -> Result<Vec<(IdentityAttribute, Value)>> {
 	let mut resolved = Vec::with_capacity(assignments.len());
 	let mut seen = HashSet::new();
 	for assignment in assignments {
@@ -72,7 +75,7 @@ pub(crate) fn resolve_attribute_assignments(
 			}
 			.into());
 		};
-		let value = evaluate_attribute_value(services, assignment, params)?;
+		let value = evaluate_attribute_value(services, &attribute, assignment, params)?;
 		resolved.push((attribute, value));
 	}
 	Ok(resolved)
@@ -80,9 +83,10 @@ pub(crate) fn resolve_attribute_assignments(
 
 fn evaluate_attribute_value(
 	services: &Services,
+	attribute: &IdentityAttribute,
 	assignment: &IdentityAttributeAssignment,
 	params: &Params,
-) -> Result<String> {
+) -> Result<Value> {
 	static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
 	let base = EvalContext {
@@ -98,16 +102,23 @@ fn evaluate_attribute_value(
 		target: None,
 		take: None,
 	};
-	let eval_ctx = base.with_eval_empty();
+	let mut eval_ctx = base.with_eval_empty();
+	eval_ctx.target = Some(TargetColumn::Partial {
+		source_name: None,
+		column_name: None,
+		column_type: attribute.value_type.clone(),
+		properties: vec![],
+	});
 	let column = evaluate(&eval_ctx, &assignment.value)?;
 	let value = column.data().get_value(0);
-	match value {
-		Value::Utf8(s) => Ok(s.as_str().to_string()),
-		other => Err(CatalogError::IdentityAttributeValueInvalid {
+	if value.get_type() != attribute.value_type {
+		return Err(CatalogError::IdentityAttributeValueInvalid {
 			name: assignment.name.text().to_string(),
-			actual: other.get_type(),
+			expected: attribute.value_type.clone(),
+			actual: value.get_type(),
 			fragment: assignment.value.full_fragment_owned(),
 		}
-		.into()),
+		.into());
 	}
+	Ok(value)
 }

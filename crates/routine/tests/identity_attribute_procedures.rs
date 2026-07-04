@@ -72,7 +72,7 @@ fn stored_value(t: &TestEngine, tx: &mut Transaction<'_>, user: &str, attribute:
 		.unwrap()
 		.into_iter()
 		.find(|v| v.attribute == definition.id)
-		.map(|v| v.value)
+		.map(|v| v.value.to_string())
 }
 
 fn utf8(s: &str) -> Value {
@@ -187,42 +187,81 @@ fn set_with_non_utf8_attribute_arg_is_type_error() {
 	}
 }
 
+// Values are cast to the attribute's declared catalog type with the same house rules as
+// INSERT: castable values convert (bool -> utf8 stores "true"), uncastable ones raise the
+// cast diagnostic, and none is rejected before casting.
 #[test]
-fn set_with_non_utf8_value_arg_is_type_error() {
+fn set_bool_value_into_utf8_attribute_casts() {
 	let t = TestEngine::new();
+	t.admin("CREATE USER ATTRIBUTE rp_org_o: utf8");
+	t.admin("CREATE USER rp_alice_o");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	run_set(
+		&t,
+		&mut Transaction::Admin(&mut txn),
+		IdentityId::system(),
+		vec![utf8("rp_alice_o"), utf8("rp_org_o"), Value::Boolean(true)],
+	)
+	.unwrap();
+	assert_eq!(
+		stored_value(&t, &mut Transaction::Admin(&mut txn), "rp_alice_o", "rp_org_o"),
+		Some("true".to_string()),
+		"castable values must convert to the declared type like INSERT does"
+	);
+}
+
+#[test]
+fn set_uncastable_value_is_cast_error() {
+	let t = TestEngine::new();
+	t.admin("CREATE USER ATTRIBUTE rp_rank_p: int4");
+	t.admin("CREATE USER rp_alice_p");
+
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let err = run_set(
 		&t,
 		&mut Transaction::Admin(&mut txn),
 		IdentityId::system(),
-		vec![utf8("alice"), utf8("org_id"), Value::Boolean(true)],
+		vec![utf8("rp_alice_p"), utf8("rp_rank_p"), utf8("not_a_number")],
 	)
 	.unwrap_err();
 	match err {
-		RoutineError::ProcedureInvalidArgumentType {
-			argument_index,
-			..
-		} => assert_eq!(argument_index, 2),
-		other => panic!("expected invalid argument type, got {other:?}"),
+		RoutineError::Wrapped(e) => {
+			let code = e.diagnostic().code.clone();
+			assert!(!code.is_empty(), "cast failure must carry a diagnostic, got {code}");
+		}
+		other => panic!("expected wrapped cast error, got {other:?}"),
 	}
+	assert_eq!(
+		stored_value(&t, &mut Transaction::Admin(&mut txn), "rp_alice_p", "rp_rank_p"),
+		None,
+		"a failed cast must not store anything"
+	);
 }
 
 #[test]
 fn set_with_none_value_arg_is_type_error() {
 	let t = TestEngine::new();
+	t.admin("CREATE USER ATTRIBUTE rp_org_q: utf8");
+	t.admin("CREATE USER rp_alice_q");
+
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let err = run_set(
 		&t,
 		&mut Transaction::Admin(&mut txn),
 		IdentityId::system(),
-		vec![utf8("alice"), utf8("org_id"), Value::none()],
+		vec![utf8("rp_alice_q"), utf8("rp_org_q"), Value::none()],
 	)
 	.unwrap_err();
 	match err {
 		RoutineError::ProcedureInvalidArgumentType {
 			argument_index,
+			expected,
 			..
-		} => assert_eq!(argument_index, 2),
+		} => {
+			assert_eq!(argument_index, 2);
+			assert_eq!(expected, vec![ValueType::Utf8]);
+		}
 		other => panic!("expected invalid argument type for none, got {other:?}"),
 	}
 }
@@ -297,7 +336,7 @@ fn set_overwrites_previous_value() {
 	let identity = catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "rp_alice_c").unwrap().unwrap();
 	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn), identity.id).unwrap();
 	assert_eq!(values.len(), 1, "overwrite must supersede, not duplicate, found {values:?}");
-	assert_eq!(values[0].value, "globex");
+	assert_eq!(values[0].value, Value::Utf8("globex".to_string()));
 }
 
 #[test]

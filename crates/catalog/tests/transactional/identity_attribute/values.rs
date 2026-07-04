@@ -26,7 +26,7 @@ fn value_of(
 		.unwrap()
 		.into_iter()
 		.find(|v| v.attribute == definition.id)
-		.map(|v| v.value)
+		.map(|v| v.value.to_string())
 }
 
 #[test]
@@ -363,7 +363,11 @@ fn committed_overwrite_supersedes_old_value() {
 	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn), identity.id).unwrap();
 	// Exactly one row must remain: the overwrite must supersede, not duplicate.
 	assert_eq!(values.len(), 1, "overwrite must not duplicate the value row, found {:?}", values);
-	assert_eq!(values[0].value, "globex", "committed overwrite must supersede the old value");
+	assert_eq!(
+		values[0].value,
+		Value::Utf8("globex".to_string()),
+		"committed overwrite must supersede the old value"
+	);
 }
 
 #[test]
@@ -545,7 +549,7 @@ fn call_set_attribute_overwrites_committed_value() {
 		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "iav_alice_ac").unwrap().unwrap();
 	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn), identity.id).unwrap();
 	assert_eq!(values.len(), 1, "CALL overwrite must not duplicate the value row, found {:?}", values);
-	assert_eq!(values[0].value, "globex", "CALL overwrite must supersede the old value");
+	assert_eq!(values[0].value, Value::Utf8("globex".to_string()), "CALL overwrite must supersede the old value");
 }
 
 #[test]
@@ -669,23 +673,133 @@ fn alter_user_with_param_value() {
 	);
 }
 
+// Body values are cast to the attribute's declared catalog type with the same house rules
+// as INSERT: castable literals convert, uncastable ones raise the cast diagnostic.
 #[test]
-fn non_utf8_body_value_is_rejected() {
+fn int_body_value_casts_to_declared_utf8_type() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 	t.admin("CREATE USER ATTRIBUTE iav_org_ak: utf8");
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql("CREATE USER iav_alice_ak { iav_org_ak: 123 }", Params::None);
-	let error = r.error.expect("non-utf8 body value must be rejected");
-	assert_eq!(error.diagnostic().code, "CA_094");
+	assert!(r.error.is_none(), "castable body value must be accepted: {:?}", r.error);
+	txn.commit().unwrap();
+
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_ak", "iav_org_ak"),
+		Some("123".to_string()),
+		"123 into a utf8 attribute must store the cast string"
+	);
+}
+
+#[test]
+fn uncastable_body_value_is_rejected() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_rank_am: int4");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql("CREATE USER iav_alice_am { iav_rank_am: 'not_a_number' }", Params::None);
+	assert!(r.error.is_some(), "an uncastable body value must be rejected");
 	drop(txn);
 
 	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
 	assert!(
-		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn2), "iav_alice_ak").unwrap().is_none(),
+		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn2), "iav_alice_am").unwrap().is_none(),
 		"rejected create must not leave the identity behind"
 	);
+}
+
+#[test]
+fn typed_int_attribute_via_ddl_literal_and_call() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_rank_an: int4");
+	t.admin("CREATE USER iav_alice_an { iav_rank_an: 3 }");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let identity =
+		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "iav_alice_an").unwrap().unwrap();
+	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn), identity.id).unwrap();
+	assert_eq!(values[0].value, Value::Int4(3), "int literal must coerce to the declared int4");
+	drop(txn);
+
+	// CALL with an int literal coerces to the declared int4 through the same cast rules.
+	t.admin("CALL identity::set_attribute('iav_alice_an', 'iav_rank_an', 7)");
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn2), identity.id).unwrap();
+	assert_eq!(values.len(), 1, "overwrite must supersede, found {:?}", values);
+	assert_eq!(values[0].value, Value::Int4(7));
+}
+
+#[test]
+fn typed_int_attribute_via_named_param() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_rank_ao: int4");
+	t.admin("CREATE USER iav_alice_ao");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql("ALTER USER iav_alice_ao { iav_rank_ao: $rank }", named_params(&[("rank", Value::Int4(9))]));
+	assert!(r.error.is_none(), "typed param must bind: {:?}", r.error);
+	txn.commit().unwrap();
+
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let identity =
+		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn2), "iav_alice_ao").unwrap().unwrap();
+	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn2), identity.id).unwrap();
+	assert_eq!(values[0].value, Value::Int4(9));
+}
+
+#[test]
+fn typed_bool_attribute_roundtrip() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_admin_ap: bool");
+	t.admin("CREATE USER iav_alice_ap { iav_admin_ap: true }");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let identity =
+		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "iav_alice_ap").unwrap().unwrap();
+	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn), identity.id).unwrap();
+	assert_eq!(values[0].value, Value::Boolean(true));
+}
+
+#[test]
+fn typed_overwrite_survives_commit_and_rollback() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_rank_aq: int4");
+	t.admin("CREATE USER iav_alice_aq { iav_rank_aq: 1 }");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql("ALTER USER iav_alice_aq { iav_rank_aq: 2 }", Params::None);
+	assert!(r.error.is_none(), "typed overwrite failed: {:?}", r.error);
+	txn.rollback().unwrap();
+
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let identity =
+		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn2), "iav_alice_aq").unwrap().unwrap();
+	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn2), identity.id).unwrap();
+	assert_eq!(values[0].value, Value::Int4(1), "rolled-back typed overwrite must restore the old value");
+	drop(txn2);
+
+	t.admin("ALTER USER iav_alice_aq { iav_rank_aq: 2 }");
+	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
+	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn3), identity.id).unwrap();
+	assert_eq!(values[0].value, Value::Int4(2), "committed typed overwrite must persist");
+}
+
+#[test]
+fn option_attribute_declaration_is_rejected() {
+	let t = TestEngine::new();
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql("CREATE USER ATTRIBUTE iav_opt_ar: option(int4)", Params::None);
+	let error = r.error.expect("option attribute types must be rejected");
+	assert_eq!(error.diagnostic().code, "CA_092");
 }
 
 #[test]

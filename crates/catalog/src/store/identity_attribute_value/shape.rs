@@ -14,7 +14,7 @@ pub(crate) mod identity_attribute_value {
 		RowShape::new(vec![
 			RowShapeField::unconstrained("identity", ValueType::IdentityId),
 			RowShapeField::unconstrained("attribute", ValueType::Uint8),
-			RowShapeField::unconstrained("value", ValueType::Utf8),
+			RowShapeField::unconstrained("value", ValueType::Blob),
 		])
 	});
 }

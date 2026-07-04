@@ -28,7 +28,7 @@ mod tests {
 		rng::Rng,
 	};
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_value::value::value_type::ValueType;
+	use reifydb_value::value::{Value, value_type::ValueType};
 
 	use crate::CatalogStore;
 
@@ -45,7 +45,8 @@ mod tests {
 		let (_, clock, rng) = test_clock_and_rng();
 		let alice = CatalogStore::create_identity(&mut txn, "alice", &clock, &rng).unwrap();
 		let org = CatalogStore::create_identity_attribute(&mut txn, "org_id", ValueType::Utf8).unwrap();
-		CatalogStore::set_identity_attribute_value(&mut txn, alice.id, org.id, "acme").unwrap();
+		CatalogStore::set_identity_attribute_value(&mut txn, alice.id, org.id, Value::Utf8("acme".to_string()))
+			.unwrap();
 		CatalogStore::remove_identity_attribute_value(&mut txn, alice.id, org.id).unwrap();
 		let found = CatalogStore::find_identity_attribute_value(
 			&mut Transaction::Admin(&mut txn),

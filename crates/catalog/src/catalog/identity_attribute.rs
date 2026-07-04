@@ -11,10 +11,13 @@ use reifydb_transaction::{
 	change::{TransactionalIdentityAttributeChanges, TransactionalIdentityAttributeValueChanges},
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_value::value::{identity::IdentityId, value_type::ValueType};
+use reifydb_value::{
+	fragment::Fragment,
+	value::{Value, identity::IdentityId, value_type::ValueType},
+};
 use tracing::{instrument, warn};
 
-use crate::{CatalogStore, Result, catalog::Catalog};
+use crate::{CatalogStore, Result, catalog::Catalog, error::CatalogError};
 
 impl Catalog {
 	#[instrument(name = "catalog::identity_attribute::find_by_name", level = "trace", skip(self, txn))]
@@ -288,10 +291,19 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		identity: IdentityId,
-		attribute: IdentityAttributeId,
-		value: &str,
+		attribute: &IdentityAttribute,
+		value: Value,
 	) -> Result<IdentityAttributeValue> {
-		let value = CatalogStore::set_identity_attribute_value(txn, identity, attribute, value)?;
+		if value.get_type() != attribute.value_type {
+			return Err(CatalogError::IdentityAttributeValueInvalid {
+				name: attribute.name.clone(),
+				expected: attribute.value_type.clone(),
+				actual: value.get_type(),
+				fragment: Fragment::None,
+			}
+			.into());
+		}
+		let value = CatalogStore::set_identity_attribute_value(txn, identity, attribute.id, value)?;
 		txn.track_identity_attribute_value_created(value.clone())?;
 		Ok(value)
 	}

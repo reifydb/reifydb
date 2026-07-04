@@ -3,10 +3,7 @@
 
 use std::{fmt, str::FromStr};
 
-use reifydb_value::value::{
-	Value, decimal::Decimal, duration::Duration, int::Int, ordered_f32::OrderedF32, ordered_f64::OrderedF64,
-	uint::Uint, value_type::ValueType,
-};
+use reifydb_value::value::{Value, duration::Duration, value_type::ValueType};
 
 use crate::common::CommitVersion;
 
@@ -667,71 +664,16 @@ impl ConfigKey {
 			});
 		}
 
-		let canonical = if self.expected_types().contains(&value.get_type()) {
-			value
-		} else {
-			try_coerce_numeric(&value, self.expected_types()).ok_or_else(|| AcceptError::TypeMismatch {
+		if !self.expected_types().contains(&value.get_type()) {
+			return Err(AcceptError::TypeMismatch {
 				expected: self.expected_types().to_vec(),
 				actual: value.get_type(),
-			})?
-		};
-
-		self.validate_canonical(&canonical).map_err(AcceptError::InvalidValue)?;
-		Ok(canonical)
-	}
-}
-
-fn try_coerce_numeric(value: &Value, expected: &[ValueType]) -> Option<Value> {
-	for target in expected {
-		let coerced = match target {
-			ValueType::Uint1 => {
-				value.to_usize().filter(|&v| v <= u8::MAX as usize).map(|v| Value::Uint1(v as u8))
-			}
-			ValueType::Uint2 => {
-				value.to_usize().filter(|&v| v <= u16::MAX as usize).map(|v| Value::Uint2(v as u16))
-			}
-			ValueType::Uint4 => {
-				value.to_usize().filter(|&v| v <= u32::MAX as usize).map(|v| Value::Uint4(v as u32))
-			}
-			ValueType::Uint8 => {
-				value.to_usize().filter(|&v| v <= u64::MAX as usize).map(|v| Value::Uint8(v as u64))
-			}
-			ValueType::Uint16 => value.to_usize().map(|v| Value::Uint16(v as u128)),
-			ValueType::Int1 => {
-				value.to_usize().filter(|&v| v <= i8::MAX as usize).map(|v| Value::Int1(v as i8))
-			}
-			ValueType::Int2 => {
-				value.to_usize().filter(|&v| v <= i16::MAX as usize).map(|v| Value::Int2(v as i16))
-			}
-			ValueType::Int4 => {
-				value.to_usize().filter(|&v| v <= i32::MAX as usize).map(|v| Value::Int4(v as i32))
-			}
-			ValueType::Int8 => {
-				value.to_usize().filter(|&v| v <= i64::MAX as usize).map(|v| Value::Int8(v as i64))
-			}
-			ValueType::Int16 => {
-				value.to_usize().filter(|&v| v <= i128::MAX as usize).map(|v| Value::Int16(v as i128))
-			}
-			ValueType::Uint => value.to_usize().map(|v| Value::Uint(Uint::from_u64(v as u64))),
-			ValueType::Int => value.to_usize().map(|v| Value::Int(Int::from_i64(v as i64))),
-			ValueType::Decimal => value.to_usize().map(|v| Value::Decimal(Decimal::from_i64(v as i64))),
-			ValueType::Float4 => {
-				value.to_usize().and_then(|v| OrderedF32::try_from(v as f32).ok()).map(Value::Float4)
-			}
-			ValueType::Float8 => {
-				value.to_usize().and_then(|v| OrderedF64::try_from(v as f64).ok()).map(Value::Float8)
-			}
-			ValueType::Duration => value
-				.to_usize()
-				.and_then(|v| Duration::from_seconds(v as i64).ok())
-				.map(Value::Duration),
-			_ => None,
-		};
-		if coerced.is_some() {
-			return coerced;
+			});
 		}
+
+		self.validate_canonical(&value).map_err(AcceptError::InvalidValue)?;
+		Ok(value)
 	}
-	None
 }
 
 impl fmt::Display for ConfigKey {
@@ -1173,9 +1115,12 @@ mod tests {
 	}
 
 	#[test]
-	fn test_threads_coerce_int4_to_uint2() {
-		let v = ConfigKey::ThreadsQuery.accept(Value::Int4(8)).unwrap();
-		assert_eq!(v, Value::Uint2(8));
+	fn test_threads_reject_int4_for_uint2_key() {
+		// accept is strict: coercion happens at the CALL boundary via ValueCast.
+		assert!(matches!(
+			ConfigKey::ThreadsQuery.accept(Value::Int4(8)),
+			Err(AcceptError::TypeMismatch { .. })
+		));
 	}
 
 	#[test]
@@ -1216,19 +1161,16 @@ mod tests {
 	}
 
 	#[test]
-	fn test_query_row_batch_size_accept_rejects_zero_after_coercion() {
-		match ConfigKey::QueryRowBatchSize.accept(Value::Int4(0)).unwrap_err() {
-			AcceptError::InvalidValue(reason) => {
-				assert!(reason.contains("greater than zero"));
-			}
-			other => panic!("expected InvalidValue, got {other:?}"),
-		}
-	}
-
-	#[test]
-	fn test_query_row_batch_size_coerces_int4_to_uint2() {
-		let v = ConfigKey::QueryRowBatchSize.accept(Value::Int4(64)).unwrap();
-		assert_eq!(v, Value::Uint2(64));
+	fn test_query_row_batch_size_rejects_mismatched_type() {
+		// accept is strict: an Int4 no longer coerces here, regardless of the value.
+		assert!(matches!(
+			ConfigKey::QueryRowBatchSize.accept(Value::Int4(64)),
+			Err(AcceptError::TypeMismatch { .. })
+		));
+		assert!(matches!(
+			ConfigKey::QueryRowBatchSize.accept(Value::Int4(0)),
+			Err(AcceptError::TypeMismatch { .. })
+		));
 	}
 
 	#[test]
@@ -1325,22 +1267,21 @@ mod tests {
 	}
 
 	#[test]
-	fn test_accept_coerces_int4_to_uint8_for_block_size() {
-		// SET CONFIG CDC_COMPACT_BLOCK_SIZE = 1024 (parsed as Int4) becomes Uint8(1024).
-		let v = ConfigKey::CdcCompactBlockSize.accept(Value::Int4(1024)).unwrap();
-		assert_eq!(v, Value::Uint8(1024));
+	fn test_accept_rejects_int4_for_uint8_block_size() {
+		// accept is strict: SET CONFIG casts to Uint8 via ValueCast before calling accept.
+		assert!(matches!(
+			ConfigKey::CdcCompactBlockSize.accept(Value::Int4(1024)),
+			Err(AcceptError::TypeMismatch { .. })
+		));
+		assert!(matches!(
+			ConfigKey::CdcCompactBlockSize.accept(Value::Int8(2048)),
+			Err(AcceptError::TypeMismatch { .. })
+		));
 	}
 
 	#[test]
-	fn test_accept_coerces_int8_to_uint8_for_block_size() {
-		let v = ConfigKey::CdcCompactBlockSize.accept(Value::Int8(2048)).unwrap();
-		assert_eq!(v, Value::Uint8(2048));
-	}
-
-	#[test]
-	fn test_accept_rejects_zero_after_coercion() {
-		// Int4(0) coerces to Uint8(0), then validate_canonical rejects it.
-		match ConfigKey::CdcCompactBlockSize.accept(Value::Int4(0)).unwrap_err() {
+	fn test_accept_rejects_zero_of_canonical_type() {
+		match ConfigKey::CdcCompactBlockSize.accept(Value::Uint8(0)).unwrap_err() {
 			AcceptError::InvalidValue(reason) => {
 				assert!(reason.contains("greater than zero"));
 			}
@@ -1358,10 +1299,13 @@ mod tests {
 	}
 
 	#[test]
-	fn test_accept_coerces_int_to_duration_via_seconds() {
-		// SET CONFIG CDC_COMPACT_INTERVAL = 60 (Int4) -> Duration(60s).
-		let v = ConfigKey::CdcCompactInterval.accept(Value::Int4(60)).unwrap();
-		assert!(matches!(v, Value::Duration(_)));
+	fn test_accept_rejects_int_for_duration_key() {
+		// Bare integers carry no unit: duration keys take Duration values (or duration
+		// strings cast at the CALL boundary), never int-as-seconds.
+		assert!(matches!(
+			ConfigKey::CdcCompactInterval.accept(Value::Int4(60)),
+			Err(AcceptError::TypeMismatch { .. })
+		));
 	}
 
 	#[test]

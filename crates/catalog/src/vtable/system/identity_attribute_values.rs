@@ -8,7 +8,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::fragment::Fragment;
+use reifydb_value::{fragment::Fragment, value::Value};
 
 use crate::{
 	CatalogStore, Result,
@@ -60,20 +60,20 @@ impl BaseVTable for SystemIdentityAttributeValues {
 		let mut identities = ColumnBuffer::identity_id_with_capacity(rows.len());
 		let mut attribute_ids = ColumnBuffer::uint8_with_capacity(rows.len());
 		let mut attributes = ColumnBuffer::utf8_with_capacity(rows.len());
-		let mut value_strings = ColumnBuffer::utf8_with_capacity(rows.len());
+		let mut values = ColumnBuffer::any_with_capacity(rows.len());
 
 		for (name, v) in rows {
 			identities.push(v.identity);
 			attribute_ids.push(v.attribute);
 			attributes.push(name);
-			value_strings.push(v.value);
+			values.push_value(Value::Any(Box::new(v.value)));
 		}
 
 		let columns = vec![
 			ColumnWithName::new(Fragment::internal("identity"), identities),
 			ColumnWithName::new(Fragment::internal("attribute_id"), attribute_ids),
 			ColumnWithName::new(Fragment::internal("attribute"), attributes),
-			ColumnWithName::new(Fragment::internal("value"), value_strings),
+			ColumnWithName::new(Fragment::internal("value"), values),
 		];
 
 		self.exhausted = true;

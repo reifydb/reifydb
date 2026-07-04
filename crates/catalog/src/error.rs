@@ -105,9 +105,10 @@ pub enum CatalogError {
 		fragment: Fragment,
 	},
 
-	#[error("user attribute `{name}` value must be a utf8 string, got `{actual}`")]
+	#[error("user attribute `{name}` expects `{expected}`, got `{actual}`")]
 	IdentityAttributeValueInvalid {
 		name: String,
+		expected: ValueType,
 		actual: ValueType,
 		fragment: Fragment,
 	},
@@ -602,7 +603,10 @@ impl IntoDiagnostic for CatalogError {
 				message: format!("user attribute `{}` has unsupported type `{}`", name, value_type),
 				fragment,
 				label: Some("unsupported user attribute type".to_string()),
-				help: Some("only `utf8` user attributes are supported".to_string()),
+				help: Some(
+					"`any` and `option` types are not supported; attributes are inherently optional (unset reads as none)"
+						.to_string(),
+				),
 				column: None,
 				notes: vec![],
 				cause: None,
@@ -611,18 +615,19 @@ impl IntoDiagnostic for CatalogError {
 
 			CatalogError::IdentityAttributeValueInvalid {
 				name,
+				expected,
 				actual,
 				fragment,
 			} => Diagnostic {
 				code: "CA_094".to_string(),
 				rql: None,
-				message: format!("user attribute `{}` value must be a utf8 string, got `{}`", name, actual),
+				message: format!("user attribute `{}` expects `{}`, got `{}`", name, expected, actual),
 				fragment,
 				label: Some("invalid user attribute value".to_string()),
-				help: Some(
-					"attribute values are utf8; wrap the value in quotes or bind a utf8 parameter"
-						.to_string(),
-				),
+				help: Some(format!(
+					"the attribute `{}` is of type `{}`; provide a `{}` value or bind a parameter of that type",
+					name, expected, expected
+				)),
 				column: None,
 				notes: vec![],
 				cause: None,

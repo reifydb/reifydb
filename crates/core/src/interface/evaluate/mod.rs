@@ -8,7 +8,12 @@
 //! available before resolution (`TargetColumn::Partial`). Number-out-of-range descriptor construction lives here too so
 //! range-violation diagnostics are assembled identically by every evaluator.
 
-use reifydb_value::{error::NumberOutOfRangeDescriptor, value::value_type::ValueType};
+use std::sync::Arc;
+
+use reifydb_value::{
+	error::NumberOutOfRangeDescriptor,
+	value::{Value, value_type::ValueType},
+};
 
 use crate::interface::{
 	catalog::property::ColumnPropertyKind,
@@ -71,3 +76,9 @@ impl TargetColumn {
 		}
 	}
 }
+
+pub trait ValueCast: Send + Sync {
+	fn cast(&self, value: Value, target: &ValueType) -> reifydb_value::Result<Value>;
+}
+
+pub type ValueCastRef = Arc<dyn ValueCast>;

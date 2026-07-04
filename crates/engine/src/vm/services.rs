@@ -8,7 +8,7 @@ use reifydb_catalog::{
 	catalog::Catalog,
 	vtable::{system::flow_operator_store::SystemFlowOperatorStore, user::registry::UserVTableRegistry},
 };
-use reifydb_core::util::ioc::IocContainer;
+use reifydb_core::{interface::evaluate::ValueCastRef, util::ioc::IocContainer};
 use reifydb_extension::transform::registry::Transforms;
 use reifydb_metric::storage::metric::MetricReader;
 use reifydb_routine::{
@@ -22,6 +22,7 @@ use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::sumtype::VariantRef;
 
+use crate::expression::value_cast::EngineValueCast;
 #[cfg(not(reifydb_single_threaded))]
 use crate::remote::RemoteRegistry;
 
@@ -57,6 +58,10 @@ impl Services {
 		stats_reader: MetricReader<SingleStore>,
 	) -> Self {
 		let auth_registry = AuthenticationRegistry::new(config.runtime_context.clock.clone());
+		config.ioc.register_service::<ValueCastRef>(Arc::new(EngineValueCast::new(
+			config.routines.clone(),
+			config.runtime_context.clone(),
+		)));
 		Self {
 			compiler: Compiler::new(catalog.clone()),
 			catalog,

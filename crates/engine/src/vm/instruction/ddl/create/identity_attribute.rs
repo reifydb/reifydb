@@ -37,7 +37,7 @@ pub(crate) fn create_identity_attribute(
 			fragment: plan.name.clone(),
 		}
 		.into());
-	} else if plan.value_type != ValueType::Utf8 {
+	} else if matches!(plan.value_type, ValueType::Any | ValueType::Option(_)) {
 		return Err(CatalogError::IdentityAttributeTypeUnsupported {
 			name: name.to_string(),
 			value_type: plan.value_type,

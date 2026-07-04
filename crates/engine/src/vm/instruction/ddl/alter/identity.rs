@@ -34,7 +34,7 @@ pub(crate) fn alter_identity(
 	let resolved = resolve_attribute_assignments(services, txn, &plan.attributes, params)?;
 
 	for (attribute, value) in resolved {
-		services.catalog.set_identity_attribute_value(txn, identity.id, attribute.id, &value)?;
+		services.catalog.set_identity_attribute_value(txn, identity.id, &attribute, value)?;
 	}
 
 	Ok(Columns::single_row([("identity", Value::Utf8(name.to_string())), ("altered", Value::Boolean(true))]))

@@ -4,7 +4,10 @@
 use std::{str::FromStr, sync::LazyLock};
 
 use reifydb_catalog::error::CatalogError;
-use reifydb_core::{interface::catalog::config::ConfigKey, value::column::columns::Columns};
+use reifydb_core::{
+	interface::{catalog::config::ConfigKey, evaluate::ValueCastRef},
+	value::column::columns::Columns,
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::Error as TypeError,
@@ -80,6 +83,22 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for SetConfigProcedure {
 			Err(_) => {
 				return Err(CatalogError::ConfigStorageKeyNotFound(key_str).into());
 			}
+		};
+
+		let value = if matches!(value, Value::None { .. })
+			|| config_key.expected_types().contains(&value.get_type())
+		{
+			value
+		} else {
+			let caster = ctx.ioc.resolve::<ValueCastRef>()?;
+			let mut casted = None;
+			for target in config_key.expected_types() {
+				if let Ok(coerced) = caster.cast(value.clone(), target) {
+					casted = Some(coerced);
+					break;
+				}
+			}
+			casted.unwrap_or(value)
 		};
 
 		let coerced_value = config_key.accept(value).map_err(|e| {

@@ -55,7 +55,7 @@ impl CatalogCache {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{common::CommitVersion, interface::catalog::identity::IdentityAttributeValue};
-	use reifydb_value::value::identity::IdentityId;
+	use reifydb_value::value::{Value, identity::IdentityId};
 
 	use crate::cache::CatalogCache;
 
@@ -63,7 +63,7 @@ mod tests {
 		IdentityAttributeValue {
 			identity,
 			attribute,
-			value: value.to_string(),
+			value: Value::Utf8(value.to_string()),
 		}
 	}
 
@@ -74,7 +74,10 @@ mod tests {
 		cache.set_identity_attribute_value(alice, 1, CommitVersion(5), Some(value(alice, 1, "acme")));
 
 		assert!(cache.find_identity_attribute_value_at(alice, 1, CommitVersion(4)).is_none());
-		assert_eq!(cache.find_identity_attribute_value_at(alice, 1, CommitVersion(5)).unwrap().value, "acme");
+		assert_eq!(
+			cache.find_identity_attribute_value_at(alice, 1, CommitVersion(5)).unwrap().value,
+			Value::Utf8("acme".to_string())
+		);
 	}
 
 	#[test]

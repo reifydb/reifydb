@@ -17,7 +17,7 @@ impl CatalogStore {
 
 		for entry in stream {
 			let multi = entry?;
-			result.push(convert_identity_attribute_value(multi));
+			result.push(convert_identity_attribute_value(multi)?);
 		}
 
 		Ok(result)
@@ -32,7 +32,7 @@ mod tests {
 		rng::Rng,
 	};
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_value::value::value_type::ValueType;
+	use reifydb_value::value::{Value, value_type::ValueType};
 
 	use crate::CatalogStore;
 
@@ -50,8 +50,10 @@ mod tests {
 		let alice = CatalogStore::create_identity(&mut txn, "alice", &clock, &rng).unwrap();
 		let bob = CatalogStore::create_identity(&mut txn, "bob", &clock, &rng).unwrap();
 		let org = CatalogStore::create_identity_attribute(&mut txn, "org_id", ValueType::Utf8).unwrap();
-		CatalogStore::set_identity_attribute_value(&mut txn, alice.id, org.id, "acme").unwrap();
-		CatalogStore::set_identity_attribute_value(&mut txn, bob.id, org.id, "globex").unwrap();
+		CatalogStore::set_identity_attribute_value(&mut txn, alice.id, org.id, Value::Utf8("acme".to_string()))
+			.unwrap();
+		CatalogStore::set_identity_attribute_value(&mut txn, bob.id, org.id, Value::Utf8("globex".to_string()))
+			.unwrap();
 
 		let values =
 			CatalogStore::list_all_identity_attribute_values(&mut Transaction::Admin(&mut txn)).unwrap();
