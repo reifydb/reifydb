@@ -91,6 +91,7 @@ pub struct RollingEngine<G, C, Accumulator> {
 	buffers: StateCache<RowNumber, RollingBuffer<C, Accumulator>>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
 	late_policy: LatePolicy,
+	expire_batch: usize,
 	_pd: PhantomData<G>,
 }
 
@@ -108,6 +109,7 @@ where
 			),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
 			late_policy: config.late_policy(),
+			expire_batch: config.expire_batch(),
 			_pd: PhantomData,
 		}
 	}
@@ -458,6 +460,7 @@ where
 		let mut due: Vec<(EncodedKey, RollingIndexEntry<G>)> = Vec::new();
 		store.internal_range_visit::<RollingIndexEntry<G>>(
 			expiry_due_range(cutoff.order_key()),
+			Some(self.expire_batch),
 			&mut |key, entry| {
 				due.push((key, entry));
 				Ok(())
@@ -526,10 +529,14 @@ where
 		CB: Fn(&G, &RollingBuffer<C, Accumulator>) -> Option<Output>,
 	{
 		let mut due: Vec<(EncodedKey, RollingIndexEntry<G>)> = Vec::new();
-		store.internal_range_visit::<RollingIndexEntry<G>>(expiry_due_range(cutoff), &mut |key, entry| {
-			due.push((key, entry));
-			Ok(())
-		})?;
+		store.internal_range_visit::<RollingIndexEntry<G>>(
+			expiry_due_range(cutoff),
+			Some(self.expire_batch),
+			&mut |key, entry| {
+				due.push((key, entry));
+				Ok(())
+			},
+		)?;
 
 		let mut out: Vec<RollingExpiry<G, Output>> = Vec::new();
 		for (index_key, entry) in due {
@@ -717,6 +724,53 @@ mod tests {
 		assert_eq!(out.len(), 1, "only the group with a due coord is processed");
 		assert!(matches!(&out[0], RollingExpiry::Remove { group, .. } if *group == 2));
 		assert_eq!(store.index_entry_count(), 1, "group 1 keeps its index entry");
+	}
+
+	#[test]
+	fn expire_before_processes_at_most_expire_batch_then_resumes_next_tick() {
+		// Same guard rail as the tumbling engine: a due-group burst must not be drained in a
+		// single tick, because all node ticks run serialized in the flow actor and one bloated
+		// operator would stall every other flow. Capped groups stay in the due index and drain
+		// on later ticks. The due index sorts by inverted coord (encode_u64), so the scan
+		// yields the newest-due groups first and the oldest backlog defers.
+		let mut store = MockStore::default();
+		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(1)]);
+		buckets.insert((2u32, 20u64), vec![AccumulatorEvent::Add(2)]);
+		buckets.insert((3u32, 30u64), vec![AccumulatorEvent::Add(3)]);
+		engine.apply_evicting(
+			&mut store,
+			buckets,
+			RollingEviction::Before(0),
+			row_key,
+			SumAccumulator::default,
+			sum_combine,
+		)
+		.unwrap();
+		engine.flush(&mut store).unwrap();
+		assert_eq!(store.index_entry_count(), 3);
+
+		let capped = WindowEngineConfig::builder()
+			.state_cache_capacity(8)
+			.internal_state_cache_capacity(64)
+			.expire_batch(2)
+			.build();
+
+		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(capped);
+		let first = engine.expire_before(&mut store, 1000, sum_combine).unwrap();
+		engine.flush(&mut store).unwrap();
+		assert_eq!(first.len(), 2, "one tick drains at most expire_batch groups");
+		assert!(matches!(&first[0], RollingExpiry::Remove { group, .. } if *group == 3));
+		assert!(matches!(&first[1], RollingExpiry::Remove { group, .. } if *group == 2));
+		assert_eq!(store.index_entry_count(), 1, "the deferred group keeps its index entry");
+
+		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(capped);
+		let second = engine.expire_before(&mut store, 1000, sum_combine).unwrap();
+		engine.flush(&mut store).unwrap();
+		assert_eq!(second.len(), 1, "the next tick picks up the deferred group");
+		assert!(matches!(&second[0], RollingExpiry::Remove { group, .. } if *group == 1));
+		assert_eq!(store.index_entry_count(), 0);
 	}
 
 	#[test]

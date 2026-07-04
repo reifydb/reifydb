@@ -37,6 +37,7 @@ pub trait WindowStore {
 	fn internal_range_visit<V: DeserializeOwned>(
 		&mut self,
 		range: EncodedKeyRange,
+		limit: Option<usize>,
 		visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
 	) -> Result<()>;
 

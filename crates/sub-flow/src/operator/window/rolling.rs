@@ -33,7 +33,7 @@ use super::{
 	store::FlowWindowStore,
 	tumbling::slot_coord,
 };
-use crate::transaction::FlowTransaction;
+use crate::{operator::window::warn_when_expiry_capped, transaction::FlowTransaction};
 
 impl WindowOperator {
 	pub fn rolling_lag_ms(&self) -> u64 {
@@ -336,6 +336,7 @@ pub fn tick_expire_rolling_engine(
 		engine.flush(&mut store)?;
 		res
 	};
+	warn_when_expiry_capped(operator, expiries.len());
 
 	let mut diffs = Vec::new();
 	let mut store = FlowWindowStore::new(txn, operator.core.node);
@@ -570,6 +571,7 @@ pub fn tick_expire_rolling_processing_engine(
 		engine.flush(&mut store)?;
 		res
 	};
+	warn_when_expiry_capped(operator, expiries.len());
 
 	let mut diffs = Vec::new();
 	let mut store = FlowWindowStore::new(txn, operator.core.node);

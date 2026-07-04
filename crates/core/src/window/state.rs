@@ -281,6 +281,7 @@ mod tests {
 		fn internal_range_visit<V: DeserializeOwned>(
 			&mut self,
 			range: EncodedKeyRange,
+			limit: Option<usize>,
 			visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
 		) -> Result<()> {
 			let after_start = |k: &[u8]| match &range.start {
@@ -300,6 +301,9 @@ mod tests {
 				.map(|(k, v)| (k.clone(), v.clone()))
 				.collect();
 			matched.sort_by(|a, b| a.0.cmp(&b.0));
+			if let Some(limit) = limit {
+				matched.truncate(limit);
+			}
 			for (k, b) in matched {
 				visit(EncodedKey::new(k), from_bytes(&b).expect("decode"))?;
 			}

@@ -7,11 +7,14 @@ pub const DEFAULT_STATE_CACHE_CAPACITY: usize = 1024;
 
 pub const DEFAULT_INTERNAL_STATE_CACHE_CAPACITY: usize = 1024;
 
+pub const DEFAULT_EXPIRE_BATCH: usize = 4096;
+
 #[derive(Clone, Copy, Debug)]
 pub struct WindowEngineConfig {
 	late_policy: LatePolicy,
 	state_cache_capacity: usize,
 	internal_state_cache_capacity: usize,
+	expire_batch: usize,
 }
 
 impl WindowEngineConfig {
@@ -30,6 +33,10 @@ impl WindowEngineConfig {
 	pub fn internal_state_cache_capacity(&self) -> usize {
 		self.internal_state_cache_capacity
 	}
+
+	pub fn expire_batch(&self) -> usize {
+		self.expire_batch
+	}
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -37,6 +44,7 @@ pub struct WindowEngineConfigBuilder {
 	late_policy: LatePolicy,
 	state_cache_capacity: usize,
 	internal_state_cache_capacity: usize,
+	expire_batch: usize,
 }
 
 impl Default for WindowEngineConfigBuilder {
@@ -45,6 +53,7 @@ impl Default for WindowEngineConfigBuilder {
 			late_policy: LatePolicy::Drop,
 			state_cache_capacity: DEFAULT_STATE_CACHE_CAPACITY,
 			internal_state_cache_capacity: DEFAULT_INTERNAL_STATE_CACHE_CAPACITY,
+			expire_batch: DEFAULT_EXPIRE_BATCH,
 		}
 	}
 }
@@ -65,11 +74,17 @@ impl WindowEngineConfigBuilder {
 		self
 	}
 
+	pub fn expire_batch(mut self, batch: usize) -> Self {
+		self.expire_batch = batch;
+		self
+	}
+
 	pub fn build(self) -> WindowEngineConfig {
 		WindowEngineConfig {
 			late_policy: self.late_policy,
 			state_cache_capacity: self.state_cache_capacity,
 			internal_state_cache_capacity: self.internal_state_cache_capacity,
+			expire_batch: self.expire_batch,
 		}
 	}
 }

@@ -72,6 +72,7 @@ impl<C: OperatorContext> WindowStore for OperatorContextStore<'_, C> {
 	fn internal_range_visit<V: DeserializeOwned>(
 		&mut self,
 		range: EncodedKeyRange,
+		limit: Option<usize>,
 		visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
 	) -> Result<()> {
 		let start = match &range.start {
@@ -84,7 +85,15 @@ impl<C: OperatorContext> WindowStore for OperatorContextStore<'_, C> {
 			Bound::Excluded(k) => Bound::Excluded(k),
 			Bound::Unbounded => Bound::Unbounded,
 		};
-		self.0.internal_state().range_visit::<V>(start, end, &mut |k, v| visit(k, v).map_err(Into::into))?;
+		let mut remaining = limit;
+		self.0.internal_state().range_visit::<V>(start, end, &mut |k, v| match remaining.as_mut() {
+			Some(0) => Ok(()),
+			Some(r) => {
+				*r -= 1;
+				visit(k, v).map_err(Into::into)
+			}
+			None => visit(k, v).map_err(Into::into),
+		})?;
 		Ok(())
 	}
 

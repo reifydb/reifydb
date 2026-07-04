@@ -104,9 +104,10 @@ impl WindowStore for FlowWindowStore<'_> {
 	fn internal_range_visit<V: DeserializeOwned>(
 		&mut self,
 		range: EncodedKeyRange,
+		limit: Option<usize>,
 		visit: &mut dyn FnMut(EncodedKey, V) -> Result<()>,
 	) -> Result<()> {
-		let batch = self.txn.internal_state_range_all(self.node, range)?;
+		let batch = self.txn.internal_state_range(self.node, range, limit)?;
 		for r in batch.items {
 			if let Some(decoded) = FlowNodeInternalStateKey::decode(&r.key) {
 				let value = decode_payload::<V>(&r.row)?;

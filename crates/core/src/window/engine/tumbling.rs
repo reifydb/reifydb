@@ -84,6 +84,7 @@ pub struct TumblingEngine<G, C, Accumulator> {
 	accumulators: StateCache<RowNumber, Accumulator>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
 	late_policy: LatePolicy,
+	expire_batch: usize,
 	_pd: PhantomData<G>,
 }
 
@@ -99,6 +100,7 @@ where
 			accumulators: StateCache::<RowNumber, Accumulator>::new(config.state_cache_capacity()),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
 			late_policy: config.late_policy(),
+			expire_batch: config.expire_batch(),
 			_pd: PhantomData,
 		}
 	}
@@ -316,6 +318,7 @@ where
 		let mut due: Vec<(EncodedKey, TumblingIndexEntry<G, C>)> = Vec::new();
 		store.internal_range_visit::<TumblingIndexEntry<G, C>>(
 			expiry_due_range(threshold),
+			Some(self.expire_batch),
 			&mut |key, entry| {
 				due.push((key, entry));
 				Ok(())
@@ -428,6 +431,44 @@ mod tests {
 		// Exactly at the expiry: due (the face folds the strict close boundary into the threshold).
 		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		assert_eq!(engine.expire(&mut store, 50).unwrap().len(), 1);
+	}
+
+	#[test]
+	fn expire_processes_at_most_expire_batch_then_resumes_next_tick() {
+		// Guard rail from the jupiter/pump incident: expire used to drain every due window in
+		// one tick, so a due-window burst on one bloated operator stalled the whole flow actor
+		// pass (all node ticks run serialized; tick p99 exceeded 100ms). The batch cap bounds
+		// one tick's work; the remainder stays in the due index and drains on later ticks, so
+		// nothing is lost, only deferred. The due index sorts by inverted expiry (encode_u64),
+		// so the scan yields the newest-due windows first and the oldest backlog defers.
+		let mut store = MockStore::default();
+		for (start, due) in [(0u64, 10u64), (100, 20), (200, 30)] {
+			let w = seed_window(&mut store, start, 1);
+			reindex_window(&mut store, &w.group, w.span.start, w.row_number, None, Some(due)).unwrap();
+		}
+		assert_eq!(store.index_entry_count(), 3);
+
+		let capped = WindowEngineConfig::builder()
+			.state_cache_capacity(8)
+			.internal_state_cache_capacity(64)
+			.expire_batch(2)
+			.build();
+
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(capped);
+		let first = engine.expire(&mut store, 1000).unwrap();
+		engine.flush(&mut store).unwrap();
+		assert_eq!(first.len(), 2, "one tick drains at most expire_batch windows");
+		assert_eq!(first[0].window_start, 200, "inverted key order: newest due drains first");
+		assert_eq!(first[1].window_start, 100);
+		assert_eq!(store.index_entry_count(), 1, "the deferred window keeps its index entry");
+
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(capped);
+		let second = engine.expire(&mut store, 1000).unwrap();
+		engine.flush(&mut store).unwrap();
+		assert_eq!(second.len(), 1, "the next tick picks up the deferred backlog");
+		assert_eq!(second[0].window_start, 0);
+		assert_eq!(second[0].value, Some(1), "a deferred window still finalizes with its state intact");
+		assert_eq!(store.index_entry_count(), 0);
 	}
 
 	#[test]

@@ -420,7 +420,7 @@ pub(super) extern "C" fn host_internal_state_range(
 		};
 
 		let range = EncodedKeyRange::new(start_bound, end_bound);
-		let result = flow_txn.internal_state_range_all(node_id, range);
+		let result = flow_txn.internal_state_range(node_id, range, None);
 
 		match result {
 			Ok(batch) => {

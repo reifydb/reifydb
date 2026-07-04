@@ -32,7 +32,7 @@ use super::{
 	operator::WindowOperator,
 	store::FlowWindowStore,
 };
-use crate::transaction::FlowTransaction;
+use crate::{operator::window::warn_when_expiry_capped, transaction::FlowTransaction};
 
 type EngineBuckets = TumblingBuckets<Hash128, u64, (WindowSlotKey, Vec<Option<Value>>)>;
 
@@ -1053,6 +1053,7 @@ fn tick_expire_by_cutoff(
 		engine.flush(&mut store)?;
 		res
 	};
+	warn_when_expiry_capped(operator, expired.len());
 	let mut diffs = Vec::new();
 	let mut store = FlowWindowStore::new(txn, operator.core.node);
 	for window in expired {

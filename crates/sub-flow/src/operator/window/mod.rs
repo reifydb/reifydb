@@ -11,3 +11,17 @@ pub mod sliding;
 pub mod state;
 pub mod store;
 pub mod tumbling;
+
+use tracing::warn;
+
+use crate::operator::window::operator::WindowOperator;
+
+pub(crate) fn warn_when_expiry_capped(operator: &WindowOperator, expired: usize) {
+	let expire_batch = operator.engine_config().expire_batch();
+	if expired >= expire_batch {
+		warn!(
+			node_id = operator.core.node.0,
+			expired, expire_batch, "window expiry hit per-tick batch cap, backlog deferred to next tick"
+		);
+	}
+}

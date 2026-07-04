@@ -202,7 +202,7 @@ impl NativeBridge for FlowNativeBridge<'_> {
 	}
 	fn internal_state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 		Ok(self.txn
-			.internal_state_range_all(self.node, range)?
+			.internal_state_range(self.node, range, None)?
 			.items
 			.into_iter()
 			.map(|r| (r.key, r.row))

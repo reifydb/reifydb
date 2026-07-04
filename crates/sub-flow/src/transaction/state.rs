@@ -191,15 +191,22 @@ impl FlowTransaction {
 	#[instrument(name = "flow::internal_state::range", level = "debug", skip(self, range), fields(
 		node_id = id.0
 	))]
-	pub fn internal_state_range_all(
+	pub fn internal_state_range(
 		&mut self,
 		id: FlowNodeId,
 		range: EncodedKeyRange,
+		limit: Option<usize>,
 	) -> Result<MultiVersionBatch> {
 		let prefixed_range = range.with_prefix(FlowNodeInternalStateKey::encoded(id, vec![]));
 		let iter = self.range(prefixed_range, RangeScope::All, 1024);
 		let mut items = Vec::new();
 		for result in iter {
+			if limit.is_some_and(|l| items.len() == l) {
+				return Ok(MultiVersionBatch {
+					items,
+					has_more: true,
+				});
+			}
 			items.push(result?);
 		}
 		Ok(MultiVersionBatch {
