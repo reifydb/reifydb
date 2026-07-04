@@ -6,11 +6,17 @@ use std::ops::Bound;
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	interface::store::EntryKind,
-	key::{EncodableKey, Key, row::RowKey},
+	key::{
+		EncodableKey, Key, flow_node_internal_state::FlowNodeInternalStateKey,
+		flow_node_state::FlowNodeStateKey, row::RowKey,
+	},
 };
 use reifydb_value::value::row_number::RowNumber;
 
 pub const DEFAULT_BUCKET_SHIFT: u8 = 16;
+
+pub const OPERATOR_STATE_BUCKET: u64 = 0;
+pub const OPERATOR_INTERNAL_STATE_BUCKET: u64 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PageId {
@@ -26,11 +32,11 @@ pub fn page_of(key: &EncodedKey, bucket_shift: u8) -> PageId {
 		},
 		Some(Key::FlowNodeState(state_key)) => PageId {
 			kind: EntryKind::Operator(state_key.node),
-			bucket: 0,
+			bucket: OPERATOR_STATE_BUCKET,
 		},
 		Some(Key::FlowNodeInternalState(internal_key)) => PageId {
 			kind: EntryKind::Operator(internal_key.node),
-			bucket: 0,
+			bucket: OPERATOR_INTERNAL_STATE_BUCKET,
 		},
 		_ => PageId {
 			kind: EntryKind::Multi,
@@ -56,7 +62,12 @@ pub fn key_range_of(page: PageId, bucket_shift: u8) -> Option<EncodedKeyRange> {
 			.encode();
 			Some(EncodedKeyRange::new(Bound::Included(start), Bound::Included(end)))
 		}
-		EntryKind::Operator(_) | EntryKind::Multi => None,
+		EntryKind::Operator(node) => match page.bucket {
+			OPERATOR_STATE_BUCKET => Some(FlowNodeStateKey::node_range(node)),
+			OPERATOR_INTERNAL_STATE_BUCKET => Some(FlowNodeInternalStateKey::node_range(node)),
+			_ => None,
+		},
+		EntryKind::Multi => None,
 	}
 }
 

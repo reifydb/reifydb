@@ -212,7 +212,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 						for row in &expired {
 							*stats.bytes_discovered.entry(row.node_id).or_insert(0) +=
 								row.scanned_bytes;
-							self.store.invalidate_read_key(&row.key);
+							self.store.remove_dropped_read_key(&row.key);
 						}
 						if let Err(e) =
 							scanner::drop_expired_operator_keys(buffer, &expired, stats)
@@ -246,7 +246,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 					Ok(keys) => {
 						*persistent_rows_deleted += keys.len() as u64;
 						for key in &keys {
-							self.store.invalidate_read_key(key);
+							self.store.remove_dropped_read_key(key);
 						}
 					}
 					Err(e) => {
@@ -305,7 +305,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 						for row in &expired {
 							*stats.bytes_discovered.entry(row.node_id).or_insert(0) +=
 								row.scanned_bytes;
-							self.store.invalidate_read_key(&row.key);
+							self.store.remove_dropped_read_key(&row.key);
 						}
 
 						if let Err(e) =
@@ -334,7 +334,7 @@ impl<P: ListOperatorSettings> Actor<P> {
 					*persistent_rows_deleted += keys.len() as u64;
 					if !keys.is_empty() {
 						for key in &keys {
-							self.store.invalidate_read_key(key);
+							self.store.remove_dropped_read_key(key);
 						}
 						debug!(
 							?node_id,

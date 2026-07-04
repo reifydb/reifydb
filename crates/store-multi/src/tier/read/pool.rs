@@ -23,6 +23,7 @@ impl MultiReadBufferTier {
 			.map(|_| {
 				Mutex::new(Shard {
 					pages: HashMap::new(),
+					warming: HashMap::new(),
 					next_tick: 0,
 					page_cap,
 				})

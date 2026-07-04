@@ -58,6 +58,7 @@ struct ResidentPage {
 	hot: bool,
 	tick: u64,
 	range_complete: bool,
+	warm_blocked: bool,
 }
 
 pub enum ServedChunk {
@@ -67,6 +68,7 @@ pub enum ServedChunk {
 
 struct Shard {
 	pages: HashMap<PageId, ResidentPage>,
+	warming: HashMap<PageId, bool>,
 	next_tick: u64,
 	page_cap: usize,
 }

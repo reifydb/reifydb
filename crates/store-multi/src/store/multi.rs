@@ -41,6 +41,8 @@ use crate::{
 
 const TIER_SCAN_CHUNK_SIZE: usize = 32;
 
+const OPERATOR_PAGE_WARM_CAP: usize = 131_072;
+
 pub(crate) const WARM_THRESHOLD: u64 = 4 * TIER_SCAN_CHUNK_SIZE as u64;
 
 impl MultiVersionGet for StandardMultiStore {
@@ -77,6 +79,13 @@ impl StandardMultiStore {
 			return Ok(found);
 		}
 		if let Some(found) = self.get_probe_read(key, version) {
+			return Ok(found);
+		}
+		if matches!(table, EntryKind::Operator(_))
+			&& let Some(read) = &self.read
+			&& self.warm_operator_page(read.page_of_key(key))?
+			&& let Some(found) = self.get_probe_read(key, version)
+		{
 			return Ok(found);
 		}
 		if let Some(found) = self.get_probe_persistent(table, key, version)? {
@@ -156,6 +165,56 @@ impl StandardMultiStore {
 			VersionedGetResult::Tombstone => Some(None),
 			VersionedGetResult::NotFound => None,
 		})
+	}
+
+	fn warm_operator_page(&self, page: PageId) -> Result<bool> {
+		let (Some(read), Some(persistent)) = (&self.read, &self.persistent) else {
+			return Ok(false);
+		};
+		if !matches!(page.kind, EntryKind::Operator(_)) {
+			return Ok(false);
+		}
+		if read.page_is_complete(page) {
+			return Ok(true);
+		}
+		if !read.page_is_warm_candidate(page) {
+			return Ok(false);
+		}
+		let Some(range) = read.page_key_range(page) else {
+			return Ok(false);
+		};
+		if !read.begin_warm(page) {
+			return Ok(false);
+		}
+		let loaded = persistent.load_range_consistent(
+			page.kind,
+			bound_as_slice(&range.start),
+			bound_as_slice(&range.end),
+			CommitVersion(u64::MAX),
+			Some(OPERATOR_PAGE_WARM_CAP + 1),
+		);
+		let entries = match loaded {
+			Ok(entries) => entries,
+			Err(e) => {
+				read.abort_warm(page);
+				return Err(e);
+			}
+		};
+		if entries.len() > OPERATOR_PAGE_WARM_CAP {
+			read.abort_warm(page);
+			read.set_warm_blocked(page);
+			return Ok(false);
+		}
+		Ok(read.finish_warm(page, entries))
+	}
+}
+
+#[inline]
+fn bound_as_slice(bound: &Bound<EncodedKey>) -> Bound<&[u8]> {
+	match bound {
+		Bound::Included(k) => Bound::Included(k.as_slice()),
+		Bound::Excluded(k) => Bound::Excluded(k.as_slice()),
+		Bound::Unbounded => Bound::Unbounded,
 	}
 }
 
@@ -406,6 +465,49 @@ impl StandardMultiStore {
 			}
 		}
 
+		if matches!(table, EntryKind::Operator(_))
+			&& !persistent_idx.is_empty()
+			&& let Some(read) = &self.read
+		{
+			let mut pages: Vec<PageId> = Vec::new();
+			for &i in &persistent_idx {
+				let page = read.page_of_key(table_keys[i]);
+				if !pages.contains(&page) {
+					pages.push(page);
+				}
+			}
+			let mut warmed_any = false;
+			for page in pages {
+				warmed_any |= self.warm_operator_page(page)?;
+			}
+			if warmed_any {
+				let mut remaining_idx = Vec::new();
+				let mut remaining_slices = Vec::new();
+				for &i in &persistent_idx {
+					match read.get(table_keys[i], version) {
+						VersionedGetResult::Value {
+							value,
+							version: v,
+						} => {
+							read_aligned[i] = VersionedGetResult::Value {
+								value,
+								version: v,
+							};
+						}
+						VersionedGetResult::Tombstone => {
+							read_aligned[i] = VersionedGetResult::Tombstone;
+						}
+						VersionedGetResult::NotFound => {
+							remaining_idx.push(i);
+							remaining_slices.push(key_slices[i]);
+						}
+					}
+				}
+				persistent_idx = remaining_idx;
+				persistent_slices = remaining_slices;
+			}
+		}
+
 		let mut persistent_aligned = vec![VersionedGetResult::NotFound; key_slices.len()];
 		if !persistent_slices.is_empty()
 			&& let Some(persistent) = &self.persistent
@@ -499,7 +601,7 @@ impl StandardMultiStore {
 							Some(value) => {
 								read.insert(key.clone(), version, Some(value.clone()))
 							}
-							None => read.invalidate(key),
+							None => read.insert(key.clone(), version, None),
 						}
 					}
 				}
@@ -574,7 +676,7 @@ impl StandardMultiStore {
 			return;
 		};
 		for (_, key) in drops {
-			read.invalidate(key);
+			read.remove_dropped(key);
 		}
 	}
 
@@ -958,6 +1060,14 @@ impl StandardMultiStore {
 			return served;
 		}
 
+		if matches!(scan.table, EntryKind::Operator(_))
+			&& let Some(read) = &self.read
+			&& self.warm_operator_page(read.page_of_key(&EncodedKey::new(scan.start.to_vec())))?
+			&& let Some(served) = self.serve_from_read_cache(scan, cursor, collected, descending)
+		{
+			return served;
+		}
+
 		let (consumed, progressed) =
 			self.scan_persistent_chunk(persistent, scan, cursor, collected, descending)?;
 		self.warm_read_bucket_after_scan(persistent, scan, cursor, consumed)?;
@@ -973,7 +1083,7 @@ impl StandardMultiStore {
 		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
 		descending: bool,
 	) -> Option<Result<bool>> {
-		let (Some(read), EntryKind::Source(_)) = (&self.read, scan.table) else {
+		let (Some(read), EntryKind::Source(_) | EntryKind::Operator(_)) = (&self.read, scan.table) else {
 			return None;
 		};
 		match read.serve_persistent_chunk(
@@ -1077,6 +1187,7 @@ fn maybe_warm_bucket(
 		Bound::Included(lo.as_slice()),
 		Bound::Included(hi.as_slice()),
 		CommitVersion(u64::MAX),
+		None,
 	)?;
 	read.populate_page(page, entries, true);
 	cursor.warm_bucket = None;

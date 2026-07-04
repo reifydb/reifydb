@@ -7,7 +7,10 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{catalog::shape::ShapeId, store::EntryKind},
-	key::{EncodableKey, row::RowKey},
+	key::{
+		EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey,
+		row::RowKey,
+	},
 };
 use reifydb_store::row::page::{DEFAULT_BUCKET_SHIFT, PageId};
 use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
@@ -544,4 +547,112 @@ fn invalidate_clears_range_complete() {
 
 	read.invalidate(&row(1, 5));
 	assert!(!read.page_is_complete(page), "invalidating a key must clear its bucket's completeness");
+}
+
+fn opkey(node: u64, suffix: &str) -> EncodedKey {
+	FlowNodeStateKey::encoded(node, suffix.as_bytes().to_vec())
+}
+
+fn opentry(node: u64, suffix: &str, version: u64, value: &str) -> RawEntry {
+	RawEntry {
+		key: opkey(node, suffix),
+		version: CommitVersion(version),
+		value: Some(val(value)),
+	}
+}
+
+#[test]
+fn complete_operator_page_serves_definitive_absence() {
+	let read = cache(8);
+	let page = read.page_of_key(&opkey(7, "a"));
+	read.populate_page(page, vec![opentry(7, "a", 5, "a")], true);
+
+	assert!(
+		matches!(read.get(&opkey(7, "missing"), CommitVersion(9)), VersionedGetResult::Tombstone),
+		"absence on a complete page must be definitive"
+	);
+}
+
+#[test]
+fn incomplete_operator_page_does_not_claim_absence() {
+	let read = cache(8);
+	let page = read.page_of_key(&opkey(7, "a"));
+	read.populate_page(page, vec![opentry(7, "a", 5, "a")], false);
+
+	assert!(
+		matches!(read.get(&opkey(7, "missing"), CommitVersion(9)), VersionedGetResult::NotFound),
+		"an incomplete page cannot prove absence and must fall through"
+	);
+}
+
+#[test]
+fn remove_dropped_keeps_completeness_while_invalidate_clears_it() {
+	let read = cache(8);
+	let page = read.page_of_key(&opkey(7, "a"));
+	read.populate_page(page, vec![opentry(7, "a", 5, "a"), opentry(7, "b", 5, "b")], true);
+
+	read.remove_dropped(&opkey(7, "a"));
+	assert!(read.page_is_complete(page), "a drop after the persistent delete must keep completeness");
+	assert!(matches!(read.get(&opkey(7, "a"), CommitVersion(9)), VersionedGetResult::Tombstone));
+
+	read.invalidate(&opkey(7, "b"));
+	assert!(!read.page_is_complete(page), "invalidate must stay conservative and clear completeness");
+}
+
+#[test]
+fn dirtied_warm_aborts_and_does_not_resurrect_dropped_state() {
+	let read = cache(8);
+	let page = read.page_of_key(&opkey(7, "a"));
+	assert!(read.begin_warm(page));
+
+	read.remove_dropped(&opkey(7, "a"));
+
+	assert!(
+		!read.finish_warm(page, vec![opentry(7, "a", 5, "stale")]),
+		"a warm dirtied by a concurrent removal must abort"
+	);
+	assert!(!read.page_is_complete(page));
+	assert!(
+		matches!(read.get(&opkey(7, "a"), CommitVersion(9)), VersionedGetResult::NotFound),
+		"the stale bulk-loaded entry must not be resurrected"
+	);
+}
+
+#[test]
+fn clean_warm_marks_the_page_complete() {
+	let read = cache(8);
+	let page = read.page_of_key(&opkey(7, "a"));
+	assert!(read.begin_warm(page));
+	assert!(read.finish_warm(page, vec![opentry(7, "a", 5, "a")]));
+	assert!(read.page_is_complete(page));
+}
+
+#[test]
+fn concurrent_warm_of_the_same_page_is_rejected_until_settled() {
+	let read = cache(8);
+	let page = read.page_of_key(&opkey(7, "a"));
+	assert!(read.begin_warm(page));
+	assert!(!read.begin_warm(page), "a second warm of the same page must be rejected while in flight");
+	read.abort_warm(page);
+	assert!(read.begin_warm(page), "an aborted warm must free the slot");
+}
+
+#[test]
+fn warm_blocked_page_is_not_a_candidate() {
+	let read = cache(8);
+	let page = read.page_of_key(&opkey(7, "a"));
+	assert!(read.page_is_warm_candidate(page));
+	read.set_warm_blocked(page);
+	assert!(!read.page_is_warm_candidate(page));
+	assert!(!read.page_is_complete(page));
+}
+
+#[test]
+fn state_and_internal_state_of_one_node_use_distinct_complete_pages() {
+	let read = cache(8);
+	let state = read.page_of_key(&opkey(7, "a"));
+	let internal = read.page_of_key(&FlowNodeInternalStateKey::encoded(7u64, b"a".to_vec()));
+	assert_ne!(state, internal);
+	assert!(read.page_key_range(state).is_some(), "state pages must have a completable key range");
+	assert!(read.page_key_range(internal).is_some(), "internal pages must have a completable key range");
 }

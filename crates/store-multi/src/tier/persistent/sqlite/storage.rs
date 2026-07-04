@@ -449,6 +449,7 @@ impl SqlitePersistentStorage {
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
 		read: CommitVersion,
+		limit: Option<usize>,
 	) -> Result<Vec<RawEntry>> {
 		let table_sql = self.table_sql(table);
 		let guard = self.inner.readers.acquire();
@@ -491,9 +492,22 @@ impl SqlitePersistentStorage {
 				value: value.map(CowVec::new),
 			})
 		}) {
-			Ok(rows) => rows.collect::<SqliteResult<Vec<_>>>().map_err(|e| {
-				error!(internal(format!("Failed to read persistent consistent row: {}", e)))
-			})?,
+			Ok(rows) => {
+				let mut collected = Vec::new();
+				for row in rows {
+					let entry = row.map_err(|e| {
+						error!(internal(format!(
+							"Failed to read persistent consistent row: {}",
+							e
+						)))
+					})?;
+					collected.push(entry);
+					if limit.is_some_and(|l| collected.len() >= l) {
+						break;
+					}
+				}
+				collected
+			}
 			Err(e) if e.to_string().contains("no such table") => return Ok(Vec::new()),
 			Err(e) => {
 				return Err(error!(internal(format!(

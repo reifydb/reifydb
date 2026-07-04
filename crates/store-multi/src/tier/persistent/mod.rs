@@ -104,9 +104,10 @@ impl MultiPersistentTier {
 		start: Bound<&[u8]>,
 		end: Bound<&[u8]>,
 		read: CommitVersion,
+		limit: Option<usize>,
 	) -> Result<Vec<RawEntry>> {
 		match self {
-			Self::Sqlite(s) => s.load_range_consistent(table, start, end, read),
+			Self::Sqlite(s) => s.load_range_consistent(table, start, end, read, limit),
 		}
 	}
 }
@@ -140,6 +141,7 @@ impl MultiPersistentTier {
 		_start: Bound<&[u8]>,
 		_end: Bound<&[u8]>,
 		_read: CommitVersion,
+		_limit: Option<usize>,
 	) -> Result<Vec<RawEntry>> {
 		match *self {}
 	}

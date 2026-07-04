@@ -40,6 +40,7 @@ impl MultiReadBufferTier {
 			hot: false,
 			tick: next,
 			range_complete: false,
+			warm_blocked: false,
 		});
 		for entry in entries {
 			match resident.entries.get(&entry.key) {
@@ -61,6 +62,45 @@ impl MultiReadBufferTier {
 		shard.evict_to_capacity();
 	}
 
+	pub fn finish_warm(&self, page: PageId, entries: Vec<RawEntry>) -> bool {
+		let shift = self.bucket_shift();
+		let range_complete = key_range_of(page, shift).is_some();
+		let mut shard = self.shard_for(&page).lock();
+		let Some(dirty) = shard.warming.remove(&page) else {
+			return false;
+		};
+		if dirty || !range_complete {
+			return false;
+		}
+		let next = shard.next_tick;
+		let resident = shard.pages.entry(page).or_insert_with(|| ResidentPage {
+			entries: BTreeMap::new(),
+			hot: false,
+			tick: next,
+			range_complete: false,
+			warm_blocked: false,
+		});
+		for entry in entries {
+			match resident.entries.get(&entry.key) {
+				Some(existing) if existing.version > entry.version => continue,
+				_ => {
+					resident.entries.insert(
+						entry.key,
+						PageEntry {
+							version: entry.version,
+							value: entry.value,
+						},
+					);
+				}
+			}
+		}
+		resident.range_complete = true;
+		resident.tick = next;
+		shard.next_tick = next + 1;
+		shard.evict_to_capacity();
+		true
+	}
+
 	#[allow(clippy::too_many_arguments)]
 	#[instrument(name = "store::multi::read::serve", level = "trace", skip(self, cursor, start, end), fields(table = ?table, descending = descending))]
 	pub fn serve_persistent_chunk(
@@ -73,8 +113,12 @@ impl MultiReadBufferTier {
 		batch_size: usize,
 		descending: bool,
 	) -> ServedChunk {
-		if !matches!(table, EntryKind::Source(_)) {
-			return ServedChunk::Gap;
+		match table {
+			EntryKind::Source(_) => {}
+			EntryKind::Operator(_) => {
+				return self.serve_operator_chunk(cursor, start, end, scope, batch_size, descending);
+			}
+			_ => return ServedChunk::Gap,
 		}
 
 		let shift = self.bucket_shift();
@@ -212,7 +256,99 @@ impl MultiReadBufferTier {
 		}
 	}
 
-	#[cfg(test)]
+	fn serve_operator_chunk(
+		&self,
+		cursor: &mut RangeCursor,
+		start: &[u8],
+		end: &[u8],
+		scope: MultiVersionScope,
+		batch_size: usize,
+		descending: bool,
+	) -> ServedChunk {
+		let shift = self.bucket_shift();
+		let range_lo = EncodedKey::new(start.to_vec());
+		let range_hi = EncodedKey::new(end.to_vec());
+		if range_lo > range_hi {
+			cursor.exhausted = true;
+			return ServedChunk::Served(RangeBatch::empty());
+		}
+
+		let page = page_of(&range_lo, shift);
+		let Some(page_range) = key_range_of(page, shift) else {
+			return ServedChunk::Gap;
+		};
+		let (Bound::Included(page_start), Bound::Included(page_end)) = (page_range.start, page_range.end)
+		else {
+			return ServedChunk::Gap;
+		};
+		if range_lo < page_start || range_hi > page_end {
+			return ServedChunk::Gap;
+		}
+
+		let mut shard = self.shard_for(&page).lock();
+		let complete = shard.pages.get(&page).map(|p| p.range_complete).unwrap_or(false);
+		if !complete {
+			return ServedChunk::Gap;
+		}
+
+		let tick = shard.next_tick;
+		let page_ref = shard.pages.get_mut(&page).expect("complete page present under lock");
+
+		let lo_bound: Bound<EncodedKey> = match &cursor.last_key {
+			Some(last) if !descending && *last >= range_lo => Bound::Excluded(last.clone()),
+			_ => Bound::Included(range_lo.clone()),
+		};
+		let hi_bound: Bound<EncodedKey> = match &cursor.last_key {
+			Some(last) if descending && *last <= range_hi => Bound::Excluded(last.clone()),
+			_ => Bound::Included(range_hi.clone()),
+		};
+
+		let mut out: Vec<RawEntry> = Vec::new();
+		let mut full = false;
+		if descending {
+			for (key, entry) in page_ref.entries.range((lo_bound, hi_bound)).rev() {
+				if out.len() >= batch_size {
+					full = true;
+					break;
+				}
+				if entry.version > scope.read() {
+					return ServedChunk::Gap;
+				}
+				if scope.contains(entry.version) {
+					out.push(RawEntry {
+						key: key.clone(),
+						version: entry.version,
+						value: entry.value.clone(),
+					});
+				}
+			}
+		} else {
+			for (key, entry) in page_ref.entries.range((lo_bound, hi_bound)) {
+				if out.len() >= batch_size {
+					full = true;
+					break;
+				}
+				if entry.version > scope.read() {
+					return ServedChunk::Gap;
+				}
+				if scope.contains(entry.version) {
+					out.push(RawEntry {
+						key: key.clone(),
+						version: entry.version,
+						value: entry.value.clone(),
+					});
+				}
+			}
+		}
+
+		page_ref.hot = true;
+		page_ref.tick = tick;
+		shard.next_tick = tick + 1;
+		drop(shard);
+
+		served_chunk(out, cursor, !full)
+	}
+
 	pub fn page_is_complete(&self, page: PageId) -> bool {
 		let shard = self.shard_for(&page).lock();
 		shard.pages.get(&page).map(|p| p.range_complete).unwrap_or(false)

@@ -148,6 +148,12 @@ impl StandardMultiStore {
 		}
 	}
 
+	pub fn remove_dropped_read_key(&self, key: &EncodedKey) {
+		if let Some(read) = &self.read {
+			read.remove_dropped(key);
+		}
+	}
+
 	pub fn clear_read(&self) {
 		if let Some(read) = &self.read {
 			read.clear();

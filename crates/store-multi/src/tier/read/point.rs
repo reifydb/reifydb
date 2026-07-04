@@ -8,7 +8,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::store::{EntryKind, classify_key},
 };
-use reifydb_store::row::page::page_of;
+use reifydb_store::row::page::{PageId, page_of};
 use reifydb_value::util::cowvec::CowVec;
 use tracing::instrument;
 
@@ -50,6 +50,11 @@ impl MultiReadBufferTier {
 				return VersionedGetResult::NotFound;
 			};
 			let Some(entry) = page.entries.get(key) else {
+				if page.range_complete {
+					page.hot = true;
+					page.tick = next;
+					return VersionedGetResult::Tombstone;
+				}
 				return VersionedGetResult::NotFound;
 			};
 			if entry.version > version {
@@ -107,6 +112,7 @@ impl MultiReadBufferTier {
 						hot: false,
 						tick: next,
 						range_complete: false,
+						warm_blocked: false,
 					},
 				);
 			}
@@ -118,6 +124,9 @@ impl MultiReadBufferTier {
 	pub fn invalidate(&self, key: &EncodedKey) {
 		let page_id = page_of(key, self.bucket_shift());
 		let mut shard = self.shard_for(&page_id).lock();
+		if let Some(dirty) = shard.warming.get_mut(&page_id) {
+			*dirty = true;
+		}
 		let now_empty = match shard.pages.get_mut(&page_id) {
 			Some(page) => {
 				page.entries.remove(key);
@@ -131,10 +140,66 @@ impl MultiReadBufferTier {
 		}
 	}
 
+	pub fn remove_dropped(&self, key: &EncodedKey) {
+		let page_id = page_of(key, self.bucket_shift());
+		let mut shard = self.shard_for(&page_id).lock();
+		if let Some(dirty) = shard.warming.get_mut(&page_id) {
+			*dirty = true;
+		}
+		let now_empty_incomplete = match shard.pages.get_mut(&page_id) {
+			Some(page) => {
+				page.entries.remove(key);
+				page.entries.is_empty() && !page.range_complete
+			}
+			None => false,
+		};
+		if now_empty_incomplete {
+			shard.pages.remove(&page_id);
+		}
+	}
+
+	pub fn page_is_warm_candidate(&self, page: PageId) -> bool {
+		let shard = self.shard_for(&page).lock();
+		match shard.pages.get(&page) {
+			Some(p) => !p.range_complete && !p.warm_blocked,
+			None => true,
+		}
+	}
+
+	pub fn set_warm_blocked(&self, page: PageId) {
+		let mut shard = self.shard_for(&page).lock();
+		let next = shard.next_tick;
+		shard.pages
+			.entry(page)
+			.or_insert_with(|| ResidentPage {
+				entries: BTreeMap::new(),
+				hot: false,
+				tick: next,
+				range_complete: false,
+				warm_blocked: false,
+			})
+			.warm_blocked = true;
+	}
+
+	pub fn begin_warm(&self, page: PageId) -> bool {
+		let mut shard = self.shard_for(&page).lock();
+		if shard.warming.contains_key(&page) {
+			return false;
+		}
+		shard.warming.insert(page, false);
+		true
+	}
+
+	pub fn abort_warm(&self, page: PageId) {
+		let mut shard = self.shard_for(&page).lock();
+		shard.warming.remove(&page);
+	}
+
 	pub fn clear(&self) {
 		for shard in self.inner.shards.iter() {
 			let mut shard = shard.lock();
 			shard.pages.clear();
+			shard.warming.clear();
 			shard.next_tick = 0;
 		}
 	}
@@ -156,6 +221,7 @@ impl MultiReadBufferTier {
 			let mut shard = shard.lock();
 			shard.page_cap = page_cap;
 			shard.pages.clear();
+			shard.warming.clear();
 			shard.next_tick = 0;
 		}
 	}
