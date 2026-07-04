@@ -957,6 +957,7 @@ dependencies = [
  "once_cell",
  "reifydb-abi",
  "reifydb-build",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-metric",
  "reifydb-runtime",
@@ -968,6 +969,24 @@ dependencies = [
  "subtle",
  "thiserror",
  "tracing",
+]
+
+[[package]]
+name = "reifydb-codec"
+version = "0.7.0"
+dependencies = [
+ "bigdecimal",
+ "num-bigint",
+ "num-traits",
+ "reifydb-abi",
+ "reifydb-build",
+ "reifydb-value",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tracing",
+ "uuid",
+ "xxhash-rust",
 ]
 
 [[package]]
@@ -983,6 +1002,7 @@ dependencies = [
  "paste",
  "reifydb-abi",
  "reifydb-build",
+ "reifydb-codec",
  "reifydb-runtime",
  "reifydb-value",
  "serde",
@@ -1013,6 +1033,7 @@ version = "0.7.0"
 dependencies = [
  "dashmap",
  "reifydb-build",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-value",
@@ -1074,6 +1095,7 @@ dependencies = [
 name = "reifydb-store"
 version = "0.7.0"
 dependencies = [
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-value",
 ]
@@ -1083,6 +1105,7 @@ name = "reifydb-store-multi"
 version = "0.7.0"
 dependencies = [
  "reifydb-build",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-sqlite",
@@ -1097,6 +1120,7 @@ name = "reifydb-store-single"
 version = "0.7.0"
 dependencies = [
  "reifydb-build",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-sqlite",
@@ -1113,6 +1137,7 @@ dependencies = [
  "prost",
  "rand",
  "reifydb-build",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-value",
@@ -1130,6 +1155,7 @@ dependencies = [
  "dashmap",
  "indexmap",
  "reifydb-build",
+ "reifydb-codec",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-store-multi",
@@ -1154,6 +1180,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "uuid",
+ "xxhash-rust",
 ]
 
 [[package]]
