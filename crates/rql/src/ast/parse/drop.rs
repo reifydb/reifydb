@@ -80,6 +80,9 @@ impl<'bump> Parser<'bump> {
 			return self.parse_drop_authentication(token);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::User))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Attribute))?).is_some() {
+				return self.parse_drop_identity_attribute(token);
+			}
 			return self.parse_drop_identity(token);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Role))?).is_some() {

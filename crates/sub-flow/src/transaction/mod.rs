@@ -39,6 +39,10 @@ use reifydb_transaction::{
 			IdentityPostCreateInterceptor, IdentityPostUpdateInterceptor, IdentityPreDeleteInterceptor,
 			IdentityPreUpdateInterceptor,
 		},
+		identity_attribute::{IdentityAttributePostCreateInterceptor, IdentityAttributePreDeleteInterceptor},
+		identity_attribute_value::{
+			IdentityAttributeValuePostCreateInterceptor, IdentityAttributeValuePreDeleteInterceptor,
+		},
 		interceptors::Interceptors,
 		namespace::{
 			NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
@@ -723,6 +727,26 @@ impl WithInterceptors for FlowTransaction {
 	interceptor_method!(identity_pre_update_interceptors, identity_pre_update, IdentityPreUpdateInterceptor);
 	interceptor_method!(identity_post_update_interceptors, identity_post_update, IdentityPostUpdateInterceptor);
 	interceptor_method!(identity_pre_delete_interceptors, identity_pre_delete, IdentityPreDeleteInterceptor);
+	interceptor_method!(
+		identity_attribute_post_create_interceptors,
+		identity_attribute_post_create,
+		IdentityAttributePostCreateInterceptor
+	);
+	interceptor_method!(
+		identity_attribute_pre_delete_interceptors,
+		identity_attribute_pre_delete,
+		IdentityAttributePreDeleteInterceptor
+	);
+	interceptor_method!(
+		identity_attribute_value_post_create_interceptors,
+		identity_attribute_value_post_create,
+		IdentityAttributeValuePostCreateInterceptor
+	);
+	interceptor_method!(
+		identity_attribute_value_pre_delete_interceptors,
+		identity_attribute_value_pre_delete,
+		IdentityAttributeValuePreDeleteInterceptor
+	);
 	interceptor_method!(role_post_create_interceptors, role_post_create, RolePostCreateInterceptor);
 	interceptor_method!(role_pre_update_interceptors, role_pre_update, RolePreUpdateInterceptor);
 	interceptor_method!(role_post_update_interceptors, role_post_update, RolePostUpdateInterceptor);

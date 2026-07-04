@@ -128,23 +128,38 @@ fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Tran
 	if identity.is_privileged() {
 		return Ok(());
 	}
+	let attributes = catalog.list_identity_attributes(tx)?;
 	if identity.is_anonymous() {
-		let columns = Columns::single_row([
-			("id", Value::IdentityId(identity)),
-			("name", Value::none_of(ValueType::Utf8)),
-			("roles", Value::List(vec![])),
-		]);
+		let mut fields = vec![
+			("id".to_string(), Value::IdentityId(identity)),
+			("name".to_string(), Value::none_of(ValueType::Utf8)),
+			("roles".to_string(), Value::List(vec![])),
+		];
+		for attribute in &attributes {
+			fields.push((attribute.name.clone(), Value::none_of(attribute.value_type.clone())));
+		}
+		let columns = Columns::single_row(fields.iter().map(|(name, value)| (name.as_str(), value.clone())));
 		symbols.set("identity".to_string(), Variable::columns(columns), false)?;
 		return Ok(());
 	}
 	if let Some(user) = catalog.find_identity(tx, identity)? {
 		let roles = catalog.find_role_names_for_identity(tx, identity)?;
 		let role_values: Vec<Value> = roles.into_iter().map(Value::Utf8).collect();
-		let columns = Columns::single_row([
-			("id", Value::IdentityId(identity)),
-			("name", Value::Utf8(user.name)),
-			("roles", Value::List(role_values)),
-		]);
+		let values = catalog.find_identity_attribute_values(tx, identity)?;
+		let mut fields = vec![
+			("id".to_string(), Value::IdentityId(identity)),
+			("name".to_string(), Value::Utf8(user.name)),
+			("roles".to_string(), Value::List(role_values)),
+		];
+		for attribute in &attributes {
+			let value = values
+				.iter()
+				.find(|v| v.attribute == attribute.id)
+				.map(|v| Value::Utf8(v.value.clone()))
+				.unwrap_or_else(|| Value::none_of(attribute.value_type.clone()));
+			fields.push((attribute.name.clone(), value));
+		}
+		let columns = Columns::single_row(fields.iter().map(|(name, value)| (name.as_str(), value.clone())));
 		symbols.set("identity".to_string(), Variable::columns(columns), false)?;
 	}
 	Ok(())

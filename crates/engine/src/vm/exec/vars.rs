@@ -83,6 +83,15 @@ impl<'a> Vm<'a> {
 
 	pub(crate) fn exec_declare_var(&mut self, fragment: &Fragment) -> Result<()> {
 		let name = strip_dollar_prefix(fragment.text());
+		if name == "identity" {
+			return Err(TypeError::Runtime {
+				kind: RuntimeErrorKind::VariableIsImmutable {
+					name: name.to_string(),
+				},
+				message: "'$identity' is reserved and cannot be declared or shadowed".to_string(),
+			}
+			.into());
+		}
 		let sv = self.stack.pop()?;
 		let variable = match sv {
 			Variable::Closure(c) => Variable::Closure(c),

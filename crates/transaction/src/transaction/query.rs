@@ -20,7 +20,10 @@ use reifydb_core::{
 				BindingId, ColumnSnapshotId, HandlerId, MigrationId, NamespaceId, ProcedureId,
 				RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
 			},
-			identity::{GrantedRole, Identity, Role, RoleId},
+			identity::{
+				GrantedRole, Identity, IdentityAttribute, IdentityAttributeId, IdentityAttributeValue,
+				Role, RoleId,
+			},
 			migration::Migration,
 			namespace::Namespace,
 			policy::{Policy, PolicyId},
@@ -52,6 +55,7 @@ use crate::{
 		TransactionalAuthenticationChanges, TransactionalBindingChanges, TransactionalChanges,
 		TransactionalColumnSnapshotChanges, TransactionalConfigChanges, TransactionalDictionaryChanges,
 		TransactionalFlowChanges, TransactionalGrantedRoleChanges, TransactionalHandlerChanges,
+		TransactionalIdentityAttributeChanges, TransactionalIdentityAttributeValueChanges,
 		TransactionalIdentityChanges, TransactionalMigrationChanges, TransactionalNamespaceChanges,
 		TransactionalOperatorSettingsChanges, TransactionalPolicyChanges, TransactionalProcedureChanges,
 		TransactionalRingBufferChanges, TransactionalRoleChanges, TransactionalRowSettingsChanges,
@@ -439,6 +443,42 @@ impl TransactionalGrantedRoleChanges for QueryTransaction {
 	}
 
 	fn is_granted_role_deleted(&self, _identity: IdentityId, _role: RoleId) -> bool {
+		false
+	}
+}
+
+impl TransactionalIdentityAttributeChanges for QueryTransaction {
+	fn find_identity_attribute(&self, _id: IdentityAttributeId) -> Option<&IdentityAttribute> {
+		None
+	}
+
+	fn find_identity_attribute_by_name(&self, _name: &str) -> Option<&IdentityAttribute> {
+		None
+	}
+
+	fn is_identity_attribute_deleted(&self, _id: IdentityAttributeId) -> bool {
+		false
+	}
+
+	fn is_identity_attribute_deleted_by_name(&self, _name: &str) -> bool {
+		false
+	}
+}
+
+impl TransactionalIdentityAttributeValueChanges for QueryTransaction {
+	fn find_identity_attribute_value(
+		&self,
+		_identity: IdentityId,
+		_attribute: IdentityAttributeId,
+	) -> Option<&IdentityAttributeValue> {
+		None
+	}
+
+	fn find_identity_attribute_values_for_identity(&self, _identity: IdentityId) -> Vec<&IdentityAttributeValue> {
+		Vec::new()
+	}
+
+	fn is_identity_attribute_value_deleted(&self, _identity: IdentityId, _attribute: IdentityAttributeId) -> bool {
 		false
 	}
 }

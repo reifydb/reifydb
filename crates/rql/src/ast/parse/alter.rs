@@ -54,6 +54,11 @@ impl<'bump> Parser<'bump> {
 			return self.parse_alter_policy(token, AstPolicyTargetType::RingBuffer);
 		}
 
+		if self.current()?.is_keyword(Keyword::User) {
+			self.consume_keyword(Keyword::User)?;
+			return self.parse_alter_identity(token);
+		}
+
 		if self.current()?.is_keyword(Keyword::Remote) {
 			self.consume_keyword(Keyword::Remote)?;
 			self.consume_keyword(Keyword::Namespace)?;
@@ -111,7 +116,8 @@ impl<'bump> Parser<'bump> {
 		let fragment = self.current()?.fragment.to_owned();
 		Err(Error::from(TypeError::Ast {
 			kind: AstErrorKind::UnexpectedToken {
-				expected: "SEQUENCE, FLOW, TABLE, or a policy target type after ALTER".to_string(),
+				expected: "SEQUENCE, FLOW, TABLE, USER, or a policy target type after ALTER"
+					.to_string(),
 			},
 			message: format!("Unexpected token after ALTER: {}", fragment.text()),
 			fragment,

@@ -1,0 +1,34 @@
+# Declare attribute, set a value via CREATE USER, drop attribute, verify definition and values gone
+
+admin 'CREATE USER ATTRIBUTE org_id: utf8'
+admin 'CREATE USER carol { org_id: "acme" }'
+replicate
+---
+version: 2
+
+query 'FROM system::identity_attribute_values MAP {attribute: attribute, value: value}'
+---
++-------------+---------+
+|  attribute  |  value  |
++-------------+---------+
+|   org_id    |  acme   |
++-------------+---------+
+
+admin 'DROP USER ATTRIBUTE org_id'
+replicate
+---
+version: 3
+
+query 'FROM system::identity_attributes FILTER {name == "org_id"}'
+---
++------+--------+--------------+
+|  id  |  name  |  value_type  |
++------+--------+--------------+
++------+--------+--------------+
+
+query 'FROM system::identity_attribute_values MAP {attribute: attribute, value: value}'
+---
++-------------+---------+
+|  attribute  |  value  |
++-------------+---------+
++-------------+---------+

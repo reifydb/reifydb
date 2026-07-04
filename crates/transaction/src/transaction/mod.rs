@@ -52,6 +52,10 @@ use crate::{
 			IdentityPostCreateInterceptor, IdentityPostUpdateInterceptor, IdentityPreDeleteInterceptor,
 			IdentityPreUpdateInterceptor,
 		},
+		identity_attribute::{IdentityAttributePostCreateInterceptor, IdentityAttributePreDeleteInterceptor},
+		identity_attribute_value::{
+			IdentityAttributeValuePostCreateInterceptor, IdentityAttributeValuePreDeleteInterceptor,
+		},
 		namespace::{
 			NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
 			NamespacePreUpdateInterceptor,
@@ -853,6 +857,22 @@ impl WithInterceptors for Transaction<'_> {
 	delegate_interceptor!(
 		granted_role_pre_delete_interceptors,
 		&mut Chain<dyn GrantedRolePreDeleteInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		identity_attribute_post_create_interceptors,
+		&mut Chain<dyn IdentityAttributePostCreateInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		identity_attribute_pre_delete_interceptors,
+		&mut Chain<dyn IdentityAttributePreDeleteInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		identity_attribute_value_post_create_interceptors,
+		&mut Chain<dyn IdentityAttributeValuePostCreateInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		identity_attribute_value_pre_delete_interceptors,
+		&mut Chain<dyn IdentityAttributeValuePreDeleteInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
 		authentication_post_create_interceptors,

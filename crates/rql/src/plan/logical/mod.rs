@@ -41,7 +41,7 @@ use crate::{
 	Result,
 	ast::{
 		ast::{
-			Ast, AstAlterPolicyAction, AstAuthenticationEntry, AstBindingProtocol, AstConfigPair, AstInfix,
+			Ast, AstAlterPolicyAction, AstBindingProtocol, AstBodyEntry, AstConfigPair, AstInfix,
 			AstPolicyOperationEntry, AstPolicyScope, AstPolicyTargetType, AstProcedureParam, AstRunTests,
 			AstStatement, AstType, AstVariant, AstViewStorageKind, InfixOperator,
 		},
@@ -388,6 +388,7 @@ pub enum LogicalPlan<'bump> {
 	AlterSequence(AlterSequenceNode<'bump>),
 	AlterTable(AlterTableNode<'bump>),
 	AlterRemoteNamespace(AlterRemoteNamespaceNode<'bump>),
+	AlterIdentity(AlterIdentityNode<'bump>),
 
 	DeleteTable(DeleteTableNode<'bump>),
 	DeleteRingBuffer(DeleteRingBufferNode<'bump>),
@@ -445,10 +446,12 @@ pub enum LogicalPlan<'bump> {
 	DefineClosure(DefineClosureNode<'bump>),
 
 	CreateIdentity(CreateIdentityNode<'bump>),
+	CreateIdentityAttribute(CreateIdentityAttributeNode<'bump>),
 	CreateRole(CreateRoleNode<'bump>),
 	Grant(GrantNode<'bump>),
 	Revoke(RevokeNode<'bump>),
 	DropIdentity(DropIdentityNode<'bump>),
+	DropIdentityAttribute(DropIdentityAttributeNode<'bump>),
 	DropRole(DropRoleNode<'bump>),
 	CreateAuthentication(CreateAuthenticationNode<'bump>),
 	DropAuthentication(DropAuthenticationNode<'bump>),
@@ -1016,6 +1019,19 @@ pub struct DropSubscriptionNode<'bump> {
 #[derive(Debug)]
 pub struct CreateIdentityNode<'bump> {
 	pub name: BumpFragment<'bump>,
+	pub entries: Vec<AstBodyEntry<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct AlterIdentityNode<'bump> {
+	pub name: BumpFragment<'bump>,
+	pub entries: Vec<AstBodyEntry<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct CreateIdentityAttributeNode<'bump> {
+	pub name: BumpFragment<'bump>,
+	pub value_type: AstType<'bump>,
 }
 
 #[derive(Debug)]
@@ -1042,6 +1058,12 @@ pub struct DropIdentityNode<'bump> {
 }
 
 #[derive(Debug)]
+pub struct DropIdentityAttributeNode<'bump> {
+	pub name: BumpFragment<'bump>,
+	pub if_exists: bool,
+}
+
+#[derive(Debug)]
 pub struct DropRoleNode<'bump> {
 	pub name: BumpFragment<'bump>,
 	pub if_exists: bool,
@@ -1050,7 +1072,7 @@ pub struct DropRoleNode<'bump> {
 #[derive(Debug)]
 pub struct CreateAuthenticationNode<'bump> {
 	pub user: BumpFragment<'bump>,
-	pub entries: Vec<AstAuthenticationEntry<'bump>>,
+	pub entries: Vec<AstBodyEntry<'bump>>,
 }
 
 #[derive(Debug)]

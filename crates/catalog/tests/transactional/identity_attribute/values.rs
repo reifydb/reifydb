@@ -1,0 +1,485 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use reifydb_engine::test_prelude::*;
+use reifydb_transaction::transaction::Transaction;
+
+fn value_of(
+	catalog: &reifydb_catalog::catalog::Catalog,
+	txn: &mut Transaction<'_>,
+	username: &str,
+	attribute: &str,
+) -> Option<String> {
+	let identity = catalog.find_identity_by_name(txn, username).unwrap()?;
+	let definition = catalog.find_identity_attribute_by_name(txn, attribute).unwrap()?;
+	catalog.find_identity_attribute_values(txn, identity.id)
+		.unwrap()
+		.into_iter()
+		.find(|v| v.attribute == definition.id)
+		.map(|v| v.value)
+}
+
+#[test]
+fn uncommitted_value_is_visible_within_txn() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_a: utf8");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql("CREATE USER iav_alice_a { iav_org_a: 'acme' }", Params::None);
+	assert!(r.error.is_none(), "create failed: {:?}", r.error);
+
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn), "iav_alice_a", "iav_org_a"),
+		Some("acme".to_string()),
+		"within-txn attribute value must be visible"
+	);
+}
+
+#[test]
+fn rolled_back_value_is_not_visible() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_b: utf8");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql("CREATE USER iav_alice_b { iav_org_b: 'acme' }", Params::None);
+	assert!(r.error.is_none(), "create failed: {:?}", r.error);
+	txn.rollback().unwrap();
+
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	assert!(
+		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn2), "iav_alice_b").unwrap().is_none(),
+		"rolled-back create must remove the identity and its values"
+	);
+}
+
+#[test]
+fn committed_value_is_visible_in_new_txn() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_c: utf8");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql("CREATE USER iav_alice_c { iav_org_c: 'acme' }", Params::None);
+	assert!(r.error.is_none(), "create failed: {:?}", r.error);
+	txn.commit().unwrap();
+
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_c", "iav_org_c"),
+		Some("acme".to_string()),
+		"committed attribute value must be visible in new txn"
+	);
+}
+
+#[test]
+fn uncommitted_value_is_isolated_from_concurrent_txn() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_d: utf8");
+
+	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn1.rql("CREATE USER iav_alice_d { iav_org_d: 'acme' }", Params::None);
+	assert!(r.error.is_none(), "create failed: {:?}", r.error);
+
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	assert!(
+		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn2), "iav_alice_d").unwrap().is_none(),
+		"concurrent txn must not see uncommitted identity or values"
+	);
+
+	txn1.commit().unwrap();
+	drop(txn2);
+
+	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn3), "iav_alice_d", "iav_org_d"),
+		Some("acme".to_string()),
+		"after commit, attribute value must be visible in a fresh txn"
+	);
+}
+
+#[test]
+fn drop_user_removes_its_values() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_e: utf8");
+	t.admin("CREATE USER iav_alice_e { iav_org_e: 'acme' }");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let identity =
+		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "iav_alice_e").unwrap().unwrap();
+	let r = txn.rql("DROP USER iav_alice_e", Params::None);
+	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
+	txn.commit().unwrap();
+
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn2), identity.id).unwrap();
+	assert!(values.is_empty(), "dropping a user must cascade its attribute values, found {:?}", values);
+}
+
+#[test]
+fn drop_attribute_removes_its_values() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_f: utf8");
+	t.admin("CREATE USER iav_alice_f { iav_org_f: 'acme' }");
+
+	t.admin("DROP USER ATTRIBUTE iav_org_f");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let identity =
+		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "iav_alice_f").unwrap().unwrap();
+	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn), identity.id).unwrap();
+	assert!(values.is_empty(), "dropping an attribute must cascade its values, found {:?}", values);
+}
+
+#[test]
+fn undeclared_attribute_key_is_rejected() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql("CREATE USER iav_dave { iav_undeclared: 'x' }", Params::None);
+	let error = r.error.expect("undeclared attribute key must be rejected");
+	assert_eq!(error.diagnostic().code, "CA_091");
+	// The failed statement poisons the transaction, so absence is asserted in a fresh one.
+	drop(txn);
+
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	assert!(
+		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn2), "iav_dave").unwrap().is_none(),
+		"rejected create must not leave the identity behind"
+	);
+}
+
+#[test]
+fn duplicate_attribute_key_in_body_is_rejected() {
+	let t = TestEngine::new();
+	t.admin("CREATE USER ATTRIBUTE iav_org_g: utf8");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql("CREATE USER iav_erin { iav_org_g: 'acme'; iav_org_g: 'globex' }", Params::None);
+	let error = r.error.expect("duplicate attribute key must be rejected");
+	assert_eq!(error.diagnostic().code, "CA_090");
+}
+
+#[test]
+fn removed_value_is_gone_and_fails_closed() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_j: utf8");
+	t.admin("CREATE USER iav_alice_j { iav_org_j: 'acme' }");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let identity =
+		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "iav_alice_j").unwrap().unwrap();
+	let definition = catalog
+		.find_identity_attribute_by_name(&mut Transaction::Admin(&mut txn), "iav_org_j")
+		.unwrap()
+		.unwrap();
+	catalog.remove_identity_attribute_value(&mut txn, identity.id, definition.id).unwrap();
+
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn), "iav_alice_j", "iav_org_j"),
+		None,
+		"within-txn removed value must not be visible"
+	);
+	txn.commit().unwrap();
+
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_j", "iav_org_j"),
+		None,
+		"committed removal must persist"
+	);
+}
+
+#[test]
+fn value_created_then_removed_in_one_txn_is_absent_from_overlay() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_m: utf8");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	txn.rql("CREATE USER iav_alice_m { iav_org_m: 'acme' }", Params::None);
+	let identity =
+		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "iav_alice_m").unwrap().unwrap();
+	let definition = catalog
+		.find_identity_attribute_by_name(&mut Transaction::Admin(&mut txn), "iav_org_m")
+		.unwrap()
+		.unwrap();
+	catalog.remove_identity_attribute_value(&mut txn, identity.id, definition.id).unwrap();
+
+	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn), identity.id).unwrap();
+	assert!(
+		values.is_empty(),
+		"a value created then removed in the same txn must not survive in the overlay, found {:?}",
+		values
+	);
+}
+
+#[test]
+fn rolled_back_value_removal_restores_value() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_k: utf8");
+	t.admin("CREATE USER iav_alice_k { iav_org_k: 'acme' }");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let identity =
+		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "iav_alice_k").unwrap().unwrap();
+	let definition = catalog
+		.find_identity_attribute_by_name(&mut Transaction::Admin(&mut txn), "iav_org_k")
+		.unwrap()
+		.unwrap();
+	catalog.remove_identity_attribute_value(&mut txn, identity.id, definition.id).unwrap();
+	txn.rollback().unwrap();
+
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_k", "iav_org_k"),
+		Some("acme".to_string()),
+		"rolled-back removal must leave the value intact"
+	);
+}
+
+#[test]
+fn declare_and_use_in_same_txn() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql("CREATE USER ATTRIBUTE iav_org_i: utf8", Params::None);
+	assert!(r.error.is_none(), "declare failed: {:?}", r.error);
+	let r = txn.rql("CREATE USER iav_alice_i { iav_org_i: 'acme' }", Params::None);
+	assert!(r.error.is_none(), "create with same-txn declared attribute failed: {:?}", r.error);
+	txn.commit().unwrap();
+
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_i", "iav_org_i"),
+		Some("acme".to_string()),
+		"declare + use in one txn must survive commit"
+	);
+}
+
+// ALTER USER assigns declared attribute values to an already-existing user. The tests
+// below cover the full MVCC visibility matrix for assignment and overwrite, since this
+// is the first path that writes over a previously committed value.
+
+#[test]
+fn alter_user_assigns_value_to_existing_user() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_n: utf8");
+	t.admin("CREATE USER iav_alice_n");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql("ALTER USER iav_alice_n { iav_org_n: 'acme' }", Params::None);
+	assert!(r.error.is_none(), "alter failed: {:?}", r.error);
+
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn), "iav_alice_n", "iav_org_n"),
+		Some("acme".to_string()),
+		"within-txn assigned value must be visible"
+	);
+	txn.commit().unwrap();
+
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_n", "iav_org_n"),
+		Some("acme".to_string()),
+		"committed assignment must be visible in new txn"
+	);
+}
+
+#[test]
+fn uncommitted_overwrite_is_isolated_from_concurrent_txn() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_o: utf8");
+	t.admin("CREATE USER iav_alice_o { iav_org_o: 'acme' }");
+
+	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn1.rql("ALTER USER iav_alice_o { iav_org_o: 'globex' }", Params::None);
+	assert!(r.error.is_none(), "alter failed: {:?}", r.error);
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn1), "iav_alice_o", "iav_org_o"),
+		Some("globex".to_string()),
+		"overwriting txn must see its own new value"
+	);
+
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_o", "iav_org_o"),
+		Some("acme".to_string()),
+		"concurrent txn must still see the committed value"
+	);
+}
+
+#[test]
+fn rolled_back_overwrite_restores_old_value() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_p: utf8");
+	t.admin("CREATE USER iav_alice_p { iav_org_p: 'acme' }");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql("ALTER USER iav_alice_p { iav_org_p: 'globex' }", Params::None);
+	assert!(r.error.is_none(), "alter failed: {:?}", r.error);
+	txn.rollback().unwrap();
+
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_p", "iav_org_p"),
+		Some("acme".to_string()),
+		"rolled-back overwrite must leave the committed value intact"
+	);
+}
+
+#[test]
+fn committed_overwrite_supersedes_old_value() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_q: utf8");
+	t.admin("CREATE USER iav_alice_q { iav_org_q: 'acme' }");
+	t.admin("ALTER USER iav_alice_q { iav_org_q: 'globex' }");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let identity =
+		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "iav_alice_q").unwrap().unwrap();
+	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn), identity.id).unwrap();
+	// Exactly one row must remain: the overwrite must supersede, not duplicate.
+	assert_eq!(values.len(), 1, "overwrite must not duplicate the value row, found {:?}", values);
+	assert_eq!(values[0].value, "globex", "committed overwrite must supersede the old value");
+}
+
+#[test]
+fn alter_user_sets_multiple_attributes_in_one_statement() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_r: utf8");
+	t.admin("CREATE USER ATTRIBUTE iav_tier_r: utf8");
+	t.admin("CREATE USER iav_alice_r { iav_org_r: 'acme' }");
+	t.admin("ALTER USER iav_alice_r { iav_org_r: 'globex'; iav_tier_r: 'pro' }");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn), "iav_alice_r", "iav_org_r"),
+		Some("globex".to_string()),
+		"first assignment must overwrite"
+	);
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn), "iav_alice_r", "iav_tier_r"),
+		Some("pro".to_string()),
+		"second assignment must set the previously unset attribute"
+	);
+}
+
+#[test]
+fn alter_user_leaves_unlisted_attributes_untouched() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_s: utf8");
+	t.admin("CREATE USER ATTRIBUTE iav_tier_s: utf8");
+	t.admin("CREATE USER iav_alice_s { iav_org_s: 'acme'; iav_tier_s: 'pro' }");
+	t.admin("ALTER USER iav_alice_s { iav_tier_s: 'enterprise' }");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn), "iav_alice_s", "iav_org_s"),
+		Some("acme".to_string()),
+		"attributes not listed in the ALTER body must keep their value"
+	);
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn), "iav_alice_s", "iav_tier_s"),
+		Some("enterprise".to_string()),
+		"listed attribute must be updated"
+	);
+}
+
+#[test]
+fn alter_user_on_nonexistent_user_is_rejected() {
+	let t = TestEngine::new();
+	t.admin("CREATE USER ATTRIBUTE iav_org_t: utf8");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql("ALTER USER iav_ghost_t { iav_org_t: 'acme' }", Params::None);
+	let error = r.error.expect("altering a nonexistent user must be rejected");
+	assert_eq!(error.diagnostic().code, "CA_043");
+}
+
+#[test]
+fn alter_user_with_undeclared_attribute_is_rejected_and_writes_nothing() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_u: utf8");
+	t.admin("CREATE USER iav_alice_u { iav_org_u: 'acme' }");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	// The declared key comes first: the statement must be all-or-nothing, so even the
+	// valid leading assignment must not stick when a later key is undeclared.
+	let r = txn.rql("ALTER USER iav_alice_u { iav_org_u: 'globex'; iav_undeclared_u: 'x' }", Params::None);
+	let error = r.error.expect("undeclared attribute key must be rejected");
+	assert_eq!(error.diagnostic().code, "CA_091");
+	drop(txn);
+
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_u", "iav_org_u"),
+		Some("acme".to_string()),
+		"a rejected ALTER USER must not apply any of its assignments"
+	);
+}
+
+#[test]
+fn alter_user_with_duplicate_key_is_rejected() {
+	let t = TestEngine::new();
+	t.admin("CREATE USER ATTRIBUTE iav_org_v: utf8");
+	t.admin("CREATE USER iav_alice_v");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql("ALTER USER iav_alice_v { iav_org_v: 'acme'; iav_org_v: 'globex' }", Params::None);
+	let error = r.error.expect("duplicate attribute key must be rejected");
+	assert_eq!(error.diagnostic().code, "CA_090");
+}
+
+#[test]
+fn declare_and_alter_in_same_txn() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER iav_alice_w");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let r = txn.rql("CREATE USER ATTRIBUTE iav_org_w: utf8", Params::None);
+	assert!(r.error.is_none(), "declare failed: {:?}", r.error);
+	let r = txn.rql("ALTER USER iav_alice_w { iav_org_w: 'acme' }", Params::None);
+	assert!(r.error.is_none(), "alter with same-txn declared attribute failed: {:?}", r.error);
+	txn.commit().unwrap();
+
+	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_w", "iav_org_w"),
+		Some("acme".to_string()),
+		"declare + alter in one txn must survive commit"
+	);
+}
+
+#[test]
+fn drop_and_redeclare_does_not_resurrect_old_value() {
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER ATTRIBUTE iav_org_h: utf8");
+	t.admin("CREATE USER iav_alice_h { iav_org_h: 'acme' }");
+	t.admin("DROP USER ATTRIBUTE iav_org_h");
+	t.admin("CREATE USER ATTRIBUTE iav_org_h: utf8");
+
+	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	assert_eq!(
+		value_of(&catalog, &mut Transaction::Admin(&mut txn), "iav_alice_h", "iav_org_h"),
+		None,
+		"a redeclared attribute must not rebind values set under the dropped definition"
+	);
+}

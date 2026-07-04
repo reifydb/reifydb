@@ -202,6 +202,8 @@ impl FlowTransaction {
 				KeyKind::Series => ReadFrom::Query,
 				KeyKind::NamespaceSeries => ReadFrom::Query,
 				KeyKind::Identity => ReadFrom::Query,
+				KeyKind::IdentityAttribute => ReadFrom::Query,
+				KeyKind::IdentityAttributeValue => ReadFrom::Query,
 				KeyKind::Role => ReadFrom::Query,
 				KeyKind::GrantedRole => ReadFrom::Query,
 				KeyKind::Policy => ReadFrom::Query,

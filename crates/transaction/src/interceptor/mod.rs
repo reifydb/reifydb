@@ -11,6 +11,8 @@ pub mod filter;
 pub mod filtered;
 pub mod granted_role;
 pub mod identity;
+pub mod identity_attribute;
+pub mod identity_attribute_value;
 pub mod interceptors;
 pub mod namespace;
 pub mod ringbuffer;
@@ -37,6 +39,10 @@ use granted_role::{GrantedRolePostCreateInterceptor, GrantedRolePreDeleteInterce
 use identity::{
 	IdentityPostCreateInterceptor, IdentityPostUpdateInterceptor, IdentityPreDeleteInterceptor,
 	IdentityPreUpdateInterceptor,
+};
+use identity_attribute::{IdentityAttributePostCreateInterceptor, IdentityAttributePreDeleteInterceptor};
+use identity_attribute_value::{
+	IdentityAttributeValuePostCreateInterceptor, IdentityAttributeValuePreDeleteInterceptor,
 };
 use namespace::{
 	NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
@@ -205,6 +211,20 @@ pub trait WithInterceptors {
 	fn granted_role_pre_delete_interceptors(
 		&mut self,
 	) -> &mut Chain<dyn GrantedRolePreDeleteInterceptor + Send + Sync>;
+
+	fn identity_attribute_post_create_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn IdentityAttributePostCreateInterceptor + Send + Sync>;
+	fn identity_attribute_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn IdentityAttributePreDeleteInterceptor + Send + Sync>;
+
+	fn identity_attribute_value_post_create_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn IdentityAttributeValuePostCreateInterceptor + Send + Sync>;
+	fn identity_attribute_value_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn IdentityAttributeValuePreDeleteInterceptor + Send + Sync>;
 
 	fn authentication_post_create_interceptors(
 		&mut self,

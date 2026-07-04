@@ -38,6 +38,8 @@ pub mod flows;
 pub mod granted_roles;
 pub mod handlers;
 pub mod identities;
+pub mod identity_attribute_values;
+pub mod identity_attributes;
 pub mod metrics_cdc;
 pub mod metrics_storage;
 pub mod migrations;
@@ -88,6 +90,8 @@ use flows::flows;
 use granted_roles::granted_roles;
 use handlers::handlers;
 use identities::identities;
+use identity_attribute_values::identity_attribute_values;
+use identity_attributes::identity_attributes;
 use metrics_cdc::metrics_cdc_vtable;
 use metrics_storage::metrics_storage_vtable;
 use migrations::migrations;
@@ -735,6 +739,27 @@ pub mod ids {
 			pub const ALL: [ColumnId; 2] = [IDENTITY_ID, ROLE_ID];
 		}
 
+		pub mod identity_attributes {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAME: ColumnId = ColumnId(2);
+			pub const VALUE_TYPE: ColumnId = ColumnId(3);
+
+			pub const ALL: [ColumnId; 3] = [ID, NAME, VALUE_TYPE];
+		}
+
+		pub mod identity_attribute_values {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const IDENTITY: ColumnId = ColumnId(1);
+			pub const ATTRIBUTE_ID: ColumnId = ColumnId(2);
+			pub const ATTRIBUTE: ColumnId = ColumnId(3);
+			pub const VALUE: ColumnId = ColumnId(4);
+
+			pub const ALL: [ColumnId; 4] = [IDENTITY, ATTRIBUTE_ID, ATTRIBUTE, VALUE];
+		}
+
 		pub mod policies {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
@@ -806,8 +831,9 @@ pub mod ids {
 		pub const SINK_CONNECTOR: SequenceId = SequenceId(20);
 		pub const BINDING: SequenceId = SequenceId(21);
 		pub const COLUMN_SNAPSHOT: SequenceId = SequenceId(22);
+		pub const IDENTITY_ATTRIBUTE: SequenceId = SequenceId(23);
 
-		pub const ALL: [SequenceId; 22] = [
+		pub const ALL: [SequenceId; 23] = [
 			NAMESPACE,
 			SOURCE,
 			COLUMN,
@@ -830,6 +856,7 @@ pub mod ids {
 			SINK_CONNECTOR,
 			BINDING,
 			COLUMN_SNAPSHOT,
+			IDENTITY_ATTRIBUTE,
 		];
 	}
 
@@ -881,6 +908,8 @@ pub mod ids {
 		pub const TAG_VARIANTS: VTableId = VTableId(51);
 		pub const SUBSCRIPTIONS: VTableId = VTableId(52);
 		pub const SUBSCRIPTION_WATERMARKS: VTableId = VTableId(61);
+		pub const IDENTITY_ATTRIBUTES: VTableId = VTableId(62);
+		pub const IDENTITY_ATTRIBUTE_VALUES: VTableId = VTableId(63);
 
 		pub const PROCEDURES_RQL: VTableId = VTableId(53);
 		pub const PROCEDURES_TEST: VTableId = VTableId(54);
@@ -912,7 +941,7 @@ pub mod ids {
 		pub const METRICS_CDC_FLOW_NODE: VTableId = VTableId(1040);
 		pub const METRICS_CDC_SYSTEM: VTableId = VTableId(1041);
 
-		pub const ALL: [VTableId; 71] = [
+		pub const ALL: [VTableId; 73] = [
 			SEQUENCES,
 			SUBSCRIPTION_WATERMARKS,
 			NAMESPACES,
@@ -956,6 +985,8 @@ pub mod ids {
 			IDENTITIES,
 			ROLES,
 			GRANTED_ROLES,
+			IDENTITY_ATTRIBUTES,
+			IDENTITY_ATTRIBUTE_VALUES,
 			POLICIES,
 			POLICY_OPERATIONS,
 			MIGRATIONS,
@@ -1317,6 +1348,14 @@ impl SystemCatalog {
 
 	pub fn get_system_granted_roles_table() -> Arc<VTable> {
 		granted_roles()
+	}
+
+	pub fn get_system_identity_attributes_table() -> Arc<VTable> {
+		identity_attributes()
+	}
+
+	pub fn get_system_identity_attribute_values_table() -> Arc<VTable> {
+		identity_attribute_values()
 	}
 
 	pub fn get_system_policies_table() -> Arc<VTable> {

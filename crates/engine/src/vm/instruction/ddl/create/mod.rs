@@ -67,6 +67,7 @@ pub mod dictionary;
 pub mod event;
 
 pub mod identity;
+pub mod identity_attribute;
 pub mod migration;
 pub mod namespace;
 pub mod policy;

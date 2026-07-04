@@ -84,6 +84,8 @@ pub enum KeyKind {
 	SeriesColumnSnapshot = 0x4A,
 	TableColumnSnapshot = 0x4B,
 	VersionEpoch = 0x4C,
+	IdentityAttribute = 0x4D,
+	IdentityAttributeValue = 0x4E,
 }
 
 impl From<KeyKind> for u8 {
@@ -172,6 +174,8 @@ impl TryFrom<u8> for KeyKind {
 			0x4A => Ok(Self::SeriesColumnSnapshot),
 			0x4B => Ok(Self::TableColumnSnapshot),
 			0x4C => Ok(Self::VersionEpoch),
+			0x4D => Ok(Self::IdentityAttribute),
+			0x4E => Ok(Self::IdentityAttributeValue),
 			_ => Err(de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

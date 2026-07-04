@@ -52,6 +52,10 @@ use crate::{
 			IdentityPostCreateInterceptor, IdentityPostUpdateInterceptor, IdentityPreDeleteInterceptor,
 			IdentityPreUpdateInterceptor,
 		},
+		identity_attribute::{IdentityAttributePostCreateInterceptor, IdentityAttributePreDeleteInterceptor},
+		identity_attribute_value::{
+			IdentityAttributeValuePostCreateInterceptor, IdentityAttributeValuePreDeleteInterceptor,
+		},
 		interceptors::Interceptors,
 		namespace::{
 			NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
@@ -902,6 +906,30 @@ impl WithInterceptors for AdminTransaction {
 		&mut self,
 	) -> &mut Chain<dyn GrantedRolePreDeleteInterceptor + Send + Sync> {
 		&mut self.interceptors.granted_role_pre_delete
+	}
+
+	fn identity_attribute_post_create_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn IdentityAttributePostCreateInterceptor + Send + Sync> {
+		&mut self.interceptors.identity_attribute_post_create
+	}
+
+	fn identity_attribute_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn IdentityAttributePreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.identity_attribute_pre_delete
+	}
+
+	fn identity_attribute_value_post_create_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn IdentityAttributeValuePostCreateInterceptor + Send + Sync> {
+		&mut self.interceptors.identity_attribute_value_post_create
+	}
+
+	fn identity_attribute_value_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn IdentityAttributeValuePreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.identity_attribute_value_pre_delete
 	}
 
 	fn authentication_post_create_interceptors(

@@ -5,8 +5,8 @@ use std::collections::HashSet;
 
 use reifydb_core::interface::catalog::{
 	change::{
-		CatalogTrackGrantedRoleChangeOperations, CatalogTrackIdentityChangeOperations,
-		CatalogTrackRoleChangeOperations,
+		CatalogTrackGrantedRoleChangeOperations, CatalogTrackIdentityAttributeValueChangeOperations,
+		CatalogTrackIdentityChangeOperations, CatalogTrackRoleChangeOperations,
 	},
 	identity::{GrantedRole, Identity, Role, RoleId},
 };
@@ -241,11 +241,21 @@ impl Catalog {
 
 	#[instrument(name = "catalog::identity::drop", level = "info", skip(self, txn))]
 	pub fn drop_identity(&self, txn: &mut AdminTransaction, identity: IdentityId) -> Result<()> {
+		let values = CatalogStore::find_identity_attribute_values_for_identity(
+			&mut Transaction::Admin(&mut *txn),
+			identity,
+		)?;
 		if let Some(ident) = CatalogStore::find_identity(&mut Transaction::Admin(&mut *txn), identity)? {
 			CatalogStore::drop_identity(txn, identity)?;
+			for value in values {
+				txn.track_identity_attribute_value_deleted(value)?;
+			}
 			txn.track_identity_deleted(ident)?;
 		} else {
 			CatalogStore::drop_identity(txn, identity)?;
+			for value in values {
+				txn.track_identity_attribute_value_deleted(value)?;
+			}
 		}
 		Ok(())
 	}

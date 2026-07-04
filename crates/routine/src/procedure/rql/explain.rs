@@ -260,11 +260,18 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 		PhysicalPlan::DropSink(_) => ("DropSink", String::new()),
 		PhysicalPlan::DropBinding(_) => ("DropBinding", String::new()),
 		PhysicalPlan::CreateIdentity(n) => ("CreateIdentity", format!("name={}", n.name.text())),
+		PhysicalPlan::AlterIdentity(n) => ("AlterIdentity", format!("name={}", n.name.text())),
+		PhysicalPlan::CreateIdentityAttribute(n) => {
+			("CreateIdentityAttribute", format!("name={}", n.name.text()))
+		}
 		PhysicalPlan::CreateRole(n) => ("CreateRole", format!("name={}", n.name.text())),
 		PhysicalPlan::Grant(n) => ("Grant", format!("role={} user={}", n.role.text(), n.user.text())),
 		PhysicalPlan::Revoke(n) => ("Revoke", format!("role={} user={}", n.role.text(), n.user.text())),
 		PhysicalPlan::DropIdentity(n) => {
 			("DropIdentity", format!("name={} if_exists={}", n.name.text(), n.if_exists))
+		}
+		PhysicalPlan::DropIdentityAttribute(n) => {
+			("DropIdentityAttribute", format!("name={} if_exists={}", n.name.text(), n.if_exists))
 		}
 		PhysicalPlan::DropRole(n) => ("DropRole", format!("name={} if_exists={}", n.name.text(), n.if_exists)),
 		PhysicalPlan::CreateAuthentication(n) => {

@@ -24,6 +24,8 @@ pub mod flows;
 pub mod granted_roles;
 pub mod handlers;
 pub mod identities;
+pub mod identity_attribute_values;
+pub mod identity_attributes;
 pub mod metrics;
 pub mod migrations;
 pub mod namespaces;

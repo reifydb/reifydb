@@ -19,6 +19,8 @@ pub(crate) mod flow_node;
 pub(crate) mod granted_role;
 pub(crate) mod handler;
 pub(crate) mod identity;
+pub(crate) mod identity_attribute;
+pub(crate) mod identity_attribute_value;
 pub(crate) mod migration;
 pub(crate) mod namespace;
 pub mod operator_settings;

@@ -21,6 +21,7 @@ pub mod flow_edge;
 pub mod flow_node;
 pub mod handler;
 pub mod identity;
+pub mod identity_attribute;
 pub mod migration;
 pub mod namespace;
 pub mod operator_settings;

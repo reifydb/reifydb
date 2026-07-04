@@ -507,6 +507,7 @@ fn physical_plan_kind_name(plan: &PhysicalPlan<'_>) -> &'static str {
 		PhysicalPlan::AlterSequence(_) => "ALTER SEQUENCE",
 		PhysicalPlan::AlterTable(_) => "ALTER TABLE",
 		PhysicalPlan::AlterRemoteNamespace(_) => "ALTER REMOTE NAMESPACE",
+		PhysicalPlan::AlterIdentity(_) => "ALTER USER",
 		PhysicalPlan::Delete(_) | PhysicalPlan::DeleteRingBuffer(_) | PhysicalPlan::DeleteSeries(_) => "DELETE",
 		PhysicalPlan::InsertTable(_)
 		| PhysicalPlan::InsertRingBuffer(_)
@@ -514,10 +515,12 @@ fn physical_plan_kind_name(plan: &PhysicalPlan<'_>) -> &'static str {
 		| PhysicalPlan::InsertSeries(_) => "INSERT",
 		PhysicalPlan::Update(_) | PhysicalPlan::UpdateRingBuffer(_) | PhysicalPlan::UpdateSeries(_) => "UPDATE",
 		PhysicalPlan::CreateIdentity(_) => "CREATE IDENTITY",
+		PhysicalPlan::CreateIdentityAttribute(_) => "CREATE USER ATTRIBUTE",
 		PhysicalPlan::CreateRole(_) => "CREATE ROLE",
 		PhysicalPlan::Grant(_) => "GRANT",
 		PhysicalPlan::Revoke(_) => "REVOKE",
 		PhysicalPlan::DropIdentity(_) => "DROP IDENTITY",
+		PhysicalPlan::DropIdentityAttribute(_) => "DROP USER ATTRIBUTE",
 		PhysicalPlan::DropRole(_) => "DROP ROLE",
 		PhysicalPlan::CreateAuthentication(_) => "CREATE AUTHENTICATION",
 		PhysicalPlan::DropAuthentication(_) => "DROP AUTHENTICATION",
@@ -921,6 +924,10 @@ impl InstructionCompiler {
 				self.emit(Instruction::AlterSequence(node));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::AlterIdentity(node) => {
+				self.emit(Instruction::AlterIdentity(node));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::CreatePrimaryKey(node) => {
 				self.emit(Instruction::CreatePrimaryKey(node));
 				self.emit(Instruction::Emit);
@@ -1044,6 +1051,10 @@ impl InstructionCompiler {
 				self.emit(Instruction::CreateIdentity(node));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::CreateIdentityAttribute(node) => {
+				self.emit(Instruction::CreateIdentityAttribute(node));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::CreateRole(node) => {
 				self.emit(Instruction::CreateRole(node));
 				self.emit(Instruction::Emit);
@@ -1058,6 +1069,10 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::DropIdentity(node) => {
 				self.emit(Instruction::DropIdentity(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropIdentityAttribute(node) => {
+				self.emit(Instruction::DropIdentityAttribute(node));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::DropRole(node) => {

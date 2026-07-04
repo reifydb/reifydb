@@ -10,7 +10,7 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{
 	Result,
 	ast::ast::AstAlter,
-	plan::logical::{AlterPolicyNode, Compiler, LogicalPlan},
+	plan::logical::{AlterIdentityNode, AlterPolicyNode, Compiler, LogicalPlan},
 };
 
 impl<'bump> Compiler<'bump> {
@@ -28,6 +28,10 @@ impl<'bump> Compiler<'bump> {
 			})),
 			AstAlter::Table(node) => self.compile_alter_table(node, tx),
 			AstAlter::RemoteNamespace(node) => self.compile_alter_remote_namespace(node),
+			AstAlter::Identity(node) => Ok(LogicalPlan::AlterIdentity(AlterIdentityNode {
+				name: node.name,
+				entries: node.entries,
+			})),
 		}
 	}
 }

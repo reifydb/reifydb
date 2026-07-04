@@ -1,0 +1,58 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use std::sync::{Arc, OnceLock};
+
+use reifydb_core::interface::catalog::{
+	column::{Column, ColumnIndex},
+	id::NamespaceId,
+	vtable::VTable,
+};
+use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
+
+use super::ids::{
+	columns::identity_attributes::{ID, NAME, VALUE_TYPE},
+	vtable::IDENTITY_ATTRIBUTES,
+};
+
+pub fn identity_attributes() -> Arc<VTable> {
+	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
+
+	INSTANCE.get_or_init(|| {
+		Arc::new(VTable {
+			id: IDENTITY_ATTRIBUTES,
+			namespace: NamespaceId::SYSTEM,
+			name: "identity_attributes".to_string(),
+			columns: vec![
+				Column {
+					id: ID,
+					name: "id".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
+					properties: vec![],
+					index: ColumnIndex(0),
+					auto_increment: false,
+					dictionary_id: None,
+				},
+				Column {
+					id: NAME,
+					name: "name".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
+					properties: vec![],
+					index: ColumnIndex(1),
+					auto_increment: false,
+					dictionary_id: None,
+				},
+				Column {
+					id: VALUE_TYPE,
+					name: "value_type".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
+					properties: vec![],
+					index: ColumnIndex(2),
+					auto_increment: false,
+					dictionary_id: None,
+				},
+			],
+		})
+	})
+	.clone()
+}

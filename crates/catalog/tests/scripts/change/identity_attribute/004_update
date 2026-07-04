@@ -1,0 +1,33 @@
+# Assign a value to an existing user via ALTER USER, then overwrite it; both replicate
+
+admin 'CREATE USER ATTRIBUTE org_id: utf8'
+admin 'CREATE USER carol'
+replicate
+---
+version: 2
+
+admin 'ALTER USER carol { org_id: "acme" }'
+replicate
+---
+version: 3
+
+query 'FROM system::identity_attribute_values MAP {attribute: attribute, value: value}'
+---
++-------------+---------+
+|  attribute  |  value  |
++-------------+---------+
+|   org_id    |  acme   |
++-------------+---------+
+
+admin 'ALTER USER carol { org_id: "globex" }'
+replicate
+---
+version: 4
+
+query 'FROM system::identity_attribute_values MAP {attribute: attribute, value: value}'
+---
++-------------+----------+
+|  attribute  |  value   |
++-------------+----------+
+|   org_id    |  globex  |
++-------------+----------+

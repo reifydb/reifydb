@@ -15,6 +15,8 @@ use flow_node_state::FlowNodeStateKey;
 use granted_role::GrantedRoleKey;
 use handler::HandlerKey;
 use identity::IdentityKey;
+use identity_attribute::IdentityAttributeKey;
+use identity_attribute_value::IdentityAttributeValueKey;
 use index::IndexKey;
 use index_entry::IndexEntryKey;
 use kind::KeyKind;
@@ -78,6 +80,8 @@ pub mod flow_version;
 pub mod granted_role;
 pub mod handler;
 pub mod identity;
+pub mod identity_attribute;
+pub mod identity_attribute_value;
 pub mod index;
 pub mod index_entry;
 pub mod kind;
@@ -165,6 +169,8 @@ pub enum Key {
 	SeriesMetadata(SeriesMetadataKey),
 	NamespaceSeries(NamespaceSeriesKey),
 	Identity(IdentityKey),
+	IdentityAttribute(IdentityAttributeKey),
+	IdentityAttributeValue(IdentityAttributeValueKey),
 	Authentication(AuthenticationKey),
 	Role(RoleKey),
 	GrantedRole(GrantedRoleKey),
@@ -228,6 +234,8 @@ impl Key {
 			Key::SeriesMetadata(key) => key.encode(),
 			Key::NamespaceSeries(key) => key.encode(),
 			Key::Identity(key) => key.encode(),
+			Key::IdentityAttribute(key) => key.encode(),
+			Key::IdentityAttributeValue(key) => key.encode(),
 			Key::Authentication(key) => key.encode(),
 			Key::Role(key) => key.encode(),
 			Key::GrantedRole(key) => key.encode(),
@@ -350,6 +358,10 @@ impl Key {
 			KeyKind::NamespaceSeries => NamespaceSeriesKey::decode(key).map(Self::NamespaceSeries),
 			KeyKind::SeriesMetadata => SeriesMetadataKey::decode(key).map(Self::SeriesMetadata),
 			KeyKind::Identity => IdentityKey::decode(key).map(Self::Identity),
+			KeyKind::IdentityAttribute => IdentityAttributeKey::decode(key).map(Self::IdentityAttribute),
+			KeyKind::IdentityAttributeValue => {
+				IdentityAttributeValueKey::decode(key).map(Self::IdentityAttributeValue)
+			}
 			KeyKind::Authentication => AuthenticationKey::decode(key).map(Self::Authentication),
 			KeyKind::Role => RoleKey::decode(key).map(Self::Role),
 			KeyKind::GrantedRole => GrantedRoleKey::decode(key).map(Self::GrantedRole),

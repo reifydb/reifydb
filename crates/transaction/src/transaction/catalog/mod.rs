@@ -16,6 +16,8 @@ pub mod flow_node;
 pub mod granted_role;
 pub mod handler;
 pub mod identity;
+pub mod identity_attribute;
+pub mod identity_attribute_value;
 pub mod migration;
 pub mod namespace;
 pub mod operator_settings;

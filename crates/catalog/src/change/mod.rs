@@ -25,6 +25,8 @@ mod flow_node;
 mod granted_role;
 mod handler;
 mod identity;
+mod identity_attribute;
+mod identity_attribute_value;
 mod migration;
 mod namespace;
 mod operator_settings;
@@ -56,6 +58,8 @@ use flow_node::FlowNodeApplier;
 use granted_role::GrantedRoleApplier;
 use handler::HandlerApplier;
 use identity::IdentityApplier;
+use identity_attribute::IdentityAttributeApplier;
+use identity_attribute_value::IdentityAttributeValueApplier;
 use migration::{MigrationApplier, MigrationEventApplier};
 use namespace::NamespaceApplier;
 use operator_settings::OperatorSettingsApplier;
@@ -109,6 +113,8 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 		KeyKind::Identity => dispatch::<IdentityApplier>(catalog, txn, change),
 		KeyKind::Role => dispatch::<RoleApplier>(catalog, txn, change),
 		KeyKind::GrantedRole => dispatch::<GrantedRoleApplier>(catalog, txn, change),
+		KeyKind::IdentityAttribute => dispatch::<IdentityAttributeApplier>(catalog, txn, change),
+		KeyKind::IdentityAttributeValue => dispatch::<IdentityAttributeValueApplier>(catalog, txn, change),
 		KeyKind::Policy => dispatch::<PolicyApplier>(catalog, txn, change),
 		KeyKind::Source => dispatch::<SourceApplier>(catalog, txn, change),
 		KeyKind::Sink => dispatch::<SinkApplier>(catalog, txn, change),

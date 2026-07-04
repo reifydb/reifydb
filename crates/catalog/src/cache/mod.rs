@@ -21,6 +21,8 @@ pub mod flow_node;
 pub mod granted_role;
 pub mod handler;
 pub mod identity;
+pub mod identity_attribute;
+pub mod identity_attribute_value;
 pub mod load;
 pub mod migration;
 pub mod namespace;
@@ -64,7 +66,10 @@ use reifydb_core::{
 			BindingId, ColumnSnapshotId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
 			PrimaryKeyId, ProcedureId, RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
 		},
-		identity::{GrantedRole, Identity, Role, RoleId},
+		identity::{
+			GrantedRole, Identity, IdentityAttribute, IdentityAttributeId, IdentityAttributeValue, Role,
+			RoleId,
+		},
 		key::PrimaryKey,
 		migration::{Migration, MigrationEvent},
 		namespace::Namespace,
@@ -122,6 +127,8 @@ pub type MultiVersionSumType = MultiVersionContainer<SumType>;
 pub type MultiVersionIdentity = MultiVersionContainer<Identity>;
 pub type MultiVersionRole = MultiVersionContainer<Role>;
 pub type MultiVersionGrantedRole = MultiVersionContainer<GrantedRole>;
+pub type MultiVersionIdentityAttribute = MultiVersionContainer<IdentityAttribute>;
+pub type MultiVersionIdentityAttributeValue = MultiVersionContainer<IdentityAttributeValue>;
 pub type MultiVersionPolicy = MultiVersionContainer<Policy>;
 pub type MultiVersionSource = MultiVersionContainer<Source>;
 pub type MultiVersionSink = MultiVersionContainer<Sink>;
@@ -228,6 +235,13 @@ pub struct CatalogCacheInner {
 	pub(crate) roles_by_name: SkipMap<String, RoleId>,
 
 	pub(crate) granted_roles: SkipMap<(IdentityId, RoleId), MultiVersionGrantedRole>,
+
+	pub(crate) identity_attributes: SkipMap<IdentityAttributeId, MultiVersionIdentityAttribute>,
+
+	pub(crate) identity_attributes_by_name: SkipMap<String, IdentityAttributeId>,
+
+	pub(crate) identity_attribute_values:
+		SkipMap<(IdentityId, IdentityAttributeId), MultiVersionIdentityAttributeValue>,
 
 	pub(crate) authentications: SkipMap<AuthenticationId, MultiVersionAuthentication>,
 
@@ -352,6 +366,9 @@ impl CatalogCache {
 			roles: SkipMap::new(),
 			roles_by_name: SkipMap::new(),
 			granted_roles: SkipMap::new(),
+			identity_attributes: SkipMap::new(),
+			identity_attributes_by_name: SkipMap::new(),
+			identity_attribute_values: SkipMap::new(),
 			authentications: SkipMap::new(),
 			authentications_by_identity_method: SkipMap::new(),
 			policies: SkipMap::new(),

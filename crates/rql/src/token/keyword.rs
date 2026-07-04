@@ -165,6 +165,7 @@ Add => "ADD",
 Migration => "MIGRATION",
 Migrate => "MIGRATE",
 Rollback => "ROLLBACK",
+Attribute => "ATTRIBUTE",
 Authentication => "AUTHENTICATION",
 Contains => "CONTAINS",
 Remote => "REMOTE",
@@ -277,6 +278,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("MIGRATION", Keyword::Migration);
 	map.insert("MIGRATE", Keyword::Migrate);
 	map.insert("ROLLBACK", Keyword::Rollback);
+	map.insert("ATTRIBUTE", Keyword::Attribute);
 	map.insert("AUTHENTICATION", Keyword::Authentication);
 	map.insert("CONTAINS", Keyword::Contains);
 	map.insert("REMOTE", Keyword::Remote);
@@ -328,6 +330,10 @@ pub fn scan_keyword<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	}
 
 	None
+}
+
+pub fn is_keyword(word: &str) -> bool {
+	KEYWORD_MAP.contains_key(word.to_uppercase().as_str())
 }
 
 #[cfg(test)]
@@ -457,6 +463,7 @@ pub mod tests {
 	test_keyword_function => (Function, "FUNCTION"),
 	test_keyword_session => (Session, "SESSION"),
 	test_keyword_feature => (Feature, "FEATURE"),
+	test_keyword_attribute => (Attribute, "ATTRIBUTE"),
 	test_keyword_authentication => (Authentication, "AUTHENTICATION"),
 	test_keyword_contains => (Contains, "CONTAINS"),
 	test_keyword_test => (Test, "TEST"),
@@ -601,6 +608,7 @@ pub mod tests {
 	test_not_keyword_function => ( "function"),
 	test_not_keyword_session => ( "session"),
 	test_not_keyword_feature => ( "feature"),
+	test_not_keyword_attribute => ( "attribute"),
 	test_not_keyword_authentication => ( "authentication"),
 	test_not_keyword_contains => ( "contains"),
 	test_not_keyword_test => ( "test"),
@@ -608,6 +616,14 @@ pub mod tests {
 	test_not_keyword_run => ( "run"),
 	test_not_keyword_source => ( "source"),
 	test_not_keyword_sink => ( "sink"),
+	}
+
+	#[test]
+	fn test_is_keyword() {
+		assert!(is_keyword("attribute"));
+		assert!(is_keyword("ATTRIBUTE"));
+		assert!(is_keyword("user"));
+		assert!(!is_keyword("org_id"));
 	}
 
 	#[test]

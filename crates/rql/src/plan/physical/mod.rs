@@ -42,6 +42,7 @@ use crate::{
 	Result,
 	ast::ast::{AstAlterPolicyAction, AstPolicyScope, AstViewStorageKind},
 	bump::{Bump, BumpBox, FragmentInterner},
+	convert_data_type_with_constraints,
 	error::RqlError,
 	expression::{
 		ConstantExpression, Expression, Expression::Constant, VariableExpression, extract_variable_names,
@@ -109,6 +110,7 @@ pub enum PhysicalPlan<'bump> {
 	AlterSequence(AlterSequenceNode),
 	AlterTable(AlterTableNode<'bump>),
 	AlterRemoteNamespace(nodes::AlterRemoteNamespaceNode),
+	AlterIdentity(nodes::AlterIdentityNode),
 
 	Delete(DeleteTableNode<'bump>),
 	DeleteRingBuffer(DeleteRingBufferNode<'bump>),
@@ -173,10 +175,12 @@ pub enum PhysicalPlan<'bump> {
 	Scalarize(ScalarizeNode<'bump>),
 
 	CreateIdentity(nodes::CreateIdentityNode),
+	CreateIdentityAttribute(nodes::CreateIdentityAttributeNode),
 	CreateRole(nodes::CreateRoleNode),
 	Grant(nodes::GrantNode),
 	Revoke(nodes::RevokeNode),
 	DropIdentity(nodes::DropIdentityNode),
+	DropIdentityAttribute(nodes::DropIdentityAttributeNode),
 	DropRole(nodes::DropRoleNode),
 	CreateAuthentication(nodes::CreateAuthenticationNode),
 	DropAuthentication(nodes::DropAuthenticationNode),
@@ -859,9 +863,40 @@ impl<'bump> Compiler<'bump> {
 				}
 
 				LogicalPlan::CreateIdentity(node) => {
+					let mut attributes = Vec::with_capacity(node.entries.len());
+					for entry in &node.entries {
+						attributes.push(nodes::IdentityAttributeAssignment {
+							name: self.interner.intern_fragment(&entry.key),
+							value: entry.value.value().to_string(),
+						});
+					}
 					stack.push(PhysicalPlan::CreateIdentity(nodes::CreateIdentityNode {
 						name: self.interner.intern_fragment(&node.name),
+						attributes,
 					}));
+				}
+				LogicalPlan::AlterIdentity(node) => {
+					let mut attributes = Vec::with_capacity(node.entries.len());
+					for entry in &node.entries {
+						attributes.push(nodes::IdentityAttributeAssignment {
+							name: self.interner.intern_fragment(&entry.key),
+							value: entry.value.value().to_string(),
+						});
+					}
+					stack.push(PhysicalPlan::AlterIdentity(nodes::AlterIdentityNode {
+						name: self.interner.intern_fragment(&node.name),
+						attributes,
+					}));
+				}
+				LogicalPlan::CreateIdentityAttribute(node) => {
+					let value_type =
+						convert_data_type_with_constraints(&node.value_type)?.get_type();
+					stack.push(PhysicalPlan::CreateIdentityAttribute(
+						nodes::CreateIdentityAttributeNode {
+							name: self.interner.intern_fragment(&node.name),
+							value_type,
+						},
+					));
 				}
 				LogicalPlan::CreateRole(node) => {
 					stack.push(PhysicalPlan::CreateRole(nodes::CreateRoleNode {
@@ -885,6 +920,14 @@ impl<'bump> Compiler<'bump> {
 						name: self.interner.intern_fragment(&node.name),
 						if_exists: node.if_exists,
 					}));
+				}
+				LogicalPlan::DropIdentityAttribute(node) => {
+					stack.push(PhysicalPlan::DropIdentityAttribute(
+						nodes::DropIdentityAttributeNode {
+							name: self.interner.intern_fragment(&node.name),
+							if_exists: node.if_exists,
+						},
+					));
 				}
 				LogicalPlan::DropRole(node) => {
 					stack.push(PhysicalPlan::DropRole(nodes::DropRoleNode {

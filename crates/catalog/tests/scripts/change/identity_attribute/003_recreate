@@ -1,0 +1,36 @@
+# Drop and redeclare: the new definition gets a fresh id and old values do not rebind
+
+admin 'CREATE USER ATTRIBUTE org_id: utf8'
+admin 'CREATE USER carol { org_id: "acme" }'
+replicate
+---
+version: 2
+
+query 'FROM system::identity_attributes FILTER {name == "org_id"}'
+---
++---------+----------+--------------+
+|   id    |   name   |  value_type  |
++---------+----------+--------------+
+|  16385  |  org_id  |     Utf8     |
++---------+----------+--------------+
+
+admin 'DROP USER ATTRIBUTE org_id'
+admin 'CREATE USER ATTRIBUTE org_id: utf8'
+replicate
+---
+version: 3
+
+query 'FROM system::identity_attributes FILTER {name == "org_id"}'
+---
++---------+----------+--------------+
+|   id    |   name   |  value_type  |
++---------+----------+--------------+
+|  16386  |  org_id  |     Utf8     |
++---------+----------+--------------+
+
+query 'FROM system::identity_attribute_values MAP {attribute: attribute, value: value}'
+---
++-------------+---------+
+|  attribute  |  value  |
++-------------+---------+
++-------------+---------+

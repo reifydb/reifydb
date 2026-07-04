@@ -79,6 +79,7 @@ pub enum PhysicalPlan {
 	AlterSequence(AlterSequenceNode),
 	AlterTable(AlterTableNode),
 	AlterRemoteNamespace(AlterRemoteNamespaceNode),
+	AlterIdentity(AlterIdentityNode),
 
 	Delete(DeleteTableNode),
 	DeleteRingBuffer(DeleteRingBufferNode),
@@ -997,6 +998,25 @@ pub struct DropSeriesNode {
 #[derive(Debug, Clone)]
 pub struct CreateIdentityNode {
 	pub name: Fragment,
+	pub attributes: Vec<IdentityAttributeAssignment>,
+}
+
+#[derive(Debug, Clone)]
+pub struct IdentityAttributeAssignment {
+	pub name: Fragment,
+	pub value: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct AlterIdentityNode {
+	pub name: Fragment,
+	pub attributes: Vec<IdentityAttributeAssignment>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateIdentityAttributeNode {
+	pub name: Fragment,
+	pub value_type: ValueType,
 }
 
 #[derive(Debug, Clone)]
@@ -1018,6 +1038,12 @@ pub struct RevokeNode {
 
 #[derive(Debug, Clone)]
 pub struct DropIdentityNode {
+	pub name: Fragment,
+	pub if_exists: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropIdentityAttributeNode {
 	pub name: Fragment,
 	pub if_exists: bool,
 }

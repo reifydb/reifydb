@@ -229,11 +229,18 @@ fn describe(plan: &LogicalPlan<'_>) -> (&'static str, String) {
 		LogicalPlan::DropSink(_) => ("DropSink", String::new()),
 		LogicalPlan::DropBinding(_) => ("DropBinding", String::new()),
 		LogicalPlan::CreateIdentity(n) => ("CreateIdentity", format!("name={}", n.name.text())),
+		LogicalPlan::AlterIdentity(n) => ("AlterIdentity", format!("name={}", n.name.text())),
+		LogicalPlan::CreateIdentityAttribute(n) => {
+			("CreateIdentityAttribute", format!("name={}", n.name.text()))
+		}
 		LogicalPlan::CreateRole(n) => ("CreateRole", format!("name={}", n.name.text())),
 		LogicalPlan::Grant(n) => ("Grant", format!("role={} user={}", n.role.text(), n.user.text())),
 		LogicalPlan::Revoke(n) => ("Revoke", format!("role={} user={}", n.role.text(), n.user.text())),
 		LogicalPlan::DropIdentity(n) => {
 			("DropIdentity", format!("name={} if_exists={}", n.name.text(), n.if_exists))
+		}
+		LogicalPlan::DropIdentityAttribute(n) => {
+			("DropIdentityAttribute", format!("name={} if_exists={}", n.name.text(), n.if_exists))
 		}
 		LogicalPlan::DropRole(n) => ("DropRole", format!("name={} if_exists={}", n.name.text(), n.if_exists)),
 		LogicalPlan::CreateAuthentication(n) => ("CreateAuthentication", format!("user={}", n.user.text())),

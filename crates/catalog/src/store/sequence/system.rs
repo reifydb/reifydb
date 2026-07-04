@@ -11,7 +11,7 @@ use reifydb_core::{
 			MigrationId, NamespaceId, PrimaryKeyId, ProcedureId, RingBufferId, SeriesId, TableId, TestId,
 			ViewId,
 		},
-		identity::RoleId,
+		identity::{IdentityAttributeId, RoleId},
 		policy::PolicyId,
 		token::TokenId,
 	},
@@ -25,7 +25,8 @@ use crate::{
 	store::sequence::generator::u64::GeneratorU64,
 	system::ids::sequences::{
 		AUTHENTICATION, BINDING, COLUMN, COLUMN_PROPERTY, COLUMN_SNAPSHOT, FLOW, FLOW_EDGE, FLOW_NODE, HANDLER,
-		MIGRATION, MIGRATION_EVENT, NAMESPACE, POLICY, PRIMARY_KEY, PROCEDURE, ROLE, SOURCE, TEST, TOKEN,
+		IDENTITY_ATTRIBUTE, MIGRATION, MIGRATION_EVENT, NAMESPACE, POLICY, PRIMARY_KEY, PROCEDURE, ROLE,
+		SOURCE, TEST, TOKEN,
 	},
 };
 
@@ -50,6 +51,8 @@ static PROCEDURE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded
 static HANDLER_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(HANDLER));
 
 static ROLE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(ROLE));
+
+static IDENTITY_ATTRIBUTE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(IDENTITY_ATTRIBUTE));
 
 static POLICY_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(POLICY));
 
@@ -122,6 +125,10 @@ impl SystemSequence {
 
 	pub(crate) fn next_role_id(txn: &mut AdminTransaction) -> Result<RoleId> {
 		GeneratorU64::next(txn, &ROLE_KEY, Some(SYSTEM_RESERVED))
+	}
+
+	pub(crate) fn next_identity_attribute_id(txn: &mut AdminTransaction) -> Result<IdentityAttributeId> {
+		GeneratorU64::next(txn, &IDENTITY_ATTRIBUTE_KEY, Some(SYSTEM_RESERVED))
 	}
 
 	pub(crate) fn next_policy_id(txn: &mut AdminTransaction) -> Result<PolicyId> {

@@ -7,6 +7,7 @@ mod dictionary;
 mod flow_node;
 mod handler;
 mod identity;
+mod identity_attribute;
 mod namespace;
 mod operator_settings;
 mod policy;

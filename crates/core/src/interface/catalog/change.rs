@@ -12,7 +12,7 @@ use crate::{
 		dictionary::Dictionary,
 		flow::{Flow, FlowEdge, FlowNode, FlowNodeId},
 		handler::Handler,
-		identity::{GrantedRole, Identity, Role},
+		identity::{GrantedRole, Identity, IdentityAttribute, IdentityAttributeValue, Role},
 		key::PrimaryKey,
 		migration::{Migration, MigrationEvent},
 		namespace::Namespace,
@@ -167,6 +167,18 @@ pub trait CatalogTrackGrantedRoleChangeOperations {
 	fn track_granted_role_deleted(&mut self, granted_role: GrantedRole) -> Result<()>;
 }
 
+pub trait CatalogTrackIdentityAttributeChangeOperations {
+	fn track_identity_attribute_created(&mut self, attribute: IdentityAttribute) -> Result<()>;
+
+	fn track_identity_attribute_deleted(&mut self, attribute: IdentityAttribute) -> Result<()>;
+}
+
+pub trait CatalogTrackIdentityAttributeValueChangeOperations {
+	fn track_identity_attribute_value_created(&mut self, value: IdentityAttributeValue) -> Result<()>;
+
+	fn track_identity_attribute_value_deleted(&mut self, value: IdentityAttributeValue) -> Result<()>;
+}
+
 pub trait CatalogTrackPolicyChangeOperations {
 	fn track_policy_created(&mut self, policy: Policy) -> Result<()>;
 
@@ -255,6 +267,8 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackAuthenticationChangeOperations
 	+ CatalogTrackIdentityChangeOperations
 	+ CatalogTrackGrantedRoleChangeOperations
+	+ CatalogTrackIdentityAttributeChangeOperations
+	+ CatalogTrackIdentityAttributeValueChangeOperations
 	+ CatalogTrackViewChangeOperations
 	+ CatalogTrackConfigChangeOperations
 	+ CatalogTrackRowSettingsChangeOperations

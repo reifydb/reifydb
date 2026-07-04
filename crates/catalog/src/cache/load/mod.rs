@@ -11,6 +11,8 @@ pub mod flow_edge;
 pub mod flow_node;
 pub mod granted_role;
 pub mod identity;
+pub mod identity_attribute;
+pub mod identity_attribute_value;
 pub mod namespace;
 pub mod operator_retention_strategy;
 pub mod operator_settings;
@@ -39,6 +41,8 @@ use flow_edge::load_flow_edges;
 use flow_node::load_flow_nodes;
 use granted_role::load_granted_roles;
 use identity::load_identities;
+use identity_attribute::load_identity_attributes;
+use identity_attribute_value::load_identity_attribute_values;
 use namespace::load_namespaces;
 use operator_retention_strategy::load_operator_retention_strategies;
 use operator_settings::load_operator_settings;
@@ -96,6 +100,8 @@ impl CatalogCacheLoader {
 		load_authentications(rx, catalog)?;
 		load_roles(rx, catalog)?;
 		load_granted_roles(rx, catalog)?;
+		load_identity_attributes(rx, catalog)?;
+		load_identity_attribute_values(rx, catalog)?;
 		load_policies(rx, catalog)?;
 
 		load_bindings(rx, catalog)?;

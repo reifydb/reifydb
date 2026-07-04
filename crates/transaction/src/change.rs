@@ -16,7 +16,10 @@ use reifydb_core::{
 			BindingId, ColumnSnapshotId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
 			ProcedureId, RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
 		},
-		identity::{GrantedRole, Identity, Role, RoleId},
+		identity::{
+			GrantedRole, Identity, IdentityAttribute, IdentityAttributeId, IdentityAttributeValue, Role,
+			RoleId,
+		},
 		key::PrimaryKey,
 		migration::{Migration, MigrationEvent},
 		namespace::Namespace,
@@ -59,6 +62,8 @@ pub trait TransactionalChanges:
 	+ TransactionalAuthenticationChanges
 	+ TransactionalIdentityChanges
 	+ TransactionalGrantedRoleChanges
+	+ TransactionalIdentityAttributeChanges
+	+ TransactionalIdentityAttributeValueChanges
 	+ TransactionalViewChanges
 	+ TransactionalConfigChanges
 	+ TransactionalRowSettingsChanges
@@ -250,6 +255,28 @@ pub trait TransactionalGrantedRoleChanges {
 	fn is_granted_role_deleted(&self, identity: IdentityId, role: RoleId) -> bool;
 }
 
+pub trait TransactionalIdentityAttributeChanges {
+	fn find_identity_attribute(&self, id: IdentityAttributeId) -> Option<&IdentityAttribute>;
+
+	fn find_identity_attribute_by_name(&self, name: &str) -> Option<&IdentityAttribute>;
+
+	fn is_identity_attribute_deleted(&self, id: IdentityAttributeId) -> bool;
+
+	fn is_identity_attribute_deleted_by_name(&self, name: &str) -> bool;
+}
+
+pub trait TransactionalIdentityAttributeValueChanges {
+	fn find_identity_attribute_value(
+		&self,
+		identity: IdentityId,
+		attribute: IdentityAttributeId,
+	) -> Option<&IdentityAttributeValue>;
+
+	fn find_identity_attribute_values_for_identity(&self, identity: IdentityId) -> Vec<&IdentityAttributeValue>;
+
+	fn is_identity_attribute_value_deleted(&self, identity: IdentityId, attribute: IdentityAttributeId) -> bool;
+}
+
 pub trait TransactionalPolicyChanges {
 	fn find_policy(&self, id: PolicyId) -> Option<&Policy>;
 
@@ -339,6 +366,10 @@ pub struct TransactionalCatalogChanges {
 
 	pub granted_role: Vec<Change<GrantedRole>>,
 
+	pub identity_attribute: Vec<Change<IdentityAttribute>>,
+
+	pub identity_attribute_value: Vec<Change<IdentityAttributeValue>>,
+
 	pub policy: Vec<Change<Policy>>,
 
 	pub view: Vec<Change<View>>,
@@ -376,6 +407,8 @@ pub struct CatalogChangesSavepoint {
 	authentication_len: usize,
 	role_len: usize,
 	granted_role_len: usize,
+	identity_attribute_len: usize,
+	identity_attribute_value_len: usize,
 	policy_len: usize,
 	view_len: usize,
 	row_settings_len: usize,
@@ -410,6 +443,8 @@ impl TransactionalCatalogChanges {
 			authentication_len: self.authentication.len(),
 			role_len: self.role.len(),
 			granted_role_len: self.granted_role.len(),
+			identity_attribute_len: self.identity_attribute.len(),
+			identity_attribute_value_len: self.identity_attribute_value.len(),
 			policy_len: self.policy.len(),
 			view_len: self.view.len(),
 			row_settings_len: self.row_settings.len(),
@@ -443,6 +478,8 @@ impl TransactionalCatalogChanges {
 		self.authentication.truncate(sp.authentication_len);
 		self.role.truncate(sp.role_len);
 		self.granted_role.truncate(sp.granted_role_len);
+		self.identity_attribute.truncate(sp.identity_attribute_len);
+		self.identity_attribute_value.truncate(sp.identity_attribute_value_len);
 		self.policy.truncate(sp.policy_len);
 		self.view.truncate(sp.view_len);
 		self.row_settings.truncate(sp.row_settings_len);
@@ -803,6 +840,43 @@ impl TransactionalCatalogChanges {
 		});
 	}
 
+	pub fn add_identity_attribute_change(&mut self, change: Change<IdentityAttribute>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|a| a.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.identity_attribute.push(change);
+		self.log.push(Operation::IdentityAttribute {
+			id,
+			op,
+		});
+	}
+
+	pub fn add_identity_attribute_value_change(&mut self, change: Change<IdentityAttributeValue>) {
+		let identity = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|v| v.identity)
+			.expect("Change must have either pre or post state");
+		let attribute = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|v| v.attribute)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.identity_attribute_value.push(change);
+		self.log.push(Operation::IdentityAttributeValue {
+			identity,
+			attribute,
+			op,
+		});
+	}
+
 	pub fn add_authentication_change(&mut self, change: Change<Authentication>) {
 		let id = change
 			.post
@@ -990,6 +1064,15 @@ pub enum Operation {
 		role: RoleId,
 		op: OperationType,
 	},
+	IdentityAttribute {
+		id: IdentityAttributeId,
+		op: OperationType,
+	},
+	IdentityAttributeValue {
+		identity: IdentityId,
+		attribute: IdentityAttributeId,
+		op: OperationType,
+	},
 	Policy {
 		id: PolicyId,
 		op: OperationType,
@@ -1039,6 +1122,8 @@ impl TransactionalCatalogChanges {
 			authentication: Vec::new(),
 			role: Vec::new(),
 			granted_role: Vec::new(),
+			identity_attribute: Vec::new(),
+			identity_attribute_value: Vec::new(),
 			policy: Vec::new(),
 			view: Vec::new(),
 			row_settings: Vec::new(),

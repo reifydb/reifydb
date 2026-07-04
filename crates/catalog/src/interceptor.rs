@@ -150,6 +150,30 @@ impl PostCommitInterceptor for CatalogCacheInterceptor {
 			self.catalog.set_granted_role(ur.identity, ur.role_id, version, change.post.clone());
 		}
 
+		for change in &ctx.changes.identity_attribute {
+			let id = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.map(|a| a.id)
+				.expect("Change must have either pre or post state");
+			self.catalog.set_identity_attribute(id, version, change.post.clone());
+		}
+
+		for change in &ctx.changes.identity_attribute_value {
+			let value = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.expect("Change must have either pre or post state");
+			self.catalog.set_identity_attribute_value(
+				value.identity,
+				value.attribute,
+				version,
+				change.post.clone(),
+			);
+		}
+
 		for change in &ctx.changes.authentication {
 			let id = change
 				.post

@@ -383,6 +383,9 @@ fn ast_description(ast: &Ast<'_>, kind: &str) -> String {
 					ns.namespace.segments.iter().map(|s| s.text()).collect::<Vec<_>>().join("::")
 				)
 			}
+			AstAlter::Identity(i) => {
+				format!("ALTER USER {}", i.name.text())
+			}
 		},
 		Ast::Create(create) => match create {
 			AstCreate::PrimaryKey(pk) => {

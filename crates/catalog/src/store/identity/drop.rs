@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::key::{EncodableKey, granted_role::GrantedRoleKey, identity::IdentityKey};
+use reifydb_core::key::{
+	EncodableKey, granted_role::GrantedRoleKey, identity::IdentityKey,
+	identity_attribute_value::IdentityAttributeValueKey,
+};
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
 use reifydb_value::value::identity::IdentityId;
 
@@ -22,6 +25,22 @@ impl CatalogStore {
 			drop(stream);
 			for key in keys_to_remove {
 				txn.remove(&GrantedRoleKey::encoded(key.identity, key.role))?;
+			}
+		}
+
+		{
+			let range = IdentityAttributeValueKey::identity_scan(identity);
+			let mut stream = txn.range(range, RangeScope::All, 1024)?;
+			let mut keys_to_remove = Vec::new();
+			for entry in stream.by_ref() {
+				let entry = entry?;
+				if let Some(key) = IdentityAttributeValueKey::decode(&entry.key) {
+					keys_to_remove.push(key);
+				}
+			}
+			drop(stream);
+			for key in keys_to_remove {
+				txn.remove(&IdentityAttributeValueKey::encoded(key.identity, key.attribute))?;
 			}
 		}
 

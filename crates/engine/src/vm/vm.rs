@@ -22,8 +22,8 @@ use super::{
 	instruction::{
 		ddl::{
 			alter::{
-				remote_namespace::alter_remote_namespace, sequence::alter_table_sequence,
-				table::execute_alter_table,
+				identity::alter_identity, remote_namespace::alter_remote_namespace,
+				sequence::alter_table_sequence, table::execute_alter_table,
 			},
 			create::{
 				binding::create_binding, deferred::create_deferred_view, dictionary::create_dictionary,
@@ -59,11 +59,12 @@ use crate::{
 		alter::policy::alter_policy,
 		create::{
 			authentication::create_authentication, event::create_event, identity::create_identity,
-			policy::create_policy, role::create_role,
+			identity_attribute::create_identity_attribute, policy::create_policy, role::create_role,
 		},
 		drop::{
 			authentication::drop_authentication, handler::drop_handler, identity::drop_identity,
-			policy::drop_policy, role::drop_role, test::drop_test,
+			identity_attribute::drop_identity_attribute, policy::drop_policy, role::drop_role,
+			test::drop_test,
 		},
 		grant::grant,
 		revoke::revoke,
@@ -431,6 +432,9 @@ impl<'a> Vm<'a> {
 				Instruction::CreateIdentity(n) => {
 					self.exec_ddl(services, tx, |s, t| create_identity(s, t, n.clone()))?
 				}
+				Instruction::CreateIdentityAttribute(n) => {
+					self.exec_ddl(services, tx, |s, t| create_identity_attribute(s, t, n.clone()))?
+				}
 				Instruction::CreateRole(n) => {
 					self.exec_ddl(services, tx, |s, t| create_role(s, t, n.clone()))?
 				}
@@ -457,6 +461,9 @@ impl<'a> Vm<'a> {
 				}
 				Instruction::AlterSequence(n) => {
 					self.exec_ddl(services, tx, |s, t| alter_table_sequence(s, t, n.clone()))?
+				}
+				Instruction::AlterIdentity(n) => {
+					self.exec_ddl(services, tx, |s, t| alter_identity(s, t, n.clone()))?
 				}
 				Instruction::AlterPolicy(n) => {
 					self.exec_ddl(services, tx, |s, t| alter_policy(s, t, n.clone()))?
@@ -503,6 +510,9 @@ impl<'a> Vm<'a> {
 				}
 				Instruction::DropIdentity(n) => {
 					self.exec_ddl(services, tx, |s, t| drop_identity(s, t, n.clone()))?
+				}
+				Instruction::DropIdentityAttribute(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_identity_attribute(s, t, n.clone()))?
 				}
 				Instruction::DropRole(n) => {
 					self.exec_ddl(services, tx, |s, t| drop_role(s, t, n.clone()))?

@@ -32,6 +32,7 @@ pub enum CatalogObjectKind {
 	Series,
 	Tag,
 	Identity,
+	IdentityAttribute,
 	Role,
 	Policy,
 	Migration,
@@ -59,6 +60,7 @@ impl Display for CatalogObjectKind {
 			CatalogObjectKind::Series => f.write_str("series"),
 			CatalogObjectKind::Tag => f.write_str("tag"),
 			CatalogObjectKind::Identity => f.write_str("identity"),
+			CatalogObjectKind::IdentityAttribute => f.write_str("user attribute"),
 			CatalogObjectKind::Role => f.write_str("role"),
 			CatalogObjectKind::Policy => f.write_str("policy"),
 			CatalogObjectKind::Migration => f.write_str("migration"),
@@ -93,6 +95,20 @@ pub enum CatalogError {
 	#[error("migration `{name}` has no rollback body")]
 	MigrationNoRollbackBody {
 		name: String,
+		fragment: Fragment,
+	},
+
+	#[error("user attribute `{name}` has unsupported type `{value_type}`")]
+	IdentityAttributeTypeUnsupported {
+		name: String,
+		value_type: ValueType,
+		fragment: Fragment,
+	},
+
+	#[error("user attribute name `{name}` is not allowed: {reason}")]
+	IdentityAttributeNameInvalid {
+		name: String,
+		reason: String,
 		fragment: Fragment,
 	},
 
@@ -346,6 +362,11 @@ impl IntoDiagnostic for CatalogError {
 						"identity",
 						"choose a different name or drop the existing identity first",
 					),
+					CatalogObjectKind::IdentityAttribute => (
+						"CA_090",
+						"user attribute",
+						"choose a different name or drop the existing user attribute first",
+					),
 					CatalogObjectKind::Role => (
 						"CA_041",
 						"role",
@@ -390,7 +411,9 @@ impl IntoDiagnostic for CatalogError {
 				};
 				let message = if matches!(
 					kind,
-					CatalogObjectKind::Namespace | CatalogObjectKind::Migration
+					CatalogObjectKind::Namespace
+						| CatalogObjectKind::Migration
+						| CatalogObjectKind::IdentityAttribute
 				) {
 					format!("{} `{}` already exists", kind_str, name)
 				} else {
@@ -482,6 +505,11 @@ impl IntoDiagnostic for CatalogError {
 						"identity",
 						"ensure the identity exists or create it first using `CREATE IDENTITY`".to_string(),
 					),
+					CatalogObjectKind::IdentityAttribute => (
+						"CA_091",
+						"user attribute",
+						format!("declare the attribute first with `CREATE USER ATTRIBUTE {}: <type>`", name),
+					),
 					CatalogObjectKind::Role => (
 						"CA_044",
 						"role",
@@ -532,7 +560,9 @@ impl IntoDiagnostic for CatalogError {
 					CatalogObjectKind::Namespace => {
 						format!("{} `{}` not found", kind_str, namespace)
 					}
-					CatalogObjectKind::Migration => format!("{} `{}` not found", kind_str, name),
+					CatalogObjectKind::Migration | CatalogObjectKind::IdentityAttribute => {
+						format!("{} `{}` not found", kind_str, name)
+					}
 					_ => format!("{} `{}::{}` not found", kind_str, namespace, name),
 				};
 				let label_str = match kind {
@@ -554,6 +584,43 @@ impl IntoDiagnostic for CatalogError {
 					operator_chain: None,
 				}
 			}
+
+			CatalogError::IdentityAttributeTypeUnsupported {
+				name,
+				value_type,
+				fragment,
+			} => Diagnostic {
+				code: "CA_092".to_string(),
+				rql: None,
+				message: format!("user attribute `{}` has unsupported type `{}`", name, value_type),
+				fragment,
+				label: Some("unsupported user attribute type".to_string()),
+				help: Some("only `utf8` user attributes are supported".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::IdentityAttributeNameInvalid {
+				name,
+				reason,
+				fragment,
+			} => Diagnostic {
+				code: "CA_093".to_string(),
+				rql: None,
+				message: format!("user attribute name `{}` is not allowed: {}", name, reason),
+				fragment,
+				label: Some("invalid user attribute name".to_string()),
+				help: Some(
+					"use a lowercase identifier that is not an RQL keyword and not one of `id`, `name`, `roles`"
+						.to_string(),
+				),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
 
 			CatalogError::MigrationNoRollbackBody {
 				name,

@@ -160,6 +160,7 @@ pub enum Instruction {
 	AlterSequence(AlterSequenceNode),
 	AlterTable(nodes::AlterTableNode),
 	AlterRemoteNamespace(nodes::AlterRemoteNamespaceNode),
+	AlterIdentity(nodes::AlterIdentityNode),
 
 	DropNamespace(nodes::DropNamespaceNode),
 	DropTable(nodes::DropTableNode),
@@ -177,11 +178,13 @@ pub enum Instruction {
 	DropBinding(nodes::DropBindingNode),
 
 	CreateIdentity(nodes::CreateIdentityNode),
+	CreateIdentityAttribute(nodes::CreateIdentityAttributeNode),
 	CreateRole(nodes::CreateRoleNode),
 	CreateAuthentication(nodes::CreateAuthenticationNode),
 	Grant(nodes::GrantNode),
 	Revoke(nodes::RevokeNode),
 	DropIdentity(nodes::DropIdentityNode),
+	DropIdentityAttribute(nodes::DropIdentityAttributeNode),
 	DropRole(nodes::DropRoleNode),
 	DropAuthentication(nodes::DropAuthenticationNode),
 	CreatePolicy(nodes::CreatePolicyNode),

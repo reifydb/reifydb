@@ -206,6 +206,9 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::User))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(Keyword::Attribute))?).is_some() {
+				return self.parse_create_identity_attribute(token);
+			}
 			return self.parse_create_identity(token);
 		}
 
@@ -1520,7 +1523,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_type(&mut self) -> Result<AstType<'bump>> {
+	pub(crate) fn parse_type(&mut self) -> Result<AstType<'bump>> {
 		let ty_token = self.consume(TokenKind::Identifier)?;
 
 		if ty_token.fragment.text().eq_ignore_ascii_case("option") {

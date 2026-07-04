@@ -7,6 +7,7 @@ pub mod dependent;
 pub mod dictionary;
 pub mod handler;
 pub mod identity;
+pub mod identity_attribute;
 pub mod namespace;
 pub mod policy;
 pub mod procedure;

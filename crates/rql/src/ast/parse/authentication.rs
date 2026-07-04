@@ -4,7 +4,7 @@
 use crate::{
 	Result,
 	ast::{
-		ast::{AstAuthenticationEntry, AstCreate, AstCreateAuthentication, AstDrop, AstDropAuthentication},
+		ast::{AstBodyEntry, AstCreate, AstCreateAuthentication, AstDrop, AstDropAuthentication},
 		parse::{Parser, Precedence},
 	},
 	bump::BumpFragment,
@@ -20,7 +20,7 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_create_authentication(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		self.consume_keyword(Keyword::For)?;
 		let user_token = self.consume(TokenKind::Identifier)?;
-		let entries = self.parse_authentication_body()?;
+		let entries = self.parse_body_entries()?;
 
 		Ok(AstCreate::Authentication(AstCreateAuthentication {
 			token,
@@ -33,7 +33,7 @@ impl<'bump> Parser<'bump> {
 		let if_exists = self.parse_if_exists()?;
 		self.consume_keyword(Keyword::For)?;
 		let user_token = self.consume(TokenKind::Identifier)?;
-		let entries = self.parse_authentication_body()?;
+		let entries = self.parse_body_entries()?;
 
 		let method = entries
 			.iter()
@@ -49,7 +49,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn parse_authentication_body(&mut self) -> Result<Vec<AstAuthenticationEntry<'bump>>> {
+	pub(crate) fn parse_body_entries(&mut self) -> Result<Vec<AstBodyEntry<'bump>>> {
 		self.consume_operator(Operator::OpenCurly)?;
 		self.skip_new_line()?;
 
@@ -66,7 +66,7 @@ impl<'bump> Parser<'bump> {
 			self.consume_operator(Operator::Colon)?;
 			let value = self.parse_node(Precedence::None)?;
 
-			entries.push(AstAuthenticationEntry {
+			entries.push(AstBodyEntry {
 				key: key_token.fragment,
 				value,
 			});

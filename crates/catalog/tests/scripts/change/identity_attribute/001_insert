@@ -1,0 +1,14 @@
+# Declare a user attribute, replicate, verify
+
+admin 'CREATE USER ATTRIBUTE org_id: utf8'
+replicate
+---
+version: 2
+
+query 'FROM system::identity_attributes FILTER {name == "org_id"}'
+---
++---------+----------+--------------+
+|   id    |   name   |  value_type  |
++---------+----------+--------------+
+|  16385  |  org_id  |     Utf8     |
++---------+----------+--------------+

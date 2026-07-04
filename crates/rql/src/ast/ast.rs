@@ -462,6 +462,7 @@ pub enum AstCreate<'bump> {
 	Tag(AstCreateTag<'bump>),
 	Handler(AstCreateHandler<'bump>),
 	Identity(AstCreateIdentity<'bump>),
+	IdentityAttribute(AstCreateIdentityAttribute<'bump>),
 	Role(AstCreateRole<'bump>),
 	Authentication(AstCreateAuthentication<'bump>),
 	Policy(AstCreatePolicy<'bump>),
@@ -478,6 +479,7 @@ pub enum AstAlter<'bump> {
 	Policy(AstAlterPolicy<'bump>),
 	Table(AstAlterTable<'bump>),
 	RemoteNamespace(AstAlterRemoteNamespace<'bump>),
+	Identity(AstAlterIdentity<'bump>),
 }
 
 #[derive(Debug)]
@@ -512,6 +514,7 @@ pub enum AstDrop<'bump> {
 	Subscription(AstDropSubscription<'bump>),
 	Series(AstDropSeries<'bump>),
 	Identity(AstDropIdentity<'bump>),
+	IdentityAttribute(AstDropIdentityAttribute<'bump>),
 	Role(AstDropRole<'bump>),
 	Authentication(AstDropAuthentication<'bump>),
 	Policy(AstDropPolicy<'bump>),
@@ -1048,6 +1051,7 @@ impl_token_for_enum!(AstCreate, 'bump,
 	Tag(AstCreateTag<'bump>),
 	Handler(AstCreateHandler<'bump>),
 	Identity(AstCreateIdentity<'bump>),
+	IdentityAttribute(AstCreateIdentityAttribute<'bump>),
 	Role(AstCreateRole<'bump>),
 	Authentication(AstCreateAuthentication<'bump>),
 	Policy(AstCreatePolicy<'bump>),
@@ -1063,6 +1067,7 @@ impl_token_for_enum!(AstAlter, 'bump,
 	Policy(AstAlterPolicy<'bump>),
 	Table(AstAlterTable<'bump>),
 	RemoteNamespace(AstAlterRemoteNamespace<'bump>),
+	Identity(AstAlterIdentity<'bump>),
 );
 
 impl_token_for_enum!(AstDrop, 'bump,
@@ -1075,6 +1080,7 @@ impl_token_for_enum!(AstDrop, 'bump,
 	Subscription(AstDropSubscription<'bump>),
 	Series(AstDropSeries<'bump>),
 	Identity(AstDropIdentity<'bump>),
+	IdentityAttribute(AstDropIdentityAttribute<'bump>),
 	Role(AstDropRole<'bump>),
 	Authentication(AstDropAuthentication<'bump>),
 	Policy(AstDropPolicy<'bump>),
@@ -1618,6 +1624,21 @@ pub struct AstRequire<'bump> {
 pub struct AstCreateIdentity<'bump> {
 	pub token: Token<'bump>,
 	pub name: BumpFragment<'bump>,
+	pub entries: Vec<AstBodyEntry<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct AstAlterIdentity<'bump> {
+	pub token: Token<'bump>,
+	pub name: BumpFragment<'bump>,
+	pub entries: Vec<AstBodyEntry<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct AstCreateIdentityAttribute<'bump> {
+	pub token: Token<'bump>,
+	pub name: BumpFragment<'bump>,
+	pub value_type: AstType<'bump>,
 }
 
 #[derive(Debug)]
@@ -1648,6 +1669,13 @@ pub struct AstDropIdentity<'bump> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AstDropIdentityAttribute<'bump> {
+	pub token: Token<'bump>,
+	pub name: BumpFragment<'bump>,
+	pub if_exists: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstDropRole<'bump> {
 	pub token: Token<'bump>,
 	pub name: BumpFragment<'bump>,
@@ -1655,7 +1683,7 @@ pub struct AstDropRole<'bump> {
 }
 
 #[derive(Debug)]
-pub struct AstAuthenticationEntry<'bump> {
+pub struct AstBodyEntry<'bump> {
 	pub key: BumpFragment<'bump>,
 	pub value: Ast<'bump>,
 }
@@ -1664,7 +1692,7 @@ pub struct AstAuthenticationEntry<'bump> {
 pub struct AstCreateAuthentication<'bump> {
 	pub token: Token<'bump>,
 	pub user: BumpFragment<'bump>,
-	pub entries: Vec<AstAuthenticationEntry<'bump>>,
+	pub entries: Vec<AstBodyEntry<'bump>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
