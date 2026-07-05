@@ -16,8 +16,8 @@ use crate::window::{
 	accumulator::WindowAccumulator,
 	engine::{
 		AccumulatorEvent, EmitKind, GroupMeta, MetaKey, RunningKey, config::WindowEngineConfig,
-		coord_between_range, coord_due_range, coord_entry_key, coord_row_range, expiry_due_range, expiry_key,
-		meta_key_for,
+		coord_between_range, coord_due_range, coord_entry_key, coord_row_range, drop_all_coords,
+		entry_key_coord, expiry_due_range, expiry_key, load_buffer, meta_key_for, persist_buffer,
 	},
 	span::Slot,
 	state::StateCache,
@@ -82,6 +82,7 @@ struct GroupSlot<C, Accumulator, Output> {
 	row_number: RowNumber,
 	is_new: bool,
 	buffer: RollingBuffer<C, Accumulator>,
+	loaded_coords: Vec<u64>,
 	was_empty_before: bool,
 	buffer_changed: bool,
 	prior_index_key: Option<u64>,
@@ -89,7 +90,6 @@ struct GroupSlot<C, Accumulator, Output> {
 }
 
 pub struct RollingEngine<G, C, Accumulator> {
-	buffers: StateCache<RowNumber, RollingBuffer<C, Accumulator>>,
 	running: Option<StateCache<RunningKey, Accumulator>>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
 	expire_batch: usize,
@@ -133,31 +133,6 @@ fn is_merged_coord(coord: u64, frontier: Option<u64>) -> bool {
 	frontier.is_some_and(|f| coord <= f)
 }
 
-fn entry_key_coord(key: &EncodedKey) -> Option<u64> {
-	let bytes = key.as_bytes();
-	if bytes.len() == 17 {
-		let mut coord = [0u8; 8];
-		coord.copy_from_slice(&bytes[9..17]);
-		Some(u64::from_be_bytes(coord))
-	} else {
-		None
-	}
-}
-
-fn bootstrap_running<C, A>(buffer: &RollingBuffer<C, A>, frontier: Option<u64>) -> A
-where
-	C: Slot,
-	A: WindowAccumulator,
-{
-	let mut running = A::default();
-	for (coord, accumulator) in buffer {
-		if is_merged_coord(coord.order_key(), frontier) {
-			merge_into(&mut running, accumulator);
-		}
-	}
-	running
-}
-
 fn scan_running<S, A>(store: &mut S, row_number: RowNumber, frontier: Option<u64>) -> Result<A>
 where
 	S: WindowStore,
@@ -196,9 +171,6 @@ where
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
-			buffers: StateCache::<RowNumber, RollingBuffer<C, Accumulator>>::new(
-				config.state_cache_capacity(),
-			),
 			running: None,
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
 			expire_batch: config.expire_batch(),
@@ -208,7 +180,7 @@ where
 	}
 
 	pub fn new_runnable(config: WindowEngineConfig) -> Self {
-		let running = StateCache::<RunningKey, Accumulator>::new(config.state_cache_capacity());
+		let running = StateCache::<RunningKey, Accumulator>::new_internal(config.state_cache_capacity());
 		let mut engine = Self::new(config);
 		engine.running = Some(running);
 		engine
@@ -284,7 +256,6 @@ where
 	}
 
 	pub fn flush<S: WindowStore>(&mut self, store: &mut S) -> Result<()> {
-		self.buffers.flush(store)?;
 		if let Some(running) = &mut self.running {
 			running.flush(store)?;
 		}
@@ -350,11 +321,9 @@ where
 				 (requested={requested}, resolved={resolved})"
 			);
 		}
-		let buffer_keys: Vec<RowNumber> = resolved_rows.iter().map(|(rn, _)| *rn).collect();
 		for (group, resolved) in resolve_order.into_iter().zip(resolved_rows) {
 			buffer_rows.insert(group, resolved);
 		}
-		self.buffers.warm(store, &buffer_keys)?;
 		Ok(buffer_rows)
 	}
 
@@ -392,8 +361,8 @@ where
 							store.get_or_create_row_number(&key)?
 						}
 					};
-					let buffer: RollingBuffer<C, Accumulator> =
-						self.buffers.get(store, &row_number)?.unwrap_or_default();
+					let (buffer, loaded_coords): (RollingBuffer<C, Accumulator>, Vec<u64>) =
+						load_buffer(store, row_number)?;
 					let was_empty_before = buffer.is_empty();
 					let prior_output = if was_empty_before {
 						None
@@ -411,6 +380,7 @@ where
 							row_number,
 							is_new,
 							buffer,
+							loaded_coords,
 							was_empty_before,
 							buffer_changed: false,
 							prior_index_key,
@@ -520,7 +490,7 @@ where
 				}
 			}
 			let output = combine(&group, &slot.buffer);
-			self.buffers.put(store, &slot.row_number, slot.buffer)?;
+			persist_buffer(store, slot.row_number, &slot.buffer, &slot.loaded_coords)?;
 
 			if let Some(out) = output {
 				let kind = if slot.is_new || slot.was_empty_before {
@@ -548,37 +518,17 @@ where
 		Ok(results)
 	}
 
-	fn migrate_blob<S: WindowStore>(
-		&mut self,
-		store: &mut S,
-		row_number: RowNumber,
-		frontier: Option<u64>,
-	) -> Result<Option<Accumulator>> {
-		let Some(blob) = self.buffers.get(store, &row_number)? else {
-			return Ok(None);
-		};
-		for (coord, accumulator) in &blob {
-			store.internal_set(&coord_entry_key(row_number, coord.order_key()), accumulator)?;
-		}
-		self.buffers.remove(store, &row_number)?;
-		Ok(Some(bootstrap_running(&blob, frontier)))
-	}
-
 	fn load_running<S: WindowStore>(
 		&mut self,
 		store: &mut S,
 		row_number: RowNumber,
-		migrated: Option<Accumulator>,
 		frontier: Option<u64>,
 	) -> Result<Accumulator> {
 		let running_cache = self.running.as_mut().expect("runnable engine has a running cache");
 		if let Some(running) = running_cache.get(store, &RunningKey(row_number))? {
 			return Ok(running);
 		}
-		match migrated {
-			Some(running) => Ok(running),
-			None => scan_running(store, row_number, frontier),
-		}
+		scan_running(store, row_number, frontier)
 	}
 
 	pub fn apply_running<S, K, NA>(
@@ -629,11 +579,10 @@ where
 						}
 					};
 					let old_frontier = frontier_for(self.lag, &meta.high_water);
-					let migrated = self.migrate_blob(store, row_number, old_frontier)?;
 					let prior_min = peek_min_coord::<S, Accumulator>(store, row_number)?;
 					let merged_before = prior_min.is_some_and(|m| is_merged_coord(m, old_frontier));
 					let running = if merged_before {
-						self.load_running(store, row_number, migrated, old_frontier)?
+						self.load_running(store, row_number, old_frontier)?
 					} else {
 						Accumulator::default()
 					};
@@ -850,7 +799,6 @@ where
 				let meta = self.meta.get(store, &meta_key_for(&entry.group))?.unwrap_or_default();
 				frontier_for(self.lag, &meta.high_water)
 			};
-			let migrated = self.migrate_blob(store, row_number, frontier)?;
 			let mut expired: Vec<(EncodedKey, Accumulator)> = Vec::new();
 			store.internal_range_visit::<Accumulator>(
 				coord_due_range(row_number, cutoff.order_key()),
@@ -872,7 +820,7 @@ where
 				}
 				continue;
 			}
-			let mut running = self.load_running(store, row_number, migrated, frontier)?;
+			let mut running = self.load_running(store, row_number, frontier)?;
 			let mut unmerged_any = false;
 			for (key, accumulator) in expired {
 				store.internal_drop(&key)?;
@@ -937,7 +885,6 @@ where
 					for key in leftover {
 						store.internal_drop(&key)?;
 					}
-					self.buffers.remove(store, &row_number)?;
 					let running_cache =
 						self.running.as_mut().expect("runnable engine has a running cache");
 					running_cache.remove(store, &RunningKey(row_number))?;
@@ -975,9 +922,11 @@ where
 		for (index_key, entry) in due {
 			let row_number = RowNumber(entry.row_number);
 			store.internal_drop(&index_key)?;
-			let Some(mut buffer) = self.buffers.get(store, &row_number)? else {
+			let (mut buffer, loaded_coords): (RollingBuffer<C, Accumulator>, Vec<u64>) =
+				load_buffer(store, row_number)?;
+			if buffer.is_empty() {
 				continue;
-			};
+			}
 			let before = buffer.len();
 			buffer.retain(|&coord, _| coord > cutoff);
 			if buffer.len() == before {
@@ -1003,7 +952,7 @@ where
 							},
 						)?;
 					}
-					self.buffers.put(store, &row_number, buffer)?;
+					persist_buffer(store, row_number, &buffer, &loaded_coords)?;
 					out.push(RollingExpiry::Update {
 						row_number,
 						group: entry.group,
@@ -1011,7 +960,7 @@ where
 					});
 				}
 				_ => {
-					self.buffers.remove(store, &row_number)?;
+					drop_all_coords::<S, Accumulator>(store, row_number)?;
 					out.push(RollingExpiry::Remove {
 						row_number,
 						group: entry.group,
@@ -1046,9 +995,11 @@ where
 		for (index_key, entry) in due {
 			let row_number = RowNumber(entry.row_number);
 			store.internal_drop(&index_key)?;
-			let Some(mut buffer) = self.buffers.get(store, &row_number)? else {
+			let (mut buffer, loaded_coords): (RollingBuffer<C, Accumulator>, Vec<u64>) =
+				load_buffer(store, row_number)?;
+			if buffer.is_empty() {
 				continue;
-			};
+			}
 			let before = buffer.len();
 			buffer.retain(|_, accumulator| accumulator.stamp().is_none_or(|s| s > cutoff));
 			if buffer.len() == before {
@@ -1074,7 +1025,7 @@ where
 							},
 						)?;
 					}
-					self.buffers.put(store, &row_number, buffer)?;
+					persist_buffer(store, row_number, &buffer, &loaded_coords)?;
 					out.push(RollingExpiry::Update {
 						row_number,
 						group: entry.group,
@@ -1082,7 +1033,7 @@ where
 					});
 				}
 				_ => {
-					self.buffers.remove(store, &row_number)?;
+					drop_all_coords::<S, Accumulator>(store, row_number)?;
 					out.push(RollingExpiry::Remove {
 						row_number,
 						group: entry.group,
@@ -1432,17 +1383,17 @@ mod tests {
 	}
 
 	#[test]
-	fn runnable_engine_matches_legacy_recombine_across_seeded_churn() {
+	fn runnable_engine_matches_recombine_across_seeded_churn() {
 		// The runnable engine replaces the O(buffer) recombine with a running
 		// accumulator maintained by merge/unmerge. Its observable behavior -
 		// emitted kinds, values, expiry updates, terminal removes, and the
-		// expiry-index bookkeeping - must be indistinguishable from the legacy
+		// expiry-index bookkeeping - must be indistinguishable from the recombine
 		// engine on an identical seeded add/remove/expire workload; integer sums
 		// make the comparison exact. A divergence means the running maintenance
 		// missed a mutation path.
-		let mut legacy_store = MockStore::default();
+		let mut recombine_store = MockStore::default();
 		let mut runnable_store = MockStore::default();
-		let mut legacy = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		let mut recombine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let mut runnable = RollingEngine::<u32, u64, SumAccumulator>::new_runnable(test_config());
 
 		let mut state = 0xDEAD_BEEF_CAFE_1234u64;
@@ -1479,9 +1430,9 @@ mod tests {
 				}
 				buckets
 			};
-			let legacy_out = legacy
+			let recombine_out = recombine
 				.apply_evicting(
-					&mut legacy_store,
+					&mut recombine_store,
 					build(&plan),
 					RollingEviction::Before(cutoff),
 					row_key,
@@ -1499,68 +1450,70 @@ mod tests {
 				)
 				.unwrap();
 			assert_eq!(
-				describe(&legacy_out),
+				describe(&recombine_out),
 				describe(&runnable_out),
-				"apply diverged from the legacy recombine at round {round}"
+				"apply diverged from the recombine at round {round}"
 			);
 
 			if round % 5 == 4 {
 				cutoff = coord_base.saturating_sub(30);
-				let legacy_exp = legacy.expire_before(&mut legacy_store, cutoff, sum_combine).unwrap();
+				let recombine_exp =
+					recombine.expire_before(&mut recombine_store, cutoff, sum_combine).unwrap();
 				let runnable_exp = runnable.expire_before_running(&mut runnable_store, cutoff).unwrap();
 				assert_eq!(
-					describe_expiries(&legacy_exp),
+					describe_expiries(&recombine_exp),
 					describe_expiries(&runnable_exp),
-					"expiry diverged from the legacy recombine at round {round}"
+					"expiry diverged from the recombine at round {round}"
 				);
 				added.retain(|(_, coord, _)| *coord > cutoff);
 			}
 			coord_base += roll(20);
 		}
 
-		legacy.flush(&mut legacy_store).unwrap();
+		recombine.flush(&mut recombine_store).unwrap();
 		runnable.flush(&mut runnable_store).unwrap();
 		assert_eq!(
-			legacy_store.index_entry_count(),
+			recombine_store.index_entry_count(),
 			runnable_store.index_entry_count(),
 			"expiry-index bookkeeping diverged"
 		);
 
 		// Drain everything: terminal removes must match group-for-group.
-		let legacy_final = legacy.expire_before(&mut legacy_store, u64::MAX - 1, sum_combine).unwrap();
+		let recombine_final = recombine.expire_before(&mut recombine_store, u64::MAX - 1, sum_combine).unwrap();
 		let runnable_final = runnable.expire_before_running(&mut runnable_store, u64::MAX - 1).unwrap();
 		assert_eq!(
-			describe_expiries(&legacy_final),
+			describe_expiries(&recombine_final),
 			describe_expiries(&runnable_final),
 			"terminal drain diverged"
 		);
 		assert!(
-			legacy_final.iter().all(|e| matches!(e, RollingExpiry::Remove { .. })),
+			recombine_final.iter().all(|e| matches!(e, RollingExpiry::Remove { .. })),
 			"draining past every coord must terminally remove all groups"
 		);
 	}
 
 	#[test]
-	fn runnable_engine_bootstraps_running_from_a_legacy_buffer() {
-		// First run after the fix deploys over persisted pre-fix state: buffers
-		// exist, running entries do not. The runnable engine must recombine the
-		// buffer once (bootstrap) instead of treating the group as empty, both
-		// on the apply path and on the expiry path.
+	fn runnable_engine_bootstraps_running_from_recombine_coords() {
+		// The recombine and running paths share per-coord storage: coords
+		// written by the recombine path (apply_evicting) must be folded into
+		// the running accumulator the first time the runnable path touches the
+		// group, both on the apply path and on the expiry path.
 		let mut store = MockStore::default();
-		let mut legacy = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		let mut recombine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
 		buckets.insert((1u32, 20u64), vec![AccumulatorEvent::Add(7)]);
-		legacy.apply_evicting(
-			&mut store,
-			buckets,
-			RollingEviction::Before(0),
-			row_key,
-			SumAccumulator::default,
-			sum_combine,
-		)
-		.unwrap();
-		legacy.flush(&mut store).unwrap();
+		recombine
+			.apply_evicting(
+				&mut store,
+				buckets,
+				RollingEviction::Before(0),
+				row_key,
+				SumAccumulator::default,
+				sum_combine,
+			)
+			.unwrap();
+		recombine.flush(&mut store).unwrap();
 
 		let mut runnable = RollingEngine::<u32, u64, SumAccumulator>::new_runnable(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
@@ -1603,25 +1556,27 @@ mod tests {
 	fn per_coord_storage_leaves_nothing_behind_after_terminal_drain() {
 		// Per-coord persistence must clean up completely: after every group
 		// expires, no coord entries, running entries, or expiry-index entries
-		// may remain, and a migrated legacy blob must be gone the moment the
-		// runnable engine first touches its group. Leaked entries are exactly
-		// the kind of unbounded state growth this engine exists to prevent.
+		// may remain. The recombine (apply_evicting) and running (apply_running)
+		// paths share the same per-coord storage, so coords written by one are
+		// picked up by the other. Leaked entries are exactly the kind of
+		// unbounded state growth this engine exists to prevent.
 		let mut store = MockStore::default();
-		let mut legacy = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		let mut recombine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
 		buckets.insert((1u32, 20u64), vec![AccumulatorEvent::Add(7)]);
-		legacy.apply_evicting(
-			&mut store,
-			buckets,
-			RollingEviction::Before(0),
-			row_key,
-			SumAccumulator::default,
-			sum_combine,
-		)
-		.unwrap();
-		legacy.flush(&mut store).unwrap();
-		assert_eq!(store.blob_entry_count(), 1, "legacy engine persists the buffer blob under a state key");
+		recombine
+			.apply_evicting(
+				&mut store,
+				buckets,
+				RollingEviction::Before(0),
+				row_key,
+				SumAccumulator::default,
+				sum_combine,
+			)
+			.unwrap();
+		recombine.flush(&mut store).unwrap();
+		assert_eq!(store.coord_entry_count(), 2, "the recombine path persists one entry per coord");
 
 		let mut runnable = RollingEngine::<u32, u64, SumAccumulator>::new_runnable(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
@@ -1636,7 +1591,6 @@ mod tests {
 		)
 		.unwrap();
 		runnable.flush(&mut store).unwrap();
-		assert_eq!(store.blob_entry_count(), 0, "migrating a group must delete its legacy buffer blob");
 		assert_eq!(store.coord_entry_count(), 4, "each live coord is its own internal entry");
 		assert_eq!(store.running_entry_count(), 2, "each live group persists one running entry");
 
@@ -1659,7 +1613,7 @@ mod tests {
 		// monotone high water minus lag, coords survive until an eviction or
 		// expiry cutoff passes them, and pending coords survive expiry even
 		// while the group's visible row is withdrawn (the deliberate fix over
-		// the legacy recombine, which destroyed them). Emissions fold into a
+		// the blob recombine, which destroyed them). Emissions fold into a
 		// visible-row map that must equal the oracle after every round, so an
 		// early merge, a missed crossing, a double count, or a missed emission
 		// surfaces as a state mismatch at the exact round.
@@ -1917,7 +1871,7 @@ mod tests {
 
 	#[test]
 	fn lagged_expiry_retains_pending_coords() {
-		// Deliberate divergence from the legacy recombine, which destroys the
+		// Deliberate divergence from the blob recombine, which destroys the
 		// whole buffer when a due group has no coord older than newest - lag,
 		// silently losing pending coords that would have slid into the lagged
 		// window later. The fast path must withdraw the visible row but keep

@@ -3,20 +3,20 @@
 
 use std::{
 	collections::{BTreeMap, BTreeSet, HashMap},
-	fmt::{self, Debug, Formatter},
+	fmt::Debug,
 	hash::Hash,
 	marker::PhantomData,
 };
 
 use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Serialize, de::DeserializeOwned};
 
 use crate::window::{
 	accumulator::WindowAccumulator,
 	engine::{
-		AccumulatorEvent, GroupMeta, MetaKey, WindowStateKey, config::WindowEngineConfig, meta_key_for,
-		rolling::RollingBuckets,
+		AccumulatorEvent, EmitKey, GroupMeta, MetaKey, config::WindowEngineConfig, load_buffer, meta_key_for,
+		persist_buffer, rolling::RollingBuckets,
 	},
 	span::Slot,
 	state::StateCache,
@@ -43,60 +43,21 @@ pub enum MultiEmit<Output> {
 	},
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(bound(
-	serialize = "C: Serialize + Ord, Accumulator: Serialize, SK: Serialize + Ord, Output: Serialize",
-	deserialize = "C: serde::de::DeserializeOwned + Ord, Accumulator: serde::de::DeserializeOwned, \
-	               SK: serde::de::DeserializeOwned + Ord, Output: serde::de::DeserializeOwned"
-))]
-struct GroupState<C, Accumulator, SK, Output> {
-	buffer: MultiRollingBuffer<C, Accumulator>,
-	last_emit: MultiRollingEmit<SK, Output>,
-}
-
-impl<C: Ord, Accumulator, SK: Ord, Output> Default for GroupState<C, Accumulator, SK, Output> {
-	fn default() -> Self {
-		Self {
-			buffer: BTreeMap::new(),
-			last_emit: BTreeMap::new(),
-		}
-	}
-}
-
-impl<C: Ord + Clone, Accumulator: Clone, SK: Ord + Clone, Output: Clone> Clone
-	for GroupState<C, Accumulator, SK, Output>
-{
-	fn clone(&self) -> Self {
-		Self {
-			buffer: self.buffer.clone(),
-			last_emit: self.last_emit.clone(),
-		}
-	}
-}
-
-impl<C, Accumulator, SK, Output> Debug for GroupState<C, Accumulator, SK, Output> {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		f.debug_struct("GroupState")
-			.field("buffer_len", &self.buffer.len())
-			.field("last_emit_len", &self.last_emit.len())
-			.finish()
-	}
-}
-
 type MetaLoaded<G, C> = HashMap<G, GroupMeta<C>>;
 type StateRows<G> = HashMap<G, RowNumber>;
 
 struct GroupSlot<C, Accumulator, SK, Output> {
 	state_row_number: RowNumber,
 	buffer: MultiRollingBuffer<C, Accumulator>,
+	loaded_coords: Vec<u64>,
 	prior_emit: MultiRollingEmit<SK, Output>,
 	buffer_changed: bool,
 }
 
 pub struct MultiRollingEngine<G, C, Accumulator, SK, Output> {
-	groups: StateCache<WindowStateKey, GroupState<C, Accumulator, SK, Output>>,
+	last_emit: StateCache<EmitKey, MultiRollingEmit<SK, Output>>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
-	_pd: PhantomData<G>,
+	_pd: PhantomData<(G, C, Accumulator)>,
 }
 
 impl<G, C, Accumulator, SK, Output> MultiRollingEngine<G, C, Accumulator, SK, Output>
@@ -110,7 +71,7 @@ where
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
-			groups: StateCache::<WindowStateKey, GroupState<C, Accumulator, SK, Output>>::new_internal(
+			last_emit: StateCache::<EmitKey, MultiRollingEmit<SK, Output>>::new_internal(
 				config.state_cache_capacity(),
 			),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
@@ -152,7 +113,7 @@ where
 	}
 
 	pub fn flush<S: WindowStore>(&mut self, store: &mut S) -> Result<()> {
-		self.groups.flush(store)?;
+		self.last_emit.flush(store)?;
 		self.meta.flush(store)?;
 		Ok(())
 	}
@@ -215,11 +176,11 @@ where
 				 them through the per-bucket get_or_create_row_number fallback, diverging behaviour"
 			);
 		}
-		let state_keys: Vec<WindowStateKey> = resolved_rows.iter().map(|(rn, _)| WindowStateKey(*rn)).collect();
+		let emit_keys: Vec<EmitKey> = resolved_rows.iter().map(|(rn, _)| EmitKey(*rn)).collect();
 		for (group, (state_row_number, _)) in resolve_order.into_iter().zip(resolved_rows) {
 			state_rows.insert(group, state_row_number);
 		}
-		self.groups.warm(store, &state_keys)?;
+		self.last_emit.warm(store, &emit_keys)?;
 		Ok(state_rows)
 	}
 
@@ -252,15 +213,18 @@ where
 							rn
 						}
 					};
-					let GroupState {
-						buffer,
-						last_emit: prior_emit,
-					} = self.groups.get(store, &WindowStateKey(state_row_number))?.unwrap_or_default();
+					let (buffer, loaded_coords): (MultiRollingBuffer<C, Accumulator>, Vec<u64>) =
+						load_buffer(store, state_row_number)?;
+					let prior_emit = self
+						.last_emit
+						.get(store, &EmitKey(state_row_number))?
+						.unwrap_or_default();
 					group_slots.insert(
 						group.clone(),
 						GroupSlot {
 							state_row_number,
 							buffer,
+							loaded_coords,
 							prior_emit,
 							buffer_changed: false,
 						},
@@ -376,11 +340,12 @@ where
 				}
 			}
 
-			let combined = GroupState {
-				buffer: slot.buffer,
-				last_emit: new_emit,
-			};
-			self.groups.put(store, &WindowStateKey(slot.state_row_number), combined)?;
+			persist_buffer(store, slot.state_row_number, &slot.buffer, &slot.loaded_coords)?;
+			if new_emit.is_empty() {
+				self.last_emit.remove(store, &EmitKey(slot.state_row_number))?;
+			} else {
+				self.last_emit.put(store, &EmitKey(slot.state_row_number), new_emit)?;
+			}
 		}
 
 		Ok(emits)
@@ -532,6 +497,100 @@ mod tests {
 				);
 			}
 			_ => panic!("the evicted group emptied under retraction, so it must emit a terminal Remove"),
+		}
+	}
+	#[test]
+	fn per_coord_churn_matches_a_recomputed_ranking_oracle() {
+		// After the storage split the buffer lives as per-coord entries and the
+		// ranking as a separate last_emit entry. The engine must still emit exactly
+		// what a from-scratch recombine would across a seeded workload of adds,
+		// retractions, and capacity eviction. A single ranked key (SK 0 = sum over
+		// the live buffer) makes the visible state one value we compare against an
+		// independent live-buffer oracle after every batch. Storing blobs, dropping
+		// or keeping the wrong coords on eviction, or mis-persisting last_emit would
+		// surface as a divergence at the exact round.
+		const CAP: usize = 4;
+		let mut store = MockStore::default();
+		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
+
+		let mut state = 0x1234_5678_9abc_def0u64;
+		let mut roll = |bound: u64| {
+			state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+			(state >> 33) % bound
+		};
+
+		let mut live: BTreeMap<u64, (i64, u64)> = BTreeMap::new();
+		let mut added: Vec<(u64, i64)> = Vec::new();
+		let mut visible: Option<i64> = None;
+		let mut coord_base = 100u64;
+
+		for round in 0..200u64 {
+			let mut plan: Vec<(u64, i64, bool)> = Vec::new();
+			for _ in 0..=roll(3) {
+				let coord = coord_base + roll(20);
+				let value = roll(1_000) as i64 + 1;
+				plan.push((coord, value, true));
+				added.push((coord, value));
+			}
+			if round % 3 == 2 && !added.is_empty() {
+				let (coord, value) = added.remove((roll(added.len() as u64)) as usize);
+				plan.push((coord, value, false));
+			}
+
+			for &(coord, value, is_add) in &plan {
+				let e = live.entry(coord).or_insert((0, 0));
+				if is_add {
+					e.0 += value;
+					e.1 += 1;
+				} else if e.1 > 0 {
+					e.0 -= value;
+					e.1 -= 1;
+					if e.1 == 0 {
+						live.remove(&coord);
+					}
+				} else {
+					live.remove(&coord);
+				}
+			}
+			while live.len() > CAP {
+				let &lowest = live.keys().next().unwrap();
+				live.remove(&lowest);
+			}
+
+			let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+			for &(coord, value, is_add) in &plan {
+				let ev = if is_add {
+					AccumulatorEvent::Add(value)
+				} else {
+					AccumulatorEvent::Remove(value)
+				};
+				buckets.entry((1u32, coord)).or_default().push(ev);
+			}
+			let emits = engine.apply(&mut store, buckets, CAP, state_key, row_key, combine).unwrap();
+			engine.flush(&mut store).unwrap();
+			for e in &emits {
+				match e {
+					MultiEmit::Insert {
+						value,
+						..
+					}
+					| MultiEmit::Update {
+						value,
+						..
+					} => visible = Some(*value),
+					MultiEmit::Remove {
+						..
+					} => visible = None,
+				}
+			}
+
+			let oracle = if live.is_empty() {
+				None
+			} else {
+				Some(live.values().map(|(s, _)| *s).sum::<i64>())
+			};
+			assert_eq!(visible, oracle, "visible ranking diverged from the oracle after round {round}");
+			coord_base += roll(10);
 		}
 	}
 }

@@ -21,6 +21,8 @@ pub trait Slot:
 	type Duration: Copy + Ord + Debug + IsZero;
 
 	fn order_key(&self) -> u64;
+
+	fn from_order_key(order_key: u64) -> Self;
 }
 
 pub trait IsZero {
@@ -68,6 +70,10 @@ impl Slot for u64 {
 	fn order_key(&self) -> u64 {
 		*self
 	}
+
+	fn from_order_key(order_key: u64) -> Self {
+		order_key
+	}
 }
 
 impl Slot for DateTime {
@@ -75,6 +81,10 @@ impl Slot for DateTime {
 
 	fn order_key(&self) -> u64 {
 		self.to_nanos()
+	}
+
+	fn from_order_key(order_key: u64) -> Self {
+		DateTime::from_nanos(order_key)
 	}
 }
 
@@ -224,6 +234,10 @@ mod tests {
 
 		fn order_key(&self) -> u64 {
 			self.0
+		}
+
+		fn from_order_key(order_key: u64) -> Self {
+			Tick(order_key)
 		}
 	}
 

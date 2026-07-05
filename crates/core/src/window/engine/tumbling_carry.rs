@@ -364,7 +364,10 @@ mod tests {
 	use reifydb_codec::key::encoded::EncodedKeyRange;
 
 	use super::*;
-	use crate::window::{accumulator::invertible::RetainedAccumulator, engine::config::WindowEngineConfig};
+	use crate::{
+		key::flow_node_internal_state::FlowNodeInternalStateKey,
+		window::{accumulator::invertible::RetainedAccumulator, engine::config::WindowEngineConfig},
+	};
 
 	// In-memory store that allocates a distinct row number per key (the state.rs
 	// mock collapses every key onto row 1, which would alias all window
@@ -381,7 +384,6 @@ mod tests {
 		// Live per-window accumulator rows are tagged WINDOW_ROW_STATE_TAG in the
 		// internal keyspace (alongside meta and the expiry index); count only those.
 		fn accumulator_count(&self) -> usize {
-			use crate::key::flow_node_internal_state::FlowNodeInternalStateKey;
 			self.internal
 				.keys()
 				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_ROW_STATE_TAG))

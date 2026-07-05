@@ -17,16 +17,26 @@ pub mod rolling_incremental;
 pub mod tumbling;
 pub mod tumbling_carry;
 
-use std::ops::Bound;
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	ops::Bound,
+};
 
 use reifydb_codec::key::{
 	encode_u64,
 	encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey},
 };
-use reifydb_value::value::row_number::RowNumber;
+use reifydb_value::{Result, value::row_number::RowNumber};
 use serde::{Deserialize, Serialize};
 
-use crate::{key::flow_node_internal_state::FlowNodeInternalStateKey, window::span::WindowSpan};
+use crate::{
+	key::flow_node_internal_state::FlowNodeInternalStateKey,
+	window::{
+		accumulator::WindowAccumulator,
+		span::{Slot, WindowSpan},
+		store::WindowStore,
+	},
+};
 
 /// One contribution routed to a window accumulator.
 pub enum AccumulatorEvent<C> {
@@ -113,6 +123,20 @@ impl IntoEncodedKey for &WindowStateKey {
 		let inner = inner.as_ref();
 		let mut bytes = Vec::with_capacity(1 + inner.len());
 		bytes.push(FlowNodeInternalStateKey::WINDOW_ROW_STATE_TAG);
+		bytes.extend_from_slice(inner);
+		EncodedKey::new(bytes)
+	}
+}
+
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+pub struct EmitKey(pub RowNumber);
+
+impl IntoEncodedKey for &EmitKey {
+	fn into_encoded_key(self) -> EncodedKey {
+		let inner = (&self.0).into_encoded_key();
+		let inner = inner.as_ref();
+		let mut bytes = Vec::with_capacity(1 + inner.len());
+		bytes.push(FlowNodeInternalStateKey::WINDOW_EMIT_TAG);
 		bytes.extend_from_slice(inner);
 		EncodedKey::new(bytes)
 	}
@@ -217,6 +241,74 @@ pub fn expiry_due_range(threshold: u64) -> EncodedKeyRange {
 	EncodedKeyRange::new(Bound::Included(EncodedKey::new(start)), Bound::Excluded(EncodedKey::new(end)))
 }
 
+pub(crate) fn entry_key_coord(key: &EncodedKey) -> Option<u64> {
+	let bytes = key.as_bytes();
+	if bytes.len() == 17 {
+		let mut coord = [0u8; 8];
+		coord.copy_from_slice(&bytes[9..17]);
+		Some(u64::from_be_bytes(coord))
+	} else {
+		None
+	}
+}
+
+pub(crate) fn load_buffer<S, C, A>(store: &mut S, row_number: RowNumber) -> Result<(BTreeMap<C, A>, Vec<u64>)>
+where
+	S: WindowStore,
+	C: Slot,
+	A: WindowAccumulator,
+{
+	let mut buffer = BTreeMap::new();
+	let mut loaded: Vec<u64> = Vec::new();
+	store.internal_range_visit::<A>(coord_row_range(row_number), None, &mut |key, accumulator| {
+		if let Some(order) = entry_key_coord(&key) {
+			buffer.insert(C::from_order_key(order), accumulator);
+			loaded.push(order);
+		}
+		Ok(())
+	})?;
+	Ok((buffer, loaded))
+}
+
+pub(crate) fn persist_buffer<S, C, A>(
+	store: &mut S,
+	row_number: RowNumber,
+	buffer: &BTreeMap<C, A>,
+	loaded_coords: &[u64],
+) -> Result<()>
+where
+	S: WindowStore,
+	C: Slot,
+	A: WindowAccumulator,
+{
+	let live: BTreeSet<u64> = buffer.keys().map(|c| c.order_key()).collect();
+	for old in loaded_coords {
+		if !live.contains(old) {
+			store.internal_drop(&coord_entry_key(row_number, *old))?;
+		}
+	}
+	for (coord, accumulator) in buffer {
+		store.internal_set(&coord_entry_key(row_number, coord.order_key()), accumulator)?;
+	}
+	Ok(())
+}
+
+pub(crate) fn drop_all_coords<S, A>(store: &mut S, row_number: RowNumber) -> Result<()>
+where
+	S: WindowStore,
+	A: WindowAccumulator,
+{
+	let mut keys: Vec<EncodedKey> = Vec::new();
+	store.internal_range_visit::<A>(coord_row_range(row_number), None, &mut |key, _accumulator| {
+		keys.push(key);
+		Ok(())
+	})?;
+	for key in keys {
+		store.internal_drop(&key)?;
+	}
+	Ok(())
+}
+
 #[cfg(test)]
 pub(crate) mod test_support {
 	use std::{collections::HashMap, ops::Bound};
@@ -255,16 +347,9 @@ pub(crate) mod test_support {
 		}
 
 		pub(crate) fn running_entry_count(&mut self) -> usize {
-			self.data
+			self.internal
 				.keys()
 				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_RUNNING_TAG))
-				.count()
-		}
-
-		pub(crate) fn blob_entry_count(&mut self) -> usize {
-			self.data
-				.keys()
-				.filter(|k| k.first() != Some(&FlowNodeInternalStateKey::WINDOW_RUNNING_TAG))
 				.count()
 		}
 	}

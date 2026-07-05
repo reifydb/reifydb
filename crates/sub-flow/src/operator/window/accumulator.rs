@@ -78,6 +78,13 @@ impl Slot for WindowSlotKey {
 	fn order_key(&self) -> u64 {
 		self.timestamp.to_nanos()
 	}
+
+	fn from_order_key(order_key: u64) -> Self {
+		WindowSlotKey {
+			timestamp: DateTime::from_nanos(order_key),
+			seq: 0,
+		}
+	}
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
