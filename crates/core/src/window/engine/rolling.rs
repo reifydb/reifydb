@@ -16,7 +16,8 @@ use crate::window::{
 	accumulator::WindowAccumulator,
 	engine::{
 		AccumulatorEvent, EmitKind, GroupMeta, MetaKey, RunningKey, config::WindowEngineConfig,
-		coord_due_range, coord_entry_key, coord_row_range, expiry_due_range, expiry_key, meta_key_for,
+		coord_between_range, coord_due_range, coord_entry_key, coord_row_range, expiry_due_range, expiry_key,
+		meta_key_for,
 	},
 	span::Slot,
 	state::StateCache,
@@ -92,6 +93,7 @@ pub struct RollingEngine<G, C, Accumulator> {
 	running: Option<StateCache<RunningKey, Accumulator>>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
 	expire_batch: usize,
+	lag: u64,
 	_pd: PhantomData<G>,
 }
 
@@ -105,6 +107,9 @@ where
 	was_empty_before: bool,
 	buffer_changed: bool,
 	prior_min: Option<u64>,
+	old_frontier: Option<u64>,
+	batch_min: Option<u64>,
+	entry_dropped: bool,
 	prior_output: Option<Accumulator::Output>,
 }
 
@@ -116,29 +121,53 @@ fn merge_into<A: WindowAccumulator>(running: &mut A, other: &A) {
 	}
 }
 
-fn bootstrap_running<C, A>(buffer: &RollingBuffer<C, A>) -> A
+fn frontier_for<C: Slot>(lag: u64, high_water: &Option<C>) -> Option<u64> {
+	if lag == 0 {
+		Some(u64::MAX)
+	} else {
+		high_water.as_ref().map(|hw| hw.order_key().saturating_sub(lag))
+	}
+}
+
+fn is_merged_coord(coord: u64, frontier: Option<u64>) -> bool {
+	frontier.is_some_and(|f| coord <= f)
+}
+
+fn entry_key_coord(key: &EncodedKey) -> Option<u64> {
+	let bytes = key.as_bytes();
+	if bytes.len() == 17 {
+		let mut coord = [0u8; 8];
+		coord.copy_from_slice(&bytes[9..17]);
+		Some(u64::from_be_bytes(coord))
+	} else {
+		None
+	}
+}
+
+fn bootstrap_running<C, A>(buffer: &RollingBuffer<C, A>, frontier: Option<u64>) -> A
 where
 	C: Slot,
 	A: WindowAccumulator,
 {
-	let mut values = buffer.values();
-	let Some(first) = values.next() else {
-		return A::default();
-	};
-	let mut running = first.clone();
-	for accumulator in values {
-		running.merge(accumulator);
+	let mut running = A::default();
+	for (coord, accumulator) in buffer {
+		if is_merged_coord(coord.order_key(), frontier) {
+			merge_into(&mut running, accumulator);
+		}
 	}
 	running
 }
 
-fn scan_running<S, A>(store: &mut S, row_number: RowNumber) -> Result<A>
+fn scan_running<S, A>(store: &mut S, row_number: RowNumber, frontier: Option<u64>) -> Result<A>
 where
 	S: WindowStore,
 	A: WindowAccumulator,
 {
 	let mut running = A::default();
-	store.internal_range_visit::<A>(coord_row_range(row_number), None, &mut |_key, accumulator| {
+	let Some(frontier) = frontier else {
+		return Ok(running);
+	};
+	store.internal_range_visit::<A>(coord_due_range(row_number, frontier), None, &mut |_key, accumulator| {
 		merge_into(&mut running, &accumulator);
 		Ok(())
 	})?;
@@ -152,12 +181,7 @@ where
 {
 	let mut min: Option<u64> = None;
 	store.internal_range_visit::<A>(coord_row_range(row_number), Some(1), &mut |key, _accumulator| {
-		let bytes = key.as_bytes();
-		if bytes.len() == 17 {
-			let mut coord = [0u8; 8];
-			coord.copy_from_slice(&bytes[9..17]);
-			min = Some(u64::from_be_bytes(coord));
-		}
+		min = entry_key_coord(&key);
 		Ok(())
 	})?;
 	Ok(min)
@@ -178,6 +202,7 @@ where
 			running: None,
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
 			expire_batch: config.expire_batch(),
+			lag: 0,
 			_pd: PhantomData,
 		}
 	}
@@ -187,6 +212,11 @@ where
 		let mut engine = Self::new(config);
 		engine.running = Some(running);
 		engine
+	}
+
+	pub fn with_lag(mut self, lag: u64) -> Self {
+		self.lag = lag;
+		self
 	}
 
 	pub fn apply<S, K, CB, Output>(
@@ -522,6 +552,7 @@ where
 		&mut self,
 		store: &mut S,
 		row_number: RowNumber,
+		frontier: Option<u64>,
 	) -> Result<Option<Accumulator>> {
 		let Some(blob) = self.buffers.get(store, &row_number)? else {
 			return Ok(None);
@@ -530,7 +561,7 @@ where
 			store.internal_set(&coord_entry_key(row_number, coord.order_key()), accumulator)?;
 		}
 		self.buffers.remove(store, &row_number)?;
-		Ok(Some(bootstrap_running(&blob)))
+		Ok(Some(bootstrap_running(&blob, frontier)))
 	}
 
 	fn load_running<S: WindowStore>(
@@ -538,6 +569,7 @@ where
 		store: &mut S,
 		row_number: RowNumber,
 		migrated: Option<Accumulator>,
+		frontier: Option<u64>,
 	) -> Result<Accumulator> {
 		let running_cache = self.running.as_mut().expect("runnable engine has a running cache");
 		if let Some(running) = running_cache.get(store, &RunningKey(row_number))? {
@@ -545,7 +577,7 @@ where
 		}
 		match migrated {
 			Some(running) => Ok(running),
-			None => scan_running(store, row_number),
+			None => scan_running(store, row_number, frontier),
 		}
 	}
 
@@ -596,18 +628,20 @@ where
 							store.get_or_create_row_number(&key)?
 						}
 					};
-					let migrated = self.migrate_blob(store, row_number)?;
+					let old_frontier = frontier_for(self.lag, &meta.high_water);
+					let migrated = self.migrate_blob(store, row_number, old_frontier)?;
 					let prior_min = peek_min_coord::<S, Accumulator>(store, row_number)?;
-					let running = if prior_min.is_none() {
+					let merged_before = prior_min.is_some_and(|m| is_merged_coord(m, old_frontier));
+					let running = if merged_before {
+						self.load_running(store, row_number, migrated, old_frontier)?
+					} else {
 						Accumulator::default()
-					} else {
-						self.load_running(store, row_number, migrated)?
 					};
-					let was_empty_before = prior_min.is_none();
-					let prior_output = if was_empty_before {
-						None
-					} else {
+					let was_empty_before = !merged_before;
+					let prior_output = if merged_before {
 						running.finalize()
+					} else {
+						None
 					};
 					group_slots.insert(
 						group.clone(),
@@ -618,6 +652,9 @@ where
 							was_empty_before,
 							buffer_changed: false,
 							prior_min,
+							old_frontier,
+							batch_min: None,
+							entry_dropped: false,
 							prior_output,
 						},
 					);
@@ -649,16 +686,26 @@ where
 			if !touched {
 				continue;
 			}
-			if !before.is_empty() {
-				slot.running.unmerge(&before);
+			if is_merged_coord(coord.order_key(), slot.old_frontier) {
+				if !before.is_empty() {
+					slot.running.unmerge(&before);
+				}
+				if !accumulator.is_empty() {
+					merge_into(&mut slot.running, &accumulator);
+				}
 			}
 			if !accumulator.is_empty() {
-				merge_into(&mut slot.running, &accumulator);
 				store.internal_set(&entry_key, &accumulator)?;
 			} else {
 				store.internal_drop(&entry_key)?;
+				slot.entry_dropped = true;
 			}
 			slot.buffer_changed = true;
+			let coord_key = coord.order_key();
+			slot.batch_min = Some(match slot.batch_min {
+				Some(min) if min <= coord_key => min,
+				_ => coord_key,
+			});
 
 			meta.high_water = Some(match meta.high_water {
 				Some(hw) if hw > coord => hw,
@@ -671,20 +718,50 @@ where
 			if !slot.buffer_changed {
 				continue;
 			}
-			let mut due: Vec<(EncodedKey, Accumulator)> = Vec::new();
-			store.internal_range_visit::<Accumulator>(
-				coord_due_range(slot.row_number, evict_cutoff.order_key()),
-				None,
-				&mut |key, accumulator| {
-					due.push((key, accumulator));
+			let high_water = &meta_loaded.get(&group).expect("touched group has loaded meta").high_water;
+			let new_frontier = frontier_for(self.lag, high_water);
+			if new_frontier > slot.old_frontier
+				&& let Some(upto) = new_frontier
+			{
+				let crossed = match slot.old_frontier {
+					Some(after) => coord_between_range(slot.row_number, after, upto),
+					None => coord_due_range(slot.row_number, upto),
+				};
+				let running = &mut slot.running;
+				store.internal_range_visit::<Accumulator>(crossed, None, &mut |_key, accumulator| {
+					merge_into(running, &accumulator);
 					Ok(())
-				},
-			)?;
-			for (key, evicted) in due {
-				store.internal_drop(&key)?;
-				slot.running.unmerge(&evicted);
+				})?;
 			}
-			let new_min = peek_min_coord::<S, Accumulator>(store, slot.row_number)?;
+			let floor = match (slot.prior_min, slot.batch_min) {
+				(Some(prior), Some(batch)) => Some(prior.min(batch)),
+				(Some(prior), None) => Some(prior),
+				(None, batch) => batch,
+			};
+			let mut evicted_any = false;
+			if floor.is_some_and(|m| m <= evict_cutoff.order_key()) {
+				let mut due: Vec<(EncodedKey, Accumulator)> = Vec::new();
+				store.internal_range_visit::<Accumulator>(
+					coord_due_range(slot.row_number, evict_cutoff.order_key()),
+					None,
+					&mut |key, accumulator| {
+						due.push((key, accumulator));
+						Ok(())
+					},
+				)?;
+				evicted_any = !due.is_empty();
+				for (key, evicted) in due {
+					store.internal_drop(&key)?;
+					if entry_key_coord(&key).is_some_and(|c| is_merged_coord(c, new_frontier)) {
+						slot.running.unmerge(&evicted);
+					}
+				}
+			}
+			let new_min = if evicted_any || slot.entry_dropped {
+				peek_min_coord::<S, Accumulator>(store, slot.row_number)?
+			} else {
+				floor
+			};
 			if new_min != slot.prior_min {
 				if let Some(old) = slot.prior_min {
 					store.internal_drop(&expiry_key(old, &group, &[]))?;
@@ -699,16 +776,17 @@ where
 					)?;
 				}
 			}
-			let output = if new_min.is_none() {
-				None
-			} else {
+			let merged_any = new_min.is_some_and(|m| is_merged_coord(m, new_frontier));
+			let output = if merged_any {
 				slot.running.finalize()
+			} else {
+				None
 			};
 			let running_cache = self.running.as_mut().expect("runnable engine has a running cache");
-			if new_min.is_none() {
-				running_cache.remove(store, &RunningKey(slot.row_number))?;
-			} else {
+			if merged_any {
 				running_cache.put(store, &RunningKey(slot.row_number), slot.running)?;
+			} else {
+				running_cache.remove(store, &RunningKey(slot.row_number))?;
 			}
 
 			if let Some(out) = output {
@@ -766,7 +844,13 @@ where
 		for (index_key, entry) in due {
 			let row_number = RowNumber(entry.row_number);
 			store.internal_drop(&index_key)?;
-			let migrated = self.migrate_blob(store, row_number)?;
+			let frontier = if self.lag == 0 {
+				Some(u64::MAX)
+			} else {
+				let meta = self.meta.get(store, &meta_key_for(&entry.group))?.unwrap_or_default();
+				frontier_for(self.lag, &meta.high_water)
+			};
+			let migrated = self.migrate_blob(store, row_number, frontier)?;
 			let mut expired: Vec<(EncodedKey, Accumulator)> = Vec::new();
 			store.internal_range_visit::<Accumulator>(
 				coord_due_range(row_number, cutoff.order_key()),
@@ -788,14 +872,24 @@ where
 				}
 				continue;
 			}
-			let mut running = self.load_running(store, row_number, migrated)?;
+			let mut running = self.load_running(store, row_number, migrated, frontier)?;
+			let mut unmerged_any = false;
 			for (key, accumulator) in expired {
 				store.internal_drop(&key)?;
-				running.unmerge(&accumulator);
+				if entry_key_coord(&key).is_some_and(|c| is_merged_coord(c, frontier)) {
+					running.unmerge(&accumulator);
+					unmerged_any = true;
+				}
 			}
 			let new_min = peek_min_coord::<S, Accumulator>(store, row_number)?;
-			match (running.finalize(), new_min) {
-				(Some(value), Some(new)) => {
+			let merged_any = new_min.is_some_and(|m| is_merged_coord(m, frontier));
+			let finalized = if merged_any {
+				running.finalize()
+			} else {
+				None
+			};
+			match (new_min, merged_any, finalized) {
+				(Some(new), true, Some(value)) => {
 					store.internal_set(
 						&expiry_key(new, &entry.group, &[]),
 						&RollingIndexEntry {
@@ -811,6 +905,24 @@ where
 						group: entry.group,
 						value,
 					});
+				}
+				(Some(new), false, _) => {
+					store.internal_set(
+						&expiry_key(new, &entry.group, &[]),
+						&RollingIndexEntry {
+							group: entry.group.clone(),
+							row_number: entry.row_number,
+						},
+					)?;
+					let running_cache =
+						self.running.as_mut().expect("runnable engine has a running cache");
+					running_cache.remove(store, &RunningKey(row_number))?;
+					if unmerged_any {
+						out.push(RollingExpiry::Remove {
+							row_number,
+							group: entry.group,
+						});
+					}
 				}
 				_ => {
 					let mut leftover: Vec<EncodedKey> = Vec::new();
@@ -991,7 +1103,7 @@ where
 
 #[cfg(test)]
 mod tests {
-	use std::collections::BTreeMap;
+	use std::collections::{BTreeMap, BTreeSet};
 
 	use reifydb_codec::key::encoded::EncodedKey;
 
@@ -1535,5 +1647,324 @@ mod tests {
 		assert_eq!(store.coord_entry_count(), 0, "terminal removal must delete every coord entry");
 		assert_eq!(store.running_entry_count(), 0, "terminal removal must delete the running entry");
 		assert_eq!(store.index_entry_count(), 0, "terminal removal must delete the expiry index entry");
+	}
+
+	#[test]
+	fn lagged_runnable_engine_matches_a_semantic_oracle_across_seeded_churn() {
+		// The lagged fast path maintains a running accumulator plus a merge
+		// frontier at high_water - lag instead of recombining the buffer on
+		// every touch. This drives a seeded add/retract/evict/expire workload
+		// and checks emissions against an independently computed oracle: a
+		// coord contributes exactly when it sits at or below the group's
+		// monotone high water minus lag, coords survive until an eviction or
+		// expiry cutoff passes them, and pending coords survive expiry even
+		// while the group's visible row is withdrawn (the deliberate fix over
+		// the legacy recombine, which destroyed them). Emissions fold into a
+		// visible-row map that must equal the oracle after every round, so an
+		// early merge, a missed crossing, a double count, or a missed emission
+		// surfaces as a state mismatch at the exact round.
+		const LAG: u64 = 5;
+		let mut store = MockStore::default();
+		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new_runnable(test_config()).with_lag(LAG);
+
+		let mut state = 0xFEED_FACE_0123_4567u64;
+		let mut roll = |bound: u64| {
+			state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+			(state >> 33) % bound
+		};
+		let mut coord_base = 100u64;
+		let mut cutoff = 0u64;
+		let mut added: Vec<(u32, u64, i64)> = Vec::new();
+		let mut live: BTreeMap<(u32, u64), (i64, u64)> = BTreeMap::new();
+		let mut group_hw: BTreeMap<u32, u64> = BTreeMap::new();
+		let mut engine_visible: BTreeMap<u32, i64> = BTreeMap::new();
+
+		fn oracle_visible(
+			live: &BTreeMap<(u32, u64), (i64, u64)>,
+			group_hw: &BTreeMap<u32, u64>,
+			group: u32,
+			lag: u64,
+		) -> Option<i64> {
+			let frontier = group_hw.get(&group)?.saturating_sub(lag);
+			let mut sum = 0i64;
+			let mut any = false;
+			for (&(_, coord), &(coord_sum, _)) in live.range((group, 0)..=(group, u64::MAX)) {
+				if coord <= frontier {
+					sum += coord_sum;
+					any = true;
+				}
+			}
+			if any {
+				Some(sum)
+			} else {
+				None
+			}
+		}
+
+		for round in 0..200u64 {
+			let mut plan: Vec<(u32, u64, i64, bool)> = Vec::new();
+			for _ in 0..=roll(3) {
+				let group = roll(5) as u32;
+				let coord = coord_base + roll(40);
+				let value = roll(1_000) as i64 + 1;
+				plan.push((group, coord, value, true));
+				added.push((group, coord, value));
+			}
+			if round % 4 == 3 && !added.is_empty() {
+				let (group, coord, value) = added.remove((roll(added.len() as u64)) as usize);
+				plan.push((group, coord, value, false));
+			}
+
+			let mut changed: BTreeSet<u32> = BTreeSet::new();
+			for &(group, coord, value, is_add) in &plan {
+				if is_add {
+					let entry = live.entry((group, coord)).or_insert((0, 0));
+					entry.0 += value;
+					entry.1 += 1;
+				} else if let Some(entry) = live.get_mut(&(group, coord)) {
+					entry.0 -= value;
+					entry.1 -= 1;
+					if entry.1 == 0 {
+						live.remove(&(group, coord));
+					}
+				} else {
+					continue;
+				}
+				changed.insert(group);
+				let hw = group_hw.entry(group).or_insert(0);
+				*hw = (*hw).max(coord);
+			}
+			for &group in &changed {
+				let dead: Vec<(u32, u64)> =
+					live.range((group, 0)..=(group, cutoff)).map(|(&key, _)| key).collect();
+				for key in dead {
+					live.remove(&key);
+				}
+			}
+
+			let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+			for &(group, coord, value, is_add) in &plan {
+				let event = if is_add {
+					AccumulatorEvent::Add(value)
+				} else {
+					AccumulatorEvent::Remove(value)
+				};
+				buckets.entry((group, coord)).or_default().push(event);
+			}
+			let out = engine
+				.apply_running(
+					&mut store,
+					buckets,
+					RollingEviction::Before(cutoff),
+					row_key,
+					SumAccumulator::default,
+				)
+				.unwrap();
+			for r in &out {
+				if matches!(r.kind, EmitKind::Remove) {
+					let prior = engine_visible.remove(&r.group);
+					assert_eq!(
+						prior,
+						Some(r.value),
+						"withdrawn value must be the last published value (round {round})"
+					);
+				} else {
+					engine_visible.insert(r.group, r.value);
+				}
+			}
+			for group in 0u32..5 {
+				assert_eq!(
+					engine_visible.get(&group).copied(),
+					oracle_visible(&live, &group_hw, group, LAG),
+					"visible row diverged from the oracle for group {group} after apply round {round}"
+				);
+			}
+
+			if round % 5 == 4 {
+				cutoff = coord_base.saturating_sub(60);
+				let expiries = engine.expire_before_running(&mut store, cutoff).unwrap();
+				let dead: Vec<(u32, u64)> = live
+					.iter()
+					.filter(|&(&(_, coord), _)| coord <= cutoff)
+					.map(|(&key, _)| key)
+					.collect();
+				for key in dead {
+					live.remove(&key);
+				}
+				added.retain(|(_, coord, _)| *coord > cutoff);
+				for e in &expiries {
+					match e {
+						RollingExpiry::Update {
+							group,
+							value,
+							..
+						} => {
+							engine_visible.insert(*group, *value);
+						}
+						RollingExpiry::Remove {
+							group,
+							..
+						} => {
+							engine_visible.remove(group);
+						}
+					}
+				}
+				for group in 0u32..5 {
+					assert_eq!(
+						engine_visible.get(&group).copied(),
+						oracle_visible(&live, &group_hw, group, LAG),
+						"visible row diverged from the oracle for group {group} after expiry round {round}"
+					);
+				}
+			}
+			coord_base += roll(20);
+		}
+
+		let drained = engine.expire_before_running(&mut store, u64::MAX - 1).unwrap();
+		for e in &drained {
+			match e {
+				RollingExpiry::Update {
+					group,
+					value,
+					..
+				} => {
+					engine_visible.insert(*group, *value);
+				}
+				RollingExpiry::Remove {
+					group,
+					..
+				} => {
+					engine_visible.remove(group);
+				}
+			}
+		}
+		assert!(engine_visible.is_empty(), "the terminal drain must withdraw every visible row");
+		engine.flush(&mut store).unwrap();
+		assert_eq!(store.coord_entry_count(), 0, "the terminal drain must delete every coord entry");
+		assert_eq!(store.running_entry_count(), 0, "the terminal drain must delete every running entry");
+		assert_eq!(store.index_entry_count(), 0, "the terminal drain must delete every index entry");
+	}
+
+	#[test]
+	fn lagged_running_holds_back_coords_within_the_lag_horizon() {
+		// With lag 10, a coord contributes only once the group's high water
+		// has moved at least lag past it. This pins the full pending
+		// lifecycle: a first event emits nothing (the lagged window is still
+		// empty), later events pull older coords across the frontier one
+		// batch at a time, a retraction of a still-pending coord never
+		// touches the published aggregate, and evicting every merged coord
+		// while only pending ones remain withdraws the row.
+		let mut store = MockStore::default();
+		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new_runnable(test_config()).with_lag(10);
+
+		let apply = |engine: &mut RollingEngine<u32, u64, SumAccumulator>,
+		             store: &mut MockStore,
+		             coord: u64,
+		             value: i64,
+		             is_add: bool,
+		             cutoff: u64| {
+			let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+			let event = if is_add {
+				AccumulatorEvent::Add(value)
+			} else {
+				AccumulatorEvent::Remove(value)
+			};
+			buckets.insert((1u32, coord), vec![event]);
+			engine.apply_running(
+				store,
+				buckets,
+				RollingEviction::Before(cutoff),
+				row_key,
+				SumAccumulator::default,
+			)
+			.unwrap()
+		};
+
+		let out = apply(&mut engine, &mut store, 100, 5, true, 0);
+		assert!(out.is_empty(), "a lone coord inside the lag horizon must publish nothing");
+
+		let out = apply(&mut engine, &mut store, 115, 7, true, 0);
+		assert_eq!(
+			describe(&out),
+			vec![(1u32, EmitKind::Insert, 5i64)],
+			"advancing high water to 115 merges only coord 100; coord 115 itself stays pending"
+		);
+
+		let out = apply(&mut engine, &mut store, 130, 9, true, 0);
+		assert_eq!(
+			describe(&out),
+			vec![(1u32, EmitKind::Update, 12i64)],
+			"coord 115 crosses the frontier at high water 130; coord 130 stays pending"
+		);
+
+		let out = apply(&mut engine, &mut store, 130, 9, false, 0);
+		assert_eq!(
+			describe(&out),
+			vec![(1u32, EmitKind::Update, 12i64)],
+			"retracting the still-pending coord 130 must not change the published aggregate"
+		);
+
+		let out = apply(&mut engine, &mut store, 200, 1, true, 150);
+		assert_eq!(
+			describe(&out),
+			vec![(1u32, EmitKind::Remove, 12i64)],
+			"evicting every merged coord while coord 200 is still pending withdraws the row"
+		);
+		engine.flush(&mut store).unwrap();
+		assert_eq!(store.coord_entry_count(), 1, "the pending coord survives the withdrawal");
+		assert_eq!(store.running_entry_count(), 0, "a group with no merged coord persists no running entry");
+	}
+
+	#[test]
+	fn lagged_expiry_retains_pending_coords() {
+		// Deliberate divergence from the legacy recombine, which destroys the
+		// whole buffer when a due group has no coord older than newest - lag,
+		// silently losing pending coords that would have slid into the lagged
+		// window later. The fast path must withdraw the visible row but keep
+		// the pending coords, and a later event that advances the frontier
+		// must surface their contribution.
+		let mut store = MockStore::default();
+		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new_runnable(test_config()).with_lag(10);
+
+		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, 100u64), vec![AccumulatorEvent::Add(5)]);
+		buckets.insert((1u32, 115u64), vec![AccumulatorEvent::Add(7)]);
+		let out = engine
+			.apply_running(
+				&mut store,
+				buckets,
+				RollingEviction::Before(0),
+				row_key,
+				SumAccumulator::default,
+			)
+			.unwrap();
+		assert_eq!(describe(&out), vec![(1u32, EmitKind::Insert, 5i64)]);
+
+		let expired = engine.expire_before_running(&mut store, 105).unwrap();
+		assert_eq!(
+			describe_expiries(&expired),
+			vec![(1u32, None)],
+			"expiring the only merged coord withdraws the row"
+		);
+		engine.flush(&mut store).unwrap();
+		assert_eq!(store.coord_entry_count(), 1, "the pending coord 115 must survive the expiry");
+		assert_eq!(store.index_entry_count(), 1, "the group stays indexed at its pending coord");
+
+		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, 130u64), vec![AccumulatorEvent::Add(9)]);
+		let out = engine
+			.apply_running(
+				&mut store,
+				buckets,
+				RollingEviction::Before(105),
+				row_key,
+				SumAccumulator::default,
+			)
+			.unwrap();
+		assert_eq!(
+			describe(&out),
+			vec![(1u32, EmitKind::Insert, 7i64)],
+			"the retained coord 115 crosses the frontier at high water 130 and surfaces"
+		);
 	}
 }

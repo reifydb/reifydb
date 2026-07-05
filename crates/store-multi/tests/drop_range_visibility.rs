@@ -85,19 +85,23 @@ fn committed_drop_is_invisible_to_next_transaction_get_and_range() {
 
 	MultiVersionCommit::commit(
 		&store,
-		cow_vec![(Delta::Set {
-			key: key_a.clone(),
-			row: row(b"one"),
-		})],
+		cow_vec![
+			(Delta::Set {
+				key: key_a.clone(),
+				row: row(b"one"),
+			})
+		],
 		CommitVersion(1),
 	)
 	.unwrap();
 	MultiVersionCommit::commit(
 		&store,
-		cow_vec![(Delta::Set {
-			key: key_b.clone(),
-			row: row(b"two"),
-		})],
+		cow_vec![
+			(Delta::Set {
+				key: key_b.clone(),
+				row: row(b"two"),
+			})
+		],
 		CommitVersion(2),
 	)
 	.unwrap();
@@ -106,9 +110,11 @@ fn committed_drop_is_invisible_to_next_transaction_get_and_range() {
 
 	MultiVersionCommit::commit(
 		&store,
-		cow_vec![(Delta::Drop {
-			key: key_a.clone(),
-		})],
+		cow_vec![
+			(Delta::Drop {
+				key: key_a.clone(),
+			})
+		],
 		CommitVersion(3),
 	)
 	.unwrap();

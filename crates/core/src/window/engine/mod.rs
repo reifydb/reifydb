@@ -175,6 +175,26 @@ pub fn coord_due_range(row_number: RowNumber, cutoff: u64) -> EncodedKeyRange {
 	EncodedKeyRange::new(Bound::Included(EncodedKey::new(start)), Bound::Excluded(EncodedKey::new(end)))
 }
 
+pub fn coord_between_range(row_number: RowNumber, after: u64, upto: u64) -> EncodedKeyRange {
+	let start = coord_entry_key(row_number, after);
+	let end = match upto.checked_add(1) {
+		Some(exclusive) => {
+			let mut end = Vec::with_capacity(17);
+			end.push(FlowNodeInternalStateKey::WINDOW_COORD_TAG);
+			end.extend_from_slice(&row_number.0.to_be_bytes());
+			end.extend_from_slice(&exclusive.to_be_bytes());
+			end
+		}
+		None => {
+			let mut end = Vec::with_capacity(9);
+			end.push(FlowNodeInternalStateKey::WINDOW_COORD_TAG);
+			end.extend_from_slice(&(row_number.0 + 1).to_be_bytes());
+			end
+		}
+	};
+	EncodedKeyRange::new(Bound::Excluded(start), Bound::Excluded(EncodedKey::new(end)))
+}
+
 pub fn expiry_due_range(threshold: u64) -> EncodedKeyRange {
 	let mut start = Vec::with_capacity(1 + 8);
 	start.push(FlowNodeInternalStateKey::WINDOW_EXPIRY_TAG);

@@ -68,9 +68,7 @@ struct RollingWindowMeta {
 type RollingEngineBuckets = RollingBuckets<Hash128, u64, (WindowSlotKey, Vec<Option<Value>>)>;
 
 fn rolling_runnable(operator: &WindowOperator, kinds: &[SlotKind]) -> bool {
-	!operator.is_count_based()
-		&& operator.rolling_lag_ms() == 0
-		&& RowAccumulator::invertible(kinds, operator.grace())
+	!operator.is_count_based() && RowAccumulator::invertible(kinds, operator.grace())
 }
 
 fn combine_rolling(
@@ -253,7 +251,8 @@ pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		}
 		if rolling_runnable(operator, &kinds) {
 			let mut engine =
-				RollingEngine::<Hash128, u64, RowAccumulator>::new_runnable(operator.engine_config());
+				RollingEngine::<Hash128, u64, RowAccumulator>::new_runnable(operator.engine_config())
+					.with_lag(lag_ms);
 			let res = engine.apply_running(
 				&mut store,
 				buckets,
@@ -377,7 +376,8 @@ pub fn tick_expire_rolling_engine(
 		let mut store = FlowWindowStore::new(txn, operator.core.node);
 		if rolling_runnable(operator, &kinds) {
 			let mut engine =
-				RollingEngine::<Hash128, u64, RowAccumulator>::new_runnable(operator.engine_config());
+				RollingEngine::<Hash128, u64, RowAccumulator>::new_runnable(operator.engine_config())
+					.with_lag(lag_ms);
 			let res = engine.expire_before_running(&mut store, cutoff)?;
 			engine.flush(&mut store)?;
 			res
