@@ -15,8 +15,8 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use crate::window::{
 	accumulator::WindowAccumulator,
 	engine::{
-		AccumulatorEvent, EmitKind, GroupMeta, LatePolicy, MetaKey, config::WindowEngineConfig,
-		expiry_due_range, expiry_key, meta_key_for,
+		AccumulatorEvent, EmitKind, GroupMeta, MetaKey, RunningKey, config::WindowEngineConfig,
+		coord_due_range, coord_entry_key, coord_row_range, expiry_due_range, expiry_key, meta_key_for,
 	},
 	span::Slot,
 	state::StateCache,
@@ -89,10 +89,78 @@ struct GroupSlot<C, Accumulator, Output> {
 
 pub struct RollingEngine<G, C, Accumulator> {
 	buffers: StateCache<RowNumber, RollingBuffer<C, Accumulator>>,
+	running: Option<StateCache<RunningKey, Accumulator>>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
-	late_policy: LatePolicy,
 	expire_batch: usize,
 	_pd: PhantomData<G>,
+}
+
+struct RunnableGroupSlot<Accumulator>
+where
+	Accumulator: WindowAccumulator,
+{
+	row_number: RowNumber,
+	is_new: bool,
+	running: Accumulator,
+	was_empty_before: bool,
+	buffer_changed: bool,
+	prior_min: Option<u64>,
+	prior_output: Option<Accumulator::Output>,
+}
+
+fn merge_into<A: WindowAccumulator>(running: &mut A, other: &A) {
+	if running.is_empty() {
+		*running = other.clone();
+	} else {
+		running.merge(other);
+	}
+}
+
+fn bootstrap_running<C, A>(buffer: &RollingBuffer<C, A>) -> A
+where
+	C: Slot,
+	A: WindowAccumulator,
+{
+	let mut values = buffer.values();
+	let Some(first) = values.next() else {
+		return A::default();
+	};
+	let mut running = first.clone();
+	for accumulator in values {
+		running.merge(accumulator);
+	}
+	running
+}
+
+fn scan_running<S, A>(store: &mut S, row_number: RowNumber) -> Result<A>
+where
+	S: WindowStore,
+	A: WindowAccumulator,
+{
+	let mut running = A::default();
+	store.internal_range_visit::<A>(coord_row_range(row_number), None, &mut |_key, accumulator| {
+		merge_into(&mut running, &accumulator);
+		Ok(())
+	})?;
+	Ok(running)
+}
+
+fn peek_min_coord<S, A>(store: &mut S, row_number: RowNumber) -> Result<Option<u64>>
+where
+	S: WindowStore,
+	A: WindowAccumulator,
+{
+	let mut min: Option<u64> = None;
+	store.internal_range_visit::<A>(coord_row_range(row_number), Some(1), &mut |key, _accumulator| {
+		let bytes = key.as_bytes();
+		if bytes.len() == 17 {
+			let mut coord = [0u8; 8];
+			coord.copy_from_slice(&bytes[9..17]);
+			min = Some(u64::from_be_bytes(coord));
+		}
+		Ok(())
+	})?;
+	Ok(min)
 }
 
 impl<G, C, Accumulator> RollingEngine<G, C, Accumulator>
@@ -107,11 +175,18 @@ where
 			buffers: StateCache::<RowNumber, RollingBuffer<C, Accumulator>>::new(
 				config.state_cache_capacity(),
 			),
+			running: None,
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
-			late_policy: config.late_policy(),
 			expire_batch: config.expire_batch(),
 			_pd: PhantomData,
 		}
+	}
+
+	pub fn new_runnable(config: WindowEngineConfig) -> Self {
+		let running = StateCache::<RunningKey, Accumulator>::new(config.state_cache_capacity());
+		let mut engine = Self::new(config);
+		engine.running = Some(running);
+		engine
 	}
 
 	pub fn apply<S, K, CB, Output>(
@@ -180,6 +255,9 @@ where
 
 	pub fn flush<S: WindowStore>(&mut self, store: &mut S) -> Result<()> {
 		self.buffers.flush(store)?;
+		if let Some(running) = &mut self.running {
+			running.flush(store)?;
+		}
 		self.meta.flush(store)?;
 		Ok(())
 	}
@@ -313,18 +391,11 @@ where
 				}
 			};
 
-			let late = matches!(meta.high_water, Some(hw) if coord < hw)
-				&& matches!(self.late_policy, LatePolicy::Drop)
-				&& !slot.buffer.contains_key(&coord);
-
 			let mut accumulator = slot.buffer.remove(&coord).unwrap_or_else(new_accumulator);
 			let mut touched = false;
 			for event in events {
 				match event {
 					AccumulatorEvent::Add(c) => {
-						if late {
-							continue;
-						}
 						accumulator.add(&c);
 						touched = true;
 					}
@@ -405,7 +476,7 @@ where
 				};
 				if new_index_key != slot.prior_index_key {
 					if let Some(old) = slot.prior_index_key {
-						store.internal_drop(&expiry_key(old, &group, &[]))?;
+						store.internal_remove(&expiry_key(old, &group, &[]))?;
 					}
 					if let Some(new) = new_index_key {
 						store.internal_set(
@@ -447,6 +518,327 @@ where
 		Ok(results)
 	}
 
+	fn migrate_blob<S: WindowStore>(
+		&mut self,
+		store: &mut S,
+		row_number: RowNumber,
+	) -> Result<Option<Accumulator>> {
+		let Some(blob) = self.buffers.get(store, &row_number)? else {
+			return Ok(None);
+		};
+		for (coord, accumulator) in &blob {
+			store.internal_set(&coord_entry_key(row_number, coord.order_key()), accumulator)?;
+		}
+		self.buffers.remove(store, &row_number)?;
+		Ok(Some(bootstrap_running(&blob)))
+	}
+
+	fn load_running<S: WindowStore>(
+		&mut self,
+		store: &mut S,
+		row_number: RowNumber,
+		migrated: Option<Accumulator>,
+	) -> Result<Accumulator> {
+		let running_cache = self.running.as_mut().expect("runnable engine has a running cache");
+		if let Some(running) = running_cache.get(store, &RunningKey(row_number))? {
+			return Ok(running);
+		}
+		match migrated {
+			Some(running) => Ok(running),
+			None => scan_running(store, row_number),
+		}
+	}
+
+	pub fn apply_running<S, K, NA>(
+		&mut self,
+		store: &mut S,
+		buckets: RollingBuckets<G, C, Accumulator::Contribution>,
+		eviction: RollingEviction<C>,
+		row_key: K,
+		new_accumulator: NA,
+	) -> Result<Vec<RollingResult<G, Accumulator::Output>>>
+	where
+		S: WindowStore,
+		K: Fn(&G) -> EncodedKey,
+		NA: Fn() -> Accumulator,
+	{
+		if buckets.is_empty() {
+			return Ok(Vec::new());
+		}
+		reifydb_assertions! {
+			assert!(
+				self.running.is_some(),
+				"apply_running requires an engine constructed with new_runnable"
+			);
+		}
+		let RollingEviction::Before(evict_cutoff) = eviction else {
+			unimplemented!("apply_running supports only Before eviction");
+		};
+		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
+		let buffer_rows = self.resolve_buffer_rows(store, &buckets, &meta_loaded, &row_key)?;
+		if let Some(running) = &mut self.running {
+			let running_keys: Vec<RunningKey> =
+				buffer_rows.values().map(|(row_number, _)| RunningKey(*row_number)).collect();
+			running.warm(store, &running_keys)?;
+		}
+
+		let mut group_slots: BTreeMap<G, RunnableGroupSlot<Accumulator>> = BTreeMap::new();
+		for ((group, coord), events) in buckets {
+			let meta = meta_loaded.entry(group.clone()).or_default();
+
+			let slot = match group_slots.get_mut(&group) {
+				Some(s) => s,
+				None => {
+					let (row_number, is_new) = match buffer_rows.get(&group) {
+						Some(&resolved) => resolved,
+						None => {
+							let key = row_key(&group);
+							store.get_or_create_row_number(&key)?
+						}
+					};
+					let migrated = self.migrate_blob(store, row_number)?;
+					let prior_min = peek_min_coord::<S, Accumulator>(store, row_number)?;
+					let running = if prior_min.is_none() {
+						Accumulator::default()
+					} else {
+						self.load_running(store, row_number, migrated)?
+					};
+					let was_empty_before = prior_min.is_none();
+					let prior_output = if was_empty_before {
+						None
+					} else {
+						running.finalize()
+					};
+					group_slots.insert(
+						group.clone(),
+						RunnableGroupSlot {
+							row_number,
+							is_new,
+							running,
+							was_empty_before,
+							buffer_changed: false,
+							prior_min,
+							prior_output,
+						},
+					);
+					group_slots.get_mut(&group).expect("just inserted")
+				}
+			};
+
+			let entry_key = coord_entry_key(slot.row_number, coord.order_key());
+			let existing: Option<Accumulator> = store.internal_get(&entry_key)?;
+
+			let mut accumulator = existing.unwrap_or_else(&new_accumulator);
+			let before = accumulator.clone();
+			let mut touched = false;
+			for event in events {
+				match event {
+					AccumulatorEvent::Add(c) => {
+						accumulator.add(&c);
+						touched = true;
+					}
+					AccumulatorEvent::Remove(c) => {
+						if accumulator.is_empty() {
+							continue;
+						}
+						accumulator.remove(&c);
+						touched = true;
+					}
+				}
+			}
+			if !touched {
+				continue;
+			}
+			if !before.is_empty() {
+				slot.running.unmerge(&before);
+			}
+			if !accumulator.is_empty() {
+				merge_into(&mut slot.running, &accumulator);
+				store.internal_set(&entry_key, &accumulator)?;
+			} else {
+				store.internal_remove(&entry_key)?;
+			}
+			slot.buffer_changed = true;
+
+			meta.high_water = Some(match meta.high_water {
+				Some(hw) if hw > coord => hw,
+				_ => coord,
+			});
+		}
+
+		let mut results: Vec<RollingResult<G, Accumulator::Output>> = Vec::new();
+		for (group, mut slot) in group_slots {
+			if !slot.buffer_changed {
+				continue;
+			}
+			let mut due: Vec<(EncodedKey, Accumulator)> = Vec::new();
+			store.internal_range_visit::<Accumulator>(
+				coord_due_range(slot.row_number, evict_cutoff.order_key()),
+				None,
+				&mut |key, accumulator| {
+					due.push((key, accumulator));
+					Ok(())
+				},
+			)?;
+			for (key, evicted) in due {
+				store.internal_remove(&key)?;
+				slot.running.unmerge(&evicted);
+			}
+			let new_min = peek_min_coord::<S, Accumulator>(store, slot.row_number)?;
+			if new_min != slot.prior_min {
+				if let Some(old) = slot.prior_min {
+					store.internal_remove(&expiry_key(old, &group, &[]))?;
+				}
+				if let Some(new) = new_min {
+					store.internal_set(
+						&expiry_key(new, &group, &[]),
+						&RollingIndexEntry {
+							group: group.clone(),
+							row_number: slot.row_number.0,
+						},
+					)?;
+				}
+			}
+			let output = if new_min.is_none() {
+				None
+			} else {
+				slot.running.finalize()
+			};
+			let running_cache = self.running.as_mut().expect("runnable engine has a running cache");
+			if new_min.is_none() {
+				running_cache.remove(store, &RunningKey(slot.row_number))?;
+			} else {
+				running_cache.put(store, &RunningKey(slot.row_number), slot.running)?;
+			}
+
+			if let Some(out) = output {
+				let kind = if slot.is_new || slot.was_empty_before {
+					EmitKind::Insert
+				} else {
+					EmitKind::Update
+				};
+				results.push(RollingResult {
+					row_number: slot.row_number,
+					group,
+					value: out,
+					prior: None,
+					kind,
+				});
+			} else if let Some(prior) = slot.prior_output {
+				results.push(RollingResult {
+					row_number: slot.row_number,
+					group,
+					value: prior,
+					prior: None,
+					kind: EmitKind::Remove,
+				});
+			}
+		}
+		self.persist_meta(store, meta_loaded)?;
+		Ok(results)
+	}
+
+	pub fn expire_before_running<S>(
+		&mut self,
+		store: &mut S,
+		cutoff: C,
+	) -> Result<Vec<RollingExpiry<G, Accumulator::Output>>>
+	where
+		S: WindowStore,
+	{
+		reifydb_assertions! {
+			assert!(
+				self.running.is_some(),
+				"expire_before_running requires an engine constructed with new_runnable"
+			);
+		}
+		let mut due: Vec<(EncodedKey, RollingIndexEntry<G>)> = Vec::new();
+		store.internal_range_visit::<RollingIndexEntry<G>>(
+			expiry_due_range(cutoff.order_key()),
+			Some(self.expire_batch),
+			&mut |key, entry| {
+				due.push((key, entry));
+				Ok(())
+			},
+		)?;
+
+		let mut out: Vec<RollingExpiry<G, Accumulator::Output>> = Vec::new();
+		for (index_key, entry) in due {
+			let row_number = RowNumber(entry.row_number);
+			store.internal_remove(&index_key)?;
+			let migrated = self.migrate_blob(store, row_number)?;
+			let mut expired: Vec<(EncodedKey, Accumulator)> = Vec::new();
+			store.internal_range_visit::<Accumulator>(
+				coord_due_range(row_number, cutoff.order_key()),
+				None,
+				&mut |key, accumulator| {
+					expired.push((key, accumulator));
+					Ok(())
+				},
+			)?;
+			if expired.is_empty() {
+				if let Some(new) = peek_min_coord::<S, Accumulator>(store, row_number)? {
+					store.internal_set(
+						&expiry_key(new, &entry.group, &[]),
+						&RollingIndexEntry {
+							group: entry.group.clone(),
+							row_number: entry.row_number,
+						},
+					)?;
+				}
+				continue;
+			}
+			let mut running = self.load_running(store, row_number, migrated)?;
+			for (key, accumulator) in expired {
+				store.internal_remove(&key)?;
+				running.unmerge(&accumulator);
+			}
+			let new_min = peek_min_coord::<S, Accumulator>(store, row_number)?;
+			match (running.finalize(), new_min) {
+				(Some(value), Some(new)) => {
+					store.internal_set(
+						&expiry_key(new, &entry.group, &[]),
+						&RollingIndexEntry {
+							group: entry.group.clone(),
+							row_number: entry.row_number,
+						},
+					)?;
+					let running_cache =
+						self.running.as_mut().expect("runnable engine has a running cache");
+					running_cache.put(store, &RunningKey(row_number), running)?;
+					out.push(RollingExpiry::Update {
+						row_number,
+						group: entry.group,
+						value,
+					});
+				}
+				_ => {
+					let mut leftover: Vec<EncodedKey> = Vec::new();
+					store.internal_range_visit::<Accumulator>(
+						coord_row_range(row_number),
+						None,
+						&mut |key, _accumulator| {
+							leftover.push(key);
+							Ok(())
+						},
+					)?;
+					for key in leftover {
+						store.internal_remove(&key)?;
+					}
+					self.buffers.remove(store, &row_number)?;
+					let running_cache =
+						self.running.as_mut().expect("runnable engine has a running cache");
+					running_cache.remove(store, &RunningKey(row_number))?;
+					out.push(RollingExpiry::Remove {
+						row_number,
+						group: entry.group,
+					});
+				}
+			}
+		}
+		Ok(out)
+	}
+
 	pub fn expire_before<S, CB, Output>(
 		&mut self,
 		store: &mut S,
@@ -470,7 +862,7 @@ where
 		let mut out: Vec<RollingExpiry<G, Output>> = Vec::new();
 		for (index_key, entry) in due {
 			let row_number = RowNumber(entry.row_number);
-			store.internal_drop(&index_key)?;
+			store.internal_remove(&index_key)?;
 			let Some(mut buffer) = self.buffers.get(store, &row_number)? else {
 				continue;
 			};
@@ -541,7 +933,7 @@ where
 		let mut out: Vec<RollingExpiry<G, Output>> = Vec::new();
 		for (index_key, entry) in due {
 			let row_number = RowNumber(entry.row_number);
-			store.internal_drop(&index_key)?;
+			store.internal_remove(&index_key)?;
 			let Some(mut buffer) = self.buffers.get(store, &row_number)? else {
 				continue;
 			};
@@ -905,5 +1297,243 @@ mod tests {
 			withdrawn[0].row_number, published_group_1[0].row_number,
 			"the withdrawal targets the same row that was published for group 1"
 		);
+	}
+
+	fn describe(results: &[RollingResult<u32, i64>]) -> Vec<(u32, EmitKind, i64)> {
+		results.iter().map(|r| (r.group, r.kind, r.value)).collect()
+	}
+
+	fn describe_expiries(expiries: &[RollingExpiry<u32, i64>]) -> Vec<(u32, Option<i64>)> {
+		expiries.iter()
+			.map(|e| match e {
+				RollingExpiry::Update {
+					group,
+					value,
+					..
+				} => (*group, Some(*value)),
+				RollingExpiry::Remove {
+					group,
+					..
+				} => (*group, None),
+			})
+			.collect()
+	}
+
+	#[test]
+	fn runnable_engine_matches_legacy_recombine_across_seeded_churn() {
+		// The runnable engine replaces the O(buffer) recombine with a running
+		// accumulator maintained by merge/unmerge. Its observable behavior -
+		// emitted kinds, values, expiry updates, terminal removes, and the
+		// expiry-index bookkeeping - must be indistinguishable from the legacy
+		// engine on an identical seeded add/remove/expire workload; integer sums
+		// make the comparison exact. A divergence means the running maintenance
+		// missed a mutation path.
+		let mut legacy_store = MockStore::default();
+		let mut runnable_store = MockStore::default();
+		let mut legacy = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		let mut runnable = RollingEngine::<u32, u64, SumAccumulator>::new_runnable(test_config());
+
+		let mut state = 0xDEAD_BEEF_CAFE_1234u64;
+		let mut roll = |bound: u64| {
+			state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+			(state >> 33) % bound
+		};
+		let mut coord_base = 100u64;
+		let mut cutoff = 0u64;
+		let mut added: Vec<(u32, u64, i64)> = Vec::new();
+
+		for round in 0..200u64 {
+			let mut plan: Vec<(u32, u64, i64, bool)> = Vec::new();
+			for _ in 0..=roll(3) {
+				let group = roll(5) as u32;
+				let coord = coord_base + roll(40);
+				let value = roll(1_000) as i64 + 1;
+				plan.push((group, coord, value, true));
+				added.push((group, coord, value));
+			}
+			if round % 4 == 3 && !added.is_empty() {
+				let (group, coord, value) = added.remove((roll(added.len() as u64)) as usize);
+				plan.push((group, coord, value, false));
+			}
+			let build = |plan: &[(u32, u64, i64, bool)]| {
+				let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+				for &(group, coord, value, is_add) in plan {
+					let event = if is_add {
+						AccumulatorEvent::Add(value)
+					} else {
+						AccumulatorEvent::Remove(value)
+					};
+					buckets.entry((group, coord)).or_default().push(event);
+				}
+				buckets
+			};
+			let legacy_out = legacy
+				.apply_evicting(
+					&mut legacy_store,
+					build(&plan),
+					RollingEviction::Before(cutoff),
+					row_key,
+					SumAccumulator::default,
+					sum_combine,
+				)
+				.unwrap();
+			let runnable_out = runnable
+				.apply_running(
+					&mut runnable_store,
+					build(&plan),
+					RollingEviction::Before(cutoff),
+					row_key,
+					SumAccumulator::default,
+				)
+				.unwrap();
+			assert_eq!(
+				describe(&legacy_out),
+				describe(&runnable_out),
+				"apply diverged from the legacy recombine at round {round}"
+			);
+
+			if round % 5 == 4 {
+				cutoff = coord_base.saturating_sub(30);
+				let legacy_exp = legacy.expire_before(&mut legacy_store, cutoff, sum_combine).unwrap();
+				let runnable_exp = runnable.expire_before_running(&mut runnable_store, cutoff).unwrap();
+				assert_eq!(
+					describe_expiries(&legacy_exp),
+					describe_expiries(&runnable_exp),
+					"expiry diverged from the legacy recombine at round {round}"
+				);
+				added.retain(|(_, coord, _)| *coord > cutoff);
+			}
+			coord_base += roll(20);
+		}
+
+		legacy.flush(&mut legacy_store).unwrap();
+		runnable.flush(&mut runnable_store).unwrap();
+		assert_eq!(
+			legacy_store.index_entry_count(),
+			runnable_store.index_entry_count(),
+			"expiry-index bookkeeping diverged"
+		);
+
+		// Drain everything: terminal removes must match group-for-group.
+		let legacy_final = legacy.expire_before(&mut legacy_store, u64::MAX - 1, sum_combine).unwrap();
+		let runnable_final = runnable.expire_before_running(&mut runnable_store, u64::MAX - 1).unwrap();
+		assert_eq!(
+			describe_expiries(&legacy_final),
+			describe_expiries(&runnable_final),
+			"terminal drain diverged"
+		);
+		assert!(
+			legacy_final.iter().all(|e| matches!(e, RollingExpiry::Remove { .. })),
+			"draining past every coord must terminally remove all groups"
+		);
+	}
+
+	#[test]
+	fn runnable_engine_bootstraps_running_from_a_legacy_buffer() {
+		// First run after the fix deploys over persisted pre-fix state: buffers
+		// exist, running entries do not. The runnable engine must recombine the
+		// buffer once (bootstrap) instead of treating the group as empty, both
+		// on the apply path and on the expiry path.
+		let mut store = MockStore::default();
+		let mut legacy = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
+		buckets.insert((1u32, 20u64), vec![AccumulatorEvent::Add(7)]);
+		legacy.apply_evicting(
+			&mut store,
+			buckets,
+			RollingEviction::Before(0),
+			row_key,
+			SumAccumulator::default,
+			sum_combine,
+		)
+		.unwrap();
+		legacy.flush(&mut store).unwrap();
+
+		let mut runnable = RollingEngine::<u32, u64, SumAccumulator>::new_runnable(test_config());
+		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, 30u64), vec![AccumulatorEvent::Add(100)]);
+		let out = runnable
+			.apply_running(
+				&mut store,
+				buckets,
+				RollingEviction::Before(0),
+				row_key,
+				SumAccumulator::default,
+			)
+			.unwrap();
+		assert_eq!(
+			describe(&out),
+			vec![(1u32, EmitKind::Update, 112i64)],
+			"bootstrap must fold the pre-existing buffer into the running sum"
+		);
+
+		let expired = runnable.expire_before_running(&mut store, 20).unwrap();
+		assert_eq!(
+			describe_expiries(&expired),
+			vec![(1u32, Some(100i64))],
+			"expiring the pre-fix coords must subtract exactly their contributions"
+		);
+		runnable.flush(&mut store).unwrap();
+
+		// A fresh runnable engine over the flushed state reads the persisted
+		// running entry back (no bootstrap) and drains to a terminal remove.
+		let mut reopened = RollingEngine::<u32, u64, SumAccumulator>::new_runnable(test_config());
+		let drained = reopened.expire_before_running(&mut store, u64::MAX - 1).unwrap();
+		assert_eq!(
+			describe_expiries(&drained),
+			vec![(1u32, None)],
+			"the last coord expiring must terminally remove"
+		);
+	}
+
+	#[test]
+	fn per_coord_storage_leaves_nothing_behind_after_terminal_drain() {
+		// Per-coord persistence must clean up completely: after every group
+		// expires, no coord entries, running entries, or expiry-index entries
+		// may remain, and a migrated legacy blob must be gone the moment the
+		// runnable engine first touches its group. Leaked entries are exactly
+		// the kind of unbounded state growth this engine exists to prevent.
+		let mut store = MockStore::default();
+		let mut legacy = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
+		buckets.insert((1u32, 20u64), vec![AccumulatorEvent::Add(7)]);
+		legacy.apply_evicting(
+			&mut store,
+			buckets,
+			RollingEviction::Before(0),
+			row_key,
+			SumAccumulator::default,
+			sum_combine,
+		)
+		.unwrap();
+		legacy.flush(&mut store).unwrap();
+		assert_eq!(store.blob_entry_count(), 1, "legacy engine persists the buffer blob under a state key");
+
+		let mut runnable = RollingEngine::<u32, u64, SumAccumulator>::new_runnable(test_config());
+		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((2u32, 30u64), vec![AccumulatorEvent::Add(1)]);
+		buckets.insert((1u32, 30u64), vec![AccumulatorEvent::Add(100)]);
+		runnable.apply_running(
+			&mut store,
+			buckets,
+			RollingEviction::Before(0),
+			row_key,
+			SumAccumulator::default,
+		)
+		.unwrap();
+		runnable.flush(&mut store).unwrap();
+		assert_eq!(store.blob_entry_count(), 0, "migrating a group must delete its legacy buffer blob");
+		assert_eq!(store.coord_entry_count(), 4, "each live coord is its own internal entry");
+		assert_eq!(store.running_entry_count(), 2, "each live group persists one running entry");
+
+		let drained = runnable.expire_before_running(&mut store, u64::MAX - 1).unwrap();
+		runnable.flush(&mut store).unwrap();
+		assert_eq!(drained.len(), 2, "both groups drain");
+		assert!(drained.iter().all(|e| matches!(e, RollingExpiry::Remove { .. })));
+		assert_eq!(store.coord_entry_count(), 0, "terminal removal must delete every coord entry");
+		assert_eq!(store.running_entry_count(), 0, "terminal removal must delete the running entry");
+		assert_eq!(store.index_entry_count(), 0, "terminal removal must delete the expiry index entry");
 	}
 }

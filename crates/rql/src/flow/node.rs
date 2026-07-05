@@ -99,7 +99,7 @@ pub enum FlowNodeType {
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
 		ts: Option<String>,
-		lateness: Option<Duration>,
+		grace: Duration,
 		state_cache_size: Option<usize>,
 		internal_state_cache_size: Option<usize>,
 	},

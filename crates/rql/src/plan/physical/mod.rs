@@ -554,7 +554,7 @@ pub struct WindowNode<'bump> {
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
 	pub ts: Option<String>,
-	pub lateness: Option<Duration>,
+	pub grace: Duration,
 	pub state_cache_size: Option<usize>,
 	pub internal_state_cache_size: Option<usize>,
 }
@@ -2129,7 +2129,7 @@ impl<'bump> Compiler<'bump> {
 						group_by: window.group_by,
 						aggregations: window.aggregations,
 						ts: window.ts,
-						lateness: window.lateness,
+						grace: window.grace,
 						state_cache_size: window.state_cache_size,
 						internal_state_cache_size: window.internal_state_cache_size,
 						input,

@@ -486,6 +486,7 @@ impl SqlitePersistentStorage {
 		})
 	}
 
+	#[instrument(name = "store::multi::persistent::sqlite::load_consistent", level = "debug", skip_all, fields(table = ?table))]
 	pub fn load_range_consistent(
 		&self,
 		table: EntryKind,

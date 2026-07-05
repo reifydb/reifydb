@@ -26,7 +26,7 @@ use reifydb_value::{
 	reifydb_assertions,
 	util::{cowvec::CowVec, hex},
 };
-use tracing::{instrument, warn};
+use tracing::{Span, field, instrument, warn};
 
 use super::StandardMultiStore;
 use crate::{
@@ -180,23 +180,31 @@ impl StandardMultiStore {
 		})
 	}
 
+	#[instrument(name = "store::multi::warm_operator", level = "debug", skip(self), fields(node = ?page.kind, outcome = field::Empty, loaded = field::Empty))]
 	fn warm_operator_page(&self, page: PageId) -> Result<bool> {
+		let span = Span::current();
 		let (Some(read), Some(persistent)) = (&self.read, &self.persistent) else {
+			span.record("outcome", "no_tiers");
 			return Ok(false);
 		};
 		if !matches!(page.kind, EntryKind::Operator(_)) {
+			span.record("outcome", "not_operator");
 			return Ok(false);
 		}
 		if read.page_is_complete(page) {
+			span.record("outcome", "already_complete");
 			return Ok(true);
 		}
 		if !read.page_is_warm_candidate(page) {
+			span.record("outcome", "blocked");
 			return Ok(false);
 		}
 		let Some(range) = read.page_key_range(page) else {
+			span.record("outcome", "no_range");
 			return Ok(false);
 		};
 		if !read.begin_warm(page) {
+			span.record("outcome", "busy");
 			return Ok(false);
 		}
 		let loaded = persistent.load_range_consistent(
@@ -210,15 +218,24 @@ impl StandardMultiStore {
 			Ok(entries) => entries,
 			Err(e) => {
 				read.abort_warm(page);
+				span.record("outcome", "load_error");
 				return Err(e);
 			}
 		};
+		span.record("loaded", entries.len());
 		if entries.len() > OPERATOR_PAGE_WARM_CAP {
 			read.abort_warm(page);
 			read.set_warm_blocked(page);
+			span.record("outcome", "over_cap");
 			return Ok(false);
 		}
-		Ok(read.finish_warm(page, entries))
+		if read.finish_warm(page, entries) {
+			span.record("outcome", "completed");
+			Ok(true)
+		} else {
+			span.record("outcome", "dirty_abort");
+			Ok(false)
+		}
 	}
 }
 
@@ -659,10 +676,12 @@ impl StandardMultiStore {
 		Ok(true)
 	}
 
+	#[instrument(name = "store::multi::evict_drops", level = "debug", skip_all, fields(drop_count = field::Empty))]
 	fn evict_operator_state(&self, drops: &[(EntryKind, EncodedKey)], version: CommitVersion) -> Result<()> {
 		if drops.is_empty() {
 			return Ok(());
 		}
+		Span::current().record("drop_count", drops.len());
 
 		self.record_pending_drops(drops, version);
 		self.evict_drops_from_commit(drops)?;

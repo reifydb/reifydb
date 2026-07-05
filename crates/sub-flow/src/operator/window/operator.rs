@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
@@ -8,7 +10,7 @@ use reifydb_core::{
 	error::diagnostic::flow::{flow_window_timestamp_column_not_found, flow_window_timestamp_column_type_mismatch},
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	value::column::columns::Columns,
-	window::engine::{LatePolicy, config::WindowEngineConfig},
+	window::engine::config::WindowEngineConfig,
 };
 use reifydb_engine::flow::aggregate::AggregateContext;
 use reifydb_routine::routine::registry::Routines;
@@ -20,6 +22,7 @@ use reifydb_value::{
 	error::Error,
 	value::{Value, datetime::DateTime, duration::Duration},
 };
+use tracing::warn;
 
 use super::{
 	aggregation::Aggregation,
@@ -49,8 +52,7 @@ pub struct WindowConfig {
 	pub ts: Option<String>,
 	pub runtime_context: RuntimeContext,
 	pub routines: Routines,
-	pub late_policy: LatePolicy,
-	pub lateness: Option<Duration>,
+	pub grace: Duration,
 	pub state_cache_size: Option<usize>,
 	pub internal_state_cache_size: Option<usize>,
 }
@@ -60,15 +62,26 @@ pub struct WindowOperator {
 	pub kind: WindowKind,
 	pub ts: Option<String>,
 
-	pub late_policy: LatePolicy,
-	pub lateness: Option<Duration>,
+	pub grace: Duration,
 	pub state_cache_size: Option<usize>,
 	pub internal_state_cache_size: Option<usize>,
 	pub layout: RowShape,
 	pub row_number_provider: RowNumberProvider,
+	last_rolling_expiry_ms: AtomicU64,
+	sealed_drops: AtomicU64,
 }
 
 impl WindowOperator {
+	fn rolling_expiry_due(&self, now_ms: u64) -> bool {
+		let size_ms = self.size_duration().map(|d| d.milliseconds().unwrap_or(0) as u64).unwrap_or(0);
+		let stride_ms = (size_ms / 240).clamp(1_000, 30_000);
+		let last = self.last_rolling_expiry_ms.load(Ordering::Relaxed);
+		if now_ms.saturating_sub(last) < stride_ms {
+			return false;
+		}
+		self.last_rolling_expiry_ms.compare_exchange(last, now_ms, Ordering::Relaxed, Ordering::Relaxed).is_ok()
+	}
+
 	pub fn new(config: WindowConfig) -> Self {
 		let core = Aggregation::new(
 			config.node,
@@ -83,17 +96,18 @@ impl WindowOperator {
 			core,
 			kind: config.kind,
 			ts: config.ts,
-			late_policy: config.late_policy,
-			lateness: config.lateness,
+			grace: config.grace,
 			state_cache_size: config.state_cache_size,
 			internal_state_cache_size: config.internal_state_cache_size,
 			layout: RowShape::operator_state(),
 			row_number_provider: RowNumberProvider::new(config.node),
+			last_rolling_expiry_ms: AtomicU64::new(0),
+			sealed_drops: AtomicU64::new(0),
 		}
 	}
 
 	pub(crate) fn engine_config(&self) -> WindowEngineConfig {
-		let mut builder = WindowEngineConfig::builder().late_policy(self.late_policy);
+		let mut builder = WindowEngineConfig::builder();
 		if let Some(capacity) = self.state_cache_size {
 			builder = builder.state_cache_capacity(capacity);
 		}
@@ -107,10 +121,31 @@ impl WindowOperator {
 		self.kind.size().is_some_and(|m| m.is_count())
 	}
 
-	pub fn sealing_lateness(&self) -> Option<Duration> {
-		match self.kind.time() {
-			TimeDomain::Event if !self.is_count_based() => self.lateness,
-			_ => None,
+	pub fn grace(&self) -> Duration {
+		if self.is_count_based() {
+			Duration::default()
+		} else {
+			self.grace
+		}
+	}
+
+	pub fn grace_ms(&self) -> u64 {
+		self.grace().milliseconds().unwrap_or(0) as u64
+	}
+
+	pub(crate) fn note_sealed_drops(&self, dropped: u64) {
+		if dropped == 0 {
+			return;
+		}
+		let before = self.sealed_drops.fetch_add(dropped, Ordering::Relaxed);
+		let after = before + dropped;
+		if before == 0 || before / 1_000 != after / 1_000 {
+			warn!(
+				node_id = self.core.node.0,
+				dropped,
+				total = after,
+				"mutations targeting sealed windows were dropped"
+			);
 		}
 	}
 
@@ -230,6 +265,10 @@ impl Operator for WindowOperator {
 			| WindowKind::Sliding {
 				..
 			} => tick_expire_engine_windows(self, txn, current_timestamp)?,
+			WindowKind::Rolling {
+				size: WindowSize::Duration(_),
+				..
+			} if !self.rolling_expiry_due(current_timestamp) => vec![],
 			WindowKind::Rolling {
 				size: WindowSize::Duration(_),
 				..

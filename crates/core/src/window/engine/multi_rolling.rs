@@ -15,8 +15,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use crate::window::{
 	accumulator::WindowAccumulator,
 	engine::{
-		AccumulatorEvent, GroupMeta, LatePolicy, MetaKey, config::WindowEngineConfig, meta_key_for,
-		rolling::RollingBuckets,
+		AccumulatorEvent, GroupMeta, MetaKey, config::WindowEngineConfig, meta_key_for, rolling::RollingBuckets,
 	},
 	span::Slot,
 	state::StateCache,
@@ -96,7 +95,6 @@ struct GroupSlot<C, Accumulator, SK, Output> {
 pub struct MultiRollingEngine<G, C, Accumulator, SK, Output> {
 	groups: StateCache<RowNumber, GroupState<C, Accumulator, SK, Output>>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
-	late_policy: LatePolicy,
 	_pd: PhantomData<G>,
 }
 
@@ -115,7 +113,6 @@ where
 				config.state_cache_capacity(),
 			),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
-			late_policy: config.late_policy(),
 			_pd: PhantomData,
 		}
 	}
@@ -271,18 +268,11 @@ where
 				}
 			};
 
-			let late = matches!(meta.high_water, Some(hw) if coord < hw)
-				&& matches!(self.late_policy, LatePolicy::Drop)
-				&& !slot.buffer.contains_key(&coord);
-
 			let mut accumulator = slot.buffer.remove(&coord).unwrap_or_default();
 			let mut touched = false;
 			for event in events {
 				match event {
 					AccumulatorEvent::Add(c) => {
-						if late {
-							continue;
-						}
 						accumulator.add(&c);
 						touched = true;
 					}

@@ -34,16 +34,17 @@ pub enum AccumulatorEvent<C> {
 	Remove(C),
 }
 
-/// How an engine treats an event whose window coordinate is below the per-group
-/// high-water mark (an event for an already-closed window).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum LatePolicy {
-	/// Event-time semantics: drop late events (deterministic under replay).
-	#[default]
-	Drop,
-	/// Accept late events into their (re-opened) window. High-water still
-	/// tracks the max coordinate seen but never rejects.
-	Process,
+/// The seal horizon: window anchors (window start for bucketed engines, the
+/// coordinate for rolling ledgers) strictly below this value are sealed -
+/// immutable and eligible for state reclamation. Computed by the face as
+/// `watermark - seal_after`, where `seal_after` folds the window span and the
+/// grace duration into one number in coordinate units.
+pub fn seal_horizon(watermark: u64, seal_after: u64) -> u64 {
+	watermark.saturating_sub(seal_after)
+}
+
+pub fn is_sealed(anchor: u64, horizon: u64) -> bool {
+	anchor < horizon
 }
 
 /// How a finalized window value should be emitted downstream.
@@ -89,6 +90,20 @@ impl<K> Default for GroupMeta<K> {
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct MetaKey(pub EncodedKey);
 
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+pub struct RunningKey(pub RowNumber);
+
+impl IntoEncodedKey for &RunningKey {
+	fn into_encoded_key(self) -> EncodedKey {
+		let inner = (&self.0).into_encoded_key();
+		let inner = inner.as_ref();
+		let mut bytes = Vec::with_capacity(1 + inner.len());
+		bytes.push(FlowNodeInternalStateKey::WINDOW_RUNNING_TAG);
+		bytes.extend_from_slice(inner);
+		EncodedKey::new(bytes)
+	}
+}
+
 impl IntoEncodedKey for &MetaKey {
 	fn into_encoded_key(self) -> EncodedKey {
 		let inner = self.0.as_ref();
@@ -118,6 +133,46 @@ where
 	bytes.extend_from_slice(group);
 	bytes.extend_from_slice(suffix);
 	EncodedKey::new(bytes)
+}
+
+pub fn coord_entry_key(row_number: RowNumber, coord: u64) -> EncodedKey {
+	let mut bytes = Vec::with_capacity(17);
+	bytes.push(FlowNodeInternalStateKey::WINDOW_COORD_TAG);
+	bytes.extend_from_slice(&row_number.0.to_be_bytes());
+	bytes.extend_from_slice(&coord.to_be_bytes());
+	EncodedKey::new(bytes)
+}
+
+pub fn coord_row_range(row_number: RowNumber) -> EncodedKeyRange {
+	let mut start = Vec::with_capacity(9);
+	start.push(FlowNodeInternalStateKey::WINDOW_COORD_TAG);
+	start.extend_from_slice(&row_number.0.to_be_bytes());
+	let mut end = Vec::with_capacity(9);
+	end.push(FlowNodeInternalStateKey::WINDOW_COORD_TAG);
+	end.extend_from_slice(&(row_number.0 + 1).to_be_bytes());
+	EncodedKeyRange::new(Bound::Included(EncodedKey::new(start)), Bound::Excluded(EncodedKey::new(end)))
+}
+
+pub fn coord_due_range(row_number: RowNumber, cutoff: u64) -> EncodedKeyRange {
+	let mut start = Vec::with_capacity(9);
+	start.push(FlowNodeInternalStateKey::WINDOW_COORD_TAG);
+	start.extend_from_slice(&row_number.0.to_be_bytes());
+	let end = match cutoff.checked_add(1) {
+		Some(exclusive) => {
+			let mut end = Vec::with_capacity(17);
+			end.push(FlowNodeInternalStateKey::WINDOW_COORD_TAG);
+			end.extend_from_slice(&row_number.0.to_be_bytes());
+			end.extend_from_slice(&exclusive.to_be_bytes());
+			end
+		}
+		None => {
+			let mut end = Vec::with_capacity(9);
+			end.push(FlowNodeInternalStateKey::WINDOW_COORD_TAG);
+			end.extend_from_slice(&(row_number.0 + 1).to_be_bytes());
+			end
+		}
+	};
+	EncodedKeyRange::new(Bound::Included(EncodedKey::new(start)), Bound::Excluded(EncodedKey::new(end)))
 }
 
 pub fn expiry_due_range(threshold: u64) -> EncodedKeyRange {
@@ -155,6 +210,27 @@ pub(crate) mod test_support {
 			self.internal
 				.keys()
 				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_EXPIRY_TAG))
+				.count()
+		}
+
+		pub(crate) fn coord_entry_count(&mut self) -> usize {
+			self.internal
+				.keys()
+				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_COORD_TAG))
+				.count()
+		}
+
+		pub(crate) fn running_entry_count(&mut self) -> usize {
+			self.data
+				.keys()
+				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_RUNNING_TAG))
+				.count()
+		}
+
+		pub(crate) fn blob_entry_count(&mut self) -> usize {
+			self.data
+				.keys()
+				.filter(|k| k.first() != Some(&FlowNodeInternalStateKey::WINDOW_RUNNING_TAG))
 				.count()
 		}
 	}
@@ -293,6 +369,14 @@ pub(crate) mod test_support {
 		}
 		fn is_empty(&self) -> bool {
 			self.count == 0
+		}
+		fn merge(&mut self, other: &Self) {
+			self.sum += other.sum;
+			self.count += other.count;
+		}
+		fn unmerge(&mut self, other: &Self) {
+			self.sum -= other.sum;
+			self.count = self.count.saturating_sub(other.count);
 		}
 	}
 

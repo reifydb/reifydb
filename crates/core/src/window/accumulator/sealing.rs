@@ -19,7 +19,7 @@ use crate::window::span::Slot;
 	deserialize = "C: serde::de::DeserializeOwned, C::Duration: serde::de::DeserializeOwned, V: serde::de::DeserializeOwned"
 ))]
 struct SealingBase<C: Slot, V> {
-	lateness: Option<C::Duration>,
+	grace: Option<C::Duration>,
 	high_water: Option<C>,
 	tail: BTreeMap<C, V>,
 }
@@ -27,7 +27,7 @@ struct SealingBase<C: Slot, V> {
 impl<C: Slot, V> Default for SealingBase<C, V> {
 	fn default() -> Self {
 		Self {
-			lateness: None,
+			grace: None,
 			high_water: None,
 			tail: BTreeMap::new(),
 		}
@@ -35,9 +35,9 @@ impl<C: Slot, V> Default for SealingBase<C, V> {
 }
 
 impl<C: Slot, V> SealingBase<C, V> {
-	fn with_lateness(lateness: C::Duration) -> Self {
+	fn with_grace(grace: C::Duration) -> Self {
 		Self {
-			lateness: Some(lateness),
+			grace: Some(grace),
 			high_water: None,
 			tail: BTreeMap::new(),
 		}
@@ -50,7 +50,7 @@ impl<C: Slot, V> SealingBase<C, V> {
 		});
 		self.tail.insert(coord, value);
 		let mut aged = Vec::new();
-		let (Some(hw), Some(l)) = (self.high_water, self.lateness) else {
+		let (Some(hw), Some(l)) = (self.high_water, self.grace) else {
 			return aged;
 		};
 		while let Some((&c, _)) = self.tail.iter().next() {
@@ -96,9 +96,9 @@ impl<C: Slot, V: Ord> Default for SealingMax<C, V> {
 }
 
 impl<C: Slot, V: Ord + Clone> SealingMax<C, V> {
-	pub fn with_lateness(lateness: C::Duration) -> Self {
+	pub fn with_grace(grace: C::Duration) -> Self {
 		Self {
-			base: SealingBase::with_lateness(lateness),
+			base: SealingBase::with_grace(grace),
 			sealed: None,
 		}
 	}
@@ -183,9 +183,9 @@ impl<C: Slot, V: Ord> Default for SealingMin<C, V> {
 }
 
 impl<C: Slot, V: Ord + Clone> SealingMin<C, V> {
-	pub fn with_lateness(lateness: C::Duration) -> Self {
+	pub fn with_grace(grace: C::Duration) -> Self {
 		Self {
-			base: SealingBase::with_lateness(lateness),
+			base: SealingBase::with_grace(grace),
 			sealed: None,
 		}
 	}
@@ -270,9 +270,9 @@ impl<C: Slot, V> Default for SealingEndpoint<C, V> {
 }
 
 impl<C: Slot, V: Clone> SealingEndpoint<C, V> {
-	pub fn with_lateness(lateness: C::Duration) -> Self {
+	pub fn with_grace(grace: C::Duration) -> Self {
 		Self {
-			base: SealingBase::with_lateness(lateness),
+			base: SealingBase::with_grace(grace),
 			sealed_open: None,
 		}
 	}
@@ -400,9 +400,9 @@ impl<C: Slot, F: SealFold> Default for SealingFold<C, F> {
 }
 
 impl<C: Slot, F: SealFold> SealingFold<C, F> {
-	pub fn with_lateness(lateness: C::Duration) -> Self {
+	pub fn with_grace(grace: C::Duration) -> Self {
 		Self {
-			base: SealingBase::with_lateness(lateness),
+			base: SealingBase::with_grace(grace),
 			sealed: F::State::default(),
 			last_sealed: None,
 			marker: PhantomData,
@@ -463,9 +463,9 @@ impl<C: Slot, V> Default for SealingTail<C, V> {
 }
 
 impl<C: Slot, V: Clone> SealingTail<C, V> {
-	pub fn with_lateness(lateness: C::Duration) -> Self {
+	pub fn with_grace(grace: C::Duration) -> Self {
 		Self {
-			base: SealingBase::with_lateness(lateness),
+			base: SealingBase::with_grace(grace),
 		}
 	}
 
@@ -504,9 +504,9 @@ impl<C: Slot, V> Default for TailAccumulator<C, V> {
 }
 
 impl<C: Slot, V: Clone> TailAccumulator<C, V> {
-	pub fn with_lateness(lateness: C::Duration) -> Self {
+	pub fn with_grace(grace: C::Duration) -> Self {
 		Self {
-			events: SealingTail::with_lateness(lateness),
+			events: SealingTail::with_grace(grace),
 		}
 	}
 }

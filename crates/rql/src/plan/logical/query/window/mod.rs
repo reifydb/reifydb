@@ -29,7 +29,7 @@ struct ParsedConfig {
 	pub slide_count: Option<u64>,
 	pub gap: Option<Duration>,
 	pub lag: Option<Duration>,
-	pub lateness: Option<Duration>,
+	pub grace: Option<Duration>,
 	pub ts: Option<String>,
 	pub time: Option<String>,
 	pub state_cache_size: Option<usize>,
@@ -42,7 +42,7 @@ pub struct WindowNode {
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
 	pub ts: Option<String>,
-	pub lateness: Option<Duration>,
+	pub grace: Duration,
 	pub state_cache_size: Option<usize>,
 	pub internal_state_cache_size: Option<usize>,
 	pub rql: String,
@@ -56,13 +56,20 @@ impl<'bump> Compiler<'bump> {
 		let group_by = Self::compile_expressions(ast.group_by)?;
 		let aggregations = Self::compile_expressions(ast.aggregations)?;
 		let kind = Self::build_window_kind(ast.kind, &parsed)?;
+		if parsed.grace.is_some() && kind.size().is_some_and(|size| size.is_count()) {
+			return Err(AstError::UnexpectedToken {
+				expected: "no grace on count-based windows (grace needs a time domain)".to_string(),
+				fragment: Fragment::None,
+			}
+			.into());
+		}
 
 		Ok(LogicalPlan::Window(WindowNode {
 			kind,
 			group_by,
 			aggregations,
 			ts: parsed.ts,
-			lateness: parsed.lateness,
+			grace: parsed.grace.unwrap_or_default(),
 			state_cache_size: parsed.state_cache_size,
 			internal_state_cache_size: parsed.internal_state_cache_size,
 			rql,
@@ -260,9 +267,9 @@ impl<'bump> Compiler<'bump> {
 					.into());
 				}
 			}
-			"lateness" => {
+			"grace" => {
 				if let Some(frag) = Self::extract_text_fragment(&config_item.value) {
-					config.lateness = Some(parse_duration(frag.to_owned())?);
+					config.grace = Some(parse_duration(frag.to_owned())?);
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "duration string".to_string(),
@@ -317,9 +324,10 @@ impl<'bump> Compiler<'bump> {
 			}
 			_ => {
 				return Err(AstError::UnexpectedToken {
-					expected: "interval, count, slide, gap, lag, lateness, ts, time, state_cache_size, \
+					expected:
+						"interval, count, slide, gap, lag, grace, ts, time, state_cache_size, \
 					           or internal_state_cache_size"
-						.to_string(),
+							.to_string(),
 					fragment: config_item.key.token.fragment.to_owned(),
 				}
 				.into());

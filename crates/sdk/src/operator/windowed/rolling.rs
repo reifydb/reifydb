@@ -10,14 +10,16 @@ use reifydb_core::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind,
+			AccumulatorEvent, EmitKind, is_sealed,
 			rolling::{RollingBuckets, RollingEngine},
+			seal_horizon,
 		},
 		span::Slot,
 	},
 };
 use reifydb_value::value::row_number::RowNumber;
 use serde::{Serialize, de::DeserializeOwned};
+use tracing::warn;
 
 use crate::{
 	config::Config,
@@ -31,7 +33,7 @@ use crate::{
 		},
 		context::OperatorContext,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
-		windowed::{bridge::OperatorContextStore, window_engine_config},
+		windowed::{advance_seal_watermark, bridge::OperatorContextStore, window_engine_config},
 	},
 };
 
@@ -76,6 +78,10 @@ where
 	fn from_config(operator_id: FlowNodeId, config: &Config) -> Result<Self>;
 
 	fn encode_row_key(&self, group: &Self::GroupKey) -> EncodedKey;
+
+	fn seal_after(&self) -> Option<u64> {
+		None
+	}
 }
 
 pub type RollingBuffer<A> = BTreeMap<<A as RollingOperator>::WindowCoord, <A as RollingOperator>::Accumulator>;
@@ -241,9 +247,31 @@ where
 	}
 
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
-		let buckets = self.route(ctx, &change);
+		let mut buckets = self.route(ctx, &change);
 		if buckets.is_empty() {
 			return Ok(());
+		}
+
+		if let Some(seal_after) = self.aggregator.seal_after() {
+			let mut store = OperatorContextStore(ctx);
+			let batch_max = buckets.keys().map(|(_, coord)| coord.order_key()).max().unwrap_or(0);
+			let watermark = advance_seal_watermark(&mut store, batch_max)?;
+			let horizon = seal_horizon(watermark, seal_after);
+			let mut dropped = 0u64;
+			buckets.retain(|(_, coord), events| {
+				if is_sealed(coord.order_key(), horizon) {
+					dropped += events.len() as u64;
+					false
+				} else {
+					true
+				}
+			});
+			if dropped > 0 {
+				warn!(operator = A::NAME, dropped, "mutations targeting sealed coords were dropped");
+			}
+			if buckets.is_empty() {
+				return Ok(());
+			}
 		}
 
 		let results = {
@@ -506,14 +534,19 @@ mod tests {
 	}
 
 	#[test]
-	fn late_window_event_dropped() {
+	fn late_window_event_accepted_without_sealing() {
+		// The rolling driver carries no seal envelope in this fixture, so under
+		// grace semantics late events merge into their (older) coord instead of
+		// being dropped by an implicit high-water gate. Time-based sealing for
+		// rolling ledgers is the sub-flow face's job; capacity-based SDK rolling
+		// is bounded by its capacity eviction.
 		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
 			.build()
 			.expect("harness");
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 60, 5.0)).build()).expect("apply");
 		let out =
 			h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
-		assert_eq!(out.diffs.len(), 0, "event for a buried window is dropped");
+		assert!(!out.diffs.is_empty(), "ungated rolling driver accepts late events");
 	}
 
 	#[test]

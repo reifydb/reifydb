@@ -12,35 +12,18 @@ use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use serde::{Serialize, de::DeserializeOwned};
 
-use crate::{
-	key::flow_node_internal_state::FlowNodeInternalStateKey,
-	window::{
-		accumulator::WindowAccumulator,
-		engine::{
-			AccumulatorEvent, EmitKind, GroupMeta, LatePolicy, MetaKey,
-			config::WindowEngineConfig,
-			meta_key_for,
-			rolling::{RollingBuckets, RollingBuffer, RollingResult},
-		},
-		span::Slot,
-		state::StateCache,
-		store::WindowStore,
+use crate::window::{
+	accumulator::WindowAccumulator,
+	engine::{
+		AccumulatorEvent, EmitKind, GroupMeta, MetaKey, RunningKey,
+		config::WindowEngineConfig,
+		meta_key_for,
+		rolling::{RollingBuckets, RollingBuffer, RollingResult},
 	},
+	span::Slot,
+	state::StateCache,
+	store::WindowStore,
 };
-
-#[derive(Clone, Copy, Hash, PartialEq, Eq)]
-struct RunningKey(RowNumber);
-
-impl IntoEncodedKey for &RunningKey {
-	fn into_encoded_key(self) -> EncodedKey {
-		let inner = (&self.0).into_encoded_key();
-		let inner = inner.as_ref();
-		let mut bytes = Vec::with_capacity(1 + inner.len());
-		bytes.push(FlowNodeInternalStateKey::WINDOW_RUNNING_TAG);
-		bytes.extend_from_slice(inner);
-		EncodedKey::new(bytes)
-	}
-}
 
 type MetaLoaded<G, C> = HashMap<G, GroupMeta<C>>;
 type BufferRows<G> = HashMap<G, (RowNumber, bool)>;
@@ -59,7 +42,6 @@ pub struct RollingIncrementalEngine<G, C, Accumulator, Running> {
 	buffers: StateCache<RowNumber, RollingBuffer<C, Accumulator>>,
 	running: StateCache<RunningKey, Running>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
-	late_policy: LatePolicy,
 	_pd: PhantomData<G>,
 }
 
@@ -78,7 +60,6 @@ where
 			),
 			running: StateCache::<RunningKey, Running>::new(config.state_cache_capacity()),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
-			late_policy: config.late_policy(),
 			_pd: PhantomData,
 		}
 	}
@@ -104,7 +85,6 @@ where
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
 		let buffer_rows = self.resolve_buffer_rows(store, &buckets, &meta_loaded, &row_key)?;
 
-		let late_policy = self.late_policy;
 		let mut group_slots: BTreeMap<G, GroupSlot<C, Accumulator, Running, Output>> = BTreeMap::new();
 
 		for ((group, coord), events) in buckets {
@@ -149,19 +129,12 @@ where
 				}
 			};
 
-			let late = matches!(meta.high_water, Some(hw) if coord < hw)
-				&& matches!(late_policy, LatePolicy::Drop)
-				&& !slot.buffer.contains_key(&coord);
-
 			let mut accumulator = slot.buffer.remove(&coord).unwrap_or_default();
 			let old_value = accumulator.finalize();
 			let mut touched = false;
 			for event in events {
 				match event {
 					AccumulatorEvent::Add(c) => {
-						if late {
-							continue;
-						}
 						accumulator.add(&c);
 						touched = true;
 					}

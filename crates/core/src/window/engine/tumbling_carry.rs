@@ -15,8 +15,8 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use crate::window::{
 	accumulator::WindowAccumulator,
 	engine::{
-		AccumulatorEvent, EmitKind, LatePolicy, MetaKey, WindowResult, config::TumblingCarryConfig,
-		meta_key_for, tumbling::TumblingBuckets,
+		AccumulatorEvent, EmitKind, MetaKey, WindowResult, config::TumblingCarryConfig, meta_key_for,
+		tumbling::TumblingBuckets,
 	},
 	span::{Slot, WindowSpan},
 	state::StateCache,
@@ -65,7 +65,6 @@ type SlotResolved = Vec<Option<(RowNumber, bool)>>;
 pub struct TumblingCarryEngine<G, C: Slot, Accumulator, Carry, Output> {
 	accumulators: StateCache<RowNumber, Accumulator>,
 	meta: StateCache<MetaKey, CarryMeta<C, Carry, Output>>,
-	late_policy: LatePolicy,
 	retention: Option<C::Duration>,
 	_pd: PhantomData<G>,
 }
@@ -86,7 +85,6 @@ where
 			meta: StateCache::<MetaKey, CarryMeta<C, Carry, Output>>::new_internal(
 				base.internal_state_cache_capacity(),
 			),
-			late_policy: base.late_policy(),
 			retention: config.retention(),
 			_pd: PhantomData,
 		}
@@ -112,7 +110,6 @@ where
 		if buckets.is_empty() {
 			return Ok(Vec::new());
 		}
-		let late_policy = self.late_policy;
 		let retention = self.retention;
 		let mut meta_loaded = self.warm_and_load_meta(store, &buckets)?;
 		let slot_resolved = self.resolve_survivor_rows(store, &buckets, &meta_loaded, &row_key)?;
@@ -123,9 +120,6 @@ where
 			if matches!(entry.sealed_up_to, Some(s) if span.start <= s) {
 				continue;
 			}
-			let drop_adds = matches!(late_policy, LatePolicy::Drop)
-				&& matches!(entry.high_water, Some(hw) if span.start < hw);
-
 			let row_number = match entry.windows.get(&span.start).map(|w| w.row_number) {
 				Some(rn) => rn,
 				None => match slot_pre {
@@ -140,9 +134,6 @@ where
 			for event in events {
 				match event {
 					AccumulatorEvent::Add(c) => {
-						if drop_adds {
-							continue;
-						}
 						accumulator.add(&c);
 						changed = true;
 					}
@@ -311,11 +302,8 @@ where
 		let mut slot_survives: Vec<bool> = Vec::with_capacity(buckets.len());
 		for (group, span) in buckets.keys() {
 			let meta = meta_loaded.get(group);
-			let initial_high_water = meta.and_then(|m| m.high_water);
 			let sealed = matches!(meta.and_then(|m| m.sealed_up_to), Some(s) if span.start <= s);
-			let survives = !sealed
-				&& (matches!(self.late_policy, LatePolicy::Process)
-					|| initial_high_water.is_none_or(|hw| span.start >= hw));
+			let survives = !sealed;
 			slot_survives.push(survives);
 			if survives {
 				survivor_keys.push(row_key(group, span.start));

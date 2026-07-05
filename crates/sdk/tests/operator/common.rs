@@ -31,7 +31,6 @@ use reifydb_core::{
 			},
 			sealing::{SealingEndpoint, SealingMax, SealingMin},
 		},
-		engine::LatePolicy,
 		span::WindowSpan,
 	},
 };
@@ -63,24 +62,12 @@ use serde::{Deserialize, Serialize};
 pub const WINDOW: u64 = 60;
 /// Lateness bound for the sealing OHLCV fixture (< WINDOW so aging is reachable
 /// within a single window).
-pub const OHLCV_LATENESS: u64 = 20;
+pub const OHLCV_GRACE: u64 = 20;
 /// Rolling-buffer capacity shared by the rolling/incremental fixtures.
 pub const ROLLING_CAPACITY: usize = 3;
 
 /// Seeds replayed for every config so a failure names a reproducible run.
 pub const SEEDS: [u64; 6] = [1, 7, 42, 99, 12_345, 2_024];
-
-/// Both late-event policies, replayed by every differential suite so the
-/// `Process` path (the production default) is covered, not just `Drop`.
-pub const POLICIES: [LatePolicy; 2] = [LatePolicy::Drop, LatePolicy::Process];
-
-/// Config-string label the windowed drivers parse back into a `LatePolicy`.
-pub fn policy_label(policy: LatePolicy) -> &'static str {
-	match policy {
-		LatePolicy::Drop => "drop",
-		LatePolicy::Process => "process",
-	}
-}
 
 /// One event per Change. Forces the operator to snapshot per single diff;
 /// the cleanest setting for boundary/high-water reasoning.
@@ -322,7 +309,7 @@ impl TumblingRegistration for MinTumbling {
 
 /// Open/high/low/close over a bounded-lateness window. `high`/`low` use the
 /// sealing extrema; `open`/`close` use the sealing endpoint. The within-window
-/// coordinate (the slot) drives aging, so events more than `OHLCV_LATENESS`
+/// coordinate (the slot) drives aging, so events more than `OHLCV_GRACE`
 /// behind the window high-water seal into the O(1) scalar.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OhlcvAcc {
@@ -334,9 +321,9 @@ pub struct OhlcvAcc {
 impl Default for OhlcvAcc {
 	fn default() -> Self {
 		Self {
-			high: SealingMax::with_lateness(OHLCV_LATENESS),
-			low: SealingMin::with_lateness(OHLCV_LATENESS),
-			ends: SealingEndpoint::with_lateness(OHLCV_LATENESS),
+			high: SealingMax::with_grace(OHLCV_GRACE),
+			low: SealingMin::with_grace(OHLCV_GRACE),
+			ends: SealingEndpoint::with_grace(OHLCV_GRACE),
 		}
 	}
 }

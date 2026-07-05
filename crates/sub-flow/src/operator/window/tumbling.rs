@@ -25,6 +25,7 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime, duration::Duration},
 };
 use serde::{Deserialize, Serialize};
+use tracing::Span;
 
 use super::{
 	accumulator::{RowAccumulator, WindowSlotKey},
@@ -305,7 +306,7 @@ pub(super) fn finish_tumbling_engine(
 	window_max_ts: HashMap<(Hash128, WindowSpan<u64>), u64>,
 	kinds: &[SlotKind],
 	engine_config: WindowEngineConfig,
-	lateness: Option<Duration>,
+	grace: Duration,
 	index: bool,
 ) -> Result<Vec<Diff>> {
 	let results = {
@@ -319,7 +320,7 @@ pub(super) fn finish_tumbling_engine(
 			&mut store,
 			buckets,
 			|hash, window_start| core.create_window_key(*hash, window_start),
-			|| RowAccumulator::new(kinds, lateness),
+			|| RowAccumulator::new(kinds, grace),
 		)?;
 		engine.flush(&mut store)?;
 		res
@@ -481,7 +482,14 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 		operator.advance_event_watermark(txn, batch_max)?;
 	}
 
-	gate_closed_buckets(operator, txn, &mut buckets, &mut arrival, &window_max_ts, window_size_ms)?;
+	gate_sealed_buckets(
+		operator,
+		txn,
+		&mut buckets,
+		&mut arrival,
+		&window_max_ts,
+		window_size_ms + operator.grace_ms(),
+	)?;
 
 	let diffs = finish_tumbling_engine(
 		&operator.core,
@@ -493,7 +501,7 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 		window_max_ts,
 		&kinds,
 		operator.engine_config(),
-		operator.sealing_lateness(),
+		operator.grace(),
 		!operator.is_count_based(),
 	)?;
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
@@ -521,6 +529,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let is_count = operator.is_count_based();
 	let is_event = operator.ts.is_some();
+	let window_size_ms = operator.size_duration().map(|d| d.milliseconds().unwrap_or(0) as u64).unwrap_or(0);
 
 	let mut buckets: EngineBuckets = BTreeMap::new();
 	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
@@ -699,8 +708,14 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		operator.advance_event_watermark(txn, batch_max)?;
 	}
 
-	let window_size_ms = operator.size_duration().map(|d| d.milliseconds().unwrap_or(0) as u64).unwrap_or(0);
-	gate_closed_buckets(operator, txn, &mut buckets, &mut arrival, &window_max_ts, window_size_ms)?;
+	gate_sealed_buckets(
+		operator,
+		txn,
+		&mut buckets,
+		&mut arrival,
+		&window_max_ts,
+		window_size_ms + operator.grace_ms(),
+	)?;
 
 	let diffs = finish_tumbling_engine(
 		&operator.core,
@@ -712,7 +727,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		window_max_ts,
 		&kinds,
 		operator.engine_config(),
-		operator.sealing_lateness(),
+		operator.grace(),
 		!operator.is_count_based(),
 	)?;
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
@@ -938,7 +953,14 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		operator.advance_event_watermark(txn, batch_max)?;
 	}
 
-	gate_closed_buckets(operator, txn, &mut buckets, &mut arrival, &window_max_ts, gap_ms)?;
+	gate_sealed_buckets(
+		operator,
+		txn,
+		&mut buckets,
+		&mut arrival,
+		&window_max_ts,
+		operator.session_gap_ms() + operator.grace_ms(),
+	)?;
 
 	let mut diffs = finish_tumbling_engine(
 		&operator.core,
@@ -950,7 +972,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		window_max_ts,
 		&kinds,
 		operator.engine_config(),
-		operator.sealing_lateness(),
+		operator.grace(),
 		!operator.is_count_based(),
 	)?;
 
@@ -987,11 +1009,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
 }
 
-pub(super) fn window_closed(watermark: u64, last_event_time: u64, cutoff_ms: u64) -> bool {
-	watermark.saturating_sub(last_event_time) > cutoff_ms
-}
-
-fn gate_closed_buckets(
+fn gate_sealed_buckets(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
 	buckets: &mut EngineBuckets,
@@ -999,35 +1017,40 @@ fn gate_closed_buckets(
 	window_max_ts: &HashMap<(Hash128, WindowSpan<u64>), u64>,
 	cutoff_ms: u64,
 ) -> Result<()> {
-	if cutoff_ms == 0 || operator.kind.time() != TimeDomain::Event || operator.is_count_based() {
+	if cutoff_ms == 0 || operator.is_count_based() || operator.kind.time() != TimeDomain::Event {
 		return Ok(());
 	}
 	let watermark = operator.load_expiry_watermark(txn)?;
-	let mut closed: Vec<(Hash128, WindowSpan<u64>)> = Vec::new();
+	let mut sealed: Vec<(Hash128, WindowSpan<u64>)> = Vec::new();
+	let mut dropped = 0u64;
 	{
 		let mut store = FlowWindowStore::new(txn, operator.core.node);
-		for key in buckets.keys() {
+		for (key, events) in buckets.iter() {
 			let (hash, span) = key;
 			let meta_key = operator.core.create_engine_meta_key(*hash, span.start);
 			let prior_last =
 				store.state_get::<EngineWindowMeta>(&meta_key)?.map(|m| m.last_event_time).unwrap_or(0);
 			let batch_last = window_max_ts.get(key).copied().unwrap_or(0);
-			if window_closed(watermark, prior_last.max(batch_last), cutoff_ms) {
-				closed.push(*key);
+			let last = prior_last.max(batch_last);
+			if last > 0 && watermark.saturating_sub(last) > cutoff_ms {
+				dropped += events.len() as u64;
+				sealed.push(*key);
 			}
 		}
 	}
-	if closed.is_empty() {
+	if sealed.is_empty() {
 		return Ok(());
 	}
-	for key in &closed {
+	for key in &sealed {
 		buckets.remove(key);
 	}
-	let closed: HashSet<(Hash128, WindowSpan<u64>)> = closed.into_iter().collect();
-	arrival.retain(|key| !closed.contains(key));
+	let sealed: HashSet<(Hash128, WindowSpan<u64>)> = sealed.into_iter().collect();
+	arrival.retain(|key| !sealed.contains(key));
+	operator.note_sealed_drops(dropped);
 	Ok(())
 }
 
+#[tracing::instrument(name = "flow::window::tick_expire", level = "debug", skip_all, fields(node = operator.core.node.0, expired = tracing::field::Empty))]
 fn tick_expire_by_cutoff(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
@@ -1054,6 +1077,7 @@ fn tick_expire_by_cutoff(
 		res
 	};
 	warn_when_expiry_capped(operator, expired.len());
+	Span::current().record("expired", expired.len());
 	let mut diffs = Vec::new();
 	let mut store = FlowWindowStore::new(txn, operator.core.node);
 	for window in expired {
@@ -1076,7 +1100,7 @@ pub fn tick_expire_session_engine(
 	txn: &mut FlowTransaction,
 	current_timestamp: u64,
 ) -> Result<Vec<Diff>> {
-	tick_expire_by_cutoff(operator, txn, current_timestamp, operator.session_gap_ms())
+	tick_expire_by_cutoff(operator, txn, current_timestamp, operator.session_gap_ms() + operator.grace_ms())
 }
 
 pub fn tick_expire_engine_windows(
@@ -1088,27 +1112,37 @@ pub fn tick_expire_engine_windows(
 		Some(d) => d.milliseconds().unwrap_or(0) as u64,
 		None => return Ok(Vec::new()),
 	};
-	tick_expire_by_cutoff(operator, txn, current_timestamp, window_size_ms)
+	tick_expire_by_cutoff(operator, txn, current_timestamp, window_size_ms + operator.grace_ms())
 }
 
 #[cfg(test)]
 mod tests {
-	use super::window_closed;
+	use reifydb_core::window::engine::{is_sealed, seal_horizon};
 
 	#[test]
-	fn closed_only_strictly_beyond_cutoff() {
-		// The routing gate and tick_expire_by_cutoff share this predicate; if they disagree
-		// (e.g. one uses > and the other >=) a window can be expired but then re-created by a
-		// later delta, which is exactly the resurrection divergence this fix removes.
-		assert!(!window_closed(14, 14, 5), "watermark at last event time is open");
-		assert!(!window_closed(19, 14, 5), "exactly cutoff behind is still open");
-		assert!(window_closed(20, 14, 5), "one past the cutoff is closed");
+	fn gate_and_tick_expiry_agree_on_the_seal_boundary() {
+		// The routing gate (gate_sealed_buckets: watermark - last_event_time > cutoff)
+		// and the tick expire sweep (expiry index keyed by last_event_time, threshold
+		// watermark - cutoff - 1, inclusive) must agree at every watermark, or a window
+		// can be swept but then re-created by a late delta - the resurrection
+		// divergence. Both are activity-based: spans carry synthetic ids for sliding
+		// and session windows, so wall-clock math must never touch span bounds.
+		let cutoff = 19u64;
+		let last = 10u64;
+		let gate_seals = |wm: u64| wm.saturating_sub(last) > cutoff;
+		let tick_sweeps = |wm: u64| last <= wm.saturating_sub(cutoff).saturating_sub(1);
+		for wm in 0..100u64 {
+			assert_eq!(gate_seals(wm), tick_sweeps(wm), "gate and sweep diverge at watermark {wm}");
+		}
+		assert!(!gate_seals(last + cutoff), "watermark exactly cutoff past the last event is still mutable");
+		assert!(gate_seals(last + cutoff + 1), "one past the cutoff is sealed");
 	}
 
 	#[test]
-	fn out_of_order_event_does_not_underflow() {
-		// Event time behind the watermark must not panic or wrap; it is simply not closed by
-		// virtue of a saturating distance of zero.
-		assert!(!window_closed(3, 10, 5), "event ahead of watermark saturates to open");
+	fn seal_horizon_saturates_for_young_watermarks() {
+		// A watermark smaller than seal_after must not wrap; nothing is sealed yet.
+		assert_eq!(seal_horizon(3, 10), 0, "young watermark saturates to zero horizon");
+		assert!(!is_sealed(0, seal_horizon(3, 10)), "anchor zero is not below a zero horizon");
+		assert!(is_sealed(4, seal_horizon(20, 10)), "anchor below watermark - seal_after is sealed");
 	}
 }

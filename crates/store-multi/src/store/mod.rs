@@ -157,12 +157,7 @@ impl StandardMultiStore {
 		}
 	}
 
-	pub fn insert_read_key(
-		&self,
-		key: EncodedKey,
-		version: CommitVersion,
-		value: Option<CowVec<u8>>,
-	) {
+	pub fn insert_read_key(&self, key: EncodedKey, version: CommitVersion, value: Option<CowVec<u8>>) {
 		if let Some(read) = &self.read {
 			read.insert(key, version, value);
 		}

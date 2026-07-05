@@ -28,6 +28,14 @@ pub trait WindowAccumulator: Clone + Debug + Default + Serialize + DeserializeOw
 
 	fn is_empty(&self) -> bool;
 
+	fn merge(&mut self, _other: &Self) {
+		unimplemented!("this accumulator does not support merge")
+	}
+
+	fn unmerge(&mut self, _other: &Self) {
+		unimplemented!("this accumulator does not support unmerge")
+	}
+
 	fn stamp(&self) -> Option<u64> {
 		None
 	}

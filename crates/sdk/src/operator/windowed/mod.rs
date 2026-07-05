@@ -26,19 +26,27 @@ pub mod rolling_incremental;
 pub mod tumbling;
 pub mod tumbling_carry;
 
-use reifydb_core::window::engine::{LatePolicy, config::WindowEngineConfig};
+use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::window::{engine::config::WindowEngineConfig, store::WindowStore};
+use reifydb_value::Result;
 
 use crate::config::Config;
 
-pub(crate) fn late_policy_from_config(config: &Config) -> LatePolicy {
-	match config.str("__late_policy").as_deref() {
-		Some("process") => LatePolicy::Process,
-		_ => LatePolicy::Drop,
+const SEAL_WATERMARK_KEY: &[u8] = b"sdkwmk";
+
+pub(crate) fn advance_seal_watermark(store: &mut impl WindowStore, batch_max: u64) -> Result<u64> {
+	let key = EncodedKey::new(SEAL_WATERMARK_KEY.to_vec());
+	let current: u64 = store.internal_get(&key)?.unwrap_or(0);
+	if batch_max > current {
+		store.internal_set(&key, &batch_max)?;
+		Ok(batch_max)
+	} else {
+		Ok(current)
 	}
 }
 
 pub(crate) fn window_engine_config(config: &Config) -> WindowEngineConfig {
-	let mut builder = WindowEngineConfig::builder().late_policy(late_policy_from_config(config));
+	let mut builder = WindowEngineConfig::builder();
 	if let Some(capacity) = config.usize("state_cache_size") {
 		builder = builder.state_cache_capacity(capacity);
 	}

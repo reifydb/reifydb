@@ -62,7 +62,7 @@ fn sealing_endpoint_late_earlier_arrival_updates_open() {
 	// An observation that arrives after a seal but is *earlier* than the
 	// sealed open must become the new open: open is the earliest
 	// observation overall, not merely the first to seal.
-	let mut accumulator: SealingEndpoint<u64, i64> = SealingEndpoint::with_lateness(10);
+	let mut accumulator: SealingEndpoint<u64, i64> = SealingEndpoint::with_grace(10);
 	accumulator.add(&(5, 50));
 	accumulator.add(&(20, 200)); // hw=20; coord 5 ages (20-5=15>10) -> sealed_open=(5,50)
 	assert_eq!(accumulator.open(), Some(&50), "open frozen to the earliest seen so far");
@@ -76,7 +76,7 @@ fn sealing_endpoint_late_earlier_arrival_updates_open() {
 fn sealing_endpoint_late_middle_arrival_keeps_open() {
 	// Counterpart to the above: a late arrival whose coord is later than the
 	// sealed open must NOT move open.
-	let mut accumulator: SealingEndpoint<u64, i64> = SealingEndpoint::with_lateness(10);
+	let mut accumulator: SealingEndpoint<u64, i64> = SealingEndpoint::with_grace(10);
 	accumulator.add(&(2, 999));
 	accumulator.add(&(20, 200)); // hw=20; coord 2 ages -> sealed_open=(2,999)
 	assert_eq!(accumulator.open(), Some(&999));

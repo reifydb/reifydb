@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::window::{engine::LatePolicy, span::Slot};
+use crate::window::span::Slot;
 
 pub const DEFAULT_STATE_CACHE_CAPACITY: usize = 1024;
 
 pub const DEFAULT_INTERNAL_STATE_CACHE_CAPACITY: usize = 1024;
 
-pub const DEFAULT_EXPIRE_BATCH: usize = 4096;
+pub const DEFAULT_EXPIRE_BATCH: usize = 1024;
 
 #[derive(Clone, Copy, Debug)]
 pub struct WindowEngineConfig {
-	late_policy: LatePolicy,
 	state_cache_capacity: usize,
 	internal_state_cache_capacity: usize,
 	expire_batch: usize,
@@ -20,10 +19,6 @@ pub struct WindowEngineConfig {
 impl WindowEngineConfig {
 	pub fn builder() -> WindowEngineConfigBuilder {
 		WindowEngineConfigBuilder::default()
-	}
-
-	pub fn late_policy(&self) -> LatePolicy {
-		self.late_policy
 	}
 
 	pub fn state_cache_capacity(&self) -> usize {
@@ -41,7 +36,6 @@ impl WindowEngineConfig {
 
 #[derive(Clone, Copy, Debug)]
 pub struct WindowEngineConfigBuilder {
-	late_policy: LatePolicy,
 	state_cache_capacity: usize,
 	internal_state_cache_capacity: usize,
 	expire_batch: usize,
@@ -50,7 +44,6 @@ pub struct WindowEngineConfigBuilder {
 impl Default for WindowEngineConfigBuilder {
 	fn default() -> Self {
 		Self {
-			late_policy: LatePolicy::Drop,
 			state_cache_capacity: DEFAULT_STATE_CACHE_CAPACITY,
 			internal_state_cache_capacity: DEFAULT_INTERNAL_STATE_CACHE_CAPACITY,
 			expire_batch: DEFAULT_EXPIRE_BATCH,
@@ -59,11 +52,6 @@ impl Default for WindowEngineConfigBuilder {
 }
 
 impl WindowEngineConfigBuilder {
-	pub fn late_policy(mut self, late_policy: LatePolicy) -> Self {
-		self.late_policy = late_policy;
-		self
-	}
-
 	pub fn state_cache_capacity(mut self, capacity: usize) -> Self {
 		self.state_cache_capacity = capacity;
 		self
@@ -81,7 +69,6 @@ impl WindowEngineConfigBuilder {
 
 	pub fn build(self) -> WindowEngineConfig {
 		WindowEngineConfig {
-			late_policy: self.late_policy,
 			state_cache_capacity: self.state_cache_capacity,
 			internal_state_cache_capacity: self.internal_state_cache_capacity,
 			expire_batch: self.expire_batch,

@@ -394,7 +394,7 @@ fn keyed_invertible_postcard_roundtrip() {
 
 #[test]
 fn sealing_max_seals_aged_and_keeps_recent_tail_removal_safe() {
-	let mut accumulator: SealingMax<u64, i64> = SealingMax::with_lateness(10);
+	let mut accumulator: SealingMax<u64, i64> = SealingMax::with_grace(10);
 	accumulator.add(&(0, 5));
 	accumulator.add(&(5, 8));
 	accumulator.add(&(12, 3));
@@ -409,7 +409,7 @@ fn sealing_max_seals_aged_and_keeps_recent_tail_removal_safe() {
 
 #[test]
 fn sealing_min_seals_aged_extreme() {
-	let mut accumulator: SealingMin<u64, i64> = SealingMin::with_lateness(10);
+	let mut accumulator: SealingMin<u64, i64> = SealingMin::with_grace(10);
 	accumulator.add(&(0, 2));
 	accumulator.add(&(5, 9));
 	accumulator.add(&(12, 7));
@@ -430,7 +430,7 @@ fn sealing_max_default_never_seals_and_is_fully_invertible() {
 
 #[test]
 fn sealing_endpoint_freezes_open_and_tracks_live_close() {
-	let mut accumulator: SealingEndpoint<u64, i64> = SealingEndpoint::with_lateness(10);
+	let mut accumulator: SealingEndpoint<u64, i64> = SealingEndpoint::with_grace(10);
 	accumulator.add(&(0, 100));
 	accumulator.add(&(5, 200));
 	accumulator.add(&(12, 300));
@@ -455,14 +455,14 @@ fn sealing_endpoint_default_is_fully_invertible() {
 
 #[test]
 fn sealing_primitives_postcard_roundtrip() {
-	let mut mx: SealingMax<u64, i64> = SealingMax::with_lateness(10);
+	let mut mx: SealingMax<u64, i64> = SealingMax::with_grace(10);
 	mx.add(&(0, 5));
 	mx.add(&(12, 8));
 	let bytes = to_allocvec(&mx).expect("serialize");
 	let restored: SealingMax<u64, i64> = from_bytes(&bytes).expect("deserialize");
 	assert_eq!(restored, mx);
 
-	let mut ep: SealingEndpoint<u64, i64> = SealingEndpoint::with_lateness(10);
+	let mut ep: SealingEndpoint<u64, i64> = SealingEndpoint::with_grace(10);
 	ep.add(&(0, 100));
 	ep.add(&(12, 300));
 	let bytes = to_allocvec(&ep).expect("serialize");
@@ -489,7 +489,7 @@ impl SealFold for AbsPathFold {
 }
 
 #[test]
-fn sealing_fold_no_lateness_sums_all_adjacent_steps() {
+fn sealing_fold_no_grace_sums_all_adjacent_steps() {
 	let mut accumulator: SealingFold<u64, AbsPathFold> = SealingFold::default();
 	accumulator.add(&(0, 10.0));
 	accumulator.add(&(1, 20.0));
@@ -500,7 +500,7 @@ fn sealing_fold_no_lateness_sums_all_adjacent_steps() {
 
 #[test]
 fn sealing_fold_seals_aged_prefix_exactly_for_forward_data() {
-	let mut accumulator: SealingFold<u64, AbsPathFold> = SealingFold::with_lateness(1);
+	let mut accumulator: SealingFold<u64, AbsPathFold> = SealingFold::with_grace(1);
 	accumulator.add(&(0, 10.0));
 	accumulator.add(&(1, 20.0));
 	accumulator.add(&(2, 15.0));
@@ -509,7 +509,7 @@ fn sealing_fold_seals_aged_prefix_exactly_for_forward_data() {
 
 #[test]
 fn sealing_fold_aged_removal_is_dropped_no_op_but_live_removal_is_safe() {
-	let mut accumulator: SealingFold<u64, AbsPathFold> = SealingFold::with_lateness(1);
+	let mut accumulator: SealingFold<u64, AbsPathFold> = SealingFold::with_grace(1);
 	accumulator.add(&(0, 10.0));
 	accumulator.add(&(1, 20.0));
 	accumulator.add(&(2, 15.0));
@@ -528,7 +528,7 @@ fn sealing_fold_default_add_remove_is_inverse() {
 
 #[test]
 fn sealing_fold_postcard_roundtrip() {
-	let mut accumulator: SealingFold<u64, AbsPathFold> = SealingFold::with_lateness(1);
+	let mut accumulator: SealingFold<u64, AbsPathFold> = SealingFold::with_grace(1);
 	accumulator.add(&(0, 10.0));
 	accumulator.add(&(1, 20.0));
 	accumulator.add(&(2, 15.0));
@@ -539,7 +539,7 @@ fn sealing_fold_postcard_roundtrip() {
 
 #[test]
 fn sealing_tail_drops_aged_keeps_recent() {
-	let mut tail: SealingTail<u64, i64> = SealingTail::with_lateness(10);
+	let mut tail: SealingTail<u64, i64> = SealingTail::with_grace(10);
 	tail.add(0, 1);
 	tail.add(5, 2);
 	tail.add(12, 3);
@@ -555,12 +555,12 @@ fn sealing_tail_default_never_drops() {
 	let mut tail: SealingTail<u64, i64> = SealingTail::default();
 	tail.add(0, 1);
 	tail.add(100, 2);
-	assert_eq!(tail.tail().len(), 2, "with no lateness bound nothing is dropped");
+	assert_eq!(tail.tail().len(), 2, "with no grace bound nothing is dropped");
 }
 
 #[test]
 fn sealing_tail_postcard_roundtrip() {
-	let mut tail: SealingTail<u64, i64> = SealingTail::with_lateness(10);
+	let mut tail: SealingTail<u64, i64> = SealingTail::with_grace(10);
 	tail.add(0, 1);
 	tail.add(12, 3);
 	let bytes = to_allocvec(&tail).expect("serialize");
@@ -569,7 +569,7 @@ fn sealing_tail_postcard_roundtrip() {
 }
 
 #[test]
-fn tail_acc_no_lateness_retains_whole_window_like_retained_acc() {
+fn tail_acc_no_grace_retains_whole_window_like_retained_acc() {
 	let mut accumulator: TailAccumulator<u64, i64> = TailAccumulator::default();
 	accumulator.add(&(0, 10));
 	accumulator.add(&(100, 20));
@@ -585,8 +585,8 @@ fn tail_acc_default_add_remove_is_inverse() {
 }
 
 #[test]
-fn tail_acc_with_lateness_drops_aged_from_finalize() {
-	let mut accumulator: TailAccumulator<u64, i64> = TailAccumulator::with_lateness(10);
+fn tail_acc_with_grace_drops_aged_from_finalize() {
+	let mut accumulator: TailAccumulator<u64, i64> = TailAccumulator::with_grace(10);
 	accumulator.add(&(0, 10));
 	accumulator.add(&(5, 20));
 	accumulator.add(&(12, 30));
@@ -596,7 +596,7 @@ fn tail_acc_with_lateness_drops_aged_from_finalize() {
 
 #[test]
 fn tail_acc_postcard_roundtrip() {
-	let mut accumulator: TailAccumulator<u64, i64> = TailAccumulator::with_lateness(10);
+	let mut accumulator: TailAccumulator<u64, i64> = TailAccumulator::with_grace(10);
 	accumulator.add(&(0, 1));
 	accumulator.add(&(12, 3));
 	let bytes = to_allocvec(&accumulator).expect("serialize");

@@ -10,11 +10,12 @@ use reifydb_core::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind,
+			AccumulatorEvent, EmitKind, is_sealed,
 			rolling::{
 				RollingBuckets, RollingBuffer, RollingEngine, RollingEviction, RollingExpiry,
 				RollingResult,
 			},
+			seal_horizon,
 		},
 		store::WindowStore,
 	},
@@ -26,6 +27,7 @@ use reifydb_value::{
 	value::{Value, duration::Duration, row_number::RowNumber},
 };
 use serde::{Deserialize, Serialize};
+use tracing::Span;
 
 use super::{
 	accumulator::{RowAccumulator, StampedAccumulator, WindowSlotKey},
@@ -65,15 +67,21 @@ struct RollingWindowMeta {
 
 type RollingEngineBuckets = RollingBuckets<Hash128, u64, (WindowSlotKey, Vec<Option<Value>>)>;
 
+fn rolling_runnable(operator: &WindowOperator, kinds: &[SlotKind]) -> bool {
+	!operator.is_count_based()
+		&& operator.rolling_lag_ms() == 0
+		&& RowAccumulator::invertible(kinds, operator.grace())
+}
+
 fn combine_rolling(
 	buffer: &RollingBuffer<u64, RowAccumulator>,
 	kinds: &[SlotKind],
 	lag_ms: u64,
-	lateness: Option<Duration>,
+	grace: Duration,
 ) -> Option<Vec<Value>> {
 	let (&newest, _) = buffer.iter().next_back()?;
 	let aggregate_cutoff = newest.saturating_sub(lag_ms);
-	let mut merged = RowAccumulator::new(kinds, lateness);
+	let mut merged = RowAccumulator::new(kinds, grace);
 	let mut any = false;
 	for (_coord, accumulator) in buffer.range(..=aggregate_cutoff) {
 		merged.merge(accumulator);
@@ -134,7 +142,7 @@ fn route_rolling_columns(
 pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let is_count = operator.is_count_based();
-	let lateness = operator.sealing_lateness();
+	let grace = operator.grace();
 	let lag_ms = operator.rolling_lag_ms();
 	let is_event_time = !is_count && operator.kind.time() == TimeDomain::Event;
 	let size_ms = operator.size_duration().map(|d| d.milliseconds().unwrap_or(0) as u64).unwrap_or(0);
@@ -214,23 +222,60 @@ pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		RollingEviction::Before(operator.core.current_timestamp().saturating_sub(size_ms + lag_ms))
 	};
 
+	if is_event_time {
+		let watermark = operator.load_event_watermark(txn)?;
+		let horizon = seal_horizon(watermark, size_ms + lag_ms + operator.grace_ms());
+		let mut dropped = 0u64;
+		buckets.retain(|&(_, coord), events| {
+			if is_sealed(coord, horizon) {
+				dropped += events.len() as u64;
+				false
+			} else {
+				true
+			}
+		});
+		operator.note_sealed_drops(dropped);
+		if buckets.is_empty() {
+			return Ok(Change::from_flow(
+				operator.core.node,
+				change.version,
+				Vec::new(),
+				change.changed_at,
+			));
+		}
+	}
+
 	let results = {
 		let mut store = FlowWindowStore::new(txn, operator.core.node);
 		for hash in &touched {
 			let key = operator.core.create_window_key(*hash, 0);
 			store.get_or_create_row_number(&key)?;
 		}
-		let mut engine = RollingEngine::<Hash128, u64, RowAccumulator>::new(operator.engine_config());
-		let res = engine.apply_evicting(
-			&mut store,
-			buckets,
-			eviction,
-			|hash| operator.core.create_window_key(*hash, 0),
-			|| RowAccumulator::new(&kinds, lateness),
-			|_g, buffer| combine_rolling(buffer, &kinds, lag_ms, lateness),
-		)?;
-		engine.flush(&mut store)?;
-		res
+		if rolling_runnable(operator, &kinds) {
+			let mut engine =
+				RollingEngine::<Hash128, u64, RowAccumulator>::new_runnable(operator.engine_config());
+			let res = engine.apply_running(
+				&mut store,
+				buckets,
+				eviction,
+				|hash| operator.core.create_window_key(*hash, 0),
+				|| RowAccumulator::new(&kinds, grace),
+			)?;
+			engine.flush(&mut store)?;
+			res
+		} else {
+			let mut engine = RollingEngine::<Hash128, u64, RowAccumulator>::new(operator.engine_config());
+			let res = engine.apply_evicting(
+				&mut store,
+				buckets,
+				eviction,
+				|hash| operator.core.create_window_key(*hash, 0),
+				|| RowAccumulator::new(&kinds, grace),
+				|_g, buffer| combine_rolling(buffer, &kinds, lag_ms, grace),
+			)?;
+			engine.flush(&mut store)?;
+			res
+		}
 	};
 
 	let diffs = finish_rolling_results(operator, txn, &change, &results, &group_values, &touched)?;
@@ -309,6 +354,7 @@ fn finish_rolling_results(
 	Ok(diffs)
 }
 
+#[tracing::instrument(name = "flow::window::tick_expire_rolling", level = "debug", skip_all, fields(node = operator.core.node.0, expired = tracing::field::Empty))]
 pub fn tick_expire_rolling_engine(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
@@ -322,21 +368,30 @@ pub fn tick_expire_rolling_engine(
 		return Ok(Vec::new());
 	}
 	let lag_ms = operator.rolling_lag_ms();
-	let lateness = operator.sealing_lateness();
+	let grace = operator.grace();
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let cutoff = operator.event_time_cutoff(txn, size_ms + lag_ms)?;
 	let ts_nanos = current_timestamp.saturating_mul(1_000_000);
 
 	let expiries = {
 		let mut store = FlowWindowStore::new(txn, operator.core.node);
-		let mut engine = RollingEngine::<Hash128, u64, RowAccumulator>::new(operator.engine_config());
-		let res = engine.expire_before(&mut store, cutoff, |_g, buffer| {
-			combine_rolling(buffer, &kinds, lag_ms, lateness)
-		})?;
-		engine.flush(&mut store)?;
-		res
+		if rolling_runnable(operator, &kinds) {
+			let mut engine =
+				RollingEngine::<Hash128, u64, RowAccumulator>::new_runnable(operator.engine_config());
+			let res = engine.expire_before_running(&mut store, cutoff)?;
+			engine.flush(&mut store)?;
+			res
+		} else {
+			let mut engine = RollingEngine::<Hash128, u64, RowAccumulator>::new(operator.engine_config());
+			let res = engine.expire_before(&mut store, cutoff, |_g, buffer| {
+				combine_rolling(buffer, &kinds, lag_ms, grace)
+			})?;
+			engine.flush(&mut store)?;
+			res
+		}
 	};
 	warn_when_expiry_capped(operator, expiries.len());
+	Span::current().record("expired", expiries.len());
 
 	let mut diffs = Vec::new();
 	let mut store = FlowWindowStore::new(txn, operator.core.node);
@@ -399,7 +454,7 @@ pub fn tick_expire_rolling_engine(
 type StampedBuckets = RollingBuckets<Hash128, u64, ((WindowSlotKey, Vec<Option<Value>>), u64)>;
 
 fn combine_stamped(buffer: &RollingBuffer<u64, StampedAccumulator>, kinds: &[SlotKind]) -> Option<Vec<Value>> {
-	let mut merged = RowAccumulator::new(kinds, None);
+	let mut merged = RowAccumulator::new(kinds, Duration::default());
 	let mut any = false;
 	for (_coord, accumulator) in buffer.iter() {
 		merged.merge(accumulator.inner());
@@ -535,7 +590,7 @@ pub fn apply_rolling_processing_engine(
 			buckets,
 			RollingEviction::BeforeStamp(cutoff),
 			|hash| operator.core.create_window_key(*hash, 0),
-			|| StampedAccumulator::new(&kinds, None),
+			|| StampedAccumulator::new(&kinds, Duration::default()),
 			|_g, buffer| combine_stamped(buffer, &kinds),
 		)?;
 		engine.flush(&mut store)?;
@@ -546,6 +601,7 @@ pub fn apply_rolling_processing_engine(
 	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
 }
 
+#[tracing::instrument(name = "flow::window::tick_expire_rolling_proc", level = "debug", skip_all, fields(node = operator.core.node.0, expired = tracing::field::Empty))]
 pub fn tick_expire_rolling_processing_engine(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
@@ -572,6 +628,7 @@ pub fn tick_expire_rolling_processing_engine(
 		res
 	};
 	warn_when_expiry_capped(operator, expiries.len());
+	Span::current().record("expired", expiries.len());
 
 	let mut diffs = Vec::new();
 	let mut store = FlowWindowStore::new(txn, operator.core.node);
@@ -629,4 +686,324 @@ pub fn tick_expire_rolling_processing_engine(
 		}
 	}
 	Ok(diffs)
+}
+
+#[cfg(test)]
+mod tests {
+	use std::{
+		collections::{BTreeMap as TestBTreeMap, HashMap as TestHashMap},
+		ops::Bound,
+	};
+
+	use postcard::{from_bytes, to_allocvec};
+	use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+	use reifydb_core::window::{engine::config::WindowEngineConfig, store::WindowStore};
+	use reifydb_value::{Result as ValueResult, value::datetime::DateTime};
+	use serde::{Serialize, de::DeserializeOwned};
+
+	use super::*;
+
+	// Minimal in-memory WindowStore so the differential runs the real engine
+	// paths (buffers, running entries, expiry index) without a FlowTransaction.
+	#[derive(Default)]
+	struct MockStore {
+		state: TestHashMap<Vec<u8>, Vec<u8>>,
+		internal: BTreeMap<Vec<u8>, Vec<u8>>,
+		rows: TestHashMap<Vec<u8>, u64>,
+		next_row: u64,
+	}
+
+	impl WindowStore for MockStore {
+		fn state_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> ValueResult<Option<V>> {
+			Ok(self.state.get(key.as_bytes()).map(|b| from_bytes(b).expect("decode")))
+		}
+		fn state_get_many_visit<V: DeserializeOwned>(
+			&mut self,
+			keys: &[EncodedKey],
+			visit: &mut dyn FnMut(EncodedKey, V) -> ValueResult<()>,
+		) -> ValueResult<()> {
+			for key in keys {
+				if let Some(b) = self.state.get(key.as_bytes()) {
+					visit(key.clone(), from_bytes(b).expect("decode"))?;
+				}
+			}
+			Ok(())
+		}
+		fn state_set<V: Serialize>(&mut self, key: &EncodedKey, value: &V) -> ValueResult<()> {
+			self.state.insert(key.as_bytes().to_vec(), to_allocvec(value).expect("encode"));
+			Ok(())
+		}
+		fn state_remove(&mut self, key: &EncodedKey) -> ValueResult<()> {
+			self.state.remove(key.as_bytes());
+			Ok(())
+		}
+		fn state_drop(&mut self, key: &EncodedKey) -> ValueResult<()> {
+			self.state.remove(key.as_bytes());
+			Ok(())
+		}
+		fn internal_get<V: DeserializeOwned>(&mut self, key: &EncodedKey) -> ValueResult<Option<V>> {
+			Ok(self.internal.get(key.as_bytes()).map(|b| from_bytes(b).expect("decode")))
+		}
+		fn internal_get_many_visit<V: DeserializeOwned>(
+			&mut self,
+			keys: &[EncodedKey],
+			visit: &mut dyn FnMut(EncodedKey, V) -> ValueResult<()>,
+		) -> ValueResult<()> {
+			for key in keys {
+				if let Some(b) = self.internal.get(key.as_bytes()) {
+					visit(key.clone(), from_bytes(b).expect("decode"))?;
+				}
+			}
+			Ok(())
+		}
+		fn internal_set<V: Serialize>(&mut self, key: &EncodedKey, value: &V) -> ValueResult<()> {
+			self.internal.insert(key.as_bytes().to_vec(), to_allocvec(value).expect("encode"));
+			Ok(())
+		}
+		fn internal_remove(&mut self, key: &EncodedKey) -> ValueResult<()> {
+			self.internal.remove(key.as_bytes());
+			Ok(())
+		}
+		fn internal_drop(&mut self, key: &EncodedKey) -> ValueResult<()> {
+			self.internal.remove(key.as_bytes());
+			Ok(())
+		}
+		fn internal_range_visit<V: DeserializeOwned>(
+			&mut self,
+			range: EncodedKeyRange,
+			limit: Option<usize>,
+			visit: &mut dyn FnMut(EncodedKey, V) -> ValueResult<()>,
+		) -> ValueResult<()> {
+			let mut seen = 0usize;
+			let entries: Vec<(Vec<u8>, Vec<u8>)> = self
+				.internal
+				.iter()
+				.filter(|(k, _)| {
+					let k = k.as_slice();
+					let start_ok = match &range.start {
+						Bound::Included(s) => k >= s.as_bytes(),
+						Bound::Excluded(s) => k > s.as_bytes(),
+						Bound::Unbounded => true,
+					};
+					let end_ok = match &range.end {
+						Bound::Included(e) => k <= e.as_bytes(),
+						Bound::Excluded(e) => k < e.as_bytes(),
+						Bound::Unbounded => true,
+					};
+					start_ok && end_ok
+				})
+				.map(|(k, v)| (k.clone(), v.clone()))
+				.collect();
+			for (k, v) in entries {
+				if let Some(limit) = limit
+					&& seen >= limit
+				{
+					break;
+				}
+				visit(EncodedKey::new(k), from_bytes(&v).expect("decode"))?;
+				seen += 1;
+			}
+			Ok(())
+		}
+		fn get_or_create_row_number(&mut self, key: &EncodedKey) -> ValueResult<(RowNumber, bool)> {
+			let bytes = key.as_bytes().to_vec();
+			if let Some(&row) = self.rows.get(&bytes) {
+				return Ok((RowNumber(row), false));
+			}
+			self.next_row += 1;
+			self.rows.insert(bytes, self.next_row);
+			Ok((RowNumber(self.next_row), true))
+		}
+		fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> ValueResult<Vec<(RowNumber, bool)>> {
+			keys.iter().map(|k| self.get_or_create_row_number(k)).collect()
+		}
+		fn allocate_row_numbers(&mut self, count: u64) -> ValueResult<RowNumber> {
+			self.next_row += count;
+			Ok(RowNumber(self.next_row - count + 1))
+		}
+		fn clock_now_nanos(&self) -> u64 {
+			0
+		}
+	}
+
+	fn kinds() -> Vec<SlotKind> {
+		vec![SlotKind::Sum, SlotKind::Sum, SlotKind::Sum]
+	}
+
+	fn group_key(hash: &Hash128) -> EncodedKey {
+		EncodedKey::builder().u128(hash.0).build()
+	}
+
+	fn contribution(seq: u64, dollars: [f64; 3]) -> (WindowSlotKey, Vec<Option<Value>>) {
+		let coord = WindowSlotKey::new(DateTime::from_timestamp(seq as i64).unwrap(), seq);
+		(coord, dollars.iter().map(|d| Some(Value::float8(*d))).collect())
+	}
+
+	fn assert_rows_close(legacy: &[Value], runnable: &[Value], context: &str) {
+		assert_eq!(legacy.len(), runnable.len(), "row width diverged: {context}");
+		for (l, r) in legacy.iter().zip(runnable.iter()) {
+			let (Value::Float8(lf), Value::Float8(rf)) = (l, r) else {
+				assert_eq!(l, r, "non-float slot diverged: {context}");
+				continue;
+			};
+			let tolerance = lf.value().abs().max(1.0) * 1e-9;
+			assert!(
+				(lf.value() - rf.value()).abs() <= tolerance,
+				"float slot diverged beyond tolerance: legacy={} runnable={} ({context})",
+				lf.value(),
+				rf.value()
+			);
+		}
+	}
+
+	// The production wiring switches jupiter's pure-sum rolling views onto the
+	// running-accumulator engine. This drives the real RowAccumulator (Float8,
+	// compensated arithmetic) through both engines on an identical seeded
+	// add/retract/expire workload and requires the emitted rows to agree within
+	// float tolerance, kinds and cardinality exactly. A divergence means the
+	// runnable fast path changes what the views publish.
+	#[test]
+	fn runnable_row_accumulator_matches_legacy_combine_on_float_churn() {
+		let config = || {
+			WindowEngineConfig::builder().state_cache_capacity(8).internal_state_cache_capacity(64).build()
+		};
+		let mut legacy_store = MockStore::default();
+		let mut runnable_store = MockStore::default();
+		let mut legacy = RollingEngine::<Hash128, u64, RowAccumulator>::new(config());
+		let mut runnable = RollingEngine::<Hash128, u64, RowAccumulator>::new_runnable(config());
+		let slot_kinds = kinds();
+
+		let mut state = 0x0123_4567_89AB_CDEFu64;
+		let mut roll = |bound: u64| {
+			state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+			(state >> 33) % bound
+		};
+		let mut coord_base = 1_000u64;
+		let mut cutoff = 0u64;
+		let mut added: Vec<(Hash128, u64, [f64; 3])> = Vec::new();
+
+		for round in 0..150u64 {
+			let mut plan: Vec<(Hash128, u64, [f64; 3], bool)> = Vec::new();
+			for _ in 0..=roll(2) {
+				let group = Hash128((roll(4) + 1) as u128);
+				let coord = coord_base + roll(30);
+				let dollars = [
+					(roll(1_000_000_000) as f64) / 100.0,
+					(roll(1_000_000) as f64) / 100.0,
+					(roll(100) as f64) / 100.0,
+				];
+				plan.push((group, coord, dollars, true));
+				added.push((group, coord, dollars));
+			}
+			if round % 3 == 2 && !added.is_empty() {
+				let (group, coord, dollars) = added.remove(roll(added.len() as u64) as usize);
+				plan.push((group, coord, dollars, false));
+			}
+			let build = |plan: &[(Hash128, u64, [f64; 3], bool)]| {
+				let mut buckets: RollingEngineBuckets = TestBTreeMap::new();
+				for (group, coord, dollars, is_add) in plan {
+					let c = contribution(*coord, *dollars);
+					let event = if *is_add {
+						AccumulatorEvent::Add(c)
+					} else {
+						AccumulatorEvent::Remove(c)
+					};
+					buckets.entry((*group, *coord)).or_default().push(event);
+				}
+				buckets
+			};
+			let sk = slot_kinds.clone();
+			let legacy_out = legacy
+				.apply_evicting(
+					&mut legacy_store,
+					build(&plan),
+					RollingEviction::Before(cutoff),
+					group_key,
+					|| RowAccumulator::new(&sk, Duration::default()),
+					|_g, buffer| combine_rolling(buffer, &sk, 0, Duration::default()),
+				)
+				.unwrap();
+			let sk = slot_kinds.clone();
+			let runnable_out = runnable
+				.apply_running(
+					&mut runnable_store,
+					build(&plan),
+					RollingEviction::Before(cutoff),
+					group_key,
+					|| RowAccumulator::new(&sk, Duration::default()),
+				)
+				.unwrap();
+			assert_eq!(legacy_out.len(), runnable_out.len(), "apply cardinality diverged at round {round}");
+			for (l, r) in legacy_out.iter().zip(runnable_out.iter()) {
+				assert_eq!(l.group, r.group, "apply group order diverged at round {round}");
+				assert_eq!(l.kind, r.kind, "apply emit kind diverged at round {round}");
+				assert_rows_close(&l.value, &r.value, &format!("apply round {round}"));
+			}
+
+			if round % 5 == 4 {
+				cutoff = coord_base.saturating_sub(20);
+				let sk = slot_kinds.clone();
+				let legacy_exp = legacy
+					.expire_before(&mut legacy_store, cutoff, |_g, buffer| {
+						combine_rolling(buffer, &sk, 0, Duration::default())
+					})
+					.unwrap();
+				let runnable_exp = runnable.expire_before_running(&mut runnable_store, cutoff).unwrap();
+				assert_eq!(
+					legacy_exp.len(),
+					runnable_exp.len(),
+					"expiry cardinality diverged at round {round}"
+				);
+				for (l, r) in legacy_exp.iter().zip(runnable_exp.iter()) {
+					match (l, r) {
+						(
+							RollingExpiry::Update {
+								group: lg,
+								value: lv,
+								..
+							},
+							RollingExpiry::Update {
+								group: rg,
+								value: rv,
+								..
+							},
+						) => {
+							assert_eq!(lg, rg, "expiry group diverged at round {round}");
+							assert_rows_close(lv, rv, &format!("expiry round {round}"));
+						}
+						(
+							RollingExpiry::Remove {
+								group: lg,
+								..
+							},
+							RollingExpiry::Remove {
+								group: rg,
+								..
+							},
+						) => {
+							assert_eq!(lg, rg, "terminal remove diverged at round {round}");
+						}
+						_ => panic!("expiry kind diverged at round {round}"),
+					}
+				}
+				added.retain(|(_, coord, _)| *coord > cutoff);
+			}
+			coord_base += roll(10) + 1;
+		}
+
+		// Drain both to empty: every group must terminally remove in both
+		// engines, leaving no buffers, running entries, or index entries behind.
+		let sk = slot_kinds.clone();
+		let legacy_final = legacy
+			.expire_before(&mut legacy_store, u64::MAX - 1, |_g, buffer| {
+				combine_rolling(buffer, &sk, 0, Duration::default())
+			})
+			.unwrap();
+		let runnable_final = runnable.expire_before_running(&mut runnable_store, u64::MAX - 1).unwrap();
+		assert_eq!(legacy_final.len(), runnable_final.len(), "terminal drain cardinality diverged");
+		assert!(
+			runnable_final.iter().all(|e| matches!(e, RollingExpiry::Remove { .. })),
+			"draining past every coord must terminally remove all groups"
+		);
+	}
 }

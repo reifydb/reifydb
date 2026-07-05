@@ -10,14 +10,15 @@ use reifydb_core::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind,
-			tumbling::{TumblingBuckets, TumblingEngine},
+			AccumulatorEvent, EmitKind, is_sealed, seal_horizon,
+			tumbling::{TumblingBuckets, TumblingEngine, reindex_window},
 		},
 		span::{Slot, WindowSpan},
 	},
 };
 use reifydb_value::value::row_number::RowNumber;
 use serde::{Serialize, de::DeserializeOwned};
+use tracing::warn;
 
 use crate::{
 	config::Config,
@@ -31,7 +32,7 @@ use crate::{
 		},
 		context::OperatorContext,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
-		windowed::{bridge::OperatorContextStore, window_engine_config},
+		windowed::{advance_seal_watermark, bridge::OperatorContextStore, window_engine_config},
 	},
 };
 
@@ -59,6 +60,10 @@ pub trait TumblingOperator {
 	) -> Option<(Self::GroupKey, Self::WindowCoord, AccumulatorContribution<Self>)>;
 
 	fn window_for(&self, coord: Self::WindowCoord) -> WindowSpan<Self::WindowCoord>;
+
+	fn seal_after(&self) -> Option<u64> {
+		None
+	}
 
 	fn build_output(
 		&self,
@@ -236,9 +241,38 @@ where
 	}
 
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
-		let buckets = self.route(ctx, &change);
+		let mut buckets = self.route(ctx, &change);
 		if buckets.is_empty() {
 			return Ok(());
+		}
+
+		if let Some(seal_after) = self.aggregator.seal_after() {
+			let Self {
+				aggregator: _,
+				engine,
+			} = &mut *self;
+			let mut store = OperatorContextStore(ctx);
+			let batch_max = buckets.keys().map(|(_, span)| span.start.order_key()).max().unwrap_or(0);
+			let watermark = advance_seal_watermark(&mut store, batch_max)?;
+			let horizon = seal_horizon(watermark, seal_after);
+			let mut dropped = 0u64;
+			buckets.retain(|(_, span), events| {
+				if is_sealed(span.start.order_key(), horizon) {
+					dropped += events.len() as u64;
+					false
+				} else {
+					true
+				}
+			});
+			if dropped > 0 {
+				warn!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
+			}
+			if horizon > 0 {
+				engine.expire(&mut store, horizon - 1)?;
+			}
+			if buckets.is_empty() {
+				return Ok(());
+			}
 		}
 
 		let results = {
@@ -254,6 +288,22 @@ where
 				|| aggregator.new_accumulator(),
 			)?
 		};
+
+		if self.aggregator.seal_after().is_some() {
+			let mut store = OperatorContextStore(ctx);
+			for r in &results {
+				if r.kind == EmitKind::Insert {
+					reindex_window(
+						&mut store,
+						&r.group,
+						r.span.start,
+						r.row_number,
+						None,
+						Some(r.span.start.order_key()),
+					)?;
+				}
+			}
+		}
 
 		let mut inserts: Vec<(RowNumber, A::Output)> = Vec::new();
 		let mut updates: Vec<(RowNumber, A::Output)> = Vec::new();
@@ -378,6 +428,52 @@ mod tests {
 
 	impl TumblingRegistration for TestVolume {
 		const NAME: &'static str = "test_volume";
+		const VERSION: &'static str = "0.0.1";
+		const DESCRIPTION: &'static str = "test fixture";
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+
+		fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+			Ok(Self)
+		}
+
+		fn encode_row_key(&self, group: &String, window_start: u64) -> EncodedKey {
+			EncodedKey::builder().str(group).u64(window_start).build()
+		}
+	}
+
+	// TestVolume with sealing enabled: 60ms windows + 60ms grace, so windows
+	// seal once the watermark (tracked from routed window starts) moves more
+	// than 120 past their start.
+	#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+	struct SealedVolume;
+
+	impl TumblingOperator for SealedVolume {
+		type GroupKey = String;
+		type WindowCoord = u64;
+		type Accumulator = VolumeAccumulator;
+		type Output = VolumeOut;
+
+		fn extract(&self, ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, u64, f64)> {
+			TestVolume.extract(ctx, row)
+		}
+
+		fn window_for(&self, coord: u64) -> WindowSpan<u64> {
+			TestVolume.window_for(coord)
+		}
+
+		fn build_output(&self, group: &String, span: WindowSpan<u64>, value: OrdF64) -> Option<VolumeOut> {
+			TestVolume.build_output(group, span, value)
+		}
+
+		fn seal_after(&self) -> Option<u64> {
+			Some(120)
+		}
+	}
+
+	impl TumblingRegistration for SealedVolume {
+		const NAME: &'static str = "sealed_volume";
 		const VERSION: &'static str = "0.0.1";
 		const DESCRIPTION: &'static str = "test fixture";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -598,26 +694,61 @@ mod tests {
 	}
 
 	#[test]
-	fn late_event_for_closed_window_dropped() {
-		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolume>>>::new()
+	fn late_event_for_sealed_window_dropped() {
+		// Grace semantics: SealedVolume seals windows whose start falls more
+		// than seal_after (window 60 + grace 60 = 120) behind the routed
+		// watermark. Advancing to window 180 seals window 0; a late insert for
+		// it must be dropped. An ungated driver (TestVolume) accepts the same
+		// late insert - covered by late_event_without_sealing_is_accepted.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<SealedVolume>>>::new()
 			.build()
 			.expect("harness");
-		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 60, 5.0)).build()).expect("apply");
+		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 180, 5.0)).build()).expect("apply");
 		let out =
 			h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
-		assert_eq!(out.diffs.len(), 0);
+		assert_eq!(out.diffs.len(), 0, "insert into a sealed window must be dropped");
 	}
 
 	#[test]
-	fn late_remove_for_closed_window_is_applied() {
-		// A Remove is a retraction of already-admitted data, not a late insert, so
-		// under the default Drop policy it must still be honored even after
-		// ingestion advanced past the window - this is what lets a reorg
-		// retraction (which fires a few slots late) correct a closed window.
-		// Window 0 holds two contributions summing to 15; after high_water
-		// advances to window 60, a late Remove of pre=5 for window 0 must still
-		// subtract, leaving 10. Contrast with the late INSERT above, still dropped.
+	fn late_event_within_grace_is_accepted() {
+		// Window 0 stays mutable while the watermark has not passed
+		// start + seal_after: with the watermark at 120 (== 0 + 120), the
+		// boundary is inclusive on the mutable side.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<SealedVolume>>>::new()
+			.build()
+			.expect("harness");
+		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 120, 5.0)).build()).expect("apply");
+		let out =
+			h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
+		assert_eq!(out.diffs.len(), 1, "window 0 is still within grace at watermark 120");
+		let post = out.diffs[0].post().expect("post");
+		assert_eq!(post.row_ref(0).expect("r0").f64("volume"), Some(99.0));
+	}
+
+	#[test]
+	fn late_event_without_sealing_is_accepted() {
+		// With seal_after = None (the default) there is no gate: drivers accept
+		// arbitrarily late mutations and state lives until the operator TTL.
 		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolume>>>::new()
+			.build()
+			.expect("harness");
+		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 180, 5.0)).build()).expect("apply");
+		let out =
+			h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
+		assert_eq!(out.diffs.len(), 1, "ungated drivers accept late inserts");
+	}
+
+	#[test]
+	fn remove_within_grace_is_applied_and_sealed_remove_is_dropped() {
+		// Grace is the single mutability horizon for every mutation kind: a
+		// retraction (reorg correction) is honored while the window is open or
+		// within grace, and dropped once the window seals - the sealed value is
+		// final by contract. Window 0 holds 15; a remove at watermark 60 (well
+		// inside start + seal_after = 120) subtracts, leaving 10. Advancing the
+		// watermark to 240 seals window 0 and reclaims its state; a further
+		// remove is dropped and emits nothing, leaving the last published value
+		// untouched.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<SealedVolume>>>::new()
 			.build()
 			.expect("harness");
 		let _ = h
@@ -629,11 +760,16 @@ mod tests {
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 60, 1.0)).build()).expect("apply");
 		let out =
 			h.apply(TestChangeBuilder::new().remove(input_row(2, "BTC", 30, 5.0)).build()).expect("apply");
-		assert_eq!(out.diffs.len(), 1);
+		assert_eq!(out.diffs.len(), 1, "retraction within grace must be honored");
 		let diff = &out.diffs[0];
 		assert_eq!(diff.kind(), DiffType::Update);
 		let r = diff.post().expect("post").row_ref(0).expect("r0");
 		assert_eq!(r.f64("volume"), Some(10.0));
+
+		let _ = h.apply(TestChangeBuilder::new().insert(input_row(4, "BTC", 240, 2.0)).build()).expect("apply");
+		let out =
+			h.apply(TestChangeBuilder::new().remove(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+		assert_eq!(out.diffs.len(), 0, "retraction of a sealed window must be dropped");
 	}
 
 	#[test]
@@ -682,6 +818,37 @@ mod tests {
 		assert_eq!(diff.kind(), DiffType::Update);
 		let r = diff.post().expect("post").row_ref(0).expect("r0");
 		assert_eq!(r.f64("min"), Some(6.0));
+	}
+
+	#[test]
+	fn sealing_frees_window_state_from_the_store() {
+		// Sealing must reclaim the sealed window's accumulator state, not
+		// just gate its mutations: state left behind is only reaped by the
+		// wall-clock operator-state TTL backstop, which the paced jupiter
+		// replay showed retaining hours of sealed windows. Window 0 is
+		// created, then an insert at 240 moves the watermark so the seal
+		// horizon (240 - 120) passes window 0: at least one of its store
+		// keys must be gone afterwards.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<SealedVolume>>>::new()
+			.build()
+			.expect("harness");
+		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+		let before = h.snapshot_state();
+		let _ = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 240, 2.0)).build()).expect("apply");
+		let after = h.snapshot_state();
+		let freed = before.keys().filter(|k| !after.contains_key(*k)).count();
+		assert!(freed > 0, "sealing window 0 must remove its accumulator state from the store");
+
+		// Control: without seal_after, ordinary apply churn must never
+		// remove a key - reclamation may only come from the seal sweep.
+		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolume>>>::new()
+			.build()
+			.expect("harness");
+		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+		let before = h.snapshot_state();
+		let _ = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 240, 2.0)).build()).expect("apply");
+		let after = h.snapshot_state();
+		assert!(before.keys().all(|k| after.contains_key(k)), "an ungated driver must not reclaim any state");
 	}
 
 	#[test]

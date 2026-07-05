@@ -10,15 +10,17 @@ use reifydb_core::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent,
+			AccumulatorEvent, is_sealed,
 			multi_rolling::{MultiEmit, MultiRollingEngine},
 			rolling::RollingBuckets,
+			seal_horizon,
 		},
 		span::Slot,
 	},
 };
 use reifydb_value::value::row_number::RowNumber;
 use serde::{Serialize, de::DeserializeOwned};
+use tracing::warn;
 
 use crate::{
 	config::Config,
@@ -32,7 +34,7 @@ use crate::{
 		},
 		context::OperatorContext,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
-		windowed::{bridge::OperatorContextStore, window_engine_config},
+		windowed::{advance_seal_watermark, bridge::OperatorContextStore, window_engine_config},
 	},
 };
 
@@ -55,6 +57,9 @@ pub trait MultiRollingOperator {
 
 	type Output: Clone + Debug + PartialEq + Serialize + DeserializeOwned;
 
+	fn seal_after(&self) -> Option<u64> {
+		None
+	}
 	fn capacity(&self) -> usize;
 
 	fn extract(
@@ -140,9 +145,31 @@ where
 	}
 
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
-		let buckets = self.route_diffs_to_buckets(ctx, &change);
+		let mut buckets = self.route_diffs_to_buckets(ctx, &change);
 		if buckets.is_empty() {
 			return Ok(());
+		}
+
+		if let Some(seal_after) = self.aggregator.seal_after() {
+			let mut store = OperatorContextStore(ctx);
+			let batch_max = buckets.keys().map(|(_, coord)| coord.order_key()).max().unwrap_or(0);
+			let watermark = advance_seal_watermark(&mut store, batch_max)?;
+			let horizon = seal_horizon(watermark, seal_after);
+			let mut dropped = 0u64;
+			buckets.retain(|(_, coord), events| {
+				if is_sealed(coord.order_key(), horizon) {
+					dropped += events.len() as u64;
+					false
+				} else {
+					true
+				}
+			});
+			if dropped > 0 {
+				warn!(operator = A::NAME, dropped, "mutations targeting sealed coords were dropped");
+			}
+			if buckets.is_empty() {
+				return Ok(());
+			}
 		}
 
 		let emits = {
@@ -583,7 +610,10 @@ mod tests {
 	}
 
 	#[test]
-	fn buried_window_insert_dropped_silently() {
+	fn buried_window_insert_accepted_without_sealing() {
+		// Same contract as the other ungated drivers under grace semantics:
+		// without a seal envelope there is no implicit high-water drop, so an
+		// insert into an older coord merges and updates the output.
 		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopVolume>>>::new()
 			.build()
 			.expect("harness");
@@ -593,6 +623,6 @@ mod tests {
 		let out = h
 			.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 999, 999.0)).build())
 			.expect("apply");
-		assert_eq!(out.diffs.len(), 0, "insert below high-water dropped");
+		assert!(!out.diffs.is_empty(), "ungated multi-rolling driver accepts late events");
 	}
 }

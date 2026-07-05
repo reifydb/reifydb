@@ -10,14 +10,15 @@ use reifydb_core::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, config::TumblingCarryConfig, tumbling::TumblingBuckets,
-			tumbling_carry::TumblingCarryEngine,
+			AccumulatorEvent, EmitKind, config::TumblingCarryConfig, is_sealed, seal_horizon,
+			tumbling::TumblingBuckets, tumbling_carry::TumblingCarryEngine,
 		},
 		span::{Slot, WindowSpan},
 	},
 };
 use reifydb_value::value::row_number::RowNumber;
 use serde::{Serialize, de::DeserializeOwned};
+use tracing::warn;
 
 use crate::{
 	config::Config,
@@ -31,7 +32,7 @@ use crate::{
 		},
 		context::OperatorContext,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
-		windowed::{bridge::OperatorContextStore, window_engine_config},
+		windowed::{advance_seal_watermark, bridge::OperatorContextStore, window_engine_config},
 	},
 };
 
@@ -68,6 +69,10 @@ pub trait TumblingCarryOperator {
 	) -> Option<(Self::GroupKey, Self::WindowCoord, AccumulatorContribution<Self>)>;
 
 	fn window_for(&self, coord: Self::WindowCoord) -> WindowSpan<Self::WindowCoord>;
+
+	fn seal_after(&self) -> Option<u64> {
+		None
+	}
 
 	fn build_output(
 		&self,
@@ -254,9 +259,31 @@ where
 	}
 
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
-		let buckets = self.route(ctx, &change);
+		let mut buckets = self.route(ctx, &change);
 		if buckets.is_empty() {
 			return Ok(());
+		}
+
+		if let Some(seal_after) = self.aggregator.seal_after() {
+			let mut store = OperatorContextStore(ctx);
+			let batch_max = buckets.keys().map(|(_, span)| span.start.order_key()).max().unwrap_or(0);
+			let watermark = advance_seal_watermark(&mut store, batch_max)?;
+			let horizon = seal_horizon(watermark, seal_after);
+			let mut dropped = 0u64;
+			buckets.retain(|(_, span), events| {
+				if is_sealed(span.start.order_key(), horizon) {
+					dropped += events.len() as u64;
+					false
+				} else {
+					true
+				}
+			});
+			if dropped > 0 {
+				warn!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
+			}
+			if buckets.is_empty() {
+				return Ok(());
+			}
 		}
 
 		let results = {
@@ -534,15 +561,18 @@ mod tests {
 	}
 
 	#[test]
-	fn late_event_dropped_and_carry_untouched() {
+	fn late_event_accepted_without_sealing() {
+		// The carry driver carries no seal envelope in this fixture, so under
+		// grace semantics there is no gate: a late event for the earlier window
+		// [0,60) is accepted and (re)opens that window. Bounding mutability is
+		// the seal gate's job (opt-in via seal_after / sealed_up_to), not an
+		// implicit high-water drop.
 		let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
 			.build()
 			.expect("harness");
-		// Open window [60,120); high-water advances to 60.
 		let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 60, 20.0)).build()).expect("apply");
-		// A late event for the already-closed window [0,60) is dropped.
 		let out =
 			h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
-		assert_eq!(out.diffs.len(), 0);
+		assert!(!out.diffs.is_empty(), "ungated carry driver accepts late events");
 	}
 }

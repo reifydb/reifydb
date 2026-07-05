@@ -14,7 +14,6 @@
 //! same mathematical value; the divergence we care about is structural, not
 //! the last ULP.
 
-use reifydb_core::window::engine::LatePolicy;
 use reifydb_sdk::{
 	operator::{FFIOperatorAdapter, windowed::rolling_incremental::RollingIncrementalDriver},
 	testing::chaos::{
@@ -26,7 +25,6 @@ use reifydb_sdk::{
 		strategy::{ColumnSampler, samplers},
 	},
 };
-use reifydb_value::value::Value;
 
 use super::common::{self, VelocityIncremental};
 
@@ -44,7 +42,7 @@ fn value_sampler(none_values: bool) -> ColumnSampler {
 	}
 }
 
-fn run(none_values: bool, cfg: ChaosConfig, seed: u64, policy: LatePolicy) -> ChaosOutcome {
+fn run(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
 	ChaosHarness::<FFIOperatorAdapter<RollingIncrementalDriver<VelocityIncremental>>>::builder()
 		.with_input_shape(common::rolling_shape())
 		.with_output_shape(common::velocity_out_shape())
@@ -54,7 +52,6 @@ fn run(none_values: bool, cfg: ChaosConfig, seed: u64, policy: LatePolicy) -> Ch
 		.with_column("window_start", samplers::u64_range(0..10))
 		.with_column("value", value_sampler(none_values))
 		.with_tolerance("baseline", BASELINE_TOL)
-		.with_config([("__late_policy", Value::Utf8(common::policy_label(policy).into()))])
 		.with_chaos(cfg)
 		.with_oracle(move |ctx, batches| {
 			rolling_incremental_accumulator_oracle(
@@ -62,7 +59,6 @@ fn run(none_values: bool, cfg: ChaosConfig, seed: u64, policy: LatePolicy) -> Ch
 				ctx,
 				batches,
 				&group_key(),
-				policy,
 			)
 		})
 		.seed(seed)
@@ -74,12 +70,12 @@ fn run(none_values: bool, cfg: ChaosConfig, seed: u64, policy: LatePolicy) -> Ch
 #[test]
 fn velocity_matches_across_configs_and_seeds() {
 	for &seed in &common::SEEDS {
-		for policy in common::POLICIES {
-			run(false, common::baseline(150, SupportedOps::insert_only()), seed, policy).assert_matches();
-			run(false, common::baseline(150, SupportedOps::no_remove()), seed, policy).assert_matches();
-			run(false, common::baseline(150, SupportedOps::no_update()), seed, policy).assert_matches();
-			run(false, common::baseline(200, SupportedOps::all()), seed, policy).assert_matches();
-			run(false, common::full_chaos(250), seed, policy).assert_matches();
+		{
+			run(false, common::baseline(150, SupportedOps::insert_only()), seed).assert_matches();
+			run(false, common::baseline(150, SupportedOps::no_remove()), seed).assert_matches();
+			run(false, common::baseline(150, SupportedOps::no_update()), seed).assert_matches();
+			run(false, common::baseline(200, SupportedOps::all()), seed).assert_matches();
+			run(false, common::full_chaos(250), seed).assert_matches();
 		}
 	}
 }
@@ -87,8 +83,8 @@ fn velocity_matches_across_configs_and_seeds() {
 #[test]
 fn velocity_handles_none_inputs() {
 	for &seed in &common::SEEDS {
-		for policy in common::POLICIES {
-			run(true, common::full_chaos(200), seed, policy).assert_matches();
+		{
+			run(true, common::full_chaos(200), seed).assert_matches();
 		}
 	}
 }
@@ -98,14 +94,14 @@ fn velocity_exercises_eviction_and_running_maintenance() {
 	// 10 distinct windows, capacity 3, full churn: the running accumulator
 	// is repeatedly added-to, updated, and evicted-from. The oracle's
 	// from-scratch recompute must still agree.
-	let outcome = run(false, common::full_chaos(400), 12_345, LatePolicy::Drop);
+	let outcome = run(false, common::full_chaos(400), 12_345);
 	outcome.assert_matches();
 	assert!(!outcome.oracle_table.is_empty(), "expected velocity output rows");
 }
 
 #[test]
 fn velocity_empty_stream_is_empty() {
-	let outcome = run(false, common::baseline(0, SupportedOps::all()), 0, LatePolicy::Drop);
+	let outcome = run(false, common::baseline(0, SupportedOps::all()), 0);
 	outcome.assert_matches();
 	assert!(outcome.operator_table.is_empty());
 	assert!(outcome.oracle_table.is_empty());

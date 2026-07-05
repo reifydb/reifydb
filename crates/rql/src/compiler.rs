@@ -431,7 +431,7 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> Result<QueryPlan> {
 			group_by: node.group_by,
 			aggregations: node.aggregations,
 			ts: node.ts,
-			lateness: node.lateness,
+			grace: node.grace,
 			state_cache_size: node.state_cache_size,
 			internal_state_cache_size: node.internal_state_cache_size,
 		}),

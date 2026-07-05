@@ -15,7 +15,6 @@ use reifydb_core::{
 		identifier::{ColumnIdentifier, ColumnShape},
 	},
 	value::column::columns::Columns,
-	window::engine::LatePolicy,
 };
 use reifydb_rql::{
 	expression::{ColumnExpression, Expression},
@@ -224,7 +223,7 @@ impl FlowEngineInner {
 				group_by,
 				aggregations,
 				ts,
-				lateness,
+				grace,
 				state_cache_size,
 				internal_state_cache_size,
 			} => self.add_window(
@@ -234,7 +233,7 @@ impl FlowEngineInner {
 				group_by,
 				aggregations,
 				ts,
-				lateness,
+				grace,
 				state_cache_size,
 				internal_state_cache_size,
 			)?,
@@ -711,7 +710,7 @@ impl FlowEngineInner {
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
 		ts: Option<String>,
-		lateness: Option<Duration>,
+		grace: Duration,
 		state_cache_size: Option<usize>,
 		internal_state_cache_size: Option<usize>,
 	) -> Result<()> {
@@ -725,8 +724,7 @@ impl FlowEngineInner {
 			ts: ts.clone(),
 			runtime_context: self.runtime_context.clone(),
 			routines: self.executor.routines.clone(),
-			late_policy: LatePolicy::Process,
-			lateness,
+			grace,
 			state_cache_size,
 			internal_state_cache_size,
 		});

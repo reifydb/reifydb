@@ -8,7 +8,6 @@
 //! change, and vanish across batches, exercising the per-secondary-key
 //! emission and the high-water-driven Remove path.
 
-use reifydb_core::window::engine::LatePolicy;
 use reifydb_sdk::{
 	operator::{FFIOperatorAdapter, windowed::multi_rolling::MultiRollingDriver},
 	testing::chaos::{
@@ -20,7 +19,6 @@ use reifydb_sdk::{
 		strategy::{ColumnSampler, samplers},
 	},
 };
-use reifydb_value::value::Value;
 
 use super::common::{self, TopVolumeMultiRolling};
 
@@ -36,7 +34,7 @@ fn volume_sampler(none_values: bool) -> ColumnSampler {
 	}
 }
 
-fn run(none_values: bool, cfg: ChaosConfig, seed: u64, policy: LatePolicy) -> ChaosOutcome {
+fn run(none_values: bool, cfg: ChaosConfig, seed: u64) -> ChaosOutcome {
 	ChaosHarness::<FFIOperatorAdapter<MultiRollingDriver<TopVolumeMultiRolling>>>::builder()
 		.with_input_shape(common::multi_rolling_shape())
 		.with_output_shape(common::top_out_shape())
@@ -47,10 +45,9 @@ fn run(none_values: bool, cfg: ChaosConfig, seed: u64, policy: LatePolicy) -> Ch
 		// Small trader space so the top-2 set churns and ranks vanish.
 		.with_column("trader", samplers::u64_range(0..5))
 		.with_column("volume", volume_sampler(none_values))
-		.with_config([("__late_policy", Value::Utf8(common::policy_label(policy).into()))])
 		.with_chaos(cfg)
 		.with_oracle(move |ctx, batches| {
-			multi_rolling_accumulator_oracle(&TopVolumeMultiRolling, ctx, batches, &rank_key(), policy)
+			multi_rolling_accumulator_oracle(&TopVolumeMultiRolling, ctx, batches, &rank_key())
 		})
 		.seed(seed)
 		.build()
@@ -61,12 +58,12 @@ fn run(none_values: bool, cfg: ChaosConfig, seed: u64, policy: LatePolicy) -> Ch
 #[test]
 fn top_volume_matches_across_configs_and_seeds() {
 	for &seed in &common::SEEDS {
-		for policy in common::POLICIES {
-			run(false, common::baseline(150, SupportedOps::insert_only()), seed, policy).assert_matches();
-			run(false, common::baseline(150, SupportedOps::no_remove()), seed, policy).assert_matches();
-			run(false, common::baseline(150, SupportedOps::no_update()), seed, policy).assert_matches();
-			run(false, common::baseline(200, SupportedOps::all()), seed, policy).assert_matches();
-			run(false, common::full_chaos(250), seed, policy).assert_matches();
+		{
+			run(false, common::baseline(150, SupportedOps::insert_only()), seed).assert_matches();
+			run(false, common::baseline(150, SupportedOps::no_remove()), seed).assert_matches();
+			run(false, common::baseline(150, SupportedOps::no_update()), seed).assert_matches();
+			run(false, common::baseline(200, SupportedOps::all()), seed).assert_matches();
+			run(false, common::full_chaos(250), seed).assert_matches();
 		}
 	}
 }
@@ -74,8 +71,8 @@ fn top_volume_matches_across_configs_and_seeds() {
 #[test]
 fn top_volume_handles_none_inputs() {
 	for &seed in &common::SEEDS {
-		for policy in common::POLICIES {
-			run(true, common::full_chaos(200), seed, policy).assert_matches();
+		{
+			run(true, common::full_chaos(200), seed).assert_matches();
 		}
 	}
 }
@@ -84,7 +81,7 @@ fn top_volume_handles_none_inputs() {
 fn top_volume_emits_multiple_ranks() {
 	// Two ranks must materialize at least once; otherwise the secondary-key
 	// emission path is not being exercised.
-	let outcome = run(false, common::baseline(200, SupportedOps::insert_only()), 99, LatePolicy::Drop);
+	let outcome = run(false, common::baseline(200, SupportedOps::insert_only()), 99);
 	outcome.assert_matches();
 	let ranks = outcome.oracle_table.rows.keys().count();
 	assert!(ranks >= 2, "expected at least two (group, rank) rows, got {ranks}");
@@ -92,7 +89,7 @@ fn top_volume_emits_multiple_ranks() {
 
 #[test]
 fn top_volume_empty_stream_is_empty() {
-	let outcome = run(false, common::baseline(0, SupportedOps::all()), 0, LatePolicy::Drop);
+	let outcome = run(false, common::baseline(0, SupportedOps::all()), 0);
 	outcome.assert_matches();
 	assert!(outcome.operator_table.is_empty());
 	assert!(outcome.oracle_table.is_empty());

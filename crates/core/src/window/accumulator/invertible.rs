@@ -193,6 +193,23 @@ impl<V: Ord + Clone> Multiset<V> {
 		}
 	}
 
+	pub fn unmerge(&mut self, other: &Self) {
+		for (value, count) in &other.counts {
+			let Some(current) = self.counts.get_mut(value) else {
+				#[cfg(reifydb_assertions)]
+				panic!("Multiset::unmerge of absent value");
+				#[cfg(not(reifydb_assertions))]
+				continue;
+			};
+			let dec = (*count).min(*current);
+			*current -= dec;
+			self.total -= dec;
+			if *current == 0 {
+				self.counts.remove(value);
+			}
+		}
+	}
+
 	pub fn min(&self) -> Option<&V> {
 		self.counts.keys().next()
 	}

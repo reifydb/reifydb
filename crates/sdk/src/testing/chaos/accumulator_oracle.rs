@@ -18,7 +18,6 @@ use reifydb_core::{
 	value::column::columns::Columns,
 	window::{
 		accumulator::WindowAccumulator,
-		engine::LatePolicy,
 		span::{Slot, WindowSpan},
 	},
 };
@@ -66,7 +65,6 @@ pub fn tumbling_accumulator_oracle<A>(
 	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
-	policy: LatePolicy,
 ) -> MaterializedTable
 where
 	A: TumblingOperator,
@@ -78,10 +76,7 @@ where
 	let mut last_visible: HashMap<WindowKey<A>, A::Output> = HashMap::new();
 
 	for batch in batches {
-		let snapshot = match policy {
-			LatePolicy::Process => HashMap::new(),
-			LatePolicy::Drop => high_water.clone(),
-		};
+		let snapshot = HashMap::new();
 		let mut touched: BTreeSet<WindowKey<A>> = BTreeSet::new();
 
 		for event in &batch.events {
@@ -354,7 +349,6 @@ pub fn rolling_accumulator_oracle<A>(
 	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
-	policy: LatePolicy,
 ) -> MaterializedTable
 where
 	A: RollingOperator,
@@ -366,10 +360,7 @@ where
 	let mut last_visible: HashMap<RollingGroup<A>, A::Output> = HashMap::new();
 
 	for batch in batches {
-		let snapshot = match policy {
-			LatePolicy::Process => HashMap::new(),
-			LatePolicy::Drop => high_water.clone(),
-		};
+		let snapshot = HashMap::new();
 		let buckets = bucket_rolling(aggregate, batch);
 		let touched = apply_rolling_buckets::<A>(capacity, &snapshot, buckets, &mut buffers, &mut high_water);
 		for group in touched {
@@ -406,7 +397,6 @@ pub fn rolling_incremental_accumulator_oracle<A>(
 	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
-	policy: LatePolicy,
 ) -> MaterializedTable
 where
 	A: RollingIncrementalOperator,
@@ -418,10 +408,7 @@ where
 	let mut last_visible: HashMap<RollingGroup<A>, A::Output> = HashMap::new();
 
 	for batch in batches {
-		let snapshot = match policy {
-			LatePolicy::Process => HashMap::new(),
-			LatePolicy::Drop => high_water.clone(),
-		};
+		let snapshot = HashMap::new();
 		let buckets = bucket_rolling(aggregate, batch);
 		let touched = apply_rolling_buckets::<A>(capacity, &snapshot, buckets, &mut buffers, &mut high_water);
 		for group in touched {
@@ -523,7 +510,6 @@ pub fn tumbling_carry_accumulator_oracle<A>(
 	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
-	policy: LatePolicy,
 	retention: Option<<CarryCoord<A> as Slot>::Duration>,
 ) -> MaterializedTable
 where
@@ -536,12 +522,7 @@ where
 	let mut last_visible: HashMap<CarryWindowKey<A>, A::Output> = HashMap::new();
 
 	for batch in batches {
-		let snapshot: HashMap<CarryGroup<A>, CarryCoord<A>> = match policy {
-			LatePolicy::Process => HashMap::new(),
-			LatePolicy::Drop => {
-				metas.iter().filter_map(|(g, m)| m.high_water.map(|hw| (g.clone(), hw))).collect()
-			}
-		};
+		let snapshot: HashMap<CarryGroup<A>, CarryCoord<A>> = HashMap::new();
 		let buckets = bucket_carry(aggregate, batch);
 
 		let mut earliest_affected: HashMap<CarryGroup<A>, CarryCoord<A>> = HashMap::new();
@@ -762,7 +743,6 @@ pub fn multi_rolling_accumulator_oracle<A>(
 	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
-	policy: LatePolicy,
 ) -> MaterializedTable
 where
 	A: MultiRollingOperator,
@@ -774,10 +754,7 @@ where
 	let mut last_visible: HashMap<MultiGroup<A>, Vec<A::Output>> = HashMap::new();
 
 	for batch in batches {
-		let snapshot = match policy {
-			LatePolicy::Process => HashMap::new(),
-			LatePolicy::Drop => high_water.clone(),
-		};
+		let snapshot = HashMap::new();
 		let buckets = bucket_multi(aggregate, batch);
 		let touched = apply_multi_buckets::<A>(capacity, &snapshot, buckets, &mut buffers, &mut high_water);
 		for group in touched {

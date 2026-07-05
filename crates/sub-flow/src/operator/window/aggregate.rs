@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 	window::{
-		engine::{LatePolicy, config::WindowEngineConfig, tumbling::TumblingBuckets},
+		engine::{config::WindowEngineConfig, tumbling::TumblingBuckets},
 		span::WindowSpan,
 	},
 };
@@ -19,7 +19,11 @@ use reifydb_engine::flow::aggregate::AggregateContext;
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::{Result, util::hash::Hash128, value::Value};
+use reifydb_value::{
+	Result,
+	util::hash::Hash128,
+	value::{Value, duration::Duration},
+};
 
 use super::{
 	accumulator::WindowSlotKey,
@@ -154,8 +158,8 @@ pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, cha
 		arrival,
 		window_max_ts,
 		&kinds,
-		WindowEngineConfig::builder().late_policy(LatePolicy::Process).build(),
-		None,
+		WindowEngineConfig::builder().build(),
+		Duration::default(),
 		false,
 	)?;
 	Ok(Change::from_flow(core.node, change.version, diffs, change.changed_at))

@@ -56,6 +56,8 @@ impl FlowNodeInternalStateKey {
 
 	pub const WINDOW_RUNNING_TAG: u8 = b'R';
 
+	pub const WINDOW_COORD_TAG: u8 = b'S';
+
 	pub const GATE_VISIBILITY_TAG: u8 = b'G';
 
 	pub fn is_row_number_counter(&self) -> bool {

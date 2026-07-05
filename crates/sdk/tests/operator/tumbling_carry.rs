@@ -7,7 +7,6 @@
 //! crossing and surviving Updates/Removes inside the current window. The ts
 //! range spans several windows so the carry chains across boundaries.
 
-use reifydb_core::window::engine::LatePolicy;
 use reifydb_sdk::{
 	operator::{FFIOperatorAdapter, windowed::tumbling_carry::TumblingCarryDriver},
 	testing::chaos::{
@@ -35,8 +34,8 @@ fn price_sampler(none_values: bool) -> ColumnSampler {
 	}
 }
 
-fn run(none_values: bool, cfg: ChaosConfig, seed: u64, policy: LatePolicy, retention: Option<u64>) -> ChaosOutcome {
-	let mut config: Vec<(&str, Value)> = vec![("__late_policy", Value::Utf8(common::policy_label(policy).into()))];
+fn run(none_values: bool, cfg: ChaosConfig, seed: u64, retention: Option<u64>) -> ChaosOutcome {
+	let mut config: Vec<(&str, Value)> = vec![];
 	if let Some(l) = retention {
 		config.push(("__retention", Value::Uint8(l)));
 	}
@@ -56,7 +55,6 @@ fn run(none_values: bool, cfg: ChaosConfig, seed: u64, policy: LatePolicy, reten
 				ctx,
 				batches,
 				&window_key(),
-				policy,
 				retention,
 			)
 		})
@@ -69,17 +67,17 @@ fn run(none_values: bool, cfg: ChaosConfig, seed: u64, policy: LatePolicy, reten
 #[test]
 fn carry_matches_across_configs_and_seeds() {
 	for &seed in &common::SEEDS {
-		for policy in common::POLICIES {
+		{
 			for retention in [None, Some(90)] {
-				run(false, common::baseline(150, SupportedOps::insert_only()), seed, policy, retention)
+				run(false, common::baseline(150, SupportedOps::insert_only()), seed, retention)
 					.assert_matches();
-				run(false, common::baseline(150, SupportedOps::no_remove()), seed, policy, retention)
+				run(false, common::baseline(150, SupportedOps::no_remove()), seed, retention)
 					.assert_matches();
-				run(false, common::baseline(150, SupportedOps::no_update()), seed, policy, retention)
+				run(false, common::baseline(150, SupportedOps::no_update()), seed, retention)
 					.assert_matches();
-				run(false, common::baseline(200, SupportedOps::all()), seed, policy, retention)
+				run(false, common::baseline(200, SupportedOps::all()), seed, retention)
 					.assert_matches();
-				run(false, common::full_chaos(250), seed, policy, retention).assert_matches();
+				run(false, common::full_chaos(250), seed, retention).assert_matches();
 			}
 		}
 	}
@@ -88,9 +86,9 @@ fn carry_matches_across_configs_and_seeds() {
 #[test]
 fn carry_handles_none_inputs() {
 	for &seed in &common::SEEDS {
-		for policy in common::POLICIES {
+		{
 			for retention in [None, Some(90)] {
-				run(true, common::full_chaos(200), seed, policy, retention).assert_matches();
+				run(true, common::full_chaos(200), seed, retention).assert_matches();
 			}
 		}
 	}
@@ -100,7 +98,7 @@ fn carry_handles_none_inputs() {
 fn carry_chains_across_windows() {
 	// With many timestamps spanning several windows and inserts only, at
 	// least one emitted window must carry a prior close (has_carry = true).
-	let outcome = run(false, common::baseline(250, SupportedOps::insert_only()), 42, LatePolicy::Drop, None);
+	let outcome = run(false, common::baseline(250, SupportedOps::insert_only()), 42, None);
 	outcome.assert_matches();
 	let carried = outcome
 		.oracle_table
@@ -113,7 +111,7 @@ fn carry_chains_across_windows() {
 
 #[test]
 fn carry_empty_stream_is_empty() {
-	let outcome = run(false, common::baseline(0, SupportedOps::all()), 0, LatePolicy::Drop, None);
+	let outcome = run(false, common::baseline(0, SupportedOps::all()), 0, None);
 	outcome.assert_matches();
 	assert!(outcome.operator_table.is_empty());
 	assert!(outcome.oracle_table.is_empty());

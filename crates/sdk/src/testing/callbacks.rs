@@ -169,7 +169,7 @@ fn test_internal_envelope(operator_id: u64, user_key_bytes: &[u8]) -> EncodedKey
 
 #[unsafe(no_mangle)]
 extern "C" fn test_internal_state_range(
-	_operator_id: u64,
+	operator_id: u64,
 	ctx: *mut ContextFFI,
 	start_ptr: *const u8,
 	start_len: usize,
@@ -186,16 +186,20 @@ extern "C" fn test_internal_state_range(
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 
+		let prefix = test_internal_envelope(operator_id, &[]).as_slice().to_vec();
+
 		let start_key = if start_bound_type == BOUND_UNBOUNDED || start_ptr.is_null() {
 			None
 		} else {
-			Some(from_raw_parts(start_ptr, start_len).to_vec())
+			Some(test_internal_envelope(operator_id, from_raw_parts(start_ptr, start_len))
+				.as_slice()
+				.to_vec())
 		};
 
 		let end_key = if end_bound_type == BOUND_UNBOUNDED || end_ptr.is_null() {
 			None
 		} else {
-			Some(from_raw_parts(end_ptr, end_len).to_vec())
+			Some(test_internal_envelope(operator_id, from_raw_parts(end_ptr, end_len)).as_slice().to_vec())
 		};
 
 		let state_store = test_ctx.state_store();
@@ -205,6 +209,10 @@ extern "C" fn test_internal_state_range(
 			.iter()
 			.filter(|(key, _)| {
 				let key_bytes = key.as_slice();
+
+				if !key_bytes.starts_with(&prefix) {
+					return false;
+				}
 
 				let start_ok = match (&start_key, start_bound_type) {
 					(None, _) => true,
@@ -222,7 +230,7 @@ extern "C" fn test_internal_state_range(
 
 				start_ok && end_ok
 			})
-			.map(|(key, value)| (key.to_vec(), value.0.to_vec()))
+			.map(|(key, value)| (key.as_slice()[prefix.len()..].to_vec(), value.0.to_vec()))
 			.collect();
 
 		items.sort_by(|a, b| a.0.cmp(&b.0));

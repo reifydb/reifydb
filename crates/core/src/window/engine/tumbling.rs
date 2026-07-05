@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use crate::window::{
 	accumulator::WindowAccumulator,
 	engine::{
-		AccumulatorEvent, EmitKind, GroupMeta, LatePolicy, MetaKey, WindowResult, config::WindowEngineConfig,
+		AccumulatorEvent, EmitKind, GroupMeta, MetaKey, WindowResult, config::WindowEngineConfig,
 		expiry_due_range, expiry_key, meta_key_for,
 	},
 	span::{Slot, WindowSpan},
@@ -65,7 +65,7 @@ where
 	}
 	let suffix = encode_u64(window_start.order_key());
 	if let Some(old) = prior {
-		store.internal_drop(&expiry_key(old, group, &suffix))?;
+		store.internal_remove(&expiry_key(old, group, &suffix))?;
 	}
 	if let Some(new) = new {
 		store.internal_set(
@@ -83,7 +83,6 @@ where
 pub struct TumblingEngine<G, C, Accumulator> {
 	accumulators: StateCache<RowNumber, Accumulator>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
-	late_policy: LatePolicy,
 	expire_batch: usize,
 	_pd: PhantomData<G>,
 }
@@ -99,7 +98,6 @@ where
 		Self {
 			accumulators: StateCache::<RowNumber, Accumulator>::new(config.state_cache_capacity()),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
-			late_policy: config.late_policy(),
 			expire_batch: config.expire_batch(),
 			_pd: PhantomData,
 		}
@@ -225,11 +223,6 @@ where
 
 		for (((group, span), events), slot_pre) in buckets.into_iter().zip(slot_resolved) {
 			let entry = meta_loaded.entry(group.clone()).or_default();
-			let late = matches!(entry.high_water, Some(hw) if span.start < hw);
-			let drop_late_adds = late && matches!(self.late_policy, LatePolicy::Drop);
-			if drop_late_adds && !events.iter().any(|e| matches!(e, AccumulatorEvent::Remove(_))) {
-				continue;
-			}
 			match entry.high_water {
 				Some(hw) if span.start > hw => entry.high_water = Some(span.start),
 				None => entry.high_water = Some(span.start),
@@ -256,20 +249,13 @@ where
 			for event in events {
 				match event {
 					AccumulatorEvent::Add(c) => {
-						if drop_late_adds {
-							continue;
-						}
 						accumulator.add(&c);
 					}
 					AccumulatorEvent::Remove(c) => {
 						if accumulator.is_empty() {
 							continue;
 						}
-						if drop_late_adds {
-							accumulator.remove_if_present(&c);
-						} else {
-							accumulator.remove(&c);
-						}
+						accumulator.remove(&c);
 					}
 				}
 			}
@@ -328,7 +314,7 @@ where
 		let mut out: Vec<ExpiredWindow<G, C, Accumulator::Output>> = Vec::new();
 		for (index_key, entry) in due {
 			let row_number = RowNumber(entry.row_number);
-			store.internal_drop(&index_key)?;
+			store.internal_remove(&index_key)?;
 			let value = self
 				.accumulators
 				.get(store, &row_number)?
