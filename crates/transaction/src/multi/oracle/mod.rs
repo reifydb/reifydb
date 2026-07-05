@@ -308,6 +308,7 @@ where
 		Span::current().record("clock_next_us", clock_start.elapsed().as_micros() as u64);
 
 		self.command.register_in_flight(commit_version);
+		self.query.register_in_flight(commit_version);
 		Ok(commit_version)
 	}
 
@@ -378,6 +379,7 @@ where
 
 		let commit_version = self.clock.next()?;
 		self.command.register_in_flight(commit_version);
+		self.query.register_in_flight(commit_version);
 		drop(inner);
 
 		Ok(CreateCommitResult::Success(commit_version))

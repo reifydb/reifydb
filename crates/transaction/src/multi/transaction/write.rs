@@ -83,6 +83,8 @@ pub struct MultiWriteTransaction {
 	pub(crate) lifecycle: Lifecycle,
 
 	pub(crate) self_lease: Option<VersionLeaseGuard>,
+
+	pending_query_pin: Option<CommitVersion>,
 }
 
 impl MultiWriteTransaction {
@@ -108,6 +110,7 @@ impl MultiWriteTransaction {
 			preexisting_keys: HashSet::new(),
 			lifecycle: Lifecycle::Active,
 			self_lease: None,
+			pending_query_pin: None,
 		})
 	}
 
@@ -442,7 +445,10 @@ impl MultiWriteTransaction {
 				Err(TransactionError::Conflict.into())
 			}
 			CreateCommitResult::TooOld => Err(TransactionError::TooOld.into()),
-			CreateCommitResult::Success(version) => Ok((version, self.assemble_committed_deltas(version))),
+			CreateCommitResult::Success(version) => {
+				self.pending_query_pin = Some(version);
+				Ok((version, self.assemble_committed_deltas(version)))
+			}
 		}
 	}
 
@@ -463,7 +469,10 @@ impl MultiWriteTransaction {
 		match result? {
 			CreateCommitResult::Conflict(_) => unreachable!("advance_unchecked never reports a conflict"),
 			CreateCommitResult::TooOld => Err(TransactionError::TooOld.into()),
-			CreateCommitResult::Success(version) => Ok((version, self.assemble_committed_deltas(version))),
+			CreateCommitResult::Success(version) => {
+				self.pending_query_pin = Some(version);
+				Ok((version, self.assemble_committed_deltas(version)))
+			}
 		}
 	}
 
@@ -548,6 +557,9 @@ impl MultiWriteTransaction {
 			);
 		}
 		self.self_lease = self_lease;
+		if let Some(v) = self.pending_query_pin.take() {
+			self.oracle.query.mark_finished(v);
+		}
 		let deltas = self.optimize_for_storage(&entries);
 		let flow_changes = match self.propose_to_raft(commit_version, &deltas, flow_changes)? {
 			Ok(version) => return Ok(version),
@@ -619,6 +631,9 @@ impl MultiWriteTransaction {
 impl MultiWriteTransaction {
 	#[instrument(name = "transaction::command::discard", level = "trace", skip(self), fields(txn_id = %self.id))]
 	pub fn discard(&mut self) {
+		if let Some(v) = self.pending_query_pin.take() {
+			self.oracle.query.mark_finished(v);
+		}
 		match self.lifecycle {
 			Lifecycle::Discarded => return,
 			Lifecycle::Active => self.oracle.query.mark_finished(self.version),
@@ -697,6 +712,77 @@ impl MultiWriteTransaction {
 		let storage_iter = self.engine.store.range_rev(range, multi_scope, batch_size);
 
 		Box::new(MergePendingIterator::new(pending, storage_iter, true))
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_codec::key::serialize;
+	use reifydb_core::common::CommitVersion;
+	use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
+
+	use super::*;
+	use crate::multi::transaction::MultiTransaction;
+
+	fn test_key(s: &str) -> EncodedKey {
+		EncodedKey::new(serialize(&s))
+	}
+
+	fn test_row(s: &str) -> EncodedRow {
+		EncodedRow(CowVec::new(serialize(&s.to_string())))
+	}
+
+	/// Regression test for the self-lease race in `finalize_commit`.
+	///
+	/// `commit_version` is allocated in `Oracle::allocate_commit_version` and, before the fix,
+	/// registered only on the `command` watermark - nothing protects it on the `query` watermark
+	/// until `finalize_commit` runs. A concurrent transaction finishing at a higher, registered
+	/// query version can then race `query.done_until()` past our own commit_version before we get
+	/// there, tripping the `reifydb_assertions!` in `finalize_commit`.
+	///
+	/// This test does not rely on real thread timing. It calls the private `commit_pending()`
+	/// directly to obtain `commit_version` exactly as `commit()` would, then sends a racing
+	/// transaction's begin+finish through the *real* async watermark mechanism
+	/// (`register_in_flight`/`mark_finished`) and uses a bounded `wait_for_mark_timeout` to
+	/// deterministically observe whether the query watermark could advance past `commit_version`.
+	#[test]
+	fn commit_version_stays_protected_from_query_watermark_race_until_finalized() {
+		let engine = MultiTransaction::testing();
+		let mut txn = engine.begin_command().unwrap();
+		txn.set(&test_key("race-key"), test_row("race-value")).unwrap();
+
+		// Allocate commit_version exactly as commit() would, without finalizing it yet.
+		let (commit_version, entries) = txn.commit_pending().unwrap();
+		assert_ne!(commit_version, CommitVersion(0));
+
+		// Simulate an unrelated, concurrent transaction finishing at a HIGHER version - the
+		// real-world trigger for the flake (any other thread's begin_command()/commit() or
+		// begin_query() completing while ours is still mid-flight).
+		let racer = CommitVersion(commit_version.0 + 1);
+		txn.oracle.query.register_in_flight(racer);
+		txn.oracle.query.mark_finished(racer);
+
+		// Bounded, deterministic check: before the fix, commit_version was never registered on
+		// the query watermark, so nothing blocks the racer's Done from advancing done_until past
+		// it - this resolves almost immediately (well under the bound). After the fix,
+		// commit_version is registered-but-unfinished on the query watermark, so done_until can
+		// never reach `racer` while it's open - this reliably times out. Either outcome is
+		// reached deterministically within the bound; it is not a best-effort sleep.
+		let racer_observed =
+			txn.oracle.query.wait_for_mark_timeout(racer, Duration::from_milliseconds(300).unwrap());
+		assert!(
+			!racer_observed,
+			"query watermark advanced to {} before commit_version {} was finalized - the \
+			 historical-GC cutoff raced past our own not-yet-leased commit version",
+			racer.0, commit_version.0
+		);
+
+		let result = txn.finalize_commit(commit_version, entries, vec![]);
+		assert_eq!(
+			result.unwrap(),
+			commit_version,
+			"commit of our own freshly-allocated version must succeed even under a racing query watermark"
+		);
 	}
 }
 
