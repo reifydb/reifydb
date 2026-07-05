@@ -69,6 +69,21 @@ pub enum ColumnError {
 
 	#[error("min_max: float min/max not yet implemented (NaN handling)")]
 	MinMaxFloatUnsupported,
+
+	#[error("persist: failed to serialize column block: {reason}")]
+	PersistSerialize {
+		reason: String,
+	},
+
+	#[error("persist: failed to deserialize column block: {reason}")]
+	PersistDeserialize {
+		reason: String,
+	},
+
+	#[error("persist: unsupported column block format version {version}")]
+	PersistVersionUnsupported {
+		version: u16,
+	},
 }
 
 impl From<ColumnError> for Error {
@@ -286,6 +301,52 @@ impl IntoDiagnostic for ColumnError {
 				fragment: Fragment::None,
 				label: None,
 				help: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			ColumnError::PersistSerialize {
+				reason,
+			} => Diagnostic {
+				code: "COL_018".to_string(),
+				rql: None,
+				message: format!("persist: failed to serialize column block: {reason}"),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			ColumnError::PersistDeserialize {
+				reason,
+			} => Diagnostic {
+				code: "COL_019".to_string(),
+				rql: None,
+				message: format!("persist: failed to deserialize column block: {reason}"),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			ColumnError::PersistVersionUnsupported {
+				version,
+			} => Diagnostic {
+				code: "COL_020".to_string(),
+				rql: None,
+				message: format!("persist: unsupported column block format version {version}"),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: Some("the column block was written by an incompatible version of ReifyDB"
+					.to_string()),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

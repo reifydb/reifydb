@@ -341,6 +341,7 @@ impl SeriesMaterializationActor {
 				},
 			)?,
 		};
+		self.block_store.persist(column_snapshot.id, block.as_ref())?;
 		commit_admin(admin)?;
 		self.block_store.put(column_snapshot.id, block);
 		Ok(())

@@ -2735,9 +2735,11 @@ dependencies = [
 name = "reifydb-column"
 version = "0.8.0"
 dependencies = [
+ "postcard",
  "reifydb-build",
  "reifydb-core",
  "reifydb-value",
+ "serde",
  "thiserror 2.0.18",
 ]
 
@@ -3331,9 +3333,11 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",
+ "reifydb-sqlite",
  "reifydb-sub-api",
  "reifydb-transaction",
  "reifydb-value",
+ "rusqlite",
  "thiserror 2.0.18",
  "tracing",
 ]

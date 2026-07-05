@@ -20,6 +20,7 @@ pub mod compress;
 pub mod compute;
 pub mod encoding;
 pub mod error;
+pub mod persist;
 pub mod predicate;
 pub mod reader;
 pub mod scan;

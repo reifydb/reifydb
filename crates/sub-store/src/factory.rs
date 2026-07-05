@@ -11,9 +11,13 @@ use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::engine::StandardEngine;
 #[cfg(feature = "column")]
 use reifydb_runtime::actor::system::ActorSpawner;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_sqlite::SqliteConfig;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::Result;
 
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use crate::column::persistent::sqlite::SqliteColumnStore;
 #[cfg(feature = "column")]
 use crate::column::{
 	actor::{series::SeriesMaterializationActor, table::TableMaterializationActor},
@@ -24,13 +28,23 @@ use crate::subsystem::{StorageConfig, StorageSubsystem};
 pub struct StorageSubsystemFactory {
 	#[cfg_attr(not(feature = "column"), allow(dead_code))]
 	config: StorageConfig,
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	column_sqlite: Option<SqliteConfig>,
 }
 
 impl StorageSubsystemFactory {
 	pub fn new(config: StorageConfig) -> Self {
 		Self {
 			config,
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+			column_sqlite: None,
 		}
+	}
+
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn with_column_sqlite(mut self, config: Option<SqliteConfig>) -> Self {
+		self.column_sqlite = config;
+		self
 	}
 }
 
@@ -45,7 +59,17 @@ impl SubsystemFactory for StorageSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		let spawner = ioc.resolve::<ActorSpawner>()?;
 		let engine = ioc.resolve::<StandardEngine>()?;
+
+		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+		let block_store = {
+			let tier = self.column_sqlite.clone().map(|cfg| Arc::new(SqliteColumnStore::new(cfg)));
+			let store = ColumnBlockStore::with_persistent(tier);
+			store.warm()?;
+			store
+		};
+		#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
 		let block_store = ColumnBlockStore::new();
+
 		ioc.register_service::<Arc<ColumnBlockStore>>(Arc::new(block_store.clone()));
 
 		let table_actor = TableMaterializationActor::new(

@@ -17,11 +17,15 @@ reifydb-column = { workspace = true, optional = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true, optional = true }
 reifydb-runtime = { workspace = true }
+reifydb-sqlite = { workspace = true, optional = true }
 reifydb-sub-api = { workspace = true }
 reifydb-transaction = { workspace = true, optional = true }
 reifydb-value = { workspace = true }
 thiserror = { workspace = true, optional = true }
 tracing = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rusqlite = { workspace = true, features = ["bundled"], optional = true }
 
 [features]
 default = []
@@ -32,6 +36,11 @@ column = [
 	"dep:reifydb-engine",
 	"dep:reifydb-transaction",
 	"dep:thiserror",
+]
+sqlite = [
+	"column",
+	"dep:reifydb-sqlite",
+	"dep:rusqlite",
 ]
 
 [dev-dependencies]
