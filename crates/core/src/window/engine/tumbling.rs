@@ -65,7 +65,7 @@ where
 	}
 	let suffix = encode_u64(window_start.order_key());
 	if let Some(old) = prior {
-		store.internal_remove(&expiry_key(old, group, &suffix))?;
+		store.internal_drop(&expiry_key(old, group, &suffix))?;
 	}
 	if let Some(new) = new {
 		store.internal_set(
@@ -314,7 +314,7 @@ where
 		let mut out: Vec<ExpiredWindow<G, C, Accumulator::Output>> = Vec::new();
 		for (index_key, entry) in due {
 			let row_number = RowNumber(entry.row_number);
-			store.internal_remove(&index_key)?;
+			store.internal_drop(&index_key)?;
 			let value = self
 				.accumulators
 				.get(store, &row_number)?

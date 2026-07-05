@@ -13,6 +13,7 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
+	actors::pending::PendingWrite,
 	common::CommitVersion,
 	delta::Delta,
 	execution::ExecutionResult,
@@ -132,12 +133,13 @@ pub(super) fn collect_transaction_writes(pending: &PendingWrites) -> Vec<(Encode
 #[inline]
 pub(super) fn apply_pre_commit_writes(
 	multi: &mut MultiWriteTransaction,
-	pending_writes: &[(EncodedKey, Option<EncodedRow>)],
+	pending_writes: &[(EncodedKey, PendingWrite)],
 ) -> Result<()> {
-	for (key, value) in pending_writes {
-		match value {
-			Some(v) => multi.set(key, v.clone())?,
-			None => multi.remove(key)?,
+	for (key, write) in pending_writes {
+		match write {
+			PendingWrite::Set(v) => multi.set(key, v.clone())?,
+			PendingWrite::Remove => multi.remove(key)?,
+			PendingWrite::Drop => multi.drop_key(key)?,
 		}
 	}
 	Ok(())
@@ -259,7 +261,6 @@ impl<'a> TestTransaction<'a> {
 				DateTime::from_nanos(self.inner.clock.now_nanos()),
 			)?,
 			pending_writes: Vec::new(),
-			drops: Vec::new(),
 			pending_shapes: Vec::new(),
 			transaction_writes,
 			view_entries: Vec::new(),
@@ -267,15 +268,12 @@ impl<'a> TestTransaction<'a> {
 
 		self.inner.interceptors.pre_commit.execute(&mut ctx)?;
 
-		for (key, value) in &ctx.pending_writes {
-			match value {
-				Some(v) => self.inner.cmd.as_mut().unwrap().set(key, v.clone())?,
-				None => self.inner.cmd.as_mut().unwrap().remove(key)?,
+		for (key, write) in &ctx.pending_writes {
+			match write {
+				PendingWrite::Set(v) => self.inner.cmd.as_mut().unwrap().set(key, v.clone())?,
+				PendingWrite::Remove => self.inner.cmd.as_mut().unwrap().remove(key)?,
+				PendingWrite::Drop => self.inner.cmd.as_mut().unwrap().drop_key(key)?,
 			}
-		}
-
-		for key in &ctx.drops {
-			self.inner.cmd.as_mut().unwrap().drop_key(key)?;
 		}
 
 		for (id, diff) in ctx.view_entries {

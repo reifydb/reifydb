@@ -98,8 +98,7 @@ pub(crate) struct SchedulerState {
 	pub(crate) consumers: BTreeMap<FlowId, Vec<FlowId>>,
 	pub(crate) view_entries: Vec<(ShapeId, Diff)>,
 	pub(crate) pending_shapes: Vec<RowShape>,
-	pub(crate) pending_writes: Vec<(EncodedKey, Option<EncodedRow>)>,
-	pub(crate) drops: Vec<EncodedKey>,
+	pub(crate) pending_writes: Vec<(EncodedKey, PendingWrite)>,
 	pub(crate) first_error: Option<Error>,
 }
 
@@ -188,11 +187,7 @@ impl<'a> Scheduler<'a> {
 		state.view_entries.extend(result.view_entries);
 		state.pending_shapes.extend(result.pending_shapes);
 		for (key, pw) in result.pending.iter_sorted() {
-			match pw {
-				PendingWrite::Set(v) => state.pending_writes.push((key.clone(), Some(v.clone()))),
-				PendingWrite::Remove => state.pending_writes.push((key.clone(), None)),
-				PendingWrite::Drop => state.drops.push(key.clone()),
-			}
+			state.pending_writes.push((key.clone(), pw.clone()));
 		}
 	}
 

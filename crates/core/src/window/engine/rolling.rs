@@ -476,7 +476,7 @@ where
 				};
 				if new_index_key != slot.prior_index_key {
 					if let Some(old) = slot.prior_index_key {
-						store.internal_remove(&expiry_key(old, &group, &[]))?;
+						store.internal_drop(&expiry_key(old, &group, &[]))?;
 					}
 					if let Some(new) = new_index_key {
 						store.internal_set(
@@ -656,7 +656,7 @@ where
 				merge_into(&mut slot.running, &accumulator);
 				store.internal_set(&entry_key, &accumulator)?;
 			} else {
-				store.internal_remove(&entry_key)?;
+				store.internal_drop(&entry_key)?;
 			}
 			slot.buffer_changed = true;
 
@@ -681,13 +681,13 @@ where
 				},
 			)?;
 			for (key, evicted) in due {
-				store.internal_remove(&key)?;
+				store.internal_drop(&key)?;
 				slot.running.unmerge(&evicted);
 			}
 			let new_min = peek_min_coord::<S, Accumulator>(store, slot.row_number)?;
 			if new_min != slot.prior_min {
 				if let Some(old) = slot.prior_min {
-					store.internal_remove(&expiry_key(old, &group, &[]))?;
+					store.internal_drop(&expiry_key(old, &group, &[]))?;
 				}
 				if let Some(new) = new_min {
 					store.internal_set(
@@ -765,7 +765,7 @@ where
 		let mut out: Vec<RollingExpiry<G, Accumulator::Output>> = Vec::new();
 		for (index_key, entry) in due {
 			let row_number = RowNumber(entry.row_number);
-			store.internal_remove(&index_key)?;
+			store.internal_drop(&index_key)?;
 			let migrated = self.migrate_blob(store, row_number)?;
 			let mut expired: Vec<(EncodedKey, Accumulator)> = Vec::new();
 			store.internal_range_visit::<Accumulator>(
@@ -790,7 +790,7 @@ where
 			}
 			let mut running = self.load_running(store, row_number, migrated)?;
 			for (key, accumulator) in expired {
-				store.internal_remove(&key)?;
+				store.internal_drop(&key)?;
 				running.unmerge(&accumulator);
 			}
 			let new_min = peek_min_coord::<S, Accumulator>(store, row_number)?;
@@ -823,7 +823,7 @@ where
 						},
 					)?;
 					for key in leftover {
-						store.internal_remove(&key)?;
+						store.internal_drop(&key)?;
 					}
 					self.buffers.remove(store, &row_number)?;
 					let running_cache =
@@ -862,7 +862,7 @@ where
 		let mut out: Vec<RollingExpiry<G, Output>> = Vec::new();
 		for (index_key, entry) in due {
 			let row_number = RowNumber(entry.row_number);
-			store.internal_remove(&index_key)?;
+			store.internal_drop(&index_key)?;
 			let Some(mut buffer) = self.buffers.get(store, &row_number)? else {
 				continue;
 			};
@@ -933,7 +933,7 @@ where
 		let mut out: Vec<RollingExpiry<G, Output>> = Vec::new();
 		for (index_key, entry) in due {
 			let row_number = RowNumber(entry.row_number);
-			store.internal_remove(&index_key)?;
+			store.internal_drop(&index_key)?;
 			let Some(mut buffer) = self.buffers.get(store, &row_number)? else {
 				continue;
 			};

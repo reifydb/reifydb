@@ -83,7 +83,6 @@ pub(crate) fn execute_inline_flow_changes(
 			view_entries: Vec::new(),
 			pending_shapes: Vec::new(),
 			pending_writes: Vec::new(),
-			drops: Vec::new(),
 			first_error: None,
 		}),
 	};
@@ -138,7 +137,6 @@ fn merge_scheduler_results(state: &mut SchedulerState, ctx: &mut PreCommitContex
 	ctx.view_entries.append(&mut state.view_entries);
 	ctx.pending_shapes.append(&mut state.pending_shapes);
 	ctx.pending_writes.append(&mut state.pending_writes);
-	ctx.drops.append(&mut state.drops);
 
 	Ok(())
 }

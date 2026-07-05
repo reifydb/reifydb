@@ -6,6 +6,7 @@ use reifydb_codec::{
 	key::encoded::EncodedKey,
 };
 use reifydb_core::{
+	actors::pending::PendingWrite,
 	common::CommitVersion,
 	interface::{
 		catalog::shape::ShapeId,
@@ -23,9 +24,7 @@ use crate::{
 pub struct PreCommitContext {
 	pub flow_changes: Vec<Change>,
 
-	pub pending_writes: Vec<(EncodedKey, Option<EncodedRow>)>,
-
-	pub drops: Vec<EncodedKey>,
+	pub pending_writes: Vec<(EncodedKey, PendingWrite)>,
 
 	pub pending_shapes: Vec<RowShape>,
 
@@ -39,7 +38,6 @@ impl PreCommitContext {
 		Self {
 			flow_changes: Vec::new(),
 			pending_writes: Vec::new(),
-			drops: Vec::new(),
 			pending_shapes: Vec::new(),
 			transaction_writes: Vec::new(),
 			view_entries: Vec::new(),
