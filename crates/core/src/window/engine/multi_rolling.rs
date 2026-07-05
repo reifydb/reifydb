@@ -15,7 +15,8 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use crate::window::{
 	accumulator::WindowAccumulator,
 	engine::{
-		AccumulatorEvent, GroupMeta, MetaKey, config::WindowEngineConfig, meta_key_for, rolling::RollingBuckets,
+		AccumulatorEvent, GroupMeta, MetaKey, WindowStateKey, config::WindowEngineConfig, meta_key_for,
+		rolling::RollingBuckets,
 	},
 	span::Slot,
 	state::StateCache,
@@ -93,7 +94,7 @@ struct GroupSlot<C, Accumulator, SK, Output> {
 }
 
 pub struct MultiRollingEngine<G, C, Accumulator, SK, Output> {
-	groups: StateCache<RowNumber, GroupState<C, Accumulator, SK, Output>>,
+	groups: StateCache<WindowStateKey, GroupState<C, Accumulator, SK, Output>>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
 	_pd: PhantomData<G>,
 }
@@ -109,7 +110,7 @@ where
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
-			groups: StateCache::<RowNumber, GroupState<C, Accumulator, SK, Output>>::new(
+			groups: StateCache::<WindowStateKey, GroupState<C, Accumulator, SK, Output>>::new_internal(
 				config.state_cache_capacity(),
 			),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
@@ -214,7 +215,7 @@ where
 				 them through the per-bucket get_or_create_row_number fallback, diverging behaviour"
 			);
 		}
-		let state_keys: Vec<RowNumber> = resolved_rows.iter().map(|(rn, _)| *rn).collect();
+		let state_keys: Vec<WindowStateKey> = resolved_rows.iter().map(|(rn, _)| WindowStateKey(*rn)).collect();
 		for (group, (state_row_number, _)) in resolve_order.into_iter().zip(resolved_rows) {
 			state_rows.insert(group, state_row_number);
 		}
@@ -254,7 +255,7 @@ where
 					let GroupState {
 						buffer,
 						last_emit: prior_emit,
-					} = self.groups.get(store, &state_row_number)?.unwrap_or_default();
+					} = self.groups.get(store, &WindowStateKey(state_row_number))?.unwrap_or_default();
 					group_slots.insert(
 						group.clone(),
 						GroupSlot {
@@ -379,7 +380,7 @@ where
 				buffer: slot.buffer,
 				last_emit: new_emit,
 			};
-			self.groups.put(store, &slot.state_row_number, combined)?;
+			self.groups.put(store, &WindowStateKey(slot.state_row_number), combined)?;
 		}
 
 		Ok(emits)

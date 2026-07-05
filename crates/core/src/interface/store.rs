@@ -30,13 +30,15 @@ pub enum EntryKind {
 	Source(ShapeId),
 
 	Operator(FlowNodeId),
+
+	OperatorInternal(FlowNodeId),
 }
 
 pub fn classify_key(key: &EncodedKey) -> EntryKind {
 	match Key::decode(key) {
 		Some(Key::Row(row_key)) => EntryKind::Source(row_key.shape),
 		Some(Key::FlowNodeState(state_key)) => EntryKind::Operator(state_key.node),
-		Some(Key::FlowNodeInternalState(internal_key)) => EntryKind::Operator(internal_key.node),
+		Some(Key::FlowNodeInternalState(internal_key)) => EntryKind::OperatorInternal(internal_key.node),
 		_ => EntryKind::Multi,
 	}
 }
@@ -55,7 +57,7 @@ pub fn classify_range(range: &EncodedKeyRange) -> Option<EntryKind> {
 	}
 
 	if let (Some(start), Some(_end)) = FlowNodeInternalStateKeyRange::decode(range) {
-		return Some(EntryKind::Operator(start.node));
+		return Some(EntryKind::OperatorInternal(start.node));
 	}
 
 	None

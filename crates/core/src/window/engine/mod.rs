@@ -104,6 +104,20 @@ impl IntoEncodedKey for &RunningKey {
 	}
 }
 
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+pub struct WindowStateKey(pub RowNumber);
+
+impl IntoEncodedKey for &WindowStateKey {
+	fn into_encoded_key(self) -> EncodedKey {
+		let inner = (&self.0).into_encoded_key();
+		let inner = inner.as_ref();
+		let mut bytes = Vec::with_capacity(1 + inner.len());
+		bytes.push(FlowNodeInternalStateKey::WINDOW_ROW_STATE_TAG);
+		bytes.extend_from_slice(inner);
+		EncodedKey::new(bytes)
+	}
+}
+
 impl IntoEncodedKey for &MetaKey {
 	fn into_encoded_key(self) -> EncodedKey {
 		let inner = self.0.as_ref();

@@ -8,6 +8,7 @@ pub(super) fn entry_id_to_name(table: EntryKind) -> String {
 		EntryKind::Multi => "multi".to_string(),
 		EntryKind::Source(id) => format!("source_{}", id),
 		EntryKind::Operator(id) => format!("operator_{}", id),
+		EntryKind::OperatorInternal(id) => format!("operator_internal_{}", id),
 	}
 }
 

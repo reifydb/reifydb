@@ -117,7 +117,7 @@ impl MultiReadBufferTier {
 	) -> ServedChunk {
 		match table {
 			EntryKind::Source(_) => {}
-			EntryKind::Operator(_) => {
+			EntryKind::Operator(_) | EntryKind::OperatorInternal(_) => {
 				return self.serve_operator_chunk(cursor, start, end, scope, batch_size, descending);
 			}
 			_ => return ServedChunk::Gap,

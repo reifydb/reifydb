@@ -34,7 +34,7 @@ pub mod tests {
 	#[test]
 	fn test_classify_key_flow_node_internal_state() {
 		let key = FlowNodeInternalStateKey::new(FlowNodeId(99), vec![4, 5, 6]).encode();
-		assert!(matches!(classify_key(&key), EntryKind::Operator(FlowNodeId(99))));
+		assert!(matches!(classify_key(&key), EntryKind::OperatorInternal(FlowNodeId(99))));
 	}
 
 	#[test]

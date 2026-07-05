@@ -18,8 +18,8 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use crate::window::{
 	accumulator::WindowAccumulator,
 	engine::{
-		AccumulatorEvent, EmitKind, GroupMeta, MetaKey, WindowResult, config::WindowEngineConfig,
-		expiry_due_range, expiry_key, meta_key_for,
+		AccumulatorEvent, EmitKind, GroupMeta, MetaKey, WindowResult, WindowStateKey,
+		config::WindowEngineConfig, expiry_due_range, expiry_key, meta_key_for,
 	},
 	span::{Slot, WindowSpan},
 	state::StateCache,
@@ -81,7 +81,7 @@ where
 }
 
 pub struct TumblingEngine<G, C, Accumulator> {
-	accumulators: StateCache<RowNumber, Accumulator>,
+	accumulators: StateCache<WindowStateKey, Accumulator>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
 	expire_batch: usize,
 	_pd: PhantomData<G>,
@@ -96,7 +96,9 @@ where
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
-			accumulators: StateCache::<RowNumber, Accumulator>::new(config.state_cache_capacity()),
+			accumulators: StateCache::<WindowStateKey, Accumulator>::new_internal(
+				config.state_cache_capacity(),
+			),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
 			expire_batch: config.expire_batch(),
 			_pd: PhantomData,
@@ -189,7 +191,8 @@ where
 				 state, double-counting it (survivor_keys={survivors}, resolved_rows={resolved})"
 			);
 		}
-		let accumulator_keys: Vec<RowNumber> = resolved_rows.iter().map(|(rn, _)| *rn).collect();
+		let accumulator_keys: Vec<WindowStateKey> =
+			resolved_rows.iter().map(|(rn, _)| WindowStateKey(*rn)).collect();
 		self.accumulators.warm(store, &accumulator_keys)?;
 		let mut resolved_rows = resolved_rows.into_iter();
 		let slot_resolved: SlotResolved = slot_survives
@@ -237,8 +240,10 @@ where
 				}
 			};
 
-			let mut accumulator: Accumulator =
-				self.accumulators.get(store, &row_number)?.unwrap_or_else(new_accumulator);
+			let mut accumulator: Accumulator = self
+				.accumulators
+				.get(store, &WindowStateKey(row_number))?
+				.unwrap_or_else(new_accumulator);
 			let was_empty_before = accumulator.is_empty();
 			let prior = if was_empty_before {
 				None
@@ -261,7 +266,7 @@ where
 			}
 
 			let value = accumulator.finalize();
-			self.accumulators.put(store, &row_number, accumulator)?;
+			self.accumulators.put(store, &WindowStateKey(row_number), accumulator)?;
 
 			match value {
 				Some(value) => {
@@ -317,9 +322,9 @@ where
 			store.internal_drop(&index_key)?;
 			let value = self
 				.accumulators
-				.get(store, &row_number)?
+				.get(store, &WindowStateKey(row_number))?
 				.and_then(|accumulator| accumulator.finalize());
-			self.accumulators.remove(store, &row_number)?;
+			self.accumulators.remove(store, &WindowStateKey(row_number))?;
 			out.push(ExpiredWindow {
 				row_number,
 				group: entry.group,

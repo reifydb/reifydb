@@ -35,7 +35,7 @@ pub fn page_of(key: &EncodedKey, bucket_shift: u8) -> PageId {
 			bucket: OPERATOR_STATE_BUCKET,
 		},
 		Some(Key::FlowNodeInternalState(internal_key)) => PageId {
-			kind: EntryKind::Operator(internal_key.node),
+			kind: EntryKind::OperatorInternal(internal_key.node),
 			bucket: OPERATOR_INTERNAL_STATE_BUCKET,
 		},
 		_ => PageId {
@@ -67,6 +67,7 @@ pub fn key_range_of(page: PageId, bucket_shift: u8) -> Option<EncodedKeyRange> {
 			OPERATOR_INTERNAL_STATE_BUCKET => Some(FlowNodeInternalStateKey::node_range(node)),
 			_ => None,
 		},
+		EntryKind::OperatorInternal(node) => Some(FlowNodeInternalStateKey::node_range(node)),
 		EntryKind::Multi => None,
 	}
 }

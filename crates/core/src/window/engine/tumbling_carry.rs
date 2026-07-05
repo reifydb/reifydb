@@ -15,8 +15,8 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use crate::window::{
 	accumulator::WindowAccumulator,
 	engine::{
-		AccumulatorEvent, EmitKind, MetaKey, WindowResult, config::TumblingCarryConfig, meta_key_for,
-		tumbling::TumblingBuckets,
+		AccumulatorEvent, EmitKind, MetaKey, WindowResult, WindowStateKey, config::TumblingCarryConfig,
+		meta_key_for, tumbling::TumblingBuckets,
 	},
 	span::{Slot, WindowSpan},
 	state::StateCache,
@@ -63,7 +63,7 @@ type MetaLoaded<G, C, Carry, Output> = HashMap<G, CarryMeta<C, Carry, Output>>;
 type SlotResolved = Vec<Option<(RowNumber, bool)>>;
 
 pub struct TumblingCarryEngine<G, C: Slot, Accumulator, Carry, Output> {
-	accumulators: StateCache<RowNumber, Accumulator>,
+	accumulators: StateCache<WindowStateKey, Accumulator>,
 	meta: StateCache<MetaKey, CarryMeta<C, Carry, Output>>,
 	retention: Option<C::Duration>,
 	_pd: PhantomData<G>,
@@ -81,7 +81,9 @@ where
 	pub fn new(config: TumblingCarryConfig<C>) -> Self {
 		let base = config.base();
 		Self {
-			accumulators: StateCache::<RowNumber, Accumulator>::new(base.state_cache_capacity()),
+			accumulators: StateCache::<WindowStateKey, Accumulator>::new_internal(
+				base.state_cache_capacity(),
+			),
 			meta: StateCache::<MetaKey, CarryMeta<C, Carry, Output>>::new_internal(
 				base.internal_state_cache_capacity(),
 			),
@@ -128,8 +130,10 @@ where
 				},
 			};
 
-			let mut accumulator: Accumulator =
-				self.accumulators.get(store, &row_number)?.unwrap_or_else(&new_accumulator);
+			let mut accumulator: Accumulator = self
+				.accumulators
+				.get(store, &WindowStateKey(row_number))?
+				.unwrap_or_else(&new_accumulator);
 			let mut changed = false;
 			for event in events {
 				match event {
@@ -149,7 +153,7 @@ where
 			if !changed {
 				continue;
 			}
-			self.accumulators.put(store, &row_number, accumulator)?;
+			self.accumulators.put(store, &WindowStateKey(row_number), accumulator)?;
 
 			entry.windows.entry(span.start).or_insert_with(|| WindowEntry {
 				row_number,
@@ -184,7 +188,10 @@ where
 					let w = meta.windows.get(&coord).expect("window entry present");
 					(w.row_number, w.span, w.has_output)
 				};
-				let value = self.accumulators.get(store, &row_number)?.and_then(|a| a.finalize());
+				let value = self
+					.accumulators
+					.get(store, &WindowStateKey(row_number))?
+					.and_then(|a| a.finalize());
 				match value.as_ref().and_then(|v| build_output(&group, span, v, prev_carry.as_ref())) {
 					Some(out) => {
 						let new_carry = value
@@ -248,7 +255,7 @@ where
 					meta.windows.remove(&first);
 					meta.sealed_up_to = Some(first);
 					meta.sealed_carry = carry_out;
-					self.accumulators.remove(store, &row_number)?;
+					self.accumulators.remove(store, &WindowStateKey(row_number))?;
 				}
 			}
 		}
@@ -321,7 +328,8 @@ where
 				 double-counting it (survivor_keys={survivors}, resolved_rows={resolved})"
 			);
 		}
-		let accumulator_keys: Vec<RowNumber> = resolved_rows.iter().map(|(rn, _)| *rn).collect();
+		let accumulator_keys: Vec<WindowStateKey> =
+			resolved_rows.iter().map(|(rn, _)| WindowStateKey(*rn)).collect();
 		self.accumulators.warm(store, &accumulator_keys)?;
 		let mut resolved_rows = resolved_rows.into_iter();
 		Ok(slot_survives
@@ -367,6 +375,18 @@ mod tests {
 		internal: HashMap<Vec<u8>, Vec<u8>>,
 		rows: HashMap<Vec<u8>, RowNumber>,
 		next_row: u64,
+	}
+
+	impl CountingStore {
+		// Live per-window accumulator rows are tagged WINDOW_ROW_STATE_TAG in the
+		// internal keyspace (alongside meta and the expiry index); count only those.
+		fn accumulator_count(&self) -> usize {
+			use crate::key::flow_node_internal_state::FlowNodeInternalStateKey;
+			self.internal
+				.keys()
+				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_ROW_STATE_TAG))
+				.count()
+		}
 	}
 
 	impl WindowStore for CountingStore {
@@ -537,9 +557,9 @@ mod tests {
 		}
 		engine.flush(&mut store).expect("flush");
 		assert!(
-			store.data.len() <= 4,
+			store.accumulator_count() <= 4,
 			"sealed windows must reclaim their accumulator rows; found {} live rows after 60 windows",
-			store.data.len()
+			store.accumulator_count()
 		);
 	}
 
@@ -555,7 +575,7 @@ mod tests {
 		}
 		engine.flush(&mut store).expect("flush");
 		assert_eq!(
-			store.data.len(),
+			store.accumulator_count(),
 			60,
 			"with no retention the carry engine retains every window's accumulator row"
 		);

@@ -49,6 +49,7 @@ impl MultiVersionGet for StandardMultiStore {
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
 		match classify_key(key) {
 			EntryKind::Operator(_) => self.get_operator(key, version),
+			EntryKind::OperatorInternal(_) => self.get_operator_internal(key, version),
 			EntryKind::Source(_) => self.get_source(key, version),
 			_ => self.get_multi(key, version),
 		}
@@ -58,6 +59,11 @@ impl MultiVersionGet for StandardMultiStore {
 impl StandardMultiStore {
 	#[instrument(name = "store::multi::get::operator", level = "trace", skip(self, key), fields(version = version.0))]
 	fn get_operator(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
+		self.get_impl(key, version)
+	}
+
+	#[instrument(name = "store::multi::get::operator_internal", level = "trace", skip(self, key), fields(version = version.0))]
+	fn get_operator_internal(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
 		self.get_impl(key, version)
 	}
 
@@ -81,7 +87,7 @@ impl StandardMultiStore {
 		if let Some(found) = self.get_probe_read(key, version) {
 			return Ok(self.unmask_dropped(key, found, version));
 		}
-		if matches!(table, EntryKind::Operator(_))
+		if matches!(table, EntryKind::Operator(_) | EntryKind::OperatorInternal(_))
 			&& let Some(read) = &self.read
 			&& self.warm_operator_page(read.page_of_key(key))?
 			&& let Some(found) = self.get_probe_read(key, version)
@@ -187,7 +193,7 @@ impl StandardMultiStore {
 			span.record("outcome", "no_tiers");
 			return Ok(false);
 		};
-		if !matches!(page.kind, EntryKind::Operator(_)) {
+		if !matches!(page.kind, EntryKind::Operator(_) | EntryKind::OperatorInternal(_)) {
 			span.record("outcome", "not_operator");
 			return Ok(false);
 		}
@@ -280,7 +286,9 @@ type DropPartition = (Vec<(EntryKind, EncodedKey)>, Vec<(EntryKind, EncodedKey)>
 
 #[inline]
 fn partition_drops(explicit_drops: Vec<(EntryKind, EncodedKey)>) -> DropPartition {
-	explicit_drops.into_iter().partition(|(table, _)| matches!(table, EntryKind::Operator(_)))
+	explicit_drops
+		.into_iter()
+		.partition(|(table, _)| matches!(table, EntryKind::Operator(_) | EntryKind::OperatorInternal(_)))
 }
 
 struct ClassifiedDeltas {
@@ -499,7 +507,7 @@ impl StandardMultiStore {
 			}
 		}
 
-		if matches!(table, EntryKind::Operator(_))
+		if matches!(table, EntryKind::Operator(_) | EntryKind::OperatorInternal(_))
 			&& !persistent_idx.is_empty()
 			&& let Some(read) = &self.read
 		{
@@ -645,7 +653,7 @@ impl StandardMultiStore {
 		};
 		for (table, entries) in batches {
 			match table {
-				EntryKind::Operator(_) => {
+				EntryKind::Operator(_) | EntryKind::OperatorInternal(_) => {
 					for (key, value) in entries {
 						match value {
 							Some(value) => {
@@ -1125,7 +1133,7 @@ impl StandardMultiStore {
 			return served;
 		}
 
-		if matches!(scan.table, EntryKind::Operator(_))
+		if matches!(scan.table, EntryKind::Operator(_) | EntryKind::OperatorInternal(_))
 			&& let Some(read) = &self.read
 			&& self.warm_operator_page(read.page_of_key(&EncodedKey::new(scan.start.to_vec())))?
 			&& let Some(served) = self.serve_from_read_cache(scan, cursor, collected, descending)
@@ -1148,7 +1156,9 @@ impl StandardMultiStore {
 		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
 		descending: bool,
 	) -> Option<Result<bool>> {
-		let (Some(read), EntryKind::Source(_) | EntryKind::Operator(_)) = (&self.read, scan.table) else {
+		let (Some(read), EntryKind::Source(_) | EntryKind::Operator(_) | EntryKind::OperatorInternal(_)) =
+			(&self.read, scan.table)
+		else {
 			return None;
 		};
 		match read.serve_persistent_chunk(
@@ -1204,7 +1214,9 @@ impl StandardMultiStore {
 
 	#[inline]
 	fn mask_dropped_persistent_rows(&self, scan: &TierScanQuery, mut batch: RangeBatch) -> RangeBatch {
-		if !matches!(scan.table, EntryKind::Operator(_)) || self.pending_drops.is_empty() {
+		if !matches!(scan.table, EntryKind::Operator(_) | EntryKind::OperatorInternal(_))
+			|| self.pending_drops.is_empty()
+		{
 			return batch;
 		}
 		for entry in batch.entries.iter_mut() {
@@ -1680,6 +1692,7 @@ mod cache_tests {
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 		let node = FlowNodeId(7);
 		let table = EntryKind::Operator(node);
+		let internal_table = EntryKind::OperatorInternal(node);
 		let data_key = FlowNodeStateKey::encoded(node, vec![1u8]);
 		let internal_key = FlowNodeInternalStateKey::encoded(node, vec![2u8]);
 
@@ -1708,7 +1721,7 @@ mod cache_tests {
 
 		let commit = store.commit().expect("commit tier");
 		assert!(!commit.get_all_versions(table, data_key.as_ref()).unwrap().is_empty());
-		assert!(!commit.get_all_versions(table, internal_key.as_ref()).unwrap().is_empty());
+		assert!(!commit.get_all_versions(internal_table, internal_key.as_ref()).unwrap().is_empty());
 
 		MultiVersionCommit::commit(
 			&store,
@@ -1729,7 +1742,7 @@ mod cache_tests {
 			"operator data-state Drop must remove every version, not leave a tombstone"
 		);
 		assert!(
-			commit.get_all_versions(table, internal_key.as_ref()).unwrap().is_empty(),
+			commit.get_all_versions(internal_table, internal_key.as_ref()).unwrap().is_empty(),
 			"operator internal-state Drop must remove every version, not leave a tombstone"
 		);
 	}
@@ -1738,7 +1751,7 @@ mod cache_tests {
 	fn operator_remove_leaves_a_tombstone_in_commit_tier() {
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 		let node = FlowNodeId(8);
-		let table = EntryKind::Operator(node);
+		let table = EntryKind::OperatorInternal(node);
 		let key = FlowNodeInternalStateKey::encoded(node, vec![9u8]);
 
 		MultiVersionCommit::commit(
@@ -1780,7 +1793,7 @@ mod cache_tests {
 		fn churn(evict_with_drop: bool) -> u64 {
 			let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 			let node = FlowNodeId(21);
-			let table = EntryKind::Operator(node);
+			let table = EntryKind::OperatorInternal(node);
 			let key_at = |round: u64| FlowNodeInternalStateKey::encoded(node, round.to_be_bytes().to_vec());
 
 			let mut version = 0u64;

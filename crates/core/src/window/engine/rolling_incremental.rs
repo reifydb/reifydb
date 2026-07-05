@@ -15,7 +15,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use crate::window::{
 	accumulator::WindowAccumulator,
 	engine::{
-		AccumulatorEvent, EmitKind, GroupMeta, MetaKey, RunningKey,
+		AccumulatorEvent, EmitKind, GroupMeta, MetaKey, RunningKey, WindowStateKey,
 		config::WindowEngineConfig,
 		meta_key_for,
 		rolling::{RollingBuckets, RollingBuffer, RollingResult},
@@ -39,7 +39,7 @@ struct GroupSlot<C, Accumulator, Running, Output> {
 }
 
 pub struct RollingIncrementalEngine<G, C, Accumulator, Running> {
-	buffers: StateCache<RowNumber, RollingBuffer<C, Accumulator>>,
+	buffers: StateCache<WindowStateKey, RollingBuffer<C, Accumulator>>,
 	running: StateCache<RunningKey, Running>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
 	_pd: PhantomData<G>,
@@ -55,10 +55,10 @@ where
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
-			buffers: StateCache::<RowNumber, RollingBuffer<C, Accumulator>>::new(
+			buffers: StateCache::<WindowStateKey, RollingBuffer<C, Accumulator>>::new_internal(
 				config.state_cache_capacity(),
 			),
-			running: StateCache::<RunningKey, Running>::new(config.state_cache_capacity()),
+			running: StateCache::<RunningKey, Running>::new_internal(config.state_cache_capacity()),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
 			_pd: PhantomData,
 		}
@@ -100,8 +100,10 @@ where
 							store.get_or_create_row_number(&key)?
 						}
 					};
-					let buffer: RollingBuffer<C, Accumulator> =
-						self.buffers.get(store, &row_number)?.unwrap_or_default();
+					let buffer: RollingBuffer<C, Accumulator> = self
+						.buffers
+						.get(store, &WindowStateKey(row_number))?
+						.unwrap_or_default();
 					let running: Running =
 						self.running.get(store, &RunningKey(row_number))?.unwrap_or_default();
 					let was_empty_before = buffer.is_empty();
@@ -188,7 +190,7 @@ where
 					.and_then(|newest| combine_running(&group, &slot.running, &newest, *coord)),
 				None => None,
 			};
-			self.buffers.put(store, &slot.row_number, slot.buffer)?;
+			self.buffers.put(store, &WindowStateKey(slot.row_number), slot.buffer)?;
 			self.running.put(store, &RunningKey(slot.row_number), slot.running)?;
 
 			if let Some(out) = output {
@@ -284,11 +286,12 @@ where
 			);
 		}
 		let state_keys: Vec<RowNumber> = resolved_rows.iter().map(|(rn, _)| *rn).collect();
+		let buffer_keys: Vec<WindowStateKey> = state_keys.iter().map(|rn| WindowStateKey(*rn)).collect();
 		let running_keys: Vec<RunningKey> = state_keys.iter().map(|rn| RunningKey(*rn)).collect();
 		for (group, resolved) in resolve_order.into_iter().zip(resolved_rows) {
 			buffer_rows.insert(group, resolved);
 		}
-		self.buffers.warm(store, &state_keys)?;
+		self.buffers.warm(store, &buffer_keys)?;
 		self.running.warm(store, &running_keys)?;
 		Ok(buffer_rows)
 	}

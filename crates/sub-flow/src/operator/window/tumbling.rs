@@ -10,7 +10,7 @@ use reifydb_core::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind,
+			AccumulatorEvent, EmitKind, WindowStateKey,
 			config::WindowEngineConfig,
 			tumbling::{TumblingBuckets, TumblingEngine, reindex_window},
 		},
@@ -982,7 +982,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		for (hash, session_id) in &closes {
 			let key = operator.core.create_window_key(*hash, *session_id);
 			let (row_number, _) = store.get_or_create_row_number(&key)?;
-			let accumulator_key = row_number.into_encoded_key();
+			let accumulator_key = WindowStateKey(row_number).into_encoded_key();
 			let meta_key = operator.core.create_engine_meta_key(*hash, *session_id);
 			let prior_last =
 				store.state_get::<EngineWindowMeta>(&meta_key)?.map(|m| m.last_event_time).unwrap_or(0);
@@ -994,14 +994,14 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				(prior_last > 0).then_some(prior_last),
 				None,
 			)?;
-			if let Some(accumulator) = store.state_get::<RowAccumulator>(&accumulator_key)?
+			if let Some(accumulator) = store.internal_get::<RowAccumulator>(&accumulator_key)?
 				&& let Some(value) = accumulator.finalize()
 			{
 				let gvals = group_values.get(hash).cloned().unwrap_or_default();
 				let row = operator.core.build_engine_row(&gvals, &value, row_number, ts_nanos)?;
 				diffs.push(Diff::remove(Columns::from_row(&row)));
 			}
-			store.state_drop(&accumulator_key)?;
+			store.internal_drop(&accumulator_key)?;
 			store.state_drop(&meta_key)?;
 		}
 	}
