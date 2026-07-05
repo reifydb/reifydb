@@ -275,6 +275,7 @@ pub(crate) fn persist_buffer<S, C, A>(
 	row_number: RowNumber,
 	buffer: &BTreeMap<C, A>,
 	loaded_coords: &[u64],
+	dirty: &BTreeSet<u64>,
 ) -> Result<()>
 where
 	S: WindowStore,
@@ -282,13 +283,17 @@ where
 	A: WindowAccumulator,
 {
 	let live: BTreeSet<u64> = buffer.keys().map(|c| c.order_key()).collect();
+	let loaded: BTreeSet<u64> = loaded_coords.iter().copied().collect();
 	for old in loaded_coords {
 		if !live.contains(old) {
 			store.internal_drop(&coord_entry_key(row_number, *old))?;
 		}
 	}
 	for (coord, accumulator) in buffer {
-		store.internal_set(&coord_entry_key(row_number, coord.order_key()), accumulator)?;
+		let order = coord.order_key();
+		if dirty.contains(&order) || !loaded.contains(&order) {
+			store.internal_set(&coord_entry_key(row_number, order), accumulator)?;
+		}
 	}
 	Ok(())
 }

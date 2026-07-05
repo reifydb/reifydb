@@ -20,7 +20,7 @@ use tracing::{Span, instrument, warn};
 
 use super::{ConsumeContext, CoordinatorActor, CoordinatorState, Phase};
 
-#[inline]
+#[instrument(name = "flow::coordinator::apply_pending", level = "debug", skip_all)]
 fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending) -> Result<()> {
 	for (key, pw) in combined.iter_sorted() {
 		match pw {

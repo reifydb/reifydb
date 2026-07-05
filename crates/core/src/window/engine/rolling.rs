@@ -83,6 +83,7 @@ struct GroupSlot<C, Accumulator, Output> {
 	is_new: bool,
 	buffer: RollingBuffer<C, Accumulator>,
 	loaded_coords: Vec<u64>,
+	dirty: BTreeSet<u64>,
 	was_empty_before: bool,
 	buffer_changed: bool,
 	prior_index_key: Option<u64>,
@@ -381,6 +382,7 @@ where
 							is_new,
 							buffer,
 							loaded_coords,
+							dirty: BTreeSet::new(),
 							was_empty_before,
 							buffer_changed: false,
 							prior_index_key,
@@ -444,6 +446,7 @@ where
 				}
 			}
 			slot.buffer_changed = true;
+			slot.dirty.insert(coord.order_key());
 
 			meta.high_water = Some(match meta.high_water {
 				Some(hw) if hw > coord => hw,
@@ -490,7 +493,7 @@ where
 				}
 			}
 			let output = combine(&group, &slot.buffer);
-			persist_buffer(store, slot.row_number, &slot.buffer, &slot.loaded_coords)?;
+			persist_buffer(store, slot.row_number, &slot.buffer, &slot.loaded_coords, &slot.dirty)?;
 
 			if let Some(out) = output {
 				let kind = if slot.is_new || slot.was_empty_before {
@@ -952,7 +955,7 @@ where
 							},
 						)?;
 					}
-					persist_buffer(store, row_number, &buffer, &loaded_coords)?;
+					persist_buffer(store, row_number, &buffer, &loaded_coords, &BTreeSet::new())?;
 					out.push(RollingExpiry::Update {
 						row_number,
 						group: entry.group,
@@ -1025,7 +1028,7 @@ where
 							},
 						)?;
 					}
-					persist_buffer(store, row_number, &buffer, &loaded_coords)?;
+					persist_buffer(store, row_number, &buffer, &loaded_coords, &BTreeSet::new())?;
 					out.push(RollingExpiry::Update {
 						row_number,
 						group: entry.group,

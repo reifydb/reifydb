@@ -7,7 +7,7 @@ pub const DEFAULT_STATE_CACHE_CAPACITY: usize = 1024;
 
 pub const DEFAULT_INTERNAL_STATE_CACHE_CAPACITY: usize = 1024;
 
-pub const DEFAULT_EXPIRE_BATCH: usize = 1024;
+pub const DEFAULT_EXPIRE_BATCH: usize = 256;
 
 #[derive(Clone, Copy, Debug)]
 pub struct WindowEngineConfig {

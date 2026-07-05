@@ -50,6 +50,7 @@ struct GroupSlot<C, Accumulator, SK, Output> {
 	state_row_number: RowNumber,
 	buffer: MultiRollingBuffer<C, Accumulator>,
 	loaded_coords: Vec<u64>,
+	dirty: BTreeSet<u64>,
 	prior_emit: MultiRollingEmit<SK, Output>,
 	buffer_changed: bool,
 }
@@ -225,6 +226,7 @@ where
 							state_row_number,
 							buffer,
 							loaded_coords,
+							dirty: BTreeSet::new(),
 							prior_emit,
 							buffer_changed: false,
 						},
@@ -260,6 +262,7 @@ where
 				slot.buffer.pop_first();
 			}
 			slot.buffer_changed = true;
+			slot.dirty.insert(coord.order_key());
 
 			let next_high_water = match meta.high_water {
 				Some(hw) if hw > coord => hw,
@@ -340,7 +343,7 @@ where
 				}
 			}
 
-			persist_buffer(store, slot.state_row_number, &slot.buffer, &slot.loaded_coords)?;
+			persist_buffer(store, slot.state_row_number, &slot.buffer, &slot.loaded_coords, &slot.dirty)?;
 			if new_emit.is_empty() {
 				self.last_emit.remove(store, &EmitKey(slot.state_row_number))?;
 			} else {
