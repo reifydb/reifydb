@@ -5,8 +5,12 @@ use std::{cmp::Reverse, collections::BTreeMap, sync::Arc};
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
-use reifydb_runtime::sync::{map::Map, rwlock::RwLock};
+use reifydb_runtime::sync::{
+	map::Map,
+	rwlock::{RwLock, RwLockWriteGuard},
+};
 use reifydb_value::util::cowvec::CowVec;
+use tracing::instrument;
 
 pub(super) type Value = Option<CowVec<u8>>;
 
@@ -26,6 +30,11 @@ impl Entry {
 			current: Arc::new(RwLock::new(BTreeMap::new())),
 			historical: Arc::new(RwLock::new(BTreeMap::new())),
 		}
+	}
+
+	#[instrument(name = "store::multi::memory::write_acquire", level = "debug", skip_all)]
+	pub fn write_pair(&self) -> (RwLockWriteGuard<'_, CurrentMap>, RwLockWriteGuard<'_, HistoricalMap>) {
+		(self.current.write(), self.historical.write())
 	}
 }
 

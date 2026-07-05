@@ -196,9 +196,10 @@ fn render_group(out: &mut String, span_name: &str, mut group: Vec<&AggregateReco
 		.collect();
 	let max_label_width = labels.iter().map(|s| s.len()).max().unwrap_or(0);
 
+	let is_apply = span_name == "flow::engine::apply";
 	for (i, r) in group.iter().enumerate() {
 		let p = r.histogram.percentiles();
-		let _ = writeln!(
+		let _ = write!(
 			out,
 			"      {:<width$}  total={} calls={} p50={} p75={} p90={} p95={} p99={}",
 			labels[i],
@@ -211,6 +212,11 @@ fn render_group(out: &mut String, span_name: &str, mut group: Vec<&AggregateReco
 			fmt_us(p.p99 as u64),
 			width = max_label_width,
 		);
+		if is_apply {
+			let e = r.extras();
+			let _ = write!(out, " lock={} io={}->{}", fmt_us(e[2]), e[0], e[1]);
+		}
+		let _ = writeln!(out);
 	}
 }
 

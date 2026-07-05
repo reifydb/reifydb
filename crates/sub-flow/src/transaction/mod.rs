@@ -549,6 +549,7 @@ impl FlowTransaction {
 		);
 	}
 
+	#[instrument(name = "flow::actor::flush_state", level = "debug", skip_all)]
 	pub fn flush_operator_states(&mut self) -> Result<()> {
 		let states = mem::take(&mut self.inner_mut().operator_states);
 		for (_, slot) in states {

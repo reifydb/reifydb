@@ -88,8 +88,7 @@ impl MemoryPrimitiveStorage {
 		entries: Vec<(EncodedKey, Option<CowVec<u8>>)>,
 	) {
 		let table_entry = self.get_or_create_table(table);
-		let mut current = table_entry.current.write();
-		let mut historical = table_entry.historical.write();
+		let (mut current, mut historical) = table_entry.write_pair();
 
 		for (key, value) in entries {
 			if let Some((pre_version, pre_value)) = current.get(&key) {
@@ -526,8 +525,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 		for (table, entries) in batches {
 			let table_entry = self.get_or_create_table(table);
-			let mut current = table_entry.current.write();
-			let mut historical = table_entry.historical.write();
+			let (mut current, mut historical) = table_entry.write_pair();
 
 			let mut by_key: HashMap<EncodedKey, Vec<CommitVersion>> = HashMap::new();
 			for (key, version) in entries {

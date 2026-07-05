@@ -16,7 +16,7 @@ use reifydb_value::{
 	Result,
 	value::{dictionary::DictionaryId, identity::IdentityId},
 };
-use tracing::{Span, warn};
+use tracing::{Span, instrument, warn};
 
 use super::{ConsumeContext, CoordinatorActor, CoordinatorState, Phase};
 
@@ -65,7 +65,7 @@ impl CoordinatorActor {
 		self.persist_consume(consume_ctx);
 	}
 
-	#[inline]
+	#[instrument(name = "flow::coordinator::persist", level = "debug", skip_all)]
 	fn persist_consume(&self, consume_ctx: ConsumeContext) {
 		let ConsumeContext {
 			combined,
@@ -143,6 +143,7 @@ impl CoordinatorActor {
 		}
 	}
 
+	#[instrument(name = "flow::coordinator::commit_tick", level = "debug", skip_all)]
 	pub(super) fn commit_tick_writes(&self, pending: Pending, pending_shapes: Vec<RowShape>) {
 		let mut transaction = match self.engine.begin_command(IdentityId::system()) {
 			Ok(t) => t,

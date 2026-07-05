@@ -163,8 +163,14 @@ impl SqlitePersistentStorage {
 		}
 	}
 
+	#[instrument(name = "store::multi::sqlite::conn_acquire", level = "debug", skip(self))]
+	fn lock_conn(&self) -> MutexGuard<'_, Option<Connection>> {
+		self.inner.conn.lock()
+	}
+
+	#[instrument(name = "store::multi::sqlite::checkpoint", level = "debug", skip(self))]
 	pub fn maybe_checkpoint(&self) -> Result<CheckpointOutcome> {
-		let guard = self.inner.conn.lock();
+		let guard = self.lock_conn();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(CheckpointOutcome {
 				log_frames: 0,
@@ -201,8 +207,9 @@ impl SqlitePersistentStorage {
 		})
 	}
 
+	#[instrument(name = "store::multi::sqlite::reclaim", level = "debug", skip(self))]
 	pub fn reclaim(&self) -> Result<()> {
-		let guard = self.inner.conn.lock();
+		let guard = self.lock_conn();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(());
 		};
@@ -243,7 +250,7 @@ impl SqlitePersistentStorage {
 		let table_sql = self.table_sql(table);
 		let sql = build_delete_below_version_sql(&table_sql.table_name, prefix.is_some());
 		let cutoff = version_to_bytes(cutoff_version);
-		let guard = self.inner.conn.lock();
+		let guard = self.lock_conn();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(Vec::new());
 		};
@@ -295,7 +302,7 @@ impl SqlitePersistentStorage {
 			return Ok(0);
 		}
 		let table_sql = self.table_sql(table);
-		let guard = self.inner.conn.lock();
+		let guard = self.lock_conn();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(0);
 		};
@@ -322,7 +329,7 @@ impl SqlitePersistentStorage {
 			return Ok(0);
 		}
 		let table_sql = self.table_sql(table);
-		let guard = self.inner.conn.lock();
+		let guard = self.lock_conn();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(0);
 		};
@@ -365,7 +372,7 @@ impl SqlitePersistentStorage {
 			return Ok(accepted);
 		}
 
-		let guard = self.inner.conn.lock();
+		let guard = self.lock_conn();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(accepted);
 		};

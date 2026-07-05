@@ -262,11 +262,12 @@ impl MultiVersionContains for StandardMultiStore {
 }
 
 impl MultiVersionCommit for StandardMultiStore {
-	#[instrument(name = "store::multi::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len(), version = version.0))]
+	#[instrument(name = "store::multi::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len(), version = version.0, drop_count = field::Empty))]
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
 		let classified = classify_deltas(&deltas);
 
 		let (operator_drops, source_drops) = partition_drops(classified.explicit_drops);
+		Span::current().record("drop_count", operator_drops.len() + source_drops.len());
 		self.dispatch_drops(build_drop_batch(source_drops, &classified.pending_set_keys, version));
 
 		self.update_read_cache_on_commit(version, &classified.batches);
