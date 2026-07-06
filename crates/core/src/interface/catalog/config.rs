@@ -47,7 +47,6 @@ pub enum ConfigKey {
 	CdcTtlScanInterval,
 	CdcTtlScanBatchSize,
 	CdcTtlScanMaxBatchesPerTick,
-	CdcTtlReclaimInterval,
 	CdcCompactInterval,
 	CdcCompactBlockSize,
 	CdcCompactSafetyLag,
@@ -57,7 +56,6 @@ pub enum ConfigKey {
 	CdcRecentCacheCapacity,
 	MultiReadBufferPages,
 	MultiReadBufferPageSize,
-	MultiReclaimInterval,
 	FlowTick,
 	CdcWatermarkWaitTimeout,
 	CdcConsumeWaitTimeout,
@@ -93,7 +91,6 @@ impl ConfigKey {
 			Self::CdcTtlScanInterval,
 			Self::CdcTtlScanBatchSize,
 			Self::CdcTtlScanMaxBatchesPerTick,
-			Self::CdcTtlReclaimInterval,
 			Self::CdcCompactInterval,
 			Self::CdcCompactBlockSize,
 			Self::CdcCompactSafetyLag,
@@ -103,7 +100,6 @@ impl ConfigKey {
 			Self::CdcRecentCacheCapacity,
 			Self::MultiReadBufferPages,
 			Self::MultiReadBufferPageSize,
-			Self::MultiReclaimInterval,
 			Self::FlowTick,
 			Self::CdcWatermarkWaitTimeout,
 			Self::CdcConsumeWaitTimeout,
@@ -141,7 +137,6 @@ impl ConfigKey {
 			Self::CdcTtlScanInterval => Value::duration_seconds(30),
 			Self::CdcTtlScanBatchSize => Value::Uint8(8192),
 			Self::CdcTtlScanMaxBatchesPerTick => Value::Uint8(32),
-			Self::CdcTtlReclaimInterval => Value::duration_seconds(30),
 			Self::CdcCompactInterval => Value::duration_seconds(60),
 			Self::CdcCompactBlockSize => Value::Uint8(1024),
 			Self::CdcCompactSafetyLag => Value::Uint8(1024),
@@ -151,7 +146,6 @@ impl ConfigKey {
 			Self::CdcRecentCacheCapacity => Value::Uint8(128),
 			Self::MultiReadBufferPages => Value::Uint8(1024),
 			Self::MultiReadBufferPageSize => Value::Uint8(65536),
-			Self::MultiReclaimInterval => Value::duration_seconds(30),
 			Self::FlowTick => Value::duration_seconds(1),
 			Self::CdcWatermarkWaitTimeout => Value::duration_seconds(1),
 			Self::CdcConsumeWaitTimeout => Value::duration_seconds(30),
@@ -211,9 +205,6 @@ impl ConfigKey {
 			Self::CdcTtlScanMaxBatchesPerTick => {
 				"Upper bound on delete transactions per CDC TTL eviction tick. Caps how long one tick can run when draining a backlog; remaining work continues on the next tick."
 			}
-			Self::CdcTtlReclaimInterval => {
-				"Minimum interval between CDC free-page reclaims (incremental_vacuum + WAL checkpoint) after eviction. Decoupled from the eviction scan so frequent deletes do not trigger frequent heavyweight checkpoints."
-			}
 			Self::CdcCompactInterval => "How often the CDC compaction actor runs.",
 			Self::CdcCompactBlockSize => "Number of CDC entries packed into one compressed block.",
 			Self::CdcCompactSafetyLag => "Versions newer than (max_version - lag) are never compacted.",
@@ -238,9 +229,6 @@ impl ConfigKey {
 			Self::MultiReadBufferPageSize => {
 				"Number of rows per cached page (bucket) in the multi-version read cache. Must be a \
 				 power of two; sets the granularity of whole-page read-ahead and completeness tracking."
-			}
-			Self::MultiReclaimInterval => {
-				"How often the multi store reclaims free pages (incremental_vacuum + WAL truncate) on its persistent SQLite tier, returning space to the OS after evictions. Decoupled from the GC/flush delete cadence."
 			}
 			Self::FlowTick => {
 				"How often the deferred and transactional flow tick coordinators wake up to dispatch \
@@ -338,7 +326,6 @@ impl ConfigKey {
 			Self::CdcTtlScanInterval => true,
 			Self::CdcTtlScanBatchSize => false,
 			Self::CdcTtlScanMaxBatchesPerTick => false,
-			Self::CdcTtlReclaimInterval => false,
 			Self::CdcCompactInterval => false,
 			Self::CdcCompactBlockSize => false,
 			Self::CdcCompactSafetyLag => false,
@@ -348,7 +335,6 @@ impl ConfigKey {
 			Self::CdcRecentCacheCapacity => true,
 			Self::MultiReadBufferPages => true,
 			Self::MultiReadBufferPageSize => true,
-			Self::MultiReclaimInterval => true,
 			Self::FlowTick => false,
 			Self::CdcWatermarkWaitTimeout => false,
 			Self::CdcConsumeWaitTimeout => false,
@@ -384,7 +370,6 @@ impl ConfigKey {
 			Self::CdcTtlScanInterval => &[ValueType::Duration],
 			Self::CdcTtlScanBatchSize => &[ValueType::Uint8],
 			Self::CdcTtlScanMaxBatchesPerTick => &[ValueType::Uint8],
-			Self::CdcTtlReclaimInterval => &[ValueType::Duration],
 			Self::CdcCompactInterval => &[ValueType::Duration],
 			Self::CdcCompactBlockSize => &[ValueType::Uint8],
 			Self::CdcCompactSafetyLag => &[ValueType::Uint8],
@@ -394,7 +379,6 @@ impl ConfigKey {
 			Self::CdcRecentCacheCapacity => &[ValueType::Uint8],
 			Self::MultiReadBufferPages => &[ValueType::Uint8],
 			Self::MultiReadBufferPageSize => &[ValueType::Uint8],
-			Self::MultiReclaimInterval => &[ValueType::Duration],
 			Self::FlowTick => &[ValueType::Duration],
 			Self::CdcWatermarkWaitTimeout => &[ValueType::Duration],
 			Self::CdcConsumeWaitTimeout => &[ValueType::Duration],
@@ -430,7 +414,6 @@ impl ConfigKey {
 			Self::CdcTtlScanInterval => false,
 			Self::CdcTtlScanBatchSize => false,
 			Self::CdcTtlScanMaxBatchesPerTick => false,
-			Self::CdcTtlReclaimInterval => false,
 			Self::CdcCompactInterval => false,
 			Self::CdcCompactBlockSize => false,
 			Self::CdcCompactSafetyLag => false,
@@ -440,7 +423,6 @@ impl ConfigKey {
 			Self::CdcRecentCacheCapacity => false,
 			Self::MultiReadBufferPages => false,
 			Self::MultiReadBufferPageSize => false,
-			Self::MultiReclaimInterval => false,
 			Self::FlowTick => false,
 			Self::CdcWatermarkWaitTimeout => false,
 			Self::CdcConsumeWaitTimeout => false,
@@ -693,7 +675,6 @@ impl fmt::Display for ConfigKey {
 			Self::CdcTtlScanInterval => write!(f, "CDC_TTL_SCAN_INTERVAL"),
 			Self::CdcTtlScanBatchSize => write!(f, "CDC_TTL_SCAN_BATCH_SIZE"),
 			Self::CdcTtlScanMaxBatchesPerTick => write!(f, "CDC_TTL_SCAN_MAX_BATCHES_PER_TICK"),
-			Self::CdcTtlReclaimInterval => write!(f, "CDC_TTL_RECLAIM_INTERVAL"),
 			Self::CdcCompactInterval => write!(f, "CDC_COMPACT_INTERVAL"),
 			Self::CdcCompactBlockSize => write!(f, "CDC_COMPACT_BLOCK_SIZE"),
 			Self::CdcCompactSafetyLag => write!(f, "CDC_COMPACT_SAFETY_LAG"),
@@ -703,7 +684,6 @@ impl fmt::Display for ConfigKey {
 			Self::CdcRecentCacheCapacity => write!(f, "CDC_RECENT_CACHE_CAPACITY"),
 			Self::MultiReadBufferPages => write!(f, "MULTI_READ_BUFFER_PAGES"),
 			Self::MultiReadBufferPageSize => write!(f, "MULTI_READ_BUFFER_PAGE_SIZE"),
-			Self::MultiReclaimInterval => write!(f, "MULTI_RECLAIM_INTERVAL"),
 			Self::FlowTick => write!(f, "FLOW_TICK"),
 			Self::CdcWatermarkWaitTimeout => write!(f, "CDC_WATERMARK_WAIT_TIMEOUT"),
 			Self::CdcConsumeWaitTimeout => write!(f, "CDC_CONSUME_WAIT_TIMEOUT"),
@@ -743,7 +723,6 @@ impl FromStr for ConfigKey {
 			"CDC_TTL_SCAN_INTERVAL" => Ok(Self::CdcTtlScanInterval),
 			"CDC_TTL_SCAN_BATCH_SIZE" => Ok(Self::CdcTtlScanBatchSize),
 			"CDC_TTL_SCAN_MAX_BATCHES_PER_TICK" => Ok(Self::CdcTtlScanMaxBatchesPerTick),
-			"CDC_TTL_RECLAIM_INTERVAL" => Ok(Self::CdcTtlReclaimInterval),
 			"CDC_COMPACT_INTERVAL" => Ok(Self::CdcCompactInterval),
 			"CDC_COMPACT_BLOCK_SIZE" => Ok(Self::CdcCompactBlockSize),
 			"CDC_COMPACT_SAFETY_LAG" => Ok(Self::CdcCompactSafetyLag),
@@ -753,7 +732,6 @@ impl FromStr for ConfigKey {
 			"CDC_RECENT_CACHE_CAPACITY" => Ok(Self::CdcRecentCacheCapacity),
 			"MULTI_READ_BUFFER_PAGES" => Ok(Self::MultiReadBufferPages),
 			"MULTI_READ_BUFFER_PAGE_SIZE" => Ok(Self::MultiReadBufferPageSize),
-			"MULTI_RECLAIM_INTERVAL" => Ok(Self::MultiReclaimInterval),
 			"FLOW_TICK" => Ok(Self::FlowTick),
 			"CDC_WATERMARK_WAIT_TIMEOUT" => Ok(Self::CdcWatermarkWaitTimeout),
 			"CDC_CONSUME_WAIT_TIMEOUT" => Ok(Self::CdcConsumeWaitTimeout),
@@ -909,7 +887,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 41);
+		assert_eq!(all.len(), 39);
 		assert!(all.contains(&ConfigKey::MetricsRuntimeRetention));
 		assert!(all.contains(&ConfigKey::MetricsProfilerRetention));
 		assert!(all.contains(&ConfigKey::MetricsProfilerSnapshotInterval));
@@ -917,10 +895,8 @@ mod tests {
 		assert!(all.contains(&ConfigKey::CdcWatermarkWaitTimeout));
 		assert!(all.contains(&ConfigKey::CdcConsumeWaitTimeout));
 		assert!(all.contains(&ConfigKey::FlowJoinProbeBlockSize));
-		assert!(all.contains(&ConfigKey::MultiReclaimInterval));
 		assert!(all.contains(&ConfigKey::CdcTtlScanInterval));
 		assert!(all.contains(&ConfigKey::CdcTtlScanBatchSize));
-		assert!(all.contains(&ConfigKey::CdcTtlReclaimInterval));
 		assert!(all.contains(&ConfigKey::CdcTtlScanMaxBatchesPerTick));
 		assert!(all.contains(&ConfigKey::CdcCompactInterval));
 		assert!(all.contains(&ConfigKey::CdcCompactBlockSize));

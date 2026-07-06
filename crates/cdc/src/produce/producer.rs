@@ -33,7 +33,7 @@ use reifydb_runtime::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	Result,
-	value::{datetime::DateTime, duration::Duration},
+	value::datetime::DateTime,
 };
 use tracing::{debug, error, info};
 
@@ -172,41 +172,21 @@ where
 		self.event_bus.emit(CdcWrittenEvent::new(entries, version));
 	}
 
-	fn try_cleanup(&self, state: &mut CdcProducerState) {
+	fn try_cleanup(&self) {
 		let catalog = self.host.catalog();
 		let batch_size = (catalog.get_config_uint8(ConfigKey::CdcTtlScanBatchSize) as usize).max(1);
 		let max_batches = (catalog.get_config_uint8(ConfigKey::CdcTtlScanMaxBatchesPerTick) as usize).max(1);
-		let evicted = match self.find_eviction_target() {
+		match self.find_eviction_target() {
 			Ok(Some(cutoff_version)) => {
-				match self.evict_and_emit(cutoff_version, batch_size, max_batches) {
-					Ok(evicted) => evicted,
-					Err(e) => {
-						error!(cutoff = cutoff_version.0, error = ?e, "CDC cleanup failed");
-						0
-					}
+				if let Err(e) = self.evict_and_emit(cutoff_version, batch_size, max_batches) {
+					error!(cutoff = cutoff_version.0, error = ?e, "CDC cleanup failed");
 				}
 			}
-			Ok(None) => 0,
+			Ok(None) => {}
 			Err(e) => {
 				error!(error = ?e, "CDC cleanup failed");
-				0
 			}
-		};
-		if evicted > 0 {
-			self.maybe_reclaim(state, catalog.get_config_duration(ConfigKey::CdcTtlReclaimInterval));
 		}
-	}
-
-	fn maybe_reclaim(&self, state: &mut CdcProducerState, reclaim_interval: Duration) {
-		let now = DateTime::from_nanos(self.clock.now_nanos());
-		let due = state.last_reclaim.map(|last| now - last >= reclaim_interval).unwrap_or(true);
-		if !due {
-			return;
-		}
-		if let Err(e) = self.storage.vacuum() {
-			error!(error = ?e, "CDC free-page reclaim failed");
-		}
-		state.last_reclaim = Some(now);
 	}
 
 	#[inline]
@@ -293,8 +273,8 @@ where
 	}
 
 	#[inline]
-	fn on_tick(&self, state: &mut CdcProducerState) {
-		self.try_cleanup(state);
+	fn on_tick(&self) {
+		self.try_cleanup();
 	}
 }
 
@@ -340,7 +320,6 @@ fn delta_to_raw_system_change(
 
 pub struct CdcProducerState {
 	_timer_handle: Option<TimerHandle>,
-	last_reclaim: Option<DateTime>,
 }
 
 impl<S, T, H> Actor for CdcProducerActor<S, T, H>
@@ -358,11 +337,10 @@ where
 		let timer_handle = ctx.schedule_repeat(interval, CdcProduceMessage::Tick);
 		CdcProducerState {
 			_timer_handle: Some(timer_handle),
-			last_reclaim: None,
 		}
 	}
 
-	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
+	fn handle(&self, _state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
 		if ctx.is_cancelled() {
 			info!("CDC producer actor stopping");
 			return Directive::Stop;
@@ -374,7 +352,7 @@ where
 				deltas,
 				flow_changes,
 			} => self.on_produce(version, changed_at, deltas, flow_changes),
-			CdcProduceMessage::Tick => self.on_tick(state),
+			CdcProduceMessage::Tick => self.on_tick(),
 		}
 		Directive::Continue
 	}

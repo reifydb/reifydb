@@ -99,13 +99,6 @@ impl SqliteCdcStorage {
 		create_block_timestamp_index(conn);
 	}
 
-	pub fn incremental_vacuum(&self) {
-		let guard = self.inner.conn.lock();
-		if let Some(conn) = guard.as_ref() {
-			let _ = pragma::incremental_vacuum(conn);
-		}
-	}
-
 	pub fn shrink_memory(&self) {
 		let guard = self.inner.conn.lock();
 		if let Some(conn) = guard.as_ref() {
@@ -959,11 +952,6 @@ impl CdcStorage for SqliteCdcStorage {
 			entries,
 			more_remaining,
 		})
-	}
-
-	fn vacuum(&self) -> CdcStorageResult<()> {
-		self.incremental_vacuum();
-		Ok(())
 	}
 
 	fn find_ttl_cutoff(&self, cutoff: DateTime) -> CdcStorageResult<Option<CommitVersion>> {

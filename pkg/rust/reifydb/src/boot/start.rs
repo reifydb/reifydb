@@ -20,7 +20,6 @@ use reifydb_store_multi::{
 		epoch::{EpochSource, actor::spawn_version_epoch_sampler},
 		historical::actor::spawn_historical_gc_actor,
 		operator::actor::spawn_operator_settings_actor,
-		reclaim::actor::spawn_persistent_reclaim_actor,
 		row::actor::spawn_row_settings_actor,
 	},
 };
@@ -103,9 +102,6 @@ pub(crate) fn spawn_actors(engine: &StandardEngine, spawner: &ActorSpawner) -> R
 	let _operator_ttl_actor = spawn_operator_settings_actor(store.clone(), spawner.clone(), catalog.clone(), epoch);
 
 	store.set_eviction_watermark(Arc::new(engine.clone()));
-
-	let reclaim_config: Arc<dyn GetConfig> = Arc::new(catalog.clone());
-	let _reclaim_actor = spawn_persistent_reclaim_actor(store.clone(), spawner.clone(), reclaim_config);
 
 	let config: Arc<dyn GetConfig> = Arc::new(catalog);
 	let _gc_actor = spawn_historical_gc_actor(store, spawner.clone(), engine.clone(), config);

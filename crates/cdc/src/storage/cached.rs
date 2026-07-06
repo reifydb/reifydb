@@ -77,10 +77,6 @@ impl<S: CdcStorage> CdcStorage for CachedCdcStorage<S> {
 		self.inner.drop_before(version, limit)
 	}
 
-	fn vacuum(&self) -> CdcStorageResult<()> {
-		self.inner.vacuum()
-	}
-
 	fn find_ttl_cutoff(&self, cutoff: DateTime) -> CdcStorageResult<Option<CommitVersion>> {
 		self.inner.find_ttl_cutoff(cutoff)
 	}
