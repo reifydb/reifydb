@@ -31,7 +31,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use crate::{
 	error::Result,
 	operator::column::{row::Row, sink::RowSink},
-	state::StateEntry,
+	state::{StateEntry, row::RowNumberProvider},
 };
 
 pub trait RowEmit {
@@ -205,6 +205,20 @@ pub trait OperatorContext {
 	fn dictionary(&mut self) -> impl DictionaryApi + '_;
 	fn get_or_create_row_number(&mut self, key: &EncodedKey) -> Result<(RowNumber, bool)>;
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
+	fn drop_row_number(&mut self, key: &EncodedKey) -> Result<()>
+	where
+		Self: Sized,
+	{
+		let provider = RowNumberProvider::new(self.operator_id());
+		provider.drop(self, key)
+	}
+	fn drop_row_numbers_below(&mut self, upper: &EncodedKey) -> Result<Vec<RowNumber>>
+	where
+		Self: Sized,
+	{
+		let provider = RowNumberProvider::new(self.operator_id());
+		provider.drop_below(self, upper)
+	}
 	/// Reserve `count` fresh, globally-unique output row numbers for this operator and return the start
 	/// of the `[start, start + count)` range. Backed by the host's process-shared in-memory allocator so
 	/// it is immune to the committing transaction's MVCC snapshot (unlike a counter read from the store).

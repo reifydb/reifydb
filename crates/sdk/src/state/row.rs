@@ -4,9 +4,13 @@
 use std::{
 	collections::{HashMap, HashSet},
 	iter,
+	ops::Bound,
 };
 
-use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
+use reifydb_codec::key::{
+	encoded::{EncodedKey, EncodedKeyRange},
+	serializer::KeySerializer,
+};
 use reifydb_core::{interface::catalog::flow::FlowNodeId, key::flow_node_internal_state::FlowNodeInternalStateKey};
 use reifydb_value::value::row_number::RowNumber;
 
@@ -77,6 +81,34 @@ impl RowNumberProvider {
 		key: &EncodedKey,
 	) -> Result<(RowNumber, bool)> {
 		Ok(self.get_or_create_row_numbers_batch(ctx, iter::once(key))?.into_iter().next().unwrap())
+	}
+
+	pub fn drop<O: OperatorContext>(&self, ctx: &mut O, key: &EncodedKey) -> Result<()> {
+		let map_key = self.make_map_key(key);
+		ctx.internal_state().drop(&map_key)
+	}
+
+	pub fn drop_below<O: OperatorContext>(&self, ctx: &mut O, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
+		let boundary = self.make_map_key(upper);
+		let tag_range = EncodedKeyRange::prefix(self.map_prefix().as_ref());
+		let end = match &tag_range.end {
+			Bound::Included(k) => Bound::Included(k),
+			Bound::Excluded(k) => Bound::Excluded(k),
+			Bound::Unbounded => Bound::Unbounded,
+		};
+		let entries = ctx.internal_state().range::<u64>(Bound::Excluded(&boundary), end)?;
+		let mut dropped = Vec::with_capacity(entries.len());
+		for (map_key, row_number) in entries {
+			ctx.internal_state().drop(&map_key)?;
+			dropped.push(RowNumber(row_number));
+		}
+		Ok(dropped)
+	}
+
+	fn map_prefix(&self) -> EncodedKey {
+		let mut serializer = KeySerializer::new();
+		serializer.extend_u8(FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG);
+		serializer.finish()
 	}
 
 	fn make_map_key(&self, key: &EncodedKey) -> EncodedKey {
@@ -444,5 +476,67 @@ pub mod tests {
 		let (check_rn5, is_new5) = provider.get_or_create_row_number(&mut ctx, &key5).unwrap();
 		assert_eq!(check_rn5.0, 5);
 		assert!(!is_new5);
+	}
+
+	#[test]
+	fn drop_removes_mapping_but_never_reuses_row_number() {
+		let mut harness = FFIOperatorHarnessBuilder::<RowNumberTestOperator>::new()
+			.with_node_id(FlowNodeId(1))
+			.build()
+			.expect("Failed to build harness");
+		let provider = RowNumberProvider::new(FlowNodeId(1));
+
+		let key = encode_key("victim");
+		let mut ctx = harness.create_operator_context();
+		let (first, is_new) = provider.get_or_create_row_number(&mut ctx, &key).unwrap();
+		assert!(is_new);
+
+		let mut ctx = harness.create_operator_context();
+		provider.drop(&mut ctx, &key).unwrap();
+
+		// After the drop the mapping is gone, so the key is minted fresh - and the monotonic
+		// counter must keep advancing rather than handing back the dropped number, or a
+		// downstream consumer tracking rows by number would conflate two distinct rows.
+		let mut ctx = harness.create_operator_context();
+		let (second, is_new_again) = provider.get_or_create_row_number(&mut ctx, &key).unwrap();
+		assert!(is_new_again, "dropped mapping must be recreated fresh");
+		assert_ne!(first.0, second.0, "the dropped row number must not be reused");
+	}
+
+	#[test]
+	fn drop_below_reclaims_only_keys_under_the_bound() {
+		let mut harness = FFIOperatorHarnessBuilder::<RowNumberTestOperator>::new()
+			.with_node_id(FlowNodeId(1))
+			.build()
+			.expect("Failed to build harness");
+		let provider = RowNumberProvider::new(FlowNodeId(1));
+
+		// Slot-leading keys, the shape the block operators use: (slot, base, quote).
+		let key = |slot: u64| EncodedKey::builder().u64(slot).u32(1u32).u32(2u32).build();
+		let mut ctx = harness.create_operator_context();
+		let (rn10, _) = provider.get_or_create_row_number(&mut ctx, &key(10)).unwrap();
+		let mut ctx = harness.create_operator_context();
+		let (rn20, _) = provider.get_or_create_row_number(&mut ctx, &key(20)).unwrap();
+		let mut ctx = harness.create_operator_context();
+		let (rn30, _) = provider.get_or_create_row_number(&mut ctx, &key(30)).unwrap();
+
+		// Reclaim everything below slot 25: slots 10 and 20, never slot 30.
+		let upper = EncodedKey::builder().u64(25u64).u32(0u32).u32(0u32).build();
+		let mut ctx = harness.create_operator_context();
+		let mut dropped = provider.drop_below(&mut ctx, &upper).unwrap();
+		dropped.sort_by_key(|rn| rn.0);
+		assert_eq!(dropped, vec![rn10, rn20], "exactly the below-bound mappings are reclaimed");
+
+		// Slot 30 sat above the bound: its mapping survives with the same row number.
+		let mut ctx = harness.create_operator_context();
+		let (rn30_again, is_new30) = provider.get_or_create_row_number(&mut ctx, &key(30)).unwrap();
+		assert!(!is_new30, "slot 30 was above the horizon and must remain mapped");
+		assert_eq!(rn30, rn30_again);
+
+		// Slot 10 was reclaimed: re-lookup mints a fresh, non-reused number.
+		let mut ctx = harness.create_operator_context();
+		let (rn10_again, is_new10) = provider.get_or_create_row_number(&mut ctx, &key(10)).unwrap();
+		assert!(is_new10, "reclaimed slot 10 must be recreated fresh");
+		assert_ne!(rn10.0, rn10_again.0);
 	}
 }

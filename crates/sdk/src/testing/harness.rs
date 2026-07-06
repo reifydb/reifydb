@@ -27,7 +27,7 @@ use reifydb_core::{
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_value::{
 	util::cowvec::CowVec,
-	value::{Value, value_type::ValueType},
+	value::{Value, datetime::DateTime, value_type::ValueType},
 };
 use serde::de::DeserializeOwned;
 
@@ -38,7 +38,7 @@ use crate::{
 		arena::Arena,
 		wrapper::{OperatorWrapper, ffi_apply},
 	},
-	operator::{FFIOperator, OperatorMetadata, change::BorrowedChange, context::ffi::FFIOperatorContext},
+	operator::{FFIOperator, OperatorMetadata, Tick, change::BorrowedChange, context::ffi::FFIOperatorContext},
 	testing::{
 		builders::TestChangeBuilder,
 		callbacks::create_test_callbacks,
@@ -139,6 +139,20 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		with_registry(&self.builder_registry, || {
 			let mut op_ctx = FFIOperatorContext::new(ffi_ctx_ptr);
 			self.operator.flush_state(&mut op_ctx)
+		})
+	}
+
+	pub fn tick(&mut self, now: DateTime) -> Result<()> {
+		self.refresh_clock();
+		let ffi_ctx_ptr = &mut *self.ffi_context as *mut ContextFFI;
+		with_registry(&self.builder_registry, || {
+			let mut op_ctx = FFIOperatorContext::new(ffi_ctx_ptr);
+			self.operator.tick(
+				&mut op_ctx,
+				Tick {
+					now,
+				},
+			)
 		})
 	}
 
