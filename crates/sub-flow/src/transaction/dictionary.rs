@@ -61,8 +61,14 @@ impl FlowTransaction {
 			let id = u128::from_be_bytes(v.0[..16].try_into().unwrap());
 			return Ok(Some(DictionaryEntryId::from_u128(id, dictionary.id_type.clone())?));
 		}
-		match self.inner().allocators.dictionary.reserved_id(dictionary.id, &hash, &value_bytes) {
-			Some(id) => Ok(Some(DictionaryEntryId::from_u128(id, dictionary.id_type.clone())?)),
+
+		match self.dictionary_allocators().reserved_writes(dictionary, &hash, &value_bytes) {
+			Some(writes) => {
+				let id = u128::from_be_bytes(writes.entry_value.0[..16].try_into().unwrap());
+				self.set(&writes.entry_key, writes.entry_value)?;
+				self.set(&writes.index_key, writes.index_value)?;
+				Ok(Some(DictionaryEntryId::from_u128(id, dictionary.id_type.clone())?))
+			}
 			None => Ok(None),
 		}
 	}
@@ -81,13 +87,16 @@ mod tests {
 	use postcard::to_stdvec;
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
-		actors::pending::Pending,
+		actors::pending::{Pending, PendingWrite},
 		interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::{dictionary::DictionaryAllocatorRegistry, interceptor::interceptors::Interceptors};
-	use reifydb_value::value::{Value, dictionary::DictionaryId, identity::IdentityId, value_type::ValueType};
+	use reifydb_value::{
+		util::hash::xxh3_128,
+		value::{Value, dictionary::DictionaryId, identity::IdentityId, value_type::ValueType},
+	};
 
 	use crate::transaction::{DeferredParams, FlowTransaction, allocators::FlowAllocators};
 
@@ -150,6 +159,100 @@ mod tests {
 			found.map(|id| id.to_u128()),
 			Some(outcome.id.to_u128()),
 			"a downstream flow must resolve a mint interned by a concurrent flow in the same cycle"
+		);
+	}
+
+	// The restart crash loop, end to end. A first-seen mint is interned into the shared allocator as a
+	// reservation only (never committed). A deferred flow resolves it and - as an operator would -
+	// its referencing state is durably committed alongside whatever the resolve staged. Then the
+	// process restarts: the in-memory reservation is gone, but the durable state that referenced the
+	// id survives. Resolving the mint must still succeed, through its now-durable entry, instead of
+	// returning None and aborting the operator. Without the co-write on resolve the flow persists the
+	// reference but not the entry, and this resolve returns None on the fresh, empty registry -
+	// exactly the production crash.
+	#[test]
+	fn resolving_a_reserved_mint_persists_it_so_a_restart_still_resolves() {
+		let engine = TestEngine::new();
+		let dictionary = mints();
+		let value = Value::Utf8("CuGJf6cfDfMh4UxVgNJ5KFQ6v8Wv3qrqop6cFKsGpump".to_string());
+		let value_bytes = to_stdvec(&value).unwrap();
+		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
+
+		// Session 1: an intern leaves only an in-memory reservation - nothing is committed.
+		let registry = DictionaryAllocatorRegistry::new();
+		let reserved_id = {
+			let parent = engine.begin_admin(IdentityId::system()).unwrap();
+			let mut reader = parent.multi.begin_query().unwrap();
+			registry.intern(&dictionary, &value_bytes, &mut reader).unwrap().id.to_u128()
+		};
+
+		// A deferred flow resolves that mint via the reservation and co-writes its durable entry into
+		// the flow transaction's pending.
+		let pending = {
+			let parent = engine.begin_admin(IdentityId::system()).unwrap();
+			let version = parent.version();
+			let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+				version,
+				pending: Pending::new(),
+				query: parent.multi.begin_query().unwrap(),
+				state_query: parent.multi.begin_query().unwrap(),
+				dictionary_query: Some(parent.multi.begin_query().unwrap()),
+				single: parent.single.clone(),
+				catalog: Catalog::testing(),
+				interceptors: Interceptors::new(),
+				clock: Clock::Mock(MockClock::from_millis(0)),
+				allocators: FlowAllocators::with_dictionary(registry.clone()),
+			});
+			let id = txn
+				.find_in_dictionary(&dictionary, &value)
+				.unwrap()
+				.expect("the reservation must resolve");
+			assert_eq!(id.to_u128(), reserved_id, "the flow must resolve the reserved id");
+			txn.take_pending()
+		};
+		assert!(
+			pending.iter_sorted().next().is_some(),
+			"resolving a reserved mint must stage its durable dictionary entry into the flow transaction"
+		);
+
+		// Persist exactly what the flow staged - what the committer applies on commit.
+		{
+			let mut admin = engine.begin_admin(IdentityId::system()).unwrap();
+			for (key, pw) in pending.iter_sorted() {
+				if let PendingWrite::Set(row) = pw {
+					admin.set(key, row.clone()).unwrap();
+				}
+			}
+			admin.commit().unwrap();
+		}
+
+		// Session 2 = restart: a brand-new, empty allocator registry - no reservation survives a crash.
+		let restart_registry = DictionaryAllocatorRegistry::new();
+		assert_eq!(
+			restart_registry.reserved_id(dictionary.id, &hash, &value_bytes),
+			None,
+			"precondition: after restart the registry holds no reservation for the mint"
+		);
+
+		let parent = engine.begin_admin(IdentityId::system()).unwrap();
+		let version = parent.version();
+		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+			version,
+			pending: Pending::new(),
+			query: parent.multi.begin_query().unwrap(),
+			state_query: parent.multi.begin_query().unwrap(),
+			dictionary_query: Some(parent.multi.begin_query().unwrap()),
+			single: parent.single.clone(),
+			catalog: Catalog::testing(),
+			interceptors: Interceptors::new(),
+			clock: Clock::Mock(MockClock::from_millis(0)),
+			allocators: FlowAllocators::with_dictionary(restart_registry.clone()),
+		});
+		let resolved = txn.find_in_dictionary(&dictionary, &value).unwrap();
+		assert_eq!(
+			resolved.map(|id| id.to_u128()),
+			Some(reserved_id),
+			"after a restart the mint must resolve through its persisted entry, not a lost reservation"
 		);
 	}
 }

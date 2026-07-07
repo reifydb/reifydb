@@ -229,6 +229,30 @@ impl DictionaryAllocatorRegistry {
 		(reservation.value.as_ref() == value_bytes).then_some(reservation.id)
 	}
 
+	/// Build the durable entry/index writes for a value that currently resolves only through a
+	/// live in-memory reservation. A transaction that references the reserved id can stage these
+	/// writes so the dictionary entry is persisted atomically with its own writes. Without that
+	/// co-write, a crash after the referencing write commits but before any interning transaction
+	/// commits - or a restart that simply drops the in-memory reservation - leaves a durable
+	/// reference to an id whose entry never became durable, and resolve aborts the process on
+	/// replay. Returns `None` when there is no matching live reservation (the value is unknown, or
+	/// already durable, in which case the committed tier already resolves it).
+	pub fn reserved_writes(
+		&self,
+		dictionary: &Dictionary,
+		hash: &[u8; 16],
+		value_bytes: &[u8],
+	) -> Option<DictWrites> {
+		let slot = self.inner.slots.get(&dictionary.id)?;
+		let reservation = slot.reservations.get(hash)?;
+		if reservation.value.as_ref() != value_bytes {
+			return None;
+		}
+		let id = reservation.id;
+		let entry_id = DictionaryEntryId::from_u128(id, dictionary.id_type.clone()).ok()?;
+		write_outcome(dictionary, value_bytes, *hash, id, entry_id).writes
+	}
+
 	pub fn total_reservations(&self) -> (usize, u64) {
 		let mut count = 0usize;
 		let mut bytes = 0u64;
@@ -534,5 +558,119 @@ mod tests {
 
 		let a = registry.intern(&d, b"wide", &mut reader).unwrap();
 		assert_eq!(a.id.to_u128(), seed + 1, "wide ids must exceed u64 without truncation");
+	}
+
+	// A value that resolves only through a live reservation must expose byte-identical durable
+	// writes, so a transaction that references the reserved id can co-commit the entry and make it
+	// durable atomically with its own writes. This is the primitive that closes the mint-not-interned
+	// crash loop: without it, a resolve-through-reservation hands back an id whose entry can vanish on
+	// restart, leaving a durable reference to a never-persisted id. A mismatched value, an unknown
+	// value, and an already-durable value must all expose nothing (the committed tier serves the last).
+	#[test]
+	fn reserved_writes_exposes_durable_writes_until_durable() {
+		let registry = DictionaryAllocatorRegistry::new();
+		let d = dict(ValueType::Uint8);
+		let mut reader = MockReader::new();
+
+		let a = registry.intern(&d, b"wsol", &mut reader).unwrap();
+		let hash = a.hash;
+
+		let writes = registry
+			.reserved_writes(&d, &hash, b"wsol")
+			.expect("a live reservation must expose byte-identical durable writes");
+		assert_eq!(
+			&writes.entry_value[..16],
+			&a.id.to_u128().to_be_bytes(),
+			"entry value must lead with the reserved id"
+		);
+		assert_eq!(&writes.entry_value[16..], b"wsol", "entry value must carry the value bytes after the id");
+		assert_eq!(&writes.index_value[..], b"wsol", "index value must be exactly the value bytes");
+		assert_eq!(
+			writes.entry_key,
+			DictionaryEntryKey::encoded(d.id, hash),
+			"entry key must match the intern key"
+		);
+		assert_eq!(
+			writes.index_key,
+			DictionaryEntryIndexKey::encoded(d.id, a.id.to_u128()),
+			"index key must match the id"
+		);
+
+		assert!(
+			registry.reserved_writes(&d, &hash, b"usdc").is_none(),
+			"a value that does not match the reserved bytes under this hash must not be mis-persisted"
+		);
+		let unknown = xxh3_128(b"never").0.to_be_bytes();
+		assert!(
+			registry.reserved_writes(&d, &unknown, b"never").is_none(),
+			"a value with no reservation exposes nothing"
+		);
+
+		reader.commit(a.writes.as_ref().unwrap());
+		registry.mark_durable(d.id, &[hash]);
+		assert!(
+			registry.reserved_writes(&d, &hash, b"wsol").is_none(),
+			"once durable the reservation is evicted and the committed tier resolves the value"
+		);
+	}
+
+	// The persisted id is a fixed 16-byte big-endian u128 for every dictionary id_type: id_type only
+	// governs the typed DictionaryEntryId wrapper and its range check, never the on-disk width. A
+	// resolver's co-write must therefore be byte-identical to the interning write for Uint1 through the
+	// genuinely-wide Uint16 (ids beyond u64), so the shared 16-byte committed-read decode stays valid.
+	#[test]
+	fn reserved_writes_encoding_is_id_type_independent() {
+		for (i, id_type) in
+			[ValueType::Uint1, ValueType::Uint2, ValueType::Uint4, ValueType::Uint8, ValueType::Uint16]
+				.into_iter()
+				.enumerate()
+		{
+			let registry = DictionaryAllocatorRegistry::new();
+			let d = Dictionary {
+				id: DictionaryId(1 + i as u64),
+				namespace: NamespaceId::SYSTEM,
+				name: format!("d{i}"),
+				value_type: ValueType::Utf8,
+				id_type: id_type.clone(),
+			};
+			let mut reader = MockReader::new();
+
+			let a = registry.intern(&d, b"wsol", &mut reader).unwrap();
+			let intern_writes = a.writes.as_ref().expect("first intern must produce writes");
+			let resolved = registry
+				.reserved_writes(&d, &a.hash, b"wsol")
+				.expect("a live reservation must expose writes for every id_type");
+
+			assert_eq!(a.id.to_u128(), 1, "{id_type:?}: first reserved id is 1");
+			assert_eq!(
+				resolved.entry_value.len(),
+				16 + b"wsol".len(),
+				"{id_type:?}: entry value is a 16-byte id followed by the value bytes"
+			);
+			assert_eq!(
+				&resolved.entry_value[..16],
+				&1u128.to_be_bytes(),
+				"{id_type:?}: the id prefix is always a 16-byte big-endian u128"
+			);
+
+			assert_eq!(
+				resolved.entry_key, intern_writes.entry_key,
+				"{id_type:?}: co-write entry key matches intern"
+			);
+			assert_eq!(
+				&resolved.entry_value[..],
+				&intern_writes.entry_value[..],
+				"{id_type:?}: co-write entry value is byte-identical to intern"
+			);
+			assert_eq!(
+				resolved.index_key, intern_writes.index_key,
+				"{id_type:?}: co-write index key matches intern"
+			);
+			assert_eq!(
+				&resolved.index_value[..],
+				&intern_writes.index_value[..],
+				"{id_type:?}: co-write index value is byte-identical to intern"
+			);
+		}
 	}
 }
