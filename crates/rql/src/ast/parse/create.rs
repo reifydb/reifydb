@@ -15,11 +15,12 @@ use crate::{
 			AstBindingProtocolKind, AstColumnProperty, AstColumnPropertyEntry, AstColumnPropertyKind,
 			AstColumnToCreate, AstCreate, AstCreateColumnProperty, AstCreateDeferredView,
 			AstCreateDictionary, AstCreateEvent, AstCreateHandler, AstCreateMigration, AstCreateNamespace,
-			AstCreatePrimaryKey, AstCreateProcedure, AstCreateQueue, AstCreateRemoteNamespace,
-			AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription, AstCreateSumType, AstCreateTable,
-			AstCreateTag, AstCreateTest, AstCreateTransactionalView, AstHydrationConfig, AstIndexColumn,
-			AstJoinTtl, AstPersistent, AstPolicyTargetType, AstPrimaryKey, AstProcedureParam,
-			AstQueueDeduplicate, AstQueueDispatch, AstQueueFifo, AstQueueRetention, AstQueueRetry,
+			AstCreatePrimaryKey, AstCreateProcedure, AstCreateQueue, AstCreateRelationship,
+			AstCreateRemoteNamespace, AstCreateRingBuffer, AstCreateSeries, AstCreateSubscription,
+			AstCreateSumType, AstCreateTable, AstCreateTag, AstCreateTest, AstCreateTransactionalView,
+			AstHydrationConfig, AstIndexColumn, AstJoinTtl, AstPersistent, AstPolicyTargetType,
+			AstPrimaryKey, AstProcedureParam, AstQueueDeduplicate, AstQueueDispatch, AstQueueFifo,
+			AstQueueRetention, AstQueueRetry, AstRelationshipCardinality, AstRelationshipJunction,
 			AstRowSettings, AstStatement, AstTimeDeclaration, AstTimestampPrecision, AstTtl, AstType,
 			AstVariant, AstViewStorageKind, AstViewWithClause,
 		},
@@ -32,7 +33,7 @@ use crate::{
 		},
 		parse::{Parser, Precedence},
 	},
-	bump::BumpBox,
+	bump::{BumpBox, BumpFragment},
 	token::{
 		keyword::{
 			Keyword,
@@ -301,6 +302,10 @@ impl<'bump> Parser<'bump> {
 		if (self.consume_if(TokenKind::Keyword(Keyword::Ws))?).is_some() {
 			self.consume_keyword(Keyword::Binding)?;
 			return self.parse_create_binding(token, AstBindingProtocolKind::Ws);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Relationship))?).is_some() {
+			return self.parse_create_relationship(token);
 		}
 
 		if self.peek_is_index_creation()? {
@@ -598,7 +603,7 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			let key = self.consume(TokenKind::Identifier)?;
+			let key = self.consume_identifier()?;
 			self.consume_operator(Operator::Colon)?;
 
 			match key.fragment.text() {
@@ -686,7 +691,7 @@ impl<'bump> Parser<'bump> {
 				let with_key = {
 					let current = self.current()?;
 					match current.kind {
-						TokenKind::Identifier => self.consume(TokenKind::Identifier)?,
+						TokenKind::Identifier => self.consume_identifier()?,
 						TokenKind::Keyword(Keyword::Tag) => {
 							let token = self.advance()?;
 							Token {
@@ -713,7 +718,7 @@ impl<'bump> Parser<'bump> {
 
 				match with_key.fragment.text() {
 					"key" => {
-						let key_token = self.consume(TokenKind::Identifier)?;
+						let key_token = self.consume_identifier()?;
 						key_field = Some(key_token.fragment);
 					}
 					"tag" => {
@@ -726,7 +731,7 @@ impl<'bump> Parser<'bump> {
 							.with_namespace(tag_namespace));
 					}
 					"precision" => {
-						let prec_token = self.consume(TokenKind::Identifier)?;
+						let prec_token = self.consume_identifier()?;
 						precision = Some(match prec_token.fragment.text() {
 							"second" => AstTimestampPrecision::Second,
 							"millisecond" => AstTimestampPrecision::Millisecond,
@@ -756,10 +761,10 @@ impl<'bump> Parser<'bump> {
 						partition_by = self.parse_partition_config()?;
 					}
 					"time" => {
-						time_declaration.time = Some(self.consume_name()?);
+						time_declaration.time = Some(self.consume_identifier()?);
 					}
 					"ts" => {
-						time_declaration.ts = Some(self.consume_name()?);
+						time_declaration.ts = Some(self.consume_identifier()?);
 					}
 					_other => {
 						let fragment = with_key.fragment.to_owned();
@@ -854,7 +859,7 @@ impl<'bump> Parser<'bump> {
 					break;
 				}
 
-				let key = self.consume(TokenKind::Identifier)?;
+				let key = self.consume_identifier()?;
 				self.consume_operator(Operator::Colon)?;
 
 				match key.fragment.text() {
@@ -1178,7 +1183,7 @@ impl<'bump> Parser<'bump> {
 					break;
 				}
 
-				let key = self.consume(TokenKind::Identifier)?;
+				let key = self.consume_identifier()?;
 				self.consume_operator(Operator::Colon)?;
 
 				match key.fragment.text() {
@@ -1189,10 +1194,10 @@ impl<'bump> Parser<'bump> {
 						partition_by = self.parse_partition_config()?;
 					}
 					"time" => {
-						time_declaration.time = Some(self.consume_name()?);
+						time_declaration.time = Some(self.consume_identifier()?);
 					}
 					"ts" => {
-						time_declaration.ts = Some(self.consume_name()?);
+						time_declaration.ts = Some(self.consume_identifier()?);
 					}
 					_other => {
 						let fragment = key.fragment.to_owned();
@@ -1259,7 +1264,7 @@ impl<'bump> Parser<'bump> {
 			let key = {
 				let current = self.current()?;
 				match current.kind {
-					TokenKind::Identifier => self.consume(TokenKind::Identifier)?,
+					TokenKind::Identifier => self.consume_identifier()?,
 					TokenKind::Keyword(Keyword::Tag) => {
 						let token = self.advance()?;
 						Token {
@@ -1310,10 +1315,10 @@ impl<'bump> Parser<'bump> {
 					settings = Some(self.parse_row_config()?);
 				}
 				"time" => {
-					time_declaration.time = Some(self.consume_name()?);
+					time_declaration.time = Some(self.consume_identifier()?);
 				}
 				"ts" => {
-					time_declaration.ts = Some(self.consume_name()?);
+					time_declaration.ts = Some(self.consume_identifier()?);
 				}
 				_other => {
 					let fragment = key.fragment.to_owned();
@@ -1419,10 +1424,10 @@ impl<'bump> Parser<'bump> {
 						retry = Some(self.parse_queue_retry()?);
 					}
 					"time" => {
-						time_declaration.time = Some(self.consume_name()?);
+						time_declaration.time = Some(self.consume_identifier()?);
 					}
 					"ts" => {
-						time_declaration.ts = Some(self.consume_name()?);
+						time_declaration.ts = Some(self.consume_identifier()?);
 					}
 					_other => return Err(unexpected_queue_option(&key, QUEUE_OPTION_KEYS)),
 				}
@@ -1480,7 +1485,7 @@ impl<'bump> Parser<'bump> {
 					partitions = Some(self.consume(TokenKind::Literal(Literal::Number))?);
 				}
 				"ordered_by" => {
-					ordered_by = Some(self.consume(TokenKind::Identifier)?);
+					ordered_by = Some(self.consume_identifier()?);
 				}
 				_other => return Err(unexpected_queue_option(&key, QUEUE_FIFO_KEYS)),
 			}
@@ -1529,7 +1534,7 @@ impl<'bump> Parser<'bump> {
 						if self.current()?.is_operator(Operator::CloseCurly) {
 							break;
 						}
-						by.push(self.consume(TokenKind::Identifier)?);
+						by.push(self.consume_identifier()?);
 						if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
 							break;
 						}
@@ -1540,7 +1545,7 @@ impl<'bump> Parser<'bump> {
 				"ttl" => {
 					let current = self.current()?;
 					ttl = Some(match current.kind {
-						TokenKind::Identifier => self.consume(TokenKind::Identifier)?,
+						TokenKind::Identifier => self.consume_identifier()?,
 						_ => self.consume(TokenKind::Literal(Literal::Text))?,
 					});
 				}
@@ -1655,7 +1660,7 @@ impl<'bump> Parser<'bump> {
 	fn consume_queue_option_key(&mut self, expected: &str) -> Result<Token<'bump>> {
 		let current = self.current()?;
 		match current.kind {
-			TokenKind::Identifier => self.consume(TokenKind::Identifier),
+			TokenKind::Identifier => self.consume_identifier(),
 			_ => Err(unexpected_queue_option(&current, expected)),
 		}
 	}
@@ -1669,7 +1674,7 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			let inner_key = self.consume(TokenKind::Identifier)?;
+			let inner_key = self.consume_identifier()?;
 			self.consume_operator(Operator::Colon)?;
 
 			match inner_key.fragment.text() {
@@ -1680,7 +1685,7 @@ impl<'bump> Parser<'bump> {
 						if self.current()?.is_operator(Operator::CloseCurly) {
 							break;
 						}
-						let col = self.consume(TokenKind::Identifier)?;
+						let col = self.consume_identifier()?;
 						partition_by.push(col.fragment.text().to_string());
 						if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
 							break;
@@ -1819,7 +1824,7 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			let kind_token = self.consume(TokenKind::Identifier)?;
+			let kind_token = self.consume_identifier()?;
 			let kind = match kind_token.fragment.text() {
 				"saturation" => AstColumnPropertyKind::Saturation,
 				"default" => AstColumnPropertyKind::Default,
@@ -1954,7 +1959,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	pub(crate) fn parse_type(&mut self) -> Result<AstType<'bump>> {
-		let ty_token = self.consume(TokenKind::Identifier)?;
+		let ty_token = self.consume_identifier()?;
 
 		if ty_token.fragment.text().eq_ignore_ascii_case("option") {
 			self.consume_operator(Operator::OpenParen)?;
@@ -1965,7 +1970,7 @@ impl<'bump> Parser<'bump> {
 
 		if !self.is_eof() && self.current()?.is_operator(Operator::DoubleColon) {
 			self.consume_operator(Operator::DoubleColon)?;
-			let name_token = self.consume(TokenKind::Identifier)?;
+			let name_token = self.consume_identifier()?;
 			return Ok(AstType::Qualified {
 				namespace: ty_token.fragment,
 				name: name_token.fragment,
@@ -2021,7 +2026,7 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_column(&mut self) -> Result<AstColumnToCreate<'bump>> {
 		let name_identifier = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Colon)?;
-		let ty_token = self.consume(TokenKind::Identifier)?;
+		let ty_token = self.consume_identifier()?;
 
 		let name = name_identifier.into_fragment();
 
@@ -2032,7 +2037,7 @@ impl<'bump> Parser<'bump> {
 			AstType::Optional(Box::new(inner))
 		} else if !self.is_eof() && self.current()?.is_operator(Operator::DoubleColon) {
 			self.consume_operator(Operator::DoubleColon)?;
-			let name_token = self.consume(TokenKind::Identifier)?;
+			let name_token = self.consume_identifier()?;
 			AstType::Qualified {
 				namespace: ty_token.fragment,
 				name: name_token.fragment,
@@ -2086,7 +2091,7 @@ impl<'bump> Parser<'bump> {
 			let key_token = {
 				let current = self.current()?;
 				match current.kind {
-					TokenKind::Identifier => self.consume(TokenKind::Identifier)?,
+					TokenKind::Identifier => self.consume_identifier()?,
 					TokenKind::Keyword(Keyword::Dictionary) => {
 						let token = self.advance()?;
 						Token {
@@ -2502,7 +2507,7 @@ impl<'bump> Parser<'bump> {
 						break;
 					}
 
-					let key = self.consume(TokenKind::Identifier)?;
+					let key = self.consume_identifier()?;
 					self.consume_operator(Operator::Colon)?;
 
 					match key.fragment.text() {
@@ -2531,10 +2536,10 @@ impl<'bump> Parser<'bump> {
 							settings = Some(self.parse_row_config()?);
 						}
 						"time" => {
-							time_declaration.time = Some(self.consume_name()?);
+							time_declaration.time = Some(self.consume_identifier()?);
 						}
 						"ts" => {
-							time_declaration.ts = Some(self.consume_name()?);
+							time_declaration.ts = Some(self.consume_identifier()?);
 						}
 						other => {
 							let fragment = key.fragment.to_owned();
@@ -2588,16 +2593,16 @@ impl<'bump> Parser<'bump> {
 						break;
 					}
 
-					let key = self.consume(TokenKind::Identifier)?;
+					let key = self.consume_identifier()?;
 					self.consume_operator(Operator::Colon)?;
 
 					match key.fragment.text() {
 						"key" => {
-							let token = self.consume(TokenKind::Identifier)?;
+							let token = self.consume_identifier()?;
 							key_column = Some(token.fragment.text().to_string());
 						}
 						"precision" => {
-							let token = self.consume(TokenKind::Identifier)?;
+							let token = self.consume_identifier()?;
 							precision = Some(match token.fragment.text() {
 								"second" => AstTimestampPrecision::Second,
 								"millisecond" => AstTimestampPrecision::Millisecond,
@@ -2622,10 +2627,10 @@ impl<'bump> Parser<'bump> {
 							settings = Some(self.parse_row_config()?);
 						}
 						"time" => {
-							time_declaration.time = Some(self.consume_name()?);
+							time_declaration.time = Some(self.consume_identifier()?);
 						}
 						"ts" => {
-							time_declaration.ts = Some(self.consume_name()?);
+							time_declaration.ts = Some(self.consume_identifier()?);
 						}
 						other => {
 							let fragment = key.fragment.to_owned();
@@ -2674,7 +2679,7 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			let key = self.consume(TokenKind::Identifier)?;
+			let key = self.consume_identifier()?;
 			self.consume_operator(Operator::Colon)?;
 
 			match key.fragment.text() {
@@ -2685,10 +2690,10 @@ impl<'bump> Parser<'bump> {
 					clause.settings = Some(self.parse_row_config()?);
 				}
 				"time" => {
-					clause.time_declaration.time = Some(self.consume_name()?);
+					clause.time_declaration.time = Some(self.consume_identifier()?);
 				}
 				"ts" => {
-					clause.time_declaration.ts = Some(self.consume_name()?);
+					clause.time_declaration.ts = Some(self.consume_identifier()?);
 				}
 				other => {
 					let fragment = key.fragment.to_owned();
@@ -2734,7 +2739,7 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			let key = self.consume(TokenKind::Identifier)?;
+			let key = self.consume_identifier()?;
 			self.consume_operator(Operator::Colon)?;
 
 			match key.fragment.text() {
@@ -2852,7 +2857,7 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			let key = self.consume(TokenKind::Identifier)?;
+			let key = self.consume_identifier()?;
 			self.consume_operator(Operator::Colon)?;
 
 			match key.fragment.text() {
@@ -2963,7 +2968,7 @@ impl<'bump> Parser<'bump> {
 			let key = {
 				let current = self.current()?;
 				match current.kind {
-					TokenKind::Identifier => self.consume(TokenKind::Identifier)?,
+					TokenKind::Identifier => self.consume_identifier()?,
 					TokenKind::Keyword(Keyword::On) => {
 						let token = self.advance()?;
 						Token {
@@ -2993,7 +2998,7 @@ impl<'bump> Parser<'bump> {
 					duration = Some(token);
 				}
 				"on" => {
-					let token = self.consume(TokenKind::Identifier)?;
+					let token = self.consume_identifier()?;
 					anchor = Some(token);
 				}
 				"announce" => {
@@ -3079,7 +3084,7 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			let key = self.consume(TokenKind::Identifier)?;
+			let key = self.consume_identifier()?;
 			self.consume_operator(Operator::Colon)?;
 
 			match key.fragment.text() {
@@ -3175,7 +3180,7 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			let key = self.consume(TokenKind::Identifier)?;
+			let key = self.consume_identifier()?;
 			self.consume_operator(Operator::Colon)?;
 
 			match key.fragment.text() {
@@ -3218,7 +3223,7 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			let key = self.consume(TokenKind::Identifier)?;
+			let key = self.consume_identifier()?;
 			self.consume_operator(Operator::Colon)?;
 
 			match key.fragment.text() {
@@ -3285,6 +3290,180 @@ impl<'bump> Parser<'bump> {
 		self.consume_operator(Operator::CloseCurly)?;
 		Ok((ttl, snapshot, latest))
 	}
+
+	fn parse_create_relationship(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
+		let name_token = self.consume_identifier()?;
+		let name = name_token.fragment;
+
+		self.consume_keyword(Keyword::On)?;
+		let (source, source_column) = self.parse_relationship_table_with_column(1)?;
+
+		let junction = if self.consume_if(TokenKind::Keyword(Keyword::Through))?.is_some() {
+			let (jtable, jcols) = self.parse_relationship_table_with_columns(2)?;
+			let mut iter = jcols.into_iter();
+			let first = iter.next().unwrap();
+			let second = iter.next().unwrap();
+			Some(AstRelationshipJunction {
+				table: jtable,
+				source_column: first,
+				target_column: second,
+			})
+		} else {
+			None
+		};
+
+		self.consume_keyword(Keyword::References)?;
+		let (target, target_column) = self.parse_relationship_table_with_column(1)?;
+
+		self.consume_keyword(Keyword::With)?;
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut cardinality: Option<AstRelationshipCardinality> = None;
+
+		loop {
+			self.skip_new_line()?;
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key_token = self.consume_identifier()?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key_token.fragment.text() {
+				"cardinality" => {
+					let value = self.consume_literal(Literal::Text)?;
+					let text = value.fragment.text();
+					let parsed = AstRelationshipCardinality::parse(text);
+					match parsed {
+						Some(c) => cardinality = Some(c),
+						None => {
+							let fragment = value.fragment.to_owned();
+							return Err(Error::from(TypeError::Ast {
+								kind: AstErrorKind::UnexpectedToken {
+									expected: "'1:1', 'N:1', '1:N', or 'N:M'"
+										.to_string(),
+								},
+								message: format!(
+									"unknown relationship cardinality `{}`: expected '1:1', 'N:1', '1:N', or 'N:M'",
+									text
+								),
+								fragment,
+							}));
+						}
+					}
+				}
+				_other => {
+					let fragment = key_token.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "'cardinality'".to_string(),
+						},
+						message: format!(
+							"unexpected key `{}`: relationship WITH block accepts only 'cardinality'",
+							fragment.text()
+						),
+						fragment,
+					}));
+				}
+			}
+
+			self.skip_new_line()?;
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		let cardinality = cardinality.ok_or_else(|| {
+			Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "WITH { cardinality: '<value>' }".to_string(),
+				},
+				message: "CREATE RELATIONSHIP requires 'cardinality' in WITH block".to_string(),
+				fragment: token.fragment.to_owned(),
+			})
+		})?;
+
+		if cardinality.requires_junction() && junction.is_none() {
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "THROUGH <table>(<src>, <tgt>)".to_string(),
+				},
+				message: "N:M relationship requires a THROUGH junction table".to_string(),
+				fragment: name.to_owned(),
+			}));
+		}
+		if !cardinality.requires_junction() && junction.is_some() {
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "no THROUGH clause".to_string(),
+				},
+				message: "THROUGH junction is only allowed for N:M cardinality".to_string(),
+				fragment: name.to_owned(),
+			}));
+		}
+
+		Ok(AstCreate::Relationship(AstCreateRelationship {
+			token,
+			name,
+			source,
+			source_column,
+			target,
+			target_column,
+			junction,
+			cardinality,
+		}))
+	}
+
+	fn parse_relationship_table_with_column(
+		&mut self,
+		_count: usize,
+	) -> Result<(MaybeQualifiedTableIdentifier<'bump>, BumpFragment<'bump>)> {
+		let (table, mut cols) = self.parse_relationship_table_with_columns(1)?;
+		Ok((table, cols.pop().unwrap()))
+	}
+
+	fn parse_relationship_table_with_columns(
+		&mut self,
+		count: usize,
+	) -> Result<(MaybeQualifiedTableIdentifier<'bump>, Vec<BumpFragment<'bump>>)> {
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
+		let table_name = segments.pop().unwrap().into_fragment();
+		let table_namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let table = MaybeQualifiedTableIdentifier::new(table_name).with_namespace(table_namespace);
+
+		self.consume_operator(Operator::OpenParen)?;
+		let mut cols = Vec::with_capacity(count);
+		loop {
+			let col_token = self.consume_identifier()?;
+			cols.push(col_token.fragment);
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+			break;
+		}
+		self.consume_operator(Operator::CloseParen)?;
+
+		if cols.len() != count {
+			let fragment = table.name.to_owned();
+			return Err(Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: format!("{} column name(s)", count),
+				},
+				message: format!(
+					"expected {} column name(s) in parentheses, found {}",
+					count,
+					cols.len()
+				),
+				fragment,
+			}));
+		}
+		Ok((table, cols))
+	}
 }
 
 enum ViewStorageKindHint {
@@ -3294,6 +3473,7 @@ enum ViewStorageKindHint {
 
 #[cfg(test)]
 pub mod tests {
+	use bumpalo::Bump;
 	use reifydb_value::value::duration::Duration;
 
 	use crate::{
@@ -3306,7 +3486,6 @@ pub mod tests {
 			},
 			parse::Parser,
 		},
-		bump::Bump,
 		token::tokenize,
 	};
 
@@ -4856,7 +5035,7 @@ mod time_declaration_tests {
 		let Ast::Create(create) = statement.first_unchecked() else {
 			panic!("expected a CREATE statement");
 		};
-		let decl = match create {
+		let decl = match &**create {
 			AstCreate::Table(t) => &t.time_declaration,
 			AstCreate::Series(s) => &s.time_declaration,
 			AstCreate::RingBuffer(r) => &r.time_declaration,

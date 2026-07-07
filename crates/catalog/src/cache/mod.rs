@@ -26,6 +26,7 @@ pub mod policy;
 pub mod primary_key;
 pub mod procedure;
 pub mod queue;
+pub mod relationship;
 pub mod ringbuffer;
 pub mod role;
 pub mod row_settings;
@@ -58,8 +59,8 @@ use reifydb_core::{
 		handler::Handler,
 		id::{
 			BindingId, ColumnSnapshotId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
-			PrimaryKeyId, ProcedureId, QueueId, RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId,
-			ViewId,
+			PrimaryKeyId, ProcedureId, QueueId, RelationshipId, RingBufferId, SeriesId, SinkId, SourceId,
+			TableId, TestId, ViewId,
 		},
 		identity::{
 			GrantedRole, Identity, IdentityAttribute, IdentityAttributeId, IdentityAttributeValue, Role,
@@ -72,6 +73,7 @@ use reifydb_core::{
 		policy::{Policy, PolicyId, PolicyOperation},
 		procedure::Procedure,
 		queue::Queue,
+		relationship::Relationship,
 		ringbuffer::RingBuffer,
 		series::Series,
 		sink::Sink,
@@ -110,6 +112,7 @@ pub type MultiVersionFlow = MultiVersionContainer<Flow>;
 pub type MultiVersionOperator = MultiVersionContainer<Operator>;
 pub type MultiVersionFlowEdge = MultiVersionContainer<FlowEdge>;
 pub type MultiVersionPrimaryKey = MultiVersionContainer<PrimaryKey>;
+pub type MultiVersionRelationship = MultiVersionContainer<Relationship>;
 pub type MultiVersionDictionary = MultiVersionContainer<Dictionary>;
 pub type MultiVersionColumnSnapshot = MultiVersionContainer<ColumnSnapshot>;
 pub type MultiVersionHandler = MultiVersionContainer<Handler>;
@@ -197,6 +200,12 @@ pub struct CatalogCacheInner {
 	pub(crate) primary_keys_by_object: SkipMap<ObjectId, PrimaryKeyId>,
 
 	pub(crate) row_settings: SkipMap<StorageId, MultiVersionRowSettings>,
+
+	pub(crate) relationships: SkipMap<RelationshipId, MultiVersionRelationship>,
+
+	pub(crate) relationships_by_name: SkipMap<(NamespaceId, TableId, String), RelationshipId>,
+
+	pub(crate) relationships_by_source: SkipMap<TableId, Vec<RelationshipId>>,
 
 	pub(crate) operator_settings: SkipMap<OperatorId, MultiVersionOperatorSettings>,
 
@@ -348,6 +357,9 @@ impl CatalogCache {
 			flow_edges_by_flow: SkipMap::new(),
 			primary_keys: SkipMap::new(),
 			primary_keys_by_object: SkipMap::new(),
+			relationships: SkipMap::new(),
+			relationships_by_name: SkipMap::new(),
+			relationships_by_source: SkipMap::new(),
 			row_settings: SkipMap::new(),
 			operator_settings: SkipMap::new(),
 			dictionaries: SkipMap::new(),

@@ -91,8 +91,10 @@ impl<'bump> Parser<'bump> {
 
 #[cfg(test)]
 pub mod tests {
+	use bumpalo::Bump;
+
 	use super::*;
-	use crate::{bump::Bump, token::tokenize};
+	use crate::token::tokenize;
 
 	#[test]
 	fn test_single_column() {

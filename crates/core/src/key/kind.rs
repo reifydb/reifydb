@@ -88,6 +88,7 @@ pub enum KeyKind {
 	Queue = 0x4F,
 	NamespaceQueue = 0x50,
 	QueueDeduplication = 0x51,
+	Relationship = 0x52,
 }
 
 impl From<KeyKind> for u8 {
@@ -180,6 +181,7 @@ impl TryFrom<u8> for KeyKind {
 			0x4F => Ok(Self::Queue),
 			0x50 => Ok(Self::NamespaceQueue),
 			0x51 => Ok(Self::QueueDeduplication),
+			0x52 => Ok(Self::Relationship),
 			_ => Err(de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

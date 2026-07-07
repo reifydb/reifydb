@@ -34,7 +34,7 @@ impl<'bump> Parser<'bump> {
 		if self.position + 1 < self.tokens.len()
 			&& self.tokens[self.position + 1].is_operator(Operator::OpenParen)
 		{
-			let first_ident_token = self.consume_name()?;
+			let first_ident_token = self.consume_identifier()?;
 			let open_paren_token = self.advance()?;
 			let arguments = self.parse_tuple_call(open_paren_token)?;
 			let function = MaybeQualifiedFunctionIdentifier::new(first_ident_token.fragment);
@@ -110,7 +110,10 @@ impl<'bump> Parser<'bump> {
 				Keyword::Gate => Ok(Ast::Gate(self.parse_gate()?)),
 				Keyword::Aggregate => Ok(Ast::Aggregate(self.parse_aggregate()?)),
 				Keyword::Cast => Ok(Ast::Cast(self.parse_cast()?)),
-				Keyword::Create => Ok(Ast::Create(self.parse_create()?)),
+				Keyword::Create => {
+					let create = self.parse_create()?;
+					Ok(Ast::Create(BumpBox::new_in(create, self.bump())))
+				}
 				Keyword::Alter => Ok(Ast::Alter(self.parse_alter()?)),
 				Keyword::Drop => Ok(Ast::Drop(self.parse_drop()?)),
 				Keyword::Delete | Keyword::Insert | Keyword::Update => {

@@ -12,6 +12,7 @@ pub mod namespace;
 pub mod policy;
 pub mod procedure;
 pub mod queue;
+pub mod relationship;
 pub mod ringbuffer;
 pub mod role;
 pub mod series;

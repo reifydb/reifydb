@@ -14,7 +14,8 @@ use reifydb_core::{
 		handler::Handler,
 		id::{
 			BindingId, ColumnSnapshotId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
-			ProcedureId, QueueId, RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
+			ProcedureId, QueueId, RelationshipId, RingBufferId, SeriesId, SinkId, SourceId, TableId,
+			TestId, ViewId,
 		},
 		identity::{
 			GrantedRole, Identity, IdentityAttribute, IdentityAttributeId, IdentityAttributeValue, Role,
@@ -27,6 +28,7 @@ use reifydb_core::{
 		policy::{Policy, PolicyId},
 		procedure::Procedure,
 		queue::Queue,
+		relationship::Relationship,
 		ringbuffer::RingBuffer,
 		series::Series,
 		sink::Sink,
@@ -55,6 +57,7 @@ pub trait TransactionalChanges:
 	+ TransactionalNamespaceChanges
 	+ TransactionalProcedureChanges
 	+ TransactionalQueueChanges
+	+ TransactionalRelationshipChanges
 	+ TransactionalRingBufferChanges
 	+ TransactionalRoleChanges
 	+ TransactionalPolicyChanges
@@ -176,6 +179,21 @@ pub trait TransactionalQueueChanges {
 	fn is_queue_deleted(&self, id: QueueId) -> bool;
 
 	fn is_queue_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
+}
+
+pub trait TransactionalRelationshipChanges {
+	fn find_relationship(&self, id: RelationshipId) -> Option<&Relationship>;
+
+	fn find_relationship_by_name(
+		&self,
+		namespace: NamespaceId,
+		source_table: TableId,
+		name: &str,
+	) -> Option<&Relationship>;
+
+	fn is_relationship_deleted(&self, id: RelationshipId) -> bool;
+
+	fn is_relationship_deleted_by_name(&self, namespace: NamespaceId, source_table: TableId, name: &str) -> bool;
 }
 
 pub trait TransactionalRingBufferChanges {
@@ -366,6 +384,8 @@ pub struct TransactionalCatalogChanges {
 	pub procedure: Vec<Change<Procedure>>,
 
 	pub queue: Vec<Change<Queue>>,
+	pub relationship: Vec<Change<Relationship>>,
+
 	pub ringbuffer: Vec<Change<RingBuffer>>,
 
 	pub series: Vec<Change<Series>>,
@@ -418,6 +438,7 @@ pub struct CatalogChangesSavepoint {
 	namespace_len: usize,
 	procedure_len: usize,
 	queue_len: usize,
+	relationship_len: usize,
 	ringbuffer_len: usize,
 	series_len: usize,
 	sink_len: usize,
@@ -455,6 +476,7 @@ impl TransactionalCatalogChanges {
 			namespace_len: self.namespace.len(),
 			procedure_len: self.procedure.len(),
 			queue_len: self.queue.len(),
+			relationship_len: self.relationship.len(),
 			ringbuffer_len: self.ringbuffer.len(),
 			series_len: self.series.len(),
 			sink_len: self.sink.len(),
@@ -491,6 +513,7 @@ impl TransactionalCatalogChanges {
 		self.namespace.truncate(sp.namespace_len);
 		self.procedure.truncate(sp.procedure_len);
 		self.queue.truncate(sp.queue_len);
+		self.relationship.truncate(sp.relationship_len);
 		self.ringbuffer.truncate(sp.ringbuffer_len);
 		self.series.truncate(sp.series_len);
 		self.sink.truncate(sp.sink_len);
@@ -687,6 +710,21 @@ impl TransactionalCatalogChanges {
 		let op = change.op;
 		self.procedure.push(change);
 		self.log.push(Operation::Procedure {
+			id,
+			op,
+		});
+	}
+
+	pub fn add_relationship_change(&mut self, change: Change<Relationship>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|r| r.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.relationship.push(change);
+		self.log.push(Operation::Relationship {
 			id,
 			op,
 		});
@@ -1062,6 +1100,10 @@ pub enum Operation {
 		id: QueueId,
 		op: OperationType,
 	},
+	Relationship {
+		id: RelationshipId,
+		op: OperationType,
+	},
 	RingBuffer {
 		id: RingBufferId,
 		op: OperationType,
@@ -1155,6 +1197,7 @@ impl TransactionalCatalogChanges {
 			namespace: Vec::new(),
 			procedure: Vec::new(),
 			queue: Vec::new(),
+			relationship: Vec::new(),
 			ringbuffer: Vec::new(),
 			series: Vec::new(),
 			sink: Vec::new(),
@@ -1277,6 +1320,7 @@ impl TransactionalCatalogChanges {
 		self.namespace.clear();
 		self.procedure.clear();
 		self.queue.clear();
+		self.relationship.clear();
 		self.ringbuffer.clear();
 		self.series.clear();
 		self.sink.clear();

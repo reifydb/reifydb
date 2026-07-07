@@ -1,0 +1,19 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Scenario: `where` and `first` arguments on the root field with a leaf field
+# Why: Validates that comparison filters and TAKE lift into the root level's LET
+#      statement, and that a leaf field with no nested selections is a column ref.
+(admin 'CREATE TABLE transactions { id: int4, hash: utf8, blockNumber: int4, from: utf8 }')
+query 'CALL graphql::explain("query { transactions(where: { blockNumber_gt: 100 }, first: 5) { hash from } }")'
+---
+> +-------+------------+-------------------------------------------------------------------+
+> |  idx  |    kind    |                              detail                               |
+> +-------+------------+-------------------------------------------------------------------+
+> |   0   |    Let     |  $level0 = from transactions | filter blockNumber > 100 | take 5  |
+> |   1   |    Let     |                            $rows = []                             |
+> |   2   |    For     |                          $r0 in $level0                           |
+> |   3   |   Append   |            $rows from [{hash: $r0.hash, from: $r0.from}]          |
+> |   4   |  Variable  |                               $rows                               |
+> +-------+------------+-------------------------------------------------------------------+
+>

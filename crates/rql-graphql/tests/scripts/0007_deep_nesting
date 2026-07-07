@@ -1,0 +1,28 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Scenario: Deep nesting (multi-level relationships)
+# Why: Ensures the compiler emits a per-level LET cascade and a nested object
+#      literal so deep nesting produces correctly-shaped output instead of a
+#      single NaturalJoin with flattened column names.
+(admin 'CREATE TABLE transactions { id: int4, hash: utf8, from_id: int4 }')
+(admin 'CREATE TABLE accounts { id: int4, address: utf8, owner_id: int4 }')
+(admin 'CREATE TABLE owners { id: int4, name: utf8 }')
+(admin 'CREATE RELATIONSHIP from ON transactions(from_id) REFERENCES accounts(id) WITH { cardinality: "N:1" }')
+(admin 'CREATE RELATIONSHIP owner ON accounts(owner_id) REFERENCES owners(id) WITH { cardinality: "N:1" }')
+query 'CALL graphql::explain("query { transactions { hash from { address owner { name } } } }")'
+---
+> +-------+------------+------------------------------------------------------------------------------------------+
+> |  idx  |    kind    |                                          detail                                          |
+> +-------+------------+------------------------------------------------------------------------------------------+
+> |   0   |    Let     |                               $level0 = from transactions                                |
+> |   1   |    Let     |           $level1 = from accounts | filter id in (from $level0 | map from_id)            |
+> |   2   |    Let     |            $level2 = from owners | filter id in (from $level1 | map owner_id)            |
+> |   3   |    Let     |                                        $rows = []                                        |
+> |   4   |    For     |                                      $r0 in $level0                                      |
+> |   5   |    Let     |                       $r1 = from $level1 | filter id == $r0.from_id                      |
+> |   6   |    Let     |                       $r2 = from $level2 | filter id == $r1.owner_id                     |
+> |   7   |   Append   |    $rows from [{hash: $r0.hash, from: {address: $r1.address, owner: {name: $r2.name}}}]  |
+> |   8   |  Variable  |                                          $rows                                           |
+> +-------+------------+------------------------------------------------------------------------------------------+
+>

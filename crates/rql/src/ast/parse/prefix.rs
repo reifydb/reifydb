@@ -73,6 +73,8 @@ impl<'bump> Parser<'bump> {
 pub mod tests {
 	use std::ops::Deref;
 
+	use bumpalo::Bump;
+
 	use crate::{
 		ast::{
 			ast::{
@@ -81,7 +83,6 @@ pub mod tests {
 			},
 			parse::parse,
 		},
-		bump::Bump,
 		token::tokenize,
 	};
 
