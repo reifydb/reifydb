@@ -155,6 +155,9 @@ where
 			let batch_max = buckets.keys().map(|(_, coord)| coord.order_key()).max().unwrap_or(0);
 			let watermark = advance_seal_watermark(&mut store, batch_max)?;
 			let horizon = seal_horizon(watermark, seal_after);
+			if horizon > 0 {
+				self.engine.expire_meta(&mut store, horizon)?;
+			}
 			let mut dropped = 0u64;
 			buckets.retain(|(_, coord), events| {
 				if is_sealed(coord.order_key(), horizon) {

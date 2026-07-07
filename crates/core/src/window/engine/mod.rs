@@ -27,13 +27,14 @@ use reifydb_codec::key::{
 	encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey},
 };
 use reifydb_value::{Result, value::row_number::RowNumber};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{
 	key::flow_node_internal_state::FlowNodeInternalStateKey,
 	window::{
 		accumulator::WindowAccumulator,
 		span::{Slot, WindowSpan},
+		state::StateCache,
 		store::WindowStore,
 	},
 };
@@ -93,6 +94,79 @@ impl<K> Default for GroupMeta<K> {
 			high_water: None,
 		}
 	}
+}
+
+/// Read the group's high-water anchor as a comparable order key, shared by every
+/// engine's per-group meta so the meta sweep is uniform. A group whose high water
+/// has fallen below the sweep threshold has stopped advancing (no recent events)
+/// and its meta is safe to reclaim: the meta only drives late-event rejection, and
+/// by the time the threshold (>= the operator's lateness/retention) passes it, any
+/// late event for the group is already past its horizon.
+pub(crate) trait MetaHighWater {
+	fn high_water_order(&self) -> Option<u64>;
+}
+
+impl<C: Slot> MetaHighWater for GroupMeta<C> {
+	fn high_water_order(&self) -> Option<u64> {
+		self.high_water.as_ref().map(|hw| hw.order_key())
+	}
+}
+
+/// The internal-key range covering every per-group meta ('W'), used by the sweep.
+pub(crate) fn meta_range() -> EncodedKeyRange {
+	EncodedKeyRange::new(
+		Bound::Included(EncodedKey::new(vec![FlowNodeInternalStateKey::WINDOW_META_TAG])),
+		Bound::Excluded(EncodedKey::new(vec![FlowNodeInternalStateKey::WINDOW_META_TAG + 1])),
+	)
+}
+
+/// Reclaim every group meta whose high water is strictly below `threshold`.
+///
+/// `low_water` is the smallest high water among the groups that survived the previous sweep - a lower
+/// bound on the current minimum, since a group's high water only advances and a newly-seen group starts
+/// at an unsealed window (>= the caller's seal horizon >= `threshold`, so it can never be the stale
+/// minimum). When the bound is already at/above the threshold nothing can be stale and the whole scan is
+/// skipped - the steady-state case, so most apply-time sweeps are O(1). The full scan runs only when the
+/// threshold has crossed that minimum (the oldest group has genuinely gone stale); it then drops every
+/// stale meta in one pass and recomputes the bound to the smallest surviving high water.
+///
+/// Staleness is a value, not a key prefix, so the scan must cover the whole meta keyspace (a key-bounded
+/// scan would only ever see the lowest-keyed groups). It flushes the meta cache first so the scan sees
+/// the latest high water, drops stale keys through the cache (never bypassing it), and flushes the drops.
+/// Scoped to the meta keyspace, so row-number mappings and accumulators are untouched.
+pub(crate) fn sweep_stale_meta<S, M>(
+	store: &mut S,
+	meta: &mut StateCache<MetaKey, M>,
+	threshold: u64,
+	low_water: &mut Option<u64>,
+) -> Result<usize>
+where
+	S: WindowStore,
+	M: MetaHighWater + Clone + Serialize + DeserializeOwned,
+{
+	if low_water.is_some_and(|lw| lw >= threshold) {
+		return Ok(0);
+	}
+	meta.flush(store)?;
+	let mut stale: Vec<MetaKey> = Vec::new();
+	let mut min_surviving: Option<u64> = None;
+	store.internal_range_visit::<M>(meta_range(), None, &mut |key, value| {
+		if let Some(hw) = value.high_water_order() {
+			if hw < threshold {
+				stale.push(MetaKey(EncodedKey::new(key.as_bytes()[1..].to_vec())));
+			} else {
+				min_surviving = Some(min_surviving.map_or(hw, |m| m.min(hw)));
+			}
+		}
+		Ok(())
+	})?;
+	*low_water = min_surviving;
+	let count = stale.len();
+	for key in &stale {
+		meta.remove(store, key)?;
+	}
+	meta.flush(store)?;
+	Ok(count)
 }
 
 /// State-cache key for a group's [`GroupMeta`], tagged so it lives in a
@@ -356,6 +430,24 @@ pub(crate) mod test_support {
 				.keys()
 				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_RUNNING_TAG))
 				.count()
+		}
+
+		pub(crate) fn meta_entry_count(&mut self) -> usize {
+			self.internal
+				.keys()
+				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_META_TAG))
+				.count()
+		}
+
+		pub(crate) fn mapping_entry_count(&mut self) -> usize {
+			self.internal
+				.keys()
+				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG))
+				.count()
+		}
+
+		pub(crate) fn seed_mapping_key(&mut self, suffix: u8) {
+			self.internal.insert(vec![FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG, suffix], vec![0u8]);
 		}
 	}
 

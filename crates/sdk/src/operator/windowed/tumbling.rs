@@ -269,6 +269,7 @@ where
 			}
 			if horizon > 0 {
 				engine.expire(&mut store, horizon - 1)?;
+				engine.expire_meta(&mut store, horizon)?;
 			}
 			if buckets.is_empty() {
 				return Ok(());

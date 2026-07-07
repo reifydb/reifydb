@@ -16,7 +16,7 @@ use crate::window::{
 	accumulator::WindowAccumulator,
 	engine::{
 		AccumulatorEvent, EmitKey, GroupMeta, MetaKey, config::WindowEngineConfig, load_buffer, meta_key_for,
-		persist_buffer, rolling::RollingBuckets,
+		persist_buffer, rolling::RollingBuckets, sweep_stale_meta,
 	},
 	span::Slot,
 	state::StateCache,
@@ -58,6 +58,7 @@ struct GroupSlot<C, Accumulator, SK, Output> {
 pub struct MultiRollingEngine<G, C, Accumulator, SK, Output> {
 	last_emit: StateCache<EmitKey, MultiRollingEmit<SK, Output>>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
+	meta_low_water: Option<u64>,
 	_pd: PhantomData<(G, C, Accumulator)>,
 }
 
@@ -76,8 +77,13 @@ where
 				config.state_cache_capacity(),
 			),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
+			meta_low_water: None,
 			_pd: PhantomData,
 		}
+	}
+
+	pub fn expire_meta<S: WindowStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
+		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
 	}
 
 	pub fn apply<S, SKF, RKF, CB>(

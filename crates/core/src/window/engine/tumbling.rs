@@ -19,7 +19,7 @@ use crate::window::{
 	accumulator::WindowAccumulator,
 	engine::{
 		AccumulatorEvent, EmitKind, GroupMeta, MetaKey, WindowResult, WindowStateKey,
-		config::WindowEngineConfig, expiry_due_range, expiry_key, meta_key_for,
+		config::WindowEngineConfig, expiry_due_range, expiry_key, meta_key_for, sweep_stale_meta,
 	},
 	span::{Slot, WindowSpan},
 	state::StateCache,
@@ -83,6 +83,7 @@ where
 pub struct TumblingEngine<G, C, Accumulator> {
 	accumulators: StateCache<WindowStateKey, Accumulator>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
+	meta_low_water: Option<u64>,
 	expire_batch: usize,
 	_pd: PhantomData<G>,
 }
@@ -100,6 +101,7 @@ where
 				config.state_cache_capacity(),
 			),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
+			meta_low_water: None,
 			expire_batch: config.expire_batch(),
 			_pd: PhantomData,
 		}
@@ -341,6 +343,10 @@ where
 		}
 		Ok(())
 	}
+
+	pub fn expire_meta<S: WindowStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
+		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
+	}
 }
 
 #[cfg(test)]
@@ -405,6 +411,72 @@ mod tests {
 		assert_eq!(later[0].window_start, 100);
 		assert_eq!(later[0].value, Some(7));
 		assert_eq!(store.index_entry_count(), 0);
+	}
+
+	#[test]
+	fn meta_reclaimed_when_group_stale_past_threshold() {
+		// Invariant: a group whose high water has fallen below the staleness threshold has stopped
+		// advancing and its per-group GroupMeta ('W') must be reclaimed. `persist_meta` writes one
+		// meta per group and never removes it, so without the sweep one internal-state key leaks per
+		// distinct group (mint pair) forever - the unbounded tail behind the jupiter memory growth.
+		let mut store = MockStore::default();
+		seed_window(&mut store, 0, 5);
+		assert_eq!(store.meta_entry_count(), 1, "applying a window persisted the group's meta");
+
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		let dropped = engine.expire_meta(&mut store, 100).unwrap();
+		assert_eq!(dropped, 1, "the group's high water (0) is below the threshold (100)");
+		assert_eq!(store.meta_entry_count(), 0, "a stale group must not leak its GroupMeta");
+	}
+
+	#[test]
+	fn meta_survives_while_group_high_water_at_or_after_threshold() {
+		// Safety boundary: a group whose high water is at or beyond the threshold is still live
+		// (its late-event horizon has not passed) and must keep its meta.
+		let mut store = MockStore::default();
+		seed_window(&mut store, 100, 7);
+		assert_eq!(store.meta_entry_count(), 1);
+
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		let dropped = engine.expire_meta(&mut store, 50).unwrap();
+		assert_eq!(dropped, 0, "high water (100) is not below the threshold (50)");
+		assert_eq!(store.meta_entry_count(), 1, "a group within the staleness horizon keeps its meta");
+	}
+
+	#[test]
+	fn meta_sweep_leaves_row_number_mappings_intact() {
+		// Scoping guard: the sweep targets only meta keys ('W'). It must not touch the write-once
+		// row-number mappings ('M') that share the OperatorInternal tier - deleting those would
+		// corrupt the operator.
+		let mut store = MockStore::default();
+		seed_window(&mut store, 0, 5);
+		store.seed_mapping_key(0x01);
+		assert_eq!(store.mapping_entry_count(), 1);
+
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		engine.expire_meta(&mut store, 100).unwrap();
+		assert_eq!(store.meta_entry_count(), 0, "the stale group's meta is swept");
+		assert_eq!(store.mapping_entry_count(), 1, "the sweep must not touch row-number mapping keys");
+	}
+
+	#[test]
+	fn meta_sweep_skips_then_reclaims_as_threshold_advances() {
+		// The low-water guard must skip the scan while the smallest high water is at or above the
+		// threshold, yet still reclaim the group once the threshold advances past it - the guard is
+		// an optimization to avoid scanning every apply, never a correctness hole.
+		let mut store = MockStore::default();
+		seed_window(&mut store, 100, 7);
+
+		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		// Below the group's high water: nothing stale; the sweep records the low-water bound (100).
+		assert_eq!(engine.expire_meta(&mut store, 50).unwrap(), 0);
+		assert_eq!(store.meta_entry_count(), 1);
+		// Threshold equals the bound: still nothing strictly below it, a no-op skip.
+		assert_eq!(engine.expire_meta(&mut store, 100).unwrap(), 0);
+		assert_eq!(store.meta_entry_count(), 1);
+		// Threshold crosses the group's high water: it is now stale and reclaimed.
+		assert_eq!(engine.expire_meta(&mut store, 101).unwrap(), 1);
+		assert_eq!(store.meta_entry_count(), 0, "the guard must not permanently skip a group that goes stale");
 	}
 
 	#[test]

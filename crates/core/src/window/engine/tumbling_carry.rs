@@ -15,8 +15,8 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use crate::window::{
 	accumulator::WindowAccumulator,
 	engine::{
-		AccumulatorEvent, EmitKind, MetaKey, WindowResult, WindowStateKey, config::TumblingCarryConfig,
-		meta_key_for, tumbling::TumblingBuckets,
+		AccumulatorEvent, EmitKind, MetaHighWater, MetaKey, WindowResult, WindowStateKey,
+		config::TumblingCarryConfig, meta_key_for, sweep_stale_meta, tumbling::TumblingBuckets,
 	},
 	span::{Slot, WindowSpan},
 	state::StateCache,
@@ -59,12 +59,19 @@ impl<C, Carry, Output> Default for CarryMeta<C, Carry, Output> {
 	}
 }
 
+impl<C: Slot, Carry, Output> MetaHighWater for CarryMeta<C, Carry, Output> {
+	fn high_water_order(&self) -> Option<u64> {
+		self.high_water.as_ref().map(|hw| hw.order_key())
+	}
+}
+
 type MetaLoaded<G, C, Carry, Output> = HashMap<G, CarryMeta<C, Carry, Output>>;
 type SlotResolved = Vec<Option<(RowNumber, bool)>>;
 
 pub struct TumblingCarryEngine<G, C: Slot, Accumulator, Carry, Output> {
 	accumulators: StateCache<WindowStateKey, Accumulator>,
 	meta: StateCache<MetaKey, CarryMeta<C, Carry, Output>>,
+	meta_low_water: Option<u64>,
 	retention: Option<C::Duration>,
 	_pd: PhantomData<G>,
 }
@@ -87,9 +94,14 @@ where
 			meta: StateCache::<MetaKey, CarryMeta<C, Carry, Output>>::new_internal(
 				base.internal_state_cache_capacity(),
 			),
+			meta_low_water: None,
 			retention: config.retention(),
 			_pd: PhantomData,
 		}
+	}
+
+	pub fn expire_meta<S: WindowStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
+		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -389,6 +401,13 @@ mod tests {
 				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_ROW_STATE_TAG))
 				.count()
 		}
+
+		fn meta_entry_count(&self) -> usize {
+			self.internal
+				.keys()
+				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_META_TAG))
+				.count()
+		}
 	}
 
 	impl WindowStore for CountingStore {
@@ -563,6 +582,40 @@ mod tests {
 			"sealed windows must reclaim their accumulator rows; found {} live rows after 60 windows",
 			store.accumulator_count()
 		);
+	}
+
+	#[test]
+	fn meta_survives_while_group_high_water_at_or_after_threshold() {
+		// Safety boundary: an active group whose high water is at or beyond the threshold must keep
+		// its meta ('W') - the carry it holds is still needed to seed the next window.
+		let mut store = CountingStore::default();
+		let mut engine = Engine::new(carry_config(Some(2 * WINDOW)));
+		for i in 0..3u64 {
+			feed(&mut engine, &mut store, i * WINDOW, i as f64);
+		}
+		engine.flush(&mut store).expect("flush");
+		let dropped = engine.expire_meta(&mut store, WINDOW).unwrap();
+		assert_eq!(dropped, 0, "high water (2*WINDOW) is not below the threshold (WINDOW)");
+		assert_eq!(store.meta_entry_count(), 1, "an active group within the horizon keeps its meta");
+		assert!(store.accumulator_count() > 0, "live windows within retention keep their accumulators");
+	}
+
+	#[test]
+	fn meta_reclaimed_when_group_stale_past_threshold() {
+		// Invariant: a carry group that has gone quiet (high water below the threshold) is dead;
+		// the sweep reclaims its meta and the sealed carry it held, bounding the per-group
+		// internal-state growth that `persist_meta` would otherwise leak one key per group forever.
+		let mut store = CountingStore::default();
+		let mut engine = Engine::new(carry_config(Some(2 * WINDOW)));
+		for i in 0..3u64 {
+			feed(&mut engine, &mut store, i * WINDOW, i as f64);
+		}
+		engine.flush(&mut store).expect("flush");
+		assert_eq!(store.meta_entry_count(), 1);
+
+		let dropped = engine.expire_meta(&mut store, 100 * WINDOW).unwrap();
+		assert_eq!(dropped, 1, "the quiet group's high water is far below the threshold");
+		assert_eq!(store.meta_entry_count(), 0, "a dead carry group must not leak its meta");
 	}
 
 	#[test]

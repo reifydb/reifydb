@@ -18,6 +18,7 @@ use crate::window::{
 		AccumulatorEvent, EmitKind, GroupMeta, MetaKey, RunningKey, config::WindowEngineConfig,
 		coord_between_range, coord_due_range, coord_entry_key, coord_row_range, drop_all_coords,
 		entry_key_coord, expiry_due_range, expiry_key, load_buffer, meta_key_for, persist_buffer,
+		sweep_stale_meta,
 	},
 	span::Slot,
 	state::StateCache,
@@ -93,6 +94,7 @@ struct GroupSlot<C, Accumulator, Output> {
 pub struct RollingEngine<G, C, Accumulator> {
 	running: Option<StateCache<RunningKey, Accumulator>>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
+	meta_low_water: Option<u64>,
 	expire_batch: usize,
 	lag: u64,
 	_pd: PhantomData<G>,
@@ -174,6 +176,7 @@ where
 		Self {
 			running: None,
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new_internal(config.internal_state_cache_capacity()),
+			meta_low_water: None,
 			expire_batch: config.expire_batch(),
 			lag: 0,
 			_pd: PhantomData,
@@ -901,6 +904,10 @@ where
 		Ok(out)
 	}
 
+	pub fn expire_meta<S: WindowStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
+		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
+	}
+
 	pub fn expire_before<S, CB, Output>(
 		&mut self,
 		store: &mut S,
@@ -1092,6 +1099,58 @@ mod tests {
 		} else {
 			Some(buffer.values().map(|a| a.sum).sum())
 		}
+	}
+
+	#[test]
+	fn meta_reclaimed_when_group_stale_past_threshold() {
+		// Invariant: a group whose high water has fallen below the staleness threshold has gone
+		// quiet; its per-group GroupMeta ('W') must be reclaimed. `persist_meta` never removes it,
+		// so without the sweep a quiet group leaks one internal-state key forever.
+		let mut store = MockStore::default();
+		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(1)]);
+		buckets.insert((1u32, 20u64), vec![AccumulatorEvent::Add(2)]);
+		engine.apply_evicting(
+			&mut store,
+			buckets,
+			RollingEviction::Before(0),
+			row_key,
+			SumAccumulator::default,
+			sum_combine,
+		)
+		.unwrap();
+		engine.flush(&mut store).unwrap();
+		assert_eq!(store.meta_entry_count(), 1, "the group's meta is persisted on apply");
+
+		let dropped = engine.expire_meta(&mut store, 100).unwrap();
+		assert_eq!(dropped, 1, "the group's high water (20) is below the threshold (100)");
+		assert_eq!(store.meta_entry_count(), 0, "a stale group must not leak its GroupMeta");
+	}
+
+	#[test]
+	fn meta_survives_while_group_high_water_at_or_after_threshold() {
+		// Safety boundary: a group whose high water is at or beyond the threshold is still live and
+		// must keep its meta.
+		let mut store = MockStore::default();
+		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(1)]);
+		buckets.insert((1u32, 20u64), vec![AccumulatorEvent::Add(2)]);
+		engine.apply_evicting(
+			&mut store,
+			buckets,
+			RollingEviction::Before(0),
+			row_key,
+			SumAccumulator::default,
+			sum_combine,
+		)
+		.unwrap();
+		engine.flush(&mut store).unwrap();
+
+		let dropped = engine.expire_meta(&mut store, 5).unwrap();
+		assert_eq!(dropped, 0, "high water (20) is not below the threshold (5)");
+		assert_eq!(store.meta_entry_count(), 1, "a group within the staleness horizon keeps its meta");
 	}
 
 	#[test]
