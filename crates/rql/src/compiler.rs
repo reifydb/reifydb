@@ -3,6 +3,7 @@
 
 use std::{collections::HashSet, fmt, fmt::Debug, sync::Arc};
 
+use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	error::diagnostic::query,
@@ -18,7 +19,7 @@ use crate::{
 		ast::{AstStatement, AstTimestampPrecision, AstViewStorageKind},
 		parse_str,
 	},
-	bump::{Bump, BumpBox, BumpVec},
+	bump::BumpBox,
 	error::RqlError,
 	expression::{Expression, ParameterExpression, PrefixOperator},
 	fingerprint::statement::{fingerprint_statement, normalize_statement},
@@ -964,6 +965,10 @@ impl InstructionCompiler {
 				self.emit(Instruction::CreateBinding(node));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::CreateRelationship(node) => {
+				self.emit(Instruction::CreateRelationship(node));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::CreateTest(node) => {
 				self.emit(Instruction::CreateTest(node));
 				self.emit(Instruction::Emit);
@@ -1044,6 +1049,10 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::DropBinding(node) => {
 				self.emit(Instruction::DropBinding(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropRelationship(node) => {
+				self.emit(Instruction::DropRelationship(node));
 				self.emit(Instruction::Emit);
 			}
 

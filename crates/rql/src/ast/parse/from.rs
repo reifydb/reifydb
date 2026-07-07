@@ -119,7 +119,7 @@ impl<'bump> Parser<'bump> {
 				let mut source = UnresolvedShapeIdentifier::new(namespace, name);
 
 				if !self.is_eof() && self.current()?.is_identifier() {
-					let alias_token = self.consume(TokenKind::Identifier)?;
+					let alias_token = self.consume_identifier()?;
 					source = source.with_alias(alias_token.fragment);
 				}
 
@@ -130,7 +130,7 @@ impl<'bump> Parser<'bump> {
 				if let Ok(current) = self.current() {
 					if current.is_keyword(Keyword::Using) {
 						self.consume_keyword(Keyword::Using)?;
-						let index_token = self.consume(TokenKind::Identifier)?;
+						let index_token = self.consume_identifier()?;
 						Some(index_token.fragment)
 					} else {
 						None
@@ -193,12 +193,13 @@ impl<'bump> Parser<'bump> {
 
 #[cfg(test)]
 pub mod tests {
+	use bumpalo::Bump;
+
 	use crate::{
 		ast::{
 			ast::{AstFrom, InfixOperator, InfixOperator::As},
 			parse::Parser,
 		},
-		bump::Bump,
 		token::tokenize,
 	};
 

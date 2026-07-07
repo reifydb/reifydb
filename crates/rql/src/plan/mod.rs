@@ -9,6 +9,7 @@
 //! The split lets policy and optimisation operate on a backend-neutral representation; nothing in the logical layer
 //! knows whether the table it reads from is a single-version or multi-version store.
 
+use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_transaction::transaction::Transaction;
 use tracing::instrument;
@@ -16,7 +17,6 @@ use tracing::instrument;
 use crate::{
 	Result,
 	ast::ast::AstStatement,
-	bump::{Bump, BumpVec},
 	expression::Expression,
 	plan::{
 		logical::{LogicalPlan, compile_logical},

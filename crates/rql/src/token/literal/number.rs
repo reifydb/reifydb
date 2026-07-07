@@ -123,12 +123,10 @@ pub fn scan_number<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 #[cfg(test)]
 pub mod tests {
 	use Literal::Number;
+	use bumpalo::Bump;
 
 	use super::*;
-	use crate::{
-		bump::Bump,
-		token::{operator::Operator, tokenize},
-	};
+	use crate::token::{operator::Operator, tokenize};
 
 	#[test]
 	fn test_decimal_integer() {

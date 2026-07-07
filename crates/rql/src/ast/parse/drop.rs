@@ -8,8 +8,9 @@ use crate::{
 	ast::{
 		ast::{
 			AstDrop, AstDropDictionary, AstDropHandler, AstDropNamespace, AstDropProcedure,
-			AstDropRingBuffer, AstDropSeries, AstDropSink, AstDropSource, AstDropSubscription,
-			AstDropSumType, AstDropTable, AstDropTest, AstDropView, AstPolicyTargetType,
+			AstDropRelationship, AstDropRingBuffer, AstDropSeries, AstDropSink, AstDropSource,
+			AstDropSubscription, AstDropSumType, AstDropTable, AstDropTest, AstDropView,
+			AstPolicyTargetType,
 		},
 		identifier::{
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedHandlerIdentifier,
@@ -120,6 +121,9 @@ impl<'bump> Parser<'bump> {
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Binding))?).is_some() {
 			return self.parse_drop_binding(token);
+		}
+		if (self.consume_if(TokenKind::Keyword(Keyword::Relationship))?).is_some() {
+			return self.parse_drop_relationship(token);
 		}
 
 		let fragment = self.current()?.fragment.to_owned();
@@ -417,12 +421,33 @@ impl<'bump> Parser<'bump> {
 			test,
 		}))
 	}
+
+	fn parse_drop_relationship(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+		let if_exists = self.parse_if_exists()?;
+		let name_token = self.consume_identifier()?;
+		let name = name_token.fragment;
+
+		self.consume_keyword(Keyword::On)?;
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
+		let table_name = segments.pop().unwrap().into_fragment();
+		let table_namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let source = MaybeQualifiedTableIdentifier::new(table_name).with_namespace(table_namespace);
+
+		Ok(AstDrop::Relationship(AstDropRelationship {
+			token,
+			if_exists,
+			name,
+			source,
+		}))
+	}
 }
 
 #[cfg(test)]
 pub mod tests {
+	use bumpalo::Bump;
+
 	use super::*;
-	use crate::{ast::parse::Parser, bump::Bump, token::tokenize};
+	use crate::{ast::parse::Parser, token::tokenize};
 
 	#[test]
 	fn test_drop_table_basic() {

@@ -116,7 +116,8 @@ pub mod tests {
 			KeyKind::TableColumnSnapshot => {}
 			KeyKind::IdentityAttribute => {}
 			KeyKind::IdentityAttributeValue => {}
-			KeyKind::VersionEpoch => {} /* When adding a new variant, add it here.
+			KeyKind::VersionEpoch => {}
+			KeyKind::Relationship => {} /* When adding a new variant, add it here.
 			                             * The compiler will error if you forget.
 			                             * Then add a test and update should_exclude_from_cdc() if
 			                             * needed. */

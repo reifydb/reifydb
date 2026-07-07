@@ -18,7 +18,7 @@ use reifydb_core::{
 			handler::Handler,
 			id::{
 				BindingId, ColumnSnapshotId, HandlerId, MigrationId, NamespaceId, ProcedureId,
-				RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
+				RelationshipId, RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
 			},
 			identity::{
 				GrantedRole, Identity, IdentityAttribute, IdentityAttributeId, IdentityAttributeValue,
@@ -28,6 +28,7 @@ use reifydb_core::{
 			namespace::Namespace,
 			policy::{Policy, PolicyId},
 			procedure::Procedure,
+			relationship::Relationship,
 			ringbuffer::RingBuffer,
 			series::Series,
 			shape::ShapeId,
@@ -58,10 +59,10 @@ use crate::{
 		TransactionalIdentityAttributeChanges, TransactionalIdentityAttributeValueChanges,
 		TransactionalIdentityChanges, TransactionalMigrationChanges, TransactionalNamespaceChanges,
 		TransactionalOperatorSettingsChanges, TransactionalPolicyChanges, TransactionalProcedureChanges,
-		TransactionalRingBufferChanges, TransactionalRoleChanges, TransactionalRowSettingsChanges,
-		TransactionalSeriesChanges, TransactionalSinkChanges, TransactionalSourceChanges,
-		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalTestChanges,
-		TransactionalViewChanges,
+		TransactionalRelationshipChanges, TransactionalRingBufferChanges, TransactionalRoleChanges,
+		TransactionalRowSettingsChanges, TransactionalSeriesChanges, TransactionalSinkChanges,
+		TransactionalSourceChanges, TransactionalSumTypeChanges, TransactionalTableChanges,
+		TransactionalTestChanges, TransactionalViewChanges,
 	},
 	multi::{RangeScope, transaction::read::MultiReadTransaction},
 	single::{SingleTransaction, read::SingleReadTransaction},
@@ -339,6 +340,34 @@ impl TransactionalTableChanges for QueryTransaction {
 	}
 
 	fn is_table_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
+		false
+	}
+}
+
+impl TransactionalRelationshipChanges for QueryTransaction {
+	fn find_relationship(&self, _id: RelationshipId) -> Option<&Relationship> {
+		None
+	}
+
+	fn find_relationship_by_name(
+		&self,
+		_namespace: NamespaceId,
+		_source_table: TableId,
+		_name: &str,
+	) -> Option<&Relationship> {
+		None
+	}
+
+	fn is_relationship_deleted(&self, _id: RelationshipId) -> bool {
+		false
+	}
+
+	fn is_relationship_deleted_by_name(
+		&self,
+		_namespace: NamespaceId,
+		_source_table: TableId,
+		_name: &str,
+	) -> bool {
 		false
 	}
 }

@@ -1,0 +1,1009 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
+use bumpalo::Bump;
+use reifydb_catalog::catalog::Catalog;
+use reifydb_core::common::JoinType;
+use reifydb_transaction::transaction::Transaction;
+
+use crate::{
+	Result,
+	ast::{ast::AstAlterPolicyAction, parse_str},
+	plan::logical::{
+		AggregateNode, AlterSequenceNode, AppendNode, AssertNode, Compiler, CreateColumnPropertyNode,
+		CreateIndexNode, CreatePrimaryKeyNode, DistinctNode, ExtendNode, FilterNode, GateNode, GeneratorNode,
+		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, OrderNode,
+		PatchNode, RemoteScanNode, ShapeScanNode, TakeNode, VariableSourceNode,
+	},
+};
+
+pub fn explain_logical_plan(catalog: &Catalog, rx: &mut Transaction<'_>, query: &str) -> Result<String> {
+	let bump = Bump::new();
+	let statements = parse_str(&bump, query)?;
+
+	let mut plans = Vec::new();
+	for statement in statements {
+		let compiler = Compiler {
+			catalog: catalog.clone(),
+			bump: &bump,
+		};
+		plans.extend(compiler.compile(statement, rx)?);
+	}
+
+	explain_logical_plans(&plans)
+}
+
+pub fn explain_logical_plans(plans: &[LogicalPlan<'_>]) -> Result<String> {
+	let mut result = String::new();
+	for plan in plans {
+		let mut output = String::new();
+		render_logical_plan_inner(plan, "", true, &mut output);
+		result += output.as_str();
+	}
+
+	Ok(result)
+}
+
+fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool, output: &mut String) {
+	let branch = if is_last {
+		"└──"
+	} else {
+		"├──"
+	};
+	let child_prefix = format!(
+		"{}{}",
+		prefix,
+		if is_last {
+			"    "
+		} else {
+			"│   "
+		}
+	);
+
+	match plan {
+		LogicalPlan::Loop(_) => {
+			output.push_str(&format!("{}{} Loop\n", prefix, branch));
+		}
+		LogicalPlan::While(_) => {
+			output.push_str(&format!("{}{} While\n", prefix, branch));
+		}
+		LogicalPlan::For(_) => {
+			output.push_str(&format!("{}{} For\n", prefix, branch));
+		}
+		LogicalPlan::Break => {
+			output.push_str(&format!("{}{} Break\n", prefix, branch));
+		}
+		LogicalPlan::Continue => {
+			output.push_str(&format!("{}{} Continue\n", prefix, branch));
+		}
+		LogicalPlan::CreateDeferredView(_) => unimplemented!(),
+		LogicalPlan::CreateTransactionalView(_) => unimplemented!(),
+		LogicalPlan::CreateNamespace(_) => unimplemented!(),
+		LogicalPlan::CreateRemoteNamespace(_) => unimplemented!(),
+		LogicalPlan::CreateSequence(_) => unimplemented!(),
+		LogicalPlan::CreateTable(_) => unimplemented!(),
+		LogicalPlan::CreateRingBuffer(_) => unimplemented!(),
+		LogicalPlan::CreateDictionary(_) => unimplemented!(),
+		LogicalPlan::CreateSumType(_) => unimplemented!(),
+		LogicalPlan::CreateSubscription(_) => unimplemented!(),
+		LogicalPlan::DropNamespace(_) => unimplemented!(),
+		LogicalPlan::DropTable(_) => unimplemented!(),
+		LogicalPlan::DropView(_) => unimplemented!(),
+		LogicalPlan::DropRingBuffer(_) => unimplemented!(),
+		LogicalPlan::DropDictionary(_) => unimplemented!(),
+		LogicalPlan::DropSumType(_) => unimplemented!(),
+		LogicalPlan::DropSubscription(_) => unimplemented!(),
+		LogicalPlan::DropSeries(_) => unimplemented!(),
+		LogicalPlan::DropProcedure(_) => unimplemented!(),
+		LogicalPlan::DropHandler(_) => unimplemented!(),
+		LogicalPlan::DropTest(_) => unimplemented!(),
+		LogicalPlan::CreateSource(_) => unimplemented!(),
+		LogicalPlan::CreateSink(_) => unimplemented!(),
+		LogicalPlan::CreateBinding(_) => unimplemented!(),
+		LogicalPlan::CreateRelationship(_) => unimplemented!(),
+		LogicalPlan::DropSource(_) => unimplemented!(),
+		LogicalPlan::DropSink(_) => unimplemented!(),
+		LogicalPlan::DropBinding(_) => unimplemented!(),
+		LogicalPlan::DropRelationship(_) => unimplemented!(),
+		LogicalPlan::CreateIdentity(n) => {
+			output.push_str(&format!("{}{} CreateUser name={}\n", prefix, branch, n.name.text()));
+		}
+		LogicalPlan::CreateRole(n) => {
+			output.push_str(&format!("{}{} CreateRole name={}\n", prefix, branch, n.name.text()));
+		}
+		LogicalPlan::Grant(n) => {
+			output.push_str(&format!(
+				"{}{} Grant role={} user={}\n",
+				prefix,
+				branch,
+				n.role.text(),
+				n.user.text()
+			));
+		}
+		LogicalPlan::Revoke(n) => {
+			output.push_str(&format!(
+				"{}{} Revoke role={} user={}\n",
+				prefix,
+				branch,
+				n.role.text(),
+				n.user.text()
+			));
+		}
+		LogicalPlan::DropIdentity(n) => {
+			output.push_str(&format!(
+				"{}{} DropUser name={} if_exists={}\n",
+				prefix,
+				branch,
+				n.name.text(),
+				n.if_exists
+			));
+		}
+		LogicalPlan::DropRole(n) => {
+			output.push_str(&format!(
+				"{}{} DropRole name={} if_exists={}\n",
+				prefix,
+				branch,
+				n.name.text(),
+				n.if_exists
+			));
+		}
+		LogicalPlan::CreateAuthentication(n) => {
+			output.push_str(&format!("{}{} CreateAuthentication user={}\n", prefix, branch, n.user.text()));
+		}
+		LogicalPlan::DropAuthentication(n) => {
+			output.push_str(&format!(
+				"{}{} DropAuthentication user={} if_exists={}\n",
+				prefix,
+				branch,
+				n.user.text(),
+				n.if_exists
+			));
+		}
+		LogicalPlan::CreatePolicy(n) => {
+			let name = n.name.as_ref().map(|f| f.text()).unwrap_or("<unnamed>");
+			output.push_str(&format!(
+				"{}{} CreatePolicy name={} type={:?}\n",
+				prefix, branch, name, n.target_type
+			));
+		}
+		LogicalPlan::AlterPolicy(n) => {
+			let enabled = n.action == AstAlterPolicyAction::Enable;
+			output.push_str(&format!(
+				"{}{} AlterPolicy name={} enabled={}\n",
+				prefix,
+				branch,
+				n.name.text(),
+				enabled
+			));
+		}
+		LogicalPlan::DropPolicy(n) => {
+			output.push_str(&format!(
+				"{}{} DropPolicy name={} if_exists={}\n",
+				prefix,
+				branch,
+				n.name.text(),
+				n.if_exists
+			));
+		}
+		LogicalPlan::AlterSequence(AlterSequenceNode {
+			sequence,
+			column,
+			value,
+		}) => {
+			output.push_str(&format!("{}{} AlterSequence\n", prefix, branch));
+			let child_prefix = format!(
+				"{}{}",
+				prefix,
+				if is_last {
+					"    "
+				} else {
+					"│   "
+				}
+			);
+
+			output.push_str(&format!("{}├── Namespace: {:?}\n", child_prefix, sequence.namespace));
+			output.push_str(&format!("{}├── Sequence: {:?}\n", child_prefix, sequence.name));
+			output.push_str(&format!("{}├── Column: {}\n", child_prefix, column.name.text()));
+			output.push_str(&format!("{}└── Value: {}\n", child_prefix, value));
+		}
+		LogicalPlan::CreateIndex(CreateIndexNode {
+			index_type,
+			index,
+			columns,
+			filter,
+			map,
+		}) => {
+			output.push_str(&format!("{}{} CreateIndex\n", prefix, branch));
+			let child_prefix = format!(
+				"{}{}",
+				prefix,
+				if is_last {
+					"    "
+				} else {
+					"│   "
+				}
+			);
+
+			output.push_str(&format!("{}├── Type: {:?}\n", child_prefix, index_type));
+			output.push_str(&format!("{}├── Name: {}\n", child_prefix, index.name.text()));
+			output.push_str(&format!(
+				"{}├── Namespace: {}\n",
+				child_prefix,
+				index.namespace.first().map(|ns| ns.text()).unwrap_or("default")
+			));
+			output.push_str(&format!("{}├── Table: {}\n", child_prefix, index.table.text()));
+
+			let columns_str = columns
+				.iter()
+				.map(|col| {
+					if let Some(order) = &col.order {
+						format!("{} {:?}", col.column.text(), order)
+					} else {
+						col.column.text().to_string()
+					}
+				})
+				.collect::<Vec<_>>()
+				.join(", ");
+
+			if !filter.is_empty() {
+				output.push_str(&format!("{}├── Columns: {}\n", child_prefix, columns_str));
+				let filter_str = filter.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(", ");
+				output.push_str(&format!("{}├── Filters: {}\n", child_prefix, filter_str));
+			} else {
+				output.push_str(&format!("{}└── Columns: {}\n", child_prefix, columns_str));
+			}
+
+			if let Some(map_expr) = map {
+				output.push_str(&format!("{}└── Map: {}\n", child_prefix, map_expr));
+			}
+		}
+		LogicalPlan::DeleteTable(delete) => {
+			output.push_str(&format!("{}{} DeleteTable\n", prefix, branch));
+
+			// Show target table if specified
+			if let Some(table) = &delete.target {
+				let namespace = table.namespace.first().map(|n| n.text()).unwrap_or("default");
+				output.push_str(&format!(
+					"{}├── target table: {}.{}\n",
+					child_prefix,
+					namespace,
+					table.name.text()
+				));
+			} else {
+				output.push_str(&format!("{}├── target table: <inferred from input>\n", child_prefix));
+			}
+
+			// Explain the input pipeline if present
+			if let Some(input) = &delete.input {
+				output.push_str(&format!("{}└── Input Pipeline:\n", child_prefix));
+				let pipeline_prefix = format!("{}    ", child_prefix);
+				render_logical_plan_inner(input, &pipeline_prefix, true, output);
+			}
+		}
+		LogicalPlan::DeleteRingBuffer(delete) => {
+			output.push_str(&format!("{}{} DeleteRingBuffer\n", prefix, branch));
+
+			// Show target ring buffer
+			let namespace = delete.target.namespace.first().map(|n| n.text()).unwrap_or("default");
+			output.push_str(&format!(
+				"{}├── target ring buffer: {}.{}\n",
+				child_prefix,
+				namespace,
+				delete.target.name.text()
+			));
+
+			// Explain the input pipeline if present
+			if let Some(input) = &delete.input {
+				output.push_str(&format!("{}└── Input Pipeline:\n", child_prefix));
+				let pipeline_prefix = format!("{}    ", child_prefix);
+				render_logical_plan_inner(input, &pipeline_prefix, true, output);
+			}
+		}
+		LogicalPlan::InsertTable(_) => unimplemented!(),
+		LogicalPlan::InsertRingBuffer(_) => unimplemented!(),
+		LogicalPlan::InsertDictionary(_) => unimplemented!(),
+		LogicalPlan::InsertSeries(_) => unimplemented!(),
+		LogicalPlan::DeleteSeries(_) => unimplemented!(),
+		LogicalPlan::UpdateSeries(update_series) => {
+			output.push_str(&format!("{}{} UpdateSeries\n", prefix, branch));
+
+			let namespace = update_series.target.namespace.first().map(|n| n.text()).unwrap_or("default");
+			output.push_str(&format!(
+				"{}├── target series: {}.{}\n",
+				child_prefix,
+				namespace,
+				update_series.target.name.text()
+			));
+
+			if let Some(input) = &update_series.input {
+				output.push_str(&format!("{}└── Input Pipeline:\n", child_prefix));
+				let pipeline_prefix = format!("{}    ", child_prefix);
+				render_logical_plan_inner(input, &pipeline_prefix, true, output);
+			}
+		}
+		LogicalPlan::Update(update) => {
+			output.push_str(&format!("{}{} Update\n", prefix, branch));
+
+			// Show target table if specified
+			if let Some(target) = &update.target {
+				let namespace = target.namespace.first().map(|n| n.text()).unwrap_or("default");
+				output.push_str(&format!(
+					"{}├── target table: {}.{}\n",
+					child_prefix,
+					namespace,
+					target.name.text()
+				));
+			} else {
+				output.push_str(&format!("{}├── target table: <inferred from input>\n", child_prefix));
+			}
+
+			// Explain the input pipeline if present
+			if let Some(input) = &update.input {
+				output.push_str(&format!("{}└── Input Pipeline:\n", child_prefix));
+				let pipeline_prefix = format!("{}    ", child_prefix);
+				render_logical_plan_inner(input, &pipeline_prefix, true, output);
+			}
+		}
+		LogicalPlan::UpdateRingBuffer(update_rb) => {
+			output.push_str(&format!("{}{} UpdateRingBuffer\n", prefix, branch));
+
+			// Show target ring buffer
+			let namespace = update_rb.target.namespace.first().map(|n| n.text()).unwrap_or("default");
+			output.push_str(&format!(
+				"{}├── target ring buffer: {}.{}\n",
+				child_prefix,
+				namespace,
+				update_rb.target.name.text()
+			));
+
+			// Explain the input pipeline if present
+			if let Some(input) = &update_rb.input {
+				output.push_str(&format!("{}└── Input Pipeline:\n", child_prefix));
+				let pipeline_prefix = format!("{}    ", child_prefix);
+				render_logical_plan_inner(input, &pipeline_prefix, true, output);
+			}
+		}
+
+		LogicalPlan::Take(TakeNode {
+			take,
+		}) => {
+			output.push_str(&format!("{}{} Take {}\n", prefix, branch, take));
+		}
+		LogicalPlan::Assert(AssertNode {
+			condition,
+			message,
+			..
+		}) => {
+			let msg = message.as_deref().unwrap_or("assertion failed");
+			output.push_str(&format!("{}{} Assert \"{}\"\n", prefix, branch, msg));
+			output.push_str(&format!("{}{} condition: {}\n", child_prefix, "└──", condition));
+		}
+		LogicalPlan::AssertBlock(node) => {
+			let kind = if node.expect_error {
+				"AssertError"
+			} else {
+				"AssertBlock"
+			};
+			let msg = node.message.as_deref().unwrap_or("");
+			output.push_str(&format!("{}{} {} \"{}\"\n", prefix, branch, kind, msg));
+		}
+		LogicalPlan::Filter(FilterNode {
+			condition,
+			..
+		}) => {
+			output.push_str(&format!("{}{} Filter\n", prefix, branch));
+			output.push_str(&format!("{}{} condition: {}\n", child_prefix, "└──", condition));
+		}
+		LogicalPlan::Gate(GateNode {
+			condition,
+			..
+		}) => {
+			output.push_str(&format!("{}{} Filter\n", prefix, branch));
+			output.push_str(&format!("{}{} condition: {}\n", child_prefix, "└──", condition));
+		}
+
+		LogicalPlan::Map(MapNode {
+			map,
+			..
+		}) => {
+			output.push_str(&format!("{}{} Map\n", prefix, branch));
+			for (i, expr) in map.iter().enumerate() {
+				let last = i == map.len() - 1;
+				output.push_str(&format!(
+					"{}{} {}\n",
+					child_prefix,
+					if last {
+						"└──"
+					} else {
+						"├──"
+					},
+					expr
+				));
+			}
+		}
+		LogicalPlan::Extend(ExtendNode {
+			extend,
+			..
+		}) => {
+			output.push_str(&format!("{}{} Extend\n", prefix, branch));
+			for (i, expr) in extend.iter().enumerate() {
+				let last = i == extend.len() - 1;
+				output.push_str(&format!(
+					"{}{} {}\n",
+					child_prefix,
+					if last {
+						"└──"
+					} else {
+						"├──"
+					},
+					expr
+				));
+			}
+		}
+		LogicalPlan::Patch(PatchNode {
+			assignments,
+			..
+		}) => {
+			output.push_str(&format!("{}{} Patch\n", prefix, branch));
+			for (i, expr) in assignments.iter().enumerate() {
+				let last = i == assignments.len() - 1;
+				output.push_str(&format!(
+					"{}{} {}\n",
+					child_prefix,
+					if last {
+						"└──"
+					} else {
+						"├──"
+					},
+					expr
+				));
+			}
+		}
+		LogicalPlan::Aggregate(AggregateNode {
+			by,
+			map,
+			..
+		}) => {
+			output.push_str(&format!("{}{} Aggregate\n", prefix, branch));
+
+			// Show Map branch
+			if !map.is_empty() {
+				output.push_str(&format!("{}├── Map\n", child_prefix));
+				let map_prefix = format!("{}│   ", child_prefix);
+				for (i, expr) in map.iter().enumerate() {
+					let last = i == map.len() - 1;
+					output.push_str(&format!(
+						"{}{} {}\n",
+						map_prefix,
+						if last {
+							"└──"
+						} else {
+							"├──"
+						},
+						expr
+					));
+				}
+			}
+
+			// Show By branch (even if empty for consistency)
+			if !by.is_empty() {
+				output.push_str(&format!("{}└── By\n", child_prefix));
+				let by_prefix = format!("{}    ", child_prefix);
+				for (i, expr) in by.iter().enumerate() {
+					let last = i == by.len() - 1;
+					output.push_str(&format!(
+						"{}{} {}\n",
+						by_prefix,
+						if last {
+							"└──"
+						} else {
+							"├──"
+						},
+						expr
+					));
+				}
+			} else {
+				// Show empty By for global aggregations
+				output.push_str(&format!("{}└── By\n", child_prefix));
+			}
+		}
+		LogicalPlan::Order(OrderNode {
+			by,
+			..
+		}) => {
+			output.push_str(&format!("{}{} Order\n", prefix, branch));
+			for (i, key) in by.iter().enumerate() {
+				let last = i == by.len() - 1;
+				output.push_str(&format!(
+					"{}{} by: {}\n",
+					child_prefix,
+					if last {
+						"└──"
+					} else {
+						"├──"
+					},
+					key
+				));
+			}
+		}
+		LogicalPlan::JoinInner(JoinInnerNode {
+			with,
+			on,
+			alias: _,
+			..
+		}) => {
+			let on = on.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(", ");
+			output.push_str(&format!("{}{}Join(Inner) [{}]\n", prefix, branch, on));
+
+			for (i, plan) in with.iter().enumerate() {
+				let last = i == with.len() - 1;
+				render_logical_plan_inner(plan, child_prefix.as_str(), last, output);
+			}
+		}
+		LogicalPlan::JoinLeft(JoinLeftNode {
+			with,
+			on,
+			alias: _,
+			..
+		}) => {
+			let on = on.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(", ");
+			output.push_str(&format!("{}{}Join(Left) [{}]\n", prefix, branch, on));
+
+			for (i, plan) in with.iter().enumerate() {
+				let last = i == with.len() - 1;
+				render_logical_plan_inner(plan, child_prefix.as_str(), last, output);
+			}
+		}
+		LogicalPlan::JoinNatural(JoinNaturalNode {
+			with,
+			join_type,
+			alias: _,
+			..
+		}) => {
+			let join_type_str = match join_type {
+				JoinType::Inner => "Inner",
+				JoinType::Left => "Left",
+			};
+			output.push_str(&format!(
+				"{}{}Join(Natural {}) [using common columns]\n",
+				prefix, branch, join_type_str
+			));
+
+			for (i, plan) in with.iter().enumerate() {
+				let last = i == with.len() - 1;
+				render_logical_plan_inner(plan, child_prefix.as_str(), last, output);
+			}
+		}
+		LogicalPlan::PrimitiveScan(ShapeScanNode {
+			source,
+			columns: _,
+			index,
+		}) => {
+			let name = if let Some(idx) = index {
+				format!(
+					"{}::{}",
+					source.fully_qualified_name()
+						.unwrap_or_else(|| source.identifier().text().to_string()),
+					idx.identifier().text()
+				)
+			} else {
+				source.fully_qualified_name().unwrap_or_else(|| source.identifier().text().to_string())
+			};
+
+			let display_name = name;
+			let scan_type = if index.is_some() {
+				"IndexScan"
+			} else {
+				"TableScan"
+			};
+
+			output.push_str(&format!("{}{} {} {}\n", prefix, branch, scan_type, display_name));
+		}
+		LogicalPlan::RemoteScan(RemoteScanNode {
+			address,
+			local_namespace,
+			remote_name,
+			..
+		}) => {
+			output.push_str(&format!(
+				"{}{} RemoteScan {}::{} @ {}\n",
+				prefix, branch, local_namespace, remote_name, address
+			));
+		}
+		LogicalPlan::InlineData(InlineDataNode {
+			rows,
+		}) => {
+			output.push_str(&format!("{}{} InlineData\n", prefix, branch));
+			let total_fields: usize = rows.iter().map(|row| row.len()).sum();
+			output.push_str(&format!(
+				"{}{} rows: {}, fields: {}\n",
+				child_prefix,
+				"└──",
+				rows.len(),
+				total_fields
+			));
+		}
+		LogicalPlan::Generator(GeneratorNode {
+			name,
+			expressions,
+		}) => {
+			output.push_str(&format!("{}{} Generator {}\n", prefix, branch, name.text()));
+			output.push_str(&format!("{}{} parameters: {}\n", child_prefix, "└──", expressions.len()));
+		}
+		LogicalPlan::VariableSource(VariableSourceNode {
+			name: variable_name,
+		}) => {
+			output.push_str(&format!("{}{} VariableSource {}\n", prefix, branch, variable_name.text()));
+		}
+
+		LogicalPlan::Environment(_) => {
+			output.push_str(&format!("{}{} Environment\n", prefix, branch));
+		}
+		LogicalPlan::Distinct(DistinctNode {
+			columns,
+			..
+		}) => {
+			output.push_str(&format!("{}{} Distinct\n", prefix, branch));
+			let child_prefix = format!(
+				"{}{}",
+				prefix,
+				if is_last {
+					"    "
+				} else {
+					"│   "
+				}
+			);
+
+			if columns.is_empty() {
+				output.push_str(&format!("{}└── Columns: (primary key)\n", child_prefix));
+			} else {
+				output.push_str(&format!("{}└── Columns: ", child_prefix));
+				for (i, col) in columns.iter().enumerate() {
+					if i > 0 {
+						output.push_str(", ");
+					}
+					output.push_str(col.name.text());
+				}
+				output.push('\n');
+			}
+		}
+		LogicalPlan::Apply(apply) => {
+			output.push_str(&format!("{}Apply\n", prefix));
+			let child_prefix = format!(
+				"{}{}",
+				prefix,
+				if is_last {
+					"   "
+				} else {
+					"│  "
+				}
+			);
+			output.push_str(&format!("{}├──Operator: {}\n", child_prefix, apply.operator.text()));
+			if !apply.arguments.is_empty() {
+				output.push_str(&format!(
+					"{}└──Arguments: {} expressions\n",
+					child_prefix,
+					apply.arguments.len()
+				));
+			}
+		}
+		LogicalPlan::Pipeline(pipeline) => {
+			output.push_str(&format!("{}{} Pipeline\n", prefix, branch));
+			for (i, step) in pipeline.steps.iter().enumerate() {
+				let last = i == pipeline.steps.len() - 1;
+				render_logical_plan_inner(step, child_prefix.as_str(), last, output);
+			}
+		}
+		LogicalPlan::CreatePrimaryKey(CreatePrimaryKeyNode {
+			..
+		}) => {
+			output.push_str(&format!("{}{} CreatePrimaryKey\n", prefix, branch));
+		}
+		LogicalPlan::CreateColumnProperty(CreateColumnPropertyNode {
+			..
+		}) => {
+			output.push_str(&format!("{}{} CreateColumnProperty\n", prefix, branch));
+		}
+		LogicalPlan::CreateProcedure(_) => {
+			output.push_str(&format!("{}{} CreateProcedure\n", prefix, branch));
+		}
+		LogicalPlan::CreateSeries(_) => {
+			output.push_str(&format!("{}{} CreateSeries\n", prefix, branch));
+		}
+		LogicalPlan::CreateEvent(_) => {
+			output.push_str(&format!("{}{} CreateEvent\n", prefix, branch));
+		}
+		LogicalPlan::CreateTag(_) => {
+			output.push_str(&format!("{}{} CreateTag\n", prefix, branch));
+		}
+		LogicalPlan::CreateTest(_) => {
+			output.push_str(&format!("{}{} CreateTest\n", prefix, branch));
+		}
+		LogicalPlan::RunTests(_) => {
+			output.push_str(&format!("{}{} RunTests\n", prefix, branch));
+		}
+
+		LogicalPlan::CreateMigration(_) => {
+			output.push_str(&format!("{}{} CreateMigration\n", prefix, branch));
+		}
+		LogicalPlan::Migrate(_) => {
+			output.push_str(&format!("{}{} Migrate\n", prefix, branch));
+		}
+		LogicalPlan::RollbackMigration(_) => {
+			output.push_str(&format!("{}{} RollbackMigration\n", prefix, branch));
+		}
+		LogicalPlan::Dispatch(_) => {
+			output.push_str(&format!("{}{} Dispatch\n", prefix, branch));
+		}
+		LogicalPlan::Window(window) => {
+			output.push_str(&format!("{}{} Window\n", prefix, branch));
+			let child_prefix = format!(
+				"{}{}",
+				prefix,
+				if is_last {
+					"    "
+				} else {
+					"│   "
+				}
+			);
+			output.push_str(&format!("{}├── Kind: {:?}\n", child_prefix, window.kind));
+			if !window.group_by.is_empty() {
+				output.push_str(&format!(
+					"{}├── Group By: {} expressions\n",
+					child_prefix,
+					window.group_by.len()
+				));
+			}
+			output.push_str(&format!(
+				"{}└── Aggregations: {} expressions\n",
+				child_prefix,
+				window.aggregations.len()
+			));
+		}
+		LogicalPlan::Declare(declare_node) => {
+			output.push_str(&format!(
+				"{}{} Declare {} = {}\n",
+				prefix,
+				branch,
+				declare_node.name.text(),
+				declare_node.value,
+			));
+		}
+
+		LogicalPlan::Assign(assign_node) => {
+			output.push_str(&format!(
+				"{}{} Assign {} = {}\n",
+				prefix,
+				branch,
+				assign_node.name.text(),
+				assign_node.value
+			));
+		}
+
+		LogicalPlan::Conditional(conditional_node) => {
+			output.push_str(&format!("{}{} Conditional\n", prefix, branch));
+
+			// Show condition
+			output.push_str(&format!(
+				"{}{}   If: {}\n",
+				child_prefix,
+				if conditional_node.else_ifs.is_empty() && conditional_node.else_branch.is_none() {
+					"└──"
+				} else {
+					"├──"
+				},
+				conditional_node.condition
+			));
+
+			// Show then branch
+			output.push_str(&format!(
+				"{}{}   Then:\n",
+				child_prefix,
+				if conditional_node.else_ifs.is_empty() && conditional_node.else_branch.is_none() {
+					"    "
+				} else {
+					"│   "
+				}
+			));
+			render_logical_plan_inner(
+				&conditional_node.then_branch,
+				&format!(
+					"{}{}     ",
+					child_prefix,
+					if conditional_node.else_ifs.is_empty()
+						&& conditional_node.else_branch.is_none()
+					{
+						"    "
+					} else {
+						"│   "
+					}
+				),
+				true,
+				output,
+			);
+
+			// Show else if branches
+			for (i, else_if) in conditional_node.else_ifs.iter().enumerate() {
+				let is_last_else_if = i == conditional_node.else_ifs.len() - 1
+					&& conditional_node.else_branch.is_none();
+				output.push_str(&format!(
+					"{}{}   Else If: {}\n",
+					child_prefix,
+					if is_last_else_if {
+						"└──"
+					} else {
+						"├──"
+					},
+					else_if.condition
+				));
+
+				output.push_str(&format!(
+					"{}{}   Then:\n",
+					child_prefix,
+					if is_last_else_if {
+						"    "
+					} else {
+						"│   "
+					}
+				));
+				render_logical_plan_inner(
+					&else_if.then_branch,
+					&format!(
+						"{}{}     ",
+						child_prefix,
+						if is_last_else_if {
+							"    "
+						} else {
+							"│   "
+						}
+					),
+					true,
+					output,
+				);
+			}
+
+			// Show else branch if present
+			if let Some(else_branch) = &conditional_node.else_branch {
+				output.push_str(&format!("{}└──   Else:\n", child_prefix));
+				render_logical_plan_inner(
+					else_branch,
+					&format!("{}      ", child_prefix),
+					true,
+					output,
+				);
+			}
+		}
+
+		LogicalPlan::Scalarize(scalarize) => {
+			output.push_str(&format!("{}{} Scalarize (convert 1x1 frame to scalar)\n", prefix, branch));
+
+			// Render the input plan
+			let child_prefix = format!(
+				"{}{}",
+				prefix,
+				if is_last {
+					"    "
+				} else {
+					"│   "
+				}
+			);
+			render_logical_plan_inner(&scalarize.input, &child_prefix, true, output);
+		}
+		LogicalPlan::AlterTable(alter_table) => {
+			let table_name = if let Some(ns) = alter_table.table.namespace.first() {
+				format!("{}.{}", ns.text(), alter_table.table.name.text())
+			} else {
+				alter_table.table.name.text().to_string()
+			};
+			output.push_str(&format!("{}{} AlterTable: {}\n", prefix, branch, table_name));
+		}
+		LogicalPlan::AlterRemoteNamespace(_) => unimplemented!(),
+		LogicalPlan::DefineFunction(def) => {
+			let params: Vec<String> = def
+				.parameters
+				.iter()
+				.map(|p| {
+					if let Some(ref tc) = p.type_constraint {
+						format!("${}: {:?}", p.name.text(), tc)
+					} else {
+						format!("${}", p.name.text())
+					}
+				})
+				.collect();
+			let return_str = if let Some(ref rt) = def.return_type {
+				format!(" -> {:?}", rt)
+			} else {
+				String::new()
+			};
+			output.push_str(&format!(
+				"{}{} DefineFunction: {}[{}]{}\n",
+				prefix,
+				branch,
+				def.name.text(),
+				params.join(", "),
+				return_str
+			));
+
+			// Render body statements
+			let child_prefix = format!(
+				"{}{}",
+				prefix,
+				if is_last {
+					"    "
+				} else {
+					"│   "
+				}
+			);
+			for (i, stmt) in def.body.iter().enumerate() {
+				for (j, plan) in stmt.iter().enumerate() {
+					let is_last_stmt = i == def.body.len() - 1 && j == stmt.len() - 1;
+					render_logical_plan_inner(plan, &child_prefix, is_last_stmt, output);
+				}
+			}
+		}
+		LogicalPlan::Return(ret) => {
+			let value_str = if let Some(ref expr) = ret.value {
+				format!(" {}", expr)
+			} else {
+				String::new()
+			};
+			output.push_str(&format!("{}{} Return{}\n", prefix, branch, value_str));
+		}
+		LogicalPlan::CallFunction(call) => {
+			let args: Vec<String> = call.arguments.iter().map(|a| format!("{}", a)).collect();
+			output.push_str(&format!(
+				"{}{} CallFunction: {}({})\n",
+				prefix,
+				branch,
+				call.name.text(),
+				args.join(", ")
+			));
+		}
+		LogicalPlan::Append(node) => match node {
+			AppendNode::IntoVariable {
+				target,
+				..
+			} => {
+				output.push_str(&format!("{}{} Append: ${}\n", prefix, branch, target.text()));
+			}
+			AppendNode::Query {
+				with,
+			} => {
+				output.push_str(&format!("{}{}Append\n", prefix, branch));
+				for (i, plan) in with.iter().enumerate() {
+					let last = i == with.len() - 1;
+					render_logical_plan_inner(plan, child_prefix.as_str(), last, output);
+				}
+			}
+		},
+		LogicalPlan::DefineClosure(closure_node) => {
+			let params: Vec<String> = closure_node
+				.parameters
+				.iter()
+				.map(|p| {
+					if let Some(ref tc) = p.type_constraint {
+						format!("${}: {:?}", p.name.text(), tc)
+					} else {
+						format!("${}", p.name.text())
+					}
+				})
+				.collect();
+			output.push_str(&format!("{}{} DefineClosure[{}]\n", prefix, branch, params.join(", ")));
+			let child_prefix = format!(
+				"{}{}",
+				prefix,
+				if is_last {
+					"    "
+				} else {
+					"│   "
+				}
+			);
+			for (i, stmt) in closure_node.body.iter().enumerate() {
+				for (j, plan) in stmt.iter().enumerate() {
+					let is_last_stmt = i == closure_node.body.len() - 1 && j == stmt.len() - 1;
+					render_logical_plan_inner(plan, &child_prefix, is_last_stmt, output);
+				}
+			}
+		}
+	}
+}

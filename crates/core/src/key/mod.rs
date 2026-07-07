@@ -43,6 +43,7 @@ use reifydb_codec::{
 	key as keycode,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
+use relationship::RelationshipKey;
 use retention_strategy::{OperatorRetentionStrategyKey, ShapeRetentionStrategyKey};
 use ringbuffer::{RingBufferKey, RingBufferMetadataKey};
 use role::RoleKey;
@@ -107,6 +108,7 @@ pub mod primary_key;
 pub mod procedure;
 pub mod procedure_param;
 pub mod property;
+pub mod relationship;
 pub mod retention_strategy;
 pub mod ringbuffer;
 pub mod role;
@@ -189,6 +191,7 @@ pub enum Key {
 	ColumnSnapshot(ColumnSnapshotKey),
 	SeriesColumnSnapshot(SeriesColumnSnapshotKey),
 	TableColumnSnapshot(TableColumnSnapshotKey),
+	Relationship(RelationshipKey),
 }
 
 impl Key {
@@ -254,6 +257,7 @@ impl Key {
 			Key::ColumnSnapshot(key) => key.encode(),
 			Key::SeriesColumnSnapshot(key) => key.encode(),
 			Key::TableColumnSnapshot(key) => key.encode(),
+			Key::Relationship(key) => key.encode(),
 		}
 	}
 }
@@ -389,6 +393,7 @@ impl Key {
 			KeyKind::TableColumnSnapshot => {
 				TableColumnSnapshotKey::decode(key).map(Self::TableColumnSnapshot)
 			}
+			KeyKind::Relationship => RelationshipKey::decode(key).map(Self::Relationship),
 		}
 	}
 }
@@ -400,16 +405,16 @@ pub mod tests {
 	use crate::{
 		interface::catalog::{
 			flow::FlowNodeId,
-			id::{ColumnId, ColumnPropertyId, IndexId, NamespaceId, SequenceId, TableId},
+			id::{ColumnId, ColumnPropertyId, IndexId, NamespaceId, RelationshipId, SequenceId, TableId},
 			shape::ShapeId,
 		},
 		key::{
 			Key, column::ColumnKey, column_sequence::ColumnSequenceKey, columns::ColumnsKey,
 			flow_node_state::FlowNodeStateKey, index::IndexKey, namespace::NamespaceKey,
 			namespace_sumtype::NamespaceSumTypeKey, namespace_table::NamespaceTableKey,
-			property::ColumnPropertyKey, row::RowKey, row_sequence::RowSequenceKey, sumtype::SumTypeKey,
-			system_sequence::SystemSequenceKey, table::TableKey,
-			transaction_version::TransactionVersionKey,
+			property::ColumnPropertyKey, relationship::RelationshipKey, row::RowKey,
+			row_sequence::RowSequenceKey, sumtype::SumTypeKey, system_sequence::SystemSequenceKey,
+			table::TableKey, transaction_version::TransactionVersionKey,
 		},
 	};
 
@@ -650,6 +655,23 @@ pub mod tests {
 		match decoded {
 			Key::SumType(decoded_inner) => {
 				assert_eq!(decoded_inner.sumtype, 42);
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_relationship() {
+		let key = Key::Relationship(RelationshipKey {
+			relationship: RelationshipId(42),
+		});
+
+		let encoded = key.encode();
+		let decoded = Key::decode(&encoded).expect("Failed to decode key");
+
+		match decoded {
+			Key::Relationship(decoded_inner) => {
+				assert_eq!(decoded_inner.relationship, 42);
 			}
 			_ => unreachable!(),
 		}

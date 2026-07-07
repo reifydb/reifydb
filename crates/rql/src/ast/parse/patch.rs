@@ -22,8 +22,10 @@ impl<'bump> Parser<'bump> {
 
 #[cfg(test)]
 pub mod tests {
+	use bumpalo::Bump;
+
 	use super::*;
-	use crate::{ast::ast::InfixOperator, bump::Bump, token::tokenize};
+	use crate::{ast::ast::InfixOperator, token::tokenize};
 
 	#[test]
 	fn test_patch_colon_syntax() {

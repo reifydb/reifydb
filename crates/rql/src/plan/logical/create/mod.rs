@@ -12,6 +12,7 @@ pub mod namespace;
 pub mod primary_key;
 pub mod procedure;
 pub mod property;
+pub mod relationship;
 pub mod ringbuffer;
 pub mod series;
 pub mod sink;
@@ -89,6 +90,7 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::Source(node) => self.compile_create_source(node),
 			AstCreate::Sink(node) => self.compile_create_sink(node),
 			AstCreate::Binding(node) => self.compile_create_binding(node),
+			AstCreate::Relationship(node) => self.compile_create_relationship(node, tx),
 		}
 	}
 }

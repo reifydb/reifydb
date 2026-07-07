@@ -86,6 +86,7 @@ pub enum KeyKind {
 	VersionEpoch = 0x4C,
 	IdentityAttribute = 0x4D,
 	IdentityAttributeValue = 0x4E,
+	Relationship = 0x4F,
 }
 
 impl From<KeyKind> for u8 {
@@ -176,6 +177,7 @@ impl TryFrom<u8> for KeyKind {
 			0x4C => Ok(Self::VersionEpoch),
 			0x4D => Ok(Self::IdentityAttribute),
 			0x4E => Ok(Self::IdentityAttributeValue),
+			0x4F => Ok(Self::Relationship),
 			_ => Err(de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

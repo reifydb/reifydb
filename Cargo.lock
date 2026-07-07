@@ -2918,6 +2918,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-rql",
+ "reifydb-rql-graphql",
  "reifydb-runtime",
  "reifydb-transaction",
  "reifydb-value",
@@ -2938,6 +2939,26 @@ dependencies = [
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-runtime",
+ "reifydb-testing",
+ "reifydb-transaction",
+ "reifydb-value",
+ "serde",
+ "serde_json",
+ "test_each_file",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "reifydb-rql-graphql"
+version = "0.8.0"
+dependencies = [
+ "bumpalo",
+ "reifydb",
+ "reifydb-catalog",
+ "reifydb-core",
+ "reifydb-rql",
  "reifydb-testing",
  "reifydb-transaction",
  "reifydb-value",

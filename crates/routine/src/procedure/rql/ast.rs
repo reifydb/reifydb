@@ -321,6 +321,7 @@ fn ast_kind(ast: &Ast<'_>) -> &'static str {
 		Ast::Extend(_) => "Extend",
 		Ast::Patch(_) => "Patch",
 		Ast::Take(_) => "Take",
+		Ast::Skip(_) => "Skip",
 		Ast::Tuple(_) => "Tuple",
 		Ast::While(_) => "While",
 		Ast::Wildcard(_) => "Wildcard",
@@ -387,7 +388,7 @@ fn ast_description(ast: &Ast<'_>, kind: &str) -> String {
 				format!("ALTER USER {}", i.name.text())
 			}
 		},
-		Ast::Create(create) => match create {
+		Ast::Create(create) => match create.as_ref() {
 			AstCreate::PrimaryKey(pk) => {
 				let namespace =
 					pk.table.namespace

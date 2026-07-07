@@ -177,6 +177,10 @@ Binding => "BINDING",
 Http => "HTTP",
 Grpc => "GRPC",
 Ws => "WS",
+
+Relationship => "RELATIONSHIP",
+References => "REFERENCES",
+Through => "THROUGH",
 }
 
 static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
@@ -290,6 +294,9 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("HTTP", Keyword::Http);
 	map.insert("GRPC", Keyword::Grpc);
 	map.insert("WS", Keyword::Ws);
+	map.insert("RELATIONSHIP", Keyword::Relationship);
+	map.insert("REFERENCES", Keyword::References);
+	map.insert("THROUGH", Keyword::Through);
 	map
 });
 
@@ -338,8 +345,10 @@ pub fn is_keyword(word: &str) -> bool {
 
 #[cfg(test)]
 pub mod tests {
+	use bumpalo::Bump;
+
 	use super::*;
-	use crate::{bump::Bump, token::tokenize};
+	use crate::token::tokenize;
 
 	#[test]
 	fn test_desc() {
@@ -471,6 +480,9 @@ pub mod tests {
 	test_keyword_run => (Run, "RUN"),
 	test_keyword_source => (Source, "SOURCE"),
 	test_keyword_sink => (Sink, "SINK"),
+	test_keyword_relationship => (Relationship, "RELATIONSHIP"),
+	test_keyword_references => (References, "REFERENCES"),
+	test_keyword_through => (Through, "THROUGH"),
 	}
 
 	fn check_no_keyword(repr: &str) {
@@ -616,6 +628,9 @@ pub mod tests {
 	test_not_keyword_run => ( "run"),
 	test_not_keyword_source => ( "source"),
 	test_not_keyword_sink => ( "sink"),
+	test_not_keyword_relationship => ( "relationship"),
+	test_not_keyword_references => ( "references"),
+	test_not_keyword_through => ( "through"),
 	}
 
 	#[test]

@@ -8,6 +8,7 @@ pub mod mutate;
 
 use std::{collections, fmt, iter::once, marker};
 
+use bumpalo::Bump;
 use reifydb_catalog::catalog::{Catalog, table::TableColumnToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
 	common::{JoinType, WindowKind},
@@ -41,7 +42,7 @@ use tracing::instrument;
 use crate::{
 	Result,
 	ast::ast::{AstAlterPolicyAction, AstPolicyScope, AstViewStorageKind},
-	bump::{Bump, BumpBox, FragmentInterner},
+	bump::{BumpBox, FragmentInterner},
 	convert_data_type_with_constraints,
 	error::RqlError,
 	expression::{
@@ -86,6 +87,7 @@ pub enum PhysicalPlan<'bump> {
 	CreateSource(nodes::CreateSourceNode),
 	CreateSink(nodes::CreateSinkNode),
 	CreateBinding(nodes::CreateBindingNode),
+	CreateRelationship(nodes::CreateRelationshipNode),
 	CreateTest(nodes::CreateTestNode),
 	RunTests(nodes::RunTestsNode),
 	CreateMigration(nodes::CreateMigrationNode),
@@ -107,6 +109,7 @@ pub enum PhysicalPlan<'bump> {
 	DropHandler(nodes::DropHandlerNode),
 	DropTest(nodes::DropTestNode),
 	DropBinding(nodes::DropBindingNode),
+	DropRelationship(nodes::DropRelationshipNode),
 
 	AlterSequence(AlterSequenceNode),
 	AlterTable(AlterTableNode<'bump>),
@@ -780,6 +783,10 @@ impl<'bump> Compiler<'bump> {
 					stack.push(self.compile_create_binding(rx, create)?);
 				}
 
+				LogicalPlan::CreateRelationship(create) => {
+					stack.push(self.compile_create_relationship(rx, BumpBox::into_inner(create))?);
+				}
+
 				LogicalPlan::CreateMigration(create) => {
 					stack.push(PhysicalPlan::CreateMigration(nodes::CreateMigrationNode {
 						name: create.name,
@@ -861,6 +868,9 @@ impl<'bump> Compiler<'bump> {
 				}
 				LogicalPlan::DropBinding(drop) => {
 					stack.push(self.compile_drop_binding(rx, drop)?);
+				}
+				LogicalPlan::DropRelationship(drop) => {
+					stack.push(self.compile_drop_relationship(rx, drop)?);
 				}
 
 				LogicalPlan::CreateIdentity(node) => {

@@ -31,6 +31,7 @@ pub mod operator_settings;
 pub mod policy;
 pub mod primary_key;
 pub mod procedure;
+pub mod relationship;
 pub mod ringbuffer;
 pub mod role;
 pub mod row_settings;
@@ -64,7 +65,8 @@ use reifydb_core::{
 		handler::Handler,
 		id::{
 			BindingId, ColumnSnapshotId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
-			PrimaryKeyId, ProcedureId, RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
+			PrimaryKeyId, ProcedureId, RelationshipId, RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId,
+			ViewId,
 		},
 		identity::{
 			GrantedRole, Identity, IdentityAttribute, IdentityAttributeId, IdentityAttributeValue, Role,
@@ -75,6 +77,7 @@ use reifydb_core::{
 		namespace::Namespace,
 		policy::{Policy, PolicyId, PolicyOperation},
 		procedure::Procedure,
+		relationship::Relationship,
 		ringbuffer::RingBuffer,
 		series::Series,
 		shape::ShapeId,
@@ -113,6 +116,7 @@ pub type MultiVersionFlow = MultiVersionContainer<Flow>;
 pub type MultiVersionFlowNode = MultiVersionContainer<FlowNode>;
 pub type MultiVersionFlowEdge = MultiVersionContainer<FlowEdge>;
 pub type MultiVersionPrimaryKey = MultiVersionContainer<PrimaryKey>;
+pub type MultiVersionRelationship = MultiVersionContainer<Relationship>;
 pub type MultiVersionRetentionStrategy = MultiVersionContainer<RetentionStrategy>;
 pub type MultiVersionDictionary = MultiVersionContainer<Dictionary>;
 pub type MultiVersionColumnSnapshot = MultiVersionContainer<ColumnSnapshot>;
@@ -195,6 +199,12 @@ pub struct CatalogCacheInner {
 	pub(crate) primary_keys: SkipMap<PrimaryKeyId, MultiVersionPrimaryKey>,
 
 	pub(crate) primary_keys_by_shape: SkipMap<ShapeId, PrimaryKeyId>,
+
+	pub(crate) relationships: SkipMap<RelationshipId, MultiVersionRelationship>,
+
+	pub(crate) relationships_by_name: SkipMap<(NamespaceId, TableId, String), RelationshipId>,
+
+	pub(crate) relationships_by_source: SkipMap<TableId, Vec<RelationshipId>>,
 
 	pub(crate) shape_retention_strategies: SkipMap<ShapeId, MultiVersionRetentionStrategy>,
 
@@ -346,6 +356,9 @@ impl CatalogCache {
 			flow_edges_by_flow: SkipMap::new(),
 			primary_keys: SkipMap::new(),
 			primary_keys_by_shape: SkipMap::new(),
+			relationships: SkipMap::new(),
+			relationships_by_name: SkipMap::new(),
+			relationships_by_source: SkipMap::new(),
 			shape_retention_strategies: SkipMap::new(),
 			operator_retention_strategies: SkipMap::new(),
 			row_settings: SkipMap::new(),

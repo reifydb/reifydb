@@ -41,6 +41,16 @@ impl PostCommitInterceptor for CatalogCacheInterceptor {
 			self.catalog.set_table(id, version, change.post.clone());
 		}
 
+		for change in &ctx.changes.relationship {
+			let id = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.map(|r| r.id)
+				.expect("Change must have either pre or post state");
+			self.catalog.set_relationship(id, version, change.post.clone());
+		}
+
 		for change in &ctx.changes.view {
 			let id = change
 				.post

@@ -225,9 +225,11 @@ fn describe(plan: &LogicalPlan<'_>) -> (&'static str, String) {
 		LogicalPlan::CreateSource(_) => ("CreateSource", String::new()),
 		LogicalPlan::CreateSink(_) => ("CreateSink", String::new()),
 		LogicalPlan::CreateBinding(_) => ("CreateBinding", String::new()),
+		LogicalPlan::CreateRelationship(_) => ("CreateRelationship", String::new()),
 		LogicalPlan::DropSource(_) => ("DropSource", String::new()),
 		LogicalPlan::DropSink(_) => ("DropSink", String::new()),
 		LogicalPlan::DropBinding(_) => ("DropBinding", String::new()),
+		LogicalPlan::DropRelationship(_) => ("DropRelationship", String::new()),
 		LogicalPlan::CreateIdentity(n) => ("CreateIdentity", format!("name={}", n.name.text())),
 		LogicalPlan::AlterIdentity(n) => ("AlterIdentity", format!("name={}", n.name.text())),
 		LogicalPlan::CreateIdentityAttribute(n) => {

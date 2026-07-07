@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use bumpalo::Bump;
 use reifydb_core::fingerprint::{RequestFingerprint, StatementFingerprint};
 
 use super::{request::fingerprint_request, statement::fingerprint_statement};
-use crate::{ast::parse_str, bump::Bump};
+use crate::ast::parse_str;
 
 fn fp(query: &str) -> StatementFingerprint {
 	let bump = Bump::new();

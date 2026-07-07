@@ -62,7 +62,7 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			let key_token = self.consume_name()?;
+			let key_token = self.consume_identifier()?;
 			self.consume_operator(Operator::Colon)?;
 			let value = self.parse_node(Precedence::None)?;
 

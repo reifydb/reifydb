@@ -150,6 +150,7 @@ pub enum Instruction {
 	CreateSource(nodes::CreateSourceNode),
 	CreateSink(nodes::CreateSinkNode),
 	CreateBinding(nodes::CreateBindingNode),
+	CreateRelationship(nodes::CreateRelationshipNode),
 	CreateTest(CreateTestNode),
 	AssertBlock(nodes::AssertBlockNode),
 
@@ -176,6 +177,7 @@ pub enum Instruction {
 	DropHandler(nodes::DropHandlerNode),
 	DropTest(nodes::DropTestNode),
 	DropBinding(nodes::DropBindingNode),
+	DropRelationship(nodes::DropRelationshipNode),
 
 	CreateIdentity(nodes::CreateIdentityNode),
 	CreateIdentityAttribute(nodes::CreateIdentityAttributeNode),

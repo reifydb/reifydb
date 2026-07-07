@@ -35,6 +35,7 @@ mod policy;
 mod primary_key;
 mod procedure;
 mod procedure_param;
+mod relationship;
 mod retention;
 mod ringbuffer;
 mod row_settings;
@@ -68,6 +69,7 @@ use policy::PolicyApplier;
 use primary_key::PrimaryKeyApplier;
 use procedure::ProcedureApplier;
 use procedure_param::ProcedureParamApplier;
+use relationship::RelationshipApplier;
 use retention::{OperatorRetentionStrategyApplier, ShapeRetentionStrategyApplier};
 use ringbuffer::RingBufferApplier;
 use role::RoleApplier;
@@ -103,6 +105,7 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 		KeyKind::Table => dispatch::<TableApplier>(catalog, txn, change),
 		KeyKind::View => dispatch::<ViewApplier>(catalog, txn, change),
 		KeyKind::PrimaryKey => dispatch::<PrimaryKeyApplier>(catalog, txn, change),
+		KeyKind::Relationship => dispatch::<RelationshipApplier>(catalog, txn, change),
 		KeyKind::Flow => dispatch::<FlowApplier>(catalog, txn, change),
 		KeyKind::FlowNode => dispatch::<FlowNodeApplier>(catalog, txn, change),
 		KeyKind::FlowEdge => dispatch::<FlowEdgeApplier>(catalog, txn, change),

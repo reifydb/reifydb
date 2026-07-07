@@ -113,7 +113,7 @@ fn parse_with_block<'bump>(parser: &mut Parser<'bump>) -> Result<Vec<(BumpFragme
 			break;
 		}
 
-		let key = parser.consume(TokenKind::Identifier)?.fragment;
+		let key = parser.consume_identifier()?.fragment;
 		parser.consume_operator(Operator::Colon)?;
 
 		let value_node = parser.parse_node(Precedence::None)?;

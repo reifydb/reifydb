@@ -50,6 +50,7 @@ pub mod policy_operations;
 pub mod primary_key_columns;
 pub mod primary_keys;
 pub mod procedures;
+pub mod relationships;
 pub mod ringbuffers;
 pub mod roles;
 pub mod sequence;
@@ -105,6 +106,7 @@ use procedures::{
 	ffi::procedures_ffi, native::procedures_native, rql::procedures_rql, test::procedures_test,
 	wasm::procedures_wasm,
 };
+use relationships::relationships;
 use roles::roles;
 use sequence::sequences;
 use series::series;
@@ -515,6 +517,36 @@ pub mod ids {
 			pub const ALL: [ColumnId; 2] = [ID, SHAPE_ID];
 		}
 
+		pub mod relationships {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+			pub const SOURCE_TABLE_ID: ColumnId = ColumnId(4);
+			pub const SOURCE_COLUMN_ID: ColumnId = ColumnId(5);
+			pub const TARGET_TABLE_ID: ColumnId = ColumnId(6);
+			pub const TARGET_COLUMN_ID: ColumnId = ColumnId(7);
+			pub const JUNCTION_TABLE_ID: ColumnId = ColumnId(8);
+			pub const JUNCTION_SOURCE_COLUMN_ID: ColumnId = ColumnId(9);
+			pub const JUNCTION_TARGET_COLUMN_ID: ColumnId = ColumnId(10);
+			pub const CARDINALITY: ColumnId = ColumnId(11);
+
+			pub const ALL: [ColumnId; 11] = [
+				ID,
+				NAMESPACE_ID,
+				NAME,
+				SOURCE_TABLE_ID,
+				SOURCE_COLUMN_ID,
+				TARGET_TABLE_ID,
+				TARGET_COLUMN_ID,
+				JUNCTION_TABLE_ID,
+				JUNCTION_SOURCE_COLUMN_ID,
+				JUNCTION_TARGET_COLUMN_ID,
+				CARDINALITY,
+			];
+		}
+
 		pub mod ringbuffers {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
@@ -832,8 +864,9 @@ pub mod ids {
 		pub const BINDING: SequenceId = SequenceId(21);
 		pub const COLUMN_SNAPSHOT: SequenceId = SequenceId(22);
 		pub const IDENTITY_ATTRIBUTE: SequenceId = SequenceId(23);
+		pub const RELATIONSHIP: SequenceId = SequenceId(24);
 
-		pub const ALL: [SequenceId; 23] = [
+		pub const ALL: [SequenceId; 24] = [
 			NAMESPACE,
 			SOURCE,
 			COLUMN,
@@ -857,6 +890,7 @@ pub mod ids {
 			BINDING,
 			COLUMN_SNAPSHOT,
 			IDENTITY_ATTRIBUTE,
+			RELATIONSHIP,
 		];
 	}
 
@@ -921,6 +955,8 @@ pub mod ids {
 		pub const BINDINGS_GRPC: VTableId = VTableId(59);
 		pub const BINDINGS_WS: VTableId = VTableId(60);
 
+		pub const RELATIONSHIPS: VTableId = VTableId(64);
+
 		pub const METRICS_STORAGE_TABLE: VTableId = VTableId(1024);
 		pub const METRICS_STORAGE_VIEW: VTableId = VTableId(1025);
 		pub const METRICS_STORAGE_TABLE_VIRTUAL: VTableId = VTableId(1026);
@@ -941,7 +977,7 @@ pub mod ids {
 		pub const METRICS_CDC_FLOW_NODE: VTableId = VTableId(1040);
 		pub const METRICS_CDC_SYSTEM: VTableId = VTableId(1041);
 
-		pub const ALL: [VTableId; 73] = [
+		pub const ALL: [VTableId; 74] = [
 			SEQUENCES,
 			SUBSCRIPTION_WATERMARKS,
 			NAMESPACES,
@@ -979,6 +1015,7 @@ pub mod ids {
 			BINDINGS_HTTP,
 			BINDINGS_GRPC,
 			BINDINGS_WS,
+			RELATIONSHIPS,
 			HANDLERS,
 			TAGS,
 			SERIES,
@@ -1076,6 +1113,10 @@ impl SystemCatalog {
 
 	pub fn get_system_primary_keys_table() -> Arc<VTable> {
 		primary_keys()
+	}
+
+	pub fn get_system_relationships_table() -> Arc<VTable> {
+		relationships()
 	}
 
 	pub fn get_system_primary_key_columns_table() -> Arc<VTable> {

@@ -8,9 +8,10 @@
 //! AST shapes are public so external tooling - formatters, linters, the explain renderer - can inspect parsed
 //! queries without re-parsing them. Adding or renaming a public AST node is a breaking change for that tooling.
 
+use bumpalo::Bump;
 use tracing::instrument;
 
-use crate::{Result, ast::ast::AstStatement, bump::Bump, token::tokenize};
+use crate::{Result, ast::ast::AstStatement, token::tokenize};
 
 #[allow(clippy::module_inception)]
 pub mod ast;

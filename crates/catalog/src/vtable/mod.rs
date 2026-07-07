@@ -65,6 +65,7 @@ impl VTableRegistry {
 			COLUMN_PROPERTIES => Some(SystemCatalog::get_system_column_properties_table()),
 			PRIMARY_KEYS => Some(SystemCatalog::get_system_primary_keys_table()),
 			PRIMARY_KEY_COLUMNS => Some(SystemCatalog::get_system_primary_key_columns_table()),
+			RELATIONSHIPS => Some(SystemCatalog::get_system_relationships_table()),
 			VERSIONS => Some(SystemCatalog::get_system_versions_table()),
 			PRIMITIVE_RETENTION_STRATEGIES => {
 				Some(SystemCatalog::get_system_shape_retention_strategies_table())
@@ -143,6 +144,7 @@ impl VTableRegistry {
 			SystemCatalog::get_system_column_properties_table(),
 			SystemCatalog::get_system_primary_keys_table(),
 			SystemCatalog::get_system_primary_key_columns_table(),
+			SystemCatalog::get_system_relationships_table(),
 			SystemCatalog::get_system_versions_table(),
 			SystemCatalog::get_system_shape_retention_strategies_table(),
 			SystemCatalog::get_system_operator_retention_strategies_table(),

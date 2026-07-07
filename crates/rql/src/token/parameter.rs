@@ -60,8 +60,8 @@ pub fn scan_parameter<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 
 #[cfg(test)]
 pub mod tests {
+	use bumpalo::Bump;
 	use super::*;
-	use crate::bump::Bump;
 	use crate::token::tokenize;
 
 	#[test]

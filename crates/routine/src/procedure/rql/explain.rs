@@ -256,9 +256,11 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 		PhysicalPlan::CreateSource(_) => ("CreateSource", String::new()),
 		PhysicalPlan::CreateSink(_) => ("CreateSink", String::new()),
 		PhysicalPlan::CreateBinding(_) => ("CreateBinding", String::new()),
+		PhysicalPlan::CreateRelationship(_) => ("CreateRelationship", String::new()),
 		PhysicalPlan::DropSource(_) => ("DropSource", String::new()),
 		PhysicalPlan::DropSink(_) => ("DropSink", String::new()),
 		PhysicalPlan::DropBinding(_) => ("DropBinding", String::new()),
+		PhysicalPlan::DropRelationship(_) => ("DropRelationship", String::new()),
 		PhysicalPlan::CreateIdentity(n) => ("CreateIdentity", format!("name={}", n.name.text())),
 		PhysicalPlan::AlterIdentity(n) => ("AlterIdentity", format!("name={}", n.name.text())),
 		PhysicalPlan::CreateIdentityAttribute(n) => {

@@ -42,6 +42,7 @@ pub enum CatalogObjectKind {
 	Procedure,
 	TestProcedure,
 	Binding,
+	Relationship,
 }
 
 impl Display for CatalogObjectKind {
@@ -70,6 +71,7 @@ impl Display for CatalogObjectKind {
 			CatalogObjectKind::Procedure => f.write_str("procedure"),
 			CatalogObjectKind::TestProcedure => f.write_str("test procedure"),
 			CatalogObjectKind::Binding => f.write_str("binding"),
+			CatalogObjectKind::Relationship => f.write_str("relationship"),
 		}
 	}
 }
@@ -198,6 +200,15 @@ pub enum CatalogError {
 		column_id: u64,
 	},
 
+	#[error(
+		"relationship cardinality `{cardinality}` is inconsistent with the THROUGH clause (has_junction={has_junction})"
+	)]
+	RelationshipJunctionMismatch {
+		fragment: Fragment,
+		cardinality: String,
+		has_junction: bool,
+	},
+
 	#[error("subscription `{name}` already exists")]
 	SubscriptionAlreadyExists {
 		fragment: Fragment,
@@ -271,6 +282,12 @@ pub enum CatalogError {
 
 	#[error("invalid binding config: {reason}")]
 	InvalidBindingConfig {
+		reason: String,
+		fragment: Fragment,
+	},
+
+	#[error("invalid relationship: {reason}")]
+	InvalidRelationship {
 		reason: String,
 		fragment: Fragment,
 	},
@@ -415,6 +432,11 @@ impl IntoDiagnostic for CatalogError {
 						"CA_087",
 						"binding",
 						"choose a different protocol key or drop the existing binding first",
+					),
+					CatalogObjectKind::Relationship => (
+						"CA_023",
+						"relationship",
+						"choose a different name or drop the existing relationship first",
 					),
 				};
 				let message = if matches!(
@@ -562,6 +584,11 @@ impl IntoDiagnostic for CatalogError {
 						"CA_088",
 						"binding",
 						"ensure the binding exists or create it first using `CREATE <PROTOCOL> BINDING`".to_string(),
+					),
+					CatalogObjectKind::Relationship => (
+						"CA_024",
+						"relationship",
+						"ensure the relationship exists or create it first using `CREATE RELATIONSHIP`".to_string(),
 					),
 				};
 				let message = match kind {
@@ -1002,6 +1029,36 @@ impl IntoDiagnostic for CatalogError {
 				operator_chain: None,
 			},
 
+			CatalogError::RelationshipJunctionMismatch {
+				fragment,
+				cardinality,
+				has_junction,
+			} => Diagnostic {
+				code: "CA_022".to_string(),
+				rql: None,
+				message: if has_junction {
+					format!(
+						"relationship cardinality `{}` is inconsistent with the THROUGH clause: junction provided but cardinality is not N:M",
+						cardinality
+					)
+				} else {
+					format!(
+						"relationship cardinality `{}` is inconsistent with the THROUGH clause: cardinality N:M requires a THROUGH junction",
+						cardinality
+					)
+				},
+				fragment,
+				label: Some("invalid relationship cardinality/junction combination".to_string()),
+				help: Some(
+					"use cardinality N:M only with a THROUGH clause, and use THROUGH only with cardinality N:M"
+						.to_string(),
+				),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
 			CatalogError::SubscriptionAlreadyExists {
 				fragment,
 				name,
@@ -1308,6 +1365,25 @@ impl IntoDiagnostic for CatalogError {
 				fragment,
 				label: Some("invalid binding config".to_string()),
 				help: Some("check the protocol's required WITH keys and value constraints".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::InvalidRelationship {
+				reason,
+				fragment,
+			} => Diagnostic {
+				code: "CA_090".to_string(),
+				rql: None,
+				message: format!("invalid relationship: {}", reason),
+				fragment,
+				label: Some("invalid relationship".to_string()),
+				help: Some(
+					"N:M cardinality requires THROUGH <table>(src_col, tgt_col); other cardinalities must omit THROUGH"
+						.to_string(),
+				),
 				column: None,
 				notes: vec![],
 				cause: None,

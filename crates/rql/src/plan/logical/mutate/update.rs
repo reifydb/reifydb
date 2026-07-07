@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use bumpalo::collections::Vec as BumpVec;
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
@@ -12,7 +13,7 @@ use crate::{
 			MaybeQualifiedTableIdentifier, UnresolvedShapeIdentifier,
 		},
 	},
-	bump::{BumpBox, BumpFragment, BumpVec},
+	bump::{BumpBox, BumpFragment},
 	expression::{Expression, ExpressionCompiler},
 	plan::logical::{
 		Compiler, FilterNode, LogicalPlan, PipelineNode, UpdateRingBufferNode, UpdateSeriesNode,
