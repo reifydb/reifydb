@@ -3175,6 +3175,7 @@ name = "reifydb-sub-runtime"
 version = "0.8.0"
 dependencies = [
  "libc",
+ "reifydb-allocator",
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-core",

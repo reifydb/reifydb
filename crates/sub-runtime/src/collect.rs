@@ -6,6 +6,7 @@ use std::fs::read_to_string;
 
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 use libc::mallinfo2;
+use reifydb_allocator::{JemallocStats, jemalloc_stats};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_store_multi::MultiStore;
 
@@ -34,19 +35,22 @@ impl Sample {
 }
 
 pub fn collect_memory(c: &Collectors) -> Vec<Sample> {
-	let mut out = Vec::with_capacity(24);
+	let mut out = Vec::with_capacity(32);
 
 	let proc_mem = collect_process();
+	let jemalloc = jemalloc_stats();
 	let alloc = collect_allocator();
 
-	push_process_allocator_samples(&mut out, &proc_mem, &alloc);
-	push_buffer_derived_samples(c, &mut out, &proc_mem, &alloc);
+	push_process_samples(&mut out, &proc_mem);
+	push_allocator_samples(&mut out, &jemalloc, &alloc);
+	push_subsystem_samples(c, &mut out);
+	push_derived_samples(&mut out, &proc_mem, &jemalloc, &alloc);
 
 	out
 }
 
 #[inline]
-fn push_process_allocator_samples(out: &mut Vec<Sample>, proc_mem: &Option<ProcMem>, alloc: &Option<AllocMem>) {
+fn push_process_samples(out: &mut Vec<Sample>, proc_mem: &Option<ProcMem>) {
 	if let Some(p) = proc_mem {
 		out.push(Sample::new("process", "rss_total_bytes", p.rss_total as f64, "bytes"));
 		out.push(Sample::new("process", "rss_anon_bytes", p.rss_anon as f64, "bytes"));
@@ -60,8 +64,18 @@ fn push_process_allocator_samples(out: &mut Vec<Sample>, proc_mem: &Option<ProcM
 		out.push(Sample::new("process", "uss_bytes", (p.private_dirty + p.private_clean) as f64, "bytes"));
 		out.push(Sample::new("process", "thread_count", p.threads as f64, "threads"));
 	}
+}
 
-	if let Some(a) = alloc {
+#[inline]
+fn push_allocator_samples(out: &mut Vec<Sample>, jemalloc: &Option<JemallocStats>, alloc: &Option<AllocMem>) {
+	if let Some(j) = jemalloc {
+		out.push(Sample::new("allocator", "jemalloc_allocated_bytes", j.allocated as f64, "bytes"));
+		out.push(Sample::new("allocator", "jemalloc_active_bytes", j.active as f64, "bytes"));
+		out.push(Sample::new("allocator", "jemalloc_resident_bytes", j.resident as f64, "bytes"));
+		out.push(Sample::new("allocator", "jemalloc_mapped_bytes", j.mapped as f64, "bytes"));
+		out.push(Sample::new("allocator", "jemalloc_retained_bytes", j.retained as f64, "bytes"));
+		out.push(Sample::new("allocator", "jemalloc_metadata_bytes", j.metadata as f64, "bytes"));
+	} else if let Some(a) = alloc {
 		out.push(Sample::new("allocator", "heap_live_bytes", a.heap_live as f64, "bytes"));
 		out.push(Sample::new("allocator", "heap_free_retained_bytes", a.heap_free_retained as f64, "bytes"));
 		out.push(Sample::new("allocator", "heap_arena_bytes", a.heap_arena as f64, "bytes"));
@@ -70,25 +84,59 @@ fn push_process_allocator_samples(out: &mut Vec<Sample>, proc_mem: &Option<ProcM
 }
 
 #[inline]
-fn push_buffer_derived_samples(
-	c: &Collectors,
+fn push_subsystem_samples(c: &Collectors, out: &mut Vec<Sample>) {
+	collect_buffer(c, out);
+	collect_dictionary(c, out);
+}
+
+#[inline]
+fn push_derived_samples(
 	out: &mut Vec<Sample>,
 	proc_mem: &Option<ProcMem>,
+	jemalloc: &Option<JemallocStats>,
 	alloc: &Option<AllocMem>,
 ) {
-	collect_buffer(c, out);
+	let Some(p) = proc_mem else {
+		return;
+	};
 
-	if let Some(p) = proc_mem {
-		if p.rss_total > 0 {
-			out.push(Sample::new("derived", "mmap_share", p.rss_file as f64 / p.rss_total as f64, "ratio"));
-		}
-		if let Some(a) = alloc
-			&& p.rss_anon > 0
-		{
-			let frag = (p.rss_anon as f64 - a.heap_live as f64) / p.rss_anon as f64;
-			out.push(Sample::new("derived", "heap_retention_ratio", frag, "ratio"));
-		}
+	if p.rss_total > 0 {
+		out.push(Sample::new("derived", "mmap_share", p.rss_file as f64 / p.rss_total as f64, "ratio"));
 	}
+
+	if let Some(j) = jemalloc {
+		out.push(Sample::new(
+			"derived",
+			"allocator_fragmentation_bytes",
+			j.resident.saturating_sub(j.allocated) as f64,
+			"bytes",
+		));
+		if p.rss_anon > 0 {
+			let unaccounted = (p.rss_anon as f64 - j.resident as f64).max(0.0);
+			out.push(Sample::new("derived", "unaccounted_anon_bytes", unaccounted, "bytes"));
+			out.push(Sample::new(
+				"derived",
+				"heap_retention_ratio",
+				(p.rss_anon as f64 - j.allocated as f64) / p.rss_anon as f64,
+				"ratio",
+			));
+		}
+	} else if let Some(a) = alloc
+		&& p.rss_anon > 0
+	{
+		out.push(Sample::new(
+			"derived",
+			"heap_retention_ratio",
+			(p.rss_anon as f64 - a.heap_live as f64) / p.rss_anon as f64,
+			"ratio",
+		));
+	}
+}
+
+fn collect_dictionary(c: &Collectors, out: &mut Vec<Sample>) {
+	let (count, bytes) = c.engine.dictionary_allocators().total_reservations();
+	out.push(Sample::new("dictionary", "reservation_count", count as f64, "count"));
+	out.push(Sample::new("dictionary", "reservation_bytes", bytes as f64, "bytes"));
 }
 
 pub fn collect_watermarks(c: &Collectors) -> Vec<Sample> {

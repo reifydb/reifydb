@@ -101,7 +101,9 @@ impl RuntimeSamplerActor {
 		debug!(
 			rss_anon_mb = get("rss_anon_bytes") / 1_048_576.0,
 			rss_file_mb = get("rss_file_bytes") / 1_048_576.0,
-			heap_live_mb = get("heap_live_bytes") / 1_048_576.0,
+			jemalloc_allocated_mb = get("jemalloc_allocated_bytes") / 1_048_576.0,
+			jemalloc_resident_mb = get("jemalloc_resident_bytes") / 1_048_576.0,
+			dict_reservations = get("reservation_count"),
 			watermark_lag = get("watermark_lag"),
 			oracle_windows = get("oracle_window_count"),
 			buffer_keys = get("buffer_current_keys_total"),

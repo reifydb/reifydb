@@ -229,6 +229,18 @@ impl DictionaryAllocatorRegistry {
 		(reservation.value.as_ref() == value_bytes).then_some(reservation.id)
 	}
 
+	pub fn total_reservations(&self) -> (usize, u64) {
+		let mut count = 0usize;
+		let mut bytes = 0u64;
+		for slot in self.inner.slots.iter() {
+			for reservation in slot.reservations.iter() {
+				count += 1;
+				bytes += reservation.value.len() as u64 + 16;
+			}
+		}
+		(count, bytes)
+	}
+
 	fn seed_if_needed(&self, dictionary: &Dictionary, reader: &mut impl DictionaryReader) -> Result<()> {
 		if let Some(slot) = self.inner.slots.get(&dictionary.id)
 			&& slot.seeded.load(Ordering::Acquire)
@@ -459,6 +471,35 @@ mod tests {
 			registry.reserved_id(d.id, &hash, b"wsol"),
 			None,
 			"once durable the reservation is evicted and the reader must resolve via the committed tier"
+		);
+	}
+
+	// total_reservations sums live (not-yet-durable) reservations across all dictionaries for the
+	// memory gauge that surfaces leak-on-rollback growth: a healthy commit path drains to ~0 via
+	// mark_durable, while a count that only climbs signals reservations leaked by rolled-back cycles.
+	// Bytes must account the value payload plus the 16-byte id so the estimate tracks real footprint.
+	#[test]
+	fn total_reservations_counts_live_reservations_and_shrinks_on_durable() {
+		let registry = DictionaryAllocatorRegistry::new();
+		let d = dict(ValueType::Uint8);
+		let mut reader = MockReader::new();
+
+		assert_eq!(registry.total_reservations(), (0, 0), "a fresh registry holds no reservations");
+
+		let a = registry.intern(&d, b"wsol", &mut reader).unwrap();
+		let _b = registry.intern(&d, b"usdc", &mut reader).unwrap();
+		assert_eq!(
+			registry.total_reservations(),
+			(2, (b"wsol".len() + b"usdc".len()) as u64 + 32),
+			"two distinct not-yet-durable values hold two reservations; bytes = value lengths + 16 per id"
+		);
+
+		reader.commit(a.writes.as_ref().unwrap());
+		registry.mark_durable(d.id, &[a.hash]);
+		assert_eq!(
+			registry.total_reservations(),
+			(1, b"usdc".len() as u64 + 16),
+			"mark_durable frees the committed value's reservation, leaving only the still-pending one"
 		);
 	}
 

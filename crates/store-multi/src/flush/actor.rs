@@ -10,16 +10,15 @@ use reifydb_codec::key::encoded::EncodedKey;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_runtime::actor::timers::TimerHandle;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_runtime::actor::{
 	context::Context,
 	mailbox::ActorRef,
 	system::{ActorConfig, ActorSpawner},
 	traits::{Actor, Directive},
 };
-use reifydb_runtime::{
-	actor::timers::TimerHandle,
-	sync::{rwlock::RwLock, waiter::WaiterHandle},
-};
+use reifydb_runtime::sync::{rwlock::RwLock, waiter::WaiterHandle};
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_value::{reifydb_assertions, util::cowvec::CowVec};
@@ -50,6 +49,7 @@ pub enum FlushMessage {
 	},
 }
 
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 pub struct FlushActorState {
 	timer_handle: Option<TimerHandle>,
 }

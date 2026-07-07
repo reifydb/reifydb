@@ -30,5 +30,18 @@ pub fn verify() {
 	);
 }
 
+#[cfg(not(target_env = "msvc"))]
+pub fn stats() -> (u64, u64, u64, u64, u64, u64) {
+	let _ = epoch::advance();
+	(
+		stats::allocated::read().unwrap_or(0) as u64,
+		stats::active::read().unwrap_or(0) as u64,
+		stats::resident::read().unwrap_or(0) as u64,
+		stats::mapped::read().unwrap_or(0) as u64,
+		stats::retained::read().unwrap_or(0) as u64,
+		stats::metadata::read().unwrap_or(0) as u64,
+	)
+}
+
 #[cfg(target_env = "msvc")]
 compile_error!("reifydb-allocator-jemalloc does not support MSVC; use the (Phase 2) mimalloc backend instead");
