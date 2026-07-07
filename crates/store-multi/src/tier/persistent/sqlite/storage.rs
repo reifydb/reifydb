@@ -7,7 +7,7 @@ use std::{
 	ops::Bound,
 	sync::{
 		Arc,
-		atomic::{AtomicUsize, Ordering},
+		atomic::{AtomicU32, AtomicUsize, Ordering},
 	},
 };
 
@@ -76,7 +76,7 @@ pub struct SqlitePersistentStorage {
 struct SqlitePersistentStorageInner {
 	conn: Mutex<Option<Connection>>,
 	readers: ReadPool,
-	checkpoint_threshold_frames: u32,
+	checkpoint_threshold_frames: AtomicU32,
 	table_sql: Map<EntryKind, Arc<TableSql>>,
 }
 
@@ -157,7 +157,7 @@ impl SqlitePersistentStorage {
 					conns,
 					next: AtomicUsize::new(0),
 				},
-				checkpoint_threshold_frames: config.wal_autocheckpoint,
+				checkpoint_threshold_frames: AtomicU32::new(config.wal_autocheckpoint),
 				table_sql: Map::new(),
 			}),
 		}
@@ -186,7 +186,7 @@ impl SqlitePersistentStorage {
 		.map_err(|e| error!(internal(format!("Failed to query persistent WAL size: {}", e))))?;
 
 		let log_frames = log_frames.max(0) as u32;
-		if log_frames <= self.inner.checkpoint_threshold_frames {
+		if log_frames <= self.inner.checkpoint_threshold_frames.load(Ordering::Relaxed) {
 			return Ok(CheckpointOutcome {
 				log_frames,
 				restarted: false,
@@ -205,6 +205,16 @@ impl SqlitePersistentStorage {
 			log_frames,
 			restarted: busy == 0,
 		})
+	}
+
+	pub fn set_checkpoint_threshold(&self, frames: u32) {
+		self.inner.checkpoint_threshold_frames.store(frames, Ordering::Relaxed);
+		let guard = self.lock_conn();
+		if let Some(conn) = guard.as_ref()
+			&& let Err(e) = conn.pragma_update(None, "wal_autocheckpoint", frames)
+		{
+			warn!(error = %e, "failed to update wal_autocheckpoint pragma");
+		}
 	}
 
 	pub fn in_memory() -> (Self, SqliteTempPathGuard) {

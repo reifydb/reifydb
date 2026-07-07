@@ -54,8 +54,11 @@ pub enum ConfigKey {
 	CdcCompactBlockCacheCapacity,
 	CdcCompactZstdLevel,
 	CdcRecentCacheCapacity,
+	CdcWalAutocheckpoint,
 	MultiReadBufferPages,
 	MultiReadBufferPageSize,
+	MultiFlushInterval,
+	MultiWalAutocheckpoint,
 	FlowTick,
 	CdcWatermarkWaitTimeout,
 	CdcConsumeWaitTimeout,
@@ -98,8 +101,11 @@ impl ConfigKey {
 			Self::CdcCompactBlockCacheCapacity,
 			Self::CdcCompactZstdLevel,
 			Self::CdcRecentCacheCapacity,
+			Self::CdcWalAutocheckpoint,
 			Self::MultiReadBufferPages,
 			Self::MultiReadBufferPageSize,
+			Self::MultiFlushInterval,
+			Self::MultiWalAutocheckpoint,
 			Self::FlowTick,
 			Self::CdcWatermarkWaitTimeout,
 			Self::CdcConsumeWaitTimeout,
@@ -144,8 +150,11 @@ impl ConfigKey {
 			Self::CdcCompactBlockCacheCapacity => Value::Uint8(8),
 			Self::CdcCompactZstdLevel => Value::Uint1(7),
 			Self::CdcRecentCacheCapacity => Value::Uint8(128),
+			Self::CdcWalAutocheckpoint => Value::Uint8(10000),
 			Self::MultiReadBufferPages => Value::Uint8(1024),
 			Self::MultiReadBufferPageSize => Value::Uint8(65536),
+			Self::MultiFlushInterval => Value::duration_seconds(5),
+			Self::MultiWalAutocheckpoint => Value::Uint8(10000),
 			Self::FlowTick => Value::duration_seconds(1),
 			Self::CdcWatermarkWaitTimeout => Value::duration_seconds(1),
 			Self::CdcConsumeWaitTimeout => Value::duration_seconds(30),
@@ -222,6 +231,13 @@ impl ConfigKey {
 				"Number of most-recent decoded CDC entries held in memory so a caught-up consumer \
 				 is served without re-reading and re-deserializing from the backend."
 			}
+			Self::CdcWalAutocheckpoint => {
+				"WAL frame threshold (SQLite wal_autocheckpoint PRAGMA) for the CDC log's SQLite tier. \
+				 CDC has no explicit checkpoint of its own, so this is the sole control over how often \
+				 cdc.db's WAL is checkpointed into the main file. Higher values checkpoint less often with \
+				 a larger WAL; since CDC is written on the commit path, this also bounds how often a commit \
+				 pays an inline auto-checkpoint. Read once at boot; changing it requires a restart."
+			}
 			Self::MultiReadBufferPages => {
 				"Number of pages (contiguous row-number buckets) the multi-version read cache keeps \
 				 resident before eviction. Raising it trades RAM for fewer persistent-tier reads."
@@ -229,6 +245,21 @@ impl ConfigKey {
 			Self::MultiReadBufferPageSize => {
 				"Number of rows per cached page (bucket) in the multi-version read cache. Must be a \
 				 power of two; sets the granularity of whole-page read-ahead and completeness tracking."
+			}
+			Self::MultiFlushInterval => {
+				"How often the persistent-flush actor drains the in-memory commit buffer into the multi \
+				 store's SQLite tier and checkpoints its WAL. Longer intervals coalesce more writes per \
+				 flush - fewer, larger WAL checkpoints and a larger WAL - at the cost of more resident \
+				 commit-buffer memory and a longer window before data is materialized in the persistent \
+				 file. Read once at boot; changing it requires a restart."
+			}
+			Self::MultiWalAutocheckpoint => {
+				"WAL frame threshold for the multi store's SQLite tier: sets both the SQLite \
+				 wal_autocheckpoint PRAGMA and the frame count above which the flush actor forces a \
+				 blocking RESTART checkpoint. Higher values checkpoint less often with a larger WAL, \
+				 reducing checkpoint I/O and blocking-checkpoint frequency; lower values keep the WAL \
+				 small at the cost of more frequent checkpoints. Read once at boot; changing it requires \
+				 a restart."
 			}
 			Self::FlowTick => {
 				"How often the deferred and transactional flow tick coordinators wake up to dispatch \
@@ -333,8 +364,11 @@ impl ConfigKey {
 			Self::CdcCompactBlockCacheCapacity => true,
 			Self::CdcCompactZstdLevel => false,
 			Self::CdcRecentCacheCapacity => true,
+			Self::CdcWalAutocheckpoint => true,
 			Self::MultiReadBufferPages => true,
 			Self::MultiReadBufferPageSize => true,
+			Self::MultiFlushInterval => true,
+			Self::MultiWalAutocheckpoint => true,
 			Self::FlowTick => false,
 			Self::CdcWatermarkWaitTimeout => false,
 			Self::CdcConsumeWaitTimeout => false,
@@ -377,8 +411,11 @@ impl ConfigKey {
 			Self::CdcCompactBlockCacheCapacity => &[ValueType::Uint8],
 			Self::CdcCompactZstdLevel => &[ValueType::Uint1],
 			Self::CdcRecentCacheCapacity => &[ValueType::Uint8],
+			Self::CdcWalAutocheckpoint => &[ValueType::Uint8],
 			Self::MultiReadBufferPages => &[ValueType::Uint8],
 			Self::MultiReadBufferPageSize => &[ValueType::Uint8],
+			Self::MultiFlushInterval => &[ValueType::Duration],
+			Self::MultiWalAutocheckpoint => &[ValueType::Uint8],
 			Self::FlowTick => &[ValueType::Duration],
 			Self::CdcWatermarkWaitTimeout => &[ValueType::Duration],
 			Self::CdcConsumeWaitTimeout => &[ValueType::Duration],
@@ -421,8 +458,11 @@ impl ConfigKey {
 			Self::CdcCompactBlockCacheCapacity => false,
 			Self::CdcCompactZstdLevel => false,
 			Self::CdcRecentCacheCapacity => false,
+			Self::CdcWalAutocheckpoint => false,
 			Self::MultiReadBufferPages => false,
 			Self::MultiReadBufferPageSize => false,
+			Self::MultiFlushInterval => false,
+			Self::MultiWalAutocheckpoint => false,
 			Self::FlowTick => false,
 			Self::CdcWatermarkWaitTimeout => false,
 			Self::CdcConsumeWaitTimeout => false,
@@ -490,6 +530,21 @@ impl ConfigKey {
 				Value::Uint8(_) => {
 					Err("MULTI_READ_BUFFER_PAGE_SIZE must be a power of two".to_string())
 				}
+				_ => Ok(()),
+			},
+			Self::MultiFlushInterval => match value {
+				Value::Duration(d) if d.is_positive() => Ok(()),
+				Value::Duration(_) => Err("MULTI_FLUSH_INTERVAL must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::MultiWalAutocheckpoint => match value {
+				Value::Uint8(0) => {
+					Err("MULTI_WAL_AUTOCHECKPOINT must be greater than zero".to_string())
+				}
+				_ => Ok(()),
+			},
+			Self::CdcWalAutocheckpoint => match value {
+				Value::Uint8(0) => Err("CDC_WAL_AUTOCHECKPOINT must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
 			Self::CdcCompactZstdLevel => match value {
@@ -682,8 +737,11 @@ impl fmt::Display for ConfigKey {
 			Self::CdcCompactBlockCacheCapacity => write!(f, "CDC_COMPACT_BLOCK_CACHE_CAPACITY"),
 			Self::CdcCompactZstdLevel => write!(f, "CDC_COMPACT_ZSTD_LEVEL"),
 			Self::CdcRecentCacheCapacity => write!(f, "CDC_RECENT_CACHE_CAPACITY"),
+			Self::CdcWalAutocheckpoint => write!(f, "CDC_WAL_AUTOCHECKPOINT"),
 			Self::MultiReadBufferPages => write!(f, "MULTI_READ_BUFFER_PAGES"),
 			Self::MultiReadBufferPageSize => write!(f, "MULTI_READ_BUFFER_PAGE_SIZE"),
+			Self::MultiFlushInterval => write!(f, "MULTI_FLUSH_INTERVAL"),
+			Self::MultiWalAutocheckpoint => write!(f, "MULTI_WAL_AUTOCHECKPOINT"),
 			Self::FlowTick => write!(f, "FLOW_TICK"),
 			Self::CdcWatermarkWaitTimeout => write!(f, "CDC_WATERMARK_WAIT_TIMEOUT"),
 			Self::CdcConsumeWaitTimeout => write!(f, "CDC_CONSUME_WAIT_TIMEOUT"),
@@ -730,8 +788,11 @@ impl FromStr for ConfigKey {
 			"CDC_COMPACT_BLOCK_CACHE_CAPACITY" => Ok(Self::CdcCompactBlockCacheCapacity),
 			"CDC_COMPACT_ZSTD_LEVEL" => Ok(Self::CdcCompactZstdLevel),
 			"CDC_RECENT_CACHE_CAPACITY" => Ok(Self::CdcRecentCacheCapacity),
+			"CDC_WAL_AUTOCHECKPOINT" => Ok(Self::CdcWalAutocheckpoint),
 			"MULTI_READ_BUFFER_PAGES" => Ok(Self::MultiReadBufferPages),
 			"MULTI_READ_BUFFER_PAGE_SIZE" => Ok(Self::MultiReadBufferPageSize),
+			"MULTI_FLUSH_INTERVAL" => Ok(Self::MultiFlushInterval),
+			"MULTI_WAL_AUTOCHECKPOINT" => Ok(Self::MultiWalAutocheckpoint),
 			"FLOW_TICK" => Ok(Self::FlowTick),
 			"CDC_WATERMARK_WAIT_TIMEOUT" => Ok(Self::CdcWatermarkWaitTimeout),
 			"CDC_CONSUME_WAIT_TIMEOUT" => Ok(Self::CdcConsumeWaitTimeout),
@@ -887,7 +948,10 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 39);
+		assert_eq!(all.len(), 42);
+		assert!(all.contains(&ConfigKey::MultiFlushInterval));
+		assert!(all.contains(&ConfigKey::MultiWalAutocheckpoint));
+		assert!(all.contains(&ConfigKey::CdcWalAutocheckpoint));
 		assert!(all.contains(&ConfigKey::MetricsRuntimeRetention));
 		assert!(all.contains(&ConfigKey::MetricsProfilerRetention));
 		assert!(all.contains(&ConfigKey::MetricsProfilerSnapshotInterval));

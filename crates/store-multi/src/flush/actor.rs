@@ -39,6 +39,8 @@ pub enum FlushMessage {
 	Tick(DateTime),
 	Shutdown,
 
+	SetInterval(Duration),
+
 	FlushPending {
 		waiter: Arc<WaiterHandle>,
 	},
@@ -48,9 +50,8 @@ pub enum FlushMessage {
 	},
 }
 
-#[allow(dead_code)]
 pub struct FlushActorState {
-	_timer_handle: Option<TimerHandle>,
+	timer_handle: Option<TimerHandle>,
 }
 
 #[allow(dead_code)]
@@ -266,11 +267,11 @@ impl Actor for FlushActor {
 			FlushMessage::Tick(DateTime::from_nanos(nanos))
 		});
 		FlushActorState {
-			_timer_handle: Some(timer_handle),
+			timer_handle: Some(timer_handle),
 		}
 	}
 
-	fn handle(&self, _state: &mut FlushActorState, msg: FlushMessage, ctx: &Context<FlushMessage>) -> Directive {
+	fn handle(&self, state: &mut FlushActorState, msg: FlushMessage, ctx: &Context<FlushMessage>) -> Directive {
 		if ctx.is_cancelled() {
 			if let Some(cutoff) = self.eviction_cutoff() {
 				self.sweep(cutoff);
@@ -282,6 +283,14 @@ impl Actor for FlushActor {
 				if let Some(cutoff) = self.eviction_cutoff() {
 					self.sweep(cutoff);
 				}
+			}
+			FlushMessage::SetInterval(interval) => {
+				if let Some(handle) = state.timer_handle.take() {
+					handle.cancel();
+				}
+				state.timer_handle = Some(ctx.schedule_tick(interval.to_std(), |nanos| {
+					FlushMessage::Tick(DateTime::from_nanos(nanos))
+				}));
 			}
 			FlushMessage::Shutdown => {
 				debug!("Persistent flush actor shutting down");

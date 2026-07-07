@@ -223,6 +223,12 @@ impl DictionaryAllocatorRegistry {
 		self.inner.slots.get(&dictionary).map(|slot| slot.reservations.len()).unwrap_or(0)
 	}
 
+	pub fn reserved_id(&self, dictionary: DictionaryId, hash: &[u8; 16], value_bytes: &[u8]) -> Option<u128> {
+		let slot = self.inner.slots.get(&dictionary)?;
+		let reservation = slot.reservations.get(hash)?;
+		(reservation.value.as_ref() == value_bytes).then_some(reservation.id)
+	}
+
 	fn seed_if_needed(&self, dictionary: &Dictionary, reader: &mut impl DictionaryReader) -> Result<()> {
 		if let Some(slot) = self.inner.slots.get(&dictionary.id)
 			&& slot.seeded.load(Ordering::Acquire)
@@ -414,6 +420,46 @@ mod tests {
 		reader.commit(a.writes.as_ref().unwrap());
 		registry.mark_durable(d.id, &[a.hash]);
 		assert_eq!(registry.reservation_len(d.id), 0, "mark_durable must free the reservation");
+	}
+
+	// A value interned but not yet durable is invisible to the committed-version read snapshot a
+	// downstream deferred flow reads through, yet that flow may key operator state on the value's
+	// id in the same uncommitted cycle. reserved_id exposes the live reservation for that
+	// read-through: a not-yet-interned value has no reservation, a different value sharing the hash
+	// slot must not be mis-resolved, and once mark_durable evicts the reservation the reader falls
+	// back to the committed tier. Without this a first-seen mint reaching a downstream operator
+	// before its intern commits resolves to nothing and the operator aborts the process.
+	#[test]
+	fn reserved_id_exposes_live_reservation_until_durable() {
+		let registry = DictionaryAllocatorRegistry::new();
+		let d = dict(ValueType::Uint8);
+		let mut reader = MockReader::new();
+
+		let a = registry.intern(&d, b"wsol", &mut reader).unwrap();
+		let hash = a.hash;
+
+		assert_eq!(
+			registry.reserved_id(d.id, &hash, b"wsol"),
+			Some(a.id.to_u128()),
+			"a live reservation must be resolvable by a concurrent reader before commit"
+		);
+		assert_eq!(
+			registry.reserved_id(d.id, &hash, b"usdc"),
+			None,
+			"a value that does not match the reserved bytes under this hash must not be mis-resolved"
+		);
+		assert_eq!(
+			registry.reserved_id(DictionaryId(999), &hash, b"wsol"),
+			None,
+			"a dictionary with no slot has no reservations"
+		);
+
+		registry.mark_durable(d.id, &[hash]);
+		assert_eq!(
+			registry.reserved_id(d.id, &hash, b"wsol"),
+			None,
+			"once durable the reservation is evicted and the reader must resolve via the committed tier"
+		);
 	}
 
 	// A fresh registry (process restart) seeds its counter from the maximum committed index

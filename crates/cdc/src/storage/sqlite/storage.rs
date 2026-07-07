@@ -25,6 +25,7 @@ use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
 use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, Transaction, params, params_from_iter, types::Value as SqlValue,
 };
+use tracing::{instrument, warn};
 
 use crate::{
 	compact::{block, block::CompactBlockSummary, cache::BlockCache},
@@ -90,6 +91,15 @@ impl SqliteCdcStorage {
 	pub fn in_memory() -> (Self, SqliteTempPathGuard) {
 		let (config, guard) = SqliteConfig::in_memory();
 		(Self::new(config), guard)
+	}
+
+	pub fn set_wal_autocheckpoint(&self, frames: u32) {
+		let guard = self.inner.conn.lock();
+		if let Some(conn) = guard.as_ref()
+			&& let Err(e) = conn.pragma_update(None, "wal_autocheckpoint", frames)
+		{
+			warn!(error = %e, "failed to update CDC wal_autocheckpoint pragma");
+		}
 	}
 
 	fn ensure_schema(conn: &Connection) {
@@ -842,6 +852,7 @@ fn insert_compacted_block(
 }
 
 impl CdcStorage for SqliteCdcStorage {
+	#[instrument(name = "store::cdc::sqlite::write", level = "debug", skip_all)]
 	fn write(&self, cdc: &Cdc) -> CdcStorageResult<()> {
 		let bytes = to_stdvec(cdc).map_err(|e| CdcError::Codec(format!("postcard encode: {e}")))?;
 		let guard = self.inner.conn.lock();
@@ -860,6 +871,7 @@ impl CdcStorage for SqliteCdcStorage {
 		Ok(())
 	}
 
+	#[instrument(name = "store::cdc::sqlite::read", level = "debug", skip_all)]
 	fn read(&self, version: CommitVersion) -> CdcStorageResult<Option<Cdc>> {
 		if let Some(cdc) = self.read_live(version)? {
 			return Ok(Some(cdc));
@@ -867,6 +879,7 @@ impl CdcStorage for SqliteCdcStorage {
 		self.read_from_blocks(version)
 	}
 
+	#[instrument(name = "store::cdc::sqlite::read_range", level = "debug", skip_all)]
 	fn read_range(
 		&self,
 		start: Bound<CommitVersion>,
@@ -919,6 +932,7 @@ impl CdcStorage for SqliteCdcStorage {
 		query_max_block(conn)
 	}
 
+	#[instrument(name = "store::cdc::sqlite::drop_before", level = "debug", skip_all)]
 	fn drop_before(&self, version: CommitVersion, limit: usize) -> CdcStorageResult<DropBeforeResult> {
 		let guard = self.inner.conn.lock();
 		let Some(conn) = guard.as_ref() else {

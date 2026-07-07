@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use reifydb_cdc::storage::CdcStore;
 use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
 	common::CommitVersion,
@@ -89,6 +90,12 @@ pub(crate) fn spawn_actors(engine: &StandardEngine, spawner: &ActorSpawner) -> R
 		catalog.get_config_uint8(ConfigKey::MultiReadBufferPages) as usize,
 		catalog.get_config_uint8(ConfigKey::MultiReadBufferPageSize),
 	);
+	store.configure_flush_interval(catalog.get_config_duration(ConfigKey::MultiFlushInterval));
+	store.configure_wal_autocheckpoint(catalog.get_config_uint8(ConfigKey::MultiWalAutocheckpoint) as u32);
+	if let Some(cdc_store) = engine.ioc().try_resolve::<CdcStore>() {
+		cdc_store
+			.configure_wal_autocheckpoint(catalog.get_config_uint8(ConfigKey::CdcWalAutocheckpoint) as u32);
+	}
 	store.set_row_settings_provider(Arc::new(catalog.clone()));
 
 	let epoch = engine.version_epoch().clone();

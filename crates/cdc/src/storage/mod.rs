@@ -216,6 +216,14 @@ impl CdcStore {
 		))
 	}
 
+	pub fn configure_wal_autocheckpoint(&self, frames: u32) {
+		match self {
+			Self::Memory(_) => {}
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+			Self::Sqlite(s) => s.inner().set_wal_autocheckpoint(frames),
+		}
+	}
+
 	pub fn write(&self, cdc: &Cdc) -> CdcStorageResult<()> {
 		match self {
 			Self::Memory(s) => s.write(cdc),

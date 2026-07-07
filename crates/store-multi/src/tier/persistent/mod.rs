@@ -69,6 +69,12 @@ impl MultiPersistentTier {
 		}
 	}
 
+	pub fn set_checkpoint_threshold(&self, frames: u32) {
+		match self {
+			Self::Sqlite(s) => s.set_checkpoint_threshold(frames),
+		}
+	}
+
 	pub fn delete_below_version(
 		&self,
 		table: EntryKind,
@@ -115,6 +121,10 @@ impl MultiPersistentTier {
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
 impl MultiPersistentTier {
 	pub fn maybe_checkpoint(&self) -> Result<CheckpointOutcome> {
+		match *self {}
+	}
+
+	pub fn set_checkpoint_threshold(&self, _frames: u32) {
 		match *self {}
 	}
 

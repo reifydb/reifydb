@@ -31,10 +31,7 @@ use reifydb_runtime::{
 	context::clock::Clock,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{
-	Result,
-	value::datetime::DateTime,
-};
+use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::{debug, error, info};
 
 use crate::{
