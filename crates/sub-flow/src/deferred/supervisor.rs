@@ -96,12 +96,13 @@ pub struct FlowSupervisor {
 	consumer_id: CdcConsumerId,
 	chunk_size: u64,
 	checkpoint_lag: u64,
-	tick_interval: Duration,
 }
 
 pub struct SupervisorState {
 	analyzer: FlowGraphAnalyzer,
 	flows: BTreeMap<FlowId, FlowActorHandle>,
+	sources: BTreeMap<FlowId, Arc<BTreeSet<ShapeId>>>,
+	frontier: Option<CommitVersion>,
 }
 
 impl FlowSupervisor {
@@ -121,7 +122,6 @@ impl FlowSupervisor {
 		consumer_id: CdcConsumerId,
 		chunk_size: u64,
 		checkpoint_lag: u64,
-		tick_interval: Duration,
 	) -> Self {
 		Self {
 			engine,
@@ -138,7 +138,6 @@ impl FlowSupervisor {
 			consumer_id,
 			chunk_size,
 			checkpoint_lag,
-			tick_interval,
 		}
 	}
 
@@ -184,6 +183,7 @@ impl FlowSupervisor {
 		for (flow, seed) in to_spawn {
 			let flow_id = flow.id;
 			let source_shapes = self.compute_source_shapes(state, flow_id, &registered);
+			state.sources.insert(flow_id, source_shapes.clone());
 			let handle = self.spawn_flow(flow, source_shapes, seed);
 			state.flows.insert(flow_id, handle);
 			debug!(flow_id = flow_id.0, seed = seed.0, "spawned deferred flow actor");
@@ -209,6 +209,7 @@ impl FlowSupervisor {
 				});
 				changed = true;
 			}
+			state.sources.remove(flow_id);
 			self.health.clear(*flow_id);
 			self.flow_catalog.remove(*flow_id);
 			state.analyzer.remove(*flow_id);
@@ -244,6 +245,7 @@ impl FlowSupervisor {
 		for (flow, seed) in to_spawn {
 			let flow_id = flow.id;
 			let source_shapes = self.compute_source_shapes(state, flow_id, &registered);
+			state.sources.insert(flow_id, source_shapes.clone());
 			let handle = self.spawn_flow(flow, source_shapes, seed);
 			state.flows.insert(flow_id, handle);
 			debug!(flow_id = flow_id.0, seed = seed.0, "spawned new deferred flow actor");
@@ -251,17 +253,43 @@ impl FlowSupervisor {
 
 		if changed {
 			let registered: BTreeSet<FlowId> = state.flows.keys().copied().collect();
-			for (flow_id, handle) in &state.flows {
-				let source_shapes = self.compute_source_shapes(state, *flow_id, &registered);
-				let _ = handle.actor_ref().send(FlowActorMessage::UpdateSources {
-					source_shapes,
-				});
+			let flow_ids: Vec<FlowId> = state.flows.keys().copied().collect();
+			for flow_id in flow_ids {
+				let source_shapes = self.compute_source_shapes(state, flow_id, &registered);
+				state.sources.insert(flow_id, source_shapes.clone());
+				if let Some(handle) = state.flows.get(&flow_id) {
+					let _ = handle.actor_ref().send(FlowActorMessage::UpdateSources {
+						source_shapes,
+					});
+				}
 			}
 		}
 
-		for handle in state.flows.values() {
-			let _ = handle.actor_ref().send(FlowActorMessage::Wake);
+		let (changed_shapes, broadcast) = batch_targets(&cdcs);
+		let covers_from = state.frontier;
+		let cdcs = Arc::new(cdcs);
+		for (flow_id, handle) in &state.flows {
+			let relevant = broadcast
+				|| state.sources
+					.get(flow_id)
+					.map_or(true, |shapes| shapes.intersection(&changed_shapes).next().is_some());
+			if !relevant {
+				continue;
+			}
+			match covers_from {
+				Some(covers_from) => {
+					let _ = handle.actor_ref().send(FlowActorMessage::Ingest {
+						cdcs: cdcs.clone(),
+						covers_from,
+						up_to: current_version,
+					});
+				}
+				None => {
+					let _ = handle.actor_ref().send(FlowActorMessage::Wake);
+				}
+			}
 		}
+		state.frontier = Some(current_version);
 
 		(reply)(Ok(()));
 	}
@@ -356,7 +384,6 @@ impl FlowSupervisor {
 			cursor,
 			chunk_size: self.chunk_size,
 			checkpoint_lag: self.checkpoint_lag,
-			tick_interval: self.tick_interval,
 			retry_limit: FLOW_RETRY_LIMIT,
 			retry_backoff: Duration::from_milliseconds(FLOW_RETRY_BACKOFF_MS as i64).unwrap(),
 		};
@@ -403,6 +430,8 @@ impl Actor for FlowSupervisor {
 		SupervisorState {
 			analyzer: FlowGraphAnalyzer::new(),
 			flows: BTreeMap::new(),
+			sources: BTreeMap::new(),
+			frontier: None,
 		}
 	}
 
@@ -426,5 +455,101 @@ impl Actor for FlowSupervisor {
 
 	fn config(&self) -> ActorConfig {
 		ActorConfig::new()
+	}
+}
+
+fn batch_targets(cdcs: &[Cdc]) -> (BTreeSet<ShapeId>, bool) {
+	let mut shapes = BTreeSet::new();
+	let mut broadcast = false;
+	for cdc in cdcs {
+		for change in &cdc.changes {
+			match &change.origin {
+				ChangeOrigin::Shape(shape) => {
+					shapes.insert(*shape);
+				}
+				ChangeOrigin::Flow(_) => {
+					broadcast = true;
+				}
+			}
+		}
+	}
+	(shapes, broadcast)
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::{
+		interface::{
+			catalog::{
+				flow::FlowNodeId,
+				id::{TableId, ViewId},
+			},
+			change::{Change, Diff},
+		},
+		value::column::columns::Columns,
+	};
+	use reifydb_value::value::datetime::DateTime;
+	use smallvec::smallvec;
+
+	use super::*;
+
+	fn change(origin: ChangeOrigin) -> Change {
+		Change {
+			origin,
+			version: CommitVersion(1),
+			diffs: smallvec![Diff::Insert {
+				post: Columns::empty(),
+				origin: None,
+			}],
+			changed_at: DateTime::default(),
+		}
+	}
+
+	fn cdc(version: u64, changes: Vec<Change>) -> Cdc {
+		Cdc {
+			version: CommitVersion(version),
+			timestamp: DateTime::default(),
+			changes,
+			system_changes: Vec::new(),
+		}
+	}
+
+	#[test]
+	fn collects_shape_origins_and_ignores_broadcast() {
+		let cdcs = vec![
+			cdc(5, vec![change(ChangeOrigin::Shape(ShapeId::Table(TableId(1))))]),
+			cdc(6, vec![change(ChangeOrigin::Shape(ShapeId::View(ViewId(2))))]),
+		];
+
+		let (shapes, broadcast) = batch_targets(&cdcs);
+
+		assert!(!broadcast);
+		assert_eq!(
+			shapes.into_iter().collect::<Vec<_>>(),
+			vec![ShapeId::Table(TableId(1)), ShapeId::View(ViewId(2))]
+		);
+	}
+
+	#[test]
+	fn flow_origin_forces_broadcast() {
+		let cdcs = vec![cdc(
+			5,
+			vec![
+				change(ChangeOrigin::Shape(ShapeId::Table(TableId(1)))),
+				change(ChangeOrigin::Flow(FlowNodeId(42))),
+			],
+		)];
+
+		let (shapes, broadcast) = batch_targets(&cdcs);
+
+		assert!(broadcast, "a flow-origin change must fall back to broadcasting all flows");
+		assert!(shapes.contains(&ShapeId::Table(TableId(1))));
+	}
+
+	#[test]
+	fn empty_batch_targets_nothing() {
+		let (shapes, broadcast) = batch_targets(&[]);
+		assert!(shapes.is_empty());
+		assert!(!broadcast);
 	}
 }

@@ -88,7 +88,19 @@ impl SliceComputer {
 		};
 		let more = chunk_end < safe;
 
-		let changes = collect_flow_changes(&items, cursor.source_shapes);
+		self.process_items(flow_engine, &cursor, &items, chunk_end, more, config)
+	}
+
+	fn process_items(
+		&self,
+		flow_engine: &mut FlowEngineInner,
+		cursor: &SliceCursor,
+		items: &[Cdc],
+		chunk_end: CommitVersion,
+		more: bool,
+		config: &SliceConfig,
+	) -> Result<SliceStep> {
+		let changes = collect_flow_changes(items, cursor.source_shapes);
 		if changes.is_empty() {
 			return Ok(self.skip_or_checkpoint(
 				cursor.flow_id,
@@ -115,6 +127,23 @@ impl SliceComputer {
 			advance_to: chunk_end,
 			more,
 		})
+	}
+
+	pub fn step_pushed(
+		&self,
+		flow_engine: &mut FlowEngineInner,
+		cdcs: &[Cdc],
+		cursor: SliceCursor,
+		config: &SliceConfig,
+	) -> Result<SliceStep> {
+		let start = cdcs.partition_point(|c| c.version <= cursor.cursor);
+		let items = &cdcs[start..];
+
+		let Some(chunk_end) = items.last().map(|c| c.version) else {
+			return Ok(SliceStep::Idle);
+		};
+
+		self.process_items(flow_engine, &cursor, items, chunk_end, false, config)
 	}
 
 	fn skip_or_checkpoint(

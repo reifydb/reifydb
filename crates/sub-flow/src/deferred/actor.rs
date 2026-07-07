@@ -15,7 +15,12 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		WithEventBus,
-		catalog::{flow::FlowId, shape::ShapeId},
+		catalog::{
+			config::{ConfigKey, GetConfig},
+			flow::FlowId,
+			shape::ShapeId,
+		},
+		cdc::Cdc,
 	},
 };
 use reifydb_engine::engine::StandardEngine;
@@ -61,7 +66,6 @@ pub struct FlowActorParams {
 	pub cursor: CommitVersion,
 	pub chunk_size: u64,
 	pub checkpoint_lag: u64,
-	pub tick_interval: Duration,
 	pub retry_limit: u32,
 	pub retry_backoff: Duration,
 }
@@ -80,7 +84,6 @@ pub struct FlowActor {
 	ticks_enabled: bool,
 	computer: SliceComputer,
 	config: SliceConfig,
-	tick_interval: Duration,
 	retry_limit: u32,
 	retry_backoff: Duration,
 	initial_source_shapes: Arc<BTreeSet<ShapeId>>,
@@ -119,12 +122,15 @@ impl FlowActor {
 			flow: params.flow,
 			flow_id,
 			ticks_enabled,
-			tick_interval: params.tick_interval,
 			retry_limit: params.retry_limit,
 			retry_backoff: params.retry_backoff,
 			initial_source_shapes: params.source_shapes,
 			initial_cursor: params.cursor,
 		}
+	}
+
+	fn tick_interval(&self) -> Duration {
+		self.engine.catalog().get_config_duration(ConfigKey::FlowTick)
 	}
 
 	fn poison(&self, state: &mut FlowActorState, reason: String) {
@@ -214,6 +220,68 @@ impl FlowActor {
 		}
 	}
 
+	fn on_ingest(
+		&self,
+		state: &mut FlowActorState,
+		ctx: &Context<FlowActorMessage>,
+		cdcs: Arc<Vec<Cdc>>,
+		covers_from: CommitVersion,
+		up_to: CommitVersion,
+	) {
+		if state.poisoned {
+			return;
+		}
+		if state.committing {
+			state.wake_pending = true;
+			return;
+		}
+		if state.cursor >= up_to {
+			return;
+		}
+		if state.cursor < covers_from {
+			let _ = ctx.self_ref().send(FlowActorMessage::Drain);
+			return;
+		}
+
+		let step = self.computer.step_pushed(
+			&mut state.flow_engine,
+			cdcs.as_slice(),
+			SliceCursor {
+				flow_id: self.flow_id,
+				source_shapes: &state.source_shapes,
+				cursor: state.cursor,
+				durable_cursor: state.durable_cursor,
+			},
+			&self.config,
+		);
+		match step {
+			Ok(SliceStep::Idle) => {
+				state.retry_count = 0;
+			}
+			Ok(SliceStep::Skip {
+				advance_to,
+				more,
+			}) => {
+				state.retry_count = 0;
+				state.cursor = advance_to;
+				self.publish_position(advance_to);
+				if more {
+					let _ = ctx.self_ref().send(FlowActorMessage::Drain);
+				}
+			}
+			Ok(SliceStep::Commit {
+				slice,
+				advance_to,
+				more,
+			}) => {
+				self.dispatch_commit(state, ctx, slice, advance_to, more);
+			}
+			Err(e) => {
+				self.retry_or_poison(state, ctx, format!("flow ingest failed: {e}"));
+			}
+		}
+	}
+
 	fn dispatch_commit(
 		&self,
 		state: &mut FlowActorState,
@@ -286,7 +354,7 @@ impl FlowActor {
 			}
 		}
 
-		ctx.schedule_once(self.tick_interval, || FlowActorMessage::Tick);
+		ctx.schedule_once(self.tick_interval(), || FlowActorMessage::Tick);
 
 		if !state.poisoned && !state.committing {
 			let _ = ctx.self_ref().send(FlowActorMessage::Drain);
@@ -353,7 +421,7 @@ impl Actor for FlowActor {
 
 		self.publish_position(self.initial_cursor);
 
-		ctx.schedule_once(self.tick_interval, || FlowActorMessage::Tick);
+		ctx.schedule_once(self.tick_interval(), || FlowActorMessage::Tick);
 		if !poisoned {
 			let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 		}
@@ -384,6 +452,14 @@ impl Actor for FlowActor {
 						let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 					}
 				}
+				Directive::Continue
+			}
+			FlowActorMessage::Ingest {
+				cdcs,
+				covers_from,
+				up_to,
+			} => {
+				self.on_ingest(state, ctx, cdcs, covers_from, up_to);
 				Directive::Continue
 			}
 			FlowActorMessage::Tick => {

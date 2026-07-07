@@ -21,6 +21,12 @@ pub enum FlowActorMessage {
 
 	Wake,
 
+	Ingest {
+		cdcs: Arc<Vec<Cdc>>,
+		covers_from: CommitVersion,
+		up_to: CommitVersion,
+	},
+
 	Tick,
 
 	UpdateSources {

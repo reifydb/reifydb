@@ -28,10 +28,7 @@ use reifydb_core::{
 	actors::flow::{FlowSupervisorHandle, FlowSupervisorMessage},
 	interface::{
 		WithEventBus,
-		catalog::{
-			config::{ConfigKey, GetConfig},
-			flow::FlowId,
-		},
+		catalog::flow::FlowId,
 		cdc::{Cdc, CdcConsumerId},
 		flow::FlowWatermarkSampler,
 		version::{ComponentType, HasVersion, SystemVersion},
@@ -153,7 +150,6 @@ impl FlowSubsystem {
 
 		let flow_scope = spawner.scope();
 		let flow_catalog = FlowCatalog::new(engine.catalog());
-		let tick_interval = engine.catalog().get_config_duration(ConfigKey::FlowTick);
 
 		let committer = Committer::new(engine.clone(), flow_catalog.clone(), flow_tracker.clone());
 		let committer_handle = flow_scope.spawn_system("flow-committer", CommitterActor::new(committer));
@@ -178,7 +174,6 @@ impl FlowSubsystem {
 				flow_consumer_id.clone(),
 				FLOW_CHUNK_SIZE,
 				FLOW_CHECKPOINT_LAG,
-				tick_interval,
 			),
 		);
 		let flow_consumer = FlowConsumeRef {
