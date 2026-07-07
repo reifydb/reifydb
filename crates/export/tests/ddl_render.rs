@@ -96,6 +96,7 @@ fn table(name: &str, columns: Vec<Column>) -> Table {
 		name: name.to_string(),
 		columns,
 		primary_key: None,
+		partition_by: vec![],
 		underlying: false,
 	}
 }
@@ -169,7 +170,7 @@ fn ring_buffer_with_partition_by() {
 	};
 	assert_eq!(
 		render_ringbuffer(&rb, &resolver()).unwrap(),
-		"CREATE RINGBUFFER sales::events { id: int4, region: utf8 } WITH { capacity: 1000, partition_by: { region } };"
+		"CREATE RINGBUFFER sales::events { id: int4, region: utf8 } WITH { capacity: 1000, partition: { by: { region } } };"
 	);
 }
 
@@ -189,6 +190,7 @@ fn series_datetime_key_with_precision_and_tag() {
 			precision: TimestampPrecision::Millisecond,
 		},
 		primary_key: None,
+		partition_by: vec![],
 		underlying: false,
 	};
 	assert_eq!(
@@ -212,6 +214,7 @@ fn series_integer_key_has_no_precision() {
 			column: "k".to_string(),
 		},
 		primary_key: None,
+		partition_by: vec![],
 		underlying: false,
 	};
 	assert_eq!(

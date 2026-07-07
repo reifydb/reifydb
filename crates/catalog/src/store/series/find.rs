@@ -39,6 +39,12 @@ impl CatalogStore {
 		let key_kind_raw = series::SHAPE.get_u8(&row, series::KEY_KIND);
 		let precision_raw = series::SHAPE.get_u8(&row, series::PRECISION);
 		let key = SeriesKey::decode(key_kind_raw, precision_raw, key_column);
+		let partition_by_str = series::SHAPE.get_utf8(&row, series::PARTITION_BY);
+		let partition_by = if partition_by_str.is_empty() {
+			vec![]
+		} else {
+			partition_by_str.split(',').map(|s| s.to_string()).collect()
+		};
 		let underlying = series::SHAPE.get_u8(&row, series::UNDERLYING) != 0;
 
 		Ok(Some(Series {
@@ -49,6 +55,7 @@ impl CatalogStore {
 			tag,
 			key,
 			primary_key: Self::find_primary_key(rx, id)?,
+			partition_by,
 			underlying,
 		}))
 	}

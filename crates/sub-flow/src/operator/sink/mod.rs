@@ -111,6 +111,7 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]
 	}
 	Ok(Columns {
 		row_numbers: columns.row_numbers.clone(),
+		partitions: columns.partitions.clone(),
 		created_at: columns.created_at.clone(),
 		updated_at: columns.updated_at.clone(),
 		columns: CowVec::new(buffers_vec),

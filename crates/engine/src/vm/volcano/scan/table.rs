@@ -13,13 +13,18 @@ use reifydb_core::{
 	interface::{catalog::dictionary::Dictionary, resolved::ResolvedTable},
 	key::{
 		EncodableKey,
+		partitioned_row::{PartitionedRowKey, RowLocator},
 		row::{RowKey, RowKeyRange},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
-	error, fragment::Fragment, reifydb_assertions, util::cowvec::CowVec, value::value_type::ValueType,
+	error,
+	fragment::Fragment,
+	reifydb_assertions,
+	util::cowvec::CowVec,
+	value::{partition::Partition, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -128,10 +133,16 @@ impl QueryNode for TableScanNode {
 
 		let batch_size = stored_ctx.batch_size;
 
-		let range = RowKeyRange::scan_range(self.table.def().id.into(), self.last_key.as_ref());
+		let partitioned = !self.table.def().partition_by.is_empty();
+		let range = if partitioned {
+			PartitionedRowKey::scan_range(self.table.def().id, self.last_key.as_ref())
+		} else {
+			RowKeyRange::scan_range(self.table.def().id.into(), self.last_key.as_ref())
+		};
 
 		let mut batch_rows = Vec::new();
 		let mut row_numbers = Vec::new();
+		let mut partitions: Vec<Partition> = Vec::new();
 		let mut new_last_key = None;
 
 		let scope = match self.min_commit_version {
@@ -144,9 +155,20 @@ impl QueryNode for TableScanNode {
 		for _ in 0..batch_size {
 			match stream.next() {
 				Some(Ok(multi)) => {
-					if let Some(key) = RowKey::decode(&multi.key) {
+					let decoded = if partitioned {
+						PartitionedRowKey::decode(&multi.key).and_then(|k| match k.locator {
+							RowLocator::Row(rn) => Some((rn, Some(k.partition))),
+							_ => None,
+						})
+					} else {
+						RowKey::decode(&multi.key).map(|k| (k.row, None))
+					};
+					if let Some((rn, partition)) = decoded {
 						batch_rows.push(multi.row);
-						row_numbers.push(key.row);
+						row_numbers.push(rn);
+						if let Some(p) = partition {
+							partitions.push(p);
+						}
 						new_last_key = Some(multi.key);
 					}
 				}
@@ -195,6 +217,9 @@ impl QueryNode for TableScanNode {
 		{
 			let shape = self.get_or_load_shape(rx, &batch_rows[0])?;
 			columns.append_rows(&shape, batch_rows.into_iter(), row_numbers.clone())?;
+		}
+		if partitioned {
+			columns.partitions = CowVec::new(partitions);
 		}
 
 		columns.row_numbers = CowVec::new(row_numbers);

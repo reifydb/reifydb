@@ -25,13 +25,19 @@ impl CatalogStore {
 					let namespace_id =
 						NamespaceId(table::SHAPE.get_u64(&entry.row, table::NAMESPACE));
 					let name = table::SHAPE.get_utf8(&entry.row, table::NAME).to_string();
+					let partition_by_str = table::SHAPE.get_utf8(&entry.row, table::PARTITION_BY);
+					let partition_by: Vec<String> = if partition_by_str.is_empty() {
+						vec![]
+					} else {
+						partition_by_str.split(',').map(|s| s.to_string()).collect()
+					};
 					let underlying = table::SHAPE.get_u8(&entry.row, table::UNDERLYING) != 0;
-					table_ids.push((table_id, namespace_id, name, underlying));
+					table_ids.push((table_id, namespace_id, name, partition_by, underlying));
 				}
 			}
 		}
 
-		for (table_id, namespace_id, name, underlying) in table_ids {
+		for (table_id, namespace_id, name, partition_by, underlying) in table_ids {
 			let primary_key = Self::find_primary_key(rx, table_id)?;
 			let columns = Self::list_columns(rx, table_id)?;
 
@@ -41,6 +47,7 @@ impl CatalogStore {
 				name,
 				columns,
 				primary_key,
+				partition_by,
 				underlying,
 			};
 

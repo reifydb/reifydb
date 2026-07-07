@@ -115,6 +115,7 @@ unsafe fn unmarshal_table(ffi_table: &TableFFI) -> Result<Table, SdkError> {
 		name,
 		columns,
 		primary_key,
+		partition_by: vec![],
 		underlying: false,
 	})
 }

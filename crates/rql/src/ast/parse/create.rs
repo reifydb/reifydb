@@ -625,6 +625,7 @@ impl<'bump> Parser<'bump> {
 		let mut key_field = None;
 		let mut precision = None;
 		let mut settings = None;
+		let mut partition_by: Vec<String> = Vec::new();
 
 		if self.consume_if(TokenKind::Keyword(Keyword::With))?.is_some() {
 			self.consume_operator(Operator::OpenCurly)?;
@@ -705,16 +706,19 @@ impl<'bump> Parser<'bump> {
 					"row" => {
 						settings = Some(self.parse_row_config()?);
 					}
+					"partition" => {
+						partition_by = self.parse_partition_config()?;
+					}
 					_other => {
 						let fragment = with_key.fragment.to_owned();
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'key', 'tag', 'precision', or 'row'"
+								expected: "'key', 'tag', 'precision', 'partition', or 'row'"
 									.to_string(),
 							},
 							message: format!(
 								"Unexpected token: expected {}, got {}",
-								"'key', 'tag', 'precision', or 'ttl'",
+								"'key', 'tag', 'precision', 'partition', or 'row'",
 								fragment.text()
 							),
 							fragment,
@@ -756,6 +760,7 @@ impl<'bump> Parser<'bump> {
 			tag,
 			key: key_fragment,
 			precision,
+			partition_by,
 			settings,
 		}))
 	}
@@ -1090,6 +1095,7 @@ impl<'bump> Parser<'bump> {
 		let table = MaybeQualifiedTableIdentifier::new(name).with_namespace(namespace);
 
 		let mut settings = None;
+		let mut partition_by: Vec<String> = Vec::new();
 
 		if self.consume_if(TokenKind::Keyword(Keyword::With))?.is_some() {
 			self.consume_operator(Operator::OpenCurly)?;
@@ -1108,13 +1114,19 @@ impl<'bump> Parser<'bump> {
 					"row" => {
 						settings = Some(self.parse_row_config()?);
 					}
+					"partition" => {
+						partition_by = self.parse_partition_config()?;
+					}
 					_other => {
 						let fragment = key.fragment.to_owned();
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'row'".to_string(),
+								expected: "'row' or 'partition'".to_string(),
 							},
-							message: format!("expected 'row', found `{}`", fragment.text()),
+							message: format!(
+								"expected 'row' or 'partition', found `{}`",
+								fragment.text()
+							),
 							fragment,
 						}));
 					}
@@ -1139,6 +1151,7 @@ impl<'bump> Parser<'bump> {
 			table,
 			if_not_exists,
 			columns,
+			partition_by,
 			settings,
 		}))
 	}
@@ -1177,11 +1190,11 @@ impl<'bump> Parser<'bump> {
 					_ => {
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'capacity', 'partition_by', or 'row'"
+								expected: "'capacity', 'partition', or 'row'"
 									.to_string(),
 							},
 							message: format!(
-								"expected 'capacity', 'partition_by', or 'row', found `{}`",
+								"expected 'capacity', 'partition', or 'row', found `{}`",
 								current.fragment.text()
 							),
 							fragment: current.fragment.to_owned(),
@@ -1210,20 +1223,8 @@ impl<'bump> Parser<'bump> {
 							})
 						})?);
 				}
-				"partition_by" => {
-					self.consume_operator(Operator::OpenCurly)?;
-					loop {
-						self.skip_new_line()?;
-						if self.current()?.is_operator(Operator::CloseCurly) {
-							break;
-						}
-						let col = self.consume(TokenKind::Identifier)?;
-						partition_by.push(col.fragment.text().to_string());
-						if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
-							break;
-						}
-					}
-					self.consume_operator(Operator::CloseCurly)?;
+				"partition" => {
+					partition_by = self.parse_partition_config()?;
 				}
 				"row" => {
 					settings = Some(self.parse_row_config()?);
@@ -1232,11 +1233,11 @@ impl<'bump> Parser<'bump> {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'capacity', 'partition_by', or 'row'".to_string(),
+							expected: "'capacity', 'partition', or 'row'".to_string(),
 						},
 						message: format!(
 							"Unexpected token: expected {}, got {}",
-							"'capacity', 'partition_by', or 'ttl'",
+							"'capacity', 'partition', or 'row'",
 							fragment.text()
 						),
 						fragment,
@@ -1286,6 +1287,64 @@ impl<'bump> Parser<'bump> {
 			partition_by,
 			settings,
 		}))
+	}
+
+	fn parse_partition_config(&mut self) -> Result<Vec<String>> {
+		let mut partition_by: Vec<String> = Vec::new();
+		self.consume_operator(Operator::OpenCurly)?;
+		loop {
+			self.skip_new_line()?;
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let inner_key = self.consume(TokenKind::Identifier)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match inner_key.fragment.text() {
+				"by" => {
+					self.consume_operator(Operator::OpenCurly)?;
+					loop {
+						self.skip_new_line()?;
+						if self.current()?.is_operator(Operator::CloseCurly) {
+							break;
+						}
+						let col = self.consume(TokenKind::Identifier)?;
+						partition_by.push(col.fragment.text().to_string());
+						if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
+							break;
+						}
+					}
+					self.consume_operator(Operator::CloseCurly)?;
+				}
+				_other => {
+					let fragment = inner_key.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "'by'".to_string(),
+						},
+						message: format!(
+							"Unexpected token: expected {}, got {}",
+							"'by'",
+							fragment.text()
+						),
+						fragment,
+					}));
+				}
+			}
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+		self.consume_operator(Operator::CloseCurly)?;
+		Ok(partition_by)
 	}
 
 	fn parse_primary_keyinition(&mut self) -> Result<AstPrimaryKey<'bump>> {
@@ -2113,22 +2172,8 @@ impl<'bump> Parser<'bump> {
 									}
 								});
 						}
-						"partition_by" => {
-							self.consume_operator(Operator::OpenCurly)?;
-							loop {
-								self.skip_new_line()?;
-								if self.current()?.is_operator(Operator::CloseCurly) {
-									break;
-								}
-								let col = self.consume(TokenKind::Identifier)?;
-								partition_by.push(col.fragment.text().to_string());
-								if self.consume_if(TokenKind::Separator(Comma))?
-									.is_none()
-								{
-									break;
-								}
-							}
-							self.consume_operator(Operator::CloseCurly)?;
+						"partition" => {
+							partition_by = self.parse_partition_config()?;
 						}
 						"row" => {
 							settings = Some(self.parse_row_config()?);
@@ -2137,7 +2182,7 @@ impl<'bump> Parser<'bump> {
 							let fragment = key.fragment.to_owned();
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'capacity', 'propagate_evictions', 'partition_by', or 'row'"
+									expected: "'capacity', 'propagate_evictions', 'partition', or 'row'"
 										.to_string(),
 								},
 								message: format!(

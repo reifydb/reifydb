@@ -54,6 +54,7 @@ pub struct TableToCreate {
 	pub retention_strategy: Option<RetentionStrategy>,
 
 	pub primary_key_columns: Option<Vec<String>>,
+	pub partition_by: Vec<String>,
 	pub underlying: bool,
 }
 
@@ -77,6 +78,7 @@ impl From<TableToCreate> for StoreTableToCreate {
 			namespace: to_create.namespace,
 			columns: to_create.columns.into_iter().map(|c| c.into()).collect(),
 			retention_strategy: to_create.retention_strategy,
+			partition_by: to_create.partition_by,
 			underlying: to_create.underlying,
 		}
 	}

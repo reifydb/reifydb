@@ -93,6 +93,7 @@ mod tests {
 			tag: None,
 			key,
 			primary_key: None,
+			partition_by: vec![],
 			underlying: false,
 		}
 	}

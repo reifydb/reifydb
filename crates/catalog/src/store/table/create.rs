@@ -45,6 +45,7 @@ pub struct TableToCreate {
 	pub namespace: NamespaceId,
 	pub columns: Vec<TableColumnToCreate>,
 	pub retention_strategy: Option<RetentionStrategy>,
+	pub partition_by: Vec<String>,
 	pub underlying: bool,
 }
 
@@ -98,6 +99,7 @@ impl CatalogStore {
 		table::SHAPE.set_utf8(&mut row, table::NAME, to_create.name.text());
 
 		table::SHAPE.set_u64(&mut row, table::PRIMARY_KEY, 0u64);
+		table::SHAPE.set_utf8(&mut row, table::PARTITION_BY, to_create.partition_by.join(","));
 		table::SHAPE.set_u8(
 			&mut row,
 			table::UNDERLYING,
@@ -230,6 +232,7 @@ pub mod tests {
 			name: Fragment::internal("test_table"),
 			columns: vec![],
 			retention_strategy: None,
+			partition_by: vec![],
 			underlying: false,
 		};
 
@@ -253,6 +256,7 @@ pub mod tests {
 			name: Fragment::internal("test_table"),
 			columns: vec![],
 			retention_strategy: None,
+			partition_by: vec![],
 			underlying: false,
 		};
 
@@ -263,6 +267,7 @@ pub mod tests {
 			name: Fragment::internal("another_table"),
 			columns: vec![],
 			retention_strategy: None,
+			partition_by: vec![],
 			underlying: false,
 		};
 

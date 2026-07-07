@@ -217,6 +217,7 @@ pub struct CreateTableNode {
 	pub table: Fragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
+	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
 }
@@ -330,6 +331,7 @@ pub struct CreateSeriesNode {
 	pub columns: Vec<SeriesColumnToCreate>,
 	pub tag: Option<SumTypeId>,
 	pub key: SeriesKey,
+	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
 }

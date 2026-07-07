@@ -155,6 +155,8 @@ impl FlowTransaction {
 				KeyKind::SeriesMetadata => ReadFrom::StateQuery,
 
 				KeyKind::Row => ReadFrom::Query,
+				KeyKind::PartitionedRow => ReadFrom::Query,
+				KeyKind::Partition => ReadFrom::Query,
 
 				KeyKind::Namespace => ReadFrom::Query,
 				KeyKind::Table => ReadFrom::Query,

@@ -148,7 +148,7 @@ pub fn render_ringbuffer(ringbuffer: &RingBuffer, resolver: &NameResolver) -> Re
 
 	let mut with = format!("capacity: {}", ringbuffer.capacity);
 	if !ringbuffer.partition_by.is_empty() {
-		with.push_str(&format!(", partition_by: {{ {} }}", ringbuffer.partition_by.join(", ")));
+		with.push_str(&format!(", partition: {{ by: {{ {} }} }}", ringbuffer.partition_by.join(", ")));
 	}
 
 	Ok(format!("CREATE RINGBUFFER {} {} WITH {{ {} }};", name, columns, with))

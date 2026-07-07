@@ -19,12 +19,13 @@ use reifydb_core::{
 			key::PrimaryKey,
 			namespace::Namespace,
 			policy::{DataOp, PolicyTargetType},
+			shape::ShapeId,
 			table::Table,
 		},
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedShape, ResolvedTable},
 	},
 	internal_error,
-	key::{EncodableKey, index_entry::IndexEntryKey, row::RowKey},
+	key::{EncodableKey, index_entry::IndexEntryKey},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::UpdateTableNode;
@@ -33,7 +34,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, identity::IdentityId, row_number::RowNumber, value_type::ValueType},
+	value::{Value, identity::IdentityId, partition::Partition, row_number::RowNumber, value_type::ValueType},
 };
 
 use super::{
@@ -44,6 +45,8 @@ use super::{
 };
 use crate::{
 	Result,
+	error::EngineError,
+	partition::{row_key_from_partition, table_partition_of_row},
 	policy::PolicyEvaluator,
 	transaction::operation::{dictionary::DictionaryOperations, table::TableOperations},
 	vm::{
@@ -161,10 +164,21 @@ fn run_table_update(
 			return_error!(engine::missing_row_number_column());
 		}
 
+		let partitioned = !target.table.partition_by.is_empty();
+		if partitioned && columns.partitions.len() != columns.row_count() {
+			return Err(EngineError::MissingPartitionAddress {
+				shape: ShapeId::Table(target.table.id),
+				operation: "UPDATE",
+			}
+			.into());
+		}
+
 		let row_numbers: Vec<RowNumber> = columns.row_numbers.iter().copied().collect();
+		let sidecar_partitions: Vec<Partition> = columns.partitions.iter().copied().collect();
 		let row_count = columns.row_count();
 
 		let mut prepared_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
+		let mut partitions_out: Vec<Partition> = Vec::with_capacity(row_count);
 		for (row_idx, &row_number) in row_numbers.iter().enumerate() {
 			let mut row = build_updated_table_row(
 				exec.services,
@@ -175,7 +189,19 @@ fn run_table_update(
 				context,
 				row_idx,
 			)?;
-			let row_key = RowKey::encoded(target.table.id, row_number);
+			let partition = sidecar_partitions.get(row_idx).copied();
+
+			if let Some(old) = partition {
+				let new_partition = table_partition_of_row(target.table, shape, &row);
+				if new_partition != old {
+					return Err(EngineError::ImmutablePartitionColumn {
+						shape: ShapeId::Table(target.table.id),
+					}
+					.into());
+				}
+			}
+
+			let row_key = row_key_from_partition(target.table.id, partition, row_number);
 
 			if let Some(pk_def) = primary_key::get_primary_key(&exec.services.catalog, txn, target.table)? {
 				rotate_table_pk_index(txn, target.table, shape, &pk_def, &row_key, &row, row_number)?;
@@ -186,9 +212,12 @@ fn run_table_update(
 			row.set_timestamps(old_created_at, exec.services.runtime_context.clock.now_nanos());
 
 			prepared_rows.push(row);
+			if let Some(p) = partition {
+				partitions_out.push(p);
+			}
 		}
 
-		let stored = txn.update_table(target.table, &row_numbers, &mut prepared_rows)?;
+		let stored = txn.update_table(target.table, &row_numbers, &partitions_out, &mut prepared_rows)?;
 		updated_count += stored.len() as u64;
 		if has_returning {
 			returned_rows.extend(stored);

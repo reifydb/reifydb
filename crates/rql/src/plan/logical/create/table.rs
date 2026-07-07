@@ -158,6 +158,20 @@ impl<'bump> Compiler<'bump> {
 			});
 		}
 
+		let partition_by: Vec<String> = ast.partition_by.iter().map(|s| s.to_string()).collect();
+
+		for pb_col in &partition_by {
+			if !columns.iter().any(|c| c.name.text() == pb_col.as_str()) {
+				return Err(CatalogError::NotFound {
+					kind: CatalogObjectKind::Column,
+					namespace: table_ns_segments.join("::"),
+					name: pb_col.clone(),
+					fragment: Fragment::internal(pb_col.as_str()),
+				}
+				.into());
+			}
+		}
+
 		let table = ast.table;
 		let (ttl, persistent) = match ast.settings {
 			Some(settings) => (
@@ -171,6 +185,7 @@ impl<'bump> Compiler<'bump> {
 			table,
 			if_not_exists: ast.if_not_exists,
 			columns,
+			partition_by,
 			ttl,
 			persistent,
 		}))

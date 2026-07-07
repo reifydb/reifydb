@@ -809,6 +809,7 @@ pub struct AstCreateSeries<'bump> {
 	pub tag: Option<MaybeQualifiedSumTypeIdentifier<'bump>>,
 	pub key: Option<BumpFragment<'bump>>,
 	pub precision: Option<AstTimestampPrecision>,
+	pub partition_by: Vec<String>,
 	pub settings: Option<AstRowSettings<'bump>>,
 }
 
@@ -828,6 +829,7 @@ pub struct AstCreateTable<'bump> {
 	pub table: MaybeQualifiedTableIdentifier<'bump>,
 	pub if_not_exists: bool,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
+	pub partition_by: Vec<String>,
 	pub settings: Option<AstRowSettings<'bump>>,
 }
 

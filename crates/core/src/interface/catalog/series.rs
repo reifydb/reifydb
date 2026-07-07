@@ -78,6 +78,7 @@ pub struct Series {
 	pub tag: Option<SumTypeId>,
 	pub key: SeriesKey,
 	pub primary_key: Option<PrimaryKey>,
+	pub partition_by: Vec<String>,
 	pub underlying: bool,
 }
 

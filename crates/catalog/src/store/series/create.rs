@@ -46,6 +46,7 @@ pub struct SeriesToCreate {
 	pub columns: Vec<SeriesColumnToCreate>,
 	pub tag: Option<SumTypeId>,
 	pub key: SeriesKey,
+	pub partition_by: Vec<String>,
 	pub underlying: bool,
 }
 
@@ -120,6 +121,7 @@ impl CatalogStore {
 		series::SHAPE.set_u8(&mut row, series::KEY_KIND, key_kind_u8);
 		series::SHAPE.set_u8(&mut row, series::PRECISION, precision_u8);
 		series::SHAPE.set_u64(&mut row, series::PRIMARY_KEY, 0u64);
+		series::SHAPE.set_utf8(&mut row, series::PARTITION_BY, to_create.partition_by.join(","));
 		series::SHAPE.set_u8(
 			&mut row,
 			series::UNDERLYING,

@@ -94,6 +94,7 @@ pub fn create_table(
 			namespace: namespace.id(),
 			columns: columns.to_vec(),
 			retention_strategy: None,
+			partition_by: vec![],
 			underlying: false,
 		},
 	)

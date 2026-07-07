@@ -611,6 +611,7 @@ pub struct CreateTableNode<'bump> {
 	pub table: MaybeQualifiedTableIdentifier<'bump>,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
+	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
 }
@@ -1117,6 +1118,7 @@ pub struct CreateSeriesNode<'bump> {
 	pub columns: Vec<SeriesColumnToCreate>,
 	pub tag: Option<MaybeQualifiedSumTypeIdentifier<'bump>>,
 	pub key: SeriesKey,
+	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
 }

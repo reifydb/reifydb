@@ -54,6 +54,12 @@ fn decode_table(row: &EncodedRow, materialized: &CatalogCache, version: CommitVe
 	} else {
 		None
 	};
+	let partition_by_str = table::SHAPE.get_utf8(row, table::PARTITION_BY);
+	let partition_by = if partition_by_str.is_empty() {
+		vec![]
+	} else {
+		partition_by_str.split(',').map(|s| s.to_string()).collect()
+	};
 	let underlying = table::SHAPE.get_u8(row, table::UNDERLYING) != 0;
 	Table {
 		id,
@@ -61,6 +67,7 @@ fn decode_table(row: &EncodedRow, materialized: &CatalogCache, version: CommitVe
 		namespace,
 		columns: vec![],
 		primary_key,
+		partition_by,
 		underlying,
 	}
 }

@@ -21,6 +21,17 @@ impl Columns {
 			self.row_numbers = CowVec::new(filtered_row_numbers);
 		}
 
+		if !self.partitions.is_empty() {
+			let filtered_partitions: Vec<_> = self
+				.partitions
+				.iter()
+				.enumerate()
+				.filter(|(i, _)| *i < mask.len() && mask.get(*i))
+				.map(|(_, &p)| p)
+				.collect();
+			self.partitions = CowVec::new(filtered_partitions);
+		}
+
 		if !self.created_at.is_empty() {
 			let filtered_created_at: Vec<_> = self
 				.created_at

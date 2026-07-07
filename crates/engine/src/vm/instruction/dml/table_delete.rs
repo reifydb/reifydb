@@ -13,6 +13,7 @@ use reifydb_core::{
 			key::PrimaryKey,
 			namespace::Namespace,
 			policy::{DataOp, PolicyTargetType},
+			shape::ShapeId,
 			table::Table,
 		},
 		resolved::{ResolvedNamespace, ResolvedShape, ResolvedTable},
@@ -21,6 +22,7 @@ use reifydb_core::{
 	key::{
 		EncodableKey, EncodableKeyRange,
 		index_entry::IndexEntryKey,
+		partitioned_row::{PartitionedRowKey, RowLocator},
 		row::{RowKey, RowKeyRange},
 	},
 	value::column::columns::Columns,
@@ -30,7 +32,7 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
-	value::{Value, identity::IdentityId, row_number::RowNumber},
+	value::{Value, identity::IdentityId, partition::Partition, row_number::RowNumber},
 };
 
 use super::{
@@ -42,6 +44,7 @@ use super::{
 use crate::{
 	Result,
 	error::EngineError,
+	partition::row_key_from_partition,
 	policy::PolicyEvaluator,
 	transaction::operation::table::TableOperations,
 	vm::{
@@ -158,13 +161,24 @@ fn run_table_delete_with_input(
 	let mut input_node = compile(input_plan, txn, Arc::new(context.clone()));
 	input_node.initialize(txn, &context)?;
 
-	let row_numbers_to_delete = collect_row_numbers_to_delete(exec, txn, &mut input_node, &context, target)?;
+	let (row_numbers_to_delete, partitions_to_delete) =
+		collect_rows_to_delete(exec, txn, &mut input_node, &context, target)?;
+
+	if !target.table.partition_by.is_empty() && partitions_to_delete.len() != row_numbers_to_delete.len() {
+		return Err(EngineError::MissingPartitionAddress {
+			shape: ShapeId::Table(target.table.id),
+			operation: "DELETE",
+		}
+		.into());
+	}
 
 	let pk_def = primary_key::get_primary_key(&exec.services.catalog, txn, target.table)?;
 
 	let mut filtered_ids: Vec<RowNumber> = Vec::with_capacity(row_numbers_to_delete.len());
-	for row_number in row_numbers_to_delete {
-		let row_key = RowKey::encoded(target.table.id, row_number);
+	let mut filtered_partitions: Vec<Partition> = Vec::with_capacity(partitions_to_delete.len());
+	for (idx, row_number) in row_numbers_to_delete.into_iter().enumerate() {
+		let partition = partitions_to_delete.get(idx).copied();
+		let row_key = row_key_from_partition(target.table.id, partition, row_number);
 		let row_values = match txn.get(&row_key)? {
 			Some(v) => v.row,
 			None => continue,
@@ -173,9 +187,12 @@ fn run_table_delete_with_input(
 			remove_table_pk_index_for(exec.services, txn, target.table, pk_def, &row_values)?;
 		}
 		filtered_ids.push(row_number);
+		if let Some(p) = partition {
+			filtered_partitions.push(p);
+		}
 	}
 
-	let removed = txn.remove_from_table(target.table, &filtered_ids)?;
+	let removed = txn.remove_from_table(target.table, &filtered_ids, &filtered_partitions)?;
 	let deleted_count = removed.len() as u64;
 	let returned_rows: Vec<(RowNumber, EncodedRow)> = if has_returning {
 		removed
@@ -185,14 +202,15 @@ fn run_table_delete_with_input(
 	Ok((deleted_count, returned_rows))
 }
 
-fn collect_row_numbers_to_delete(
+fn collect_rows_to_delete(
 	exec: &WriteExecCtx<'_>,
 	txn: &mut Transaction<'_>,
 	input_node: &mut Box<dyn QueryNode>,
 	context: &QueryContext,
 	target: &TableTarget<'_>,
-) -> Result<Vec<RowNumber>> {
+) -> Result<(Vec<RowNumber>, Vec<Partition>)> {
 	let mut row_numbers_to_delete = Vec::new();
+	let mut partitions_to_delete = Vec::new();
 	let mut mutable_context = context.clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		PolicyEvaluator::new(exec.services, exec.symbols).enforce_write_policies(
@@ -209,9 +227,12 @@ fn collect_row_numbers_to_delete(
 		let row_numbers = &columns.row_numbers;
 		for row_idx in 0..columns.row_count() {
 			row_numbers_to_delete.push(row_numbers[row_idx]);
+			if !columns.partitions.is_empty() {
+				partitions_to_delete.push(columns.partitions[row_idx]);
+			}
 		}
 	}
-	Ok(row_numbers_to_delete)
+	Ok((row_numbers_to_delete, partitions_to_delete))
 }
 
 fn run_table_delete_all(
@@ -220,28 +241,37 @@ fn run_table_delete_all(
 	table: &Table,
 	has_returning: bool,
 ) -> Result<(u64, Vec<(RowNumber, EncodedRow)>)> {
-	let range = RowKeyRange {
-		shape: table.id.into(),
+	let partitioned = !table.partition_by.is_empty();
+	let range = if partitioned {
+		PartitionedRowKey::full_scan(table.id)
+	} else {
+		let range = RowKeyRange {
+			shape: table.id.into(),
+		};
+		EncodedKeyRange::new(Included(range.start().unwrap()), Included(range.end().unwrap()))
 	};
 	let pk_def = primary_key::get_primary_key(&services.catalog, txn, table)?;
-	let rows: Vec<_> = txn
-		.range(
-			EncodedKeyRange::new(Included(range.start().unwrap()), Included(range.end().unwrap())),
-			RangeScope::All,
-			32,
-		)?
-		.collect::<Result<Vec<_>>>()?;
+	let rows: Vec<_> = txn.range(range, RangeScope::All, 32)?.collect::<Result<Vec<_>>>()?;
 
 	let mut filtered_ids: Vec<RowNumber> = Vec::with_capacity(rows.len());
+	let mut filtered_partitions: Vec<Partition> = Vec::with_capacity(rows.len());
 	for multi in rows {
 		if let Some(ref pk_def) = pk_def {
 			remove_table_pk_index_for(services, txn, table, pk_def, &multi.row)?;
 		}
-		let row_key = RowKey::decode(&multi.key).expect("valid RowKey encoding");
-		filtered_ids.push(row_key.row);
+		if partitioned {
+			let key = PartitionedRowKey::decode(&multi.key).expect("valid PartitionedRowKey encoding");
+			if let RowLocator::Row(rn) = key.locator {
+				filtered_ids.push(rn);
+				filtered_partitions.push(key.partition);
+			}
+		} else {
+			let row_key = RowKey::decode(&multi.key).expect("valid RowKey encoding");
+			filtered_ids.push(row_key.row);
+		}
 	}
 
-	let removed = txn.remove_from_table(table, &filtered_ids)?;
+	let removed = txn.remove_from_table(table, &filtered_ids, &filtered_partitions)?;
 	let deleted_count = removed.len() as u64;
 	let returned_rows: Vec<(RowNumber, EncodedRow)> = if has_returning {
 		removed

@@ -76,6 +76,7 @@ pub mod tests {
 				namespace: namespace.id(),
 				columns: vec![],
 				retention_strategy: None,
+				partition_by: vec![],
 				underlying: false,
 			},
 		)

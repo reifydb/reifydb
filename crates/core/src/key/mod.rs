@@ -33,6 +33,8 @@ use namespace_source::NamespaceSourceKey;
 use namespace_sumtype::NamespaceSumTypeKey;
 use namespace_table::NamespaceTableKey;
 use namespace_view::NamespaceViewKey;
+use partition::PartitionKey;
+use partitioned_row::PartitionedRowKey;
 use policy::PolicyKey;
 use policy_op::PolicyOpKey;
 use primary_key::PrimaryKeyKey;
@@ -101,6 +103,8 @@ pub mod namespace_sumtype;
 pub mod namespace_table;
 pub mod namespace_view;
 pub mod operator_settings;
+pub mod partition;
+pub mod partitioned_row;
 pub mod policy;
 pub mod policy_op;
 pub mod primary_key;
@@ -145,6 +149,8 @@ pub enum Key {
 	FlowNodeInternalState(FlowNodeInternalStateKey),
 	PrimaryKey(PrimaryKeyKey),
 	Row(RowKey),
+	PartitionedRow(PartitionedRowKey),
+	Partition(PartitionKey),
 	RowSequence(RowSequenceKey),
 	TableColumnSequence(ColumnSequenceKey),
 	TableColumnProperty(ColumnPropertyKey),
@@ -210,6 +216,8 @@ impl Key {
 			Key::FlowNodeInternalState(key) => key.encode(),
 			Key::PrimaryKey(key) => key.encode(),
 			Key::Row(key) => key.encode(),
+			Key::PartitionedRow(key) => key.encode(),
+			Key::Partition(key) => key.encode(),
 			Key::RowSequence(key) => key.encode(),
 			Key::TableColumnSequence(key) => key.encode(),
 			Key::SystemSequence(key) => key.encode(),
@@ -314,6 +322,8 @@ impl Key {
 				FlowNodeInternalStateKey::decode(key).map(Self::FlowNodeInternalState)
 			}
 			KeyKind::Row => RowKey::decode(key).map(Self::Row),
+			KeyKind::PartitionedRow => PartitionedRowKey::decode(key).map(Self::PartitionedRow),
+			KeyKind::Partition => PartitionKey::decode(key).map(Self::Partition),
 			KeyKind::RowSequence => RowSequenceKey::decode(key).map(Self::RowSequence),
 			KeyKind::ColumnSequence => ColumnSequenceKey::decode(key).map(Self::TableColumnSequence),
 			KeyKind::SystemSequence => SystemSequenceKey::decode(key).map(Self::SystemSequence),

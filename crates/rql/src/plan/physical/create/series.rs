@@ -84,6 +84,7 @@ impl<'bump> Compiler<'bump> {
 			columns: create.columns,
 			tag,
 			key: create.key,
+			partition_by: create.partition_by,
 			ttl: create.ttl,
 			persistent: create.persistent,
 		}))

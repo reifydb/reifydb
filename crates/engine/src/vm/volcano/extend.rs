@@ -148,6 +148,7 @@ impl Transform for ExtendNode {
 
 		let row_count = input.row_count();
 		let row_numbers = input.row_numbers.to_vec();
+		let partitions = input.partitions.clone();
 		let created_at = input.created_at.clone();
 		let updated_at = input.updated_at.clone();
 
@@ -216,6 +217,7 @@ impl Transform for ExtendNode {
 		}
 		Ok(Columns {
 			row_numbers: CowVec::new(row_numbers),
+			partitions,
 			created_at,
 			updated_at,
 			columns: CowVec::new(buffers_vec),

@@ -47,6 +47,7 @@ pub struct SeriesToCreate {
 	pub columns: Vec<SeriesColumnToCreate>,
 	pub tag: Option<SumTypeId>,
 	pub key: SeriesKey,
+	pub partition_by: Vec<String>,
 	pub underlying: bool,
 }
 
@@ -71,6 +72,7 @@ impl From<SeriesToCreate> for StoreSeriesToCreate {
 			columns: to_create.columns.into_iter().map(|c| c.into()).collect(),
 			tag: to_create.tag,
 			key: to_create.key,
+			partition_by: to_create.partition_by,
 			underlying: to_create.underlying,
 		}
 	}

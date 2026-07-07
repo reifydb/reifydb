@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+	collections::{HashMap, HashSet},
+	sync::Arc,
+};
 
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_core::{
@@ -16,6 +19,7 @@ use reifydb_core::{
 			key::PrimaryKey,
 			namespace::Namespace,
 			policy::{DataOp, PolicyTargetType},
+			shape::ShapeId,
 			table::Table,
 		},
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedShape, ResolvedTable},
@@ -30,7 +34,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, identity::IdentityId, row_number::RowNumber, value_type::ValueType},
+	value::{Value, identity::IdentityId, partition::Partition, row_number::RowNumber, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -42,6 +46,7 @@ use super::{
 };
 use crate::{
 	Result,
+	partition::{partition_col_indices, partition_values, resolve_partition},
 	policy::PolicyEvaluator,
 	transaction::operation::{dictionary::DictionaryOperations, table::TableOperations},
 	vm::{
@@ -87,6 +92,16 @@ pub(crate) fn insert_table(
 		symbols,
 		&mut input_node,
 	)?;
+
+	if !table.partition_by.is_empty() {
+		let indices = partition_col_indices(&table.columns, &table.partition_by);
+		let mut verified = HashSet::new();
+		for row in &validated_rows {
+			let values = partition_values(&shape, row, &indices);
+			let partition = Partition::of(&values);
+			resolve_partition(txn, ShapeId::Table(table.id), partition, &values, &mut verified)?;
+		}
+	}
 
 	let total_rows = validated_rows.len();
 	if total_rows == 0 {

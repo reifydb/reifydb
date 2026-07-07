@@ -85,6 +85,7 @@ pub fn bootstrap_runtime(
 						column: "ts".to_string(),
 						precision: TimestampPrecision::Millisecond,
 					},
+					partition_by: vec![],
 					underlying: false,
 				},
 				column_ids,

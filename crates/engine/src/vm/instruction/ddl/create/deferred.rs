@@ -128,6 +128,7 @@ fn create_underlying_primitive(
 					columns,
 					retention_strategy: None,
 					primary_key_columns: None,
+					partition_by: vec![],
 					underlying: true,
 				},
 			)?;
@@ -196,6 +197,7 @@ fn create_underlying_primitive(
 					columns,
 					tag: None,
 					key: key.clone(),
+					partition_by: vec![],
 					underlying: true,
 				},
 			)?;

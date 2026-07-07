@@ -17,7 +17,10 @@ use reifydb_value::{
 	fragment::Fragment,
 	reifydb_assertions,
 	util::cowvec::CowVec,
-	value::{Value, constraint::Constraint, datetime::DateTime, row_number::RowNumber, value_type::ValueType},
+	value::{
+		Value, constraint::Constraint, datetime::DateTime, partition::Partition, row_number::RowNumber,
+		value_type::ValueType,
+	},
 };
 use serde::{Deserialize, Serialize};
 
@@ -33,6 +36,7 @@ use crate::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Columns {
 	pub row_numbers: CowVec<RowNumber>,
+	pub partitions: CowVec<Partition>,
 	pub created_at: CowVec<DateTime>,
 	pub updated_at: CowVec<DateTime>,
 	pub columns: CowVec<ColumnBuffer>,
@@ -154,6 +158,7 @@ impl Columns {
 
 		Self {
 			row_numbers: CowVec::new(Vec::new()),
+			partitions: CowVec::new(Vec::new()),
 			created_at: CowVec::new(Vec::new()),
 			updated_at: CowVec::new(Vec::new()),
 			columns: CowVec::new(buffers),
@@ -182,6 +187,7 @@ impl Columns {
 
 		Self {
 			row_numbers: CowVec::new(row_numbers),
+			partitions: CowVec::new(Vec::new()),
 			created_at: CowVec::new(created_at),
 			updated_at: CowVec::new(updated_at),
 			columns: CowVec::new(buffers),
@@ -198,6 +204,7 @@ impl Columns {
 		}
 		Self {
 			row_numbers: CowVec::new(Vec::new()),
+			partitions: CowVec::new(Vec::new()),
 			created_at: CowVec::new(Vec::new()),
 			updated_at: CowVec::new(Vec::new()),
 			columns: CowVec::new(buffers),
@@ -225,6 +232,7 @@ impl Columns {
 		}
 		Self {
 			row_numbers: CowVec::new(Vec::new()),
+			partitions: CowVec::new(Vec::new()),
 			created_at: CowVec::new(Vec::new()),
 			updated_at: CowVec::new(Vec::new()),
 			columns: CowVec::new(buffers),
@@ -382,6 +390,7 @@ impl Columns {
 		let _ = &mut name_vec;
 		Self {
 			row_numbers: CowVec::new(Vec::new()),
+			partitions: CowVec::new(Vec::new()),
 			created_at: CowVec::new(Vec::new()),
 			updated_at: CowVec::new(Vec::new()),
 			columns: CowVec::new(buffers),
@@ -429,6 +438,7 @@ impl Columns {
 	pub fn empty() -> Self {
 		Self {
 			row_numbers: CowVec::new(Vec::new()),
+			partitions: CowVec::new(Vec::new()),
 			created_at: CowVec::new(Vec::new()),
 			updated_at: CowVec::new(Vec::new()),
 			columns: CowVec::new(Vec::new()),
@@ -463,6 +473,11 @@ impl Columns {
 		} else {
 			indices.iter().map(|&i| self.row_numbers[i]).collect()
 		};
+		let new_partitions: Vec<Partition> = if self.partitions.is_empty() {
+			Vec::new()
+		} else {
+			indices.iter().map(|&i| self.partitions[i]).collect()
+		};
 		let new_created_at: Vec<DateTime> = if self.created_at.is_empty() {
 			Vec::new()
 		} else {
@@ -475,6 +490,7 @@ impl Columns {
 		};
 		Columns {
 			row_numbers: CowVec::new(new_row_numbers),
+			partitions: CowVec::new(new_partitions),
 			created_at: CowVec::new(new_created_at),
 			updated_at: CowVec::new(new_updated_at),
 			columns: CowVec::new(new_buffers),
@@ -517,6 +533,12 @@ impl Columns {
 				rns.push(source.row_numbers[idx]);
 			}
 		}
+		if !source.partitions.is_empty() {
+			let parts = self.partitions.make_mut();
+			for &idx in indices {
+				parts.push(source.partitions[idx]);
+			}
+		}
 		if !source.created_at.is_empty() {
 			let cr = self.created_at.make_mut();
 			for &idx in indices {
@@ -542,7 +564,12 @@ impl Columns {
 
 		self.validate_append_compatibility(&source)?;
 		self.extend_data_columns(source.columns)?;
-		self.extend_system_columns(&source.row_numbers, &source.created_at, &source.updated_at);
+		self.extend_system_columns(
+			&source.row_numbers,
+			&source.partitions,
+			&source.created_at,
+			&source.updated_at,
+		);
 		Ok(())
 	}
 
@@ -604,11 +631,15 @@ impl Columns {
 	fn extend_system_columns(
 		&mut self,
 		source_row_numbers: &CowVec<RowNumber>,
+		source_partitions: &CowVec<Partition>,
 		source_created_at: &CowVec<DateTime>,
 		source_updated_at: &CowVec<DateTime>,
 	) {
 		if !source_row_numbers.is_empty() {
 			self.row_numbers.extend_from_slice(source_row_numbers.as_slice());
+		}
+		if !source_partitions.is_empty() {
+			self.partitions.extend_from_slice(source_partitions.as_slice());
 		}
 		if !source_created_at.is_empty() {
 			self.created_at.extend_from_slice(source_created_at.as_slice());
@@ -661,6 +692,7 @@ impl Columns {
 
 		Columns {
 			row_numbers: self.row_numbers.clone(),
+			partitions: self.partitions.clone(),
 			created_at: self.created_at.clone(),
 			updated_at: self.updated_at.clone(),
 			columns: CowVec::new(new_buffers),

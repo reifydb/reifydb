@@ -148,6 +148,7 @@ impl Transform for MapNode {
 		}
 		Ok(Columns {
 			row_numbers: input.row_numbers,
+			partitions: input.partitions,
 			created_at: input.created_at,
 			updated_at: input.updated_at,
 			columns: CowVec::new(buffers_vec),

@@ -25,6 +25,7 @@ pub(crate) fn create_series(
 			columns: plan.columns,
 			tag: plan.tag,
 			key: plan.key,
+			partition_by: plan.partition_by.clone(),
 			underlying: false,
 		},
 	)?;

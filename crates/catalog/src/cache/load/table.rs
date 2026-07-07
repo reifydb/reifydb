@@ -57,6 +57,12 @@ fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Tab
 	let namespace = NamespaceId(table::SHAPE.get_u64(&row, NAMESPACE));
 	let name = table::SHAPE.get_utf8(&row, NAME).to_string();
 
+	let partition_by_str = table::SHAPE.get_utf8(&row, table::PARTITION_BY);
+	let partition_by = if partition_by_str.is_empty() {
+		vec![]
+	} else {
+		partition_by_str.split(',').map(|s| s.to_string()).collect()
+	};
 	let underlying = table::SHAPE.get_u8(&row, table::UNDERLYING) != 0;
 	Table {
 		id,
@@ -64,6 +70,7 @@ fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Tab
 		namespace,
 		columns: vec![],
 		primary_key,
+		partition_by,
 		underlying,
 	}
 }

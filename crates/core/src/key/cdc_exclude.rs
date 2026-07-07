@@ -116,6 +116,8 @@ pub mod tests {
 			KeyKind::TableColumnSnapshot => {}
 			KeyKind::IdentityAttribute => {}
 			KeyKind::IdentityAttributeValue => {}
+			KeyKind::PartitionedRow => {}
+			KeyKind::Partition => {}
 			KeyKind::VersionEpoch => {} /* When adding a new variant, add it here.
 			                             * The compiler will error if you forget.
 			                             * Then add a test and update should_exclude_from_cdc() if
@@ -217,6 +219,16 @@ pub mod tests {
 	#[test]
 	fn test_include_row() {
 		assert!(!should_exclude_from_cdc(KeyKind::Row));
+	}
+
+	#[test]
+	fn test_include_partitioned_row() {
+		assert!(!should_exclude_from_cdc(KeyKind::PartitionedRow));
+	}
+
+	#[test]
+	fn test_include_partition() {
+		assert!(!should_exclude_from_cdc(KeyKind::Partition));
 	}
 
 	#[test]

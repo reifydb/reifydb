@@ -44,6 +44,7 @@ impl<'bump> Compiler<'bump> {
 			table: self.interner.intern_fragment(&create.table.name),
 			if_not_exists: create.if_not_exists,
 			columns: create.columns,
+			partition_by: create.partition_by,
 			ttl: create.ttl,
 			persistent: create.persistent,
 		}))

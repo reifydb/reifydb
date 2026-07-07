@@ -65,6 +65,12 @@ fn decode_series(row: &EncodedRow, materialized: &CatalogCache, version: CommitV
 	} else {
 		None
 	};
+	let partition_by_str = series::SHAPE.get_utf8(row, series::PARTITION_BY);
+	let partition_by = if partition_by_str.is_empty() {
+		vec![]
+	} else {
+		partition_by_str.split(',').map(|s| s.to_string()).collect()
+	};
 	let underlying = series::SHAPE.get_u8(row, series::UNDERLYING) != 0;
 
 	Series {
@@ -75,6 +81,7 @@ fn decode_series(row: &EncodedRow, materialized: &CatalogCache, version: CommitV
 		tag,
 		key,
 		primary_key,
+		partition_by,
 		underlying,
 	}
 }

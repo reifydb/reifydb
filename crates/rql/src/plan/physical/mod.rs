@@ -1872,6 +1872,7 @@ impl<'bump> Compiler<'bump> {
 							name: "_context".to_string(),
 							columns: vec![],
 							primary_key: None,
+							partition_by: vec![],
 							underlying: false,
 						};
 
