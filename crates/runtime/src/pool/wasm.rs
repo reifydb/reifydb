@@ -62,4 +62,11 @@ impl StubPool {
 	{
 		f()
 	}
+
+	pub fn spawn<F>(&self, f: F)
+	where
+		F: FnOnce() + Send + 'static,
+	{
+		f()
+	}
 }

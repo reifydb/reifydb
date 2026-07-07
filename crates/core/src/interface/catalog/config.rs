@@ -68,7 +68,6 @@ pub enum ConfigKey {
 	ThreadsQuery,
 	ThreadsCommit,
 	ThreadsBackground,
-	FlowWorkerThreads,
 	SubscriptionWorkerThreads,
 	RuntimeMetricsInterval,
 	MetricFlushInterval,
@@ -115,7 +114,6 @@ impl ConfigKey {
 			Self::ThreadsQuery,
 			Self::ThreadsCommit,
 			Self::ThreadsBackground,
-			Self::FlowWorkerThreads,
 			Self::SubscriptionWorkerThreads,
 			Self::RuntimeMetricsInterval,
 			Self::MetricFlushInterval,
@@ -164,7 +162,6 @@ impl ConfigKey {
 			Self::ThreadsQuery => Value::Uint2(1),
 			Self::ThreadsCommit => Value::Uint2(2),
 			Self::ThreadsBackground => Value::Uint2(1),
-			Self::FlowWorkerThreads => Value::Uint2(0),
 			Self::SubscriptionWorkerThreads => Value::Uint2(0),
 			Self::RuntimeMetricsInterval => Value::duration_seconds(5),
 			Self::MetricFlushInterval => Value::duration_seconds(10),
@@ -300,11 +297,6 @@ impl ConfigKey {
 				"Number of worker threads for the background pool (non-critical cleanup and metrics actors). \
 				 Must be >= 1. Changes require restart."
 			}
-			Self::FlowWorkerThreads => {
-				"Number of deferred-flow worker actors that maintain deferred views in parallel. \
-				 0 means auto (size to the system thread pool). Higher values raise fan-out parallelism \
-				 for many independent views. Changes require restart."
-			}
 			Self::SubscriptionWorkerThreads => {
 				"Number of subscription worker actors that fan out CDC changes to ephemeral \
 				 subscriptions in parallel. 0 means auto (size to the system thread pool). Higher values \
@@ -378,7 +370,6 @@ impl ConfigKey {
 			Self::ThreadsQuery => true,
 			Self::ThreadsCommit => true,
 			Self::ThreadsBackground => true,
-			Self::FlowWorkerThreads => true,
 			Self::SubscriptionWorkerThreads => true,
 			Self::RuntimeMetricsInterval => false,
 			Self::MetricFlushInterval => false,
@@ -425,7 +416,6 @@ impl ConfigKey {
 			Self::ThreadsQuery => &[ValueType::Uint2],
 			Self::ThreadsCommit => &[ValueType::Uint2],
 			Self::ThreadsBackground => &[ValueType::Uint2],
-			Self::FlowWorkerThreads => &[ValueType::Uint2],
 			Self::SubscriptionWorkerThreads => &[ValueType::Uint2],
 			Self::RuntimeMetricsInterval => &[ValueType::Duration],
 			Self::MetricFlushInterval => &[ValueType::Duration],
@@ -472,7 +462,6 @@ impl ConfigKey {
 			Self::ThreadsQuery => false,
 			Self::ThreadsCommit => false,
 			Self::ThreadsBackground => false,
-			Self::FlowWorkerThreads => false,
 			Self::SubscriptionWorkerThreads => false,
 			Self::RuntimeMetricsInterval => true,
 			Self::MetricFlushInterval => false,
@@ -624,7 +613,6 @@ impl ConfigKey {
 				Value::Uint2(0) => Err("THREADS_BACKGROUND must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
-			Self::FlowWorkerThreads => Ok(()),
 			Self::SubscriptionWorkerThreads => Ok(()),
 			Self::RuntimeMetricsInterval => match value {
 				Value::None {
@@ -751,7 +739,6 @@ impl fmt::Display for ConfigKey {
 			Self::ThreadsQuery => write!(f, "THREADS_QUERY"),
 			Self::ThreadsCommit => write!(f, "THREADS_COMMIT"),
 			Self::ThreadsBackground => write!(f, "THREADS_BACKGROUND"),
-			Self::FlowWorkerThreads => write!(f, "FLOW_WORKER_THREADS"),
 			Self::SubscriptionWorkerThreads => write!(f, "SUBSCRIPTION_WORKER_THREADS"),
 			Self::RuntimeMetricsInterval => write!(f, "RUNTIME_METRICS_INTERVAL"),
 			Self::MetricFlushInterval => write!(f, "METRIC_FLUSH_INTERVAL"),
@@ -802,7 +789,6 @@ impl FromStr for ConfigKey {
 			"THREADS_QUERY" => Ok(Self::ThreadsQuery),
 			"THREADS_COMMIT" => Ok(Self::ThreadsCommit),
 			"THREADS_BACKGROUND" => Ok(Self::ThreadsBackground),
-			"FLOW_WORKER_THREADS" => Ok(Self::FlowWorkerThreads),
 			"SUBSCRIPTION_WORKER_THREADS" => Ok(Self::SubscriptionWorkerThreads),
 			"RUNTIME_METRICS_INTERVAL" => Ok(Self::RuntimeMetricsInterval),
 			"METRIC_FLUSH_INTERVAL" => Ok(Self::MetricFlushInterval),
@@ -948,7 +934,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 42);
+		assert_eq!(all.len(), 41);
 		assert!(all.contains(&ConfigKey::MultiFlushInterval));
 		assert!(all.contains(&ConfigKey::MultiWalAutocheckpoint));
 		assert!(all.contains(&ConfigKey::CdcWalAutocheckpoint));

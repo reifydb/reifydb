@@ -20,12 +20,12 @@ use reifydb_cdc::{
 		consumer::{CdcConsume, CdcConsumer},
 		poll::{PollConsumer, PollConsumerConfig},
 		wake::CdcWakeRegistry,
-		watermark::FlowConsumerWatermark,
+		watermark::{CdcConsumerWatermark, FlowCaughtUpWatermark},
 	},
 	storage::CdcStore,
 };
 use reifydb_core::{
-	actors::flow::{FlowCoordinatorHandle, FlowCoordinatorMessage, FlowHandle, FlowMessage, FlowPoolHandle},
+	actors::flow::{FlowSupervisorHandle, FlowSupervisorMessage},
 	interface::{
 		WithEventBus,
 		catalog::{
@@ -41,10 +41,7 @@ use reifydb_core::{
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::loader::load_flow_dag;
 use reifydb_runtime::{
-	actor::{
-		mailbox::ActorRef,
-		system::{ActorHandle, ActorSpawner},
-	},
+	actor::system::{ActorHandle, ActorSpawner},
 	context::{RuntimeContext, clock::Clock},
 	shutdown::Shutdown,
 	sync::mutex::Mutex,
@@ -58,17 +55,18 @@ use reifydb_value::{
 	Result,
 	value::{duration::Duration, identity::IdentityId},
 };
-use tracing::{info, warn};
+use tracing::warn;
 
 use crate::{
 	builder::{CustomOperators, FlowConfig},
 	catalog::FlowCatalog,
 	deferred::{
-		coordinator::{CoordinatorActor, FlowConsumeRef, registration::extract_new_flow_ids},
-		pool::PoolActor,
+		committer::{Committer, CommitterActor, CommitterHandle},
+		ddl::extract_new_flow_ids,
+		health::FlowHealthRegistry,
+		supervisor::{FlowConsumeRef, FlowSupervisor},
 		tracker::{FlowPositionTracker, ShapeVersionTracker},
 		watermark::compute_flow_watermarks,
-		worker::FlowWorkerActor,
 	},
 	engine::{FlowEngine, FlowEngineInner},
 	transaction::allocators::FlowAllocators,
@@ -79,8 +77,14 @@ use crate::{
 	},
 };
 
+/// Maximum CDC transactions a flow actor pulls and commits per chunk.
+const FLOW_CHUNK_SIZE: u64 = 1_000;
+
+/// Versions of in-memory skip-ahead a flow tolerates before forcing a checkpoint-only commit.
+const FLOW_CHECKPOINT_LAG: u64 = 10_000;
+
 struct FlowConsumeDispatcher {
-	coordinator: FlowConsumeRef,
+	flow_consumer: FlowConsumeRef,
 	registrar: TransactionalFlowRegistry,
 	flow_catalog: FlowCatalog,
 	engine: StandardEngine,
@@ -120,18 +124,18 @@ impl CdcConsume for FlowConsumeDispatcher {
 			}
 		}
 
-		self.coordinator.consume(cdcs, reply);
+		self.flow_consumer.consume(cdcs, reply);
 	}
 }
 
 pub struct FlowSubsystem {
 	consumer: Mutex<PollConsumer<StandardEngine, FlowConsumeDispatcher>>,
 	flow_scope: ActorSpawner,
-	worker_handles: Mutex<Vec<FlowHandle>>,
-	pool_handle: Mutex<Option<FlowPoolHandle>>,
-	coordinator_handle: Mutex<Option<FlowCoordinatorHandle>>,
+	committer_handle: Mutex<Option<CommitterHandle>>,
+	supervisor_handle: Mutex<Option<FlowSupervisorHandle>>,
 	transactional_tick_handle: Mutex<Option<ActorHandle<TransactionalTickMessage>>>,
 	transactional_flow_engine: FlowEngine,
+	health: FlowHealthRegistry,
 	running: AtomicBool,
 }
 
@@ -148,47 +152,37 @@ impl FlowSubsystem {
 		let cdc_store = ioc.resolve::<CdcStore>().expect("CdcStore must be registered");
 
 		let flow_scope = spawner.scope();
-		let configured_workers = engine.catalog().get_config_uint2(ConfigKey::FlowWorkerThreads) as usize;
-		let num_workers = if configured_workers == 0 {
-			spawner.pools().system_thread_count()
-		} else {
-			configured_workers
-		}
-		.max(2);
-		info!(num_workers, "initializing flow coordinator with {} workers", num_workers);
-
 		let flow_catalog = FlowCatalog::new(engine.catalog());
+		let tick_interval = engine.catalog().get_config_duration(ConfigKey::FlowTick);
 
-		let (worker_refs, worker_handles) = Self::spawn_flow_workers(
-			&flow_scope,
-			num_workers,
-			&engine,
-			&flow_catalog,
-			&clock,
-			&custom_operators,
-			&allocators,
-		);
+		let committer = Committer::new(engine.clone(), flow_catalog.clone(), flow_tracker.clone());
+		let committer_handle = flow_scope.spawn_system("flow-committer", CommitterActor::new(committer));
+		let committer_ref = committer_handle.actor_ref().clone();
 
-		let pool_handle = flow_scope.spawn_system("flow-pool", PoolActor::new(worker_refs, clock.clone()));
-		let pool_ref = pool_handle.actor_ref().clone();
-
+		let health = FlowHealthRegistry::new();
 		let flow_consumer_id = CdcConsumerId::flow_consumer();
-		let coordinator_handle = flow_scope.spawn_system(
-			"flow-coordinator",
-			CoordinatorActor::new(
+		let supervisor_handle = flow_scope.spawn_system(
+			"flow-supervisor",
+			FlowSupervisor::new(
 				engine.clone(),
 				flow_catalog.clone(),
-				pool_ref,
+				committer_ref,
+				cdc_store.clone(),
 				primitive_tracker.clone(),
 				flow_tracker.clone(),
-				cdc_store.clone(),
-				num_workers,
+				health.clone(),
+				custom_operators.clone(),
+				allocators.clone(),
 				clock.clone(),
+				flow_scope.clone(),
 				flow_consumer_id.clone(),
+				FLOW_CHUNK_SIZE,
+				FLOW_CHECKPOINT_LAG,
+				tick_interval,
 			),
 		);
-		let consume_ref = FlowConsumeRef {
-			actor_ref: coordinator_handle.actor_ref().clone(),
+		let flow_consumer = FlowConsumeRef {
+			actor_ref: supervisor_handle.actor_ref().clone(),
 		};
 
 		let transactional_flow_engine =
@@ -214,9 +208,32 @@ impl FlowSubsystem {
 
 		Self::register_watermark_sampler(ioc, &primitive_tracker, &flow_tracker, &flow_catalog);
 
+		// How far the flow poll consumer has *discovered* CDC (and spawned/nudged flows). Advances the
+		// moment a batch is consumed - before the per-flow actors have committed their output - so it is
+		// only an input to the "caught up" watermark below, never the caught-up signal itself.
+		let poll_frontier = CdcConsumerWatermark::default();
+
+		// The "caught up" watermark the `reifydb` facade resolves for `wait_for_flow_consumer`: the
+		// version up to which every live deferred flow has actually materialized. It is the min of the
+		// poll frontier (gates discovery + covers the no-flows case) and the slowest deferred flow's
+		// processed position. `flow_tracker` holds exactly the live deferred flows: the supervisor
+		// seeds an entry when it spawns one, each FlowActor advances its own entry (on commit AND on
+		// skip, so empty-output flows still report progress), and the committer removes it on drop.
+		// Transactional flows never enter it. Computed on read so it always reflects current progress.
+		let caught_up = {
+			let poll_frontier = poll_frontier.clone();
+			let flow_tracker = flow_tracker.clone();
+			FlowCaughtUpWatermark::new(move || {
+				let poll = poll_frontier.get();
+				match flow_tracker.all().values().min().copied() {
+					Some(slowest) => poll.min(slowest),
+					None => poll,
+				}
+			})
+		};
+		ioc.register_service::<FlowCaughtUpWatermark>(caught_up);
+
 		let cdc_wake_registry = ioc.resolve::<CdcWakeRegistry>().expect("CdcWakeRegistry must be registered");
-		let flow_consumer_watermark = FlowConsumerWatermark::default();
-		ioc.register_service::<FlowConsumerWatermark>(flow_consumer_watermark.clone());
 		let poll_config = PollConsumerConfig::new(
 			flow_consumer_id,
 			"flow-cdc-poll",
@@ -224,15 +241,15 @@ impl FlowSubsystem {
 			Some(100),
 		)
 		.with_wake_registry(cdc_wake_registry)
-		.with_consumer_watermark(flow_consumer_watermark.0.clone());
+		.with_consumer_watermark(poll_frontier.clone());
 
 		let bootstrap_flows = Self::bootstrap_flows(&engine, &flow_catalog, &registrar);
-		let _ = coordinator_handle.actor_ref().send(FlowCoordinatorMessage::Bootstrap {
+		let _ = supervisor_handle.actor_ref().send(FlowSupervisorMessage::Bootstrap {
 			flows: bootstrap_flows,
 		});
 
 		let dispatcher = FlowConsumeDispatcher {
-			coordinator: consume_ref,
+			flow_consumer,
 			registrar,
 			flow_catalog,
 			engine: engine.clone(),
@@ -243,11 +260,11 @@ impl FlowSubsystem {
 		Ok(Self {
 			consumer: Mutex::new(consumer),
 			flow_scope,
-			worker_handles: Mutex::new(worker_handles),
-			pool_handle: Mutex::new(Some(pool_handle)),
-			coordinator_handle: Mutex::new(Some(coordinator_handle)),
+			committer_handle: Mutex::new(Some(committer_handle)),
+			supervisor_handle: Mutex::new(Some(supervisor_handle)),
 			transactional_tick_handle: Mutex::new(Some(transactional_tick_handle)),
 			transactional_flow_engine,
+			health,
 			running: AtomicBool::new(true),
 		})
 	}
@@ -269,42 +286,6 @@ impl FlowSubsystem {
 		{
 			let _ = (config, engine);
 		}
-	}
-
-	#[inline]
-	fn spawn_flow_workers(
-		spawner: &ActorSpawner,
-		num_workers: usize,
-		engine: &StandardEngine,
-		flow_catalog: &FlowCatalog,
-		clock: &Clock,
-		custom_operators: &CustomOperators,
-		allocators: &FlowAllocators,
-	) -> (Vec<ActorRef<FlowMessage>>, Vec<FlowHandle>) {
-		let mut worker_refs = Vec::with_capacity(num_workers);
-		let mut worker_handles = Vec::with_capacity(num_workers);
-
-		for i in 0..num_workers {
-			let cat = engine.catalog();
-			let exec = engine.executor();
-			let bus = engine.event_bus().clone();
-			let rc = RuntimeContext::with_clock(clock.clone());
-			let co = custom_operators.clone();
-			let alloc = allocators.clone();
-			let worker_factory = move || FlowEngineInner::new(cat, exec, bus, rc, co, alloc);
-
-			let worker = FlowWorkerActor::new(
-				worker_factory,
-				engine.clone(),
-				engine.catalog(),
-				flow_catalog.clone(),
-			);
-			let handle = spawner.spawn_system(&format!("flow-worker-{}", i), worker);
-			worker_refs.push(handle.actor_ref().clone());
-			worker_handles.push(handle);
-		}
-
-		(worker_refs, worker_handles)
 	}
 
 	#[inline]
@@ -464,20 +445,15 @@ impl Shutdown for FlowSubsystem {
 
 		self.flow_scope.shutdown();
 
-		if let Some(handle) = self.coordinator_handle.lock().take() {
+		if let Some(handle) = self.supervisor_handle.lock().take() {
 			let _ = handle.join();
 		}
 
-		if let Some(handle) = self.pool_handle.lock().take() {
+		if let Some(handle) = self.committer_handle.lock().take() {
 			let _ = handle.join();
 		}
 
 		if let Some(handle) = self.transactional_tick_handle.lock().take() {
-			let _ = handle.join();
-		}
-
-		let workers: Vec<_> = self.worker_handles.lock().drain(..).collect();
-		for handle in workers {
 			let _ = handle.join();
 		}
 
@@ -495,10 +471,17 @@ impl Subsystem for FlowSubsystem {
 	}
 
 	fn health_status(&self) -> HealthStatus {
-		if self.is_running() {
-			HealthStatus::Healthy
-		} else {
-			HealthStatus::Unknown
+		if !self.is_running() {
+			return HealthStatus::Unknown;
+		}
+		let poisoned = self.health.poisoned();
+		if poisoned.is_empty() {
+			return HealthStatus::Healthy;
+		}
+		let flows: Vec<String> =
+			poisoned.iter().map(|(id, reason)| format!("flow {}: {}", id.0, reason)).collect();
+		HealthStatus::Degraded {
+			description: format!("{} deferred flow(s) poisoned: {}", poisoned.len(), flows.join("; ")),
 		}
 	}
 

@@ -78,6 +78,10 @@ impl FlowPositionTracker {
 			.or_insert(version);
 	}
 
+	pub fn remove(&self, flow_id: FlowId) {
+		self.inner.positions.write().remove(&flow_id);
+	}
+
 	pub fn all(&self) -> BTreeMap<FlowId, CommitVersion> {
 		let positions = self.inner.positions.read();
 		positions.clone()

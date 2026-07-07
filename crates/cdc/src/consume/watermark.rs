@@ -43,16 +43,23 @@ impl CdcConsumerWatermark {
 	}
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct FlowConsumerWatermark(pub CdcConsumerWatermark);
+#[derive(Clone)]
+pub struct FlowCaughtUpWatermark {
+	sample: Arc<dyn Fn() -> CommitVersion + Send + Sync>,
+}
 
-impl FlowConsumerWatermark {
-	pub fn get(&self) -> CommitVersion {
-		self.0.get()
+impl FlowCaughtUpWatermark {
+	pub fn new<F>(sample: F) -> Self
+	where
+		F: Fn() -> CommitVersion + Send + Sync + 'static,
+	{
+		Self {
+			sample: Arc::new(sample),
+		}
 	}
 
-	pub fn store(&self, v: CommitVersion) {
-		self.0.store(v);
+	pub fn get(&self) -> CommitVersion {
+		(self.sample)()
 	}
 }
 

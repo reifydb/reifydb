@@ -18,26 +18,6 @@ pub fn flow_error(message: String) -> Diagnostic {
 	}
 }
 
-pub fn flow_transaction_keyspace_overlap(key_debug: String) -> Diagnostic {
-	Diagnostic {
-		code: "FLOW_002".to_string(),
-		rql: None,
-		message: format!(
-			"FlowTransaction keyspace overlap: key {} was already written by another FlowTransaction",
-			key_debug
-		),
-		column: None,
-		fragment: Fragment::None,
-		label: None,
-		help: Some("FlowTransactions must operate on non-overlapping keyspaces. \
-			This is typically enforced at the flow scheduler level."
-			.to_string()),
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
 pub fn flow_already_registered(flow_id: u64) -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_003".to_string(),
@@ -236,122 +216,19 @@ pub fn flow_unsupported_aggregate_expression(output: &str) -> Diagnostic {
 	}
 }
 
-pub fn flow_invalid_worker_id(worker_id: usize, num_workers: usize) -> Diagnostic {
-	Diagnostic {
-		code: "FLOW_014".to_string(),
-		rql: None,
-		message: format!("invalid flow worker id {} (pool has {} workers)", worker_id, num_workers),
-		column: None,
-		fragment: Fragment::None,
-		label: None,
-		help: Some("The flow scheduler routed a batch to a worker index outside the pool. \
-			This indicates a scheduling or rebalance bug in the flow coordinator."
-			.to_string()),
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
-pub fn flow_worker_stopped(worker_id: usize) -> Diagnostic {
-	Diagnostic {
-		code: "FLOW_015".to_string(),
-		rql: None,
-		message: format!("flow worker {} has stopped", worker_id),
-		column: None,
-		fragment: Fragment::None,
-		label: None,
-		help: Some("A flow pool worker actor is no longer running. \
-			This typically occurs during shutdown or after a worker panic."
-			.to_string()),
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
-pub fn flow_pool_busy() -> Diagnostic {
-	Diagnostic {
-		code: "FLOW_016".to_string(),
-		rql: None,
-		message: "flow pool is busy processing another batch".to_string(),
-		column: None,
-		fragment: Fragment::None,
-		label: None,
-		help: Some("The flow pool received a request while already processing one. \
-			Requests to the pool must be serialized by the coordinator."
-			.to_string()),
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
-pub fn flow_coordinator_busy() -> Diagnostic {
-	Diagnostic {
-		code: "FLOW_017".to_string(),
-		rql: None,
-		message: "flow coordinator is busy and already has a deferred consume".to_string(),
-		column: None,
-		fragment: Fragment::None,
-		label: None,
-		help: Some("The coordinator received a consume while one was already in flight and another deferred. \
-			The CDC consumer must not deliver a third batch concurrently."
-			.to_string()),
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
-pub fn flow_pool_actor_stopped() -> Diagnostic {
-	Diagnostic {
-		code: "FLOW_018".to_string(),
-		rql: None,
-		message: "flow pool actor has stopped".to_string(),
-		column: None,
-		fragment: Fragment::None,
-		label: None,
-		help: Some("The flow pool actor is no longer reachable. \
-			This typically occurs during shutdown or after a pool panic."
-			.to_string()),
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
-pub fn flow_coordinator_stopped() -> Diagnostic {
+pub fn flow_supervisor_stopped() -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_020".to_string(),
 		rql: None,
-		message: "flow coordinator actor has stopped".to_string(),
+		message: "flow supervisor actor has stopped".to_string(),
 		column: None,
 		fragment: Fragment::None,
 		label: None,
-		help: Some("The flow coordinator actor is no longer reachable and cannot consume CDC. \
-			This typically occurs during shutdown or after a coordinator panic."
+		help: Some("The flow supervisor actor is no longer reachable and cannot consume CDC. \
+			This typically occurs during shutdown or after a supervisor panic."
 			.to_string()),
 		notes: vec![],
 		cause: None,
-		operator_chain: None,
-	}
-}
-
-pub fn flow_worker_failed(worker_id: usize, cause: Diagnostic) -> Diagnostic {
-	Diagnostic {
-		code: "FLOW_019".to_string(),
-		rql: None,
-		message: format!("flow worker {} failed", worker_id),
-		column: None,
-		fragment: Fragment::None,
-		label: None,
-		help: Some(
-			"A flow pool worker returned an error while processing its batch. See the underlying cause."
-				.to_string(),
-		),
-		notes: vec![],
-		cause: Some(Box::new(cause)),
 		operator_chain: None,
 	}
 }
@@ -521,18 +398,5 @@ pub fn flow_sink_dictionary_not_found(dictionary_id: String, column: &str) -> Di
 		"FLOW_037",
 		format!("dictionary {} not found for view column '{}'", dictionary_id, column),
 		"A dictionary-encoded view column references a dictionary that no longer exists in the catalog.",
-	)
-}
-
-pub fn flow_transaction_dictionary_write_divergence(key_debug: String) -> Diagnostic {
-	flow_diagnostic(
-		"FLOW_038",
-		format!(
-			"dictionary write divergence: key {} was written with two different values by parallel flow workers in one round",
-			key_debug
-		),
-		"Two workers produced different bytes for the same dictionary key. This should be impossible - the shared \
-		 dictionary allocator makes concurrent interns of one value agree on one id - so it indicates a bijection \
-		 bug in the allocator or an unguarded 128-bit hash collision.",
 	)
 }

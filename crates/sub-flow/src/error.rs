@@ -2,82 +2,24 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::error::diagnostic::flow::{
-	flow_coordinator_busy, flow_coordinator_stopped, flow_ffi_unsupported_on_wasm, flow_invalid_worker_id,
-	flow_missing_input_edge, flow_node_input_arity, flow_parent_operator_not_found, flow_pool_actor_stopped,
-	flow_pool_busy, flow_sink_dictionary_not_found, flow_sink_missing_system_column,
-	flow_sink_view_not_visible_at_registration, flow_state_decode_failed, flow_state_encode_failed,
-	flow_transaction_dictionary_write_divergence, flow_transaction_keyspace_overlap, flow_unknown_diff_origin,
-	flow_unknown_operator, flow_unsupported_node, flow_worker_failed, flow_worker_stopped, native_abi_tag_mismatch,
-	native_create_failed, native_library_not_loaded, native_operator_not_found, native_symbol_not_found,
+	flow_ffi_unsupported_on_wasm, flow_missing_input_edge, flow_node_input_arity, flow_parent_operator_not_found,
+	flow_sink_dictionary_not_found, flow_sink_missing_system_column, flow_sink_view_not_visible_at_registration,
+	flow_state_decode_failed, flow_state_encode_failed, flow_supervisor_stopped, flow_unknown_diff_origin,
+	flow_unknown_operator, flow_unsupported_node, native_abi_tag_mismatch, native_create_failed,
+	native_library_not_loaded, native_operator_not_found, native_symbol_not_found,
 };
 use reifydb_value::error::{Diagnostic, Error, IntoDiagnostic};
 
 #[derive(Debug, thiserror::Error)]
 pub enum FlowDispatchError {
-	#[error("invalid flow worker id {worker_id} (pool has {num_workers} workers)")]
-	InvalidWorkerId {
-		worker_id: usize,
-		num_workers: usize,
-	},
-
-	#[error("flow worker {worker_id} has stopped")]
-	WorkerStopped {
-		worker_id: usize,
-	},
-
-	#[error("flow pool is busy")]
-	PoolBusy,
-
-	#[error("flow coordinator is busy")]
-	CoordinatorBusy,
-
-	#[error("flow coordinator actor has stopped")]
-	CoordinatorStopped,
-
-	#[error("flow pool actor has stopped")]
-	PoolActorStopped,
-
-	#[error("flow transaction keyspace overlap: {key}")]
-	KeyspaceOverlap {
-		key: String,
-	},
-
-	#[error("dictionary write divergence on key {key}")]
-	DictionaryWriteDivergence {
-		key: String,
-	},
-
-	#[error("flow worker {worker_id} failed")]
-	WorkerFailed {
-		worker_id: usize,
-		cause: Error,
-	},
+	#[error("flow supervisor actor has stopped")]
+	SupervisorStopped,
 }
 
 impl IntoDiagnostic for FlowDispatchError {
 	fn into_diagnostic(self) -> Diagnostic {
 		match self {
-			FlowDispatchError::InvalidWorkerId {
-				worker_id,
-				num_workers,
-			} => flow_invalid_worker_id(worker_id, num_workers),
-			FlowDispatchError::WorkerStopped {
-				worker_id,
-			} => flow_worker_stopped(worker_id),
-			FlowDispatchError::PoolBusy => flow_pool_busy(),
-			FlowDispatchError::CoordinatorBusy => flow_coordinator_busy(),
-			FlowDispatchError::CoordinatorStopped => flow_coordinator_stopped(),
-			FlowDispatchError::PoolActorStopped => flow_pool_actor_stopped(),
-			FlowDispatchError::KeyspaceOverlap {
-				key,
-			} => flow_transaction_keyspace_overlap(key),
-			FlowDispatchError::DictionaryWriteDivergence {
-				key,
-			} => flow_transaction_dictionary_write_divergence(key),
-			FlowDispatchError::WorkerFailed {
-				worker_id,
-				cause,
-			} => flow_worker_failed(worker_id, *cause.0),
+			FlowDispatchError::SupervisorStopped => flow_supervisor_stopped(),
 		}
 	}
 }

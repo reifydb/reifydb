@@ -3,7 +3,7 @@
 
 use std::{marker::PhantomData, thread};
 
-use reifydb_cdc::consume::watermark::FlowConsumerWatermark;
+use reifydb_cdc::consume::watermark::FlowCaughtUpWatermark;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -131,10 +131,13 @@ impl CdcWatermarks<'_> {
 		self.db.engine().cdc_consumer_watermark()
 	}
 
+	/// The version up to which every deferred flow has materialized its output. Resolves the
+	/// subsystem-provided [`FlowCaughtUpWatermark`] (min of the poll frontier and the slowest
+	/// live flow's processed position); `0` when no flow subsystem is running.
 	pub fn flow_consumer(&self) -> CommitVersion {
 		self.db.engine()
 			.ioc()
-			.try_resolve::<FlowConsumerWatermark>()
+			.try_resolve::<FlowCaughtUpWatermark>()
 			.map(|w| w.get())
 			.unwrap_or(CommitVersion(0))
 	}
