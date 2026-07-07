@@ -15,7 +15,6 @@ use crate::{
 		keyword::Keyword::{Inner, Join, Left, Natural, Using},
 		operator::Operator::{And, As, CloseParen, OpenParen, Or},
 		separator::Separator::Comma,
-		token::TokenKind,
 	},
 };
 
@@ -26,7 +25,7 @@ impl<'bump> Parser<'bump> {
 		let with = self.parse_sub_query()?;
 
 		self.consume_operator(As)?;
-		let alias = self.consume(TokenKind::Identifier)?.fragment;
+		let alias = self.consume_identifier()?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
 		let (ttl, snapshot, latest) = self.parse_with_clause_for_join()?;
@@ -62,7 +61,7 @@ impl<'bump> Parser<'bump> {
 		let with = self.parse_sub_query()?;
 
 		self.consume_operator(As)?;
-		let alias = self.consume(TokenKind::Identifier)?.fragment;
+		let alias = self.consume_identifier()?.fragment;
 		let (ttl, snapshot, latest) = self.parse_with_clause_for_join()?;
 
 		Ok(AstJoin::NaturalJoin {
@@ -85,7 +84,7 @@ impl<'bump> Parser<'bump> {
 		let with = self.parse_sub_query()?;
 
 		self.consume_operator(As)?;
-		let alias = self.consume(TokenKind::Identifier)?.fragment;
+		let alias = self.consume_identifier()?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
 		let (ttl, snapshot, latest) = self.parse_with_clause_for_join()?;
@@ -110,7 +109,7 @@ impl<'bump> Parser<'bump> {
 		let with = self.parse_sub_query()?;
 
 		self.consume_operator(As)?;
-		let alias = self.consume(TokenKind::Identifier)?.fragment;
+		let alias = self.consume_identifier()?.fragment;
 
 		let using_clause = self.parse_using_clause()?;
 		let (ttl, snapshot, latest) = self.parse_with_clause_for_join()?;

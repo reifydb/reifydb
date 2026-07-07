@@ -231,6 +231,7 @@ impl FlowTransaction {
 				KeyKind::SeriesColumnSnapshot => ReadFrom::Query,
 				KeyKind::TableColumnSnapshot => ReadFrom::Query,
 				KeyKind::VersionEpoch => ReadFrom::Query,
+				KeyKind::Relationship => ReadFrom::Query,
 			},
 		}
 	}

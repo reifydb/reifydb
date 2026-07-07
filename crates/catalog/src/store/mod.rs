@@ -30,6 +30,7 @@ pub(crate) mod primary_key;
 pub(crate) mod procedure;
 #[allow(dead_code)]
 pub mod queue;
+pub(crate) mod relationship;
 pub mod ringbuffer;
 pub(crate) mod role;
 pub mod row_settings;

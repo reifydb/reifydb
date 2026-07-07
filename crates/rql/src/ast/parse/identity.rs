@@ -10,15 +10,12 @@ use crate::{
 		},
 		parse::Parser,
 	},
-	token::{
-		operator::Operator,
-		token::{Token, TokenKind},
-	},
+	token::{operator::Operator, token::Token},
 };
 
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_create_identity(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
-		let name_token = self.consume(TokenKind::Identifier)?;
+		let name_token = self.consume_identifier()?;
 
 		let entries = if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
 			self.parse_body_entries()?
@@ -34,7 +31,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	pub(crate) fn parse_alter_identity(&mut self, token: Token<'bump>) -> Result<AstAlter<'bump>> {
-		let name_token = self.consume(TokenKind::Identifier)?;
+		let name_token = self.consume_identifier()?;
 		let entries = self.parse_body_entries()?;
 
 		Ok(AstAlter::Identity(AstAlterIdentity {
@@ -45,7 +42,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	pub(crate) fn parse_create_identity_attribute(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
-		let name_token = self.consume(TokenKind::Identifier)?;
+		let name_token = self.consume_identifier()?;
 		self.consume_operator(Operator::Colon)?;
 		let value_type = self.parse_type()?;
 
@@ -57,7 +54,7 @@ impl<'bump> Parser<'bump> {
 	}
 
 	pub(crate) fn parse_create_role(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
-		let name_token = self.consume(TokenKind::Identifier)?;
+		let name_token = self.consume_identifier()?;
 
 		Ok(AstCreate::Role(AstCreateRole {
 			token,
@@ -67,7 +64,7 @@ impl<'bump> Parser<'bump> {
 
 	pub(crate) fn parse_drop_identity(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
-		let name_token = self.consume(TokenKind::Identifier)?;
+		let name_token = self.consume_identifier()?;
 
 		Ok(AstDrop::Identity(AstDropIdentity {
 			token,
@@ -78,7 +75,7 @@ impl<'bump> Parser<'bump> {
 
 	pub(crate) fn parse_drop_identity_attribute(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
-		let name_token = self.consume(TokenKind::Identifier)?;
+		let name_token = self.consume_identifier()?;
 
 		Ok(AstDrop::IdentityAttribute(AstDropIdentityAttribute {
 			token,
@@ -89,7 +86,7 @@ impl<'bump> Parser<'bump> {
 
 	pub(crate) fn parse_drop_role(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
-		let name_token = self.consume(TokenKind::Identifier)?;
+		let name_token = self.consume_identifier()?;
 
 		Ok(AstDrop::Role(AstDropRole {
 			token,

@@ -1,0 +1,19 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Scenario: Multiple filters in 'where'
+# Why: Ensures the compiler correctly handles multiple keys in the 'where' object
+#      and maps various operators (_lt, _gte, equality) to RQL.
+(admin 'CREATE TABLE transactions { id: int4, hash: utf8, blockNumber: int4, index: int4, status: bool }')
+query 'CALL graphql::explain("query { transactions(where: { blockNumber_lt: 50, index_gte: 1, status: true }) { hash } }")'
+---
+> +-------+------------+-----------------------------------------------------------------------------------------------------+
+> |  idx  |    kind    |                                               detail                                                |
+> +-------+------------+-----------------------------------------------------------------------------------------------------+
+> |   0   |    Let     |  $level0 = from transactions | filter blockNumber < 50 | filter index >= 1 | filter status == true  |
+> |   1   |    Let     |                                             $rows = []                                              |
+> |   2   |    For     |                                           $r0 in $level0                                            |
+> |   3   |   Append   |                                     $rows from [{hash: $r0.hash}]                                   |
+> |   4   |  Variable  |                                                $rows                                                |
+> +-------+------------+-----------------------------------------------------------------------------------------------------+
+>

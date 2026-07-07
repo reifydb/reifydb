@@ -20,6 +20,7 @@ use crate::{
 		policy::Policy,
 		procedure::Procedure,
 		queue::Queue,
+		relationship::Relationship,
 		ringbuffer::RingBuffer,
 		series::Series,
 		sink::Sink,
@@ -43,6 +44,12 @@ pub trait CatalogTrackTableChangeOperations {
 	fn track_table_updated(&mut self, pre: Table, post: Table) -> Result<()>;
 
 	fn track_table_deleted(&mut self, table: Table) -> Result<()>;
+}
+
+pub trait CatalogTrackRelationshipChangeOperations {
+	fn track_relationship_created(&mut self, relationship: Relationship) -> Result<()>;
+
+	fn track_relationship_deleted(&mut self, relationship: Relationship) -> Result<()>;
 }
 
 pub trait CatalogTrackNamespaceChangeOperations {
@@ -267,6 +274,7 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackNamespaceChangeOperations
 	+ CatalogTrackProcedureChangeOperations
 	+ CatalogTrackQueueChangeOperations
+	+ CatalogTrackRelationshipChangeOperations
 	+ CatalogTrackRingBufferChangeOperations
 	+ CatalogTrackRoleChangeOperations
 	+ CatalogTrackPolicyChangeOperations

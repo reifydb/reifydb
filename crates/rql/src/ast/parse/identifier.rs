@@ -17,12 +17,12 @@ use crate::{
 
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_identifier(&mut self) -> Result<UnqualifiedIdentifier<'bump>> {
-		let token = self.consume(TokenKind::Identifier)?;
+		let token = self.consume_identifier()?;
 		Ok(UnqualifiedIdentifier::new(token))
 	}
 
 	pub(crate) fn parse_as_identifier(&mut self) -> Result<UnqualifiedIdentifier<'bump>> {
-		let token = self.consume_name()?;
+		let token = self.consume_identifier()?;
 		Ok(UnqualifiedIdentifier::new(token))
 	}
 
@@ -164,6 +164,8 @@ impl<'bump> Parser<'bump> {
 
 #[cfg(test)]
 pub mod tests {
+	use bumpalo::Bump;
+
 	use crate::{
 		ast::{
 			ast::{
@@ -172,7 +174,7 @@ pub mod tests {
 			},
 			parse::parse,
 		},
-		bump::Bump,
+		bump::BumpBox,
 		token::tokenize,
 	};
 
@@ -216,7 +218,7 @@ pub mod tests {
 			panic!()
 		};
 
-		if let Namespace(ns) = create {
+		if let Namespace(ns) = BumpBox::into_inner(create) {
 			assert_eq!(ns.namespace.segments[0].text(), "my-identifier");
 		} else {
 			panic!("Expected namespace creation");
@@ -235,7 +237,7 @@ pub mod tests {
 			panic!()
 		};
 
-		if let Namespace(ns) = create {
+		if let Namespace(ns) = BumpBox::into_inner(create) {
 			assert_eq!(ns.namespace.segments[0].text(), "user-profile-data");
 		} else {
 			panic!("Expected namespace creation");
@@ -321,7 +323,7 @@ pub mod tests {
 			panic!()
 		};
 
-		if let Namespace(ns) = create {
+		if let Namespace(ns) = BumpBox::into_inner(create) {
 			assert_eq!(ns.namespace.segments[0].text(), "twap-10min");
 		} else {
 			panic!("Expected namespace creation");
@@ -341,7 +343,7 @@ pub mod tests {
 			panic!()
 		};
 
-		if let Namespace(ns) = create {
+		if let Namespace(ns) = BumpBox::into_inner(create) {
 			assert_eq!(ns.namespace.segments[0].text(), "avg-10min-window");
 		} else {
 			panic!("Expected namespace creation");
@@ -360,7 +362,7 @@ pub mod tests {
 			panic!()
 		};
 
-		if let Namespace(ns) = create {
+		if let Namespace(ns) = BumpBox::into_inner(create) {
 			assert_eq!(ns.namespace.segments[0].text(), "create-2024-table");
 		} else {
 			panic!("Expected namespace creation");
@@ -379,7 +381,7 @@ pub mod tests {
 			panic!()
 		};
 
-		if let Namespace(ns) = create {
+		if let Namespace(ns) = BumpBox::into_inner(create) {
 			assert_eq!(ns.namespace.segments[0].text(), "10min");
 		} else {
 			panic!("Expected namespace creation");
@@ -398,7 +400,7 @@ pub mod tests {
 			panic!()
 		};
 
-		if let Namespace(ns) = create {
+		if let Namespace(ns) = BumpBox::into_inner(create) {
 			assert_eq!(ns.namespace.segments[0].text(), "10min-window");
 		} else {
 			panic!("Expected namespace creation");
