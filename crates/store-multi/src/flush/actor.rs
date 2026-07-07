@@ -10,16 +10,15 @@ use reifydb_codec::key::encoded::EncodedKey;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_runtime::actor::timers::TimerHandle;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_runtime::actor::{
 	context::Context,
 	mailbox::ActorRef,
 	system::{ActorConfig, ActorSpawner},
 	traits::{Actor, Directive},
 };
-use reifydb_runtime::{
-	actor::timers::TimerHandle,
-	sync::{rwlock::RwLock, waiter::WaiterHandle},
-};
+use reifydb_runtime::sync::{rwlock::RwLock, waiter::WaiterHandle};
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_value::{reifydb_assertions, util::cowvec::CowVec};
@@ -39,6 +38,8 @@ pub enum FlushMessage {
 	Tick(DateTime),
 	Shutdown,
 
+	SetInterval(Duration),
+
 	FlushPending {
 		waiter: Arc<WaiterHandle>,
 	},
@@ -48,9 +49,9 @@ pub enum FlushMessage {
 	},
 }
 
-#[allow(dead_code)]
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 pub struct FlushActorState {
-	_timer_handle: Option<TimerHandle>,
+	timer_handle: Option<TimerHandle>,
 }
 
 #[allow(dead_code)]
@@ -266,11 +267,11 @@ impl Actor for FlushActor {
 			FlushMessage::Tick(DateTime::from_nanos(nanos))
 		});
 		FlushActorState {
-			_timer_handle: Some(timer_handle),
+			timer_handle: Some(timer_handle),
 		}
 	}
 
-	fn handle(&self, _state: &mut FlushActorState, msg: FlushMessage, ctx: &Context<FlushMessage>) -> Directive {
+	fn handle(&self, state: &mut FlushActorState, msg: FlushMessage, ctx: &Context<FlushMessage>) -> Directive {
 		if ctx.is_cancelled() {
 			if let Some(cutoff) = self.eviction_cutoff() {
 				self.sweep(cutoff);
@@ -282,6 +283,14 @@ impl Actor for FlushActor {
 				if let Some(cutoff) = self.eviction_cutoff() {
 					self.sweep(cutoff);
 				}
+			}
+			FlushMessage::SetInterval(interval) => {
+				if let Some(handle) = state.timer_handle.take() {
+					handle.cancel();
+				}
+				state.timer_handle = Some(ctx.schedule_tick(interval.to_std(), |nanos| {
+					FlushMessage::Tick(DateTime::from_nanos(nanos))
+				}));
 			}
 			FlushMessage::Shutdown => {
 				debug!("Persistent flush actor shutting down");

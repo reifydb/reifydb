@@ -98,6 +98,7 @@ impl ProfilerCategory {
 			Some(ProfilerCategory::Txn)
 		} else if name.starts_with("store::single::")
 			|| name.starts_with("store::multi::")
+			|| name.starts_with("store::cdc::")
 			|| name.starts_with("drop::")
 		{
 			Some(ProfilerCategory::Storage)
@@ -276,6 +277,10 @@ mod tests {
 		assert_eq!(ProfilerCategory::from_span_name("transaction::commit"), Some(ProfilerCategory::Txn));
 		assert_eq!(ProfilerCategory::from_span_name("store::multi::write"), Some(ProfilerCategory::Storage));
 		assert_eq!(ProfilerCategory::from_span_name("store::single::scan"), Some(ProfilerCategory::Storage));
+		assert_eq!(
+			ProfilerCategory::from_span_name("store::cdc::sqlite::write"),
+			Some(ProfilerCategory::Storage)
+		);
 		assert_eq!(ProfilerCategory::from_span_name("drop::range"), Some(ProfilerCategory::Storage));
 		assert_eq!(ProfilerCategory::from_span_name("volcano::project"), Some(ProfilerCategory::Query));
 		assert_eq!(ProfilerCategory::from_span_name("vm::executor"), Some(ProfilerCategory::Query));

@@ -69,9 +69,9 @@ impl MultiPersistentTier {
 		}
 	}
 
-	pub fn reclaim(&self) -> Result<()> {
+	pub fn set_checkpoint_threshold(&self, frames: u32) {
 		match self {
-			Self::Sqlite(s) => s.reclaim(),
+			Self::Sqlite(s) => s.set_checkpoint_threshold(frames),
 		}
 	}
 
@@ -124,7 +124,7 @@ impl MultiPersistentTier {
 		match *self {}
 	}
 
-	pub fn reclaim(&self) -> Result<()> {
+	pub fn set_checkpoint_threshold(&self, _frames: u32) {
 		match *self {}
 	}
 

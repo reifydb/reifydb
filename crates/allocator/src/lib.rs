@@ -7,6 +7,9 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 #[cfg(all(feature = "alloc-jemalloc", not(target_env = "msvc")))]
+use reifydb_allocator_jemalloc::stats;
+
+#[cfg(all(feature = "alloc-jemalloc", not(target_env = "msvc")))]
 pub mod backend {
 	use reifydb_allocator_jemalloc::{ALLOCATOR as JEMALLOC_ALLOCATOR, verify as jemalloc_verify};
 
@@ -47,3 +50,30 @@ pub fn verify() {
 
 #[cfg(not(feature = "alloc-jemalloc"))]
 pub fn verify() {}
+
+pub struct JemallocStats {
+	pub allocated: u64,
+	pub active: u64,
+	pub resident: u64,
+	pub mapped: u64,
+	pub retained: u64,
+	pub metadata: u64,
+}
+
+#[cfg(all(feature = "alloc-jemalloc", not(target_env = "msvc")))]
+pub fn jemalloc_stats() -> Option<JemallocStats> {
+	let (allocated, active, resident, mapped, retained, metadata) = stats();
+	Some(JemallocStats {
+		allocated,
+		active,
+		resident,
+		mapped,
+		retained,
+		metadata,
+	})
+}
+
+#[cfg(not(all(feature = "alloc-jemalloc", not(target_env = "msvc"))))]
+pub fn jemalloc_stats() -> Option<JemallocStats> {
+	None
+}

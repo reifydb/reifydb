@@ -30,18 +30,6 @@ pub fn apply_read_only(conn: &Connection, config: &SqliteConfig) -> SqliteResult
 	Ok(())
 }
 
-pub fn incremental_vacuum(conn: &Connection) -> SqliteResult<()> {
-	conn.pragma_query(None, "incremental_vacuum", |_| Ok(())).map_err(|source| SqliteError::Execute {
-		statement: "PRAGMA incremental_vacuum".into(),
-		source,
-	})?;
-	conn.pragma(None, "wal_checkpoint", "TRUNCATE", |_| Ok(())).map_err(|source| SqliteError::Execute {
-		statement: "PRAGMA wal_checkpoint(TRUNCATE)".into(),
-		source,
-	})?;
-	Ok(())
-}
-
 pub fn shrink_memory(conn: &Connection) -> SqliteResult<()> {
 	set(conn, "shrink_memory", 0)
 }

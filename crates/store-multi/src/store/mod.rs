@@ -157,6 +157,18 @@ impl StandardMultiStore {
 		}
 	}
 
+	pub fn configure_flush_interval(&self, interval: Duration) {
+		if let Some(actor) = &self.flush_actor {
+			let _ = actor.send(FlushMessage::SetInterval(interval));
+		}
+	}
+
+	pub fn configure_wal_autocheckpoint(&self, frames: u32) {
+		if let Some(persistent) = &self.persistent {
+			persistent.set_checkpoint_threshold(frames);
+		}
+	}
+
 	pub fn insert_read_key(&self, key: EncodedKey, version: CommitVersion, value: Option<CowVec<u8>>) {
 		if let Some(read) = &self.read {
 			read.insert(key, version, value);

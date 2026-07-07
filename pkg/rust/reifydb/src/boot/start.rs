@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use reifydb_cdc::storage::CdcStore;
 use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
 	common::CommitVersion,
@@ -20,7 +21,6 @@ use reifydb_store_multi::{
 		epoch::{EpochSource, actor::spawn_version_epoch_sampler},
 		historical::actor::spawn_historical_gc_actor,
 		operator::actor::spawn_operator_settings_actor,
-		reclaim::actor::spawn_persistent_reclaim_actor,
 		row::actor::spawn_row_settings_actor,
 	},
 };
@@ -90,6 +90,12 @@ pub(crate) fn spawn_actors(engine: &StandardEngine, spawner: &ActorSpawner) -> R
 		catalog.get_config_uint8(ConfigKey::MultiReadBufferPages) as usize,
 		catalog.get_config_uint8(ConfigKey::MultiReadBufferPageSize),
 	);
+	store.configure_flush_interval(catalog.get_config_duration(ConfigKey::MultiFlushInterval));
+	store.configure_wal_autocheckpoint(catalog.get_config_uint8(ConfigKey::MultiWalAutocheckpoint) as u32);
+	if let Some(cdc_store) = engine.ioc().try_resolve::<CdcStore>() {
+		cdc_store
+			.configure_wal_autocheckpoint(catalog.get_config_uint8(ConfigKey::CdcWalAutocheckpoint) as u32);
+	}
 	store.set_row_settings_provider(Arc::new(catalog.clone()));
 
 	let epoch = engine.version_epoch().clone();
@@ -103,9 +109,6 @@ pub(crate) fn spawn_actors(engine: &StandardEngine, spawner: &ActorSpawner) -> R
 	let _operator_ttl_actor = spawn_operator_settings_actor(store.clone(), spawner.clone(), catalog.clone(), epoch);
 
 	store.set_eviction_watermark(Arc::new(engine.clone()));
-
-	let reclaim_config: Arc<dyn GetConfig> = Arc::new(catalog.clone());
-	let _reclaim_actor = spawn_persistent_reclaim_actor(store.clone(), spawner.clone(), reclaim_config);
 
 	let config: Arc<dyn GetConfig> = Arc::new(catalog);
 	let _gc_actor = spawn_historical_gc_actor(store, spawner.clone(), engine.clone(), config);

@@ -11,6 +11,7 @@ description = "Always-on runtime-metrics subsystem for ReifyDB"
 reifydb-build = { workspace = true }
 
 [dependencies]
+reifydb-allocator = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
