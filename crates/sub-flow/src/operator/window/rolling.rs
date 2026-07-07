@@ -817,6 +817,10 @@ mod tests {
 		fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> ValueResult<Vec<(RowNumber, bool)>> {
 			keys.iter().map(|k| self.get_or_create_row_number(k)).collect()
 		}
+		fn drop_row_number(&mut self, key: &EncodedKey) -> ValueResult<()> {
+			self.rows.remove(key.as_bytes());
+			Ok(())
+		}
 		fn allocate_row_numbers(&mut self, count: u64) -> ValueResult<RowNumber> {
 			self.next_row += count;
 			Ok(RowNumber(self.next_row - count + 1))

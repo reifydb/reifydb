@@ -125,6 +125,11 @@ impl WindowStore for FlowWindowStore<'_> {
 		RowNumberProvider::new(self.node).get_or_create_row_numbers(self.txn, keys.iter())
 	}
 
+	fn drop_row_number(&mut self, key: &EncodedKey) -> Result<()> {
+		RowNumberProvider::new(self.node).remove_for_key(self.txn, key)?;
+		Ok(())
+	}
+
 	fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber> {
 		allocate_row_numbers(self.txn, self.node, count).map(RowNumber)
 	}

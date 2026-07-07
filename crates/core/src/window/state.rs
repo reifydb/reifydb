@@ -315,6 +315,9 @@ mod tests {
 		fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 			Ok(keys.iter().enumerate().map(|(i, _)| (RowNumber(i as u64 + 1), true)).collect())
 		}
+		fn drop_row_number(&mut self, _key: &EncodedKey) -> Result<()> {
+			Ok(())
+		}
 		fn allocate_row_numbers(&mut self, _count: u64) -> Result<RowNumber> {
 			Ok(RowNumber(1))
 		}

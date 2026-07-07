@@ -105,6 +105,10 @@ impl<C: OperatorContext> WindowStore for OperatorContextStore<'_, C> {
 		Ok(self.0.get_or_create_row_numbers(keys)?)
 	}
 
+	fn drop_row_number(&mut self, key: &EncodedKey) -> Result<()> {
+		Ok(self.0.drop_row_number(key)?)
+	}
+
 	fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber> {
 		Ok(self.0.allocate_row_numbers(count)?)
 	}

@@ -346,6 +346,7 @@ where
 						row_number: rn,
 						value: prior_out.clone(),
 					});
+					store.drop_row_number(&key)?;
 				}
 			}
 
@@ -453,6 +454,34 @@ mod tests {
 			}
 			_ => panic!("the group emptied under retraction, so it must emit a terminal Remove"),
 		}
+	}
+
+	#[test]
+	fn withdrawn_ranking_reclaims_its_row_number_mapping() {
+		// Every ranked (group, secondary) mints a row-number mapping ('M') via get_or_create_row_number.
+		// When the ranking is withdrawn (its secondary drops out of the emit) that mapping must be
+		// reclaimed, or 'M' grows per distinct ranked key ever seen - a leak the emitted Remove alone
+		// does not close, since Remove only withdraws the view row, not the internal mapping.
+		let mut store = MockStore::default();
+		// `combine` publishes the group's ranking under secondary key 0 (see the helper below), so the
+		// ranked row's mapping is row_key(group=1, sk=0) - distinct from the rolling coord (10).
+		let ranked_key = row_key(&1, &0);
+
+		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
+		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
+		engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
+		engine.flush(&mut store).unwrap();
+		assert!(store.contains_row_mapping(&ranked_key), "publishing the ranking mints its mapping");
+
+		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(5)]);
+		engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
+		engine.flush(&mut store).unwrap();
+		assert!(
+			!store.contains_row_mapping(&ranked_key),
+			"withdrawing the ranking must reclaim its row-number mapping, not leak it"
+		);
 	}
 
 	#[test]

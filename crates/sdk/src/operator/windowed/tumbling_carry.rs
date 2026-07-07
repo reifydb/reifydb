@@ -269,13 +269,6 @@ where
 			let batch_max = buckets.keys().map(|(_, span)| span.start.order_key()).max().unwrap_or(0);
 			let watermark = advance_seal_watermark(&mut store, batch_max)?;
 			let horizon = seal_horizon(watermark, seal_after);
-			if let Some(retention) = self.aggregator.retention() {
-				let retention_span =
-					(<<A as TumblingCarryOperator>::WindowCoord as Slot>::from_order_key(0)
-						+ retention)
-						.order_key();
-				self.engine.expire_meta(&mut store, watermark.saturating_sub(retention_span))?;
-			}
 			let mut dropped = 0u64;
 			buckets.retain(|(_, span), events| {
 				if is_sealed(span.start.order_key(), horizon) {

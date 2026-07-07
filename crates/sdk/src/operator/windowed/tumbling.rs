@@ -14,6 +14,7 @@ use reifydb_core::{
 			tumbling::{TumblingBuckets, TumblingEngine, reindex_window},
 		},
 		span::{Slot, WindowSpan},
+		store::WindowStore,
 	},
 };
 use reifydb_value::value::row_number::RowNumber;
@@ -248,7 +249,7 @@ where
 
 		if let Some(seal_after) = self.aggregator.seal_after() {
 			let Self {
-				aggregator: _,
+				aggregator,
 				engine,
 			} = &mut *self;
 			let mut store = OperatorContextStore(ctx);
@@ -268,7 +269,11 @@ where
 				warn!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
 			}
 			if horizon > 0 {
-				engine.expire(&mut store, horizon - 1)?;
+				for expired in engine.expire(&mut store, horizon - 1)? {
+					store.drop_row_number(
+						&aggregator.encode_row_key(&expired.group, expired.window_start),
+					)?;
+				}
 				engine.expire_meta(&mut store, horizon)?;
 			}
 			if buckets.is_empty() {

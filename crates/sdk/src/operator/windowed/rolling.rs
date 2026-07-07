@@ -15,6 +15,7 @@ use reifydb_core::{
 			seal_horizon,
 		},
 		span::Slot,
+		store::WindowStore,
 	},
 };
 use reifydb_value::value::row_number::RowNumber;
@@ -296,14 +297,25 @@ where
 		let mut inserts: Vec<(RowNumber, A::Output)> = Vec::new();
 		let mut updates: Vec<(RowNumber, A::Output)> = Vec::new();
 		let mut removes: Vec<(RowNumber, A::Output)> = Vec::new();
+		let mut removed_groups: Vec<A::GroupKey> = Vec::new();
 		for r in results {
 			match r.kind {
 				EmitKind::Insert => inserts.push((r.row_number, r.value)),
 				EmitKind::Update => updates.push((r.row_number, r.value)),
-				EmitKind::Remove => removes.push((r.row_number, r.value)),
+				EmitKind::Remove => {
+					removed_groups.push(r.group);
+					removes.push((r.row_number, r.value));
+				}
 			}
 		}
 		Self::emit_batches(ctx, inserts, updates, removes)?;
+
+		if !removed_groups.is_empty() {
+			let mut store = OperatorContextStore(ctx);
+			for group in &removed_groups {
+				store.drop_row_number(&self.aggregator.encode_row_key(group))?;
+			}
+		}
 
 		Ok(())
 	}

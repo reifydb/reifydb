@@ -45,6 +45,8 @@ pub trait WindowStore {
 
 	fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
 
+	fn drop_row_number(&mut self, key: &EncodedKey) -> Result<()>;
+
 	fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber>;
 
 	fn clock_now_nanos(&self) -> u64;

@@ -449,6 +449,10 @@ pub(crate) mod test_support {
 		pub(crate) fn seed_mapping_key(&mut self, suffix: u8) {
 			self.internal.insert(vec![FlowNodeInternalStateKey::ROW_NUMBER_MAPPING_TAG, suffix], vec![0u8]);
 		}
+
+		pub(crate) fn contains_row_mapping(&self, key: &EncodedKey) -> bool {
+			self.rows.contains_key(key.as_bytes())
+		}
 	}
 
 	impl WindowStore for MockStore {
@@ -547,6 +551,10 @@ pub(crate) mod test_support {
 		}
 		fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 			keys.iter().map(|k| self.get_or_create_row_number(k)).collect()
+		}
+		fn drop_row_number(&mut self, key: &EncodedKey) -> Result<()> {
+			self.rows.remove(key.as_bytes());
+			Ok(())
 		}
 		fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber> {
 			let start = self.next_row + 1;

@@ -268,6 +268,7 @@ where
 					meta.sealed_up_to = Some(first);
 					meta.sealed_carry = carry_out;
 					self.accumulators.remove(store, &WindowStateKey(row_number))?;
+					store.drop_row_number(&row_key(&group, first))?;
 				}
 			}
 		}
@@ -408,6 +409,12 @@ mod tests {
 				.filter(|k| k.first() == Some(&FlowNodeInternalStateKey::WINDOW_META_TAG))
 				.count()
 		}
+
+		// One row-number mapping ('M') is minted per (group, window) via get_or_create_row_number;
+		// this counts the live mappings so a test can prove sealed windows reclaim theirs.
+		fn row_mapping_count(&self) -> usize {
+			self.rows.len()
+		}
 	}
 
 	impl WindowStore for CountingStore {
@@ -508,6 +515,10 @@ mod tests {
 		fn get_or_create_row_numbers(&mut self, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 			keys.iter().map(|k| self.get_or_create_row_number(k)).collect()
 		}
+		fn drop_row_number(&mut self, key: &EncodedKey) -> Result<()> {
+			self.rows.remove(key.as_bytes());
+			Ok(())
+		}
 		fn allocate_row_numbers(&mut self, count: u64) -> Result<RowNumber> {
 			let start = self.next_row + 1;
 			self.next_row += count;
@@ -581,6 +592,26 @@ mod tests {
 			store.accumulator_count() <= 4,
 			"sealed windows must reclaim their accumulator rows; found {} live rows after 60 windows",
 			store.accumulator_count()
+		);
+	}
+
+	#[test]
+	fn retention_seals_old_windows_and_reclaims_row_number_mappings() {
+		// The per-(group, window) row-number mapping ('M') is minted for every window but is not
+		// reclaimed by accumulator eviction (it is keyed by row_key, not row_number). When a window
+		// seals past retention its mapping must be dropped alongside its accumulator, or 'M' grows
+		// per-window forever - a larger leak than the per-group meta. After 60 windows the mapping
+		// count must stay bounded by the retention horizon, not track the number of windows seen.
+		let mut store = CountingStore::default();
+		let mut engine = Engine::new(carry_config(Some(2 * WINDOW)));
+		for i in 0..60u64 {
+			feed(&mut engine, &mut store, i * WINDOW, i as f64);
+		}
+		engine.flush(&mut store).expect("flush");
+		assert!(
+			store.row_mapping_count() <= 4,
+			"sealed windows must reclaim their row-number mappings; found {} live mappings after 60 windows",
+			store.row_mapping_count()
 		);
 	}
 
